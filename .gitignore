@@ -1,0 +1,8 @@
+# pi project-local config (keep out of the repo)
+.pi/
+
+# local agent instructions
+AGENTS.local.md
+
+# dev-pipeline local state (symlink or directory)
+.agents/dev-pipeline
