@@ -42,14 +42,14 @@ PASS host-restart__completed-unretrieved
 === worker-restart__short-running (worker-restart, in-progress short command) ===
   command: node scripts/matrix.mjs --cell worker-restart__short-running
   observed afterRestart = running
-  observed orphanPid = 91992
+  observed orphanPidClaimed = true
   observed final = exited:0/null
   observed effectsLines = 1
 PASS worker-restart__short-running
 === worker-restart__long-running (worker-restart, in-progress long command) ===
   command: node scripts/matrix.mjs --cell worker-restart__long-running
   observed afterRestart = running
-  observed orphanPid = 92344
+  observed orphanPidClaimed = true
   observed afterOrphanKilled = unknown:child-exited-without-result
   observed effectsLines = 1
   observed resubmit = {"reused":true,"executionIdStable":true,"state":"unknown:child-exited-without-result"}
@@ -58,7 +58,7 @@ PASS worker-restart__long-running
 === worker-restart__completed-unretrieved (worker-restart, completed, result not retrieved) ===
   command: node scripts/matrix.mjs --cell worker-restart__completed-unretrieved
   observed afterRestart = exited:0/null
-  observed orphanPid = null
+  observed orphanPidClaimed = false
   observed effectsLines = 1
 PASS worker-restart__completed-unretrieved
 === machine-restart__short-running (machine-restart, in-progress short command) ===

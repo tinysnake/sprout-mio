@@ -79,7 +79,7 @@ cd experiments/recovery-probe && bash scripts/verify.sh
 | `host-restart__short-running` | pendingRecoveredFromJournal=true, afterReconnect=running, final=exited:0/null |
 | `host-restart__long-running` | pendingRecoveredFromJournal=true, afterReconnect=running |
 | `host-restart__completed-unretrieved` | pendingRecoveredFromJournal=true, afterReconnect=exited:0/null |
-| `worker-restart__short-running` | afterRestart=running, orphanPid 非空, final=exited:0/null |
+| `worker-restart__short-running` | afterRestart=running, orphanPidClaimed=true, final=exited:0/null |
 | `worker-restart__long-running` | afterRestart=running, afterOrphanKilled=unknown:child-exited-without-result, 重提交 reused=true 且 effects 仍为 1 |
 | `worker-restart__completed-unretrieved` | afterRestart=exited:0/null |
 | `machine-restart__short-running` | afterRestart=unknown:child-exited-without-result, 重提交 reused=true, effects=1 |

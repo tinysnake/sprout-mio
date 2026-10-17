@@ -261,7 +261,7 @@ async function runWorkerRestart(cell, cellDir) {
   worker = await startWorker(cellDir);
   const reconnected = await openClient(worker.port);
   const first = await query(reconnected, 'req-1');
-  const observations = { afterRestart: describe(first.state), orphanPid: first.pid ?? null };
+  const observations = { afterRestart: describe(first.state), orphanPidClaimed: Number.isInteger(first.pid) };
 
   if (phase === 'short-running') {
     const terminal = await waitForState(reconnected, 'req-1', ['exited'], 8000);
