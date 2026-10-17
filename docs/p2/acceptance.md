@@ -1,6 +1,6 @@
 # P2 独立验收
 
-本验收由独立于 P2 实现者的 `magpie/codex/gpt-6.1-sol` 执行。验收从真实生产构建、全新 SQLite 和两个 Chromium context 开始，通过页面与生产 HTTP 边界建立数据。实现者文档只用于定位入口，不作为通过证据。
+本验收的执行模型 `magpie/codex/gpt-6.1-sol` 与 P2 授权入口实现者 p2-a 的模型相同，因此首轮验收独立于 b/c/d 的页面与功能实现者，但对授权入口不具备跨家族独立性；该边界的跨家族补充复核见 [跨家族补充复核 k2](#跨家族补充复核-k2)。验收从真实生产构建、全新 SQLite 和两个 Chromium context 开始，通过页面与生产 HTTP 边界建立数据。实现者文档只用于定位入口，不作为通过证据。
 
 本次只新增验收脚本、浏览器流程、本文档和 `p2-k-` 截图。应用实现未修改。
 
@@ -133,3 +133,26 @@ B 的 `listProjectsFn` 必须只返回 B 的 Project ID，`listAgentProfilesFn` 
 - 运行时快照的隔离。P2 没有这项业务对象；已验证的是现有查询和错误载荷。
 
 以上能力不能因本次验收通过而视为已支持。未发现产品缺陷的结论以本次断言覆盖范围为限。
+
+## 跨家族补充复核 k2
+
+本文上文的 p2-e 验收跑在 `magpie/codex/gpt-6.1-sol` 上，与授权入口实现者 p2-a 的模型家族相同，因此那一轮验收独立于 b/c/d 的页面与功能实现者，但对 Project 授权边界不具备跨家族独立性。补救 unit p2-g 的复核脚本 `scripts/verify/k2-cross-family-isolation.sh` 与页面流程 `scripts/browser/k2-isolation-flow.mjs` 由 `magpie/group/auto-mimo-v2-6-flash`（reasoning `high`）独立编写，断言不照抄 k-acceptance。k2 与 p2-a、p2-e、p2-f（均为 `magpie/codex/gpt-6.1-sol`）不同家族，与 b/c/d（`magpie/group/auto-mimo-v2-6-flash`）同家族，所以 k2 只对授权边界提供跨家族独立性，不构成对 b/c/d 页面与功能实现的独立复核；页面层的独立性仍以 p2-e 的断言为准。
+
+复跑命令为 `bash scripts/verify/k2-cross-family-isolation.sh`。k2 使用端口 3146（`SPROUT_VERIFY_K2_PORT` 可覆盖），从真实生产构建、`pnpm start`、两个真实账号的独立 session 与两个独立 cookie 开始；纯 HTTP 覆盖 RPC 与诊断，Chromium 只承担页面断言。证据位于 `.verify/k2-cross-family-isolation/`：`evidence.json` 是逐条断言结果，`browser.json` 是逐条页面断言，`deny-*`、`sub-*`、`enum-*`、`diagnostics-*`、`B-own-*`、`A-unchanged-*` 的 `.body` 保留完整响应，`a-snapshot.json` 保存越权尝试前的 A 基线。截图位于 `docs/p1/evidence/p2-k2-isolation-*.png`。本机最终运行 `k2 runner checks=45 failed=0`、`k2 browser checks=6 failed=0`，退出码 0。
+
+k2 的断言分组如下。
+
+| 组         | 内容                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 越权拒绝   | B 用 A 的 projectId 调 Project 详情、配置读写、成员列出/添加/移除、对话列出、Info Hub Project 视角与 createDirectConversation；B 用 A 的 conversationId 调对话详情、成员、分身、消息、发消息、Info Hub Conversation 视角；B 用 A 的 profileId 调 profile 详情与更新。每条独立断言 HTTP 200、`ok: false`、`error.code: not_found`、错误 requestId 等于响应头、完整响应体零泄漏 |
+| ID 替换    | B 的 projectId × A 的 profileId 组合（建 DM、加成员、伪造 human sender 向 A 的对话发消息）、B 的对话 × A 的 profile（伪造 agent sender）均被拒绝；SQLite 探针确认没有 (A profile × B project) 的 instance 或成员行                                                                                                                                                            |
+| 枚举       | B 传 A 的 projectId 的 list 入口返回错误而不是 `ok: true` 空数组；`listProjectsFn` 只含 B 自己的 Project，`listAgentProfilesFn` 不含 A 的 profile                                                                                                                                                                                                                             |
+| 诊断       | B 查 `/api/diagnostics?projectId=<A>` 返回空数组；B 查 A 写请求的 requestId 时只可能命中无 projectId 的 `http.response` 行（P1 约定的非 Project 诊断），断言不含任何 Project 范围数据与 A 的 token                                                                                                                                                                            |
+| 正对照     | 越权尝试全部结束后，B 对自己的 Project 完成 11 项读、配置写后重读、发消息后列表增长、重复建 DM 幂等返回同一分身，全部成功                                                                                                                                                                                                                                                     |
+| A 数据不变 | 越权尝试后 A 重新读取成员、消息、人设、配置、对话列表，逐对象与越权前快照 deepEqual；SQLite 探针确认 A 的对话仍恰好两条消息、sender 仍为 A 本人、人设未被覆盖、不存在任何 `k2-forbidden` 写入                                                                                                                                                                                 |
+| 页面       | B 用自己的 session 直接访问 A 的 `/projects/<A>`、`/projects/<A>/settings`、`/projects/<A>/agents`、`/projects/<A>/conversations/<cnv>` 与 `/agents/<A profile>`，断言渲染 `not_found` 与 `req_` UUID、页面文本不含 A 的任何 id、名称、人设、消息正文与邮箱，且零 console error                                                                                               |
+| 进程       | 生产构建、健康检查 ready、SIGTERM 退出码 0                                                                                                                                                                                                                                                                                                                                    |
+
+与 k-acceptance 相比，k2 新增的对抗角度及其理由：ID 替换交叉组合验证「授权查询过滤双方 id」而非只挡单 id；越权写后立即从 A 的会话重读而不是依赖重启快照；覆盖 `/api/diagnostics` 的两个入口（k-acceptance 未覆盖诊断）；验证 `sendMessageFn` 边界把伪造 sender 改写为认证会话身份；用 SQLite 探针证明越权尝试没有留下任何交叉行。
+
+复核结论：授权边界在 k2 的断言范围内成立。B 对 A 的全部对象读写均被拒绝且零泄漏，越权尝试没有改变 A 的任何数据，B 自己的 Project 全程正常。发现一条非授权类缺陷：`createDirectConversationFn` 在 B 的 Project 引用他人的 profileId 时返回 `internal` 而不是约定的 `not_found`（`src/server/functions/conversation.ts` 的 failure 未映射 `AgentError`，而 `src/server/functions/agent.ts` 已映射）。该行为不泄漏数据、也不构成存在性 oracle（同一入口对格式合法但不存在的 profileId 返回同样的 `internal`），k2 以 `sub_B_ownProject_A_profile_createDM_rejected_without_leak` 与 `sub_profile_reference_indistinguishable_from_nonexistent` 两条断言固定了这两个安全不变量，并在 detail 里记录期望值 `not_found`。缺陷由 coordinator 路由修复，k2 不改实现。首轮 k2 运行中另有一处断言自身错误：曾把「伪造 agent sender 被边界合法改写」与「P1 约定的非 Project 诊断按 requestId 可见」误判为缺陷，已修正为上述断言。
