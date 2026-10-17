@@ -49,12 +49,20 @@ return ok(input.data, requestId);
 
 ## 新增功能的步骤
 
-1. 阅读功能 brief，确定允许写入的目录、输入 schema、返回类型与 requestId 来源。
-2. 在已有目录中实现最小业务服务，入口只负责 Zod 解析、调用服务和 AppResult 转换。
-3. 数据库变更交由 schema 维护者生成 migration。事务和数据库约束负责持久不变量。
-4. 页面调用 server function 并按 `result.ok` 展示结果。显示失败时保留 requestId 供诊断。
-5. 按风险增加行为测试。涉及浏览器、SQLite、Pi 或 Worker 时，使用真实产物补充验收。
-6. 在 `scripts/verify/` 新增按 unit 命名的检查。总入口会按文件名顺序执行，脚本不能依赖其他脚本留下的进程或数据。
-7. 运行 `pnpm fmt`、`pnpm check`、`pnpm test` 与相关验收脚本。生成文件不手动改格式。
+本清单由 `docs/p1/feature-sample.md` 的 Project 样例逐条核对过，每一步都在该样例里真实执行过。后续 Agent 新增功能时按此执行，并以该样例为验收样例。
 
-`src/routeTree.gen.ts`、`src/db/auth-schema.ts` 与 `drizzle/meta/**` 在根格式配置中排除。现存实验和根 `docs/` 文档不由应用格式命令改写。CI 使用 `pnpm check`，不加 `--fix`。验证脚本使用 PASS 和 FAIL 断言字符串说明步骤，不添加描述执行阶段的注释。
+1. 阅读功能 brief，确定允许写入的目录、输入 schema、返回类型与 requestId 来源。requestId 在 server function 内取 `getRequestContext().requestId`，直接持有 Request 的路由 handler 取 `getRequestContext(request)`。不要用 `newId` 另造一个，否则它与响应头和诊断行对不上。
+2. 目录固定：业务服务 `src/domain/<feature>.ts`，边界 `src/server/functions/<feature>.ts`，页面 `src/routes/_authed/<feature>*.tsx`，组件 `src/components/<feature>/**`，契约 `src/contracts/<feature>.ts`，测试 `tests/<feature>.test.ts`，验收 `scripts/verify/<unit>.sh`，浏览器流程 `scripts/browser/<feature>-flow.mjs`。
+3. 先定数据形状：业务服务接收已解析输入与 `{ userId, requestId }` 上下文，返回领域类型或抛出领域错误。HTTP 概念只出现在边界。
+4. Zod 只在边界，顺序固定为会话 → zod → 事务。失败一律 HTTP 200 加 `AppResult` 载荷，响应头 `x-sprout-request-id` 由框架边界写入。字段级错误沿用 `ProjectResult` 的模式（`AppResult<T> & { fieldErrors?: Record<string, string> }`），不改 `AppResult` 本身。
+5. 事务把业务行与诊断行一起写：在同一个 `sqlite.transaction` 里插入 `diagnostic_event`（`event`、`requestId`、业务 id），不要调用会吞掉写入失败并另开连接的 `recordDiagnostic`。留一个可注入的失败 hook 用于证明回滚。
+6. 服务端专有导入（`src/db`、`src/lib/auth`、`src/server/session`）必须在 server function 或 boundary 函数内部 `await import(...)`。顶层静态导入会把 `better-sqlite3` 打进客户端包，应用直接白屏启动失败。
+7. TanStack 文件路由：父路由文件必须渲染 `<Outlet />`，否则子路由不会出现。Project 的列表页是 `projects.index.tsx`，详情页是 `projects.$projectId.tsx`，`projects.tsx` 只是外壳。新增路由后运行 `pnpm exec tsr generate`，`src/routeTree.gen.ts` 是生成物，不手改。
+8. 页面用 loader 取数，按 `result.ok` 判断。失败时显示错误码、消息与 requestId，字段错误显示在对应输入旁。列表与详情都要能通过 URL 直接刷新。已登录首页 `/` 的 `已登录，<姓名>` 文案与 `登出` 按钮被 `scripts/verify/c-data-auth.sh` 的 Chromium 检查依赖，改动前先核对那个脚本。
+9. 数据库变更交由 schema 维护者生成 migration。事务和数据库约束负责持久不变量。
+10. 行为测试写在 `tests/<feature>.test.ts`，用子进程（`tsx` 加独立 `DATABASE_URL`）导入模块，因为 `src/lib/config.ts` 在导入时读取 env。断言用户可观察的结果（数据库行、载荷、字段错误），不测内部调用。boundary 函数可直接调用，不需要起 HTTP。
+11. 验收脚本 `scripts/verify/<unit>.sh` 启动真实生产进程并用 curl 驱动。server function 的请求体是 Seroval CrossJSON，函数 id 从 `.output/server` 按 `name` 提取。脚本先删 `.output` 再构建：残留的 `.output/public/_shell.html` 会引用上一次构建的资源名，页面白屏。
+12. 浏览器验收用 Playwright 加真实 Chromium，每步打印 PASS/FAIL，截图写入 `docs/p1/evidence/`。
+13. 运行 `pnpm fmt`、`pnpm check`、`pnpm test` 与 `bash scripts/verify.sh`。生成文件不手动改格式。
+
+`src/routeTree.gen.ts`、`src/db/auth-schema.ts` 与 `drizzle/meta/**` 在根格式配置中排除。现存实验和根 `docs/` 文档不由应用格式命令改写。CI 使用 `pnpm check`，不加 `--fix`。验证脚本使用 PASS 和 FAIL 断言字符串说明步骤，不添加描述执行阶段的注释。分 unit 的验收脚本由 `scripts/verify.sh` 按文件名顺序执行，脚本之间不共享进程、cookie 或数据库文件。
