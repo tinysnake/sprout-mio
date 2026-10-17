@@ -52,6 +52,7 @@ jobs:
         env:
           PORT: 3111
           APP_ORIGIN: http://localhost:3111
+          BETTER_AUTH_SECRET: ci-only-secret-ci-only-secret-123456
         run: |
           set -euo pipefail
           export no_proxy=localhost,127.0.0.1,::1

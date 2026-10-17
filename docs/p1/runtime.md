@@ -2,6 +2,8 @@
 
 宿主 runtime 在 Nitro 入口启动。入口在配置、认证秘密、迁移和恢复通过后才监听。HTTP 请求不创建 runtime，只读取快照或等待 `runtimeReady`。持久事实位于 SQLite，`globalThis` 快照只描述当前进程。
 
+生产启动设置 `NODE_ENV=production`，并提供有效的 `BETTER_AUTH_SECRET`。secret 必须至少 32 字符，不能使用示例占位值。缺失时，入口在监听前打印可读校验错误并以非零码退出。测试与 CI 使用显式测试值，不提交真实密钥。
+
 ## 阶段与保证
 
 ```mermaid
@@ -99,10 +101,10 @@ dev 的 Nitro 与 SSR 模块在同一个 worker thread 中执行。该线程的�
 bash scripts/verify/d-runtime.sh
 pnpm check
 pnpm test
-BETTER_AUTH_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32).toString("base64url"))')" bash scripts/verify.sh
+bash scripts/verify.sh
 ```
 
-脚本自建随机测试 secret 和独立 SQLite 文件。日志、HTTP body、headers 和汇总位于 `.verify/d-runtime/`。测试的临时数据库位于 `.verify/runtime-test-*` 和 `.verify/diagnostics-test-*`，测试结束后清理。
+a-base、b-tooling 在各自的生产启动块显式 export 同一个固定测试 secret，CI Production smoke 的 env 使用相同测试值。a-base 后续的 dev 检查继承该脚本的测试环境。变量不传播回聚合脚本的进程，调用者无需额外设置 secret。c-data-auth、d-runtime 自建随机测试 secret 和独立 SQLite 文件。日志、HTTP body、headers 和汇总位于 `.verify/d-runtime/`。测试的临时数据库位于 `.verify/runtime-test-*` 和 `.verify/diagnostics-test-*`，测试结束后清理。
 
 已执行的命令与结果如下。
 
@@ -122,11 +124,23 @@ BETTER_AUTH_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32
 | dev 启动并修改 runtime 源文件                                           | PASS，已验证     | moduleEvals 从 2 增为 4，bootId 不变，constructions 保持 1，activeResources 保持 1，后台任务数保持 0。`dev.log` 与 `dev-health-*.json`                                         |
 | `pnpm check`                                                            | PASS，已验证     | 54 个文件格式通过，39 个文件无 lint 或类型错误，退出 0                                                                                                                         |
 | `pnpm test`                                                             | PASS，已验证     | 5 个文件、23 个测试通过，退出 0                                                                                                                                                |
-| `bash scripts/verify.sh`，提供随机测试 secret                           | PASS，已验证     | 输出 `Verification scripts=4 failed=0`，退出 0。完整日志为 `.verify/d-runtime/all-verify.log`。总入口自动发现 d 脚本                                                           |
+| `bash scripts/verify.sh`                                                | PASS，已验证     | 调用环境未提供 secret，四个 unit 一次跑完，输出 `Verification scripts=4 failed=0`，退出 0。完整日志为 `.verify/d-runtime/all-verify.log`                                       |
+
+整体回归的汇总输出如下。执行时未在调用环境提供 `BETTER_AUTH_SECRET`。
+
+```text
+PASS scripts/verify/a-base.sh
+PASS scripts/verify/b-tooling.sh
+PASS scripts/verify/c-data-auth.sh
+PASS scripts/verify/d-runtime.sh
+Verification scripts=4 failed=0
+```
+
+c-data-auth 脚本保留两条历史 `GAP invalid config startup` 行，归属均为 `owner=p1-d-runtime`。两条当前观测均为 `exit=1 signal=null`，d-runtime 已通过真实 `pnpm start` 验证非法 config 在监听前失败。这些 GAP 标签不是本次 FAIL，未修改 c 的脚本。
 
 ## CI 与交付边界
 
-现有 `.github/workflows/ci.yml` 的 Production smoke 仅设置 PORT 和 APP_ORIGIN，没有 BETTER_AUTH_SECRET。入口校验生效后，该配置按设计拒绝启动。CI 实际结果在 PR 报告中记录。按本 unit 的明确范围，不修改 CI workflow，不放宽 secret 校验。
+`.github/workflows/ci.yml` 的 Production smoke 显式设置固定测试 `BETTER_AUTH_SECRET`，与 a-base、b-tooling 的生产启动使用同一个测试值。该值只供验收，不是真实部署密钥。CI 只新增此步骤的 env 字段，不修改其他步骤，也不放宽入口校验。CI 实际结果和 run URL 在 PR 报告中记录。
 
 ## 未验证与偏离
 
@@ -134,4 +148,4 @@ BETTER_AUTH_SECRET="$(node -e 'console.log(require("node:crypto").randomBytes(32
 
 生产 SIGTERM、SQLite 恢复、requestId 关联和 dev 模块 HMR 已验证。插件或依赖变化引起的完整 worker 重启不属于本次 HMR 结论。
 
-按批准扩展，只修改 `vite.config.ts` 的 plugin 注册；`src/routeTree.gen.ts` 由 TanStack 自动生成。没有修改 schema、冻结 contracts、Project 业务或 CI。
+按批准扩展，`vite.config.ts` 注册入口 plugin，`src/routeTree.gen.ts` 由 TanStack 自动生成。CI Production smoke 与 a-base、b-tooling 的生产启动补充同一个显式测试 secret。没有修改 schema、冻结 contracts 或 Project 业务。

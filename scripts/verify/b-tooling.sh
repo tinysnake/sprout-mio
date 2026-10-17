@@ -124,6 +124,7 @@ pass 'production artifacts .output/server/index.mjs and .output/public/assets/'
 
 port_guard "$prod_port"
 printf 'RUN  production start: PORT=%s APP_ORIGIN=http://localhost:%s pnpm start\n' "$prod_port" "$prod_port"
+export BETTER_AUTH_SECRET="ci-only-secret-ci-only-secret-123456"
 PORT="$prod_port" APP_ORIGIN="http://localhost:$prod_port" pnpm start >"$log_dir/production.log" 2>&1 &
 server_pid=$!
 wait_http "$prod_port" "$log_dir/production.log"
