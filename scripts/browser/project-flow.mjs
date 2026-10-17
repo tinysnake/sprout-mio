@@ -146,20 +146,33 @@ await check("empty_name_shows_field_error_and_request_id", async () => {
   await page.goBack({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="new-project-trigger"]', { timeout: 20000 });
   await page.click('[data-testid="new-project-trigger"]');
+  const responsePromise = page.waitForResponse((response) =>
+    response.url().includes("/_serverFn/"),
+  );
   await page.click('[data-testid="project-submit"]');
+  const response = await responsePromise;
   await page.waitForSelector('[data-testid="field-error-name"]', { timeout: 20000 });
   const state = await page.evaluate(() => ({
     field: document.querySelector('[data-testid="field-error-name"]')?.textContent,
     error: document.querySelector('[data-testid="project-form-error"]')?.textContent,
     meta: document.querySelector('[data-testid="project-form-error-meta"]')?.textContent,
   }));
+  const pageRequestId = state.meta?.match(/req_[0-9a-f-]{36}/)?.[0];
+  const headerRequestId = response.headers()["x-sprout-request-id"];
+  const diagnostics = await page.evaluate(
+    async (requestId) => (await fetch(`/api/diagnostics?requestId=${requestId}`)).json(),
+    pageRequestId,
+  );
+  const diagnosed = diagnostics.data?.some((row) => row.requestId === pageRequestId);
   await shot(page, "project-error");
   record(
     "empty_name_shows_field_error_and_request_id",
     /名称不能为空/.test(state.field ?? "") &&
       /validation_failed/.test(state.meta ?? "") &&
-      /req_[0-9a-f-]{36}/.test(state.meta ?? ""),
-    `字段错误 ${JSON.stringify(state.field)}，错误码与 requestId ${JSON.stringify(state.meta)}`,
+      pageRequestId !== undefined &&
+      pageRequestId === headerRequestId &&
+      diagnosed === true,
+    `字段错误 ${JSON.stringify(state.field)}，页面 requestId ${pageRequestId}、响应头 ${headerRequestId} 与诊断行一致`,
   );
 });
 

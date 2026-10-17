@@ -71,13 +71,13 @@ PASS 生产进程 SIGTERM 退出 {"code":0,"signal":null}
 PASS register_sets_session :: 注册后经首页落到 /projects
 PASS sign_out_returns_to_login :: 登出后落到 /login
 PASS login_opens_protected_area :: 登录后经首页落到 /projects，列表为空
-PASS create_project_appears_in_list :: 列表包含 ["验收样例 1792229942843"]
-PASS open_detail_shows_fields_and_request_id :: 详情 {"name":"验收样例 1792229942843","description":"浏览器验收创建的分层样例","createdAt":"2026-10-17T09:39:04.000Z","requestId":"req_60bfd397-dd3f-4418-8cce-0a108e5304f5","path":"/projects/prj_d9439a92-a2ca-4bba-a07a-ba5b805ea480"}
-PASS reload_keeps_same_project :: 刷新后仍是 验收样例 1792229942843，URL http://localhost:3141/projects/prj_d9439a92-a2ca-4bba-a07a-ba5b805ea480
-PASS history_back_and_forward_keep_target :: 后退到 /projects，前进回 /projects/prj_d9439a92-a2ca-4bba-a07a-ba5b805ea480
-PASS empty_name_shows_field_error_and_request_id :: 字段错误 "名称不能为空"，错误码与 requestId "validation_failed · req_1dd348a9-c118-460e-8a32-953d9637d68a"
+PASS create_project_appears_in_list :: 列表包含 ["验收样例 1792230730231"]
+PASS open_detail_shows_fields_and_request_id :: 详情 {"name":"验收样例 1792230730231","description":"浏览器验收创建的分层样例","createdAt":"2026-10-17T09:52:11.000Z","requestId":"req_a994dc9d-0397-4ea2-b864-36ffa8da9759","path":"/projects/prj_34e3096e-fa4c-4891-8d02-449c3731c598"}
+PASS reload_keeps_same_project :: 刷新后仍是 验收样例 1792230730231，URL http://localhost:3141/projects/prj_34e3096e-fa4c-4891-8d02-449c3731c598
+PASS history_back_and_forward_keep_target :: 后退到 /projects，前进回 /projects/prj_34e3096e-fa4c-4891-8d02-449c3731c598
+PASS empty_name_shows_field_error_and_request_id :: 字段错误 "名称不能为空"，页面 requestId req_38961afa-6b93-4325-b910-990a33d1ba7f、响应头 req_38961afa-6b93-4325-b910-990a33d1ba7f 与诊断行一致
 PASS long_description_shows_field_error :: 描述字段错误 "描述最多 500 字"
-PASS missing_project_shows_not_found :: 不存在的 id 显示 {"message":"Project 不存在","meta":"not_found · req_d05f67e0-b2a6-48b5-bac1-4567f07d5757"}
+PASS missing_project_shows_not_found :: 不存在的 id 显示 {"message":"Project 不存在","meta":"not_found · req_28730c3a-54c5-41f2-a9e7-632aa732dd6f"}
 PASS signed_out_visit_redirects_to_login :: /projects 落到 /login
 PASS no_console_errors :: 无 console.error 与未捕获异常
 browser checks: 12/12 passed
@@ -101,7 +101,7 @@ browser checks: 12/12 passed
 - 同一测试用 `createProject(..., { afterProjectInsert: () => { throw } })` 触发强制失败，断言 `project` 与 `diagnostic_event` 计数与失败前完全一致，即两行都没有留下。
 - 边界级断言覆盖：空名称与 501 字描述返回 `validation_failed` 且 `fieldErrors` 恰好为 `name`、`description`；无会话返回 `unauthorized`；不存在的 id 返回 `not_found`。三种失败的 `requestId` 都是传入的当前请求值。
 - `scripts/verify/e-project.sh` 在真实 HTTP 上重复了同样的路径：creator 的响应头 requestId 与 `/api/diagnostics?requestId=` 查回的 `project.created` 行一致，且该行的 `projectId` 等于创建载荷中的 `prj_*`；校验失败载荷不含 `prj_`，证明失败请求没有写业务行。
-- 浏览器流程用页面上的 requestId 与错误码做断言，空名失败显示 `validation_failed` 与 `req_*`，不存在的 id 显示 `not_found` 与 `req_*`。
+- 浏览器流程在同一次空名提交里比对三处 requestId：页面错误载荷显示的 `req_*`、server function 响应的 `x-sprout-request-id` 头，以及用该 id 调 `/api/diagnostics` 查回的诊断行（`http.response`），三者相等。不存在的 id 显示 `not_found` 与当前请求的 `req_*`。
 
 ## 未验证项
 
