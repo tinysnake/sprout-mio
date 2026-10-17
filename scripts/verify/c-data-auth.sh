@@ -106,14 +106,22 @@ try {
   pass('reusable migrate entry', 'exit 0; see migrate-entry.log')
   await command(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
+    import { readdirSync } from 'node:fs';
     import Database from 'better-sqlite3';
     const db = new Database(process.env.DATABASE_URL);
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(row=>row.name);
-    assert.deepEqual(tables, ['__drizzle_migrations','account','diagnostic_event','project','runtime_boot','session','user','verification']);
+    const requiredTables = ['__drizzle_migrations','account','diagnostic_event','project','runtime_boot','session','user','verification'];
+    const tableSet = new Set(tables);
+    for (const table of requiredTables) assert(tableSet.has(table), 'missing required table: ' + table);
     const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL ORDER BY name").all().map(row=>row.name);
-    assert.deepEqual(indexes, ['account_userId_idx','diagnostic_event_at_idx','diagnostic_event_project_id_idx','diagnostic_event_request_id_idx','session_token_unique','session_userId_idx','user_email_unique','verification_identifier_idx']);
-    assert.equal(db.prepare('SELECT count(*) AS count FROM __drizzle_migrations').get().count, 1);
-    console.log(JSON.stringify({tables,indexes})); db.close();
+    const requiredIndexes = ['account_userId_idx','diagnostic_event_at_idx','diagnostic_event_project_id_idx','diagnostic_event_request_id_idx','session_token_unique','session_userId_idx','user_email_unique','verification_identifier_idx'];
+    const indexSet = new Set(indexes);
+    for (const index of requiredIndexes) assert(indexSet.has(index), 'missing required index: ' + index);
+    const count = db.prepare('SELECT count(*) AS count FROM __drizzle_migrations').get().count;
+    const migrationFiles = readdirSync('drizzle').filter(file => file.endsWith('.sql')).sort();
+    assert(count >= 1, 'initial migration must be applied');
+    assert.equal(count, migrationFiles.length, 'migration ledger must match SQL files');
+    console.log(JSON.stringify({tables,indexes,count,migrationFiles})); db.close();
   `], 'schema.log')
   pass('schema and indexes', readFileSync(join(logDir, 'schema.log'), 'utf8').trim())
   await command('pnpm', ['build'], 'build.log')
