@@ -2,7 +2,7 @@
 
 按本文推进已确认的一期协作闭环。产品范围见 [core-scope.md](core-scope.md)，技术选择与原因见 [architecture-direction.md](architecture-direction.md)。
 
-P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 及以后尚未开始，复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
+P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 已建立可运行的工程骨架与 Project 样例，结论见 [p1/summary.md](p1/summary.md)。P2 及以后尚未开始，复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
 
 ## 按阶段推进并保留证据
 
@@ -20,7 +20,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | 阶段 | 交付 | 依赖 | 状态 |
 | --- | --- | --- | --- |
 | P0 | 验证技术栈与高风险协议，收敛基础契约 | 无 | 已完成（结论见 [p0/summary.md](p0/summary.md)） |
-| P1 | 建立工程骨架与标准功能样例 | P0 | 待开始 |
+| P1 | 建立工程骨架与标准功能样例 | P0 | 已完成（结论见 [p1/summary.md](p1/summary.md)） |
 | P2 | 建立 Project、profile、Conversation 和分身 | P1 | 待开始 |
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 待开始 |
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | 待开始 |
@@ -49,13 +49,13 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 
 ## P1 建立可重复的工程骨架
 
-- [ ] 建立 Start 应用、Worker 入口、Pi extension 和必要共享契约。先在模块内组织领域，不预建大量空 package。
-- [ ] 固定 Vite+ 检查、测试、构建入口与 CI。验证全新安装可以生产构建并启动。
-- [ ] 建立数据库迁移、配置解析、Human 登录与最小初始化流程。
-- [ ] 实现 runtime 的启动、恢复、ready 和关闭入口。将配置、HTTP 请求与后台生命周期分开。
-- [ ] 实现最小 Project 创建与查询样例，覆盖页面、server function、业务服务、事务和错误显示。
-- [ ] 为后续 Agent 提供一个实际可运行的功能模板和验收样例。固定命名、目录、错误与输入校验规则。
-- [ ] 建立基础诊断记录，关联 request、Project、分身、run 和 execution 等实际存在的 ID。
+- [x] 建立 Start 应用、Worker 入口、Pi extension 和必要共享契约。先在模块内组织领域，不预建大量空 package。证据 [skeleton.md 的验证命令与证据](p1/skeleton.md#验证命令与证据)，重跑 `bash scripts/verify/a-base.sh`。Worker 连接与 Pi 会话仍分别未实现，属于 P4 与 P3。
+- [x] 固定 Vite+ 检查、测试、构建入口与 CI。验证全新安装可以生产构建并启动。证据 [tooling.md 的干净安装与生产启动](p1/tooling.md#干净安装与生产启动) 与 [CI 工作流](p1/tooling.md#ci-工作流)，重跑 `bash scripts/verify/b-tooling.sh`。干净指工作目录，冷 pnpm store 未验证。
+- [x] 建立数据库迁移、配置解析、Human 登录与最小初始化流程。证据 [data-auth.md 的验证证据](p1/data-auth.md#验证证据)，重跑 `bash scripts/verify/c-data-auth.sh`。生产入口的配置拒绝由 d 验证。
+- [x] 实现 runtime 的启动、恢复、ready 和关闭入口。将配置、HTTP 请求与后台生命周期分开。证据 [runtime.md 的验证命令与证据](p1/runtime.md#验证命令与证据)，重跑 `bash scripts/verify/d-runtime.sh`。恢复只覆盖 runtime boot，dev 信号优雅关闭未验证。
+- [x] 实现最小 Project 创建与查询样例，覆盖页面、server function、业务服务、事务和错误显示。证据 [feature-sample.md 的真实命令与输出摘要](p1/feature-sample.md#真实命令与输出摘要) 与 [事务与错误路径证据](p1/feature-sample.md#事务与错误路径证据)，重跑 `bash scripts/verify/e-project.sh`。
+- [x] 为后续 Agent 提供一个实际可运行的功能模板和验收样例。固定命名、目录、错误与输入校验规则。证据 [conventions.md 的新增功能的步骤](p1/conventions.md#新增功能的步骤)，重跑 `bash scripts/verify.sh`，实际样例见 [feature-sample.md](p1/feature-sample.md#真实命令与输出摘要)。
+- [x] 建立基础诊断记录，关联 request、Project、分身、run 和 execution 等实际存在的 ID。证据 [runtime.md 的验证命令与证据](p1/runtime.md#验证命令与证据)、[Project 的真实命令与输出摘要](p1/feature-sample.md#真实命令与输出摘要) 与 [Project 的事务与错误路径证据](p1/feature-sample.md#事务与错误路径证据)，重跑 `bash scripts/verify/d-runtime.sh` 与 `bash scripts/verify/e-project.sh`。当前真实关联为 requestId 与 projectId；尚无真实分身、run、execution，其关联留空且未验证。
 
 出口条件是用户可以登录、创建并重新打开 Project；开发者可以从干净环境运行检查、构建与最小真实操作。后续阶段以这个功能样例为模板。
 
@@ -218,5 +218,6 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | --- | --- | --- |
 | 计划基线 | 技术栈方向、源码与官方资料调查、P0 至 P8 和 R1 顺序 | 文档范围及链接检查，不是功能或技术兼容性验收 |
 | P0 | 7 个实验 unit 与结论文档：版本与构建、Start SPA 与 Better Auth 与 Drizzle 与 shadcn、常驻 runtime 共进程、真实 Pi 接入、Worker 协议语义、四种故障恢复承诺、身份事务授权契约。实验提交范围 `21063f6..b1ba085`，本记录随 P0 收尾提交写入 | 本机安装、构建与运行验证（macOS arm64，Node v26.11.1，真实 SQLite 文件）；真实 Pi 1.3.0 验证；本地协议实验（真实进程 kill 与重连、真实并发 SQLite 连接）。未覆盖：真实跨机与网络分区、真实 macOS Worker 端到端，留到 P4 |
+| P1 | 工程骨架、Worker 与 Pi extension 入口、检查测试构建与 CI、SQLite 迁移与 Human 登录、runtime 生命周期与基础诊断、Project 创建查询与功能模板。a～e 的实现与合入范围 `919ce92..c3af8ad`，本记录随 P1 收尾提交写入。逐项证据见 [p1/summary.md](p1/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0 下的干净工作目录安装、生产构建与真实进程启动、真实 SQLite 迁移与事务、真实 Pi 状态工具、真实 Chromium 登录和 Project 创建与重新打开；GitHub Actions ubuntu x64 的检查测试构建迁移与生产 smoke。收尾验证文档证据与链接、`pnpm check`。未覆盖：冷 pnpm store、dev 信号优雅关闭、多进程与恢复中途崩溃、完整 Pi 会话业务；真实跨机与真实 macOS Worker 端到端仍属 P4。完整边界见 summary |
 
-当前下一任务是 P1 的工程骨架。先固定检查、测试、构建入口与全新安装的生产启动，再建立登录、迁移、runtime 入口与最小 Project 样例。P0 未验证的真实跨机与真实 macOS Worker 端到端留到 P4。
+当前下一任务是 P2 的身份、成员与持久对话，先按 P1 的功能模板细化任务与授权边界。P1 未验证项见 [p1/summary.md](p1/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4。

@@ -2,7 +2,7 @@
 
 本文记录技术栈选择及架构讨论的当前结论。产品行为与分期以 [core-scope.md](core-scope.md) 为准，开发顺序见 [development-plan.md](development-plan.md)。
 
-状态为设计基线。P0 已用最小实验验证技术栈与高风险协议，结论见 [P0 结论一览](p0/summary.md)。产品端到端验证尚未开始。已确定的技术栈、建议采用的实现方向、待验证的选择分别记录，不将源码调查或官方文档支持标记为运行验证。
+状态为已有 P1 运行证据的设计基线。P0 已用最小实验验证技术栈与高风险协议，结论见 [P0 结论一览](p0/summary.md)。P1 已完成工程骨架、Human 登录与 Project 创建查询的真实验收，结论见 [P1 结论一览](p1/summary.md)。完整一期产品端到端验证尚未开始。已确定的技术栈、建议采用的实现方向、待验证的选择分别记录，不将源码调查或官方文档支持标记为运行验证。
 
 ## 用框架约束常规业务开发
 
@@ -17,9 +17,11 @@
 | shadcn + Base UI | React 组件和交互基础 | 页面行为遵守 Mio 决策，不直接复制原 Web |
 | Effect | 后台并发、取消、重试、资源管理、依赖装配 | 内存 fiber 和 Queue 不替代持久记录 |
 
-P0 只验证了 Vite+ 的开发、构建与 lint。`vp test`（Vitest）与 `vp check` 的格式化门禁未通过验证，Oxfmt 在 scaffold 自带与生成文件上报 24 处格式差异。P1 固定 CI 前必须决定接受格式还是排除生成目录。
+P1 已验证 `vp test run`（Vitest）与 `vp check` 的格式、lint 和类型门禁，证据见 [tooling.md](p1/tooling.md#vp-test-结论)。写入格式使用 `pnpm fmt`，CI 的 `pnpm check` 不带 `--fix`。格式配置排除 `experiments/**`、根 `docs/*.md`、`docs/p0/**`、`README.md`，以及 `drizzle/meta/**`、`src/routeTree.gen.ts`、`src/db/auth-schema.ts` 三类生成物；因此不能声称所有文档都受格式门禁约束。排除来自配置层 `fmt.ignorePatterns`，`--ignore-path` 不能覆盖它，取舍见 [格式策略与排除项](p1/tooling.md#格式策略与排除项)。
 
-P0 还发现三处运行期约束。TanStack Start 的 SPA 只配 `spa.enabled` 不够，运行期必须再设 `createStart(() => ({ defaultSsr: false }))`，否则生产 node server 仍做完整 SSR。生产启动不读 `.env.local`，必须显式加载环境变量，静态托管还需要把未知路径 rewrite 到 `_shell.html`（静态托管本身未验证）。server function 的授权失败不体现在 HTTP 状态码上，错误在响应载荷里，边界转换必须落到载荷。
+P0 发现的运行期约束已在 P1 接入。TanStack Start 的 SPA 同时设置 `spa.enabled` 与 `createStart(() => ({ defaultSsr: false }))`。`pnpm start` 显式使用 `node --env-file-if-exists=.env.local .output/server/index.mjs`，已有进程环境优先。生产入口在监听前校验 config 与有效 `BETTER_AUTH_SECRET`，完成迁移和 runtime ready；构建 prerender 通过框架标记跳过 runtime，不要求部署 secret。未知页面 GET 的 shell 404 在请求边界转为 200，API 与 server function 不做该转换。静态托管的 `_shell.html` rewrite 仍未验证，证据见 [骨架运行入口](p1/skeleton.md#运行入口) 与 [runtime 入口](p1/runtime.md#入口与单例)。server function 的授权失败在响应载荷中，不能只读 HTTP 状态码。
+
+当前生产构建验收依赖先清理 `.output`。残留输出下重新构建会留下引用旧资源名的 shell，已记录在 [Project 未验证项](p1/feature-sample.md#未验证项)，该增量构建缺陷尚未修复。
 
 常规功能沿着页面、server function、业务服务、数据库的固定路径实现。业务服务供 Web 与 Pi extension 的入口共同调用。外部协议使用 server routes 或所选生产适配器的网络入口，不将 Start 的内部调用协议直接作为 Worker 协议。
 
@@ -29,7 +31,9 @@ Effect 优先用于需要长期运行、并发和恢复的服务。React 展示�
 
 Web 与后台同进程，P0 证据不支持拆出独立后台进程（[runtime-host.md](p0/runtime-host.md)）。共进程有两个前提。常驻 runtime 必须是进程级单例，用 `globalThis` 缓存 `ManagedRuntime`，模块级变量在 HMR 重新求值时会被重建并产生第二份后台工作。信号驱动的关闭必须挂在进程入口的主线程上，dev 模式下 SSR 运行在 Nitro 的 worker thread 里，模块内注册的 `process.on('SIGTERM')` 收不到进程信号。
 
-常驻 runtime 在服务启动时初始化，持有调度器、Pi 会话管理和 Worker 连接。请求完成不能销毁 runtime，HMR 不能重复启动它。启动、恢复、就绪、停止接收新工作和关闭资源需要明确顺序。
+P1 的 `src/server/server-entry.ts` 是 Nitro runtime plugin，在模块顶层等待 `startRuntime()`，避免 Nitro 不等待 plugin 回调 Promise 而提前监听。启动先校验配置与认证 secret，再迁移，在事务内把遗留活跃 boot 标为 `interrupted` 并写入新 boot，最后 ready。恢复范围是 `runtime_boot`，不代表业务作业恢复。`globalThis.sproutRuntime` 复用启动与关闭 Promise、ManagedRuntime 和 boot，真实 dev HMR 未产生第二份 runtime，证据见 [runtime 验证](p1/runtime.md#验证命令与证据)。
+
+生产入口在 ready 后监听，主线程注册 SIGTERM 与 SIGINT，Scope 释放共享数据库连接后由独立短连接写入 `stopped`。生产 SIGTERM 已验证，dev 信号优雅关闭仍未验证。health 每次检查真实数据库与迁移账本，不可用返回 503；正常生产首个可连接响应已为 200，不能声称观测过监听期间的 503 到 200 窗口。调度器、Pi 会话管理与 Worker 连接尚未实现，当前 Scope 的真实资源是数据库连接，后台任务数为 0。请求只消费 runtime，不拥有它。
 
 若开发热更新或生产适配器无法可靠承载后台生命周期，可以拆出后台进程，但仍复用共同业务服务和契约。不能因拆进程而复制授权逻辑或创建第二套业务事实。
 
@@ -69,7 +73,9 @@ SQLite + Drizzle 是单宿主部署的默认组合。driver 已由 P0 收敛为 
 
 Effect Scope 可以管理连接、订阅和本轮临时资源。run 的 Scope 结束不能自动释放业务租约，也不能结束已经提交的远端长命令。
 
-业务变更与需要可靠处理的通知建议在同一事务中记录，再异步投递。消息、唤醒和操作记录保存恢复所需事实。前端事件通道可发送变更提示，重连后补齐事件或重新获取快照，不把内存广播当作事实来源。
+业务变更与需要可靠处理的通知建议在同一事务中记录，再异步投递。P1 的 Project 创建已在同一 SQLite 事务写入业务行与 `project.created` 诊断，写诊断失败时整体回滚，证据见 [事务与错误路径](p1/feature-sample.md#事务与错误路径证据)。运行期的 `recordDiagnostic` 使用共享 db，捕获失败并返回 false；不能将它直接当作会传播写入失败的业务事务接口。消息、唤醒和操作记录仍是后续恢复所需事实，前端事件通道可发送变更提示，重连后补齐事件或重新获取快照，不把内存广播当作事实来源。
+
+基础诊断已经落到 `src/server/server-entry.ts` 的 Nitro hooks、`src/server/request-context.ts`、`src/server/diagnostics.ts` 与 `diagnostic_event` 表。Nitro 覆盖客户端传入的 requestId，把同一值交给 Project server function、响应头与 HTTP 诊断，Project 创建再关联真实 projectId。受保护的 `/api/diagnostics` 支持按 requestId 与 projectId 查询，浏览器错误页、响应头和诊断行一致性已有真实证据。c 的 session server functions 仍自行生成 ID，尚未统一到 Nitro 上下文。分身、run、execution 尚无真实对象，其诊断关联为空且未验证，细节见 [requestId 与诊断](p1/runtime.md#requestid-与诊断)。
 
 ## 让 Worker 提供整机操作能力
 

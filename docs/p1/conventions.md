@@ -41,11 +41,11 @@ return ok(input.data, requestId);
 
 应用使用 frozen `config`。默认 `DATABASE_URL` 为 `./data/sprout.sqlite`，`APP_ORIGIN` 为 `http://localhost:3000`，`PORT` 为 3000，`NODE_ENV` 为 `development`，`LOG_LEVEL` 为 `info`。`APP_ORIGIN` 必须是完整的 http 或 https origin，不带路径。`PORT` 必须是 1 到 65535 的整数。
 
-`BETTER_AUTH_SECRET` 在 auth 尚未接入时可省略，提供时至少 32 字符。认证模块接入时必须在自己的边界要求有效 secret，不得把 `.env.example` 中的开发占位值当作生产凭据。解析失败抛出包含字段名和约束的错误，不输出原始秘密。
+`BETTER_AUTH_SECRET` 在共享 config 解析层允许缺省，提供时至少 32 字符。自 p1-c-data-auth 接入认证、p1-d-runtime 接入启动边界后，auth 与生产入口都强制要求有效 secret，生产入口在监听前拒绝缺失、短值与示例占位值。原先 auth 未接入时可省略的条件已不适用于生产启动。构建 prerender 跳过 runtime，不要求部署 secret。证据见 [runtime.md 的验证命令与证据](runtime.md#验证命令与证据)。解析失败抛出包含字段名和约束的错误，不输出原始秘密。
 
 `DiagnosticEvent` 必填 `id`、`at`、`level`、`event`、`requestId` 和 `message`。`at` 使用 ISO 字符串。`projectId`、`conversationId`、`instanceId`、`runId` 和 `executionId` 仅在实际关联存在时填写。不能为尚未实现的对象捏造 ID。日志级别只允许 `debug`、`info`、`warn` 和 `error`。
 
-`pnpm test` 已验证环境缺省、冻结配置、端口与 origin 解析、非法字段名和秘密不泄漏。该验证不代表数据库连接或认证已实现。
+`pnpm test` 已验证环境缺省、冻结配置、端口与 origin 解析、非法字段名和秘密不泄漏。配置解析测试的范围不包含数据库连接或认证；数据库与认证的真实验证另见 [data-auth.md](data-auth.md#验证证据)。
 
 ## 新增功能的步骤
 
@@ -55,7 +55,7 @@ return ok(input.data, requestId);
 2. 目录固定：业务服务 `src/domain/<feature>.ts`，边界 `src/server/functions/<feature>.ts`，页面 `src/routes/_authed/<feature>*.tsx`，组件 `src/components/<feature>/**`，契约 `src/contracts/<feature>.ts`，测试 `tests/<feature>.test.ts`，验收 `scripts/verify/<unit>.sh`，浏览器流程 `scripts/browser/<feature>-flow.mjs`。
 3. 先定数据形状：业务服务接收已解析输入与 `{ userId, requestId }` 上下文，返回领域类型或抛出领域错误。HTTP 概念只出现在边界。
 4. Zod 只在边界，顺序固定为会话 → zod → 事务。失败一律 HTTP 200 加 `AppResult` 载荷，响应头 `x-sprout-request-id` 由框架边界写入。字段级错误沿用 `ProjectResult` 的模式（`AppResult<T> & { fieldErrors?: Record<string, string> }`），不改 `AppResult` 本身。
-5. 事务把业务行与诊断行一起写：在同一个 `sqlite.transaction` 里插入 `diagnostic_event`（`event`、`requestId`、业务 id），不要调用会吞掉写入失败并另开连接的 `recordDiagnostic`。留一个可注入的失败 hook 用于证明回滚。
+5. 事务把业务行与诊断行一起写：在同一个 `sqlite.transaction` 里插入 `diagnostic_event`（`event`、`requestId`、业务 id），不要调用会吞掉写入失败的 `recordDiagnostic`。它使用共享 db 连接，不能把调用成功返回当作诊断写入成功。留一个可注入的失败 hook 用于证明回滚。
 6. 服务端专有导入（`src/db`、`src/lib/auth`、`src/server/session`）必须在 server function 或 boundary 函数内部 `await import(...)`。顶层静态导入会把 `better-sqlite3` 打进客户端包，应用直接白屏启动失败。
 7. TanStack 文件路由：父路由文件必须渲染 `<Outlet />`，否则子路由不会出现。Project 的列表页是 `projects.index.tsx`，详情页是 `projects.$projectId.tsx`，`projects.tsx` 只是外壳。新增路由后运行 `pnpm exec tsr generate`，`src/routeTree.gen.ts` 是生成物，不手改。
 8. 页面用 loader 取数，按 `result.ok` 判断。失败时显示错误码、消息与 requestId，字段错误显示在对应输入旁。列表与详情都要能通过 URL 直接刷新。已登录首页 `/` 的 `已登录，<姓名>` 文案与 `登出` 按钮被 `scripts/verify/c-data-auth.sh` 的 Chromium 检查依赖，改动前先核对那个脚本。
