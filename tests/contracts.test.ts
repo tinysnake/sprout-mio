@@ -105,6 +105,7 @@ describe("配置边界", () => {
       AUTH_RATE_LIMIT_MAX: 5,
       AUTH_RATE_LIMIT_WINDOW_SECONDS: 60,
       AUTH_RATE_LIMIT_GLOBAL_MAX: 100,
+      AUTH_RATE_LIMIT_HTTP_MAX: 100,
       PORT: 3000,
       NODE_ENV: "development",
       LOG_LEVEL: "info",
@@ -122,9 +123,16 @@ describe("配置边界", () => {
         AUTH_RATE_LIMIT_MAX: "2",
         AUTH_RATE_LIMIT_WINDOW_SECONDS: "10",
         AUTH_RATE_LIMIT_GLOBAL_MAX: "20",
+        AUTH_RATE_LIMIT_HTTP_MAX: "30",
         BETTER_AUTH_SECRET: "a".repeat(32),
-      }).PORT,
-    ).toBe(3123);
+      }),
+    ).toMatchObject({
+      PORT: 3123,
+      AUTH_RATE_LIMIT_MAX: 2,
+      AUTH_RATE_LIMIT_WINDOW_SECONDS: 10,
+      AUTH_RATE_LIMIT_GLOBAL_MAX: 20,
+      AUTH_RATE_LIMIT_HTTP_MAX: 30,
+    });
     for (const [field, value] of [
       ["AUTH_RATE_LIMIT_MAX", "0"],
       ["AUTH_RATE_LIMIT_MAX", "1001"],
@@ -132,6 +140,10 @@ describe("配置边界", () => {
       ["AUTH_RATE_LIMIT_WINDOW_SECONDS", "3601"],
       ["AUTH_RATE_LIMIT_GLOBAL_MAX", "NaN"],
       ["AUTH_RATE_LIMIT_GLOBAL_MAX", "10001"],
+      ["AUTH_RATE_LIMIT_HTTP_MAX", "0"],
+      ["AUTH_RATE_LIMIT_HTTP_MAX", "10001"],
+      ["AUTH_RATE_LIMIT_HTTP_MAX", "1.5"],
+      ["AUTH_RATE_LIMIT_HTTP_MAX", "NaN"],
       ["PORT", "0"],
       ["PORT", "not-a-port"],
       ["APP_ORIGIN", "not-origin"],

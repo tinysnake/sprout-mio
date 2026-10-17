@@ -24,7 +24,7 @@ const env = {
   PORT: String(port), NITRO_PORT: String(port), NODE_ENV: 'production',
   BETTER_AUTH_SECRET: randomBytes(32).toString('base64url'),
   AUTH_RATE_LIMIT_MAX: '2', AUTH_RATE_LIMIT_WINDOW_SECONDS: '60',
-  AUTH_RATE_LIMIT_GLOBAL_MAX: '100',
+  AUTH_RATE_LIMIT_GLOBAL_MAX: '100', AUTH_RATE_LIMIT_HTTP_MAX: '2',
 }
 const evidence = []
 const children = new Set()
@@ -129,12 +129,14 @@ try {
   const register = await authenticate({ action: 'register', email: target, password, name: 'Blocked registration' })
   assert.equal(register.error?.code, 'too_many_requests')
   pass('concurrent attempts and action switching', 'exactly 2 dispatched, 2 limited; register shares exhausted account budget')
-  assert.equal((await request('/api/auth/sign-in/email', { email, password })).status, 200)
-  assert.equal((await request('/api/auth/sign-in/email', { email, password: wrongPassword }, '198.51.100.30')).status, 401)
-  const httpLimited = await request('/api/auth/sign-in/email', { email: target, password: wrongPassword }, '198.51.100.31')
+  const httpIp = '198.51.100.30'
+  assert.equal((await request('/api/auth/sign-in/email', { email, password }, httpIp)).status, 200)
+  assert.equal((await request('/api/auth/sign-in/email', { email, password: wrongPassword }, httpIp)).status, 401)
+  const httpLimited = await request('/api/auth/sign-in/email', { email: target, password: wrongPassword }, httpIp)
   assert.equal(httpLimited.status, 429)
   assert(Number(httpLimited.headers.get('x-retry-after')) > 0)
-  pass('explicit Better Auth HTTP policy', 'normal login 200, failed login 401, next request 429; forged IP and changed email cannot reset path budget')
+  assert.equal((await request('/api/auth/sign-in/email', { email, password: wrongPassword }, '198.51.100.31')).status, 401, 'different IP must have an independent HTTP budget')
+  pass('explicit Better Auth HTTP policy', 'same IP: normal login 200, failed login 401, next request 429; different IP: 401 with independent budget')
   database = new Database(databaseUrl)
   const diagnostics = database.prepare("SELECT level, request_id, message, data FROM diagnostic_event WHERE event = 'auth.rate_limited'").all()
   const rejected = [limited, ...concurrent.filter((result) => result.error?.code === 'too_many_requests'), register]

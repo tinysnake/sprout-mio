@@ -84,9 +84,10 @@ curl --noproxy '*' -fsS http://localhost:3114/api/auth/get-session
 | `PORT`                           | `3000`，1 到 65535 的整数。必须与访问 origin 的端口一致。                                                                            |
 | `NODE_ENV`                       | `development`，允许 `development`、`test`、`production`。                                                                            |
 | `LOG_LEVEL`                      | `info`，允许 `debug`、`info`、`warn`、`error`。                                                                                      |
-| `AUTH_RATE_LIMIT_MAX`            | `5`，1 到 1000 的整数；server function 账号与 HTTP 注册/登录路径预算。                                                               |
+| `AUTH_RATE_LIMIT_MAX`            | `5`，1 到 1000 的整数；仅控制 server function 账号预算。                                                                             |
 | `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `60`，1 到 3600 的整数，窗口秒数。                                                                                                   |
-| `AUTH_RATE_LIMIT_GLOBAL_MAX`     | `100`，1 到 10000 的整数；server function 进程总预算与其他 HTTP 路径预算。                                                           |
+| `AUTH_RATE_LIMIT_GLOBAL_MAX`     | `100`，1 到 10000 的整数；仅控制 server function 进程总预算。                                                                        |
+| `AUTH_RATE_LIMIT_HTTP_MAX`       | `100`，1 到 10000 的整数；独立控制全部 HTTP 认证路径的每 IP、每路径预算。                                                            |
 
 首次运行的操作顺序如下。
 
@@ -145,19 +146,23 @@ Better Auth 默认密码长度限制之外的密码强度策略尚未设计。�
 
 `src/server/auth-rate-limit.ts` 将两个 limiter 缓存在 `globalThis`，模块重新求值复用预算。`authenticate` 在 Origin 与 Zod 校验通过后，调用 auth.api 之前先消费进程总预算，再消费账号预算。默认总预算为 100 次/60 秒，账号为 5 次/60 秒，成功、失败均计数，成功不重置。总预算也计入因账号超额被拒的尝试。login/register 共用账号 key，不含 action：`SHA-256(email.toLowerCase())`。规范化与已安装 Better Auth 的邮箱存储/查找一致；Zod 不接受带首尾空格的邮箱。key 只留在服务端内存，hash 不作为对内存读取者的匿名化保证。不返回 key，不写入诊断。logout 不计数，以免阻止用户结束会话。
 
-威胁模型：公开 server function 可被并发调用，攻击者可更换邮箱、大小写或自行设置 `x-forwarded-for` / `x-real-ip`。账号预算使同一账号的猜测速率不依赖来源，进程总预算限制邮箱轮换。当前不读取任何 IP 请求头，也不提供可信代理开关；缺少网络层的可信代理约束时，直接信任转发头会允许任意换 key。未来若采用 IP 预算，必须先明确代理来源和头覆盖规则，且保留独立账号预算，不能仅使用 IP×邮箱组合。
+威胁模型：公开 server function 可被并发调用，攻击者可更换邮箱、大小写或自行设置 `x-forwarded-for` / `x-real-ip`。账号预算使同一账号的猜测速率不依赖来源，进程总预算限制邮箱轮换。server function 不读取任何 IP 请求头，其按账号预算不可通过该边界上的伪造 IP、大小写或切换动作绕过。HTTP 路径采用下面单独说明的 IP header 策略，不能把 server function 的保证推广到它。
 
-`src/lib/auth.ts` 显式配置 Better Auth `rateLimit.enabled=true`、`storage="memory"`、window=60、max=100（均引用对应已校验 config）。customRules 先精确覆盖 `/sign-in/email` 与 `/sign-up/email` 为各 5 次/60 秒，再以 `*` 覆盖其他路径为各 100 次/60 秒，因此库的隐含特殊规则也被覆盖。`advanced.ipAddress.ipAddressHeaders=[]`、`disableIpTracking=false` 让 1.7.10 使用 `no-trusted-ip` 共享每路径桶，不接受伪造 IP。该库窗口按最后一次获准请求计时，拒绝不续期，不能等同于应用的时间戳滑动窗口。HTTP 超额保持库原生 429 和 `X-Retry-After`，不包装成 AppResult。server function 超额保持 HTTP 200、`too_many_requests` 与安全中文提示。
+`src/lib/auth.ts` 显式配置 Better Auth `rateLimit.enabled=true`、`storage="memory"`、window 引用 `AUTH_RATE_LIMIT_WINDOW_SECONDS`（默认 60），max 引用独立的 `AUTH_RATE_LIMIT_HTTP_MAX`（默认 100）。customRules 的 `/sign-in/email`、`/sign-up/email` 与 `*` 都使用 HTTP max，因此库的隐含特殊规则也被覆盖。移除 `advanced.ipAddress` 覆盖，保留 Better Auth 1.7.10 默认的 `x-forwarded-for` 解析，key 由解析到的 IP 与认证路径推导。该库窗口按最后一次获准请求计时，拒绝不续期，不能等同于应用的时间戳滑动窗口。HTTP 超额保持库原生 429 和 `X-Retry-After`，不包装成 AppResult。server function 超额保持 HTTP 200、`too_many_requests` 与安全中文提示。
 
-两个公开入口各有独立且有限的预算。在默认配置下，同一账号每 60 秒最多通过 server function 5 次，另可通过 HTTP 登录路径最多 5 次；切换入口可取得额外有限预算，不能获得无限尝试。HTTP 登录路径预算由所有账号共享，不按邮箱区分。注册 HTTP 路径也有独立的共享预算。两者都不会因伪造 IP 放宽。
+HTTP `/api/auth/*` 的限流 key 依赖 IP header，直连或不受信代理下可被伪造；更换 header 可取得新的 HTTP 桶，HTTP 路径不共享 server function 的账号预算。真正不可通过伪造 IP 绕过的主防线是 server function 的按账号预算。只有部署在受信代理后，HTTP per-IP 分桶才有意义：代理必须覆盖客户端传入的转发头，并限制应用只接受代理流量，不能直接信任客户端可控的转发链。当前代码不提供可信代理部署配置，不能声称已验证这样的部署。没有可解析的 IP header 时，已安装版本仍会 warn 并 fallback 到共享 per-path bucket；此时使用 HTTP max 默认 100，不是账号 max 默认 5。
+
+历史修正：`c8ea62c` 将 `ipAddressHeaders` 设为空数组，并让 HTTP 登录/注册使用账号 max=5，导致全部用户共享每路径 5 次/60 秒的桶。这是可用性回退。本次恢复默认 IP 解析并拆出 HTTP max，保留 server function 账号与进程预算。此前宣称 HTTP 更换 IP 不能重置预算的结论只适用于旧共享桶，已不适用于当前策略。
 
 被 server function 拒绝时记录 `recordDiagnostic({ level: "warn", event: "auth.rate_limited", requestId, message: "尝试过于频繁，请稍后再试", data: { action } })`。data 仅含 login/register，响应与诊断不含尝试邮箱、密码、原始 IP 或 hash。`authenticate` 改用 Nitro 当前 requestId，原 `getSessionInfo` / `getProtectedSession` 的自行生成 ID 行为仍保留。诊断写入失败遵守原有非致命约定，仍拒绝请求。
 
-局限：内存限流只保护单进程，重启清零；globalThis 缓存不提供跨 worker、跨实例或跨进程共享。多进程部署必须使用共享且原子扣量的存储，并重新验证两条认证边界。攻击者可消耗某账号预算造成临时拒绝，也可消耗共享进程或 HTTP 路径预算影响其他用户；这是不信任客户端 IP、无共享存储时的保守可用性取舍。限流限制猜测速率，不保证抵抗长期低速猜测，额外密码强度与 MFA 不在本次范围。
+局限：内存限流只保护单进程，重启清零；globalThis 缓存不提供跨 worker、跨实例或跨进程共享。多进程部署必须使用共享且原子扣量的存储，并重新验证两条认证边界。攻击者可消耗某账号预算造成临时拒绝，也可消耗 server function 共享进程预算；HTTP 同一 IP（例如同一 NAT）内的用户共享路径预算，无可解析 IP 时所有请求共享路径预算。HTTP header 可伪造时，HTTP 限流自身不构成可靠的暴力猜测防线。限流限制猜测速率，不保证抵抗长期低速猜测，额外密码强度与 MFA 不在本次范围。
 
-可重跑验收为 `bash scripts/verify/c-auth-rate-limit.sh`：独立端口默认 3116（`SPROUT_VERIFY_RATE_LIMIT_PORT` 可覆盖）、独立 `.verify/c-auth-rate-limit/auth.sqlite`、随机测试 secret，max=2、window=60 秒、global max=100，不影响 c-data-auth 的数据库、端口、cookie 或配置。默认先清理 `.output` 并构建，再启动真实生产进程；仅在确认已有当前构建时使用 `SPROUT_VERIFY_RATE_LIMIT_SKIP_BUILD=1`。脚本并行发送真实 server function HTTP 请求，验证大小写/伪造 IP 不绕过、login/register 共用预算、一次正常登录成功、HTTP router 429 与诊断脱敏，再以 global max=2 重启隔离进程，验证账号轮换受总预算约束且登出不受影响，所有 server function 响应头与载荷 requestId 一致。它与其他构建验收脚本应顺序运行，不共享 `.output` 的写入过程。限流器单测位于 `tests/rate-limit.test.ts`，使用注入时钟，无真实 sleep。HTTP 证据不声称覆盖真实多进程或可信代理部署。
+可重跑验收为 `bash scripts/verify/c-auth-rate-limit.sh`：独立端口默认 3116（`SPROUT_VERIFY_RATE_LIMIT_PORT` 可覆盖）、独立 `.verify/c-auth-rate-limit/auth.sqlite`、随机测试 secret，account max=2、HTTP max=2、window=60 秒、global max=100，不影响 c-data-auth 的数据库、端口、cookie 或配置。默认先清理 `.output` 并构建，再启动真实生产进程；仅在确认已有当前构建时使用 `SPROUT_VERIFY_RATE_LIMIT_SKIP_BUILD=1`。脚本并行发送真实 server function HTTP 请求，验证大小写/伪造 IP 不绕过、login/register 共用预算、一次正常登录成功、同一 spoof IP 的三次 HTTP 登录依次为 200/401/429、不同 IP 使用独立 HTTP 桶及诊断脱敏，再以 global max=2 重启隔离进程，验证账号轮换受总预算约束且登出不受影响，所有 server function 响应头与载荷 requestId 一致。它与其他构建验收脚本应顺序运行，不共享 `.output` 的写入过程。限流器单测位于 `tests/rate-limit.test.ts`，使用注入时钟，无真实 sleep。HTTP 证据不声称覆盖真实多进程或可信代理部署。
 
-本分支实际验收记录如下。HTTP 回归先在旧实现真实构建上运行，退出 1，断言得到 `unauthorized` 而非预期的 `too_many_requests`；修复后退出 0。原有历史证据不因此次增补被删除。
+HTTP 分桶修订的实际回归：新增“不同 IP 必须有独立预算”断言后，对 `c8ea62c` 的生产构建发送真实请求，退出 1，得到 `429 !== 401`；恢复默认 IP 解析后，`bash scripts/verify/c-auth-rate-limit.sh` 退出 0，同一 spoof IP 的请求依次为 200/401/429，不同 IP 为 401。server function 的邮箱大小写、伪造 IP、并发、账号轮换、诊断脱敏与登出断言继续通过。此次重跑 `pnpm check`、`pnpm test`（7 个文件、32 个测试）、`bash scripts/verify/c-data-auth.sh`（含 Chromium）及 `bash scripts/verify/f-docs.sh`，全部退出 0。命令日志与退出码保存在 `.verify/c-auth-rate-limit/acceptance-ip/`，之前的 acceptance 目录保留为历史记录。
+
+以下表格保留 `c8ea62c` 的实际验收记录。server function HTTP 回归先在旧实现真实构建上运行，退出 1，断言得到 `unauthorized` 而非预期的 `too_many_requests`；修复后退出 0。原有历史证据不因此次增补被删除。
 
 | 命令                                       | 退出码 | 关键输出                                                                                                                           |
 | ------------------------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------- |

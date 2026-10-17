@@ -43,7 +43,7 @@ return ok(input.data, requestId);
 
 应用使用 frozen `config`。默认 `DATABASE_URL` 为 `./data/sprout.sqlite`，`APP_ORIGIN` 为 `http://localhost:3000`，`PORT` 为 3000，`NODE_ENV` 为 `development`，`LOG_LEVEL` 为 `info`。`APP_ORIGIN` 必须是完整的 http 或 https origin，不带路径。`PORT` 必须是 1 到 65535 的整数。
 
-认证限流在所有环境始终启用，没有关闭开关。`AUTH_RATE_LIMIT_MAX` 默认 5，校验为 1 到 1000 的整数；`AUTH_RATE_LIMIT_WINDOW_SECONDS` 默认 60，校验为 1 到 3600 的整数；`AUTH_RATE_LIMIT_GLOBAL_MAX` 默认 100，校验为 1 到 10000 的整数。前两项控制 server function 账号预算与 HTTP 注册/密码登录路径预算，第三项控制 server function 进程总预算与其他 HTTP 路径预算。不信任任何客户端 IP 请求头；当前没有可信代理配置。进程内存预算不跨重启或进程共享，部署变更需重新评估。
+认证限流在所有环境始终启用，没有关闭开关。`AUTH_RATE_LIMIT_MAX` 默认 5，校验为 1 到 1000 的整数，控制 server function 账号预算；`AUTH_RATE_LIMIT_WINDOW_SECONDS` 默认 60，校验为 1 到 3600 的整数，是两个边界的窗口秒数；`AUTH_RATE_LIMIT_GLOBAL_MAX` 默认 100，校验为 1 到 10000 的整数，只控制 server function 进程总预算；`AUTH_RATE_LIMIT_HTTP_MAX` 默认 100，校验为 1 到 10000 的整数，独立控制所有 Better Auth HTTP 路径的每 IP、每路径预算。server function 不读取 IP 请求头。HTTP 保留 Better Auth 默认 IP header 解析，直连或不受信代理下可被伪造，只有部署在受信代理后其 per-IP 分桶才有意义。不可通过伪造 IP 绕过的是 server function 按账号预算，不能将此保证推广到 HTTP 路径。进程内存预算不跨重启或进程共享，部署变更需重新评估。
 
 `BETTER_AUTH_SECRET` 在共享 config 解析层允许缺省，提供时至少 32 字符。自 p1-c-data-auth 接入认证、p1-d-runtime 接入启动边界后，auth 与生产入口都强制要求有效 secret，生产入口在监听前拒绝缺失、短值与示例占位值。原先 auth 未接入时可省略的条件已不适用于生产启动。构建 prerender 跳过 runtime，不要求部署 secret。证据见 [runtime.md 的验证命令与证据](runtime.md#验证命令与证据)。解析失败抛出包含字段名和约束的错误，不输出原始秘密。
 

@@ -15,6 +15,7 @@ const environmentSchema = z.object({
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(5),
   AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
   AUTH_RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().min(1).max(10_000).default(100),
+  AUTH_RATE_LIMIT_HTTP_MAX: z.coerce.number().int().min(1).max(10_000).default(100),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
