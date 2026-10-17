@@ -27,14 +27,16 @@ const sendMessageRequest = z.object({
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
-  const [session, conversation, access] = await Promise.all([
+  const [session, conversation, access, agent] = await Promise.all([
     import("../session"),
     import("../../domain/conversation"),
     import("../../domain/access"),
+    import("../../domain/agent"),
   ]);
   return {
     requireSession: session.requireSession,
     ProjectAccessError: access.ProjectAccessError,
+    AgentError: agent.AgentError,
     ...conversation,
   };
 }
@@ -47,7 +49,12 @@ function failure(
   deps: ServerDeps | undefined,
   recordDiagnostic: DiagnosticRecorder | undefined,
 ): ConversationResult<never> {
-  if (deps && (error instanceof deps.ConversationError || error instanceof deps.ProjectAccessError))
+  if (
+    deps &&
+    (error instanceof deps.ConversationError ||
+      error instanceof deps.ProjectAccessError ||
+      error instanceof deps.AgentError)
+  )
     return fail({ code: error.code, message: error.message, requestId });
   console.error("[conversation] 请求失败", { requestId, error });
   recordDiagnostic?.({

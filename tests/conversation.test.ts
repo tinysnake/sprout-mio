@@ -11,6 +11,13 @@ type Evidence = {
   dmRepeat: { sameConversation: boolean; sameInstance: boolean; ok: boolean };
   unauthorizedCodes: string[];
   crossUserCodes: string[];
+  crossProfileDm: {
+    otherProfileCode: string;
+    ghostProfileCode: string;
+    conversationRows: number;
+    instanceRows: number;
+    failedDiagnostics: number;
+  };
   invalidBody: { code: string; fields: string[] };
   agentFirst: { bodies: string[]; senderKinds: string[]; stable: boolean };
   afterHuman: { bodies: string[]; senderKinds: string[]; count: number };
@@ -87,6 +94,25 @@ beforeAll(() => {
       ];
       const invalidBody = await conversations.sendMessageBoundary({ conversationId, body: "   " }, userA.headers, "req_v1");
 
+      const bProject = await projects.createProjectBoundary({ name: "B 的对话 Project" }, userB.headers, "req_b1");
+      const bProjectId = bProject.data.id;
+      const ghostProfileId = "agp_00000000-0000-4000-8000-000000000000";
+      const crossProfileDm = await conversations.createDirectConversationBoundary(
+        { projectId: bProjectId, agentProfileId: profileId },
+        userB.headers,
+        "req_b2",
+      );
+      const ghostProfileDm = await conversations.createDirectConversationBoundary(
+        { projectId: bProjectId, agentProfileId: ghostProfileId },
+        userB.headers,
+        "req_b3",
+      );
+      const bConversationRows = sqlite.prepare("SELECT count(*) AS n FROM conversation WHERE project_id = ?").get(bProjectId).n;
+      const bInstanceRows = sqlite.prepare("SELECT count(*) AS n FROM agent_instance WHERE project_id = ?").get(bProjectId).n;
+      const failedDiagnostics = sqlite
+        .prepare("SELECT count(*) AS n FROM diagnostic_event WHERE event = 'conversation.request_failed' AND request_id IN (?, ?)")
+        .get("req_b2", "req_b3").n;
+
       const ctx = { userId: userA.userId, requestId: "req_dom" };
       domain.sendMessage(conversationId, { senderKind: "agent", senderId: profileId, body: "agent 第一条" }, ctx);
       const agentFirst = domain.listMessages(conversationId, ctx);
@@ -109,6 +135,13 @@ beforeAll(() => {
         },
         unauthorizedCodes: unauthorized.map(code),
         crossUserCodes: crossUser.map(code),
+        crossProfileDm: {
+          otherProfileCode: code(crossProfileDm),
+          ghostProfileCode: code(ghostProfileDm),
+          conversationRows: bConversationRows,
+          instanceRows: bInstanceRows,
+          failedDiagnostics,
+        },
         invalidBody: { code: code(invalidBody), fields: fields(invalidBody) },
         agentFirst: {
           bodies: agentFirst.map((entry) => entry.body),
@@ -165,6 +198,14 @@ describe("Conversation DM 边界与分身身份", () => {
   it("另一个用户的 project 与 conversation 在列表、详情与发消息上返回 not_found", () => {
     expect(evidence.crossUserCodes).toHaveLength(7);
     expect(evidence.crossUserCodes.every((value) => value === "not_found")).toBe(true);
+  });
+
+  it("B 用自己的 project 引用他人或不存在的 profileId 都返回 not_found，不写错误诊断，不新增行", () => {
+    expect(evidence.crossProfileDm.otherProfileCode).toBe("not_found");
+    expect(evidence.crossProfileDm.ghostProfileCode).toBe("not_found");
+    expect(evidence.crossProfileDm.conversationRows).toBe(0);
+    expect(evidence.crossProfileDm.instanceRows).toBe(0);
+    expect(evidence.crossProfileDm.failedDiagnostics).toBe(0);
   });
 
   it("空 body 发送返回 validation_failed 并给出 body 字段错误", () => {

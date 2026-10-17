@@ -25,7 +25,7 @@
 | `listMessagesFn`                 | `conversationIdInput`           | `listMessages`                 |
 | `sendMessageFn`                  | `{ conversationId, body }`      | `sendMessage`                  |
 
-`sendMessageFn` 只接受 `conversationId` 与 `body`，human sender 从认证会话构造，不信任浏览器传入的身份。未登录返回 `unauthorized`；`ConversationError` 与 `ProjectAccessError` 的 `not_found` 按原码透出；zod 校验失败返回 `validation_failed` 并带 `fieldErrors`（空 body 的字段错误为 `body`）；其余未知错误映射为脱敏 `internal` 并写 `conversation.request_failed` error 诊断。服务端专有模块只在 server function 内 `await import(...)`。
+`sendMessageFn` 只接受 `conversationId` 与 `body`，human sender 从认证会话构造，不信任浏览器传入的身份。未登录返回 `unauthorized`；`ConversationError` 与 `ProjectAccessError` 的 `not_found` 按原码透出；边界同时映射 `AgentError`（`not_found` / `conflict`），`createDirectConversation` 因引用他人或不存在的 profileId 而拒绝时返回 `not_found`，属于合法业务拒绝，不再记为 `internal` error 诊断；zod 校验失败返回 `validation_failed` 并带 `fieldErrors`（空 body 的字段错误为 `body`）；其余未知错误映射为脱敏 `internal` 并写 `conversation.request_failed` error 诊断。服务端专有模块只在 server function 内 `await import(...)`。
 
 ## 分身身份与唯一性的实现位置
 

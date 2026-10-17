@@ -290,10 +290,11 @@ try {
   const subCrossDm = await check('sub_B_ownProject_A_profile_createDM_rejected_without_leak', async () => {
     const { value, body, requestId } = await call(B, 'createDirectConversationFn', { projectId: bProject.data.id, agentProfileId: aProfile.data.id }, 'sub-ownProject-A-profile-DM')
     assert.equal(value.ok, false, 'cross-profile DM must be rejected')
+    assert.equal(value.error.code, 'not_found', 'own-project cross-profile DM must map to not_found')
     assert.equal(value.error.requestId, requestId)
     const leaked = aTokens.filter((token) => body.includes(token))
     assert.deepEqual(leaked, [])
-    return { code: value.error.code, expected: 'not_found', requestId, leaked }
+    return { code: value.error.code, requestId, leaked }
   })
   await check('sub_profile_reference_indistinguishable_from_nonexistent', async () => {
     const ghost = 'agp_00000000-0000-4000-8000-000000000000'
