@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { Link, createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { APP_VERSION } from "../contracts/version";
 import type { AppError } from "../contracts/result";
@@ -57,6 +57,9 @@ function Home() {
           {error.message}（{error.code}，{error.requestId}）
         </p>
       )}
+      <Link to="/projects" data-testid="open-projects" className="mt-6 self-start underline">
+        进入 Project
+      </Link>
       <button
         type="button"
         disabled={pending}
