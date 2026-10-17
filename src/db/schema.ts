@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { user } from "./auth-schema";
+import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 
 export * from "./auth-schema";
 
@@ -24,7 +25,7 @@ export const diagnosticEvent = sqliteTable(
   {
     id: text("id").primaryKey(),
     at: integer("at", { mode: "timestamp" }).notNull(),
-    level: text("level", { enum: ["debug", "info", "warn", "error"] }).notNull(),
+    level: text("level", { enum: DIAGNOSTIC_LEVELS }).notNull(),
     event: text("event").notNull(),
     requestId: text("request_id").notNull(),
     projectId: text("project_id").references(() => project.id),
@@ -38,7 +39,10 @@ export const diagnosticEvent = sqliteTable(
   (table) => [
     check(
       "diagnostic_event_level_check",
-      sql`${table.level} in ('debug', 'info', 'warn', 'error')`,
+      sql`${table.level} in (${sql.join(
+        DIAGNOSTIC_LEVELS.map((level) => sql.raw(`'${level}'`)),
+        sql`, `,
+      )})`,
     ),
     index("diagnostic_event_at_idx").on(table.at),
     index("diagnostic_event_request_id_idx").on(table.requestId),

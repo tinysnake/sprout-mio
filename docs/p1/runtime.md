@@ -70,11 +70,11 @@ return ok(project, requestId);
 
 `recordDiagnostic(input: DiagnosticInput): boolean` 接受冻结 `DiagnosticEvent` 去掉 `id`、`at` 后的字段。必填 `level`、`event`、`requestId`、`message`。可选 `projectId`、`conversationId`、`instanceId`、`runId`、`executionId`、`data`。不存在的业务关联不填写。函数生成 `diag_*`，写入真实 SQLite，返回成功与否。写入失败只落 stderr，不抛给业务请求。
 
-`queryDiagnostics({ requestId?, projectId?, limit? })` 按条件相交查询最近事件，默认 50 条。HTTP 边界限制 `limit` 为 1 到 200。时间以 ISO 返回，data 以对象返回。
+`queryDiagnostics({ actorId, requestId?, projectId?, limit? })` 按条件相交查询最近事件，默认 50 条。actorId 必填，Project 行必须归属于该创建者；非 Project 行必须按具体 requestId 查询。HTTP 边界限制 `limit` 为 1 到 200。时间以 ISO 返回，data 以对象返回。
 
-`GET /api/diagnostics` 先调用 c 的 `requireSession(headers, requestId)`。未登录返回 HTTP 401 和 `unauthorized` AppResult。非法过滤条件返回 HTTP 400 和 `validation_failed`。成功返回 `ok(events, requestId)`。内部错误通过 `fail(toAppError(error, requestId))` 脱敏。
+`GET /api/diagnostics` 先调用 c 的 `requireSession(headers, requestId)`。未登录返回 HTTP 401 和 `unauthorized` AppResult。非法过滤条件或未提供 requestId/projectId 返回 HTTP 400 和 `validation_failed`。认证成功后将 session.userId 作为 actorId 传给查询，越权 Project 过滤返回空。成功返回 `ok(events, requestId)`。内部错误通过 `fail(toAppError(error, requestId))` 脱敏。
 
-`AppResult<T>` 成功分支含 `ok: true`、`data`、`requestId`。失败分支含 `ok: false`、`error`、`requestId`。e 应按 `result.ok` 判别，并复用当前 requestId。c 现有 session server functions 仍有自己的 ID 生成逻辑，未在 d 的写入范围内迁移。
+`AppResult<T>` 成功分支含 `ok: true`、`data`、`requestId`。失败分支含 `ok: false`、`error`、`requestId`。e 应按 `result.ok` 判别，并复用当前 requestId。后续重构已将 c 的三个 session server functions 统一到请求上下文，成功会话查询与失败登录的载荷、响应头、HTTP 诊断一致性由 `scripts/verify/c-data-auth.sh` 断言。
 
 ## health 与真实数据库
 

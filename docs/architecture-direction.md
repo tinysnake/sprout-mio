@@ -21,7 +21,7 @@ P1 已验证 `vp test run`（Vitest）与 `vp check` 的格式、lint 和类型�
 
 P0 发现的运行期约束已在 P1 接入。TanStack Start 的 SPA 同时设置 `spa.enabled` 与 `createStart(() => ({ defaultSsr: false }))`。`pnpm start` 显式使用 `node --env-file-if-exists=.env.local .output/server/index.mjs`，已有进程环境优先。生产入口在监听前校验 config 与有效 `BETTER_AUTH_SECRET`，完成迁移和 runtime ready；构建 prerender 通过框架标记跳过 runtime，不要求部署 secret。未知页面 GET 的 shell 404 在请求边界转为 200，API 与 server function 不做该转换。静态托管的 `_shell.html` rewrite 仍未验证，证据见 [骨架运行入口](p1/skeleton.md#运行入口) 与 [runtime 入口](p1/runtime.md#入口与单例)。server function 的授权失败在响应载荷中，不能只读 HTTP 状态码。
 
-当前生产构建验收依赖先清理 `.output`。残留输出下重新构建会留下引用旧资源名的 shell，已记录在 [Project 未验证项](p1/feature-sample.md#未验证项)，该增量构建缺陷尚未修复。
+公开的 `pnpm build` 已在构建前删除 `.output`，防止 SPA shell 引用旧资源名。连续构建与客户端资源 hash 变化的验收见 [重构验收报告](p1/refine-report.md)。静态托管与 CDN rewrite 仍未验证。
 
 常规功能沿着页面、server function、业务服务、数据库的固定路径实现。业务服务供 Web 与 Pi extension 的入口共同调用。外部协议使用 server routes 或所选生产适配器的网络入口，不将 Start 的内部调用协议直接作为 Worker 协议。
 
@@ -75,7 +75,7 @@ Effect Scope 可以管理连接、订阅和本轮临时资源。run 的 Scope �
 
 业务变更与需要可靠处理的通知建议在同一事务中记录，再异步投递。P1 的 Project 创建已在同一 SQLite 事务写入业务行与 `project.created` 诊断，写诊断失败时整体回滚，证据见 [事务与错误路径](p1/feature-sample.md#事务与错误路径证据)。运行期的 `recordDiagnostic` 使用共享 db，捕获失败并返回 false；不能将它直接当作会传播写入失败的业务事务接口。消息、唤醒和操作记录仍是后续恢复所需事实，前端事件通道可发送变更提示，重连后补齐事件或重新获取快照，不把内存广播当作事实来源。
 
-基础诊断已经落到 `src/server/server-entry.ts` 的 Nitro hooks、`src/server/request-context.ts`、`src/server/diagnostics.ts` 与 `diagnostic_event` 表。Nitro 覆盖客户端传入的 requestId，把同一值交给 Project server function、响应头与 HTTP 诊断，Project 创建再关联真实 projectId。受保护的 `/api/diagnostics` 支持按 requestId 与 projectId 查询，浏览器错误页、响应头和诊断行一致性已有真实证据。c 的 session server functions 仍自行生成 ID，尚未统一到 Nitro 上下文。分身、run、execution 尚无真实对象，其诊断关联为空且未验证，细节见 [requestId 与诊断](p1/runtime.md#requestid-与诊断)。
+基础诊断已经落到 `src/server/server-entry.ts` 的 Nitro hooks、`src/server/request-context.ts`、`src/server/diagnostics.ts` 与 `diagnostic_event` 表。Nitro 覆盖客户端传入的 requestId，把同一值交给 Project server function、响应头与 HTTP 诊断，Project 创建再关联真实 projectId。受保护的 `/api/diagnostics` 支持按 requestId 与 projectId 查询，浏览器错误页、响应头和诊断行一致性已有真实证据。认证的三个 session server functions 也复用 Nitro requestId。诊断查询要求 actorId，Project 行按创建者隔离，非 Project 行按具体 requestId 查询；HTTP 入口拒绝不带 requestId/projectId 的列举。分身、run、execution 尚无真实对象，其诊断关联为空且未验证，细节见 [requestId 与诊断](p1/runtime.md#requestid-与诊断)。
 
 ## 让 Worker 提供整机操作能力
 

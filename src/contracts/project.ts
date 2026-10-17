@@ -1,5 +1,8 @@
 import { z } from "zod";
 import type { AppResult } from "./result";
+import { appIdPattern, ID_PREFIXES } from "./ids";
+
+const projectIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.project));
 
 /** 边界校验拒绝空白名称与超长文本，description 可以省略，错误消息直接展示在输入旁。 */
 export const createProjectInput = z.object({
@@ -11,7 +14,7 @@ export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
 /** Project 的 ID 和 ISO 时间在边界解析，缺失字段或非法日期不能通过。 */
 export const projectSchema = createProjectInput.extend({
-  id: z.string().regex(/^prj_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
+  id: projectIdSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -23,8 +26,8 @@ export type FieldErrors = Record<string, string>;
 /** Project 边界结果：AppResult 加可选的字段级错误，失败时供表单显示在输入旁。 */
 export type ProjectResult<T> = AppResult<T> & { fieldErrors?: FieldErrors };
 
-/** 详情页与查询从 URL 取 id，空字符串在边界拒绝。 */
-export const projectIdInput = z.object({ projectId: z.string().min(1) });
+/** 详情页与查询从 URL 取 id，使用完整 Project 相同的 ID 格式。 */
+export const projectIdInput = z.object({ projectId: projectIdSchema });
 
 /** 同一字段只保留第一条消息，路径为空的错误归到 `form`。 */
 export function fieldErrorsFrom(error: z.ZodError): FieldErrors {

@@ -65,7 +65,7 @@ Pi extension 构建命令是 `pnpm extension:build`，产物为 `dist/extension/
 
 ## 验证命令与证据
 
-`bash scripts/verify.sh` 按名字顺序执行各脚本，任一失败返回非零。`bash scripts/verify/a-base.sh` 单独重放本骨架的检查。脚本会删除当前 worktree 的 `node_modules`、`dist`、`.output` 和 `data`，只在可重建的验收 worktree 中运行。数据库验收必须使用独立数据目录。
+`bash scripts/verify.sh` 按名字顺序执行各脚本，任一失败返回非零。`bash scripts/verify/a-base.sh` 单独重放本骨架的检查。脚本会删除当前 worktree 的 `node_modules`、`dist` 和 `.output`，保留仓库 `data/`，只在可重建的验收 worktree 中运行。生产与 dev 服务使用 `.verify/a-base/verification.sqlite`，不使用默认用户数据库。
 
 每条安装、检查、构建和 Pi 调用最多运行 300 秒。脚本在启动生产与 dev 服务前检查端口，拒绝访问其他进程。检查结束后杀掉服务进程组。localhost 请求固定使用 `curl --noproxy '*'`。
 

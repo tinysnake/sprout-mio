@@ -143,8 +143,6 @@ try {
   rmSync(join(directory, 'cookies.txt'), { force: true })
   const buildEnvironment = { ...environment }
   delete buildEnvironment.BETTER_AUTH_SECRET
-  // 干净构建：残留的 .output 会留下指向旧资源名的 SPA shell。
-  rmSync('.output', { recursive: true, force: true })
   await command('pnpm', ['build'], 'build.log', buildEnvironment)
   const shell = readFileSync('.output/public/_shell.html', 'utf8')
   const clientAssets = readdirSync('.output/public/assets')
@@ -167,6 +165,10 @@ try {
   })
   assert.equal(signup.status, 200, signup.text)
   pass('curl 注册并保存会话 cookie（带 Origin）', { status: signup.status, cookies: 'cookies.txt' })
+  const unfiltered = await curl(`${base}/api/diagnostics`, 'diagnostics-unfiltered', { cookie: true })
+  assert.equal(unfiltered.status, 400, unfiltered.text)
+  assert.equal(unfiltered.body.error.code, 'validation_failed')
+  pass('diagnostics rejects unfiltered listing', { status: unfiltered.status, code: unfiltered.body.error.code })
 
   const createArgs = {
     cookie: true,
