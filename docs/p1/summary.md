@@ -6,14 +6,14 @@ P1 已建立可运行的应用骨架与 Project 标准功能样例。Human 可�
 
 ## 各 unit 结论与复跑入口
 
-| unit                            | 结论                                                                          | 证据位置                                                                                                                             | 复跑命令                                      | 未验证项                                                                    |
-| ------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- | --------------------------------------------------------------------------- |
-| a，骨架，`e7edfe4`，PR #1       | Start、Worker 与 extension 三入口成立，共享契约可用，真实 Pi 调用状态工具成功 | [骨架验证](skeleton.md#验证命令与证据)                                                                                               | `bash scripts/verify/a-base.sh`               | Worker 连接未实现，Pi 会话业务未接入。工具的 unimplemented 是边界结果       |
-| b，工具链，`ab06235`，PR #2     | 检查、测试、构建与 CI 成立，干净工作目录可安装、构建、生产启动并关闭          | [干净安装](tooling.md#干净安装与生产启动)、[CI 工作流](tooling.md#ci-工作流)、[vp test](tooling.md#vp-test-结论)                     | `bash scripts/verify/b-tooling.sh`            | 冷 store、缓存失效、平台差异与 runner 升级未系统验证                        |
-| c，数据与登录，`935bf54`，PR #3 | 七张应用表与迁移账本、重复迁移、真实 HTTP session 与 Chromium 登录成立        | [数据与认证验证](data-auth.md#验证证据)、[干净目录验证](data-auth.md#干净目录验证)                                                   | `bash scripts/verify/c-data-auth.sh`          | session 过期与刷新、多进程 SQLite、WAL 行为未验证。历史启动 GAP 已由 d 关闭 |
-| d，runtime，`5916067`，PR #4    | 监听前配置校验、迁移、boot 恢复、ready、生产 SIGTERM 与请求诊断成立           | [runtime 验证](runtime.md#验证命令与证据)、[阶段保证](runtime.md#阶段与保证)                                                         | `bash scripts/verify/d-runtime.sh`            | dev 信号优雅关闭、WebSocket、多进程和恢复中途崩溃未验证                     |
-| e，Project，`9631ad2`，PR #5    | 创建、列表、详情、重新打开、字段错误、事务回滚与三处 requestId 一致成立       | [真实操作](feature-sample.md#真实命令与输出摘要)、[事务与错误](feature-sample.md#事务与错误路径证据)、[截图](feature-sample.md#截图) | `bash scripts/verify/e-project.sh`            | 多用户端到端隔离、并发创建与高负载未验证。构建清理已修复                    |
-| f，文档收尾                     | 证据映射、复选框、完成记录与架构说明对齐，secret 约束漂移已修正               | [清单对照](#p1-清单证据对照)、[收尾验证](#收尾验证与证据约定)                                                                        | `bash scripts/verify/f-docs.sh`，`pnpm check` | 文档验收不替代 a～e 的运行验收，独立多模型审查未执行                        |
+| unit                            | 结论                                                                          | 证据位置                                                                                                                             | 复跑命令                                      | 未验证项                                                                                   |
+| ------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| a，骨架，`e7edfe4`，PR #1       | Start、Worker 与 extension 三入口成立，共享契约可用，真实 Pi 调用状态工具成功 | [骨架验证](skeleton.md#验证命令与证据)                                                                                               | `bash scripts/verify/a-base.sh`               | Worker 连接未实现，Pi 会话业务未接入。工具的 unimplemented 是边界结果                      |
+| b，工具链，`ab06235`，PR #2     | 检查、测试、构建与 CI 成立，干净工作目录可安装、构建、生产启动并关闭          | [干净安装](tooling.md#干净安装与生产启动)、[CI 工作流](tooling.md#ci-工作流)、[vp test](tooling.md#vp-test-结论)                     | `bash scripts/verify/b-tooling.sh`            | 冷 store、缓存失效、平台差异与 runner 升级未系统验证                                       |
+| c，数据与登录，`935bf54`，PR #3 | 七张应用表与迁移账本、重复迁移、真实 HTTP session 与 Chromium 登录成立        | [数据与认证验证](data-auth.md#验证证据)、[干净目录验证](data-auth.md#干净目录验证)                                                   | `bash scripts/verify/c-data-auth.sh`          | session 过期与刷新、多进程 SQLite、WAL 行为未验证。历史启动 GAP 已由 d 关闭                |
+| d，runtime，`5916067`，PR #4    | 监听前配置校验、迁移、boot 恢复、ready、生产 SIGTERM 与请求诊断成立           | [runtime 验证](runtime.md#验证命令与证据)、[阶段保证](runtime.md#阶段与保证)                                                         | `bash scripts/verify/d-runtime.sh`            | dev 信号优雅关闭、WebSocket、多进程和恢复中途崩溃未验证                                    |
+| e，Project，`9631ad2`，PR #5    | 创建、列表、详情、重新打开、字段错误、事务回滚与三处 requestId 一致成立       | [真实操作](feature-sample.md#真实命令与输出摘要)、[事务与错误](feature-sample.md#事务与错误路径证据)、[截图](feature-sample.md#截图) | `bash scripts/verify/e-project.sh`            | 多用户端到端隔离、并发创建与高负载未验证。构建清理已修复                                   |
+| f，文档收尾                     | 证据映射、复选框、完成记录与架构说明对齐，secret 约束漂移已修正               | [清单对照](#p1-清单证据对照)、[收尾验证](#收尾验证与证据约定)                                                                        | `bash scripts/verify/f-docs.sh`，`pnpm check` | 文档验收不替代 a～e 的运行验收；P1 重构的独立多模型审查见 [重构验收报告](refine-report.md) |
 
 各文档中的测试数量和旧探针值是对应 unit 当时的观测，不是最新 HEAD 的全套结果。最新集成行为以 d、e 的证据与复跑脚本为准。b 的「尚无 drizzle」与 c 的「启动 GAP」是历史状态，不能当作当前结论。
 
@@ -66,7 +66,7 @@ P1 七项均有证据，没有保持未勾的 P1 条目。P2 至 P8 与 R1 的�
 - Project 的第二用户端到端隔离、并发创建与高负载诊断未验证。createdBy 过滤是现有实现，不是后续授权模型。时间戳精确到秒。分身、run、execution 的真实诊断关联未验证。
 - 静态托管与 CDN rewrite 未验证。公开 build 的旧 shell 缺陷已修复，资源 hash 变化的连续构建验收见 [重构验收报告](refine-report.md)。
 - Chromium 在本机验收，CI 没有浏览器流程。curl 的 server function ID 提取与 Seroval CrossJSON 编码依赖当前 Start 产物结构，升级后需要重新核对。
-- 本次没有独立多模型审查，也未找到 cursor-team-kit 的 deslop 插件。文档证据检查、范围核对与 pnpm check 不等于这些审查。
+- P1 重构已执行独立多模型对抗审查（两名审查者，见 [重构验收报告](refine-report.md) 的审查来源）；限流、SIGTERM drain、Effect 生命周期与诊断保留策略等未纳入本次范围，报告已列出。仍未找到 cursor-team-kit 的 deslop 插件，文档证据检查与 pnpm check 不等于插件审查。
 
 ## 收尾验证与证据约定
 

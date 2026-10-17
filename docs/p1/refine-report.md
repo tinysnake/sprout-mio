@@ -2,6 +2,38 @@
 
 本次在 host 创建的 `p1/refine` 独立 worktree 执行，base 为 main。仅修改该 worktree；初次重构验收未运行 db:generate，后续复核恢复该检查并重新验收，未新增 migration。历史 unit 输出与截图保持原证据，新增运行日志位于忽略的 `.verify/` 与 `/tmp/p1-refine-*.log`，不提交 cookie、数据库或 secret。
 
+## 审查来源
+
+本次重构前由两个独立模型对 P1 做对抗审查，只读、无角色 prompt、prompt-enforced：
+
+- Reviewer A：`magpie/codex/gpt-6.1-sol`，high。8 项 findings（6 critical / 2 warning）。
+- Reviewer B：`magpie/group/auto-deepseek-v4-1-flash`，low。13 项 findings（1 critical / 7 warning / 5 nit）。
+
+两名审查者独立命中同一批问题：`/api/diagnostics` 的跨用户读取、认证 server function 的 requestId 分叉、密码端点缺少限流。本次只修前两项；第三项与其余发现记录在「未纳入本次范围」。原始 findings 只保留在本机，不提交全文。纳入本次范围的映射：
+
+| 发现                         | 审查者   | 处理 |
+| ---------------------------- | -------- | ---- |
+| 诊断跨用户读取               | A#2、B#1 | C4   |
+| 认证 requestId 分叉          | A#7、B#2 | C2   |
+| Project boundary 错误范围    | A#5      | C3   |
+| internal 失败无 error 诊断   | A#8      | C3   |
+| 契约重复（ID、诊断级别）     | B#12     | C1   |
+| 公开 build 保留旧 shell      | A#6      | C5   |
+| `pnpm verify` 删除本地 data/ | A#1      | C6   |
+
+## 未纳入本次范围
+
+以下是审查提出、本次未修的真实问题，建议各自独立 PR：
+
+- 密码端点无限流。Better Auth 的 rate limiter 只在 HTTP router 路径执行，`authenticate` 直接调用 `auth.api` 绕过它（A#3、B#7）。
+- SIGTERM 不停止接收新请求，也不等待在途 HTTP 请求完成就退出（A#4）。
+- Effect 目前只持有共享 SQLite 连接，`activeResources`/`activeBackgroundTasks` 是手搓指标（B#6）。
+- `diagnostic_event` 无保留策略，health 轮询每次写行（B#5）。
+- server function validator 仍是 `unknown`，客户端契约不受类型检查（B#3）。
+- `LOG_LEVEL`/`NODE_ENV` 被校验但无消费者（B#4）。
+- 认证 gating 与 sign out 在 `/` 与 `_authed` 重复（B#10）。
+- Pi 二进制路径硬编码、404 重写为 200、`/api/ping` 在全局 middleware、d-runtime 修改 tracked 源码（B#8、B#9、B#11、B#13）。
+
 ## 复核：恢复迁移生成检查
 
 恢复 `scripts/verify/c-data-auth.sh` 原有的 db:generate 调用与 PASS 文案，C1 其他改动保留。重新执行 `bash scripts/verify/c-data-auth.sh`，退出 0；`.verify/c-data-auth/generate.log` 输出 `No schema changes, nothing to migrate`，drizzle/ 无 diff。日志为 `/tmp/p1-refine-restore-generate.log`。按复核要求执行 `git checkout -- docs/p1/evidence/`，历史截图无 diff。
