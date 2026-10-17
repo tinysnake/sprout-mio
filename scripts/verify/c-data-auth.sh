@@ -259,7 +259,7 @@ try {
     const outcome = await child.completion
     clearTimeout(timer)
     children.delete(child)
-    console.log(`GAP invalid config startup ${name}: observed exit=${outcome.code} signal=${outcome.signal}; owner=p1-d-runtime; log=${join(logDir, `${name}.log`)}`)
+    console.log(`CLOSED invalid config startup ${name}: observed exit=${outcome.code} signal=${outcome.signal}; owner=p1-d-runtime; nonzero before listening asserted by scripts/verify/d-runtime.sh; log=${join(logDir, `${name}.log`)}`)
 
     const authLog = `${name}-auth-import.log`
     const authChild = launch(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', 'await import("./src/lib/auth.ts")'], authLog, invalidEnv)

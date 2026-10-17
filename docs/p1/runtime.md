@@ -136,7 +136,9 @@ PASS scripts/verify/d-runtime.sh
 Verification scripts=4 failed=0
 ```
 
-c-data-auth 脚本保留两条历史 `GAP invalid config startup` 行，归属均为 `owner=p1-d-runtime`。两条当前观测均为 `exit=1 signal=null`，d-runtime 已通过真实 `pnpm start` 验证非法 config 在监听前失败。这些 GAP 标签不是本次 FAIL，未修改 c 的脚本。
+两条配置启动缺口已由本 unit 关闭，归属为 `owner=p1-d-runtime`。c-data-auth 以 `CLOSED invalid config startup` 记录状态，保留真实 exit、signal 和日志路径，不新增断言。当前 bad-port 与 missing-secret 的观测均为 `exit=1 signal=null`。
+
+断言仍归 `scripts/verify/d-runtime.sh`。断言清单包括 invalid-port、missing-secret、short-secret、placeholder-secret 四种非法配置非零退出且未被超时杀死，以及 migrating、recovering 故障退出 1；这些情况均断言未监听。协调者本次整体回归已确认缺口关闭，`scripts/verify.sh` 的结果为 4 scripts、0 failed，即 `Verification scripts=4 failed=0`。
 
 ## CI 与交付边界
 
