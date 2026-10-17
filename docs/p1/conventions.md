@@ -31,15 +31,19 @@ return ok(input.data, requestId);
 
 该示例只展示契约转换，不创建或存储 Project。
 
-每个结果和诊断事件必须携带当前 requestId。错误通过 `toAppError(unknown, requestId)` 转换。Zod 错误映射为 `validation_failed`。明确的业务错误使用 `validation_failed`、`unauthorized`、`forbidden`、`not_found` 或 `conflict`。未知错误与 `internal` 错误统一返回 `内部错误`，不把 stack、SQL、文件路径或秘密写入用户载荷。
+每个结果和诊断事件必须携带当前 requestId。错误通过 `toAppError(unknown, requestId)` 转换。Zod 错误映射为 `validation_failed`。明确的业务错误使用 `validation_failed`、`unauthorized`、`forbidden`、`not_found`、`conflict` 或 `too_many_requests`。未知错误与 `internal` 错误统一返回 `内部错误`，不把 stack、SQL、文件路径或秘密写入用户载荷。
 
 不要用 HTTP 200 判断 server function 的业务成功。读取 `result.ok`，失败时读取 `result.error.code` 和 `result.error.requestId`。错误中的 requestId 使用当前请求值，不能信任传入错误对象里的旧值。
+
+认证 server function 的 `login` 与 `register` 必须在调用 `auth.api` 前同步消费账号与进程预算，成功和失败均计数；`logout` 不消费认证预算。限流返回 HTTP 200 与 `fail({ code: "too_many_requests", message: "尝试过于频繁，请稍后再试", requestId })`。诊断为 `warn` / `auth.rate_limited`，data 只含 action，不记录邮箱、密码、IP 或内部 key。`authenticate` 使用 Nitro 当前 requestId，使响应头、AppResult 与诊断一致。Better Auth HTTP router 保留原生 429 与 `X-Retry-After` 协议；两种边界不可混用状态码判断。策略与局限见 [认证限流](data-auth.md#认证限流)。
 
 `pnpm test` 已验证 ID 前缀与唯一性、结果分支、错误映射和脱敏、Project 文本边界及日期拒绝，共 7 个测试与配置验证同跑。
 
 ## 环境与诊断
 
 应用使用 frozen `config`。默认 `DATABASE_URL` 为 `./data/sprout.sqlite`，`APP_ORIGIN` 为 `http://localhost:3000`，`PORT` 为 3000，`NODE_ENV` 为 `development`，`LOG_LEVEL` 为 `info`。`APP_ORIGIN` 必须是完整的 http 或 https origin，不带路径。`PORT` 必须是 1 到 65535 的整数。
+
+认证限流在所有环境始终启用，没有关闭开关。`AUTH_RATE_LIMIT_MAX` 默认 5，校验为 1 到 1000 的整数；`AUTH_RATE_LIMIT_WINDOW_SECONDS` 默认 60，校验为 1 到 3600 的整数；`AUTH_RATE_LIMIT_GLOBAL_MAX` 默认 100，校验为 1 到 10000 的整数。前两项控制 server function 账号预算与 HTTP 注册/密码登录路径预算，第三项控制 server function 进程总预算与其他 HTTP 路径预算。不信任任何客户端 IP 请求头；当前没有可信代理配置。进程内存预算不跨重启或进程共享，部署变更需重新评估。
 
 `BETTER_AUTH_SECRET` 在共享 config 解析层允许缺省，提供时至少 32 字符。自 p1-c-data-auth 接入认证、p1-d-runtime 接入启动边界后，auth 与生产入口都强制要求有效 secret，生产入口在监听前拒绝缺失、短值与示例占位值。原先 auth 未接入时可省略的条件已不适用于生产启动。构建 prerender 跳过 runtime，不要求部署 secret。证据见 [runtime.md 的验证命令与证据](runtime.md#验证命令与证据)。解析失败抛出包含字段名和约束的错误，不输出原始秘密。
 

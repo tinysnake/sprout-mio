@@ -7,6 +7,7 @@ export const APP_ERROR_CODES = [
   "forbidden",
   "not_found",
   "conflict",
+  "too_many_requests",
   "internal",
 ] as const;
 /** 只允许登记的错误码，不接受未知字符串。 */

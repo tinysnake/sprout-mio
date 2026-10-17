@@ -25,5 +25,27 @@ export const auth = betterAuth({
   trustedOrigins: [config.APP_ORIGIN],
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
   emailAndPassword: { enabled: true },
+  // 无可信代理部署约定时不接受任何 IP header，使用共享的每路径预算。
+  advanced: { ipAddress: { ipAddressHeaders: [], disableIpTracking: false } },
+  rateLimit: {
+    enabled: true,
+    storage: "memory",
+    window: config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    max: config.AUTH_RATE_LIMIT_GLOBAL_MAX,
+    customRules: {
+      "/sign-in/email": {
+        window: config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        max: config.AUTH_RATE_LIMIT_MAX,
+      },
+      "/sign-up/email": {
+        window: config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        max: config.AUTH_RATE_LIMIT_MAX,
+      },
+      "*": {
+        window: config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        max: config.AUTH_RATE_LIMIT_GLOBAL_MAX,
+      },
+    },
+  },
   plugins: [tanstackStartCookies()],
 });
