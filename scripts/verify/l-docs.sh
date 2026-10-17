@@ -72,6 +72,11 @@ const checkEvidence = (text, source, label) => {
 };
 
 const plan = fs.readFileSync('docs/development-plan.md', 'utf8');
+const stageTable = plan.match(/^## 按依赖安排开发\n([\s\S]*?)(?=^## )/m)?.[1] ?? '';
+const p2Status = stageTable.split('\n').find((line) => /^\| P2 \|/.test(line))?.split('|')[4]?.trim() ?? '';
+check(p2Status.includes('已完成') && linksIn(p2Status).includes('p2/summary.md'), 'P2 stage status must be completed and link to p2/summary.md');
+const nextTask = plan.trim().split(/\n\s*\n/).at(-1) ?? '';
+check(nextTask.startsWith('当前下一任务是 P3') && !/下一任务是\s*P2/.test(plan), 'final next task must point to P3 and never to P2');
 const p2 = plan.match(/^## P2 [^\n]*\n([\s\S]*?)(?=^## )/m)?.[1] ?? '';
 const boxes = [...p2.matchAll(/^- \[([^\]])\] (.+)$/gm)];
 check(boxes.length === 6, `P2 must contain six checkboxes, found ${boxes.length}`);
@@ -147,6 +152,7 @@ console.log(`PASS six P2 checklist entries checked with document sections and co
 console.log(`PASS three P2 exit conditions and five unit mappings; evidence=${totals.evidence} commands=${totals.commands}`);
 console.log(`PASS P2 source paths=${totals.paths}; docs internal links and anchors verified by f-docs`);
 console.log(`PASS P2 completion PR #10 to #14 match Git merge titles and head parents; commit references=${totals.commits}`);
+console.log('PASS P2 stage status is completed with summary link; final next task points to P3');
 console.log(`PASS P3 to P8 and R1 checkboxes remain unchecked=${futureCount}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);
 console.log('PASS l-docs all checks passed');

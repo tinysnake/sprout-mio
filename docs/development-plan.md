@@ -21,7 +21,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | --- | --- | --- | --- |
 | P0 | 验证技术栈与高风险协议，收敛基础契约 | 无 | 已完成（结论见 [p0/summary.md](p0/summary.md)） |
 | P1 | 建立工程骨架与标准功能样例 | P0 | 已完成（结论见 [p1/summary.md](p1/summary.md)） |
-| P2 | 建立 Project、profile、Conversation 和分身 | P1 | 待开始 |
+| P2 | 建立 Project、profile、Conversation 和分身 | P1 | 已完成（结论见 [p2/summary.md](p2/summary.md)） |
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 待开始 |
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | 待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
@@ -221,4 +221,4 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P1 | 工程骨架、Worker 与 Pi extension 入口、检查测试构建与 CI、SQLite 迁移与 Human 登录、runtime 生命周期与基础诊断、Project 创建查询与功能模板。a～e 的实现与合入范围 `7e4f039..c3af8ad`，本记录随 P1 收尾提交写入。逐项证据见 [p1/summary.md](p1/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0 下的干净工作目录安装、生产构建与真实进程启动、真实 SQLite 迁移与事务、真实 Pi 状态工具、真实 Chromium 登录和 Project 创建与重新打开；GitHub Actions ubuntu x64 的检查测试构建迁移与生产 smoke。收尾验证文档证据与链接、`pnpm check`。未覆盖：冷 pnpm store、dev 信号优雅关闭、多进程与恢复中途崩溃、完整 Pi 会话业务；真实跨机与真实 macOS Worker 端到端仍属 P4。完整边界见 summary |
 | P2 | 已完成 Project 配置、全局 Agent profile 与成员、持久 DM 与分身、消息、创建者授权、稳定 URL 和 Info Hub 两个已有对象视角。实现基线 `28d4fb2`，a～e 的实现与合入范围 `28d4fb2..d8f4e2b`。PR #10 head `cfa5d4d` merge `6836b06`，PR #11 head `fdad1ca` merge `53c9cb7`，PR #12 head `bf7ffa4` merge `2b814eb`，PR #13 head `dc11b8a` merge `da4aebb`，PR #14 head `872e62d` merge `d8f4e2b`。逐项证据见 [p2/summary.md](p2/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0，真实 SQLite、真实 Chromium 七个 URL 的直接进入、刷新、前进后退，真实生产进程 SIGTERM 与重启后身份、消息、三项配置及人设字面量相等，两用户隔离覆盖六页与 17 个 RPC 且 B 正常对照可用。main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/actions/runs/39062616946) completed、success，覆盖检查测试构建迁移与生产 smoke，不含 Chromium。收尾复跑 `bash scripts/verify/l-docs.sh`、`bash scripts/verify.sh` 与 `pnpm check`。真实 Pi、run、宿主仓库、Machine、租约、Task、Group、Public Channel、自动接续、手机、PWA 与并发等未验证项见 summary |
 
-当前下一任务是 P2 的身份、成员与持久对话，先按 P1 的功能模板细化任务与授权边界。P1 未验证项见 [p1/summary.md](p1/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4。
+当前下一任务是 P3，跑通真实 Pi 对话与宿主仓库分析。P2 未验证项见 [p2/summary.md](p2/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4。
