@@ -14,14 +14,14 @@
 
 在 HTTP、server function、CLI 和环境变量边界使用 Zod 解析外部数据。内部代码接收已解析的类型，不重复校验同一份数据。
 
-Project 创建输入使用 `createProjectInput.parse()` 或 `safeParse()`。名称 trim 后长度为 1 到 80，description 可省略，存在时长度不超过 500。完整对象使用 `projectSchema` 校验带 `prj_` UUID 的 ID 与 ISO 日期。
+Project 创建输入使用 `createProjectInput.parse()` 或 `safeParse()`。名称 trim 后长度为 1 到 80，description 可省略，存在时长度不超过 500。完整对象使用 `projectSchema` 校验带 `prj_` UUID 的 ID 与 ISO 日期。完整对象和详情输入的 ID 都复用 `src/contracts/ids.ts` 的 `appIdPattern(ID_PREFIXES.project)`，只接受相同的 UUID v4 格式。
 
 业务结果统一使用 `AppResult<T>`。成功分支为 `{ ok: true, data, requestId }`，失败分支为 `{ ok: false, error, requestId }`。成功必须有 data，失败必须有 error，不允许同时携带两个分支的字段。TypeScript 判别字段是 `ok`。
 
 调用方式如下。
 
 ```ts
-const requestId = newId(ID_PREFIXES.request);
+const { requestId } = getRequestContext();
 const input = createProjectInput.safeParse(raw);
 if (!input.success) {
   return fail(toAppError(input.error, requestId));
@@ -43,7 +43,11 @@ return ok(input.data, requestId);
 
 `BETTER_AUTH_SECRET` 在共享 config 解析层允许缺省，提供时至少 32 字符。自 p1-c-data-auth 接入认证、p1-d-runtime 接入启动边界后，auth 与生产入口都强制要求有效 secret，生产入口在监听前拒绝缺失、短值与示例占位值。原先 auth 未接入时可省略的条件已不适用于生产启动。构建 prerender 跳过 runtime，不要求部署 secret。证据见 [runtime.md 的验证命令与证据](runtime.md#验证命令与证据)。解析失败抛出包含字段名和约束的错误，不输出原始秘密。
 
-`DiagnosticEvent` 必填 `id`、`at`、`level`、`event`、`requestId` 和 `message`。`at` 使用 ISO 字符串。`projectId`、`conversationId`、`instanceId`、`runId` 和 `executionId` 仅在实际关联存在时填写。不能为尚未实现的对象捏造 ID。日志级别只允许 `debug`、`info`、`warn` 和 `error`。
+`DiagnosticEvent` 必填 `id`、`at`、`level`、`event`、`requestId` 和 `message`。`at` 使用 ISO 字符串。`projectId`、`conversationId`、`instanceId`、`runId` 和 `executionId` 仅在实际关联存在时填写。不能为尚未实现的对象捏造 ID。日志级别由 `DIAGNOSTIC_LEVELS` 定义，只允许 `debug`、`info`、`warn` 和 `error`；类型、环境配置和数据库约束共用这份定义。
+
+认证和 Project server functions 的载荷 requestId 必须等于响应头 `x-sprout-request-id` 与该请求的 `http.response` 诊断行 requestId。Project boundary 的依赖加载、会话查询、Zod 校验与领域调用共享一个 try；基础设施失败返回脱敏 `internal`，服务端记录真实原因，并写入 `project.request_failed` error 诊断，data 只含安全错误码。诊断存储本身不可用时只能记录服务端错误。
+
+`queryDiagnostics` 必须接收认证调用者的 `actorId`。Project 诊断仅创建者可见，即使指定其他人的 projectId 或 requestId 也返回空；非 Project 诊断只在指定具体 requestId 时可见。HTTP `/api/diagnostics` 还必须提供 requestId 或 projectId，否则返回 HTTP 400 与 `validation_failed`，不能无过滤列举。
 
 `pnpm test` 已验证环境缺省、冻结配置、端口与 origin 解析、非法字段名和秘密不泄漏。配置解析测试的范围不包含数据库连接或认证；数据库与认证的真实验证另见 [data-auth.md](data-auth.md#验证证据)。
 
@@ -61,7 +65,7 @@ return ok(input.data, requestId);
 8. 页面用 loader 取数，按 `result.ok` 判断。失败时显示错误码、消息与 requestId，字段错误显示在对应输入旁。列表与详情都要能通过 URL 直接刷新。已登录首页 `/` 的 `已登录，<姓名>` 文案与 `登出` 按钮被 `scripts/verify/c-data-auth.sh` 的 Chromium 检查依赖，改动前先核对那个脚本。
 9. 数据库变更交由 schema 维护者生成 migration。事务和数据库约束负责持久不变量。
 10. 行为测试写在 `tests/<feature>.test.ts`，用子进程（`tsx` 加独立 `DATABASE_URL`）导入模块，因为 `src/lib/config.ts` 在导入时读取 env。断言用户可观察的结果（数据库行、载荷、字段错误），不测内部调用。boundary 函数可直接调用，不需要起 HTTP。
-11. 验收脚本 `scripts/verify/<unit>.sh` 启动真实生产进程并用 curl 驱动。server function 的请求体是 Seroval CrossJSON，函数 id 从 `.output/server` 按 `name` 提取。脚本先删 `.output` 再构建：残留的 `.output/public/_shell.html` 会引用上一次构建的资源名，页面白屏。
+11. 验收脚本 `scripts/verify/<unit>.sh` 启动真实生产进程并用 curl 驱动。server function 的请求体是 Seroval CrossJSON，函数 id 从 `.output/server` 按 `name` 提取。公开的 `pnpm build` 先删 `.output` 再构建，防止残留 `.output/public/_shell.html` 引用上一次构建的资源名。
 12. 浏览器验收用 Playwright 加真实 Chromium，每步打印 PASS/FAIL，截图写入 `docs/p1/evidence/`。
 13. 运行 `pnpm fmt`、`pnpm check`、`pnpm test` 与 `bash scripts/verify.sh`。生成文件不手动改格式。
 

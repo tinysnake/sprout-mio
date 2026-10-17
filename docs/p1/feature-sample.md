@@ -26,18 +26,20 @@ flowchart LR
 | 边界     | `src/server/functions/project.ts`            | 会话、zod、AppResult 转换，导出 TanStack server function 与可直接测试的 boundary 函数 |
 | 业务服务 | `src/domain/project.ts`                      | `createProject`、`listProjects`、`getProject`，事务与领域错误                         |
 | 数据库   | c 的 `src/db`                                | `project`、`diagnostic_event` 表                                                      |
-| 诊断     | d 的 `src/server/diagnostics.ts`             | 按 `requestId`/`projectId` 查询事件                                                   |
+| 诊断     | d 的 `src/server/diagnostics.ts`             | 按调用者归属及 `requestId`/`projectId` 查询事件                                       |
 
 关键数据形状。
 
 - `ProjectContext = { userId, requestId }`。业务服务只接收已解析的输入和调用者身份，不接触 HTTP、session 或 header。
 - `Project` 由 `projectSchema` 推导，`createdAt`/`updatedAt` 是 ISO 字符串，跨边界前在 `toProject` 里从秒级时间戳转换。
 - `ProjectResult<T> = AppResult<T> & { fieldErrors?: Record<string, string> }`。这是本 unit 对 `src/contracts/project.ts` 的向后兼容扩展：`ok` 判别字段和两个分支不变，只在失败时多一个可选的字段错误映射，供表单显示在输入旁。
-- `ProjectError` 是业务服务的失败类型，当前只有 `not_found`。其余错误由边界用 `toAppError` 映射为 `internal` 并脱敏。
+- `ProjectError` 是业务服务的失败类型，当前只有 `not_found`。其余异常由边界映射为 `internal` 并脱敏，服务端记录真实原因与 `project.request_failed` 诊断。
 
-`createProject` 的顺序固定为：写 `project` 行，调用测试注入 hook，写 `diagnostic_event`（`event: 'project.created'`，带同一 `requestId` 与 `projectId`）。三步在同一 `sqlite.transaction` 内，任一步抛错整体回滚。业务服务直接写诊断表而不是调用 `recordDiagnostic`，因为 `recordDiagnostic` 会吞掉写入失败并另开连接，无法参与本次事务。
+`createProject` 的顺序固定为：写 `project` 行，调用测试注入 hook，写 `diagnostic_event`（`event: 'project.created'`，带同一 `requestId` 与 `projectId`）。三步在同一 `sqlite.transaction` 内，任一步抛错整体回滚。业务服务直接写诊断表而不是调用 `recordDiagnostic`，因为 `recordDiagnostic` 使用共享 db，却会捕获写入失败并返回 false；直接写表才能把失败传播给本次事务并触发回滚。
 
-边界顺序固定为：`requireSession` → `createProjectInput.safeParse` → 事务。失败一律 HTTP 200，错误在载荷里，响应头是 `x-sprout-request-id`。
+边界顺序固定为：`requireSession` → `createProjectInput.safeParse` → 事务。依赖只加载一次，加载与这三个步骤共享一个 try，session 基础设施异常也转换为当前 requestId 的 internal 载荷。失败一律 HTTP 200，错误在载荷里，响应头是 `x-sprout-request-id`。认证 server functions 现也复用同一个请求上下文。
+
+诊断查询要求 actorId；Project 行只能由创建者读取，非 Project 行必须按具体 requestId 查询。HTTP 查询必须提供 requestId 或 projectId。下列历史输出保留原观测值，当前补充验证见 [重构验收报告](refine-report.md)。
 
 ## 真实命令与输出摘要
 
@@ -109,7 +111,7 @@ browser checks: 12/12 passed
 - 秒级时间戳：`project` 表按冻结契约用 `unixepoch()` 整数，重建的 `createdAt` 精确到秒，创建响应的 ISO 字符串已按秒取整，不做毫秒断言。
 - 并发创建、并发事务冲突与高负载下的诊断写入未测。
 - CI 上没有 Chromium：`.github/workflows` 不由本 unit 修改，浏览器验收在本地与 coordinator 机器上执行。
-- `pnpm build` 在残留 `.output` 的应用内会留下指向旧资源名的 `.output/public/_shell.html`，导致页面白屏。本 unit 的 verify 脚本先删 `.output` 再构建。这是本 unit 范围外的构建缺陷，未修复，只记录。
+- 历史上残留 `.output` 会留下旧资源引用；现已由公开 `pnpm build` 的前置清理修复，连续构建与资源 hash 变化的证据见 [重构验收报告](refine-report.md)。静态托管与 CDN rewrite 仍未验证。
 - `scripts/browser/project-flow.mjs` 依赖 server function 的固定函数 id 之外的部分不依赖内部协议；`scripts/verify/e-project.sh` 用 curl 直接调用 `/_serverFn/<id>`，请求体按 Seroval CrossJSON 手工编码，从 `.output/server` 提取 id。升级 TanStack Start 后这两处需要重新核对。
 
 ## 偏离 brief 之处
