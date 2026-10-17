@@ -27,6 +27,8 @@ type Evidence = {
   invalidFields: string[];
   unauthorized: ErrorPayload;
   missing: ErrorPayload;
+  infrastructure: ErrorPayload[];
+  internalEvents: { level: string; event: string; request_id: string; data: string }[];
 };
 
 let evidence: Evidence;
@@ -75,7 +77,15 @@ beforeAll(() => {
       const invalid = await boundary.createProjectBoundary({ name: "   ", description: "a".repeat(501) }, headers, "req_d");
       const unauthorized = await boundary.createProjectBoundary({ name: "无会话" }, new Headers(), "req_e");
       const missing = await boundary.getProjectBoundary({ projectId: "prj_00000000-0000-4000-8000-000000000000" }, headers, "req_f");
+      const brokenHeaders = new Proxy(headers, { get() { throw new Error("session infrastructure secret"); } });
+      const infrastructure = await Promise.all([
+        boundary.createProjectBoundary({ name: "不可创建" }, brokenHeaders, "req_x"),
+        boundary.listProjectsBoundary(brokenHeaders, "req_x"),
+        boundary.getProjectBoundary({ projectId: created.data.id }, brokenHeaders, "req_x"),
+      ]);
+      const internalEvents = sqlite.prepare("SELECT level, event, request_id, data FROM diagnostic_event WHERE event = 'project.request_failed'").all();
       console.log("EVIDENCE " + JSON.stringify({
+        infrastructure, internalEvents,
         created, createdRows, listed, rolledBack,
         rejectedFields: rejected.success ? [] : [...new Set(rejected.error.issues.map((issue) => issue.path.join(".")))],
         invalidFields: invalid.ok ? [] : Object.keys(invalid.fieldErrors ?? {}),
@@ -143,6 +153,26 @@ describe("Project 创建与查询", () => {
       error: { code: "unauthorized", requestId: "req_e" },
       requestId: "req_e",
     });
+  });
+
+  it("session 基础设施失败返回脱敏 internal 载荷并记录当前请求诊断", () => {
+    expect(evidence.infrastructure).toHaveLength(3);
+    for (const result of evidence.infrastructure) {
+      expect(result).toEqual({
+        ok: false,
+        error: { code: "internal", message: "内部错误", requestId: "req_x" },
+        requestId: "req_x",
+      });
+    }
+    expect(evidence.internalEvents).toHaveLength(3);
+    for (const row of evidence.internalEvents) {
+      expect(row).toEqual({
+        level: "error",
+        event: "project.request_failed",
+        request_id: "req_x",
+        data: JSON.stringify({ code: "internal" }),
+      });
+    }
   });
 
   it("不存在的 id 返回 not_found 载荷", () => {
