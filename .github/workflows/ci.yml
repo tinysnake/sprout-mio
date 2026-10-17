@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check format, lint and types
+        run: pnpm check
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Database migration
+        run: |
+          if [ -d drizzle ]; then
+            pnpm db:migrate
+          else
+            echo "SKIP pnpm db:migrate: drizzle/ does not exist yet, the schema unit owns migrations"
+          fi
+
+      - name: Production smoke
+        env:
+          PORT: 3111
+          APP_ORIGIN: http://localhost:3111
+        run: |
+          set -euo pipefail
+          export no_proxy=localhost,127.0.0.1,::1
+          export NO_PROXY="$no_proxy"
+          setsid pnpm start > production.log 2>&1 &
+          server=$!
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl --noproxy '*' -fsS -o /dev/null "http://localhost:3111/"; then
+              ready=1
+              break
+            fi
+            kill -0 "$server" 2>/dev/null || break
+            sleep 1
+          done
+          if [ "$ready" != 1 ]; then
+            cat production.log
+            exit 1
+          fi
+          for path in / /projects/does-not-exist /api/ping; do
+            code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' "http://localhost:3111$path")"
+            echo "GET $path -> $code"
+            [ "$code" = 200 ] || exit 1
+          done
+          curl --noproxy '*' -sS "http://localhost:3111/api/ping"
+          echo
+          kill -TERM "-$server" 2>/dev/null || true
+          for _ in $(seq 1 50); do
+            kill -0 "$server" 2>/dev/null || break
+            sleep 0.2
+          done
+          if kill -0 "$server" 2>/dev/null; then
+            echo "production process group survived SIGTERM"
+            exit 1
+          fi
+          echo "production process group stopped on SIGTERM"
+
+      - name: Worker artifact
+        run: |
+          set -euo pipefail
+          pnpm worker:build
+          node dist/worker/main.js --version
+
+      - name: Extension artifact
+        run: pnpm extension:build
