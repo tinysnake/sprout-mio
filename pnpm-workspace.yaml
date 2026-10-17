@@ -1,0 +1,32 @@
+allowBuilds:
+  esbuild: true
+  lightningcss: true
+  better-sqlite3: true
+onlyBuiltDependencies:
+  - esbuild
+  - lightningcss
+  - better-sqlite3
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.3.0
+  vite-plus: 1.3.0
+overrides:
+  vite@*: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"
+minimumReleaseAgeExclude:
+  - "@voidzero-dev/vite-plus-core@1.3.0"
+  - "@voidzero-dev/vite-plus-darwin-arm64@1.3.0"
+  - "@voidzero-dev/vite-plus-darwin-x64@1.3.0"
+  - "@voidzero-dev/vite-plus-linux-arm64-gnu@1.3.0"
+  - "@voidzero-dev/vite-plus-linux-arm64-musl@1.3.0"
+  - "@voidzero-dev/vite-plus-linux-x64-gnu@1.3.0"
+  - "@voidzero-dev/vite-plus-linux-x64-musl@1.3.0"
+  - "@voidzero-dev/vite-plus-win32-arm64-msvc@1.3.0"
+  - "@voidzero-dev/vite-plus-win32-x64-msvc@1.3.0"
+  - baseline-browser-mapping@2.11.29
+  - electron-to-chromium@1.5.458
+  - set-cookie-parser@3.1.4
+  - vite-plus@1.3.0
