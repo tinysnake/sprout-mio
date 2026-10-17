@@ -34,7 +34,10 @@ export default defineConfig({
     ? []
     : lazyPlugins(() => [
         devtools(),
-        nitro({ rollupConfig: { external: [/^@sentry\//] } }),
+        nitro({
+          plugins: ["./src/server/server-entry.ts"],
+          rollupConfig: { external: [/^@sentry\//] },
+        }),
         tailwindcss(),
         tanstackStart({ spa: { enabled: true } }),
         viteReact(),
