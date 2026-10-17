@@ -143,8 +143,6 @@ try {
   rmSync(join(directory, 'cookies.txt'), { force: true })
   const buildEnvironment = { ...environment }
   delete buildEnvironment.BETTER_AUTH_SECRET
-  // 干净构建：残留的 .output 会留下指向旧资源名的 SPA shell。
-  rmSync('.output', { recursive: true, force: true })
   await command('pnpm', ['build'], 'build.log', buildEnvironment)
   const shell = readFileSync('.output/public/_shell.html', 'utf8')
   const clientAssets = readdirSync('.output/public/assets')
