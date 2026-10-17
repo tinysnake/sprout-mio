@@ -21,6 +21,8 @@
 | 公开 build 保留旧 shell      | A#6      | C5   |
 | `pnpm verify` 删除本地 data/ | A#1      | C6   |
 
+提交后另跑一次 comment audit（Comment Sicko，report-only）。接受 3 条：`src/server/functions/project.ts` 的流程旁白与初始化顺序说明、`src/server/diagnostics.ts` 的可见性策略说明；它们的约束已由新增回归测试结构化编码。保留 `serverDeps` 的动态 import 说明（bundler 把 `better-sqlite3` 打进客户端会白屏，属外部平台约束）。两个「提取具名谓词 / 提取依赖加载边界」的 MUST KILL 因单调用点、测试已覆盖而判为 Consider，本 PR 不做。
+
 ## 未纳入本次范围
 
 以下是审查提出、本次未修的真实问题，建议各自独立 PR：

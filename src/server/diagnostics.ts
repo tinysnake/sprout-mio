@@ -49,7 +49,6 @@ export function queryDiagnostics(filter: DiagnosticFilter): DiagnosticEvent[] {
               .where(eq(project.createdBy, filter.actorId)),
           ),
         ),
-        // 非 Project 行只可按具体 requestId 查询，不能通过省略过滤列举。
         filter.requestId === undefined ? isNotNull(diagnosticEvent.projectId) : undefined,
         filter.requestId === undefined
           ? undefined

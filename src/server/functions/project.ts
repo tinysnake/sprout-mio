@@ -37,7 +37,6 @@ function failure(
   return fail({ code: "internal", message: "内部错误", requestId });
 }
 
-/** 依赖加载、会话、校验与领域调用共享异常边界；失败转换不再加载依赖。 */
 async function projectBoundary<T>(
   headers: Headers,
   requestId: string,
@@ -46,7 +45,6 @@ async function projectBoundary<T>(
   let deps: ServerDeps | undefined;
   let recordDiagnostic: DiagnosticRecorder | undefined;
   try {
-    // 先加载诊断，后续 session/domain 模块加载失败仍可记录原因。
     ({ recordDiagnostic } = await import("../diagnostics"));
     deps = await serverDeps();
     const session = await deps.requireSession(headers, requestId);
