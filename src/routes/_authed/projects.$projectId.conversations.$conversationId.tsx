@@ -1,4 +1,5 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
+import { ConversationInfoPanel } from "../../components/info-hub/conversation-info-panel";
 import { ConversationIdentity } from "../../components/conversation/conversation-identity";
 import { MessageComposer } from "../../components/conversation/message-composer";
 import { MessageList } from "../../components/conversation/message-list";
@@ -11,7 +12,9 @@ import type {
   ConversationResult,
   Message,
 } from "../../contracts/conversation";
+import type { ConversationInfoView } from "../../contracts/info-hub";
 import type { AppError } from "../../contracts/result";
+import { getConversationInfoFn } from "../../server/functions/info-hub";
 import { getAgentProfileFn } from "../../server/functions/agent";
 import {
   getConversationFn,
@@ -29,6 +32,7 @@ type DetailLoader =
       instances: ConversationResult<AgentInstance[]>;
       messages: ConversationResult<Message[]>;
       profile: AgentResult<AgentProfile> | null;
+      info: ConversationResult<ConversationInfoView>;
     };
 
 /** Project 上下文从 URL 推导：conversation 不属于 URL 中的 projectId 时按 not_found 呈现。 */
@@ -43,10 +47,11 @@ export const Route = createFileRoute("/_authed/projects/$projectId/conversations
         ok: false,
         error: { code: "not_found", message: "对象不存在", requestId: conversation.requestId },
       };
-    const [members, instances, messages] = await Promise.all([
+    const [members, instances, messages, info] = await Promise.all([
       listConversationMembersFn({ data: { conversationId: params.conversationId } }),
       listInstancesForConversationFn({ data: { conversationId: params.conversationId } }),
       listMessagesFn({ data: { conversationId: params.conversationId } }),
+      getConversationInfoFn({ data: { conversationId: params.conversationId } }),
     ]);
     const agentProfileId =
       (instances.ok ? instances.data[0]?.agentProfileId : undefined) ??
@@ -54,7 +59,15 @@ export const Route = createFileRoute("/_authed/projects/$projectId/conversations
         ? members.data.find((member) => member.memberKind === "agent")?.memberId
         : undefined);
     const profile = agentProfileId ? await getAgentProfileFn({ data: { agentProfileId } }) : null;
-    return { ok: true, conversation: conversation.data, members, instances, messages, profile };
+    return {
+      ok: true,
+      conversation: conversation.data,
+      members,
+      instances,
+      messages,
+      profile,
+      info,
+    };
   },
   component: ProjectConversationDetailPage,
 });
@@ -82,7 +95,7 @@ function ProjectConversationDetailPage() {
       </section>
     );
 
-  const { conversation, members, instances, messages, profile } = loader;
+  const { conversation, members, instances, messages, profile, info } = loader;
 
   return (
     <section className="space-y-6">
@@ -98,6 +111,11 @@ function ProjectConversationDetailPage() {
           instances={instances.data}
           profile={profile}
         />
+      )}
+      {!info.ok ? (
+        <ResultError error={info.error} testId="info-hub-conversation-error" />
+      ) : (
+        <ConversationInfoPanel view={info.data} />
       )}
       {!messages.ok ? (
         <ResultError error={messages.error} testId="messages-load-error" />

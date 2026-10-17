@@ -1,15 +1,24 @@
 import { Link, Outlet, createFileRoute } from "@tanstack/react-router";
+import { ProjectAgentsPanel } from "../../components/info-hub/project-agents-panel";
+import { UnavailableNotice } from "../../components/info-hub/unavailable-notice";
 import { ResultError } from "../../components/project/result-error";
+import { getProjectInfoHubFn } from "../../server/functions/info-hub";
 import { getProjectFn } from "../../server/functions/project";
 
 export const Route = createFileRoute("/_authed/projects/$projectId")({
-  loader: ({ params }) => getProjectFn({ data: { projectId: params.projectId } }),
+  loader: async ({ params }) => {
+    const [project, infoHub] = await Promise.all([
+      getProjectFn({ data: { projectId: params.projectId } }),
+      getProjectInfoHubFn({ data: { projectId: params.projectId } }),
+    ]);
+    return { project, infoHub };
+  },
   component: ProjectHubPage,
 });
 
 /** hub 与子页共用布局：`/projects/<id>` 本身可直接刷新，子页 URL 在其下继续定位。 */
 function ProjectHubPage() {
-  const result = Route.useLoaderData();
+  const { project: result, infoHub } = Route.useLoaderData();
 
   return (
     <section className="space-y-6">
@@ -66,6 +75,18 @@ function ProjectHubPage() {
               Agent 成员
             </Link>
           </nav>
+          {infoHub.ok ? (
+            <>
+              <ProjectAgentsPanel projectId={result.data.id} view={infoHub.data.agents} />
+              <UnavailableNotice
+                testId="info-hub-machines-notice"
+                title="Project 的 Machine 与租约"
+                reason={infoHub.data.machines.reason}
+              />
+            </>
+          ) : (
+            <ResultError error={infoHub.error} testId="info-hub-error" />
+          )}
           <Outlet />
         </>
       )}
