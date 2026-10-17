@@ -1,5 +1,7 @@
 # 应用骨架参考
 
+本文保留骨架建立时的目录与验收记录。数据库与认证的最终状态见 [data-auth.md](data-auth.md#验证证据)，runtime 的最终状态见 [runtime.md](runtime.md#验证命令与证据)，Project 页面见 [feature-sample.md](feature-sample.md#真实命令与输出摘要)。下文的历史测试数量与探针 `unimplemented` 值只代表当时的验收，当前后台就绪状态以 `/api/health` 为准。
+
 ## 目录职责
 
 仓库采用单 package。下表列出应用入口及其归属。
@@ -40,7 +42,7 @@
 
 生产构建命令是 `pnpm build`。实际入口为 `.output/server/index.mjs`，静态资源位于 `.output/public/assets/`，SPA shell 位于 `.output/public/_shell.html`。
 
-生产启动命令是 `pnpm start`。对应的 Node 命令如下。
+生产启动命令是 `pnpm start`。自 p1-c-data-auth 接入认证、p1-d-runtime 接入启动边界后，必须提供有效 `BETTER_AUTH_SECRET`。共享 config 解析仍允许缺省，但生产入口在监听前强制要求至少 32 字符且不是示例占位值。构建的 prerender 跳过 runtime，不要求部署 secret。启动失败与构建证据见 [runtime.md](runtime.md#验证命令与证据)。对应的 Node 命令如下。
 
 ```sh
 node --env-file-if-exists=.env.local .output/server/index.mjs
@@ -59,7 +61,7 @@ node dist/worker/main.js --help
 
 Pi extension 构建命令是 `pnpm extension:build`，产物为 `dist/extension/main.js`。注册的工具是 `sprout_status`，命令是 `/sprout-status`。两个入口返回同一版本与边界状态。`src/extension/types.ts` 是 Pi `1.3.0` 实际使用的结构化子集，升级 Pi 时按该版本的 `ToolDefinition`、`registerCommand` 与 `ui.notify` 重新复核，不依赖托管安装的绝对路径类型。
 
-数据库 schema、auth、后台 runtime、Worker 连接与 Pi 会话均尚未接入。Worker 连接属于 P4，Pi 会话属于 P3。`db:generate`、`db:migrate` 与 `setup` 已固定脚本名，但在 schema 和 migration 接入前不具备数据库初始化能力，不能作为已完成的数据库验证。
+骨架建立时尚未接入数据库 schema、auth 与后台 runtime。数据库与认证已由 p1-c-data-auth 接入，启动前校验、迁移与 runtime 已由 p1-d-runtime 接入，原先 auth 未接入时可省略 secret 的条件已不适用于生产启动。`db:generate`、`db:migrate` 与 `setup` 现有真实迁移证据见 [data-auth.md](data-auth.md#连接与迁移入口)。Worker 连接与 Pi 会话仍未实现，分别属于 P4 与 P3。
 
 ## 验证命令与证据
 
