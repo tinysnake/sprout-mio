@@ -48,6 +48,15 @@ function ProjectHubPage() {
               配置
             </Link>
             <Link
+              to="/projects/$projectId/conversations"
+              params={{ projectId: result.data.id }}
+              data-testid="tab-conversations"
+              activeProps={{ className: "underline" }}
+              className="pb-2"
+            >
+              对话
+            </Link>
+            <Link
               to="/projects/$projectId/agents"
               params={{ projectId: result.data.id }}
               data-testid="tab-agents"
