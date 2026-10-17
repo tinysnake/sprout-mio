@@ -167,6 +167,10 @@ try {
   })
   assert.equal(signup.status, 200, signup.text)
   pass('curl 注册并保存会话 cookie（带 Origin）', { status: signup.status, cookies: 'cookies.txt' })
+  const unfiltered = await curl(`${base}/api/diagnostics`, 'diagnostics-unfiltered', { cookie: true })
+  assert.equal(unfiltered.status, 400, unfiltered.text)
+  assert.equal(unfiltered.body.error.code, 'validation_failed')
+  pass('diagnostics rejects unfiltered listing', { status: unfiltered.status, code: unfiltered.body.error.code })
 
   const createArgs = {
     cookie: true,

@@ -206,7 +206,7 @@ try {
   assert.match(events.body.data[0].at, /^\d{4}-.*Z$/)
   const projectEvents = await curl(`${base}/api/diagnostics?projectId=prj_missing`, 'diagnostics-project', { cookie: true })
   assert.deepEqual(projectEvents.body.data, [])
-  const invalidLimit = await curl(`${base}/api/diagnostics?limit=201`, 'diagnostics-invalid-limit', { cookie: true })
+  const invalidLimit = await curl(`${base}/api/diagnostics?requestId=${first.body.requestId}&limit=201`, 'diagnostics-invalid-limit', { cookie: true })
   assert.equal(invalidLimit.status, 400)
   assert.equal(invalidLimit.body.error.code, 'validation_failed')
   pass('authenticated diagnostics filters and validation', { status: events.status, count: events.body.data.length, invalidLimit: invalidLimit.status })
@@ -233,7 +233,7 @@ try {
   assert.equal(boot(resumed.body.bootId).phase, 'stopped')
   pass('recovery and direct production exit code', { abandoned: boot('boot_abandoned'), recoveryEvents: interruptions.length, current: boot(resumed.body.bootId), code: 0 })
   await command('pnpm', ['exec', 'vp', 'test', 'run', 'tests/runtime.test.ts', 'tests/diagnostics.test.ts'], 'behavior-tests.log')
-  pass('health 503 before ready and 200 after ready', 'pnpm exec vp test run tests/runtime.test.ts tests/diagnostics.test.ts; 7 tests; behavior-tests.log')
+  pass('health 503 before ready and 200 after ready', 'pnpm exec vp test run tests/runtime.test.ts tests/diagnostics.test.ts; 8 tests; behavior-tests.log')
   const devBase = `http://localhost:${devPort}`
   const dev = launch('pnpm', ['exec', 'vp', 'dev', '--port', String(devPort)], 'dev.log', { ...environment, APP_ORIGIN: devBase, PORT: String(devPort), NITRO_PORT: String(devPort), NODE_ENV: 'development' })
   const devFirst = await health(dev, devBase, 'dev-health-before')

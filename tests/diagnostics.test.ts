@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { DiagnosticEvent } from "../src/contracts/diagnostics";
@@ -12,6 +13,10 @@ type Evidence = {
   failed: boolean;
   requestIds: string[];
   spoofed: string;
+  visible: DiagnosticEvent[];
+  foreignProject: DiagnosticEvent[];
+  foreignRequest: DiagnosticEvent[];
+  projectIds: string[];
 };
 let evidence: Evidence;
 beforeAll(() => {
@@ -29,12 +34,23 @@ beforeAll(() => {
       const { migrateDatabase } = await import("./src/db/migrate.ts");
       migrateDatabase();
       const { recordDiagnostic, queryDiagnostics } = await import("./src/server/diagnostics.ts");
+      const { auth } = await import("./src/lib/auth.ts");
+      const { createProject } = await import("./src/domain/project.ts");
+      const users = await Promise.all(["a", "b"].map((name) => auth.api.signUpEmail({
+        body: { email: name + "@example.test", password: "diagnostics-test-password", name },
+      })));
+      const actorId = users[0].user.id;
       const written = recordDiagnostic({ level: "info", event: "test.event", requestId: "req_first", message: "可查询的诊断", data: { answer: 42 } });
       recordDiagnostic({ level: "info", event: "test.other", requestId: "req_second", message: "另一个请求" });
-      const rows = queryDiagnostics({ requestId: "req_first", limit: 1 });
-      const latest = queryDiagnostics({ limit: 1 });
-      const other = queryDiagnostics({ projectId: "prj_missing" });
+      const rows = queryDiagnostics({ actorId, requestId: "req_first", limit: 1 });
+      const latest = queryDiagnostics({ actorId, requestId: "req_second", limit: 1 });
+      const other = queryDiagnostics({ actorId, projectId: "prj_missing" });
       const failed = recordDiagnostic({ level: "error", event: "test.foreign-key", requestId: "req_invalid", projectId: "prj_missing", message: "诊断失败不能中断请求" });
+      const projects = users.map((user, index) => createProject({ name: "Project " + index }, { userId: user.user.id, requestId: "req_project_" + index }));
+      const visible = queryDiagnostics({ actorId });
+      const foreignProject = queryDiagnostics({ actorId, projectId: projects[1].id });
+      const foreignRequest = queryDiagnostics({ actorId, requestId: "req_project_1" });
+      console.log("ISOLATION " + JSON.stringify({ visible, foreignProject, foreignRequest, projectIds: projects.map((p) => p.id) }));
       const { initializeRequestContext, getRequestContext } = await import("./src/server/request-context.ts");
       const first = new Request("http://localhost/api/health", { headers: { "x-sprout-request-id": "req_spoofed" } });
       const second = new Request("http://localhost/api/health");
@@ -49,6 +65,7 @@ beforeAll(() => {
         env: {
           ...process.env,
           DATABASE_URL: join(directory, "diagnostics.sqlite"),
+          BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
           NODE_ENV: "test",
         },
         encoding: "utf8",
@@ -56,12 +73,20 @@ beforeAll(() => {
         stdio: ["pipe", "pipe", "pipe"],
       },
     );
-    evidence = JSON.parse(
-      output
-        .split("\n")
-        .find((line) => line.startsWith("EVIDENCE "))!
-        .slice(9),
-    );
+    evidence = {
+      ...JSON.parse(
+        output
+          .split("\n")
+          .find((line) => line.startsWith("EVIDENCE "))!
+          .slice(9),
+      ),
+      ...JSON.parse(
+        output
+          .split("\n")
+          .find((line) => line.startsWith("ISOLATION "))!
+          .slice(10),
+      ),
+    };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -81,6 +106,14 @@ describe("诊断记录与请求关联", () => {
     expect(new Date(evidence.rows[0].at).toISOString()).toBe(evidence.rows[0].at);
     expect(evidence.other).toEqual([]);
     expect(evidence.latest[0].event).toBe("test.other");
+  });
+
+  it("按创建者隔离 Project 诊断，无过滤不泄漏其他用户或非 Project 行", () => {
+    expect(evidence.visible.map((row) => ({ event: row.event, projectId: row.projectId }))).toEqual(
+      [{ event: "project.created", projectId: evidence.projectIds[0] }],
+    );
+    expect(evidence.foreignProject).toEqual([]);
+    expect(evidence.foreignRequest).toEqual([]);
   });
 
   it("诊断外键写入失败只返回 false，不抛出业务异常", () => {
