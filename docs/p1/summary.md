@@ -15,7 +15,7 @@ P1 已建立可运行的应用骨架与 Project 标准功能样例。Human 可�
 | e，Project，`9631ad2`，PR #5    | 创建、列表、详情、重新打开、字段错误、事务回滚与三处 requestId 一致成立       | [真实操作](feature-sample.md#真实命令与输出摘要)、[事务与错误](feature-sample.md#事务与错误路径证据)、[截图](feature-sample.md#截图) | `bash scripts/verify/e-project.sh`            | 多用户端到端隔离、并发创建与高负载未验证。构建清理已修复                                   |
 | f，文档收尾                     | 证据映射、复选框、完成记录与架构说明对齐，secret 约束漂移已修正               | [清单对照](#p1-清单证据对照)、[收尾验证](#收尾验证与证据约定)                                                                        | `bash scripts/verify/f-docs.sh`，`pnpm check` | 文档验收不替代 a～e 的运行验收；P1 重构的独立多模型审查见 [重构验收报告](refine-report.md) |
 
-各文档中的测试数量和旧探针值是对应 unit 当时的观测，不是最新 HEAD 的全套结果。最新集成行为以 d、e 的证据与复跑脚本为准。b 的「尚无 drizzle」与 c 的「启动 GAP」是历史状态，不能当作当前结论。
+各文档中的测试数量和旧探针值是对应 unit 当时的观测，不是最新 HEAD 的全套结果。runtime 在途 HTTP 排空修复与补充验收见 [排空报告](graceful-drain-report.md)，复跑 `bash scripts/verify/drain-http.sh`；d 原有空闲 SIGTERM 顺序与 10 秒退出断言保留。最新集成行为以 d、e 和排空探针的证据与复跑脚本为准。b 的「尚无 drizzle」与 c 的「启动 GAP」是历史状态，不能当作当前结论。
 
 ## P1 清单证据对照
 
@@ -62,7 +62,7 @@ P1 七项均有证据，没有保持未勾的 P1 条目。P2 至 P8 与 R1 的�
 - Pi 状态工具在真实 Pi 中已调用，持久会话业务与宿主仓库分析未接入，属于 P3。SDK 内置扩展加载与多分身资源占用未验证。
 - 冷 pnpm store、Actions 缓存失效、macOS 与 ubuntu 系统差异、runner 升级未系统验证。action Node 20 弃用提示仍保留。
 - 多进程 SQLite、WAL checkpoint、写饥饿、备份恢复、session 过期刷新与额外密码策略未验证。邮件验证、密码重置等能力未实现。数据库 HMR 连接数量未独立观测，不能把 runtime 单例实验推广到所有连接。
-- dev 信号优雅关闭、WebSocket、完整 worker 重启、多进程 runtime 和恢复事务中途崩溃未验证。生产进程 ready 后监听，没有观测到监听期间的 503 到 200 窗口；不可用与就绪状态来自行为测试。
+- dev 信号优雅关闭、WebSocket、完整 worker 重启、多进程 runtime 和恢复事务中途崩溃未验证。生产 HTTP 排空的普通 SIGTERM、CI 下 SIGINT、503 不写库、慢上传完成后 stopped/exit 0 与 8 秒超时 exit 1 已有 [补充证据](graceful-drain-report.md)；首次 HTTP 之前无法取得 server 的半连接不在应用保证中，Node socket.server 接线随依赖升级需复核。慢上传证明请求跨信号完成解析、scrypt 与写库，不证明信号恰落在哈希计算内部。生产进程 ready 后监听，没有观测到监听期间的 503 到 200 窗口；不可用与就绪状态来自行为测试。
 - Project 的第二用户端到端隔离、并发创建与高负载诊断未验证。createdBy 过滤是现有实现，不是后续授权模型。时间戳精确到秒。分身、run、execution 的真实诊断关联未验证。
 - 静态托管与 CDN rewrite 未验证。公开 build 的旧 shell 缺陷已修复，资源 hash 变化的连续构建验收见 [重构验收报告](refine-report.md)。
 - Chromium 在本机验收，CI 没有浏览器流程。curl 的 server function ID 提取与 Seroval CrossJSON 编码依赖当前 Start 产物结构，升级后需要重新核对。

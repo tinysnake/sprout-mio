@@ -230,14 +230,23 @@ export function shutdownRuntime(reason: string): Promise<void> {
   return state.shutdown;
 }
 
-async function stopRuntime(reason: string) {
+export async function beginRuntimeShutdown(reason: string): Promise<void> {
   await state.startup;
+  if (state.phase === "stopping" || state.phase === "stopped") return;
   transition("stopping");
+  state.connection?.sqlite
+    .prepare("UPDATE runtime_boot SET phase = 'stopping' WHERE id = ?")
+    .run(state.bootId);
+  console.log("[runtime] shutdown", JSON.stringify({ reason, bootId: state.bootId }));
+}
+
+export function failRuntimeShutdown(error: unknown): void {
+  failPhase(error);
+}
+
+async function stopRuntime(reason: string) {
   try {
-    state.connection?.sqlite
-      .prepare("UPDATE runtime_boot SET phase = 'stopping' WHERE id = ?")
-      .run(state.bootId);
-    console.log("[runtime] shutdown", JSON.stringify({ reason, bootId: state.bootId }));
+    await beginRuntimeShutdown(reason);
     await state.managed?.dispose();
     if (state.bootId && state.databaseUrl) {
       const { openDatabase } = await import("../db/connection");
