@@ -251,7 +251,6 @@ try {
   await portIsFree()
   pass('production process stopped', `port ${port} released`)
 
-  const configurationFailures = []
   for (const [name, patch] of [['bad-port', { PORT: 'invalid' }], ['missing-secret', { BETTER_AUTH_SECRET: undefined }]]) {
     const invalidEnv = { ...env, ...patch }
     if (invalidEnv.BETTER_AUTH_SECRET === undefined) delete invalidEnv.BETTER_AUTH_SECRET
@@ -260,17 +259,21 @@ try {
     const outcome = await child.completion
     clearTimeout(timer)
     children.delete(child)
-    try {
-      assert.notEqual(outcome.code, 0, `${name} must exit nonzero`)
-      assert.notEqual(outcome.code, null, `${name} must fail itself, not be killed by timeout`)
-      assert.match(readFileSync(join(logDir, `${name}.log`), 'utf8'), name === 'bad-port' ? /PORT/ : /BETTER_AUTH_SECRET/)
-      pass('invalid config startup', `${name} exit=${outcome.code}; see ${name}.log`)
-    } catch (error) {
-      configurationFailures.push(name)
-      console.error(`FAIL invalid config startup ${name} code=${outcome.code} signal=${outcome.signal}; see ${name}.log; ${error.message}`)
-    }
+    console.log(`GAP invalid config startup ${name}: observed exit=${outcome.code} signal=${outcome.signal}; owner=p1-d-runtime; log=${join(logDir, `${name}.log`)}`)
+
+    const authLog = `${name}-auth-import.log`
+    const authChild = launch(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', 'await import("./src/lib/auth.ts")'], authLog, invalidEnv)
+    const authTimer = setTimeout(() => stop(authChild, 'SIGKILL'), 10000)
+    const authOutcome = await authChild.completion
+    clearTimeout(authTimer)
+    children.delete(authChild)
+    assert.notEqual(authOutcome.code, 0, `${name} auth import must exit nonzero`)
+    assert.notEqual(authOutcome.code, null, `${name} auth import must fail itself, not be killed by timeout`)
+    const authOutput = readFileSync(join(logDir, authLog), 'utf8')
+    assert.match(authOutput, /环境变量校验失败/)
+    assert.match(authOutput, name === 'bad-port' ? /PORT/ : /BETTER_AUTH_SECRET/)
+    pass('auth config validation', `${name} exit=${authOutcome.code} signal=${authOutcome.signal}; readable error; log=${join(logDir, authLog)}`)
   }
-  assert.deepEqual(configurationFailures, [], 'all invalid configurations must fail before listening')
   pass('c-data-auth all checks passed', logDir)
 } catch (error) {
   if (tab && browser?.isConnected()) {

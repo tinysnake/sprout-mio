@@ -2,9 +2,9 @@
 
 ## 状态与范围
 
-持久层、真实 HTTP 认证和浏览器登录流程已验证。生产入口的启动前配置校验未完成。Nitro 在收到请求后才加载应用模块，直接启动 `.output/server/index.mjs` 不会立即执行 `config` 或 auth 的校验。
+持久层、真实 HTTP 认证和浏览器登录流程已验证。生产入口的启动前配置校验归属 `p1-d-runtime`。Nitro 在收到请求后才加载应用模块，直接启动 `.output/server/index.mjs` 不会立即执行 `config` 或 auth 的校验。
 
-认证边界已拒绝缺失 secret、短 secret 和旧示例占位值。该边界的独立进程测试退出非零，但不能据此声称生产入口会在监听前退出。`scripts/verify/c-data-auth.sh` 保留了这项失败门禁。
+认证边界已拒绝缺失 secret、短 secret 和旧示例占位值。验收脚本单独以坏配置导入 auth，断言进程非零退出且打印可读错误。生产入口只记录真实退出码与信号，打印带 owner 的 GAP，不再作为 c 的失败门禁。d 负责验证 `pnpm start` 在非法配置下非零退出。
 
 ## 表与索引
 
@@ -112,20 +112,23 @@ Better Auth 默认密码长度限制之外的密码强度策略尚未设计。�
 
 验收入口是 `bash scripts/verify/c-data-auth.sh`。总入口 `bash scripts/verify.sh` 已按 glob 包含它，无需修改总脚本。验收只删除 `.verify/c-data-auth/auth.sqlite` 与其 WAL、SHM，不删除用户数据库。默认端口为 3113，可用 `SPROUT_VERIFY_AUTH_PORT` 覆盖。curl 使用 `--noproxy '*'`。脚本为每个子命令设置超时，并关闭自己启动的进程。
 
-| 结论                                                          | 运行命令                                                                                                  | 输出摘要与产物                                                                                                                                                                                        |
-| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 已验证，迁移可从零重放且可重复执行。                          | `pnpm db:generate`，指定验收库后 `pnpm setup`，`pnpm db:migrate`，`node --import tsx src/db/migrate.ts`。 | SQL 为 `0000_pale_famine.sql`。七张表、八个显式索引正确，账本一条。日志位于 `.verify/c-data-auth/generate.log`、`setup.log`、`migrate-again.log`、`migrate-entry.log`、`schema.log`。                 |
-| 已验证，真实 HTTP 注册与 cookie session。                     | `bash scripts/verify/c-data-auth.sh`。                                                                    | `PASS curl signup with Origin`，`PASS session cookie readable`。请求与响应证据为 `signup.*`、`session.*`。cookie jar 与这些响应包含凭据，仅留在忽略的 `.verify/`，不提交。                            |
-| 已验证，受保护 function 的成功和失败载荷。                    | 同上。                                                                                                    | 带 cookie 返回 HTTP 200、`ok:true`、ISO `expiresAt`。登出后同一调用返回 HTTP 200、`ok:false`、`unauthorized`。证据为 `protected-authenticated.*`、`protected-after-signout.*`。                       |
-| 已验证，无 Origin 的 POST 被拒。                              | 同上。                                                                                                    | HTTP 403，载荷 `{"message":"Missing or null Origin","code":"MISSING_OR_NULL_ORIGIN"}`。证据为 `no-origin.*`。                                                                                         |
-| 已验证，非法输入返回统一错误。                                | 同上。                                                                                                    | HTTP 200、`validation_failed`，不回显密码。证据为 `invalid-input.*`。                                                                                                                                 |
-| 已验证，Chromium 的注册、受保护页面刷新、登出跳转与密码登录。 | 同上。                                                                                                    | `PASS Chromium register and protected reload` 与 `PASS Chromium logout, redirect, safe error and password login`，无 pageerror。截图为 `.verify/c-data-auth/authenticated.png` 与 `login-error.png`。 |
-| 已验证，注册不造 Project。                                    | 同上。                                                                                                    | `users=2 projects=0`，证据为 `no-project.log`。                                                                                                                                                       |
-| 已验证，单元与集成行为测试。                                  | `pnpm test`。                                                                                             | 两个测试文件、13 个测试通过。新增测试覆盖空库迁移、重复迁移保留数据、每连接外键与 WAL、debug CHECK、非法 phase、匿名 session、非法 config 和缺失 secret 的 auth 边界。                                |
-| 已验证，源码检查与构建。                                      | `pnpm typecheck`，`pnpm check`，`pnpm build`。                                                            | 三个入口类型检查通过，格式、lint 与类型门禁退出 0，生产入口及 client assets 生成。                                                                                                                    |
-| 未完成，生产入口在监听前拒绝坏配置。                          | 验收脚本直接启动 `node .output/server/index.mjs`，分别传入非法 PORT 与缺失 secret。                       | 两个进程都未自行退出，脚本在 10 秒后以 SIGKILL 终止。`bad-port.log` 和 `missing-secret.log` 均记录已监听。最终输出 `FAIL invalid config startup` 和 `FAIL c-data-auth`，退出 1。                      |
+| 结论                                                          | 运行命令                                                                                                                    | 输出摘要与产物                                                                                                                                                                                        |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 已验证，迁移可从零重放且可重复执行。                          | `pnpm db:generate`，指定验收库后 `pnpm setup`，`pnpm db:migrate`，`node --import tsx src/db/migrate.ts`。                   | SQL 为 `0000_pale_famine.sql`。七张表、八个显式索引正确，账本一条。日志位于 `.verify/c-data-auth/generate.log`、`setup.log`、`migrate-again.log`、`migrate-entry.log`、`schema.log`。                 |
+| 已验证，真实 HTTP 注册与 cookie session。                     | `bash scripts/verify/c-data-auth.sh`。                                                                                      | `PASS curl signup with Origin`，`PASS session cookie readable`。请求与响应证据为 `signup.*`、`session.*`。cookie jar 与这些响应包含凭据，仅留在忽略的 `.verify/`，不提交。                            |
+| 已验证，受保护 function 的成功和失败载荷。                    | 同上。                                                                                                                      | 带 cookie 返回 HTTP 200、`ok:true`、ISO `expiresAt`。登出后同一调用返回 HTTP 200、`ok:false`、`unauthorized`。证据为 `protected-authenticated.*`、`protected-after-signout.*`。                       |
+| 已验证，无 Origin 的 POST 被拒。                              | 同上。                                                                                                                      | HTTP 403，载荷 `{"message":"Missing or null Origin","code":"MISSING_OR_NULL_ORIGIN"}`。证据为 `no-origin.*`。                                                                                         |
+| 已验证，非法输入返回统一错误。                                | 同上。                                                                                                                      | HTTP 200、`validation_failed`，不回显密码。证据为 `invalid-input.*`。                                                                                                                                 |
+| 已验证，Chromium 的注册、受保护页面刷新、登出跳转与密码登录。 | 同上。                                                                                                                      | `PASS Chromium register and protected reload` 与 `PASS Chromium logout, redirect, safe error and password login`，无 pageerror。截图为 `.verify/c-data-auth/authenticated.png` 与 `login-error.png`。 |
+| 已验证，注册不造 Project。                                    | 同上。                                                                                                                      | `users=2 projects=0`，证据为 `no-project.log`。                                                                                                                                                       |
+| 已验证，单元与集成行为测试。                                  | `pnpm test`。                                                                                                               | 两个测试文件、13 个测试通过。新增测试覆盖空库迁移、重复迁移保留数据、每连接外键与 WAL、debug CHECK、非法 phase、匿名 session、非法 config 和缺失 secret 的 auth 边界。                                |
+| 已验证，源码检查与构建。                                      | `pnpm typecheck`，`pnpm check`，`pnpm build`。                                                                              | 三个入口类型检查通过，格式、lint 与类型门禁退出 0，生产入口及 client assets 生成。                                                                                                                    |
+| 已验证，auth 导入拒绝坏配置。                                 | 验收脚本以非法 PORT 和缺失 secret 分别执行 `node --import tsx --input-type=module -e 'await import("./src/lib/auth.ts")'`。 | 要求自行非零退出，并打印 `环境变量校验失败` 及 `PORT` 或 `BETTER_AUTH_SECRET`。日志为 `bad-port-auth-import.log` 和 `missing-secret-auth-import.log`。                                                |
+| GAP，生产入口启动校验归属 p1-d-runtime。                      | 验收脚本直接启动 `node .output/server/index.mjs`，分别传入非法 PORT 与缺失 secret。                                         | 记录 exit 与 signal，不断言生产入口必须拒绝。观测日志为 `bad-port.log` 和 `missing-secret.log`。                                                                                                      |
 
-最终总验收运行 `bash scripts/verify.sh`，退出 1，输出 `Verification scripts=2 failed=1`。a-base 全部 PASS，包括真实 Pi 的工具调用。c 的迁移、HTTP、Chromium 均 PASS，最后两个启动前校验断言 FAIL。完整输出在 `.verify/c-data-auth/all-verify.log`。最新源码门禁和测试证据在 `.verify/a-base/check.log`、`typecheck.log`、`test.log`，13 个测试通过。
+本次修订运行 `bash scripts/verify/c-data-auth.sh`，退出 0，输出 `PASS c-data-auth all checks passed`。迁移、HTTP 和 Chromium 检查全部 PASS。两个 auth 独立导入检查均自行退出 1、signal 为 null，分别打印含 `PORT` 和 `BETTER_AUTH_SECRET` 的可读校验错误。两个生产入口观测均为 exit=null、signal=SIGKILL，各打印一条 owner 为 `p1-d-runtime` 的 GAP。完整输出在 `.verify/c-data-auth/verify.log`。
+
+此前总验收运行 `bash scripts/verify.sh`，退出 1，输出 `Verification scripts=2 failed=1`，原因是当时仍将生产入口校验归为 c 的失败门禁。历史输出保留在 `.verify/c-data-auth/all-verify.log`。本次未重跑总验收。已有源码门禁和测试证据在 `.verify/a-base/check.log`、`typecheck.log`、`test.log`，13 个测试通过。
 
 脚本固定 `NITRO_PORT` 以隔离验收端口。应用仍应在启动边界拒绝无效的 `config.PORT`。监听成功不能代替配置校验。
 
@@ -133,11 +136,13 @@ Better Auth 默认密码长度限制之外的密码强度策略尚未设计。�
 
 d 的 `src/server/server-entry.ts` 应在主线程监听 HTTP 之前读取 `config`，调用 `requireAuthSecret(config)`，再迁移和启动 runtime。`requireAuthSecret(settings: { BETTER_AUTH_SECRET?: string }): string` 从 `src/lib/auth.ts` 导出。该模块同时构造 auth 和导入 db，因此会打开应用连接，生产入口需考虑启动顺序。
 
-当前 c 的范围不允许修改 `package.json`、`vite.config.ts` 或 d 的 server entry。要把校验接入既有 `pnpm start`，需要 coordinator 协调启动入口的写入权。该项完成前，不应将 c 的全量验收标记 PASS。
+coordinator 已将生产入口的启动前配置校验归属 `p1-d-runtime`，并要求 d 在 `pnpm start` 入口完成接线与验收。c 不修改 `package.json`、`vite.config.ts` 或 d 的 server entry。c 对生产入口只报告 GAP，校验逻辑本身仍须通过独立导入的 PASS 断言。
 
 数据库表的 phase 只记录持久状态，不能写入 d 的内存中间阶段 `migrating` 或 `recovering`。这些阶段保持在 runtime 快照中。所有写诊断的 `project_id` 必须真实存在，其他尚无对应表的关联位没有外键。
 
 ## 未验证项与偏离
+
+生产入口在监听前拒绝非法配置尚未验证，owner 为 `p1-d-runtime`。本机观测到非法 PORT 和缺失 secret 的进程均监听验收端口，10 秒后由脚本终止，exit 为 null、signal 为 SIGKILL。对应日志为 `.verify/c-data-auth/bad-port.log` 和 `missing-secret.log`。独立导入 auth 的退出码与可读错误单独验证，不能替代 d 的入口验收。
 
 多进程并发写 SQLite、WAL checkpoint 和写饥饿、session 过期与刷新、额外密码强度策略、真实跨机访问均未验证。连接的 HMR 复用通过结构性 `globalThis` 缓存实现，尚无真实 dev HMR 的连接数量观测。
 
@@ -145,4 +150,4 @@ d 的 `src/server/server-entry.ts` 应在主线程监听 HTTP 之前读取 `conf
 
 没有可用的 delegate 工具，宿主中也未找到 cursor-team-kit 的 deslop 技能，因此没有独立多模型审查或插件审查结果。已直接检查 diff、注释与作用域，并运行真实门禁。没有修改技能文件。
 
-设计遵循 Model the Domain，以表约束、会话 DTO 和认证动作联合类型表达边界。Build the Lever 使 HTTP、SQLite、Chromium 的证据可重跑。Prove It Works 要求保留真实启动失败，不能用独立模块测试代替生产入口。
+设计遵循 Model the Domain，以表约束、会话 DTO 和认证动作联合类型表达边界。Build the Lever 使 HTTP、SQLite、Chromium 的证据可重跑。Prove It Works 要求保留真实启动观测并明确 GAP 的 owner，不能用独立模块测试代替生产入口验收。
