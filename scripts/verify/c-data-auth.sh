@@ -96,8 +96,8 @@ let server
 try {
   await portIsFree()
   for (const suffix of ['', '-shm', '-wal']) rmSync(databaseUrl + suffix, { force: true })
-  assert(readFileSync('drizzle/0000_pale_famine.sql', 'utf8').includes('CREATE TABLE'), 'committed migration is available')
-  pass('committed migration', 'drizzle/0000_pale_famine.sql; generation is a schema maintenance step')
+  await command('pnpm', ['db:generate'], 'generate.log')
+  pass('db:generate', 'drizzle/0000_pale_famine.sql; see generate.log')
   await command('pnpm', ['setup'], 'setup.log')
   pass('setup from deleted database', databaseUrl)
   await command('pnpm', ['db:migrate'], 'migrate-again.log')

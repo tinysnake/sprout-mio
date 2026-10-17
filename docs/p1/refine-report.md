@@ -1,18 +1,31 @@
 # P1 重构验收报告
 
-本次在 host 创建的 `p1/refine` 独立 worktree 执行，base 为 main。仅修改该 worktree；未运行 db:generate，未新增 migration。历史 unit 输出与截图保持原证据，新增运行日志位于忽略的 `.verify/` 与 `/tmp/p1-refine-*.log`，不提交 cookie、数据库或 secret。
+本次在 host 创建的 `p1/refine` 独立 worktree 执行，base 为 main。仅修改该 worktree；初次重构验收未运行 db:generate，后续复核恢复该检查并重新验收，未新增 migration。历史 unit 输出与截图保持原证据，新增运行日志位于忽略的 `.verify/` 与 `/tmp/p1-refine-*.log`，不提交 cookie、数据库或 secret。
+
+## 复核：恢复迁移生成检查
+
+恢复 `scripts/verify/c-data-auth.sh` 原有的 db:generate 调用与 PASS 文案，C1 其他改动保留。重新执行 `bash scripts/verify/c-data-auth.sh`，退出 0；`.verify/c-data-auth/generate.log` 输出 `No schema changes, nothing to migrate`，drizzle/ 无 diff。日志为 `/tmp/p1-refine-restore-generate.log`。按复核要求执行 `git checkout -- docs/p1/evidence/`，历史截图无 diff。
+
+```text
+PASS db:generate drizzle/0000_pale_famine.sql; see generate.log
+PASS protected-authenticated requestId matches payload, header and http.response req_1a87fba2-3a15-4e4f-b7e5-dbacc8b36605
+PASS failed-login requestId matches payload, header and http.response req_5a62d145-af6b-4744-b4cb-57a6b6b5b290
+PASS Chromium logout, redirect, safe error and password login login-error.png; no page errors
+PASS c-data-auth all checks passed
+EXIT_CODE=0
+```
 
 ## 提交与行为
 
-| 范围 | 提交           | 文件与可观察结果                                                                                                                                                                                                                                                                                                                           |
-| ---- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| C1   | `8a07fce`      | `src/contracts/ids.ts`、`src/contracts/project.ts`、`src/contracts/diagnostics.ts`、`src/db/schema.ts`、`src/lib/config.ts`、`tests/contracts.test.ts`、`scripts/verify/c-data-auth.sh`：ID runtime 校验与日志级别各有单一来源；详情 ID 使用完整格式；数据库 CHECK 由 sql.join 构造；c 验收读取既有 migration 并真实重放迁移，不生成 SQL。 |
-| C2   | `f374a96`      | `src/server/session.ts`、`scripts/verify/c-data-auth.sh`：三个认证函数复用当前 HTTP requestId；成功会话与失败登录断言 payload、响应头、http.response 三处相等。                                                                                                                                                                            |
-| C3   | `80e5d1b`      | `src/server/functions/project.ts`、`tests/project.test.ts`：依赖只加载一次，加载、session、校验与领域调用共享异常边界；未知错误脱敏为 internal，stderr 保留原因并写安全 error 诊断；已有 unauthorized、not_found 和事务回滚断言保留。                                                                                                      |
-| C4   | `3c8d60b`      | `src/server/diagnostics.ts`、`src/routes/api/diagnostics.ts`、`tests/diagnostics.test.ts`、`scripts/verify/d-runtime.sh`、`scripts/verify/e-project.sh`：查询必填 actorId，Project 行按归属隔离，非 Project 行按具体 requestId 查询；HTTP 拒绝无过滤列举；非法 limit 用例带合法 requestId，继续独立验证 limit。                            |
-| C5   | `12c3011`      | `package.json`、`scripts/verify/e-project.sh`：公开 pnpm build 自动清理 .output；e 去掉额外清理，直接检验公开入口。                                                                                                                                                                                                                        |
-| C6   | `c0771f6`      | `scripts/verify/a-base.sh`、`scripts/verify/b-tooling.sh`：干净安装保留仓库 data/；服务使用各自日志目录的 verification.sqlite；现有检查、构建与 smoke 继续执行。                                                                                                                                                                           |
-| 文档 | 本报告所在提交 | 同步 summary、conventions、feature-sample、runtime、skeleton、tooling、data-auth 及架构方向；保留历史输出，明确当前 requestId、诊断可见性与构建约定。                                                                                                                                                                                      |
+| 范围 | 提交           | 文件与可观察结果                                                                                                                                                                                                                                                                                                                                                                         |
+| ---- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1   | `8a07fce`      | `src/contracts/ids.ts`、`src/contracts/project.ts`、`src/contracts/diagnostics.ts`、`src/db/schema.ts`、`src/lib/config.ts`、`tests/contracts.test.ts`、`scripts/verify/c-data-auth.sh`：ID runtime 校验与日志级别各有单一来源；详情 ID 使用完整格式；数据库 CHECK 由 sql.join 构造；C1 当时将 c 的生成检查改为读取既有 migration；后续复核已恢复原 db:generate 调用，其他契约改动保留。 |
+| C2   | `f374a96`      | `src/server/session.ts`、`scripts/verify/c-data-auth.sh`：三个认证函数复用当前 HTTP requestId；成功会话与失败登录断言 payload、响应头、http.response 三处相等。                                                                                                                                                                                                                          |
+| C3   | `80e5d1b`      | `src/server/functions/project.ts`、`tests/project.test.ts`：依赖只加载一次，加载、session、校验与领域调用共享异常边界；未知错误脱敏为 internal，stderr 保留原因并写安全 error 诊断；已有 unauthorized、not_found 和事务回滚断言保留。                                                                                                                                                    |
+| C4   | `3c8d60b`      | `src/server/diagnostics.ts`、`src/routes/api/diagnostics.ts`、`tests/diagnostics.test.ts`、`scripts/verify/d-runtime.sh`、`scripts/verify/e-project.sh`：查询必填 actorId，Project 行按归属隔离，非 Project 行按具体 requestId 查询；HTTP 拒绝无过滤列举；非法 limit 用例带合法 requestId，继续独立验证 limit。                                                                          |
+| C5   | `12c3011`      | `package.json`、`scripts/verify/e-project.sh`：公开 pnpm build 自动清理 .output；e 去掉额外清理，直接检验公开入口。                                                                                                                                                                                                                                                                      |
+| C6   | `c0771f6`      | `scripts/verify/a-base.sh`、`scripts/verify/b-tooling.sh`：干净安装保留仓库 data/；服务使用各自日志目录的 verification.sqlite；现有检查、构建与 smoke 继续执行。                                                                                                                                                                                                                         |
+| 文档 | 本报告所在提交 | 同步 summary、conventions、feature-sample、runtime、skeleton、tooling、data-auth 及架构方向；保留历史输出，明确当前 requestId、诊断可见性与构建约定。                                                                                                                                                                                                                                    |
 
 ## 验收命令与输出
 
