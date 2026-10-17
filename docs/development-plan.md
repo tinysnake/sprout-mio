@@ -21,7 +21,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | --- | --- | --- | --- |
 | P0 | 验证技术栈与高风险协议，收敛基础契约 | 无 | 已完成（结论见 [p0/summary.md](p0/summary.md)） |
 | P1 | 建立工程骨架与标准功能样例 | P0 | 已完成（结论见 [p1/summary.md](p1/summary.md)） |
-| P2 | 建立 Project、profile、Conversation 和分身 | P1 | 待开始 |
+| P2 | 建立 Project、profile、Conversation 和分身 | P1 | 已完成（结论见 [p2/summary.md](p2/summary.md)） |
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 待开始 |
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | 待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
@@ -61,12 +61,12 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 
 ## P2 建立身份、成员与持久对话
 
-- [ ] 完成 Project 配置、Agent profile 和 Project Agent 成员关系。
-- [ ] 建立 Conversation 与分身持久身份，强制 profile × Conversation 唯一。
-- [ ] 建立 DM 和持久消息，配置与人设修改保留原有身份和历史。
-- [ ] 建立各详情页的稳定 URL，刷新及前进后退保持目标和 Project 上下文。
-- [ ] 建立 Project 授权入口，Agent 查询、错误和快照均不得暴露其他 Project 的 Sprout 数据。
-- [ ] 提供当前已有对象的 Info Hub 查询和基础页面呈现。后续对象接入同一模块。
+- [x] 完成 Project 配置、Agent profile 和 Project Agent 成员关系。证据 [project-agents.md 的验证记录](p2/project-agents.md#验证记录)，重跑 `bash scripts/verify/h-project-agents.sh`。
+- [x] 建立 Conversation 与分身持久身份，强制 profile × Conversation 唯一。证据 [分身身份与唯一性](p2/conversation-dm.md#分身身份与唯一性的实现位置) 与 [SQLite 唯一约束反证](p2/acceptance.md#p2-六项对应关系)，重跑 `bash scripts/verify/i-conversation.sh` 与 `bash scripts/verify/k-acceptance.sh`。
+- [x] 建立 DM 和持久消息，配置与人设修改保留原有身份和历史。证据 [重启持久性验收](p2/conversation-dm.md#重启持久性验收) 与 [出口条件与字面量](p2/acceptance.md#出口条件与字面量)，重跑 `bash scripts/verify/i-conversation.sh` 与 `bash scripts/verify/k-acceptance.sh`。
+- [x] 建立各详情页的稳定 URL，刷新及前进后退保持目标和 Project 上下文。证据 [七个页面的导航矩阵](p2/acceptance.md#七个页面的导航矩阵)，重跑 `bash scripts/verify/k-acceptance.sh`。
+- [x] 建立 Project 授权入口，Agent 查询、错误和快照均不得暴露其他 Project 的 Sprout 数据。证据 [授权入口](p2/identity-data.md#project-授权与配置) 与 [隔离反证及正常对照](p2/acceptance.md#隔离反证与正常对照)，重跑 `bash scripts/verify/g-identity-data.sh` 与 `bash scripts/verify/k-acceptance.sh`。P2 只验收已有查询与错误载荷，尚无运行时快照，其隔离未验证。
+- [x] 提供当前已有对象的 Info Hub 查询和基础页面呈现。后续对象接入同一模块。证据 [Info Hub 验证记录](p2/info-hub.md#验证记录) 与 [未实现状态](p2/acceptance.md#未实现状态截图与限制)，重跑 `bash scripts/verify/j-info-hub.sh` 与 `bash scripts/verify/k-acceptance.sh`。run 与 Machine 视角显式标注未实现。
 
 出口条件是重启后同一对话仍对应同一分身，消息与配置保留；两个 Project 的上下文与查询边界可验证。此阶段不将模拟回复当作真实 Pi 接入完成。
 
@@ -219,5 +219,6 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | 计划基线 | 技术栈方向、源码与官方资料调查、P0 至 P8 和 R1 顺序 | 文档范围及链接检查，不是功能或技术兼容性验收 |
 | P0 | 7 个实验 unit 与结论文档：版本与构建、Start SPA 与 Better Auth 与 Drizzle 与 shadcn、常驻 runtime 共进程、真实 Pi 接入、Worker 协议语义、四种故障恢复承诺、身份事务授权契约。实验提交范围 `21063f6..b1ba085`，本记录随 P0 收尾提交写入 | 本机安装、构建与运行验证（macOS arm64，Node v26.11.1，真实 SQLite 文件）；真实 Pi 1.3.0 验证；本地协议实验（真实进程 kill 与重连、真实并发 SQLite 连接）。未覆盖：真实跨机与网络分区、真实 macOS Worker 端到端，留到 P4 |
 | P1 | 工程骨架、Worker 与 Pi extension 入口、检查测试构建与 CI、SQLite 迁移与 Human 登录、runtime 生命周期与基础诊断、Project 创建查询与功能模板。a～e 的实现与合入范围 `7e4f039..c3af8ad`，本记录随 P1 收尾提交写入。逐项证据见 [p1/summary.md](p1/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0 下的干净工作目录安装、生产构建与真实进程启动、真实 SQLite 迁移与事务、真实 Pi 状态工具、真实 Chromium 登录和 Project 创建与重新打开；GitHub Actions ubuntu x64 的检查测试构建迁移与生产 smoke。收尾验证文档证据与链接、`pnpm check`。未覆盖：冷 pnpm store、dev 信号优雅关闭、多进程与恢复中途崩溃、完整 Pi 会话业务；真实跨机与真实 macOS Worker 端到端仍属 P4。完整边界见 summary |
+| P2 | 已完成 Project 配置、全局 Agent profile 与成员、持久 DM 与分身、消息、创建者授权、稳定 URL 和 Info Hub 两个已有对象视角。实现基线 `28d4fb2`，a～e 的实现与合入范围 `28d4fb2..d8f4e2b`。PR #10 head `cfa5d4d` merge `6836b06`，PR #11 head `fdad1ca` merge `53c9cb7`，PR #12 head `bf7ffa4` merge `2b814eb`，PR #13 head `dc11b8a` merge `da4aebb`，PR #14 head `872e62d` merge `d8f4e2b`。逐项证据见 [p2/summary.md](p2/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0，真实 SQLite、真实 Chromium 七个 URL 的直接进入、刷新、前进后退，真实生产进程 SIGTERM 与重启后身份、消息、三项配置及人设字面量相等，两用户隔离覆盖六页与 17 个 RPC 且 B 正常对照可用。main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/actions/runs/39062616946) completed、success，覆盖检查测试构建迁移与生产 smoke，不含 Chromium。收尾复跑 `bash scripts/verify/l-docs.sh`、`bash scripts/verify.sh` 与 `pnpm check`。真实 Pi、run、宿主仓库、Machine、租约、Task、Group、Public Channel、自动接续、手机、PWA 与并发等未验证项见 summary |
 
-当前下一任务是 P2 的身份、成员与持久对话，先按 P1 的功能模板细化任务与授权边界。P1 未验证项见 [p1/summary.md](p1/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4。
+当前下一任务是 P3，跑通真实 Pi 对话与宿主仓库分析。P2 未验证项见 [p2/summary.md](p2/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4。
