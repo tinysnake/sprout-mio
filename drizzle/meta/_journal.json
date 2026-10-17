@@ -8,6 +8,13 @@
       "when": 1792221176368,
       "tag": "0000_pale_famine",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792254409122,
+      "tag": "0001_stiff_wallflower",
+      "breakpoints": true
     }
   ]
 }
