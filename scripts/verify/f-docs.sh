@@ -104,7 +104,7 @@ for (let i = 0; i < boxes.length; i++) {
 }
 
 check(/^\| P1 \|.*已完成/m.test(plan) === (boxes.length === 7 && boxes.every((box) => box[1] === 'x')), 'P1 stage status differs from checklist');
-check(/^\| P1 \|.*919ce92\.\.c3af8ad.*真实跨机.*真实 macOS Worker.*P4/m.test(plan), 'P1 completion row lacks commit range or P4 limits');
+check(/^\| P1 \|.*7e4f039\.\.c3af8ad.*真实跨机.*真实 macOS Worker.*P4/m.test(plan), 'P1 completion row lacks commit range or P4 limits');
 for (const file of ['docs/p1/skeleton.md', 'docs/p1/conventions.md']) {
   const text = fs.readFileSync(file, 'utf8');
   check(text.includes('BETTER_AUTH_SECRET') && text.includes('p1-d-runtime') && text.includes('监听前') && text.includes('至少 32 字符'), `${file}: final auth secret requirement missing`);
