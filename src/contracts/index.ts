@@ -6,3 +6,4 @@ export * from "./version";
 export * from "./agent";
 export * from "./project-config";
 export * from "./conversation";
+export * from "./info-hub";
