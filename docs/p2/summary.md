@@ -59,7 +59,7 @@ main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/
 - 多进程 SQLite 并发、写锁竞争、并发编辑、并发消息发送、异常断电、备份恢复与高负载未验证。IMMEDIATE 事务与唯一索引不等于已证明这些能力。
 - 消息、成员与 Info Hub 无分页，聚合性能与大数据界面表现未验证。
 - 冷 pnpm store、Actions 缓存失效、平台差异、runner 升级、会话过期刷新、静态托管与 CDN rewrite 未系统验证。Chromium 为本机验收，CI 不运行浏览器流程。
-- 跨家族独立性的残余限制：[跨家族补充复核 k2](acceptance.md#跨家族补充复核-k2) 跑在 `magpie/group/auto-mimo-v2-6-flash`，与授权实现者 p2-a（`magpie/codex/gpt-6.1-sol`）不同家族，但与 b/c/d 页面实现者同家族。k2 只覆盖 P2 授权边界的拒绝面、正对照、身份改写与诊断查询，不构成对 b/c/d 页面与功能实现的独立复核，也不覆盖 P3 及以后对象。
+- 跨家族独立性的残余限制：[跨家族补充复核 k2](acceptance.md#跨家族补充复核-k2) 跑在 `magpie/group/auto-mimo-v2-6-flash`，与授权实现者 p2-a（`magpie/codex/gpt-6.1-sol`）不同家族，但与 b/c/d 页面实现者同家族。k2 只覆盖 P2 授权边界的拒绝面、正对照、身份改写与诊断查询，不构成对 b/c/d 页面与功能实现的独立复核，也不覆盖 P3 及以后对象。k2 发现的 `createDirectConversationFn` 错误映射缺陷（引用他人或不存在的 profileId 被报成 `internal`）已由 p2-h 修复并改回严格 `not_found` 断言，见 [跨家族补充复核 k2](acceptance.md#跨家族补充复核-k2) 与 `tests/conversation.test.ts`。
 - runtime 的 dev 信号优雅关闭、WebSocket 与多进程恢复仍未验证，生产 HTTP 排空边界沿用 [P1 补充验收](../p1/graceful-drain-report.md)。
 
 ## 收尾验证与证据约定
