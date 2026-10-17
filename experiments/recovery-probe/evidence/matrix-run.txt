@@ -1,0 +1,84 @@
+=== host-disconnect__short-running (host-disconnect, in-progress short command) ===
+  command: node scripts/matrix.mjs --cell host-disconnect__short-running
+  observed executionIdStable = true
+  observed afterReconnect = running
+  observed final = exited:0/null
+  observed effectsLines = 1
+PASS host-disconnect__short-running
+=== host-disconnect__long-running (host-disconnect, in-progress long command) ===
+  command: node scripts/matrix.mjs --cell host-disconnect__long-running
+  observed executionIdStable = true
+  observed afterReconnect = running
+  observed effectsLines = 1
+PASS host-disconnect__long-running
+=== host-disconnect__completed-unretrieved (host-disconnect, completed, result not retrieved) ===
+  command: node scripts/matrix.mjs --cell host-disconnect__completed-unretrieved
+  observed executionIdStable = true
+  observed afterReconnect = exited:0/null
+  observed effectsLines = 1
+PASS host-disconnect__completed-unretrieved
+=== host-restart__short-running (host-restart, in-progress short command) ===
+  command: node scripts/matrix.mjs --cell host-restart__short-running
+  observed pendingRecoveredFromJournal = true
+  observed executionIdStable = true
+  observed afterReconnect = running
+  observed final = exited:0/null
+  observed effectsLines = 1
+PASS host-restart__short-running
+=== host-restart__long-running (host-restart, in-progress long command) ===
+  command: node scripts/matrix.mjs --cell host-restart__long-running
+  observed pendingRecoveredFromJournal = true
+  observed executionIdStable = true
+  observed afterReconnect = running
+  observed effectsLines = 1
+PASS host-restart__long-running
+=== host-restart__completed-unretrieved (host-restart, completed, result not retrieved) ===
+  command: node scripts/matrix.mjs --cell host-restart__completed-unretrieved
+  observed pendingRecoveredFromJournal = true
+  observed executionIdStable = true
+  observed afterReconnect = exited:0/null
+  observed effectsLines = 1
+PASS host-restart__completed-unretrieved
+=== worker-restart__short-running (worker-restart, in-progress short command) ===
+  command: node scripts/matrix.mjs --cell worker-restart__short-running
+  observed afterRestart = running
+  observed orphanPid = 91992
+  observed final = exited:0/null
+  observed effectsLines = 1
+PASS worker-restart__short-running
+=== worker-restart__long-running (worker-restart, in-progress long command) ===
+  command: node scripts/matrix.mjs --cell worker-restart__long-running
+  observed afterRestart = running
+  observed orphanPid = 92344
+  observed afterOrphanKilled = unknown:child-exited-without-result
+  observed effectsLines = 1
+  observed resubmit = {"reused":true,"executionIdStable":true,"state":"unknown:child-exited-without-result"}
+  observed effectsLinesAfterResubmit = 1
+PASS worker-restart__long-running
+=== worker-restart__completed-unretrieved (worker-restart, completed, result not retrieved) ===
+  command: node scripts/matrix.mjs --cell worker-restart__completed-unretrieved
+  observed afterRestart = exited:0/null
+  observed orphanPid = null
+  observed effectsLines = 1
+PASS worker-restart__completed-unretrieved
+=== machine-restart__short-running (machine-restart, in-progress short command) ===
+  command: node scripts/matrix.mjs --cell machine-restart__short-running
+  observed afterRestart = unknown:child-exited-without-result
+  observed effectsLines = 1
+  observed resubmit = {"reused":true,"executionIdStable":true,"state":"unknown:child-exited-without-result"}
+  observed effectsLinesAfterResubmit = 1
+PASS machine-restart__short-running
+=== machine-restart__long-running (machine-restart, in-progress long command) ===
+  command: node scripts/matrix.mjs --cell machine-restart__long-running
+  observed afterRestart = unknown:child-exited-without-result
+  observed effectsLines = 1
+  observed resubmit = {"reused":true,"executionIdStable":true,"state":"unknown:child-exited-without-result"}
+  observed effectsLinesAfterResubmit = 1
+PASS machine-restart__long-running
+=== machine-restart__completed-unretrieved (machine-restart, completed, result not retrieved) ===
+  command: node scripts/matrix.mjs --cell machine-restart__completed-unretrieved
+  observed afterRestart = exited:0/null
+  observed effectsLines = 1
+PASS machine-restart__completed-unretrieved
+---
+ALL PASS (12 cells)
