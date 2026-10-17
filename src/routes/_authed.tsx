@@ -47,6 +47,14 @@ function AuthedLayout() {
           <Link to="/projects" className="font-medium" activeProps={{ className: "underline" }}>
             Project
           </Link>
+          <Link
+            to="/agents"
+            data-testid="nav-agents"
+            className="font-medium"
+            activeProps={{ className: "underline" }}
+          >
+            Agents
+          </Link>
           <span data-testid="session-email" className="ml-auto text-muted-foreground">
             {human.email}
           </span>

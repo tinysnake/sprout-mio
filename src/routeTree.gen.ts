@@ -12,12 +12,17 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthedAgentsRouteImport } from './routes/_authed/agents'
 import { Route as AuthedProjectsRouteImport } from './routes/_authed/projects'
 import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
+import { Route as AuthedAgentsIndexRouteImport } from './routes/_authed/agents.index'
+import { Route as AuthedAgentsAgentProfileIdRouteImport } from './routes/_authed/agents.$agentProfileId'
 import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projects.index'
 import { Route as AuthedProjectsProjectIdRouteImport } from './routes/_authed/projects.$projectId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AuthedProjectsProjectIdAgentsRouteImport } from './routes/_authed/projects.$projectId.agents'
+import { Route as AuthedProjectsProjectIdSettingsRouteImport } from './routes/_authed/projects.$projectId.settings'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -32,6 +37,11 @@ const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedAgentsRoute = AuthedAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedProjectsRoute = AuthedProjectsRouteImport.update({
   id: '/projects',
@@ -48,6 +58,17 @@ const ApiHealthRoute = ApiHealthRouteImport.update({
   path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthedAgentsIndexRoute = AuthedAgentsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthedAgentsRoute,
+} as any)
+const AuthedAgentsAgentProfileIdRoute =
+  AuthedAgentsAgentProfileIdRouteImport.update({
+    id: '/$agentProfileId',
+    path: '/$agentProfileId',
+    getParentRoute: () => AuthedAgentsRoute,
+  } as any)
 const AuthedProjectsIndexRoute = AuthedProjectsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -63,69 +84,109 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthedProjectsProjectIdAgentsRoute =
+  AuthedProjectsProjectIdAgentsRouteImport.update({
+    id: '/agents',
+    path: '/agents',
+    getParentRoute: () => AuthedProjectsProjectIdRoute,
+  } as any)
+const AuthedProjectsProjectIdSettingsRoute =
+  AuthedProjectsProjectIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthedProjectsProjectIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/agents': typeof AuthedAgentsRouteWithChildren
   '/projects': typeof AuthedProjectsRouteWithChildren
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
-  '/projects/$projectId': typeof AuthedProjectsProjectIdRoute
+  '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
+  '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/agents/': typeof AuthedAgentsIndexRoute
   '/projects/': typeof AuthedProjectsIndexRoute
+  '/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
+  '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
-  '/projects/$projectId': typeof AuthedProjectsProjectIdRoute
+  '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
+  '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/agents': typeof AuthedAgentsIndexRoute
   '/projects': typeof AuthedProjectsIndexRoute
+  '/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
+  '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authed/agents': typeof AuthedAgentsRouteWithChildren
   '/_authed/projects': typeof AuthedProjectsRouteWithChildren
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
-  '/_authed/projects/$projectId': typeof AuthedProjectsProjectIdRoute
+  '/_authed/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
+  '/_authed/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/_authed/agents/': typeof AuthedAgentsIndexRoute
   '/_authed/projects/': typeof AuthedProjectsIndexRoute
+  '/_authed/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
+  '/_authed/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/agents'
     | '/projects'
     | '/api/diagnostics'
     | '/api/health'
+    | '/agents/$agentProfileId'
     | '/projects/$projectId'
     | '/api/auth/$'
+    | '/agents/'
     | '/projects/'
+    | '/projects/$projectId/agents'
+    | '/projects/$projectId/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
     | '/api/diagnostics'
     | '/api/health'
+    | '/agents/$agentProfileId'
     | '/projects/$projectId'
     | '/api/auth/$'
+    | '/agents'
     | '/projects'
+    | '/projects/$projectId/agents'
+    | '/projects/$projectId/settings'
   id:
     | '__root__'
     | '/'
     | '/_authed'
     | '/login'
+    | '/_authed/agents'
     | '/_authed/projects'
     | '/api/diagnostics'
     | '/api/health'
+    | '/_authed/agents/$agentProfileId'
     | '/_authed/projects/$projectId'
     | '/api/auth/$'
+    | '/_authed/agents/'
     | '/_authed/projects/'
+    | '/_authed/projects/$projectId/agents'
+    | '/_authed/projects/$projectId/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -160,6 +221,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authed/agents': {
+      id: '/_authed/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AuthedAgentsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/projects': {
       id: '/_authed/projects'
       path: '/projects'
@@ -180,6 +248,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/health'
       preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authed/agents/': {
+      id: '/_authed/agents/'
+      path: '/'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AuthedAgentsIndexRouteImport
+      parentRoute: typeof AuthedAgentsRoute
+    }
+    '/_authed/agents/$agentProfileId': {
+      id: '/_authed/agents/$agentProfileId'
+      path: '/$agentProfileId'
+      fullPath: '/agents/$agentProfileId'
+      preLoaderRoute: typeof AuthedAgentsAgentProfileIdRouteImport
+      parentRoute: typeof AuthedAgentsRoute
     }
     '/_authed/projects/': {
       id: '/_authed/projects/'
@@ -202,16 +284,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authed/projects/$projectId/agents': {
+      id: '/_authed/projects/$projectId/agents'
+      path: '/agents'
+      fullPath: '/projects/$projectId/agents'
+      preLoaderRoute: typeof AuthedProjectsProjectIdAgentsRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdRoute
+    }
+    '/_authed/projects/$projectId/settings': {
+      id: '/_authed/projects/$projectId/settings'
+      path: '/settings'
+      fullPath: '/projects/$projectId/settings'
+      preLoaderRoute: typeof AuthedProjectsProjectIdSettingsRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdRoute
+    }
   }
 }
 
+interface AuthedAgentsRouteChildren {
+  AuthedAgentsAgentProfileIdRoute: typeof AuthedAgentsAgentProfileIdRoute
+  AuthedAgentsIndexRoute: typeof AuthedAgentsIndexRoute
+}
+
+const AuthedAgentsRouteChildren: AuthedAgentsRouteChildren = {
+  AuthedAgentsAgentProfileIdRoute: AuthedAgentsAgentProfileIdRoute,
+  AuthedAgentsIndexRoute: AuthedAgentsIndexRoute,
+}
+
+const AuthedAgentsRouteWithChildren = AuthedAgentsRoute._addFileChildren(
+  AuthedAgentsRouteChildren,
+)
+
+interface AuthedProjectsProjectIdRouteChildren {
+  AuthedProjectsProjectIdAgentsRoute: typeof AuthedProjectsProjectIdAgentsRoute
+  AuthedProjectsProjectIdSettingsRoute: typeof AuthedProjectsProjectIdSettingsRoute
+}
+
+const AuthedProjectsProjectIdRouteChildren: AuthedProjectsProjectIdRouteChildren =
+  {
+    AuthedProjectsProjectIdAgentsRoute: AuthedProjectsProjectIdAgentsRoute,
+    AuthedProjectsProjectIdSettingsRoute: AuthedProjectsProjectIdSettingsRoute,
+  }
+
+const AuthedProjectsProjectIdRouteWithChildren =
+  AuthedProjectsProjectIdRoute._addFileChildren(
+    AuthedProjectsProjectIdRouteChildren,
+  )
+
 interface AuthedProjectsRouteChildren {
-  AuthedProjectsProjectIdRoute: typeof AuthedProjectsProjectIdRoute
+  AuthedProjectsProjectIdRoute: typeof AuthedProjectsProjectIdRouteWithChildren
   AuthedProjectsIndexRoute: typeof AuthedProjectsIndexRoute
 }
 
 const AuthedProjectsRouteChildren: AuthedProjectsRouteChildren = {
-  AuthedProjectsProjectIdRoute: AuthedProjectsProjectIdRoute,
+  AuthedProjectsProjectIdRoute: AuthedProjectsProjectIdRouteWithChildren,
   AuthedProjectsIndexRoute: AuthedProjectsIndexRoute,
 }
 
@@ -220,10 +346,12 @@ const AuthedProjectsRouteWithChildren = AuthedProjectsRoute._addFileChildren(
 )
 
 interface AuthedRouteChildren {
+  AuthedAgentsRoute: typeof AuthedAgentsRouteWithChildren
   AuthedProjectsRoute: typeof AuthedProjectsRouteWithChildren
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedAgentsRoute: AuthedAgentsRouteWithChildren,
   AuthedProjectsRoute: AuthedProjectsRouteWithChildren,
 }
 
