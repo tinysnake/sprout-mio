@@ -2,7 +2,7 @@
 
 按本文推进已确认的一期协作闭环。产品范围见 [core-scope.md](core-scope.md)，技术选择与原因见 [architecture-direction.md](architecture-direction.md)。
 
-当前仅完成范围梳理、源码调查和架构方向记录。以下开发阶段均未完成，复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
+P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 及以后尚未开始，复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
 
 ## 按阶段推进并保留证据
 
@@ -19,7 +19,7 @@
 
 | 阶段 | 交付 | 依赖 | 状态 |
 | --- | --- | --- | --- |
-| P0 | 验证技术栈与高风险协议，收敛基础契约 | 无 | 待开始 |
+| P0 | 验证技术栈与高风险协议，收敛基础契约 | 无 | 已完成（结论见 [p0/summary.md](p0/summary.md)） |
 | P1 | 建立工程骨架与标准功能样例 | P0 | 待开始 |
 | P2 | 建立 Project、profile、Conversation 和分身 | P1 | 待开始 |
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 待开始 |
@@ -36,14 +36,14 @@
 
 目标是避免在框架打包、Pi 接入和恢复协议尚未成立时，铺开大量页面与 CRUD。
 
-- [ ] 固定候选 Node、Pi 与六项技术栈版本，记录安装和生产构建结果。
-- [ ] 验证 Start SPA 深链刷新、Better Auth session、Drizzle 事务与 migration，以及 shadcn 的 Base UI 组件。
-- [ ] 验证常驻 Effect runtime 的初始化、HMR、长连接、退出顺序及生产启动。用证据决定是否拆后台进程。
-- [ ] 用真实 Pi 验证配置和认证继承、会话恢复、运行中投递与停止。确定 CLI 或 SDK 接入方式及需要显式加载的扩展。
-- [ ] 用最小 Worker 实验检查重复提交、响应丢失、授权代次切换和旧请求拒绝。先使用受控命令，不把原型当作生产实现。
-- [ ] 明确宿主断线、宿主重启、Worker 重启、Machine 重启四种情况下的执行与结果恢复承诺。
-- [ ] 固定身份、事务和授权契约。至少覆盖分身唯一性、Project × Machine 租约互斥、run 串行、执行 ID 和唤醒去重。
-- [ ] 保存实验脚本、版本与结论。将未证实项明确标为未验证，更新架构说明的对应选择。
+- [x] 固定候选 Node、Pi 与六项技术栈版本，记录安装和生产构建结果。证据 [p0/stack-versions.md](p0/stack-versions.md)，重跑 `experiments/stack-app/scripts/verify.sh`。
+- [x] 验证 Start SPA 深链刷新、Better Auth session、Drizzle 事务与 migration，以及 shadcn 的 Base UI 组件。证据 [p0/spa-auth-db.md](p0/spa-auth-db.md)，32 项检查全过，重跑 `experiments/spa-auth-db/verify.sh`。
+- [x] 验证常驻 Effect runtime 的初始化、HMR、长连接、退出顺序及生产启动。用证据决定是否拆后台进程。证据 [p0/runtime-host.md](p0/runtime-host.md)，结论是共进程成立并附两个前提。dev 模式信号关闭与 WebSocket 未验证。
+- [x] 用真实 Pi 验证配置和认证继承、会话恢复、运行中投递与停止。确定 CLI 或 SDK 接入方式及需要显式加载的扩展。证据 [p0/pi-integration.md](p0/pi-integration.md)，结论是 SDK 优先并跑在宿主管理的子进程里。SDK 内置 codemode、tool_search 与 MCP 的加载未验证。
+- [x] 用最小 Worker 实验检查重复提交、响应丢失、授权代次切换和旧请求拒绝。先使用受控命令，不把原型当作生产实现。证据 [p0/worker-lease.md](p0/worker-lease.md)，4 个 probe 全过，原型不是生产实现。
+- [x] 明确宿主断线、宿主重启、Worker 重启、Machine 重启四种情况下的执行与结果恢复承诺。证据 [p0/recovery-promises.md](p0/recovery-promises.md)，12 格矩阵全过。故障在同机用真实进程 kill 与重连模拟，真实跨机未验证。
+- [x] 固定身份、事务和授权契约。至少覆盖分身唯一性、Project × Machine 租约互斥、run 串行、执行 ID 和唤醒去重。证据 [p0/contracts.md](p0/contracts.md)，25 项检查全过。
+- [x] 保存实验脚本、版本与结论。将未证实项明确标为未验证，更新架构说明的对应选择。证据 [p0/summary.md](p0/summary.md) 与全部 `docs/p0/` 结论文档，架构更新见 [architecture-direction.md](architecture-direction.md)。
 
 出口条件是有可重复的最小实验，能够解释每项选择及失败行为。原型没有提供的能力不得标记为支持。P0 不实现完整任务系统或完整 MCP gateway。
 
@@ -217,5 +217,6 @@
 | 记录 | 已完成内容 | 验证范围 |
 | --- | --- | --- |
 | 计划基线 | 技术栈方向、源码与官方资料调查、P0 至 P8 和 R1 顺序 | 文档范围及链接检查，不是功能或技术兼容性验收 |
+| P0 | 7 个实验 unit 与结论文档：版本与构建、Start SPA 与 Better Auth 与 Drizzle 与 shadcn、常驻 runtime 共进程、真实 Pi 接入、Worker 协议语义、四种故障恢复承诺、身份事务授权契约。实验提交范围 `21063f6..b1ba085`，本记录随 P0 收尾提交写入 | 本机安装、构建与运行验证（macOS arm64，Node v26.11.1，真实 SQLite 文件）；真实 Pi 1.3.0 验证；本地协议实验（真实进程 kill 与重连、真实并发 SQLite 连接）。未覆盖：真实跨机与网络分区、真实 macOS Worker 端到端，留到 P4 |
 
-当前下一任务是 P0 的技术栈最小闭环。先验证安装、生产构建、登录、数据库事务及常驻 runtime，再进入真实 Pi 与 Worker 故障实验。不要以先生成全部页面和数据表代替这些验证。
+当前下一任务是 P1 的工程骨架。先固定检查、测试、构建入口与全新安装的生产启动，再建立登录、迁移、runtime 入口与最小 Project 样例。P0 未验证的真实跨机与真实 macOS Worker 端到端留到 P4。
