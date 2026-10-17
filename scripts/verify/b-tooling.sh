@@ -109,7 +109,7 @@ port_guard "$prod_port"
 
 printf 'RUN  clean frozen installation with timing\n'
 install_start="$(date +%s)"
-run 'clean frozen installation' install bash -c 'rm -rf node_modules dist .output data && pnpm install --frozen-lockfile'
+run 'clean frozen installation' install bash -c 'rm -rf node_modules dist .output && pnpm install --frozen-lockfile'
 install_seconds="$(( $(date +%s) - install_start ))"
 [ -d node_modules ] || fail 'node_modules missing after install'
 pass "frozen lockfile install took ${install_seconds}s (pnpm store not cold: COLD store untested)"
@@ -124,6 +124,7 @@ pass 'production artifacts .output/server/index.mjs and .output/public/assets/'
 
 port_guard "$prod_port"
 printf 'RUN  production start: PORT=%s APP_ORIGIN=http://localhost:%s pnpm start\n' "$prod_port" "$prod_port"
+export DATABASE_URL="$log_dir/verification.sqlite"
 export BETTER_AUTH_SECRET="ci-only-secret-ci-only-secret-123456"
 PORT="$prod_port" APP_ORIGIN="http://localhost:$prod_port" pnpm start >"$log_dir/production.log" 2>&1 &
 server_pid=$!
