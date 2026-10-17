@@ -107,7 +107,7 @@ get_200() {
 port_guard "$prod_port"
 port_guard "$dev_port"
 [ "$prod_port" != "$dev_port" ] || fail 'production and dev ports must differ'
-run 'clean frozen installation' install bash -c 'rm -rf node_modules dist .output data && pnpm install --frozen-lockfile'
+run 'clean frozen installation' install bash -c 'rm -rf node_modules dist .output && pnpm install --frozen-lockfile'
 run 'typecheck Web, Worker and extension' typecheck pnpm typecheck
 run 'format lint and type gate' check pnpm check
 run 'Nitro production build' build pnpm build
@@ -117,6 +117,7 @@ run 'Nitro production build' build pnpm build
 pass 'production artifacts .output/server/index.mjs and .output/public/assets/'
 
 port_guard "$prod_port"
+export DATABASE_URL="$log_dir/verification.sqlite"
 export BETTER_AUTH_SECRET="ci-only-secret-ci-only-secret-123456"
 PORT="$prod_port" APP_ORIGIN="http://localhost:$prod_port" pnpm start >"$log_dir/production.log" 2>&1 &
 server_pid=$!

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vp dev --port 3000",
-    "build": "vp build",
+    "build": "rm -rf .output && vp build",
     "start": "node --env-file-if-exists=.env.local .output/server/index.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.extension.json --noEmit",
     "check": "vp check",

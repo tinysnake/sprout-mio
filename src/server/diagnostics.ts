@@ -1,11 +1,16 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { diagnosticEvent } from "../db/schema";
+import { diagnosticEvent, project } from "../db/schema";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import type { DiagnosticEvent } from "../contracts/diagnostics";
 
 export type DiagnosticInput = Omit<DiagnosticEvent, "id" | "at">;
-export type DiagnosticFilter = { requestId?: string; projectId?: string; limit?: number };
+export type DiagnosticFilter = {
+  actorId: string;
+  requestId?: string;
+  projectId?: string;
+  limit?: number;
+};
 
 export function recordDiagnostic(input: DiagnosticInput): boolean {
   try {
@@ -28,12 +33,23 @@ export function recordDiagnostic(input: DiagnosticInput): boolean {
   }
 }
 
-export function queryDiagnostics(filter: DiagnosticFilter = {}): DiagnosticEvent[] {
+export function queryDiagnostics(filter: DiagnosticFilter): DiagnosticEvent[] {
   const rows: (typeof diagnosticEvent.$inferSelect)[] = db
     .select()
     .from(diagnosticEvent)
     .where(
       and(
+        or(
+          isNull(diagnosticEvent.projectId),
+          inArray(
+            diagnosticEvent.projectId,
+            db
+              .select({ id: project.id })
+              .from(project)
+              .where(eq(project.createdBy, filter.actorId)),
+          ),
+        ),
+        filter.requestId === undefined ? isNotNull(diagnosticEvent.projectId) : undefined,
         filter.requestId === undefined
           ? undefined
           : eq(diagnosticEvent.requestId, filter.requestId),

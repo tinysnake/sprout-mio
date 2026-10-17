@@ -3,7 +3,7 @@ import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { fail, ok, toAppError } from "../contracts/result";
 import type { AppResult } from "../contracts/result";
-import { ID_PREFIXES, newId } from "../contracts/ids";
+import { getRequestContext } from "./request-context";
 
 export type SessionInfo = {
   userId: string;
@@ -37,7 +37,7 @@ export async function requireSession(
 }
 
 export const getSessionInfo = createServerFn({ method: "GET" }).handler(async () => {
-  const requestId = newId(ID_PREFIXES.request);
+  const { requestId } = getRequestContext();
   try {
     return ok(await readSession(getRequestHeaders()), requestId);
   } catch (error) {
@@ -46,7 +46,7 @@ export const getSessionInfo = createServerFn({ method: "GET" }).handler(async ()
 });
 
 export const getProtectedSession = createServerFn({ method: "GET" }).handler(async () => {
-  const requestId = newId(ID_PREFIXES.request);
+  const { requestId } = getRequestContext();
   try {
     return await requireSession(getRequestHeaders(), requestId);
   } catch (error) {
@@ -72,7 +72,6 @@ export type AuthInput = z.infer<typeof authInput>;
 export const authenticate = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }): Promise<AppResult<{ userId: string } | null>> => {
-    const { getRequestContext } = await import("./request-context");
     const { requestId } = getRequestContext();
     const parsed = authInput.safeParse(data);
     if (!parsed.success) return fail(toAppError(parsed.error, requestId));

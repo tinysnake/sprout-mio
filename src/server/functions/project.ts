@@ -3,11 +3,11 @@ import { getRequestHeaders } from "@tanstack/react-start/server";
 import { createProjectInput, fieldErrorsFrom, projectIdInput } from "../../contracts/project";
 import type { Project, ProjectResult } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
-import type { AppResult } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/project";
+import type { DiagnosticInput } from "../diagnostics";
 import { getRequestContext } from "../request-context";
 
-/** 认证、数据库与诊断只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
+/** 认证与数据库只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
   const [session, domain] = await Promise.all([
     import("../session"),
@@ -15,22 +15,44 @@ async function serverDeps() {
   ]);
   return { requireSession: session.requireSession, ...domain };
 }
+type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
+type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
 
-async function sessionContext(
-  headers: Headers,
+function failure(
+  error: unknown,
   requestId: string,
-): Promise<AppResult<ProjectContext>> {
-  const { requireSession } = await serverDeps();
-  const session = await requireSession(headers, requestId);
-  if (!session.ok) return { ok: false, error: session.error, requestId };
-  return ok({ userId: session.data.userId, requestId }, requestId);
+  ProjectError: ServerDeps["ProjectError"] | undefined,
+  recordDiagnostic: DiagnosticRecorder | undefined,
+): ProjectResult<never> {
+  if (ProjectError && error instanceof ProjectError)
+    return fail({ code: error.code, message: error.message, requestId });
+  console.error("[project] 请求失败", { requestId, error });
+  recordDiagnostic?.({
+    level: "error",
+    event: "project.request_failed",
+    requestId,
+    message: "Project 请求失败",
+    data: { code: "internal" },
+  });
+  return fail({ code: "internal", message: "内部错误", requestId });
 }
 
-async function failure(error: unknown, requestId: string): Promise<ProjectResult<never>> {
-  const { ProjectError } = await serverDeps();
-  if (error instanceof ProjectError)
-    return fail({ code: error.code, message: error.message, requestId });
-  return fail(toAppError(error, requestId));
+async function projectBoundary<T>(
+  headers: Headers,
+  requestId: string,
+  operation: (deps: ServerDeps, context: ProjectContext) => ProjectResult<T>,
+): Promise<ProjectResult<T>> {
+  let deps: ServerDeps | undefined;
+  let recordDiagnostic: DiagnosticRecorder | undefined;
+  try {
+    ({ recordDiagnostic } = await import("../diagnostics"));
+    deps = await serverDeps();
+    const session = await deps.requireSession(headers, requestId);
+    if (!session.ok) return session;
+    return operation(deps, { userId: session.data.userId, requestId });
+  } catch (error) {
+    return failure(error, requestId, deps?.ProjectError, recordDiagnostic);
+  }
 }
 
 /** 边界顺序固定为先会话、再 zod、最后事务，失败以载荷返回而不是 HTTP 状态码。 */
@@ -39,35 +61,25 @@ export async function createProjectBoundary(
   headers: Headers,
   requestId: string,
 ): Promise<ProjectResult<Project>> {
-  const context = await sessionContext(headers, requestId);
-  if (!context.ok) return context;
-  const parsed = createProjectInput.safeParse(raw);
-  if (!parsed.success) {
-    return {
-      ...fail(toAppError(parsed.error, requestId)),
-      fieldErrors: fieldErrorsFrom(parsed.error),
-    };
-  }
-  const { createProject } = await serverDeps();
-  try {
-    return ok(createProject(parsed.data, context.data), requestId);
-  } catch (error) {
-    return failure(error, requestId);
-  }
+  return projectBoundary<Project>(headers, requestId, (deps, context) => {
+    const parsed = createProjectInput.safeParse(raw);
+    if (!parsed.success) {
+      return {
+        ...fail(toAppError(parsed.error, requestId)),
+        fieldErrors: fieldErrorsFrom(parsed.error),
+      };
+    }
+    return ok(deps.createProject(parsed.data, context), requestId);
+  });
 }
 
 export async function listProjectsBoundary(
   headers: Headers,
   requestId: string,
 ): Promise<ProjectResult<Project[]>> {
-  const context = await sessionContext(headers, requestId);
-  if (!context.ok) return context;
-  const { listProjects } = await serverDeps();
-  try {
-    return ok(listProjects(context.data), requestId);
-  } catch (error) {
-    return failure(error, requestId);
-  }
+  return projectBoundary<Project[]>(headers, requestId, (deps, context) =>
+    ok(deps.listProjects(context), requestId),
+  );
 }
 
 export async function getProjectBoundary(
@@ -75,21 +87,16 @@ export async function getProjectBoundary(
   headers: Headers,
   requestId: string,
 ): Promise<ProjectResult<Project>> {
-  const context = await sessionContext(headers, requestId);
-  if (!context.ok) return context;
-  const parsed = projectIdInput.safeParse(raw);
-  if (!parsed.success) {
-    return {
-      ...fail(toAppError(parsed.error, requestId)),
-      fieldErrors: fieldErrorsFrom(parsed.error),
-    };
-  }
-  const { getProject } = await serverDeps();
-  try {
-    return ok(getProject(parsed.data.projectId, context.data), requestId);
-  } catch (error) {
-    return failure(error, requestId);
-  }
+  return projectBoundary<Project>(headers, requestId, (deps, context) => {
+    const parsed = projectIdInput.safeParse(raw);
+    if (!parsed.success) {
+      return {
+        ...fail(toAppError(parsed.error, requestId)),
+        fieldErrors: fieldErrorsFrom(parsed.error),
+      };
+    }
+    return ok(deps.getProject(parsed.data.projectId, context), requestId);
+  });
 }
 
 export const createProjectFn = createServerFn({ method: "POST" })

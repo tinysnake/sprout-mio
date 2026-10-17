@@ -130,7 +130,7 @@ authenticate({ data: input }): Promise<AppResult<{ userId: string } | null>>;
 
 `requireSession` 接受调用者已有的 requestId。匿名时返回 `fail({ code: 'unauthorized', message: '请先登录', requestId })`，不会通过 HTTP 状态推断授权。它允许认证基础设施异常抛给调用者，调用者应在自己的边界用 `toAppError` 转换。
 
-`getSessionInfo`、`getProtectedSession` 和 `authenticate` 是可调用的 Start server function，返回 AppResult。p1-c 初始实现均自行生成 `req_` UUID；本次 `authenticate` 改为复用 Nitro 当前 requestId，另外两个查询函数仍自行生成。d 可以直接使用 `readSession` 或 `requireSession`，无需从 HTTP 再调这些 function。
+`getSessionInfo`、`getProtectedSession` 和 `authenticate` 是可调用的 Start server function，返回 AppResult。p1-c 初始实现均自行生成 `req_` UUID；p1/refine 与 p1/auth-rate-limit 已把三者统一为复用 Nitro 当前 requestId。d 可以直接使用 `readSession` 或 `requireSession`，无需从 HTTP 再调这些 function。
 
 首页的 `beforeLoad` 调用 `getProtectedSession`。未登录时客户端跳转 `/login`。本应用保持 SPA，HTTP GET `/` 返回 shell 200，实际保护由导航检查与服务端授权共同完成。每个后续业务 server function 都必须单独要求 session，不能依赖页面跳转作为授权。
 
@@ -154,7 +154,7 @@ HTTP `/api/auth/*` 的限流 key 依赖 IP header，直连或不受信代理下�
 
 历史修正：`c8ea62c` 将 `ipAddressHeaders` 设为空数组，并让 HTTP 登录/注册使用账号 max=5，导致全部用户共享每路径 5 次/60 秒的桶。这是可用性回退。本次恢复默认 IP 解析并拆出 HTTP max，保留 server function 账号与进程预算。此前宣称 HTTP 更换 IP 不能重置预算的结论只适用于旧共享桶，已不适用于当前策略。
 
-被 server function 拒绝时记录 `recordDiagnostic({ level: "warn", event: "auth.rate_limited", requestId, message: "尝试过于频繁，请稍后再试", data: { action } })`。data 仅含 login/register，响应与诊断不含尝试邮箱、密码、原始 IP 或 hash。`authenticate` 改用 Nitro 当前 requestId，原 `getSessionInfo` / `getProtectedSession` 的自行生成 ID 行为仍保留。诊断写入失败遵守原有非致命约定，仍拒绝请求。
+被 server function 拒绝时记录 `recordDiagnostic({ level: "warn", event: "auth.rate_limited", requestId, message: "尝试过于频繁，请稍后再试", data: { action } })`。data 仅含 login/register，响应与诊断不含尝试邮箱、密码、原始 IP 或 hash。`authenticate` 与另外两个查询函数都复用 Nitro 当前 requestId。诊断写入失败遵守原有非致命约定，仍拒绝请求。
 
 局限：内存限流只保护单进程，重启清零；globalThis 缓存不提供跨 worker、跨实例或跨进程共享。多进程部署必须使用共享且原子扣量的存储，并重新验证两条认证边界。攻击者可消耗某账号预算造成临时拒绝，也可消耗 server function 共享进程预算；HTTP 同一 IP（例如同一 NAT）内的用户共享路径预算，无可解析 IP 时所有请求共享路径预算。HTTP header 可伪造时，HTTP 限流自身不构成可靠的暴力猜测防线。限流限制猜测速率，不保证抵抗长期低速猜测，额外密码强度与 MFA 不在本次范围。
 
@@ -177,7 +177,7 @@ HTTP 分桶修订的实际回归：新增“不同 IP 必须有独立预算”�
 
 ## 验证证据
 
-验收入口是 `bash scripts/verify/c-data-auth.sh`。总入口 `bash scripts/verify.sh` 已按 glob 包含它，无需修改总脚本。验收只删除 `.verify/c-data-auth/auth.sqlite` 与其 WAL、SHM，不删除用户数据库。默认端口为 3113，可用 `SPROUT_VERIFY_AUTH_PORT` 覆盖。curl 使用 `--noproxy '*'`。脚本为每个子命令设置超时，并关闭自己启动的进程。
+验收入口是 `bash scripts/verify/c-data-auth.sh`。总入口 `bash scripts/verify.sh` 已按 glob 包含它，无需修改总脚本。验收只删除 `.verify/c-data-auth/auth.sqlite` 与其 WAL、SHM，不删除用户数据库。默认端口为 3113，可用 `SPROUT_VERIFY_AUTH_PORT` 覆盖。curl 使用 `--noproxy '*'`。脚本为每个子命令设置超时，并关闭自己启动的进程。复核后保留脚本原有的 db:generate 检查；当前 schema 无变化时输出 No schema changes, nothing to migrate，不写 migration 文件。从零迁移、重复迁移、真实 schema 与索引断言保留。三个认证 server functions 已统一使用请求上下文，脚本比较成功会话查询与失败登录的 payload、响应头和 http.response 诊断 requestId。以下原输出属于 unit c 的历史证据，当前脚本仍生成 generate.log；复跑见 [重构验收报告](refine-report.md)。
 
 | 结论                                                          | 运行命令                                                                                                                    | 输出摘要与产物                                                                                                                                                                                        |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

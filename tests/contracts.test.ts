@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import {
   APP_ERROR_CODES,
+  appIdPattern,
   ID_PREFIXES,
   createProjectInput,
   fail,
@@ -17,11 +18,7 @@ describe("共享契约", () => {
     const ids = Object.values(ID_PREFIXES).flatMap((prefix) =>
       Array.from({ length: 20 }, () => {
         const id = newId(prefix);
-        expect(id).toMatch(
-          new RegExp(
-            `^${prefix}_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
-          ),
-        );
+        expect(id).toMatch(appIdPattern(prefix));
         return id;
       }),
     );

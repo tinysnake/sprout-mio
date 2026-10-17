@@ -21,7 +21,7 @@ P1 已验证 `vp test run`（Vitest）与 `vp check` 的格式、lint 和类型�
 
 P0 发现的运行期约束已在 P1 接入。TanStack Start 的 SPA 同时设置 `spa.enabled` 与 `createStart(() => ({ defaultSsr: false }))`。`pnpm start` 显式使用 `node --env-file-if-exists=.env.local .output/server/index.mjs`，已有进程环境优先。生产入口在监听前校验 config 与有效 `BETTER_AUTH_SECRET`，完成迁移和 runtime ready；构建 prerender 通过框架标记跳过 runtime，不要求部署 secret。未知页面 GET 的 shell 404 在请求边界转为 200，API 与 server function 不做该转换。静态托管的 `_shell.html` rewrite 仍未验证，证据见 [骨架运行入口](p1/skeleton.md#运行入口) 与 [runtime 入口](p1/runtime.md#入口与单例)。server function 的授权失败在响应载荷中，不能只读 HTTP 状态码。
 
-当前生产构建验收依赖先清理 `.output`。残留输出下重新构建会留下引用旧资源名的 shell，已记录在 [Project 未验证项](p1/feature-sample.md#未验证项)，该增量构建缺陷尚未修复。
+公开的 `pnpm build` 已在构建前删除 `.output`，防止 SPA shell 引用旧资源名。连续构建与客户端资源 hash 变化的验收见 [重构验收报告](p1/refine-report.md)。静态托管与 CDN rewrite 仍未验证。
 
 常规功能沿着页面、server function、业务服务、数据库的固定路径实现。业务服务供 Web 与 Pi extension 的入口共同调用。外部协议使用 server routes 或所选生产适配器的网络入口，不将 Start 的内部调用协议直接作为 Worker 协议。
 
@@ -33,7 +33,7 @@ Web 与后台同进程，P0 证据不支持拆出独立后台进程（[runtime-h
 
 P1 的 `src/server/server-entry.ts` 是 Nitro runtime plugin，在模块顶层等待 `startRuntime()`，避免 Nitro 不等待 plugin 回调 Promise 而提前监听。启动先校验配置与认证 secret，再迁移，在事务内把遗留活跃 boot 标为 `interrupted` 并写入新 boot，最后 ready。恢复范围是 `runtime_boot`，不代表业务作业恢复。`globalThis.sproutRuntime` 复用启动与关闭 Promise、ManagedRuntime 和 boot，真实 dev HMR 未产生第二份 runtime，证据见 [runtime 验证](p1/runtime.md#验证命令与证据)。
 
-生产入口在 ready 后监听，主线程注册 SIGTERM 与 SIGINT，Scope 释放共享数据库连接后由独立短连接写入 `stopped`。生产 SIGTERM 已验证，dev 信号优雅关闭仍未验证。health 每次检查真实数据库与迁移账本，不可用返回 503；正常生产首个可连接响应已为 200，不能声称观测过监听期间的 503 到 200 窗口。调度器、Pi 会话管理与 Worker 连接尚未实现，当前 Scope 的真实资源是数据库连接，后台任务数为 0。请求只消费 runtime，不拥有它。
+生产入口在 ready 后监听，主线程注册 SIGTERM 与 SIGINT，信号先进入 draining 并拒绝新工作，等待在途 HTTP 处理、响应发送与已观察到的 Node server 关闭后，才释放 Scope 的共享数据库连接，再由独立短连接写入 `stopped`。8 秒排空超时标记失败、留下 `stopping` boot 并退出 1，总关闭截止为 9 秒；真实慢上传、503 拒绝、成功退出 0 与超时退出 1 的证据见 [runtime 排空验证](p1/runtime.md#在途-http-排空补充验证)。当前 srvx 普通生产有连接关闭 listener，CI/TEST 下由入口补上同一 Node server 的 close，入口等待实际 close 事件。首次 HTTP 之前尚未观察到的半连接、WebSocket 与 dev 信号优雅关闭未验证。health 每次检查真实数据库与迁移账本，不可用返回 503；正常生产首个可连接响应已为 200，不能声称观测过监听期间的 503 到 200 窗口。调度器、Pi 会话管理与 Worker 连接尚未实现，当前 Scope 的真实资源是数据库连接，后台任务数为 0。请求只消费 runtime，不拥有它。
 
 若开发热更新或生产适配器无法可靠承载后台生命周期，可以拆出后台进程，但仍复用共同业务服务和契约。不能因拆进程而复制授权逻辑或创建第二套业务事实。
 
@@ -75,7 +75,7 @@ Effect Scope 可以管理连接、订阅和本轮临时资源。run 的 Scope �
 
 业务变更与需要可靠处理的通知建议在同一事务中记录，再异步投递。P1 的 Project 创建已在同一 SQLite 事务写入业务行与 `project.created` 诊断，写诊断失败时整体回滚，证据见 [事务与错误路径](p1/feature-sample.md#事务与错误路径证据)。运行期的 `recordDiagnostic` 使用共享 db，捕获失败并返回 false；不能将它直接当作会传播写入失败的业务事务接口。消息、唤醒和操作记录仍是后续恢复所需事实，前端事件通道可发送变更提示，重连后补齐事件或重新获取快照，不把内存广播当作事实来源。
 
-基础诊断已经落到 `src/server/server-entry.ts` 的 Nitro hooks、`src/server/request-context.ts`、`src/server/diagnostics.ts` 与 `diagnostic_event` 表。Nitro 覆盖客户端传入的 requestId，把同一值交给 Project server function、响应头与 HTTP 诊断，Project 创建再关联真实 projectId。受保护的 `/api/diagnostics` 支持按 requestId 与 projectId 查询，浏览器错误页、响应头和诊断行一致性已有真实证据。c 的 session server functions 仍自行生成 ID，尚未统一到 Nitro 上下文。分身、run、execution 尚无真实对象，其诊断关联为空且未验证，细节见 [requestId 与诊断](p1/runtime.md#requestid-与诊断)。
+基础诊断已经落到 `src/server/server-entry.ts` 的 Nitro hooks、`src/server/request-context.ts`、`src/server/diagnostics.ts` 与 `diagnostic_event` 表。Nitro 覆盖客户端传入的 requestId，把同一值交给 Project server function、响应头与 HTTP 诊断，Project 创建再关联真实 projectId。受保护的 `/api/diagnostics` 支持按 requestId 与 projectId 查询，浏览器错误页、响应头和诊断行一致性已有真实证据。认证的三个 session server functions 也复用 Nitro requestId。诊断查询要求 actorId，Project 行按创建者隔离，非 Project 行按具体 requestId 查询；HTTP 入口拒绝不带 requestId/projectId 的列举。分身、run、execution 尚无真实对象，其诊断关联为空且未验证，细节见 [requestId 与诊断](p1/runtime.md#requestid-与诊断)。
 
 ## 让 Worker 提供整机操作能力
 

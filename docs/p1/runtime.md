@@ -12,12 +12,12 @@ stateDiagram-v2
     starting --> migrating: 配置与认证秘密有效
     migrating --> recovering: 同步迁移成功
     recovering --> ready: 恢复与本进程 boot 写入成功
-    ready --> stopping: SIGTERM 或 SIGINT
-    stopping --> stopped: Scope 释放并持久化 stopped
+    ready --> stopping: SIGTERM 或 SIGINT，立即拒绝新工作
+    stopping --> stopped: HTTP 排空、Scope 释放并持久化 stopped
     starting --> StartupFailure: 校验失败
     migrating --> StartupFailure: 迁移失败
     recovering --> StartupFailure: 恢复失败
-    stopping --> ShutdownFailure: 释放或持久化失败
+    stopping --> ShutdownFailure: 排空超时、释放或持久化失败
     StartupFailure --> [*]: 入口抛出，非零退出
     ShutdownFailure --> [*]: 非零退出或 9 秒截止
     stopped --> [*]: 退出码 0
@@ -25,14 +25,14 @@ stateDiagram-v2
 
 各阶段的保证如下。表中的非零退出指生产入口。dev worker 的模块错误由 Nitro 开发服务器处理。
 
-| 阶段         | 保证                                                                                                                | 失败行为                                                 |
-| ------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `starting`   | 解析六项 config，导入 auth 并要求有效 secret                                                                        | 记录失败阶段和可读错误，ready Promise 拒绝，入口非零退出 |
-| `migrating`  | 调用 c 的同步 `migrateDatabase()`，迁移连接总会关闭                                                                 | 记录失败，入口拒绝监听                                   |
-| `recovering` | 一个 SQLite 事务把旧 `starting`、`ready`、`stopping` 行标为 `interrupted`，逐行写诊断，并插入自己的 `starting` boot | 任一恢复诊断写入失败则回滚，释放已有 Scope，入口非零退出 |
-| `ready`      | 本进程 boot 为 `ready`，Scope 持有共享应用数据库连接，ready Promise 完成                                            | health 每次重新探测数据库，数据库不健康时返回 503        |
-| `stopping`   | boot 为 `stopping`，开始释放 Effect ManagedRuntime                                                                  | 错误记入日志，入口以 1 退出，留下旧 boot 供下次恢复      |
-| `stopped`    | Scope 已释放，独立短连接已写入 `stopped_at` 和 `stopped`                                                            | 写入失败不能声明 stopped                                 |
+| 阶段         | 保证                                                                                                                | 失败行为                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `starting`   | 解析六项 config，导入 auth 并要求有效 secret                                                                        | 记录失败阶段和可读错误，ready Promise 拒绝，入口非零退出                                     |
+| `migrating`  | 调用 c 的同步 `migrateDatabase()`，迁移连接总会关闭                                                                 | 记录失败，入口拒绝监听                                                                       |
+| `recovering` | 一个 SQLite 事务把旧 `starting`、`ready`、`stopping` 行标为 `interrupted`，逐行写诊断，并插入自己的 `starting` boot | 任一恢复诊断写入失败则回滚，释放已有 Scope，入口非零退出                                     |
+| `ready`      | 本进程 boot 为 `ready`，Scope 持有共享应用数据库连接，ready Promise 完成                                            | health 每次重新探测数据库，数据库不健康时返回 503                                            |
+| `stopping`   | 入口已 draining，boot 为 `stopping`，等待在途 HTTP 处理与响应结束，再释放 Effect ManagedRuntime                     | 8 秒排空或 9 秒关闭截止失败，phase history 标记 failed，以 1 退出，留下 stopping boot 供恢复 |
+| `stopped`    | Scope 已释放，独立短连接已写入 `stopped_at` 和 `stopped`                                                            | 写入失败不能声明 stopped                                                                     |
 
 `runtimeSnapshot().history` 为每个阶段保存 ISO 开始时间、完成时间、`running`、`ok` 或 `failed` 结果，以及失败消息。阶段进入时间也写入进程日志。`runtime.ready` 诊断保存启动阶段历史。它不替代 `runtime_boot` 的持久状态。
 
@@ -52,7 +52,7 @@ stateDiagram-v2
 
 ## requestId 与诊断
 
-Nitro request hook 为每个请求生成 `req_*`，覆盖客户端传入的 `x-sprout-request-id`。该值随 Request headers 进入 TanStack 上下文。response hook 把同一值写入响应头，并记录一条 `http.response` 诊断。该诊断只包含 method、pathname 和 status，不记录 query、cookie 或 body。
+Nitro fetch 边界为每个请求生成 `req_*`，覆盖客户端传入的 `x-sprout-request-id`。该值随 Request headers 进入 TanStack 上下文。response hook 把同一值写入响应头，并在非 draining 期间同步记录一条 `http.response` 诊断。诊断模块在入口顶层加载完成，hook 不异步导入，排空期间不写该诊断。该诊断只包含 method、pathname 和 status，不记录 query、cookie 或 body。
 
 server function 通过 `getRequestContext().requestId` 获取当前值。直接持有 Request 的路由调用 `getRequestContext(request)`。这些函数要求请求已经通过 Nitro 边界，不会另造一个与响应头不同的 ID。e 的调用方式如下。
 
@@ -70,11 +70,11 @@ return ok(project, requestId);
 
 `recordDiagnostic(input: DiagnosticInput): boolean` 接受冻结 `DiagnosticEvent` 去掉 `id`、`at` 后的字段。必填 `level`、`event`、`requestId`、`message`。可选 `projectId`、`conversationId`、`instanceId`、`runId`、`executionId`、`data`。不存在的业务关联不填写。函数生成 `diag_*`，写入真实 SQLite，返回成功与否。写入失败只落 stderr，不抛给业务请求。
 
-`queryDiagnostics({ requestId?, projectId?, limit? })` 按条件相交查询最近事件，默认 50 条。HTTP 边界限制 `limit` 为 1 到 200。时间以 ISO 返回，data 以对象返回。
+`queryDiagnostics({ actorId, requestId?, projectId?, limit? })` 按条件相交查询最近事件，默认 50 条。actorId 必填，Project 行必须归属于该创建者；非 Project 行必须按具体 requestId 查询。HTTP 边界限制 `limit` 为 1 到 200。时间以 ISO 返回，data 以对象返回。
 
-`GET /api/diagnostics` 先调用 c 的 `requireSession(headers, requestId)`。未登录返回 HTTP 401 和 `unauthorized` AppResult。非法过滤条件返回 HTTP 400 和 `validation_failed`。成功返回 `ok(events, requestId)`。内部错误通过 `fail(toAppError(error, requestId))` 脱敏。
+`GET /api/diagnostics` 先调用 c 的 `requireSession(headers, requestId)`。未登录返回 HTTP 401 和 `unauthorized` AppResult。非法过滤条件或未提供 requestId/projectId 返回 HTTP 400 和 `validation_failed`。认证成功后将 session.userId 作为 actorId 传给查询，越权 Project 过滤返回空。成功返回 `ok(events, requestId)`。内部错误通过 `fail(toAppError(error, requestId))` 脱敏。
 
-`AppResult<T>` 成功分支含 `ok: true`、`data`、`requestId`。失败分支含 `ok: false`、`error`、`requestId`。e 应按 `result.ok` 判别，并复用当前 requestId。c 现有 session server functions 仍有自己的 ID 生成逻辑，未在 d 的写入范围内迁移。
+`AppResult<T>` 成功分支含 `ok: true`、`data`、`requestId`。失败分支含 `ok: false`、`error`、`requestId`。e 应按 `result.ok` 判别，并复用当前 requestId。后续重构已将 c 的三个 session server functions 统一到请求上下文，成功会话查询与失败登录的载荷、响应头、HTTP 诊断一致性由 `scripts/verify/c-data-auth.sh` 断言。
 
 ## health 与真实数据库
 
@@ -82,14 +82,20 @@ return ok(project, requestId);
 
 ## 信号与关闭
 
-生产 plugin 在主线程注册一次 SIGTERM、SIGINT。关闭按以下顺序执行。
+生产 plugin 在主线程注册一次 SIGTERM、SIGINT。首次信号立即设为 draining，重复信号复用关闭工作。关闭按以下顺序执行。
 
-1. 等待已经开始的启动完成，进入 `stopping`，持久化 boot phase。
-2. `ManagedRuntime.dispose()` 关闭 Scope，finalizer 关闭共享应用数据库连接，资源计数归零。
-3. 打开一个独立短连接，把当前 boot 写成 `stopped` 并写入 `stopped_at`，然后关闭短连接。
-4. 进入 `stopped`，入口以 0 退出。
+1. fetch 边界停止接收新工作；后到请求直接返回 503、requestId、`Connection: close`、`Retry-After: 1` 与禁止缓存响应，不进入路由或访问 DB。等待已经开始的启动完成，进入 `stopping` 并持久化 boot phase。
+2. 在从信号开始的 8 秒期限内等待在途请求归零和已观察到的 Node server 发出 `close`。请求在调用应用 fetch 前计数，在 `finally` 标记处理结束；只有处理结束且 Node 响应 `finish` 或 `close` 后才释放计数。错误、短路和客户端断开均走同一释放路径；断开不能提前释放仍在异步执行的业务。response hook 发生在发送前，不能代替这个完成边界。
+3. 排空完成后才调用 `shutdownRuntime()`。`ManagedRuntime.dispose()` 关闭 Scope，finalizer 关闭共享应用数据库连接，资源计数归零。
+4. 打开独立短连接，把当前 boot 写成 `stopped` 并写入 `stopped_at`，关闭短连接，进入 `stopped`，入口以 0 退出。
 
-入口有 9 秒关闭截止，错误或超时以 1 退出。Nitro 的 `close` hook 也复用同一个关闭 Promise。当前依赖版本的 Node preset 本身不调用应用 close hook，生产信号保证来自入口的主线程 handler。
+排空超时记录 `HTTP 排空超时 (8000ms)`，当前 phase history 的 result 为 failed，退出 1，不调用 dispose 或写 stopped。持久 schema 没有 failed phase，boot 留在 `stopping`，下次启动恢复为 `interrupted`。释放或 stopped 持久化失败同样退出 1。总关闭截止保持 9 秒；这些是事件循环定时器，不能抢占阻塞 JavaScript 的同步操作。Nitro `close` hook 复用同一个排空 Promise。当前 Node preset 不调用该应用 close hook，生产信号保证来自主线程 handler。
+
+锁定 Nitro `3.0.260610-beta` 的 Node preset 把 `tracingSrvxPlugins` 传给 srvx `0.11.22`。srvx Node adapter 在用户 plugins 之外直接调用 `gracefulShutdownPlugin`，普通生产启动确实注册 SIGTERM/SIGINT；`CI` 或 `TEST` 非空时不注册。它调用 `server.close()` 并等待连接，但默认 5 秒后强制断连接，也不负责应用 DB 释放或进程退出。入口把无效或小于 10 的 `SERVER_SHUTDOWN_TIMEOUT` 提升为 10 秒，避免它在应用 8/9 秒截止之前截断请求。
+
+Nitro preset 的 srvx 句柄是局部变量。当前 Node adapter 在 `request.runtime.node` 提供原生 req/res；入口从已接收请求的 `req.socket.server` 观察 Node server 的 `close` 事件。该 Socket 属性依赖当前 Node 实现，并非稳定的跨适配器 API。排空在 microtask 中检查 server：先让 srvx 的信号 listener 调用 close，若尚未停止监听（包括 CI/TEST 禁用 srvx listener），应用调用同一个 Node server.close。等待真实 close 事件，不把已在关闭的 srvx.close Promise 当作排空证明，避免两个 handler 竞争而提前退出。应用计数同时保护客户端已断开但业务仍在执行的请求。
+
+至少有一个 HTTP 请求进入边界后，已观察到的 server.close 还会等待该 server 上未完成的连接。尚无任何 HTTP 请求进入边界时无法取得 server 句柄：此时未进入 request 边界的半连接不在应用保证中，普通生产由 srvx 尝试关闭，入口不声明等待它们排空。WebSocket、其他适配器、内部 fetch 的传输、脱离请求的异步业务和多进程均不属于这里的 HTTP/1.1 保证。
 
 dev 的 Nitro 与 SSR 模块在同一个 worker thread 中执行。该线程的模块入口不注册进程信号 handler。dev 进程组能退出，但本 unit 不声明 dev 的 Scope 优雅释放成立。需要主线程向 worker 传递关闭请求的后续接线。没有创建后台队列、cron 或占位任务，`activeBackgroundTasks` 为 0，Scope 的真实资源为数据库连接。
 
@@ -140,13 +146,19 @@ Verification scripts=4 failed=0
 
 断言仍归 `scripts/verify/d-runtime.sh`。断言清单包括 invalid-port、missing-secret、short-secret、placeholder-secret 四种非法配置非零退出且未被超时杀死，以及 migrating、recovering 故障退出 1；这些情况均断言未监听。协调者本次整体回归已确认缺口关闭，`scripts/verify.sh` 的结果为 4 scripts、0 failed，即 `Verification scripts=4 failed=0`。
 
+## 在途 HTTP 排空补充验证
+
+历史 SIGTERM 证据只验证空闲关闭，未证明在途请求安全；该缺口由 [排空报告](graceful-drain-report.md) 的新 HTTP 证据补充。复跑 `bash scripts/verify/drain-http.sh` 会清理产物并构建，再运行真实生产 HTTP/1.1；已有同版本构建时可设 `SPROUT_VERIFY_DRAIN_SKIP_BUILD=1`。探针不在生产代码加入慢路径，使用真实注册请求的部分 JSON 上传，信号后补完，再观察 200、用户行和 stopped 顺序。它证明上传中的请求能跨信号继续进入认证、scrypt 和写库，不证明信号恰好打断 scrypt 的瞬间。
+
+探针还在信号前建立不完整 headers 连接，信号后补成新的注册请求，断言 503 且无用户行和诊断新增。普通环境 SIGTERM、CI 禁用 srvx listener 下 SIGINT，以及持续不补完 body 的真实 8 秒超时均覆盖。日志、原始 HTTP 与汇总位于 `.verify/drain-http/`。`tests/http-drain.test.ts` 单独保护处理与发送的双边界、断开后仍有业务、重复通知和排空截止；现有 runtime 关闭幂等测试保留。
+
 ## CI 与交付边界
 
 `.github/workflows/ci.yml` 的 Production smoke 显式设置固定测试 `BETTER_AUTH_SECRET`，与 a-base、b-tooling 的生产启动使用同一个测试值。该值只供验收，不是真实部署密钥。CI 只新增此步骤的 env 字段，不修改其他步骤，也不放宽入口校验。CI 实际结果和 run URL 在 PR 报告中记录。
 
 ## 未验证与偏离
 
-未验证 dev SIGTERM 的优雅关闭、WebSocket、多进程与恢复中途崩溃。恢复会将所有遗留活跃 phase 标为 interrupted，当前保证只覆盖单进程宿主。
+未验证 dev SIGTERM 的优雅关闭、WebSocket、多进程与恢复中途崩溃。首次 HTTP 之前的半连接不在应用排空保证中；当前 Node socket.server 接线需要随 Node/srvx 升级重新核对。恢复会将所有遗留活跃 phase 标为 interrupted，当前保证只覆盖单进程宿主。
 
 生产 SIGTERM、SQLite 恢复、requestId 关联和 dev 模块 HMR 已验证。插件或依赖变化引起的完整 worker 重启不属于本次 HMR 结论。
 

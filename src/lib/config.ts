@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 
 const environmentSchema = z.object({
   DATABASE_URL: z.string().min(1).default("./data/sprout.sqlite"),
@@ -18,7 +19,7 @@ const environmentSchema = z.object({
   AUTH_RATE_LIMIT_HTTP_MAX: z.coerce.number().int().min(1).max(10_000).default(100),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  LOG_LEVEL: z.enum(DIAGNOSTIC_LEVELS).default("info"),
 });
 
 /** 环境只在边界解析，返回值冻结，后续模块不能改写配置。 */

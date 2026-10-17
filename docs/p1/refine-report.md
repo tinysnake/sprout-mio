@@ -1,0 +1,128 @@
+# P1 重构验收报告
+
+本次在 host 创建的 `p1/refine` 独立 worktree 执行，base 为 main。仅修改该 worktree；初次重构验收未运行 db:generate，后续复核恢复该检查并重新验收，未新增 migration。历史 unit 输出与截图保持原证据，新增运行日志位于忽略的 `.verify/` 与 `/tmp/p1-refine-*.log`，不提交 cookie、数据库或 secret。
+
+## 审查来源
+
+本次重构前由两个独立模型对 P1 做对抗审查，只读、无角色 prompt、prompt-enforced：
+
+- Reviewer A：`magpie/codex/gpt-6.1-sol`，high。8 项 findings（6 critical / 2 warning）。
+- Reviewer B：`magpie/group/auto-deepseek-v4-1-flash`，low。13 项 findings（1 critical / 7 warning / 5 nit）。
+
+两名审查者独立命中同一批问题：`/api/diagnostics` 的跨用户读取、认证 server function 的 requestId 分叉、密码端点缺少限流。本次修前两项；第三项由后续 PR #9 修复。其余发现中 SIGTERM drain 由 PR #8 修复，剩余项记录在「未纳入本次范围」。原始 findings 只保留在本机，不提交全文。纳入本次范围的映射：
+
+| 发现                         | 审查者   | 处理 |
+| ---------------------------- | -------- | ---- |
+| 诊断跨用户读取               | A#2、B#1 | C4   |
+| 认证 requestId 分叉          | A#7、B#2 | C2   |
+| Project boundary 错误范围    | A#5      | C3   |
+| internal 失败无 error 诊断   | A#8      | C3   |
+| 契约重复（ID、诊断级别）     | B#12     | C1   |
+| 公开 build 保留旧 shell      | A#6      | C5   |
+| `pnpm verify` 删除本地 data/ | A#1      | C6   |
+
+提交后另跑一次 comment audit（Comment Sicko，report-only）。接受 3 条：`src/server/functions/project.ts` 的流程旁白与初始化顺序说明、`src/server/diagnostics.ts` 的可见性策略说明；它们的约束已由新增回归测试结构化编码。保留 `serverDeps` 的动态 import 说明（bundler 把 `better-sqlite3` 打进客户端会白屏，属外部平台约束）。两个「提取具名谓词 / 提取依赖加载边界」的 MUST KILL 因单调用点、测试已覆盖而判为 Consider，本 PR 不做。
+
+## 未纳入本次范围
+
+以下是审查提出、本次未修的真实问题，建议各自独立 PR：
+
+- 密码端点无限流。已由 PR #9 修复；Better Auth 的 rate limiter 只在 HTTP router 路径执行，`authenticate` 直接调用 `auth.api` 会绕过它（A#3、B#7）。
+- SIGTERM 不停止接收新请求，也不等待在途 HTTP 请求完成就退出。已由 PR #8 修复（A#4）。
+- Effect 目前只持有共享 SQLite 连接，`activeResources`/`activeBackgroundTasks` 是手搓指标（B#6）。
+- `diagnostic_event` 无保留策略，health 轮询每次写行（B#5）。
+- server function validator 仍是 `unknown`，客户端契约不受类型检查（B#3）。
+- `LOG_LEVEL`/`NODE_ENV` 被校验但无消费者（B#4）。
+- 认证 gating 与 sign out 在 `/` 与 `_authed` 重复（B#10）。
+- Pi 二进制路径硬编码、404 重写为 200、`/api/ping` 在全局 middleware、d-runtime 修改 tracked 源码（B#8、B#9、B#11、B#13）。
+
+## 复核：恢复迁移生成检查
+
+恢复 `scripts/verify/c-data-auth.sh` 原有的 db:generate 调用与 PASS 文案，C1 其他改动保留。重新执行 `bash scripts/verify/c-data-auth.sh`，退出 0；`.verify/c-data-auth/generate.log` 输出 `No schema changes, nothing to migrate`，drizzle/ 无 diff。日志为 `/tmp/p1-refine-restore-generate.log`。按复核要求执行 `git checkout -- docs/p1/evidence/`，历史截图无 diff。
+
+```text
+PASS db:generate drizzle/0000_pale_famine.sql; see generate.log
+PASS protected-authenticated requestId matches payload, header and http.response req_1a87fba2-3a15-4e4f-b7e5-dbacc8b36605
+PASS failed-login requestId matches payload, header and http.response req_5a62d145-af6b-4744-b4cb-57a6b6b5b290
+PASS Chromium logout, redirect, safe error and password login login-error.png; no page errors
+PASS c-data-auth all checks passed
+EXIT_CODE=0
+```
+
+## 提交与行为
+
+| 范围 | 提交           | 文件与可观察结果                                                                                                                                                                                                                                                                                                                                                                         |
+| ---- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1   | `8a07fce`      | `src/contracts/ids.ts`、`src/contracts/project.ts`、`src/contracts/diagnostics.ts`、`src/db/schema.ts`、`src/lib/config.ts`、`tests/contracts.test.ts`、`scripts/verify/c-data-auth.sh`：ID runtime 校验与日志级别各有单一来源；详情 ID 使用完整格式；数据库 CHECK 由 sql.join 构造；C1 当时将 c 的生成检查改为读取既有 migration；后续复核已恢复原 db:generate 调用，其他契约改动保留。 |
+| C2   | `f374a96`      | `src/server/session.ts`、`scripts/verify/c-data-auth.sh`：三个认证函数复用当前 HTTP requestId；成功会话与失败登录断言 payload、响应头、http.response 三处相等。                                                                                                                                                                                                                          |
+| C3   | `80e5d1b`      | `src/server/functions/project.ts`、`tests/project.test.ts`：依赖只加载一次，加载、session、校验与领域调用共享异常边界；未知错误脱敏为 internal，stderr 保留原因并写安全 error 诊断；已有 unauthorized、not_found 和事务回滚断言保留。                                                                                                                                                    |
+| C4   | `3c8d60b`      | `src/server/diagnostics.ts`、`src/routes/api/diagnostics.ts`、`tests/diagnostics.test.ts`、`scripts/verify/d-runtime.sh`、`scripts/verify/e-project.sh`：查询必填 actorId，Project 行按归属隔离，非 Project 行按具体 requestId 查询；HTTP 拒绝无过滤列举；非法 limit 用例带合法 requestId，继续独立验证 limit。                                                                          |
+| C5   | `12c3011`      | `package.json`、`scripts/verify/e-project.sh`：公开 pnpm build 自动清理 .output；e 去掉额外清理，直接检验公开入口。                                                                                                                                                                                                                                                                      |
+| C6   | `c0771f6`      | `scripts/verify/a-base.sh`、`scripts/verify/b-tooling.sh`：干净安装保留仓库 data/；服务使用各自日志目录的 verification.sqlite；现有检查、构建与 smoke 继续执行。                                                                                                                                                                                                                         |
+| 文档 | 本报告所在提交 | 同步 summary、conventions、feature-sample、runtime、skeleton、tooling、data-auth 及架构方向；保留历史输出，明确当前 requestId、诊断可见性与构建约定。                                                                                                                                                                                                                                    |
+
+## 验收命令与输出
+
+| 命令                                     | 退出码 | 关键输出                                                                                                                                                                                                                                  |
+| ---------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile`         | 0      | `Lockfile is up to date, resolution step is skipped`；`Packages: +562`；`Done in 2.3s using pnpm v10.33.0`。                                                                                                                              |
+| `pnpm check`                             | 0      | `All 67 files are correctly formatted`；`Found no warnings, lint errors, or type errors in 49 files`。首次退出 1 的三个泛型推导错误已修复，并归入 C3 提交。                                                                               |
+| `pnpm test`                              | 0      | `Test Files 6 passed (6)`；`Tests 31 passed (31)`。                                                                                                                                                                                       |
+| `pnpm build`，第一次                     | 0      | `rm -rf .output && vp build`；入口 `index-Bc5-Zpez.js`。                                                                                                                                                                                  |
+| `pnpm build`，第二次                     | 0      | 临时修改客户端文案后入口变为 `index-DOZg0SrW.js`；源码随后恢复。                                                                                                                                                                          |
+| `bash scripts/verify/d-runtime.sh`       | 0      | `PASS authenticated diagnostics filters and validation {"status":200,"count":1,"invalidLimit":400}`；`PASS dev HMR reuses runtime and resource`；`PASS d-runtime all checks passed`。最终重跑包含补强后的非法 limit 用例和 8 项行为测试。 |
+| `bash scripts/verify/e-project.sh`       | 0      | `PASS diagnostics rejects unfiltered listing {"status":400,"code":"validation_failed"}`；`PASS 真实 Chromium 流程`；`PASS 生产进程 SIGTERM 退出 {"code":0,"signal":null}`。                                                               |
+| `bash scripts/verify/c-data-auth.sh`     | 0      | `PASS c-data-auth all checks passed`；真实 HTTP 与 Chromium 注册、登出、错误呈现、登录均 PASS。                                                                                                                                           |
+| `bash scripts/verify/f-docs.sh`          | 0      | 七项清单证据 PASS；内部链接/锚点 141；仓库路径 125；`PASS f-docs all checks passed`。                                                                                                                                                     |
+| `bash scripts/verify/b-tooling.sh`，额外 | 0      | `PASS clean frozen installation`；check、test、build、三条 HTTP 200 与 SIGTERM 全部 PASS；`PASS b-tooling all checks passed (clean install 4s)`。                                                                                         |
+
+两次构建通过 `/tmp/p1-refine-builds.mjs` 驱动实际 pnpm build，每次子进程上限 300 秒，输出写入独立文件。第二次 shell 的所有 JS/CSS 引用均存在，旧入口 `index-Bc5-Zpez.js` 和旧路由资源 `routes-dCngzk9N.js` 均不再被引用且文件已删除。第二次对应资源为 `index-DOZg0SrW.js`、`routes-Cb3c2r4W.js`。日志输出：
+
+```text
+pnpm build #1: exit=0; signal=null; log=/tmp/p1-refine-build-1.log
+pnpm build #2: exit=0; signal=null; log=/tmp/p1-refine-build-2.log
+PASS consecutive public builds
+EXIT_CODE=0
+Client source restored
+```
+
+认证 HTTP 断言的真实输出：
+
+```text
+PASS protected-authenticated requestId matches payload, header and http.response req_816f9883-8e17-400a-8a38-676122df7e95
+PASS failed-login requestId matches payload, header and http.response req_d3ea009b-bd44-4646-9519-bc97d4fd2f90
+PASS Chromium register and protected reload authenticated.png
+PASS Chromium logout, redirect, safe error and password login login-error.png; no page errors
+PASS registration does not create Projects users=2 projects=0
+```
+
+Project 浏览器输出保存在 `.verify/e-project/browser.log`，12/12 通过，含页面错误、响应头和 http.response requestId 相等；本次截图另存 `.verify/e-project/screenshots/`，仓库历史截图已恢复。
+
+## 回归证据与限制
+
+- session 基础设施失败 → 三个 boundary 都返回 internal 与当前 req_x，并写三条 project.request_failed。测试通过 Headers Proxy 抛错触发真实 Better Auth Headers 转换，无生产测试 hook。修复前 tsx 子进程因 `Error: session infrastructure secret` reject，测试退出 1；修复后 Project 测试 7/7，退出 0。诊断 data 严格等于 `{"code":"internal"}`，客户端不含原始原因。
+- 跨用户泄漏 → 用 auth.api.signUpEmail 注册 A/B，领域服务各建一个 Project，查询 A 无过滤只得到 A 的 project.created，指定 B 的 projectId 或 requestId 均为空。修复前实际返回两用户 Project 加两条非 Project 行，测试退出 1；修复后 diagnostics 4/4，退出 0。
+- ID 与日志契约 → 复用既有契约、配置、真实 SQLite 约束测试；未创建只镜像实现的新测试。
+- 诊断模块或数据库本身不可用时，无法保证持久化错误诊断；boundary 仍返回脱敏 internal 并记录 stderr。recordDiagnostic 的失败保持非致命。
+- 多用户浏览器端到端、并发创建、高负载、冷 pnpm store、静态托管/CDN rewrite 不在本次验证范围。a-base 的真实 Pi 流程没有额外复跑；既有断言保留。
+
+C1 另用 Drizzle SQLiteSyncDialect 比较新 CHECK 与原有 SQL 的输出及参数，断言完全相同：
+
+```text
+PASS unchanged diagnostic CHECK SQL {"sql":"\"diagnostic_event\".\"level\" in ('debug', 'info', 'warn', 'error')","params":[]}
+```
+
+C6 的额外数据保留验收通过 `/tmp/p1-refine-data-safety.mjs` 驱动完整 b 脚本，上限 300 秒，前后比较仓库 data/ 中全部文件的 SHA-256，并确认独立验收数据库存在。没有删除用户文件，验收哨兵保留在忽略的 data/ 内。输出为：
+
+```text
+bash scripts/verify/b-tooling.sh: exit=0; signal=null
+PASS clean install and production smoke preserve data hashes: {"data/p1-refine-preserve.txt":"e6f4d9e839941247eb68ffd2c0d733f06888fa443d0246a6b87ac65acca0ebf8","data/sprout.sqlite":"da63a52bdf62b3fc863995d79f497584be3ba97c1de4c55d1d301afbafab6cfc"}
+PASS isolated .verify/b-tooling/verification.sqlite exists
+EXIT_CODE=0
+```
+
+所有验收脚本均通过 bash -n，逐项检查脚本删除目标仅涉及 node_modules、dist、.output 或 .verify 下的隔离库/cookie，没有 verify 脚本删除仓库 data/。drizzle/ 与 pnpm-lock.yaml 相对 main 的 diff 为空。
+
+日志索引：安装 `/tmp/p1-refine-install.log`；首次 check `/tmp/p1-refine-check.log`、最终 check `/tmp/p1-refine-check-final.log`；全套 test `/tmp/p1-refine-test.log`（b 又完整运行一次）；构建 `/tmp/p1-refine-build-1.log`、`/tmp/p1-refine-build-2.log`、`/tmp/p1-refine-builds.log`；runtime 最终 `/tmp/p1-refine-d-runtime-final.log`；Project `/tmp/p1-refine-e-project.log`；认证 `/tmp/p1-refine-c-data-auth.log`；文档 `/tmp/p1-refine-f-docs.log`；干净安装 smoke `/tmp/p1-refine-b-tooling.log` 与 `/tmp/p1-refine-data-safety.log`。红绿证据分别为 `/tmp/p1-refine-project-red.log`、`/tmp/p1-refine-project-green.log`、`/tmp/p1-refine-diagnostics-red.log`、`/tmp/p1-refine-diagnostics-green.log`。各脚本详细子命令输出保存在对应 .verify 目录。
+
+C1–C6 与要求的文档、验收均完成，无未解决阻塞。仅额外的 a-base 全套真实 Pi 验收未复跑，不属于本次必跑清单；其生产/dev 数据库隔离设置与不删除 data 的改动已做源码及 shell 语法检查。

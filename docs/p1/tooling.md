@@ -76,7 +76,7 @@ operator 想改成全量格式时，删掉 `vite.config.ts` 的 `fmt.ignorePatte
 
 ## 干净安装与生产启动
 
-`bash scripts/verify/b-tooling.sh` 覆盖本机验收。步骤是端口守卫、`rm -rf node_modules dist .output data`、`pnpm install --frozen-lockfile`、`pnpm check`、`pnpm test`、`pnpm build`、后台 `pnpm start` 加三次轮询、`kill -TERM` 进程组并确认 10 秒内退出。每条都打印 PASS 或 FAIL 以及命令和输出摘要，日志写在 `.verify/b-tooling/`。
+`bash scripts/verify/b-tooling.sh` 覆盖本机验收。步骤是端口守卫、`rm -rf node_modules dist .output`、`pnpm install --frozen-lockfile`、`pnpm check`、`pnpm test`、`pnpm build`、后台 `pnpm start` 加三次轮询、`kill -TERM` 进程组并确认 10 秒内退出。每条都打印 PASS 或 FAIL 以及命令和输出摘要，日志写在 `.verify/b-tooling/`。脚本保留仓库 `data/`，生产服务显式使用 `.verify/b-tooling/verification.sqlite`。以下安装耗时与输出是原 unit 的历史证据。
 
 实测两次干净安装的墙钟耗时是 17s 与 16s。pnpm 自报的安装时间是 9.1s 与 8.2s，其余是 `rm -rf node_modules`、pnpm 进程启动和缓存校验的开销。这个数字的限流因素是热 pnpm store 与 `better-sqlite3` 原生绑定的复用，样本数为 1 的两次测量，不是基准。所有实测结果如下。
 
