@@ -51,12 +51,16 @@ operator 想改成全量格式时，删掉 `vite.config.ts` 的 `fmt.ignorePatte
 
 生产 smoke 在 3111 端口后台启动 `pnpm start`，轮询 `/`，再检查 `/`、`/projects/does-not-exist`、`/api/ping` 三个路径都返回 200，最后向进程组发 `SIGTERM` 并确认 10 秒内退出。
 
-两次真实运行都成功。
+每次 push 与每个 pull_request 都跑同一个 workflow。下面是本 PR 分支上到 `ab06235` 为止的全部真实运行，都成功。
 
-| 运行                                                                            | 触发                 | 结论      | 证据         |
-| ------------------------------------------------------------------------------- | -------------------- | --------- | ------------ |
-| [39013147691](https://github.com/tinysnake/sprout-mio/actions/runs/39013147691) | push，`p1/b-tooling` | 成功，29s | 见下行摘要   |
-| [39013168343](https://github.com/tinysnake/sprout-mio/actions/runs/39013168343) | pull_request，PR #2  | 成功，31s | 步骤结论同上 |
+| 运行                                                                            | 触发                 | commit    | 结论      |
+| ------------------------------------------------------------------------------- | -------------------- | --------- | --------- |
+| [39013147691](https://github.com/tinysnake/sprout-mio/actions/runs/39013147691) | push，`p1/b-tooling` | `b876cbc` | 成功，29s |
+| [39013168343](https://github.com/tinysnake/sprout-mio/actions/runs/39013168343) | pull_request，PR #2  | `b876cbc` | 成功，31s |
+| [39013380235](https://github.com/tinysnake/sprout-mio/actions/runs/39013380235) | push，`p1/b-tooling` | `ab06235` | 成功      |
+| [39013382888](https://github.com/tinysnake/sprout-mio/actions/runs/39013382888) | pull_request，PR #2  | `ab06235` | 成功      |
+
+`39013147691` 与 `39013168343` 覆盖工具链代码，`39013380235` 与 `39013382888` 覆盖本文档第一版。改动本表的 commit 由同一 workflow 在 PR head 上验证，其 URL 记录在 PR 描述与本 unit 的报告中。
 
 `gh run view --job=117339736206 --log` 的关键行如下。
 
