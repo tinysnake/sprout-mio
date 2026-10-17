@@ -25,5 +25,25 @@ export const auth = betterAuth({
   trustedOrigins: [config.APP_ORIGIN],
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
   emailAndPassword: { enabled: true },
+  rateLimit: {
+    enabled: true,
+    storage: "memory",
+    window: config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    max: config.AUTH_RATE_LIMIT_HTTP_MAX,
+    customRules: {
+      "/sign-in/email": {
+        window: config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        max: config.AUTH_RATE_LIMIT_HTTP_MAX,
+      },
+      "/sign-up/email": {
+        window: config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        max: config.AUTH_RATE_LIMIT_HTTP_MAX,
+      },
+      "*": {
+        window: config.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+        max: config.AUTH_RATE_LIMIT_HTTP_MAX,
+      },
+    },
+  },
   plugins: [tanstackStartCookies()],
 });

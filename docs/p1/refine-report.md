@@ -9,7 +9,7 @@
 - Reviewer A：`magpie/codex/gpt-6.1-sol`，high。8 项 findings（6 critical / 2 warning）。
 - Reviewer B：`magpie/group/auto-deepseek-v4-1-flash`，low。13 项 findings（1 critical / 7 warning / 5 nit）。
 
-两名审查者独立命中同一批问题：`/api/diagnostics` 的跨用户读取、认证 server function 的 requestId 分叉、密码端点缺少限流。本次只修前两项；第三项与其余发现记录在「未纳入本次范围」。原始 findings 只保留在本机，不提交全文。纳入本次范围的映射：
+两名审查者独立命中同一批问题：`/api/diagnostics` 的跨用户读取、认证 server function 的 requestId 分叉、密码端点缺少限流。本次修前两项；第三项由后续 PR #9 修复。其余发现中 SIGTERM drain 由 PR #8 修复，剩余项记录在「未纳入本次范围」。原始 findings 只保留在本机，不提交全文。纳入本次范围的映射：
 
 | 发现                         | 审查者   | 处理 |
 | ---------------------------- | -------- | ---- |
@@ -27,8 +27,8 @@
 
 以下是审查提出、本次未修的真实问题，建议各自独立 PR：
 
-- 密码端点无限流。Better Auth 的 rate limiter 只在 HTTP router 路径执行，`authenticate` 直接调用 `auth.api` 绕过它（A#3、B#7）。
-- SIGTERM 不停止接收新请求，也不等待在途 HTTP 请求完成就退出（A#4）。
+- 密码端点无限流。已由 PR #9 修复；Better Auth 的 rate limiter 只在 HTTP router 路径执行，`authenticate` 直接调用 `auth.api` 会绕过它（A#3、B#7）。
+- SIGTERM 不停止接收新请求，也不等待在途 HTTP 请求完成就退出。已由 PR #8 修复（A#4）。
 - Effect 目前只持有共享 SQLite 连接，`activeResources`/`activeBackgroundTasks` 是手搓指标（B#6）。
 - `diagnostic_event` 无保留策略，health 轮询每次写行（B#5）。
 - server function validator 仍是 `unknown`，客户端契约不受类型检查（B#3）。

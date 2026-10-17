@@ -80,10 +80,25 @@ export const authenticate = createServerFn({ method: "POST" })
     if (headers.get("origin") !== config.APP_ORIGIN) {
       return fail({ code: "forbidden", message: "请求来源不受信任", requestId });
     }
+    const input = parsed.data;
+    if (input.action !== "logout") {
+      const { consumeAuthAttempt } = await import("./auth-rate-limit");
+      if (!consumeAuthAttempt(input.email).allowed) {
+        const message = "尝试过于频繁，请稍后再试";
+        const { recordDiagnostic } = await import("./diagnostics");
+        recordDiagnostic({
+          level: "warn",
+          event: "auth.rate_limited",
+          requestId,
+          message,
+          data: { action: input.action },
+        });
+        return fail({ code: "too_many_requests", message, requestId });
+      }
+    }
     const { auth } = await import("../lib/auth");
     const { APIError } = await import("better-auth/api");
     try {
-      const input = parsed.data;
       switch (input.action) {
         case "register": {
           const result = await auth.api.signUpEmail({ body: input, headers });
