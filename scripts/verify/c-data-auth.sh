@@ -80,7 +80,9 @@ async function curl(path, name, { body, cookie = false, origin = true, method } 
     child.on('error', reject)
     child.on('close', (code) => code === 0 ? resolve({ stdout }) : reject(new Error(`curl ${path} ${stderr}`)))
   })
-  return { status: Number(stdout), text: readFileSync(output, 'utf8') }
+  const headers = readFileSync(join(logDir, `${name}.headers`), 'utf8')
+  const requestId = headers.match(/^x-sprout-request-id:\s*(\S+)/im)?.[1]
+  return { status: Number(stdout), text: readFileSync(output, 'utf8'), requestId }
 }
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory()
@@ -161,12 +163,30 @@ try {
   assert.equal(session.status, 200)
   assert.equal(JSON.parse(session.text).user.email, email)
   pass('session cookie readable', 'HTTP 200; expected email')
-  const authenticated = result(await curl(protectedPath, 'protected-authenticated', { cookie: true }))
+  async function assertRequestId(payload, response, name) {
+    assert.match(response.requestId ?? '', /^req_/)
+    assert.equal(payload.requestId, response.requestId)
+    if (!payload.ok) assert.equal(payload.error.requestId, response.requestId)
+    const diagnostics = await curl(`/api/diagnostics?requestId=${response.requestId}`, `${name}-diagnostics`, { cookie: true })
+    assert.equal(diagnostics.status, 200, diagnostics.text)
+    const rows = JSON.parse(diagnostics.text).data.filter((row) => row.event === 'http.response')
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0].requestId, payload.requestId)
+    pass(`${name} requestId matches payload, header and http.response`, response.requestId)
+  }
+  const authenticatedResponse = await curl(protectedPath, 'protected-authenticated', { cookie: true })
+  const authenticated = result(authenticatedResponse)
   assert.equal(authenticated.ok, true)
   assert.equal(authenticated.data.email, email)
   assert.match(authenticated.data.expiresAt, /^\d{4}-.*Z$/)
   assert.equal(authenticated.data.token, undefined)
   pass('authenticated protected function', 'HTTP 200 ok; ISO expiry; no token')
+  await assertRequestId(authenticated, authenticatedResponse, 'protected-authenticated')
+  const failedLoginResponse = await curl(authenticatePath, 'failed-login', { body: await toJSONAsync({ data: { action: 'login', email, password: 'wrong-password-for-check' } }) })
+  const failedLogin = result(failedLoginResponse)
+  assert.equal(failedLogin.ok, false)
+  assert.equal(failedLogin.error.code, 'unauthorized')
+  await assertRequestId(failedLogin, failedLoginResponse, 'failed-login')
   const page = await curl('/', 'protected-page', { cookie: true })
   assert.equal(page.status, 200)
   assert.match(page.text, /Sprout Mio/)
