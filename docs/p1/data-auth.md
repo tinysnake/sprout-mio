@@ -42,9 +42,35 @@ auth 表来自 `experiments/spa-auth-db/src/db/auth-schema.ts`，保留生成物
 
 初始 SQL 是 `drizzle/0000_pale_famine.sql`。它由 `pnpm db:generate` 生成。再次生成显示 `7 tables` 和 `No schema changes, nothing to migrate`。空库初始化与第二次迁移均已运行，迁移账本保持一条记录。
 
-`pnpm db:migrate` 沿用 a 的 `drizzle-kit migrate` 脚本。`drizzle.config.ts` 显式读取 `.env.local` 与 `.env`。程序化入口使用 Drizzle ORM migrator。两者消费同一 `drizzle/` 和迁移账本，验收已验证先用 CLI 迁移、再用程序化入口重复执行成功。
+`pnpm db:migrate` 沿用 a 的 `drizzle-kit migrate` 脚本。`drizzle.config.ts` 显式读取 `.env.local` 与 `.env`，按解析后的 `DATABASE_URL` 递归创建数据库父目录，再交给 drizzle-kit 打开文件；`:memory:` 不创建目录。默认路径仍为 `./data/sprout.sqlite`，不依赖 `pnpm setup` 先运行。程序化入口使用 Drizzle ORM migrator。两者消费同一 `drizzle/` 和迁移账本，验收已验证先用 CLI 迁移、再用程序化入口重复执行成功。
 
 SQLite 查询构造器约束错误的驱动码在 `error.code`，Drizzle `.run(sql)` 包装错误的驱动码在 `error.cause.code`。本实现的外键行为测试使用真实连接，不以 mock 替代 SQLite。
+
+## 干净目录验证
+
+已在当前 worktree 复现 CI 的失败。修复前运行 `rm -rf data .verify data/sprout.sqlite`，随后执行 `pnpm db:migrate`，退出 1，错误为 `Cannot open database because the directory does not exist`。根因是 drizzle-kit 的连接没有经过 `src/db/connection.ts`，已有连接工厂的目录创建逻辑未覆盖这个 CLI。
+
+应用父目录创建补丁后，实际运行以下命令。
+
+```sh
+rm -rf data
+pnpm db:migrate
+```
+
+命令退出 0，输出 `migrations applied successfully!`。随后以只读 SQLite 连接检查，`data/sprout.sqlite` 已存在，包含 `project`、`diagnostic_event`、`runtime_boot`、`user`、`session`、`account`、`verification` 和迁移账本。没有先运行 `pnpm setup`。输出日志为 `.verify/c-data-auth/clean-migrate.log`。
+
+再次删除 `data/` 后，实际执行 `pnpm start`。验证进程注入运行时生成的随机 `BETTER_AUTH_SECRET`，其余环境覆盖与请求命令如下。
+
+```sh
+rm -rf data
+PORT=3114 NITRO_PORT=3114 APP_ORIGIN=http://localhost:3114 \
+	DATABASE_URL=./data/sprout.sqlite pnpm start
+curl --noproxy '*' -fsS http://localhost:3114/api/auth/get-session
+```
+
+生产进程成功监听 3114，auth endpoint 返回 HTTP 200、`null`。请求后检查确认 `data/sprout.sqlite` 已创建，日志不含 `directory does not exist`。进程经 SIGTERM 清理后退出 0。日志为 `.verify/c-data-auth/clean-start.log`。
+
+该启动检查证明连接工厂能处理缺少父目录。它不代表启动入口完成迁移；启动前迁移与配置校验接线仍归属 `p1-d-runtime`。
 
 ## 配置与首次运行
 
@@ -128,7 +154,7 @@ Better Auth 默认密码长度限制之外的密码强度策略尚未设计。�
 
 本次修订运行 `bash scripts/verify/c-data-auth.sh`，退出 0，输出 `PASS c-data-auth all checks passed`。迁移、HTTP 和 Chromium 检查全部 PASS。两个 auth 独立导入检查均自行退出 1、signal 为 null，分别打印含 `PORT` 和 `BETTER_AUTH_SECRET` 的可读校验错误。两个生产入口观测均为 exit=null、signal=SIGKILL，各打印一条 owner 为 `p1-d-runtime` 的 GAP。完整输出在 `.verify/c-data-auth/verify.log`。
 
-此前总验收运行 `bash scripts/verify.sh`，退出 1，输出 `Verification scripts=2 failed=1`，原因是当时仍将生产入口校验归为 c 的失败门禁。历史输出保留在 `.verify/c-data-auth/all-verify.log`。本次未重跑总验收。已有源码门禁和测试证据在 `.verify/a-base/check.log`、`typecheck.log`、`test.log`，13 个测试通过。
+此前总验收运行 `bash scripts/verify.sh`，退出 1，输出 `Verification scripts=2 failed=1`，原因是当时仍将生产入口校验归为 c 的失败门禁。本次未重跑总验收。模拟 CI 时已按要求清理 `.verify/`，早期总验收与 a-base 日志不再保留；本次证据见 `clean-migrate.log`、`clean-start.log` 和 `verify.log`。
 
 脚本固定 `NITRO_PORT` 以隔离验收端口。应用仍应在启动边界拒绝无效的 `config.PORT`。监听成功不能代替配置校验。
 
@@ -146,7 +172,7 @@ coordinator 已将生产入口的启动前配置校验归属 `p1-d-runtime`，�
 
 多进程并发写 SQLite、WAL checkpoint 和写饥饿、session 过期与刷新、额外密码强度策略、真实跨机访问均未验证。连接的 HMR 复用通过结构性 `globalThis` 缓存实现，尚无真实 dev HMR 的连接数量观测。
 
-`src/routeTree.gen.ts` 由 TanStack 重新生成，以登记 `/login` 和 `/api/auth/$`。这是新增路由必须更新的生成物，未手工编辑。没有修改共享契约、runtime、构建配置、package scripts 或其他 worktree。
+`src/routeTree.gen.ts` 由 TanStack 重新生成，以登记 `/login` 和 `/api/auth/$`。这是新增路由必须更新的生成物，未手工编辑。coordinator 本次另授权修改 `drizzle.config.ts`，仅按现有 DATABASE_URL 创建父目录。没有修改共享契约、runtime、Vite 配置、package scripts、CI 工作流或其他 worktree。
 
 没有可用的 delegate 工具，宿主中也未找到 cursor-team-kit 的 deslop 技能，因此没有独立多模型审查或插件审查结果。已直接检查 diff、注释与作用域，并运行真实门禁。没有修改技能文件。
 
