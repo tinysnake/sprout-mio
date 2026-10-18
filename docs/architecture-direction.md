@@ -27,6 +27,32 @@ P0 发现的运行期约束已在 P1 接入。TanStack Start 的 SPA 同时设�
 
 Effect 优先用于需要长期运行、并发和恢复的服务。React 展示和纯数据转换不必统一包装为 Effect。固定一种应用错误表示与边界转换方式，避免各功能建立自己的异常、重试和依赖框架。
 
+### Effect 的使用范围
+
+Effect 的目标范围是常驻服务与远程 I/O，不覆盖展示层与纯数据转换。范围按能力列，不按文件列。原 Sprout 在同一片领域手写了 12036 行 `src/worker` 与 8729 行 `src/engine`，这是要避免的重复成本。
+
+| 能力 | Effect 承担的部分 | 今天的状态 |
+| --- | --- | --- |
+| Agent harness 集成 | 子进程生命周期、stdio 事件、协议超时、取消传播 | 已落地，P3 的 Pi 会话管理 |
+| Agent 生命周期 | 状态机与 fiber，活跃 run 由 Scope 管理 | 已落地 |
+| Machine 资源管理 | 租约与绑定的并发与生命周期 | 未开始，属 P4a 与 P4b |
+| Worker 网络 | 心跳用 `Effect.repeat`、重连用 `Effect.retry`、超时、断线清理 | 未开始，属 P4a |
+| 远程工具与 MCP | 调用的超时、中断、错误分类与重试 | 未开始，属 P4b 与 R1 |
+
+三个已核对的库事实，供实现时取用。
+
+- `effect/ai` 已带 MCP。公开导出 `McpServer`、`McpSchema`、`McpProtocol`，`McpServer` 提供 `layerStdio`、`layerHttp`、`registerToolkit`、`elicit`。R1 的项目与软件 MCP 接入可以直接落在它上面，不必自己实现 MCP 的 JSON-RPC 层。
+- `effect/rpc` 有 `RpcClient`、`RpcGroup`、`RpcMiddleware`、`RpcTest`。`RpcTest` 让协议测试跑在内存里，不开真 socket。
+- `effect/cluster` 有 `MachineId`、`RunnerAddress`、`RunnerHealth`、`Entity`、`Sharding`，但它们是分布式调度模型的构件。本文档已规定不为尚未出现的多宿主需求提前引入分布式调度，所以 P4 只用 `Rpc` 加 `Schedule` 加 `Scope` 手工组合，不引入 `effect/cluster`。
+
+两项未落地的声明写在这里，以免被当成已完成。
+
+错误表示没有迁到 Effect。当前仍是 `src/contracts/result.ts` 的联合类型加类型化异常，在六个边界统一映射。改用 `Effect<A, E, R>` 的 typed error 通道与「固定一种应用错误表示」这条规则直接相关，需要单独决策，不随常驻服务一起做。
+
+领域时间来源没有注入。`src/domain/*` 里仍有 16 处 `Date.now()` 与 `new Date()`。`TestClock` 不重定向 `Date.now()`，所以这些时间戳不会被虚拟化。它们用于记录历史时间，不参与调度决策，当前可以保留。一旦某处时间戳开始参与分支判断，必须先改成注入参数或走 `Clock`。
+
+上表的状态在每次阶段验收时更新。写成「未开始」的项是范围，不是遗漏。
+
 ### 常驻服务的形状
 
 P3 的 Pi 会话管理是第一个常驻服务。调度器在 `src/server/pi-host/host.ts`，依赖组装在 `src/server/pi-host/index.ts`，接进 runtime 在 `src/server/runtime.ts`，快进测试在 `tests/pi-host-clock.test.ts`。后续的调度器、Worker 连接与 MCP client 沿用这套形状。
