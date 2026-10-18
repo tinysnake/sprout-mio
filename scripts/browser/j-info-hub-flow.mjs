@@ -186,7 +186,8 @@ await check("unavailable_notices_render_explicitly", async () => {
       notices.badges.length === 1 &&
       notices.badges[0] === "未实现" &&
       /宿主(已|未)启用/.test(notices.runsHostStatus ?? "") &&
-      (notices.runsActive ?? "").includes("没有排队中或运行中的 run") &&
+      /排队中|运行中/.test(notices.runsActive ?? "") &&
+      (notices.runsActive ?? "").includes("未投递") &&
       !notices.body.includes("0 个活动 run") &&
       !notices.body.includes("无活动 run") &&
       !notices.body.includes("无 Machine"),
