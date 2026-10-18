@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   APP_ERROR_CODES,
   appIdPattern,
@@ -98,6 +100,7 @@ describe("配置边界", () => {
     const config = parseConfig({});
     expect(config).toEqual({
       SPROUT_PI_ENABLED: true,
+      SPROUT_PI_DATA_DIR: join(homedir(), ".local", "share", "sprout-mio", "pi"),
       DATABASE_URL: "./data/sprout.sqlite",
       APP_ORIGIN: "http://localhost:3000",
       AUTH_RATE_LIMIT_MAX: 5,

@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { RunConfigSnapshot } from "../../contracts/agent-run";
 import type { OpenSession, PiHostCommand, PiHostEvent } from "./protocol";
@@ -206,10 +205,7 @@ export class PiSessionProcess {
 }
 
 export function piInstancePaths(instanceId: string) {
-  const root = resolve(
-    process.env.SPROUT_PI_DATA_DIR ?? join(homedir(), ".local", "share", "sprout-mio", "pi"),
-  );
-  const directory = join(root, instanceId);
+  const directory = join(config.SPROUT_PI_DATA_DIR, instanceId);
   const cwd = join(directory, "workspace");
   const sessionDirectory = join(directory, "sessions");
   mkdirSync(cwd, { recursive: true, mode: 0o700 });

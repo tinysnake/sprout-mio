@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { accessSync, constants, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 
 const environmentSchema = z.object({
@@ -8,6 +9,11 @@ const environmentSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
+  SPROUT_PI_DATA_DIR: z
+    .string()
+    .min(1)
+    .refine(isAbsolute, "必须是绝对路径")
+    .default(join(homedir(), ".local", "share", "sprout-mio", "pi")),
   SPROUT_PI_RUNNER: z
     .string()
     .min(1)

@@ -65,7 +65,7 @@ runner 从 `PI_CODING_AGENT_DIR` 或 `~/.pi/agent` 读取凭据、模型目录�
 
 profile 的 model 推荐写成 `provider/model`，例如 `deepseek/deepseek-flash`。只写模型 ID 时沿用 Pi settings 的 defaultProvider。profile 未配置 model 时沿用 settings 的 defaultProvider 与 defaultModel。每次创建 session 都显式传入 `ModelRuntime` 与解析后的 model，并核对 session 的实际模型。
 
-magpie 作为 native provider 注册，不加载整个用户 extension 集合。runner 从 Pi settings 的本地 `pi-magpie` package 路径发现 provider 源码，也允许宿主通过 `SPROUT_PI_PROVIDER_ROOT` 指定目录。模块解析 hook 让 provider 使用当前 SDK release 的 `pi-ai/compat`。其他用户 extension、技能、上下文文件与 package 不进入分身的 resource loader。
+magpie 作为 native provider 注册，不加载整个用户 extension 集合。runner 从 Pi settings 的本地 `pi-magpie` package 路径发现 provider 源码，也允许宿主通过 `SPROUT_PI_PROVIDER_ROOT` 指定目录。该变量是 runner 侧的测试与运维缝，不是产品选项。子进程 runner 的环境是它自己的接口，由父进程显式构造并传入；父进程侧的应用配置必须经 `src/lib/config.ts` 解析。模块解析 hook 让 provider 使用当前 SDK release 的 `pi-ai/compat`。其他用户 extension、技能、上下文文件与 package 不进入分身的 resource loader。
 
 受控 loader 只加载 Sprout extension，工具显式允许 `read`、`bash`、`edit`、`write`。默认工作目录为分身自己的持久目录，仓库入口由 p3-c 接入。本 unit 没有采用原 Sprout 的 OS sandbox，不声明文件系统隔离。
 
@@ -110,7 +110,7 @@ P0 已证明普通 extension 可以通过 `additionalExtensionPaths` 加载。�
 | 启用但 SDK 或凭据不可用               | run 为 failed，`errorCode = session_open_failed`，`errorMessage` 给可读原因          |
 | `SPROUT_PI_RUNNER`                    | 可选测试缝，只由宿主环境提供。必须是存在且可执行的文件绝对路径，非法配置在启动前拒绝 |
 
-两个字段都在 `src/lib/config.ts` 经过 Zod 解析。runner 路径不能来自客户端输入。`SPROUT_PI_RUNNER` 不是产品选项。`scripts/verify.sh` 显式 export `SPROUT_PI_ENABLED=false`，既有 hermetic 验收不执行 DM 的真实 Pi run；新 n 脚本覆盖为 true 并指定协议桩，live 脚本覆盖为 true 并移除测试 runner 覆盖。
+三个字段都在 `src/lib/config.ts` 经过 Zod 解析，解析结果冻结。`SPROUT_PI_DATA_DIR` 默认是 `join(homedir(), ".local", "share", "sprout-mio", "pi")`，覆盖值必须是非空的绝对路径，父进程从 config 读取。runner 路径不能来自客户端输入。`SPROUT_PI_RUNNER` 不是产品选项。`scripts/verify.sh` 显式 export `SPROUT_PI_ENABLED=false`，既有 hermetic 验收不执行 DM 的真实 Pi run；新 n 脚本覆盖为 true 并指定协议桩，live 脚本覆盖为 true 并移除测试 runner 覆盖。
 
 p3-b 在对话页发送区附近显示启用状态。显式 false 时显示“宿主未启用”，不能显示正在处理或已完成。p3-d 在 Info Hub 的分身运行详情显示相同文案。启用但失败时展示 run 的 failed、errorCode、errorMessage 与 requestId，不把 `session_open_failed` 变成空回复。`piHostSnapshot()` 返回启用状态，公开查询仍需沿用现有认证边界。
 
@@ -181,7 +181,7 @@ assert.throws(() => sqlite.prepare(nullStopInsert).run(first.id, run.id), /CHECK
 
 identity-data 测试的子进程加 `readdirSync` 导入。g 的 PASS 输出把 `migrations: 2` 改为 `migrations: migrations.length`。这些输出必须与断言一致。g 的唯一 `0001_` 文件断言没有改变，c-data-auth 没有改变。
 
-新增默认配置字段使 `tests/contracts.test.ts` 的 `parseConfig({})` 完整对象断言失败。在原 expected 对象中只增加 `SPROUT_PI_ENABLED: true`。没有改动其他断言。`SPROUT_PI_RUNNER` 是 optional，没有默认值。
+新增默认配置字段使 `tests/contracts.test.ts` 的 `parseConfig({})` 完整对象断言失败。首次提交在原 expected 对象中增加 `SPROUT_PI_ENABLED: true`。PR 审阅补充后，再增加 `SPROUT_PI_DATA_DIR: join(homedir(), ".local", "share", "sprout-mio", "pi")`，并导入 homedir 与 join。没有改动其他断言。`SPROUT_PI_RUNNER` 是 optional，没有默认值。
 
 ## 参考实现的取舍
 
@@ -226,4 +226,5 @@ identity-data 测试的子进程加 `readdirSync` 导入。g 的 PASS 输出把 
 - 当前真实三轮证据使用 deepseek。magpie native provider 的发现与注册实现已接线，但其真实推理和 profile 缺省模型回退尚未由本 unit 的 live 三轮证明。
 - 多分身的真实模型并发、stdout 消费背压、超大工具输出、长工具进程被强杀后的全部后代清理、Windows 与 dev worker 信号转发未验证。
 - 当前轮投递 pending、新消息的串行语义、用户停止、仓库入口及 Info Hub 接线属于后续 unit。
+- `failed` 的领域执行路径会写错误码，但数据库 CHECK 目前没有要求 `error_code IS NOT NULL`。按 PR 审阅裁定，留给 p3-b 补“失败必须可解释”的数据库不变量，并配直接 SQL INSERT 反证。
 - 本 unit 保证单进程宿主。多进程同时扫描同一数据库不属于当前保证。
