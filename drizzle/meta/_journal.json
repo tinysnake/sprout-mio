@@ -29,6 +29,13 @@
       "when": 1792294950667,
       "tag": "0003_fast_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792300845623,
+      "tag": "0004_thin_leopardon",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,8 @@ import {
   transitionAgentRun,
 } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
+import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
+import type { PreparedRepo } from "../../domain/repository";
 import { config } from "../../lib/config";
 import { PiHostFailure, piInstancePaths, PiSessionProcess } from "./process";
 
@@ -39,6 +41,7 @@ async function execute(work: Work, process: PiSessionProcess): Promise<void> {
   try {
     const input = firstPendingRunInput(run.id, ctx);
     if (!input) throw new PiHostFailure("input_missing", "Run 缺少输入消息");
+    const prepared: PreparedRepo | undefined = await prepareRunRepo(run.id, ctx);
     const paths = piInstancePaths(run.instanceId);
     const snapshot = await process.open({
       type: "open",
@@ -46,7 +49,8 @@ async function execute(work: Work, process: PiSessionProcess): Promise<void> {
       instanceId: run.instanceId,
       sessionId: run.sessionId,
       sessionFile: previousSessionFile(run.id, ctx),
-      ...paths,
+      sessionDirectory: paths.sessionDirectory,
+      cwd: prepared?.path ?? paths.cwd,
       agentDir: resolve(
         globalThis.process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
       ),
@@ -62,7 +66,13 @@ async function execute(work: Work, process: PiSessionProcess): Promise<void> {
       },
     });
     if (host.stopping) return;
-    transitionAgentRun(run.id, "running", { configSnapshot: snapshot }, ctx);
+    const basis = prepared ? recordRunRepoBasis(run.id, prepared, ctx) : undefined;
+    transitionAgentRun(
+      run.id,
+      "running",
+      { configSnapshot: basis ? { ...snapshot, repo: basis } : snapshot },
+      ctx,
+    );
     process.onDelivered = (messageId) => {
       if (host.stopping) return;
       try {
@@ -117,7 +127,9 @@ async function execute(work: Work, process: PiSessionProcess): Promise<void> {
         const failure =
           error instanceof PiHostFailure
             ? error
-            : new PiHostFailure("run_failed", "Agent run 执行失败");
+            : error instanceof RepositoryError
+              ? new PiHostFailure(error.code, error.message)
+              : new PiHostFailure("run_failed", "Agent run 执行失败");
         transitionAgentRun(
           run.id,
           "failed",

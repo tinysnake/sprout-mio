@@ -1,24 +1,40 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ProjectConfigForm } from "../../components/project-config/project-config-form";
+import { ProjectRepoPanel } from "../../components/project-config/project-repo-panel";
 import { ResultError } from "../../components/project/result-error";
 import { getProjectProfileFn } from "../../server/functions/project-config";
+import { getProjectRepoStateFn } from "../../server/functions/repository";
 
 export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
-  loader: ({ params }) => getProjectProfileFn({ data: { projectId: params.projectId } }),
+  loader: async ({ params }) => {
+    const [profile, repo] = await Promise.all([
+      getProjectProfileFn({ data: { projectId: params.projectId } }),
+      getProjectRepoStateFn({ data: { projectId: params.projectId } }),
+    ]);
+    return { profile, repo };
+  },
   component: ProjectSettingsPage,
 });
 
 /** 无 `project_profile` 行时领域服务返回默认分支 main，表单据此展示可编辑的当前值。 */
 function ProjectSettingsPage() {
-  const result = Route.useLoaderData();
+  const { profile, repo } = Route.useLoaderData();
   const router = useRouter();
+  const invalidate = () => void router.invalidate();
 
   return (
     <section className="space-y-6">
       <h2 className="text-xl font-semibold">Project 配置</h2>
-      {!result.ok && <ResultError error={result.error} testId="settings-error" />}
-      {result.ok && (
-        <ProjectConfigForm profile={result.data} onSaved={() => void router.invalidate()} />
+      {!profile.ok && <ResultError error={profile.error} testId="settings-error" />}
+      {profile.ok && (
+        <>
+          <ProjectConfigForm profile={profile.data} onSaved={invalidate} />
+          {repo.ok ? (
+            <ProjectRepoPanel state={repo.data} onRefresh={invalidate} />
+          ) : (
+            <ResultError error={repo.error} testId="settings-repo-error" />
+          )}
+        </>
       )}
     </section>
   );
