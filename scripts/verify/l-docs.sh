@@ -21,6 +21,7 @@ const p3Units = [
   { pr: 20, merge: 'a73770c', head: '32eac6c' },
   { pr: 21, merge: '0d51b1f', head: 'e51fe69' },
   { pr: 22, merge: '55da85f', head: 'eb4d141' },
+  { pr: 23, merge: 'e5e2b4e', head: 'aa41061' },
 ];
 const failures = [];
 const totals = { paths: 0, commands: 0, evidence: 0, commits: 0, external: 0 };
@@ -178,15 +179,15 @@ for (const unit of p3Units) {
   check(p3Completion.includes(`PR #${unit.pr} head \`${unit.head}\` merge \`${unit.merge}\``), `P3 completion lacks PR #${unit.pr} head or merge`);
   check(git('show', '-s', '--format=%s', unit.merge).startsWith(`Merge pull request #${unit.pr} `), `PR #${unit.pr} differs from merge commit title`);
   check(git('rev-parse', `${unit.merge}^2`) === git('rev-parse', unit.head), `PR #${unit.pr} head differs from second merge parent`);
-  git('merge-base', '--is-ancestor', unit.merge, '55da85f');
+  git('merge-base', '--is-ancestor', unit.merge, 'e5e2b4e');
 }
 check(completion.includes('P2 最终实现、验收与合入范围 `28d4fb2..db185f8`') && summary?.text.includes('`28d4fb2..db185f8`'), 'P2 final range must end at db185f8 in plan and summary');
-check(p3Completion.includes('实现基线 `db185f8`') && p3Completion.includes('`db185f8..55da85f`') && p3Summary?.text.includes('`db185f8..55da85f`'), 'P3 baseline and final range must be db185f8..55da85f in plan and summary');
+check(p3Completion.includes('实现基线 `db185f8`') && p3Completion.includes('`db185f8..e5e2b4e`') && p3Summary?.text.includes('`db185f8..e5e2b4e`'), 'P3 baseline and final range must be db185f8..e5e2b4e in plan and summary');
 check(git('show', '-s', '--format=%s', 'db185f8').startsWith('Merge pull request #18 '), 'P2 final commit must match PR #18');
 check(git('rev-parse', 'db185f8^2') === git('rev-parse', '6886bfa'), 'P2 final commit must have the verified PR #18 head');
 check(git('rev-parse', '34b078e^1') === git('rev-parse', 'db185f8'), 'P3 baseline differs from first merge parent');
-const p3Merges = git('log', '--first-parent', '--format=%h', 'db185f8..55da85f').split('\n');
-check(p3Merges.join(',') === [...p3Units].reverse().map((unit) => unit.merge).join(','), 'P3 range differs from four recorded Git merges');
+const p3Merges = git('log', '--first-parent', '--format=%h', 'db185f8..e5e2b4e').split('\n');
+check(p3Merges.join(',') === [...p3Units].reverse().map((unit) => unit.merge).join(','), 'P3 range differs from five recorded Git merges');
 git('merge-base', '--is-ancestor', '28d4fb2', 'db185f8');
 let futureCount = 0;
 for (const stage of ['P4', 'P5', 'P6', 'P7', 'P8', 'R1']) {
@@ -208,7 +209,7 @@ console.log(`PASS P2 completion PR #10 to #14 match Git merge titles and head pa
 console.log('PASS P2 stage status is completed with summary link; final next task points to P4 with P3 limits');
 console.log('PASS P3 seven checkboxes and summary states match: six checked, checkbox 2 unchecked with partial delivery');
 console.log('PASS P3 summary, acceptance, stage status and completion record; PR #19 to #22 match Git titles and second parents');
-console.log('PASS P2 final range 28d4fb2..db185f8 and P3 range db185f8..55da85f match Git baselines and merges');
+console.log('PASS P2 final range 28d4fb2..db185f8 and P3 range db185f8..e5e2b4e match Git baselines and merges');
 console.log(`PASS P4 to P8 and R1 checkboxes remain unchecked=${futureCount}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);
 console.log('PASS l-docs all checks passed');

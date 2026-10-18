@@ -2,7 +2,7 @@
 
 Human 已能在 DM 中分析已推送仓库，无需创建 Task 或申请 Machine 租约。同一持久分身跨轮次与宿主重启复用 Pi session，运行中的新消息进入当前轮，用户停止不会生成假回复。独立验收判定七条清单中六条成立，第 2 条未完整交付，保持未勾。详细证据见 [P3 阶段验收](acceptance.md#七条-checkbox-逐条判定) 与 [开发计划](../development-plan.md#p3-跑通真实-pi-对话和仓库入口)。
 
-实现基线为 `db185f8`，a 至 d 的实现与合入范围为 `db185f8..55da85f`。`git log --first-parent --oneline db185f8..55da85f` 可重建 PR #19 至 #22 的合入顺序。下表的 head 与 merge 经 Git 和编排 store 字段比较核对。验收与收尾不增加应用能力。
+实现基线为 `db185f8`，a 至 d 的实现与合入范围为 `db185f8..e5e2b4e`。`git log --first-parent --oneline db185f8..e5e2b4e` 可重建 PR #19 至 #22 的合入顺序。下表的 head 与 merge 经 Git 和编排 store 字段比较核对。验收与收尾不增加应用能力。
 
 ## 各 unit 结论与复跑入口
 
@@ -13,18 +13,20 @@ Human 已能在 DM 中分析已推送仓库，无需创建 Task 或申请 Machin
 | c，宿主仓库入口      | PR #21，head `e51fe69`，merge `0d51b1f` | [复用与按需克隆](repo-entry.md#两种入口)，每轮 provenance 与快照 commit 相符；认证错误、磁盘超限显式失败                     | `bash scripts/verify/p-repo-entry.sh`，`bash scripts/verify-live/pi-repo-analysis.sh` | 公网 https/ssh 认证与代理、大仓库、跨进程锁、淘汰             |
 | d，Info Hub run 视角 | PR #22，head `eb4d141`，merge `55da85f` | [真实 run 与轮初上下文](info-hub-runs.md#契约变化)，两视角显示状态、错误、pending 与仓库依据；上下文不注入 prompt            | `bash scripts/verify/q-info-hub-runs.sh`                                              | N+1、无分页无缓存、面板不轮询、多 DM 同时活动的 UI            |
 | e，阶段验收          | 只读，无 PR、无 head 或 merge           | [六条成立、一条部分交付](acceptance.md#阶段结论)，glm 家族在承担本次验收前未参与 P3 产出；独立于 a/f 的 sol 与 b/c/d 的 mimo | [门禁、live 与最小实验](acceptance.md#可复跑的最小实验清单)                           | [本验收没有覆盖的面](acceptance.md#本验收没有覆盖的面)        |
+| f，收尾              | PR #23，head `aa41061`，merge `e5e2b4e` | 验收正文落地、P2 文档过期表述更正、plan 状态与下一任务、SO28/SO29 进 conventions、`l-docs.sh` 七类新断言                     | `bash scripts/verify/l-docs.sh`                                                       |
 
 ## Ledger 与验收五行视图
 
 以下是四行 ledger verdict 加一行只读验收的合并视图。e 的结论来自阶段 decisions 与验收正文，不是第五行 ledger，不填造 PR 或 SHA。各行的脚本数量和运行结果只描述当时观测，不能当作最新 HEAD 的结果。
 
-| unit | 来源与 verdict                    | 已有证据                                                                                                                                | 独立性边界                                                          |
-| ---- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| a    | ledger PR #19，`live-ui-verified` | coordinator 复跑真实模型、跨 SIGTERM 重启同 session、真实 Chromium；[a 的命令记录](pi-session.md#可复跑证据)                            | `coordinator-rerun`，不是阶段干净的独立验收                         |
-| b    | ledger PR #20，`live-ui-verified` | coordinator 复跑 steer、停止无回复与 profile 下一轮；[b 的命令记录](turn-semantics.md#可复跑证据)                                       | `coordinator-rerun`，独立性不由 verdict 字面推出                    |
-| c    | ledger PR #21，`live-ui-verified` | coordinator 复跑真实模型读推送仓库，快照、provenance 与远端 commit 三方一致；[c 的真实与桩边界](repo-entry.md#真实与桩的界限)           | `coordinator-rerun`；F2 的 SHA 损坏说法已判为显示层脱敏误报         |
-| d    | ledger PR #22，`live-ui-verified` | coordinator 复跑门禁与 live；[d 的验证记录](info-hub-runs.md#验证记录)                                                                  | verifier 明示与 b/c 作者同属 mimo，不能宣称独立于 b/c               |
-| e    | 只读阶段验收，六成立一部分交付    | [七条逐项判定](acceptance.md#七条-checkbox-逐条判定)、[直接实验](acceptance.md#可复跑的最小实验清单)；coordinator 独立复验快照并裁定 F2 | glm 在本次验收前没有 P3 产出，相对 a/f 的 sol 与 b/c/d 的 mimo 独立 |
+| unit | 来源与 verdict                                                      | 已有证据                                                                                                                                                                                    | 独立性边界                                                          |
+| ---- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| a    | ledger PR #19，`live-ui-verified`                                   | coordinator 复跑真实模型、跨 SIGTERM 重启同 session、真实 Chromium；[a 的命令记录](pi-session.md#可复跑证据)                                                                                | `coordinator-rerun`，不是阶段干净的独立验收                         |
+| b    | ledger PR #20，`live-ui-verified`                                   | coordinator 复跑 steer、停止无回复与 profile 下一轮；[b 的命令记录](turn-semantics.md#可复跑证据)                                                                                           | `coordinator-rerun`，独立性不由 verdict 字面推出                    |
+| c    | ledger PR #21，`live-ui-verified`                                   | coordinator 复跑真实模型读推送仓库，快照、provenance 与远端 commit 三方一致；[c 的真实与桩边界](repo-entry.md#真实与桩的界限)                                                               | `coordinator-rerun`；F2 的 SHA 损坏说法已判为显示层脱敏误报         |
+| d    | ledger PR #22，`live-ui-verified`                                   | coordinator 复跑门禁与 live；[d 的验证记录](info-hub-runs.md#验证记录)                                                                                                                      | verifier 明示与 b/c 作者同属 mimo，不能宣称独立于 b/c               |
+| e    | 只读阶段验收，六成立一部分交付                                      | [七条逐项判定](acceptance.md#七条-checkbox-逐条判定)、[直接实验](acceptance.md#可复跑的最小实验清单)；coordinator 独立复验快照并裁定 F2                                                     | glm 在本次验收前没有 P3 产出，相对 a/f 的 sol 与 b/c/d 的 mimo 独立 |
+| f    | ledger PR #23，`unit-test-verified`，head `aa41061` merge `e5e2b4e` | 收尾：验收正文落地、`docs/p3/summary.md`、plan 状态与下一任务、P2 文档过期表述更正、`docs/p1/conventions.md` 的 SO28/SO29 规则、`l-docs.sh` 七类新断言（故意破坏全部变红）；merge `e5e2b4e` | `coordinator-rerun`，作者与 p3-a 同属 sol 家族                      |
 
 F2 的实际文件比较显示 PR #21 head 与 `git rev-parse 0d51b1f^2` 相等，各为 40 字节，`units.tsv` 与 `status.md` 同样无损。长十六进制串的工具显示可能脱敏。文件内容必须由比较的退出码或校验和判断。冻结验收保留了原误报的尾部引用，其 [F2 更正行](acceptance.md#ledger-与证据一致性1922-逐行) 给出裁定。
 
