@@ -66,15 +66,17 @@
 
 所有命令在本 worktree 真实运行；长命令后台执行并写 `/tmp/p3-d-*.log`。验收只用独立 `.verify` 数据库。
 
-| 命令                                                | 退出码 | 结论与产物                                                                                               |
-| --------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------- |
-| `pnpm exec tsc --noEmit`                            | 0      | 无错误                                                                                                   |
-| `pnpm exec vp test run tests/info-hub-runs.test.ts` | 0      | 轮初上下文字段、注入声明、跨用户零泄漏、recent 与 DB 一致。`/tmp/p3-d-test-qunit.log`                    |
-| `pnpm test`                                         | 0      | `/tmp/p3-d-test-all.log`                                                                                 |
-| `pnpm check`                                        | 0      | `/tmp/p3-d-check.log`                                                                                    |
-| `bash scripts/verify/q-info-hub-runs.sh`            | 0      | hermetic：`.verify/q-info-hub-runs/evidence.json`、`/tmp/p3-d-q.log`、截图 `docs/p3/evidence/p3-d-*.png` |
-| `bash scripts/verify.sh`                            | 0      | 20 个脚本 failed=0。`/tmp/p3-d-verify.log`                                                               |
-| `bash scripts/verify-live/pi-dm-turn.sh`            | 0      | 真实模型三轮复述。`.verify/live-pi-dm-turn/evidence.json`、`/tmp/p3-d-live.log`                          |
+| 命令                                                  | 退出码 | 结论与产物                                                                                                                                                               |
+| ----------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm exec tsc --noEmit`                              | 0      | `TypeScript: No errors found`                                                                                                                                            |
+| `pnpm fmt`                                            | 0      | 只格式化本 unit 新增与修改的文件                                                                                                                                         |
+| `pnpm test`                                           | 0      | 17 个文件、124 个测试通过（含新的 `tests/info-hub-runs.test.ts`）。`/tmp/p3-d-test-all.log`                                                                              |
+| `pnpm check`                                          | 0      | 150 文件格式通过，121 文件 无 lint 与类型警告。`/tmp/p3-d-check.log`                                                                                                     |
+| `bash scripts/verify/q-info-hub-runs.sh`              | 0      | 12 条 PASS：`.verify/q-info-hub-runs/evidence.json`、`/tmp/p3-d-q.log`、截图 `docs/p3/evidence/p3-d-*.png`                                                               |
+| `bash scripts/verify/j-info-hub.sh`（单跑复验）       | 0      | 7 条 PASS（含更新后的 runs 真实数据断言）。`/tmp/p3-d-j.log`                                                                                                             |
+| `bash scripts/verify/o-turn-semantics.sh`（单跑复验） | 0      | 17 条 PASS（含改精确后的 pending 断言）。`/tmp/p3-d-o.log`                                                                                                               |
+| `bash scripts/verify.sh`                              | 0      | `Verification scripts=20 failed=0`。`/tmp/p3-d-verify.log`                                                                                                               |
+| `bash scripts/verify-live/pi-dm-turn.sh`              | 0      | 真实模型（deepseek/deepseek-flash）：三轮口令复述与跨重启、steer 同轮投递、停止无回复、profile 下一轮生效。`.verify/live-pi-dm-turn/evidence.json`、`/tmp/p3-d-live.log` |
 
 q 脚本断言清单：真实构建与生产启动、三个 server function id、领域测试先过、真实 git 秘远端的完成 run 视图 commit 等于 `git rev-parse` 实值且 `fresh=true`、SLOW run 持有期间活动视图与 `pendingInputs` 等于 DB 的 pending 行数（steer 被协议桩拒绝后输入保持 pending）、轮初上下文在运行中为 `run_provenance` basis、释放后为 `project_checkout` basis、failed run 的 `errorCode/errorMessage/requestId` 进入两个视角且不编造 repo、`machines.available=false` 且 reason 指向 P4、`injectedIntoPrompt=false`、真实 Chromium 渲染 run 事实与轮初上下文且无 console 错误、第二用户对全部三个 boundary 均 `not_found` 且响应体不含 A 的 projectId/conversationId/instanceId/run id/commit/错误原文/远端路径、SIGTERM 退出 0。
 
