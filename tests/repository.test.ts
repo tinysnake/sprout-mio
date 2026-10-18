@@ -1,11 +1,8 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const TIMEOUT = 120000;
-vi.setConfig({ testTimeout: TIMEOUT, hookTimeout: TIMEOUT });
 
 function scenario(body: string, overrides: Record<string, string> = {}) {
   const directory = mkdtempSync(join(tmpdir(), "sprout-repository-"));
