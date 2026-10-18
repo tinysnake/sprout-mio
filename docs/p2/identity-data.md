@@ -87,7 +87,7 @@ type SendMessageInput = { senderKind: "human" | "agent"; senderId: string; body:
 
 消息排序固定为 `created_at ASC, rowid ASC`，同秒消息保留写入顺序。Conversation 列表按 `updated_at DESC, rowid DESC`。保存消息同时更新 conversation 的 `updated_at`。
 
-边界先查询会话，再使用 `createAgentProfileInput`, `updateAgentProfileInput`, `addProjectMemberInput`, `updateProjectProfileInput`, `createDirectConversationInput`, `conversationIdInput` 或 `sendMessageInput` 解析，之后调用领域服务。字段级错误复用 `fieldErrorsFrom`。`AgentResult<T>` 和 `ConversationResult<T>` 沿用 `AppResult` 加可选 `fieldErrors`，错误转换仍使用 `toAppError(error, requestId)`。服务端专有模块在 server function 内动态导入，不能从页面顶层静态导入领域模块。
+边界先查询会话，再使用 `createAgentProfileInput`, `updateAgentProfileInput`, `addProjectMemberInput`, `updateProjectProfileInput`, `createDirectConversationInput`, `conversationIdInput` 或 `sendMessageInput` 解析，之后调用领域服务。字段级错误复用 `fieldErrorsFrom`。`AgentResult<T>` 和 `ConversationResult<T>` 沿用 `AppResult` 加可选 `fieldErrors`，错误转换仍使用 `toAppError(error, requestId)`。这些边界与其余两个边界共用 [domain-errors.ts](../../src/server/functions/domain-errors.ts) 的一张领域错误映射表，业务拒绝按原码透出且不写 error 诊断，回归入口为 `tests/error-mapping.test.ts` 与 `scripts/verify/m-error-mapping.sh`。服务端专有模块在 server function 内动态导入，不能从页面顶层静态导入领域模块。
 
 ## 诊断与事务
 

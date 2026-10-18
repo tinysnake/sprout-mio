@@ -6,6 +6,7 @@ import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/project";
 import type { DiagnosticInput } from "../diagnostics";
 import { getRequestContext } from "../request-context";
+import { toDomainAppError } from "./domain-errors";
 
 /** 认证与数据库只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
@@ -18,14 +19,13 @@ async function serverDeps() {
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
 type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
 
-function failure(
+async function failure(
   error: unknown,
   requestId: string,
-  ProjectError: ServerDeps["ProjectError"] | undefined,
   recordDiagnostic: DiagnosticRecorder | undefined,
-): ProjectResult<never> {
-  if (ProjectError && error instanceof ProjectError)
-    return fail({ code: error.code, message: error.message, requestId });
+): Promise<ProjectResult<never>> {
+  const mapped = await toDomainAppError(error, requestId);
+  if (mapped) return fail(mapped);
   console.error("[project] 请求失败", { requestId, error });
   recordDiagnostic?.({
     level: "error",
@@ -51,7 +51,7 @@ async function projectBoundary<T>(
     if (!session.ok) return session;
     return operation(deps, { userId: session.data.userId, requestId });
   } catch (error) {
-    return failure(error, requestId, deps?.ProjectError, recordDiagnostic);
+    return failure(error, requestId, recordDiagnostic);
   }
 }
 

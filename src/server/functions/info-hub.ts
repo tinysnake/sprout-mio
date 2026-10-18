@@ -8,33 +8,26 @@ import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
 import type { DiagnosticInput } from "../diagnostics";
 import { getRequestContext } from "../request-context";
+import { toDomainAppError } from "./domain-errors";
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
-  const [session, infoHub, access, agent] = await Promise.all([
+  const [session, infoHub] = await Promise.all([
     import("../session"),
     import("../../domain/info-hub"),
-    import("../../domain/access"),
-    import("../../domain/agent"),
   ]);
-  return {
-    requireSession: session.requireSession,
-    ProjectAccessError: access.ProjectAccessError,
-    AgentError: agent.AgentError,
-    ...infoHub,
-  };
+  return { requireSession: session.requireSession, ...infoHub };
 }
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
 type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
 
-function failure(
+async function failure(
   error: unknown,
   requestId: string,
-  deps: ServerDeps | undefined,
   recordDiagnostic: DiagnosticRecorder | undefined,
-): InfoHubResult<never> {
-  if (deps && (error instanceof deps.ProjectAccessError || error instanceof deps.AgentError))
-    return fail({ code: error.code, message: error.message, requestId });
+): Promise<InfoHubResult<never>> {
+  const mapped = await toDomainAppError(error, requestId);
+  if (mapped) return fail(mapped);
   console.error("[info_hub] 请求失败", { requestId, error });
   recordDiagnostic?.({
     level: "error",
@@ -60,7 +53,7 @@ async function infoHubBoundary<T>(
     if (!session.ok) return session;
     return operation(deps, { userId: session.data.userId, requestId });
   } catch (error) {
-    return failure(error, requestId, deps, recordDiagnostic);
+    return failure(error, requestId, recordDiagnostic);
   }
 }
 
