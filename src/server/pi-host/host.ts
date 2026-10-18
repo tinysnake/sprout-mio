@@ -17,10 +17,18 @@ export type PiHostDeps<W extends PiHostWorkItem> = {
   readonly prepareRun: (work: W, signals: PiHostSignals) => PiHostRun;
   readonly interruptActiveRuns: () => void;
 };
+export type PiHostSnapshot = {
+  readonly stopping: boolean;
+  readonly active: ReadonlyArray<{
+    readonly instanceId: string;
+    readonly pid: number | undefined;
+  }>;
+};
 export type PiHostShape = {
   readonly start: Effect.Effect<void>;
   readonly stop: Effect.Effect<void, Error>;
   readonly abort: (runId: string) => boolean;
+  readonly snapshot: () => PiHostSnapshot;
 };
 
 export class PiHost extends Context.Service<PiHost, PiHostShape>()("sprout/PiHost") {}
@@ -110,6 +118,10 @@ export const makePiHostLayer = <W extends PiHostWorkItem>(
       return {
         start,
         stop,
+        snapshot: () => ({
+          stopping: signals.isStopping(),
+          active: [...registry].map(([instanceId, { run }]) => ({ instanceId, pid: run.pid })),
+        }),
         abort: (runId) => {
           for (const { run } of registry.values()) {
             if (run.runId !== runId) continue;

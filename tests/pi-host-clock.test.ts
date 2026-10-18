@@ -47,6 +47,10 @@ it("100ms 轮询与 2500ms 停止截止都在 TestClock 上", async () => {
         yield* TestClock.adjust(1);
         expect(yield* Clock.currentTimeMillis).toBe(100);
         expect(trace.dispatches).toBe(1);
+        expect(host.snapshot()).toEqual({
+          stopping: false,
+          active: [{ instanceId: "inst_clock_test", pid: 4242 }],
+        });
         expect(host.abort("missing")).toBe(false);
         expect(host.abort("run_clock_test")).toBe(true);
         expect(trace.aborts).toBe(1);
@@ -160,17 +164,22 @@ it("停止并发排空全部 run，排空失败优先于恢复失败", async () 
 it("run 完成后释放实例，停止成功可重复调用", async () => {
   let starts = 0;
   let interrupts = 0;
+  let finishRun = () => {};
   const runtime = ManagedRuntime.make(
     makePiHostLayer({
       loadWork: () => [{ instanceId: "inst_complete" }],
       prepareRun: () => {
         starts += 1;
+        const completed = Effect.runSync(Deferred.make<void>());
+        finishRun = () => {
+          Effect.runSync(Deferred.succeed(completed, undefined));
+        };
         return {
           runId: `run_${starts}`,
-          pid: undefined,
+          pid: 4242,
           abort: () => {},
-          close: async () => {},
-          body: Effect.void,
+          close: async () => finishRun(),
+          body: Deferred.await(completed),
         };
       },
       interruptActiveRuns: () => {
@@ -183,13 +192,22 @@ it("run 完成后释放实例，停止成功可重复调用", async () => {
     await runtime.runPromise(
       Effect.gen(function* () {
         const host = yield* PiHost;
+        expect(host.snapshot()).toEqual({ stopping: false, active: [] });
         yield* startPiHost;
         yield* TestClock.adjust(100);
         expect(starts).toBe(1);
+        expect(host.snapshot()).toEqual({
+          stopping: false,
+          active: [{ instanceId: "inst_complete", pid: 4242 }],
+        });
+        finishRun();
+        yield* TestClock.adjust(0);
         expect(host.abort("run_1")).toBe(false);
+        expect(host.snapshot().active).toEqual([]);
         yield* TestClock.adjust(100);
         expect(starts).toBe(2);
         yield* stopPiHost;
+        expect(host.snapshot()).toEqual({ stopping: true, active: [] });
         yield* stopPiHost;
         yield* startPiHost;
         yield* TestClock.adjust(100);
