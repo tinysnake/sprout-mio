@@ -1,3 +1,8 @@
+import { z } from "zod";
+import { conversationIdInput } from "./conversation";
+import type { FieldErrors } from "./project";
+import type { AppResult } from "./result";
+
 export const AGENT_RUN_STATUSES = [
   "queued",
   "running",
@@ -54,3 +59,18 @@ export type AgentRunInput = {
   disposition: RunInputDisposition;
   deliveredAt?: string;
 };
+
+const runId = z
+  .string()
+  .regex(/^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+
+export const abortAgentRunInput = z.object({ runId });
+export const conversationRunStateInput = conversationIdInput;
+
+export type ConversationRunState = {
+  enabled: boolean;
+  runs: AgentRun[];
+  inputs: AgentRunInput[];
+};
+
+export type AgentRunResult<T> = AppResult<T> & { fieldErrors?: FieldErrors };

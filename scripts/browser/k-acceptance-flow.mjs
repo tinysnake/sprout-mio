@@ -152,10 +152,7 @@ async function unavailable(page, target) {
   if (target.key === "conversation") {
     await sameText(page, "info-conversation-runs-notice-badge", "未实现");
     assert.match(await test(page, "info-conversation-runs-notice-reason").textContent(), /P3/);
-    assert.match(
-      await test(page, "conversation-runtime-note").textContent(),
-      /P2 未接入真实 Pi 运行/,
-    );
+    await sameText(page, "pi-host-status", "宿主未启用");
     assert.deepEqual(
       await test(page, "message-item").evaluateAll((nodes) =>
         nodes.map((node) => node.dataset.senderKind),

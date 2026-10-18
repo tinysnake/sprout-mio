@@ -1,10 +1,13 @@
+import { useEffect } from "react";
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { ConversationInfoPanel } from "../../components/info-hub/conversation-info-panel";
 import { ConversationIdentity } from "../../components/conversation/conversation-identity";
 import { MessageComposer } from "../../components/conversation/message-composer";
 import { MessageList } from "../../components/conversation/message-list";
+import { RunStatusPanel } from "../../components/conversation/run-status";
 import { ResultError } from "../../components/project/result-error";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
+import type { AgentRunResult, ConversationRunState } from "../../contracts/agent-run";
 import type {
   AgentInstance,
   Conversation,
@@ -16,6 +19,7 @@ import type { ConversationInfoView } from "../../contracts/info-hub";
 import type { AppError } from "../../contracts/result";
 import { getConversationInfoFn } from "../../server/functions/info-hub";
 import { getAgentProfileFn } from "../../server/functions/agent";
+import { getConversationRunStateFn } from "../../server/functions/agent-run";
 import {
   getConversationFn,
   listConversationMembersFn,
@@ -33,6 +37,7 @@ type DetailLoader =
       messages: ConversationResult<Message[]>;
       profile: AgentResult<AgentProfile> | null;
       info: ConversationResult<ConversationInfoView>;
+      runState: AgentRunResult<ConversationRunState>;
     };
 
 /** Project 上下文从 URL 推导：conversation 不属于 URL 中的 projectId 时按 not_found 呈现。 */
@@ -47,11 +52,12 @@ export const Route = createFileRoute("/_authed/projects/$projectId/conversations
         ok: false,
         error: { code: "not_found", message: "对象不存在", requestId: conversation.requestId },
       };
-    const [members, instances, messages, info] = await Promise.all([
+    const [members, instances, messages, info, runState] = await Promise.all([
       listConversationMembersFn({ data: { conversationId: params.conversationId } }),
       listInstancesForConversationFn({ data: { conversationId: params.conversationId } }),
       listMessagesFn({ data: { conversationId: params.conversationId } }),
       getConversationInfoFn({ data: { conversationId: params.conversationId } }),
+      getConversationRunStateFn({ data: { conversationId: params.conversationId } }),
     ]);
     const agentProfileId =
       (instances.ok ? instances.data[0]?.agentProfileId : undefined) ??
@@ -67,6 +73,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/conversations
       messages,
       profile,
       info,
+      runState,
     };
   },
   component: ProjectConversationDetailPage,
@@ -76,6 +83,19 @@ function ProjectConversationDetailPage() {
   const loader = Route.useLoaderData();
   const { projectId, conversationId } = Route.useParams();
   const router = useRouter();
+
+  const latestRun = loader.ok && loader.runState.ok ? loader.runState.data.runs.at(-1) : undefined;
+  const watching = Boolean(
+    loader.ok &&
+    loader.runState.ok &&
+    loader.runState.data.enabled &&
+    (latestRun?.status === "queued" || latestRun?.status === "running"),
+  );
+  useEffect(() => {
+    if (!watching) return;
+    const timer = setInterval(() => void router.invalidate(), 1200);
+    return () => clearInterval(timer);
+  }, [watching, router]);
 
   const heading = (
     <Link
@@ -122,6 +142,11 @@ function ProjectConversationDetailPage() {
       ) : (
         <>
           <MessageList messages={messages.data} profile={profile} />
+          {!loader.runState.ok ? (
+            <ResultError error={loader.runState.error} testId="run-state-load-error" />
+          ) : (
+            <RunStatusPanel state={loader.runState.data} onAbort={() => void router.invalidate()} />
+          )}
           <MessageComposer
             conversationId={conversationId}
             onSent={() => void router.invalidate()}

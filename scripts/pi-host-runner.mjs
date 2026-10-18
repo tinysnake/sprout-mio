@@ -254,6 +254,29 @@ async function prompt(command) {
   }
 }
 
+async function deliverSteer(command) {
+  if (!session.isStreaming) {
+    line({
+      type: "input_rejected",
+      id: command.id,
+      messageId: command.messageId,
+      reason: "Pi 会话当前不在运行，消息未进入本轮",
+    });
+    return;
+  }
+  try {
+    await session.steer(command.text, undefined, { source: "rpc" });
+    line({ type: "input_delivered", id: command.id, messageId: command.messageId });
+  } catch {
+    line({
+      type: "input_rejected",
+      id: command.id,
+      messageId: command.messageId,
+      reason: "Pi 会话拒绝了该消息",
+    });
+  }
+}
+
 async function close() {
   if (closing) return;
   closing = true;
@@ -299,6 +322,8 @@ input.on("line", (raw) => {
     });
   } else if (command.type === "prompt" && session && !prompting && !closing) {
     void prompt(command);
+  } else if (command.type === "steer" && session && !closing) {
+    void deliverSteer(command);
   } else if (command.type === "abort") {
     void session?.abort();
   } else if (command.type === "close") {

@@ -22,6 +22,13 @@
       "when": 1792291333513,
       "tag": "0002_goofy_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792294950667,
+      "tag": "0003_fast_moon_knight",
+      "breakpoints": true
     }
   ]
 }

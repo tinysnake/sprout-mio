@@ -34,6 +34,7 @@ export class PiSessionProcess {
   private closing: Promise<void> | undefined;
   private exit: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
   onDelivered: ((messageId: string) => void) | undefined;
+  onRejected: ((messageId: string, reason: string) => void) | undefined;
 
   constructor(
     readonly id: string,
@@ -108,6 +109,10 @@ export class PiSessionProcess {
           this.fail(error instanceof Error ? error : new Error("Pi 输入投递状态保存失败"));
         }
       }
+      if (event.type === "input_rejected") {
+        this.onRejected?.(event.messageId, event.reason);
+        continue;
+      }
       for (const waiter of this.waiters) {
         if (waiter.type !== event.type) continue;
         clearTimeout(waiter.timer);
@@ -170,6 +175,18 @@ export class PiSessionProcess {
         event.type === "settled" ? event.stopReason : undefined,
       );
     return event;
+  }
+
+  steer(messageId: string, text: string): void {
+    this.send({ type: "steer", id: this.id, messageId, text });
+  }
+
+  abortSession(): void {
+    try {
+      this.send({ type: "abort", id: this.id });
+    } catch {
+      // 子进程已退出时停止动作仍以 run 状态机的结果为准。
+    }
   }
 
   close(): Promise<void> {
