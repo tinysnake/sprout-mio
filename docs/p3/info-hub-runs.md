@@ -86,11 +86,12 @@ q 脚本断言清单：真实构建与生产启动、三个 server function id�
 | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `scripts/browser/k-acceptance-flow.mjs`（`unavailable()`，project 分支）         | `sameText(page, "info-hub-runs-notice-badge", "未实现")` + reason 匹配 `/P3/`          | `sameText(page, "info-hub-project-runs-host-status", "宿主未启用")` + `info-hub-project-runs-active` 存在；Machine 断言不变      |
 | `scripts/browser/k-acceptance-flow.mjs`（`unavailable()`，conversation 分支）    | `sameText(page, "info-conversation-runs-notice-badge", "未实现")` + reason 匹配 `/P3/` | `sameText(page, "info-conversation-runs-host-status", "宿主未启用")` + `info-turn-prompt-injection` 匹配 `/注入模型 prompt：否/` |
-| `scripts/browser/j-info-hub-flow.mjs`（`unavailable_notices_render_explicitly`） | 双 badge「未实现」+ runs reason 匹配 `/P3/`                                            | 仅 machines badge「未实现」+ reason `/P4/`，runs 宿主状态与空活动列表文案为真实数据                                              |
+| `scripts/browser/j-info-hub-flow.mjs`（`unavailable_notices_render_explicitly`） | 双 badge「未实现」+ runs reason 匹配 `/P3/`                                            | 仅 machines badge「未实现」+ reason `/P4/`；runs 断言宿主状态与真实活动 run 文案（`排队中`/`运行中` 且含「未投递」）                                              |
 | `scripts/browser/j-info-hub-flow.mjs`（`conversation_info_panel_matches_page`）  | `runsReason` 匹配 `/P3/`                                                               | `runsHostStatus` 匹配 `/宿主(已\|未)启用/` 且 `turnInjection` 匹配 `/注入模型 prompt：否/`                                       |
 | `tests/info-hub.test.ts`（「显式不可用」测试）                                   | `runs.available === false` + reason 含 P3（两视角）                                    | `runs.available === true`、`active` 长度 1 且 `pendingInputs=2`、`recent` 为空、machines 断言不变                                |
+| `scripts/verify/o-turn-semantics.sh`（running + pending 的 UI 断言）               | `assert(!bodyText.includes('已完成'), 'pending input must never be displayed as processed')`（整页文本包含） | 保留意图、改精确：`info-conversation-runs-active-status` 必须是「排队中」或「运行中」，且 `info-turn-active-run` 含「条输入未投递」；被 Info Hub recent 中真实的历史已完成 run 打破 |
 
-被打破的原因相同：本 unit 把 run 视角从 `unavailableFeatureSchema` 换成真实数据视图。j 流程的更新是 SO17 对 `scripts/browser/**` 的同等适用（j 脚本由 `scripts/verify.sh` 收集，不更新即门禁失败）。
+被打破的原因相同：本 unit 把 run 视角从 `unavailableFeatureSchema` 换成真实数据视图。j 流程与 o 脚本的更新是 SO17 对既有验证脚本的同等适用（两者都由 `scripts/verify.sh` 收集，不更新即门禁失败），且都只改被本 unit 打破的断言、不删断言意图。
 
 ## 重跑
 
