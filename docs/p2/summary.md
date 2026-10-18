@@ -48,6 +48,7 @@ main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/
 - [conversation.ts](../../src/domain/conversation.ts) 在 IMMEDIATE 事务中复用既有 DM，数据库 `agent_instance_profile_conversation_unique` 强制 profile × Conversation 唯一。kind 目前仅为 `dm`，人设编辑不重建分身或历史。
 - [info-hub.ts](../../src/domain/info-hub.ts) 是只读查询模块，由 Project hub 与对话页消费。run、Machine 与租约视角以 `available: false` 和非空原因表达，不返回成功空值。
 - [身份写事务](identity-data.md#诊断与事务) 已把业务与诊断一同写入。真实 conversation、instance 关联已存在，runId 与 executionId 仍为空。人设与消息正文不写入诊断。
+- 边界必须映射其调用图可达的全部领域错误类（`src/server/functions/*` 的 `failure()`），`internal` 只留给真正的未知错误；可达集合表由 `tests/error-mapping.test.ts` 表驱动回归，不存在 id 的负路径由 `scripts/verify/m-error-mapping.sh` 在生产进程上断言（p2-i）。
 
 ## 未验证项汇总
 

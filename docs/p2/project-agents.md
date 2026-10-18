@@ -35,7 +35,7 @@
 | `getProjectProfileFn`    | `{ projectId }`                               | `getProjectProfile`    |
 | `updateProjectProfileFn` | `{ projectId, ...updateProjectProfileInput }` | `updateProjectProfile` |
 
-未登录返回 `unauthorized`；`AgentError` 的 `not_found` 与 `conflict`、`ProjectAccessError` 的 `not_found` 按原码透出；zod 校验失败返回 `validation_failed` 并带 `fieldErrors`（复用 `fieldErrorsFrom`）；其余未知错误映射为脱敏 `internal` 并写 `agent.request_failed` 或 `project_config.request_failed` error 诊断，data 只含 `{ code: "internal" }`。服务端专有模块（`../session`、`../../domain/*`、`../diagnostics`）只在 server function 内 `await import(...)`。
+未登录返回 `unauthorized`；两个边界各自映射其调用图可达的全部领域错误类：agent 边界映射 `AgentError` 的 `not_found` 与 `conflict`、`ProjectAccessError` 的 `not_found`；project-config 边界只映射 `ProjectAccessError`（其调用图不含 `AgentError` 与 `ProjectError`）；zod 校验失败返回 `validation_failed` 并带 `fieldErrors`（复用 `fieldErrorsFrom`）；其余未知错误映射为脱敏 `internal` 并写 `agent.request_failed` 或 `project_config.request_failed` error 诊断，data 只含 `{ code: "internal" }`。可达集合由 `tests/error-mapping.test.ts` 与 `scripts/verify/m-error-mapping.sh` 回归。服务端专有模块（`../session`、`../../domain/*`、`../diagnostics`）只在 server function 内 `await import(...)`。
 
 ## 页面行为
 

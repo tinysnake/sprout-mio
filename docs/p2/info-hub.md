@@ -24,7 +24,7 @@ getConversationInfo(conversationId: string, ctx: ProjectContext): ConversationIn
 | `getProjectInfoHubFn`   | `{ projectId }`      | `getProjectInfoHub`   |
 | `getConversationInfoFn` | `{ conversationId }` | `getConversationInfo` |
 
-未登录返回 `unauthorized`；`ProjectAccessError` 的 `not_found` 与 `AgentError` 按原码透出；zod 校验失败返回 `validation_failed` 并带 `fieldErrors`；其余未知错误映射为脱敏 `internal` 并写 `info_hub.request_failed` error 诊断，data 只含 `{ code: "internal" }`。服务端专有模块只在 server function 内 `await import(...)`。
+未登录返回 `unauthorized`；边界映射其调用图可达的全部领域错误类：`ProjectAccessError`（`assertProjectAccess` 与 `getConversation` 对不存在或越权行的拒绝，不存在的 conversationId 走这条路径）与 `AgentError`（成员 profile 查询）按原码透出；zod 校验失败返回 `validation_failed` 并带 `fieldErrors`；其余未知错误映射为脱敏 `internal` 并写 `info_hub.request_failed` error 诊断，data 只含 `{ code: "internal" }`。可达集合由 `tests/error-mapping.test.ts` 与 `scripts/verify/m-error-mapping.sh` 回归。服务端专有模块只在 server function 内 `await import(...)`。
 
 ## 视图字段
 
