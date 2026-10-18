@@ -55,6 +55,14 @@ return ok(input.data, requestId);
 
 `pnpm test` 已验证环境缺省、冻结配置、端口与 origin 解析、非法字段名和秘密不泄漏。配置解析测试的范围不包含数据库连接或认证；数据库与认证的真实验证另见 [data-auth.md](data-auth.md#验证证据)。
 
+## 数据库约束与迁移
+
+SQLite 的 CHECK 仅在表达式为 FALSE 时拒绝，表达式为 NULL 时放行。凡约束引用可空列，必须通过 `IS NOT NULL` 或 `IS NULL` 明确处理 NULL。例如完成状态要求 stop 原因时，`CHECK (status <> 'completed' OR stop_reason = 'stop')` 会放行 `completed` 配 NULL，必须改为 `CHECK (status <> 'completed' OR (stop_reason IS NOT NULL AND stop_reason = 'stop'))`。每项这类约束都配直接 SQL 反证，绕过领域服务 INSERT 非法组合，断言数据库拒绝，并保留合法组合的正常对照。领域层校验不能替代数据库反证。此约定沿用 SO28。
+
+迁移一旦合并或被任何共享 DB 应用，就不得原地编辑或重生成同一文件，必须新增迁移。只有同一 PR 内尚未合并、且未被任何共享 DB 应用的迁移，才允许原地重生成。提交前核对 SQL 与 `drizzle/meta/_journal.json` 的变更及应用范围。此约定沿用 SO29。
+
+Drizzle SQLite migrator 按 journal 的 `when`，即 `folderMillis`，决定是否重放，不能把记录的 hash 当成重放依据。重生成抬高 `when`，已应用过的 DB 会重放并可能撞上已有表。只改 SQL 而保持 `when` 不变，已应用过的 DB 则静默跳过，造成 schema 分叉。开发与验证库会跨次保留账本，允许重生成的本机实验使用新的独立 `DATABASE_URL` 或删除自己的可重建库；不得据此删除共享数据。`scripts/verify.sh` 会清理 `.verify/*/verification.sqlite`，单跑脚本仍需核对所用库的迁移历史。
+
 ## 新增功能的步骤
 
 本清单由 `docs/p1/feature-sample.md` 的 Project 样例逐条核对过，每一步都在该样例里真实执行过。后续 Agent 新增功能时按此执行，并以该样例为验收样例。

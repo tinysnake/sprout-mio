@@ -1,6 +1,6 @@
 # P2 Info Hub 查询模块与基础呈现
 
-本 unit 建立 Info Hub 只读查询模块：同一 Project 内的 Project → Agents 视角与 Conversation → 自身与成员视角由 `src/domain/info-hub.ts` 统一聚合，Project hub 与对话页按需取用。未实现的视角（Agent 运行状态与活动 run、Machine 与租约）以显式不可用标记呈现，不显示为空列表、0 值或成功。边界只调用 p2-a 的领域服务，不写 SQL，不改 schema；组件只消费视图对象，不自行查询。
+本 unit 建立 Info Hub 只读查询模块：同一 Project 内的 Project → Agents 视角与 Conversation → 自身与成员视角由 `src/domain/info-hub.ts` 统一聚合，Project hub 与对话页按需取用。未实现的视角（Agent 运行状态与活动 run、Machine 与租约）以显式不可用标记呈现，不显示为空列表、0 值或成功。这是 P2 当时的状态；P3-d 已将 run 视角改为真实数据，Machine 仍属 P4，当前字段与页面见 [P3 run 视角](../p3/info-hub-runs.md#契约变化)。边界只调用 p2-a 的领域服务，不写 SQL，不改 schema；组件只消费视图对象，不自行查询。
 
 ## 模块入口与边界
 
@@ -34,25 +34,27 @@ getConversationInfo(conversationId: string, ctx: ProjectContext): ConversationIn
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `projectId`       | 聚合所属 Project                                                                                                                                                    |
 | `agents.agents[]` | 每个成员的 `{ agentProfileId, name, personaSummary, instanceId?, conversationId? }`；后两个字段是该成员在本 Project 已建立的 DM 与分身，未发起 DM 时省略而不是 null |
-| `agents.runs`     | `{ available: false, reason }`，reason 指向 P3 的 agent-run 记录                                                                                                    |
+| `agents.runs`     | P2 当时为 `{ available: false, reason }`，reason 指向 P3 的 agent-run 记录；P3-d 已改为 `available: true` 的真实 run 数据，Machine 仍属 P4                          |
 | `machines`        | `{ available: false, reason }`，reason 指向 P4 的 Machine 与租约                                                                                                    |
 
 `personaSummary` 是 profile 人设 trim 后的前 120 字，超出部分以省略号截断，空人设返回空字符串（组件显示「（无人设）」）。
 
 `ConversationInfoView`：
 
-| 字段                                  | 含义                                                                                              |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `conversationId`, `projectId`, `kind` | 归属与类型；P2 的 kind 只有 `"dm"`                                                                |
-| `archived`                            | 是否已归档（`archivedAt` 存在与否），P2 恒为 false                                                |
-| `members[]`                           | `{ memberKind, memberId, displayName }`；human 的 displayName 为 `"Human"`，agent 的为 profile 名 |
-| `instance`                            | `{ instanceId, agentProfileId, profileName }`，DM 缺少分身记录时为 `null`                         |
-| `messages`                            | `{ count, latestAt? }`；latestAt 取最后一条消息的 createdAt，无消息时省略                         |
-| `runs`                                | `{ available: false, reason }`，reason 指向 P3                                                    |
+| 字段                                  | 含义                                                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `conversationId`, `projectId`, `kind` | 归属与类型；P2 的 kind 只有 `"dm"`                                                                                       |
+| `archived`                            | 是否已归档（`archivedAt` 存在与否），P2 恒为 false                                                                       |
+| `members[]`                           | `{ memberKind, memberId, displayName }`；human 的 displayName 为 `"Human"`，agent 的为 profile 名                        |
+| `instance`                            | `{ instanceId, agentProfileId, profileName }`，DM 缺少分身记录时为 `null`                                                |
+| `messages`                            | `{ count, latestAt? }`；latestAt 取最后一条消息的 createdAt，无消息时省略                                                |
+| `runs`                                | P2 当时为 `{ available: false, reason }`，reason 指向 P3；P3-d 已改为 `available: true` 的真实 run 数据，Machine 仍属 P4 |
 
 ## 显式不可用标记的设计理由
 
 `docs/info-hub-decisions.md` 规定 Agent status 与按 Conversation 的活动 run 列表是两项独立信息，且 P2 没有 run、没有 Machine 与租约。空数组或 0 值会被读成「无活动 run」「无 Machine」这一类成功空值，因此不可用状态用判别字段 `available: false` 加必填 `reason` 表达（`unavailableFeatureSchema`，`reason` 用 `z.string().min(1)` 禁止空字符串），导出常量 `RUNS_UNAVAILABLE_REASON` 与 `MACHINES_UNAVAILABLE_REASON` 固定文案。组件层用 `UnavailableNotice` 渲染「未实现」徽标与原因，P3/P4 接入时把该字段扩展为「不可用 | 可用视图」的联合，不需要迁移已有调用方。
+
+以上为 P2 当时的设计。P3-d 已用真实 run 视图替换 run 的不可用字段，并删除 `RUNS_UNAVAILABLE_REASON`；Machine 仍属 P4，继续使用 `MACHINES_UNAVAILABLE_REASON` 与显式不可用通知。当前实现见 [P3 契约变化](../p3/info-hub-runs.md#契约变化)。下节与验证记录中的旧 run 通知、`runs.available === false` 是 P2 历史，相关脚本与测试已由 P3-d 按 [SO17 逐项更新](../p3/info-hub-runs.md#so17-断言更新)。
 
 ## 组件与页面接入
 
@@ -84,7 +86,7 @@ getConversationInfo(conversationId: string, ctx: ProjectContext): ConversationIn
 | j 内浏览器流程                                 | 0      | 9/9 PASS：面板只列已加入成员、DM 链接跳转、双未实现通知含 P3/P4 文案且页面不出现「0 个活动 run」「无 Machine」、对话页 info 面板 instance 与页面一致、成员 human+agent、消息计数 2、深链刷新值不变、无 console 错误。`.verify/j-info-hub/browser.log`                              |
 | j 内隔离反证                                   | 0      | 第二用户（独立 cookie）对 A 的 projectId 与 conversationId 调两个新 boundary 均 `not_found`，响应体不含 A 的 profile 名称、conversation id、instance id（`leaked: []`）。`.verify/j-info-hub/info-hub-cross-hub.body`、`info-hub-cross-conversation.body`                          |
 
-行为测试 `tests/info-hub.test.ts` 用子进程（`tsx` 加独立 `DATABASE_URL`）直接调 boundary，覆盖：未登录两个 boundary 均 `unauthorized`；用户 B 对 A 的 projectId 与 conversationId 均 `not_found` 且响应体不含 A 的 profile 名称、conversation id、instance id；已加入成员带 conversationId 与 instanceId、未加入的 profile 不出现在 agents；conversation 视角成员含 human 与 agent、instance 与 DM 的分身一致、消息数 2、最后消息时间等于第二条消息时间；两条视图的 `runs.available === false`、`machines.available === false`，reason 分别含 P3 / P4 且非空。
+行为测试 `tests/info-hub.test.ts` 用子进程（`tsx` 加独立 `DATABASE_URL`）直接调 boundary，覆盖：未登录两个 boundary 均 `unauthorized`；用户 B 对 A 的 projectId 与 conversationId 均 `not_found` 且响应体不含 A 的 profile 名称、conversation id、instance id；已加入成员带 conversationId 与 instanceId、未加入的 profile 不出现在 agents；conversation 视角成员含 human 与 agent、instance 与 DM 的分身一致、消息数 2、最后消息时间等于第二条消息时间；两条视图的 `runs.available === false`、`machines.available === false`，reason 分别含 P3 / P4 且非空。这是 P2 当时的断言；P3-d 已将 run 视角改为真实数据并更新断言，Machine 仍属 P4，当前验证见 [P3 验证记录](../p3/info-hub-runs.md#验证记录)。
 
 ## 截图
 
@@ -92,7 +94,7 @@ getConversationInfo(conversationId: string, ctx: ProjectContext): ConversationIn
 
 ## 未验证项
 
-- P3 的 run 视角与 Agent status、P4 的 Machine 与租约视角未实现，只以显式不可用标记呈现；`available: false` 到联合类型的扩展发生在 P3/P4。
+- P2 当时 P3 的 run 视角与 Agent status、P4 的 Machine 与租约视角未实现，只以显式不可用标记呈现；`available: false` 到联合类型的扩展发生在 P3/P4。P3-d 已将 run 视角改为真实数据，Machine 仍属 P4。
 - 变更提示与快照（Agent 每轮开始时的自动快照、运行期变更通知）不在本 unit，未实现。
 - 聚合按「成员数 × 对话数」逐个调用领域函数，无分页与缓存；成员或对话很多时的性能未验证。
 - `archived` 目前恒为 false（P2 没有归档入口），归档后的视图行为未验证。
