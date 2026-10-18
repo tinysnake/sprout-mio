@@ -1,5 +1,5 @@
-// 真实 Chromium 走完 P2 Info Hub 的 Project → Agents 视角与 Conversation → 自身与成员视角，
-// 断言未实现的 run（P3）与 Machine（P4）视角渲染为显式不可用文案，每步打印 PASS/FAIL。
+// 真实 Chromium 走完 Info Hub 的 Project → Agents 视角与 Conversation → 自身与成员视角，
+// 断言 run 视角渲染为真实运行事实、Machine（P4）视角仍为显式不可用文案，每步打印 PASS/FAIL。
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 
@@ -170,26 +170,28 @@ await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
 
 await check("unavailable_notices_render_explicitly", async () => {
   const notices = await page.evaluate(() => ({
-    runsReason: document.querySelector('[data-testid="info-hub-runs-notice-reason"]')?.textContent,
     machinesReason: document.querySelector('[data-testid="info-hub-machines-notice-reason"]')
       ?.textContent,
-    badges: [
-      ...document.querySelectorAll(
-        '[data-testid="info-hub-runs-notice-badge"], [data-testid="info-hub-machines-notice-badge"]',
-      ),
-    ].map((node) => node.textContent?.trim()),
+    runsHostStatus: document.querySelector('[data-testid="info-hub-project-runs-host-status"]')
+      ?.textContent,
+    runsActive: document.querySelector('[data-testid="info-hub-project-runs-active"]')?.textContent,
+    badges: [...document.querySelectorAll('[data-testid="info-hub-machines-notice-badge"]')].map(
+      (node) => node.textContent?.trim(),
+    ),
     body: document.body.innerText,
   }));
   record(
     "unavailable_notices_render_explicitly",
-    /P3/.test(notices.runsReason ?? "") &&
-      /P4/.test(notices.machinesReason ?? "") &&
-      notices.badges.length === 2 &&
-      notices.badges.every((badge) => badge === "未实现") &&
+    /P4/.test(notices.machinesReason ?? "") &&
+      notices.badges.length === 1 &&
+      notices.badges[0] === "未实现" &&
+      /宿主(已|未)启用/.test(notices.runsHostStatus ?? "") &&
+      /排队中|运行中/.test(notices.runsActive ?? "") &&
+      (notices.runsActive ?? "").includes("未投递") &&
       !notices.body.includes("0 个活动 run") &&
       !notices.body.includes("无活动 run") &&
       !notices.body.includes("无 Machine"),
-    `runs 提及 P3、machines 提及 P4，双未实现标记；reason ${JSON.stringify([notices.runsReason, notices.machinesReason])}`,
+    `runs 视角为真实运行事实（宿主 ${notices.runsHostStatus}），machines 仍为未实现；reason ${JSON.stringify(notices.machinesReason)}`,
   );
 });
 
@@ -222,7 +224,9 @@ await check("conversation_info_panel_matches_page", async () => {
       ?.textContent?.trim(),
     count: document.querySelector('[data-testid="info-message-count"]')?.textContent?.trim(),
     latestAt: document.querySelector('[data-testid="info-message-latest-at"]')?.textContent,
-    runsReason: document.querySelector('[data-testid="info-conversation-runs-notice-reason"]')
+    runsHostStatus: document.querySelector('[data-testid="info-conversation-runs-host-status"]')
+      ?.textContent,
+    turnInjection: document.querySelector('[data-testid="info-turn-prompt-injection"]')
       ?.textContent,
     body: document.body.innerText,
   }));
@@ -236,10 +240,11 @@ await check("conversation_info_panel_matches_page", async () => {
       state.archived === "未归档" &&
       state.count === "2" &&
       /^20\d{2}-\d{2}-\d{2}T/.test(state.latestAt ?? "") &&
-      /P3/.test(state.runsReason ?? "") &&
+      /宿主(已|未)启用/.test(state.runsHostStatus ?? "") &&
+      /注入模型 prompt：否/.test(state.turnInjection ?? "") &&
       !state.body.includes("0 个活动 run") &&
       !state.body.includes("无活动 run"),
-    `panel 分身 ${state.panelInstance} 与页面一致，成员 ${JSON.stringify(state.kinds)}，消息 ${state.count} 条，最后 ${JSON.stringify(state.latestAt)}`,
+    `panel 分身 ${state.panelInstance} 与页面一致，成员 ${JSON.stringify(state.kinds)}，消息 ${state.count} 条，run 视角宿主 ${state.runsHostStatus}`,
   );
 });
 

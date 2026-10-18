@@ -15,9 +15,13 @@ import type {
   ConversationResult,
   Message,
 } from "../../contracts/conversation";
-import type { ConversationInfoView } from "../../contracts/info-hub";
+import type {
+  ConversationInfoView,
+  InfoHubResult,
+  TurnStartContext,
+} from "../../contracts/info-hub";
 import type { AppError } from "../../contracts/result";
-import { getConversationInfoFn } from "../../server/functions/info-hub";
+import { getConversationInfoFn, getTurnStartContextFn } from "../../server/functions/info-hub";
 import { getAgentProfileFn } from "../../server/functions/agent";
 import { getConversationRunStateFn } from "../../server/functions/agent-run";
 import {
@@ -37,6 +41,7 @@ type DetailLoader =
       messages: ConversationResult<Message[]>;
       profile: AgentResult<AgentProfile> | null;
       info: ConversationResult<ConversationInfoView>;
+      turnStart: InfoHubResult<TurnStartContext>;
       runState: AgentRunResult<ConversationRunState>;
     };
 
@@ -52,11 +57,12 @@ export const Route = createFileRoute("/_authed/projects/$projectId/conversations
         ok: false,
         error: { code: "not_found", message: "对象不存在", requestId: conversation.requestId },
       };
-    const [members, instances, messages, info, runState] = await Promise.all([
+    const [members, instances, messages, info, turnStart, runState] = await Promise.all([
       listConversationMembersFn({ data: { conversationId: params.conversationId } }),
       listInstancesForConversationFn({ data: { conversationId: params.conversationId } }),
       listMessagesFn({ data: { conversationId: params.conversationId } }),
       getConversationInfoFn({ data: { conversationId: params.conversationId } }),
+      getTurnStartContextFn({ data: { conversationId: params.conversationId } }),
       getConversationRunStateFn({ data: { conversationId: params.conversationId } }),
     ]);
     const agentProfileId =
@@ -73,6 +79,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/conversations
       messages,
       profile,
       info,
+      turnStart,
       runState,
     };
   },
@@ -115,7 +122,7 @@ function ProjectConversationDetailPage() {
       </section>
     );
 
-  const { conversation, members, instances, messages, profile, info } = loader;
+  const { conversation, members, instances, messages, profile, info, turnStart } = loader;
 
   return (
     <section className="space-y-6">
@@ -134,8 +141,10 @@ function ProjectConversationDetailPage() {
       )}
       {!info.ok ? (
         <ResultError error={info.error} testId="info-hub-conversation-error" />
+      ) : !turnStart.ok ? (
+        <ResultError error={turnStart.error} testId="info-hub-turn-context-error" />
       ) : (
-        <ConversationInfoPanel view={info.data} />
+        <ConversationInfoPanel view={info.data} turnStart={turnStart.data} />
       )}
       {!messages.ok ? (
         <ResultError error={messages.error} testId="messages-load-error" />

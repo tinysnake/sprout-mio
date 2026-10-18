@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ProjectAgentsView } from "../../contracts/info-hub";
-import { UnavailableNotice } from "./unavailable-notice";
+import { RunFactsBlock } from "./run-facts";
 
 /** Project → Agents 视角：只消费 getProjectInfoHub 的视图对象，不自行查询。 */
 export function ProjectAgentsPanel({
@@ -61,11 +61,7 @@ export function ProjectAgentsPanel({
           ))}
         </ul>
       )}
-      <UnavailableNotice
-        testId="info-hub-runs-notice"
-        title="Agent 运行状态与活动 run"
-        reason={view.runs.reason}
-      />
+      <RunFactsBlock runs={view.runs} testId="info-hub-project-runs" />
     </section>
   );
 }

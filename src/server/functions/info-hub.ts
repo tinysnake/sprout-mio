@@ -2,7 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { conversationIdInput } from "../../contracts/conversation";
-import type { ConversationInfoView, InfoHubResult, ProjectInfoHub } from "../../contracts/info-hub";
+import type {
+  ConversationInfoView,
+  InfoHubResult,
+  ProjectInfoHub,
+  TurnStartContext,
+} from "../../contracts/info-hub";
 import { fieldErrorsFrom, projectIdInput } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
@@ -85,6 +90,18 @@ export async function getConversationInfoBoundary(
   });
 }
 
+export async function getTurnStartContextBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<InfoHubResult<TurnStartContext>> {
+  return infoHubBoundary<TurnStartContext>(headers, requestId, (deps, context) => {
+    const parsed = conversationIdInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(deps.getTurnStartContext(parsed.data.conversationId, context), requestId);
+  });
+}
+
 export const getProjectInfoHubFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
@@ -95,4 +112,10 @@ export const getConversationInfoFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     getConversationInfoBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const getTurnStartContextFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    getTurnStartContextBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );

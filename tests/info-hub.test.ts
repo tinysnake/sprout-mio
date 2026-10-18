@@ -17,7 +17,12 @@ type Evidence = {
       conversationId: string | null;
       instanceId: string | null;
     }[];
-    runs: { available: boolean; reason: string };
+    runs: {
+      available: boolean;
+      hostEnabled: boolean;
+      active: { runId: string; status: string; pendingInputs: number }[];
+      recent: unknown[];
+    };
     machines: { available: boolean; reason: string };
   } | null;
   info: {
@@ -26,7 +31,12 @@ type Evidence = {
     kind: string;
     archived: boolean;
     messages: { count: number; latestAt?: string };
-    runs: { available: boolean; reason: string };
+    runs: {
+      available: boolean;
+      hostEnabled: boolean;
+      active: { runId: string; status: string; pendingInputs: number }[];
+      recent: unknown[];
+    };
   } | null;
   instanceMatchesDm: boolean;
   latestMatchesSecondMessage: boolean;
@@ -160,16 +170,18 @@ describe("Info Hub 边界与显式不可用标记", () => {
     expect(evidence.leakTokens).toEqual([]);
   });
 
-  it("两条视图的 runs 与 machines 都是显式不可用，reason 指向 P3 / P4 且非空", () => {
-    expect(evidence.hub?.runs.available).toBe(false);
+  it("两条视图的 run 视角是真实数据，machines 仍是显式不可用且 reason 指向 P4", () => {
+    expect(evidence.hub?.runs.available).toBe(true);
+    expect(evidence.info?.runs.available).toBe(true);
     expect(evidence.hub?.machines.available).toBe(false);
-    expect(evidence.info?.runs.available).toBe(false);
-    expect(evidence.hub?.runs.reason).toContain("P3");
-    expect(evidence.info?.runs.reason).toContain("P3");
+    expect(evidence.hub?.runs.hostEnabled).toEqual(expect.any(Boolean));
+    expect(evidence.info?.runs.hostEnabled).toEqual(expect.any(Boolean));
+    expect(evidence.hub?.runs.active).toHaveLength(1);
+    expect(evidence.hub?.runs.active[0]?.status).toBe("queued");
+    expect(evidence.hub?.runs.active[0]?.pendingInputs).toBe(2);
+    expect(evidence.hub?.runs.recent).toEqual([]);
     expect(evidence.hub?.machines.reason).toContain("P4");
-    expect(evidence.hub?.runs.reason.length).toBeGreaterThan(0);
     expect(evidence.hub?.machines.reason.length).toBeGreaterThan(0);
-    expect(evidence.info?.runs.reason.length).toBeGreaterThan(0);
   });
 });
 

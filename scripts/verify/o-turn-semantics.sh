@@ -343,8 +343,9 @@ try {
       return status==='运行中'
     },'UI shows running',10000)
     assert.equal(await page.locator('[data-testid="pending-input-count"]').textContent(),'1 条输入未投递')
-    const bodyText=await page.locator('body').innerText()
-    assert(!bodyText.includes('已完成'),'pending input must never be displayed as processed')
+    const activeStatus=await page.locator('[data-testid="info-conversation-runs-active-status"]').first().textContent()
+    assert(activeStatus==='排队中'||activeStatus==='运行中','pending input must never be displayed as processed')
+    assert((await page.locator('[data-testid="info-turn-active-run"]').textContent()).includes('条输入未投递'),'turn context shows the pending input as undelivered')
     const runningShot=join(screenshotDir,'p3-b-run-running-pending.png')
     await page.screenshot({path:runningShot,fullPage:true})
     pass('UI shows running with a pending undelivered input, never as processed', {runId:uiRun.id,screenshot:runningShot})
