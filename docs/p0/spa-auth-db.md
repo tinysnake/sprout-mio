@@ -1,6 +1,6 @@
 # P0：Start SPA 深链、Better Auth session、Drizzle 事务与 migration、shadcn + Base UI
 
-对应 [development-plan.md](../development-plan.md) P0 第 2 条。实验代码在
+对应 [development-plan-functional.md](../development-plan-functional.md) P0 第 2 条。实验代码在
 [`experiments/spa-auth-db/`](../../experiments/spa-auth-db)，一个可重跑的验证脚本
 `experiments/spa-auth-db/verify.sh`。
 

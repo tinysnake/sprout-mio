@@ -1,6 +1,6 @@
 # P1 结论一览
 
-P1 已建立可运行的应用骨架与 Project 标准功能样例。Human 可以注册、登录、创建 Project 并通过稳定 URL 重新打开它。后续实现者可以沿用页面、server function、业务服务和事务的路径，复跑同一套验收。七项清单的证据均成立，状态与 [开发计划](../development-plan.md#p1-建立可重复的工程骨架) 对齐。
+P1 已建立可运行的应用骨架与 Project 标准功能样例。Human 可以注册、登录、创建 Project 并通过稳定 URL 重新打开它。后续实现者可以沿用页面、server function、业务服务和事务的路径，复跑同一套验收。七项清单的证据均成立，状态与 [开发计划](../development-plan-functional.md#p1-建立可重复的工程骨架) 对齐。
 
 实现基线为 `7e4f039`，a～e 的实现与合入范围为 `7e4f039..c3af8ad`，包含 PR #1 至 #5。本收尾提交补充文档验收，不增加应用能力。`git log --oneline 7e4f039..c3af8ad` 可重建范围。验收环境为 macOS arm64、Node v26.11.1、pnpm 10.33.0；CI 为 ubuntu x64。
 

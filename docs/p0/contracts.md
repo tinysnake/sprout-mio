@@ -1,6 +1,6 @@
 # P0：身份、事务与授权基础契约
 
-对应 [development-plan.md](../development-plan.md) P0 第 7 条。实验代码在
+对应 [development-plan-functional.md](../development-plan-functional.md) P0 第 7 条。实验代码在
 [`experiments/contract-checks/`](../../experiments/contract-checks)，重跑入口
 `experiments/contract-checks/scripts/verify.sh`（`tsc --noEmit` + 真实 SQLite 断言）。
 

@@ -1,6 +1,6 @@
 # P2 结论一览
 
-P2 已建立 Project 配置、Agent profile、成员、DM 与持久分身。Human 可以从稳定 URL 打开同一对话，发送消息，修改配置与人设，并在生产进程重启后保留身份和历史。六项清单的证据与 [开发计划](../development-plan.md#p2-建立身份成员与持久对话) 对齐。
+P2 已建立 Project 配置、Agent profile、成员、DM 与持久分身。Human 可以从稳定 URL 打开同一对话，发送消息，修改配置与人设，并在生产进程重启后保留身份和历史。六项清单的证据与 [开发计划](../development-plan-functional.md#p2-建立身份成员与持久对话) 对齐。
 
 实现基线为 `28d4fb2`，P2 最终实现、验收与合入范围为 `28d4fb2..db185f8`。原 a～e 的实现与合入范围为 `28d4fb2..d8f4e2b`，包含 PR #10 至 #14。`git log --oneline 6836b06^..d8f4e2b` 可重建该区间。下表列出经 `git log --oneline` 与 `git show --stat` 核对的 head 和 merge。本收尾只补充文档与只读验收，不增加应用能力。此句描述 P2-f 当时范围；随后 g 至 j 的补充验收、修复与只读审查使 P2 共 10 个 unit，ledger 有 9 行，对应 PR #10 至 #18，j 只读无 PR。`git log --first-parent --oneline 28d4fb2..db185f8` 可重建完整合入范围。验收环境为 macOS arm64、Node v26.11.1、pnpm 10.33.0，CI 为 ubuntu x64。
 

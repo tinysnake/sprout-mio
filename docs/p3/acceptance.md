@@ -1,3 +1,5 @@
+> 路径迁移说明。下文保留验收基线时的文件名与行号。当时的 `docs/development-plan.md` 现为 [功能开发专项计划](../development-plan-functional.md)，`docs/integration-plan.md` 现为 [开发总计划](../development-plan.md)，`docs/ui-development-plan.md` 现为 [UI 开发专项计划](../development-plan-ui.md)。当前编排必须从开发总计划进入。
+
 本验收由 `magpie/group/auto-glm-5-3-flash`（glm 家族）独立完成，该家族在 P3 没有任何代码、文档或验收产出；验收依据由 `docs/development-plan.md` 的 P3 段推导，不采信作者文档的自述。
 
 # P3 阶段验收（p3-e-acceptance）

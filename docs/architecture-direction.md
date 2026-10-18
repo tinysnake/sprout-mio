@@ -1,6 +1,6 @@
 # Sprout Mio 基础架构方向
 
-本文记录技术栈选择及架构讨论的当前结论。产品行为与分期以 [core-scope.md](core-scope.md) 为准，开发顺序见 [development-plan.md](development-plan.md)。
+本文记录技术栈选择及架构讨论的当前结论。产品行为与分期以 [core-scope.md](core-scope.md) 为准。开发编排必须从 [开发总计划](development-plan.md)进入，功能工程依赖见 [功能开发专项计划](development-plan-functional.md)。
 
 状态为已有 P1 与 P2 运行证据的设计基线。P0 已用最小实验验证技术栈与高风险协议，结论见 [P0 结论一览](p0/summary.md)。P1 已完成工程骨架、Human 登录与 Project 创建查询的真实验收，结论见 [P1 结论一览](p1/summary.md)。P2 已完成身份、成员、持久 DM、稳定 URL 与 Info Hub 两个已有对象视角，真实重启和两用户隔离证据见 [P2 结论一览](p2/summary.md)。完整一期产品端到端验证尚未开始。已确定的技术栈、建议采用的实现方向、待验证的选择分别记录，不将源码调查或官方文档支持标记为运行验证。
 

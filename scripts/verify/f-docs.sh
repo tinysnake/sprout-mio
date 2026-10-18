@@ -77,7 +77,7 @@ for (const [source, doc] of documents) {
   }
 }
 
-const plan = fs.readFileSync('docs/development-plan.md', 'utf8');
+const plan = fs.readFileSync('docs/development-plan-functional.md', 'utf8');
 const p1 = plan.match(/^## P1 [^\n]*\n([\s\S]*?)(?=^## )/m)?.[1] ?? '';
 const boxes = [...p1.matchAll(/^- \[([ x])\] (.+)$/gm)];
 check(boxes.length === 7, `P1 must contain seven checkboxes, found ${boxes.length}`);
@@ -92,7 +92,7 @@ for (let i = 0; i < boxes.length; i++) {
   const row = rows.find((candidate) => candidate.startsWith(`| ${i + 1}，`)) ?? '';
   check(row.includes(checked ? '已勾选' : '未勾选'), `summary status differs for checkbox ${i + 1}`);
   if (!checked) continue;
-  const evidence = linksIn(line).map((link) => resolveLink(path.resolve('docs/development-plan.md'), link)).filter((target) => target && target.file.startsWith(path.resolve('docs/p1') + path.sep) && target.fragment);
+  const evidence = linksIn(line).map((link) => resolveLink(path.resolve('docs/development-plan-functional.md'), link)).filter((target) => target && target.file.startsWith(path.resolve('docs/p1') + path.sep) && target.fragment);
   check(evidence.length > 0, `checkbox ${i + 1} lacks a P1 document section`);
   const commands = [...line.matchAll(/`(bash scripts\/verify\/(?:[\w-]+\.sh)|bash scripts\/verify\.sh)`/g)].map((match) => match[1]);
   check(commands.length > 0, `checkbox ${i + 1} lacks a rerun command`);

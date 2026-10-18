@@ -1,6 +1,6 @@
 # P0：恢复承诺实验（宿主断线、宿主重启、Worker 重启、Machine 重启）
 
-对应 [development-plan.md](../development-plan.md) P0 第 6 条。实验代码在
+对应 [development-plan-functional.md](../development-plan-functional.md) P0 第 6 条。实验代码在
 [`experiments/recovery-probe/`](../../experiments/recovery-probe)，重跑入口
 `experiments/recovery-probe/scripts/verify.sh`。
 

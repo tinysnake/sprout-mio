@@ -4,7 +4,7 @@ Sprout Mio 是 Sprout 的简化重制版，大量代码和设计可以直接参�
 
 本文汇总已确认的产品决定，并结合原 Sprout 源码和未完成 issues 给出实现取舍建议。本文不是实现完成记录，也不自动修改原仓库、roadmap 或 issue 状态。
 
-技术栈与运行边界见 [基础架构方向](architecture-direction.md)，开发阶段、依赖与验收条件见 [开发执行计划](development-plan.md)。这两份文档不改变本文的产品分期。
+技术栈与运行边界见 [基础架构方向](architecture-direction.md)。开发编排必须从 [开发总计划](development-plan.md)进入，功能阶段、依赖与功能验收条件见 [功能开发专项计划](development-plan-functional.md)。这些文档不改变本文的产品分期。
 
 ## 分期约定
 

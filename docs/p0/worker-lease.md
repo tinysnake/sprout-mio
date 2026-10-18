@@ -1,6 +1,6 @@
 # P0：Worker 最小协议实验（重复提交、响应丢失、授权代次、旧请求拒绝）
 
-对应 [development-plan.md](../development-plan.md) P0 第 5 条。实验代码在
+对应 [development-plan-functional.md](../development-plan-functional.md) P0 第 5 条。实验代码在
 [`experiments/worker-probe/`](../../experiments/worker-probe)，重跑入口
 `experiments/worker-probe/scripts/verify.sh`。
 

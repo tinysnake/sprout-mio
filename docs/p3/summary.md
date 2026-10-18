@@ -1,6 +1,6 @@
 # P3 结论一览
 
-Human 已能在 DM 中分析已推送仓库，无需创建 Task 或申请 Machine 租约。同一持久分身跨轮次与宿主重启复用 Pi session，运行中的新消息进入当前轮，用户停止不会生成假回复。独立验收判定七条清单中六条成立，第 2 条未完整交付，保持未勾。详细证据见 [P3 阶段验收](acceptance.md#七条-checkbox-逐条判定) 与 [开发计划](../development-plan.md#p3-跑通真实-pi-对话和仓库入口)。
+Human 已能在 DM 中分析已推送仓库，无需创建 Task 或申请 Machine 租约。同一持久分身跨轮次与宿主重启复用 Pi session，运行中的新消息进入当前轮，用户停止不会生成假回复。独立验收判定七条清单中六条成立，第 2 条未完整交付，保持未勾。详细证据见 [P3 阶段验收](acceptance.md#七条-checkbox-逐条判定) 与 [开发计划](../development-plan-functional.md#p3-跑通真实-pi-对话和仓库入口)。
 
 实现基线为 `db185f8`，a 至 d 的实现与合入范围为 `db185f8..e5e2b4e`。`git log --first-parent --oneline db185f8..e5e2b4e` 可重建 PR #19 至 #22 的合入顺序。下表的 head 与 merge 经 Git 和编排 store 字段比较核对。验收与收尾不增加应用能力。
 

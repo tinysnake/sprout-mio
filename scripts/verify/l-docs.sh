@@ -78,7 +78,7 @@ const checkEvidence = (text, source, label) => {
   return commands;
 };
 
-const plan = fs.readFileSync('docs/development-plan.md', 'utf8');
+const plan = fs.readFileSync('docs/development-plan-functional.md', 'utf8');
 const stageTable = plan.match(/^## 按依赖安排开发\n([\s\S]*?)(?=^## )/m)?.[1] ?? '';
 const p2Status = stageTable.split('\n').find((line) => /^\| P2 \|/.test(line))?.split('|')[4]?.trim() ?? '';
 check(p2Status.includes('已完成') && linksIn(p2Status).includes('p2/summary.md'), 'P2 stage status must be completed and link to p2/summary.md');
@@ -96,7 +96,7 @@ for (let i = 0; i < boxes.length; i++) {
   check(boxes[i][1] === 'x', `P2 checkbox ${i + 1} must be checked`);
   const row = rows.find((line) => line.startsWith(`| ${i + 1}，`)) ?? '';
   check(row.includes('| 已勾选 |'), `summary checkbox ${i + 1} must be checked`);
-  const commands = checkEvidence(boxes[i][2], 'docs/development-plan.md', `P2 checkbox ${i + 1}`);
+  const commands = checkEvidence(boxes[i][2], 'docs/development-plan-functional.md', `P2 checkbox ${i + 1}`);
   checkEvidence(row, 'docs/p2/summary.md', `summary checkbox ${i + 1}`);
   for (const command of commands) check(row.includes(`\`${command}\``), `summary checkbox ${i + 1} lacks ${command}`);
 }
