@@ -15,6 +15,7 @@ export function healthResponse(request: Request): Response {
       bootId: snapshot.bootId,
       requestId,
       version: snapshot.version,
+      activeBackgroundTasks: snapshot.activeBackgroundTasks,
       database,
     },
     {

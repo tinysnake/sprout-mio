@@ -102,7 +102,7 @@ export function runtimeSnapshot() {
     moduleEvals: state.moduleEvals,
     constructions: state.constructions,
     activeResources: state.activeResources,
-    activeBackgroundTasks: 0,
+    activeBackgroundTasks: piHostSnapshot().active.length,
     history: state.history.map((entry) => ({ ...entry })),
   };
 }

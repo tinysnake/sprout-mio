@@ -12,6 +12,7 @@ type Health = {
     phase: string;
     bootId: string | null;
     requestId: string;
+    activeBackgroundTasks: number;
     database: { ok: boolean; migrationApplied: boolean };
   };
 };
@@ -31,6 +32,7 @@ type Evidence = {
   snapshot: {
     constructions: number;
     activeResources: number;
+    activeBackgroundTasks: number;
     bootId: string;
     history: { phase: string; result: string }[];
   };
@@ -156,6 +158,16 @@ describe("宿主 runtime 的可观察行为", () => {
       status: 503,
       body: { ok: false, ready: true, database: { ok: false, migrationApplied: false } },
     });
+  });
+
+  it("活跃后台任务数由常驻服务导出，不是常量", () => {
+    expect(evidence.snapshot.activeBackgroundTasks).toBe(
+      evidence.hostSnapshots.ready.active.length,
+    );
+    expect(evidence.after.body.activeBackgroundTasks).toBe(evidence.snapshot.activeBackgroundTasks);
+    expect(evidence.stopped.body.activeBackgroundTasks).toBe(
+      evidence.hostSnapshots.disposed.active.length,
+    );
   });
 
   it("关闭幂等，Scope 释放后持久化 stopped 并拒绝健康状态", () => {

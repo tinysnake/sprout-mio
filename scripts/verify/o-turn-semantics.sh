@@ -218,6 +218,8 @@ try {
 
   await send('stub-hold')
   const busy=await waitRun('running',1)
+  const busyHealth=await health(server)
+  assert(busyHealth.activeBackgroundTasks>=1,`health must report the live agent run as a resident background task, got ${busyHealth.activeBackgroundTasks}`)
   await send('steered into current turn')
   assert.equal(allRuns().length,2,'active run must absorb the new human message instead of a second run')
   const steered=await until(()=>{
@@ -227,7 +229,7 @@ try {
   assert(steered[1].delivered_at,'steered input records deliveredAt')
   assert.equal(runRow(busy.id).status,'running')
   assert.equal(runRow(busy.id).assistant_message_id,null)
-  pass('serial delivery: new message joins the active run and is steered in as delivered', {runId:busy.id,runCount:allRuns().length,inputs:steered.map(row=>row.disposition)})
+  pass('serial delivery: new message joins the active run and is steered in as delivered', {runId:busy.id,runCount:allRuns().length,inputs:steered.map(row=>row.disposition),activeBackgroundTasks:busyHealth.activeBackgroundTasks})
 
   await send('stub-reject this delivery')
   const diagnostic=await until(()=>db.prepare("SELECT level,message FROM diagnostic_event WHERE run_id=? AND event='agent_run.input_delivery_failed'").get(busy.id),'rejection diagnostic recorded')
