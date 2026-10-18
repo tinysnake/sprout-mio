@@ -1,8 +1,14 @@
-import type { ConversationInfoView } from "../../contracts/info-hub";
-import { UnavailableNotice } from "./unavailable-notice";
+import type { ConversationInfoView, TurnStartContext } from "../../contracts/info-hub";
+import { RunFactsBlock, TurnStartContextBlock } from "./run-facts";
 
 /** Conversation → 自身与成员视角：只消费 getConversationInfo 的视图对象，不自行查询。 */
-export function ConversationInfoPanel({ view }: { view: ConversationInfoView }) {
+export function ConversationInfoPanel({
+  view,
+  turnStart,
+}: {
+  view: ConversationInfoView;
+  turnStart: TurnStartContext;
+}) {
   return (
     <article
       data-testid="info-hub-conversation"
@@ -39,11 +45,8 @@ export function ConversationInfoPanel({ view }: { view: ConversationInfoView }) 
           ))}
         </ul>
       </div>
-      <UnavailableNotice
-        testId="info-conversation-runs-notice"
-        title="该对话的活动 run"
-        reason={view.runs.reason}
-      />
+      <RunFactsBlock runs={view.runs} testId="info-conversation-runs" />
+      <TurnStartContextBlock context={turnStart} />
     </article>
   );
 }

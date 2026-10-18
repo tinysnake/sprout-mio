@@ -144,14 +144,17 @@ async function unavailable(page, target) {
   const body = await page.locator("body").innerText();
   assert(!/0 个活动 run|无活动 run|无 Machine/.test(body));
   if (target.path.startsWith("/projects/")) {
-    await sameText(page, "info-hub-runs-notice-badge", "未实现");
+    await sameText(page, "info-hub-project-runs-host-status", "宿主未启用");
+    await test(page, "info-hub-project-runs-active").waitFor();
     await sameText(page, "info-hub-machines-notice-badge", "未实现");
-    assert.match(await test(page, "info-hub-runs-notice-reason").textContent(), /P3/);
     assert.match(await test(page, "info-hub-machines-notice-reason").textContent(), /P4/);
   }
   if (target.key === "conversation") {
-    await sameText(page, "info-conversation-runs-notice-badge", "未实现");
-    assert.match(await test(page, "info-conversation-runs-notice-reason").textContent(), /P3/);
+    await sameText(page, "info-conversation-runs-host-status", "宿主未启用");
+    assert.match(
+      await test(page, "info-turn-prompt-injection").textContent(),
+      /注入模型 prompt：否/,
+    );
     await sameText(page, "pi-host-status", "宿主未启用");
     assert.deepEqual(
       await test(page, "message-item").evaluateAll((nodes) =>
