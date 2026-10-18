@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { conversationIdInput } from "./conversation";
 import type { FieldErrors } from "./project";
+import type { RunRepoSnapshot } from "./repository";
 import type { AppResult } from "./result";
 
 export const AGENT_RUN_STATUSES = [
@@ -24,6 +25,8 @@ export type RunConfigSnapshot = {
   sessionFile: string;
   cwd: string;
   sdkVersion: string;
+  /** 本轮实际使用的仓库工作副本与 commit；Project 未配置仓库时缺省。 */
+  repo?: RunRepoSnapshot;
   profile: {
     id: string;
     name: string;

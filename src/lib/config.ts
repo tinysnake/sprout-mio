@@ -27,6 +27,16 @@ const environmentSchema = z.object({
       }
     }, "必须是存在且可执行的绝对路径")
     .optional(),
+  SPROUT_REPO_DIR: z
+    .string()
+    .min(1)
+    .refine(isAbsolute, "必须是绝对路径")
+    .default(join(homedir(), ".local", "share", "sprout-mio", "repos")),
+  SPROUT_REPO_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(2 * 1024 * 1024 * 1024),
   DATABASE_URL: z.string().min(1).default("./data/sprout.sqlite"),
   APP_ORIGIN: z
     .url()

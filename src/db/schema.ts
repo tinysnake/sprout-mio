@@ -306,3 +306,69 @@ export const runtimeBoot = sqliteTable(
     ),
   ],
 );
+
+export const repoCheckout = sqliteTable(
+  "repo_checkout",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    path: text("path").notNull(),
+    sourceKind: text("source_kind", { enum: ["managed_clone", "bound_copy"] }).notNull(),
+    source: text("source").notNull(),
+    ref: text("ref").notNull(),
+    commit: text("commit").notNull(),
+    fetchedAt: integer("fetched_at", { mode: "timestamp" }),
+    resolvedAt: integer("resolved_at", { mode: "timestamp" }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    status: text("status", { enum: ["preparing", "ready"] }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    uniqueIndex("repo_checkout_project_unique").on(table.projectId),
+    check("repo_checkout_status_check", sql`${table.status} in ('preparing', 'ready')`),
+    check(
+      "repo_checkout_ready_check",
+      sql`${table.status} != 'ready' or (
+      ${table.path} != '' and ${table.commit} != '' and ${table.ref} != '' and ${table.source} != ''
+    )`,
+    ),
+  ],
+);
+
+export const repoProvenance = sqliteTable(
+  "repo_provenance",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .unique()
+      .references(() => agentRun.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    checkoutId: text("checkout_id")
+      .notNull()
+      .references(() => repoCheckout.id),
+    path: text("path").notNull(),
+    source: text("source").notNull(),
+    sourceKind: text("source_kind", { enum: ["managed_clone", "bound_copy"] }).notNull(),
+    ref: text("ref").notNull(),
+    commit: text("commit").notNull(),
+    fresh: integer("fresh", { mode: "boolean" }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    recordedAt: integer("recorded_at", { mode: "timestamp" }).notNull(),
+    fetchedAt: integer("fetched_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    index("repo_provenance_project_idx").on(table.projectId),
+    check("repo_provenance_fresh_check", sql`${table.fresh} in (0, 1)`),
+    check("repo_provenance_commit_check", sql`${table.commit} != ''`),
+  ],
+);

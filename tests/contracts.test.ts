@@ -101,6 +101,8 @@ describe("配置边界", () => {
     expect(config).toEqual({
       SPROUT_PI_ENABLED: true,
       SPROUT_PI_DATA_DIR: join(homedir(), ".local", "share", "sprout-mio", "pi"),
+      SPROUT_REPO_DIR: join(homedir(), ".local", "share", "sprout-mio", "repos"),
+      SPROUT_REPO_MAX_BYTES: 2 * 1024 * 1024 * 1024,
       DATABASE_URL: "./data/sprout.sqlite",
       APP_ORIGIN: "http://localhost:3000",
       AUTH_RATE_LIMIT_MAX: 5,
