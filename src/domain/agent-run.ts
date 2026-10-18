@@ -203,6 +203,9 @@ export function transitionAgentRun(
       if (status === "completed" && (data.stopReason !== "stop" || !data.assistantMessageId)) {
         throw new AgentRunError("conflict", "Run 缺少正常完成结果");
       }
+      if (status === "failed" && (!data.errorCode || !data.errorMessage?.trim())) {
+        throw new AgentRunError("conflict", "Run 缺少失败原因");
+      }
       const updated = db
         .update(agentRun)
         .set({
@@ -240,6 +243,41 @@ export function markRunInputDelivered(id: string, messageId: string, ctx: Projec
     )
     .run();
   if (!changed.changes) throw new AgentRunError("conflict", "Run 输入不存在或已投递");
+}
+
+export function pendingRunInputs(
+  id: string,
+  ctx: ProjectContext,
+): { messageId: string; text: string }[] {
+  const row = runRow(id, ctx);
+  return db
+    .select({ messageId: agentRunInput.messageId, text: message.body })
+    .from(agentRunInput)
+    .innerJoin(
+      message,
+      and(eq(message.id, agentRunInput.messageId), eq(message.conversationId, row.conversationId)),
+    )
+    .where(and(eq(agentRunInput.runId, id), eq(agentRunInput.disposition, "pending")))
+    .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
+    .all();
+}
+
+export function recordRunInputDeliveryFailure(
+  runId: string,
+  messageId: string,
+  reason: string,
+  ctx: ProjectContext,
+): void {
+  diagnostic(
+    runRow(runId, ctx),
+    "agent_run.input_delivery_failed",
+    `Run 输入 ${messageId} 投递失败：${reason}`,
+    "warn",
+  );
+}
+
+export function abortAgentRun(id: string, ctx: ProjectContext): AgentRun {
+  return transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
 }
 
 export function completeAgentRun(

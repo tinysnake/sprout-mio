@@ -1,13 +1,16 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  AgentRunError,
   completeAgentRun,
   firstPendingRunInput,
   getAgentRun,
   interruptActiveAgentRuns,
   markRunInputDelivered,
+  pendingRunInputs,
   previousSessionFile,
   queuedRunWork,
+  recordRunInputDeliveryFailure,
   transitionAgentRun,
 } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
@@ -32,6 +35,7 @@ const host: HostState = (scope.sproutPiHost ??= {
 async function execute(work: Work, process: PiSessionProcess): Promise<void> {
   const { run, profile } = work;
   const ctx: ProjectContext = { userId: work.ownerId, requestId: run.requestId };
+  const sent = new Set<string>();
   try {
     const input = firstPendingRunInput(run.id, ctx);
     if (!input) throw new PiHostFailure("input_missing", "Run 缺少输入消息");
@@ -60,9 +64,50 @@ async function execute(work: Work, process: PiSessionProcess): Promise<void> {
     if (host.stopping) return;
     transitionAgentRun(run.id, "running", { configSnapshot: snapshot }, ctx);
     process.onDelivered = (messageId) => {
-      if (!host.stopping) markRunInputDelivered(run.id, messageId, ctx);
+      if (host.stopping) return;
+      try {
+        markRunInputDelivered(run.id, messageId, ctx);
+      } catch (error) {
+        // 用户停止后迟到的投递确认保持 pending，不升级成进程故障。
+        if (!(error instanceof AgentRunError && error.code === "conflict")) throw error;
+      }
     };
-    const result = await process.prompt(input.message.id, input.message.body);
+    process.onRejected = (messageId, reason) => {
+      if (!host.stopping) recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
+    };
+    sent.add(input.message.id);
+    const promptTask = process.prompt(input.message.id, input.message.body);
+    const delivery = setInterval(() => {
+      try {
+        if (host.stopping) return;
+        for (const pending of pendingRunInputs(run.id, ctx)) {
+          if (sent.has(pending.messageId)) continue;
+          sent.add(pending.messageId);
+          try {
+            process.steer(pending.messageId, pending.text);
+          } catch {
+            recordRunInputDeliveryFailure(
+              run.id,
+              pending.messageId,
+              "Pi runner 通信失败，消息未投递",
+              ctx,
+            );
+            clearInterval(delivery);
+            return;
+          }
+        }
+      } catch {
+        // 投递轮询失败不拉倒宿主；run 级故障由 prompt 路径报告。
+        clearInterval(delivery);
+      }
+    }, 100);
+    delivery.unref();
+    let result: Awaited<ReturnType<typeof process.prompt>>;
+    try {
+      result = await promptTask;
+    } finally {
+      clearInterval(delivery);
+    }
     await process.close();
     if (!host.stopping) completeAgentRun(run.id, result.text, result.stopReason, ctx);
   } catch (error) {
@@ -124,6 +169,17 @@ export function piHostSnapshot() {
     stopping: host.stopping,
     active: [...host.active].map(([instanceId, entry]) => ({ instanceId, pid: entry.process.pid })),
   };
+}
+
+/** 停止的真值在 run 状态机；这里只把已定格的停止传导给活着的子进程。 */
+export function signalRunAbort(runId: string): boolean {
+  for (const { process } of host.active.values()) {
+    if (process.id === runId) {
+      process.abortSession();
+      return true;
+    }
+  }
+  return false;
 }
 
 export function stopPiHost(): Promise<void> {

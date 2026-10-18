@@ -222,6 +222,12 @@ export const agentRun = sqliteTable(
       and ${table.errorCode} is null and ${table.errorMessage} is null
     )`,
     ),
+    check(
+      "agent_run_failed_check",
+      sql`${table.status} != 'failed' or (
+      ${table.errorCode} is not null and ${table.errorMessage} is not null and ${table.errorMessage} != ''
+    )`,
+    ),
   ],
 );
 

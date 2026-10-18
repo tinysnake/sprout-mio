@@ -16,6 +16,7 @@ export type OpenSession = {
 export type PiHostCommand =
   | OpenSession
   | { type: "prompt"; id: string; messageId: string; text: string }
+  | { type: "steer"; id: string; messageId: string; text: string }
   | { type: "abort" | "close"; id: string };
 
 const snapshotSchema = z.object({
@@ -49,6 +50,12 @@ export const piHostEvent = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("ready"), id: z.string(), snapshot: snapshotSchema }),
   z.object({ type: z.literal("input_delivered"), id: z.string(), messageId: z.string() }),
+  z.object({
+    type: z.literal("input_rejected"),
+    id: z.string(),
+    messageId: z.string(),
+    reason: z.string().min(1).max(500),
+  }),
   z.object({
     type: z.literal("settled"),
     id: z.string(),

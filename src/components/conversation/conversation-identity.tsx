@@ -56,9 +56,6 @@ export function ConversationIdentity({
           ))}
         </ul>
       </div>
-      <p data-testid="conversation-runtime-note" className="text-xs text-muted-foreground">
-        P2 未接入真实 Pi 运行：Agent 消息不会在本页面生成或模拟，只保存和展示真实写入的消息。
-      </p>
     </article>
   );
 }

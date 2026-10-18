@@ -282,6 +282,53 @@ try {
         await page.screenshot({path:screenshot,fullPage:true})
         pass('real Chromium displays all three persisted agent replies after restart',{replies,screenshot})
       } finally {await browser.close()}
+      await send('Use the bash tool to run exactly: sleep 20. Then reply with the single word DONE.');
+      const busy=await waitRun('running',3)
+      await delay(3000)
+      await send('New instruction, very important: ignore the sleep task. Reply with exactly STEER_OK and nothing else.')
+      const steeredInputs=await until(()=>{
+        const rows=db.prepare('SELECT * FROM agent_run_input WHERE run_id=? ORDER BY rowid').all(busy.id)
+        return rows.length===2&&rows.every(row=>row.disposition==='delivered'&&row.delivered_at)?rows:undefined
+      },'steered input delivered into the current turn',60000)
+      const steerTurn=await waitRun('completed',3)
+      assert.equal(steerTurn.id,busy.id)
+      assert.equal(steerTurn.session_id,firstSnapshot.sessionId)
+      assert.equal(steerTurn.stop_reason,'stop')
+      const steerReply=db.prepare('SELECT body FROM message WHERE id=?').get(steerTurn.assistant_message_id).body
+      assert(steerReply.includes('STEER_OK'),`steered reply mismatch ${JSON.stringify({expected:'STEER_OK',actual:steerReply,runId:steerTurn.id,sessionId:steerTurn.session_id})}`)
+      pass('steered input enters the current turn of the same run and session',{runId:steerTurn.id,reply:steerReply,inputs:steeredInputs.map(row=>row.disposition),sessionFile:JSON.parse(steerTurn.config_snapshot).sessionFile})
+      await send('Use the bash tool to run exactly: sleep 120. Then reply with the single word DONE.');
+      const holdRun=await waitRun('running',4)
+      await delay(3000)
+      const holdSnapshotBefore=JSON.parse(db.prepare('SELECT config_snapshot FROM agent_run WHERE id=?').get(holdRun.id).config_snapshot)
+      const newPersona='You are a parrot. Answer every question with exactly the word PROFILE_V2.'
+      await call('updateAgentProfileFn',{agentProfileId:profileId,persona:newPersona})
+      const holdSnapshotAfter=JSON.parse(db.prepare('SELECT config_snapshot FROM agent_run WHERE id=?').get(holdRun.id).config_snapshot)
+      assert.equal(holdSnapshotAfter.profile.persona,holdSnapshotBefore.profile.persona,'editing the profile must not rewrite the running turn snapshot')
+      const agentRepliesBefore=db.prepare("SELECT count(*) AS n FROM message WHERE conversation_id=? AND sender_kind='agent'").get(conversationId).n
+      const stoppedRun=await call('abortAgentRunFn',{runId:holdRun.id})
+      assert.equal(stoppedRun.status,'aborted')
+      const abortedRow=await until(()=>{
+        const row=db.prepare('SELECT * FROM agent_run WHERE id=?').get(holdRun.id)
+        return row.status==='aborted'&&row.assistant_message_id===null?row:undefined
+      },'user stop settles the running run as aborted',30000)
+      assert.equal(abortedRow.stop_reason,'aborted')
+      assert.equal(db.prepare("SELECT count(*) AS n FROM message WHERE conversation_id=? AND sender_kind='agent'").get(conversationId).n,agentRepliesBefore)
+      pass('user stop of a running turn yields aborted with no agent reply',{runId:abortedRow.id,status:abortedRow.status,stopReason:abortedRow.stop_reason,assistantMessageId:abortedRow.assistant_message_id})
+      await send('According to your instructions, what exact word must you answer with? Reply with that word only.');
+      const nextTurn=await waitRun('completed',5)
+      const nextSnapshot=JSON.parse(nextTurn.config_snapshot)
+      assert.equal(nextSnapshot.profile.persona,newPersona)
+      assert.equal(`${nextSnapshot.provider}/${nextSnapshot.model}`,model)
+      assert.equal(nextSnapshot.sessionFile,firstSnapshot.sessionFile)
+      assert.equal(nextSnapshot.sessionId,firstSnapshot.sessionId)
+      const nextTranscript=readFileSync(nextSnapshot.sessionFile,'utf8').trim().split('\n').map(line=>JSON.parse(line))
+      const lastSystem=nextTranscript.filter(entry=>entry.type==='message'&&entry.message?.role==='system').at(-1)?.message
+      assert(lastSystem,'real Pi transcript must contain the system prompt of the new turn')
+      assert(JSON.stringify(lastSystem).includes('PROFILE_V2'),'the new turn system prompt must carry the edited persona')
+      const nextReply=db.prepare('SELECT body FROM message WHERE id=?').get(nextTurn.assistant_message_id).body
+      assert(nextReply.includes('PROFILE_V2'),`profile persona not applied on next turn ${JSON.stringify({expected:'PROFILE_V2',actual:nextReply,runId:nextTurn.id})}`)
+      pass('profile edit takes effect on the next turn only',{runId:nextTurn.id,reply:nextReply,persona:nextSnapshot.profile.persona,model:`${nextSnapshot.provider}/${nextSnapshot.model}`})
       noLostInputs()
     } else {
       await send('stub-error')
