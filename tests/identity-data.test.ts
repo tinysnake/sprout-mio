@@ -13,6 +13,7 @@ function scenario(name: string, body: string, reopen?: string): void {
   };
   const imports = `
     import assert from 'node:assert/strict';
+    import { readdirSync } from 'node:fs';
     const { migrateDatabase } = await import('./src/db/migrate.ts');
     migrateDatabase();
     migrateDatabase();
@@ -75,7 +76,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
       for (const [table, columns] of Object.entries(expected)) {
         assert.deepEqual(sqlite.prepare('PRAGMA table_info(' + table + ')').all().map(row => row.name), columns);
       }
-      assert.equal(count('__drizzle_migrations'), 2);
+      assert.equal(count('__drizzle_migrations'), readdirSync('drizzle').filter(file => file.endsWith('.sql')).length);
       assert.equal(sqlite.pragma('foreign_keys', { simple: true }), 1);
       for (const [table, columns] of Object.entries({ project_member: ['project_id','agent_profile_id'], conversation_member: ['conversation_id','member_kind','member_id'] })) {
         assert.deepEqual(sqlite.prepare('PRAGMA table_info(' + table + ')').all().filter(row => row.pk).sort((a,b) => a.pk-b.pk).map(row => row.name), columns);

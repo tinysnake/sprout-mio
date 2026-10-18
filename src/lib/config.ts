@@ -1,7 +1,32 @@
 import { z } from "zod";
+import { accessSync, constants, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 
 const environmentSchema = z.object({
+  SPROUT_PI_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  SPROUT_PI_DATA_DIR: z
+    .string()
+    .min(1)
+    .refine(isAbsolute, "必须是绝对路径")
+    .default(join(homedir(), ".local", "share", "sprout-mio", "pi")),
+  SPROUT_PI_RUNNER: z
+    .string()
+    .min(1)
+    .refine((value) => {
+      if (!isAbsolute(value)) return false;
+      try {
+        accessSync(value, constants.F_OK | constants.X_OK);
+        return statSync(value).isFile();
+      } catch {
+        return false;
+      }
+    }, "必须是存在且可执行的绝对路径")
+    .optional(),
   DATABASE_URL: z.string().min(1).default("./data/sprout.sqlite"),
   APP_ORIGIN: z
     .url()

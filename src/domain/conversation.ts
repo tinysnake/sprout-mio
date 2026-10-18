@@ -19,6 +19,7 @@ import {
 import { assertProjectAccess, ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
 import { getAgentProfile } from "./agent";
+import { appendHumanRunInput } from "./agent-run";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
 
@@ -280,7 +281,9 @@ export function sendMessage(
               ),
             )
             .run();
-          return toMessage(row);
+          const saved = toMessage(row);
+          if (input.senderKind === "human") appendHumanRunInput(saved, ctx);
+          return saved;
         },
         hooks,
       );

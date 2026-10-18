@@ -15,6 +15,13 @@
       "when": 1792254409122,
       "tag": "0001_stiff_wallflower",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792291333513,
+      "tag": "0002_goofy_master_mold",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { user } from "./auth-schema";
+import { AGENT_RUN_STATUSES } from "../contracts/agent-run";
+import type { RunConfigSnapshot } from "../contracts/agent-run";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 
 export * from "./auth-schema";
@@ -165,6 +167,87 @@ export const message = sqliteTable(
   (table) => [
     check("message_sender_kind_check", sql`${table.senderKind} in ('human', 'agent')`),
     index("message_conversation_created_at_idx").on(table.conversationId, table.createdAt),
+  ],
+);
+
+export const agentRun = sqliteTable(
+  "agent_run",
+  {
+    id: text("id").primaryKey(),
+    instanceId: text("instance_id")
+      .notNull()
+      .references(() => agentInstance.id),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversation.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    requestId: text("request_id").notNull(),
+    status: text("status", { enum: AGENT_RUN_STATUSES }).notNull(),
+    queuedAt: integer("queued_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    startedAt: integer("started_at", { mode: "timestamp" }),
+    settledAt: integer("settled_at", { mode: "timestamp" }),
+    stopReason: text("stop_reason"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    sessionId: text("session_id").notNull(),
+    configSnapshot: text("config_snapshot", { mode: "json" }).$type<RunConfigSnapshot>(),
+    assistantMessageId: text("assistant_message_id").references(() => message.id),
+  },
+  (table) => [
+    uniqueIndex("agent_run_one_active_instance")
+      .on(table.instanceId)
+      .where(sql`${table.status} in ('queued', 'running')`),
+    index("agent_run_conversation_queued_idx").on(table.conversationId, table.queuedAt),
+    check(
+      "agent_run_status_check",
+      sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'aborted', 'interrupted')`,
+    ),
+    check(
+      "agent_run_timestamps_check",
+      sql`(
+      (${table.status} = 'queued' and ${table.startedAt} is null and ${table.settledAt} is null)
+      or (${table.status} = 'running' and ${table.startedAt} is not null and ${table.settledAt} is null)
+      or (${table.status} in ('completed', 'failed', 'aborted', 'interrupted') and ${table.settledAt} is not null)
+    )`,
+    ),
+    check(
+      "agent_run_completed_check",
+      sql`${table.status} != 'completed' or (
+      ${table.assistantMessageId} is not null and ${table.configSnapshot} is not null
+      and ${table.startedAt} is not null and ${table.stopReason} is not null and ${table.stopReason} = 'stop'
+      and ${table.errorCode} is null and ${table.errorMessage} is null
+    )`,
+    ),
+  ],
+);
+
+export const agentRunInput = sqliteTable(
+  "agent_run_input",
+  {
+    messageId: text("message_id")
+      .primaryKey()
+      .references(() => message.id),
+    runId: text("run_id")
+      .notNull()
+      .references(() => agentRun.id),
+    disposition: text("disposition", { enum: ["pending", "delivered"] })
+      .notNull()
+      .default("pending"),
+    deliveredAt: integer("delivered_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    index("agent_run_input_run_idx").on(table.runId),
+    check(
+      "agent_run_input_disposition_check",
+      sql`(
+      (${table.disposition} = 'pending' and ${table.deliveredAt} is null)
+      or (${table.disposition} = 'delivered' and ${table.deliveredAt} is not null)
+    )`,
+    ),
   ],
 );
 

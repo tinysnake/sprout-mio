@@ -16,3 +16,5 @@ data/
 !.env.example
 .verify/
 .tanstack/
+.sprout-pi-sessions/
+.sprout-pi-workspaces/

@@ -165,7 +165,9 @@ async function initializeRuntime() {
     const requestId = newId(ID_PREFIXES.request);
     const sqlite = state.connection.sqlite;
     const bootId = newId(ID_PREFIXES.boot);
+    const { recoverAgentRuns } = await import("../domain/agent-run");
     sqlite.transaction(() => {
+      recoverAgentRuns();
       const interrupted = sqlite
         .prepare(
           "SELECT id, phase, pid FROM runtime_boot WHERE phase IN ('starting', 'ready', 'stopping')",
@@ -194,6 +196,8 @@ async function initializeRuntime() {
     state.bootId = bootId;
     sqlite.prepare("UPDATE runtime_boot SET phase = 'ready' WHERE id = ?").run(bootId);
     transition("ready");
+    const { startPiHost } = await import("./pi-host");
+    startPiHost();
     recordDiagnostic({
       level: "info",
       event: "runtime.ready",
@@ -232,12 +236,19 @@ export function shutdownRuntime(reason: string): Promise<void> {
 
 export async function beginRuntimeShutdown(reason: string): Promise<void> {
   await state.startup;
-  if (state.phase === "stopping" || state.phase === "stopped") return;
+  if (state.phase === "stopped") return;
+  if (state.phase === "stopping") {
+    const { stopPiHost } = await import("./pi-host");
+    await stopPiHost();
+    return;
+  }
   transition("stopping");
   state.connection?.sqlite
     .prepare("UPDATE runtime_boot SET phase = 'stopping' WHERE id = ?")
     .run(state.bootId);
   console.log("[runtime] shutdown", JSON.stringify({ reason, bootId: state.bootId }));
+  const { stopPiHost } = await import("./pi-host");
+  await stopPiHost();
 }
 
 export function failRuntimeShutdown(error: unknown): void {
