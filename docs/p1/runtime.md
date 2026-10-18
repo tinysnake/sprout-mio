@@ -42,6 +42,8 @@ stateDiagram-v2
 
 `RuntimeState` 在 `globalThis.sproutRuntime` 缓存 ready、启动和关闭 Promise，以及 Effect ManagedRuntime。重复调用 `startRuntime()` 返回同一个 Promise。模块重新求值复用同一实例、同一 boot 和同一 Scope。`shutdownRuntime(reason)` 同样幂等。
 
+数据库 Layer 与 `piHostLayer` 经 `Layer.mergeAll` 交给同一个 ManagedRuntime。Pi host 的轮询和 run 纤维属于该 Layer 的 Scope。恢复完成并进入 ready 后，runtime 只在 `SPROUT_PI_ENABLED=true` 时启动轮询。`runtime.ts` 缓存宿主 handle，提供同步的 `piHostSnapshot()` 与 `signalRunAbort()`。轮询使用 Effect Clock，会保持事件循环存活；直接启动 runtime 的测试和脚本必须调用 `shutdownRuntime()` 释放 Scope。
+
 `vite.config.ts` 将 `src/server/server-entry.ts` 注册为 Nitro runtime plugin。当前 Nitro 静态导入 plugins，但不等待 plugin 回调返回的 Promise。因此 `server-entry.ts` 在模块顶层 `await startRuntime()`。plugin 回调只注册请求、响应与关闭 hooks。TanStack prerender 使用 Vite preview，并设置 `TSS_PRERENDERING=true`。入口识别该框架标记并跳过 runtime 启动，构建不要求部署秘密。Nitro 的 `import.meta.prerender` 不覆盖这条 TanStack 构建路径。
 
 对照设计是在 HTTP 导入时启动 runtime。该设计无法修复监听前不加载应用的缺口，因而未采用。入口持有生命周期，路由只消费生命周期。
@@ -86,7 +88,7 @@ return ok(project, requestId);
 
 1. fetch 边界停止接收新工作；后到请求直接返回 503、requestId、`Connection: close`、`Retry-After: 1` 与禁止缓存响应，不进入路由或访问 DB。等待已经开始的启动完成，进入 `stopping` 并持久化 boot phase。
 2. 在从信号开始的 8 秒期限内等待在途请求归零和已观察到的 Node server 发出 `close`。请求在调用应用 fetch 前计数，在 `finally` 标记处理结束；只有处理结束且 Node 响应 `finish` 或 `close` 后才释放计数。错误、短路和客户端断开均走同一释放路径；断开不能提前释放仍在异步执行的业务。response hook 发生在发送前，不能代替这个完成边界。
-3. 排空完成后才调用 `shutdownRuntime()`。`ManagedRuntime.dispose()` 关闭 Scope，finalizer 关闭共享应用数据库连接，资源计数归零。
+3. `beginRuntimeShutdown()` 与 HTTP 排空并行停止 Pi host。宿主先禁止派发并定格活跃 run，再并发等待子进程关闭与 run 结束，总截止为 2500ms。重复关闭等待同一个停止 Promise。宿主停止成功且排空完成后才调用 `shutdownRuntime()`。`ManagedRuntime.dispose()` 关闭 Scope，finalizer 关闭共享应用数据库连接，资源计数归零。Scope finalizer 不等待子进程 `close()`。
 4. 打开独立短连接，把当前 boot 写成 `stopped` 并写入 `stopped_at`，关闭短连接，进入 `stopped`，入口以 0 退出。
 
 排空超时记录 `HTTP 排空超时 (8000ms)`，当前 phase history 的 result 为 failed，退出 1，不调用 dispose 或写 stopped。持久 schema 没有 failed phase，boot 留在 `stopping`，下次启动恢复为 `interrupted`。释放或 stopped 持久化失败同样退出 1。总关闭截止保持 9 秒；这些是事件循环定时器，不能抢占阻塞 JavaScript 的同步操作。Nitro `close` hook 复用同一个排空 Promise。当前 Node preset 不调用该应用 close hook，生产信号保证来自主线程 handler。

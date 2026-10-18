@@ -23,6 +23,11 @@ type Evidence = {
   sameStartup: boolean;
   sameReady: boolean;
   sameShutdown: boolean;
+  hostSnapshots: Record<
+    "before" | "ready" | "stopping" | "disposed",
+    { enabled: boolean; stopping: boolean; active: unknown[] }
+  >;
+  abortSignals: boolean[];
   snapshot: {
     constructions: number;
     activeResources: number;
@@ -60,6 +65,8 @@ beforeAll(() => {
         return { status: response.status, body };
       };
       const before = await health();
+      const beforeHost = runtime.piHostSnapshot();
+      const beforeAbort = runtime.signalRunAbort("missing");
       if (runtime.runtimeSnapshot().constructions !== 0) throw Error("HTTP 初始化了 runtime");
       const { migrateDatabase } = await import("./src/db/migrate.ts");
       migrateDatabase();
@@ -75,9 +82,13 @@ beforeAll(() => {
       const bootCount = sqlite.prepare("SELECT count(*) AS count FROM runtime_boot").get().count;
       const recoveryEvents = sqlite.prepare("SELECT count(*) AS count FROM diagnostic_event WHERE event = 'runtime.interrupted'").get().count;
       const after = await health();
+      const readyHost = reloaded.piHostSnapshot();
+      const readyAbort = reloaded.signalRunAbort("missing");
       sqlite.exec("ALTER TABLE __drizzle_migrations RENAME TO migration_probe");
       const unhealthy = await health();
       sqlite.exec("ALTER TABLE migration_probe RENAME TO __drizzle_migrations");
+      await Promise.all([runtime.beginRuntimeShutdown("test"), reloaded.beginRuntimeShutdown("test again")]);
+      const stoppingHost = runtime.piHostSnapshot();
       const firstShutdown = runtime.shutdownRuntime("test");
       const secondShutdown = reloaded.shutdownRuntime("test again");
       await firstShutdown;
@@ -85,7 +96,7 @@ beforeAll(() => {
       const finalConnection = openDatabase(process.env.DATABASE_URL);
       const finalBoot = finalConnection.sqlite.prepare("SELECT phase, stopped_at FROM runtime_boot WHERE id = ?").get(snapshot.bootId);
       finalConnection.sqlite.close();
-      console.log("EVIDENCE " + JSON.stringify({ before, after, unhealthy, stopped: await health(), sameStartup: first === second, sameReady: runtime.runtimeReady === reloaded.runtimeReady, sameShutdown: firstShutdown === secondShutdown, snapshot, recovered, bootCount, recoveryEvents, finalBoot }));
+      console.log("EVIDENCE " + JSON.stringify({ before, after, unhealthy, stopped: await health(), sameStartup: first === second, sameReady: runtime.runtimeReady === reloaded.runtimeReady, sameShutdown: firstShutdown === secondShutdown, hostSnapshots: { before: beforeHost, ready: readyHost, stopping: stoppingHost, disposed: runtime.piHostSnapshot() }, abortSignals: [beforeAbort, readyAbort, runtime.signalRunAbort("missing")], snapshot, recovered, bootCount, recoveryEvents, finalBoot }));
     `,
       ],
       {
@@ -94,6 +105,7 @@ beforeAll(() => {
           DATABASE_URL: join(directory, "runtime.sqlite"),
           BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
           NODE_ENV: "test",
+          SPROUT_PI_ENABLED: "true",
         },
         encoding: "utf8",
         timeout: 30000,
@@ -148,6 +160,13 @@ describe("宿主 runtime 的可观察行为", () => {
 
   it("关闭幂等，Scope 释放后持久化 stopped 并拒绝健康状态", () => {
     expect(evidence.sameShutdown).toBe(true);
+    expect(evidence.hostSnapshots).toEqual({
+      before: { enabled: true, stopping: false, active: [] },
+      ready: { enabled: true, stopping: false, active: [] },
+      stopping: { enabled: true, stopping: true, active: [] },
+      disposed: { enabled: true, stopping: false, active: [] },
+    });
+    expect(evidence.abortSignals).toEqual([false, false, false]);
     expect(evidence.finalBoot.phase).toBe("stopped");
     expect(evidence.finalBoot.stopped_at).toBeGreaterThan(0);
     expect(evidence.stopped).toMatchObject({

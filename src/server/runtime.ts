@@ -3,6 +3,11 @@ import { isMainThread, threadId } from "node:worker_threads";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { APP_VERSION } from "../contracts/version";
 import type { DatabaseConnection } from "../db/connection";
+import { config } from "../lib/config";
+import { PiHost, startPiHost, stopPiHost } from "./pi-host/host";
+import type { PiHostShape, PiHostSnapshot as HostSnapshot } from "./pi-host/host";
+
+export type PiHostSnapshot = HostSnapshot & { readonly enabled: boolean };
 
 export type RuntimePhase =
   | "starting"
@@ -31,7 +36,9 @@ type RuntimeState = {
   constructions: number;
   activeResources: number;
   connection: DatabaseConnection | null;
-  managed: ManagedRuntime.ManagedRuntime<RuntimeDatabase, never> | null;
+  managed: ManagedRuntime.ManagedRuntime<RuntimeDatabase | PiHost, never> | null;
+  piHost: PiHostShape | null;
+  piHostStop: Promise<void> | null;
   ready: Promise<void>;
   resolveReady: () => void;
   rejectReady: (error: unknown) => void;
@@ -58,6 +65,8 @@ function createState(): RuntimeState {
     activeResources: 0,
     connection: null,
     managed: null,
+    piHost: null,
+    piHostStop: null,
     ready,
     resolveReady,
     rejectReady,
@@ -98,6 +107,24 @@ export function runtimeSnapshot() {
   };
 }
 
+export function signalRunAbort(runId: string): boolean {
+  const managed = state.managed;
+  const host = state.piHost;
+  if (!managed?.cachedContext || !host) return false;
+  return managed.runSync(Effect.sync(() => host.abort(runId)));
+}
+
+export function piHostSnapshot(): PiHostSnapshot {
+  const managed = state.managed;
+  const host = state.piHost;
+  if (!managed?.cachedContext || !host) {
+    return { enabled: config.SPROUT_PI_ENABLED, stopping: false, active: [] };
+  }
+  return managed.runSync(
+    Effect.sync(() => ({ enabled: config.SPROUT_PI_ENABLED, ...host.snapshot() })),
+  );
+}
+
 function transition(phase: RuntimePhase) {
   const previous = state.history.at(-1);
   if (previous?.result === "running") {
@@ -131,14 +158,13 @@ export function startRuntime(): Promise<void> {
 async function initializeRuntime() {
   transition("starting");
   try {
-    const { config } = await import("../lib/config");
     state.databaseUrl = config.DATABASE_URL;
     await import("../lib/auth");
     transition("migrating");
     const { migrateDatabase } = await import("../db/migrate");
     migrateDatabase();
     const connection = await import("../db");
-    const layer = Layer.effect(
+    const databaseLayer = Layer.effect(
       RuntimeDatabase,
       Effect.gen(function* () {
         const scope = yield* Scope.Scope;
@@ -157,9 +183,12 @@ async function initializeRuntime() {
         return { sqlite: connection.sqlite, db: connection.db };
       }),
     );
+    const { piHostLayer } = await import("./pi-host");
+    const layer = Layer.mergeAll(databaseLayer, piHostLayer);
     state.managed = ManagedRuntime.make(layer);
     state.constructions += 1;
     state.connection = await state.managed.runPromise(RuntimeDatabase);
+    state.piHost = await state.managed.runPromise(PiHost);
     transition("recovering");
     const { recordDiagnostic } = await import("./diagnostics");
     const requestId = newId(ID_PREFIXES.request);
@@ -196,8 +225,7 @@ async function initializeRuntime() {
     state.bootId = bootId;
     sqlite.prepare("UPDATE runtime_boot SET phase = 'ready' WHERE id = ?").run(bootId);
     transition("ready");
-    const { startPiHost } = await import("./pi-host");
-    startPiHost();
+    if (config.SPROUT_PI_ENABLED) await state.managed.runPromise(startPiHost);
     recordDiagnostic({
       level: "info",
       event: "runtime.ready",
@@ -234,12 +262,17 @@ export function shutdownRuntime(reason: string): Promise<void> {
   return state.shutdown;
 }
 
+function stopPiHostOnce(): Promise<void> {
+  return (state.piHostStop ??= state.managed?.cachedContext
+    ? state.managed.runPromise(stopPiHost)
+    : Promise.resolve());
+}
+
 export async function beginRuntimeShutdown(reason: string): Promise<void> {
   await state.startup;
   if (state.phase === "stopped") return;
   if (state.phase === "stopping") {
-    const { stopPiHost } = await import("./pi-host");
-    await stopPiHost();
+    await stopPiHostOnce();
     return;
   }
   transition("stopping");
@@ -247,8 +280,7 @@ export async function beginRuntimeShutdown(reason: string): Promise<void> {
     .prepare("UPDATE runtime_boot SET phase = 'stopping' WHERE id = ?")
     .run(state.bootId);
   console.log("[runtime] shutdown", JSON.stringify({ reason, bootId: state.bootId }));
-  const { stopPiHost } = await import("./pi-host");
-  await stopPiHost();
+  await stopPiHostOnce();
 }
 
 export function failRuntimeShutdown(error: unknown): void {

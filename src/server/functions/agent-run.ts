@@ -12,12 +12,16 @@ import { toDomainAppError } from "./domain-errors";
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
-  const [session, runs, piHost] = await Promise.all([
+  const [session, runs, runtime] = await Promise.all([
     import("../session"),
     import("../../domain/agent-run"),
-    import("../pi-host"),
+    import("../runtime"),
   ]);
-  return { requireSession: session.requireSession, piHostSnapshot: piHost.piHostSnapshot, ...runs };
+  return {
+    requireSession: session.requireSession,
+    piHostSnapshot: runtime.piHostSnapshot,
+    ...runs,
+  };
 }
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
 type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
@@ -99,7 +103,7 @@ export async function abortAgentRunBoundary(
     if (!parsed.success) return invalidInput(parsed.error, requestId);
     const run = deps.abortAgentRun(parsed.data.runId, context);
     try {
-      const { signalRunAbort } = await import("../pi-host");
+      const { signalRunAbort } = await import("../runtime");
       signalRunAbort(run.id);
     } catch (error) {
       console.error("[agent-run] 停止信号传导失败", { requestId, runId: run.id, error });

@@ -112,7 +112,7 @@ P0 已证明普通 extension 可以通过 `additionalExtensionPaths` 加载。�
 
 三个字段都在 `src/lib/config.ts` 经过 Zod 解析，解析结果冻结。`SPROUT_PI_DATA_DIR` 默认是 `join(homedir(), ".local", "share", "sprout-mio", "pi")`，覆盖值必须是非空的绝对路径，父进程从 config 读取。runner 路径不能来自客户端输入。`SPROUT_PI_RUNNER` 不是产品选项。`scripts/verify.sh` 显式 export `SPROUT_PI_ENABLED=false`，既有 hermetic 验收不执行 DM 的真实 Pi run；新 n 脚本覆盖为 true 并指定协议桩，live 脚本覆盖为 true 并移除测试 runner 覆盖。
 
-p3-b 在对话页发送区附近显示启用状态。显式 false 时显示“宿主未启用”，不能显示正在处理或已完成。p3-d 在 Info Hub 的分身运行详情显示相同文案。启用但失败时展示 run 的 failed、errorCode、errorMessage 与 requestId，不把 `session_open_failed` 变成空回复。`piHostSnapshot()` 返回启用状态，公开查询仍需沿用现有认证边界。
+p3-b 在对话页发送区附近显示启用状态。显式 false 时显示“宿主未启用”，不能显示正在处理或已完成。p3-d 在 Info Hub 的分身运行详情显示相同文案。启用但失败时展示 run 的 failed、errorCode、errorMessage 与 requestId，不把 `session_open_failed` 变成空回复。`runtime.ts` 的同步 `piHostSnapshot()` 返回启用状态，公开查询仍需沿用现有认证边界。启用判断在 runtime 组装点执行，纯调度器 `pi-host/host.ts` 不读取 config。
 
 领域查询入口如下，全部需要 `{ userId, requestId }`。
 
