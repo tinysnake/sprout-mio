@@ -95,9 +95,12 @@ it("100ms 轮询与 2500ms 停止截止都在 TestClock 上", async () => {
     await runtime.dispose();
   }
   const wallMs = performance.now() - startedAt;
-  expect(wallMs).toBeLessThan(100);
+  // The exact timing invariant is carried by the Clock.currentTimeMillis asserts above.
+  // This only separates the virtual-clock regime from the real-timer one, which costs 2500ms,
+  // so the threshold stays loose enough that CI scheduling jitter cannot fake a regression.
+  expect(wallMs).toBeLessThan(1000);
   console.log(
-    `pi-host clock test body including setup and dispose, excluding module import: ${wallMs.toFixed(2)}ms; supplied real setTimeout baseline: 2502ms`,
+    `pi-host clock test body including setup and dispose, excluding module import: ${wallMs.toFixed(2)}ms; the real-timer alternative is measured by experiments/effect-clock-spike/verify.sh at about 2500ms`,
   );
 });
 

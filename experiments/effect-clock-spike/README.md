@@ -44,6 +44,19 @@ A 到 D 都在本机重复跑过多次，数值稳定。上面是 2026-10-18 的
 4. `Date.now()` 不受 `TestClock` 影响，只有 `Clock.currentTimeMillis` 受影响。因此领域代码里的时间戳不会被虚拟化，需要参与决策的时间必须走 `Clock`。
 5. 真实子进程不被压缩。超时分支可以瞬间触发，但子进程仍然按真实时间退出。
 
+## 两条常驻服务约束的测量
+
+`probes/` 下两个脚本测的是迁移带进生产代码的两条约束。它们不参与 `verify.sh` 的断言，因为都要真实子进程，耗时为秒级。从仓库根目录跑：
+
+```bash
+node --input-type=module -e "$(cat experiments/effect-clock-spike/probes/08-liveness.mjs)"
+node --input-type=module -e "$(cat experiments/effect-clock-spike/probes/09-dispatch-interrupt-gap.mjs)"
+```
+
+`08-liveness.mjs` 回答 Effect 的常驻纤维会不会像 `setInterval(...).unref()` 那样放开事件循环。答案是不会。`setInterval().unref()` 场景 82ms 自然退出；live clock 上的常驻纤维不 dispose 时循环被留住，1503ms 后被强杀；补上 dispose 后 167ms 退出。这就是 `docs/p1/runtime.md` 要求直接启动 runtime 的测试与脚本必须调用 `shutdownRuntime()` 的原因。
+
+`09-dispatch-interrupt-gap.mjs` 回答中断点落在起子进程与登记之间会怎样。可中断时 `prepares=1 trackedActive=0 closesAtStop=0`，那个子进程无人认领也不会在停止时被关闭。把 prepare 与登记包进 `Effect.uninterruptible` 后是 `trackedActive=1 closesAtStop=1`。`src/server/pi-host/host.ts` 的 dispatch 因此带这一层。
+
 ## 它不宣称什么
 
 - 不是测试套件，也不测量整个应用的墙钟。它测的是四个孤立形状。
