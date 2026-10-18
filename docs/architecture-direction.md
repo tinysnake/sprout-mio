@@ -47,7 +47,11 @@ Effect 的目标范围是常驻服务与远程 I/O，不覆盖展示层与纯数
 
 未落地的部分写在下面，以免被当成已完成。
 
-错误表示没有迁到 Effect。当前仍是 `src/contracts/result.ts` 的联合类型加类型化异常，在六个边界统一映射。改用 `Effect<A, E, R>` 的 typed error 通道与「固定一种应用错误表示」这条规则直接相关，需要单独决策，不随常驻服务一起做。
+错误表示只有一种，Effect 不引入第二种。`src/contracts/result.ts` 的 `AppResult<T>` 与封闭的 `APP_ERROR_CODES` 仍是唯一表示，六个边界继续用 `toAppError` 映射，未登记的码塔成 `internal`。Effect 程序在 `E` 通道里携带自己的类型化失败，值满足 `{ code, message }` 就能被 `toAppError` 接住。常驻服务内部已经在这么做，`src/server/pi-host/run.ts` 把 `PiHostFailure` 与 `RepositoryError` 归一到 `agent_run.error_code` 与 `error_message`。已同步的领域代码不迁移，它抛的类型化异常本来就走同一条映射。
+
+不要为了用 Effect 的类型通道而重写领域层。那会同时增加两种错误表示的维护成本，换不到用户看得见的行为。
+
+已知缺口，需要单独决策。run 之外的常驻服务失败记不下来。`DiagnosticEvent` 与 `diagnostic_event.request_id` 都要求 `requestId`，而调度失败、宿主层失败不属于任何请求，所以它们只落在一行 `console.error`，既不进 `diagnostic_event` 也不进 `/api/health`。补它意味着放宽诊断模型对 `requestId` 的要求，会动到审计链，值得单独一轮。
 
 领域时间已经查清，不是欠账。`src/` 里 `Date.now()` 只出现两处：`src/server/rate-limit.ts` 是 `now = Date.now` 形式的注入默认值，`src/domain/project.ts` 把时间戳截断到整秒后落库，不参与分支。其余 `new Date()` 都是单纯的记录值。真正参与判断的只有滑动窗口限流器，它收 `now` 参数，`tests/rate-limit.test.ts` 已经在不等待的情况下快进窗口。
 
