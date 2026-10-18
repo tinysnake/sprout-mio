@@ -45,11 +45,13 @@ Effect 的目标范围是常驻服务与远程 I/O，不覆盖展示层与纯数
 - `effect/rpc` 有 `RpcClient`、`RpcGroup`、`RpcMiddleware`、`RpcTest`。`RpcTest` 让协议测试跑在内存里，不开真 socket。
 - `effect/cluster` 有 `MachineId`、`RunnerAddress`、`RunnerHealth`、`Entity`、`Sharding`，但它们是分布式调度模型的构件。本文档已规定不为尚未出现的多宿主需求提前引入分布式调度，所以 P4 只用 `Rpc` 加 `Schedule` 加 `Scope` 手工组合，不引入 `effect/cluster`。
 
-两项未落地的声明写在这里，以免被当成已完成。
+三项未落地的声明写在这里，以免被当成已完成。
 
 错误表示没有迁到 Effect。当前仍是 `src/contracts/result.ts` 的联合类型加类型化异常，在六个边界统一映射。改用 `Effect<A, E, R>` 的 typed error 通道与「固定一种应用错误表示」这条规则直接相关，需要单独决策，不随常驻服务一起做。
 
 领域时间来源没有注入。`src/domain/*` 里仍有 16 处 `Date.now()` 与 `new Date()`。`TestClock` 不重定向 `Date.now()`，所以这些时间戳不会被虚拟化。它们用于记录历史时间，不参与调度决策，当前可以保留。一旦某处时间戳开始参与分支判断，必须先改成注入参数或走 `Clock`。
+
+可观测性还是占位。`runtimeSnapshot()` 的 `activeBackgroundTasks` 恒为 0，真实活跃 run 只经 `piHostSnapshot()` 暴露。Effect 自带的 `Logger`、`LogLevel`、`Tracer` 与 `Effect.withSpan`、`Effect.log` 未接入。这条在范围里，只是还没做。
 
 不进范围的四类，各有理由。
 
