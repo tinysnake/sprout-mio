@@ -113,7 +113,7 @@ function inspectSchema() {
       assert(db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table).sql.includes(constraint))
     }
     const migrations = db.prepare('SELECT count(*) AS count FROM __drizzle_migrations').get().count
-    assert.equal(migrations, 2)
+    assert.equal(migrations, readdirSync('drizzle').filter(file => file.endsWith('.sql')).length)
     pass('SQLite tables, primary keys, unique index and named checks', { tables, columns, unique, migrations })
   } finally { db.close() }
 }
@@ -135,9 +135,9 @@ try {
   const firstHealth = await health(first, 'server-first')
   const db = new Database(databaseUrl)
   try {
-    assert.equal(db.prepare('SELECT count(*) AS count FROM __drizzle_migrations').get().count, 2)
+    assert.equal(db.prepare('SELECT count(*) AS count FROM __drizzle_migrations').get().count, migrations.length)
     assert.equal(db.prepare('SELECT phase FROM runtime_boot WHERE id=?').get(firstHealth.bootId).phase, 'ready')
-    pass('startup uses migrated SQLite database', { migrations: 2, bootId: firstHealth.bootId, phase: 'ready' })
+    pass('startup uses migrated SQLite database', { migrations: migrations.length, bootId: firstHealth.bootId, phase: 'ready' })
   } finally { db.close() }
   await stop(first)
   const second = launch('pnpm', ['start'], 'server-second.log')

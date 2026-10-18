@@ -97,6 +97,7 @@ describe("配置边界", () => {
   it("缺省环境返回冻结的独立配置且不要求数据库或认证连接", () => {
     const config = parseConfig({});
     expect(config).toEqual({
+      SPROUT_PI_ENABLED: true,
       DATABASE_URL: "./data/sprout.sqlite",
       APP_ORIGIN: "http://localhost:3000",
       AUTH_RATE_LIMIT_MAX: 5,
