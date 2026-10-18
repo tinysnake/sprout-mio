@@ -27,13 +27,31 @@ P0 发现的运行期约束已在 P1 接入。TanStack Start 的 SPA 同时设�
 
 Effect 优先用于需要长期运行、并发和恢复的服务。React 展示和纯数据转换不必统一包装为 Effect。固定一种应用错误表示与边界转换方式，避免各功能建立自己的异常、重试和依赖框架。
 
+### 常驻服务的形状
+
+P3 的 Pi 会话管理是第一个常驻服务。调度器在 `src/server/pi-host/host.ts`，依赖组装在 `src/server/pi-host/index.ts`，接进 runtime 在 `src/server/runtime.ts`，快进测试在 `tests/pi-host-clock.test.ts`。后续的调度器、Worker 连接与 MCP client 沿用这套形状。
+
+一个进程只有一个 `ManagedRuntime` 和一张 Layer。常驻服务的 Layer 用 `Layer.mergeAll` 与既有 Layer 合成，不新开第二个 runtime。第二个生命周期所有者会让停止顺序失去结构保证，只能靠调用点的手工顺序维持。
+
+常驻纤维由 runtime 跑的 effect 派生，用 `Effect.forkIn(layerScope)` 绑到 Layer 的 Scope。在层体里用 `forkScoped` 起的纤维拿不到运行时的 Clock，这个错误只在 `TestClock` 下显形，生产里看不出来。
+
+活跃状态放在 Scope 里，不写 `started`、`stopping`、`shutdown` 这类必须互相保持一致的标志位。Scope 关闭即中断纤维。
+
+停止是一个有界的 effect，在 dispose 之前显式执行。停止结果用 `Effect.cached` 缓存，重复调用复用同一个结果与同一个错误，不重开第二个截止。Scope finalizer 只做同步收尾，不放等待外部响应的异步工作。finalizer 在释放区域里跑，外层超时抢占不了它。
+
+只有调度决策走 Effect 的 Clock。轮询间隔、超时、截止与重试间隔用 `Effect.sleep` 和 `Effect.timeout*`。真实子进程与真实网络的守护超时留在边界类里。
+
+这条边界有实测依据。`TestClock` 把同一个 2500ms 截止从 2501ms 压到 11ms，但压不动真实子进程，也不重定向 `Date.now()`。保留真实计时器只注入 `now()` 压不动调度，同一形状仍是 2536ms。测量脚本与断言在 `experiments/effect-clock-spike/`。
+
+dispatch 另有一条取消安全约束。`prepareRun` 会起真实子进程，中断点若落在起进程与登记之间，这个子进程无人认领，停止时也不会被关闭。prepare 与登记必须在 `Effect.uninterruptible` 区里完成。
+
 ## 让运行生命周期独立于请求
 
 Web 与后台同进程，P0 证据不支持拆出独立后台进程（[runtime-host.md](p0/runtime-host.md)）。共进程有两个前提。常驻 runtime 必须是进程级单例，用 `globalThis` 缓存 `ManagedRuntime`，模块级变量在 HMR 重新求值时会被重建并产生第二份后台工作。信号驱动的关闭必须挂在进程入口的主线程上，dev 模式下 SSR 运行在 Nitro 的 worker thread 里，模块内注册的 `process.on('SIGTERM')` 收不到进程信号。
 
 P1 的 `src/server/server-entry.ts` 是 Nitro runtime plugin，在模块顶层等待 `startRuntime()`，避免 Nitro 不等待 plugin 回调 Promise 而提前监听。启动先校验配置与认证 secret，再迁移，在事务内把遗留活跃 boot 标为 `interrupted` 并写入新 boot，最后 ready。恢复范围是 `runtime_boot`，不代表业务作业恢复。`globalThis.sproutRuntime` 复用启动与关闭 Promise、ManagedRuntime 和 boot，真实 dev HMR 未产生第二份 runtime，证据见 [runtime 验证](p1/runtime.md#验证命令与证据)。
 
-生产入口在 ready 后监听，主线程注册 SIGTERM 与 SIGINT，信号先进入 draining 并拒绝新工作，等待在途 HTTP 处理、响应发送与已观察到的 Node server 关闭后，才释放 Scope 的共享数据库连接，再由独立短连接写入 `stopped`。8 秒排空超时标记失败、留下 `stopping` boot 并退出 1，总关闭截止为 9 秒；真实慢上传、503 拒绝、成功退出 0 与超时退出 1 的证据见 [runtime 排空验证](p1/runtime.md#在途-http-排空补充验证)。当前 srvx 普通生产有连接关闭 listener，CI/TEST 下由入口补上同一 Node server 的 close，入口等待实际 close 事件。首次 HTTP 之前尚未观察到的半连接、WebSocket 与 dev 信号优雅关闭未验证。health 每次检查真实数据库与迁移账本，不可用返回 503；正常生产首个可连接响应已为 200，不能声称观测过监听期间的 503 到 200 窗口。调度器、Pi 会话管理与 Worker 连接尚未实现，当前 Scope 的真实资源是数据库连接，后台任务数为 0。请求只消费 runtime，不拥有它。
+生产入口在 ready 后监听，主线程注册 SIGTERM 与 SIGINT，信号先进入 draining 并拒绝新工作，等待在途 HTTP 处理、响应发送与已观察到的 Node server 关闭后，才释放 Scope 的共享数据库连接，再由独立短连接写入 `stopped`。8 秒排空超时标记失败、留下 `stopping` boot 并退出 1，总关闭截止为 9 秒；真实慢上传、503 拒绝、成功退出 0 与超时退出 1 的证据见 [runtime 排空验证](p1/runtime.md#在途-http-排空补充验证)。当前 srvx 普通生产有连接关闭 listener，CI/TEST 下由入口补上同一 Node server 的 close，入口等待实际 close 事件。首次 HTTP 之前尚未观察到的半连接、WebSocket 与 dev 信号优雅关闭未验证。health 每次检查真实数据库与迁移账本，不可用返回 503；正常生产首个可连接响应已为 200，不能声称观测过监听期间的 503 到 200 窗口。调度器与 Worker 连接尚未实现，Pi 会话管理已在 P3 实现。当前 Scope 的真实资源是数据库连接与 Pi host 的常驻纤维。`runtimeSnapshot()` 的 `activeBackgroundTasks` 仍是硬编码 0，真实活跃 run 只经 `piHostSnapshot()` 暴露。请求只消费 runtime，不拥有它。
 
 若开发热更新或生产适配器无法可靠承载后台生命周期，可以拆出后台进程，但仍复用共同业务服务和契约。不能因拆进程而复制授权逻辑或创建第二套业务事实。
 
