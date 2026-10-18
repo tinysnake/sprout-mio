@@ -18,3 +18,6 @@ data/
 .tanstack/
 .sprout-pi-sessions/
 .sprout-pi-workspaces/
+
+# poteto-mode decision trails
+.audit/
