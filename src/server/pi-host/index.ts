@@ -1,25 +1,10 @@
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import {
-  AgentRunError,
-  completeAgentRun,
-  firstPendingRunInput,
-  getAgentRun,
-  interruptActiveAgentRuns,
-  markRunInputDelivered,
-  pendingRunInputs,
-  previousSessionFile,
-  queuedRunWork,
-  recordRunInputDeliveryFailure,
-  transitionAgentRun,
-} from "../../domain/agent-run";
-import type { ProjectContext } from "../../domain/access";
-import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
-import type { PreparedRepo } from "../../domain/repository";
+import { Effect } from "effect";
+import { interruptActiveAgentRuns, queuedRunWork } from "../../domain/agent-run";
 import { config } from "../../lib/config";
-import { PiHostFailure, piInstancePaths, PiSessionProcess } from "./process";
+import { PiSessionProcess } from "./process";
+import { executeRun } from "./run";
+import type { Work } from "./run";
 
-type Work = ReturnType<typeof queuedRunWork>[number];
 type HostState = {
   timer?: ReturnType<typeof setInterval>;
   stopping: boolean;
@@ -34,117 +19,12 @@ const host: HostState = (scope.sproutPiHost ??= {
   active: new Map(),
 });
 
-async function execute(work: Work, process: PiSessionProcess): Promise<void> {
-  const { run, profile } = work;
-  const ctx: ProjectContext = { userId: work.ownerId, requestId: run.requestId };
-  const sent = new Set<string>();
-  try {
-    const input = firstPendingRunInput(run.id, ctx);
-    if (!input) throw new PiHostFailure("input_missing", "Run 缺少输入消息");
-    const prepared: PreparedRepo | undefined = await prepareRunRepo(run.id, ctx);
-    const paths = piInstancePaths(run.instanceId);
-    const snapshot = await process.open({
-      type: "open",
-      id: run.id,
-      instanceId: run.instanceId,
-      sessionId: run.sessionId,
-      sessionFile: previousSessionFile(run.id, ctx),
-      sessionDirectory: paths.sessionDirectory,
-      cwd: prepared?.path ?? paths.cwd,
-      agentDir: resolve(
-        globalThis.process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
-      ),
-      extensionPath: resolve("pi/sprout-extension.ts"),
-      profile: {
-        id: profile.id,
-        name: profile.name,
-        persona: profile.persona,
-        harness: profile.harness,
-        ...(profile.model ? { model: profile.model } : {}),
-        ...(profile.effort ? { effort: profile.effort } : {}),
-        updatedAt: profile.updatedAt.toISOString(),
-      },
-    });
-    if (host.stopping) return;
-    const basis = prepared ? recordRunRepoBasis(run.id, prepared, ctx) : undefined;
-    transitionAgentRun(
-      run.id,
-      "running",
-      { configSnapshot: basis ? { ...snapshot, repo: basis } : snapshot },
-      ctx,
-    );
-    process.onDelivered = (messageId) => {
-      if (host.stopping) return;
-      try {
-        markRunInputDelivered(run.id, messageId, ctx);
-      } catch (error) {
-        // 用户停止后迟到的投递确认保持 pending，不升级成进程故障。
-        if (!(error instanceof AgentRunError && error.code === "conflict")) throw error;
-      }
-    };
-    process.onRejected = (messageId, reason) => {
-      if (!host.stopping) recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
-    };
-    sent.add(input.message.id);
-    const promptTask = process.prompt(input.message.id, input.message.body);
-    const delivery = setInterval(() => {
-      try {
-        if (host.stopping) return;
-        for (const pending of pendingRunInputs(run.id, ctx)) {
-          if (sent.has(pending.messageId)) continue;
-          sent.add(pending.messageId);
-          try {
-            process.steer(pending.messageId, pending.text);
-          } catch {
-            recordRunInputDeliveryFailure(
-              run.id,
-              pending.messageId,
-              "Pi runner 通信失败，消息未投递",
-              ctx,
-            );
-            clearInterval(delivery);
-            return;
-          }
-        }
-      } catch {
-        // 投递轮询失败不拉倒宿主；run 级故障由 prompt 路径报告。
-        clearInterval(delivery);
-      }
-    }, 100);
-    delivery.unref();
-    let result: Awaited<ReturnType<typeof process.prompt>>;
-    try {
-      result = await promptTask;
-    } finally {
-      clearInterval(delivery);
-    }
-    await process.close();
-    if (!host.stopping) completeAgentRun(run.id, result.text, result.stopReason, ctx);
-  } catch (error) {
-    if (!host.stopping) {
-      const current = getAgentRun(run.id, ctx);
-      if (current.status === "queued" || current.status === "running") {
-        const failure =
-          error instanceof PiHostFailure
-            ? error
-            : error instanceof RepositoryError
-              ? new PiHostFailure(error.code, error.message)
-              : new PiHostFailure("run_failed", "Agent run 执行失败");
-        transitionAgentRun(
-          run.id,
-          "failed",
-          {
-            errorCode: failure.code,
-            errorMessage: failure.message,
-            stopReason: failure.stopReason,
-          },
-          ctx,
-        );
-      }
-    }
-  } finally {
-    await process.close().catch(() => {});
-  }
+function execute(work: Work, process: PiSessionProcess): Promise<void> {
+  return Effect.runPromise(executeRun(work, process, { isStopping: () => host.stopping })).catch(
+    (error) => {
+      console.error("[pi-host] Run 状态保存失败", error);
+    },
+  );
 }
 
 function dispatch(): void {
@@ -153,13 +33,9 @@ function dispatch(): void {
     for (const work of queuedRunWork()) {
       if (host.active.has(work.run.instanceId)) continue;
       const process = new PiSessionProcess(work.run.id);
-      const task = execute(work, process)
-        .catch((error) => {
-          console.error("[pi-host] Run 状态保存失败", error);
-        })
-        .finally(() => {
-          host.active.delete(work.run.instanceId);
-        });
+      const task = execute(work, process).finally(() => {
+        host.active.delete(work.run.instanceId);
+      });
       host.active.set(work.run.instanceId, { process, task });
     }
   } catch (error) {
