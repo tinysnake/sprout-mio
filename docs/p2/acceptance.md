@@ -117,6 +117,8 @@ B 的 `listProjectsFn` 必须只返回 B 的 Project ID，`listAgentProfilesFn` 
 
 五个 Project 页面逐一断言 Agent run 视角的「未实现」徽标和 P3 原因，以及 Machine 视角的「未实现」徽标和 P4 原因。对话页另行检查 conversation run 视角与「P2 未接入真实 Pi 运行」文案，两条消息 sender 均为 human。七个目标都拒绝「0 个活动 run」「无活动 run」「无 Machine」成功空值文案。两次 Chromium 会话均要求零 console.error 与零 pageerror。
 
+以上为 P2 当时的验收行为。P3-b 已移除静态的「P2 未接入真实 Pi 运行」文案；P3-d 已将 Project 与 Conversation 的 run 视角改为真实数据，并按 [SO17 更新既有断言](../p3/info-hub-runs.md#so17-断言更新)，Machine 仍属 P4，继续显示显式未实现状态。历史截图与当时观测保留，当前验收见 [P3 阶段结论](../p3/acceptance.md#阶段结论)。
+
 截图位于 `docs/p1/evidence/`，本次新增文件如下。
 
 - `p2-k-before-conversation.png`、`p2-k-after-conversation.png`、`p2-k-after-settings.png`。
@@ -126,13 +128,13 @@ B 的 `listProjectsFn` 必须只返回 B 的 Project ID，`listAgentProfilesFn` 
 
 本次未验证项如下。
 
-- P3 的真实 Pi session、Agent 回复、run、运行时配置快照与宿主仓库入口。本次没有用模拟 Agent 回复充当接入证据。
+- P3 的真实 Pi session、Agent 回复、run、运行时配置快照与宿主仓库入口。本次没有用模拟 Agent 回复充当接入证据。这是 P2 当时的未验证面；P3-a/b/c/d 已接入真实数据并由 p3-e 验收，剩余限制见 [P3 未验证项](../p3/summary.md#未验证项汇总)。
 - P4 的 Machine、租约与宿主执行恢复。
 - P5 的 Task、Group 与 Public Channel，P6 的自动接续，P7 的手机与 PWA。
 - 并发写入、多进程 SQLite 竞争、大数据分页、性能、长时间会话过期及备份恢复。
 - 运行时快照的隔离。P2 没有这项业务对象；已验证的是现有查询和错误载荷。
 
-以上能力不能因本次验收通过而视为已支持。未发现产品缺陷的结论以本次断言覆盖范围为限。
+以上能力不能因本次验收通过而视为已支持。此限制描述 P2 当时的验收范围；后续 P3 已验证的能力以 P3-e 的逐项结论为准，Machine 仍属 P4。未发现产品缺陷的结论以本次断言覆盖范围为限。
 
 ## 跨家族补充复核 k2
 
@@ -156,3 +158,16 @@ k2 的断言分组如下。
 与 k-acceptance 相比，k2 新增的对抗角度及其理由：ID 替换交叉组合验证「授权查询过滤双方 id」而非只挡单 id；越权写后立即从 A 的会话重读而不是依赖重启快照；覆盖 `/api/diagnostics` 的两个入口（k-acceptance 未覆盖诊断）；验证 `sendMessageFn` 边界把伪造 sender 改写为认证会话身份；用 SQLite 探针证明越权尝试没有留下任何交叉行。
 
 复核结论：授权边界在 k2 的断言范围内成立。B 对 A 的全部对象读写均被拒绝且零泄漏，越权尝试没有改变 A 的任何数据，B 自己的 Project 全程正常。复核中发现一条非授权类缺陷：`createDirectConversationFn` 在 B 的 Project 引用他人的 profileId 时返回 `internal` 而不是约定的 `not_found`（`src/server/functions/conversation.ts` 的 failure 未映射 `AgentError`，而 `src/server/functions/agent.ts` 已映射）。该行为不泄漏数据、也不构成存在性 oracle（同一入口对格式合法但不存在的 profileId 返回同样的 `internal`），k2 以 `sub_B_ownProject_A_profile_createDM_rejected_without_leak` 与 `sub_profile_reference_indistinguishable_from_nonexistent` 两条断言固定了这两个安全不变量。该缺陷已由 p2-h 修复：conversation 边界现在映射 `AgentError`，复现路径返回 `not_found` 且不再写 error 诊断；k2 的 `sub_B_ownProject_A_profile_createDM_rejected_without_leak` 已改回严格 `not_found` 断言，零泄漏与不可区分两条不变量保留为附加断言，行为测试见 `tests/conversation.test.ts`。首轮 k2 运行中另有一处断言自身错误：曾把「伪造 agent sender 被边界合法改写」与「P1 约定的非 Project 诊断按 requestId 可见」误判为缺陷，已修正为上述断言。
+
+## P2 补充收尾与只读审查
+
+P2-f 之后还有 g、h、i、j 四个 unit。P2 最终基线截止 `db185f8`，完整范围 `28d4fb2..db185f8`，共 10 个 unit、9 行 ledger，对应 PR #10 至 #18；j 只读，无 PR。`git log --first-parent --oneline 28d4fb2..db185f8` 可重建合入顺序。原 e 与 k2 的历史结果不因新增复核而改写。
+
+| unit                | Git 身份与结论                                                                                                           | 可复跑证据与边界                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| g，跨家族复核 k2    | PR #16，head `b9a6b92`，merge `cd1bb1c`。mimo 相对 a/e 的 sol 独立，授权拒绝与正常对照成立；发现一条错误映射缺陷         | [k2 正文](#跨家族补充复核-k2)，`bash scripts/verify/k2-cross-family-isolation.sh`；与 b/c/d 同家族，不扩展独立性声明                                      |
+| h，错误映射修复     | PR #17，head `458f533`，merge `d4aedbb`。conversation 边界补 `AgentError` 映射，k2 恢复严格 `not_found`                  | [k2 修复记录](#跨家族补充复核-k2)，`bash scripts/verify/k2-cross-family-isolation.sh`；行为测试在 `tests/conversation.test.ts`                            |
+| i，错误映射清扫     | PR #18，head `6886bfa`，merge `db185f8`。五个边界共用错误映射表，可达错误与映射差异表为空，最初候选均未实测成立          | [共享表说明](summary.md#已落实的架构说明更新)，`bash scripts/verify/m-error-mapping.sh`；coordinator 删除 `AgentError` 行得到红、恢复得到绿，未制造新缺陷 |
+| j，第三家族只读审查 | 无 PR。glm 在本次审查前无 P2 产出，相对 sol 的 a/e/f 与 mimo 的 b/c/d 独立；未发现授权、事务或校验缺陷，确认五份映射重复 | 原报告 `/tmp/p2-j-review/report.md` 与 exp1 至 exp5 为本机产物；i 的门禁可复跑共享表回归，不能替代 j 的全部只读实验                                       |
+
+j 的未修事项已由 coordinator 路由。CSRF 中间件归 P7 前；`getInstance` 死代码与跨实体归属约束原路由 P3，P3-e 已证实不一致 run 可被 SQL 写入但领域层拒绝消费，约束方案继续归 P4+；索引缺口归 P5。

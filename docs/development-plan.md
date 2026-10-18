@@ -2,7 +2,7 @@
 
 按本文推进已确认的一期协作闭环。产品范围见 [core-scope.md](core-scope.md)，技术选择与原因见 [architecture-direction.md](architecture-direction.md)。
 
-P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 已建立可运行的工程骨架与 Project 样例，结论见 [p1/summary.md](p1/summary.md)。P2 及以后尚未开始，复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
+P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 已建立可运行的工程骨架与 Project 样例，结论见 [p1/summary.md](p1/summary.md)。P2 已完成身份、成员与持久对话，P3 已完成阶段验收，其中第 2 条部分交付，结论见 [p2/summary.md](p2/summary.md) 与 [p3/summary.md](p3/summary.md)。P4 及以后尚未开始，复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
 
 ## 按阶段推进并保留证据
 
@@ -22,7 +22,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P0 | 验证技术栈与高风险协议，收敛基础契约 | 无 | 已完成（结论见 [p0/summary.md](p0/summary.md)） |
 | P1 | 建立工程骨架与标准功能样例 | P0 | 已完成（结论见 [p1/summary.md](p1/summary.md)） |
 | P2 | 建立 Project、profile、Conversation 和分身 | P1 | 已完成（结论见 [p2/summary.md](p2/summary.md)） |
-| P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 待开始 |
+| P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 已完成（第 2 条部分交付，结论见 [p3/summary.md](p3/summary.md)） |
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | 待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
 | P6 | 完成小脑接续、Info Hub 与成员治理 | P4、P5 | 待开始 |
@@ -66,19 +66,19 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 - [x] 建立 DM 和持久消息，配置与人设修改保留原有身份和历史。证据 [重启持久性验收](p2/conversation-dm.md#重启持久性验收) 与 [出口条件与字面量](p2/acceptance.md#出口条件与字面量)，重跑 `bash scripts/verify/i-conversation.sh` 与 `bash scripts/verify/k-acceptance.sh`。
 - [x] 建立各详情页的稳定 URL，刷新及前进后退保持目标和 Project 上下文。证据 [七个页面的导航矩阵](p2/acceptance.md#七个页面的导航矩阵)，重跑 `bash scripts/verify/k-acceptance.sh`。
 - [x] 建立 Project 授权入口，Agent 查询、错误和快照均不得暴露其他 Project 的 Sprout 数据。证据 [授权入口](p2/identity-data.md#project-授权与配置) 与 [隔离反证及正常对照](p2/acceptance.md#隔离反证与正常对照)，重跑 `bash scripts/verify/g-identity-data.sh` 与 `bash scripts/verify/k-acceptance.sh`。P2 只验收已有查询与错误载荷，尚无运行时快照，其隔离未验证。
-- [x] 提供当前已有对象的 Info Hub 查询和基础页面呈现。后续对象接入同一模块。证据 [Info Hub 验证记录](p2/info-hub.md#验证记录) 与 [未实现状态](p2/acceptance.md#未实现状态截图与限制)，重跑 `bash scripts/verify/j-info-hub.sh` 与 `bash scripts/verify/k-acceptance.sh`。run 与 Machine 视角显式标注未实现。
+- [x] 提供当前已有对象的 Info Hub 查询和基础页面呈现。后续对象接入同一模块。证据 [Info Hub 验证记录](p2/info-hub.md#验证记录) 与 [未实现状态](p2/acceptance.md#未实现状态截图与限制)，重跑 `bash scripts/verify/j-info-hub.sh` 与 `bash scripts/verify/k-acceptance.sh`。P2 当时 run 与 Machine 视角显式标注未实现；P3-d 已将 run 视角改为真实数据，Machine 仍属 P4。
 
 出口条件是重启后同一对话仍对应同一分身，消息与配置保留；两个 Project 的上下文与查询边界可验证。此阶段不将模拟回复当作真实 Pi 接入完成。
 
 ## P3 跑通真实 Pi 对话和仓库入口
 
-- [ ] 将持久分身映射到 Pi session，记录每轮配置快照和 run 状态。
-- [ ] 保留宿主 Pi 工具、配置与认证，加载 Sprout extension。
-- [ ] 实现同分身串行、新消息进入当前轮、停止及明确的错误结果。
-- [ ] 实现宿主仓库入口，支持复用已有副本与按需获取数据，不仅支持手动绑定目录。
-- [ ] 记录分析依据的来源、commit 或 ref 与获取时点。处理并发更新、Git 认证失败和磁盘占用策略。
-- [ ] 将 Agent status、活动 runs 和错误接入 Info Hub，提供轮初必要上下文。
-- [ ] 验证 profile 更新仅影响下一轮，宿主重启后不虚构旧 run 已成功完成。
+- [x] 将持久分身映射到 Pi session，记录每轮配置快照和 run 状态。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/n-pi-session.sh`。
+- [ ] 保留宿主 Pi 工具、配置与认证，加载 Sprout extension。部分交付：宿主配置与认证保留、Sprout extension 加载；codemode / tool_search / MCP 与用户 skills 未进分身工具面，理由与决定见 [p3/summary.md](p3/summary.md#第-2-条部分交付的理由与决定)。
+- [x] 实现同分身串行、新消息进入当前轮、停止及明确的错误结果。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/o-turn-semantics.sh`。
+- [x] 实现宿主仓库入口，支持复用已有副本与按需获取数据，不仅支持手动绑定目录。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/p-repo-entry.sh`。
+- [x] 记录分析依据的来源、commit 或 ref 与获取时点。处理并发更新、Git 认证失败和磁盘占用策略。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/p-repo-entry.sh`。
+- [x] 将 Agent status、活动 runs 和错误接入 Info Hub，提供轮初必要上下文。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，轮初上下文只供 Human 与后续 P6，`injectedIntoPrompt=false`，重跑 `bash scripts/verify/q-info-hub-runs.sh`。
+- [x] 验证 profile 更新仅影响下一轮，宿主重启后不虚构旧 run 已成功完成。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/n-pi-session.sh` 与 `bash scripts/verify/o-turn-semantics.sh`。
 
 出口条件是 Human 不创建 Task、不申请 Machine 租约，也能在 DM 分析已推送的仓库内容。后续轮次保持身份和会话历史，当前轮可接收新消息。
 
@@ -219,6 +219,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | 计划基线 | 技术栈方向、源码与官方资料调查、P0 至 P8 和 R1 顺序 | 文档范围及链接检查，不是功能或技术兼容性验收 |
 | P0 | 7 个实验 unit 与结论文档：版本与构建、Start SPA 与 Better Auth 与 Drizzle 与 shadcn、常驻 runtime 共进程、真实 Pi 接入、Worker 协议语义、四种故障恢复承诺、身份事务授权契约。实验提交范围 `21063f6..b1ba085`，本记录随 P0 收尾提交写入 | 本机安装、构建与运行验证（macOS arm64，Node v26.11.1，真实 SQLite 文件）；真实 Pi 1.3.0 验证；本地协议实验（真实进程 kill 与重连、真实并发 SQLite 连接）。未覆盖：真实跨机与网络分区、真实 macOS Worker 端到端，留到 P4 |
 | P1 | 工程骨架、Worker 与 Pi extension 入口、检查测试构建与 CI、SQLite 迁移与 Human 登录、runtime 生命周期与基础诊断、Project 创建查询与功能模板。a～e 的实现与合入范围 `7e4f039..c3af8ad`，本记录随 P1 收尾提交写入。逐项证据见 [p1/summary.md](p1/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0 下的干净工作目录安装、生产构建与真实进程启动、真实 SQLite 迁移与事务、真实 Pi 状态工具、真实 Chromium 登录和 Project 创建与重新打开；GitHub Actions ubuntu x64 的检查测试构建迁移与生产 smoke。收尾验证文档证据与链接、`pnpm check`。未覆盖：冷 pnpm store、dev 信号优雅关闭、多进程与恢复中途崩溃、完整 Pi 会话业务；真实跨机与真实 macOS Worker 端到端仍属 P4。完整边界见 summary |
-| P2 | 已完成 Project 配置、全局 Agent profile 与成员、持久 DM 与分身、消息、创建者授权、稳定 URL 和 Info Hub 两个已有对象视角。实现基线 `28d4fb2`，a～e 的实现与合入范围 `28d4fb2..d8f4e2b`。PR #10 head `cfa5d4d` merge `6836b06`，PR #11 head `fdad1ca` merge `53c9cb7`，PR #12 head `bf7ffa4` merge `2b814eb`，PR #13 head `dc11b8a` merge `da4aebb`，PR #14 head `872e62d` merge `d8f4e2b`。逐项证据见 [p2/summary.md](p2/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0，真实 SQLite、真实 Chromium 七个 URL 的直接进入、刷新、前进后退，真实生产进程 SIGTERM 与重启后身份、消息、三项配置及人设字面量相等，两用户隔离覆盖六页与 17 个 RPC 且 B 正常对照可用。main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/actions/runs/39062616946) completed、success，覆盖检查测试构建迁移与生产 smoke，不含 Chromium。收尾复跑 `bash scripts/verify/l-docs.sh`、`bash scripts/verify.sh` 与 `pnpm check`。真实 Pi、run、宿主仓库、Machine、租约、Task、Group、Public Channel、自动接续、手机、PWA 与并发等未验证项见 summary |
+| P2 | 已完成 Project 配置、全局 Agent profile 与成员、持久 DM 与分身、消息、创建者授权、稳定 URL 和 Info Hub 两个已有对象视角。实现基线 `28d4fb2`，P2 最终实现、验收与合入范围 `28d4fb2..db185f8`。原 a～e 的实现与合入范围 `28d4fb2..d8f4e2b`。PR #10 head `cfa5d4d` merge `6836b06`，PR #11 head `fdad1ca` merge `53c9cb7`，PR #12 head `bf7ffa4` merge `2b814eb`，PR #13 head `dc11b8a` merge `da4aebb`，PR #14 head `872e62d` merge `d8f4e2b`。逐项证据见 [p2/summary.md](p2/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0，真实 SQLite、真实 Chromium 七个 URL 的直接进入、刷新、前进后退，真实生产进程 SIGTERM 与重启后身份、消息、三项配置及人设字面量相等，两用户隔离覆盖六页与 17 个 RPC 且 B 正常对照可用。main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/actions/runs/39062616946) completed、success，覆盖检查测试构建迁移与生产 smoke，不含 Chromium。收尾复跑 `bash scripts/verify/l-docs.sh`、`bash scripts/verify.sh` 与 `pnpm check`。真实 Pi、run、宿主仓库、Machine、租约、Task、Group、Public Channel、自动接续、手机、PWA 与并发等未验证项见 summary |
+| P3 | 已完成真实 Pi session、轮次投递与停止、每轮快照、宿主仓库入口与 provenance、Info Hub run 事实与轮初上下文查询；第 2 条部分交付。实现基线 `db185f8`，a～d 的实现与合入范围 `db185f8..55da85f`。PR #19 head `dcd1ddd` merge `34b078e`，PR #20 head `32eac6c` merge `a73770c`，PR #21 head `e51fe69` merge `0d51b1f`，PR #22 head `eb4d141` merge `55da85f`。e 为只读验收，无 PR。逐项证据见 [p3/summary.md](p3/summary.md) | glm 家族在 P3 无既有产出的阶段验收，从 plan 推导命题，独立复跑真实模型、真实 SQLite、真实 Chromium、Git 与直接 SQL 反证。六条成立，第 2 条未完整交付，保持未勾；宿主配置、认证与 Sprout extension 已交付，codemode、tool_search、MCP 与用户 skills 未进分身工具面。验收基线 `55da85f`，完整边界与后续归属见 summary |
 
-当前下一任务是 P3，跑通真实 Pi 对话与宿主仓库分析。P2 未验证项见 [p2/summary.md](p2/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4。
+当前下一任务是 P4，跑通 macOS Machine 与租约执行闭环。P3 未验证项与第 2 条部分交付的后续决定见 [p3/summary.md](p3/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4。

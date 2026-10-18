@@ -80,7 +80,7 @@
 
 q 脚本断言清单：真实构建与生产启动、三个 server function id、领域测试先过、真实 git 秘远端的完成 run 视图 commit 等于 `git rev-parse` 实值且 `fresh=true`、SLOW run 持有期间活动视图与 `pendingInputs` 等于 DB 的 pending 行数（steer 被协议桩拒绝后输入保持 pending）、轮初上下文在运行中为 `run_provenance` basis、释放后为 `project_checkout` basis、failed run 的 `errorCode/errorMessage/requestId` 进入两个视角且不编造 repo、`machines.available=false` 且 reason 指向 P4、`injectedIntoPrompt=false`、真实 Chromium 渲染 run 事实与轮初上下文且无 console 错误、第二用户对全部三个 boundary 均 `not_found` 且响应体不含 A 的 projectId/conversationId/instanceId/run id/commit/错误原文/远端路径、SIGTERM 退出 0。
 
-`tests/info-hub-runs.test.ts` 经 boundary 直接驱动：未登录 `unauthorized`；越权 `not_found` 且不泄漏 profile 名、id、对话与分身标识；无 run 时 `activeRun.pendingInputs=2`、`previousRun=null`、未配置仓库时 `workspace=null`；`transitionAgentRun` 置 failed 后 `previousRun` 的错误与 requestId 等于 `agent_run` 行实值；插入就绪 checkout 行后 `workspace.basis=project_checkout` 且 commit 透传；`injectedIntoPrompt` 恒 false。
+`tests/info-hub-runs.test.ts` 经 boundary 直接驱动：未登录 `unauthorized`；越权 `not_found` 且不泄漏 profile 名、id、对话与分身标识；先发送两条消息建立 queued run 时，`activeRun.pendingInputs=2`、`previousRun=null`、未配置仓库时 `workspace=null`（原句「无 run 时」由收尾复核更正，pending 计数的前提是已有 run）；`transitionAgentRun` 置 failed 后 `previousRun` 的错误与 requestId 等于 `agent_run` 行实值；插入就绪 checkout 行后 `workspace.basis=project_checkout` 且 commit 透传；`injectedIntoPrompt` 恒 false。
 
 ## SO17 断言更新
 
