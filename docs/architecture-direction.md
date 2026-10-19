@@ -51,7 +51,9 @@ Effect 的目标范围是常驻服务与远程 I/O，不覆盖展示层与纯数
 
 不要为了用 Effect 的类型通道而重写领域层。那会同时增加两种错误表示的维护成本，换不到用户看得见的行为。
 
-已知缺口，需要单独决策。run 之外的常驻服务失败记不下来。`DiagnosticEvent` 与 `diagnostic_event.request_id` 都要求 `requestId`，而调度失败、宿主层失败不属于任何请求，所以它们只落在一行 `console.error`，既不进 `diagnostic_event` 也不进 `/api/health`。补它意味着放宽诊断模型对 `requestId` 的要求，会动到审计链，值得单独一轮。
+宿主级失败已经落库。`src/server/pi-host/host.ts` 的 `reportFailure` 依赖由 `src/server/pi-host/index.ts` 接到 `recordDiagnostic`，调度失败与 run 状态保存失败分别记成 `pi_host.dispatch_failed` 与 `pi_host.run_persist_failed`。`tests/pi-host-failure.test.ts` 断言它们被上报，且一次失败不会终止轮询。`host.ts` 仍然不引领域与数据库，录制器是注入的。
+
+诊断模型仍把宿主事件建模成请求事件，这是已知的表示法缺陷。`DiagnosticEvent.requestId` 与 `diagnostic_event.request_id` 都是必填，而宿主失败不属于任何请求，所以 `src/server/runtime.ts` 记录 `runtime.ready` 时只能现造一个 `req_` 关联码，pi host 沿用同一做法。这与契约自己那句「未出现的业务关联不能伪造为存在」相抵触。改成显式区分请求作用域与宿主作用域要动列、契约与查询过滤的语义，值得单独一轮。
 
 领域时间已经查清，不是欠账。`src/` 里 `Date.now()` 只出现两处：`src/server/rate-limit.ts` 是 `now = Date.now` 形式的注入默认值，`src/domain/project.ts` 把时间戳截断到整秒后落库，不参与分支。其余 `new Date()` 都是单纯的记录值。真正参与判断的只有滑动窗口限流器，它收 `now` 参数，`tests/rate-limit.test.ts` 已经在不等待的情况下快进窗口。
 

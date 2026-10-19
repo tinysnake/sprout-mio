@@ -30,6 +30,7 @@ it("100ms 轮询与 2500ms 停止截止都在 TestClock 上", async () => {
       interruptActiveRuns: () => {
         trace.interrupts += 1;
       },
+      reportFailure: () => {},
     }),
   );
 
@@ -132,6 +133,7 @@ it("停止并发排空全部 run，排空失败优先于恢复失败", async () 
       interruptActiveRuns: () => {
         throw recoveryFailure;
       },
+      reportFailure: () => {},
     }),
   );
 
@@ -188,6 +190,7 @@ it("run 完成后释放实例，停止成功可重复调用", async () => {
       interruptActiveRuns: () => {
         interrupts += 1;
       },
+      reportFailure: () => {},
     }),
   );
 

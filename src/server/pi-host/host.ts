@@ -1,4 +1,4 @@
-import { Context, Effect, Exit, Fiber, Layer, Scope } from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Scope } from "effect";
 
 export const POLL_INTERVAL = "100 millis";
 export const STOP_DEADLINE = "2500 millis";
@@ -12,10 +12,16 @@ export type PiHostRun = {
   readonly body: Effect.Effect<void>;
 };
 export type PiHostSignals = { readonly isStopping: () => boolean };
+export type PiHostFailureReport = {
+  readonly event: string;
+  readonly message: string;
+  readonly cause: Cause.Cause<unknown>;
+};
 export type PiHostDeps<W extends PiHostWorkItem> = {
   readonly loadWork: () => readonly W[];
   readonly prepareRun: (work: W, signals: PiHostSignals) => PiHostRun;
   readonly interruptActiveRuns: () => void;
+  readonly reportFailure: (failure: PiHostFailureReport) => void;
 };
 export type PiHostSnapshot = {
   readonly stopping: boolean;
@@ -68,7 +74,15 @@ export const makePiHostLayer = <W extends PiHostWorkItem>(
       }).pipe(
         // prepareRun starts a child. Interruption before registration would leave it unowned and skip close at stop.
         Effect.uninterruptible,
-        Effect.catchCause((cause) => Effect.sync(() => console.error("[pi-host] 调度失败", cause))),
+        Effect.catchCause((cause) =>
+          Effect.sync(() =>
+            deps.reportFailure({
+              event: "pi_host.dispatch_failed",
+              message: "Pi host 调度失败",
+              cause,
+            }),
+          ),
+        ),
       );
 
       const poll = Effect.gen(function* () {
