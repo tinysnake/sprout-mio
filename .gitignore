@@ -1,6 +1,9 @@
 # pi project-local config (keep out of the repo)
 .pi/
 
+# obelisk memory files (local agent recall, not product docs)
+.obelisk/
+
 # local agent instructions
 AGENTS.local.md
 
