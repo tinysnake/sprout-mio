@@ -93,20 +93,20 @@ plan 原文：**Human 不创建 Task、不申请 Machine 租约，也能在 DM �
 | 新领域错误进共享表                          | 成立           | 全仓 8 个 Error 类，`PiHostFailure`/`GitOpError` 是内部层错误（由 RepositoryError/PiHostFailure 映射后经共享表透出），`domain-errors.ts` 覆盖全部 6 个领域类                                                                   |
 | CHECK NULL-safe                             | 成立           | 直接 SQL：`completed + stop_reason=NULL` 被拒                                                                                                                                                                                  |
 | 迁移未被原地编辑                            | 成立           | 0002/0003/0004 各只出现在一个 commit（049bd03/32eac6c/66de445），全部 `A`（新增），journal `when` 与提交一致；无 edit 历史                                                                                                     |
-| `updatedAt` 不是变更信号                    | 已核对，未发现 | 全仓唯一按 `updatedAt` 的排序是 conversation 列表展示序（`conversation.ts:145`），是展示不是变更判定；run 依赖 sessionFile 找历史（`previousSessionFile`），profile 快照按内容随 run 冻结                                      |
+| `updatedAt` 不是变更信号                    | 已核对，未发现 | 全仓唯一按 `updatedAt` 的排序是 chat 列表展示序（`chat.ts:145`），是展示不是变更判定；run 依赖 sessionFile 找历史（`previousSessionFile`），profile 快照按内容随 run 冻结                                                      |
 
 ## run 归属（SO25/P2 遗留）实测
 
-直接 SQL 插入 `project_id` 指向同 owner 另一 Project 的 run（conversation 属 Project A）：SQL 层**接受**（无复合外键，预期内）；随后 `listAgentRuns` 不可见、`getAgentRun` 抛 `not_found`、下一次 `sendMessage` 抛 `AgentRunError("Run 归属不一致")`。**结论：不一致 run 可以存在于数据库，但领域层三处（读、投递、完成）全部拒绝，不可达、不可消费。** 与 P2-j 结论一致，P3 查询全部 join conversation 推导归属，未信任 `instance.projectId`。
+直接 SQL 插入 `project_id` 指向同 owner 另一 Project 的 run（chat 属 Project A）：SQL 层**接受**（无复合外键，预期内）；随后 `listAgentRuns` 不可见、`getAgentRun` 抛 `not_found`、下一次 `sendMessage` 抛 `AgentRunError("Run 归属不一致")`。**结论：不一致 run 可以存在于数据库，但领域层三处（读、投递、完成）全部拒绝，不可达、不可消费。** 与 P2-j 结论一致，P3 查询全部 join chat 推导归属，未信任 `instance.projectId`。
 
 ## 独立推导的 RPC 授权入口清单与实际清单比对
 
 我从「所有 `createServerFn` 导出」独立推导 26 个入口（见下），逐一归类授权路径：
 
-- Project 域（`assertProjectAccess` 在领域函数内）：getProject、listProjects（按 owner 过滤）、createProject、getProjectProfile、updateProjectProfile、getProjectRepoState、prepareProjectRepo、addProjectMember、removeProjectMember、listProjectMembers、createDirectConversation、listConversations、getProjectInfoHub — 13 个。
-- Conversation 域（经 `getConversation` 授权）：getConversation、listMessages、sendMessage、listConversationMembers、listInstancesForConversation、getConversationInfo、getTurnStartContext、getConversationRunState、abortAgentRun、getAgentProfile、updateAgentProfile、listAgentProfiles、createAgentProfile — 13 个。
+- Project 域（`assertProjectAccess` 在领域函数内）：getProject、listProjects（按 owner 过滤）、createProject、getProjectProfile、updateProjectProfile、getProjectRepoState、prepareProjectRepo、addProjectMember、removeProjectMember、listProjectMembers、createDirectChat、listChats、getProjectInfoHub — 13 个。
+- Chat 域（经 `getChat` 授权）：getChat、listMessages、sendMessage、listChatMembers、listInstancesForChat、getChatInfo、getTurnStartContext、getChatRunState、abortAgentRun、getAgentProfile、updateAgentProfile、listAgentProfiles、createAgentProfile — 13 个。
 
-**与代码实际清单比对：差异为零。** 26/26 全部经 `requireSession` + 领域层 Project/owner 归属校验，越权等价 not_found（独立反证 9 入口零泄漏，加上 q 脚本 3 条 cross-project 断言）。`runRow` 与 repository 的 `runRow` 均先 join `conversation.projectId = agent_run.projectId` 再授权。
+**与代码实际清单比对：差异为零。** 26/26 全部经 `requireSession` + 领域层 Project/owner 归属校验，越权等价 not_found（独立反证 9 入口零泄漏，加上 q 脚本 3 条 cross-project 断言）。`runRow` 与 repository 的 `runRow` 均先 join `chat.projectId = agent_run.projectId` 再授权。
 
 ## ledger 与证据一致性（#19–#22 逐行）
 
@@ -130,7 +130,7 @@ plan 原文：**Human 不创建 Task、不申请 Machine 租约，也能在 DM �
 | pi-session：SPROUT_PI_ENABLED=false 时不启动子进程                                                                       | 一致（startPiHost 早退；verify.sh 全程 false 下无 runner）                                                                            |
 | turn-semantics：steer 先查 `isStreaming` 再 `session.steer`                                                              | 一致（runner deliverSteer）                                                                                                           |
 | turn-semantics：停止后迟到投递确认保持 pending 不升级故障                                                                | 一致（pi-host/index.ts:81-87）                                                                                                        |
-| turn-semantics：UI 轮询 1.2 秒仅在 queued/running                                                                        | 一致（conversation 路由 `watching` 条件）                                                                                             |
+| turn-semantics：UI 轮询 1.2 秒仅在 queued/running                                                                        | 一致（chat 路由 `watching` 条件）                                                                                                     |
 | turn-semantics：`agent_run_failed_check` 含 IS NOT NULL 守卫语义                                                         | 一致（CHECK 为 `!= 'failed' OR (errorCode NOT NULL AND errorMessage NOT NULL AND != '')`，NULL status 形态不适用；直接 SQL 反证通过） |
 | repo-entry：绑定副本 fetch 不改工作树、fresh=false、获取时点为空显示宿主未取过                                           | 一致（实测 fresh-probe；UI 文案 `fetchedAt ? 获取于 : 宿主未取过`）                                                                   |
 | repo-entry：托管克隆超限整删、绑定副本不删                                                                               | 一致（repository.ts 磁盘分支 + disk-probe 的「未修改用户副本」文案）                                                                  |

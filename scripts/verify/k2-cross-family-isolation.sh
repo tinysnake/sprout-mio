@@ -196,12 +196,12 @@ try {
   assert.equal(aProfile.ok, true, 'A seed profile created')
   const aMember = (await call(A, 'addProjectMemberFn', { projectId: aProject.data.id, agentProfileId: aProfile.data.id }, 'A-seed-add-member')).value
   assert.equal(aMember.ok, true, 'A seed member added')
-  const aDm = (await call(A, 'createDirectConversationFn', { projectId: aProject.data.id, agentProfileId: aProfile.data.id }, 'A-seed-create-DM')).value
+  const aDm = (await call(A, 'createDirectChatFn', { projectId: aProject.data.id, agentProfileId: aProfile.data.id }, 'A-seed-create-DM')).value
   assert.equal(aDm.ok, true, 'A seed DM created')
-  assert.equal(aDm.data.conversation.kind, 'dm')
+  assert.equal(aDm.data.chat.kind, 'dm')
   const aSent = []
   for (let index = 0; index < aMessages.length; index++) {
-    const sent = (await call(A, 'sendMessageFn', { conversationId: aDm.data.conversation.id, senderKind: 'human', senderId: A.user.id, body: aMessages[index] }, `A-seed-message-${index + 1}`)).value
+    const sent = (await call(A, 'sendMessageFn', { chatId: aDm.data.chat.id, senderKind: 'human', senderId: A.user.id, body: aMessages[index] }, `A-seed-message-${index + 1}`)).value
     assert.equal(sent.ok, true, `A seed message ${index + 1} saved`)
     aSent.push(sent.data)
   }
@@ -212,7 +212,7 @@ try {
   assert.equal(aConfigWrite.ok, true, 'A seed configuration saved')
   record('A_seed_objects_ready', true, {
     projectId: aProject.data.id, agentProfileId: aProfile.data.id,
-    conversationId: aDm.data.conversation.id, instanceId: aDm.data.instance.id,
+    chatId: aDm.data.chat.id, instanceId: aDm.data.instance.id,
     messages: aSent.map((entry) => entry.id),
   })
 
@@ -222,13 +222,13 @@ try {
   assert.equal(bProfile.ok, true, 'B seed profile created')
   const bMember = (await call(B, 'addProjectMemberFn', { projectId: bProject.data.id, agentProfileId: bProfile.data.id }, 'B-seed-add-member')).value
   assert.equal(bMember.ok, true, 'B seed member added')
-  const bDm = (await call(B, 'createDirectConversationFn', { projectId: bProject.data.id, agentProfileId: bProfile.data.id }, 'B-seed-create-DM')).value
+  const bDm = (await call(B, 'createDirectChatFn', { projectId: bProject.data.id, agentProfileId: bProfile.data.id }, 'B-seed-create-DM')).value
   assert.equal(bDm.ok, true, 'B seed DM created')
-  record('B_seed_objects_ready', true, { projectId: bProject.data.id, conversationId: bDm.data.conversation.id })
+  record('B_seed_objects_ready', true, { projectId: bProject.data.id, chatId: bDm.data.chat.id })
 
   const aTokens = [
     aProject.data.id, aName, aDescription, aProfile.data.id, aProfileName,
-    aDm.data.conversation.id, aDm.data.instance.id,
+    aDm.data.chat.id, aDm.data.instance.id,
     ...aSent.map((entry) => entry.id), ...aMessages, aPersonaEdited,
     ...Object.values(aConfiguration), A.user.id, A.user.name, A.user.email,
   ]
@@ -239,10 +239,10 @@ try {
     ['project', 'getProjectFn', { projectId: aProject.data.id }],
     ['profile', 'getAgentProfileFn', { agentProfileId: aProfile.data.id }],
     ['members', 'listProjectMembersFn', { projectId: aProject.data.id }],
-    ['conversations', 'listConversationsFn', { projectId: aProject.data.id }],
-    ['conversation', 'getConversationFn', { conversationId: aDm.data.conversation.id }],
-    ['instances', 'listInstancesForConversationFn', { conversationId: aDm.data.conversation.id }],
-    ['messages', 'listMessagesFn', { conversationId: aDm.data.conversation.id }],
+    ['chats', 'listChatsFn', { projectId: aProject.data.id }],
+    ['chat', 'getChatFn', { chatId: aDm.data.chat.id }],
+    ['instances', 'listInstancesForChatFn', { chatId: aDm.data.chat.id }],
+    ['messages', 'listMessagesFn', { chatId: aDm.data.chat.id }],
     ['config', 'getProjectProfileFn', { projectId: aProject.data.id }],
   ]) {
     const { value } = await call(A, name, input, `A-snapshot-${label}`)
@@ -275,20 +275,20 @@ try {
   await expectDenied('deny_B_listProjectMembers_A', 'listProjectMembersFn', { projectId: aProject.data.id }, 'deny-listProjectMembers')
   await expectDenied('deny_B_addProjectMember_A', 'addProjectMemberFn', { projectId: aProject.data.id, agentProfileId: aProfile.data.id }, 'deny-addProjectMember')
   await expectDenied('deny_B_removeProjectMember_A', 'removeProjectMemberFn', { projectId: aProject.data.id, agentProfileId: aProfile.data.id }, 'deny-removeProjectMember')
-  await expectDenied('deny_B_listConversations_A', 'listConversationsFn', { projectId: aProject.data.id }, 'deny-listConversations')
-  await expectDenied('deny_B_createDirectConversation_A_project_A_profile', 'createDirectConversationFn', { projectId: aProject.data.id, agentProfileId: aProfile.data.id }, 'deny-createDirectConversation')
+  await expectDenied('deny_B_listChats_A', 'listChatsFn', { projectId: aProject.data.id }, 'deny-listChats')
+  await expectDenied('deny_B_createDirectChat_A_project_A_profile', 'createDirectChatFn', { projectId: aProject.data.id, agentProfileId: aProfile.data.id }, 'deny-createDirectChat')
   await expectDenied('deny_B_getProjectInfoHub_A', 'getProjectInfoHubFn', { projectId: aProject.data.id }, 'deny-getProjectInfoHub')
-  await expectDenied('deny_B_getConversation_A', 'getConversationFn', { conversationId: aDm.data.conversation.id }, 'deny-getConversation')
-  await expectDenied('deny_B_listConversationMembers_A', 'listConversationMembersFn', { conversationId: aDm.data.conversation.id }, 'deny-listConversationMembers')
-  await expectDenied('deny_B_listInstancesForConversation_A', 'listInstancesForConversationFn', { conversationId: aDm.data.conversation.id }, 'deny-listInstances')
-  await expectDenied('deny_B_listMessages_A', 'listMessagesFn', { conversationId: aDm.data.conversation.id }, 'deny-listMessages')
-  await expectDenied('deny_B_sendMessage_agent_identity_A', 'sendMessageFn', { conversationId: aDm.data.conversation.id, senderKind: 'agent', senderId: aProfile.data.id, body: 'K2-forbidden-agent-message' }, 'deny-sendMessage-agent')
-  await expectDenied('deny_B_getConversationInfo_A', 'getConversationInfoFn', { conversationId: aDm.data.conversation.id }, 'deny-getConversationInfo')
+  await expectDenied('deny_B_getChat_A', 'getChatFn', { chatId: aDm.data.chat.id }, 'deny-getChat')
+  await expectDenied('deny_B_listChatMembers_A', 'listChatMembersFn', { chatId: aDm.data.chat.id }, 'deny-listChatMembers')
+  await expectDenied('deny_B_listInstancesForChat_A', 'listInstancesForChatFn', { chatId: aDm.data.chat.id }, 'deny-listInstances')
+  await expectDenied('deny_B_listMessages_A', 'listMessagesFn', { chatId: aDm.data.chat.id }, 'deny-listMessages')
+  await expectDenied('deny_B_sendMessage_agent_identity_A', 'sendMessageFn', { chatId: aDm.data.chat.id, senderKind: 'agent', senderId: aProfile.data.id, body: 'K2-forbidden-agent-message' }, 'deny-sendMessage-agent')
+  await expectDenied('deny_B_getChatInfo_A', 'getChatInfoFn', { chatId: aDm.data.chat.id }, 'deny-getChatInfo')
   await expectDenied('deny_B_getAgentProfile_A', 'getAgentProfileFn', { agentProfileId: aProfile.data.id }, 'deny-getAgentProfile')
   await expectDenied('deny_B_updateAgentProfile_A', 'updateAgentProfileFn', { agentProfileId: aProfile.data.id, persona: 'K2-forbidden-persona' }, 'deny-updateAgentProfile')
 
   const subCrossDm = await check('sub_B_ownProject_A_profile_createDM_rejected_without_leak', async () => {
-    const { value, body, requestId } = await call(B, 'createDirectConversationFn', { projectId: bProject.data.id, agentProfileId: aProfile.data.id }, 'sub-ownProject-A-profile-DM')
+    const { value, body, requestId } = await call(B, 'createDirectChatFn', { projectId: bProject.data.id, agentProfileId: aProfile.data.id }, 'sub-ownProject-A-profile-DM')
     assert.equal(value.ok, false, 'cross-profile DM must be rejected')
     assert.equal(value.error.code, 'not_found', 'own-project cross-profile DM must map to not_found')
     assert.equal(value.error.requestId, requestId)
@@ -298,29 +298,29 @@ try {
   })
   await check('sub_profile_reference_indistinguishable_from_nonexistent', async () => {
     const ghost = 'agp_00000000-0000-4000-8000-000000000000'
-    const { value } = await call(B, 'createDirectConversationFn', { projectId: bProject.data.id, agentProfileId: ghost }, 'sub-nonexistent-profile')
+    const { value } = await call(B, 'createDirectChatFn', { projectId: bProject.data.id, agentProfileId: ghost }, 'sub-nonexistent-profile')
     assert.equal(value.ok, false, 'nonexistent profile DM must be rejected')
     assert.equal(value.error.code, subCrossDm?.code, 'no existence oracle between unauthorized and nonexistent profile')
     return { code: value.error.code, sameAs: 'sub_B_ownProject_A_profile_createDM_rejected_without_leak' }
   })
   await expectDenied('sub_B_ownProject_A_profile_addMember', 'addProjectMemberFn', { projectId: bProject.data.id, agentProfileId: aProfile.data.id }, 'sub-ownProject-A-profile-member')
-  await expectDenied('sub_B_sendMessage_A_conversation_forged_identity', 'sendMessageFn', { conversationId: aDm.data.conversation.id, senderKind: 'human', senderId: A.user.id, body: 'K2-forbidden-impersonation' }, 'sub-impersonate-A')
+  await expectDenied('sub_B_sendMessage_A_chat_forged_identity', 'sendMessageFn', { chatId: aDm.data.chat.id, senderKind: 'human', senderId: A.user.id, body: 'K2-forbidden-impersonation' }, 'sub-impersonate-A')
   await check('sub_forged_sender_is_rewritten_to_session_human', async () => {
-    const { value } = await call(B, 'sendMessageFn', { conversationId: bDm.data.conversation.id, senderKind: 'agent', senderId: aProfile.data.id, body: 'K2-B 伪造身份输入被边界改写。' }, 'sub-forged-sender')
+    const { value } = await call(B, 'sendMessageFn', { chatId: bDm.data.chat.id, senderKind: 'agent', senderId: aProfile.data.id, body: 'K2-B 伪造身份输入被边界改写。' }, 'sub-forged-sender')
     assert.equal(value.ok, true)
     assert.equal(value.data.senderKind, 'human')
     assert.equal(value.data.senderId, B.user.id)
-    assert.equal(value.data.conversationId, bDm.data.conversation.id)
+    assert.equal(value.data.chatId, bDm.data.chat.id)
     return { senderKind: value.data.senderKind, senderId: value.data.senderId }
   })
 
   await check('enum_list_denials_are_errors_not_empty_arrays', async () => {
-    for (const label of ['deny-listProjectMembers', 'deny-listConversations']) {
+    for (const label of ['deny-listProjectMembers', 'deny-listChats']) {
       const { result: value } = fromCrossJSON(JSON.parse(readFileSync(join(directory, `${label}.body`), 'utf8')), { refs: new Map() })
       assert.equal(value.ok, false, `${label} must be an error`)
       assert.equal(value.error.code, 'not_found')
     }
-    return { verified: ['listProjectMembersFn', 'listConversationsFn'] }
+    return { verified: ['listProjectMembersFn', 'listChatsFn'] }
   })
   await check('enum_listProjects_returns_only_B', async () => {
     const { value, body } = await call(B, 'listProjectsFn', {}, 'enum-listProjects', 'GET')
@@ -365,13 +365,13 @@ try {
       ['getProjectProfileFn', { projectId: bProject.data.id }],
       ['listProjectMembersFn', { projectId: bProject.data.id }],
       ['getAgentProfileFn', { agentProfileId: bProfile.data.id }],
-      ['listConversationsFn', { projectId: bProject.data.id }],
-      ['getConversationFn', { conversationId: bDm.data.conversation.id }],
-      ['listConversationMembersFn', { conversationId: bDm.data.conversation.id }],
-      ['listInstancesForConversationFn', { conversationId: bDm.data.conversation.id }],
-      ['listMessagesFn', { conversationId: bDm.data.conversation.id }],
+      ['listChatsFn', { projectId: bProject.data.id }],
+      ['getChatFn', { chatId: bDm.data.chat.id }],
+      ['listChatMembersFn', { chatId: bDm.data.chat.id }],
+      ['listInstancesForChatFn', { chatId: bDm.data.chat.id }],
+      ['listMessagesFn', { chatId: bDm.data.chat.id }],
       ['getProjectInfoHubFn', { projectId: bProject.data.id }],
-      ['getConversationInfoFn', { conversationId: bDm.data.conversation.id }],
+      ['getChatInfoFn', { chatId: bDm.data.chat.id }],
     ]
     for (const [name, input] of inputs) {
       const { value } = await call(B, name, input, `B-own-${name}`)
@@ -388,34 +388,34 @@ try {
     assert.equal(reread.data.defaultBranch, 'k2-b-control')
     return { defaultBranch: reread.data.defaultBranch }
   })
-  await check('B_own_sendMessage_grows_own_conversation', async () => {
-    const before = (await call(B, 'listMessagesFn', { conversationId: bDm.data.conversation.id }, 'B-own-messages-before')).value
-    const sent = (await call(B, 'sendMessageFn', { conversationId: bDm.data.conversation.id, senderKind: 'human', senderId: B.user.id, body: 'K2-B 正对照消息。' }, 'B-own-sendMessage')).value
+  await check('B_own_sendMessage_grows_own_chat', async () => {
+    const before = (await call(B, 'listMessagesFn', { chatId: bDm.data.chat.id }, 'B-own-messages-before')).value
+    const sent = (await call(B, 'sendMessageFn', { chatId: bDm.data.chat.id, senderKind: 'human', senderId: B.user.id, body: 'K2-B 正对照消息。' }, 'B-own-sendMessage')).value
     assert.equal(sent.ok, true)
-    const after = (await call(B, 'listMessagesFn', { conversationId: bDm.data.conversation.id }, 'B-own-messages-after')).value
+    const after = (await call(B, 'listMessagesFn', { chatId: bDm.data.chat.id }, 'B-own-messages-after')).value
     assert.equal(after.data.length, before.data.length + 1)
     assert.equal(after.data.at(-1).body, 'K2-B 正对照消息。')
     return { before: before.data.length, after: after.data.length }
   })
   await check('B_own_DM_idempotent_same_instance', async () => {
-    const first = (await call(B, 'createDirectConversationFn', { projectId: bProject.data.id, agentProfileId: bProfile.data.id }, 'B-own-DM-first')).value
-    const second = (await call(B, 'createDirectConversationFn', { projectId: bProject.data.id, agentProfileId: bProfile.data.id }, 'B-own-DM-second')).value
+    const first = (await call(B, 'createDirectChatFn', { projectId: bProject.data.id, agentProfileId: bProfile.data.id }, 'B-own-DM-first')).value
+    const second = (await call(B, 'createDirectChatFn', { projectId: bProject.data.id, agentProfileId: bProfile.data.id }, 'B-own-DM-second')).value
     assert.equal(first.ok, true)
     assert.equal(second.ok, true)
     assert.deepEqual(
-      { conversationId: second.data.conversation.id, instanceId: second.data.instance.id },
-      { conversationId: first.data.conversation.id, instanceId: first.data.instance.id },
+      { chatId: second.data.chat.id, instanceId: second.data.instance.id },
+      { chatId: first.data.chat.id, instanceId: first.data.instance.id },
     )
-    return { conversationId: first.data.conversation.id }
+    return { chatId: first.data.chat.id }
   })
 
   const aAfter = {}
   for (const [label, name, input] of [
     ['members', 'listProjectMembersFn', { projectId: aProject.data.id }],
-    ['messages', 'listMessagesFn', { conversationId: aDm.data.conversation.id }],
+    ['messages', 'listMessagesFn', { chatId: aDm.data.chat.id }],
     ['profile', 'getAgentProfileFn', { agentProfileId: aProfile.data.id }],
     ['config', 'getProjectProfileFn', { projectId: aProject.data.id }],
-    ['conversations', 'listConversationsFn', { projectId: aProject.data.id }],
+    ['chats', 'listChatsFn', { projectId: aProject.data.id }],
   ]) {
     const { value } = await call(A, name, input, `A-unchanged-${label}`)
     assert.equal(value.ok, true, `A ${label} still readable after attacks`)
@@ -437,9 +437,9 @@ try {
     assert.deepEqual(aAfter.config, aSnapshot.config)
     return { config: aConfiguration }
   })
-  await check('A_conversations_unchanged_after_attacks', async () => {
-    assert.deepEqual(aAfter.conversations.map((entry) => entry.id), [aDm.data.conversation.id])
-    return { conversations: aAfter.conversations.length }
+  await check('A_chats_unchanged_after_attacks', async () => {
+    assert.deepEqual(aAfter.chats.map((entry) => entry.id), [aDm.data.chat.id])
+    return { chats: aAfter.chats.length }
   })
 
   writeFileSync(join(directory, 'k2-state.json'), JSON.stringify({
@@ -449,7 +449,7 @@ try {
       { key: 'project', path: `/projects/${aProject.data.id}` },
       { key: 'settings', path: `/projects/${aProject.data.id}/settings` },
       { key: 'members', path: `/projects/${aProject.data.id}/agents` },
-      { key: 'conversation', path: `/projects/${aProject.data.id}/conversations/${aDm.data.conversation.id}` },
+      { key: 'chat', path: `/projects/${aProject.data.id}/chats/${aDm.data.chat.id}` },
       { key: 'agent', path: `/agents/${aProfile.data.id}` },
     ],
   }, null, 2) + '\n')
@@ -465,16 +465,16 @@ try {
     const count = (sql, ...args) => probe.prepare(sql).get(...args).count
     assert.equal(count('SELECT count(*) AS count FROM agent_instance WHERE agent_profile_id = ? AND project_id = ?', aProfile.data.id, bProject.data.id), 0)
     assert.equal(count('SELECT count(*) AS count FROM project_member WHERE project_id = ? AND agent_profile_id = ?', bProject.data.id, aProfile.data.id), 0)
-    assert.equal(count('SELECT count(*) AS count FROM conversation WHERE project_id = ?', bProject.data.id), 1)
-    assert.equal(count('SELECT count(*) AS count FROM message WHERE conversation_id = ?', aDm.data.conversation.id), aMessages.length)
-    assert.equal(count("SELECT count(*) AS count FROM message WHERE body LIKE '%K2-forbidden%' AND conversation_id = ?", aDm.data.conversation.id), 0)
+    assert.equal(count('SELECT count(*) AS count FROM chat WHERE project_id = ?', bProject.data.id), 1)
+    assert.equal(count('SELECT count(*) AS count FROM message WHERE chat_id = ?', aDm.data.chat.id), aMessages.length)
+    assert.equal(count("SELECT count(*) AS count FROM message WHERE body LIKE '%K2-forbidden%' AND chat_id = ?", aDm.data.chat.id), 0)
     assert.equal(count("SELECT count(*) AS count FROM project_profile WHERE default_branch LIKE 'k2-forbidden%'"), 0)
     assert.equal(count("SELECT count(*) AS count FROM agent_profile WHERE persona LIKE '%K2-forbidden%' AND id = ?", aProfile.data.id), 0)
     assert.equal(probe.prepare('SELECT persona FROM agent_profile WHERE id = ?').get(aProfile.data.id).persona, aPersonaEdited)
-    const aSenders = probe.prepare('SELECT sender_kind AS kind, sender_id AS id FROM message WHERE conversation_id = ? ORDER BY rowid').all(aDm.data.conversation.id)
+    const aSenders = probe.prepare('SELECT sender_kind AS kind, sender_id AS id FROM message WHERE chat_id = ? ORDER BY rowid').all(aDm.data.chat.id)
     assert.deepEqual(aSenders, aMessages.map(() => ({ kind: 'human', id: A.user.id })))
     record('sqlite_probe_no_cross_rows_and_A_intact', true, {
-      crossInstances: 0, crossMembers: 0, aConversationMessages: aMessages.length,
+      crossInstances: 0, crossMembers: 0, aChatMessages: aMessages.length,
       aSenders: aSenders.length, persona: aPersonaEdited,
     })
   } finally { probe.close() }

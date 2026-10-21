@@ -96,13 +96,13 @@ async function config(page) {
     workDirectory: await test(page, "config-work-directory").inputValue(),
   };
 }
-async function conversation(page) {
-  await test(page, "conversation-instance-id").waitFor();
+async function chat(page) {
+  await test(page, "chat-instance-id").waitFor();
   return {
-    conversationId: await test(page, "conversation-id").textContent(),
-    instanceId: await test(page, "conversation-instance-id").textContent(),
+    chatId: await test(page, "chat-id").textContent(),
+    instanceId: await test(page, "chat-instance-id").textContent(),
     messages: await test(page, "message-body").allTextContents(),
-    persona: await test(page, "conversation-agent-persona").textContent(),
+    persona: await test(page, "chat-agent-persona").textContent(),
   };
 }
 function cross(value, state) {
@@ -149,8 +149,8 @@ async function unavailable(page, target) {
     await sameText(page, "info-hub-machines-notice-badge", "未实现");
     assert.match(await test(page, "info-hub-machines-notice-reason").textContent(), /P4/);
   }
-  if (target.key === "conversation") {
-    await sameText(page, "info-conversation-runs-host-status", "宿主未启用");
+  if (target.key === "chat") {
+    await sameText(page, "info-chat-runs-host-status", "宿主未启用");
     assert.match(
       await test(page, "info-turn-prompt-injection").textContent(),
       /注入模型 prompt：否/,
@@ -195,11 +195,11 @@ async function before() {
   await test(page, "add-member-select").selectOption({ label: agentName });
   await test(page, "add-member-submit").click();
   await sameText(page, "member-item-name", agentName);
-  await goto(page, `${project.path}/conversations`);
+  await goto(page, `${project.path}/chats`);
   await test(page, "dm-start").click();
-  await test(page, "conversation-instance-id").waitFor();
-  const conversationPath = new URL(page.url()).pathname;
-  const original = await conversation(page);
+  await test(page, "chat-instance-id").waitFor();
+  const chatPath = new URL(page.url()).pathname;
+  const original = await chat(page);
   const messages = ["第一条独立验收消息。", "第二条消息，字面量与顺序都必须保留。"];
   for (let index = 0; index < messages.length; index++) {
     await test(page, "message-input").fill(messages[index]);
@@ -226,8 +226,8 @@ async function before() {
   await test(page, "config-saved").waitFor();
   await page.reload({ waitUntil: "networkidle" });
   const observedConfig = await config(page);
-  await goto(page, conversationPath);
-  const observed = await conversation(page);
+  await goto(page, chatPath);
+  const observed = await chat(page);
   const snapshot = { ...observed, ...observedConfig };
   save("before.json", snapshot);
   const session = await (await contextA.request.get(`${base}/api/auth/get-session`)).json();
@@ -239,7 +239,7 @@ async function before() {
     project.name,
     agentProfileId,
     agentName,
-    observed.conversationId,
+    observed.chatId,
     observed.instanceId,
     session.user.id,
     session.user.name,
@@ -254,27 +254,27 @@ async function before() {
     own,
     agentProfileId,
     agentName,
-    conversationPath,
+    chatPath,
     tokens,
     storageA: await contextA.storageState(),
     storageB: await contextB.storageState(),
   });
   await check("profile_edit_and_configuration_keep_identity_history", page, async () => {
     assert.deepEqual(snapshot, {
-      conversationId: original.conversationId,
+      chatId: original.chatId,
       instanceId: original.instanceId,
       messages,
       persona,
       ...configuration,
     });
-    await shot(page, "before-conversation");
+    await shot(page, "before-chat");
     return snapshot;
   });
-  await check("repeat_DM_keeps_conversation_and_instance", page, async () => {
-    await goto(page, `${project.path}/conversations`);
+  await check("repeat_DM_keeps_chat_and_instance", page, async () => {
+    await goto(page, `${project.path}/chats`);
     await test(page, "dm-start").click();
-    assert.deepEqual(await conversation(page), observed);
-    return { conversationId: observed.conversationId, instanceId: observed.instanceId };
+    assert.deepEqual(await chat(page), observed);
+    return { chatId: observed.chatId, instanceId: observed.instanceId };
   });
   const targets = [
     {
@@ -296,24 +296,24 @@ async function before() {
       assert: () => sameText(page, "member-item-name", agentName),
     },
     {
-      key: "conversations",
-      path: `${project.path}/conversations`,
+      key: "chats",
+      path: `${project.path}/chats`,
       assert: async () => {
-        await test(page, "conversation-item").waitFor();
+        await test(page, "chat-item").waitFor();
         assert.deepEqual(
-          await test(page, "conversation-item").evaluateAll((nodes) =>
-            nodes.map((node) => node.dataset.conversationId),
+          await test(page, "chat-item").evaluateAll((nodes) =>
+            nodes.map((node) => node.dataset.chatId),
           ),
-          [observed.conversationId],
+          [observed.chatId],
         );
       },
     },
     {
-      key: "conversation",
-      path: conversationPath,
+      key: "chat",
+      path: chatPath,
       assert: async () => {
-        assert.deepEqual(await conversation(page), observed);
-        await sameText(page, "info-conversation-instance-id", observed.instanceId);
+        assert.deepEqual(await chat(page), observed);
+        await sameText(page, "info-chat-instance-id", observed.instanceId);
         await sameText(page, "info-message-count", "2");
         assert.deepEqual(
           await test(page, "info-member-item").evaluateAll((nodes) =>
@@ -354,7 +354,7 @@ async function before() {
         `${project.path}/settings`,
       );
       await sameText(page, "info-agent-name", agentName);
-      assert.equal(await test(page, "info-agent-dm-link").getAttribute("href"), conversationPath);
+      assert.equal(await test(page, "info-agent-dm-link").getAttribute("href"), chatPath);
     }
     return {
       path: target.path,
@@ -389,8 +389,8 @@ async function before() {
     ["project", project.path],
     ["settings", `${project.path}/settings`],
     ["members", `${project.path}/agents`],
-    ["conversations", `${project.path}/conversations`],
-    ["conversation", conversationPath],
+    ["chats", `${project.path}/chats`],
+    ["chat", chatPath],
     ["agent", `/agents/${agentProfileId}`],
   ]) {
     await check(`isolation_page_${label}`, other, async () => {
@@ -408,7 +408,7 @@ async function before() {
     });
   }
   const projectInput = { projectId: project.id };
-  const conversationInput = { conversationId: observed.conversationId };
+  const chatInput = { chatId: observed.chatId };
   const agentInput = { agentProfileId };
   const calls = {
     getProjectFn: projectInput,
@@ -419,15 +419,15 @@ async function before() {
     removeProjectMemberFn: { ...projectInput, agentProfileId },
     getAgentProfileFn: agentInput,
     updateAgentProfileFn: { ...agentInput, persona: "forbidden-persona" },
-    listConversationsFn: projectInput,
-    createDirectConversationFn: { ...projectInput, agentProfileId },
-    getConversationFn: conversationInput,
-    listConversationMembersFn: conversationInput,
-    listInstancesForConversationFn: conversationInput,
-    listMessagesFn: conversationInput,
-    sendMessageFn: { ...conversationInput, body: "forbidden-message" },
+    listChatsFn: projectInput,
+    createDirectChatFn: { ...projectInput, agentProfileId },
+    getChatFn: chatInput,
+    listChatMembersFn: chatInput,
+    listInstancesForChatFn: chatInput,
+    listMessagesFn: chatInput,
+    sendMessageFn: { ...chatInput, body: "forbidden-message" },
     getProjectInfoHubFn: projectInput,
-    getConversationInfoFn: conversationInput,
+    getChatInfoFn: chatInput,
   };
   for (const [name, input] of Object.entries(calls)) {
     await check(`isolation_RPC_${name}`, other, async () => {
@@ -482,15 +482,15 @@ async function after() {
   const before = JSON.parse(readFileSync(join(directory, "before.json"), "utf8"));
   const context = await browser.newContext({ storageState: state.storageA });
   const page = await newPage(context);
-  await goto(page, state.conversationPath);
-  const actual = await conversation(page);
-  await shot(page, "after-conversation");
+  await goto(page, state.chatPath);
+  const actual = await chat(page);
+  await shot(page, "after-chat");
   await goto(page, `${state.project.path}/settings`);
   await test(page, "config-git-remote").waitFor();
   Object.assign(actual, await config(page));
   save("after.json", actual);
   for (const field of [
-    "conversationId",
+    "chatId",
     "instanceId",
     "messages",
     "gitRemote",
@@ -516,14 +516,14 @@ async function after() {
     await sameInput(page, "agent-edit-persona", before.persona);
     return { before: before.persona, after: await test(page, "agent-edit-persona").inputValue() };
   });
-  await check("restart_single_conversation_literal", page, async () => {
-    await goto(page, `${state.project.path}/conversations`);
-    await test(page, "conversation-item").waitFor();
-    const list = await test(page, "conversation-item").evaluateAll((nodes) =>
-      nodes.map((node) => node.dataset.conversationId),
+  await check("restart_single_chat_literal", page, async () => {
+    await goto(page, `${state.project.path}/chats`);
+    await test(page, "chat-item").waitFor();
+    const list = await test(page, "chat-item").evaluateAll((nodes) =>
+      nodes.map((node) => node.dataset.chatId),
     );
-    assert.deepEqual(list, [before.conversationId]);
-    return { before: [before.conversationId], after: list };
+    assert.deepEqual(list, [before.chatId]);
+    return { before: [before.chatId], after: list };
   });
 }
 try {

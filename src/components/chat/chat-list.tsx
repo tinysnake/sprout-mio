@@ -1,27 +1,27 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import type { AgentProfile, ProjectMember } from "../../contracts/agent";
-import type { Conversation } from "../../contracts/conversation";
+import type { Chat } from "../../contracts/chat";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
-import { createDirectConversationFn } from "../../server/functions/conversation";
+import { createDirectChatFn } from "../../server/functions/chat";
 import { Button } from "../ui/button";
 import { ResultError } from "../project/result-error";
 
-type ConversationAgent = { conversationId: string; agentProfileId?: string };
+type ChatAgent = { chatId: string; agentProfileId?: string };
 
-/** 发起按钮走 createDirectConversation 的幂等语义：已有 DM 时直接导航到既有对话。 */
-export function ConversationList({
+/** 发起按钮走 createDirectChat 的幂等语义：已有 DM 时直接导航到既有对话。 */
+export function ChatList({
   projectId,
-  conversations,
-  conversationAgents,
+  chats,
+  chatAgents,
   members,
   profiles,
 }: {
   projectId: string;
-  conversations: Conversation[];
-  conversationAgents: ConversationAgent[];
+  chats: Chat[];
+  chatAgents: ChatAgent[];
   members: ProjectMember[];
   profiles: AgentProfile[];
 }) {
@@ -30,16 +30,14 @@ export function ConversationList({
   const [error, setError] = useState<AppError | null>(null);
 
   const names = new Map(profiles.map((profile) => [profile.id, profile.name]));
-  const agentsByConversation = new Map(
-    conversationAgents.map((entry) => [entry.conversationId, entry.agentProfileId]),
-  );
+  const agentsByChat = new Map(chatAgents.map((entry) => [entry.chatId, entry.agentProfileId]));
 
   async function start(agentProfileId: string) {
     if (pending) return;
     setPending(true);
     setError(null);
     try {
-      const result = await createDirectConversationFn({
+      const result = await createDirectChatFn({
         data: { projectId, agentProfileId },
       });
       if (!result.ok) {
@@ -47,8 +45,8 @@ export function ConversationList({
         return;
       }
       await navigate({
-        to: "/projects/$projectId/conversations/$conversationId",
-        params: { projectId, conversationId: result.data.conversation.id },
+        to: "/projects/$projectId/chats/$chatId",
+        params: { projectId, chatId: result.data.chat.id },
       });
     } catch (cause) {
       setError(toAppError(cause, newId(ID_PREFIXES.request)));
@@ -65,44 +63,41 @@ export function ConversationList({
       {error && <ResultError error={error} testId="dm-start-error" />}
       <section className="space-y-3">
         <h3 className="text-sm font-medium text-muted-foreground">已有对话</h3>
-        {conversations.length === 0 ? (
-          <p data-testid="conversations-empty" className="text-sm text-muted-foreground">
+        {chats.length === 0 ? (
+          <p data-testid="chats-empty" className="text-sm text-muted-foreground">
             还没有对话。从下面的 Agent 成员里发起第一条。
           </p>
         ) : (
-          <ul
-            data-testid="conversation-list"
-            className="divide-y divide-border/60 rounded-lg border"
-          >
-            {conversations.map((conversation) => {
-              const agentProfileId = agentsByConversation.get(conversation.id);
+          <ul data-testid="chat-list" className="divide-y divide-border/60 rounded-lg border">
+            {chats.map((chat) => {
+              const agentProfileId = agentsByChat.get(chat.id);
               return (
                 <li
-                  key={conversation.id}
-                  data-testid="conversation-item"
-                  data-conversation-id={conversation.id}
+                  key={chat.id}
+                  data-testid="chat-item"
+                  data-chat-id={chat.id}
                   className="flex items-center justify-between gap-4 px-4 py-3"
                 >
                   <div>
-                    <span data-testid="conversation-item-name" className="font-medium">
+                    <span data-testid="chat-item-name" className="font-medium">
                       与 {nameOf(agentProfileId)} 的对话
                     </span>
                     <span
-                      data-testid="conversation-item-id"
+                      data-testid="chat-item-id"
                       className="mt-1 block font-mono text-xs break-all text-muted-foreground"
                     >
-                      {conversation.id}
+                      {chat.id}
                     </span>
                   </div>
                   <Button
                     type="button"
-                    data-testid="conversation-open"
-                    data-conversation-id={conversation.id}
+                    data-testid="chat-open"
+                    data-chat-id={chat.id}
                     disabled={pending}
                     onClick={() =>
                       void navigate({
-                        to: "/projects/$projectId/conversations/$conversationId",
-                        params: { projectId, conversationId: conversation.id },
+                        to: "/projects/$projectId/chats/$chatId",
+                        params: { projectId, chatId: chat.id },
                       })
                     }
                   >

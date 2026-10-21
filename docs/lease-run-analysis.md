@@ -25,7 +25,7 @@
 ## 分期前 scope 的基本需要
 
 - run 的结束表示本轮执行结束，不足以判断工作、验证、等待或交接是否结束。
-- Machine 租约表达 Project × Machine 内的独占操作权和占用；分身身份由 profile × Conversation 稳定确定。Machine 需加入当前 Project，同一物理 Machine 可以加入多个 Projects，各项目租约独立。
+- Machine 租约表达 Project × Machine 内的独占操作权和占用；分身身份由 profile × Chat 稳定确定。Machine 需加入当前 Project，同一物理 Machine 可以加入多个 Projects，各项目租约独立。
 - 其他 Project 的租约不阻止本项目申请，也不参与本项目协调或通过 Sprout 向 Agents 暴露。Project 硬隔离限定在 Sprout 层，共享 Machine 内部的文件、进程可见性及资源冲突由 Project organization 负责。
 - Task 不再持有租约。租约策略需要保证多轮工作能保留同一 Machine，同时允许主动归还和交接。
 - 后台进程、文件和租约的生命周期独立。挂靠或释放不自动清理进程，也不删除工作成果。

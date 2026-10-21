@@ -23,8 +23,8 @@ import { Route as AuthedProjectsProjectIdRouteImport } from './routes/_authed/pr
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthedProjectsProjectIdAgentsRouteImport } from './routes/_authed/projects.$projectId.agents'
 import { Route as AuthedProjectsProjectIdSettingsRouteImport } from './routes/_authed/projects.$projectId.settings'
-import { Route as AuthedProjectsProjectIdConversationsIndexRouteImport } from './routes/_authed/projects.$projectId.conversations.index'
-import { Route as AuthedProjectsProjectIdConversationsConversationIdRouteImport } from './routes/_authed/projects.$projectId.conversations.$conversationId'
+import { Route as AuthedProjectsProjectIdChatsIndexRouteImport } from './routes/_authed/projects.$projectId.chats.index'
+import { Route as AuthedProjectsProjectIdChatsChatIdRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -98,16 +98,16 @@ const AuthedProjectsProjectIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => AuthedProjectsProjectIdRoute,
   } as any)
-const AuthedProjectsProjectIdConversationsIndexRoute =
-  AuthedProjectsProjectIdConversationsIndexRouteImport.update({
-    id: '/conversations/',
-    path: '/conversations/',
+const AuthedProjectsProjectIdChatsIndexRoute =
+  AuthedProjectsProjectIdChatsIndexRouteImport.update({
+    id: '/chats/',
+    path: '/chats/',
     getParentRoute: () => AuthedProjectsProjectIdRoute,
   } as any)
-const AuthedProjectsProjectIdConversationsConversationIdRoute =
-  AuthedProjectsProjectIdConversationsConversationIdRouteImport.update({
-    id: '/conversations/$conversationId',
-    path: '/conversations/$conversationId',
+const AuthedProjectsProjectIdChatsChatIdRoute =
+  AuthedProjectsProjectIdChatsChatIdRouteImport.update({
+    id: '/chats/$chatId',
+    path: '/chats/$chatId',
     getParentRoute: () => AuthedProjectsProjectIdRoute,
   } as any)
 
@@ -125,8 +125,8 @@ export interface FileRoutesByFullPath {
   '/projects/': typeof AuthedProjectsIndexRoute
   '/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
-  '/projects/$projectId/conversations/$conversationId': typeof AuthedProjectsProjectIdConversationsConversationIdRoute
-  '/projects/$projectId/conversations/': typeof AuthedProjectsProjectIdConversationsIndexRoute
+  '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
+  '/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -140,8 +140,8 @@ export interface FileRoutesByTo {
   '/projects': typeof AuthedProjectsIndexRoute
   '/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
-  '/projects/$projectId/conversations/$conversationId': typeof AuthedProjectsProjectIdConversationsConversationIdRoute
-  '/projects/$projectId/conversations': typeof AuthedProjectsProjectIdConversationsIndexRoute
+  '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
+  '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -159,8 +159,8 @@ export interface FileRoutesById {
   '/_authed/projects/': typeof AuthedProjectsIndexRoute
   '/_authed/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
   '/_authed/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
-  '/_authed/projects/$projectId/conversations/$conversationId': typeof AuthedProjectsProjectIdConversationsConversationIdRoute
-  '/_authed/projects/$projectId/conversations/': typeof AuthedProjectsProjectIdConversationsIndexRoute
+  '/_authed/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
+  '/_authed/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -178,8 +178,8 @@ export interface FileRouteTypes {
     | '/projects/'
     | '/projects/$projectId/agents'
     | '/projects/$projectId/settings'
-    | '/projects/$projectId/conversations/$conversationId'
-    | '/projects/$projectId/conversations/'
+    | '/projects/$projectId/chats/$chatId'
+    | '/projects/$projectId/chats/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -193,8 +193,8 @@ export interface FileRouteTypes {
     | '/projects'
     | '/projects/$projectId/agents'
     | '/projects/$projectId/settings'
-    | '/projects/$projectId/conversations/$conversationId'
-    | '/projects/$projectId/conversations'
+    | '/projects/$projectId/chats/$chatId'
+    | '/projects/$projectId/chats'
   id:
     | '__root__'
     | '/'
@@ -211,8 +211,8 @@ export interface FileRouteTypes {
     | '/_authed/projects/'
     | '/_authed/projects/$projectId/agents'
     | '/_authed/projects/$projectId/settings'
-    | '/_authed/projects/$projectId/conversations/$conversationId'
-    | '/_authed/projects/$projectId/conversations/'
+    | '/_authed/projects/$projectId/chats/$chatId'
+    | '/_authed/projects/$projectId/chats/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -324,18 +324,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedProjectsProjectIdSettingsRouteImport
       parentRoute: typeof AuthedProjectsProjectIdRoute
     }
-    '/_authed/projects/$projectId/conversations/': {
-      id: '/_authed/projects/$projectId/conversations/'
-      path: '/conversations'
-      fullPath: '/projects/$projectId/conversations/'
-      preLoaderRoute: typeof AuthedProjectsProjectIdConversationsIndexRouteImport
+    '/_authed/projects/$projectId/chats/': {
+      id: '/_authed/projects/$projectId/chats/'
+      path: '/chats'
+      fullPath: '/projects/$projectId/chats/'
+      preLoaderRoute: typeof AuthedProjectsProjectIdChatsIndexRouteImport
       parentRoute: typeof AuthedProjectsProjectIdRoute
     }
-    '/_authed/projects/$projectId/conversations/$conversationId': {
-      id: '/_authed/projects/$projectId/conversations/$conversationId'
-      path: '/conversations/$conversationId'
-      fullPath: '/projects/$projectId/conversations/$conversationId'
-      preLoaderRoute: typeof AuthedProjectsProjectIdConversationsConversationIdRouteImport
+    '/_authed/projects/$projectId/chats/$chatId': {
+      id: '/_authed/projects/$projectId/chats/$chatId'
+      path: '/chats/$chatId'
+      fullPath: '/projects/$projectId/chats/$chatId'
+      preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdRouteImport
       parentRoute: typeof AuthedProjectsProjectIdRoute
     }
   }
@@ -358,18 +358,18 @@ const AuthedAgentsRouteWithChildren = AuthedAgentsRoute._addFileChildren(
 interface AuthedProjectsProjectIdRouteChildren {
   AuthedProjectsProjectIdAgentsRoute: typeof AuthedProjectsProjectIdAgentsRoute
   AuthedProjectsProjectIdSettingsRoute: typeof AuthedProjectsProjectIdSettingsRoute
-  AuthedProjectsProjectIdConversationsConversationIdRoute: typeof AuthedProjectsProjectIdConversationsConversationIdRoute
-  AuthedProjectsProjectIdConversationsIndexRoute: typeof AuthedProjectsProjectIdConversationsIndexRoute
+  AuthedProjectsProjectIdChatsChatIdRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
+  AuthedProjectsProjectIdChatsIndexRoute: typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 
 const AuthedProjectsProjectIdRouteChildren: AuthedProjectsProjectIdRouteChildren =
   {
     AuthedProjectsProjectIdAgentsRoute: AuthedProjectsProjectIdAgentsRoute,
     AuthedProjectsProjectIdSettingsRoute: AuthedProjectsProjectIdSettingsRoute,
-    AuthedProjectsProjectIdConversationsConversationIdRoute:
-      AuthedProjectsProjectIdConversationsConversationIdRoute,
-    AuthedProjectsProjectIdConversationsIndexRoute:
-      AuthedProjectsProjectIdConversationsIndexRoute,
+    AuthedProjectsProjectIdChatsChatIdRoute:
+      AuthedProjectsProjectIdChatsChatIdRoute,
+    AuthedProjectsProjectIdChatsIndexRoute:
+      AuthedProjectsProjectIdChatsIndexRoute,
   }
 
 const AuthedProjectsProjectIdRouteWithChildren =

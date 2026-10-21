@@ -21,7 +21,7 @@ function scenario(name: string, body: string, reopen?: string): void {
     const { newId, ID_PREFIXES } = await import('./src/contracts/ids.ts');
     const agent = await import('./src/domain/agent.ts');
     const config = await import('./src/domain/project-config.ts');
-    const dm = await import('./src/domain/conversation.ts');
+    const dm = await import('./src/domain/chat.ts');
     const contracts = await import('./src/contracts/index.ts');
     const { createProject } = await import('./src/domain/project.ts');
     const ctxA = { userId: 'identity-user-a', requestId: newId(ID_PREFIXES.request) };
@@ -68,29 +68,29 @@ describe("P2 身份、Project 授权与持久对话", () => {
         agent_profile: ['id','name','persona','harness','model','effort','created_by','created_at','updated_at','job_title'],
         project_profile: ['project_id','git_remote','default_branch','work_directory','updated_at'],
         project_member: ['project_id','agent_profile_id','added_by','added_at'],
-        conversation: ['id','project_id','kind','title','archived_at','created_by','created_at','updated_at'],
-        conversation_member: ['conversation_id','member_kind','member_id','added_at'],
-        agent_instance: ['id','agent_profile_id','conversation_id','project_id','created_at','updated_at'],
-        message: ['id','conversation_id','sender_kind','sender_id','body','created_at'],
+        chat: ['id','project_id','kind','title','archived_at','created_by','created_at','updated_at'],
+        chat_member: ['chat_id','member_kind','member_id','added_at'],
+        agent_instance: ['id','agent_profile_id','chat_id','project_id','created_at','updated_at'],
+        message: ['id','chat_id','sender_kind','sender_id','body','created_at'],
       };
       for (const [table, columns] of Object.entries(expected)) {
         assert.deepEqual(sqlite.prepare('PRAGMA table_info(' + table + ')').all().map(row => row.name), columns);
       }
       assert.equal(count('__drizzle_migrations'), readdirSync('drizzle').filter(file => file.endsWith('.sql')).length);
       assert.equal(sqlite.pragma('foreign_keys', { simple: true }), 1);
-      for (const [table, columns] of Object.entries({ project_member: ['project_id','agent_profile_id'], conversation_member: ['conversation_id','member_kind','member_id'] })) {
+      for (const [table, columns] of Object.entries({ project_member: ['project_id','agent_profile_id'], chat_member: ['chat_id','member_kind','member_id'] })) {
         assert.deepEqual(sqlite.prepare('PRAGMA table_info(' + table + ')').all().filter(row => row.pk).sort((a,b) => a.pk-b.pk).map(row => row.name), columns);
       }
-      assert.deepEqual(sqlite.prepare('PRAGMA index_info(agent_instance_profile_conversation_unique)').all().map(row => row.name), ['agent_profile_id','conversation_id']);
-      assert.equal(sqlite.prepare('PRAGMA index_list(agent_instance)').all().find(row => row.name === 'agent_instance_profile_conversation_unique').unique, 1);
-      assert.deepEqual(sqlite.prepare('PRAGMA index_info(message_conversation_created_at_idx)').all().map(row => row.name), ['conversation_id','created_at']);
-      assert.throws(() => sqlite.prepare("INSERT INTO conversation (id,project_id,kind,created_by) VALUES ('bad',?,'group',?)").run(projectA.id, ctxA.userId), /CHECK constraint/);
+      assert.deepEqual(sqlite.prepare('PRAGMA index_info(agent_instance_profile_chat_unique)').all().map(row => row.name), ['agent_profile_id','chat_id']);
+      assert.equal(sqlite.prepare('PRAGMA index_list(agent_instance)').all().find(row => row.name === 'agent_instance_profile_chat_unique').unique, 1);
+      assert.deepEqual(sqlite.prepare('PRAGMA index_info(message_chat_created_at_idx)').all().map(row => row.name), ['chat_id','created_at']);
+      assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,created_by) VALUES ('bad',?,'group',?)").run(projectA.id, ctxA.userId), /CHECK constraint/);
       assert.throws(() => sqlite.prepare("INSERT INTO project_profile (project_id) VALUES ('missing')").run(), /FOREIGN KEY constraint/);
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
-      const direct = dm.createDirectConversation(projectA.id, profileA.id, ctxA);
-      assert.throws(() => sqlite.prepare('INSERT INTO agent_instance (id,agent_profile_id,conversation_id,project_id) VALUES (?,?,?,?)').run(newId(ID_PREFIXES.instance), profileA.id, direct.conversation.id, projectA.id), /UNIQUE constraint/);
-      assert.throws(() => sqlite.prepare("INSERT INTO conversation_member (conversation_id,member_kind,member_id) VALUES (?,'robot','bad')").run(direct.conversation.id), /CHECK constraint/);
-      assert.throws(() => sqlite.prepare("INSERT INTO message (id,conversation_id,sender_kind,sender_id,body) VALUES ('bad',?,'robot','bad','bad')").run(direct.conversation.id), /CHECK constraint/);
+      const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
+      assert.throws(() => sqlite.prepare('INSERT INTO agent_instance (id,agent_profile_id,chat_id,project_id) VALUES (?,?,?,?)').run(newId(ID_PREFIXES.instance), profileA.id, direct.chat.id, projectA.id), /UNIQUE constraint/);
+      assert.throws(() => sqlite.prepare("INSERT INTO chat_member (chat_id,member_kind,member_id) VALUES (?,'robot','bad')").run(direct.chat.id), /CHECK constraint/);
+      assert.throws(() => sqlite.prepare("INSERT INTO message (id,chat_id,sender_kind,sender_id,body) VALUES ('bad',?,'robot','bad','bad')").run(direct.chat.id), /CHECK constraint/);
     `,
     );
   });
@@ -104,14 +104,14 @@ describe("P2 身份、Project 授权与持久对话", () => {
       assert.throws(() => agent.addProjectMember(projectA.id, profileA.id, ctxA), error => error.code === 'conflict');
       assert.equal(count('project_member'), 1);
       assert.deepEqual(agent.listProjectMembers(projectA.id, ctxA), [member]);
-      const direct = dm.createDirectConversation(projectA.id, profileA.id, ctxA);
+      const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       agent.removeProjectMember(projectA.id, profileA.id, ctxA);
       assert.deepEqual(agent.listProjectMembers(projectA.id, ctxA), []);
       assert.equal(dm.getInstance(direct.instance.id, ctxA).id, direct.instance.id);
-      assert.equal(dm.getConversation(direct.conversation.id, ctxA).id, direct.conversation.id);
-      notFound(() => dm.createDirectConversation(projectA.id, profileA.id, ctxA));
+      assert.equal(dm.getChat(direct.chat.id, ctxA).id, direct.chat.id);
+      notFound(() => dm.createDirectChat(projectA.id, profileA.id, ctxA));
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
-      assert.deepEqual(dm.createDirectConversation(projectA.id, profileA.id, ctxA), direct);
+      assert.deepEqual(dm.createDirectChat(projectA.id, profileA.id, ctxA), direct);
     `,
     );
   });
@@ -121,27 +121,27 @@ describe("P2 身份、Project 授权与持久对话", () => {
       "direct identity",
       `
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
-      const first = dm.createDirectConversation(projectA.id, profileA.id, ctxA);
-      const second = dm.createDirectConversation(projectA.id, profileA.id, ctxA);
+      const first = dm.createDirectChat(projectA.id, profileA.id, ctxA);
+      const second = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       assert.deepEqual(first, second);
-      assert.equal(count('conversation'), 1);
+      assert.equal(count('chat'), 1);
       assert.equal(count('agent_instance'), 1);
-      assert.equal(count('conversation_member'), 2);
-      const members = dm.listConversationMembers(first.conversation.id, ctxA);
+      assert.equal(count('chat_member'), 2);
+      const members = dm.listChatMembers(first.chat.id, ctxA);
       assert.deepEqual(members.map(({ memberKind, memberId }) => [memberKind, memberId]), [['human', ctxA.userId], ['agent', profileA.id]]);
-      assert.deepEqual(dm.listInstancesForConversation(first.conversation.id, ctxA), [first.instance]);
-      contracts.conversationSchema.parse(first.conversation);
+      assert.deepEqual(dm.listInstancesForChat(first.chat.id, ctxA), [first.instance]);
+      contracts.chatSchema.parse(first.chat);
       contracts.agentInstanceSchema.parse(first.instance);
-      members.forEach(member => contracts.conversationMemberSchema.parse(member));
+      members.forEach(member => contracts.chatMemberSchema.parse(member));
       const another = createProject({ name: 'Another Project A' }, ctxA);
       agent.addProjectMember(another.id, profileA.id, ctxA);
-      const other = dm.createDirectConversation(another.id, profileA.id, ctxA);
-      assert.notEqual(first.conversation.id, other.conversation.id);
+      const other = dm.createDirectChat(another.id, profileA.id, ctxA);
+      assert.notEqual(first.chat.id, other.chat.id);
       assert.notEqual(first.instance.id, other.instance.id);
-      assert.deepEqual(dm.listConversations(projectA.id, ctxA), [first.conversation]);
-      const events = sqlite.prepare("SELECT * FROM diagnostic_event WHERE event='conversation.created' AND project_id=?").all(projectA.id);
+      assert.deepEqual(dm.listChats(projectA.id, ctxA), [first.chat]);
+      const events = sqlite.prepare("SELECT * FROM diagnostic_event WHERE event='chat.created' AND project_id=?").all(projectA.id);
       assert.equal(events.length, 1);
-      assert.equal(events[0].conversation_id, first.conversation.id);
+      assert.equal(events[0].chat_id, first.chat.id);
       assert.equal(events[0].instance_id, first.instance.id);
       assert.equal(events[0].request_id, ctxA.requestId);
       assert.equal(events[0].run_id, null);
@@ -155,25 +155,25 @@ describe("P2 身份、Project 授权与持久对话", () => {
       "profile updates persist identity",
       `
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
-      const direct = dm.createDirectConversation(projectA.id, profileA.id, ctxA);
-      const entry = dm.sendMessage(direct.conversation.id, contracts.sendMessageInput.parse({ senderKind: 'human', senderId: ctxA.userId, body: '保留历史' }), ctxA);
+      const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
+      const entry = dm.sendMessage(direct.chat.id, contracts.sendMessageInput.parse({ senderKind: 'human', senderId: ctxA.userId, body: '保留历史' }), ctxA);
       const changed = agent.updateAgentProfile(profileA.id, contracts.updateAgentProfileInput.parse({ persona: '新的人设', model: 'new-model' }), ctxA);
       assert.equal(changed.persona, '新的人设');
       assert.equal(changed.model, 'new-model');
       assert.equal(changed.id, profileA.id);
       assert.deepEqual(dm.getInstance(direct.instance.id, ctxA), direct.instance);
-      assert.deepEqual(dm.listMessages(direct.conversation.id, ctxA), [entry]);
+      assert.deepEqual(dm.listMessages(direct.chat.id, ctxA), [entry]);
       config.updateProjectProfile(projectA.id, contracts.updateProjectProfileInput.parse({ gitRemote: 'https://example.test/repo.git', defaultBranch: 'develop', workDirectory: 'packages/app' }), ctxA);
-      sqlite.prepare('CREATE TABLE test_identity (conversation_id TEXT, instance_id TEXT, profile_id TEXT, message_id TEXT, project_id TEXT)').run();
-      sqlite.prepare('INSERT INTO test_identity VALUES (?,?,?,?,?)').run(direct.conversation.id, direct.instance.id, profileA.id, entry.id, projectA.id);
+      sqlite.prepare('CREATE TABLE test_identity (chat_id TEXT, instance_id TEXT, profile_id TEXT, message_id TEXT, project_id TEXT)').run();
+      sqlite.prepare('INSERT INTO test_identity VALUES (?,?,?,?,?)').run(direct.chat.id, direct.instance.id, profileA.id, entry.id, projectA.id);
     `,
       `
       const saved = sqlite.prepare('SELECT * FROM test_identity').get();
-      const reopened = dm.createDirectConversation(saved.project_id, saved.profile_id, ctxA);
-      assert.equal(reopened.conversation.id, saved.conversation_id);
+      const reopened = dm.createDirectChat(saved.project_id, saved.profile_id, ctxA);
+      assert.equal(reopened.chat.id, saved.chat_id);
       assert.equal(reopened.instance.id, saved.instance_id);
-      assert.equal(dm.listMessages(saved.conversation_id, ctxA)[0].id, saved.message_id);
-      assert.equal(dm.listMessages(saved.conversation_id, ctxA)[0].body, '保留历史');
+      assert.equal(dm.listMessages(saved.chat_id, ctxA)[0].id, saved.message_id);
+      assert.equal(dm.listMessages(saved.chat_id, ctxA)[0].body, '保留历史');
       assert.equal(agent.getAgentProfile(saved.profile_id, ctxA).persona, '新的人设');
       assert.equal(agent.getAgentProfile(saved.profile_id, ctxA).model, 'new-model');
       assert.equal(config.getProjectProfile(saved.project_id, ctxA).defaultBranch, 'develop');
@@ -188,10 +188,10 @@ describe("P2 身份、Project 授权与持久对话", () => {
       `
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
       agent.addProjectMember(projectB.id, profileB.id, ctxB);
-      const direct = dm.createDirectConversation(projectA.id, profileA.id, ctxA);
-      const other = dm.createDirectConversation(projectB.id, profileB.id, ctxB);
-      dm.sendMessage(direct.conversation.id, { senderKind: 'human', senderId: ctxA.userId, body: 'A private' }, ctxA);
-      dm.sendMessage(other.conversation.id, { senderKind: 'human', senderId: ctxB.userId, body: 'B private' }, ctxB);
+      const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
+      const other = dm.createDirectChat(projectB.id, profileB.id, ctxB);
+      dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxA.userId, body: 'A private' }, ctxA);
+      dm.sendMessage(other.chat.id, { senderKind: 'human', senderId: ctxB.userId, body: 'B private' }, ctxB);
       const { assertProjectAccess } = await import('./src/domain/access.ts');
       for (const denied of [
         () => assertProjectAccess(ctxB, projectA.id),
@@ -203,20 +203,20 @@ describe("P2 身份、Project 授权与持久对话", () => {
         () => agent.removeProjectMember(projectA.id, profileA.id, ctxB),
         () => agent.getAgentProfile(profileA.id, ctxB),
         () => agent.updateAgentProfile(profileA.id, { persona: 'stolen' }, ctxB),
-        () => dm.createDirectConversation(projectA.id, profileA.id, ctxB),
-        () => dm.listConversations(projectA.id, ctxB),
-        () => dm.getConversation(direct.conversation.id, ctxB),
-        () => dm.listConversationMembers(direct.conversation.id, ctxB),
-        () => dm.listInstancesForConversation(direct.conversation.id, ctxB),
+        () => dm.createDirectChat(projectA.id, profileA.id, ctxB),
+        () => dm.listChats(projectA.id, ctxB),
+        () => dm.getChat(direct.chat.id, ctxB),
+        () => dm.listChatMembers(direct.chat.id, ctxB),
+        () => dm.listInstancesForChat(direct.chat.id, ctxB),
         () => dm.getInstance(direct.instance.id, ctxB),
-        () => dm.listMessages(direct.conversation.id, ctxB),
-        () => dm.sendMessage(direct.conversation.id, { senderKind: 'human', senderId: ctxB.userId, body: 'stolen' }, ctxB),
+        () => dm.listMessages(direct.chat.id, ctxB),
+        () => dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxB.userId, body: 'stolen' }, ctxB),
       ]) notFound(denied);
       assert.deepEqual(agent.listAgentProfiles(ctxB).map(row => row.id), [profileB.id]);
-      assert.deepEqual(dm.listConversations(projectB.id, ctxB).map(row => row.id), [other.conversation.id]);
-      assert.deepEqual(dm.listMessages(other.conversation.id, ctxB).map(row => row.body), ['B private']);
+      assert.deepEqual(dm.listChats(projectB.id, ctxB).map(row => row.id), [other.chat.id]);
+      assert.deepEqual(dm.listMessages(other.chat.id, ctxB).map(row => row.body), ['B private']);
       const errorShape = (fn) => { try { fn(); assert.fail('must fail'); } catch (error) { return [error.code, error.message]; } };
-      assert.deepEqual(errorShape(() => dm.getConversation(direct.conversation.id, ctxB)), errorShape(() => dm.getConversation(newId(ID_PREFIXES.conversation), ctxB)));
+      assert.deepEqual(errorShape(() => dm.getChat(direct.chat.id, ctxB)), errorShape(() => dm.getChat(newId(ID_PREFIXES.chat), ctxB)));
       assert.deepEqual(errorShape(() => config.getProjectProfile(projectA.id, ctxB)), errorShape(() => config.getProjectProfile(newId(ID_PREFIXES.project), ctxB)));
     `,
     );
@@ -227,25 +227,25 @@ describe("P2 身份、Project 授权与持久对话", () => {
       "messages and senders",
       `
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
-      const direct = dm.createDirectConversation(projectA.id, profileA.id, ctxA);
+      const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       const entries = [
-        dm.sendMessage(direct.conversation.id, contracts.sendMessageInput.parse({ senderKind: 'human', senderId: ctxA.userId, body: '  first  ' }), ctxA),
-        dm.sendMessage(direct.conversation.id, { senderKind: 'agent', senderId: profileA.id, body: 'second' }, ctxA),
-        dm.sendMessage(direct.conversation.id, { senderKind: 'human', senderId: ctxA.userId, body: 'third' }, ctxA),
+        dm.sendMessage(direct.chat.id, contracts.sendMessageInput.parse({ senderKind: 'human', senderId: ctxA.userId, body: '  first  ' }), ctxA),
+        dm.sendMessage(direct.chat.id, { senderKind: 'agent', senderId: profileA.id, body: 'second' }, ctxA),
+        dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxA.userId, body: 'third' }, ctxA),
       ];
       entries.forEach(entry => contracts.messageSchema.parse(entry));
-      sqlite.prepare('UPDATE message SET created_at=100 WHERE conversation_id=?').run(direct.conversation.id);
-      assert.deepEqual(dm.listMessages(direct.conversation.id, ctxA).map(row => row.id), entries.map(row => row.id));
+      sqlite.prepare('UPDATE message SET created_at=100 WHERE chat_id=?').run(direct.chat.id);
+      assert.deepEqual(dm.listMessages(direct.chat.id, ctxA).map(row => row.id), entries.map(row => row.id));
       sqlite.prepare('UPDATE message SET created_at=99 WHERE id=?').run(entries[2].id);
-      assert.deepEqual(dm.listMessages(direct.conversation.id, ctxA).map(row => row.body), ['third', 'first', 'second']);
-      assert.deepEqual(dm.listMessages(direct.conversation.id, ctxA), dm.listMessages(direct.conversation.id, ctxA));
+      assert.deepEqual(dm.listMessages(direct.chat.id, ctxA).map(row => row.body), ['third', 'first', 'second']);
+      assert.deepEqual(dm.listMessages(direct.chat.id, ctxA), dm.listMessages(direct.chat.id, ctxA));
       for (const [senderKind, senderId] of [['human', ctxB.userId], ['agent', profileB.id], ['agent', direct.instance.id]]) {
-        notFound(() => dm.sendMessage(direct.conversation.id, { senderKind, senderId, body: 'forged' }, ctxA));
+        notFound(() => dm.sendMessage(direct.chat.id, { senderKind, senderId, body: 'forged' }, ctxA));
       }
       assert.equal(count('message'), 3);
       const event = sqlite.prepare("SELECT * FROM diagnostic_event WHERE event='message.sent' AND instance_id IS NOT NULL").get();
       assert.equal(event.instance_id, direct.instance.id);
-      assert.equal(event.conversation_id, direct.conversation.id);
+      assert.equal(event.chat_id, direct.chat.id);
       assert.equal(event.project_id, projectA.id);
       assert.equal(event.request_id, ctxA.requestId);
     `,
@@ -259,9 +259,9 @@ describe("P2 身份、Project 授权与持久对话", () => {
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
       const spare = agent.createAgentProfile(contracts.createAgentProfileInput.parse({ name: 'spare' }), ctxA);
       agent.addProjectMember(projectA.id, spare.id, ctxA);
-      const direct = dm.createDirectConversation(projectA.id, profileA.id, ctxA);
+      const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       config.updateProjectProfile(projectA.id, { defaultBranch: 'main' }, ctxA);
-      const tables = ['agent_profile','project_profile','project_member','conversation','conversation_member','agent_instance','message','diagnostic_event'];
+      const tables = ['agent_profile','project_profile','project_member','chat','chat_member','agent_instance','message','diagnostic_event'];
       const snapshot = () => tables.map(table => sqlite.prepare('SELECT * FROM ' + table + ' ORDER BY rowid').all());
       const failing = { afterWrite: () => { throw new Error('injected write failure'); } };
       const operations = [
@@ -270,8 +270,8 @@ describe("P2 身份、Project 授权与持久对话", () => {
         hooks => config.updateProjectProfile(projectA.id, { defaultBranch: 'rollback' }, ctxA, hooks),
         hooks => agent.addProjectMember(projectB.id, profileB.id, ctxB, hooks),
         hooks => agent.removeProjectMember(projectA.id, spare.id, ctxA, hooks),
-        hooks => dm.createDirectConversation(projectA.id, spare.id, ctxA, hooks),
-        hooks => dm.sendMessage(direct.conversation.id, { senderKind: 'human', senderId: ctxA.userId, body: 'rollback' }, ctxA, hooks),
+        hooks => dm.createDirectChat(projectA.id, spare.id, ctxA, hooks),
+        hooks => dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxA.userId, body: 'rollback' }, ctxA, hooks),
       ];
       for (const operation of operations) {
         const before = snapshot();

@@ -111,7 +111,7 @@ function serverFnIds() {
   const source = walk('.output/server').map(file => readFileSync(file, 'utf8')).join('\n')
   return Object.fromEntries([...source.matchAll(/id: "([0-9a-f]{64})",\s*\n\s*name: "(\w+)"/g)].map(match => [match[2], match[1]]))
 }
-let ids, cookie, db, server, userId, projectId, profileId, conversationId, instanceId
+let ids, cookie, db, server, userId, projectId, profileId, chatId, instanceId
 async function call(name, data) {
   assert(ids[name], `built ${name} missing`)
   const response = await fetch(`${base}/_serverFn/${ids[name]}`, {
@@ -125,9 +125,9 @@ async function call(name, data) {
   assert(result.ok, `${name} rejected ${JSON.stringify(result)}`)
   return result.data
 }
-const allRuns = () => db.prepare('SELECT * FROM agent_run WHERE conversation_id=? ORDER BY rowid').all(conversationId)
+const allRuns = () => db.prepare('SELECT * FROM agent_run WHERE chat_id=? ORDER BY rowid').all(chatId)
 async function send(body) {
-  return call('sendMessageFn', { conversationId, body })
+  return call('sendMessageFn', { chatId, body })
 }
 async function waitRun(status, previous = 0) {
   return until(() => {
@@ -139,7 +139,7 @@ async function waitRun(status, previous = 0) {
   }, `run ${status}`, live ? 600000 : 30000)
 }
 function noLostInputs() {
-  const rows = db.prepare("SELECT m.id, count(i.message_id) AS inputs FROM message m LEFT JOIN agent_run_input i ON i.message_id=m.id WHERE m.conversation_id=? AND m.sender_kind='human' GROUP BY m.id").all(conversationId)
+  const rows = db.prepare("SELECT m.id, count(i.message_id) AS inputs FROM message m LEFT JOIN agent_run_input i ON i.message_id=m.id WHERE m.chat_id=? AND m.sender_kind='human' GROUP BY m.id").all(chatId)
   assert(rows.every(row => row.inputs === 1), 'every human message must have exactly one run input')
   pass('every human message has exactly one run input', rows)
 }
@@ -150,7 +150,7 @@ function snapshot(row) {
   assert.equal(`${value.provider}/${value.model}`, model)
   assert.deepEqual(value.tools, ['bash','edit','read','write'])
   assert.deepEqual(value.extensions, ['sprout-extension'])
-  assert.equal(value.profile.persona, 'Reply concisely. Remember conversation facts. Do not use tools unless requested.')
+  assert.equal(value.profile.persona, 'Reply concisely. Remember chat facts. Do not use tools unless requested.')
   if (live) {
     const entries=readFileSync(value.sessionFile,'utf8').trim().split('\n').map(line=>JSON.parse(line))
     const actual=entries.filter(entry=>entry.type==='message'&&entry.message?.role==='assistant').at(-1)?.message
@@ -211,10 +211,10 @@ try {
     userId=(await signup.json()).user.id
     ids=serverFnIds()
     projectId=(await call('createProjectFn',{name:'Pi verification'})).id
-    profileId=(await call('createAgentProfileFn',{name:'Pi verification agent',persona:'Reply concisely. Remember conversation facts. Do not use tools unless requested.',model,effort:'off'})).id
+    profileId=(await call('createAgentProfileFn',{name:'Pi verification agent',persona:'Reply concisely. Remember chat facts. Do not use tools unless requested.',model,effort:'off'})).id
     await call('addProjectMemberFn',{projectId,agentProfileId:profileId})
-    const direct=await call('createDirectConversationFn',{projectId,agentProfileId:profileId})
-    conversationId=direct.conversation.id
+    const direct=await call('createDirectChatFn',{projectId,agentProfileId:profileId})
+    chatId=direct.chat.id
     instanceId=direct.instance.id
     await delay(300)
     if (!live) {
@@ -224,7 +224,7 @@ try {
       pass('lazy startup has no child process', {spawnLog, processScan:'ps -axo pid,ppid,command'})
     }
     const codeword=`MIO_${randomBytes(12).toString('hex')}`
-    await send(live ? `Remember this exact codeword for this conversation: ${codeword}. Reply with that codeword only.` : 'stub-success')
+    await send(live ? `Remember this exact codeword for this chat: ${codeword}. Reply with that codeword only.` : 'stub-success')
     const first=await waitRun('completed')
     const firstSnapshot=snapshot(first)
     assert.equal(first.stop_reason,'stop')
@@ -272,7 +272,7 @@ try {
         const separator=cookie.indexOf('=')
         await context.addCookies([{name:cookie.slice(0,separator),value:cookie.slice(separator+1),url:base}])
         const page=await context.newPage()
-        await page.goto(`${base}/projects/${projectId}/conversations/${conversationId}`,{waitUntil:'domcontentloaded',timeout:30000})
+        await page.goto(`${base}/projects/${projectId}/chats/${chatId}`,{waitUntil:'domcontentloaded',timeout:30000})
         await page.waitForSelector('[data-testid="message-item"][data-sender-kind="agent"]',{timeout:20000})
         const replies=await page.$$eval('[data-testid="message-item"][data-sender-kind="agent"] [data-testid="message-body"]',nodes=>nodes.map(node=>node.textContent))
         assert.equal(replies.length,3)
@@ -305,7 +305,7 @@ try {
       await call('updateAgentProfileFn',{agentProfileId:profileId,persona:newPersona})
       const holdSnapshotAfter=JSON.parse(db.prepare('SELECT config_snapshot FROM agent_run WHERE id=?').get(holdRun.id).config_snapshot)
       assert.equal(holdSnapshotAfter.profile.persona,holdSnapshotBefore.profile.persona,'editing the profile must not rewrite the running turn snapshot')
-      const agentRepliesBefore=db.prepare("SELECT count(*) AS n FROM message WHERE conversation_id=? AND sender_kind='agent'").get(conversationId).n
+      const agentRepliesBefore=db.prepare("SELECT count(*) AS n FROM message WHERE chat_id=? AND sender_kind='agent'").get(chatId).n
       const stoppedRun=await call('abortAgentRunFn',{runId:holdRun.id})
       assert.equal(stoppedRun.status,'aborted')
       const abortedRow=await until(()=>{
@@ -313,7 +313,7 @@ try {
         return row.status==='aborted'&&row.assistant_message_id===null?row:undefined
       },'user stop settles the running run as aborted',30000)
       assert.equal(abortedRow.stop_reason,'aborted')
-      assert.equal(db.prepare("SELECT count(*) AS n FROM message WHERE conversation_id=? AND sender_kind='agent'").get(conversationId).n,agentRepliesBefore)
+      assert.equal(db.prepare("SELECT count(*) AS n FROM message WHERE chat_id=? AND sender_kind='agent'").get(chatId).n,agentRepliesBefore)
       pass('user stop of a running turn yields aborted with no agent reply',{runId:abortedRow.id,status:abortedRow.status,stopReason:abortedRow.stop_reason,assistantMessageId:abortedRow.assistant_message_id})
       await send('According to your instructions, what exact word must you answer with? Reply with that word only.');
       const nextTurn=await waitRun('completed',5)
@@ -350,7 +350,7 @@ try {
       assert.equal(allRuns().length,4)
       const inputs=db.prepare('SELECT * FROM agent_run_input WHERE run_id=? ORDER BY rowid').all(running.id)
       assert.deepEqual(inputs.map(row=>row.disposition),['delivered','pending'])
-      assert.throws(()=>db.prepare("INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,session_id) VALUES ('illegal-active',?,?,?,?,'queued',?)").run(instanceId,conversationId,projectId,'req_duplicate',instanceId),/UNIQUE constraint/)
+      assert.throws(()=>db.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id) VALUES ('illegal-active',?,?,?,?,'queued',?)").run(instanceId,chatId,projectId,'req_duplicate',instanceId),/UNIQUE constraint/)
       pass('active-run partial index rejects second run and preserves pending input', {runId:running.id,inputs})
       await call('updateAgentProfileFn',{agentProfileId:profileId,persona:'Changed after turn started',model:'protocol/changed'})
       const frozen=snapshot(db.prepare('SELECT * FROM agent_run WHERE id=?').get(running.id))
@@ -365,7 +365,7 @@ try {
       for (const pid of pids) assert.throws(()=>process.kill(pid,0),error=>error.code==='ESRCH','all Pi children must exit before stopped')
       pass('SIGTERM interrupts running run and preserves completed run', {before,after:allRuns().map(row=>({id:row.id,status:row.status})),pids})
       const abandoned=`run_${randomUUID()}`
-      db.prepare("INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,session_id) VALUES (?,?,?,?,?,'queued',?)").run(abandoned,instanceId,conversationId,projectId,'req_abandoned',instanceId)
+      db.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id) VALUES (?,?,?,?,?,'queued',?)").run(abandoned,instanceId,chatId,projectId,'req_abandoned',instanceId)
       server=launch(process.execPath,['.output/server/index.mjs'],'server-second.log')
       const secondHealth=await health(server)
       assert.notEqual(firstHealth.bootId,secondHealth.bootId)
@@ -375,7 +375,7 @@ try {
       pass('startup recovery interrupts abandoned queued run', {id:abandoned,status:'interrupted',firstBootId:firstHealth.bootId,secondBootId:secondHealth.bootId})
       await stop(server)
       const abandonedRunning=`run_${randomUUID()}`
-      db.prepare("INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,session_id,started_at) VALUES (?,?,?,?,?,'running',?,unixepoch())").run(abandonedRunning,instanceId,conversationId,projectId,'req_abandoned_running',instanceId)
+      db.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id,started_at) VALUES (?,?,?,?,?,'running',?,unixepoch())").run(abandonedRunning,instanceId,chatId,projectId,'req_abandoned_running',instanceId)
       const spawnCount=readFileSync(spawnLog,'utf8').trim().split('\n').length
       server=launch(process.execPath,['.output/server/index.mjs'],'server-disabled.log',{...environment,SPROUT_PI_ENABLED:'false'})
       await health(server)
@@ -433,11 +433,11 @@ try {
     }
     await stop(server)
     pass('production shutdown', {runs:allRuns().map(row=>({id:row.id,status:row.status})),directory})
-    writeFileSync(join(directory,'state.json'),JSON.stringify({userId,projectId,profileId,conversationId,instanceId,model,sessionFile:firstSnapshot.sessionFile},null,2)+'\n')
+    writeFileSync(join(directory,'state.json'),JSON.stringify({userId,projectId,profileId,chatId,instanceId,model,sessionFile:firstSnapshot.sessionFile},null,2)+'\n')
   }
 } catch(error) {
   console.error(`FAIL ${live?'LIVE':'HERMETIC'} ${error.stack??error}`)
-  if (live && db && conversationId) {
+  if (live && db && chatId) {
     const rows=allRuns()
     const states=Array.from({length:Math.max(3,rows.length)},(_,index)=>{
       const row=rows[index]

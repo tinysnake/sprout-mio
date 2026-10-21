@@ -57,9 +57,9 @@ function ProjectHubPage() {
               配置
             </Link>
             <Link
-              to="/projects/$projectId/conversations"
+              to="/projects/$projectId/chats"
               params={{ projectId: result.data.id }}
-              data-testid="tab-conversations"
+              data-testid="tab-chats"
               activeProps={{ className: "underline" }}
               className="pb-2"
             >

@@ -10,7 +10,7 @@
 - Agent status 只汇总当前 Project 内该 Agent 的 runs；同一 profile 在不同 Projects 的状态、上下文及分身工作相互独立。
 - 每个 Project 内的 DM、Group 和 Public Channel 各自属于该 Project；不同 Project 的对话和历史互不混用。
 - 同一组参与者在不同 Project 中有独立的对话，不合并为全局对话。
-- 分身仍由 Agent profile × Conversation 唯一确定，因此不同 Project 对话中的分身也是独立个体。
+- 分身仍由 Agent profile × Chat 唯一确定，因此不同 Project 对话中的分身也是独立个体。
 - Project 维护自己的 Agent 成员集合，支持添加和移除 Agent；这取代此前“不设 Project 成员名单、所有 profiles 默认参与任意 Project”的决定。
 - Public Channel 是特殊 Group，其 Agent 成员始终等于当前 Project 的 Agent 成员集合；Project 添加或移除 Agent 时同步变化，不能在频道内单独调整。除此之外与 Group 规则相同。
 - 第一版仍不设置项目级 Agent 权限等级；Group 管理及未来申请批准机制见 communication-decisions.md。profile 的职位只是展示标签，不构成权限。
@@ -18,7 +18,7 @@
 - 同一 Agent 重新加入 Project 时，自动加入 Public Channel，既有 DM 重新激活、可继续聊天；不自动恢复原来的普通 Group 成员关系，需另行添加。
 - 一期 Agent 有活动 runs、持有租约、承担 owner 职责或其 DM 仍有 assigned Tasks 时阻止移除；Human 先手动停止、处理租约、变更 owner、重新分配任务，再正常移除。二期再提供强制移除及自动善后。
 - 以上仅针对从当前 Project 移除 Agent，不等于全局删除 Agent profile，也不影响其在其他 Projects 的成员关系、runs 或租约。
-- 二期强制移除时的默认责任接续：若该 Agent 是 Group 或 Public Channel owner，由 Human 接任，Tasks 继续留在原 Conversation；其 DM 中尚未完成、仍分配给该 DM 的 Tasks 退回 proposed，清除当前分配，等待重新分配，历史与已有结果保留。
+- 二期强制移除时的默认责任接续：若该 Agent 是 Group 或 Public Channel owner，由 Human 接任，Tasks 继续留在原 Chat；其 DM 中尚未完成、仍分配给该 DM 的 Tasks 退回 proposed，清除当前分配，等待重新分配，历史与已有结果保留。
 - 二期强制移除时的默认租约处置：撤销该 Agent 在本项目各分身的旧操作权后，自动释放这些分身持有的租约；无法确认撤权成功时，保留占用并交由 Human 处理。文件和进程不随租约释放自动清理。
 
 ### Project 改名与删除

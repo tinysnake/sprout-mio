@@ -1,4 +1,4 @@
-// 真实 Chromium 走完 Info Hub 的 Project → Agents 视角与 Conversation → 自身与成员视角，
+// 真实 Chromium 走完 Info Hub 的 Project → Agents 视角与 Chat → 自身与成员视角，
 // 断言 run 视角渲染为真实运行事实、Machine（P4）视角仍为显式不可用文案，每步打印 PASS/FAIL。
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
@@ -54,8 +54,8 @@ const firstMessage = "第一条消息：Info Hub 验收";
 const secondMessage = "第二条消息：消息统计取我";
 const pathOf = () => new URL(page.url()).pathname;
 let projectPath = "";
-let conversationPath = "";
-let conversationId = "";
+let chatPath = "";
+let chatId = "";
 let instanceId = "";
 let joinedId = "";
 
@@ -142,16 +142,16 @@ await check("create_two_profiles_join_one", async () => {
 });
 
 await check("start_dm_and_send_two_messages", async () => {
-  await page.goto(`${BASE}${projectPath}/conversations`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}${projectPath}/chats`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="dm-member-item"]', { timeout: 20000 });
   // 成员里还有默认 Agent，按本次加入的 profile id 点它的「发起对话」。
   await page.click(`[data-testid="dm-start"][data-agent-profile-id="${joinedId}"]`);
-  await page.waitForURL((url) => /\/conversations\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
     timeout: 20000,
   });
-  conversationPath = pathOf();
-  conversationId = conversationPath.split("/").pop() ?? "";
-  instanceId = (await page.textContent('[data-testid="conversation-instance-id"]'))?.trim() ?? "";
+  chatPath = pathOf();
+  chatId = chatPath.split("/").pop() ?? "";
+  instanceId = (await page.textContent('[data-testid="chat-instance-id"]'))?.trim() ?? "";
   await page.fill('[data-testid="message-input"]', firstMessage);
   await page.click('[data-testid="message-send"]');
   await page.waitForFunction(
@@ -168,8 +168,8 @@ await check("start_dm_and_send_two_messages", async () => {
   );
   record(
     "start_dm_and_send_two_messages",
-    /^cnv_[0-9a-f-]{36}$/.test(conversationId) && /^ins_[0-9a-f-]{36}$/.test(instanceId),
-    `对话 ${conversationId}，分身 ${instanceId}，两条消息已保存`,
+    /^cnv_[0-9a-f-]{36}$/.test(chatId) && /^ins_[0-9a-f-]{36}$/.test(instanceId),
+    `对话 ${chatId}，分身 ${instanceId}，两条消息已保存`,
   );
 });
 
@@ -186,15 +186,15 @@ await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
         node.textContent?.trim(),
       ),
       dmLink: document.querySelector('[data-testid="info-agent-dm-link"]')?.getAttribute("href"),
-      dmConversationId: document
+      dmChatId: document
         .querySelector('[data-testid="info-agent-dm-link"]')
-        ?.getAttribute("data-conversation-id"),
+        ?.getAttribute("data-chat-id"),
       people: items.map((item) => ({
         name: item.querySelector('[data-testid="info-agent-name"]')?.textContent?.trim(),
         persona: item.querySelector('[data-testid="info-agent-persona-summary"]')?.textContent,
-        dmConversationId: item
+        dmChatId: item
           .querySelector('[data-testid="info-agent-dm-link"]')
-          ?.getAttribute("data-conversation-id"),
+          ?.getAttribute("data-chat-id"),
       })),
     };
   });
@@ -206,9 +206,9 @@ await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
     panel.names.includes(joinedName) &&
       !panel.names.includes(outsiderName) &&
       !panel.text.includes(outsiderName) &&
-      joined?.dmConversationId === conversationId &&
+      joined?.dmChatId === chatId &&
       joined?.persona === joinedPersona,
-    `面板成员 ${JSON.stringify(panel.names)}，不含 ${outsiderName}，${joinedName} 的 DM 链接 ${joined?.dmConversationId}`,
+    `面板成员 ${JSON.stringify(panel.names)}，不含 ${outsiderName}，${joinedName} 的 DM 链接 ${joined?.dmChatId}`,
   );
 });
 
@@ -239,44 +239,36 @@ await check("unavailable_notices_render_explicitly", async () => {
   );
 });
 
-await check("hub_dm_link_opens_conversation", async () => {
+await check("hub_dm_link_opens_chat", async () => {
   await page.click('[data-testid="info-agent-dm-link"]');
-  await page.waitForURL((url) => url.pathname === conversationPath, { timeout: 20000 });
-  await page.waitForSelector('[data-testid="info-hub-conversation"]', { timeout: 20000 });
-  record(
-    "hub_dm_link_opens_conversation",
-    pathOf() === conversationPath,
-    `面板 DM 链接跳转到 ${pathOf()}`,
-  );
+  await page.waitForURL((url) => url.pathname === chatPath, { timeout: 20000 });
+  await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
+  record("hub_dm_link_opens_chat", pathOf() === chatPath, `面板 DM 链接跳转到 ${pathOf()}`);
 });
 
-await check("conversation_info_panel_matches_page", async () => {
-  await page.waitForSelector('[data-testid="conversation-instance-id"]', { timeout: 20000 });
+await check("chat_info_panel_matches_page", async () => {
+  await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
   const state = await page.evaluate(() => ({
     panelInstance: document
-      .querySelector('[data-testid="info-conversation-instance-id"]')
+      .querySelector('[data-testid="info-chat-instance-id"]')
       ?.textContent?.trim(),
-    pageInstance: document
-      .querySelector('[data-testid="conversation-instance-id"]')
-      ?.textContent?.trim(),
+    pageInstance: document.querySelector('[data-testid="chat-instance-id"]')?.textContent?.trim(),
     kinds: [...document.querySelectorAll('[data-testid="info-member-item"]')].map((node) =>
       node.getAttribute("data-member-kind"),
     ),
-    kind: document.querySelector('[data-testid="info-conversation-kind"]')?.textContent?.trim(),
-    archived: document
-      .querySelector('[data-testid="info-conversation-archived"]')
-      ?.textContent?.trim(),
+    kind: document.querySelector('[data-testid="info-chat-kind"]')?.textContent?.trim(),
+    archived: document.querySelector('[data-testid="info-chat-archived"]')?.textContent?.trim(),
     count: document.querySelector('[data-testid="info-message-count"]')?.textContent?.trim(),
     latestAt: document.querySelector('[data-testid="info-message-latest-at"]')?.textContent,
-    runsHostStatus: document.querySelector('[data-testid="info-conversation-runs-host-status"]')
+    runsHostStatus: document.querySelector('[data-testid="info-chat-runs-host-status"]')
       ?.textContent,
     turnInjection: document.querySelector('[data-testid="info-turn-prompt-injection"]')
       ?.textContent,
     body: document.body.innerText,
   }));
-  await shot(page, "p2-j-conversation-info");
+  await shot(page, "p2-j-chat-info");
   record(
-    "conversation_info_panel_matches_page",
+    "chat_info_panel_matches_page",
     state.panelInstance === state.pageInstance &&
       state.panelInstance === instanceId &&
       JSON.stringify(state.kinds) === JSON.stringify(["human", "agent"]) &&
@@ -301,28 +293,28 @@ await check("deep_link_and_reload_keep_values", async () => {
     names: [...document.querySelectorAll('[data-testid="info-agent-name"]')].map((node) =>
       node.textContent?.trim(),
     ),
-    dmConversationId: document
+    dmChatId: document
       .querySelector('[data-testid="info-agent-dm-link"]')
-      ?.getAttribute("data-conversation-id"),
+      ?.getAttribute("data-chat-id"),
   }));
   await shot(page, "p2-j-info-hub-deep-reload");
-  await page.goto(`${BASE}${conversationPath}`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="info-hub-conversation"]', { timeout: 20000 });
+  await page.goto(`${BASE}${chatPath}`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="info-hub-conversation"]', { timeout: 20000 });
-  const conversationReload = await page.evaluate(() => ({
+  await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
+  const chatReload = await page.evaluate(() => ({
     panelInstance: document
-      .querySelector('[data-testid="info-conversation-instance-id"]')
+      .querySelector('[data-testid="info-chat-instance-id"]')
       ?.textContent?.trim(),
     count: document.querySelector('[data-testid="info-message-count"]')?.textContent?.trim(),
   }));
   record(
     "deep_link_and_reload_keep_values",
     hubReload.names.includes(joinedName) &&
-      hubReload.dmConversationId === conversationId &&
-      conversationReload.panelInstance === instanceId &&
-      conversationReload.count === "2",
-    `深链刷新后 hub ${JSON.stringify(hubReload)}，对话页 ${JSON.stringify(conversationReload)}`,
+      hubReload.dmChatId === chatId &&
+      chatReload.panelInstance === instanceId &&
+      chatReload.count === "2",
+    `深链刷新后 hub ${JSON.stringify(hubReload)}，对话页 ${JSON.stringify(chatReload)}`,
   );
 });
 
@@ -339,8 +331,8 @@ writeFileSync(
       baseUrl: BASE,
       projectId: projectPath.split("/").pop(),
       projectPath,
-      conversationPath,
-      conversationId,
+      chatPath,
+      chatId,
       instanceId,
       agentName: joinedName,
       outsiderName,

@@ -82,8 +82,8 @@ export const projectMember = sqliteTable(
   (table) => [primaryKey({ columns: [table.projectId, table.agentProfileId] })],
 );
 
-export const conversation = sqliteTable(
-  "conversation",
+export const chat = sqliteTable(
+  "chat",
   {
     id: text("id").primaryKey(),
     projectId: text("project_id")
@@ -102,15 +102,15 @@ export const conversation = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => [check("conversation_kind_check", sql`${table.kind} in ('dm')`)],
+  (table) => [check("chat_kind_check", sql`${table.kind} in ('dm')`)],
 );
 
-export const conversationMember = sqliteTable(
-  "conversation_member",
+export const chatMember = sqliteTable(
+  "chat_member",
   {
-    conversationId: text("conversation_id")
+    chatId: text("chat_id")
       .notNull()
-      .references(() => conversation.id),
+      .references(() => chat.id),
     memberKind: text("member_kind", { enum: ["human", "agent"] }).notNull(),
     memberId: text("member_id").notNull(),
     addedAt: integer("added_at", { mode: "timestamp" })
@@ -118,8 +118,8 @@ export const conversationMember = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    primaryKey({ columns: [table.conversationId, table.memberKind, table.memberId] }),
-    check("conversation_member_kind_check", sql`${table.memberKind} in ('human', 'agent')`),
+    primaryKey({ columns: [table.chatId, table.memberKind, table.memberId] }),
+    check("chat_member_kind_check", sql`${table.memberKind} in ('human', 'agent')`),
   ],
 );
 
@@ -130,9 +130,9 @@ export const agentInstance = sqliteTable(
     agentProfileId: text("agent_profile_id")
       .notNull()
       .references(() => agentProfile.id),
-    conversationId: text("conversation_id")
+    chatId: text("chat_id")
       .notNull()
-      .references(() => conversation.id),
+      .references(() => chat.id),
     projectId: text("project_id")
       .notNull()
       .references(() => project.id),
@@ -144,10 +144,7 @@ export const agentInstance = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    uniqueIndex("agent_instance_profile_conversation_unique").on(
-      table.agentProfileId,
-      table.conversationId,
-    ),
+    uniqueIndex("agent_instance_profile_chat_unique").on(table.agentProfileId, table.chatId),
   ],
 );
 
@@ -155,9 +152,9 @@ export const message = sqliteTable(
   "message",
   {
     id: text("id").primaryKey(),
-    conversationId: text("conversation_id")
+    chatId: text("chat_id")
       .notNull()
-      .references(() => conversation.id),
+      .references(() => chat.id),
     senderKind: text("sender_kind", { enum: ["human", "agent"] }).notNull(),
     senderId: text("sender_id").notNull(),
     body: text("body").notNull(),
@@ -167,7 +164,7 @@ export const message = sqliteTable(
   },
   (table) => [
     check("message_sender_kind_check", sql`${table.senderKind} in ('human', 'agent')`),
-    index("message_conversation_created_at_idx").on(table.conversationId, table.createdAt),
+    index("message_chat_created_at_idx").on(table.chatId, table.createdAt),
   ],
 );
 
@@ -178,9 +175,9 @@ export const agentRun = sqliteTable(
     instanceId: text("instance_id")
       .notNull()
       .references(() => agentInstance.id),
-    conversationId: text("conversation_id")
+    chatId: text("chat_id")
       .notNull()
-      .references(() => conversation.id),
+      .references(() => chat.id),
     projectId: text("project_id")
       .notNull()
       .references(() => project.id),
@@ -202,7 +199,7 @@ export const agentRun = sqliteTable(
     uniqueIndex("agent_run_one_active_instance")
       .on(table.instanceId)
       .where(sql`${table.status} in ('queued', 'running')`),
-    index("agent_run_conversation_queued_idx").on(table.conversationId, table.queuedAt),
+    index("agent_run_chat_queued_idx").on(table.chatId, table.queuedAt),
     check(
       "agent_run_status_check",
       sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'aborted', 'interrupted')`,
@@ -267,7 +264,7 @@ export const diagnosticEvent = sqliteTable(
     event: text("event").notNull(),
     requestId: text("request_id").notNull(),
     projectId: text("project_id").references(() => project.id),
-    conversationId: text("conversation_id"),
+    chatId: text("chat_id"),
     instanceId: text("instance_id"),
     runId: text("run_id"),
     executionId: text("execution_id"),

@@ -1,5 +1,5 @@
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
-import type { Message } from "../../contracts/conversation";
+import type { Message } from "../../contracts/chat";
 
 /** 消息按领域服务给定的时间与 rowid 升序渲染，human 与 agent 用可见标签区分。 */
 export function MessageList({

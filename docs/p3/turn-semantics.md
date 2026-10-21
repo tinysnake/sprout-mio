@@ -30,7 +30,7 @@ runner 的 `deliverSteer` 先检查 `session.isStreaming`，再调用 `session.s
 
 ## UI
 
-对话页发送区上方新增运行状态面板（`src/components/conversation/run-status.tsx`），数据来自 `getConversationRunStateFn`：
+对话页发送区上方新增运行状态面板（`src/components/chat/run-status.tsx`），数据来自 `getChatRunStateFn`：
 
 | 状态         | 文案           | 判定                                       |
 | ------------ | -------------- | ------------------------------------------ |
@@ -52,9 +52,9 @@ run 的快照在进入 `running` 时由 `ready` 事件落库，此后编辑 prof
 
 SO17 例外一条，被「真实接入后移除静态说明」打破：
 
-| 文件与原行号                                                 | 原文                                                                                                 | 新文                                                   |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `scripts/browser/k-acceptance-flow.mjs`（conversation 分支） | `assert.match(await test(page, "conversation-runtime-note").textContent(), /P2 未接入真实 Pi 运行/)` | `await sameText(page, "pi-host-status", "宿主未启用")` |
+| 文件与原行号                                         | 原文                                                                                         | 新文                                                   |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `scripts/browser/k-acceptance-flow.mjs`（chat 分支） | `assert.match(await test(page, "chat-runtime-note").textContent(), /P2 未接入真实 Pi 运行/)` | `await sameText(page, "pi-host-status", "宿主未启用")` |
 
 k-acceptance 在 `SPROUT_PI_ENABLED=false` 下运行，新断言验证同一页面位置显示「宿主未启用」。其余既有精确断言（迁移计数、索引清单）未被本 unit 打破：迁移计数自 p3-a 起从 `drizzle/*.sql` 文件数推导。
 

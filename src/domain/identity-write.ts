@@ -8,7 +8,7 @@ type IdentityDiagnostic = {
   event: string;
   message: string;
   projectId?: string;
-  conversationId?: string;
+  chatId?: string;
   instanceId?: string;
 };
 

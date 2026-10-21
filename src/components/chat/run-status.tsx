@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ConversationRunState } from "../../contracts/agent-run";
+import type { ChatRunState } from "../../contracts/agent-run";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
@@ -17,13 +17,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 /** run 状态与输入投递状态都来自领域查询；pending 输入永远显示为未投递，不冒充已处理。 */
-export function RunStatusPanel({
-  state,
-  onAbort,
-}: {
-  state: ConversationRunState;
-  onAbort: () => void;
-}) {
+export function RunStatusPanel({ state, onAbort }: { state: ChatRunState; onAbort: () => void }) {
   const [aborting, setAborting] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const run = state.runs.at(-1);

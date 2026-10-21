@@ -25,7 +25,7 @@ function scenario(body: string, overrides: Record<string, string> = {}) {
       const { sqlite } = await import('./src/db/index.ts');
       const { createProject } = await import('./src/domain/project.ts');
       const agents = await import('./src/domain/agent.ts');
-      const dm = await import('./src/domain/conversation.ts');
+      const dm = await import('./src/domain/chat.ts');
       const runs = await import('./src/domain/agent-run.ts');
       const repo = await import('./src/domain/repository.ts');
       const { updateProjectProfile } = await import('./src/domain/project-config.ts');
@@ -63,9 +63,9 @@ function scenario(body: string, overrides: Record<string, string> = {}) {
         const project = createProject({ name }, ctx);
         const profile = agents.createAgentProfile({ name: name + ' agent', persona: 'persona', harness: 'pi', model: 'test/model', effort: 'off' }, ctx);
         agents.addProjectMember(project.id, profile.id, ctx);
-        const direct = dm.createDirectConversation(project.id, profile.id, ctx);
-        dm.sendMessage(direct.conversation.id, { senderKind: 'human', senderId: ctx.userId, body: 'analyze the repository' }, ctx);
-        const run = runs.listAgentRuns(direct.conversation.id, ctx)[0];
+        const direct = dm.createDirectChat(project.id, profile.id, ctx);
+        dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctx.userId, body: 'analyze the repository' }, ctx);
+        const run = runs.listAgentRuns(direct.chat.id, ctx)[0];
         return { project, run, profileId: profile.id };
       }
       const checkoutRow = projectId => sqlite.prepare('SELECT * FROM repo_checkout WHERE project_id=?').get(projectId);
@@ -166,9 +166,9 @@ describe("宿主仓库入口", () => {
       assert(existsSync(join(prepared.path, 'src', 'app.ts')), 'cloned working copy carries repository files');
       repo.recordRunRepoBasis(run.id, prepared, ctx);
       const advanced = advance(source, 'src/app.ts', 'export const MARKER_MANAGED = 2;');
-      const second = dm.createDirectConversation(project.id, profileId, ctx);
-      dm.sendMessage(second.conversation.id, { senderKind: 'human', senderId: ctx.userId, body: 'again' }, ctx);
-      const run2 = runs.listAgentRuns(second.conversation.id, ctx)[0];
+      const second = dm.createDirectChat(project.id, profileId, ctx);
+      dm.sendMessage(second.chat.id, { senderKind: 'human', senderId: ctx.userId, body: 'again' }, ctx);
+      const run2 = runs.listAgentRuns(second.chat.id, ctx)[0];
       const updated = await repo.prepareRunRepo(run2.id, ctx);
       assert.equal(updated.commit, advanced, 'second preparation picks up the advanced remote HEAD');
       assert.equal(updated.fresh, true);

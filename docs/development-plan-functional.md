@@ -23,7 +23,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | --- | --- | --- | --- |
 | P0 | 验证技术栈与高风险协议，收敛基础契约 | 无 | 已完成（结论见 [p0/summary.md](p0/summary.md)） |
 | P1 | 建立工程骨架与标准功能样例 | P0 | 已完成（结论见 [p1/summary.md](p1/summary.md)） |
-| P2 | 建立 Project、profile、Conversation 和分身 | P1 | 已完成（结论见 [p2/summary.md](p2/summary.md)） |
+| P2 | 建立 Project、profile、Chat 和分身 | P1 | 已完成（结论见 [p2/summary.md](p2/summary.md)） |
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 已完成（第 2 条部分交付，结论见 [p3/summary.md](p3/summary.md)） |
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | 待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
@@ -64,8 +64,8 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 ## P2 建立身份、成员与持久对话
 
 - [x] 完成 Project 配置、Agent profile 和 Project Agent 成员关系。证据 [project-agents.md 的验证记录](p2/project-agents.md#验证记录)，重跑 `bash scripts/verify/h-project-agents.sh`。
-- [x] 建立 Conversation 与分身持久身份，强制 profile × Conversation 唯一。证据 [分身身份与唯一性](p2/conversation-dm.md#分身身份与唯一性的实现位置) 与 [SQLite 唯一约束反证](p2/acceptance.md#p2-六项对应关系)，重跑 `bash scripts/verify/i-conversation.sh` 与 `bash scripts/verify/k-acceptance.sh`。
-- [x] 建立 DM 和持久消息，配置与人设修改保留原有身份和历史。证据 [重启持久性验收](p2/conversation-dm.md#重启持久性验收) 与 [出口条件与字面量](p2/acceptance.md#出口条件与字面量)，重跑 `bash scripts/verify/i-conversation.sh` 与 `bash scripts/verify/k-acceptance.sh`。
+- [x] 建立 Chat 与分身持久身份，强制 profile × Chat 唯一。证据 [分身身份与唯一性](p2/chat-dm.md#分身身份与唯一性的实现位置) 与 [SQLite 唯一约束反证](p2/acceptance.md#p2-六项对应关系)，重跑 `bash scripts/verify/i-chat.sh` 与 `bash scripts/verify/k-acceptance.sh`。
+- [x] 建立 DM 和持久消息，配置与人设修改保留原有身份和历史。证据 [重启持久性验收](p2/chat-dm.md#重启持久性验收) 与 [出口条件与字面量](p2/acceptance.md#出口条件与字面量)，重跑 `bash scripts/verify/i-chat.sh` 与 `bash scripts/verify/k-acceptance.sh`。
 - [x] 建立各详情页的稳定 URL，刷新及前进后退保持目标和 Project 上下文。证据 [七个页面的导航矩阵](p2/acceptance.md#七个页面的导航矩阵)，重跑 `bash scripts/verify/k-acceptance.sh`。
 - [x] 建立 Project 授权入口，Agent 查询、错误和快照均不得暴露其他 Project 的 Sprout 数据。证据 [授权入口](p2/identity-data.md#project-授权与配置) 与 [隔离反证及正常对照](p2/acceptance.md#隔离反证与正常对照)，重跑 `bash scripts/verify/g-identity-data.sh` 与 `bash scripts/verify/k-acceptance.sh`。P2 只验收已有查询与错误载荷，尚无运行时快照，其隔离未验证。
 - [x] 提供当前已有对象的 Info Hub 查询和基础页面呈现。后续对象接入同一模块。证据 [Info Hub 验证记录](p2/info-hub.md#验证记录) 与 [未实现状态](p2/acceptance.md#未实现状态截图与限制)，重跑 `bash scripts/verify/j-info-hub.sh` 与 `bash scripts/verify/k-acceptance.sh`。P2 当时 run 与 Machine 视角显式标注未实现；P3-d 已将 run 视角改为真实数据，Machine 仍属 P4。
@@ -132,9 +132,9 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ## P5 完成多人协作与 Task 记录
 
-先完成 P5a，再推进依赖多人 Conversation 的 P5b。两个小节分别保留功能验收证据，配套 UI 就绪后各进行一次章节集成。UI 范围见 [UI 开发计划](development-plan-ui.md#ui-p5a-完成多人-conversation)。
+先完成 P5a，再推进依赖多人 Chat 的 P5b。两个小节分别保留功能验收证据，配套 UI 就绪后各进行一次章节集成。UI 范围见 [UI 开发计划](development-plan-ui.md#ui-p5a-完成多人-chat)。
 
-### P5a 完成多人 Conversation
+### P5a 完成多人 Chat
 
 - [ ] 实现 Group 成员与 owner，Public Channel 成员随 Project 自动同步。
 - [ ] 实现 Group 消息、多 Agent 唤醒和成员回报，保持同分身串行。
@@ -144,20 +144,20 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ### P5b 完成 Task 协作
 
-- [ ] 实现 Project 所有、Conversation 承接的 Task 四态，不增加执行或环境状态机。
+- [ ] 实现 Project 所有、Chat 承接的 Task 四态，不增加执行或环境状态机。
 - [ ] 实现可选立即开始，DM 唤醒唯一分身，Group 唤醒负责人。
 - [ ] 实现 checklist、施工记录、末条施工记录中的完成结果、人类纠正与重开。
 - [ ] 验证分配不等于启动，run 结束不代表 Task 完成，Task 完成不代表释放租约。
-- [ ] 将 Tasks 与 Conversation、负责人及活动 runs 的关联接入 Info Hub。
+- [ ] 将 Tasks 与 Chat、负责人及活动 runs 的关联接入 Info Hub。
 
 出口条件是 Human 能在 Group 分配一个 Task，由 owner 组织成员回报并完成记录，也能在 DM 完成相同 Task 生命周期。
 
 ## P6 完成自动接续、Info Hub 与成员治理
 
 - [ ] 用中文协作样本验证聊天唤醒判定，确定 Jev 的采用方式和失败回退。
-- [ ] 对有 assigned Task 的 Conversation 周期检查小脑；没有 assigned Task 时停止检查。
+- [ ] 对有 assigned Task 的 Chat 周期检查小脑；没有 assigned Task 时停止检查。
 - [ ] 实现持久唤醒去重、运行中合并、重启恢复与失败退避。人类暂停和停止优先，自动检查不能立即重新启动已暂停的工作。
-- [ ] 完成 Info Hub 的 Project、Conversation、Agent 与 Machine 全部一期视角。
+- [ ] 完成 Info Hub 的 Project、Chat、Agent 与 Machine 全部一期视角。
 - [ ] 完成轮初快照、运行中合并的简短变更提示与 Agent 主动查询。普通变化不单独唤醒空闲分身。
 - [ ] 验证基本信息可见性不授予聊天正文访问或对象操作权，Agent status 仅汇总当前 Project。
 - [ ] 实现 Agent 正常移除的前置检查，阻止仍有活动 runs、租约、owner 职责或 DM assigned Tasks 的移除。

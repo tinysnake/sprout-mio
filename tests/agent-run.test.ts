@@ -21,7 +21,7 @@ function scenario(body: string) {
       const { sqlite } = await import('./src/db/index.ts');
       const { createProject } = await import('./src/domain/project.ts');
       const agents = await import('./src/domain/agent.ts');
-      const dm = await import('./src/domain/conversation.ts');
+      const dm = await import('./src/domain/chat.ts');
       const runs = await import('./src/domain/agent-run.ts');
       const ctx = { userId: 'run-owner', requestId: 'req_agent_run_test' };
       const other = { userId: 'other-owner', requestId: 'req_other_test' };
@@ -30,10 +30,10 @@ function scenario(body: string) {
       const otherProject = createProject({ name: 'Other Project' }, other);
       const profile = agents.createAgentProfile({ name: 'Run Agent', persona: 'Original persona', harness: 'pi', model: 'test/model', effort: 'off' }, ctx);
       agents.addProjectMember(project.id, profile.id, ctx);
-      const direct = dm.createDirectConversation(project.id, profile.id, ctx);
-      const send = (body) => dm.sendMessage(direct.conversation.id, { senderKind: 'human', senderId: ctx.userId, body }, ctx);
+      const direct = dm.createDirectChat(project.id, profile.id, ctx);
+      const send = (body) => dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctx.userId, body }, ctx);
       const first = send('first input');
-      const run = runs.listAgentRuns(direct.conversation.id, ctx)[0];
+      const run = runs.listAgentRuns(direct.chat.id, ctx)[0];
       const snapshot = { provider:'test', model:'model', thinking:'off', tools:['read'], extensions:['sprout-extension'], sessionId:run.sessionId, sessionFile:'/tmp/test-session.jsonl', cwd:'/tmp', sdkVersion:'protocol-stub', profile:{ id:profile.id, name:profile.name, persona:profile.persona, harness:'pi', model:profile.model, effort:profile.effort, updatedAt:profile.updatedAt } };
       const count = (table) => sqlite.prepare('SELECT count(*) AS n FROM '+table).get().n;
       ${body}
@@ -61,7 +61,7 @@ describe("Agent run 持久不变量", () => {
       assert.equal(count('agent_run_input'),2);
       assert.equal(count('message'),2);
       assert.deepEqual(runs.listAgentRunInputs(run.id,ctx).map(x=>x.disposition),['pending','pending']);
-      assert.throws(()=>sqlite.prepare("INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,session_id) VALUES ('duplicate',?,?,?,?,'queued',?)").run(run.instanceId,run.conversationId,run.projectId,run.requestId,run.sessionId),/UNIQUE constraint/);
+      assert.throws(()=>sqlite.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id) VALUES ('duplicate',?,?,?,?,'queued',?)").run(run.instanceId,run.chatId,run.projectId,run.requestId,run.sessionId),/UNIQUE constraint/);
       assert.throws(()=>sqlite.prepare('INSERT INTO agent_run_input (message_id,run_id) VALUES (?,?)').run(first.id,run.id),/UNIQUE constraint/);
     `);
   });
@@ -84,14 +84,14 @@ describe("Agent run 持久不变量", () => {
       assert.throws(()=>runs.transitionAgentRun(run.id,'completed',{},ctx),e=>e.code==='conflict');
       runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
       runs.markRunInputDelivered(run.id,first.id,ctx);
-      const nullStopInsert = "INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,queued_at,started_at,settled_at,stop_reason,session_id,config_snapshot,assistant_message_id) SELECT 'invalid-null-stop',instance_id,conversation_id,project_id,request_id,'completed',queued_at,started_at,unixepoch(),NULL,session_id,config_snapshot,? FROM agent_run WHERE id=?";
+      const nullStopInsert = "INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,queued_at,started_at,settled_at,stop_reason,session_id,config_snapshot,assistant_message_id) SELECT 'invalid-null-stop',instance_id,chat_id,project_id,request_id,'completed',queued_at,started_at,unixepoch(),NULL,session_id,config_snapshot,? FROM agent_run WHERE id=?";
       assert.throws(()=>sqlite.prepare(nullStopInsert).run(first.id,run.id),/CHECK constraint/);
       agents.updateAgentProfile(profile.id,{persona:'Changed later',model:'other/model'},ctx);
       assert.equal(runs.getAgentRun(run.id,ctx).configSnapshot.profile.persona,'Original persona');
       assert.throws(()=>runs.completeAgentRun(run.id,'false success','error',ctx),e=>e.code==='conflict');
       assert.equal(count('message'),1);
       const done = runs.completeAgentRun(run.id,'Real result through sendMessage','stop',ctx);
-      const reply = dm.listMessages(run.conversationId,ctx)[1];
+      const reply = dm.listMessages(run.chatId,ctx)[1];
       assert.equal(done.status,'completed');
       assert.equal(done.assistantMessageId,reply.id);
       assert.equal(reply.senderId,profile.id);
@@ -103,20 +103,20 @@ describe("Agent run 持久不变量", () => {
   it("回复仍经过 sendMessage 成员与 instance 校验，失败不会留下部分完成状态", () => {
     scenario(`
       runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
-      sqlite.prepare("DELETE FROM conversation_member WHERE conversation_id=? AND member_kind='agent'").run(run.conversationId);
+      sqlite.prepare("DELETE FROM chat_member WHERE chat_id=? AND member_kind='agent'").run(run.chatId);
       assert.throws(()=>runs.completeAgentRun(run.id,'must reject','stop',ctx),e=>e.code==='not_found');
       assert.equal(count('message'),1);
       assert.equal(runs.getAgentRun(run.id,ctx).status,'running');
     `);
   });
 
-  it("查询隔离 Project，run 归属取 conversation 而非损坏的 instance.projectId", () => {
+  it("查询隔离 Project，run 归属取 chat 而非损坏的 instance.projectId", () => {
     scenario(`
-      for (const action of [()=>runs.getAgentRun(run.id,other),()=>runs.listAgentRunInputs(run.id,other),()=>runs.listAgentRuns(run.conversationId,other)]) assert.throws(action,e=>e.code==='not_found');
+      for (const action of [()=>runs.getAgentRun(run.id,other),()=>runs.listAgentRunInputs(run.id,other),()=>runs.listAgentRuns(run.chatId,other)]) assert.throws(action,e=>e.code==='not_found');
       sqlite.prepare('UPDATE agent_instance SET project_id=? WHERE id=?').run(otherProject.id,run.instanceId);
       runs.transitionAgentRun(run.id,'interrupted',{errorCode:'test'},ctx);
       send('new input');
-      const next = runs.listAgentRuns(run.conversationId,ctx)[1];
+      const next = runs.listAgentRuns(run.chatId,ctx)[1];
       assert.equal(next.projectId,project.id);
       assert.equal(runs.queuedRunWork()[0].ownerId,ctx.userId);
       assert.throws(()=>runs.getAgentRun(next.id,other),e=>e.code==='not_found');
@@ -128,18 +128,18 @@ describe("Agent run 持久不变量", () => {
       runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
       runs.completeAgentRun(run.id,'finished','stop',ctx);
       send('abandoned');
-      const queued = runs.listAgentRuns(run.conversationId,ctx)[1];
+      const queued = runs.listAgentRuns(run.chatId,ctx)[1];
       sqlite.exec("CREATE TRIGGER reject_recovery BEFORE INSERT ON diagnostic_event WHEN NEW.event='agent_run.interrupted' BEGIN SELECT RAISE(ABORT,'recovery unavailable'); END");
       assert.throws(()=>runs.recoverAgentRuns(),/recovery unavailable/);
       assert.equal(runs.getAgentRun(queued.id,ctx).status,'queued');
       sqlite.exec('DROP TRIGGER reject_recovery');
       runs.recoverAgentRuns();
       send('running abandoned');
-      const active = runs.listAgentRuns(run.conversationId,ctx)[2];
+      const active = runs.listAgentRuns(run.chatId,ctx)[2];
       runs.transitionAgentRun(active.id,'running',{configSnapshot:snapshot},ctx);
       runs.recoverAgentRuns();
       runs.recoverAgentRuns();
-      assert.deepEqual(runs.listAgentRuns(run.conversationId,ctx).map(x=>x.status),['completed','interrupted','interrupted']);
+      assert.deepEqual(runs.listAgentRuns(run.chatId,ctx).map(x=>x.status),['completed','interrupted','interrupted']);
       assert.equal(sqlite.prepare("SELECT count(*) AS n FROM diagnostic_event WHERE event='agent_run.interrupted'").get().n,2);
     `);
   });

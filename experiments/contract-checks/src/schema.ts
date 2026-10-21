@@ -22,7 +22,7 @@ export const agentProfile = sqliteTable('agent_profile', {
   createdAt: integer('created_at').notNull(),
 });
 
-export const conversation = sqliteTable('conversation', {
+export const chat = sqliteTable('chat', {
   id: text('id').primaryKey(),
   projectId: text('project_id').notNull(),
   title: text('title').notNull().default(''),
@@ -37,15 +37,15 @@ export const agentInstance = sqliteTable(
     profileId: text('profile_id')
       .notNull()
       .references(() => agentProfile.id),
-    conversationId: text('conversation_id')
+    chatId: text('chat_id')
       .notNull()
-      .references(() => conversation.id),
+      .references(() => chat.id),
     createdAt: integer('created_at').notNull(),
   },
   (t) => [
-    uniqueIndex('uq_agent_instance_profile_conversation').on(
+    uniqueIndex('uq_agent_instance_profile_chat').on(
       t.profileId,
-      t.conversationId,
+      t.chatId,
     ),
   ],
 );

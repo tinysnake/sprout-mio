@@ -11,10 +11,10 @@ import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, stat
 import { join, resolve } from 'node:path'
 import net from 'node:net'
 
-const directory = resolve('.verify/i-conversation')
+const directory = resolve('.verify/i-chat')
 mkdirSync(directory, { recursive: true })
-const port = Number(process.env.SPROUT_VERIFY_CONVERSATION_PORT ?? 3143)
-const databaseUrl = join(directory, 'conversation.sqlite')
+const port = Number(process.env.SPROUT_VERIFY_CHAT_PORT ?? 3143)
+const databaseUrl = join(directory, 'chat.sqlite')
 const stateFile = join(directory, 'state.json')
 const base = `http://localhost:${port}`
 const environment = {
@@ -160,22 +160,22 @@ try {
 
   const ids = serverFnIds()
   const required = [
-    'createDirectConversationFn', 'listConversationsFn', 'getConversationFn',
-    'listConversationMembersFn', 'listInstancesForConversationFn', 'listMessagesFn', 'sendMessageFn',
+    'createDirectChatFn', 'listChatsFn', 'getChatFn',
+    'listChatMembersFn', 'listInstancesForChatFn', 'listMessagesFn', 'sendMessageFn',
   ]
   for (const name of required) assert(ids[name], `缺少 server function id: ${name}`)
   pass('server function ids present', { required })
 
   const origin = `Origin: ${base}`
-  const anonymous = await curl(`${base}/_serverFn/${ids.sendMessageFn}`, 'conversation-anonymous', {
+  const anonymous = await curl(`${base}/_serverFn/${ids.sendMessageFn}`, 'chat-anonymous', {
     header: ['x-tsr-serverfn: true', origin, 'accept: application/x-tss-framed, application/json'],
-    body: serverFnBody({ conversationId: 'cnv_00000000-0000-4000-8000-000000000000', body: '无会话' }),
+    body: serverFnBody({ chatId: 'cnv_00000000-0000-4000-8000-000000000000', body: '无会话' }),
   })
   assert.equal(anonymous.status, 200, anonymous.text)
   assert(anonymous.text.includes('unauthorized'), '未登录必须返回 unauthorized 载荷')
   pass('未登录调用 sendMessageFn 返回 unauthorized', { status: anonymous.status, requestId: anonymous.requestId })
 
-  const noOrigin = await curl(`${base}/_serverFn/${ids.listConversationsFn}`, 'conversation-no-origin', {
+  const noOrigin = await curl(`${base}/_serverFn/${ids.listChatsFn}`, 'chat-no-origin', {
     header: ['x-tsr-serverfn: true', 'accept: application/x-tss-framed, application/json'],
     body: serverFnBody({ projectId: 'prj_00000000-0000-4000-8000-000000000000' }),
   })
@@ -184,7 +184,7 @@ try {
   pass('无 Origin 未登录调用返回 unauthorized', { status: noOrigin.status, requestId: noOrigin.requestId })
 
   assert(statSync(databaseUrl).size > 0, '真实 SQLite 文件必须存在')
-  const browser = await bounded(launch(process.execPath, ['scripts/browser/i-conversation-flow.mjs'], 'browser.log', { ...environment, BASE_URL: base, CONVERSATION_STATE_FILE: stateFile }), 300000)
+  const browser = await bounded(launch(process.execPath, ['scripts/browser/i-chat-flow.mjs'], 'browser.log', { ...environment, BASE_URL: base, CHAT_STATE_FILE: stateFile }), 300000)
   assert.equal(browser.code, 0, `浏览器流程失败；见 browser.log:\n${readFileSync(join(directory, 'browser.log'), 'utf8')}`)
   pass('真实 Chromium 流程', { log: 'browser.log', screenshots: 'docs/p1/evidence/p2-i-*.png' })
 
@@ -197,7 +197,7 @@ try {
   assert(rebooted.body.bootId !== firstBootId, '重启后必须是新的 bootId')
   pass('生产进程重启后健康检查通过', { bootId: rebooted.body.bootId })
 
-  const browserAgain = await bounded(launch(process.execPath, ['scripts/browser/i-conversation-flow.mjs'], 'browser-restart.log', { ...environment, BASE_URL: base, CONVERSATION_STATE_FILE: stateFile, CONVERSATION_VERIFY: '1' }), 300000)
+  const browserAgain = await bounded(launch(process.execPath, ['scripts/browser/i-chat-flow.mjs'], 'browser-restart.log', { ...environment, BASE_URL: base, CHAT_STATE_FILE: stateFile, CHAT_VERIFY: '1' }), 300000)
   assert.equal(browserAgain.code, 0, `重启后会话校验失败；见 browser-restart.log:\n${readFileSync(join(directory, 'browser-restart.log'), 'utf8')}`)
   pass('重启后同一对话仍对应同一分身且消息保留', { log: 'browser-restart.log', state: 'state.json' })
 

@@ -70,7 +70,7 @@ recordDiagnostic({
 return ok(project, requestId);
 ```
 
-`recordDiagnostic(input: DiagnosticInput): boolean` 接受冻结 `DiagnosticEvent` 去掉 `id`、`at` 后的字段。必填 `level`、`event`、`requestId`、`message`。可选 `projectId`、`conversationId`、`instanceId`、`runId`、`executionId`、`data`。不存在的业务关联不填写。函数生成 `diag_*`，写入真实 SQLite，返回成功与否。写入失败只落 stderr，不抛给业务请求。
+`recordDiagnostic(input: DiagnosticInput): boolean` 接受冻结 `DiagnosticEvent` 去掉 `id`、`at` 后的字段。必填 `level`、`event`、`requestId`、`message`。可选 `projectId`、`chatId`、`instanceId`、`runId`、`executionId`、`data`。不存在的业务关联不填写。函数生成 `diag_*`，写入真实 SQLite，返回成功与否。写入失败只落 stderr，不抛给业务请求。
 
 `queryDiagnostics({ actorId, requestId?, projectId?, limit? })` 按条件相交查询最近事件，默认 50 条。actorId 必填，Project 行必须归属于该创建者；非 Project 行必须按具体 requestId 查询。HTTP 边界限制 `limit` 为 1 到 200。时间以 ISO 返回，data 以对象返回。
 

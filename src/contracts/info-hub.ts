@@ -7,7 +7,7 @@ import type { FieldErrors } from "./project";
 import type { AppResult } from "./result";
 
 const projectId = z.string().regex(appIdPattern(ID_PREFIXES.project));
-const conversationId = z.string().regex(appIdPattern(ID_PREFIXES.conversation));
+const chatId = z.string().regex(appIdPattern(ID_PREFIXES.chat));
 const instanceId = z.string().regex(appIdPattern(ID_PREFIXES.instance));
 
 /** 未实现的视角用显式标记表达；P3/P4 接入后该字段扩展为「不可用 | 可用视图」的联合。 */
@@ -66,7 +66,7 @@ export const projectAgentEntrySchema = z.object({
   name: z.string(),
   personaSummary: z.string(),
   instanceId: instanceId.optional(),
-  conversationId: conversationId.optional(),
+  chatId: chatId.optional(),
 });
 export type ProjectAgentEntry = z.infer<typeof projectAgentEntrySchema>;
 
@@ -76,34 +76,34 @@ export const projectAgentsViewSchema = z.object({
 });
 export type ProjectAgentsView = z.infer<typeof projectAgentsViewSchema>;
 
-export const conversationMemberEntrySchema = z.object({
+export const chatMemberEntrySchema = z.object({
   memberKind: z.enum(["human", "agent"]),
   memberId: z.string().min(1),
   displayName: z.string(),
 });
-export type ConversationMemberEntry = z.infer<typeof conversationMemberEntrySchema>;
+export type ChatMemberEntry = z.infer<typeof chatMemberEntrySchema>;
 
-export const conversationInstanceViewSchema = z.object({
+export const chatInstanceViewSchema = z.object({
   instanceId,
   agentProfileId: agentProfileIdSchema,
   profileName: z.string(),
 });
 
-/** Conversation → 自身与成员视角：归属、成员、分身、消息统计与真实 run 视角。 */
-export const conversationInfoViewSchema = z.object({
-  conversationId,
+/** Chat → 自身与成员视角：归属、成员、分身、消息统计与真实 run 视角。 */
+export const chatInfoViewSchema = z.object({
+  chatId,
   projectId,
   kind: z.literal("dm"),
   archived: z.boolean(),
-  members: z.array(conversationMemberEntrySchema),
-  instance: conversationInstanceViewSchema.nullable(),
+  members: z.array(chatMemberEntrySchema),
+  instance: chatInstanceViewSchema.nullable(),
   messages: z.object({
     count: z.number().int().min(0),
     latestAt: z.iso.datetime().optional(),
   }),
   runs: agentRunsViewSchema,
 });
-export type ConversationInfoView = z.infer<typeof conversationInfoViewSchema>;
+export type ChatInfoView = z.infer<typeof chatInfoViewSchema>;
 
 /**
  * 轮初必要上下文的工作副本依据。
@@ -130,7 +130,7 @@ export type TurnWorkspace = z.infer<typeof turnWorkspaceSchema>;
  */
 export const turnStartContextSchema = z.object({
   projectId,
-  conversationId,
+  chatId,
   instanceId: instanceId.nullable(),
   agentProfileId: agentProfileIdSchema.nullable(),
   profileName: z.string().nullable(),

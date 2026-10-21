@@ -23,7 +23,7 @@ export class NoActiveLease extends Error {
 
 export function createInstance(
   db: Db,
-  row: { id: string; profileId: string; conversationId: string; createdAt: number },
+  row: { id: string; profileId: string; chatId: string; createdAt: number },
 ) {
   return db.insert(agentInstance).values(row).returning().get();
 }

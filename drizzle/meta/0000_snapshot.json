@@ -49,8 +49,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "conversation_id": {
-          "name": "conversation_id",
+        "chat_id": {
+          "name": "chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

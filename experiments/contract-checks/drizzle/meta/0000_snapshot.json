@@ -21,8 +21,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "conversation_id": {
-          "name": "conversation_id",
+        "chat_id": {
+          "name": "chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -37,11 +37,11 @@
         }
       },
       "indexes": {
-        "uq_agent_instance_profile_conversation": {
-          "name": "uq_agent_instance_profile_conversation",
+        "uq_agent_instance_profile_chat": {
+          "name": "uq_agent_instance_profile_chat",
           "columns": [
             "profile_id",
-            "conversation_id"
+            "chat_id"
           ],
           "isUnique": true
         }
@@ -60,12 +60,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "agent_instance_conversation_id_conversation_id_fk": {
-          "name": "agent_instance_conversation_id_conversation_id_fk",
+        "agent_instance_chat_id_chat_id_fk": {
+          "name": "agent_instance_chat_id_chat_id_fk",
           "tableFrom": "agent_instance",
-          "tableTo": "conversation",
+          "tableTo": "chat",
           "columnsFrom": [
-            "conversation_id"
+            "chat_id"
           ],
           "columnsTo": [
             "id"
@@ -194,8 +194,8 @@
         }
       }
     },
-    "conversation": {
-      "name": "conversation",
+    "chat": {
+      "name": "chat",
       "columns": {
         "id": {
           "name": "id",

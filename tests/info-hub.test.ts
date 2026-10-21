@@ -14,7 +14,7 @@ type Evidence = {
       agentProfileId: string;
       name: string;
       personaSummary: string;
-      conversationId: string | null;
+      chatId: string | null;
       instanceId: string | null;
     }[];
     runs: {
@@ -63,7 +63,7 @@ beforeAll(() => {
       const { auth } = await import("./src/lib/auth.ts");
       const projects = await import("./src/server/functions/project.ts");
       const agents = await import("./src/server/functions/agent.ts");
-      const conversations = await import("./src/server/functions/conversation.ts");
+      const chats = await import("./src/server/functions/chat.ts");
       const infoHub = await import("./src/server/functions/info-hub.ts");
       const code = (result) => result.ok ? "ok" : result.error.code;
       const signUp = async (tag) => {
@@ -80,33 +80,33 @@ beforeAll(() => {
       const joined = await agents.createAgentProfileBoundary({ name: "已加入 Agent", persona: "人设正文" }, userA.headers, "req_j2");
       const outsider = await agents.createAgentProfileBoundary({ name: "未加入 Agent", persona: "不该出现在聚合里" }, userA.headers, "req_j3");
       await agents.addProjectMemberBoundary({ projectId, agentProfileId: joined.data.id }, userA.headers, "req_j4");
-      const dm = await conversations.createDirectConversationBoundary({ projectId, agentProfileId: joined.data.id }, userA.headers, "req_j5");
+      const dm = await chats.createDirectChatBoundary({ projectId, agentProfileId: joined.data.id }, userA.headers, "req_j5");
       if (!dm.ok) throw new Error("DM 创建失败");
-      const conversationId = dm.data.conversation.id;
+      const chatId = dm.data.chat.id;
       const dmInstanceId = dm.data.instance.id;
       const { sqlite } = await import("./src/db/index.ts");
-      const msg1 = await conversations.sendMessageBoundary({ conversationId, body: "第一条消息" }, userA.headers, "req_j6");
-      const msg2 = await conversations.sendMessageBoundary({ conversationId, body: "第二条消息" }, userA.headers, "req_j7");
+      const msg1 = await chats.sendMessageBoundary({ chatId, body: "第一条消息" }, userA.headers, "req_j6");
+      const msg2 = await chats.sendMessageBoundary({ chatId, body: "第二条消息" }, userA.headers, "req_j7");
 
       const anonymous = new Headers();
       const unauthorized = [
         await infoHub.getProjectInfoHubBoundary({ projectId }, anonymous, "req_u1"),
-        await infoHub.getConversationInfoBoundary({ conversationId }, anonymous, "req_u2"),
+        await infoHub.getChatInfoBoundary({ chatId }, anonymous, "req_u2"),
       ];
       const crossHub = await infoHub.getProjectInfoHubBoundary({ projectId }, userB.headers, "req_x1");
-      const crossConversation = await infoHub.getConversationInfoBoundary({ conversationId }, userB.headers, "req_x2");
-      const crossLeak = JSON.stringify(crossHub) + JSON.stringify(crossConversation);
-      const leakTokens = [joined.data.name, outsider.data.name, joined.data.id, conversationId, dmInstanceId]
+      const crossChat = await infoHub.getChatInfoBoundary({ chatId }, userB.headers, "req_x2");
+      const crossLeak = JSON.stringify(crossHub) + JSON.stringify(crossChat);
+      const leakTokens = [joined.data.name, outsider.data.name, joined.data.id, chatId, dmInstanceId]
         .filter((token) => crossLeak.includes(token));
 
       const hub = await infoHub.getProjectInfoHubBoundary({ projectId }, userA.headers, "req_j8");
-      const info = await infoHub.getConversationInfoBoundary({ conversationId }, userA.headers, "req_j9");
+      const info = await infoHub.getChatInfoBoundary({ chatId }, userA.headers, "req_j9");
       const instanceMatchesDm = info.ok && info.data.instance?.instanceId === dmInstanceId;
       const latestMatchesSecondMessage = info.ok && msg2.ok && info.data.messages.latestAt === msg2.data.createdAt;
 
       console.log("EVIDENCE " + JSON.stringify({
         unauthorizedCodes: unauthorized.map(code),
-        crossCodes: [code(crossHub), code(crossConversation)],
+        crossCodes: [code(crossHub), code(crossChat)],
         leakTokens,
         hub: hub.ok ? {
           projectId: hub.data.projectId,
@@ -114,7 +114,7 @@ beforeAll(() => {
             agentProfileId: entry.agentProfileId,
             name: entry.name,
             personaSummary: entry.personaSummary,
-            conversationId: entry.conversationId ?? null,
+            chatId: entry.chatId ?? null,
             instanceId: entry.instanceId ?? null,
           })),
           runs: hub.data.agents.runs,
@@ -165,7 +165,7 @@ describe("Info Hub 边界与显式不可用标记", () => {
     expect(evidence.unauthorizedCodes).toEqual(["unauthorized", "unauthorized"]);
   });
 
-  it("另一个用户的 projectId 与 conversationId 都返回 not_found，且不泄漏对象 id 或名称", () => {
+  it("另一个用户的 projectId 与 chatId 都返回 not_found，且不泄漏对象 id 或名称", () => {
     expect(evidence.crossCodes).toEqual(["not_found", "not_found"]);
     expect(evidence.leakTokens).toEqual([]);
   });
@@ -186,20 +186,20 @@ describe("Info Hub 边界与显式不可用标记", () => {
 });
 
 describe("Info Hub 聚合与数据库一致", () => {
-  it("Project agents 只含已加入成员，带 DM 的成员有 conversationId 与 instanceId，未加入的 profile 不出现", () => {
+  it("Project agents 只含已加入成员，带 DM 的成员有 chatId 与 instanceId，未加入的 profile 不出现", () => {
     expect(evidence.hub?.projectId).toMatch(/^prj_/);
     expect(evidence.hub?.agents).toHaveLength(1);
     const entry = evidence.hub?.agents[0];
     expect(entry?.agentProfileId).toBe(evidence.joinedProfileId);
     expect(entry?.name).toBe("已加入 Agent");
-    expect(entry?.conversationId).toMatch(/^cnv_/);
+    expect(entry?.chatId).toMatch(/^cnv_/);
     expect(entry?.instanceId).toMatch(/^ins_/);
     expect(evidence.hub?.agents.map((agent) => agent.agentProfileId)).not.toContain(
       evidence.outsiderProfileId,
     );
   });
 
-  it("conversation 视角的成员含 human 与 agent，instance 与对话页一致", () => {
+  it("chat 视角的成员含 human 与 agent，instance 与对话页一致", () => {
     expect(evidence.info?.members.map((member) => member.kind).sort()).toEqual(["agent", "human"]);
     expect(evidence.info?.instanceId).toMatch(/^ins_/);
     expect(evidence.instanceMatchesDm).toBe(true);

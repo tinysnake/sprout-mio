@@ -68,7 +68,7 @@ SDK 接入有两个前提。必须显式构造指向 `~/.pi/agent` 的 `ModelRun
 
 ### 7. 身份、事务与授权契约
 
-19 项契约有可重跑证据。分身由 `(profile_id, conversation_id)` 部分唯一索引保证唯一，租约由 `(project_id, machine_id) WHERE state='active'` 保证互斥，run 由 `(instance_id) WHERE status='active'` 保证同分身串行，执行由 `(machine_id, request_id)` 保证幂等并绑定命令指纹，唤醒由 `(target_instance_id, dedup_key)` 保证去重。
+19 项契约有可重跑证据。分身由 `(profile_id, chat_id)` 部分唯一索引保证唯一，租约由 `(project_id, machine_id) WHERE state='active'` 保证互斥，run 由 `(instance_id) WHERE status='active'` 保证同分身串行，执行由 `(machine_id, request_id)` 保证幂等并绑定命令指纹，唤醒由 `(target_instance_id, dedup_key)` 保证去重。
 
 影响契约的发现：部分唯一索引是表达活跃互斥加历史保留的正确结构；零租约空窗不是数据库约束能防的，直接交接必须是单事务里的释放加获取；run 的状态与结束时间用 CHECK 绑成等价关系；唤醒合并必须显式保留 `processed_at`，一个去重键终身只对应一行；`PRAGMA foreign_keys = ON` 是每连接必需项；WAL 与 DELETE 都不影响唯一约束语义。
 

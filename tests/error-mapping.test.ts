@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 const REACHABLE: Record<string, readonly string[]> = {
   project: ["ProjectError"],
   agent: ["AgentError", "ProjectAccessError"],
-  conversation: ["ConversationError", "ProjectAccessError", "AgentError"],
+  chat: ["ChatError", "ProjectAccessError", "AgentError"],
   infoHub: ["ProjectAccessError", "AgentError"],
   projectConfig: ["ProjectAccessError"],
 };
@@ -65,44 +65,44 @@ const EXPECTED_PROBES: ProbeSpec[] = [
   },
 
   {
-    key: "conversation-create-dm-unjoined-profile",
-    boundary: "conversation",
-    errorClass: "ConversationError",
+    key: "chat-create-dm-unjoined-profile",
+    boundary: "chat",
+    errorClass: "ChatError",
     code: "not_found",
   },
   {
-    key: "conversation-get-missing",
-    boundary: "conversation",
+    key: "chat-get-missing",
+    boundary: "chat",
     errorClass: "ProjectAccessError",
     code: "not_found",
   },
   {
-    key: "conversation-members-missing",
-    boundary: "conversation",
+    key: "chat-members-missing",
+    boundary: "chat",
     errorClass: "ProjectAccessError",
     code: "not_found",
   },
   {
-    key: "conversation-messages-missing",
-    boundary: "conversation",
+    key: "chat-messages-missing",
+    boundary: "chat",
     errorClass: "ProjectAccessError",
     code: "not_found",
   },
   {
-    key: "conversation-send-message-missing",
-    boundary: "conversation",
+    key: "chat-send-message-missing",
+    boundary: "chat",
     errorClass: "ProjectAccessError",
     code: "not_found",
   },
   {
-    key: "conversation-get-cross-user",
-    boundary: "conversation",
+    key: "chat-get-cross-user",
+    boundary: "chat",
     errorClass: "ProjectAccessError",
     code: "not_found",
   },
   {
-    key: "conversation-create-dm-missing-profile",
-    boundary: "conversation",
+    key: "chat-create-dm-missing-profile",
+    boundary: "chat",
     errorClass: "AgentError",
     code: "not_found",
   },
@@ -114,7 +114,7 @@ const EXPECTED_PROBES: ProbeSpec[] = [
     code: "not_found",
   },
   {
-    key: "info-hub-conversation-missing",
+    key: "info-hub-chat-missing",
     boundary: "infoHub",
     errorClass: "ProjectAccessError",
     code: "not_found",
@@ -126,7 +126,7 @@ const EXPECTED_PROBES: ProbeSpec[] = [
     code: "not_found",
   },
   {
-    key: "info-hub-conversation-cross-user",
+    key: "info-hub-chat-cross-user",
     boundary: "infoHub",
     errorClass: "ProjectAccessError",
     code: "not_found",
@@ -138,7 +138,7 @@ const EXPECTED_PROBES: ProbeSpec[] = [
     code: "not_found",
   },
   {
-    key: "info-hub-conversation-orphan-profile",
+    key: "info-hub-chat-orphan-profile",
     boundary: "infoHub",
     errorClass: "AgentError",
     code: "not_found",
@@ -215,7 +215,7 @@ beforeAll(() => {
       const { auth } = await import("./src/lib/auth.ts");
       const projects = await import("./src/server/functions/project.ts");
       const agents = await import("./src/server/functions/agent.ts");
-      const conversations = await import("./src/server/functions/conversation.ts");
+      const chats = await import("./src/server/functions/chat.ts");
       const infoHub = await import("./src/server/functions/info-hub.ts");
       const projectConfig = await import("./src/server/functions/project-config.ts");
       const { sqlite } = await import("./src/db/index.ts");
@@ -235,17 +235,17 @@ beforeAll(() => {
       const profileB = (await agents.createAgentProfileBoundary({ name: "B 的映射 Agent", persona: "" }, userB.headers, "req_em_seed4")).data;
       await agents.addProjectMemberBoundary({ projectId: projectB.id, agentProfileId: profileB.id }, userB.headers, "req_em_seed7b");
       await agents.addProjectMemberBoundary({ projectId: projectA.id, agentProfileId: profileA.id }, userA.headers, "req_em_seed5");
-      await conversations.createDirectConversationBoundary({ projectId: projectA.id, agentProfileId: profileA.id }, userA.headers, "req_em_seed6");
-      const dmB = (await conversations.createDirectConversationBoundary({ projectId: projectB.id, agentProfileId: profileB.id }, userB.headers, "req_em_seed7")).data;
+      await chats.createDirectChatBoundary({ projectId: projectA.id, agentProfileId: profileA.id }, userA.headers, "req_em_seed6");
+      const dmB = (await chats.createDirectChatBoundary({ projectId: projectB.id, agentProfileId: profileB.id }, userB.headers, "req_em_seed7")).data;
       const unjoinedProfile = (await agents.createAgentProfileBoundary({ name: "未入组 Agent", persona: "" }, userA.headers, "req_em_seed8")).data;
       const orphanProfile = (await agents.createAgentProfileBoundary({ name: "将被删除引用的 Agent", persona: "" }, userA.headers, "req_em_seed9")).data;
       await agents.addProjectMemberBoundary({ projectId: projectA.id, agentProfileId: orphanProfile.id }, userA.headers, "req_em_seed10");
-      const orphanDm = (await conversations.createDirectConversationBoundary({ projectId: projectA.id, agentProfileId: orphanProfile.id }, userA.headers, "req_em_seed11")).data;
+      const orphanDm = (await chats.createDirectChatBoundary({ projectId: projectA.id, agentProfileId: orphanProfile.id }, userA.headers, "req_em_seed11")).data;
 
       const missing = {
         projectId: "prj_00000000-0000-4000-8000-000000000000",
         agentProfileId: "agp_00000000-0000-4000-8000-000000000000",
-        conversationId: "cnv_00000000-0000-4000-8000-000000000000",
+        chatId: "cnv_00000000-0000-4000-8000-000000000000",
       };
       const probes = [];
       let seq = 0;
@@ -268,24 +268,24 @@ beforeAll(() => {
       await probe("agent-add-member-missing-project", "agent", "ProjectAccessError", (r) => agents.addProjectMemberBoundary({ projectId: missing.projectId, agentProfileId: profileA.id }, userA.headers, r));
       await probe("agent-list-members-cross-project", "agent", "ProjectAccessError", (r) => agents.listProjectMembersBoundary({ projectId: projectB.id }, userA.headers, r));
 
-      await probe("conversation-create-dm-unjoined-profile", "conversation", "ConversationError", (r) => conversations.createDirectConversationBoundary({ projectId: projectA.id, agentProfileId: unjoinedProfile.id }, userA.headers, r));
-      await probe("conversation-get-missing", "conversation", "ProjectAccessError", (r) => conversations.getConversationBoundary({ conversationId: missing.conversationId }, userA.headers, r));
-      await probe("conversation-members-missing", "conversation", "ProjectAccessError", (r) => conversations.listConversationMembersBoundary({ conversationId: missing.conversationId }, userA.headers, r));
-      await probe("conversation-messages-missing", "conversation", "ProjectAccessError", (r) => conversations.listMessagesBoundary({ conversationId: missing.conversationId }, userA.headers, r));
-      await probe("conversation-send-message-missing", "conversation", "ProjectAccessError", (r) => conversations.sendMessageBoundary({ conversationId: missing.conversationId, body: "你好" }, userA.headers, r));
-      await probe("conversation-get-cross-user", "conversation", "ProjectAccessError", (r) => conversations.getConversationBoundary({ conversationId: dmB.conversation.id }, userA.headers, r));
-      await probe("conversation-create-dm-missing-profile", "conversation", "AgentError", (r) => conversations.createDirectConversationBoundary({ projectId: projectA.id, agentProfileId: missing.agentProfileId }, userA.headers, r));
+      await probe("chat-create-dm-unjoined-profile", "chat", "ChatError", (r) => chats.createDirectChatBoundary({ projectId: projectA.id, agentProfileId: unjoinedProfile.id }, userA.headers, r));
+      await probe("chat-get-missing", "chat", "ProjectAccessError", (r) => chats.getChatBoundary({ chatId: missing.chatId }, userA.headers, r));
+      await probe("chat-members-missing", "chat", "ProjectAccessError", (r) => chats.listChatMembersBoundary({ chatId: missing.chatId }, userA.headers, r));
+      await probe("chat-messages-missing", "chat", "ProjectAccessError", (r) => chats.listMessagesBoundary({ chatId: missing.chatId }, userA.headers, r));
+      await probe("chat-send-message-missing", "chat", "ProjectAccessError", (r) => chats.sendMessageBoundary({ chatId: missing.chatId, body: "你好" }, userA.headers, r));
+      await probe("chat-get-cross-user", "chat", "ProjectAccessError", (r) => chats.getChatBoundary({ chatId: dmB.chat.id }, userA.headers, r));
+      await probe("chat-create-dm-missing-profile", "chat", "AgentError", (r) => chats.createDirectChatBoundary({ projectId: projectA.id, agentProfileId: missing.agentProfileId }, userA.headers, r));
 
       await probe("info-hub-project-missing", "infoHub", "ProjectAccessError", (r) => infoHub.getProjectInfoHubBoundary({ projectId: missing.projectId }, userA.headers, r));
-      await probe("info-hub-conversation-missing", "infoHub", "ProjectAccessError", (r) => infoHub.getConversationInfoBoundary({ conversationId: missing.conversationId }, userA.headers, r));
+      await probe("info-hub-chat-missing", "infoHub", "ProjectAccessError", (r) => infoHub.getChatInfoBoundary({ chatId: missing.chatId }, userA.headers, r));
       await probe("info-hub-project-cross-user", "infoHub", "ProjectAccessError", (r) => infoHub.getProjectInfoHubBoundary({ projectId: projectB.id }, userA.headers, r));
-      await probe("info-hub-conversation-cross-user", "infoHub", "ProjectAccessError", (r) => infoHub.getConversationInfoBoundary({ conversationId: dmB.conversation.id }, userA.headers, r));
+      await probe("info-hub-chat-cross-user", "infoHub", "ProjectAccessError", (r) => infoHub.getChatInfoBoundary({ chatId: dmB.chat.id }, userA.headers, r));
 
       sqlite.pragma("foreign_keys = OFF");
       sqlite.prepare("DELETE FROM agent_profile WHERE id = ?").run(orphanProfile.id);
       sqlite.pragma("foreign_keys = ON");
       await probe("info-hub-project-orphan-profile", "infoHub", "AgentError", (r) => infoHub.getProjectInfoHubBoundary({ projectId: projectA.id }, userA.headers, r));
-      await probe("info-hub-conversation-orphan-profile", "infoHub", "AgentError", (r) => infoHub.getConversationInfoBoundary({ conversationId: orphanDm.conversation.id }, userA.headers, r));
+      await probe("info-hub-chat-orphan-profile", "infoHub", "AgentError", (r) => infoHub.getChatInfoBoundary({ chatId: orphanDm.chat.id }, userA.headers, r));
 
       await probe("project-config-get-missing", "projectConfig", "ProjectAccessError", (r) => projectConfig.getProjectProfileBoundary({ projectId: missing.projectId }, userA.headers, r));
       await probe("project-config-update-missing", "projectConfig", "ProjectAccessError", (r) => projectConfig.updateProjectProfileBoundary({ projectId: missing.projectId, defaultBranch: "main" }, userA.headers, r));
@@ -294,7 +294,7 @@ beforeAll(() => {
 
       const anonymous = new Headers();
       await probe("session-project-unauthorized", "session", "Session", (r) => projects.getProjectBoundary({ projectId: missing.projectId }, anonymous, r));
-      await probe("session-info-hub-unauthorized", "session", "Session", (r) => infoHub.getConversationInfoBoundary({ conversationId: missing.conversationId }, anonymous, r));
+      await probe("session-info-hub-unauthorized", "session", "Session", (r) => infoHub.getChatInfoBoundary({ chatId: missing.chatId }, anonymous, r));
 
       const errorDiagnostics = sqlite.prepare("SELECT level, event, request_id AS requestId FROM diagnostic_event WHERE level = 'error'").all();
       console.log("EVIDENCE " + JSON.stringify({ probes, errorDiagnostics }));

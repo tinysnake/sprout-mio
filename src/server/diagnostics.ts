@@ -69,7 +69,7 @@ export function queryDiagnostics(filter: DiagnosticFilter): DiagnosticEvent[] {
     requestId: row.requestId,
     message: row.message,
     ...(row.projectId === null ? {} : { projectId: row.projectId }),
-    ...(row.conversationId === null ? {} : { conversationId: row.conversationId }),
+    ...(row.chatId === null ? {} : { chatId: row.chatId }),
     ...(row.instanceId === null ? {} : { instanceId: row.instanceId }),
     ...(row.runId === null ? {} : { runId: row.runId }),
     ...(row.executionId === null ? {} : { executionId: row.executionId }),

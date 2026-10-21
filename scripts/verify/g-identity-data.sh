@@ -99,17 +99,17 @@ async function stop(child) {
 function inspectSchema() {
   const db = new Database(databaseUrl)
   try {
-    const tables = ['agent_profile', 'project_profile', 'project_member', 'conversation', 'conversation_member', 'agent_instance', 'message']
+    const tables = ['agent_profile', 'project_profile', 'project_member', 'chat', 'chat_member', 'agent_instance', 'message']
     const columns = Object.fromEntries(tables.map(table => [table, db.prepare('PRAGMA table_info(' + table + ')').all()]))
     assert(tables.every(table => columns[table].length > 0), 'all seven named P2 tables exist')
-    for (const [table, expected] of Object.entries({ project_member: ['project_id','agent_profile_id'], conversation_member: ['conversation_id','member_kind','member_id'] })) {
+    for (const [table, expected] of Object.entries({ project_member: ['project_id','agent_profile_id'], chat_member: ['chat_id','member_kind','member_id'] })) {
       assert.deepEqual(columns[table].filter(row => row.pk).sort((a,b) => a.pk-b.pk).map(row => row.name), expected)
     }
-    const unique = db.prepare('PRAGMA index_list(agent_instance)').all().find(row => row.name === 'agent_instance_profile_conversation_unique')
+    const unique = db.prepare('PRAGMA index_list(agent_instance)').all().find(row => row.name === 'agent_instance_profile_chat_unique')
     assert.equal(unique.unique, 1)
-    assert.deepEqual(db.prepare('PRAGMA index_info(agent_instance_profile_conversation_unique)').all().map(row => row.name), ['agent_profile_id','conversation_id'])
-    assert.deepEqual(db.prepare('PRAGMA index_info(message_conversation_created_at_idx)').all().map(row => row.name), ['conversation_id','created_at'])
-    for (const [table, constraint] of [['conversation','conversation_kind_check'], ['conversation_member','conversation_member_kind_check'], ['message','message_sender_kind_check']]) {
+    assert.deepEqual(db.prepare('PRAGMA index_info(agent_instance_profile_chat_unique)').all().map(row => row.name), ['agent_profile_id','chat_id'])
+    assert.deepEqual(db.prepare('PRAGMA index_info(message_chat_created_at_idx)').all().map(row => row.name), ['chat_id','created_at'])
+    for (const [table, constraint] of [['chat','chat_kind_check'], ['chat_member','chat_member_kind_check'], ['message','message_sender_kind_check']]) {
       assert(db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table).sql.includes(constraint))
     }
     const migrations = db.prepare('SELECT count(*) AS count FROM __drizzle_migrations').get().count

@@ -24,26 +24,26 @@ Info Hub 的多视角聚合、快照与变更提示，以及宿主侧仓库入�
 
 ## 一期目标
 
-人类在 Project 内与有稳定人设的 Agent 分身沟通。分身可以在宿主侧访问项目仓库，直接回答日常仓库问题；需要 Machine 现场时，通过 Pi extension 取得远端 Machine 的租约并操作。Conversation 承接 Task，Group owner 组织开发，Task 保存目标、归属、checklist 与施工记录，完成结果就是最后一条施工记录。Info Hub 为人类和 Agents 聚合基本信息及其关联。人类可以随时干预运行或收回租约。
+人类在 Project 内与有稳定人设的 Agent 分身沟通。分身可以在宿主侧访问项目仓库，直接回答日常仓库问题；需要 Machine 现场时，通过 Pi extension 取得远端 Machine 的租约并操作。Chat 承接 Task，Group owner 组织开发，Task 保存目标、归属、checklist 与施工记录，完成结果就是最后一条施工记录。Info Hub 为人类和 Agents 聚合基本信息及其关联。人类可以随时干预运行或收回租约。
 
 ## Human 界面与客户端方向
 
 - 参考原 Sprout 的生产 Web，按照 Mio 已确认的需求重构，不能直接照抄旧界面与业务规则。支持桌面和手机，采用 single page app（SPA）；当前客户端形态构思到 PWA。
 - 一级导航为 Projects、Agents、Machines、Management，不设置 Feed。当前可能需要二级功能导航的只有 Projects 和 Management；Projects 页面变化较大，其余页面基本结构保留，省去不适用的信息并调整必要行为。
 - 各功能、对象详情和需要直接进入的操作界面提供 link；给定 URL 即可定位到指定 Project、该项目内的 DM 或其他目标，不依赖此前选择项目。刷新和浏览器前进、后退保持目标与上下文。
-- Info Hub 是信息聚合与访问功能模块，为 Human 界面和 Agents 提供信息；任何页面或组件需要展示相关信息时，都可以按需从 Info Hub 获取。展示位置包括 Project 页面、Conversation 侧边栏、Task 详情、Agent 简单信息与详细信息等，不作为独立一级页面，也不以这些展示位置限定模块职责。
+- Info Hub 是信息聚合与访问功能模块，为 Human 界面和 Agents 提供信息；任何页面或组件需要展示相关信息时，都可以按需从 Info Hub 获取。展示位置包括 Project 页面、Chat 侧边栏、Task 详情、Agent 简单信息与详细信息等，不作为独立一级页面，也不以这些展示位置限定模块职责。
 - PWA 作为可安装的在线协作客户端，明确展示断线、旧数据与操作结果，重连后同步事实，不默认离线排队执行操作；系统推送另行评估。UX 细节在实际使用中逐步完善。
 
 详细决定见 [Web UI 与 PWA](web-ui-decisions.md)。
 
-## 统一术语：Conversation（对话）
+## 统一术语：Chat（对话）
 
-Conversation 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和 Public Channel。“聊天窗口”是 Conversation 的界面呈现。
+Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和 Public Channel。“聊天窗口”是 Chat 的界面呈现。
 
 - **DM**：只有一位 Agent 的直接对话，可以承接 Task；由唯一 Agent 分身负责推进，选择“立即开始”时唤醒它。机器信息展示该分身持有的 Machines 和租约状态。
 - **Group**：有成员和 owner 的协作对话，可以承接 Task；一期通过指定分身直接交接租约，二期支持租约挂靠与领取。
 - **Public Channel**：成员始终等于当前 Project 的 Agent 成员集合的特殊 Group。成员跟随 Project，不能单独调整；其余规则与 Group 相同，包括由人类指定和变更 owner、Task 推进及对应阶段的租约能力。
-- **Agent 分身**：由 Agent profile × Conversation 唯一确定，是持续的工作个体。Info Hub 分别展示 Agent status 和按 Conversation 关联的活动 agent-runs；没有活动 run 的对话不显示运行条目。
+- **Agent 分身**：由 Agent profile × Chat 唯一确定，是持续的工作个体。Info Hub 分别展示 Agent status 和按 Chat 关联的活动 agent-runs；没有活动 run 的对话不显示运行条目。
 - **Agent run**：分身的一轮执行。同一分身可经历多次 run，身份和租约可以跨 run 保留。结束前软性要求判断租约应保留、直接交接还是释放；不强制调用租约工具才能结束，也不因 run 结束自动释放。二期增加挂靠选项。
 
 ## Project 隔离、成员与 Machine 归属
@@ -64,28 +64,28 @@ Conversation 是 Project 内持久的沟通与协作单元，统一涵盖 DM、G
 | --- | --- | --- |
 | Machines | Worker 稳定连接；macOS 平台验收；shell、文件、进程操作；长命令持续执行、日志与结果查询、重连接续及请求去重；Project × Machine 内分身独占、跨 run 持有、直接原子交接；人类强制收回 | 挂靠与领取、系统自动资源协调、Windows Worker（二期）；Machine 上安装 harness、自动能力匹配、租约动作自动清理进程、图形桌面工具 |
 | Project profiles | Agent 信息与上下文隔离；Agent 与 Machine 成员名单；受前置清理约束的 Agent 移除；一个主工作目录、最多一个仓库；宿主侧仓库访问；每台 Machine 的目录绑定；Git 配置与约定 | Agent 强制移除与自动善后（二期）；项目级 Agent 权限等级、多仓库配置体系、集中 Git 凭据、专门 Git 操作界面 |
-| Agent profiles | 人设与默认执行配置；profile × Conversation 的持续分身；配置下一轮更新；Pi 配置与模型认证继承；简单的运行、待机与出错状态 | 多 harness 同时接入、原有工具自动转向远端、跨分身共享租约、成本统计 |
+| Agent profiles | 人设与默认执行配置；profile × Chat 的持续分身；配置下一轮更新；Pi 配置与模型认证继承；简单的运行、待机与出错状态 | 多 harness 同时接入、原有工具自动转向远端、跨分身共享租约、成本统计 |
 | 沟通渠道 | Project 内 DM、Group、Public Channel；小脑/JEV 可选判定；多 Agent 唤醒；群内分工回报；自动接续；运行中接收消息 | 系统自动租约协调（二期）；固定轮数限制、项目外共享对话、Agent 自行变更 Group 治理 |
-| Tasks | Project 所有、Conversation 承接；Group owner 或 DM 唯一分身推进；四态；可选立即开始；有 assigned Task 时定期唤醒小脑；checklist、施工记录及末条记录中的完成结果；人类纠正与重开 | 移除成员时自动转移责任或退回任务（二期）；固定 workflow、完整执行状态机、强制 completion claim 和验收阶段 |
-| Info Hub | 统一信息聚合与访问模块，供各界面及 Agents 按需获取 Project 内基本信息及关联；Project、Conversation、Agent、Machine 多视角；Human 自动刷新；Agent 轮初快照、运行中简短变更提示与主动查询 | 挂靠、自动资源协调及强制移除善后信息（二期）；自动工作摘要、独立发布公告或笔记 |
+| Tasks | Project 所有、Chat 承接；Group owner 或 DM 唯一分身推进；四态；可选立即开始；有 assigned Task 时定期唤醒小脑；checklist、施工记录及末条记录中的完成结果；人类纠正与重开 | 移除成员时自动转移责任或退回任务（二期）；固定 workflow、完整执行状态机、强制 completion claim 和验收阶段 |
+| Info Hub | 统一信息聚合与访问模块，供各界面及 Agents 按需获取 Project 内基本信息及关联；Project、Chat、Agent、Machine 多视角；Human 自动刷新；Agent 轮初快照、运行中简短变更提示与主动查询 | 挂靠、自动资源协调及强制移除善后信息（二期）；自动工作摘要、独立发布公告或笔记 |
 
 详细规则见 [Machines](machines-decisions.md)、[Project profiles](project-profiles-decisions.md)、[Agent profiles](agent-profiles-decisions.md)、[沟通渠道](communication-decisions.md)、[Tasks](tasks-decisions.md)、[Info Hub](info-hub-decisions.md)。
 
 ## 必须维持的边界
 
-- Profile 是人设与默认配置；分身是具体工作个体，同一 profile 在同一 Conversation 中最多一个分身，跨对话独立。
+- Profile 是人设与默认配置；分身是具体工作个体，同一 profile 在同一 Chat 中最多一个分身，跨对话独立。
 - Owner 通过群聊和 Task checklist 安排分工，成员在同一对话回报；一期不增加独立委派单，消息沿用上下文唤醒机制。
 - 一份租约只赋予当前持有分身操作权。直接交接原子变更持有者，全程保持 Project × Machine 占用；没有明确接手者时原分身继续持有。二期挂靠保留占用但交出操作权，领取后才授予新持有者权限。一个分身可持有多台 Machine。
 - 租约与进程生命周期独立。Agent 在释放前适当清理；租约动作不自动终止进程或删除文件。
 - 长命令独立于 agent run 和宿主连接持续执行；提供稳定执行标识、日志、状态及退出结果。重连或交接后当前有权分身可继续查询与管理；超时重试避免重复启动，不能确认的状态明确表示未知。
 - 原有 Pi 工具操作宿主，Sprout 远端工具核验当前 Project、Machine 成员关系和持有租约。默认每个 Project × Machine 独立 checkout，目录不构成操作系统隔离。
 - Task 状态、run 状态、Machine 占用分别表达不同事实；Task 完成或 run 结束不代表释放。分身空闲不等于占用无效，申请者不能自行撤销他人租约。
-- Task 保持 proposed、assigned、finished、canceled 四态。有 assigned Task 的 Conversation 定期唤醒小脑，结合任务、对话和运行情况判断是否唤醒负责人；没有 assigned Task 时停止检查。不增加执行状态或启动标志，不强制填写结构化等待记录。分配不等于启动，run 结束不等于 Task 完成；人类暂停与停止控制优先。
+- Task 保持 proposed、assigned、finished、canceled 四态。有 assigned Task 的 Chat 定期唤醒小脑，结合任务、对话和运行情况判断是否唤醒负责人；没有 assigned Task 时停止检查。不增加执行状态或启动标志，不强制填写结构化等待记录。分配不等于启动，run 结束不等于 Task 完成；人类暂停与停止控制优先。
 - Info Hub 关联已有事实；基本信息在 Project 内可见，不自动开放聊天正文，也不授予对象操作权。二期能力未实现前不展示为已支持或已成功处置。
 
 ## 日常仓库分析与机器现场排查
 
-- Project 提供宿主侧仓库入口，供三类 Conversation 直接分析分支、历史、源码及维护需要，无需 Machine 租约或先创建 Task。
+- Project 提供宿主侧仓库入口，供三类 Chat 直接分析分支、历史、源码及维护需要，无需 Machine 租约或先创建 Task。
 - 可复用已有副本或按需获取数据，不要求默认完整 clone。数据获取、更新、并发访问、宿主 Git 认证及磁盘占用管理留待技术设计；本轮不将入口缩减为仅支持手动绑定目录。
 - 宿主分析默认依据已推送内容，回答说明来源、版本或查询时点，不自动包含各 Machine 的未推送分支、未提交改动、依赖或运行现场。
 - 比较 Machine X 与 Y 的启动差异等现场问题，仍申请对应租约。DM 可以直接申请；长程、协作任务中的只读确认也正常遵守租约规则，不增加免租约远端通道。
@@ -113,7 +113,7 @@ Conversation 是 Project 内持久的沟通与协作单元，统一涵盖 DM、G
 ## 未来方向：保留想法，时间未定
 
 - Agent owner 申请修改 Group 成员、owner 或解散，由人类在聊天中批准；Public Channel 不单独调整成员。
-- 按 run 和 Conversation 记录、查询模型用量与费用估算。
+- 按 run 和 Chat 记录、查询模型用量与费用估算。
 - 图形桌面操作工具。
 - 其他 harness 及 MCP tools 接入。
 
@@ -130,7 +130,7 @@ Conversation 是 Project 内持久的沟通与协作单元，统一涵盖 DM、G
 
 | Issues | 分期后的建议 |
 | --- | --- |
-| #260–#264：Tasks | 按 Project → Conversation、四态、checklist 与施工记录重写；成员强制移除自动善后二期做 |
+| #260–#264：Tasks | 按 Project → Chat、四态、checklist 与施工记录重写；成员强制移除自动善后二期做 |
 | #265：Lease escrow | 一期持续分身持有与直接交接；挂靠、领取、申请遇阻自动协调及超时处理二期做 |
 | #266：Working group glance | Info Hub 多视角与必要上下文仍属一期；二期再接入挂靠、自动协调与自动善后信息 |
 | #226、#272：OAR 与多 engine | 一期仅 Pi；其他 harness 属时间未定的未来方向，OAR 复用是技术选择 |

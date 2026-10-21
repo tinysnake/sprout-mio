@@ -8,14 +8,14 @@
 
 `drizzle/0002_goofy_master_mold.sql` 由 `pnpm db:generate` 生成，新增两张表及其约束。迁移 meta 与 SQL 一起提交。
 
-| 对象              | 持久事实                                                                                                                            |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `agent_run`       | instance、conversation、project、requestId、状态、排队及开始和结束时间、session ID、实际配置快照、停止原因、错误码、回复 message ID |
-| `agent_run_input` | message ID 主键、run ID、`pending` 或 `delivered`、投递时间                                                                         |
+| 对象              | 持久事实                                                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `agent_run`       | instance、chat、project、requestId、状态、排队及开始和结束时间、session ID、实际配置快照、停止原因、错误码、回复 message ID |
+| `agent_run_input` | message ID 主键、run ID、`pending` 或 `delivered`、投递时间                                                                 |
 
 `agent_run_one_active_instance` 是覆盖 `instance_id` 的部分唯一索引，条件为 `status IN ('queued', 'running')`。第二个活跃 run 会被真实 SQLite 拒绝。输入表以 `message_id` 为主键，同一 human 消息不能写入两次。消息事务同时写 run 输入和诊断，任何一步失败都会回滚消息。本次迁移不重新执行迁移前的历史消息。迁移后通过 DM 发送入口保存的每条 human 消息恰有一行 run 输入。
 
-run 的 project 归属从 `conversation` 推导。`agent_instance.project_id` 没有复合外键，不能用它决定 run 的 Project。查询先经过现有 Project 授权入口，再限制 conversation 与 project。越权等价于 `not_found`。
+run 的 project 归属从 `chat` 推导。`agent_instance.project_id` 没有复合外键，不能用它决定 run 的 Project。查询先经过现有 Project 授权入口，再限制 chat 与 project。越权等价于 `not_found`。
 
 agent 消息的 `sender_id` 仍是 agent profile ID。run 行保存 instance ID。这保留 P2 的多态成员身份语义。完成事务调用 `sendMessage`，不会直接插入 agent 消息。
 
@@ -116,7 +116,7 @@ p3-b 在对话页发送区附近显示启用状态。显式 false 时显示“�
 
 领域查询入口如下，全部需要 `{ userId, requestId }`。
 
-- `listAgentRuns(conversationId, ctx)` 返回时间及 rowid 升序的 run。
+- `listAgentRuns(chatId, ctx)` 返回时间及 rowid 升序的 run。
 - `getAgentRun(runId, ctx)` 返回状态与快照。
 - `listAgentRunInputs(runId, ctx)` 返回输入状态。
 
@@ -161,13 +161,13 @@ SQLite 的 CHECK 只在表达式求值为 FALSE 时拒绝写入，求值为 NULL
 
 ```js
 const nullStopInsert =
-  "INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,queued_at,started_at,settled_at,stop_reason,session_id,config_snapshot,assistant_message_id) SELECT 'invalid-null-stop',instance_id,conversation_id,project_id,request_id,'completed',queued_at,started_at,unixepoch(),NULL,session_id,config_snapshot,? FROM agent_run WHERE id=?";
+  "INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,queued_at,started_at,settled_at,stop_reason,session_id,config_snapshot,assistant_message_id) SELECT 'invalid-null-stop',instance_id,chat_id,project_id,request_id,'completed',queued_at,started_at,unixepoch(),NULL,session_id,config_snapshot,? FROM agent_run WHERE id=?";
 assert.throws(() => sqlite.prepare(nullStopInsert).run(first.id, run.id), /CHECK constraint/);
 ```
 
 红绿证据使用同一个直接 INSERT 探针。红状态在独立迁移副本中只移除新增的 `IS NOT NULL` 守卫，数据库原样放行 INSERT，`assert.throws` 因 `Missing expected exception` 失败，退出 1。绿状态使用正式 drizzle 迁移，INSERT 被 CHECK 拒绝，退出 0。探针为 `.verify/p3-a-null-stop-insert-probe.mjs`，日志分别为 `/tmp/p3-a-null-stop-insert-red.log` 与 `/tmp/p3-a-null-stop-insert-green.log`。两份退出码在同名 `.exit` 文件。此前直接 UPDATE 的同类红绿证据为 `/tmp/p3-a-null-stop-red.log` 和 `/tmp/p3-a-null-stop-green.log`。
 
-既有 `conversation_kind_check`、`conversation_member_kind_check`、`message_sender_kind_check`、`diagnostic_event_level_check` 与 `runtime_boot_phase_check` 比较的列全部声明为 NOT NULL，NULL 无法到达比较。这是新表设计中需要防范的风险，本次没有发现既有五个 CHECK 的同类缺陷。
+既有 `chat_kind_check`、`chat_member_kind_check`、`message_sender_kind_check`、`diagnostic_event_level_check` 与 `runtime_boot_phase_check` 比较的列全部声明为 NOT NULL，NULL 无法到达比较。这是新表设计中需要防范的风险，本次没有发现既有五个 CHECK 的同类缺陷。
 
 ## 既有断言的最小更新
 

@@ -1,13 +1,13 @@
 CREATE TABLE `agent_instance` (
 	`id` text PRIMARY KEY NOT NULL,
 	`profile_id` text NOT NULL,
-	`conversation_id` text NOT NULL,
+	`chat_id` text NOT NULL,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`profile_id`) REFERENCES `agent_profile`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE no action
+	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `uq_agent_instance_profile_conversation` ON `agent_instance` (`profile_id`,`conversation_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_agent_instance_profile_chat` ON `agent_instance` (`profile_id`,`chat_id`);--> statement-breakpoint
 CREATE TABLE `agent_profile` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE `agent_run` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_agent_run_active_instance` ON `agent_run` (`instance_id`) WHERE "agent_run"."status" = 'active';--> statement-breakpoint
-CREATE TABLE `conversation` (
+CREATE TABLE `chat` (
 	`id` text PRIMARY KEY NOT NULL,
 	`project_id` text NOT NULL,
 	`title` text DEFAULT '' NOT NULL

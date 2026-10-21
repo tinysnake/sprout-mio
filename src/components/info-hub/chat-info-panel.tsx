@@ -1,29 +1,24 @@
-import type { ConversationInfoView, TurnStartContext } from "../../contracts/info-hub";
+import type { ChatInfoView, TurnStartContext } from "../../contracts/info-hub";
 import { RunFactsBlock, TurnStartContextBlock } from "./run-facts";
 
-/** Conversation → 自身与成员视角：只消费 getConversationInfo 的视图对象，不自行查询。 */
-export function ConversationInfoPanel({
+/** Chat → 自身与成员视角：只消费 getChatInfo 的视图对象，不自行查询。 */
+export function ChatInfoPanel({
   view,
   turnStart,
 }: {
-  view: ConversationInfoView;
+  view: ChatInfoView;
   turnStart: TurnStartContext;
 }) {
   return (
-    <article
-      data-testid="info-hub-conversation"
-      className="space-y-4 rounded-lg border border-dashed p-6"
-    >
+    <article data-testid="info-hub-chat" className="space-y-4 rounded-lg border border-dashed p-6">
       <h3 className="text-lg font-semibold">对话信息（Info Hub）</h3>
       <dl className="grid grid-cols-[10rem_1fr] gap-y-2 text-sm">
         <dt className="text-muted-foreground">类型</dt>
-        <dd data-testid="info-conversation-kind">
-          {view.kind === "dm" ? "DM（一对一）" : view.kind}
-        </dd>
+        <dd data-testid="info-chat-kind">{view.kind === "dm" ? "DM（一对一）" : view.kind}</dd>
         <dt className="text-muted-foreground">归档状态</dt>
-        <dd data-testid="info-conversation-archived">{view.archived ? "已归档" : "未归档"}</dd>
+        <dd data-testid="info-chat-archived">{view.archived ? "已归档" : "未归档"}</dd>
         <dt className="text-muted-foreground">分身 Instance ID</dt>
-        <dd data-testid="info-conversation-instance-id" className="font-mono text-xs break-all">
+        <dd data-testid="info-chat-instance-id" className="font-mono text-xs break-all">
           {view.instance?.instanceId ?? "（缺少分身记录）"}
         </dd>
         <dt className="text-muted-foreground">消息数</dt>
@@ -45,7 +40,7 @@ export function ConversationInfoPanel({
           ))}
         </ul>
       </div>
-      <RunFactsBlock runs={view.runs} testId="info-conversation-runs" />
+      <RunFactsBlock runs={view.runs} testId="info-chat-runs" />
       <TurnStartContextBlock context={turnStart} />
     </article>
   );

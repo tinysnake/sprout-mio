@@ -1,11 +1,11 @@
 // 真实 Chromium 走完 P2 的 DM 建立、消息持久、人设编辑与分身身份，每步打印 PASS/FAIL。
-// CONVERSATION_VERIFY=1 时进入第二次会话模式：读取状态文件，用于服务重启后的持久性断言。
+// CHAT_VERIFY=1 时进入第二次会话模式：读取状态文件，用于服务重启后的持久性断言。
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = new URL("../../docs/p1/evidence/", import.meta.url).pathname;
-const STATE_FILE = process.env.CONVERSATION_STATE_FILE ?? "/tmp/p2-c-conversation-state.json";
+const STATE_FILE = process.env.CHAT_STATE_FILE ?? "/tmp/p2-c-chat-state.json";
 
 const results = [];
 const consoleErrors = [];
@@ -43,19 +43,19 @@ async function verifyRestartedSession() {
   });
   page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
-  await page.goto(`${BASE}${state.conversationPath}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}${state.chatPath}`, { waitUntil: "domcontentloaded" });
 
-  await check("restart_conversation_renders_same_instance", async () => {
-    await page.waitForSelector('[data-testid="conversation-instance-id"]', { timeout: 20000 });
+  await check("restart_chat_renders_same_instance", async () => {
+    await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
     const actual = await page.evaluate(() => ({
-      conversationId: document.querySelector('[data-testid="conversation-id"]')?.textContent,
-      instanceId: document.querySelector('[data-testid="conversation-instance-id"]')?.textContent,
-      persona: document.querySelector('[data-testid="conversation-agent-persona"]')?.textContent,
-      agentName: document.querySelector('[data-testid="conversation-agent-name"]')?.textContent,
+      chatId: document.querySelector('[data-testid="chat-id"]')?.textContent,
+      instanceId: document.querySelector('[data-testid="chat-instance-id"]')?.textContent,
+      persona: document.querySelector('[data-testid="chat-agent-persona"]')?.textContent,
+      agentName: document.querySelector('[data-testid="chat-agent-name"]')?.textContent,
     }));
     record(
-      "restart_conversation_renders_same_instance",
-      actual.conversationId === state.conversationId &&
+      "restart_chat_renders_same_instance",
+      actual.chatId === state.chatId &&
         actual.instanceId === state.instanceId &&
         actual.persona === state.persona &&
         actual.agentName === state.agentName,
@@ -71,7 +71,7 @@ async function verifyRestartedSession() {
     const kinds = await page.$$eval('[data-testid="message-item"]', (nodes) =>
       nodes.map((node) => node.getAttribute("data-sender-kind")),
     );
-    await shot(page, "p2-i-conversation-after-restart");
+    await shot(page, "p2-i-chat-after-restart");
     record(
       "restart_messages_retained_in_order",
       JSON.stringify(bodies) === JSON.stringify(state.messages) &&
@@ -80,15 +80,15 @@ async function verifyRestartedSession() {
     );
   });
 
-  await check("restart_list_shows_single_conversation", async () => {
-    await page.goto(`${BASE}${state.projectPath}/conversations`, { waitUntil: "domcontentloaded" });
+  await check("restart_list_shows_single_chat", async () => {
+    await page.goto(`${BASE}${state.projectPath}/chats`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="dm-member-list"]', { timeout: 20000 });
-    const items = await page.$$eval('[data-testid="conversation-item"]', (nodes) =>
-      nodes.map((node) => node.getAttribute("data-conversation-id")),
+    const items = await page.$$eval('[data-testid="chat-item"]', (nodes) =>
+      nodes.map((node) => node.getAttribute("data-chat-id")),
     );
     record(
-      "restart_list_shows_single_conversation",
-      JSON.stringify(items) === JSON.stringify([state.conversationId]),
+      "restart_list_shows_single_chat",
+      JSON.stringify(items) === JSON.stringify([state.chatId]),
       `重启后列表 ${JSON.stringify(items)}`,
     );
   });
@@ -103,7 +103,7 @@ async function verifyRestartedSession() {
   process.exit(finish());
 }
 
-if (process.env.CONVERSATION_VERIFY === "1") {
+if (process.env.CHAT_VERIFY === "1") {
   await verifyRestartedSession();
 } else {
   mkdirSync(EVIDENCE, { recursive: true });
@@ -117,8 +117,8 @@ if (process.env.CONVERSATION_VERIFY === "1") {
   page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
   const stamp = Date.now();
-  const email = `i-conversation-${stamp}@example.test`;
-  const password = "{{SECRET_p2-c-conversation-pass}}";
+  const email = `i-chat-${stamp}@example.test`;
+  const password = "{{SECRET_p2-c-chat-pass}}";
   const projectName = `P2-I 验收 ${stamp}`;
   const agentName = `P2-I Agent ${stamp}`;
   const initialPersona = "初始人设：谨慎的对话对象";
@@ -128,8 +128,8 @@ if (process.env.CONVERSATION_VERIFY === "1") {
   const pathOf = () => new URL(page.url()).pathname;
   let projectPath = "";
   let agentId = "";
-  let conversationId = "";
-  let conversationPath = "";
+  let chatId = "";
+  let chatPath = "";
   let instanceId = "";
 
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
@@ -146,7 +146,7 @@ if (process.env.CONVERSATION_VERIFY === "1") {
     await page.waitForURL((url) => url.pathname === "/projects", { timeout: 20000 });
     await page.click('[data-testid="new-project-trigger"]');
     await page.fill('[data-testid="project-name-input"]', projectName);
-    await page.fill('[data-testid="project-description-input"]', "P2 Conversation/DM 验收");
+    await page.fill('[data-testid="project-description-input"]', "P2 Chat/DM 验收");
     await page.click('[data-testid="project-submit"]');
     await page.waitForSelector('[data-testid="project-item"]', { timeout: 20000 });
     record("register_and_create_project", true, `注册登录并创建 ${projectName}`);
@@ -200,26 +200,26 @@ if (process.env.CONVERSATION_VERIFY === "1") {
     );
   });
 
-  await check("start_dm_navigates_to_conversation", async () => {
-    await page.goto(`${BASE}${projectPath}/conversations`, { waitUntil: "domcontentloaded" });
+  await check("start_dm_navigates_to_chat", async () => {
+    await page.goto(`${BASE}${projectPath}/chats`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="dm-member-item"]', { timeout: 20000 });
     // 成员里还有默认 Agent，按本次新建的 profile id 点它的「发起对话」。
     await page.click(`[data-testid="dm-start"][data-agent-profile-id="${agentId}"]`);
-    await page.waitForURL((url) => /\/conversations\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+    await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
       timeout: 20000,
     });
-    await page.waitForSelector('[data-testid="conversation-instance-id"]', { timeout: 20000 });
-    conversationPath = pathOf();
-    conversationId = conversationPath.split("/").pop() ?? "";
-    instanceId = (await page.textContent('[data-testid="conversation-instance-id"]')) ?? "";
-    const agentShown = await page.textContent('[data-testid="conversation-agent-name"]');
-    await shot(page, "p2-i-conversation-started");
+    await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
+    chatPath = pathOf();
+    chatId = chatPath.split("/").pop() ?? "";
+    instanceId = (await page.textContent('[data-testid="chat-instance-id"]')) ?? "";
+    const agentShown = await page.textContent('[data-testid="chat-agent-name"]');
+    await shot(page, "p2-i-chat-started");
     record(
-      "start_dm_navigates_to_conversation",
-      /^cnv_[0-9a-f-]{36}$/.test(conversationId) &&
+      "start_dm_navigates_to_chat",
+      /^cnv_[0-9a-f-]{36}$/.test(chatId) &&
         /^ins_[0-9a-f-]{36}$/.test(instanceId) &&
         agentShown?.trim() === agentName,
-      `URL ${conversationPath}，instance ${instanceId}，Agent ${JSON.stringify(agentShown?.trim())}`,
+      `URL ${chatPath}，instance ${instanceId}，Agent ${JSON.stringify(agentShown?.trim())}`,
     );
   });
 
@@ -246,8 +246,8 @@ if (process.env.CONVERSATION_VERIFY === "1") {
     const kinds = await page.$$eval('[data-testid="message-item"]', (nodes) =>
       nodes.map((node) => node.getAttribute("data-sender-kind")),
     );
-    const afterReloadInstance = await page.textContent('[data-testid="conversation-instance-id"]');
-    await shot(page, "p2-i-conversation-messages");
+    const afterReloadInstance = await page.textContent('[data-testid="chat-instance-id"]');
+    await shot(page, "p2-i-chat-messages");
     record(
       "send_two_messages_survive_reload_in_order",
       JSON.stringify(bodies) === JSON.stringify([firstMessage, secondMessage]) &&
@@ -263,16 +263,16 @@ if (process.env.CONVERSATION_VERIFY === "1") {
     await page.fill('[data-testid="agent-edit-persona"]', updatedPersona);
     await page.click('[data-testid="agent-edit-save"]');
     await page.waitForSelector('[data-testid="agent-edit-saved"]', { timeout: 20000 });
-    await page.goto(`${BASE}${conversationPath}`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="conversation-instance-id"]', { timeout: 20000 });
+    await page.goto(`${BASE}${chatPath}`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
     const state = await page.evaluate(() => ({
-      instanceId: document.querySelector('[data-testid="conversation-instance-id"]')?.textContent,
-      persona: document.querySelector('[data-testid="conversation-agent-persona"]')?.textContent,
+      instanceId: document.querySelector('[data-testid="chat-instance-id"]')?.textContent,
+      persona: document.querySelector('[data-testid="chat-agent-persona"]')?.textContent,
       bodies: [...document.querySelectorAll('[data-testid="message-body"]')].map(
         (node) => node.textContent,
       ),
     }));
-    await shot(page, "p2-i-conversation-after-persona-edit");
+    await shot(page, "p2-i-chat-after-persona-edit");
     record(
       "persona_edit_keeps_instance_and_history",
       state.instanceId?.trim() === instanceId &&
@@ -282,47 +282,40 @@ if (process.env.CONVERSATION_VERIFY === "1") {
     );
   });
 
-  await check("repeat_start_opens_same_conversation", async () => {
-    await page.goto(`${BASE}${projectPath}/conversations`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="conversation-item"]', { timeout: 20000 });
-    const items = await page.$$eval('[data-testid="conversation-item"]', (nodes) =>
-      nodes.map((node) => node.getAttribute("data-conversation-id")),
+  await check("repeat_start_opens_same_chat", async () => {
+    await page.goto(`${BASE}${projectPath}/chats`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-testid="chat-item"]', { timeout: 20000 });
+    const items = await page.$$eval('[data-testid="chat-item"]', (nodes) =>
+      nodes.map((node) => node.getAttribute("data-chat-id")),
     );
     await page.click(`[data-testid="dm-start"][data-agent-profile-id="${agentId}"]`);
-    await page.waitForURL((url) => url.pathname === conversationPath, { timeout: 20000 });
-    await shot(page, "p2-i-conversations-list");
+    await page.waitForURL((url) => url.pathname === chatPath, { timeout: 20000 });
+    await shot(page, "p2-i-chats-list");
     record(
-      "repeat_start_opens_same_conversation",
-      JSON.stringify(items) === JSON.stringify([conversationId]) && pathOf() === conversationPath,
+      "repeat_start_opens_same_chat",
+      JSON.stringify(items) === JSON.stringify([chatId]) && pathOf() === chatPath,
       `列表 ${JSON.stringify(items)}，再次发起后 URL ${pathOf()}`,
     );
   });
 
-  await check("deep_link_conversation_renders", async () => {
-    await page.goto(`${BASE}${conversationPath}`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="conversation-instance-id"]', { timeout: 20000 });
-    const id = await page.textContent('[data-testid="conversation-id"]');
-    record(
-      "deep_link_conversation_renders",
-      id?.trim() === conversationId,
-      `深链直达对话页 ${conversationPath}`,
-    );
+  await check("deep_link_chat_renders", async () => {
+    await page.goto(`${BASE}${chatPath}`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
+    const id = await page.textContent('[data-testid="chat-id"]');
+    record("deep_link_chat_renders", id?.trim() === chatId, `深链直达对话页 ${chatPath}`);
   });
 
-  await check("missing_conversation_shows_not_found", async () => {
-    await page.goto(
-      `${BASE}${projectPath}/conversations/cnv_00000000-0000-4000-8000-000000000000`,
-      {
-        waitUntil: "domcontentloaded",
-      },
-    );
-    await page.waitForSelector('[data-testid="conversation-error"]', { timeout: 20000 });
-    const meta = await page.textContent('[data-testid="conversation-error-meta"]');
-    await shot(page, "p2-i-conversation-not-found");
+  await check("missing_chat_shows_not_found", async () => {
+    await page.goto(`${BASE}${projectPath}/chats/cnv_00000000-0000-4000-8000-000000000000`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForSelector('[data-testid="chat-error"]', { timeout: 20000 });
+    const meta = await page.textContent('[data-testid="chat-error-meta"]');
+    await shot(page, "p2-i-chat-not-found");
     record(
-      "missing_conversation_shows_not_found",
+      "missing_chat_shows_not_found",
       /not_found/.test(meta ?? "") && /req_[0-9a-f-]{36}/.test(meta ?? ""),
-      `不存在的 conversationId 显示 ${JSON.stringify(meta)}`,
+      `不存在的 chatId 显示 ${JSON.stringify(meta)}`,
     );
   });
 
@@ -340,8 +333,8 @@ if (process.env.CONVERSATION_VERIFY === "1") {
       {
         baseUrl: BASE,
         projectPath,
-        conversationPath,
-        conversationId,
+        chatPath,
+        chatId,
         instanceId,
         agentProfileId: agentId,
         agentName,

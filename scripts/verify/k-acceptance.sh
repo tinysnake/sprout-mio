@@ -121,10 +121,10 @@ try {
   const sqlite = new Database(database)
   try {
     sqlite.transaction(() => {
-      assert.throws(() => sqlite.prepare('INSERT INTO agent_instance (id, agent_profile_id, conversation_id, project_id) VALUES (?, ?, ?, ?)').run(`ins_${randomUUID()}`, state.agentProfileId, snapshot.conversationId, state.project.id), error => error.code === 'SQLITE_CONSTRAINT_UNIQUE')
-      assert.equal(sqlite.prepare('SELECT count(*) AS count FROM agent_instance WHERE agent_profile_id = ? AND conversation_id = ?').get(state.agentProfileId, snapshot.conversationId).count, 1)
+      assert.throws(() => sqlite.prepare('INSERT INTO agent_instance (id, agent_profile_id, chat_id, project_id) VALUES (?, ?, ?, ?)').run(`ins_${randomUUID()}`, state.agentProfileId, snapshot.chatId, state.project.id), error => error.code === 'SQLITE_CONSTRAINT_UNIQUE')
+      assert.equal(sqlite.prepare('SELECT count(*) AS count FROM agent_instance WHERE agent_profile_id = ? AND chat_id = ?').get(state.agentProfileId, snapshot.chatId).count, 1)
     })()
-    record('profile_conversation_duplicate_instance_rejected_by_SQLite', true, { agentProfileId: state.agentProfileId, conversationId: snapshot.conversationId, count: 1, code: 'SQLITE_CONSTRAINT_UNIQUE' })
+    record('profile_chat_duplicate_instance_rejected_by_SQLite', true, { agentProfileId: state.agentProfileId, chatId: snapshot.chatId, count: 1, code: 'SQLITE_CONSTRAINT_UNIQUE' })
   } finally { sqlite.close() }
   const second = launch('pnpm', ['start'], 'server-after.log')
   const after = await health(second, 'after')

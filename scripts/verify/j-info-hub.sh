@@ -158,7 +158,7 @@ try {
   pass('production server ready', { requestId: ready.requestId, bootId: ready.body.bootId, version: ready.body.version })
 
   const ids = serverFnIds()
-  const required = ['getProjectInfoHubFn', 'getConversationInfoFn']
+  const required = ['getProjectInfoHubFn', 'getChatInfoFn']
   for (const name of required) assert(ids[name], `缺少 server function id: ${name}`)
   pass('server function ids present', { required })
 
@@ -170,13 +170,13 @@ try {
   })
   assert.equal(anonymousHub.status, 200, anonymousHub.text)
   assert(anonymousHub.text.includes('unauthorized'), '未登录调用 getProjectInfoHubFn 必须返回 unauthorized 载荷')
-  const anonymousConversation = await curl(`${base}/_serverFn/${ids.getConversationInfoFn}`, 'conversation-info-anonymous', {
+  const anonymousChat = await curl(`${base}/_serverFn/${ids.getChatInfoFn}`, 'chat-info-anonymous', {
     header: serverFnHeaders,
-    body: serverFnBody({ conversationId: 'cnv_00000000-0000-4000-8000-000000000000' }),
+    body: serverFnBody({ chatId: 'cnv_00000000-0000-4000-8000-000000000000' }),
   })
-  assert.equal(anonymousConversation.status, 200, anonymousConversation.text)
-  assert(anonymousConversation.text.includes('unauthorized'), '未登录调用 getConversationInfoFn 必须返回 unauthorized 载荷')
-  pass('未登录调用两个 Info Hub boundary 返回 unauthorized', { hub: anonymousHub.requestId, conversation: anonymousConversation.requestId })
+  assert.equal(anonymousChat.status, 200, anonymousChat.text)
+  assert(anonymousChat.text.includes('unauthorized'), '未登录调用 getChatInfoFn 必须返回 unauthorized 载荷')
+  pass('未登录调用两个 Info Hub boundary 返回 unauthorized', { hub: anonymousHub.requestId, chat: anonymousChat.requestId })
 
   assert(statSync(databaseUrl).size > 0, '真实 SQLite 文件必须存在')
   const browser = await bounded(launch(process.execPath, ['scripts/browser/j-info-hub-flow.mjs'], 'browser.log', { ...environment, BASE_URL: base, INFO_HUB_STATE_FILE: stateFile }), 300000)
@@ -185,7 +185,7 @@ try {
 
   const state = JSON.parse(readFileSync(stateFile, 'utf8'))
   assert.match(state.projectId, /^prj_/, '状态文件必须记录 projectId')
-  assert.match(state.conversationId, /^cnv_/, '状态文件必须记录 conversationId')
+  assert.match(state.chatId, /^cnv_/, '状态文件必须记录 chatId')
   const password = randomBytes(24).toString('base64url')
   const signupB = await curl(`${base}/api/auth/sign-up/email`, 'signup-b', {
     jar: 'cookies-b.txt',
@@ -200,16 +200,16 @@ try {
   })
   assert.equal(hubB.status, 200, hubB.text)
   assert(hubB.text.includes('not_found'), `第二用户调 getProjectInfoHubFn 必须 not_found: ${hubB.text.slice(0, 200)}`)
-  const conversationB = await curl(`${base}/_serverFn/${ids.getConversationInfoFn}`, 'info-hub-cross-conversation', {
+  const chatB = await curl(`${base}/_serverFn/${ids.getChatInfoFn}`, 'info-hub-cross-chat', {
     ...callB,
-    body: serverFnBody({ conversationId: state.conversationId }),
+    body: serverFnBody({ chatId: state.chatId }),
   })
-  assert.equal(conversationB.status, 200, conversationB.text)
-  assert(conversationB.text.includes('not_found'), `第二用户调 getConversationInfoFn 必须 not_found: ${conversationB.text.slice(0, 200)}`)
-  const leaked = [state.projectId, state.conversationId, state.instanceId, state.agentName, state.outsiderName]
-    .filter((token) => hubB.text.includes(token) || conversationB.text.includes(token))
+  assert.equal(chatB.status, 200, chatB.text)
+  assert(chatB.text.includes('not_found'), `第二用户调 getChatInfoFn 必须 not_found: ${chatB.text.slice(0, 200)}`)
+  const leaked = [state.projectId, state.chatId, state.instanceId, state.agentName, state.outsiderName]
+    .filter((token) => hubB.text.includes(token) || chatB.text.includes(token))
   assert.deepEqual(leaked, [], `响应体不得泄漏其他 Project 的对象 id 或名称: ${leaked.join(', ')}`)
-  pass('第二用户的越权与不存在都是 not_found 且不泄漏对象 id 或名称', { hubB: hubB.text.slice(0, 160), conversationB: conversationB.text.slice(0, 160), leaked })
+  pass('第二用户的越权与不存在都是 not_found 且不泄漏对象 id 或名称', { hubB: hubB.text.slice(0, 160), chatB: chatB.text.slice(0, 160), leaked })
 
   const shutdown = await stop(server)
   assert.equal(shutdown.code, 0, '生产进程必须退出 0')

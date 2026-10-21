@@ -28,7 +28,7 @@ const environment = {
   SPROUT_PI_ENABLED: 'true', SPROUT_PI_DATA_DIR: join(directory, 'pi-data'),
   SPROUT_PI_RUNNER: runner, SPROUT_VERIFY_PI_SPAWN_LOG: spawnLog,
 }
-const ORIGINAL_PERSONA = 'Reply concisely. Remember conversation facts.'
+const ORIGINAL_PERSONA = 'Reply concisely. Remember chat facts.'
 const CHANGED_PERSONA = 'Changed after turn started'
 
 function pass(check, output = {}) {
@@ -100,7 +100,7 @@ function serverFnIds() {
   const source = walk('.output/server').map(file => readFileSync(file, 'utf8')).join('\n')
   return Object.fromEntries([...source.matchAll(/id: "([0-9a-f]{64})",\s*\n\s*name: "(\w+)"/g)].map(match => [match[2], match[1]]))
 }
-let ids, cookie, db, server, userId, projectId, profileId, conversationId, instanceId
+let ids, cookie, db, server, userId, projectId, profileId, chatId, instanceId
 async function call(name, data) {
   assert(ids[name], `built ${name} missing`)
   const response = await fetch(`${base}/_serverFn/${ids[name]}`, {
@@ -118,11 +118,11 @@ async function callOk(name, data) {
   assert(result.ok, `${name} rejected ${JSON.stringify(result)}`)
   return result.data
 }
-const allRuns = () => db.prepare('SELECT * FROM agent_run WHERE conversation_id=? ORDER BY rowid').all(conversationId)
+const allRuns = () => db.prepare('SELECT * FROM agent_run WHERE chat_id=? ORDER BY rowid').all(chatId)
 const runRow = id => db.prepare('SELECT * FROM agent_run WHERE id=?').get(id)
 const runInputs = id => db.prepare('SELECT * FROM agent_run_input WHERE run_id=? ORDER BY rowid').all(id)
 async function send(body) {
-  return callOk('sendMessageFn', { conversationId, body })
+  return callOk('sendMessageFn', { chatId, body })
 }
 async function waitRun(status, previous = 0) {
   return until(() => {
@@ -134,7 +134,7 @@ async function waitRun(status, previous = 0) {
   }, `run ${status}`, 30000)
 }
 function noLostInputs() {
-  const rows = db.prepare("SELECT m.id, count(i.message_id) AS inputs FROM message m LEFT JOIN agent_run_input i ON i.message_id=m.id WHERE m.conversation_id=? AND m.sender_kind='human' GROUP BY m.id").all(conversationId)
+  const rows = db.prepare("SELECT m.id, count(i.message_id) AS inputs FROM message m LEFT JOIN agent_run_input i ON i.message_id=m.id WHERE m.chat_id=? AND m.sender_kind='human' GROUP BY m.id").all(chatId)
   assert(rows.every(row => row.inputs === 1), 'every human message must have exactly one run input')
   pass('every human message has exactly one run input', rows)
 }
@@ -198,8 +198,8 @@ try {
   projectId=(await callOk('createProjectFn',{name:'Turn verification'})).id
   profileId=(await callOk('createAgentProfileFn',{name:'Turn verification agent',persona:ORIGINAL_PERSONA,model:'protocol/model',effort:'off'})).id
   await callOk('addProjectMemberFn',{projectId,agentProfileId:profileId})
-  const direct=await callOk('createDirectConversationFn',{projectId,agentProfileId:profileId})
-  conversationId=direct.conversation.id
+  const direct=await callOk('createDirectChatFn',{projectId,agentProfileId:profileId})
+  chatId=direct.chat.id
   instanceId=direct.instance.id
   await delay(300)
   assert(!existsSync(spawnLog),'no Pi runner may start without work')
@@ -241,13 +241,13 @@ try {
   assert.equal(rejected[2].delivered_at,null)
   pass('failed delivery keeps input pending with a readable diagnostic reason', {runId:busy.id,disposition:rejected[2].disposition,diagnostic})
 
-  const agentMessagesBefore=db.prepare("SELECT count(*) AS n FROM message WHERE conversation_id=? AND sender_kind='agent'").get(conversationId).n
+  const agentMessagesBefore=db.prepare("SELECT count(*) AS n FROM message WHERE chat_id=? AND sender_kind='agent'").get(chatId).n
   const stopped=await callOk('abortAgentRunFn',{runId:busy.id})
   assert.equal(stopped.status,'aborted')
   const aborted=await until(()=>{const row=runRow(busy.id);return row.status==='aborted'?row:undefined},'run aborted')
   assert.equal(aborted.stop_reason,'aborted')
   assert.equal(aborted.assistant_message_id,null)
-  assert.equal(db.prepare("SELECT count(*) AS n FROM message WHERE conversation_id=? AND sender_kind='agent'").get(conversationId).n,agentMessagesBefore)
+  assert.equal(db.prepare("SELECT count(*) AS n FROM message WHERE chat_id=? AND sender_kind='agent'").get(chatId).n,agentMessagesBefore)
   const busyPid=JSON.parse(readFileSync(spawnLog,'utf8').trim().split('\n').at(-1)).pid
   await until(()=>{try{process.kill(busyPid,0);return}catch(error){assert.equal(error.code,'ESRCH');return true}},'aborted runner child exits')
   assert.equal(runInputs(busy.id)[2].disposition,'pending')
@@ -290,7 +290,7 @@ try {
   server=launch(process.execPath,['.output/server/index.mjs'],'server-disabled.log',{...environment,SPROUT_PI_ENABLED:'false'})
   await health(server)
   const spawnCountBeforeDisabled=readFileSync(spawnLog,'utf8').trim().split('\n').length
-  const disabledState=await callOk('getConversationRunStateFn',{conversationId})
+  const disabledState=await callOk('getChatRunStateFn',{chatId})
   assert.equal(disabledState.enabled,false)
   const queuedMessage=await send('queued while host disabled')
   await delay(300)
@@ -316,7 +316,7 @@ try {
     const consoleErrors = []
     page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
     page.on('pageerror', error => consoleErrors.push(String(error)))
-    const pageUrl = `${base}/projects/${projectId}/conversations/${conversationId}`
+    const pageUrl = `${base}/projects/${projectId}/chats/${chatId}`
     const screenshotDir = resolve('docs/p3/evidence')
     mkdirSync(screenshotDir, { recursive: true })
 
@@ -345,7 +345,7 @@ try {
       return status==='运行中'
     },'UI shows running',10000)
     assert.equal(await page.locator('[data-testid="pending-input-count"]').textContent(),'1 条输入未投递')
-    const activeStatus=await page.locator('[data-testid="info-conversation-runs-active-status"]').first().textContent()
+    const activeStatus=await page.locator('[data-testid="info-chat-runs-active-status"]').first().textContent()
     assert(activeStatus==='排队中'||activeStatus==='运行中','pending input must never be displayed as processed')
     assert((await page.locator('[data-testid="info-turn-active-run"]').textContent()).includes('条输入未投递'),'turn context shows the pending input as undelivered')
     const runningShot=join(screenshotDir,'p3-b-run-running-pending.png')
@@ -363,15 +363,15 @@ try {
     const abortedShot=join(screenshotDir,'p3-b-run-aborted.png')
     await page.screenshot({path:abortedShot,fullPage:true})
     pass('stop button yields aborted shown as 已停止 with pending input still visible as undelivered', {runId:uiRun.id,screenshot:abortedShot})
-    assert.deepEqual(consoleErrors,[],'conversation page must render without console errors')
-    pass('conversation page has no console errors', {consoleErrors})
+    assert.deepEqual(consoleErrors,[],'chat page must render without console errors')
+    pass('chat page has no console errors', {consoleErrors})
   } finally {
     await browser.close()
   }
   noLostInputs()
   await stop(server)
   pass('production shutdown', {runs:allRuns().map(row=>({id:row.id,status:row.status})),directory})
-  writeFileSync(join(directory,'state.json'),JSON.stringify({userId,projectId,profileId,conversationId,instanceId},null,2)+'\n')
+  writeFileSync(join(directory,'state.json'),JSON.stringify({userId,projectId,profileId,chatId,instanceId},null,2)+'\n')
 } catch(error) {
   console.error(`FAIL HERMETIC ${error.stack??error}`)
   process.exitCode=1

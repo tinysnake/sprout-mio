@@ -21,8 +21,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "conversation_id": {
-          "name": "conversation_id",
+        "chat_id": {
+          "name": "chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -53,11 +53,11 @@
         }
       },
       "indexes": {
-        "agent_instance_profile_conversation_unique": {
-          "name": "agent_instance_profile_conversation_unique",
+        "agent_instance_profile_chat_unique": {
+          "name": "agent_instance_profile_chat_unique",
           "columns": [
             "agent_profile_id",
-            "conversation_id"
+            "chat_id"
           ],
           "isUnique": true
         }
@@ -76,12 +76,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "agent_instance_conversation_id_conversation_id_fk": {
-          "name": "agent_instance_conversation_id_conversation_id_fk",
+        "agent_instance_chat_id_chat_id_fk": {
+          "name": "agent_instance_chat_id_chat_id_fk",
           "tableFrom": "agent_instance",
-          "tableTo": "conversation",
+          "tableTo": "chat",
           "columnsFrom": [
-            "conversation_id"
+            "chat_id"
           ],
           "columnsTo": [
             "id"
@@ -215,8 +215,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "conversation_id": {
-          "name": "conversation_id",
+        "chat_id": {
+          "name": "chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -317,10 +317,10 @@
           "isUnique": true,
           "where": "\"agent_run\".\"status\" in ('queued', 'running')"
         },
-        "agent_run_conversation_queued_idx": {
-          "name": "agent_run_conversation_queued_idx",
+        "agent_run_chat_queued_idx": {
+          "name": "agent_run_chat_queued_idx",
           "columns": [
-            "conversation_id",
+            "chat_id",
             "queued_at"
           ],
           "isUnique": false
@@ -340,12 +340,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "agent_run_conversation_id_conversation_id_fk": {
-          "name": "agent_run_conversation_id_conversation_id_fk",
+        "agent_run_chat_id_chat_id_fk": {
+          "name": "agent_run_chat_id_chat_id_fk",
           "tableFrom": "agent_run",
-          "tableTo": "conversation",
+          "tableTo": "chat",
           "columnsFrom": [
-            "conversation_id"
+            "chat_id"
           ],
           "columnsTo": [
             "id"
@@ -480,8 +480,8 @@
         }
       }
     },
-    "conversation": {
-      "name": "conversation",
+    "chat": {
+      "name": "chat",
       "columns": {
         "id": {
           "name": "id",
@@ -544,9 +544,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "conversation_project_id_project_id_fk": {
-          "name": "conversation_project_id_project_id_fk",
-          "tableFrom": "conversation",
+        "chat_project_id_project_id_fk": {
+          "name": "chat_project_id_project_id_fk",
+          "tableFrom": "chat",
           "tableTo": "project",
           "columnsFrom": [
             "project_id"
@@ -557,9 +557,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "conversation_created_by_user_id_fk": {
-          "name": "conversation_created_by_user_id_fk",
-          "tableFrom": "conversation",
+        "chat_created_by_user_id_fk": {
+          "name": "chat_created_by_user_id_fk",
+          "tableFrom": "chat",
           "tableTo": "user",
           "columnsFrom": [
             "created_by"
@@ -574,17 +574,17 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "conversation_kind_check": {
-          "name": "conversation_kind_check",
-          "value": "\"conversation\".\"kind\" in ('dm')"
+        "chat_kind_check": {
+          "name": "chat_kind_check",
+          "value": "\"chat\".\"kind\" in ('dm')"
         }
       }
     },
-    "conversation_member": {
-      "name": "conversation_member",
+    "chat_member": {
+      "name": "chat_member",
       "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
+        "chat_id": {
+          "name": "chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -615,12 +615,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "conversation_member_conversation_id_conversation_id_fk": {
-          "name": "conversation_member_conversation_id_conversation_id_fk",
-          "tableFrom": "conversation_member",
-          "tableTo": "conversation",
+        "chat_member_chat_id_chat_id_fk": {
+          "name": "chat_member_chat_id_chat_id_fk",
+          "tableFrom": "chat_member",
+          "tableTo": "chat",
           "columnsFrom": [
-            "conversation_id"
+            "chat_id"
           ],
           "columnsTo": [
             "id"
@@ -630,20 +630,20 @@
         }
       },
       "compositePrimaryKeys": {
-        "conversation_member_conversation_id_member_kind_member_id_pk": {
+        "chat_member_chat_id_member_kind_member_id_pk": {
           "columns": [
-            "conversation_id",
+            "chat_id",
             "member_kind",
             "member_id"
           ],
-          "name": "conversation_member_conversation_id_member_kind_member_id_pk"
+          "name": "chat_member_chat_id_member_kind_member_id_pk"
         }
       },
       "uniqueConstraints": {},
       "checkConstraints": {
-        "conversation_member_kind_check": {
-          "name": "conversation_member_kind_check",
-          "value": "\"conversation_member\".\"member_kind\" in ('human', 'agent')"
+        "chat_member_kind_check": {
+          "name": "chat_member_kind_check",
+          "value": "\"chat_member\".\"member_kind\" in ('human', 'agent')"
         }
       }
     },
@@ -692,8 +692,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "conversation_id": {
-          "name": "conversation_id",
+        "chat_id": {
+          "name": "chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -792,8 +792,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "conversation_id": {
-          "name": "conversation_id",
+        "chat_id": {
+          "name": "chat_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -830,22 +830,22 @@
         }
       },
       "indexes": {
-        "message_conversation_created_at_idx": {
-          "name": "message_conversation_created_at_idx",
+        "message_chat_created_at_idx": {
+          "name": "message_chat_created_at_idx",
           "columns": [
-            "conversation_id",
+            "chat_id",
             "created_at"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "message_conversation_id_conversation_id_fk": {
-          "name": "message_conversation_id_conversation_id_fk",
+        "message_chat_id_chat_id_fk": {
+          "name": "message_chat_id_chat_id_fk",
           "tableFrom": "message",
-          "tableTo": "conversation",
+          "tableTo": "chat",
           "columnsFrom": [
-            "conversation_id"
+            "chat_id"
           ],
           "columnsTo": [
             "id"

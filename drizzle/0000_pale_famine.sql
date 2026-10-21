@@ -5,7 +5,7 @@ CREATE TABLE `diagnostic_event` (
 	`event` text NOT NULL,
 	`request_id` text NOT NULL,
 	`project_id` text,
-	`conversation_id` text,
+	`chat_id` text,
 	`instance_id` text,
 	`run_id` text,
 	`execution_id` text,

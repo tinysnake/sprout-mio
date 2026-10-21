@@ -1,7 +1,7 @@
 CREATE TABLE `agent_run` (
 	`id` text PRIMARY KEY NOT NULL,
 	`instance_id` text NOT NULL,
-	`conversation_id` text NOT NULL,
+	`chat_id` text NOT NULL,
 	`project_id` text NOT NULL,
 	`request_id` text NOT NULL,
 	`status` text NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE `agent_run` (
 	`config_snapshot` text,
 	`assistant_message_id` text,
 	FOREIGN KEY (`instance_id`) REFERENCES `agent_instance`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`conversation_id`) REFERENCES `conversation`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`project_id`) REFERENCES `project`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`assistant_message_id`) REFERENCES `message`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "agent_run_status_check" CHECK("agent_run"."status" in ('queued', 'running', 'completed', 'failed', 'aborted', 'interrupted')),
@@ -32,7 +32,7 @@ CREATE TABLE `agent_run` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `agent_run_one_active_instance` ON `agent_run` (`instance_id`) WHERE "agent_run"."status" in ('queued', 'running');--> statement-breakpoint
-CREATE INDEX `agent_run_conversation_queued_idx` ON `agent_run` (`conversation_id`,`queued_at`);--> statement-breakpoint
+CREATE INDEX `agent_run_chat_queued_idx` ON `agent_run` (`chat_id`,`queued_at`);--> statement-breakpoint
 CREATE TABLE `agent_run_input` (
 	`message_id` text PRIMARY KEY NOT NULL,
 	`run_id` text NOT NULL,

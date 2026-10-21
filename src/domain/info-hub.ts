@@ -1,6 +1,6 @@
 import type {
   AgentRunsView,
-  ConversationInfoView,
+  ChatInfoView,
   InfoHubRunSummary,
   ProjectAgentEntry,
   ProjectInfoHub,
@@ -8,19 +8,13 @@ import type {
 } from "../contracts/info-hub";
 import { MACHINES_UNAVAILABLE_REASON } from "../contracts/info-hub";
 import type { AgentRun } from "../contracts/agent-run";
-import type { Conversation } from "../contracts/conversation";
+import type { Chat } from "../contracts/chat";
 import { config } from "../lib/config";
 import { assertProjectAccess } from "./access";
 import type { ProjectContext } from "./access";
 import { getAgentProfile, listProjectMembers } from "./agent";
 import { listAgentRunInputs, listAgentRuns } from "./agent-run";
-import {
-  getConversation,
-  listConversationMembers,
-  listConversations,
-  listInstancesForConversation,
-  listMessages,
-} from "./conversation";
+import { getChat, listChatMembers, listChats, listInstancesForChat, listMessages } from "./chat";
 import { getProjectRepoState, getRunRepoBasis } from "./repository";
 
 const PERSONA_SUMMARY_LIMIT = 120;
@@ -69,9 +63,9 @@ function runSummary(run: AgentRun, ctx: ProjectContext): InfoHubRunSummary {
 }
 
 /** run 事实来自领域查询；pending 输入只以未投递计数出现，不重新拼装状态。 */
-function runsView(conversations: Conversation[], ctx: ProjectContext): AgentRunsView {
-  const runs = conversations
-    .flatMap((conversation) => listAgentRuns(conversation.id, ctx))
+function runsView(chats: Chat[], ctx: ProjectContext): AgentRunsView {
+  const runs = chats
+    .flatMap((chat) => listAgentRuns(chat.id, ctx))
     .sort((left, right) =>
       left.queuedAt === right.queuedAt ? 0 : left.queuedAt < right.queuedAt ? -1 : 1,
     );
@@ -91,11 +85,11 @@ function runsView(conversations: Conversation[], ctx: ProjectContext): AgentRuns
 export function getProjectInfoHub(projectId: string, ctx: ProjectContext): ProjectInfoHub {
   assertProjectAccess(ctx, projectId);
   const members = listProjectMembers(projectId, ctx);
-  const conversations = listConversations(projectId, ctx);
-  const dmLinks = conversations.flatMap((conversation) =>
-    listInstancesForConversation(conversation.id, ctx).map((instance) => ({
+  const chats = listChats(projectId, ctx);
+  const dmLinks = chats.flatMap((chat) =>
+    listInstancesForChat(chat.id, ctx).map((instance) => ({
       agentProfileId: instance.agentProfileId,
-      conversationId: conversation.id,
+      chatId: chat.id,
       instanceId: instance.id,
     })),
   );
@@ -106,35 +100,32 @@ export function getProjectInfoHub(projectId: string, ctx: ProjectContext): Proje
       agentProfileId: profile.id,
       name: profile.name,
       personaSummary: personaSummary(profile.persona),
-      ...(link ? { conversationId: link.conversationId, instanceId: link.instanceId } : {}),
+      ...(link ? { chatId: link.chatId, instanceId: link.instanceId } : {}),
     };
   });
   return {
     projectId,
     agents: {
       agents,
-      runs: runsView(conversations, ctx),
+      runs: runsView(chats, ctx),
     },
     machines: { available: false, reason: MACHINES_UNAVAILABLE_REASON },
   };
 }
 
-/** Conversation → 自身与成员视角：授权经 conversation 自带的 projectId，越权与不存在同样抛 not_found。 */
-export function getConversationInfo(
-  conversationId: string,
-  ctx: ProjectContext,
-): ConversationInfoView {
-  const conversation = getConversation(conversationId, ctx);
-  const members = listConversationMembers(conversationId, ctx);
-  const instances = listInstancesForConversation(conversationId, ctx);
-  const messages = listMessages(conversationId, ctx);
+/** Chat → 自身与成员视角：授权经 chat 自带的 projectId，越权与不存在同样抛 not_found。 */
+export function getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView {
+  const chat = getChat(chatId, ctx);
+  const members = listChatMembers(chatId, ctx);
+  const instances = listInstancesForChat(chatId, ctx);
+  const messages = listMessages(chatId, ctx);
   const instance = instances.at(0);
   const latest = messages.at(-1);
   return {
-    conversationId: conversation.id,
-    projectId: conversation.projectId,
-    kind: conversation.kind,
-    archived: conversation.archivedAt !== undefined,
+    chatId: chat.id,
+    projectId: chat.projectId,
+    kind: chat.kind,
+    archived: chat.archivedAt !== undefined,
     members: members.map((member) => ({
       memberKind: member.memberKind,
       memberId: member.memberId,
@@ -152,7 +143,7 @@ export function getConversationInfo(
       count: messages.length,
       ...(latest ? { latestAt: latest.createdAt } : {}),
     },
-    runs: runsView([conversation], ctx),
+    runs: runsView([chat], ctx),
   };
 }
 
@@ -160,17 +151,17 @@ export function getConversationInfo(
  * 轮初必要上下文：这个分身在这一轮开始时需要知道什么。
  * 不注入模型 prompt（见 contracts 的 `injectedIntoPrompt`）；只供人与后续 P6 查询消费。
  */
-export function getTurnStartContext(conversationId: string, ctx: ProjectContext): TurnStartContext {
-  const conversation = getConversation(conversationId, ctx);
-  const instance = listInstancesForConversation(conversationId, ctx).at(0);
+export function getTurnStartContext(chatId: string, ctx: ProjectContext): TurnStartContext {
+  const chat = getChat(chatId, ctx);
+  const instance = listInstancesForChat(chatId, ctx).at(0);
   const profile = instance ? getAgentProfile(instance.agentProfileId, ctx) : undefined;
-  const runs = listAgentRuns(conversationId, ctx);
+  const runs = listAgentRuns(chatId, ctx);
   const active = runs.find(isActive);
   const activeInputs = active ? listAgentRunInputs(active.id, ctx) : [];
   const previous = runs.filter((run) => !isActive(run)).at(-1);
 
   const activeBasis = active ? getRunRepoBasis(active.id, ctx) : undefined;
-  const checkout = getProjectRepoState(conversation.projectId, ctx).checkout;
+  const checkout = getProjectRepoState(chat.projectId, ctx).checkout;
   const workspace = activeBasis
     ? {
         basis: "run_provenance" as const,
@@ -197,8 +188,8 @@ export function getTurnStartContext(conversationId: string, ctx: ProjectContext)
       : null;
 
   return {
-    projectId: conversation.projectId,
-    conversationId: conversation.id,
+    projectId: chat.projectId,
+    chatId: chat.id,
     instanceId: instance?.id ?? null,
     agentProfileId: profile?.id ?? null,
     profileName: profile?.name ?? null,

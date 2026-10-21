@@ -31,14 +31,14 @@
 
 ### 分身身份
 
-- 一个分身由 Agent profile × Conversation 唯一确定，同一 profile 在一段对话中最多有一个分身。
+- 一个分身由 Agent profile × Chat 唯一确定，同一 profile 在一段对话中最多有一个分身。
 - 同一对话中的多轮运行属于同一个分身，运行结束或服务重启不改变其身份。
 - 不同对话中的分身是独立个体，不能共享或代用彼此的 Machine 租约。
 
 ### Agent status 与活动 run 信息
 
-- Info Hub 分别展示 Agent 的 status（运行中、待机中、出错及具体错误），以及按 Conversation 关联的正在运行的 agent-runs。
-- 该 Agent 在某个 Conversation 没有活动 run 时，不显示该 Conversation 的运行条目；这不改变对话成员、分身身份或租约记录。
+- Info Hub 分别展示 Agent 的 status（运行中、待机中、出错及具体错误），以及按 Chat 关联的正在运行的 agent-runs。
+- 该 Agent 在某个 Chat 没有活动 run 时，不显示该 Chat 的运行条目；这不改变对话成员、分身身份或租约记录。
 - 有活动 agent-run 时，status 为运行中；新 run 启动即按此规则显示，不设置 turn 数门槛。
 - 所有相关 agent-runs 都已结束，且最后一个 run 报错时，status 为出错，展示该 run 的具体错误；都已结束且不满足此条件时为待机中。
 - 上一轮错误保留在对应 run 的记录中，不阻止当前状态显示运行中。最近一轮 run 的结果不作为独立基本信息展示项。
@@ -70,5 +70,5 @@
 
 ## 未来方向：模型用量与成本
 
-- 保留按 run 和 Conversation 的 token 用量与费用记录、查询能力的建设意图；实施时间未定，不纳入一期，也不承诺二期。
+- 保留按 run 和 Chat 的 token 用量与费用记录、查询能力的建设意图；实施时间未定，不纳入一期，也不承诺二期。
 - 费用估算口径、价格来源及呈现方式留待后续设计。

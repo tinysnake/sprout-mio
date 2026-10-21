@@ -1,9 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { conversationIdInput } from "../../contracts/conversation";
+import { chatIdInput } from "../../contracts/chat";
 import type {
-  ConversationInfoView,
+  ChatInfoView,
   InfoHubResult,
   ProjectInfoHub,
   TurnStartContext,
@@ -78,15 +78,15 @@ export async function getProjectInfoHubBoundary(
   });
 }
 
-export async function getConversationInfoBoundary(
+export async function getChatInfoBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
-): Promise<InfoHubResult<ConversationInfoView>> {
-  return infoHubBoundary<ConversationInfoView>(headers, requestId, (deps, context) => {
-    const parsed = conversationIdInput.safeParse(raw);
+): Promise<InfoHubResult<ChatInfoView>> {
+  return infoHubBoundary<ChatInfoView>(headers, requestId, (deps, context) => {
+    const parsed = chatIdInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.getConversationInfo(parsed.data.conversationId, context), requestId);
+    return ok(deps.getChatInfo(parsed.data.chatId, context), requestId);
   });
 }
 
@@ -96,9 +96,9 @@ export async function getTurnStartContextBoundary(
   requestId: string,
 ): Promise<InfoHubResult<TurnStartContext>> {
   return infoHubBoundary<TurnStartContext>(headers, requestId, (deps, context) => {
-    const parsed = conversationIdInput.safeParse(raw);
+    const parsed = chatIdInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.getTurnStartContext(parsed.data.conversationId, context), requestId);
+    return ok(deps.getTurnStartContext(parsed.data.chatId, context), requestId);
   });
 }
 
@@ -108,10 +108,10 @@ export const getProjectInfoHubFn = createServerFn({ method: "POST" })
     getProjectInfoHubBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
-export const getConversationInfoFn = createServerFn({ method: "POST" })
+export const getChatInfoFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
-    getConversationInfoBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+    getChatInfoBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
 export const getTurnStartContextFn = createServerFn({ method: "POST" })

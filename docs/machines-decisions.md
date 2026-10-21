@@ -39,7 +39,7 @@
 ### Agent profile 与分身
 
 - Agent profile 定义人设与配置。
-- 一个分身由 Agent profile × Conversation 唯一确定。每个 profile 在同一段对话中最多有一个分身。
+- 一个分身由 Agent profile × Chat 唯一确定。每个 profile 在同一段对话中最多有一个分身。
 - 同一段对话的多轮运行属于同一个分身；运行结束或服务重启不改变分身身份。
 - 不同对话中的分身是独立个体。即使来自同一个 profile，也不能共享或代用彼此的租约。
 

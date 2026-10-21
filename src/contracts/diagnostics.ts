@@ -9,7 +9,7 @@ export interface DiagnosticEvent {
   event: string;
   requestId: string;
   projectId?: string;
-  conversationId?: string;
+  chatId?: string;
   instanceId?: string;
   runId?: string;
   executionId?: string;

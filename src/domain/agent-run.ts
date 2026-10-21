@@ -6,7 +6,7 @@ import type {
   AgentRunStatus,
   RunConfigSnapshot,
 } from "../contracts/agent-run";
-import type { Message } from "../contracts/conversation";
+import type { Message } from "../contracts/chat";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import {
@@ -14,13 +14,13 @@ import {
   agentProfile,
   agentRun,
   agentRunInput,
-  conversation,
+  chat,
   diagnosticEvent,
   message,
 } from "../db/schema";
 import { ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
-import { getConversation, sendMessage } from "./conversation";
+import { getChat, sendMessage } from "./chat";
 
 export class AgentRunError extends Error {
   constructor(
@@ -45,7 +45,7 @@ function toRun(row: typeof agentRun.$inferSelect): AgentRun {
   return {
     id: row.id,
     instanceId: row.instanceId,
-    conversationId: row.conversationId,
+    chatId: row.chatId,
     projectId: row.projectId,
     requestId: row.requestId,
     status: row.status,
@@ -63,19 +63,13 @@ function toRun(row: typeof agentRun.$inferSelect): AgentRun {
 
 function runRow(id: string, ctx: ProjectContext): typeof agentRun.$inferSelect {
   const found = db
-    .select({ run: agentRun, owner: conversation })
+    .select({ run: agentRun, owner: chat })
     .from(agentRun)
-    .innerJoin(
-      conversation,
-      and(
-        eq(conversation.id, agentRun.conversationId),
-        eq(conversation.projectId, agentRun.projectId),
-      ),
-    )
+    .innerJoin(chat, and(eq(chat.id, agentRun.chatId), eq(chat.projectId, agentRun.projectId)))
     .where(eq(agentRun.id, id))
     .get();
   if (!found) throw new ProjectAccessError();
-  const current = getConversation(found.owner.id, ctx);
+  const current = getChat(found.owner.id, ctx);
   if (current.projectId !== found.run.projectId) throw new ProjectAccessError();
   return found.run;
 }
@@ -84,14 +78,12 @@ export function getAgentRun(id: string, ctx: ProjectContext): AgentRun {
   return toRun(runRow(id, ctx));
 }
 
-export function listAgentRuns(conversationId: string, ctx: ProjectContext): AgentRun[] {
-  const current = getConversation(conversationId, ctx);
+export function listAgentRuns(chatId: string, ctx: ProjectContext): AgentRun[] {
+  const current = getChat(chatId, ctx);
   return db
     .select()
     .from(agentRun)
-    .where(
-      and(eq(agentRun.conversationId, conversationId), eq(agentRun.projectId, current.projectId)),
-    )
+    .where(and(eq(agentRun.chatId, chatId), eq(agentRun.projectId, current.projectId)))
     .orderBy(asc(agentRun.queuedAt), asc(sql`rowid`))
     .all()
     .map(toRun);
@@ -126,7 +118,7 @@ function diagnostic(
       event,
       requestId: row.requestId,
       projectId: row.projectId,
-      conversationId: row.conversationId,
+      chatId: row.chatId,
       instanceId: row.instanceId,
       runId: row.id,
       message: detail,
@@ -136,12 +128,12 @@ function diagnostic(
 
 /** 与 human message 共用事务，输入失败就回滚消息。 */
 export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
-  const current = getConversation(saved.conversationId, ctx);
+  const current = getChat(saved.chatId, ctx);
   if (saved.senderKind !== "human" || current.kind !== "dm") return;
   const instance = db
     .select()
     .from(agentInstance)
-    .where(eq(agentInstance.conversationId, current.id))
+    .where(eq(agentInstance.chatId, current.id))
     .get();
   if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
   let run = db
@@ -151,7 +143,7 @@ export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
       and(eq(agentRun.instanceId, instance.id), inArray(agentRun.status, ["queued", "running"])),
     )
     .get();
-  if (run && (run.conversationId !== current.id || run.projectId !== current.projectId)) {
+  if (run && (run.chatId !== current.id || run.projectId !== current.projectId)) {
     throw new AgentRunError("conflict", "Run 归属不一致");
   }
   if (!run) {
@@ -160,7 +152,7 @@ export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
       .values({
         id: `run_${randomUUID()}`,
         instanceId: instance.id,
-        conversationId: current.id,
+        chatId: current.id,
         projectId: current.projectId,
         requestId: ctx.requestId,
         status: "queued",
@@ -255,7 +247,7 @@ export function pendingRunInputs(
     .from(agentRunInput)
     .innerJoin(
       message,
-      and(eq(message.id, agentRunInput.messageId), eq(message.conversationId, row.conversationId)),
+      and(eq(message.id, agentRunInput.messageId), eq(message.chatId, row.chatId)),
     )
     .where(and(eq(agentRunInput.runId, id), eq(agentRunInput.disposition, "pending")))
     .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
@@ -298,14 +290,14 @@ export function completeAgentRun(
         .where(
           and(
             eq(agentInstance.id, row.instanceId),
-            eq(agentInstance.conversationId, row.conversationId),
+            eq(agentInstance.chatId, row.chatId),
             eq(agentInstance.projectId, row.projectId),
           ),
         )
         .get();
       if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
       const reply = sendMessage(
-        row.conversationId,
+        row.chatId,
         {
           senderKind: "agent",
           senderId: instance.agentProfileId,
@@ -318,28 +310,19 @@ export function completeAgentRun(
     .immediate();
 }
 
-/** 只供受管宿主调用。actor 与 project 归属从 conversation 推导。 */
+/** 只供受管宿主调用。actor 与 project 归属从 chat 推导。 */
 export function queuedRunWork(): {
   run: typeof agentRun.$inferSelect;
   profile: typeof agentProfile.$inferSelect;
   ownerId: string;
 }[] {
   return db
-    .select({ run: agentRun, profile: agentProfile, ownerId: conversation.createdBy })
+    .select({ run: agentRun, profile: agentProfile, ownerId: chat.createdBy })
     .from(agentRun)
-    .innerJoin(
-      conversation,
-      and(
-        eq(conversation.id, agentRun.conversationId),
-        eq(conversation.projectId, agentRun.projectId),
-      ),
-    )
+    .innerJoin(chat, and(eq(chat.id, agentRun.chatId), eq(chat.projectId, agentRun.projectId)))
     .innerJoin(
       agentInstance,
-      and(
-        eq(agentInstance.id, agentRun.instanceId),
-        eq(agentInstance.conversationId, conversation.id),
-      ),
+      and(eq(agentInstance.id, agentRun.instanceId), eq(agentInstance.chatId, chat.id)),
     )
     .innerJoin(agentProfile, eq(agentProfile.id, agentInstance.agentProfileId))
     .where(eq(agentRun.status, "queued"))
@@ -354,7 +337,7 @@ export function firstPendingRunInput(id: string, ctx: ProjectContext) {
     .from(agentRunInput)
     .innerJoin(
       message,
-      and(eq(message.id, agentRunInput.messageId), eq(message.conversationId, row.conversationId)),
+      and(eq(message.id, agentRunInput.messageId), eq(message.chatId, row.chatId)),
     )
     .where(and(eq(agentRunInput.runId, id), eq(agentRunInput.disposition, "pending")))
     .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
@@ -369,7 +352,7 @@ export function previousSessionFile(runId: string, ctx: ProjectContext): string 
     .where(
       and(
         eq(agentRun.instanceId, current.instanceId),
-        eq(agentRun.conversationId, current.conversationId),
+        eq(agentRun.chatId, current.chatId),
         eq(agentRun.projectId, current.projectId),
       ),
     )

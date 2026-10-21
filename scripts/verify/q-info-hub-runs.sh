@@ -144,16 +144,16 @@ async function project(name) {
   const projectId = (await callOk('createProjectFn', { name })).id
   const agentProfileId = (await callOk('createAgentProfileFn', { name: `${name} agent`, persona: 'Reply concisely.', model: 'protocol/model', effort: 'off' })).id
   await callOk('addProjectMemberFn', { projectId, agentProfileId })
-  const direct = await callOk('createDirectConversationFn', { projectId, agentProfileId })
-  return { projectId, conversationId: direct.conversation.id, instanceId: direct.instance.id }
+  const direct = await callOk('createDirectChatFn', { projectId, agentProfileId })
+  return { projectId, chatId: direct.chat.id, instanceId: direct.instance.id }
 }
-const runsOf = conversationId => db.prepare('SELECT * FROM agent_run WHERE conversation_id=? ORDER BY rowid').all(conversationId)
-async function send(conversationId, body) {
-  return callOk('sendMessageFn', { conversationId, body })
+const runsOf = chatId => db.prepare('SELECT * FROM agent_run WHERE chat_id=? ORDER BY rowid').all(chatId)
+async function send(chatId, body) {
+  return callOk('sendMessageFn', { chatId, body })
 }
-async function waitRun(conversationId, status, previous = 0) {
+async function waitRun(chatId, status, previous = 0) {
   return until(() => {
-    const rows = runsOf(conversationId)
+    const rows = runsOf(chatId)
     if (rows.length <= previous) return
     const row = rows.at(-1)
     if (row.status === 'failed' && status !== 'failed') throw new Error(`run failed ${row.error_code}: ${row.error_message}`)
@@ -214,28 +214,28 @@ try {
   assert.equal(signupB.status, 200)
   const cookieB = signupB.headers.getSetCookie().find(value => value.includes('session_token=')).split(';')[0]
   ids = serverFnIds()
-  for (const required of ['getProjectInfoHubFn', 'getConversationInfoFn', 'getTurnStartContextFn'])
+  for (const required of ['getProjectInfoHubFn', 'getChatInfoFn', 'getTurnStartContextFn'])
     assert(ids[required], `built server function ${required} missing`)
 
   const marker = `MARKER_P3D_${randomBytes(6).toString('hex')}`
   const source = seedRemote('p3d-main', { 'NOTES.md': marker, 'src/app.ts': 'export const APP = 1;' })
   const main = await project('P3D main')
   await callOk('updateProjectProfileFn', { projectId: main.projectId, gitRemote: 'file://' + source.remote, defaultBranch: 'main' })
-  await send(main.conversationId, 'analyze the repository')
-  const firstRun = await waitRun(main.conversationId, 'completed')
+  await send(main.chatId, 'analyze the repository')
+  const firstRun = await waitRun(main.chatId, 'completed')
   const bareHead = git(['--git-dir', source.remote, 'rev-parse', 'refs/heads/main']).trim()
   assert.equal(bareHead, source.head())
 
-  await send(main.conversationId, 'SLOW_HOLD the next analysis')
-  const slowRun = await waitRun(main.conversationId, 'running')
-  await send(main.conversationId, 'steer attempt while running')
+  await send(main.chatId, 'SLOW_HOLD the next analysis')
+  const slowRun = await waitRun(main.chatId, 'running')
+  await send(main.chatId, 'steer attempt while running')
   await until(() => db.prepare("SELECT count(*) AS count FROM diagnostic_event WHERE event='agent_run.input_delivery_failed' AND run_id=?").get(slowRun.id).count >= 1, 'steer rejection recorded', 10000)
   const inputs = inputsOf(slowRun.id)
   assert.equal(inputs.length, 2)
   assert.equal(inputs[0].disposition, 'delivered', 'first input delivered into the running turn')
   assert.equal(inputs[1].disposition, 'pending', 'steer-rejected input stays pending in the database')
-  const heldTurn = await callOk('getTurnStartContextFn', { conversationId: main.conversationId })
-  const heldInfo = await callOk('getConversationInfoFn', { conversationId: main.conversationId })
+  const heldTurn = await callOk('getTurnStartContextFn', { chatId: main.chatId })
+  const heldInfo = await callOk('getChatInfoFn', { chatId: main.chatId })
   const heldHub = await callOk('getProjectInfoHubFn', { projectId: main.projectId })
   assert.equal(heldHub.agents.runs.available, true)
   assert.equal(heldHub.agents.runs.hostEnabled, true)
@@ -286,30 +286,30 @@ try {
       const projectShot = join(screenshotDir, 'p3-d-info-hub-project-runs.png')
       await page.screenshot({ path: projectShot, fullPage: true })
 
-      await page.goto(`${base}/projects/${main.projectId}/conversations/${main.conversationId}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      await page.goto(`${base}/projects/${main.projectId}/chats/${main.chatId}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
       await page.waitForSelector('[data-testid="info-turn-context"]', { timeout: 20000 })
-      assert.match(await page.locator('[data-testid="info-conversation-runs-active-pending"]').textContent(), /1 条输入未投递/)
+      assert.match(await page.locator('[data-testid="info-chat-runs-active-pending"]').textContent(), /1 条输入未投递/)
       assert.equal(await page.locator('[data-testid="info-turn-workspace-commit"]').textContent(), bareHead)
       assert.equal(await page.locator('[data-testid="info-turn-workspace-fresh"]').textContent(), '宿主已更新工作树')
       assert.match(await page.locator('[data-testid="info-turn-prompt-injection"]').textContent(), /注入模型 prompt：否/)
       assert.ok((await page.locator('[data-testid="info-turn-previous-run"]').textContent()).includes('已完成'))
-      const conversationShot = join(screenshotDir, 'p3-d-info-hub-conversation-runs.png')
-      await page.screenshot({ path: conversationShot, fullPage: true })
+      const chatShot = join(screenshotDir, 'p3-d-info-hub-chat-runs.png')
+      await page.screenshot({ path: chatShot, fullPage: true })
       assert.deepEqual(consoleErrors, [], 'info hub pages must render without console errors')
-      pass('real Chromium renders run facts, repo basis and turn context without console errors', { projectShot, conversationShot })
+      pass('real Chromium renders run facts, repo basis and turn context without console errors', { projectShot, chatShot })
     } finally { await browser.close() }
   }
 
   writeFileSync(holdFlag, 'release\n')
-  await until(() => runsOf(main.conversationId).find(row => row.id === slowRun.id)?.status === 'completed', 'held run completed after release', 30000)
-  const settledTurn = await callOk('getTurnStartContextFn', { conversationId: main.conversationId })
-  const settledInfo = await callOk('getConversationInfoFn', { conversationId: main.conversationId })
+  await until(() => runsOf(main.chatId).find(row => row.id === slowRun.id)?.status === 'completed', 'held run completed after release', 30000)
+  const settledTurn = await callOk('getTurnStartContextFn', { chatId: main.chatId })
+  const settledInfo = await callOk('getChatInfoFn', { chatId: main.chatId })
   assert.equal(settledTurn.activeRun, null)
   assert.equal(settledTurn.workspace.basis, 'project_checkout')
   assert.equal(settledTurn.workspace.commit, bareHead, 'settled turn workspace comes from the ready checkout')
   assert.equal(settledTurn.injectedIntoPrompt, false)
   assert.equal(settledInfo.runs.active.length, 0)
-  assert.equal(settledInfo.runs.recent.length, 2, 'both completed runs appear in the conversation view')
+  assert.equal(settledInfo.runs.recent.length, 2, 'both completed runs appear in the chat view')
   for (const run of settledInfo.runs.recent) {
     assert.equal(run.status, 'completed')
     assert.equal(run.repo.commit, bareHead, 'view commit equals git rev-parse of the real remote HEAD')
@@ -325,10 +325,10 @@ try {
 
   const ghost = await project('P3D ghost')
   await callOk('updateProjectProfileFn', { projectId: ghost.projectId, defaultBranch: 'main', workDirectory: 'ghost-dir' })
-  await send(ghost.conversationId, 'analyze the missing copy')
-  const ghostRun = await waitRun(ghost.conversationId, 'failed')
-  const ghostInfo = await callOk('getConversationInfoFn', { conversationId: ghost.conversationId })
-  const ghostTurn = await callOk('getTurnStartContextFn', { conversationId: ghost.conversationId })
+  await send(ghost.chatId, 'analyze the missing copy')
+  const ghostRun = await waitRun(ghost.chatId, 'failed')
+  const ghostInfo = await callOk('getChatInfoFn', { chatId: ghost.chatId })
+  const ghostTurn = await callOk('getTurnStartContextFn', { chatId: ghost.chatId })
   const failedSummary = ghostInfo.runs.recent[0]
   assert.equal(failedSummary.status, 'failed')
   assert.equal(failedSummary.errorCode, 'repo_workdir_missing')
@@ -342,13 +342,13 @@ try {
     runId: ghostRun.id, errorCode: failedSummary.errorCode, requestId: failedSummary.requestId,
   })
 
-  const tokens = [main.projectId, main.conversationId, main.instanceId, firstRun.id, slowRun.id, bareHead, marker, 'p3d-main', ghost.conversationId, ghostRun.error_code, 'ghost-dir', 'P3D main agent']
+  const tokens = [main.projectId, main.chatId, main.instanceId, firstRun.id, slowRun.id, bareHead, marker, 'p3d-main', ghost.chatId, ghostRun.error_code, 'ghost-dir', 'P3D main agent']
   for (const [name, input] of [
     ['getProjectInfoHubFn', { projectId: main.projectId }],
-    ['getConversationInfoFn', { conversationId: main.conversationId }],
-    ['getTurnStartContextFn', { conversationId: main.conversationId }],
-    ['getConversationInfoFn', { conversationId: ghost.conversationId }],
-    ['getTurnStartContextFn', { conversationId: ghost.conversationId }],
+    ['getChatInfoFn', { chatId: main.chatId }],
+    ['getTurnStartContextFn', { chatId: main.chatId }],
+    ['getChatInfoFn', { chatId: ghost.chatId }],
+    ['getTurnStartContextFn', { chatId: ghost.chatId }],
   ]) {
     const { result, body } = await callAs(cookieB, name, input)
     assert.equal(result.ok, false, `${name} must reject the other user`)

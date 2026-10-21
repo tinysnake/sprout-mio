@@ -125,7 +125,7 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 对应 [UI-P3](development-plan-ui.md#ui-p3-追赶真实对话与宿主仓库入口) 与功能计划的 P3。依赖基础包技术验收通过和 P3 契约可核对，按完整 P3 集成。
 
 - 接入范围包括真实 Pi 回复、run 与输入投递状态、追加消息与停止、profile 下一轮生效提示、宿主仓库配置及来源信息，以及 inspector 中已有的 Agent status、活动 runs、错误与轮初上下文查询。
-- 主要路径是配置宿主仓库、进入 DM 请求分析、查看回复和依据、运行中追加消息或停止，再重新打开同一 Conversation 查看历史与 run 结果。该路径不要求创建 Task 或申请 Machine 租约。
+- 主要路径是配置宿主仓库、进入 DM 请求分析、查看回复和依据、运行中追加消息或停止，再重新打开同一 Chat 查看历史与 run 结果。该路径不要求创建 Task 或申请 Machine 租约。
 - 关键异常与回归覆盖实际契约中的未启用、投递失败、停止、重启中断、仓库获取失败及旧副本。核对同分身串行、停止不生成假回复、profile 更新不改变当前轮快照、来源版本与实际分析依据一致，并回归登录、Project 隔离和稳定 URL。
 - 章节证据补充真实 Pi transcript、run 与输入记录、仓库来源及 commit 比较、停止与重启操作记录。沿用 [P3 结论](p3/summary.md) 的部分交付与未验证边界，不将未加载的宿主工具、未投递输入人工处置或 Info Hub 自动刷新宣称为已支持。发现接入缺口时记录并反馈，不自动扩大追赶范围。
 
@@ -152,8 +152,8 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 对应 [UI-P4b](development-plan-ui.md#ui-p4b-展示分身持租与远端操作) 与功能计划的 P4b。依赖 P4a 技术验收通过、P4b 功能与 UI 交付就绪。
 
-- 接入范围包括租约和 holder 展示、申请与释放反馈、一个分身持有多台 Machine 的关联，以及远端 shell、文件和进程操作的目标与结果。Conversation、Machine 页面与 inspector 使用同一事实来源，不扩展为完整终端或文件管理产品。
-- 主要路径是 Human 在 Conversation 请求分身使用指定 Machine，分身申请租约并执行远端操作，Human 查看目标与结果。run 结束后仍可看到租约保留，下一轮由同一分身继续使用，随后显式释放。
+- 接入范围包括租约和 holder 展示、申请与释放反馈、一个分身持有多台 Machine 的关联，以及远端 shell、文件和进程操作的目标与结果。Chat、Machine 页面与 inspector 使用同一事实来源，不扩展为完整终端或文件管理产品。
+- 主要路径是 Human 在 Chat 请求分身使用指定 Machine，分身申请租约并执行远端操作，Human 查看目标与结果。run 结束后仍可看到租约保留，下一轮由同一分身继续使用，随后显式释放。
 - 关键异常与回归覆盖同 Project 竞争申请、无租约操作、旧授权请求与不同 Projects 在同一 Machine 上的独立租约。验证宿主原有工具行为保留、远端目标明确、租约互斥按 Project × Machine 生效，且不泄露其他 Project 的工作信息。
 - 章节证据补充真实远端操作、holder 与授权记录、并发申请反证、跨 run 持有与显式释放记录，以及宿主和远端操作目标对照。
 
@@ -190,9 +190,9 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 - [ ] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。
 - [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。
 
-### I-P5a 集成多人 Conversation
+### I-P5a 集成多人 Chat
 
-对应 [UI-P5a](development-plan-ui.md#ui-p5a-完成多人-conversation) 与功能计划的 P5a。依赖已有 Conversation 基础技术验收通过、P5a 契约稳定及功能与 UI 交付就绪。
+对应 [UI-P5a](development-plan-ui.md#ui-p5a-完成多人-chat) 与功能计划的 P5a。依赖已有 Chat 基础技术验收通过、P5a 契约稳定及功能与 UI 交付就绪。
 
 - 接入范围包括 Group 创建、成员与 owner 管理、Public Channel 成员同步、多人消息、多 Agent 活动与回报，以及 header 和 inspector 中的关联信息。
 - 主要路径是 Human 建立 Group、指定 Agent owner 并发送协作请求，多个 Agents 在同一对话回报；Human 查看发送者与运行关联，再变更 Project 成员，核对 Public Channel 同步。
@@ -208,10 +208,10 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 对应 [UI-P5b](development-plan-ui.md#ui-p5b-完成-task-总览与生命周期) 与功能计划的 P5b。依赖 P5a 技术验收通过、P5b 功能与 UI 交付就绪。
 
-- 接入范围包括四态分栏总览、Task 详情、创建与分配、可选立即开始、checklist、施工记录、完成、取消、Human 纠正与重开，以及 Conversation 和 Info Hub 关联。
+- 接入范围包括四态分栏总览、Task 详情、创建与分配、可选立即开始、checklist、施工记录、完成、取消、Human 纠正与重开，以及 Chat 和 Info Hub 关联。
 - 主要路径是创建 proposed Task，分配给 DM 或 Group，分别验证勾选与不勾选立即开始；负责人推进并记录工作，以末条施工记录保存完成结果，Human 查看并重开。补充 Public Channel 承接 Task 的验证，沿用 Group 责任规则。
 - 关键异常与回归覆盖非法迁移、无权修改、分配目标与责任归属变化，以及实际功能契约中的保存失败。验证 proposed、assigned、finished、canceled 四态，分配不等于启动、run 结束不等于 Task 完成、Task 完成不等于释放租约。不把 P6 自动接续当作本章已经支持的能力。
-- 章节证据补充持久 Task 状态、Conversation 与负责人关联、真实立即开始投递、checklist 与施工记录、完成和重开记录。核对没有额外运行中状态、独立结果字段或产品强制验收流程。
+- 章节证据补充持久 Task 状态、Chat 与负责人关联、真实立即开始投递、checklist 与施工记录、完成和重开记录。核对没有额外运行中状态、独立结果字段或产品强制验收流程。
 
 - [ ] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
 - [ ] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。
@@ -222,8 +222,8 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 对应 [UI-P6](development-plan-ui.md#ui-p6-完成自动接续与成员治理呈现) 与功能计划的 P6。依赖 P4、P5 全部集成单元技术验收通过、P6 功能与 UI 交付就绪，暂按整章集成。
 
-- 接入范围包括自动接续与 Human 控制、Project、Conversation、Agent、Machine 的完整 Info Hub 视角、Human 自动刷新、Agent 轮初快照与运行中变更提示和主动查询，以及成员移除阻塞、DM 归档和重新加入恢复。
-- 主要路径是在有 assigned Task 的 Conversation 中观察小脑检查和按需接续，体验暂停与停止；通过页面和 Agent 查询核对关联事实，再处理成员移除的前置阻碍、正常移除并重新加入。owner 为 Human 时按产品规则提醒 Human，不虚构 Agent run。
+- 接入范围包括自动接续与 Human 控制、Project、Chat、Agent、Machine 的完整 Info Hub 视角、Human 自动刷新、Agent 轮初快照与运行中变更提示和主动查询，以及成员移除阻塞、DM 归档和重新加入恢复。
+- 主要路径是在有 assigned Task 的 Chat 中观察小脑检查和按需接续，体验暂停与停止；通过页面和 Agent 查询核对关联事实，再处理成员移除的前置阻碍、正常移除并重新加入。owner 为 Human 时按产品规则提醒 Human，不虚构 Agent run。
 - 关键异常与回归覆盖中文聊天判定失败与回退、重复唤醒、运行中合并、持续失败退避和宿主重启。验证无 assigned Task 时停止 Task 周期检查，自动接续不立即抵消 Human 暂停或停止。Info Hub 基本信息可见不授予聊天正文访问或操作权，普通变化不单独唤醒空闲分身。验证活动 runs、租约、owner 职责或 DM assigned Tasks 阻止正常移除，旧消息与待处理唤醒不能恢复撤销的参与权，重新加入恢复既有 DM 和 Public Channel 但不自动恢复普通 Group 成员身份。
 - 章节证据补充判定样本与采用结论、去重和恢复记录、人类控制前后对照、页面与源对象及 Agent 上下文比较，以及移除和重新加入的权限矩阵。P3 遗留输入处置等后续事项先核对本章契约；涉及新产品语义时提出讨论，不自行增加操作。
 

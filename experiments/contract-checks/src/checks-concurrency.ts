@@ -7,7 +7,7 @@ import type { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import { openMigrated, type Db } from './db.ts';
 import { check, expect } from './harness.ts';
 import { acquireLease, createInstance } from './operations.ts';
-import { agentInstance, agentProfile, conversation, machineLease, remoteExecution } from './schema.ts';
+import { agentInstance, agentProfile, chat, machineLease, remoteExecution } from './schema.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const workerUrl = new URL('./concurrent-worker.mjs', import.meta.url);
@@ -76,17 +76,17 @@ function seed(db: Db) {
       { id: 'prof-2', name: 'P2', persona: '', createdAt: NOW },
     ])
     .run();
-  db.insert(conversation)
+  db.insert(chat)
     .values([
       { id: 'conv-1', projectId: 'proj-1', title: 'C1' },
       { id: 'conv-2', projectId: 'proj-1', title: 'C2' },
     ])
     .run();
-  createInstance(db, { id: 'inst-1', profileId: 'prof-1', conversationId: 'conv-1', createdAt: NOW });
-  createInstance(db, { id: 'inst-2', profileId: 'prof-2', conversationId: 'conv-2', createdAt: NOW });
+  createInstance(db, { id: 'inst-1', profileId: 'prof-1', chatId: 'conv-1', createdAt: NOW });
+  createInstance(db, { id: 'inst-2', profileId: 'prof-2', chatId: 'conv-2', createdAt: NOW });
 }
 
-const INSERT_INSTANCE = `insert into agent_instance (id, profile_id, conversation_id, created_at) values (?, ?, ?, ?)`;
+const INSERT_INSTANCE = `insert into agent_instance (id, profile_id, chat_id, created_at) values (?, ?, ?, ?)`;
 const INSERT_LEASE = `insert into machine_lease (id, project_id, machine_id, holder_instance_id, generation, state, acquired_at, ended_at) values (?, ?, ?, ?, ?, 'active', ?, null)`;
 const INSERT_EXECUTION = `insert into remote_execution (id, project_id, machine_id, request_id, fingerprint, state, created_at, updated_at) values (?, ?, ?, ?, ?, 'running', ?, ?)`;
 

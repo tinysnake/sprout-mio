@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { conversationIdInput } from "./conversation";
+import { chatIdInput } from "./chat";
 import type { FieldErrors } from "./project";
 import type { RunRepoSnapshot } from "./repository";
 import type { AppResult } from "./result";
@@ -41,7 +41,7 @@ export type RunConfigSnapshot = {
 export type AgentRun = {
   id: string;
   instanceId: string;
-  conversationId: string;
+  chatId: string;
   projectId: string;
   requestId: string;
   status: AgentRunStatus;
@@ -68,9 +68,9 @@ const runId = z
   .regex(/^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 
 export const abortAgentRunInput = z.object({ runId });
-export const conversationRunStateInput = conversationIdInput;
+export const chatRunStateInput = chatIdInput;
 
-export type ConversationRunState = {
+export type ChatRunState = {
   enabled: boolean;
   runs: AgentRun[];
   inputs: AgentRunInput[];

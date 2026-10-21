@@ -11,13 +11,7 @@ import type {
   RunRepoSnapshot,
 } from "../contracts/repository";
 import { db, sqlite } from "../db";
-import {
-  agentRun,
-  conversation,
-  diagnosticEvent,
-  repoCheckout,
-  repoProvenance,
-} from "../db/schema";
+import { agentRun, chat, diagnosticEvent, repoCheckout, repoProvenance } from "../db/schema";
 import { config } from "../lib/config";
 import { directorySizeBytes, GitOpError, runGit, withRepoLock } from "../server/git";
 import { assertProjectAccess } from "./access";
@@ -265,15 +259,9 @@ export async function prepareProjectRepo(
 
 function runRow(runId: string, ctx: ProjectContext): { runId: string; projectId: string } {
   const found = db
-    .select({ run: agentRun, owner: conversation })
+    .select({ run: agentRun, owner: chat })
     .from(agentRun)
-    .innerJoin(
-      conversation,
-      and(
-        eq(conversation.id, agentRun.conversationId),
-        eq(conversation.projectId, agentRun.projectId),
-      ),
-    )
+    .innerJoin(chat, and(eq(chat.id, agentRun.chatId), eq(chat.projectId, agentRun.projectId)))
     .where(eq(agentRun.id, runId))
     .get();
   if (!found || found.owner.createdBy !== ctx.userId) throw new ProjectAccessError();

@@ -119,20 +119,20 @@ SQLite + Drizzle 是单宿主部署的默认组合。driver 已由 P0 收敛为 
 | 对象 | 身份与约束 | 生命周期 |
 | --- | --- | --- |
 | Agent profile | 人设与默认配置 | 配置变更从下一轮生效 |
-| Agent 分身 | profile × Conversation 唯一 | 跨 run、跨服务重启保持身份 |
+| Agent 分身 | profile × Chat 唯一 | 跨 run、跨服务重启保持身份 |
 | Agent run | 属于一个分身的一轮执行 | 同一分身串行，其他分身可并行 |
 | Machine lease | Project × Machine 内独占，holder 为分身 | 明确释放、交接或收回，不随 run 结束 |
 | Remote execution | 稳定执行 ID，记录 Project 与 Machine | 独立于 run、宿主连接和租约动作 |
-| Task | 属于 Project，由 Conversation 承接 | 保持 proposed、assigned、finished、canceled 四态 |
+| Task | 属于 Project，由 Chat 承接 | 保持 proposed、assigned、finished、canceled 四态 |
 | Wake request | 目标分身、来源、去重身份与处理记录 | 持久恢复，执行前重新检查参与权和暂停控制 |
 | Repository snapshot | 仓库来源、commit 或 ref、获取时点 | 不混同 Machine 的未推送与未提交现场 |
 | MCP binding | Project、Machine、server、目标实例 | 接入预案，交付分期待单独确认 |
 
-P2 的身份与持久数据已落实。全局 Agent profile 按创建者授权，可复用于本人多个 Project。`src/domain/access.ts` 的 `assertProjectAccess` 按 projectId 与当前 userId 查询 Project，只有创建者可访问；不存在和越权统一抛出 `not_found`，消息为「对象不存在」。通过 Conversation 或分身查询时从实际对象取得 projectId 再授权，关联查询过滤已授权 Project。两用户生产 HTTP 与页面隔离、错误 requestId 和零泄漏反证见 [独立验收](p2/acceptance.md#隔离反证与正常对照)。P2 没有运行时快照，其隔离未验证。
+P2 的身份与持久数据已落实。全局 Agent profile 按创建者授权，可复用于本人多个 Project。`src/domain/access.ts` 的 `assertProjectAccess` 按 projectId 与当前 userId 查询 Project，只有创建者可访问；不存在和越权统一抛出 `not_found`，消息为「对象不存在」。通过 Chat 或分身查询时从实际对象取得 projectId 再授权，关联查询过滤已授权 Project。两用户生产 HTTP 与页面隔离、错误 requestId 和零泄漏反证见 [独立验收](p2/acceptance.md#隔离反证与正常对照)。P2 没有运行时快照，其隔离未验证。
 
-`agent_instance` 的 `agent_instance_profile_conversation_unique` 唯一索引覆盖 profile × Conversation，真实 SQLite 重复 INSERT 已被拒绝。`createDirectConversation` 在 IMMEDIATE 事务中复用当前 Project 与 profile 的既有 DM。Conversation 的数据库 CHECK 与契约当前只允许 `dm`。配置与人设修改不重建分身或历史，真实生产进程重启前后 conversation、instance、消息与配置逐字相等，证据见 [分身唯一性](p2/conversation-dm.md#分身身份与唯一性的实现位置) 与 [出口字面量](p2/acceptance.md#出口条件与字面量)。保存配置不代表已有真实 Pi 运行时消费配置。
+`agent_instance` 的 `agent_instance_profile_chat_unique` 唯一索引覆盖 profile × Chat，真实 SQLite 重复 INSERT 已被拒绝。`createDirectChat` 在 IMMEDIATE 事务中复用当前 Project 与 profile 的既有 DM。Chat 的数据库 CHECK 与契约当前只允许 `dm`。配置与人设修改不重建分身或历史，真实生产进程重启前后 chat、instance、消息与配置逐字相等，证据见 [分身唯一性](p2/chat-dm.md#分身身份与唯一性的实现位置) 与 [出口字面量](p2/acceptance.md#出口条件与字面量)。保存配置不代表已有真实 Pi 运行时消费配置。
 
-Info Hub 已落实为 `src/domain/info-hub.ts` 的只读查询模块。Project hub 与对话页消费 Project 成员及其 DM 链接、Conversation 成员、分身和消息统计，不新增一级页面。查询复用已授权的领域服务；组件只消费视图。run 与 Machine、租约视角使用 `available: false` 和非空 reason，页面显示「未实现」及 P3 或 P4 原因，证据见 [模块入口](p2/info-hub.md#模块入口与边界)、[不可用标记](p2/info-hub.md#显式不可用标记的设计理由) 与 [Chromium 验证](p2/info-hub.md#验证记录)。
+Info Hub 已落实为 `src/domain/info-hub.ts` 的只读查询模块。Project hub 与对话页消费 Project 成员及其 DM 链接、Chat 成员、分身和消息统计，不新增一级页面。查询复用已授权的领域服务；组件只消费视图。run 与 Machine、租约视角使用 `available: false` 和非空 reason，页面显示「未实现」及 P3 或 P4 原因，证据见 [模块入口](p2/info-hub.md#模块入口与边界)、[不可用标记](p2/info-hub.md#显式不可用标记的设计理由) 与 [Chromium 验证](p2/info-hub.md#验证记录)。
 
 租约的活跃性由 `state` 列加部分唯一索引 `(project_id, machine_id) WHERE state='active'` 表达，释放行保留为审计历史。直接交接是单个事务里的释放加获取，数据库约束阻止两个活跃租约但不阻止零租约空窗，单事务协议负责不留空窗。租约授权使用持久代次，宿主与 Worker 两个方向都逐操作核验并拒绝旧代次帧。数据库更新不能单独证明 Worker 已撤销旧权限，结果不确定时保留待处理占用。
 
@@ -142,7 +142,7 @@ Effect Scope 可以管理连接、订阅和本轮临时资源。run 的 Scope �
 
 业务变更与需要可靠处理的通知建议在同一事务中记录，再异步投递。P1 的 Project 创建已在同一 SQLite 事务写入业务行与 `project.created` 诊断，写诊断失败时整体回滚，证据见 [事务与错误路径](p1/feature-sample.md#事务与错误路径证据)。P2 的 profile、配置、成员、DM 与消息写入口同样将业务与诊断放在同一事务，真实诊断 INSERT 失败的回滚证据见 [身份数据验证](p2/identity-data.md#验证记录)。运行期的 `recordDiagnostic` 使用共享 db，捕获失败并返回 false；不能将它直接当作会传播写入失败的业务事务接口。消息已持久化，唤醒和操作记录仍未实现。前端事件通道可发送变更提示，重连后补齐事件或重新获取快照，不把内存广播当作事实来源。
 
-基础诊断已经落到 `src/server/server-entry.ts` 的 Nitro hooks、`src/server/request-context.ts`、`src/server/diagnostics.ts` 与 `diagnostic_event` 表。Nitro 覆盖客户端传入的 requestId，把同一值交给 Project server function、响应头与 HTTP 诊断，Project 创建再关联真实 projectId。受保护的 `/api/diagnostics` 支持按 requestId 与 projectId 查询，浏览器错误页、响应头和诊断行一致性已有真实证据。认证的三个 session server functions 也复用 Nitro requestId。诊断查询要求 actorId，Project 行按创建者隔离，非 Project 行按具体 requestId 查询；HTTP 入口拒绝不带 requestId/projectId 的列举。P2 已在 `conversation.created` 关联真实 conversationId 与 instanceId，`message.sent` 关联 conversationId，agent sender 还关联实际 instanceId。诊断不保存正文、人设或配置，runId 与 executionId 仍为空，证据见 [P2 诊断与事务](p2/identity-data.md#诊断与事务)。P1 的 requestId 行为见 [requestId 与诊断](p1/runtime.md#requestid-与诊断)。
+基础诊断已经落到 `src/server/server-entry.ts` 的 Nitro hooks、`src/server/request-context.ts`、`src/server/diagnostics.ts` 与 `diagnostic_event` 表。Nitro 覆盖客户端传入的 requestId，把同一值交给 Project server function、响应头与 HTTP 诊断，Project 创建再关联真实 projectId。受保护的 `/api/diagnostics` 支持按 requestId 与 projectId 查询，浏览器错误页、响应头和诊断行一致性已有真实证据。认证的三个 session server functions 也复用 Nitro requestId。诊断查询要求 actorId，Project 行按创建者隔离，非 Project 行按具体 requestId 查询；HTTP 入口拒绝不带 requestId/projectId 的列举。P2 已在 `chat.created` 关联真实 chatId 与 instanceId，`message.sent` 关联 chatId，agent sender 还关联实际 instanceId。诊断不保存正文、人设或配置，runId 与 executionId 仍为空，证据见 [P2 诊断与事务](p2/identity-data.md#诊断与事务)。P1 的 requestId 行为见 [requestId 与诊断](p1/runtime.md#requestid-与诊断)。
 
 ## 让 Worker 提供整机操作能力
 

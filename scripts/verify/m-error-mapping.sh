@@ -163,7 +163,7 @@ async function assertNoErrorDiagnostic(requestId, label) {
 const missing = {
   projectId: 'prj_00000000-0000-4000-8000-000000000000',
   agentProfileId: 'agp_00000000-0000-4000-8000-000000000000',
-  conversationId: 'cnv_00000000-0000-4000-8000-000000000000',
+  chatId: 'cnv_00000000-0000-4000-8000-000000000000',
 }
 
 let server
@@ -184,8 +184,8 @@ try {
   const required = [
     'getProjectFn', 'getProjectProfileFn', 'updateProjectProfileFn',
     'getAgentProfileFn', 'updateAgentProfileFn',
-    'getConversationFn', 'listConversationMembersFn', 'listMessagesFn', 'sendMessageFn',
-    'getProjectInfoHubFn', 'getConversationInfoFn',
+    'getChatFn', 'listChatMembersFn', 'listMessagesFn', 'sendMessageFn',
+    'getProjectInfoHubFn', 'getChatInfoFn',
   ]
   for (const name of required) assert(ids[name], `缺少 server function id: ${name}`)
   pass('server function ids present', { required })
@@ -200,12 +200,12 @@ try {
     { name: 'updateProjectProfileFn', input: { projectId: missing.projectId, defaultBranch: 'main' }, label: 'project-config-write-missing', code: 'not_found' },
     { name: 'getAgentProfileFn', input: { agentProfileId: missing.agentProfileId }, label: 'profile-detail-missing', code: 'not_found' },
     { name: 'updateAgentProfileFn', input: { agentProfileId: missing.agentProfileId, name: '改名' }, label: 'profile-update-missing', code: 'not_found' },
-    { name: 'getConversationFn', input: { conversationId: missing.conversationId }, label: 'conversation-detail-missing', code: 'not_found' },
-    { name: 'listConversationMembersFn', input: { conversationId: missing.conversationId }, label: 'conversation-members-missing', code: 'not_found' },
-    { name: 'listMessagesFn', input: { conversationId: missing.conversationId }, label: 'conversation-messages-missing', code: 'not_found' },
-    { name: 'sendMessageFn', input: { conversationId: missing.conversationId, body: '验收消息' }, label: 'conversation-send-missing', code: 'not_found' },
+    { name: 'getChatFn', input: { chatId: missing.chatId }, label: 'chat-detail-missing', code: 'not_found' },
+    { name: 'listChatMembersFn', input: { chatId: missing.chatId }, label: 'chat-members-missing', code: 'not_found' },
+    { name: 'listMessagesFn', input: { chatId: missing.chatId }, label: 'chat-messages-missing', code: 'not_found' },
+    { name: 'sendMessageFn', input: { chatId: missing.chatId, body: '验收消息' }, label: 'chat-send-missing', code: 'not_found' },
     { name: 'getProjectInfoHubFn', input: { projectId: missing.projectId }, label: 'info-hub-project-missing', code: 'not_found' },
-    { name: 'getConversationInfoFn', input: { conversationId: missing.conversationId }, label: 'info-hub-conversation-missing', code: 'not_found' },
+    { name: 'getChatInfoFn', input: { chatId: missing.chatId }, label: 'info-hub-chat-missing', code: 'not_found' },
   ]
   const checked = []
   for (const probe of probes) {
@@ -220,11 +220,11 @@ try {
 
   const anonymousProject = await call('getProjectFn', { projectId: missing.projectId }, 'project-anonymous', { authenticated: false })
   assert.equal(anonymousProject.value.error.code, 'unauthorized', '未登录 getProjectFn 必须 unauthorized')
-  const anonymousConversationInfo = await call('getConversationInfoFn', { conversationId: missing.conversationId }, 'info-hub-anonymous', { authenticated: false })
-  assert.equal(anonymousConversationInfo.value.error.code, 'unauthorized', '未登录 getConversationInfoFn 必须 unauthorized')
+  const anonymousChatInfo = await call('getChatInfoFn', { chatId: missing.chatId }, 'info-hub-anonymous', { authenticated: false })
+  assert.equal(anonymousChatInfo.value.error.code, 'unauthorized', '未登录 getChatInfoFn 必须 unauthorized')
   const anonymousRows = (await assertNoErrorDiagnostic(anonymousProject.requestId, 'project-anonymous'))
-    + (await assertNoErrorDiagnostic(anonymousConversationInfo.requestId, 'info-hub-anonymous'))
-  pass('未登录路径仍为 unauthorized 且无 error 诊断', { project: anonymousProject.requestId, conversationInfo: anonymousConversationInfo.requestId, diagnosticRows: anonymousRows })
+    + (await assertNoErrorDiagnostic(anonymousChatInfo.requestId, 'info-hub-anonymous'))
+  pass('未登录路径仍为 unauthorized 且无 error 诊断', { project: anonymousProject.requestId, chatInfo: anonymousChatInfo.requestId, diagnosticRows: anonymousRows })
 
   const shutdown = await stop(server)
   assert.equal(shutdown.code, 0, '生产进程必须退出 0')

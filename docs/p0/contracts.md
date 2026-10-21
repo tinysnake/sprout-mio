@@ -18,8 +18,8 @@
 
 | # | 契约 | 约束表达 | 由谁保证 | 证据 |
 | --- | --- | --- | --- | --- |
-| 1 | 分身（profile × Conversation）唯一 | `UNIQUE INDEX agent_instance(profile_id, conversation_id)` | 数据库约束保证 | `instance_unique_rejects_second`、`concurrent_instance_create_exactly_one_wins_{delete,wal}` |
-| 2 | 同 profile 可存在于另一 Conversation | 同上，索引按两列组合 | 数据库约束保证 | `instance_unique_allows_same_profile_other_conversation` |
+| 1 | 分身（profile × Chat）唯一 | `UNIQUE INDEX agent_instance(profile_id, chat_id)` | 数据库约束保证 | `instance_unique_rejects_second`、`concurrent_instance_create_exactly_one_wins_{delete,wal}` |
+| 2 | 同 profile 可存在于另一 Chat | 同上，索引按两列组合 | 数据库约束保证 | `instance_unique_allows_same_profile_other_chat` |
 | 3 | 分身身份独立于 run、宿主连接与服务重启 | `agent_instance.id` 为主键，表内无 run 级列；`agent_run.instance_id` 外键指向它 | 结构保证（数据库 schema） | `partial_unique_indexes_present_in_sqlite_master`、schema |
 | 4 | Project × Machine 同时最多一个活跃租约 | `UNIQUE INDEX machine_lease(project_id, machine_id) WHERE state = 'active'` | 数据库约束保证 | `lease_exclusive_rejects_second_active`、`concurrent_lease_acquire_exactly_one_wins_{delete,wal}` |
 | 5 | 释放后可由新 holder 接管，租约历史保留 | 同上（部分索引只约束 `active`）；释放行写 `state='released'` + `ended_at` | 数据库约束保证 | `lease_released_allows_new_holder` |
@@ -46,11 +46,11 @@
 
 ### 1. 身份
 
-`agent_profile` 只存人设与默认配置，与生命周期解耦。`conversation` 属于 Project。
-分身 `agent_instance` 只由 `(profile_id, conversation_id)` 决定，`id` 是主键，
+`agent_profile` 只存人设与默认配置，与生命周期解耦。`chat` 属于 Project。
+分身 `agent_instance` 只由 `(profile_id, chat_id)` 决定，`id` 是主键，
 没有 run 级或连接级列，所以它天然跨 run、跨宿主连接、跨服务重启保持同一身份。
 
-同 profile × Conversation 的第二个分身被唯一索引拒绝。第二次测试证明索引是组合键，
+同 profile × Chat 的第二个分身被唯一索引拒绝。第二次测试证明索引是组合键，
 不是「一个 profile 只能有一个分身」。
 
 ### 2. Project × Machine 租约互斥与交接

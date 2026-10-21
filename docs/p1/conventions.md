@@ -47,7 +47,7 @@ return ok(input.data, requestId);
 
 `BETTER_AUTH_SECRET` 在共享 config 解析层允许缺省，提供时至少 32 字符。自 p1-c-data-auth 接入认证、p1-d-runtime 接入启动边界后，auth 与生产入口都强制要求有效 secret，生产入口在监听前拒绝缺失、短值与示例占位值。原先 auth 未接入时可省略的条件已不适用于生产启动。构建 prerender 跳过 runtime，不要求部署 secret。证据见 [runtime.md 的验证命令与证据](runtime.md#验证命令与证据)。解析失败抛出包含字段名和约束的错误，不输出原始秘密。
 
-`DiagnosticEvent` 必填 `id`、`at`、`level`、`event`、`requestId` 和 `message`。`at` 使用 ISO 字符串。`projectId`、`conversationId`、`instanceId`、`runId` 和 `executionId` 仅在实际关联存在时填写。不能为尚未实现的对象捏造 ID。日志级别由 `DIAGNOSTIC_LEVELS` 定义，只允许 `debug`、`info`、`warn` 和 `error`；类型、环境配置和数据库约束共用这份定义。
+`DiagnosticEvent` 必填 `id`、`at`、`level`、`event`、`requestId` 和 `message`。`at` 使用 ISO 字符串。`projectId`、`chatId`、`instanceId`、`runId` 和 `executionId` 仅在实际关联存在时填写。不能为尚未实现的对象捏造 ID。日志级别由 `DIAGNOSTIC_LEVELS` 定义，只允许 `debug`、`info`、`warn` 和 `error`；类型、环境配置和数据库约束共用这份定义。
 
 认证和 Project server functions 的载荷 requestId 必须等于响应头 `x-sprout-request-id` 与该请求的 `http.response` 诊断行 requestId。Project boundary 的依赖加载、会话查询、Zod 校验与领域调用共享一个 try；基础设施失败返回脱敏 `internal`，服务端记录真实原因，并写入 `project.request_failed` error 诊断，data 只含安全错误码。诊断存储本身不可用时只能记录服务端错误。
 

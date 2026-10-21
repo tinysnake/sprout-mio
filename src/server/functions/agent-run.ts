@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { abortAgentRunInput, conversationRunStateInput } from "../../contracts/agent-run";
-import type { AgentRun, AgentRunResult, ConversationRunState } from "../../contracts/agent-run";
+import { abortAgentRunInput, chatRunStateInput } from "../../contracts/agent-run";
+import type { AgentRun, AgentRunResult, ChatRunState } from "../../contracts/agent-run";
 import { fail, ok, toAppError } from "../../contracts/result";
 import { fieldErrorsFrom } from "../../contracts/project";
 import type { ProjectContext } from "../../domain/access";
@@ -70,15 +70,15 @@ function invalidInput(error: z.ZodError, requestId: string): AgentRunResult<neve
 }
 
 /** 对话页的 run 视角：宿主启用状态、已有 run 与最近一个 run 的输入投递状态。 */
-export async function getConversationRunStateBoundary(
+export async function getChatRunStateBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
-): Promise<AgentRunResult<ConversationRunState>> {
-  return agentRunBoundary<ConversationRunState>(headers, requestId, (deps, context) => {
-    const parsed = conversationRunStateInput.safeParse(raw);
+): Promise<AgentRunResult<ChatRunState>> {
+  return agentRunBoundary<ChatRunState>(headers, requestId, (deps, context) => {
+    const parsed = chatRunStateInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    const runs = deps.listAgentRuns(parsed.data.conversationId, context);
+    const runs = deps.listAgentRuns(parsed.data.chatId, context);
     const latest = runs.at(-1);
     const { piHostSnapshot } = deps;
     return ok(
@@ -112,10 +112,10 @@ export async function abortAgentRunBoundary(
   });
 }
 
-export const getConversationRunStateFn = createServerFn({ method: "POST" })
+export const getChatRunStateFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
-    getConversationRunStateBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+    getChatRunStateBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
 export const abortAgentRunFn = createServerFn({ method: "POST" })

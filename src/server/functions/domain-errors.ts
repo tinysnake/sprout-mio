@@ -8,11 +8,11 @@ type DomainErrorClass = abstract new (...args: never[]) => Error & {
 };
 
 async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
-  const [project, agent, access, conversation, agentRun, repository] = await Promise.all([
+  const [project, agent, access, chat, agentRun, repository] = await Promise.all([
     import("../../domain/project"),
     import("../../domain/agent"),
     import("../../domain/access"),
-    import("../../domain/conversation"),
+    import("../../domain/chat"),
     import("../../domain/agent-run"),
     import("../../domain/repository"),
   ]);
@@ -20,7 +20,7 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
     project.ProjectError,
     agent.AgentError,
     access.ProjectAccessError,
-    conversation.ConversationError,
+    chat.ChatError,
     agentRun.AgentRunError,
     repository.RepositoryError,
   ];

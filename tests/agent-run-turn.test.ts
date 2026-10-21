@@ -21,7 +21,7 @@ function scenario(body: string) {
       const { sqlite } = await import('./src/db/index.ts');
       const { createProject } = await import('./src/domain/project.ts');
       const agents = await import('./src/domain/agent.ts');
-      const dm = await import('./src/domain/conversation.ts');
+      const dm = await import('./src/domain/chat.ts');
       const runs = await import('./src/domain/agent-run.ts');
       const ctx = { userId: 'run-owner', requestId: 'req_agent_run_turn_test' };
       const other = { userId: 'other-owner', requestId: 'req_other_turn_test' };
@@ -29,10 +29,10 @@ function scenario(body: string) {
       const project = createProject({ name: 'Turn Project' }, ctx);
       const profile = agents.createAgentProfile({ name: 'Turn Agent', persona: 'Original persona', harness: 'pi', model: 'test/model', effort: 'off' }, ctx);
       agents.addProjectMember(project.id, profile.id, ctx);
-      const direct = dm.createDirectConversation(project.id, profile.id, ctx);
-      const send = (body) => dm.sendMessage(direct.conversation.id, { senderKind: 'human', senderId: ctx.userId, body }, ctx);
+      const direct = dm.createDirectChat(project.id, profile.id, ctx);
+      const send = (body) => dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctx.userId, body }, ctx);
       const first = send('first input');
-      const run = runs.listAgentRuns(direct.conversation.id, ctx)[0];
+      const run = runs.listAgentRuns(direct.chat.id, ctx)[0];
       const snapshot = { provider:'test', model:'model', thinking:'off', tools:['read'], extensions:['sprout-extension'], sessionId:run.sessionId, sessionFile:'/tmp/test-session.jsonl', cwd:'/tmp', sdkVersion:'protocol-stub', profile:{ id:profile.id, name:profile.name, persona:profile.persona, harness:'pi', model:profile.model, effort:profile.effort, updatedAt:profile.updatedAt } };
       const count = (table) => sqlite.prepare('SELECT count(*) AS n FROM '+table).get().n;
       ${body}
@@ -62,7 +62,7 @@ describe("Agent run 轮次语义", () => {
       assert.equal(count('message'),1);
       assert.equal(sqlite.prepare("SELECT count(*) AS n FROM diagnostic_event WHERE run_id=? AND event='agent_run.aborted'").get(run.id).n,1);
       send('next input');
-      const next = runs.listAgentRuns(direct.conversation.id, ctx)[1];
+      const next = runs.listAgentRuns(direct.chat.id, ctx)[1];
       assert.notEqual(next.id,run.id);
       assert.equal(next.status,'queued');
     `);
@@ -95,12 +95,12 @@ describe("Agent run 轮次语义", () => {
       assert.equal(failed.status,'failed');
       assert.equal(failed.errorCode,'model_error');
       assert.throws(()=>{
-        sqlite.prepare("INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,session_id,settled_at,error_code,error_message) SELECT 'invalid-failed-no-code',instance_id,conversation_id,project_id,request_id,'failed',session_id,unixepoch(),NULL,'message without code' FROM agent_run WHERE id=?").run(run.id);
+        sqlite.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id,settled_at,error_code,error_message) SELECT 'invalid-failed-no-code',instance_id,chat_id,project_id,request_id,'failed',session_id,unixepoch(),NULL,'message without code' FROM agent_run WHERE id=?").run(run.id);
       },/CHECK constraint/);
       assert.throws(()=>{
-        sqlite.prepare("INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,session_id,settled_at,error_code,error_message) SELECT 'invalid-failed-empty-message',instance_id,conversation_id,project_id,request_id,'failed',session_id,unixepoch(),'model_error','' FROM agent_run WHERE id=?").run(run.id);
+        sqlite.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id,settled_at,error_code,error_message) SELECT 'invalid-failed-empty-message',instance_id,chat_id,project_id,request_id,'failed',session_id,unixepoch(),'model_error','' FROM agent_run WHERE id=?").run(run.id);
       },/CHECK constraint/);
-      sqlite.prepare("INSERT INTO agent_run (id,instance_id,conversation_id,project_id,request_id,status,session_id,settled_at,error_code,error_message) SELECT 'valid-failed',instance_id,conversation_id,project_id,request_id,'failed',session_id,unixepoch(),'model_error','readable reason' FROM agent_run WHERE id=?").run(run.id);
+      sqlite.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id,settled_at,error_code,error_message) SELECT 'valid-failed',instance_id,chat_id,project_id,request_id,'failed',session_id,unixepoch(),'model_error','readable reason' FROM agent_run WHERE id=?").run(run.id);
       assert.equal(sqlite.prepare("SELECT error_message AS m FROM agent_run WHERE id='valid-failed'").get().m,'readable reason');
     `);
   });

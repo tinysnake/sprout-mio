@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process';
 const units = [
   { pr: 10, merge: '6836b06', head: 'cfa5d4d', doc: 'identity-data', script: 'g-identity-data' },
   { pr: 11, merge: '53c9cb7', head: 'fdad1ca', doc: 'project-agents', script: 'h-project-agents' },
-  { pr: 12, merge: '2b814eb', head: 'bf7ffa4', doc: 'conversation-dm', script: 'i-conversation' },
+  { pr: 12, merge: '2b814eb', head: 'bf7ffa4', doc: 'chat-dm', script: 'i-chat' },
   { pr: 13, merge: 'da4aebb', head: 'dc11b8a', doc: 'info-hub', script: 'j-info-hub' },
   { pr: 14, merge: 'd8f4e2b', head: '872e62d', doc: 'acceptance', script: 'k-acceptance' },
 ];

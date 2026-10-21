@@ -42,12 +42,12 @@ export function ProjectAgentsPanel({
                   {agent.personaSummary || "（无人设）"}
                 </p>
               </div>
-              {agent.conversationId ? (
+              {agent.chatId ? (
                 <Link
-                  to="/projects/$projectId/conversations/$conversationId"
-                  params={{ projectId, conversationId: agent.conversationId }}
+                  to="/projects/$projectId/chats/$chatId"
+                  params={{ projectId, chatId: agent.chatId }}
                   data-testid="info-agent-dm-link"
-                  data-conversation-id={agent.conversationId}
+                  data-chat-id={agent.chatId}
                   className="text-sm underline"
                 >
                   打开对话

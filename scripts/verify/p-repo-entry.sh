@@ -152,16 +152,16 @@ async function project(name, profile) {
   const projectId = (await callOk('createProjectFn', { name })).id
   const agentProfileId = (await callOk('createAgentProfileFn', { name: `${name} agent`, persona: 'Reply concisely. Use tools when asked for repository content.', model: 'protocol/model', effort: 'off' })).id
   await callOk('addProjectMemberFn', { projectId, agentProfileId })
-  const direct = await callOk('createDirectConversationFn', { projectId, agentProfileId })
-  return { projectId, conversationId: direct.conversation.id }
+  const direct = await callOk('createDirectChatFn', { projectId, agentProfileId })
+  return { projectId, chatId: direct.chat.id }
 }
-const runsOf = conversationId => db.prepare('SELECT * FROM agent_run WHERE conversation_id=? ORDER BY rowid').all(conversationId)
-async function send(conversationId, body) {
-  return callOk('sendMessageFn', { conversationId, body })
+const runsOf = chatId => db.prepare('SELECT * FROM agent_run WHERE chat_id=? ORDER BY rowid').all(chatId)
+async function send(chatId, body) {
+  return callOk('sendMessageFn', { chatId, body })
 }
-async function waitRun(conversationId, status, previous = 0) {
+async function waitRun(chatId, status, previous = 0) {
   return until(() => {
-    const rows = runsOf(conversationId)
+    const rows = runsOf(chatId)
     if (rows.length <= previous) return
     const row = rows.at(-1)
     if (row.status === 'failed' && status !== 'failed') throw new Error(`run failed ${row.error_code}: ${row.error_message}`)
@@ -222,8 +222,8 @@ try {
   const managed = seedRemote('p3c-managed', { 'NOTES.md': marker, 'src/app.ts': 'export const APP = 1;' })
   const managedProject = await project('P3C managed')
   await callOk('updateProjectProfileFn', { projectId: managedProject.projectId, gitRemote: 'file://' + managed.remote, defaultBranch: 'main' })
-  await send(managedProject.conversationId, 'analyze the repository')
-  const managedRun = await waitRun(managedProject.conversationId, 'completed')
+  await send(managedProject.chatId, 'analyze the repository')
+  const managedRun = await waitRun(managedProject.chatId, 'completed')
   const managedProvenance = provenanceOf(managedRun.id)
   const bareHead = git(['--git-dir', managed.remote, 'rev-parse', 'refs/heads/main']).trim()
   assert.equal(managedProvenance.commit, managed.head(), 'provenance commit equals the real seed commit')
@@ -246,8 +246,8 @@ try {
   pass('managed clone: remote HEAD becomes the working copy, provenance and snapshot agree', { runId: managedRun.id, commit: managedProvenance.commit, bareHead, path: managedProvenance.path })
 
   const updatedHead = advance(managed, 'NOTES.md', marker2)
-  await send(managedProject.conversationId, 'fetch again')
-  const updatedRun = await waitRun(managedProject.conversationId, 'completed', 1)
+  await send(managedProject.chatId, 'fetch again')
+  const updatedRun = await waitRun(managedProject.chatId, 'completed', 1)
   const updatedProvenance = provenanceOf(updatedRun.id)
   assert.equal(updatedProvenance.commit, updatedHead, 'next run picks up the advanced remote HEAD')
   assert.notEqual(updatedProvenance.commit, managedProvenance.commit)
@@ -259,8 +259,8 @@ try {
   git(['clone', '-q', bound.remote, join(repoRoot, 'bound-copy')])
   const boundProject = await project('P3C bound')
   await callOk('updateProjectProfileFn', { projectId: boundProject.projectId, gitRemote: 'file://' + bound.remote, defaultBranch: 'main', workDirectory: 'bound-copy' })
-  await send(boundProject.conversationId, 'read my existing copy')
-  const boundRun = await waitRun(boundProject.conversationId, 'completed')
+  await send(boundProject.chatId, 'read my existing copy')
+  const boundRun = await waitRun(boundProject.chatId, 'completed')
   const boundProvenance = provenanceOf(boundRun.id)
   const copyHead = git(['-C', join(repoRoot, 'bound-copy'), 'rev-parse', 'HEAD']).trim()
   assert.equal(boundProvenance.source_kind, 'bound_copy')
@@ -274,8 +274,8 @@ try {
 
   const ghostProject = await project('P3C ghost')
   await callOk('updateProjectProfileFn', { projectId: ghostProject.projectId, defaultBranch: 'main', workDirectory: 'ghost-dir' })
-  await send(ghostProject.conversationId, 'analyze the missing copy')
-  const ghostRun = await waitRun(ghostProject.conversationId, 'failed')
+  await send(ghostProject.chatId, 'analyze the missing copy')
+  const ghostRun = await waitRun(ghostProject.chatId, 'failed')
   assert.equal(ghostRun.error_code, 'repo_workdir_missing')
   assert(ghostRun.error_message && ghostRun.error_message.trim())
   assert.equal(provenanceOf(ghostRun.id), undefined, 'no provenance may be invented for a failed preparation')
@@ -286,16 +286,16 @@ try {
   const missingRemote = seedRemote('p3c-missing-remote', { 'FILE.md': 'v1' })
   const missingProject = await project('P3C missing remote')
   await callOk('updateProjectProfileFn', { projectId: missingProject.projectId, gitRemote: 'file://' + join(remotes, 'p3c-missing-remote', 'no-such.git'), defaultBranch: 'main' })
-  await send(missingProject.conversationId, 'analyze an unreachable remote')
-  const missingRun = await waitRun(missingProject.conversationId, 'failed')
+  await send(missingProject.chatId, 'analyze an unreachable remote')
+  const missingRun = await waitRun(missingProject.chatId, 'failed')
   assert.equal(missingRun.error_code, 'repo_remote_not_found')
   assert(missingRun.error_message.includes('fatal'), `readable git detail expected: ${missingRun.error_message}`)
   assert(!existsSync(join(repoRoot, missingProject.projectId)), 'failed clone leaves nothing behind')
 
   const badRefProject = await project('P3C bad ref')
   await callOk('updateProjectProfileFn', { projectId: badRefProject.projectId, gitRemote: 'file://' + missingRemote.remote, defaultBranch: 'no-such-branch' })
-  await send(badRefProject.conversationId, 'analyze a missing ref')
-  const badRefRun = await waitRun(badRefProject.conversationId, 'failed')
+  await send(badRefProject.chatId, 'analyze a missing ref')
+  const badRefRun = await waitRun(badRefProject.chatId, 'failed')
   assert.equal(badRefRun.error_code, 'repo_ref_not_found')
   assert(badRefRun.error_message && badRefRun.error_message.trim())
 
@@ -308,8 +308,8 @@ try {
   }, 'auth stub ready')
   const authProject = await project('P3C auth')
   await callOk('updateProjectProfileFn', { projectId: authProject.projectId, gitRemote: `http://127.0.0.1:${authPort}/repo.git`, defaultBranch: 'main' })
-  await send(authProject.conversationId, 'analyze an auth-gated remote')
-  const authRun = await waitRun(authProject.conversationId, 'failed')
+  await send(authProject.chatId, 'analyze an auth-gated remote')
+  const authRun = await waitRun(authProject.chatId, 'failed')
   assert.equal(authRun.error_code, 'repo_auth_failed')
   assert(authRun.error_message && authRun.error_message.trim())
   kill(authServer)
@@ -331,8 +331,8 @@ try {
   const bulky = seedRemote('p3c-bulky', { 'BIG.bin': Buffer.alloc(16384, 7) })
   const bulkyProject = await project('P3C bulky')
   await callOk('updateProjectProfileFn', { projectId: bulkyProject.projectId, gitRemote: 'file://' + bulky.remote, defaultBranch: 'main' })
-  await send(bulkyProject.conversationId, 'analyze the bulky repository')
-  const bulkyRun = await waitRun(bulkyProject.conversationId, 'failed')
+  await send(bulkyProject.chatId, 'analyze the bulky repository')
+  const bulkyRun = await waitRun(bulkyProject.chatId, 'failed')
   assert.equal(bulkyRun.error_code, 'repo_disk_limit')
   assert(bulkyRun.error_message.includes('已清理'), `disk limit failure must report the cleanup: ${bulkyRun.error_message}`)
   assert(!existsSync(join(repoRoot, bulkyProject.projectId)), 'half-done managed clone is cleaned up')

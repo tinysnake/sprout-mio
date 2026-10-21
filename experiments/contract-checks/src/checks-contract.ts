@@ -19,7 +19,7 @@ import {
   agentInstance,
   agentProfile,
   agentRun,
-  conversation,
+  chat,
   machineLease,
   remoteExecution,
   wakeRequest,
@@ -48,14 +48,14 @@ function seedTwoIdentities(db: Db) {
       { id: 'prof-2', name: 'P2', persona: '', createdAt: NOW },
     ])
     .run();
-  db.insert(conversation)
+  db.insert(chat)
     .values([
       { id: 'conv-1', projectId: 'proj-1', title: 'C1' },
       { id: 'conv-2', projectId: 'proj-1', title: 'C2' },
     ])
     .run();
-  createInstance(db, { id: 'inst-1', profileId: 'prof-1', conversationId: 'conv-1', createdAt: NOW });
-  createInstance(db, { id: 'inst-2', profileId: 'prof-2', conversationId: 'conv-2', createdAt: NOW });
+  createInstance(db, { id: 'inst-1', profileId: 'prof-1', chatId: 'conv-1', createdAt: NOW });
+  createInstance(db, { id: 'inst-2', profileId: 'prof-2', chatId: 'conv-2', createdAt: NOW });
 }
 
 export async function runContractChecks(): Promise<void> {
@@ -64,7 +64,7 @@ export async function runContractChecks(): Promise<void> {
     const { db } = openMigrated(':memory:');
     seedTwoIdentities(db);
     const code = caught(() =>
-      createInstance(db, { id: 'inst-1-dup', profileId: 'prof-1', conversationId: 'conv-1', createdAt: NOW }),
+      createInstance(db, { id: 'inst-1-dup', profileId: 'prof-1', chatId: 'conv-1', createdAt: NOW }),
     );
     const rows = countRows(db, agentInstance);
     expect(code === 'SQLITE_CONSTRAINT_UNIQUE', `expected SQLITE_CONSTRAINT_UNIQUE, got ${code}`);
@@ -72,10 +72,10 @@ export async function runContractChecks(): Promise<void> {
     return `code=${code} instances=${rows}`;
   });
 
-  await check('instance_unique_allows_same_profile_other_conversation', () => {
+  await check('instance_unique_allows_same_profile_other_chat', () => {
     const { db } = openMigrated(':memory:');
     seedTwoIdentities(db);
-    const created = createInstance(db, { id: 'inst-3', profileId: 'prof-1', conversationId: 'conv-2', createdAt: NOW });
+    const created = createInstance(db, { id: 'inst-3', profileId: 'prof-1', chatId: 'conv-2', createdAt: NOW });
     const rows = countRows(db, agentInstance);
     expect(rows === 3, `expected 3 instances, got ${rows}`);
     return `created=${created.id} instances=${rows}`;
@@ -85,7 +85,7 @@ export async function runContractChecks(): Promise<void> {
     const { db, sqlite } = openMigrated(':memory:');
     seedTwoIdentities(db);
     const code = caught(() =>
-      createInstance(db, { id: 'inst-ghost', profileId: 'prof-missing', conversationId: 'conv-1', createdAt: NOW }),
+      createInstance(db, { id: 'inst-ghost', profileId: 'prof-missing', chatId: 'conv-1', createdAt: NOW }),
     );
     expect(code === 'SQLITE_CONSTRAINT_FOREIGNKEY', `expected SQLITE_CONSTRAINT_FOREIGNKEY, got ${code}`);
     const pragma = sqlite.pragma('foreign_keys') as Array<{ foreign_keys: number }>;
@@ -292,7 +292,7 @@ export async function runContractChecks(): Promise<void> {
     const { sqlite } = openMigrated(':memory:');
     const rows = sqlite
       .prepare(`select name, sql from sqlite_master where type = 'index' and name in (?, ?, ?)`)
-      .all('uq_agent_instance_profile_conversation', 'uq_machine_lease_active_project_machine', 'uq_agent_run_active_instance') as Array<{ name: string; sql: string }>;
+      .all('uq_agent_instance_profile_chat', 'uq_machine_lease_active_project_machine', 'uq_agent_run_active_instance') as Array<{ name: string; sql: string }>;
     const find = (name: string) => rows.find((r) => r.name === name)?.sql ?? '';
     const lease = find('uq_machine_lease_active_project_machine');
     const run = find('uq_agent_run_active_instance');

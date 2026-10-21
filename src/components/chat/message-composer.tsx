@@ -4,18 +4,12 @@ import type { FieldErrors } from "../../contracts/project";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
-import { sendMessageFn } from "../../server/functions/conversation";
+import { sendMessageFn } from "../../server/functions/chat";
 import { Button } from "../ui/button";
 import { FieldError, ResultError } from "../project/result-error";
 
 /** 只发送当前登录者身份的 human 消息，成功后交给路由重新取数而不是本地插入。 */
-export function MessageComposer({
-  conversationId,
-  onSent,
-}: {
-  conversationId: string;
-  onSent: () => void;
-}) {
+export function MessageComposer({ chatId, onSent }: { chatId: string; onSent: () => void }) {
   const [body, setBody] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -28,7 +22,7 @@ export function MessageComposer({
     setError(null);
     setFieldErrors({});
     try {
-      const result = await sendMessageFn({ data: { conversationId, body } });
+      const result = await sendMessageFn({ data: { chatId, body } });
       if (!result.ok) {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});

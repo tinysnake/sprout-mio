@@ -139,9 +139,9 @@ async function call(name, data) {
   assert(result.ok, `${name} rejected ${JSON.stringify(result)}`)
   return result.data
 }
-async function waitRun(conversationId, status, previous = 0) {
+async function waitRun(chatId, status, previous = 0) {
   return until(() => {
-    const rows = db.prepare('SELECT * FROM agent_run WHERE conversation_id=? ORDER BY rowid').all(conversationId)
+    const rows = db.prepare('SELECT * FROM agent_run WHERE chat_id=? ORDER BY rowid').all(chatId)
     if (rows.length <= previous) return
     const row = rows.at(-1)
     if (row.status === 'failed' && status !== 'failed') throw new Error(`run failed ${row.error_code}: ${row.error_message}`)
@@ -183,12 +183,12 @@ try {
     const projectId = (await call('createProjectFn', { name: 'Live repo analysis' })).id
     const agentProfileId = (await call('createAgentProfileFn', { name: 'Live repo agent', persona: 'Reply concisely. Use tools when asked for repository content.', model, effort: 'off' })).id
     await call('addProjectMemberFn', { projectId, agentProfileId })
-    const direct = await call('createDirectConversationFn', { projectId, agentProfileId })
-    const conversationId = direct.conversation.id
+    const direct = await call('createDirectChatFn', { projectId, agentProfileId })
+    const chatId = direct.chat.id
     await call('updateProjectProfileFn', { projectId, gitRemote: 'file://' + source.remote, defaultBranch: 'main' })
     const windowStart = Date.now()
-    await call('sendMessageFn', { conversationId, body: 'Use the read tool to read the file NOTES.md in this repository and reply with exactly the marker string it contains, nothing else.' })
-    const run = await waitRun(conversationId, 'completed')
+    await call('sendMessageFn', { chatId, body: 'Use the read tool to read the file NOTES.md in this repository and reply with exactly the marker string it contains, nothing else.' })
+    const run = await waitRun(chatId, 'completed')
     const snapshot = JSON.parse(run.config_snapshot)
     const provenance = db.prepare('SELECT * FROM repo_provenance WHERE run_id=?').get(run.id)
     const reply = db.prepare('SELECT body FROM message WHERE id=?').get(run.assistant_message_id).body

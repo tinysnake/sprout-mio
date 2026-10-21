@@ -3,7 +3,7 @@ export const ID_PREFIXES = {
   project: "prj",
   agentProfile: "agp",
   projectMember: "pmb",
-  conversation: "cnv",
+  chat: "cnv",
   instance: "ins",
   message: "msg",
   diagnostic: "diag",
