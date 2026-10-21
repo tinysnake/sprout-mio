@@ -268,10 +268,14 @@ try {
     import Database from 'better-sqlite3';
     const db = new Database(process.env.DATABASE_URL);
     assert.equal(db.prepare('SELECT count(*) AS count FROM user').get().count, 2);
-    assert.equal(db.prepare('SELECT count(*) AS count FROM project').get().count, 0);
-    console.log('users=2 projects=0'); db.close();
-  `], 'no-project.log')
-  pass('registration does not create Projects', 'users=2 projects=0')
+    assert.equal(db.prepare('SELECT count(*) AS count FROM project').get().count, 2);
+    assert.equal(db.prepare('SELECT count(*) AS count FROM agent_profile').get().count, 2);
+    assert.equal(db.prepare('SELECT count(*) AS count FROM project_member').get().count, 2);
+    assert.equal(db.prepare('SELECT count(DISTINCT created_by) AS count FROM project').get().count, 2);
+    assert.equal(db.prepare('SELECT count(*) AS count FROM conversation').get().count, 0);
+    console.log('users=2 projects=2 agentProfiles=2 members=2 conversations=0'); db.close();
+  `], 'default-project.log')
+  pass('registration creates one default Project and Agent per Human', 'users=2 projects=2 agentProfiles=2 members=2 conversations=0')
   stop(server)
   await server.completion
   children.delete(server)

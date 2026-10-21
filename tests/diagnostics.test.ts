@@ -17,6 +17,7 @@ type Evidence = {
   foreignProject: DiagnosticEvent[];
   foreignRequest: DiagnosticEvent[];
   projectIds: string[];
+  seededProjectIds: string[];
 };
 let evidence: Evidence;
 beforeAll(() => {
@@ -47,6 +48,8 @@ beforeAll(() => {
       const other = queryDiagnostics({ actorId, projectId: "prj_missing" });
       const failed = recordDiagnostic({ level: "error", event: "test.foreign-key", requestId: "req_invalid", projectId: "prj_missing", message: "诊断失败不能中断请求" });
       const projects = users.map((user, index) => createProject({ name: "Project " + index }, { userId: user.user.id, requestId: "req_project_" + index }));
+      const { sqlite } = await import("./src/db/index.ts");
+      const seededProjectIds = sqlite.prepare("SELECT id FROM project WHERE name = '我的项目' AND created_by = ? ORDER BY rowid").all(actorId).map((row) => row.id);
       const visible = queryDiagnostics({ actorId });
       const foreignProject = queryDiagnostics({ actorId, projectId: projects[1].id });
       const foreignRequest = queryDiagnostics({ actorId, requestId: "req_project_1" });
@@ -56,8 +59,7 @@ beforeAll(() => {
       const second = new Request("http://localhost/api/health");
       initializeRequestContext(first);
       initializeRequestContext(second);
-      console.log("EVIDENCE " + JSON.stringify({ written, rows, latest, other, failed, requestIds: [getRequestContext(first).requestId, getRequestContext(second).requestId], spoofed: first.headers.get("x-sprout-request-id") }));
-      const { sqlite } = await import("./src/db/index.ts");
+      console.log("EVIDENCE " + JSON.stringify({ written, rows, latest, other, failed, requestIds: [getRequestContext(first).requestId, getRequestContext(second).requestId], spoofed: first.headers.get("x-sprout-request-id"), seededProjectIds }));
       sqlite.close();
     `,
       ],
@@ -109,8 +111,13 @@ describe("诊断记录与请求关联", () => {
   });
 
   it("按创建者隔离 Project 诊断，无过滤不泄漏其他用户或非 Project 行", () => {
+    // 注册已经播种一个默认 Project 和一条 project.default_created，这里在其上累加自查行。
+    // 查询按时间与 rowid 倒序，后写入的 project.created 排在播种行之前。
     expect(evidence.visible.map((row) => ({ event: row.event, projectId: row.projectId }))).toEqual(
-      [{ event: "project.created", projectId: evidence.projectIds[0] }],
+      [
+        { event: "project.created", projectId: evidence.projectIds[0] },
+        { event: "project.default_created", projectId: evidence.seededProjectIds[0] },
+      ],
     );
     expect(evidence.foreignProject).toEqual([]);
     expect(evidence.foreignRequest).toEqual([]);

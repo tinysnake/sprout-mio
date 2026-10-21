@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
-import type { CreateProjectInput, Project } from "../contracts/project";
+import type { CreateProjectInput, Project, UpdateProjectInput } from "../contracts/project";
 import { db, sqlite } from "../db";
 import { diagnosticEvent, project } from "../db/schema";
 
@@ -40,15 +40,16 @@ export function createProject(
   input: CreateProjectInput,
   ctx: ProjectContext,
   hooks: CreateProjectHooks = {},
+  now: Date = new Date(),
 ): Project {
   return sqlite.transaction(() => {
-    const now = new Date(Math.floor(Date.now() / 1000) * 1000);
+    const at = new Date(Math.floor(now.getTime() / 1000) * 1000);
     const created: Project = {
       id: newId(ID_PREFIXES.project),
       name: input.name,
       ...(input.description === undefined ? {} : { description: input.description }),
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
+      createdAt: at.toISOString(),
+      updatedAt: at.toISOString(),
     };
     db.insert(project)
       .values({
@@ -56,15 +57,15 @@ export function createProject(
         name: created.name,
         description: created.description ?? null,
         createdBy: ctx.userId,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: at,
+        updatedAt: at,
       })
       .run();
     hooks.afterProjectInsert?.(created);
     db.insert(diagnosticEvent)
       .values({
         id: newId(ID_PREFIXES.diagnostic),
-        at: now,
+        at: at,
         level: "info",
         event: "project.created",
         requestId: ctx.requestId,
@@ -74,6 +75,45 @@ export function createProject(
       })
       .run();
     return created;
+  })();
+}
+
+/** 改名与改描述在同一个事务里写入，同时留下 `project.updated` 诊断。 */
+export function updateProject(
+  id: string,
+  input: UpdateProjectInput,
+  ctx: ProjectContext,
+  hooks: CreateProjectHooks = {},
+  now: Date = new Date(),
+): Project {
+  return sqlite.transaction(() => {
+    getProject(id, ctx);
+    const at = new Date(Math.floor(now.getTime() / 1000) * 1000);
+    const row = db
+      .update(project)
+      .set({
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.description === undefined ? {} : { description: input.description }),
+        updatedAt: at,
+      })
+      .where(and(eq(project.id, id), eq(project.createdBy, ctx.userId)))
+      .returning()
+      .get();
+    if (!row) throw new ProjectError("not_found", "Project 不存在");
+    hooks.afterProjectInsert?.(toProject(row));
+    db.insert(diagnosticEvent)
+      .values({
+        id: newId(ID_PREFIXES.diagnostic),
+        at: at,
+        level: "info",
+        event: "project.updated",
+        requestId: ctx.requestId,
+        projectId: id,
+        message: "Project 已更新",
+        data: JSON.stringify({ fields: Object.keys(input) }),
+      })
+      .run();
+    return toProject(row);
   })();
 }
 

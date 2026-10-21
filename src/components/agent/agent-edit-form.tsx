@@ -33,6 +33,7 @@ export function AgentEditForm({
     event.preventDefault();
     if (pending) return;
     const form = new FormData(event.currentTarget);
+    const jobTitle = text(form, "jobTitle").trim();
     const model = text(form, "model").trim();
     const effort = text(form, "effort").trim();
     setPending(true);
@@ -44,6 +45,7 @@ export function AgentEditForm({
         data: {
           agentProfileId: profile.id,
           name: text(form, "name"),
+          jobTitle: jobTitle || null,
           persona: text(form, "persona"),
           model: model || null,
           effort: effort || null,
@@ -80,6 +82,17 @@ export function AgentEditForm({
         <FieldError errors={fieldErrors} name="name" />
       </label>
       <label className="block text-sm">
+        职位（可留空，只用于展示）
+        <input
+          name="jobTitle"
+          data-testid="agent-edit-job-title"
+          defaultValue={profile.jobTitle ?? ""}
+          maxLength={40}
+          className={inputClass}
+        />
+        <FieldError errors={fieldErrors} name="jobTitle" />
+      </label>
+      <label className="block text-sm">
         人设
         <textarea
           name="persona"
@@ -92,25 +105,29 @@ export function AgentEditForm({
         <FieldError errors={fieldErrors} name="persona" />
       </label>
       <label className="block text-sm">
-        model（可留空表示不指定）
-        <input
+        model
+        <select
           name="model"
           data-testid="agent-edit-model"
           defaultValue={profile.model ?? ""}
-          maxLength={200}
           className={inputClass}
-        />
+        >
+          <option value="">使用默认</option>
+          {profile.model && <option value={profile.model}>{profile.model}</option>}
+        </select>
         <FieldError errors={fieldErrors} name="model" />
       </label>
       <label className="block text-sm">
-        effort（可留空表示不指定）
-        <input
+        effort
+        <select
           name="effort"
           data-testid="agent-edit-effort"
           defaultValue={profile.effort ?? ""}
-          maxLength={200}
           className={inputClass}
-        />
+        >
+          <option value="">使用默认</option>
+          {profile.effort && <option value={profile.effort}>{profile.effort}</option>}
+        </select>
         <FieldError errors={fieldErrors} name="effort" />
       </label>
       {error && <ResultError error={error} testId="agent-edit-error" />}

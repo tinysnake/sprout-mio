@@ -1,6 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
-import { createProjectInput, fieldErrorsFrom, projectIdInput } from "../../contracts/project";
+import {
+  createProjectInput,
+  fieldErrorsFrom,
+  projectIdInput,
+  updateProjectInput,
+} from "../../contracts/project";
 import type { Project, ProjectResult } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/project";
@@ -99,6 +104,31 @@ export async function getProjectBoundary(
   });
 }
 
+export async function updateProjectBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ProjectResult<Project>> {
+  return projectBoundary<Project>(headers, requestId, (deps, context) => {
+    const { projectId, ...rest } = (raw ?? {}) as { projectId?: unknown };
+    const id = projectIdInput.safeParse({ projectId });
+    if (!id.success) {
+      return {
+        ...fail(toAppError(id.error, requestId)),
+        fieldErrors: fieldErrorsFrom(id.error),
+      };
+    }
+    const parsed = updateProjectInput.safeParse(rest);
+    if (!parsed.success) {
+      return {
+        ...fail(toAppError(parsed.error, requestId)),
+        fieldErrors: fieldErrorsFrom(parsed.error),
+      };
+    }
+    return ok(deps.updateProject(id.data.projectId, parsed.data, context), requestId);
+  });
+}
+
 export const createProjectFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
@@ -113,4 +143,10 @@ export const getProjectFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     getProjectBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const updateProjectFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    updateProjectBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );

@@ -97,7 +97,7 @@ curl --noproxy '*' -fsS http://localhost:3114/api/auth/get-session
 4. 运行 `pnpm build`，然后运行 `pnpm start`。开发使用 `pnpm dev`。
 5. 打开 `http://localhost:3000/login`，选择注册并创建第一个 Human。
 
-注册不会创建 Project，也不会写入演示业务数据。验收库中两个 Human 注册后，`project` 行数仍为 0。
+注册不写入演示业务数据，但会创建默认 Project 与默认 Agent，让人注册完就能直接开会话。验收库中两个 Human 注册后，`project` 行数为 2，每个 Human 各一个。
 
 Node 生产入口默认不读 `.env.local`。a 提供的 `pnpm start` 已显式执行 `node --env-file-if-exists=.env.local .output/server/index.mjs`。指定其他文件的命令是 `node --env-file=/absolute/path/to/env .output/server/index.mjs`。已有 shell 环境变量优先于 env file。
 
@@ -187,7 +187,7 @@ HTTP 分桶修订的实际回归：新增“不同 IP 必须有独立预算”�
 | 已验证，无 Origin 的 POST 被拒。                              | 同上。                                                                                                                      | HTTP 403，载荷 `{"message":"Missing or null Origin","code":"MISSING_OR_NULL_ORIGIN"}`。证据为 `no-origin.*`。                                                                                         |
 | 已验证，非法输入返回统一错误。                                | 同上。                                                                                                                      | HTTP 200、`validation_failed`，不回显密码。证据为 `invalid-input.*`。                                                                                                                                 |
 | 已验证，Chromium 的注册、受保护页面刷新、登出跳转与密码登录。 | 同上。                                                                                                                      | `PASS Chromium register and protected reload` 与 `PASS Chromium logout, redirect, safe error and password login`，无 pageerror。截图为 `.verify/c-data-auth/authenticated.png` 与 `login-error.png`。 |
-| 已验证，注册不造 Project。                                    | 同上。                                                                                                                      | `users=2 projects=0`，证据为 `no-project.log`。                                                                                                                                                       |
+| 已验证，注册只造默认 Project 和默认 Agent                     | 同上。                                                                                                                      | `users=2 projects=2 agentProfiles=2 members=2 conversations=0`，证据为 `default-project.log`。                                                                                                        |
 | 已验证，单元与集成行为测试。                                  | `pnpm test`。                                                                                                               | 两个测试文件、13 个测试通过。新增测试覆盖空库迁移、重复迁移保留数据、每连接外键与 WAL、debug CHECK、非法 phase、匿名 session、非法 config 和缺失 secret 的 auth 边界。                                |
 | 已验证，源码检查与构建。                                      | `pnpm typecheck`，`pnpm check`，`pnpm build`。                                                                              | 三个入口类型检查通过，格式、lint 与类型门禁退出 0，生产入口及 client assets 生成。                                                                                                                    |
 | 已验证，auth 导入拒绝坏配置。                                 | 验收脚本以非法 PORT 和缺失 secret 分别执行 `node --import tsx --input-type=module -e 'await import("./src/lib/auth.ts")'`。 | 要求自行非零退出，并打印 `环境变量校验失败` 及 `PORT` 或 `BETTER_AUTH_SECRET`。日志为 `bad-port-auth-import.log` 和 `missing-secret-auth-import.log`。                                                |

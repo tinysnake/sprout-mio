@@ -72,6 +72,14 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 
 出口条件是重启后同一对话仍对应同一分身，消息与配置保留；两个 Project 的上下文与查询边界可验证。此阶段不将模拟回复当作真实 Pi 接入完成。
 
+P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是展示标签，无权限语义。注册时同事务创建默认 Project、职位为“全能秘书”的默认 Agent Amenda 并加入成员，避免新用户停在零成员、无法开会话的死路。Project 支持改名与改描述。Project 删除不在一期范围。
+
+登记默认 Project 使 P1 的 `c-data-auth.sh` 不再成立“注册后 Project 行数为 0”，该断言与 [注册不造业务数据](p1/data-auth.md#配置与首次运行) 同步修正为“注册即写入默认 Project 和默认 Agent”。
+
+实现位置。职位为 `agent_profile.job_title`，迁移 `drizzle/0005_white_grey_gargoyle.sql`，读写在 `src/domain/agent.ts`，边界在 `src/contracts/agent.ts`。播种在 `src/domain/bootstrap.ts`，由 `src/lib/auth.ts` 的 `databaseHooks.user.create.after` 在注册事务提交后调用，Project、profile 与成员关系在同一事务里完成。改名与改描述为 `src/domain/project.ts` 的 `updateProject`，经 `updateProjectBoundary` / `updateProjectFn` 暴露，表单在 `src/components/project/project-basic-info-form.tsx`。重跑 `bash scripts/verify/c-data-auth.sh`、`bash scripts/verify/h-project-agents.sh` 与 `pnpm test`。
+
+未纳入本轮。`/projects` 仍为列表页而非分发点，侧边栏 Projects 尚未改为折叠按钮；两者都会推翻已验收的导航断言，需单独评审后再动。
+
 ## P3 跑通真实 Pi 对话和仓库入口
 
 - [x] 将持久分身映射到 Pi session，记录每轮配置快照和 run 状态。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/n-pi-session.sh`。

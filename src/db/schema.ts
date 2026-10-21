@@ -33,6 +33,7 @@ export const project = sqliteTable("project", {
 export const agentProfile = sqliteTable("agent_profile", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  jobTitle: text("job_title"),
   persona: text("persona").notNull().default(""),
   harness: text("harness", { enum: ["pi"] })
     .notNull()

@@ -40,7 +40,11 @@ export function CreateAgentDialog({ onCreated }: { onCreated: (profile: AgentPro
     setFieldErrors({});
     try {
       const result = await createAgentProfileFn({
-        data: { name: text(form, "name"), persona: text(form, "persona") },
+        data: {
+          name: text(form, "name"),
+          ...(text(form, "jobTitle").trim() ? { jobTitle: text(form, "jobTitle").trim() } : {}),
+          persona: text(form, "persona"),
+        },
       });
       if (!result.ok) {
         setError(result.error);
@@ -73,7 +77,7 @@ export function CreateAgentDialog({ onCreated }: { onCreated: (profile: AgentPro
         <DialogContent>
           <DialogHeader>
             <DialogTitle>新建 Agent profile</DialogTitle>
-            <DialogDescription>名称必填；人设可留空，创建后随时可编辑。</DialogDescription>
+            <DialogDescription>名称必填；职位和人设可留空，创建后随时可编辑。</DialogDescription>
           </DialogHeader>
           <form onSubmit={submit} aria-busy={pending} className="space-y-4">
             <label className="block text-sm">
@@ -85,6 +89,16 @@ export function CreateAgentDialog({ onCreated }: { onCreated: (profile: AgentPro
                 className={inputClass}
               />
               <FieldError errors={fieldErrors} name="name" />
+            </label>
+            <label className="block text-sm">
+              职位（可留空）
+              <input
+                name="jobTitle"
+                data-testid="agent-job-title-input"
+                maxLength={40}
+                className={inputClass}
+              />
+              <FieldError errors={fieldErrors} name="jobTitle" />
             </label>
             <label className="block text-sm">
               人设

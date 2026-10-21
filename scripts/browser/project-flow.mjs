@@ -72,8 +72,16 @@ await check("login_opens_protected_area", async () => {
   await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
   await enterProjects();
-  await page.waitForSelector('[data-testid="project-empty"]', { timeout: 20000 });
-  record("login_opens_protected_area", true, `登录后经首页落到 ${detailPath()}，列表为空`);
+  // 注册已播种一个默认 Project，列表不再为空而是恰好一项。
+  await page.waitForSelector('[data-testid="project-item"]', { timeout: 20000 });
+  const seeded = await page.$$eval('[data-testid="project-item-name"]', (nodes) =>
+    nodes.map((node) => node.textContent),
+  );
+  record(
+    "login_opens_protected_area",
+    seeded.length === 1 && seeded[0] === "我的项目",
+    `登录后经首页落到 ${detailPath()}，列表为 ${JSON.stringify(seeded)}`,
+  );
 });
 
 await check("create_project_appears_in_list", async () => {
@@ -82,7 +90,15 @@ await check("create_project_appears_in_list", async () => {
   await page.fill('[data-testid="project-description-input"]', "浏览器验收创建的分层样例");
   await shot(page, "project-create-dialog");
   await page.click('[data-testid="project-submit"]');
-  await page.waitForSelector('[data-testid="project-item"]', { timeout: 20000 });
+  // 新建的排在最前，等它出现再收集名称，避免只看到播种的默认项。
+  await page.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="project-item-name"]')].some(
+        (node) => node.textContent === name,
+      ),
+    projectName,
+    { timeout: 20000 },
+  );
   const names = await page.$$eval('[data-testid="project-item-name"]', (nodes) =>
     nodes.map((node) => node.textContent),
   );
@@ -95,7 +111,8 @@ await check("create_project_appears_in_list", async () => {
 });
 
 await check("open_detail_shows_fields_and_request_id", async () => {
-  await page.click('[data-testid="project-item-name"]');
+  // 列表里还有播种的默认项，按名称点新建的那一项。
+  await page.getByTestId("project-item-name").getByText(projectName, { exact: true }).click();
   await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
   const detail = await page.evaluate(() => ({
     name: document.querySelector('[data-testid="project-detail-name"]')?.textContent,

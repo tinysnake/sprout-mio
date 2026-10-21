@@ -50,9 +50,9 @@ describe("工具链接口门禁", () => {
         reads: readFileSync(file, "utf8").match(/Date\.now\(\)/g)?.length ?? 0,
       }))
       .filter(({ reads }) => reads > 0);
-    // domain/project.ts 那一处只把时间戳截断到整秒后落库，不参与任何分支。
+    // domain/project.ts 那一处已改为参数注入，domain 层不再就地读时钟。
     // 新增的每一处都必须改成参数注入或走 Effect 的 Clock，见 docs/architecture-direction.md。
-    expect(reads).toEqual([{ file: "domain/project.ts", reads: 1 }]);
+    expect(reads).toEqual([]);
   });
 
   it("限流器的时间来源是注入的，测试可以在不等待的情况下快进窗口", () => {

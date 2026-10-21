@@ -30,6 +30,8 @@ function AgentDetailPage() {
               <dd data-testid="agent-detail-id" className="font-mono text-xs break-all">
                 {result.data.id}
               </dd>
+              <dt className="text-muted-foreground">职位</dt>
+              <dd data-testid="agent-detail-job-title">{result.data.jobTitle ?? "未设置"}</dd>
               <dt className="text-muted-foreground">harness</dt>
               <dd data-testid="agent-detail-harness">{result.data.harness}</dd>
               <dt className="text-muted-foreground">创建时间</dt>

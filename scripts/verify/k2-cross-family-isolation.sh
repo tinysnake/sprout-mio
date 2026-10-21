@@ -325,7 +325,10 @@ try {
   await check('enum_listProjects_returns_only_B', async () => {
     const { value, body } = await call(B, 'listProjectsFn', {}, 'enum-listProjects', 'GET')
     assert.equal(value.ok, true)
-    assert.deepEqual(value.data.map((entry) => entry.id), [bProject.data.id])
+    // B 注册时拿到一个默认 Project，所以列表含它自己建的那个和默认项，但不含 A 的。
+    const ids = value.data.map((entry) => entry.id)
+    assert(ids.includes(bProject.data.id), 'B must see its own project')
+    assert(!ids.includes(aProject.data.id), 'B must not see A project')
     const leaked = aTokens.filter((token) => body.includes(token))
     assert.deepEqual(leaked, [])
     return { projects: value.data.length, leaked }

@@ -7,12 +7,14 @@ export { fieldErrorsFrom } from "./project";
 
 export const agentProfileIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.agentProfile));
 const name = z.string().trim().min(1, "名称不能为空").max(80, "名称最多 80 字");
+const jobTitle = z.string().trim().max(40, "职位最多 40 字");
 const persona = z.string().max(2000, "人设最多 2000 字");
 const harness = z.literal("pi");
 const option = z.string().trim().min(1).max(200);
 
 export const createAgentProfileInput = z.object({
   name,
+  jobTitle: jobTitle.optional(),
   persona: persona.default(""),
   harness: harness.default("pi"),
   model: option.optional(),
@@ -22,6 +24,7 @@ export type CreateAgentProfileInput = z.infer<typeof createAgentProfileInput>;
 
 export const updateAgentProfileInput = z.object({
   name: name.optional(),
+  jobTitle: jobTitle.nullable().optional(),
   persona: persona.optional(),
   harness: harness.optional(),
   model: option.nullable().optional(),

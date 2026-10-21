@@ -36,6 +36,13 @@
       "when": 1792300845623,
       "tag": "0004_thin_leopardon",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792568405828,
+      "tag": "0005_white_grey_gargoyle",
+      "breakpoints": true
     }
   ]
 }

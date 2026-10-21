@@ -57,13 +57,28 @@ let projectPath = "";
 let conversationPath = "";
 let conversationId = "";
 let instanceId = "";
+let joinedId = "";
 
 async function createProfile(name, persona) {
   await page.click('[data-testid="new-agent-trigger"]');
   await page.fill('[data-testid="agent-name-input"]', name);
   await page.fill('[data-testid="agent-persona-input"]', persona);
   await page.click('[data-testid="agent-submit"]');
-  await page.waitForSelector('[data-testid="agent-item"]', { timeout: 20000 });
+  // 注册已播种一个默认 profile，等本次新建的出现在列表里。
+  await page.waitForFunction(
+    (target) =>
+      [...document.querySelectorAll('[data-testid="agent-item-name"]')].some(
+        (node) => node.textContent === target,
+      ),
+    name,
+    { timeout: 20000 },
+  );
+  await page.click(`[data-testid="agent-item-name"] >> text=${name}`);
+  await page.waitForSelector('[data-testid="agent-detail-id"]', { timeout: 20000 });
+  const id = (await page.textContent('[data-testid="agent-detail-id"]'))?.trim() ?? "";
+  await page.goto(`${BASE}/agents`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="new-agent-trigger"]', { timeout: 20000 });
+  return id;
 }
 
 await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
@@ -93,26 +108,44 @@ await check("create_two_profiles_join_one", async () => {
   await page.goto(`${BASE}/agents`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="new-agent-trigger"]', { timeout: 20000 });
   await createProfile(joinedName, joinedPersona);
-  await createProfile(outsiderName, "未加入的分身人设：不应出现在 Info Hub 聚合里");
+  const outsiderId = await createProfile(
+    outsiderName,
+    "未加入的分身人设：不应出现在 Info Hub 聚合里",
+  );
   await page.goto(`${BASE}${projectPath}/agents`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="add-member-select"]', { timeout: 20000 });
   await page.selectOption('[data-testid="add-member-select"]', { label: joinedName });
   await page.click('[data-testid="add-member-submit"]');
-  await page.waitForSelector('[data-testid="member-item"]', { timeout: 20000 });
-  const members = await page.$$eval('[data-testid="member-item-name"]', (nodes) =>
-    nodes.map((node) => node.textContent?.trim()),
+  // 注册播种的默认 Agent 已是成员，等本次加入的那个出现即可。
+  await page.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="member-item-name"]')].some(
+        (node) => node.textContent?.trim() === name,
+      ),
+    joinedName,
+    { timeout: 20000 },
   );
+  const members = await page.$$eval('[data-testid="member-item"]', (nodes) =>
+    nodes.map((node) => ({
+      id: node.getAttribute("data-agent-profile-id"),
+      name: node.querySelector('[data-testid="member-item-name"]')?.textContent?.trim(),
+    })),
+  );
+  joinedId = members.find((member) => member.name === joinedName)?.id ?? "";
   record(
     "create_two_profiles_join_one",
-    JSON.stringify(members) === JSON.stringify([joinedName]),
-    `成员列表 ${JSON.stringify(members)}，${outsiderName} 未加入`,
+    Boolean(joinedId) &&
+      !members.some((member) => member.id === outsiderId) &&
+      /^agp_[0-9a-f-]{36}$/.test(outsiderId),
+    `成员 ${JSON.stringify(members)}，${outsiderName}（${outsiderId}）未加入`,
   );
 });
 
 await check("start_dm_and_send_two_messages", async () => {
   await page.goto(`${BASE}${projectPath}/conversations`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="dm-start"]', { timeout: 20000 });
-  await page.click('[data-testid="dm-start"]');
+  await page.waitForSelector('[data-testid="dm-member-item"]', { timeout: 20000 });
+  // 成员里还有默认 Agent，按本次加入的 profile id 点它的「发起对话」。
+  await page.click(`[data-testid="dm-start"][data-agent-profile-id="${joinedId}"]`);
   await page.waitForURL((url) => /\/conversations\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
     timeout: 20000,
   });
@@ -145,6 +178,8 @@ await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
   await page.waitForSelector('[data-testid="info-hub-project-agents"]', { timeout: 20000 });
   const panel = await page.evaluate(() => {
     const root = document.querySelector('[data-testid="info-hub-project-agents"]');
+    // 面板里可能有多位成员，按名字定位本次加入的那一项再取它的人设。
+    const items = [...document.querySelectorAll('[data-testid="info-agent-item"]')];
     return {
       text: root?.textContent ?? "",
       names: [...document.querySelectorAll('[data-testid="info-agent-name"]')].map((node) =>
@@ -154,17 +189,26 @@ await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
       dmConversationId: document
         .querySelector('[data-testid="info-agent-dm-link"]')
         ?.getAttribute("data-conversation-id"),
-      persona: document.querySelector('[data-testid="info-agent-persona-summary"]')?.textContent,
+      people: items.map((item) => ({
+        name: item.querySelector('[data-testid="info-agent-name"]')?.textContent?.trim(),
+        persona: item.querySelector('[data-testid="info-agent-persona-summary"]')?.textContent,
+        dmConversationId: item
+          .querySelector('[data-testid="info-agent-dm-link"]')
+          ?.getAttribute("data-conversation-id"),
+      })),
     };
   });
   await shot(page, "p2-j-info-hub-project-agents");
+  const joined = panel.people.find((person) => person.name === joinedName);
   record(
     "hub_agents_panel_lists_only_member_with_dm_link",
-    JSON.stringify(panel.names) === JSON.stringify([joinedName]) &&
+    // 面板列出 Project 成员（含播种的默认 Agent），但不含未加入的那个。
+    panel.names.includes(joinedName) &&
+      !panel.names.includes(outsiderName) &&
       !panel.text.includes(outsiderName) &&
-      panel.dmConversationId === conversationId &&
-      panel.persona === joinedPersona,
-    `面板成员 ${JSON.stringify(panel.names)}，不含 ${outsiderName}，DM 链接 ${panel.dmConversationId}`,
+      joined?.dmConversationId === conversationId &&
+      joined?.persona === joinedPersona,
+    `面板成员 ${JSON.stringify(panel.names)}，不含 ${outsiderName}，${joinedName} 的 DM 链接 ${joined?.dmConversationId}`,
   );
 });
 
@@ -274,7 +318,7 @@ await check("deep_link_and_reload_keep_values", async () => {
   }));
   record(
     "deep_link_and_reload_keep_values",
-    JSON.stringify(hubReload.names) === JSON.stringify([joinedName]) &&
+    hubReload.names.includes(joinedName) &&
       hubReload.dmConversationId === conversationId &&
       conversationReload.panelInstance === instanceId &&
       conversationReload.count === "2",

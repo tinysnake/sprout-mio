@@ -37,6 +37,14 @@ function AgentsIndexPage() {
               <span data-testid="agent-item-name" className="font-medium">
                 {profile.name}
               </span>
+              {profile.jobTitle && (
+                <span
+                  data-testid="agent-item-job-title"
+                  className="ml-2 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground"
+                >
+                  {profile.jobTitle}
+                </span>
+              )}
               <span className="mt-1 block text-xs text-muted-foreground">
                 {profile.persona ? profile.persona.slice(0, 60) : "（无人设）"}
               </span>

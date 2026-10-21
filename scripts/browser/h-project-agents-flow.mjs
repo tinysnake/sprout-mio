@@ -63,12 +63,20 @@ await check("register_and_create_project", async () => {
   await page.fill('[data-testid="project-name-input"]', projectName);
   await page.fill('[data-testid="project-description-input"]', "P2 Project 配置与 Agent 成员验收");
   await page.click('[data-testid="project-submit"]');
-  await page.waitForSelector('[data-testid="project-item"]', { timeout: 20000 });
+  await page.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="project-item-name"]')].some(
+        (node) => node.textContent === name,
+      ),
+    projectName,
+    { timeout: 20000 },
+  );
   record("register_and_create_project", true, `注册登录并创建 ${projectName}`);
 });
 
 await check("project_hub_shows_detail", async () => {
-  await page.click('[data-testid="project-item-name"]');
+  // 列表里还有播种的默认项，按名称点新建的那一项。
+  await page.getByTestId("project-item-name").getByText(projectName, { exact: true }).click();
   await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
   const name = await page.textContent('[data-testid="project-detail-name"]');
   await shot(page, "p2-h-project-hub");
@@ -116,7 +124,14 @@ await check("create_agent_profile_appears_in_list", async () => {
   await page.fill('[data-testid="agent-name-input"]', agentName);
   await page.fill('[data-testid="agent-persona-input"]', initialPersona);
   await page.click('[data-testid="agent-submit"]');
-  await page.waitForSelector('[data-testid="agent-item"]', { timeout: 20000 });
+  await page.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="agent-item-name"]')].some(
+        (node) => node.textContent === name,
+      ),
+    agentName,
+    { timeout: 20000 },
+  );
   const names = await page.$$eval('[data-testid="agent-item-name"]', (nodes) =>
     nodes.map((node) => node.textContent),
   );
@@ -167,24 +182,57 @@ await check("edit_persona_persists_with_same_id", async () => {
 
 await check("add_and_remove_member_roundtrip", async () => {
   await page.goto(`${BASE}${projectPath}/agents`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="members-empty"]', { timeout: 20000 });
+  // 注册播种的默认 Agent 已经是成员，所以这里等的是新 profile 进入可选列表，而非空成员。
+  await page.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="add-member-select"] option')].some(
+        (option) => option.textContent === name,
+      ),
+    agentName,
+    { timeout: 20000 },
+  );
   await page.selectOption('[data-testid="add-member-select"]', { label: agentName });
   await page.click('[data-testid="add-member-submit"]');
-  await page.waitForSelector('[data-testid="member-item"]', { timeout: 20000 });
-  const memberName = await page.textContent('[data-testid="member-item-name"]');
+  await page.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="member-item-name"]')].some(
+        (node) => node.textContent === name,
+      ),
+    agentName,
+    { timeout: 20000 },
+  );
   await shot(page, "p2-h-project-members");
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="member-item"]', { timeout: 20000 });
-  const afterReload = await page.textContent('[data-testid="member-item-name"]');
-  await page.click('[data-testid="member-remove"]');
-  await page.waitForSelector('[data-testid="members-empty"]', { timeout: 20000 });
+  await page.waitForFunction(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="member-item-name"]')].some(
+        (node) => node.textContent === name,
+      ),
+    agentName,
+    { timeout: 20000 },
+  );
+  const afterReload = await page.evaluate(
+    (name) =>
+      [...document.querySelectorAll('[data-testid="member-item-name"]')].some(
+        (node) => node.textContent === name,
+      ),
+    agentName,
+  );
+  // 只移除本次验收加入的 profile，默认成员保留。
+  await page.click(`[data-testid="member-remove"][data-agent-profile-id="${agentId}"]`);
+  await page.waitForFunction(
+    (name) =>
+      ![...document.querySelectorAll('[data-testid="member-item-name"]')].some(
+        (node) => node.textContent === name,
+      ),
+    agentName,
+    { timeout: 20000 },
+  );
   await shot(page, "p2-h-project-members-empty");
   record(
     "add_and_remove_member_roundtrip",
-    memberName?.trim() === agentName &&
-      afterReload?.trim() === agentName &&
-      pathOf() === `${projectPath}/agents`,
-    `加入后与刷新后成员名 ${JSON.stringify(afterReload?.trim())}，移除后列表为空`,
+    afterReload && pathOf() === `${projectPath}/agents`,
+    `加入并刷新后仍有 ${agentName}，移除后它不再在名单里`,
   );
 });
 
@@ -228,7 +276,9 @@ await check("back_forward_keep_target_and_project_context", async () => {
   await page.goBack({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
   await page.goForward({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="members-empty"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="member-list"], [data-testid="members-empty"]', {
+    timeout: 20000,
+  });
   record(
     "back_forward_keep_target_and_project_context",
     backPath === `${projectPath}/settings` &&

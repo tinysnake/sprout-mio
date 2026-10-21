@@ -162,15 +162,37 @@ if (process.env.CONVERSATION_VERIFY === "1") {
     await page.fill('[data-testid="agent-name-input"]', agentName);
     await page.fill('[data-testid="agent-persona-input"]', initialPersona);
     await page.click('[data-testid="agent-submit"]');
-    await page.waitForSelector('[data-testid="agent-item"]', { timeout: 20000 });
+    await page.waitForFunction(
+      (name) =>
+        [...document.querySelectorAll('[data-testid="agent-item-name"]')].some(
+          (node) => node.textContent === name,
+        ),
+      agentName,
+      { timeout: 20000 },
+    );
     await page.click(`[data-testid="agent-item-name"] >> text=${agentName}`);
     await page.waitForSelector('[data-testid="agent-detail-id"]', { timeout: 20000 });
     agentId = (await page.textContent('[data-testid="agent-detail-id"]')) ?? "";
     await page.goto(`${BASE}${projectPath}/agents`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="add-member-select"]', { timeout: 20000 });
+    // 默认 Agent 已是成员，等新 profile 出现在可选列表。
+    await page.waitForFunction(
+      (name) =>
+        [...document.querySelectorAll('[data-testid="add-member-select"] option')].some(
+          (option) => option.textContent === name,
+        ),
+      agentName,
+      { timeout: 20000 },
+    );
     await page.selectOption('[data-testid="add-member-select"]', { label: agentName });
     await page.click('[data-testid="add-member-submit"]');
-    await page.waitForSelector('[data-testid="member-item"]', { timeout: 20000 });
+    await page.waitForFunction(
+      (name) =>
+        [...document.querySelectorAll('[data-testid="member-item-name"]')].some(
+          (node) => node.textContent === name,
+        ),
+      agentName,
+      { timeout: 20000 },
+    );
     record(
       "create_agent_profile_and_member",
       /^agp_[0-9a-f-]{36}$/.test(agentId),
@@ -181,7 +203,8 @@ if (process.env.CONVERSATION_VERIFY === "1") {
   await check("start_dm_navigates_to_conversation", async () => {
     await page.goto(`${BASE}${projectPath}/conversations`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="dm-member-item"]', { timeout: 20000 });
-    await page.click('[data-testid="dm-start"]');
+    // 成员里还有默认 Agent，按本次新建的 profile id 点它的「发起对话」。
+    await page.click(`[data-testid="dm-start"][data-agent-profile-id="${agentId}"]`);
     await page.waitForURL((url) => /\/conversations\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
       timeout: 20000,
     });
@@ -265,7 +288,7 @@ if (process.env.CONVERSATION_VERIFY === "1") {
     const items = await page.$$eval('[data-testid="conversation-item"]', (nodes) =>
       nodes.map((node) => node.getAttribute("data-conversation-id")),
     );
-    await page.click('[data-testid="dm-start"]');
+    await page.click(`[data-testid="dm-start"][data-agent-profile-id="${agentId}"]`);
     await page.waitForURL((url) => url.pathname === conversationPath, { timeout: 20000 });
     await shot(page, "p2-i-conversations-list");
     record(

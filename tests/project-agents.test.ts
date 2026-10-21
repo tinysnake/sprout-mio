@@ -23,6 +23,15 @@ type Evidence = {
   removeSecond: { ok: boolean; code?: string };
   updated: ProfilePayload;
   reread: { ok: boolean; persona?: string; id?: string };
+  withJob: { ok: boolean; jobTitle?: string; id?: string; code?: string };
+  jobCleared: { ok: boolean; jobTitle?: string | null; id?: string; code?: string };
+  jobTooLong: { code: string; fields: string[] };
+  seededAmenda: {
+    name: string;
+    jobTitle: string | null;
+    model: string | null;
+    effort: string | null;
+  } | null;
 };
 
 let evidence: Evidence;
@@ -86,6 +95,12 @@ beforeAll(() => {
       const memberSecond = await agents.addProjectMemberBoundary({ projectId, agentProfileId: profileId }, userA.headers, "req_m2");
       const updated = await agents.updateAgentProfileBoundary({ agentProfileId: profileId, persona: "新人设" }, userA.headers, "req_a2");
       const reread = await agents.getAgentProfileBoundary({ agentProfileId: profileId }, userA.headers, "req_a3");
+      // 职位可空且只用于展示，写入与清空都不影响身份。
+      const withJob = await agents.updateAgentProfileBoundary({ agentProfileId: profileId, jobTitle: "技术写作者" }, userA.headers, "req_a4");
+      const jobCleared = await agents.updateAgentProfileBoundary({ agentProfileId: profileId, jobTitle: null }, userA.headers, "req_a5");
+      const jobTooLong = await agents.updateAgentProfileBoundary({ agentProfileId: profileId, jobTitle: "字".repeat(41) }, userA.headers, "req_a6");
+      const seeded = await agents.listAgentProfilesBoundary(userA.headers, "req_a7");
+      const seededAmenda = seeded.ok ? seeded.data.find((profile) => profile.name === "Amenda") : undefined;
       const removed = await agents.removeProjectMemberBoundary({ projectId, agentProfileId: profileId }, userA.headers, "req_m3");
       const afterRemove = await agents.removeProjectMemberBoundary({ projectId, agentProfileId: profileId }, userA.headers, "req_m4");
       const { sqlite } = await import("./src/db/index.ts");
@@ -101,6 +116,10 @@ beforeAll(() => {
         removeFirst: { ok: removed.ok, code: code(removed) },
         removeSecond: { ok: afterRemove.ok, code: code(afterRemove) },
         updated,
+        withJob: withJob.ok ? { ok: true, jobTitle: withJob.data.jobTitle, id: withJob.data.id } : { ok: false, code: code(withJob) },
+        jobCleared: jobCleared.ok ? { ok: true, jobTitle: jobCleared.data.jobTitle ?? null, id: jobCleared.data.id } : { ok: false, code: code(jobCleared) },
+        jobTooLong: { code: code(jobTooLong), fields: fields(jobTooLong) },
+        seededAmenda: seededAmenda ? { name: seededAmenda.name, jobTitle: seededAmenda.jobTitle ?? null, model: seededAmenda.model ?? null, effort: seededAmenda.effort ?? null } : null,
         reread: reread.ok
           ? { ok: true, persona: reread.data.persona, id: reread.data.id }
           : { ok: false, code: code(reread) },
@@ -172,6 +191,26 @@ describe("Project 配置与 Agent 成员边界", () => {
       ok: true,
       persona: "新人设",
       id: evidence.profileId,
+    });
+  });
+
+  it("职位可写可清，超长被边界拒绝", () => {
+    expect(evidence.withJob.ok).toBe(true);
+    expect(evidence.withJob.jobTitle).toBe("技术写作者");
+    expect(evidence.withJob.id).toBe(evidence.profileId);
+    expect(evidence.jobCleared.ok).toBe(true);
+    expect(evidence.jobCleared.jobTitle).toBeNull();
+    expect(evidence.jobCleared.id).toBe(evidence.profileId);
+    expect(evidence.jobTooLong.code).toBe("validation_failed");
+    expect(evidence.jobTooLong.fields).toContain("jobTitle");
+  });
+
+  it("播种的默认 Agent 职位为全能秘书，model 与 effort 留空沿用默认", () => {
+    expect(evidence.seededAmenda).toEqual({
+      name: "Amenda",
+      jobTitle: "全能秘书",
+      model: null,
+      effort: null,
     });
   });
 });

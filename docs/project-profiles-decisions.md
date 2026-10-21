@@ -13,13 +13,26 @@
 - 分身仍由 Agent profile × Conversation 唯一确定，因此不同 Project 对话中的分身也是独立个体。
 - Project 维护自己的 Agent 成员集合，支持添加和移除 Agent；这取代此前“不设 Project 成员名单、所有 profiles 默认参与任意 Project”的决定。
 - Public Channel 是特殊 Group，其 Agent 成员始终等于当前 Project 的 Agent 成员集合；Project 添加或移除 Agent 时同步变化，不能在频道内单独调整。除此之外与 Group 规则相同。
-- 第一版仍不设置项目级 Agent 角色或权限等级；Group 管理及未来申请批准机制见 communication-decisions.md。
+- 第一版仍不设置项目级 Agent 权限等级；Group 管理及未来申请批准机制见 communication-decisions.md。profile 的职位只是展示标签，不构成权限。
 - 从 Project 移除 Agent 时，Public Channel 和普通 Group 同时移除该 Agent；人类与其既有 DM 归档，不能继续聊天。
 - 同一 Agent 重新加入 Project 时，自动加入 Public Channel，既有 DM 重新激活、可继续聊天；不自动恢复原来的普通 Group 成员关系，需另行添加。
 - 一期 Agent 有活动 runs、持有租约、承担 owner 职责或其 DM 仍有 assigned Tasks 时阻止移除；Human 先手动停止、处理租约、变更 owner、重新分配任务，再正常移除。二期再提供强制移除及自动善后。
 - 以上仅针对从当前 Project 移除 Agent，不等于全局删除 Agent profile，也不影响其在其他 Projects 的成员关系、runs 或租约。
 - 二期强制移除时的默认责任接续：若该 Agent 是 Group 或 Public Channel owner，由 Human 接任，Tasks 继续留在原 Conversation；其 DM 中尚未完成、仍分配给该 DM 的 Tasks 退回 proposed，清除当前分配，等待重新分配，历史与已有结果保留。
 - 二期强制移除时的默认租约处置：撤销该 Agent 在本项目各分身的旧操作权后，自动释放这些分身持有的租约；无法确认撤权成功时，保留占用并交由 Human 处理。文件和进程不随租约释放自动清理。
+
+### Project 改名与删除
+
+- Project 名称和描述都可以修改，修改后立即生效，不影响已有对话、成员、任务和租约。
+- 交付时使用默认名称“我的项目”，用户自己改名。
+- 一期不提供 Project 删除。Project 一旦建立就不会从列表消失。
+
+### 新建 Project 的默认内容
+
+- 注册即创建一个默认 Project，同一事务内创建职位为“全能秘书”的默认 Agent profile 并加入成员。两端都不靠事后补建，新账号和老账号因此一致。
+- 默认 Agent 名为 Amenda，职位“全能秘书”，人设随和明快。harness 为 pi，model 和 effort 留空，沿用宿主默认值。
+- 默认内容的创建失败不影响注册成功；被回滚时由 `/projects` 分发点在零 Project 时提供新建入口。
+- 目标是让人注册完就能开会话，不必先手动建 Project 再建 Agent。Project 可改名，因此默认名称不当成长期约束。
 
 ### Project 的 Machine 成员
 

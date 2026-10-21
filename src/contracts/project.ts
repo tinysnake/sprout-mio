@@ -12,6 +12,17 @@ export const createProjectInput = z.object({
 /** 由边界 schema 推导，输入规则与消费者的字段形状保持一致。 */
 export type CreateProjectInput = z.infer<typeof createProjectInput>;
 
+/** 改名与改描述，两者都可单独提交；空对象在边界被拒，避免无意义的事务。 */
+export const updateProjectInput = z
+  .object({
+    name: z.string().trim().min(1, "名称不能为空").max(80, "名称最多 80 字").optional(),
+    description: z.string().max(500, "描述最多 500 字").nullable().optional(),
+  })
+  .refine((value) => value.name !== undefined || value.description !== undefined, {
+    message: "至少提交一个字段",
+  });
+export type UpdateProjectInput = z.infer<typeof updateProjectInput>;
+
 /** Project 的 ID 和 ISO 时间在边界解析，缺失字段或非法日期不能通过。 */
 export const projectSchema = createProjectInput.extend({
   id: projectIdSchema,

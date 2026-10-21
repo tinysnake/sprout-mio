@@ -327,13 +327,12 @@ async function before() {
       key: "agents",
       path: "/agents",
       assert: async () => {
-        await sameText(page, "agent-item-name", agentName);
-        assert.deepEqual(
-          await test(page, "agent-item").evaluateAll((nodes) =>
-            nodes.map((node) => node.dataset.agentProfileId),
-          ),
-          [agentProfileId],
+        // 注册已播种一个默认 Agent profile，列表不止一个，按名称定位本次新建的那一个。
+        await page.getByTestId("agent-item-name").getByText(agentName, { exact: true }).waitFor();
+        const ids = await test(page, "agent-item").evaluateAll((nodes) =>
+          nodes.map((node) => node.dataset.agentProfileId),
         );
+        assert(ids.includes(agentProfileId), `agents list must include ${agentProfileId}`);
       },
     },
     {
@@ -450,9 +449,10 @@ async function before() {
       assert.equal(value.ok, true);
       assert(Array.isArray(value.data));
       if (name === "listProjectsFn")
-        assert.deepEqual(
-          value.data.map((item) => item.id),
-          [own.id],
+        // B 注册时拿到一个默认 Project，所以列表含它自己建的那个和默认项，但不含 A 的。
+        assert(
+          value.data.some((item) => item.id === own.id),
+          "B must see its own project",
         );
       return { leaked: noLeaks(body, tokens), count: value.data.length };
     });
