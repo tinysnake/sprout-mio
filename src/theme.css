@@ -1,71 +1,138 @@
+/*
+ * 设计令牌的唯一所有者。
+ *
+ * 这里是颜色的唯一定义处：组件只使用语义层（--background、--foreground、
+ * --border 等），语义层只引用下方的基础色板。OpenDesign 设计稿的
+ * `src/tokens.css` 由本文件生成（`node scripts/sync-design-tokens.mjs`），
+ * 两边不各自维护一份数值。
+ *
+ * 取值来自已确认的设计方向：中性暖底 + 单一橙色强调。浅暗两套主题沿用
+ * 同一组语义名，只覆盖数值。
+ */
+
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  color-scheme: light;
+
+  /* ── 基础色板（暖中性 + 品牌橙） ─────────────────────────────────── */
+  --bg: #f2f1ed; /* 页面画布 */
+  --surface: #e6e5e0; /* 卡片 / 抬起一层 */
+  --surface-warm: #ebeae5; /* 按钮默认底面 */
+  --fg: #26251e; /* 暖近黑，正文与标题 */
+  --fg-2: rgba(38, 37, 30, 0.9); /* 浅底上的实心标题 */
+  --meta: rgba(38, 37, 30, 0.4); /* 元信息、链接下划线 */
+
+  --accent: #f54e00; /* 品牌橙：主要操作、运行中、单一强调 */
+  --accent-on: #ffffff; /* 橙色底上的文字 */
+  --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+  --accent-active: color-mix(in oklab, var(--accent), black 14%);
+
+  --success: #1f8a65;
+  --warn: #eab308;
+  --danger: #cf2d56;
+
+  /* ── 语义层 ─────────────────────────────────────────────────────── */
+  /* 连续内容与控件用 background；card 只留给独立卡片。 */
+  --background: color-mix(in oklch, var(--bg) 35%, var(--accent-on));
+  --foreground: var(--fg);
+  --card: var(--secondary);
+  --card-foreground: var(--fg);
+  --popover: var(--bg);
+  --popover-foreground: var(--fg);
+
+  --muted: oklch(0.947 0.004 90);
+  --muted-foreground: oklch(0.475 0.009 90);
+  --border: oklch(0.875 0.006 90);
+  --border-soft: rgba(38, 37, 30, 0.06);
+  --input: oklch(0.755 0.008 90);
+  --ring: oklch(0.55 0.008 90);
+
+  /* 橙底配白字实测 4.75:1，达 AA；直接用 --accent 只有 3.38:1，
+     所以按钮填充统一走加深后的 --primary。 */
+  --primary: color-mix(in oklch, var(--accent) 80%, var(--fg));
+  --primary-foreground: var(--accent-on);
+  --secondary: var(--bg);
+  --secondary-foreground: var(--fg);
+  --accent-foreground: oklch(0.2 0.005 90);
+
+  --destructive: oklch(0.49 0.17 13);
+  --destructive-foreground: var(--accent-on);
+  --destructive-soft: oklch(0.955 0.018 13);
+
+  --sidebar: var(--bg);
+  --selected: var(--surface);
+  --hover: var(--surface-warm);
+  --overlay: oklch(0.15 0.005 90 / 0.38);
+
+  /* 状态色只表达事实，不复用按钮强调色。 */
+  --status-success: oklch(0.44 0.085 165);
+  --status-warning: oklch(0.46 0.085 70);
+  --status-running: var(--accent);
+  --status-idle: var(--status-success);
+  --status-queued: var(--status-warning);
+  --status-stopped: var(--muted-foreground);
+  --status-failed: var(--destructive);
+  --status-unknown: var(--muted-foreground);
+  --status-unimplemented: var(--muted-foreground);
+  --status-interrupted: var(--muted-foreground);
+
+  /* ── 形状与字体 ─────────────────────────────────────────────────── */
+  --radius: 8px;
+  --control-radius: 6px;
+  --container-radius: 10px;
+  --font-display: "Geist", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Geist", "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  /* 图表色目前没有使用者，保留 shadcn 默认以免组件库内部引用失配。 */
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--selected);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-  --radius: 0.625rem;
+  color-scheme: dark;
+
+  --background: oklch(0.205 0.005 90);
+  --foreground: oklch(0.92 0.004 90);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.245 0.005 90);
+  --popover-foreground: var(--foreground);
+
+  --muted: oklch(0.255 0.005 90);
+  --muted-foreground: oklch(0.7 0.008 90);
+  --border: oklch(0.325 0.005 90);
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --input: oklch(0.5 0.005 90);
+  --ring: oklch(0.72 0.008 90);
+
+  --primary: color-mix(in oklch, var(--accent) 80%, var(--fg));
+  --primary-foreground: var(--accent-on);
+  --secondary: oklch(0.185 0.005 90);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: oklch(0.2 0.005 90);
+
+  --destructive: oklch(0.77 0.13 13);
+  --destructive-foreground: oklch(0.2 0.005 90);
+  --destructive-soft: oklch(0.27 0.025 13);
+
+  --sidebar: oklch(0.17 0.004 90);
+  --selected: oklch(0.29 0.005 90);
+  --hover: oklch(0.27 0.005 90);
+  --overlay: oklch(0.08 0.005 90 / 0.7);
+
+  /* 暗底上橙原色偏暗，状态文字改用提亮后的橙。 */
+  --status-success: oklch(0.76 0.09 165);
+  --status-warning: oklch(0.8 0.09 70);
+  --status-running: oklch(0.75 0.16 42);
 }
 
 @theme inline {
@@ -83,10 +150,27 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-accent-on: var(--accent-on);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
   --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-overlay: var(--overlay);
+  --color-status-success: var(--status-success);
+  --color-status-warning: var(--status-warning);
+  --color-status-running: var(--status-running);
+  --color-status-idle: var(--status-idle);
+  --color-status-queued: var(--status-queued);
+  --color-status-stopped: var(--status-stopped);
+  --color-status-failed: var(--status-failed);
+  --color-status-unknown: var(--status-unknown);
+  --color-status-unimplemented: var(--status-unimplemented);
+  --color-status-interrupted: var(--status-interrupted);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -100,10 +184,12 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --font-heading: var(--font-sans);
-  --font-sans: "Geist Variable", sans-serif;
+  --font-heading: var(--font-display);
+  --font-sans: "Geist Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-control: var(--control-radius);
+  --radius-container: var(--container-radius);
 }
