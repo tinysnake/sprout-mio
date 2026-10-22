@@ -1,0 +1,40 @@
+/*
+ * 拖拽分隔条需要的伪元素与全局拖拽光标，Tailwind 工具类无法清楚表达。
+ * 颜色仍引用语义 token；其余外观在 chat-workspace.tsx 里用工具类表达。
+ */
+.chat-inspector-resize {
+  position: absolute;
+  z-index: 2;
+  inset: 0 auto 0 -5px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.chat-inspector-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 4px;
+  width: 2px;
+  background: transparent;
+}
+
+.chat-inspector-resize:hover::after,
+.chat-inspector-resize:focus-visible::after {
+  background: var(--ring);
+}
+
+.chat-inspector-resize:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+body.resizing-chat-inspector,
+body.resizing-chat-inspector * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.resizing-chat-inspector .chat-inspector-resize::after {
+  background: var(--ring);
+}
