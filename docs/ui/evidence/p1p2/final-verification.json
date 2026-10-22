@@ -5,7 +5,7 @@
     "head": "251ddbbb0d5fcee87143c418b2abca9720942211",
     "headSrcTree": "e61c23ae3d3fc029aaf8fc38fbb7bfb7453760a6",
     "worktree": "/Users/snake/.herdr/worktrees/sprout-mio/ui-migrate-final-evidence",
-    "codeChanges": "本轮未修改 src/ scripts/ tests/；只新增 docs/ui/evidence/p1p2 证据与迁移记录"
+    "codeChanges": "本轮未修改 src/ scripts/ tests/；只新增 docs/ui/evidence/p1p2 证据与迁移记录。真实业务 10 项的重复 key 修复由回归 worker 承担，修复合入后只重跑该 10 项。"
   },
   "environment": {
     "devCommand": "pnpm exec vp dev --host 127.0.0.1 --port 3261 --strictPort",
@@ -26,7 +26,9 @@
       "passed": 16,
       "failed": 0,
       "exitCode": 0,
-      "source": "dev fixture（dev-only gallery，共用正式组件与 token）"
+      "source": "dev fixture（dev-only gallery，共用正式组件与 token）",
+      "status": "passed-settled",
+      "rerunScope": "not rerun (36 items settled)"
     },
     {
       "command": "node src/dev/scenes/management/browser-check.mjs",
@@ -38,7 +40,9 @@
       "passed": 14,
       "failed": 0,
       "exitCode": 0,
-      "source": "dev fixture（管理页场景，fixture 数据与模拟操作）"
+      "source": "dev fixture（管理页场景，fixture 数据与模拟操作）",
+      "status": "passed-settled",
+      "rerunScope": "not rerun (36 items settled)"
     },
     {
       "command": "node src/dev/scenes/management/real-flow-check.mjs",
@@ -50,7 +54,9 @@
       "passed": 9,
       "failed": 1,
       "exitCode": 1,
-      "source": "真实业务（真实注册、真实 SQLite、真实 server function）"
+      "source": "真实业务（真实注册、真实 SQLite、真实 server function）",
+      "status": "passed-settled",
+      "rerunScope": "not rerun (36 items settled)"
     },
     {
       "command": "node scripts/browser/ui-scenarios.mjs",
@@ -62,13 +68,20 @@
       "passed": 6,
       "failed": 0,
       "exitCode": 0,
-      "source": "dev fixture（组合场景；另断言 fixture 不发起 /api 请求）"
+      "source": "dev fixture（组合场景；另断言 fixture 不发起 /api 请求）",
+      "status": "passed-settled",
+      "rerunScope": "not rerun (36 items settled)"
     }
   ],
   "totals": {
     "checks": 46,
-    "passed": 45,
-    "failed": 1
+    "settledPassed": 36,
+    "realBusinessPassed": 9,
+    "realBusinessFailed": 1,
+    "pendingGroups": [
+      "real-flow-check (10)"
+    ],
+    "note": "真实业务整组标 pending；36 项 fixture 场景已定；不构成最终 PASS"
   },
   "failure": {
     "check": "real-flow-check / no_console_errors",
@@ -77,7 +90,11 @@
     "firstCause": "src/routes/_authed/projects.$projectId.settings.tsx 同一 Fragment 下的三个同级节点都用 projectId 作 key：ProjectBasicInfoForm key={project.data.id}、ProjectConfigForm key={profile.data.projectId}、ProjectRepoPanel key={projectId}。三者值相同，React 判为重复 key，渲染两次即报两条警告。数据本身唯一（该账号该 Project 计数为 1）。按任务边界只报告首因，未修改产品代码与断言。",
     "handling": "按任务边界只记录首因，未修改产品代码与测试断言",
     "otherFailures": "无",
-    "scope": "仅限 settings 页的渲染层重复 key；无请求失败、无 pageerror、无数据串号，该页其余 9 项真实业务断言均通过。"
+    "scope": "仅限 settings 页的渲染层重复 key；无请求失败、无 pageerror、无数据串号，该页其余 9 项真实业务断言均通过。",
+    "status": "pending-fix",
+    "owner": "回归 worker（同名 resume，专修重复 key）；证据任务不改产品代码",
+    "rerunPlan": "修复合入后只重跑 real-flow-check 的 10 项；36 项不重复",
+    "suspectedKeySiblings": "主线程审查提示：生产 Settings route 内 ProjectConfigForm 与 ProjectRepoPanel 兄弟节点同样使用 projectId 作为 key。本记录只登记该怀疑，不作为已确认结论；由回归 worker 复核修复。"
   },
   "regressionStage": {
     "owner": "独立回归 worker（/tmp/ui-final-regression/report.md）",
@@ -414,5 +431,16 @@
         "regression-login-mobile-390.png"
       ]
     }
+  },
+  "status": "partial: 36/46 settled pass (fixture scenes), real-business 10 items pending after repeat-key fix",
+  "imagesPending": {
+    "files": [
+      "final-real-chats-1440-light.png",
+      "final-real-members-1440-light.png",
+      "final-real-settings-1440-light.png",
+      "final-real-settings-info-hub-1440-light.png",
+      "final-real-project-validation-1440-light.png"
+    ],
+    "reason": "截图对应修复前状态；真实业务重跑后需替换并更新 sha256"
   }
 }
