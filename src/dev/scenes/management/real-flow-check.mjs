@@ -35,7 +35,11 @@ page.on("console", (message) => {
 });
 
 const test = (id) => page.locator(`[data-testid="${id}"]`);
-const shot = (name) => page.screenshot({ path: `${EVIDENCE}${name}.png` });
+// 对话框和遮罩有进入动画；截图前等动画结束，避免把半透明中间帧当成最终外观。
+const shot = async (name) => {
+  await page.waitForTimeout(240);
+  await page.screenshot({ path: `${EVIDENCE}${name}.png` });
+};
 
 let projectId = "";
 await check("register_and_land_on_project", async () => {

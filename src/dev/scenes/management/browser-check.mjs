@@ -52,6 +52,8 @@ async function open({ scene, width = 1440, height = 900, colorScheme = "light" }
 }
 
 async function shot(page, name) {
+  // 对话框和遮罩有进入动画；截图前等动画结束，避免把半透明中间帧当成最终外观。
+  await page.waitForTimeout(240);
   await page.screenshot({ path: `${EVIDENCE}${name}.png`, fullPage: false });
 }
 
