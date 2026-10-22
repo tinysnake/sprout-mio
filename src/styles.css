@@ -4,11 +4,93 @@
 @import "@fontsource-variable/geist";
 @import "./theme.css";
 
+/*
+ * 全局 base：只放两种东西——所有页面都成立的排版与焦点规则，以及组件无法
+ * 自己承担的跨元素默认值。组件外观、间距和状态属于组件变体或 Tailwind 工具类。
+ * 具体数值取自 design/archive/opendesign-p1p2 的实测结果，不搬原型 app.css。
+ */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
+
+  html {
+    -webkit-text-size-adjust: 100%;
     @apply bg-background text-foreground;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-size: 13px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 标题层级统一由字体与字号承担，不用默认的粗体块级样式。 */
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: 0;
+    font-family: var(--font-heading);
+    font-weight: 550;
+    text-wrap: balance;
+  }
+
+  p {
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  code,
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+  }
+
+  /* 页面标题被脚本聚焦后只是内容锚点，不该画出键盘焦点环。 */
+  [tabindex="-1"]:focus-visible {
+    outline: none;
+  }
+
+  ::selection {
+    background: var(--selected);
+    color: var(--foreground);
+  }
+
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: var(--radius);
   }
 }
