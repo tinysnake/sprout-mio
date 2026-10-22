@@ -80,7 +80,7 @@ function ProjectSettingsPage() {
           {profile.ok && (
             <>
               <ProjectConfigForm
-                key={profile.data.projectId}
+                key={`profile-${profile.data.projectId}`}
                 profile={profile.data}
                 submit={(draft) =>
                   updateProjectProfileFn({
@@ -96,7 +96,7 @@ function ProjectSettingsPage() {
               />
               {repo.ok ? (
                 <ProjectRepoPanel
-                  key={projectId}
+                  key={`repo-${projectId}`}
                   state={repo.data}
                   prepare={() => prepareProjectRepoFn({ data: { projectId } })}
                   onRefresh={invalidate}
