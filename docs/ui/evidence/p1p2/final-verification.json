@@ -432,9 +432,43 @@
       ]
     }
   },
-  "status": "46 项全部通过，但跨两个代码状态：36 项 fixture 场景在 251ddbb 上通过；真实业务 10 项在 cherry-pick 3c745a6 之后重跑通过。不宣称单状态 46/46，也不替代主线程复核。",
+  "status": "技术验收 PASS（独立验收）。46 项浏览器检查全部通过，跨两个代码状态：36 项 fixture 场景在 251ddbb，真实业务 10 项在修复提交 c1fd6ba 后重跑。主线程已读图 7 张，未见阻塞视觉问题；Human 体验确认仍待。",
   "imagesPending": {
     "files": [],
     "reason": "真实业务 5 张图已替换为修复后重跑版本，sha256 已更新"
+  },
+  "acceptance": {
+    "technical": {
+      "verdict": "PASS",
+      "independence": "由未参与实现的独立验收给出",
+      "source": "/tmp/ui-final-technical-acceptance.md（本机，未纳入版本库）",
+      "baselineRun": {
+        "revision": "251ddbb",
+        "scope": "21 个 verify 脚本",
+        "result": "exitCode 0，Verification scripts=21 failed=0，单测 158，r-ui-layout 29",
+        "logs": "/tmp/ui-migration-parent-final/result.json、verify.log"
+      },
+      "fixRun": {
+        "revision": "3c745a6",
+        "scope": "real-flow-check 10 项 + pnpm typecheck + pnpm check",
+        "result": "10/10，no_console_errors 0 条，typecheck/check exit 0",
+        "logs": "/tmp/ui-parent-devfix/result.json、verify.log"
+      },
+      "explicitNonClaims": [
+        "21 个脚本没有在 3c745a6 上重新跑过",
+        "未追既有非阻塞项（标题字体、44px 遗漏、壳层回退显示、N+1、草稿生命周期等）",
+        "未重做全仓审查"
+      ]
+    },
+    "visual": {
+      "reviewer": "主线程",
+      "imagesRead": 7,
+      "record": "visual-review.md",
+      "conclusion": "未见阻塞视觉问题；针对性读图，非逐像素比对"
+    },
+    "human": {
+      "status": "pending",
+      "note": "Human 体验确认未获得；技术 PASS 不连带 Human 确认，根目录与总计划不勾选"
+    }
   }
 }

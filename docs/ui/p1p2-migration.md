@@ -1,6 +1,6 @@
 # I-P1/P2 UI 迁移记录
 
-状态：迁移进行中，尚未通过技术验收，尚未获得 Human 体验确认。编排入口为 [开发总计划](../development-plan.md#i-p1p2-集成基础页面与持久对话)。46 项浏览器检查全部通过，但跨两个代码状态：36 项 fixture 场景在 `251ddbb` 上通过，真实业务 10 项在 cherry-pick `3c745a6`（`c1fd6ba`）后重跑通过。技术验收与 Human 确认仍待主线程。
+状态：技术验收已通过（独立验收，范围见下文），Human 体验确认仍待。编排入口为 [开发总计划](../development-plan.md#i-p1p2-集成基础页面与持久对话)。46 项浏览器检查全部通过，但跨两个代码状态：36 项 fixture 场景在 `251ddbb` 上通过，真实业务 10 项在 cherry-pick `3c745a6`（`c1fd6ba`）后重跑通过。
 
 ## 基线与范围
 
@@ -76,11 +76,28 @@
 - 回归阶段：独立 worker 在 `251ddbb` 上跑 `bash scripts/verify.sh`，21 个脚本 `failed=0`，单测 158 项通过，`r-ui-layout` 29 项通过；该结论为 worker 执行通过，主线程本机复跑与最终判定仍待完成。
 - 截图：生成截图不等于视觉验收。生成命令、代码 commit、`HEAD:src` 树 hash（fixture 图为 `e61c23a`，真实业务图为修复后 `bf64431`）、每张图的 sha256、场景、主题、视口与来源写在 [最终验证记录](evidence/p1p2/final-verification.json)。
 
+## 验收记录
+
+### 技术验收（独立，PASS）
+
+由未参与实现的独立验收给出技术 PASS，结论与验证范围落在本机 `/tmp/ui-final-technical-acceptance.md`。范围分两段，不做超出该范围的声称。
+
+- 全量基线 `251ddbb`：主线程独立完整回归 `result.json` 记录 revision `251ddbb`、exitCode 0；`verify.log` 末行 `Verification scripts=21 failed=0`，单测 158 项通过，`r-ui-layout` 29 项通过。
+- 单点修复 `251ddbb..3c745a6`：只改 `src/routes/_authed/projects.$projectId.settings.tsx` 两行 key，仍随 `projectId` 变化，跨 Project 重挂语义保留。主线程独立复跑 `real-flow-check` 10/10、`no_console_errors` 0 条，`pnpm typecheck` 与 `pnpm check` 均 exit 0。
+- 明确不声称：21 个脚本没有在 `3c745a6` 上重新跑过；`3c745a6` 的复验只有真实 10 项加 typecheck / check。未追既有非阻塞项（标题字体、44px 遗漏、壳层回退显示、N+1、草稿生命周期等）。
+
+### 视觉验收（主线程读图 7 张）
+
+主线程已实际读图 7 张，未发现阻塞视觉问题；清单、每张的场景与读图要点见 [视觉读图记录](evidence/p1p2/visual-review.md)。这是一次针对性读图，不是逐像素比对，也不等于 Human 体验确认。
+
+### Human 体验确认
+
+未获得。根目录计划与总计划均不勾选，技术验收通过不连带 Human 确认。
+
 ## 仍待完成
 
-- 技术验收：46 项通过是跨两个代码状态的合计（36 项 `251ddbb` + 10 项修复后），整轮回归与最终判定由主线程本机复跑。当前不宣称技术通过。
 - 回归复用：cherry-pick 只改 `settings` 页两个 key 字符串，未触及 36 项 fixture 场景的覆盖路径，因此未重跑这 36 项。
-- 视觉验收：需实际读图。本记录不描述未查看的图片，也不把截图存在当作视觉结论。
+- 视觉补看：深色真实业务页、多 Project 列表态与 P3 运行态截图未逐张确认，必要时由主线程补看。
 - Human 体验确认：未获得，根目录计划与总计划均不勾选。
 
 后续补充逐项命令、最终绿色结果与 Human 确认。所有完成结论以实际核对结果为准。
