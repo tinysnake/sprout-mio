@@ -30,12 +30,12 @@ runner 的 `deliverSteer` 先检查 `session.isStreaming`，再调用 `session.s
 
 ## UI
 
-对话页发送区上方新增运行状态面板（`src/components/chat/run-status.tsx`），数据来自 `getChatRunStateFn`：
+对话页发送区上方新增运行状态面板（`src/components/chat/run-status.tsx`），数据来自 `getChatRunStateFn`。宿主已启用且尚无 run 时属于空闲，不渲染状态行；其余情况把状态、未投递条数与恢复入口合并为一行（窄屏自然换行），失败块单独显示：
 
 | 状态         | 文案           | 判定                                       |
 | ------------ | -------------- | ------------------------------------------ |
 | 宿主未启用   | 宿主未启用     | `SPROUT_PI_ENABLED=false`                  |
-| 尚未运行     | 尚未运行       | 无 run                                     |
+| 空闲         | 不显示         | 宿主已启用且无 run                         |
 | 排队中       | 排队中         | run `queued`                               |
 | 运行中       | 运行中         | run `running`                              |
 | 有未投递输入 | N 条输入未投递 | 任意 run 存在 `pending` 输入               |

@@ -67,18 +67,36 @@ export function RunStatusPanel({
   const undelivered = pending
     .map((input) => messages.find((message) => message.id === input.messageId)?.body)
     .filter((body): body is string => Boolean(body));
+  // 宿主已启用且还没有 run 时属于空闲，不占一行；其余状态与未投递事实同排一行。
+  const showStatus = !state.enabled || Boolean(run);
+  const restoreBody = undelivered[undelivered.length - 1];
+  const showRestore = Boolean(onRestoreDraft && restoreBody);
+
+  if (!showStatus && pending.length === 0 && !showRestore) return null;
 
   return (
     <section data-testid="run-status" className="mt-6 space-y-2 pl-10.5 max-desktop:pl-9.75">
-      <p className="text-[11px]">
-        <span className="text-muted-foreground">分身运行状态：</span>
-        <span data-testid="pi-host-status">{runStatusLabel(state)}</span>
+      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
+        {showStatus && (
+          <span className="whitespace-nowrap">
+            <span className="text-muted-foreground">分身运行状态：</span>
+            <span data-testid="pi-host-status">{runStatusLabel(state)}</span>
+          </span>
+        )}
+        {pending.length > 0 && (
+          <span data-testid="pending-input-count">{pending.length} 条输入未投递</span>
+        )}
+        {showRestore && restoreBody && (
+          <button
+            type="button"
+            data-testid="restore-undelivered"
+            onClick={() => onRestoreDraft?.(restoreBody)}
+            className="text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
+          >
+            恢复到输入框
+          </button>
+        )}
       </p>
-      {pending.length > 0 && (
-        <p data-testid="pending-input-count" className="text-[11px]">
-          {pending.length} 条输入未投递
-        </p>
-      )}
       {run?.status === "failed" && (
         <div
           role="alert"
@@ -89,19 +107,6 @@ export function RunStatusPanel({
             requestId: {run.requestId}
           </p>
         </div>
-      )}
-      {onRestoreDraft && undelivered.length > 0 && (
-        <p className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-          补充消息未投递。
-          <button
-            type="button"
-            data-testid="restore-undelivered"
-            onClick={() => onRestoreDraft(undelivered[undelivered.length - 1]!)}
-            className="text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
-          >
-            恢复到输入框
-          </button>
-        </p>
       )}
     </section>
   );

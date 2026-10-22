@@ -171,7 +171,10 @@ await check("start_dm_and_send_two_messages", async () => {
   });
   chatPath = pathOf();
   chatId = chatPath.split("/").pop() ?? "";
-  instanceId = (await page.textContent('[data-testid="chat-instance-id"]'))?.trim() ?? "";
+  // 身份事实只在 Info Hub 里展示，打开 `?info=1` 后从 inspector 读取同一份 Instance。
+  await navigate(page, chatInspectorPath(chatPath));
+  await page.waitForSelector('[data-testid="info-chat-instance-id"]', { timeout: 20000 });
+  instanceId = (await page.textContent('[data-testid="info-chat-instance-id"]'))?.trim() ?? "";
   await page.fill('[data-testid="message-input"]', firstMessage);
   await page.click('[data-testid="message-send"]');
   await page.waitForFunction(
@@ -270,12 +273,14 @@ await check("hub_dm_link_opens_chat", async () => {
 });
 
 await check("chat_info_panel_matches_page", async () => {
-  await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="info-chat-instance-id"]', { timeout: 20000 });
   const state = await page.evaluate(() => ({
     panelInstance: document
       .querySelector('[data-testid="info-chat-instance-id"]')
       ?.textContent?.trim(),
-    pageInstance: document.querySelector('[data-testid="chat-instance-id"]')?.textContent?.trim(),
+    pageInstance: document
+      .querySelector('[data-testid="inspector-instance-id"]')
+      ?.textContent?.trim(),
     kinds: [...document.querySelectorAll('[data-testid="info-member-item"]')].map((node) =>
       node.getAttribute("data-member-kind"),
     ),
@@ -303,7 +308,7 @@ await check("chat_info_panel_matches_page", async () => {
       /注入模型 prompt：否/.test(state.turnInjection ?? "") &&
       !state.body.includes("0 个活动 run") &&
       !state.body.includes("无活动 run"),
-    `panel 分身 ${state.panelInstance} 与页面一致，成员 ${JSON.stringify(state.kinds)}，消息 ${state.count} 条，run 视角宿主 ${state.runsHostStatus}`,
+    `panel 分身 ${state.panelInstance} 与 inspector 身份一致，成员 ${JSON.stringify(state.kinds)}，消息 ${state.count} 条，run 视角宿主 ${state.runsHostStatus}`,
   );
 });
 

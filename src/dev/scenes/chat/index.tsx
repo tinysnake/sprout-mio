@@ -463,8 +463,6 @@ function DemoThread({
       profile={{ ok: true, data: fixture.profile, requestId: "req_demo" }}
       humanName={HUMAN}
       messages={{ ok: true, data: fixture.messages, requestId: "req_demo" }}
-      members={{ ok: true, data: fixture.members, requestId: "req_demo" }}
-      instances={{ ok: true, data: fixture.instances, requestId: "req_demo" }}
       runState={{ ok: true, data: fixture.state, requestId: "req_demo" }}
       inspectorOpen={inspectorOpen}
       onToggleInspector={onToggleInspector}

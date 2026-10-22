@@ -79,7 +79,12 @@ export function ChatInspector({
               <div className="flex items-center gap-2.5">
                 <ChatAvatar name={agentName} />
                 <div className="min-w-0 flex-1">
-                  <strong className="block truncate text-xs font-semibold">{agentName}</strong>
+                  <strong
+                    data-testid="inspector-agent-name"
+                    className="block truncate text-xs font-semibold"
+                  >
+                    {agentName}
+                  </strong>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">
                     {profile?.ok && profile.data.jobTitle ? profile.data.jobTitle : "未设置职位"}
                   </p>
@@ -94,7 +99,10 @@ export function ChatInspector({
                   </Link>
                 )}
               </div>
-              <p className="text-[11px] leading-6 break-words whitespace-pre-wrap">
+              <p
+                data-testid="inspector-agent-persona"
+                className="text-[11px] leading-6 break-words whitespace-pre-wrap"
+              >
                 {profile?.ok ? profile.data.persona || "（空）" : ""}
               </p>
               <p className="text-[10px] leading-5 text-muted-foreground">

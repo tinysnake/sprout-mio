@@ -3,7 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
-import type { AgentInstance, Chat, ChatMember, ChatResult, Message } from "../../contracts/chat";
+import type { Chat, ChatResult, Message } from "../../contracts/chat";
 import type { FieldErrors } from "../../contracts/project";
 import type { AppError } from "../../contracts/result";
 import { Button } from "../ui/button";
@@ -13,7 +13,6 @@ import { ResultError } from "../project/result-error";
 import { MessageComposer } from "./message-composer";
 import { MessageList } from "./message-list";
 import { RunStatusBadge, RunStatusPanel, isRunActive, runStatusLabel } from "./run-status";
-import { ChatIdentity } from "./chat-identity";
 
 /**
  * Chat 中栏的呈现层：头部上下文、消息记录与输入区。所有数据与操作都由
@@ -28,8 +27,6 @@ export function ChatThread({
   humanName,
   messages,
   runState,
-  members,
-  instances,
   inspectorOpen,
   onToggleInspector,
   draft,
@@ -52,8 +49,6 @@ export function ChatThread({
   humanName: string;
   messages: ChatResult<Message[]>;
   runState: AgentRunResult<ChatRunState>;
-  members: ChatResult<ChatMember[]>;
-  instances: ChatResult<AgentInstance[]>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
   draft: string;
@@ -124,14 +119,6 @@ export function ChatThread({
         data-testid="message-history"
         className="min-h-0 flex-1 overflow-y-auto px-7 pt-5.75 pb-4.5 max-desktop:px-3.75 max-desktop:py-5"
       >
-        <ChatIdentity
-          chat={chat}
-          members={members}
-          instances={instances}
-          profile={profile}
-          agentName={agentName}
-          humanName={humanName}
-        />
         {!messages.ok ? (
           <ResultError error={messages.error} testId="messages-load-error" />
         ) : !runState.ok ? (

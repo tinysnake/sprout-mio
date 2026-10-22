@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
-import type { AgentInstance, Chat, ChatMember, ChatResult, Message } from "../../contracts/chat";
+import type { Chat, ChatResult, Message } from "../../contracts/chat";
 import type { FieldErrors } from "../../contracts/project";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
@@ -25,8 +25,6 @@ export function ChatPane({
   humanName,
   messages,
   runState,
-  members,
-  instances,
   inspectorOpen,
   onToggleInspector,
   onChanged,
@@ -38,8 +36,6 @@ export function ChatPane({
   humanName: string;
   messages: ChatResult<Message[]>;
   runState: AgentRunResult<ChatRunState>;
-  members: ChatResult<ChatMember[]>;
-  instances: ChatResult<AgentInstance[]>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
   onChanged: () => void;
@@ -123,8 +119,6 @@ export function ChatPane({
       humanName={humanName}
       messages={messages}
       runState={runState}
-      members={members}
-      instances={instances}
       inspectorOpen={inspectorOpen}
       onToggleInspector={onToggleInspector}
       draft={draft}

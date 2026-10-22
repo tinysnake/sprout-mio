@@ -46,16 +46,17 @@ try {
     assert.equal(await rows.count(), 2);
     const firstId = await rows.nth(0).getAttribute("data-chat-id");
     const secondId = await rows.nth(1).getAttribute("data-chat-id");
-    const firstInstance = (await test("chat-instance-id").textContent()).trim();
+    const firstInstance = (await test("inspector-instance-id").textContent()).trim();
     const firstMessages = await test("message-item").count();
     await test("message-input").fill("第一条 Chat 的未发送草稿");
     await page.locator(`[data-testid="chat-item"][data-chat-id="${secondId}"]`).click();
     await page.waitForFunction(
-      (id) => document.querySelector('[data-testid="chat-id"]')?.textContent?.trim() === id,
+      (id) =>
+        document.querySelector('[data-testid="inspector-chat-id"]')?.textContent?.trim() === id,
       secondId,
     );
     assert.equal(await test("message-input").inputValue(), "");
-    assert.notEqual((await test("chat-instance-id").textContent()).trim(), firstInstance);
+    assert.notEqual((await test("inspector-instance-id").textContent()).trim(), firstInstance);
     assert.equal((await test("inspector-chat-id").textContent()).trim(), secondId);
     assert.equal(await test("message-item").count(), 0);
     await test("message-input").fill("第二条 Chat 的本地回显");
@@ -69,7 +70,8 @@ try {
     assert.equal(Number((await test("info-message-count").textContent()).trim()), 1);
     await page.locator(`[data-testid="chat-item"][data-chat-id="${firstId}"]`).click();
     await page.waitForFunction(
-      (id) => document.querySelector('[data-testid="chat-id"]')?.textContent?.trim() === id,
+      (id) =>
+        document.querySelector('[data-testid="inspector-chat-id"]')?.textContent?.trim() === id,
       firstId,
     );
     assert.equal(await test("message-input").inputValue(), "第一条 Chat 的未发送草稿");
