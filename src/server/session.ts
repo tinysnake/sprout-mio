@@ -77,7 +77,8 @@ export const authenticate = createServerFn({ method: "POST" })
     if (!parsed.success) return fail(toAppError(parsed.error, requestId));
     const headers = getRequestHeaders();
     const { config } = await import("../lib/config");
-    if (headers.get("origin") !== config.APP_ORIGIN) {
+    const { isTrustedOrigin } = await import("../lib/origin");
+    if (!isTrustedOrigin(headers.get("origin"), config.APP_ORIGIN, config.APP_TRUSTED_ORIGINS)) {
       return fail({ code: "forbidden", message: "请求来源不受信任", requestId });
     }
     const input = parsed.data;

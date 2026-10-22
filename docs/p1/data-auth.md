@@ -76,26 +76,27 @@ curl --noproxy '*' -fsS http://localhost:3114/api/auth/get-session
 
 全部环境变量列在 `.env.example`。默认值如下。
 
-| 字段                             | 默认值与校验                                                                                                                         |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                   | `./data/sprout.sqlite`，非空 SQLite 文件路径。                                                                                       |
-| `APP_ORIGIN`                     | `http://localhost:3000`，完整 http 或 https origin，不含路径或尾斜杠。auth 的 `baseURL` 和 trusted origin 显式使用它。               |
-| `BETTER_AUTH_SECRET`             | 无默认值。共享配置允许缺省，提供时至少 32 字符。auth 边界要求存在，并拒绝旧开发示例占位值。用 `openssl rand -base64 32` 生成随机值。 |
-| `PORT`                           | `3000`，1 到 65535 的整数。必须与访问 origin 的端口一致。                                                                            |
-| `NODE_ENV`                       | `development`，允许 `development`、`test`、`production`。                                                                            |
-| `LOG_LEVEL`                      | `info`，允许 `debug`、`info`、`warn`、`error`。                                                                                      |
-| `AUTH_RATE_LIMIT_MAX`            | `5`，1 到 1000 的整数；仅控制 server function 账号预算。                                                                             |
-| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `60`，1 到 3600 的整数，窗口秒数。                                                                                                   |
-| `AUTH_RATE_LIMIT_GLOBAL_MAX`     | `100`，1 到 10000 的整数；仅控制 server function 进程总预算。                                                                        |
-| `AUTH_RATE_LIMIT_HTTP_MAX`       | `100`，1 到 10000 的整数；独立控制全部 HTTP 认证路径的每 IP、每路径预算。                                                            |
+| 字段                             | 默认值与校验                                                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                   | `./data/sprout.sqlite`，非空 SQLite 文件路径。                                                                                             |
+| `APP_ORIGIN`                     | `http://localhost:3000`，完整 http 或 https origin，不含路径或尾斜杠。auth 的 `baseURL` 与默认可信来源使用它。                             |
+| `APP_TRUSTED_ORIGINS`            | 空，逗号分隔的额外可信 origin 模式。主机段可为 `localhost`、`*.localhost`、`*.local` 或末尾一段为 `*` 的 IPv4，且必须落在回环 / 内网网段。 |
+| `BETTER_AUTH_SECRET`             | 无默认值。共享配置允许缺省，提供时至少 32 字符。auth 边界要求存在，并拒绝旧开发示例占位值。用 `openssl rand -base64 32` 生成随机值。       |
+| `PORT`                           | `3000`，1 到 65535 的整数。必须与访问 origin 的端口一致。                                                                                  |
+| `NODE_ENV`                       | `development`，允许 `development`、`test`、`production`。                                                                                  |
+| `LOG_LEVEL`                      | `info`，允许 `debug`、`info`、`warn`、`error`。                                                                                            |
+| `AUTH_RATE_LIMIT_MAX`            | `5`，1 到 1000 的整数；仅控制 server function 账号预算。                                                                                   |
+| `AUTH_RATE_LIMIT_WINDOW_SECONDS` | `60`，1 到 3600 的整数，窗口秒数。                                                                                                         |
+| `AUTH_RATE_LIMIT_GLOBAL_MAX`     | `100`，1 到 10000 的整数；仅控制 server function 进程总预算。                                                                              |
+| `AUTH_RATE_LIMIT_HTTP_MAX`       | `100`，1 到 10000 的整数；独立控制全部 HTTP 认证路径的每 IP、每路径预算。                                                                  |
 
 首次运行的操作顺序如下。
 
 1. 运行 `pnpm install --frozen-lockfile`。
 2. 将 `.env.example` 复制为 `.env.local`，填写随机 `BETTER_AUTH_SECRET`。
 3. 运行 `pnpm setup`。该命令创建 `data/` 并应用迁移。
-4. 运行 `pnpm build`，然后运行 `pnpm start`。开发使用 `pnpm dev`。两者都监听全部接口；从局域网或 VPN 访问时把 `APP_ORIGIN` 设为该地址（如 `http://10.0.0.13:3000`），并让 `PORT` 与之一致。
-5. 打开实际访问地址下的 `/login`（默认 `http://localhost:3000/login`），选择注册并创建第一个 Human。用内网地址访问时，必须用同一个地址注册与登录，不能与 `localhost` 混用。
+4. 运行 `pnpm build`，然后运行 `pnpm start`。开发使用 `pnpm dev`。两者都监听全部接口；从局域网或 VPN 访问时把常用地址设为 `APP_ORIGIN`（如 `http://10.0.0.13:3000`），让 `PORT` 与之一致，其余地址写进 `APP_TRUSTED_ORIGINS`（如 `http://10.144.144.*:3000`）。
+5. 打开实际访问地址下的 `/login`（默认 `http://localhost:3000/login`），选择注册并创建第一个 Human。可用的地址取决于上面的 origin 配置，不在列表里的来源会被拒绝为 `forbidden 请求来源不受信任`。
 
 注册不写入演示业务数据，但会创建默认 Project 与默认 Agent，让人注册完就能直接开会话。验收库中两个 Human 注册后，`project` 行数为 2，每个 Human 各一个。
 

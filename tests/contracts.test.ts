@@ -14,6 +14,7 @@ import {
   toAppError,
 } from "../src/contracts";
 import { parseConfig } from "../src/lib/config";
+import { isTrustedOrigin, originMatchesPattern } from "../src/lib/origin";
 
 describe("共享契约", () => {
   it("生成可追踪类别且互不重复的 UUID", () => {
@@ -105,6 +106,7 @@ describe("配置边界", () => {
       SPROUT_REPO_MAX_BYTES: 2 * 1024 * 1024 * 1024,
       DATABASE_URL: "./data/sprout.sqlite",
       APP_ORIGIN: "http://localhost:3000",
+      APP_TRUSTED_ORIGINS: [],
       AUTH_RATE_LIMIT_MAX: 5,
       AUTH_RATE_LIMIT_WINDOW_SECONDS: 60,
       AUTH_RATE_LIMIT_GLOBAL_MAX: 100,
@@ -160,5 +162,53 @@ describe("配置边界", () => {
       expect(() => parseConfig({ [field]: value })).toThrow(field);
     }
     expect(() => parseConfig({ BETTER_AUTH_SECRET: "short-secret" })).not.toThrow("short-secret");
+  });
+
+  it("额外可信 origin 只接受回环与内网模式，通配不跨层次也不落到公网", () => {
+    const config = parseConfig({
+      APP_ORIGIN: "http://10.0.0.13:3210",
+      APP_TRUSTED_ORIGINS: "http://10.144.144.*:3210, http://*.local:3210 ,http://localhost:3000",
+    });
+    expect(config.APP_TRUSTED_ORIGINS).toEqual([
+      "http://10.144.144.*:3210",
+      "http://*.local:3210",
+      "http://localhost:3000",
+    ]);
+    for (const value of [
+      "*",
+      "*:3210",
+      "http://*:3210",
+      "http://*.example.com:3210",
+      "http://10.0.0.13:3210/login",
+      "http://10.0.0.13:3210/",
+      "ftp://10.0.0.13:3210",
+      "http://10.0.0.13:0",
+      "http://10.0.0.13:99999",
+      "http://user:pw@10.0.0.13:3210",
+    ])
+      expect(() => parseConfig({ APP_TRUSTED_ORIGINS: value })).toThrow("APP_TRUSTED_ORIGINS");
+  });
+
+  it("可信来源判定按整串匹配，主 origin 始终可信，缺失或无来源不放行", () => {
+    const patterns = ["http://10.144.144.*:3210"];
+    expect(originMatchesPattern("http://10.144.144.*:3210", "http://10.144.144.4:3210")).toBe(true);
+    expect(originMatchesPattern("http://10.144.144.*:3210", "http://10.144.144.4:9999")).toBe(
+      false,
+    );
+    expect(originMatchesPattern("http://10.144.144.*:3210", "http://10.144.145.4:3210")).toBe(
+      false,
+    );
+    expect(originMatchesPattern("http://10.144.144.*:3210", "http://evil.example:3210")).toBe(
+      false,
+    );
+    expect(isTrustedOrigin("http://10.0.0.13:3210", "http://10.0.0.13:3210", patterns)).toBe(true);
+    expect(isTrustedOrigin("http://10.144.144.7:3210", "http://10.0.0.13:3210", patterns)).toBe(
+      true,
+    );
+    expect(isTrustedOrigin("http://evil.example:3210", "http://10.0.0.13:3210", patterns)).toBe(
+      false,
+    );
+    expect(isTrustedOrigin(null, "http://10.0.0.13:3210", patterns)).toBe(false);
+    expect(isTrustedOrigin("", "http://10.0.0.13:3210", patterns)).toBe(false);
   });
 });

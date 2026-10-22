@@ -13,7 +13,14 @@ pnpm dev                     # 开发；生产用 pnpm build && pnpm start
 
 首次打开 `/login` 注册即可，没有预置账号；注册会创建默认 Project 与 Amenda 助手。
 
-开发与生产入口都监听全部接口，可用 `127.0.0.1`、局域网 IP 或 VPN 地址打开。换用非 localhost 地址时，把 `APP_ORIGIN` 改成实际访问的 origin（如 `http://10.0.0.13:3000`），auth 只认这一个 origin。绑定全部接口意味着同网段设备可访问该应用，仅适合可信内网。
+开发与生产入口都监听全部接口，可用 `127.0.0.1`、局域网 IP 或 VPN 地址打开。`APP_ORIGIN` 是主 origin（如 `http://10.0.0.13:3200`），其他内网 / VPN 地址写进 `APP_TRUSTED_ORIGINS`，主机段可通配：
+
+```bash
+APP_ORIGIN=http://10.0.0.13:3200
+APP_TRUSTED_ORIGINS=http://10.144.144.*:3200
+```
+
+只接受回环与内网网段，公网域名或 `http://*:3200` 会在启动时被拒。绑定全部接口意味着同网段设备可访问该应用，仅适合可信内网。
 
 UI review 预览同样监听全部接口；从其他设备访问时用实际地址启动 `/ui-review http://10.0.0.13:3000/login`，详见 [UI review 工作流](docs/ui/review-workflow.md)。
 

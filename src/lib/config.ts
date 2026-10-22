@@ -4,6 +4,48 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 
+/** 回环、私有网段、链路本地与 CGNAT 都属内网可达，其余地址不放行。 */
+function isInternalAddress(octets: readonly number[]): boolean {
+  const [a, b] = octets;
+  if (a === 127 || a === 10) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 169 && b === 254) return true;
+  return a === 100 && b >= 64 && b <= 127;
+}
+
+/**
+ * 主机段要么是 `localhost` / `*.localhost` / `*.local` / `*`，要么是四段 IPv4
+ * 模式，且 `*` 只能替换末尾一段，例如 `10.144.144.*`。展开后必须落在内网网段，
+ * 所以 `http://*.example.com` 与 `http://8.8.*` 都不成立。
+ */
+function isInternalHostPattern(hostname: string): boolean {
+  const name = hostname.toLowerCase();
+  if (name === "localhost" || name === "*.localhost" || name === "*.local") return true;
+  const labels = name.split(".");
+  const wildcard = labels.at(-1) === "*";
+  const fixed = wildcard ? labels.slice(0, -1) : labels;
+  if (fixed.length === 0 || fixed.length > 4) return false;
+  if (!fixed.every((label) => /^\d{1,3}$/.test(label) && Number(label) <= 255)) return false;
+  if (fixed.length === 4 && wildcard) return false;
+  const octets = fixed.map(Number);
+  while (octets.length < 4) octets.push(0);
+  return isInternalAddress(octets);
+}
+
+const originPatternSchema = z
+  .string()
+  .min(1)
+  .refine((value) => {
+    const match = /^(https?):\/\/([^/?#@]+)$/.exec(value);
+    if (!match) return false;
+    const host = match[2];
+    if (!/^(?:[a-z0-9.*-]+|\[[0-9a-f:.]+\])(?::\d{1,5})?$/.test(host)) return false;
+    const port = host.includes(":") ? Number(host.slice(host.lastIndexOf(":") + 1)) : undefined;
+    if (port !== undefined && (port < 1 || port > 65535)) return false;
+    return isInternalHostPattern(host.replace(/:\d+$/, ""));
+  }, "必须是回环或内网 origin，主机段可用 * 通配");
+
 const environmentSchema = z.object({
   SPROUT_PI_ENABLED: z
     .enum(["true", "false"])
@@ -48,6 +90,20 @@ const environmentSchema = z.object({
     )
     .default("http://localhost:3000"),
   BETTER_AUTH_SECRET: z.string().min(32).optional(),
+  /**
+   * 额外的可信 origin（逗号分隔，可用内网通配）。`APP_ORIGIN` 始终可信；这里用于
+   * 同一进程经不同内网 / VPN 地址访问，例如 `http://10.144.144.*:3210`。
+   */
+  APP_TRUSTED_ORIGINS: z
+    .string()
+    .default("")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(originPatternSchema)),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(5),
   AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
   AUTH_RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().min(1).max(10_000).default(100),

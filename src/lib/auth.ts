@@ -23,7 +23,7 @@ export function requireAuthSecret(settings: { BETTER_AUTH_SECRET?: string }): st
 export const auth = betterAuth({
   secret: requireAuthSecret(config),
   baseURL: config.APP_ORIGIN,
-  trustedOrigins: [config.APP_ORIGIN],
+  trustedOrigins: [config.APP_ORIGIN, ...config.APP_TRUSTED_ORIGINS],
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
   emailAndPassword: { enabled: true },
   rateLimit: {
