@@ -1,50 +1,77 @@
-import { useState } from "react";
-import type { SubmitEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
-import type { FieldErrors } from "../../contracts/project";
-import { updateProjectFn } from "../../server/functions/project";
+import type { FieldErrors, Project, ProjectResult } from "../../contracts/project";
+import { ResultError } from "./result-error";
+import { SettingsSection } from "./settings-section";
 import { Button } from "../ui/button";
-import { FieldError, ResultError } from "../project/result-error";
+import { Field } from "../ui/field";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
-const inputClass = "mt-1 w-full rounded-md border border-input bg-background px-3 py-2";
+export type ProjectBasicInfoDraft = { name: string; description: string };
 
-function text(form: FormData, name: string): string {
-  const value = form.get(name);
-  return typeof value === "string" ? value : "";
+function draftFrom(project: { name: string; description?: string }) {
+  return { name: project.name, description: project.description ?? "" };
 }
 
-/** 改名与改描述走 updateProject，不影响对话、成员和租约。 */
+/**
+ * 改名与改描述的呈现。提交函数由调用方注入：正式页面走 updateProject，
+ * 开发场景走固定的演示回调；没有改动时保存禁用。
+ */
 export function ProjectBasicInfoForm({
   project,
+  submit,
   onSaved,
 }: {
   project: { id: string; name: string; description?: string };
+  submit: (draft: ProjectBasicInfoDraft) => Promise<ProjectResult<Project>>;
   onSaved: () => void;
 }) {
+  const initial = draftFrom(project);
+  const [draft, setDraft] = useState(initial);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  // 以 Project 身份为同步主键：换对象就整体重新开始，不靠字段值或时间戳判断。
+  const synced = useRef({ id: project.id, draft: initial });
+  const currentId = useRef(project.id);
+  currentId.current = project.id;
 
-  async function submit(event: SubmitEvent<HTMLFormElement>) {
+  useEffect(() => {
+    const next = draftFrom(project);
+    const sameObject = synced.current.id === project.id;
+    if (
+      sameObject &&
+      synced.current.draft.name === next.name &&
+      synced.current.draft.description === next.description
+    )
+      return;
+    synced.current = { id: project.id, draft: next };
+    setDraft(next);
+    if (!sameObject) {
+      setSaved(false);
+      setError(null);
+      setFieldErrors({});
+    }
+  }, [project]);
+
+  const dirty = draft.name !== initial.name || draft.description !== initial.description;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending) return;
-    const form = new FormData(event.currentTarget);
-    const description = text(form, "description");
+    if (pending || !dirty) return;
     setPending(true);
     setError(null);
     setSaved(false);
     setFieldErrors({});
+    const targetId = project.id;
     try {
-      const result = await updateProjectFn({
-        data: {
-          projectId: project.id,
-          name: text(form, "name"),
-          description: description ? description : null,
-        },
-      });
+      const result = await submit(draft);
+      if (currentId.current !== targetId) return;
       if (!result.ok) {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
@@ -53,49 +80,75 @@ export function ProjectBasicInfoForm({
       setSaved(true);
       onSaved();
     } catch (cause) {
+      if (currentId.current !== targetId) return;
       setError(toAppError(cause, newId(ID_PREFIXES.request)));
     } finally {
-      setPending(false);
+      if (currentId.current === targetId) setPending(false);
     }
   }
 
   return (
-    <form onSubmit={submit} aria-busy={pending} className="max-w-xl space-y-4">
-      <h3 className="text-sm font-medium text-muted-foreground">基本信息</h3>
-      <label className="block text-sm">
-        名称
-        <input
-          name="name"
-          data-testid="project-edit-name"
-          defaultValue={project.name}
-          maxLength={80}
-          className={inputClass}
-        />
-        <FieldError errors={fieldErrors} name="name" />
-      </label>
-      <label className="block text-sm">
-        描述（可留空）
-        <textarea
-          name="description"
-          data-testid="project-edit-description"
-          defaultValue={project.description ?? ""}
-          rows={3}
-          maxLength={500}
-          className={inputClass}
-        />
-        <FieldError errors={fieldErrors} name="description" />
-      </label>
-      {error && <ResultError error={error} testId="project-edit-error" />}
-      <div className="flex items-center gap-3">
-        <Button type="submit" data-testid="project-edit-save" disabled={pending}>
-          {pending ? "正在保存…" : "保存"}
-        </Button>
-        {saved && (
-          <span data-testid="project-edit-saved" className="text-sm text-muted-foreground">
-            已保存
-          </span>
-        )}
-      </div>
-    </form>
+    <SettingsSection
+      title="基本信息"
+      description="名称会同步到 Project 选择器；描述用于说明这个 Project 的协作范围。"
+    >
+      <form
+        onSubmit={handleSubmit}
+        aria-busy={pending}
+        className="flex max-w-[40rem] flex-col gap-5"
+      >
+        <Field label="Project 名称" htmlFor="project-edit-name" error={fieldErrors.name}>
+          <Input
+            id="project-edit-name"
+            data-testid="project-edit-name"
+            value={draft.name}
+            maxLength={80}
+            disabled={pending}
+            onChange={(event) => {
+              const name = event.target.value;
+              setDraft((current) => ({ ...current, name }));
+              setSaved(false);
+              setError(null);
+            }}
+          />
+        </Field>
+        <Field
+          label="描述"
+          htmlFor="project-edit-description"
+          hint="可留空，最多 500 字。"
+          error={fieldErrors.description}
+        >
+          <Textarea
+            id="project-edit-description"
+            data-testid="project-edit-description"
+            value={draft.description}
+            rows={3}
+            maxLength={500}
+            disabled={pending}
+            onChange={(event) => {
+              const description = event.target.value;
+              setDraft((current) => ({ ...current, description }));
+              setSaved(false);
+              setError(null);
+            }}
+          />
+        </Field>
+        {error && <ResultError error={error} testId="project-edit-error" />}
+        <div className="flex items-center gap-3.5">
+          <Button type="submit" data-testid="project-edit-save" loading={pending} disabled={!dirty}>
+            {pending ? "正在保存…" : "保存"}
+          </Button>
+          {saved && (
+            <span
+              role="status"
+              data-testid="project-edit-saved"
+              className="text-xs text-muted-foreground"
+            >
+              已保存。
+            </span>
+          )}
+        </div>
+      </form>
+    </SettingsSection>
   );
 }

@@ -1,5 +1,8 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
+import { AgentProfileList } from "../../components/agent/agent-profile-list";
 import { CreateAgentDialog } from "../../components/agent/create-agent-dialog";
+import { PageFrame } from "../../components/layout/page-frame";
+import { ThemeToggle } from "../../components/layout/theme-toggle";
 import { ResultError } from "../../components/project/result-error";
 import { listAgentProfilesFn } from "../../server/functions/agent";
 
@@ -15,43 +18,28 @@ function AgentsIndexPage() {
   const profiles = result.ok ? result.data : [];
 
   return (
-    <section className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Agent</h1>
-        <CreateAgentDialog onCreated={() => void router.invalidate()} />
-      </div>
+    <PageFrame
+      title="Agents"
+      description="当前账号创建的 Agent profile。选择一个查看或修改人设。"
+      back={<Link to="/projects">返回 Projects</Link>}
+      actions={
+        <>
+          <CreateAgentDialog onCreated={() => void router.invalidate()} />
+          <ThemeToggle />
+        </>
+      }
+      testId="agents-page"
+    >
       {!result.ok && <ResultError error={result.error} testId="agents-error" />}
       {result.ok && profiles.length === 0 && (
-        <p data-testid="agent-empty" className="text-muted-foreground">
+        <p data-testid="agent-empty" className="text-xs text-muted-foreground">
           还没有 Agent profile，先创建一个。
         </p>
       )}
-      <ul data-testid="agent-list" className="divide-y divide-border/60 rounded-lg border">
-        {profiles.map((profile) => (
-          <li key={profile.id} data-testid="agent-item" data-agent-profile-id={profile.id}>
-            <Link
-              to="/agents/$agentProfileId"
-              params={{ agentProfileId: profile.id }}
-              className="block px-4 py-3 hover:bg-muted/50"
-            >
-              <span data-testid="agent-item-name" className="font-medium">
-                {profile.name}
-              </span>
-              {profile.jobTitle && (
-                <span
-                  data-testid="agent-item-job-title"
-                  className="ml-2 rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground"
-                >
-                  {profile.jobTitle}
-                </span>
-              )}
-              <span className="mt-1 block text-xs text-muted-foreground">
-                {profile.persona ? profile.persona.slice(0, 60) : "（无人设）"}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
+      {profiles.length > 0 && <AgentProfileList profiles={profiles} />}
+      <p className="mt-4 text-xs leading-6 text-muted-foreground">
+        职位是人设的展示标签；没有额外的权限含义。
+      </p>
+    </PageFrame>
   );
 }
