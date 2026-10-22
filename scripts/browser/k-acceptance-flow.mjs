@@ -4,6 +4,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
+import {
+  chatInspectorPath,
+  createProject,
+  openProjectInfoHub,
+  readProjectFacts,
+  waitForChats,
+} from "./ui-navigation.mjs";
 
 const base = process.env.BASE_URL ?? "http://localhost:3145";
 const directory = resolve(process.env.ACCEPTANCE_DIRECTORY ?? ".verify/k-acceptance");
@@ -74,20 +81,12 @@ async function registerProject(page, role) {
     .fill(`k-${role}-${randomBytes(8).toString("hex")}@example.test`);
   await page.locator('input[name="password"]').fill(randomBytes(24).toString("base64url"));
   await page.locator('button[type="submit"]').click();
-  await page.waitForURL((url) => url.pathname === "/");
-  await test(page, "open-projects").click();
-  await test(page, "new-project-trigger").click();
+  // 注册播种的 Project 让 `/` 分发到它的 Chats；验收对象是随后真实创建的那个 Project。
+  await waitForChats(page);
   const name = `P2-K Project ${role}`;
-  await test(page, "project-name-input").fill(name);
-  await test(page, "project-description-input").fill(`独立验收 ${role}`);
-  await test(page, "project-submit").click();
-  await test(page, "project-item-name").getByText(name, { exact: true }).click();
-  await sameText(page, "project-detail-name", name);
-  return {
-    name,
-    id: new URL(page.url()).pathname.split("/").pop(),
-    path: new URL(page.url()).pathname,
-  };
+  const project = await createProject(page, { name, description: `独立验收 ${role}` });
+  await sameText(page, "project-selector", name);
+  return { name, id: project.id, path: project.path };
 }
 async function config(page) {
   return {
@@ -141,9 +140,11 @@ function noLeaks(body, tokens) {
   return leaked;
 }
 async function unavailable(page, target) {
+  // Project Info Hub 在 Settings 的折叠区，只有该目标承载项目面板与 run / Machine 视角。
+  if (target.key === "settings") await openProjectInfoHub(page);
   const body = await page.locator("body").innerText();
   assert(!/0 个活动 run|无活动 run|无 Machine/.test(body));
-  if (target.path.startsWith("/projects/")) {
+  if (target.key === "settings") {
     await sameText(page, "info-hub-project-runs-host-status", "宿主未启用");
     await test(page, "info-hub-project-runs-active").waitFor();
     await sameText(page, "info-hub-machines-notice-badge", "未实现");
@@ -165,8 +166,8 @@ async function unavailable(page, target) {
   }
   return {
     path: target.path,
-    P3: target.path.startsWith("/projects/"),
-    P4: target.path.startsWith("/projects/"),
+    P3: target.key === "settings",
+    P4: target.key === "settings",
   };
 }
 async function before() {
@@ -191,7 +192,7 @@ async function before() {
   await test(page, "agent-item-name").getByText(agentName, { exact: true }).click();
   await test(page, "agent-detail-id").waitFor();
   const agentProfileId = await test(page, "agent-detail-id").textContent();
-  await goto(page, `${project.path}/agents`);
+  await goto(page, `${project.path}/members`);
   await test(page, "add-member-select").selectOption({ label: agentName });
   await test(page, "add-member-submit").click();
   await sameText(page, "member-item-name", agentName);
@@ -276,11 +277,19 @@ async function before() {
     assert.deepEqual(await chat(page), observed);
     return { chatId: observed.chatId, instanceId: observed.instanceId };
   });
+  await check("project_root_redirects_to_chats", page, async () => {
+    await goto(page, project.path);
+    await page.waitForURL((url) => url.pathname === `${project.path}/chats`, { timeout: 20000 });
+    await test(page, "chats-title").waitFor();
+    return { entered: project.path, landed: new URL(page.url()).pathname };
+  });
   const targets = [
     {
       key: "project",
-      path: project.path,
-      assert: () => sameText(page, "project-detail-name", project.name),
+      path: `${project.path}/chats`,
+      assert: async () => {
+        await test(page, "chats-title").waitFor();
+      },
     },
     {
       key: "settings",
@@ -288,11 +297,18 @@ async function before() {
       assert: async () => {
         await test(page, "config-git-remote").waitFor();
         assert.deepEqual(await config(page), configuration);
+        // Project 基本事实已并入 Settings，Project Info Hub 面板也在这里的折叠区。
+        const facts = await readProjectFacts(page);
+        assert((facts.id ?? "").includes(project.id), `settings must show ${project.id}`);
+        assert.equal(facts.name, project.name);
+        await openProjectInfoHub(page);
+        await sameText(page, "info-agent-name", agentName);
+        assert.equal(await test(page, "info-agent-dm-link").getAttribute("href"), chatPath);
       },
     },
     {
       key: "members",
-      path: `${project.path}/agents`,
+      path: `${project.path}/members`,
       assert: () => sameText(page, "member-item-name", agentName),
     },
     {
@@ -310,6 +326,8 @@ async function before() {
     },
     {
       key: "chat",
+      // Chat 视角的 Info Hub 在 inspector 里，由 `?info=1` 恢复后才渲染。
+      entry: chatInspectorPath(chatPath),
       path: chatPath,
       assert: async () => {
         assert.deepEqual(await chat(page), observed);
@@ -345,16 +363,13 @@ async function before() {
     },
   ];
   async function targetMatches(target) {
-    assert.equal(new URL(page.url()).pathname, target.path);
+    await page.waitForURL((url) => url.pathname === target.path, { timeout: 20000 });
     await target.assert();
     if (target.path.startsWith("/projects/")) {
-      await sameText(page, "project-detail-name", project.name);
-      assert.equal(
-        await test(page, "tab-settings").getAttribute("href"),
-        `${project.path}/settings`,
-      );
-      await sameText(page, "info-agent-name", agentName);
-      assert.equal(await test(page, "info-agent-dm-link").getAttribute("href"), chatPath);
+      await sameText(page, "project-selector", project.name);
+      assert.equal(await test(page, "tab-chats").getAttribute("href"), `${project.path}/chats`);
+      assert.equal(await test(page, "tab-agents").getAttribute("href"), `${project.path}/members`);
+      assert.equal(await test(page, "tab-settings").getAttribute("href"), `${project.path}/settings`);
     }
     return {
       path: target.path,
@@ -365,7 +380,7 @@ async function before() {
     const target = targets[index];
     const next = targets[(index + 1) % targets.length];
     await check(`deep_${target.key}`, page, async () => {
-      await goto(page, target.path);
+      await goto(page, target.entry ?? target.path);
       return targetMatches(target);
     });
     await check(`reload_${target.key}`, page, async () => {
@@ -375,7 +390,7 @@ async function before() {
     await check(`unavailable_${target.key}`, page, () => unavailable(page, target));
     await shot(page, `deep-${target.key}`);
     await check(`back_${target.key}`, page, async () => {
-      await goto(page, next.path);
+      await goto(page, next.entry ?? next.path);
       await targetMatches(next);
       await page.goBack({ waitUntil: "networkidle" });
       return targetMatches(target);
@@ -388,7 +403,7 @@ async function before() {
   for (const [label, path] of [
     ["project", project.path],
     ["settings", `${project.path}/settings`],
-    ["members", `${project.path}/agents`],
+    ["members", `${project.path}/members`],
     ["chats", `${project.path}/chats`],
     ["chat", chatPath],
     ["agent", `/agents/${agentProfileId}`],
@@ -459,7 +474,9 @@ async function before() {
   }
   await check("B_own_Project_still_works_after_denials", other, async () => {
     await goto(other, `${own.path}/settings`);
-    await sameText(other, "project-detail-name", own.name);
+    const facts = await readProjectFacts(other);
+    assert.equal(facts.name, own.name);
+    assert((facts.id ?? "").includes(own.id), `B settings must show ${own.id}`);
     await test(other, "config-default-branch").fill("b-control");
     await test(other, "config-save").click();
     await test(other, "config-saved").waitFor();

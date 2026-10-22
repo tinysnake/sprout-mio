@@ -1,6 +1,13 @@
 // 真实 Chromium 走完 P2 的 Project 配置、Agent profile 与成员管理，每步打印 PASS/FAIL。
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
+import {
+  createProject,
+  currentProjectName,
+  navigate,
+  readProjectFacts,
+  waitForChats,
+} from "./ui-navigation.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = new URL("../../docs/p1/evidence/", import.meta.url).pathname;
@@ -46,6 +53,7 @@ const gitRemote = "https://example.test/acme/repo.git";
 const defaultBranch = "develop";
 const workDirectory = "workspaces/acme";
 const pathOf = () => new URL(page.url()).pathname;
+let project = {};
 
 await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector('input[name="email"]', { timeout: 20000 });
@@ -56,38 +64,31 @@ await check("register_and_create_project", async () => {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
-  await page.waitForURL((url) => url.pathname === "/", { timeout: 20000 });
-  await page.click('[data-testid="open-projects"]');
-  await page.waitForURL((url) => url.pathname === "/projects", { timeout: 20000 });
-  await page.click('[data-testid="new-project-trigger"]');
-  await page.fill('[data-testid="project-name-input"]', projectName);
-  await page.fill('[data-testid="project-description-input"]', "P2 Project 配置与 Agent 成员验收");
-  await page.click('[data-testid="project-submit"]');
-  await page.waitForFunction(
-    (name) =>
-      [...document.querySelectorAll('[data-testid="project-item-name"]')].some(
-        (node) => node.textContent === name,
-      ),
-    projectName,
-    { timeout: 20000 },
-  );
-  record("register_and_create_project", true, `注册登录并创建 ${projectName}`);
-});
-
-await check("project_hub_shows_detail", async () => {
-  // 列表里还有播种的默认项，按名称点新建的那一项。
-  await page.getByTestId("project-item-name").getByText(projectName, { exact: true }).click();
-  await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
-  const name = await page.textContent('[data-testid="project-detail-name"]');
-  await shot(page, "p2-h-project-hub");
+  await waitForChats(page);
+  project = await createProject(page, {
+    name: projectName,
+    description: "P2 Project 配置与 Agent 成员验收",
+  });
   record(
-    "project_hub_shows_detail",
-    name?.trim() === projectName && pathOf().startsWith("/projects/prj_"),
-    `hub 路径 ${pathOf()}，名称 ${JSON.stringify(name?.trim())}`,
+    "register_and_create_project",
+    pathOf() === `${project.path}/chats`,
+    `注册登录并创建 ${projectName}，落到 ${pathOf()}`,
   );
 });
 
-const projectPath = pathOf();
+await check("project_root_enters_chats", async () => {
+  await navigate(page, project.path);
+  const landed = await waitForChats(page);
+  const selected = await currentProjectName(page);
+  await shot(page, "p2-h-project-chats");
+  record(
+    "project_root_enters_chats",
+    landed.id === project.id && selected === projectName,
+    `Project 根落到 ${pathOf()}，选择器为 ${JSON.stringify(selected)}`,
+  );
+});
+
+const projectPath = project.path;
 
 await check("settings_save_and_reload_persist", async () => {
   await page.click('[data-testid="tab-settings"]');
@@ -181,7 +182,7 @@ await check("edit_persona_persists_with_same_id", async () => {
 });
 
 await check("add_and_remove_member_roundtrip", async () => {
-  await page.goto(`${BASE}${projectPath}/agents`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}${projectPath}/members`, { waitUntil: "domcontentloaded" });
   // 注册播种的默认 Agent 已经是成员，所以这里等的是新 profile 进入可选列表，而非空成员。
   await page.waitForFunction(
     (name) =>
@@ -231,7 +232,7 @@ await check("add_and_remove_member_roundtrip", async () => {
   await shot(page, "p2-h-project-members-empty");
   record(
     "add_and_remove_member_roundtrip",
-    afterReload && pathOf() === `${projectPath}/agents`,
+    afterReload && pathOf() === `${projectPath}/members`,
     `加入并刷新后仍有 ${agentName}，移除后它不再在名单里`,
   );
 });
@@ -240,11 +241,14 @@ await check("deep_link_settings_renders", async () => {
   await page.goto(`${BASE}${projectPath}/settings`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="config-git-remote"]', { timeout: 20000 });
   const remote = await page.inputValue('[data-testid="config-git-remote"]');
+  const facts = await readProjectFacts(page);
   await shot(page, "p2-h-deep-settings");
   record(
     "deep_link_settings_renders",
-    remote === gitRemote && pathOf() === `${projectPath}/settings`,
-    `深链直达配置页，git remote ${JSON.stringify(remote)}`,
+    remote === gitRemote &&
+      (facts.id ?? "").includes(project.id) &&
+      pathOf() === `${projectPath}/settings`,
+    `深链直达配置页，git remote ${JSON.stringify(remote)}，Project 事实 ${JSON.stringify(facts)}`,
   );
 });
 
@@ -266,15 +270,16 @@ await check("back_forward_keep_target_and_project_context", async () => {
   const backPath = pathOf();
   await page.goForward({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="agent-edit-persona"]', { timeout: 20000 });
-  await page.goto(`${BASE}${projectPath}`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="tab-agents"]', { timeout: 20000 });
+  await navigate(page, `${projectPath}/chats`);
+  await page.waitForSelector('[data-testid="chats-title"]', { timeout: 20000 });
   await page.click('[data-testid="tab-agents"]');
   await page.waitForSelector('[data-testid="member-list"], [data-testid="members-empty"]', {
     timeout: 20000,
   });
   const membersPath = pathOf();
   await page.goBack({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="chats-title"]', { timeout: 20000 });
+  const chatsPath = pathOf();
   await page.goForward({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="member-list"], [data-testid="members-empty"]', {
     timeout: 20000,
@@ -282,9 +287,10 @@ await check("back_forward_keep_target_and_project_context", async () => {
   record(
     "back_forward_keep_target_and_project_context",
     backPath === `${projectPath}/settings` &&
-      membersPath === `${projectPath}/agents` &&
-      pathOf() === `${projectPath}/agents`,
-    `后退到 ${backPath}，前进与项目内前进后退都回到 ${pathOf()}`,
+      membersPath === `${projectPath}/members` &&
+      chatsPath === `${projectPath}/chats` &&
+      pathOf() === `${projectPath}/members`,
+    `后退到 ${backPath}，前进与项目内前进后退经 ${chatsPath} 回到 ${pathOf()}`,
   );
 });
 

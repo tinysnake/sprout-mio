@@ -448,7 +448,7 @@ try {
     pages: [
       { key: 'project', path: `/projects/${aProject.data.id}` },
       { key: 'settings', path: `/projects/${aProject.data.id}/settings` },
-      { key: 'members', path: `/projects/${aProject.data.id}/agents` },
+      { key: 'members', path: `/projects/${aProject.data.id}/members` },
       { key: 'chat', path: `/projects/${aProject.data.id}/chats/${aDm.data.chat.id}` },
       { key: 'agent', path: `/agents/${aProfile.data.id}` },
     ],

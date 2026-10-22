@@ -75,8 +75,8 @@ Drizzle SQLite migrator 按 journal 的 `when`，即 `folderMillis`，决定是�
 4. Zod 只在边界，顺序固定为会话 → zod → 事务。失败一律 HTTP 200 加 `AppResult` 载荷，响应头 `x-sprout-request-id` 由框架边界写入。字段级错误沿用 `ProjectResult` 的模式（`AppResult<T> & { fieldErrors?: Record<string, string> }`），不改 `AppResult` 本身。
 5. 事务把业务行与诊断行一起写：在同一个 `sqlite.transaction` 里插入 `diagnostic_event`（`event`、`requestId`、业务 id），不要调用会吞掉写入失败的 `recordDiagnostic`。它使用共享 db 连接，不能把调用成功返回当作诊断写入成功。留一个可注入的失败 hook 用于证明回滚。
 6. 服务端专有导入（`src/db`、`src/lib/auth`、`src/server/session`）必须在 server function 或 boundary 函数内部 `await import(...)`。顶层静态导入会把 `better-sqlite3` 打进客户端包，应用直接白屏启动失败。
-7. TanStack 文件路由：父路由文件必须渲染 `<Outlet />`，否则子路由不会出现。Project 的列表页是 `projects.index.tsx`，详情页是 `projects.$projectId.tsx`，`projects.tsx` 只是外壳。新增路由后运行 `pnpm exec tsr generate`，`src/routeTree.gen.ts` 是生成物，不手改。
-8. 页面用 loader 取数，按 `result.ok` 判断。失败时显示错误码、消息与 requestId，字段错误显示在对应输入旁。列表与详情都要能通过 URL 直接刷新。已登录首页 `/` 的 `已登录，<姓名>` 文案与 `登出` 按钮被 `scripts/verify/c-data-auth.sh` 的 Chromium 检查依赖，改动前先核对那个脚本。
+7. TanStack 文件路由：父路由文件必须渲染 `<Outlet />`，否则子路由不会出现。`projects.index.tsx` 是 Project 列表与入口分发，`projects.$projectId.tsx` 只承担 Project 上下文布局，`projects.$projectId.index.tsx` 把 Project 根重定向到该 Project 的 Chats，`projects.tsx` 只是外壳。新增路由后运行 `pnpm exec tsr generate`，`src/routeTree.gen.ts` 是生成物，不手改。
+8. 页面用 loader 取数，按 `result.ok` 判断。失败时显示错误码、消息与 requestId，字段错误显示在对应输入旁。列表与详情都要能通过 URL 直接刷新。登入后访问 `/` 会经 `/projects` 分发到 Project 的 Chats；身份与登出在侧栏 `account-menu` 弹层内（`session-email`、`sign-out`），`scripts/verify/c-data-auth.sh` 的 Chromium 检查依赖这两处，改动前先核对那个脚本。
 9. 数据库变更交由 schema 维护者生成 migration。事务和数据库约束负责持久不变量。
 10. 行为测试写在 `tests/<feature>.test.ts`，用子进程（`tsx` 加独立 `DATABASE_URL`）导入模块，因为 `src/lib/config.ts` 在导入时读取 env。断言用户可观察的结果（数据库行、载荷、字段错误），不测内部调用。boundary 函数可直接调用，不需要起 HTTP。
 11. 验收脚本 `scripts/verify/<unit>.sh` 启动真实生产进程并用 curl 驱动。server function 的请求体是 Seroval CrossJSON，函数 id 从 `.output/server` 按 `name` 提取。公开的 `pnpm build` 先删 `.output` 再构建，防止残留 `.output/public/_shell.html` 引用上一次构建的资源名。
