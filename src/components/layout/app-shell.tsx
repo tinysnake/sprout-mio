@@ -212,17 +212,12 @@ function AccountMenu({
       <Popover.Trigger
         aria-label="账号菜单"
         data-testid="account-menu"
-        className={`flex min-h-11 w-full items-center gap-2.5 rounded-control px-2 hover:bg-hover ${compact ? "justify-center" : ""}`}
+        className={`flex min-h-8.5 w-full items-center gap-2 rounded-control px-1.5 hover:bg-hover max-desktop:min-h-11 ${compact ? "justify-center px-0" : ""}`}
       >
         <span className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
           {name.slice(0, 1)}
         </span>
-        {!compact && (
-          <span className="min-w-0 text-left">
-            <span className="block truncate text-xs">{name}</span>
-            <span className="block text-[10px] text-muted-foreground">个人工作空间</span>
-          </span>
-        )}
+        {!compact && <span className="min-w-0 flex-1 truncate text-left text-xs">{name}</span>}
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="top" align="start" sideOffset={6} className="z-50">
@@ -400,15 +395,19 @@ export function AppShell({
                 )}
               </div>
             </nav>
-            <div className="shrink-0 border-t border-border py-3">
-              <AccountMenu
-                name={name}
-                email={email}
-                compact={compact}
-                pending={pending}
-                onSignOut={onSignOut}
-                error={signOutError}
-              />
+            <div
+              className={`shrink-0 border-t border-border py-2 ${compact ? "flex flex-col items-center gap-1" : "flex items-center gap-1"}`}
+            >
+              <div className={compact ? "flex justify-center" : "min-w-0 flex-1"}>
+                <AccountMenu
+                  name={name}
+                  email={email}
+                  compact={compact}
+                  pending={pending}
+                  onSignOut={onSignOut}
+                  error={signOutError}
+                />
+              </div>
               <Button
                 variant="ghost"
                 size="icon"
@@ -416,7 +415,7 @@ export function AppShell({
                 aria-label={compact ? "展开侧栏" : "收起侧栏"}
                 aria-expanded={!compact}
                 onClick={() => setCollapsed((v) => !v)}
-                className={`mt-2 ${compact ? "mx-auto flex" : "ml-auto flex"}`}
+                className="shrink-0"
               >
                 <Icon as={compact ? ChevronsRight : ChevronsLeft} />
               </Button>

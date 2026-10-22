@@ -52,8 +52,11 @@ export function MessageComposer({
   }
 
   function keydown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey)) return;
+    if (event.key !== "Enter") return;
+    // 中文输入法组合中的 Enter 属于上屏，不能当作发送。
     if (event.nativeEvent.isComposing) return;
+    // Enter 与 Cmd/Ctrl+Enter 发送；Shift+Enter 换行。
+    if (event.shiftKey) return;
     event.preventDefault();
     if (!canSend || pending) return;
     onSubmit();
