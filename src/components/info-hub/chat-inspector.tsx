@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-react";
+import { agentDetailFromChat } from "../agent/agent-detail-search";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentInstance, Chat, ChatMember, ChatResult } from "../../contracts/chat";
 import type { ChatInfoView, InfoHubResult, TurnStartContext } from "../../contracts/info-hub";
@@ -93,6 +94,8 @@ export function ChatInspector({
                   <Link
                     to="/agents/$agentProfileId"
                     params={{ agentProfileId: profile.data.id }}
+                    search={agentDetailFromChat(chat)}
+                    data-testid="inspector-agent-profile-link"
                     className="shrink-0 text-[10px] text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
                   >
                     profile
@@ -141,9 +144,9 @@ export function ChatInspector({
                 <span>运行事实与轮初上下文</span>
                 <span className="flex items-center gap-2 text-muted-foreground">
                   <span>
-                    {info.data.runs.hostEnabled
+                    {info.data.runs.active.length > 0
                       ? `${info.data.runs.active.length} 个活动 run`
-                      : "宿主未启用"}
+                      : "无排队中或运行中的 run"}
                   </span>
                   <Icon
                     as={ChevronRight}

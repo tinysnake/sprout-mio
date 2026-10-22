@@ -48,7 +48,8 @@
 
 ## 页面
 
-- `src/components/info-hub/run-facts.tsx`：`RunFactsBlock`（宿主启用状态、活动 run 与未投递输入、最近 run 状态与时间、失败 run 的 `errorCode：errorMessage` 与 requestId、仓库依据行）与 `TurnStartContextBlock`（工作副本、活动 run、上一次 run、注入声明）。
+- `src/components/info-hub/run-facts.tsx`：`RunFactsBlock`（宿主启用状态、活动 run 与未投递输入、历史 run 的按状态聚合计数、失败 run 的 `errorCode：errorMessage` 与 requestId、最近一次 run 的仓库依据行）与 `TurnStartContextBlock`（工作副本、活动 run、上一次 run、注入声明）。
+- 逐个历史 run 的开始/结束时间流水账已去掉（UI review 反馈 8）：`${testId}-recent` 改为聚合行（`data-run-count` + 状态计数），失败明细仍在 `${testId}-recent-error` / `-recent-error-request`，仓库依据取最近一次带 provenance 的 run（`${testId}-recent-repo`）；`-recent-item`、`-recent-status` 随流水账一并移除，`scripts/verify/q-info-hub-runs.sh` 的等价断言改为「聚合行含 `最近 N 个 run：…已完成 N`、逐条行数为 0、仓库依据行含真实 commit 与 fresh」。
 - `project-agents-panel.tsx` 用 `RunFactsBlock` 替换原 runs 的不可用通知（testId `info-hub-project-runs`）；Machine 的 `UnavailableNotice`（`info-hub-machines-notice`）保留。
 - `chat-info-panel.tsx` 用 `RunFactsBlock`（testId `info-chat-runs`）与 `TurnStartContextBlock` 替换原 runs 的不可用通知；路由 loader 增取 `getTurnStartContextFn`，失败显示 `info-hub-turn-context-error`。
 - pending 输入只以「N 条输入未投递」出现；没有任何文案使用「无活动 run」「0 个活动 run」这类会被读成空成功的措辞。
