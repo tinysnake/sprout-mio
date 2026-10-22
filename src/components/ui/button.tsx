@@ -1,37 +1,54 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
+import { LoaderCircleIcon } from "lucide-react";
+import { Icon } from "@/components/ui/icon";
 
+/*
+ * 常规控件 34px 高、6px 圆角、12px 字号，数值来自设计基线的实测值；
+ * 窄屏统一抬到 44px 触控高度，而不是给每个页面各写一份。
+ * primary 使用加深后的 --primary：橙原色配白字达不到 AA。
+ */
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-1.75 rounded-control border border-transparent bg-clip-padding text-xs font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-150 outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-45 data-disabled:pointer-events-none data-disabled:opacity-45 active:not-disabled:not-data-disabled:translate-y-px [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
-        outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+        /** 主操作：唯一使用橙色填充的按钮。 */
+        default: "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/82",
+        /** 有边框的中性操作：返回、取消、次要提交。 */
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "border-border bg-background text-foreground hover:border-foreground active:bg-background",
+        /** 无边框的图标与行内操作；展开或按下时用 selected 表面。 */
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
-        destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-transparent text-foreground hover:border-input aria-expanded:border-border aria-expanded:bg-selected",
+        /** 破坏性操作同时着色文字与边框，不只靠颜色区分。 */
+        destructive: "border-destructive bg-destructive-soft text-destructive hover:bg-background",
+        /** 正文中的链接式动作：用下划线而不是橙色文字表达可点。 */
+        link: "text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground",
+        /** `outline` 是迁移前的中性有边框按钮名，与本轮的 secondary 同一外观。 */
+        outline:
+          "border-border bg-background text-foreground hover:border-foreground active:bg-background",
       },
       size: {
-        default:
-          "h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        icon: "size-8",
-        "icon-xs":
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9",
+        default: "min-h-8.5 px-2.75 py-1.5",
+        xs: "min-h-6 px-2 text-[0.6875rem]",
+        sm: "min-h-7 px-2 text-[0.6875rem]",
+        lg: "min-h-10 px-3 text-sm",
+        icon: "size-8.5 p-0",
+        "icon-xs": "size-6 p-0",
+        "icon-sm": "size-7 p-0",
+        "icon-lg": "size-10 p-0",
       },
     },
+    compoundVariants: [
+      { variant: "link", size: ["default", "xs", "sm", "lg"], class: "min-h-0 p-0" },
+      {
+        variant: ["default", "secondary", "ghost", "destructive", "outline"],
+        class: "max-desktop:min-h-11",
+      },
+      { size: ["icon", "icon-xs", "icon-sm", "icon-lg"], class: "max-desktop:size-11" },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",
@@ -39,18 +56,36 @@ const buttonVariants = cva(
   },
 );
 
+type ButtonProps = ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    /**
+     * 提交中的呈现。置为 true 时按钮同时不可点击，避免重复提交；
+     * 视觉上换成旋转图标并保留原宽度，不让布局跳动。
+     */
+    loading?: boolean;
+  };
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  loading = false,
+  disabled,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonProps) {
   return (
     <ButtonPrimitive
       data-slot="button"
+      data-loading={loading || undefined}
+      aria-busy={loading || undefined}
+      disabled={disabled || loading}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
+    >
+      {loading && <Icon as={LoaderCircleIcon} className="animate-spin" />}
+      {children}
+    </ButtonPrimitive>
   );
 }
 
