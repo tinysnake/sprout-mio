@@ -50,6 +50,7 @@ function ProjectMembersPage() {
       */}
       {members.ok && (
         <ProjectMembers
+          key={projectId}
           members={members.data}
           profiles={profiles.ok ? profiles.data : []}
           humanName={humanName}

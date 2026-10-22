@@ -96,6 +96,7 @@ function ProjectSettingsPage() {
               />
               {repo.ok ? (
                 <ProjectRepoPanel
+                  key={projectId}
                   state={repo.data}
                   prepare={() => prepareProjectRepoFn({ data: { projectId } })}
                   onRefresh={invalidate}
