@@ -190,6 +190,43 @@ await check("PageFrame：外层 48/40 内边距 + 内层 960 居中，h1 24/1.4�
   record("PageFrame：两层缩进与标题字号符合基线", true, JSON.stringify(metrics));
 });
 
+// Dialog 的打开有 zoom-in 动画；量尺寸与连续 Tab 都必须等动画落位，
+// 且每个用例无论成败都要把弹层关掉，否则 inert 的背景会让后续点击全部超时。
+async function openDialog(page) {
+  await page.getByRole("button", { name: "打开对话框" }).click();
+  const dialog = page.locator('[data-testid="gallery-dialog"]');
+  await dialog.waitFor();
+  await settleDialog(page);
+  return dialog;
+}
+
+async function settleDialog(page) {
+  await page
+    .waitForFunction(() => {
+      const popup = document.querySelector('[data-testid="gallery-dialog"]');
+      // zoom-in 是 transform 动画，scale 属性不会变；transform 回到 none 才算落位。
+      return popup ? getComputedStyle(popup).transform === "none" : false;
+    })
+    .catch(() => page.waitForTimeout(600));
+}
+
+async function closeDialog(page) {
+  const dialog = page.locator('[data-testid="gallery-dialog"]');
+  if ((await dialog.count()) === 0) return;
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "detached" }).catch(() => page.waitForTimeout(500));
+}
+
+/** 打开弹层、执行断言、无论结果如何都关闭。 */
+async function withDialog(page, fn) {
+  const dialog = await openDialog(page);
+  try {
+    await fn(dialog);
+  } finally {
+    await closeDialog(page);
+  }
+}
+
 // 5. Dialog 键盘：Escape 关闭、焦点进入与返回、关闭文案为中文
 await check("Dialog：Escape 关闭并回到触发按钮，焦点先进入对话框", async () => {
   const trigger = desktop.page.getByRole("button", { name: "打开对话框" });
@@ -197,71 +234,99 @@ await check("Dialog：Escape 关闭并回到触发按钮，焦点先进入对话
   await desktop.page.keyboard.press("Enter");
   const dialog = desktop.page.locator('[data-testid="gallery-dialog"]');
   await dialog.waitFor();
-  await desktop.page.waitForFunction(() =>
-    Boolean(
-      document.querySelector('[data-testid="gallery-dialog"]')?.contains(document.activeElement),
-    ),
-  );
-  const insideAfterOpen = await desktop.page.evaluate(() => {
-    const popup = document.querySelector('[data-testid="gallery-dialog"]');
-    return popup?.contains(document.activeElement) ?? false;
+  await settleDialog(desktop.page);
+  try {
+    await desktop.page.waitForFunction(() =>
+      Boolean(
+        document.querySelector('[data-testid="gallery-dialog"]')?.contains(document.activeElement),
+      ),
+    );
+    const closeLabel = await dialog.getByRole("button", { name: "关闭对话框" }).count();
+    if (closeLabel !== 1) throw new Error("缺少中文关闭按钮");
+    await desktop.page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    const backToTrigger = await trigger.evaluate((element) => element === document.activeElement);
+    if (!backToTrigger) throw new Error("焦点没有回到触发按钮");
+    record("Dialog：Escape 关闭且焦点返回触发点", true, "中文关闭按钮存在");
+  } finally {
+    await closeDialog(desktop.page);
+  }
+});
+
+await check("Dialog：桌面 460px 宽、底部动作区单行右对齐 8px 间距", async () => {
+  await withDialog(desktop.page, async () => {
+    const metrics = await desktop.page.evaluate(() => {
+      const popup = document.querySelector('[data-testid="gallery-dialog"]');
+      const footer = popup?.querySelector('[data-slot="dialog-footer"]');
+      const buttons = [...(footer?.querySelectorAll("button") ?? [])];
+      const rects = buttons.map((button) => button.getBoundingClientRect());
+      return {
+        width: popup?.getBoundingClientRect().width,
+        footerDisplay: footer ? getComputedStyle(footer).display : null,
+        footerDirection: footer ? getComputedStyle(footer).flexDirection : null,
+        footerGap: footer ? parseFloat(getComputedStyle(footer).columnGap) : null,
+        sameRow: rects.length === 2 ? Math.abs(rects[0].y - rects[1].y) < 1 : false,
+        rightAligned:
+          rects.length === 2
+            ? Math.abs(rects[1].right - footer.getBoundingClientRect().right) < 1
+            : false,
+      };
+    });
+    if (Math.round(metrics.width) !== 460) throw new Error(`width ${metrics.width}`);
+    if (metrics.footerDirection !== "row" || !metrics.sameRow) {
+      throw new Error(JSON.stringify(metrics));
+    }
+    if (metrics.footerGap !== 8 || !metrics.rightAligned) throw new Error(JSON.stringify(metrics));
+    record("Dialog：桌面 460px 宽、动作区单行右对齐", true, JSON.stringify(metrics));
   });
-  if (!insideAfterOpen) throw new Error("焦点没有进入对话框");
-  const closeLabel = await dialog.getByRole("button", { name: "关闭对话框" }).count();
-  if (closeLabel !== 1) throw new Error("缺少中文关闭按钮");
-  await desktop.page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "detached" });
-  const backToTrigger = await trigger.evaluate((element) => element === document.activeElement);
-  if (!backToTrigger) throw new Error("焦点没有回到触发按钮");
-  record("Dialog：Escape 关闭且焦点返回触发点", true, "中文关闭按钮存在");
 });
 
 await check("Dialog：点击遮罩关闭", async () => {
-  await desktop.page.getByRole("button", { name: "打开对话框" }).click();
-  const dialog = desktop.page.locator('[data-testid="gallery-dialog"]');
-  await dialog.waitFor();
+  const dialog = await openDialog(desktop.page);
   await desktop.page.mouse.click(8, 8);
   await dialog.waitFor({ state: "detached" });
   record("Dialog：点击遮罩关闭", true, "backdrop 点击生效");
 });
 
 await check("Dialog：Tab 焦点留在对话框内", async () => {
-  await desktop.page.getByRole("button", { name: "打开对话框" }).click();
-  const dialog = desktop.page.locator('[data-testid="gallery-dialog"]');
-  await dialog.waitFor();
-  // Base UI 在打开后异步把焦点移进弹层，先等它落位再验证 Tab。
-  await desktop.page.waitForFunction(() =>
-    Boolean(
-      document.querySelector('[data-testid="gallery-dialog"]')?.contains(document.activeElement),
-    ),
-  );
-  // 弹层与其焦点守卫同在一个 portal 子树里；离开这个子树才算逃逸。
-  const escapes = await desktop.page.evaluate(() => {
-    const popup = document.querySelector('[data-testid="gallery-dialog"]');
-    const portal = popup?.closest("[data-base-ui-portal]") ?? popup?.parentElement;
-    return portal
-      ? !portal.contains(document.activeElement)
-      : !popup?.contains(document.activeElement);
-  });
-  if (escapes) throw new Error("打开后焦点不在弹层子树内");
-  // Base UI 用 requestAnimationFrame 把焦点守卫重置回弹层，先让它落位再连续 Tab。
-  await desktop.page.waitForTimeout(200);
-  for (let index = 0; index < 12; index += 1) {
-    await desktop.page.waitForTimeout(50);
-
-    await desktop.page.keyboard.press("Tab");
-    const outside = await desktop.page.evaluate(() => {
+  await withDialog(desktop.page, async () => {
+    const escapes = await desktop.page.evaluate(() => {
       const popup = document.querySelector('[data-testid="gallery-dialog"]');
       const portal = popup?.closest("[data-base-ui-portal]") ?? popup?.parentElement;
-      const active = document.activeElement;
-      const inside = portal ? portal.contains(active) : Boolean(popup?.contains(active));
-      return inside ? null : `${active?.tagName}[${active?.getAttribute("data-slot") ?? ""}]`;
+      return portal
+        ? !portal.contains(document.activeElement)
+        : !popup?.contains(document.activeElement);
     });
-    if (outside) throw new Error(`第 ${index + 1} 次 Tab 后焦点移到 ${outside}`);
-  }
-  await desktop.page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "detached" });
-  record("Dialog：Tab 焦点被困在对话框内", true, "8 次 Tab 未逃逸");
+    if (escapes) throw new Error("打开后焦点不在弹层子树内");
+    // 焦点守卫用 requestAnimationFrame 把焦点送回弹层；连续 Tab 之间先等它落位，
+    // 断言的是「Tab 之后焦点仍在弹层子树内」，不是按键瞬间的中间帧。
+    for (let index = 0; index < 12; index += 1) {
+      await desktop.page.keyboard.press("Tab");
+      const settled = await desktop.page
+        .waitForFunction(
+          () => {
+            const popup = document.querySelector('[data-testid="gallery-dialog"]');
+            const portal = popup?.closest("[data-base-ui-portal]") ?? popup?.parentElement;
+            const inside = portal
+              ? portal.contains(document.activeElement)
+              : Boolean(popup?.contains(document.activeElement));
+            return inside;
+          },
+          undefined,
+          { timeout: 1000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      if (!settled) {
+        const where = await desktop.page.evaluate(() => {
+          const active = document.activeElement;
+          return `${active?.tagName}[${active?.getAttribute("data-slot") ?? ""}]`;
+        });
+        throw new Error(`第 ${index + 1} 次 Tab 后焦点停在 ${where}`);
+      }
+    }
+    record("Dialog：Tab 焦点被困在对话框内", true, "12 次 Tab 未逃逸");
+  });
 });
 
 const desktopErrors = desktop.errors;
@@ -308,15 +373,12 @@ await check("390 宽度：暗色主题下仍然无横向溢出", async () => {
 await mobile.page.screenshot({ path: `${EVIDENCE}390-dark.png`, fullPage: true });
 
 await check("390 宽度：Dialog 在窄屏不溢出视口", async () => {
-  await mobile.page.getByRole("button", { name: "打开对话框" }).click();
-  const dialog = mobile.page.locator('[data-testid="gallery-dialog"]');
-  await dialog.waitFor();
-  const box = await dialog.boundingBox();
-  if (!box || box.width > 390 || box.x < 0) throw new Error(JSON.stringify(box));
-  await mobile.page.screenshot({ path: `${EVIDENCE}390-dialog-dark.png` });
-  await mobile.page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "detached" });
-  record("390 宽度：Dialog 留在视口内", true, JSON.stringify(box));
+  await withDialog(mobile.page, async (dialog) => {
+    const box = await dialog.boundingBox();
+    if (!box || box.width > 390 || box.x < 0) throw new Error(JSON.stringify(box));
+    await mobile.page.screenshot({ path: `${EVIDENCE}390-dialog-dark.png` });
+    record("390 宽度：Dialog 留在视口内", true, JSON.stringify(box));
+  });
 });
 
 record("390 控制台无错误", mobile.errors.length === 0, mobile.errors.join(" | ") || "none");
