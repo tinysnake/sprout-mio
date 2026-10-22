@@ -21,7 +21,8 @@ import { Route as AuthedAgentsAgentProfileIdRouteImport } from './routes/_authed
 import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projects.index'
 import { Route as AuthedProjectsProjectIdRouteImport } from './routes/_authed/projects.$projectId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
-import { Route as AuthedProjectsProjectIdAgentsRouteImport } from './routes/_authed/projects.$projectId.agents'
+import { Route as AuthedProjectsProjectIdIndexRouteImport } from './routes/_authed/projects.$projectId.index'
+import { Route as AuthedProjectsProjectIdMembersRouteImport } from './routes/_authed/projects.$projectId.members'
 import { Route as AuthedProjectsProjectIdSettingsRouteImport } from './routes/_authed/projects.$projectId.settings'
 import { Route as AuthedProjectsProjectIdChatsIndexRouteImport } from './routes/_authed/projects.$projectId.chats.index'
 import { Route as AuthedProjectsProjectIdChatsChatIdRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId'
@@ -86,10 +87,16 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthedProjectsProjectIdAgentsRoute =
-  AuthedProjectsProjectIdAgentsRouteImport.update({
-    id: '/agents',
-    path: '/agents',
+const AuthedProjectsProjectIdIndexRoute =
+  AuthedProjectsProjectIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthedProjectsProjectIdRoute,
+  } as any)
+const AuthedProjectsProjectIdMembersRoute =
+  AuthedProjectsProjectIdMembersRouteImport.update({
+    id: '/members',
+    path: '/members',
     getParentRoute: () => AuthedProjectsProjectIdRoute,
   } as any)
 const AuthedProjectsProjectIdSettingsRoute =
@@ -123,8 +130,9 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/agents/': typeof AuthedAgentsIndexRoute
   '/projects/': typeof AuthedProjectsIndexRoute
-  '/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
+  '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
   '/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
@@ -134,12 +142,12 @@ export interface FileRoutesByTo {
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
-  '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/agents': typeof AuthedAgentsIndexRoute
   '/projects': typeof AuthedProjectsIndexRoute
-  '/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
+  '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/projects/$projectId': typeof AuthedProjectsProjectIdIndexRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
@@ -157,8 +165,9 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_authed/agents/': typeof AuthedAgentsIndexRoute
   '/_authed/projects/': typeof AuthedProjectsIndexRoute
-  '/_authed/projects/$projectId/agents': typeof AuthedProjectsProjectIdAgentsRoute
+  '/_authed/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/_authed/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/_authed/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
   '/_authed/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
   '/_authed/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
@@ -176,8 +185,9 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/agents/'
     | '/projects/'
-    | '/projects/$projectId/agents'
+    | '/projects/$projectId/members'
     | '/projects/$projectId/settings'
+    | '/projects/$projectId/'
     | '/projects/$projectId/chats/$chatId'
     | '/projects/$projectId/chats/'
   fileRoutesByTo: FileRoutesByTo
@@ -187,12 +197,12 @@ export interface FileRouteTypes {
     | '/api/diagnostics'
     | '/api/health'
     | '/agents/$agentProfileId'
-    | '/projects/$projectId'
     | '/api/auth/$'
     | '/agents'
     | '/projects'
-    | '/projects/$projectId/agents'
+    | '/projects/$projectId/members'
     | '/projects/$projectId/settings'
+    | '/projects/$projectId'
     | '/projects/$projectId/chats/$chatId'
     | '/projects/$projectId/chats'
   id:
@@ -209,8 +219,9 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/_authed/agents/'
     | '/_authed/projects/'
-    | '/_authed/projects/$projectId/agents'
+    | '/_authed/projects/$projectId/members'
     | '/_authed/projects/$projectId/settings'
+    | '/_authed/projects/$projectId/'
     | '/_authed/projects/$projectId/chats/$chatId'
     | '/_authed/projects/$projectId/chats/'
   fileRoutesById: FileRoutesById
@@ -310,11 +321,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authed/projects/$projectId/agents': {
-      id: '/_authed/projects/$projectId/agents'
-      path: '/agents'
-      fullPath: '/projects/$projectId/agents'
-      preLoaderRoute: typeof AuthedProjectsProjectIdAgentsRouteImport
+    '/_authed/projects/$projectId/': {
+      id: '/_authed/projects/$projectId/'
+      path: '/'
+      fullPath: '/projects/$projectId/'
+      preLoaderRoute: typeof AuthedProjectsProjectIdIndexRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdRoute
+    }
+    '/_authed/projects/$projectId/members': {
+      id: '/_authed/projects/$projectId/members'
+      path: '/members'
+      fullPath: '/projects/$projectId/members'
+      preLoaderRoute: typeof AuthedProjectsProjectIdMembersRouteImport
       parentRoute: typeof AuthedProjectsProjectIdRoute
     }
     '/_authed/projects/$projectId/settings': {
@@ -356,16 +374,18 @@ const AuthedAgentsRouteWithChildren = AuthedAgentsRoute._addFileChildren(
 )
 
 interface AuthedProjectsProjectIdRouteChildren {
-  AuthedProjectsProjectIdAgentsRoute: typeof AuthedProjectsProjectIdAgentsRoute
+  AuthedProjectsProjectIdMembersRoute: typeof AuthedProjectsProjectIdMembersRoute
   AuthedProjectsProjectIdSettingsRoute: typeof AuthedProjectsProjectIdSettingsRoute
+  AuthedProjectsProjectIdIndexRoute: typeof AuthedProjectsProjectIdIndexRoute
   AuthedProjectsProjectIdChatsChatIdRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
   AuthedProjectsProjectIdChatsIndexRoute: typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 
 const AuthedProjectsProjectIdRouteChildren: AuthedProjectsProjectIdRouteChildren =
   {
-    AuthedProjectsProjectIdAgentsRoute: AuthedProjectsProjectIdAgentsRoute,
+    AuthedProjectsProjectIdMembersRoute: AuthedProjectsProjectIdMembersRoute,
     AuthedProjectsProjectIdSettingsRoute: AuthedProjectsProjectIdSettingsRoute,
+    AuthedProjectsProjectIdIndexRoute: AuthedProjectsProjectIdIndexRoute,
     AuthedProjectsProjectIdChatsChatIdRoute:
       AuthedProjectsProjectIdChatsChatIdRoute,
     AuthedProjectsProjectIdChatsIndexRoute:

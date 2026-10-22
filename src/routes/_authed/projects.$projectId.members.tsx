@@ -3,7 +3,7 @@ import { AgentMembers } from "../../components/project/agent-members";
 import { ResultError } from "../../components/project/result-error";
 import { listAgentProfilesFn, listProjectMembersFn } from "../../server/functions/agent";
 
-export const Route = createFileRoute("/_authed/projects/$projectId/agents")({
+export const Route = createFileRoute("/_authed/projects/$projectId/members")({
   loader: async ({ params }) => {
     const [members, profiles] = await Promise.all([
       listProjectMembersFn({ data: { projectId: params.projectId } }),
