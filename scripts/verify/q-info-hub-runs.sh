@@ -273,7 +273,9 @@ try {
       const screenshotDir = resolve('docs/p3/evidence')
       mkdirSync(screenshotDir, { recursive: true })
 
-      await page.goto(`${base}/projects/${main.projectId}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      await page.goto(`${base}/projects/${main.projectId}/settings`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      // Project Info Hub 在 Settings 的折叠区，展开后才渲染 run 事实。
+      if (await page.locator('[data-testid="info-hub-project-runs-recent-item"]').count() === 0) await page.locator('[data-testid="project-info-hub-toggle"]').first().click()
       await page.waitForSelector('[data-testid="info-hub-project-runs-recent-item"]', { timeout: 20000 })
       assert.equal(await page.locator('[data-testid="info-hub-project-runs-host-status"]').textContent(), '宿主已启用')
       const activeItem = page.locator('[data-testid="info-hub-project-runs-active-item"]')
@@ -286,7 +288,8 @@ try {
       const projectShot = join(screenshotDir, 'p3-d-info-hub-project-runs.png')
       await page.screenshot({ path: projectShot, fullPage: true })
 
-      await page.goto(`${base}/projects/${main.projectId}/chats/${main.chatId}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      // Chat 视角的 Info Hub 在 inspector 里，由 ?info=1 恢复。
+      await page.goto(`${base}/projects/${main.projectId}/chats/${main.chatId}?info=1`, { waitUntil: 'domcontentloaded', timeout: 30000 })
       await page.waitForSelector('[data-testid="info-turn-context"]', { timeout: 20000 })
       assert.match(await page.locator('[data-testid="info-chat-runs-active-pending"]').textContent(), /1 条输入未投递/)
       assert.equal(await page.locator('[data-testid="info-turn-workspace-commit"]').textContent(), bareHead)

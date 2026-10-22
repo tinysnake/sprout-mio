@@ -1,6 +1,16 @@
-// 真实 Chromium 走完 Project 的创建、刷新、历史导航、错误态与登出重定向，每步打印 PASS/FAIL。
+// 真实 Chromium 走完 Project 的分发、创建、刷新、历史导航、Settings 事实、错误态与登出重定向，每步打印 PASS/FAIL。
 import { mkdirSync } from "node:fs";
 import { chromium } from "playwright";
+import {
+  createProject,
+  currentProjectName,
+  navigate,
+  openCreateDialog,
+  readProjectFacts,
+  sessionEmail,
+  signOut,
+  waitForChats,
+} from "./ui-navigation.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = new URL("../../docs/p1/evidence/", import.meta.url).pathname;
@@ -38,13 +48,15 @@ const stamp = Date.now();
 const email = `project-flow-${stamp}@example.test`;
 const password = "{{SECRET_project-flow-pass}}";
 const projectName = `验收样例 ${stamp}`;
+const projectDescription = "浏览器验收创建的分层样例";
 const detailPath = () => new URL(page.url()).pathname;
+const seededName = "我的项目";
+let project = {};
 
-// 登录后先落到首页，再通过首页的入口进入受保护的 Project 列表。
-async function enterProjects() {
-  await page.waitForURL((url) => url.pathname === "/", { timeout: 20000 });
-  await page.click('[data-testid="open-projects"]');
-  await page.waitForURL((url) => url.pathname === "/projects", { timeout: 20000 });
+async function login() {
+  await page.fill('input[name="email"]', email);
+  await page.fill('input[name="password"]', password);
+  await page.click('button[type="submit"]');
 }
 
 await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
@@ -56,113 +68,121 @@ await check("register_sets_session", async () => {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
-  await enterProjects();
-  await page.waitForSelector('[data-testid="project-list"]', { timeout: 20000 });
-  record("register_sets_session", true, `注册后经首页落到 ${detailPath()}`);
+  // 注册播种「我的项目」，所以 `/` → `/projects` → 该 Project 的 Chats 三级分发后必然直达对话列表。
+  const seeded = await waitForChats(page);
+  record(
+    "register_sets_session",
+    seeded.chatsPath === detailPath(),
+    `注册后分发到 ${detailPath()}`,
+  );
 });
 
 await check("sign_out_returns_to_login", async () => {
-  await page.click('[data-testid="sign-out"]');
-  await page.waitForURL((url) => url.pathname === "/login", { timeout: 20000 });
-  record("sign_out_returns_to_login", true, `登出后落到 ${detailPath()}`);
+  const shown = await sessionEmail(page);
+  await signOut(page);
+  record(
+    "sign_out_returns_to_login",
+    shown === email && detailPath() === "/login",
+    `账号菜单里的身份 ${JSON.stringify(shown)}，登出后落到 ${detailPath()}`,
+  );
 });
 
 await check("login_opens_protected_area", async () => {
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
-  await enterProjects();
-  // 注册已播种一个默认 Project，列表不再为空而是恰好一项。
-  await page.waitForSelector('[data-testid="project-item"]', { timeout: 20000 });
-  const seeded = await page.$$eval('[data-testid="project-item-name"]', (nodes) =>
-    nodes.map((node) => node.textContent),
-  );
+  await login();
+  await waitForChats(page);
+  const selected = await currentProjectName(page);
   record(
     "login_opens_protected_area",
-    seeded.length === 1 && seeded[0] === "我的项目",
-    `登录后经首页落到 ${detailPath()}，列表为 ${JSON.stringify(seeded)}`,
+    selected === seededName,
+    `登录后落到 ${detailPath()}，Project 选择器为 ${JSON.stringify(selected)}`,
   );
 });
 
-await check("create_project_appears_in_list", async () => {
-  await page.click('[data-testid="new-project-trigger"]');
-  await page.fill('[data-testid="project-name-input"]', projectName);
-  await page.fill('[data-testid="project-description-input"]', "浏览器验收创建的分层样例");
-  await shot(page, "project-create-dialog");
-  await page.click('[data-testid="project-submit"]');
-  // 新建的排在最前，等它出现再收集名称，避免只看到播种的默认项。
-  await page.waitForFunction(
-    (name) =>
-      [...document.querySelectorAll('[data-testid="project-item-name"]')].some(
-        (node) => node.textContent === name,
-      ),
-    projectName,
-    { timeout: 20000 },
+await check("create_project_switches_to_new_chats", async () => {
+  project = await createProject(page, { name: projectName, description: projectDescription });
+  const selected = await currentProjectName(page);
+  await shot(page, "project-created");
+  record(
+    "create_project_switches_to_new_chats",
+    detailPath() === `${project.path}/chats` && selected === projectName,
+    `创建后落到 ${detailPath()}，选择器切到 ${JSON.stringify(selected)}`,
   );
+});
+
+await check("project_list_shows_both_projects", async () => {
+  // 两个 Project 时 `/projects` 才渲染列表，单 Project 会被直接分发。
+  await navigate(page, "/projects");
+  await page.waitForSelector('[data-testid="project-list"]', { timeout: 20000 });
   const names = await page.$$eval('[data-testid="project-item-name"]', (nodes) =>
     nodes.map((node) => node.textContent),
   );
-  await shot(page, "project-created");
   record(
-    "create_project_appears_in_list",
-    names.includes(projectName),
-    `列表包含 ${JSON.stringify(names)}`,
+    "project_list_shows_both_projects",
+    names.length === 2 && names.includes(seededName) && names.includes(projectName),
+    `${detailPath()} 的列表为 ${JSON.stringify(names)}`,
   );
 });
 
-await check("open_detail_shows_fields_and_request_id", async () => {
-  // 列表里还有播种的默认项，按名称点新建的那一项。
-  await page.getByTestId("project-item-name").getByText(projectName, { exact: true }).click();
-  await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
-  const detail = await page.evaluate(() => ({
-    name: document.querySelector('[data-testid="project-detail-name"]')?.textContent,
-    description: document.querySelector('[data-testid="project-detail-description"]')?.textContent,
-    createdAt: document.querySelector('[data-testid="project-detail-created-at"]')?.textContent,
-    requestId: document.querySelector('[data-testid="project-detail-request-id"]')?.textContent,
-    path: location.pathname,
-  }));
-  await shot(page, "project-detail");
+await check("settings_shows_fields_and_request_id", async () => {
+  await navigate(page, `${project.path}/settings`);
+  const facts = await readProjectFacts(page);
+  const requestId = /req_[0-9a-f-]{36}/.exec(facts.requestId ?? "")?.[0];
+  await shot(page, "project-settings-facts");
   record(
-    "open_detail_shows_fields_and_request_id",
-    detail.name === projectName &&
-      detail.description === "浏览器验收创建的分层样例" &&
-      /^\d{4}-\d{2}-\d{2}T/.test(detail.createdAt ?? "") &&
-      /^req_[0-9a-f-]{36}$/.test(detail.requestId ?? "") &&
-      detail.path.startsWith("/projects/prj_"),
-    `详情 ${JSON.stringify(detail)}`,
+    "settings_shows_fields_and_request_id",
+    (facts.id ?? "").includes(project.id) &&
+      facts.name === projectName &&
+      facts.description === projectDescription &&
+      /\d{4}-\d{2}-\d{2}T/.test(facts.createdAt ?? "") &&
+      requestId !== undefined &&
+      detailPath() === `${project.path}/settings`,
+    `Settings 事实 ${JSON.stringify(facts)}`,
   );
 });
 
-const projectUrl = page.url();
+const settingsUrl = page.url();
 
 await check("reload_keeps_same_project", async () => {
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
-  const name = await page.textContent('[data-testid="project-detail-name"]');
+  await page.waitForSelector('[data-testid="project-edit-name"]', { timeout: 20000 });
+  const name = await page.inputValue('[data-testid="project-edit-name"]');
   record(
     "reload_keeps_same_project",
-    name?.trim() === projectName && page.url() === projectUrl,
-    `刷新后仍是 ${name?.trim()}，URL ${page.url()}`,
+    name === projectName && page.url() === settingsUrl,
+    `刷新后仍是 ${JSON.stringify(name)}，URL ${page.url()}`,
+  );
+});
+
+await check("project_root_redirects_to_chats", async () => {
+  await navigate(page, project.path);
+  const landed = await waitForChats(page);
+  await shot(page, "project-dispatch-chats");
+  record(
+    "project_root_redirects_to_chats",
+    landed.id === project.id && detailPath() === `${project.path}/chats`,
+    `${project.path} 落到 ${detailPath()}`,
   );
 });
 
 await check("history_back_and_forward_keep_target", async () => {
+  await navigate(page, "/projects");
+  await page.waitForSelector('[data-testid="project-list"]', { timeout: 20000 });
+  await navigate(page, `${project.path}/settings`);
+  await page.waitForSelector('[data-testid="project-settings-id"]', { timeout: 20000 });
   await page.goBack({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="project-list"]', { timeout: 20000 });
   const listPath = detailPath();
   await page.goForward({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="project-settings-id"]', { timeout: 20000 });
   record(
     "history_back_and_forward_keep_target",
-    listPath === "/projects" && page.url() === projectUrl,
+    listPath === "/projects" && page.url() === `${BASE}${project.path}/settings`,
     `后退到 ${listPath}，前进回 ${detailPath()}`,
   );
 });
 
 await check("empty_name_shows_field_error_and_request_id", async () => {
-  await page.goBack({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="new-project-trigger"]', { timeout: 20000 });
-  await page.click('[data-testid="new-project-trigger"]');
+  await openCreateDialog(page);
   const responsePromise = page.waitForResponse((response) =>
     response.url().includes("/_serverFn/"),
   );
@@ -212,7 +232,7 @@ await check("long_description_shows_field_error", async () => {
 });
 
 await check("missing_project_shows_not_found", async () => {
-  await page.goto(`${BASE}/projects/prj_00000000-0000-4000-8000-000000000000`, {
+  await page.goto(`${BASE}/projects/prj_00000000-0000-4000-8000-000000000000/chats`, {
     waitUntil: "domcontentloaded",
   });
   await page.waitForSelector('[data-testid="project-error"]', { timeout: 20000 });
@@ -229,8 +249,7 @@ await check("missing_project_shows_not_found", async () => {
 });
 
 await check("signed_out_visit_redirects_to_login", async () => {
-  await page.click('[data-testid="sign-out"]');
-  await page.waitForURL((url) => url.pathname === "/login", { timeout: 20000 });
+  await signOut(page);
   await page.goto(`${BASE}/projects`, { waitUntil: "domcontentloaded" });
   await page.waitForURL((url) => url.pathname === "/login", { timeout: 20000 });
   await page.waitForSelector('input[name="email"]', { timeout: 20000 });

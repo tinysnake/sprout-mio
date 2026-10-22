@@ -101,6 +101,8 @@ B 的 `listProjectsFn` 必须只返回 B 的 Project ID，`listAgentProfilesFn` 
 
 ## 七个页面的导航矩阵
 
+下表是迁移前 P2 当时的七个目标与当时测得的证据，保留为历史记录。I-P1/P2 UI 迁移后仍是七个目标，但 Project 根、成员路径与 Info Hub 承接面已变，重写后的验收契约见 [I-P1/P2 UI 迁移后的验收契约](#i-p1p2-ui-迁移后的验收契约)。
+
 | 目标       | URL                         | 目标证据                                                     |
 | ---------- | --------------------------- | ------------------------------------------------------------ |
 | `project`  | `/projects/<A>`             | Project 名、Project 子导航、Info Hub Agent 名、DM 链接       |
@@ -171,3 +173,31 @@ P2-f 之后还有 g、h、i、j 四个 unit。P2 最终基线截止 `db185f8`，
 | j，第三家族只读审查 | 无 PR。glm 在本次审查前无 P2 产出，相对 sol 的 a/e/f 与 mimo 的 b/c/d 独立；未发现授权、事务或校验缺陷，确认五份映射重复 | 原报告 `/tmp/p2-j-review/report.md` 与 exp1 至 exp5 为本机产物；i 的门禁可复跑共享表回归，不能替代 j 的全部只读实验                                       |
 
 j 的未修事项已由 coordinator 路由。CSRF 中间件归 P7 前；`getInstance` 死代码与跨实体归属约束原路由 P3，P3-e 已证实不一致 run 可被 SQL 写入但领域层拒绝消费，约束方案继续归 P4+；索引缺口归 P5。
+
+## I-P1/P2 UI 迁移后的验收契约
+
+导航从顶部 header 改为侧栏，Project 详情页消失，事实并入 Settings。上文各节记录的是迁移前真实跑出的结果，**不改写**；迁移后的浏览器脚本已按下列契约重写，但本轮没有可用的产品实现依赖（u3/u4 未完成），因此迁移后的条数与结果尚未产生，不能引用上文的 `65 条`、`12 条` 等历史数字。集成后由 coordinator 组装运行并补记。
+
+路由与承接面：
+
+| 目标       | URL                         | 目标证据                                                                                                                |
+| ---------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `project`  | `/projects/<A>`             | Project 根不带页面，必须重定向到 `/projects/<A>/chats` 并渲染 Chat 列表                                                 |
+| `settings` | `/projects/<A>/settings`    | 三项配置、`project-settings-id`、`project-settings-created-at`、`project-settings-request-id`，折叠区内的 Project Info Hub |
+| `members`  | `/projects/<A>/members`     | Agent 成员名（旧 `/projects/<A>/agents` 不保留别名）                                                                    |
+| `chats`    | `/projects/<A>/chats`       | chat ID 的单元素列表                                                                                                    |
+| `chat`     | `/projects/<A>/chats/<cnv>` | chat、instance、人设、消息；Info Hub 在 inspector 内，由 `?info=1` 恢复                                                |
+| `agents`   | `/agents`                   | profile 名与 ID 的单元素列表                                                                                            |
+| `agent`    | `/agents/<agp>`             | profile ID 与人设                                                                                                       |
+
+每条目标的直接进入、刷新、后退、前进仍逐项断言，第七行之后回到第一行。跨页不变的统一断言改为侧栏上下文：`project-selector` 的可见文本等于当前 Project 名，`tab-chats`、`tab-agents`、`tab-settings` 的 href 分别等于该 Project 的 chats、members、settings。`settings` 目标另外断言 Project 事实与 Info Hub 面板；`chat` 目标另外断言 inspector 内的 instance、成员、消息数与 turn 上下文。
+
+入口与身份：
+
+- `/` 认证后分发到 `/projects`；零 Project 显示创建入口，一个 Project 直接进入其 Chats，两个及以上才显示列表。注册播种「我的项目」，所以注册与登录后都直达 Chats，列表断言改为创建第二个 Project 之后显式访问 `/projects`。
+- 创建 Project 从侧栏 `project-selector` 打开，`new-project-trigger` 启动真实表单；成功后直接落到新 Project 的 Chats，选择器可见文本换成新名称，并且弹层已收起。
+- 身份断言读 `account-menu` 弹层内的 `session-email`，登出先点 `account-menu` 再点 `sign-out`。
+- Project Info Hub 在 Settings 的折叠区，Chat Info Hub 在 inspector 内；两者都先用真实点击或 `?info=1` 打开再断言，不靠等待隐含渲染。
+
+保留不变的断言：两用户的页面与 17 条 RPC `not_found`、错误 requestId 等于响应头、完整响应体零泄漏、B 自己的 Project 正常对照；重启前后 chat、instance、两条消息正文与顺序、三项配置与人设的字面量；`profile × chat` 的 SQLite 反证；不存在的 Project、Agent、Chat 的 `not_found` 与 `req_`；Machine 仍显式未实现（`P4`），整页拒绝「0 个活动 run」「无活动 run」「无 Machine」这类成功空值文案；每条流程零 `console.error` 与零 `pageerror`。页面脚本共用 `scripts/browser/ui-navigation.mjs` 承担分发、选择器创建、账号菜单与 Info Hub 展开，五个流程不各自复制一套定位。
+

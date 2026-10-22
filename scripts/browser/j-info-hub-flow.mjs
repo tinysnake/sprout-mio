@@ -2,6 +2,13 @@
 // 断言 run 视角渲染为真实运行事实、Machine（P4）视角仍为显式不可用文案，每步打印 PASS/FAIL。
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
+import {
+  chatInspectorPath,
+  createProject,
+  navigate,
+  openProjectInfoHub,
+  waitForChats,
+} from "./ui-navigation.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = new URL("../../docs/p1/evidence/", import.meta.url).pathname;
@@ -53,6 +60,7 @@ const joinedPersona = "已加入的分身人设：负责这个 Project 的验收
 const firstMessage = "第一条消息：Info Hub 验收";
 const secondMessage = "第二条消息：消息统计取我";
 const pathOf = () => new URL(page.url()).pathname;
+let project = {};
 let projectPath = "";
 let chatPath = "";
 let chatId = "";
@@ -90,18 +98,14 @@ await check("register_and_create_project", async () => {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
-  await page.waitForURL((url) => url.pathname === "/", { timeout: 20000 });
-  await page.click('[data-testid="open-projects"]');
-  await page.waitForURL((url) => url.pathname === "/projects", { timeout: 20000 });
-  await page.click('[data-testid="new-project-trigger"]');
-  await page.fill('[data-testid="project-name-input"]', projectName);
-  await page.fill('[data-testid="project-description-input"]', "P2 Info Hub 验收");
-  await page.click('[data-testid="project-submit"]');
-  await page.waitForSelector('[data-testid="project-item"]', { timeout: 20000 });
-  await page.click('[data-testid="project-item-name"]');
-  await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
-  projectPath = pathOf();
-  record("register_and_create_project", true, `注册登录并创建 ${projectName}，hub ${projectPath}`);
+  await waitForChats(page);
+  project = await createProject(page, { name: projectName, description: "P2 Info Hub 验收" });
+  projectPath = project.path;
+  record(
+    "register_and_create_project",
+    pathOf() === `${projectPath}/chats`,
+    `注册登录并创建 ${projectName}，落到 ${pathOf()}`,
+  );
 });
 
 await check("create_two_profiles_join_one", async () => {
@@ -112,7 +116,7 @@ await check("create_two_profiles_join_one", async () => {
     outsiderName,
     "未加入的分身人设：不应出现在 Info Hub 聚合里",
   );
-  await page.goto(`${BASE}${projectPath}/agents`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE}${projectPath}/members`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="add-member-select"]', { timeout: 20000 });
   await page.selectOption('[data-testid="add-member-select"]', { label: joinedName });
   await page.click('[data-testid="add-member-submit"]');
@@ -174,8 +178,8 @@ await check("start_dm_and_send_two_messages", async () => {
 });
 
 await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
-  await page.goto(`${BASE}${projectPath}`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="info-hub-project-agents"]', { timeout: 20000 });
+  await page.goto(`${BASE}${projectPath}/settings`, { waitUntil: "domcontentloaded" });
+  await openProjectInfoHub(page);
   const panel = await page.evaluate(() => {
     const root = document.querySelector('[data-testid="info-hub-project-agents"]');
     // 面板里可能有多位成员，按名字定位本次加入的那一项再取它的人设。
@@ -213,6 +217,7 @@ await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
 });
 
 await check("unavailable_notices_render_explicitly", async () => {
+  await openProjectInfoHub(page);
   const notices = await page.evaluate(() => ({
     machinesReason: document.querySelector('[data-testid="info-hub-machines-notice-reason"]')
       ?.textContent,
@@ -242,6 +247,8 @@ await check("unavailable_notices_render_explicitly", async () => {
 await check("hub_dm_link_opens_chat", async () => {
   await page.click('[data-testid="info-agent-dm-link"]');
   await page.waitForURL((url) => url.pathname === chatPath, { timeout: 20000 });
+  // Chat 视角的 Info Hub 在 inspector 里，打开它才能断言面板；URL 只多了恢复用的浏览参数。
+  await navigate(page, chatInspectorPath(chatPath));
   await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
   record("hub_dm_link_opens_chat", pathOf() === chatPath, `面板 DM 链接跳转到 ${pathOf()}`);
 });
@@ -285,10 +292,10 @@ await check("chat_info_panel_matches_page", async () => {
 });
 
 await check("deep_link_and_reload_keep_values", async () => {
-  await page.goto(`${BASE}${projectPath}`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="info-hub-project-agents"]', { timeout: 20000 });
+  await page.goto(`${BASE}${projectPath}/settings`, { waitUntil: "domcontentloaded" });
+  await openProjectInfoHub(page);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="info-hub-project-agents"]', { timeout: 20000 });
+  await openProjectInfoHub(page);
   const hubReload = await page.evaluate(() => ({
     names: [...document.querySelectorAll('[data-testid="info-agent-name"]')].map((node) =>
       node.textContent?.trim(),
@@ -298,7 +305,7 @@ await check("deep_link_and_reload_keep_values", async () => {
       ?.getAttribute("data-chat-id"),
   }));
   await shot(page, "p2-j-info-hub-deep-reload");
-  await page.goto(`${BASE}${chatPath}`, { waitUntil: "domcontentloaded" });
+  await navigate(page, chatInspectorPath(chatPath));
   await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
@@ -329,7 +336,7 @@ writeFileSync(
   JSON.stringify(
     {
       baseUrl: BASE,
-      projectId: projectPath.split("/").pop(),
+      projectId: project.id,
       projectPath,
       chatPath,
       chatId,

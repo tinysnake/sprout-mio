@@ -60,14 +60,14 @@ getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView
 
 `src/components/info-hub/`：
 
-- `project-agents-panel.tsx`：`ProjectAgentsPanel` 渲染成员、profile 名称、人设摘要与已有 DM 的链接（`info-agent-dm-link`），并渲染 `info-hub-runs-notice`。
-- `chat-info-panel.tsx`：`ChatInfoPanel` 渲染类型、归档状态、成员、分身身份、消息统计，并渲染 `info-chat-runs-notice`。
+- `project-agents-panel.tsx`：`ProjectAgentsPanel` 渲染成员、profile 名称、人设摘要与已有 DM 的链接（`info-agent-dm-link`），并渲染 run 事实块。
+- `chat-info-panel.tsx`：`ChatInfoPanel` 渲染类型、归档状态、成员、分身身份、消息统计，并渲染 run 事实块。
 - `unavailable-notice.tsx`：`UnavailableNotice` 渲染显式不可用状态（`-badge` 为「未实现」，`-reason` 为原因文案）。
 
 页面接入（不新增路由、不新增一级导航，`src/routeTree.gen.ts` 未改）：
 
-- Project hub `src/routes/_authed/projects.$projectId.tsx`：loader 与 `getProjectFn` 并取 `getProjectInfoHubFn`；子导航之后渲染 `ProjectAgentsPanel` 与 `info-hub-machines-notice`，失败显示 `info-hub-error`。
-- 对话页 `src/routes/_authed/projects.$projectId.chats.$chatId.tsx`：loader 在 chat 的 projectId 与 URL 一致后并取 `getChatInfoFn`，渲染 `ChatInfoPanel`，失败显示 `info-hub-chat-error`。
+- Project settings `src/routes/_authed/projects.$projectId.settings.tsx`：loader 与 `getProjectFn` 并取 `getProjectInfoHubFn`；Project 事实与配置之后在折叠区渲染 `ProjectAgentsPanel` 与 `info-hub-machines-notice`，失败显示 `info-hub-error`。折叠区内渲染意味着测试需先用真实点击展开（`project-info-hub-toggle`）。
+- 对话页 `src/routes/_authed/projects.$projectId.chats.$chatId.tsx`：loader 在 chat 的 projectId 与 URL 一致后并取 `getChatInfoFn`，在 inspector 里渲染 `ChatInfoPanel`，失败显示 `info-hub-chat-error`。inspector 由 `?info=1` 或页面开关恢复，测试先打开它再断言面板。
 - 两页的 Info Hub 信息都只来自这两个入口；深链、刷新、前进后退行为沿用 p2-b、p2-c 的验收并由 j 的浏览器流程复验。
 
 ## 验证记录

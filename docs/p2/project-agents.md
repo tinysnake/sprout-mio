@@ -4,15 +4,17 @@
 
 ## 路由清单与 URL 形状
 
-| URL                             | 文件                                                  | 作用                                                           |
-| ------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
-| `/agents`                       | `src/routes/_authed/agents.index.tsx`                 | 全局 Agent profile 列表（仅当前用户创建的）与新建入口          |
-| `/agents/$agentProfileId`       | `src/routes/_authed/agents.$agentProfileId.tsx`       | profile 详情与编辑表单                                         |
-| `/projects/$projectId`          | `src/routes/_authed/projects.$projectId.tsx`          | Project hub：Project 基本信息与子页导航，同时渲染 `<Outlet />` |
-| `/projects/$projectId/settings` | `src/routes/_authed/projects.$projectId.settings.tsx` | Git remote、默认分支、工作目录                                 |
-| `/projects/$projectId/agents`   | `src/routes/_authed/projects.$projectId.agents.tsx`   | Project 的 Agent 成员列表与添加/移除                           |
+| URL                             | 文件                                                    | 作用                                                                 |
+| ------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
+| `/agents`                       | `src/routes/_authed/agents.index.tsx`                   | 全局 Agent profile 列表（仅当前用户创建的）与新建入口                |
+| `/agents/$agentProfileId`       | `src/routes/_authed/agents.$agentProfileId.tsx`         | profile 详情与编辑表单                                               |
+| `/projects`                     | `src/routes/_authed/projects.index.tsx`                 | 入口分发：零个 Project 显示创建入口，一个进入该 Project 的 Chats，多个显示列表 |
+| `/projects/$projectId`          | `src/routes/_authed/projects.$projectId.tsx`            | Project 上下文布局：授权 loader、错误块与 `<Outlet />`，自身没有页面 |
+| `/projects/$projectId/chats`    | `src/routes/_authed/projects.$projectId.chats.index.tsx` | Project 的 DM 列表与发起入口（Project 根重定向到这里）             |
+| `/projects/$projectId/settings` | `src/routes/_authed/projects.$projectId.settings.tsx`   | Project 事实（ID、创建时间、requestId）、基本信息与 Git 配置         |
+| `/projects/$projectId/members`  | `src/routes/_authed/projects.$projectId.members.tsx`    | Project 的 Agent 成员列表与添加/移除                                 |
 
-`agents.tsx` 是渲染 `<Outlet />` 的公共外壳，与 P1 的 `projects.tsx` 同构。`projects.$projectId.tsx` 直接作为 hub，没有 `$projectId.index.tsx`，三条 Project 子页 URL 与两条 Agent URL 都能直接刷新。Project 上下文完全由 URL 推导，每个 `$projectId` 子页的 loader 各自调用授权查询（settings 走 `getProjectProfileFn`，agents 走 `listProjectMembersFn`，都经 `assertProjectAccess`），不属于当前用户的 projectId 显示 not_found 错误块而不是空白页。`_authed.tsx` 的导航在 Project 之外新增 Agents 链接，未新增 Machines 与 Management。
+`agents.tsx` 是渲染 `<Outlet />` 的公共外壳，与 P1 的 `projects.tsx` 同构。`projects.$projectId.tsx` 只承担 Project 上下文布局，`projects.$projectId.index.tsx` 把 Project 根重定向到 Chats；三条 Project 子页 URL 与两条 Agent URL 都能直接刷新。Project 上下文完全由 URL 推导，每个 `$projectId` 子页的 loader 各自调用授权查询（settings 走 `getProjectProfileFn`、`getProjectFn` 与 `getProjectRepoStateFn`，members 走 `listProjectMembersFn`，都经 `assertProjectAccess`），不属于当前用户的 projectId 显示 not_found 错误块而不是空白页。侧栏一级入口是 Projects、Agents、Machines（未实现，P4）与 Management（未实现），Project 内的 Chats、Members、Project settings 是侧栏二级菜单。
 
 ## 边界函数清单
 
@@ -43,6 +45,9 @@
 - 添加成员的下拉只列出 `listAgentProfiles` 返回的当前用户 profile，且过滤掉已在成员集合里的 profile；移除按钮弹出 `window.confirm` 二次确认，不静默删除。
 - 表单字段错误显示在对应输入旁（`field-error-*`），顶层错误沿用 `ResultError` 显示 code、message 与 requestId。
 - 所有写操作成功后调用 `router.invalidate()` 刷新 loader，不改本地 state 冒充成功。无 `project_profile` 行时 settings 表单展示领域服务给出的默认值（分支 `main`）。
+- Project ID、创建时间与当前 requestId 由 Settings 页面作为事实展示（`project-settings-id`、`project-settings-created-at`、`project-settings-request-id`）；Project Info Hub 面板也在 Settings 的折叠区展开。
+
+I-P1/P2 UI 迁移后的入口与导航契约（侧栏导航、Project 选择器、根重定向与 `/agents` → `/members`）见 [P2 验收的迁移后契约](acceptance.md#i-p1p2-ui-迁移后的验收契约)。
 
 ## 验证记录
 
@@ -67,7 +72,7 @@
 
 ## 截图
 
-真实 Chromium 截图位于 `docs/p1/evidence/`，文件名前缀 `p2-h-`：`p2-h-project-hub`、`p2-h-project-settings`、`p2-h-project-settings-reload`、`p2-h-agents-list`、`p2-h-agent-detail`、`p2-h-project-members`、`p2-h-project-members-empty`、`p2-h-deep-settings`、`p2-h-deep-agent`、`p2-h-settings-not-found`、`p2-h-agent-not-found`。
+真实 Chromium 截图位于 `docs/p1/evidence/`，文件名前缀 `p2-h-`：`p2-h-project-chats`（迁移后 Project 根重定向到 Chats）、`p2-h-project-settings`、`p2-h-project-settings-reload`、`p2-h-agents-list`、`p2-h-agent-detail`、`p2-h-project-members`、`p2-h-project-members-empty`、`p2-h-deep-settings`、`p2-h-deep-agent`、`p2-h-settings-not-found`、`p2-h-agent-not-found`。迁移前的 `p2-h-project-hub` 记录的是已取消的 Project 详情页，不再重拍。
 
 ## 未验证项
 

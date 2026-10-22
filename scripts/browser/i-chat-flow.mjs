@@ -2,6 +2,7 @@
 // CHAT_VERIFY=1 时进入第二次会话模式：读取状态文件，用于服务重启后的持久性断言。
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
+import { createProject, waitForChats } from "./ui-navigation.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = new URL("../../docs/p1/evidence/", import.meta.url).pathname;
@@ -126,6 +127,7 @@ if (process.env.CHAT_VERIFY === "1") {
   const firstMessage = "第一条消息：你好";
   const secondMessage = "第二条消息：确认持久";
   const pathOf = () => new URL(page.url()).pathname;
+  let project = {};
   let projectPath = "";
   let agentId = "";
   let chatId = "";
@@ -141,21 +143,17 @@ if (process.env.CHAT_VERIFY === "1") {
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', password);
     await page.click('button[type="submit"]');
-    await page.waitForURL((url) => url.pathname === "/", { timeout: 20000 });
-    await page.click('[data-testid="open-projects"]');
-    await page.waitForURL((url) => url.pathname === "/projects", { timeout: 20000 });
-    await page.click('[data-testid="new-project-trigger"]');
-    await page.fill('[data-testid="project-name-input"]', projectName);
-    await page.fill('[data-testid="project-description-input"]', "P2 Chat/DM 验收");
-    await page.click('[data-testid="project-submit"]');
-    await page.waitForSelector('[data-testid="project-item"]', { timeout: 20000 });
-    record("register_and_create_project", true, `注册登录并创建 ${projectName}`);
+    await waitForChats(page);
+    project = await createProject(page, { name: projectName, description: "P2 Chat/DM 验收" });
+    projectPath = project.path;
+    record(
+      "register_and_create_project",
+      pathOf() === `${projectPath}/chats`,
+      `注册登录并创建 ${projectName}，落到 ${pathOf()}`,
+    );
   });
 
   await check("create_agent_profile_and_member", async () => {
-    await page.click('[data-testid="project-item-name"]');
-    await page.waitForSelector('[data-testid="project-detail-name"]', { timeout: 20000 });
-    projectPath = pathOf();
     await page.click('[data-testid="nav-agents"]');
     await page.waitForURL((url) => url.pathname === "/agents", { timeout: 20000 });
     await page.click('[data-testid="new-agent-trigger"]');
@@ -173,7 +171,7 @@ if (process.env.CHAT_VERIFY === "1") {
     await page.click(`[data-testid="agent-item-name"] >> text=${agentName}`);
     await page.waitForSelector('[data-testid="agent-detail-id"]', { timeout: 20000 });
     agentId = (await page.textContent('[data-testid="agent-detail-id"]')) ?? "";
-    await page.goto(`${BASE}${projectPath}/agents`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${BASE}${projectPath}/members`, { waitUntil: "domcontentloaded" });
     // 默认 Agent 已是成员，等新 profile 出现在可选列表。
     await page.waitForFunction(
       (name) =>
@@ -332,6 +330,7 @@ if (process.env.CHAT_VERIFY === "1") {
     JSON.stringify(
       {
         baseUrl: BASE,
+        projectId: project.id,
         projectPath,
         chatPath,
         chatId,
