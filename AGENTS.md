@@ -8,8 +8,22 @@
 
 数据库已经合并的迁移同样不做兼容处理。迁移文件在本机与验收库里都可重建，需要改表名或列名时直接新增迁移，不为已存在的旧库写兼容分支。共享库的处置按 `docs/p1/conventions.md` 的迁移约定执行。
 
+## 前端任务
+
+修改前端前必须读取 `docs/frontend-design.md` 和 `docs/frontend-conventions.md`，并核对受影响组件、业务契约与验收脚本。
+
+- 后续设计与实现以仓库为准，不依赖 OpenDesign；历史原型仅作为 `design/archive/` 中的冻结参考。
+- 复用 React + TypeScript、Tailwind、shadcn + Base UI 与已有共享组件。现有默认组件尚未全部适配设计，不把默认外观或原型模板残留当作规范。
+- `src/theme.css` 是 token 唯一所有者。组件使用语义颜色，不硬编码色值或另起色板；常规外观使用 Tailwind，复杂布局允许有明确归属的少量 CSS。
+- 演示与真实页面共用呈现组件，fixture 和模拟操作限制在开发场景；正式代码不导入 dev 或归档实现。
+- 保持已确认的导航、900px / 1200px 布局边界及业务状态语义。隐藏的类型筛选停止过滤；不虚构未实现能力，不删除已有 P3 能力。
+- 视觉变更保存并查看截图，交互变更验证实际操作；构建通过不能替代浏览器检查。更新测试定位时保留身份、权限、持久性与状态的行为断言。
+- 新设计方向、技术验收和 Human 体验确认分别记录；常规实现沿用已授权规则直接推进，不为每个样式修改重复请求批准。
+
 ## 相关文档
 
 - `docs/development-plan.md`：当前阶段、任务分派与完成记录
 - `docs/core-scope.md`：一期范围、二期范围与统一术语
 - `docs/p1/conventions.md`：数据库约束、迁移与新增功能的步骤
+- `docs/frontend-design.md`：前端设计基线、布局、导航、主题与交互规则
+- `docs/frontend-conventions.md`：前端组件、Tailwind / CSS、演示与真实接入、验证和交付约束

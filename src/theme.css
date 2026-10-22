@@ -2,9 +2,8 @@
  * 设计令牌的唯一所有者。
  *
  * 这里是颜色的唯一定义处：组件只使用语义层（--background、--foreground、
- * --border 等），语义层只引用下方的基础色板。OpenDesign 设计稿的
- * `src/tokens.css` 由本文件生成（`node scripts/sync-design-tokens.mjs`），
- * 两边不各自维护一份数值。
+ * --border 等）。前端组件与开发演示共同使用本文件，不维护第二套数值。
+ * design/archive/ 中的原型令牌只是冻结的历史快照，不再同步。
  *
  * 取值来自已确认的设计方向：中性暖底 + 单一橙色强调。浅暗两套主题沿用
  * 同一组语义名，只覆盖数值。

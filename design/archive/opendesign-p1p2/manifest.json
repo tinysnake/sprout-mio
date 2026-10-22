@@ -1,0 +1,92 @@
+{
+  "capturedAt": "2026-10-22T01:24:22.023544+00:00",
+  "repoBaseline": "54abef9f11ef3ee9bdd1f863b7bf519bebffacea",
+  "origin": {
+    "tool": "OpenDesign",
+    "projectId": "5308157a-31ed-4f1d-ad69-64cacf6ad76c"
+  },
+  "purpose": "Frozen migration reference; not an active UI implementation or source of design tokens.",
+  "archiveSha256": "0bdd54eda5085936f5d79b6ef68b693576c0bfe95639ae05b3b39cc07533b54e",
+  "files": [
+    {
+      "path": "package.json",
+      "bytes": 526,
+      "sha256": "4bcd774e628da684af43fa01a8e80c117e0f4c0b4d63acb0d2456b65cad933fa"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 69447,
+      "sha256": "e5e90bb3c11b3a89d8075376222b56eeea25cc9d96367223da5ea3d3d76e4032"
+    },
+    {
+      "path": "src/app.css",
+      "bytes": 51296,
+      "sha256": "d586bc145f10a50828f200073ff10269fa62a443dda3b34c8b6358b3b91c9f95"
+    },
+    {
+      "path": "src/app.jsx",
+      "bytes": 89526,
+      "sha256": "36732fd83d950ea535d6d90d08374f1d80090954b4d67de15743a4a029afb4f3"
+    },
+    {
+      "path": "src/cursor-tokens.css",
+      "bytes": 9930,
+      "sha256": "f981eaf138123bb5562cc55aa7001824a905a14fe53ced2cd71aaec8e56cb4cf"
+    },
+    {
+      "path": "src/model.mjs",
+      "bytes": 6613,
+      "sha256": "fcac47da83b11c91d831fd8293e08ce1f3305a283acfd6a361126a71e5e5dfeb"
+    },
+    {
+      "path": "src/router.mjs",
+      "bytes": 6388,
+      "sha256": "7d716a572d4af5d64f3c8a0108e85de6bf3cb3d4c1134894e43794ddbcf3f85b"
+    },
+    {
+      "path": "src/tokens.css",
+      "bytes": 4899,
+      "sha256": "81ef09f75ce402b5f92952ce6b2109e3b58b7a4f0f30c62c6536ab1a385b8731"
+    },
+    {
+      "path": "scripts/build.mjs",
+      "bytes": 6500,
+      "sha256": "aac0b68eed6d9576d5733aaa9024961cf3ca52575fe7f8f3879b0a3fcf9fb5b6"
+    },
+    {
+      "path": "scripts/check.mjs",
+      "bytes": 5678,
+      "sha256": "a93dbd61f9090ced45ccc0c4716c0fe2295faec47b9cffc2450423b062594e24"
+    },
+    {
+      "path": "scripts/serve.mjs",
+      "bytes": 964,
+      "sha256": "adc110e2a1ca1553591754d7b0e6aa05954f1608125348fc54ba165bb7561dc4"
+    },
+    {
+      "path": "tests/behavior.test.mjs",
+      "bytes": 24581,
+      "sha256": "52a8a98a778f05e2b08cb1f95a6060012a768d3b2abe426adf5f46c63d67c1ad"
+    },
+    {
+      "path": "tests/p1p2-pages.test.mjs",
+      "bytes": 18644,
+      "sha256": "c733f240a9f07fd65325128c4ee72bc598fd3054f9a9f3b16161ca4202e95b7b"
+    },
+    {
+      "path": "tests/project-pages.test.mjs",
+      "bytes": 12234,
+      "sha256": "9fdbdbc9b43bcbf58c5b8a5f70c35bbda796afc7ea907a26842e4aef231516b4"
+    },
+    {
+      "path": "tests/router.test.mjs",
+      "bytes": 14180,
+      "sha256": "ddb914127f2cdd1ab3e649c966ba05fee294791b7ca320dc2bd3295823f8a59b"
+    },
+    {
+      "path": "sprout-mobile.html",
+      "bytes": 2606,
+      "sha256": "16ff09f0960b22909277f461bbd8dc8aa6b27e26aaf59d8141b7bdc9d4cc425c"
+    }
+  ]
+}

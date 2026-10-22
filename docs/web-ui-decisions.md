@@ -1,13 +1,13 @@
 # Web UI 与 PWA：决策记录
 
-状态：本文记录已确认的交互方向，不代表实现已经完成。业务范围与分期以 [core-scope.md](core-scope.md) 为准；具体页面布局和路由格式留待设计。
+状态：本文记录已确认的交互方向，不代表实现已经完成。业务范围与分期以 [core-scope.md](core-scope.md) 为准；已确定的页面布局和交互以 [前端设计基线](frontend-design.md) 为准，代码约束见 [前端开发约定](frontend-conventions.md)。后续设计与开发以仓库组件及演示为入口，OpenDesign 原型仅作归档参考。
 
 ## 实现基础与重构范围
 
 - 参考原 [Sprout](https://github.com/tinysnake/sprout) 的生产 Web 代码与设计，依据 Mio 的现有需求进行重构，不能直接照抄旧界面和业务规则。
 - 支持桌面端和手机端，采用 single page app（SPA）。当前客户端形态构思到 Web 与 PWA，尚未选定或承诺原生 desktop / mobile App 的容器技术。
 - 优先复用或改造符合新需求的基础组件、主题、跨端布局、软键盘视口、聊天滚动及连接处理。旧业务规则须按 Mio 的 Chat、Task、分身、run 和租约定义逐项检查。
-- Projects 页面变化较大；其余页面以省去不适用的信息和调整必要业务行为为主，基本结构无需全面重做。
+- 页面结构采用已确认的 Mio 工作区和导航设计，在现有代码中迁移呈现，保留已有业务能力；不能因为旧界面或工具原型可运行而继续维护两份正式 UI。
 - UX 细节在实际使用过程中逐步完善，不把多行输入、富文本、草稿同步等此前讨论的建议自动变成新的前置要求。
 
 ## 一级导航与功能层级
@@ -16,12 +16,12 @@
 
 | 入口 | 定位 | 二级功能方向 |
 | --- | --- | --- |
-| Projects | 项目列表与具体项目内的协作 | 可有二级功能，具体栏目留待设计 |
+| Projects | 当前 Project 上下文及项目内协作 | 当前为 Chats、Members、Project settings；侧栏入口只折叠二级菜单 |
 | Agents | Agent profiles 的列表与详情 | 当前不增加二级功能导航 |
 | Machines | Machines 的列表与详情 | 当前不增加二级功能导航 |
 | Management | 管理功能 | 可有二级功能，具体栏目留待设计 |
 
-- 不设置 Feed 页面。
+- 不设置 Feed 页面或全局 header。`/projects` 为零 / 单 / 多 Project 分发点；列表不作为常规导航目标，Project 基本事实并入 Project settings，不再设置独立详情页。Project 选择器只提供切换和创建，不提供“查看全部 Projects”。
 - 当前可能需要二级功能导航的只有 Projects 和 Management；对象详情和编辑界面仍可以有自己的路由，不等同于新增二级功能栏目。
 - Chat、Task 和项目相关的 Info Hub 信息在 Projects 内组织，不作为新的一级入口。
 - 桌面与手机沿用相同的一级导航与功能含义，具体布局按设备调整。

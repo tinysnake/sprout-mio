@@ -1,5 +1,7 @@
 # 开发约定
 
+前端设计与代码修改还必须遵守 [前端设计基线](../frontend-design.md) 和 [前端开发约定](../frontend-conventions.md)。两者规定共享组件、token、Tailwind / CSS、开发演示及浏览器验证方式；旧样例页面和默认组件外观不构成设计规范。
+
 ## 命名与归属
 
 普通文件名使用 kebab-case。导出的函数和变量使用 camelCase，类型和 React 组件使用 PascalCase，常量使用 UPPER_SNAKE_CASE。TanStack 约定的 `Route`、`__root.tsx` 与生成的 `routeTree.gen.ts` 保留框架命名。
