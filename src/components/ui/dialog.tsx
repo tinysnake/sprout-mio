@@ -55,7 +55,7 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid max-h-[90dvh] w-[calc(100%-2.5rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-container border border-border bg-popover p-6 text-sm text-popover-foreground duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 max-desktop:w-[calc(100%-2rem)] max-desktop:p-5",
+          "fixed top-1/2 left-1/2 z-50 grid max-h-[90dvh] w-[460px] max-w-[calc(100%-2.5rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-container border border-border bg-popover p-6 text-[13px] text-popover-foreground duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 max-desktop:max-w-[calc(100%-2rem)] max-desktop:p-5",
           className,
         )}
         {...props}
@@ -96,10 +96,7 @@ function DialogFooter({
   return (
     <div
       data-slot="dialog-footer"
-      className={cn(
-        "mt-2 flex flex-col-reverse gap-2 desktop:flex-row desktop:justify-end",
-        className,
-      )}
+      className={cn("mt-2 flex flex-wrap justify-end gap-2", className)}
       {...props}
     >
       {children}
@@ -125,7 +122,7 @@ function DialogDescription({ className, ...props }: DialogPrimitive.Description.
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "text-sm leading-6 text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        "text-[13px] leading-6 text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
         className,
       )}
       {...props}
