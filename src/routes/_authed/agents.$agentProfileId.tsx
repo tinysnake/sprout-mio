@@ -1,6 +1,9 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { AgentEditForm } from "../../components/agent/agent-edit-form";
+import { PageFrame } from "../../components/layout/page-frame";
+import { ThemeToggle } from "../../components/layout/theme-toggle";
 import { ResultError } from "../../components/project/result-error";
+import { Facts, SettingsSection } from "../../components/project/settings-section";
 import { getAgentProfileFn } from "../../server/functions/agent";
 
 export const Route = createFileRoute("/_authed/agents/$agentProfileId")({
@@ -13,34 +16,75 @@ function AgentDetailPage() {
   const result = Route.useLoaderData();
   const router = useRouter();
 
+  if (!result.ok)
+    return (
+      <PageFrame
+        title="Agent profile 不存在"
+        description="请返回列表选择已有 profile。"
+        back={<Link to="/agents">返回 Agents</Link>}
+        actions={<ThemeToggle />}
+        testId="agent-detail-page"
+      >
+        <ResultError error={result.error} testId="agent-error" />
+      </PageFrame>
+    );
+
+  const profile = result.data;
   return (
-    <section className="space-y-6">
-      <Link to="/agents" className="text-sm underline">
-        返回列表
-      </Link>
-      {!result.ok && <ResultError error={result.error} testId="agent-error" />}
-      {result.ok && (
-        <article className="space-y-6">
-          <header className="space-y-2">
-            <h1 data-testid="agent-detail-name" className="text-2xl font-semibold">
-              {result.data.name}
-            </h1>
-            <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
-              <dt className="text-muted-foreground">Profile ID</dt>
-              <dd data-testid="agent-detail-id" className="font-mono text-xs break-all">
-                {result.data.id}
-              </dd>
-              <dt className="text-muted-foreground">职位</dt>
-              <dd data-testid="agent-detail-job-title">{result.data.jobTitle ?? "未设置"}</dd>
-              <dt className="text-muted-foreground">harness</dt>
-              <dd data-testid="agent-detail-harness">{result.data.harness}</dd>
-              <dt className="text-muted-foreground">创建时间</dt>
-              <dd data-testid="agent-detail-created-at">{result.data.createdAt}</dd>
-            </dl>
-          </header>
-          <AgentEditForm profile={result.data} onSaved={() => void router.invalidate()} />
-        </article>
-      )}
-    </section>
+    <PageFrame
+      title={<span data-testid="agent-detail-name">{profile.name}</span>}
+      description={
+        <>
+          <span data-testid="agent-detail-job-title">{profile.jobTitle || "未设置职位"}</span>
+          {" · Agent profile"}
+        </>
+      }
+      back={<Link to="/agents">返回 Agents</Link>}
+      actions={<ThemeToggle />}
+      testId="agent-detail-page"
+    >
+      <SettingsSection
+        title="Profile 信息"
+        description="profile 的身份与宿主的 harness；修改人设不会重建分身，也不会改写历史对话。"
+      >
+        <Facts
+          items={[
+            {
+              label: "Profile ID",
+              testId: "agent-detail-id",
+              value: <code className="font-mono text-[0.6875rem]">{profile.id}</code>,
+            },
+            { label: "harness", testId: "agent-detail-harness", value: profile.harness },
+            {
+              label: "创建时间",
+              testId: "agent-detail-created-at",
+              value: (
+                <time
+                  dateTime={profile.createdAt}
+                  title={profile.createdAt}
+                  suppressHydrationWarning
+                >
+                  {new Date(profile.createdAt).toLocaleString("zh-CN", { hour12: false })}
+                </time>
+              ),
+            },
+            {
+              label: "最近修改",
+              testId: "agent-detail-updated-at",
+              value: (
+                <time
+                  dateTime={profile.updatedAt}
+                  title={profile.updatedAt}
+                  suppressHydrationWarning
+                >
+                  {new Date(profile.updatedAt).toLocaleString("zh-CN", { hour12: false })}
+                </time>
+              ),
+            },
+          ]}
+        />
+      </SettingsSection>
+      <AgentEditForm profile={profile} onSaved={() => void router.invalidate()} />
+    </PageFrame>
   );
 }
