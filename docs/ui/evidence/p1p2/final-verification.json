@@ -99,7 +99,7 @@
   "regressionStage": {
     "owner": "独立回归 worker（/tmp/ui-final-regression/report.md）",
     "result": "bash scripts/verify.sh 一次跑完 21 个脚本，scripts=21 failed=0；pnpm test 158 passed；r-ui-layout 29 项通过",
-    "status": "worker 执行通过，主线程本机复跑与最终判定待完成"
+    "status": "worker 执行通过；主线程已独立完整复跑该基线 21/21，见 technical-acceptance.md"
   },
   "images": [
     {
@@ -298,10 +298,10 @@
     "earlierP1P3InThisDir": "layout-*/list-*/p2-k2-*/p3-*/project-*.png 是主 checkout 先前阶段（8f7cce2 前后）留下的历史图片，原样保留不删除、不计入本轮最终版本；本轮最终版本的同类画面见 regressionImages。",
     "docsP1P3Evidence": "docs/p1/evidence 与 docs/p3/evidence 未改动。"
   },
-  "imagesStageNote": "images 全部是本轮在同一 worktree、同一 3261 dev server 上新跑的截图，对应 src 树 e61c23a；不含主 checkout 复制来的早期 foundation 图片。",
+  "imagesStageNote": "images 的 46 项截图跨两个代码状态：36 项 fixture 场景在本 worktree 的 3261 dev server 上以 251ddbb / src e61c23a 生成，真实业务 10 项在修复提交 c1fd6ba / src bf64431 后重跑生成；不含主 checkout 复制来的早期 foundation 图片。",
   "regressionImages": {
     "origin": "/tmp/ui-final-regression/evidence/（独立回归 worker 在 251ddbb 上跑 verify.sh 产生的本轮图片）",
-    "stage": "251ddbb 回归阶段；由 worker 生成，主线程本机复跑与最终判定待完成",
+    "stage": "251ddbb 回归阶段；worker 生成，主线程已独立复跑同一基线 21/21",
     "images": [
       {
         "path": "regression-project-created.png",
@@ -432,7 +432,7 @@
       ]
     }
   },
-  "status": "技术验收 PASS（独立验收）。46 项浏览器检查全部通过，跨两个代码状态：36 项 fixture 场景在 251ddbb，真实业务 10 项在修复提交 c1fd6ba 后重跑。主线程已读图 7 张，未见阻塞视觉问题；Human 体验确认仍待。",
+  "status": "技术验收 PASS（独立验收，报告已存入 technical-acceptance.md）。46 项浏览器检查全部通过，跨两个代码状态：36 项 fixture 场景在 251ddbb，真实业务 10 项在修复提交 c1fd6ba 后重跑。主线程读图 7 张并记录可指认观察，未声明截图视觉通过；Human 体验确认仍待。",
   "imagesPending": {
     "files": [],
     "reason": "真实业务 5 张图已替换为修复后重跑版本，sha256 已更新"
@@ -441,7 +441,7 @@
     "technical": {
       "verdict": "PASS",
       "independence": "由未参与实现的独立验收给出",
-      "source": "/tmp/ui-final-technical-acceptance.md（本机，未纳入版本库）",
+      "source": "technical-acceptance.md（本机报告原样复制）",
       "baselineRun": {
         "revision": "251ddbb",
         "scope": "21 个 verify 脚本",
@@ -456,7 +456,8 @@
       },
       "explicitNonClaims": [
         "21 个脚本没有在 3c745a6 上重新跑过",
-        "未追既有非阻塞项（标题字体、44px 遗漏、壳层回退显示、N+1、草稿生命周期等）",
+        "未扩大审查范围；N+1 与草稿生命周期等既有事项不在本轮验证内",
+        "标题字体、44px 触控与壳层回退显示已在 251ddbb 修复并由 r-ui-layout 29 项覆盖",
         "未重做全仓审查"
       ]
     },
@@ -464,11 +465,48 @@
       "reviewer": "主线程",
       "imagesRead": 7,
       "record": "visual-review.md",
-      "conclusion": "未见阻塞视觉问题；针对性读图，非逐像素比对"
+      "list": [
+        {
+          "path": "regression-layout-light-901.png",
+          "round": "前轮",
+          "observation": "901px 下分栏可见：列表、Chat 与右侧 Info Hub 同在，侧栏为图标窄栏"
+        },
+        {
+          "path": "regression-layout-dark-1440.png",
+          "round": "前轮",
+          "observation": "1440px 暗色 inspector 事实区正常，Chat ID、Instance ID、成员与运行事实分区可读"
+        },
+        {
+          "path": "regression-layout-light-390.png",
+          "round": "前轮",
+          "observation": "390px 手机单栏，inspector 与返回入口可见"
+        },
+        {
+          "path": "regression-p3-b-run-running-pending.png",
+          "round": "前轮",
+          "observation": "P3 运行中/排队中标识与「1 条输入未投递」同时出现"
+        },
+        {
+          "path": "final-real-settings-1440-light.png",
+          "round": "本轮",
+          "observation": "Settings 依次为基本信息、基本事实、协作配置；事实区展示 Project ID、创建时间、requestId"
+        },
+        {
+          "path": "final-login-390-dark.png",
+          "round": "本轮",
+          "observation": "390px 暗色登录页无横向裁切"
+        },
+        {
+          "path": "final-gallery-390-dialog-dark.png",
+          "round": "本轮",
+          "observation": "390px Dialog 左右各留 16px，取消与确认按钮同一行"
+        }
+      ],
+      "conclusion": "读图观察记录，不是逐像素比对，也不声明这 7 张截图视觉通过"
     },
     "human": {
       "status": "pending",
-      "note": "Human 体验确认未获得；技术 PASS 不连带 Human 确认，根目录与总计划不勾选"
+      "note": "Human 体验确认未获得；键盘操作与物理拖动仍待；技术 PASS 不连带 Human 确认"
     }
   }
 }

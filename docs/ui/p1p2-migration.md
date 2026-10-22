@@ -73,31 +73,31 @@
 - 环境：独立 SQLite `/tmp/ui-final-evidence/preview.sqlite`，`APP_ORIGIN=http://127.0.0.1:3261`，`SPROUT_PI_ENABLED=false`，`BETTER_AUTH_SECRET` 临时随机生成且未落盘记录。
 - 46 项浏览器检查：基础 gallery 16 项通过（`251ddbb`），管理场景 14 项通过（`251ddbb`），组合场景 6 项通过（`251ddbb`），共 36 项已定；真实业务 10 项在修复后重跑 10/10，`no_console_errors` 报 0 条（日志 `/tmp/ui-final-evidence/real-fixed.log`）。
 - 失败与修复：`settings` 页 `ProjectConfigForm` 与 `ProjectRepoPanel` 兄弟节点同用 `projectId` 作 key，React 报重复 key；修复提交 `3c745a6` 改为 `profile-` / `repo-` 前缀，本分支 cherry-pick 为 `c1fd6ba`。真实业务 5 张图已替换为修复后版本。
-- 回归阶段：独立 worker 在 `251ddbb` 上跑 `bash scripts/verify.sh`，21 个脚本 `failed=0`，单测 158 项通过，`r-ui-layout` 29 项通过；该结论为 worker 执行通过，主线程本机复跑与最终判定仍待完成。
+- 回归阶段：独立 worker 在 `251ddbb` 上跑 `bash scripts/verify.sh`，21 个脚本 `failed=0`，单测 158 项通过，`r-ui-layout` 29 项通过；主线程已在本机独立完整复跑该基线，结论见 [技术验收报告](evidence/p1p2/technical-acceptance.md)。
 - 截图：生成截图不等于视觉验收。生成命令、代码 commit、`HEAD:src` 树 hash（fixture 图为 `e61c23a`，真实业务图为修复后 `bf64431`）、每张图的 sha256、场景、主题、视口与来源写在 [最终验证记录](evidence/p1p2/final-verification.json)。
 
 ## 验收记录
 
 ### 技术验收（独立，PASS）
 
-由未参与实现的独立验收给出技术 PASS，结论与验证范围落在本机 `/tmp/ui-final-technical-acceptance.md`。范围分两段，不做超出该范围的声称。
+由未参与实现的独立验收给出技术 PASS，全文已原样保存为本目录的 [技术验收报告](evidence/p1p2/technical-acceptance.md)。范围分两段，不做超出该范围的声称。
 
 - 全量基线 `251ddbb`：主线程独立完整回归 `result.json` 记录 revision `251ddbb`、exitCode 0；`verify.log` 末行 `Verification scripts=21 failed=0`，单测 158 项通过，`r-ui-layout` 29 项通过。
 - 单点修复 `251ddbb..3c745a6`：只改 `src/routes/_authed/projects.$projectId.settings.tsx` 两行 key，仍随 `projectId` 变化，跨 Project 重挂语义保留。主线程独立复跑 `real-flow-check` 10/10、`no_console_errors` 0 条，`pnpm typecheck` 与 `pnpm check` 均 exit 0。
-- 明确不声称：21 个脚本没有在 `3c745a6` 上重新跑过；`3c745a6` 的复验只有真实 10 项加 typecheck / check。未追既有非阻塞项（标题字体、44px 遗漏、壳层回退显示、N+1、草稿生命周期等）。
+- 明确不声称：21 个脚本没有在 `3c745a6` 上重新跑过；`3c745a6` 的复验只有真实 10 项加 typecheck / check。未扩大审查范围，N+1 与草稿生命周期等既有事项仍不在本轮验证内；标题字体、44px 触控与壳层回退显示已在 `251ddbb` 修复并由 `r-ui-layout` 29 项覆盖。
 
 ### 视觉验收（主线程读图 7 张）
 
-主线程已实际读图 7 张，未发现阻塞视觉问题；清单、每张的场景与读图要点见 [视觉读图记录](evidence/p1p2/visual-review.md)。这是一次针对性读图，不是逐像素比对，也不等于 Human 体验确认。
+主线程已实际读图 7 张，清单、轮次与每张的可指认观察见 [视觉读图记录](evidence/p1p2/visual-review.md)。前 4 张为此前轮次已读，后 3 张为本轮读图。这是读图观察，不是逐像素比对，也不声明这 7 张截图视觉通过。
 
 ### Human 体验确认
 
-未获得。根目录计划与总计划均不勾选，技术验收通过不连带 Human 确认。
+未获得。根目录计划与总计划均不勾选，技术验收通过不连带 Human 确认。Human 的键盘操作与物理拖动体验仍待确认。
 
 ## 仍待完成
 
 - 回归复用：cherry-pick 只改 `settings` 页两个 key 字符串，未触及 36 项 fixture 场景的覆盖路径，因此未重跑这 36 项。
-- 视觉补看：深色真实业务页、多 Project 列表态与 P3 运行态截图未逐张确认，必要时由主线程补看。
-- Human 体验确认：未获得，根目录计划与总计划均不勾选。
+- 视觉补看：本轮 7 张之外的截图未逐张确认，包括多 Project 列表态与深色真实业务页。
+- Human 体验确认：未获得，根目录计划与总计划均不勾选；键盘操作与物理拖动仍待。
 
 后续补充逐项命令、最终绿色结果与 Human 确认。所有完成结论以实际核对结果为准。

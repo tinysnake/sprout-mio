@@ -4,15 +4,15 @@
 
 ## 索引
 
-- `final-verification.json` 是本轮唯一索引。`images` 是 `251ddbb`（`src` 树 `e61c23a`）上本轮新跑的 46 项截图；`regressionImages` 是独立回归 worker 在同一基线跑 `verify.sh` 产出的 R/P3、隔离与断点图；`retained` 说明原样保留、但**不计入最终版本**的历史图片。
+- `final-verification.json` 是本轮唯一索引。`images` 的 46 项截图跨两个代码状态：36 项 fixture 场景在 `251ddbb`（`src` 树 `e61c23a`），真实业务 10 项在修复提交 `c1fd6ba`（`src` 树 `bf64431`）后重跑；`regressionImages` 是独立回归 worker 在 `251ddbb` 跑 `verify.sh` 产出的 R/P3、隔离与断点图；`retained` 说明原样保留、但**不计入最终版本**的历史图片。
 - `base-verification.json` 是早期 foundation 阶段记录（来源 `0a64fd9`），连同它引用的 6 张 `base-*.png` 一起原样保留，用于文档链接存在与该阶段可追溯。
 
 ## 阶段边界
 
 | 文件 | 阶段 | 是否本轮最终版本 |
 | --- | --- | --- |
-| `final-*.png` | 本轮 46 项 | 是；`final-real-*` 为修复后重跑（`c1fd6ba`） |
-| `regression-*.png` | 本轮完整回归（`251ddbb`，worker 执行） | 是，主线程复跑待完成 |
+| `final-*.png` | 本轮 46 项，36 项 `251ddbb` + 真实 10 项修复后 `c1fd6ba` | 是 |
+| `regression-*.png` | 本轮完整回归（`251ddbb`，worker 执行） | 是，主线程已独立复跑 21/21 |
 | `base-*.png`、`base-verification.json` | foundation（`0a64fd9`） | 否 |
 | `layout-*`、`list-*`、`p2-*`、`p3-*`、`project-*`（无 `regression-` 前缀） | `8f7cce2` 前后历史轮次 | 否 |
 
