@@ -59,7 +59,9 @@ export async function readProjectFacts(page) {
     const value = (testId) => document.querySelector(`[data-testid="${testId}"]`)?.value;
     return {
       id: text("project-settings-id"),
-      createdAt: text("project-settings-created-at"),
+      createdAt: document
+        .querySelector('[data-testid="project-settings-created-at"] time')
+        ?.getAttribute("datetime"),
       requestId: text("project-settings-request-id"),
       name: value("project-edit-name"),
       description: value("project-edit-description"),
@@ -89,15 +91,10 @@ export async function signOut(page) {
   await page.waitForURL((url) => url.pathname === "/login", { timeout: 20000 });
 }
 
-// Project Info Hub 在 Settings 的折叠区；展开按钮的名字尚未冻结，先认 testid 再退回可见名称。
+// Project Info Hub 在 Settings 的折叠区，先通过真实点击展开再读事实。
 export async function openProjectInfoHub(page) {
   const panel = page.locator('[data-testid="info-hub-project-agents"]');
-  if ((await panel.count()) > 0) return;
-  const toggle = page.locator('[data-testid="project-info-hub-toggle"]');
-  const target =
-    (await toggle.count()) > 0
-      ? toggle.first()
-      : page.getByRole("button", { name: /Info Hub|运行事实|详细信息/ }).first();
-  await target.click();
-  await panel.waitFor({ timeout: 20000 });
+  if (await panel.isVisible()) return;
+  await page.getByTestId("project-info-hub-toggle").click();
+  await panel.waitFor({ state: "visible", timeout: 20000 });
 }

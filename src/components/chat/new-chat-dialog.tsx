@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import type { AgentProfile, ProjectMember } from "../../contracts/agent";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
@@ -36,7 +36,7 @@ export function DmStarter({
   /** 创建成功、即将导航时调用；嵌套在弹层里时用它关闭弹层。 */
   onStarted?: () => void;
 }) {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const names = new Map(profiles.map((profile) => [profile.id, profile.name]));
@@ -51,8 +51,9 @@ export function DmStarter({
         setError(result.error);
         return;
       }
+      await router.invalidate({ sync: true });
       onStarted?.();
-      await navigate({
+      await router.navigate({
         to: "/projects/$projectId/chats/$chatId",
         params: { projectId, chatId: result.data.chat.id },
       });

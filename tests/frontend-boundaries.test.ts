@@ -18,6 +18,24 @@ function within(path: string, directory: string) {
   return path === directory || path.startsWith(directory + sep);
 }
 
+function importTarget(path: string, specifier: string): string | undefined {
+  const value = specifier.split("?")[0] ?? "";
+  if (value.startsWith(".")) return resolve(dirname(path), value);
+  if (value.startsWith("@/") || value.startsWith("#/")) return resolve(sourceRoot, value.slice(2));
+  if (value.startsWith("/src/") || value.startsWith("/design/"))
+    return resolve(repoRoot, value.slice(1));
+  return value.startsWith("/") ? value : undefined;
+}
+
+function forbiddenTarget(path: string, specifier: string): boolean {
+  const target = importTarget(path, specifier);
+  return Boolean(
+    target &&
+    (within(target, join(sourceRoot, "dev")) ||
+      within(target, join(repoRoot, "design", "archive"))),
+  );
+}
+
 function sourceTree(path: string) {
   return ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
 }
@@ -41,7 +59,15 @@ describe("前端代码边界", () => {
   it("正式模块不依赖开发 fixture、演示或冻结归档", () => {
     const violations: string[] = [];
     for (const path of sourceFiles(sourceRoot)) {
-      if (!/\.tsx?$/.test(path) || within(path, join(sourceRoot, "dev"))) continue;
+      if (within(path, join(sourceRoot, "dev"))) continue;
+      if (path.endsWith(".css")) {
+        const text = readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+        for (const match of text.matchAll(/@import\s+(?:url\(\s*)?["']?([^"'\s);]+)["']?/g)) {
+          if (match[1] && forbiddenTarget(path, match[1]))
+            violations.push(`${relative(repoRoot, path)} → ${match[1]}`);
+        }
+        continue;
+      }
       const source = sourceTree(path);
       visit(source, (node) => {
         let specifier: ts.Expression | undefined;
@@ -51,18 +77,7 @@ describe("前端代码边界", () => {
           specifier = node.arguments[0];
         if (!specifier || !ts.isStringLiteralLike(specifier)) return;
         const value = specifier.text;
-        const target = value.startsWith(".")
-          ? resolve(dirname(path), value)
-          : value.startsWith("@/") || value.startsWith("#/")
-            ? resolve(sourceRoot, value.slice(2))
-            : value.startsWith("/")
-              ? value
-              : undefined;
-        if (
-          target &&
-          (within(target, join(sourceRoot, "dev")) ||
-            within(target, join(repoRoot, "design", "archive")))
-        ) {
+        if (forbiddenTarget(path, value)) {
           violations.push(`${location(path, source, node)} → ${value}`);
         }
       });
@@ -76,7 +91,7 @@ describe("前端代码边界", () => {
     for (const path of files) {
       if (path.endsWith(".css")) {
         const source = readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-        if (rawColor.test(source) || foundationColor.test(source))
+        if (rawColor.test(source) || paletteUtility.test(source) || foundationColor.test(source))
           violations.push(`${relative(repoRoot, path)}: CSS 颜色应引用语义 token`);
         continue;
       }

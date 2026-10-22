@@ -4,17 +4,17 @@
 
 ## 路由清单与 URL 形状
 
-| URL                             | 文件                                                    | 作用                                                                 |
-| ------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
-| `/agents`                       | `src/routes/_authed/agents.index.tsx`                   | 全局 Agent profile 列表（仅当前用户创建的）与新建入口                |
-| `/agents/$agentProfileId`       | `src/routes/_authed/agents.$agentProfileId.tsx`         | profile 详情与编辑表单                                               |
-| `/projects`                     | `src/routes/_authed/projects.index.tsx`                 | 入口分发：零个 Project 显示创建入口，一个进入该 Project 的 Chats，多个显示列表 |
-| `/projects/$projectId`          | `src/routes/_authed/projects.$projectId.tsx`            | Project 上下文布局：授权 loader、错误块与 `<Outlet />`，自身没有页面 |
-| `/projects/$projectId/chats`    | `src/routes/_authed/projects.$projectId.chats.index.tsx` | Project 的 DM 列表与发起入口（Project 根重定向到这里）             |
-| `/projects/$projectId/settings` | `src/routes/_authed/projects.$projectId.settings.tsx`   | Project 事实（ID、创建时间、requestId）、基本信息与 Git 配置         |
-| `/projects/$projectId/members`  | `src/routes/_authed/projects.$projectId.members.tsx`    | Project 的 Agent 成员列表与添加/移除                                 |
+| URL                             | 文件                                                     | 作用                                                                           |
+| ------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `/agents`                       | `src/routes/_authed/agents.index.tsx`                    | 全局 Agent profile 列表（仅当前用户创建的）与新建入口                          |
+| `/agents/$agentProfileId`       | `src/routes/_authed/agents.$agentProfileId.tsx`          | profile 详情与编辑表单                                                         |
+| `/projects`                     | `src/routes/_authed/projects.index.tsx`                  | 入口分发：零个 Project 显示创建入口，一个进入该 Project 的 Chats，多个显示列表 |
+| `/projects/$projectId`          | `src/routes/_authed/projects.$projectId.tsx`             | Project 上下文布局：授权 loader、错误块与 `<Outlet />`，自身没有页面           |
+| `/projects/$projectId/chats`    | `src/routes/_authed/projects.$projectId.chats.index.tsx` | Project 的 DM 列表与发起入口（Project 根重定向到这里）                         |
+| `/projects/$projectId/settings` | `src/routes/_authed/projects.$projectId.settings.tsx`    | Project 事实（ID、创建时间、requestId）、基本信息与 Git 配置                   |
+| `/projects/$projectId/members`  | `src/routes/_authed/projects.$projectId.members.tsx`     | Project 的 Agent 成员列表与添加/移除                                           |
 
-`agents.tsx` 是渲染 `<Outlet />` 的公共外壳，与 P1 的 `projects.tsx` 同构。`projects.$projectId.tsx` 只承担 Project 上下文布局，`projects.$projectId.index.tsx` 把 Project 根重定向到 Chats；三条 Project 子页 URL 与两条 Agent URL 都能直接刷新。Project 上下文完全由 URL 推导，每个 `$projectId` 子页的 loader 各自调用授权查询（settings 走 `getProjectProfileFn`、`getProjectFn` 与 `getProjectRepoStateFn`，members 走 `listProjectMembersFn`，都经 `assertProjectAccess`），不属于当前用户的 projectId 显示 not_found 错误块而不是空白页。侧栏一级入口是 Projects、Agents、Machines（未实现，P4）与 Management（未实现），Project 内的 Chats、Members、Project settings 是侧栏二级菜单。
+Agent 列表与详情分别由 `agents.index.tsx` 与 `agents.$agentProfileId.tsx` 承载，直接挂在已登录外壳下。`projects.$projectId.tsx` 只承担 Project 上下文布局，`projects.$projectId.index.tsx` 把 Project 根重定向到 Chats；三条 Project 子页 URL 与两条 Agent URL 都能直接刷新。Project 上下文完全由 URL 推导，每个 `$projectId` 子页的 loader 各自调用授权查询（settings 走 `getProjectProfileFn`、`getProjectFn` 与 `getProjectRepoStateFn`，members 走 `listProjectMembersFn`，都经 `assertProjectAccess`），不属于当前用户的 projectId 显示 not_found 错误块而不是空白页。侧栏一级入口是 Projects、Agents、Machines（未实现，P4）与 Management（未实现），Project 内的 Chats、Members、Project settings 是侧栏二级菜单。
 
 ## 边界函数清单
 

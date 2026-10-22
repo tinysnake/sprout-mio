@@ -11,7 +11,9 @@ import {
 } from "./ui-navigation.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const EVIDENCE = new URL("../../docs/p1/evidence/", import.meta.url).pathname;
+const EVIDENCE = process.env.SPROUT_UI_EVIDENCE_DIR
+  ? `${process.env.SPROUT_UI_EVIDENCE_DIR.replace(/\/+$/, "")}/`
+  : new URL("../../docs/p1/evidence/", import.meta.url).pathname;
 const STATE_FILE = process.env.INFO_HUB_STATE_FILE ?? "/tmp/p2-d-info-hub-state.json";
 
 const results = [];

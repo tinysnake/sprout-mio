@@ -10,11 +10,11 @@ import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatDraftProvider, useChatDraft } from "@/components/chat/chat-drafts";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { MessageList } from "@/components/chat/message-list";
-import { RunStatusPanel } from "@/components/chat/run-status";
+import { isRunActive, runStatusLabel, RunStatusPanel } from "@/components/chat/run-status";
 import { ChatInspector } from "@/components/info-hub/chat-inspector";
 import { ChatWorkspace } from "@/components/layout/chat-workspace";
 import type { ChatAgent } from "@/components/chat/chat-loader";
-import type { AgentProfile } from "../../../contracts/agent";
+import { demoProfiles as profiles, demoHumanName as HUMAN } from "../management/fixtures";
 import type { ChatRunState } from "../../../contracts/agent-run";
 import type { AgentInstance, Chat, ChatMember, Message } from "../../../contracts/chat";
 import type { ChatInfoView, TurnStartContext } from "../../../contracts/info-hub";
@@ -23,29 +23,6 @@ import { ArrowLeftIcon, MessageSquareIcon } from "lucide-react";
 
 /** 场景数据全部是虚构样例；正式模块不导入本目录。 */
 const PROJECT_ID = "prj_11111111-1111-4111-8111-111111111111";
-const HUMAN = "林澈";
-const profiles: AgentProfile[] = [
-  {
-    id: "agt_22222222-2222-4222-8222-222222222222",
-    name: "闻序",
-    jobTitle: "全能秘书",
-    persona: "把讨论整理成可执行的边界，先固定证据再迁移入口。",
-    harness: "pi",
-    createdBy: "usr_demo",
-    createdAt: "2026-06-18T02:00:00.000Z",
-    updatedAt: "2026-06-18T02:00:00.000Z",
-  },
-  {
-    id: "agt_33333333-3333-4333-8333-333333333333",
-    name: "夜白",
-    jobTitle: "代码审阅",
-    persona: "只在证据不足时提出反对意见。",
-    harness: "pi",
-    createdBy: "usr_demo",
-    createdAt: "2026-06-18T02:00:00.000Z",
-    updatedAt: "2026-06-18T02:00:00.000Z",
-  },
-];
 
 function chat(id: string, title: string, updatedAt: string): Chat {
   return {
@@ -144,7 +121,7 @@ const scenarioRunState: Record<string, ChatRunState> = {
     inputs: [
       {
         runId: "run_99999999-9999-4999-8999-999999999999",
-        messageId: messages[2]!.id,
+        messageId: messages[0]!.id,
         disposition: "pending",
       },
     ],
@@ -227,6 +204,71 @@ const turnStart: TurnStartContext = {
   injectedIntoPrompt: false,
 };
 
+function workspaceFixture(chat: Chat, currentMessages: Message[]) {
+  const first = chat.id === chats[0]!.id;
+  const profile = profiles[first ? 0 : 1]!;
+  const instance: AgentInstance = {
+    ...demoInstances[0]!,
+    id: first ? demoInstances[0]!.id : "ins_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    chatId: chat.id,
+    agentProfileId: profile.id,
+  };
+  const chatMembers = members.map((member) => ({
+    ...member,
+    chatId: chat.id,
+    memberId: member.memberKind === "agent" ? instance.id : member.memberId,
+  }));
+  const threadMessages = currentMessages.map((message) => ({
+    ...message,
+    chatId: chat.id,
+    senderId: message.senderKind === "agent" ? instance.id : message.senderId,
+  }));
+  const state: ChatRunState = first
+    ? {
+        enabled: true,
+        runs: [
+          {
+            ...scenarioRunState.running!.runs[0]!,
+            chatId: chat.id,
+            instanceId: instance.id,
+            status: "completed",
+            settledAt: "2026-06-18T02:28:30.000Z",
+          },
+        ],
+        inputs: [],
+      }
+    : scenarioRunState.idle!;
+  const info: ChatInfoView = {
+    ...infoView,
+    chatId: chat.id,
+    members: chatMembers.map((member) => ({
+      memberKind: member.memberKind,
+      memberId: member.memberId,
+      displayName: member.memberKind === "human" ? HUMAN : profile.name,
+    })),
+    instance: { instanceId: instance.id, agentProfileId: profile.id, profileName: profile.name },
+    messages: { count: threadMessages.length, latestAt: threadMessages.at(-1)?.createdAt },
+    runs: first ? infoView.runs : { ...infoView.runs, active: [], recent: [] },
+  };
+  const context: TurnStartContext = {
+    ...turnStart,
+    chatId: chat.id,
+    instanceId: instance.id,
+    agentProfileId: profile.id,
+    profileName: profile.name,
+    previousRun: first ? turnStart.previousRun : null,
+  };
+  return {
+    profile,
+    members: chatMembers,
+    instances: [instance],
+    messages: threadMessages,
+    state,
+    info,
+    context,
+  };
+}
+
 function Frame({ title, note, children }: { title: string; note: string; children: ReactNode }) {
   return (
     <PageFrame
@@ -250,8 +292,19 @@ function Frame({ title, note, children }: { title: string; note: string; childre
 function MessagesScene() {
   const [scene, setScene] = useState<"idle" | "running" | "failed" | "disabled">("running");
   const [draft, setDraft] = useState("");
-  const [sent, setSent] = useState<string[]>([]);
-
+  const [sent, setSent] = useState<Message[]>([]);
+  const [stoppedAt, setStoppedAt] = useState<string | null>(null);
+  const visibleMessages = [...messages, ...sent];
+  const state: ChatRunState = stoppedAt
+    ? {
+        ...scenarioRunState.running!,
+        runs: scenarioRunState.running!.runs.map((run) => ({
+          ...run,
+          status: "aborted",
+          settledAt: stoppedAt,
+        })),
+      }
+    : scenarioRunState[scene]!;
   return (
     <Frame
       title="消息与输入"
@@ -263,7 +316,10 @@ function MessagesScene() {
             key={value}
             variant={scene === value ? "default" : "secondary"}
             size="sm"
-            onClick={() => setScene(value)}
+            onClick={() => {
+              setScene(value);
+              setStoppedAt(null);
+            }}
           >
             {value}
           </Button>
@@ -271,32 +327,37 @@ function MessagesScene() {
       </div>
       <div className="rounded-container border border-border bg-background p-5">
         <MessageList
-          messages={messages}
+          messages={visibleMessages}
           profile={{ ok: true, data: profiles[0]!, requestId: "req_demo" }}
           humanName={HUMAN}
         />
-        <RunStatusPanel
-          state={scenarioRunState[scene]!}
-          messages={messages}
-          onRestoreDraft={(body) => setDraft(body)}
-        />
+        <RunStatusPanel state={state} messages={visibleMessages} onRestoreDraft={setDraft} />
         <div className="mt-5">
           <MessageComposer
             agentName={profiles[0]!.name}
             draft={draft}
             onDraftChange={setDraft}
             onSubmit={() => {
-              setSent((all) => [...all, draft]);
+              if (!draft.trim()) return;
+              const message: Message = {
+                id: `msg_${crypto.randomUUID()}`,
+                chatId: chats[0]!.id,
+                senderKind: "human",
+                senderId: "usr_demo",
+                body: draft,
+                createdAt: new Date().toISOString(),
+              };
+              setSent((all) => [...all, message]);
               setDraft("");
             }}
             pending={false}
             error={null}
             fieldErrors={{}}
-            runActive={scene === "running"}
-            runStatusLabel={scene === "disabled" ? "宿主未启用" : "运行中"}
+            runActive={isRunActive(state)}
+            runStatusLabel={runStatusLabel(state)}
             stopping={false}
             stopError={null}
-            onStop={() => undefined}
+            onStop={() => setStoppedAt(new Date().toISOString())}
           />
         </div>
         {sent.length > 0 && (
@@ -305,7 +366,7 @@ function MessagesScene() {
             data-testid="chat-scene-sent"
             className="mt-2 text-xs text-muted-foreground"
           >
-            演示回显：{sent.join(" / ")}
+            演示：已回显 {sent.length} 条消息。
           </p>
         )}
       </div>
@@ -371,77 +432,64 @@ function StatesScene() {
  */
 function DemoThread({
   chat,
+  fixture,
   inspectorOpen,
   onToggleInspector,
+  onSend,
 }: {
   chat: Chat;
+  fixture: ReturnType<typeof workspaceFixture>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
+  onSend: (body: string) => void;
 }) {
   const [draft, setDraft] = useChatDraft(chat.id);
-  const [sent, setSent] = useState<string[]>([]);
-  const [pending, setPending] = useState(false);
-
   return (
-    <>
-      <ChatThread
-        back={
-          <Link
-            to="/projects/$projectId/chats"
-            params={{ projectId: chat.projectId }}
-            aria-label="返回 Chat 列表"
-            data-testid="back-to-chats"
-            className="hidden size-8.5 shrink-0 place-items-center rounded-control border border-transparent text-foreground hover:border-input max-desktop:grid"
-          >
-            <Icon as={ArrowLeftIcon} />
-          </Link>
-        }
-        chat={chat}
-        agentName={profiles[0]!.name}
-        profile={{ ok: true, data: profiles[0]!, requestId: "req_demo" }}
-        humanName={HUMAN}
-        messages={{ ok: true, data: messages, requestId: "req_demo" }}
-        members={{ ok: true, data: members, requestId: "req_demo" }}
-        instances={{ ok: true, data: demoInstances, requestId: "req_demo" }}
-        runState={{
-          ok: true,
-          requestId: "req_demo",
-          data: scenarioRunState[chat.id === chats[0]!.id ? "idle" : "running"]!,
-        }}
-        inspectorOpen={inspectorOpen}
-        onToggleInspector={onToggleInspector}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSend={() => {
-          if (!draft.trim() || pending) return;
-          setPending(true);
-          window.setTimeout(() => {
-            setSent((all) => [...all, draft]);
-            setDraft("");
-            setPending(false);
-          }, 300);
-        }}
-        sendPending={pending}
-        sendError={null}
-        fieldErrors={{}}
-        onStop={() => undefined}
-        stopPending={false}
-        stopError={null}
-        onRestoreDraft={setDraft}
-      />
-      {sent.length > 0 && (
-        <p role="status" className="sr-only" data-testid="chat-scene-sent">
-          已回显 {sent.length} 条消息
-        </p>
-      )}
-    </>
+    <ChatThread
+      back={
+        <Link
+          to="/projects/$projectId/chats"
+          params={{ projectId: chat.projectId }}
+          aria-label="返回 Chat 列表"
+          data-testid="back-to-chats"
+          className="hidden size-8.5 shrink-0 place-items-center rounded-control border border-transparent text-foreground hover:border-input max-desktop:grid max-desktop:size-11"
+        >
+          <Icon as={ArrowLeftIcon} />
+        </Link>
+      }
+
+      chat={chat}
+      agentName={fixture.profile.name}
+      profile={{ ok: true, data: fixture.profile, requestId: "req_demo" }}
+      humanName={HUMAN}
+      messages={{ ok: true, data: fixture.messages, requestId: "req_demo" }}
+      members={{ ok: true, data: fixture.members, requestId: "req_demo" }}
+      instances={{ ok: true, data: fixture.instances, requestId: "req_demo" }}
+      runState={{ ok: true, data: fixture.state, requestId: "req_demo" }}
+      inspectorOpen={inspectorOpen}
+      onToggleInspector={onToggleInspector}
+      draft={draft}
+      onDraftChange={setDraft}
+      onSend={() => {
+        if (!draft.trim()) return;
+        onSend(draft);
+        setDraft("");
+      }}
+      sendPending={false}
+      sendError={null}
+      fieldErrors={{}}
+      onStop={() => undefined}
+      stopPending={false}
+      stopError={null}
+      onRestoreDraft={setDraft}
+    />
   );
 }
 
 /**
  * 三栏工作区：选中对话与 inspector 都由路由 pathname / search 决定，
  * 列表链接、返回与 `?info=1` 走真实导航，与正式路由同一套语义。
- * 数据仍是 fixture；切换对话不保留草稿（每 Chat 一个实例）。
+ * 数据仍是 fixture；草稿与模拟消息按 Chat 隔离，模拟提交只在当前场景内回显。
  */
 function WorkspaceScene() {
   const { projectId, chatId } = useParams({ strict: false }) as {
@@ -451,7 +499,19 @@ function WorkspaceScene() {
   const search = useSearch({ strict: false }) as { info?: number };
   const navigate = useNavigate();
   const inspector = search.info === 1;
+  const [localMessages, setLocalMessages] = useState<Record<string, Message[]>>({
+    [chats[0]!.id]: messages,
+  });
   const selectedChat = chats.find((item) => item.id === chatId);
+  const fixture = selectedChat
+    ? workspaceFixture(selectedChat, localMessages[selectedChat.id] ?? [])
+    : null;
+  const viewChats = chats
+    .map((item) => ({
+      ...item,
+      updatedAt: localMessages[item.id]?.at(-1)?.createdAt ?? item.updatedAt,
+    }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const openInspector = (next: boolean) => {
     if (!projectId || !chatId) return;
     void navigate({
@@ -472,17 +532,32 @@ function WorkspaceScene() {
         list={
           <ChatListPanel
             projectId={projectId ?? PROJECT_ID}
-            chats={chats}
+            chats={viewChats}
             chatAgents={chatAgents}
             profiles={profiles}
             selectedChatId={selectedChat?.id}
           />
         }
         chat={
-          selectedChat ? (
+          selectedChat && fixture ? (
             <DemoThread
               key={selectedChat.id}
               chat={selectedChat}
+              fixture={fixture}
+              onSend={(body) => {
+                const message: Message = {
+                  id: `msg_${crypto.randomUUID()}`,
+                  chatId: selectedChat.id,
+                  senderKind: "human",
+                  senderId: "usr_demo",
+                  body,
+                  createdAt: new Date().toISOString(),
+                };
+                setLocalMessages((previous) => ({
+                  ...previous,
+                  [selectedChat.id]: [...(previous[selectedChat.id] ?? []), message],
+                }));
+              }}
               inspectorOpen={inspector}
               onToggleInspector={() => openInspector(!inspector)}
             />
@@ -505,17 +580,17 @@ function WorkspaceScene() {
           )
         }
         inspector={
-          inspector && selectedChat ? (
+          inspector && selectedChat && fixture ? (
             <ChatInspector
               key={selectedChat.id}
               chat={selectedChat}
-              agentName={profiles[0]!.name}
+              agentName={fixture.profile.name}
               humanName={HUMAN}
-              members={{ ok: true, data: members, requestId: "req_demo" }}
-              instances={{ ok: true, data: demoInstances, requestId: "req_demo" }}
-              profile={{ ok: true, data: profiles[0]!, requestId: "req_demo" }}
-              info={{ ok: true, data: infoView, requestId: "req_demo" }}
-              turnStart={{ ok: true, data: turnStart, requestId: "req_demo" }}
+              members={{ ok: true, data: fixture.members, requestId: "req_demo" }}
+              instances={{ ok: true, data: fixture.instances, requestId: "req_demo" }}
+              profile={{ ok: true, data: fixture.profile, requestId: "req_demo" }}
+              info={{ ok: true, data: fixture.info, requestId: "req_demo" }}
+              turnStart={{ ok: true, data: fixture.context, requestId: "req_demo" }}
               onClose={() => openInspector(false)}
             />
           ) : undefined

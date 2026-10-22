@@ -214,7 +214,7 @@ export function ChatWorkspace({
           data-testid="chat-list-panel"
           aria-label="Chat 列表"
           className={cn(
-            "flex min-h-0 min-w-0 flex-col border-border bg-secondary desktop:border-r",
+            "flex min-h-0 min-w-0 flex-col border-border bg-secondary max-desktop:flex-1 desktop:border-r",
             selected && "max-desktop:hidden",
           )}
         >
@@ -223,7 +223,7 @@ export function ChatWorkspace({
         <div
           data-testid="chat-detail-panel"
           className={cn(
-            "flex min-h-0 min-w-0 flex-col",
+            "flex min-h-0 min-w-0 flex-col max-desktop:flex-1",
             !selected && "max-desktop:hidden",
             inspectorOpen && "max-desktop:hidden",
           )}
@@ -235,7 +235,7 @@ export function ChatWorkspace({
             id="info-hub"
             data-testid="chat-inspector"
             aria-label="Info Hub"
-            className="relative flex min-h-0 min-w-0 flex-col border-border bg-secondary desktop:border-l"
+            className="relative flex min-h-0 min-w-0 flex-col border-border bg-secondary max-desktop:flex-1 desktop:border-l"
           >
             {!layout.split && layout.inspectorWidth !== null && (
               <InspectorResizeHandle

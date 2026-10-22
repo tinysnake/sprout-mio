@@ -186,7 +186,7 @@ try {
   assert(statSync(databaseUrl).size > 0, '真实 SQLite 文件必须存在')
   const browser = await bounded(launch(process.execPath, ['scripts/browser/i-chat-flow.mjs'], 'browser.log', { ...environment, BASE_URL: base, CHAT_STATE_FILE: stateFile }), 300000)
   assert.equal(browser.code, 0, `浏览器流程失败；见 browser.log:\n${readFileSync(join(directory, 'browser.log'), 'utf8')}`)
-  pass('真实 Chromium 流程', { log: 'browser.log', screenshots: 'docs/p1/evidence/p2-i-*.png' })
+  pass('真实 Chromium 流程', { log: 'browser.log', screenshots: `${process.env.SPROUT_UI_EVIDENCE_DIR ?? 'docs/p1/evidence'}/p2-i-*.png` })
 
   const shutdown = await stop(server)
   assert.equal(shutdown.code, 0, '生产进程必须退出 0')

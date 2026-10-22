@@ -5,7 +5,9 @@ import { chromium } from "playwright";
 import { createProject, waitForChats } from "./ui-navigation.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const EVIDENCE = new URL("../../docs/p1/evidence/", import.meta.url).pathname;
+const EVIDENCE = process.env.SPROUT_UI_EVIDENCE_DIR
+  ? `${process.env.SPROUT_UI_EVIDENCE_DIR.replace(/\/+$/, "")}/`
+  : new URL("../../docs/p1/evidence/", import.meta.url).pathname;
 const STATE_FILE = process.env.CHAT_STATE_FILE ?? "/tmp/p2-c-chat-state.json";
 
 const results = [];
@@ -211,13 +213,17 @@ if (process.env.CHAT_VERIFY === "1") {
     chatId = chatPath.split("/").pop() ?? "";
     instanceId = (await page.textContent('[data-testid="chat-instance-id"]')) ?? "";
     const agentShown = await page.textContent('[data-testid="chat-agent-name"]');
+    const listedChats = await page.$$eval('[data-testid="chat-item"]', (nodes) =>
+      nodes.map((node) => node.getAttribute("data-chat-id")),
+    );
     await shot(page, "p2-i-chat-started");
     record(
       "start_dm_navigates_to_chat",
       /^cnv_[0-9a-f-]{36}$/.test(chatId) &&
         /^ins_[0-9a-f-]{36}$/.test(instanceId) &&
-        agentShown?.trim() === agentName,
-      `URL ${chatPath}，instance ${instanceId}，Agent ${JSON.stringify(agentShown?.trim())}`,
+        agentShown?.trim() === agentName &&
+        JSON.stringify(listedChats) === JSON.stringify([chatId]),
+      `URL ${chatPath}，instance ${instanceId}，Agent ${JSON.stringify(agentShown?.trim())}，即时列表 ${JSON.stringify(listedChats)}`,
     );
   });
 

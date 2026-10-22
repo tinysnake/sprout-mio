@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { AgentFormDialog } from "../../../components/agent/agent-form-dialog";
 import type { AgentFormValues } from "../../../components/agent/agent-form-dialog";
@@ -226,12 +226,28 @@ function AgentsScene({ embedded }: { embedded: boolean }) {
 }
 
 function AgentDetailScene({ embedded }: { embedded: boolean }) {
+  const { agentProfileId } = useParams({ strict: false }) as { agentProfileId?: string };
+  const navigate = useNavigate();
   const [index, setIndex] = useState(0);
   const [profiles, setProfiles] = useState<AgentProfile[]>(demoProfiles);
   const [fail, setFail] = useState(false);
   const [status, setStatus] = useState("");
-  const profile = profiles[index];
+  const profile = agentProfileId
+    ? profiles.find((item) => item.id === agentProfileId)
+    : profiles[index];
+  if (!profile) {
+    return (
+      <SceneShell embedded={embedded}>
+        <PageFrame
+          title="没有此 Agent 的演示数据"
+          description="每个场景使用固定样例，跨场景导航会重置模拟修改。"
+          back={<BackLink to="/agents" label="返回 Agents" />}
+        />
+      </SceneShell>
+    );
+  }
 
+  const editingProfile = profile;
   async function submit(draft: AgentProfileDraft): Promise<AppResult<AgentProfile>> {
     await delay(700);
     if (fail) return demoFailure("forbidden", "没有修改此 profile 的权限。");
@@ -239,7 +255,7 @@ function AgentDetailScene({ embedded }: { embedded: boolean }) {
     const model = draft.model.trim();
     const effort = draft.effort.trim();
     const next: AgentProfile = {
-      ...profile,
+      ...editingProfile,
       name: draft.name,
       jobTitle: jobTitle || undefined,
       persona: draft.persona,
@@ -300,10 +316,18 @@ function AgentDetailScene({ embedded }: { embedded: boolean }) {
           切换 profile
           <select
             className="min-w-0 flex-1 rounded-control border border-input bg-background px-1.5 py-1 text-xs"
-            value={String(index)}
+            value={String(profiles.findIndex((item) => item.id === profile.id))}
             data-testid="scene-profile-select"
             onChange={(event) => {
-              setIndex(Number(event.target.value));
+              const next = Number(event.target.value);
+              if (agentProfileId) {
+                void navigate({
+                  to: "/agents/$agentProfileId",
+                  params: { agentProfileId: profiles[next]!.id },
+                });
+              } else {
+                setIndex(next);
+              }
               setStatus("");
             }}
           >

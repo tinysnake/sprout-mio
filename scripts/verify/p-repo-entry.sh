@@ -353,7 +353,7 @@ try {
     const consoleErrors = []
     page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
     page.on('pageerror', error => consoleErrors.push(String(error)))
-    const screenshotDir = resolve('docs/p3/evidence')
+    const screenshotDir = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? 'docs/p3/evidence')
     mkdirSync(screenshotDir, { recursive: true })
 
     await page.goto(`${base}/projects/${managedProject.projectId}/settings`, { waitUntil: 'domcontentloaded', timeout: 30000 })

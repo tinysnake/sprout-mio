@@ -10,7 +10,9 @@ import {
 } from "./ui-navigation.mjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
-const EVIDENCE = new URL("../../docs/p1/evidence/", import.meta.url).pathname;
+const EVIDENCE = process.env.SPROUT_UI_EVIDENCE_DIR
+  ? `${process.env.SPROUT_UI_EVIDENCE_DIR.replace(/\/+$/, "")}/`
+  : new URL("../../docs/p1/evidence/", import.meta.url).pathname;
 
 const results = [];
 const consoleErrors = [];
@@ -221,6 +223,12 @@ await check("add_and_remove_member_roundtrip", async () => {
   );
   // 只移除本次验收加入的 profile，默认成员保留。
   await page.click(`[data-testid="member-remove"][data-agent-profile-id="${agentId}"]`);
+  await page.getByTestId("cancel-member-mutation").click();
+  const afterCancel = await page
+    .locator(`[data-testid="member-item"][data-agent-profile-id="${agentId}"]`)
+    .isVisible();
+  await page.click(`[data-testid="member-remove"][data-agent-profile-id="${agentId}"]`);
+  await page.getByTestId("confirm-member-mutation").click();
   await page.waitForFunction(
     (name) =>
       ![...document.querySelectorAll('[data-testid="member-item-name"]')].some(
@@ -232,8 +240,8 @@ await check("add_and_remove_member_roundtrip", async () => {
   await shot(page, "p2-h-project-members-empty");
   record(
     "add_and_remove_member_roundtrip",
-    afterReload && pathOf() === `${projectPath}/members`,
-    `加入并刷新后仍有 ${agentName}，移除后它不再在名单里`,
+    afterReload && afterCancel && pathOf() === `${projectPath}/members`,
+    `加入并刷新后仍有 ${agentName}，取消移除后保留，确认移除后不再在名单里`,
   );
 });
 

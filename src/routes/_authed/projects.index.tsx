@@ -1,7 +1,8 @@
-import { Link, createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { Link, createFileRoute, redirect } from "@tanstack/react-router";
 import { FolderKanban } from "lucide-react";
 import { PageFrame } from "../../components/layout/page-frame";
-import { CreateProjectDialog } from "../../components/project/create-project-dialog";
+import { useAppShell } from "../../components/layout/app-shell";
+import { Button } from "../../components/ui/button";
 import { ResultError } from "../../components/project/result-error";
 import { Icon } from "../../components/ui/icon";
 import { listProjectsFn } from "../../server/functions/project";
@@ -21,7 +22,7 @@ export const Route = createFileRoute("/_authed/projects/")({
 
 function ProjectsIndexPage() {
   const result = Route.useLoaderData();
-  const router = useRouter();
+  const { openProjectCreation } = useAppShell();
   const projects = result.ok ? result.data : [];
   return (
     <PageFrame
@@ -37,15 +38,9 @@ function ProjectsIndexPage() {
           <p data-testid="project-empty" className="text-sm text-muted-foreground">
             还没有 Project，先创建一个。
           </p>
-          <CreateProjectDialog
-            onCreated={async (project) => {
-              await router.invalidate();
-              await router.navigate({
-                to: "/projects/$projectId/chats",
-                params: { projectId: project.id },
-              });
-            }}
-          />
+          <Button data-testid="first-project-trigger" onClick={openProjectCreation}>
+            新建 Project
+          </Button>
         </div>
       )}
       {projects.length > 0 && (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { ComponentProps, FormEvent } from "react";
 import type { FieldErrors, Project, ProjectResult } from "../../contracts/project";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
@@ -34,11 +34,13 @@ export function ProjectFormDialog({
   onOpenChange,
   submit,
   onCreated,
+  finalFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   submit: (values: ProjectFormValues) => Promise<ProjectResult<Project>>;
   onCreated: (project: Project) => void;
+  finalFocus?: ComponentProps<typeof DialogContent>["finalFocus"];
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -81,7 +83,7 @@ export function ProjectFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={change}>
-      <DialogContent>
+      <DialogContent finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle>创建 Project</DialogTitle>
           <DialogDescription>名称必填，最多 80 字；描述可省略，最多 500 字。</DialogDescription>

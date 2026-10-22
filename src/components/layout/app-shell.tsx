@@ -11,6 +11,7 @@ import {
   Settings2,
   Users,
   Bot,
+  Plus,
 } from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -18,7 +19,20 @@ import type { Project } from "../../contracts/project";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 
-const ShellContext = createContext({ sidebarWidth: 200 });
+const ShellContext = createContext<{ sidebarWidth: number; openProjectCreation: () => void }>({
+  sidebarWidth: 200,
+  openProjectCreation: () => {
+    throw new Error("新建 Project 需要 AppShell 上下文");
+  },
+});
+
+export function projectCreationFocusTarget(preferred?: HTMLElement | null) {
+  if (preferred?.isConnected && preferred.getClientRects().length) return preferred;
+  return (
+    document.querySelector<HTMLElement>('[data-testid="project-selector"]') ??
+    document.querySelector<HTMLElement>('[data-testid="mobile-projects"]')
+  );
+}
 
 export function useAppShell() {
   return useContext(ShellContext);
@@ -110,14 +124,15 @@ function ProjectSelector({
   projects,
   project,
   compact,
-  createProjectAction,
+  onCreateProject,
 }: {
   projects: Project[];
   project?: Project;
   compact?: boolean;
-  createProjectAction: ReactNode;
+  onCreateProject: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => setOpen(false), [project?.id]);
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
@@ -156,7 +171,20 @@ function ProjectSelector({
                 <span className="min-w-0 truncate">{item.name}</span>
               </Link>
             ))}
-            <div className="mt-1 border-t border-border pt-1.5">{createProjectAction}</div>
+            <div className="mt-1 border-t border-border pt-1.5">
+              <Button
+                variant="ghost"
+                data-testid="new-project-trigger"
+                className="w-full justify-start"
+                onClick={() => {
+                  setOpen(false);
+                  onCreateProject();
+                }}
+              >
+                <Icon as={Plus} />
+                新建 Project
+              </Button>
+            </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
@@ -238,7 +266,7 @@ export function AppShell({
   pending,
   onSignOut,
   signOutError,
-  createProjectAction,
+  onCreateProject,
   children,
 }: {
   projects: Project[];
@@ -250,7 +278,7 @@ export function AppShell({
   pending: boolean;
   onSignOut: () => void;
   signOutError?: string | null;
-  createProjectAction: ReactNode;
+  onCreateProject: () => void;
   children: ReactNode;
 }) {
   const width = useViewportWidth();
@@ -269,6 +297,9 @@ export function AppShell({
     projects[0];
   const agentPage = pathname.startsWith("/agents");
   useEffect(() => {
+    setMobileProjectsOpen(false);
+  }, [pathname, mobile]);
+  useEffect(() => {
     if (!projectId) return;
     setPreferredProject(projectId);
     try {
@@ -285,8 +316,13 @@ export function AppShell({
     }
   }, [collapsed]);
 
+  function openProjectCreation() {
+    setMobileProjectsOpen(false);
+    onCreateProject();
+  }
+
   return (
-    <ShellContext.Provider value={{ sidebarWidth }}>
+    <ShellContext.Provider value={{ sidebarWidth, openProjectCreation }}>
       <div
         data-testid="app-shell"
         data-sidebar-width={sidebarWidth}
@@ -303,7 +339,7 @@ export function AppShell({
                 projects={projects}
                 project={project}
                 compact={compact}
-                createProjectAction={createProjectAction}
+                onCreateProject={openProjectCreation}
               />
             </div>
             <nav aria-label="一级导航" className="min-h-0 flex-1 overflow-y-auto py-2">
@@ -403,6 +439,7 @@ export function AppShell({
             <Popover.Root open={mobileProjectsOpen} onOpenChange={setMobileProjectsOpen}>
               <Popover.Trigger
                 aria-label="Projects"
+                data-testid="mobile-projects"
                 className={`flex min-h-12 flex-col items-center justify-center gap-1 px-3 text-[10px] ${!agentPage ? "text-primary" : "text-muted-foreground"}`}
               >
                 <Icon as={FolderKanban} />
@@ -415,7 +452,7 @@ export function AppShell({
                     <ProjectSelector
                       projects={projects}
                       project={project}
-                      createProjectAction={createProjectAction}
+                      onCreateProject={openProjectCreation}
                     />
                     <div className="mt-2">
                       <ProjectNavigation

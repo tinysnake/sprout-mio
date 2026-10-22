@@ -48,6 +48,7 @@ export function filterChats(
   return chats.filter(
     (chat) =>
       chat.id.toLowerCase().includes(needle) ||
+      Boolean(chat.title?.toLowerCase().includes(needle)) ||
       chatAgentName(chat.id, chatAgents, names).toLowerCase().includes(needle),
   );
 }
@@ -84,7 +85,7 @@ export function ChatListPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-list-content">
       <div className="px-4 pt-4 pb-3">
-        <div className="flex h-8.75 items-center gap-2 rounded-control border border-border bg-background pl-2.5 text-muted-foreground focus-within:border-ring focus-within:outline-1 focus-within:outline-ring">
+        <div className="flex h-8.5 items-center gap-2 rounded-control border border-border bg-background pl-2.5 text-muted-foreground focus-within:border-ring focus-within:outline-1 focus-within:outline-ring max-desktop:h-11">
           <Icon as={Search} size={14} />
           <input
             aria-label="搜索 Chat"
@@ -92,7 +93,7 @@ export function ChatListPanel({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索 Chat…"
-            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[11px] text-foreground outline-none placeholder:text-muted-foreground"
+            className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-[11px] text-foreground outline-none placeholder:text-muted-foreground max-desktop:min-h-11"
           />
           {newChatAction}
         </div>

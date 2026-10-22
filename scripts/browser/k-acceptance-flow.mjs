@@ -14,7 +14,7 @@ import {
 
 const base = process.env.BASE_URL ?? "http://localhost:3145";
 const directory = resolve(process.env.ACCEPTANCE_DIRECTORY ?? ".verify/k-acceptance");
-const screenshots = resolve("docs/p1/evidence");
+const screenshots = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? "docs/p1/evidence");
 const mode = process.argv[2] ?? "before";
 assert(["before", "after"].includes(mode));
 mkdirSync(directory, { recursive: true });
@@ -369,7 +369,10 @@ async function before() {
       await sameText(page, "project-selector", project.name);
       assert.equal(await test(page, "tab-chats").getAttribute("href"), `${project.path}/chats`);
       assert.equal(await test(page, "tab-agents").getAttribute("href"), `${project.path}/members`);
-      assert.equal(await test(page, "tab-settings").getAttribute("href"), `${project.path}/settings`);
+      assert.equal(
+        await test(page, "tab-settings").getAttribute("href"),
+        `${project.path}/settings`,
+      );
     }
     return {
       path: target.path,

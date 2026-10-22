@@ -74,7 +74,7 @@ export function ChatInspector({
           ) : (
             <div data-testid="chat-inspector-identity" className="space-y-2.5">
               {profile && !profile.ok && (
-                <ResultError error={profile.error} testId="chat-profile-error" />
+                <ResultError error={profile.error} testId="inspector-profile-error" />
               )}
               <div className="flex items-center gap-2.5">
                 <ChatAvatar name={agentName} />
@@ -102,15 +102,15 @@ export function ChatInspector({
               </p>
               <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-[11px]">
                 <dt className="text-muted-foreground">Chat ID</dt>
-                <dd data-testid="chat-id" className="font-mono break-all">
+                <dd data-testid="inspector-chat-id" className="font-mono break-all">
                   {chat.id}
                 </dd>
                 <dt className="text-muted-foreground">分身 Instance ID</dt>
-                <dd data-testid="chat-instance-id" className="font-mono break-all">
+                <dd data-testid="inspector-instance-id" className="font-mono break-all">
                   {instances.data[0]?.id ?? "（缺少分身记录）"}
                 </dd>
                 <dt className="text-muted-foreground">成员</dt>
-                <dd data-testid="chat-member-list">
+                <dd data-testid="inspector-member-list">
                   {members.data
                     .map((member) =>
                       member.memberKind === "human" ? humanName || "你" : agentName,
@@ -132,7 +132,11 @@ export function ChatInspector({
               <summary className="flex min-h-9.5 cursor-pointer list-none items-center justify-between gap-2 text-[11px] hover:underline [&::-webkit-details-marker]:hidden">
                 <span>运行事实与轮初上下文</span>
                 <span className="flex items-center gap-2 text-muted-foreground">
-                  <span>{info.data.runs.active.length} 个活动 run</span>
+                  <span>
+                    {info.data.runs.hostEnabled
+                      ? `${info.data.runs.active.length} 个活动 run`
+                      : "宿主未启用"}
+                  </span>
                   <Icon
                     as={ChevronRight}
                     size={12}

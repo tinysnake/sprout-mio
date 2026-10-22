@@ -87,7 +87,7 @@ export function MessageComposer({
             <Icon as={runActive ? CornerDownLeft : MessageSquare} size={12} />
             {runActive
               ? "追加到当前轮"
-              : `${agentName} · ${runStatusLabel === "已停止" ? "开始新一轮" : "准备就绪"}`}
+              : `${agentName} · ${runStatusLabel === "已停止" ? "已停止，可开始新一轮" : runStatusLabel || "运行状态暂不可用"}`}
           </span>
           <div className="flex items-center gap-2">
             {runActive && (

@@ -112,7 +112,7 @@ export function ChatPane({
           params={{ projectId }}
           aria-label="返回 Chat 列表"
           data-testid="back-to-chats"
-          className="hidden size-8.5 shrink-0 place-items-center rounded-control border border-transparent text-foreground hover:border-input max-desktop:grid"
+          className="hidden size-8.5 shrink-0 place-items-center rounded-control border border-transparent text-foreground hover:border-input max-desktop:grid max-desktop:size-11"
         >
           <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
         </Link>

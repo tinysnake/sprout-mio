@@ -180,15 +180,15 @@ j 的未修事项已由 coordinator 路由。CSRF 中间件归 P7 前；`getInst
 
 路由与承接面：
 
-| 目标       | URL                         | 目标证据                                                                                                                |
-| ---------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `project`  | `/projects/<A>`             | Project 根不带页面，必须重定向到 `/projects/<A>/chats` 并渲染 Chat 列表                                                 |
+| 目标       | URL                         | 目标证据                                                                                                                   |
+| ---------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `project`  | `/projects/<A>`             | Project 根不带页面，必须重定向到 `/projects/<A>/chats` 并渲染 Chat 列表                                                    |
 | `settings` | `/projects/<A>/settings`    | 三项配置、`project-settings-id`、`project-settings-created-at`、`project-settings-request-id`，折叠区内的 Project Info Hub |
-| `members`  | `/projects/<A>/members`     | Agent 成员名（旧 `/projects/<A>/agents` 不保留别名）                                                                    |
-| `chats`    | `/projects/<A>/chats`       | chat ID 的单元素列表                                                                                                    |
-| `chat`     | `/projects/<A>/chats/<cnv>` | chat、instance、人设、消息；Info Hub 在 inspector 内，由 `?info=1` 恢复                                                |
-| `agents`   | `/agents`                   | profile 名与 ID 的单元素列表                                                                                            |
-| `agent`    | `/agents/<agp>`             | profile ID 与人设                                                                                                       |
+| `members`  | `/projects/<A>/members`     | Agent 成员名（旧 `/projects/<A>/agents` 不保留别名）                                                                       |
+| `chats`    | `/projects/<A>/chats`       | chat ID 的单元素列表                                                                                                       |
+| `chat`     | `/projects/<A>/chats/<cnv>` | chat、instance、人设、消息；Info Hub 在 inspector 内，由 `?info=1` 恢复                                                    |
+| `agents`   | `/agents`                   | profile 名与 ID 的单元素列表                                                                                               |
+| `agent`    | `/agents/<agp>`             | profile ID 与人设                                                                                                          |
 
 每条目标的直接进入、刷新、后退、前进仍逐项断言，第七行之后回到第一行。跨页不变的统一断言改为侧栏上下文：`project-selector` 的可见文本等于当前 Project 名，`tab-chats`、`tab-agents`、`tab-settings` 的 href 分别等于该 Project 的 chats、members、settings。`settings` 目标另外断言 Project 事实与 Info Hub 面板；`chat` 目标另外断言 inspector 内的 instance、成员、消息数与 turn 上下文。
 
@@ -200,4 +200,3 @@ j 的未修事项已由 coordinator 路由。CSRF 中间件归 P7 前；`getInst
 - Project Info Hub 在 Settings 的折叠区，Chat Info Hub 在 inspector 内；两者都先用真实点击或 `?info=1` 打开再断言，不靠等待隐含渲染。
 
 保留不变的断言：两用户的页面与 17 条 RPC `not_found`、错误 requestId 等于响应头、完整响应体零泄漏、B 自己的 Project 正常对照；重启前后 chat、instance、两条消息正文与顺序、三项配置与人设的字面量；`profile × chat` 的 SQLite 反证；不存在的 Project、Agent、Chat 的 `not_found` 与 `req_`；Machine 仍显式未实现（`P4`），整页拒绝「0 个活动 run」「无活动 run」「无 Machine」这类成功空值文案；每条流程零 `console.error` 与零 `pageerror`。页面脚本共用 `scripts/browser/ui-navigation.mjs` 承担分发、选择器创建、账号菜单与 Info Hub 展开，五个流程不各自复制一套定位。
-
