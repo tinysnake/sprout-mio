@@ -275,16 +275,20 @@ try {
 
       await page.goto(`${base}/projects/${main.projectId}/settings`, { waitUntil: 'domcontentloaded', timeout: 30000 })
       // Project Info Hub 在 Settings 的折叠区，展开后才渲染 run 事实。
-      if (await page.locator('[data-testid="info-hub-project-runs-recent-item"]').count() === 0) await page.locator('[data-testid="project-info-hub-toggle"]').first().click()
-      await page.waitForSelector('[data-testid="info-hub-project-runs-recent-item"]', { timeout: 20000 })
+      if (await page.locator('[data-testid="info-hub-project-runs-recent"]').count() === 0) await page.locator('[data-testid="project-info-hub-toggle"]').first().click()
+      await page.waitForSelector('[data-testid="info-hub-project-runs-recent"]', { timeout: 20000 })
       assert.equal(await page.locator('[data-testid="info-hub-project-runs-host-status"]').textContent(), '宿主已启用')
       const activeItem = page.locator('[data-testid="info-hub-project-runs-active-item"]')
       assert.equal(await activeItem.count(), 1)
       assert.match(await activeItem.textContent(), /运行中/)
-      const recentItem = page.locator('[data-testid="info-hub-project-runs-recent-item"]').first()
-      assert.match(await recentItem.textContent(), /已完成/)
-      assert.ok((await recentItem.textContent()).includes(bareHead), 'project view shows the real commit')
-      assert.ok((await recentItem.textContent()).includes('宿主已更新工作树'), 'fresh provenance rendered')
+      // 历史 run 只保留聚合计数，不再逐条罗列每次开始与结束时间。
+      const recentSummary = page.locator('[data-testid="info-hub-project-runs-recent"]')
+      assert.match(await recentSummary.textContent(), /最近 \d+ 个 run：.*已完成 \d+/)
+      assert.ok(Number(await recentSummary.getAttribute('data-run-count')) >= 1, 'project view keeps the recent run aggregate')
+      assert.equal(await page.locator('[data-testid="info-hub-project-runs-recent-item"]').count(), 0, 'per-run history rows are gone')
+      const repoBasis = page.locator('[data-testid="info-hub-project-runs-recent-repo"]')
+      assert.ok((await repoBasis.textContent()).includes(bareHead), 'project view shows the real commit')
+      assert.ok((await repoBasis.textContent()).includes('宿主已更新工作树'), 'fresh provenance rendered')
       const projectShot = join(screenshotDir, 'p3-d-info-hub-project-runs.png')
       await page.screenshot({ path: projectShot, fullPage: true })
 

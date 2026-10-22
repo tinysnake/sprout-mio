@@ -9,11 +9,26 @@ const STATUS_LABELS: Record<string, string> = {
   interrupted: "已中断",
 };
 
+function statusLabel(status: string) {
+  return STATUS_LABELS[status] ?? status;
+}
+
+/** 历史 run 只做聚合：按状态计数，不逐条罗列每次开始与结束时间。 */
+function statusCounts(runs: AgentRunsView["recent"]) {
+  const counts = new Map<string, number>();
+  for (const run of runs) counts.set(run.status, (counts.get(run.status) ?? 0) + 1);
+  return [...counts].map(([status, count]) => `${statusLabel(status)} ${count}`).join("、");
+}
+
 /**
  * run 事实只消费视图对象；pending 输入一律显示为未投递，仓库依据显示来源、
- * ref、真实 commit 与 fresh。字段与 testid 保持 P3 的呈现语义。
+ * ref、真实 commit 与 fresh。当前 run 与失败汇总常显，历史 run 的流水账
+ * 收敛成计数；需要细节时可从失败项与轮初上下文继续追踪。
  */
 export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: string }) {
+  const failures = runs.recent.filter((run) => run.errorCode);
+  // recent 为最新优先：取最近一次带仓库依据的 run，代表当前工作副本来源。
+  const latestRepo = runs.recent.find((run) => run.repo)?.repo;
   return (
     <section data-testid={testId} className="space-y-1.5 text-[11px]">
       <p className="font-medium">
@@ -30,9 +45,7 @@ export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: s
         ) : (
           runs.active.map((run) => (
             <li key={run.runId} data-testid={`${testId}-active-item`} data-run-id={run.runId}>
-              <span data-testid={`${testId}-active-status`}>
-                {STATUS_LABELS[run.status] ?? run.status}
-              </span>
+              <span data-testid={`${testId}-active-status`}>{statusLabel(run.status)}</span>
               {run.pendingInputs > 0 && (
                 <span data-testid={`${testId}-active-pending`}>
                   ，{run.pendingInputs} 条输入未投递
@@ -42,44 +55,46 @@ export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: s
           ))
         )}
       </ul>
-      <ul data-testid={`${testId}-recent`} className="space-y-1.5">
-        {runs.recent.map((run) => (
-          <li
-            key={run.runId}
-            data-testid={`${testId}-recent-item`}
-            data-run-id={run.runId}
-            className="text-muted-foreground"
-          >
-            <span data-testid={`${testId}-recent-status`} className="text-foreground">
-              {STATUS_LABELS[run.status] ?? run.status}
-            </span>
-            <span>，开始于 {run.queuedAt}</span>
-            {run.settledAt && <span>，结束于 {run.settledAt}</span>}
-            {run.errorCode && (
-              <span data-testid={`${testId}-recent-error`} className="block text-status-failed">
-                {run.errorCode}：{run.errorMessage ?? "未知失败原因"}
+      <p
+        data-testid={`${testId}-recent`}
+        data-run-count={runs.recent.length}
+        className="text-muted-foreground"
+      >
+        {runs.recent.length === 0
+          ? "还没有历史 run。"
+          : `最近 ${runs.recent.length} 个 run：${statusCounts(runs.recent)}`}
+      </p>
+      {failures.length > 0 && (
+        <ul data-testid={`${testId}-failures`} className="space-y-1">
+          {failures.map((run) => (
+            <li
+              key={run.runId}
+              data-testid={`${testId}-recent-error`}
+              data-run-id={run.runId}
+              className="text-status-failed"
+            >
+              <span>
+                {statusLabel(run.status)}：{run.errorCode}：{run.errorMessage ?? "未知失败原因"}
               </span>
-            )}
-            {run.errorCode && (
               <span
                 data-testid={`${testId}-recent-error-request`}
-                className="block font-mono break-all"
+                className="block font-mono break-all text-muted-foreground"
               >
                 requestId: {run.requestId}
               </span>
-            )}
-            {run.repo && (
-              <span data-testid={`${testId}-recent-repo`} className="block">
-                来源 {run.repo.source}（
-                {run.repo.sourceKind === "managed_clone" ? "宿主克隆" : "本地副本"}）·
-                {run.repo.ref} @ {run.repo.commit} ·{" "}
-                {run.repo.fresh ? "宿主已更新工作树" : "未改写工作树"} ·{" "}
-                {run.repo.fetchedAt ? `获取于 ${run.repo.fetchedAt}` : "宿主未取过"}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      )}
+      {latestRepo && (
+        <p data-testid={`${testId}-recent-repo`} className="text-muted-foreground">
+          最近一次 run 的仓库依据：{latestRepo.source}（
+          {latestRepo.sourceKind === "managed_clone" ? "宿主克隆" : "本地副本"}）·
+          {latestRepo.ref} @ {latestRepo.commit} ·{" "}
+          {latestRepo.fresh ? "宿主已更新工作树" : "未改写工作树"} ·{" "}
+          {latestRepo.fetchedAt ? `获取于 ${latestRepo.fetchedAt}` : "宿主未取过"}
+        </p>
+      )}
     </section>
   );
 }
@@ -121,13 +136,13 @@ export function TurnStartContextBlock({ context }: { context: TurnStartContext }
       </p>
       <p data-testid="info-turn-active-run" className="text-muted-foreground">
         {context.activeRun
-          ? `已有活动 run（${STATUS_LABELS[context.activeRun.status] ?? context.activeRun.status}），${context.activeRun.pendingInputs} 条输入未投递`
+          ? `已有活动 run（${statusLabel(context.activeRun.status)}），${context.activeRun.pendingInputs} 条输入未投递`
           : "尚无排队中或运行中的 run"}
       </p>
       <p data-testid="info-turn-previous-run" className="text-muted-foreground">
         {context.previousRun ? (
           <>
-            上一次 run：{STATUS_LABELS[context.previousRun.status] ?? context.previousRun.status}
+            上一次 run：{statusLabel(context.previousRun.status)}
             {context.previousRun.errorCode &&
               `（${context.previousRun.errorCode}：${context.previousRun.errorMessage ?? "未知失败原因"}）`}
             <span className="ml-2 font-mono break-all">

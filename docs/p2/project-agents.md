@@ -16,6 +16,8 @@
 
 Agent 列表与详情分别由 `agents.index.tsx` 与 `agents.$agentProfileId.tsx` 承载，直接挂在已登录外壳下。`projects.$projectId.tsx` 只承担 Project 上下文布局，`projects.$projectId.index.tsx` 把 Project 根重定向到 Chats；三条 Project 子页 URL 与两条 Agent URL 都能直接刷新。Project 上下文完全由 URL 推导，每个 `$projectId` 子页的 loader 各自调用授权查询（settings 走 `getProjectProfileFn`、`getProjectFn` 与 `getProjectRepoStateFn`，members 走 `listProjectMembersFn`，都经 `assertProjectAccess`），不属于当前用户的 projectId 显示 not_found 错误块而不是空白页。侧栏一级入口是 Projects、Agents、Machines（未实现，P4）与 Management（未实现），Project 内的 Chats、Members、Project settings 是侧栏二级菜单。
 
+Agent 详情的返回入口跟随 URL 来源（UI review 反馈 7）：从 chat inspector 的 profile 链接进入时 URL 带 `?fromProjectId=…&fromChatId=…`，返回入口是「返回对话」并回到那条 chat（保留 chatId 与 `?info=1` 的 inspector 状态）；没有来源或来源参数不合法时返回 `/agents` 列表，不凭空造 chatId。来源参数由 `src/components/agent/agent-detail-search.ts` 的 `agentDetailSearchSchema` 校验，坏值丢弃。浏览器自证见 `scripts/browser/ui-agent-detail-back.mjs`。
+
 ## 边界函数清单
 
 `src/server/functions/agent.ts`，全部按「会话 → zod → 领域调用」顺序，失败以 HTTP 200 加 `AppResult` 载荷返回：

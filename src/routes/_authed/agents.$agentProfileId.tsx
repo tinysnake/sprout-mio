@@ -1,4 +1,8 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
+import {
+  agentDetailBackTarget,
+  agentDetailSearchSchema,
+} from "../../components/agent/agent-detail-search";
 import { AgentEditForm } from "../../components/agent/agent-edit-form";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ThemeToggle } from "../../components/layout/theme-toggle";
@@ -7,21 +11,47 @@ import { Facts, SettingsSection } from "../../components/project/settings-sectio
 import { getAgentProfileFn } from "../../server/functions/agent";
 
 export const Route = createFileRoute("/_authed/agents/$agentProfileId")({
+  validateSearch: agentDetailSearchSchema,
   loader: ({ params }) => getAgentProfileFn({ data: { agentProfileId: params.agentProfileId } }),
   component: AgentDetailPage,
 });
+
+/**
+ * 返回入口跟随 URL 里的来源：从 chat inspector 进入时回到原 chat（保留 chatId，
+ * 并重新展开 inspector），没有来源时退回 Agents 列表。
+ */
+function AgentBackLink(search: Parameters<typeof agentDetailBackTarget>[0]) {
+  const target = agentDetailBackTarget(search);
+  if (target.kind === "chat")
+    return (
+      <Link
+        to="/projects/$projectId/chats/$chatId"
+        params={{ projectId: target.projectId, chatId: target.chatId }}
+        search={{ info: 1 }}
+        data-testid="agent-detail-back-to-chat"
+      >
+        返回对话
+      </Link>
+    );
+  return (
+    <Link to="/agents" data-testid="agent-detail-back-to-agents">
+      返回 Agents
+    </Link>
+  );
+}
 
 /** 详情页深链直接刷新时由 loader 重新取数，URL 与 profile id 永远一致。 */
 function AgentDetailPage() {
   const result = Route.useLoaderData();
   const router = useRouter();
+  const search = Route.useSearch();
 
   if (!result.ok)
     return (
       <PageFrame
         title="Agent profile 不存在"
         description="请返回列表选择已有 profile。"
-        back={<Link to="/agents">返回 Agents</Link>}
+        back={<AgentBackLink {...search} />}
         actions={<ThemeToggle />}
         testId="agent-detail-page"
       >
@@ -39,7 +69,7 @@ function AgentDetailPage() {
           {" · Agent profile"}
         </>
       }
-      back={<Link to="/agents">返回 Agents</Link>}
+      back={<AgentBackLink {...search} />}
       actions={<ThemeToggle />}
       testId="agent-detail-page"
     >
