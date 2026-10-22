@@ -11,7 +11,7 @@
 
 | 文件 | 阶段 | 是否本轮最终版本 |
 | --- | --- | --- |
-| `final-*.png` | 本轮 46 项（`251ddbb`） | fixture 场景图是；`final-real-*` 待重跑替换 |
+| `final-*.png` | 本轮 46 项 | 是；`final-real-*` 为修复后重跑（`c1fd6ba`） |
 | `regression-*.png` | 本轮完整回归（`251ddbb`，worker 执行） | 是，主线程复跑待完成 |
 | `base-*.png`、`base-verification.json` | foundation（`0a64fd9`） | 否 |
 | `layout-*`、`list-*`、`p2-*`、`p3-*`、`project-*`（无 `regression-` 前缀） | `8f7cce2` 前后历史轮次 | 否 |
@@ -22,4 +22,4 @@
 
 截图生成不等于视觉验收。视觉结论需要实际读图，并由主线程给出。
 
-真实业务 10 项当前 **pending**：重复 key 修复合入后只重跑这 10 项，`final-real-*.png` 随之替换并重算 sha256。
+真实业务 10 项已在重复 key 修复（`3c745a6`，本分支 `c1fd6ba`）后重跑 10/10，`final-real-*.png` 已替换并重算 sha256。fixture 的 36 项未随该修复重跑。
