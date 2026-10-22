@@ -52,6 +52,9 @@ async function shot(page, name) {
 }
 
 async function readFieldError(testId) {
+  await page
+    .locator(`[data-testid="${testId}"][aria-invalid="true"]`)
+    .waitFor({ state: "visible", timeout: 20000 });
   const describedBy = await page.getByTestId(testId).getAttribute("aria-describedby");
   const ids = describedBy?.split(/\s+/).filter(Boolean) ?? [];
   if (!ids.length) throw new Error(testId + " 没有关联字段错误");

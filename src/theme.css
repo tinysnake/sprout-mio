@@ -78,7 +78,7 @@
   --radius: 8px;
   --control-radius: 6px;
   --container-radius: 10px;
-  --font-display: "Geist", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Geist Variable", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-body: "Geist", "PingFang SC", "Microsoft YaHei", sans-serif;
 
   /* 图表色目前没有使用者，保留 shadcn 默认以免组件库内部引用失配。 */

@@ -21,7 +21,8 @@ function values(form: FormData): LoginValues {
   return { name: read("name"), email: read("email"), password: read("password") };
 }
 
-const tabClass = "flex-1 border-b-2 pb-2.5 pt-1 text-xs font-medium transition-colors";
+const tabClass =
+  "min-h-8.5 flex-1 border-b-2 pb-2.5 pt-1 text-xs font-medium transition-colors max-desktop:min-h-11";
 
 /**
  * 登录与注册共用的表单呈现。没有全局 header：品牌与主题切换并入表单顶部，

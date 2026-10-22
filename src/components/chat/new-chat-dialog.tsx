@@ -124,7 +124,7 @@ export function NewChatDialog({
         data-testid="new-chat"
         aria-label="新建 Chat"
         title="新建 Chat"
-        className="-mr-px flex w-8.5 shrink-0 items-center justify-center self-stretch rounded-r-control border-l border-border text-foreground hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        className="-mr-px flex w-8.5 shrink-0 items-center justify-center self-stretch rounded-r-control border-l border-border text-foreground hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring max-desktop:min-h-11 max-desktop:min-w-11 max-desktop:self-center"
       >
         <Icon as={Plus} />
       </DialogTrigger>

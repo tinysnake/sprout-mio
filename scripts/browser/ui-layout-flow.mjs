@@ -70,6 +70,30 @@ try {
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
   });
+  await check("mobile_login_targets_and_heading_font", async () => {
+    const anonymous = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    try {
+      const login = await anonymous.newPage();
+      login.on("pageerror", (error) => errors.push(String(error)));
+      login.on("console", (message) => {
+        if (message.type() === "error") errors.push(message.text());
+      });
+      await login.goto(base + "/login", { waitUntil: "networkidle" });
+      for (const id of ["login-tab", "register-tab", "auth-submit"]) {
+        const box = await login.getByTestId(id).boundingBox();
+        assert(box && box.width >= 43 && box.height >= 43, id + " has a 44px mobile touch target");
+      }
+      const font = await login.locator("h1").evaluate(async (heading) => {
+        await document.fonts.ready;
+        return getComputedStyle(heading).fontFamily;
+      });
+      assert(font.includes("Geist Variable"), "heading uses the installed Geist Variable family");
+      await login.screenshot({ path: join(evidence, "login-mobile-390.png") });
+      return { font };
+    } finally {
+      await anonymous.close();
+    }
+  });
   const signup = await context.request.post(`${base}/api/auth/sign-up/email`, {
     headers: { Origin: base },
     data: {
@@ -214,6 +238,11 @@ try {
           assert(
             searchTarget && searchTarget.height >= 43,
             "mobile search target is at least 44px",
+          );
+          const newChatTarget = await test("new-chat").boundingBox();
+          assert(
+            newChatTarget && newChatTarget.width >= 43 && newChatTarget.height >= 43,
+            "mobile new Chat target is at least 44px",
           );
           await page.screenshot({ path: join(evidence, `list-${theme}-${width}.png`) });
         }

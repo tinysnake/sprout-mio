@@ -291,23 +291,22 @@ export function AppShell({
   const [preferredProject, setPreferredProject] = useState(() => preference("sprout:last-project"));
   const compact = collapsed || (width < 1200 && inspectorOpen);
   const sidebarWidth = mobile ? 0 : compact ? 64 : 200;
-  const project =
-    projects.find((p) => p.id === projectId) ??
-    projects.find((p) => p.id === preferredProject) ??
-    projects[0];
+  const project = projectId
+    ? projects.find((p) => p.id === projectId)
+    : (projects.find((p) => p.id === preferredProject) ?? projects[0]);
   const agentPage = pathname.startsWith("/agents");
   useEffect(() => {
     setMobileProjectsOpen(false);
   }, [pathname, mobile]);
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || project?.id !== projectId) return;
     setPreferredProject(projectId);
     try {
       localStorage.setItem("sprout:last-project", projectId);
     } catch {
       /* Storage is optional. */
     }
-  }, [projectId]);
+  }, [projectId, project?.id]);
   useEffect(() => {
     try {
       localStorage.setItem("sprout:sidebar-collapsed", String(collapsed));
