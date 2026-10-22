@@ -1,6 +1,6 @@
 # I-P1/P2 UI 迁移记录
 
-状态：迁移进行中，尚未通过技术验收，尚未获得 Human 体验确认。编排入口为 [开发总计划](../development-plan.md#i-p1p2-集成基础页面与持久对话)。
+状态：迁移进行中，尚未通过技术验收，尚未获得 Human 体验确认。编排入口为 [开发总计划](../development-plan.md#i-p1p2-集成基础页面与持久对话)。本轮在 `251ddbb` 上实跑 46 项浏览器检查，45 项通过，1 项失败（`settings` 页 React 重复 key），详见下文阶段性结果。
 
 ## 基线与范围
 
@@ -59,10 +59,27 @@
 - 新建 DM 在导航前同步刷新父级 loader；Info Hub 摘要与输入区依据真实宿主状态呈现，避免宿主未启用时显示活动 run 数或“准备就绪”。对应真实流程继续复测。
 - Project 级 Info Hub 保留在 Settings 的「关联信息」折叠区；Chat 级 Info Hub 由 `?info=1` 打开。验收通过可见控件展开，保留请求、身份、消息持久性和 P3 run 的原有断言。
 - 新增 `scripts/verify/r-ui-layout.sh` 与 `scripts/browser/ui-layout-flow.mjs`，使用独立临时数据库和 production server 验证响应式与开发入口隔离；目前仅数据准备流程已实跑，完整布局结果待页面合入。
-- 统一开发入口 `src/dev/ui/` 已接通，共用真实 AppShell、管理页与 Chat 呈现组件；移除单独的 Chat HTML / main / Shell 入口。主线程在同一 dev server 重跑基础 16 项、管理场景 14 项、真实管理路径 10 项和组合场景 6 项，共 46 项全部通过。组合检查覆盖路由对象一致、草稿隔离、模拟消息实际进入消息列表与 Info Hub 计数、模拟停止、跨断点焦点、浅暗/宽窄场景，并确认 fixture 操作没有调用应用 API。
+- 统一开发入口 `src/dev/ui/` 已接通，共用真实 AppShell、管理页与 Chat 呈现组件；移除单独的 Chat HTML / main / Shell 入口。组合检查覆盖路由对象一致、草稿隔离、模拟消息实际进入消息列表与 Info Hub 计数、模拟停止、跨断点焦点、浅暗/宽窄场景，并确认 fixture 操作没有调用应用 API。
+- `251ddbb` 上本轮实跑同一组 46 项：45 项通过，1 项失败。失败项是真实业务流程最后的 `no_console_errors`，两条 React 重复 key 警告，只在 `/projects/$projectId/settings` 复现，首因与范围见 [最终验证记录](evidence/p1p2/final-verification.json)。此前的 46 项全过结论来自更早的独立运行，不作为当前结论。
 - 响应式第二轮 28 项全通过；补上手机各面板占满宽度、等待返回列表实际可见，以及零 Project fixture 的诊断事件外键清理。随后新增手机返回和搜索触控尺寸检查，随完整回归再次验证。
 - 手机空列表已做 DOM 红绿复验：恢复旧布局时，390px 视口中的列表仅为 300.625px，断言失败；恢复修复后为 390px，断言通过。永久响应式检查同时覆盖有消息列表与零 Project 创建后的空列表。
-- 新截图保存到 `docs/ui/evidence/p1p2/`。既有浏览器流程接受 `SPROUT_UI_EVIDENCE_DIR`，本轮运行指向该目录，保留此前 P1/P3 截图。
+- 新截图保存到 `docs/ui/evidence/p1p2/`。既有浏览器流程接受 `SPROUT_UI_EVIDENCE_DIR`，本轮运行指向该目录，保留此前 P1/P3 截图。目录内的图片按阶段分三类记录在 [最终验证记录](evidence/p1p2/final-verification.json) 的 `images`、`regressionImages`、`retained` 三处：本轮 251ddbb 新跑的 46 项截图、回归脚本在 251ddbb 上产出的 R/P3 与断点图、以及原样保留但不计入最终版本的早期 foundation 与 `8f7cce2` 前后历史图。
 - 导入门禁覆盖 TS 静态导入、导出、字面量动态导入和 CSS `@import`，包含 Vite `/src/` 路径；CSS 误导入 `src/dev` 的红测已验证失败，移除探针后恢复通过。基础合入后的源码边界、token 和主题偏好三组单测共 9 项通过；正式业务组件合入后继续核对。
 
-后续补充运行地址、逐项命令与结果、证据和未验证项。所有完成结论以实际核对结果为准。
+## 阶段性结果
+
+本轮在独立 worktree、基线 `251ddbb` 上完成一次可复核的记录，未修改 `src/`、`scripts/`、`tests/` 或总计划验收勾选。
+
+- 环境：独立 SQLite `/tmp/ui-final-evidence/preview.sqlite`，`APP_ORIGIN=http://127.0.0.1:3261`，`SPROUT_PI_ENABLED=false`，`BETTER_AUTH_SECRET` 临时随机生成且未落盘记录。
+- 46 项浏览器检查：基础 gallery 16 项通过，管理场景 14 项通过，真实业务 10 项中 9 项通过，组合场景 6 项通过。唯一失败项是真实流程末尾的 `no_console_errors`。
+- 失败首因：`src/routes/_authed/projects.$projectId.settings.tsx` 同一 Fragment 下 `ProjectBasicInfoForm`、`ProjectConfigForm`、`ProjectRepoPanel` 三个同级节点都以 `projectId` 作 key，值相同，React 判为重复 key。数据本身唯一，无 pageerror、无请求失败、无跨 Project 串号；该页其余断言全部通过。按任务边界只记录，未改产品代码与断言。
+- 回归阶段：独立 worker 在 `251ddbb` 上跑 `bash scripts/verify.sh`，21 个脚本 `failed=0`，单测 158 项通过，`r-ui-layout` 29 项通过；该结论为 worker 执行通过，主线程本机复跑与最终判定仍待完成。
+- 截图：生成截图不等于视觉验收。本轮图片的生成命令、代码 commit、`HEAD:src` 树 hash（`e61c23a`）、每张图的 sha256、场景、主题、视口与来源写在 [最终验证记录](evidence/p1p2/final-verification.json)。
+
+## 仍待完成
+
+- 技术验收：主线程需本机复跑上述 46 项与整轮回归，并对 `no_console_errors` 这一项给出处置。重复 key 是渲染层缺陷而非验收口径问题，当前不宣称技术通过。
+- 视觉验收：需实际读图。本记录不描述未查看的图片，也不把截图存在当作视觉结论。
+- Human 体验确认：未获得，根目录计划与总计划均不勾选。
+
+后续补充逐项命令、最终绿色结果与 Human 确认。所有完成结论以实际核对结果为准。

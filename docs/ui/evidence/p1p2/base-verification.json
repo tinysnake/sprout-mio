@@ -1,0 +1,68 @@
+{
+  "sourceCommit": "0a64fd9",
+  "commands": [
+    {
+      "command": ["pnpm", "test"],
+      "exitCode": 0
+    },
+    {
+      "command": ["pnpm", "build"],
+      "exitCode": 0
+    },
+    {
+      "command": ["node", "scripts/browser/ui-gallery.mjs"],
+      "exitCode": 0
+    }
+  ],
+  "browserChecks": [
+    "PASS 1440 浅色：常规按钮 34px 高、6px 圆角 :: {\"height\":34,\"radius\":6}",
+    "PASS 浅色：正文 13px 且使用 Geist Variable :: {\"body\":\"13px\",\"input\":\"13px\",\"fontFamily\":\"\\\"Geist Variable\\\", \\\"PingFang SC\\\", \\\"Microsoft YaHei\\\", sans-serif\"}",
+    "PASS 主题：切换后多切换点一致且刷新保持 :: dark=true labels=切换浅色主题",
+    "PASS Button loading：连点只提交一次 :: 已提交 1 次 · aria-busy=1",
+    "PASS Field：label 默认关联内部控件 :: {\"labelFor\":\"_r_1_\",\"controlId\":\"_r_1_\",\"invalid\":\"true\",\"describedText\":\"职位最多 40 字。\"}",
+    "PASS Field：hint 关联到控件 :: [\"最多 80 字。\"]",
+    "PASS PageFrame：两层缩进与标题字号符合基线 :: {\"paddingX\":48,\"paddingY\":40,\"maxWidth\":960,\"innerWidth\":960,\"innerX\":240,\"h1FontSize\":24,\"h1LineHeight\":33.6,\"descriptionFontSize\":13,\"descriptionLineHeight\":20.8,\"backHeight\":44}",
+    "PASS Dialog：Escape 关闭且焦点返回触发点 :: 中文关闭按钮存在",
+    "PASS Dialog：桌面 460px 宽、动作区单行右对齐 :: {\"width\":460,\"footerDisplay\":\"flex\",\"footerDirection\":\"row\",\"footerGap\":8,\"sameRow\":true,\"rightAligned\":true}",
+    "PASS Dialog：点击遮罩关闭 :: backdrop 点击生效",
+    "PASS Dialog：Tab 焦点被困在对话框内 :: 12 次 Tab 未逃逸",
+    "PASS 1440 控制台无错误 :: none",
+    "PASS 390 宽度：44px 触控高度且无横向溢出 :: {\"button\":44,\"input\":44,\"scrollWidth\":390,\"clientWidth\":390}",
+    "PASS 390 暗色：无横向溢出 :: {\"scrollWidth\":390,\"clientWidth\":390}",
+    "PASS 390 宽度：Dialog 留在视口内 :: {\"x\":16,\"y\":269,\"width\":358,\"height\":306}",
+    "PASS 390 控制台无错误 :: none",
+    "gallery checks=16 failed=0"
+  ],
+  "images": [
+    {
+      "path": "base-1440-dark.png",
+      "sha256": "69f40d3fad8ec02e4dbfc6ae97a9ffa4ddf23edc5dec051ca61df014e8f960b6",
+      "capture": "coordinator"
+    },
+    {
+      "path": "base-1440-light.png",
+      "sha256": "15c44be6d280f0aa152e7de5a07174850d191a3d9f119fc1835fb77921ec6d69",
+      "capture": "coordinator"
+    },
+    {
+      "path": "base-390-dark.png",
+      "sha256": "3d1301a9df136f26ecb77bb2a7726d8e105a32762d2b5699aaf831a6f7911b88",
+      "capture": "coordinator"
+    },
+    {
+      "path": "base-390-dialog-dark.png",
+      "sha256": "bd99055a6c09bdbab252bdb331f3757d78696d89c7ecacf9a5f1b5f5efda5f30",
+      "capture": "coordinator"
+    },
+    {
+      "path": "base-390-light.png",
+      "sha256": "23746097a4e78bdad82c1268dcc1912b04e3a45867b12726ff32d32884d53ae0",
+      "capture": "coordinator"
+    },
+    {
+      "path": "base-dialog-1440.png",
+      "sha256": "3d87a7e8ed12276b1855d262acf615b7bd793715f8607b8394910689ba634d00",
+      "capture": "worker"
+    }
+  ]
+}
