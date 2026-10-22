@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { LoginView } from "../components/auth/login-view";
 import type { LoginMode, LoginValues } from "../components/auth/login-view";
@@ -18,7 +18,6 @@ export const Route = createFileRoute("/login")({
 
 /** 认证边界在 server function：这里只把结果映射成 pending 与可追踪错误。 */
 function Login() {
-  const router = useRouter();
   const [mode, setMode] = useState<LoginMode>("login");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -40,8 +39,7 @@ function Login() {
         setError(result.error);
         return;
       }
-      await router.invalidate();
-      await router.navigate({ to: "/" });
+      window.location.assign("/");
     } catch (cause) {
       setError(toAppError(cause, newId(ID_PREFIXES.request)));
     } finally {

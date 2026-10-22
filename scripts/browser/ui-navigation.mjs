@@ -20,7 +20,7 @@ export function projectBase(page) {
 
 export async function waitForChats(page) {
   await page.waitForURL((url) => PROJECT_CHATS.test(url.pathname), { timeout: 20000 });
-  await page.waitForSelector('[data-testid="chats-title"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="chat-list-content"]', { timeout: 20000 });
   return projectBase(page);
 }
 
@@ -40,7 +40,15 @@ export async function createProject(page, { name, description }) {
   if (description !== undefined) {
     await page.fill('[data-testid="project-description-input"]', description);
   }
+  const previousProjectId = new URL(page.url()).pathname.split("/")[2];
   await page.click('[data-testid="project-submit"]');
+  await page.waitForURL(
+    (url) => {
+      const match = PROJECT_CHATS.exec(url.pathname);
+      return match !== null && match[1] !== previousProjectId;
+    },
+    { timeout: 20000 },
+  );
   const project = await waitForChats(page);
   // 创建成功后选择器必须收起，否则弹层会盖住新 Project 的页面。
   await page.keyboard.press("Escape");

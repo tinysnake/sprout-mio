@@ -19,6 +19,20 @@ function record(name, passed, detail) {
 }
 
 async function check(name, fn) {
+  if (
+    results.some(
+      (result) =>
+        !result.passed &&
+        [
+          "register_sets_session",
+          "register_and_create_project",
+          "create_project_switches_to_new_chats",
+        ].includes(result.name),
+    )
+  ) {
+    console.log(`SKIP ${name}: setup failed`);
+    return;
+  }
   try {
     await fn();
   } catch (error) {
@@ -140,7 +154,7 @@ if (process.env.CHAT_VERIFY === "1") {
   await page.waitForSelector('input[name="email"]', { timeout: 20000 });
 
   await check("register_and_create_project", async () => {
-    await page.click("text=没有账号？注册");
+    await page.getByTestId("register-tab").click();
     await page.fill('input[name="name"]', "P2-I 验收");
     await page.fill('input[name="email"]', email);
     await page.fill('input[name="password"]', password);

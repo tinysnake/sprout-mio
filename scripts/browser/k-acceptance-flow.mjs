@@ -74,7 +74,7 @@ async function sameInput(page, id, expected) {
 }
 async function registerProject(page, role) {
   await goto(page, "/login");
-  await page.getByText("没有账号？注册", { exact: true }).click();
+  await page.getByTestId("register-tab").click();
   await page.locator('input[name="name"]').fill(`P2-K 用户 ${role}`);
   await page
     .locator('input[name="email"]')

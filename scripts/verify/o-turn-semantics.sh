@@ -316,7 +316,7 @@ try {
     const consoleErrors = []
     page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
     page.on('pageerror', error => consoleErrors.push(String(error)))
-    const pageUrl = `${base}/projects/${projectId}/chats/${chatId}`
+    const pageUrl = `${base}/projects/${projectId}/chats/${chatId}?info=1`
     const screenshotDir = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? 'docs/p3/evidence')
     mkdirSync(screenshotDir, { recursive: true })
 
@@ -345,6 +345,7 @@ try {
       return status==='运行中'
     },'UI shows running',10000)
     assert.equal(await page.locator('[data-testid="pending-input-count"]').textContent(),'1 条输入未投递')
+    await page.getByTestId("chat-inspector").waitFor({state:"visible"})
     const activeStatus=await page.locator('[data-testid="info-chat-runs-active-status"]').first().textContent()
     assert(activeStatus==='排队中'||activeStatus==='运行中','pending input must never be displayed as processed')
     assert((await page.locator('[data-testid="info-turn-active-run"]').textContent()).includes('条输入未投递'),'turn context shows the pending input as undelivered')

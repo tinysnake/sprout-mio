@@ -26,6 +26,20 @@ function record(name, passed, detail) {
 }
 
 async function check(name, fn) {
+  if (
+    results.some(
+      (result) =>
+        !result.passed &&
+        [
+          "register_sets_session",
+          "register_and_create_project",
+          "create_project_switches_to_new_chats",
+        ].includes(result.name),
+    )
+  ) {
+    console.log(`SKIP ${name}: setup failed`);
+    return;
+  }
   try {
     await fn();
   } catch (error) {
@@ -35,6 +49,17 @@ async function check(name, fn) {
 
 async function shot(page, name) {
   await page.screenshot({ path: `${EVIDENCE}${name}.png`, fullPage: true });
+}
+
+async function readFieldError(testId) {
+  const describedBy = await page.getByTestId(testId).getAttribute("aria-describedby");
+  const ids = describedBy?.split(/\s+/).filter(Boolean) ?? [];
+  if (!ids.length) throw new Error(testId + " 没有关联字段错误");
+  const error = page.locator(
+    ids.map((id) => "[id=" + JSON.stringify(id) + '][role="alert"]').join(","),
+  );
+  await error.waitFor({ state: "visible", timeout: 20000 });
+  return error.innerText();
 }
 
 mkdirSync(EVIDENCE, { recursive: true });
@@ -65,7 +90,7 @@ await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector('input[name="email"]', { timeout: 20000 });
 
 await check("register_sets_session", async () => {
-  await page.click("text=没有账号？注册");
+  await page.getByTestId("register-tab").click();
   await page.fill('input[name="name"]', "Project 验收");
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
@@ -190,12 +215,15 @@ await check("empty_name_shows_field_error_and_request_id", async () => {
   );
   await page.click('[data-testid="project-submit"]');
   const response = await responsePromise;
-  await page.waitForSelector('[data-testid="field-error-name"]', { timeout: 20000 });
-  const state = await page.evaluate(() => ({
-    field: document.querySelector('[data-testid="field-error-name"]')?.textContent,
-    error: document.querySelector('[data-testid="project-form-error"]')?.textContent,
-    meta: document.querySelector('[data-testid="project-form-error-meta"]')?.textContent,
-  }));
+  const field = await readFieldError("project-name-input");
+  const state = await page.evaluate(
+    (field) => ({
+      field,
+      error: document.querySelector('[data-testid="project-form-error"]')?.textContent,
+      meta: document.querySelector('[data-testid="project-form-error-meta"]')?.textContent,
+    }),
+    field,
+  );
   const pageRequestId = state.meta?.match(/req_[0-9a-f-]{36}/)?.[0];
   const headerRequestId = response.headers()["x-sprout-request-id"];
   const diagnostics = await page.evaluate(
@@ -219,8 +247,7 @@ await check("long_description_shows_field_error", async () => {
   await page.fill('[data-testid="project-name-input"]', "超长描述样例");
   await page.fill('[data-testid="project-description-input"]', "a".repeat(501));
   await page.click('[data-testid="project-submit"]');
-  await page.waitForSelector('[data-testid="field-error-description"]', { timeout: 20000 });
-  const field = await page.textContent('[data-testid="field-error-description"]');
+  const field = await readFieldError("project-description-input");
   record(
     "long_description_shows_field_error",
     /描述最多 500 字/.test(field ?? ""),
