@@ -2,7 +2,6 @@ import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { AgentProfileList } from "../../components/agent/agent-profile-list";
 import { CreateAgentDialog } from "../../components/agent/create-agent-dialog";
 import { PageFrame } from "../../components/layout/page-frame";
-import { ThemeToggle } from "../../components/layout/theme-toggle";
 import { ResultError } from "../../components/project/result-error";
 import { listAgentProfilesFn } from "../../server/functions/agent";
 
@@ -22,12 +21,7 @@ function AgentsIndexPage() {
       title="Agents"
       description="当前账号创建的 Agent profile。选择一个查看或修改人设。"
       back={<Link to="/projects">返回 Projects</Link>}
-      actions={
-        <>
-          <CreateAgentDialog onCreated={() => void router.invalidate()} />
-          <ThemeToggle />
-        </>
-      }
+      actions={<CreateAgentDialog onCreated={() => void router.invalidate()} />}
       testId="agents-page"
     >
       {!result.ok && <ResultError error={result.error} testId="agents-error" />}

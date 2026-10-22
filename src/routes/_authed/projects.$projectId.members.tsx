@@ -1,7 +1,6 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { PageFrame } from "../../components/layout/page-frame";
-import { ThemeToggle } from "../../components/layout/theme-toggle";
 import { ProjectMembers } from "../../components/project/project-members";
 import { ResultError } from "../../components/project/result-error";
 import { Icon } from "../../components/ui/icon";
@@ -39,7 +38,6 @@ function ProjectMembersPage() {
           返回 Chats
         </Link>
       }
-      actions={<ThemeToggle />}
       testId="project-members-page"
     >
       {!members.ok && <ResultError error={members.error} testId="members-load-error" />}

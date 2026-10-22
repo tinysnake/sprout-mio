@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import type { Project } from "../../contracts/project";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
+import { ThemeMenuToggle } from "./theme-toggle";
 
 const ShellContext = createContext<{ sidebarWidth: number; openProjectCreation: () => void }>({
   sidebarWidth: 200,
@@ -229,6 +230,7 @@ function AccountMenu({
             >
               {email}
             </p>
+            <ThemeMenuToggle />
             <Button
               variant="ghost"
               data-testid="sign-out"
@@ -432,16 +434,18 @@ export function AppShell({
           <nav
             aria-label="一级导航"
             data-testid="mobile-primary-nav"
-            className="flex shrink-0 items-center justify-around border-t border-border bg-sidebar px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-1"
+            className="grid shrink-0 grid-cols-5 items-stretch border-t border-border bg-sidebar px-2 pb-[max(6px,env(safe-area-inset-bottom))] pt-1"
           >
             <Popover.Root open={mobileProjectsOpen} onOpenChange={setMobileProjectsOpen}>
               <Popover.Trigger
                 aria-label="Projects"
                 data-testid="mobile-projects"
-                className={`flex min-h-12 flex-col items-center justify-center gap-1 px-3 text-[10px] ${!agentPage ? "text-primary" : "text-muted-foreground"}`}
+                className={`flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] ${!agentPage ? "text-primary" : "text-muted-foreground"}`}
               >
                 <Icon as={FolderKanban} />
-                <span>Projects</span>
+                <span className="max-w-full truncate">Projects</span>
+                {/* 说明行始终占位，避免有说明的项把图标顶高。 */}
+                <span aria-hidden="true" className="text-[9px] leading-3" />
               </Popover.Trigger>
               <Popover.Portal>
                 <Popover.Positioner side="top" align="start" sideOffset={8} className="z-50">
@@ -466,28 +470,29 @@ export function AppShell({
             <Link
               to="/agents"
               aria-current={agentPage ? "page" : undefined}
-              className={`flex min-h-12 flex-col items-center justify-center gap-1 px-3 text-[10px] ${agentPage ? "text-primary" : "text-muted-foreground"}`}
+              className={`flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] ${agentPage ? "text-primary" : "text-muted-foreground"}`}
             >
               <Icon as={Bot} />
-              <span>Agents</span>
+              <span className="max-w-full truncate">Agents</span>
+              <span aria-hidden="true" className="text-[9px] leading-3" />
             </Link>
             <span
               aria-label="Machines，未实现，P4"
-              className="flex min-h-12 flex-col items-center justify-center gap-0.5 text-[9px] text-muted-foreground"
+              className="flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] text-muted-foreground"
             >
               <Icon as={Monitor} />
-              <span>Machines</span>
-              <span>未实现，P4</span>
+              <span className="max-w-full truncate">Machines</span>
+              <span className="text-[9px] leading-3 whitespace-nowrap">未实现，P4</span>
             </span>
             <span
               aria-label="Management，未实现"
-              className="flex min-h-12 flex-col items-center justify-center gap-0.5 text-[9px] text-muted-foreground"
+              className="flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] text-muted-foreground"
             >
               <Icon as={Settings2} />
-              <span>Management</span>
-              <span>未实现</span>
+              <span className="max-w-full truncate">Management</span>
+              <span className="text-[9px] leading-3 whitespace-nowrap">未实现</span>
             </span>
-            <div className="w-10 shrink-0">
+            <div className="flex min-h-12 min-w-0 items-center justify-center">
               <AccountMenu
                 name={name}
                 email={email}

@@ -5,7 +5,6 @@ import {
 } from "../../components/agent/agent-detail-search";
 import { AgentEditForm } from "../../components/agent/agent-edit-form";
 import { PageFrame } from "../../components/layout/page-frame";
-import { ThemeToggle } from "../../components/layout/theme-toggle";
 import { ResultError } from "../../components/project/result-error";
 import { Facts, SettingsSection } from "../../components/project/settings-section";
 import { getAgentProfileFn } from "../../server/functions/agent";
@@ -52,7 +51,6 @@ function AgentDetailPage() {
         title="Agent profile 不存在"
         description="请返回列表选择已有 profile。"
         back={<AgentBackLink {...search} />}
-        actions={<ThemeToggle />}
         testId="agent-detail-page"
       >
         <ResultError error={result.error} testId="agent-error" />
@@ -70,7 +68,6 @@ function AgentDetailPage() {
         </>
       }
       back={<AgentBackLink {...search} />}
-      actions={<ThemeToggle />}
       testId="agent-detail-page"
     >
       <SettingsSection

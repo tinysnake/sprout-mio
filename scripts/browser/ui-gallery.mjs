@@ -71,29 +71,59 @@ await check("浅色：正文与输入字号来自同一 base 规则", async () =
 });
 
 // 2. 主题切换：跨切换点同步、刷新后保持
-await check("主题：点击切换后两个切换点同时变为暗色，刷新后保持", async () => {
+await check("主题：按钮与菜单行共享同一状态，刷新后保持", async () => {
   const toggles = desktop.page.locator('[data-testid="theme-toggle"]');
+  const count = await toggles.count();
+  // 演示页同时摆出「页面按钮」与「菜单行」两种入口，数量不写死，只要求至少两种都在。
+  if (count < 2) throw new Error(`期望至少两个主题入口，实际 ${count}`);
   const before = await desktop.page.evaluate(() =>
     document.documentElement.classList.contains("dark"),
   );
+  // 图标按钮与菜单行文案不同，但必须都指向同一个「下一步目标」。
+  const targetBefore = before ? "浅色" : "暗色";
+  const labelsBefore = await toggles.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute("aria-label")),
+  );
+  const offTarget = labelsBefore.filter((label) => !(label ?? "").includes(targetBefore));
+  if (offTarget.length > 0) throw new Error(`入口与当前主题不一致 ${labelsBefore.join("|")}`);
   await toggles.first().click();
   const afterFirst = await desktop.page.evaluate(() =>
     document.documentElement.classList.contains("dark"),
   );
   if (before === afterFirst) throw new Error("classList 没变化");
   const readout = await desktop.page.locator('[data-testid="theme-readout"]').innerText();
-  const expected = afterFirst ? "暗色" : "浅色";
-  if (!readout.includes(expected)) throw new Error(`readout ${readout}`);
-  const labels = await toggles.evaluateAll((nodes) =>
+  if (!readout.includes(afterFirst ? "暗色" : "浅色")) throw new Error(`readout ${readout}`);
+  const targetAfter = afterFirst ? "浅色" : "暗色";
+  const labelsAfter = await toggles.evaluateAll((nodes) =>
     nodes.map((node) => node.getAttribute("aria-label")),
   );
-  if (new Set(labels).size !== 1) throw new Error(`labels ${labels.join("|")}`);
+  const offAfter = labelsAfter.filter((label) => !(label ?? "").includes(targetAfter));
+  if (offAfter.length > 0) throw new Error(`切换后入口未同步 ${labelsAfter.join("|")}`);
+  if (labelsAfter[0] === labelsBefore[0]) throw new Error("切换后文案没有跟随主题");
   await desktop.page.reload({ waitUntil: "networkidle" });
   const afterReload = await desktop.page.evaluate(() =>
     document.documentElement.classList.contains("dark"),
   );
   if (afterReload !== afterFirst) throw new Error(`刷新后 ${afterReload} != ${afterFirst}`);
-  record("主题：切换后多切换点一致且刷新保持", true, `dark=${afterFirst} labels=${labels[0]}`);
+  record("主题：按钮与菜单行同源、刷新保持", true, `dark=${afterFirst} label=${labelsAfter[0]}`);
+});
+
+await check("主题：菜单行按钮点击后立即切换并回写文案", async () => {
+  const row = desktop.page.locator('[data-testid="theme-toggle"]').last();
+  const before = await desktop.page.evaluate(() =>
+    document.documentElement.classList.contains("dark"),
+  );
+  const labelBefore = await row.getAttribute("aria-label");
+  await row.click();
+  const after = await desktop.page.evaluate(() =>
+    document.documentElement.classList.contains("dark"),
+  );
+  const labelAfter = await row.getAttribute("aria-label");
+  const readout = await desktop.page.locator('[data-testid="theme-readout"]').innerText();
+  if (after === before) throw new Error("菜单行点击没有切换主题");
+  if (labelAfter === labelBefore) throw new Error(`文案未回写 ${labelAfter}`);
+  if (!readout.includes(after ? "暗色" : "浅色")) throw new Error(`readout ${readout}`);
+  record("主题：菜单行切换生效", true, `${labelBefore} -> ${labelAfter}`);
 });
 
 await desktop.page.screenshot({ path: `${EVIDENCE}1440-dark.png`, fullPage: true });

@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { PageFrame } from "@/components/layout/page-frame";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { ThemeMenuToggle, ThemeToggle } from "@/components/layout/theme-toggle";
 import { useTheme } from "@/lib/theme";
 
 function Section({ title, note, children }: { title: string; note?: string; children: ReactNode }) {
@@ -110,6 +110,11 @@ export function Gallery() {
             当前主题：{theme === "dark" ? "暗色" : "浅色"}
           </Button>
           <ThemeToggle />
+        </Row>
+        <Row>
+          <div className="w-56 rounded-container border border-border bg-popover p-1.5">
+            <ThemeMenuToggle />
+          </div>
         </Row>
       </Section>
 

@@ -244,6 +244,32 @@ try {
             newChatTarget && newChatTarget.width >= 43 && newChatTarget.height >= 43,
             "mobile new Chat target is at least 44px",
           );
+          // 底栏五项等宽：此前用 justify-around 时各项宽度不同，视觉间隔不齐。
+          const nav = await page.evaluate(() => {
+            const items = [
+              ...document.querySelector('[data-testid="mobile-primary-nav"]').children,
+            ];
+            const rects = items.map((item) => {
+              const box = item.getBoundingClientRect();
+              const icon = item.querySelector("svg");
+              return {
+                width: Math.round(box.width),
+                iconTop: icon ? Math.round(icon.getBoundingClientRect().top) : null,
+              };
+            });
+            return rects;
+          });
+          assert.equal(nav.length, 5, "mobile nav keeps five entries");
+          assert.equal(
+            new Set(nav.map((item) => item.width)).size,
+            1,
+            `mobile nav columns share one width: ${nav.map((item) => item.width).join("/")}`,
+          );
+          const iconTops = nav.map((item) => item.iconTop).filter((top) => top !== null);
+          assert(
+            new Set(iconTops).size === 1,
+            `mobile nav icons share one baseline: ${iconTops.join("/")}`,
+          );
           await page.screenshot({ path: join(evidence, `list-${theme}-${width}.png`) });
         }
         return boxes;

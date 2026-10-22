@@ -8,7 +8,6 @@ import type { FieldErrors } from "../../contracts/project";
 import type { AppError } from "../../contracts/result";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
-import { ThemeToggle } from "../layout/theme-toggle";
 import { ResultError } from "../project/result-error";
 import { MessageComposer } from "./message-composer";
 import { MessageList } from "./message-list";
@@ -96,7 +95,6 @@ export function ChatThread({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {latestRun && <RunStatusBadge status={latestRun.status} />}
-          <ThemeToggle />
           <Button
             type="button"
             variant="ghost"

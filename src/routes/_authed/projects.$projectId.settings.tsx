@@ -1,7 +1,6 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { PageFrame } from "../../components/layout/page-frame";
-import { ThemeToggle } from "../../components/layout/theme-toggle";
 import { ProjectAgentsPanel } from "../../components/info-hub/project-agents-panel";
 import { UnavailableNotice } from "../../components/info-hub/unavailable-notice";
 import { ProjectBasicInfoForm } from "../../components/project/project-basic-info-form";
@@ -50,7 +49,6 @@ function ProjectSettingsPage() {
           返回 Chats
         </Link>
       }
-      actions={<ThemeToggle />}
       testId="project-settings-page"
     >
       {!project.ok && <ResultError error={project.error} testId="settings-project-error" />}

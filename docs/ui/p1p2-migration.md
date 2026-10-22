@@ -33,7 +33,7 @@
 - `components/ui/field.tsx`：`Field({ label, htmlFor?, hint?, error?, children, className? })`，错误与说明可关联到控件。
 - `components/ui/icon.tsx`：`Icon({ as, size?, ...svgProps })`，默认 16px / 1.5 stroke。
 - `components/layout/page-frame.tsx`：`PageFrame({ title, description?, back?, actions?, children, testId? })`，back 为 link 节点。
-- `components/layout/theme-toggle.tsx`：自包含主题切换按钮，使用统一主题状态。
+- `components/layout/theme-toggle.tsx`：`ThemeMenuToggle` 是账号菜单里的单行主题按钮（点一次在浅暗间切换），`ThemeToggle` 是登录页的独立图标按钮；两者都读 `lib/theme` 的统一状态。应用内侧栏与底栏的账号菜单是主题唯一入口，页面标题区不再重复放切换按钮。
 - `lib/theme.ts`：主题偏好与初始化，浅暗状态在应用和开发场景之间一致。
 - `components/layout/app-shell.tsx`：应用外壳及 `useAppShell()`，提供 `{ sidebarWidth: number, openProjectCreation: () => void }`；Chat 据此分配空间，创建入口调用稳定外壳中的表单。外壳通过 `onCreateProject` 接收动作，根据视口和 inspector 的 URL 状态处理自动 rail。
 
