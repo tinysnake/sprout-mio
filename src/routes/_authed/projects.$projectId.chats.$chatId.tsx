@@ -99,8 +99,6 @@ function ProjectChatDetailPage() {
       humanName={human?.name ?? ""}
       messages={loader.messages}
       runState={loader.runState}
-      members={loader.members}
-      instances={loader.instances}
       inspectorOpen={open}
       onToggleInspector={() => setOpen(!open)}
       onChanged={() => void router.invalidate()}

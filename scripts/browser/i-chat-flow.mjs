@@ -44,6 +44,12 @@ async function shot(page, name) {
   await page.screenshot({ path: `${EVIDENCE}${name}.png`, fullPage: true });
 }
 
+/** 身份事实只在 Info Hub 里展示：打开 `?info=1` 后从 inspector 读取。 */
+async function openChatInspector(page, chatPath) {
+  await page.goto(`${BASE}${chatPath}?info=1`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="inspector-chat-id"]', { timeout: 20000 });
+}
+
 function finish() {
   const failed = results.filter((result) => !result.passed);
   console.log(`browser checks: ${results.length - failed.length}/${results.length} passed`);
@@ -63,12 +69,12 @@ async function verifyRestartedSession() {
   await page.goto(`${BASE}${state.chatPath}`, { waitUntil: "domcontentloaded" });
 
   await check("restart_chat_renders_same_instance", async () => {
-    await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
+    await openChatInspector(page, state.chatPath);
     const actual = await page.evaluate(() => ({
-      chatId: document.querySelector('[data-testid="chat-id"]')?.textContent,
-      instanceId: document.querySelector('[data-testid="chat-instance-id"]')?.textContent,
-      persona: document.querySelector('[data-testid="chat-agent-persona"]')?.textContent,
-      agentName: document.querySelector('[data-testid="chat-agent-name"]')?.textContent,
+      chatId: document.querySelector('[data-testid="inspector-chat-id"]')?.textContent,
+      instanceId: document.querySelector('[data-testid="inspector-instance-id"]')?.textContent,
+      persona: document.querySelector('[data-testid="inspector-agent-persona"]')?.textContent,
+      agentName: document.querySelector('[data-testid="inspector-agent-name"]')?.textContent,
     }));
     record(
       "restart_chat_renders_same_instance",
@@ -222,11 +228,11 @@ if (process.env.CHAT_VERIFY === "1") {
     await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
       timeout: 20000,
     });
-    await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
     chatPath = pathOf();
     chatId = chatPath.split("/").pop() ?? "";
-    instanceId = (await page.textContent('[data-testid="chat-instance-id"]')) ?? "";
-    const agentShown = await page.textContent('[data-testid="chat-agent-name"]');
+    await openChatInspector(page, chatPath);
+    instanceId = (await page.textContent('[data-testid="inspector-instance-id"]')) ?? "";
+    const agentShown = await page.textContent('[data-testid="inspector-agent-name"]');
     const listedChats = await page.$$eval('[data-testid="chat-item"]', (nodes) =>
       nodes.map((node) => node.getAttribute("data-chat-id")),
     );
@@ -264,7 +270,7 @@ if (process.env.CHAT_VERIFY === "1") {
     const kinds = await page.$$eval('[data-testid="message-item"]', (nodes) =>
       nodes.map((node) => node.getAttribute("data-sender-kind")),
     );
-    const afterReloadInstance = await page.textContent('[data-testid="chat-instance-id"]');
+    const afterReloadInstance = await page.textContent('[data-testid="inspector-instance-id"]');
     await shot(page, "p2-i-chat-messages");
     record(
       "send_two_messages_survive_reload_in_order",
@@ -281,11 +287,11 @@ if (process.env.CHAT_VERIFY === "1") {
     await page.fill('[data-testid="agent-edit-persona"]', updatedPersona);
     await page.click('[data-testid="agent-edit-save"]');
     await page.waitForSelector('[data-testid="agent-edit-saved"]', { timeout: 20000 });
-    await page.goto(`${BASE}${chatPath}`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
+    await page.goto(`${BASE}${chatPath}?info=1`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-testid="inspector-chat-id"]', { timeout: 20000 });
     const state = await page.evaluate(() => ({
-      instanceId: document.querySelector('[data-testid="chat-instance-id"]')?.textContent,
-      persona: document.querySelector('[data-testid="chat-agent-persona"]')?.textContent,
+      instanceId: document.querySelector('[data-testid="inspector-instance-id"]')?.textContent,
+      persona: document.querySelector('[data-testid="inspector-agent-persona"]')?.textContent,
       bodies: [...document.querySelectorAll('[data-testid="message-body"]')].map(
         (node) => node.textContent,
       ),
@@ -317,9 +323,8 @@ if (process.env.CHAT_VERIFY === "1") {
   });
 
   await check("deep_link_chat_renders", async () => {
-    await page.goto(`${BASE}${chatPath}`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="chat-instance-id"]', { timeout: 20000 });
-    const id = await page.textContent('[data-testid="chat-id"]');
+    await openChatInspector(page, chatPath);
+    const id = await page.textContent('[data-testid="inspector-chat-id"]');
     record("deep_link_chat_renders", id?.trim() === chatId, `深链直达对话页 ${chatPath}`);
   });
 

@@ -96,12 +96,21 @@ async function config(page) {
   };
 }
 async function chat(page) {
-  await test(page, "chat-instance-id").waitFor();
+  await test(page, "chat-pane").waitFor();
+  // 身份事实现在只在 inspector 里展示：打开 `?info=1` 后从 Info Hub 读同一份数据。
+  if (
+    !(await test(page, "info-chat-instance-id")
+      .isVisible()
+      .catch(() => false))
+  ) {
+    await test(page, "toggle-inspector").click();
+  }
+  await test(page, "info-chat-instance-id").waitFor();
   return {
-    chatId: await test(page, "chat-id").textContent(),
-    instanceId: await test(page, "chat-instance-id").textContent(),
+    chatId: await test(page, "inspector-chat-id").textContent(),
+    instanceId: await test(page, "inspector-instance-id").textContent(),
     messages: await test(page, "message-body").allTextContents(),
-    persona: await test(page, "chat-agent-persona").textContent(),
+    persona: await test(page, "inspector-agent-persona").textContent(),
   };
 }
 function cross(value, state) {
@@ -198,7 +207,7 @@ async function before() {
   await sameText(page, "member-item-name", agentName);
   await goto(page, `${project.path}/chats`);
   await test(page, "dm-start").click();
-  await test(page, "chat-instance-id").waitFor();
+  await test(page, "chat-pane").waitFor();
   const chatPath = new URL(page.url()).pathname;
   const original = await chat(page);
   const messages = ["第一条独立验收消息。", "第二条消息，字面量与顺序都必须保留。"];
