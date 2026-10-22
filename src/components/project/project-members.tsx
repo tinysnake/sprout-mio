@@ -46,6 +46,7 @@ export function ProjectMembers({
   remove: (agentProfileId: string) => Promise<AgentResult<null>>;
   onChanged: () => void;
 }) {
+  const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState("");
   const [removing, setRemoving] = useState<RemoveTarget | null>(null);
   const [pending, setPending] = useState(false);
@@ -71,6 +72,7 @@ export function ProjectMembers({
         setError(result.error);
         return;
       }
+      setAdding(false);
       setFeedback("Agent 已添加到 Project。");
       onChanged();
     } catch (cause) {
@@ -103,45 +105,26 @@ export function ProjectMembers({
 
   return (
     <div className="max-w-[40rem]">
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 max-desktop:flex-col max-desktop:items-stretch">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <p data-testid="members-count" className="text-xs text-muted-foreground">
           {members.length} 位 Agent · 1 位 Human
         </p>
-        <form
-          onSubmit={handleAdd}
-          aria-busy={pending}
-          className="flex items-end gap-2.5 max-desktop:flex-col max-desktop:items-stretch"
-        >
-          <Field
-            label="添加 Agent 成员"
-            htmlFor="add-member-select"
-            className="w-56 max-desktop:w-full"
-          >
-            <Select
-              id="add-member-select"
-              data-testid="add-member-select"
-              value={chosen}
-              disabled={pending || candidates.length === 0}
-              onChange={(event) => setSelected(event.target.value)}
-            >
-              {candidates.length === 0 && <option value="">没有可添加的 Agent profile</option>}
-              {candidates.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+        {/* 没有可添加的 profile 时不显示入口，避免一个点了也无事可做的按钮。 */}
+        {candidates.length > 0 && (
           <Button
-            type="submit"
-            data-testid="add-member-submit"
-            loading={pending}
-            disabled={candidates.length === 0}
+            type="button"
+            variant="secondary"
+            data-testid="add-member-trigger"
+            onClick={() => {
+              setError(null);
+              setFeedback("");
+              setAdding(true);
+            }}
           >
             <Icon as={Plus} />
-            加入
+            添加 Agent 成员
           </Button>
-        </form>
+        )}
       </div>
 
       {feedback && (
@@ -249,6 +232,51 @@ export function ProjectMembers({
           这个 Project 还没有 Agent 成员，添加一个 Agent 开始协作。
         </p>
       )}
+
+      <Dialog
+        open={adding}
+        onOpenChange={(next) => {
+          if (!next && !pending) setAdding(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>添加 Agent 成员</DialogTitle>
+            <DialogDescription>选择要加入当前 Project 的 Agent profile。</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAdd} aria-busy={pending} className="space-y-4">
+            <Field label="Agent profile" htmlFor="add-member-select">
+              <Select
+                id="add-member-select"
+                data-testid="add-member-select"
+                value={chosen}
+                disabled={pending}
+                onChange={(event) => setSelected(event.target.value)}
+              >
+                {candidates.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                data-testid="cancel-add-member"
+                onClick={() => setAdding(false)}
+              >
+                取消
+              </Button>
+              <Button type="submit" data-testid="add-member-submit" loading={pending}>
+                {pending ? "正在加入…" : "加入"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={removing !== null}

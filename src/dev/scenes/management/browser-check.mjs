@@ -196,6 +196,7 @@ await check("members_add_and_remove", async () => {
   const { context, page, errors } = await open({ scene: "members" });
   await test(page, "member-list").waitFor();
   const before = await page.locator('[data-testid="member-item"]').count();
+  await test(page, "add-member-trigger").click();
   await test(page, "add-member-submit").click();
   await page.waitForFunction(
     (n) => document.querySelectorAll('[data-testid="member-item"]').length === n + 1,
@@ -244,7 +245,8 @@ await check("members_without_profiles_still_removable", async () => {
   const { context, page } = await open({ scene: "members" });
   await test(page, "member-list").waitFor();
   await test(page, "scene-profiles-missing").check();
-  await test(page, "add-member-select").isDisabled();
+  // 没有可添加的 profile 时不显示添加入口，而不是显示一个禁用按钮。
+  const triggerCount = await page.locator('[data-testid="add-member-trigger"]').count();
   await page.locator('[data-testid="member-remove"]').first().click();
   await test(page, "confirm-member-mutation").waitFor();
   const dialogText = await page.locator('[data-slot="dialog-content"]').innerText();
@@ -252,8 +254,8 @@ await check("members_without_profiles_still_removable", async () => {
   await test(page, "cancel-member-mutation").click();
   record(
     "members_without_profiles_still_removable",
-    /agp_/.test(dialogText),
-    `profile 查询失败时移除仍有确认对象，确认框回退显示 profile ID`,
+    /agp_/.test(dialogText) && triggerCount === 0,
+    `profile 查询失败时移除仍有确认对象（回退显示 profile ID），添加入口隐藏`,
   );
   await context.close();
 });

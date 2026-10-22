@@ -133,6 +133,8 @@ await check("create_two_profiles_join_one", async () => {
     "未加入的分身人设：不应出现在 Info Hub 聚合里",
   );
   await page.goto(`${BASE}${projectPath}/members`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="add-member-trigger"]', { timeout: 20000 });
+  await page.click('[data-testid="add-member-trigger"]');
   await page.waitForSelector('[data-testid="add-member-select"]', { timeout: 20000 });
   await page.selectOption('[data-testid="add-member-select"]', { label: joinedName });
   await page.click('[data-testid="add-member-submit"]');

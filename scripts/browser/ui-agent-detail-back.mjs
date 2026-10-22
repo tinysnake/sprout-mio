@@ -82,6 +82,8 @@ await check("setup_chat_and_profile", async () => {
   profileId = (await page.textContent('[data-testid="agent-detail-id"]'))?.trim() ?? "";
 
   await page.goto(`${BASE}${projectPath}/members`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="add-member-trigger"]', { timeout: 20000 });
+  await page.click('[data-testid="add-member-trigger"]');
   await page.waitForSelector('[data-testid="add-member-select"]', { timeout: 20000 });
   await page.selectOption('[data-testid="add-member-select"]', { label: agentName });
   await page.click('[data-testid="add-member-submit"]');

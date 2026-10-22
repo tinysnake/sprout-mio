@@ -202,6 +202,7 @@ async function before() {
   await test(page, "agent-detail-id").waitFor();
   const agentProfileId = await test(page, "agent-detail-id").textContent();
   await goto(page, `${project.path}/members`);
+  await test(page, "add-member-trigger").click();
   await test(page, "add-member-select").selectOption({ label: agentName });
   await test(page, "add-member-submit").click();
   await sameText(page, "member-item-name", agentName);

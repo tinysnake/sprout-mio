@@ -204,6 +204,7 @@ await check("members_add_open_agent_and_remove", async () => {
   await page.goto(`${BASE}/projects/${projectId}/members`, { waitUntil: "domcontentloaded" });
   await test("member-list").waitFor();
   const agentName = page.agentName;
+  await test("add-member-trigger").click();
   await test("add-member-select").selectOption({ label: agentName });
   await test("add-member-submit").click();
   await page.waitForFunction(

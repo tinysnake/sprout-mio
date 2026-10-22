@@ -200,6 +200,9 @@ await check("edit_persona_persists_with_same_id", async () => {
 await check("add_and_remove_member_roundtrip", async () => {
   await page.goto(`${BASE}${projectPath}/members`, { waitUntil: "domcontentloaded" });
   // 注册播种的默认 Agent 已经是成员，所以这里等的是新 profile 进入可选列表，而非空成员。
+  // 添加入口改为按钮加弹窗：等按钮出现（出现即表示有可添加的 profile），再在弹窗里选人。
+  await page.waitForSelector('[data-testid="add-member-trigger"]', { timeout: 20000 });
+  await page.click('[data-testid="add-member-trigger"]');
   await page.waitForFunction(
     (name) =>
       [...document.querySelectorAll('[data-testid="add-member-select"] option')].some(

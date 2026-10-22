@@ -195,6 +195,8 @@ if (process.env.CHAT_VERIFY === "1") {
     agentId = (await page.textContent('[data-testid="agent-detail-id"]')) ?? "";
     await page.goto(`${BASE}${projectPath}/members`, { waitUntil: "domcontentloaded" });
     // 默认 Agent 已是成员，等新 profile 出现在可选列表。
+    await page.waitForSelector('[data-testid="add-member-trigger"]', { timeout: 20000 });
+    await page.click('[data-testid="add-member-trigger"]');
     await page.waitForFunction(
       (name) =>
         [...document.querySelectorAll('[data-testid="add-member-select"] option')].some(
