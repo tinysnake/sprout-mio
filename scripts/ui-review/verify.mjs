@@ -144,12 +144,19 @@ try {
     process.env.SPROUT_REVIEW_PORT = String(port);
     process.env.SPROUT_REVIEW_LAVISH_PORT = String(lavishPort);
     process.env.SPROUT_REVIEW_STATE_DIR = path.join(root, "state");
-    await session.prompt(`/ui-review ${appUrl}`);
+    const tool = resourceLoader
+      .getExtensions()
+      .extensions.flatMap((loaded) => [...loaded.tools.values()])
+      .find((registered) => registered.definition.name === "ui_review")?.definition;
+    assert.ok(tool, "扩展注册了 ui_review 工具");
+    const call = (params) => tool.execute("verify", params, undefined, undefined, undefined);
+    const started = await call({ action: "start", entry: appUrl });
+    assert.equal(started.isError, undefined, `ui_review start 失败：${started.content?.[0]?.text}`);
     const descriptor = JSON.parse(await readFile(path.join(root, "state/session.json"), "utf8"));
     review = {
       ...descriptor,
-      stop: () => session.prompt("/ui-review stop"),
-      reply: (text) => session.prompt(`/ui-review reply ${text}`),
+      stop: async () => void (await call({ action: "stop" })),
+      reply: async (text) => void (await call({ action: "reply", message: text })),
     };
   } else {
     review = await startReview({

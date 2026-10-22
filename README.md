@@ -22,7 +22,7 @@ APP_TRUSTED_ORIGINS=http://10.144.144.*:3200
 
 只接受回环与内网网段，公网域名或 `http://*:3200` 会在启动时被拒。绑定全部接口意味着同网段设备可访问该应用，仅适合可信内网。
 
-UI review 预览同样监听全部接口；从其他设备访问时用实际地址启动 `/ui-review http://10.0.0.13:3000/login`，详见 [UI review 工作流](docs/ui/review-workflow.md)。
+UI review 预览同样监听全部接口；用 `ui-review` 技能启动，不需要传 URL（默认从登录页开始，应用 origin 取自 `APP_ORIGIN`），详见 [UI review 工作流](docs/ui/review-workflow.md)。
 
 > 独占整机算力，多 Agent 协作，把任务真正做完。
 

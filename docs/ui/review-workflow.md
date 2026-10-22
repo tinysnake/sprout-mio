@@ -12,20 +12,14 @@
 pi --extension ./scripts/ui-review/pi-extension.mjs
 ```
 
-在该 Pi session 内执行：
-
-```text
-/ui-review http://localhost:3000/login
-```
-
-打开命令返回的 review URL。默认 review 端口为 `4400`，独立 Lavish 后端为 `4401`。预览与应用沿用同一个 hostname，避免把 `localhost` 与 `127.0.0.1` 混用而改变 cookie 的站点条件；应用本身继续使用原来的 origin。
+在该 Pi session 里用**技能** `ui-review` 启动，直接说“用 ui-review 看看设置页”即可，不需要输入 URL、端口或斜线命令。技能由 [`.agents/skills/ui-review/SKILL.md`](../../.agents/skills/ui-review/SKILL.md) 提供，底层只有一个工具 `ui_review`（`start` / `status` / `stop` / `reply`）。入口不传时从 `/login` 开始，应用 origin 依次取 `SPROUT_REVIEW_APP`、`APP_ORIGIN` 与仓库 env 文件，缺省为 `http://localhost:3000`。默认 review 端口为 `4400`、Lavish 后端为 `4401`，被占（含上次遗留的僵死实例）时自动往后找一对空闲端口并在返回值里报告。预览与应用沿用同一个 hostname，避免把 `localhost` 与 `127.0.0.1` 混用而改变 cookie 的站点条件；应用本身继续使用原来的 origin。
 
 ## 内网访问（LAN / VPN）
 
 review 代理固定监听全部接口（`0.0.0.0`），Lavish 后端仍只监听本机回环并由代理转发，所以只需让浏览器访问代理端口。要让其他设备可用：
 
 - 应用同样监听全部接口（`pnpm dev`、`pnpm start`）。把常用地址设为 `APP_ORIGIN`（如 `http://10.0.0.13:3200`），其他内网 / VPN 地址放进 `APP_TRUSTED_ORIGINS`（如 `http://10.144.144.*:3200`）；只接受回环与内网模式。
-- 传给 `/ui-review` 的 URL 必须是浏览器实际打开的那个地址：review URL 的 hostname 取自它，iframe 也直接加载它。例如 `/ui-review http://10.0.0.13:3000/login`；用 `localhost` 启动后从手机打开 `http://10.0.0.13:4400/...` 时，iframe 会指向手机自己的 localhost 而失败。
+- 入口决定 iframe 的 hostname：省略时用上面解析出的应用 origin，给完整 URL 时用该 URL。例如让 agent `ui_review({ action: "start", entry: "http://10.0.0.13:3000/login" })`；用 `localhost` 启动后从手机打开 `http://10.0.0.13:4400/...` 时，iframe 会指向手机自己的 localhost 而失败。
 - 代理接受回环、`10/8`、`172.16/12`、`192.168/16`、`169.254/16`、CGNAT(`100.64/10`，含 Tailscale)、IPv6 ULA/链路本地与 `.local` 主机名，公网域名被拒；同时要求 `Origin` 与请求自身的 `Host` 同源。
 - 该代理没有额外鉴权，也没有「只监听回环」的开关，只应在可信内网使用；需要限制来源时在系统防火墙或前置代理上做，改动工具本身要同时更新本节的验证。
 
@@ -37,25 +31,42 @@ DOM Capture 扩展需要在 review 站点与目标 frame 的该站点上授权�
 export { default } from "../../scripts/ui-review/pi-extension.mjs";
 ```
 
-该本机入口已在本次工作区建立；这里直接启动普通 Pi 即可，当前运行中的 Pi 需 `/reload` 才会加载。自动发现与显式 `--extension` 二选一，避免重复注册。扩展只注册 `/ui-review`，不会在加载时启动服务。其他机器可以选择显式 `--extension`，无需复制本机配置。
+该本机入口已在本次工作区建立；这里直接启动普通 Pi 即可，当前运行中的 Pi 需 `/reload` 才会加载。自动发现与显式 `--extension` 二选一，避免重复注册。扩展只注册 `ui_review` 工具，不注册任何 slash 命令，也不会在加载时启动服务。其他机器可以选择显式 `--extension`，无需复制本机配置。
 
-相关命令：
+工具参数：
 
 ```text
-/ui-review status
-/ui-review reply 已修正此处间距，并验证保存与刷新；请复查。
-/ui-review stop
+ui_review({ action: "start", entry? })   启动；entry 是 / 开头的路径或本机 / 内网 URL，省略即 /login
+ui_review({ action: "status" })           查看预览地址、端口、反馈监听状态
+ui_review({ action: "reply", message })   把修复结果回写到 Lavish 对话
+ui_review({ action: "stop" })             停止并释放端口
 ```
 
-`reply` 收到 Lavish 接受回执后才报告成功。agent 也可读取 `.verify/ui-review/4400/session.json` 中的 `file` 和 `env`，按这些环境变量调用 `lavish-axi reply`；不要使用另一个默认 Lavish 实例的状态目录。
+入口只决定 iframe 的初始页面；需要登录的深链在未登录时仍由应用自己重定向到登录页，登录后回到 `/`。agent 负责根据用户描述读 `src/routes` 选入口，不要求人类拼 URL。
 
-端口冲突时不会接管既有进程。启动 Pi 前通过 `SPROUT_REVIEW_PORT`、`SPROUT_REVIEW_LAVISH_PORT` 设置两个空闲端口，必要时用 `SPROUT_REVIEW_STATE_DIR` 指定独立状态目录。应用、review、Lavish 三个端口必须不同。
+`reply` 收到 Lavish 接受回执后才报告成功。agent 也可读取 `.verify/ui-review/<端口>/session.json` 中的 `file` 和 `env`，按这些环境变量调用 `lavish-axi reply`；不要使用另一个默认 Lavish 实例的状态目录。
+
+端口由工具自动处理：从 `SPROUT_REVIEW_PORT` / `SPROUT_REVIEW_LAVISH_PORT`（缺省 4400 / 4401）开始逐个后移，跳过被占用、有响应或能连但不回 HTTP 的端口，实际使用的端口写在返回值和 `session.json` 的 `ports` 里。显式给端口且要求严格时报错而不接管既有进程；应用、review、Lavish 三个端口必须不同。`SPROUT_REVIEW_STATE_DIR` 可指定独立状态目录。
+
+### 遗留下僵死的 Lavish 进程
+
+自动换端口后，上次异常退出的 `lavish-axi server` 仍可能占着旧端口。确认归属后只杀它：
+
+```bash
+pgrep -fl "lavish-axi server"
+lsof -nP -iTCP:4401 -sTCP:LISTEN
+pkill -f "lavish-axi server --port 4401"
+```
+
+工具的代理进程在异常退出时会尽力杀掉自有子进程，但 `SIGKILL` 或整机断电仍可能留下残留；清理不会影响别人的进程。
 
 只需预览、不连接 agent 时可以运行：
 
 ```bash
-node scripts/ui-review/cli.mjs http://localhost:3000/login
+node scripts/ui-review/cli.mjs
 ```
+
+可选第一个参数是入口：`/projects` 这样的路径按应用 origin 展开，完整 URL 原样使用；省略则从登录页开始。端口默认自动后移，`--strict-ports` 改为直接报错。
 
 该命令保持前台运行，返回 URL，但不监听反馈。Ctrl+C 会清理它启动的 Lavish 与代理，不停止 Sprout。
 
@@ -77,7 +88,7 @@ Pi extension 持有 Lavish server 和 poll 子进程。`poll` 没有普通等待
 
 普通反馈后继续等待。`Send & End` 的最后一条反馈仍送达一次，随后停止 poll，不自行重开用户结束的会话。`browser_disconnected` 也停止等待，并将状态交给 agent 询问用户。poll 失败时显示通知和停止状态，不伪装成仍在监听。状态目录保留收据，可以在进程异常后手动核对未处理反馈。
 
-`/ui-review stop`、Pi session 关闭、切换或 fork 前，会停止自有子进程和连接。扩展不会结束其他 agent 的任务或共享 Lavish 服务。当前文档不表示某个正在运行的 Pi session 已启用监听，以 `/ui-review status` 和实际收取结果为准。
+`ui_review({ action: "stop" })`、Pi session 关闭、切换或 fork 前，会停止自有子进程和连接。扩展不会结束其他 agent 的任务或共享 Lavish 服务。当前文档不表示某个正在运行的 Pi session 已启用监听，以 `ui_review({ action: "status" })` 和实际收取结果为准。
 
 ## 验证与证据
 
