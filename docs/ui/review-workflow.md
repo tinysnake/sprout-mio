@@ -20,6 +20,17 @@ pi --extension ./scripts/ui-review/pi-extension.mjs
 
 打开命令返回的 review URL。默认 review 端口为 `4400`，独立 Lavish 后端为 `4401`。预览与应用沿用同一个 hostname，避免把 `localhost` 与 `127.0.0.1` 混用而改变 cookie 的站点条件；应用本身继续使用原来的 origin。
 
+## 内网访问（LAN / VPN）
+
+review 代理固定监听全部接口（`0.0.0.0`），Lavish 后端仍只监听本机回环并由代理转发，所以只需让浏览器访问代理端口。要让其他设备可用：
+
+- 应用同样监听全部接口（`pnpm dev`、`pnpm start`），并把 `APP_ORIGIN` 设为该设备访问应用用的地址，如 `APP_ORIGIN=http://10.0.0.13:3000`。auth 只认这一个 origin，不能与 `localhost` 混用。
+- 传给 `/ui-review` 的 URL 必须是浏览器实际打开的那个地址：review URL 的 hostname 取自它，iframe 也直接加载它。例如 `/ui-review http://10.0.0.13:3000/login`；用 `localhost` 启动后从手机打开 `http://10.0.0.13:4400/...` 时，iframe 会指向手机自己的 localhost 而失败。
+- 代理接受回环、`10/8`、`172.16/12`、`192.168/16`、`169.254/16`、CGNAT(`100.64/10`，含 Tailscale)、IPv6 ULA/链路本地与 `.local` 主机名，公网域名被拒；同时要求 `Origin` 与请求自身的 `Host` 同源。
+- 该代理没有额外鉴权，也没有「只监听回环」的开关，只应在可信内网使用；需要限制来源时在系统防火墙或前置代理上做，改动工具本身要同时更新本节的验证。
+
+DOM Capture 扩展需要在 review 站点与目标 frame 的该站点上授权；换用内网地址后要重新授权。
+
 若希望普通 Pi 启动或 `/reload` 时自动发现扩展，可在忽略的 `.pi/extensions/sprout-ui-review.js` 中放入：
 
 ```js

@@ -4,7 +4,7 @@ import { startReview } from "./review.mjs";
 const args = process.argv.slice(2);
 if (args.includes("--help") || !args[0]) {
   console.log(
-    "用法: node scripts/ui-review/cli.mjs <本地 Sprout URL> [--port 4400] [--lavish-port 4401]\n保持此前台命令运行；Ctrl+C 清理自有进程。此入口不监听反馈，Pi 中请加载 pi-extension.mjs 并使用 /ui-review。",
+    "用法: node scripts/ui-review/cli.mjs <本机或内网 Sprout URL> [--port 4400] [--lavish-port 4401]\n代理监听全部接口，可用局域网 / VPN 地址打开；Lavish 后端只在本机回环。\n保持此前台命令运行；Ctrl+C 清理自有进程。此入口不监听反馈，Pi 中请加载 pi-extension.mjs 并使用 /ui-review。",
   );
 } else {
   const option = (name, fallback) =>

@@ -2,6 +2,21 @@
 
 开发编排统一从 [开发总计划](docs/development-plan.md)开始。功能与 UI 专项计划由总计划分派，不单独编排。
 
+## 本机运行
+
+```bash
+pnpm install --frozen-lockfile
+cp .env.example .env.local   # 填入至少 32 字符的 BETTER_AUTH_SECRET
+pnpm setup                   # 创建 data/ 并应用迁移
+pnpm dev                     # 开发；生产用 pnpm build && pnpm start
+```
+
+首次打开 `/login` 注册即可，没有预置账号；注册会创建默认 Project 与 Amenda 助手。
+
+开发与生产入口都监听全部接口，可用 `127.0.0.1`、局域网 IP 或 VPN 地址打开。换用非 localhost 地址时，把 `APP_ORIGIN` 改成实际访问的 origin（如 `http://10.0.0.13:3000`），auth 只认这一个 origin。绑定全部接口意味着同网段设备可访问该应用，仅适合可信内网。
+
+UI review 预览同样监听全部接口；从其他设备访问时用实际地址启动 `/ui-review http://10.0.0.13:3000/login`，详见 [UI review 工作流](docs/ui/review-workflow.md)。
+
 > 独占整机算力，多 Agent 协作，把任务真正做完。
 
 Sprout Mio 是一个多 Agent 协作平台：人类在 Project 里与有稳定人设的 Agent 分身通过 DM / Group 协作，所有工作以 Task 为驱动——提出目标、分配归属、用 checklist 分工、以施工记录交付结果；每个分身都能通过租约独占一台物理 PC（Machine），拿满整机 CPU、内存与磁盘去跑编译、测试、大型项目构建等重计算任务，而不用跟别人抢资源、也不用担心现场被干扰。

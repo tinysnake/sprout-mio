@@ -94,8 +94,8 @@ curl --noproxy '*' -fsS http://localhost:3114/api/auth/get-session
 1. 运行 `pnpm install --frozen-lockfile`。
 2. 将 `.env.example` 复制为 `.env.local`，填写随机 `BETTER_AUTH_SECRET`。
 3. 运行 `pnpm setup`。该命令创建 `data/` 并应用迁移。
-4. 运行 `pnpm build`，然后运行 `pnpm start`。开发使用 `pnpm dev`。
-5. 打开 `http://localhost:3000/login`，选择注册并创建第一个 Human。
+4. 运行 `pnpm build`，然后运行 `pnpm start`。开发使用 `pnpm dev`。两者都监听全部接口；从局域网或 VPN 访问时把 `APP_ORIGIN` 设为该地址（如 `http://10.0.0.13:3000`），并让 `PORT` 与之一致。
+5. 打开实际访问地址下的 `/login`（默认 `http://localhost:3000/login`），选择注册并创建第一个 Human。用内网地址访问时，必须用同一个地址注册与登录，不能与 `localhost` 混用。
 
 注册不写入演示业务数据，但会创建默认 Project 与默认 Agent，让人注册完就能直接开会话。验收库中两个 Human 注册后，`project` 行数为 2，每个 Human 各一个。
 

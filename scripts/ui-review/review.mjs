@@ -12,15 +12,21 @@ const exec = promisify(execFile);
 const supportedVersion = "0.1.90";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
+/** 回环、私有网段与 mDNS 名都视为本机可达地址；公网域名不进入预览。 */
+export function localHostname(hostname) {
+  const name = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (name === "localhost" || name.endsWith(".localhost") || name.endsWith(".local")) return true;
+  if (name === "::1" || name.startsWith("fe80:") || /^f[cd][0-9a-f]{2}:/.test(name)) return true;
+  if (name.startsWith("127.") || name.startsWith("10.") || name.startsWith("192.168.")) return true;
+  if (/^172\.(?:1[6-9]|2\d|3[01])\./.test(name)) return true;
+  // Tailscale 等 CGNAT 网段同属内网可达。
+  return /^100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(name);
+}
+
 export function localAppUrl(value) {
   const url = new URL(value);
-  if (
-    url.protocol !== "http:" ||
-    !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
-    url.username ||
-    url.password
-  )
-    throw new Error("预览只接受 http://localhost、127.0.0.1 或 [::1] 的本地应用 URL");
+  if (url.protocol !== "http:" || !localHostname(url.hostname) || url.username || url.password)
+    throw new Error("预览只接受 http 的本机或内网应用 URL（回环、私有网段、CGNAT 或 .local）");
   return url;
 }
 
@@ -109,11 +115,17 @@ async function terminate(child) {
   }
 }
 
-function allowedRequest(req, origin) {
-  return (
-    req.headers.host === new URL(origin).host &&
-    (!req.headers.origin || req.headers.origin === origin)
-  );
+export function allowedRequest(req, port) {
+  const header = req.headers.host;
+  if (!header) return false;
+  let requested;
+  try {
+    requested = new URL("http://" + header);
+  } catch {
+    return false;
+  }
+  if (requested.port !== String(port) || !localHostname(requested.hostname)) return false;
+  return !req.headers.origin || req.headers.origin === "http://" + header;
 }
 
 export async function startReview({
@@ -130,6 +142,8 @@ export async function startReview({
   }
   if (new Set([port, lavishPort, Number(app.port || 80)]).size !== 3)
     throw new Error("应用、review 和 Lavish 必须使用不同端口");
+  /** 预览代理监听全部接口，便于通过 LAN / VPN 地址访问；Lavish 后端仍只在本机回环。 */
+  const host = "0.0.0.0";
   const origin = `http://${app.hostname}:${port}`;
   const upstream = `http://127.0.0.1:${lavishPort}`;
   const state = path.resolve(stateDir || `.verify/ui-review/${port}`);
@@ -178,13 +192,14 @@ export async function startReview({
         throw new Error(`Lavish 端口 ${lavishPort} 未响应；请换端口`);
     }
     server = createServer(async (req, res) => {
-      if (!allowedRequest(req, origin)) {
+      if (!allowedRequest(req, port)) {
         res.writeHead(403).end("Forbidden");
         return;
       }
-      const pathname = new URL(req.url, origin).pathname;
+      const requestedOrigin = "http://" + req.headers.host;
+      const pathname = new URL(req.url, requestedOrigin).pathname;
       if (pathname === "/") {
-        res.writeHead(302, { location: reviewUrl }).end();
+        res.writeHead(302, { location: `${requestedOrigin}/session/${key}?no-gate=1` }).end();
         return;
       }
       if (pathname === "/sprout-review.js") {
@@ -198,8 +213,8 @@ export async function startReview({
         "accept-encoding": "identity",
       };
       if (headers.origin) headers.origin = upstream;
-      if (headers.referer?.startsWith(origin + "/"))
-        headers.referer = upstream + headers.referer.slice(origin.length);
+      if (headers.referer?.startsWith(requestedOrigin + "/"))
+        headers.referer = upstream + headers.referer.slice(requestedOrigin.length);
       const outgoing = request(upstream + req.url, { method: req.method, headers }, (incoming) => {
         const transform =
           incoming.statusCode === 200 &&
@@ -243,7 +258,7 @@ export async function startReview({
       socket.on("close", () => sockets.delete(socket));
     });
     server.on("upgrade", (req, socket, head) => {
-      if (!allowedRequest(req, origin)) {
+      if (!allowedRequest(req, port)) {
         socket.destroy();
         return;
       }
@@ -266,7 +281,7 @@ export async function startReview({
     });
     await new Promise((resolve, reject) => {
       server.once("error", reject);
-      server.listen(port, app.hostname.replace(/^\[|\]$/g, ""), resolve);
+      server.listen(port, host, resolve);
     });
     backend = spawnCaptured(bin, ["server", "--port", String(lavishPort)], env);
     for (let attempt = 0; ; attempt++) {

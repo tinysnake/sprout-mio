@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
-import { localAppUrl, startReview } from "./review.mjs";
+import { allowedRequest, localAppUrl, startReview } from "./review.mjs";
 
 const args = process.argv.slice(2);
 const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
@@ -66,12 +66,39 @@ try {
   for (const url of [
     "https://localhost:3000",
     "http://example.com",
+    "http://8.8.8.8:3000",
     "http://user:pass@localhost",
     "file:///tmp/app.html",
   ]) {
     assert.throws(() => localAppUrl(url));
   }
-  pass("可信预览拒绝远程 URL、凭据 URL 和非 HTTP 协议");
+  for (const url of [
+    "http://127.0.0.1:3000/login",
+    "http://10.0.0.13:3000/login",
+    "http://192.168.1.5:3000/login",
+    "http://172.20.0.2:3000/login",
+    "http://100.101.102.103:3000/login",
+    "http://mio.local:3000/login",
+  ]) {
+    assert.equal(localAppUrl(url).href, url);
+  }
+  for (const host of ["10.0.0.13:4400", "127.0.0.1:4400", "mio.local:4400", "example.com:4400"]) {
+    const request = { headers: { host } };
+    assert.equal(
+      allowedRequest(request, 4400),
+      host !== "example.com:4400",
+      `预览代理对 ${host} 的判定`,
+    );
+    assert.equal(
+      allowedRequest({ headers: { host, origin: `http://${host}` } }, 4400),
+      host !== "example.com:4400",
+    );
+    assert.equal(
+      allowedRequest({ headers: { host, origin: "https://evil.example" } }, 4400),
+      false,
+    );
+  }
+  pass("可信预览接受回环与内网地址，拒绝公网域名、凭据 URL 和非 HTTP 协议");
   if (sdkDir) {
     const sdk = await import(pathToFileURL(path.join(sdkDir, "dist/index.js")).href);
     const settingsManager = sdk.SettingsManager.inMemory({
