@@ -137,8 +137,9 @@
 @theme inline {
   /*
    * 产品布局边界，数值来自 docs/frontend-design.md 的已确认行为：
-   *   desktop: 901px 起保留桌面布局，max-desktop: 即 ≤900px 的窄屏；
-   *   wide:    1200px 起才让 Chat 与 inspector 并排。
+   *   desktop / max-desktop: 901px 起为桌面布局，901px 以下才是窄屏；
+   *   wide: 1200px 起回到宽侧栏。901–1199px 仍是桌面三栏，
+   *         只是 inspector 打开时侧栏自动收成 64px 图标栏。
    * 共享布局与组件都引用这两个断点，不另用 Tailwind 默认的 768/1024/1280。
    */
   --breakpoint-desktop: 56.3125rem;

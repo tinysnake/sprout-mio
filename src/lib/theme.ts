@@ -14,7 +14,8 @@ export const THEME_INIT_SCRIPT = `try{var t=localStorage.getItem(${JSON.stringif
 )});if(t==="dark")document.documentElement.classList.add("dark");}catch(e){}`;
 
 type ThemeStorage = Pick<Storage, "getItem" | "setItem">;
-type ThemeRoot = Pick<Element, "classList">;
+/** applyTheme 只 touching classList，测试与 SSR 都能传入最小实现。 */
+type ThemeRoot = { classList: { toggle(token: string, force?: boolean): boolean } };
 
 const listeners = new Set<() => void>();
 let current: Theme = "light";
