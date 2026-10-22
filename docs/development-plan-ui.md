@@ -65,7 +65,7 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 预览应直接加载可信本地 Sprout URL，保持应用所需的 origin、资源加载、登录与存储行为；不能把运行中的应用简单套进 Lavish 原有的 sandboxed HTML iframe 并宣称可用。原有 HTML artifact 的隔离与可信应用预览分别处理。DOM Capture 需要取得目标 frame 的站点权限；响应式验收使用 Sprout frame 的实际尺寸，不能拿包含反馈面板的整个浏览器窗口尺寸代替。
 
-当前 Lavish CLI 与 skill 已安装；截图、文字提交和 CLI 收取已在隔离实验中验证。DOM Capture 的 Copy ID / Copy DOM path 扩展已完成，跨域及嵌套 iframe 的自动化回归通过。可重复启动的可信应用预览适配、用户浏览器中扩展重载，以及真实 Lavish / Sprout 组合的完整体验验收仍待完成；工具安装或单项实验不代表整条流程已经验收。
+当前 Lavish CLI 与 skill 已安装，仓库内的可信应用预览适配和受 Pi session 管理的反馈监听已实现。已用实际 DOM Capture 扩展、Lavish、独立 Chromium 与 Pi SDK 验证元素定位、文字与截图收取、反馈唤醒及回复；真实 Sprout 构建快照的注册、登录保持和导航检查通过。启动方式、证据与未验证项见 [UI review 工具记录](ui/review-workflow.md)。用户常用浏览器中的扩展重载与 Human 亲自体验仍待完成，不据此勾选 UI 章节验收。
 
 ### 当前原型迁入仓库的顺序
 

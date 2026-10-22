@@ -1,0 +1,41 @@
+{
+  "recordedAt": "2026-10-22T03:57:16.695115+00:00",
+  "lavishVersion": "0.1.90",
+  "piSdkVersion": "1.3.0",
+  "nodeVersion": "v26.11.1",
+  "playwrightVersion": "1.63.0",
+  "tests": [
+    "可信预览拒绝远程 URL、凭据 URL 和非 HTTP 协议",
+    "端口冲突拒绝接管，已有 review 仍可访问；普通 artifact 隔离与 Origin 检查保持",
+    "可信 frame 保留 cookie、localStorage、登录刷新和前后退；显示实际视口且不污染应用 URL",
+    "真实扩展在 Lavish 的跨源 frame 选取元素，Copy ID / Copy DOM path 保留内外 URL",
+    "真实 Pi SDK 将 poll 反馈送回同一 idle session；收据先落盘，截图像素保留，回复回到 Conversation",
+    "Send & End 的最终反馈送达，用户结束状态被保留",
+    "浏览器无未处理脚本错误",
+    "停止 review 后，自有代理与 Lavish 端口均已释放"
+  ],
+  "wakeVerification": "Real Pi SDK file extension loader and idle-session input hook; no model invoked",
+  "sprout": {
+    "registration": true,
+    "loginPersistsAcrossReload": true,
+    "navigationAndHistory": true,
+    "defaultAgent": "Amenda",
+    "reviewViewport": "Sprout · 1240 × 944",
+    "note": "既有构建快照与隔离 SQLite，不代表进行中的 UI migrate 验收通过"
+  },
+  "sproutBuildIndexSha256": "08a247703761e356c2896f15b260fb6a60804df8eb9b54c47e52a83ab011d75d",
+  "domCapturePickerSha256": "7beb2a2978ae5f6f26cd3357d625853ae75476aac09dc8bd443109b33f79a169",
+  "sourceSha256": {
+    "scripts/ui-review/browser.js": "3d594d6d0ae5963474f42eeac2ffd98368395e20359549517e260341cb79977a",
+    "scripts/ui-review/cli.mjs": "a9c21da473e3b13b2595cf845ede14a8039f11e1829c9b3c2e24374cb894d65e",
+    "scripts/ui-review/pi-extension.mjs": "4e4281d9ddd850cde85f82102b0af06510d2a1ff4ddcdac602da5a83281370c6",
+    "scripts/ui-review/review.mjs": "87c323b23222ed0f64672ea991f466cccb0d9a6ef32d17085577dba2a2fdb5c0",
+    "scripts/ui-review/verify.mjs": "352bc381444fa451a48ab24603b5052b22d6dce075e85bf4993e311e0efcee79"
+  },
+  "screenshotsSha256": {
+    "feedback-received.png": "37ac4cc4bb015adbe7f37d758199185e758445b28c053fdda4a7a048b48665b9",
+    "sprout-authenticated.png": "93a747fe4159c8096a1f4be7f7052ff6686a1f42449b774e862755999d6f5041",
+    "sprout-element.png": "13ea97f5a89750ab902282a58f71e21f259018d53f4a708051dd921e9a9c91f3"
+  },
+  "humanConfirmed": false
+}
