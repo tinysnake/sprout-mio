@@ -148,7 +148,9 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 基础单元记录。共享 Human/wire 契约与六张表已在 `0a33103` 合入，接口与事务规则见 [P4a 契约](p4a/contracts.md)。编排者独立复跑 `pnpm check`、`pnpm typecheck` 与 `bash scripts/verify/s-machine-contracts.sh`，真实隔离 SQLite 迁移及约束反证通过。
 
-功能单元记录。Worker 与服务提交 `43d5f9b` 经本机完整复验和独立安全审查后，在 `3da9fdd` 合入。编排者复跑检查、类型、单测、Worker 与 Web 构建以及 `bash scripts/verify/t-machine-worker.sh`，通过同机真实 macOS Worker、独立服务、SQLite、隐藏票据输入、连接恢复及旧消息反证。行为与安装说明见 [功能交付](p4a/functional.md) 和 [Worker 安装](p4a/worker.md)。跨机 TLS 未验证。UI 仍在修正，正式页面接入与整章独立验收尚未完成。
+功能单元记录。Worker 与服务提交 `43d5f9b` 经本机完整复验和独立安全审查后，在 `3da9fdd` 合入。编排者复跑检查、类型、单测、Worker 与 Web 构建以及 `bash scripts/verify/t-machine-worker.sh`，通过同机真实 macOS Worker、独立服务、SQLite、隐藏票据输入、连接恢复及旧消息反证。行为与安装说明见 [功能交付](p4a/functional.md) 和 [Worker 安装](p4a/worker.md)。跨机 TLS 未验证。
+
+共用 UI 单元记录。最终提交 `5f5e49b` 在 `2a56c81` 合入。编排者复跑检查、类型、177 项测试和 25 项真实浏览器检查，并查看浅暗宽窄屏及绑定、安装、生命周期截图。覆盖空说明、失败保留、续签错误、切换 Machine、A 到 B 再回 A、卸载和每次 DOM 提交的票据归属。呈现组件与演示见 [UI 交付](ui/p4a.md)。正式接入已从该合入版本启动，负责真实路由、RPC、安装命令与 Info Hub；UI 就绪、整章技术验收和 Human 体验仍待后续核对。
 
 - 接入范围包括 Machine 列表与详情、Worker 安装启动说明、认证连接与重连状态、加入 Project、说明和工作目录绑定，以及 shell 与执行能力信息。
 - 主要路径是按说明启动真实 macOS Worker、确认连接、将 Machine 加入 Project 并绑定目录，再从页面查看连接与能力事实。

@@ -4,7 +4,7 @@
 
 按开发总计划分派的范围交付已确认的一期功能。产品范围见 [core-scope.md](core-scope.md)，技术选择与原因见 [architecture-direction.md](architecture-direction.md)。
 
-P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 已建立可运行的工程骨架与 Project 样例，结论见 [p1/summary.md](p1/summary.md)。P2 已完成身份、成员与持久对话，P3 已完成阶段验收，其中第 2 条部分交付，结论见 [p2/summary.md](p2/summary.md) 与 [p3/summary.md](p3/summary.md)。总计划已于 2026-10-23 从 `d8614dd` 分派 P4a，共享契约与数据库单元 `0a33103` 及 Worker 功能提交 `43d5f9b` 已通过本机复验并合入，当前等待 UI 修正与正式接入；P4b 及以后未开工。复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
+P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 已建立可运行的工程骨架与 Project 样例，结论见 [p1/summary.md](p1/summary.md)。P2 已完成身份、成员与持久对话，P3 已完成阶段验收，其中第 2 条部分交付，结论见 [p2/summary.md](p2/summary.md) 与 [p3/summary.md](p3/summary.md)。总计划已于 2026-10-23 从 `d8614dd` 分派 P4a，共享契约与数据库单元 `0a33103` 及 Worker 功能提交 `43d5f9b` 已通过本机复验并合入，共用 UI `5f5e49b` 也已合入，当前进行正式接入；P4b 及以后未开工。复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
 
 ## 按阶段推进并保留证据
 
@@ -25,7 +25,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P1 | 建立工程骨架与标准功能样例 | P0 | 已完成（结论见 [p1/summary.md](p1/summary.md)） |
 | P2 | 建立 Project、profile、Chat 和分身 | P1 | 已完成（结论见 [p2/summary.md](p2/summary.md)） |
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 已完成（第 2 条部分交付，结论见 [p3/summary.md](p3/summary.md)） |
-| P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | P4a 功能已合入，UI 修正与接入待完成，其余待开始 |
+| P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | P4a 功能与共用 UI 已合入，正式接入中，其余待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
 | P6 | 完成小脑接续、Info Hub 与成员治理 | P4、P5 | 待开始 |
 | P7 | 完成手机、PWA、恢复与一期整体验收 | P6 | 待开始 |
@@ -242,4 +242,4 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 | P2 | 已完成 Project 配置、全局 Agent profile 与成员、持久 DM 与分身、消息、创建者授权、稳定 URL 和 Info Hub 两个已有对象视角。实现基线 `28d4fb2`，P2 最终实现、验收与合入范围 `28d4fb2..db185f8`。原 a～e 的实现与合入范围 `28d4fb2..d8f4e2b`。PR #10 head `cfa5d4d` merge `6836b06`，PR #11 head `fdad1ca` merge `53c9cb7`，PR #12 head `bf7ffa4` merge `2b814eb`，PR #13 head `dc11b8a` merge `da4aebb`，PR #14 head `872e62d` merge `d8f4e2b`。逐项证据见 [p2/summary.md](p2/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0，真实 SQLite、真实 Chromium 七个 URL 的直接进入、刷新、前进后退，真实生产进程 SIGTERM 与重启后身份、消息、三项配置及人设字面量相等，两用户隔离覆盖六页与 17 个 RPC 且 B 正常对照可用。main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/actions/runs/39062616946) completed、success，覆盖检查测试构建迁移与生产 smoke，不含 Chromium。收尾复跑 `bash scripts/verify/l-docs.sh`、`bash scripts/verify.sh` 与 `pnpm check`。真实 Pi、run、宿主仓库、Machine、租约、Task、Group、Public Channel、自动接续、手机、PWA 与并发等未验证项见 summary |
 | P3 | 已完成真实 Pi session、轮次投递与停止、每轮快照、宿主仓库入口与 provenance、Info Hub run 事实与轮初上下文查询；第 2 条部分交付。实现基线 `db185f8`，a～d 的实现与合入范围 `db185f8..e5e2b4e`。PR #19 head `dcd1ddd` merge `34b078e`，PR #20 head `32eac6c` merge `a73770c`，PR #21 head `e51fe69` merge `0d51b1f`，PR #22 head `eb4d141` merge `55da85f`。e 为只读验收，无 PR；f 为收尾，PR #23 head `aa41061` merge `e5e2b4e`（文档落地与 `l-docs` 扩展）。逐项证据见 [p3/summary.md](p3/summary.md) | glm 家族在 P3 无既有产出的阶段验收，从 plan 推导命题，独立复跑真实模型、真实 SQLite、真实 Chromium、Git 与直接 SQL 反证。六条成立，第 2 条未完整交付，保持未勾；宿主配置、认证与 Sprout extension 已交付，codemode、tool_search、MCP 与用户 skills 未进分身工具面。验收基线 `55da85f`，完整边界与后续归属见 summary |
 
-当前下一任务是 P4 的 P4a，由总计划分派。共享契约与数据库单元 `0a33103`、Worker 功能提交 `43d5f9b` 已合入，当前收口 UI 修正，随后正式接入并进行独立技术验收。功能复验使用 `bash scripts/verify/t-machine-worker.sh`，行为与验证边界见 [功能交付](p4a/functional.md)。P4a 功能条目待整章证据收口后统一核对。P4b 及以后不由本专项计划自行启动。P3 未验证项与第 2 条部分交付的后续决定见 [p3/summary.md](p3/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4 对应单元记录。
+当前下一任务是 P4 的 P4a，由总计划分派。共享契约与数据库单元 `0a33103`、Worker 功能提交 `43d5f9b` 已合入，当前正式接入已从共用 UI `5f5e49b` 的合入版本 `2a56c81` 启动，随后进行独立技术验收。功能复验使用 `bash scripts/verify/t-machine-worker.sh`，行为与验证边界见 [功能交付](p4a/functional.md)。P4a 功能条目待整章证据收口后统一核对。P4b 及以后不由本专项计划自行启动。P3 未验证项与第 2 条部分交付的后续决定见 [p3/summary.md](p3/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4 对应单元记录。
