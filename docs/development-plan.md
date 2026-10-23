@@ -146,14 +146,16 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 启动记录（2026-10-23）。功能与 UI 代码基线为 `d8614dd`，设计沿用 [前端设计基线](frontend-design.md)，依赖 P0 的身份、连接代次与恢复契约。本轮先完成连接和绑定契约，再分派功能、UI 与真实接入。编排记录位于 `orchestrate/sprout-mio-p4a/`。允许修改 Machine 契约、持久化、Worker、服务边界、对应页面与验收脚本；不启动 P4b 的租约或远端操作。验收目标为本机真实 macOS Worker 与真实应用，跨机拓扑未经验证时单独记录。现存其他 session 的 UI 反馈 Job 不由本轮接管。
 
-基础单元记录。共享 Human/wire 契约与六张表已在 `0a33103` 合入，接口与事务规则见 [P4a 契约](p4a/contracts.md)。编排者独立复跑 `pnpm check`、`pnpm typecheck` 与 `bash scripts/verify/s-machine-contracts.sh`，真实隔离 SQLite 迁移及约束反证通过。此记录只证明基础约束，真实 Worker、浏览器和整章验收仍待完成。
+基础单元记录。共享 Human/wire 契约与六张表已在 `0a33103` 合入，接口与事务规则见 [P4a 契约](p4a/contracts.md)。编排者独立复跑 `pnpm check`、`pnpm typecheck` 与 `bash scripts/verify/s-machine-contracts.sh`，真实隔离 SQLite 迁移及约束反证通过。
+
+功能单元记录。Worker 与服务提交 `43d5f9b` 经本机完整复验和独立安全审查后，在 `3da9fdd` 合入。编排者复跑检查、类型、单测、Worker 与 Web 构建以及 `bash scripts/verify/t-machine-worker.sh`，通过同机真实 macOS Worker、独立服务、SQLite、隐藏票据输入、连接恢复及旧消息反证。行为与安装说明见 [功能交付](p4a/functional.md) 和 [Worker 安装](p4a/worker.md)。跨机 TLS 未验证。UI 仍在修正，正式页面接入与整章独立验收尚未完成。
 
 - 接入范围包括 Machine 列表与详情、Worker 安装启动说明、认证连接与重连状态、加入 Project、说明和工作目录绑定，以及 shell 与执行能力信息。
 - 主要路径是按说明启动真实 macOS Worker、确认连接、将 Machine 加入 Project 并绑定目录，再从页面查看连接与能力事实。
 - 关键异常与回归覆盖认证拒绝、连接中断、重连与旧连接迟到，验证旧连接不能覆盖新连接，断线不推断为空闲或已释放。回归 Project 上下文与查询边界，不把尚未交付的租约操作显示为可用。
 - 章节证据补充 Worker 与宿主运行环境、真实连接和重连记录、连接代次比较，以及页面状态与服务事实的对应关系。记录实际网络拓扑，同机进程验证不替代未执行的跨机验证。
 
-- [ ] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
+- [x] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
 - [ ] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。
 - [ ] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。
 - [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。
