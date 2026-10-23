@@ -16,7 +16,7 @@
 
 Project settings 选择本人 Machine 后，在同一区域显示共用 `MachineBindingForm`，提交 description、Project 归属与当前 binding expectedRevision；成功后刷新本页，URL 不变。此前入口跳往详情页，已按 Human 判定修复。详情页 `?projectId=` 的加入与编辑入口保留，并使用同一表单和 Fn。
 
-Machine 详情页单独编辑 root，提交 directory（绝对路径或 null）和当前 rootRevision 作为 expectedRevision。修改会改变所有绑定 Project 的派生路径，一期不迁移目录；清空后不探测任何路径。保存失败保留草稿，冲突刷新服务端 root 与 revision 后允许核对重试。每个 Project 的路径只通过 `projectWorkingPath(root, projectId)` 派生。目录保存不证明远端可达，页面直接使用服务端 capability.current 和 observation.current，不附加 online 条件。断线表示通信事实，不表示空闲、释放或租约。
+Machine 详情页单独编辑 root，提交 directory（绝对路径或 null）和草稿开始编辑时的 rootRevision 作为 expectedRevision。loader 刷新会更新当前服务端事实，但不能自动推进脏草稿的版本基线；第一次保存仍应检查旧版本，收到 conflict 后由用户显式重试，才使用当前显示的服务端 revision。修改会改变所有绑定 Project 的派生路径，一期不迁移目录；清空后不探测任何路径。保存失败保留草稿，冲突刷新服务端 root 与 revision 后允许核对重试。每个 Project 的路径只通过 `projectWorkingPath(root, projectId)` 派生。目录保存不证明远端可达，页面直接使用服务端 capability.current 和 observation.current，不附加 online 条件。断线表示通信事实，不表示空闲、释放或租约。
 
 列表、详情与 Project settings 使用显式刷新读取最新连接和目录观察，不提供事件流或自动实时承诺。刷新保留组件实例及未保存草稿。
 

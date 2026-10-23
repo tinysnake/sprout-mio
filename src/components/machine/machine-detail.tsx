@@ -375,6 +375,7 @@ function MachineRootForm({
     revision: machine.rootRevision,
   });
   const [directory, setDirectory] = useState(machine.rootDirectory ?? "");
+  const [draftRevision, setDraftRevision] = useState(machine.rootRevision);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -393,6 +394,7 @@ function MachineRootForm({
     syncedRevision.current = machine.rootRevision;
     if (!preserveDraft.current && directory === (fact.directory ?? "")) {
       setDirectory(machine.rootDirectory ?? "");
+      setDraftRevision(machine.rootRevision);
     }
     setFact({ directory: machine.rootDirectory, revision: machine.rootRevision });
   }, [machine.rootDirectory, machine.rootRevision, directory, fact]);
@@ -400,18 +402,21 @@ function MachineRootForm({
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
+    // Refreshing current facts must not rebase a dirty draft before an explicit conflict retry.
+    const expectedRevision = error?.code === "conflict" ? fact.revision : draftRevision;
     setError(null);
     setSaved(false);
     const parsed = saveMachineRootDirectoryInput.safeParse({
       machineId: machine.id,
       directory: directory || null,
-      expectedRevision: fact.revision,
+      expectedRevision,
     });
     if (!parsed.success) {
       setFieldErrors(fieldErrorsFrom(parsed.error));
       return;
     }
     setFieldErrors({});
+    setDraftRevision(expectedRevision);
     setPending(true);
     preserveDraft.current = true;
     try {
@@ -424,6 +429,7 @@ function MachineRootForm({
         return;
       }
       setFact(result.data);
+      setDraftRevision(result.data.revision);
       setDirectory(result.data.directory ?? "");
       setSaved(true);
       preserveDraft.current = false;

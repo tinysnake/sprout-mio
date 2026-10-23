@@ -401,7 +401,22 @@ try {
       )
     );
   }, "two Project paths reachable");
+  const conflictRefreshPattern = `**/_serverFn/${ids.getMachineFn}`;
+  let refreshStarted;
+  let releaseRefresh;
+  const refreshRequested = new Promise((done) => (refreshStarted = done));
+  const refreshGate = new Promise((done) => (releaseRefresh = done));
+  await page.route(
+    conflictRefreshPattern,
+    async (route) => {
+      refreshStarted();
+      await refreshGate;
+      await route.continue();
+    },
+    { times: 1 },
+  );
   await page.getByTestId("machine-refresh").click();
+  await refreshRequested;
   const firstPaths = await page.getByTestId("machine-binding-path").allTextContents();
   assert.equal(firstPaths.length, 2);
   assert.notEqual(firstPaths[0], firstPaths[1]);
@@ -427,7 +442,58 @@ try {
       expectedRevision: rootBeforeConflict.rootRevision,
     });
     assert(concurrentRootSave.ok);
+    const refreshed = page.waitForResponse((response) =>
+      response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
+    );
+    releaseRefresh();
+    await refreshed;
+    await until(
+      async () =>
+        (await page.getByTestId("machine-root-current").innerText()).includes(concurrentRoot),
+      "in-flight loader displays concurrent root",
+    );
+    const rootWrites = [];
+    const saveRootPattern = `**/_serverFn/${ids.saveMachineRootDirectoryFn}`;
+    await page.route(saveRootPattern, async (route) => {
+      const encoded = JSON.parse(route.request().postData());
+      const decoded = fromCrossJSON(encoded.t, { refs: new Map() });
+      rootWrites.push(decoded.data);
+      await route.continue();
+    });
+    const submitted = page.waitForResponse((response) =>
+      response.url().endsWith(`/_serverFn/${ids.saveMachineRootDirectoryFn}`),
+    );
     await page.getByTestId("machine-root-submit").click();
+    const submissionEncoded = await (await submitted).json();
+    const submissionDecoded = submissionEncoded.t
+      ? fromCrossJSON(submissionEncoded, { refs: new Map() })
+      : submissionEncoded;
+    const submission = submissionDecoded.result ?? submissionDecoded;
+    writeFileSync(
+      join(evidence, "root-draft-refresh.json"),
+      JSON.stringify(
+        {
+          baselineRevision: rootBeforeConflict.rootRevision,
+          concurrentRevision: concurrentRootSave.data.revision,
+          submittedRevision: rootWrites[0]?.expectedRevision,
+          firstSubmissionCount: rootWrites.length,
+          firstSubmissionRejected: !submission.ok && submission.error.code === "conflict",
+        },
+        null,
+        2,
+      ),
+    );
+    assert.equal(rootWrites.length, 1, "one click sends exactly one root save");
+    assert.equal(
+      rootWrites[0].expectedRevision,
+      rootBeforeConflict.rootRevision,
+      "loader refresh must preserve the dirty draft revision",
+    );
+    assert.equal(
+      submission.error?.code,
+      "conflict",
+      "dirty draft must submit its original revision after loader refresh",
+    );
     await page.getByTestId("machine-root-error").filter({ hasText: "conflict" }).waitFor();
     await until(
       async () =>
@@ -439,8 +505,20 @@ try {
       (await rpc("getMachineFn", { machineId })).data.machine.rootDirectory,
       concurrentRoot,
     );
+    await page.getByTestId("machine-root-section").scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: join(evidence, "root-conflict-draft-preserved.png"),
+      fullPage: true,
+    });
     await page.getByTestId("machine-root-submit").click();
     await page.getByTestId("machine-root-success").waitFor();
+    assert.equal(rootWrites.length, 2, "the second save requires an explicit retry");
+    assert.equal(
+      rootWrites[1].expectedRevision,
+      concurrentRootSave.data.revision,
+      "retry uses the displayed server revision",
+    );
+    await page.unroute(saveRootPattern);
     await page
       .getByTestId("machine-binding-observation")
       .filter({ hasText: "旧观察" })
@@ -462,6 +540,8 @@ try {
       fullPage: true,
     });
   } finally {
+    releaseRefresh();
+    await page.unroute(conflictRefreshPattern);
     worker.kill("SIGCONT");
   }
   await until(async () => {
@@ -503,6 +583,8 @@ try {
       settingsBindingStayedOnPage: true,
       twoProjectPathsDiffer: true,
       initialPathsMatchSQLite: true,
+      dirtyDraftKeepsRevisionAcrossLoaderRefresh: true,
+      firstClickSendsOneSaveAndConflicts: true,
       rootConflictRefreshesFactsAndPreservesDraft: true,
       rootRetryUsesCurrentRevision: true,
       rootChangeShowsOldObservations: true,
