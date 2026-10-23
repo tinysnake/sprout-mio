@@ -4,7 +4,7 @@
 
 按本文交付与 [功能开发计划](development-plan-functional.md) 对齐的 UI 设计和演示前端。先建立设计基础，追赶 P1、P2 和 P3，再随功能章节交付。跨线调度、真实服务接入、反馈修复与整体验收由 [开发总计划](development-plan.md) 协调。
 
-本文已记录讨论确定的范围与顺序。UI 基础、UI-P1/P2 与 UI-P3 追赶已完成并在 `869bf22` 记录（含 Human 体验确认），UI-P4a 已由总计划于 2026-10-23 分派，共享契约基线为 `0a33103`，共用组件与可操作演示最终提交 `5f5e49b` 已在 `2a56c81` 合入，编排者本机复跑 25 项浏览器检查并看图。正式接入已启动，安装命令、真实路由与业务事实待该单元收口后核对。整章技术验收与 Human 体验尚未完成。UI-P4b 及其后未开工。后续设计、演示与开发直接在仓库推进，以 [前端设计基线](frontend-design.md) 和 [前端开发约定](frontend-conventions.md) 约束，不再依赖 OpenDesign。
+本文已记录讨论确定的范围与顺序。UI 基础、UI-P1/P2 与 UI-P3 追赶已完成并在 `869bf22` 记录（含 Human 体验确认）。UI-P4a 已由总计划于 2026-10-23 分派，共享契约基线为 `0a33103`，共用组件与可操作演示 `5f5e49b` 在 `2a56c81` 合入。真实接入经三轮票据生命周期修复后在 `e10a5b4` 合入并通过独立技术验收，演示与真实页面复用同一套呈现组件，演示脚本 27 项、接入页面脚本 13 组均通过。UI-P4a 的三项交付已勾选，Human 体验确认待记录。UI-P4b 及其后未开工。后续设计、演示与开发直接在仓库推进，以 [前端设计基线](frontend-design.md) 和 [前端开发约定](frontend-conventions.md) 约束，不再依赖 OpenDesign。
 
 ## 沿用功能章节安排交付
 
@@ -160,9 +160,9 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应 [P4a](development-plan-functional.md#p4a-建立-worker-连接和-project-绑定)。
 
-- [ ] 完成 Machine 列表与详情、加入 Project、说明和工作目录绑定的设计及演示。
-- [ ] 组织 Worker 安装与启动所需的说明和连接反馈，具体步骤沿用实际功能交付。
-- [ ] 呈现在线、断线、重连和能力信息，不能以断线推断空闲或释放，Project 上下文始终明确。
+- [x] 完成 Machine 列表与详情、加入 Project、说明和工作目录绑定的设计及演示。见 [UI-P4a](ui/p4a.md) 与 [真实接入](ui/p4a-integration.md)，重跑 `bash scripts/verify/u-machine-ui.sh`。
+- [x] 组织 Worker 安装与启动所需的说明和连接反馈，具体步骤沿用实际功能交付。见 [Worker 安装](p4a/worker.md)，重跑 `bash scripts/verify/t-machine-worker.sh`。
+- [x] 呈现在线、断线、重连和能力信息，不能以断线推断空闲或释放，Project 上下文始终明确。见 [真实接入](ui/p4a-integration.md)，重跑 `bash scripts/verify/u-machine-ui.sh`。
 
 出口条件是连接与绑定路径可操作演示，界面能区分连接状态与资源占用。以真实 macOS Worker 完成 P4a 章节集成。
 

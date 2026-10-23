@@ -4,7 +4,7 @@
 
 按开发总计划分派的范围交付已确认的一期功能。产品范围见 [core-scope.md](core-scope.md)，技术选择与原因见 [architecture-direction.md](architecture-direction.md)。
 
-P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 已建立可运行的工程骨架与 Project 样例，结论见 [p1/summary.md](p1/summary.md)。P2 已完成身份、成员与持久对话，P3 已完成阶段验收，其中第 2 条部分交付，结论见 [p2/summary.md](p2/summary.md) 与 [p3/summary.md](p3/summary.md)。总计划已于 2026-10-23 从 `d8614dd` 分派 P4a，共享契约与数据库单元 `0a33103` 及 Worker 功能提交 `43d5f9b` 已通过本机复验并合入，共用 UI `5f5e49b` 也已合入，当前进行正式接入；P4b 及以后未开工。复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
+P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，结论见 [p0/summary.md](p0/summary.md)。P1 已建立可运行的工程骨架与 Project 样例，结论见 [p1/summary.md](p1/summary.md)。P2 已完成身份、成员与持久对话，P3 已完成阶段验收，其中第 2 条部分交付，结论见 [p2/summary.md](p2/summary.md) 与 [p3/summary.md](p3/summary.md)。总计划已于 2026-10-23 从 `d8614dd` 分派 P4a，共享契约与数据库单元 `0a33103`、Worker 功能提交 `43d5f9b` 与共用 UI `5f5e49b` 已合入，正式接入经三轮票据生命周期修复后在 `e10a5b4` 合入并通过独立技术验收，Human 体验确认待记录；P4b 及以后未开工。复选框只在实际证据存在后勾选。本计划定义工程顺序，不给产品增加固定开发 workflow。
 
 ## 按阶段推进并保留证据
 
@@ -25,7 +25,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P1 | 建立工程骨架与标准功能样例 | P0 | 已完成（结论见 [p1/summary.md](p1/summary.md)） |
 | P2 | 建立 Project、profile、Chat 和分身 | P1 | 已完成（结论见 [p2/summary.md](p2/summary.md)） |
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 已完成（第 2 条部分交付，结论见 [p3/summary.md](p3/summary.md)） |
-| P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | P4a 功能与共用 UI 已合入，正式接入中，其余待开始 |
+| P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | P4a 技术验收通过、待 Human 体验确认，其余待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
 | P6 | 完成小脑接续、Info Hub 与成员治理 | P4、P5 | 待开始 |
 | P7 | 完成手机、PWA、恢复与一期整体验收 | P6 | 待开始 |
@@ -98,10 +98,10 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ### P4a 建立 Worker 连接和 Project 绑定
 
-- [ ] 实现 macOS Worker 安装与启动、主动认证连接、重连和连接代次。
-- [ ] 将 Machine 加入 Project，提供说明、连接状态与工作目录绑定。
-- [ ] 探测并报告 shell 路径、类型、版本及执行能力。
-- [ ] 验证旧连接不能覆盖新连接的事实，断线不显示为空闲或已释放。
+- [x] 实现 macOS Worker 安装与启动、主动认证连接、重连和连接代次。证据 [P4a 结论](p4a/summary.md#功能交付证据)，重跑 `bash scripts/verify/t-machine-worker.sh`。
+- [x] 将 Machine 加入 Project，提供说明、连接状态与工作目录绑定。证据 [P4a 结论](p4a/summary.md#技术验收证据)，重跑 `bash scripts/verify/u-machine-ui.sh`。
+- [x] 探测并报告 shell 路径、类型、版本及执行能力。证据 [P4a 结论](p4a/summary.md#功能交付证据)，重跑 `bash scripts/verify/t-machine-worker.sh`。
+- [x] 验证旧连接不能覆盖新连接的事实，断线不显示为空闲或已释放。证据 [P4a 结论](p4a/summary.md#技术验收证据)，重跑 `bash scripts/verify/t-machine-worker.sh`。
 
 ### P4b 实现分身持有与远端操作
 

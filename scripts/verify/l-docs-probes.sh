@@ -57,7 +57,7 @@ const setBox = (file, prefix, text, heading) => {
 };
 const evidence = (section, commit, command) => `# Probe 证据\n\n## ${section}\n\n实现提交 \`${commit}\`，重跑 \`${command}\`。\n`;
 const acceptance = (human) =>
-  `# I-P4a 验收摘要\n\n## 技术验收证据\n\n独立验收基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## human-体验确认\n\n${human}\n`;
+  `# I-P4a 验收摘要\n\n## 交付范围\n\n章节范围。\n\n## 功能交付证据\n\n功能基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## 技术验收证据\n\n独立验收基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## human-体验确认\n\n${human}\n`;
 const link = '证据见 [P4a 证据](p4a/probe.md#p4a-证据)。';
 const gate = () => {
   const run = spawnSync('bash', ['scripts/verify/l-docs.sh'], { cwd: tree, encoding: 'utf8', timeout: 180000 });
