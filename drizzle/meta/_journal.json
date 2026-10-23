@@ -50,6 +50,20 @@
       "when": 1792737328014,
       "tag": "0006_cooing_yellowjacket",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792779815264,
+      "tag": "0007_chilly_sister_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792779823684,
+      "tag": "0008_majestic_luke_cage",
+      "breakpoints": true
     }
   ]
 }

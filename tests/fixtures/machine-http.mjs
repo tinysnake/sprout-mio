@@ -38,6 +38,7 @@ const port = await new Promise((done, reject) => {
   });
 });
 const base = `http://127.0.0.1:${port}`;
+assert(port >= 3340);
 const database = join(evidenceDir, "machine.sqlite");
 const env = {
   ...process.env,
@@ -277,10 +278,35 @@ try {
     machineId,
     projectId,
     description: "real directory",
-    directory: artifactDir,
     expectedRevision: null,
   };
   assert.equal((await rpc("saveProjectMachineBindingFn", binding)).data.revision, 1);
+  assert.equal((await rpc("getMachineFn", { machineId })).data.machine.rootDirectory, null);
+  const unconfiguredSeq = sqlite
+    .prepare("SELECT seq FROM machine_connection WHERE machine_id=? AND generation=?")
+    .get(machineId, initial.generation).seq;
+  await waitFor(
+    () =>
+      sqlite
+        .prepare("SELECT seq FROM machine_connection WHERE machine_id=? AND generation=?")
+        .get(machineId, initial.generation).seq >=
+      unconfiguredSeq + 2,
+    "bound Worker polls without root",
+  );
+  assert.equal(
+    sqlite
+      .prepare("SELECT count(*) AS n FROM directory_observation WHERE machine_id=?")
+      .get(machineId).n,
+    0,
+  );
+  mkdirSync(join(artifactDir, projectId));
+  const savedRoot = await rpc("saveMachineRootDirectoryFn", {
+    machineId,
+    directory: artifactDir,
+    expectedRevision: 1,
+  });
+  assert(savedRoot.ok);
+  assert.equal(savedRoot.data.revision, 2);
   await waitFor(
     () =>
       sqlite
@@ -291,6 +317,8 @@ try {
   const bound = await rpc("getMachineFn", { machineId, projectId });
   assert.equal(bound.data.bindings[0].observation.current, true);
   assert.equal(bound.data.bindings[0].observation.fact.result.kind, "accessible");
+  assert.equal(bound.data.bindings[0].observation.fact.revision, 2);
+  assert(bound.data.bindings[0].observation.fact.result.realPath.endsWith(`/${projectId}`));
   pass("real macOS shell and directory facts through authenticated HTTP", {
     machineId,
     projectId,
@@ -387,6 +415,17 @@ try {
     .map((c) => c.split(";")[0])
     .join("; ");
   assert.equal((await rpc("getMachineFn", { machineId }, otherCookie)).error.code, "not_found");
+  const rootWrite = { machineId, directory: artifactDir, expectedRevision: 2 };
+  assert.equal(
+    (await rpc("saveMachineRootDirectoryFn", rootWrite, otherCookie)).error.code,
+    "not_found",
+  );
+  assert.equal((await rpc("saveMachineRootDirectoryFn", rootWrite, "")).error.code, "unauthorized");
+  for (const directory of ["relative", "~/work", "/ok\0bad"])
+    assert.equal(
+      (await rpc("saveMachineRootDirectoryFn", { ...rootWrite, directory })).error.code,
+      "validation_failed",
+    );
   assert.equal(
     (await rpc("saveProjectMachineBindingFn", binding, otherCookie)).error.code,
     "not_found",
@@ -475,6 +514,15 @@ try {
       })
     ).ok,
   );
+  assert(
+    (
+      await rpc("saveMachineRootDirectoryFn", {
+        machineId,
+        directory: join(artifactDir, "changed"),
+        expectedRevision: 2,
+      })
+    ).ok,
+  );
   assert.equal(
     (
       await json(
@@ -487,7 +535,7 @@ try {
               machineId,
               projectId,
               generation: session.generation,
-              revision: 1,
+              revision: 2,
               seq: 2,
               checkedAt: new Date().toISOString(),
               result: { kind: "accessible", realPath: artifactDir },
@@ -500,7 +548,7 @@ try {
   );
   assert((await json("/api/worker/exchange", wire({ ...payload, seq: 2 }))).value.ok);
   assert.equal((await json("/api/worker/exchange", wire(payload))).value.error.code, "conflict");
-  pass("HTTP rejects old binding revision and lower seq", { generation: session.generation });
+  pass("HTTP rejects old root revision and lower seq", { generation: session.generation });
   const highWater = session.generation;
   await stop(server);
   server = undefined;

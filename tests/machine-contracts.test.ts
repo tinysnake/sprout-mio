@@ -8,6 +8,8 @@ import {
   machineDetailSchema,
   macosAbsolutePathSchema,
   positiveSafeIntegerSchema,
+  saveMachineRootDirectoryInput,
+  projectWorkingPath,
   saveProjectMachineBindingInput,
 } from "../src/contracts/machine";
 import { ID_PREFIXES, newId } from "../src/contracts/ids";
@@ -56,14 +58,22 @@ describe("Machine public and wire boundaries", () => {
     for (const path of ["~/work", "$HOME/work", "relative", "/ok\0bad", "/" + "a".repeat(4096)])
       expect(macosAbsolutePathSchema.safeParse(path).success).toBe(false);
     expect(
-      saveProjectMachineBindingInput.parse({
+      saveMachineRootDirectoryInput.parse({
+        machineId,
+        directory: null,
+        expectedRevision: null,
+      }).directory,
+    ).toBeNull();
+    expect(projectWorkingPath("/tmp/root", projectId)).toBe(`/tmp/root/${projectId}`);
+    expect(
+      saveProjectMachineBindingInput.safeParse({
         machineId,
         projectId,
         description: "",
         directory: null,
         expectedRevision: null,
-      }).directory,
-    ).toBeNull();
+      }).success,
+    ).toBe(false);
     for (const value of [0, 1.5, Number.MAX_SAFE_INTEGER + 1])
       expect(positiveSafeIntegerSchema.safeParse(value).success).toBe(false);
   });
@@ -74,6 +84,8 @@ describe("Machine public and wire boundaries", () => {
       machine: {
         id: machineId,
         name: "Mac",
+        rootDirectory: null,
+        rootRevision: 1,
         createdBy: "owner",
         createdAt: fact.checkedAt,
         updatedAt: fact.checkedAt,
@@ -87,7 +99,7 @@ describe("Machine public and wire boundaries", () => {
       capability: { generation: 1, current: false, snapshot: capability },
       bindings: [
         {
-          intent: { projectId, machineId, description: "", directory: null, revision: 2 },
+          intent: { projectId, machineId, description: "", revision: 2 },
           observation: { current: false, fact },
         },
       ],
@@ -126,7 +138,7 @@ describe("Machine public and wire boundaries", () => {
         version: 1,
         requestId: exchange.requestId,
         ok: true,
-        data: { session, seq: 1, bindings: [] },
+        data: { session, seq: 1, root: null, rootRevision: 1, bindings: [] },
       }).success,
     ).toBe(true);
     expect(
@@ -134,7 +146,7 @@ describe("Machine public and wire boundaries", () => {
         version: 1,
         requestId: exchange.requestId,
         ok: true,
-        data: { session, seq: 1, bindings: [] },
+        data: { session, seq: 1, root: null, rootRevision: 1, bindings: [] },
         error: { code: "internal", message: "bad" },
       }).success,
     ).toBe(false);

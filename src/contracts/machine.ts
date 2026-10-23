@@ -19,6 +19,8 @@ const nameSchema = z.string().trim().min(1).max(80);
 export const machineSchema = z.strictObject({
   id: machineIdSchema,
   name: nameSchema,
+  rootDirectory: macosAbsolutePathSchema.nullable(),
+  rootRevision: positiveSafeIntegerSchema,
   createdBy: z.string().min(1),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
@@ -79,7 +81,7 @@ export const projectMachineIntentSchema = z.strictObject({
   projectId: projectIdSchema,
   machineId: machineIdSchema,
   description: z.string().max(500),
-  directory: macosAbsolutePathSchema.nullable(),
+
   revision: positiveSafeIntegerSchema,
 });
 export type ProjectMachineIntent = z.infer<typeof projectMachineIntentSchema>;
@@ -133,9 +135,24 @@ export const saveProjectMachineBindingInput = z.strictObject({
   machineId: machineIdSchema,
   projectId: projectIdSchema,
   description: z.string().max(500),
+  expectedRevision: positiveSafeIntegerSchema.nullable(),
+});
+export const saveMachineRootDirectoryInput = z.strictObject({
+  machineId: machineIdSchema,
   directory: macosAbsolutePathSchema.nullable(),
   expectedRevision: positiveSafeIntegerSchema.nullable(),
 });
+export const machineRootDirectorySchema = z.strictObject({
+  machineId: machineIdSchema,
+  directory: macosAbsolutePathSchema.nullable(),
+  revision: positiveSafeIntegerSchema,
+});
+export type MachineRootDirectory = z.infer<typeof machineRootDirectorySchema>;
+
+// Project IDs are already prj_<uuid> values and cannot contain '/'.
+export function projectWorkingPath(root: string, projectId: string): string {
+  return `${root}/${projectId}`;
+}
 export const machineEnrollmentSchema = z.strictObject({
   detail: machineDetailSchema,
   ticket: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
@@ -147,6 +164,7 @@ export type GetMachineInput = z.infer<typeof getMachineInput>;
 export type RenewMachineEnrollmentInput = z.infer<typeof renewMachineEnrollmentInput>;
 export type ListMachinesInput = z.infer<typeof listMachinesInput>;
 export type ListProjectMachinesInput = z.infer<typeof listProjectMachinesInput>;
+export type SaveMachineRootDirectoryInput = z.infer<typeof saveMachineRootDirectoryInput>;
 export type SaveProjectMachineBindingInput = z.infer<typeof saveProjectMachineBindingInput>;
 
 export interface MachineOperations {
@@ -157,6 +175,9 @@ export interface MachineOperations {
   listMachines(input: ListMachinesInput): Promise<MachineResult<MachineDetail[]>>;
   getMachine(input: GetMachineInput): Promise<MachineResult<MachineDetail>>;
   listProjectMachines(input: ListProjectMachinesInput): Promise<MachineResult<MachineDetail[]>>;
+  saveMachineRootDirectory(
+    input: SaveMachineRootDirectoryInput,
+  ): Promise<MachineResult<MachineRootDirectory>>;
   saveProjectMachineBinding(
     input: SaveProjectMachineBindingInput,
   ): Promise<MachineResult<ProjectMachineIntent>>;

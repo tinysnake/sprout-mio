@@ -124,7 +124,7 @@ try {
   }
   if (scenario === "all" || scenario === "history") {
     sqlite
-      .prepare("UPDATE project_machine SET revision = 2, directory = '/new' WHERE machine_id = 'm'")
+      .prepare("UPDATE machine SET root_revision = 2, root_directory = '/new' WHERE id = 'm'")
       .run();
     sqlite
       .prepare("UPDATE machine_connection_counter SET high_water = 2 WHERE machine_id = 'm'")
@@ -196,12 +196,29 @@ try {
     sqlite.exec(
       "UPDATE directory_observation SET kind = 'unavailable', real_path = NULL, reason = 'denied'",
     );
-    for (const directory of ["~/work", "relative", "/ok\0bad", "/" + "a".repeat(4096)])
+    assert(
+      !(sqlite.pragma("table_info(project_machine)") as { name: string }[]).some(
+        (column) => column.name === "directory",
+      ),
+    );
+    assert.deepEqual(
+      sqlite.prepare("SELECT root_directory, root_revision FROM machine WHERE id = 'm'").get(),
+      {
+        root_directory: scenario === "all" ? "/new" : null,
+        root_revision: scenario === "all" ? 2 : 1,
+      },
+    );
+    for (const value of [0, -1, 1.5, 9007199254740992, null])
       assert.throws(
-        () => sqlite.prepare("UPDATE project_machine SET directory = ?").run(directory),
+        () => sqlite.prepare("UPDATE machine SET root_revision = ?").run(value),
+        /CHECK|NOT NULL/,
+      );
+    for (const directory of ["", "~/work", "relative", "/ok\0bad", "/" + "a".repeat(4096)])
+      assert.throws(
+        () => sqlite.prepare("UPDATE machine SET root_directory = ?").run(directory),
         /CHECK/,
       );
-    sqlite.exec("UPDATE project_machine SET directory = NULL");
+    sqlite.exec("UPDATE machine SET root_directory = NULL");
     const credential = { machine_id: "m", ticket_hash: "d".repeat(64), ticket_expires_at: 10 };
     if (scenario !== "all") insert("machine_credential", credential);
     for (const clause of [

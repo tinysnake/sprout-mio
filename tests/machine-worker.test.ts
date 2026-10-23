@@ -54,23 +54,21 @@ test("directory facts resolve links and distinguish missing paths and files with
     bootId: newId(ID_PREFIXES.boot),
     attemptId: randomUUID(),
   };
-  const intent = {
-    machineId: session.machineId,
-    projectId: newId(ID_PREFIXES.project),
-    revision: 1,
-    description: "",
-    directory: join(root, "link"),
-  };
+  const projectId = newId(ID_PREFIXES.project);
+  await symlink(directory, join(root, projectId));
   const checkedAt = "2026-01-01T00:00:00Z";
-  expect((await probeDirectory(intent, session, 1, checkedAt)).result.kind).toBe("accessible");
-  expect(
-    (await probeDirectory({ ...intent, directory: join(root, "file") }, session, 1, checkedAt))
-      .result,
-  ).toEqual({ kind: "unavailable", reason: "not_directory" });
-  expect(
-    (await probeDirectory({ ...intent, directory: join(root, "missing") }, session, 1, checkedAt))
-      .result,
-  ).toEqual({ kind: "unavailable", reason: "missing" });
+  const observed = await probeDirectory(root, projectId, 3, session, 1, checkedAt);
+  expect(observed.result.kind).toBe("accessible");
+  expect(observed.revision).toBe(3);
+  expect(observed.projectId).toBe(projectId);
+  expect((await probeDirectory(root, "file", 3, session, 1, checkedAt)).result).toEqual({
+    kind: "unavailable",
+    reason: "not_directory",
+  });
+  expect((await probeDirectory(root, "missing", 3, session, 1, checkedAt)).result).toEqual({
+    kind: "unavailable",
+    reason: "missing",
+  });
   await expect(lstat(join(root, "missing"))).rejects.toThrow();
   if (process.platform === "darwin") {
     const capability = await probeCapability(checkedAt);
