@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { MachineCreateDialog } from "../../../components/machine/machine-create-dialog";
+import { MachineEnrollmentPanel } from "../../../components/machine/machine-enrollment-panel";
 import {
   MachineDetailPanel,
   CreateMachineAction,
@@ -157,6 +158,111 @@ function DemoControls({
         演示数据与本地模拟操作。刷新会回到固定 fixtures；不连接业务服务。
       </p>
     </details>
+  );
+}
+
+type LifecycleAttempt = {
+  machineId: string;
+  resolve: (result: MachineResult<MachineEnrollment>) => void;
+  reject: (cause: unknown) => void;
+};
+
+function lifecycleTicket(machineId: string): string {
+  return `${machineId.slice(4, 12).toUpperCase()}${"LIFECYCLE".padEnd(35, "Z")}`.slice(0, 43);
+}
+
+function lifecycleEnrollment(machineId: string): MachineEnrollment {
+  const detail =
+    demoMachineDetails.find((item) => item.machine.id === machineId) ?? demoMachineDetails[0]!;
+  return {
+    detail:
+      detail.machine.id === machineId
+        ? detail
+        : { ...detail, machine: { ...detail.machine, id: machineId } },
+    ticket: lifecycleTicket(machineId),
+    expiresAt: "2026-10-18T08:10:00.000Z",
+  };
+}
+
+// 共享呈现组件不需要为场景复刻实现：探针直接挂真实 MachineEnrollmentPanel，
+// 由页面控制身份切换、请求挂起与结算顺序。
+function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
+  const [view, setView] = useState<{
+    machineId: string;
+    enrollment: MachineEnrollment | null;
+    mounted: boolean;
+  }>({
+    machineId: "mch_11111111-1111-4111-8111-111111111111",
+    enrollment: null,
+    mounted: true,
+  });
+  const attempts = useRef<LifecycleAttempt[]>([]);
+
+  useEffect(() => {
+    const api = {
+      show(machineId: string, mode: "empty" | "ticket" = "empty") {
+        setView((current) => ({
+          ...current,
+          machineId,
+          mounted: true,
+          enrollment: mode === "ticket" ? lifecycleEnrollment(machineId) : null,
+        }));
+      },
+      refresh() {
+        setView((current) => ({
+          ...current,
+          enrollment: current.enrollment ? { ...current.enrollment } : null,
+        }));
+      },
+      unmount() {
+        setView((current) => ({ ...current, mounted: false }));
+      },
+      pending() {
+        return attempts.current.map((attempt) => attempt.machineId);
+      },
+      settle(index: number, kind: "success" | "failure" | "throw") {
+        const [attempt] = attempts.current.splice(index, 1);
+        if (!attempt) return null;
+        if (kind === "throw") attempt.reject(new Error("LIFECYCLE_PROBE_THROW"));
+        else if (kind === "failure")
+          attempt.resolve(failure("conflict", "演示：生命周期探针的失败结果。"));
+        else
+          attempt.resolve({
+            ok: true,
+            data: lifecycleEnrollment(attempt.machineId),
+            requestId: DEMO_REQUEST_ID,
+          });
+        return attempt.machineId;
+      },
+    };
+    const host = window as typeof window & { __machineLifecycle?: typeof api };
+    host.__machineLifecycle = api;
+    return () => {
+      delete host.__machineLifecycle;
+    };
+  }, []);
+
+  return (
+    <PageFrame
+      title="续签请求生命周期探针"
+      description="演示场景：同一次续签请求归属一个组件身份寿命；切换 Machine 会撤回旧请求的所有权。"
+      back={<BackToMachines go={go} />}
+      testId="machine-lifecycle-probe"
+    >
+      {view.mounted && (
+        <MachineEnrollmentPanel
+          machineId={view.machineId}
+          enrollmentStatus="pending"
+          enrollment={view.enrollment}
+          installOrigin="http://127.0.0.1:3000"
+          onRenew={(machineId) =>
+            new Promise<MachineResult<MachineEnrollment>>((resolve, reject) => {
+              attempts.current.push({ machineId, resolve, reject });
+            })
+          }
+        />
+      )}
+    </PageFrame>
   );
 }
 
@@ -324,6 +430,16 @@ export function MachineScenes() {
             href={(machineId) => `/machines/${machineId}`}
             renderLink={renderLink}
           />
+          <a
+            href="/machines/lifecycle"
+            data-testid="machine-lifecycle-link"
+            onClick={(event) => {
+              event.preventDefault();
+              go("/machines/lifecycle");
+            }}
+          >
+            续签请求生命周期探针
+          </a>
           <p className="mt-4 text-xs leading-6 text-muted-foreground">
             Machines 只展示连接和 Project 绑定；租约与远端操作属于 P4b，尚未实现。
           </p>
@@ -340,6 +456,7 @@ export function MachineScenes() {
   }
 
   const machineId = location.pathname.replace(/^\/machines\//, "");
+  if (machineId === "lifecycle") return <MachineLifecycleProbe go={go} />;
   const detail = draft.machines.find((item) => item.machine.id === machineId);
   if (!detail) {
     return (

@@ -269,6 +269,116 @@ try {
     assert.ok((await test("machine-binding-submit").innerText()).includes("第二个 Project"));
   });
 
+  const lifecycleA = "mch_11111111-1111-4111-8111-111111111111";
+  const lifecycleB = "mch_22222222-2222-4222-8222-222222222222";
+  const probe = (run, arg) => page.evaluate(run, arg);
+  const pendingRequests = () => probe(() => window.__machineLifecycle.pending());
+  const settle = (index, kind) =>
+    probe(([i, k]) => window.__machineLifecycle.settle(i, k), [index, kind]);
+  const show = (machineId, mode = "empty") =>
+    probe(([id, m]) => window.__machineLifecycle.show(id, m), [machineId, mode]);
+  const renewAvailable = () =>
+    page.waitForFunction(
+      () => {
+        const element = document.querySelector('[data-testid="machine-renew"]');
+        return element !== null && !element.disabled;
+      },
+      undefined,
+      { timeout: 500 },
+    );
+  const openLifecycleProbe = async () => {
+    await test("machine-detail-back").click();
+    await test("machine-list").waitFor();
+    await test("machine-lifecycle-link").click();
+    await test("machine-lifecycle-probe").waitFor();
+    await probe(() => window.__machineLifecycle.show("mch_11111111-1111-4111-8111-111111111111"));
+    await test("machine-renew").waitFor();
+  };
+
+  await check("switch_to_pending_machine_keeps_renew_available_and_isolates_results", async () => {
+    await openLifecycleProbe();
+    await test("machine-renew").click();
+    assert.equal(await test("machine-renew").isDisabled(), true, "A 请求进行中");
+    await show(lifecycleB);
+    await test("machine-renew").waitFor();
+    assert.deepEqual(await pendingRequests(), [lifecycleA]);
+    await renewAvailable();
+    assert.equal(await test("machine-renew").isDisabled(), false, "切到 B 后 B 立即可续签");
+    await test("machine-renew").click();
+    assert.deepEqual(await pendingRequests(), [lifecycleA, lifecycleB]);
+    assert.equal(await test("machine-renew").isDisabled(), true, "B 自己的请求防重复");
+    await settle(1, "success");
+    await test("machine-ticket-toggle").waitFor();
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-value").waitFor();
+    const bTicket = (await test("machine-ticket-value").innerText()).trim();
+    assert.ok(bTicket.startsWith("22222222"), bTicket);
+    await settle(0, "failure");
+    await page.waitForTimeout(150);
+    assert.equal(await test("machine-renew-error").count(), 0, "A 的失败不能落到 B");
+    assert.equal(await test("machine-ticket-toggle").count(), 1, "A 的失败不能清掉 B 票据");
+    assert.equal((await test("machine-ticket-value").innerText()).trim(), bTicket);
+    await shoots(page, "machine-lifecycle-switch-1440-light");
+  });
+
+  await check("aba_return_to_same_machine_ignores_stale_renewal", async () => {
+    await show(lifecycleA);
+    await test("machine-renew").click();
+    await show(lifecycleB);
+    await renewAvailable();
+    await show(lifecycleA);
+    await renewAvailable();
+    await test("machine-renew").click();
+    assert.deepEqual(await pendingRequests(), [lifecycleA, lifecycleA], "旧 A 与新 A 是两次操作");
+    await settle(0, "success");
+    await page.waitForTimeout(150);
+    assert.equal(await test("machine-ticket-toggle").count(), 0, "旧 A 的结果不能给新 A 发票据");
+    assert.equal(await test("machine-renew").isDisabled(), true, "旧 A 不能清掉新 A 的 pending");
+    await settle(0, "success");
+    await test("machine-ticket-toggle").waitFor();
+    await test("machine-ticket-toggle").click();
+    const abaTicket = (await test("machine-ticket-value").innerText()).trim();
+    assert.ok(abaTicket.startsWith("11111111"), abaTicket);
+  });
+
+  await check("unmounted_panel_drops_late_renewal_result", async () => {
+    await show(lifecycleA);
+    await test("machine-renew").click();
+    await probe(() => window.__machineLifecycle.unmount());
+    await test("machine-enrollment-panel").waitFor({ state: "detached" });
+    await settle(0, "success");
+    await show(lifecycleA);
+    await test("machine-renew").waitFor();
+    await page.waitForTimeout(150);
+    assert.equal(await test("machine-ticket-toggle").count(), 0, "卸载后的旧结果不能污染新组件");
+    assert.equal(await test("machine-renew-error").count(), 0);
+    await renewAvailable();
+  });
+
+  await check("same_identity_prop_refresh_keeps_ticket_and_in_flight_request", async () => {
+    await show(lifecycleA, "ticket");
+    await test("machine-ticket-toggle").waitFor();
+    await test("machine-renew").click();
+    await settle(0, "success");
+    await test("machine-ticket-toggle").waitFor();
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-value").waitFor();
+    const revealedTicket = (await test("machine-ticket-value").innerText()).trim();
+    await probe(() => window.__machineLifecycle.refresh());
+    await page.waitForTimeout(150);
+    assert.equal((await test("machine-ticket-value").innerText()).trim(), revealedTicket);
+    await test("machine-renew").click();
+    await probe(() => window.__machineLifecycle.refresh());
+    await page.waitForTimeout(150);
+    assert.deepEqual(await pendingRequests(), [lifecycleA], "等价刷新不能打断进行中的请求");
+    assert.equal(await test("machine-renew").isDisabled(), true);
+    await settle(0, "throw");
+    await test("machine-renew-error").waitFor();
+    const text = await test("machine-renew-error").innerText();
+    assert.ok(!text.includes("LIFECYCLE_PROBE_THROW"), "异常内部细节不能呈现");
+    await renewAvailable();
+  });
+
   await check("no_business_requests_from_dev_scenes", async () => {
     assert.deepEqual(applicationRequests, []);
   });

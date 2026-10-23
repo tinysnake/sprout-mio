@@ -11,6 +11,12 @@ import { enrollmentLabel, formatMoment } from "./machine-view";
 import { StatusLine } from "./machine-list";
 import { MachineInstallInstructions } from "./machine-install-instructions";
 
+// 票据内容用于判断 prop 是否真的换了数据；同一身份的等价刷新不能清掉先前的续签结果。
+function enrollmentKey(enrollment: MachineEnrollment | null): string {
+  if (!enrollment) return "none";
+  return `${enrollment.detail.machine.id}|${enrollment.expiresAt}|${enrollment.ticket}`;
+}
+
 export function MachineEnrollmentPanel({
   machineId,
   enrollmentStatus,
@@ -28,23 +34,52 @@ export function MachineEnrollmentPanel({
   const [revealed, setRevealed] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
-  const live = useRef(machineId);
-  live.current = machineId;
+  // 一次续签请求归属于一个组件身份寿命。token 的对象身份就是这次操作的所有权：
+  // 只比 MachineId 会让 A→B→A 后的旧请求重新拿到同名身份，覆盖新票据或清掉新的 pending。
+  const inFlight = useRef<object | null>(null);
+  const identity = useRef(machineId);
+  const appliedKey = useRef(enrollmentKey(enrollment));
+  const renewRef = useRef(onRenew);
+  renewRef.current = onRenew;
 
   useEffect(() => {
+    const key = enrollmentKey(enrollment);
+    if (identity.current !== machineId) {
+      identity.current = machineId;
+      inFlight.current = null;
+      appliedKey.current = key;
+      setPending(false);
+      setCurrent(enrollment);
+      setRevealed(false);
+      setError(null);
+      return;
+    }
+    if (appliedKey.current === key) return;
+    appliedKey.current = key;
     setCurrent(enrollment);
     setRevealed(false);
     setError(null);
   }, [enrollment, machineId]);
 
+  useEffect(
+    () => () => {
+      inFlight.current = null;
+    },
+    [],
+  );
+
   async function renew() {
-    if (pending || !onRenew) return;
+    const renewEnrollment = renewRef.current;
+    if (inFlight.current || !renewEnrollment) return;
+    const token = {};
+    inFlight.current = token;
     const target = machineId;
+    const owned = () => inFlight.current === token;
     setPending(true);
     setError(null);
     try {
-      const result = await onRenew(target);
-      if (live.current !== target) return;
+      const result = await renewEnrollment(target);
+      if (!owned()) return;
       if (!result.ok) {
         setError(result.error);
         return;
@@ -52,10 +87,13 @@ export function MachineEnrollmentPanel({
       setCurrent(result.data);
       setRevealed(false);
     } catch (cause) {
-      if (live.current !== target) return;
+      if (!owned()) return;
       setError(toAppError(cause, newId(ID_PREFIXES.request)));
     } finally {
-      if (live.current === target) setPending(false);
+      if (owned()) {
+        inFlight.current = null;
+        setPending(false);
+      }
     }
   }
 

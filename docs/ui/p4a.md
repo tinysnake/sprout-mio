@@ -57,6 +57,13 @@ node scripts/browser/p4a-machine-scenes.mjs
 
 截图待 coordinator 视觉核对；本单元只确认其生成时的实际页面状态。
 
+## 续签请求的生命周期归属
+
+- 一次续签归属「组件身份寿命 + 单次请求」，卡在 `machine-enrollment-panel.tsx` 的 `inFlight` 所有权 token 上；只比 `machineId` 会让 A→B→A 后的旧 A 请求重新拿到同名身份。
+- 身份变化（`machineId` 改变）、组件卸载都会撤回旧请求的所有权：旧结果既不写入票据，也不清掉新身份的 pending 或错误。
+- `enrollment` prop 以「内容」比较（MachineId + 到期 + 票据），同一身份的等价刷新不重放、不清掉已续签的一次性票据，也不打断进行中的请求。
+- 展示层：`src/dev/scenes/machine/index.tsx` 的 `/machines/lifecycle` 探针挂真实 `MachineEnrollmentPanel`，由页面决定身份切换与请求结算顺序；`scripts/browser/p4a-machine-scenes.mjs` 用它做真实浏览器反证，不使用源码镜像测试。
+
 ## 给集成线的接入说明
 
 1. 列表：`listMachines()` → `MachineList`；`href` 接正式 `/machines/$machineId`，`renderLink` 传路由器 `Link`。入口从占位变为链接时只需改 `app-shell` 的 Machines 项与受影响定位断言。
