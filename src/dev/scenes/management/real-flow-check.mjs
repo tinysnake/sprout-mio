@@ -262,7 +262,7 @@ await check("settings_real_facts_and_save", async () => {
   await test("project-info-hub-toggle").click();
   await test("info-hub-project-agents").waitFor();
   const infoVisible = await test("info-hub-project-agents").isVisible();
-  await test("info-hub-machines-notice").waitFor();
+  await test("info-hub-leases-notice").waitFor();
   await shot("11-settings-info-hub-expanded");
   const newName = `验收改名 ${stamp}`;
   const disabledBefore = await test("project-edit-save").isDisabled();

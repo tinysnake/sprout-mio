@@ -76,7 +76,7 @@ export const WORKER_ORIGIN_PLACEHOLDER = "<server-origin>";
 
 export function installCommands(machineId: string) {
   return {
-    init: `sprout-worker init --server ${WORKER_ORIGIN_PLACEHOLDER} --machine ${machineId} --state-dir <dir>`,
-    run: "sprout-worker run --state-dir <dir>",
+    init: `node "$HOME/.local/share/sprout-worker/main.mjs" init --server ${WORKER_ORIGIN_PLACEHOLDER} --machine ${machineId} --state-dir "$HOME/.local/share/sprout-worker/identity"`,
+    run: 'node "$HOME/.local/share/sprout-worker/main.mjs" run --state-dir "$HOME/.local/share/sprout-worker/identity"',
   };
 }

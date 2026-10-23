@@ -32,12 +32,6 @@ function isDomainErrorCode(code: string): code is DomainErrorCode {
   return code === "not_found" || code === "conflict";
 }
 
-/**
- * 六个边界共用这一张映射表：not_found 与 conflict 按原码透出。
- * RepositoryError 的 repo_* 码不在封闭的 AppErrorCode 内，降为 conflict，
- * 可读的分类消息原样透出；`internal` 只留给真正的未知错误。
- * 类加载失败时返回 undefined，让调用边界走它自己的 internal 分支而不是逃逸成未处理拒绝。
- */
 export async function toDomainAppError(
   error: unknown,
   requestId: string,

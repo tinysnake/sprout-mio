@@ -1,5 +1,7 @@
 # P2 Info Hub 查询模块与基础呈现
 
+当前状态。本文保留当时的交付与验收记录。P4a 已将 Machine 整体占位改为实际 `MachineDetail[]`，租约独立保持未实现。当前契约、接入与验证见 [P4a 正式接入](../ui/p4a-integration.md)。下文旧占位形状和文案是历史记录。
+
 本 unit 建立 Info Hub 只读查询模块：同一 Project 内的 Project → Agents 视角与 Chat → 自身与成员视角由 `src/domain/info-hub.ts` 统一聚合，Project hub 与对话页按需取用。未实现的视角（Agent 运行状态与活动 run、Machine 与租约）以显式不可用标记呈现，不显示为空列表、0 值或成功。这是 P2 当时的状态；P3-d 已将 run 视角改为真实数据，Machine 仍属 P4，当前字段与页面见 [P3 run 视角](../p3/info-hub-runs.md#契约变化)。边界只调用 p2-a 的领域服务，不写 SQL，不改 schema；组件只消费视图对象，不自行查询。
 
 ## 模块入口与边界

@@ -6,9 +6,11 @@ import type {
   ProjectInfoHub,
   TurnStartContext,
 } from "../contracts/info-hub";
-import { MACHINES_UNAVAILABLE_REASON } from "../contracts/info-hub";
+import { LEASES_UNAVAILABLE_REASON } from "../contracts/info-hub";
 import type { AgentRun } from "../contracts/agent-run";
 import type { Chat } from "../contracts/chat";
+import { listProjectMachines } from "./machine";
+import type { MachineContext } from "./machine";
 import { config } from "../lib/config";
 import { assertProjectAccess } from "./access";
 import type { ProjectContext } from "./access";
@@ -81,8 +83,7 @@ function runsView(chats: Chat[], ctx: ProjectContext): AgentRunsView {
   };
 }
 
-/** Project → Agents 视角：成员 profile、本 Project 内的 DM 与分身，run 视角为真实数据，Machine 显式不可用。 */
-export function getProjectInfoHub(projectId: string, ctx: ProjectContext): ProjectInfoHub {
+export function getProjectInfoHub(projectId: string, ctx: MachineContext): ProjectInfoHub {
   assertProjectAccess(ctx, projectId);
   const members = listProjectMembers(projectId, ctx);
   const chats = listChats(projectId, ctx);
@@ -109,7 +110,8 @@ export function getProjectInfoHub(projectId: string, ctx: ProjectContext): Proje
       agents,
       runs: runsView(chats, ctx),
     },
-    machines: { available: false, reason: MACHINES_UNAVAILABLE_REASON },
+    machines: listProjectMachines(projectId, ctx),
+    leases: { available: false, reason: LEASES_UNAVAILABLE_REASON },
   };
 }
 

@@ -289,7 +289,7 @@ await check("settings_facts_and_sections", async () => {
   await shot(page, "light-1440-settings");
   await test(page, "settings-info-hub").click();
   await test(page, "info-hub-project-agents").waitFor();
-  await test(page, "info-hub-machines-notice").waitFor();
+  await test(page, "info-hub-leases-notice").waitFor();
   await shot(page, "light-1440-settings-info-hub");
   record(
     "settings_facts_and_sections",

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { machineDetailSchema } from "./machine";
 import { AGENT_RUN_STATUSES } from "./agent-run";
 import { agentProfileIdSchema } from "./agent";
 import { appIdPattern, ID_PREFIXES } from "./ids";
@@ -17,8 +18,7 @@ export const unavailableFeatureSchema = z.object({
 });
 export type UnavailableFeature = z.infer<typeof unavailableFeatureSchema>;
 
-export const MACHINES_UNAVAILABLE_REASON =
-  "Machine 连接状态与租约视角属于 P4；P2 没有 Machine 对象，本视角未实现，不以空机器列表呈现。";
+export const LEASES_UNAVAILABLE_REASON = "Machine 租约尚未实现，P4b。";
 
 const runId = z
   .string()
@@ -160,7 +160,8 @@ export type TurnStartContext = z.infer<typeof turnStartContextSchema>;
 export const projectInfoHubSchema = z.object({
   projectId,
   agents: projectAgentsViewSchema,
-  machines: unavailableFeatureSchema,
+  machines: z.array(machineDetailSchema),
+  leases: unavailableFeatureSchema,
 });
 export type ProjectInfoHub = z.infer<typeof projectInfoHubSchema>;
 

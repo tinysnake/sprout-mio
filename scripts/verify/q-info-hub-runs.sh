@@ -253,8 +253,9 @@ try {
   assert.equal(heldTurn.workspace.ref, 'main')
   assert.match(heldTurn.workspace.source, /p3d-main/)
   assert.equal(heldTurn.injectedIntoPrompt, false, 'turn context declares it is not injected into the model prompt')
-  assert.equal(heldHub.machines.available, false, 'Machine stays explicitly unavailable')
-  assert.match(heldHub.machines.reason, /P4/)
+  assert.deepEqual(heldHub.machines, [], 'unbound Project has a real empty Machine collection')
+  assert.equal(heldHub.leases.available, false, 'leases stay explicitly unavailable')
+  assert.match(heldHub.leases.reason, /P4b/)
   pass('active run view: real status, pending input not shown as delivered, turn workspace from run provenance', {
     runId: slowRun.id, pendingInputs: heldInfo.runs.active[0].pendingInputs, commit: heldTurn.workspace.commit, fresh: heldTurn.workspace.fresh,
   })

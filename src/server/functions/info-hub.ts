@@ -47,7 +47,10 @@ async function failure(
 async function infoHubBoundary<T>(
   headers: Headers,
   requestId: string,
-  operation: (deps: ServerDeps, context: ProjectContext) => InfoHubResult<T>,
+  operation: (
+    deps: ServerDeps,
+    context: ProjectContext,
+  ) => InfoHubResult<T> | Promise<InfoHubResult<T>>,
 ): Promise<InfoHubResult<T>> {
   let deps: ServerDeps | undefined;
   let recordDiagnostic: DiagnosticRecorder | undefined;
@@ -56,7 +59,7 @@ async function infoHubBoundary<T>(
     deps = await serverDeps();
     const session = await deps.requireSession(headers, requestId);
     if (!session.ok) return session;
-    return operation(deps, { userId: session.data.userId, requestId });
+    return await operation(deps, { userId: session.data.userId, requestId });
   } catch (error) {
     return failure(error, requestId, recordDiagnostic);
   }
@@ -71,10 +74,12 @@ export async function getProjectInfoHubBoundary(
   headers: Headers,
   requestId: string,
 ): Promise<InfoHubResult<ProjectInfoHub>> {
-  return infoHubBoundary<ProjectInfoHub>(headers, requestId, (deps, context) => {
+  return infoHubBoundary<ProjectInfoHub>(headers, requestId, async (deps, context) => {
     const parsed = projectIdInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.getProjectInfoHub(parsed.data.projectId, context), requestId);
+    const { machineRuntimeContext } = await import("../runtime");
+    const runtime = await machineRuntimeContext();
+    return ok(deps.getProjectInfoHub(parsed.data.projectId, { ...context, ...runtime }), requestId);
   });
 }
 

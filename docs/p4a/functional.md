@@ -36,6 +36,8 @@ Worker identity, probes and client live in src/worker. `pnpm worker:build` bundl
 
 ## Build integration deviation
 
+Historical functional-only build workaround. Formal Machine routes now import the RPC module and the temporary hook has been removed. Current integration and production verification are recorded in [p4a-integration.md](../ui/p4a-integration.md).
+
 This functional branch has no Machine page importing its server functions. TanStack discovers RPCs from the client module graph. A server-only side-effect import did not produce transformed RPCs, and a second client build entry failed because Start requires one client entry. vite.config.ts therefore adds a small pre-transform import of the Machine RPC module to Start's default client entry. The final production output contains all six createServerRpc registrations. This does not add a protocol or UI adapter. Once integrated page imports make the module reachable, the coordinator can remove this discovery hook and prove the six functions remain emitted.
 
 ## Existing assertion updates
