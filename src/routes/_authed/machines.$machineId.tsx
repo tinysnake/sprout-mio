@@ -65,6 +65,10 @@ function MachinePage() {
       installOrigin={typeof window === "undefined" ? undefined : window.location.origin}
       onRenewEnrollment={(machineId) => renewMachineEnrollmentFn({ data: { machineId } })}
       onEnrollmentCreated={setEnrollment}
+      onEnrollmentRevoked={(machineId) => {
+        // 父级只有一个槽位，只有它属于被放弃请求的 target 时才撤销。
+        if (enrollment?.detail.machine.id === machineId) setEnrollment(null);
+      }}
       onSaveBinding={(input) => saveProjectMachineBindingFn({ data: input })}
       onBindingSaved={() => void router.invalidate()}
       actions={

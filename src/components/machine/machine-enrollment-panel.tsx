@@ -22,6 +22,7 @@ export function MachineEnrollmentPanel({
   enrollment,
   onRenew,
   onEnrollmentCreated,
+  onEnrollmentRevoked,
   installOrigin,
 }: {
   machineId: string;
@@ -29,6 +30,11 @@ export function MachineEnrollmentPanel({
   enrollment: MachineEnrollment | null;
   onRenew?: (machineId: string) => Promise<MachineResult<MachineEnrollment>>;
   onEnrollmentCreated?: (enrollment: MachineEnrollment) => void;
+  /**
+   * 在途续签被放弃时撤销该 target 的父级票据。服务端结果未知，可能已替换票据，
+   * 展示一张已失效的一次性票据比丢失这次展示更糟。
+   */
+  onEnrollmentRevoked?: (machineId: string) => void;
   installOrigin?: string;
 }) {
   const [current, setCurrent] = useState(enrollment);
@@ -45,11 +51,15 @@ export function MachineEnrollmentPanel({
   renewRef.current = onRenew;
   const createdRef = useRef(onEnrollmentCreated);
   createdRef.current = onEnrollmentCreated;
+  const revokedRef = useRef(onEnrollmentRevoked);
+  revokedRef.current = onEnrollmentRevoked;
 
   useEffect(() => {
     const key = enrollmentKey(enrollment);
     if (appliedIdentity.current !== machineId) {
+      const abandoned = appliedIdentity.current;
       appliedIdentity.current = machineId;
+      if (inFlight.current) revokedRef.current?.(abandoned);
       inFlight.current = null;
       appliedKey.current = key;
       setPending(false);
@@ -67,6 +77,7 @@ export function MachineEnrollmentPanel({
 
   useEffect(
     () => () => {
+      if (inFlight.current) revokedRef.current?.(appliedIdentity.current);
       inFlight.current = null;
     },
     [],

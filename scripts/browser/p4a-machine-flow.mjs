@@ -566,6 +566,61 @@ try {
     secondMachineServerStillPending: true,
     firstMachineCreationTicketResurrected: false,
   });
+  const sameMachine = await createPendingMachine("Same Mac In Flight");
+  let renewalFetched;
+  let releaseRenewal;
+  const fetchedGate = new Promise((done) => (renewalFetched = done));
+  const deliveryGate = new Promise((done) => (releaseRenewal = done));
+  await page.route(
+    renewPattern,
+    async (route) => {
+      const response = await route.fetch();
+      renewalFetched();
+      await deliveryGate;
+      await route.fulfill({ response });
+    },
+    { times: 1 },
+  );
+  await openMachineList();
+  await page.getByTestId("machine-item").filter({ hasText: "Same Mac In Flight" }).click();
+  await page.getByTestId("machine-renew").click();
+  await fetchedGate;
+  await page.getByTestId("machine-detail-back").click();
+  await page.getByTestId("machine-list").waitFor();
+  const renewalDelivered = page.waitForResponse((response) =>
+    response.url().endsWith(`/_serverFn/${ids.renewMachineEnrollmentFn}`),
+  );
+  releaseRenewal();
+  await renewalDelivered;
+  await delay(800);
+  await page.getByTestId("machine-item").filter({ hasText: "Same Mac In Flight" }).click();
+  await page.getByTestId("machine-detail-id").waitFor();
+  const reopenedCount = await page.getByTestId("machine-ticket-toggle").count();
+  let displayed = null;
+  if (reopenedCount > 0) {
+    await page.getByTestId("machine-ticket-toggle").click();
+    displayed = (await page.getByTestId("machine-ticket-value").innerText()).trim();
+    await page.getByTestId("machine-ticket-toggle").click();
+  }
+  assert(displayed !== sameMachine.ticket, "在途时离开详情不能重放已被服务端替换的创建票据");
+  if (displayed !== null)
+    assert.equal(
+      createHash("sha256").update(displayed).digest("hex"),
+      db
+        .prepare("SELECT ticket_hash FROM machine_credential WHERE machine_id = ?")
+        .get(sameMachine.id).ticket_hash,
+      "重开后展示的票据必须与服务端 ticket_hash 一致",
+    );
+  const renewDisabled = await page.getByTestId("machine-renew").isDisabled();
+  assert.equal(renewDisabled, false, "撤销后仍然可以再次续签");
+  pass("abandoned in-flight renewal revokes the same Machine parent ticket", {
+    sameMachineCreationTicketResurrected: displayed === sameMachine.ticket,
+    sameMachineDisplayedTicketIsNullOrCurrent:
+      displayed === null || displayed !== sameMachine.ticket,
+    sameMachineParentTicketRevoked: displayed === null,
+    sameMachineRenewableAfterRevocation: !renewDisabled,
+  });
+  await page.unroute(renewPattern);
   const anonymous = await browser.newContext();
   const anon = await anonymous.newPage();
   await anon.goto(`${base}/machines/${machineId}`);

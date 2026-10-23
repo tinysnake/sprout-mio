@@ -476,6 +476,51 @@ try {
     },
   );
 
+  await check("abandoned_in_flight_renewal_revokes_the_same_machine_parent_slot", async () => {
+    await show(lifecycleA, "ticket");
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-value").waitFor();
+    const creation = (await test("machine-ticket-value").innerText()).trim();
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-hidden").waitFor();
+    await test("machine-renew").click();
+    assert.deepEqual(await pendingRequests(), [lifecycleA], "当前 Machine 的续签在途");
+    await visit(lifecycleB);
+    await renewAvailable();
+    assert.equal(
+      await probe(() => window.__machineLifecycle.parent()),
+      null,
+      "切走后同一 Machine 的父级槽位被撤销",
+    );
+    await settle(0, "success");
+    await visit(lifecycleA);
+    await renewAvailable();
+    assert.equal(await test("machine-ticket-toggle").count(), 0, "重开时没有旧票据");
+    assert.ok(
+      (await test("machine-enrollment-expires").innerText()).includes("没有待使用的票据"),
+      "面板呈现没有待使用的票据",
+    );
+    assert.equal(
+      await probe(() => window.__machineLifecycle.parent()),
+      null,
+      "已交付的成功结果也不能让旧创建票据复活",
+    );
+    await probe(() => window.__machineLifecycle.unmount());
+    await test("machine-enrollment-panel").waitFor({ state: "detached" });
+    await show(lifecycleA, "ticket");
+    await test("machine-ticket-toggle").waitFor();
+    await test("machine-renew").click();
+    assert.deepEqual(await pendingRequests(), [lifecycleA], "重开后的续签在途");
+    await probe(() => window.__machineLifecycle.unmount());
+    await test("machine-enrollment-panel").waitFor({ state: "detached" });
+    assert.equal(await probe(() => window.__machineLifecycle.parent()), null, "卸载也撤销在途槽位");
+    await settle(0, "success");
+    await visit(lifecycleA);
+    await renewAvailable();
+    assert.equal(await test("machine-ticket-toggle").count(), 0, "卸载后的重开没有旧票据");
+    assert.ok(creation.startsWith("11111111"));
+  });
+
   await check("no_business_requests_from_dev_scenes", async () => {
     assert.deepEqual(applicationRequests, []);
   });

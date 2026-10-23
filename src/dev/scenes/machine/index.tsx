@@ -284,6 +284,13 @@ function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
             onEnrollmentCreated={(created) =>
               setView((current) => ({ ...current, parent: created }))
             }
+            onEnrollmentRevoked={(target) =>
+              setView((current) =>
+                current.parent?.detail.machine.id === target
+                  ? { ...current, parent: null }
+                  : current,
+              )
+            }
             onRenew={(machineId) =>
               new Promise<MachineResult<MachineEnrollment>>((resolve, reject) => {
                 attempts.current.push({ machineId, resolve, reject });
@@ -521,6 +528,12 @@ export function MachineScenes() {
         onSaveBinding={saveBinding}
         onEnrollmentCreated={(enrollment) => {
           update({ tickets: { ...draft.tickets, [machineId]: enrollment } });
+        }}
+        onEnrollmentRevoked={(target) => {
+          if (target !== machineId) return;
+          const tickets = { ...draft.tickets };
+          delete tickets[target];
+          update({ tickets });
         }}
       />
       <DemoControls
