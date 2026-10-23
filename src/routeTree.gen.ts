@@ -20,6 +20,10 @@ import { Route as AuthedAgentsAgentProfileIdRouteImport } from './routes/_authed
 import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projects.index'
 import { Route as AuthedProjectsProjectIdRouteImport } from './routes/_authed/projects.$projectId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiWorkerCloseRouteImport } from './routes/api/worker/close'
+import { Route as ApiWorkerEnrollRouteImport } from './routes/api/worker/enroll'
+import { Route as ApiWorkerExchangeRouteImport } from './routes/api/worker/exchange'
+import { Route as ApiWorkerOpenRouteImport } from './routes/api/worker/open'
 import { Route as AuthedProjectsProjectIdIndexRouteImport } from './routes/_authed/projects.$projectId.index'
 import { Route as AuthedProjectsProjectIdChatsRouteImport } from './routes/_authed/projects.$projectId.chats'
 import { Route as AuthedProjectsProjectIdMembersRouteImport } from './routes/_authed/projects.$projectId.members'
@@ -82,6 +86,26 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWorkerCloseRoute = ApiWorkerCloseRouteImport.update({
+  id: '/api/worker/close',
+  path: '/api/worker/close',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWorkerEnrollRoute = ApiWorkerEnrollRouteImport.update({
+  id: '/api/worker/enroll',
+  path: '/api/worker/enroll',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWorkerExchangeRoute = ApiWorkerExchangeRouteImport.update({
+  id: '/api/worker/exchange',
+  path: '/api/worker/exchange',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWorkerOpenRoute = ApiWorkerOpenRouteImport.update({
+  id: '/api/worker/open',
+  path: '/api/worker/open',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthedProjectsProjectIdIndexRoute =
   AuthedProjectsProjectIdIndexRouteImport.update({
     id: '/',
@@ -128,6 +152,10 @@ export interface FileRoutesByFullPath {
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
   '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/worker/close': typeof ApiWorkerCloseRoute
+  '/api/worker/enroll': typeof ApiWorkerEnrollRoute
+  '/api/worker/exchange': typeof ApiWorkerExchangeRoute
+  '/api/worker/open': typeof ApiWorkerOpenRoute
   '/agents/': typeof AuthedAgentsIndexRoute
   '/projects/': typeof AuthedProjectsIndexRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
@@ -144,6 +172,10 @@ export interface FileRoutesByTo {
   '/api/health': typeof ApiHealthRoute
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/worker/close': typeof ApiWorkerCloseRoute
+  '/api/worker/enroll': typeof ApiWorkerEnrollRoute
+  '/api/worker/exchange': typeof ApiWorkerExchangeRoute
+  '/api/worker/open': typeof ApiWorkerOpenRoute
   '/agents': typeof AuthedAgentsIndexRoute
   '/projects': typeof AuthedProjectsIndexRoute
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
@@ -163,6 +195,10 @@ export interface FileRoutesById {
   '/_authed/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
   '/_authed/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/worker/close': typeof ApiWorkerCloseRoute
+  '/api/worker/enroll': typeof ApiWorkerEnrollRoute
+  '/api/worker/exchange': typeof ApiWorkerExchangeRoute
+  '/api/worker/open': typeof ApiWorkerOpenRoute
   '/_authed/agents/': typeof AuthedAgentsIndexRoute
   '/_authed/projects/': typeof AuthedProjectsIndexRoute
   '/_authed/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
@@ -183,6 +219,10 @@ export interface FileRouteTypes {
     | '/agents/$agentProfileId'
     | '/projects/$projectId'
     | '/api/auth/$'
+    | '/api/worker/close'
+    | '/api/worker/enroll'
+    | '/api/worker/exchange'
+    | '/api/worker/open'
     | '/agents/'
     | '/projects/'
     | '/projects/$projectId/chats'
@@ -199,6 +239,10 @@ export interface FileRouteTypes {
     | '/api/health'
     | '/agents/$agentProfileId'
     | '/api/auth/$'
+    | '/api/worker/close'
+    | '/api/worker/enroll'
+    | '/api/worker/exchange'
+    | '/api/worker/open'
     | '/agents'
     | '/projects'
     | '/projects/$projectId/members'
@@ -217,6 +261,10 @@ export interface FileRouteTypes {
     | '/_authed/agents/$agentProfileId'
     | '/_authed/projects/$projectId'
     | '/api/auth/$'
+    | '/api/worker/close'
+    | '/api/worker/enroll'
+    | '/api/worker/exchange'
+    | '/api/worker/open'
     | '/_authed/agents/'
     | '/_authed/projects/'
     | '/_authed/projects/$projectId/chats'
@@ -234,6 +282,10 @@ export interface RootRouteChildren {
   ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiWorkerCloseRoute: typeof ApiWorkerCloseRoute
+  ApiWorkerEnrollRoute: typeof ApiWorkerEnrollRoute
+  ApiWorkerExchangeRoute: typeof ApiWorkerExchangeRoute
+  ApiWorkerOpenRoute: typeof ApiWorkerOpenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -313,6 +365,34 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/worker/close': {
+      id: '/api/worker/close'
+      path: '/api/worker/close'
+      fullPath: '/api/worker/close'
+      preLoaderRoute: typeof ApiWorkerCloseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/worker/enroll': {
+      id: '/api/worker/enroll'
+      path: '/api/worker/enroll'
+      fullPath: '/api/worker/enroll'
+      preLoaderRoute: typeof ApiWorkerEnrollRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/worker/exchange': {
+      id: '/api/worker/exchange'
+      path: '/api/worker/exchange'
+      fullPath: '/api/worker/exchange'
+      preLoaderRoute: typeof ApiWorkerExchangeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/worker/open': {
+      id: '/api/worker/open'
+      path: '/api/worker/open'
+      fullPath: '/api/worker/open'
+      preLoaderRoute: typeof ApiWorkerOpenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authed/projects/$projectId/': {
@@ -435,6 +515,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDiagnosticsRoute: ApiDiagnosticsRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiWorkerCloseRoute: ApiWorkerCloseRoute,
+  ApiWorkerEnrollRoute: ApiWorkerEnrollRoute,
+  ApiWorkerExchangeRoute: ApiWorkerExchangeRoute,
+  ApiWorkerOpenRoute: ApiWorkerOpenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
