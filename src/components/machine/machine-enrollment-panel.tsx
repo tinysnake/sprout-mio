@@ -21,12 +21,14 @@ export function MachineEnrollmentPanel({
   enrollmentStatus,
   enrollment,
   onRenew,
+  onEnrollmentCreated,
   installOrigin,
 }: {
   machineId: string;
   enrollmentStatus: "pending" | "active";
   enrollment: MachineEnrollment | null;
   onRenew?: (machineId: string) => Promise<MachineResult<MachineEnrollment>>;
+  onEnrollmentCreated?: (enrollment: MachineEnrollment) => void;
   installOrigin?: string;
 }) {
   const [current, setCurrent] = useState(enrollment);
@@ -34,15 +36,20 @@ export function MachineEnrollmentPanel({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const inFlight = useRef<object | null>(null);
+  // 渲染即推进，让迟到的结果在身份切换的同一提交里失效，不等下方 effect。
   const identity = useRef(machineId);
+  const appliedIdentity = useRef(machineId);
+  identity.current = machineId;
   const appliedKey = useRef(enrollmentKey(enrollment));
   const renewRef = useRef(onRenew);
   renewRef.current = onRenew;
+  const createdRef = useRef(onEnrollmentCreated);
+  createdRef.current = onEnrollmentCreated;
 
   useEffect(() => {
     const key = enrollmentKey(enrollment);
-    if (identity.current !== machineId) {
-      identity.current = machineId;
+    if (appliedIdentity.current !== machineId) {
+      appliedIdentity.current = machineId;
       inFlight.current = null;
       appliedKey.current = key;
       setPending(false);
@@ -71,7 +78,7 @@ export function MachineEnrollmentPanel({
     const token = {};
     inFlight.current = token;
     const target = machineId;
-    const owned = () => inFlight.current === token;
+    const owned = () => inFlight.current === token && identity.current === target;
     setPending(true);
     setError(null);
     try {
@@ -83,6 +90,7 @@ export function MachineEnrollmentPanel({
       }
       setCurrent(result.data);
       setRevealed(false);
+      createdRef.current?.(result.data);
     } catch (cause) {
       if (!owned()) return;
       setError(toAppError(cause, newId(ID_PREFIXES.request)));

@@ -480,6 +480,92 @@ try {
   await page.goto(`${base}/machines/${machineId}`);
   assert.equal(await page.getByTestId("machine-detail-back").getAttribute("href"), "/machines");
   pass("deep links, browser back forward and 900/1200 navigation boundaries across both themes");
+  async function readTicket(label) {
+    try {
+      await page.getByTestId("machine-ticket-hidden").waitFor({ timeout: 8000 });
+    } catch (error) {
+      throw new Error(`${label}: ${String(error.message).split("\n")[0]}`);
+    }
+    await page.getByTestId("machine-ticket-toggle").click();
+    await page.getByTestId("machine-ticket-value").waitFor();
+    const value = (await page.getByTestId("machine-ticket-value").innerText()).trim();
+    await page.getByTestId("machine-ticket-toggle").click();
+    await page.getByTestId("machine-ticket-hidden").waitFor();
+    return value;
+  }
+  async function openMachineList() {
+    await page.getByTestId("machine-detail-back").click();
+    await page.getByTestId("machine-list").waitFor();
+  }
+  async function createPendingMachine(name) {
+    await openMachineList();
+    await page.getByTestId("new-machine-trigger").click();
+    await page.getByTestId("machine-name-input").fill(name);
+    await page.getByTestId("machine-create-submit").click();
+    await page.getByTestId("machine-detail-id").waitFor();
+    const id = (await page.getByTestId("machine-detail-id").innerText()).trim();
+    return { id, ticket: await readTicket(`create ticket ${name}`) };
+  }
+  const raceA = await createPendingMachine("Race Mac A");
+  const raceB = await createPendingMachine("Race Mac B");
+  const renewPattern = `**/_serverFn/${ids.renewMachineEnrollmentFn}`;
+  await page.route(renewPattern, async (route) => {
+    await delay(2500);
+    await route.continue();
+  });
+  const lateRenewal = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/_serverFn/${ids.renewMachineEnrollmentFn}`) &&
+      response.request().method() === "POST",
+  );
+  await openMachineList();
+  await page.getByTestId("machine-item").filter({ hasText: "Race Mac A" }).click();
+  await page.getByTestId("machine-renew").click();
+  await page.getByTestId("machine-detail-back").click();
+  await page.getByTestId("machine-list").waitFor();
+  await page.getByTestId("machine-item").filter({ hasText: "Race Mac B" }).click();
+  await page.getByTestId("machine-detail-id").waitFor();
+  assert.equal((await page.getByTestId("machine-detail-id").innerText()).trim(), raceB.id);
+  assert.equal(
+    await readTicket("before late result"),
+    raceB.ticket,
+    "A 的续签在途时 B 的创建票据可见",
+  );
+  await lateRenewal;
+  await delay(800);
+  assert.equal(
+    await readTicket("after late result"),
+    raceB.ticket,
+    "A 的迟到续签结果不能改写 B 的票据",
+  );
+  assert.equal(
+    (await rpc("getMachineFn", { machineId: raceB.id })).data.enrollmentStatus,
+    "pending",
+    "B 在服务端仍是待配对",
+  );
+  await page.unroute(renewPattern);
+  await openMachineList();
+  await page.getByTestId("machine-item").filter({ hasText: "Race Mac A" }).click();
+  await page.getByTestId("machine-renew").waitFor();
+  await page.getByTestId("machine-renew").click();
+  await until(
+    async () => !(await page.getByTestId("machine-renew").isDisabled()),
+    "race machine renewal",
+  );
+  const raceRenewed = await readTicket("renewed ticket");
+  assert(raceRenewed !== raceA.ticket, "回到 A 看到的是续签后的新票据");
+  assert.equal(
+    db.prepare("SELECT ticket_hash FROM machine_credential WHERE machine_id = ?").get(raceA.id)
+      .ticket_hash === createHash("sha256").update(raceRenewed).digest("hex"),
+    true,
+    "A 的续签票据与 SQLite 哈希一致",
+  );
+  pass("late renewal from a previous Machine does not replace the current parent enrollment", {
+    lateRenewalHeldInFlight: true,
+    secondMachineKeptCreationTicket: true,
+    secondMachineServerStillPending: true,
+    firstMachineCreationTicketResurrected: false,
+  });
   const anonymous = await browser.newContext();
   const anon = await anonymous.newPage();
   await anon.goto(`${base}/machines/${machineId}`);

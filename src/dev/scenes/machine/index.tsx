@@ -187,15 +187,17 @@ function lifecycleEnrollment(machineId: string): MachineEnrollment {
 function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
   const [view, setView] = useState<{
     machineId: string;
-    enrollment: MachineEnrollment | null;
+    parent: MachineEnrollment | null;
     mounted: boolean;
   }>({
     machineId: "mch_11111111-1111-4111-8111-111111111111",
-    enrollment: null,
+    parent: null,
     mounted: true,
   });
   const attempts = useRef<LifecycleAttempt[]>([]);
   const commits = useRef<{ machineId: string; exposed: boolean; owned: boolean }[]>([]);
+  const parentSlot = useRef<MachineEnrollment | null>(null);
+  parentSlot.current = view.parent;
 
   useEffect(() => {
     const api = {
@@ -207,13 +209,19 @@ function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
           ...current,
           machineId,
           mounted: true,
-          enrollment: mode === "ticket" ? lifecycleEnrollment(ownerId) : null,
+          parent: mode === "ticket" ? lifecycleEnrollment(ownerId) : null,
         }));
+      },
+      visit(machineId: string) {
+        setView((current) => ({ ...current, machineId, mounted: true }));
+      },
+      parent() {
+        return parentSlot.current?.detail.machine.id ?? null;
       },
       refresh() {
         setView((current) => ({
           ...current,
-          enrollment: current.enrollment ? { ...current.enrollment } : null,
+          parent: current.parent ? { ...current.parent } : null,
         }));
       },
       unmount() {
@@ -244,6 +252,9 @@ function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
     };
   }, []);
 
+  const enrollment =
+    view.parent && view.parent.detail.machine.id === view.machineId ? view.parent : null;
+
   return (
     <PageFrame
       title="续签请求生命周期探针"
@@ -268,8 +279,11 @@ function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
           <MachineEnrollmentPanel
             machineId={view.machineId}
             enrollmentStatus="pending"
-            enrollment={view.enrollment}
+            enrollment={enrollment}
             installOrigin="http://127.0.0.1:3000"
+            onEnrollmentCreated={(created) =>
+              setView((current) => ({ ...current, parent: created }))
+            }
             onRenew={(machineId) =>
               new Promise<MachineResult<MachineEnrollment>>((resolve, reject) => {
                 attempts.current.push({ machineId, resolve, reject });

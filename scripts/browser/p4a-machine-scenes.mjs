@@ -282,6 +282,13 @@ try {
       machineId,
     );
   };
+  const visit = async (machineId) => {
+    await probe((id) => window.__machineLifecycle.visit(id), machineId);
+    await page.waitForFunction(
+      (id) => window.__machineLifecycle.commits().at(-1)?.machineId === id,
+      machineId,
+    );
+  };
   const renewAvailable = () =>
     page.waitForFunction(
       () => {
@@ -440,6 +447,34 @@ try {
       "错配 prop 的任何提交均不能展示其他 Machine 的票据",
     );
   });
+
+  await check(
+    "late_renewal_from_previous_machine_does_not_replace_current_parent_ticket",
+    async () => {
+      await show(lifecycleB, "ticket");
+      await test("machine-ticket-toggle").waitFor();
+      await visit(lifecycleA);
+      await test("machine-renew").click();
+      assert.deepEqual(await pendingRequests(), [lifecycleA], "A 的续签在途");
+      await visit(lifecycleB);
+      await test("machine-ticket-toggle").waitFor();
+      await settle(0, "success");
+      await page.waitForTimeout(150);
+      assert.deepEqual(await pendingRequests(), [], "A 的迟到结果已落地");
+      assert.equal(
+        await probe(() => window.__machineLifecycle.parent()),
+        lifecycleB,
+        "A 的迟到结果不能写进父级槽位",
+      );
+      await test("machine-ticket-toggle").click();
+      await test("machine-ticket-value").waitFor();
+      const kept = (await test("machine-ticket-value").innerText()).trim();
+      assert.ok(kept.startsWith("22222222"), "B 的创建票据保持可见");
+      await test("machine-ticket-toggle").click();
+      await test("machine-ticket-hidden").waitFor();
+      assert.deepEqual(desktop.errors, []);
+    },
+  );
 
   await check("no_business_requests_from_dev_scenes", async () => {
     assert.deepEqual(applicationRequests, []);

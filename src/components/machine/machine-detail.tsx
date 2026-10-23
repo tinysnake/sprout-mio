@@ -47,6 +47,9 @@ export function MachineDetailPanel({
     input: SaveProjectMachineBindingInput,
   ) => Promise<MachineResult<ProjectMachineIntent>>;
   onBindingSaved?: (intent: ProjectMachineIntent) => void;
+  /**
+   * 续签成功结果写回父级短期状态；只有发起请求的详情身份仍在使用时才发布。
+   */
   onEnrollmentCreated?: (enrollment: MachineEnrollment) => void;
   installOrigin?: string;
   actions?: ReactNode;
@@ -306,15 +309,8 @@ export function MachineDetailPanel({
               enrollmentStatus={detail.enrollmentStatus}
               enrollment={enrollment}
               installOrigin={installOrigin}
-              onRenew={
-                onRenewEnrollment
-                  ? async (machineId) => {
-                      const result = await onRenewEnrollment(machineId);
-                      if (result.ok) onEnrollmentCreated?.(result.data);
-                      return result;
-                    }
-                  : undefined
-              }
+              onRenew={onRenewEnrollment}
+              onEnrollmentCreated={onEnrollmentCreated}
             />
           </SettingsSection>
         </aside>
