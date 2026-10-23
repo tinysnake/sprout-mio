@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   closeSync,
   copyFileSync,
@@ -168,10 +168,37 @@ try {
   );
   await page.getByTestId("machine-ticket-toggle").click();
   const enrollmentTicket = await page.getByTestId("machine-ticket-value").innerText();
+  assert.equal(enrollmentTicket.length, 43);
+  assert(enrollmentTicket !== ticket, "renewal replaces the creation ticket");
   await page.getByTestId("machine-ticket-toggle").click();
+  db = new Database(database);
+  const credential = db
+    .prepare("SELECT ticket_hash FROM machine_credential WHERE machine_id = ?")
+    .get(machineId);
+  assert.equal(
+    credential.ticket_hash === createHash("sha256").update(enrollmentTicket).digest("hex"),
+    true,
+    "server credential matches the renewed ticket",
+  );
+  await page.getByTestId("machine-detail-back").click();
+  await page.getByTestId("machine-list").waitFor();
+  await page.getByTestId("machine-item").filter({ hasText: "Production Mac" }).click();
+  assert.equal((await page.getByTestId("machine-detail-id").innerText()).trim(), machineId);
+  await page.getByTestId("machine-ticket-hidden").waitFor();
+  await page.getByTestId("machine-ticket-toggle").click();
+  const reopenedTicket = await page.getByTestId("machine-ticket-value").innerText();
+  assert(reopenedTicket !== ticket, "returning to Machine must not resurrect the creation ticket");
+  assert.equal(reopenedTicket === enrollmentTicket, true, "returning retains the renewed ticket");
+  await page.getByTestId("machine-ticket-toggle").click();
+  pass("renewal replaces creation result across list and detail navigation", {
+    renewChangedTicket: true,
+    serverHashMatchesRenewed: true,
+    creationTicketResurrected: false,
+    renewedTicketRestored: true,
+  });
   copyFileSync("dist/worker/main.js", join(installation, "main.mjs"));
   const ticketFile = join(installation, "ticket");
-  writeFileSync(ticketFile, enrollmentTicket, { mode: 0o600 });
+  writeFileSync(ticketFile, reopenedTicket, { mode: 0o600 });
   const stateDir = join(installation, "identity");
   const init = launch(
     [
@@ -196,7 +223,6 @@ try {
     "worker.log",
     { cwd: installation },
   );
-  db = new Database(database);
   await until(
     async () => (await rpc("getMachineFn", { machineId })).data.connection.kind === "online",
     "Worker online",

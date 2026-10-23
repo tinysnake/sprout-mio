@@ -4,7 +4,7 @@
 
 ## 数据与状态归属
 
-列表和详情 loader 只读取 `MachineDetail`。创建与续签使用独立的 `MachineEnrollment` 操作结果。Machines 父路由通过 `MachineEnrollmentProvider` 持有创建结果，兄弟路由切换不丢失这份短期状态。票据不进入 loader、URL、history、浏览器存储或日志。离开 Machines 路由或重新加载页面后可重新续签 pending 身份。active 身份不显示票据或续签入口。
+列表和详情 loader 只读取 `MachineDetail`。创建与续签使用独立的 `MachineEnrollment` 操作结果。Machines 父路由通过 `MachineEnrollmentProvider` 持有当前有效的操作结果，兄弟路由切换不丢失这份短期状态。详情路由将续签成功结果通过既有 `onEnrollmentCreated` 回调写回同一 Context，替换已失效的创建票据；失败或异常保留仍合法的结果。面板继续拥有请求 token 和 render 身份判断。票据不进入 loader、URL、history、浏览器存储或日志。离开 Machines 路由或重新加载页面后可重新续签 pending 身份。active 身份不显示票据或续签入口。
 
 `?projectId=` 表达 Project 来源。详情刷新、返回入口和前进后退均从该 URL 读取目标。没有来源时返回 Machines。AppShell 的 Project 选择器也读取这个上下文。绑定表单沿用 Machine × Project 身份和服务端 revision，重复读取相同 revision 保留未保存草稿。
 
@@ -30,7 +30,7 @@ Project settings 提供本人 Machine 选择与加入或编辑入口。绑定提
 
 运行 `pnpm check`、`pnpm typecheck`、`pnpm test`、`pnpm worker:build`、`pnpm build`，再运行 `bash scripts/verify/u-machine-ui.sh`。浏览器脚本使用独立 production 服务、SQLite、Chromium 和复制到系统临时目录的 Worker，默认端口 3120。不要让该端口与其他服务重叠。
 
-脚本从真实注册和 Machines Link 开始，创建并读取隐藏票据，执行实际 init/run，比较页面、RPC 与 SQLite，验证两个 Project 的独立目录、刷新、返回、深链、前进后退、Worker 停止和重连、目录 revision 与失败观察。异常补充验证字段错误关联、防重复与失败草稿。另一个 Chromium context 验证未登录和第二账号隔离。浅暗主题覆盖 390、899、900、901、1024、1199、1200、1440。截图时票据隐藏。
+脚本从真实注册和 Machines Link 开始，创建并读取隐藏票据，续签后返回列表并重开同一 Machine，断言旧创建票据不复活、当前续签票据与 SQLite 哈希一致且在同次 React 会话保留，再用重开后读取的有效票据执行实际 init/run。其余检查比较页面、RPC 与 SQLite，验证两个 Project 的独立目录、刷新、返回、深链、前进后退、Worker 停止和重连、目录 revision 与失败观察。异常补充验证字段错误关联、防重复与失败草稿。另一个 Chromium context 验证未登录和第二账号隔离。浅暗主题覆盖 390、899、900、901、1024、1199、1200、1440。截图时票据隐藏。
 
 每次运行生成独立 `.verify/p4a-machine-flow-*`，公开结果和截图可供 coordinator 读取。数据库与 Worker identity 含私密认证材料，不作为公开证据复制。精确命令、退出码、截图绝对路径和实现 head 见 `/tmp/sprout-p4a-integration-report.md`。
 

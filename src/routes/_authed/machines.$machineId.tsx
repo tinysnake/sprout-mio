@@ -34,7 +34,7 @@ function MachinePage() {
   const { detail, projects } = Route.useLoaderData();
   const { projectId } = Route.useSearch();
   const router = useRouter();
-  const { enrollment } = useMachineEnrollment();
+  const { enrollment, setEnrollment } = useMachineEnrollment();
   const back = projectId ? (
     <Link
       to="/projects/$projectId/settings"
@@ -64,6 +64,7 @@ function MachinePage() {
       bindingProject={availableProjects.find((p) => p.id === projectId) ?? null}
       installOrigin={typeof window === "undefined" ? undefined : window.location.origin}
       onRenewEnrollment={(machineId) => renewMachineEnrollmentFn({ data: { machineId } })}
+      onEnrollmentCreated={setEnrollment}
       onSaveBinding={(input) => saveProjectMachineBindingFn({ data: input })}
       onBindingSaved={() => void router.invalidate()}
       actions={
