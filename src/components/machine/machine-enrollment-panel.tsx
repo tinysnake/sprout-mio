@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyRound } from "lucide-react";
 import type { MachineEnrollment, MachineResult } from "../../contracts/machine";
+import { ID_PREFIXES, newId } from "../../contracts/ids";
+import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
@@ -9,11 +11,6 @@ import { enrollmentLabel, formatMoment } from "./machine-view";
 import { StatusLine } from "./machine-list";
 import { MachineInstallInstructions } from "./machine-install-instructions";
 
-/**
- * 配对事实与一次性短期票据。长期 secret 永远不进入 UI：这里只显示
- * `MachineEnrollment.ticket`，并且默认隐藏，避免截图或旁人看到。
- * `onRenew` 仅对 `pending` 提供；active 时服务端也不允许续签。
- */
 export function MachineEnrollmentPanel({
   machineId,
   enrollmentStatus,
@@ -25,37 +22,45 @@ export function MachineEnrollmentPanel({
   enrollmentStatus: "pending" | "active";
   enrollment: MachineEnrollment | null;
   onRenew?: (machineId: string) => Promise<MachineResult<MachineEnrollment>>;
-  /** 展示用的服务器 origin，占位值不发起请求。 */
   installOrigin?: string;
 }) {
   const [current, setCurrent] = useState(enrollment);
   const [revealed, setRevealed] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
+  const live = useRef(machineId);
+  live.current = machineId;
 
   useEffect(() => {
     setCurrent(enrollment);
     setRevealed(false);
-  }, [enrollment]);
+    setError(null);
+  }, [enrollment, machineId]);
 
   async function renew() {
     if (pending || !onRenew) return;
+    const target = machineId;
     setPending(true);
     setError(null);
     try {
-      const result = await onRenew(machineId);
+      const result = await onRenew(target);
+      if (live.current !== target) return;
       if (!result.ok) {
         setError(result.error);
         return;
       }
       setCurrent(result.data);
       setRevealed(false);
+    } catch (cause) {
+      if (live.current !== target) return;
+      setError(toAppError(cause, newId(ID_PREFIXES.request)));
     } finally {
-      setPending(false);
+      if (live.current === target) setPending(false);
     }
   }
 
   const status = enrollmentLabel(enrollmentStatus);
+  const ticket = enrollmentStatus === "pending" ? current : null;
   return (
     <div className="space-y-5" data-testid="machine-enrollment-panel">
       <dl className="grid gap-y-1 text-xs leading-7">
@@ -68,7 +73,7 @@ export function MachineEnrollmentPanel({
         <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2">
           <dt className="text-muted-foreground">票据到期</dt>
           <dd data-testid="machine-enrollment-expires">
-            {current ? formatMoment(current.expiresAt) : "没有待使用的票据"}
+            {ticket ? formatMoment(ticket.expiresAt) : "没有待使用的票据"}
           </dd>
         </div>
       </dl>
@@ -88,7 +93,7 @@ export function MachineEnrollmentPanel({
         </p>
       )}
 
-      {current && (
+      {ticket && (
         <div className="rounded-container border border-border p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="flex items-center gap-2 text-xs font-medium">
@@ -111,7 +116,7 @@ export function MachineEnrollmentPanel({
               data-testid="machine-ticket-value"
               className="mt-3 block break-all rounded-control bg-secondary px-3 py-2 font-mono text-[0.6875rem] whitespace-pre-wrap"
             >
-              {current.ticket}
+              {ticket.ticket}
             </code>
           ) : (
             <p data-testid="machine-ticket-hidden" className="mt-2 text-xs text-muted-foreground">

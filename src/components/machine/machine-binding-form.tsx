@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import type {
-  MachineResult,
-  ProjectMachineIntent,
-  SaveProjectMachineBindingInput,
+import {
+  saveProjectMachineBindingInput,
+  type MachineResult,
+  type ProjectMachineIntent,
+  type SaveProjectMachineBindingInput,
 } from "../../contracts/machine";
+import { fieldErrorsFrom } from "../../contracts/project";
 import type { FieldErrors } from "../../contracts/project";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
@@ -17,21 +19,6 @@ import { ResultError } from "../project/result-error";
 
 type Binding = { intent: ProjectMachineIntent; observation: unknown } | null;
 
-function validate(description: string, directory: string): FieldErrors {
-  const errors: FieldErrors = {};
-  if (!description.trim()) errors.description = "请填写说明，便于在 Project 中识别这台 Machine。";
-  if (description.length > 500) errors.description = "说明最多 500 字。";
-  if (directory && !directory.startsWith("/"))
-    errors.directory = "工作目录必须是绝对路径，以 / 开头。";
-  if (directory.length > 4096) errors.directory = "路径最多 4096 个字符。";
-  if (directory.includes("\0")) errors.directory = "路径不能包含 NUL。";
-  return errors;
-}
-
-/**
- * 把 Machine 加入 Project 并保存说明与工作目录。提交函数由调用方注入；
- * `expectedRevision` 来自已有绑定，成功后使用返回的 intent 更新，避免重复绑定。
- */
 export function MachineBindingForm({
   machineId,
   project,
@@ -45,31 +32,66 @@ export function MachineBindingForm({
   submit: (input: SaveProjectMachineBindingInput) => Promise<MachineResult<ProjectMachineIntent>>;
   onSaved?: (intent: ProjectMachineIntent) => void;
 }) {
-  const [intent, setIntent] = useState(binding?.intent ?? null);
-  const [description, setDescription] = useState(binding?.intent.description ?? "");
-  const [directory, setDirectory] = useState(binding?.intent.directory ?? "");
+  const bound = binding?.intent ?? null;
+  const identity = `${machineId}:${project.id}`;
+  const [intent, setIntent] = useState(bound);
+  const [description, setDescription] = useState(bound?.description ?? "");
+  const [directory, setDirectory] = useState(bound?.directory ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saved, setSaved] = useState("");
+  const synced = useRef({ identity, revision: bound?.revision ?? null });
+  const live = useRef(identity);
+  live.current = identity;
+
+  useEffect(() => {
+    const matched = synced.current.identity === identity;
+    const revision = bound?.revision ?? null;
+    if (matched && synced.current.revision === revision) return;
+    synced.current = { identity, revision };
+    const nextDescription = bound?.description ?? "";
+    const nextDirectory = bound?.directory ?? "";
+    if (!matched) {
+      setIntent(bound);
+      setDescription(nextDescription);
+      setDirectory(nextDirectory);
+      setError(null);
+      setFieldErrors({});
+      setSaved("");
+      return;
+    }
+    const dirty =
+      description !== (intent?.description ?? "") || directory !== (intent?.directory ?? "");
+    if (dirty) return;
+    setIntent(bound);
+    setDescription(nextDescription);
+    setDirectory(nextDirectory);
+  }, [identity, bound, description, directory, intent]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    const local = validate(description, directory);
-    setFieldErrors(local);
+    const candidate: SaveProjectMachineBindingInput = {
+      machineId,
+      projectId: project.id,
+      description,
+      directory: directory || null,
+      expectedRevision: intent?.revision ?? null,
+    };
+    const parsed = saveProjectMachineBindingInput.safeParse(candidate);
     setError(null);
     setSaved("");
-    if (Object.keys(local).length > 0) return;
+    if (!parsed.success) {
+      setFieldErrors(fieldErrorsFrom(parsed.error));
+      return;
+    }
+    setFieldErrors({});
+    const target = identity;
     setPending(true);
     try {
-      const result = await submit({
-        machineId,
-        projectId: project.id,
-        description,
-        directory: directory || null,
-        expectedRevision: intent?.revision ?? null,
-      });
+      const result = await submit(parsed.data);
+      if (live.current !== target) return;
       if (!result.ok) {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
@@ -78,14 +100,16 @@ export function MachineBindingForm({
       setIntent(result.data);
       setDescription(result.data.description);
       setDirectory(result.data.directory ?? "");
+      synced.current = { identity, revision: result.data.revision };
       setSaved(
         `已保存到 ${project.name}（revision ${result.data.revision}）。保存成功不代表 Worker 已验证该目录可达。`,
       );
       onSaved?.(result.data);
     } catch (cause) {
+      if (live.current !== target) return;
       setError(toAppError(cause, newId(ID_PREFIXES.request)));
     } finally {
-      setPending(false);
+      if (live.current === target) setPending(false);
     }
   }
 
@@ -100,7 +124,7 @@ export function MachineBindingForm({
         <Field
           label="说明"
           htmlFor="machine-binding-description"
-          hint="这个 Project 中如何使用这台 Machine，最多 500 字。"
+          hint="可留空，最多 500 字。"
           error={fieldErrors.description}
         >
           <Textarea

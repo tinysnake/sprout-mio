@@ -1,5 +1,3 @@
-// UI-P4a Machine 场景的浏览器核对：列表 / 详情 / 创建票据 / 续签 / Project 绑定。
-// 纯演示：不发业务请求，保留既有场景可用；浅暗主题与 390 / 1440 截图。
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -46,7 +44,6 @@ async function open({ width, height, colorScheme, scene = "machines" }) {
     colorScheme,
     deviceScaleFactor: 1,
   });
-  // 主题由 token 层的 .dark 类驱动，不跟随系统外观；截图前显式写入偏好。
   await context.addInitScript((theme) => {
     localStorage.setItem("sprout:theme", theme);
   }, colorScheme);
@@ -102,14 +99,20 @@ try {
   await check(
     "binding_form_saves_and_reports_revision_without_claiming_remote_validation",
     async () => {
-      await test("machine-binding-description").fill("演示：新的绑定说明");
+      await test("machine-binding-description").fill("");
       await test("machine-binding-directory").fill("/Users/linche/workspace/demo-target");
       await test("machine-binding-submit").click();
       await test("machine-binding-success").waitFor();
       const message = await test("machine-binding-success").innerText();
       assert.ok(message.includes("revision 3"), message);
       assert.ok(message.includes("不代表 Worker 已验证该目录可达"), message);
-      assert.ok((await test("machine-binding-item").first().innerText()).includes("revision 3"));
+      const item = await test("machine-binding-item").first().innerText();
+      assert.ok(item.includes("revision 3"), item);
+      assert.ok(item.includes("（无说明）"), "空说明可保存，列表显示无说明");
+      const bindings = await test("machine-bindings").innerText();
+      assert.ok(!bindings.includes("当前可达"), "旧观察不能继续冒充当前可达");
+      assert.ok(bindings.includes("未验证"), bindings);
+      assert.equal(await test("machine-binding-description").inputValue(), "");
     },
   );
 
@@ -166,6 +169,60 @@ try {
     assert.ok((await test("machine-detail-connection").innerText()).includes("连接中"));
   });
 
+  await check("renew_failure_shows_safe_error_and_keeps_retry", async () => {
+    await test("machine-detail-back").click();
+    await test("machine-list").waitFor();
+    await page.locator('[data-machine-id="mch_55555555-5555-4555-8555-555555555555"]').click();
+    await test("machine-enrollment-status").waitFor();
+    await openControls(page);
+    await test("machine-throw-renew").check();
+    await closeControls(page);
+    await test("machine-renew").click();
+    await test("machine-renew-error").waitFor();
+    const text = await test("machine-renew-error").innerText();
+    assert.ok(text.includes("内部错误"), text);
+    assert.ok(!text.includes("REVIEW_NETWORK_FAILURE"), "异常内部细节不能呈现");
+    assert.equal(await test("machine-renew").isDisabled(), false, "失败后 pending 恢复可重试");
+    assert.equal(await test("machine-ticket-hidden").count(), 0, "失败不凭空产生票据");
+    await openControls(page);
+    await test("machine-throw-renew").uncheck();
+    await closeControls(page);
+    await test("machine-renew").click();
+    await test("machine-ticket-hidden").waitFor();
+    assert.deepEqual(desktop.errors, []);
+  });
+
+  await check("renew_race_does_not_leak_ticket_to_next_machine", async () => {
+    await test("machine-detail-back").click();
+    await test("machine-list").waitFor();
+    await page.locator('[data-machine-id="mch_55555555-5555-4555-8555-555555555555"]').click();
+    await test("machine-renew").click();
+    await openControls(page);
+    await test("machine-demo-switch").selectOption({ label: "刚唤醒的 Mac Studio" });
+    await closeControls(page);
+    await test("machine-enrollment-status").waitFor();
+    await page.waitForTimeout(900);
+    assert.equal(await test("machine-ticket-toggle").count(), 0, "A 的迟到票据不能出现在 B");
+    assert.equal(await test("machine-ticket-hidden").count(), 0);
+    assert.ok((await test("machine-enrollment-panel").innerText()).includes("已配对"));
+    assert.deepEqual(desktop.errors, []);
+  });
+
+  await check("pending_to_active_clears_ticket_without_navigation", async () => {
+    await test("machine-detail-back").click();
+    await test("machine-list").waitFor();
+    await page.locator('[data-machine-id="mch_22222222-2222-4222-8222-222222222222"]').click();
+    await test("machine-ticket-toggle").waitFor();
+    await openControls(page);
+    await test("machine-demo-activate").click();
+    await closeControls(page);
+    await test("machine-enrollment-status").waitFor();
+    assert.ok((await test("machine-enrollment-status").innerText()).includes("已配对"));
+    assert.equal(await test("machine-ticket-toggle").count(), 0, "已配对后旧票据不再显示");
+    assert.equal(await test("machine-renew").count(), 0);
+    assert.ok((await test("machine-enrollment-expires").innerText()).includes("没有待使用的票据"));
+  });
+
   await check("create_flow_adds_pending_machine_and_opens_detail", async () => {
     await test("machine-detail-back").click();
     await test("machine-list").waitFor();
@@ -188,7 +245,6 @@ try {
     await test("machine-create-submit").click();
     await test("machine-create-error").waitFor();
     assert.equal(await test("machine-name-input").inputValue(), "演示建不出来的机器");
-    // 失败时 Dialog 保持打开并保留输入；先截图，再关闭弹层回到演示控制。
     await shoots(page, "machine-create-error-1440-light");
     await page.getByRole("button", { name: "取消" }).click();
     await test("machine-name-input").waitFor({ state: "detached" });
@@ -224,7 +280,7 @@ try {
   await desktop.context.close();
 
   const narrow = await open({ width: 390, height: 844, colorScheme: "light" });
-  await check("390_light_list_and_detail_fit_without_horizontal_scroll", async () => {
+  await check("390_light_list_and_detail_scroll_binding_and_install", async () => {
     await narrow.page.getByTestId("machine-list").waitFor();
     await shoots(narrow.page, "machines-list-390-light");
     await narrow.page
@@ -235,10 +291,60 @@ try {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     assert.ok(overflow <= 1, `横向溢出 ${overflow}px`);
-    await shoots(narrow.page, "machine-detail-390-light");
+    const controlsPosition = await narrow.page
+      .getByTestId("machine-scene-controls")
+      .evaluate((element) => getComputedStyle(element).position);
+    assert.notEqual(controlsPosition, "fixed", "演示控制不能固定覆盖手机底栏");
+    await narrow.page.screenshot({
+      path: join(evidence, "machine-detail-390-light.png"),
+    });
+    await narrow.page.getByTestId("machine-binding-form").scrollIntoViewIfNeeded();
+    await narrow.page.screenshot({
+      path: join(evidence, "machine-detail-390-light-binding.png"),
+    });
+    await narrow.page.getByTestId("machine-install").scrollIntoViewIfNeeded();
+    await narrow.page.screenshot({
+      path: join(evidence, "machine-detail-390-light-install.png"),
+    });
+    const command = await narrow.page.getByTestId("machine-command-init").evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      text: element.textContent ?? "",
+    }));
+    assert.ok(command.scrollWidth > command.clientWidth, "长命令不能只靠页面溢出展示");
+    assert.ok(command.text.includes("--state-dir <dir>"));
+    assert.ok(!command.text.includes("--ticket"));
+    const reachedEnd = await narrow.page.getByTestId("machine-command-init").evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+      return element.scrollLeft + element.clientWidth >= element.scrollWidth - 1;
+    });
+    assert.ok(reachedEnd, "长命令可滚动到末尾");
     assert.deepEqual(narrow.errors, []);
   });
   await narrow.context.close();
+
+  const darkNarrow = await open({ width: 390, height: 844, colorScheme: "dark" });
+  await check("390_dark_list_and_detail_scroll_binding_and_install", async () => {
+    await darkNarrow.page.getByTestId("machine-list").waitFor();
+    await shoots(darkNarrow.page, "machines-list-390-dark");
+    await darkNarrow.page
+      .locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]')
+      .click();
+    await darkNarrow.page.getByTestId("machine-detail-page").waitFor();
+    await darkNarrow.page.screenshot({
+      path: join(evidence, "machine-detail-390-dark.png"),
+    });
+    await darkNarrow.page.getByTestId("machine-binding-form").scrollIntoViewIfNeeded();
+    await darkNarrow.page.screenshot({
+      path: join(evidence, "machine-detail-390-dark-binding.png"),
+    });
+    await darkNarrow.page.getByTestId("machine-install").scrollIntoViewIfNeeded();
+    await darkNarrow.page.screenshot({
+      path: join(evidence, "machine-detail-390-dark-install.png"),
+    });
+    assert.deepEqual(darkNarrow.errors, []);
+  });
+  await darkNarrow.context.close();
 
   const dark = await open({ width: 1440, height: 900, colorScheme: "dark" });
   await check("dark_theme_list_and_detail", async () => {

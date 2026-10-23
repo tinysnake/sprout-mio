@@ -63,7 +63,6 @@ export function bindingDirectory(intent: ProjectMachineIntent): string {
   return intent.directory ?? "未设置目录";
 }
 
-/** 列表首行已显示配对与连接，摘要只补能力与最后收到信息，避免同一事实重复。 */
 export function machineListSummary(detail: MachineDetail): string {
   const capability = detail.capability
     ? detail.capability.current

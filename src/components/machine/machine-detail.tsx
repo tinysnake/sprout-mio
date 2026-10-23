@@ -22,10 +22,6 @@ import {
   observationLabel,
 } from "./machine-view";
 
-/**
- * Machine 详情呈现。所有数据来自 `MachineDetail`，操作通过回调交给正式容器；
- * 不读取全局 currentProject，返回入口和当前 Project 都显式传入。
- */
 export function MachineDetailPanel({
   detail,
   back,
@@ -327,7 +323,6 @@ export function MachineDetailPanel({
   );
 }
 
-/** 列表页共用的页面操作；放在这里避免演示和正式容器各写一份。 */
 export function CreateMachineAction({ onCreate }: { onCreate: () => void }) {
   return (
     <Button type="button" data-testid="new-machine-trigger" onClick={onCreate}>

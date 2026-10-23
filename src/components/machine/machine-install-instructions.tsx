@@ -13,10 +13,6 @@ function Command({ children, testId }: { children: string; testId: string }) {
   );
 }
 
-/**
- * Worker 安装与启动说明。命令只含契约参数，票据通过隐藏输入或受限票据文件读取，
- * 不出现在 argv。具体安装包与下载方式由功能线交付，界面不虚构包地址。
- */
 export function MachineInstallInstructions({
   machineId,
   origin,

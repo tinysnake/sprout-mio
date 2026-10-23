@@ -12,7 +12,6 @@ const toneText: Record<StatusTone, string> = {
   danger: "text-status-failed",
 };
 
-/** 状态由文字和符号共同表达，颜色只是补充，断开不写成空闲或已释放。 */
 export function StatusLine({
   label,
   detail,
@@ -58,10 +57,6 @@ function DefaultMachineLink({
   );
 }
 
-/**
- * Machine 列表呈现。数据来自 `MachineDetail[]`；目标 URL 由 `href` 决定，
- * 正式路由可以换成路由器 Link，演示使用普通链接或 memory router 包装。
- */
 export function MachineList({
   machines,
   href,

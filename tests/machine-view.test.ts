@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { saveProjectMachineBindingInput } from "../src/contracts/machine";
 import {
   connectionLabel,
   enrollmentLabel,
@@ -74,5 +75,22 @@ describe("Machine 呈现映射", () => {
     expect(commands.init).toContain("--state-dir");
     expect(commands.run).toBe("sprout-worker run --state-dir <dir>");
     expect(`${commands.init} ${commands.run}`).not.toMatch(/ticket|secret|AAAA/);
+  });
+
+  it("绑定输入沿用共享 schema：空说明合法，长度与目录规则不变", () => {
+    const input = {
+      machineId: "mch_11111111-1111-4111-8111-111111111111",
+      projectId: "prj_11111111-1111-4111-8111-111111111111",
+      description: "",
+      directory: null,
+      expectedRevision: null,
+    };
+    expect(saveProjectMachineBindingInput.safeParse(input).success).toBe(true);
+    expect(
+      saveProjectMachineBindingInput.safeParse({ ...input, description: "字".repeat(501) }).success,
+    ).toBe(false);
+    expect(
+      saveProjectMachineBindingInput.safeParse({ ...input, directory: "relative/path" }).success,
+    ).toBe(false);
   });
 });

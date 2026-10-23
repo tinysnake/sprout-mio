@@ -50,21 +50,25 @@ type DemoState = {
   failCreate: boolean;
   failRenew: boolean;
   failSave: boolean;
+  throwRenew: boolean;
   projectId: string;
 };
 
-/** 演示控制面板：失败模拟只作用于 src/dev 的回调，不进入正式组件。 */
 function DemoControls({
   state,
   update,
+  onActivate,
+  onSwitch,
 }: {
   state: DemoState;
   update: (patch: Partial<DemoState>) => void;
+  onActivate?: () => void;
+  onSwitch?: (machineId: string) => void;
 }) {
   return (
     <details
       data-testid="machine-scene-controls"
-      className="fixed right-4 bottom-4 z-50 w-64 rounded-container border border-border bg-popover p-3 text-xs shadow-lg"
+      className="mt-6 rounded-container border border-border bg-popover p-3 text-xs shadow-lg desktop:fixed desktop:right-4 desktop:bottom-4 desktop:z-50 desktop:mt-0 desktop:w-64"
     >
       <summary className="cursor-pointer font-medium">演示控制 · Machines</summary>
       <label className="mt-2 flex items-center gap-2">
@@ -88,6 +92,15 @@ function DemoControls({
       <label className="mt-1 flex items-center gap-2">
         <input
           type="checkbox"
+          data-testid="machine-throw-renew"
+          checked={state.throwRenew}
+          onChange={(event) => update({ throwRenew: event.target.checked })}
+        />
+        模拟续签网络异常
+      </label>
+      <label className="mt-1 flex items-center gap-2">
+        <input
+          type="checkbox"
           data-testid="machine-fail-save"
           checked={state.failSave}
           onChange={(event) => update({ failSave: event.target.checked })}
@@ -107,6 +120,39 @@ function DemoControls({
         <option value={machineProject.id}>{machineProject.name}</option>
         <option value={secondProject.id}>{secondProject.name}</option>
       </Select>
+      {onSwitch && (
+        <>
+          <label className="mt-3 block" htmlFor="machine-demo-switch">
+            切到另一台 Machine
+          </label>
+          <Select
+            id="machine-demo-switch"
+            data-testid="machine-demo-switch"
+            className="mt-1"
+            value=""
+            onChange={(event) => {
+              if (event.target.value) onSwitch(event.target.value);
+            }}
+          >
+            <option value="">选择 Machine</option>
+            {state.machines.map((item) => (
+              <option key={item.machine.id} value={item.machine.id}>
+                {item.machine.name}
+              </option>
+            ))}
+          </Select>
+        </>
+      )}
+      {onActivate && (
+        <button
+          type="button"
+          data-testid="machine-demo-activate"
+          className="mt-3 w-full rounded-control border border-border px-2 py-1 text-left"
+          onClick={onActivate}
+        >
+          把当前 Machine 标为已配对
+        </button>
+      )}
       <p className="mt-2 leading-5 text-muted-foreground">
         演示数据与本地模拟操作。刷新会回到固定 fixtures；不连接业务服务。
       </p>
@@ -142,6 +188,7 @@ export function MachineScenes() {
     failCreate: false,
     failRenew: false,
     failSave: false,
+    throwRenew: false,
     projectId: machineProject.id,
   });
   const [createOpen, setCreateOpen] = useState(false);
@@ -198,6 +245,7 @@ export function MachineScenes() {
 
   async function renew(machineId: string): Promise<MachineResult<MachineEnrollment>> {
     await delay(300);
+    if (draft.throwRenew) throw new Error("REVIEW_NETWORK_FAILURE secret-stack-detail");
     if (draft.failRenew) return failure("conflict", "演示：续签失败，旧票据继续有效。");
     const detail = draft.machines.find((item) => item.machine.id === machineId);
     if (!detail) return failure("not_found", "演示：Machine 不存在。");
@@ -239,7 +287,9 @@ export function MachineScenes() {
               ...item,
               bindings: existing
                 ? item.bindings.map((binding) =>
-                    binding.intent.projectId === input.projectId ? { ...binding, intent } : binding,
+                    binding.intent.projectId === input.projectId
+                      ? { intent, observation: null }
+                      : binding,
                   )
                 : [...item.bindings, { intent, observation: null }],
             },
@@ -326,7 +376,23 @@ export function MachineScenes() {
           update({ tickets: { ...draft.tickets, [machineId]: enrollment } });
         }}
       />
-      <DemoControls state={draft} update={update} />
+      <DemoControls
+        state={draft}
+        update={update}
+        onSwitch={(id) => go(`/machines/${id}`)}
+        onActivate={
+          detail.enrollmentStatus === "pending"
+            ? () =>
+                update({
+                  machines: draft.machines.map((item) =>
+                    item.machine.id === machineId
+                      ? { ...item, enrollmentStatus: "active" as const }
+                      : item,
+                  ),
+                })
+            : undefined
+        }
+      />
     </>
   );
 }

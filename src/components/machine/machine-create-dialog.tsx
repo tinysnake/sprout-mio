@@ -20,10 +20,6 @@ import { ResultError } from "../project/result-error";
 
 export type MachineCreateValues = CreateMachineInput;
 
-/**
- * 新建 Machine 的表单呈现。提交函数由调用方注入：正式页面接
- * `createMachine` server function，演示接固定回调。
- */
 export function MachineCreateDialog({
   open,
   onOpenChange,
