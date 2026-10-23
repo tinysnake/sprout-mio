@@ -22,19 +22,25 @@ export function ProjectMachinesPanel({
         href={(id) => `/machines/${id}?projectId=${projectId}`}
         renderLink={({ href, ...props }) => <Link to={href} {...props} />}
       />
-      <dl className="divide-y divide-border text-xs leading-6">
+      <dl className="min-w-0 divide-y divide-border text-xs leading-6">
         {machines.flatMap((detail) =>
           detail.bindings
             .filter(({ intent }) => intent.projectId === projectId)
             .map(({ intent, observation }) => {
               const status = observationLabel(observation);
               return (
-                <div key={intent.machineId} data-testid="info-hub-machine-binding" className="py-3">
+                <div
+                  key={intent.machineId}
+                  data-testid="info-hub-machine-binding"
+                  className="min-w-0 py-3"
+                >
                   <dt className="font-medium">
                     {detail.machine.name} · revision {intent.revision}
                   </dt>
                   <dd>{intent.description || "（无说明）"}</dd>
-                  <dd className="break-all text-muted-foreground">{bindingDirectory(intent)}</dd>
+                  <dd className="break-all text-muted-foreground">
+                    {bindingDirectory(detail.machine.rootDirectory, intent.projectId)}
+                  </dd>
                   <dd>
                     <StatusLine {...status} />
                   </dd>

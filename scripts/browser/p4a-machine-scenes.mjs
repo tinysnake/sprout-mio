@@ -99,22 +99,74 @@ try {
   await check(
     "binding_form_saves_and_reports_revision_without_claiming_remote_validation",
     async () => {
+      await test("machine-root-directory").fill("/Users/linche/workspace/demo-target");
+      await test("machine-root-submit").click();
+      await test("machine-root-success").waitFor();
+      assert.ok((await test("machine-root-success").innerText()).includes("等待 Worker 观察"));
       await test("machine-binding-description").fill("");
-      await test("machine-binding-directory").fill("/Users/linche/workspace/demo-target");
       await test("machine-binding-submit").click();
       await test("machine-binding-success").waitFor();
       const message = await test("machine-binding-success").innerText();
       assert.ok(message.includes("revision 3"), message);
-      assert.ok(message.includes("不代表 Worker 已验证该目录可达"), message);
+      assert.ok(message.includes("已保存到"), message);
       const item = await test("machine-binding-item").first().innerText();
       assert.ok(item.includes("revision 3"), item);
       assert.ok(item.includes("（无说明）"), "空说明可保存，列表显示无说明");
       const bindings = await test("machine-bindings").innerText();
       assert.ok(!bindings.includes("当前可达"), "旧观察不能继续冒充当前可达");
-      assert.ok(bindings.includes("未验证"), bindings);
+      assert.ok(bindings.includes("旧观察"), bindings);
       assert.equal(await test("machine-binding-description").inputValue(), "");
     },
   );
+
+  await check(
+    "root_failure_preserves_draft_and_retry_uses_refreshed_conflict_revision",
+    async () => {
+      await openControls(page);
+      await test("machine-fail-root").check();
+      await test("machine-root-directory").fill("/Users/linche/draft-root");
+      await test("machine-root-submit").click();
+      assert.equal(await test("machine-root-submit").isDisabled(), true);
+      await test("machine-root-error").waitFor();
+      assert.equal(await test("machine-root-directory").inputValue(), "/Users/linche/draft-root");
+      await test("machine-fail-root").uncheck();
+      await test("machine-conflict-root").check();
+      await test("machine-root-submit").click();
+      await test("machine-root-error").filter({ hasText: "conflict" }).waitFor();
+      assert.ok((await test("machine-root-current").innerText()).includes("/Users/other/root"));
+      assert.equal(await test("machine-root-directory").inputValue(), "/Users/linche/draft-root");
+      await test("machine-root-submit").click();
+      await test("machine-root-success").waitFor();
+      assert.ok(
+        (await test("machine-root-current").innerText()).includes("/Users/linche/draft-root"),
+      );
+      await closeControls(page);
+      await shoots(page, "machine-root-retry-1440-light");
+    },
+  );
+
+  await check("root_clear_disables_paths_and_two_projects_derive_distinct_paths", async () => {
+    await test("machine-detail-back").click();
+    await page.locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]').click();
+    await test("machine-root-directory").fill("/Users/linche/draft-root");
+    await test("machine-root-submit").click();
+    await test("machine-root-success").waitFor();
+    const paths = await test("machine-binding-path").allTextContents();
+    assert.equal(paths.length, 2);
+    assert.notEqual(paths[0], paths[1]);
+    assert.ok(paths.every((path) => path.includes("/Users/linche/draft-root/prj_")));
+    await test("machine-root-directory").fill("");
+    await test("machine-root-submit").click();
+    await test("machine-root-success").waitFor();
+    assert.ok((await test("machine-root-current").innerText()).includes("未设置"));
+    assert.ok(
+      (await test("machine-binding-path").allTextContents()).every((path) =>
+        path.includes("无法探测路径"),
+      ),
+    );
+    await test("machine-detail-back").click();
+    await page.locator('[data-machine-id="mch_11111111-1111-4111-8111-111111111111"]').click();
+  });
 
   await check("binding_failure_keeps_input_and_shows_error", async () => {
     await openControls(page);

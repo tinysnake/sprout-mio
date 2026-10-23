@@ -11,6 +11,8 @@ import { MachineList } from "../../../components/machine/machine-list";
 import type { MachineLinkRenderer } from "../../../components/machine/machine-list";
 import type {
   MachineDetail,
+  MachineRootDirectory,
+  SaveMachineRootDirectoryInput,
   MachineEnrollment,
   MachineResult,
   ProjectMachineIntent,
@@ -51,6 +53,8 @@ type DemoState = {
   failCreate: boolean;
   failRenew: boolean;
   failSave: boolean;
+  failRoot: boolean;
+  conflictRoot: boolean;
   throwRenew: boolean;
   projectId: string;
 };
@@ -107,6 +111,24 @@ function DemoControls({
           onChange={(event) => update({ failSave: event.target.checked })}
         />
         模拟绑定保存失败
+      </label>
+      <label className="mt-1 flex items-center gap-2">
+        <input
+          type="checkbox"
+          data-testid="machine-fail-root"
+          checked={state.failRoot}
+          onChange={(event) => update({ failRoot: event.target.checked })}
+        />
+        模拟 root 保存失败
+      </label>
+      <label className="mt-1 flex items-center gap-2">
+        <input
+          type="checkbox"
+          data-testid="machine-conflict-root"
+          checked={state.conflictRoot}
+          onChange={(event) => update({ conflictRoot: event.target.checked })}
+        />
+        模拟 root 并发冲突（一次）
       </label>
       <label className="mt-3 block" htmlFor="machine-demo-project">
         当前 Project
@@ -331,6 +353,8 @@ export function MachineScenes() {
     failCreate: false,
     failRenew: false,
     failSave: false,
+    failRoot: false,
+    conflictRoot: false,
     throwRenew: false,
     projectId: machineProject.id,
   });
@@ -364,6 +388,8 @@ export function MachineScenes() {
       machine: {
         id: `mch_${crypto.randomUUID()}`,
         name: name.trim(),
+        rootDirectory: null,
+        rootRevision: 1,
         createdBy: "demo-human",
         createdAt: now,
         updatedAt: now,
@@ -403,23 +429,18 @@ export function MachineScenes() {
     await delay(300);
     if (draft.failSave)
       return {
-        ...failure("conflict", "演示：保存失败，说明与目录已保留，可重试。"),
+        ...failure("conflict", "演示：保存失败，说明已保留，可重试。"),
         fieldErrors: { description: "演示：另一个窗口修改了绑定。" },
       };
     const detail = draft.machines.find((item) => item.machine.id === input.machineId);
     if (!detail) return failure("not_found", "演示：Machine 不存在。");
     const existing = detail.bindings.find((item) => item.intent.projectId === input.projectId);
-    if (
-      existing &&
-      existing.intent.description === input.description &&
-      existing.intent.directory === input.directory
-    )
+    if (existing && existing.intent.description === input.description)
       return success(existing.intent);
     const intent: ProjectMachineIntent = {
       projectId: input.projectId,
       machineId: input.machineId,
       description: input.description,
-      directory: input.directory,
       revision: (existing?.intent.revision ?? 0) + 1,
     };
     update({
@@ -431,7 +452,7 @@ export function MachineScenes() {
               bindings: existing
                 ? item.bindings.map((binding) =>
                     binding.intent.projectId === input.projectId
-                      ? { intent, observation: null }
+                      ? { intent, observation: binding.observation }
                       : binding,
                   )
                 : [...item.bindings, { intent, observation: null }],
@@ -439,6 +460,65 @@ export function MachineScenes() {
       ),
     });
     return success(intent);
+  }
+
+  async function saveRoot(
+    input: SaveMachineRootDirectoryInput,
+  ): Promise<MachineResult<MachineRootDirectory>> {
+    await delay(300);
+    if (draft.failRoot) return failure("internal", "演示：root 保存失败，草稿已保留。");
+    const detail = draft.machines.find((item) => item.machine.id === input.machineId);
+    if (!detail) return failure("not_found", "演示：Machine 不存在。");
+    if (draft.conflictRoot) {
+      update({
+        conflictRoot: false,
+        machines: draft.machines.map((item) =>
+          item.machine.id !== input.machineId
+            ? item
+            : {
+                ...item,
+                machine: {
+                  ...item.machine,
+                  rootDirectory: "/Users/other/root",
+                  rootRevision: item.machine.rootRevision + 1,
+                },
+                bindings: item.bindings.map((binding) => ({
+                  ...binding,
+                  observation: binding.observation
+                    ? { ...binding.observation, current: false }
+                    : null,
+                })),
+              },
+        ),
+      });
+      return failure("conflict", "演示：另一个窗口修改了 root，请核对服务端事实后重试。");
+    }
+    if (input.expectedRevision !== detail.machine.rootRevision)
+      return failure("conflict", "演示：root 版本已变化。");
+    const revision =
+      detail.machine.rootRevision + (input.directory === detail.machine.rootDirectory ? 0 : 1);
+    update({
+      machines: draft.machines.map((item) =>
+        item.machine.id !== input.machineId
+          ? item
+          : {
+              ...item,
+              machine: { ...item.machine, rootDirectory: input.directory, rootRevision: revision },
+              bindings: item.bindings.map((binding) => ({
+                ...binding,
+                observation: binding.observation
+                  ? {
+                      ...binding.observation,
+                      current:
+                        binding.observation.current &&
+                        revision === binding.observation.fact.revision,
+                    }
+                  : null,
+              })),
+            },
+      ),
+    });
+    return success({ machineId: input.machineId, directory: input.directory, revision });
   }
 
   if (location.pathname === "/machines" || location.pathname === "/machines/") {
@@ -526,6 +606,7 @@ export function MachineScenes() {
         installOrigin="http://127.0.0.1:3000"
         onRenewEnrollment={renew}
         onSaveBinding={saveBinding}
+        onSaveRoot={saveRoot}
         onEnrollmentCreated={(enrollment) => {
           update({ tickets: { ...draft.tickets, [machineId]: enrollment } });
         }}

@@ -1,3 +1,4 @@
+import { projectWorkingPath } from "../../../contracts/machine";
 import type { MachineDetail, MachineEnrollment } from "../../../contracts/machine";
 import { DEMO_REQUEST_ID, demoProject } from "../management/fixtures";
 
@@ -19,6 +20,8 @@ export const demoMachineDetails: MachineDetail[] = [
   {
     machine: {
       id: demoMachineIds[0],
+      rootDirectory: "/Users/linche/workspace",
+      rootRevision: 2,
       name: "工作室 Mac mini",
       createdBy: "demo-human",
       createdAt: "2026-10-10T02:00:00.000Z",
@@ -62,7 +65,6 @@ export const demoMachineDetails: MachineDetail[] = [
           projectId: demoProject.id,
           machineId: demoMachineIds[0],
           description: "日常开发与验收使用的本机目录。",
-          directory: "/Users/linche/workspace/sprout-mio",
           revision: 2,
         },
         observation: {
@@ -74,7 +76,10 @@ export const demoMachineDetails: MachineDetail[] = [
             revision: 2,
             seq: 18,
             checkedAt: "2026-10-18T07:09:00.000Z",
-            result: { kind: "accessible", realPath: "/Users/linche/workspace/sprout-mio" },
+            result: {
+              kind: "accessible",
+              realPath: projectWorkingPath("/Users/linche/workspace", demoProject.id),
+            },
           },
         },
       },
@@ -83,6 +88,8 @@ export const demoMachineDetails: MachineDetail[] = [
   {
     machine: {
       id: demoMachineIds[1],
+      rootDirectory: null,
+      rootRevision: 1,
       name: "待配对的 MacBook",
       createdBy: "demo-human",
       createdAt: "2026-10-18T06:50:00.000Z",
@@ -101,6 +108,8 @@ export const demoMachineDetails: MachineDetail[] = [
   {
     machine: {
       id: demoMachineIds[2],
+      rootDirectory: "/Users/linche/workspace",
+      rootRevision: 1,
       name: "刚唤醒的 Mac Studio",
       createdBy: "demo-human",
       createdAt: "2026-10-12T09:00:00.000Z",
@@ -119,7 +128,6 @@ export const demoMachineDetails: MachineDetail[] = [
           projectId: demoProject.id,
           machineId: demoMachineIds[2],
           description: "重型构建。",
-          directory: "/Users/linche/workspace/build-cache",
           revision: 1,
         },
         observation: null,
@@ -129,6 +137,9 @@ export const demoMachineDetails: MachineDetail[] = [
   {
     machine: {
       id: demoMachineIds[3],
+      rootDirectory:
+        "/Users/linche/workspace/experiments/very-long-directory-name-for-narrow-layout-check/nested",
+      rootRevision: 5,
       name: "断线的旧代次 MacBook Pro",
       createdBy: "demo-human",
       createdAt: "2026-09-01T02:00:00.000Z",
@@ -173,8 +184,6 @@ export const demoMachineDetails: MachineDetail[] = [
           projectId: demoProject.id,
           machineId: demoMachineIds[3],
           description: "旧目录，等待 Worker 在新代次重新验证。",
-          directory:
-            "/Users/linche/workspace/sprout-mio/experiments/very-long-directory-name-for-narrow-layout-check/nested",
           revision: 5,
         },
         observation: {
@@ -195,7 +204,6 @@ export const demoMachineDetails: MachineDetail[] = [
           projectId: secondProject.id,
           machineId: demoMachineIds[3],
           description: "旧 Project 的绑定，仍显示事实但标注旧观察。",
-          directory: "/Users/linche/workspace/legacy",
           revision: 1,
         },
         observation: {
@@ -207,7 +215,10 @@ export const demoMachineDetails: MachineDetail[] = [
             revision: 1,
             seq: 12,
             checkedAt: "2026-10-17T22:50:00.000Z",
-            result: { kind: "accessible", realPath: "/Users/linche/workspace/legacy" },
+            result: {
+              kind: "accessible",
+              realPath: projectWorkingPath("/Users/linche/workspace/legacy", secondProject.id),
+            },
           },
         },
       },
@@ -216,6 +227,8 @@ export const demoMachineDetails: MachineDetail[] = [
   {
     machine: {
       id: demoMachineIds[4],
+      rootDirectory: null,
+      rootRevision: 1,
       name: "已关闭连接的待配对设备",
       createdBy: "demo-human",
       createdAt: "2026-10-16T04:00:00.000Z",

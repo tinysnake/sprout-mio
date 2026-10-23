@@ -5,6 +5,8 @@ import {
   closeSync,
   copyFileSync,
   mkdtempSync,
+  mkdirSync,
+  realpathSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -20,6 +22,8 @@ import { createProject, waitForChats } from "./ui-navigation.mjs";
 
 const evidence = mkdtempSync(resolve(".verify/p4a-machine-flow-"));
 const installation = mkdtempSync(join(tmpdir(), "sprout-ui-worker-"));
+const root = realpathSync(mkdtempSync(join(tmpdir(), "sprout-machine-root-")));
+const nextRoot = realpathSync(mkdtempSync(join(tmpdir(), "sprout-machine-root-next-")));
 const base = process.env.BASE_URL ?? "http://127.0.0.1:3120";
 const port = new URL(base).port;
 const database = join(evidence, "machine.sqlite");
@@ -196,6 +200,10 @@ try {
     creationTicketResurrected: false,
     renewedTicketRestored: true,
   });
+  await page.getByTestId("machine-root-directory").fill(root);
+  await page.getByTestId("machine-root-submit").click();
+  await page.getByTestId("machine-root-success").waitFor();
+  assert((await page.getByTestId("machine-root-current").innerText()).includes(root));
   copyFileSync("dist/worker/main.js", join(installation, "main.mjs"));
   const ticketFile = join(installation, "ticket");
   writeFileSync(ticketFile, reopenedTicket, { mode: 0o600 });
@@ -239,18 +247,37 @@ try {
   });
   const projectA = await createProject(page, { name: "Machine Project A", description: "A" });
   const projectB = await createProject(page, { name: "Machine Project B", description: "B" });
+  for (const project of [projectA, projectB]) {
+    mkdirSync(join(root, project.id));
+    mkdirSync(join(nextRoot, project.id));
+  }
   async function openBinding(project) {
     await page.goto(`${base}${project.path}/settings`);
+    const settingsUrl = page.url();
     await page.getByTestId("project-machine-select").selectOption(machineId);
-    await page.getByTestId("project-machine-open").click();
+    await page.getByTestId("machine-binding-form").waitFor();
+    assert.equal(page.url(), settingsUrl, "selecting Machine stays in Project settings");
+  }
+  async function openDetail(project) {
+    await page.goto(`${base}/machines/${machineId}?projectId=${project.id}`);
     await page.getByTestId("machine-binding-form").waitFor();
     assert.equal(new URL(page.url()).searchParams.get("projectId"), project.id);
   }
   await openBinding(projectA);
   await page.getByTestId("machine-binding-description").fill("Project A directory");
-  await page.getByTestId("machine-binding-directory").fill(installation);
   await page.getByTestId("machine-binding-submit").click();
+  const settingsAUrl = page.url();
   await page.getByTestId("machine-binding-success").waitFor();
+  assert.equal(page.url(), settingsAUrl);
+  await page
+    .getByTestId("info-hub-machine-binding")
+    .filter({ hasText: "Project A directory" })
+    .waitFor();
+  await page.screenshot({
+    path: join(evidence, "settings-inline-binding-saved.png"),
+    fullPage: true,
+  });
+  await openDetail(projectA);
   await until(
     async () =>
       (await rpc("getMachineFn", { machineId, projectId: projectA.id })).data.bindings[0]
@@ -282,10 +309,18 @@ try {
   );
   const rowA = db
     .prepare(
-      "SELECT description, directory, revision FROM project_machine WHERE project_id=? AND machine_id=?",
+      "SELECT description, revision FROM project_machine WHERE project_id=? AND machine_id=?",
     )
     .get(projectA.id, machineId);
-  assert.equal(rowA.directory, installation);
+  const observationA = db
+    .prepare(
+      "SELECT real_path FROM directory_observation WHERE project_id=? AND machine_id=? ORDER BY seq DESC LIMIT 1",
+    )
+    .get(projectA.id, machineId);
+  assert.equal(observationA.real_path, join(root, projectA.id));
+  assert(
+    (await page.getByTestId("machine-binding-path").innerText()).includes(observationA.real_path),
+  );
   await page.screenshot({ path: join(evidence, "bound-current-1440-light.png"), fullPage: true });
   pass(
     "real binding persists, current observation agrees with HTTP and SQLite, refresh preserves draft",
@@ -302,7 +337,9 @@ try {
     (await page.getByTestId("info-hub-project-machines").innerText()).includes("Production Mac"),
   );
   const bindingFacts = await page.getByTestId("info-hub-machine-binding").innerText();
-  assert(bindingFacts.includes("Project A directory") && bindingFacts.includes(installation));
+  assert(
+    bindingFacts.includes("Project A directory") && bindingFacts.includes(join(root, projectA.id)),
+  );
   await page.goBack();
   await page.getByTestId("machine-detail-id").waitFor();
   await page.goForward();
@@ -310,9 +347,16 @@ try {
   await openBinding(projectB);
   await page.getByTestId("machine-binding-description").fill("Project B independent");
   await page.getByTestId("machine-binding-submit").click();
+  const settingsBUrl = page.url();
   await page.getByTestId("machine-binding-success").waitFor();
+  assert.equal(page.url(), settingsBUrl);
   await page.reload();
-  assert.equal(await page.getByTestId("machine-binding-directory").inputValue(), "");
+  await page.getByTestId("project-machine-select").selectOption(machineId);
+  assert.equal(await page.getByTestId("machine-binding-directory").count(), 0);
+  assert.equal(
+    await page.getByTestId("machine-binding-description").inputValue(),
+    "Project B independent",
+  );
   assert.equal(
     db
       .prepare("SELECT description FROM project_machine WHERE project_id=? AND machine_id=?")
@@ -346,14 +390,135 @@ try {
   pass(
     "two Projects keep independent bindings and Info Hub exposes real Machine plus unavailable leases",
   );
-  await page.getByTestId("machine-binding-directory").fill("relative/path");
-  await page.getByTestId("machine-binding-submit").click();
+  await page.goto(`${base}/machines/${machineId}`);
+  await page.getByTestId("machine-root-form").waitFor();
+  await until(async () => {
+    const detail = (await rpc("getMachineFn", { machineId })).data;
+    return (
+      detail.bindings.length === 2 &&
+      detail.bindings.every(
+        (item) => item.observation?.current && item.observation.fact.result.kind === "accessible",
+      )
+    );
+  }, "two Project paths reachable");
+  await page.getByTestId("machine-refresh").click();
+  const firstPaths = await page.getByTestId("machine-binding-path").allTextContents();
+  assert.equal(firstPaths.length, 2);
+  assert.notEqual(firstPaths[0], firstPaths[1]);
+  for (const project of [projectA, projectB]) {
+    const observed = db
+      .prepare(
+        "SELECT real_path FROM directory_observation WHERE machine_id=? AND project_id=? ORDER BY seq DESC LIMIT 1",
+      )
+      .get(machineId, project.id);
+    assert.equal(observed.real_path, join(root, project.id));
+    assert(firstPaths.some((text) => text.includes(observed.real_path)));
+  }
+  const rootBeforeConflict = (await rpc("getMachineFn", { machineId })).data.machine;
+  const concurrentRoot = join(nextRoot, "concurrent-root");
+  mkdirSync(concurrentRoot);
+  // Suspend the real Worker so the UI can expose old observations before its next probe.
+  worker.kill("SIGSTOP");
+  try {
+    await page.getByTestId("machine-root-directory").fill(nextRoot);
+    const concurrentRootSave = await rpc("saveMachineRootDirectoryFn", {
+      machineId,
+      directory: concurrentRoot,
+      expectedRevision: rootBeforeConflict.rootRevision,
+    });
+    assert(concurrentRootSave.ok);
+    await page.getByTestId("machine-root-submit").click();
+    await page.getByTestId("machine-root-error").filter({ hasText: "conflict" }).waitFor();
+    await until(
+      async () =>
+        (await page.getByTestId("machine-root-current").innerText()).includes(concurrentRoot),
+      "conflict refreshes server root",
+    );
+    assert.equal(await page.getByTestId("machine-root-directory").inputValue(), nextRoot);
+    assert.equal(
+      (await rpc("getMachineFn", { machineId })).data.machine.rootDirectory,
+      concurrentRoot,
+    );
+    await page.getByTestId("machine-root-submit").click();
+    await page.getByTestId("machine-root-success").waitFor();
+    await page
+      .getByTestId("machine-binding-observation")
+      .filter({ hasText: "旧观察" })
+      .first()
+      .waitFor();
+    assert.equal(
+      await page.getByTestId("machine-binding-observation").filter({ hasText: "旧观察" }).count(),
+      2,
+    );
+    const stale = (await rpc("getMachineFn", { machineId })).data;
+    assert(stale.bindings.every((item) => item.observation && !item.observation.current));
+    assert(
+      (await page.getByTestId("machine-binding-path").allTextContents()).every((text) =>
+        text.includes(nextRoot),
+      ),
+    );
+    await page.screenshot({
+      path: join(evidence, "root-changed-old-observations.png"),
+      fullPage: true,
+    });
+  } finally {
+    worker.kill("SIGCONT");
+  }
+  await until(async () => {
+    const detail = (await rpc("getMachineFn", { machineId })).data;
+    return detail.bindings.every(
+      (item) =>
+        item.observation?.current &&
+        item.observation.fact.result.kind === "accessible" &&
+        item.observation.fact.result.realPath === join(nextRoot, item.intent.projectId),
+    );
+  }, "new root real Worker observations");
+  await page.getByTestId("machine-refresh").click();
+  await page
+    .getByTestId("machine-binding-observation")
+    .filter({ hasText: "当前可达" })
+    .first()
+    .waitFor();
   assert.equal(
-    await page.getByTestId("machine-binding-directory").getAttribute("aria-invalid"),
+    await page.getByTestId("machine-binding-observation").filter({ hasText: "当前可达" }).count(),
+    2,
+    "both Project observations become reachable after refresh",
+  );
+  for (const project of [projectA, projectB]) {
+    const observed = db
+      .prepare(
+        "SELECT real_path FROM directory_observation WHERE machine_id=? AND project_id=? ORDER BY seq DESC LIMIT 1",
+      )
+      .get(machineId, project.id);
+    assert.equal(observed.real_path, join(nextRoot, project.id));
+    assert(
+      (await page.getByTestId("machine-binding-path").allTextContents()).some((text) =>
+        text.includes(observed.real_path),
+      ),
+    );
+  }
+  pass(
+    "Machine root derives two real Project paths and changed root invalidates then refreshes observations",
+    {
+      settingsBindingStayedOnPage: true,
+      twoProjectPathsDiffer: true,
+      initialPathsMatchSQLite: true,
+      rootConflictRefreshesFactsAndPreservesDraft: true,
+      rootRetryUsesCurrentRevision: true,
+      rootChangeShowsOldObservations: true,
+      refreshedPathsMatchSQLite: true,
+      realMacOSWorker: process.platform === "darwin",
+    },
+  );
+  await openDetail(projectB);
+  await page.getByTestId("machine-root-directory").fill("relative/path");
+  await page.getByTestId("machine-root-submit").click();
+  assert.equal(
+    await page.getByTestId("machine-root-directory").getAttribute("aria-invalid"),
     "true",
   );
-  assert(await page.getByTestId("machine-binding-directory").getAttribute("aria-describedby"));
-  await page.getByTestId("machine-binding-directory").fill("");
+  assert(await page.getByTestId("machine-root-directory").getAttribute("aria-describedby"));
+  await page.getByTestId("machine-root-directory").fill(root);
   let blockedSaves = 0;
   const savePattern = `**/_serverFn/${ids.saveProjectMachineBindingFn}`;
   await page.route(savePattern, async (route) => {
@@ -380,7 +545,6 @@ try {
     machineId,
     projectId: projectB.id,
     description: "concurrent edit",
-    directory: null,
     expectedRevision: 1,
   });
   assert(concurrent.ok);
@@ -400,9 +564,9 @@ try {
   await page.reload();
   await page.getByTestId("machine-binding-description").fill("Project B independent");
   pass("stale revision rejects conflicting edit and preserves both service fact and local draft");
-  await page.getByTestId("machine-binding-directory").fill("/sprout-nonexistent-directory");
-  await page.getByTestId("machine-binding-submit").click();
-  await page.getByTestId("machine-binding-success").waitFor();
+  await page.getByTestId("machine-root-directory").fill("/sprout-nonexistent-directory");
+  await page.getByTestId("machine-root-submit").click();
+  await page.getByTestId("machine-root-success").waitFor();
   await until(async () => {
     const binding = (await rpc("getMachineFn", { machineId, projectId: projectB.id })).data
       .bindings[0];
@@ -452,6 +616,8 @@ try {
         fullPage: true,
       });
       if (width === 390) {
+        await page.getByTestId("machine-root-section").scrollIntoViewIfNeeded();
+        await page.screenshot({ path: join(evidence, `root-390-${scheme}.png`), fullPage: true });
         await page.getByTestId("machine-binding-form").scrollIntoViewIfNeeded();
         await page.screenshot({
           path: join(evidence, `binding-390-${scheme}.png`),
@@ -634,6 +800,7 @@ try {
   const otherCookie = (await otherContext.cookies()).map((c) => `${c.name}=${c.value}`).join("; ");
   for (const [name, input] of [
     ["getMachineFn", { machineId }],
+    ["saveMachineRootDirectoryFn", { machineId, directory: null, expectedRevision: 1 }],
     ["listProjectMachinesFn", { projectId: projectA.id }],
     [
       "saveProjectMachineBindingFn",
@@ -641,7 +808,6 @@ try {
         machineId,
         projectId: projectA.id,
         description: "steal",
-        directory: null,
         expectedRevision: null,
       },
     ],
@@ -661,10 +827,11 @@ try {
     "getMachineFn",
     "listProjectMachinesFn",
     "saveProjectMachineBindingFn",
+    "saveMachineRootDirectoryFn",
   ])
     assert(browserRpcs.has(name), `actual browser called ${name}`);
   pass(
-    "no browser runtime errors; all six real production Machine RPCs callable without discovery hook",
+    "no browser runtime errors; all seven real production Machine RPCs callable without discovery hook",
   );
   console.log(`EVIDENCE ${evidence}`);
   server.kill("SIGTERM");

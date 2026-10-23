@@ -12,20 +12,20 @@
 
 ## Human schema 与导出
 
-| schema                             | type 或导出             | 精确约束                                                                                                                            |
-| ---------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `machineIdSchema`                  | `MachineId`             | `mch_` UUID v4                                                                                                                      |
-| `positiveSafeIntegerSchema`        | 无单独类型              | 整数 1 到 9007199254740991                                                                                                          |
-| `macosAbsolutePathSchema`          | 无单独类型              | 1 到 4096 个 JS 字符，以 `/` 开头，无 NUL；不 trim、不展开 `~` 或变量，不做文件系统探测                                             |
-| `machineSchema`                    | `Machine`               | id、trim 后 1 到 80 字 name、非空 createdBy、ISO UTC createdAt 和 updatedAt                                                         |
-| `machineConnectionViewSchema`      | `MachineConnectionView` | `kind=online` 或 `connecting` 必须有正整数 generation 与 ISO lastSeenAt；`offline` 的 generation 和 lastSeenAt 可 null，reason 必填 |
-| `shellFactSchema`                  | `ShellFact`             | path 为绝对路径；kind 为 zsh、bash、sh、unknown；version 为最多 4096 字字符串或 null；checkedAt 为 ISO UTC；probe 为下述判别联合    |
-| `capabilitySnapshotSchema`         | `CapabilitySnapshot`    | platform 仅 darwin；arch 为 arm64 或 x64；workerVersion 长 1 到 80；shells 最多 16 项；remoteOperations 仅 not_implemented          |
-| `projectMachineIntentSchema`       | `ProjectMachineIntent`  | projectId、machineId、description 最多 500 字、directory 为绝对路径或 null、revision 为正 safe integer                              |
-| `directoryObservationResultSchema` | 无单独类型              | accessible 必有绝对 realPath；unavailable 必有安全 reason；分支字段不可混用                                                         |
-| `directoryObservationSchema`       | `DirectoryObservation`  | machineId、generation、projectId、revision、seq、checkedAt 和 result；generation、revision、seq 均为正 safe integer                 |
-| `machineDetailSchema`              | `MachineDetail`         | machine、enrollmentStatus、connection、capability 和 bindings；下文定义组合                                                         |
-| `machineEnrollmentSchema`          | `MachineEnrollment`     | detail、ticket 和 ISO UTC expiresAt；ticket 是 43 字符 base64url，不带 padding                                                      |
+| schema                             | type 或导出             | 精确约束                                                                                                                                     |
+| ---------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `machineIdSchema`                  | `MachineId`             | `mch_` UUID v4                                                                                                                               |
+| `positiveSafeIntegerSchema`        | 无单独类型              | 整数 1 到 9007199254740991                                                                                                                   |
+| `macosAbsolutePathSchema`          | 无单独类型              | 1 到 4096 个 JS 字符，以 `/` 开头，无 NUL；不 trim、不展开 `~` 或变量，不做文件系统探测                                                      |
+| `machineSchema`                    | `Machine`               | id、trim 后 1 到 80 字 name、rootDirectory 为绝对路径或 null、rootRevision 为正 safe integer、非空 createdBy、ISO UTC createdAt 和 updatedAt |
+| `machineConnectionViewSchema`      | `MachineConnectionView` | `kind=online` 或 `connecting` 必须有正整数 generation 与 ISO lastSeenAt；`offline` 的 generation 和 lastSeenAt 可 null，reason 必填          |
+| `shellFactSchema`                  | `ShellFact`             | path 为绝对路径；kind 为 zsh、bash、sh、unknown；version 为最多 4096 字字符串或 null；checkedAt 为 ISO UTC；probe 为下述判别联合             |
+| `capabilitySnapshotSchema`         | `CapabilitySnapshot`    | platform 仅 darwin；arch 为 arm64 或 x64；workerVersion 长 1 到 80；shells 最多 16 项；remoteOperations 仅 not_implemented                   |
+| `projectMachineIntentSchema`       | `ProjectMachineIntent`  | projectId、machineId、description 最多 500 字、revision 为保护 description 的正 safe integer                                                 |
+| `directoryObservationResultSchema` | 无单独类型              | accessible 必有绝对 realPath；unavailable 必有安全 reason；分支字段不可混用                                                                  |
+| `directoryObservationSchema`       | `DirectoryObservation`  | machineId、generation、projectId、revision、seq、checkedAt 和 result；generation、revision、seq 均为正 safe integer                          |
+| `machineDetailSchema`              | `MachineDetail`         | machine、enrollmentStatus、connection、capability 和 bindings；下文定义组合                                                                  |
+| `machineEnrollmentSchema`          | `MachineEnrollment`     | detail、ticket 和 ISO UTC expiresAt；ticket 是 43 字符 base64url，不带 padding                                                               |
 
 `MACHINE_OFFLINE_REASONS` 为 never_connected、closed、stale、host_restarted、superseded。connecting 表示 open 已认证，但尚无有效能力。online 由当前 boot、最新 generation、open 和未过期心跳共同决定。lastSeenAt 是通信观察，不证明物理 TCP 连接仍存在。
 
@@ -33,7 +33,7 @@ Shell probe 为 `{ kind: "success" }` 或 `{ kind: "failure", reason }`。reason
 
 MachineDetail 的 enrollmentStatus 仅为 pending 或 active。credential 的 secretHash 与 activatedAt 均为空时为 pending，均非空时为 active。该安全事实不依赖连接状态，因此已 enroll 尚未 open 的 Machine 仍显示 active，UI 只对 pending 显示续签入口。只投影状态字符串，不投影 credential 内容。
 
-MachineDetail 的 capability 为 null 或 `{ generation, current, snapshot }`。bindings 是 `{ intent, observation }[]`，observation 为 null 或 `{ current, fact }`。current 标记由服务端根据 boot、generation 和绑定 revision 判定。旧观察可以展示，不能伪装成当前事实。bindings 只包含调用者可见的 Project；带 projectId 查询时只返回该 Project。
+MachineDetail 的 capability 为 null 或 `{ generation, current, snapshot }`。bindings 是 `{ intent, observation }[]`，observation 为 null 或 `{ current, fact }`。current 标记由服务端根据 boot、generation 和 Machine rootRevision 判定；root 为 null 时不标记为当前。旧观察可以展示，不能伪装成当前事实。bindings 只包含调用者可见的 Project；带 projectId 查询时只返回该 Project。
 
 MachineDetail 不包含 ticket hash、secret hash 或长期 secret。enrollment 输出是独立的只显示一次的短期 ticket 结果，不属于普通 detail。所有边界失败使用现有 `MachineResult<T> = AppResult<T> & { fieldErrors?: Record<string, string> }`。
 
@@ -49,19 +49,21 @@ MachineDetail 不包含 ticket hash、secret hash 或长期 secret。enrollment 
 | `getMachine`                | `getMachineInput`、`GetMachineInput`，`{ machineId, projectId? }`             | `MachineDetail`        |
 | `listProjectMachines`       | `listProjectMachinesInput`、`ListProjectMachinesInput`，`{ projectId }`       | `MachineDetail[]`      |
 | `saveProjectMachineBinding` | `saveProjectMachineBindingInput`、`SaveProjectMachineBindingInput`            | `ProjectMachineIntent` |
+| `saveMachineRootDirectory`  | `saveMachineRootDirectoryInput`、`SaveMachineRootDirectoryInput`              | `MachineRootDirectory` |
 
-另导出 `machineIdInput`，用于仅接收 machineId 的边界。save 输入的全部字段为 machineId、projectId、description、directory、expectedRevision。description 必填，最多 500 字。directory 必填，可 null。expectedRevision 必填，可 null，否则为正 safe integer。null 表示首次绑定。相同目标值保留 revision，修改冲突返回 conflict。revision 在修改成功时递增，不得溢出。
+另导出 `machineIdInput`，用于仅接收 machineId 的边界。绑定输入的全部字段为 machineId、projectId、description、expectedRevision；不接收 directory。description 必填，最多 500 字；expectedRevision 必填，可 null（首次绑定），否则为正 safe integer，仅保护说明。
+
+Root 输入为 machineId、directory（绝对路径或 null）、expectedRevision；页面传当前 Machine rootRevision。返回 `MachineRootDirectory = { machineId, directory, revision }`。相同目标值保留 revision，修改冲突返回 conflict；递增不得溢出。清空 root 后不探测 Project 路径。路径由唯一 helper `projectWorkingPath(root, projectId)` 派生为 `<root>/<project_id>`，修改 root 不迁移已有目录。
 
 服务端要求 Human session。未登录返回 unauthorized。跨 Human 访问返回 not_found。绑定要求 Project 与 Machine 的 owner 相同，并核对调用者对 Project 的权限。renew 只允许本人未激活的 Machine。ticket 有效期十分钟，续签替换旧 ticket。上述是操作契约，本单元不实现授权或事务。
 
-以下是有效的保存输入。directory 为 null 只表示已加入 Project 且未设置目录。
+以下是有效的绑定保存输入，只保存 Project 归属与说明。
 
 ```json
 {
   "machineId": "mch_00000000-0000-4000-8000-000000000001",
   "projectId": "prj_00000000-0000-4000-8000-000000000002",
   "description": "本机开发目录",
-  "directory": null,
   "expectedRevision": null
 }
 ```
@@ -73,6 +75,8 @@ MachineDetail 不包含 ticket hash、secret hash 或长期 secret。enrollment 
   "machine": {
     "id": "mch_00000000-0000-4000-8000-000000000001",
     "name": "Mac",
+    "rootDirectory": null,
+    "rootRevision": 1,
     "createdBy": "human-owner",
     "createdAt": "2026-01-01T00:00:00Z",
     "updatedAt": "2026-01-01T00:00:00Z"
@@ -104,7 +108,7 @@ AppResult 成功为 `{ "ok": true, "data": ..., "requestId": "req_..." }`。失�
 
 `workerSecretSchema` 接受恰好 43 字符的 `[A-Za-z0-9_-]` 字符串。ticket 与本地长期 secret 使用同一语法，生产端生成 32 个随机字节后 base64url 编码。文档示例中的重复字符只用于语法演示。
 
-`workerSessionSchema` 与 `WorkerSession` 为 `{ machineId, generation, bootId, attemptId }`。seq 是正 safe integer。exchange 的 observations 最多 1000 项，每个 Project 最多一项；每项 machineId、generation、seq 必须等于会话及请求。Project revision 是否仍为当前值必须在接收事务中检查。capability 每次完整提交。响应 bindings 为该 Machine 的完整绑定意图快照。
+`workerSessionSchema` 与 `WorkerSession` 为 `{ machineId, generation, bootId, attemptId }`。seq 是正 safe integer。exchange 的 observations 最多 1000 项，每个 Project 最多一项；每项 machineId、generation、seq 必须等于会话及请求。观察 revision 是否仍为当前 Machine rootRevision 必须在接收事务中检查。capability 每次完整提交。响应包含 Machine root、rootRevision 和该 Machine 的完整 Project 绑定身份快照。
 
 `WORKER_ERROR_CODES` 为 validation_failed、unauthorized、not_found、conflict、superseded、stale、unsupported_version、stopping、internal。失败 error 为 `{ code, message }`，message 最多 200 字。错误消息由 host 生成安全文本；schema 的字符串长度限制不能替代脱敏。requestId 由服务端当前请求上下文确定。
 
@@ -171,21 +175,21 @@ AppResult 成功为 `{ "ok": true, "data": ..., "requestId": "req_..." }`。失�
 }
 ```
 
-成功 open 的 data 包含完整 session 和两个正整数毫秒间隔。成功 exchange 的 data 包含同一 session、确认的 seq 和 bindings。成功 close 的 data 只含 closed=true。enroll 和 open 的输入由公共 envelope 加表中列出的必填字段组成，没有可选凭据字段。
+成功 open 的 data 包含完整 session 和两个正整数毫秒间隔。成功 exchange 的 data 包含同一 session、确认的 seq、root、rootRevision 和 bindings。成功 close 的 data 只含 closed=true。enroll 和 open 的输入由公共 envelope 加表中列出的必填字段组成，没有可选凭据字段。
 
 ## 六表持久模型
 
-新增迁移为 `drizzle/0006_cooing_yellowjacket.sql`，配套 `drizzle/meta/0006_snapshot.json` 与 `_journal.json`。已合并迁移保持原样。现有 Project 仅增加 UNIQUE(id, created_by)，支持复合外键。
+新增迁移为 `drizzle/0006_cooing_yellowjacket.sql`，配套 `drizzle/meta/0006_snapshot.json` 与 `_journal.json`；root 模型另由 `0007_chilly_sister_grimm.sql`、`0008_majestic_luke_cage.sql` 调整 Machine root 与移除绑定目录。已合并迁移保持原样。现有 Project 仅增加 UNIQUE(id, created_by)，支持复合外键。
 
 新表所有时间列使用 Unix epoch 毫秒，Drizzle `timestamp_ms` 在应用端映射为 Date。现有表的秒级时间列不变。时间由下游注入 Clock 提供。SQL 仅约束必填和状态配对，时间先后关系由生命周期事务维护。
 
 | schema 导出、表                                        | 字段和关联                                                                                                                                                                                                                                        |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `machine`、machine                                     | id 主键；name；createdBy → user.id；createdAt、updatedAt 必填；UNIQUE(id, created_by)；trim 后名称长 1 到 80                                                                                                                                      |
+| `machine`、machine                                     | id 主键；name；rootDirectory（绝对路径或 null）、rootRevision（默认 1，正 safe integer）；createdBy → user.id；createdAt、updatedAt 必填；UNIQUE(id, created_by)；trim 后名称长 1 到 80                                                           |
 | `machineCredential`、machine_credential                | machineId 主键 → machine.id；ticketHash、ticketExpiresAt 必填；secretHash、activatedAt 可空且必须同时有值或同时为空；ticketHash 唯一，非空 secretHash 唯一；hash 恰好 64 字符小写十六进制                                                         |
 | `machineConnectionCounter`、machine_connection_counter | machineId 主键 → machine.id；highWater 默认 0，SQLite typeof 为 integer，范围 0 到 MAX_SAFE_INTEGER                                                                                                                                               |
 | `machineConnection`、machine_connection                | 主键 machineId/generation；machineId → machine.id；bootId → runtime_boot.id；UNIQUE(machineId, attemptId)；attemptId 非空；generation 为正 safe integer；openedAt、lastSeenAt 必填；status、closedAt、seq、capability、lastPayloadHash 约束见下文 |
-| `projectMachine`、project_machine                      | 主键 projectId/machineId；createdBy 分别与 Project 和 Machine 的 createdBy 组成复合外键；description 必填默认空字符串，最多 500；directory 可 null，否则绝对路径、最长 4096、无 NUL；revision 为正 safe integer；createdAt、updatedAt 必填        |
+| `projectMachine`、project_machine                      | 主键 projectId/machineId；createdBy 分别与 Project 和 Machine 的 createdBy 组成复合外键；description 必填默认空字符串，最多 500；revision 为保护 description 的正 safe integer；createdAt、updatedAt 必填                                         |
 | `directoryObservation`、directory_observation          | 主键 machineId/generation/projectId/revision；machineId/generation → machine_connection；projectId/machineId → project_machine；revision、seq 为正 safe integer；checkedAt 必填；kind、realPath、reason 约束见下文                                |
 
 machine_connection 的 seq 默认 0，必须为 SQLite integer，范围 0 到 MAX_SAFE_INTEGER。generation、revision、seq 和 highWater 的约束均拒绝浮点和精度溢出。wire 的 seq 从 1 开始，数据库 seq=0 专用于 open 后还未 exchange 的状态。
@@ -202,11 +206,11 @@ enroll 保存凭据 hash，不保存原始 ticket 或 secret。同 ticket 有效
 
 open 在 IMMEDIATE 事务中分配并持久化 highWater。相同 attempt 只在当前 boot、最新 generation 且会话仍有效时复用。旧 attempt 不得分配新 generation 抢回身份。分配前检查安全整数上限。
 
-exchange 接收事务同时核对当前 boot、counter.highWater、attemptId、open、未过期心跳、seq 和当前绑定 revision。认证失败不能写事实。更大 seq 保存能力和观察，并更新 lastSeenAt。相同 seq 与相同语义载荷幂等，不回写旧 lastSeenAt；相同 seq 换载荷 conflict，较小 seq 拒绝。
+exchange 接收事务同时核对当前 boot、counter.highWater、attemptId、open、未过期心跳、seq 和当前 Machine root revision。认证失败不能写事实。更大 seq 保存能力和观察，并更新 lastSeenAt。相同 seq 与相同语义载荷幂等，不回写旧 lastSeenAt；相同 seq 换载荷 conflict，较小 seq 拒绝。
 
 `lastPayloadHash` 是这一幂等检查的持久字段。下游计算 SHA-256 小写十六进制。语义载荷为解析后的 `{ session, seq, capability, observations }`，不包含 secret、requestId 或 version。递归按对象键的 Unicode 码点顺序排序后紧凑 JSON 编码，保留数组顺序，再编码 UTF-8 后哈希。因此重试更换 requestId 不构成载荷冲突；改变观察或数组顺序构成冲突。函数实现归 host，当前单元只提供字段和约束。
 
-close 只关闭精确匹配的当前 session，重复关闭幂等。查询也核对 boot，因此宿主重启后历史能力不会在线。目录 current 同时要求最新 generation 和当前绑定 revision。无需清理历史以推进连接和意图。
+close 只关闭精确匹配的当前 session，重复关闭幂等。查询也核对 boot，因此宿主重启后历史能力不会在线。目录 current 同时要求最新 generation、非 null root 和当前 Machine rootRevision。无需清理历史以推进连接和意图。
 
 凭据不进入 argv、env、URL、日志或截图。协议模块可以解析外部 secret，但不能整体记录输入或 Zod 错误中的原始数据。Human 投影通过字段白名单构建。仅 loopback 允许 HTTP，其他 origin 要 HTTPS，拒绝 redirect 和 TLS 校验绕过；这些传输规则由下游实现。
 
