@@ -99,7 +99,7 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 ### P4a 建立 Worker 连接和 Project 绑定
 
 - [x] 实现 macOS Worker 安装与启动、主动认证连接、重连和连接代次。证据 [P4a 结论](p4a/summary.md#功能交付证据)，重跑 `bash scripts/verify/t-machine-worker.sh`。
-- [x] 将 Machine 加入 Project，提供说明、连接状态与工作目录绑定。证据 [P4a 结论](p4a/summary.md#技术验收证据)，重跑 `bash scripts/verify/u-machine-ui.sh`。
+- [ ] 将 Machine 加入 Project，提供说明、连接状态与工作目录绑定。目录模型按 Human 体验反馈改为 Machine 级 root 加派生 Project 路径，见 [P4a 结论](p4a/summary.md#体验后变更)，待第二轮复验后勾选。
 - [x] 探测并报告 shell 路径、类型、版本及执行能力。证据 [P4a 结论](p4a/summary.md#功能交付证据)，重跑 `bash scripts/verify/t-machine-worker.sh`。
 - [x] 验证旧连接不能覆盖新连接的事实，断线不显示为空闲或已释放。证据 [P4a 结论](p4a/summary.md#技术验收证据)，重跑 `bash scripts/verify/t-machine-worker.sh`。
 

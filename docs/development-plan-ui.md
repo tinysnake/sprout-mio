@@ -58,14 +58,14 @@ UI 计划确定后，按开发总计划暂停开启新的功能章节，在途�
 1. 助手启动当前仓库的演示场景或真实应用，在 Lavish 中提供同页预览和 Conversation 面板，注明场景、URL、代码版本、主题及 Sprout 预览区域的实际视口尺寸。演示与真实接入使用同一份呈现组件，场景数据性质明确。
 2. Human 在预览中体验；需要定位时，用 DOM Capture 悬停高亮、点击选中，并通过父子层级切换找到目标。使用本项目协作中已扩展的 **Copy ID** 或 **Copy DOM path**，把结果贴入 Lavish 的 Conversation，再说明当前表现与期望行为。Copy ID 只复制原始 ID，元素没有 ID 时不可用；Copy DOM path 包含元素名称、ID、所在文档 URL 与 DOM 路径。无需复制带样式的整段 HTML。
 3. Human 可以直接粘贴自行截取、标注好的图片，或拖入、选择图片文件，再补充文字说明；不要求先选元素。元素定位与截图可在同条反馈中提交。Lavish 当前采用多行纯文本加图片附件，Markdown 可原样粘贴，不宣称它是所见即所得的富文本编辑器。
-4. 助手通过 Lavish CLI 收取反馈及附件，读取图片并结合定位、页面状态与代码复现问题，在仓库组件中修正，完成相应浏览器验证后回复修复结果与待复查项。收取和回复前读取已安装的 Lavish skill，并以 CLI 当前 help 为准。持续等待反馈必须使用能唤醒当前 agent 的受管理机制；未建立该机制时，不宣称正在持续监听。
+4. 助手通过 Lavish CLI 收取反馈及附件，读取图片并结合定位、页面状态与代码复现问题，在仓库组件中修正，完成相应浏览器验证后回复修复结果与待复查项。真实应用评审使用 human-review skill，按该实例描述符调用 Lavish CLI；HTML artifact 使用 lavish skill 获取当前指南。持续等待反馈使用当前工作回合前台运行的原生 poll，返回后处理完整收据；只有预览进程运行时，不宣称 agent 正在监听。
 5. Human 在更新后的同一页面复查。记录反馈、修复版本、验证证据和仍未解决的问题；修复自检通过与 Human 明确确认分别记录，不因某条反馈已处理而自动宣布章节完成。
 
 iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe 的反馈保留内层 URL 与外层 Page 信息；shadow root 路径中的 ` >>> ` 表示分段边界，不能把整串当作普通 CSS selector。复制结果描述当前 DOM，页面改版后需重新选取；它不等于 React 组件名。必要时同时提供截图和复现步骤。
 
 预览应直接加载可信本地 Sprout URL，保持应用所需的 origin、资源加载、登录与存储行为；不能把运行中的应用简单套进 Lavish 原有的 sandboxed HTML iframe 并宣称可用。原有 HTML artifact 的隔离与可信应用预览分别处理。DOM Capture 需要取得目标 frame 的站点权限；响应式验收使用 Sprout frame 的实际尺寸，不能拿包含反馈面板的整个浏览器窗口尺寸代替。
 
-当前 Lavish CLI 与 skill 已安装，仓库内的可信应用预览适配和受 Pi session 管理的反馈监听已实现。已用实际 DOM Capture 扩展、Lavish、独立 Chromium 与 Pi SDK 验证元素定位、文字与截图收取、反馈唤醒及回复；真实 Sprout 构建快照的注册、登录保持和导航检查通过。启动方式、证据与未验证项见 [UI review 工具记录](ui/review-workflow.md)。UI review 工具随该轮使用过：11 张截图经实际读图，8 条界面反馈按线程分派修复并合入。用户常用浏览器中的扩展重载仍未完成，工具本身的这一项不影响 UI 章节验收。
+当前入口统一为 human-review skill 与 CLI，真实应用适配保留，Pi 专用工具和自动消息桥已移除。已用实际 DOM Capture 扩展、Lavish 与独立 Chromium 验证原生 poll / reply、登录保持、元素定位、完整文字与截图收取，以及 SIGTERM 清理。启动方式、证据与未验证项见 [Human review 工具记录](human-review.md)。此前 UI review 与 Pi SDK 的验收保留为历史证据；工具随该轮使用过，11 张截图经实际读图，8 条界面反馈按线程分派修复并合入。用户常用浏览器中的扩展重载仍未完成，工具本身的这一项不影响 UI 章节验收。
 
 ### 当前原型迁入仓库的顺序
 
@@ -160,7 +160,7 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应 [P4a](development-plan-functional.md#p4a-建立-worker-连接和-project-绑定)。
 
-- [x] 完成 Machine 列表与详情、加入 Project、说明和工作目录绑定的设计及演示。见 [UI-P4a](ui/p4a.md) 与 [真实接入](ui/p4a-integration.md)，重跑 `bash scripts/verify/u-machine-ui.sh`。
+- [ ] 完成 Machine 列表与详情、加入 Project、说明和工作目录绑定的设计及演示。root 工作目录区、绑定就地完成、配对与安装优先级、安装文案与 Shell 能力呈现按 Human 体验反馈调整，见 [P4a 结论](p4a/summary.md#体验后变更)。
 - [x] 组织 Worker 安装与启动所需的说明和连接反馈，具体步骤沿用实际功能交付。见 [Worker 安装](p4a/worker.md)，重跑 `bash scripts/verify/t-machine-worker.sh`。
 - [x] 呈现在线、断线、重连和能力信息，不能以断线推断空闲或释放，Project 上下文始终明确。见 [真实接入](ui/p4a-integration.md)，重跑 `bash scripts/verify/u-machine-ui.sh`。
 
