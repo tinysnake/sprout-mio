@@ -9,7 +9,7 @@ import type { AgentProfileDraft } from "../../../components/agent/agent-profile-
 import { AgentProfileList } from "../../../components/agent/agent-profile-list";
 import { LoginView } from "../../../components/auth/login-view";
 import type { LoginMode, LoginValues } from "../../../components/auth/login-view";
-import { UnavailableNotice } from "../../../components/info-hub/unavailable-notice";
+import { ProjectMachinesPanel } from "../../../components/info-hub/project-machines-panel";
 import { ProjectAgentsPanel } from "../../../components/info-hub/project-agents-panel";
 import { PageFrame } from "../../../components/layout/page-frame";
 import { ThemeToggle } from "../../../components/layout/theme-toggle";
@@ -473,7 +473,7 @@ function SettingsScene({ embedded }: { embedded: boolean }) {
         />
         <SettingsSection
           title="关联信息"
-          description="原 Project 页面的 Info Hub 查询保留在这里：成员分身、活动与最近 run，以及尚未实现的 Machine 视角。"
+          description="成员分身、活动与最近 run、Machine 绑定与连接。"
         >
           <details data-testid="settings-info-hub" className="group">
             <summary
@@ -489,10 +489,10 @@ function SettingsScene({ embedded }: { embedded: boolean }) {
             </summary>
             <div className="mt-4 flex flex-col gap-3">
               <ProjectAgentsPanel projectId={project.id} view={demoInfoHub.agents} />
-              <UnavailableNotice
-                testId="info-hub-machines-notice"
-                title="Project 的 Machine 与租约"
-                reason={demoInfoHub.machines.reason}
+              <ProjectMachinesPanel
+                projectId={project.id}
+                machines={demoInfoHub.machines}
+                leases={demoInfoHub.leases}
               />
             </div>
           </details>

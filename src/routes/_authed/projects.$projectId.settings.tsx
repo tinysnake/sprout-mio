@@ -2,7 +2,8 @@ import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ProjectAgentsPanel } from "../../components/info-hub/project-agents-panel";
-import { UnavailableNotice } from "../../components/info-hub/unavailable-notice";
+import { useState } from "react";
+import { ProjectMachinesPanel } from "../../components/info-hub/project-machines-panel";
 import { ProjectBasicInfoForm } from "../../components/project/project-basic-info-form";
 import { ProjectFacts } from "../../components/project/project-facts";
 import { SettingsSection } from "../../components/project/settings-section";
@@ -12,18 +13,20 @@ import { ResultError } from "../../components/project/result-error";
 import { Icon } from "../../components/ui/icon";
 import { getProjectProfileFn, updateProjectProfileFn } from "../../server/functions/project-config";
 import { getProjectFn, updateProjectFn } from "../../server/functions/project";
+import { listMachinesFn } from "../../server/functions/machine";
 import { getProjectInfoHubFn } from "../../server/functions/info-hub";
 import { getProjectRepoStateFn, prepareProjectRepoFn } from "../../server/functions/repository";
 
 export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
   loader: async ({ params }) => {
-    const [project, profile, repo, infoHub] = await Promise.all([
+    const [project, profile, repo, infoHub, machines] = await Promise.all([
       getProjectFn({ data: { projectId: params.projectId } }),
       getProjectProfileFn({ data: { projectId: params.projectId } }),
       getProjectRepoStateFn({ data: { projectId: params.projectId } }),
       getProjectInfoHubFn({ data: { projectId: params.projectId } }),
+      listMachinesFn({ data: {} }),
     ]);
-    return { project, profile, repo, infoHub };
+    return { project, profile, repo, infoHub, machines };
   },
   component: ProjectSettingsPage,
 });
@@ -34,7 +37,8 @@ export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
  * 没有独立的 Project 详情页。
  */
 function ProjectSettingsPage() {
-  const { project, profile, repo, infoHub } = Route.useLoaderData();
+  const { project, profile, repo, infoHub, machines } = Route.useLoaderData();
+  const [selectedMachine, setSelectedMachine] = useState("");
   const { projectId } = Route.useParams();
   const router = useRouter();
   const invalidate = () => void router.invalidate();
@@ -105,9 +109,55 @@ function ProjectSettingsPage() {
             </>
           )}
           <SettingsSection
-            title="关联信息"
-            description="原 Project 页面的 Info Hub 查询保留在这里：成员分身、活动与最近 run，以及尚未实现的 Machine 视角。"
+            title="Machines"
+            description="选择本账号的 Machine，加入当前 Project 或编辑说明与工作目录。保存目录只记录意图，由 Worker 另行探测。"
           >
+            <div className="mb-4 flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-2 text-xs">
+                Machine
+                <select
+                  data-testid="project-machine-select"
+                  value={selectedMachine}
+                  onChange={(event) => setSelectedMachine(event.target.value)}
+                  className="h-9 rounded-control border border-input bg-background px-3"
+                >
+                  <option value="">选择 Machine</option>
+                  {machines.ok &&
+                    machines.data.map((m) => (
+                      <option key={m.machine.id} value={m.machine.id}>
+                        {m.machine.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {selectedMachine && (
+                <Link
+                  to="/machines/$machineId"
+                  params={{ machineId: selectedMachine }}
+                  search={{ projectId }}
+                  data-testid="project-machine-open"
+                  className="text-xs underline"
+                >
+                  加入或编辑绑定
+                </Link>
+              )}
+              <Link to="/machines" className="text-xs underline">
+                管理 Machines
+              </Link>
+              <button type="button" onClick={invalidate} className="text-xs underline">
+                刷新 Machine 事实
+              </button>
+            </div>
+            {!machines.ok && <ResultError error={machines.error} />}
+            {infoHub.ok && (
+              <ProjectMachinesPanel
+                projectId={projectId}
+                machines={infoHub.data.machines}
+                leases={infoHub.data.leases}
+              />
+            )}
+          </SettingsSection>
+          <SettingsSection title="关联信息" description="成员分身、活动与最近 run。">
             <details data-testid="settings-info-hub" className="group">
               <summary
                 data-testid="project-info-hub-toggle"
@@ -122,14 +172,7 @@ function ProjectSettingsPage() {
               </summary>
               <div className="mt-4 flex flex-col gap-3">
                 {infoHub.ok ? (
-                  <>
-                    <ProjectAgentsPanel projectId={projectId} view={infoHub.data.agents} />
-                    <UnavailableNotice
-                      testId="info-hub-machines-notice"
-                      title="Project 的 Machine 与租约"
-                      reason={infoHub.data.machines.reason}
-                    />
-                  </>
+                  <ProjectAgentsPanel projectId={projectId} view={infoHub.data.agents} />
                 ) : (
                   <ResultError error={infoHub.error} testId="info-hub-error" />
                 )}

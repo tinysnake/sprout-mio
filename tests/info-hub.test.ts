@@ -23,7 +23,8 @@ type Evidence = {
       active: { runId: string; status: string; pendingInputs: number }[];
       recent: unknown[];
     };
-    machines: { available: boolean; reason: string };
+    machines: unknown[];
+    leases: { available: boolean; reason: string };
   } | null;
   info: {
     members: { kind: string; name: string }[];
@@ -65,6 +66,8 @@ beforeAll(() => {
       const agents = await import("./src/server/functions/agent.ts");
       const chats = await import("./src/server/functions/chat.ts");
       const infoHub = await import("./src/server/functions/info-hub.ts");
+      const runtime = await import("./src/server/runtime.ts");
+      await runtime.startRuntime();
       const code = (result) => result.ok ? "ok" : result.error.code;
       const signUp = async (tag) => {
         const result = await auth.api.signUpEmail({
@@ -119,6 +122,7 @@ beforeAll(() => {
           })),
           runs: hub.data.agents.runs,
           machines: hub.data.machines,
+          leases: hub.data.leases,
         } : null,
         info: info.ok ? {
           members: info.data.members.map((entry) => ({ kind: entry.memberKind, name: entry.displayName })),
@@ -134,6 +138,7 @@ beforeAll(() => {
         outsiderProfileId: outsider.data.id,
         firstMessageSaved: msg1.ok,
       }));
+      await runtime.shutdownRuntime("info-hub-test");
       sqlite.close();
     `,
       ],
@@ -170,18 +175,19 @@ describe("Info Hub 边界与显式不可用标记", () => {
     expect(evidence.leakTokens).toEqual([]);
   });
 
-  it("两条视图的 run 视角是真实数据，machines 仍是显式不可用且 reason 指向 P4", () => {
+  it("两条视图保留真实 run，Machine 返回实际集合且租约显式未实现", () => {
     expect(evidence.hub?.runs.available).toBe(true);
     expect(evidence.info?.runs.available).toBe(true);
-    expect(evidence.hub?.machines.available).toBe(false);
+    expect(evidence.hub?.machines).toEqual([]);
+    expect(evidence.hub?.leases.available).toBe(false);
     expect(evidence.hub?.runs.hostEnabled).toEqual(expect.any(Boolean));
     expect(evidence.info?.runs.hostEnabled).toEqual(expect.any(Boolean));
     expect(evidence.hub?.runs.active).toHaveLength(1);
     expect(evidence.hub?.runs.active[0]?.status).toBe("queued");
     expect(evidence.hub?.runs.active[0]?.pendingInputs).toBe(2);
     expect(evidence.hub?.runs.recent).toEqual([]);
-    expect(evidence.hub?.machines.reason).toContain("P4");
-    expect(evidence.hub?.machines.reason.length).toBeGreaterThan(0);
+    expect(evidence.hub?.leases.reason).toContain("P4b");
+    expect(evidence.hub?.leases.reason.length).toBeGreaterThan(0);
   });
 });
 

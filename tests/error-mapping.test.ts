@@ -217,6 +217,8 @@ beforeAll(() => {
       const agents = await import("./src/server/functions/agent.ts");
       const chats = await import("./src/server/functions/chat.ts");
       const infoHub = await import("./src/server/functions/info-hub.ts");
+      const runtime = await import("./src/server/runtime.ts");
+      await runtime.startRuntime();
       const projectConfig = await import("./src/server/functions/project-config.ts");
       const { sqlite } = await import("./src/db/index.ts");
       const signUp = async (tag) => {
@@ -298,6 +300,7 @@ beforeAll(() => {
 
       const errorDiagnostics = sqlite.prepare("SELECT level, event, request_id AS requestId FROM diagnostic_event WHERE level = 'error'").all();
       console.log("EVIDENCE " + JSON.stringify({ probes, errorDiagnostics }));
+      await runtime.shutdownRuntime("info-hub-test");
       sqlite.close();
     `,
       ],

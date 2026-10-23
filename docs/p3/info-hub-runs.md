@@ -1,5 +1,7 @@
 # P3 Info Hub run 视角与轮初上下文
 
+当前状态。本文保留当时的交付与验收记录。P4a 已将 Machine 整体占位改为实际 `MachineDetail[]`，租约独立保持未实现。当前契约、接入与验证见 [P4a 正式接入](../ui/p4a-integration.md)。下文旧占位形状和文案是历史记录。
+
 本 unit 把 P2 标为「未实现」的 run 视角变成真实数据：Project → Agents 视角与 Chat → 自身与成员视角都给出该范围内的宿主启用状态、活动 run、最近 run 与失败错误，以及每轮分析的仓库依据。新增「轮初必要上下文」查询并在对话页呈现。全部事实来自领域查询（`listAgentRuns`/`listAgentRunInputs`/`getRunRepoBasis`/`getProjectRepoState`），不在页面层重拼状态；本 unit 只读已有表，未新增 schema。
 
 ## 契约变化

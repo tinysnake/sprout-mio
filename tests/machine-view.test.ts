@@ -73,7 +73,9 @@ describe("Machine 呈现映射", () => {
     const commands = installCommands("mch_11111111-1111-4111-8111-111111111111");
     expect(commands.init).toContain("--machine mch_11111111-1111-4111-8111-111111111111");
     expect(commands.init).toContain("--state-dir");
-    expect(commands.run).toBe("sprout-worker run --state-dir <dir>");
+    expect(commands.run).toBe(
+      'node "$HOME/.local/share/sprout-worker/main.mjs" run --state-dir "$HOME/.local/share/sprout-worker/identity"',
+    );
     expect(`${commands.init} ${commands.run}`).not.toMatch(/ticket|secret|AAAA/);
   });
 

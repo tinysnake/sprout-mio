@@ -1,5 +1,3 @@
-// 真实 Chromium 走完 Info Hub 的 Project → Agents 视角与 Chat → 自身与成员视角，
-// 断言 run 视角渲染为真实运行事实、Machine（P4）视角仍为显式不可用文案，每步打印 PASS/FAIL。
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 import {
@@ -240,19 +238,20 @@ await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
 await check("unavailable_notices_render_explicitly", async () => {
   await openProjectInfoHub(page);
   const notices = await page.evaluate(() => ({
-    machinesReason: document.querySelector('[data-testid="info-hub-machines-notice-reason"]')
+    leasesReason: document.querySelector('[data-testid="info-hub-leases-notice-reason"]')
       ?.textContent,
     runsHostStatus: document.querySelector('[data-testid="info-hub-project-runs-host-status"]')
       ?.textContent,
     runsActive: document.querySelector('[data-testid="info-hub-project-runs-active"]')?.textContent,
-    badges: [...document.querySelectorAll('[data-testid="info-hub-machines-notice-badge"]')].map(
+    badges: [...document.querySelectorAll('[data-testid="info-hub-leases-notice-badge"]')].map(
       (node) => node.textContent?.trim(),
     ),
     body: document.body.innerText,
   }));
   record(
     "unavailable_notices_render_explicitly",
-    /P4/.test(notices.machinesReason ?? "") &&
+    /P4b/.test(notices.leasesReason ?? "") &&
+      (await page.getByTestId("info-hub-project-machines").count()) === 1 &&
       notices.badges.length === 1 &&
       notices.badges[0] === "未实现" &&
       /宿主(已|未)启用/.test(notices.runsHostStatus ?? "") &&
@@ -261,7 +260,7 @@ await check("unavailable_notices_render_explicitly", async () => {
       !notices.body.includes("0 个活动 run") &&
       !notices.body.includes("无活动 run") &&
       !notices.body.includes("无 Machine"),
-    `runs 视角为真实运行事实（宿主 ${notices.runsHostStatus}），machines 仍为未实现；reason ${JSON.stringify(notices.machinesReason)}`,
+    `runs 与 Machines 返回真实集合，租约未实现 ${JSON.stringify(notices.leasesReason)}`,
   );
 });
 

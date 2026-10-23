@@ -64,15 +64,6 @@ export default defineConfig({
   plugins: process.env.VITEST
     ? []
     : lazyPlugins(() => [
-        {
-          name: "sprout-machine-rpc-entry",
-          enforce: "pre",
-          transform(code, id) {
-            if (id.replaceAll("\\", "/").endsWith("/default-entry/client.tsx")) {
-              return `import ${JSON.stringify(join(projectRoot, "src/server/functions/machine.ts"))};\n${code}`;
-            }
-          },
-        },
         devtools(),
         nitro({
           plugins: ["./src/server/server-entry.ts"],

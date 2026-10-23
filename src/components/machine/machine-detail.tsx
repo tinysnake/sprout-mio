@@ -32,6 +32,7 @@ export function MachineDetailPanel({
   onSaveBinding,
   onBindingSaved,
   onEnrollmentCreated,
+  onEnrollmentRevoked,
   installOrigin,
   actions,
 }: {
@@ -47,7 +48,15 @@ export function MachineDetailPanel({
     input: SaveProjectMachineBindingInput,
   ) => Promise<MachineResult<ProjectMachineIntent>>;
   onBindingSaved?: (intent: ProjectMachineIntent) => void;
+  /**
+   * 续签成功结果写回父级短期状态；只有发起请求的详情身份仍在使用时才发布。
+   */
   onEnrollmentCreated?: (enrollment: MachineEnrollment) => void;
+  /**
+   * 在途续签被放弃：撤销该 target 的父级票据。只作用于这一台 Machine，
+   * 兄弟身份或其他 Machine 刚写入的合法票据必须保留。
+   */
+  onEnrollmentRevoked?: (machineId: string) => void;
   installOrigin?: string;
   actions?: ReactNode;
 }) {
@@ -306,15 +315,9 @@ export function MachineDetailPanel({
               enrollmentStatus={detail.enrollmentStatus}
               enrollment={enrollment}
               installOrigin={installOrigin}
-              onRenew={
-                onRenewEnrollment
-                  ? async (machineId) => {
-                      const result = await onRenewEnrollment(machineId);
-                      if (result.ok) onEnrollmentCreated?.(result.data);
-                      return result;
-                    }
-                  : undefined
-              }
+              onRenew={onRenewEnrollment}
+              onEnrollmentCreated={onEnrollmentCreated}
+              onEnrollmentRevoked={onEnrollmentRevoked}
             />
           </SettingsSection>
         </aside>

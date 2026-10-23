@@ -282,6 +282,13 @@ try {
       machineId,
     );
   };
+  const visit = async (machineId) => {
+    await probe((id) => window.__machineLifecycle.visit(id), machineId);
+    await page.waitForFunction(
+      (id) => window.__machineLifecycle.commits().at(-1)?.machineId === id,
+      machineId,
+    );
+  };
   const renewAvailable = () =>
     page.waitForFunction(
       () => {
@@ -441,6 +448,79 @@ try {
     );
   });
 
+  await check(
+    "late_renewal_from_previous_machine_does_not_replace_current_parent_ticket",
+    async () => {
+      await show(lifecycleB, "ticket");
+      await test("machine-ticket-toggle").waitFor();
+      await visit(lifecycleA);
+      await test("machine-renew").click();
+      assert.deepEqual(await pendingRequests(), [lifecycleA], "A 的续签在途");
+      await visit(lifecycleB);
+      await test("machine-ticket-toggle").waitFor();
+      await settle(0, "success");
+      await page.waitForTimeout(150);
+      assert.deepEqual(await pendingRequests(), [], "A 的迟到结果已落地");
+      assert.equal(
+        await probe(() => window.__machineLifecycle.parent()),
+        lifecycleB,
+        "A 的迟到结果不能写进父级槽位",
+      );
+      await test("machine-ticket-toggle").click();
+      await test("machine-ticket-value").waitFor();
+      const kept = (await test("machine-ticket-value").innerText()).trim();
+      assert.ok(kept.startsWith("22222222"), "B 的创建票据保持可见");
+      await test("machine-ticket-toggle").click();
+      await test("machine-ticket-hidden").waitFor();
+      assert.deepEqual(desktop.errors, []);
+    },
+  );
+
+  await check("abandoned_in_flight_renewal_revokes_the_same_machine_parent_slot", async () => {
+    await show(lifecycleA, "ticket");
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-value").waitFor();
+    const creation = (await test("machine-ticket-value").innerText()).trim();
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-hidden").waitFor();
+    await test("machine-renew").click();
+    assert.deepEqual(await pendingRequests(), [lifecycleA], "当前 Machine 的续签在途");
+    await visit(lifecycleB);
+    await renewAvailable();
+    assert.equal(
+      await probe(() => window.__machineLifecycle.parent()),
+      null,
+      "切走后同一 Machine 的父级槽位被撤销",
+    );
+    await settle(0, "success");
+    await visit(lifecycleA);
+    await renewAvailable();
+    assert.equal(await test("machine-ticket-toggle").count(), 0, "重开时没有旧票据");
+    assert.ok(
+      (await test("machine-enrollment-expires").innerText()).includes("没有待使用的票据"),
+      "面板呈现没有待使用的票据",
+    );
+    assert.equal(
+      await probe(() => window.__machineLifecycle.parent()),
+      null,
+      "已交付的成功结果也不能让旧创建票据复活",
+    );
+    await probe(() => window.__machineLifecycle.unmount());
+    await test("machine-enrollment-panel").waitFor({ state: "detached" });
+    await show(lifecycleA, "ticket");
+    await test("machine-ticket-toggle").waitFor();
+    await test("machine-renew").click();
+    assert.deepEqual(await pendingRequests(), [lifecycleA], "重开后的续签在途");
+    await probe(() => window.__machineLifecycle.unmount());
+    await test("machine-enrollment-panel").waitFor({ state: "detached" });
+    assert.equal(await probe(() => window.__machineLifecycle.parent()), null, "卸载也撤销在途槽位");
+    await settle(0, "success");
+    await visit(lifecycleA);
+    await renewAvailable();
+    assert.equal(await test("machine-ticket-toggle").count(), 0, "卸载后的重开没有旧票据");
+    assert.ok(creation.startsWith("11111111"));
+  });
+
   await check("no_business_requests_from_dev_scenes", async () => {
     assert.deepEqual(applicationRequests, []);
   });
@@ -484,7 +564,7 @@ try {
       text: element.textContent ?? "",
     }));
     assert.ok(command.scrollWidth > command.clientWidth, "长命令不能只靠页面溢出展示");
-    assert.ok(command.text.includes("--state-dir <dir>"));
+    assert.ok(command.text.includes('--state-dir "$HOME/.local/share/sprout-worker/identity"'));
     assert.ok(!command.text.includes("--ticket"));
     const reachedEnd = await narrow.page.getByTestId("machine-command-init").evaluate((element) => {
       element.scrollLeft = element.scrollWidth;

@@ -1,6 +1,6 @@
 # UI-P4a Machine 连接与绑定（演示交付）
 
-状态：UI 呈现与可操作演示已交付，真实路由与 server function 接入留给 I-P4a 集成单元。本记录不是技术验收，也不是 Human 体验确认。视觉读图核验由 coordinator 执行，本单元只保存截图并声明其内容。
+状态：本文保留共用呈现组件与演示交付记录。正式路由、真实 server functions、安装指令和 Info Hub 的当前接入见 [p4a-integration.md](p4a-integration.md)。历史记录不是章节技术验收或 Human 体验确认。
 
 ## 基线
 
@@ -84,8 +84,8 @@ node scripts/browser/p4a-machine-scenes.mjs
 
 ## 限制与待确认
 
-- 真实 `createMachine` / `renewMachineEnrollment` / `saveProjectMachineBinding` 尚不存在；演示回调不是服务实现，未验证真实授权、冲突与持久化。
-- Worker 安装包、`init` 的实际交互方式（隐藏输入还是 `--ticket-file`）以功能线交付为准；本单元只固定契约中的参数形状。
+- 历史演示阶段没有连接真实 `createMachine` / `renewMachineEnrollment` / `saveProjectMachineBinding`。当前已交付真实功能与正式接入，验证范围见 [正式接入记录](p4a-integration.md)。
+- Worker 单文件产物与隐藏输入交互已交付，当前安装命令见 [Worker 指南](../p4a/worker.md)。
 - 未执行真实 macOS Worker、跨机 TLS 或真机软键盘验证；无真机不宣称软键盘通过。
 - Project settings 内 Machine 区域的位置与命名（“Machines” 还是“连接的 Machine”）未由设计基线指定，留给集成线与 Human 确认。
 - 断线、连接中、旧能力的文案沿用设计基线状态语义；若 Human 希望更简的措辞，属于体验调整，未在本单元自行定稿。

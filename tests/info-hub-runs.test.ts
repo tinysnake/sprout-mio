@@ -41,7 +41,8 @@ type Evidence = {
     errorCode?: string;
     errorMessage?: string;
   }[];
-  hubMachines: { available: boolean; reason: string };
+  hubMachines: unknown[];
+  hubLeases: { available: boolean; reason: string };
   chatActive: unknown[];
   turnMatchesDb: boolean;
   runId: string;
@@ -69,6 +70,8 @@ beforeAll(() => {
       const agents = await import("./src/server/functions/agent.ts");
       const chats = await import("./src/server/functions/chat.ts");
       const infoHub = await import("./src/server/functions/info-hub.ts");
+      const runtime = await import("./src/server/runtime.ts");
+      await runtime.startRuntime();
       const { transitionAgentRun } = await import("./src/domain/agent-run.ts");
       const { sqlite } = await import("./src/db/index.ts");
       const code = (result) => result.ok ? "ok" : result.error.code;
@@ -144,12 +147,14 @@ beforeAll(() => {
           injectedIntoPrompt: turn1.data.injectedIntoPrompt,
         } : null,
         hubRecent: hub.ok ? hub.data.agents.runs.recent : [],
-        hubMachines: hub.ok ? hub.data.machines : { available: true, reason: "" },
+        hubMachines: hub.ok ? hub.data.machines : null,
+        hubLeases: hub.ok ? hub.data.leases : null,
         chatActive: info.ok ? info.data.runs.active : [],
         turnMatchesDb,
         runId: runRow.id,
         fixtureCommit,
       }));
+      await runtime.shutdownRuntime("info-hub-test");
       sqlite.close();
     `,
       ],
@@ -225,8 +230,9 @@ describe("两个视角的 run 事实与数据库一致", () => {
     expect(evidence.hubRecent[0]?.pendingInputs).toBe(2);
   });
 
-  it("Machine 视角仍是显式不可用且 reason 指向 P4", () => {
-    expect(evidence.hubMachines.available).toBe(false);
-    expect(evidence.hubMachines.reason).toContain("P4");
+  it("Machine 返回实际空集合，租约保持显式不可用", () => {
+    expect(evidence.hubMachines).toEqual([]);
+    expect(evidence.hubLeases.available).toBe(false);
+    expect(evidence.hubLeases.reason).toContain("P4b");
   });
 });

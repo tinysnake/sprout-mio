@@ -156,8 +156,8 @@ async function unavailable(page, target) {
   if (target.key === "settings") {
     await sameText(page, "info-hub-project-runs-host-status", "宿主未启用");
     await test(page, "info-hub-project-runs-active").waitFor();
-    await sameText(page, "info-hub-machines-notice-badge", "未实现");
-    assert.match(await test(page, "info-hub-machines-notice-reason").textContent(), /P4/);
+    await sameText(page, "info-hub-leases-notice-badge", "未实现");
+    assert.match(await test(page, "info-hub-leases-notice-reason").textContent(), /P4/);
   }
   if (target.key === "chat") {
     await sameText(page, "info-chat-runs-host-status", "宿主未启用");

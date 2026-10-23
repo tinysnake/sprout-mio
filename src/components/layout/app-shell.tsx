@@ -1,5 +1,5 @@
 import { Popover } from "@base-ui/react/popover";
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronsLeft,
@@ -288,22 +288,29 @@ export function AppShell({
   const [preferredProject, setPreferredProject] = useState(() => preference("sprout:last-project"));
   const compact = collapsed || (width < 1200 && inspectorOpen);
   const sidebarWidth = mobile ? 0 : compact ? 64 : 200;
-  const project = projectId
-    ? projects.find((p) => p.id === projectId)
+  const location = useLocation();
+  const contextualProjectId =
+    projectId ??
+    (pathname.startsWith("/machines/")
+      ? (new URLSearchParams(location.searchStr).get("projectId") ?? undefined)
+      : undefined);
+  const project = contextualProjectId
+    ? projects.find((p) => p.id === contextualProjectId)
     : (projects.find((p) => p.id === preferredProject) ?? projects[0]);
+  const machinePage = pathname.startsWith("/machines");
   const agentPage = pathname.startsWith("/agents");
   useEffect(() => {
     setMobileProjectsOpen(false);
   }, [pathname, mobile]);
   useEffect(() => {
-    if (!projectId || project?.id !== projectId) return;
-    setPreferredProject(projectId);
+    if (!contextualProjectId || project?.id !== contextualProjectId) return;
+    setPreferredProject(contextualProjectId);
     try {
-      localStorage.setItem("sprout:last-project", projectId);
+      localStorage.setItem("sprout:last-project", contextualProjectId);
     } catch {
       /* Storage is optional. */
     }
-  }, [projectId, project?.id]);
+  }, [contextualProjectId, project?.id]);
   useEffect(() => {
     try {
       localStorage.setItem("sprout:sidebar-collapsed", String(collapsed));
@@ -372,18 +379,17 @@ export function AppShell({
                 <Icon as={Bot} />
                 {!compact && <span>Agents</span>}
               </Link>
-              <div
-                aria-label="Machines，未实现，P4"
-                title="Machines · 未实现，P4"
-                className={`${navClass} cursor-default ${compact ? "justify-center px-0" : ""}`}
+              <Link
+                to="/machines"
+                data-testid="nav-machines"
+                aria-label="Machines"
+                aria-current={machinePage ? "page" : undefined}
+                title={compact ? "Machines" : undefined}
+                className={`${navClass} ${machinePage ? "bg-selected text-foreground [&_svg]:text-primary" : ""} ${compact ? "justify-center px-0" : ""}`}
               >
                 <Icon as={Monitor} />
-                {!compact && (
-                  <span>
-                    Machines<span className="block text-[9px] font-normal">未实现，P4</span>
-                  </span>
-                )}
-              </div>
+                {!compact && <span>Machines</span>}
+              </Link>
               <div
                 aria-label="Management，未实现"
                 title="Management · 未实现"
@@ -440,7 +446,7 @@ export function AppShell({
               <Popover.Trigger
                 aria-label="Projects"
                 data-testid="mobile-projects"
-                className={`flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] ${!agentPage ? "text-primary" : "text-muted-foreground"}`}
+                className={`flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] ${!agentPage && !machinePage ? "text-primary" : "text-muted-foreground"}`}
               >
                 <Icon as={FolderKanban} />
                 <span className="max-w-full truncate">Projects</span>
@@ -476,14 +482,16 @@ export function AppShell({
               <span className="max-w-full truncate">Agents</span>
               <span aria-hidden="true" className="text-[9px] leading-3" />
             </Link>
-            <span
-              aria-label="Machines，未实现，P4"
-              className="flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] text-muted-foreground"
+            <Link
+              to="/machines"
+              aria-label="Machines"
+              aria-current={machinePage ? "page" : undefined}
+              className={`flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] ${machinePage ? "text-primary" : "text-muted-foreground"}`}
             >
               <Icon as={Monitor} />
               <span className="max-w-full truncate">Machines</span>
-              <span className="text-[9px] leading-3 whitespace-nowrap">未实现，P4</span>
-            </span>
+              <span aria-hidden="true" className="text-[9px] leading-3" />
+            </Link>
             <span
               aria-label="Management，未实现"
               className="flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] text-muted-foreground"
