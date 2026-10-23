@@ -64,6 +64,14 @@ node scripts/browser/p4a-machine-scenes.mjs
 - `enrollment` prop 以「内容」比较（MachineId + 到期 + 票据），同一身份的等价刷新不重放、不清掉已续签的一次性票据，也不打断进行中的请求。
 - 展示层：`src/dev/scenes/machine/index.tsx` 的 `/machines/lifecycle` 探针挂真实 `MachineEnrollmentPanel`，由页面决定身份切换与请求结算顺序；`scripts/browser/p4a-machine-scenes.mjs` 用它做真实浏览器反证，不使用源码镜像测试。
 
+## 票据的 render 归属
+
+`MachineEnrollmentPanel` 每次 render 仅在 `enrollmentStatus === "pending"` 且 `current.detail.machine.id === machineId` 时使用票据。身份切换后的首次 DOM 提交也受此条件约束。传入其他 Machine 的 `enrollment` 不显示票据。effect 继续同步本地状态，请求 token 继续处理 A→B→A、卸载与迟到结果；同身份的等价刷新行为保留。
+
+`/machines/lifecycle` 用 `React.Profiler.onRender` 在提交阶段读取正式组件的 DOM，只记录 MachineId、是否存在明文节点、归属是否正确。新增两项浏览器断言覆盖 A 展开后切 B 的每次提交、错配 enrollment prop 与合法票据展开隐藏，原 23 项断言保留。探针使用完全虚构的 43 字符票据，不输出票据值，截图前先隐藏票据。提交阶段证据不证明浏览器已 paint。
+
+基线 `4f2766e32684560f76f86f0ed916220d49933772` 的独立真实组件探针在 3088 红测退出 1，B 首次提交有明文节点；修正后同探针退出 0。日志分别为 `/tmp/p4a-ticket-render-red.log` 与 `/tmp/p4a-ticket-render-green.log`。本次验证与限制见 `/tmp/sprout-p4a-ui-ticket-render-report.md`。
+
 ## 给集成线的接入说明
 
 1. 列表：`listMachines()` → `MachineList`；`href` 接正式 `/machines/$machineId`，`renderLink` 传路由器 `Link`。入口从占位变为链接时只需改 `app-shell` 的 Machines 项与受影响定位断言。

@@ -275,8 +275,13 @@ try {
   const pendingRequests = () => probe(() => window.__machineLifecycle.pending());
   const settle = (index, kind) =>
     probe(([i, k]) => window.__machineLifecycle.settle(i, k), [index, kind]);
-  const show = (machineId, mode = "empty") =>
-    probe(([id, m]) => window.__machineLifecycle.show(id, m), [machineId, mode]);
+  const show = async (machineId, mode = "empty") => {
+    await probe(([id, m]) => window.__machineLifecycle.show(id, m), [machineId, mode]);
+    await page.waitForFunction(
+      (id) => window.__machineLifecycle.commits().at(-1)?.machineId === id,
+      machineId,
+    );
+  };
   const renewAvailable = () =>
     page.waitForFunction(
       () => {
@@ -312,12 +317,17 @@ try {
     await test("machine-ticket-toggle").click();
     await test("machine-ticket-value").waitFor();
     const bTicket = (await test("machine-ticket-value").innerText()).trim();
-    assert.ok(bTicket.startsWith("22222222"), bTicket);
+    assert.ok(bTicket.startsWith("22222222"), "B 票据归属正确");
     await settle(0, "failure");
     await page.waitForTimeout(150);
     assert.equal(await test("machine-renew-error").count(), 0, "A 的失败不能落到 B");
     assert.equal(await test("machine-ticket-toggle").count(), 1, "A 的失败不能清掉 B 票据");
-    assert.equal((await test("machine-ticket-value").innerText()).trim(), bTicket);
+    assert.ok(
+      (await test("machine-ticket-value").innerText()).trim() === bTicket,
+      "A 失败后 B 票据保持",
+    );
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-hidden").waitFor();
     await shoots(page, "machine-lifecycle-switch-1440-light");
   });
 
@@ -338,7 +348,7 @@ try {
     await test("machine-ticket-toggle").waitFor();
     await test("machine-ticket-toggle").click();
     const abaTicket = (await test("machine-ticket-value").innerText()).trim();
-    assert.ok(abaTicket.startsWith("11111111"), abaTicket);
+    assert.ok(abaTicket.startsWith("11111111"), "新 A 票据归属正确");
   });
 
   await check("unmounted_panel_drops_late_renewal_result", async () => {
@@ -366,7 +376,10 @@ try {
     const revealedTicket = (await test("machine-ticket-value").innerText()).trim();
     await probe(() => window.__machineLifecycle.refresh());
     await page.waitForTimeout(150);
-    assert.equal((await test("machine-ticket-value").innerText()).trim(), revealedTicket);
+    assert.ok(
+      (await test("machine-ticket-value").innerText()).trim() === revealedTicket,
+      "等价刷新保留票据",
+    );
     await test("machine-renew").click();
     await probe(() => window.__machineLifecycle.refresh());
     await page.waitForTimeout(150);
@@ -377,6 +390,55 @@ try {
     const text = await test("machine-renew-error").innerText();
     assert.ok(!text.includes("LIFECYCLE_PROBE_THROW"), "异常内部细节不能呈现");
     await renewAvailable();
+  });
+
+  await check("every_identity_switch_commit_excludes_previous_ticket", async () => {
+    await show(lifecycleB);
+    await renewAvailable();
+    await show(lifecycleA, "ticket");
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-value").waitFor();
+    const start = await probe(() => window.__machineLifecycle.commits().length);
+    await show(lifecycleB);
+    await renewAvailable();
+    const commits = await probe(
+      (offset) => window.__machineLifecycle.commits().slice(offset),
+      start,
+    );
+    assert.ok(commits.some((commit) => commit.machineId === lifecycleB));
+    assert.ok(
+      commits.every((commit) => commit.owned),
+      "每次 DOM 提交只能包含当前 Machine 的票据",
+    );
+    assert.ok(
+      commits
+        .filter((commit) => commit.machineId === lifecycleB)
+        .every((commit) => !commit.exposed),
+    );
+  });
+
+  await check("mismatched_enrollment_is_hidden_and_owned_ticket_can_toggle", async () => {
+    await probe(
+      ([id, owner]) => window.__machineLifecycle.show(id, "ticket", owner),
+      [lifecycleB, lifecycleA],
+    );
+    await page.waitForTimeout(150);
+    assert.equal(await test("machine-ticket-toggle").count(), 0);
+    assert.equal(await test("machine-ticket-value").count(), 0);
+    await show(lifecycleB, "ticket");
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-value").waitFor();
+    assert.equal(
+      await test("machine-ticket-value").evaluate((element) => element.textContent.length),
+      43,
+    );
+    await test("machine-ticket-toggle").click();
+    await test("machine-ticket-hidden").waitFor();
+    const commits = await probe(() => window.__machineLifecycle.commits());
+    assert.ok(
+      commits.every((commit) => commit.owned),
+      "错配 prop 的任何提交均不能展示其他 Machine 的票据",
+    );
   });
 
   await check("no_business_requests_from_dev_scenes", async () => {

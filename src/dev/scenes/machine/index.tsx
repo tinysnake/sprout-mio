@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Profiler, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { MachineCreateDialog } from "../../../components/machine/machine-create-dialog";
@@ -184,8 +184,6 @@ function lifecycleEnrollment(machineId: string): MachineEnrollment {
   };
 }
 
-// 共享呈现组件不需要为场景复刻实现：探针直接挂真实 MachineEnrollmentPanel，
-// 由页面控制身份切换、请求挂起与结算顺序。
 function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
   const [view, setView] = useState<{
     machineId: string;
@@ -197,15 +195,19 @@ function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
     mounted: true,
   });
   const attempts = useRef<LifecycleAttempt[]>([]);
+  const commits = useRef<{ machineId: string; exposed: boolean; owned: boolean }[]>([]);
 
   useEffect(() => {
     const api = {
-      show(machineId: string, mode: "empty" | "ticket" = "empty") {
+      commits() {
+        return commits.current;
+      },
+      show(machineId: string, mode: "empty" | "ticket" = "empty", ownerId = machineId) {
         setView((current) => ({
           ...current,
           machineId,
           mounted: true,
-          enrollment: mode === "ticket" ? lifecycleEnrollment(machineId) : null,
+          enrollment: mode === "ticket" ? lifecycleEnrollment(ownerId) : null,
         }));
       },
       refresh() {
@@ -250,17 +252,31 @@ function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
       testId="machine-lifecycle-probe"
     >
       {view.mounted && (
-        <MachineEnrollmentPanel
-          machineId={view.machineId}
-          enrollmentStatus="pending"
-          enrollment={view.enrollment}
-          installOrigin="http://127.0.0.1:3000"
-          onRenew={(machineId) =>
-            new Promise<MachineResult<MachineEnrollment>>((resolve, reject) => {
-              attempts.current.push({ machineId, resolve, reject });
-            })
-          }
-        />
+        <Profiler
+          id="machine-enrollment"
+          onRender={() => {
+            const value = document.querySelector(
+              '[data-testid="machine-ticket-value"]',
+            )?.textContent;
+            commits.current.push({
+              machineId: view.machineId,
+              exposed: value != null,
+              owned: value == null || value === lifecycleTicket(view.machineId),
+            });
+          }}
+        >
+          <MachineEnrollmentPanel
+            machineId={view.machineId}
+            enrollmentStatus="pending"
+            enrollment={view.enrollment}
+            installOrigin="http://127.0.0.1:3000"
+            onRenew={(machineId) =>
+              new Promise<MachineResult<MachineEnrollment>>((resolve, reject) => {
+                attempts.current.push({ machineId, resolve, reject });
+              })
+            }
+          />
+        </Profiler>
       )}
     </PageFrame>
   );

@@ -11,7 +11,6 @@ import { enrollmentLabel, formatMoment } from "./machine-view";
 import { StatusLine } from "./machine-list";
 import { MachineInstallInstructions } from "./machine-install-instructions";
 
-// 票据内容用于判断 prop 是否真的换了数据；同一身份的等价刷新不能清掉先前的续签结果。
 function enrollmentKey(enrollment: MachineEnrollment | null): string {
   if (!enrollment) return "none";
   return `${enrollment.detail.machine.id}|${enrollment.expiresAt}|${enrollment.ticket}`;
@@ -34,8 +33,6 @@ export function MachineEnrollmentPanel({
   const [revealed, setRevealed] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
-  // 一次续签请求归属于一个组件身份寿命。token 的对象身份就是这次操作的所有权：
-  // 只比 MachineId 会让 A→B→A 后的旧请求重新拿到同名身份，覆盖新票据或清掉新的 pending。
   const inFlight = useRef<object | null>(null);
   const identity = useRef(machineId);
   const appliedKey = useRef(enrollmentKey(enrollment));
@@ -98,7 +95,8 @@ export function MachineEnrollmentPanel({
   }
 
   const status = enrollmentLabel(enrollmentStatus);
-  const ticket = enrollmentStatus === "pending" ? current : null;
+  const ticket =
+    enrollmentStatus === "pending" && current?.detail.machine.id === machineId ? current : null;
   return (
     <div className="space-y-5" data-testid="machine-enrollment-panel">
       <dl className="grid gap-y-1 text-xs leading-7">
