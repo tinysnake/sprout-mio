@@ -7,3 +7,4 @@ export * from "./agent";
 export * from "./project-config";
 export * from "./chat";
 export * from "./info-hub";
+export * from "./machine";

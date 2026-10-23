@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   integer,
   primaryKey,
@@ -12,23 +13,28 @@ import { user } from "./auth-schema";
 import { AGENT_RUN_STATUSES } from "../contracts/agent-run";
 import type { RunConfigSnapshot } from "../contracts/agent-run";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
+import type { CapabilitySnapshot } from "../contracts/machine";
 
 export * from "./auth-schema";
 
-export const project = sqliteTable("project", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  createdBy: text("created_by")
-    .notNull()
-    .references(() => user.id),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const project = sqliteTable(
+  "project",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [uniqueIndex("project_id_owner_unique").on(table.id, table.createdBy)],
+);
 
 export const agentProfile = sqliteTable("agent_profile", {
   id: text("id").primaryKey(),
@@ -368,5 +374,187 @@ export const repoProvenance = sqliteTable(
     index("repo_provenance_project_idx").on(table.projectId),
     check("repo_provenance_fresh_check", sql`${table.fresh} in (0, 1)`),
     check("repo_provenance_commit_check", sql`${table.commit} != ''`),
+  ],
+);
+
+export const machine = sqliteTable(
+  "machine",
+  {
+    id: text("id").primaryKey().notNull(),
+    name: text("name").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("machine_id_owner_unique").on(t.id, t.createdBy),
+    check("machine_name_check", sql`length(trim(${t.name})) between 1 and 80`),
+  ],
+);
+
+export const machineCredential = sqliteTable(
+  "machine_credential",
+  {
+    machineId: text("machine_id")
+      .primaryKey()
+      .notNull()
+      .references(() => machine.id),
+    ticketHash: text("ticket_hash").notNull(),
+    ticketExpiresAt: integer("ticket_expires_at", { mode: "timestamp_ms" }).notNull(),
+    secretHash: text("secret_hash"),
+    activatedAt: integer("activated_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    uniqueIndex("machine_ticket_hash_unique").on(t.ticketHash),
+    uniqueIndex("machine_secret_hash_unique").on(t.secretHash),
+    check(
+      "machine_ticket_hash_check",
+      sql`length(${t.ticketHash}) = 64 and ${t.ticketHash} not glob '*[^0-9a-f]*'`,
+    ),
+    check(
+      "machine_secret_hash_check",
+      sql`${t.secretHash} is null or (length(${t.secretHash}) = 64 and ${t.secretHash} not glob '*[^0-9a-f]*')`,
+    ),
+    check(
+      "machine_activation_check",
+      sql`(${t.secretHash} is null and ${t.activatedAt} is null) or (${t.secretHash} is not null and ${t.activatedAt} is not null)`,
+    ),
+  ],
+);
+
+export const machineConnectionCounter = sqliteTable(
+  "machine_connection_counter",
+  {
+    machineId: text("machine_id")
+      .primaryKey()
+      .notNull()
+      .references(() => machine.id),
+    highWater: integer("high_water").notNull().default(0),
+  },
+  (t) => [
+    check(
+      "machine_high_water_check",
+      sql`typeof(${t.highWater}) = 'integer' and ${t.highWater} between 0 and 9007199254740991`,
+    ),
+  ],
+);
+
+export const machineConnection = sqliteTable(
+  "machine_connection",
+  {
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machine.id),
+    generation: integer("generation").notNull(),
+    attemptId: text("attempt_id").notNull(),
+    bootId: text("boot_id")
+      .notNull()
+      .references(() => runtimeBoot.id),
+    status: text("status", { enum: ["open", "closed"] }).notNull(),
+    openedAt: integer("opened_at", { mode: "timestamp_ms" }).notNull(),
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
+    closedAt: integer("closed_at", { mode: "timestamp_ms" }),
+    seq: integer("seq").notNull().default(0),
+    capability: text("capability", { mode: "json" }).$type<CapabilitySnapshot>(),
+    lastPayloadHash: text("last_payload_hash"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.machineId, t.generation] }),
+    uniqueIndex("machine_connection_attempt_unique").on(t.machineId, t.attemptId),
+    check(
+      "machine_generation_check",
+      sql`typeof(${t.generation}) = 'integer' and ${t.generation} between 1 and 9007199254740991`,
+    ),
+    check(
+      "machine_seq_check",
+      sql`typeof(${t.seq}) = 'integer' and ${t.seq} between 0 and 9007199254740991`,
+    ),
+    check("machine_attempt_check", sql`length(${t.attemptId}) > 0`),
+    check(
+      "machine_connection_status_check",
+      sql`(${t.status} = 'open' and ${t.closedAt} is null) or (${t.status} = 'closed' and ${t.closedAt} is not null)`,
+    ),
+    check(
+      "machine_connection_payload_check",
+      sql`(${t.seq} = 0 and ${t.capability} is null and ${t.lastPayloadHash} is null) or (${t.seq} > 0 and ${t.capability} is not null and ${t.lastPayloadHash} is not null and length(${t.lastPayloadHash}) = 64 and ${t.lastPayloadHash} not glob '*[^0-9a-f]*')`,
+    ),
+    check(
+      "machine_capability_json_check",
+      sql`case when ${t.capability} is null then 1 when json_valid(${t.capability}) then json_type(${t.capability}) = 'object' else 0 end`,
+    ),
+  ],
+);
+
+export const projectMachine = sqliteTable(
+  "project_machine",
+  {
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    createdBy: text("created_by").notNull(),
+    description: text("description").notNull().default(""),
+    directory: text("directory"),
+    revision: integer("revision").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.machineId] }),
+    foreignKey({
+      columns: [t.projectId, t.createdBy],
+      foreignColumns: [project.id, project.createdBy],
+    }),
+    foreignKey({
+      columns: [t.machineId, t.createdBy],
+      foreignColumns: [machine.id, machine.createdBy],
+    }),
+    check(
+      "project_machine_revision_check",
+      sql`typeof(${t.revision}) = 'integer' and ${t.revision} between 1 and 9007199254740991`,
+    ),
+    check("project_machine_description_check", sql`length(${t.description}) <= 500`),
+    check(
+      "project_machine_directory_check",
+      sql`${t.directory} is null or (length(${t.directory}) between 1 and 4096 and substr(${t.directory}, 1, 1) = '/' and instr(${t.directory}, char(0)) = 0)`,
+    ),
+  ],
+);
+
+export const directoryObservation = sqliteTable(
+  "directory_observation",
+  {
+    machineId: text("machine_id").notNull(),
+    generation: integer("generation").notNull(),
+    projectId: text("project_id").notNull(),
+    revision: integer("revision").notNull(),
+    seq: integer("seq").notNull(),
+    checkedAt: integer("checked_at", { mode: "timestamp_ms" }).notNull(),
+    kind: text("kind", { enum: ["accessible", "unavailable"] }).notNull(),
+    realPath: text("real_path"),
+    reason: text("reason", { enum: ["missing", "not_directory", "denied", "io_error"] }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.machineId, t.generation, t.projectId, t.revision] }),
+    foreignKey({
+      columns: [t.machineId, t.generation],
+      foreignColumns: [machineConnection.machineId, machineConnection.generation],
+    }),
+    foreignKey({
+      columns: [t.projectId, t.machineId],
+      foreignColumns: [projectMachine.projectId, projectMachine.machineId],
+    }),
+    check(
+      "directory_observation_revision_check",
+      sql`typeof(${t.revision}) = 'integer' and ${t.revision} between 1 and 9007199254740991`,
+    ),
+    check(
+      "directory_observation_seq_check",
+      sql`typeof(${t.seq}) = 'integer' and ${t.seq} between 1 and 9007199254740991`,
+    ),
+    check(
+      "directory_observation_result_check",
+      sql`(${t.kind} = 'accessible' and ${t.realPath} is not null and ${t.reason} is null and length(${t.realPath}) between 1 and 4096 and substr(${t.realPath}, 1, 1) = '/' and instr(${t.realPath}, char(0)) = 0) or (${t.kind} = 'unavailable' and ${t.realPath} is null and ${t.reason} is not null and ${t.reason} in ('missing', 'not_directory', 'denied', 'io_error'))`,
+    ),
   ],
 );

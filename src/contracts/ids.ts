@@ -1,6 +1,7 @@
 /** 固定前缀避免调用方为同一对象发明不同标记。 */
 export const ID_PREFIXES = {
   project: "prj",
+  machine: "mch",
   agentProfile: "agp",
   projectMember: "pmb",
   chat: "cnv",

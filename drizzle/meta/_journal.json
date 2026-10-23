@@ -43,6 +43,13 @@
       "when": 1792568405828,
       "tag": "0005_white_grey_gargoyle",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792737328014,
+      "tag": "0006_cooing_yellowjacket",
+      "breakpoints": true
     }
   ]
 }
