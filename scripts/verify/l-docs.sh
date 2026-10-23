@@ -39,7 +39,7 @@ const git = (...args) => {
 const slug = (heading) => heading.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}_\-\s]/gu, '').replace(/ /g, '-');
 const withoutFences = (text) => text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, '');
 const documents = new Map();
-for (const file of [...fs.globSync('docs/p2/*.md'), ...fs.globSync('docs/p3/*.md')]) {
+for (const file of fs.globSync('docs/**/*.md')) {
   const text = fs.readFileSync(file, 'utf8');
   const body = withoutFences(text);
   const headings = [...body.matchAll(/^#{1,6}\s+(.+)$/gm)];
@@ -83,7 +83,7 @@ const stageTable = plan.match(/^## 按依赖安排开发\n([\s\S]*?)(?=^## )/m)?
 const p2Status = stageTable.split('\n').find((line) => /^\| P2 \|/.test(line))?.split('|')[4]?.trim() ?? '';
 check(p2Status.includes('已完成') && linksIn(p2Status).includes('p2/summary.md'), 'P2 stage status must be completed and link to p2/summary.md');
 const nextTask = plan.trim().split(/\n\s*\n/).at(-1) ?? '';
-check(nextTask.startsWith('当前下一任务是 P4') && !/下一任务是\s*P2/.test(plan) && linksIn(nextTask).includes('p3/summary.md#未验证项汇总'), 'final next task must point to P4 with P3 limits and never to P2');
+check(nextTask.startsWith('当前下一任务是 P4') && /P4[ab]/.test(nextTask) && !/下一任务是\s*P2/.test(plan) && linksIn(nextTask).includes('p3/summary.md#未验证项汇总'), 'final next task must point to P4a or P4b progress with P3 limits and never to P2');
 const p2 = plan.match(/^## P2 [^\n]*\n([\s\S]*?)(?=^## )/m)?.[1] ?? '';
 const boxes = [...p2.matchAll(/^- \[([^\]])\] (.+)$/gm)];
 check(boxes.length === 6, `P2 must contain six checkboxes, found ${boxes.length}`);
@@ -189,8 +189,97 @@ check(git('rev-parse', '34b078e^1') === git('rev-parse', 'db185f8'), 'P3 baselin
 const p3Merges = git('log', '--first-parent', '--format=%h', 'db185f8..e5e2b4e').split('\n');
 check(p3Merges.join(',') === [...p3Units].reverse().map((unit) => unit.merge).join(','), 'P3 range differs from five recorded Git merges');
 git('merge-base', '--is-ancestor', '28d4fb2', 'db185f8');
+const commitExists = (sha) => {
+  try {
+    execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], { timeout: 10000, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+const boxesIn = (section) => [...section.matchAll(/^- \[([ x])\] (.+)$/gm)].map((match) => ({ state: match[1], text: match[2] }));
+const sectionOf = (text, heading, level) =>
+  text.match(new RegExp(`^${'#'.repeat(level)} ${heading} [^\\n]*\\n([\\s\\S]*?)(?=^${'#'.repeat(level)} |^${'#'.repeat(level - 1)} |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
+const evidenceTargets = (line, source) =>
+  linksIn(line)
+    .filter((link) => !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(link))
+    .map((link) => {
+      const [file, fragment = ''] = link.split('#');
+      return { file: path.resolve(path.dirname(source), decodeURIComponent(file)), fragment: decodeURIComponent(fragment) };
+    })
+    .filter((target) => target.file.startsWith(path.resolve('docs/p4a') + path.sep));
+const commitPattern = /`([0-9a-f]{7,40})`/g;
+const commandPattern = /`(bash scripts\/verify\/[\w-]+\.sh)`/g;
+const evidenceIn = (body, label) => {
+  const commits = [...body.matchAll(commitPattern)].map((match) => match[1]);
+  check(commits.length > 0, `${label}: evidence section lacks a Git commit`);
+  for (const sha of commits) check(commitExists(sha), `${label}: commit ${sha} does not resolve`);
+  totals.commits += commits.length;
+  const commands = [...body.matchAll(commandPattern)].map((match) => match[1]);
+  check(commands.length > 0, `${label}: evidence section lacks a rerun command`);
+  for (const command of commands) {
+    totals.commands++;
+    check(fs.existsSync(command.slice(5)), `${label}: missing command ${command}`);
+  }
+};
+const checkP4aLine = (line, label, source) => {
+  const evidence = evidenceTargets(line, source);
+  check(evidence.length > 0, `${label}: missing docs/p4a evidence`);
+  for (const target of evidence) {
+    totals.evidence++;
+    const document = documents.get(target.file);
+    check(Boolean(document), `${label}: missing evidence document ${target.file}`);
+    check(Boolean(target.fragment) && Boolean(document?.sections.has(target.fragment)), `${label}: missing evidence section ${target.fragment}`);
+    evidenceIn(document?.sections.get(target.fragment) ?? '', label);
+  }
+};
+const functional = 'docs/development-plan-functional.md';
+const p4 = sectionOf(plan, 'P4', 2);
+const p4a = sectionOf(p4, 'P4a', 3);
+const p4aBoxes = boxesIn(p4a);
+check(p4aBoxes.length === 4, `P4a must contain four checkboxes, found ${p4aBoxes.length}`);
+for (let i = 0; i < p4aBoxes.length; i++) {
+  if (p4aBoxes[i].state === 'x') checkP4aLine(p4aBoxes[i].text, `P4a checkbox ${i + 1}`, functional);
+}
+for (const sub of ['P4b', 'P4c', 'P4d']) {
+  const boxes = boxesIn(sectionOf(p4, sub, 3));
+  for (const box of boxes) check(box.state === ' ', `${sub} checkbox must remain unchecked: ${box.text}`);
+}
+const packagePlan = fs.readFileSync('docs/development-plan.md', 'utf8');
+const integration = sectionOf(packagePlan, 'I-P4a', 3);
+const integrationBoxes = boxesIn(integration);
+check(integrationBoxes.length === 4, `I-P4a must contain four checkboxes, found ${integrationBoxes.length}`);
+const integrationSummary = documents.get(path.resolve('docs/p4a/summary.md'));
+const technicalBox = integrationBoxes[2];
+if (technicalBox?.state === 'x') {
+  const body = integrationSummary?.sections.get('技术验收证据') ?? '';
+  check(Boolean(integrationSummary), 'I-P4a technical acceptance requires docs/p4a/summary.md');
+  check(Boolean(body), 'I-P4a technical acceptance requires docs/p4a/summary.md#技术验收证据');
+  evidenceIn(body, 'I-P4a technical acceptance');
+}
+const humanBox = integrationBoxes[3];
+if (humanBox?.state === 'x') {
+  const body = integrationSummary?.sections.get('human-体验确认') ?? '';
+  check(Boolean(integrationSummary), 'I-P4a human acceptance requires docs/p4a/summary.md');
+  check(Boolean(body), 'I-P4a human acceptance requires docs/p4a/summary.md#human-体验确认');
+  const record = body.match(/^- 确认记录：Human 亲自体验确认通过，版本 `([0-9a-f]{7,40})`$/m)?.[1] ?? '';
+  check(Boolean(record), 'I-P4a human acceptance requires an explicit confirmation record');
+  check(Boolean(record) && commitExists(record), `I-P4a human acceptance version ${record || '(none)'} does not resolve`);
+  check(!/^[-*]\s*待确认/m.test(body), 'I-P4a human acceptance must not treat pending confirmation as confirmed');
+}
+for (const stage of ['I-P4b', 'I-P4c', 'I-P4d', 'I-P5a', 'I-P5b', 'I-P6', 'I-P7']) {
+  const boxes = boxesIn(sectionOf(packagePlan, stage, 3));
+  check(boxes.length > 0, `${stage} checklist missing`);
+  for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
+}
+const uiPlan = fs.readFileSync('docs/development-plan-ui.md', 'utf8');
+for (const stage of ['UI-P4b', 'UI-P4c', 'UI-P4d', 'UI-P5a', 'UI-P5b', 'UI-P6', 'UI-P7']) {
+  const boxes = boxesIn(sectionOf(uiPlan, stage, 2));
+  check(boxes.length > 0, `${stage} checklist missing`);
+  for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
+}
 let futureCount = 0;
-for (const stage of ['P4', 'P5', 'P6', 'P7', 'P8', 'R1']) {
+for (const stage of ['P5', 'P6', 'P7', 'P8', 'R1']) {
   const section = plan.match(new RegExp(`^## ${stage} [^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
   const futureBoxes = [...section.matchAll(/^- \[([^\]])\] /gm)];
   check(futureBoxes.length > 0, `${stage} checklist missing`);
@@ -210,7 +299,9 @@ console.log('PASS P2 stage status is completed with summary link; final next tas
 console.log('PASS P3 seven checkboxes and summary states match: six checked, checkbox 2 unchecked with partial delivery');
 console.log('PASS P3 summary, acceptance, stage status and completion record; PR #19 to #22 match Git titles and second parents');
 console.log('PASS P2 final range 28d4fb2..db185f8 and P3 range db185f8..e5e2b4e match Git baselines and merges');
-console.log(`PASS P4 to P8 and R1 checkboxes remain unchecked=${futureCount}`);
+console.log(`PASS P4a accepts evidence-linked commits and commands; unchecked=${p4aBoxes.filter((box) => box.state !== 'x').length}`);
+console.log('PASS P4b and later checkboxes remain unchecked in functional, plan and UI documents');
+console.log(`PASS P5 to P8 and R1 checkboxes remain unchecked=${futureCount}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);
 console.log('PASS l-docs all checks passed');
 NODE
