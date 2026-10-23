@@ -76,7 +76,7 @@ page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
 const stamp = Date.now();
 const email = `project-flow-${stamp}@example.test`;
-const password = "{{SECRET_project-flow-pass}}";
+const password = "test-pass-project-flow";
 const projectName = `验收样例 ${stamp}`;
 const projectDescription = "浏览器验收创建的分层样例";
 const detailPath = () => new URL(page.url()).pathname;

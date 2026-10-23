@@ -60,7 +60,7 @@ page.on("dialog", (dialog) => dialog.accept());
 
 const stamp = Date.now();
 const email = `h-project-agents-${stamp}@example.test`;
-const password = "{{SECRET_h-project-agents-pass}}";
+const password = "test-pass-h-project-agents";
 const projectName = `P2-H 验收 ${stamp}`;
 const agentName = `P2-H Agent ${stamp}`;
 const initialPersona = "初始人设：谨慎的验收员";

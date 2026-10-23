@@ -221,7 +221,7 @@ beforeAll(() => {
       const { sqlite } = await import("./src/db/index.ts");
       const signUp = async (tag) => {
         const result = await auth.api.signUpEmail({
-          body: { email: tag + "-" + Date.now() + "@example.test", password: "{{SECRET_p2-i-error-mapping-pass}}", name: tag },
+          body: { email: tag + "-" + Date.now() + "@example.test", password: "test-pass-p2-i-error-mapping", name: tag },
           returnHeaders: true,
         });
         return { headers: new Headers({ cookie: result.headers.get("set-cookie").split(";")[0] }), userId: result.response.user.id };

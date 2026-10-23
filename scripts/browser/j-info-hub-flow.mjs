@@ -68,7 +68,7 @@ page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
 const stamp = Date.now();
 const email = `j-info-hub-${stamp}@example.test`;
-const password = "{{SECRET_p2-d-info-hub-pass}}";
+const password = "test-pass-p2-d-info-hub";
 const projectName = `P2-J 验收 ${stamp}`;
 const joinedName = `P2-J Agent ${stamp}`;
 const outsiderName = `P2-J Outsider ${stamp}`;

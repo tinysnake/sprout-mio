@@ -58,7 +58,7 @@ beforeAll(() => {
       const fields = (result) => Object.keys(result.fieldErrors ?? {}).sort();
       const signUp = async (tag) => {
         const result = await auth.api.signUpEmail({
-          body: { email: tag + "-" + Date.now() + "@example.test", password: "{{SECRET_p2-b-test-pass}}", name: tag },
+          body: { email: tag + "-" + Date.now() + "@example.test", password: "test-pass-p2-b", name: tag },
           returnHeaders: true,
         });
         return { headers: new Headers({ cookie: result.headers.get("set-cookie").split(";")[0] }), userId: result.response.user.id };

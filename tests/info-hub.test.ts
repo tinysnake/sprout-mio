@@ -68,7 +68,7 @@ beforeAll(() => {
       const code = (result) => result.ok ? "ok" : result.error.code;
       const signUp = async (tag) => {
         const result = await auth.api.signUpEmail({
-          body: { email: tag + "-" + Date.now() + "@example.test", password: "{{SECRET_p2-d-info-hub-pass}}", name: tag },
+          body: { email: tag + "-" + Date.now() + "@example.test", password: "test-pass-p2-d-info-hub", name: tag },
           returnHeaders: true,
         });
         return { headers: new Headers({ cookie: result.headers.get("set-cookie").split(";")[0] }), userId: result.response.user.id };

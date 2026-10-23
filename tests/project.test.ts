@@ -65,7 +65,7 @@ beforeAll(() => {
         lastEvent: sqlite.prepare("SELECT project_id, request_id FROM diagnostic_event ORDER BY rowid DESC LIMIT 1").get(),
       });
       const signUp = await auth.api.signUpEmail({
-        body: { email: "project-" + Date.now() + "@example.test", password: "{{SECRET_e-project-test-pass}}", name: "Project verifier" },
+        body: { email: "project-" + Date.now() + "@example.test", password: "test-pass-e-project", name: "Project verifier" },
         returnHeaders: true,
       });
       const headers = new Headers({ cookie: signUp.headers.get("set-cookie").split(";")[0] });

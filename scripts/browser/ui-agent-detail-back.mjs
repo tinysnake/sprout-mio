@@ -41,7 +41,7 @@ page.on("pageerror", (error) => consoleErrors.push(String(error)));
 
 const stamp = Date.now();
 const email = `ui-fb-back-${stamp}@example.test`;
-const password = "{{SECRET_ui-fb-back-pass}}";
+const password = "test-pass-ui-fb-back";
 const agentName = `UI-FB Back Agent ${stamp}`;
 const pathOf = () => new URL(page.url()).pathname;
 const searchOf = () => new URL(page.url()).search;

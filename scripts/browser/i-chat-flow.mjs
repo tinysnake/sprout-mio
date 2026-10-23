@@ -141,7 +141,7 @@ if (process.env.CHAT_VERIFY === "1") {
 
   const stamp = Date.now();
   const email = `i-chat-${stamp}@example.test`;
-  const password = "{{SECRET_p2-c-chat-pass}}";
+  const password = "test-pass-p2-c-chat";
   const projectName = `P2-I 验收 ${stamp}`;
   const agentName = `P2-I Agent ${stamp}`;
   const initialPersona = "初始人设：谨慎的对话对象";
