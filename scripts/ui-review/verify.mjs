@@ -74,7 +74,7 @@ try {
   }
   for (const url of [
     "http://127.0.0.1:3000/login",
-    "http://10.0.0.13:3000/login",
+    "http://192.168.1.10:3000/login",
     "http://192.168.1.5:3000/login",
     "http://172.20.0.2:3000/login",
     "http://100.101.102.103:3000/login",
@@ -82,7 +82,12 @@ try {
   ]) {
     assert.equal(localAppUrl(url).href, url);
   }
-  for (const host of ["10.0.0.13:4400", "127.0.0.1:4400", "mio.local:4400", "example.com:4400"]) {
+  for (const host of [
+    "192.168.1.10:4400",
+    "127.0.0.1:4400",
+    "mio.local:4400",
+    "example.com:4400",
+  ]) {
     const request = { headers: { host } };
     assert.equal(
       allowedRequest(request, 4400),

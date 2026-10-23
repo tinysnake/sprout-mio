@@ -16,7 +16,7 @@ function isInternalAddress(octets: readonly number[]): boolean {
 
 /**
  * 主机段要么是 `localhost` / `*.localhost` / `*.local` / `*`，要么是四段 IPv4
- * 模式，且 `*` 只能替换末尾一段，例如 `10.144.144.*`。展开后必须落在内网网段，
+ * 模式，且 `*` 只能替换末尾一段，例如 `192.168.50.*`。展开后必须落在内网网段，
  * 所以 `http://*.example.com` 与 `http://8.8.*` 都不成立。
  */
 function isInternalHostPattern(hostname: string): boolean {
@@ -92,7 +92,7 @@ const environmentSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32).optional(),
   /**
    * 额外的可信 origin（逗号分隔，可用内网通配）。`APP_ORIGIN` 始终可信；这里用于
-   * 同一进程经不同内网 / VPN 地址访问，例如 `http://10.144.144.*:3210`。
+   * 同一进程经不同内网 / VPN 地址访问，例如 `http://192.168.50.*:3210`。
    */
   APP_TRUSTED_ORIGINS: z
     .string()

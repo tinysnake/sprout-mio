@@ -18,8 +18,8 @@ pi --extension ./scripts/ui-review/pi-extension.mjs
 
 review 代理固定监听全部接口（`0.0.0.0`），Lavish 后端仍只监听本机回环并由代理转发，所以只需让浏览器访问代理端口。要让其他设备可用：
 
-- 应用同样监听全部接口（`pnpm dev`、`pnpm start`）。把常用地址设为 `APP_ORIGIN`（如 `http://10.0.0.13:3200`），其他内网 / VPN 地址放进 `APP_TRUSTED_ORIGINS`（如 `http://10.144.144.*:3200`）；只接受回环与内网模式。
-- 入口决定 iframe 的 hostname：省略时用上面解析出的应用 origin，给完整 URL 时用该 URL。例如让 agent `ui_review({ action: "start", entry: "http://10.0.0.13:3000/login" })`；用 `localhost` 启动后从手机打开 `http://10.0.0.13:4400/...` 时，iframe 会指向手机自己的 localhost 而失败。
+- 应用同样监听全部接口（`pnpm dev`、`pnpm start`）。把常用地址设为 `APP_ORIGIN`（如 `http://192.168.1.10:3200`），其他内网 / VPN 地址放进 `APP_TRUSTED_ORIGINS`（如 `http://192.168.50.*:3200`）；只接受回环与内网模式。
+- 入口决定 iframe 的 hostname：省略时用上面解析出的应用 origin，给完整 URL 时用该 URL。例如让 agent `ui_review({ action: "start", entry: "http://192.168.1.10:3000/login" })`；用 `localhost` 启动后从手机打开 `http://192.168.1.10:4400/...` 时，iframe 会指向手机自己的 localhost 而失败。
 - 代理接受回环、`10/8`、`172.16/12`、`192.168/16`、`169.254/16`、CGNAT(`100.64/10`，含 Tailscale)、IPv6 ULA/链路本地与 `.local` 主机名，公网域名被拒；同时要求 `Origin` 与请求自身的 `Host` 同源。
 - 该代理没有额外鉴权，也没有「只监听回环」的开关，只应在可信内网使用；需要限制来源时在系统防火墙或前置代理上做，改动工具本身要同时更新本节的验证。
 

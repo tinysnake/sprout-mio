@@ -166,11 +166,11 @@ describe("配置边界", () => {
 
   it("额外可信 origin 只接受回环与内网模式，通配不跨层次也不落到公网", () => {
     const config = parseConfig({
-      APP_ORIGIN: "http://10.0.0.13:3210",
-      APP_TRUSTED_ORIGINS: "http://10.144.144.*:3210, http://*.local:3210 ,http://localhost:3000",
+      APP_ORIGIN: "http://192.168.1.10:3210",
+      APP_TRUSTED_ORIGINS: "http://192.168.50.*:3210, http://*.local:3210 ,http://localhost:3000",
     });
     expect(config.APP_TRUSTED_ORIGINS).toEqual([
-      "http://10.144.144.*:3210",
+      "http://192.168.50.*:3210",
       "http://*.local:3210",
       "http://localhost:3000",
     ]);
@@ -179,36 +179,38 @@ describe("配置边界", () => {
       "*:3210",
       "http://*:3210",
       "http://*.example.com:3210",
-      "http://10.0.0.13:3210/login",
-      "http://10.0.0.13:3210/",
-      "ftp://10.0.0.13:3210",
-      "http://10.0.0.13:0",
-      "http://10.0.0.13:99999",
-      "http://user:pw@10.0.0.13:3210",
+      "http://192.168.1.10:3210/login",
+      "http://192.168.1.10:3210/",
+      "ftp://192.168.1.10:3210",
+      "http://192.168.1.10:0",
+      "http://192.168.1.10:99999",
+      "http://user:pw@192.168.1.10:3210",
     ])
       expect(() => parseConfig({ APP_TRUSTED_ORIGINS: value })).toThrow("APP_TRUSTED_ORIGINS");
   });
 
   it("可信来源判定按整串匹配，主 origin 始终可信，缺失或无来源不放行", () => {
-    const patterns = ["http://10.144.144.*:3210"];
-    expect(originMatchesPattern("http://10.144.144.*:3210", "http://10.144.144.4:3210")).toBe(true);
-    expect(originMatchesPattern("http://10.144.144.*:3210", "http://10.144.144.4:9999")).toBe(
+    const patterns = ["http://192.168.50.*:3210"];
+    expect(originMatchesPattern("http://192.168.50.*:3210", "http://192.168.50.4:3210")).toBe(true);
+    expect(originMatchesPattern("http://192.168.50.*:3210", "http://192.168.50.4:9999")).toBe(
       false,
     );
-    expect(originMatchesPattern("http://10.144.144.*:3210", "http://10.144.145.4:3210")).toBe(
+    expect(originMatchesPattern("http://192.168.50.*:3210", "http://192.168.51.4:3210")).toBe(
       false,
     );
-    expect(originMatchesPattern("http://10.144.144.*:3210", "http://evil.example:3210")).toBe(
+    expect(originMatchesPattern("http://192.168.50.*:3210", "http://evil.example:3210")).toBe(
       false,
     );
-    expect(isTrustedOrigin("http://10.0.0.13:3210", "http://10.0.0.13:3210", patterns)).toBe(true);
-    expect(isTrustedOrigin("http://10.144.144.7:3210", "http://10.0.0.13:3210", patterns)).toBe(
+    expect(isTrustedOrigin("http://192.168.1.10:3210", "http://192.168.1.10:3210", patterns)).toBe(
       true,
     );
-    expect(isTrustedOrigin("http://evil.example:3210", "http://10.0.0.13:3210", patterns)).toBe(
+    expect(isTrustedOrigin("http://192.168.50.7:3210", "http://192.168.1.10:3210", patterns)).toBe(
+      true,
+    );
+    expect(isTrustedOrigin("http://evil.example:3210", "http://192.168.1.10:3210", patterns)).toBe(
       false,
     );
-    expect(isTrustedOrigin(null, "http://10.0.0.13:3210", patterns)).toBe(false);
-    expect(isTrustedOrigin("", "http://10.0.0.13:3210", patterns)).toBe(false);
+    expect(isTrustedOrigin(null, "http://192.168.1.10:3210", patterns)).toBe(false);
+    expect(isTrustedOrigin("", "http://192.168.1.10:3210", patterns)).toBe(false);
   });
 });

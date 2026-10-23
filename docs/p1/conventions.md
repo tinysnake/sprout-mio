@@ -45,9 +45,9 @@ return ok(input.data, requestId);
 
 应用使用 frozen `config`。默认 `DATABASE_URL` 为 `./data/sprout.sqlite`，`APP_ORIGIN` 为 `http://localhost:3000`，`PORT` 为 3000，`NODE_ENV` 为 `development`，`LOG_LEVEL` 为 `info`。`APP_ORIGIN` 必须是完整的 http 或 https origin，不带路径。`PORT` 必须是 1 到 65535 的整数。
 
-开发与生产入口都监听全部接口（`0.0.0.0`）：`pnpm dev` 显式带 `--host 0.0.0.0`，`pnpm start` 的 Node 入口未指定 host 时由框架绑定全部接口。因此可以用 `127.0.0.1`、局域网 IP 或 VPN 地址打开页面。`APP_ORIGIN` 仍是主 origin：auth 的 `baseURL`、cookie 与回调按它生成。要同时接受其他内网或 VPN 地址，在 `APP_TRUSTED_ORIGINS` 里列出模式（逗号分隔），例如 `http://10.0.0.13:3200,http://10.144.144.*:3200`；`APP_ORIGIN` 隐式可信，不需要重复写。校验入口是 `src/lib/origin.ts` 的 `isTrustedOrigin`，Better Auth 的 `trustedOrigins` 共用同一份列表。
+开发与生产入口都监听全部接口（`0.0.0.0`）：`pnpm dev` 显式带 `--host 0.0.0.0`，`pnpm start` 的 Node 入口未指定 host 时由框架绑定全部接口。因此可以用 `127.0.0.1`、局域网 IP 或 VPN 地址打开页面。`APP_ORIGIN` 仍是主 origin：auth 的 `baseURL`、cookie 与回调按它生成。要同时接受其他内网或 VPN 地址，在 `APP_TRUSTED_ORIGINS` 里列出模式（逗号分隔），例如 `http://192.168.1.10:3200,http://192.168.50.*:3200`；`APP_ORIGIN` 隐式可信，不需要重复写。校验入口是 `src/lib/origin.ts` 的 `isTrustedOrigin`，Better Auth 的 `trustedOrigins` 共用同一份列表。
 
-可信模式必须是完整 http 或 https origin：主机段可以是 `localhost`、`*.localhost`、`*.local`，或四段 IPv4 中末尾一段写 `*`（如 `10.144.144.*`）。展开后的地址必须落在回环、私有网段、链路本地或 CGNAT 内；`http://*:3000`、公网域名、带路径或带凭据的写法都会被配置解析拒绝。模式按整串匹配，不做前缀匹配。绑定全部接口意味着同一网络内的其他设备可以访问未认证的页面根与 API；本机处可信内网时可直接使用，其他环境需自行加前置鉴权或改为只监听回环。
+可信模式必须是完整 http 或 https origin：主机段可以是 `localhost`、`*.localhost`、`*.local`，或四段 IPv4 中末尾一段写 `*`（如 `192.168.50.*`）。展开后的地址必须落在回环、私有网段、链路本地或 CGNAT 内；`http://*:3000`、公网域名、带路径或带凭据的写法都会被配置解析拒绝。模式按整串匹配，不做前缀匹配。绑定全部接口意味着同一网络内的其他设备可以访问未认证的页面根与 API；本机处可信内网时可直接使用，其他环境需自行加前置鉴权或改为只监听回环。
 
 认证限流在所有环境始终启用，没有关闭开关。`AUTH_RATE_LIMIT_MAX` 默认 5，校验为 1 到 1000 的整数，控制 server function 账号预算；`AUTH_RATE_LIMIT_WINDOW_SECONDS` 默认 60，校验为 1 到 3600 的整数，是两个边界的窗口秒数；`AUTH_RATE_LIMIT_GLOBAL_MAX` 默认 100，校验为 1 到 10000 的整数，只控制 server function 进程总预算；`AUTH_RATE_LIMIT_HTTP_MAX` 默认 100，校验为 1 到 10000 的整数，独立控制所有 Better Auth HTTP 路径的每 IP、每路径预算。server function 不读取 IP 请求头。HTTP 保留 Better Auth 默认 IP header 解析，直连或不受信代理下可被伪造，只有部署在受信代理后其 per-IP 分桶才有意义。不可通过伪造 IP 绕过的是 server function 按账号预算，不能将此保证推广到 HTTP 路径。进程内存预算不跨重启或进程共享，部署变更需重新评估。
 
