@@ -484,7 +484,7 @@ try {
       text: element.textContent ?? "",
     }));
     assert.ok(command.scrollWidth > command.clientWidth, "长命令不能只靠页面溢出展示");
-    assert.ok(command.text.includes("--state-dir <dir>"));
+    assert.ok(command.text.includes('--state-dir "$HOME/.local/share/sprout-worker/identity"'));
     assert.ok(!command.text.includes("--ticket"));
     const reachedEnd = await narrow.page.getByTestId("machine-command-init").evaluate((element) => {
       element.scrollLeft = element.scrollWidth;
