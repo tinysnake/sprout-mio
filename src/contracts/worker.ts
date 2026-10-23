@@ -4,8 +4,8 @@ import {
   capabilitySnapshotSchema,
   directoryObservationSchema,
   machineIdSchema,
+  macosAbsolutePathSchema,
   positiveSafeIntegerSchema,
-  projectMachineIntentSchema,
 } from "./machine";
 
 export const WORKER_PROTOCOL_VERSION = 1;
@@ -111,7 +111,14 @@ export const workerExchangeResponseSchema = z.union([
     data: z.strictObject({
       session: workerSessionSchema,
       seq: positiveSafeIntegerSchema,
-      bindings: z.array(projectMachineIntentSchema),
+      root: macosAbsolutePathSchema.nullable(),
+      rootRevision: positiveSafeIntegerSchema,
+      bindings: z.array(
+        z.strictObject({
+          projectId: z.string().regex(appIdPattern(ID_PREFIXES.project)),
+          description: z.string().max(500),
+        }),
+      ),
     }),
   }),
   failureSchema,

@@ -7,6 +7,7 @@ import {
   listMachinesInput,
   listProjectMachinesInput,
   renewMachineEnrollmentInput,
+  saveMachineRootDirectoryInput,
   saveProjectMachineBindingInput,
 } from "../../contracts/machine";
 import type { MachineResult } from "../../contracts/machine";
@@ -71,6 +72,14 @@ export const listProjectMachinesBoundary = (raw: unknown, headers: Headers, requ
   boundary(raw, headers, requestId, listProjectMachinesInput, (d, i, c) =>
     d.listProjectMachines(i.projectId, c),
   );
+export const saveMachineRootDirectoryBoundary = (
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+) =>
+  boundary(raw, headers, requestId, saveMachineRootDirectoryInput, (d, i, c) =>
+    d.saveMachineRootDirectory(i, c),
+  );
 export const saveProjectMachineBindingBoundary = (
   raw: unknown,
   headers: Headers,
@@ -104,6 +113,11 @@ export const listProjectMachinesFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     listProjectMachinesBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+export const saveMachineRootDirectoryFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    saveMachineRootDirectoryBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 export const saveProjectMachineBindingFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)

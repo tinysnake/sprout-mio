@@ -2,14 +2,13 @@ import { Clock, Duration, Effect, Fiber, Schedule } from "effect";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ID_PREFIXES, newId } from "../contracts/ids";
-import type { ProjectMachineIntent } from "../contracts/machine";
 import {
   workerCloseResponseSchema,
   workerEnrollResponseSchema,
   workerExchangeResponseSchema,
   workerOpenResponseSchema,
 } from "../contracts/worker";
-import type { WorkerSession } from "../contracts/worker";
+import type { WorkerSession, WorkerExchangeResponse } from "../contracts/worker";
 import type { Identity } from "./identity";
 import { probeCapability, probeDirectory } from "./probes";
 
@@ -121,17 +120,20 @@ export function workerProgram(identity: Identity) {
           try: () => probeCapability(capabilityCheckedAt),
           catch: () => new ClientError("probe_failed"),
         });
-        let bindings: ProjectMachineIntent[] = [];
+        let configuration: Extract<WorkerExchangeResponse, { ok: true }>["data"] | undefined;
         let seq = 1;
         while (true) {
           const checkedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
           const observations = yield* Effect.tryPromise({
-            try: () =>
-              Promise.all(
-                bindings
-                  .filter((binding) => binding.directory !== null)
-                  .map((binding) => probeDirectory(binding, session!, seq, checkedAt)),
-              ),
+            try: () => {
+              if (!configuration || configuration.root === null) return Promise.resolve([]);
+              const { root, rootRevision, bindings } = configuration;
+              return Promise.all(
+                bindings.map((binding) =>
+                  probeDirectory(root, binding.projectId, rootRevision, session!, seq, checkedAt),
+                ),
+              );
+            },
             catch: () => new ClientError("probe_failed"),
           });
           const exchanged = yield* request(
@@ -145,12 +147,12 @@ export function workerProgram(identity: Identity) {
               session = undefined;
               break;
             }
-            if (exchanged.failure.code === "conflict") bindings = [];
+            if (exchanged.failure.code === "conflict") configuration = undefined;
             else return yield* Effect.fail(exchanged.failure);
           } else {
             if (!exchanged.success.ok)
               return yield* Effect.fail(new ClientError("invalid_response"));
-            bindings = exchanged.success.data.bindings;
+            configuration = exchanged.success.data;
             console.log(
               JSON.stringify({
                 event: "worker.exchange",

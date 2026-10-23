@@ -7,6 +7,8 @@ import type {
   MachineDetail,
   MachineEnrollment,
   ProjectMachineIntent,
+  MachineRootDirectory,
+  SaveMachineRootDirectoryInput,
   SaveProjectMachineBindingInput,
 } from "../contracts/machine";
 import { WORKER_ENROLLMENT_TTL_MS, WORKER_STALE_AFTER_MS } from "../contracts/worker";
@@ -78,11 +80,10 @@ export function toIntent(row: typeof projectMachine.$inferSelect): ProjectMachin
     projectId: row.projectId,
     machineId: row.machineId,
     description: row.description,
-    directory: row.directory,
     revision: row.revision,
   };
 }
-export function machineBindings(machineId: string) {
+export function machineBindings(machineId: string): ProjectMachineIntent[] {
   return db
     .select()
     .from(projectMachine)
@@ -162,7 +163,8 @@ export function getMachine(input: GetMachineInput, ctx: MachineContext): Machine
                 current:
                   current &&
                   fact.generation === connection?.generation &&
-                  fact.revision === binding.revision,
+                  fact.revision === row.rootRevision &&
+                  row.rootDirectory !== null,
                 fact: {
                   machineId: fact.machineId,
                   generation: fact.generation,
@@ -296,6 +298,30 @@ export function renewMachineEnrollment(
     })
     .immediate();
 }
+export function saveMachineRootDirectory(
+  input: SaveMachineRootDirectoryInput,
+  ctx: MachineContext,
+  hooks: MachineHooks = {},
+): MachineRootDirectory {
+  return sqlite
+    .transaction(() => {
+      const row = owned(input.machineId, ctx);
+      if (row.rootRevision !== input.expectedRevision)
+        throw new MachineError("conflict", "根目录版本冲突");
+      if (row.rootDirectory === input.directory)
+        return { machineId: row.id, directory: row.rootDirectory, revision: row.rootRevision };
+      if (row.rootRevision === Number.MAX_SAFE_INTEGER)
+        throw new MachineError("conflict", "根目录版本冲突");
+      const revision = row.rootRevision + 1;
+      db.update(machine)
+        .set({ rootDirectory: input.directory, rootRevision: revision, updatedAt: ctx.now })
+        .where(eq(machine.id, row.id))
+        .run();
+      diagnostic("machine.root_saved", ctx, hooks);
+      return { machineId: row.id, directory: input.directory, revision };
+    })
+    .immediate();
+}
 export function saveProjectMachineBinding(
   input: SaveProjectMachineBindingInput,
   ctx: MachineContext,
@@ -310,8 +336,7 @@ export function saveProjectMachineBinding(
         eq(projectMachine.projectId, input.projectId),
       );
       const old = db.select().from(projectMachine).where(where).get();
-      if (old && old.description === input.description && old.directory === input.directory)
-        return toIntent(old);
+      if (old && old.description === input.description) return toIntent(old);
       if (
         (old?.revision ?? null) !== input.expectedRevision ||
         old?.revision === Number.MAX_SAFE_INTEGER
@@ -323,7 +348,6 @@ export function saveProjectMachineBinding(
         projectId: input.projectId,
         createdBy: ctx.userId,
         description: input.description,
-        directory: input.directory,
         revision,
         createdAt: ctx.now,
         updatedAt: ctx.now,
@@ -332,7 +356,6 @@ export function saveProjectMachineBinding(
         db.update(projectMachine)
           .set({
             description: input.description,
-            directory: input.directory,
             revision,
             updatedAt: ctx.now,
           })

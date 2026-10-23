@@ -1,12 +1,8 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
-import type {
-  CapabilitySnapshot,
-  DirectoryObservation,
-  ProjectMachineIntent,
-  ShellFact,
-} from "../contracts/machine";
+import type { CapabilitySnapshot, DirectoryObservation, ShellFact } from "../contracts/machine";
+import { projectWorkingPath } from "../contracts/machine";
 import type { WorkerSession } from "../contracts/worker";
 import { APP_VERSION } from "../contracts/version";
 
@@ -84,14 +80,16 @@ export async function probeCapability(checkedAt: string): Promise<CapabilitySnap
   };
 }
 export async function probeDirectory(
-  intent: ProjectMachineIntent,
+  root: string,
+  projectId: string,
+  rootRevision: number,
   session: WorkerSession,
   seq: number,
   checkedAt: string,
 ): Promise<DirectoryObservation> {
   let result: DirectoryObservation["result"];
   try {
-    const path = intent.directory!;
+    const path = projectWorkingPath(root, projectId);
     if (!(await stat(path)).isDirectory())
       result = { kind: "unavailable", reason: "not_directory" };
     else {
@@ -116,8 +114,8 @@ export async function probeDirectory(
   return {
     machineId: session.machineId,
     generation: session.generation,
-    projectId: intent.projectId,
-    revision: intent.revision,
+    projectId,
+    revision: rootRevision,
     seq,
     checkedAt,
     result,

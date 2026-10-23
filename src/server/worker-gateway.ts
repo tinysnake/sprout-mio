@@ -13,6 +13,7 @@ import type { WorkerSession, WORKER_ERROR_CODES } from "../contracts/worker";
 import { db, sqlite } from "../db";
 import {
   directoryObservation,
+  machine,
   machineConnection,
   machineConnectionCounter,
   machineCredential,
@@ -181,7 +182,18 @@ export function exchangeWorker(input: z.infer<typeof workerExchangeInput>, ctx: 
         .digest("hex");
       if (seq < row.seq || (seq === row.seq && row.lastPayloadHash !== payloadHash))
         throw new WorkerError("conflict");
-      if (seq === row.seq) return { session, seq, bindings: machineBindings(session.machineId) };
+      const root = db.select().from(machine).where(eq(machine.id, session.machineId)).get()!;
+      const response = () => ({
+        session,
+        seq,
+        root: root.rootDirectory,
+        rootRevision: root.rootRevision,
+        bindings: machineBindings(session.machineId).map(({ projectId, description }) => ({
+          projectId,
+          description,
+        })),
+      });
+      if (seq === row.seq) return response();
       for (const observation of observations) {
         const binding = db
           .select()
@@ -193,7 +205,7 @@ export function exchangeWorker(input: z.infer<typeof workerExchangeInput>, ctx: 
             ),
           )
           .get();
-        if (!binding || binding.revision !== observation.revision || binding.directory === null)
+        if (!binding || root.rootRevision !== observation.revision || root.rootDirectory === null)
           throw new WorkerError("conflict");
         const values = {
           machineId: session.machineId,
@@ -228,7 +240,7 @@ export function exchangeWorker(input: z.infer<typeof workerExchangeInput>, ctx: 
           ),
         )
         .run();
-      return { session, seq, bindings: machineBindings(session.machineId) };
+      return response();
     })
     .immediate();
 }

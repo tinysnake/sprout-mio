@@ -10,6 +10,7 @@ import {
   listMachines,
   listProjectMachines,
   renewMachineEnrollment,
+  saveMachineRootDirectory,
   saveProjectMachineBinding,
 } from "../../src/domain/machine";
 import {
@@ -85,10 +86,32 @@ const binding = {
   machineId,
   projectId,
   description: "local",
-  directory: "/tmp",
   expectedRevision: null,
 };
-const intent = saveProjectMachineBinding(binding, ctx);
+saveProjectMachineBinding(binding, ctx);
+assert.equal(getMachine({ machineId }, ctx).bindings[0]?.observation, null);
+assert.equal(getMachine({ machineId }, ctx).machine.rootDirectory, null);
+const rootInput = { machineId, directory: "/tmp", expectedRevision: 1 };
+assert.throws(
+  () => saveMachineRootDirectory(rootInput, { ...ctx, userId: "other" }),
+  fail("not_found"),
+);
+assert.throws(
+  () => saveMachineRootDirectory({ ...rootInput, expectedRevision: null }, ctx),
+  fail("conflict"),
+);
+assert.throws(() =>
+  saveMachineRootDirectory(rootInput, ctx, {
+    beforeDiagnostic: () => {
+      throw new Error("diagnostic failed");
+    },
+  }),
+);
+assert.equal(getMachine({ machineId }, ctx).machine.rootRevision, 1);
+const root = saveMachineRootDirectory(rootInput, ctx);
+assert.deepEqual(root, { machineId, directory: "/tmp", revision: 2 });
+assert.equal(saveMachineRootDirectory({ ...rootInput, expectedRevision: 2 }, ctx).revision, 2);
+assert.throws(() => saveMachineRootDirectory(rootInput, ctx), fail("conflict"));
 assert.equal(saveProjectMachineBinding(binding, ctx).revision, 1);
 assert.throws(
   () => saveProjectMachineBinding({ ...binding, description: "wrong" }, ctx),
@@ -121,14 +144,17 @@ const exchange = {
       machineId,
       projectId,
       generation: first.generation,
-      revision: intent.revision,
+      revision: root.revision,
       seq: 1,
       checkedAt: now.toISOString(),
       result: { kind: "accessible" as const, realPath: "/private/tmp" },
     },
   ],
 };
-exchangeWorker(exchange, ctx);
+const configuration = exchangeWorker(exchange, ctx);
+assert.equal(configuration.root, "/tmp");
+assert.equal(configuration.rootRevision, root.revision);
+assert.deepEqual(configuration.bindings, [{ projectId, description: "local" }]);
 exchangeWorker(
   { ...exchange, requestId: newId(ID_PREFIXES.request) },
   { ...ctx, now: new Date(now.getTime() + 1000) },
@@ -144,15 +170,42 @@ assert.throws(
   fail("unauthorized"),
 );
 saveProjectMachineBinding({ ...binding, description: "new", expectedRevision: 1 }, ctx);
+assert.equal(getMachine({ machineId }, ctx).bindings[0]?.observation?.current, true);
+exchangeWorker(
+  { ...exchange, seq: 2, observations: exchange.observations.map((o) => ({ ...o, seq: 2 })) },
+  ctx,
+);
+saveMachineRootDirectory({ machineId, directory: null, expectedRevision: root.revision }, ctx);
 assert.equal(getMachine({ machineId }, ctx).bindings[0]?.observation?.current, false);
 assert.throws(
   () =>
     exchangeWorker(
-      { ...exchange, seq: 2, observations: exchange.observations.map((o) => ({ ...o, seq: 2 })) },
+      {
+        ...exchange,
+        seq: 3,
+        observations: exchange.observations.map((o) => ({
+          ...o,
+          seq: 3,
+          revision: root.revision + 1,
+        })),
+      },
       ctx,
     ),
   fail("conflict"),
 );
+const refreshed = saveMachineRootDirectory(
+  { machineId, directory: "/changed", expectedRevision: root.revision + 1 },
+  ctx,
+);
+assert.throws(
+  () =>
+    exchangeWorker(
+      { ...exchange, seq: 3, observations: exchange.observations.map((o) => ({ ...o, seq: 3 })) },
+      ctx,
+    ),
+  fail("conflict"),
+);
+assert.equal(refreshed.revision, root.revision + 2);
 const second = openWorker({ ...wire, attemptId: randomUUID() }, ctx).session;
 assert.equal(second.generation, first.generation + 1);
 for (const action of [
@@ -198,6 +251,17 @@ assert.throws(
   () =>
     saveProjectMachineBinding(
       { ...binding, description: "overflow", expectedRevision: Number.MAX_SAFE_INTEGER },
+      ctx,
+    ),
+  fail("conflict"),
+);
+sqlite
+  .prepare("UPDATE machine SET root_revision=? WHERE id=?")
+  .run(Number.MAX_SAFE_INTEGER, machineId);
+assert.throws(
+  () =>
+    saveMachineRootDirectory(
+      { machineId, directory: "/overflow", expectedRevision: Number.MAX_SAFE_INTEGER },
       ctx,
     ),
   fail("conflict"),

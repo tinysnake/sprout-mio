@@ -382,6 +382,8 @@ export const machine = sqliteTable(
   {
     id: text("id").primaryKey().notNull(),
     name: text("name").notNull(),
+    rootDirectory: text("root_directory"),
+    rootRevision: integer("root_revision").notNull().default(1),
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id),
@@ -391,6 +393,14 @@ export const machine = sqliteTable(
   (t) => [
     uniqueIndex("machine_id_owner_unique").on(t.id, t.createdBy),
     check("machine_name_check", sql`length(trim(${t.name})) between 1 and 80`),
+    check(
+      "machine_root_directory_check",
+      sql`${t.rootDirectory} is null or (length(${t.rootDirectory}) between 1 and 4096 and substr(${t.rootDirectory}, 1, 1) = '/' and instr(${t.rootDirectory}, char(0)) = 0)`,
+    ),
+    check(
+      "machine_root_revision_check",
+      sql`typeof(${t.rootRevision}) = 'integer' and ${t.rootRevision} between 1 and 9007199254740991`,
+    ),
   ],
 );
 
@@ -494,7 +504,6 @@ export const projectMachine = sqliteTable(
     machineId: text("machine_id").notNull(),
     createdBy: text("created_by").notNull(),
     description: text("description").notNull().default(""),
-    directory: text("directory"),
     revision: integer("revision").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
@@ -514,10 +523,6 @@ export const projectMachine = sqliteTable(
       sql`typeof(${t.revision}) = 'integer' and ${t.revision} between 1 and 9007199254740991`,
     ),
     check("project_machine_description_check", sql`length(${t.description}) <= 500`),
-    check(
-      "project_machine_directory_check",
-      sql`${t.directory} is null or (length(${t.directory}) between 1 and 4096 and substr(${t.directory}, 1, 1) = '/' and instr(${t.directory}, char(0)) = 0)`,
-    ),
   ],
 );
 
