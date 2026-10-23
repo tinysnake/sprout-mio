@@ -31,9 +31,9 @@ BETTER_AUTH_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toSt
 node scripts/browser/p4a-machine-scenes.mjs
 ```
 
-票据与续签状态按 `machineId` 归属：`machineId` 改变时清空票据、错误与 pending；迟到的续签结果只在发起它的 Machine 仍是当前 Machine 时写入。配对状态从待配对变为已配对时不再显示旧票据。绑定表单以 `Machine × Project` 为同步主键，revision 未变的重复读取不会覆盖正在编辑的草稿；说明可留空，长度与目录规则直接复用 `saveProjectMachineBindingInput`。
+票据与续签状态按 `machineId` 归属：`machineId` 改变时清空票据、错误与 pending；迟到的续签结果只在发起它的 Machine 仍是当前 Machine 时写入。配对状态从待配对变为已配对时不再显示旧票据。绑定表单以 `Machine × Project` 为同步主键，revision 未变的重复读取不会覆盖正在编辑的草稿；说明可留空，长度规则复用 `saveProjectMachineBindingInput`，绑定表单不再编辑目录。Machine root 编辑区复用 `saveMachineRootDirectoryInput`，以当前 rootRevision 保存；冲突刷新事实并保留草稿后允许重试。
 
-演示覆盖：在线/连接中/断线（stale、closed）、配对待用/已配对、无能力快照、旧代次能力与旧目录观察、绑定 revision、空态、创建失败、续签失败、绑定保存失败、Project 切换。所有模拟操作在 `src/dev/scenes/machine/index.tsx` 内，面板明确标注“演示数据与本地模拟操作”，不冒充服务成功（无假 requestId，使用固定 `DEMO_REQUEST_ID` 的演示结果仅用于展示错误块）。
+演示覆盖：在线/连接中/断线（stale、closed）、配对待用/已配对、无能力快照、旧代次能力与旧目录观察、绑定 revision、root revision、root 修改警告、root 清空、失败保留与冲突重试、空态、创建失败、续签失败、绑定保存失败、Project 切换。所有模拟操作在 `src/dev/scenes/machine/index.tsx` 内，面板明确标注“演示数据与本地模拟操作”，不冒充服务成功（无假 requestId，使用固定 `DEMO_REQUEST_ID` 的演示结果仅用于展示错误块）。
 
 ## 验证
 
@@ -45,7 +45,7 @@ node scripts/browser/p4a-machine-scenes.mjs
 | 全量测试       | `pnpm test`                                   | 见 `/tmp/sprout-p4a-ui-report.md`                                               |
 | 浏览器         | `node scripts/browser/p4a-machine-scenes.mjs` | 19/19 PASS                                                                      |
 
-浏览器脚本断言：列表状态文案不出现“空闲/已释放”；详情分离配对与连接；Shell 能力来自 `CapabilitySnapshot`；安装命令不含 `--ticket`，票据默认隐藏且长度 43；空说明可保存且显示“（无说明）”，保存后旧 revision 的目录观察不再标记“当前可达”；绑定保存后显示 revision 且声明“不代表 Worker 已验证该目录可达”；保存/创建失败保留输入；续签抛网络错误时显示安全错误、pending 恢复且异常细节不外泄；续签后切到另一台 Machine 不出现前一台的票据；待配对转已配对后旧票据消失；active 无续签；390 浅色与暗色均无横向溢出，滚动展示绑定与安装区，长命令可滚动到末尾，演示控制不再固定覆盖底栏；纯演示没有 `/api/` 或 `/_server` 请求；既有 Agents 场景仍可用。
+浏览器脚本断言：列表状态文案不出现“空闲/已释放”；详情分离配对与连接；Shell 能力来自 `CapabilitySnapshot`；安装命令不含 `--ticket`，票据默认隐藏且长度 43；空说明可保存且显示“（无说明）”，修改 root 后旧 root revision 的目录观察不再标记“当前可达”；绑定保存后显示 description revision，root 保存成功声明仍需等待 Worker 观察；新增 root 失败草稿与冲突后重试、清空 root 和两个 Project 派生路径不同两项检查；保存/创建失败保留输入；续签抛网络错误时显示安全错误、pending 恢复且异常细节不外泄；续签后切到另一台 Machine 不出现前一台的票据；待配对转已配对后旧票据消失；active 无续签；390 浅色与暗色均无横向溢出，滚动展示绑定与安装区，长命令可滚动到末尾，演示控制不再固定覆盖底栏；纯演示没有 `/api/` 或 `/_server` 请求；既有 Agents 场景仍可用。
 
 ## 截图（`.verify/p4a-machine-scenes/`）
 
@@ -78,14 +78,15 @@ node scripts/browser/p4a-machine-scenes.mjs
 2. 详情：`getMachine({ machineId, projectId })` → `MachineDetailPanel`；`back` 传返回列表的链接，`bindingProject` 由 URL 的 Project 上下文提供，`projectNames` 用于显示绑定所属 Project 名。
 3. 创建：`createMachine({ name })` → `MachineCreateDialog.submit`；成功后用返回的 `MachineEnrollment` 打开详情并在 `MachineEnrollmentPanel` 展示票据。
 4. 续签：`renewMachineEnrollment({ machineId })` → `onRenewEnrollment`；仅 pending 渲染入口，active 由组件自动隐藏。
-5. 绑定：`saveProjectMachineBinding(input)` → `onSaveBinding`，`expectedRevision` 由组件从已有绑定取得，冲突按 `conflict` 展示并保留输入；成功后建议 `router.invalidate()` 重新读取 detail。
-6. 安装说明：把 `installOrigin` 换成实际服务 origin；安装包与获取方式待功能线交付后补充文案，当前不虚构下载地址。
-7. Project settings 的 Machine 区域由集成单元决定放置位置，组件本身不依赖页面骨架。
+5. 绑定：`saveProjectMachineBinding(input)` → `onSaveBinding`，只提交 Project 归属、说明与 description revision；`expectedRevision` 由组件从已有绑定取得，冲突按 `conflict` 展示并保留输入；成功后 `router.invalidate()` 重新读取本页。Project settings 页内复用该表单与 Fn，详情深链语义保留。
+6. Root：`saveMachineRootDirectory(input)` → `onSaveRoot`，编辑状态属于详情页；`onRootRefresh` 在保存与冲突后刷新服务端事实。null 清空 root，不探测路径。展示路径只通过 `projectWorkingPath(root, projectId)` 派生，目录观察 revision 对应 rootRevision。
+7. 安装说明：把 `installOrigin` 换成实际服务 origin；安装包与获取方式待功能线交付后补充文案，当前不虚构下载地址。
+8. Project settings 的 Machine 区域由集成单元决定放置位置，组件本身不依赖页面骨架。
 
 ## 限制与待确认
 
 - 历史演示阶段没有连接真实 `createMachine` / `renewMachineEnrollment` / `saveProjectMachineBinding`。当前已交付真实功能与正式接入，验证范围见 [正式接入记录](p4a-integration.md)。
 - Worker 单文件产物与隐藏输入交互已交付，当前安装命令见 [Worker 指南](../p4a/worker.md)。
 - 未执行真实 macOS Worker、跨机 TLS 或真机软键盘验证；无真机不宣称软键盘通过。
-- Project settings 内 Machine 区域的位置与命名（“Machines” 还是“连接的 Machine”）未由设计基线指定，留给集成线与 Human 确认。
+- Project settings 的 Machines 区域已按 Human 要求就地完成绑定，选择与保存均保留当前 URL；详情页 Project 上下文入口仍可用。
 - 断线、连接中、旧能力的文案沿用设计基线状态语义；若 Human 希望更简的措辞，属于体验调整，未在本单元自行定稿。

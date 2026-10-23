@@ -8,6 +8,7 @@ import {
   getMachineFn,
   renewMachineEnrollmentFn,
   saveProjectMachineBindingFn,
+  saveMachineRootDirectoryFn,
 } from "../../server/functions/machine";
 import { listProjectsFn } from "../../server/functions/project";
 import { useMachineEnrollment } from "../../components/machine/machine-enrollment-context";
@@ -68,6 +69,10 @@ function MachinePage() {
       onEnrollmentRevoked={(machineId) => {
         // 父级只有一个槽位，只有它属于被放弃请求的 target 时才撤销。
         if (enrollment?.detail.machine.id === machineId) setEnrollment(null);
+      }}
+      onSaveRoot={(input) => saveMachineRootDirectoryFn({ data: input })}
+      onRootRefresh={async () => {
+        await router.invalidate();
       }}
       onSaveBinding={(input) => saveProjectMachineBindingFn({ data: input })}
       onBindingSaved={() => void router.invalidate()}

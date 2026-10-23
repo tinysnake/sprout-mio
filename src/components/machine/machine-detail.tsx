@@ -1,12 +1,21 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { FolderOpen } from "lucide-react";
 import type {
   MachineDetail,
+  MachineRootDirectory,
+  SaveMachineRootDirectoryInput,
   MachineEnrollment,
   MachineResult,
   ProjectMachineIntent,
   SaveProjectMachineBindingInput,
 } from "../../contracts/machine";
+import { saveMachineRootDirectoryInput } from "../../contracts/machine";
+import { fieldErrorsFrom, type FieldErrors } from "../../contracts/project";
+import { toAppError, type AppError } from "../../contracts/result";
+import { ID_PREFIXES, newId } from "../../contracts/ids";
+import { Field } from "../ui/field";
+import { Input } from "../ui/input";
+import { ResultError } from "../project/result-error";
 import { PageFrame } from "../layout/page-frame";
 import { Facts, SettingsSection } from "../project/settings-section";
 import { Button } from "../ui/button";
@@ -30,6 +39,8 @@ export function MachineDetailPanel({
   projectNames = {},
   onRenewEnrollment,
   onSaveBinding,
+  onSaveRoot,
+  onRootRefresh,
   onBindingSaved,
   onEnrollmentCreated,
   onEnrollmentRevoked,
@@ -48,6 +59,10 @@ export function MachineDetailPanel({
     input: SaveProjectMachineBindingInput,
   ) => Promise<MachineResult<ProjectMachineIntent>>;
   onBindingSaved?: (intent: ProjectMachineIntent) => void;
+  onSaveRoot?: (
+    input: SaveMachineRootDirectoryInput,
+  ) => Promise<MachineResult<MachineRootDirectory>>;
+  onRootRefresh?: () => void | Promise<void>;
   /**
    * 续签成功结果写回父级短期状态；只有发起请求的详情身份仍在使用时才发布。
    */
@@ -217,8 +232,23 @@ export function MachineDetailPanel({
           </SettingsSection>
 
           <SettingsSection
+            title="Machine root 工作目录"
+            description="一期不迁移已绑定 Project 的目录。修改 root 会改变这台 Machine 上所有 Project 的派生路径。"
+            testId="machine-root-section"
+          >
+            {onSaveRoot && (
+              <MachineRootForm
+                key={detail.machine.id}
+                machine={detail.machine}
+                submit={onSaveRoot}
+                refresh={onRootRefresh}
+              />
+            )}
+          </SettingsSection>
+
+          <SettingsSection
             title="Project 绑定"
-            description="绑定保存的是意图；目录观察是 Worker 另外回报的事实，两者分开显示。"
+            description="绑定保存 Project 归属与说明；路径由 Machine root 与 Project ID 派生，Worker 另外回报目录观察。"
             testId="machine-bindings"
           >
             {detail.bindings.length === 0 ? (
@@ -237,7 +267,7 @@ export function MachineDetailPanel({
                       key={item.intent.projectId}
                       data-testid="machine-binding-item"
                       data-project-id={item.intent.projectId}
-                      className="rounded-container border border-border px-4 py-3"
+                      className="min-w-0 rounded-container border border-border px-4 py-3"
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <p className="text-xs font-medium">
@@ -253,9 +283,14 @@ export function MachineDetailPanel({
                       >
                         {item.intent.description || "（无说明）"}
                       </p>
-                      <p className="mt-1 flex items-center gap-1.5 break-all text-xs leading-6 text-muted-foreground">
+                      <p
+                        data-testid="machine-binding-path"
+                        className="mt-1 flex min-w-0 items-start gap-1.5 text-xs leading-6 text-muted-foreground"
+                      >
                         <Icon as={FolderOpen} />
-                        {bindingDirectory(item.intent)}
+                        <span className="min-w-0 break-all">
+                          {bindingDirectory(detail.machine.rootDirectory, item.intent.projectId)}
+                        </span>
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                         <StatusLine
@@ -283,8 +318,7 @@ export function MachineDetailPanel({
                   {binding ? "编辑绑定" : `加入 ${bindingProject.name}`}
                 </h3>
                 <p className="mt-1 mb-4 text-xs leading-6 text-muted-foreground">
-                  说明与工作目录保存到当前 Project。目录保存成功只证明意图已记录，不证明 Worker
-                  已验证路径。
+                  说明保存到当前 Project。工作路径在 Machine root 设置后派生，由 Worker 验证。
                 </p>
                 <MachineBindingForm
                   key={`${detail.machine.id}:${bindingProject.id}`}
@@ -298,7 +332,8 @@ export function MachineDetailPanel({
             )}
             {!bindingProject && (
               <p className="mt-4 text-xs leading-6 text-muted-foreground">
-                在 Project settings 的 Machine 区域加入 Project 后，才能在这里编辑说明和工作目录。
+                在 Project settings 的 Machines 区域加入 Project，也可通过 Project
+                上下文在这里编辑说明。
               </p>
             )}
           </SettingsSection>
@@ -323,6 +358,135 @@ export function MachineDetailPanel({
         </aside>
       </div>
     </PageFrame>
+  );
+}
+
+function MachineRootForm({
+  machine,
+  submit,
+  refresh,
+}: {
+  machine: MachineDetail["machine"];
+  submit: (input: SaveMachineRootDirectoryInput) => Promise<MachineResult<MachineRootDirectory>>;
+  refresh?: () => void | Promise<void>;
+}) {
+  const [fact, setFact] = useState({
+    directory: machine.rootDirectory,
+    revision: machine.rootRevision,
+  });
+  const [directory, setDirectory] = useState(machine.rootDirectory ?? "");
+  const [draftRevision, setDraftRevision] = useState(machine.rootRevision);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<AppError | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [saved, setSaved] = useState(false);
+  const live = useRef(true);
+  const preserveDraft = useRef(false);
+  const syncedRevision = useRef(machine.rootRevision);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (machine.rootRevision === syncedRevision.current) return;
+    syncedRevision.current = machine.rootRevision;
+    if (!preserveDraft.current && directory === (fact.directory ?? "")) {
+      setDirectory(machine.rootDirectory ?? "");
+      setDraftRevision(machine.rootRevision);
+    }
+    setFact({ directory: machine.rootDirectory, revision: machine.rootRevision });
+  }, [machine.rootDirectory, machine.rootRevision, directory, fact]);
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    // Refreshing current facts must not rebase a dirty draft before an explicit conflict retry.
+    const expectedRevision = error?.code === "conflict" ? fact.revision : draftRevision;
+    setError(null);
+    setSaved(false);
+    const parsed = saveMachineRootDirectoryInput.safeParse({
+      machineId: machine.id,
+      directory: directory || null,
+      expectedRevision,
+    });
+    if (!parsed.success) {
+      setFieldErrors(fieldErrorsFrom(parsed.error));
+      return;
+    }
+    setFieldErrors({});
+    setDraftRevision(expectedRevision);
+    setPending(true);
+    preserveDraft.current = true;
+    try {
+      const result = await submit(parsed.data);
+      if (!live.current) return;
+      if (!result.ok) {
+        setError(result.error);
+        setFieldErrors(result.fieldErrors ?? {});
+        if (result.error.code === "conflict") await refresh?.();
+        return;
+      }
+      setFact(result.data);
+      setDraftRevision(result.data.revision);
+      setDirectory(result.data.directory ?? "");
+      setSaved(true);
+      preserveDraft.current = false;
+      await refresh?.();
+    } catch (cause) {
+      if (live.current) setError(toAppError(cause, newId(ID_PREFIXES.request)));
+    } finally {
+      if (live.current) setPending(false);
+    }
+  }
+
+  return (
+    <form
+      data-testid="machine-root-form"
+      onSubmit={save}
+      aria-busy={pending}
+      className="flex min-w-0 flex-col gap-4"
+    >
+      <p
+        data-testid="machine-root-current"
+        className="min-w-0 break-all text-xs leading-6 text-muted-foreground"
+      >
+        当前 root：{fact.directory ?? "未设置"} · root revision {fact.revision}
+      </p>
+      <Field
+        label="Root 工作目录"
+        htmlFor="machine-root-directory"
+        hint="macOS 绝对路径。留空保存可清除 root，之后不探测任何 Project 路径。"
+        error={fieldErrors.directory}
+      >
+        <Input
+          id="machine-root-directory"
+          data-testid="machine-root-directory"
+          value={directory}
+          disabled={pending}
+          onChange={(event) => setDirectory(event.target.value)}
+        />
+      </Field>
+      {error && <ResultError error={error} testId="machine-root-error" />}
+      {error?.code === "conflict" && (
+        <p className="text-xs leading-6 text-muted-foreground">
+          已刷新服务端 root 与版本，草稿已保留。核对当前事实后可重新保存。
+        </p>
+      )}
+      {saved && (
+        <StatusLine
+          label="Root 已保存，目录可达性等待 Worker 观察。"
+          tone="success"
+          testId="machine-root-success"
+        />
+      )}
+      <div>
+        <Button type="submit" loading={pending} data-testid="machine-root-submit">
+          保存 root
+        </Button>
+      </div>
+    </form>
   );
 }
 

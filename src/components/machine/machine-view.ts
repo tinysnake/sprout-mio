@@ -2,8 +2,9 @@ import type {
   DirectoryObservation,
   MachineConnectionView,
   MachineDetail,
-  ProjectMachineIntent,
 } from "../../contracts/machine";
+
+import { projectWorkingPath } from "../../contracts/machine";
 
 export type StatusTone = "success" | "warning" | "muted" | "danger";
 
@@ -50,7 +51,7 @@ export function observationLabel(
   if (!observation.current)
     return {
       label: "旧观察",
-      detail: "不是当前连接或绑定版本的事实",
+      detail: "不是当前连接或 root 版本的事实",
       tone: "muted",
     };
   const { result } = observation.fact;
@@ -59,8 +60,10 @@ export function observationLabel(
     : { label: "当前不可用", detail: result.reason, tone: "danger" };
 }
 
-export function bindingDirectory(intent: ProjectMachineIntent): string {
-  return intent.directory ?? "未设置目录";
+export function bindingDirectory(root: string | null, projectId: string): string {
+  return root === null
+    ? "尚未设置 Machine root，无法探测路径"
+    : projectWorkingPath(root, projectId);
 }
 
 export function machineListSummary(detail: MachineDetail): string {

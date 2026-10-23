@@ -13,7 +13,8 @@ import { ResultError } from "../../components/project/result-error";
 import { Icon } from "../../components/ui/icon";
 import { getProjectProfileFn, updateProjectProfileFn } from "../../server/functions/project-config";
 import { getProjectFn, updateProjectFn } from "../../server/functions/project";
-import { listMachinesFn } from "../../server/functions/machine";
+import { listMachinesFn, saveProjectMachineBindingFn } from "../../server/functions/machine";
+import { MachineBindingForm } from "../../components/machine/machine-binding-form";
 import { getProjectInfoHubFn } from "../../server/functions/info-hub";
 import { getProjectRepoStateFn, prepareProjectRepoFn } from "../../server/functions/repository";
 
@@ -110,7 +111,7 @@ function ProjectSettingsPage() {
           )}
           <SettingsSection
             title="Machines"
-            description="选择本账号的 Machine，加入当前 Project 或编辑说明与工作目录。保存目录只记录意图，由 Worker 另行探测。"
+            description="选择本账号的 Machine，在当前 Project 中加入或编辑说明。工作路径由 Machine root 与 Project ID 派生。"
           >
             <div className="mb-4 flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-2 text-xs">
@@ -130,17 +131,6 @@ function ProjectSettingsPage() {
                     ))}
                 </select>
               </label>
-              {selectedMachine && (
-                <Link
-                  to="/machines/$machineId"
-                  params={{ machineId: selectedMachine }}
-                  search={{ projectId }}
-                  data-testid="project-machine-open"
-                  className="text-xs underline"
-                >
-                  加入或编辑绑定
-                </Link>
-              )}
               <Link to="/machines" className="text-xs underline">
                 管理 Machines
               </Link>
@@ -148,6 +138,22 @@ function ProjectSettingsPage() {
                 刷新 Machine 事实
               </button>
             </div>
+            {selectedMachine && machines.ok && (
+              <div className="mb-6">
+                <MachineBindingForm
+                  key={`${selectedMachine}:${projectId}`}
+                  machineId={selectedMachine}
+                  project={project.data}
+                  binding={
+                    machines.data
+                      .find((item) => item.machine.id === selectedMachine)
+                      ?.bindings.find((item) => item.intent.projectId === projectId) ?? null
+                  }
+                  submit={(input) => saveProjectMachineBindingFn({ data: input })}
+                  onSaved={invalidate}
+                />
+              </div>
+            )}
             {!machines.ok && <ResultError error={machines.error} />}
             {infoHub.ok && (
               <ProjectMachinesPanel
