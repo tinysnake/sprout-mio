@@ -21,6 +21,7 @@ import type { Project } from "../../contracts/project";
 import { AppShell, projectCreationFocusTarget } from "../../components/layout/app-shell";
 import { Select } from "../../components/ui/select";
 import { ChatScenes } from "../scenes/chat";
+import { MachineScenes } from "../scenes/machine";
 import { ManagementScenes } from "../scenes/management";
 import {
   DEMO_REQUEST_ID,
@@ -41,6 +42,7 @@ const entries = [
   ["chat-states", "Chat 状态"],
   ["chat-messages", "消息与追加"],
   ["chat-inspector", "Info Hub"],
+  ["machines", "Machines"],
 ] as const;
 const requested = new URLSearchParams(location.search).get("scene") ?? "components";
 const selected = entries.some(([value]) => value === requested) ? requested : "components";
@@ -138,7 +140,9 @@ function SceneContent() {
           {notice}
         </p>
       )}
-      {newlyCreated ? (
+      {selected === "machines" ? (
+        <MachineScenes />
+      ) : newlyCreated ? (
         chat ? (
           <ChatWorkspace
             selected={false}
@@ -222,6 +226,7 @@ function SceneContent() {
 }
 
 function initialPath() {
+  if (selected === "machines") return "/machines";
   if (selected.startsWith("chat")) return `${chatPath}?info=1`;
   if (selected === "agents") return "/agents";
   if (selected === "agent-detail") return `/agents/${demoProfiles[0]!.id}`;
@@ -248,6 +253,8 @@ const router = createRouter({
     route("/projects/$projectId/members"),
     route("/agents"),
     route("/agents/$agentProfileId"),
+    route("/machines"),
+    route("/machines/$machineId"),
   ]),
   history: createMemoryHistory({ initialEntries: [initialPath()] }),
 });
