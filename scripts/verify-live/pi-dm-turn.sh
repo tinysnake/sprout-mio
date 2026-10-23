@@ -277,8 +277,8 @@ try {
         const replies=await page.$$eval('[data-testid="message-item"][data-sender-kind="agent"] [data-testid="message-body"]',nodes=>nodes.map(node=>node.textContent))
         assert.equal(replies.length,3)
         assert(replies.every(body=>body.includes(codeword)))
-        const screenshot=resolve('docs/p3/evidence/p3-a-real-dm-after-restart.png')
-        mkdirSync(resolve('docs/p3/evidence'),{recursive:true})
+        const screenshot=resolve('.verify/pi-dm-turn/evidence/p3-a-real-dm-after-restart.png')
+        mkdirSync(resolve('.verify/pi-dm-turn/evidence'),{recursive:true})
         await page.screenshot({path:screenshot,fullPage:true})
         pass('real Chromium displays all three persisted agent replies after restart',{replies,screenshot})
       } finally {await browser.close()}

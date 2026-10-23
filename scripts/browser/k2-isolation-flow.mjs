@@ -5,7 +5,9 @@ import { chromium } from "playwright";
 
 const base = process.env.BASE_URL ?? "http://localhost:3146";
 const directory = resolve(process.env.K2_DIRECTORY ?? ".verify/k2-cross-family-isolation");
-const screenshots = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? "docs/p1/evidence");
+const screenshots = resolve(
+  process.env.SPROUT_UI_EVIDENCE_DIR ?? ".verify/k2-cross-family-isolation/evidence",
+);
 mkdirSync(directory, { recursive: true });
 mkdirSync(screenshots, { recursive: true });
 const state = JSON.parse(readFileSync(join(directory, "k2-state.json"), "utf8"));

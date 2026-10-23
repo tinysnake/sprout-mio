@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 
 const base = process.env.BASE_URL ?? "http://localhost:3154";
 const directory = resolve(process.env.UI_LAYOUT_DIRECTORY ?? ".verify/ui-layout");
-const evidence = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? "docs/ui/evidence/p1p2");
+const evidence = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? ".verify/r-ui-layout/evidence");
 mkdirSync(directory, { recursive: true });
 mkdirSync(evidence, { recursive: true });
 const results = [];

@@ -317,7 +317,7 @@ try {
     page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()) })
     page.on('pageerror', error => consoleErrors.push(String(error)))
     const pageUrl = `${base}/projects/${projectId}/chats/${chatId}?info=1`
-    const screenshotDir = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? 'docs/p3/evidence')
+    const screenshotDir = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? '.verify/o-turn-semantics/evidence')
     mkdirSync(screenshotDir, { recursive: true })
 
     await send('stub-error')

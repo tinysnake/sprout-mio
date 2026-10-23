@@ -216,7 +216,7 @@ try {
   if (process.env.SPROUT_SKIP_BROWSER !== '1') {
     const browser = await bounded(launch(process.execPath, ['scripts/browser/h-project-agents-flow.mjs'], 'browser.log', { ...environment, BASE_URL: base }), 300000)
     assert.equal(browser.code, 0, `浏览器流程失败；见 browser.log:\n${readFileSync(join(directory, 'browser.log'), 'utf8')}`)
-    pass('真实 Chromium 流程', { log: 'browser.log', screenshots: `${process.env.SPROUT_UI_EVIDENCE_DIR ?? 'docs/p1/evidence'}/p2-h-*.png` })
+    pass('真实 Chromium 流程', { log: 'browser.log', screenshots: `${process.env.SPROUT_UI_EVIDENCE_DIR ?? '.verify/h-project-agents/evidence'}/p2-h-*.png` })
   } else {
     pass('真实 Chromium 流程', { skipped: 'SPROUT_SKIP_BROWSER=1' })
   }

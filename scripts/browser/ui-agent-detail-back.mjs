@@ -8,7 +8,7 @@ import { chatInspectorPath, createProject, waitForChats } from "./ui-navigation.
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = process.env.SPROUT_UI_EVIDENCE_DIR
   ? `${process.env.SPROUT_UI_EVIDENCE_DIR.replace(/\/+$/, "")}/`
-  : new URL("../../docs/p3/evidence/", import.meta.url).pathname;
+  : new URL("../../.verify/q-info-hub-runs/evidence/", import.meta.url).pathname;
 
 const results = [];
 const consoleErrors = [];

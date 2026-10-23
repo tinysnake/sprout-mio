@@ -24,4 +24,6 @@
 
 真实业务 10 项已在重复 key 修复（`3c745a6`，本分支 `c1fd6ba`）后重跑 10/10，`final-real-*.png` 已替换并重算 sha256。fixture 的 36 项未随该修复重跑。
 
-技术验收为独立验收 PASS，主线程读图 7 张，记录见 [视觉读图记录](visual-review.md)。Human 体验确认仍待，本目录不构成 Human 验收。
+技术验收为独立验收 PASS，主线程读图 7 张，记录见 [视觉读图记录](visual-review.md)。Human 体验确认已记录（`869bf22`，2026-10-23），见 [技术收口](technical-acceptance.md) 末尾一节。
+
+本目录只放交付版本。验收脚本的默认截图目录是 `.verify/<unit>/evidence/`，重跑不会改写这里的文件；需要更新时手动复制并说明对应 commit。

@@ -181,7 +181,7 @@ try {
   assert(statSync(databaseUrl).size > 0, '真实 SQLite 文件必须存在')
   const browser = await bounded(launch(process.execPath, ['scripts/browser/j-info-hub-flow.mjs'], 'browser.log', { ...environment, BASE_URL: base, INFO_HUB_STATE_FILE: stateFile }), 300000)
   assert.equal(browser.code, 0, `浏览器流程失败；见 browser.log:\n${readFileSync(join(directory, 'browser.log'), 'utf8')}`)
-  pass('真实 Chromium 流程', { log: 'browser.log', screenshots: `${process.env.SPROUT_UI_EVIDENCE_DIR ?? 'docs/p1/evidence'}/p2-j-*.png` })
+  pass('真实 Chromium 流程', { log: 'browser.log', screenshots: `${process.env.SPROUT_UI_EVIDENCE_DIR ?? '.verify/j-info-hub/evidence'}/p2-j-*.png` })
 
   const state = JSON.parse(readFileSync(stateFile, 'utf8'))
   assert.match(state.projectId, /^prj_/, '状态文件必须记录 projectId')

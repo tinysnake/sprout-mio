@@ -14,7 +14,7 @@ import {
 
 const base = process.env.BASE_URL ?? "http://localhost:3145";
 const directory = resolve(process.env.ACCEPTANCE_DIRECTORY ?? ".verify/k-acceptance");
-const screenshots = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? "docs/p1/evidence");
+const screenshots = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? ".verify/k-acceptance/evidence");
 const mode = process.argv[2] ?? "before";
 assert(["before", "after"].includes(mode));
 mkdirSync(directory, { recursive: true });

@@ -15,7 +15,7 @@ import {
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = process.env.SPROUT_UI_EVIDENCE_DIR
   ? `${process.env.SPROUT_UI_EVIDENCE_DIR.replace(/\/+$/, "")}/`
-  : new URL("../../docs/p1/evidence/", import.meta.url).pathname;
+  : new URL("../../.verify/e-project/evidence/", import.meta.url).pathname;
 
 const results = [];
 const consoleErrors = [];

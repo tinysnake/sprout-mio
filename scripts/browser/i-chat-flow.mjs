@@ -7,7 +7,7 @@ import { createProject, waitForChats } from "./ui-navigation.mjs";
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = process.env.SPROUT_UI_EVIDENCE_DIR
   ? `${process.env.SPROUT_UI_EVIDENCE_DIR.replace(/\/+$/, "")}/`
-  : new URL("../../docs/p1/evidence/", import.meta.url).pathname;
+  : new URL("../../.verify/i-chat/evidence/", import.meta.url).pathname;
 const STATE_FILE = process.env.CHAT_STATE_FILE ?? "/tmp/p2-c-chat-state.json";
 
 const results = [];
