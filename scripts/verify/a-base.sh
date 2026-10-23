@@ -164,11 +164,11 @@ run 'Worker build' worker-build pnpm worker:build
 [ -f dist/worker/main.js ] || fail 'missing dist/worker/main.js'
 run 'Worker version' worker-version node dist/worker/main.js --version
 version="$(node --input-type=module -e "import { APP_VERSION } from './src/contracts/version.ts'; console.log(APP_VERSION)")"
-grep -qxF "sprout-worker $version protocol=unimplemented" "$log_dir/worker-version.log" || fail 'Worker version or protocol marker is incorrect'
-run 'Worker reports unimplemented connection' worker-default node dist/worker/main.js
-grep -qF '连接协议在 P4 实现，当前无连接能力' "$log_dir/worker-default.log" || fail 'Worker hides the unimplemented connection'
+grep -qxF "sprout-worker $version protocol=1 node=$(node --version)" "$log_dir/worker-version.log" || fail 'Worker version or protocol marker is incorrect'
+run 'Worker defaults to usage' worker-default node dist/worker/main.js
+grep -qF 'sprout-worker init --server' "$log_dir/worker-default.log" || fail 'Worker default usage is missing init'
 run 'Worker help' worker-help node dist/worker/main.js --help
-grep -qF -- '--version' "$log_dir/worker-help.log" || fail 'Worker help is missing --version'
+grep -qF 'sprout-worker version' "$log_dir/worker-help.log" || fail 'Worker help is missing version'
 pass "Worker output $(<"$log_dir/worker-version.log")"
 pass "Worker output $(<"$log_dir/worker-default.log")"
 

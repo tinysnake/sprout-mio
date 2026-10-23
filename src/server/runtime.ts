@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
+import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { APP_VERSION } from "../contracts/version";
@@ -89,6 +89,16 @@ console.log(
 );
 
 export const runtimeReady = state.ready;
+
+export async function machineRuntimeContext() {
+  await runtimeReady;
+  if (state.phase !== "ready" || !state.bootId || !state.managed)
+    throw new Error("Runtime stopping");
+  return {
+    bootId: state.bootId,
+    now: new Date(await state.managed.runPromise(Clock.currentTimeMillis)),
+  };
+}
 
 export function runtimeSnapshot() {
   return {

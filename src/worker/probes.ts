@@ -1,0 +1,125 @@
+import { execFile } from "node:child_process";
+import { constants } from "node:fs";
+import { access, realpath, stat } from "node:fs/promises";
+import type {
+  CapabilitySnapshot,
+  DirectoryObservation,
+  ProjectMachineIntent,
+  ShellFact,
+} from "../contracts/machine";
+import type { WorkerSession } from "../contracts/worker";
+import { APP_VERSION } from "../contracts/version";
+
+function execute(path: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) =>
+    execFile(
+      path,
+      args,
+      {
+        timeout: 3000,
+        maxBuffer: 4096,
+        encoding: "utf8",
+        env: {
+          PATH: "/usr/bin:/bin",
+          HOME: "/var/empty",
+          BASH_ENV: "/dev/null",
+          ENV: "/dev/null",
+          ZDOTDIR: "/var/empty",
+        },
+      },
+      (error, stdout) => (error ? reject(error) : resolve(stdout.trim())),
+    ),
+  );
+}
+function shellFailure(
+  error: unknown,
+): "missing" | "denied" | "timeout" | "failed" | "output_limit" {
+  if (error && typeof error === "object") {
+    if ("code" in error && error.code === "ENOENT") return "missing";
+    if ("code" in error && error.code === "EACCES") return "denied";
+    if ("code" in error && error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER")
+      return "output_limit";
+    if ("killed" in error && error.killed) return "timeout";
+  }
+  return "failed";
+}
+async function shell(path: string, checkedAt: string): Promise<ShellFact> {
+  const kind: ShellFact["kind"] =
+    path === "/bin/zsh"
+      ? "zsh"
+      : path === "/bin/bash"
+        ? "bash"
+        : path === "/bin/sh"
+          ? "sh"
+          : "unknown";
+  const fact = { path, kind, checkedAt, version: null };
+  if (kind === "unknown") return { ...fact, probe: { kind: "failure", reason: "unsupported" } };
+  try {
+    const flags = kind === "zsh" ? ["-f"] : kind === "bash" ? ["--noprofile", "--norc"] : [];
+    const version = await execute(path, [...flags, "--version"]);
+    if ((await execute(path, [...flags, "-c", "printf sprout-shell-ok"])) !== "sprout-shell-ok")
+      throw new Error("Self check failed");
+    return { ...fact, version: version.slice(0, 4096), probe: { kind: "success" } };
+  } catch (error) {
+    return { ...fact, probe: { kind: "failure", reason: shellFailure(error) } };
+  }
+}
+export async function probeCapability(checkedAt: string): Promise<CapabilitySnapshot> {
+  if (process.platform !== "darwin" || (process.arch !== "arm64" && process.arch !== "x64"))
+    throw new Error("Worker requires macOS arm64 or x64");
+  const paths = [
+    ...new Set(
+      [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"].filter(
+        (path): path is string =>
+          !!path && path.startsWith("/") && !path.includes("\0") && path.length <= 4096,
+      ),
+    ),
+  ];
+  return {
+    platform: "darwin",
+    arch: process.arch,
+    workerVersion: APP_VERSION,
+    shells: await Promise.all(paths.map((path) => shell(path, checkedAt))),
+    remoteOperations: "not_implemented",
+  };
+}
+export async function probeDirectory(
+  intent: ProjectMachineIntent,
+  session: WorkerSession,
+  seq: number,
+  checkedAt: string,
+): Promise<DirectoryObservation> {
+  let result: DirectoryObservation["result"];
+  try {
+    const path = intent.directory!;
+    if (!(await stat(path)).isDirectory())
+      result = { kind: "unavailable", reason: "not_directory" };
+    else {
+      const resolved = await realpath(path);
+      await access(resolved, constants.R_OK | constants.W_OK | constants.X_OK);
+      result = { kind: "accessible", realPath: resolved };
+    }
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+    result = {
+      kind: "unavailable",
+      reason:
+        code === "ENOENT"
+          ? "missing"
+          : code === "ENOTDIR"
+            ? "not_directory"
+            : code === "EACCES" || code === "EPERM"
+              ? "denied"
+              : "io_error",
+    };
+  }
+  return {
+    machineId: session.machineId,
+    generation: session.generation,
+    projectId: intent.projectId,
+    revision: intent.revision,
+    seq,
+    checkedAt,
+    result,
+  };
+}
