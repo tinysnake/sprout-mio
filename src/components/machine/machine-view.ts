@@ -77,9 +77,14 @@ export function machineListSummary(detail: MachineDetail): string {
 
 export const WORKER_ORIGIN_PLACEHOLDER = "<server-origin>";
 
-export function installCommands(machineId: string) {
+export function installCommands(machineId: string, origin = WORKER_ORIGIN_PLACEHOLDER) {
+  const url = origin === WORKER_ORIGIN_PLACEHOLDER ? null : new URL(origin);
+  const allowHttp =
+    url?.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+      ? ` --allow-http ${url.origin}`
+      : "";
   return {
-    init: `node "$HOME/.local/share/sprout-worker/main.mjs" init --server ${WORKER_ORIGIN_PLACEHOLDER} --machine ${machineId} --state-dir "$HOME/.local/share/sprout-worker/identity"`,
+    init: `node "$HOME/.local/share/sprout-worker/main.mjs" init --server ${origin}${allowHttp} --machine ${machineId} --state-dir "$HOME/.local/share/sprout-worker/identity"`,
     run: 'node "$HOME/.local/share/sprout-worker/main.mjs" run --state-dir "$HOME/.local/share/sprout-worker/identity"',
   };
 }

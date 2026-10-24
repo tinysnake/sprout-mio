@@ -662,7 +662,7 @@ export function MachineScenes() {
         enrollment={draft.tickets[machineId] ?? null}
         bindingProject={{ id: project.id, name: projectName }}
         projectNames={demoProjectNames}
-        installOrigin="http://127.0.0.1:3000"
+        installOrigin="http://192.168.1.10:3210"
         onRenewEnrollment={renew}
         onSaveBinding={saveBinding}
         onSaveRoot={saveRoot}

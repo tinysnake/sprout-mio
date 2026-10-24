@@ -86,10 +86,14 @@ async function assertDetailPresentation(page, status) {
   await page.getByTestId("machine-http-help").click();
   await note.waitFor({ state: "visible" });
   const text = await note.innerText();
-  assert.match(text, /默认只接受 loopback HTTP；非 loopback 地址必须使用 HTTPS/);
+  assert.match(text, /默认只接受 loopback HTTP/);
+  assert.match(text, /HTTPS 无需开关/);
   assert.match(text, /--server.*http:\/\/127\.0\.0\.1:3330/);
-  assert.match(text, /没有 --allow-http 配置项/);
-  assert.match(text, /不支持通过配置放开非 loopback HTTP/);
+  assert.match(text, /init 时显式添加 --allow-http <完整 origin>/);
+  assert.match(text, /只对该完整 origin（含端口）生效/);
+  assert.match(text, /不放开同网段其他地址/);
+  assert.match(text, /身份文件/);
+  assert.doesNotMatch(text, /HTTP\s*开箱可用|http\s*开箱可用|没有 --allow-http|不支持通过配置放开/);
   await page.getByRole("button", { name: "关闭对话框" }).click();
   await note.waitFor({ state: "hidden" });
   const shellSummary = page.getByTestId("machine-shell-summary");

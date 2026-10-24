@@ -3,14 +3,17 @@ import { z } from "zod";
 import { machineIdSchema } from "../contracts/machine";
 import { APP_VERSION } from "../contracts/version";
 import { enroll, runWorker } from "./client";
-import { initializeIdentity, readIdentity, readTicket, serverSchema } from "./identity";
+import { httpOriginSchema, initializeIdentity, readIdentity, readTicket } from "./identity";
 
-const HELP = `sprout-worker init --server <origin> --machine <id> --state-dir <directory> [--ticket-file <private-file>]
+const HELP = `sprout-worker init --server <origin> --machine <id> --state-dir <directory> [--ticket-file <private-file>] [--allow-http <origin> ...]
 sprout-worker run --state-dir <directory>
 sprout-worker help
 sprout-worker version
 
 init reads the enrollment ticket without echo and persists a private identity before enrollment.
+HTTP defaults to loopback only. For non-loopback HTTP, repeat --allow-http <complete origin>
+to explicitly authorize each exact origin (including its port). Authorizations persist in identity.json.
+HTTPS needs no flag. --allow-http never disables TLS verification.
 run connects this macOS Machine and reports shell and directory observations.
 Remote operations are not implemented. No LaunchAgent is installed.`;
 async function main() {
@@ -26,18 +29,28 @@ async function main() {
     console.log(`sprout-worker ${APP_VERSION} protocol=1 node=${process.version}`);
     return;
   }
-  const options: Record<string, string> = {};
+  const options: Record<string, string | string[]> = {};
   while (args.length) {
     const key = args.shift()!;
     const value = args.shift();
-    if (!key.startsWith("--") || !value || value.startsWith("--") || key in options)
+    if (
+      !key.startsWith("--") ||
+      !value ||
+      value.startsWith("--") ||
+      (key in options && key !== "--allow-http")
+    )
       throw new Error("Invalid arguments");
-    options[key] = value;
+    if (key === "--allow-http") {
+      const origins = (options[key] ?? []) as string[];
+      origins.push(value);
+      options[key] = origins;
+    } else options[key] = value;
   }
   if (command === "init") {
     const parsed = z
       .strictObject({
-        "--server": serverSchema,
+        "--server": z.string(),
+        "--allow-http": z.array(httpOriginSchema).default([]),
         "--machine": machineIdSchema,
         "--state-dir": z.string().min(1),
         "--ticket-file": z.string().min(1).optional(),
@@ -45,8 +58,9 @@ async function main() {
       .parse(options);
     const identity = await initializeIdentity(
       parsed["--state-dir"],
-      new URL(parsed["--server"]).origin,
+      parsed["--server"],
       parsed["--machine"],
+      parsed["--allow-http"],
     );
     const ticket = await readTicket(parsed["--ticket-file"]);
     await Effect.runPromise(enroll(identity, ticket));
@@ -58,7 +72,9 @@ async function main() {
 }
 try {
   await main();
-} catch {
+} catch (error) {
+  if (error instanceof z.ZodError)
+    console.error(error.issues.map((issue) => issue.message).join("; "));
   console.error(
     "Worker failed. Check arguments, private state permissions, server availability and enrollment. Run sprout-worker help for usage.",
   );

@@ -187,6 +187,71 @@ try {
     platform: process.platform,
     arch: process.arch,
   });
+  for (const { name, origin, flags, authorized } of [
+    { name: "http-denied", origin: "http://example.com", flags: [], authorized: false },
+    {
+      name: "http-allowed",
+      origin: "http://example.com",
+      flags: ["--allow-http", "http://example.com"],
+      authorized: true,
+    },
+    {
+      name: "neighbor-denied",
+      origin: "http://192.168.1.11:3210",
+      flags: ["--allow-http", "http://192.168.1.10:3210"],
+      authorized: false,
+    },
+    {
+      name: "http-repeated",
+      origin: "http://192.168.1.10:3210",
+      flags: ["--allow-http", "http://example.com", "--allow-http", "http://192.168.1.10:3210"],
+      authorized: true,
+    },
+    {
+      name: "http-path-denied",
+      origin: "http://example.com/path",
+      flags: ["--allow-http", "http://example.com"],
+      authorized: false,
+    },
+    { name: "https-allowed", origin: "https://example.com", flags: [], authorized: true },
+  ]) {
+    const state = join(artifactDir, name);
+    const result = await complete(
+      launch(
+        process.execPath,
+        [
+          join(artifactDir, "main.mjs"),
+          "init",
+          "--server",
+          origin,
+          "--machine",
+          "mch_11111111-1111-4111-8111-111111111111",
+          "--state-dir",
+          state,
+          ...flags,
+          "--ticket-file",
+          join(artifactDir, "absent-ticket"),
+        ],
+        `${name}.log`,
+        { cwd: artifactDir },
+      ),
+    );
+    assert.equal(result.code, 1, "missing ticket stops authorized init before network access");
+    assert.equal(existsSync(join(state, "identity.json")), authorized, name);
+    if (authorized) {
+      const identity = JSON.parse(readFileSync(join(state, "identity.json"), "utf8"));
+      assert.equal(identity.server, origin);
+      assert.deepEqual(
+        identity.allowHttpOrigins,
+        flags.filter((_, index) => index % 2 === 1),
+      );
+    } else
+      assert.match(
+        readFileSync(join(evidenceDir, `${name}.log`), "utf8"),
+        /--allow-http|plain HTTP or HTTPS origin/,
+      );
+  }
+  pass("CLI requires exact per-origin HTTP grants and persists repeated --allow-http");
   server = launch(process.execPath, [".output/server/index.mjs"], "production.log");
   await waitFor(async () => {
     try {

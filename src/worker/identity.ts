@@ -6,27 +6,55 @@ import { z } from "zod";
 import { machineIdSchema } from "../contracts/machine";
 import { workerSecretSchema } from "../contracts/worker";
 
-export const serverSchema = z
-  .string()
+const originSchema = z
   .url()
-  .refine((value) => {
-    const url = new URL(value);
+  .transform((input) => new URL(input))
+  .refine((url) => {
     return (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      !url.hostname.includes("*") &&
       !url.username &&
       !url.password &&
       url.pathname === "/" &&
       !url.search &&
-      !url.hash &&
-      (url.protocol === "https:" ||
-        (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))
+      !url.hash
     );
-  }, "Server requires HTTPS or loopback HTTP");
-const identitySchema = z.strictObject({
-  version: z.literal(1),
-  server: serverSchema,
-  machineId: machineIdSchema,
-  secret: workerSecretSchema,
-});
+  }, "Server must be a plain HTTP or HTTPS origin (no credentials, path, query or fragment)")
+  .transform((url) => url.origin);
+
+export const httpOriginSchema = originSchema.refine(
+  (origin) => new URL(origin).protocol === "http:",
+  "--allow-http requires a complete HTTP origin",
+);
+
+export function serverSchema(allowHttpOrigins: readonly string[] = []) {
+  const allowed = z.array(httpOriginSchema).safeParse(allowHttpOrigins);
+  return originSchema.refine((origin) => {
+    const url = new URL(origin);
+    return (
+      allowed.success &&
+      (url.protocol === "https:" ||
+        ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) ||
+        allowed.data.includes(url.origin))
+    );
+  }, "Non-loopback HTTP requires explicit authorization: add --allow-http <complete server origin> to init; HTTPS needs no flag");
+}
+export const identitySchema = z
+  .strictObject({
+    version: z.literal(1),
+    server: originSchema,
+    allowHttpOrigins: z.array(httpOriginSchema).default([]),
+    machineId: machineIdSchema,
+    secret: workerSecretSchema,
+  })
+  .superRefine((identity, ctx) => {
+    const result = serverSchema(identity.allowHttpOrigins).safeParse(identity.server);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        ctx.addIssue({ ...issue, path: ["server", ...issue.path] });
+      }
+    }
+  });
 export type Identity = z.infer<typeof identitySchema>;
 async function privatePath(path: string, directory: boolean) {
   const info = await lstat(path);
@@ -53,7 +81,9 @@ export async function initializeIdentity(
   directory: string,
   server: string,
   machineId: string,
+  allowHttpOrigins: readonly string[] = [],
 ): Promise<Identity> {
+  server = serverSchema(allowHttpOrigins).parse(server);
   directory = resolve(directory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await privatePath(directory, true);
@@ -68,6 +98,7 @@ export async function initializeIdentity(
   const identity = identitySchema.parse({
     version: 1,
     server,
+    allowHttpOrigins,
     machineId,
     secret: randomBytes(32).toString("base64url"),
   });

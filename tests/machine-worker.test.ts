@@ -39,7 +39,58 @@ test("private Worker identity survives retries and refuses corruption, replaceme
     "https://example.com/path",
     "https://example.com/?secret=bad",
   ])
-    expect(serverSchema.safeParse(origin).success).toBe(false);
+    expect(serverSchema().safeParse(origin).success).toBe(false);
+});
+
+test.each([
+  { server: "http://example.com", allowed: [], accepted: false },
+  { server: "http://example.com", allowed: ["http://example.com"], accepted: true },
+  { server: "HTTP://EXAMPLE.COM:80/", allowed: ["http://example.com"], accepted: true },
+  { server: "http://192.168.1.10:3210", allowed: ["http://192.168.1.10:3210"], accepted: true },
+  { server: "http://192.168.1.11:3210", allowed: ["http://192.168.1.10:3210"], accepted: false },
+  { server: "http://192.168.1.10:3211", allowed: ["http://192.168.1.10:3210"], accepted: false },
+  { server: "http://example.com.evil.test", allowed: ["http://example.com"], accepted: false },
+  { server: "https://example.com", allowed: [], accepted: true },
+  { server: "http://localhost:3210", allowed: [], accepted: true },
+  { server: "http://127.0.0.1:3210", allowed: [], accepted: true },
+  { server: "http://[::1]:3210", allowed: [], accepted: true },
+  { server: "http://user@example.com", allowed: ["http://example.com"], accepted: false },
+  { server: "http://example.com/path", allowed: ["http://example.com"], accepted: false },
+  { server: "http://example.com/?secret=bad", allowed: ["http://example.com"], accepted: false },
+  { server: "http://example.com/#fragment", allowed: ["http://example.com"], accepted: false },
+  { server: "not-an-origin", allowed: [], accepted: false },
+  { server: "http://*.example.com", allowed: ["http://*.example.com"], accepted: false },
+  { server: "ftp://example.com", allowed: [], accepted: false },
+  { server: "http://example.com", allowed: ["http://*.example.com"], accepted: false },
+  { server: "http://example.com", allowed: ["http://example.com/path"], accepted: false },
+  { server: "http://example.com", allowed: ["https://example.com"], accepted: false },
+])(
+  "Worker origin authorization: $server with $allowed => $accepted",
+  ({ server, allowed, accepted }) => {
+    expect(serverSchema(allowed).safeParse(server).success).toBe(accepted);
+  },
+);
+
+test("HTTP authorization persists and run refuses an identity without matching authorization", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sprout-worker-http-"));
+  const directory = join(root, "state");
+  const server = "http://192.168.1.10:3210";
+  const machineId = newId(ID_PREFIXES.machine);
+  await expect(initializeIdentity(directory, server, machineId)).rejects.toThrow(/--allow-http/);
+  const identity = await initializeIdentity(directory, server, machineId, [server]);
+  expect((await readIdentity(directory)).allowHttpOrigins).toEqual([server]);
+  expect((await readIdentity(directory)).server).toBe(server);
+  const path = join(directory, "identity.json");
+  await writeFile(path, JSON.stringify({ ...identity, server: "http://192.168.1.11:3210" }));
+  await expect(readIdentity(directory)).rejects.toThrow(/--allow-http/);
+  const { allowHttpOrigins: _authorization, ...withoutAuthorization } = identity;
+  await writeFile(path, JSON.stringify(withoutAuthorization));
+  await expect(readIdentity(directory)).rejects.toThrow(/--allow-http/);
+  await writeFile(
+    path,
+    JSON.stringify({ ...withoutAuthorization, server: "http://localhost:3210" }),
+  );
+  expect((await readIdentity(directory)).allowHttpOrigins).toEqual([]);
 });
 
 test("directory facts resolve links and distinguish missing paths and files without creating paths", async () => {
