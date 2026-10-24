@@ -161,7 +161,7 @@ async function rpc(name, data, actorCookie = cookie) {
   return result;
 }
 function wire(extra) {
-  return { version: 1, requestId: `req_${randomUUID()}`, ...extra };
+  return { version: 2, requestId: `req_${randomUUID()}`, ...extra };
 }
 async function hiddenInit(args, ticketPath) {
   const child = launch(
@@ -180,7 +180,7 @@ try {
     { cwd: artifactDir },
   );
   assert.equal((await complete(version)).code, 0);
-  assert(readFileSync(join(evidenceDir, "worker-version.log"), "utf8").includes("protocol=1"));
+  assert(readFileSync(join(evidenceDir, "worker-version.log"), "utf8").includes("protocol=2"));
   pass("independent bundled Worker starts outside every project lookup chain", {
     artifactDir,
     node: process.version,
@@ -336,6 +336,7 @@ try {
   assert(detail.ok);
   assert.equal(detail.data.connection.kind, "online");
   assert(detail.data.capability.snapshot.shells.some((s) => s.probe.kind === "success"));
+  assert.deepEqual(detail.data.capability.snapshot.remoteOperations, []);
   const createdProject = await rpc("createProjectFn", { name: "Machine project" });
   assert(createdProject.ok);
   const projectId = createdProject.data.id;
@@ -520,7 +521,7 @@ try {
     "unauthorized",
   );
   assert.equal(
-    (await json("/api/worker/open", { version: 2 })).value.error.code,
+    (await json("/api/worker/open", { version: 1 })).value.error.code,
     "unsupported_version",
   );
   assert.equal(
@@ -536,7 +537,16 @@ try {
   assert(opened.value.ok);
   const session = opened.value.data.session;
   const cap = JSON.parse(initial.capability);
-  const payload = { secret: identity.secret, session, seq: 1, capability: cap, observations: [] };
+  const remote = { results: [], fenceAcks: [] };
+  const payload = {
+    secret: identity.secret,
+    mode: "normal",
+    session,
+    seq: 1,
+    capability: cap,
+    observations: [],
+    remote,
+  };
   assert((await json("/api/worker/exchange", wire(payload))).value.ok);
   const lastSeen = sqlite
     .prepare("SELECT last_seen_at FROM machine_connection WHERE machine_id=? AND generation=?")
@@ -611,9 +621,66 @@ try {
     ).value.error.code,
     "conflict",
   );
+  const committedSeq1 = await json("/api/worker/exchange", wire(payload));
+  assert(committedSeq1.value.ok);
+  assert.equal(committedSeq1.value.data.seq, 1);
+  assert.equal(committedSeq1.value.data.configuration.rootRevision, 2);
   assert((await json("/api/worker/exchange", wire({ ...payload, seq: 2 }))).value.ok);
-  assert.equal((await json("/api/worker/exchange", wire(payload))).value.error.code, "conflict");
-  pass("HTTP rejects old root revision and lower seq", { generation: session.generation });
+  const replayedSeq1 = await json("/api/worker/exchange", wire(payload));
+  assert(replayedSeq1.value.ok);
+  assert.deepEqual(replayedSeq1.value.data, committedSeq1.value.data);
+  assert.equal(
+    (
+      await json(
+        "/api/worker/exchange",
+        wire({ ...payload, capability: { ...cap, workerVersion: "replayed" } }),
+      )
+    ).value.error.code,
+    "conflict",
+  );
+  const beforeDrain = sqlite
+    .prepare("SELECT last_seen_at, seq FROM machine_connection WHERE machine_id=? AND generation=?")
+    .get(machineId, session.generation);
+  const drained = await json(
+    "/api/worker/exchange",
+    wire({ secret: identity.secret, mode: "drain", session, seq: 3, remote }),
+  );
+  assert(drained.value.ok);
+  assert.equal(drained.value.data.mode, "drain");
+  assert.equal(drained.value.data.configuration, null);
+  assert.deepEqual(drained.value.data.remote, {
+    authorizations: [],
+    commands: [],
+    fences: [],
+    resultAcks: [],
+    fenceAcks: [],
+  });
+  assert.deepEqual(
+    sqlite
+      .prepare(
+        "SELECT last_seen_at, seq FROM machine_connection WHERE machine_id=? AND generation=?",
+      )
+      .get(machineId, session.generation),
+    beforeDrain,
+  );
+  assert.equal(
+    (await json("/api/worker/exchange", wire({ ...payload, mode: "normal", seq: 3 }))).value.error
+      .code,
+    "conflict",
+  );
+  assert.equal(
+    (
+      await json(
+        "/api/worker/exchange",
+        wire({ secret: identity.secret, mode: "drain", session, seq: 3, remote }),
+      )
+    ).value.ok,
+    true,
+  );
+  pass(
+    "HTTP rejects old root revision and lower seq; drain replays the original frame and changes no connection fact",
+    { generation: session.generation },
+  );
   const highWater = session.generation;
   await stop(server);
   server = undefined;

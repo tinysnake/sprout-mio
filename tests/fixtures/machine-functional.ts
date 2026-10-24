@@ -19,7 +19,8 @@ import {
   exchangeWorker,
   openWorker,
 } from "../../src/server/worker-gateway";
-import { sqlite } from "../../src/db";
+import { db, sqlite } from "../../src/db";
+import { machineConnection } from "../../src/db/schema";
 
 migrateDatabase();
 const now = new Date("2026-01-01T00:00:00Z");
@@ -46,7 +47,7 @@ const fail = (code: string) => (error: unknown) =>
 const enrollment = createMachine({ name: "Mac" }, ctx);
 const machineId = enrollment.detail.machine.id;
 const secret = "s".repeat(43);
-const wire = { version: 1 as const, requestId, machineId, secret };
+const wire = { version: 2 as const, requestId, machineId, secret };
 assert.equal(listMachines(ctx).length, 1);
 assert.throws(() => getMachine({ machineId }, { ...ctx, userId: "other" }), fail("not_found"));
 assert.throws(() =>
@@ -130,15 +131,17 @@ const capability: CapabilitySnapshot = {
   arch: "arm64",
   workerVersion: "test",
   shells: [],
-  remoteOperations: "not_implemented",
+  remoteOperations: [],
 };
 const exchange = {
-  version: 1 as const,
+  version: 2 as const,
   requestId,
   secret,
+  mode: "normal" as const,
   session: first,
   seq: 1,
   capability,
+  remote: { results: [], fenceAcks: [] },
   observations: [
     {
       machineId,
@@ -152,9 +155,17 @@ const exchange = {
   ],
 };
 const configuration = exchangeWorker(exchange, ctx);
-assert.equal(configuration.root, "/tmp");
-assert.equal(configuration.rootRevision, root.revision);
-assert.deepEqual(configuration.bindings, [{ projectId, description: "local" }]);
+assert.equal(configuration.mode, "normal");
+assert.equal(configuration.configuration?.root, "/tmp");
+assert.equal(configuration.configuration?.rootRevision, root.revision);
+assert.deepEqual(configuration.configuration?.bindings, [{ projectId, description: "local" }]);
+assert.deepEqual(configuration.remote, {
+  authorizations: [],
+  commands: [],
+  fences: [],
+  resultAcks: [],
+  fenceAcks: [],
+});
 exchangeWorker(
   { ...exchange, requestId: newId(ID_PREFIXES.request) },
   { ...ctx, now: new Date(now.getTime() + 1000) },
@@ -211,11 +222,35 @@ assert.equal(second.generation, first.generation + 1);
 for (const action of [
   () => openWorker({ ...wire, attemptId }, ctx),
   () => exchangeWorker(exchange, ctx),
-  () => closeWorker({ version: 1, requestId, secret, session: first }, ctx),
+  () => closeWorker({ version: 2, requestId, secret, session: first }, ctx),
 ])
   assert.throws(action, fail("superseded"));
-closeWorker({ version: 1, requestId, secret, session: second }, ctx);
-closeWorker({ version: 1, requestId, secret, session: second }, ctx);
+const drainOnly = (session: typeof first, seq: number) =>
+  exchangeWorker(
+    {
+      version: 2,
+      requestId: newId(ID_PREFIXES.request),
+      secret,
+      mode: "drain",
+      session,
+      seq,
+      remote: { results: [], fenceAcks: [] },
+    },
+    ctx,
+  );
+const supersededDrain = drainOnly(first, 3);
+assert.equal(supersededDrain.mode, "drain");
+assert.equal(supersededDrain.configuration, null);
+assert.deepEqual(supersededDrain.remote, {
+  authorizations: [],
+  commands: [],
+  fences: [],
+  resultAcks: [],
+  fenceAcks: [],
+});
+assert.equal(getMachine({ machineId }, ctx).connection.kind, "connecting");
+closeWorker({ version: 2, requestId, secret, session: second }, ctx);
+closeWorker({ version: 2, requestId, secret, session: second }, ctx);
 assert.equal(getMachine({ machineId }, ctx).connection.kind, "offline");
 const third = openWorker({ ...wire, attemptId: randomUUID() }, ctx).session;
 assert.throws(
@@ -234,6 +269,32 @@ sqlite
     "INSERT INTO runtime_boot (id,started_at,phase,pid,app_version) VALUES (?,1,'ready',1,'test')",
   )
   .run(reboot.bootId);
+// 旧 boot 的 session 不能重新获得 normal 执行权，但允许用原 session 只 drain；
+// drain 不更新 lastSeen/capability，因此不会把断联 Machine 变 online。
+const rebootDrain = exchangeWorker(
+  {
+    version: 2,
+    requestId: newId(ID_PREFIXES.request),
+    secret,
+    mode: "drain",
+    session: third,
+    seq: 1,
+    remote: { results: [], fenceAcks: [] },
+  },
+  reboot,
+);
+assert.equal(rebootDrain.mode, "drain");
+assert.equal(rebootDrain.configuration, null);
+assert.equal(getMachine({ machineId }, reboot).connection.kind, "offline");
+assert.equal(
+  db
+    .select()
+    .from(machineConnection)
+    .all()
+    .find((row: typeof machineConnection.$inferSelect) => row.generation === third.generation)
+    ?.capability,
+  null,
+);
 assert.throws(
   () => openWorker({ ...wire, attemptId: third.attemptId }, reboot),
   fail("superseded"),

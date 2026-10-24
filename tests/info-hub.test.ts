@@ -24,7 +24,7 @@ type Evidence = {
       recent: unknown[];
     };
     machines: unknown[];
-    leases: { available: boolean; reason: string };
+    leases: { available: boolean; items: { machineId: string; state: string }[] };
   } | null;
   info: {
     members: { kind: string; name: string }[];
@@ -175,19 +175,18 @@ describe("Info Hub 边界与显式不可用标记", () => {
     expect(evidence.leakTokens).toEqual([]);
   });
 
-  it("两条视图保留真实 run，Machine 返回实际集合且租约显式未实现", () => {
+  it("两条视图保留真实 run，Machine 返回实际集合且租约是真实空列表", () => {
     expect(evidence.hub?.runs.available).toBe(true);
     expect(evidence.info?.runs.available).toBe(true);
     expect(evidence.hub?.machines).toEqual([]);
-    expect(evidence.hub?.leases.available).toBe(false);
+    expect(evidence.hub?.leases.available).toBe(true);
+    expect(evidence.hub?.leases.items).toEqual([]);
     expect(evidence.hub?.runs.hostEnabled).toEqual(expect.any(Boolean));
     expect(evidence.info?.runs.hostEnabled).toEqual(expect.any(Boolean));
     expect(evidence.hub?.runs.active).toHaveLength(1);
     expect(evidence.hub?.runs.active[0]?.status).toBe("queued");
     expect(evidence.hub?.runs.active[0]?.pendingInputs).toBe(2);
     expect(evidence.hub?.runs.recent).toEqual([]);
-    expect(evidence.hub?.leases.reason).toContain("P4b");
-    expect(evidence.hub?.leases.reason.length).toBeGreaterThan(0);
   });
 });
 

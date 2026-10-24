@@ -7,10 +7,16 @@ import {
   workerEnrollResponseSchema,
   workerExchangeResponseSchema,
   workerOpenResponseSchema,
+  WORKER_PROTOCOL_VERSION,
 } from "../contracts/worker";
-import type { WorkerSession, WorkerExchangeResponse } from "../contracts/worker";
+import type { WorkerExchangeResponse } from "../contracts/worker";
+import type { WorkerSession } from "../contracts/worker-session";
+import type { RemoteExchangeInput } from "../contracts/remote";
 import type { Identity } from "./identity";
 import { probeCapability, probeDirectory } from "./probes";
+
+/** 执行器与报告提交属于 worker/tools 单元；本客户端只发送空入站批次。 */
+const EMPTY_REMOTE: RemoteExchangeInput = { results: [], fenceAcks: [] };
 
 export class ClientError extends Error {
   constructor(readonly code: string) {
@@ -27,7 +33,7 @@ function post<S extends z.ZodType>(identity: Identity, path: string, payload: ob
         signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          version: 1,
+          version: WORKER_PROTOCOL_VERSION,
           requestId: newId(ID_PREFIXES.request),
           secret: identity.secret,
           ...payload,
@@ -120,7 +126,9 @@ export function workerProgram(identity: Identity) {
           try: () => probeCapability(capabilityCheckedAt),
           catch: () => new ClientError("probe_failed"),
         });
-        let configuration: Extract<WorkerExchangeResponse, { ok: true }>["data"] | undefined;
+        let configuration:
+          | Extract<WorkerExchangeResponse, { ok: true }>["data"]["configuration"]
+          | undefined;
         let seq = 1;
         while (true) {
           const checkedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
@@ -139,11 +147,27 @@ export function workerProgram(identity: Identity) {
           const exchanged = yield* request(
             identity,
             "exchange",
-            { session, seq, capability, observations },
+            {
+              mode: "normal",
+              session,
+              seq,
+              capability,
+              observations,
+              remote: EMPTY_REMOTE,
+            },
             workerExchangeResponseSchema,
           ).pipe(Effect.result);
           if (exchanged._tag === "Failure") {
             if (exchanged.failure.code === "stale") {
+              // 旧连接不得重新获得 normal 执行权：先用原 session 走一次 drain，再重新 open。
+              // 本单元的 Worker 尚未接收任何 delivery，drain 的入站批次为空。
+              configuration = undefined;
+              yield* request(
+                identity,
+                "exchange",
+                { mode: "drain", session, seq, remote: EMPTY_REMOTE },
+                workerExchangeResponseSchema,
+              ).pipe(Effect.timeout("2 seconds"), Effect.ignore);
               session = undefined;
               break;
             }
@@ -152,7 +176,12 @@ export function workerProgram(identity: Identity) {
           } else {
             if (!exchanged.success.ok)
               return yield* Effect.fail(new ClientError("invalid_response"));
-            configuration = exchanged.success.data;
+            if (exchanged.success.data.mode !== "normal") {
+              configuration = undefined;
+              session = undefined;
+              break;
+            }
+            configuration = exchanged.success.data.configuration;
             console.log(
               JSON.stringify({
                 event: "worker.exchange",

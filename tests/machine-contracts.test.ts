@@ -23,7 +23,7 @@ const capability = {
   arch: "arm64",
   workerVersion: "0.1.0",
   shells: [],
-  remoteOperations: "not_implemented",
+  remoteOperations: ["file_read"],
 };
 const session = {
   machineId,
@@ -41,13 +41,15 @@ const fact = {
   result: { kind: "accessible", realPath: "/tmp" },
 };
 const exchange = {
-  version: 1,
+  version: 2,
   requestId: newId(ID_PREFIXES.request),
   secret: "a".repeat(43),
+  mode: "normal",
   session,
   seq: 1,
   capability,
   observations: [fact],
+  remote: { results: [], fenceAcks: [] },
 };
 
 describe("Machine public and wire boundaries", () => {
@@ -125,31 +127,61 @@ describe("Machine public and wire boundaries", () => {
   it("wire binds observations to the envelope and rejects unsupported or contradictory payloads", () => {
     expect(workerExchangeInput.parse(exchange)).toEqual(exchange);
     for (const change of [
-      { version: 2 },
+      { version: 1 },
       { seq: 2 },
       { session: { ...session, generation: 2 } },
       { observations: [fact, fact] },
-      { capability: { ...capability, remoteOperations: "available" } },
+      { capability: { ...capability, remoteOperations: "not_implemented" } },
       { secret: "short" },
+      { mode: "drain", capability },
+      { remote: { results: [{}], fenceAcks: [] } },
     ])
       expect(workerExchangeInput.safeParse({ ...exchange, ...change }).success).toBe(false);
+    const data = {
+      mode: "normal",
+      session,
+      seq: 1,
+      configuration: { root: null, rootRevision: 1, bindings: [] },
+      remote: { authorizations: [], commands: [], fences: [], resultAcks: [], fenceAcks: [] },
+    };
     expect(
       workerExchangeResponseSchema.safeParse({
-        version: 1,
+        version: 2,
         requestId: exchange.requestId,
         ok: true,
-        data: { session, seq: 1, root: null, rootRevision: 1, bindings: [] },
+        data,
       }).success,
     ).toBe(true);
     expect(
       workerExchangeResponseSchema.safeParse({
-        version: 1,
+        version: 2,
         requestId: exchange.requestId,
         ok: true,
-        data: { session, seq: 1, root: null, rootRevision: 1, bindings: [] },
+        data,
         error: { code: "internal", message: "bad" },
       }).success,
     ).toBe(false);
+    expect(
+      workerExchangeResponseSchema.safeParse({
+        version: 1,
+        requestId: exchange.requestId,
+        ok: true,
+        data,
+      }).success,
+    ).toBe(false);
+    for (const contradiction of [
+      { ...data, configuration: null },
+      { ...data, mode: "drain" },
+      { ...data, remote: { ...data.remote, commands: [{ machineId }] } },
+    ])
+      expect(
+        workerExchangeResponseSchema.safeParse({
+          version: 2,
+          requestId: exchange.requestId,
+          ok: true,
+          data: contradiction,
+        }).success,
+      ).toBe(false);
   });
 
   it.each(["identity", "history", "checks"])(

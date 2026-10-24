@@ -123,7 +123,7 @@ test("directory facts resolve links and distinguish missing paths and files with
   await expect(lstat(join(root, "missing"))).rejects.toThrow();
   if (process.platform === "darwin") {
     const capability = await probeCapability(checkedAt);
-    expect(capability.remoteOperations).toBe("not_implemented");
+    expect(capability.remoteOperations).toEqual([]);
     expect(capability.shells.some((shell) => shell.probe.kind === "success")).toBe(true);
   }
 });

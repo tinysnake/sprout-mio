@@ -413,7 +413,7 @@ try {
     .get(projectA.id, machineId);
   const observationA = db
     .prepare(
-      "SELECT real_path FROM directory_observation WHERE project_id=? AND machine_id=? ORDER BY seq DESC LIMIT 1",
+      "SELECT real_path FROM directory_observation WHERE project_id=? AND machine_id=? ORDER BY generation DESC, seq DESC LIMIT 1",
     )
     .get(projectA.id, machineId);
   assert.equal(observationA.real_path, join(root, projectA.id));
@@ -485,9 +485,12 @@ try {
   assert.equal((await rpc("listMachinesFn", {})).data.length, 1);
   const hub = await rpc("getProjectInfoHubFn", { projectId: projectB.id });
   assert.equal(hub.data.machines[0].bindings[0].intent.description, "Project B independent");
-  assert.equal(hub.data.leases.available, false);
+  assert.equal(hub.data.leases.available, true);
+  assert.deepEqual(hub.data.leases.items, []);
+  await page.getByTestId("info-hub-leases").waitFor();
+  await page.getByTestId("info-hub-leases-empty").waitFor();
   pass(
-    "two Projects keep independent bindings and Info Hub exposes real Machine plus unavailable leases",
+    "two Projects keep independent bindings and Info Hub exposes real Machine plus its own empty lease list",
   );
   await page.goto(`${base}/machines/${machineId}`);
   await page.getByTestId("machine-root-form").waitFor();
@@ -525,7 +528,7 @@ try {
   for (const project of [projectA, projectB]) {
     const observed = db
       .prepare(
-        "SELECT real_path FROM directory_observation WHERE machine_id=? AND project_id=? ORDER BY seq DESC LIMIT 1",
+        "SELECT real_path FROM directory_observation WHERE machine_id=? AND project_id=? ORDER BY generation DESC, seq DESC LIMIT 1",
       )
       .get(machineId, project.id);
     assert.equal(observed.real_path, join(root, project.id));
@@ -673,7 +676,7 @@ try {
   for (const project of [projectA, projectB]) {
     const observed = db
       .prepare(
-        "SELECT real_path FROM directory_observation WHERE machine_id=? AND project_id=? ORDER BY seq DESC LIMIT 1",
+        "SELECT real_path FROM directory_observation WHERE machine_id=? AND project_id=? ORDER BY generation DESC, seq DESC LIMIT 1",
       )
       .get(machineId, project.id);
     assert.equal(observed.real_path, join(nextRoot, project.id));

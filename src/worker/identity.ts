@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { machineIdSchema } from "../contracts/machine";
-import { workerSecretSchema } from "../contracts/worker";
+import { workerSecretSchema } from "../contracts/worker-session";
 
 const originSchema = z
   .url()

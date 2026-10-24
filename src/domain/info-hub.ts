@@ -6,7 +6,10 @@ import type {
   ProjectInfoHub,
   TurnStartContext,
 } from "../contracts/info-hub";
-import { LEASES_UNAVAILABLE_REASON } from "../contracts/info-hub";
+import type { LeaseView } from "../contracts/lease";
+import { and, eq } from "drizzle-orm";
+import { db } from "../db";
+import { leaseMutation, machineLease } from "../db/schema";
 import type { AgentRun } from "../contracts/agent-run";
 import type { Chat } from "../contracts/chat";
 import { listProjectMachines } from "./machine";
@@ -111,8 +114,39 @@ export function getProjectInfoHub(projectId: string, ctx: MachineContext): Proje
       runs: runsView(chats, ctx),
     },
     machines: listProjectMachines(projectId, ctx),
-    leases: { available: false, reason: LEASES_UNAVAILABLE_REASON },
+    leases: { available: true, items: leaseViews(projectId) },
   };
+}
+
+/**
+ * 租约只读投影：按 projectId 过滤 machine_lease，pendingMutationId 来自本租约唯一的
+ * pending 动作收据。只读这两张表；没有租约时 items 为空数组，不给占位原因。
+ * 申请/释放属于后续单元，这里不提供任何变更。
+ */
+function leaseViews(projectId: string): LeaseView[] {
+  const pending = db
+    .select({ machineId: leaseMutation.machineId, id: leaseMutation.id })
+    .from(leaseMutation)
+    .where(and(eq(leaseMutation.projectId, projectId), eq(leaseMutation.state, "pending")))
+    .all();
+  const pendingByMachine = new Map(
+    pending.map((row: { machineId: string; id: string }) => [row.machineId, row.id]),
+  );
+  return db
+    .select()
+    .from(machineLease)
+    .where(eq(machineLease.projectId, projectId))
+    .orderBy(machineLease.machineId)
+    .all()
+    .map((row: typeof machineLease.$inferSelect) => ({
+      projectId: row.projectId,
+      machineId: row.machineId,
+      generation: row.generation,
+      state: row.state,
+      holderInstanceId: row.holderInstanceId,
+      changedAt: row.changedAt.toISOString(),
+      pendingMutationId: pendingByMachine.get(row.machineId) ?? null,
+    }));
 }
 
 /** Chat → 自身与成员视角：授权经 chat 自带的 projectId，越权与不存在同样抛 not_found。 */

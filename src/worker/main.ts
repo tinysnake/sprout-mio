@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { z } from "zod";
 import { machineIdSchema } from "../contracts/machine";
 import { APP_VERSION } from "../contracts/version";
+import { WORKER_PROTOCOL_VERSION } from "../contracts/worker";
 import { enroll, runWorker } from "./client";
 import { httpOriginSchema, initializeIdentity, readIdentity, readTicket } from "./identity";
 
@@ -26,7 +27,9 @@ async function main() {
     return;
   }
   if ((command === "version" || command === "--version") && args.length === 0) {
-    console.log(`sprout-worker ${APP_VERSION} protocol=1 node=${process.version}`);
+    console.log(
+      `sprout-worker ${APP_VERSION} protocol=${WORKER_PROTOCOL_VERSION} node=${process.version}`,
+    );
     return;
   }
   const options: Record<string, string | string[]> = {};

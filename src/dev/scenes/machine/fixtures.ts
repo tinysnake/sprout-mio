@@ -65,7 +65,7 @@ export const demoMachineDetails: MachineDetail[] = [
             probe: { kind: "success" },
           },
         ],
-        remoteOperations: "not_implemented",
+        remoteOperations: [],
       },
     },
     bindings: [
@@ -184,7 +184,7 @@ export const demoMachineDetails: MachineDetail[] = [
             probe: { kind: "failure", reason: "unsupported" },
           },
         ],
-        remoteOperations: "not_implemented",
+        remoteOperations: [],
       },
     },
     bindings: [

@@ -42,7 +42,7 @@ type Evidence = {
     errorMessage?: string;
   }[];
   hubMachines: unknown[];
-  hubLeases: { available: boolean; reason: string };
+  hubLeases: { available: boolean; items: unknown[] };
   chatActive: unknown[];
   turnMatchesDb: boolean;
   runId: string;
@@ -230,9 +230,9 @@ describe("两个视角的 run 事实与数据库一致", () => {
     expect(evidence.hubRecent[0]?.pendingInputs).toBe(2);
   });
 
-  it("Machine 返回实际空集合，租约保持显式不可用", () => {
+  it("Machine 返回实际空集合，租约也是真实的空列表", () => {
     expect(evidence.hubMachines).toEqual([]);
-    expect(evidence.hubLeases.available).toBe(false);
-    expect(evidence.hubLeases.reason).toContain("P4b");
+    expect(evidence.hubLeases.available).toBe(true);
+    expect(evidence.hubLeases.items).toEqual([]);
   });
 });

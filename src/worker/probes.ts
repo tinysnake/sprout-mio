@@ -3,8 +3,14 @@ import { constants } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
 import type { CapabilitySnapshot, DirectoryObservation, ShellFact } from "../contracts/machine";
 import { projectWorkingPath } from "../contracts/machine";
-import type { WorkerSession } from "../contracts/worker";
+import type { WorkerSession } from "../contracts/worker-session";
 import { APP_VERSION } from "../contracts/version";
+
+/**
+ * 本 Worker 真正注册的远端操作。执行器尚未接入时为空数组：
+ * 能力必须是实际可执行的 kind 列表，探测失败或未实现不能伪造成能力。
+ */
+const REGISTERED_REMOTE_OPERATIONS: CapabilitySnapshot["remoteOperations"] = [];
 
 function execute(path: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) =>
@@ -76,7 +82,7 @@ export async function probeCapability(checkedAt: string): Promise<CapabilitySnap
     arch: process.arch,
     workerVersion: APP_VERSION,
     shells: await Promise.all(paths.map((path) => shell(path, checkedAt))),
-    remoteOperations: "not_implemented",
+    remoteOperations: [...REGISTERED_REMOTE_OPERATIONS],
   };
 }
 export async function probeDirectory(

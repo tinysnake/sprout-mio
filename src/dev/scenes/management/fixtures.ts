@@ -2,7 +2,6 @@ import type { AgentProfile, ProjectMember } from "../../../contracts/agent";
 import type { Project } from "../../../contracts/project";
 import type { ProjectProfile } from "../../../contracts/project-config";
 import type { ProjectRepoState } from "../../../contracts/repository";
-import { LEASES_UNAVAILABLE_REASON } from "../../../contracts/info-hub";
 import type { ProjectInfoHub } from "../../../contracts/info-hub";
 
 /**
@@ -124,7 +123,7 @@ export const demoInfoHub: ProjectInfoHub = {
     },
   },
   machines: [],
-  leases: { available: false, reason: LEASES_UNAVAILABLE_REASON },
+  leases: { available: true, items: [] },
 };
 
 export const demoHumanName = "林澈";

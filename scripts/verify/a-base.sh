@@ -164,7 +164,7 @@ run 'Worker build' worker-build pnpm worker:build
 [ -f dist/worker/main.js ] || fail 'missing dist/worker/main.js'
 run 'Worker version' worker-version node dist/worker/main.js --version
 version="$(node --input-type=module -e "import { APP_VERSION } from './src/contracts/version.ts'; console.log(APP_VERSION)")"
-grep -qxF "sprout-worker $version protocol=1 node=$(node --version)" "$log_dir/worker-version.log" || fail 'Worker version or protocol marker is incorrect'
+grep -qxF "sprout-worker $version protocol=2 node=$(node --version)" "$log_dir/worker-version.log" || fail 'Worker version or protocol marker is incorrect'
 run 'Worker defaults to usage' worker-default node dist/worker/main.js
 grep -qF 'sprout-worker init --server' "$log_dir/worker-default.log" || fail 'Worker default usage is missing init'
 run 'Worker help' worker-help node dist/worker/main.js --help
