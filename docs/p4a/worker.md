@@ -46,7 +46,7 @@
 
 6. 通过已登录服务把 Machine 加入 Project，保存说明与绝对工作目录。null 目录只表示已绑定且未设置目录。Worker 在后续 exchange 获取绑定并探测目录。保存意图不证明目录存在。
 
-仅 localhost、127.0.0.1 和 ::1 允许 HTTP。其他服务 origin 必须使用 HTTPS。Worker 拒绝 redirect，使用 Node 的 TLS 证书验证，不提供跳过验证选项。
+默认仅 localhost、127.0.0.1 和 ::1 允许 HTTP。非 loopback HTTP 需在 `init` 时用 `--allow-http <完整 origin>` 逐 origin 显式授权，含端口精确匹配，不放行同网段其他地址；授权写入身份文件，`run` 时重新校验。HTTPS 无需开关。Worker 仍拒绝 redirect 与 TLS 校验绕过，`--allow-http` 不关闭 TLS 验证。
 
 固定 shell 探测使用 /bin/zsh、/bin/bash 与 /bin/sh。$SHELL 为其他绝对路径时保留 unknown 与 unsupported 事实，不执行该程序。探测不载入用户 profile，执行版本查询和固定自检，单次子进程限时三秒、输出上限 4 KiB。目录探测只使用 stat、realpath 与访问权限检查，不创建目录或试写文件。
 

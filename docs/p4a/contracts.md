@@ -212,7 +212,7 @@ exchange 接收事务同时核对当前 boot、counter.highWater、attemptId、o
 
 close 只关闭精确匹配的当前 session，重复关闭幂等。查询也核对 boot，因此宿主重启后历史能力不会在线。目录 current 同时要求最新 generation、非 null root 和当前 Machine rootRevision。无需清理历史以推进连接和意图。
 
-凭据不进入 argv、env、URL、日志或截图。协议模块可以解析外部 secret，但不能整体记录输入或 Zod 错误中的原始数据。Human 投影通过字段白名单构建。仅 loopback 允许 HTTP，其他 origin 要 HTTPS，拒绝 redirect 和 TLS 校验绕过；这些传输规则由下游实现。
+凭据不进入 argv、env、URL、日志或截图。协议模块可以解析外部 secret，但不能整体记录输入或 Zod 错误中的原始数据。Human 投影通过字段白名单构建。默认仅 loopback 允许 HTTP；非 loopback HTTP 需在 `init` 时用 `--allow-http <完整 origin>` 逐 origin 显式授权，含端口精确匹配，不放行同网段其他地址。授权写入身份文件，`run` 时重新校验；HTTPS 无需开关，仍拒绝 redirect 与 TLS 校验绕过，`--allow-http` 不关闭 TLS 验证。
 
 ## Risk → Test
 

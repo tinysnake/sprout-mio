@@ -75,6 +75,7 @@ try {
 } catch (error) {
   if (error instanceof z.ZodError)
     console.error(error.issues.map((issue) => issue.message).join("; "));
+  else if (error instanceof Error) console.error(error.message);
   console.error(
     "Worker failed. Check arguments, private state permissions, server availability and enrollment. Run sprout-worker help for usage.",
   );
