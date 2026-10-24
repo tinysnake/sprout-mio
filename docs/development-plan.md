@@ -163,14 +163,16 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 编排者在每个单元合入前后各复跑一轮：`pnpm check`、`pnpm typecheck`、`pnpm test`（202 项）、`pnpm worker:build`、`pnpm build`、`bash scripts/verify/t-machine-worker.sh`、`bash scripts/verify/u-machine-ui.sh`（14 组）、`bash scripts/verify/k-acceptance.sh` 与 `bash scripts/verify/s-machine-contracts.sh`，均退出 0；演示脚本 40 项全过。root 冲突保护的一次真实竞态（loader 刷新重基草稿 revision 导致静默覆盖）在复跑中暴露并在 `455e46c` 修复。独立技术验收由未参与实现的另一模型家族在 `git archive 6702ccc` 的独立 checkout 上执行并判定通过，带回两处遗漏，已在 `97a530b` 修复。
 
-复核记录。版本 `97a530b`。技术验收通过与 Human 体验确认是两件事，后者待 Human 在第二轮交付上明确给出。
+第三轮与第四轮记录（2026-10-24）。第三轮 `23b86c8`（合入 `8d79327`）：已配对后删除重复的配对与票据信息，详情全文仅一处「已配对」，主内容改单列占满整宽，安装与 `run` 命令降级到底部「安装与维护」且仍可读取；Shell 详情改为有边框按钮打开共享 `Dialog`。第四轮 `6cedf4a`（合入 `5d49e80`）：能力非 current 时不渲染 shell 摘要，按断连、连接中、在线未上报分别给对应说明，依据 Human「看上次的快照没有意义」的判断；详情新增五秒自动刷新（刷新完成后排下一次、后台暂停、卸载清理），编辑与聚焦中的输入不被覆盖且草稿 revision 不被重基；目录四种 unavailable reason 改为中文原因加下一步。两轮均由编排者在 worktree 与 main 各自复跑 `bash scripts/verify/u-machine-ui.sh` 与 `bash scripts/verify/t-machine-worker.sh`，日志见 `orchestrate/sprout-mio-p4a/reports/`。
+
+复核记录。Human 体验确认已在 `5d49e80` 给出（体验跨四轮，期间 Human 推翻了本章两个领域决定、选定 Shell 与 allow-http 形态，并在最后一轮否决「断联保留上次快照」的实现方向）。技术验收通过与 Human 体验确认仍为两件事：第三、四轮的独立技术验收在确认之后启动，尚未回写结论，因此集成线格保持未勾；若该验收出现阻塞项，体验确认需重新取得。
 
 第一轮技术验收记录（票据生命周期部分仍然有效，目录模型部分由上述变更重开）。三轮票据生命周期修复 `77555c9`、`2ce9dfe`、`90a6af7` 在 `e10a5b4` 合入 main。独立验收由未参与实现的另一模型家族执行，使用自有 checkout、自建 production 构建、独立 SQLite、Worker state 与 Chromium，41 条断言全为 true。正常续签、跨 Machine 迟到响应、同 Machine 在途放弃三条互斥路径在同一被验 head 上闭合；撤销不误杀合法票据、真实 Fn 授权边界、失败续签保留合法状态、真实 SIGTERM 后同代观察仍 current 均有独立证据。编排者在合入后复跑 `pnpm check`、`pnpm typecheck`、180 项测试、Worker 与 Web 构建及 `bash scripts/verify/u-machine-ui.sh`（13 组），均退出 0。章节交付、已知限制与未验证项见 [P4a 结论](p4a/summary.md#技术验收证据)。
 
-- [ ] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
-- [ ] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。
+- [x] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
+- [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。
 - [ ] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。
-- [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。
+- [x] Human 亲自体验并明确确认通过，编排者已记录确认版本。
 
 ### I-P4b 集成分身持租与远端操作
 

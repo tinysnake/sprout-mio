@@ -1,6 +1,6 @@
 # P4a Worker 连接与 Project 绑定
 
-技术验收已通过，Human 体验确认待记录。P4a 是 I-P4a 集成单元的功能与 UI 章节记录；本文件不是设计定稿，也不替代编排 store 里的证据。
+Human 体验确认已记录（见本章末）。P4a 是 I-P4a 集成单元的功能与 UI 章节记录；本文件不是设计定稿，也不替代编排 store 里的证据。`6702ccc` 及之前的独立技术验收已通过；第三、四轮合入的独立验收仍在进行，结果记录在下面「技术验收证据」。
 
 Human 可从 Machines 创建 Machine 身份，按详情给出的实际命令构建、复制并初始化 macOS Worker，再运行独立进程主动认证连接。详情展示配对、连接代次、实际 shell 能力与目录观察。Project settings 提供本人 Machine 的加入入口、说明和工作目录。
 
@@ -10,7 +10,7 @@ Shell 区仅展示当前可用能力；断联且能力不可用时只显示「Wo
 
 详情 loader 每次刷新完成后间隔 5 秒自动刷新，后台标签页暂停、卸载清理；手动刷新仍可用。root 与绑定说明在编辑或聚焦期间保留原输入和草稿 revision，待提交请求也不因刷新消失；会话内票据不随 loader 更新清除。
 
-目录的 missing、not_directory、denied、io_error 统一显示中文原因和下一步操作。missing 说明期望目录不存在、一期不会自动创建、需在 Worker 机器自行创建或修改 root；保留代次、revision、检查时间。四种最终文案和技术证据见 `docs/ui/p4a.md` 与 `/tmp/sprout-p4a-review-round4-report.md`。本轮没有修改领域、契约、DB 或 Worker，Human 体验确认待 Human 明确给出。
+目录的 missing、not_directory、denied、io_error 统一显示中文原因和下一步操作。missing 说明期望目录不存在、一期不会自动创建、需在 Worker 机器自行创建或修改 root；保留代次、revision、检查时间。四种最终文案和技术证据见 `docs/ui/p4a.md` 与 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-review-round4-report.md`。本轮没有修改领域、契约、DB 或 Worker。Human 已在 `5d49e80` 上确认体验通过，见 [Human 体验确认](#human-体验确认)。
 
 ## 交付范围
 
@@ -42,7 +42,11 @@ Info Hub 的 machines 使用真实集合，leases 独立标记未实现。P4b �
 
 ## 技术验收证据
 
-被验版本 `90a6af7`，合入为 `e10a5b4`。独立验收由未参与实现的另一模型家族执行，使用自有 checkout、自建 production 构建、独立 SQLite、独立 Worker state、独立 Chromium 与新账号。独立探针 41 条布尔全为 true，退出码 0。
+第二轮被验版本 `74fccd4`，独立结论为技术验收通过，并记录两处遗漏（三份文档仍写旧的 allow-http 结论、TLS 守卫错误被通用提示吞掉），两者在 `97a530b` 修复；第三轮被验 head `6702ccc` 的独立验收同样通过。重跑入口为 `bash scripts/verify/u-machine-ui.sh`、`bash scripts/verify/t-machine-worker.sh` 与 `bash scripts/verify/k-acceptance.sh`，完整报告见 `orchestrate/sprout-mio-p4a/reports/acceptance-round2.md` 与 `acceptance-final.md`。
+
+第三轮（`8d79327`）与第四轮（`5d49e80`）的独立技术验收在 Human 体验确认之后启动，尚未回写结论；编排者已在 worktree 与 main 两处各自复跑上述命令，日志见 `orchestrate/sprout-mio-p4a/reports/`。
+
+第一轮被验版本 `90a6af7`，合入为 `e10a5b4`。独立验收由未参与实现的另一模型家族执行，使用自有 checkout、自建 production 构建、独立 SQLite、独立 Worker state、独立 Chromium 与新账号。独立探针 41 条布尔全为 true，退出码 0。
 
 三条互斥的票据路径都在同一被验 head 上闭合。
 
@@ -71,7 +75,7 @@ Human 于 2026-10-24 亲自体验 `3df7f2c`，给出六条反馈。其中前两�
 
 其余四条是实现与呈现修正，不改变领域：Project settings 点绑定却跳回 Machine 详情页是缺陷，改为在本页就地完成绑定；未配对时配对与安装说明前置到最显眼位置；安装文案精简、协议尾注默认收起、allow-http 用问号弹窗说明；Shell 能力折叠为 zsh / bash / sh 的勾与叉，详情走 tooltip。
 
-本章四步 checklist 因此全部取消勾选，等待第二轮复验。票据生命周期的三轮修复结论仍然有效。
+本章四步 checklist 因此全部取消勾选，等待第二轮复验。票据生命周期的三轮修复结论仍然有效。第二轮由 `bash scripts/verify/u-machine-ui.sh` 与 `bash scripts/verify/s-machine-contracts.sh` 复验，独立结论见 `orchestrate/sprout-mio-p4a/reports/acceptance-round2.md`。
 
 ### 第二轮复验与三条呈现修正
 
@@ -87,11 +91,15 @@ Human 在第二轮选择了两个原先开放的问题：Shell 能力采用一�
 
 基于 main `edb316b`，本轮只调整共用呈现组件：active 详情删除配对与票据区及页头重复状态，仅在连接事实中保留一次「已配对」；主内容使用整宽，安装与启动命令移至详情底部，`run` 保持可读取和选择复制。pending 的配对与安装区继续置顶。
 
-Shell 延续方案 B 的单行摘要与平台信息，按本轮 Human 决定改为有边框的按钮打开共享 `Dialog`，覆盖上一轮的悬停与聚焦展开方式。Enter / Space 可打开，Escape 可关闭；宽弹窗呈现路径、完整版本、自检与检查时间，unknown 和旧代次限制保持。验证命令、DOM 与截图证据见 [UI 交付](../ui/p4a.md) 及 `/tmp/sprout-p4a-review-round3-report.md`。第三轮实现的 Human 体验确认尚待明确给出。
+Shell 延续方案 B 的单行摘要与平台信息，按本轮 Human 决定改为有边框的按钮打开共享 `Dialog`，覆盖上一轮的悬停与聚焦展开方式。Enter / Space 可打开，Escape 可关闭；宽弹窗呈现路径、完整版本、自检与检查时间，unknown 和旧代次限制保持。验证命令、DOM 与截图证据见 [UI 交付](../ui/p4a.md) 及 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-review-round3-report.md`。第三轮与第四轮实现均纳入 Human 在 `5d49e80` 的确认范围。
 
 ## Human 体验确认
 
-- 待确认。Human 已体验 `3df7f2c` 并给出反馈，但反馈触发领域变更，该版本不作为本章通过确认。第二轮交付后再取得确认。
+- 确认记录：Human 亲自体验确认通过，版本 `5d49e80`
+
+体验过程跨四轮：Human 先体验 `3df7f2c` 并给出六条反馈（其中两条改变领域模型），随后在 round-2、round-3、round-4 的真实页面预览中继续给出反馈与两个方向选择，最后在 `5d49e80` 上表示「无更多反馈」，经编排者确认后回复「是」，即确认本章通过。该确认针对 round 3 与 round 4 的呈现改动；第三、四轮的独立技术验收在确认之后仍在进行，若其结论出现阻塞项，本格需重新打开。
+
+期间 Human 也明确否决了一个已实现方向：断联时不保留 shell 摘要与「上次快照」入口，直接说明 Worker 已断连（见 [Round-4 呈现反馈](#round-4-呈现反馈)）。
 
 推荐体验顺序。
 

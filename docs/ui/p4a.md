@@ -17,7 +17,7 @@
 
 检查代次、revision、时间与期望路径继续展示。演示控制补充连接状态和四种目录原因，真实页与演示仍使用相同呈现组件。新增浏览器断言检查 DOM 中无摘要、恢复后的计算颜色、四种中文原因，以及真实 loader 自动刷新、草稿提交 revision、票据保留、后台和卸载后三个刷新周期无新请求。
 
-第四轮证据见 `/tmp/sprout-p4a-review-round4-report.md`。截图为 `.verify/p4a-machine-scenes/{shell-summary,offline-no-shell,missing-directory}-{1440,390}-{light,dark}.png`；真实验收命令使用 `SPROUT_PI_ENABLED=false BASE_URL=http://127.0.0.1:3360 bash scripts/verify/u-machine-ui.sh`，连续两次。技术结果以报告退出码为准，Human 体验确认仍待明确给出。
+第四轮证据见 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-review-round4-report.md`。截图为 `.verify/p4a-machine-scenes/{shell-summary,offline-no-shell,missing-directory}-{1440,390}-{light,dark}.png`；真实验收命令使用 `SPROUT_PI_ENABLED=false BASE_URL=http://127.0.0.1:3360 bash scripts/verify/u-machine-ui.sh`，连续两次。技术结果以报告退出码为准。Human 已在 `5d49e80` 上确认体验通过，见 [P4a 结论](../p4a/summary.md#human-体验确认)。
 
 ## Shell 能力：方案 B「一行摘要」
 
@@ -29,15 +29,15 @@
 
 演示保留第一台 Machine 的 Shell 状态选择器，包含全部通过、部分失败、全部失败、unknown、无快照与空列表；旧代次继续使用原有断线 Machine 夹具。bash/sh 夹具使用完整的 GNU bash 版本与 Copyright 字符串。`p4a-machine-scenes.mjs` 检查按钮外观、`aria-haspopup`、dialog 可见性、Enter / Space / Escape、触控与 1440 / 390 浅暗主题的版本串宽度和行数；保留既有权限、票据、持久性、旧代次和导航断言。真实流程在 pending 下检查没有摘要，在 active 下检查点击展开和 Escape 关闭。
 
-可复现命令：`pnpm check`、`pnpm typecheck`、`pnpm test`、`pnpm worker:build`、`pnpm build`；启动 3077 演示 dev 后运行 `node scripts/browser/p4a-machine-scenes.mjs`；production 构建后连续两次运行 `SPROUT_PI_ENABLED=false BASE_URL=http://127.0.0.1:3355 bash scripts/verify/u-machine-ui.sh`。第三轮实跑退出码、截图和交互值见 `/tmp/sprout-p4a-review-round3-report.md`。
+可复现命令：`pnpm check`、`pnpm typecheck`、`pnpm test`、`pnpm worker:build`、`pnpm build`；启动 3077 演示 dev 后运行 `node scripts/browser/p4a-machine-scenes.mjs`；production 构建后连续两次运行 `SPROUT_PI_ENABLED=false BASE_URL=http://127.0.0.1:3355 bash scripts/verify/u-machine-ui.sh`。第三轮实跑退出码、截图和交互值见 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-review-round3-report.md`。
 
-截图位于 `.verify/p4a-machine-scenes/shell-summary-{1440,390}-{light,dark}.png` 与 `shell-details-{1440,390}-{light,dark}.png`，状态图为 `shell-state-{partial,failed,unknown,missing,empty,stale}.png`，DOM 证据为 `shell-summary-evidence.json`。已实际读图确认两种宽度与浅暗主题的一行摘要、390 无横向滚动、详情未被容器裁切。触控验证使用 Chromium 模拟，真机触控与屏幕阅读器未验证。方案 B 的 Human 选择已确认，本轮实现的 Human 体验确认仍待 Human 明确给出。
+截图位于 `.verify/p4a-machine-scenes/shell-summary-{1440,390}-{light,dark}.png` 与 `shell-details-{1440,390}-{light,dark}.png`，状态图为 `shell-state-{partial,failed,unknown,missing,empty,stale}.png`，DOM 证据为 `shell-summary-evidence.json`。已实际读图确认两种宽度与浅暗主题的一行摘要、390 无横向滚动、详情未被容器裁切。触控验证使用 Chromium 模拟，真机触控与屏幕阅读器未验证。方案 B 的 Human 选择已确认；本轮实现的 Human 体验确认已在 `5d49e80` 给出。
 
 ## Round-3：已配对详情与 Shell 弹窗
 
 Human 第三轮反馈覆盖第二轮的 Shell 展开方式：保持一行摘要，改为有按钮外观的点击弹窗。active 详情移除整个配对与票据区，页头仅呈现连接，配对状态只在「连接与配对」事实中出现一次。连接、Shell、root 与绑定使用整宽，安装与启动说明留在详情底部，`run` 命令持续可读取、选择复制，无需重新配对。pending 的配对与安装仍置顶，内部操作与布局边界不变。
 
-DOM 断言检查 active 无 `machine-enrollment-status` / `machine-enrollment-expires` / `machine-enrollment-panel`、详情仅一处「已配对」、`run --state-dir` 仍可读取；pending 继续检查配对区先于连接且整体在其上方。截图与位置矩阵继续使用 `priority-{pending,active}-{1440,390}-{light,dark}.png` 和 `priority-positions.json`。第三轮实现的 Human 体验确认待 Human 明确给出。
+DOM 断言检查 active 无 `machine-enrollment-status` / `machine-enrollment-expires` / `machine-enrollment-panel`、详情仅一处「已配对」、`run --state-dir` 仍可读取；pending 继续检查配对区先于连接且整体在其上方。截图与位置矩阵继续使用 `priority-{pending,active}-{1440,390}-{light,dark}.png` 和 `priority-positions.json`。第三轮与第四轮的 Human 体验确认均已在 `5d49e80` 给出。
 
 ## Round-1：详情优先级与安装文案（历史，active 布局由 Round-3 更新）
 
@@ -46,7 +46,7 @@ DOM 断言检查 active 无 `machine-enrollment-status` / `machine-enrollment-ex
 - 首次配对仅保留构建、隐藏输入票据和十分钟有效期等必要说明。已配对时提示直接运行 `run`，移除首次配对前置说明。
 - HTTP / HTTPS 尾注默认隐藏，问号打开共享 `Dialog`。说明 `--server http://127.0.0.1:3330` 的本机配置：默认仅 loopback HTTP；非 loopback HTTP 需在 `init` 时用 `--allow-http <完整 origin>` 逐 origin 授权，含端口精确匹配，不放行同网段其他地址。授权写入身份文件，`run` 时重新校验；HTTPS 无需开关，仍拒绝 redirect 与 TLS 校验绕过，`--allow-http` 不关闭 TLS 验证。
 - 真实页和演示页均复用 `MachineDetailPanel` / `MachineEnrollmentPanel` / `MachineInstallInstructions`。演示中选择「待配对的 MacBook」检查置顶，选择「工作室 Mac mini」检查降级，两者均可打开协议说明。场景脚本保留 29 项，真实流程保留 14 组，呈现断言并入相关组，覆盖 390 / 899 / 900 / 1199 / 1200 / 1440px 与浅暗主题。
-- 位置证据与八张截图：`.verify/p4a-machine-scenes/priority-positions.json`、`priority-{pending,active}-{1440,390}-{light,dark}.png`。执行结果以本轮 `/tmp/sprout-p4a-detail-priority-report.md` 为准；Human 体验确认待 Human 明确给出。
+- 位置证据与八张截图：`.verify/p4a-machine-scenes/priority-positions.json`、`priority-{pending,active}-{1440,390}-{light,dark}.png`。执行结果以本轮 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-detail-priority-report.md` 为准；Human 体验确认已在 `5d49e80` 给出。
 
 ## 基线
 
@@ -88,7 +88,7 @@ node scripts/browser/p4a-machine-scenes.mjs
 | 格式与静态检查 | `pnpm check`                                  | 0 error，2 条既存 warning（其中一条 `scripts/ui-review/review.mjs` 为基线自带） |
 | 类型           | `pnpm typecheck`                              | 通过                                                                            |
 | 单元测试       | `npx vp test run tests/machine-view.test.ts`  | 6/6                                                                             |
-| 全量测试       | `pnpm test`                                   | 见 `/tmp/sprout-p4a-ui-report.md`                                               |
+| 全量测试       | `pnpm test`                                   | 见 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-ui-report.md`                                               |
 | 浏览器         | `node scripts/browser/p4a-machine-scenes.mjs` | 19/19 PASS                                                                      |
 
 浏览器脚本断言：列表状态文案不出现“空闲/已释放”；详情分离配对与连接；Shell 能力来自 `CapabilitySnapshot`；安装命令不含 `--ticket`，票据默认隐藏且长度 43；空说明可保存且显示“（无说明）”，修改 root 后旧 root revision 的目录观察不再标记“当前可达”；绑定保存后显示 description revision，root 保存成功声明仍需等待 Worker 观察；新增 root 失败草稿与冲突后重试、清空 root 和两个 Project 派生路径不同两项检查；保存/创建失败保留输入；续签抛网络错误时显示安全错误、pending 恢复且异常细节不外泄；续签后切到另一台 Machine 不出现前一台的票据；待配对转已配对后旧票据消失；active 无续签；390 浅色与暗色均无横向溢出，滚动展示绑定与安装区，长命令可滚动到末尾，演示控制不再固定覆盖底栏；纯演示没有 `/api/` 或 `/_server` 请求；既有 Agents 场景仍可用。
@@ -116,7 +116,7 @@ node scripts/browser/p4a-machine-scenes.mjs
 
 `/machines/lifecycle` 用 `React.Profiler.onRender` 在提交阶段读取正式组件的 DOM，只记录 MachineId、是否存在明文节点、归属是否正确。新增两项浏览器断言覆盖 A 展开后切 B 的每次提交、错配 enrollment prop 与合法票据展开隐藏，原 23 项断言保留。探针使用完全虚构的 43 字符票据，不输出票据值，截图前先隐藏票据。提交阶段证据不证明浏览器已 paint。
 
-基线 `4f2766e32684560f76f86f0ed916220d49933772` 的独立真实组件探针在 3088 红测退出 1，B 首次提交有明文节点；修正后同探针退出 0。日志分别为 `/tmp/p4a-ticket-render-red.log` 与 `/tmp/p4a-ticket-render-green.log`。本次验证与限制见 `/tmp/sprout-p4a-ui-ticket-render-report.md`。
+基线 `4f2766e32684560f76f86f0ed916220d49933772` 的独立真实组件探针在 3088 红测退出 1，B 首次提交有明文节点；修正后同探针退出 0。日志分别为 `/tmp/p4a-ticket-render-red.log` 与 `/tmp/p4a-ticket-render-green.log`。本次验证与限制见 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-ui-ticket-render-report.md`。
 
 ## 给集成线的接入说明
 

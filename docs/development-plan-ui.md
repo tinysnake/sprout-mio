@@ -160,7 +160,7 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应 [P4a](development-plan-functional.md#p4a-建立-worker-连接和-project-绑定)。
 
-- [ ] 完成 Machine 列表与详情、加入 Project、说明和工作目录绑定的设计及演示。root 工作目录区、绑定就地完成、配对与安装优先级、安装文案与 Shell 能力呈现按 Human 体验反馈调整，见 [P4a 结论](p4a/summary.md#体验后变更)。
+- [x] 完成 Machine 列表与详情、加入 Project、说明与派生工作目录的呈现及演示。root 工作目录区、绑定就地完成、配对与安装优先级、安装文案与 Shell 能力呈现按 Human 四轮体验反馈调整，重跑 `bash scripts/verify/u-machine-ui.sh`；设计与决定理由见 [P4a 结论](p4a/summary.md#体验后变更)。
 - [x] 组织 Worker 安装与启动所需的说明和连接反馈，具体步骤沿用实际功能交付。见 [Worker 安装](p4a/worker.md)，重跑 `bash scripts/verify/t-machine-worker.sh`。
 - [x] 呈现在线、断线、重连和能力信息，不能以断线推断空闲或释放，Project 上下文始终明确。见 [真实接入](ui/p4a-integration.md)，重跑 `bash scripts/verify/u-machine-ui.sh`。
 
