@@ -68,18 +68,28 @@ async function assertDetailPresentation(page, status) {
     const install = document.querySelector('[data-testid="machine-install"]');
     return {
       enrollmentFirst: Boolean(
-        section.compareDocumentPosition(connection) & Node.DOCUMENT_POSITION_FOLLOWING,
+        section && section.compareDocumentPosition(connection) & Node.DOCUMENT_POSITION_FOLLOWING,
       ),
       pairingBeforeInstall: Boolean(
-        pairing.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING,
+        pairing && pairing.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING,
       ),
-      sectionTop: section.getBoundingClientRect().top,
-      sectionBottom: section.getBoundingClientRect().bottom,
+      sectionTop: section?.getBoundingClientRect().top ?? null,
+      sectionBottom: section?.getBoundingClientRect().bottom ?? null,
       connectionTop: connection.getBoundingClientRect().top,
     };
   });
   assert.equal(facts.enrollmentFirst, status === "pending");
-  assert.equal(facts.pairingBeforeInstall, true, "配对必须先于安装");
+  assert.equal(facts.pairingBeforeInstall, status === "pending", "待配对时配对必须先于安装");
+  if (status === "active") {
+    assert.equal(await page.getByTestId("machine-enrollment-status").count(), 0);
+    assert.equal(await page.getByTestId("machine-enrollment-panel").count(), 0);
+    const text = await page.getByTestId("machine-detail-page").innerText();
+    assert.equal((text.match(/已配对/g) ?? []).length, 1);
+    assert.doesNotMatch(text, /配对状态|票据到期|Worker 使用本机保存的身份重新连接/);
+    const run = await page.getByTestId("machine-command-run").innerText();
+    assert.match(run, /run --state-dir/);
+    assert.doesNotMatch(run, /--ticket|--allow-http/);
+  }
   if (status === "pending") assert.ok(facts.sectionBottom <= facts.connectionTop + 1);
   const note = page.getByTestId("machine-http-note");
   assert.equal(await note.isVisible(), false, "协议说明默认收起");
@@ -104,7 +114,8 @@ async function assertDetailPresentation(page, status) {
     assert.match(await shellSummary.innerText(), /尚未探测/);
     assert.ok(!(await shellSummary.innerText()).includes("✓"));
   }
-  await shellSummary.hover();
+  assert.equal(await shellSummary.getAttribute("aria-haspopup"), "dialog");
+  await shellSummary.click();
   await shellDetails.waitFor({ state: "visible" });
   assert.equal(await shellSummary.getAttribute("aria-expanded"), "true");
   if (status === "active") {
@@ -295,7 +306,7 @@ try {
     "Worker online",
   );
   await page.getByTestId("machine-refresh").click();
-  await page.getByTestId("machine-enrollment-active").waitFor();
+  await page.getByTestId("machine-detail-enrollment").filter({ hasText: "已配对" }).waitFor();
   assert((await page.getByTestId("machine-detail-connection").innerText()).includes("在线"));
   assert.equal(await page.getByTestId("machine-ticket-value").count(), 0);
   const activePresentation = await assertDetailPresentation(page, "active");

@@ -51,14 +51,16 @@ export const demoMachineDetails: MachineDetail[] = [
           {
             path: "/bin/bash",
             kind: "bash",
-            version: "GNU bash, version 3.2.57",
+            version:
+              "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin26) Copyright (C) 2007 Free Software Foundation, Inc.",
             checkedAt: "2026-10-18T07:10:00.000Z",
             probe: { kind: "success" },
           },
           {
             path: "/bin/sh",
             kind: "sh",
-            version: "sh 3.2.57",
+            version:
+              "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin26) Copyright (C) 2007 Free Software Foundation, Inc.",
             checkedAt: "2026-10-18T07:10:00.000Z",
             probe: { kind: "success" },
           },
