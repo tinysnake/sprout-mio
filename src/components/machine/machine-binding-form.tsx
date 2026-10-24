@@ -40,6 +40,7 @@ export function MachineBindingForm({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [saved, setSaved] = useState("");
   const synced = useRef({ identity, revision: bound?.revision ?? null });
+  const preserveDraft = useRef(false);
   const live = useRef(identity);
   live.current = identity;
 
@@ -50,6 +51,7 @@ export function MachineBindingForm({
     synced.current = { identity, revision };
     const nextDescription = bound?.description ?? "";
     if (!matched) {
+      preserveDraft.current = false;
       setIntent(bound);
       setDescription(nextDescription);
       setError(null);
@@ -58,10 +60,10 @@ export function MachineBindingForm({
       return;
     }
     const dirty = description !== (intent?.description ?? "");
-    if (dirty) return;
+    if (dirty || preserveDraft.current || pending) return;
     setIntent(bound);
     setDescription(nextDescription);
-  }, [identity, bound, description, intent]);
+  }, [identity, bound, description, intent, pending]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -90,6 +92,7 @@ export function MachineBindingForm({
         setFieldErrors(result.fieldErrors ?? {});
         return;
       }
+      preserveDraft.current = false;
       setIntent(result.data);
       setDescription(result.data.description);
       synced.current = { identity, revision: result.data.revision };
@@ -123,6 +126,9 @@ export function MachineBindingForm({
             rows={3}
             maxLength={500}
             value={description}
+            onFocus={() => {
+              preserveDraft.current = true;
+            }}
             disabled={pending}
             onChange={(event) => setDescription(event.target.value)}
           />

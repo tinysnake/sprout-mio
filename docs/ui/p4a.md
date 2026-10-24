@@ -2,15 +2,32 @@
 
 状态：本文保留共用呈现组件与演示交付记录。正式路由、真实 server functions、安装指令和 Info Hub 的当前接入见 [p4a-integration.md](p4a-integration.md)。历史记录不是章节技术验收或 Human 体验确认。
 
+## Round-4：断联、自动刷新与目录原因
+
+仅当前能力可用时显示下述一行摘要与宽弹窗。能力不可用时不渲染摘要按钮、勾叉或历史详情入口：offline 显示「Worker 已断连」；connecting 显示「Worker 正在连接，当前能力尚未上报」；online 但尚无当前能力显示「当前能力尚未上报」。Human 明确指出「看上次的快照没有意义」，因此 Shell 区不以灰勾引导读取旧数据。左栏连接历史事实与旧能力说明继续保留。
+
+真实详情路由每次刷新完成后等待 5 秒重新执行 loader；后台标签页暂停，回到前台重新计时，卸载清除计时器和 visibilitychange 监听。仍可手动刷新。root 与绑定说明在聚焦、dirty 或提交期间保留输入与草稿 revision；刷新只推进当前服务端事实。轮询不更换组件身份，不清除会话内票据。
+
+目录不可用原因由 machine-view.ts 统一映射，详情和绑定表单复用：
+
+- missing：期望路径的目录不存在。一期不会自动创建，需自行在 Worker 所在机器上创建目录，或修改 root。
+- not_directory：该路径存在但不是目录。请在 Worker 所在机器上改为目录，或修改 root 指向目录。
+- denied：该路径存在，但 Worker 无权访问。请在 Worker 所在机器上为运行 Worker 的用户授予目录访问权限。
+- io_error：读取该路径时出错。请在 Worker 所在机器上检查磁盘和目录是否可读，排除问题后等待重新检查。
+
+检查代次、revision、时间与期望路径继续展示。演示控制补充连接状态和四种目录原因，真实页与演示仍使用相同呈现组件。新增浏览器断言检查 DOM 中无摘要、恢复后的计算颜色、四种中文原因，以及真实 loader 自动刷新、草稿提交 revision、票据保留、后台和卸载后三个刷新周期无新请求。
+
+第四轮证据见 `/tmp/sprout-p4a-review-round4-report.md`。截图为 `.verify/p4a-machine-scenes/{shell-summary,offline-no-shell,missing-directory}-{1440,390}-{light,dark}.png`；真实验收命令使用 `SPROUT_PI_ENABLED=false BASE_URL=http://127.0.0.1:3360 bash scripts/verify/u-machine-ui.sh`，连续两次。技术结果以报告退出码为准，Human 体验确认仍待明确给出。
+
 ## Shell 能力：方案 B「一行摘要」
 
 本轮按 Human 已选定的 B 实现：默认显示 `✓ zsh · ✓ bash · ✓ sh`，同行显示 `平台 darwin arm64`。路径、版本、自检结果和检查时间进入详情弹层。`machine-shell-summary.tsx` 直接读取 `MachineDetail["capability"]`，真实详情与演示通过 `MachineDetailPanel` 共用该组件，不改能力快照契约。
 
 触发元素复用共享 `Button`（outline / sm），带边框、hover 态与 `aria-haspopup="dialog"`；点击或触控点击打开共享 `Dialog`，Enter / Space 可开，Escape 或关闭按钮可关，Tab 在弹窗内移动焦点，关闭后回到触发按钮。悬停与单纯聚焦不展开。Dialog 宽度 56rem，并受视口最大宽度限制；版本串用等宽字体并按需换行，390px 下可纵向滚动而不横向溢出。沿用现有 semantic token 与浅暗主题。
 
-状态规则：当前快照的成功项显示绿色 `✓`；失败项显示红色 `✗`，详情保留原始失败原因；unknown 显示红色 `? unknown`，详情明确“不猜调用语法”；无快照显示 `? 尚未探测` 和未知平台；有快照但 shell 列表为空显示 `? 未报告 shell`。旧快照的成功项使用中性色，并明确标记“旧代次”，原有“不能当作现在可用”的连接说明保留，弹层也重复这一限制。
+状态规则：当前能力的成功项显示绿色 `✓`；失败项显示红色 `✗`，详情保留原始失败原因；unknown 显示红色 `? unknown`，详情明确“不猜调用语法”；当前能力的 shell 列表为空时显示 `? 未报告 shell`。能力缺失或不再 current 时按 Round-4 规则仅展示连接说明，不显示摘要和弹窗。
 
-演示保留第一台 Machine 的 Shell 状态选择器，包含全部通过、部分失败、全部失败、unknown、无快照与空列表；旧代次继续使用原有断线 Machine 夹具。bash/sh 夹具使用完整的 GNU bash 版本与 Copyright 字符串。`p4a-machine-scenes.mjs` 检查按钮外观、`aria-haspopup`、dialog 可见性、Enter / Space / Escape、触控与 1440 / 390 浅暗主题的版本串宽度和行数；保留既有权限、票据、持久性、旧代次和导航断言。真实流程在 pending / active 下检查点击展开和 Escape 关闭。
+演示保留第一台 Machine 的 Shell 状态选择器，包含全部通过、部分失败、全部失败、unknown、无快照与空列表；旧代次继续使用原有断线 Machine 夹具。bash/sh 夹具使用完整的 GNU bash 版本与 Copyright 字符串。`p4a-machine-scenes.mjs` 检查按钮外观、`aria-haspopup`、dialog 可见性、Enter / Space / Escape、触控与 1440 / 390 浅暗主题的版本串宽度和行数；保留既有权限、票据、持久性、旧代次和导航断言。真实流程在 pending 下检查没有摘要，在 active 下检查点击展开和 Escape 关闭。
 
 可复现命令：`pnpm check`、`pnpm typecheck`、`pnpm test`、`pnpm worker:build`、`pnpm build`；启动 3077 演示 dev 后运行 `node scripts/browser/p4a-machine-scenes.mjs`；production 构建后连续两次运行 `SPROUT_PI_ENABLED=false BASE_URL=http://127.0.0.1:3355 bash scripts/verify/u-machine-ui.sh`。第三轮实跑退出码、截图和交互值见 `/tmp/sprout-p4a-review-round3-report.md`。
 

@@ -108,12 +108,14 @@ async function assertDetailPresentation(page, status) {
   await note.waitFor({ state: "hidden" });
   const shellSummary = page.getByTestId("machine-shell-summary");
   const shellDetails = page.getByTestId("machine-shell-details");
+  if (status === "pending") {
+    assert.equal(await shellSummary.count(), 0);
+    assert.equal(await shellDetails.count(), 0);
+    assert.match(await page.getByTestId("machine-detail-page").innerText(), /Worker 已断连/);
+    return { ...facts, shellAbsent: true };
+  }
   assert.equal(await shellSummary.getAttribute("aria-expanded"), "false");
   assert.equal(await shellDetails.isVisible(), false);
-  if (status === "pending") {
-    assert.match(await shellSummary.innerText(), /尚未探测/);
-    assert.ok(!(await shellSummary.innerText()).includes("✓"));
-  }
   assert.equal(await shellSummary.getAttribute("aria-haspopup"), "dialog");
   await shellSummary.click();
   await shellDetails.waitFor({ state: "visible" });
@@ -264,6 +266,18 @@ try {
   assert(reopenedTicket !== ticket, "returning to Machine must not resurrect the creation ticket");
   assert.equal(reopenedTicket === enrollmentTicket, true, "returning retains the renewed ticket");
   await page.getByTestId("machine-ticket-toggle").click();
+  const pendingAutoRefresh = page.waitForResponse((response) =>
+    response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
+  );
+  await pendingAutoRefresh;
+  await page.getByTestId("machine-ticket-toggle").click();
+  assert.equal(
+    await page.getByTestId("machine-ticket-value").innerText(),
+    enrollmentTicket,
+    "自动刷新保留本次会话续签后的票据",
+  );
+  assert.match(await page.getByTestId("machine-detail-enrollment").innerText(), /待配对/);
+  await page.getByTestId("machine-ticket-toggle").click();
   pass("renewal replaces creation result across list and detail navigation", {
     renewChangedTicket: true,
     serverHashMatchesRenewed: true,
@@ -360,14 +374,27 @@ try {
   await page.getByTestId("machine-binding-observation").filter({ hasText: "当前可达" }).waitFor();
   await page.getByTestId("machine-binding-description").fill("unsaved draft");
   const refreshPattern = `**/_serverFn/${ids.getMachineFn}`;
-  await page.route(refreshPattern, async (route) => {
-    await delay(1600);
-    await route.continue();
-  });
+  let releaseDraftRefresh;
+  let draftRefreshStarted;
+  const draftRefreshGate = new Promise((done) => (releaseDraftRefresh = done));
+  const draftRefreshRequest = new Promise((done) => (draftRefreshStarted = done));
+  await page.route(
+    refreshPattern,
+    async (route) => {
+      draftRefreshStarted();
+      await draftRefreshGate;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  const draftRefreshResponse = page.waitForResponse((response) =>
+    response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
+  );
   await page.getByTestId("machine-refresh").click();
-  await delay(1200);
+  await draftRefreshRequest;
   assert.equal(await page.getByTestId("machine-binding-description").inputValue(), "unsaved draft");
-  await delay(600);
+  releaseDraftRefresh();
+  await draftRefreshResponse;
   await page.unroute(refreshPattern);
   assert.equal(await page.getByTestId("machine-binding-description").inputValue(), "unsaved draft");
   await page.reload();
@@ -487,8 +514,11 @@ try {
     },
     { times: 1 },
   );
-  await page.getByTestId("machine-refresh").click();
+  const automaticRefreshStartedAt = Date.now();
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await refreshRequested;
+  const automaticRefreshDelayMs = Date.now() - automaticRefreshStartedAt;
+  assert.ok(automaticRefreshDelayMs >= 5000, "详情页等待五秒后自动重新取数");
   const firstPaths = await page.getByTestId("machine-binding-path").allTextContents();
   assert.equal(firstPaths.length, 2);
   assert.notEqual(firstPaths[0], firstPaths[1]);
@@ -546,6 +576,10 @@ try {
       JSON.stringify(
         {
           baselineRevision: rootBeforeConflict.rootRevision,
+          inputBeforeRefresh: nextRoot,
+          inputAfterRefresh: await page.getByTestId("machine-root-directory").inputValue(),
+          automaticRefresh: true,
+          automaticRefreshDelayMs,
           concurrentRevision: concurrentRootSave.data.revision,
           submittedRevision: rootWrites[0]?.expectedRevision,
           firstSubmissionCount: rootWrites.length,
@@ -675,9 +709,15 @@ try {
   await page.getByTestId("machine-root-directory").fill(root);
   let blockedSaves = 0;
   const savePattern = `**/_serverFn/${ids.saveProjectMachineBindingFn}`;
+  let pendingSurvivedRefresh = false;
   await page.route(savePattern, async (route) => {
     blockedSaves++;
-    await delay(500);
+    await page.waitForResponse((response) =>
+      response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
+    );
+    assert.equal(await page.getByTestId("machine-binding-submit").isDisabled(), true);
+    assert.equal(await page.getByTestId("machine-binding-form").getAttribute("aria-busy"), "true");
+    pendingSurvivedRefresh = true;
     await route.abort("failed");
   });
   await page
@@ -688,6 +728,7 @@ try {
   await page.getByTestId("machine-binding-form").evaluate((form) => form.requestSubmit());
   await page.getByTestId("machine-binding-error").waitFor();
   assert.equal(blockedSaves, 1);
+  assert.equal(pendingSurvivedRefresh, true);
   assert.equal(
     await page.getByTestId("machine-binding-description").inputValue(),
     "draft retained after network failure",
@@ -703,8 +744,43 @@ try {
   });
   assert(concurrent.ok);
   await page.getByTestId("machine-binding-description").fill("local conflict draft");
+  const bindingRefresh = page.waitForResponse((response) =>
+    response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
+  );
+  await bindingRefresh;
+  await until(
+    async () =>
+      (await page.getByTestId("machine-detail-page").innerText()).includes("concurrent edit"),
+    "automatic refresh displays concurrent binding fact",
+  );
+  assert.equal(
+    await page.getByTestId("machine-binding-description").inputValue(),
+    "local conflict draft",
+  );
+  const bindingWrites = [];
+  await page.route(savePattern, async (route) => {
+    const encoded = JSON.parse(route.request().postData());
+    bindingWrites.push(fromCrossJSON(encoded.t, { refs: new Map() }).data);
+    await route.continue();
+  });
   await page.getByTestId("machine-binding-submit").click();
   await page.getByTestId("machine-binding-error").filter({ hasText: "conflict" }).waitFor();
+  assert.equal(bindingWrites[0].expectedRevision, 1, "自动刷新不能重基绑定说明草稿");
+  writeFileSync(
+    join(evidence, "binding-draft-refresh.json"),
+    JSON.stringify(
+      {
+        inputBeforeRefresh: "local conflict draft",
+        inputAfterRefresh: await page.getByTestId("machine-binding-description").inputValue(),
+        draftRevisionBefore: 1,
+        submittedRevisionAfter: bindingWrites[0].expectedRevision,
+        concurrentRevision: concurrent.data.revision,
+      },
+      null,
+      2,
+    ),
+  );
+  await page.unroute(savePattern);
   assert.equal(
     await page.getByTestId("machine-binding-description").inputValue(),
     "local conflict draft",
@@ -728,6 +804,9 @@ try {
   }, "missing directory observation");
   await page.getByTestId("machine-refresh").click();
   await page.getByTestId("machine-binding-observation").filter({ hasText: "当前不可用" }).waitFor();
+  const missingExplanation = await page.getByTestId("machine-binding-observation").innerText();
+  assert.match(missingExplanation, /目录不存在.*需自行.*创建目录/s);
+  assert.doesNotMatch(missingExplanation, /missing|已为你创建/);
   worker.kill("SIGTERM");
   assert.equal(await worker.done, 0);
   await page.getByTestId("machine-refresh").click();
@@ -750,6 +829,201 @@ try {
   await page.getByTestId("machine-detail-connection").filter({ hasText: "在线" }).waitFor();
   pass(
     "directory revision failure, Worker stop and reconnect become visible through manual refresh",
+  );
+  // Advance browser time to prove cancellation without fixed sleeps.
+  await page.clock.install({ time: new Date() });
+  await page.clock.pauseAt(new Date(Date.now() + 100));
+  await page.addInitScript(() => {
+    const timers = new Set();
+    const schedule = window.setTimeout.bind(window);
+    const cancel = window.clearTimeout.bind(window);
+    window.__machineRefreshTimers = timers;
+    window.setTimeout = (callback, ms, ...args) => {
+      let id;
+      id = schedule(() => {
+        timers.delete(id);
+        callback(...args);
+      }, ms);
+      if (ms === 5000) timers.add(id);
+      return id;
+    };
+    window.clearTimeout = (id) => {
+      timers.delete(id);
+      cancel(id);
+    };
+  });
+  let loaderRequests = 0;
+  const observeLoader = (request) => {
+    if (request.url().endsWith(`/_serverFn/${ids.getMachineFn}`)) loaderRequests++;
+  };
+  page.on("request", observeLoader);
+  await page.reload();
+  await page.getByTestId("machine-detail-page").waitFor();
+  await until(
+    () => page.evaluate(() => window.__machineRefreshTimers.size === 1),
+    "visible refresh timer",
+  );
+  const focusedRootBaseline = (await rpc("getMachineFn", { machineId })).data.machine;
+  const focusedRootInput = await page.getByTestId("machine-root-directory").inputValue();
+  await page.getByTestId("machine-root-directory").focus();
+  const focusedRootUpdate = await rpc("saveMachineRootDirectoryFn", {
+    machineId,
+    directory: join(nextRoot, "focused-auto-root"),
+    expectedRevision: focusedRootBaseline.rootRevision,
+  });
+  assert(focusedRootUpdate.ok);
+  const visibleRefresh = page.waitForResponse((response) =>
+    response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
+  );
+  await page.clock.runFor(5100);
+  await visibleRefresh;
+  await until(
+    async () =>
+      (await page.getByTestId("machine-root-current").innerText()).includes("focused-auto-root"),
+    "focused root receives new fact",
+  );
+  assert.equal(
+    await page.getByTestId("machine-root-directory").inputValue(),
+    focusedRootInput,
+    "聚焦且尚未修改的 root 输入不被自动刷新覆盖",
+  );
+  await until(
+    () => page.evaluate(() => window.__machineRefreshTimers.size === 1),
+    "next refresh scheduled",
+  );
+  const focusedBindingBaseline = (
+    await rpc("getMachineFn", { machineId, projectId: projectB.id })
+  ).data.bindings.find((binding) => binding.intent.projectId === projectB.id).intent;
+  const focusedBindingInput = await page.getByTestId("machine-binding-description").inputValue();
+  await page.getByTestId("machine-binding-description").focus();
+  const focusedBindingUpdate = await rpc("saveProjectMachineBindingFn", {
+    machineId,
+    projectId: projectB.id,
+    description: "focused server edit",
+    expectedRevision: focusedBindingBaseline.revision,
+  });
+  assert(focusedBindingUpdate.ok);
+  const focusedBindingRefresh = page.waitForResponse((response) =>
+    response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
+  );
+  await page.clock.runFor(5100);
+  await focusedBindingRefresh;
+  await until(
+    async () =>
+      (await page.getByTestId("machine-detail-page").innerText()).includes("focused server edit"),
+    "focused binding receives new fact",
+  );
+  assert.equal(
+    await page.getByTestId("machine-binding-description").inputValue(),
+    focusedBindingInput,
+    "聚焦且尚未修改的绑定说明不被自动刷新覆盖",
+  );
+  const focusedWrites = {};
+  for (const [fn, submitId, errorId, revision] of [
+    [
+      "saveMachineRootDirectoryFn",
+      "machine-root-submit",
+      "machine-root-error",
+      focusedRootBaseline.rootRevision,
+    ],
+    [
+      "saveProjectMachineBindingFn",
+      "machine-binding-submit",
+      "machine-binding-error",
+      focusedBindingBaseline.revision,
+    ],
+  ]) {
+    const pattern = `**/_serverFn/${ids[fn]}`;
+    await page.route(
+      pattern,
+      async (route) => {
+        const encoded = JSON.parse(route.request().postData());
+        focusedWrites[fn] = fromCrossJSON(encoded.t, { refs: new Map() }).data.expectedRevision;
+        await route.continue();
+      },
+      { times: 1 },
+    );
+    await page.getByTestId(submitId).click();
+    await page.getByTestId(errorId).filter({ hasText: "conflict" }).waitFor();
+    await until(
+      async () => !(await page.getByTestId(submitId).isDisabled()),
+      "focused conflict settled",
+    );
+    assert.equal(focusedWrites[fn], revision, "聚焦期间刷新不能重基未修改的草稿 revision");
+    await page.unroute(pattern);
+  }
+  writeFileSync(
+    join(evidence, "focused-draft-refresh.json"),
+    JSON.stringify(
+      {
+        root: {
+          inputBefore: focusedRootInput,
+          inputAfter: await page.getByTestId("machine-root-directory").inputValue(),
+          revisionBefore: focusedRootBaseline.rootRevision,
+          submittedRevisionAfter: focusedWrites.saveMachineRootDirectoryFn,
+          serverRevision: focusedRootUpdate.data.revision,
+        },
+        binding: {
+          inputBefore: focusedBindingInput,
+          inputAfter: await page.getByTestId("machine-binding-description").inputValue(),
+          revisionBefore: focusedBindingBaseline.revision,
+          submittedRevisionAfter: focusedWrites.saveProjectMachineBindingFn,
+          serverRevision: focusedBindingUpdate.data.revision,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  await until(
+    () => page.evaluate(() => window.__machineRefreshTimers.size === 1),
+    "timer after focused conflicts",
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  assert.equal(await page.evaluate(() => window.__machineRefreshTimers.size), 0);
+  const hiddenRequests = loaderRequests;
+  await page.clock.runFor(16000);
+  assert.equal(loaderRequests, hiddenRequests, "后台三个刷新周期没有重新取数");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  const resumedRefresh = page.waitForResponse((response) =>
+    response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
+  );
+  await page.clock.runFor(5100);
+  await resumedRefresh;
+  await until(
+    () => page.evaluate(() => window.__machineRefreshTimers.size === 1),
+    "refresh resumes after visibility",
+  );
+  await page.getByTestId("machine-detail-back").click();
+  await page.getByTestId("machine-detail-page").waitFor({ state: "detached" });
+  assert.equal(await page.evaluate(() => window.__machineRefreshTimers.size), 0, "卸载清除计时器");
+  const unmountedRequests = loaderRequests;
+  await page.clock.runFor(16000);
+  assert.equal(loaderRequests, unmountedRequests, "卸载后三个刷新周期没有残留请求");
+  page.off("request", observeLoader);
+  await page.clock.resume();
+  await openDetail(projectB);
+  writeFileSync(
+    join(evidence, "auto-refresh-lifecycle.json"),
+    JSON.stringify(
+      {
+        visibleRefresh: true,
+        hiddenRequests,
+        unmountedRequests,
+        hiddenCyclesWithoutRequests: 3,
+        unmountedCyclesWithoutRequests: 3,
+        hiddenTimers: 0,
+        unmountedTimers: 0,
+      },
+      null,
+      2,
+    ),
   );
   for (const scheme of ["light", "dark"]) {
     await page.evaluate((value) => {

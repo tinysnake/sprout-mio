@@ -11,8 +11,23 @@ import {
 import type { MachineDetail } from "../../contracts/machine";
 import { formatMoment } from "./machine-view";
 
-export function MachineShellSummary({ capability }: { capability: MachineDetail["capability"] }) {
-  const shells = capability?.snapshot.shells ?? [];
+export function MachineShellSummary({
+  capability,
+  connection,
+}: {
+  capability: MachineDetail["capability"];
+  connection: MachineDetail["connection"];
+}) {
+  if (!capability?.current) {
+    const message =
+      connection.kind === "offline"
+        ? "Worker 已断连"
+        : connection.kind === "connecting"
+          ? "Worker 正在连接，当前能力尚未上报"
+          : "当前能力尚未上报";
+    return <p className="text-xs text-muted-foreground">{message}</p>;
+  }
+  const shells = capability.snapshot.shells;
 
   return (
     <div className="flex min-w-0 items-center gap-2 text-[0.6875rem]">
@@ -33,9 +48,7 @@ export function MachineShellSummary({ capability }: { capability: MachineDetail[
                     className={
                       fact.kind === "unknown" || fact.probe.kind === "failure"
                         ? "text-destructive"
-                        : capability?.current
-                          ? "text-status-success"
-                          : "text-muted-foreground"
+                        : "text-status-success"
                     }
                   >
                     {fact.kind === "unknown" ? "?" : fact.probe.kind === "success" ? "✓" : "✗"}{" "}
@@ -45,12 +58,7 @@ export function MachineShellSummary({ capability }: { capability: MachineDetail[
               ))}
             </span>
           ) : (
-            <span className="text-muted-foreground">
-              ? {capability ? "未报告 shell" : "尚未探测"}
-            </span>
-          )}
-          {capability && !capability.current && (
-            <span className="text-muted-foreground">旧代次</span>
+            <span className="text-muted-foreground">? 未报告 shell</span>
           )}
           <ChevronRight aria-hidden="true" className="size-3 shrink-0 text-muted-foreground" />
         </DialogTrigger>
@@ -59,22 +67,12 @@ export function MachineShellSummary({ capability }: { capability: MachineDetail[
             <DialogTitle>Shell 探测详情</DialogTitle>
             <DialogDescription>来自 Worker 的实际探测；未知 shell 不猜调用语法。</DialogDescription>
           </DialogHeader>
-          {capability && !capability.current && (
-            <p
-              data-testid="machine-shell-stale"
-              className="mt-2 text-xs leading-6 text-muted-foreground"
-            >
-              旧连接代次 {capability.generation} 的快照，不能当作现在可用。
-            </p>
-          )}
           {!shells.length ? (
             <p
               data-testid="machine-shells-empty"
               className="mt-2 text-xs leading-6 text-muted-foreground"
             >
-              {capability
-                ? "Worker 未报告可用 shell。"
-                : "尚无能力快照。Worker 完成认证并提交能力后才会出现。"}
+              Worker 未报告可用 shell。
             </p>
           ) : (
             <ul id="machine-shell-list" className="mt-2 divide-y divide-border">
@@ -113,7 +111,7 @@ export function MachineShellSummary({ capability }: { capability: MachineDetail[
         data-testid="machine-shell-platform"
         className="whitespace-nowrap text-muted-foreground"
       >
-        平台 {capability ? `${capability.snapshot.platform} ${capability.snapshot.arch}` : "未知"}
+        平台 {capability.snapshot.platform} {capability.snapshot.arch}
       </span>
     </div>
   );

@@ -205,7 +205,11 @@ export function MachineDetailPanel({
           </SettingsSection>
 
           <SettingsSection title="Shell 能力" testId="machine-shells">
-            <MachineShellSummary key={detail.machine.id} capability={capability} />
+            <MachineShellSummary
+              key={detail.machine.id}
+              capability={capability}
+              connection={detail.connection}
+            />
           </SettingsSection>
 
           <SettingsSection
@@ -270,12 +274,15 @@ export function MachineDetailPanel({
                         </span>
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                        <StatusLine
-                          label={observation.label}
-                          detail={observation.detail}
-                          tone={observation.tone}
-                          testId="machine-binding-observation"
-                        />
+                        <div
+                          data-testid="machine-binding-observation"
+                          className="flex min-w-0 max-w-full flex-col items-start gap-1"
+                        >
+                          <StatusLine label={observation.label} tone={observation.tone} />
+                          {observation.detail && (
+                            <p className="text-muted-foreground">{observation.detail}</p>
+                          )}
+                        </div>
                         {item.observation && (
                           <span className="text-muted-foreground">
                             · 代次 {item.observation.fact.generation} · revision{" "}
@@ -361,12 +368,12 @@ function MachineRootForm({
   useEffect(() => {
     if (machine.rootRevision === syncedRevision.current) return;
     syncedRevision.current = machine.rootRevision;
-    if (!preserveDraft.current && directory === (fact.directory ?? "")) {
+    if (!preserveDraft.current && !pending && directory === (fact.directory ?? "")) {
       setDirectory(machine.rootDirectory ?? "");
       setDraftRevision(machine.rootRevision);
     }
     setFact({ directory: machine.rootDirectory, revision: machine.rootRevision });
-  }, [machine.rootDirectory, machine.rootRevision, directory, fact]);
+  }, [machine.rootDirectory, machine.rootRevision, directory, fact, pending]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -433,6 +440,9 @@ function MachineRootForm({
           id="machine-root-directory"
           data-testid="machine-root-directory"
           value={directory}
+          onFocus={() => {
+            preserveDraft.current = true;
+          }}
           disabled={pending}
           onChange={(event) => setDirectory(event.target.value)}
         />

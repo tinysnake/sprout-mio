@@ -133,6 +133,95 @@ function DemoControls({
         <option value="missing">无能力快照</option>
         <option value="empty">未报告 shell</option>
       </Select>
+      <label className="mt-2 block" htmlFor="machine-demo-connection">
+        第一台 Machine 的能力连接状态
+      </label>
+      <Select
+        id="machine-demo-connection"
+        data-testid="machine-demo-connection"
+        defaultValue="online"
+        onChange={(event) => {
+          const scenario = event.target.value;
+          const kind =
+            scenario === "online_waiting"
+              ? "online"
+              : (scenario as "online" | "offline" | "connecting");
+          const baseline = demoMachineDetails[0];
+          update({
+            machines: state.machines.map((machine, index) =>
+              index !== 0
+                ? machine
+                : {
+                    ...machine,
+                    connection:
+                      kind === "online"
+                        ? baseline.connection
+                        : kind === "connecting"
+                          ? { kind, generation: 3, lastSeenAt: "2026-10-18T07:11:30.000Z" }
+                          : {
+                              kind,
+                              generation: 3,
+                              lastSeenAt: "2026-10-18T07:11:30.000Z",
+                              reason: "stale",
+                            },
+                    capability: { ...baseline.capability!, current: scenario === "online" },
+                  },
+            ),
+          });
+        }}
+      >
+        <option value="online">在线，能力已上报</option>
+        <option value="online_waiting">在线，当前能力尚未上报</option>
+        <option value="offline">断联，能力不可用</option>
+        <option value="connecting">正在连接，能力尚未上报</option>
+      </Select>
+      <label className="mt-2 block" htmlFor="machine-demo-directory">
+        第一台 Machine 的目录检查结果
+      </label>
+      <Select
+        id="machine-demo-directory"
+        data-testid="machine-demo-directory"
+        defaultValue="accessible"
+        onChange={(event) => {
+          const reason = event.target.value;
+          update({
+            machines: state.machines.map((machine, index) =>
+              index !== 0
+                ? machine
+                : {
+                    ...machine,
+                    bindings: machine.bindings.map((binding, bindingIndex) => ({
+                      ...binding,
+                      observation: {
+                        ...demoMachineDetails[0].bindings[bindingIndex].observation!,
+                        fact: {
+                          ...demoMachineDetails[0].bindings[bindingIndex].observation!.fact,
+                          result:
+                            reason === "accessible"
+                              ? demoMachineDetails[0].bindings[bindingIndex].observation!.fact
+                                  .result
+                              : {
+                                  kind: "unavailable",
+                                  reason: reason as
+                                    | "missing"
+                                    | "not_directory"
+                                    | "denied"
+                                    | "io_error",
+                                },
+                        },
+                      },
+                    })),
+                  },
+            ),
+          });
+        }}
+      >
+        <option value="accessible">目录可用</option>
+        <option value="missing">目录不存在</option>
+        <option value="not_directory">路径不是目录</option>
+        <option value="denied">无权访问</option>
+        <option value="io_error">读取出错</option>
+      </Select>
       <label className="mt-2 flex items-center gap-2">
         <input
           type="checkbox"
