@@ -12,7 +12,6 @@ import { acquireLease, getLease, handoffLease, releaseLease } from "./lease";
 import type { AgentRemoteContext } from "./lease";
 import type { PiSessionProcess } from "./pi-host/process";
 import { RemoteError, getExecution, requestExecution } from "./remote";
-import { getRequestContext, REQUEST_ID_HEADER } from "./request-context";
 import { machineRuntimeContext, runtimeSnapshot } from "./runtime";
 
 type RuntimeContext = { bootId: string; requestId: string; now: Date };
@@ -167,6 +166,7 @@ async function body(request: Request) {
   }
 }
 export async function remoteAgentResponse(request: Request): Promise<Response> {
+  const { getRequestContext, REQUEST_ID_HEADER } = await import("./request-context");
   const { requestId } = getRequestContext(request);
   const headers = { [REQUEST_ID_HEADER]: requestId, "cache-control": "no-store" };
   try {
