@@ -2,6 +2,15 @@
 
 状态：本文保留共用呈现组件与演示交付记录。正式路由、真实 server functions、安装指令和 Info Hub 的当前接入见 [p4a-integration.md](p4a-integration.md)。历史记录不是章节技术验收或 Human 体验确认。
 
+## Round-1：详情优先级与安装文案
+
+- 待配对时，「配对与安装」是 `PageFrame` 中首个 `SettingsSection`，宽屏横跨既有两栏；内部票据操作先于安装说明，900px 起并排，窄屏按同一 DOM 顺序排列。连接、root 与绑定随后呈现。
+- 已配对时，连接、root 与绑定恢复为主要内容，配对与安装回到既有次栏；窄屏排在主要内容之后。安装命令保留，续签沿用服务端支持的待配对入口，不向已配对身份新增续签能力。
+- 首次配对仅保留构建、隐藏输入票据和十分钟有效期等必要说明。已配对时提示直接运行 `run`，移除首次配对前置说明。
+- HTTP / HTTPS 尾注默认隐藏，问号打开共享 `Dialog`。说明 `--server http://127.0.0.1:3330` 的本机配置，并明确「默认只接受 loopback HTTP；非 loopback 地址必须使用 HTTPS」「当前 Worker 没有 --allow-http 配置项，也不支持通过配置放开非 loopback HTTP」。不宣称新增协议能力。
+- 真实页和演示页均复用 `MachineDetailPanel` / `MachineEnrollmentPanel` / `MachineInstallInstructions`。演示中选择「待配对的 MacBook」检查置顶，选择「工作室 Mac mini」检查降级，两者均可打开协议说明。场景脚本保留 29 项，真实流程保留 14 组，呈现断言并入相关组，覆盖 390 / 899 / 900 / 1199 / 1200 / 1440px 与浅暗主题。
+- 位置证据与八张截图：`.verify/p4a-machine-scenes/priority-positions.json`、`priority-{pending,active}-{1440,390}-{light,dark}.png`。执行结果以本轮 `/tmp/sprout-p4a-detail-priority-report.md` 为准；Human 体验确认待 Human 明确给出。
+
 ## 基线
 
 - 分支 `p4a/ui`，基线 `0a331031be49149a6dbbd6c786128c26695f045a`（共享契约与六表迁移）。
