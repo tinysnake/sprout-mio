@@ -65,7 +65,7 @@ async function open({ width, height, colorScheme, scene = "machines", hasTouch =
 }
 
 const shoots = (page, name) =>
-  page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true });
+  page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true, animations: "disabled" });
 
 const presentationEvidence = [];
 async function scrollDetailToTop(page) {
@@ -111,15 +111,46 @@ async function assertPresentation(page, status) {
     );
     assert.ok(facts.pairing.y <= facts.install.y, "配对操作不晚于安装说明");
   }
+  const init = page.getByTestId("machine-command-init");
+  const run = await page.getByTestId("machine-command-run").innerText();
+  assert.doesNotMatch(run, /--allow-http|--ticket/);
+  assert.match(run, /run --state-dir/);
+  if (status === "pending") {
+    const command = await init.innerText();
+    assert.ok(
+      command.includes("--server http://192.168.1.10:3210 --allow-http http://192.168.1.10:3210"),
+    );
+    assert.match(command, /--machine mch_/);
+    assert.match(command, /--state-dir/);
+    assert.doesNotMatch(command, /--ticket/);
+    if (page.viewportSize().width === 390) {
+      const scrollable = await init.evaluate((element) => {
+        const overflows = element.scrollWidth > element.clientWidth;
+        element.scrollLeft = element.scrollWidth;
+        const reachedEnd = element.scrollLeft + element.clientWidth >= element.scrollWidth - 1;
+        element.scrollLeft = 0;
+        return overflows && reachedEnd;
+      });
+      assert.equal(scrollable, true, "带授权的长 init 命令可滚动至末尾");
+    }
+  } else assert.equal(await init.count(), 0, "已配对仅显示 run，不再显示 init 授权示例");
   const note = page.getByTestId("machine-http-note");
   assert.equal(await note.isVisible(), false, "协议尾注默认收起");
   await page.getByTestId("machine-http-help").click();
   await note.waitFor({ state: "visible" });
   const text = await note.innerText();
-  assert.match(text, /默认只接受 loopback HTTP；非 loopback 地址必须使用 HTTPS/);
+  assert.match(text, /默认只接受 loopback HTTP/);
+  assert.match(text, /HTTPS 无需开关/);
   assert.match(text, /--server.*http:\/\/127\.0\.0\.1:3330/);
-  assert.match(text, /没有 --allow-http 配置项/);
-  assert.match(text, /不支持通过配置放开非 loopback HTTP/);
+  assert.match(text, /init 时显式添加 --allow-http <完整 origin>/);
+  assert.match(text, /只对该完整 origin（含端口）生效/);
+  assert.match(text, /不放开同网段其他地址/);
+  assert.match(text, /身份文件/);
+  assert.doesNotMatch(text, /HTTP\s*开箱可用|http\s*开箱可用|没有 --allow-http|不支持通过配置放开/);
+  if (status === "pending" && [1440, 390].includes(page.viewportSize().width)) {
+    const theme = await page.evaluate(() => localStorage.getItem("sprout:theme"));
+    await shoots(page, `http-help-${page.viewportSize().width}-${theme}`);
+  }
   await page.getByRole("button", { name: "关闭对话框" }).click();
   await note.waitFor({ state: "hidden" });
   await scrollDetailToTop(page);
@@ -334,10 +365,11 @@ try {
     await test("machine-shell-details").waitFor({ state: "visible" });
     assert.ok((await test("machine-shell-item").count()) >= 2);
     await page.keyboard.press("Escape");
-    const init = await test("machine-command-init").innerText();
-    assert.ok(init.includes("--machine mch_"));
-    assert.ok(init.includes("--state-dir"));
-    assert.ok(!init.includes("--ticket"), "票据不能出现在命令里");
+    assert.equal(await test("machine-command-init").count(), 0);
+    const run = await test("machine-command-run").innerText();
+    assert.ok(run.includes("--state-dir"));
+    assert.ok(!run.includes("--ticket"), "票据不能出现在命令里");
+    assert.ok(!run.includes("--allow-http"), "授权只出现在 init");
     assert.ok(!(await test("machine-enrollment-panel").innerText()).includes("AAAAAAAA"));
     await assertPresentation(page, "active");
     await shoots(page, "machine-detail-1440-light");
@@ -858,7 +890,7 @@ try {
     await narrow.page.screenshot({
       path: join(evidence, "machine-detail-390-light-install.png"),
     });
-    const command = await narrow.page.getByTestId("machine-command-init").evaluate((element) => ({
+    const command = await narrow.page.getByTestId("machine-command-run").evaluate((element) => ({
       scrollWidth: element.scrollWidth,
       clientWidth: element.clientWidth,
       text: element.textContent ?? "",
@@ -866,7 +898,7 @@ try {
     assert.ok(command.scrollWidth > command.clientWidth, "长命令不能只靠页面溢出展示");
     assert.ok(command.text.includes('--state-dir "$HOME/.local/share/sprout-worker/identity"'));
     assert.ok(!command.text.includes("--ticket"));
-    const reachedEnd = await narrow.page.getByTestId("machine-command-init").evaluate((element) => {
+    const reachedEnd = await narrow.page.getByTestId("machine-command-run").evaluate((element) => {
       element.scrollLeft = element.scrollWidth;
       return element.scrollLeft + element.clientWidth >= element.scrollWidth - 1;
     });

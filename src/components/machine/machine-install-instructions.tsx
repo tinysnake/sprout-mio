@@ -9,7 +9,7 @@ import {
   DialogTrigger,
 } from "../ui/dialog";
 import { Icon } from "../ui/icon";
-import { WORKER_ORIGIN_PLACEHOLDER, installCommands } from "./machine-view";
+import { installCommands } from "./machine-view";
 
 function Command({ children, testId }: { children: string; testId: string }) {
   return (
@@ -31,8 +31,7 @@ export function MachineInstallInstructions({
   origin?: string;
   enrollmentStatus: "pending" | "active";
 }) {
-  const commands = installCommands(machineId);
-  const shownOrigin = origin || WORKER_ORIGIN_PLACEHOLDER;
+  const commands = installCommands(machineId, origin);
   return (
     <div
       data-testid="machine-install"
@@ -54,9 +53,9 @@ export function MachineInstallInstructions({
             'pnpm install --frozen-lockfile\npnpm worker:build\nmkdir -p "$HOME/.local/share/sprout-worker"\ncp dist/worker/main.js "$HOME/.local/share/sprout-worker/main.mjs"'
           }
         </Command>
-        <Command testId="machine-command-init">
-          {commands.init.replace(WORKER_ORIGIN_PLACEHOLDER, shownOrigin)}
-        </Command>
+        {enrollmentStatus === "pending" && (
+          <Command testId="machine-command-init">{commands.init}</Command>
+        )}
         <Command testId="machine-command-run">{commands.run}</Command>
       </div>
       <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
@@ -73,20 +72,23 @@ export function MachineInstallInstructions({
             <DialogHeader>
               <DialogTitle>HTTP / HTTPS 配置</DialogTitle>
               <DialogDescription>
-                默认只接受 loopback HTTP；非 loopback 地址必须使用 HTTPS。
+                默认只接受 loopback HTTP；非 loopback HTTP 需显式授权。HTTPS 无需开关。
               </DialogDescription>
             </DialogHeader>
             <p className="text-xs leading-6">
               本机开发时，将 init 命令的 --server 设为 http://127.0.0.1:3330（或
-              localhost、[::1]）。 连接其他主机时，将 --server 设为该主机的 HTTPS 地址。
+              localhost、[::1]）。连接其他主机时，默认将 --server 设为该主机的 HTTPS 地址。
             </p>
             <p className="text-xs leading-6">
-              当前 Worker 没有 --allow-http 配置项，也不支持通过配置放开非 loopback HTTP； 仅添加
-              allow-http 参数无法绕过地址校验。
+              非 loopback HTTP 必须在 init 时显式添加 --allow-http &lt;完整 origin&gt;，例如
+              --allow-http http://192.168.1.10:3210。授权只对该完整
+              origin（含端口）生效，不放开同网段其他地址；授权保存在身份文件中，run
+              重启后仍有效。HTTP 以明文传输，请只对你确认的目标授权。
             </p>
             <p className="text-xs leading-6 text-muted-foreground">
-              已实测 macOS arm64、Node v26.11.1；x64 与其他 Node 版本尚未实测。
-              长期身份保存在本机私有目录。Worker 只检查目录，不创建或试写目录。
+              安装命令是示例，执行 init 成功后才完成配置。已实测 macOS arm64、Node v26.11.1；x64
+              与其他 Node 版本尚未实测。 长期身份保存在本机私有目录。Worker
+              只检查目录，不创建或试写目录。
             </p>
           </DialogContent>
         </Dialog>

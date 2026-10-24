@@ -71,6 +71,21 @@ describe("Machine 呈现映射", () => {
 
   it("安装命令只带身份与状态目录，不包含票据", () => {
     const commands = installCommands("mch_11111111-1111-4111-8111-111111111111");
+    const http = installCommands(
+      "mch_11111111-1111-4111-8111-111111111111",
+      "http://192.168.1.10:3210",
+    );
+    expect(http.init).toContain("--allow-http http://192.168.1.10:3210");
+    expect(http.run).not.toContain("--allow-http");
+    for (const origin of [
+      "https://example.com",
+      "http://localhost:3210",
+      "http://127.0.0.1:3210",
+      "http://[::1]:3210",
+    ])
+      expect(
+        installCommands("mch_11111111-1111-4111-8111-111111111111", origin).init,
+      ).not.toContain("--allow-http");
     expect(commands.init).toContain("--machine mch_11111111-1111-4111-8111-111111111111");
     expect(commands.init).toContain("--state-dir");
     expect(commands.run).toBe(
