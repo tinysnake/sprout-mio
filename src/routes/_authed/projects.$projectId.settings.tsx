@@ -2,7 +2,10 @@ import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ProjectAgentsPanel } from "../../components/info-hub/project-agents-panel";
-import { useState } from "react";
+import { ProjectLeaseActions, holderNames } from "../../components/machine/project-lease-actions";
+import { RemoteExecutionList } from "../../components/machine/remote-execution-panel";
+import { listProjectExecutionsFn } from "../../server/functions/remote";
+import { useEffect, useState } from "react";
 import { ProjectMachinesPanel } from "../../components/info-hub/project-machines-panel";
 import { ProjectBasicInfoForm } from "../../components/project/project-basic-info-form";
 import { ProjectFacts } from "../../components/project/project-facts";
@@ -20,14 +23,15 @@ import { getProjectRepoStateFn, prepareProjectRepoFn } from "../../server/functi
 
 export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
   loader: async ({ params }) => {
-    const [project, profile, repo, infoHub, machines] = await Promise.all([
+    const [project, profile, repo, infoHub, machines, executions] = await Promise.all([
       getProjectFn({ data: { projectId: params.projectId } }),
       getProjectProfileFn({ data: { projectId: params.projectId } }),
       getProjectRepoStateFn({ data: { projectId: params.projectId } }),
       getProjectInfoHubFn({ data: { projectId: params.projectId } }),
       listMachinesFn({ data: {} }),
+      listProjectExecutionsFn({ data: { projectId: params.projectId } }),
     ]);
-    return { project, profile, repo, infoHub, machines };
+    return { project, profile, repo, infoHub, machines, executions };
   },
   component: ProjectSettingsPage,
 });
@@ -38,11 +42,17 @@ export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
  * 没有独立的 Project 详情页。
  */
 function ProjectSettingsPage() {
-  const { project, profile, repo, infoHub, machines } = Route.useLoaderData();
+  const { project, profile, repo, infoHub, machines, executions } = Route.useLoaderData();
   const [selectedMachine, setSelectedMachine] = useState("");
   const { projectId } = Route.useParams();
   const router = useRouter();
   const invalidate = () => void router.invalidate();
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void router.invalidate();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [router]);
 
   return (
     <PageFrame
@@ -156,11 +166,27 @@ function ProjectSettingsPage() {
             )}
             {!machines.ok && <ResultError error={machines.error} />}
             {infoHub.ok && (
-              <ProjectMachinesPanel
-                projectId={projectId}
-                machines={infoHub.data.machines}
-                leases={infoHub.data.leases.items}
+              <ProjectLeaseActions key={projectId} info={infoHub.data}>
+                {(mutate) => (
+                  <ProjectMachinesPanel
+                    projectId={projectId}
+                    machines={infoHub.data.machines}
+                    leases={infoHub.data.leases.items}
+                    holderNames={holderNames(infoHub.data)}
+                    onLeaseMutate={mutate}
+                  />
+                )}
+              </ProjectLeaseActions>
+            )}
+          </SettingsSection>
+          <SettingsSection title="远端操作" description="本 Project 的最近操作与执行结果。">
+            {executions.ok ? (
+              <RemoteExecutionList
+                executions={executions.data}
+                machines={infoHub.ok ? infoHub.data.machines : []}
               />
+            ) : (
+              <ResultError error={executions.error} />
             )}
           </SettingsSection>
           <SettingsSection title="关联信息" description="成员分身、活动与最近 run。">

@@ -4,6 +4,7 @@ import { agentDetailFromChat } from "../agent/agent-detail-search";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentInstance, Chat, ChatMember, ChatResult } from "../../contracts/chat";
 import type { ChatInfoView, InfoHubResult, TurnStartContext } from "../../contracts/info-hub";
+import type { AppError } from "../../contracts/result";
 import type { MachineDetail } from "../../contracts/machine";
 import type { LeaseView } from "../../contracts/lease";
 import type { ExecutionView } from "../../contracts/remote";
@@ -42,6 +43,7 @@ export function ChatInspector({
   info,
   turnStart,
   machineFacts = null,
+  machineFactsError,
   onClose,
 }: {
   chat: Chat;
@@ -54,6 +56,7 @@ export function ChatInspector({
   turnStart: InfoHubResult<TurnStartContext>;
   /** 为 null 时按未接入呈现；不伪造空租约或空执行列表。 */
   machineFacts?: ChatMachineFacts | null;
+  machineFactsError?: AppError;
   onClose: () => void;
 }) {
   return (
@@ -216,10 +219,11 @@ export function ChatInspector({
                   data-testid="chat-machines-notice"
                   className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
                 >
-                  未接入，P4b 集成
+                  {machineFactsError ? "读取失败" : "未接入，P4b 集成"}
                 </span>
               )}
             </div>
+            {machineFactsError && <ResultError error={machineFactsError} />}
             {machineFacts && (
               <div data-testid="chat-machine-facts" className="space-y-4">
                 <LeaseOverview

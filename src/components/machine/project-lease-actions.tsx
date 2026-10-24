@@ -1,0 +1,231 @@
+import { useEffect, useState, type ReactNode } from "react";
+import { Link, useRouter } from "@tanstack/react-router";
+import type { ProjectInfoHub } from "../../contracts/info-hub";
+import type { LeaseMutationInput } from "../../contracts/lease";
+import type { Chat } from "../../contracts/chat";
+import { ID_PREFIXES, newId } from "../../contracts/ids";
+import { fail, toAppError } from "../../contracts/result";
+import { listChatsFn, sendMessageFn } from "../../server/functions/chat";
+import { getLeaseRequestFn, reclaimLeaseFn } from "../../server/functions/lease";
+import type { LeaseMutationHandler } from "./machine-view";
+import { ResultError } from "../project/result-error";
+import { Select } from "../ui/select";
+import { Button } from "../ui/button";
+import type { AppError } from "../../contracts/result";
+
+export function holderNames(info: ProjectInfoHub): Record<string, string> {
+  return Object.fromEntries(
+    info.agents.agents
+      .filter((item) => item.instanceId)
+      .map((item) => [item.instanceId!, item.name]),
+  );
+}
+
+/** Human requests a Chat turn; only the grant-bound agent can mutate a holder lease. */
+export function ProjectLeaseActions({
+  info,
+  children,
+}: {
+  info: ProjectInfoHub;
+  children: (mutate: LeaseMutationHandler) => ReactNode;
+}) {
+  const router = useRouter();
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [chatId, setChatId] = useState("");
+  const [machineId, setMachineId] = useState("");
+  const [targetInstanceId, setTargetInstanceId] = useState("");
+  const [error, setError] = useState<AppError | null>(null);
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void listChatsFn({ data: { projectId: info.projectId } }).then((result) => {
+      if (!live) return;
+      if (result.ok) setChats(result.data);
+      else setError(result.error);
+    });
+    return () => {
+      live = false;
+    };
+  }, [info.projectId]);
+
+  const mutate: LeaseMutationHandler = async (input) => {
+    if (input.action === "reclaim") {
+      const result = await reclaimLeaseFn({ data: input });
+      await router.invalidate();
+      return result;
+    }
+    if (!chatId)
+      return fail({
+        code: "validation_failed",
+        message: "请先选择执行租约操作的 Chat",
+        requestId: input.requestId,
+      });
+    const { action, projectId: _projectId, ...parameters } = input;
+    const sent = await sendMessageFn({
+      data: {
+        chatId,
+        body: `请使用 sprout_lease_${action} 工具执行以下租约请求，参数必须保持一致。先读取当前租约，若代次已变化请报告冲突，不要自动重试。只操作这台明确指定的 Machine；不要运行 shell 或修改文件。参数：${JSON.stringify(parameters)}。完成后报告服务端收据。`,
+      },
+    });
+    if (!sent.ok) return sent;
+    for (let attempt = 0; attempt < 55; attempt += 1) {
+      const result = await getLeaseRequestFn({
+        data: {
+          projectId: input.projectId,
+          machineId: input.machineId,
+          requestId: input.requestId,
+          chatId,
+        },
+      });
+      if (!result.ok) return result;
+      if (result.data.mutation) {
+        await router.invalidate();
+        return { ok: true, data: result.data.mutation, requestId: result.requestId };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    await router.invalidate();
+    return fail({
+      code: "conflict",
+      message:
+        "请求已发送，尚未收到租约收据。请打开所选 Chat 查看分身处理结果，重新操作前刷新租约。",
+      requestId: sent.requestId,
+    });
+  };
+
+  async function extra(action: "reclaim" | "handoff") {
+    const lease = info.leases.items.find((item) => item.machineId === machineId);
+    if (!lease || lease.state !== "held" || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const input: LeaseMutationInput =
+        action === "reclaim"
+          ? {
+              action,
+              projectId: info.projectId,
+              machineId,
+              expectedGeneration: lease.generation,
+              confirm: true,
+              requestId: newId(ID_PREFIXES.request),
+            }
+          : {
+              action,
+              projectId: info.projectId,
+              machineId,
+              expectedGeneration: lease.generation,
+              targetInstanceId,
+              requestId: newId(ID_PREFIXES.request),
+            };
+      const result = await mutate(input);
+      if (!result.ok) setError(result.error);
+    } catch (cause) {
+      setError(toAppError(cause, newId(ID_PREFIXES.request)));
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <div className="space-y-4" data-testid="project-lease-actions">
+      <div className="space-y-2 rounded-lg border border-border-soft p-4">
+        <label className="text-xs font-medium" htmlFor={`lease-chat-${info.projectId}`}>
+          执行租约请求的 Chat
+        </label>
+        <Select
+          id={`lease-chat-${info.projectId}`}
+          value={chatId}
+          onChange={(event) => setChatId(event.target.value)}
+          data-testid="lease-chat-select"
+        >
+          <option value="">请选择 Chat</option>
+          {chats.map((chat) => (
+            <option key={chat.id} value={chat.id}>
+              {chat.title ?? chat.id}
+            </option>
+          ))}
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          申请、释放与交接会发送给所选 Chat 的分身，收到服务端收据后才显示成功。租约与 run
+          独立；释放和收回不会终止进程或删除文件。
+        </p>
+        {chatId ? (
+          <Link
+            to="/projects/$projectId/chats/$chatId"
+            params={{ projectId: info.projectId, chatId }}
+            className="text-xs underline"
+          >
+            打开所选 Chat
+          </Link>
+        ) : (
+          <Link
+            to="/projects/$projectId/chats"
+            params={{ projectId: info.projectId }}
+            className="text-xs underline"
+          >
+            打开对话列表
+          </Link>
+        )}
+      </div>
+      {children(mutate)}
+      <div
+        className="space-y-2 rounded-lg border border-border-soft p-4"
+        data-testid="lease-transfer-controls"
+      >
+        <p className="text-xs font-medium">交接与收回</p>
+        <Select
+          aria-label="交接或收回的 Machine"
+          value={machineId}
+          onChange={(event) => setMachineId(event.target.value)}
+        >
+          <option value="">请选择持有中的 Machine</option>
+          {info.leases.items
+            .filter((lease) => lease.state === "held")
+            .map((lease) => (
+              <option key={lease.machineId} value={lease.machineId}>
+                {info.machines.find((item) => item.machine.id === lease.machineId)?.machine.name ??
+                  lease.machineId}
+              </option>
+            ))}
+        </Select>
+        <Select
+          aria-label="交接目标分身"
+          value={targetInstanceId}
+          onChange={(event) => setTargetInstanceId(event.target.value)}
+        >
+          <option value="">请选择交接目标分身</option>
+          {info.agents.agents
+            .filter((instance) => instance.instanceId)
+            .map((instance) => (
+              <option key={instance.instanceId} value={instance.instanceId}>
+                {instance.name} · {instance.instanceId}
+              </option>
+            ))}
+        </Select>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending || !machineId || !targetInstanceId || !chatId}
+            onClick={() => void extra("handoff")}
+          >
+            请求分身交接
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pending || !machineId}
+            onClick={() => void extra("reclaim")}
+          >
+            收回租约
+          </Button>
+        </div>
+        {pending && (
+          <p role="status" className="text-xs text-muted-foreground">
+            等待服务端租约收据…
+          </p>
+        )}
+      </div>
+      {error && <ResultError error={error} />}
+    </div>
+  );
+}

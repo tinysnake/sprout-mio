@@ -25,6 +25,8 @@ import { Icon } from "../ui/icon";
 import { MachineBindingForm } from "./machine-binding-form";
 import { MachineEnrollmentPanel } from "./machine-enrollment-panel";
 import { StatusLine } from "./machine-list";
+import { ProjectLeaseActions } from "./project-lease-actions";
+import type { ProjectInfoHub } from "../../contracts/info-hub";
 import { MachineLeaseSection } from "./lease-panel";
 import { RemoteExecutionList } from "./remote-execution-panel";
 import type { LeaseView } from "../../contracts/lease";
@@ -58,6 +60,9 @@ export function MachineDetailPanel({
   runs = [],
   executions = [],
   onLeaseMutate,
+  leaseInfo,
+  leaseError,
+  executionError,
 }: {
   detail: MachineDetail;
   back?: ReactNode;
@@ -72,6 +77,9 @@ export function MachineDetailPanel({
   runs?: readonly { runId: string; status: string }[];
   executions?: readonly ExecutionView[];
   /** 未注入时不渲染变更表单，按约定标为未接入。 */
+  leaseInfo?: ProjectInfoHub;
+  leaseError?: AppError;
+  executionError?: AppError;
   onLeaseMutate?: LeaseMutationHandler;
   onRenewEnrollment?: (machineId: string) => Promise<MachineResult<MachineEnrollment>>;
   onSaveBinding?: (
@@ -241,14 +249,31 @@ export function MachineDetailPanel({
               description="租约单位是 Project × Machine。run 结束、Worker 断线或分身空闲都不会自动释放租约，也不终止进程或删除文件。"
               testId="machine-lease-detail"
             >
-              <MachineLeaseSection
-                projectId={bindingProject.id}
-                detail={detail}
-                leases={leases}
-                holderNames={holderNames}
-                runs={runs}
-                onMutate={onLeaseMutate}
-              />
+              {leaseError ? (
+                <ResultError error={leaseError} />
+              ) : leaseInfo ? (
+                <ProjectLeaseActions key={leaseInfo.projectId} info={leaseInfo}>
+                  {(mutate) => (
+                    <MachineLeaseSection
+                      projectId={bindingProject.id}
+                      detail={detail}
+                      leases={leases}
+                      holderNames={holderNames}
+                      runs={runs}
+                      onMutate={mutate}
+                    />
+                  )}
+                </ProjectLeaseActions>
+              ) : (
+                <MachineLeaseSection
+                  projectId={bindingProject.id}
+                  detail={detail}
+                  leases={leases}
+                  holderNames={holderNames}
+                  runs={runs}
+                  onMutate={onLeaseMutate}
+                />
+              )}
             </SettingsSection>
           )}
 
@@ -258,13 +283,17 @@ export function MachineDetailPanel({
               description="操作目标由请求自身指定；宿主工具与远端操作分开记录，结果未经确认时显示未知。"
               testId="machine-remote-executions"
             >
-              <RemoteExecutionList
-                executions={executions.filter(
-                  (execution) => execution.machineId === detail.machine.id,
-                )}
-                machines={[detail]}
-                testId="machine-executions"
-              />
+              {executionError ? (
+                <ResultError error={executionError} />
+              ) : (
+                <RemoteExecutionList
+                  executions={executions.filter(
+                    (execution) => execution.machineId === detail.machine.id,
+                  )}
+                  machines={[detail]}
+                  testId="machine-executions"
+                />
+              )}
             </SettingsSection>
           )}
 

@@ -3,6 +3,9 @@ import { z } from "zod";
 import { useEffect } from "react";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineDetailPanel } from "../../components/machine/machine-detail";
+import { holderNames } from "../../components/machine/project-lease-actions";
+import { getProjectInfoHubFn } from "../../server/functions/info-hub";
+import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { ResultError } from "../../components/project/result-error";
 import { Button } from "../../components/ui/button";
 import {
@@ -27,13 +30,21 @@ export const Route = createFileRoute("/_authed/machines/$machineId")({
       }),
       listProjectsFn(),
     ]);
-    return { detail, projects };
+    const [info, executions] = deps.projectId
+      ? await Promise.all([
+          getProjectInfoHubFn({ data: { projectId: deps.projectId } }),
+          listProjectExecutionsFn({
+            data: { projectId: deps.projectId, machineId: params.machineId },
+          }),
+        ])
+      : [null, null];
+    return { detail, projects, info, executions };
   },
   component: MachinePage,
 });
 
 function MachinePage() {
-  const { detail, projects } = Route.useLoaderData();
+  const { detail, projects, info, executions } = Route.useLoaderData();
   const { projectId } = Route.useSearch();
   const router = useRouter();
   const { enrollment, setEnrollment } = useMachineEnrollment();
@@ -91,6 +102,12 @@ function MachinePage() {
       back={back}
       enrollment={enrollment?.detail.machine.id === detail.data.machine.id ? enrollment : null}
       projectNames={Object.fromEntries(availableProjects.map((p) => [p.id, p.name]))}
+      leaseInfo={info?.ok ? info.data : undefined}
+      leaseError={info && !info.ok ? info.error : undefined}
+      executionError={executions && !executions.ok ? executions.error : undefined}
+      leases={info?.ok ? info.data.leases.items : []}
+      holderNames={info?.ok ? holderNames(info.data) : {}}
+      executions={executions?.ok ? executions.data : []}
       bindingProject={availableProjects.find((p) => p.id === projectId) ?? null}
       installOrigin={typeof window === "undefined" ? undefined : window.location.origin}
       onRenewEnrollment={(machineId) => renewMachineEnrollmentFn({ data: { machineId } })}
@@ -106,13 +123,29 @@ function MachinePage() {
       onSaveBinding={(input) => saveProjectMachineBindingFn({ data: input })}
       onBindingSaved={() => void router.invalidate()}
       actions={
-        <Button
-          variant="outline"
-          data-testid="machine-refresh"
-          onClick={() => void router.invalidate()}
-        >
-          刷新连接与观察
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {!projectId &&
+            detail.data.bindings.map((binding) => (
+              <Link
+                key={binding.intent.projectId}
+                to="/machines/$machineId"
+                params={{ machineId: detail.data.machine.id }}
+                search={{ projectId: binding.intent.projectId }}
+                className="text-xs underline"
+              >
+                {availableProjects.find((p) => p.id === binding.intent.projectId)?.name ??
+                  binding.intent.projectId}{" "}
+                的租约
+              </Link>
+            ))}
+          <Button
+            variant="outline"
+            data-testid="machine-refresh"
+            onClick={() => void router.invalidate()}
+          >
+            刷新连接与观察
+          </Button>
+        </div>
       }
     />
   );

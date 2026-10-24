@@ -1,4 +1,14 @@
-import { Outlet, createFileRoute, useMatch, useRouteContext } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { getProjectInfoHubFn } from "../../server/functions/info-hub";
+import { listProjectExecutionsFn } from "../../server/functions/remote";
+import { holderNames } from "../../components/machine/project-lease-actions";
+import {
+  Outlet,
+  createFileRoute,
+  useMatch,
+  useRouteContext,
+  useRouter,
+} from "@tanstack/react-router";
 import { ChatListPanel } from "../../components/chat/chat-list";
 import { NewChatDialog } from "../../components/chat/new-chat-dialog";
 import { useChatInspector, chatsSearchSchema } from "../../components/chat/chat-search";
@@ -20,11 +30,13 @@ const DETAIL_ROUTE_ID = "/_authed/projects/$projectId/chats/$chatId";
  */
 export const Route = createFileRoute("/_authed/projects/$projectId/chats")({
   validateSearch: chatsSearchSchema,
-  loader: async ({ params }): Promise<ChatsLoaderData> => {
-    const [chats, members, profiles] = await Promise.all([
+  loader: async ({ params }) => {
+    const [chats, members, profiles, machineInfo, executions] = await Promise.all([
       listChatsFn({ data: { projectId: params.projectId } }),
       listProjectMembersFn({ data: { projectId: params.projectId } }),
       listAgentProfilesFn(),
+      getProjectInfoHubFn({ data: { projectId: params.projectId } }),
+      listProjectExecutionsFn({ data: { projectId: params.projectId } }),
     ]);
     const chatAgents = chats.ok
       ? await Promise.all(
@@ -35,7 +47,17 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats")({
           }),
         )
       : [];
-    return { chats, members, profiles, chatAgents };
+    return {
+      chats,
+      members,
+      profiles,
+      chatAgents,
+      machineInfo,
+      executions,
+    } satisfies ChatsLoaderData & {
+      machineInfo: typeof machineInfo;
+      executions: typeof executions;
+    };
   },
   component: ChatsLayout,
 });
@@ -43,6 +65,13 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats")({
 function ChatsLayout() {
   const { projectId } = Route.useParams();
   const loader = Route.useLoaderData();
+  const router = useRouter();
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void router.invalidate();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [router]);
   const { human } = useRouteContext({ from: "/_authed" });
   const detail = useMatch({ from: DETAIL_ROUTE_ID, shouldThrow: false });
   const chatId = detail?.params.chatId;
@@ -107,6 +136,24 @@ function ChatsLayout() {
               profile={selected.profile}
               info={selected.info}
               turnStart={selected.turnStart}
+              machineFactsError={
+                !loader.machineInfo.ok
+                  ? loader.machineInfo.error
+                  : !loader.executions.ok
+                    ? loader.executions.error
+                    : undefined
+              }
+              machineFacts={
+                loader.machineInfo.ok && loader.executions.ok
+                  ? {
+                      projectId,
+                      machines: loader.machineInfo.data.machines,
+                      leases: loader.machineInfo.data.leases.items,
+                      holderNames: holderNames(loader.machineInfo.data),
+                      executions: loader.executions.data,
+                    }
+                  : null
+              }
               onClose={() => setOpen(false)}
             />
           ) : undefined
