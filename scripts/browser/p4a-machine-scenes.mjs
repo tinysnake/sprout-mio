@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 
@@ -66,6 +66,95 @@ async function open({ width, height, colorScheme, scene = "machines" }) {
 const shoots = (page, name) =>
   page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true });
 
+const presentationEvidence = [];
+async function scrollDetailToTop(page) {
+  await page.getByTestId("machine-detail-page").evaluate((element) => {
+    for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+      ancestor.scrollTop = 0;
+    }
+    window.scrollTo(0, 0);
+  });
+}
+async function assertPresentation(page, status) {
+  await scrollDetailToTop(page);
+  const facts = await page.evaluate(() => {
+    const section = document.querySelector('[data-testid="machine-enrollment-section"]');
+    const connection = document.querySelector('[data-testid="machine-connection-section"]');
+    const pairing = document.querySelector('[data-testid="machine-pairing"]');
+    const install = document.querySelector('[data-testid="machine-install"]');
+    const box = (element) => {
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    };
+    return {
+      section: box(section),
+      connection: box(connection),
+      pairing: box(pairing),
+      install: box(install),
+      enrollmentFirst: Boolean(
+        section.compareDocumentPosition(connection) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+      pairingBeforeInstall: Boolean(
+        pairing.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  assert.equal(facts.enrollmentFirst, status === "pending", `${status}: 配对区的 DOM 优先级`);
+  assert.equal(facts.pairingBeforeInstall, true, "配对区应在安装区之前");
+  assert.ok(facts.overflow <= 1, `横向溢出 ${facts.overflow}px`);
+  if (status === "pending") {
+    assert.ok(
+      facts.section.y + facts.section.height <= facts.connection.y + 1,
+      "待配对区整体位于详情事实之前",
+    );
+    assert.ok(facts.pairing.y <= facts.install.y, "配对操作不晚于安装说明");
+  }
+  const note = page.getByTestId("machine-http-note");
+  assert.equal(await note.isVisible(), false, "协议尾注默认收起");
+  await page.getByTestId("machine-http-help").click();
+  await note.waitFor({ state: "visible" });
+  const text = await note.innerText();
+  assert.match(text, /默认只接受 loopback HTTP；非 loopback 地址必须使用 HTTPS/);
+  assert.match(text, /--server.*http:\/\/127\.0\.0\.1:3330/);
+  assert.match(text, /没有 --allow-http 配置项/);
+  assert.match(text, /不支持通过配置放开非 loopback HTTP/);
+  await page.getByRole("button", { name: "关闭对话框" }).click();
+  await note.waitFor({ state: "hidden" });
+  await scrollDetailToTop(page);
+  return facts;
+}
+
+async function assertPresentationMatrix() {
+  for (const colorScheme of ["light", "dark"]) {
+    const matrix = await open({ width: 1440, height: 900, colorScheme });
+    for (const width of [1440, 1200, 1199, 900, 899, 390]) {
+      await matrix.page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      for (const status of ["pending", "active"]) {
+        await matrix.page.getByTestId("machine-list").waitFor();
+        const id =
+          status === "pending"
+            ? "mch_22222222-2222-4222-8222-222222222222"
+            : "mch_11111111-1111-4111-8111-111111111111";
+        await matrix.page.locator(`[data-machine-id="${id}"]`).click();
+        await matrix.page.getByTestId("machine-detail-page").waitFor();
+        const facts = await assertPresentation(matrix.page, status);
+        presentationEvidence.push({ width, colorScheme, status, ...facts });
+        if (width === 1440 || width === 390) {
+          await shoots(matrix.page, `priority-${status}-${width}-${colorScheme}`);
+        }
+        await matrix.page.getByTestId("machine-detail-back").click();
+      }
+    }
+    assert.deepEqual(matrix.errors, []);
+    await matrix.context.close();
+  }
+  writeFileSync(
+    join(evidence, "priority-positions.json"),
+    JSON.stringify(presentationEvidence, null, 2),
+  );
+}
+
 try {
   const desktop = await open({ width: 1440, height: 900, colorScheme: "light" });
   const page = desktop.page;
@@ -93,6 +182,7 @@ try {
     assert.ok(init.includes("--state-dir"));
     assert.ok(!init.includes("--ticket"), "票据不能出现在命令里");
     assert.ok(!(await test("machine-enrollment-panel").innerText()).includes("AAAAAAAA"));
+    await assertPresentation(page, "active");
     await shoots(page, "machine-detail-1440-light");
   });
 
@@ -201,6 +291,7 @@ try {
     await test("machine-enrollment-status").waitFor();
     assert.ok((await test("machine-enrollment-panel").innerText()).includes("待配对"));
     assert.equal(await test("machine-ticket-value").count(), 0);
+    await assertPresentation(page, "pending");
     await test("machine-renew").click();
     await test("machine-ticket-hidden").waitFor();
     await test("machine-ticket-toggle").click();
@@ -652,6 +743,7 @@ try {
 
   const dark = await open({ width: 1440, height: 900, colorScheme: "dark" });
   await check("dark_theme_list_and_detail", async () => {
+    await assertPresentationMatrix();
     await dark.page.getByTestId("machine-list").waitFor();
     await shoots(dark.page, "machines-list-1440-dark");
     await dark.page.locator('[data-machine-id="mch_11111111-1111-4111-8111-111111111111"]').click();

@@ -177,7 +177,9 @@ function DemoControls({
         </button>
       )}
       <p className="mt-2 leading-5 text-muted-foreground">
-        演示数据与本地模拟操作。刷新会回到固定 fixtures；不连接业务服务。
+        演示数据与本地模拟操作。刷新会回到固定 fixtures；不连接业务服务。 选择「待配对的
+        MacBook」查看配对置顶，选择「工作室 Mac mini」查看已配对后的次栏； 安装区问号可查看 HTTP /
+        HTTPS 配置。
       </p>
     </details>
   );

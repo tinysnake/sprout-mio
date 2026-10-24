@@ -60,6 +60,41 @@ async function until(check, label) {
   throw new Error(`Timeout ${label}`);
 }
 const passes = [];
+async function assertDetailPresentation(page, status) {
+  const facts = await page.evaluate(() => {
+    const section = document.querySelector('[data-testid="machine-enrollment-section"]');
+    const connection = document.querySelector('[data-testid="machine-connection-section"]');
+    const pairing = document.querySelector('[data-testid="machine-pairing"]');
+    const install = document.querySelector('[data-testid="machine-install"]');
+    return {
+      enrollmentFirst: Boolean(
+        section.compareDocumentPosition(connection) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+      pairingBeforeInstall: Boolean(
+        pairing.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+      sectionTop: section.getBoundingClientRect().top,
+      sectionBottom: section.getBoundingClientRect().bottom,
+      connectionTop: connection.getBoundingClientRect().top,
+    };
+  });
+  assert.equal(facts.enrollmentFirst, status === "pending");
+  assert.equal(facts.pairingBeforeInstall, true, "配对必须先于安装");
+  if (status === "pending") assert.ok(facts.sectionBottom <= facts.connectionTop + 1);
+  const note = page.getByTestId("machine-http-note");
+  assert.equal(await note.isVisible(), false, "协议说明默认收起");
+  await page.getByTestId("machine-http-help").click();
+  await note.waitFor({ state: "visible" });
+  const text = await note.innerText();
+  assert.match(text, /默认只接受 loopback HTTP；非 loopback 地址必须使用 HTTPS/);
+  assert.match(text, /--server.*http:\/\/127\.0\.0\.1:3330/);
+  assert.match(text, /没有 --allow-http 配置项/);
+  assert.match(text, /不支持通过配置放开非 loopback HTTP/);
+  await page.getByRole("button", { name: "关闭对话框" }).click();
+  await note.waitFor({ state: "hidden" });
+  return facts;
+}
+
 function pass(name, facts = {}) {
   passes.push({ name, ...facts });
   console.log(`PASS ${name}`);
@@ -148,6 +183,7 @@ try {
   await page.getByTestId("machine-detail-id").waitFor();
   const machineId = (await page.getByTestId("machine-detail-id").innerText()).trim();
   await page.getByTestId("machine-ticket-hidden").waitFor();
+  const pendingPresentation = await assertDetailPresentation(page, "pending");
   await page.getByTestId("machine-ticket-toggle").click();
   const ticket = await page.getByTestId("machine-ticket-value").innerText();
   assert.equal(ticket.length, 43);
@@ -164,7 +200,7 @@ try {
   );
   assert.equal(leaked, false);
   await page.screenshot({ path: join(evidence, "created-ticket-hidden-1440.png"), fullPage: true });
-  pass("real browser create and transient hidden ticket", { machineId });
+  pass("real browser create and transient hidden ticket", { machineId, pendingPresentation });
   await page.getByTestId("machine-renew").click();
   await until(
     async () => !(await page.getByTestId("machine-renew").isDisabled()),
@@ -239,7 +275,9 @@ try {
   await page.getByTestId("machine-enrollment-active").waitFor();
   assert((await page.getByTestId("machine-detail-connection").innerText()).includes("在线"));
   assert.equal(await page.getByTestId("machine-ticket-value").count(), 0);
+  const activePresentation = await assertDetailPresentation(page, "active");
   pass("independently copied macOS Worker connects and refresh reads active identity", {
+    activePresentation,
     node: process.version,
     platform: process.platform,
     arch: process.arch,

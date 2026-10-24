@@ -82,6 +82,20 @@ export function MachineDetailPanel({
     ? (detail.bindings.find((item) => item.intent.projectId === bindingProject.id) ?? null)
     : null;
 
+  const enrollmentSection = (
+    <SettingsSection title="配对与安装" testId="machine-enrollment-section">
+      <MachineEnrollmentPanel
+        machineId={detail.machine.id}
+        enrollmentStatus={detail.enrollmentStatus}
+        enrollment={enrollment}
+        installOrigin={installOrigin}
+        onRenew={onRenewEnrollment}
+        onEnrollmentCreated={onEnrollmentCreated}
+        onEnrollmentRevoked={onEnrollmentRevoked}
+      />
+    </SettingsSection>
+  );
+
   return (
     <PageFrame
       title={<span data-testid="machine-detail-name">{detail.machine.name}</span>}
@@ -96,6 +110,9 @@ export function MachineDetailPanel({
       testId="machine-detail-page"
     >
       <div className="grid gap-x-8 wide:grid-cols-[minmax(0,1fr)_20rem]">
+        {detail.enrollmentStatus === "pending" && (
+          <div className="min-w-0 wide:col-span-2">{enrollmentSection}</div>
+        )}
         <div className="min-w-0">
           <SettingsSection
             title="连接与配对"
@@ -339,23 +356,9 @@ export function MachineDetailPanel({
           </SettingsSection>
         </div>
 
-        <aside className="min-w-0">
-          <SettingsSection
-            title="配对与安装"
-            description="先把 Machine 登记到当前账号，再用一次性票据启动 Worker。"
-            testId="machine-enrollment-section"
-          >
-            <MachineEnrollmentPanel
-              machineId={detail.machine.id}
-              enrollmentStatus={detail.enrollmentStatus}
-              enrollment={enrollment}
-              installOrigin={installOrigin}
-              onRenew={onRenewEnrollment}
-              onEnrollmentCreated={onEnrollmentCreated}
-              onEnrollmentRevoked={onEnrollmentRevoked}
-            />
-          </SettingsSection>
-        </aside>
+        {detail.enrollmentStatus === "active" && (
+          <aside className="min-w-0">{enrollmentSection}</aside>
+        )}
       </div>
     </PageFrame>
   );
