@@ -65,6 +65,16 @@ Human 于 2026-10-24 亲自体验 `3df7f2c`，给出六条反馈。其中前两�
 
 本章四步 checklist 因此全部取消勾选，等待第二轮复验。票据生命周期的三轮修复结论仍然有效。
 
+### 第二轮复验与三条呈现修正
+
+上面六条在第二轮全部落地，main `97a530b` 为当前被验 head。领域两条以 `43aa6c3` 合入（`f9c6598`），呈现修正在 `455e46c`、`980e68d`、`3fec3a3` 与 `f0a6102` 四轮分别合入 `74fccd4`、`3d09703`、`fa12a6c`、`6702ccc`。
+
+root 冲突保护在第二轮复验中被证实原本失效并已修复：loader 刷新会把仍在编辑的草稿 `expectedRevision` 重基到最新值，于是外部先改 root 后页面提交不再冲突，静默覆盖对方。修法是草稿持有开始编辑时的 revision，只有明确的重试才用刷新后的 revision。复跑证据 `.verify/` 下 `root-draft-refresh.json` 记录 baseline 2 / concurrent 3 / submitted 2 且首次提交被 conflicted 拒绝。
+
+Human 在第二轮选择了两个原先开放的问题：Shell 能力采用一行摘要（`✓ zsh · ✓ bash · ✓ sh`），详情由悬停、点击与键盘聚焦三者共同触发；allow-http 采用显式开关，而不是把「非 loopback 必须 HTTPS」写进文案。allow-http 按逐 origin 精确授权实现（含端口，不放行同网段其他地址），授权写入身份文件并在 `run` 时重新校验，不提供关闭 TLS 验证的选项。
+
+独立技术验收（未参与实现的另一模型家族，自有 `git archive 6702ccc` checkout、自建 production 构建与独立 SQLite / Worker state / Chromium / 账号）判定技术验收通过，并抓到两处遗漏：三份文档仍写旧的 allow-http 结论，以及 TLS 守卫的错误被通用提示吞掉导致用户看不到原因。两者已在 `97a530b` 修复，`l-docs.sh` 与 `l-docs-probes.sh` 在 main 上退出 0（7 个探针通过）。
+
 ## Human 体验确认
 
 - 待确认。Human 已体验 `3df7f2c` 并给出反馈，但反馈触发领域变更，该版本不作为本章通过确认。第二轮交付后再取得确认。
@@ -73,6 +83,8 @@ Human 于 2026-10-24 亲自体验 `3df7f2c`，给出六条反馈。其中前两�
 
 1. 创建 Machine，续签票据，再返回列表并重开，确认详情保留当前续签结果。
 2. 在独立终端按详情命令初始化并运行真实 macOS Worker。刷新详情，查看已配对、在线、代次与 shell 事实。
-3. 从 Project settings 的 Machines 区选择该 Machine，保存说明与绝对工作目录。刷新后分别查看绑定意图、目录 realPath 与 Worker 观察。
-4. 在另一个本人 Project 为同一 Machine 保存不同目录，核对两份绑定各自独立。
-5. 停止 Worker 后刷新，再启动并刷新，核对离线与重连，页面不推断空闲或释放。
+3. 在 Machine 详情设置 root 工作目录，再从 Project settings 的 Machines 区选择该 Machine 并保存说明。选择后应停留在 settings 页，绑定表单就地出现并用分派的 revision 提交，不跳回 Machine 详情。
+4. 在另一个本人 Project 绑定同一 Machine，核对两者派生的 `<root>/<project_id>` 路径不同且各自被 Worker 观察到。
+5. 在另一个窗口用 RPC 改 root 后再在页面提交草稿，核对报冲突、页面显示对方 root、草稿保留，显式重试才成功。
+6. 停止 Worker 后刷新，再启动并刷新，核对离线与重连，页面不推断空闲或释放。
+7. 核对未配对时配对与安装是否在最前，Shell 能力是否折叠为一行并可展开，问号弹窗对 allow-http 的说法是否与实际一致。

@@ -159,6 +159,12 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 第二轮范围（2026-10-24，由 Human 体验反馈决定）。工作目录改为 Machine 级 root：Machine 创建后设置 root 工作目录，修改需要警告，一期不做工作目录迁移。Project 绑定不再填写目录，该 Project 在此 Machine 上的 git 路径与工作路径为服务端派生的 `<root>/<project_id>`；详情中的「Project 绑定」区改为设置 root 工作目录的区域。绑定入口在 Project settings 点击后跳回 Machine 详情属于缺陷，改为在本页就地完成绑定。未配对时配对与安装说明前置到最显眼位置。安装文案精简，协议尾注默认收起，allow-http 以问号弹窗说明。Shell 能力折叠为勾与叉加 tooltip。决定与理由见 [P4a 结论](p4a/summary.md#体验后变更)。
 
+第二轮交付记录（2026-10-24）。领域变更由 `43aa6c3`（`f9c6598`）合入：Machine 级 `root_directory` + `root_revision`，删除 `project_machine.directory`，新增派生函数 `projectWorkingPath`，新增迁移 `drizzle/0007`、`0008`（未改写已合并迁移）。页面与真实接入由 `455e46c` 在 `74fccd4` 合入。三条呈现修正在 `980e68d`（`3d09703`）、`3fec3a3`（`fa12a6c`）、`f0a6102`（`6702ccc`）分别合入，Human 当时选定的两项也在此落地：Shell 能力采用一行摘要加悬停/点击/键盘聚焦；allow-http 采用逐 origin 显式授权，不提供关闭 TLS 验证的选项。三处文档与 TLS 守卫提示在 `97a530b` 同步，`l-docs.sh` 与 `l-docs-probes.sh` 在 main 上退出 0（7 探针通过）。
+
+编排者在每个单元合入前后各复跑一轮：`pnpm check`、`pnpm typecheck`、`pnpm test`（202 项）、`pnpm worker:build`、`pnpm build`、`bash scripts/verify/t-machine-worker.sh`、`bash scripts/verify/u-machine-ui.sh`（14 组）、`bash scripts/verify/k-acceptance.sh` 与 `bash scripts/verify/s-machine-contracts.sh`，均退出 0；演示脚本 40 项全过。root 冲突保护的一次真实竞态（loader 刷新重基草稿 revision 导致静默覆盖）在复跑中暴露并在 `455e46c` 修复。独立技术验收由未参与实现的另一模型家族在 `git archive 6702ccc` 的独立 checkout 上执行并判定通过，带回两处遗漏，已在 `97a530b` 修复。
+
+复核记录。版本 `97a530b`。技术验收通过与 Human 体验确认是两件事，后者待 Human 在第二轮交付上明确给出。
+
 第一轮技术验收记录（票据生命周期部分仍然有效，目录模型部分由上述变更重开）。三轮票据生命周期修复 `77555c9`、`2ce9dfe`、`90a6af7` 在 `e10a5b4` 合入 main。独立验收由未参与实现的另一模型家族执行，使用自有 checkout、自建 production 构建、独立 SQLite、Worker state 与 Chromium，41 条断言全为 true。正常续签、跨 Machine 迟到响应、同 Machine 在途放弃三条互斥路径在同一被验 head 上闭合；撤销不误杀合法票据、真实 Fn 授权边界、失败续签保留合法状态、真实 SIGTERM 后同代观察仍 current 均有独立证据。编排者在合入后复跑 `pnpm check`、`pnpm typecheck`、180 项测试、Worker 与 Web 构建及 `bash scripts/verify/u-machine-ui.sh`（13 组），均退出 0。章节交付、已知限制与未验证项见 [P4a 结论](p4a/summary.md#技术验收证据)。
 
 - [ ] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
