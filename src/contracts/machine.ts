@@ -68,12 +68,22 @@ export const shellFactSchema = z.strictObject({
   ]),
 });
 export type ShellFact = z.infer<typeof shellFactSchema>;
+export const REMOTE_OPERATION_KINDS = [
+  "shell",
+  "file_read",
+  "file_write",
+  "process_list",
+  "process_signal",
+] as const;
 export const capabilitySnapshotSchema = z.strictObject({
   platform: z.literal("darwin"),
   arch: z.enum(["arm64", "x64"]),
   workerVersion: z.string().min(1).max(80),
   shells: z.array(shellFactSchema).max(16),
-  remoteOperations: z.literal("not_implemented"),
+  remoteOperations: z
+    .array(z.enum(REMOTE_OPERATION_KINDS))
+    .max(5)
+    .refine((kinds) => new Set(kinds).size === kinds.length, "远端操作能力不能重复"),
 });
 export type CapabilitySnapshot = z.infer<typeof capabilitySnapshotSchema>;
 

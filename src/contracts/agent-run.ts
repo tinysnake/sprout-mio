@@ -63,11 +63,11 @@ export type AgentRunInput = {
   deliveredAt?: string;
 };
 
-const runId = z
+export const runIdSchema = z
   .string()
   .regex(/^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 
-export const abortAgentRunInput = z.object({ runId });
+export const abortAgentRunInput = z.object({ runId: runIdSchema });
 export const chatRunStateInput = chatIdInput;
 
 export type ChatRunState = {

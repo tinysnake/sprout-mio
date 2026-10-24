@@ -2,6 +2,9 @@
 export const ID_PREFIXES = {
   project: "prj",
   machine: "mch",
+  execution: "exe",
+  leaseMutation: "lmu",
+  remoteToolGrant: "rtg",
   agentProfile: "agp",
   projectMember: "pmb",
   chat: "cnv",

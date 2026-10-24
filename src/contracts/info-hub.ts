@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { leaseViewSchema } from "./lease";
 import { machineDetailSchema } from "./machine";
 import { AGENT_RUN_STATUSES } from "./agent-run";
 import { agentProfileIdSchema } from "./agent";
@@ -161,7 +162,7 @@ export const projectInfoHubSchema = z.object({
   projectId,
   agents: projectAgentsViewSchema,
   machines: z.array(machineDetailSchema),
-  leases: unavailableFeatureSchema,
+  leases: z.strictObject({ available: z.literal(true), items: z.array(leaseViewSchema).max(1000) }),
 });
 export type ProjectInfoHub = z.infer<typeof projectInfoHubSchema>;
 

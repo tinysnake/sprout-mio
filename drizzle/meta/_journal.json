@@ -64,6 +64,13 @@
       "when": 1792779823684,
       "tag": "0008_majestic_luke_cage",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792856093324,
+      "tag": "0009_hard_chameleon",
+      "breakpoints": true
     }
   ]
 }

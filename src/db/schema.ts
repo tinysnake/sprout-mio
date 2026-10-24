@@ -14,6 +14,13 @@ import { AGENT_RUN_STATUSES } from "../contracts/agent-run";
 import type { RunConfigSnapshot } from "../contracts/agent-run";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 import type { CapabilitySnapshot } from "../contracts/machine";
+import {
+  REMOTE_EXECUTION_STATES,
+  REMOTE_FAILURE_REASONS,
+  REMOTE_OUTCOMES,
+} from "../contracts/remote";
+import type { RemoteOperation, RemoteResultPayload } from "../contracts/remote";
+import type { WorkerExchangeResponse } from "../contracts/worker";
 
 export * from "./auth-schema";
 
@@ -151,6 +158,7 @@ export const agentInstance = sqliteTable(
   },
   (table) => [
     uniqueIndex("agent_instance_profile_chat_unique").on(table.agentProfileId, table.chatId),
+    uniqueIndex("agent_instance_id_project_unique").on(table.id, table.projectId),
   ],
 );
 
@@ -206,6 +214,12 @@ export const agentRun = sqliteTable(
       .on(table.instanceId)
       .where(sql`${table.status} in ('queued', 'running')`),
     index("agent_run_chat_queued_idx").on(table.chatId, table.queuedAt),
+    uniqueIndex("agent_run_bound_identity_unique").on(
+      table.id,
+      table.instanceId,
+      table.projectId,
+      table.chatId,
+    ),
     check(
       "agent_run_status_check",
       sql`${table.status} in ('queued', 'running', 'completed', 'failed', 'aborted', 'interrupted')`,
@@ -561,5 +575,412 @@ export const directoryObservation = sqliteTable(
       "directory_observation_result_check",
       sql`(${t.kind} = 'accessible' and ${t.realPath} is not null and ${t.reason} is null and length(${t.realPath}) between 1 and 4096 and substr(${t.realPath}, 1, 1) = '/' and instr(${t.realPath}, char(0)) = 0) or (${t.kind} = 'unavailable' and ${t.realPath} is null and ${t.reason} is not null and ${t.reason} in ('missing', 'not_directory', 'denied', 'io_error'))`,
     ),
+  ],
+);
+
+export const machineLease = sqliteTable(
+  "machine_lease",
+  {
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    generation: integer("generation").notNull(),
+    state: text("state", { enum: ["free", "held", "fencing"] }).notNull(),
+    holderInstanceId: text("holder_instance_id"),
+    changedAt: integer("changed_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    check(
+      "machine_lease_check_1",
+      sql`typeof(generation)='integer' AND generation BETWEEN 0 AND 9007199254740991`,
+    ),
+    check("machine_lease_check_2", sql`state IN ('free','held','fencing')`),
+    check("machine_lease_check_3", sql`typeof(changed_at)='integer' AND changed_at>=0`),
+    primaryKey({ columns: [t.projectId, t.machineId] }),
+    foreignKey({
+      columns: [t.projectId, t.machineId],
+      foreignColumns: [projectMachine.projectId, projectMachine.machineId],
+    }),
+    foreignKey({
+      columns: [t.holderInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
+    }),
+    check(
+      "machine_lease_check_7",
+      sql`(state='free' AND holder_instance_id IS NULL) OR
+        (state IN ('held','fencing') AND holder_instance_id IS NOT NULL)`,
+    ),
+    check("machine_lease_check_8", sql`state='free' OR generation>0`),
+  ],
+);
+
+export const leaseAuthorization = sqliteTable(
+  "lease_authorization",
+  {
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    generation: integer("generation").notNull(),
+    holderInstanceId: text("holder_instance_id"),
+    state: text("state", { enum: ["free", "active", "draining", "revoked"] }).notNull(),
+    issuedAt: integer("issued_at", { mode: "timestamp_ms" }).notNull(),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    reason: text("reason", {
+      enum: ["initial", "acquire", "release", "handoff", "reclaim"],
+    }).notNull(),
+  },
+  (t) => [
+    check(
+      "lease_authorization_check_1",
+      sql`typeof(generation)='integer' AND generation BETWEEN 0 AND 9007199254740991`,
+    ),
+    check("lease_authorization_check_2", sql`state IN ('free','active','draining','revoked')`),
+    check("lease_authorization_check_3", sql`typeof(issued_at)='integer' AND issued_at>=0`),
+    check(
+      "lease_authorization_check_4",
+      sql`reason IN ('initial','acquire','release','handoff','reclaim')`,
+    ),
+    primaryKey({ columns: [t.projectId, t.machineId, t.generation] }),
+    uniqueIndex(
+      "lease_authorization_project_id_machine_id_generation_holder_instance_id_unique",
+    ).on(t.projectId, t.machineId, t.generation, t.holderInstanceId),
+    foreignKey({
+      columns: [t.projectId, t.machineId],
+      foreignColumns: [machineLease.projectId, machineLease.machineId],
+    }),
+    foreignKey({
+      columns: [t.holderInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
+    }),
+    check(
+      "lease_authorization_check_9",
+      sql`(state='free' AND holder_instance_id IS NULL AND revoked_at IS NULL) OR
+        (state IN ('active','draining') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR
+        (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)`,
+    ),
+    check("lease_authorization_check_10", sql`generation>0 OR holder_instance_id IS NULL`),
+    uniqueIndex("lease_one_live_authorization")
+      .on(t.projectId, t.machineId)
+      .where(sql`state IN ('free','active','draining')`),
+  ],
+);
+
+export const leaseMutation = sqliteTable(
+  "lease_mutation",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    actorKind: text("actor_kind", { enum: ["agent", "human"] }).notNull(),
+    actorId: text("actor_id").notNull(),
+    requestId: text("request_id").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    action: text("action", { enum: ["acquire", "release", "handoff", "reclaim"] }).notNull(),
+    expectedGeneration: integer("expected_generation").notNull(),
+    targetInstanceId: text("target_instance_id"),
+    state: text("state", { enum: ["pending", "completed"] }).notNull(),
+    completedGeneration: integer("completed_generation"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    check("lease_mutation_check_1", sql`actor_kind IN ('agent','human')`),
+    check(
+      "lease_mutation_check_2",
+      sql`length(payload_hash)=64 AND payload_hash NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check("lease_mutation_check_3", sql`action IN ('acquire','release','handoff','reclaim')`),
+    check(
+      "lease_mutation_check_4",
+      sql`typeof(expected_generation)='integer' AND expected_generation BETWEEN 0 AND 9007199254740991`,
+    ),
+    check("lease_mutation_check_5", sql`state IN ('pending','completed')`),
+    check("lease_mutation_check_6", sql`typeof(created_at)='integer' AND created_at>=0`),
+    uniqueIndex("lease_mutation_actor_kind_actor_id_request_id_unique").on(
+      t.actorKind,
+      t.actorId,
+      t.requestId,
+    ),
+    foreignKey({
+      columns: [t.projectId, t.machineId],
+      foreignColumns: [machineLease.projectId, machineLease.machineId],
+    }),
+    foreignKey({
+      columns: [t.projectId, t.machineId, t.expectedGeneration],
+      foreignColumns: [
+        leaseAuthorization.projectId,
+        leaseAuthorization.machineId,
+        leaseAuthorization.generation,
+      ],
+    }),
+    foreignKey({
+      columns: [t.targetInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
+    }),
+    foreignKey({
+      columns: [t.projectId, t.machineId, t.completedGeneration],
+      foreignColumns: [
+        leaseAuthorization.projectId,
+        leaseAuthorization.machineId,
+        leaseAuthorization.generation,
+      ],
+    }),
+    check(
+      "lease_mutation_check_12",
+      sql`(action='handoff' AND target_instance_id IS NOT NULL) OR (action!='handoff' AND target_instance_id IS NULL)`,
+    ),
+    check(
+      "lease_mutation_check_13",
+      sql`(actor_kind='agent' AND action IN ('acquire','release','handoff')) OR (actor_kind='human' AND action='reclaim')`,
+    ),
+    check(
+      "lease_mutation_check_14",
+      sql`(state='pending' AND action!='acquire' AND completed_at IS NULL AND completed_generation IS NULL) OR
+        (state='completed' AND completed_at IS NOT NULL AND typeof(completed_at)='integer' AND completed_at>=created_at
+          AND completed_generation IS NOT NULL AND typeof(completed_generation)='integer'
+          AND completed_generation BETWEEN expected_generation AND 9007199254740991)`,
+    ),
+    check(
+      "lease_mutation_check_15",
+      sql`state='pending' OR completed_generation=expected_generation+1 OR
+        (action='acquire' AND completed_generation=expected_generation)`,
+    ),
+    uniqueIndex("lease_one_pending_mutation")
+      .on(t.projectId, t.machineId)
+      .where(sql`state='pending'`),
+  ],
+);
+
+export const workerExchangeFrame = sqliteTable(
+  "worker_exchange_frame",
+  {
+    machineId: text("machine_id").notNull(),
+    connectionGeneration: integer("connection_generation").notNull(),
+    seq: integer("seq").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    responseJson: text("response_json", { mode: "json" })
+      .$type<Extract<WorkerExchangeResponse, { ok: true }>["data"]>()
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    check(
+      "worker_exchange_frame_check_1",
+      sql`typeof(connection_generation)='integer' AND connection_generation BETWEEN 1 AND 9007199254740991`,
+    ),
+    check(
+      "worker_exchange_frame_check_2",
+      sql`typeof(seq)='integer' AND seq BETWEEN 1 AND 9007199254740991`,
+    ),
+    check(
+      "worker_exchange_frame_check_3",
+      sql`length(payload_hash)=64 AND payload_hash NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "worker_exchange_frame_check_4",
+      sql`CASE WHEN json_valid(response_json) THEN json_type(response_json)='object' ELSE 0 END`,
+    ),
+    check("worker_exchange_frame_check_5", sql`typeof(created_at)='integer' AND created_at>=0`),
+    primaryKey({ columns: [t.machineId, t.connectionGeneration, t.seq] }),
+    foreignKey({
+      columns: [t.machineId, t.connectionGeneration],
+      foreignColumns: [machineConnection.machineId, machineConnection.generation],
+    }),
+  ],
+);
+
+export const remoteExecution = sqliteTable(
+  "remote_execution",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    authorizationGeneration: integer("authorization_generation").notNull(),
+    holderInstanceId: text("holder_instance_id").notNull(),
+    runId: text("run_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    requestId: text("request_id").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    operationJson: text("operation_json", { mode: "json" }).$type<RemoteOperation>().notNull(),
+    directoryRevision: integer("directory_revision"),
+    state: text("state", { enum: REMOTE_EXECUTION_STATES }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    deadlineAt: integer("deadline_at", { mode: "timestamp_ms" }).notNull(),
+    dispatchConnectionGeneration: integer("dispatch_connection_generation"),
+    dispatchSeq: integer("dispatch_seq"),
+    dispatchedAt: integer("dispatched_at", { mode: "timestamp_ms" }),
+    drainedAt: integer("drained_at", { mode: "timestamp_ms" }),
+    terminalAt: integer("terminal_at", { mode: "timestamp_ms" }),
+    failureReason: text("failure_reason", { enum: REMOTE_FAILURE_REASONS }),
+  },
+  (t) => [
+    check(
+      "remote_execution_check_1",
+      sql`typeof(authorization_generation)='integer' AND authorization_generation BETWEEN 1 AND 9007199254740991`,
+    ),
+    check(
+      "remote_execution_check_2",
+      sql`length(payload_hash)=64 AND payload_hash NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "remote_execution_check_3",
+      sql`CASE WHEN json_valid(operation_json) THEN json_type(operation_json)='object' ELSE 0 END`,
+    ),
+    check(
+      "remote_execution_check_4",
+      sql`directory_revision IS NULL OR (typeof(directory_revision)='integer' AND directory_revision BETWEEN 1 AND 9007199254740991)`,
+    ),
+    check(
+      "remote_execution_check_5",
+      sql`state IN ('queued','dispatched','running','draining','succeeded','failed','rejected','timed_out','unknown')`,
+    ),
+    check("remote_execution_check_6", sql`typeof(created_at)='integer' AND created_at>=0`),
+    check(
+      "remote_execution_check_7",
+      sql`typeof(deadline_at)='integer' AND deadline_at>created_at`,
+    ),
+    check(
+      "remote_execution_check_8",
+      sql`failure_reason IN ('stale_generation','not_holder','authorization_revoked','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
+    ),
+    uniqueIndex("remote_execution_holder_instance_id_request_id_unique").on(
+      t.holderInstanceId,
+      t.requestId,
+    ),
+    uniqueIndex(
+      "remote_execution_id_project_id_machine_id_authorization_generation_holder_instance_id_unique",
+    ).on(t.id, t.projectId, t.machineId, t.authorizationGeneration, t.holderInstanceId),
+    foreignKey({
+      columns: [t.projectId, t.machineId, t.authorizationGeneration, t.holderInstanceId],
+      foreignColumns: [
+        leaseAuthorization.projectId,
+        leaseAuthorization.machineId,
+        leaseAuthorization.generation,
+        leaseAuthorization.holderInstanceId,
+      ],
+    }),
+    foreignKey({
+      columns: [t.runId, t.holderInstanceId, t.projectId, t.chatId],
+      foreignColumns: [agentRun.id, agentRun.instanceId, agentRun.projectId, agentRun.chatId],
+    }),
+    foreignKey({
+      columns: [t.machineId, t.dispatchConnectionGeneration, t.dispatchSeq],
+      foreignColumns: [
+        workerExchangeFrame.machineId,
+        workerExchangeFrame.connectionGeneration,
+        workerExchangeFrame.seq,
+      ],
+    }),
+    check(
+      "remote_execution_check_14",
+      sql`(dispatch_connection_generation IS NULL AND dispatch_seq IS NULL AND dispatched_at IS NULL AND drained_at IS NULL) OR
+        (dispatch_connection_generation IS NOT NULL AND typeof(dispatch_connection_generation)='integer' AND dispatch_connection_generation>=1
+          AND dispatch_seq IS NOT NULL AND typeof(dispatch_seq)='integer' AND dispatch_seq>=1
+          AND dispatched_at IS NOT NULL AND typeof(dispatched_at)='integer' AND dispatched_at>=created_at)`,
+    ),
+    check(
+      "remote_execution_check_15",
+      sql`drained_at IS NULL OR (typeof(drained_at)='integer' AND dispatched_at IS NOT NULL AND drained_at>=dispatched_at)`,
+    ),
+    check(
+      "remote_execution_check_16",
+      sql`state NOT IN ('dispatched','running','draining') OR dispatch_connection_generation IS NOT NULL`,
+    ),
+    check(
+      "remote_execution_check_17",
+      sql`state!='queued' OR dispatch_connection_generation IS NULL`,
+    ),
+    check(
+      "remote_execution_check_18",
+      sql`state!='succeeded' OR (dispatch_connection_generation IS NOT NULL AND drained_at IS NOT NULL)`,
+    ),
+    check(
+      "remote_execution_check_19",
+      sql`(state IN ('queued','dispatched','running','draining') AND terminal_at IS NULL AND failure_reason IS NULL) OR
+        (state='succeeded' AND terminal_at IS NOT NULL AND typeof(terminal_at)='integer' AND terminal_at>=created_at AND failure_reason IS NULL) OR
+        (state IN ('failed','rejected','timed_out','unknown') AND terminal_at IS NOT NULL AND typeof(terminal_at)='integer' AND terminal_at>=created_at AND failure_reason IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const executionResult = sqliteTable(
+  "execution_result",
+  {
+    executionId: text("execution_id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    authorizationGeneration: integer("authorization_generation").notNull(),
+    holderInstanceId: text("holder_instance_id").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    outcome: text("outcome", { enum: REMOTE_OUTCOMES }).notNull(),
+    payloadJson: text("payload_json", { mode: "json" }).$type<RemoteResultPayload>().notNull(),
+    recordedAt: integer("recorded_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    check(
+      "execution_result_check_1",
+      sql`length(payload_hash)=64 AND payload_hash NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check(
+      "execution_result_check_2",
+      sql`outcome IN ('succeeded','failed','rejected','timed_out','unknown')`,
+    ),
+    check(
+      "execution_result_check_3",
+      sql`CASE WHEN json_valid(payload_json) THEN json_type(payload_json)='object' ELSE 0 END`,
+    ),
+    check("execution_result_check_4", sql`typeof(recorded_at)='integer' AND recorded_at>=0`),
+    foreignKey({
+      columns: [
+        t.executionId,
+        t.projectId,
+        t.machineId,
+        t.authorizationGeneration,
+        t.holderInstanceId,
+      ],
+      foreignColumns: [
+        remoteExecution.id,
+        remoteExecution.projectId,
+        remoteExecution.machineId,
+        remoteExecution.authorizationGeneration,
+        remoteExecution.holderInstanceId,
+      ],
+    }),
+  ],
+);
+
+export const remoteToolGrant = sqliteTable(
+  "remote_tool_grant",
+  {
+    id: text("id").primaryKey().notNull(),
+    secretHash: text("secret_hash").notNull(),
+    userId: text("user_id").notNull(),
+    projectId: text("project_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    instanceId: text("instance_id").notNull(),
+    runId: text("run_id").notNull(),
+    issuedAt: integer("issued_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    uniqueIndex("remote_tool_grant_secret_hash_unique").on(t.secretHash),
+    check(
+      "remote_tool_grant_check_2",
+      sql`length(secret_hash)=64 AND secret_hash NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    uniqueIndex("remote_tool_grant_run_id_unique").on(t.runId),
+    check("remote_tool_grant_check_4", sql`typeof(issued_at)='integer' AND issued_at>=0`),
+    check("remote_tool_grant_check_5", sql`typeof(expires_at)='integer' AND expires_at>issued_at`),
+    check(
+      "remote_tool_grant_check_6",
+      sql`revoked_at IS NULL OR (typeof(revoked_at)='integer' AND revoked_at>=issued_at)`,
+    ),
+    foreignKey({
+      columns: [t.projectId, t.userId],
+      foreignColumns: [project.id, project.createdBy],
+    }),
+    foreignKey({
+      columns: [t.runId, t.instanceId, t.projectId, t.chatId],
+      foreignColumns: [agentRun.id, agentRun.instanceId, agentRun.projectId, agentRun.chatId],
+    }),
   ],
 );

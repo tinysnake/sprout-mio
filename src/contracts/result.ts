@@ -9,6 +9,15 @@ export const APP_ERROR_CODES = [
   "conflict",
   "too_many_requests",
   "internal",
+  "lease_conflict",
+  "lease_not_holder",
+  "lease_stale_generation",
+  "lease_fencing",
+  "machine_unavailable",
+  "directory_unavailable",
+  "remote_request_conflict",
+  "remote_grant_invalid",
+  "remote_run_inactive",
 ] as const;
 /** 只允许登记的错误码，不接受未知字符串。 */
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
