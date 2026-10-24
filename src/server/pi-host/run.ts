@@ -15,6 +15,8 @@ import {
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
+import { issueRemoteToolGrant, revokeRemoteToolGrant } from "../remote-agent-gateway";
+import { machineRuntimeContext } from "../runtime";
 import { PiHostFailure, piInstancePaths } from "./process";
 import type { PiSessionProcess } from "./process";
 
@@ -25,6 +27,7 @@ export function executeRun(
   work: Work,
   process: PiSessionProcess,
   signals: PiHostSignals,
+  now = Date.now,
 ): Effect.Effect<void> {
   return Effect.gen(function* () {
     const { run, profile } = work;
@@ -42,6 +45,18 @@ export function executeRun(
         });
         const paths = yield* Effect.sync(() => piInstancePaths(run.instanceId));
         const sessionFile = yield* Effect.sync(() => previousSessionFile(run.id, ctx));
+        const runtime = yield* Effect.tryPromise({
+          try: machineRuntimeContext,
+          catch: (error) => error,
+        });
+        const grantContext = { ...runtime, requestId: run.requestId };
+        const remote = yield* Effect.sync(() => {
+          const grant = issueRemoteToolGrant(run.id, process, grantContext);
+          process.onDispose(() =>
+            revokeRemoteToolGrant(run.id, { ...grantContext, now: new Date(now()) }),
+          );
+          return grant;
+        });
         const snapshot = yield* Effect.tryPromise({
           try: () =>
             process.open({
@@ -56,6 +71,7 @@ export function executeRun(
                 globalThis.process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
               ),
               extensionPath: resolve("pi/sprout-extension.ts"),
+              remote,
               profile: {
                 id: profile.id,
                 name: profile.name,

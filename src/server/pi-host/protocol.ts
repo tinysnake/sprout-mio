@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { RunConfigSnapshot } from "../../contracts/agent-run";
+import type { RemoteToolGrant } from "../../contracts/remote";
 
 export type OpenSession = {
   type: "open";
@@ -12,6 +13,7 @@ export type OpenSession = {
   agentDir: string;
   extensionPath: string;
   profile: RunConfigSnapshot["profile"];
+  remote: RemoteToolGrant;
 };
 export type PiHostCommand =
   | OpenSession
