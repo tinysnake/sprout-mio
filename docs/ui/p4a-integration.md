@@ -36,6 +36,6 @@ Machine 详情页单独编辑 root，提交 directory（绝对路径或 null）�
 
 脚本从真实注册和 Machines Link 开始，创建并读取隐藏票据，续签后返回列表并重开同一 Machine，断言旧创建票据不复活、当前续签票据与 SQLite 哈希一致且在同次 React 会话保留，再用重开后读取的有效票据执行实际 init/run。其余检查比较页面、RPC 与 SQLite，验证两个 Project 的独立派生路径、页内绑定 URL 不变、刷新、返回、深链、前进后退、Worker 停止和重连、root revision 与失败观察。新增真实 root 组：先设置自建临时 root，再启动真实 Worker；绑定两个 Project 后比对页面路径与 SQLite real_path；暂停 Worker、修改 root 以验证旧观察，再恢复探测并手动刷新验证新路径可达。异常补充验证字段错误关联、防重复与失败草稿。另一个 Chromium context 验证未登录和第二账号隔离。浅暗主题覆盖 390、899、900、901、1024、1199、1200、1440。末尾再用两台待配对 Machine 验证续签请求在途时切到第二台，迟到结果落地后第二台的创建票据仍在且服务端仍为待配对，回到第一台看到的是续签后的新票据。其后用第三台 Machine 验证同一 Machine 的在途弃：创建票据可见时点续签，真实服务已替换票据哈希但响应暂缓交付，在途时返回列表，交付成功响应后重开该 Machine，展示的票据要么不存在，要么 sha256 与 SQLite `machine_credential.ticket_hash` 一致，绝不等于创建票据，且可再次续签。演示脚本同样断言续签在途时切走或卸载后父级槽位被撤销，重开无旧票据。截图时票据隐藏。
 
-每次运行生成独立 `.verify/p4a-machine-flow-*`，公开结果和截图可供 coordinator 读取。数据库与 Worker identity 含私密认证材料，不作为公开证据复制。精确命令、退出码、截图绝对路径和实现 head 见 `/tmp/sprout-p4a-integration-report.md`。
+每次运行生成独立 `.verify/p4a-machine-flow-*`，公开结果和截图可供 coordinator 读取。数据库与 Worker identity 含私密认证材料，不作为公开证据复制。精确命令、退出码、截图绝对路径和实现 head 见 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-integration-report.md`。
 
 截图仍待 coordinator 视觉核对。跨机网络、TLS 部署、真机软键盘与物理断电未验证。P4b、Task、移除和跨 Human 分享不在本单元。

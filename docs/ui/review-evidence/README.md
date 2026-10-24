@@ -1,6 +1,6 @@
 # UI review 验证截图
 
-对应 [工具实现与复跑步骤](../review-workflow.md)，环境、结果和源码 / 截图 hash 见 [manifest.json](manifest.json)。这些材料验证开发工具，不是 I-P1/P2 UI migrate 的交付或 Human 确认。
+这里冻结了重命名前 UI review 与 Pi 消息桥的历史验收，环境、结果和当时的源码 / 截图 hash 见 [manifest.json](manifest.json)。当前实现与复跑步骤见 [Human review](../../human-review.md)。这些材料验证开发工具，不是 I-P1/P2 UI migrate 的交付或 Human 确认。
 
 - [sprout-element.png](sprout-element.png)：真实 Sprout 构建快照的登录页。DOM Capture 在跨源 frame 内选中了邮箱输入框；该元素没有 ID，Copy ID 不可用，DOM path 已复制。截图已实际查看，高亮、选择面板和右侧反馈区可见。
 - [sprout-authenticated.png](sprout-authenticated.png)：同一隔离实例注册、导航、前后退和刷新后，仍可读取默认 Agent Amenda。右侧没有监听器提示是预期状态：该次产品检查只启动了预览，反馈监听另由 Pi SDK 组合测试验证。此快照仍是迁移前页面，不能用它判断正在迁移的布局。

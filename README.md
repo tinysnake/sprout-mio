@@ -22,7 +22,7 @@ APP_TRUSTED_ORIGINS=http://192.168.50.*:3200
 
 只接受回环与内网网段，公网域名或 `http://*:3200` 会在启动时被拒。绑定全部接口意味着同网段设备可访问该应用，仅适合可信内网。
 
-UI review 预览同样监听全部接口；用 `ui-review` 技能启动，不需要传 URL（默认从登录页开始，应用 origin 取自 `APP_ORIGIN`），详见 [UI review 工作流](docs/ui/review-workflow.md)。
+Human review 预览同样监听全部接口；用 `human-review` 技能启动（默认从登录页开始，应用 origin 取自 `APP_ORIGIN`），通过 CLI 与 Lavish 原生 poll / reply 处理反馈，无需 Pi 扩展或专用工具。详见 [Human review 工作流](docs/human-review.md)。
 
 > 独占整机算力，多 Agent 协作，把任务真正做完。
 
