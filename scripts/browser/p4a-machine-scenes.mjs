@@ -38,8 +38,9 @@ async function closeControls(page) {
   if (await page.getByTestId("machine-fail-create").isVisible()) await summary.click();
 }
 
-async function open({ width, height, colorScheme, scene = "machines" }) {
+async function open({ width, height, colorScheme, scene = "machines", hasTouch = false }) {
   const context = await browser.newContext({
+    hasTouch,
     viewport: { width, height },
     colorScheme,
     deviceScaleFactor: 1,
@@ -156,6 +157,156 @@ async function assertPresentationMatrix() {
 }
 
 try {
+  const shellEvidence = [];
+  for (const width of [1440, 390]) {
+    for (const colorScheme of ["light", "dark"]) {
+      const sample = await open({ width, height: 900, colorScheme });
+      const p = sample.page;
+      const test = (id) => p.getByTestId(id);
+      await check(`shell_summary_${width}_${colorScheme}_interaction_and_layout`, async () => {
+        await test("machine-item").first().click();
+        const summary = test("machine-shell-summary");
+        const details = test("machine-shell-details");
+        assert.equal(await summary.getAttribute("aria-expanded"), "false");
+        assert.equal(await details.isVisible(), false);
+        assert.match(await summary.innerText(), /✓ zsh.*·.*✓ bash.*·.*✓ sh/s);
+        assert.ok(!(await summary.innerText()).includes("/bin/"));
+        await summary.scrollIntoViewIfNeeded();
+        const lines = await summary.evaluate((element) => {
+          const items = [...element.querySelectorAll('[data-testid="machine-shell-summary-item"]')];
+          return items.map((item) => item.getBoundingClientRect().top);
+        });
+        assert.equal(new Set(lines).size, 1, "三个 shell 在一行");
+        await p.screenshot({ path: join(evidence, `shell-summary-${width}-${colorScheme}.png`) });
+        await summary.hover();
+        await details.waitFor({ state: "visible" });
+        assert.equal(await summary.getAttribute("aria-expanded"), "true");
+        assert.match(await details.innerText(), /\/bin\/zsh/);
+        assert.match(await details.innerText(), /zsh 5\.9/);
+        assert.match(await details.innerText(), /检查时间/);
+        const bounds = await details.boundingBox();
+        assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1);
+        assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 901);
+        await p.screenshot({ path: join(evidence, `shell-details-${width}-${colorScheme}.png`) });
+        await summary.click();
+        await details.waitFor({ state: "hidden" });
+        assert.equal(await summary.getAttribute("aria-expanded"), "false");
+        await summary.click();
+        await details.waitFor({ state: "visible" });
+        assert.equal(await summary.getAttribute("aria-expanded"), "true");
+        await p.keyboard.press("Escape");
+        await details.waitFor({ state: "hidden" });
+        await p.mouse.move(0, 0);
+        await summary.blur();
+        await p.keyboard.press("Tab");
+        await summary.focus();
+        await details.waitFor({ state: "visible" });
+        assert.equal(await summary.getAttribute("aria-expanded"), "true", "键盘聚焦展开");
+        await p.keyboard.press("Escape");
+        await details.waitFor({ state: "hidden" });
+        await summary.press("Enter");
+        await details.waitFor({ state: "visible" });
+        assert.equal(await summary.getAttribute("aria-expanded"), "true");
+        await p.keyboard.press("Escape");
+        await details.waitFor({ state: "hidden" });
+        assert.equal(await summary.getAttribute("aria-expanded"), "false");
+        await summary.press("Space");
+        await details.waitFor({ state: "visible" });
+        await p.keyboard.press("Tab");
+        await details.waitFor({ state: "hidden" });
+        assert.ok(
+          await p.evaluate(
+            () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+          ),
+        );
+        shellEvidence.push({
+          width,
+          colorScheme,
+          initial: "false",
+          hover: "true",
+          click: ["false", "true"],
+          enter: "true",
+          escape: "false",
+          space: "true",
+          focusOut: "false",
+          bounds,
+        });
+      });
+      if (width === 1440 && colorScheme === "light") {
+        for (const scenario of ["partial", "failed", "unknown", "missing", "empty"]) {
+          await check(`shell_summary_state_${scenario}`, async () => {
+            await openControls(p);
+            await test("machine-demo-shells").selectOption(scenario);
+            await closeControls(p);
+            const summary = test("machine-shell-summary");
+            const text = await summary.innerText();
+            if (scenario === "partial") {
+              assert.match(text, /✓ zsh.*✓ bash.*✗ sh/s);
+            } else if (scenario === "failed") {
+              assert.match(text, /✗ zsh.*✗ bash.*✗ sh/s);
+              assert.ok(!text.includes("✓"));
+            } else if (scenario === "unknown") {
+              assert.match(text, /\? unknown/);
+              assert.ok(!text.includes("✓"));
+            } else {
+              assert.match(text, scenario === "missing" ? /尚未探测/ : /未报告 shell/);
+              assert.ok(!text.includes("✓"));
+            }
+            await summary.hover();
+            const details = test("machine-shell-details");
+            await details.waitFor({ state: "visible" });
+            const detailText = await details.innerText();
+            if (["partial", "failed"].includes(scenario))
+              assert.match(detailText, /自检失败：failed/);
+            if (scenario === "unknown") assert.match(detailText, /未知 shell，不猜调用语法/);
+            if (scenario === "missing") assert.match(detailText, /尚无能力快照/);
+            await p.screenshot({ path: join(evidence, `shell-state-${scenario}.png`) });
+            shellEvidence.push({ scenario, summary: text, details: detailText });
+            await p.keyboard.press("Escape");
+            await details.waitFor({ state: "hidden" });
+          });
+        }
+        await test("machine-detail-back").click();
+        await p.locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]').click();
+        await check("shell_summary_stale_snapshot_remains_explicit", async () => {
+          assert.match(await test("machine-shell-summary").innerText(), /旧代次/);
+          assert.equal(await test("machine-detail-stale-capability").count(), 1);
+          await test("machine-shell-summary").hover();
+          await test("machine-shell-stale").waitFor({ state: "visible" });
+          assert.match(await test("machine-shell-stale").innerText(), /不能当作现在可用/);
+          await p.screenshot({ path: join(evidence, "shell-state-stale.png") });
+          shellEvidence.push({
+            scenario: "stale",
+            summary: await test("machine-shell-summary").innerText(),
+            details: await test("machine-shell-stale").innerText(),
+          });
+        });
+      }
+      assert.deepEqual(sample.errors, []);
+      await sample.context.close();
+    }
+  }
+  const touch = await open({ width: 390, height: 844, colorScheme: "light", hasTouch: true });
+  await check("shell_summary_touch_tap_toggles_without_hover", async () => {
+    const p = touch.page;
+    await p.getByTestId("machine-item").first().tap();
+    const summary = p.getByTestId("machine-shell-summary");
+    const details = p.getByTestId("machine-shell-details");
+    assert.equal(await summary.getAttribute("aria-expanded"), "false");
+    await summary.tap();
+    await details.waitFor({ state: "visible" });
+    assert.equal(await summary.getAttribute("aria-expanded"), "true");
+    await summary.tap();
+    await details.waitFor({ state: "hidden" });
+    assert.equal(await summary.getAttribute("aria-expanded"), "false");
+    shellEvidence.push({ touch: true, tap: ["false", "true", "false"] });
+  });
+  assert.deepEqual(touch.errors, []);
+  await touch.context.close();
+  writeFileSync(
+    join(evidence, "shell-summary-evidence.json"),
+    JSON.stringify(shellEvidence, null, 2),
+  );
   const desktop = await open({ width: 1440, height: 900, colorScheme: "light" });
   const page = desktop.page;
   const test = (id) => page.getByTestId(id);
@@ -176,7 +327,13 @@ try {
     assert.match(page.url(), /scene=machines/);
     assert.equal((await test("machine-detail-enrollment").innerText()).includes("已配对"), true);
     assert.equal((await test("machine-detail-connection").innerText()).includes("在线"), true);
+    const shellSummary = test("machine-shell-summary");
+    assert.equal(await shellSummary.getAttribute("aria-expanded"), "false");
+    assert.equal(await test("machine-shell-details").isVisible(), false);
+    await shellSummary.hover();
+    await test("machine-shell-details").waitFor({ state: "visible" });
     assert.ok((await test("machine-shell-item").count()) >= 2);
+    await page.keyboard.press("Escape");
     const init = await test("machine-command-init").innerText();
     assert.ok(init.includes("--machine mch_"));
     assert.ok(init.includes("--state-dir"));

@@ -2,6 +2,20 @@
 
 状态：本文保留共用呈现组件与演示交付记录。正式路由、真实 server functions、安装指令和 Info Hub 的当前接入见 [p4a-integration.md](p4a-integration.md)。历史记录不是章节技术验收或 Human 体验确认。
 
+## Shell 能力：方案 B「一行摘要」
+
+本轮按 Human 已选定的 B 实现：默认显示 `✓ zsh · ✓ bash · ✓ sh`，同行显示 `平台 darwin arm64`。路径、版本、自检结果和检查时间进入详情弹层。`machine-shell-summary.tsx` 直接读取 `MachineDetail["capability"]`，真实详情与演示通过 `MachineDetailPanel` 共用该组件，不改能力快照契约。
+
+触发元素为 Base UI `Popover.Trigger` 渲染的 button，`aria-expanded` 跟随状态；详情采用有标题与描述的 dialog 语义。悬停和键盘聚焦展开，点击或触控点击切换，Enter / Space 可操作，Escape 或焦点移出收起。使用 Portal 和视口边界定位，沿用现有 semantic token 与浅暗主题。
+
+状态规则：当前快照的成功项显示绿色 `✓`；失败项显示红色 `✗`，详情保留原始失败原因；unknown 显示红色 `? unknown`，详情明确“不猜调用语法”；无快照显示 `? 尚未探测` 和未知平台；有快照但 shell 列表为空显示 `? 未报告 shell`。旧快照的成功项使用中性色，并明确标记“旧代次”，原有“不能当作现在可用”的连接说明保留，弹层也重复这一限制。
+
+演示新增第一台 Machine 的 Shell 状态选择器，包含全部通过、部分失败、全部失败、unknown、无快照与空列表；旧代次继续使用原有断线 Machine 夹具。`p4a-machine-scenes.mjs` 新增 DOM 可见性、摘要文本、`aria-expanded`、键盘聚焦 / Enter / Space / Escape / 移焦、触控点击及 1440 / 390 浅暗主题的布局断言；保留既有权限、票据、持久性、旧代次和导航断言。`p4a-machine-flow.mjs` 在真实 pending / active 详情增加摘要初始收起、hover 展开及 Escape 收起检查。
+
+可复现命令：`pnpm check`、`pnpm typecheck`、`pnpm test`、`pnpm worker:build`、`pnpm build`；启动 3077 演示 dev 后运行 `node scripts/browser/p4a-machine-scenes.mjs`；production 构建后连续两次运行 `BASE_URL=http://127.0.0.1:3340 bash scripts/verify/u-machine-ui.sh`。本轮实跑退出码、截图和交互值见 `/tmp/sprout-p4a-shell-compact-report.md`。
+
+截图位于 `.verify/p4a-machine-scenes/shell-summary-{1440,390}-{light,dark}.png` 与 `shell-details-{1440,390}-{light,dark}.png`，状态图为 `shell-state-{partial,failed,unknown,missing,empty,stale}.png`，DOM 证据为 `shell-summary-evidence.json`。已实际读图确认两种宽度与浅暗主题的一行摘要、390 无横向滚动、详情未被容器裁切。触控验证使用 Chromium 模拟，真机触控与屏幕阅读器未验证。方案 B 的 Human 选择已确认，本轮实现的 Human 体验确认仍待 Human 明确给出。
+
 ## Round-1：详情优先级与安装文案
 
 - 待配对时，「配对与安装」是 `PageFrame` 中首个 `SettingsSection`，宽屏横跨既有两栏；内部票据操作先于安装说明，900px 起并排，窄屏按同一 DOM 顺序排列。连接、root 与绑定随后呈现。

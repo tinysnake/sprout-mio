@@ -55,6 +55,13 @@ export const demoMachineDetails: MachineDetail[] = [
             checkedAt: "2026-10-18T07:10:00.000Z",
             probe: { kind: "success" },
           },
+          {
+            path: "/bin/sh",
+            kind: "sh",
+            version: "sh 3.2.57",
+            checkedAt: "2026-10-18T07:10:00.000Z",
+            probe: { kind: "success" },
+          },
         ],
         remoteOperations: "not_implemented",
       },
