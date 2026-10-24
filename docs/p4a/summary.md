@@ -4,11 +4,19 @@
 
 Human 可从 Machines 创建 Machine 身份，按详情给出的实际命令构建、复制并初始化 macOS Worker，再运行独立进程主动认证连接。详情展示配对、连接代次、实际 shell 能力与目录观察。Project settings 提供本人 Machine 的加入入口、说明和工作目录。
 
+## Round-4 呈现反馈
+
+Shell 区仅展示当前可用能力；断联且能力不可用时只显示「Worker 已断连」，连接中或在线尚未上报能力时分别说明实际状态。遵照 Human「看上次的快照没有意义」的判断，不保留灰色勾叉或旧能力详情入口。左栏连接历史事实仍保留，current 判定不变。
+
+详情 loader 每次刷新完成后间隔 5 秒自动刷新，后台标签页暂停、卸载清理；手动刷新仍可用。root 与绑定说明在编辑或聚焦期间保留原输入和草稿 revision，待提交请求也不因刷新消失；会话内票据不随 loader 更新清除。
+
+目录的 missing、not_directory、denied、io_error 统一显示中文原因和下一步操作。missing 说明期望目录不存在、一期不会自动创建、需在 Worker 机器自行创建或修改 root；保留代次、revision、检查时间。四种最终文案和技术证据见 `docs/ui/p4a.md` 与 `/tmp/sprout-p4a-review-round4-report.md`。本轮没有修改领域、契约、DB 或 Worker，Human 体验确认待 Human 明确给出。
+
 ## 交付范围
 
 Machine 身份、配对、连接、Project 绑定意图和 Worker 观察分别建模。目录保存不代表目录已可达。连接离线不推断空闲、释放或租约。能力和目录的 `current` 由 boot、generation、binding revision 决定，同代合法观察不因离线自动作废。
 
-工作目录模型已在下面「体验后变更」中改为 Machine 级 root，第一段里按 Project 填写目录的描述作废。页面通过显式刷新读取最新事实。安装票据默认隐藏，只在当前 React 会话暂存，不进入 loader、URL、history 或浏览器持久存储。刷新页面或离开 Machines 后，pending 身份可重新续签。
+工作目录模型已在下面「体验后变更」中改为 Machine 级 root，第一段里按 Project 填写目录的描述作废。页面通过五秒自动刷新与显式刷新读取最新事实。安装票据默认隐藏，只在当前 React 会话暂存，不进入 loader、URL、history 或浏览器持久存储。刷新页面或离开 Machines 后，pending 身份可重新续签。
 
 票据在父级 Context 中的归属由三条规则决定，三轮修复逐条闭合。
 

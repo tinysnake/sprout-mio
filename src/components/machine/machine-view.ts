@@ -44,6 +44,19 @@ export function formatMoment(value: string | null | undefined): string {
   return date.toLocaleString("zh-CN", { hour12: false });
 }
 
+const DIRECTORY_UNAVAILABLE_REASONS: Record<
+  Extract<DirectoryObservation["result"], { kind: "unavailable" }>["reason"],
+  string
+> = {
+  missing:
+    "期望路径的目录不存在。一期不会自动创建，需自行在 Worker 所在机器上创建目录，或修改 root。",
+  not_directory: "该路径存在但不是目录。请在 Worker 所在机器上改为目录，或修改 root 指向目录。",
+  denied:
+    "该路径存在，但 Worker 无权访问。请在 Worker 所在机器上为运行 Worker 的用户授予目录访问权限。",
+  io_error:
+    "读取该路径时出错。请在 Worker 所在机器上检查磁盘和目录是否可读，排除问题后等待重新检查。",
+};
+
 export function observationLabel(
   observation: { current: boolean; fact: DirectoryObservation } | null | undefined,
 ): Label {
@@ -57,7 +70,7 @@ export function observationLabel(
   const { result } = observation.fact;
   return result.kind === "accessible"
     ? { label: "当前可达", detail: result.realPath, tone: "success" }
-    : { label: "当前不可用", detail: result.reason, tone: "danger" };
+    : { label: "当前不可用", detail: DIRECTORY_UNAVAILABLE_REASONS[result.reason], tone: "danger" };
 }
 
 export function bindingDirectory(root: string | null, projectId: string): string {

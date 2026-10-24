@@ -337,6 +337,15 @@ try {
             await test("machine-demo-shells").selectOption(scenario);
             await closeControls(p);
             const summary = test("machine-shell-summary");
+            if (scenario === "missing") {
+              assert.equal(await summary.count(), 0, "尚未上报能力时不提供摘要或详情入口");
+              const pageText = await test("machine-detail-page").innerText();
+              assert.match(pageText, /当前能力尚未上报/);
+              assert.equal(await test("machine-shell-details").count(), 0);
+              await p.screenshot({ path: join(evidence, "shell-state-missing.png") });
+              shellEvidence.push({ scenario, summaryAbsent: true, status: "当前能力尚未上报" });
+              return;
+            }
             const text = await summary.innerText();
             if (scenario === "partial") {
               assert.match(text, /✓ zsh.*✓ bash.*✗ sh/s);
@@ -347,7 +356,7 @@ try {
               assert.match(text, /\? unknown/);
               assert.ok(!text.includes("✓"));
             } else {
-              assert.match(text, scenario === "missing" ? /尚未探测/ : /未报告 shell/);
+              assert.match(text, /未报告 shell/);
               assert.ok(!text.includes("✓"));
             }
             await summary.click();
@@ -357,7 +366,6 @@ try {
             if (["partial", "failed"].includes(scenario))
               assert.match(detailText, /自检失败：failed/);
             if (scenario === "unknown") assert.match(detailText, /未知 shell，不猜调用语法/);
-            if (scenario === "missing") assert.match(detailText, /尚无能力快照/);
             await p.screenshot({ path: join(evidence, `shell-state-${scenario}.png`) });
             shellEvidence.push({ scenario, summary: text, details: detailText });
             await p.keyboard.press("Escape");
@@ -366,20 +374,103 @@ try {
         }
         await test("machine-detail-back").click();
         await p.locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]').click();
-        await check("shell_summary_stale_snapshot_remains_explicit", async () => {
-          assert.match(await test("machine-shell-summary").innerText(), /旧代次/);
+        await check("shell_summary_stale_snapshot_has_no_entry", async () => {
+          assert.equal(await test("machine-shell-summary").count(), 0);
           assert.equal(await test("machine-detail-stale-capability").count(), 1);
-          await test("machine-shell-summary").click();
-          await test("machine-shell-stale").waitFor({ state: "visible" });
-          assert.match(await test("machine-shell-stale").innerText(), /不能当作现在可用/);
+          assert.equal(await test("machine-shell-details").count(), 0);
+          assert.match(await test("machine-detail-page").innerText(), /Worker 已断连/);
           await p.screenshot({ path: join(evidence, "shell-state-stale.png") });
-          shellEvidence.push({
-            scenario: "stale",
-            summary: await test("machine-shell-summary").innerText(),
-            details: await test("machine-shell-stale").innerText(),
-          });
+          shellEvidence.push({ scenario: "stale", summaryAbsent: true });
         });
       }
+      await check(`shell_connection_and_directory_${width}_${colorScheme}`, async () => {
+        await test("machine-detail-back").click();
+        await test("machine-item").first().click();
+        const setControl = async (id, value) => {
+          await openControls(p);
+          await test(id).selectOption(value);
+          await closeControls(p);
+        };
+        for (const reason of ["missing", "not_directory", "denied", "io_error"]) {
+          await setControl("machine-demo-directory", reason);
+          const explanation = await test("machine-binding-observation").first().innerText();
+          assert.doesNotMatch(explanation, /missing|not_directory|denied|io_error/);
+          assert.match(explanation, /请|需自行/);
+          const observationFacts = await test("machine-binding-observation")
+            .first()
+            .locator("..")
+            .innerText();
+          const expectedTime = await p.evaluate(() =>
+            new Date("2026-10-18T07:09:00.000Z").toLocaleString("zh-CN", { hour12: false }),
+          );
+          assert.match(observationFacts, /代次 3.*revision 2/s);
+          assert.ok(observationFacts.includes(expectedTime));
+          const explanationLayout = await test("machine-binding-observation")
+            .first()
+            .locator("p")
+            .evaluate((element) => ({
+              width: element.clientWidth,
+              scrollWidth: element.scrollWidth,
+              height: element.clientHeight,
+              scrollHeight: element.scrollHeight,
+              overflow: getComputedStyle(element).overflow,
+            }));
+          assert.ok(explanationLayout.scrollWidth <= explanationLayout.width + 1);
+          assert.ok(explanationLayout.scrollHeight <= explanationLayout.height + 1);
+          assert.notEqual(explanationLayout.overflow, "hidden", "原因与下一步操作完整可读");
+          if (reason === "missing") {
+            assert.match(explanation, /期望路径.*目录不存在/s);
+            assert.match(explanation, /不会自动创建.*需自行.*创建目录.*修改 root/s);
+            assert.doesNotMatch(explanation, /已为你创建/);
+            await test("machine-binding-observation").first().scrollIntoViewIfNeeded();
+            await shoots(p, `missing-directory-${width}-${colorScheme}`);
+          }
+        }
+        await setControl("machine-demo-connection", "offline");
+        assert.equal(await test("machine-shell-summary").count(), 0);
+        assert.equal(await test("machine-shell-details").count(), 0);
+        assert.match(await test("machine-detail-page").innerText(), /Worker 已断连/);
+        await test("machine-shells").scrollIntoViewIfNeeded();
+        assert.equal(
+          (await test("machine-shells").innerText()).replace(/\s+/g, " "),
+          "Shell 能力 Worker 已断连",
+        );
+        await shoots(p, `offline-no-shell-${width}-${colorScheme}`);
+        await setControl("machine-demo-connection", "connecting");
+        assert.equal(await test("machine-shell-summary").count(), 0);
+        assert.match(
+          await test("machine-detail-page").innerText(),
+          /Worker 正在连接，当前能力尚未上报/,
+        );
+        await setControl("machine-demo-connection", "online_waiting");
+        assert.equal(await test("machine-shell-summary").count(), 0);
+        assert.equal(
+          (await test("machine-shells").innerText()).replace(/\s+/g, " "),
+          "Shell 能力 当前能力尚未上报",
+        );
+        await setControl("machine-demo-connection", "online");
+        await test("machine-shell-summary").waitFor();
+        const colors = await test("machine-shell-summary-item").evaluateAll((items) =>
+          items.map((item) => {
+            const reference = document.createElement("span");
+            reference.className = "text-status-success";
+            item.parentElement.append(reference);
+            const actual = getComputedStyle(item).color;
+            const success = getComputedStyle(reference).color;
+            reference.className = "text-muted-foreground";
+            const muted = getComputedStyle(reference).color;
+            reference.remove();
+            return { actual, success, muted };
+          }),
+        );
+        assert.equal(colors.length, 3);
+        for (const color of colors) {
+          assert.equal(color.actual, color.success);
+          assert.notEqual(color.actual, color.muted);
+        }
+        shellEvidence.push({ width, colorScheme, restoredColors: colors });
+        assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      });
       assert.deepEqual(sample.errors, []);
       await sample.context.close();
     }
