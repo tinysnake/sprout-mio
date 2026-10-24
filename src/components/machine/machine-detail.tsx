@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { FolderOpen } from "lucide-react";
+import { MachineInstallInstructions } from "./machine-install-instructions";
 import { MachineShellSummary } from "./machine-shell-summary";
 import type {
   MachineDetail,
@@ -102,7 +103,8 @@ export function MachineDetailPanel({
       title={<span data-testid="machine-detail-name">{detail.machine.name}</span>}
       description={
         <span data-testid="machine-detail-description">
-          {pairing.label} · {connection.label}
+          {detail.enrollmentStatus === "pending" ? `${pairing.label} · ` : ""}
+          {connection.label}
           {connection.detail ? `（${connection.detail}）` : ""} · Machine
         </span>
       }
@@ -110,14 +112,14 @@ export function MachineDetailPanel({
       actions={actions}
       testId="machine-detail-page"
     >
-      <div className="grid gap-x-8 wide:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid grid-cols-1">
         {detail.enrollmentStatus === "pending" && (
-          <div className="min-w-0 wide:col-span-2">{enrollmentSection}</div>
+          <div className="min-w-0">{enrollmentSection}</div>
         )}
         <div className="min-w-0">
           <SettingsSection
             title="连接与配对"
-            description="连接是近期通信观察，不表示物理链路仍在，也不表示租约、空闲或已释放。配对状态独立于连接。"
+            description="连接是近期通信观察，不表示物理链路仍在，也不表示租约、空闲或已释放。配对与连接分别记录。"
             testId="machine-connection-section"
           >
             <div className="grid gap-6 desktop:grid-cols-2">
@@ -315,7 +317,13 @@ export function MachineDetailPanel({
         </div>
 
         {detail.enrollmentStatus === "active" && (
-          <aside className="min-w-0">{enrollmentSection}</aside>
+          <SettingsSection title="安装与维护" testId="machine-restart-section">
+            <MachineInstallInstructions
+              machineId={detail.machine.id}
+              origin={installOrigin}
+              enrollmentStatus="active"
+            />
+          </SettingsSection>
         )}
       </div>
     </PageFrame>

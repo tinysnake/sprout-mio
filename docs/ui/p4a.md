@@ -6,17 +6,23 @@
 
 本轮按 Human 已选定的 B 实现：默认显示 `✓ zsh · ✓ bash · ✓ sh`，同行显示 `平台 darwin arm64`。路径、版本、自检结果和检查时间进入详情弹层。`machine-shell-summary.tsx` 直接读取 `MachineDetail["capability"]`，真实详情与演示通过 `MachineDetailPanel` 共用该组件，不改能力快照契约。
 
-触发元素为 Base UI `Popover.Trigger` 渲染的 button，`aria-expanded` 跟随状态；详情采用有标题与描述的 dialog 语义。悬停和键盘聚焦展开，点击或触控点击切换，Enter / Space 可操作，Escape 或焦点移出收起。使用 Portal 和视口边界定位，沿用现有 semantic token 与浅暗主题。
+触发元素复用共享 `Button`（outline / sm），带边框、hover 态与 `aria-haspopup="dialog"`；点击或触控点击打开共享 `Dialog`，Enter / Space 可开，Escape 或关闭按钮可关，Tab 在弹窗内移动焦点，关闭后回到触发按钮。悬停与单纯聚焦不展开。Dialog 宽度 56rem，并受视口最大宽度限制；版本串用等宽字体并按需换行，390px 下可纵向滚动而不横向溢出。沿用现有 semantic token 与浅暗主题。
 
 状态规则：当前快照的成功项显示绿色 `✓`；失败项显示红色 `✗`，详情保留原始失败原因；unknown 显示红色 `? unknown`，详情明确“不猜调用语法”；无快照显示 `? 尚未探测` 和未知平台；有快照但 shell 列表为空显示 `? 未报告 shell`。旧快照的成功项使用中性色，并明确标记“旧代次”，原有“不能当作现在可用”的连接说明保留，弹层也重复这一限制。
 
-演示新增第一台 Machine 的 Shell 状态选择器，包含全部通过、部分失败、全部失败、unknown、无快照与空列表；旧代次继续使用原有断线 Machine 夹具。`p4a-machine-scenes.mjs` 新增 DOM 可见性、摘要文本、`aria-expanded`、键盘聚焦 / Enter / Space / Escape / 移焦、触控点击及 1440 / 390 浅暗主题的布局断言；保留既有权限、票据、持久性、旧代次和导航断言。`p4a-machine-flow.mjs` 在真实 pending / active 详情增加摘要初始收起、hover 展开及 Escape 收起检查。
+演示保留第一台 Machine 的 Shell 状态选择器，包含全部通过、部分失败、全部失败、unknown、无快照与空列表；旧代次继续使用原有断线 Machine 夹具。bash/sh 夹具使用完整的 GNU bash 版本与 Copyright 字符串。`p4a-machine-scenes.mjs` 检查按钮外观、`aria-haspopup`、dialog 可见性、Enter / Space / Escape、触控与 1440 / 390 浅暗主题的版本串宽度和行数；保留既有权限、票据、持久性、旧代次和导航断言。真实流程在 pending / active 下检查点击展开和 Escape 关闭。
 
-可复现命令：`pnpm check`、`pnpm typecheck`、`pnpm test`、`pnpm worker:build`、`pnpm build`；启动 3077 演示 dev 后运行 `node scripts/browser/p4a-machine-scenes.mjs`；production 构建后连续两次运行 `BASE_URL=http://127.0.0.1:3340 bash scripts/verify/u-machine-ui.sh`。本轮实跑退出码、截图和交互值见 `/tmp/sprout-p4a-shell-compact-report.md`。
+可复现命令：`pnpm check`、`pnpm typecheck`、`pnpm test`、`pnpm worker:build`、`pnpm build`；启动 3077 演示 dev 后运行 `node scripts/browser/p4a-machine-scenes.mjs`；production 构建后连续两次运行 `SPROUT_PI_ENABLED=false BASE_URL=http://127.0.0.1:3355 bash scripts/verify/u-machine-ui.sh`。第三轮实跑退出码、截图和交互值见 `/tmp/sprout-p4a-review-round3-report.md`。
 
 截图位于 `.verify/p4a-machine-scenes/shell-summary-{1440,390}-{light,dark}.png` 与 `shell-details-{1440,390}-{light,dark}.png`，状态图为 `shell-state-{partial,failed,unknown,missing,empty,stale}.png`，DOM 证据为 `shell-summary-evidence.json`。已实际读图确认两种宽度与浅暗主题的一行摘要、390 无横向滚动、详情未被容器裁切。触控验证使用 Chromium 模拟，真机触控与屏幕阅读器未验证。方案 B 的 Human 选择已确认，本轮实现的 Human 体验确认仍待 Human 明确给出。
 
-## Round-1：详情优先级与安装文案
+## Round-3：已配对详情与 Shell 弹窗
+
+Human 第三轮反馈覆盖第二轮的 Shell 展开方式：保持一行摘要，改为有按钮外观的点击弹窗。active 详情移除整个配对与票据区，页头仅呈现连接，配对状态只在「连接与配对」事实中出现一次。连接、Shell、root 与绑定使用整宽，安装与启动说明留在详情底部，`run` 命令持续可读取、选择复制，无需重新配对。pending 的配对与安装仍置顶，内部操作与布局边界不变。
+
+DOM 断言检查 active 无 `machine-enrollment-status` / `machine-enrollment-expires` / `machine-enrollment-panel`、详情仅一处「已配对」、`run --state-dir` 仍可读取；pending 继续检查配对区先于连接且整体在其上方。截图与位置矩阵继续使用 `priority-{pending,active}-{1440,390}-{light,dark}.png` 和 `priority-positions.json`。第三轮实现的 Human 体验确认待 Human 明确给出。
+
+## Round-1：详情优先级与安装文案（历史，active 布局由 Round-3 更新）
 
 - 待配对时，「配对与安装」是 `PageFrame` 中首个 `SettingsSection`，宽屏横跨既有两栏；内部票据操作先于安装说明，900px 起并排，窄屏按同一 DOM 顺序排列。连接、root 与绑定随后呈现。
 - 已配对时，连接、root 与绑定恢复为主要内容，配对与安装回到既有次栏；窄屏排在主要内容之后。安装命令保留，续签沿用服务端支持的待配对入口，不向已配对身份新增续签能力。
@@ -37,7 +43,7 @@
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/components/machine/machine-view.ts`                  | 契约到展示模型的纯映射：连接/配对/观察文案、时间格式、安装命令                                      | 无组件                                                                                                                                                                      |
 | `src/components/machine/machine-list.tsx`                 | Machines 列表与空态                                                                                 | `machines: MachineDetail[]`、`href(machineId)`、`renderLink`、`selectedId`、`emptyText`                                                                                     |
-| `src/components/machine/machine-detail.tsx`               | 详情页：连接与配对事实、Shell 能力、Project 绑定、配对/安装侧栏                                     | `detail`、`back`、`enrollment`、`bindingProject`、`projectNames`、`onRenewEnrollment`、`onSaveBinding`、`onBindingSaved`、`onEnrollmentCreated`、`installOrigin`、`actions` |
+| `src/components/machine/machine-detail.tsx`               | 详情页：连接与配对事实、Shell 能力、Project 绑定、待配对置顶区、已配对底部安装说明                  | `detail`、`back`、`enrollment`、`bindingProject`、`projectNames`、`onRenewEnrollment`、`onSaveBinding`、`onBindingSaved`、`onEnrollmentCreated`、`installOrigin`、`actions` |
 | `src/components/machine/machine-create-dialog.tsx`        | 新建 Machine 表单（label、pending、防重、字段错误、失败保留输入）                                   | `open`、`onOpenChange`、`submit(values) => MachineResult<MachineEnrollment>`、`onCreated`、`trigger`                                                                        |
 | `src/components/machine/machine-enrollment-panel.tsx`     | 配对状态、短期票据（默认隐藏）、续签（仅 pending）、网络异常呈现、安装说明                          | `machineId`、`enrollmentStatus`、`enrollment`、`onRenew(machineId) => MachineResult<MachineEnrollment>`、`installOrigin`                                                    |
 | `src/components/machine/machine-binding-form.tsx`         | 加入 Project、说明与工作目录、共享 schema 校验、`expectedRevision` 冲突处理、失败保留输入           | `machineId`、`project`、`binding`、`submit(SaveProjectMachineBindingInput)`、`onSaved`                                                                                      |

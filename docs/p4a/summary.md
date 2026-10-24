@@ -75,6 +75,12 @@ Human 在第二轮选择了两个原先开放的问题：Shell 能力采用一�
 
 独立技术验收（未参与实现的另一模型家族，自有 `git archive 6702ccc` checkout、自建 production 构建与独立 SQLite / Worker state / Chromium / 账号）判定技术验收通过，并抓到两处遗漏：三份文档仍写旧的 allow-http 结论，以及 TLS 守卫的错误被通用提示吞掉导致用户看不到原因。两者已在 `97a530b` 修复，`l-docs.sh` 与 `l-docs-probes.sh` 在 main 上退出 0（7 个探针通过）。
 
+## 第三轮呈现反馈
+
+基于 main `edb316b`，本轮只调整共用呈现组件：active 详情删除配对与票据区及页头重复状态，仅在连接事实中保留一次「已配对」；主内容使用整宽，安装与启动命令移至详情底部，`run` 保持可读取和选择复制。pending 的配对与安装区继续置顶。
+
+Shell 延续方案 B 的单行摘要与平台信息，按本轮 Human 决定改为有边框的按钮打开共享 `Dialog`，覆盖上一轮的悬停与聚焦展开方式。Enter / Space 可打开，Escape 可关闭；宽弹窗呈现路径、完整版本、自检与检查时间，unknown 和旧代次限制保持。验证命令、DOM 与截图证据见 [UI 交付](../ui/p4a.md) 及 `/tmp/sprout-p4a-review-round3-report.md`。第三轮实现的 Human 体验确认尚待明确给出。
+
 ## Human 体验确认
 
 - 待确认。Human 已体验 `3df7f2c` 并给出反馈，但反馈触发领域变更，该版本不作为本章通过确认。第二轮交付后再取得确认。

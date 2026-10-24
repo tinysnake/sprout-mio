@@ -84,6 +84,7 @@ async function assertPresentation(page, status) {
     const pairing = document.querySelector('[data-testid="machine-pairing"]');
     const install = document.querySelector('[data-testid="machine-install"]');
     const box = (element) => {
+      if (!element) return null;
       const { x, y, width, height } = element.getBoundingClientRect();
       return { x, y, width, height };
     };
@@ -93,17 +94,31 @@ async function assertPresentation(page, status) {
       pairing: box(pairing),
       install: box(install),
       enrollmentFirst: Boolean(
-        section.compareDocumentPosition(connection) & Node.DOCUMENT_POSITION_FOLLOWING,
+        section && section.compareDocumentPosition(connection) & Node.DOCUMENT_POSITION_FOLLOWING,
       ),
       pairingBeforeInstall: Boolean(
-        pairing.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING,
+        pairing && pairing.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING,
       ),
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
   assert.equal(facts.enrollmentFirst, status === "pending", `${status}: 配对区的 DOM 优先级`);
-  assert.equal(facts.pairingBeforeInstall, true, "配对区应在安装区之前");
+  assert.equal(facts.pairingBeforeInstall, status === "pending", "仅待配对时显示配对区");
+  if (status === "active") {
+    assert.equal(await page.getByTestId("machine-enrollment-status").count(), 0);
+    assert.equal(await page.getByTestId("machine-enrollment-expires").count(), 0);
+    assert.equal(await page.getByTestId("machine-enrollment-panel").count(), 0);
+    assert.equal(facts.section, null);
+    const detail = await page.getByTestId("machine-detail-page").innerText();
+    assert.equal((detail.match(/已配对/g) ?? []).length, 1);
+    assert.doesNotMatch(detail, /配对状态|票据到期|Worker 使用本机保存的身份重新连接/);
+    assert.ok(Math.abs(facts.connection.width - facts.install.width) <= 2, "主内容利用整宽");
+    assert.ok(facts.install.y >= facts.connection.y + facts.connection.height);
+  }
   assert.ok(facts.overflow <= 1, `横向溢出 ${facts.overflow}px`);
+  for (const box of [facts.connection, facts.install]) {
+    assert.ok(box.x >= 0 && box.x + box.width <= page.viewportSize().width + 1, "内容区位于视口内");
+  }
   if (status === "pending") {
     assert.ok(
       facts.section.y + facts.section.height <= facts.connection.y + 1,
@@ -115,6 +130,11 @@ async function assertPresentation(page, status) {
   const run = await page.getByTestId("machine-command-run").innerText();
   assert.doesNotMatch(run, /--allow-http|--ticket/);
   assert.match(run, /run --state-dir/);
+  facts.runCommand = run;
+  facts.enrollmentStatusCount = await page.getByTestId("machine-enrollment-status").count();
+  facts.pairedTextCount = (
+    (await page.getByTestId("machine-detail-page").innerText()).match(/已配对/g) ?? []
+  ).length;
   if (status === "pending") {
     const command = await init.innerText();
     assert.ok(
@@ -174,6 +194,10 @@ async function assertPresentationMatrix() {
         presentationEvidence.push({ width, colorScheme, status, ...facts });
         if (width === 1440 || width === 390) {
           await shoots(matrix.page, `priority-${status}-${width}-${colorScheme}`);
+          if (status === "active") {
+            await matrix.page.getByTestId("machine-command-run").scrollIntoViewIfNeeded();
+            await shoots(matrix.page, `restart-active-${width}-${colorScheme}`);
+          }
         }
         await matrix.page.getByTestId("machine-detail-back").click();
       }
@@ -208,18 +232,61 @@ try {
           return items.map((item) => item.getBoundingClientRect().top);
         });
         assert.equal(new Set(lines).size, 1, "三个 shell 在一行");
+        const platform = await test("machine-shell-platform").boundingBox();
+        const firstShell = await test("machine-shell-summary-item").first().boundingBox();
+        assert.ok(
+          platform.y < firstShell.y + firstShell.height &&
+            platform.y + platform.height > firstShell.y,
+          "平台与 Shell 摘要同行",
+        );
         await p.screenshot({ path: join(evidence, `shell-summary-${width}-${colorScheme}.png`) });
+        assert.equal(await summary.getAttribute("aria-haspopup"), "dialog");
+        const buttonStyle = await summary.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            border: parseFloat(style.borderTopWidth),
+            height: element.getBoundingClientRect().height,
+          };
+        });
+        assert.ok(buttonStyle.border >= 1 && buttonStyle.height >= 28, "触发元素有按钮边框和高度");
         await summary.hover();
+        assert.equal(await details.isVisible(), false, "悬停不展开");
+        await summary.click();
         await details.waitFor({ state: "visible" });
         assert.equal(await summary.getAttribute("aria-expanded"), "true");
         assert.match(await details.innerText(), /\/bin\/zsh/);
         assert.match(await details.innerText(), /zsh 5\.9/);
         assert.match(await details.innerText(), /检查时间/);
+        await details.evaluate(async (element) => {
+          await Promise.all(
+            element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+          );
+        });
         const bounds = await details.boundingBox();
         assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1);
         assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 901);
+        assert.equal(await details.getAttribute("role"), "dialog");
+        const versions = await test("machine-shell-version").evaluateAll((elements) =>
+          elements
+            .filter((element) => element.textContent.includes("Copyright"))
+            .map((element) => {
+              const style = getComputedStyle(element);
+              return {
+                width: element.clientWidth,
+                lines: element.getBoundingClientRect().height / parseFloat(style.lineHeight),
+                overflow: element.scrollWidth - element.clientWidth,
+                text: element.textContent,
+              };
+            }),
+        );
+        assert.equal(versions.length, 2, "bash/sh 使用完整版本串");
+        for (const version of versions) {
+          assert.ok(version.width >= (width === 390 ? 300 : 800));
+          assert.ok(version.lines <= (width === 390 ? 4 : 2), JSON.stringify(version));
+          assert.ok(version.overflow <= 1);
+        }
         await p.screenshot({ path: join(evidence, `shell-details-${width}-${colorScheme}.png`) });
-        await summary.click();
+        await p.keyboard.press("Escape");
         await details.waitFor({ state: "hidden" });
         assert.equal(await summary.getAttribute("aria-expanded"), "false");
         await summary.click();
@@ -231,10 +298,7 @@ try {
         await summary.blur();
         await p.keyboard.press("Tab");
         await summary.focus();
-        await details.waitFor({ state: "visible" });
-        assert.equal(await summary.getAttribute("aria-expanded"), "true", "键盘聚焦展开");
-        await p.keyboard.press("Escape");
-        await details.waitFor({ state: "hidden" });
+        assert.equal(await details.isVisible(), false, "聚焦本身不展开弹窗");
         await summary.press("Enter");
         await details.waitFor({ state: "visible" });
         assert.equal(await summary.getAttribute("aria-expanded"), "true");
@@ -244,6 +308,8 @@ try {
         await summary.press("Space");
         await details.waitFor({ state: "visible" });
         await p.keyboard.press("Tab");
+        assert.equal(await details.isVisible(), true, "Tab 在弹窗内移动焦点");
+        await p.keyboard.press("Escape");
         await details.waitFor({ state: "hidden" });
         assert.ok(
           await p.evaluate(
@@ -254,12 +320,13 @@ try {
           width,
           colorScheme,
           initial: "false",
-          hover: "true",
-          click: ["false", "true"],
+          hover: "false",
+          click: ["true", "true"],
           enter: "true",
           escape: "false",
           space: "true",
-          focusOut: "false",
+          versions,
+          buttonStyle,
           bounds,
         });
       });
@@ -283,7 +350,7 @@ try {
               assert.match(text, scenario === "missing" ? /尚未探测/ : /未报告 shell/);
               assert.ok(!text.includes("✓"));
             }
-            await summary.hover();
+            await summary.click();
             const details = test("machine-shell-details");
             await details.waitFor({ state: "visible" });
             const detailText = await details.innerText();
@@ -302,7 +369,7 @@ try {
         await check("shell_summary_stale_snapshot_remains_explicit", async () => {
           assert.match(await test("machine-shell-summary").innerText(), /旧代次/);
           assert.equal(await test("machine-detail-stale-capability").count(), 1);
-          await test("machine-shell-summary").hover();
+          await test("machine-shell-summary").click();
           await test("machine-shell-stale").waitFor({ state: "visible" });
           assert.match(await test("machine-shell-stale").innerText(), /不能当作现在可用/);
           await p.screenshot({ path: join(evidence, "shell-state-stale.png") });
@@ -327,7 +394,7 @@ try {
     await summary.tap();
     await details.waitFor({ state: "visible" });
     assert.equal(await summary.getAttribute("aria-expanded"), "true");
-    await summary.tap();
+    await p.getByRole("button", { name: "关闭对话框" }).tap();
     await details.waitFor({ state: "hidden" });
     assert.equal(await summary.getAttribute("aria-expanded"), "false");
     shellEvidence.push({ touch: true, tap: ["false", "true", "false"] });
@@ -361,7 +428,7 @@ try {
     const shellSummary = test("machine-shell-summary");
     assert.equal(await shellSummary.getAttribute("aria-expanded"), "false");
     assert.equal(await test("machine-shell-details").isVisible(), false);
-    await shellSummary.hover();
+    await shellSummary.click();
     await test("machine-shell-details").waitFor({ state: "visible" });
     assert.ok((await test("machine-shell-item").count()) >= 2);
     await page.keyboard.press("Escape");
@@ -370,7 +437,7 @@ try {
     assert.ok(run.includes("--state-dir"));
     assert.ok(!run.includes("--ticket"), "票据不能出现在命令里");
     assert.ok(!run.includes("--allow-http"), "授权只出现在 init");
-    assert.ok(!(await test("machine-enrollment-panel").innerText()).includes("AAAAAAAA"));
+    assert.equal(await test("machine-enrollment-panel").count(), 0);
     await assertPresentation(page, "active");
     await shoots(page, "machine-detail-1440-light");
   });
@@ -495,9 +562,10 @@ try {
     await test("machine-detail-back").click();
     await test("machine-list").waitFor();
     await page.locator('[data-machine-id="mch_33333333-3333-4333-8333-333333333333"]').click();
-    await test("machine-enrollment-status").waitFor();
+    await test("machine-detail-enrollment").filter({ hasText: "已配对" }).waitFor();
     assert.equal(await test("machine-renew").count(), 0, "active 不显示续签");
-    assert.ok((await test("machine-enrollment-panel").innerText()).includes("已配对"));
+    assert.equal(await test("machine-enrollment-panel").count(), 0);
+    assert.ok((await test("machine-detail-enrollment").innerText()).includes("已配对"));
     assert.ok((await test("machine-detail-connection").innerText()).includes("连接中"));
   });
 
@@ -532,11 +600,12 @@ try {
     await openControls(page);
     await test("machine-demo-switch").selectOption({ label: "刚唤醒的 Mac Studio" });
     await closeControls(page);
-    await test("machine-enrollment-status").waitFor();
+    await test("machine-detail-enrollment").filter({ hasText: "已配对" }).waitFor();
     await page.waitForTimeout(900);
     assert.equal(await test("machine-ticket-toggle").count(), 0, "A 的迟到票据不能出现在 B");
     assert.equal(await test("machine-ticket-hidden").count(), 0);
-    assert.ok((await test("machine-enrollment-panel").innerText()).includes("已配对"));
+    assert.equal(await test("machine-enrollment-panel").count(), 0);
+    assert.ok((await test("machine-detail-enrollment").innerText()).includes("已配对"));
     assert.deepEqual(desktop.errors, []);
   });
 
@@ -548,11 +617,12 @@ try {
     await openControls(page);
     await test("machine-demo-activate").click();
     await closeControls(page);
-    await test("machine-enrollment-status").waitFor();
-    assert.ok((await test("machine-enrollment-status").innerText()).includes("已配对"));
+    await test("machine-detail-enrollment").filter({ hasText: "已配对" }).waitFor();
+    assert.equal(await test("machine-enrollment-status").count(), 0);
     assert.equal(await test("machine-ticket-toggle").count(), 0, "已配对后旧票据不再显示");
     assert.equal(await test("machine-renew").count(), 0);
-    assert.ok((await test("machine-enrollment-expires").innerText()).includes("没有待使用的票据"));
+    assert.equal(await test("machine-enrollment-expires").count(), 0);
+    assert.match(await test("machine-command-run").innerText(), /run --state-dir/);
   });
 
   await check("create_flow_adds_pending_machine_and_opens_detail", async () => {
