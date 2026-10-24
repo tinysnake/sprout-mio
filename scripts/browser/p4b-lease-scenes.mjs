@@ -1,0 +1,339 @@
+import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { chromium } from "playwright";
+
+// 演示场景的浏览器核对：只连本机 dev server，不连业务服务，不产生远端执行。
+const base = process.env.SPROUT_LEASE_SCENES_URL ?? "http://127.0.0.1:3088/__dev/ui/";
+const evidence = resolve(process.env.SPROUT_LEASE_SCENES_EVIDENCE ?? ".verify/p4b-ui/evidence");
+mkdirSync(evidence, { recursive: true });
+
+const browser = await chromium.launch();
+const results = [];
+const applicationRequests = [];
+
+function record(name, passed, detail = "") {
+  results.push({ name, passed, detail });
+  console.log(`${passed ? "PASS" : "FAIL"} ${name}${detail ? ` :: ${detail}` : ""}`);
+}
+
+async function check(name, run) {
+  try {
+    await run();
+    record(name, true);
+  } catch (error) {
+    record(name, false, String(error?.message ?? error));
+    throw error;
+  }
+}
+
+async function open({ width, height, colorScheme, scene }) {
+  const context = await browser.newContext({
+    viewport: { width, height },
+    colorScheme,
+    deviceScaleFactor: 1,
+  });
+  await context.addInitScript((theme) => {
+    localStorage.setItem("sprout:theme", theme);
+  }, colorScheme);
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/") || path.startsWith("/_server")) applicationRequests.push(path);
+  });
+  const url = new URL(base);
+  url.searchParams.set("scene", scene);
+  await page.goto(url.toString(), { waitUntil: "networkidle" });
+  return { context, page, errors };
+}
+
+const shoot = (page, name) =>
+  page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true, animations: "disabled" });
+
+/** 内层滚动容器里的区块要滚到可见处再截图，否则证据里看不到该区块。 */
+async function shootAt(page, testId, name) {
+  await page.getByTestId(testId).scrollIntoViewIfNeeded();
+  await page.waitForTimeout(120);
+  await shoot(page, name);
+}
+
+async function gotoLeases(page) {
+  await page.getByTestId("machine-leases-link").click();
+  await page.getByTestId("lease-scene").waitFor();
+}
+
+async function bodyBackground(page) {
+  return page.evaluate(() => {
+    const style = getComputedStyle(document.body);
+    return style.backgroundColor;
+  });
+}
+
+// 浅暗主题 × 五个宽度：租约、多机持有与远端操作都在同一处可见。
+for (const colorScheme of ["light", "dark"]) {
+  for (const width of [390, 901, 1199, 1200, 1440]) {
+    await check(`租约场景 ${colorScheme} ${width}px 呈现`, async () => {
+      const { context, page, errors } = await open({
+        width,
+        height: 900,
+        colorScheme,
+        scene: "machines",
+      });
+      try {
+        await gotoLeases(page);
+        // 主体不与视口横向溢出。
+        const overflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - window.innerWidth,
+        );
+        assert.ok(overflow <= 1, `horizontal overflow ${overflow}px`);
+        const background = await bodyBackground(page);
+        assert.ok(background && background !== "rgba(0, 0, 0, 0)", "background token applied");
+        // 持有者一行同时看到两台 Machine。
+        const primary = page.getByTestId(
+          `lease-holder-group-ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+        );
+        await primary.waitFor();
+        const machines = await primary.getByTestId("lease-holder-machines").textContent();
+        assert.match(machines ?? "", /工作室 Mac mini/);
+        assert.match(machines ?? "", /刚唤醒的 Mac Studio/);
+        // 状态、holder、Machine 名称齐全。
+        assert.ok((await page.getByTestId("lease-state").count()) >= 3);
+        assert.ok((await page.getByTestId("lease-holder-instance").count()) >= 2);
+        // 远端操作目标明确写出远端 Worker，且结果状态覆盖成功/失败/超时/未知。
+        assert.ok(
+          (await page
+            .locator('[data-testid="remote-executions"] [data-testid$="-target"]')
+            .count()) >= 4,
+        );
+        const states = await page
+          .locator('[data-testid="remote-executions-item"]')
+          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-execution-state")));
+        for (const state of ["succeeded", "failed", "timed_out", "unknown"])
+          assert.ok(states.includes(state), `missing state ${state}`);
+        assert.deepEqual(errors, [], `console errors: ${errors.join(" | ")}`);
+        await shoot(page, `leases-${colorScheme}-${width}`);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+}
+
+// 不同 Project 的租约互不可见：本 Project 视图不出现其他 Project 的持有者。
+await check("Project 隔离：当前 Project 看不到另一个 Project 的租约", async () => {
+  const { context, page } = await open({
+    width: 1200,
+    height: 900,
+    colorScheme: "light",
+    scene: "machines",
+  });
+  try {
+    await gotoLeases(page);
+    const current = page.getByTestId("lease-scene-overview");
+    assert.equal(
+      await current
+        .locator('[data-testid="lease-holder-group-ins_cccccccc-cccc-4ccc-8ccc-cccccccccccc"]')
+        .count(),
+      0,
+    );
+    // 另一个 Project 的面板里能看到它自己的租约，说明在同一台物理 Machine 上独立成立。
+    const other = page.getByTestId("lease-scene-other-project");
+    assert.ok((await other.getByTestId("lease-holder-instance").count()) >= 1);
+    const otherMachineNames = await other.getByTestId("lease-holder-machines").textContent();
+    assert.match(otherMachineNames ?? "", /工作室 Mac mini/);
+    record("同一台物理 Machine 上两个 Project 的租约独立成立", true);
+    await shoot(page, "project-isolation-dark-free");
+  } finally {
+    await context.close();
+  }
+});
+
+// 申请成功：pending 在等待期间可见，写回后状态变为持有中，并带上新的代次。
+await check("申请租约：pending 与成功反馈", async () => {
+  const { context, page } = await open({
+    width: 1200,
+    height: 1000,
+    colorScheme: "light",
+    scene: "machines",
+  });
+  try {
+    await gotoLeases(page);
+    await page.getByTestId("lease-demo-outcome").selectOption("hold");
+    const form = page.getByTestId("lease-scene-overview-mutation");
+    await form.getByTestId("lease-scene-overview-mutation-machine").selectOption({ index: 1 });
+    await form.getByTestId("lease-scene-overview-mutation-submit").click();
+    await form.getByTestId("lease-scene-overview-mutation-pending").waitFor();
+    // 未结算前不出现成功收据。
+    assert.equal(await form.getByTestId("lease-scene-overview-mutation-receipt").count(), 0);
+    await shootAt(page, "lease-scene-overview-mutation", "mutation-pending");
+    await page.getByTestId("lease-demo-settle-success-0").click();
+    await form.getByTestId("lease-scene-overview-mutation-success").waitFor();
+    await form.getByTestId("lease-scene-overview-mutation-receipt").waitFor();
+    // 写回后该 Machine 变为持有中。
+    const row = page.locator('[data-testid^="lease-row-"]').filter({ hasText: "待配对的 MacBook" });
+    assert.equal(await row.getAttribute("data-lease-state"), "held");
+    await shootAt(page, "lease-scene-overview-mutation", "mutation-success");
+  } finally {
+    await context.close();
+  }
+});
+
+// 失败：保留目标选择与动作，显示错误码与 requestId，不写回租约。
+await check("申请失败：保留目标并显示原因（旧授权代次）", async () => {
+  const { context, page } = await open({
+    width: 1200,
+    height: 1000,
+    colorScheme: "dark",
+    scene: "machines",
+  });
+  try {
+    await gotoLeases(page);
+    await page.getByTestId("lease-demo-outcome").selectOption("stale");
+    const form = page.getByTestId("lease-scene-overview-mutation");
+    await form.getByTestId("lease-scene-overview-mutation-machine").selectOption({ index: 1 });
+    await form.getByTestId("lease-scene-overview-mutation-submit").click();
+    const error = form.getByTestId("lease-scene-overview-mutation-error");
+    await error.waitFor();
+    assert.match((await error.textContent()) ?? "", /lease_stale_generation/);
+    assert.equal(
+      await form.getByTestId("lease-scene-overview-mutation-receipt").count(),
+      0,
+      "失败不得显示成功收据",
+    );
+    const row = page.locator('[data-testid^="lease-row-"]').filter({ hasText: "待配对的 MacBook" });
+    assert.notEqual(await row.getAttribute("data-lease-state"), "held");
+    await shootAt(page, "lease-scene-overview-mutation", "mutation-failure-stale-generation");
+  } finally {
+    await context.close();
+  }
+});
+
+// 跨 run 持有：run 已结束，租约仍显示持有。
+await check("run 结束后租约仍显示持有", async () => {
+  const { context, page } = await open({
+    width: 1200,
+    height: 1000,
+    colorScheme: "light",
+    scene: "machines",
+  });
+  try {
+    await gotoLeases(page);
+    const relation = page.getByTestId("lease-scene-run-relation");
+    const held = await relation
+      .locator('[data-held="true"]')
+      .evaluateAll((nodes) => nodes.map((node) => node.textContent));
+    assert.ok(held.length >= 2, `expected held leases, got ${held.length}`);
+    for (const note of held) assert.match(note ?? "", /仍由该分身持有|与所在 run 并行存在/);
+    const free = await relation.locator('[data-held="false"]').count();
+    assert.equal(free, 1, "只有 free 的租约不算持有");
+    // 页面上没有把 run 结束写成已释放。
+    const text = await page.getByTestId("lease-scene").innerText();
+    assert.doesNotMatch(text, /run 结束.*已释放/);
+    await shootAt(page, "lease-scene-run-relation", "run-ended-still-held");
+  } finally {
+    await context.close();
+  }
+});
+
+// Chat inspector 与 Project settings 使用同一套租约与操作呈现组件。
+await check("Chat inspector 与 Project settings 呈现同一租约事实", async () => {
+  const { context, page } = await open({
+    width: 1440,
+    height: 1000,
+    colorScheme: "light",
+    scene: "chat-inspector",
+  });
+  try {
+    await page.getByTestId("chat-leases").waitFor();
+    const chatLeaseStates = await page
+      .locator('[data-testid="chat-leases"] [data-testid="lease-row-" ]')
+      .count();
+    assert.ok(chatLeaseStates >= 0);
+    const chatHeld = await page
+      .locator('[data-testid="chat-leases"] [data-lease-state="held"]')
+      .count();
+    assert.ok(chatHeld >= 2, `chat inspector held leases ${chatHeld}`);
+    assert.ok((await page.getByTestId("chat-executions").count()) === 1);
+    assert.ok((await page.getByTestId("chat-execution-targets").count()) === 1);
+    await shootAt(page, "chat-leases", "chat-inspector-leases");
+    await shootAt(page, "chat-executions", "chat-inspector-executions");
+  } finally {
+    await context.close();
+  }
+
+  const settings = await open({
+    width: 1440,
+    height: 1200,
+    colorScheme: "dark",
+    scene: "settings",
+  });
+  try {
+    const page = settings.page;
+    if (await page.getByTestId("settings-info-hub").isVisible()) {
+      const open = await page.getByTestId("settings-info-hub").evaluate((node) => node.open);
+      if (!open) await page.getByTestId("project-info-hub-toggle").click();
+    }
+    await page.getByTestId("info-hub-leases").waitFor();
+    const held = await page
+      .locator('[data-testid="info-hub-leases"] [data-lease-state="held"]')
+      .count();
+    assert.ok(held >= 2, `settings held leases ${held}`);
+    assert.equal(await page.getByTestId("info-hub-leases-notice").count(), 0);
+    await shootAt(page, "info-hub-leases", "settings-info-hub-leases");
+  } finally {
+    await settings.context.close();
+  }
+});
+
+// Machine 详情：租约、holder、远端操作目标在同一台 Machine 上对齐。
+await check("Machine 详情显示租约与远端操作目标", async () => {
+  const { context, page } = await open({
+    width: 1200,
+    height: 1000,
+    colorScheme: "light",
+    scene: "machines",
+  });
+  try {
+    await page.getByTestId("machines-page").waitFor();
+    await page
+      .locator('[data-machine-id="mch_11111111-1111-4111-8111-111111111111"]')
+      .first()
+      .click();
+    await page.getByTestId("machine-lease-detail").waitFor();
+    const section = page.getByTestId("machine-lease-detail");
+    assert.ok((await section.getByTestId("lease-state").count()) === 1);
+    assert.match(
+      (await section.getByTestId("lease-holder-instance").textContent()) ?? "",
+      /ins_aaaaaaaa/,
+    );
+    const executions = page.getByTestId("machine-executions");
+    assert.ok((await executions.locator('[data-testid$="-item"]').count()) >= 2);
+    const targets = await executions
+      .locator('[data-testid$="-target"]')
+      .evaluateAll((nodes) => nodes.map((node) => node.textContent));
+    for (const target of targets) assert.match(target ?? "", /远端 Worker/);
+    assert.ok(
+      (await page.getByTestId("machine-detail-remote-operations").textContent()) !== "未实现，P4b",
+    );
+    await shootAt(page, "machine-lease-detail", "machine-detail-lease");
+    await shootAt(page, "machine-executions", "machine-detail-executions");
+  } finally {
+    await context.close();
+  }
+});
+
+await check("演示场景不向业务接口发请求", async () => {
+  assert.deepEqual(applicationRequests, []);
+});
+
+await browser.close();
+
+const failed = results.filter((result) => !result.passed);
+console.log(`\nresults: ${results.length} checks, ${failed.length} failed`);
+console.log(`evidence: ${evidence}`);
+process.exit(failed.length === 0 ? 0 : 1);

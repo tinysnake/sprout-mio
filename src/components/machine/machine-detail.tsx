@@ -25,12 +25,17 @@ import { Icon } from "../ui/icon";
 import { MachineBindingForm } from "./machine-binding-form";
 import { MachineEnrollmentPanel } from "./machine-enrollment-panel";
 import { StatusLine } from "./machine-list";
+import { MachineLeaseSection } from "./lease-panel";
+import { RemoteExecutionList } from "./remote-execution-panel";
+import type { LeaseView } from "../../contracts/lease";
+import type { ExecutionView } from "../../contracts/remote";
 import {
   bindingDirectory,
   connectionLabel,
   enrollmentLabel,
   formatMoment,
   observationLabel,
+  type LeaseMutationHandler,
 } from "./machine-view";
 
 export function MachineDetailPanel({
@@ -48,6 +53,11 @@ export function MachineDetailPanel({
   onEnrollmentRevoked,
   installOrigin,
   actions,
+  leases = [],
+  holderNames = {},
+  runs = [],
+  executions = [],
+  onLeaseMutate,
 }: {
   detail: MachineDetail;
   back?: ReactNode;
@@ -56,6 +66,13 @@ export function MachineDetailPanel({
   /** 当前 Project 上下文；有值时显示加入/编辑绑定表单。 */
   bindingProject?: { id: string; name: string } | null;
   projectNames?: Record<string, string>;
+  /** 本 Project 的租约视图；Machine 详情与 inspector 读同一份事实。 */
+  leases?: readonly LeaseView[];
+  holderNames?: Readonly<Record<string, string>>;
+  runs?: readonly { runId: string; status: string }[];
+  executions?: readonly ExecutionView[];
+  /** 未注入时不渲染变更表单，按约定标为未接入。 */
+  onLeaseMutate?: LeaseMutationHandler;
   onRenewEnrollment?: (machineId: string) => Promise<MachineResult<MachineEnrollment>>;
   onSaveBinding?: (
     input: SaveProjectMachineBindingInput,
@@ -184,7 +201,13 @@ export function MachineDetailPanel({
                   {
                     label: "远端操作",
                     testId: "machine-detail-remote-operations",
-                    value: "未实现，P4b",
+                    value: !capability
+                      ? "无能力快照"
+                      : !capability.current
+                        ? "旧代次快照，不当作现在可用"
+                        : capability.snapshot.remoteOperations.length === 0
+                          ? "Worker 未宣告远端操作能力"
+                          : capability.snapshot.remoteOperations.join("、"),
                   },
                   {
                     label: "创建时间",
@@ -211,6 +234,39 @@ export function MachineDetailPanel({
               connection={detail.connection}
             />
           </SettingsSection>
+
+          {bindingProject && (
+            <SettingsSection
+              title="租约与持有者"
+              description="租约单位是 Project × Machine。run 结束、Worker 断线或分身空闲都不会自动释放租约，也不终止进程或删除文件。"
+              testId="machine-lease-detail"
+            >
+              <MachineLeaseSection
+                projectId={bindingProject.id}
+                detail={detail}
+                leases={leases}
+                holderNames={holderNames}
+                runs={runs}
+                onMutate={onLeaseMutate}
+              />
+            </SettingsSection>
+          )}
+
+          {bindingProject && (
+            <SettingsSection
+              title="远端操作"
+              description="操作目标由请求自身指定；宿主工具与远端操作分开记录，结果未经确认时显示未知。"
+              testId="machine-remote-executions"
+            >
+              <RemoteExecutionList
+                executions={executions.filter(
+                  (execution) => execution.machineId === detail.machine.id,
+                )}
+                machines={[detail]}
+                testId="machine-executions"
+              />
+            </SettingsSection>
+          )}
 
           <SettingsSection
             title="Machine root 工作目录"
