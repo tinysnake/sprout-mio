@@ -335,8 +335,17 @@ try {
   const detail = await rpc("getMachineFn", { machineId });
   assert(detail.ok);
   assert.equal(detail.data.connection.kind, "online");
-  assert(detail.data.capability.snapshot.shells.some((s) => s.probe.kind === "success"));
-  assert.deepEqual(detail.data.capability.snapshot.remoteOperations, []);
+  assert.equal(detail.data.capability.current, true);
+  // 能力快照只反映 Worker 实际注册且当前可用的远端操作，不硬编码期望数组。
+  const { shells, remoteOperations } = detail.data.capability.snapshot;
+  const shellAvailable = shells.some((s) => s.probe.kind === "success");
+  assert(shellAvailable, "real macOS Worker reports at least one successful shell probe");
+  assert.equal(new Set(remoteOperations).size, remoteOperations.length, "no duplicate capability");
+  assert(remoteOperations.includes("file_read"));
+  assert(remoteOperations.includes("file_write"));
+  assert(remoteOperations.includes("process_list"));
+  assert(remoteOperations.includes("process_signal"));
+  assert.equal(remoteOperations.includes("shell"), shellAvailable);
   const createdProject = await rpc("createProjectFn", { name: "Machine project" });
   assert(createdProject.ok);
   const projectId = createdProject.data.id;
@@ -694,7 +703,10 @@ try {
   }, "production restart");
   const restarted = await rpc("getMachineFn", { machineId });
   assert.equal(restarted.data.connection.reason, "host_restarted");
+  // P4a 行为：宿主重启后历史能力快照不再是当前能力。
   assert.equal(restarted.data.capability.current, false);
+  assert(restarted.data.capability.snapshot.remoteOperations.length > 0, "历史快照仍然可读");
+  assert.notEqual(restarted.data.connection.kind, "online");
   assert.equal((await json("/api/worker/exchange", wire(payload))).value.error.code, "superseded");
   worker = launch(
     process.execPath,
@@ -715,6 +727,19 @@ try {
         .prepare("SELECT seq FROM machine_connection WHERE machine_id=? ORDER BY generation DESC")
         .get(machineId).seq > 0,
     "restart exchange",
+  );
+  // 新代次重新注册后，能力重新成为当前能力，且 shell 广告与成功 probe 一致。
+  const recovered = await rpc("getMachineFn", { machineId });
+  assert.equal(recovered.data.capability.current, true);
+  assert.equal(recovered.data.connection.kind, "online");
+  assert.equal(
+    recovered.data.capability.snapshot.remoteOperations.includes("shell"),
+    recovered.data.capability.snapshot.shells.some((s) => s.probe.kind === "success"),
+  );
+  assert.notEqual(
+    recovered.data.capability.generation,
+    restarted.data.capability.generation,
+    "能力快照代次随重连推进",
   );
   await stop(server);
   server = undefined;

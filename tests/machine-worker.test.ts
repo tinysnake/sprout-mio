@@ -6,6 +6,10 @@ import { initializeIdentity, readIdentity, readTicket, serverSchema } from "../s
 import { probeCapability, probeDirectory } from "../src/worker/probes";
 import { ID_PREFIXES, newId } from "../src/contracts/ids";
 import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { unlink } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 test("private Worker identity survives retries and refuses corruption, replacement and unsafe ticket files", async () => {
   const root = await mkdtemp(join(tmpdir(), "sprout-worker-state-"));
@@ -123,13 +127,57 @@ test("directory facts resolve links and distinguish missing paths and files with
   await expect(lstat(join(root, "missing"))).rejects.toThrow();
   if (process.platform === "darwin") {
     const capability = await probeCapability(checkedAt);
+    const shellAvailable = capability.shells.some((shell) => shell.probe.kind === "success");
+    expect(shellAvailable).toBe(true);
     expect(capability.remoteOperations).toEqual([
-      "shell",
+      ...(shellAvailable ? (["shell"] as const) : []),
       "file_read",
       "file_write",
       "process_list",
       "process_signal",
     ]);
-    expect(capability.shells.some((shell) => shell.probe.kind === "success")).toBe(true);
   }
+});
+
+test("capability advertises no shell kind when every shell probe fails", async () => {
+  if (process.platform !== "darwin" || !existsSync("/usr/bin/sandbox-exec")) return;
+  // 用真实沙箱阻断 /bin 下所有 shell 的执行，让 probeCapability 自己得出失败结论；
+  // 不改 Worker 实现，也不在断言里硬编码映射表。
+  const profile = join(await mkdtemp(join(tmpdir(), "sprout-worker-noshell-")), "deny-shell.sb");
+  await writeFile(profile, '(version 1)\n(allow default)\n(deny process-exec (subpath "/bin"))\n');
+  const script = join(tmpdir(), `sprout-probe-noshell-${randomUUID()}.mjs`);
+  await writeFile(
+    script,
+    `import { probeCapability } from ${JSON.stringify(
+      fileURLToPath(new URL("../src/worker/probes.ts", import.meta.url)),
+    )};\n` +
+      `const capability = await probeCapability("2026-01-01T00:00:00Z");\n` +
+      "process.stdout.write(JSON.stringify(capability));\n",
+  );
+  let child;
+  try {
+    child = spawnSync(
+      "sandbox-exec",
+      ["-f", profile, process.execPath, "--import", "tsx", script],
+      {
+        encoding: "utf8",
+        timeout: 60000,
+      },
+    );
+  } finally {
+    await unlink(script).catch(() => undefined);
+  }
+  expect(child.status, child.stderr + child.stdout).toBe(0);
+  const capability = JSON.parse(child.stdout);
+  expect(capability.shells.length).toBeGreaterThan(0);
+  expect(
+    capability.shells.every((shell: { probe: { kind: string } }) => shell.probe.kind !== "success"),
+  ).toBe(true);
+  expect(capability.remoteOperations).not.toContain("shell");
+  expect(capability.remoteOperations).toEqual([
+    "file_read",
+    "file_write",
+    "process_list",
+    "process_signal",
+  ]);
 });
