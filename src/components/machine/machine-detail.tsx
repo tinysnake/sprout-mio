@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { FolderOpen } from "lucide-react";
+import { MachineShellSummary } from "./machine-shell-summary";
 import type {
   MachineDetail,
   MachineRootDirectory,
@@ -201,51 +202,8 @@ export function MachineDetailPanel({
             )}
           </SettingsSection>
 
-          <SettingsSection
-            title="Shell 能力"
-            description="来自 Worker 在 macOS 上的实际探测；未知 shell 不会猜执行语法。"
-            testId="machine-shells"
-          >
-            {!capability ? (
-              <p
-                data-testid="machine-shells-empty"
-                className="text-xs leading-6 text-muted-foreground"
-              >
-                尚无能力快照。Worker 完成认证并提交能力后才会出现。
-              </p>
-            ) : capability.snapshot.shells.length === 0 ? (
-              <p
-                data-testid="machine-shells-empty"
-                className="text-xs leading-6 text-muted-foreground"
-              >
-                Worker 未报告可用 shell。
-              </p>
-            ) : (
-              <ul
-                id="machine-shell-list"
-                className="divide-y divide-border rounded-container border border-border"
-              >
-                {capability.snapshot.shells.map((fact) => (
-                  <li
-                    key={fact.path}
-                    data-testid="machine-shell-item"
-                    className="grid gap-1 px-3 py-2.5 text-xs leading-6 desktop:grid-cols-[6rem_minmax(0,1fr)] desktop:gap-2"
-                  >
-                    <span className="text-muted-foreground">{fact.kind}</span>
-                    <span className="min-w-0 break-all">
-                      <code className="font-mono text-[0.6875rem]">{fact.path}</code>
-                      <span className="block text-muted-foreground">
-                        {fact.version ?? "版本未知"} ·{" "}
-                        {fact.probe.kind === "success"
-                          ? "自检通过"
-                          : `自检失败：${fact.probe.reason}`}{" "}
-                        · {formatMoment(fact.checkedAt)}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <SettingsSection title="Shell 能力" testId="machine-shells">
+            <MachineShellSummary key={detail.machine.id} capability={capability} />
           </SettingsSection>
 
           <SettingsSection

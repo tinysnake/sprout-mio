@@ -76,6 +76,63 @@ function DemoControls({
       className="mt-6 rounded-container border border-border bg-popover p-3 text-xs shadow-lg desktop:fixed desktop:right-4 desktop:bottom-4 desktop:z-50 desktop:mt-0 desktop:w-64"
     >
       <summary className="cursor-pointer font-medium">演示控制 · Machines</summary>
+      <label className="mt-3 block" htmlFor="machine-demo-shells">
+        第一台 Machine 的 Shell 探测
+      </label>
+      <Select
+        id="machine-demo-shells"
+        data-testid="machine-demo-shells"
+        className="mt-1"
+        defaultValue="all"
+        onChange={(event) => {
+          const scenario = event.target.value;
+          const baseline = demoMachineDetails[0].capability!;
+          update({
+            machines: state.machines.map((machine, index) =>
+              index !== 0
+                ? machine
+                : {
+                    ...machine,
+                    capability:
+                      scenario === "missing"
+                        ? null
+                        : {
+                            ...baseline,
+                            snapshot: {
+                              ...baseline.snapshot,
+                              shells:
+                                scenario === "empty"
+                                  ? []
+                                  : baseline.snapshot.shells.map((shell) => ({
+                                      ...shell,
+                                      kind: scenario === "unknown" ? "unknown" : shell.kind,
+                                      probe:
+                                        scenario === "failed" ||
+                                        scenario === "unknown" ||
+                                        (scenario === "partial" && shell.kind === "sh")
+                                          ? {
+                                              kind: "failure" as const,
+                                              reason:
+                                                scenario === "unknown"
+                                                  ? ("unsupported" as const)
+                                                  : ("failed" as const),
+                                            }
+                                          : shell.probe,
+                                    })),
+                            },
+                          },
+                  },
+            ),
+          });
+        }}
+      >
+        <option value="all">全部通过</option>
+        <option value="partial">sh 自检失败</option>
+        <option value="failed">全部失败</option>
+        <option value="unknown">未知 shell</option>
+        <option value="missing">无能力快照</option>
+        <option value="empty">未报告 shell</option>
+      </Select>
       <label className="mt-2 flex items-center gap-2">
         <input
           type="checkbox"

@@ -92,7 +92,26 @@ async function assertDetailPresentation(page, status) {
   assert.match(text, /不支持通过配置放开非 loopback HTTP/);
   await page.getByRole("button", { name: "关闭对话框" }).click();
   await note.waitFor({ state: "hidden" });
-  return facts;
+  const shellSummary = page.getByTestId("machine-shell-summary");
+  const shellDetails = page.getByTestId("machine-shell-details");
+  assert.equal(await shellSummary.getAttribute("aria-expanded"), "false");
+  assert.equal(await shellDetails.isVisible(), false);
+  if (status === "pending") {
+    assert.match(await shellSummary.innerText(), /尚未探测/);
+    assert.ok(!(await shellSummary.innerText()).includes("✓"));
+  }
+  await shellSummary.hover();
+  await shellDetails.waitFor({ state: "visible" });
+  assert.equal(await shellSummary.getAttribute("aria-expanded"), "true");
+  if (status === "active") {
+    assert.ok((await page.getByTestId("machine-shell-item").count()) > 0);
+    assert.match(await shellDetails.innerText(), /\//);
+    assert.match(await shellDetails.innerText(), /自检/);
+  }
+  await page.keyboard.press("Escape");
+  await shellDetails.waitFor({ state: "hidden" });
+  assert.equal(await shellSummary.getAttribute("aria-expanded"), "false");
+  return { ...facts, shellExpanded: ["false", "true", "false"] };
 }
 
 function pass(name, facts = {}) {
