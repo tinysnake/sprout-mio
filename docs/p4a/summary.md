@@ -1,6 +1,6 @@
 # P4a Worker 连接与 Project 绑定
 
-Human 体验确认已记录（见本章末）。P4a 是 I-P4a 集成单元的功能与 UI 章节记录；本文件不是设计定稿，也不替代编排 store 里的证据。`6702ccc` 及之前的独立技术验收已通过；第三、四轮合入的独立验收仍在进行，结果记录在下面「技术验收证据」。
+P4a 已收尾：四轮独立技术验收均判定通过，Human 体验确认已记录（见本章末）。P4a 是 I-P4a 集成单元的功能与 UI 章节记录；本文件不是设计定稿，也不替代编排 store 里的证据。
 
 Human 可从 Machines 创建 Machine 身份，按详情给出的实际命令构建、复制并初始化 macOS Worker，再运行独立进程主动认证连接。详情展示配对、连接代次、实际 shell 能力与目录观察。Project settings 提供本人 Machine 的加入入口、说明和工作目录。
 
@@ -44,7 +44,11 @@ Info Hub 的 machines 使用真实集合，leases 独立标记未实现。P4b �
 
 第二轮被验版本 `74fccd4`，独立结论为技术验收通过，并记录两处遗漏（三份文档仍写旧的 allow-http 结论、TLS 守卫错误被通用提示吞掉），两者在 `97a530b` 修复；第三轮被验 head `6702ccc` 的独立验收同样通过。重跑入口为 `bash scripts/verify/u-machine-ui.sh`、`bash scripts/verify/t-machine-worker.sh` 与 `bash scripts/verify/k-acceptance.sh`，完整报告见 `orchestrate/sprout-mio-p4a/reports/acceptance-round2.md` 与 `acceptance-final.md`。
 
-第三轮（`8d79327`）与第四轮（`5d49e80`）的独立技术验收在 Human 体验确认之后启动，尚未回写结论；编排者已在 worktree 与 main 两处各自复跑上述命令，日志见 `orchestrate/sprout-mio-p4a/reports/`。
+第三轮（`8d79327`）与第四轮（`5d49e80`）的独立技术验收结论：通过，无阻塞项。被验 SHA `5d49e80`，由未参与实现的另一模型家族在 `git archive 5d49e80` 的独立 checkout 上执行，自建 production 构建、独立 SQLite、Worker state、Chromium 与新注册账号，真实 macOS Worker 驱动目录观察；自建探针 100 条布尔全为 true，五个实现方脚本串行复跑退出码全 0（`bash scripts/verify/t-machine-worker.sh`、`bash scripts/verify/u-machine-ui.sh`、`bash scripts/verify/k-acceptance.sh`、`bash scripts/verify/s-machine-contracts.sh`、`node scripts/browser/p4a-machine-scenes.mjs`）。
+
+本轮最重要的反证是自动刷新放大了上一轮修过的静默覆盖风险：实测 root 与绑定说明在外部先改并经历自动刷新后，提交请求仍携带编辑起点的 revision（2 / 1），服务端判 conflict，对方事实未被覆盖，草稿留存；自动刷新真实间隔实测约 5030ms；后台十二秒零请求，卸载瞬间有刷新在途时其后十六秒仍零请求；会话内续签票据与 pending 状态不被刷掉。其余核对：能力非 current 的三种状态下 shell 摘要触发元素 `count() === 0`（不存在而非隐藏），文案按实际状态区分；勾色读计算后的颜色值，宽弹窗计算宽 896px；active 详情全文「已配对」仅一次且 `run` 命令仍可达；目录四种 unavailable reason 全为中文且不宣称代用户创建，missing → accessible 由真实 Worker 探测驱动并与 SQLite、HTTP 一致。报告见 `orchestrate/sprout-mio-p4a/reports/acceptance-r34.md`，结果副本见 `acceptance-r34-evidence/`。
+
+一处归属误判已由编排者纠正：该报告把 19:55–20:11 的四个 docs 改动归给同一工作树的其他 session，实际是编排者本人的 `1b95d3b`，只改文档、未动代码、测试或迁移，不影响它对 `5d49e80` 代码的技术结论。
 
 第一轮被验版本 `90a6af7`，合入为 `e10a5b4`。独立验收由未参与实现的另一模型家族执行，使用自有 checkout、自建 production 构建、独立 SQLite、独立 Worker state、独立 Chromium 与新账号。独立探针 41 条布尔全为 true，退出码 0。
 
