@@ -1,22 +1,26 @@
-import type { AppError } from "../../contracts/result";
+import { APP_ERROR_CODES } from "../../contracts/result";
+import type { AppError, AppErrorCode } from "../../contracts/result";
 
 /** 领域错误按原码透出；`internal` 只留给真正的未知错误。 */
-type DomainErrorCode = "not_found" | "conflict";
+type DomainErrorCode = AppErrorCode;
 type DomainErrorClass = abstract new (...args: never[]) => Error & {
   code: string;
   message: string;
 };
 
 async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
-  const [project, agent, access, chat, agentRun, repository, machine] = await Promise.all([
-    import("../../domain/project"),
-    import("../../domain/agent"),
-    import("../../domain/access"),
-    import("../../domain/chat"),
-    import("../../domain/agent-run"),
-    import("../../domain/repository"),
-    import("../../domain/machine"),
-  ]);
+  const [project, agent, access, chat, agentRun, repository, machine, lease, remote] =
+    await Promise.all([
+      import("../../domain/project"),
+      import("../../domain/agent"),
+      import("../../domain/access"),
+      import("../../domain/chat"),
+      import("../../domain/agent-run"),
+      import("../../domain/repository"),
+      import("../../domain/machine"),
+      import("../lease"),
+      import("../remote"),
+    ]);
   return [
     project.ProjectError,
     agent.AgentError,
@@ -25,11 +29,13 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
     agentRun.AgentRunError,
     repository.RepositoryError,
     machine.MachineError,
+    lease.LeaseError,
+    remote.RemoteError,
   ];
 }
 
 function isDomainErrorCode(code: string): code is DomainErrorCode {
-  return code === "not_found" || code === "conflict";
+  return APP_ERROR_CODES.some((value) => value === code);
 }
 
 export async function toDomainAppError(

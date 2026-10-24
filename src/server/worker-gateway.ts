@@ -12,7 +12,6 @@ import {
 } from "../contracts/worker";
 import type { WorkerExchangeResponse, WORKER_ERROR_CODES } from "../contracts/worker";
 import type { WorkerSession } from "../contracts/worker-session";
-import type { RemoteExchangeOutput } from "../contracts/remote";
 import { db, sqlite } from "../db";
 import {
   directoryObservation,
@@ -26,6 +25,8 @@ import {
 import { hashCredential, machineBindings, matchesCredential } from "../domain/machine";
 import { getRequestContext, REQUEST_ID_HEADER } from "./request-context";
 import { machineRuntimeContext, runtimeSnapshot } from "./runtime";
+import { applyRemoteExchange, RemoteError } from "./remote";
+import { LeaseError } from "./lease";
 
 type WorkerCode = (typeof WORKER_ERROR_CODES)[number];
 export class WorkerError extends Error {
@@ -184,15 +185,6 @@ export function exchangeWorker(input: z.infer<typeof workerExchangeInput>, ctx: 
     .immediate();
 }
 
-/** 本单元不选授权、命令或 fence：远端输出全部为空列表，由 worker/tools 单元接入。 */
-const EMPTY_REMOTE_OUTPUT: RemoteExchangeOutput = {
-  authorizations: [],
-  commands: [],
-  fences: [],
-  resultAcks: [],
-  fenceAcks: [],
-};
-
 type NormalExchange = Extract<z.infer<typeof workerExchangeInput>, { mode: "normal" }>;
 type DrainExchange = Extract<z.infer<typeof workerExchangeInput>, { mode: "drain" }>;
 type ExchangeData = Extract<WorkerExchangeResponse, { ok: true }>["data"];
@@ -321,7 +313,7 @@ function normalExchange(input: NormalExchange, ctx: WorkerContext): ExchangeData
         description,
       })),
     },
-    remote: EMPTY_REMOTE_OUTPUT,
+    remote: applyRemoteExchange(input.remote, { ...ctx, session, seq, mode: "normal" }),
   };
   db.insert(workerExchangeFrame)
     .values({
@@ -374,7 +366,7 @@ function drainExchange(input: DrainExchange, ctx: WorkerContext): ExchangeData {
     session,
     seq,
     configuration: null,
-    remote: EMPTY_REMOTE_OUTPUT,
+    remote: applyRemoteExchange(input.remote, { ...ctx, session, seq, mode: "drain" }),
   };
   db.insert(workerExchangeFrame)
     .values({
@@ -466,9 +458,11 @@ export async function workerResponse(operation: keyof typeof operations, request
     const code =
       error instanceof WorkerError
         ? error.code
-        : error instanceof z.ZodError
-          ? "validation_failed"
-          : "internal";
+        : error instanceof RemoteError || error instanceof LeaseError
+          ? "conflict"
+          : error instanceof z.ZodError
+            ? "validation_failed"
+            : "internal";
     return Response.json(
       {
         version: WORKER_PROTOCOL_VERSION,

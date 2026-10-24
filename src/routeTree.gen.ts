@@ -23,6 +23,7 @@ import { Route as AuthedMachinesMachineIdRouteImport } from './routes/_authed/ma
 import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projects.index'
 import { Route as AuthedProjectsProjectIdRouteImport } from './routes/_authed/projects.$projectId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiRemoteAgentRouteImport } from './routes/api/remote/agent'
 import { Route as ApiWorkerCloseRouteImport } from './routes/api/worker/close'
 import { Route as ApiWorkerEnrollRouteImport } from './routes/api/worker/enroll'
 import { Route as ApiWorkerExchangeRouteImport } from './routes/api/worker/exchange'
@@ -104,6 +105,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRemoteAgentRoute = ApiRemoteAgentRouteImport.update({
+  id: '/api/remote/agent',
+  path: '/api/remote/agent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWorkerCloseRoute = ApiWorkerCloseRouteImport.update({
   id: '/api/worker/close',
   path: '/api/worker/close',
@@ -172,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/machines/$machineId': typeof AuthedMachinesMachineIdRoute
   '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
@@ -194,6 +201,7 @@ export interface FileRoutesByTo {
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
   '/machines/$machineId': typeof AuthedMachinesMachineIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
@@ -220,6 +228,7 @@ export interface FileRoutesById {
   '/_authed/machines/$machineId': typeof AuthedMachinesMachineIdRoute
   '/_authed/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
@@ -247,6 +256,7 @@ export interface FileRouteTypes {
     | '/machines/$machineId'
     | '/projects/$projectId'
     | '/api/auth/$'
+    | '/api/remote/agent'
     | '/api/worker/close'
     | '/api/worker/enroll'
     | '/api/worker/exchange'
@@ -269,6 +279,7 @@ export interface FileRouteTypes {
     | '/agents/$agentProfileId'
     | '/machines/$machineId'
     | '/api/auth/$'
+    | '/api/remote/agent'
     | '/api/worker/close'
     | '/api/worker/enroll'
     | '/api/worker/exchange'
@@ -294,6 +305,7 @@ export interface FileRouteTypes {
     | '/_authed/machines/$machineId'
     | '/_authed/projects/$projectId'
     | '/api/auth/$'
+    | '/api/remote/agent'
     | '/api/worker/close'
     | '/api/worker/enroll'
     | '/api/worker/exchange'
@@ -316,6 +328,7 @@ export interface RootRouteChildren {
   ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiRemoteAgentRoute: typeof ApiRemoteAgentRoute
   ApiWorkerCloseRoute: typeof ApiWorkerCloseRoute
   ApiWorkerEnrollRoute: typeof ApiWorkerEnrollRoute
   ApiWorkerExchangeRoute: typeof ApiWorkerExchangeRoute
@@ -420,6 +433,13 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/remote/agent': {
+      id: '/api/remote/agent'
+      path: '/api/remote/agent'
+      fullPath: '/api/remote/agent'
+      preLoaderRoute: typeof ApiRemoteAgentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/worker/close': {
@@ -586,6 +606,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDiagnosticsRoute: ApiDiagnosticsRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiRemoteAgentRoute: ApiRemoteAgentRoute,
   ApiWorkerCloseRoute: ApiWorkerCloseRoute,
   ApiWorkerEnrollRoute: ApiWorkerEnrollRoute,
   ApiWorkerExchangeRoute: ApiWorkerExchangeRoute,

@@ -11,12 +11,9 @@ import {
 } from "../contracts/worker";
 import type { WorkerExchangeResponse } from "../contracts/worker";
 import type { WorkerSession } from "../contracts/worker-session";
-import type { RemoteExchangeInput } from "../contracts/remote";
 import type { Identity } from "./identity";
+import { RemoteDispatcher } from "./remote";
 import { probeCapability, probeDirectory } from "./probes";
-
-/** 执行器与报告提交属于 worker/tools 单元；本客户端只发送空入站批次。 */
-const EMPTY_REMOTE: RemoteExchangeInput = { results: [], fenceAcks: [] };
 
 export class ClientError extends Error {
   constructor(readonly code: string) {
@@ -24,7 +21,13 @@ export class ClientError extends Error {
     this.name = "ClientError";
   }
 }
-function post<S extends z.ZodType>(identity: Identity, path: string, payload: object, schema: S) {
+function post<S extends z.ZodType>(
+  identity: Identity,
+  path: string,
+  payload: object,
+  schema: S,
+  onDisconnect?: () => void,
+) {
   return Effect.tryPromise({
     try: async (signal) => {
       const response = await fetch(`${identity.server}/api/worker/${path}`, {
@@ -47,7 +50,10 @@ function post<S extends z.ZodType>(identity: Identity, path: string, payload: ob
       }
       return result;
     },
-    catch: (error) => (error instanceof ClientError ? error : new ClientError("network")),
+    catch: (error) => {
+      onDisconnect?.();
+      return error instanceof ClientError ? error : new ClientError("network");
+    },
   });
 }
 const backoff = Schedule.exponential("500 millis").pipe(
@@ -64,8 +70,9 @@ function request<S extends z.ZodType>(
   path: string,
   payload: object,
   schema: S,
+  onDisconnect?: () => void,
 ) {
-  return post(identity, path, payload, schema).pipe(
+  return post(identity, path, payload, schema, onDisconnect).pipe(
     Effect.flatMap((result) => {
       const response = result as { ok: boolean; error?: { code: string } };
       return response.ok
@@ -91,14 +98,16 @@ export function workerProgram(identity: Identity) {
   return Effect.scoped(
     Effect.gen(function* () {
       let session: WorkerSession | undefined;
-      yield* Effect.addFinalizer(() =>
-        session
+      let dispatcher: RemoteDispatcher | undefined;
+      yield* Effect.addFinalizer(() => {
+        dispatcher?.disconnect();
+        return session
           ? post(identity, "close", { session }, workerCloseResponseSchema).pipe(
               Effect.timeout("2 seconds"),
               Effect.ignore,
             )
-          : Effect.void,
-      );
+          : Effect.void;
+      });
       while (true) {
         const attemptId = randomUUID();
         const opened = yield* request(
@@ -126,15 +135,21 @@ export function workerProgram(identity: Identity) {
           try: () => probeCapability(capabilityCheckedAt),
           catch: () => new ClientError("probe_failed"),
         });
+        dispatcher = new RemoteDispatcher(session, capability, () =>
+          Effect.runSync(Clock.currentTimeMillis),
+        );
         let configuration:
           | Extract<WorkerExchangeResponse, { ok: true }>["data"]["configuration"]
           | undefined;
         let seq = 1;
+        let draining = false;
+        let drainAdvanced = false;
         while (true) {
           const checkedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
           const observations = yield* Effect.tryPromise({
             try: () => {
-              if (!configuration || configuration.root === null) return Promise.resolve([]);
+              if (draining || !configuration || configuration.root === null)
+                return Promise.resolve([]);
               const { root, rootRevision, bindings } = configuration;
               return Promise.all(
                 bindings.map((binding) =>
@@ -147,41 +162,54 @@ export function workerProgram(identity: Identity) {
           const exchanged = yield* request(
             identity,
             "exchange",
-            {
-              mode: "normal",
-              session,
-              seq,
-              capability,
-              observations,
-              remote: EMPTY_REMOTE,
-            },
+            draining
+              ? { mode: "drain", session, seq, remote: dispatcher.outgoing() }
+              : {
+                  mode: "normal",
+                  session,
+                  seq,
+                  capability,
+                  observations,
+                  remote: dispatcher.outgoing(),
+                },
             workerExchangeResponseSchema,
+            () => dispatcher?.disconnect(),
           ).pipe(Effect.result);
           if (exchanged._tag === "Failure") {
-            if (exchanged.failure.code === "stale") {
-              // 旧连接不得重新获得 normal 执行权：先用原 session 走一次 drain，再重新 open。
-              // 本单元的 Worker 尚未接收任何 delivery，drain 的入站批次为空。
-              configuration = undefined;
-              yield* request(
-                identity,
-                "exchange",
-                { mode: "drain", session, seq, remote: EMPTY_REMOTE },
-                workerExchangeResponseSchema,
-              ).pipe(Effect.timeout("2 seconds"), Effect.ignore);
-              session = undefined;
-              break;
+            // A lost normal response may already occupy this seq. Drain skips that
+            // committed frame once; it never retries a command under a new identity.
+            if (draining && exchanged.failure.code === "conflict" && !drainAdvanced) {
+              drainAdvanced = true;
+              seq += 1;
+              continue;
             }
-            if (exchanged.failure.code === "conflict") configuration = undefined;
-            else return yield* Effect.fail(exchanged.failure);
+            if (
+              !draining &&
+              (exchanged.failure.code === "stale" ||
+                exchanged.failure.code === "superseded" ||
+                exchanged.failure.code === "conflict")
+            ) {
+              dispatcher.disconnect();
+              configuration = undefined;
+              draining = true;
+              continue; // A changed root/configuration also requires a fresh normal session.
+            }
+            dispatcher.disconnect();
+            return yield* Effect.fail(exchanged.failure);
           } else {
             if (!exchanged.success.ok)
               return yield* Effect.fail(new ClientError("invalid_response"));
-            if (exchanged.success.data.mode !== "normal") {
-              configuration = undefined;
+            const data = exchanged.success.data;
+            yield* Effect.try({
+              try: () => dispatcher!.accept(data, seq, observations),
+              catch: () => new ClientError("invalid_response"),
+            });
+            configuration = exchanged.success.data.configuration;
+            if (draining && dispatcher.drained) {
               session = undefined;
               break;
             }
-            configuration = exchanged.success.data.configuration;
+            if (dispatcher.admissionClosed) draining = true;
             console.log(
               JSON.stringify({
                 event: "worker.exchange",
