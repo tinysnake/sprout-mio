@@ -33,6 +33,8 @@ export class PiSessionProcess {
   private exiting = false;
   private closing: Promise<void> | undefined;
   private exit: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
+  private disposed = false;
+  private disposeCallbacks = new Set<() => void>();
   onDelivered: ((messageId: string) => void) | undefined;
   onRejected: ((messageId: string, reason: string) => void) | undefined;
 
@@ -56,6 +58,7 @@ export class PiSessionProcess {
         done({ code: 1, signal: null });
       });
       this.child.once("exit", (code, signal) => {
+        this.dispose();
         if (!this.exiting || code !== 0 || signal)
           this.fail(new PiHostFailure("runner_crashed", "Pi runner 异常退出"));
         done({ code, signal });
@@ -67,7 +70,26 @@ export class PiSessionProcess {
     return this.child.pid;
   }
 
+  onDispose(callback: () => void): void {
+    if (this.disposed) callback();
+    else this.disposeCallbacks.add(callback);
+  }
+
+  private dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const callback of this.disposeCallbacks) {
+      try {
+        callback();
+      } catch {
+        this.fail(new PiHostFailure("grant_revoke_failed", "远端工具授权撤销失败"));
+      }
+    }
+    this.disposeCallbacks.clear();
+  }
+
   private fail(error: Error): void {
+    this.dispose();
     this.fatal ??= error;
     for (const waiter of this.waiters) {
       clearTimeout(waiter.timer);
@@ -182,6 +204,7 @@ export class PiSessionProcess {
   }
 
   abortSession(): void {
+    this.dispose();
     try {
       this.send({ type: "abort", id: this.id });
     } catch {
@@ -194,6 +217,7 @@ export class PiSessionProcess {
   }
 
   private async closeProcess(): Promise<void> {
+    this.dispose();
     this.exiting = true;
     if (this.child.exitCode === null && this.child.signalCode === null) {
       // 故障发生后也要发送 close，不能让 fatal 阻断清理。

@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { registerHooks } from "node:module";
+import { createRequire, registerHooks } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const input = createInterface({ input: process.stdin });
 const line = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
@@ -127,6 +127,20 @@ async function open(config) {
   const controlledDir = join(config.cwd, ".sprout-pi");
   mkdirSync(controlledDir, { recursive: true, mode: 0o700 });
   const { default: sproutExtension } = await import(pathToFileURL(config.extensionPath).href);
+  // Use the same TypeScript loader as the installed SDK for shared contract imports.
+  const sdkRequire = createRequire(join(root, "package.json"));
+  const { createJiti } = await import(pathToFileURL(sdkRequire.resolve("jiti")).href);
+  const jiti = createJiti(import.meta.url);
+  const { createRemoteClient } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/remote-client.ts"),
+  );
+  const { registerRemoteTools } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/remote-tools.ts"),
+  );
+  const { remoteToolInputSchemas } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/remote.ts"),
+  );
+  const remoteClient = createRemoteClient(config.remote);
   const resourceLoader = new sdk.DefaultResourceLoader({
     cwd: config.cwd,
     agentDir: controlledDir,
@@ -136,7 +150,15 @@ async function open(config) {
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    extensionFactories: [{ name: "sprout-extension", factory: sproutExtension }],
+    extensionFactories: [
+      {
+        name: "sprout-extension",
+        factory: (pi) => {
+          sproutExtension(pi);
+          registerRemoteTools(pi, remoteClient);
+        },
+      },
+    ],
     systemPrompt: config.profile.persona,
   });
   await resourceLoader.reload();
@@ -160,7 +182,7 @@ async function open(config) {
     modelRuntime: runtime,
     model,
     thinkingLevel: thinking,
-    tools: ["read", "bash", "edit", "write"],
+    tools: ["read", "bash", "edit", "write", ...Object.keys(remoteToolInputSchemas)],
     resourceLoader,
     settingsManager,
     sessionManager: manager,

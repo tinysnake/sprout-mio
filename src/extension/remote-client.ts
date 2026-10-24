@@ -1,0 +1,167 @@
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { z } from "zod";
+import { leaseMutationViewSchema, leaseViewSchema } from "../contracts/lease";
+import { APP_ERROR_CODES } from "../contracts/result";
+import type { AppResult } from "../contracts/result";
+import {
+  executionViewSchema,
+  remoteAgentRequestSchema,
+  remoteToolGrantSchema,
+} from "../contracts/remote";
+import type { RemoteAgentRequest, RemoteToolGrant } from "../contracts/remote";
+
+const envelopeSchema = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), data: z.unknown(), requestId: z.string() }),
+  z.strictObject({
+    ok: z.literal(false),
+    error: z.strictObject({
+      code: z.enum(APP_ERROR_CODES),
+      message: z.string(),
+      requestId: z.string(),
+    }),
+    requestId: z.string(),
+  }),
+]);
+const leaseReadSchema = z.strictObject({
+  lease: leaseViewSchema,
+  mutation: leaseMutationViewSchema.nullable(),
+});
+type RemoteData =
+  | z.infer<typeof executionViewSchema>
+  | z.infer<typeof leaseMutationViewSchema>
+  | z.infer<typeof leaseReadSchema>;
+export type RemoteToolResponse =
+  | { outcome: "response"; result: AppResult<RemoteData> }
+  | {
+      outcome: "unknown";
+      reason: "transport_timeout" | "cancelled" | "transport_error" | "invalid_response";
+    };
+export interface RemoteToolClient {
+  readonly projectId: string;
+  request(request: RemoteAgentRequest, signal?: AbortSignal): Promise<RemoteToolResponse>;
+}
+
+function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolResponse {
+  const envelope = envelopeSchema.safeParse(value);
+  if (!envelope.success) return { outcome: "unknown", reason: "invalid_response" };
+  if (!envelope.data.ok) return { outcome: "response", result: envelope.data };
+  const { call } = request;
+  const schema =
+    call.type === "lease_mutate"
+      ? leaseMutationViewSchema
+      : call.type === "lease_get"
+        ? leaseReadSchema
+        : executionViewSchema;
+  const parsed = schema.safeParse(envelope.data.data);
+  if (!parsed.success) return { outcome: "unknown", reason: "invalid_response" };
+  const data = parsed.data;
+  const identity = "lease" in data ? data.lease : data;
+  if (identity.projectId !== call.input.projectId || identity.machineId !== call.input.machineId)
+    return { outcome: "unknown", reason: "invalid_response" };
+  if (
+    ("lease" in data &&
+      data.mutation !== null &&
+      (data.mutation.projectId !== call.input.projectId ||
+        data.mutation.machineId !== call.input.machineId)) ||
+    (call.type === "execution_get" &&
+      "executionId" in data &&
+      data.executionId !== call.input.executionId) ||
+    (call.type === "execution_submit" &&
+      "executionId" in data &&
+      (data.requestId !== call.input.requestId ||
+        data.authorizationGeneration !== call.input.authorizationGeneration ||
+        data.operation.kind !== call.input.operation.kind))
+  )
+    return { outcome: "unknown", reason: "invalid_response" };
+  return {
+    outcome: "response",
+    result: { ok: true, data, requestId: envelope.data.requestId },
+  };
+}
+
+/** Direct HTTP deliberately bypasses environment/global fetch proxies and never follows redirects. */
+export function createRemoteClient(
+  config: RemoteToolGrant,
+  { timeoutMs = 15000 }: { timeoutMs?: number } = {},
+): RemoteToolClient {
+  const { endpoint, secret, projectId } = remoteToolGrantSchema.parse(config);
+  const url = new URL(endpoint);
+  return {
+    projectId,
+    async request(input, signal) {
+      const parsed = remoteAgentRequestSchema.safeParse(input);
+      if (!parsed.success) return { outcome: "unknown", reason: "invalid_response" };
+      const body = JSON.stringify(parsed.data);
+      return new Promise<RemoteToolResponse>((resolve) => {
+        let finished = false;
+        const finish = (result: RemoteToolResponse) => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", abort);
+          resolve(result);
+        };
+        const controller = new AbortController();
+        const abort = () => {
+          finish({ outcome: "unknown", reason: "cancelled" });
+          controller.abort();
+        };
+        const timer = setTimeout(() => {
+          finish({ outcome: "unknown", reason: "transport_timeout" });
+          controller.abort();
+        }, timeoutMs);
+        if (signal?.aborted) return abort();
+        signal?.addEventListener("abort", abort, { once: true });
+        const send = url.protocol === "https:" ? httpsRequest : httpRequest;
+        const req = send(
+          url,
+          {
+            method: "POST",
+            signal: controller.signal,
+            headers: {
+              authorization: `Bearer ${secret}`,
+              "content-type": "application/json",
+              "content-length": Buffer.byteLength(body),
+            },
+          },
+          (response) => {
+            const chunks: Buffer[] = [];
+            let size = 0;
+            response.on("data", (chunk: Buffer) => {
+              size += chunk.length;
+              if (size > 512 * 1024) {
+                finish({ outcome: "unknown", reason: "invalid_response" });
+                response.destroy();
+              } else chunks.push(chunk);
+            });
+            response.on("error", () => finish({ outcome: "unknown", reason: "transport_error" }));
+            response.on("end", () => {
+              try {
+                if (response.statusCode !== 200 && response.statusCode !== 401) {
+                  finish({ outcome: "unknown", reason: "invalid_response" });
+                  return;
+                }
+                const result = readResponse(
+                  JSON.parse(Buffer.concat(chunks).toString("utf8")),
+                  parsed.data,
+                );
+                if (
+                  response.statusCode === 401 &&
+                  result.outcome === "response" &&
+                  result.result.ok
+                )
+                  finish({ outcome: "unknown", reason: "invalid_response" });
+                else finish(result);
+              } catch {
+                finish({ outcome: "unknown", reason: "invalid_response" });
+              }
+            });
+          },
+        );
+        req.on("error", () => finish({ outcome: "unknown", reason: "transport_error" }));
+        req.end(body);
+      });
+    },
+  };
+}
