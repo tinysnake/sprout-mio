@@ -254,8 +254,9 @@ try {
   assert.match(heldTurn.workspace.source, /p3d-main/)
   assert.equal(heldTurn.injectedIntoPrompt, false, 'turn context declares it is not injected into the model prompt')
   assert.deepEqual(heldHub.machines, [], 'unbound Project has a real empty Machine collection')
-  assert.equal(heldHub.leases.available, false, 'leases stay explicitly unavailable')
-  assert.match(heldHub.leases.reason, /P4b/)
+  // P4b 之后 leases 是真实只读投影：available 恒为 true，无租约时 items 为空数组。
+  assert.equal(heldHub.leases.available, true, 'leases are a real always-available projection')
+  assert.deepEqual(heldHub.leases.items, [], 'unbound Project has a real empty lease list')
   pass('active run view: real status, pending input not shown as delivered, turn workspace from run provenance', {
     runId: slowRun.id, pendingInputs: heldInfo.runs.active[0].pendingInputs, commit: heldTurn.workspace.commit, fresh: heldTurn.workspace.fresh,
   })

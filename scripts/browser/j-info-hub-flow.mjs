@@ -235,32 +235,51 @@ await check("hub_agents_panel_lists_only_member_with_dm_link", async () => {
   );
 });
 
-await check("unavailable_notices_render_explicitly", async () => {
+await check("lease_facts_render_real_state", async () => {
+  // P4b 之后租约区投影真实 machine_lease 事实：这里没有租约，渲染明确空态与可操作表单，
+  // 不再是「未实现」占位。原断言保护的 Info Hub 真实集合、无成功空值文案与可达性全部保留。
   await openProjectInfoHub(page);
-  const notices = await page.evaluate(() => ({
-    leasesReason: document.querySelector('[data-testid="info-hub-leases-notice-reason"]')
-      ?.textContent,
+  const leaseFacts = await page.evaluate(() => ({
+    leasesSection: document.querySelector('[data-testid="info-hub-leases"]')?.textContent?.trim(),
+    leasesEmpty: document.querySelector('[data-testid="info-hub-leases-empty"]')?.textContent,
+    leasesList: document.querySelector('[data-testid="info-hub-leases-list"]')?.textContent,
+    mutationForm: document
+      .querySelector('[data-testid="info-hub-leases-mutation"]')
+      ?.textContent?.trim(),
+    mutationMachine: document.querySelectorAll(
+      '[data-testid="info-hub-leases-mutation-machine"] option',
+    ).length,
+    staleNoticeBadges: [
+      ...document.querySelectorAll('[data-testid="info-hub-leases-notice-badge"]'),
+    ].map((node) => node.textContent?.trim()),
+    bindings: [...document.querySelectorAll('[data-testid="info-hub-machine-binding"]')].length,
+    machineItems: [...document.querySelectorAll('[data-testid="machine-item"]')].length,
+    machineEmpty: document.querySelector('[data-testid="machine-empty"]')?.textContent,
     runsHostStatus: document.querySelector('[data-testid="info-hub-project-runs-host-status"]')
       ?.textContent,
     runsActive: document.querySelector('[data-testid="info-hub-project-runs-active"]')?.textContent,
-    badges: [...document.querySelectorAll('[data-testid="info-hub-leases-notice-badge"]')].map(
-      (node) => node.textContent?.trim(),
-    ),
     body: document.body.innerText,
   }));
   record(
-    "unavailable_notices_render_explicitly",
-    /P4b/.test(notices.leasesReason ?? "") &&
-      (await page.getByTestId("info-hub-project-machines").count()) === 1 &&
-      notices.badges.length === 1 &&
-      notices.badges[0] === "未实现" &&
-      /宿主(已|未)启用/.test(notices.runsHostStatus ?? "") &&
-      /排队中|运行中/.test(notices.runsActive ?? "") &&
-      (notices.runsActive ?? "").includes("未投递") &&
-      !notices.body.includes("0 个活动 run") &&
-      !notices.body.includes("无活动 run") &&
-      !notices.body.includes("无 Machine"),
-    `runs 与 Machines 返回真实集合，租约未实现 ${JSON.stringify(notices.leasesReason)}`,
+    "lease_facts_render_real_state",
+    (await page.getByTestId("info-hub-project-machines").count()) === 1 &&
+      Boolean(leaseFacts.leasesSection) &&
+      (leaseFacts.leasesEmpty ?? "").includes("还没有租约记录") &&
+      !leaseFacts.leasesList &&
+      Boolean(leaseFacts.mutationForm) &&
+      (leaseFacts.mutationForm ?? "").includes("申请与释放") &&
+      leaseFacts.mutationMachine >= 1 &&
+      leaseFacts.staleNoticeBadges.length === 0 &&
+      !leaseFacts.body.includes("租约尚未实现") &&
+      (leaseFacts.machineItems >= 1 ||
+        (leaseFacts.machineEmpty ?? "").includes("还没有绑定 Machine")) &&
+      /宿主(已|未)启用/.test(leaseFacts.runsHostStatus ?? "") &&
+      /排队中|运行中/.test(leaseFacts.runsActive ?? "") &&
+      (leaseFacts.runsActive ?? "").includes("未投递") &&
+      !leaseFacts.body.includes("0 个活动 run") &&
+      !leaseFacts.body.includes("无活动 run") &&
+      !leaseFacts.body.includes("无 Machine"),
+    `租约区是真实事实（空态 + 申请与释放表单），runs 宿主 ${leaseFacts.runsHostStatus}，无「未实现」占位 ${JSON.stringify(leaseFacts.staleNoticeBadges)}`,
   );
 });
 

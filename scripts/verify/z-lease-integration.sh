@@ -3,6 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 # Production page -> authenticated Chat turn -> real Pi remote tool -> macOS Worker.
 # Private SQLite, credentials, session transcripts and operation output stay in mktemp.
+source "$(dirname "$0")/lib/ensure-worker-artifact.sh"
+ensure_worker_artifact
 node --input-type=module <<'NODE'
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';

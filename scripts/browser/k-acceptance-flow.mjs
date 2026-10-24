@@ -154,10 +154,18 @@ async function unavailable(page, target) {
   const body = await page.locator("body").innerText();
   assert(!/0 个活动 run|无活动 run|无 Machine/.test(body));
   if (target.key === "settings") {
+    // P4b 之后租约区投影真实事实：这里没有租约，渲染明确空态与申请/释放表单，不再是「未实现」占位。
+    // 原断言保护的 Info Hub 真实集合、无成功空值文案与宿主状态全部保留。
     await sameText(page, "info-hub-project-runs-host-status", "宿主未启用");
     await test(page, "info-hub-project-runs-active").waitFor();
-    await sameText(page, "info-hub-leases-notice-badge", "未实现");
-    assert.match(await test(page, "info-hub-leases-notice-reason").textContent(), /P4/);
+    await test(page, "info-hub-leases").waitFor();
+    await test(page, "info-hub-leases-empty").waitFor();
+    assert.match(await test(page, "info-hub-leases-empty").textContent(), /还没有租约记录/);
+    await test(page, "info-hub-leases-mutation").waitFor();
+    assert.match(await test(page, "info-hub-leases-mutation").textContent(), /申请与释放/);
+    assert.equal(await test(page, "info-hub-leases-notice-badge").count(), 0);
+    const infoHubBody = await test(page, "info-hub-project-machines").innerText();
+    assert.doesNotMatch(infoHubBody, /未实现|租约尚未实现/);
   }
   if (target.key === "chat") {
     await sameText(page, "info-chat-runs-host-status", "宿主未启用");
