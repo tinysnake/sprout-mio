@@ -88,7 +88,7 @@ node scripts/browser/p4a-machine-scenes.mjs
 | 格式与静态检查 | `pnpm check`                                  | 0 error，2 条既存 warning（其中一条 `scripts/ui-review/review.mjs` 为基线自带） |
 | 类型           | `pnpm typecheck`                              | 通过                                                                            |
 | 单元测试       | `npx vp test run tests/machine-view.test.ts`  | 6/6                                                                             |
-| 全量测试       | `pnpm test`                                   | 见 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-ui-report.md`                                               |
+| 全量测试       | `pnpm test`                                   | 见 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-ui-report.md`  |
 | 浏览器         | `node scripts/browser/p4a-machine-scenes.mjs` | 19/19 PASS                                                                      |
 
 浏览器脚本断言：列表状态文案不出现“空闲/已释放”；详情分离配对与连接；Shell 能力来自 `CapabilitySnapshot`；安装命令不含 `--ticket`，票据默认隐藏且长度 43；空说明可保存且显示“（无说明）”，修改 root 后旧 root revision 的目录观察不再标记“当前可达”；绑定保存后显示 description revision，root 保存成功声明仍需等待 Worker 观察；新增 root 失败草稿与冲突后重试、清空 root 和两个 Project 派生路径不同两项检查；保存/创建失败保留输入；续签抛网络错误时显示安全错误、pending 恢复且异常细节不外泄；续签后切到另一台 Machine 不出现前一台的票据；待配对转已配对后旧票据消失；active 无续签；390 浅色与暗色均无横向溢出，滚动展示绑定与安装区，长命令可滚动到末尾，演示控制不再固定覆盖底栏；纯演示没有 `/api/` 或 `/_server` 请求；既有 Agents 场景仍可用。
