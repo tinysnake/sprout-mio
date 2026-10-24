@@ -62,7 +62,7 @@ describe("工具链接口门禁", () => {
   });
 
   it("review 端口探测区分不可达、正常与僵死，且不经过宿主代理", async () => {
-    const modulePath = new URL("../scripts/ui-review/review.mjs", import.meta.url).href;
+    const modulePath = new URL("../scripts/human-review/review.mjs", import.meta.url).href;
     const { probeHealth } = (await import(/* @vite-ignore */ modulePath)) as {
       probeHealth: (port: number, timeout?: number) => Promise<"ok" | "stale" | "down">;
     };

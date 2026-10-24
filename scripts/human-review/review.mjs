@@ -28,7 +28,7 @@ export function localHostname(hostname) {
 
 /** 应用 origin 依次取进程环境、仓库 env 文件与本地开发默认端口。 */
 export async function appOrigin() {
-  if (process.env.SPROUT_REVIEW_APP) return process.env.SPROUT_REVIEW_APP;
+  if (process.env.SPROUT_HUMAN_REVIEW_APP) return process.env.SPROUT_HUMAN_REVIEW_APP;
   if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN;
   for (const file of [".env.local", ".env"]) {
     let text;
@@ -81,7 +81,7 @@ export function adaptHtml(html, appUrl, key) {
   html = replaceOnce(
     html,
     '<script src="/chrome-client.js"',
-    '<script src="/sprout-review.js"></script><script src="/chrome-client.js"',
+    '<link rel="stylesheet" href="/sprout-human-review.css"><script src="/sprout-human-review.js"></script><script src="/chrome-client.js"',
   );
   return html;
 }
@@ -220,10 +220,7 @@ async function lavishState(port) {
   return state === "ok" ? "occupied" : state === "stale" ? "stale" : "free";
 }
 
-/**
- * 自动挑一对可用端口：从请求的端口开始逐个后移，跳过被占、僵死或被应用占用的端口。
- * 供不需要手动处理端口的调用方（Pi 工具）使用；显式端口仍走严格校验。
- */
+/** 从请求端口起挑一对空闲端口，避开应用、已有服务与僵死监听。 */
 export async function choosePorts({ port, lavishPort, exclude = [], limit = 40 }) {
   for (let offset = 0; offset < limit; offset++) {
     const candidate = { port: port + offset, lavishPort: lavishPort + offset, shifted: offset > 0 };
@@ -243,7 +240,6 @@ export async function startReview({
   lavishPort = 4401,
   autoPorts = false,
   stateDir,
-  onStatus = () => {},
 }) {
   const app = new URL(await resolveAppUrl(url));
   for (const number of [port, lavishPort]) {
@@ -260,7 +256,7 @@ export async function startReview({
   const host = "0.0.0.0";
   const origin = `http://${app.hostname}:${port}`;
   const upstream = `http://127.0.0.1:${lavishPort}`;
-  const state = path.resolve(stateDir || `.verify/ui-review/${port}`);
+  const state = path.resolve(stateDir || `.verify/human-review/${port}`);
   const file = path.join(state, "review.html");
   const bin = await executable("lavish-axi");
   const version = (await exec(bin, ["--version"], { timeout: 10000 })).stdout.trim();
@@ -278,23 +274,20 @@ export async function startReview({
   await mkdir(state, { recursive: true });
   let backend,
     server,
-    activePoll,
-    pollLoop,
     closed = false;
   let key = "",
     reviewUrl = "";
   const sockets = new Set();
   /** 异常退出（未走到 stop）时尽量收拾自有子进程，避免留下占端口的 Lavish。 */
   const emergency = () => {
-    for (const child of [activePoll?.child, backend?.child])
-      if (child && child.exitCode === null && !child.signalCode) child.kill("SIGKILL");
+    if (backend && backend.child.exitCode === null && !backend.child.signalCode)
+      backend.child.kill("SIGKILL");
   };
   process.on("exit", emergency);
   const stop = async () => {
     if (closed) return;
     closed = true;
     process.off("exit", emergency);
-    await terminate(activePoll?.child);
     for (const socket of sockets) socket.destroy();
     if (server?.listening) await new Promise((resolve) => server.close(resolve));
     await terminate(backend?.child);
@@ -309,12 +302,12 @@ export async function startReview({
     if (existing === "ok")
       throw new Error(
         `Lavish 端口 ${lavishPort} 已占用（实例在响应 /health）；不接管其他进程。` +
-          `先 ${inspect(lavishPort)} 确认归属，或让工具自动换端口（autoPorts）。`,
+          `先 ${inspect(lavishPort)} 确认归属，或改用 CLI 默认的自动端口选择。`,
       );
     if (existing === "stale")
       throw new Error(
         `Lavish 端口 ${lavishPort} 已占用，但 1.5 秒内没有响应 /health（常见于上次 review 留下的僵死进程）。` +
-          `用 ${inspect(lavishPort)} 查 PID，确认是 lavish-axi 后 kill；或让工具自动换端口（autoPorts）。`,
+          `用 ${inspect(lavishPort)} 查 PID，确认是 lavish-axi 后 kill；或改用 CLI 默认的自动端口选择。`,
       );
     server = createServer(async (req, res) => {
       if (!allowedRequest(req, port)) {
@@ -327,9 +320,13 @@ export async function startReview({
         res.writeHead(302, { location: `${requestedOrigin}/session/${key}?no-gate=1` }).end();
         return;
       }
-      if (pathname === "/sprout-review.js") {
-        res.writeHead(200, { "content-type": "text/javascript", "cache-control": "no-store" });
-        res.end(await readFile(path.join(here, "browser.js"), "utf8"));
+      const asset = {
+        "/sprout-human-review.js": ["browser.js", "text/javascript"],
+        "/sprout-human-review.css": ["browser.css", "text/css"],
+      }[pathname];
+      if (asset) {
+        res.writeHead(200, { "content-type": asset[1], "cache-control": "no-store" });
+        res.end(await readFile(path.join(here, asset[0]), "utf8"));
         return;
       }
       const headers = {
@@ -392,7 +389,7 @@ export async function startReview({
         remote.write(
           `${req.method} ${req.url} HTTP/1.1\r\n` +
             Object.entries(headers)
-              .map(([k, v]) => `${k}: ${v}`)
+              .map(([k, v]) => `${k}: ${String(v)}`)
               .join("\r\n") +
             "\r\n\r\n",
         );
@@ -428,7 +425,7 @@ export async function startReview({
     } catch {
       await writeFile(
         file,
-        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Sprout UI Review</title></head><body><main><h1>Sprout UI Review</h1><p>可信本地应用预览的会话锚点，页面实现在 Sprout 仓库。</p></main></body></html>',
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Sprout Human Review</title></head><body><main><h1>Sprout Human Review</h1><p>可信本地应用预览的会话锚点，页面实现在 Sprout 仓库。</p></main></body></html>',
       );
     }
     const opened = await cli([file, "--no-open", "--no-gate"]);
@@ -437,6 +434,8 @@ export async function startReview({
     key = new URL(opened.session.url).pathname.split("/").pop();
     reviewUrl = `${origin}/session/${key}?no-gate=1`;
     const descriptor = {
+      pid: process.pid,
+      lavishBin: bin,
       url: reviewUrl,
       appUrl: app.href,
       ports: { port, lavishPort, adjusted: chosen.shifted },
@@ -449,34 +448,7 @@ export async function startReview({
       },
     };
     await writeFile(path.join(state, "session.json"), JSON.stringify(descriptor, null, 2) + "\n");
-    const watch = (onFeedback) => {
-      if (pollLoop) throw new Error("当前 review 已有监听器");
-      pollLoop = (async () => {
-        while (!closed) {
-          activePoll = spawnCaptured(bin, ["poll", file], env);
-          let result;
-          try {
-            result = await activePoll.done;
-          } catch (error) {
-            if (!closed) onStatus(error.message);
-            break;
-          }
-          if (closed) break;
-          const response = decode(result.stdout);
-          const receipt = path.join(state, `feedback-${Date.now()}.json`);
-          await writeFile(receipt, JSON.stringify(response, null, 2) + "\n");
-          await onFeedback(response, receipt);
-          if (response.session?.status !== "feedback" || response.session?.session_ended) break;
-        }
-      })().catch((error) => onStatus(error.message));
-      return pollLoop;
-    };
-    return {
-      ...descriptor,
-      stop,
-      watch,
-      reply: (text) => cli(["reply", file, "--agent-reply", text]),
-    };
+    return { ...descriptor, stop };
   } catch (error) {
     await stop();
     throw error;

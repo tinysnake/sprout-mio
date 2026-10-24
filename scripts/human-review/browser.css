@@ -1,0 +1,106 @@
+#annotation,
+#copySnapshot,
+#exportArtifact,
+#shareArtifact,
+#warningsWrap,
+#revisionsWrap {
+  display: none !important;
+}
+#chatLog:empty::before {
+  content: "用 DOM Capture 选择元素，把 ID / DOM path、截图和修改说明贴在下方。";
+}
+#chatLog .bubble {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.human-review-toolbar {
+  height: auto;
+  min-height: 52px;
+  padding-block: 8px;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+}
+.human-review-toolbar label,
+.human-review-dimensions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.human-review-toolbar select,
+.human-review-toolbar input,
+.human-review-toolbar button {
+  height: 32px;
+  padding: 4px 8px;
+  border: var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--fg);
+  font: inherit;
+}
+.human-review-toolbar input {
+  width: 74px;
+}
+.human-review-toolbar button,
+.human-review-toolbar select {
+  cursor: pointer;
+}
+.human-review-toolbar :disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#sprout-human-review-viewport {
+  margin-inline-start: auto;
+  font: var(--text-sm) var(--font-mono);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+body.lavish .layout {
+  height: calc(var(--vv-height, 100dvh) - var(--bar-h) - var(--human-review-toolbar-h, 0px));
+}
+.human-review-stage {
+  display: flex;
+  overflow: auto;
+  min-height: 0;
+  min-width: 0;
+  box-sizing: border-box;
+  background: var(--bg);
+}
+.human-review-stage[data-viewport-mode="fixed"] {
+  padding: 16px;
+}
+.human-review-canvas {
+  position: relative;
+  flex: none;
+  margin: auto;
+  overflow: hidden;
+}
+.human-review-stage[data-viewport-mode="fixed"] .human-review-canvas {
+  outline: var(--hairline);
+}
+.human-review-canvas #artifact {
+  position: absolute;
+  inset: 0 auto auto 0;
+  max-width: none;
+  max-height: none;
+  transform-origin: top left;
+}
+@media (max-width: 860px) {
+  :root {
+    --sheet-top: max(
+      calc(
+        var(--bar-h) + var(--human-review-toolbar-h, 0px) + var(--sheet-peek) - var(--vv-top, 0px)
+      ),
+      var(--sheet-peek)
+    );
+  }
+}
+@media (max-width: 600px) {
+  .human-review-toolbar {
+    gap: 8px;
+  }
+  #sprout-human-review-viewport {
+    margin-inline-start: 0;
+  }
+}

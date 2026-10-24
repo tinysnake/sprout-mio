@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { execFile, spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import { promisify } from "node:util";
 import { createServer } from "node:http";
 import { cp, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -7,17 +10,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { allowedRequest, localAppUrl, startReview } from "./review.mjs";
 
+const exec = promisify(execFile);
+const cliPath = fileURLToPath(new URL("./cli.mjs", import.meta.url));
 const args = process.argv.slice(2);
 const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
 const extension = option("--dom-capture");
-const sdkDir = option("--pi-sdk");
 const host = option("--host") || "localhost";
 assert.ok(
   extension,
   "请通过 --dom-capture <扩展目录> 指定已支持 Copy ID / Copy DOM path 的 DOM Capture",
 );
-const root = await mkdtemp(path.join(os.tmpdir(), "sprout-ui-review-"));
-const evidence = path.resolve(option("--evidence") || ".verify/ui-review-evidence");
+const root = await mkdtemp(path.join(os.tmpdir(), "sprout-human-review-"));
+const evidence = path.resolve(option("--evidence") || ".verify/human-review-evidence");
 await mkdir(evidence, { recursive: true });
 const results = [];
 const pass = (name) => {
@@ -32,8 +36,18 @@ const until = async (check, label) => {
   }
   throw new Error(`等待超时：${label}`);
 };
-const deliveries = [];
-let context, review, session;
+let context, review, cli;
+const stop = async () => {
+  if (!cli || cli.exitCode !== null || cli.signalCode) return;
+  const closed = new Promise((resolve) => cli.once("close", resolve));
+  cli.kill("SIGTERM");
+  const timer = setTimeout(() => cli.kill("SIGKILL"), 5000);
+  try {
+    await closed;
+  } finally {
+    clearTimeout(timer);
+  }
+};
 const fixture = createServer((req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
   if (pathname === "/sign-in") {
@@ -51,12 +65,13 @@ const fixture = createServer((req, res) => {
     return;
   }
   res.setHeader("content-type", "text/html; charset=utf-8");
-  res.end(`<!doctype html><html lang="zh-CN"><head><title>UI review browser fixture</title></head><body>
+  res.end(`<!doctype html><html lang="zh-CN"><head><title>Human review browser fixture</title></head><body>
     <h1>${signedIn ? "已登录的设置页面" : "登录测试场景"}</h1>
     <p>仅用于验证开发工具，不是 Sprout 产品页面。</p>
     <form action="/sign-in"><button id="sign-in">登录</button></form>
     <a href="/settings" id="open-settings">设置</a> <a href="/next" id="open-next">下一页</a>
-    <button id="save:settings">保存设置</button></body></html>`);
+    <button id="save:settings">保存设置</button>
+    <label>草稿 <input id="review-draft"></label></body></html>`);
 });
 await new Promise((resolve) => fixture.listen(0, host, resolve));
 const appUrl = `http://${host}:${fixture.address().port}/login`;
@@ -104,77 +119,53 @@ try {
     );
   }
   pass("可信预览接受回环与内网地址，拒绝公网域名、凭据 URL 和非 HTTP 协议");
-  if (sdkDir) {
-    const sdk = await import(pathToFileURL(path.join(sdkDir, "dist/index.js")).href);
-    const settingsManager = sdk.SettingsManager.inMemory({
-      retry: { enabled: false },
-      compaction: { enabled: false },
+  cli = spawn(
+    process.execPath,
+    [
+      cliPath,
+      appUrl,
+      "--port",
+      String(port),
+      "--lavish-port",
+      String(lavishPort),
+      "--state-dir",
+      path.join(root, "state"),
+      "--strict-ports",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let stdout = "",
+    stderr = "",
+    launchError;
+  cli.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  cli.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  cli.once("error", (error) => {
+    launchError = error;
+  });
+  review = await until(async () => {
+    if (launchError) throw launchError;
+    if (cli.exitCode !== null) throw new Error(`CLI 提前退出：${stderr}`);
+    return stdout.includes("\n") && JSON.parse(stdout.split("\n")[0]);
+  }, "CLI 启动");
+  assert.equal(review.pid, cli.pid);
+  const descriptor = JSON.parse(await readFile(path.join(root, "state/session.json"), "utf8"));
+  assert.deepEqual(review, descriptor);
+  const require = createRequire(review.lavishBin);
+  const { decode } = await import(pathToFileURL(require.resolve("@toon-format/toon")).href);
+  const native = async (args, receipt) => {
+    const result = await exec(review.lavishBin, [...args, review.file], {
+      env: { ...process.env, ...review.env },
+      timeout: 15000,
+      maxBuffer: 8 * 1024 * 1024,
     });
-    const resourceLoader = new sdk.DefaultResourceLoader({
-      cwd: root,
-      agentDir: root,
-      settingsManager,
-      noExtensions: true,
-      noSkills: true,
-      noPromptTemplates: true,
-      noThemes: true,
-      noContextFiles: true,
-      additionalExtensionPaths: [fileURLToPath(new URL("./pi-extension.mjs", import.meta.url))],
-      extensionFactories: [
-        (pi) =>
-          pi.on("input", (event) => {
-            if (event.text.startsWith("来自当前 Sprout UI review 的反馈。")) {
-              deliveries.push(event.text);
-              return { action: "handled" };
-            }
-          }),
-      ],
-    });
-    await resourceLoader.reload();
-    assert.deepEqual(resourceLoader.getExtensions().errors, []);
-    const modelRuntime = await sdk.ModelRuntime.create({
-      authPath: path.join(root, "auth.json"),
-      modelsPath: path.join(root, "models.json"),
-    });
-    ({ session } = await sdk.createAgentSession({
-      cwd: root,
-      agentDir: root,
-      resourceLoader,
-      settingsManager,
-      modelRuntime,
-      sessionManager: sdk.SessionManager.inMemory(root),
-      noTools: true,
-    }));
-    await session.bindExtensions({});
-    process.env.SPROUT_REVIEW_PORT = String(port);
-    process.env.SPROUT_REVIEW_LAVISH_PORT = String(lavishPort);
-    process.env.SPROUT_REVIEW_STATE_DIR = path.join(root, "state");
-    const tool = resourceLoader
-      .getExtensions()
-      .extensions.flatMap((loaded) => [...loaded.tools.values()])
-      .find((registered) => registered.definition.name === "ui_review")?.definition;
-    assert.ok(tool, "扩展注册了 ui_review 工具");
-    const call = (params) => tool.execute("verify", params, undefined, undefined, undefined);
-    const started = await call({ action: "start", entry: appUrl });
-    assert.equal(started.isError, undefined, `ui_review start 失败：${started.content?.[0]?.text}`);
-    const descriptor = JSON.parse(await readFile(path.join(root, "state/session.json"), "utf8"));
-    review = {
-      ...descriptor,
-      stop: async () => void (await call({ action: "stop" })),
-      reply: async (text) => void (await call({ action: "reply", message: text })),
-    };
-  } else {
-    review = await startReview({
-      url: appUrl,
-      port,
-      lavishPort,
-      stateDir: path.join(root, "state"),
-      onStatus: (message) => console.error(message),
-    });
-    void review.watch((response, receipt) => {
-      deliveries.push({ response, receipt });
-    });
-  }
+    if (receipt) await writeFile(receipt, result.stdout);
+    return decode(result.stdout);
+  };
+  pass("真实 CLI 输出 PID、应用入口和独立 Lavish 描述符，无需加载 Pi 扩展");
   await assert.rejects(
     () =>
       startReview({
@@ -235,10 +226,132 @@ try {
   assert.equal(await page.locator("#artifact").getAttribute("sandbox"), null);
   const size = await frame.evaluate(() => `${innerWidth} × ${innerHeight}`);
   await until(
-    async () => (await page.locator("#sprout-review-viewport").innerText()).includes(size),
+    async () => (await page.locator("#sprout-human-review-viewport").innerText()).includes(size),
     "实际 frame 尺寸",
   );
   pass("可信 frame 保留 cookie、localStorage、登录刷新和前后退；显示实际视口且不污染应用 URL");
+
+  const device = page.getByRole("combobox", { name: "设备尺寸", exact: true });
+  const zoom = page.getByRole("combobox", { name: "预览缩放", exact: true });
+  const viewport = async (w, h) => {
+    await until(async () => {
+      const size = await frame.evaluate(() => [innerWidth, innerHeight]);
+      return size[0] === w && size[1] === h;
+    }, `应用视口 ${w} × ${h}`);
+    assert.ok(
+      (await page.locator("#sprout-human-review-viewport").innerText()).includes(`${w} × ${h}`),
+    );
+  };
+  await app.locator("#review-draft").fill("切换尺寸保留草稿");
+  const documentToken = await frame.evaluate(() => {
+    window.reviewDocumentToken = crypto.randomUUID();
+    return window.reviewDocumentToken;
+  });
+  for (const [w, h] of [
+    [390, 844],
+    [768, 1024],
+    [900, 900],
+    [901, 900],
+    [1199, 900],
+    [1200, 900],
+    [1920, 1080],
+  ]) {
+    await device.selectOption(`${w}x${h}`);
+    await viewport(w, h);
+    assert.deepEqual(
+      await frame.evaluate(() => [
+        matchMedia("(max-width: 900px)").matches,
+        matchMedia("(min-width: 1200px)").matches,
+      ]),
+      [w <= 900, w >= 1200],
+    );
+    if ([390, 768, 1920].includes(w)) {
+      await page.screenshot({ path: path.join(evidence, `viewport-${w}.png`) });
+    }
+  }
+  await device.selectOption("390x844");
+  await page.getByRole("button", { name: "旋转视口", exact: true }).click();
+  await viewport(844, 390);
+  await page.getByRole("spinbutton", { name: "视口宽度", exact: true }).fill("1376");
+  await page.getByRole("spinbutton", { name: "视口高度", exact: true }).fill("820");
+  await page.getByRole("button", { name: "应用", exact: true }).click();
+  await viewport(1376, 820);
+  await page.getByRole("spinbutton", { name: "视口宽度", exact: true }).fill("0");
+  await page.getByRole("button", { name: "应用", exact: true }).click();
+  assert.equal(
+    await page
+      .getByRole("spinbutton", { name: "视口宽度", exact: true })
+      .evaluate((input) => input.validity.rangeUnderflow),
+    true,
+  );
+  await viewport(1376, 820);
+  assert.equal(await frame.evaluate(() => window.reviewDocumentToken), documentToken);
+  assert.equal(await app.locator("#review-draft").inputValue(), "切换尺寸保留草稿");
+  assert.ok(frame.url().endsWith("/next"));
+  pass(
+    "手机、平板、桌面与 900/1200 边界触发真实媒体查询；旋转、自定义和非法尺寸验证保留页面、路由与草稿",
+  );
+
+  await device.selectOption("1920x1080");
+  await zoom.selectOption("actual");
+  await viewport(1920, 1080);
+  await until(
+    () =>
+      page
+        .locator(".human-review-stage")
+        .evaluate(
+          (stage) =>
+            stage.scrollWidth > stage.clientWidth && stage.scrollHeight > stage.clientHeight,
+        ),
+    "100% 模式可滚动",
+  );
+  await zoom.selectOption("fit");
+  await until(
+    () =>
+      page
+        .locator("#artifact")
+        .evaluate((frame) => frame.getBoundingClientRect().width < frame.clientWidth),
+    "大视口缩放显示",
+  );
+  await viewport(1920, 1080);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await viewport(1920, 1080);
+  await until(
+    () =>
+      page
+        .locator(".human-review-stage")
+        .evaluate(
+          (stage) =>
+            stage.scrollWidth <= stage.clientWidth + 1 &&
+            stage.scrollHeight <= stage.clientHeight + 1,
+        ),
+    "小屏适配可用空间",
+  );
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: path.join(evidence, "viewport-small-host.png") });
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await viewport(1920, 1080);
+  await page.reload();
+  await app.locator("#review-draft").waitFor();
+  frame = page.frames().find((f) => f.url().startsWith(new URL(appUrl).origin));
+  await viewport(1920, 1080);
+  assert.equal(await zoom.inputValue(), "fit");
+  await device.selectOption("auto");
+  await until(
+    () =>
+      page
+        .locator("#artifact")
+        .evaluate(
+          (frame) =>
+            frame.clientWidth === frame.closest(".human-review-stage").clientWidth &&
+            frame.clientHeight === frame.closest(".human-review-stage").clientHeight,
+        ),
+    "跟随窗口恢复",
+  );
+  assert.equal(await zoom.isDisabled(), true);
+  await device.selectOption("1440x900");
+  await viewport(1440, 900);
+  pass("适配与 100% 显示保留实际视口，窄宿主无页面溢出，刷新保留尺寸，跟随窗口可恢复");
 
   const worker = context.serviceWorkers()[0] || (await context.waitForEvent("serviceworker"));
   await worker.evaluate(async () => {
@@ -296,6 +409,9 @@ try {
   await control("hide");
   pass("真实扩展在 Lavish 的跨源 frame 选取元素，Copy ID / Copy DOM path 保留内外 URL");
 
+  const idle = await native(["poll", "--timeout-ms", "50"], path.join(evidence, "idle-poll.toon"));
+  assert.equal(idle.session.status, "waiting");
+  pass("有界原生 poll 返回 waiting，评审会话保持可继续收取反馈");
   const image = await page.screenshot();
   await page.evaluate(async (data) => {
     const blob = await (await fetch("data:image/png;base64," + data)).blob();
@@ -304,16 +420,14 @@ try {
   await page.locator("#chatInput").focus();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+V" : "Control+V");
   await page.locator("#chatAttachments img").waitFor();
-  const feedback = `# UI 反馈\n\n${locator}\n\n当前：实验按钮。期望：定位与图片完整送回 Pi。本条为自动验证，不要求修改产品 UI。`;
+  const feedback = `# Human review 反馈\n\n${locator}\n\n当前：实验按钮。期望：原生 poll 完整读取定位与图片。本条为自动验证，不要求修改产品 UI。`;
   await page.evaluate((text) => navigator.clipboard.writeText(text), feedback);
   await page.locator("#chatInput").focus();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+V" : "Control+V");
   assert.equal(await page.locator("#chatInput").inputValue(), feedback);
   await page.screenshot({ path: path.join(evidence, "feedback-ready.png") });
   await page.locator("#send").click();
-  await until(() => deliveries.length > 0, "反馈唤醒");
-  const receipt = sdkDir ? deliveries[0].match(/完整收据：([^\n]+)/)[1] : deliveries[0].receipt;
-  const response = JSON.parse(await readFile(receipt, "utf8"));
+  const response = await native(["poll"], path.join(evidence, "poll.toon"));
   assert.equal(response.prompts[0].prompt, feedback);
   const attachment = response.prompts[0].attachments[0];
   assert.equal(attachment.mime, "image/png");
@@ -338,24 +452,20 @@ try {
   );
   assert.deepEqual(pixels[0], pixels[1], "剪贴板 PNG 可以重编码，但截图像素必须保留");
   await writeFile(path.join(evidence, "feedback.json"), JSON.stringify(response, null, 2));
-  await review.reply("已收到定位与截图；自动验证通过，本次没有修改产品页面。");
+  await native([
+    "reply",
+    "--agent-reply",
+    "已收到定位与截图；自动验证通过，本次没有修改产品页面。",
+  ]);
   await page
     .getByText("已收到定位与截图；自动验证通过，本次没有修改产品页面。", { exact: true })
     .waitFor();
   await page.locator(".agent-working").waitFor({ state: "hidden" });
-  pass(
-    sdkDir
-      ? "真实 Pi SDK 将 poll 反馈送回同一 idle session；收据先落盘，截图像素保留，回复回到 Conversation"
-      : "受管理 poll 收到完整文字与原图，回复回到 Conversation",
-  );
+  pass("无监听时反馈排队，原生 poll 完整收到文字与原图，原生 reply 回到 Conversation");
   await page.screenshot({ path: path.join(evidence, "feedback-received.png") });
   await page.locator("#chatInput").fill("自动验证的最后一条反馈，结束本次测试会话。");
   await page.locator("#sendAndEnd").click();
-  await until(() => deliveries.length === 2, "Send & End 最终反馈");
-  const finalReceipt = sdkDir
-    ? deliveries[1].match(/完整收据：([^\n]+)/)[1]
-    : deliveries[1].receipt;
-  const finalResponse = JSON.parse(await readFile(finalReceipt, "utf8"));
+  const finalResponse = await native(["poll"], path.join(evidence, "final-poll.toon"));
   assert.equal(finalResponse.session.session_ended, true);
   assert.equal(finalResponse.session.ended_by, "user");
   pass("Send & End 的最终反馈送达，用户结束状态被保留");
@@ -372,8 +482,7 @@ try {
   }
   throw error;
 } finally {
-  await review?.stop();
-  session?.dispose();
+  await stop();
   await context?.close();
   fixture.closeAllConnections();
   await new Promise((resolve) => fixture.close(resolve));
@@ -382,9 +491,10 @@ await assert.rejects(() => fetch(review.url, { signal: AbortSignal.timeout(1000)
 await assert.rejects(() =>
   fetch(`http://127.0.0.1:${lavishPort}/health`, { signal: AbortSignal.timeout(1000) }),
 );
-pass("停止 review 后，自有代理与 Lavish 端口均已释放");
+assert.equal(cli.exitCode, 0, "CLI 通过 SIGTERM 正常结束，不依赖强杀");
+pass("SIGTERM 停止 CLI 后，自有代理与 Lavish 端口均已释放");
 await writeFile(
   path.join(evidence, "results.json"),
-  JSON.stringify({ results, evidence, sdkWakeVerified: Boolean(sdkDir) }, null, 2),
+  JSON.stringify({ results, evidence }, null, 2),
 );
 console.log(`证据：${evidence}`);
