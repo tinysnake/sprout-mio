@@ -3,10 +3,20 @@ import type {
   MachineConnectionView,
   MachineDetail,
 } from "../../contracts/machine";
+import type { LeaseMutationInput, LeaseMutationView } from "../../contracts/lease";
+import type { AppResult } from "../../contracts/result";
 
 import { projectWorkingPath } from "../../contracts/machine";
 
 export type StatusTone = "success" | "warning" | "muted" | "danger";
+
+/**
+ * 租约变更的注入点：正式页面接服务端入口，演示场景接固定回调。
+ * 返回值就是服务端结果，组件不会把 pending 自己转成成功。
+ */
+export type LeaseMutationHandler = (
+  input: LeaseMutationInput,
+) => Promise<AppResult<LeaseMutationView>>;
 
 type Label = { label: string; detail?: string; tone: StatusTone };
 

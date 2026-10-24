@@ -19,6 +19,8 @@ import type {
   SaveProjectMachineBindingInput,
 } from "../../../contracts/machine";
 import type { AppErrorCode } from "../../../contracts/result";
+import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../../contracts/lease";
+import type { AppResult } from "../../../contracts/result";
 import { PageFrame } from "../../../components/layout/page-frame";
 import { ResultError } from "../../../components/project/result-error";
 import { Select } from "../../../components/ui/select";
@@ -32,6 +34,15 @@ import {
   machineProject,
   secondProject,
 } from "./fixtures";
+import { LeasesScene } from "./leases";
+import {
+  demoExecutions,
+  demoHolderNames,
+  demoInstanceIds,
+  demoLeases,
+  applyLeaseMutation,
+  completedReceipt,
+} from "./lease-fixtures";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -49,6 +60,7 @@ function success<T>(data: T): MachineResult<T> {
 
 type DemoState = {
   machines: MachineDetail[];
+  leases: LeaseView[];
   tickets: Record<string, MachineEnrollment | undefined>;
   failCreate: boolean;
   failRenew: boolean;
@@ -57,6 +69,8 @@ type DemoState = {
   conflictRoot: boolean;
   throwRenew: boolean;
   projectId: string;
+  /** 租约变更的演示结果：成功写回，失败保留目标并显示原因。 */
+  leaseOutcome: "success" | "stale_generation" | "not_holder";
 };
 
 function DemoControls({
@@ -322,6 +336,22 @@ function DemoControls({
           把当前 Machine 标为已配对
         </button>
       )}
+      <label className="mt-3 block" htmlFor="machine-demo-lease">
+        租约变更的演示结果
+      </label>
+      <Select
+        id="machine-demo-lease"
+        data-testid="machine-demo-lease"
+        className="mt-1"
+        defaultValue="success"
+        onChange={(event) =>
+          update({ leaseOutcome: event.target.value as DemoState["leaseOutcome"] })
+        }
+      >
+        <option value="success">成功（写回租约事实）</option>
+        <option value="stale_generation">拒绝：旧授权代次失效</option>
+        <option value="not_holder">拒绝：不是持有者</option>
+      </Select>
       <p className="mt-2 leading-5 text-muted-foreground">
         演示数据与本地模拟操作。刷新会回到固定 fixtures；不连接业务服务。 选择「待配对的
         MacBook」查看配对置顶，选择「工作室 Mac mini」查看已配对后的次栏； 安装区问号可查看 HTTP /
@@ -497,6 +527,7 @@ export function MachineScenes() {
   };
   const [draft, setDraft] = useState<DemoState>({
     machines: demoMachineDetails,
+    leases: [...demoLeases],
     tickets: { [demoMachineDetails[1]!.machine.id]: demoEnrollment(demoMachineDetails[1]!) },
     failCreate: false,
     failRenew: false,
@@ -505,6 +536,7 @@ export function MachineScenes() {
     conflictRoot: false,
     throwRenew: false,
     projectId: machineProject.id,
+    leaseOutcome: "success",
   });
   const [createOpen, setCreateOpen] = useState(false);
   const update = (patch: Partial<DemoState>) => setDraft((current) => ({ ...current, ...patch }));
@@ -610,6 +642,34 @@ export function MachineScenes() {
     return success(intent);
   }
 
+  /** 演示：租约变更不自动成功，结果由演示控件选择；失败保留目标与动作。 */
+  async function leaseMutation(input: LeaseMutationInput): Promise<AppResult<LeaseMutationView>> {
+    await delay(200);
+    if (draft.leaseOutcome === "stale_generation")
+      return {
+        ok: false,
+        error: {
+          code: "lease_stale_generation",
+          message: "租约代次已变化，请读取当前租约后重试。目标与动作已保留。",
+          requestId: DEMO_REQUEST_ID,
+        },
+        requestId: DEMO_REQUEST_ID,
+      };
+    if (draft.leaseOutcome === "not_holder")
+      return {
+        ok: false,
+        error: {
+          code: "lease_not_holder",
+          message: "当前分身不是该租约的持有者，不能释放。",
+          requestId: DEMO_REQUEST_ID,
+        },
+        requestId: DEMO_REQUEST_ID,
+      };
+    const receipt = completedReceipt(input, "2026-10-18T07:30:00.000Z", "2026-10-18T07:31:00.000Z");
+    update({ leases: applyLeaseMutation(draft.leases, receipt, demoInstanceIds.primary) });
+    return { ok: true, data: receipt, requestId: DEMO_REQUEST_ID };
+  }
+
   async function saveRoot(
     input: SaveMachineRootDirectoryInput,
   ): Promise<MachineResult<MachineRootDirectory>> {
@@ -705,8 +765,18 @@ export function MachineScenes() {
           >
             续签请求生命周期探针
           </a>
+          <a
+            href="/machines/leases"
+            data-testid="machine-leases-link"
+            onClick={(event) => {
+              event.preventDefault();
+              go("/machines/leases");
+            }}
+          >
+            租约与远端操作
+          </a>
           <p className="mt-4 text-xs leading-6 text-muted-foreground">
-            Machines 只展示连接和 Project 绑定；租约与远端操作属于 P4b，尚未实现。
+            Machines 展示连接与 Project 绑定；租约与远端操作在专用演示场景和 Machine 详情里查看。
           </p>
         </PageFrame>
         <MachineCreateDialog
@@ -722,6 +792,7 @@ export function MachineScenes() {
 
   const machineId = location.pathname.replace(/^\/machines\//, "");
   if (machineId === "lifecycle") return <MachineLifecycleProbe go={go} />;
+  if (machineId === "leases") return <LeasesScene go={go} />;
   const detail = draft.machines.find((item) => item.machine.id === machineId);
   if (!detail) {
     return (
@@ -752,6 +823,11 @@ export function MachineScenes() {
         bindingProject={{ id: project.id, name: projectName }}
         projectNames={demoProjectNames}
         installOrigin="http://192.168.1.10:3210"
+        leases={draft.leases}
+        holderNames={demoHolderNames}
+        runs={[{ runId: "run_12345678-1234-4234-8234-1234567890ab", status: "completed" }]}
+        executions={demoExecutions}
+        onLeaseMutate={leaseMutation}
         onRenewEnrollment={renew}
         onSaveBinding={saveBinding}
         onSaveRoot={saveRoot}

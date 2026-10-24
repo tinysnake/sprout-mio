@@ -65,7 +65,7 @@ export const demoMachineDetails: MachineDetail[] = [
             probe: { kind: "success" },
           },
         ],
-        remoteOperations: [],
+        remoteOperations: ["shell", "file_read", "file_write", "process_list", "process_signal"],
       },
     },
     bindings: [

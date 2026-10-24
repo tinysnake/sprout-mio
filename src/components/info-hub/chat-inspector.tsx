@@ -4,12 +4,29 @@ import { agentDetailFromChat } from "../agent/agent-detail-search";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentInstance, Chat, ChatMember, ChatResult } from "../../contracts/chat";
 import type { ChatInfoView, InfoHubResult, TurnStartContext } from "../../contracts/info-hub";
+import type { MachineDetail } from "../../contracts/machine";
+import type { LeaseView } from "../../contracts/lease";
+import type { ExecutionView } from "../../contracts/remote";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ResultError } from "../project/result-error";
 import { ChatAvatar } from "../chat/chat-avatar";
 import { ChatFactsBlock } from "./chat-info-panel";
 import { RunFactsBlock, TurnStartContextBlock } from "./run-facts";
+import { LeaseOverview } from "../machine/lease-panel";
+import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
+
+/**
+ * Chat 侧的 Machine 事实：与 Project settings、Machine 详情读同一份租约与执行视图，
+ * 不在这里重新推导持有者或状态。
+ */
+export type ChatMachineFacts = {
+  projectId: string;
+  machines: MachineDetail[];
+  leases: readonly LeaseView[];
+  executions: readonly ExecutionView[];
+  holderNames?: Readonly<Record<string, string>>;
+};
 
 /**
  * Chat 的 Info Hub：摘要常显，运行事实与 Chat 事实按需展开。原有诊断字段
@@ -24,6 +41,7 @@ export function ChatInspector({
   profile,
   info,
   turnStart,
+  machineFacts = null,
   onClose,
 }: {
   chat: Chat;
@@ -34,6 +52,8 @@ export function ChatInspector({
   profile: AgentResult<AgentProfile> | null;
   info: ChatResult<ChatInfoView>;
   turnStart: InfoHubResult<TurnStartContext>;
+  /** 为 null 时按未接入呈现；不伪造空租约或空执行列表。 */
+  machineFacts?: ChatMachineFacts | null;
   onClose: () => void;
 }) {
   return (
@@ -181,19 +201,56 @@ export function ChatInspector({
           ) : (
             <p className="text-[11px] text-muted-foreground">Chat 事实随上方错误一并不可用。</p>
           )}
-          <div className="flex items-center justify-between gap-3 pt-3">
-            <span className="text-[10px] text-muted-foreground">Machine / Worker</span>
-            <span
-              data-testid="chat-machines-notice"
-              className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
-            >
-              未实现，P4
-            </span>
+          <div className="space-y-4 pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] text-muted-foreground">Machine / Worker</span>
+              {machineFacts ? (
+                <span
+                  data-testid="chat-machines-notice"
+                  className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
+                >
+                  与 Project settings 同一租约事实
+                </span>
+              ) : (
+                <span
+                  data-testid="chat-machines-notice"
+                  className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
+                >
+                  未接入，P4b 集成
+                </span>
+              )}
+            </div>
+            {machineFacts && (
+              <div data-testid="chat-machine-facts" className="space-y-4">
+                <LeaseOverview
+                  projectId={machineFacts.projectId}
+                  machines={machineFacts.machines}
+                  leases={machineFacts.leases}
+                  holderNames={machineFacts.holderNames}
+                  dense
+                  testId="chat-leases"
+                />
+                {machineFacts.executions.length > 0 && (
+                  <ExecutionTargetTable
+                    executions={machineFacts.executions}
+                    machines={machineFacts.machines}
+                    testId="chat-execution-targets"
+                  />
+                )}
+                <RemoteExecutionList
+                  executions={machineFacts.executions}
+                  machines={machineFacts.machines}
+                  testId="chat-executions"
+                />
+              </div>
+            )}
           </div>
         </section>
         <p className="flex gap-2 pt-5 text-[10px] leading-5 text-muted-foreground">
           <Icon as={ShieldCheck} size={14} className="mt-0.5" />
-          分析基于固定快照。分身可以读取仓库，本批不执行远端操作。
+          {machineFacts
+            ? "远端操作以 Worker 运行用户权限执行在工作目录之外；租约不随 run 结束释放。"
+            : "分析基于固定快照。分身可以读取仓库；远端操作的呈现随 P4b 集成接入。"}
         </p>
       </div>
       <div className="border-t border-border px-5 py-3.5 text-[10px] text-muted-foreground max-desktop:pb-[max(14px,env(safe-area-inset-bottom))]">

@@ -159,7 +159,7 @@ function ProjectSettingsPage() {
               <ProjectMachinesPanel
                 projectId={projectId}
                 machines={infoHub.data.machines}
-                leases={infoHub.data.leases}
+                leases={infoHub.data.leases.items}
               />
             )}
           </SettingsSection>

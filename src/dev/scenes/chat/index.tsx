@@ -15,6 +15,9 @@ import { ChatInspector } from "@/components/info-hub/chat-inspector";
 import { ChatWorkspace } from "@/components/layout/chat-workspace";
 import type { ChatAgent } from "@/components/chat/chat-loader";
 import { demoProfiles as profiles, demoHumanName as HUMAN } from "../management/fixtures";
+import { demoMachineDetails } from "../machine/fixtures";
+import { demoExecutions, demoHolderNames, demoLeases } from "../machine/lease-fixtures";
+import type { ChatMachineFacts } from "@/components/info-hub/chat-inspector";
 import type { ChatRunState } from "../../../contracts/agent-run";
 import type { AgentInstance, Chat, ChatMember, Message } from "../../../contracts/chat";
 import type { ChatInfoView, TurnStartContext } from "../../../contracts/info-hub";
@@ -152,6 +155,15 @@ const scenarioRunState: Record<string, ChatRunState> = {
 function demoError(code: AppError["code"], message: string): AppError {
   return { code, message, requestId: "req_demo_0000" };
 }
+
+/** Chat 与 Machine 详情共用同一份租约与执行样例。 */
+const demoMachineFacts: ChatMachineFacts = {
+  projectId: PROJECT_ID,
+  machines: demoMachineDetails,
+  leases: demoLeases,
+  executions: demoExecutions,
+  holderNames: demoHolderNames,
+};
 
 const infoView: ChatInfoView = {
   chatId: chats[0]!.id,
@@ -589,6 +601,7 @@ function WorkspaceScene() {
               profile={{ ok: true, data: fixture.profile, requestId: "req_demo" }}
               info={{ ok: true, data: fixture.info, requestId: "req_demo" }}
               turnStart={{ ok: true, data: fixture.context, requestId: "req_demo" }}
+              machineFacts={demoMachineFacts}
               onClose={() => openInspector(false)}
             />
           ) : undefined
@@ -612,6 +625,7 @@ function InspectorScene() {
           profile={{ ok: true, data: profiles[0]!, requestId: "req_demo" }}
           info={{ ok: true, data: infoView, requestId: "req_demo" }}
           turnStart={{ ok: true, data: turnStart, requestId: "req_demo" }}
+          machineFacts={demoMachineFacts}
           onClose={() => undefined}
         />
       </div>
