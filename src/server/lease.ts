@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
-import { leaseMutationInputSchema, leaseReadInputSchema } from "../contracts/lease";
+import {
+  forceReclaimLeaseInputSchema,
+  leaseMutationInputSchema,
+  leaseReadInputSchema,
+} from "../contracts/lease";
 import type {
+  ForceReclaimLeaseInput,
   LeaseKey,
   LeaseMutationInput,
   LeaseMutationView,
@@ -189,7 +194,23 @@ export function expireExecutions(key: LeaseKey, now: Date, bootId?: string) {
         .run();
   }
 }
+// Internal idempotency namespace cannot collide with public req_* request IDs.
+const forceRequestId = (mutationId: string) => `force-reclaim:${mutationId}`;
 function mutationView(row: typeof leaseMutation.$inferSelect): LeaseMutationView {
+  const forced = row.requestId.startsWith("force-reclaim:")
+    ? row
+    : db
+        .select()
+        .from(leaseMutation)
+        .where(
+          and(
+            eq(leaseMutation.projectId, row.projectId),
+            eq(leaseMutation.machineId, row.machineId),
+            eq(leaseMutation.actorKind, "human"),
+            eq(leaseMutation.requestId, forceRequestId(row.id)),
+          ),
+        )
+        .get();
   return {
     mutationId: row.id,
     projectId: row.projectId,
@@ -201,6 +222,16 @@ function mutationView(row: typeof leaseMutation.$inferSelect): LeaseMutationView
     targetInstanceId: row.targetInstanceId,
     createdAt: row.createdAt.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,
+    ...(forced
+      ? {
+          forcedReclaim: {
+            mutationId: forced.id,
+            supersededMutationId: forced.requestId.slice("force-reclaim:".length),
+            forcedByUserId: forced.actorId,
+            forcedAt: forced.completedAt!.toISOString(),
+          },
+        }
+      : {}),
   };
 }
 function leaseView(row: typeof machineLease.$inferSelect): LeaseView {
@@ -458,6 +489,129 @@ export const reclaimLease = (
   input: Extract<LeaseMutationInput, { action: "reclaim" }>,
   ctx: MachineContext,
 ) => mutate(input, ctx);
+/** Human override: completes the blocked receipt and records a distinct reclaim receipt.
+ * The original requested action remains auditable; forcedReclaim identifies its override.
+ * This path never asserts drain and never sends process or file operations to the Worker.
+ */
+export function forceReclaimLease(raw: ForceReclaimLeaseInput, ctx: MachineContext) {
+  if ("instanceId" in ctx) throw new LeaseError("forbidden");
+  const input = forceReclaimLeaseInputSchema.parse(raw);
+  return sqlite
+    .transaction(() => {
+      assertRemoteAccess(input, ctx);
+      const requestId = forceRequestId(input.mutationId);
+      const hash = payloadHash(input);
+      const existing = db
+        .select()
+        .from(leaseMutation)
+        .where(
+          and(
+            eq(leaseMutation.actorKind, "human"),
+            eq(leaseMutation.actorId, ctx.userId),
+            eq(leaseMutation.requestId, requestId),
+          ),
+        )
+        .get();
+      if (existing) {
+        if (existing.payloadHash !== hash) throw new LeaseError("remote_request_conflict");
+        return mutationView(existing);
+      }
+      const key = { projectId: input.projectId, machineId: input.machineId };
+      const row = ensureLease(key, ctx.now);
+      if (row.generation !== input.expectedGeneration)
+        throw new LeaseError("lease_stale_generation");
+      const pending = db
+        .select()
+        .from(leaseMutation)
+        .where(eq(leaseMutation.id, input.mutationId))
+        .get();
+      if (
+        row.state !== "fencing" ||
+        !pending ||
+        pending.state !== "pending" ||
+        pending.projectId !== key.projectId ||
+        pending.machineId !== key.machineId ||
+        pending.expectedGeneration !== row.generation
+      )
+        throw new LeaseError("conflict");
+      if (row.generation >= Number.MAX_SAFE_INTEGER) throw new LeaseError("conflict");
+      // Dispatched but unacknowledged work is uncertain even if an earlier result said success.
+      for (const execution of db
+        .select()
+        .from(remoteExecution)
+        .where(
+          and(
+            eq(remoteExecution.projectId, key.projectId),
+            eq(remoteExecution.machineId, key.machineId),
+            eq(remoteExecution.authorizationGeneration, row.generation),
+            isNull(remoteExecution.drainedAt),
+          ),
+        )
+        .all()) {
+        db.update(remoteExecution)
+          .set(
+            execution.dispatchConnectionGeneration !== null
+              ? { state: "unknown", failureReason: "worker_lost", terminalAt: ctx.now }
+              : { state: "rejected", failureReason: "authorization_revoked", terminalAt: ctx.now },
+          )
+          .where(eq(remoteExecution.id, execution.id))
+          .run();
+      }
+      const generation = row.generation + 1;
+      db.update(leaseAuthorization)
+        .set({ state: "revoked", revokedAt: ctx.now })
+        .where(authorizationWhere(key, row.generation))
+        .run();
+      db.insert(leaseAuthorization)
+        .values({
+          ...key,
+          generation,
+          state: "free",
+          holderInstanceId: null,
+          reason: "reclaim",
+          issuedAt: ctx.now,
+        })
+        .run();
+      db.update(machineLease)
+        .set({ generation, state: "free", holderInstanceId: null, changedAt: ctx.now })
+        .where(leaseWhere(key))
+        .run();
+      db.update(leaseMutation)
+        .set({ state: "completed", completedGeneration: generation, completedAt: ctx.now })
+        .where(eq(leaseMutation.id, pending.id))
+        .run();
+      const id = newId(ID_PREFIXES.leaseMutation);
+      db.insert(leaseMutation)
+        .values({
+          id,
+          ...key,
+          actorKind: "human",
+          actorId: ctx.userId,
+          requestId,
+          payloadHash: hash,
+          action: "reclaim",
+          expectedGeneration: row.generation,
+          state: "completed",
+          completedGeneration: generation,
+          createdAt: ctx.now,
+          completedAt: ctx.now,
+        })
+        .run();
+      db.insert(diagnosticEvent)
+        .values({
+          id: newId(ID_PREFIXES.diagnostic),
+          at: ctx.now,
+          level: "warn",
+          event: "lease.force_reclaimed",
+          requestId: ctx.requestId,
+          projectId: key.projectId,
+          message: "Human 已强制收回；未确认排空，旧副作用可能继续发生",
+        })
+        .run();
+      return mutationView(db.select().from(leaseMutation).where(eq(leaseMutation.id, id)).get()!);
+    })
+    .immediate();
+}
 export function getLease(raw: LeaseReadInput, ctx: MachineContext | AgentRemoteContext) {
   const input = leaseReadInputSchema.parse(raw);
   return sqlite

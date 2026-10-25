@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "@tanstack/react-router";
 import type { LeaseMutationView, LeaseView } from "../../contracts/lease";
 import type { ExecutionView } from "../../contracts/remote";
 import type { AppError } from "../../contracts/result";
 import { toAppError } from "../../contracts/result";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
-import { getLeaseFn } from "../../server/functions/lease";
+import { forceReclaimLeaseFn, getLeaseFn } from "../../server/functions/lease";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import type { LeaseMutationHandler } from "../machine/machine-view";
 import { formatMoment } from "../machine/machine-view";
@@ -35,11 +36,13 @@ export function LeaseFencingFacts({
   submit?: LeaseMutationHandler;
   clock?: () => number;
 }) {
+  const router = useRouter();
   const [now, setNow] = useState(clock);
   const [loaded, setLoaded] = useState<FencingSnapshot | null>(null);
   const [readError, setReadError] = useState<AppError | null>(null);
   const [pending, setPending] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [forceConfirmed, setForceConfirmed] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const [receipt, setReceipt] = useState<LeaseMutationView | null>(null);
 
@@ -48,6 +51,7 @@ export function LeaseFencingFacts({
     let reading = false;
     setLoaded(null);
     setReadError(null);
+    setForceConfirmed(false);
     async function refresh() {
       setNow(clock());
       // /__dev/ui 是纯呈现路由，不能因共享卡片而触发业务查询。
@@ -127,6 +131,41 @@ export function LeaseFencingFacts({
     }
   }
 
+  async function forceReclaim() {
+    if (
+      !forceConfirmed ||
+      pending ||
+      !lease.pendingMutationId ||
+      lease.state !== "fencing" ||
+      snapshot
+    )
+      return;
+    setPending(true);
+    setError(null);
+    setReceipt(null);
+    try {
+      const result = await forceReclaimLeaseFn({
+        data: {
+          action: "force_reclaim",
+          projectId: lease.projectId,
+          machineId: lease.machineId,
+          expectedGeneration: lease.generation,
+          mutationId: lease.pendingMutationId,
+          confirm: true,
+        },
+      });
+      if (result.ok) {
+        setReceipt(result.data);
+        setForceConfirmed(false);
+        await router.invalidate();
+      } else setError(result.error);
+    } catch (cause) {
+      setError(toAppError(cause, newId(ID_PREFIXES.request)));
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <div data-testid="lease-fencing-facts" className="space-y-2 break-words text-xs leading-6">
       <p data-testid="lease-fencing-wait" className="text-status-warning">
@@ -185,6 +224,40 @@ export function LeaseFencingFacts({
           >
             {pending ? "正在请求收回…" : "请求收回"}
           </Button>
+          {lease.state === "fencing" && !snapshot && (
+            <div
+              className="space-y-2 border-t border-border-soft pt-2"
+              data-testid="lease-force-reclaim-controls"
+            >
+              <p className="text-status-warning" data-testid="lease-force-reclaim-warning">
+                Human
+                可强制收回并允许新分身立即取得租约。旧副作用可能仍在落地，未知结果记为未知不记成功；这不代表
+                Worker 已确认排空，也不会终止进程或删除文件。
+              </p>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={forceConfirmed}
+                  disabled={pending}
+                  onChange={(event) => setForceConfirmed(event.target.checked)}
+                  data-testid="lease-force-reclaim-confirm"
+                  className="mt-1.5"
+                />
+                <span>
+                  我理解旧副作用可能与新持有者的操作重叠，确认强制收回此 Project × Machine 的租约。
+                </span>
+              </label>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!forceConfirmed || pending || !lease.pendingMutationId}
+                onClick={() => void forceReclaim()}
+                data-testid="lease-force-reclaim"
+              >
+                {pending ? "正在提交…" : "强制收回"}
+              </Button>
+            </div>
+          )}
           {error && (
             <div data-testid="lease-fencing-reclaim-error" role="status">
               <ResultError error={error} />

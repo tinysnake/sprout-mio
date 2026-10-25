@@ -3,6 +3,7 @@ import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { appIdPattern, ID_PREFIXES } from "../../contracts/ids";
 import {
+  forceReclaimLeaseInputSchema,
   leaseKeySchema,
   leaseMutationInputSchema,
   leaseReadInputSchema,
@@ -59,6 +60,10 @@ export const getLeaseBoundary = (raw: unknown, headers: Headers, requestId: stri
   boundary(raw, headers, requestId, leaseReadInputSchema, (d, i, c) => d.getLease(i, c));
 export const listProjectLeasesBoundary = (raw: unknown, headers: Headers, requestId: string) =>
   boundary(raw, headers, requestId, projectInput, (d, i, c) => d.listProjectLeases(i, c));
+export const forceReclaimLeaseBoundary = (raw: unknown, headers: Headers, requestId: string) =>
+  boundary(raw, headers, requestId, forceReclaimLeaseInputSchema, (d, i, c) =>
+    d.forceReclaimLease(i, c),
+  );
 export const reclaimLeaseBoundary = (raw: unknown, headers: Headers, requestId: string) =>
   boundary(raw, headers, requestId, reclaimInput, (d, i, c) => d.reclaimLease(i, c));
 export async function getLeaseRequestBoundary(raw: unknown, headers: Headers, requestId: string) {
@@ -108,6 +113,11 @@ export const listProjectLeasesFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     listProjectLeasesBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+export const forceReclaimLeaseFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    forceReclaimLeaseBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 export const reclaimLeaseFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)

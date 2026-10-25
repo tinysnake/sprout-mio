@@ -8,6 +8,7 @@ export NODE_ENV=test
 export NO_PROXY=localhost,127.0.0.1
 export no_proxy="$NO_PROXY"
 node --import tsx tests/fixtures/lease-contracts.ts
+DATABASE_URL="$verification_dir/force.sqlite" node --import tsx tests/fixtures/lease-force-contracts.ts
 node --import tsx src/db/migrate.ts
 pnpm exec vp test run tests/lease-contracts.test.ts
 printf 'PASS lease contracts isolated migrations, SQL constraints and wire schemas\n'

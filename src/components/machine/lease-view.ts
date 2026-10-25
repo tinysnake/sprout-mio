@@ -24,7 +24,7 @@ export const LEASE_STATE_LABELS: Record<LeaseView["state"], LeaseLabel> = {
   fencing: {
     label: "等待 Worker 确认",
     detail:
-      "正在等待该 Machine 的 Worker 确认旧授权已关闸；期间不接受新的远端操作。若 Worker 已失联，该状态可能持续，直到 Worker 重新连接并确认；重连本身不代表已确认，也无法保证等待会结束。已启动的进程仍可能继续产生副作用。",
+      "正在等待该 Machine 的 Worker 确认旧授权已关闸；期间不接受新的远端操作。若 Worker 已失联，该状态可能持续；重连本身不代表已确认，不强制收回时也无法保证等待会结束。Human 可明确确认后强制收回并推进代次，但这不代表已排空；旧副作用可能仍在落地，未知结果记为未知不记成功。已启动的进程仍可能继续产生副作用。",
     tone: "warning",
   },
 };
@@ -95,6 +95,13 @@ export function pendingMutationLabel(lease: LeaseView): string | null {
 }
 
 export function mutationStateLabel(mutation: LeaseMutationView): LeaseLabel {
+  if (mutation.forcedReclaim) {
+    return {
+      label: "Human 已强制收回",
+      detail: `代次 ${mutation.completedGeneration}；原动作已由强制收回覆盖，未确认 Worker 排空。`,
+      tone: "warning",
+    };
+  }
   const completed = mutation.state === "completed";
   return {
     label: `${LEASE_MUTATION_LABELS[mutation.action]}${completed ? "已确认" : "等待 Worker 确认"}`,
