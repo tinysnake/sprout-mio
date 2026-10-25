@@ -197,8 +197,6 @@ for (const colorScheme of ["light", "dark"]) {
         assert.doesNotMatch(text, /已全部排空。|收回已完成|释放已确认|执行成功。/);
         assert.equal(await fencing.getAttribute("data-lease-state"), "fencing");
         await shoot(page, `fencing-details-${colorScheme}-${width}`);
-        await page.keyboard.press("Escape");
-        await details.waitFor({ state: "detached" });
         assert.equal(
           await fencing.getAttribute("data-holder-instance"),
           "ins_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -206,21 +204,23 @@ for (const colorScheme of ["light", "dark"]) {
         const state = await fencing.getByTestId("lease-state").innerText();
         assert.doesNotMatch(state, /空闲|已释放|已收回|成功/);
         assert.equal(
-          await fencing.getByTestId("lease-fencing-reclaim").count(),
+          await details.getByTestId("lease-fencing-reclaim").count(),
           1,
-          "只保留普通收回请求，不提供别的推进按钮",
+          "完整事实 Dialog 保留普通收回请求",
         );
         assert.doesNotMatch(await fencing.innerText(), /永远无法结束|没有强制推进入口/);
-        const reclaim = fencing.getByTestId("lease-fencing-reclaim");
+        const reclaim = details.getByTestId("lease-fencing-reclaim");
         assert.equal(await reclaim.isDisabled(), true);
-        await fencing.getByTestId("lease-fencing-reclaim-confirm").check();
+        await details.getByTestId("lease-fencing-reclaim-confirm").check();
         await reclaim.click();
-        const error = fencing.getByTestId("lease-fencing-reclaim-error");
+        const error = details.getByTestId("lease-fencing-reclaim-error");
         await error.waitFor();
         assert.match(await error.innerText(), /lease_fencing/);
         assert.match(await error.innerText(), /等待 Worker 确认后才能完成收回/);
         assert.equal(await fencing.getAttribute("data-lease-state"), "fencing");
-        assert.equal(await fencing.getByTestId("lease-fencing-reclaim-receipt").count(), 0);
+        assert.equal(await details.getByTestId("lease-fencing-reclaim-receipt").count(), 0);
+        await page.keyboard.press("Escape");
+        await details.waitFor({ state: "detached" });
         await shootAt(page, "lease-fencing-facts", `fencing-${colorScheme}-${width}`);
         await fencing.screenshot({
           path: join(evidence, `fencing-row-${colorScheme}-${width}.png`),

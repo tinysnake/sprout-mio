@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
+import Sqlite from 'better-sqlite3';
 const privateDir = mkdtempSync(join(tmpdir(), 'sprout-lease-integration-'));
 const evidenceRoot = resolve('.verify/p4b-integration/evidence');
 mkdirSync(evidenceRoot, { recursive: true });
@@ -119,10 +120,68 @@ try {
   assert.equal(await page.getByTestId('machine-lease-section-overview-mutation-machine').count(),0,'no machine picker on the machine page');
   assert((await page.getByTestId('machine-lease-section-overview-mutation-target').innerText()).includes('Integration Mac'),'fixed target names the current Machine');
   await page.getByTestId('lease-chat-select').selectOption(chatId);
+  const uiRequestIds=new Set();
+  page.on('request',request=>{
+    if(request.method()==='POST' && request.url().includes(ids.getLeaseRequestFn)) {
+      const requestId=request.postData()?.match(/req_[0-9a-f-]{36}/)?.[0];
+      if(requestId) uiRequestIds.add(requestId);
+    }
+  });
+  const beforeAcquire=await call('getLeaseFn',{projectId,machineId});
+  assert.equal(beforeAcquire.lease.state,'free','UI is the only acquire path');
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
-  const acquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'page acquire via real agent',180000);
-  // 收据只显示真实返回的状态：pending 说「等待 Worker 确认」，completed 才算确认成功。
-  await page.locator('[data-testid="machine-lease-section-overview-mutation-success"], [data-testid="machine-lease-section-overview-mutation-waiting"]').first().waitFor({timeout:65000});
+  let acquired;
+  try {
+    await until(async()=>{
+      const error=page.getByTestId('machine-lease-section-overview-mutation-error');
+      assert.equal(await error.count(),0,'UI acquire must not return a mutation error');
+      return await page.getByTestId('machine-lease-section-overview-mutation-receipt').count();
+    },'receipt from this UI acquire',180000);
+    assert.equal(uiRequestIds.size,1,'one UI requestId');
+    const requestId=[...uiRequestIds][0];
+    const facts=await call('getLeaseRequestFn',{projectId,machineId,chatId,requestId});
+    assert(facts.mutation,'receipt belongs to the UI request');
+    const receiptDatabase=new Sqlite(env.DATABASE_URL,{readonly:true});
+    try {
+      const row=receiptDatabase.prepare('SELECT request_id AS requestId FROM lease_mutation WHERE id=?').get(facts.mutation.mutationId);
+      assert.equal(row?.requestId,requestId,'mutationId is persisted for this UI requestId');
+    } finally {receiptDatabase.close();}
+    assert.equal(facts.mutation.action,'acquire');
+    assert.equal(facts.mutation.expectedGeneration,beforeAcquire.lease.generation);
+    assert(['pending','completed'].includes(facts.mutation.state));
+    assert((await page.getByTestId('machine-lease-section-overview-mutation-receipt').innerText()).includes(facts.mutation.mutationId),'UI receipt matches this mutationId');
+    assert.equal(await page.getByTestId('machine-lease-section-overview-mutation-error').count(),0);
+    acquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'page acquire via real agent',180000);
+  } catch (cause) {
+    console.error('FAIL receipt assertion '+cause.message);
+    // Preserve the error while observing whether this same request executes late.
+    await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='held','late lease fact after receipt error',125000).catch(()=>null);
+    const database=new Sqlite(env.DATABASE_URL,{readonly:true});
+    try {
+      const leases=database.prepare('SELECT state,generation,holder_instance_id AS holderInstanceId FROM machine_lease WHERE project_id=? AND machine_id=?').all(projectId,machineId);
+      const mutations=database.prepare('SELECT id AS mutationId,request_id AS requestId,action,expected_generation AS expectedGeneration,state FROM lease_mutation WHERE project_id=? AND machine_id=?').all(projectId,machineId);
+      const pendingMutationId=mutations.find(item=>item.state==='pending')?.mutationId??null;
+      const runs=database.prepare('SELECT id,status,error_code AS errorCode,queued_at AS queuedAt,settled_at AS settledAt FROM agent_run WHERE project_id=?').all(projectId);
+      const toolCalls=[];
+      for(const row of database.prepare('SELECT config_snapshot AS snapshot FROM agent_run WHERE project_id=?').all(projectId)) {
+        const sessionFile=row.snapshot && JSON.parse(row.snapshot).sessionFile;
+        if(!sessionFile || !existsSync(sessionFile)) continue;
+        for(const line of readFileSync(sessionFile,'utf8').split('\n').filter(Boolean)) {
+          let entry; try {entry=JSON.parse(line);} catch {continue;}
+          if(entry.message?.role!=='assistant') continue;
+          for(const part of entry.message.content??[]) if(part.type==='toolCall') {
+            const input=part.arguments??{};
+            toolCalls.push({name:part.name,action:input.action,expectedGeneration:input.expectedGeneration,requestId:input.requestId});
+          }
+        }
+      }
+      console.error('FAIL receipt metadata '+JSON.stringify({submitted:{action:'acquire',expectedGeneration:beforeAcquire.lease.generation},uiRequestIds:[...uiRequestIds],leases,pendingMutationId,mutations,runs,toolCalls}));
+      const uiError=await page.getByTestId('machine-lease-section-overview-mutation-error').innerText().catch(()=>null);
+      console.error('FAIL receipt UI '+JSON.stringify({error:uiError}));
+      await page.screenshot({path:join(evidence,'receipt-conflict-overview.png'),fullPage:true});
+    } finally {database.close();}
+    throw cause;
+  }
   pass('page acquire -> authenticated Chat -> real Pi lease tool -> held lease');
   await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
   await until(async()=> (await page.getByTestId('machine-lease-detail').innerText()).includes(acquired.holderInstanceId),'Machine lease fact');

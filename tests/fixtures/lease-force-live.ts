@@ -409,15 +409,18 @@ try {
   ])
     await rejected("lease_mutate", input, "lease_fencing", grant, 200);
   pass("ordinary release and handoff still return lease_fencing without Human override");
-  await page.goto(`${base}/projects/${projectId}/settings`);
+  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
   const widget = page.getByTestId("lease-fencing-facts").first();
   await widget.waitFor();
   await page.setViewportSize({ width: 1200, height: 1000 });
-  const button = widget.getByTestId("lease-force-reclaim");
+  await widget.getByTestId("lease-fencing-details-trigger").click();
+  const details = page.getByTestId("lease-fencing-details");
+  const button = details.getByTestId("lease-force-reclaim");
+  assert.equal(await details.getByTestId("lease-force-reclaim-confirm").isChecked(), false);
   assert.equal(await button.isDisabled(), true);
-  assert.match(await widget.innerText(), /旧副作用可能仍在落地/);
-  await widget.scrollIntoViewIfNeeded();
-  await widget.screenshot({ path: resolve(".verify/p4b-fence-force/before-force-light.png") });
+  assert.match(await details.innerText(), /旧副作用可能仍在落地/);
+  await details.screenshot({ path: resolve(".verify/p4b-fence-force/before-force-light.png") });
+  await page.keyboard.press("Escape");
   await page
     .getByTestId(`lease-row-${machineId}`)
     .first()
@@ -427,12 +430,14 @@ try {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.evaluate(() => localStorage.setItem("sprout:theme", "dark"));
   await page.reload();
-  await widget.screenshot({ path: resolve(".verify/p4b-fence-force/before-force-dark-390.png") });
+  await widget.getByTestId("lease-fencing-details-trigger").click();
+  await details.screenshot({ path: resolve(".verify/p4b-fence-force/before-force-dark-390.png") });
   await page.setViewportSize({ width: 1200, height: 1000 });
   await page.evaluate(() => localStorage.setItem("sprout:theme", "light"));
   await page.reload();
+  await widget.getByTestId("lease-fencing-details-trigger").click();
   assert(!existsSync(late), "late side effect has not occurred before force");
-  await widget.getByTestId("lease-force-reclaim-confirm").check();
+  await details.getByTestId("lease-force-reclaim-confirm").check();
   await button.click();
   await until(
     () =>
