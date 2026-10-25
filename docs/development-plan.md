@@ -180,12 +180,14 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 编排与交付记录：
 
-- 已分派并合入功能与接入单元：contracts `9001f8e`、migrate-callers `b4e204f`、worker `dc61189`、tools `46d9d17`（merge `b9ba470`）、build-fix `1651dcd`、UI `e8ec38c`（merge `1ffb40a`）、integration `c771250`、fixture-sync `b5c34db`、verify-fullgreen `6428b5c`。提交均为本次文档基线 `d003b54` 的祖先。
+- 已分派并合入功能与接入单元：contracts `9001f8e`、migrate-callers `b4e204f`、worker `dc61189`、tools `46d9d17`（merge `b9ba470`）、build-fix `1651dcd`、UI `e8ec38c`（merge `1ffb40a`）、integration `c771250`、fixture-sync `b5c34db`、verify-fullgreen `6428b5c`。提交均为 `d003b54` 的祖先。
 - 安全探测后的三项返工已合入：report-budget `f11ec13` 修复 Worker 编码、整帧预算与拒收恢复；quota-scope `39dca15`（测试 `ba2f30b`，merge `77658e5`）把预算改为 Project × Machine；fencing-facts `064d517`（merge `243fd53`）呈现等待与未知事实。`d003b54` 另统一全量测试入口，避免 verify 重复运行测试。
-- coordinator 在带 Git 历史的独立 checkout `/tmp/p4b-verify2` 复跑 check、typecheck、260 条测试、应用及 Worker build，并完成 30 个验收脚本，failed=0；F-1 与 F-3 的修复前后对照已亲自复现。证据索引为 `orchestrate/sprout-mio-p4b/local-verification.tsv`、`decisions.tsv` 及对应日志，章节归纳见 [P4b 结论](p4b/summary.md#技术验收证据)。
-- 技术验收两轮：首轮独立验收 `b5c34db` PASS，报告 `reports/p4b-acceptance/acceptance.md`；第二轮技术复验 `243fd53` PASS，报告 `reports/acceptance-2.md`，含 34 份证据及 12a、12b、12c 双向对照。模型独立性的调度限制另见 `decisions.tsv`。第二轮 l-docs 两条失败来自 archive 无 `.git`，同 SHA 在带历史工作树复跑为 `L_EXIT=0`、`LP_EXIT=0`，不作为产品缺陷。
-- 已分派 closeout 文档单元，功能五项、UI 三项按证据勾选；本次勾选暴露 l-docs 的旧“P4b 必须未勾选”约束，门禁更新超出文档单元范围，待 coordinator 分派并复跑后才能声称文档检查全绿。总计划四步 checklist 仅由 coordinator 修改，本次保持原状。
-- Human 体验确认待记录：待 Human 明确确认及确认版本。`p4b-fence-liveness` 仍 open，Worker 失踪后的 fencing 没有强制推进路径；跨机网络与真机软键盘未验证。下一章 P4c 及以后未启动。
+- 两项流程性交付：review-harness `3b118e5` 建立可持续供 Human 体验的 P4b 环境，docs-gate `9737b42` 与 docs-gate-parity `f8c1b99` 把 l-docs 从「P4b 必须未勾选」改为与 P4a 同级的 per-section 证据门禁（无文档级兜底，探针 15→17）。
+- 文档基线之后又有五个单元合入：fence-force `c42bae1`（Human 强制收回，gate `p4b-fence-liveness` 裁决为 B 并实现）；chat-title `5c8dfa4`（merge `147193b`，Chat 标题与显式改名，含迁移 `0010`）；ui-refine `5ade997`（merge `e28a149`，A 方案信息架构与 fencing 摘要 + Dialog）；zfix `780a703`（修合并冲突并收紧 z 的收据关联断言）；receipt `5869bf3`/`dd3fa80`/`8ffa7e6`（收据核对、`lease_result_unconfirmed` 与动作自身 requestId、远端错误码保持严格别名）。逐项说明见 [P4b 结论](p4b/summary.md#体验后变更与安全返工)。
+- coordinator 在带 Git 历史的独立 checkout `/tmp/p4b-verify2` 复跑 check、typecheck、260 条测试、应用及 Worker build，并完成 30 个验收脚本，failed=0；F-1 与 F-3 的修复前后对照已亲自复现。证据索引为 `orchestrate/sprout-mio-p4b/local-verification.tsv`、`decisions.tsv` 及对应日志。上述五单元合入后的基线 `8ffa7e6` 上，`pnpm test` 为 287 条 / 38 个文件，`bash scripts/verify.sh` 为 30 个脚本 failed=0，`l-docs` 与探针均退出 0。
+- 技术验收两轮：首轮独立验收 `b5c34db` PASS，报告 `reports/p4b-acceptance/acceptance.md`；第二轮技术复验 `243fd53` PASS，报告 `reports/acceptance-2.md`，含 34 份证据及 12a、12b、12c 双向对照。模型独立性的调度限制另见 `decisions.tsv`。第二轮 l-docs 两条失败来自 archive 无 `.git`，同 SHA 在带历史工作树复跑为 `L_EXIT=0`、`LP_EXIT=0`，不作为产品缺陷。因强制收回、Chat 标题与收据语义已改变行为，第三轮独立技术验收正在重新派发，尚无结论；两轮 PASS 不自动代表当前基线。
+- 文档门禁已闭合：`9737b42` 把旧“P4b 必须未勾选”约束改成与 P4a 同级的证据门禁，`f8c1b99` 收紧为 per-section commit 校验；P4b 功能五项与 UI 三项按证据勾选，每个被引用小节自带可解析 commit 与存在的重跑命令。`bash scripts/verify/l-docs.sh` 与 `bash scripts/verify/l-docs-probes.sh` 在 `8ffa7e6` 上均退出 0。总计划四步 checklist 仍仅由 coordinator 修改，本次保持原状。
+- Human 体验确认待记录：Human 已亲自使用真实页面并提出九条界面反馈（已由 ui-refine 与 fence-force 落地），但这不等于确认通过；四步 checklist 的 Human 条目仍待 coordinator 根据明确确认后处理。跨机网络与真机软键盘未验证。下一章 P4c 及以后未启动。
 
 - 接入范围包括租约和 holder 展示、申请与释放反馈、一个分身持有多台 Machine 的关联，以及远端 shell、文件和进程操作的目标与结果。Chat、Machine 页面与 inspector 使用同一事实来源，不扩展为完整终端或文件管理产品。
 - 主要路径是 Human 在 Chat 请求分身使用指定 Machine，分身申请租约并执行远端操作，Human 查看目标与结果。run 结束后仍可看到租约保留，下一轮由同一分身继续使用，随后显式释放。

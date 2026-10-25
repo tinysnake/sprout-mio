@@ -168,13 +168,13 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 ## UI-P4b 展示分身持租与远端操作
 
-范围对应 [P4b](development-plan-functional.md#p4b-实现分身持有与远端操作)。共享呈现、真实接入及两轮技术验收记录见 [P4b UI 交付证据](p4b/summary.md#ui-交付证据)。y 覆盖浅暗主题与五宽度，z 使用真实 Chat、服务、macOS Worker、新账号与 Chromium；fencing 返工另有三页面 30 组真实检查。Human 体验待明确确认，跨机网络与真机软键盘未验证，`p4b-fence-liveness` 未决。本次勾选与 l-docs 的旧约束冲突，待 coordinator 分派门禁更新，不据技术 PASS 宣称文档检查全绿。
+范围对应 [P4b](development-plan-functional.md#p4b-实现分身持有与远端操作)。共享呈现、真实接入及两轮技术验收记录见 [P4b UI 交付证据](p4b/summary.md#ui-交付证据)。y 覆盖浅暗主题与五宽度，z 使用真实 Chat、服务、macOS Worker、新账号与 Chromium；fencing 返工另有三页面 30 组真实检查。Human 体验仍待明确确认：Human 亲自体验真实页面后提出的九条反馈已由 `5ade997`（merge `e28a149`）与 `c42bae1` 落地，但提出反馈不等于确认通过。跨机网络与真机软键盘未验证。`p4b-fence-liveness` 已由 Human 裁决为 B 并在 `c42bae1` 实现。docs 门禁已更新为 per-section 证据门禁，`l-docs.sh` 与 `l-docs-probes.sh` 均退出 0；两轮技术 PASS 仍不替代 Human 确认。
 
 - [x] 完成租约与 holder 的概要、详情、申请和释放反馈，以及分身持有多台 Machine 的展示。证据 [租约与反馈](p4b/summary.md#1-租约holder申请释放与多机概要)，多机组合限投影与演示；重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
 - [x] 展示远端 shell、文件和进程操作的目标与结果，区分宿主与指定 Machine，不新增完整终端或文件管理产品。证据 [目标与结果](p4b/summary.md#2-远端目标与真实结果)，重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`，保留拒绝请求不入队、哨兵不存在的反证。
 - [x] 在 Chat、Machine 详情与 inspector 中一致呈现持租事实，run 结束后不自动显示租约已释放。证据 [同源事实与跨 run](p4b/summary.md#3-chatmachine-与-inspector-一致run-结束保留占用)，重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
-出口条件是租约、分身、run 与操作目标可清楚区分，申请和释放有结果反馈。技术证据已覆盖互斥、跨 run 持有、授权失败和 Project 边界；fencing 如实显示等待 Worker 确认且不保证结束，未提供强制推进。章节体验确认仍待 Human 明确记录，P4c 及以后未启动。
+出口条件是租约、分身、run 与操作目标可清楚区分，申请和释放有结果反馈。技术证据已覆盖互斥、跨 run 持有、授权失败和 Project 边界；fencing 如实显示等待 Worker 确认且不保证结束，Human 可在风险确认后强制收回（裁决 B，`c42bae1`），强制后仍不声称旧副作用已排空。章节体验确认仍待 Human 明确记录，P4c 及以后未启动。
 
 ## UI-P4c 展示长命令与不确定结果
 
