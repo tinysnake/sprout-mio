@@ -334,28 +334,271 @@ const requireProbe=name=>{
   return c[name];
 };
 const http=sources.y2, extension=sources.x2, surface=sources.x3;
-const clauses=[
-  ()=>{passed('y2');passed('x2'); assert(http.pass);assert(http.worker.realCli&&http.worker.bundled); assert(extension.workerDispatcherClientFrames>0&&extension.workerDispatcherServerFrames>0);assert.equal(extension.endToEndToolsList,'pass');return {stdio:{toolCount:extension.toolCount,realDispatcher:true,clientFrames:extension.workerDispatcherClientFrames,serverFrames:extension.workerDispatcherServerFrames},streamableHttp:{realWorkerCli:http.worker.realCli,transports:http.worker.transports,ownerManagedTarget:!!http.ownerManaged.catalogTarget,configuredServiceSpawned:http.configuredService.spawnedServerPidMatched},officialSdk:requireProbe('officialSdk')};},
-  ()=>{passed('x2'); assert.equal(extension.catalogOnlyExplicitRegistrations,true);return requireProbe('surface');},
-  ()=>({isolation:requireProbe('isolation'),disappearance:requireProbe('disappearance')}),
-  ()=>{passed('x3');assert(surface.image.matchesServerBytes&&surface.image.structuredContentMatchesServer);return requireProbe('image');},
-  ()=>{passed('y2');passed('x3');assert(http.sessions.sameProcessId&&http.sessions.newSessionId&&http.sessions.sqliteConcurrentActiveRejected);assert(surface.listChanged.newToolDeclared&&surface.listChanged.newToolCallable&&surface.listChanged.stillDeclaredAfterExplicitRefresh);assert.equal(surface.refreshOnBlockedSurface.outcome,'failed');return {resources:requireProbe('resources'),sessionRebuild:requireProbe('detach'),timeout:requireProbe('timeout'),oldGeneration:requireProbe('release').oldGenerationRejected,listChanged:{newToolDeclared:surface.listChanged.newToolDeclared,newToolCallable:surface.listChanged.newToolCallable,explicitRefreshKeepsTool:surface.listChanged.stillDeclaredAfterExplicitRefresh,blockedSurfaceVisibleFailure:true},activeSessionUniqueness:http.sessions.sqliteConcurrentActiveRejected};},
-  ()=>{passed('y2');assert.equal(http.ownerManaged.autostart,false);assert(http.ownerManaged.noSpawn&&http.ownerManaged.aliveAfterWorkerExit&&http.ownerManaged.runningAfterDelete);assert.equal(http.configuredService.aliveAfterWorkerExit,false);return {detach:requireProbe('detach'),release:requireProbe('release'),ownerManaged:{autostart:false,noSpawn:true,catalogCallableTarget:true,aliveAfterDelete:true,aliveAfterWorkerExit:true},configuredService:{spawned:true,terminatedAfterWorkerExit:true}};},
-  ()=>{for(const file of ['docs/r1/summary.md','docs/r1/design.md']) assert(existsSync(file),`${file} exists`);const design=readFileSync('docs/r1/design.md','utf8'), summary=readFileSync('docs/r1/summary.md','utf8');assert(design.includes('薄 bridge')&&design.includes('帧中继')&&design.includes('Pi 原生客户端')&&design.includes('SDK')&&design.includes('长连接'));assert(summary.includes('P4c')&&summary.includes('纳入一期'));assert(existsSync('docs/r1/evidence'));assert(!summary.includes('待 z3 运行'));const scope=readFileSync('docs/core-scope.md','utf8');assert(scope.includes('**MCP tools 接入**')&&scope.includes('P4c'));return {summary:'docs/r1/summary.md',design:'docs/r1/design.md',stage:'P4c 之后纳入一期',humanConfirmationRequired:true};},
+sources.c=c;
+
+// ---------------------------------------------------------------- 条款 ⇄ 证据的投影契约
+// 每条条款的 `assertions` 不是自由格式：`REQUIRED` 是一张**独立于条款 body 的必需字段表**，
+// 每个字段都必须由本条款用 `evidenceAt(field,path)` 从上面前置执行产出的 probe 证据里按路径取到值，
+// 并且 `assertions[field]` 必须**等于**那次取到的值。核对跑在下面遍历条款的循环里，不在条款
+// body 里，所以条款 body 无论被改成什么（返回 `{}`、返回 `{note:'…'}`、直接返回字面量）都躲不过：
+//   1. 必需字段必须齐全            → 条款被整条清空 = FAIL；
+//   2. 每个必需字段必须有取值路径  → 手写字面量没有路径 = FAIL；
+//   3. 断言值必须等于取到的证据值  → 写死的值与实测不符 = FAIL。
+// 这三种形状都用突变验过，输出贴在 orchestrate/sprout-mio-r1/reports/gate-hardening.md。
+class ClauseContract extends Error {}
+const REQUIRED = {
+  1: ['toolCount','clientFrames','serverFrames','endToEndToolsList','officialSdkVersion'],
+  2: ['activeMcpTools','allowlistExcludedNotify','allowedToolExecuted','hostServerNotStarted','hostServerAbsent'],
+  3: ['distinctProcesses','crossRootReadRejected','crossRootWriteRejected','callRejected','sessionTargetsUnchanged','noWriteOnSurvivor'],
+  4: ['blockType','mimeType','base64Length','bytesEqual','structuredContentEqual','throughSproutRelay','throughRealPiToolDefinition','x3BytesEqual','x3StructuredContentEqual'],
+  5: ['newToolDeclared','newToolCallable','callReturned','callTextMatchesServer','stillDeclaredAfterExplicitRefresh','blockedSurfaceOutcome','oldGenerationRejected'],
+  6: ['autostart','noSpawn','aliveAfterDelete','aliveAfterWorkerExit','configuredServiceAliveAfterWorkerExit'],
+  7: ['summaryExists','designExists','evidenceIndexExists','keyCombinationsPresent','evidenceScriptCurrent','evidenceSourceCommitAncestor'],
+};
+const resolvePath = path => {
+  const [source,...rest] = path.split('.');
+  let node = sources[source];
+  for (const key of rest) {
+    if (node === null || typeof node !== 'object') return undefined;
+    node = node[key];
+  }
+  return node;
+};
+let currentClause = 0;
+let projections = [];
+const evidenceAt = (field,path) => {
+  const value = resolvePath(path);
+  if (value === undefined) throw new ClauseContract(`R1-${currentClause}: 证据路径 ${path} 取不到值`);
+  projections.push({clause:currentClause,field,path,value});
+  return value;
+};
+
+const clauses = [
+  // R1-1：stdio 与 streamableHttp 都真的跑通。y2 是编译后的真实 Worker CLI，x2 走真实中继。
+  ()=>{
+    passed('y2');passed('x2');
+    assert.equal(evidenceAt('endToEndToolsList','x2.endToEndToolsList'),'pass','x2 的端到端帧往返成立');
+    assert(evidenceAt('clientFrames','x2.workerDispatcherClientFrames')>0,'x2 有客户端帧');
+    assert(evidenceAt('serverFrames','x2.workerDispatcherServerFrames')>0,'x2 有服务端帧');
+    assert.equal(evidenceAt('toolCount','x2.toolCount'),20,'x2 取得真实 server-everything 的 20 个工具');
+    assert.equal(evidenceAt('realWorkerCli','y2.worker.realCli'),true,'y2 跑的是编译后的真实 Worker CLI');
+    assert.equal(evidenceAt('bundled','y2.worker.bundled'),true,'y2 的 Worker 是打包产物');
+    assert.equal(evidenceAt('ownerManagedTarget','y2.ownerManaged.catalogTarget')!==undefined,true,'y2 的 owner_managed 是真实 catalog 目标');
+    assert.equal(evidenceAt('configuredServiceSpawned','y2.configuredService.spawnedServerPidMatched'),true,'y2 的 configured_service 确实被 spawn');
+    requireProbe('officialSdk');
+    return {
+      toolCount:evidenceAt('toolCount','x2.toolCount'),
+      clientFrames:evidenceAt('clientFrames','x2.workerDispatcherClientFrames'),
+      serverFrames:evidenceAt('serverFrames','x2.workerDispatcherServerFrames'),
+      endToEndToolsList:evidenceAt('endToEndToolsList','x2.endToEndToolsList'),
+      officialSdkVersion:evidenceAt('officialSdkVersion','c.officialSdk.version'),
+      transports:evidenceAt('transports','y2.worker.transports'),
+    };
+  },
+  // R1-2：Pi 工具面、allowlist 与显式登记。
+  ()=>{
+    passed('x2');
+    const surfaceProbe=requireProbe('surface');
+    assert.equal(evidenceAt('catalogOnlyExplicitRegistrations','x2.catalogOnlyExplicitRegistrations'),true,'catalog 只含显式登记');
+    assert.equal(evidenceAt('allowlistExcludedNotify','c.surface.allowlistExcludedNotify'),true,'未获准的 notify 不进工具面');
+    assert.equal(evidenceAt('allowedToolExecuted','c.surface.allowedToolExecuted'),true,'获准的 read 真的被执行');
+    assert.equal(evidenceAt('hostServerNotStarted','c.surface.hostServerNotStarted'),true,'隔离宿主里的 host_sentinel 没被启动');
+    assert.equal(evidenceAt('hostServerAbsent','c.surface.hostServerAbsent'),true,'host_sentinel 不在工具面');
+    const activeMcpTools=evidenceAt('activeMcpTools','c.surface.activeMcpTools');
+    assert(activeMcpTools.length>0&&activeMcpTools.every(name=>name.startsWith('mcp__')),'活动工具面里只有 mcp__ 工具');
+    return {
+      activeMcpTools,
+      allowlistExcludedNotify:true,
+      allowedToolExecuted:true,
+      hostServerNotStarted:true,
+      hostServerAbsent:true,
+      probeStatus:surfaceProbe.status,
+    };
+  },
+  // R1-3：指定实例、不同 root 隔离、不改投。
+  ()=>{
+    requireProbe('isolation');requireProbe('disappearance');
+    assert.equal(evidenceAt('distinctProcesses','c.isolation.distinctProcesses'),true,'两个 server 是不同进程');
+    assert.equal(evidenceAt('crossRootReadRejected','c.isolation.crossRootReadRejected'),true,'跨 root 读被拒');
+    assert.equal(evidenceAt('crossRootWriteRejected','c.isolation.crossRootWriteRejected'),true,'跨 root 写被拒');
+    assert.equal(evidenceAt('callRejected','c.disappearance.callRejected'),true,'目标消失后调用被拒');
+    assert.equal(evidenceAt('sessionTargetsUnchanged','c.disappearance.sessionTargetsUnchanged'),true,'session 绑定不变');
+    assert.equal(evidenceAt('noWriteOnSurvivor','c.disappearance.noWriteOnSurvivor'),true,'存活 server 上没有误投的文件');
+    return {
+      distinctProcesses:true,
+      crossRootReadRejected:true,
+      crossRootWriteRejected:true,
+      callRejected:true,
+      sessionTargetsUnchanged:true,
+      noWriteOnSurvivor:true,
+      simultaneousSessions:evidenceAt('simultaneousSessions','c.isolation.simultaneousSessions'),
+    };
+  },
+  // R1-4：图片与 structuredContent 送达 Pi。每一项都取自真实探针的实测断言：C 探针的
+  // bytesEqual/structuredContentEqual 来自它自己的逐字节与深度比较，x3 的两份布尔来自 x3 与
+  // 真实 server 返回值的比较。本条款不写死任何一个值，也不允许自己被清空。
+  ()=>{
+    passed('x3');
+    requireProbe('image');
+    assert.equal(evidenceAt('x3BytesEqual','x3.image.matchesServerBytes'),true,'x3 测到的 base64 与真实 server 返回值逐字节相同');
+    assert.equal(evidenceAt('x3StructuredContentEqual','x3.image.structuredContentMatchesServer'),true,'x3 测到的 details.structuredContent 与真实 server 返回值一致');
+    assert.equal(evidenceAt('blockType','c.image.blockType'),'image','图片块没有被降级成文本');
+    assert.equal(evidenceAt('mimeType','c.image.mimeType'),'image/png','mimeType 原样');
+    assert(evidenceAt('base64Length','c.image.base64Length')>100,'base64 内容非空');
+    assert.equal(evidenceAt('bytesEqual','c.image.bytesEqual'),true,'base64 与真实 server 返回值逐字节相同');
+    assert.equal(evidenceAt('structuredContentEqual','c.image.structuredContentEqual'),true,'details.structuredContent 与真实 server 返回值深度相等');
+    assert.equal(evidenceAt('throughSproutRelay','c.image.throughSproutRelay'),true,'结果确实经过 Sprout 中继');
+    assert.equal(evidenceAt('throughRealPiToolDefinition','c.image.throughRealPiToolDefinition'),true,'结果确实经 Pi 持有的工具定义执行');
+    return {
+      blockType:evidenceAt('blockType','c.image.blockType'),
+      mimeType:evidenceAt('mimeType','c.image.mimeType'),
+      base64Length:evidenceAt('base64Length','c.image.base64Length'),
+      bytesEqual:evidenceAt('bytesEqual','c.image.bytesEqual'),
+      structuredContentEqual:evidenceAt('structuredContentEqual','c.image.structuredContentEqual'),
+      throughSproutRelay:evidenceAt('throughSproutRelay','c.image.throughSproutRelay'),
+      throughRealPiToolDefinition:evidenceAt('throughRealPiToolDefinition','c.image.throughRealPiToolDefinition'),
+      x3BytesEqual:evidenceAt('x3BytesEqual','x3.image.matchesServerBytes'),
+      x3StructuredContentEqual:evidenceAt('x3StructuredContentEqual','x3.image.structuredContentMatchesServer'),
+    };
+  },
+  // R1-5：资源、目录变化、重建、超时与旧代次。`newToolCallable` 必须来自 x3 那次真实调用
+  // （调用回了 content 且文本等于 server 回的 `called:added-1`），不是字面量。
+  ()=>{
+    passed('y2');passed('x3');
+    assert.equal(evidenceAt('sameProcessId','y2.sessions.sameProcessId'),true,'同一 process 重开 session');
+    assert.equal(evidenceAt('newSessionId','y2.sessions.newSessionId'),true,'重开拿到新 session id');
+    assert.equal(evidenceAt('sqliteConcurrentActiveRejected','y2.sessions.sqliteConcurrentActiveRejected'),true,'并发活动 session 被 SQLite 拒绝');
+    assert.equal(evidenceAt('newToolDeclared','x3.listChanged.newToolDeclared'),true,'真实 list_changed 后新工具进入模型工具面');
+    assert.equal(evidenceAt('callReturned','x3.listChanged.callReturned'),true,'x3 对新工具的那次真实调用返回了 content');
+    assert.equal(evidenceAt('callTextMatchesServer','x3.listChanged.callTextMatchesServer'),true,'那次调用真的到 server（返回 called:added-1）');
+    assert.equal(evidenceAt('newToolCallable','x3.listChanged.newToolCallable'),true,'新工具在模型工具面里可调用（由那次真实调用算出）');
+    assert.equal(evidenceAt('stillDeclaredAfterExplicitRefresh','x3.listChanged.stillDeclaredAfterExplicitRefresh'),true,'显式 refresh 后新工具不丢');
+    assert.equal(evidenceAt('blockedSurfaceOutcome','x3.refreshOnBlockedSurface.outcome'),'failed','目录已变但工具面没跟进时必须报 failed，不能假装 ok');
+    assert.equal(evidenceAt('blockedSurfaceDiagnostic','x3.refreshOnBlockedSurface.diagnosticPresent'),true,'受阻工具面留下诊断');
+    assert.equal(evidenceAt('oldGenerationRejected','c.release.oldGenerationRejected'),'lease_stale_generation','旧代次 exchange 被拒');
+    return {
+      newToolDeclared:evidenceAt('newToolDeclared','x3.listChanged.newToolDeclared'),
+      newToolCallable:evidenceAt('newToolCallable','x3.listChanged.newToolCallable'),
+      callReturned:evidenceAt('callReturned','x3.listChanged.callReturned'),
+      callTextMatchesServer:evidenceAt('callTextMatchesServer','x3.listChanged.callTextMatchesServer'),
+      stillDeclaredAfterExplicitRefresh:evidenceAt('stillDeclaredAfterExplicitRefresh','x3.listChanged.stillDeclaredAfterExplicitRefresh'),
+      blockedSurfaceOutcome:evidenceAt('blockedSurfaceOutcome','x3.refreshOnBlockedSurface.outcome'),
+      oldGenerationRejected:evidenceAt('oldGenerationRejected','c.release.oldGenerationRejected'),
+      resources:requireProbe('resources'),
+      sessionRebuild:requireProbe('detach'),
+      timeout:requireProbe('timeout'),
+    };
+  },
+  // R1-6：生命周期与已有服务登记。
+  ()=>{
+    passed('y2');
+    assert.equal(evidenceAt('autostart','y2.ownerManaged.autostart'),false,'owner_managed 的服务 autostart 必须是 false');
+    assert.equal(evidenceAt('noSpawn','y2.ownerManaged.noSpawn'),true,'Worker 没有为 owner_managed 目标 spawn 进程');
+    assert.equal(evidenceAt('aliveAfterDelete','y2.ownerManaged.runningAfterDelete'),true,'DELETE 之后 owner_managed 服务仍在运行');
+    assert.equal(evidenceAt('aliveAfterWorkerExit','y2.ownerManaged.aliveAfterWorkerExit'),true,'Worker 退出后 owner_managed 服务仍存活');
+    assert.equal(evidenceAt('configuredServiceAliveAfterWorkerExit','y2.configuredService.aliveAfterWorkerExit'),false,'configured_service 必须随 Worker 退出而终止');
+    requireProbe('detach');requireProbe('release');
+    return {
+      autostart:evidenceAt('autostart','y2.ownerManaged.autostart'),
+      noSpawn:evidenceAt('noSpawn','y2.ownerManaged.noSpawn'),
+      aliveAfterDelete:evidenceAt('aliveAfterDelete','y2.ownerManaged.runningAfterDelete'),
+      aliveAfterWorkerExit:evidenceAt('aliveAfterWorkerExit','y2.ownerManaged.aliveAfterWorkerExit'),
+      configuredServiceAliveAfterWorkerExit:evidenceAt('configuredServiceAliveAfterWorkerExit','y2.configuredService.aliveAfterWorkerExit'),
+      detach:requireProbe('detach'),
+      release:requireProbe('release'),
+    };
+  },
+  // R1-7：只校验**可以机器判定**的东西 —— 文档存在、关键组合词出现、证据快照与当前脚本/代码
+  // 一致。文档内容是否与代码相符需要人读，本条款不保证，也不假装保证（见 summary 已知限制）。
+  ()=>{
+    const snapshot=JSON.parse(readFileSync('docs/r1/evidence/evidence.json','utf8'));
+    const design=readFileSync('docs/r1/design.md','utf8'), summary=readFileSync('docs/r1/summary.md','utf8');
+    const scope=readFileSync('docs/core-scope.md','utf8');
+    const designPhrases=['薄 bridge','帧中继','Pi 原生客户端','SDK','长连接'];
+    const missingPhrases=designPhrases.filter(phrase=>!design.includes(phrase));
+    const currentScriptSha=createHash('sha256').update(readFileSync('scripts/verify/z3-mcp-acceptance.sh')).digest('hex');
+    const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+    let ancestor=false;
+    try { execFileSync('git',['merge-base','--is-ancestor',snapshot.sourceCommit,head],{stdio:'ignore'}); ancestor=true; } catch { ancestor=false; }
+    sources.docs={
+      summaryExists:existsSync('docs/r1/summary.md'),
+      designExists:existsSync('docs/r1/design.md'),
+      evidenceIndexExists:existsSync('docs/r1/evidence/evidence.json'),
+      keyCombinationsPresent:missingPhrases.length===0,
+      missingKeyCombinations:missingPhrases,
+      summaryMentionsStage:summary.includes('P4c')&&summary.includes('纳入一期'),
+      summaryHasNoPendingMarker:!summary.includes('待 z3 运行'),
+      scopeMentionsMcpAndPhase:scope.includes('**MCP tools 接入**')&&scope.includes('P4c'),
+      evidenceScriptSha256:snapshot.scriptSha256,
+      currentScriptSha256:currentScriptSha,
+      evidenceScriptCurrent:snapshot.scriptSha256===currentScriptSha,
+      evidenceSourceCommit:snapshot.sourceCommit,
+      head,
+      evidenceSourceCommitAncestor:ancestor,
+    };
+    assert.equal(evidenceAt('summaryExists','docs.summaryExists'),true,'docs/r1/summary.md 存在');
+    assert.equal(evidenceAt('designExists','docs.designExists'),true,'docs/r1/design.md 存在');
+    assert.equal(evidenceAt('evidenceIndexExists','docs.evidenceIndexExists'),true,'docs/r1/evidence/evidence.json 存在');
+    assert.equal(evidenceAt('keyCombinationsPresent','docs.keyCombinationsPresent'),true,`design.md 缺少关键组合词：${missingPhrases.join(', ')}`);
+    assert.equal(evidenceAt('summaryMentionsStage','docs.summaryMentionsStage'),true,'summary.md 写了纳入阶段');
+    assert.equal(evidenceAt('summaryHasNoPendingMarker','docs.summaryHasNoPendingMarker'),true,'summary.md 没有留下「待 z3 运行」');
+    assert.equal(evidenceAt('scopeMentionsMcpAndPhase','docs.scopeMentionsMcpAndPhase'),true,'范围文档写了 MCP 接入与 P4c');
+    assert.equal(
+      evidenceAt('evidenceScriptCurrent','docs.evidenceScriptCurrent'),
+      true,
+      `docs/r1/evidence/evidence.json 的 scriptSha256 (${snapshot.scriptSha256}) 必须等于当前 z3 脚本的 SHA-256 (${currentScriptSha})：改脚本后要重跑 z3 并复制证据`,
+    );
+    assert.equal(
+      evidenceAt('evidenceSourceCommitAncestor','docs.evidenceSourceCommitAncestor'),
+      true,
+      `证据的 sourceCommit ${snapshot.sourceCommit} 必须是当前 HEAD ${head} 的祖先或等于它（证据不能与代码脱钩）`,
+    );
+    return {
+      summaryExists:evidenceAt('summaryExists','docs.summaryExists'),
+      designExists:evidenceAt('designExists','docs.designExists'),
+      evidenceIndexExists:evidenceAt('evidenceIndexExists','docs.evidenceIndexExists'),
+      keyCombinationsPresent:evidenceAt('keyCombinationsPresent','docs.keyCombinationsPresent'),
+      evidenceScriptCurrent:evidenceAt('evidenceScriptCurrent','docs.evidenceScriptCurrent'),
+      evidenceSourceCommitAncestor:evidenceAt('evidenceSourceCommitAncestor','docs.evidenceSourceCommitAncestor'),
+      evidenceScriptSha256:snapshot.scriptSha256,
+      evidenceSourceCommit:snapshot.sourceCommit,
+      head,
+      scope:'条款 7 只校验文档存在、关键组合词与证据来源一致；文档语义由独立验收者逐条核对，本门禁不保证',
+    };
+  },
 ];
 const results=[];
 for(const [index,check] of clauses.entries()) {
+  currentClause=index+1;
   let status='PASS',assertions,error;
-  try { assertions=check(); } catch(e) {
+  projections=[];
+  try { assertions=check(); }
+  catch(e) {
     // Missing evidence is inconclusive; an executed probe's failed assertion is a failure.
     status=e instanceof EvidenceUnavailable?'INCONCLUSIVE':'FAIL'; error=e.message;
   }
-  const path=join(dir,`clause-${index+1}.json`);
-  const record={clause:index+1,status,...(assertions?{assertions}:{}),...(error?{error}:{}),executions};
+  if(status==='PASS') {
+    try {
+      // 投影契约：必需字段齐全 / 每个字段有真实取值路径 / 断言值等于取到的证据值。
+      if(assertions===null||typeof assertions!=='object') throw new ClauseContract(`R1-${currentClause}: 条款必须返回断言对象，实测 ${JSON.stringify(assertions)}`);
+      const required=REQUIRED[currentClause]??[];
+      const missing=required.filter(field=>!(field in assertions));
+      if(missing.length) throw new ClauseContract(`R1-${currentClause}: 缺少必需字段 ${missing.join(', ')} —— 条款没有真的核过这些要求`);
+      for(const field of required) {
+        const projection=projections.find(p=>p.field===field);
+        if(!projection) throw new ClauseContract(`R1-${currentClause}: 字段 ${field} 没有任何证据取值路径（疑似写死）`);
+        assert.deepEqual(assertions[field],projection.value,`R1-${currentClause}: 字段 ${field} 与证据 ${projection.path} 不一致（写死的值不等于实测值）`);
+      }
+    } catch(e) {
+      status=e instanceof EvidenceUnavailable?'INCONCLUSIVE':'FAIL'; assertions=undefined; error=e.message;
+    }
+  }
+  const path=join(dir,`clause-${currentClause}.json`);
+  const record={clause:currentClause,status,...(assertions?{assertions}:{}),...(status==='PASS'?{projections:projections.map(({clause,field,path})=>({field,path}))}:{}),...(error?{error}:{}),executions};
   writeFileSync(path,JSON.stringify(record,null,2)+'\n');
   const evidencePath=relative(process.cwd(),path);
-  results.push({clause:index+1,status,evidencePath});
-  console.log(`${status} R1-${index+1} ${evidencePath}`);
+  results.push({clause:currentClause,status,evidencePath});
+  console.log(`${status} R1-${currentClause} ${evidencePath}`);
 }
 writeFileSync(join(dir,'evidence.json'),JSON.stringify({schemaVersion:1,generatedAt:new Date().toISOString(),sourceCommit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),scriptSha256:createHash('sha256').update(readFileSync('scripts/verify/z3-mcp-acceptance.sh')).digest('hex'),results,executions},null,2)+'\n');
 writeFileSync(join(dir,'run.log'),results.map(r=>`${r.status} R1-${r.clause} ${r.evidencePath}`).join('\n')+'\n');

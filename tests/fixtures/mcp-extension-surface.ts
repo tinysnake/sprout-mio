@@ -20,6 +20,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { newId, ID_PREFIXES } from "../../src/contracts/ids";
 import { loadPiMcp } from "../../src/extension/mcp-load";
 import { registerMcpTools } from "../../src/extension/mcp-tools";
@@ -176,7 +177,9 @@ const directImage = (direct.content ?? []).find((block) => block.type === "image
   | { data: string; mimeType: string }
   | undefined;
 assert(directImage, "直接调用也有 image 块");
-assert.equal(imageBlock.data, directImage.data, "base64 与真实 server 返回值逐字节相同");
+// 逐字节对照是真实比较的结果，evidence 读这个布尔，不写死。
+const imageBase64MatchesServer = imageBlock.data === directImage.data;
+assert(imageBase64MatchesServer, "base64 与真实 server 返回值逐字节相同");
 pass(
   `真实 get-tiny-image 经工具面：块类型=${JSON.stringify(result.content.map((b) => b.type))}，` +
     `${imageBlock.mimeType} base64 ${imageBlock.data.length} 字节与 server 返回值一致`,
@@ -207,11 +210,11 @@ assert(
   structuredResult.details.structuredContent !== undefined,
   "structuredContent 必须留在 details",
 );
-assert.deepEqual(
+const structuredContentMatchesServer = isDeepStrictEqual(
   structuredResult.details.structuredContent,
   directStructured.structuredContent,
-  "details.structuredContent 与真实 server 返回值一致",
 );
+assert(structuredContentMatchesServer, "details.structuredContent 与真实 server 返回值一致");
 pass(
   `structuredContent 仍在 details（键 ${Object.keys(structuredResult.details.structuredContent as object).join(",")}；与该工具 content 的文本块并存）`,
 );
@@ -314,14 +317,70 @@ pass(
 
 // 生产 runner 必须把 `mcp__*` 放进 allowlist：没有这一条，上面测到的根因就会在真实
 // `scripts/pi-host-runner.mjs` 里重现（新工具注册成功但到不了模型）。
+//
+// 这条是静态检查（`runnerSource` 只读不执行），所以它必须只看到**代码**：注释里出现的
+// `tools: [...]` 不算数。做法是把注释按行剥离（保留换行，行号不变），再只取
+// `createAgentSession(` 之后的第一个 `tools: [...]`。只取全文件第一处会被一行 decoy 注释骗过。
 const runnerSource = readFileSync(resolve("scripts/pi-host-runner.mjs"), "utf8");
-const runnerAllowlist = /tools:\s*\[([^\]]*)\]/u.exec(runnerSource);
-assert(runnerAllowlist, "runner 里有 createAgentSession 的 tools allowlist");
+const stripComments = (source: string) => {
+  let out = "";
+  let quote: "'" | '"' | "`" | null = null;
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i]!;
+    const next = source[i + 1];
+    if (quote) {
+      out += char;
+      if (char === "\\") {
+        out += next ?? "";
+        i += 1;
+      } else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (i < source.length && source[i] !== "\n") {
+        out += " ";
+        i += 1;
+      }
+      out += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      out += "  ";
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        out += source[i] === "\n" ? "\n" : " ";
+        i += 1;
+      }
+      out += "  ";
+      i += 1;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") quote = char;
+    out += char;
+  }
+  return out;
+};
+const runnerCode = stripComments(runnerSource);
+const runnerCallAt = runnerCode.indexOf("createAgentSession(");
 assert(
-  runnerAllowlist[1]!.includes('"mcp__*"'),
-  `runner 的 tools allowlist 必须含 \`mcp__*\`，实测：${runnerAllowlist[1]!.trim()}`,
+  runnerCallAt >= 0,
+  "runner 里能定位到 createAgentSession( ——静态检查的取样起点，找不到就无从判断 allowlist",
 );
-pass(`生产 runner 的 allowlist 含 mcp__*：${runnerAllowlist[1]!.trim()}`);
+const runnerCall = runnerCode.slice(runnerCallAt);
+const runnerAllowlist = /\btools:\s*\[([^\]]*)\]/u.exec(runnerCall);
+assert(
+  runnerAllowlist,
+  `createAgentSession(...) 之后必须有 tools: [...] allowlist，实测：${runnerCall.split("\n").slice(0, 20).join("\n")}`,
+);
+const runnerAllowlistEntries = runnerAllowlist[1]!;
+const runnerAllowlistHasMcpStar = /["']mcp__\*["']/u.test(runnerAllowlistEntries);
+assert(
+  runnerAllowlistHasMcpStar,
+  `runner 的 tools allowlist 必须含 \`mcp__*\`（注释里的不算），实测数组内容：${runnerAllowlistEntries.trim()}`,
+);
+pass(
+  `生产 runner 的 allowlist 含 mcp__*（createAgentSession 之后、注释剥离后匹配）：${runnerAllowlistEntries.trim()}`,
+);
 
 // ---------------------------------------------------------------- refresh 的可见失败
 // 真实验证「目录已变但工具面没跟进」被报成 failed 而不是 ok：这里用真实 MCP client，
@@ -530,10 +589,13 @@ assert(declaredAfterRefresh.includes("mcp__everything__added-1"));
 const addedDefinition = positiveSession.session.getToolDefinition("mcp__everything__added-1");
 assert(addedDefinition, "新工具在 registry 里可调用");
 const called = await addedDefinition.execute("x3-call", {}, undefined, undefined, {} as never);
-assert.deepEqual(
-  called.content.map((block) => (block as { text?: string }).text),
-  ["called:added-1"],
-  "新工具真的被执行到了 server",
+// 「能调用」= 这一次真实调用真的回到了 server 并拿到它回的文本。布尔从返回值算出。
+const calledTexts = called.content.map((block) => (block as { text?: string }).text ?? null);
+const callReturned = called.content.length > 0;
+const callTextMatchesServer = calledTexts.length === 1 && calledTexts[0] === "called:added-1";
+assert(
+  callTextMatchesServer,
+  `新工具真的被执行到了 server，实测 content 文本：${JSON.stringify(calledTexts)}`,
 );
 pass(
   `真实 list_changed → refresh(复用连接) → 模型工具面：${declaredBefore.length}→${declaredAfter.length} 个 mcp__ 工具，added-1 可见且调用返回 ${JSON.stringify((called.content[0] as { text?: string }).text)}`,
@@ -550,18 +612,20 @@ const evidence = {
     blockTypes: result.content.map((block) => block.type),
     mimeType: imageBlock.mimeType,
     base64Length: imageBlock.data.length,
-    matchesServerBytes: true,
+    matchesServerBytes: imageBase64MatchesServer,
     structuredContentInDetails: structuredResult.details.structuredContent ?? null,
-    structuredContentMatchesServer: true,
+    structuredContentMatchesServer,
   },
   surface,
-  runnerAllowlistHasMcpStar: true,
+  runnerAllowlistHasMcpStar,
   listChanged: {
     declaredBefore: declaredBefore.length,
     declaredAfter: declaredAfter.length,
     newToolDeclared: declaredAfter.includes("mcp__everything__added-1"),
-    newToolCallable: true,
-    callText: (called.content[0] as { text?: string }).text ?? null,
+    newToolCallable: callReturned && callTextMatchesServer,
+    callReturned,
+    callTextMatchesServer,
+    callText: calledTexts[0] ?? null,
     stillDeclaredAfterExplicitRefresh: declaredAfterRefresh.includes("mcp__everything__added-1"),
   },
   refreshOnBlockedSurface: {
