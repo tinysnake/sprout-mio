@@ -12,7 +12,7 @@ import {
 import type { WorkerExchangeResponse } from "../contracts/worker";
 import type { WorkerSession } from "../contracts/worker-session";
 import type { Identity } from "./identity";
-import { RemoteDispatcher } from "./remote";
+import { emptyWorkerRemote, RemoteDispatcher } from "./remote";
 import { probeCapability, probeDirectory } from "./probes";
 
 export class ClientError extends Error {
@@ -173,7 +173,7 @@ export function workerProgram(identity: Identity) {
           const exchange = draining
             ? { mode: "drain" as const, session, seq }
             : { mode: "normal" as const, session, seq, capability, observations };
-          const emptyRemote = { results: [], fenceAcks: [] };
+          const emptyRemote = emptyWorkerRemote();
           const envelopeBytes = Buffer.byteLength(
             JSON.stringify({
               version: WORKER_PROTOCOL_VERSION,

@@ -9,8 +9,12 @@ import { ID_PREFIXES, newId } from "../src/contracts/ids";
 import type { CapabilitySnapshot } from "../src/contracts/machine";
 import { remoteExchangeInputSchema, remoteReportSchema } from "../src/contracts/remote";
 import type { RemoteCommand, RemoteReport } from "../src/contracts/remote";
+import {
+  workerExchangeInput,
+  workerExchangeRemoteSchema,
+  WORKER_PROTOCOL_VERSION,
+} from "../src/contracts/worker";
 import type { WorkerExchangeResponse } from "../src/contracts/worker";
-import { workerExchangeInput, WORKER_PROTOCOL_VERSION } from "../src/contracts/worker";
 import { RemoteDispatcher } from "../src/worker/remote";
 
 type RemoteWireOutput = Extract<WorkerExchangeResponse, { ok: true }>["data"]["remote"];
@@ -167,7 +171,8 @@ test("reports and fence acknowledgements share a stable encoded batch budget wit
       fences: string[] = [];
     for (let seq = 3; !f.dispatcher.drained && seq < 30; seq++) {
       const batch = f.dispatcher.outgoing();
-      expect(remoteExchangeInputSchema.safeParse(batch).success).toBe(true);
+      expect(workerExchangeRemoteSchema.safeParse(batch).success).toBe(true);
+      expect(remoteExchangeInputSchema.safeParse(batch).success).toBe(false);
       expect(Buffer.byteLength(JSON.stringify(batch))).toBeLessThanOrEqual(MAX_BYTES);
       expect(batch.results.every((r) => r.phase === "terminal" && r.outcome === "succeeded")).toBe(
         true,

@@ -11,7 +11,7 @@ import type {
   RemoteResultPayload,
 } from "../contracts/remote";
 import type { WorkerSession } from "../contracts/worker-session";
-import type { WorkerExchangeResponse } from "../contracts/worker";
+import type { WorkerExchangeRemoteInput, WorkerExchangeResponse } from "../contracts/worker";
 
 type Frame = Extract<WorkerExchangeResponse, { ok: true }>["data"];
 type Outcome = Extract<RemoteReport, { phase: "terminal" }>["outcome"];
@@ -28,6 +28,12 @@ const sameSession = (a: WorkerSession, b: WorkerSession) =>
   a.attemptId === b.attemptId;
 type BoundedText = { text: string; truncated: boolean };
 const MAX_EXCHANGE_BYTES = 1048576;
+export const emptyWorkerRemote = (): WorkerExchangeRemoteInput => ({
+  results: [],
+  fenceAcks: [],
+  mcp: [],
+  mcpCursors: [],
+});
 const jsonBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
 // Decoding invalid input can expand it; bound the encoded text as well as the raw input.
 function boundedText(buffer: Buffer, limit: number): BoundedText {
@@ -133,8 +139,8 @@ export class RemoteDispatcher {
       if (entry?.report.phase === "terminal") entry.report = degradedReport(entry.report, true);
     }
   }
-  outgoing(maxBytes = MAX_EXCHANGE_BYTES): RemoteExchangeInput {
-    const batch: RemoteExchangeInput = { results: [], fenceAcks: [] };
+  outgoing(maxBytes = MAX_EXCHANGE_BYTES): WorkerExchangeRemoteInput {
+    const batch = emptyWorkerRemote();
     let used = jsonBytes(batch);
     const entries = [...this.entries.values()].sort(
       (a, b) =>

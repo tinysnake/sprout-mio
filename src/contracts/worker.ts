@@ -27,12 +27,13 @@ export const workerEnrollInput = z.strictObject({
   ticket: workerSecretSchema,
 });
 export const workerOpenInput = z.strictObject({ ...envelope, ...identity, attemptId: z.uuidv4() });
+export const workerExchangeRemoteSchema = remoteExchangeInputSchema.extend(mcpWorkerExchangeShape);
 const exchangeBase = {
   ...envelope,
   secret: workerSecretSchema,
   session: workerSessionSchema,
   seq: positiveSafeIntegerSchema,
-  remote: remoteExchangeInputSchema.extend(mcpWorkerExchangeShape),
+  remote: workerExchangeRemoteSchema,
 };
 export const workerExchangeInput = z
   .discriminatedUnion("mode", [
@@ -256,6 +257,7 @@ export const workerCloseResponseSchema = z.union([
 export type WorkerEnrollInput = z.infer<typeof workerEnrollInput>;
 export type WorkerOpenInput = z.infer<typeof workerOpenInput>;
 export type WorkerExchangeInput = z.infer<typeof workerExchangeInput>;
+export type WorkerExchangeRemoteInput = z.infer<typeof workerExchangeRemoteSchema>;
 export type WorkerCloseInput = z.infer<typeof workerCloseInput>;
 export type WorkerEnrollResponse = z.infer<typeof workerEnrollResponseSchema>;
 export type WorkerOpenResponse = z.infer<typeof workerOpenResponseSchema>;
