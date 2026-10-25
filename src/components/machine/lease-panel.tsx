@@ -10,10 +10,12 @@ import {
   groupLeasesByHolder,
   holderLabel,
   leaseStateLabel,
+  mutationStateLabel,
   pendingMutationLabel,
   runLeaseRelation,
   visibleLeases,
 } from "./lease-view";
+import { LeaseFencingFacts, type FencingSnapshot } from "../info-hub/lease-fencing-facts";
 import { StatusLine } from "./machine-list";
 import { ResultError } from "../project/result-error";
 import { Button } from "../ui/button";
@@ -38,6 +40,7 @@ export function LeaseOverview({
   holderNames = {},
   onMutate,
   dense = false,
+  fencingSnapshot,
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -48,6 +51,7 @@ export function LeaseOverview({
   onMutate?: LeaseMutationHandler;
   /** 窄栏（inspector）里只列事实，变更操作留在 Machine 详情与 Project settings。 */
   dense?: boolean;
+  fencingSnapshot?: FencingSnapshot;
   testId?: string;
 }) {
   const visible = visibleLeases(leases, projectId);
@@ -107,7 +111,14 @@ export function LeaseOverview({
                   )}
                 </dd>
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
-                {!dense && <dd className="text-muted-foreground">{state.detail}</dd>}
+                {(!dense || lease.state === "fencing") && (
+                  <dd className="text-muted-foreground">{state.detail}</dd>
+                )}
+                {lease.state === "fencing" && (
+                  <dd>
+                    <LeaseFencingFacts lease={lease} snapshot={fencingSnapshot} submit={onMutate} />
+                  </dd>
+                )}
                 {pending && (
                   <dd data-testid="lease-pending" className="text-status-warning">
                     {pending}
@@ -328,10 +339,8 @@ export function LeaseMutationForm({
       {receipt && (
         <div data-testid={`${testId}-receipt`} className="space-y-1 text-xs leading-6">
           <StatusLine
-            label={`${receipt.action === "acquire" ? "申请" : "释放"}已确认`}
-            detail={`代次 ${receipt.completedGeneration ?? receipt.expectedGeneration}`}
-            tone="success"
-            testId={`${testId}-success`}
+            {...mutationStateLabel(receipt)}
+            testId={`${testId}-${receipt.state === "completed" ? "success" : "waiting"}`}
           />
           <p className="text-muted-foreground">
             动作收据 {receipt.mutationId} ·{" "}
@@ -410,7 +419,13 @@ export function RunHoldingNote({
             key={`${lease.projectId}:${lease.machineId}`}
             data-testid={`${testId}-${lease.machineId}`}
             data-held={relation.held ? "true" : "false"}
-            className={relation.held ? "text-status-success" : "text-muted-foreground"}
+            className={
+              lease.state === "fencing"
+                ? "text-status-warning"
+                : relation.held
+                  ? "text-status-success"
+                  : "text-muted-foreground"
+            }
           >
             <span className="text-foreground">
               {machines.find((item) => item.machine.id === lease.machineId)?.machine.name ??

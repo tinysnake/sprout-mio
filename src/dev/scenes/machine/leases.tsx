@@ -62,6 +62,14 @@ export function LeasesScene({ go }: { go: (to: string) => void }) {
 
   /** 演示：返回一个等待显式结算的请求。提交本身不会自己变成成功。 */
   function submit(input: LeaseMutationInput): Promise<AppResult<LeaseMutationView>> {
+    if (input.action === "reclaim")
+      return Promise.resolve(
+        fail({
+          code: "lease_fencing",
+          message: "租约仍在等待 Worker 确认旧授权已关闸。",
+          requestId: input.requestId,
+        }),
+      );
     if (outcome === "stale")
       return Promise.resolve(
         fail({
@@ -206,6 +214,7 @@ export function LeasesScene({ go }: { go: (to: string) => void }) {
             leases={leases}
             holderNames={demoHolderNames}
             onMutate={submit}
+            fencingSnapshot={{ executions: demoExecutions, mutation: null }}
             testId="lease-scene-overview"
           />
           <RunHoldingNote

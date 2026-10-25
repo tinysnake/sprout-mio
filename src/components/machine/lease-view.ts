@@ -22,8 +22,9 @@ export const LEASE_STATE_LABELS: Record<LeaseView["state"], LeaseLabel> = {
     tone: "success",
   },
   fencing: {
-    label: "回收中",
-    detail: "正在撤回旧授权并等待 Worker 确认，期间不再接受新的远端操作。",
+    label: "等待 Worker 确认",
+    detail:
+      "正在等待该 Machine 的 Worker 确认旧授权已关闸；期间不接受新的远端操作。若 Worker 已失联，该状态可能持续，直到 Worker 重新连接并确认；重连本身不代表已确认，也无法保证等待会结束。已启动的进程仍可能继续产生副作用。",
     tone: "warning",
   },
 };
@@ -62,7 +63,7 @@ export function leasesForMachine(
 
 /**
  * 一个分身持有多台 Machine：按 holderInstanceId 归并，持有者顺序按首次出现稳定排列。
- * 空闲与回收中的租约没有 holder（fencing 仍落在原 holder 上时按 holder 归并）。
+ * 空闲没有 holder；fencing 保留原 holder，不能投影为无持有者。
  */
 export function groupLeasesByHolder(leases: readonly LeaseView[]): LeaseHolder[] {
   const holders = new Map<string, LeaseView[]>();
@@ -93,6 +94,52 @@ export function pendingMutationLabel(lease: LeaseView): string | null {
   return `有一个租约动作处理中（${lease.pendingMutationId}），结果尚未确认。`;
 }
 
+export function mutationStateLabel(mutation: LeaseMutationView): LeaseLabel {
+  const completed = mutation.state === "completed";
+  return {
+    label: `${LEASE_MUTATION_LABELS[mutation.action]}${completed ? "已确认" : "等待 Worker 确认"}`,
+    detail: `代次 ${mutation.completedGeneration ?? mutation.expectedGeneration}`,
+    tone: completed ? "success" : "warning",
+  };
+}
+
+/** 按同一 Project × Machine 核对 pending 收据，不能借其他租约的动作填空。 */
+export function fencingMutation(lease: LeaseView, mutation: LeaseMutationView | null) {
+  return mutation?.mutationId === lease.pendingMutationId &&
+    mutation.projectId === lease.projectId &&
+    mutation.machineId === lease.machineId &&
+    mutation.state === "pending" &&
+    mutation.expectedGeneration === lease.generation
+    ? mutation
+    : null;
+}
+
+/** ExecutionView 不含 drainedAt；这里只列结果不确定的记录，不宣称它们阻塞 drain。 */
+export function fencingExecutions(lease: LeaseView, executions: readonly ExecutionView[]) {
+  return executions.filter(
+    (execution) =>
+      execution.projectId === lease.projectId &&
+      execution.machineId === lease.machineId &&
+      (execution.state === "unknown" ||
+        (execution.terminalAt !== null &&
+          (execution.failureReason === "worker_lost" || execution.failureReason === "deadline"))),
+  );
+}
+
+export function fencingWaitLabel(changedAt: string, now: number): string {
+  const elapsed = now - Date.parse(changedAt);
+  if (!Number.isFinite(elapsed) || elapsed < 0) return "当前时间早于状态更新时间，无法计算等待时长";
+  const seconds = Math.floor(elapsed / 1000);
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `已等待 ${days > 0 ? `${days} 天 ` : ""}${hours} 小时 ${minutes} 分 ${seconds % 60} 秒`;
+}
+
+export function reclaimErrorNote(code: string): string | null {
+  return code === "lease_fencing" ? "等待 Worker 确认后才能完成收回。" : null;
+}
+
 /**
  * run 结束不改变租约状态：这里只并列两个事实，不把 run 的终态投影成释放。
  * runStatus 为 null 表示没有可用 run 事实，仍然不推断释放。
@@ -106,6 +153,12 @@ export function runLeaseRelation(
     return {
       held,
       note: "当前没有持有者；这是租约自身的状态，不由 run 状态推出。",
+    };
+  }
+  if (lease.state === "fencing") {
+    return {
+      held,
+      note: "租约记录仍由该分身持有；旧授权正在等待 Worker 确认已关闸，run 状态不代表租约动作已完成。",
     };
   }
   if (runStatus === null) {

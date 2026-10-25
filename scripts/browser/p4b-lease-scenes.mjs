@@ -117,6 +117,49 @@ for (const colorScheme of ["light", "dark"]) {
           assert.ok(states.includes(state), `missing state ${state}`);
         assert.deepEqual(errors, [], `console errors: ${errors.join(" | ")}`);
         await shoot(page, `leases-${colorScheme}-${width}`);
+        const fencing = page.locator('[data-lease-state="fencing"]');
+        assert.equal(await fencing.count(), 1);
+        const text = await fencing.innerText();
+        assert.match(text, /等待该 Machine 的 Worker 确认旧授权已关闸/);
+        assert.match(text, /无法保证等待会结束/);
+        assert.match(text, /期间不接受新的远端操作/);
+        assert.match(text, /自 .* 起/);
+        assert.match(text, /已等待|无法计算等待时长/);
+        assert.match(text, /动作与收据代次尚未读取确认/);
+        assert.match(text, /当前租约代次 7/);
+        assert.match(text, /结果未知或因 Worker 失联 \/ 截止时间结束的记录：0 条/);
+        assert.match(text, /现有执行记录未提供 Worker/);
+        assert.match(text, /最多 100 条/);
+        assert.equal(
+          await fencing.getAttribute("data-holder-instance"),
+          "ins_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        );
+        const state = await fencing.getByTestId("lease-state").innerText();
+        assert.doesNotMatch(state, /空闲|已释放|已收回|成功/);
+        assert.equal(
+          await fencing.getByRole("button").count(),
+          1,
+          "只保留普通收回请求，不提供强制推进",
+        );
+        const reclaim = fencing.getByTestId("lease-fencing-reclaim");
+        assert.equal(await reclaim.isDisabled(), true);
+        await fencing.getByTestId("lease-fencing-reclaim-confirm").check();
+        await reclaim.click();
+        const error = fencing.getByTestId("lease-fencing-reclaim-error");
+        await error.waitFor();
+        assert.match(await error.innerText(), /lease_fencing/);
+        assert.match(await error.innerText(), /等待 Worker 确认后才能完成收回/);
+        assert.equal(await fencing.getAttribute("data-lease-state"), "fencing");
+        assert.equal(await fencing.getByTestId("lease-fencing-reclaim-receipt").count(), 0);
+        await shootAt(page, "lease-fencing-facts", `fencing-${colorScheme}-${width}`);
+        await fencing.screenshot({
+          path: join(evidence, `fencing-row-${colorScheme}-${width}.png`),
+          animations: "disabled",
+        });
+        assert.ok(
+          await fencing.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+          "fencing 文本不横向溢出",
+        );
       } finally {
         await context.close();
       }
