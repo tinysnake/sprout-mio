@@ -26,6 +26,7 @@ import {
   machineConnection,
   machineConnectionCounter,
   machineLease,
+  mcpFrame,
   project,
   remoteExecution,
   workerExchangeFrame,
@@ -41,6 +42,7 @@ import {
   payloadHash,
 } from "./lease";
 import type { AgentRemoteContext } from "./lease";
+import { wakeMcpSession } from "./mcp-relay";
 
 export class RemoteError extends Error {
   constructor(
@@ -549,10 +551,21 @@ export function applyRemoteExchange(
       1048576 -
       remoteExchangeBytes(output, ctx) +
       Buffer.byteLength(JSON.stringify({ mcp: [], mcpCursors: [] }));
-    Object.assign(
-      output,
-      applyMcpExchange(input, ctx, Math.min(budget, ctx.seq % 2 ? 655360 : 65536)),
+    const { wakeSessions, ...mcpOutput } = applyMcpExchange(
+      input,
+      ctx,
+      Math.min(budget, ctx.seq % 2 ? 655360 : 65536),
     );
+    Object.assign(output, mcpOutput);
+    // exchangeWorker owns an outer synchronous transaction. Run after that stack
+    // commits, and suppress wakes if a later gateway failure rolled it back.
+    if (wakeSessions.size)
+      queueMicrotask(() => {
+        for (const [sessionId, frameId] of wakeSessions) {
+          if (db.select({ id: mcpFrame.id }).from(mcpFrame).where(eq(mcpFrame.id, frameId)).get())
+            wakeMcpSession(sessionId);
+        }
+      });
   } catch (error) {
     if (error instanceof McpExchangeError) throw new RemoteError(error.code);
     throw error;

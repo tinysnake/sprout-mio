@@ -1,35 +1,35 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createHash, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
-import type { McpConfig } from "../../src/contracts/mcp";
+import type { McpCatalogView, McpConfig } from "../../src/contracts/mcp";
 import { sqlite } from "../../src/db";
 import { loadPiMcp } from "../../src/extension/mcp-load";
 import { connectSproutMcp } from "../../src/extension/mcp-client";
 import { mcpToolName } from "../../src/extension/mcp-tools";
 import { createRemoteClient } from "../../src/extension/remote-client";
 import { readResponseForProbe } from "./mcp-extension-probe";
-import { mcpSessionExchange, wakeMcpSession } from "../../src/server/mcp-relay";
+import { mcpHoldCount, mcpSessionExchange } from "../../src/server/mcp-relay";
+import { createMachine } from "../../src/domain/machine";
+import { enrollWorker, openWorker, exchangeWorker } from "../../src/server/worker-gateway";
+import { McpRuntime } from "../../src/worker/mcp";
+import { RemoteDispatcher } from "../../src/worker/remote";
+import { mcpHash } from "../../src/domain/mcp/protocol";
+import { probeNativePiVersion } from "./mcp-native-version";
+import { measureWakeControls } from "./mcp-integration-wake";
 import { remoteAgentResponse } from "../../src/server/remote-agent-gateway";
 import { issueRemoteToolGrant } from "../../src/server/remote-agent-gateway";
 import { PiSessionProcess } from "../../src/server/pi-host/process";
 import { machineRuntimeContext, startRuntime } from "../../src/server/runtime";
 import type { AgentRemoteContext } from "../../src/server/lease";
 
-/**
- * x2 的驱动：真实 runtime + 真实 HTTP + 真实 SQLite + 真实 Pi MCP 客户端 + 真实 MCP server 进程。
- *
- * 唯一被替换的一环是 **Machine 侧 dispatcher**：本单元没有 `src/worker/**` 的写权限，
- * 而 `applyRemoteExchange` 的 `input.mcp` 消费属于 `r1-worker`。所以这里用脚本内的
- * 「stand-in dispatcher」代跑那一段：从 `mcp_frame` 取 c2s 帧 → 真实 MCP server stdin →
- * stdout 回写 `mcp_frame` 的 s2c 行 → `wakeMcpSession`。这正是 r1-worker 要做的动作，
- * 但它不是 r1-worker 的代码，因此端到端结论按 brief D 节标 INCONCLUSIVE。
+/** Real HTTP agent gateway, authenticated Worker exchanges and production dispatcher.
+ * Only actor/lease fixtures are seeded; all MCP rows and frames come from production code.
  */
 
 const evidencePath = process.env.X2_EVIDENCE ?? "/tmp/x2-mcp-extension-evidence.json";
@@ -44,9 +44,10 @@ const bootId = runtime.bootId;
 
 // ---------------------------------------------------------------- 真实 Pi MCP 导出探测
 const piMcp = await loadPiMcp();
-const piMcpVersion = (
-  JSON.parse(readFileSync(join(piMcp.root, "package.json"), "utf8")) as { version: string }
-).version;
+const mcpPackage = JSON.parse(readFileSync(join(piMcp.root, "package.json"), "utf8"));
+assert.equal(mcpPackage.name, "@earendil-works/pi-mcp");
+const piMcpVersion = typeof mcpPackage.version === "string" ? mcpPackage.version : null;
+const nativePiVersionEvidence = await probeNativePiVersion(join(piMcp.root, "dist/index.js"));
 assert(piMcp.exportNames.includes("McpClient"));
 assert(piMcp.exportNames.includes("parseJsonRpcMessage"));
 pass(`真实 pi-mcp ${piMcpVersion} 已解析：${piMcp.exportNames.length} 个导出`);
@@ -57,38 +58,42 @@ insert(
   "INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES (?,'X2','x2@mcp.test',0,1,1)",
   "owner",
 );
-const machineId = newId(ID_PREFIXES.machine);
 const projectId = newId(ID_PREFIXES.project);
-insert(
-  "INSERT INTO machine(id,name,created_by,created_at,updated_at) VALUES (?,'X2 Mac','owner',1,1)",
-  machineId,
-);
 insert("INSERT INTO project(id,name,created_by) VALUES (?,'X2','owner')", projectId);
+const workerContext = {
+  userId: "owner",
+  bootId,
+  now: new Date(),
+  requestId: newId(ID_PREFIXES.request),
+};
+const machine = createMachine({ name: "Integration MCP" }, workerContext);
+const machineId = machine.detail.machine.id;
 insert(
-  "INSERT OR IGNORE INTO project_machine(project_id,machine_id,created_by,revision,created_at,updated_at) VALUES (?,?,'owner',1,1,1)",
+  "INSERT INTO project_machine(project_id,machine_id,created_by,revision,created_at,updated_at) VALUES (?,?,'owner',1,1,1)",
   projectId,
   machineId,
 );
-// 真实 Worker 打开连接时会写入 capability；这里直接落一条 open 连接（Worker 侧属 r1-worker）。
-const attemptId = randomUUID();
-insert(
-  "INSERT INTO machine_connection(machine_id,generation,attempt_id,boot_id,status,opened_at,last_seen_at,seq,capability,last_payload_hash) VALUES (?,1,?,?,'open',?,?,1,?,?)",
+const workerSecret = randomBytes(32).toString("base64url");
+const wire = {
   machineId,
-  attemptId,
-  bootId,
-  Date.now(),
-  Date.now(),
-  JSON.stringify({
-    platform: "darwin",
-    arch: "arm64",
-    workerVersion: "x2-stand-in",
-    shells: [],
-    remoteOperations: ["file_read"],
-    mcpRelay: { version: 1, transports: ["stdio"], maxMessageBytes: 131072 },
-  }),
-  "a".repeat(64),
-);
-insert("INSERT INTO machine_connection_counter(machine_id,high_water) VALUES (?,1)", machineId);
+  secret: workerSecret,
+  version: 3 as const,
+  requestId: newId(ID_PREFIXES.request),
+};
+enrollWorker({ ...wire, ticket: machine.ticket }, workerContext);
+const worker = openWorker({ ...wire, attemptId: randomUUID() }, workerContext).session;
+const capability = {
+  platform: process.platform as "darwin",
+  arch: process.arch as "arm64",
+  workerVersion: "integration-source",
+  shells: [],
+  remoteOperations: ["file_read" as const],
+  mcpRelay: {
+    version: 1 as const,
+    transports: ["stdio" as const],
+    maxMessageBytes: 131072 as const,
+  },
+};
 
 const profileId = newId(ID_PREFIXES.agentProfile);
 const chatId = newId(ID_PREFIXES.chat);
@@ -160,10 +165,8 @@ insert(
   Date.now(),
 );
 
-// 显式登记 + 一条 running 的 process 行（真实 Worker 会通过 process_fact 写入）。
+// Explicit configuration is consumed by the real Machine-side runtime.
 const registrationId = newId(ID_PREFIXES.mcpRegistration);
-const processId = newId(ID_PREFIXES.mcpProcess);
-const incarnationId = randomUUID();
 const config: McpConfig = {
   transport: "stdio",
   command: "npx",
@@ -177,30 +180,77 @@ const config: McpConfig = {
   elicitation: "cancel",
   requestTimeoutMs: 120_000,
 };
-insert(
-  "INSERT INTO mcp_server_registration(id,revision,project_id,machine_id,name,transport,config_ref,config_hash,config_json,created_at,retired_at) VALUES (?,1,?,?,'everything','stdio','everything',?,?,?,NULL)",
-  registrationId,
+const configured = {
+  id: registrationId,
+  revision: 1,
   projectId,
   machineId,
-  "c".repeat(64),
-  JSON.stringify(config),
-  Date.now(),
-);
-insert(
-  "INSERT INTO mcp_server_process(id,registration_id,registration_revision,project_id,machine_id,transport,config_hash,worker_incarnation_id,launch_nonce,pid,process_started_at,endpoint,state,state_revision,state_hash,created_at,last_observed_at,ended_at,exit_code,end_reason) VALUES (?,?,1,?,?,'stdio',?,?,?,?,?,NULL,'running',1,?,?,?,NULL,NULL,NULL)",
-  processId,
-  registrationId,
-  projectId,
-  machineId,
-  "c".repeat(64),
-  incarnationId,
-  randomUUID(),
-  process.pid,
-  Date.now(),
-  "d".repeat(64),
-  Date.now(),
-  Date.now(),
-);
+  name: "everything",
+  transport: "stdio" as const,
+  configRef: "everything",
+  configHash: mcpHash(config),
+  configJson: config,
+  createdAt: Date.now(),
+  retiredAt: null,
+};
+const workerRuntime = new McpRuntime([configured]);
+await workerRuntime.start();
+const dispatcher = new RemoteDispatcher(worker, capability, Date.now, workerRuntime);
+let workerSeq = 0;
+let receivedFrames = 0;
+let dispatchedFrames = 0;
+const frameCommits: { sessionId: string; at: number }[] = [];
+const httpExchanges: {
+  elapsedMs: number;
+  requestedHoldMs: number;
+  holdEntered: boolean;
+  frames: number;
+  newFrameCommitted: boolean;
+}[] = [];
+const tick = () => {
+  workerContext.now = new Date();
+  const outgoing = dispatcher.outgoing();
+  const newFrames = outgoing.mcp.filter(
+    (item) =>
+      item.type === "frame" &&
+      !sqlite.prepare("SELECT id FROM mcp_frame WHERE id=?").get(item.frameId),
+  );
+  const response = exchangeWorker(
+    {
+      ...wire,
+      session: worker,
+      seq: ++workerSeq,
+      mode: "normal",
+      capability,
+      observations: [],
+      remote: outgoing,
+    },
+    workerContext,
+  );
+  for (const item of newFrames)
+    if (item.type === "frame")
+      frameCommits.push({ sessionId: item.sessionId, at: performance.now() });
+  receivedFrames += outgoing.mcp.filter((item) => item.type === "frame").length;
+  dispatchedFrames += response.remote.mcp.filter(
+    (item: { type: string }) => item.type === "frame",
+  ).length;
+  dispatcher.accept(response, workerSeq, []);
+};
+tick();
+const processRow = sqlite
+  .prepare("SELECT id,pid FROM mcp_server_process WHERE registration_id=? AND state='running'")
+  .get(registrationId) as { id: string; pid: number };
+assert(processRow?.pid > 0, "real runtime advertised its spawned server PID");
+const processId = processRow.id;
+let tickError: unknown;
+const timer = setInterval(() => {
+  try {
+    tick();
+  } catch (error) {
+    tickError = error;
+    clearInterval(timer);
+  }
+}, 10);
 
 // ---------------------------------------------------------------- 真实 HTTP 边界
 const server = createServer((request: IncomingMessage, response: ServerResponse) => {
@@ -208,6 +258,9 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
   request.on("data", (chunk: Buffer) => chunks.push(chunk));
   request.on("end", async () => {
     const body = Buffer.concat(chunks).toString("utf8");
+    const call = JSON.parse(body).call;
+    const startedAt = performance.now();
+    const holdsBefore = mcpHoldCount();
     const headers = new Headers();
     for (const [key, value] of Object.entries(request.headers))
       if (typeof value === "string") headers.set(key, value);
@@ -223,7 +276,20 @@ const server = createServer((request: IncomingMessage, response: ServerResponse)
     );
     response.statusCode = answer.status;
     answer.headers.forEach((value, key) => response.setHeader(key, value));
-    response.end(Buffer.from(await answer.arrayBuffer()));
+    const resultBytes = Buffer.from(await answer.arrayBuffer());
+    if (call.type === "mcp_session_exchange") {
+      const result = JSON.parse(resultBytes.toString("utf8"));
+      httpExchanges.push({
+        elapsedMs: performance.now() - startedAt,
+        requestedHoldMs: call.input.holdMs,
+        holdEntered: mcpHoldCount() > holdsBefore,
+        frames: result.data?.frames?.length ?? 0,
+        newFrameCommitted: frameCommits.some(
+          (frame) => frame.sessionId === call.input.sessionId && frame.at >= startedAt,
+        ),
+      });
+    }
+    response.end(resultBytes);
   });
 });
 // 网关（`remoteAgentResponse`）要求请求 origin 等于 `config.APP_ORIGIN`，而 config 在 import
@@ -244,90 +310,14 @@ const remote = createRemoteClient({
 const catalog = (await readResponseForProbe(remote, {
   version: 2,
   call: { type: "mcp_catalog_get", input: { projectId, machineId, authorizationGeneration: 1 } },
-})) as { registrations: { name: string; processes: { processId: string }[] }[] };
+})) as McpCatalogView;
 assert.equal(catalog.registrations.length, 1);
 assert.equal(catalog.registrations[0]!.name, "everything");
 assert.equal(catalog.registrations[0]!.processes.length, 1);
 assert(!JSON.stringify(catalog).includes("server-everything@2.0.1"), "catalog 不返回命令或参数");
 pass("真实 HTTP 的 mcp_catalog_get 只返回显式登记，不含命令/参数");
 
-// ---------------------------------------------------------------- stand-in dispatcher
-const responder = spawn("npx", ["-y", "@modelcontextprotocol/server-everything@2.0.1"], {
-  stdio: ["pipe", "pipe", "pipe"],
-});
-let stdoutBuffer = "";
-let sessionId: string | null = null;
-responder.stdout.on("data", (chunk: Buffer) => {
-  stdoutBuffer += chunk.toString("utf8");
-  for (let index = stdoutBuffer.indexOf("\n"); index >= 0; index = stdoutBuffer.indexOf("\n")) {
-    const line = stdoutBuffer.slice(0, index).trim();
-    stdoutBuffer = stdoutBuffer.slice(index + 1);
-    if (!line || !sessionId) continue;
-    enqueueInbound(sessionId, JSON.parse(line));
-  }
-});
-responder.stderr.on("data", () => {});
-const responderExited = once(responder, "exit").then(() => true);
-responder.on("error", () => undefined);
-
-function enqueueInbound(targetSession: string, message: unknown) {
-  // 这是 r1-worker 在 `applyRemoteExchange` 里应做的动作：把 server→client 帧落库。
-  const row = sqlite
-    .prepare(
-      "SELECT server_high_water AS hw, project_id AS p, machine_id AS m, authorization_generation AS g, holder_instance_id AS i, process_id AS d FROM mcp_session WHERE id=?",
-    )
-    .get(targetSession) as
-    | { hw: number; p: string; m: string; g: number; i: string; d: string }
-    | undefined;
-  if (!row) return;
-  const bytes = Buffer.from(JSON.stringify(message), "utf8");
-  const seq = row.hw + 1;
-  sqlite
-    .prepare(
-      "INSERT INTO mcp_frame(id,session_id,project_id,machine_id,authorization_generation,holder_instance_id,process_id,direction,seq,payload_base64,payload_bytes,payload_hash,state,created_at,expires_at,sent_at,terminal_at,disposition_reason) VALUES (?,?,?,?,?,?,?,'server_to_client',?,?,?,?,'queued',?,?,NULL,NULL,NULL)",
-    )
-    .run(
-      newId(ID_PREFIXES.mcpFrame),
-      targetSession,
-      row.p,
-      row.m,
-      row.g,
-      row.i,
-      row.d,
-      seq,
-      bytes.toString("base64"),
-      bytes.byteLength,
-      hashOf(bytes),
-      Date.now(),
-      Date.now() + 60_000,
-    );
-  sqlite.prepare("UPDATE mcp_session SET server_high_water=? WHERE id=?").run(seq, targetSession);
-  // 有新帧时立刻叫醒正在有界 hold 的 exchange。
-  wakeMcpSession(targetSession);
-}
-
-function hashOf(bytes: Buffer | string): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-/** 把 queued 的 c2s 帧喂给真实 MCP server（等同 Worker 的 session 转发）。 */
-function pumpOutbound() {
-  if (!sessionId) return;
-  const rows = sqlite
-    .prepare(
-      "SELECT id,payload_base64 AS b FROM mcp_frame WHERE session_id=? AND direction='client_to_server' AND state='queued' ORDER BY seq",
-    )
-    .all(sessionId) as { id: string; b: string }[];
-  for (const row of rows) {
-    responder.stdin.write(Buffer.from(row.b, "base64").toString("utf8") + "\n");
-  }
-}
-void pumpOutbound;
-setInterval(pumpOutbound, 20);
-
-// ---------------------------------------------------------------- 真实 Pi MCP 客户端 + 我们的 transport
-// session 由 `SproutRelayTransport.start()` 自己经真实 HTTP 打开（这是被测路径），
-// 所以这里不手工预开 session；open 之后从库里取回 id 让 stand-in dispatcher 使用。
+// Native Pi performs initialize and tools/list through the real dispatcher.
 const handlerOrder: string[] = [];
 const Base = piMcp.McpClient as unknown as new (options: never) => {
   setRequestHandler(method: string, handler: unknown): () => void;
@@ -344,18 +334,6 @@ class ObservedClient extends Base {
   }
 }
 
-// stand-in dispatcher 在 attach 之前就要能识别 session，因此 open 前后都轮询一次。
-const attachTimer = setInterval(() => {
-  const row = sqlite
-    .prepare("SELECT id,attached_at FROM mcp_session WHERE process_id=? ORDER BY created_at DESC")
-    .get(processId) as { id: string; attached_at: number | null } | undefined;
-  if (!row || row.attached_at !== null) return;
-  sessionId = row.id;
-  // 同 r1-worker 的 `session_fact(attached)`：把 session 标成已 attach。
-  sqlite.prepare("UPDATE mcp_session SET attached_at=? WHERE id=?").run(Date.now(), row.id);
-  wakeMcpSession(row.id);
-}, 20);
-
 const connection = await connectSproutMcp(
   { ...piMcp, McpClient: ObservedClient as unknown as typeof piMcp.McpClient },
   remote,
@@ -370,8 +348,8 @@ const connection = await connectSproutMcp(
     },
   },
 );
-clearInterval(attachTimer);
-sessionId = connection.transport.sessionId!;
+if (tickError) throw tickError;
+const sessionId = connection.transport.sessionId!;
 assert(sessionId, "transport 打开了 MCP session");
 assert.deepEqual(handlerOrder.slice(-1), ["connect"]);
 assert.deepEqual(handlerOrder.slice(0, -1).sort(), [
@@ -392,10 +370,22 @@ assert(attached.attached_at !== null && attached.connected_at !== null);
 assert(attached.protocol_version !== null);
 pass("真实 Pi McpClient 通过 Sprout 通道完成 initialize 与 tools/list");
 
+const rawToolNames = connection.tools.map((tool) => tool.name).sort();
 const toolNames = connection.tools.map((tool) => mcpToolName("everything", tool.name)).sort();
-assert(toolNames.length > 0, "tools/list 返回了工具");
+assert.equal(toolNames.length, 20, "pinned server-everything tools/list");
 assert(toolNames.every((name) => name.startsWith("mcp__everything__")));
 pass(`真实 tools/list 返回 ${toolNames.length} 个工具`);
+const realFrameWakes = httpExchanges.filter(
+  (exchange) =>
+    exchange.requestedHoldMs === 2000 &&
+    exchange.holdEntered &&
+    exchange.newFrameCommitted &&
+    exchange.frames > 0,
+);
+assert(
+  realFrameWakes.some((exchange) => exchange.elapsedMs < 500),
+  "a real MCP server frame must wake an active HTTP hold before timeout",
+);
 
 // ---------------------------------------------------------------- drain 交互
 const drainScope = globalThis as typeof globalThis & {
@@ -433,13 +423,59 @@ drainScope.sproutHttpDrain = undefined;
 pass(`draining 期间 mcp_session_exchange 响应 ${drainMs} ms（< 100 ms）`);
 
 // ---------------------------------------------------------------- 真实 Pi 加载扩展
-const runnerEvidence = await loadExtensionInRealRunner();
+const runtimeEvidence = await loadExtensionInRealRuntime();
 
 // ---------------------------------------------------------------- close
 await connection.close();
-responder.stdin.end();
-await Promise.race([responderExited, new Promise((r) => setTimeout(r, 5000))]);
-if (responder.exitCode === null) responder.kill("SIGTERM");
+clearInterval(timer);
+assert(process.kill(processRow.pid, 0), "closing Pi session preserves the actual server process");
+// A process identity is currently single-use (mcp_session_process_unique).
+// Timing controls use a second real process, leaving the measured MCP client alone.
+const controlRuntime = new McpRuntime([configured]);
+await controlRuntime.start();
+const controlDispatcher = new RemoteDispatcher(worker, capability, Date.now, controlRuntime);
+workerContext.now = new Date();
+// Advertise the separate control process. Timing inputs below intentionally bypass dispatcher.accept.
+exchangeWorker(
+  {
+    ...wire,
+    session: worker,
+    seq: ++workerSeq,
+    mode: "normal",
+    capability,
+    observations: [],
+    remote: controlDispatcher.outgoing(),
+  },
+  workerContext,
+);
+const controlProcess = sqlite
+  .prepare(
+    "SELECT id,worker_incarnation_id FROM mcp_server_process WHERE registration_id=? AND id<>? AND state='running'",
+  )
+  .get(registrationId, processId) as { id: string; worker_incarnation_id: string };
+assert(controlProcess);
+const wakeControls = await measureWakeControls({
+  remote,
+  runtime,
+  projectId,
+  machineId,
+  chatId,
+  instanceId,
+  runId,
+  grantId,
+  worker,
+  workerContext,
+  capability,
+  wire,
+  nextSeq: () => ++workerSeq,
+  registration: catalog.registrations[0]!,
+  process: {
+    processId: controlProcess.id,
+    workerIncarnationId: controlProcess.worker_incarnation_id,
+    lastObservedAt: Date.now(),
+  },
+});
+await controlRuntime.stop();
 assert.equal(
   sqlite.prepare("SELECT state FROM mcp_server_process WHERE id=?").get(processId)?.state,
   "running",
@@ -449,33 +485,42 @@ await grantProcess.close().catch(() => undefined);
 pass("关闭 Pi 侧 session 后 Machine 上的 server 进程行状态仍 running（standing order 6）");
 
 const evidence = {
+  ...nativePiVersionEvidence,
   piMcpVersion,
   piMcpRoot: piMcp.root,
   piMcpExports: piMcp.exportNames,
   handlerOrder,
   catalogRegistrations: catalog.registrations.length,
-  catalogOnlyExplicitRegistrations: true,
-  catalogHidesLaunchConfig: true,
+  catalogOnlyExplicitRegistrations:
+    catalog.registrations.length === 1 &&
+    catalog.registrations[0]!.registrationId === registrationId,
+  catalogHidesLaunchConfig: !JSON.stringify(catalog).includes(config.command),
   hostDrainsInTime: drainMs < 100,
   drainExchangeMs: drainMs,
-  endToEndToolsList: "blocked",
-  blockedAt: "src/server/remote.ts:applyRemoteExchange（r1-worker 的 input.mcp 消费）",
-  blockedReason:
-    "本单元无 src/worker/** 与 applyRemoteExchange 的写权限；c2s/s2c 帧的落库与 session_fact 由 r1-worker 实现，x2 用脚本内 stand-in dispatcher 代跑该环以证明其余各环真实可用",
-  realServerToolsList: "pass",
-  realServer: "@modelcontextprotocol/server-everything@2.0.1",
+  endToEndToolsList: dispatchedFrames > 0 && receivedFrames > 0 ? "pass" : "inconclusive",
+  realServer: config.args[1],
   realServerToolCount: toolNames.length,
+  toolCount: toolNames.length,
+  workerExchanges: workerSeq,
+  workerDispatcherClientFrames: dispatchedFrames,
+  workerDispatcherServerFrames: receivedFrames,
+  serverPid: processRow.pid,
+  attached,
+  wakeControls,
   toolNames,
-  extensionLoadedInRealPiRunner: runnerEvidence.tools.length,
-  extensionRunnerTools: runnerEvidence.tools,
-  extensionRunnerSdk: runnerEvidence.sdkVersion,
+  rawToolNames,
+  realFrameWakes,
+  extensionRuntimeToolCount: runtimeEvidence.tools.length,
+  extensionRuntimeTools: runtimeEvidence.tools,
+  extensionRuntimeSdk: runtimeEvidence.sdkVersion,
   scope:
-    "真实 pi-mcp 1.4.0 McpClient、真实 HTTP /api/remote/agent（生产网关函数）、真实隔离 SQLite、真实 spawn 的 MCP server 进程。未被真实覆盖的一环是 r1-worker 的 dispatcher/applyRemoteExchange。",
+    "Native Pi client, HTTP agent gateway, authenticated exchangeWorker/applyRemoteExchange, production RemoteDispatcher/McpRuntime, spawned MCP stdio process. Worker dispatcher runs in fixture process; dist/worker/main.js is not used here.",
 };
 writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+await workerRuntime.stop();
 server.closeAllConnections();
 server.close();
-// 真实 runtime、SDK 资源装载器与 stand-in dispatcher 都有长生命周期句柄；证据落盘后显式退出，
+// Runtime and SDK loaders retain handles; after cleanup and evidence, exit explicitly.
 // 避免验收脚本挂在「进程不退出」而不是「断言失败」上。
 console.log("DONE x2 mcp extension");
 process.exit(0);
@@ -490,7 +535,7 @@ process.exit(0);
  * `extensionFactories` 机制加载真实 extension 代码与真实 `pi` API，不再走 runner 的 stdin 协议。
  * 这一条不是「真实 Pi session 跑完一轮」，只是「真实 Pi 扩展运行时装到了本 extension」。
  */
-async function loadExtensionInRealRunner(): Promise<{ tools: string[]; sdkVersion: string }> {
+async function loadExtensionInRealRuntime(): Promise<{ tools: string[]; sdkVersion: string }> {
   const piMcp = await loadPiMcp();
   const sdkRoot = join(piMcp.root, "..", "pi-coding-agent");
   const sdk = (await import(pathToFileURL(join(sdkRoot, "dist", "index.js")).href)) as {
@@ -538,8 +583,10 @@ async function loadExtensionInRealRunner(): Promise<{ tools: string[]; sdkVersio
     "未登记的 server 不得进入工具面（不扫描宿主 mcp.json）",
   );
   const pkg = JSON.parse(readFileSync(join(sdkRoot, "package.json"), "utf8")) as {
+    name: string;
     version: string;
   };
+  assert.equal(pkg.name, "@earendil-works/pi-coding-agent");
   pass(
     `真实 Pi ${pkg.version} DefaultResourceLoader 装到 extension：${tools.length} 个工具，无 mcp__ 前缀`,
   );
