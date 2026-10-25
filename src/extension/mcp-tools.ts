@@ -30,13 +30,27 @@ function describe(registration: McpRegistration, tool: McpTool): string {
   return `${base}（来自 Project 内显式登记的远端 MCP server「${registration.name}」，经 Sprout 受认证 Worker 通道到达 Machine，绝非宿主本地工具；${registration.transport === "stdio" ? "stdio" : "streamableHttp"} 进程在 Machine 上运行）`;
 }
 
-/** MCP `content` 块 → Pi 工具结果的文本块；非文本块与结构化结果转成 JSON 文本。 */
+/**
+ * MCP `content` 块 → Pi 工具结果的内容块。
+ *
+ * pi-mcp 的 `toLlmContent`（`dist/protocol/content.js`）已经做过一次形状收敛：`text` 与
+ * `image` 原样透传，`audio`、`resource_link`、二进制 `resource` 变成占位或短文本，未知
+ * 类型变成 `[unsupported MCP content ...]`。这里只做类型对齐，不再重新解释块语义——
+ * 上一版把非 text 块 `JSON.stringify` 成文本，等于把图片降级成 base64 字符串，模型拿
+ * 不到 `ImageContent`。
+ */
 function content(result: McpCallToolResult, piMcp: PiMcpModule): SproutToolResult["content"] {
-  const blocks = piMcp.toLlmContent(result);
   const mapped: SproutToolResult["content"] = [];
-  for (const block of blocks) {
+  for (const block of piMcp.toLlmContent(result)) {
     if (block.type === "text" && typeof block.text === "string")
       mapped.push({ type: "text", text: block.text });
+    else if (
+      block.type === "image" &&
+      typeof block.data === "string" &&
+      typeof block.mimeType === "string"
+    )
+      mapped.push({ type: "image", data: block.data, mimeType: block.mimeType });
+    // 走到这里说明 pi-mcp 给出了第三种形状；照实写出来，不假装是图片也不静默丢掉。
     else mapped.push({ type: "text", text: JSON.stringify(block) });
   }
   if (mapped.length === 0) mapped.push({ type: "text", text: "(空结果)" });

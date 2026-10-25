@@ -224,7 +224,10 @@ describe("远端 Pi 工具边界", () => {
       },
     });
     expect(JSON.parse(notification)).toEqual(result.details);
-    expect(JSON.parse(result.content[0]!.text)).toEqual(result.details);
+    // sprout_status 的结果按定义是单个 text 块；先断言块类型，再读它的 JSON。
+    const [block] = result.content;
+    expect(block.type).toBe("text");
+    expect(JSON.parse((block as { type: "text"; text: string }).text)).toEqual(result.details);
   });
 });
 

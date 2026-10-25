@@ -180,7 +180,16 @@ async function open(config) {
                       : null;
                 if (next !== undefined && JSON.stringify(next) !== JSON.stringify(target)) {
                   target = next;
-                  await mcp.refresh();
+                  const refreshed = await mcp.refresh();
+                  // 不假装成功：目录已变但工具面没跟进时，把失败推到 stderr 的 runner 协议行外，
+                  // 由 `sprout_status` 的诊断槽与验收脚本读取。
+                  if (refreshed.outcome === "failed")
+                    line({
+                      type: "progress",
+                      id: config.id,
+                      kind: "mcp_surface_failed",
+                      message: refreshed.error.message,
+                    });
                 }
               }
               return response;
@@ -218,7 +227,11 @@ async function open(config) {
     modelRuntime: runtime,
     model,
     thinkingLevel: thinking,
-    tools: ["read", "bash", "edit", "write", ...Object.keys(remoteToolInputSchemas)],
+    // MCP 工具必须以 `mcp__*` 出现在这一条 allowlist 里，否则 Pi 只把它们留在 registry、
+    // 不声明给模型（`_isActivatable` 对 `direct` exposure 恒为 false，`setActiveTools` 也救不回来）。
+    // 这是 `list_changed` 后新工具到不了模型工具面的根因，详见
+    // `orchestrate/sprout-mio-r1/reports/remediation-extension.md`。
+    tools: ["read", "bash", "edit", "write", "mcp__*", ...Object.keys(remoteToolInputSchemas)],
     resourceLoader,
     settingsManager,
     sessionManager: manager,
