@@ -594,7 +594,8 @@ for(const [index,check] of clauses.entries()) {
     }
   }
   const path=join(dir,`clause-${currentClause}.json`);
-  const record={clause:currentClause,status,...(assertions?{assertions}:{}),...(status==='PASS'?{projections:projections.map(({clause,field,path})=>({field,path}))}:{}),...(error?{error}:{}),executions};
+  const provenances=[...new Map(projections.map(p=>[`${p.field}@${p.path}`,p])).values()].map(({field,path})=>({field,path}));
+  const record={clause:currentClause,status,...(assertions?{assertions}:{}),...(status==='PASS'?{projections:provenances}:{}),...(error?{error}:{}),executions};
   writeFileSync(path,JSON.stringify(record,null,2)+'\n');
   const evidencePath=relative(process.cwd(),path);
   results.push({clause:currentClause,status,evidencePath});

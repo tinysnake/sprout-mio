@@ -48,73 +48,37 @@
     {
       "field": "throughRealPiToolDefinition",
       "path": "c.image.throughRealPiToolDefinition"
-    },
-    {
-      "field": "blockType",
-      "path": "c.image.blockType"
-    },
-    {
-      "field": "mimeType",
-      "path": "c.image.mimeType"
-    },
-    {
-      "field": "base64Length",
-      "path": "c.image.base64Length"
-    },
-    {
-      "field": "bytesEqual",
-      "path": "c.image.bytesEqual"
-    },
-    {
-      "field": "structuredContentEqual",
-      "path": "c.image.structuredContentEqual"
-    },
-    {
-      "field": "throughSproutRelay",
-      "path": "c.image.throughSproutRelay"
-    },
-    {
-      "field": "throughRealPiToolDefinition",
-      "path": "c.image.throughRealPiToolDefinition"
-    },
-    {
-      "field": "x3BytesEqual",
-      "path": "x3.image.matchesServerBytes"
-    },
-    {
-      "field": "x3StructuredContentEqual",
-      "path": "x3.image.structuredContentMatchesServer"
     }
   ],
   "executions": {
     "y2": {
       "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
-      "startedAt": "2026-10-25T20:46:26.607Z",
-      "elapsedMs": 2308,
+      "startedAt": "2026-10-25T20:52:53.345Z",
+      "elapsedMs": 2334,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
       "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
-      "startedAt": "2026-10-25T20:46:28.915Z",
-      "elapsedMs": 11430,
+      "startedAt": "2026-10-25T20:52:55.679Z",
+      "elapsedMs": 11135,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
       "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
-      "startedAt": "2026-10-25T20:46:40.346Z",
-      "elapsedMs": 2065,
+      "startedAt": "2026-10-25T20:53:06.814Z",
+      "elapsedMs": 2011,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
       "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
-      "startedAt": "2026-10-25T20:46:42.411Z",
-      "elapsedMs": 5610,
+      "startedAt": "2026-10-25T20:53:08.825Z",
+      "elapsedMs": 5510,
       "exitCode": 0,
       "signal": null,
       "timedOut": false

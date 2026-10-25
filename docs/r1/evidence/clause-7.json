@@ -8,9 +8,9 @@
     "keyCombinationsPresent": true,
     "evidenceScriptCurrent": true,
     "evidenceSourceCommitAncestor": true,
-    "evidenceScriptSha256": "e8773805dba01f6049a555a37b54b5fdfaa43e0e95ba338807bfacf49f2ae68f",
-    "evidenceSourceCommit": "5a8c94d584b401eab611becc861581e7061399cd",
-    "head": "cbefe696bf8260ed5d534266a90cdec966fc46fc",
+    "evidenceScriptSha256": "6366638b4f398f6ac67e37ece67aeda56c53ad2a1b9f746571f40cd58c6d6669",
+    "evidenceSourceCommit": "24abe54cd78b7fe3a97784365937187235edd182",
+    "head": "24abe54cd78b7fe3a97784365937187235edd182",
     "scope": "条款 7 只校验文档存在、关键组合词与证据来源一致；文档语义由独立验收者逐条核对，本门禁不保证"
   },
   "projections": [
@@ -49,61 +49,37 @@
     {
       "field": "evidenceSourceCommitAncestor",
       "path": "docs.evidenceSourceCommitAncestor"
-    },
-    {
-      "field": "summaryExists",
-      "path": "docs.summaryExists"
-    },
-    {
-      "field": "designExists",
-      "path": "docs.designExists"
-    },
-    {
-      "field": "evidenceIndexExists",
-      "path": "docs.evidenceIndexExists"
-    },
-    {
-      "field": "keyCombinationsPresent",
-      "path": "docs.keyCombinationsPresent"
-    },
-    {
-      "field": "evidenceScriptCurrent",
-      "path": "docs.evidenceScriptCurrent"
-    },
-    {
-      "field": "evidenceSourceCommitAncestor",
-      "path": "docs.evidenceSourceCommitAncestor"
     }
   ],
   "executions": {
     "y2": {
       "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
-      "startedAt": "2026-10-25T20:46:26.607Z",
-      "elapsedMs": 2308,
+      "startedAt": "2026-10-25T20:52:53.345Z",
+      "elapsedMs": 2334,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
       "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
-      "startedAt": "2026-10-25T20:46:28.915Z",
-      "elapsedMs": 11430,
+      "startedAt": "2026-10-25T20:52:55.679Z",
+      "elapsedMs": 11135,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
       "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
-      "startedAt": "2026-10-25T20:46:40.346Z",
-      "elapsedMs": 2065,
+      "startedAt": "2026-10-25T20:53:06.814Z",
+      "elapsedMs": 2011,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
       "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
-      "startedAt": "2026-10-25T20:46:42.411Z",
-      "elapsedMs": 5610,
+      "startedAt": "2026-10-25T20:53:08.825Z",
+      "elapsedMs": 5510,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
