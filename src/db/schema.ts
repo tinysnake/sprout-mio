@@ -1213,7 +1213,9 @@ export const mcpSession = sqliteTable(
   },
   (t) => [
     uniqueIndex("mcp_session_open_unique").on(t.grantId, t.openRequestId),
-    uniqueIndex("mcp_session_process_unique").on(t.processId),
+    uniqueIndex("mcp_session_process_unique")
+      .on(t.processId)
+      .where(sql`${t.state} IN ('connecting','connected')`),
     uniqueIndex("mcp_session_frame_identity_unique").on(
       t.id,
       t.projectId,

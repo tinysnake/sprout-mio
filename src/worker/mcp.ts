@@ -14,6 +14,7 @@ import {
   type SessionCursor,
 } from "../contracts/mcp";
 import type { WorkerSession } from "../contracts/worker-session";
+import { McpHttpConnection, probeMcpHttp } from "./mcp-http";
 import type { RemoteExchangeOutput } from "../contracts/remote";
 import { mcpBound, mcpHash, mcpPayloadHash, mcpSameBound } from "../domain/mcp/protocol";
 
@@ -23,9 +24,10 @@ type Bound = ReturnType<typeof mcpBound>;
 type Control = Exclude<WorkerMcpItem, { type: "frame" }>;
 type ProcessEntry = {
   fact: McpServerProcess;
-  child: ChildProcessWithoutNullStreams;
+  child: ChildProcessWithoutNullStreams | null;
   buffer: Buffer;
-  used: boolean;
+  requestTimeoutMs: number;
+  probe?: Promise<void>;
 };
 type SessionEntry = {
   session: McpSession;
@@ -36,6 +38,7 @@ type SessionEntry = {
   frames: Extract<WorkerMcpItem, { type: "frame" }>[];
   seen: Map<number, string>;
   active: boolean;
+  http?: McpHttpConnection;
 };
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 const liveProcess = (fact: McpServerProcess) =>
@@ -52,59 +55,95 @@ export class McpRuntime {
   private workerSession: WorkerSession | undefined;
   private draining = false;
   private authorizations = new Map<string, RemoteAuthorization>();
+  private closing = new Set<Promise<void>>();
+  private probeAbort = new AbortController();
   constructor(
     private registrations: McpServerRegistration[] = [],
     private now = Date.now,
   ) {}
   async start() {
-    for (const raw of this.registrations) {
+    this.registrations = this.registrations.map((raw) => {
       const registration = mcpServerRegistrationSchema.parse(raw);
       if (bytes({ type: "registration_fact", registration }) > 65536)
         throw new Error("MCP registration exceeds relay control budget");
       if (registration.configHash !== mcpHash(registration.configJson))
         throw new Error("MCP config hash mismatch");
-      this.controls.set(`registration:${registration.id}:${registration.revision}`, {
-        type: "registration_fact",
-        registration,
-      });
-      const config = registration.configJson;
-      if (registration.retiredAt !== null || !config.autostart) continue;
-      if (config.transport !== "stdio" || config.envRef)
-        throw new Error("MCP Worker supports explicit stdio services without envRef");
-      const createdAt = this.now();
-      const fact: McpServerProcess = {
-        id: newId(ID_PREFIXES.mcpProcess),
-        projectId: registration.projectId,
-        machineId: registration.machineId,
-        registrationId: registration.id,
-        registrationRevision: registration.revision,
-        transport: "stdio",
-        configHash: registration.configHash,
-        workerIncarnationId: this.incarnationId,
-        launchNonce: randomUUID(),
-        pid: null,
-        processStartedAt: null,
-        endpoint: null,
-        state: "starting",
-        stateRevision: 1,
-        stateHash: "0".repeat(64),
-        createdAt,
-        lastObservedAt: createdAt,
-        endedAt: null,
-        exitCode: null,
-        endReason: null,
-      };
-      const child = spawn(config.command, config.args, {
-        cwd: config.workingDirectory,
-        stdio: "pipe",
-        detached: true,
-      });
-      const entry: ProcessEntry = { fact, child, buffer: Buffer.alloc(0), used: false };
-      this.processes.set(fact.id, entry);
-      this.publishProcess(entry);
+      return registration;
+    });
+    await Promise.all(
+      this.registrations.map((registration) => this.startRegistration(registration)),
+    );
+  }
+  private async startRegistration(registration: McpServerRegistration) {
+    this.controls.set(`registration:${registration.id}:${registration.revision}`, {
+      type: "registration_fact",
+      registration,
+    });
+    const config = registration.configJson;
+    if (
+      registration.retiredAt !== null ||
+      (config.launch === "configured_service" && !config.autostart)
+    )
+      return;
+    const createdAt = this.now();
+    const fact: McpServerProcess = {
+      id: newId(ID_PREFIXES.mcpProcess),
+      projectId: registration.projectId,
+      machineId: registration.machineId,
+      registrationId: registration.id,
+      registrationRevision: registration.revision,
+      transport: config.transport,
+      configHash: registration.configHash,
+      workerIncarnationId: this.incarnationId,
+      launchNonce: randomUUID(),
+      pid: null,
+      processStartedAt: null,
+      endpoint: config.transport === "streamableHttp" ? config.url : null,
+      state: "starting",
+      stateRevision: 1,
+      stateHash: "0".repeat(64),
+      createdAt,
+      lastObservedAt: createdAt,
+      endedAt: null,
+      exitCode: null,
+      endReason: null,
+    };
+    const entry: ProcessEntry = {
+      fact,
+      child: null,
+      buffer: Buffer.alloc(0),
+      requestTimeoutMs: config.requestTimeoutMs,
+    };
+    this.processes.set(fact.id, entry);
+    this.publishProcess(entry);
+    const service =
+      config.transport === "stdio"
+        ? config
+        : config.launch === "configured_service"
+          ? config.service
+          : undefined;
+    if (service?.envRef || (config.transport === "streamableHttp" && config.headerRef)) {
+      this.ended(entry, null, config.launch === "owner_managed" ? "unreachable" : "spawn_failed");
+      return;
+    }
+    if (service) {
+      let child: ChildProcessWithoutNullStreams;
+      try {
+        child = spawn(service.command, service.args, {
+          cwd: service.workingDirectory,
+          stdio: "pipe",
+          detached: true,
+        });
+      } catch {
+        this.ended(entry, null, "spawn_failed");
+        return;
+      }
+      entry.child = child;
       child.stderr.on("data", () => {});
       child.stdin.on("error", () => this.failAttached(entry, "transport_error"));
-      child.stdout.on("data", (chunk: Buffer) => this.receive(entry, chunk));
+      child.stdout.on("data", (chunk: Buffer) => {
+        if (config.transport === "stdio") this.receive(entry, chunk);
+      });
       child.on("error", () => this.ended(entry, null, "spawn_failed"));
       child.on("exit", (code, signal) =>
         this.ended(entry, code, signal || code !== 0 ? "crashed" : "exited"),
@@ -112,13 +151,38 @@ export class McpRuntime {
       await new Promise<void>((resolve) => {
         child.once("error", () => resolve());
         child.once("spawn", () => {
-          fact.pid = child.pid!;
+          fact.pid = config.transport === "stdio" ? child.pid! : null;
           fact.processStartedAt = this.now();
-          fact.state = "running";
-          this.publishProcess(entry);
           resolve();
         });
       });
+      if (!liveProcess(fact)) return;
+    }
+    if (config.transport === "streamableHttp") {
+      const deadline = this.now() + config.requestTimeoutMs;
+      while (liveProcess(fact) && !this.probeAbort.signal.aborted) {
+        try {
+          await probeMcpHttp(
+            config.url,
+            Math.max(1, deadline - this.now()),
+            this.probeAbort.signal,
+          );
+          break;
+        } catch {
+          if (!service || this.now() >= deadline) {
+            this.ended(entry, null, "unreachable");
+            await this.stopProcess(fact.id);
+            return;
+          }
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.min(50, Math.max(1, deadline - this.now()))),
+          );
+        }
+      }
+    }
+    if (fact.state === "starting" && !this.probeAbort.signal.aborted) {
+      fact.state = "running";
+      this.publishProcess(entry);
     }
   }
   bind(session: WorkerSession) {
@@ -193,6 +257,18 @@ export class McpRuntime {
   ) {
     if (!entry.active) return;
     entry.active = false;
+    if (entry.http) {
+      const closing = entry.http
+        .close()
+        .catch(() => {
+          entry.session.state = "failed";
+          entry.session.endReason = "transport_error";
+          if (this.sessions.get(entry.session.id) === entry)
+            this.state(entry, "failed", "transport_error");
+        })
+        .finally(() => this.closing.delete(closing));
+      this.closing.add(closing);
+    }
     entry.frames = [];
     entry.session.endedAt = this.now();
     this.state(entry, state, reason);
@@ -292,7 +368,9 @@ export class McpRuntime {
       const process = this.processes.get(session.processId);
       if (
         !process ||
-        process.used ||
+        [...this.sessions.values()].some(
+          (s) => s.active && s.session.processId === process.fact.id,
+        ) ||
         process.fact.state !== "running" ||
         process.fact.projectId !== session.projectId ||
         process.fact.machineId !== session.machineId ||
@@ -300,12 +378,11 @@ export class McpRuntime {
         process.fact.registrationId !== session.registrationId ||
         process.fact.registrationRevision !== session.registrationRevision ||
         process.fact.workerIncarnationId !== session.workerIncarnationId ||
-        session.transport !== "stdio"
+        session.transport !== process.fact.transport
       )
         throw new Error("MCP exact process unavailable");
       if ([...this.sessions.values()].filter((s) => s.active).length >= 8)
         throw new Error("MCP session limit");
-      process.used = true;
       const entry: SessionEntry = {
         session: { ...session, attachedAt: this.now() },
         clientAck: 0,
@@ -316,6 +393,14 @@ export class McpRuntime {
         seen: new Map(),
         active: true,
       };
+      if (process.fact.transport === "streamableHttp") {
+        entry.http = new McpHttpConnection(
+          process.fact.endpoint!,
+          process.requestTimeoutMs,
+          (payload) => this.receivePayload(entry, payload),
+          () => this.ended(process, null, "unreachable"),
+        );
+      }
       this.sessions.set(session.id, entry);
       this.state(entry, "connecting");
       return;
@@ -332,6 +417,7 @@ export class McpRuntime {
       if (entry.session.protocolVersion && entry.session.protocolVersion !== item.protocolVersion)
         throw new Error("MCP protocol changed");
       entry.session.protocolVersion = item.protocolVersion;
+      entry.http?.setProtocolVersion(item.protocolVersion);
       entry.session.connectedAt ??= this.now();
       this.state(entry, "connected");
       return;
@@ -369,17 +455,26 @@ export class McpRuntime {
     if (
       !processEntry ||
       processEntry.fact.state !== "running" ||
-      processEntry.child.killed ||
-      processEntry.child.exitCode !== null
+      (processEntry.child && (processEntry.child.killed || processEntry.child.exitCode !== null))
     ) {
       this.endSession(entry, "failed", "target_lost");
       throw new Error("MCP exact process lost");
     }
-    if (processEntry.child.stdin.writableLength + payload.length > 524288) {
-      this.endSession(entry, "failed", "overflow");
-      return;
+    if (entry.http) {
+      try {
+        entry.http.enqueue(payload);
+      } catch {
+        this.endSession(entry, "failed", "overflow");
+        return;
+      }
+    } else {
+      const child = processEntry.child!;
+      if (child.stdin.writableLength + payload.length > 524288) {
+        this.endSession(entry, "failed", "overflow");
+        return;
+      }
+      child.stdin.write(Buffer.concat([payload, Buffer.from("\n")]));
     }
-    processEntry.child.stdin.write(Buffer.concat([payload, Buffer.from("\n")]));
     entry.clientAck = item.seq;
     entry.seen.set(item.seq, `${item.frameId}:${item.payloadHash}`);
     if (entry.seen.size > 128) entry.seen.delete(entry.seen.keys().next().value!);
@@ -394,42 +489,63 @@ export class McpRuntime {
         (s) => s.active && s.session.processId === process.fact.id,
       );
       if (!entry) continue;
-      if (!this.authorized(mcpBound(entry.session))) {
-        this.endSession(entry, "closed", "authorization_revoked");
-        continue;
-      }
-      if (!payload.length || payload.length > MCP_MAX_MESSAGE_BYTES) {
-        this.endSession(entry, "failed", "overflow");
-        continue;
-      }
-      if (
-        entry.frames.reduce((n, f) => n + f.payloadBytes, payload.length) > 1048576 ||
-        entry.frames.length >= 64
-      ) {
-        this.endSession(entry, "failed", "overflow");
-        continue;
-      }
-      entry.frames.push({
-        type: "frame",
-        direction: "server_to_client",
-        ...mcpBound(entry.session),
-        frameId: newId(ID_PREFIXES.mcpFrame),
-        seq: ++entry.serverSeq,
-        payloadBase64: payload.toString("base64"),
-        payloadBytes: payload.length,
-        payloadHash: mcpPayloadHash(payload),
-        expiresAt: this.now() + 120000,
-      });
+      this.receivePayload(entry, payload);
     }
     if (process.buffer.length > MCP_MAX_MESSAGE_BYTES) {
       process.buffer = Buffer.alloc(0);
       this.failAttached(process, "overflow");
     }
   }
+  private receivePayload(entry: SessionEntry, payload: Buffer) {
+    if (!entry.active) return;
+    if (!this.authorized(mcpBound(entry.session))) {
+      this.endSession(entry, "closed", "authorization_revoked");
+      return;
+    }
+    if (
+      !payload.length ||
+      payload.length > MCP_MAX_MESSAGE_BYTES ||
+      entry.frames.reduce((n, f) => n + f.payloadBytes, payload.length) > 1048576 ||
+      entry.frames.length >= 64
+    ) {
+      this.endSession(entry, "failed", "overflow");
+      return;
+    }
+    entry.frames.push({
+      type: "frame",
+      direction: "server_to_client",
+      ...mcpBound(entry.session),
+      frameId: newId(ID_PREFIXES.mcpFrame),
+      seq: ++entry.serverSeq,
+      payloadBase64: payload.toString("base64"),
+      payloadBytes: payload.length,
+      payloadHash: mcpPayloadHash(payload),
+      expiresAt: this.now() + 120000,
+    });
+  }
   outgoing(maxBytes = 1048576): { mcp: WorkerMcpItem[]; mcpCursors: SessionCursor[] } {
-    for (const entry of this.processes.values())
-      if (entry.fact.state === "running" && this.now() - entry.fact.lastObservedAt >= 10000)
-        this.publishProcess(entry);
+    for (const entry of this.processes.values()) {
+      if (entry.fact.state !== "running" || this.now() - entry.fact.lastObservedAt < 10000)
+        continue;
+      if (entry.fact.transport === "stdio") this.publishProcess(entry);
+      else if (!entry.probe && !this.draining && !this.probeAbort.signal.aborted) {
+        entry.probe = probeMcpHttp(
+          entry.fact.endpoint!,
+          entry.requestTimeoutMs,
+          this.probeAbort.signal,
+        )
+          .then(() => {
+            if (entry.fact.state === "running" && !this.probeAbort.signal.aborted)
+              this.publishProcess(entry);
+          })
+          .catch(() => {
+            if (!this.probeAbort.signal.aborted) this.ended(entry, null, "unreachable");
+          })
+          .finally(() => {
+            entry.probe = undefined;
+          });
+      }
+    }
     const result: { mcp: WorkerMcpItem[]; mcpCursors: SessionCursor[] } = {
       mcp: [],
       mcpCursors: [],
@@ -482,23 +598,26 @@ export class McpRuntime {
   }
   async stopProcess(processId: string) {
     const entry = this.processes.get(processId);
-    if (!entry || !liveProcess(entry.fact)) return;
-    entry.fact.state = "stopping";
-    this.publishProcess(entry);
+    if (!entry?.child?.pid || entry.child.exitCode !== null || entry.child.signalCode !== null)
+      return;
+    const child = entry.child;
+    if (liveProcess(entry.fact)) {
+      entry.fact.state = "stopping";
+      this.publishProcess(entry);
+    }
     await new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         try {
-          process.kill(-entry.child.pid!, "SIGKILL");
+          process.kill(-child.pid!, "SIGKILL");
         } catch {}
       }, 2000);
-      entry.child.once("exit", (code) => {
+      child.once("exit", (code) => {
         clearTimeout(timer);
         this.ended(entry, code, "owner_stopped");
         resolve();
       });
-      entry.fact.endReason = null;
       try {
-        process.kill(-entry.child.pid!, "SIGTERM");
+        process.kill(-child.pid!, "SIGTERM");
       } catch {
         clearTimeout(timer);
         this.ended(entry, null, "owner_stopped");
@@ -507,7 +626,13 @@ export class McpRuntime {
     });
   }
   async stop() {
+    this.probeAbort.abort();
     this.disconnect();
+    const probes = [...this.processes.values()].flatMap((entry) =>
+      entry.probe ? [entry.probe] : [],
+    );
+    await Promise.all(probes);
+    await Promise.all(this.closing);
     await Promise.all([...this.processes.keys()].map((id) => this.stopProcess(id)));
   }
 }

@@ -104,25 +104,29 @@ export const mcpConfigSchema = z.discriminatedUnion("transport", [
     launch: z.literal("configured_service"),
     autostart: z.boolean(),
   }),
-  z.strictObject({
-    ...commonConfig,
-    transport: z.literal("streamableHttp"),
-    url: z
-      .url()
-      .max(4096)
-      .refine((value) => {
-        const url = new URL(value);
-        return (
-          ["http:", "https:"].includes(url.protocol) &&
-          !/^https?:\/\/[^/]*@/.test(url.href) &&
-          !/[?#]/.test(url.href)
-        );
-      }),
-    headerRef: noNul(128).optional(),
-    launch: z.enum(["owner_managed", "configured_service"]),
-    autostart: z.boolean(),
-    service: service.optional(),
-  }),
+  z
+    .strictObject({
+      ...commonConfig,
+      transport: z.literal("streamableHttp"),
+      url: z
+        .url()
+        .max(4096)
+        .refine((value) => {
+          const url = new URL(value);
+          return (
+            ["http:", "https:"].includes(url.protocol) &&
+            !/^https?:\/\/[^/]*@/.test(url.href) &&
+            !/[?#]/.test(url.href)
+          );
+        }),
+      headerRef: noNul(128).optional(),
+      launch: z.enum(["owner_managed", "configured_service"]),
+      autostart: z.boolean(),
+      service: service.optional(),
+    })
+    .refine((value) => (value.launch === "configured_service") === (value.service !== undefined), {
+      message: "configured_service requires service; owner_managed must not configure one",
+    }),
 ]);
 export const mcpServerRegistrationSchema = z
   .strictObject({

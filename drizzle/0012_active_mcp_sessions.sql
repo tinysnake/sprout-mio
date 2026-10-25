@@ -1,0 +1,2 @@
+DROP INDEX `mcp_session_process_unique`;--> statement-breakpoint
+CREATE UNIQUE INDEX `mcp_session_process_unique` ON `mcp_session` (`process_id`) WHERE "mcp_session"."state" IN ('connecting','connected');

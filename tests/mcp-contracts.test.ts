@@ -385,6 +385,18 @@ function sqliteProbe() {
       protocol_version: "negotiated",
     };
     const closed = { ...connected, state: "closed", ended_at: 13, end_reason: "client_closed" };
+    rollback(() => {
+      insert("mcp_session", closed);
+      insert("mcp_session", { ...session, id: "reopened", open_request_id: "reopened" });
+      assert.throws(
+        () =>
+          insert("mcp_session", { ...session, id: "concurrent", open_request_id: "concurrent" }),
+        /UNIQUE/,
+      );
+    });
+    pass(
+      "closed session releases process identity; two active sessions violate SQLite unique index",
+    );
     rejects("session attached timestamp precedes creation", "mcp_session", session, {
       attached_at: 9,
     });
@@ -409,7 +421,7 @@ function sqliteProbe() {
         /UNIQUE.*process_id/,
       ),
     );
-    pass("one session per process lifetime");
+    pass("one active session per process identity");
     const frame: Row = {
       id: "frame",
       session_id: "session",
