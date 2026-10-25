@@ -63,6 +63,7 @@ export function LeaseOverview({
   manageLink?: (lease: LeaseView) => ReactNode;
   testId?: string;
 }) {
+  const [forcedReceipts, setForcedReceipts] = useState<Record<string, LeaseMutationView>>({});
   const visible = visibleLeases(leases, projectId);
   const machineName = (machineId: string) =>
     machines.find((item) => item.machine.id === machineId)?.machine.name ?? machineId;
@@ -127,7 +128,39 @@ export function LeaseOverview({
                 )}
                 {lease.state === "fencing" && (
                   <dd>
-                    <LeaseFencingFacts lease={lease} snapshot={fencingSnapshot} submit={onMutate} />
+                    <LeaseFencingFacts
+                      lease={lease}
+                      snapshot={fencingSnapshot}
+                      submit={onMutate}
+                      onForced={(receipt) =>
+                        setForcedReceipts((current) => ({
+                          ...current,
+                          [lease.machineId]: receipt,
+                        }))
+                      }
+                    />
+                  </dd>
+                )}
+                {/*
+                  强制收回会把租约推出 fencing，fencing 子树随之卸载。收据因此留在这
+                  一行上：它记录的是 Human 自己刚做过的动作，不能在 5 秒自动刷新后消失。
+                */}
+                {forcedReceipts[lease.machineId] && (
+                  <dd
+                    data-testid={`${testId}-forced-receipt-${lease.machineId}`}
+                    className="space-y-1 pt-1 text-xs leading-6"
+                  >
+                    <StatusLine
+                      {...mutationStateLabel(forcedReceipts[lease.machineId])}
+                      testId={`${testId}-forced-receipt-state`}
+                    />
+                    <p className="text-muted-foreground break-all">
+                      强制收据 {forcedReceipts[lease.machineId].mutationId} · 代次{" "}
+                      {forcedReceipts[lease.machineId].completedGeneration}
+                      {forcedReceipts[lease.machineId].forcedReclaim
+                        ? ` · 覆盖了原动作 ${forcedReceipts[lease.machineId].forcedReclaim!.supersededMutationId}`
+                        : ""}
+                    </p>
                   </dd>
                 )}
                 {pending && (
