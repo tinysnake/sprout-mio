@@ -150,7 +150,7 @@ port_guard "$prod_port"
 pass 'production process group stopped'
 
 port_guard "$dev_port"
-pnpm dev --port "$dev_port" --strictPort >"$log_dir/dev.log" 2>&1 &
+PORT="$dev_port" pnpm dev --port "$dev_port" --strictPort >"$log_dir/dev.log" 2>&1 &
 server_pid=$!
 wait_http "$dev_port" "$log_dir/dev.log"
 "${CURL[@]}" -f "http://localhost:$dev_port/" -o "$log_dir/dev.html"
