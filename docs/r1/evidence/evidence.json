@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-25T18:54:50.114Z",
+  "sourceCommit": "f12872ad17c67f82a15a94b1665951eab29cf3f1",
+  "scriptSha256": "675171f3bdd38a1a70ba4edf79e71a40750392094ed8e4d6547ff6fbad140bce",
+  "results": [
+    {
+      "clause": 1,
+      "status": "PASS",
+      "evidencePath": ".verify/z3-mcp-acceptance-aB0sCB/clause-1.json"
+    },
+    {
+      "clause": 2,
+      "status": "PASS",
+      "evidencePath": ".verify/z3-mcp-acceptance-aB0sCB/clause-2.json"
+    },
+    {
+      "clause": 3,
+      "status": "PASS",
+      "evidencePath": ".verify/z3-mcp-acceptance-aB0sCB/clause-3.json"
+    },
+    {
+      "clause": 4,
+      "status": "PASS",
+      "evidencePath": ".verify/z3-mcp-acceptance-aB0sCB/clause-4.json"
+    },
+    {
+      "clause": 5,
+      "status": "PASS",
+      "evidencePath": ".verify/z3-mcp-acceptance-aB0sCB/clause-5.json"
+    },
+    {
+      "clause": 6,
+      "status": "PASS",
+      "evidencePath": ".verify/z3-mcp-acceptance-aB0sCB/clause-6.json"
+    },
+    {
+      "clause": 7,
+      "status": "PASS",
+      "evidencePath": ".verify/z3-mcp-acceptance-aB0sCB/clause-7.json"
+    }
+  ],
+  "executions": {
+    "y2": {
+      "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
+      "startedAt": "2026-10-25T18:54:29.223Z",
+      "elapsedMs": 2168,
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false
+    },
+    "x2": {
+      "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
+      "startedAt": "2026-10-25T18:54:31.391Z",
+      "elapsedMs": 11165,
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false
+    },
+    "x3": {
+      "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
+      "startedAt": "2026-10-25T18:54:42.557Z",
+      "elapsedMs": 2012,
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false
+    },
+    "c": {
+      "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
+      "startedAt": "2026-10-25T18:54:44.569Z",
+      "elapsedMs": 5543,
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false
+    }
+  }
+}

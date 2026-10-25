@@ -193,6 +193,18 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 - [ ] 区分 Worker 管理的 server 进程与已运行的软件服务，不把断开 Pi session 等同于关闭软件或撤销所有长期工作。
 - [ ] 根据证据记录采用 SDK、proxy 或薄 bridge 的具体组合，并明确纳入哪个交付阶段。纳入一期时同步修改 core-scope 与验收表。
 
+### 验证载体变更
+
+Human 于 `2026-10-25T03:44Z` 授权以无需大型软件的 MCP 验证透传能力，原话为「不一定使用 unity 和 blender 的 mcp，只要能将 mcp passthru 即可，选一些不需要开启大型软件的 mcp」。记录见 `orchestrate/sprout-mio-r1/decisions.tsv` 第 4 行（编排工作区）。以上七条原文保留，指定实例、断线不改投、图片与 structuredContent 送达等断言不变。
+
+- 第 3 条以两个不同 root 的最小 stdio server（或两个 server-filesystem）代替两个 Unity Editor：同时读写各自 root，拒绝越界；一个目标退出后调用失败，session 数及 process 绑定不变，不改投存活目标。
+- 第 4 条以 server-everything 代替 Blender：通过 Sprout 帧中继和真实 Pi 工具面执行，逐字节对照图片，并比对 structuredContent。
+- 第 1、2、5、6 条分别沿用 Worker stdio/streamableHttp、显式登记及 Pi 工具面、resources/目录变化/会话/围栏、进程生命周期验证；第 7 条记录所采用的组合及交付阶段。
+
+### 当前证据
+
+七条技术判定、实际证据路径和载体限制见 [R1 验证结论](r1/summary.md)，组合理由见 [R1 设计](r1/design.md)。统一重跑入口为 `bash scripts/verify/z3-mcp-acceptance.sh`。R1 的 MCP 接入在 P4c 之后纳入一期；本轮只更新后续方向与证据，不修改一期能力表、一期验收表或 Human 确认 checklist。
+
 ## P8 在一期完成后展开二期
 
 - [ ] 补齐 Windows Worker，验证真实 Windows 上的 shell、路径、编码、进程树、用户 session 与长命令恢复。

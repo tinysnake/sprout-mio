@@ -1,0 +1,66 @@
+{
+  "clause": 6,
+  "status": "PASS",
+  "assertions": {
+    "detach": {
+      "status": "PASS",
+      "piSessionDisposed": true,
+      "piClientClosedSession": true,
+      "serverStillAlive": true,
+      "reopenedNewSession": true,
+      "sameProcess": true
+    },
+    "release": {
+      "status": "PASS",
+      "leaseState": "free",
+      "generationAdvanced": true,
+      "remainingServerProcessesAlive": 2,
+      "oldGenerationRejected": "lease_stale_generation"
+    },
+    "ownerManaged": {
+      "autostart": false,
+      "noSpawn": true,
+      "catalogCallableTarget": true,
+      "aliveAfterDelete": true,
+      "aliveAfterWorkerExit": true
+    },
+    "configuredService": {
+      "spawned": true,
+      "terminatedAfterWorkerExit": true
+    }
+  },
+  "executions": {
+    "y2": {
+      "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
+      "startedAt": "2026-10-25T18:54:29.223Z",
+      "elapsedMs": 2168,
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false
+    },
+    "x2": {
+      "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
+      "startedAt": "2026-10-25T18:54:31.391Z",
+      "elapsedMs": 11165,
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false
+    },
+    "x3": {
+      "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
+      "startedAt": "2026-10-25T18:54:42.557Z",
+      "elapsedMs": 2012,
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false
+    },
+    "c": {
+      "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
+      "startedAt": "2026-10-25T18:54:44.569Z",
+      "elapsedMs": 5543,
+      "exitCode": 0,
+      "signal": null,
+      "timedOut": false
+    }
+  }
+}
