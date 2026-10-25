@@ -142,6 +142,65 @@ export function MachineDetailPanel({
           <div className="min-w-0">{enrollmentSection}</div>
         )}
         <div className="min-w-0">
+          {/* 当前事实：租约与远端操作先出现；配置类区块（连接、Shell、root、绑定、安装）归入后面的设置分组。 */}
+          {bindingProject && (
+            <SettingsSection
+              title="租约与持有者"
+              description="租约单位是 Project × Machine；变更不会终止进程或删除文件。"
+              testId="machine-lease-detail"
+            >
+              {leaseError ? (
+                <ResultError error={leaseError} />
+              ) : leaseInfo ? (
+                <ProjectLeaseActions key={leaseInfo.projectId} info={leaseInfo}>
+                  {(mutate) => (
+                    <MachineLeaseSection
+                      projectId={bindingProject.id}
+                      detail={detail}
+                      leases={leases}
+                      holderNames={holderNames}
+                      runs={runs}
+                      onMutate={mutate}
+                    />
+                  )}
+                </ProjectLeaseActions>
+              ) : (
+                <MachineLeaseSection
+                  projectId={bindingProject.id}
+                  detail={detail}
+                  leases={leases}
+                  holderNames={holderNames}
+                  runs={runs}
+                  onMutate={onLeaseMutate}
+                />
+              )}
+            </SettingsSection>
+          )}
+
+          {bindingProject && (
+            <SettingsSection
+              title="远端操作"
+              description="操作目标由请求自身指定；宿主工具与远端操作分开记录，结果未经确认时显示未知。"
+              testId="machine-remote-executions"
+            >
+              {executionError ? (
+                <ResultError error={executionError} />
+              ) : (
+                <RemoteExecutionList
+                  executions={executions.filter(
+                    (execution) => execution.machineId === detail.machine.id,
+                  )}
+                  machines={[detail]}
+                  holderNames={holderNames}
+                  testId="machine-executions"
+                />
+              )}
+            </SettingsSection>
+          )}
+
+          {/* 配置分组：连接、Shell 能力、root、绑定与安装维护都在这里，能力与信息一项不少。 */}
+          <div data-testid="machine-settings-group" role="group" aria-label="设置">
+            <p className="pt-6 text-sm font-medium text-muted-foreground">设置</p>
           <SettingsSection
             title="连接与配对"
             description="连接是近期通信观察，不表示物理链路仍在，也不表示租约、空闲或已释放。配对与连接分别记录。"
@@ -242,60 +301,6 @@ export function MachineDetailPanel({
               connection={detail.connection}
             />
           </SettingsSection>
-
-          {bindingProject && (
-            <SettingsSection
-              title="租约与持有者"
-              description="租约单位是 Project × Machine。run 结束、Worker 断线或分身空闲都不会自动释放租约，也不终止进程或删除文件。"
-              testId="machine-lease-detail"
-            >
-              {leaseError ? (
-                <ResultError error={leaseError} />
-              ) : leaseInfo ? (
-                <ProjectLeaseActions key={leaseInfo.projectId} info={leaseInfo}>
-                  {(mutate) => (
-                    <MachineLeaseSection
-                      projectId={bindingProject.id}
-                      detail={detail}
-                      leases={leases}
-                      holderNames={holderNames}
-                      runs={runs}
-                      onMutate={mutate}
-                    />
-                  )}
-                </ProjectLeaseActions>
-              ) : (
-                <MachineLeaseSection
-                  projectId={bindingProject.id}
-                  detail={detail}
-                  leases={leases}
-                  holderNames={holderNames}
-                  runs={runs}
-                  onMutate={onLeaseMutate}
-                />
-              )}
-            </SettingsSection>
-          )}
-
-          {bindingProject && (
-            <SettingsSection
-              title="远端操作"
-              description="操作目标由请求自身指定；宿主工具与远端操作分开记录，结果未经确认时显示未知。"
-              testId="machine-remote-executions"
-            >
-              {executionError ? (
-                <ResultError error={executionError} />
-              ) : (
-                <RemoteExecutionList
-                  executions={executions.filter(
-                    (execution) => execution.machineId === detail.machine.id,
-                  )}
-                  machines={[detail]}
-                  testId="machine-executions"
-                />
-              )}
-            </SettingsSection>
-          )}
 
           <SettingsSection
             title="Machine root 工作目录"
@@ -406,17 +411,18 @@ export function MachineDetailPanel({
               </p>
             )}
           </SettingsSection>
-        </div>
 
-        {detail.enrollmentStatus === "active" && (
-          <SettingsSection title="安装与维护" testId="machine-restart-section">
-            <MachineInstallInstructions
-              machineId={detail.machine.id}
-              origin={installOrigin}
-              enrollmentStatus="active"
-            />
-          </SettingsSection>
-        )}
+          {detail.enrollmentStatus === "active" && (
+            <SettingsSection title="安装与维护" testId="machine-restart-section">
+              <MachineInstallInstructions
+                machineId={detail.machine.id}
+                origin={installOrigin}
+                enrollmentStatus="active"
+              />
+            </SettingsSection>
+          )}
+          </div>
+        </div>
       </div>
     </PageFrame>
   );

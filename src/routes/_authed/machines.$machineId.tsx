@@ -18,7 +18,8 @@ import { listProjectsFn } from "../../server/functions/project";
 import { useMachineEnrollment } from "../../components/machine/machine-enrollment-context";
 
 export const Route = createFileRoute("/_authed/machines/$machineId")({
-  validateSearch: z.object({ projectId: z.string().optional() }),
+  // `lease=1` 是 Machine 详情页租约区块的定位深链（Project settings 的租约入口用它进来）。
+  validateSearch: z.object({ projectId: z.string().optional(), lease: z.string().optional() }),
   loaderDeps: ({ search }) => ({ projectId: search.projectId }),
   loader: async ({ params, deps }) => {
     const [detail, projects] = await Promise.all([
@@ -45,9 +46,27 @@ export const Route = createFileRoute("/_authed/machines/$machineId")({
 
 function MachinePage() {
   const { detail, projects, info, executions } = Route.useLoaderData();
-  const { projectId } = Route.useSearch();
+  const { projectId, lease } = Route.useSearch();
   const router = useRouter();
   const { enrollment, setEnrollment } = useMachineEnrollment();
+
+  /** 滚到本页租约区块并让它里面第一个可操作控件获得真实焦点（可见焦点环）。 */
+  function revealLeaseBlock() {
+    const node = document.querySelector<HTMLElement>('[data-testid="machine-lease-detail"]');
+    if (!node) return;
+    node.scrollIntoView({ block: "start", behavior: "smooth" });
+    const focusable = node.querySelector<HTMLElement>(
+      'select, input, button, a[href], [tabindex]:not([tabindex="-1"])',
+    );
+    focusable?.focus({ preventScroll: true });
+  }
+
+  // 从 Project settings 带着 lease=1 进来：直接定位到租约区块，不需要人自己找。
+  useEffect(() => {
+    if (lease !== "1") return;
+    const timer = window.setTimeout(revealLeaseBlock, 0);
+    return () => window.clearTimeout(timer);
+  }, [lease, projectId, detail]);
   useEffect(() => {
     let stopped = false;
     let refreshing = false;
@@ -124,20 +143,26 @@ function MachinePage() {
       onBindingSaved={() => void router.invalidate()}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          {!projectId &&
+          {projectId ? (
+            <Button variant="secondary" data-testid="machine-lease-jump" onClick={revealLeaseBlock}>
+              租约详情
+            </Button>
+          ) : (
             detail.data.bindings.map((binding) => (
               <Link
                 key={binding.intent.projectId}
                 to="/machines/$machineId"
                 params={{ machineId: detail.data.machine.id }}
-                search={{ projectId: binding.intent.projectId }}
-                className="text-xs underline"
+                search={{ projectId: binding.intent.projectId, lease: "1" }}
+                data-testid="machine-lease-link"
+                className="inline-flex min-h-8.5 items-center rounded-control border border-border bg-background px-2.75 text-xs font-medium text-foreground hover:border-foreground"
               >
                 {availableProjects.find((p) => p.id === binding.intent.projectId)?.name ??
                   binding.intent.projectId}{" "}
                 的租约
               </Link>
-            ))}
+            ))
+          )}
           <Button
             variant="outline"
             data-testid="machine-refresh"

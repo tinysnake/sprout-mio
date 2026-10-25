@@ -24,10 +24,22 @@ export const LEASE_STATE_LABELS: Record<LeaseView["state"], LeaseLabel> = {
   fencing: {
     label: "等待 Worker 确认",
     detail:
-      "正在等待该 Machine 的 Worker 确认旧授权已关闸；期间不接受新的远端操作。若 Worker 已失联，该状态可能持续，直到 Worker 重新连接并确认；重连本身不代表已确认，也无法保证等待会结束。已启动的进程仍可能继续产生副作用。",
+      "正在等待该 Machine 的 Worker 确认旧授权已关闸；期间不接受新的远端操作。无法保证等待会结束：重连本身不代表已确认，若 Worker 已失联，需要 Human 介入才能继续。已启动的进程仍可能继续产生副作用。",
     tone: "warning",
   },
 };
+
+/**
+ * 卡片正文只留一句可决策的简介；完整事实（时长、收据、未知执行）由问号按钮的
+ * Dialog 呈现。文案不承诺等待会结束，也不写死「没有其他推进方式」。
+ */
+export const FENCING_SUMMARY = "等待 Worker 确认旧授权已关闸，期间不接受新的远端操作。";
+
+/** run 不印裸 id：只保留可在工具提示里定位的短值。 */
+export function shortRunId(runId: string): string {
+  const hex = runId.replace(/^run_/, "").split("-")[0] ?? "";
+  return `run_${hex.slice(0, 8)}`;
+}
 
 export const LEASE_MUTATION_LABELS: Record<LeaseMutationView["action"], string> = {
   acquire: "申请",
@@ -81,11 +93,22 @@ export function holderLabel(
   lease: LeaseView,
   holderNames: Readonly<Record<string, string>> = {},
 ): { name: string; instanceId: string | null } {
-  if (!lease.holderInstanceId) return { name: "无持有者", instanceId: null };
-  return {
-    name: holderNames[lease.holderInstanceId] ?? "未知分身",
-    instanceId: lease.holderInstanceId,
-  };
+  // 只投影已有映射：取不到名称时说「未知分身」，不退回归属的 instance id。
+  if (lease.holderInstanceId)
+    return {
+      name: holderNames[lease.holderInstanceId] ?? "未知分身",
+      instanceId: lease.holderInstanceId,
+    };
+  return { name: "无持有者", instanceId: null };
+}
+
+/** 同一持有者在当前投影里持有的 Machine 台数，不新增查询。 */
+export function holderMachineCount(
+  leases: readonly LeaseView[],
+  instanceId: string | null,
+): number {
+  if (!instanceId) return 0;
+  return leases.filter((lease) => lease.holderInstanceId === instanceId).length;
 }
 
 /** pending 动作来自租约上唯一的 pending 收据；没有 pending 时返回 null。 */

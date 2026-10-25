@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../contracts/lease";
 import type { MachineDetail } from "../../contracts/machine";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
@@ -7,8 +7,8 @@ import { toAppError } from "../../contracts/result";
 import type { LeaseMutationHandler, StatusTone } from "./machine-view";
 import { formatMoment } from "./machine-view";
 import {
-  groupLeasesByHolder,
   holderLabel,
+  holderMachineCount,
   leaseStateLabel,
   mutationStateLabel,
   pendingMutationLabel,
@@ -41,6 +41,8 @@ export function LeaseOverview({
   onMutate,
   dense = false,
   fencingSnapshot,
+  fixedTargetId,
+  manageLink,
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -49,13 +51,19 @@ export function LeaseOverview({
   holderNames?: Readonly<Record<string, string>>;
   /** 未提供时按既有约定显式标为未接入，不渲染成可点但无效果的按钮。 */
   onMutate?: LeaseMutationHandler;
-  /** 窄栏（inspector）里只列事实，变更操作留在 Machine 详情与 Project settings。 */
+  /** 窄栏（inspector）里只列事实，变更操作留在 Machine 详情。 */
   dense?: boolean;
   fencingSnapshot?: FencingSnapshot;
+  /** 已在单台 Machine 的页面上时，目标即这台；跨机器选择仍由调用方保留。 */
+  fixedTargetId?: string;
+  /**
+   * 本页不放管理表单时的入口：逐条租约给出到 Machine 详情租约区块的深链。
+   * 租约数据仍属于 Project × Machine，这里只换入口位置。
+   */
+  manageLink?: (lease: LeaseView) => ReactNode;
   testId?: string;
 }) {
   const visible = visibleLeases(leases, projectId);
-  const groups = groupLeasesByHolder(visible);
   const machineName = (machineId: string) =>
     machines.find((item) => item.machine.id === machineId)?.machine.name ?? machineId;
 
@@ -65,7 +73,7 @@ export function LeaseOverview({
         <h4 className={dense ? "text-xs font-medium" : "text-sm font-medium"}>Machine 租约</h4>
         {!dense && (
           <span className="text-[0.6875rem] text-muted-foreground">
-            互斥单位是 Project × Machine；不同 Project 的租约互不可见
+            互斥单位是 Project × Machine
           </span>
         )}
       </div>
@@ -82,6 +90,8 @@ export function LeaseOverview({
             const state = leaseStateLabel(lease.state);
             const holder = holderLabel(lease, holderNames);
             const pending = pendingMutationLabel(lease);
+            // 持有台数取同一份租约投影，不为这一行新增查询。
+            const heldCount = holderMachineCount(visible, lease.holderInstanceId);
             return (
               <div
                 key={`${lease.projectId}:${lease.machineId}`}
@@ -99,13 +109,20 @@ export function LeaseOverview({
                     testId="lease-state"
                   />
                 </dd>
-                <dd className="break-all">
+                <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 break-all">
                   <span data-testid="lease-holder-name">
                     {lease.holderInstanceId ? holder.name : "无持有者"}
                   </span>
+                  {heldCount > 1 && (
+                    <span
+                      data-testid="lease-holder-count"
+                      className="text-[0.6875rem] text-muted-foreground"
+                    >
+                      持有 {heldCount} 台
+                    </span>
+                  )}
                   {holder.instanceId && (
                     <span data-testid="lease-holder-instance" className="text-muted-foreground">
-                      {" "}
                       · {holder.instanceId}
                     </span>
                   )}
@@ -124,32 +141,15 @@ export function LeaseOverview({
                     {pending}
                   </dd>
                 )}
+                {manageLink && (
+                  <dd data-testid="lease-manage" className="min-w-0">
+                    {manageLink(lease)}
+                  </dd>
+                )}
               </div>
             );
           })}
         </dl>
-      )}
-      {groups.length > 0 && (
-        <div
-          data-testid={`${testId}-holders`}
-          className="space-y-1 rounded-lg border border-border-soft px-4 py-3"
-        >
-          <h5 className="text-xs font-medium">分身与它持有的 Machine</h5>
-          {groups.map((group) => (
-            <p
-              key={group.instanceId}
-              data-testid={`lease-holder-group-${group.instanceId}`}
-              className="text-xs leading-6"
-            >
-              <span className="font-medium">{holderNames[group.instanceId] ?? "未知分身"}</span>
-              <span className="break-all text-muted-foreground"> · {group.instanceId}</span>
-              <span className="text-muted-foreground"> · 持有 {group.leases.length} 台：</span>
-              <span data-testid="lease-holder-machines">
-                {group.leases.map((lease) => machineName(lease.machineId)).join("、")}
-              </span>
-            </p>
-          ))}
-        </div>
       )}
       {onMutate ? (
         <LeaseMutationForm
@@ -157,6 +157,7 @@ export function LeaseOverview({
           machines={machines}
           leases={visible}
           submit={onMutate}
+          {...(fixedTargetId ? { fixedTargetId } : {})}
           testId={`${testId}-mutation`}
         />
       ) : dense ? (
@@ -164,8 +165,7 @@ export function LeaseOverview({
           data-testid={`${testId}-dense-note`}
           className="text-[0.6875rem] leading-5 text-muted-foreground"
         >
-          租约的申请与释放（含交接、收回）在 Machine 详情与 Project settings
-          进行；本处与它们读同一份租约事实。
+          租约的申请、释放、交接与收回在对应 Machine 详情的租约区块进行；本处与它们读同一份租约事实。
         </p>
       ) : (
         <Notice
@@ -208,21 +208,31 @@ export function LeaseMutationForm({
   machines,
   leases,
   submit,
+  fixedTargetId,
   testId = "lease-mutation-form",
 }: {
   projectId: string;
   machines: MachineDetail[];
   leases: readonly LeaseView[];
   submit: LeaseMutationHandler;
+  /**
+   * 调用方已经定位到单台 Machine（如 Machine 详情页）时传入：目标就是它，
+   * 不再要求人从下拉框里重选一台。跨机器选择（Project settings）不传。
+   */
+  fixedTargetId?: string;
   testId?: string;
 }) {
-  const firstMachine = machines.at(0)?.machine.id ?? "";
+  const firstMachine = fixedTargetId ?? machines.at(0)?.machine.id ?? "";
+  const fixedTarget = fixedTargetId
+    ? (machines.find((item) => item.machine.id === fixedTargetId)?.machine.name ?? fixedTargetId)
+    : null;
   const [draft, setDraft] = useState<MutationDraft>({ machineId: firstMachine, lastAction: null });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const [receipt, setReceipt] = useState<LeaseMutationView | null>(null);
 
-  const lease = leases.find((item) => item.machineId === draft.machineId) ?? null;
+  const targetId = fixedTargetId ?? draft.machineId;
+  const lease = leases.find((item) => item.machineId === targetId) ?? null;
   const action: "acquire" | "release" | null =
     lease === null || lease.state === "free"
       ? "acquire"
@@ -232,7 +242,7 @@ export function LeaseMutationForm({
 
   async function run(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending || !action || !draft.machineId) return;
+    if (pending || !action || !targetId) return;
     setError(null);
     setReceipt(null);
     const input: LeaseMutationInput =
@@ -240,14 +250,14 @@ export function LeaseMutationForm({
         ? {
             action,
             projectId,
-            machineId: draft.machineId,
+            machineId: targetId,
             requestId: newId(ID_PREFIXES.request),
             expectedGeneration: lease?.generation ?? 0,
           }
         : {
             action: "release",
             projectId,
-            machineId: draft.machineId,
+            machineId: targetId,
             requestId: newId(ID_PREFIXES.request),
             expectedGeneration: lease!.generation,
           };
@@ -278,27 +288,42 @@ export function LeaseMutationForm({
       <p className="text-[0.6875rem] leading-5 text-muted-foreground">
         动作与期望代次一起提交；代次失效时服务端拒绝，界面不把拒绝显示为成功。租约变更不会终止进程或删除文件。
       </p>
-      <div className="grid gap-3 desktop:grid-cols-[minmax(0,1fr)_auto] desktop:items-end">
-        <Field label="目标 Machine" hint="必须显式选择；没有默认目标。">
-          <Select
-            data-testid={`${testId}-machine`}
-            value={draft.machineId}
-            disabled={pending}
-            onChange={(event) => {
-              setDraft({ machineId: event.target.value, lastAction: null });
-              setError(null);
-              setReceipt(null);
-            }}
-          >
-            {machines.length === 0 && <option value="">没有可操作的 Machine</option>}
-            {machines.map((item) => (
-              <option key={item.machine.id} value={item.machine.id}>
-                {item.machine.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <div className="flex items-end gap-2">
+      {/* 同一基线对齐：下拉框与按钮同排，窄屏才换行，不经对自动列宽把按钮挤到下一行右侧。 */}
+      <div className="flex flex-col gap-3 desktop:flex-row desktop:items-end">
+        <div className="min-w-0 desktop:flex-1">
+          {fixedTargetId ? (
+            <div data-testid={`${testId}-target`} className="flex flex-col gap-1.75">
+              <span className="text-xs font-medium">目标 Machine</span>
+              <p className="min-h-9.5 rounded-control border border-input bg-muted px-2.75 py-2 text-[13px] break-all">
+                {fixedTarget}
+              </p>
+              <p className="text-xs leading-6 text-muted-foreground">
+                目标就是你当前所在的这台 Machine，租约单位是 Project × Machine。
+              </p>
+            </div>
+          ) : (
+            <Field label="目标 Machine" hint="必须显式选择；没有默认目标。">
+              <Select
+                data-testid={`${testId}-machine`}
+                value={draft.machineId}
+                disabled={pending}
+                onChange={(event) => {
+                  setDraft({ machineId: event.target.value, lastAction: null });
+                  setError(null);
+                  setReceipt(null);
+                }}
+              >
+                {machines.length === 0 && <option value="">没有可操作的 Machine</option>}
+                {machines.map((item) => (
+                  <option key={item.machine.id} value={item.machine.id}>
+                    {item.machine.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
           <Button
             type="submit"
             loading={pending}
@@ -382,6 +407,7 @@ export function MachineLeaseSection({
         leases={scoped}
         holderNames={holderNames}
         onMutate={onMutate}
+        fixedTargetId={detail.machine.id}
         testId={`${testId}-overview`}
       />
       <RunHoldingNote leases={scoped} machines={[detail]} runs={runs} />

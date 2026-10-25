@@ -12,6 +12,7 @@ import { ResultError } from "../project/result-error";
 import { Select } from "../ui/select";
 import { Button } from "../ui/button";
 import type { AppError } from "../../contracts/result";
+import { chatAgentName, type ChatAgent } from "../chat/chat-list";
 
 export function holderNames(info: ProjectInfoHub): Record<string, string> {
   return Object.fromEntries(
@@ -19,6 +20,21 @@ export function holderNames(info: ProjectInfoHub): Record<string, string> {
       .filter((item) => item.instanceId)
       .map((item) => [item.instanceId!, item.name]),
   );
+}
+
+/**
+ * Chat 选项的显示依赖：Chat 的 title 目前没有写入方（contracts 只做 null 透传），
+ * 所以显示层与 Chat 列表一致地退回分身名，而不是裸露的 chat id。
+ * 这里只用既有 Fn 返回的 Project Info Hub 成员与 DM 链接，不新增契约字段。
+ */
+function chatNameResolver(info: ProjectInfoHub) {
+  const chatAgents: ChatAgent[] = info.agents.agents.flatMap((entry) =>
+    entry.chatId ? [{ chatId: entry.chatId, agentProfileId: entry.agentProfileId }] : [],
+  );
+  const agentNames = new Map(
+    info.agents.agents.map((entry) => [entry.agentProfileId, entry.name] as const),
+  );
+  return (chat: Chat) => chat.title ?? chatAgentName(chat.id, chatAgents, agentNames);
 }
 
 /** Human requests a Chat turn; only the grant-bound agent can mutate a holder lease. */
@@ -36,6 +52,7 @@ export function ProjectLeaseActions({
   const [targetInstanceId, setTargetInstanceId] = useState("");
   const [error, setError] = useState<AppError | null>(null);
   const [pending, setPending] = useState(false);
+  const chatName = chatNameResolver(info);
   useEffect(() => {
     let live = true;
     void listChatsFn({ data: { projectId: info.projectId } }).then((result) => {
@@ -140,7 +157,7 @@ export function ProjectLeaseActions({
           <option value="">请选择 Chat</option>
           {chats.map((chat) => (
             <option key={chat.id} value={chat.id}>
-              {chat.title ?? chat.id}
+              {chatName(chat)}
             </option>
           ))}
         </Select>

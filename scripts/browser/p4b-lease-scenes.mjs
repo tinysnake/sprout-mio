@@ -62,6 +62,14 @@ async function shootAt(page, testId, name) {
   await shoot(page, name);
 }
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** 演示 fixture 里的 shell 命令正文与文件路径：这些内容一律不得出现在界面上。 */
+const demoCommands = [
+  "pnpm test tests/lease.test.ts",
+  "/Users/linche/workspace/prj-demo/package.json",
+];
+
 async function gotoLeases(page) {
   await page.getByTestId("machine-leases-link").click();
   await page.getByTestId("lease-scene").waitFor();
@@ -93,14 +101,15 @@ for (const colorScheme of ["light", "dark"]) {
         assert.ok(overflow <= 1, `horizontal overflow ${overflow}px`);
         const background = await bodyBackground(page);
         assert.ok(background && background !== "rgba(0, 0, 0, 0)", "background token applied");
-        // 持有者一行同时看到两台 Machine。
-        const primary = page.getByTestId(
-          `lease-holder-group-ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+        // 冗余的「分身与它持有的 Machine」聚合框已删除，改为 holder 行上的台数标记。
+        assert.equal(await page.getByTestId("lease-scene-overview-holders").count(), 0);
+        assert.equal(
+          await page.getByText("分身与它持有的 Machine").count(),
+          0,
+          "聚合框文案不得再出现",
         );
-        await primary.waitFor();
-        const machines = await primary.getByTestId("lease-holder-machines").textContent();
-        assert.match(machines ?? "", /工作室 Mac mini/);
-        assert.match(machines ?? "", /刚唤醒的 Mac Studio/);
+        const counts = await page.getByTestId("lease-holder-count").allTextContents();
+        assert.ok(counts.some((text) => text.includes("持有 2 台")), `台数标记: ${counts}`);
         // 状态、holder、Machine 名称齐全。
         assert.ok((await page.getByTestId("lease-state").count()) >= 3);
         assert.ok((await page.getByTestId("lease-holder-instance").count()) >= 2);
@@ -115,14 +124,55 @@ for (const colorScheme of ["light", "dark"]) {
           .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-execution-state")));
         for (const state of ["succeeded", "failed", "timed_out", "unknown"])
           assert.ok(states.includes(state), `missing state ${state}`);
+        // 命令正文不进界面：shell 命令与目标路径（含绝对路径）都不得出现在远端操作卡片里。
+        const cards = page.locator('[data-testid="remote-executions-item"]');
+        const cardsText = await cards.allInnerTexts();
+        for (const demo of demoCommands) {
+          for (const text of cardsText) {
+            assert.doesNotMatch(text, new RegExp(escapeRegExp(demo)), `卡片回显了命令正文 ${demo}`);
+          }
+        }
+        for (const text of cardsText) {
+          assert.doesNotMatch(text, /\/Users\/linche\/workspace/, "卡片回显了绝对路径");
+          assert.doesNotMatch(text, /holder ins_|run run_/, "卡片回了裸 id 标签");
+        }
+        // 人类可决策的事实仍在，且 holder 显示分身名称而不是 instance id。
+        const firstAuthorization = await cards.first().getByTestId("remote-executions-item-authorization").innerText();
+        assert.match(firstAuthorization, /授权代次 4/);
+        assert.match(firstAuthorization, /持有者 重构搭档/);
+        assert.doesNotMatch(firstAuthorization, /ins_aaaaaaaa/);
+        assert.match(firstAuthorization, /由该分身的一次运行发起/);
+        assert.match(firstAuthorization, /run_12345678/);
+        assert.equal(await cards.first().getByTestId("remote-executions-item-run").getAttribute("title"),
+          "run_12345678-1234-4234-8234-1234567890ab");
+        assert.equal(await cards.first().getByTestId("remote-executions-item-operation").count(), 0,
+          "不再渲染操作正文段落");
+        assert.ok((await cards.first().getByTestId("remote-executions-item-result").innerText()).length > 0);
         assert.deepEqual(errors, [], `console errors: ${errors.join(" | ")}`);
         await shoot(page, `leases-${colorScheme}-${width}`);
         const fencing = page.locator('[data-lease-state="fencing"]');
         assert.equal(await fencing.count(), 1);
-        const text = await fencing.innerText();
-        assert.match(text, /等待该 Machine 的 Worker 确认旧授权已关闸/);
+        // 卡片正文只留一句可决策的简介。
+        const summary = await fencing.getByTestId("lease-fencing-summary").innerText();
+        assert.match(summary, /等待 Worker 确认旧授权已关闸/);
+        assert.match(summary, /期间不接受新的远端操作/);
+        assert.doesNotMatch(summary, /无法保证|副作用|已等待|最多 100 条/);
+        // 完整事实只在问号按钮的 Dialog 里；正文不得平铺长说明。
+        const collapsed = await fencing.innerText();
+        assert.doesNotMatch(collapsed, /重连本身不代表已确认/);
+        assert.doesNotMatch(collapsed, /已启动的进程仍可能继续产生副作用/);
+        assert.doesNotMatch(collapsed, /最多 100 条/);
+        assert.doesNotMatch(collapsed, /永远无法结束|没有强制推进入口|不提供强制推进/);
+        const help = fencing.getByTestId("lease-fencing-details-trigger");
+        assert.equal(await help.getAttribute("aria-label"), "回收中状态的完整事实");
+        await help.click();
+        const details = page.getByTestId("lease-fencing-details");
+        await details.waitFor();
+        const text = await details.innerText();
         assert.match(text, /无法保证等待会结束/);
-        assert.match(text, /期间不接受新的远端操作/);
+        assert.match(text, /已启动的进程仍可能继续产生副作用/);
+        assert.match(text, /重连本身不代表已确认/);
+        assert.match(text, /需要 Human\s*介入才能继续/);
         assert.match(text, /自 .* 起/);
         assert.match(text, /已等待|无法计算等待时长/);
         assert.match(text, /动作与收据代次尚未读取确认/);
@@ -130,6 +180,10 @@ for (const colorScheme of ["light", "dark"]) {
         assert.match(text, /结果未知或因 Worker 失联 \/ 截止时间结束的记录：0 条/);
         assert.match(text, /现有执行记录未提供 Worker/);
         assert.match(text, /最多 100 条/);
+        assert.doesNotMatch(text, /已排空|已完成收回|成功/);
+        await shoot(page, `fencing-details-${colorScheme}-${width}`);
+        await page.keyboard.press("Escape");
+        await details.waitFor({ state: "detached" });
         assert.equal(
           await fencing.getAttribute("data-holder-instance"),
           "ins_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -137,10 +191,11 @@ for (const colorScheme of ["light", "dark"]) {
         const state = await fencing.getByTestId("lease-state").innerText();
         assert.doesNotMatch(state, /空闲|已释放|已收回|成功/);
         assert.equal(
-          await fencing.getByRole("button").count(),
+          await fencing.getByTestId("lease-fencing-reclaim").count(),
           1,
-          "只保留普通收回请求，不提供强制推进",
+          "只保留普通收回请求，不提供别的推进按钮",
         );
+        assert.doesNotMatch(await fencing.innerText(), /永远无法结束|没有强制推进入口/);
         const reclaim = fencing.getByTestId("lease-fencing-reclaim");
         assert.equal(await reclaim.isDisabled(), true);
         await fencing.getByTestId("lease-fencing-reclaim-confirm").check();
@@ -180,15 +235,19 @@ await check("Project 隔离：当前 Project 看不到另一个 Project 的租�
     const current = page.getByTestId("lease-scene-overview");
     assert.equal(
       await current
-        .locator('[data-testid="lease-holder-group-ins_cccccccc-cccc-4ccc-8ccc-cccccccccccc"]')
+        .locator('[data-holder-instance="ins_cccccccc-cccc-4ccc-8ccc-cccccccccccc"]')
         .count(),
       0,
     );
     // 另一个 Project 的面板里能看到它自己的租约，说明在同一台物理 Machine 上独立成立。
     const other = page.getByTestId("lease-scene-other-project");
-    assert.ok((await other.getByTestId("lease-holder-instance").count()) >= 1);
-    const otherMachineNames = await other.getByTestId("lease-holder-machines").textContent();
-    assert.match(otherMachineNames ?? "", /工作室 Mac mini/);
+    assert.equal(
+      await other
+        .locator('[data-holder-instance="ins_cccccccc-cccc-4ccc-8ccc-cccccccccccc"]')
+        .count(),
+      1,
+    );
+    assert.match(await other.innerText(), /其他 Project 的分身/);
     record("同一台物理 Machine 上两个 Project 的租约独立成立", true);
     await shoot(page, "project-isolation-dark-free");
   } finally {

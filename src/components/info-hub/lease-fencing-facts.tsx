@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CircleHelp } from "lucide-react";
 import type { LeaseMutationView, LeaseView } from "../../contracts/lease";
 import type { ExecutionView } from "../../contracts/remote";
 import type { AppError } from "../../contracts/result";
@@ -12,11 +13,21 @@ import {
   fencingExecutions,
   fencingMutation,
   fencingWaitLabel,
+  FENCING_SUMMARY,
   LEASE_MUTATION_LABELS,
   reclaimErrorNote,
 } from "../machine/lease-view";
 import { ResultError } from "../project/result-error";
 import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
+import { Icon } from "../ui/icon";
 
 /** 演示可传入已有投影，避免访问业务接口；正式页面通过现有 Fn 读取。 */
 export type FencingSnapshot = {
@@ -128,39 +139,74 @@ export function LeaseFencingFacts({
   }
 
   return (
-    <div data-testid="lease-fencing-facts" className="space-y-2 break-words text-xs leading-6">
-      <p data-testid="lease-fencing-wait" className="text-status-warning">
-        {fencingWaitLabel(lease.changedAt, now)} · 自 {formatMoment(lease.changedAt)} 起
-      </p>
-      <p>被撤权的原持有者仍保留在租约记录中；尚未确认释放或收回。</p>
-      <p data-testid="lease-fencing-mutation" className="break-all text-muted-foreground">
-        {mutation
-          ? `待处理动作：${LEASE_MUTATION_LABELS[mutation.action]} · 授权代次 ${mutation.expectedGeneration} · ${mutation.mutationId}`
-          : `待处理收据：${lease.pendingMutationId ?? "未提供"}；动作与收据代次尚未读取确认。当前租约代次 ${lease.generation}。`}
-      </p>
-      {readError && (
-        <div data-testid="lease-fencing-read-error">
-          <p>读取失败；下列已加载事实可能过期，不能据此确认已排空。</p>
-          <ResultError error={readError} />
-        </div>
-      )}
-      <p data-testid="lease-fencing-unknown-count">
-        {uncertain
-          ? `最近加载的 ${scopedExecutions!.length} 条执行中，结果未知或因 Worker 失联 / 截止时间结束的记录：${uncertain.length} 条（仅此 Project × Machine）。`
-          : "执行记录尚未读取确认，未知结果条数不可用。"}
-        执行列表最多 100 条，不能据此断言历史记录已全部排空；现有执行记录未提供 Worker
-        排空确认，无法确认这些记录是否已关闸。
-      </p>
-      {uncertain && uncertain.length > 0 && (
-        <ul data-testid="lease-fencing-executions" className="space-y-1 text-muted-foreground">
-          {uncertain.map((execution) => (
-            <li key={execution.executionId} className="break-all">
-              {execution.executionId} · 代次 {execution.authorizationGeneration} · {execution.state}
-              {execution.failureReason ? ` / ${execution.failureReason}` : ""}
-            </li>
-          ))}
-        </ul>
-      )}
+    <div data-testid="lease-fencing-facts" className="min-w-0 space-y-2 break-words text-xs leading-6">
+      {/* 卡片正文只留一句可决策的简介；完整事实在问号按钮后的 Dialog 里。 */}
+      <div className="flex min-w-0 items-start gap-1.5">
+        <p data-testid="lease-fencing-summary" className="min-w-0 flex-1 text-status-warning">
+          {FENCING_SUMMARY}
+        </p>
+        <Dialog>
+          <DialogTrigger
+            render={<Button variant="ghost" size="icon-sm" />}
+            aria-label="回收中状态的完整事实"
+            data-testid="lease-fencing-details-trigger"
+            className="shrink-0"
+          >
+            <Icon as={CircleHelp} />
+          </DialogTrigger>
+          <DialogContent data-testid="lease-fencing-details">
+            <DialogHeader>
+              <DialogTitle>等待 Worker 确认</DialogTitle>
+              <DialogDescription>
+                旧授权的关闸由该 Machine 的 Worker 确认；下面是当前已加载的全部事实，
+                它们不构成“已排空”或“已完成收回”的断言。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2 text-xs leading-6">
+              <p data-testid="lease-fencing-wait" className="text-status-warning">
+                {fencingWaitLabel(lease.changedAt, now)} · 自 {formatMoment(lease.changedAt)} 起
+              </p>
+              <p>
+                等待时长无法保证，重连本身不代表已确认；若 Worker 已失联，需要 Human
+                介入才能继续。已启动的进程仍可能继续产生副作用。
+              </p>
+              <p>被撤权的原持有者仍保留在租约记录中；尚未确认释放或收回。</p>
+              <p data-testid="lease-fencing-mutation" className="break-all text-muted-foreground">
+                {mutation
+                  ? `待处理动作：${LEASE_MUTATION_LABELS[mutation.action]} · 授权代次 ${mutation.expectedGeneration} · ${mutation.mutationId}`
+                  : `待处理收据：${lease.pendingMutationId ?? "未提供"}；动作与收据代次尚未读取确认。当前租约代次 ${lease.generation}。`}
+              </p>
+              {readError && (
+                <div data-testid="lease-fencing-read-error">
+                  <p>读取失败；下列已加载事实可能过期，不能据此确认已排空。</p>
+                  <ResultError error={readError} />
+                </div>
+              )}
+              <p data-testid="lease-fencing-unknown-count">
+                {uncertain
+                  ? `最近加载的 ${scopedExecutions!.length} 条执行中，结果未知或因 Worker 失联 / 截止时间结束的记录：${uncertain.length} 条（仅此 Project × Machine）。`
+                  : "执行记录尚未读取确认，未知结果条数不可用。"}
+                执行列表最多 100 条，不能据此断言历史记录已全部排空；现有执行记录未提供 Worker
+                排空确认，无法确认这些记录是否已关闸。
+              </p>
+              {uncertain && uncertain.length > 0 && (
+                <ul
+                  data-testid="lease-fencing-executions"
+                  className="space-y-1 text-muted-foreground"
+                >
+                  {uncertain.map((execution) => (
+                    <li key={execution.executionId} className="break-all">
+                      {execution.executionId} · 代次 {execution.authorizationGeneration} ·{" "}
+                      {execution.state}
+                      {execution.failureReason ? ` / ${execution.failureReason}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
       {submit && (
         <div className="space-y-2 border-t border-border-soft pt-2">
           <label className="flex items-start gap-2">
