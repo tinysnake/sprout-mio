@@ -663,6 +663,8 @@ try {
     fences: [],
     resultAcks: [],
     fenceAcks: [],
+    mcp: [],
+    mcpCursors: [],
   });
   assert.deepEqual(
     sqlite
