@@ -16,6 +16,7 @@ import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 import Sqlite from 'better-sqlite3';
+import { assertForcedReceiptPersists } from './scripts/browser/p4b-forced-receipt-scene.mjs';
 const privateDir = mkdtempSync(join(tmpdir(), 'sprout-lease-integration-'));
 const evidenceRoot = resolve('.verify/p4b-integration/evidence');
 mkdirSync(evidenceRoot, { recursive: true });
@@ -98,7 +99,7 @@ try {
   const workerArgs = [resolve('dist/worker/main.js')];
   const init = launch([...workerArgs,'init','--server',base,'--machine',machineId,'--state-dir',join(privateDir,'worker'),'--ticket-file',ticketFile,'--allow-http',base], 'worker-init');
   assert.equal(await init.done,0,'Worker init exits successfully'); unlinkSync(ticketFile);
-  launch([...workerArgs,'run','--state-dir',join(privateDir,'worker')], 'worker');
+  const worker = launch([...workerArgs,'run','--state-dir',join(privateDir,'worker')], 'worker');
   await until(async () => (await call('getMachineFn',{machineId})).connection.kind==='online','Worker online');
   await until(async () => (await call('getMachineFn',{machineId,projectId})).bindings[0]?.observation?.fact?.result?.kind==='accessible','directory ready');
   browser = await chromium.launch(); context = await browser.newContext({viewport:{width:1440,height:1000}});
@@ -264,6 +265,36 @@ try {
   await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','authenticated Human reclaim');
   process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','reclaim preserves sentinel');
   pass('production handoff and Human reclaim preserve process and file');
+  await page.reload();
+  await page.getByTestId('machine-lease-detail').waitFor();
+  await page.getByTestId('lease-chat-select').selectOption(chatId);
+  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
+  const forcedHolder=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'acquire for forced receipt',180000);
+  await settled(chatId);
+  const forceRequestId=`req_${randomUUID()}`;
+  await call('sendMessageFn',{chatId,body:`Call sprout_remote_shell exactly once with machineId ${machineId}, authorizationGeneration ${forcedHolder.generation}, requestId ${forceRequestId}, command "sleep 20", waitMs 10000. Do not release the lease or use host tools.`});
+  const inFlight=await until(async()=> (await call('listProjectExecutionsFn',{projectId,machineId})).find(item=>item.requestId===forceRequestId && item.state==='running'),'real operation running before Worker pause',180000);
+  assert.equal(worker.kill('SIGSTOP'),true,'pause the real test Worker before drain acknowledgement');
+  try {
+    await page.reload();
+    await page.getByTestId('machine-lease-detail').waitFor();
+    await page.getByRole('button',{name:'收回租约',exact:true}).click();
+    await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='fencing','reclaim waits for paused Worker');
+    await page.reload();
+    await page.getByTestId('machine-lease-detail').waitFor();
+    const receipt=await assertForcedReceiptPersists({page,projectId,machineId,call,until,refreshFunctionId:ids.getProjectInfoHubFn});
+    const unknown=await call('getExecutionFn',{projectId,machineId,executionId:inFlight.executionId});
+    assert.equal(unknown.state,'unknown','forced reclaim does not claim in-flight work drained');
+    process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','forced reclaim preserves existing process and file');
+    await page.getByTestId(`machine-lease-section-overview-forced-receipt-${machineId}`).screenshot({path:join(evidence,'forced-receipt-after-refresh.png')});
+    writeFileSync(join(evidence,'forced-receipt.json'),JSON.stringify({before:'fencing',after:'free',mutationId:receipt.mutationId,generation:receipt.generation,executionState:unknown.state},null,2));
+    pass('forced receipt survives fencing unmount and automatic refresh, warns 未确认, and force controls disappear');
+  } finally {
+    worker.kill('SIGCONT');
+  }
+  await settled(chatId);
+  await deniedTool(page,chatId,forcedHolder.generation,'lease_stale_generation',join(root,projectId,'forced-stale-must-not-exist'));
+  pass('forced reclaim rejects old-generation remote operation and leaves no file');
   const free=(await call('getLeaseFn',{projectId,machineId})).lease; assert(free.generation>acquired.generation);
   for (const width of [390,900,1200]) {
     await page.setViewportSize({width,height:1000});
