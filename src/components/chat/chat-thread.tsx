@@ -11,6 +11,7 @@ import { Icon } from "../ui/icon";
 import { ResultError } from "../project/result-error";
 import { MessageComposer } from "./message-composer";
 import { MessageList } from "./message-list";
+import { chatDisplayName } from "./chat-display";
 import { RunStatusBadge, RunStatusPanel, isRunActive, runStatusLabel } from "./run-status";
 
 /**
@@ -39,6 +40,7 @@ export function ChatThread({
   stopError,
   onRestoreDraft,
   inputRef,
+  titleEditor,
 }: {
   /** 返回列表入口：正式路由传 Link，演示传按钮。 */
   back?: ReactNode;
@@ -61,6 +63,8 @@ export function ChatThread({
   stopError: AppError | null;
   onRestoreDraft: (body: string) => void;
   inputRef?: Ref<HTMLTextAreaElement>;
+  /** 重命名入口由容器注入：正式路由接 server function，演示接本地回调。 */
+  titleEditor?: ReactNode;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   const count = messages.ok ? messages.data.length : 0;
@@ -78,9 +82,12 @@ export function ChatThread({
       <header className="flex min-h-20.75 items-center gap-3 border-b border-border px-6.75 py-4.5 max-desktop:min-h-19 max-desktop:gap-1 max-desktop:px-3 max-desktop:py-3.5">
         {back}
         <div className="min-w-0 flex-1">
-          <h2 data-testid="chat-title" className="truncate text-[17px] tracking-[-0.4px]">
-            {chat.title ?? agentName}
-          </h2>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <h2 data-testid="chat-title" className="min-w-0 truncate text-[17px] tracking-[-0.4px]">
+              {chatDisplayName(chat, agentName)}
+            </h2>
+            {titleEditor}
+          </span>
           <p className="mt-1 flex items-center gap-1.5 text-[10px] whitespace-nowrap text-muted-foreground">
             <span>DM</span>
             <span>·</span>
