@@ -183,7 +183,11 @@ export function requestExecution(
           .select()
           .from(remoteExecution)
           .where(
-            and(eq(remoteExecution.machineId, input.machineId), isNull(remoteExecution.terminalAt)),
+            and(
+              eq(remoteExecution.projectId, input.projectId),
+              eq(remoteExecution.machineId, input.machineId),
+              isNull(remoteExecution.terminalAt),
+            ),
           )
           .all().length >= 64
       )
