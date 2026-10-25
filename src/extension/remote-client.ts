@@ -5,6 +5,12 @@ import { leaseMutationViewSchema, leaseViewSchema } from "../contracts/lease";
 import { APP_ERROR_CODES } from "../contracts/result";
 import type { AppResult } from "../contracts/result";
 import {
+  mcpCatalogViewSchema,
+  mcpSessionCloseOutputSchema,
+  mcpSessionExchangeOutputSchema,
+  mcpSessionOpenOutputSchema,
+} from "../contracts/mcp";
+import {
   executionViewSchema,
   remoteAgentRequestSchema,
   remoteToolGrantSchema,
@@ -30,7 +36,10 @@ const leaseReadSchema = z.strictObject({
 type RemoteData =
   | z.infer<typeof executionViewSchema>
   | z.infer<typeof leaseMutationViewSchema>
-  | z.infer<typeof leaseReadSchema>;
+  | z.infer<typeof leaseReadSchema>
+  | z.infer<typeof mcpCatalogViewSchema>
+  | z.infer<typeof mcpSessionOpenOutputSchema>
+  | z.infer<typeof mcpSessionExchangeOutputSchema>;
 export type RemoteToolResponse =
   | { outcome: "response"; result: AppResult<RemoteData> }
   | {
@@ -47,6 +56,7 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   if (!envelope.success) return { outcome: "unknown", reason: "invalid_response" };
   if (!envelope.data.ok) return { outcome: "response", result: envelope.data };
   const { call } = request;
+  if (call.type.startsWith("mcp_")) return readMcpResponse(envelope.data, request);
   const schema =
     call.type === "lease_mutate"
       ? leaseMutationViewSchema
@@ -78,6 +88,84 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
     outcome: "response",
     result: { ok: true, data, requestId: envelope.data.requestId },
   };
+}
+
+/**
+ * MCP 中继四个 call 的响应校验：只信 envelope 与身份字段，不解释 MCP 内容。
+ * 每一层都把返回行的 Project/Machine/代次/目标与请求逐项对齐，任一不等即视为不可信响应。
+ */
+function readMcpResponse(
+  envelope: Extract<z.infer<typeof envelopeSchema>, { ok: true }>,
+  request: RemoteAgentRequest,
+): RemoteToolResponse {
+  const { call } = request;
+  const ok = (data: RemoteData): RemoteToolResponse => ({
+    outcome: "response",
+    result: { ok: true, data, requestId: envelope.requestId },
+  });
+  const bad: RemoteToolResponse = { outcome: "unknown", reason: "invalid_response" };
+  if (call.type === "mcp_catalog_get") {
+    const parsed = mcpCatalogViewSchema.safeParse(envelope.data);
+    if (!parsed.success) return bad;
+    if (
+      parsed.data.registrations.some(
+        (registration) =>
+          registration.projectId !== call.input.projectId ||
+          registration.machineId !== call.input.machineId,
+      )
+    )
+      return bad;
+    return ok(parsed.data);
+  }
+  if (call.type === "mcp_session_open") {
+    const parsed = mcpSessionOpenOutputSchema.safeParse(envelope.data);
+    if (!parsed.success) return bad;
+    const session = parsed.data.session;
+    if (
+      session.projectId !== call.input.projectId ||
+      session.machineId !== call.input.machineId ||
+      session.authorizationGeneration !== call.input.authorizationGeneration ||
+      session.processId !== call.input.processId ||
+      session.registrationId !== call.input.registrationId ||
+      session.registrationRevision !== call.input.registrationRevision ||
+      session.workerIncarnationId !== call.input.expectedWorkerIncarnationId ||
+      session.openRequestId !== call.input.requestId
+    )
+      return bad;
+    return ok(parsed.data);
+  }
+  if (call.type === "mcp_session_close") {
+    const parsed = mcpSessionCloseOutputSchema.safeParse(envelope.data);
+    if (!parsed.success) return bad;
+    const session = parsed.data.session;
+    if (
+      session.id !== call.input.sessionId ||
+      session.projectId !== call.input.projectId ||
+      session.machineId !== call.input.machineId ||
+      session.authorizationGeneration !== call.input.authorizationGeneration
+    )
+      return bad;
+    return ok(parsed.data);
+  }
+  if (call.type !== "mcp_session_exchange") return bad;
+  const parsed = mcpSessionExchangeOutputSchema.safeParse(envelope.data);
+  if (!parsed.success) return bad;
+  const session = parsed.data.session;
+  if (
+    session.id !== call.input.sessionId ||
+    session.projectId !== call.input.projectId ||
+    session.machineId !== call.input.machineId ||
+    session.authorizationGeneration !== call.input.authorizationGeneration ||
+    parsed.data.acceptedClientSeq > session.clientHighWater
+  )
+    return bad;
+  let previous = 0;
+  for (const frame of parsed.data.frames) {
+    // 服务端帧序号必须严格递增且不超出 session 水位。
+    if (frame.seq <= previous || frame.seq > session.serverHighWater) return bad;
+    previous = frame.seq;
+  }
+  return ok(parsed.data);
 }
 
 /** Direct HTTP deliberately bypasses environment/global fetch proxies and never follows redirects. */
