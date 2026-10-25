@@ -20,6 +20,8 @@ R1 七条技术验证均为 PASS：7 PASS、0 FAIL、0 INCONCLUSIVE。统一入�
 
 运行 `bash scripts/verify/z3-mcp-acceptance.sh`。脚本为每次执行创建独立 `.verify/z3-mcp-acceptance-*` 目录，输出 `PASS/FAIL/INCONCLUSIVE R1-<n> <evidence-path>`，任一条非 PASS 则退出 1。缺失或未完成的前置执行记为 INCONCLUSIVE；已完成探针的断言不成立记为 FAIL。
 
+刷新本目录的证据快照时，跑完上面这条后把新目录里的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 复制进 `docs/r1/evidence/`，再跑 `pnpm exec vp check --fix`（脚本产出的 JSON 不由格式化器生成，`pnpm check` 会要求它先被格式化）。不复制新快照就会让条款 7 的 `scriptSha256` 检查变红。
+
 脚本直接编排 A 的 `y2-mcp-http-worker.sh` 与 B 的 `x2-mcp-extension.sh`、`x3-mcp-extension-surface.sh`，不另写它们的探针。新增组合探针仅补齐不同 root 的实例隔离、Pi 工具面与中继组合、资源和生命周期证据。固定 300 秒的执行上限使未完成调用有明确退出结论。
 
 - [evidence.json](evidence/evidence.json)：七条索引、生成时间、被验 source commit、脚本 SHA-256 及每个实际执行的退出码和 runner 耗时。条款 7 校验这份快照的 `scriptSha256` 等于当前 z3 脚本、`sourceCommit` 是当前 HEAD 的祖先或等于它；脚本或代码变了却没重跑并重存快照，条款 7 变红。

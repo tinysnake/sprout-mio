@@ -1,7 +1,7 @@
-PASS R1-1 .verify/z3-mcp-acceptance-60zaum/clause-1.json
-PASS R1-2 .verify/z3-mcp-acceptance-60zaum/clause-2.json
-PASS R1-3 .verify/z3-mcp-acceptance-60zaum/clause-3.json
-PASS R1-4 .verify/z3-mcp-acceptance-60zaum/clause-4.json
-PASS R1-5 .verify/z3-mcp-acceptance-60zaum/clause-5.json
-PASS R1-6 .verify/z3-mcp-acceptance-60zaum/clause-6.json
-FAIL R1-7 .verify/z3-mcp-acceptance-60zaum/clause-7.json
+PASS R1-1 .verify/z3-mcp-acceptance-D400KH/clause-1.json
+PASS R1-2 .verify/z3-mcp-acceptance-D400KH/clause-2.json
+PASS R1-3 .verify/z3-mcp-acceptance-D400KH/clause-3.json
+PASS R1-4 .verify/z3-mcp-acceptance-D400KH/clause-4.json
+PASS R1-5 .verify/z3-mcp-acceptance-D400KH/clause-5.json
+PASS R1-6 .verify/z3-mcp-acceptance-D400KH/clause-6.json
+PASS R1-7 .verify/z3-mcp-acceptance-D400KH/clause-7.json
