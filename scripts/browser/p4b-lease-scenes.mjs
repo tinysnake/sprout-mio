@@ -401,6 +401,22 @@ await check("Chat inspector 与 Project settings 呈现同一租约事实", asyn
       .count();
     assert.ok(held >= 2, `settings held leases ${held}`);
     assert.equal(await page.getByTestId("info-hub-leases-notice").count(), 0);
+    // 第 5 条：Project settings 不再重复整套租约管理界面，只给摘要 + 可跳转入口。
+    assert.equal(await page.locator('[data-testid="lease-mutation-form"]').count(), 0);
+    assert.equal(await page.getByTestId("lease-transfer-controls").count(), 0);
+    const manage = page.getByTestId("lease-manage-link");
+    assert.ok((await manage.count()) >= 1, "settings leases expose a jump entry");
+    const hrefs = await manage.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("href")),
+    );
+    for (const href of hrefs)
+      assert.match(href ?? "", /^\/machines\/mch_[0-9a-f-]+\?projectId=prj_[0-9a-f-]+$/);
+    // 第 1 条：绑定行只留可达性，不重复派生路径、不展示观察时间 / 代次 / revision。
+    const bindingText = await page.getByTestId("info-hub-machine-binding").allInnerTexts();
+    for (const text of bindingText) {
+      assert.doesNotMatch(text, /观察时间|代次 \d|revision \d/);
+      assert.equal((text.match(/\/Users\/linche/g) ?? []).length <= 1, true, `路径重复: ${text}`);
+    }
     await shootAt(page, "info-hub-leases", "settings-info-hub-leases");
   } finally {
     await settings.context.close();
