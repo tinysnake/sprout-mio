@@ -402,7 +402,7 @@ await check("Chat inspector 与 Project settings 呈现同一租约事实", asyn
     assert.ok(held >= 2, `settings held leases ${held}`);
     assert.equal(await page.getByTestId("info-hub-leases-notice").count(), 0);
     // 第 5 条：Project settings 不再重复整套租约管理界面，只给摘要 + 可跳转入口。
-    assert.equal(await page.locator('[data-testid="lease-mutation-form"]').count(), 0);
+    assert.equal(await page.locator('[data-testid$="-mutation"]').count(), 0);
     assert.equal(await page.getByTestId("lease-transfer-controls").count(), 0);
     const manage = page.getByTestId("lease-manage-link");
     assert.ok((await manage.count()) >= 1, "settings leases expose a jump entry");

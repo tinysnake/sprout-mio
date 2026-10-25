@@ -106,7 +106,8 @@ try {
   page = await context.newPage();
   // Project settings 只给摘要与入口：租约管理入口深链到该 Machine 详情的租约区块。
   await page.goto(`${base}/projects/${projectId}/settings`);
-  assert.equal(await page.getByTestId('lease-mutation-form').count(),0,'no lease mutation form in Project settings');
+  await page.getByTestId('info-hub-project-machines').waitFor();
+  assert.equal(await page.locator('[data-testid$="-mutation"]').count(),0,'no lease mutation form in Project settings');
   const manageHref = await page.getByTestId('lease-manage-link').first().getAttribute('href');
   assert.equal(manageHref,`/machines/${machineId}?projectId=${projectId}`,'lease entry deep-links to Machine detail');
   await page.getByTestId('lease-manage-link').first().click();

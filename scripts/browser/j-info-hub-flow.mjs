@@ -252,8 +252,7 @@ await check("lease_facts_render_real_state", async () => {
     leaseManageLinks: [...document.querySelectorAll('[data-testid="lease-manage-link"]')].map(
       (node) => node.getAttribute("href"),
     ),
-    manageFormInProjectSettings: document.querySelectorAll('[data-testid="lease-mutation-form"]')
-      .length,
+    manageFormInProjectSettings: document.querySelectorAll('[data-testid$="-mutation"]').length,
     staleNoticeBadges: [
       ...document.querySelectorAll('[data-testid="info-hub-leases-notice-badge"]'),
     ].map((node) => node.textContent?.trim()),
