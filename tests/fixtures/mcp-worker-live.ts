@@ -18,6 +18,7 @@ import { requestExecution } from "../../src/server/remote";
 import { enrollWorker, openWorker, exchangeWorker } from "../../src/server/worker-gateway";
 import { McpRuntime } from "../../src/worker/mcp";
 import { RemoteDispatcher } from "../../src/worker/remote";
+import { probeNativePiVersion } from "./mcp-native-version";
 import { seedRemoteActor } from "./remote-actors";
 import { registration, sessionFor, waitFor } from "./mcp-runtime";
 import { mcpBound, mcpHash, mcpPayloadHash } from "../../src/domain/mcp/protocol";
@@ -235,6 +236,7 @@ try {
         ".pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-mcp/dist/index.js",
       );
     const { McpClient } = await import(pathToFileURL(nativePath).href);
+    const nativePiVersionEvidence = await probeNativePiVersion(nativePath);
     const client = new McpClient({
       name: "sprout-worker-acceptance",
       version: "1",
@@ -286,7 +288,8 @@ try {
       db.select().from(mcpSession).where(eq(mcpSession.id, session.id)).get()!.state,
       "closed",
     );
-    process.kill(fact.pid, 0);
+    const sessionClosedProcessAlive = process.kill(fact.pid, 0);
+    assert(sessionClosedProcessAlive);
     const evidence = {
       pid: fact.pid,
       processStartedAt: fact.processStartedAt,
@@ -297,8 +300,8 @@ try {
       tools: names,
       samplingFixtureRequests: sampling,
       elicitationCancelRequests: elicitation,
-      nativePiVersion: "1.4.0",
-      sessionClosedProcessAlive: true,
+      ...nativePiVersionEvidence,
+      sessionClosedProcessAlive,
     };
     await writeFile(
       process.env.MCP_EVIDENCE ?? "/tmp/sprout-mcp-evidence.json",
