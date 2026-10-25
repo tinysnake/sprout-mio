@@ -267,7 +267,7 @@ try {
         ...(credential ? { authorization: `Bearer ${credential.secret}` } : {}),
         ...extra,
       },
-      body: JSON.stringify({ version: 1, call: { type, input } }),
+      body: JSON.stringify({ version: 2, call: { type, input } }),
       signal: AbortSignal.timeout(10000),
     });
     return { status: response.status, result: (await response.json()) as AppResult<T> };

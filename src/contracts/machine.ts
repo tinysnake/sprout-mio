@@ -76,6 +76,18 @@ export const REMOTE_OPERATION_KINDS = [
   "process_signal",
 ] as const;
 export const capabilitySnapshotSchema = z.strictObject({
+  mcpRelay: z
+    .strictObject({
+      version: z.literal(1),
+      transports: z
+        .array(z.enum(["stdio", "streamableHttp"]))
+        .min(1)
+        .max(2)
+        .refine((values) => new Set(values).size === values.length),
+      maxMessageBytes: z.literal(131072),
+    })
+    .nullable()
+    .optional(),
   platform: z.literal("darwin"),
   arch: z.enum(["arm64", "x64"]),
   workerVersion: z.string().min(1).max(80),

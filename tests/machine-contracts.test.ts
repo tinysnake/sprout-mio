@@ -24,6 +24,7 @@ const capability = {
   workerVersion: "0.1.0",
   shells: [],
   remoteOperations: ["file_read"],
+  mcpRelay: { version: 1, transports: ["stdio"], maxMessageBytes: 131072 },
 };
 const session = {
   machineId,
@@ -41,7 +42,7 @@ const fact = {
   result: { kind: "accessible", realPath: "/tmp" },
 };
 const exchange = {
-  version: 2,
+  version: 3,
   requestId: newId(ID_PREFIXES.request),
   secret: "a".repeat(43),
   mode: "normal",
@@ -49,7 +50,7 @@ const exchange = {
   seq: 1,
   capability,
   observations: [fact],
-  remote: { results: [], fenceAcks: [] },
+  remote: { results: [], fenceAcks: [], mcp: [], mcpCursors: [] },
 };
 
 describe("Machine public and wire boundaries", () => {
@@ -142,11 +143,19 @@ describe("Machine public and wire boundaries", () => {
       session,
       seq: 1,
       configuration: { root: null, rootRevision: 1, bindings: [] },
-      remote: { authorizations: [], commands: [], fences: [], resultAcks: [], fenceAcks: [] },
+      remote: {
+        authorizations: [],
+        commands: [],
+        fences: [],
+        resultAcks: [],
+        fenceAcks: [],
+        mcp: [],
+        mcpCursors: [],
+      },
     };
     expect(
       workerExchangeResponseSchema.safeParse({
-        version: 2,
+        version: 3,
         requestId: exchange.requestId,
         ok: true,
         data,
@@ -154,7 +163,7 @@ describe("Machine public and wire boundaries", () => {
     ).toBe(true);
     expect(
       workerExchangeResponseSchema.safeParse({
-        version: 2,
+        version: 3,
         requestId: exchange.requestId,
         ok: true,
         data,
@@ -176,7 +185,7 @@ describe("Machine public and wire boundaries", () => {
     ])
       expect(
         workerExchangeResponseSchema.safeParse({
-          version: 2,
+          version: 3,
           requestId: exchange.requestId,
           ok: true,
           data: contradiction,

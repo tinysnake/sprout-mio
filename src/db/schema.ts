@@ -20,6 +20,7 @@ import {
   REMOTE_OUTCOMES,
 } from "../contracts/remote";
 import type { RemoteOperation, RemoteResultPayload } from "../contracts/remote";
+import type { McpConfig } from "../contracts/mcp";
 import type { WorkerExchangeResponse } from "../contracts/worker";
 
 export * from "./auth-schema";
@@ -487,6 +488,12 @@ export const machineConnection = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.machineId, t.generation] }),
     uniqueIndex("machine_connection_attempt_unique").on(t.machineId, t.attemptId),
+    uniqueIndex("machine_connection_mcp_session_unique").on(
+      t.machineId,
+      t.generation,
+      t.bootId,
+      t.attemptId,
+    ),
     check(
       "machine_generation_check",
       sql`typeof(${t.generation}) = 'integer' and ${t.generation} between 1 and 9007199254740991`,
@@ -963,6 +970,13 @@ export const remoteToolGrant = sqliteTable(
   },
   (t) => [
     uniqueIndex("remote_tool_grant_secret_hash_unique").on(t.secretHash),
+    uniqueIndex("remote_tool_grant_mcp_session_unique").on(
+      t.id,
+      t.projectId,
+      t.instanceId,
+      t.runId,
+      t.chatId,
+    ),
     check(
       "remote_tool_grant_check_2",
       sql`length(secret_hash)=64 AND secret_hash NOT GLOB '*[^0-9a-f]*'`,
@@ -982,5 +996,330 @@ export const remoteToolGrant = sqliteTable(
       columns: [t.runId, t.instanceId, t.projectId, t.chatId],
       foreignColumns: [agentRun.id, agentRun.instanceId, agentRun.projectId, agentRun.chatId],
     }),
+  ],
+);
+
+// The relay stores millisecond timestamps and safe integers; nullable state fields
+// use explicit IS predicates because SQLite accepts a NULL CHECK result.
+const mcpInteger = (name: string, minimum = 0) =>
+  check(
+    "mcp_" + name + "_integer",
+    sql.raw(
+      "typeof(" +
+        name +
+        ")='integer' AND " +
+        name +
+        " BETWEEN " +
+        minimum +
+        " AND 9007199254740991",
+    ),
+  );
+const mcpHash = (name: string) =>
+  check(
+    "mcp_" + name + "_hash",
+    sql.raw("length(" + name + ")=64 AND " + name + " NOT GLOB '*[^0-9a-f]*'"),
+  );
+
+export const mcpServerRegistration = sqliteTable(
+  "mcp_server_registration",
+  {
+    id: text("id").notNull(),
+    revision: integer("revision").notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    name: text("name").notNull(),
+    transport: text("transport", { enum: ["stdio", "streamableHttp"] }).notNull(),
+    configRef: text("config_ref").notNull(),
+    configHash: text("config_hash").notNull(),
+    configJson: text("config_json", { mode: "json" }).$type<McpConfig>().notNull(),
+    createdAt: integer("created_at").notNull(),
+    retiredAt: integer("retired_at"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.id, t.revision] }),
+    uniqueIndex("mcp_registration_identity_unique").on(t.id, t.revision, t.projectId, t.machineId),
+    uniqueIndex("mcp_registration_config_unique").on(
+      t.id,
+      t.revision,
+      t.projectId,
+      t.machineId,
+      t.transport,
+      t.configHash,
+    ),
+    uniqueIndex("mcp_server_registration_live_name")
+      .on(t.projectId, t.machineId, t.name)
+      .where(sql`retired_at IS NULL`),
+    foreignKey({
+      columns: [t.projectId, t.machineId],
+      foreignColumns: [projectMachine.projectId, projectMachine.machineId],
+    }),
+    mcpInteger("revision", 1),
+    mcpInteger("created_at"),
+    mcpHash("config_hash"),
+    check(
+      "mcp_registration_name",
+      sql`length(name) BETWEEN 1 AND 64 AND name NOT GLOB '*[^a-z0-9_-]*' AND substr(name,1,1) GLOB '[a-z]'`,
+    ),
+    check("mcp_registration_transport", sql`transport IN ('stdio','streamableHttp')`),
+    check("mcp_registration_ref", sql`length(config_ref) BETWEEN 1 AND 128`),
+    check(
+      "mcp_registration_config_object",
+      sql`CASE WHEN json_valid(config_json) THEN json_type(config_json)='object' ELSE 0 END`,
+    ),
+    check(
+      "mcp_registration_config_transport",
+      sql`CASE WHEN json_valid(config_json) THEN json_extract(config_json,'$.transport') IS transport ELSE 0 END`,
+    ),
+    check(
+      "mcp_registration_retired_at",
+      sql`retired_at IS NULL OR (typeof(retired_at)='integer' AND retired_at>=created_at)`,
+    ),
+  ],
+);
+
+export const mcpServerProcess = sqliteTable(
+  "mcp_server_process",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    registrationId: text("registration_id").notNull(),
+    registrationRevision: integer("registration_revision").notNull(),
+    transport: text("transport", { enum: ["stdio", "streamableHttp"] }).notNull(),
+    configHash: text("config_hash").notNull(),
+    workerIncarnationId: text("worker_incarnation_id").notNull(),
+    launchNonce: text("launch_nonce").notNull(),
+    state: text("state", {
+      enum: ["starting", "running", "stopping", "stopped", "failed", "lost"],
+    }).notNull(),
+    pid: integer("pid"),
+    endpoint: text("endpoint"),
+    startedAt: integer("started_at").notNull(),
+    lastObservedAt: integer("last_observed_at").notNull(),
+    endedAt: integer("ended_at"),
+    stopReason: text("stop_reason"),
+    stateRevision: integer("state_revision").notNull(),
+    stateHash: text("state_hash").notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.registrationId, t.registrationRevision, t.projectId, t.machineId],
+      foreignColumns: [
+        mcpServerRegistration.id,
+        mcpServerRegistration.revision,
+        mcpServerRegistration.projectId,
+        mcpServerRegistration.machineId,
+      ],
+    }),
+    uniqueIndex("mcp_process_launch_unique").on(t.machineId, t.workerIncarnationId, t.launchNonce),
+    uniqueIndex("mcp_process_session_identity_unique").on(
+      t.id,
+      t.projectId,
+      t.machineId,
+      t.registrationId,
+      t.registrationRevision,
+      t.workerIncarnationId,
+    ),
+    mcpInteger("registration_revision", 1),
+    mcpInteger("state_revision", 1),
+    mcpInteger("started_at"),
+    mcpHash("state_hash"),
+    mcpHash("config_hash"),
+    check("mcp_process_transport", sql`transport IN ('stdio','streamableHttp')`),
+    check(
+      "mcp_process_state",
+      sql`state IN ('starting','running','stopping','stopped','failed','lost')`,
+    ),
+    check(
+      "mcp_process_pid",
+      sql`pid IS NULL OR (typeof(pid)='integer' AND pid BETWEEN 1 AND 2147483647)`,
+    ),
+    check(
+      "mcp_process_observed_at",
+      sql`typeof(last_observed_at)='integer' AND last_observed_at>=started_at`,
+    ),
+    check(
+      "mcp_process_lifecycle",
+      sql`(state='starting' AND ended_at IS NULL AND stop_reason IS NULL) OR
+    (state='running' AND ended_at IS NULL AND stop_reason IS NULL AND
+      ((transport='stdio' AND pid IS NOT NULL AND endpoint IS NULL) OR (transport='streamableHttp' AND endpoint IS NOT NULL))) OR
+    (state IN ('stopped','failed','lost') AND ended_at IS NOT NULL AND typeof(ended_at)='integer' AND ended_at>=started_at AND stop_reason IS NOT NULL AND length(stop_reason) BETWEEN 1 AND 128)`,
+    ),
+  ],
+);
+
+export const mcpSession = sqliteTable(
+  "mcp_session",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    registrationId: text("registration_id").notNull(),
+    registrationRevision: integer("registration_revision").notNull(),
+    processId: text("process_id").notNull(),
+    authorizationGeneration: integer("authorization_generation").notNull(),
+    holderInstanceId: text("holder_instance_id").notNull(),
+    grantId: text("grant_id").notNull(),
+    runId: text("run_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    openRequestId: text("open_request_id").notNull(),
+    openFingerprint: text("open_fingerprint").notNull(),
+    workerBootId: text("worker_boot_id").notNull(),
+    workerConnectionGeneration: integer("worker_connection_generation").notNull(),
+    workerAttemptId: text("worker_attempt_id").notNull(),
+    workerIncarnationId: text("worker_incarnation_id").notNull(),
+    protocolVersion: text("protocol_version"),
+    state: text("state", {
+      enum: ["connecting", "active", "draining", "closed", "failed"],
+    }).notNull(),
+    reason: text("reason"),
+    createdAt: integer("created_at").notNull(),
+    initializedAt: integer("initialized_at"),
+    closedAt: integer("closed_at"),
+    hostAckServerSeq: integer("host_ack_server_seq").notNull(),
+    clientAcceptedThrough: integer("client_accepted_through").notNull(),
+    serverAcceptedThrough: integer("server_accepted_through").notNull(),
+    clientHighWater: integer("client_high_water").notNull(),
+    serverHighWater: integer("server_high_water").notNull(),
+    workerStateRevision: integer("worker_state_revision").notNull(),
+    workerStateHash: text("worker_state_hash"),
+  },
+  (t) => [
+    uniqueIndex("mcp_session_open_unique").on(t.grantId, t.openRequestId),
+    uniqueIndex("mcp_session_process_unique").on(t.processId),
+    foreignKey({
+      columns: [
+        t.processId,
+        t.projectId,
+        t.machineId,
+        t.registrationId,
+        t.registrationRevision,
+        t.workerIncarnationId,
+      ],
+      foreignColumns: [
+        mcpServerProcess.id,
+        mcpServerProcess.projectId,
+        mcpServerProcess.machineId,
+        mcpServerProcess.registrationId,
+        mcpServerProcess.registrationRevision,
+        mcpServerProcess.workerIncarnationId,
+      ],
+    }),
+    foreignKey({
+      columns: [t.projectId, t.machineId, t.authorizationGeneration, t.holderInstanceId],
+      foreignColumns: [
+        leaseAuthorization.projectId,
+        leaseAuthorization.machineId,
+        leaseAuthorization.generation,
+        leaseAuthorization.holderInstanceId,
+      ],
+    }),
+    foreignKey({
+      columns: [t.machineId, t.workerConnectionGeneration, t.workerBootId, t.workerAttemptId],
+      foreignColumns: [
+        machineConnection.machineId,
+        machineConnection.generation,
+        machineConnection.bootId,
+        machineConnection.attemptId,
+      ],
+    }),
+    foreignKey({
+      columns: [t.grantId, t.projectId, t.holderInstanceId, t.runId, t.chatId],
+      foreignColumns: [
+        remoteToolGrant.id,
+        remoteToolGrant.projectId,
+        remoteToolGrant.instanceId,
+        remoteToolGrant.runId,
+        remoteToolGrant.chatId,
+      ],
+    }),
+    mcpInteger("registration_revision", 1),
+    mcpInteger("authorization_generation", 1),
+    mcpInteger("worker_connection_generation", 1),
+    mcpInteger("created_at"),
+    mcpInteger("host_ack_server_seq"),
+    mcpInteger("client_accepted_through"),
+    mcpInteger("server_accepted_through"),
+    mcpInteger("client_high_water"),
+    mcpInteger("server_high_water"),
+    mcpInteger("worker_state_revision"),
+    mcpHash("open_fingerprint"),
+    check("mcp_session_state", sql`state IN ('connecting','active','draining','closed','failed')`),
+    check(
+      "mcp_session_protocol",
+      sql`protocol_version IS NULL OR length(protocol_version) BETWEEN 1 AND 64`,
+    ),
+    check(
+      "mcp_session_cursors",
+      sql`host_ack_server_seq<=server_high_water AND client_accepted_through<=client_high_water AND server_accepted_through<=server_high_water`,
+    ),
+    check(
+      "mcp_session_worker_state",
+      sql`(worker_state_revision=0 AND worker_state_hash IS NULL) OR (worker_state_revision>0 AND worker_state_hash IS NOT NULL AND length(worker_state_hash)=64 AND worker_state_hash NOT GLOB '*[^0-9a-f]*')`,
+    ),
+    check(
+      "mcp_session_closed",
+      sql`(state IN ('connecting','active','draining') AND closed_at IS NULL AND reason IS NULL) OR (state IN ('closed','failed') AND closed_at IS NOT NULL AND typeof(closed_at)='integer' AND closed_at>=created_at AND reason IS NOT NULL AND length(reason) BETWEEN 1 AND 128)`,
+    ),
+    check(
+      "mcp_session_active",
+      sql`state<>'active' OR (protocol_version IS NOT NULL AND initialized_at IS NOT NULL)`,
+    ),
+    check(
+      "mcp_session_initialized",
+      sql`initialized_at IS NULL OR (typeof(initialized_at)='integer' AND initialized_at>=created_at)`,
+    ),
+  ],
+);
+
+export const mcpFrame = sqliteTable(
+  "mcp_frame",
+  {
+    id: text("id").primaryKey().notNull(),
+    sessionId: text("session_id").notNull(),
+    direction: text("direction", { enum: ["client_to_server", "server_to_client"] }).notNull(),
+    seq: integer("seq").notNull(),
+    payloadBase64: text("payload_base64"),
+    payloadBytes: integer("payload_bytes").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    state: text("state", { enum: ["queued", "sent", "acked", "cancelled", "dropped"] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    sentAt: integer("sent_at"),
+    terminalAt: integer("terminal_at"),
+    terminalReason: text("terminal_reason"),
+  },
+  (t) => [
+    uniqueIndex("mcp_frame_sequence_unique").on(t.sessionId, t.direction, t.seq),
+    foreignKey({ columns: [t.sessionId], foreignColumns: [mcpSession.id] }),
+    mcpInteger("seq", 1),
+    mcpInteger("created_at"),
+    mcpHash("payload_hash"),
+    check("mcp_frame_direction", sql`direction IN ('client_to_server','server_to_client')`),
+    check("mcp_frame_state", sql`state IN ('queued','sent','acked','cancelled','dropped')`),
+    check(
+      "mcp_frame_bytes",
+      sql`typeof(payload_bytes)='integer' AND payload_bytes BETWEEN 1 AND 131072`,
+    ),
+    check(
+      "mcp_frame_base64",
+      sql`payload_base64 IS NULL OR (length(payload_base64) BETWEEN 4 AND 174764 AND length(payload_base64)%4=0 AND payload_base64 NOT GLOB '*[^A-Za-z0-9+/=]*')`,
+    ),
+    check("mcp_frame_expires", sql`typeof(expires_at)='integer' AND expires_at>created_at`),
+    check(
+      "mcp_frame_sent_at",
+      sql`sent_at IS NULL OR (typeof(sent_at)='integer' AND sent_at>=created_at)`,
+    ),
+    check(
+      "mcp_frame_terminal_at",
+      sql`terminal_at IS NULL OR (typeof(terminal_at)='integer' AND terminal_at>=created_at)`,
+    ),
+    check(
+      "mcp_frame_lifecycle",
+      sql`(state='queued' AND payload_base64 IS NOT NULL AND sent_at IS NULL AND terminal_at IS NULL AND terminal_reason IS NULL) OR
+    (state='sent' AND payload_base64 IS NOT NULL AND sent_at IS NOT NULL AND terminal_at IS NULL AND terminal_reason IS NULL) OR
+    (state='acked' AND sent_at IS NOT NULL AND terminal_at IS NOT NULL AND terminal_reason IS NULL) OR
+    (state IN ('cancelled','dropped') AND terminal_at IS NOT NULL AND terminal_reason IS NOT NULL AND length(terminal_reason) BETWEEN 1 AND 128)`,
+    ),
   ],
 );

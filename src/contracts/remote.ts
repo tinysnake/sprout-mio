@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  mcpCatalogGetCall,
+  mcpSessionOpenCall,
+  mcpSessionExchangeCall,
+  mcpSessionCloseCall,
+} from "./mcp";
 import { runIdSchema } from "./agent-run";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import { leaseKeySchema, leaseMutationInputSchema, leaseReadInputSchema } from "./lease";
@@ -277,12 +283,16 @@ const agentMutationInputSchema = z.discriminatedUnion("action", [
   leaseMutationInputSchema.options[2],
 ]);
 export const remoteAgentRequestSchema = z.strictObject({
-  version: z.literal(1),
+  version: z.literal(2),
   call: z.discriminatedUnion("type", [
     z.strictObject({ type: z.literal("lease_mutate"), input: agentMutationInputSchema }),
     z.strictObject({ type: z.literal("lease_get"), input: leaseReadInputSchema }),
     z.strictObject({ type: z.literal("execution_submit"), input: executionSubmitInputSchema }),
     z.strictObject({ type: z.literal("execution_get"), input: executionReadInputSchema }),
+    mcpCatalogGetCall,
+    mcpSessionOpenCall,
+    mcpSessionExchangeCall,
+    mcpSessionCloseCall,
   ]),
 });
 export const remoteToolGrantSchema = z.strictObject({

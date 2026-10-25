@@ -9,6 +9,14 @@ export * from "./chat";
 export * from "./info-hub";
 export * from "./machine";
 export * from "./lease";
+export type {
+  McpCatalogView,
+  McpConfig,
+  McpServerRegistration,
+  McpServerProcess,
+  McpSession,
+  McpFrame,
+} from "./mcp";
 export {
   executionSubmitInputSchema,
   executionReadInputSchema,

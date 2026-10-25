@@ -47,7 +47,7 @@ const fail = (code: string) => (error: unknown) =>
 const enrollment = createMachine({ name: "Mac" }, ctx);
 const machineId = enrollment.detail.machine.id;
 const secret = "s".repeat(43);
-const wire = { version: 2 as const, requestId, machineId, secret };
+const wire = { version: 3 as const, requestId, machineId, secret };
 assert.equal(listMachines(ctx).length, 1);
 assert.throws(() => getMachine({ machineId }, { ...ctx, userId: "other" }), fail("not_found"));
 assert.throws(() =>
@@ -134,14 +134,14 @@ const capability: CapabilitySnapshot = {
   remoteOperations: [],
 };
 const exchange = {
-  version: 2 as const,
+  version: 3 as const,
   requestId,
   secret,
   mode: "normal" as const,
   session: first,
   seq: 1,
   capability,
-  remote: { results: [], fenceAcks: [] },
+  remote: { results: [], fenceAcks: [], mcp: [], mcpCursors: [] },
   observations: [
     {
       machineId,
@@ -222,19 +222,19 @@ assert.equal(second.generation, first.generation + 1);
 for (const action of [
   () => openWorker({ ...wire, attemptId }, ctx),
   () => exchangeWorker(exchange, ctx),
-  () => closeWorker({ version: 2, requestId, secret, session: first }, ctx),
+  () => closeWorker({ version: 3, requestId, secret, session: first }, ctx),
 ])
   assert.throws(action, fail("superseded"));
 const drainOnly = (session: typeof first, seq: number) =>
   exchangeWorker(
     {
-      version: 2,
+      version: 3,
       requestId: newId(ID_PREFIXES.request),
       secret,
       mode: "drain",
       session,
       seq,
-      remote: { results: [], fenceAcks: [] },
+      remote: { results: [], fenceAcks: [], mcp: [], mcpCursors: [] },
     },
     ctx,
   );
@@ -249,8 +249,8 @@ assert.deepEqual(supersededDrain.remote, {
   fenceAcks: [],
 });
 assert.equal(getMachine({ machineId }, ctx).connection.kind, "connecting");
-closeWorker({ version: 2, requestId, secret, session: second }, ctx);
-closeWorker({ version: 2, requestId, secret, session: second }, ctx);
+closeWorker({ version: 3, requestId, secret, session: second }, ctx);
+closeWorker({ version: 3, requestId, secret, session: second }, ctx);
 assert.equal(getMachine({ machineId }, ctx).connection.kind, "offline");
 const third = openWorker({ ...wire, attemptId: randomUUID() }, ctx).session;
 assert.throws(
@@ -273,13 +273,13 @@ sqlite
 // drain 不更新 lastSeen/capability，因此不会把断联 Machine 变 online。
 const rebootDrain = exchangeWorker(
   {
-    version: 2,
+    version: 3,
     requestId: newId(ID_PREFIXES.request),
     secret,
     mode: "drain",
     session: third,
     seq: 1,
-    remote: { results: [], fenceAcks: [] },
+    remote: { results: [], fenceAcks: [], mcp: [], mcpCursors: [] },
   },
   reboot,
 );

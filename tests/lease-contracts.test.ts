@@ -90,7 +90,7 @@ describe("P4b shared contracts", () => {
     expect(leaseMutationInputSchema.safeParse(reclaim).success).toBe(true);
     expect(
       remoteAgentRequestSchema.safeParse({
-        version: 1,
+        version: 2,
         call: { type: "lease_mutate", input: reclaim },
       }).success,
     ).toBe(false);
@@ -342,6 +342,10 @@ describe("P4b shared contracts", () => {
       "workerSessionSchema",
       "workerExchangeInput",
       "remoteAgentRequestSchema",
+      "mcpWorkerItemSchema",
+      "mcpServerItemSchema",
+      "mcpSessionSchema",
+      "mcpConfigSchema",
     ])
       expect(name in humanContracts).toBe(false);
     const grant = {

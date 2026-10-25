@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mcpWorkerExchangeShape, mcpServerExchangeShape } from "./mcp";
 import { remoteExchangeInputSchema, remoteExchangeOutputSchema } from "./remote";
 import { workerSecretSchema, workerSessionSchema } from "./worker-session";
 import type { WorkerSession } from "./worker-session";
@@ -11,7 +12,7 @@ import {
   positiveSafeIntegerSchema,
 } from "./machine";
 
-export const WORKER_PROTOCOL_VERSION = 2;
+export const WORKER_PROTOCOL_VERSION = 3;
 export const WORKER_POLL_INTERVAL_MS = 5000;
 export const WORKER_STALE_AFTER_MS = 15000;
 export const WORKER_ENROLLMENT_TTL_MS = 600000;
@@ -31,7 +32,7 @@ const exchangeBase = {
   secret: workerSecretSchema,
   session: workerSessionSchema,
   seq: positiveSafeIntegerSchema,
-  remote: remoteExchangeInputSchema,
+  remote: remoteExchangeInputSchema.extend(mcpWorkerExchangeShape),
 };
 export const workerExchangeInput = z
   .discriminatedUnion("mode", [
@@ -72,6 +73,43 @@ export const workerExchangeInput = z
       )
         ctx.addIssue({ code: "custom", path: ["remote"], message: "报告必须属于本 exchange 会话" });
     }
+    for (const item of [...value.remote.mcp, ...value.remote.mcpCursors]) {
+      const session = "workerSession" in item ? item.workerSession : null;
+      const machineId =
+        "registration" in item
+          ? item.registration.machineId
+          : "process" in item
+            ? item.process.machineId
+            : "machineId" in item
+              ? item.machineId
+              : value.session.machineId;
+      if (
+        machineId !== value.session.machineId ||
+        (session !== null &&
+          (session.generation !== value.session.generation ||
+            session.bootId !== value.session.bootId ||
+            session.attemptId !== value.session.attemptId))
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["remote", "mcp"],
+          message: "MCP 事实必须属于本 exchange 会话",
+        });
+    }
+    if (
+      value.mode === "drain" &&
+      value.remote.mcp.some(
+        (item) =>
+          item.type === "registration_fact" ||
+          item.type === "registration_retire" ||
+          item.type === "process_fact",
+      )
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["remote", "mcp"],
+        message: "drain 不能发布登记或进程",
+      });
     if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 1048576)
       ctx.addIssue({ code: "custom", message: "exchange 批次超过 1 MiB" });
   });
@@ -142,7 +180,7 @@ export const workerExchangeResponseSchema = z.union([
               .max(1000),
           })
           .nullable(),
-        remote: remoteExchangeOutputSchema,
+        remote: remoteExchangeOutputSchema.extend(mcpServerExchangeShape),
       })
       .superRefine((value, ctx) => {
         if (
@@ -163,6 +201,31 @@ export const workerExchangeResponseSchema = z.union([
               message: "远端事实必须属于当前 Machine",
             });
         }
+        for (const item of [...value.remote.mcp, ...value.remote.mcpCursors]) {
+          const session = item.workerSession;
+          if (
+            item.machineId !== value.session.machineId ||
+            session.generation !== value.session.generation ||
+            session.bootId !== value.session.bootId ||
+            session.attemptId !== value.session.attemptId
+          )
+            ctx.addIssue({
+              code: "custom",
+              path: ["remote", "mcp"],
+              message: "MCP 投递必须属于本 exchange 会话",
+            });
+        }
+        if (
+          value.mode === "drain" &&
+          value.remote.mcp.some(
+            (item) => item.type !== "session_detach" && item.type !== "session_fence",
+          )
+        )
+          ctx.addIssue({
+            code: "custom",
+            path: ["remote", "mcp"],
+            message: "drain 只能接收 MCP detach 或 fence",
+          });
         for (const command of value.remote.commands) {
           if (
             command.dispatchSession.generation !== value.session.generation ||

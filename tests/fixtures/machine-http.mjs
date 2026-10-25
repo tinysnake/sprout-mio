@@ -161,7 +161,7 @@ async function rpc(name, data, actorCookie = cookie) {
   return result;
 }
 function wire(extra) {
-  return { version: 2, requestId: `req_${randomUUID()}`, ...extra };
+  return { version: 3, requestId: `req_${randomUUID()}`, ...extra };
 }
 async function hiddenInit(args, ticketPath) {
   const child = launch(
@@ -180,7 +180,7 @@ try {
     { cwd: artifactDir },
   );
   assert.equal((await complete(version)).code, 0);
-  assert(readFileSync(join(evidenceDir, "worker-version.log"), "utf8").includes("protocol=2"));
+  assert(readFileSync(join(evidenceDir, "worker-version.log"), "utf8").includes("protocol=3"));
   pass("independent bundled Worker starts outside every project lookup chain", {
     artifactDir,
     node: process.version,
@@ -546,7 +546,7 @@ try {
   assert(opened.value.ok);
   const session = opened.value.data.session;
   const cap = JSON.parse(initial.capability);
-  const remote = { results: [], fenceAcks: [] };
+  const remote = { results: [], fenceAcks: [], mcp: [], mcpCursors: [] };
   const payload = {
     secret: identity.secret,
     mode: "normal",
