@@ -13,6 +13,7 @@ import { migrateDatabase } from "../../src/db/migrate";
 import { db, sqlite } from "../../src/db";
 import { mcpFrame, mcpSession, mcpServerProcess } from "../../src/db/schema";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
+import { mcpSessionClose, mcpSessionOpen } from "../../src/server/mcp-relay";
 import { acquireLease } from "../../src/server/lease";
 import { requestExecution } from "../../src/server/remote";
 import { enrollWorker, openWorker, exchangeWorker } from "../../src/server/worker-gateway";
@@ -95,7 +96,7 @@ const runtime = new McpRuntime([configured]);
 await runtime.start();
 const dispatcher = new RemoteDispatcher(worker, capability, Date.now, runtime);
 let seq = 0;
-const exchange = (remote: WorkerExchangeRemoteInput = dispatcher.outgoing()) => {
+const exchange = (remote: WorkerExchangeRemoteInput = dispatcher.outgoing(), accept = true) => {
   ctx.now = new Date();
   const next = seq + 1;
   const response = exchangeWorker(
@@ -114,7 +115,7 @@ const exchange = (remote: WorkerExchangeRemoteInput = dispatcher.outgoing()) => 
   );
   assert(workerExchangeOutputRemoteSchema.safeParse(response.remote).success);
   seq = next;
-  dispatcher.accept(response, seq, []);
+  if (accept) dispatcher.accept(response, seq, []);
   return response;
 };
 let timer: NodeJS.Timeout | undefined;
@@ -126,6 +127,40 @@ try {
     .where(eq(mcpServerProcess.machineId, machineId))
     .get()!;
   assert(fact.pid && fact.processStartedAt);
+  process.kill(fact.pid, 0);
+  const leaseInput = { projectId, machineId, authorizationGeneration: 1 };
+  const rapidSession = mcpSessionOpen(
+    {
+      ...leaseInput,
+      requestId: newId(ID_PREFIXES.request),
+      registrationId: fact.registrationId,
+      registrationRevision: fact.registrationRevision,
+      processId: fact.id,
+      expectedWorkerIncarnationId: fact.workerIncarnationId,
+    },
+    ctx,
+  ).session;
+  mcpSessionClose(
+    {
+      ...leaseInput,
+      sessionId: rapidSession.id,
+      requestId: newId(ID_PREFIXES.request),
+      reason: "client_closed",
+    },
+    ctx,
+  );
+  const rapidClose = exchange(undefined, false);
+  assert.equal(
+    rapidClose.remote.mcp.some(
+      (item: ServerMcpItem) => item.type === "session_detach" && item.sessionId === rapidSession.id,
+    ),
+    false,
+    "relay must not detach a session closed before its first Worker exchange",
+  );
+  dispatcher.accept(rapidClose, seq, []);
+  const closedRow = db.select().from(mcpSession).where(eq(mcpSession.id, rapidSession.id)).get()!;
+  assert.equal(closedRow.state, "closed");
+  assert.equal(closedRow.attachedAt, null);
   process.kill(fact.pid, 0);
   const session = sessionFor(fact, worker, {
     projectId,
@@ -176,12 +211,28 @@ try {
       })();
     },
     async close() {
-      db.update(mcpSession)
-        .set({ state: "closed", endedAt: Date.now(), endReason: "client_closed" })
-        .where(eq(mcpSession.id, session.id))
-        .run();
+      mcpSessionClose(
+        {
+          ...leaseInput,
+          sessionId: session.id,
+          requestId: newId(ID_PREFIXES.request),
+          reason: "client_closed",
+        },
+        ctx,
+      );
+      const closing = exchange();
+      assert.ok(
+        closing.remote.mcp.some(
+          (item: ServerMcpItem) => item.type === "session_detach" && item.sessionId === session.id,
+        ),
+        "relay must still detach an attached session",
+      );
       exchange();
-      exchange();
+      assert.notEqual(
+        db.select().from(mcpSession).where(eq(mcpSession.id, session.id)).get()!.workerDetachedAt,
+        null,
+      );
+      process.kill(fact.pid!, 0);
       for (const listener of closes) listener();
     },
     onMessage(listener: (message: unknown) => void) {

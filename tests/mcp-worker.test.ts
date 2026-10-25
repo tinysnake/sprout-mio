@@ -20,6 +20,83 @@ import {
 const decoded = (frame: { payloadBase64: string }) =>
   JSON.parse(Buffer.from(frame.payloadBase64, "base64").toString());
 describe("MCP Worker", () => {
+  test("unknown and replayed detach leaves the configured service and its active session usable", async () => {
+    const { runtime, session, process: service } = await setup();
+    try {
+      const detach = {
+        type: "session_detach" as const,
+        ...mcpBound({ ...session, id: newId(ID_PREFIXES.mcpSession) }),
+        reason: "client_closed" as const,
+      };
+      for (let replay = 0; replay < 2; replay++) {
+        expect(() => runtime.accept([detach], [], [authorization(session)])).not.toThrow();
+        expect(() => process.kill(service.pid!, 0)).not.toThrow();
+        expect(runtime.outgoing().mcp).not.toContainEqual(
+          expect.objectContaining({ type: "process_fact" }),
+        );
+      }
+      runtime.accept(
+        [
+          clientFrame(session, 1, {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "fixture/ping",
+            params: { alive: true },
+          }),
+        ],
+        [],
+        [authorization(session)],
+      );
+      const reply = await waitFor(() =>
+        serverFrames(runtime).find((frame) => decoded(frame).id === 1),
+      );
+      expect(decoded(reply).result).toEqual({ echo: { alive: true } });
+      expect(() => process.kill(service.pid!, 0)).not.toThrow();
+    } finally {
+      await runtime.stop();
+    }
+  });
+  test("detach rejects every mismatched bound on an existing session before closing it", async () => {
+    const { runtime, session, process: service } = await setup();
+    try {
+      const bound = mcpBound(session);
+      const mismatches: Partial<typeof bound>[] = [
+        { projectId: newId(ID_PREFIXES.project) },
+        { machineId: newId(ID_PREFIXES.machine) },
+        { authorizationGeneration: bound.authorizationGeneration + 1 },
+        { holderInstanceId: newId(ID_PREFIXES.instance) },
+        { processId: newId(ID_PREFIXES.mcpProcess) },
+        { workerSession: { ...bound.workerSession, machineId: newId(ID_PREFIXES.machine) } },
+        {
+          workerSession: { ...bound.workerSession, generation: bound.workerSession.generation + 1 },
+        },
+        { workerSession: { ...bound.workerSession, bootId: newId(ID_PREFIXES.boot) } },
+        { workerSession: { ...bound.workerSession, attemptId: "other-attempt" } },
+      ];
+      for (const mismatch of mismatches) {
+        expect(() =>
+          runtime.accept(
+            [{ type: "session_detach", ...bound, ...mismatch, reason: "client_closed" }],
+            [],
+            [authorization(session)],
+          ),
+        ).toThrow("MCP session identity rejected");
+      }
+      const detach = {
+        type: "session_detach" as const,
+        ...bound,
+        reason: "client_closed" as const,
+      };
+      runtime.accept([detach], [], [authorization(session)]);
+      expect(runtime.outgoing().mcp).toContainEqual(
+        expect.objectContaining({ type: "session_fact", sessionId: session.id, state: "detached" }),
+      );
+      expect(() => runtime.accept([detach], [], [authorization(session)])).not.toThrow();
+      expect(() => process.kill(service.pid!, 0)).not.toThrow();
+    } finally {
+      await runtime.stop();
+    }
+  });
   test("HTTP uses JSON, POST SSE and GET SSE; detach deletes only the attachment and permits reopen", async () => {
     const server = await startHttpMcpServer();
     const runtime = new McpRuntime([

@@ -406,6 +406,7 @@ export class McpRuntime {
       return;
     }
     const entry = this.sessions.get(item.sessionId);
+    if (!entry && item.type === "session_detach") return;
     if (!entry || !mcpSameBound(item, mcpBound(entry.session)))
       throw new Error("MCP session identity rejected");
     if (item.type === "session_detach") {

@@ -553,7 +553,7 @@ export function applyMcpExchange(
             mutationId: row.fenceMutationId,
             sessions: [{ sessionId: row.id, processId: row.processId }],
           });
-        } else if (row.workerDetachedAt === null)
+        } else if (row.attachedAt !== null && row.workerDetachedAt === null)
           emit({
             type: "session_detach",
             ...bound,
