@@ -34,31 +34,31 @@ P4b 已交付 Project × Machine 租约、以分身为 holder 的跨 run 持有�
 
 ### 1. 申请、释放与互斥
 
-勾选依据：`reports/contracts-implementation.md`、`reports/worker-implementation.md` 和 `reports/integration-implementation.md` 记录七表约束、租约事务与生产接入。`v-lease-contracts.sh` 的 N1、N2 绕过服务直接写 SQLite，拒绝同 key 第二份租约及非法授权组合，同时允许不同 Projects 共存。第二轮 `reports/acceptance-2/acc2-lease-shape.json` 记录重复申请 `lease_conflict`，直接 INSERT 被 `UNIQUE constraint failed: machine_lease.project_id, machine_lease.machine_id` 拒绝。
+勾选依据：交付提交 `9001f8e`（租约契约与 `machine_lease` 约束）、`dc61189`（租约事务与释放 fence）、`c771250`（生产 Fn 接入）；`reports/contracts-implementation.md`、`reports/worker-implementation.md` 和 `reports/integration-implementation.md` 记录七表约束、租约事务与生产接入。`v-lease-contracts.sh` 的 N1、N2 绕过服务直接写 SQLite，拒绝同 key 第二份租约及非法授权组合，同时允许不同 Projects 共存。第二轮 `reports/acceptance-2/acc2-lease-shape.json` 记录重复申请 `lease_conflict`，直接 INSERT 被 `UNIQUE constraint failed: machine_lease.project_id, machine_lease.machine_id` 拒绝。
 
 释放反证由 w 的 N6 与 z 的页面路径提供：在途未 drained 时先返回 pending，期间新操作被 `lease_fencing` 拒绝；只有真实 fence ack 后代次从 1 到 2。不能把请求受理当作释放完成。重跑 `bash scripts/verify/v-lease-contracts.sh`、`bash scripts/verify/w-worker-remote.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
 ### 2. 分身 holder、跨 run 与多机持有
 
-勾选依据：`reports/worker-implementation.md`、`reports/ui-implementation.md` 和 `reports/integration-implementation.md`。第二轮 shape 探针中，同一 instance 对两条 Machine 身份各持一行，`instancesHeldByThisActor=2`。run 进入终态后仍为 `held`，generation=1 且 holder 相同。w 的 grantRevocation 记录 `leaseRetained=true`、generation=5；z 的 `run-ended-still-held.png` 由真实 Chat 路径验证 run 结束不释放。
+勾选依据：交付提交 `dc61189`（租约跨 run 保留与 grant 撤权）、`e8ec38c`（holder 投影）、`c771250`（真实 Chat 路径接入）；`reports/worker-implementation.md`、`reports/ui-implementation.md` 和 `reports/integration-implementation.md`。第二轮 shape 探针中，同一 instance 对两条 Machine 身份各持一行，`instancesHeldByThisActor=2`。run 进入终态后仍为 `held`，generation=1 且 holder 相同。w 的 grantRevocation 记录 `leaseRetained=true`、generation=5；z 的 `run-ended-still-held.png` 由真实 Chat 路径验证 run 结束不释放。
 
 反证：旧 run 的 grant 不能继续操作，返回 `remote_run_inactive` 或 `remote_grant_invalid`，而租约仍保留；另一分身不能据原 holder 空闲自行取得租约。多机组合没有两台物理 Machine 的联合实测，不据此宣称跨机通过。重跑 `bash scripts/verify/w-worker-remote.sh`、`bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
 ### 3. shell、文件、进程操作与授权
 
-勾选依据：`reports/worker-implementation.md`、`reports/tools-implementation.md`、`reports/report-budget-implementation.md`。w 使用发行 Worker、真实 HTTP 与文件系统执行 shell，副作用计数为 1，重复提交、断线重连后仍为 1。x 的真实 runner 和 Worker 测试覆盖文件读写、进程列表与信号，z 在生产 Machine 页面核对真实 shell 与进程结果。
+勾选依据：交付提交 `dc61189`（远端执行与准入核对）、`46d9d17`（远端工具注册与私有 grant）、`f11ec13`（编码后报告预算）；`reports/worker-implementation.md`、`reports/tools-implementation.md`、`reports/report-budget-implementation.md`。w 使用发行 Worker、真实 HTTP 与文件系统执行 shell，副作用计数为 1，重复提交、断线重连后仍为 1。x 的真实 runner 和 Worker 测试覆盖文件读写、进程列表与信号，z 在生产 Machine 页面核对真实 shell 与进程结果。
 
 反证：w 的 N5、N6、N7、N12 及 z 的非 holder、旧代次请求均验证错误码和哨兵不存在，拒绝请求不入队。w 的在途执行最终为 `rejected` 而非 `succeeded`，同时 OS 进程仍存在、文件保留。准入时核对当前参与权和代次，不承诺持续监视或取消已经开始的 OS 副作用；单独撤销 run grant 的限制见安全边界。重跑 `bash scripts/verify/w-worker-remote.sh`、`bash scripts/verify/x-remote-tools.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
 ### 4. 宿主工具保留、远端目标明确
 
-勾选依据：`reports/tools-implementation.md`、`reports/build-fix-implementation.md`、`reports/fixture-sync-implementation.md`。x 真实加载 `pi/sprout-extension.ts`，确认远端注册工具的必填 Machine 与私有身份注入。全量 a 的真实 Pi 调用仍返回原 `sprout_status` 结构，`src/extension/main.ts` 保留注册。
+勾选依据：交付提交 `46d9d17`（远端工具注册、必填 Machine 与私有身份注入）、`1651dcd`（HTTP handler 请求上下文）、`b5c34db`（能力快照断言）；`reports/tools-implementation.md`、`reports/build-fix-implementation.md`、`reports/fixture-sync-implementation.md`。x 真实加载 `pi/sprout-extension.ts`，确认远端注册工具的必填 Machine 与私有身份注入。全量 a 的真实 Pi 调用仍返回原 `sprout_status` 结构，`src/extension/main.ts` 保留注册。
 
 反证：x 的 N12 缺 Machine 被 `validation_failed` 拒绝，伪造 Project 身份被拒；w 对缺 Machine 的真实 HTTP 请求同样拒绝，目标文件不存在。宿主工具没有默认转向远端。重跑 `bash scripts/verify/a-base.sh`、`bash scripts/verify/x-remote-tools.sh`、`bash scripts/verify/w-worker-remote.sh`。
 
 ### 5. 跨 Project 独立与不可见
 
-勾选依据：`reports/contracts-implementation.md`、`reports/quota-scope-implementation.md`、`reports/integration-implementation.md`。v 的 N2 与第二轮 shape 探针证明同一 Machine 有两条不同 Project 的 held 租约，双方 list 只见本 Project。F-3 修复后预算键也为 Project × Machine，A 满 64 条不再消耗 B 的槽位，两个 Project 各自第 65 条仍被拒绝。
+勾选依据：交付提交 `9001f8e`（Project × Machine 唯一键与授权约束）、`39dca15`（预算改为 Project × Machine）、`c771250`（真实 Fn 查询边界）；`reports/contracts-implementation.md`、`reports/quota-scope-implementation.md`、`reports/integration-implementation.md`。v 的 N2 与第二轮 shape 探针证明同一 Machine 有两条不同 Project 的 held 租约，双方 list 只见本 Project。F-3 修复后预算键也为 Project × Machine，A 满 64 条不再消耗 B 的槽位，两个 Project 各自第 65 条仍被拒绝。
 
 反证：w 的 N7 对改成 B 的 projectId、只绑定 B 的 Machine 返回 `not_found`，私有哨兵不存在。z 的真实未登录、跨用户与浏览器跨 Project 读取反证均通过，quota-scope 测试另核对 B 读 A 的 executionId 为 `not_found`，过期清理不修改另一 Project。重跑 `bash scripts/verify/v-lease-contracts.sh`、`bash scripts/verify/w-worker-remote.sh`、`bash scripts/verify/z-lease-integration.sh`，以及 `pnpm exec vp test run tests/quota-scope.test.ts`。真实配额链路入口为 `node --import tsx tests/fixtures/quota-scope-live.ts`。
 
@@ -68,17 +68,23 @@ P4b 已交付 Project × Machine 租约、以分身为 holder 的跨 run 持有�
 
 ### 1. 租约、holder、申请释放与多机概要
 
+交付提交 `e8ec38c`（租约面板、holder 分组与演示场景）、`064d517`（fencing 事实呈现）、`c771250`（真实 Machine 页面接入）。
+
 y 的 18 组检查覆盖浅暗主题和 390、901、1199、1200、1440px，断言 holder 分组、同分身多机、申请 pending、成功和失败、明确收据以及释放后代次。反证包括另一个 Project 的租约不可见，fencing 普通 reclaim 被拒后仍保留 holder，不显示成功或空闲。
 
 z 在真实服务、Worker、新账号及 Chromium 上执行 Chat 请求，读取生产 Machine 租约卡，点击释放并核对真实进程和文件保留。第二轮 `reports/acceptance-2/machine-held-light.png`、`machine-detail-lease.png` 与 `fencing-real-row-after-reclaim.png` 支持真实页面结论。多机组合仍以投影和演示覆盖。重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
 ### 2. 远端目标与真实结果
 
+交付提交 `e8ec38c`（远端执行面板与宿主/目标区分）、`c771250`（生产执行事实接入）。
+
 y 断言宿主与指定 Machine 目标分开显示，操作结果及 unknown、截断不会冒充完整成功。z 的 `real remote shell and process result visible on production Machine page` 在真实页面检查执行列表与结果，再用 file_read 读取私有哨兵，仅在测试进程内断言内容。
 
 反证：z 从 Chat 提交非 holder 与旧代次命令，核对真实 grant HTTP 拒绝、目标文件不存在且没有入队记录。w 的 missing Machine 反证防止隐式目标。第二轮对应 `machine-result-light.png`、`machine-detail-executions.png`、`mutation-failure-stale-generation.png`。结果截图只适用于不含敏感内容的验收数据，不复制真实业务输出。重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
 ### 3. Chat、Machine 与 inspector 一致，run 结束保留占用
+
+交付提交 `e8ec38c`（Chat header、inspector 与 Machine 详情共用持租投影）、`064d517`（fencing 三页面事实）、`c771250`（三处生产接入）。
 
 y 断言三处共用持租投影，run completed 仍显示 held，并区分 run 与租约。z 真实 Chat header、inspector 与 Machine 详情读取同一 holder，run 结束后仍 held，支持 URL 刷新、后退与前进，并覆盖浅暗主题及 390、900、1200px。
 
@@ -93,6 +99,8 @@ y 断言三处共用持租投影，run completed 仍显示 held，并区分 run 
 | 跨 Project 借租约或 Machine | A 的 grant 改 Project 或操作 B-only Machine 得 `not_found`，`crossProjectSentinelExists=false`；B 的执行记录不可被 A 读取。见 w 的 N7、N12 及 z 的真实 HTTP/Fn 检查。                                                                                                                       |
 | 未登录、跨用户              | z 对 `getLeaseFn`、`listProjectExecutionsFn`、`getExecutionFn`、`reclaimLeaseFn` 经真实 HTTP 分别验证 `unauthorized`、`not_found`。Agent HTTP 无凭据得 401 `remote_grant_invalid`，任何 Origin 得 403 `forbidden`。                                                                         |
 | 非 holder                   | z 的 `browser Chat request -> real non-holder grant HTTP rejection and absent sentinel` 得 `lease_not_holder`，明确 `!existsSync(marker)`，该 requestId 不在执行列表。旧代次负例使用相同三重检查。见 `scripts/verify/z-lease-integration.sh` 的 `negativeCommand`。                         |
+
+本节反证的交付提交为 `dc61189`（服务端准入与 fence）、`064d517`（fencing 事实呈现），重跑 `bash scripts/verify/w-worker-remote.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
 授权在服务端 Fn 和 `/api/remote/agent` 边界核对，UI 与 extension 不承担最终授权判断。新领域错误已登记到 `src/server/functions/domain-errors.ts`。结果报告同时核对 execution、Project、Machine、代次、session、seq 与 fingerprint；合法 Worker 仍属于可信执行端，Sprout 不能证明其报告的 OS 事实为真。
 

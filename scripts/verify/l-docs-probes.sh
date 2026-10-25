@@ -71,6 +71,7 @@ const humanBox = () =>
   setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4b');
 const link = '证据见 [P4a 证据](p4a/probe.md#p4a-证据)。';
 const p4bLink = '证据见 [申请释放与互斥](p4b/summary.md#1-申请释放与互斥)。';
+const p4bLink5 = '证据见 [Project 独立](p4b/summary.md#5-跨-project-独立与不可见)。';
 const gate = () => {
   const run = spawnSync('bash', ['scripts/verify/l-docs.sh'], { cwd: tree, encoding: 'utf8', timeout: 180000 });
   return { code: run.status, output: `${run.stdout ?? ''}${run.stderr ?? ''}` };
@@ -123,6 +124,48 @@ probeCase('P4b evidence with an unresolved commit fails', () => {
   p4bSection('1. 申请、释放与互斥', '实现提交 `deadbeef`。');
   setBox(functional, '实现申请与释放', p4bLink);
 }, { code: 1, includes: 'P4b checkbox 1: commit deadbeef does not resolve' });
+probeCase('P4b delivery section without a commit fails', () => {
+  const lines = read(p4bSummary).split('\n');
+  const start = lines.findIndex((line) => line === '### 5. 跨 Project 独立与不可见');
+  if (start < 0) throw new Error('probe could not find the P4b cross-project delivery section');
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index++) {
+    if (/^#{1,3} /.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  let stripped = false;
+  for (let index = start + 1; index < end; index++) {
+    const next = lines[index].replace(/`[0-9a-f]{7,40}`/g, '占位');
+    if (next !== lines[index]) stripped = true;
+    lines[index] = next;
+  }
+  if (!stripped) throw new Error('probe could not find a commit reference in the P4b cross-project delivery section');
+  write(p4bSummary, lines.join('\n'));
+  setBox(functional, '验证不同 Projects', p4bLink5);
+}, { code: 1, includes: 'P4b checkbox 5: evidence section lacks a Git commit' });
+probeCase('P4b delivery section with an unresolvable commit fails', () => {
+  const lines = read(p4bSummary).split('\n');
+  const start = lines.findIndex((line) => line === '### 5. 跨 Project 独立与不可见');
+  if (start < 0) throw new Error('probe could not find the P4b cross-project delivery section');
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index++) {
+    if (/^#{1,3} /.test(lines[index])) {
+      end = index;
+      break;
+    }
+  }
+  let replaced = false;
+  for (let index = start + 1; index < end; index++) {
+    const next = lines[index].replace(/`[0-9a-f]{7,40}`/g, replaced ? '$&' : '`deadbeef`');
+    if (next !== lines[index]) replaced = true;
+    lines[index] = next;
+  }
+  if (!replaced) throw new Error('probe could not find a commit reference in the P4b cross-project delivery section');
+  write(p4bSummary, lines.join('\n'));
+  setBox(functional, '验证不同 Projects', p4bLink5);
+}, { code: 1, includes: 'P4b checkbox 5: commit deadbeef does not resolve' });
 probeCase('checked I-P4b technical acceptance passes', () => {
   setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4b');
 }, { code: 0 });

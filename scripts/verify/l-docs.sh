@@ -244,21 +244,15 @@ const resolveEvidence = (line, label, source, prefix) => {
 const checkP4aLine = (line, label, source) => {
   for (const { body } of resolveEvidence(line, label, source, 'docs/p4a')) evidenceIn(body, label);
 };
-// P4b 的五条交付行必须指向 docs/p4b/summary.md 的真实小节。命令按行核验：至少一条
-// 被引用的小节必须带可执行的重跑命令；可解析的 Git commit 是 P4b 小结的交付基线，
-// 五行共用同一基线，所以按同一证据文档核验。交叉引用的补充小节（如安全边界）
-// 只需 fragment 可解析，不必自己再写一份重跑命令。
+// P4b 的五条交付行与 UI-P4b 的三条交付行必须指向 docs/p4b/summary.md 的真实小节，
+// 且与 P4a 同级：每个被引用小节自己必须带可解析的 Git commit 与存在的重跑命令。
+// 不设文档级 commit 兜底，一处无关提交不能替另一个交付小节作证；交叉引用的
+// 补充小节（如安全边界）同样按本节核验，不因为它是附带引用就放宽。
 const p4bEvidenceFile = path.resolve('docs/p4b/summary.md');
 const checkP4bLine = (line, label, source) => {
   const targets = resolveEvidence(line, label, source, 'docs/p4b');
   check(targets.some(({ document }) => document && path.resolve(document.file) === p4bEvidenceFile), `${label}: missing docs/p4b/summary.md evidence`);
-  const commands = targets.flatMap(({ body }) => [...body.matchAll(commandPattern)].map((match) => match[1]));
-  check(commands.length > 0, `${label}: evidence section lacks a rerun command`);
-  for (const command of commands) {
-    totals.commands++;
-    check(fs.existsSync(command.slice(5)), `${label}: missing command ${command}`);
-  }
-  requireCommits(commitRefsIn(documents.get(p4bEvidenceFile)?.body ?? ''), label);
+  for (const { body } of targets) evidenceIn(body, label);
 };
 const functional = 'docs/development-plan-functional.md';
 const p4 = sectionOf(plan, 'P4', 2);
