@@ -1,0 +1,82 @@
+{
+  "officialSdk": {
+    "status": "PASS",
+    "version": "1.32.1",
+    "stdioConnected": true,
+    "stdioToolCount": 4,
+    "streamableHttpConnected": true,
+    "httpToolCount": 1,
+    "referenceOnly": true
+  },
+  "isolation": {
+    "status": "PASS",
+    "simultaneousSessions": 2,
+    "distinctProcesses": true,
+    "ownReads": true,
+    "ownWrites": true,
+    "crossRootReadRejected": true,
+    "crossRootWriteRejected": true
+  },
+  "resources": {
+    "status": "PASS",
+    "listed": 1,
+    "readMatches": true,
+    "subscriptionUpdates": 1,
+    "unsubscribed": true
+  },
+  "surface": {
+    "status": "PASS",
+    "activeMcpTools": [
+      "mcp__everything__get-structured-content",
+      "mcp__everything__get-tiny-image",
+      "mcp__root-1__never_reply",
+      "mcp__root-1__read",
+      "mcp__root-1__write"
+    ],
+    "allowlistExcludedNotify": true,
+    "allowedToolExecuted": true,
+    "hostConfigSentinelPresent": true,
+    "hostServerAbsent": true,
+    "hostServerNotStarted": true
+  },
+  "image": {
+    "status": "PASS",
+    "blockType": "image",
+    "mimeType": "image/png",
+    "base64Length": 5380,
+    "bytesEqual": true,
+    "structuredContentEqual": true,
+    "throughSproutRelay": true,
+    "throughRealPiToolDefinition": true
+  },
+  "timeout": {
+    "status": "PASS",
+    "requestReachedServer": true,
+    "outcome": "unknown"
+  },
+  "disappearance": {
+    "status": "PASS",
+    "targetExited": true,
+    "callRejected": true,
+    "sessionCountBefore": 3,
+    "sessionCountAfter": 3,
+    "sessionTargetsUnchanged": true,
+    "survivorAlive": true,
+    "noWriteOnSurvivor": true
+  },
+  "detach": {
+    "status": "PASS",
+    "piSessionDisposed": true,
+    "piClientClosedSession": true,
+    "serverStillAlive": true,
+    "reopenedNewSession": true,
+    "sameProcess": true
+  },
+  "release": {
+    "status": "PASS",
+    "leaseState": "free",
+    "generationAdvanced": true,
+    "remainingServerProcessesAlive": 2,
+    "oldGenerationRejected": "lease_stale_generation"
+  }
+}

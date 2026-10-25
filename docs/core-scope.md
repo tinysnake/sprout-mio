@@ -109,13 +109,14 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 - **挂靠超时处理**：提醒 Human；通知或唤醒 owner 协调，无法处理时升级给 Human。超时不自动释放。
 - **Agent 强制移除及自动善后**：中止本项目 runs、撤权，owner 默认转 Human、Tasks 留在原对话，DM 未完成 Tasks 退回 proposed；确认旧操作权撤销后释放租约，无法确认时保留待处理占用。历史、施工记录、文件和进程不随之删除，其他 Projects 不受影响。
 - **Windows Worker**：一期支持 macOS，二期补齐 Windows，并验证 Windows 路径、shell、进程和长命令能力。
+- **MCP tools 接入**：列为明确的后续交付能力。触发条件为 P4c 身份与授权契约稳定、R1 独立验收通过及 Human 确认；条件满足后在 P4c 之后纳入一期，并同步更新一期能力表与一期验收表。本轮技术证据见 [R1 验证结论](r1/summary.md)，当前不改这两张表。
 
 ## 未来方向：保留想法，时间未定
 
 - Agent owner 申请修改 Group 成员、owner 或解散，由人类在聊天中批准；Public Channel 不单独调整成员。
 - 按 run 和 Chat 记录、查询模型用量与费用估算。
 - 图形桌面操作工具。
-- 其他 harness 及 MCP tools 接入。
+- 其他 harness 接入。
 
 这些方向不承诺在二期交付。是否增加固定开发 workflow 仍未决定；Linux 的验收范围也未确定，不因 Unix 实现复用而自动成为一期或二期目标。
 
