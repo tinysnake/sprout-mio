@@ -39,7 +39,7 @@ const clientReq = createRequire(req.resolve('@tanstack/start-client-core/package
 const { fromCrossJSON, toJSON } = clientReq('seroval');
 function walk(path) { return readdirSync(path, { withFileTypes: true }).flatMap(i => i.isDirectory() ? walk(join(path, i.name)) : i.name.endsWith('.mjs') ? [readFileSync(join(path, i.name), 'utf8')] : []); }
 const ids = Object.fromEntries([...walk('.output/server').join('\n').matchAll(/id: "([0-9a-f]{64})",\s*\n\s*name: "(\w+)"/g)].map(m => [m[2], m[1]]));
-let cookie, browser, context, projectId, machineId, cleanupPid;
+let cookie, browser, context, page, projectId, machineId, cleanupPid;
 const passes = [];
 function pass(name) { passes.push(name); writeFileSync(join(evidence, 'results.json'), JSON.stringify({ base, passes }, null, 2)); console.log(`PASS ${name}`); }
 async function until(fn, label, timeout = 60000) { const start = Date.now(); while (Date.now() - start < timeout) { const value = await fn(); if (value) return value; await new Promise(r => setTimeout(r, 350)); } throw new Error(`timeout: ${label}`); }
@@ -102,7 +102,7 @@ try {
   await until(async () => (await call('getMachineFn',{machineId,projectId})).bindings[0]?.observation?.fact?.result?.kind==='accessible','directory ready');
   browser = await chromium.launch(); context = await browser.newContext({viewport:{width:1440,height:1000}});
   await context.addCookies(cookie.split('; ').map(v=>{const i=v.indexOf('=');return {name:v.slice(0,i),value:v.slice(i+1),url:base};}));
-  const page = await context.newPage();
+  page = await context.newPage();
   // Project settings 只给摘要与入口：租约管理入口深链到该 Machine 详情的租约区块。
   await page.goto(`${base}/projects/${projectId}/settings`);
   assert.equal(await page.getByTestId('lease-mutation-form').count(),0,'no lease mutation form in Project settings');
@@ -121,7 +121,8 @@ try {
   await page.getByTestId('lease-chat-select').selectOption(chatId);
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   const acquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'page acquire via real agent',180000);
-  await page.getByTestId('machine-lease-section-overview-mutation-success').waitFor({timeout:65000});
+  // 收据只显示真实返回的状态：pending 说「等待 Worker 确认」，completed 才算确认成功。
+  await page.locator('[data-testid="machine-lease-section-overview-mutation-success"], [data-testid="machine-lease-section-overview-mutation-waiting"]').first().waitFor({timeout:65000});
   pass('page acquire -> authenticated Chat -> real Pi lease tool -> held lease');
   await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
   await until(async()=> (await page.getByTestId('machine-lease-detail').innerText()).includes(acquired.holderInstanceId),'Machine lease fact');
@@ -191,7 +192,7 @@ try {
   await page.getByTestId('lease-chat-select').selectOption(chatId);
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   const reacquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'reacquire from page',180000);
-  await page.getByTestId('machine-lease-section-overview-mutation-success').waitFor({timeout:65000});
+  await page.locator('[data-testid="machine-lease-section-overview-mutation-success"], [data-testid="machine-lease-section-overview-mutation-waiting"]').first().waitFor({timeout:65000});
   await settled(chatId);
   await page.getByLabel('交接目标分身').selectOption(nonHolder.instance.id);
   await page.getByRole('button',{name:'请求分身交接'}).click();
@@ -228,6 +229,12 @@ try {
   console.log(`Evidence: ${evidence}`);
 } catch(error) {
   writeFileSync(join(evidence,'failure.txt'), String(error instanceof Error ? error.message : 'verification failure'));
+  try {
+    if (page) {
+      await page.screenshot({path:join(evidence,'failure.png'),fullPage:true});
+      writeFileSync(join(evidence,'failure-page.txt'), await page.locator('body').innerText());
+    }
+  } catch {}
   console.error(error instanceof Error ? error.message : 'verification failure'); process.exitCode=1;
 } finally {
   await browser?.close();
