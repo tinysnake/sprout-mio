@@ -139,6 +139,30 @@ describe("fencing 事实", () => {
     expect(fencingMutation(lease, { ...pending, state: "completed" })).toBeNull();
   });
 
+  it("Human 强制收回覆盖原动作，但不投影为 Worker 已确认", () => {
+    const receipt = completedReceipt({
+      action: "handoff",
+      projectId: lease.projectId,
+      machineId: lease.machineId,
+      expectedGeneration: lease.generation,
+      targetInstanceId: demoInstanceIds.primary,
+      requestId: demoExecutions[0]!.requestId,
+    });
+    const projected = mutationStateLabel({
+      ...receipt,
+      forcedReclaim: {
+        mutationId: lease.pendingMutationId!,
+        supersededMutationId: receipt.mutationId,
+        forcedByUserId: "owner",
+        forcedAt: receipt.completedAt!,
+      },
+    });
+    expect(projected.label).toBe("Human 已强制收回");
+    expect(projected.label).not.toMatch(/交接已确认|Worker 已确认/);
+    expect(projected.detail).toContain("未确认 Worker 排空");
+    expect(projected.tone).toBe("warning");
+  });
+
   it("lease_fencing 如实解释收回受阻，不显示完成", () => {
     expect(reclaimErrorNote("lease_fencing")).toBe("等待 Worker 确认后才能完成收回。");
     expect(reclaimErrorNote("lease_stale_generation")).toBeNull();

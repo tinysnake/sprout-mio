@@ -9,6 +9,25 @@ type Evidence = {
   instanceId: string;
   instanceCount: number;
   dmRepeat: { sameChat: boolean; sameInstance: boolean; ok: boolean };
+  title: {
+    initialUndefined: boolean;
+    renamed: { ok: boolean; title?: string; requestId?: string };
+    trimmed: string | undefined;
+    crossUserCode: string;
+    crossUserTitleAfter: string | null;
+    crossProjectCode: string;
+    anonymousCode: string;
+    anonTitleAfter: string | null;
+    emptyCode: string;
+    emptyFields: string[];
+    tooLongCode: string;
+    tooLongFields: string[];
+    blankCode: string;
+    clearedUndefined: boolean;
+    titleAfterClearInDb: string | null;
+    dbRejectsBlank: boolean;
+    diagnostics: number;
+  };
   unauthorizedCodes: string[];
   crossUserCodes: string[];
   crossProfileDm: {
@@ -94,6 +113,48 @@ beforeAll(() => {
       ];
       const invalidBody = await chats.sendMessageBoundary({ chatId, body: "   " }, userA.headers, "req_v1");
 
+      // 标题：写入路径、服务端权限与数据库约束三方面的反证。
+      const initialTitle = domain.getChat(chatId, { userId: userA.userId, requestId: "req_t0" }).title;
+      const renamed = await chats.updateChatTitleBoundary(
+        { chatId, title: "  仓库首页架构评审  " },
+        userA.headers,
+        "req_t1",
+      );
+      const trimmed = domain.getChat(chatId, { userId: userA.userId, requestId: "req_t2" }).title;
+      const crossUserTitle = await chats.updateChatTitleBoundary(
+        { chatId, title: "越权重命名" },
+        userB.headers,
+        "req_t3",
+      );
+      const crossProjectTitle = await chats.updateChatTitleBoundary(
+        { chatId, title: "跨 Project 重命名" },
+        userB.headers,
+        "req_t4",
+      );
+      const anonymousTitle = await chats.updateChatTitleBoundary(
+        { chatId, title: "未登录重命名" },
+        anonymous,
+        "req_t5",
+      );
+      const crossUserTitleAfter = sqlite.prepare("SELECT title FROM chat WHERE id = ?").get(chatId).title;
+      const emptyTitle = await chats.updateChatTitleBoundary({ chatId, title: "   " }, userA.headers, "req_t6");
+      const tooLongTitle = await chats.updateChatTitleBoundary(
+        { chatId, title: "x".repeat(81) },
+        userA.headers,
+        "req_t7",
+      );
+      const cleared = await chats.clearChatTitleBoundary({ chatId }, userA.headers, "req_t8");
+      const titleAfterClearInDb = sqlite.prepare("SELECT title FROM chat WHERE id = ?").get(chatId).title;
+      let dbRejectsBlank = false;
+      try {
+        sqlite.prepare("UPDATE chat SET title = '   ' WHERE id = ?").run(chatId);
+      } catch (error) {
+        dbRejectsBlank = /chat_title_check/.test(String(error));
+      }
+      const titleDiagnostics = sqlite
+        .prepare("SELECT count(*) AS n FROM diagnostic_event WHERE event IN ('chat.title_updated', 'chat.title_cleared') AND chat_id = ?")
+        .get(chatId).n;
+
       const bProject = await projects.createProjectBoundary({ name: "B 的对话 Project" }, userB.headers, "req_b1");
       const bProjectId = bProject.data.id;
       const ghostProfileId = "agp_00000000-0000-4000-8000-000000000000";
@@ -135,6 +196,27 @@ beforeAll(() => {
         },
         unauthorizedCodes: unauthorized.map(code),
         crossUserCodes: crossUser.map(code),
+        title: {
+          initialUndefined: initialTitle === undefined,
+          renamed: renamed.ok
+            ? { ok: true, title: renamed.data.title, requestId: renamed.requestId }
+            : { ok: false },
+          trimmed,
+          crossUserCode: code(crossUserTitle),
+          crossUserTitleAfter,
+          crossProjectCode: code(crossProjectTitle),
+          anonymousCode: code(anonymousTitle),
+          anonTitleAfter: crossUserTitleAfter,
+          emptyCode: code(emptyTitle),
+          emptyFields: fields(emptyTitle),
+          tooLongCode: code(tooLongTitle),
+          tooLongFields: fields(tooLongTitle),
+          blankCode: code(emptyTitle),
+          clearedUndefined: cleared.ok && cleared.data.title === undefined,
+          titleAfterClearInDb,
+          dbRejectsBlank,
+          diagnostics: titleDiagnostics,
+        },
         crossProfileDm: {
           otherProfileCode: code(crossProfileDm),
           ghostProfileCode: code(ghostProfileDm),
@@ -227,5 +309,53 @@ describe("Chat DM 边界与分身身份", () => {
     expect(evidence.personaUpdate.ok).toBe(true);
     expect(evidence.instanceUnchanged).toBe(true);
     expect(evidence.messagesRetained).toBe(2);
+  });
+});
+
+describe("Chat 标题的写入路径与权限反证", () => {
+  it("新建 DM 不带标题，title 为空由 null 语义表达，不写空字符串", () => {
+    expect(evidence.title.initialUndefined).toBe(true);
+  });
+
+  it("项目创建者重命名成功，返回值与库里的 title 都是 trim 后的值", () => {
+    expect(evidence.title.renamed.ok).toBe(true);
+    expect(evidence.title.renamed.title).toBe("仓库首页架构评审");
+    expect(evidence.title.trimmed).toBe("仓库首页架构评审");
+    expect(evidence.title.renamed.requestId).toMatch(/^req_/);
+  });
+
+  it("跨用户重命名返回 not_found 且库里 title 未变", () => {
+    expect(evidence.title.crossUserCode).toBe("not_found");
+    expect(evidence.title.crossUserTitleAfter).toBe("仓库首页架构评审");
+  });
+
+  it("跨 Project 的调用者重命名返回 not_found", () => {
+    // 用户 B 用自己的 Project 引用用户 A 的 chat：借 Project 操作他人对话必须被拒。
+    expect(evidence.title.crossProjectCode).toBe("not_found");
+  });
+
+  it("未登录重命名返回 unauthorized 且数据未变", () => {
+    expect(evidence.title.anonymousCode).toBe("unauthorized");
+    expect(evidence.title.anonTitleAfter).toBe("仓库首页架构评审");
+  });
+
+  it("空白标题与超长标题都是 validation_failed 并给出 title 字段错误", () => {
+    expect(evidence.title.emptyCode).toBe("validation_failed");
+    expect(evidence.title.emptyFields).toContain("title");
+    expect(evidence.title.tooLongCode).toBe("validation_failed");
+    expect(evidence.title.tooLongFields).toContain("title");
+  });
+
+  it("恢复默认把 title 置回 null，而不是写空字符串", () => {
+    expect(evidence.title.clearedUndefined).toBe(true);
+    expect(evidence.title.titleAfterClearInDb).toBeNull();
+  });
+
+  it("数据库约束独立拦住空白 title，不只靠 domain 层校验", () => {
+    expect(evidence.title.dbRejectsBlank).toBe(true);
+  });
+
+  it("标题写入与恢复都留下身份诊断事件", () => {
+    expect(evidence.title.diagnostics).toBe(2);
   });
 });

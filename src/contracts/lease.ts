@@ -56,6 +56,19 @@ export const leaseMutationInputSchema = z.discriminatedUnion("action", [
     confirm: z.literal(true),
   }),
 ]);
+// Force is a separate Human command; it is deliberately absent from Agent mutation inputs.
+export const forceReclaimLeaseInputSchema = leaseKeySchema.extend({
+  action: z.literal("force_reclaim"),
+  mutationId: mutationIdSchema,
+  expectedGeneration: positiveSafeIntegerSchema,
+  confirm: z.literal(true),
+});
+export const forcedReclaimSchema = z.strictObject({
+  mutationId: mutationIdSchema,
+  supersededMutationId: mutationIdSchema,
+  forcedByUserId: z.string().min(1),
+  forcedAt: timestampSchema,
+});
 export const leaseMutationViewSchema = leaseKeySchema
   .extend({
     mutationId: mutationIdSchema,
@@ -66,9 +79,21 @@ export const leaseMutationViewSchema = leaseKeySchema
     targetInstanceId: instanceIdSchema.nullable(),
     createdAt: timestampSchema,
     completedAt: timestampSchema.nullable(),
+    forcedReclaim: forcedReclaimSchema.optional(),
   })
   .superRefine((value, ctx) => {
     const completed = value.state === "completed";
+    if (
+      value.forcedReclaim &&
+      (!completed ||
+        value.forcedReclaim.forcedAt !== value.completedAt ||
+        value.forcedReclaim.mutationId === value.forcedReclaim.supersededMutationId ||
+        (value.forcedReclaim.mutationId !== value.mutationId &&
+          value.forcedReclaim.supersededMutationId !== value.mutationId) ||
+        (value.forcedReclaim.mutationId === value.mutationId && value.action !== "reclaim"))
+    ) {
+      ctx.addIssue({ code: "custom", message: "强制收回审计事实与动作收据不一致" });
+    }
     if (
       (value.action === "handoff") !== (value.targetInstanceId !== null) ||
       (value.action !== "acquire" && value.expectedGeneration === 0) ||
@@ -91,6 +116,7 @@ export const leaseMutationViewSchema = leaseKeySchema
 export const leaseReadInputSchema = leaseKeySchema.extend({
   mutationId: mutationIdSchema.optional(),
 });
+export type ForceReclaimLeaseInput = z.infer<typeof forceReclaimLeaseInputSchema>;
 export type LeaseKey = z.infer<typeof leaseKeySchema>;
 export type LeaseView = z.infer<typeof leaseViewSchema>;
 export type LeaseMutationInput = z.infer<typeof leaseMutationInputSchema>;

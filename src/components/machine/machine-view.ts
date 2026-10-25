@@ -78,8 +78,9 @@ export function observationLabel(
       tone: "muted",
     };
   const { result } = observation.fact;
+  // 只读列表只给「可达」一个事实：不重复派生路径，不展示观察时间、连接代次或观察 revision。
   return result.kind === "accessible"
-    ? { label: "当前可达", detail: result.realPath, tone: "success" }
+    ? { label: "当前可达", tone: "success" }
     : { label: "当前不可用", detail: DIRECTORY_UNAVAILABLE_REASONS[result.reason], tone: "danger" };
 }
 

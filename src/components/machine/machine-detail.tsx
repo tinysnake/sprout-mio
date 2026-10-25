@@ -109,6 +109,26 @@ export function MachineDetailPanel({
     ? (detail.bindings.find((item) => item.intent.projectId === bindingProject.id) ?? null)
     : null;
 
+  /**
+   * 租约入口：按钮形态而不是下划线文字链，权重与「刷新连接与观察」一致。
+   * 点击后定位到本页的租约与持有者区块，并让该区块里第一个控件获得可见焦点。
+   */
+  function revealLeaseBlock() {
+    const node = document.querySelector<HTMLElement>('[data-testid="machine-lease-detail"]');
+    if (!node) return;
+    node.scrollIntoView({ block: "start", behavior: "smooth" });
+    const focusable = node.querySelector<HTMLElement>(
+      'select, input, button, a[href], [tabindex]:not([tabindex="-1"])',
+    );
+    focusable?.focus({ preventScroll: true });
+  }
+
+  const leaseJump = bindingProject ? (
+    <Button variant="secondary" data-testid="machine-lease-jump" onClick={revealLeaseBlock}>
+      租约详情
+    </Button>
+  ) : null;
+
   const enrollmentSection = (
     <SettingsSection title="配对与安装" testId="machine-enrollment-section">
       <MachineEnrollmentPanel
@@ -134,7 +154,12 @@ export function MachineDetailPanel({
         </span>
       }
       back={back}
-      actions={actions}
+      actions={
+        <>
+          {leaseJump}
+          {actions}
+        </>
+      }
       testId="machine-detail-page"
     >
       <div className="grid grid-cols-1">
@@ -142,117 +167,21 @@ export function MachineDetailPanel({
           <div className="min-w-0">{enrollmentSection}</div>
         )}
         <div className="min-w-0">
-          <SettingsSection
-            title="连接与配对"
-            description="连接是近期通信观察，不表示物理链路仍在，也不表示租约、空闲或已释放。配对与连接分别记录。"
-            testId="machine-connection-section"
-          >
-            <div className="grid gap-6 desktop:grid-cols-2">
-              <Facts
-                items={[
-                  {
-                    label: "Machine ID",
-                    testId: "machine-detail-id",
-                    value: <code className="font-mono text-[0.6875rem]">{detail.machine.id}</code>,
-                  },
-                  {
-                    label: "配对",
-                    testId: "machine-detail-enrollment",
-                    value: <StatusLine label={pairing.label} tone={pairing.tone} />,
-                  },
-                  {
-                    label: "连接",
-                    testId: "machine-detail-connection",
-                    value: (
-                      <StatusLine
-                        label={connection.label}
-                        detail={connection.detail}
-                        tone={connection.tone}
-                      />
-                    ),
-                  },
-                  {
-                    label: "连接代次",
-                    testId: "machine-detail-generation",
-                    value: detail.connection.generation ?? "无记录",
-                  },
-                  {
-                    label: "最后收到信息",
-                    testId: "machine-detail-last-seen",
-                    value: formatMoment(detail.connection.lastSeenAt),
-                  },
-                ]}
-              />
-              <Facts
-                items={[
-                  {
-                    label: "最近能力",
-                    testId: "machine-detail-capability-time",
-                    value: capability
-                      ? formatMoment(capability.snapshot.shells[0]?.checkedAt)
-                      : "无能力快照",
-                  },
-                  {
-                    label: "能力代次",
-                    testId: "machine-detail-capability-generation",
-                    value: capability
-                      ? `${capability.generation}${capability.current ? "（当前）" : "（旧）"}`
-                      : "无记录",
-                  },
-                  {
-                    label: "Worker",
-                    testId: "machine-detail-worker",
-                    value: capability
-                      ? `${capability.snapshot.workerVersion} · ${capability.snapshot.arch} · ${capability.snapshot.platform}`
-                      : "无能力快照",
-                  },
-                  {
-                    label: "远端操作",
-                    testId: "machine-detail-remote-operations",
-                    value: !capability
-                      ? "无能力快照"
-                      : !capability.current
-                        ? "旧代次快照，不当作现在可用"
-                        : capability.snapshot.remoteOperations.length === 0
-                          ? "Worker 未宣告远端操作能力"
-                          : capability.snapshot.remoteOperations.join("、"),
-                  },
-                  {
-                    label: "创建时间",
-                    testId: "machine-detail-created",
-                    value: formatMoment(detail.machine.createdAt),
-                  },
-                ]}
-              />
-            </div>
-            {capability && !capability.current && (
-              <p
-                data-testid="machine-detail-stale-capability"
-                className="mt-4 text-xs leading-6 text-muted-foreground"
-              >
-                这是旧连接代次的能力快照；当前连接尚未提交新能力，不能当作现在可用。
-              </p>
-            )}
-          </SettingsSection>
-
-          <SettingsSection title="Shell 能力" testId="machine-shells">
-            <MachineShellSummary
-              key={detail.machine.id}
-              capability={capability}
-              connection={detail.connection}
-            />
-          </SettingsSection>
-
+          {/* 当前事实：租约与远端操作先出现；配置类区块（连接、Shell、root、绑定、安装）归入后面的设置分组。 */}
           {bindingProject && (
             <SettingsSection
               title="租约与持有者"
-              description="租约单位是 Project × Machine。run 结束、Worker 断线或分身空闲都不会自动释放租约，也不终止进程或删除文件。"
+              description="租约单位是 Project × Machine；变更不会终止进程或删除文件。"
               testId="machine-lease-detail"
             >
               {leaseError ? (
                 <ResultError error={leaseError} />
               ) : leaseInfo ? (
-                <ProjectLeaseActions key={leaseInfo.projectId} info={leaseInfo}>
+                <ProjectLeaseActions
+                  key={leaseInfo.projectId}
+                  info={leaseInfo}
+                  fixedMachineId={detail.machine.id}
+                >
                   {(mutate) => (
                     <MachineLeaseSection
                       projectId={bindingProject.id}
@@ -291,132 +220,240 @@ export function MachineDetailPanel({
                     (execution) => execution.machineId === detail.machine.id,
                   )}
                   machines={[detail]}
+                  holderNames={holderNames}
                   testId="machine-executions"
                 />
               )}
             </SettingsSection>
           )}
 
-          <SettingsSection
-            title="Machine root 工作目录"
-            description="一期不迁移已绑定 Project 的目录。修改 root 会改变这台 Machine 上所有 Project 的派生路径。"
-            testId="machine-root-section"
-          >
-            {onSaveRoot && (
-              <MachineRootForm
-                key={detail.machine.id}
-                machine={detail.machine}
-                submit={onSaveRoot}
-                refresh={onRootRefresh}
-              />
-            )}
-          </SettingsSection>
-
-          <SettingsSection
-            title="Project 绑定"
-            description="绑定保存 Project 归属与说明；路径由 Machine root 与 Project ID 派生，Worker 另外回报目录观察。"
-            testId="machine-bindings"
-          >
-            {detail.bindings.length === 0 ? (
-              <p
-                data-testid="machine-bindings-empty"
-                className="text-xs leading-6 text-muted-foreground"
-              >
-                还没有加入任何 Project。
-              </p>
-            ) : (
-              <ul className="space-y-3">
-                {detail.bindings.map((item) => {
-                  const observation = observationLabel(item.observation);
-                  return (
-                    <li
-                      key={item.intent.projectId}
-                      data-testid="machine-binding-item"
-                      data-project-id={item.intent.projectId}
-                      className="min-w-0 rounded-container border border-border px-4 py-3"
-                    >
-                      <div className="flex flex-wrap items-baseline justify-between gap-2">
-                        <p className="text-xs font-medium">
-                          {projectNames[item.intent.projectId] ?? item.intent.projectId}
-                        </p>
-                        <span className="text-xs text-muted-foreground">
-                          revision {item.intent.revision}
-                        </span>
-                      </div>
-                      <p
-                        data-testid="machine-binding-description-value"
-                        className="mt-1.5 text-xs leading-6"
-                      >
-                        {item.intent.description || "（无说明）"}
-                      </p>
-                      <p
-                        data-testid="machine-binding-path"
-                        className="mt-1 flex min-w-0 items-start gap-1.5 text-xs leading-6 text-muted-foreground"
-                      >
-                        <Icon as={FolderOpen} />
-                        <span className="min-w-0 break-all">
-                          {bindingDirectory(detail.machine.rootDirectory, item.intent.projectId)}
-                        </span>
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                        <div
-                          data-testid="machine-binding-observation"
-                          className="flex min-w-0 max-w-full flex-col items-start gap-1"
-                        >
-                          <StatusLine label={observation.label} tone={observation.tone} />
-                          {observation.detail && (
-                            <p className="text-muted-foreground">{observation.detail}</p>
-                          )}
-                        </div>
-                        {item.observation && (
-                          <span className="text-muted-foreground">
-                            · 代次 {item.observation.fact.generation} · revision{" "}
-                            {item.observation.fact.revision} ·{" "}
-                            {formatMoment(item.observation.fact.checkedAt)}
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {bindingProject && onSaveBinding && (
-              <div className="mt-6">
-                <h3 className="text-sm font-medium">
-                  {binding ? "编辑绑定" : `加入 ${bindingProject.name}`}
-                </h3>
-                <p className="mt-1 mb-4 text-xs leading-6 text-muted-foreground">
-                  说明保存到当前 Project。工作路径在 Machine root 设置后派生，由 Worker 验证。
-                </p>
-                <MachineBindingForm
-                  key={`${detail.machine.id}:${bindingProject.id}`}
-                  machineId={detail.machine.id}
-                  project={bindingProject}
-                  binding={binding}
-                  submit={onSaveBinding}
-                  onSaved={onBindingSaved}
+          {/* 配置分组：连接、Shell 能力、root、绑定与安装维护都在这里，能力与信息一项不少。 */}
+          <div data-testid="machine-settings-group" role="group" aria-label="设置">
+            <p className="pt-6 text-sm font-medium text-muted-foreground">设置</p>
+            <SettingsSection
+              title="连接与配对"
+              description="连接是近期通信观察，不表示物理链路仍在，也不表示租约、空闲或已释放。配对与连接分别记录。"
+              testId="machine-connection-section"
+            >
+              <div className="grid gap-6 desktop:grid-cols-2">
+                <Facts
+                  items={[
+                    {
+                      label: "Machine ID",
+                      testId: "machine-detail-id",
+                      value: (
+                        <code className="font-mono text-[0.6875rem]">{detail.machine.id}</code>
+                      ),
+                    },
+                    {
+                      label: "配对",
+                      testId: "machine-detail-enrollment",
+                      value: <StatusLine label={pairing.label} tone={pairing.tone} />,
+                    },
+                    {
+                      label: "连接",
+                      testId: "machine-detail-connection",
+                      value: (
+                        <StatusLine
+                          label={connection.label}
+                          detail={connection.detail}
+                          tone={connection.tone}
+                        />
+                      ),
+                    },
+                    {
+                      label: "连接代次",
+                      testId: "machine-detail-generation",
+                      value: detail.connection.generation ?? "无记录",
+                    },
+                    {
+                      label: "最后收到信息",
+                      testId: "machine-detail-last-seen",
+                      value: formatMoment(detail.connection.lastSeenAt),
+                    },
+                  ]}
+                />
+                <Facts
+                  items={[
+                    {
+                      label: "最近能力",
+                      testId: "machine-detail-capability-time",
+                      value: capability
+                        ? formatMoment(capability.snapshot.shells[0]?.checkedAt)
+                        : "无能力快照",
+                    },
+                    {
+                      label: "能力代次",
+                      testId: "machine-detail-capability-generation",
+                      value: capability
+                        ? `${capability.generation}${capability.current ? "（当前）" : "（旧）"}`
+                        : "无记录",
+                    },
+                    {
+                      label: "Worker",
+                      testId: "machine-detail-worker",
+                      value: capability
+                        ? `${capability.snapshot.workerVersion} · ${capability.snapshot.arch} · ${capability.snapshot.platform}`
+                        : "无能力快照",
+                    },
+                    {
+                      label: "远端操作",
+                      testId: "machine-detail-remote-operations",
+                      value: !capability
+                        ? "无能力快照"
+                        : !capability.current
+                          ? "旧代次快照，不当作现在可用"
+                          : capability.snapshot.remoteOperations.length === 0
+                            ? "Worker 未宣告远端操作能力"
+                            : capability.snapshot.remoteOperations.join("、"),
+                    },
+                    {
+                      label: "创建时间",
+                      testId: "machine-detail-created",
+                      value: formatMoment(detail.machine.createdAt),
+                    },
+                  ]}
                 />
               </div>
-            )}
-            {!bindingProject && (
-              <p className="mt-4 text-xs leading-6 text-muted-foreground">
-                在 Project settings 的 Machines 区域加入 Project，也可通过 Project
-                上下文在这里编辑说明。
-              </p>
-            )}
-          </SettingsSection>
-        </div>
+              {capability && !capability.current && (
+                <p
+                  data-testid="machine-detail-stale-capability"
+                  className="mt-4 text-xs leading-6 text-muted-foreground"
+                >
+                  这是旧连接代次的能力快照；当前连接尚未提交新能力，不能当作现在可用。
+                </p>
+              )}
+            </SettingsSection>
 
-        {detail.enrollmentStatus === "active" && (
-          <SettingsSection title="安装与维护" testId="machine-restart-section">
-            <MachineInstallInstructions
-              machineId={detail.machine.id}
-              origin={installOrigin}
-              enrollmentStatus="active"
-            />
-          </SettingsSection>
-        )}
+            <SettingsSection title="Shell 能力" testId="machine-shells">
+              <MachineShellSummary
+                key={detail.machine.id}
+                capability={capability}
+                connection={detail.connection}
+              />
+            </SettingsSection>
+
+            <SettingsSection
+              title="Machine root 工作目录"
+              description="一期不迁移已绑定 Project 的目录。修改 root 会改变这台 Machine 上所有 Project 的派生路径。"
+              testId="machine-root-section"
+            >
+              {onSaveRoot && (
+                <MachineRootForm
+                  key={detail.machine.id}
+                  machine={detail.machine}
+                  submit={onSaveRoot}
+                  refresh={onRootRefresh}
+                />
+              )}
+            </SettingsSection>
+
+            <SettingsSection
+              title="Project 绑定"
+              description="绑定保存 Project 归属与说明；路径由 Machine root 与 Project ID 派生，Worker 另外回报目录观察。"
+              testId="machine-bindings"
+            >
+              {detail.bindings.length === 0 ? (
+                <p
+                  data-testid="machine-bindings-empty"
+                  className="text-xs leading-6 text-muted-foreground"
+                >
+                  还没有加入任何 Project。
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {detail.bindings.map((item) => {
+                    const observation = observationLabel(item.observation);
+                    return (
+                      <li
+                        key={item.intent.projectId}
+                        data-testid="machine-binding-item"
+                        data-project-id={item.intent.projectId}
+                        className="min-w-0 rounded-container border border-border px-4 py-3"
+                      >
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <p className="text-xs font-medium">
+                            {projectNames[item.intent.projectId] ?? item.intent.projectId}
+                          </p>
+                          <span className="text-xs text-muted-foreground">
+                            revision {item.intent.revision}
+                          </span>
+                        </div>
+                        <p
+                          data-testid="machine-binding-description-value"
+                          className="mt-1.5 text-xs leading-6"
+                        >
+                          {item.intent.description || "（无说明）"}
+                        </p>
+                        <p
+                          data-testid="machine-binding-path"
+                          className="mt-1 flex min-w-0 items-start gap-1.5 text-xs leading-6 text-muted-foreground"
+                        >
+                          <Icon as={FolderOpen} />
+                          <span className="min-w-0 break-all">
+                            {bindingDirectory(detail.machine.rootDirectory, item.intent.projectId)}
+                          </span>
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <div
+                            data-testid="machine-binding-observation"
+                            className="flex min-w-0 max-w-full flex-col items-start gap-1"
+                          >
+                            <StatusLine label={observation.label} tone={observation.tone} />
+                            {observation.detail && (
+                              <p className="text-muted-foreground">{observation.detail}</p>
+                            )}
+                          </div>
+                          {item.observation && (
+                            <span className="text-muted-foreground">
+                              · 代次 {item.observation.fact.generation} · revision{" "}
+                              {item.observation.fact.revision} ·{" "}
+                              {formatMoment(item.observation.fact.checkedAt)}
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {bindingProject && onSaveBinding && (
+                <div className="mt-6">
+                  <h3 className="text-sm font-medium">
+                    {binding ? "编辑绑定" : `加入 ${bindingProject.name}`}
+                  </h3>
+                  <p className="mt-1 mb-4 text-xs leading-6 text-muted-foreground">
+                    说明保存到当前 Project。工作路径在 Machine root 设置后派生，由 Worker 验证。
+                  </p>
+                  <MachineBindingForm
+                    key={`${detail.machine.id}:${bindingProject.id}`}
+                    machineId={detail.machine.id}
+                    project={bindingProject}
+                    binding={binding}
+                    submit={onSaveBinding}
+                    onSaved={onBindingSaved}
+                  />
+                </div>
+              )}
+              {!bindingProject && (
+                <p className="mt-4 text-xs leading-6 text-muted-foreground">
+                  在 Project settings 的 Machines 区域加入 Project，也可通过 Project
+                  上下文在这里编辑说明。
+                </p>
+              )}
+            </SettingsSection>
+
+            {detail.enrollmentStatus === "active" && (
+              <SettingsSection title="安装与维护" testId="machine-restart-section">
+                <MachineInstallInstructions
+                  machineId={detail.machine.id}
+                  origin={installOrigin}
+                  enrollmentStatus="active"
+                />
+              </SettingsSection>
+            )}
+          </div>
+        </div>
       </div>
     </PageFrame>
   );

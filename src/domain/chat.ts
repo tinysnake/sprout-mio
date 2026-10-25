@@ -1,11 +1,12 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
-import type {
-  AgentInstance,
-  Chat,
-  ChatMember,
-  DirectChat,
-  Message,
-  SendMessageInput,
+import {
+  CHAT_TITLE_MAX_LENGTH,
+  type AgentInstance,
+  type Chat,
+  type ChatMember,
+  type DirectChat,
+  type Message,
+  type SendMessageInput,
 } from "../contracts/chat";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
@@ -143,6 +144,80 @@ export function getChat(chatId: string, ctx: ProjectContext): Chat {
   if (!row) throw new ProjectAccessError();
   assertProjectAccess(ctx, row.projectId);
   return toChat(row);
+}
+
+/**
+ * 重命名标题。归属与权限在服务端领域层核对：不属于当前用户 Project 的 Chat
+ * 与不存在的 Chat 都返回 not_found，不暴露存在性。
+ */
+export function updateChatTitle(
+  chatId: string,
+  title: string,
+  ctx: ProjectContext,
+  hooks: IdentityWriteHooks = {},
+): Chat {
+  const normalized = title.trim();
+  if (normalized.length === 0) throw new ChatError("conflict", "标题不能为空");
+  if (normalized.length > CHAT_TITLE_MAX_LENGTH)
+    throw new ChatError("conflict", `标题最多 ${CHAT_TITLE_MAX_LENGTH} 字`);
+  return sqlite
+    .transaction(() => {
+      const current = getChat(chatId, ctx);
+      return writeIdentity(
+        ctx,
+        {
+          event: "chat.title_updated",
+          message: "对话标题已更新",
+          projectId: current.projectId,
+          chatId,
+        },
+        () => {
+          const row = db
+            .update(chat)
+            .set({ title: normalized, updatedAt: new Date() })
+            .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
+            .returning()
+            .get();
+          if (!row) throw new ChatError("not_found", "对话不存在");
+          return toChat(row);
+        },
+        hooks,
+      );
+    })
+    .immediate();
+}
+
+/** 恢复默认标题：title 置回 null，展示回落到参与分身名。 */
+export function clearChatTitle(
+  chatId: string,
+  ctx: ProjectContext,
+  hooks: IdentityWriteHooks = {},
+): Chat {
+  return sqlite
+    .transaction(() => {
+      const current = getChat(chatId, ctx);
+      return writeIdentity(
+        ctx,
+        {
+          event: "chat.title_cleared",
+          message: "对话标题已恢复默认",
+          projectId: current.projectId,
+          chatId,
+        },
+        () => {
+          const row = db
+            .update(chat)
+            .set({ title: null, updatedAt: new Date() })
+            .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
+            .returning()
+            .get();
+          if (!row) throw new ChatError("not_found", "对话不存在");
+          return toChat(row);
+        },
+        hooks,
+      );
+    })
+    .immediate();
 }
 
 export function listChatMembers(chatId: string, ctx: ProjectContext): ChatMember[] {

@@ -1,4 +1,4 @@
-import type { ExecutionView, RemoteOperation } from "../../contracts/remote";
+import type { ExecutionView } from "../../contracts/remote";
 import type { MachineDetail } from "../../contracts/machine";
 import { formatMoment } from "./machine-view";
 import {
@@ -8,8 +8,8 @@ import {
   REMOTE_TARGET_NOTE,
   executionTarget,
   failureReasonLabel,
-  operationTarget,
   resultSummary,
+  shortRunId,
 } from "./lease-view";
 import { StatusLine } from "./machine-list";
 
@@ -24,10 +24,12 @@ const toneText = {
 export function RemoteExecutionList({
   executions,
   machines,
+  holderNames = {},
   testId = "remote-executions",
 }: {
   executions: readonly ExecutionView[];
   machines: MachineDetail[];
+  holderNames?: Readonly<Record<string, string>>;
   testId?: string;
 }) {
   return (
@@ -55,6 +57,7 @@ export function RemoteExecutionList({
               <RemoteExecutionCard
                 execution={execution}
                 machine={machines.find((item) => item.machine.id === execution.machineId)}
+                holderNames={holderNames}
                 testId={`${testId}-item`}
               />
             </li>
@@ -74,15 +77,18 @@ export function RemoteExecutionList({
 export function RemoteExecutionCard({
   execution,
   machine,
+  holderNames = {},
   testId = "remote-execution",
 }: {
   execution: ExecutionView;
   machine: MachineDetail | undefined;
+  holderNames?: Readonly<Record<string, string>>;
   testId?: string;
 }) {
   const state = EXECUTION_STATE_LABELS[execution.state];
   const reason = failureReasonLabel(execution.failureReason);
   const summary = resultSummary(execution);
+  const holderName = holderNames[execution.holderInstanceId] ?? "未知分身";
   return (
     <div data-testid={testId} data-execution-state={execution.state} className="min-w-0 space-y-1">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -97,13 +103,16 @@ export function RemoteExecutionCard({
         </p>
         <StatusLine label={state.label} tone={state.tone} testId={`${testId}-state`} />
       </div>
-      <p data-testid={`${testId}-operation`} className="break-all text-muted-foreground">
-        {operationDetail(execution.operation)}
-      </p>
       <p className="text-muted-foreground">{state.detail}</p>
+      {/*
+        命令正文、文件路径与远端输出都不上界面：一期没有审计产品，这些内容可能含密钥。
+        人类可决策的事实仍然全部保留：操作类型、目标、状态、失败原因、结果元信息与时间。
+      */}
       <p data-testid={`${testId}-authorization`} className="text-muted-foreground">
-        授权代次 {execution.authorizationGeneration} · holder {execution.holderInstanceId} · run{" "}
-        {execution.runId}
+        授权代次 {execution.authorizationGeneration} · 持有者 {holderName} · 由该分身的一次运行发起{" "}
+        <span title={execution.runId} data-testid={`${testId}-run`}>
+          （{shortRunId(execution.runId)}）
+        </span>
       </p>
       <p className="text-muted-foreground">
         提交 {formatMoment(execution.createdAt)} · 截止 {formatMoment(execution.deadlineAt)}
@@ -130,19 +139,6 @@ export function RemoteExecutionCard({
       )}
     </div>
   );
-}
-
-function operationDetail(operation: RemoteOperation): string {
-  switch (operation.kind) {
-    case "shell":
-      return `${operation.command} · ${operationTarget(operation)}`;
-    case "file_read":
-      return `${operation.path} · 最多 ${operation.maxBytes} bytes`;
-    case "file_write":
-      return `${operation.path} · ${operation.mode === "append" ? "追加" : "覆盖"} · 内容不在此呈现`;
-    default:
-      return operationTarget(operation);
-  }
 }
 
 /** 宿主与远端目标的对照：用于 Machine 详情与 inspector 的同一事实来源。 */

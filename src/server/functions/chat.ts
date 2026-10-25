@@ -1,7 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { chatIdInput, createDirectChatInput, sendMessageInput } from "../../contracts/chat";
+import {
+  chatIdInput,
+  clearChatTitleInput,
+  createDirectChatInput,
+  sendMessageInput,
+  updateChatTitleInput,
+} from "../../contracts/chat";
 import type {
   AgentInstance,
   Chat,
@@ -145,8 +151,7 @@ export async function listMessagesBoundary(
   });
 }
 
-/** 页面只发送 human 消息，sender 从认证会话构造，不接受浏览器传入的身份。 */
-export async function sendMessageBoundary(
+/** 页面只发送 human 消息，sender 从认证会话构造，不接受浏览器传入的身份。 */ export async function sendMessageBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
@@ -170,6 +175,32 @@ export const createDirectChatFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) =>
     createDirectChatBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
+
+/** 重命名标题：归属、字段边界与写入都在服务端完成，UI 不自查权限。 */
+export async function updateChatTitleBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = updateChatTitleInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(deps.updateChatTitle(parsed.data.chatId, parsed.data.title, context), requestId);
+  });
+}
+
+/** 恢复默认标题：把 title 置空，展示回到参与分身名。 */
+export async function clearChatTitleBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = clearChatTitleInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(deps.clearChatTitle(parsed.data.chatId, context), requestId);
+  });
+}
 
 export const listChatsFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
@@ -205,4 +236,16 @@ export const sendMessageFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     sendMessageBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const updateChatTitleFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    updateChatTitleBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const clearChatTitleFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    clearChatTitleBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );

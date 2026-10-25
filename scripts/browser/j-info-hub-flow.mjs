@@ -249,6 +249,11 @@ await check("lease_facts_render_real_state", async () => {
     mutationMachine: document.querySelectorAll(
       '[data-testid="info-hub-leases-mutation-machine"] option',
     ).length,
+    leaseManageLinks: [...document.querySelectorAll('[data-testid="lease-manage-link"]')].map(
+      (node) => node.getAttribute("href"),
+    ),
+    manageFormInProjectSettings: document.querySelectorAll('[data-testid="lease-mutation-form"]')
+      .length,
     staleNoticeBadges: [
       ...document.querySelectorAll('[data-testid="info-hub-leases-notice-badge"]'),
     ].map((node) => node.textContent?.trim()),
@@ -266,9 +271,9 @@ await check("lease_facts_render_real_state", async () => {
       Boolean(leaseFacts.leasesSection) &&
       (leaseFacts.leasesEmpty ?? "").includes("还没有租约记录") &&
       !leaseFacts.leasesList &&
-      Boolean(leaseFacts.mutationForm) &&
-      (leaseFacts.mutationForm ?? "").includes("申请与释放") &&
-      leaseFacts.mutationMachine >= 1 &&
+      // 租约管理表单移出 Project settings；这里只保留指向 Machine 详情租约区块的入口。
+      !leaseFacts.mutationForm &&
+      leaseFacts.manageFormInProjectSettings === 0 &&
       leaseFacts.staleNoticeBadges.length === 0 &&
       !leaseFacts.body.includes("租约尚未实现") &&
       (leaseFacts.machineItems >= 1 ||
@@ -279,7 +284,7 @@ await check("lease_facts_render_real_state", async () => {
       !leaseFacts.body.includes("0 个活动 run") &&
       !leaseFacts.body.includes("无活动 run") &&
       !leaseFacts.body.includes("无 Machine"),
-    `租约区是真实事实（空态 + 申请与释放表单），runs 宿主 ${leaseFacts.runsHostStatus}，无「未实现」占位 ${JSON.stringify(leaseFacts.staleNoticeBadges)}`,
+    `租约区是真实事实（空态 + Machine 详情入口 ${JSON.stringify(leaseFacts.leaseManageLinks)}），runs 宿主 ${leaseFacts.runsHostStatus}，无「未实现」占位 ${JSON.stringify(leaseFacts.staleNoticeBadges)}`,
   );
 });
 

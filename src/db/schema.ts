@@ -116,7 +116,13 @@ export const chat = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => [check("chat_kind_check", sql`${table.kind} in ('dm')`)],
+  (table) => [
+    check("chat_kind_check", sql`${table.kind} in ('dm')`),
+    check(
+      "chat_title_check",
+      sql`${table.title} is null or length(trim(${table.title})) between 1 and 80`,
+    ),
+  ],
 );
 
 export const chatMember = sqliteTable(

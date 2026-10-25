@@ -53,6 +53,7 @@ describe("Machine 呈现映射", () => {
     });
     expect(stale.label).toBe("旧观察");
     expect(observationLabel(null).label).toBe("未验证");
+    // 可达时只给「当前可达」这一个事实：既不重复派生路径，也不把观察时间 / 代次 / revision 当阅读内容。
     expect(
       observationLabel({
         current: true,
@@ -66,7 +67,7 @@ describe("Machine 呈现映射", () => {
           result: { kind: "accessible", realPath: "/Users/example/project" },
         },
       }),
-    ).toMatchObject({ label: "当前可达", detail: "/Users/example/project" });
+    ).toEqual({ label: "当前可达", tone: "success" });
   });
 
   it("安装命令只带身份与状态目录，不包含票据", () => {
