@@ -1,6 +1,43 @@
 {
   "clause": 5,
   "status": "PASS",
+  "verified": {
+    "newToolDeclared": {
+      "path": "x3.listChanged.newToolDeclared",
+      "expect": true,
+      "value": true
+    },
+    "newToolCallable": {
+      "path": "x3.listChanged.newToolCallable",
+      "expect": true,
+      "value": true
+    },
+    "callReturned": {
+      "path": "x3.listChanged.callReturned",
+      "expect": true,
+      "value": true
+    },
+    "callTextMatchesServer": {
+      "path": "x3.listChanged.callTextMatchesServer",
+      "expect": true,
+      "value": true
+    },
+    "stillDeclaredAfterExplicitRefresh": {
+      "path": "x3.listChanged.stillDeclaredAfterExplicitRefresh",
+      "expect": true,
+      "value": true
+    },
+    "blockedSurfaceOutcome": {
+      "path": "x3.refreshOnBlockedSurface.outcome",
+      "expect": "failed",
+      "value": "failed"
+    },
+    "oldGenerationRejected": {
+      "path": "c.release.oldGenerationRejected",
+      "expect": "lease_stale_generation",
+      "value": "lease_stale_generation"
+    }
+  },
   "assertions": {
     "newToolDeclared": true,
     "newToolCallable": true,
@@ -44,8 +81,16 @@
       "path": "y2.sessions.sqliteConcurrentActiveRejected"
     },
     {
+      "field": "blockedSurfaceDiagnostic",
+      "path": "x3.refreshOnBlockedSurface.diagnosticPresent"
+    },
+    {
       "field": "newToolDeclared",
       "path": "x3.listChanged.newToolDeclared"
+    },
+    {
+      "field": "newToolCallable",
+      "path": "x3.listChanged.newToolCallable"
     },
     {
       "field": "callReturned",
@@ -56,10 +101,6 @@
       "path": "x3.listChanged.callTextMatchesServer"
     },
     {
-      "field": "newToolCallable",
-      "path": "x3.listChanged.newToolCallable"
-    },
-    {
       "field": "stillDeclaredAfterExplicitRefresh",
       "path": "x3.listChanged.stillDeclaredAfterExplicitRefresh"
     },
@@ -68,43 +109,53 @@
       "path": "x3.refreshOnBlockedSurface.outcome"
     },
     {
-      "field": "blockedSurfaceDiagnostic",
-      "path": "x3.refreshOnBlockedSurface.diagnosticPresent"
-    },
-    {
       "field": "oldGenerationRejected",
       "path": "c.release.oldGenerationRejected"
     }
   ],
   "executions": {
     "y2": {
-      "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
-      "startedAt": "2026-10-25T20:53:23.933Z",
-      "elapsedMs": 2226,
+      "command": [
+        "bash",
+        "scripts/verify/y2-mcp-http-worker.sh"
+      ],
+      "startedAt": "2026-10-25T22:52:45.641Z",
+      "elapsedMs": 2434,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
-      "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
-      "startedAt": "2026-10-25T20:53:26.162Z",
-      "elapsedMs": 11323,
+      "command": [
+        "bash",
+        "scripts/verify/x2-mcp-extension.sh"
+      ],
+      "startedAt": "2026-10-25T22:52:48.076Z",
+      "elapsedMs": 11615,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
-      "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
-      "startedAt": "2026-10-25T20:53:37.485Z",
-      "elapsedMs": 2131,
+      "command": [
+        "bash",
+        "scripts/verify/x3-mcp-extension-surface.sh"
+      ],
+      "startedAt": "2026-10-25T22:52:59.691Z",
+      "elapsedMs": 2307,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
-      "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
-      "startedAt": "2026-10-25T20:53:39.616Z",
-      "elapsedMs": 5593,
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "$Z3_DIR/c-live.mts"
+      ],
+      "startedAt": "2026-10-25T22:53:01.999Z",
+      "elapsedMs": 5627,
       "exitCode": 0,
       "signal": null,
       "timedOut": false

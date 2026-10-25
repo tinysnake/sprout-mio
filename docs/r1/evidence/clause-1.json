@@ -1,31 +1,49 @@
 {
   "clause": 1,
   "status": "PASS",
+  "verified": {
+    "toolCount": {
+      "path": "x2.toolCount",
+      "expect": 20,
+      "value": 20
+    },
+    "clientFrames": {
+      "path": "x2.workerDispatcherClientFrames",
+      "expect": {
+        "predicate": "positiveCount"
+      },
+      "value": 3
+    },
+    "serverFrames": {
+      "path": "x2.workerDispatcherServerFrames",
+      "expect": {
+        "predicate": "positiveCount"
+      },
+      "value": 6
+    },
+    "endToEndToolsList": {
+      "path": "x2.endToEndToolsList",
+      "expect": "pass",
+      "value": "pass"
+    },
+    "officialSdkVersion": {
+      "path": "c.officialSdk.version",
+      "expect": "1.32.1",
+      "value": "1.32.1"
+    }
+  },
   "assertions": {
     "toolCount": 20,
     "clientFrames": 3,
     "serverFrames": 6,
     "endToEndToolsList": "pass",
     "officialSdkVersion": "1.32.1",
-    "transports": ["stdio", "streamableHttp"]
+    "transports": [
+      "stdio",
+      "streamableHttp"
+    ]
   },
   "projections": [
-    {
-      "field": "endToEndToolsList",
-      "path": "x2.endToEndToolsList"
-    },
-    {
-      "field": "clientFrames",
-      "path": "x2.workerDispatcherClientFrames"
-    },
-    {
-      "field": "serverFrames",
-      "path": "x2.workerDispatcherServerFrames"
-    },
-    {
-      "field": "toolCount",
-      "path": "x2.toolCount"
-    },
     {
       "field": "realWorkerCli",
       "path": "y2.worker.realCli"
@@ -43,6 +61,22 @@
       "path": "y2.configuredService.spawnedServerPidMatched"
     },
     {
+      "field": "toolCount",
+      "path": "x2.toolCount"
+    },
+    {
+      "field": "clientFrames",
+      "path": "x2.workerDispatcherClientFrames"
+    },
+    {
+      "field": "serverFrames",
+      "path": "x2.workerDispatcherServerFrames"
+    },
+    {
+      "field": "endToEndToolsList",
+      "path": "x2.endToEndToolsList"
+    },
+    {
       "field": "officialSdkVersion",
       "path": "c.officialSdk.version"
     },
@@ -53,33 +87,47 @@
   ],
   "executions": {
     "y2": {
-      "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
-      "startedAt": "2026-10-25T20:53:23.933Z",
-      "elapsedMs": 2226,
+      "command": [
+        "bash",
+        "scripts/verify/y2-mcp-http-worker.sh"
+      ],
+      "startedAt": "2026-10-25T22:52:45.641Z",
+      "elapsedMs": 2434,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
-      "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
-      "startedAt": "2026-10-25T20:53:26.162Z",
-      "elapsedMs": 11323,
+      "command": [
+        "bash",
+        "scripts/verify/x2-mcp-extension.sh"
+      ],
+      "startedAt": "2026-10-25T22:52:48.076Z",
+      "elapsedMs": 11615,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
-      "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
-      "startedAt": "2026-10-25T20:53:37.485Z",
-      "elapsedMs": 2131,
+      "command": [
+        "bash",
+        "scripts/verify/x3-mcp-extension-surface.sh"
+      ],
+      "startedAt": "2026-10-25T22:52:59.691Z",
+      "elapsedMs": 2307,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
-      "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
-      "startedAt": "2026-10-25T20:53:39.616Z",
-      "elapsedMs": 5593,
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "$Z3_DIR/c-live.mts"
+      ],
+      "startedAt": "2026-10-25T22:53:01.999Z",
+      "elapsedMs": 5627,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
