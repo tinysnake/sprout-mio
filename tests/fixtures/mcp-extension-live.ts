@@ -6,6 +6,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
+import ts from "typescript";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import type { McpCatalogView, McpConfig } from "../../src/contracts/mcp";
 import type { WorkerExchangeRemoteInput } from "../../src/contracts/worker";
@@ -401,6 +403,46 @@ assert(attached.protocol_version !== null);
 pass("真实 Pi McpClient 通过 Sprout 通道完成 initialize 与 tools/list");
 
 const rawToolNames = connection.tools.map((tool) => tool.name).sort();
+// z2 owns the pinned server's expected names. Read its JavaScript assertion without
+// executing the shell script, so x2 and z2 cannot silently drift to different lists.
+const integrationScript = readFileSync(resolve("scripts/verify/z2-mcp-integration.sh"), "utf8");
+const integrationJs = integrationScript.split("<<'NODE'\n")[1]?.split("\nNODE")[0];
+assert(integrationJs, "z2 必须提供 NODE 验收脚本");
+const integrationAst = ts.createSourceFile(
+  "z2.mjs",
+  integrationJs,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.JS,
+);
+const expectedArrays: ts.ArrayLiteralExpression[] = [];
+const visitExpectedTools = (node: ts.Node): void => {
+  if (
+    ts.isVariableDeclaration(node) &&
+    ts.isIdentifier(node.name) &&
+    node.name.text === "expectedEverythingTools"
+  ) {
+    const initializer = node.initializer;
+    assert(
+      initializer &&
+        ts.isCallExpression(initializer) &&
+        ts.isPropertyAccessExpression(initializer.expression),
+    );
+    assert.equal(initializer.expression.name.text, "sort");
+    assert(ts.isArrayLiteralExpression(initializer.expression.expression));
+    expectedArrays.push(initializer.expression.expression);
+  }
+  ts.forEachChild(node, visitExpectedTools);
+};
+visitExpectedTools(integrationAst);
+assert.equal(expectedArrays.length, 1, "z2 必须有唯一 expectedEverythingTools 数组");
+const expectedToolNames = expectedArrays[0]!.elements
+  .map((element) => {
+    assert(ts.isStringLiteral(element), "z2 预期工具名必须为字符串字面量");
+    return element.text;
+  })
+  .sort();
+const toolsListMatchesExpected = isDeepStrictEqual(rawToolNames, expectedToolNames);
 const toolNames = connection.tools.map((tool) => mcpToolName("everything", tool.name)).sort();
 assert.equal(toolNames.length, 20, "pinned server-everything tools/list");
 assert(toolNames.every((name) => name.startsWith("mcp__everything__")));
@@ -521,7 +563,9 @@ const evidence = {
   catalogHidesLaunchConfig: !JSON.stringify(catalog).includes(config.command),
   hostDrainsInTime: drainMs < 100,
   drainExchangeMs: drainMs,
-  endToEndToolsList: dispatchedFrames > 0 && receivedFrames > 0 ? "pass" : "inconclusive",
+  endToEndToolsList:
+    dispatchedFrames > 0 && receivedFrames > 0 && toolsListMatchesExpected ? "pass" : "failed",
+  toolsListMatchesExpected,
   realServer: config.args[1],
   realServerToolCount: toolNames.length,
   toolCount: toolNames.length,

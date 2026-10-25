@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
+import ts from "typescript";
 import { newId, ID_PREFIXES } from "../../src/contracts/ids";
 import { loadPiMcp } from "../../src/extension/mcp-load";
 import { registerMcpTools } from "../../src/extension/mcp-tools";
@@ -318,69 +319,49 @@ pass(
 // 生产 runner 必须把 `mcp__*` 放进 allowlist：没有这一条，上面测到的根因就会在真实
 // `scripts/pi-host-runner.mjs` 里重现（新工具注册成功但到不了模型）。
 //
-// 这条是静态检查（`runnerSource` 只读不执行），所以它必须只看到**代码**：注释里出现的
-// `tools: [...]` 不算数。做法是把注释按行剥离（保留换行，行号不变），再只取
-// `createAgentSession(` 之后的第一个 `tools: [...]`。只取全文件第一处会被一行 decoy 注释骗过。
+// 只接受真实 sdk.createAgentSession 调用的对象实参中的直接数组字面量。
+// 注释、字符串里的伪调用、其他属性和嵌套字符串都不能提供 allowlist 项。
 const runnerSource = readFileSync(resolve("scripts/pi-host-runner.mjs"), "utf8");
-const stripComments = (source: string) => {
-  let out = "";
-  let quote: "'" | '"' | "`" | null = null;
-  for (let i = 0; i < source.length; i += 1) {
-    const char = source[i]!;
-    const next = source[i + 1];
-    if (quote) {
-      out += char;
-      if (char === "\\") {
-        out += next ?? "";
-        i += 1;
-      } else if (char === quote) quote = null;
-      continue;
-    }
-    if (char === "/" && next === "/") {
-      while (i < source.length && source[i] !== "\n") {
-        out += " ";
-        i += 1;
-      }
-      out += "\n";
-      continue;
-    }
-    if (char === "/" && next === "*") {
-      out += "  ";
-      i += 2;
-      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-        out += source[i] === "\n" ? "\n" : " ";
-        i += 1;
-      }
-      out += "  ";
-      i += 1;
-      continue;
-    }
-    if (char === "'" || char === '"' || char === "`") quote = char;
-    out += char;
-  }
-  return out;
+const runnerAst = ts.createSourceFile(
+  "pi-host-runner.mjs",
+  runnerSource,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.JS,
+);
+const runnerCalls: ts.CallExpression[] = [];
+const visitRunner = (node: ts.Node): void => {
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "sdk" &&
+    node.expression.name.text === "createAgentSession"
+  )
+    runnerCalls.push(node);
+  ts.forEachChild(node, visitRunner);
 };
-const runnerCode = stripComments(runnerSource);
-const runnerCallAt = runnerCode.indexOf("createAgentSession(");
+visitRunner(runnerAst);
+assert.equal(runnerCalls.length, 1, "runner 必须有且仅有一个真实 sdk.createAgentSession 调用");
+const runnerOptions = runnerCalls[0]!.arguments[0];
 assert(
-  runnerCallAt >= 0,
-  "runner 里能定位到 createAgentSession( ——静态检查的取样起点，找不到就无从判断 allowlist",
+  runnerOptions && ts.isObjectLiteralExpression(runnerOptions),
+  "runner session 实参必须为对象字面量",
 );
-const runnerCall = runnerCode.slice(runnerCallAt);
-const runnerAllowlist = /\btools:\s*\[([^\]]*)\]/u.exec(runnerCall);
-assert(
-  runnerAllowlist,
-  `createAgentSession(...) 之后必须有 tools: [...] allowlist，实测：${runnerCall.split("\n").slice(0, 20).join("\n")}`,
+const runnerTools = runnerOptions.properties.filter(
+  (property): property is ts.PropertyAssignment =>
+    ts.isPropertyAssignment(property) &&
+    (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+    property.name.text === "tools",
 );
-const runnerAllowlistEntries = runnerAllowlist[1]!;
-const runnerAllowlistHasMcpStar = /["']mcp__\*["']/u.test(runnerAllowlistEntries);
-assert(
-  runnerAllowlistHasMcpStar,
-  `runner 的 tools allowlist 必须含 \`mcp__*\`（注释里的不算），实测数组内容：${runnerAllowlistEntries.trim()}`,
+assert.equal(runnerTools.length, 1, "runner session 必须有且仅有一个 tools 属性");
+const runnerAllowlist = runnerTools[0]!.initializer;
+assert(ts.isArrayLiteralExpression(runnerAllowlist), "runner tools 必须为数组字面量");
+const runnerAllowlistHasMcpStar = runnerAllowlist.elements.some(
+  (element) => ts.isStringLiteral(element) && element.text === "mcp__*",
 );
-pass(
-  `生产 runner 的 allowlist 含 mcp__*（createAgentSession 之后、注释剥离后匹配）：${runnerAllowlistEntries.trim()}`,
-);
+assert(runnerAllowlistHasMcpStar, "runner 的真实 tools allowlist 必须含字符串字面量 mcp__*");
+pass("生产 runner 的真实 sdk.createAgentSession tools 数组含 mcp__*（AST）");
 
 // ---------------------------------------------------------------- refresh 的可见失败
 // 真实验证「目录已变但工具面没跟进」被报成 failed 而不是 ok：这里用真实 MCP client，

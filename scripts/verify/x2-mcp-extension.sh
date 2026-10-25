@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../.."
 # 依赖运行时的扩展入口（Pi MCP 深导入、handler 安装顺序、帧编码）写错 → 真实 Pi 加载真实代码。
 # 四个新 call 绕过既有认证/租约/事务边界 → 真实 HTTP /api/remote/agent + 真实 SQLite 隔离库。
 # 有界 hold 在 drain 期间拖长排空 → 真实 gateway 上测量 draining 时的响应时间。
-# 端到端 tools/list 依赖 r1-worker 的 Machine 侧 dispatcher；本单元只到能到的边界，其余照实标 INCONCLUSIVE。
+# 端到端 tools/list 必须同时满足真实帧往返与 z2 预期工具名集合。
 # 证据只写工具名、数量与错误码：不含 secret、IPC 帧内容或 MCP 工具输出。
 rand="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
 dir=".verify/x2-mcp-extension-$rand"
@@ -40,15 +40,11 @@ console.log(
 console.log(
   `PASS catalog over real HTTP: ${evidence.catalogRegistrations} explicit registration(s), no implicit mcp.json scan`,
 );
-if (evidence.endToEndToolsList === "pass") {
-  console.log(
-    `PASS end-to-end tools/list through the Sprout channel: ${evidence.toolCount} tools`,
-  );
-} else {
-  console.log(
-    `INCONCLUSIVE end-to-end tools/list: blocked at ${evidence.blockedAt} — ${evidence.blockedReason}`,
-  );
-}
+assert.equal(evidence.toolsListMatchesExpected, true, "tools/list must match the expected tool names from z2");
+assert.equal(evidence.endToEndToolsList, "pass", "end-to-end tools/list must have frames and the expected tool names");
+console.log(
+  `PASS end-to-end tools/list through the Sprout channel: ${evidence.toolCount} tools; names match z2`,
+);
 if (evidence.realServerToolsList === "pass") {
   console.log(
     `PASS real @modelcontextprotocol/server-everything@2.0.1 tools/list over the relay codec: ${evidence.realServerToolCount} tools (Machine-side dispatcher is a script stand-in, not r1-worker)`,

@@ -129,9 +129,10 @@ try {
   }};
   const pi = await loadPiMcp();
   await checked('officialSdk',async()=>{
-    const entry=readdirSync('node_modules/.pnpm').find(name=>name.startsWith('@modelcontextprotocol+sdk@1.32.1'));
-    assert(entry,'locked SDK 1.32.1 available offline');
-    const sdkRoot=join(process.cwd(),'node_modules/.pnpm',entry!,'node_modules/@modelcontextprotocol/sdk');
+    const entries=readdirSync('node_modules/.pnpm').filter(name=>name.startsWith('@modelcontextprotocol+sdk@'));
+    assert.equal(entries.length,1,'one unambiguous installed official SDK');
+    const sdkRoot=join(process.cwd(),'node_modules/.pnpm',entries[0]!,'node_modules/@modelcontextprotocol/sdk');
+    const sdkVersion=JSON.parse(readFileSync(join(sdkRoot,'package.json'),'utf8')).version;
     const {Client}=await import(pathToFileURL(join(sdkRoot,'dist/esm/client/index.js')).href);
     const {StdioClientTransport}=await import(pathToFileURL(join(sdkRoot,'dist/esm/client/stdio.js')).href);
     const {StreamableHTTPClientTransport}=await import(pathToFileURL(join(sdkRoot,'dist/esm/client/streamableHttp.js')).href);
@@ -145,7 +146,7 @@ try {
       await http.connect(httpTransport);
       const httpTools=await http.listTools(); assert(httpTools.tools.some((tool:any)=>tool.name==='wire_echo'));
       await httpTransport.terminateSession();
-      return {version:'1.32.1',stdioConnected:true,stdioToolCount:stdioTools.tools.length,streamableHttpConnected:true,httpToolCount:httpTools.tools.length,referenceOnly:true};
+      return {version:sdkVersion,stdioConnected:true,stdioToolCount:stdioTools.tools.length,streamableHttpConnected:true,httpToolCount:httpTools.tools.length,referenceOnly:true};
     } finally {await stdio.close();await http.close();await server.close();}
   });
   const catalog = () => mcpCatalogGet({projectId,machineId,authorizationGeneration:1},ctx);
@@ -336,24 +337,76 @@ const requireProbe=name=>{
 const http=sources.y2, extension=sources.x2, surface=sources.x3;
 sources.c=c;
 
-// ---------------------------------------------------------------- 条款 ⇄ 证据的投影契约
-// 每条条款的 `assertions` 不是自由格式：`REQUIRED` 是一张**独立于条款 body 的必需字段表**，
-// 每个字段都必须由本条款用 `evidenceAt(field,path)` 从上面前置执行产出的 probe 证据里按路径取到值，
-// 并且 `assertions[field]` 必须**等于**那次取到的值。核对跑在下面遍历条款的循环里，不在条款
-// body 里，所以条款 body 无论被改成什么（返回 `{}`、返回 `{note:'…'}`、直接返回字面量）都躲不过：
-//   1. 必需字段必须齐全            → 条款被整条清空 = FAIL；
-//   2. 每个必需字段必须有取值路径  → 手写字面量没有路径 = FAIL；
-//   3. 断言值必须等于取到的证据值  → 写死的值与实测不符 = FAIL。
-// 这三种形状都用突变验过，输出贴在 orchestrate/sprout-mio-r1/reports/gate-hardening.md。
+// The harness owns both the evidence path and the expected behavior. A clause's
+// projection is checked separately; choosing an unrelated equal value is invalid.
 class ClauseContract extends Error {}
+const sdkEntries=readdirSync('node_modules/.pnpm').filter(name=>name.startsWith('@modelcontextprotocol+sdk@'));
+assert.equal(sdkEntries.length,1,'one unambiguous installed official SDK');
+const expectedSdkVersion=read(join('node_modules/.pnpm',sdkEntries[0],'node_modules/@modelcontextprotocol/sdk/package.json')).version;
+assert.equal(typeof expectedSdkVersion,'string');
+const predicates={
+  positiveCount:value=>Number.isInteger(value)&&value>0,
+  imageData:value=>Number.isInteger(value)&&value>100,
+  mcpTools:value=>Array.isArray(value)&&value.length>0&&value.every(name=>typeof name==='string'&&name.startsWith('mcp__')),
+};
 const REQUIRED = {
-  1: ['toolCount','clientFrames','serverFrames','endToEndToolsList','officialSdkVersion'],
-  2: ['activeMcpTools','allowlistExcludedNotify','allowedToolExecuted','hostServerNotStarted','hostServerAbsent'],
-  3: ['distinctProcesses','crossRootReadRejected','crossRootWriteRejected','callRejected','sessionTargetsUnchanged','noWriteOnSurvivor'],
-  4: ['blockType','mimeType','base64Length','bytesEqual','structuredContentEqual','throughSproutRelay','throughRealPiToolDefinition','x3BytesEqual','x3StructuredContentEqual'],
-  5: ['newToolDeclared','newToolCallable','callReturned','callTextMatchesServer','stillDeclaredAfterExplicitRefresh','blockedSurfaceOutcome','oldGenerationRejected'],
-  6: ['autostart','noSpawn','aliveAfterDelete','aliveAfterWorkerExit','configuredServiceAliveAfterWorkerExit'],
-  7: ['summaryExists','designExists','evidenceIndexExists','keyCombinationsPresent','evidenceScriptCurrent','evidenceSourceCommitAncestor'],
+  1: {
+    toolCount:{path:'x2.toolCount',expect:20},
+    clientFrames:{path:'x2.workerDispatcherClientFrames',expect:{predicate:'positiveCount'}},
+    serverFrames:{path:'x2.workerDispatcherServerFrames',expect:{predicate:'positiveCount'}},
+    endToEndToolsList:{path:'x2.endToEndToolsList',expect:'pass'},
+    officialSdkVersion:{path:'c.officialSdk.version',expect:expectedSdkVersion},
+  },
+  2: {
+    activeMcpTools:{path:'c.surface.activeMcpTools',expect:{predicate:'mcpTools'}},
+    allowlistExcludedNotify:{path:'c.surface.allowlistExcludedNotify',expect:true},
+    allowedToolExecuted:{path:'c.surface.allowedToolExecuted',expect:true},
+    hostServerNotStarted:{path:'c.surface.hostServerNotStarted',expect:true},
+    hostServerAbsent:{path:'c.surface.hostServerAbsent',expect:true},
+  },
+  3: {
+    distinctProcesses:{path:'c.isolation.distinctProcesses',expect:true},
+    crossRootReadRejected:{path:'c.isolation.crossRootReadRejected',expect:true},
+    crossRootWriteRejected:{path:'c.isolation.crossRootWriteRejected',expect:true},
+    callRejected:{path:'c.disappearance.callRejected',expect:true},
+    sessionTargetsUnchanged:{path:'c.disappearance.sessionTargetsUnchanged',expect:true},
+    noWriteOnSurvivor:{path:'c.disappearance.noWriteOnSurvivor',expect:true},
+  },
+  4: {
+    blockType:{path:'c.image.blockType',expect:'image'},
+    mimeType:{path:'c.image.mimeType',expect:'image/png'},
+    base64Length:{path:'c.image.base64Length',expect:{predicate:'imageData'}},
+    bytesEqual:{path:'c.image.bytesEqual',expect:true},
+    structuredContentEqual:{path:'c.image.structuredContentEqual',expect:true},
+    throughSproutRelay:{path:'c.image.throughSproutRelay',expect:true},
+    throughRealPiToolDefinition:{path:'c.image.throughRealPiToolDefinition',expect:true},
+    x3BytesEqual:{path:'x3.image.matchesServerBytes',expect:true},
+    x3StructuredContentEqual:{path:'x3.image.structuredContentMatchesServer',expect:true},
+  },
+  5: {
+    newToolDeclared:{path:'x3.listChanged.newToolDeclared',expect:true},
+    newToolCallable:{path:'x3.listChanged.newToolCallable',expect:true},
+    callReturned:{path:'x3.listChanged.callReturned',expect:true},
+    callTextMatchesServer:{path:'x3.listChanged.callTextMatchesServer',expect:true},
+    stillDeclaredAfterExplicitRefresh:{path:'x3.listChanged.stillDeclaredAfterExplicitRefresh',expect:true},
+    blockedSurfaceOutcome:{path:'x3.refreshOnBlockedSurface.outcome',expect:'failed'},
+    oldGenerationRejected:{path:'c.release.oldGenerationRejected',expect:'lease_stale_generation'},
+  },
+  6: {
+    autostart:{path:'y2.ownerManaged.autostart',expect:false},
+    noSpawn:{path:'y2.ownerManaged.noSpawn',expect:true},
+    aliveAfterDelete:{path:'y2.ownerManaged.runningAfterDelete',expect:true},
+    aliveAfterWorkerExit:{path:'y2.ownerManaged.aliveAfterWorkerExit',expect:true},
+    configuredServiceAliveAfterWorkerExit:{path:'y2.configuredService.aliveAfterWorkerExit',expect:false},
+  },
+  7: {
+    summaryExists:{path:'docs.summaryExists',expect:true},
+    designExists:{path:'docs.designExists',expect:true},
+    evidenceIndexExists:{path:'docs.evidenceIndexExists',expect:true},
+    keyCombinationsPresent:{path:'docs.keyCombinationsPresent',expect:true},
+    evidenceScriptCurrent:{path:'docs.evidenceScriptCurrent',expect:true},
+    evidenceSourceCommitAncestor:{path:'docs.evidenceSourceCommitAncestor',expect:true},
+  },
 };
 const resolvePath = path => {
   const [source,...rest] = path.split('.');
@@ -371,6 +424,32 @@ const evidenceAt = (field,path) => {
   if (value === undefined) throw new ClauseContract(`R1-${currentClause}: 证据路径 ${path} 取不到值`);
   projections.push({clause:currentClause,field,path,value});
   return value;
+};
+
+const snapshot=JSON.parse(readFileSync('docs/r1/evidence/evidence.json','utf8'));
+const design=readFileSync('docs/r1/design.md','utf8'), summary=readFileSync('docs/r1/summary.md','utf8');
+const scope=readFileSync('docs/core-scope.md','utf8');
+const designPhrases=['薄 bridge','帧中继','Pi 原生客户端','SDK','长连接'];
+const missingPhrases=designPhrases.filter(phrase=>!design.includes(phrase));
+const currentScriptSha=createHash('sha256').update(readFileSync('scripts/verify/z3-mcp-acceptance.sh')).digest('hex');
+const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+let ancestor=false;
+try { execFileSync('git',['merge-base','--is-ancestor',snapshot.sourceCommit,head],{stdio:'ignore'}); ancestor=true; } catch { ancestor=false; }
+sources.docs={
+  summaryExists:existsSync('docs/r1/summary.md'),
+  designExists:existsSync('docs/r1/design.md'),
+  evidenceIndexExists:existsSync('docs/r1/evidence/evidence.json'),
+  keyCombinationsPresent:missingPhrases.length===0,
+  missingKeyCombinations:missingPhrases,
+  summaryMentionsStage:summary.includes('P4c')&&summary.includes('纳入一期'),
+  summaryHasNoPendingMarker:!summary.includes('待 z3 运行'),
+  scopeMentionsMcpAndPhase:scope.includes('**MCP tools 接入**')&&scope.includes('P4c'),
+  evidenceScriptSha256:snapshot.scriptSha256,
+  currentScriptSha256:currentScriptSha,
+  evidenceScriptCurrent:snapshot.scriptSha256===currentScriptSha,
+  evidenceSourceCommit:snapshot.sourceCommit,
+  head,
+  evidenceSourceCommitAncestor:ancestor,
 };
 
 const clauses = [
@@ -511,31 +590,6 @@ const clauses = [
   // R1-7：只校验**可以机器判定**的东西 —— 文档存在、关键组合词出现、证据快照与当前脚本/代码
   // 一致。文档内容是否与代码相符需要人读，本条款不保证，也不假装保证（见 summary 已知限制）。
   ()=>{
-    const snapshot=JSON.parse(readFileSync('docs/r1/evidence/evidence.json','utf8'));
-    const design=readFileSync('docs/r1/design.md','utf8'), summary=readFileSync('docs/r1/summary.md','utf8');
-    const scope=readFileSync('docs/core-scope.md','utf8');
-    const designPhrases=['薄 bridge','帧中继','Pi 原生客户端','SDK','长连接'];
-    const missingPhrases=designPhrases.filter(phrase=>!design.includes(phrase));
-    const currentScriptSha=createHash('sha256').update(readFileSync('scripts/verify/z3-mcp-acceptance.sh')).digest('hex');
-    const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
-    let ancestor=false;
-    try { execFileSync('git',['merge-base','--is-ancestor',snapshot.sourceCommit,head],{stdio:'ignore'}); ancestor=true; } catch { ancestor=false; }
-    sources.docs={
-      summaryExists:existsSync('docs/r1/summary.md'),
-      designExists:existsSync('docs/r1/design.md'),
-      evidenceIndexExists:existsSync('docs/r1/evidence/evidence.json'),
-      keyCombinationsPresent:missingPhrases.length===0,
-      missingKeyCombinations:missingPhrases,
-      summaryMentionsStage:summary.includes('P4c')&&summary.includes('纳入一期'),
-      summaryHasNoPendingMarker:!summary.includes('待 z3 运行'),
-      scopeMentionsMcpAndPhase:scope.includes('**MCP tools 接入**')&&scope.includes('P4c'),
-      evidenceScriptSha256:snapshot.scriptSha256,
-      currentScriptSha256:currentScriptSha,
-      evidenceScriptCurrent:snapshot.scriptSha256===currentScriptSha,
-      evidenceSourceCommit:snapshot.sourceCommit,
-      head,
-      evidenceSourceCommitAncestor:ancestor,
-    };
     assert.equal(evidenceAt('summaryExists','docs.summaryExists'),true,'docs/r1/summary.md 存在');
     assert.equal(evidenceAt('designExists','docs.designExists'),true,'docs/r1/design.md 存在');
     assert.equal(evidenceAt('evidenceIndexExists','docs.evidenceIndexExists'),true,'docs/r1/evidence/evidence.json 存在');
@@ -571,23 +625,38 @@ const results=[];
 for(const [index,check] of clauses.entries()) {
   currentClause=index+1;
   let status='PASS',assertions,error;
+  const requirements=REQUIRED[currentClause];
+  const verified={};
   projections=[];
-  try { assertions=check(); }
+  try {
+    // Always read canonical paths and evaluate expectations before entering the body.
+    for(const [field,{path,expect}] of Object.entries(requirements)) {
+      const value=evidenceAt(field,path);
+      if(expect!==null&&typeof expect==='object'&&'predicate' in expect) {
+        assert(predicates[expect.predicate](value),`R1-${currentClause}: ${field} at ${path} must satisfy ${expect.predicate}`);
+      } else {
+        assert.deepEqual(value,expect,`R1-${currentClause}: ${field} at ${path} must equal ${JSON.stringify(expect)}`);
+      }
+      verified[field]={path,expect,value};
+    }
+    projections=[]; // Only body reads can supply its projection provenance.
+    assertions=check();
+  }
   catch(e) {
     // Missing evidence is inconclusive; an executed probe's failed assertion is a failure.
     status=e instanceof EvidenceUnavailable?'INCONCLUSIVE':'FAIL'; error=e.message;
   }
   if(status==='PASS') {
     try {
-      // 投影契约：必需字段齐全 / 每个字段有真实取值路径 / 断言值等于取到的证据值。
+      // The returned projection must be complete and use the harness-owned path.
       if(assertions===null||typeof assertions!=='object') throw new ClauseContract(`R1-${currentClause}: 条款必须返回断言对象，实测 ${JSON.stringify(assertions)}`);
-      const required=REQUIRED[currentClause]??[];
-      const missing=required.filter(field=>!(field in assertions));
+      const missing=Object.keys(requirements).filter(field=>!Object.hasOwn(assertions,field));
       if(missing.length) throw new ClauseContract(`R1-${currentClause}: 缺少必需字段 ${missing.join(', ')} —— 条款没有真的核过这些要求`);
-      for(const field of required) {
-        const projection=projections.find(p=>p.field===field);
-        if(!projection) throw new ClauseContract(`R1-${currentClause}: 字段 ${field} 没有任何证据取值路径（疑似写死）`);
-        assert.deepEqual(assertions[field],projection.value,`R1-${currentClause}: 字段 ${field} 与证据 ${projection.path} 不一致（写死的值不等于实测值）`);
+      for(const [field,{path}] of Object.entries(requirements)) {
+        const reads=projections.filter(p=>p.field===field);
+        if(!reads.length) throw new ClauseContract(`R1-${currentClause}: 字段 ${field} 没有任何证据取值路径（疑似写死）`);
+        if(reads.some(p=>p.path!==path)) throw new ClauseContract(`R1-${currentClause}: 字段 ${field} 必须取自 ${path}，实测 ${reads.map(p=>p.path).join(', ')}`);
+        assert.deepEqual(assertions[field],verified[field].value,`R1-${currentClause}: 字段 ${field} 与证据 ${path} 不一致（写死的值不等于实测值）`);
       }
     } catch(e) {
       status=e instanceof EvidenceUnavailable?'INCONCLUSIVE':'FAIL'; assertions=undefined; error=e.message;
@@ -595,7 +664,7 @@ for(const [index,check] of clauses.entries()) {
   }
   const path=join(dir,`clause-${currentClause}.json`);
   const provenances=[...new Map(projections.map(p=>[`${p.field}@${p.path}`,p])).values()].map(({field,path})=>({field,path}));
-  const record={clause:currentClause,status,...(assertions?{assertions}:{}),...(status==='PASS'?{projections:provenances}:{}),...(error?{error}:{}),executions};
+  const record={clause:currentClause,status,verified,...(assertions?{assertions}:{}),...(status==='PASS'?{projections:provenances}:{}),...(error?{error}:{}),executions};
   writeFileSync(path,JSON.stringify(record,null,2)+'\n');
   const evidencePath=relative(process.cwd(),path);
   results.push({clause:currentClause,status,evidencePath});
