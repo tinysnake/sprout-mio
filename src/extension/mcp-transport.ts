@@ -92,9 +92,9 @@ export class SproutRelayTransport implements McpTransport {
   /** 测试与报告用的实测计数，不参与协议判定。 */
   readonly counters = { exchanges: 0, emptyExchanges: 0, heldAborts: 0, acceptedFrames: 0 };
 
-  constructor(binding: SproutRelayBinding) {
+  constructor(binding: SproutRelayBinding, now = Date.now) {
     this.binding = binding;
-    this.now = binding.now ?? (() => Date.now());
+    this.now = binding.now ?? now;
     this.holdMs = Math.min(SPROUT_MCP_HOLD_MS, Math.max(0, binding.holdMs ?? SPROUT_MCP_HOLD_MS));
     this.attachTimeoutMs = binding.attachTimeoutMs ?? SPROUT_MCP_ATTACH_TIMEOUT_MS;
   }
