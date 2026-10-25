@@ -7,7 +7,7 @@ export no_proxy="$NO_PROXY"
 # 演示场景只挂在 dev server 的 /__dev/ui 上；这里自起一个独立端口，避免依赖已运行的服务，
 # 也不碰 3000 上 Human 正在使用的实例。
 port="${SPROUT_LEASE_SCENES_PORT:-3099}"
-log_dir=".verify/p4b-ui"
+log_dir="${SPROUT_LEASE_SCENES_LOG_DIR:-.verify/p4b-ui}"
 mkdir -p "$log_dir"
 log="$log_dir/dev-server.log"
 : > "$log"
@@ -39,5 +39,5 @@ if [ "$ready" -ne 1 ]; then
 fi
 
 SPROUT_LEASE_SCENES_URL="http://127.0.0.1:$port/__dev/ui/" \
-SPROUT_LEASE_SCENES_EVIDENCE="$log_dir/evidence" \
+SPROUT_LEASE_SCENES_EVIDENCE="${SPROUT_LEASE_SCENES_EVIDENCE:-$log_dir/evidence}" \
   node scripts/browser/p4b-lease-scenes.mjs
