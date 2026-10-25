@@ -131,8 +131,9 @@ export function applyMcpExchange(
   input: Pick<WorkerExchangeRemoteInput, "mcp" | "mcpCursors">,
   ctx: AuthenticatedWorkerContext,
   maxBytes = 655360,
-): { mcp: ServerMcpItem[]; mcpCursors: SessionCursor[] } {
+): { mcp: ServerMcpItem[]; mcpCursors: SessionCursor[]; wakeSessions: Map<string, string> } {
   return sqlite.transaction(() => {
+    const wakeSessions = new Map<string, string>();
     const output: { mcp: ServerMcpItem[]; mcpCursors: SessionCursor[] } = {
       mcp: [],
       mcpCursors: [],
@@ -417,6 +418,7 @@ export function applyMcpExchange(
           .set({ serverHighWater: item.seq })
           .where(eq(mcpSession.id, row.id))
           .run();
+        wakeSessions.set(row.id, item.frameId);
         audit(ctx, row.projectId, "mcp.frame.received");
       } else if (item.type === "session_fence_ack") {
         if (
@@ -624,6 +626,6 @@ export function applyMcpExchange(
         }
       }
     }
-    return output;
+    return { ...output, wakeSessions };
   })();
 }

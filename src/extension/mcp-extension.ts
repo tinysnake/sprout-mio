@@ -15,7 +15,7 @@ type SessionEvents = {
 export interface SproutMcpExtensionOptions {
   remote: RemoteToolClient;
   /** 显式指定的 Machine；本扩展不选择默认 Machine。 */
-  machineId: string;
+  machineId: string | (() => string | null);
   /** 当前租约的授权代次；由调用方在拿到租约后传入。 */
   authorizationGeneration: () => number | null;
   handlers?: SproutMcpHandlers;
@@ -30,6 +30,7 @@ export interface SproutMcpExtensionOptions {
 
 export interface SproutMcpExtension {
   readonly tools: readonly string[];
+  refresh(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -38,12 +39,12 @@ const live = new WeakMap<object, { connections: SproutMcpConnection[]; tools: st
 /**
  * 把显式登记的远端 MCP server 装进 Pi 的工具面。
  *
- * 只在 `session_start` 时按 `mcp_catalog_get` 的结果连接 —— 绝不扫描宿主
+ * 在 `session_start` 或显式租约目标更新时按 `mcp_catalog_get` 的结果连接，绝不扫描宿主
  * `~/.pi/agent/mcp.json`（standing order 7）。每个登记只用它自己那条 process identity，
  * 目标消失就报错，不改投同名 server。
  *
  * 接线位置：与 `registerRemoteTools(pi, remoteClient)` 并列调用一次即可
- * （`scripts/pi-host-runner.mjs` 的 `extensionFactories` 里）。本单元不改那个文件。
+ * （`scripts/pi-host-runner.mjs` 的 `extensionFactories` 里）。
  */
 export async function registerSproutMcp(
   pi: Pick<SproutExtensionAPI, "registerTool"> & SessionEvents,
@@ -62,12 +63,14 @@ export async function registerSproutMcp(
     state.tools = [];
   };
   pi.on("session_shutdown", closeAll);
-  pi.on("session_start", async () => {
+  const refresh = async () => {
     await closeAll();
+    const machineId =
+      typeof options.machineId === "function" ? options.machineId() : options.machineId;
     const generation = options.authorizationGeneration();
-    if (generation === null) return;
+    if (machineId === null || generation === null) return;
     try {
-      const view = await catalog(options.remote, options.machineId, generation);
+      const view = await catalog(options.remote, machineId, generation);
       const wanted = options.serverNames ? new Set(options.serverNames) : null;
       for (const registration of view.registrations) {
         if (wanted && !wanted.has(registration.name)) continue;
@@ -84,19 +87,25 @@ export async function registerSproutMcp(
         state.connections.push(connection);
         state.tools.push(
           ...registerMcpTools(pi, piMcp, connection, {
-            stillAllowed: async () => options.authorizationGeneration() === generation,
+            stillAllowed: async () =>
+              options.authorizationGeneration() === generation &&
+              (typeof options.machineId === "function"
+                ? options.machineId()
+                : options.machineId) === machineId,
           }),
         );
       }
     } catch (error) {
       options.onError?.(error instanceof Error ? error : new Error("MCP server 连接失败"));
     }
-  });
+  };
+  pi.on("session_start", refresh);
   live.set(pi, state);
   return {
     get tools() {
       return state.tools;
     },
+    refresh,
     close: closeAll,
   };
 }

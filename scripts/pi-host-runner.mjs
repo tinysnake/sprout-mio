@@ -140,6 +140,9 @@ async function open(config) {
   const { remoteToolInputSchemas } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/remote.ts"),
   );
+  const { registerSproutMcp } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/mcp-extension.ts"),
+  );
   const remoteClient = createRemoteClient(config.remote);
   const resourceLoader = new sdk.DefaultResourceLoader({
     cwd: config.cwd,
@@ -153,9 +156,42 @@ async function open(config) {
     extensionFactories: [
       {
         name: "sprout-extension",
-        factory: (pi) => {
+        factory: async (pi) => {
           sproutExtension(pi);
-          registerRemoteTools(pi, remoteClient);
+          let target = null;
+          let mcp;
+          const remote = {
+            projectId: remoteClient.projectId,
+            async request(request, signal) {
+              const response = await remoteClient.request(request, signal);
+              if (response.outcome === "response" && response.result.ok) {
+                const { call } = request;
+                const data = response.result.data;
+                let next;
+                if (call.type === "lease_get")
+                  next =
+                    data.lease.state === "held"
+                      ? { machineId: call.input.machineId, generation: data.lease.generation }
+                      : null;
+                if (call.type === "lease_mutate")
+                  next =
+                    call.input.action === "acquire" && data.state === "completed"
+                      ? { machineId: call.input.machineId, generation: data.completedGeneration }
+                      : null;
+                if (next !== undefined && JSON.stringify(next) !== JSON.stringify(target)) {
+                  target = next;
+                  await mcp.refresh();
+                }
+              }
+              return response;
+            },
+          };
+          mcp = await registerSproutMcp(pi, {
+            remote,
+            machineId: () => target?.machineId ?? null,
+            authorizationGeneration: () => target?.generation ?? null,
+          });
+          registerRemoteTools(pi, remote);
         },
       },
     ],
