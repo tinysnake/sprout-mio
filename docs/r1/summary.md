@@ -30,6 +30,8 @@ R1 七条技术验证均为 PASS：7 PASS、0 FAIL、0 INCONCLUSIVE。统一入�
 
 每条证据保留其实际执行信息。证据只含布尔值、数量、工具名、状态和错误码，不包含工具输出正文、图片内容、secret 或 cookie。runner 耗时是各子进程从启动到退出的实测时间，不等于后台启动命令的返回时间。
 
+逐项突变复跑用 `python3 docs/r1/gate-round2-mutations.py`。从干净提交开始，日志保存在 `.verify/d2-mutations-*`，每项结束后恢复原字节并检查工作树为空。
+
 ## 已知限制与待确认事项
 
 - Human 在 `2026-10-25T03:44Z` 授权更换验证载体，见编排工作区 `orchestrate/sprout-mio-r1/decisions.tsv` 第 4 行。第 3 条实际采用两个自有最小 server，第 4 条采用 server-everything；Unity Editor/Blender 的发现机制、插件和软件特有行为没有验证，不计入本轮 PASS 范围。七条计划原文完整保留。

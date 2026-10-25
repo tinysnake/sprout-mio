@@ -129,10 +129,21 @@ try:
     try:
         source = ORIGINAL[LIVE].decode()
         before = "const rawToolNames = connection.tools.map((tool) => tool.name).sort();"
-        after = "const rawToolNames = connection.tools.map((_tool, i) => `acceptance_wrong_${i}`).sort();"
+        after = "connection.tools.forEach((tool, i) => { tool.name = `acceptance_wrong_${i}`; });\n" + before
         assert source.count(before) == 1
         LIVE.write_text(source.replace(before, after))
         run("d23-m17-wrong-names-x2", X2, 1)
+        x2_dir = max((ROOT / ".verify").glob("x2-mcp-extension-*"), key=lambda p: p.stat().st_mtime_ns)
+        evidence = json.loads((x2_dir / "evidence.json").read_text())
+        inspection = {key: evidence[key] for key in (
+            "rawToolNames", "toolNames", "toolCount", "workerDispatcherClientFrames",
+            "workerDispatcherServerFrames", "toolsListMatchesExpected", "endToEndToolsList")}
+        assert len(inspection["rawToolNames"]) == inspection["toolCount"] == 20
+        assert all(name.startswith("acceptance_wrong_") for name in inspection["rawToolNames"])
+        assert all("acceptance_wrong_" in name for name in inspection["toolNames"])
+        assert inspection["workerDispatcherClientFrames"] > 0 and inspection["workerDispatcherServerFrames"] > 0
+        assert inspection["toolsListMatchesExpected"] is False and inspection["endToEndToolsList"] == "failed"
+        (OUT / "m17-evidence-inspection.json").write_text(json.dumps(inspection, indent=2) + "\n")
         run("d23-m17-wrong-names-z3", Z3, 1, 1)
     finally:
         restore()
