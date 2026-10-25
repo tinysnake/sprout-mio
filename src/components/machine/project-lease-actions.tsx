@@ -18,6 +18,7 @@ export const requestProjectLease = async (
   input: LeaseMutationInput,
   chatId: string,
   invalidate: () => Promise<unknown>,
+  now: () => number = Date.now,
 ): ReturnType<LeaseMutationHandler> => {
   if (input.action === "reclaim") {
     const result = await reclaimLeaseFn({ data: input });
@@ -54,16 +55,16 @@ export const requestProjectLease = async (
   };
   const isTemporary = (error: AppError) =>
     error.code === "internal" || error.code === "too_many_requests";
-  const deadline = Date.now() + 180_000;
+  const deadline = now() + 180_000;
   let delay = 500;
-  while (Date.now() < deadline) {
+  while (now() < deadline) {
     const result = await readReceipt();
     if (!result.ok && !isTemporary(result.error)) return result;
     if (result.ok && result.data.mutation) {
       await invalidate();
       return { ok: true, data: result.data.mutation, requestId: input.requestId };
     }
-    const remaining = deadline - Date.now();
+    const remaining = deadline - now();
     if (remaining <= 0) break;
     await new Promise((resolve) => setTimeout(resolve, Math.min(delay, remaining)));
     delay = Math.min(delay * 2, 2000);
