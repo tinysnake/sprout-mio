@@ -1,7 +1,7 @@
-PASS R1-1 .verify/z3-mcp-acceptance-1o7Ti6/clause-1.json
-PASS R1-2 .verify/z3-mcp-acceptance-1o7Ti6/clause-2.json
-PASS R1-3 .verify/z3-mcp-acceptance-1o7Ti6/clause-3.json
-PASS R1-4 .verify/z3-mcp-acceptance-1o7Ti6/clause-4.json
-PASS R1-5 .verify/z3-mcp-acceptance-1o7Ti6/clause-5.json
-PASS R1-6 .verify/z3-mcp-acceptance-1o7Ti6/clause-6.json
-PASS R1-7 .verify/z3-mcp-acceptance-1o7Ti6/clause-7.json
+PASS R1-1 .verify/z3-mcp-acceptance-xn2XHI/clause-1.json
+PASS R1-2 .verify/z3-mcp-acceptance-xn2XHI/clause-2.json
+PASS R1-3 .verify/z3-mcp-acceptance-xn2XHI/clause-3.json
+PASS R1-4 .verify/z3-mcp-acceptance-xn2XHI/clause-4.json
+PASS R1-5 .verify/z3-mcp-acceptance-xn2XHI/clause-5.json
+PASS R1-6 .verify/z3-mcp-acceptance-xn2XHI/clause-6.json
+PASS R1-7 .verify/z3-mcp-acceptance-xn2XHI/clause-7.json

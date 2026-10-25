@@ -48,32 +48,32 @@
   "executions": {
     "y2": {
       "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
-      "startedAt": "2026-10-25T20:52:53.345Z",
-      "elapsedMs": 2334,
+      "startedAt": "2026-10-25T20:53:23.933Z",
+      "elapsedMs": 2226,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
       "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
-      "startedAt": "2026-10-25T20:52:55.679Z",
-      "elapsedMs": 11135,
+      "startedAt": "2026-10-25T20:53:26.162Z",
+      "elapsedMs": 11323,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
       "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
-      "startedAt": "2026-10-25T20:53:06.814Z",
-      "elapsedMs": 2011,
+      "startedAt": "2026-10-25T20:53:37.485Z",
+      "elapsedMs": 2131,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
       "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
-      "startedAt": "2026-10-25T20:53:08.825Z",
-      "elapsedMs": 5510,
+      "startedAt": "2026-10-25T20:53:39.616Z",
+      "elapsedMs": 5593,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
