@@ -85,6 +85,13 @@
       "when": 1792920027167,
       "tag": "0011_marvelous_mulholland_black",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792949613746,
+      "tag": "0012_active_mcp_sessions",
+      "breakpoints": true
     }
   ]
 }

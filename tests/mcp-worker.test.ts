@@ -3,6 +3,7 @@ import { newId, ID_PREFIXES } from "../src/contracts/ids";
 import { mcpBound } from "../src/domain/mcp/protocol";
 import { workerExchangeInput, workerExchangeOutputRemoteSchema } from "../src/contracts/worker";
 import { McpRuntime } from "../src/worker/mcp";
+import { startHttpMcpServer } from "./fixtures/mcp-http-server";
 import { RemoteDispatcher } from "../src/worker/remote";
 import {
   attach,
@@ -19,6 +20,278 @@ import {
 const decoded = (frame: { payloadBase64: string }) =>
   JSON.parse(Buffer.from(frame.payloadBase64, "base64").toString());
 describe("MCP Worker", () => {
+  test("HTTP uses JSON, POST SSE and GET SSE; detach deletes only the attachment and permits reopen", async () => {
+    const server = await startHttpMcpServer();
+    const runtime = new McpRuntime([
+      registration({
+        transport: "streamableHttp",
+        url: server.url,
+        launch: "owner_managed",
+        autostart: false,
+        exposure: "wire",
+        roots: [],
+        exposeSampling: false,
+        elicitation: "absent",
+        requestTimeoutMs: 1000,
+      }),
+    ]);
+    try {
+      await runtime.start();
+      runtime.bind(workerSession);
+      const fact = runtime.outgoing().mcp.find((item) => item.type === "process_fact");
+      if (fact?.type !== "process_fact") throw new Error("missing HTTP process");
+      expect(fact.process).toMatchObject({ state: "running", pid: null, endpoint: server.url });
+      const session = sessionFor(fact.process);
+      runtime.accept([attach(session)], [], [authorization(session)]);
+      expect(() =>
+        runtime.accept([attach(sessionFor(fact.process))], [], [authorization(session)]),
+      ).toThrow("exact process unavailable");
+      let seq = 0;
+      const send = async (method: string, params?: unknown) => {
+        const id = ++seq;
+        runtime.accept(
+          [clientFrame(session, seq, { jsonrpc: "2.0", id, method, params })],
+          [],
+          [authorization(session)],
+        );
+        const frame = await waitFor(() =>
+          serverFrames(runtime).find((frame) => decoded(frame).id === id),
+        );
+        return decoded(frame);
+      };
+      expect(
+        (
+          await send("initialize", {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: "test", version: "1" },
+          })
+        ).result.protocolVersion,
+      ).toBe("2025-03-26");
+      runtime.accept(
+        [clientFrame(session, ++seq, { jsonrpc: "2.0", method: "notifications/initialized" })],
+        [],
+        [authorization(session)],
+      );
+      await waitFor(() =>
+        serverFrames(runtime).find(
+          (frame) => decoded(frame).method === "notifications/tools/list_changed",
+        ),
+      );
+      expect((await send("tools/list")).result.tools[0].name).toBe("wire_echo");
+      expect(
+        (await send("tools/call", { name: "wire_echo", arguments: { text: "HTTP 回流" } })).result,
+      ).toEqual({
+        content: [{ type: "text", text: "HTTP 回流" }],
+        structuredContent: { delivered: true },
+      });
+      const callbackRequestId = ++seq;
+      runtime.accept(
+        [
+          clientFrame(session, seq, {
+            jsonrpc: "2.0",
+            id: callbackRequestId,
+            method: "fixture/callback",
+          }),
+        ],
+        [],
+        [authorization(session)],
+      );
+      const callback = await waitFor(() =>
+        serverFrames(runtime).find((frame) => decoded(frame).method === "sampling/createMessage"),
+      );
+      runtime.accept(
+        [
+          clientFrame(session, ++seq, {
+            jsonrpc: "2.0",
+            id: decoded(callback).id,
+            result: {
+              model: "fixture",
+              role: "assistant",
+              content: { type: "text", text: "callback" },
+            },
+          }),
+        ],
+        [],
+        [authorization(session)],
+      );
+      const callbackResult = await waitFor(() =>
+        serverFrames(runtime).find((frame) => decoded(frame).id === callbackRequestId),
+      );
+      expect(decoded(callbackResult).result.callback.model).toBe("fixture");
+      const deletes = server.stats.deletes;
+      runtime.accept(
+        [{ type: "session_detach", ...mcpBound(session), reason: "client_closed" }],
+        [],
+        [authorization(session)],
+      );
+      await waitFor(() => server.stats.deletes > deletes);
+      const second = sessionFor(fact.process);
+      runtime.accept([attach(second)], [], [authorization(second)]);
+      runtime.accept(
+        [
+          clientFrame(second, 1, {
+            jsonrpc: "2.0",
+            id: 99,
+            method: "initialize",
+            params: {
+              protocolVersion: "2025-03-26",
+              capabilities: {},
+              clientInfo: { name: "reopen", version: "1" },
+            },
+          }),
+        ],
+        [],
+        [authorization(second)],
+      );
+      await waitFor(() => serverFrames(runtime).find((frame) => decoded(frame).id === 99));
+      await runtime.stop();
+      expect((await fetch(server.url.replace("/mcp", "/stats"))).ok).toBe(true);
+      expect(server.stats).toMatchObject({ calls: 1, lists: 1, gets: 1, deletes: 3 });
+    } finally {
+      await runtime.stop();
+      await server.close();
+    }
+  });
+  test.each(["fixture/timeout", "fixture/malformed", "fixture/overflow"])(
+    "HTTP %s fails the exact target without inventing a running state",
+    async (method) => {
+      const server = await startHttpMcpServer();
+      const runtime = new McpRuntime([
+        registration({
+          transport: "streamableHttp",
+          url: server.url,
+          launch: "owner_managed",
+          autostart: false,
+          exposure: "wire",
+          roots: [],
+          exposeSampling: false,
+          elicitation: "absent",
+          requestTimeoutMs: 100,
+        }),
+      ]);
+      try {
+        await runtime.start();
+        runtime.bind(workerSession);
+        const fact = runtime.outgoing().mcp.find((item) => item.type === "process_fact");
+        if (fact?.type !== "process_fact") throw new Error("missing process");
+        const session = sessionFor(fact.process);
+        runtime.accept(
+          [
+            attach(session),
+            clientFrame(session, 1, {
+              jsonrpc: "2.0",
+              id: 1,
+              method: "initialize",
+              params: {
+                protocolVersion: "2025-03-26",
+                capabilities: {},
+                clientInfo: { name: "test", version: "1" },
+              },
+            }),
+          ],
+          [],
+          [authorization(session)],
+        );
+        await waitFor(() => serverFrames(runtime)[0]);
+        runtime.accept(
+          [clientFrame(session, 2, { jsonrpc: "2.0", id: 2, method })],
+          [],
+          [authorization(session)],
+        );
+        const failed = await waitFor(() =>
+          runtime
+            .outgoing()
+            .mcp.find((item) => item.type === "process_fact" && item.process.state === "failed"),
+        );
+        expect(failed).toMatchObject({
+          type: "process_fact",
+          process: { endReason: "unreachable" },
+        });
+        expect(runtime.outgoing().mcp).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ type: "session_fact", state: "failed" }),
+          ]),
+        );
+      } finally {
+        await runtime.stop();
+        await server.close();
+      }
+    },
+  );
+  test("one unreachable HTTP registration and one spawn failure do not suppress a healthy service", async () => {
+    const config = registration().configJson;
+    if (config.transport !== "stdio") throw new Error("expected stdio fixture");
+    const runtime = new McpRuntime([
+      registration({
+        transport: "streamableHttp",
+        url: "http://127.0.0.1:1/mcp",
+        launch: "owner_managed",
+        autostart: false,
+        exposure: "wire",
+        roots: [],
+        exposeSampling: false,
+        elicitation: "absent",
+        requestTimeoutMs: 100,
+      }),
+      registration({ ...config, command: "/nonexistent-sprout-mcp-command" }),
+      registration(),
+    ]);
+    try {
+      await runtime.start();
+      const facts = runtime
+        .outgoing()
+        .mcp.filter((item) => item.type === "process_fact")
+        .map((item) => item.process);
+      expect(facts).toHaveLength(3);
+      expect(facts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ state: "failed", endReason: "spawn_failed" }),
+          expect.objectContaining({ state: "failed", endReason: "unreachable" }),
+          expect.objectContaining({ state: "running", endReason: null }),
+        ]),
+      );
+    } finally {
+      await runtime.stop();
+    }
+  });
+  test("HTTP heartbeat rechecks reachability before refreshing the running process fact", async () => {
+    const server = await startHttpMcpServer();
+    let now = Date.now();
+    let serverClosed = false;
+    const runtime = new McpRuntime(
+      [
+        registration({
+          transport: "streamableHttp",
+          url: server.url,
+          launch: "owner_managed",
+          autostart: false,
+          exposure: "wire",
+          roots: [],
+          exposeSampling: false,
+          elicitation: "absent",
+          requestTimeoutMs: 100,
+        }),
+      ],
+      () => now,
+    );
+    try {
+      await runtime.start();
+      await server.close();
+      serverClosed = true;
+      now += 10001;
+      runtime.outgoing();
+      const fact = await waitFor(() =>
+        runtime
+          .outgoing()
+          .mcp.find((item) => item.type === "process_fact" && item.process.state === "failed"),
+      );
+      expect(fact).toMatchObject({ process: { endReason: "unreachable", lastObservedAt: now } });
+    } finally {
+      await runtime.stop();
+      if (!serverClosed) await server.close();
+    }
+  });
   test("starts a real pid and relays bytes; session detach leaves process alive", async () => {
     const { runtime, session, process: fact } = await setup();
     try {
@@ -52,6 +325,17 @@ describe("MCP Worker", () => {
           expect.objectContaining({ type: "session_fact", state: "detached" }),
         ]),
       );
+      const next = sessionFor(fact);
+      runtime.accept(
+        [attach(next), clientFrame(next, 1, { jsonrpc: "2.0", id: 2, method: "fixture/echo" })],
+        [],
+        [authorization(next)],
+      );
+      const nextFrame = await waitFor(() =>
+        serverFrames(runtime).find((frame) => decoded(frame).id === 2),
+      );
+      expect(nextFrame.sessionId).toBe(next.id);
+      expect(nextFrame.processId).toBe(fact.id);
     } finally {
       await runtime.stop();
     }

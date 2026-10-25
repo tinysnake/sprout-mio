@@ -17,7 +17,8 @@ HTTP defaults to loopback only. For non-loopback HTTP, repeat --allow-http <comp
 to explicitly authorize each exact origin (including its port). Authorizations persist in identity.json.
 HTTPS needs no flag. --allow-http never disables TLS verification.
 run connects this Machine and executes authorized remote operations.
---mcp-config loads only the explicit registration array and autostarts configured stdio services.
+--mcp-config loads only the explicit registration array. It autostarts configured stdio/HTTP services
+and connects owner_managed HTTP services, including when autostart is false.
 Closing a relay session leaves its service running. Worker exit stops its managed services.
 No LaunchAgent is installed.`;
 async function main() {

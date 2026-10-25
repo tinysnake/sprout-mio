@@ -366,8 +366,26 @@ export function mcpSessionOpen(raw: unknown, ctx: AgentRemoteContext) {
         )
         .get();
       // 目标消失不改投：process 必须仍 running、incarnation 匹配、且没有别的 session 占着它。
-      if (!process || process.state !== "running" || process.endedAt !== null || !process.pid)
+      if (
+        !process ||
+        process.state !== "running" ||
+        process.endedAt !== null ||
+        (process.transport === "stdio" ? !process.pid : !process.endpoint)
+      )
         throw new McpRelayError("machine_unavailable");
+      if (
+        db
+          .select()
+          .from(mcpSession)
+          .where(
+            and(
+              eq(mcpSession.processId, process.id),
+              inArray(mcpSession.state, ["connecting", "connected"]),
+            ),
+          )
+          .get()
+      )
+        throw new McpRelayError("remote_request_conflict");
       if (
         db
           .select()
