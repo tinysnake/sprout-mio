@@ -2,6 +2,11 @@
   "clause": 6,
   "status": "PASS",
   "assertions": {
+    "autostart": false,
+    "noSpawn": true,
+    "aliveAfterDelete": true,
+    "aliveAfterWorkerExit": true,
+    "configuredServiceAliveAfterWorkerExit": false,
     "detach": {
       "status": "PASS",
       "piSessionDisposed": true,
@@ -16,62 +21,79 @@
       "generationAdvanced": true,
       "remainingServerProcessesAlive": 2,
       "oldGenerationRejected": "lease_stale_generation"
-    },
-    "ownerManaged": {
-      "autostart": false,
-      "noSpawn": true,
-      "catalogCallableTarget": true,
-      "aliveAfterDelete": true,
-      "aliveAfterWorkerExit": true
-    },
-    "configuredService": {
-      "spawned": true,
-      "terminatedAfterWorkerExit": true
     }
   },
+  "projections": [
+    {
+      "field": "autostart",
+      "path": "y2.ownerManaged.autostart"
+    },
+    {
+      "field": "noSpawn",
+      "path": "y2.ownerManaged.noSpawn"
+    },
+    {
+      "field": "aliveAfterDelete",
+      "path": "y2.ownerManaged.runningAfterDelete"
+    },
+    {
+      "field": "aliveAfterWorkerExit",
+      "path": "y2.ownerManaged.aliveAfterWorkerExit"
+    },
+    {
+      "field": "configuredServiceAliveAfterWorkerExit",
+      "path": "y2.configuredService.aliveAfterWorkerExit"
+    },
+    {
+      "field": "autostart",
+      "path": "y2.ownerManaged.autostart"
+    },
+    {
+      "field": "noSpawn",
+      "path": "y2.ownerManaged.noSpawn"
+    },
+    {
+      "field": "aliveAfterDelete",
+      "path": "y2.ownerManaged.runningAfterDelete"
+    },
+    {
+      "field": "aliveAfterWorkerExit",
+      "path": "y2.ownerManaged.aliveAfterWorkerExit"
+    },
+    {
+      "field": "configuredServiceAliveAfterWorkerExit",
+      "path": "y2.configuredService.aliveAfterWorkerExit"
+    }
+  ],
   "executions": {
     "y2": {
-      "command": [
-        "bash",
-        "scripts/verify/y2-mcp-http-worker.sh"
-      ],
-      "startedAt": "2026-10-25T19:06:50.651Z",
-      "elapsedMs": 2269,
+      "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
+      "startedAt": "2026-10-25T20:38:40.798Z",
+      "elapsedMs": 2497,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
-      "command": [
-        "bash",
-        "scripts/verify/x2-mcp-extension.sh"
-      ],
-      "startedAt": "2026-10-25T19:06:52.921Z",
-      "elapsedMs": 11251,
+      "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
+      "startedAt": "2026-10-25T20:38:43.298Z",
+      "elapsedMs": 11346,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
-      "command": [
-        "bash",
-        "scripts/verify/x3-mcp-extension-surface.sh"
-      ],
-      "startedAt": "2026-10-25T19:07:04.172Z",
-      "elapsedMs": 2214,
+      "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
+      "startedAt": "2026-10-25T20:38:54.644Z",
+      "elapsedMs": 2056,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
-      "command": [
-        "node",
-        "--import",
-        "tsx",
-        "$Z3_DIR/c-live.mts"
-      ],
-      "startedAt": "2026-10-25T19:07:06.387Z",
-      "elapsedMs": 5635,
+      "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
+      "startedAt": "2026-10-25T20:38:56.700Z",
+      "elapsedMs": 5528,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
