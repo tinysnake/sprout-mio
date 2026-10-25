@@ -15,6 +15,22 @@ export const createDirectChatInput = z.object({
 export type CreateDirectChatInput = z.infer<typeof createDirectChatInput>;
 export const chatIdInput = z.object({ chatId });
 
+/** 标题最多 80 字，与 Project / AgentProfile 的名称上限同档，trim 后不允许为空。 */
+export const CHAT_TITLE_MAX_LENGTH = 80;
+const chatTitle = z
+  .string()
+  .trim()
+  .min(1, "标题不能为空")
+  .max(CHAT_TITLE_MAX_LENGTH, `标题最多 ${CHAT_TITLE_MAX_LENGTH} 字`);
+
+/** 重命名标题：只有 Chat 所属 Project 的创建者可以调用。 */
+export const updateChatTitleInput = z.object({ chatId, title: chatTitle });
+export type UpdateChatTitleInput = z.infer<typeof updateChatTitleInput>;
+
+/** 恢复默认标题：把 title 置空，展示回落到参与分身名。 */
+export const clearChatTitleInput = z.object({ chatId });
+export type ClearChatTitleInput = z.infer<typeof clearChatTitleInput>;
+
 export const chatSchema = z.object({
   id: chatId,
   projectId,

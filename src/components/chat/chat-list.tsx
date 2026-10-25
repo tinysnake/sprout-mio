@@ -8,6 +8,7 @@ import type { Chat } from "../../contracts/chat";
 import { Icon } from "../ui/icon";
 import { isNarrowList, useChatWorkspace } from "../layout/chat-workspace";
 import { ChatAvatar } from "./chat-avatar";
+import { CHAT_AGENT_FALLBACK, chatDisplayName, chatSubtitleLabel } from "./chat-display";
 import type { ChatAgent } from "./chat-loader";
 
 export type { ChatAgent };
@@ -33,8 +34,9 @@ export function chatAgentName(
   names: Map<string, string>,
 ): string {
   const profileId = chatAgents.find((entry) => entry.chatId === chatId)?.agentProfileId;
-  if (!profileId) return "Agent";
-  return names.get(profileId) ?? profileId;
+  if (!profileId) return CHAT_AGENT_FALLBACK;
+  // profile 名缺失时退回通用名，不把裸 profile id 当人类可读文案。
+  return names.get(profileId) ?? CHAT_AGENT_FALLBACK;
 }
 
 export function filterChats(
@@ -47,7 +49,11 @@ export function filterChats(
   if (!needle) return chats;
   return chats.filter(
     (chat) =>
+      // id 不作可见文案，但粘贴 id 仍能定位到对话，保留既有搜索能力。
       chat.id.toLowerCase().includes(needle) ||
+      chatDisplayName(chat, chatAgentName(chat.id, chatAgents, names))
+        .toLowerCase()
+        .includes(needle) ||
       Boolean(chat.title?.toLowerCase().includes(needle)) ||
       chatAgentName(chat.id, chatAgents, names).toLowerCase().includes(needle),
   );
@@ -158,6 +164,8 @@ export function ChatListPanel({
           <ul data-testid="chat-list">
             {shown.map((chat) => {
               const selected = chat.id === selectedChatId;
+              const agentName = chatAgentName(chat.id, chatAgents, names);
+              const name = chatDisplayName(chat, agentName);
               return (
                 <li key={chat.id}>
                   <Link
@@ -179,7 +187,7 @@ export function ChatListPanel({
                         data-testid="chat-item-name"
                         className="min-w-0 flex-1 truncate text-xs font-medium"
                       >
-                        {chat.title ?? chatAgentName(chat.id, chatAgents, names)}
+                        {name}
                       </span>
                       <time
                         dateTime={chat.updatedAt}
@@ -189,9 +197,10 @@ export function ChatListPanel({
                       </time>
                     </span>
                     <span className="flex items-center gap-1.75 text-[11px] text-muted-foreground">
-                      <ChatAvatar small name={chatAgentName(chat.id, chatAgents, names)} />
-                      <span data-testid="chat-item-id" className="min-w-0 truncate font-mono">
-                        {chat.id}
+                      <ChatAvatar small name={agentName} />
+                      {/* 副行给出对话对象，裸 chat id 只进 title 属性，不作可见文案。 */}
+                      <span data-testid="chat-item-id" title={chat.id} className="min-w-0 truncate">
+                        {chatSubtitleLabel(chat, agentName)}
                       </span>
                     </span>
                   </Link>

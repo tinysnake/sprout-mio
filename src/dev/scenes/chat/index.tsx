@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/icon";
 import { PageFrame } from "@/components/layout/page-frame";
 import { ChatEmptyState, ChatListPanel } from "@/components/chat/chat-list";
 import { ChatThread } from "@/components/chat/chat-thread";
+import { ChatTitleEditor } from "@/components/chat/chat-title-editor";
 import { ChatDraftProvider, useChatDraft } from "@/components/chat/chat-drafts";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { MessageList } from "@/components/chat/message-list";
@@ -448,12 +449,15 @@ function DemoThread({
   inspectorOpen,
   onToggleInspector,
   onSend,
+  onRename,
 }: {
   chat: Chat;
   fixture: ReturnType<typeof workspaceFixture>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
   onSend: (body: string) => void;
+  /** 演示用重命名：只改本地 fixture，写库走的仍是同一条正式 server function。 */
+  onRename: (title: string | undefined) => void;
 }) {
   const [draft, setDraft] = useChatDraft(chat.id);
   return (
@@ -492,6 +496,22 @@ function DemoThread({
       stopPending={false}
       stopError={null}
       onRestoreDraft={setDraft}
+      titleEditor={
+        <ChatTitleEditor
+          chat={chat}
+          currentName={fixture.profile.name}
+          submit={async (title) => {
+            onRename(title);
+            return { ok: true, data: { ...chat, title }, requestId: "req_demo" };
+          }}
+          restore={async () => {
+            onRename(undefined);
+            const { title: _title, ...rest } = chat;
+            return { ok: true, data: rest, requestId: "req_demo" };
+          }}
+          onChanged={() => undefined}
+        />
+      }
     />
   );
 }
@@ -512,6 +532,7 @@ function WorkspaceScene() {
   const [localMessages, setLocalMessages] = useState<Record<string, Message[]>>({
     [chats[0]!.id]: messages,
   });
+  const [localTitles, setLocalTitles] = useState<Record<string, string | undefined>>({});
   const selectedChat = chats.find((item) => item.id === chatId);
   const fixture = selectedChat
     ? workspaceFixture(selectedChat, localMessages[selectedChat.id] ?? [])
@@ -519,6 +540,11 @@ function WorkspaceScene() {
   const viewChats = chats
     .map((item) => ({
       ...item,
+      ...(item.id in localTitles
+        ? localTitles[item.id] === undefined
+          ? { title: undefined }
+          : { title: localTitles[item.id] }
+        : {}),
       updatedAt: localMessages[item.id]?.at(-1)?.createdAt ?? item.updatedAt,
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -570,6 +596,9 @@ function WorkspaceScene() {
               }}
               inspectorOpen={inspector}
               onToggleInspector={() => openInspector(!inspector)}
+              onRename={(title) =>
+                setLocalTitles((previous) => ({ ...previous, [selectedChat.id]: title }))
+              }
             />
           ) : (
             <ChatEmptyState

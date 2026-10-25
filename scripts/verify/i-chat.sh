@@ -93,13 +93,13 @@ function serverFnIds() {
   for (const match of source.matchAll(/id: "([0-9a-f]{64})",\s*\n\s*name: "(\w+)"/g)) ids[match[2]] = match[1]
   return ids
 }
-async function curl(url, name, { body, cookie = false, header, json = true } = {}) {
+async function curl(url, name, { body, cookie = false, jar = 'cookies.txt', header, json = true } = {}) {
   const target = join(directory, `${name}.body`)
   const headers = join(directory, `${name}.headers`)
   const args = ['--noproxy', '*', '--connect-timeout', '2', '--max-time', '20', '-sS', '-o', target, '-D', headers, '-w', '%{http_code}', url]
   for (const value of header ?? []) args.push('-H', value)
   if (body) args.push('-H', 'content-type: application/json', '--data', body)
-  if (cookie) args.push('-b', join(directory, 'cookies.txt'), '-c', join(directory, 'cookies.txt'))
+  if (cookie) args.push('-b', join(directory, jar), '-c', join(directory, jar))
   const child = spawn('curl', args, { stdio: ['ignore', 'pipe', 'pipe'], env: environment })
   let output = '', errors = ''
   child.stdout.on('data', (data) => { output += data })
@@ -162,6 +162,8 @@ try {
   const required = [
     'createDirectChatFn', 'listChatsFn', 'getChatFn',
     'listChatMembersFn', 'listInstancesForChatFn', 'listMessagesFn', 'sendMessageFn',
+    'createProjectFn', 'createAgentProfileFn', 'addProjectMemberFn',
+    'updateChatTitleFn', 'clearChatTitleFn',
   ]
   for (const name of required) assert(ids[name], `缺少 server function id: ${name}`)
   pass('server function ids present', { required })
@@ -183,10 +185,105 @@ try {
   assert(noOrigin.text.includes('unauthorized'), '无 Origin 且未登录必须返回 unauthorized 载荷')
   pass('无 Origin 未登录调用返回 unauthorized', { status: noOrigin.status, requestId: noOrigin.requestId })
 
+  // 标题的 HTTP 级反证：未登录调用被拒，登录态的跨 Project 调用被拒且不写库。
+  const serverFnHeaders = ['x-tsr-serverfn: true', origin, 'accept: application/x-tss-framed, application/json']
+  const password = randomBytes(24).toString('base64url')
+  const signupA = await curl(`${base}/api/auth/sign-up/email`, 'signup-title-a', {
+    cookie: true,
+    header: [origin],
+    body: JSON.stringify({ email: `i-chat-title-a-${Date.now()}@example.test`, password, name: 'I-Ch 标题 A' }),
+  })
+  assert.equal(signupA.status, 200, signupA.text)
+  const projectA = await curl(`${base}/_serverFn/${ids.createProjectFn}`, 'title-project-a', {
+    cookie: true,
+    header: serverFnHeaders,
+    body: serverFnBody({ name: '标题 HTTP 验收 A' }),
+  })
+  assert.equal(projectA.status, 200, projectA.text)
+  const projectAId = projectA.text.match(/prj_[0-9a-f-]{36}/)?.[0]
+  assert(projectAId, `创建 Project 必须返回 id: ${projectA.text.slice(0, 200)}`)
+  const profileA = await curl(`${base}/_serverFn/${ids.createAgentProfileFn}`, 'title-profile-a', {
+    cookie: true,
+    header: serverFnHeaders,
+    body: serverFnBody({ name: '标题 HTTP Agent' }),
+  })
+  assert.equal(profileA.status, 200, profileA.text)
+  const profileAId = profileA.text.match(/agp_[0-9a-f-]{36}/)?.[0]
+  assert(profileAId, `创建 profile 必须返回 id: ${profileA.text.slice(0, 200)}`)
+  const memberA = await curl(`${base}/_serverFn/${ids.addProjectMemberFn}`, 'title-member-a', {
+    cookie: true,
+    header: serverFnHeaders,
+    body: serverFnBody({ projectId: projectAId, agentProfileId: profileAId }),
+  })
+  assert.equal(memberA.status, 200, memberA.text)
+  const dmA = await curl(`${base}/_serverFn/${ids.createDirectChatFn}`, 'title-dm-a', {
+    cookie: true,
+    header: serverFnHeaders,
+    body: serverFnBody({ projectId: projectAId, agentProfileId: profileAId }),
+  })
+  assert.equal(dmA.status, 200, dmA.text)
+  const chatAId = dmA.text.match(/cnv_[0-9a-f-]{36}/)?.[0]
+  assert(chatAId, `创建 DM 必须返回 chat id: ${dmA.text.slice(0, 200)}`)
+
+  const anonymousTitle = await curl(`${base}/_serverFn/${ids.updateChatTitleFn}`, 'chat-title-anonymous', {
+    header: serverFnHeaders,
+    body: serverFnBody({ chatId: chatAId, title: '未登录改名' }),
+  })
+  assert.equal(anonymousTitle.status, 200, anonymousTitle.text)
+  assert(anonymousTitle.text.includes('unauthorized'), `未登录重命名必须 unauthorized: ${anonymousTitle.text.slice(0, 200)}`)
+  pass('HTTP 未登录调用 updateChatTitleFn 返回 unauthorized', { status: anonymousTitle.status, requestId: anonymousTitle.requestId })
+
+  const renameA = await curl(`${base}/_serverFn/${ids.updateChatTitleFn}`, 'chat-title-rename-a', {
+    cookie: true,
+    header: serverFnHeaders,
+    body: serverFnBody({ chatId: chatAId, title: 'A 的验收标题' }),
+  })
+  assert.equal(renameA.status, 200, renameA.text)
+  assert(renameA.text.includes('A 的验收标题'), `重命名必须回传新标题: ${renameA.text.slice(0, 200)}`)
+  pass('HTTP 创建者重命名成功并回传新标题', { requestId: renameA.requestId })
+
+  const passwordB = randomBytes(24).toString('base64url')
+  const signupB = await curl(`${base}/api/auth/sign-up/email`, 'signup-title-b', {
+    cookie: true,
+    jar: 'cookies-title-b.txt',
+    header: [origin],
+    body: JSON.stringify({ email: `i-chat-title-b-${Date.now()}@example.test`, password: passwordB, name: 'I-Ch 标题 B' }),
+  })
+  assert.equal(signupB.status, 200, signupB.text)
+  const crossTitle = await curl(`${base}/_serverFn/${ids.updateChatTitleFn}`, 'chat-title-cross-user', {
+    cookie: true,
+    jar: 'cookies-title-b.txt',
+    header: serverFnHeaders,
+    body: serverFnBody({ chatId: chatAId, title: 'B 越权改名' }),
+  })
+  assert.equal(crossTitle.status, 200, crossTitle.text)
+  assert(crossTitle.text.includes('not_found'), `跨用户重命名必须 not_found: ${crossTitle.text.slice(0, 200)}`)
+  assert(!crossTitle.text.includes('B 越权改名'), '拒绝响应不得回显被拒绝的标题')
+  const readBack = await curl(`${base}/_serverFn/${ids.getChatFn}`, 'chat-title-read-back', {
+    cookie: true,
+    header: serverFnHeaders,
+    body: serverFnBody({ chatId: chatAId }),
+  })
+  assert.equal(readBack.status, 200, readBack.text)
+  assert(readBack.text.includes('A 的验收标题'), `跨用户被拒后标题必须保持 A 的写入: ${readBack.text.slice(0, 200)}`)
+  assert(!readBack.text.includes('B 越权改名'), '跨用户被拒后不得留下 B 的标题')
+  pass('HTTP 跨用户重命名被拒且库里标题未变', { requestId: crossTitle.requestId, title: 'A 的验收标题' })
+
   assert(statSync(databaseUrl).size > 0, '真实 SQLite 文件必须存在')
   const browser = await bounded(launch(process.execPath, ['scripts/browser/i-chat-flow.mjs'], 'browser.log', { ...environment, BASE_URL: base, CHAT_STATE_FILE: stateFile }), 300000)
   assert.equal(browser.code, 0, `浏览器流程失败；见 browser.log:\n${readFileSync(join(directory, 'browser.log'), 'utf8')}`)
   pass('真实 Chromium 流程', { log: 'browser.log', screenshots: `${process.env.SPROUT_UI_EVIDENCE_DIR ?? '.verify/i-chat/evidence'}/p2-i-*.png` })
+
+  const titleEvidence = resolve('.verify/i-chat-title/evidence')
+  const titleBrowser = await bounded(launch(process.execPath, ['scripts/browser/p4b-chat-title-flow.mjs'], 'browser-title.log', { ...environment, BASE_URL: base, SPROUT_UI_EVIDENCE_DIR: titleEvidence }), 300000)
+  assert.equal(titleBrowser.code, 0, `对话标题浏览器流程失败；见 browser-title.log:\n${readFileSync(join(directory, 'browser-title.log'), 'utf8')}`)
+  const titleResults = JSON.parse(readFileSync(join(titleEvidence, 'results.json'), 'utf8'))
+  assert(titleResults.results.every((entry) => entry.passed), '对话标题断言必须全部通过')
+  pass('真实 Chromium 验证标题兜底、重命名、恢复与跨账号隔离', {
+    log: 'browser-title.log',
+    checks: titleResults.results.map((entry) => entry.name),
+    screenshots: `${process.env.SPROUT_UI_EVIDENCE_DIR ?? '.verify/i-chat-title/evidence'}/p4b-chat-title-*.png`,
+  })
 
   const shutdown = await stop(server)
   assert.equal(shutdown.code, 0, '生产进程必须退出 0')

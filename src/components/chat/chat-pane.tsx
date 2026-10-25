@@ -9,8 +9,9 @@ import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
-import { sendMessageFn } from "../../server/functions/chat";
+import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
+import { ChatTitleEditor } from "./chat-title-editor";
 import { useChatDraft } from "./chat-drafts";
 
 /**
@@ -135,6 +136,15 @@ export function ChatPane({
         input.current?.focus();
       }}
       inputRef={input}
+      titleEditor={
+        <ChatTitleEditor
+          chat={chat}
+          currentName={agentName}
+          submit={(title) => updateChatTitleFn({ data: { chatId: chat.id, title } })}
+          restore={() => clearChatTitleFn({ data: { chatId: chat.id } })}
+          onChanged={onChanged}
+        />
+      }
     />
   );
 }
