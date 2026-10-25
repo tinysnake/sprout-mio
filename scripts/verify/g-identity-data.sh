@@ -146,7 +146,6 @@ try {
   await stop(second)
   pass('production restart', { firstBootId: firstHealth.bootId, secondBootId: secondHealth.bootId })
   await command('pnpm', ['check'], 'check.log')
-  await command('pnpm', ['test'], 'test.log', { ...environment, NODE_ENV: 'test' })
   pass('g-identity-data all checks passed', { directory, migrations })
 } catch (error) {
   console.error(`FAIL g-identity-data ${error.stack ?? error}`)

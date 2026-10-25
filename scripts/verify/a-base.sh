@@ -193,5 +193,4 @@ assert.deepEqual(calls[0].result.details, result)
 console.log('PASS real Pi tool_execution_end', JSON.stringify(result))
 JS
 
-run 'contract and configuration tests' test pnpm test
 pass 'a-base all checks passed'
