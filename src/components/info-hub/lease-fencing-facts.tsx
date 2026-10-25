@@ -41,11 +41,14 @@ export function LeaseFencingFacts({
   snapshot,
   submit,
   clock = Date.now,
+  onForced,
 }: {
   lease: LeaseView;
   snapshot?: FencingSnapshot;
   submit?: LeaseMutationHandler;
   clock?: () => number;
+  /** 强制收回成功后，收据要在 fencing 子树卸载后仍可读，因此上报给持久存在的行。 */
+  onForced?: (receipt: LeaseMutationView) => void;
 }) {
   const router = useRouter();
   const [now, setNow] = useState(clock);
@@ -168,6 +171,7 @@ export function LeaseFencingFacts({
       if (result.ok) {
         setReceipt(result.data);
         setForceConfirmed(false);
+        onForced?.(result.data);
         await router.invalidate();
       } else setError(result.error);
     } catch (cause) {
@@ -314,7 +318,8 @@ export function LeaseFencingFacts({
                 )}
                 {receipt && (
                   <p data-testid="lease-fencing-reclaim-receipt" role="status">
-                    收据 {receipt.mutationId} · {receipt.state}；以刷新后的租约事实为准。
+                    收据 {receipt.mutationId} · {receipt.state}；未确认 Worker
+                    排空，旧副作用可能仍在落地。以刷新后的租约事实为准。
                   </p>
                 )}
               </div>
