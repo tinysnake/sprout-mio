@@ -103,12 +103,24 @@ try {
   browser = await chromium.launch(); context = await browser.newContext({viewport:{width:1440,height:1000}});
   await context.addCookies(cookie.split('; ').map(v=>{const i=v.indexOf('=');return {name:v.slice(0,i),value:v.slice(i+1),url:base};}));
   const page = await context.newPage();
+  // Project settings 只给摘要与入口：它的租约管理入口必须深链到 Machine 详情的租约区块。
   await page.goto(`${base}/projects/${projectId}/settings`);
+  assert.equal(await page.getByTestId('lease-mutation-form').count(),0,'no lease mutation form in Project settings');
+  const manageHref = await page.getByTestId('lease-manage-link').first().getAttribute('href');
+  assert.equal(manageHref,`/machines/${machineId}?projectId=${projectId}&lease=1`,'lease entry deep-links to Machine detail');
+  await page.getByTestId('lease-manage-link').first().click();
+  assert.equal(new URL(page.url()).searchParams.get('lease'),'1','deep link keeps lease=1');
+  await page.getByTestId('machine-lease-detail').waitFor();
+  // 深链进入后租约区块获得真实焦点，人不需要自己找。
+  await page.waitForFunction(()=>document.activeElement?.closest('[data-testid="machine-lease-detail"]')!==null,null,{timeout:15000});
+  pass('Project settings lease entry deep-links to the Machine lease block');
+  // Machine 详情页不要求重选目标：目标就是当前这台。
+  assert.equal(await page.getByTestId('machine-lease-section-overview-mutation-machine').count(),0,'no machine picker on the machine page');
+  assert((await page.getByTestId('machine-lease-section-overview-mutation-target').innerText()).includes('Integration Mac'),'fixed target names the current Machine');
   await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await page.getByTestId('info-hub-leases-mutation-submit').click();
-  await until(async () => (await call('getLeaseFn',{projectId,machineId})).lease.state==='held','page acquire via real agent',180000);
-  await page.getByTestId('info-hub-leases-mutation-success').waitFor({timeout:65000});
-  const acquired=(await call('getLeaseFn',{projectId,machineId})).lease;
+  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
+  const acquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'page acquire via real agent',180000);
+  await page.getByTestId('machine-lease-section-overview-mutation-success').waitFor({timeout:65000});
   pass('page acquire -> authenticated Chat -> real Pi lease tool -> held lease');
   await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
   await until(async()=> (await page.getByTestId('machine-lease-detail').innerText()).includes(acquired.holderInstanceId),'Machine lease fact');
@@ -123,6 +135,13 @@ try {
   await page.reload();
   await page.getByTestId('machine-executions-item').waitFor({timeout:15000});
   const visible=await page.getByTestId('machine-executions').innerText(); assert(visible.includes('pid') || visible.includes('运行'));
+  // 命令正文（含绝对路径与可能含密钥的内容）不得进入界面。
+  assert(!visible.includes('integration-proof'),'command body and output are not echoed');
+  assert(!visible.includes(marker),'target path is not echoed');
+  assert(!visible.includes('sleep 900'),'shell command text is not echoed');
+  const authorization=await page.getByTestId('machine-executions-item-authorization').first().innerText();
+  assert(!/ins_[0-9a-f-]{36}/.test(authorization),`holder rendered by name, got ${authorization}`);
+  assert(authorization.includes('由该分身的一次运行发起'),'run is described, not printed as a bare id');
   await page.getByTestId('machine-remote-executions').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'machine-result-light.png'),fullPage:true});
   pass('real remote shell and process result visible on production Machine page');
@@ -152,8 +171,10 @@ try {
   assert((await page.getByTestId('chat-machine-facts').innerText()).includes(acquired.holderInstanceId));
   await page.getByTestId('chat-machine-facts').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'chat-inspector-light.png'),fullPage:true,mask:[page.getByTestId('message-list')]});
-  await page.goto(`${base}/projects/${projectId}/settings`); await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await page.getByTestId('info-hub-leases-mutation-submit').click();
+  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
+  await page.getByTestId('lease-chat-select').selectOption(chatId);
+  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','page release through real agent',180000);
   process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','release preserves private sentinel');
   pass('page release preserves real process and file');
@@ -161,11 +182,12 @@ try {
   await deniedTool(page,chatId,acquired.generation,'lease_stale_generation',join(root,projectId,'stale-must-not-exist'));
   process.kill(pid,0);
   pass('browser Chat request -> real old-generation HTTP rejection and absent sentinel');
-  await page.goto(`${base}/projects/${projectId}/settings`);
+  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await page.getByTestId('info-hub-leases-mutation-submit').click();
+  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   const reacquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'reacquire from page',180000);
-  await page.getByTestId('info-hub-leases-mutation-success').waitFor({timeout:65000});
+  await page.getByTestId('machine-lease-section-overview-mutation-success').waitFor({timeout:65000});
   await settled(chatId);
   await page.getByLabel('交接或收回的 Machine').selectOption(machineId);
   await page.getByLabel('交接目标分身').selectOption(nonHolder.instance.id);

@@ -193,7 +193,9 @@ for (const colorScheme of ["light", "dark"]) {
         assert.match(text, /结果未知或因 Worker 失联 \/ 截止时间结束的记录：0 条/);
         assert.match(text, /现有执行记录未提供 Worker/);
         assert.match(text, /最多 100 条/);
-        assert.doesNotMatch(text, /已排空|已完成收回|成功/);
+        // 不伪造成功态：只是否定式的「不构成…断言」，没有任何一次完成声明。
+        assert.doesNotMatch(text, /已全部排空。|收回已完成|释放已确认|执行成功。/);
+        assert.equal(await fencing.getAttribute("data-lease-state"), "fencing");
         await shoot(page, `fencing-details-${colorScheme}-${width}`);
         await page.keyboard.press("Escape");
         await details.waitFor({ state: "detached" });

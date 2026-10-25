@@ -69,14 +69,7 @@ export function LeaseOverview({
 
   return (
     <section data-testid={testId} className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h4 className={dense ? "text-xs font-medium" : "text-sm font-medium"}>Machine 租约</h4>
-        {!dense && (
-          <span className="text-[0.6875rem] text-muted-foreground">
-            互斥单位是 Project × Machine
-          </span>
-        )}
-      </div>
+      <h4 className={dense ? "text-xs font-medium" : "text-sm font-medium"}>Machine 租约</h4>
       {visible.length === 0 ? (
         <p data-testid={`${testId}-empty`} className="text-xs text-muted-foreground">
           本 Project 还没有租约记录。
@@ -128,7 +121,8 @@ export function LeaseOverview({
                   )}
                 </dd>
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
-                {(!dense || lease.state === "fencing") && (
+                {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。 */}
+                {lease.state !== "fencing" && !dense && (
                   <dd className="text-muted-foreground">{state.detail}</dd>
                 )}
                 {lease.state === "fencing" && (

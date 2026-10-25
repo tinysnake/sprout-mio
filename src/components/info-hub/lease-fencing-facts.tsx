@@ -161,8 +161,8 @@ export function LeaseFencingFacts({
             <DialogHeader>
               <DialogTitle>等待 Worker 确认</DialogTitle>
               <DialogDescription>
-                旧授权的关闸由该 Machine 的 Worker 确认；下面是当前已加载的全部事实，
-                它们不构成“已排空”或“已完成收回”的断言。
+                旧授权的关闸由该 Machine 的 Worker
+                确认。下面是当前已加载的全部事实，不构成“已排空”或“已完成收回”的断言。
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 text-xs leading-6">
@@ -170,7 +170,7 @@ export function LeaseFencingFacts({
                 {fencingWaitLabel(lease.changedAt, now)} · 自 {formatMoment(lease.changedAt)} 起
               </p>
               <p>
-                等待时长无法保证，重连本身不代表已确认；若 Worker 已失联，需要 Human
+                无法保证等待会结束：重连本身不代表已确认；若 Worker 已失联，需要 Human
                 介入才能继续。已启动的进程仍可能继续产生副作用。
               </p>
               <p>被撤权的原持有者仍保留在租约记录中；尚未确认释放或收回。</p>

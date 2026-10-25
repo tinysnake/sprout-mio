@@ -30,6 +30,8 @@ export function ProjectMachinesPanel({
   const bound = machines.filter((detail) =>
     detail.bindings.some(({ intent }) => intent.projectId === projectId),
   );
+  // 每台机器只出现一个管理入口：有租约行的机器在租约摘要里跳转，其余在绑定行里跳转。
+  const leaseMachines = new Set(leases.map((lease) => lease.machineId));
   return (
     <section data-testid="info-hub-project-machines" className="space-y-3">
       <h3 className="text-sm font-medium">Project 的 Machines</h3>
@@ -58,16 +60,21 @@ export function ProjectMachinesPanel({
                     {bindingDirectory(detail.machine.rootDirectory, intent.projectId)}
                   </dd>
                   <dd className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <StatusLine {...status} />
+                    {/* 原因只出现一次：StatusLine 只拿标签与 tone，detail 单独一行。 */}
+                    <StatusLine label={status.label} tone={status.tone} />
                     {status.detail && (
                       <span className="text-muted-foreground">{status.detail}</span>
                     )}
-                    <LeaseManageLink
-                      projectId={projectId}
-                      machineId={detail.machine.id}
-                      machineName={detail.machine.name}
-                    />
                   </dd>
+                  {!leaseMachines.has(detail.machine.id) && (
+                    <dd>
+                      <LeaseManageLink
+                        projectId={projectId}
+                        machineId={detail.machine.id}
+                        machineName={detail.machine.name}
+                      />
+                    </dd>
+                  )}
                 </div>
               );
             }),
