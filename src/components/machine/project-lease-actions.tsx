@@ -6,13 +6,94 @@ import type { Chat } from "../../contracts/chat";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { fail, toAppError } from "../../contracts/result";
 import { listChatsFn, sendMessageFn } from "../../server/functions/chat";
-import { getLeaseRequestFn, reclaimLeaseFn } from "../../server/functions/lease";
+import { getLeaseFn, getLeaseRequestFn, reclaimLeaseFn } from "../../server/functions/lease";
 import type { LeaseMutationHandler } from "./machine-view";
 import { ResultError } from "../project/result-error";
 import { Select } from "../ui/select";
 import { Button } from "../ui/button";
 import type { AppError } from "../../contracts/result";
 import { chatAgentName, type ChatAgent } from "../chat/chat-list";
+
+export const requestProjectLease = async (
+  input: LeaseMutationInput,
+  chatId: string,
+  invalidate: () => Promise<unknown>,
+  now: () => number = Date.now,
+): ReturnType<LeaseMutationHandler> => {
+  if (input.action === "reclaim") {
+    const result = await reclaimLeaseFn({ data: input });
+    await invalidate();
+    return result;
+  }
+  if (!chatId)
+    return fail({
+      code: "validation_failed",
+      message: "请先选择执行租约操作的 Chat",
+      requestId: input.requestId,
+    });
+  const { action, projectId: _projectId, ...parameters } = input;
+  const sent = await sendMessageFn({
+    data: {
+      chatId,
+      body: `请使用 sprout_lease_${action} 工具执行以下租约请求，参数必须保持一致。先读取当前租约，若代次已变化请报告冲突，不要自动重试。只操作这台明确指定的 Machine；不要运行 shell 或修改文件。参数：${JSON.stringify(parameters)}。完成后报告服务端收据。`,
+    },
+  });
+  if (!sent.ok) return sent;
+  const readReceipt = async () => {
+    try {
+      return await getLeaseRequestFn({
+        data: {
+          projectId: input.projectId,
+          machineId: input.machineId,
+          requestId: input.requestId,
+          chatId,
+        },
+      });
+    } catch (cause) {
+      return fail(toAppError(cause, input.requestId));
+    }
+  };
+  const isTemporary = (error: AppError) =>
+    error.code === "internal" || error.code === "too_many_requests";
+  const deadline = now() + 180_000;
+  let delay = 500;
+  while (now() < deadline) {
+    const result = await readReceipt();
+    if (!result.ok && !isTemporary(result.error)) return result;
+    if (result.ok && result.data.mutation) {
+      await invalidate();
+      return { ok: true, data: result.data.mutation, requestId: input.requestId };
+    }
+    const remaining = deadline - now();
+    if (remaining <= 0) break;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(delay, remaining)));
+    delay = Math.min(delay * 2, 2000);
+  }
+  // A slow agent may commit between the last poll and the deadline. Reconcile both
+  // current lease and this action's receipt before reporting an unknown outcome.
+  try {
+    const lease = await getLeaseFn({
+      data: { projectId: input.projectId, machineId: input.machineId },
+    });
+    if (!lease.ok && !isTemporary(lease.error)) return lease;
+  } catch (cause) {
+    const error = toAppError(cause, input.requestId);
+    if (!isTemporary(error)) return fail(error);
+  }
+  const final = await readReceipt();
+  if (!final.ok && !isTemporary(final.error)) return final;
+  await invalidate();
+  if (final.ok && final.data.mutation)
+    return { ok: true, data: final.data.mutation, requestId: input.requestId };
+  return fail({
+    code: "lease_result_unconfirmed",
+    message:
+      "请求已发送，结果未确认。请打开所选 Chat 核对服务端租约收据，动作 requestId：" +
+      input.requestId +
+      "。重新操作前请刷新租约。",
+    requestId: input.requestId,
+  });
+};
 
 export function holderNames(info: ProjectInfoHub): Record<string, string> {
   return Object.fromEntries(
@@ -72,50 +153,8 @@ export function ProjectLeaseActions({
     };
   }, [info.projectId]);
 
-  const mutate: LeaseMutationHandler = async (input) => {
-    if (input.action === "reclaim") {
-      const result = await reclaimLeaseFn({ data: input });
-      await router.invalidate();
-      return result;
-    }
-    if (!chatId)
-      return fail({
-        code: "validation_failed",
-        message: "请先选择执行租约操作的 Chat",
-        requestId: input.requestId,
-      });
-    const { action, projectId: _projectId, ...parameters } = input;
-    const sent = await sendMessageFn({
-      data: {
-        chatId,
-        body: `请使用 sprout_lease_${action} 工具执行以下租约请求，参数必须保持一致。先读取当前租约，若代次已变化请报告冲突，不要自动重试。只操作这台明确指定的 Machine；不要运行 shell 或修改文件。参数：${JSON.stringify(parameters)}。完成后报告服务端收据。`,
-      },
-    });
-    if (!sent.ok) return sent;
-    for (let attempt = 0; attempt < 55; attempt += 1) {
-      const result = await getLeaseRequestFn({
-        data: {
-          projectId: input.projectId,
-          machineId: input.machineId,
-          requestId: input.requestId,
-          chatId,
-        },
-      });
-      if (!result.ok) return result;
-      if (result.data.mutation) {
-        await router.invalidate();
-        return { ok: true, data: result.data.mutation, requestId: result.requestId };
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-    await router.invalidate();
-    return fail({
-      code: "conflict",
-      message:
-        "请求已发送，尚未收到租约收据。请打开所选 Chat 查看分身处理结果，重新操作前刷新租约。",
-      requestId: sent.requestId,
-    });
-  };
+  const mutate: LeaseMutationHandler = (input) =>
+    requestProjectLease(input, chatId, () => router.invalidate());
 
   async function extra(action: "reclaim" | "handoff") {
     const lease = info.leases.items.find((item) => item.machineId === machineId);

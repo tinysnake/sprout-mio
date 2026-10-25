@@ -296,6 +296,16 @@ try {
   } catch {}
   console.error(error instanceof Error ? error.message : 'verification failure'); process.exitCode=1;
 } finally {
+  // Safe latency evidence only: never export sessions, credentials or operation content.
+  if (existsSync(env.DATABASE_URL)) {
+    const timingDb = new Sqlite(env.DATABASE_URL, { readonly: true });
+    try {
+      const runs = timingDb.prepare('SELECT status, queued_at AS queuedAt, settled_at AS settledAt, (settled_at - queued_at) * 1000 AS elapsedMs FROM agent_run ORDER BY queued_at').all();
+      const mutations = timingDb.prepare('SELECT action, state, (completed_at - created_at) * 1000 AS elapsedMs FROM lease_mutation ORDER BY created_at').all();
+      writeFileSync(join(evidence, 'timings.json'), JSON.stringify({ runs, mutations }, null, 2));
+      console.log(`TIMING queuedAt-to-settledAt ${JSON.stringify(runs)}`);
+    } catch { console.log('TIMING unavailable'); } finally { timingDb.close(); }
+  }
   await browser?.close();
   if(cleanupPid) {try { process.kill(-cleanupPid,'SIGTERM'); } catch {}}
   for(const child of children.reverse()) if(child.exitCode===null) child.kill('SIGTERM');

@@ -10,6 +10,7 @@ export const APP_ERROR_CODES = [
   "too_many_requests",
   "internal",
   "lease_conflict",
+  "lease_result_unconfirmed",
   "lease_not_holder",
   "lease_stale_generation",
   "lease_fencing",

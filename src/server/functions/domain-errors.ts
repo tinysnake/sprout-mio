@@ -1,7 +1,10 @@
 import { APP_ERROR_CODES } from "../../contracts/result";
 import type { AppError, AppErrorCode } from "../../contracts/result";
 
-/** 领域错误按原码透出；`internal` 只留给真正的未知错误。 */
+/** 领域错误按原码透出；`internal` 只留给真正的未知错误。
+ * `lease_result_unconfirmed` 是客户端等待收据的状态，同样由共享枚举登记，
+ * 不代表服务端租约冲突或执行失败。
+ */
 type DomainErrorCode = AppErrorCode;
 type DomainErrorClass = abstract new (...args: never[]) => Error & {
   code: string;
