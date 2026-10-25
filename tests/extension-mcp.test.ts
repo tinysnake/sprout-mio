@@ -101,6 +101,8 @@ class Channel implements RemoteToolClient {
     { name: "echo", description: "回显", inputSchema: { type: "object", properties: {} } },
     { name: "add", description: "相加", inputSchema: { type: "object", properties: {} } },
   ];
+  /** 通道建立了多少次 server 会话：用来证明 refresh 不重连。 */
+  opens = 0;
   private attached = true;
   private confirmed = false;
   private protocolVersion: string | null = null;
@@ -175,6 +177,7 @@ class Channel implements RemoteToolClient {
     if (this.options.deny) return denial(this.options.deny);
     switch (call.type) {
       case "mcp_session_open":
+        this.opens += 1;
         this.attached = this.options.attach ?? true;
         return accept({ session: this.session() });
       case "mcp_session_close":
@@ -481,6 +484,64 @@ describe("远端 MCP 工具面", () => {
     expect(failed.isError).toBe(true);
   });
 
+  it("图片块原样透传成 Pi 的 ImageContent，structuredContent 留在 details", async () => {
+    const piMcp = await loadPiMcp();
+    const registered = new Map<string, Parameters<SproutExtensionAPI["registerTool"]>[0]>();
+    // 真实 server 的形状：get-tiny-image 回 [text, image, text]，structuredContent 独立。
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    registerMcpTools({ registerTool: (tool) => registered.set(tool.name, tool) }, piMcp, {
+      registration,
+      transport: {} as never,
+      client: {
+        callTool: async () => ({
+          content: [
+            { type: "text", text: "Here is the image:" },
+            { type: "image", data: png, mimeType: "image/png" },
+            { type: "text", text: "done" },
+          ],
+          structuredContent: { ok: true, n: 42 },
+        }),
+      } as never,
+      tools: [{ name: "alpha", inputSchema: { type: "object", properties: {} } }],
+      close: async () => undefined,
+    });
+    const result = await registered.get("mcp__everything__alpha")!.execute("probe", {}, undefined);
+    // 断言行为，不是断言实现：图片就是图片块，字节与 mimeType 原样。
+    expect(result.content.map((block) => block.type)).toEqual(["text", "image", "text"]);
+    expect(result.content[1]).toEqual({ type: "image", data: png, mimeType: "image/png" });
+    expect(result.details.structuredContent).toEqual({ ok: true, n: 42 });
+  });
+
+  it("audio、二进制 resource 与 resource_link 沿用占位文本，不被当成图片", async () => {
+    const piMcp = await loadPiMcp();
+    const registered = new Map<string, Parameters<SproutExtensionAPI["registerTool"]>[0]>();
+    registerMcpTools({ registerTool: (tool) => registered.set(tool.name, tool) }, piMcp, {
+      registration,
+      transport: {} as never,
+      client: {
+        callTool: async () => ({
+          content: [
+            { type: "audio", data: "AAAA", mimeType: "audio/wav" },
+            { type: "resource_link", uri: "res://a", name: "a" },
+            {
+              type: "resource",
+              resource: { uri: "res://b", mimeType: "application/pdf", blob: "BBBB" },
+            },
+          ],
+        }),
+      } as never,
+      tools: [{ name: "alpha", inputSchema: { type: "object", properties: {} } }],
+      close: async () => undefined,
+    });
+    const result = await registered.get("mcp__everything__alpha")!.execute("probe", {}, undefined);
+    expect(result.content.every((block) => block.type === "text")).toBe(true);
+    const texts = result.content.map((block) => (block as { text: string }).text);
+    expect(texts[0]).toContain("audio/wav");
+    expect(texts[1]).toContain("res://a");
+    expect(texts[2]).toContain("application/pdf");
+  });
+
   it("stillAllowed 为假时不再把同一 session 当作可用通道", async () => {
     const piMcp = await loadPiMcp();
     const registered = new Map<string, Parameters<SproutExtensionAPI["registerTool"]>[0]>();
@@ -570,6 +631,108 @@ describe("session_start 接线", () => {
     await started[0]!();
     // 「unstarted」没有 running process，不得被连上，也不得出现在工具面。
     expect(extension.tools).toEqual(["mcp__everything__echo", "mcp__everything__add"]);
+    await extension.close();
+  });
+
+  it("refresh 复用同一 process identity 的连接，并把 list_changed 的新工具再列一遍", async () => {
+    const piMcp = await loadPiMcp();
+    const channel = new Channel();
+    const registered = new Map<string, Parameters<SproutExtensionAPI["registerTool"]>[0]>();
+    const { registerSproutMcp } = await import("../src/extension/mcp-extension");
+    const catalogView = {
+      registrations: [
+        {
+          registrationId,
+          registrationRevision: 1,
+          projectId,
+          machineId,
+          name: "everything",
+          transport: "stdio",
+          configHash: "a".repeat(64),
+          exposure: "wire",
+          requestTimeoutMs: 120_000,
+          roots: [],
+          exposeSampling: false,
+          elicitation: "absent",
+          processes: [{ processId, workerIncarnationId: incarnationId, lastObservedAt: now }],
+        },
+      ],
+    };
+    const remote: RemoteToolClient = {
+      projectId,
+      request: async (request) =>
+        request.call.type === "mcp_catalog_get" ? accept(catalogView) : channel.request(request),
+    };
+    const extension = await registerSproutMcp(
+      {
+        registerTool: (tool) => registered.set(tool.name, tool),
+        on: () => undefined,
+      },
+      { remote, machineId, authorizationGeneration: () => 1, piMcp, holdMs: 100 },
+    );
+
+    await extension.refresh();
+    expect(extension.tools).toEqual(["mcp__everything__echo", "mcp__everything__add"]);
+    expect(channel.opens).toBe(1);
+
+    // server 侧真的加了工具并发 list_changed（与 B2 的症状同形）。
+    channel.tools.push({
+      name: "added-1",
+      description: "后加的",
+      inputSchema: { type: "object", properties: {} },
+    });
+    channel.publish({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
+    await waitFor(() => registered.has("mcp__everything__added-1"));
+    expect(extension.tools).toContain("mcp__everything__added-1");
+
+    // 再显式 refresh：必须复用同一条连接，不得重开 server 会话（重连会把新工具丢掉）。
+    await extension.refresh();
+    expect(channel.opens).toBe(1);
+    expect(extension.tools).toContain("mcp__everything__added-1");
+    await extension.close();
+  });
+
+  it("process identity 变了就断开旧连接，不改投新目标", async () => {
+    const piMcp = await loadPiMcp();
+    const channel = new Channel();
+    const { registerSproutMcp } = await import("../src/extension/mcp-extension");
+    let currentProcess = processId;
+    const catalogView = () => ({
+      registrations: [
+        {
+          registrationId,
+          registrationRevision: 1,
+          projectId,
+          machineId,
+          name: "everything",
+          transport: "stdio",
+          configHash: "a".repeat(64),
+          exposure: "wire",
+          requestTimeoutMs: 120_000,
+          roots: [],
+          exposeSampling: false,
+          elicitation: "absent",
+          processes: [
+            { processId: currentProcess, workerIncarnationId: incarnationId, lastObservedAt: now },
+          ],
+        },
+      ],
+    });
+    const remote: RemoteToolClient = {
+      projectId,
+      request: async (request) =>
+        request.call.type === "mcp_catalog_get" ? accept(catalogView()) : channel.request(request),
+    };
+    const extension = await registerSproutMcp(
+      { registerTool: () => undefined, on: () => undefined },
+      { remote, machineId, authorizationGeneration: () => 1, piMcp, holdMs: 100 },
+    );
+    await extension.refresh();
+    expect(channel.opens).toBe(1);
+    // 目标换了：必须新建连接（旧连接的目标已消失，不能沿用）。
+    currentProcess = newId(ID_PREFIXES.mcpProcess);
+    await extension.refresh();
+    expect(channel.opens).toBe(2);
     await extension.close();
   });
 
