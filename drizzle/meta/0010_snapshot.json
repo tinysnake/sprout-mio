@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "7cc37bed-91ea-437d-97d8-5795b8ddb7c8",
+  "id": "75147c56-b764-46f3-ae3f-d96f97a3010f",
   "prevId": "5b083bec-e8aa-41a8-bd96-dce5ba52f44e",
   "tables": {
     "agent_instance": {
@@ -1953,6 +1953,41 @@
           "notNull": true,
           "autoincrement": false
         },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "machine_id": {
+          "name": "machine_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "authorization_generation": {
+          "name": "authorization_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "holder_instance_id": {
+          "name": "holder_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "process_id": {
+          "name": "process_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "direction": {
           "name": "direction",
           "type": "text",
@@ -2023,8 +2058,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "terminal_reason": {
-          "name": "terminal_reason",
+        "disposition_reason": {
+          "name": "disposition_reason",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -2043,15 +2078,25 @@
         }
       },
       "foreignKeys": {
-        "mcp_frame_session_id_mcp_session_id_fk": {
-          "name": "mcp_frame_session_id_mcp_session_id_fk",
+        "mcp_frame_session_id_project_id_machine_id_authorization_generation_holder_instance_id_process_id_mcp_session_id_project_id_machine_id_authorization_generation_holder_instance_id_process_id_fk": {
+          "name": "mcp_frame_session_id_project_id_machine_id_authorization_generation_holder_instance_id_process_id_mcp_session_id_project_id_machine_id_authorization_generation_holder_instance_id_process_id_fk",
           "tableFrom": "mcp_frame",
           "tableTo": "mcp_session",
           "columnsFrom": [
-            "session_id"
+            "session_id",
+            "project_id",
+            "machine_id",
+            "authorization_generation",
+            "holder_instance_id",
+            "process_id"
           ],
           "columnsTo": [
-            "id"
+            "id",
+            "project_id",
+            "machine_id",
+            "authorization_generation",
+            "holder_instance_id",
+            "process_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -2060,13 +2105,33 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "mcp_seq_integer": {
-          "name": "mcp_seq_integer",
-          "value": "typeof(seq)='integer' AND seq BETWEEN 1 AND 9007199254740991"
+        "mcp_authorization_generation_integer": {
+          "name": "mcp_authorization_generation_integer",
+          "value": "typeof(authorization_generation)='integer' AND authorization_generation BETWEEN 0 AND 9007199254740991"
         },
         "mcp_created_at_integer": {
           "name": "mcp_created_at_integer",
           "value": "typeof(created_at)='integer' AND created_at BETWEEN 0 AND 9007199254740991"
+        },
+        "mcp_expires_at_integer": {
+          "name": "mcp_expires_at_integer",
+          "value": "typeof(expires_at)='integer' AND expires_at BETWEEN 0 AND 9007199254740991"
+        },
+        "mcp_seq_integer": {
+          "name": "mcp_seq_integer",
+          "value": "typeof(seq)='integer' AND seq BETWEEN 1 AND 9007199254740991"
+        },
+        "mcp_payload_bytes_integer": {
+          "name": "mcp_payload_bytes_integer",
+          "value": "typeof(payload_bytes)='integer' AND payload_bytes BETWEEN 1 AND 9007199254740991"
+        },
+        "mcp_sent_at_integer": {
+          "name": "mcp_sent_at_integer",
+          "value": "sent_at IS NULL OR (typeof(sent_at)='integer' AND sent_at BETWEEN 0 AND 9007199254740991)"
+        },
+        "mcp_terminal_at_integer": {
+          "name": "mcp_terminal_at_integer",
+          "value": "terminal_at IS NULL OR (typeof(terminal_at)='integer' AND terminal_at BETWEEN 0 AND 9007199254740991)"
         },
         "mcp_payload_hash_hash": {
           "name": "mcp_payload_hash_hash",
@@ -2078,31 +2143,43 @@
         },
         "mcp_frame_state": {
           "name": "mcp_frame_state",
-          "value": "state IN ('queued','sent','acked','cancelled','dropped')"
+          "value": "state IN ('queued','sent','acked','dropped','unknown')"
         },
         "mcp_frame_bytes": {
           "name": "mcp_frame_bytes",
-          "value": "typeof(payload_bytes)='integer' AND payload_bytes BETWEEN 1 AND 131072"
+          "value": "payload_bytes BETWEEN 1 AND 131072"
         },
         "mcp_frame_base64": {
           "name": "mcp_frame_base64",
           "value": "payload_base64 IS NULL OR (length(payload_base64) BETWEEN 4 AND 174764 AND length(payload_base64)%4=0 AND payload_base64 NOT GLOB '*[^A-Za-z0-9+/=]*')"
         },
+        "mcp_frame_payload_live": {
+          "name": "mcp_frame_payload_live",
+          "value": "state NOT IN ('queued','sent') OR payload_base64 IS NOT NULL"
+        },
         "mcp_frame_expires": {
           "name": "mcp_frame_expires",
-          "value": "typeof(expires_at)='integer' AND expires_at>created_at"
+          "value": "expires_at>created_at"
         },
         "mcp_frame_sent_at": {
           "name": "mcp_frame_sent_at",
-          "value": "sent_at IS NULL OR (typeof(sent_at)='integer' AND sent_at>=created_at)"
-        },
-        "mcp_frame_terminal_at": {
-          "name": "mcp_frame_terminal_at",
-          "value": "terminal_at IS NULL OR (typeof(terminal_at)='integer' AND terminal_at>=created_at)"
+          "value": "sent_at IS NULL OR sent_at>=created_at"
         },
         "mcp_frame_lifecycle": {
           "name": "mcp_frame_lifecycle",
-          "value": "(state='queued' AND payload_base64 IS NOT NULL AND sent_at IS NULL AND terminal_at IS NULL AND terminal_reason IS NULL) OR\n    (state='sent' AND payload_base64 IS NOT NULL AND sent_at IS NOT NULL AND terminal_at IS NULL AND terminal_reason IS NULL) OR\n    (state='acked' AND sent_at IS NOT NULL AND terminal_at IS NOT NULL AND terminal_reason IS NULL) OR\n    (state IN ('cancelled','dropped') AND terminal_at IS NOT NULL AND terminal_reason IS NOT NULL AND length(terminal_reason) BETWEEN 1 AND 128)"
+          "value": "(state IN ('queued','sent') AND terminal_at IS NULL AND disposition_reason IS NULL) OR (state='acked' AND terminal_at IS NOT NULL AND disposition_reason IS NULL) OR (state IN ('dropped','unknown') AND terminal_at IS NOT NULL AND disposition_reason IS NOT NULL)"
+        },
+        "mcp_frame_disposition": {
+          "name": "mcp_frame_disposition",
+          "value": "disposition_reason IS NULL OR disposition_reason IN ('authorization_revoked','expired','client_closed','worker_lost','overflow','transport_error')"
+        },
+        "mcp_frame_queued": {
+          "name": "mcp_frame_queued",
+          "value": "state<>'queued' OR sent_at IS NULL"
+        },
+        "mcp_frame_sent": {
+          "name": "mcp_frame_sent",
+          "value": "state NOT IN ('sent','acked') OR sent_at IS NOT NULL"
         }
       }
     },
@@ -2116,20 +2193,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "machine_id": {
-          "name": "machine_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "registration_id": {
           "name": "registration_id",
           "type": "text",
@@ -2140,6 +2203,20 @@
         "registration_revision": {
           "name": "registration_revision",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "machine_id": {
+          "name": "machine_id",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -2172,15 +2249,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "pid": {
           "name": "pid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "process_started_at": {
+          "name": "process_started_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -2193,8 +2270,29 @@
           "notNull": false,
           "autoincrement": false
         },
-        "started_at": {
-          "name": "started_at",
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state_revision": {
+          "name": "state_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state_hash": {
+          "name": "state_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -2214,46 +2312,31 @@
           "notNull": false,
           "autoincrement": false
         },
-        "stop_reason": {
-          "name": "stop_reason",
-          "type": "text",
+        "exit_code": {
+          "name": "exit_code",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "state_revision": {
-          "name": "state_revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "state_hash": {
-          "name": "state_hash",
+        "end_reason": {
+          "name": "end_reason",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         }
       },
       "indexes": {
-        "mcp_process_launch_unique": {
-          "name": "mcp_process_launch_unique",
-          "columns": [
-            "machine_id",
-            "worker_incarnation_id",
-            "launch_nonce"
-          ],
-          "isUnique": true
-        },
         "mcp_process_session_identity_unique": {
           "name": "mcp_process_session_identity_unique",
           "columns": [
             "id",
-            "project_id",
-            "machine_id",
             "registration_id",
             "registration_revision",
+            "project_id",
+            "machine_id",
+            "transport",
             "worker_incarnation_id"
           ],
           "isUnique": true
@@ -2291,9 +2374,13 @@
           "name": "mcp_state_revision_integer",
           "value": "typeof(state_revision)='integer' AND state_revision BETWEEN 1 AND 9007199254740991"
         },
-        "mcp_started_at_integer": {
-          "name": "mcp_started_at_integer",
-          "value": "typeof(started_at)='integer' AND started_at BETWEEN 0 AND 9007199254740991"
+        "mcp_created_at_integer": {
+          "name": "mcp_created_at_integer",
+          "value": "typeof(created_at)='integer' AND created_at BETWEEN 0 AND 9007199254740991"
+        },
+        "mcp_last_observed_at_integer": {
+          "name": "mcp_last_observed_at_integer",
+          "value": "typeof(last_observed_at)='integer' AND last_observed_at BETWEEN 0 AND 9007199254740991"
         },
         "mcp_state_hash_hash": {
           "name": "mcp_state_hash_hash",
@@ -2303,25 +2390,45 @@
           "name": "mcp_config_hash_hash",
           "value": "length(config_hash)=64 AND config_hash NOT GLOB '*[^0-9a-f]*'"
         },
+        "mcp_process_started_at_integer": {
+          "name": "mcp_process_started_at_integer",
+          "value": "process_started_at IS NULL OR (typeof(process_started_at)='integer' AND process_started_at BETWEEN 0 AND 9007199254740991)"
+        },
+        "mcp_ended_at_integer": {
+          "name": "mcp_ended_at_integer",
+          "value": "ended_at IS NULL OR (typeof(ended_at)='integer' AND ended_at BETWEEN 0 AND 9007199254740991)"
+        },
+        "mcp_process_pid": {
+          "name": "mcp_process_pid",
+          "value": "pid IS NULL OR (typeof(pid)='integer' AND pid BETWEEN 1 AND 9007199254740991)"
+        },
+        "mcp_process_exit_code": {
+          "name": "mcp_process_exit_code",
+          "value": "exit_code IS NULL OR (typeof(exit_code)='integer' AND exit_code BETWEEN -9007199254740991 AND 9007199254740991)"
+        },
         "mcp_process_transport": {
           "name": "mcp_process_transport",
           "value": "transport IN ('stdio','streamableHttp')"
         },
         "mcp_process_state": {
           "name": "mcp_process_state",
-          "value": "state IN ('starting','running','stopping','stopped','failed','lost')"
+          "value": "state IN ('starting','running','stopping','exited','failed','lost')"
         },
-        "mcp_process_pid": {
-          "name": "mcp_process_pid",
-          "value": "pid IS NULL OR (typeof(pid)='integer' AND pid BETWEEN 1 AND 2147483647)"
+        "mcp_process_endpoint": {
+          "name": "mcp_process_endpoint",
+          "value": "transport='streamableHttp' OR endpoint IS NULL"
         },
-        "mcp_process_observed_at": {
-          "name": "mcp_process_observed_at",
-          "value": "typeof(last_observed_at)='integer' AND last_observed_at>=started_at"
+        "mcp_process_running": {
+          "name": "mcp_process_running",
+          "value": "state<>'running' OR (pid IS NOT NULL OR (transport='streamableHttp' AND endpoint IS NOT NULL))"
         },
         "mcp_process_lifecycle": {
           "name": "mcp_process_lifecycle",
-          "value": "(state='starting' AND ended_at IS NULL AND stop_reason IS NULL) OR\n    (state='running' AND ended_at IS NULL AND stop_reason IS NULL AND\n      ((transport='stdio' AND pid IS NOT NULL AND endpoint IS NULL) OR (transport='streamableHttp' AND endpoint IS NOT NULL))) OR\n    (state IN ('stopped','failed','lost') AND ended_at IS NOT NULL AND typeof(ended_at)='integer' AND ended_at>=started_at AND stop_reason IS NOT NULL AND length(stop_reason) BETWEEN 1 AND 128)"
+          "value": "(state IN ('starting','running') AND ended_at IS NULL AND end_reason IS NULL AND exit_code IS NULL) OR (state IN ('exited','failed','lost') AND ended_at IS NOT NULL AND end_reason IS NOT NULL)"
+        },
+        "mcp_process_end_reason": {
+          "name": "mcp_process_end_reason",
+          "value": "end_reason IS NULL OR end_reason IN ('owner_stopped','spawn_failed','exited','crashed','unreachable','worker_lost','config_retired')"
         }
       }
     },
@@ -2516,6 +2623,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "process_id": {
+          "name": "process_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "project_id": {
           "name": "project_id",
           "type": "text",
@@ -2544,8 +2658,36 @@
           "notNull": true,
           "autoincrement": false
         },
-        "process_id": {
-          "name": "process_id",
+        "transport": {
+          "name": "transport",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "config_hash": {
+          "name": "config_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "worker_incarnation_id": {
+          "name": "worker_incarnation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "holder_instance_id": {
+          "name": "holder_instance_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -2558,22 +2700,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "holder_instance_id": {
-          "name": "holder_instance_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "grant_id": {
           "name": "grant_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "run_id": {
-          "name": "run_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -2593,46 +2721,11 @@
           "notNull": true,
           "autoincrement": false
         },
-        "open_fingerprint": {
-          "name": "open_fingerprint",
+        "open_hash": {
+          "name": "open_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "worker_boot_id": {
-          "name": "worker_boot_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "worker_connection_generation": {
-          "name": "worker_connection_generation",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "worker_attempt_id": {
-          "name": "worker_attempt_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "worker_incarnation_id": {
-          "name": "worker_incarnation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "protocol_version": {
-          "name": "protocol_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "state": {
@@ -2642,13 +2735,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -2656,39 +2742,39 @@
           "notNull": true,
           "autoincrement": false
         },
-        "initialized_at": {
-          "name": "initialized_at",
+        "attached_at": {
+          "name": "attached_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "closed_at": {
-          "name": "closed_at",
+        "connected_at": {
+          "name": "connected_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "host_ack_server_seq": {
-          "name": "host_ack_server_seq",
+        "ended_at": {
+          "name": "ended_at",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "client_accepted_through": {
-          "name": "client_accepted_through",
-          "type": "integer",
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
-        "server_accepted_through": {
-          "name": "server_accepted_through",
-          "type": "integer",
+        "protocol_version": {
+          "name": "protocol_version",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "client_high_water": {
@@ -2698,8 +2784,22 @@
           "notNull": true,
           "autoincrement": false
         },
+        "worker_ack_client_seq": {
+          "name": "worker_ack_client_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "server_high_water": {
           "name": "server_high_water",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "host_ack_server_seq": {
+          "name": "host_ack_server_seq",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -2718,6 +2818,41 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "worker_detached_at": {
+          "name": "worker_detached_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fence_mutation_id": {
+          "name": "fence_mutation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "worker_connection_generation": {
+          "name": "worker_connection_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "server_boot_id": {
+          "name": "server_boot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "worker_attempt_id": {
+          "name": "worker_attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -2735,59 +2870,111 @@
             "process_id"
           ],
           "isUnique": true
+        },
+        "mcp_session_frame_identity_unique": {
+          "name": "mcp_session_frame_identity_unique",
+          "columns": [
+            "id",
+            "project_id",
+            "machine_id",
+            "authorization_generation",
+            "holder_instance_id",
+            "process_id"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {
-        "mcp_session_process_id_project_id_machine_id_registration_id_registration_revision_worker_incarnation_id_mcp_server_process_id_project_id_machine_id_registration_id_registration_revision_worker_incarnation_id_fk": {
-          "name": "mcp_session_process_id_project_id_machine_id_registration_id_registration_revision_worker_incarnation_id_mcp_server_process_id_project_id_machine_id_registration_id_registration_revision_worker_incarnation_id_fk",
+        "mcp_session_process_id_registration_id_registration_revision_project_id_machine_id_transport_worker_incarnation_id_mcp_server_process_id_registration_id_registration_revision_project_id_machine_id_transport_worker_incarnation_id_fk": {
+          "name": "mcp_session_process_id_registration_id_registration_revision_project_id_machine_id_transport_worker_incarnation_id_mcp_server_process_id_registration_id_registration_revision_project_id_machine_id_transport_worker_incarnation_id_fk",
           "tableFrom": "mcp_session",
           "tableTo": "mcp_server_process",
           "columnsFrom": [
             "process_id",
-            "project_id",
-            "machine_id",
             "registration_id",
             "registration_revision",
+            "project_id",
+            "machine_id",
+            "transport",
             "worker_incarnation_id"
           ],
           "columnsTo": [
             "id",
-            "project_id",
-            "machine_id",
             "registration_id",
             "registration_revision",
+            "project_id",
+            "machine_id",
+            "transport",
             "worker_incarnation_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "mcp_session_project_id_machine_id_authorization_generation_holder_instance_id_lease_authorization_project_id_machine_id_generation_holder_instance_id_fk": {
-          "name": "mcp_session_project_id_machine_id_authorization_generation_holder_instance_id_lease_authorization_project_id_machine_id_generation_holder_instance_id_fk",
+        "mcp_session_project_id_machine_id_authorization_generation_lease_authorization_project_id_machine_id_generation_fk": {
+          "name": "mcp_session_project_id_machine_id_authorization_generation_lease_authorization_project_id_machine_id_generation_fk",
           "tableFrom": "mcp_session",
           "tableTo": "lease_authorization",
           "columnsFrom": [
             "project_id",
             "machine_id",
-            "authorization_generation",
-            "holder_instance_id"
+            "authorization_generation"
           ],
           "columnsTo": [
             "project_id",
             "machine_id",
-            "generation",
-            "holder_instance_id"
+            "generation"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "mcp_session_machine_id_worker_connection_generation_worker_boot_id_worker_attempt_id_machine_connection_machine_id_generation_boot_id_attempt_id_fk": {
-          "name": "mcp_session_machine_id_worker_connection_generation_worker_boot_id_worker_attempt_id_machine_connection_machine_id_generation_boot_id_attempt_id_fk",
+        "mcp_session_run_id_holder_instance_id_project_id_chat_id_agent_run_id_instance_id_project_id_chat_id_fk": {
+          "name": "mcp_session_run_id_holder_instance_id_project_id_chat_id_agent_run_id_instance_id_project_id_chat_id_fk",
+          "tableFrom": "mcp_session",
+          "tableTo": "agent_run",
+          "columnsFrom": [
+            "run_id",
+            "holder_instance_id",
+            "project_id",
+            "chat_id"
+          ],
+          "columnsTo": [
+            "id",
+            "instance_id",
+            "project_id",
+            "chat_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mcp_session_grant_id_run_id_holder_instance_id_project_id_chat_id_remote_tool_grant_id_run_id_instance_id_project_id_chat_id_fk": {
+          "name": "mcp_session_grant_id_run_id_holder_instance_id_project_id_chat_id_remote_tool_grant_id_run_id_instance_id_project_id_chat_id_fk",
+          "tableFrom": "mcp_session",
+          "tableTo": "remote_tool_grant",
+          "columnsFrom": [
+            "grant_id",
+            "run_id",
+            "holder_instance_id",
+            "project_id",
+            "chat_id"
+          ],
+          "columnsTo": [
+            "id",
+            "run_id",
+            "instance_id",
+            "project_id",
+            "chat_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "mcp_session_machine_id_worker_connection_generation_server_boot_id_worker_attempt_id_machine_connection_machine_id_generation_boot_id_attempt_id_fk": {
+          "name": "mcp_session_machine_id_worker_connection_generation_server_boot_id_worker_attempt_id_machine_connection_machine_id_generation_boot_id_attempt_id_fk",
           "tableFrom": "mcp_session",
           "tableTo": "machine_connection",
           "columnsFrom": [
             "machine_id",
             "worker_connection_generation",
-            "worker_boot_id",
+            "server_boot_id",
             "worker_attempt_id"
           ],
           "columnsTo": [
@@ -2795,27 +2982,6 @@
             "generation",
             "boot_id",
             "attempt_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "mcp_session_grant_id_project_id_holder_instance_id_run_id_chat_id_remote_tool_grant_id_project_id_instance_id_run_id_chat_id_fk": {
-          "name": "mcp_session_grant_id_project_id_holder_instance_id_run_id_chat_id_remote_tool_grant_id_project_id_instance_id_run_id_chat_id_fk",
-          "tableFrom": "mcp_session",
-          "tableTo": "remote_tool_grant",
-          "columnsFrom": [
-            "grant_id",
-            "project_id",
-            "holder_instance_id",
-            "run_id",
-            "chat_id"
-          ],
-          "columnsTo": [
-            "id",
-            "project_id",
-            "instance_id",
-            "run_id",
-            "chat_id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -2828,73 +2994,105 @@
           "name": "mcp_registration_revision_integer",
           "value": "typeof(registration_revision)='integer' AND registration_revision BETWEEN 1 AND 9007199254740991"
         },
-        "mcp_authorization_generation_integer": {
-          "name": "mcp_authorization_generation_integer",
-          "value": "typeof(authorization_generation)='integer' AND authorization_generation BETWEEN 1 AND 9007199254740991"
-        },
         "mcp_worker_connection_generation_integer": {
           "name": "mcp_worker_connection_generation_integer",
           "value": "typeof(worker_connection_generation)='integer' AND worker_connection_generation BETWEEN 1 AND 9007199254740991"
+        },
+        "mcp_authorization_generation_integer": {
+          "name": "mcp_authorization_generation_integer",
+          "value": "typeof(authorization_generation)='integer' AND authorization_generation BETWEEN 0 AND 9007199254740991"
         },
         "mcp_created_at_integer": {
           "name": "mcp_created_at_integer",
           "value": "typeof(created_at)='integer' AND created_at BETWEEN 0 AND 9007199254740991"
         },
-        "mcp_host_ack_server_seq_integer": {
-          "name": "mcp_host_ack_server_seq_integer",
-          "value": "typeof(host_ack_server_seq)='integer' AND host_ack_server_seq BETWEEN 0 AND 9007199254740991"
-        },
-        "mcp_client_accepted_through_integer": {
-          "name": "mcp_client_accepted_through_integer",
-          "value": "typeof(client_accepted_through)='integer' AND client_accepted_through BETWEEN 0 AND 9007199254740991"
-        },
-        "mcp_server_accepted_through_integer": {
-          "name": "mcp_server_accepted_through_integer",
-          "value": "typeof(server_accepted_through)='integer' AND server_accepted_through BETWEEN 0 AND 9007199254740991"
-        },
         "mcp_client_high_water_integer": {
           "name": "mcp_client_high_water_integer",
           "value": "typeof(client_high_water)='integer' AND client_high_water BETWEEN 0 AND 9007199254740991"
+        },
+        "mcp_worker_ack_client_seq_integer": {
+          "name": "mcp_worker_ack_client_seq_integer",
+          "value": "typeof(worker_ack_client_seq)='integer' AND worker_ack_client_seq BETWEEN 0 AND 9007199254740991"
         },
         "mcp_server_high_water_integer": {
           "name": "mcp_server_high_water_integer",
           "value": "typeof(server_high_water)='integer' AND server_high_water BETWEEN 0 AND 9007199254740991"
         },
+        "mcp_host_ack_server_seq_integer": {
+          "name": "mcp_host_ack_server_seq_integer",
+          "value": "typeof(host_ack_server_seq)='integer' AND host_ack_server_seq BETWEEN 0 AND 9007199254740991"
+        },
         "mcp_worker_state_revision_integer": {
           "name": "mcp_worker_state_revision_integer",
           "value": "typeof(worker_state_revision)='integer' AND worker_state_revision BETWEEN 0 AND 9007199254740991"
         },
-        "mcp_open_fingerprint_hash": {
-          "name": "mcp_open_fingerprint_hash",
-          "value": "length(open_fingerprint)=64 AND open_fingerprint NOT GLOB '*[^0-9a-f]*'"
+        "mcp_config_hash_hash": {
+          "name": "mcp_config_hash_hash",
+          "value": "length(config_hash)=64 AND config_hash NOT GLOB '*[^0-9a-f]*'"
+        },
+        "mcp_open_hash_hash": {
+          "name": "mcp_open_hash_hash",
+          "value": "length(open_hash)=64 AND open_hash NOT GLOB '*[^0-9a-f]*'"
+        },
+        "mcp_attached_at_integer": {
+          "name": "mcp_attached_at_integer",
+          "value": "attached_at IS NULL OR (typeof(attached_at)='integer' AND attached_at BETWEEN 0 AND 9007199254740991)"
+        },
+        "mcp_connected_at_integer": {
+          "name": "mcp_connected_at_integer",
+          "value": "connected_at IS NULL OR (typeof(connected_at)='integer' AND connected_at BETWEEN 0 AND 9007199254740991)"
+        },
+        "mcp_ended_at_integer": {
+          "name": "mcp_ended_at_integer",
+          "value": "ended_at IS NULL OR (typeof(ended_at)='integer' AND ended_at BETWEEN 0 AND 9007199254740991)"
+        },
+        "mcp_worker_detached_at_integer": {
+          "name": "mcp_worker_detached_at_integer",
+          "value": "worker_detached_at IS NULL OR (typeof(worker_detached_at)='integer' AND worker_detached_at BETWEEN 0 AND 9007199254740991)"
+        },
+        "mcp_session_transport": {
+          "name": "mcp_session_transport",
+          "value": "transport IN ('stdio','streamableHttp')"
         },
         "mcp_session_state": {
           "name": "mcp_session_state",
-          "value": "state IN ('connecting','active','draining','closed','failed')"
+          "value": "state IN ('connecting','connected','disconnected','failed','closed')"
+        },
+        "mcp_session_cursors": {
+          "name": "mcp_session_cursors",
+          "value": "worker_ack_client_seq<=client_high_water AND host_ack_server_seq<=server_high_water"
         },
         "mcp_session_protocol": {
           "name": "mcp_session_protocol",
           "value": "protocol_version IS NULL OR length(protocol_version) BETWEEN 1 AND 64"
         },
-        "mcp_session_cursors": {
-          "name": "mcp_session_cursors",
-          "value": "host_ack_server_seq<=server_high_water AND client_accepted_through<=client_high_water AND server_accepted_through<=server_high_water"
+        "mcp_session_attached": {
+          "name": "mcp_session_attached",
+          "value": "attached_at IS NULL OR attached_at>=created_at"
+        },
+        "mcp_session_connected": {
+          "name": "mcp_session_connected",
+          "value": "connected_at IS NULL OR (attached_at IS NOT NULL AND connected_at>=attached_at AND protocol_version IS NOT NULL)"
+        },
+        "mcp_session_connecting": {
+          "name": "mcp_session_connecting",
+          "value": "state<>'connecting' OR connected_at IS NULL"
+        },
+        "mcp_session_connected_state": {
+          "name": "mcp_session_connected_state",
+          "value": "state<>'connected' OR connected_at IS NOT NULL"
+        },
+        "mcp_session_lifecycle": {
+          "name": "mcp_session_lifecycle",
+          "value": "(state IN ('connecting','connected') AND ended_at IS NULL AND end_reason IS NULL) OR (state IN ('disconnected','failed','closed') AND ended_at IS NOT NULL AND (connected_at IS NULL OR ended_at>=connected_at) AND end_reason IS NOT NULL)"
+        },
+        "mcp_session_end_reason": {
+          "name": "mcp_session_end_reason",
+          "value": "end_reason IS NULL OR end_reason IN ('client_closed','grant_expired','run_ended','authorization_revoked','target_lost','worker_lost','transport_error','overflow','timeout')"
         },
         "mcp_session_worker_state": {
           "name": "mcp_session_worker_state",
           "value": "(worker_state_revision=0 AND worker_state_hash IS NULL) OR (worker_state_revision>0 AND worker_state_hash IS NOT NULL AND length(worker_state_hash)=64 AND worker_state_hash NOT GLOB '*[^0-9a-f]*')"
-        },
-        "mcp_session_closed": {
-          "name": "mcp_session_closed",
-          "value": "(state IN ('connecting','active','draining') AND closed_at IS NULL AND reason IS NULL) OR (state IN ('closed','failed') AND closed_at IS NOT NULL AND typeof(closed_at)='integer' AND closed_at>=created_at AND reason IS NOT NULL AND length(reason) BETWEEN 1 AND 128)"
-        },
-        "mcp_session_active": {
-          "name": "mcp_session_active",
-          "value": "state<>'active' OR (protocol_version IS NOT NULL AND initialized_at IS NOT NULL)"
-        },
-        "mcp_session_initialized": {
-          "name": "mcp_session_initialized",
-          "value": "initialized_at IS NULL OR (typeof(initialized_at)='integer' AND initialized_at>=created_at)"
         }
       }
     },
@@ -3681,9 +3879,9 @@
           "name": "remote_tool_grant_mcp_session_unique",
           "columns": [
             "id",
-            "project_id",
-            "instance_id",
             "run_id",
+            "instance_id",
+            "project_id",
             "chat_id"
           ],
           "isUnique": true

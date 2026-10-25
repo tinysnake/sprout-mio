@@ -9,13 +9,47 @@ export const MCP_PROCESS_STATES = [
   "starting",
   "running",
   "stopping",
-  "stopped",
+  "exited",
   "failed",
   "lost",
 ] as const;
-export const MCP_SESSION_STATES = ["connecting", "active", "draining", "closed", "failed"] as const;
-export const MCP_FRAME_STATES = ["queued", "sent", "acked", "cancelled", "dropped"] as const;
+export const MCP_SESSION_STATES = [
+  "connecting",
+  "connected",
+  "disconnected",
+  "failed",
+  "closed",
+] as const;
+export const MCP_FRAME_STATES = ["queued", "sent", "acked", "dropped", "unknown"] as const;
 export const MCP_FRAME_DIRECTIONS = ["client_to_server", "server_to_client"] as const;
+export const MCP_PROCESS_END_REASONS = [
+  "owner_stopped",
+  "spawn_failed",
+  "exited",
+  "crashed",
+  "unreachable",
+  "worker_lost",
+  "config_retired",
+] as const;
+export const MCP_SESSION_END_REASONS = [
+  "client_closed",
+  "grant_expired",
+  "run_ended",
+  "authorization_revoked",
+  "target_lost",
+  "worker_lost",
+  "transport_error",
+  "overflow",
+  "timeout",
+] as const;
+export const MCP_FRAME_DISPOSITION_REASONS = [
+  "authorization_revoked",
+  "expired",
+  "client_closed",
+  "worker_lost",
+  "overflow",
+  "transport_error",
+] as const;
 const id = (prefix: (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES]) =>
   z.string().regex(appIdPattern(prefix));
 const natural = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -36,49 +70,58 @@ export const mcpProcessIdSchema = id(ID_PREFIXES.mcpProcess);
 export const mcpSessionIdSchema = id(ID_PREFIXES.mcpSession);
 export const mcpFrameIdSchema = id(ID_PREFIXES.mcpFrame);
 const projectMachine = { projectId: id(ID_PREFIXES.project), machineId: id(ID_PREFIXES.machine) };
-const root = z.strictObject({ uri: z.url().startsWith("file://"), name: noNul(256).optional() });
 const commonConfig = {
-  roots: z.array(root).max(16),
+  exposure: z.enum(["wire", "resources"]),
   toolAllowlist: z
     .array(noNul(128))
-    .min(1)
     .max(64)
-    .refine((values) => new Set(values).size === values.length),
-  exposeResources: z.boolean(),
+    .refine((values) => new Set(values).size === values.length)
+    .optional(),
+  requestTimeoutMs: positive.default(120000),
+  roots: z.array(z.strictObject({ uri: noNul(4096), name: noNul(128).optional() })).max(16),
   exposeSampling: z.boolean(),
-  exposeElicitation: z.boolean(),
-  requestTimeoutMs: positive.max(300000),
+  elicitation: z.enum(["absent", "cancel"]),
 };
+const args = z
+  .array(
+    z
+      .string()
+      .max(4096)
+      .refine((value) => !value.includes("\0")),
+  )
+  .max(64);
+const service = z.strictObject({
+  command: noNul(4096),
+  args,
+  envRef: noNul(128).optional(),
+  workingDirectory: absolutePath,
+});
 export const mcpConfigSchema = z.discriminatedUnion("transport", [
   z.strictObject({
     ...commonConfig,
     transport: z.literal("stdio"),
-    command: absolutePath,
-    args: z
-      .array(
-        z
-          .string()
-          .max(4096)
-          .refine((value) => !value.includes("\0")),
-      )
-      .max(64),
-    cwd: absolutePath,
-    envRefs: z.record(noNul(128), noNul(128)).refine((value) => Object.keys(value).length <= 32),
+    ...service.shape,
+    launch: z.literal("configured_service"),
+    autostart: z.boolean(),
   }),
   z.strictObject({
     ...commonConfig,
     transport: z.literal("streamableHttp"),
-    url: z.url().refine((value) => {
-      const url = new URL(value);
-      return (
-        ["http:", "https:"].includes(url.protocol) &&
-        ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
-        !/^https?:\/\/[^/]*@/.test(url.href) &&
-        !url.search &&
-        !url.hash
-      );
-    }),
-    headerRefs: z.record(noNul(128), noNul(128)).refine((value) => Object.keys(value).length <= 32),
+    url: z
+      .url()
+      .max(4096)
+      .refine((value) => {
+        const url = new URL(value);
+        return (
+          ["http:", "https:"].includes(url.protocol) &&
+          !/^https?:\/\/[^/]*@/.test(url.href) &&
+          !/[?#]/.test(url.href)
+        );
+      }),
+    headerRef: noNul(128).optional(),
+    launch: z.enum(["owner_managed", "configured_service"]),
+    autostart: z.boolean(),
+    service: service.optional(),
   }),
 ]);
 export const mcpServerRegistrationSchema = z
@@ -109,32 +152,38 @@ export const mcpServerProcessSchema = z
     configHash: hash,
     workerIncarnationId: uuid,
     launchNonce: uuid,
+    pid: positive.nullable(),
+    processStartedAt: timestamp.nullable(),
+    endpoint: noNul(4096).nullable(),
     state: z.enum(MCP_PROCESS_STATES),
-    pid: positive.max(2147483647).nullable(),
-    endpoint: z.url().nullable(),
-    startedAt: timestamp,
-    lastObservedAt: timestamp,
-    endedAt: timestamp.nullable(),
-    stopReason: noNul(128).nullable(),
     stateRevision: positive,
     stateHash: hash,
+    createdAt: timestamp,
+    lastObservedAt: timestamp,
+    endedAt: timestamp.nullable(),
+    exitCode: z
+      .number()
+      .int()
+      .min(-Number.MAX_SAFE_INTEGER)
+      .max(Number.MAX_SAFE_INTEGER)
+      .nullable(),
+    endReason: z.enum(MCP_PROCESS_END_REASONS).nullable(),
   })
-  .refine((value) => {
-    if (value.lastObservedAt < value.startedAt) return false;
-    if (["stopped", "failed", "lost"].includes(value.state))
-      return (
-        value.endedAt !== null && value.endedAt >= value.startedAt && value.stopReason !== null
-      );
-    if (value.endedAt !== null || value.stopReason !== null) return false;
-    if (value.state === "starting") return true;
-    if (value.state !== "running") return false;
-    return value.transport === "stdio"
-      ? value.pid !== null && value.endpoint === null
-      : value.endpoint !== null;
-  });
+  .refine(
+    (value) =>
+      (value.transport === "streamableHttp" || value.endpoint === null) &&
+      (value.state !== "running" ||
+        value.pid !== null ||
+        (value.transport === "streamableHttp" && value.endpoint !== null)) &&
+      (["starting", "running"].includes(value.state)
+        ? value.endedAt === null && value.endReason === null && value.exitCode === null
+        : ["exited", "failed", "lost"].includes(value.state) &&
+          value.endedAt !== null &&
+          value.endReason !== null),
+  );
 const sessionIdentity = {
   ...projectMachine,
-  authorizationGeneration: positive,
+  authorizationGeneration: natural,
   holderInstanceId: id(ID_PREFIXES.instance),
   processId: mcpProcessIdSchema,
   workerSession: workerSessionSchema,
@@ -143,46 +192,55 @@ export const mcpSessionSchema = z
   .strictObject({
     id: mcpSessionIdSchema,
     ...projectMachine,
+    processId: mcpProcessIdSchema,
     registrationId: mcpRegistrationIdSchema,
     registrationRevision: positive,
-    processId: mcpProcessIdSchema,
-    authorizationGeneration: positive,
-    holderInstanceId: id(ID_PREFIXES.instance),
-    grantId: id(ID_PREFIXES.remoteToolGrant),
+    transport,
+    configHash: hash,
+    workerIncarnationId: uuid,
     runId: id(ID_PREFIXES.run),
+    holderInstanceId: id(ID_PREFIXES.instance),
+    authorizationGeneration: natural,
+    grantId: id(ID_PREFIXES.remoteToolGrant),
     chatId: id(ID_PREFIXES.chat),
     openRequestId: id(ID_PREFIXES.request),
-    openFingerprint: hash,
-    workerBootId: id(ID_PREFIXES.boot),
-    workerConnectionGeneration: positive,
-    workerAttemptId: uuid,
-    workerIncarnationId: uuid,
-    protocolVersion: noNul(64).nullable(),
+    openHash: hash,
     state: z.enum(MCP_SESSION_STATES),
-    reason: noNul(128).nullable(),
     createdAt: timestamp,
-    initializedAt: timestamp.nullable(),
-    closedAt: timestamp.nullable(),
-    hostAckServerSeq: natural,
-    clientAcceptedThrough: natural,
-    serverAcceptedThrough: natural,
+    attachedAt: timestamp.nullable(),
+    connectedAt: timestamp.nullable(),
+    endedAt: timestamp.nullable(),
+    endReason: z.enum(MCP_SESSION_END_REASONS).nullable(),
+    protocolVersion: noNul(64).nullable(),
     clientHighWater: natural,
+    workerAckClientSeq: natural,
     serverHighWater: natural,
+    hostAckServerSeq: natural,
     workerStateRevision: natural,
     workerStateHash: hash.nullable(),
+    workerDetachedAt: timestamp.nullable(),
+    fenceMutationId: id(ID_PREFIXES.leaseMutation).nullable(),
+    workerConnectionGeneration: positive,
+    serverBootId: id(ID_PREFIXES.boot),
+    workerAttemptId: uuid,
   })
   .refine(
     (value) =>
+      value.workerAckClientSeq <= value.clientHighWater &&
       value.hostAckServerSeq <= value.serverHighWater &&
-      value.clientAcceptedThrough <= value.clientHighWater &&
-      value.serverAcceptedThrough <= value.serverHighWater &&
-      (value.workerStateRevision === 0) === (value.workerStateHash === null) &&
-      (value.initializedAt === null || value.initializedAt >= value.createdAt) &&
-      (["closed", "failed"].includes(value.state)
-        ? value.closedAt !== null && value.closedAt >= value.createdAt && value.reason !== null
-        : value.closedAt === null && value.reason === null) &&
-      (value.state !== "active" ||
-        (value.protocolVersion !== null && value.initializedAt !== null)),
+      (value.attachedAt === null || value.attachedAt >= value.createdAt) &&
+      (value.connectedAt === null ||
+        (value.attachedAt !== null &&
+          value.connectedAt >= value.attachedAt &&
+          value.protocolVersion !== null)) &&
+      (value.state !== "connecting" || value.connectedAt === null) &&
+      (value.state !== "connected" || value.connectedAt !== null) &&
+      (["connecting", "connected"].includes(value.state)
+        ? value.endedAt === null && value.endReason === null
+        : value.endedAt !== null &&
+          (value.connectedAt === null || value.endedAt >= value.connectedAt) &&
+          value.endReason !== null) &&
+      (value.workerStateRevision === 0) === (value.workerStateHash === null),
   );
 const base64 = z
   .string()
@@ -207,6 +265,10 @@ export const mcpFrameSchema = z
   .strictObject({
     id: mcpFrameIdSchema,
     sessionId: mcpSessionIdSchema,
+    ...projectMachine,
+    authorizationGeneration: natural,
+    holderInstanceId: id(ID_PREFIXES.instance),
+    processId: mcpProcessIdSchema,
     direction: z.enum(MCP_FRAME_DIRECTIONS),
     seq: positive,
     payloadBase64: base64.nullable(),
@@ -217,30 +279,25 @@ export const mcpFrameSchema = z
     expiresAt: timestamp,
     sentAt: timestamp.nullable(),
     terminalAt: timestamp.nullable(),
-    terminalReason: noNul(128).nullable(),
+    dispositionReason: z.enum(MCP_FRAME_DISPOSITION_REASONS).nullable(),
   })
   .refine(
     (value) =>
       value.expiresAt > value.createdAt &&
       (value.sentAt === null || value.sentAt >= value.createdAt) &&
-      (value.terminalAt === null || value.terminalAt >= value.createdAt) &&
       (value.payloadBase64 === null ||
         matchingPayload({ ...value, payloadBase64: value.payloadBase64 })) &&
-      (value.state === "queued"
+      (["queued", "sent"].includes(value.state)
         ? value.payloadBase64 !== null &&
-          value.sentAt === null &&
           value.terminalAt === null &&
-          value.terminalReason === null
-        : value.state === "sent"
-          ? value.payloadBase64 !== null &&
-            value.sentAt !== null &&
-            value.terminalAt === null &&
-            value.terminalReason === null
-          : value.state === "acked"
-            ? value.sentAt !== null && value.terminalAt !== null && value.terminalReason === null
-            : value.terminalAt !== null && value.terminalReason !== null),
+          value.dispositionReason === null
+        : value.state === "acked"
+          ? value.terminalAt !== null && value.dispositionReason === null
+          : value.terminalAt !== null && value.dispositionReason !== null) &&
+      (value.state !== "queued" || value.sentAt === null) &&
+      (!["sent", "acked"].includes(value.state) || value.sentAt !== null),
   );
-const leaseInput = { ...projectMachine, authorizationGeneration: positive };
+const leaseInput = { ...projectMachine, authorizationGeneration: natural };
 export const mcpCatalogGetInputSchema = z.strictObject(leaseInput);
 export const mcpSessionOpenInputSchema = z.strictObject({
   ...leaseInput,
@@ -416,7 +473,7 @@ export const mcpServerItemSchema = z
         value.session.processId === value.processId &&
         value.session.authorizationGeneration === value.authorizationGeneration &&
         value.session.holderInstanceId === value.holderInstanceId &&
-        value.session.workerBootId === value.workerSession.bootId &&
+        value.session.serverBootId === value.workerSession.bootId &&
         value.session.workerConnectionGeneration === value.workerSession.generation &&
         value.session.workerAttemptId === value.workerSession.attemptId),
   );
