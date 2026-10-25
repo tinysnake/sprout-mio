@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
-import { executionViewSchema, remoteExchangeOutputSchema } from "../../src/contracts/remote";
+import { executionViewSchema } from "../../src/contracts/remote";
+import { workerExchangeOutputRemoteSchema } from "../../src/contracts/worker";
 import { leaseMutationViewSchema, leaseViewSchema } from "../../src/contracts/lease";
 import { migrateDatabase } from "../../src/db/migrate";
 import { sqlite } from "../../src/db";
@@ -143,7 +144,7 @@ assert.throws(
   fail("remote_request_conflict"),
 );
 const dispatched = exchange();
-assert(remoteExchangeOutputSchema.safeParse(dispatched.remote).success);
+assert(workerExchangeOutputRemoteSchema.safeParse(dispatched.remote).success);
 assert.equal(dispatched.remote.commands.length, 1);
 const command = dispatched.remote.commands[0]!;
 const release = releaseLease(
@@ -187,7 +188,7 @@ const completed = exchange({
   mcp: [],
   mcpCursors: [],
 });
-assert(remoteExchangeOutputSchema.safeParse(completed.remote).success);
+assert(workerExchangeOutputRemoteSchema.safeParse(completed.remote).success);
 assert.equal(getExecution({ ...key, executionId: execution.executionId }, ctx).state, "rejected");
 assert.equal(
   getLease({ ...key, mutationId: release.mutationId }, ctx).mutation?.completedGeneration,

@@ -28,6 +28,8 @@ export const workerEnrollInput = z.strictObject({
 });
 export const workerOpenInput = z.strictObject({ ...envelope, ...identity, attemptId: z.uuidv4() });
 export const workerExchangeRemoteSchema = remoteExchangeInputSchema.extend(mcpWorkerExchangeShape);
+export const workerExchangeOutputRemoteSchema =
+  remoteExchangeOutputSchema.extend(mcpServerExchangeShape);
 const exchangeBase = {
   ...envelope,
   secret: workerSecretSchema,
@@ -181,7 +183,7 @@ export const workerExchangeResponseSchema = z.union([
               .max(1000),
           })
           .nullable(),
-        remote: remoteExchangeOutputSchema.extend(mcpServerExchangeShape),
+        remote: workerExchangeOutputRemoteSchema,
       })
       .superRefine((value, ctx) => {
         if (
@@ -258,6 +260,7 @@ export type WorkerEnrollInput = z.infer<typeof workerEnrollInput>;
 export type WorkerOpenInput = z.infer<typeof workerOpenInput>;
 export type WorkerExchangeInput = z.infer<typeof workerExchangeInput>;
 export type WorkerExchangeRemoteInput = z.infer<typeof workerExchangeRemoteSchema>;
+export type WorkerExchangeRemoteOutput = z.infer<typeof workerExchangeOutputRemoteSchema>;
 export type WorkerCloseInput = z.infer<typeof workerCloseInput>;
 export type WorkerEnrollResponse = z.infer<typeof workerEnrollResponseSchema>;
 export type WorkerOpenResponse = z.infer<typeof workerOpenResponseSchema>;

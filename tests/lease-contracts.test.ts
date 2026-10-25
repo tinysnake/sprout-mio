@@ -335,6 +335,8 @@ describe("P4b shared contracts", () => {
       }).success,
     ).toBe(false);
     expect(
+      // 用基座 schema 而非 workerExchangeOutputRemoteSchema：此处验的是 generation: 0
+      // 的 authorization 语义，不是 remote 形状；换成超集会让断言失去意义。
       remoteExchangeOutputSchema.safeParse({
         ...remote,
         authorizations: [{ ...key, generation: 0, state: "active", holderInstanceId: instanceId }],

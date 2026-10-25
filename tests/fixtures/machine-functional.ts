@@ -165,6 +165,8 @@ assert.deepEqual(configuration.remote, {
   fences: [],
   resultAcks: [],
   fenceAcks: [],
+  mcp: [],
+  mcpCursors: [],
 });
 exchangeWorker(
   { ...exchange, requestId: newId(ID_PREFIXES.request) },
@@ -247,6 +249,8 @@ assert.deepEqual(supersededDrain.remote, {
   fences: [],
   resultAcks: [],
   fenceAcks: [],
+  mcp: [],
+  mcpCursors: [],
 });
 assert.equal(getMachine({ machineId }, ctx).connection.kind, "connecting");
 closeWorker({ version: 3, requestId, secret, session: second }, ctx);
