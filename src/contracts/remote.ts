@@ -301,10 +301,7 @@ export const remoteToolGrantSchema = z.strictObject({
   expiresAt: timestampSchema,
   projectId: id(ID_PREFIXES.project),
 });
-// Receipt delivery is a client concern; it does not change the remote execution protocol.
-export const REMOTE_ERROR_CODES = APP_ERROR_CODES.filter(
-  (code) => code !== "lease_result_unconfirmed",
-);
+export const REMOTE_ERROR_CODES = APP_ERROR_CODES;
 const toolMutationBase = { machineId: leaseKeySchema.shape.machineId, requestId: requestIdSchema };
 const toolExecutionBase = {
   ...toolMutationBase,
