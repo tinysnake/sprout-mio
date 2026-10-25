@@ -406,7 +406,25 @@ export class McpRuntime {
       return;
     }
     const entry = this.sessions.get(item.sessionId);
-    if (!entry && item.type === "session_detach") return;
+    if (!entry && item.type === "session_detach") {
+      if (
+        !this.workerSession ||
+        item.machineId !== this.workerSession.machineId ||
+        !sameWorker(item.workerSession, this.workerSession)
+      )
+        throw new Error("MCP session identity rejected");
+      this.controls.set(`detach:${item.sessionId}`, {
+        type: "session_detach_ack",
+        sessionId: item.sessionId,
+        projectId: item.projectId,
+        machineId: item.machineId,
+        authorizationGeneration: item.authorizationGeneration,
+        holderInstanceId: item.holderInstanceId,
+        processId: item.processId,
+        workerSession: item.workerSession,
+      });
+      return;
+    }
     if (!entry || !mcpSameBound(item, mcpBound(entry.session)))
       throw new Error("MCP session identity rejected");
     if (item.type === "session_detach") {

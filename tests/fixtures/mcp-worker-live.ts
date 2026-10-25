@@ -154,13 +154,18 @@ try {
     rapidClose.remote.mcp.some(
       (item: ServerMcpItem) => item.type === "session_detach" && item.sessionId === rapidSession.id,
     ),
-    false,
-    "relay must not detach a session closed before its first Worker exchange",
+    true,
+    "relay must reconcile a closed session even before its first Worker exchange",
   );
   dispatcher.accept(rapidClose, seq, []);
   const closedRow = db.select().from(mcpSession).where(eq(mcpSession.id, rapidSession.id)).get()!;
   assert.equal(closedRow.state, "closed");
   assert.equal(closedRow.attachedAt, null);
+  exchange();
+  assert.notEqual(
+    db.select().from(mcpSession).where(eq(mcpSession.id, rapidSession.id)).get()!.workerDetachedAt,
+    null,
+  );
   process.kill(fact.pid, 0);
   const session = sessionFor(fact, worker, {
     projectId,

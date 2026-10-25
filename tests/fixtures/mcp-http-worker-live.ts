@@ -6,7 +6,7 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
-import type { McpSession } from "../../src/contracts/mcp";
+import type { McpSession, WorkerMcpItem } from "../../src/contracts/mcp";
 import { db, sqlite } from "../../src/db";
 import { migrateDatabase } from "../../src/db/migrate";
 import { mcpServerProcess, mcpSession } from "../../src/db/schema";
@@ -101,6 +101,7 @@ acquireLease(
 
 let lastCapability: unknown;
 let gatewayFailure = false;
+let closeWindowSession: string | undefined;
 const gateway = createServer(async (req, res) => {
   try {
     const chunks: Buffer[] = [];
@@ -111,6 +112,32 @@ const gateway = createServer(async (req, res) => {
     if (req.url === "/api/worker/open") data = { ...openWorker(input, ctx), pollIntervalMs: 30 };
     else if (req.url === "/api/worker/exchange") {
       lastCapability = input.capability ?? lastCapability;
+      if (
+        closeWindowSession &&
+        input.remote?.mcp.some(
+          (item: WorkerMcpItem) =>
+            item.type === "session_fact" &&
+            item.sessionId === closeWindowSession &&
+            item.state === "attached",
+        )
+      ) {
+        const row = db
+          .select()
+          .from(mcpSession)
+          .where(eq(mcpSession.id, closeWindowSession))
+          .get()!;
+        assert.equal(row.attachedAt, null);
+        mcpSessionClose(
+          {
+            ...leaseInput,
+            sessionId: row.id,
+            requestId: newId(ID_PREFIXES.request),
+            reason: "client_closed",
+          },
+          ctx,
+        );
+        closeWindowSession = undefined;
+      }
       data = exchangeWorker(input, ctx);
     } else if (req.url === "/api/worker/close") data = closeWorker(input, ctx);
     else throw new Error("Unexpected Worker route");
@@ -356,6 +383,34 @@ try {
       ctx,
     ).session;
   };
+  const rapid = open();
+  mcpSessionClose(
+    {
+      ...leaseInput,
+      sessionId: rapid.id,
+      requestId: newId(ID_PREFIXES.request),
+      reason: "client_closed",
+    },
+    ctx,
+  );
+  await waitFor(
+    () =>
+      db.select().from(mcpSession).where(eq(mcpSession.id, rapid.id)).get()!.workerDetachedAt !==
+      null,
+  );
+  const window = open();
+  closeWindowSession = window.id;
+  await waitFor(
+    () =>
+      db.select().from(mcpSession).where(eq(mcpSession.id, window.id)).get()!.workerDetachedAt !==
+      null,
+  );
+  assert.equal(closeWindowSession, undefined);
+  assert.equal(worker.exitCode, null);
+  process.kill(worker.pid!, 0);
+  console.log(
+    "PASS real Worker CLI rapid close and close before attached fact commit; process slot released",
+  );
   const first = open();
   // Bypass the gateway guard to prove SQLite itself rejects a second active row.
   assert.throws(

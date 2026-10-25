@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
+import type { ServerMcpItem } from "../../src/contracts/mcp";
 import type { WorkerExchangeRemoteInput } from "../../src/contracts/worker";
 import { workerExchangeOutputRemoteSchema } from "../../src/contracts/worker";
 import { migrateDatabase } from "../../src/db/migrate";
@@ -15,6 +16,7 @@ import { McpRuntime } from "../../src/worker/mcp";
 import { RemoteDispatcher } from "../../src/worker/remote";
 import { seedRemoteActor } from "./remote-actors";
 import { registration } from "./mcp-runtime";
+import { mcpBound } from "../../src/domain/mcp/protocol";
 migrateDatabase();
 const bootId = newId(ID_PREFIXES.boot),
   requestId = newId(ID_PREFIXES.request);
@@ -91,8 +93,7 @@ const exchange = (remote: WorkerExchangeRemoteInput = dispatcher.outgoing(), acc
   return response;
 };
 
-const candidate = process.env.E2_CANDIDATE ?? "B";
-const evidence: Record<string, unknown> = { candidate };
+const evidence: Record<string, unknown> = {};
 try {
   exchange();
   const fact = db
@@ -129,7 +130,7 @@ try {
       { length: 4 },
       () =>
         exchange().remote.mcp.filter(
-          (item) => item.type === "session_detach" && item.sessionId === id,
+          (item: ServerMcpItem) => item.type === "session_detach" && item.sessionId === id,
         ).length,
     );
   const rapid = open();
@@ -139,8 +140,48 @@ try {
     detaches: rapidDetaches,
     workerDetached: row(rapid.id).workerDetachedAt !== null,
   };
+  assert.deepEqual(rapidDetaches, [1, 0, 0, 0]);
+  assert.notEqual(row(rapid.id).workerDetachedAt, null);
+  const acknowledgement = { type: "session_detach_ack" as const, ...mcpBound(rapid) };
+  const mismatches: Partial<typeof acknowledgement>[] = [
+    { projectId: newId(ID_PREFIXES.project) },
+    { machineId: newId(ID_PREFIXES.machine) },
+    { authorizationGeneration: rapid.authorizationGeneration + 1 },
+    { holderInstanceId: newId(ID_PREFIXES.instance) },
+    { processId: newId(ID_PREFIXES.mcpProcess) },
+    { workerSession: { ...worker, machineId: newId(ID_PREFIXES.machine) } },
+    { workerSession: { ...worker, generation: worker.generation + 1 } },
+    { workerSession: { ...worker, bootId: newId(ID_PREFIXES.boot) } },
+    { workerSession: { ...worker, attemptId: randomUUID() } },
+  ];
+  for (const mismatch of mismatches) {
+    assert.throws(
+      () =>
+        exchange({
+          ...dispatcher.outgoing(),
+          mcp: [{ ...acknowledgement, ...mismatch }],
+        }),
+      "mismatched detach acknowledgement must be rejected",
+    );
+  }
+  evidence.ackBoundRejected = mismatches.length;
+  const detachedAt = row(rapid.id).workerDetachedAt;
+  for (let replay = 0; replay < 2; replay++) {
+    exchange({ ...dispatcher.outgoing(), mcp: [acknowledgement] });
+    assert.equal(row(rapid.id).workerDetachedAt, detachedAt);
+    assert.equal(row(rapid.id).workerStateRevision, 0);
+  }
   process.kill(fact.pid!, 0);
   const window = open();
+  assert.throws(
+    () =>
+      exchange({
+        ...dispatcher.outgoing(),
+        mcp: [{ type: "session_detach_ack", ...mcpBound(window) }],
+      }),
+    "active session must reject detach acknowledgement",
+  );
+  assert.equal(row(window.id).workerDetachedAt, null);
   exchange();
   assert.equal(
     row(window.id).attachedAt,
@@ -153,25 +194,14 @@ try {
     detaches: windowDetaches,
     workerDetached: row(window.id).workerDetachedAt !== null,
   };
-  let reopened = false;
-  try {
-    const next = open();
-    exchange();
-    reopened = true;
-    exchange();
-    assert.notEqual(row(next.id).attachedAt, null);
-    close(next.id);
-    settle(next.id);
-    assert.notEqual(row(next.id).workerDetachedAt, null);
-  } catch (error) {
-    evidence.reopenError = error instanceof Error ? error.message : "unknown";
-  }
-  evidence.reopened = reopened;
-  if (candidate === "baseline") {
-    console.log("E2 " + JSON.stringify(evidence));
-    assert.equal(reopened, true, "closed window must release the exact process slot");
-  }
-  assert.equal(reopened, true);
+  const next = open();
+  exchange();
+  exchange();
+  assert.notEqual(row(next.id).attachedAt, null);
+  close(next.id);
+  settle(next.id);
+  assert.notEqual(row(next.id).workerDetachedAt, null);
+  evidence.reopened = true;
   assert.notEqual(row(window.id).workerDetachedAt, null);
   assert.deepEqual(windowDetaches, [1, 0, 0, 0]);
   for (const loss of ["undelivered_attach", "rebind", "pruned"] as const) {
@@ -193,13 +223,8 @@ try {
       workerStateRevision: row(session.id).workerStateRevision,
     };
     evidence[loss] = result;
-    if (candidate === "B") {
-      assert.deepEqual(detaches, [1, 0, 0, 0], loss);
-      assert.equal(result.workerDetached, true, loss);
-    } else {
-      assert.deepEqual(detaches, [1, 1, 1, 1], loss);
-      assert.equal(result.workerDetached, false, loss);
-    }
+    assert.deepEqual(detaches, [1, 0, 0, 0], loss);
+    assert.equal(result.workerDetached, true, loss);
   }
   process.kill(fact.pid!, 0);
   console.log("E2 " + JSON.stringify(evidence));
