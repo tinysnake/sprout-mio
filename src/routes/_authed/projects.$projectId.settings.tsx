@@ -2,7 +2,7 @@ import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ProjectAgentsPanel } from "../../components/info-hub/project-agents-panel";
-import { ProjectLeaseActions, holderNames } from "../../components/machine/project-lease-actions";
+import { holderNames } from "../../components/machine/project-lease-actions";
 import { RemoteExecutionList } from "../../components/machine/remote-execution-panel";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { useEffect, useState } from "react";
@@ -166,17 +166,12 @@ function ProjectSettingsPage() {
             )}
             {!machines.ok && <ResultError error={machines.error} />}
             {infoHub.ok && (
-              <ProjectLeaseActions key={projectId} info={infoHub.data}>
-                {(mutate) => (
-                  <ProjectMachinesPanel
-                    projectId={projectId}
-                    machines={infoHub.data.machines}
-                    leases={infoHub.data.leases.items}
-                    holderNames={holderNames(infoHub.data)}
-                    onLeaseMutate={mutate}
-                  />
-                )}
-              </ProjectLeaseActions>
+              <ProjectMachinesPanel
+                projectId={projectId}
+                machines={infoHub.data.machines}
+                leases={infoHub.data.leases.items}
+                holderNames={holderNames(infoHub.data)}
+              />
             )}
           </SettingsSection>
           <SettingsSection title="远端操作" description="本 Project 的最近操作与执行结果。">
@@ -184,6 +179,7 @@ function ProjectSettingsPage() {
               <RemoteExecutionList
                 executions={executions.data}
                 machines={infoHub.ok ? infoHub.data.machines : []}
+                holderNames={infoHub.ok ? holderNames(infoHub.data) : {}}
               />
             ) : (
               <ResultError error={executions.error} />

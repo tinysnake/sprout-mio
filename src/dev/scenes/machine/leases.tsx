@@ -244,7 +244,11 @@ export function LeasesScene({ go }: { go: (to: string) => void }) {
         <section data-testid="lease-scene-executions" className="space-y-4">
           <h2 className="text-sm font-medium">远端操作：目标与结果</h2>
           <ExecutionTargetTable executions={demoExecutions} machines={demoMachineList()} />
-          <RemoteExecutionList executions={demoExecutions} machines={demoMachineList()} />
+          <RemoteExecutionList
+            executions={demoExecutions}
+            machines={demoMachineList()}
+            holderNames={demoHolderNames}
+          />
         </section>
       </div>
     </PageFrame>

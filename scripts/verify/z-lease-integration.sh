@@ -39,7 +39,7 @@ const clientReq = createRequire(req.resolve('@tanstack/start-client-core/package
 const { fromCrossJSON, toJSON } = clientReq('seroval');
 function walk(path) { return readdirSync(path, { withFileTypes: true }).flatMap(i => i.isDirectory() ? walk(join(path, i.name)) : i.name.endsWith('.mjs') ? [readFileSync(join(path, i.name), 'utf8')] : []); }
 const ids = Object.fromEntries([...walk('.output/server').join('\n').matchAll(/id: "([0-9a-f]{64})",\s*\n\s*name: "(\w+)"/g)].map(m => [m[2], m[1]]));
-let cookie, browser, context, projectId, machineId, cleanupPid;
+let cookie, browser, context, page, projectId, machineId, cleanupPid;
 const passes = [];
 function pass(name) { passes.push(name); writeFileSync(join(evidence, 'results.json'), JSON.stringify({ base, passes }, null, 2)); console.log(`PASS ${name}`); }
 async function until(fn, label, timeout = 60000) { const start = Date.now(); while (Date.now() - start < timeout) { const value = await fn(); if (value) return value; await new Promise(r => setTimeout(r, 350)); } throw new Error(`timeout: ${label}`); }
@@ -102,13 +102,27 @@ try {
   await until(async () => (await call('getMachineFn',{machineId,projectId})).bindings[0]?.observation?.fact?.result?.kind==='accessible','directory ready');
   browser = await chromium.launch(); context = await browser.newContext({viewport:{width:1440,height:1000}});
   await context.addCookies(cookie.split('; ').map(v=>{const i=v.indexOf('=');return {name:v.slice(0,i),value:v.slice(i+1),url:base};}));
-  const page = await context.newPage();
+  page = await context.newPage();
+  // Project settings 只给摘要与入口：租约管理入口深链到该 Machine 详情的租约区块。
   await page.goto(`${base}/projects/${projectId}/settings`);
+  assert.equal(await page.getByTestId('lease-mutation-form').count(),0,'no lease mutation form in Project settings');
+  const manageHref = await page.getByTestId('lease-manage-link').first().getAttribute('href');
+  assert.equal(manageHref,`/machines/${machineId}?projectId=${projectId}`,'lease entry deep-links to Machine detail');
+  await page.getByTestId('lease-manage-link').first().click();
+  await page.waitForURL(`**/machines/${machineId}?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
+  // 页头的租约详情按钮把租约区块滚到可见处并给出可见焦点。
+  await page.getByTestId('machine-lease-jump').click();
+  await page.waitForFunction(()=>document.activeElement?.closest('[data-testid="machine-lease-detail"]')!==null,null,{timeout:15000});
+  pass('Project settings lease entry deep-links to the Machine lease block');
+  // Machine 详情页不要求重选目标：目标就是当前这台。
+  assert.equal(await page.getByTestId('machine-lease-section-overview-mutation-machine').count(),0,'no machine picker on the machine page');
+  assert((await page.getByTestId('machine-lease-section-overview-mutation-target').innerText()).includes('Integration Mac'),'fixed target names the current Machine');
   await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await page.getByTestId('info-hub-leases-mutation-submit').click();
-  await until(async () => (await call('getLeaseFn',{projectId,machineId})).lease.state==='held','page acquire via real agent',180000);
-  await page.getByTestId('info-hub-leases-mutation-success').waitFor({timeout:65000});
-  const acquired=(await call('getLeaseFn',{projectId,machineId})).lease;
+  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
+  const acquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'page acquire via real agent',180000);
+  // 收据只显示真实返回的状态：pending 说「等待 Worker 确认」，completed 才算确认成功。
+  await page.locator('[data-testid="machine-lease-section-overview-mutation-success"], [data-testid="machine-lease-section-overview-mutation-waiting"]').first().waitFor({timeout:65000});
   pass('page acquire -> authenticated Chat -> real Pi lease tool -> held lease');
   await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
   await until(async()=> (await page.getByTestId('machine-lease-detail').innerText()).includes(acquired.holderInstanceId),'Machine lease fact');
@@ -123,8 +137,18 @@ try {
   await page.reload();
   await page.getByTestId('machine-executions-item').waitFor({timeout:15000});
   const visible=await page.getByTestId('machine-executions').innerText(); assert(visible.includes('pid') || visible.includes('运行'));
+  // 命令正文（含绝对路径与可能含密钥的内容）不得进入界面。
+  assert(!visible.includes('integration-proof'),'command body and output are not echoed');
+  assert(!visible.includes(marker),'target path is not echoed');
+  assert(!visible.includes('sleep 900'),'shell command text is not echoed');
+  const authorization=await page.getByTestId('machine-executions-item-authorization').first().innerText();
+  assert(!/ins_[0-9a-f-]{36}/.test(authorization),`holder rendered by name, got ${authorization}`);
+  assert(authorization.includes('由该分身的一次运行发起'),'run is described, not printed as a bare id');
   await page.getByTestId('machine-remote-executions').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'machine-result-light.png'),fullPage:true});
+  // 第 6 条：交接与收回也不用重选 Machine，目标就是本页这台。
+  assert.equal(await page.getByLabel('交接或收回的 Machine').count(),0,'no machine picker for handoff/reclaim');
+  assert((await page.getByTestId('lease-transfer-machine').innerText()).includes('Integration Mac'),'handoff target is the current Machine');
   pass('real remote shell and process result visible on production Machine page');
   await settled(chatId);
   const nonHolderProfile=await call('createAgentProfileFn',{name:'Non holder',persona:'Use the requested remote tool once, report its returned error, never acquire a lease.',...(process.env.SPROUT_VERIFY_PI_MODEL?{model:process.env.SPROUT_VERIFY_PI_MODEL}:{}),effort:'off'});
@@ -152,8 +176,10 @@ try {
   assert((await page.getByTestId('chat-machine-facts').innerText()).includes(acquired.holderInstanceId));
   await page.getByTestId('chat-machine-facts').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'chat-inspector-light.png'),fullPage:true,mask:[page.getByTestId('message-list')]});
-  await page.goto(`${base}/projects/${projectId}/settings`); await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await page.getByTestId('info-hub-leases-mutation-submit').click();
+  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
+  await page.getByTestId('lease-chat-select').selectOption(chatId);
+  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','page release through real agent',180000);
   process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','release preserves private sentinel');
   pass('page release preserves real process and file');
@@ -161,19 +187,19 @@ try {
   await deniedTool(page,chatId,acquired.generation,'lease_stale_generation',join(root,projectId,'stale-must-not-exist'));
   process.kill(pid,0);
   pass('browser Chat request -> real old-generation HTTP rejection and absent sentinel');
-  await page.goto(`${base}/projects/${projectId}/settings`);
+  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await page.getByTestId('info-hub-leases-mutation-submit').click();
+  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   const reacquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'reacquire from page',180000);
-  await page.getByTestId('info-hub-leases-mutation-success').waitFor({timeout:65000});
+  await page.locator('[data-testid="machine-lease-section-overview-mutation-success"], [data-testid="machine-lease-section-overview-mutation-waiting"]').first().waitFor({timeout:65000});
   await settled(chatId);
-  await page.getByLabel('交接或收回的 Machine').selectOption(machineId);
   await page.getByLabel('交接目标分身').selectOption(nonHolder.instance.id);
   await page.getByRole('button',{name:'请求分身交接'}).click();
   const transferred=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held' && lease.holderInstanceId===nonHolder.instance.id ? lease:null;},'handoff through page and real holder tool',180000);
   assert(transferred.generation>reacquired.generation); process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','handoff preserves sentinel');
   await page.reload();
-  await page.getByLabel('交接或收回的 Machine').selectOption(machineId);
+  await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByRole('button',{name:'收回租约',exact:true}).click();
   await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','authenticated Human reclaim');
   process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','reclaim preserves sentinel');
@@ -203,6 +229,12 @@ try {
   console.log(`Evidence: ${evidence}`);
 } catch(error) {
   writeFileSync(join(evidence,'failure.txt'), String(error instanceof Error ? error.message : 'verification failure'));
+  try {
+    if (page) {
+      await page.screenshot({path:join(evidence,'failure.png'),fullPage:true});
+      writeFileSync(join(evidence,'failure-page.txt'), await page.locator('body').innerText());
+    }
+  } catch {}
   console.error(error instanceof Error ? error.message : 'verification failure'); process.exitCode=1;
 } finally {
   await browser?.close();

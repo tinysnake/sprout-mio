@@ -244,6 +244,7 @@ export function ChatInspector({
                 <RemoteExecutionList
                   executions={machineFacts.executions}
                   machines={machineFacts.machines}
+                  holderNames={machineFacts.holderNames ?? {}}
                   testId="chat-executions"
                 />
               </div>

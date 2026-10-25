@@ -12,6 +12,7 @@ import { ResultError } from "../project/result-error";
 import { Select } from "../ui/select";
 import { Button } from "../ui/button";
 import type { AppError } from "../../contracts/result";
+import { chatAgentName, type ChatAgent } from "../chat/chat-list";
 
 export function holderNames(info: ProjectInfoHub): Record<string, string> {
   return Object.fromEntries(
@@ -21,21 +22,44 @@ export function holderNames(info: ProjectInfoHub): Record<string, string> {
   );
 }
 
+/**
+ * Chat 选项的显示依赖：Chat 的 title 目前没有写入方（contracts 只做 null 透传），
+ * 所以显示层与 Chat 列表一致地退回分身名，而不是裸露的 chat id。
+ * 这里只用既有 Fn 返回的 Project Info Hub 成员与 DM 链接，不新增契约字段。
+ */
+function chatNameResolver(info: ProjectInfoHub) {
+  const chatAgents: ChatAgent[] = info.agents.agents.flatMap((entry) =>
+    entry.chatId ? [{ chatId: entry.chatId, agentProfileId: entry.agentProfileId }] : [],
+  );
+  const agentNames = new Map(
+    info.agents.agents.map((entry) => [entry.agentProfileId, entry.name] as const),
+  );
+  return (chat: Chat) => chat.title ?? chatAgentName(chat.id, chatAgents, agentNames);
+}
+
 /** Human requests a Chat turn; only the grant-bound agent can mutate a holder lease. */
 export function ProjectLeaseActions({
   info,
+  fixedMachineId,
   children,
 }: {
   info: ProjectInfoHub;
+  /**
+   * 已经在单台 Machine 的页面上时传入：交接与收回的目标就是这台，不再要求重选。
+   * 跨机器操作（Project settings 等）不传，保留显式选择。
+   */
+  fixedMachineId?: string;
   children: (mutate: LeaseMutationHandler) => ReactNode;
 }) {
   const router = useRouter();
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatId, setChatId] = useState("");
-  const [machineId, setMachineId] = useState("");
+  const [pickedMachineId, setPickedMachineId] = useState("");
+  const machineId = fixedMachineId ?? pickedMachineId;
   const [targetInstanceId, setTargetInstanceId] = useState("");
   const [error, setError] = useState<AppError | null>(null);
   const [pending, setPending] = useState(false);
+  const chatName = chatNameResolver(info);
   useEffect(() => {
     let live = true;
     void listChatsFn({ data: { projectId: info.projectId } }).then((result) => {
@@ -140,7 +164,7 @@ export function ProjectLeaseActions({
           <option value="">请选择 Chat</option>
           {chats.map((chat) => (
             <option key={chat.id} value={chat.id}>
-              {chat.title ?? chat.id}
+              {chatName(chat)}
             </option>
           ))}
         </Select>
@@ -172,23 +196,35 @@ export function ProjectLeaseActions({
         data-testid="lease-transfer-controls"
       >
         <p className="text-xs font-medium">交接与收回</p>
-        <Select
-          aria-label="交接或收回的 Machine"
-          value={machineId}
-          onChange={(event) => setMachineId(event.target.value)}
-        >
-          <option value="">请选择持有中的 Machine</option>
-          {info.leases.items
-            .filter((lease) => lease.state === "held")
-            .map((lease) => (
-              <option key={lease.machineId} value={lease.machineId}>
-                {info.machines.find((item) => item.machine.id === lease.machineId)?.machine.name ??
-                  lease.machineId}
-              </option>
-            ))}
-        </Select>
+        {fixedMachineId ? (
+          <div data-testid="lease-transfer-machine" className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">目标 Machine</span>
+            <p className="min-h-9.5 rounded-control border border-input bg-muted px-2.75 py-2 text-[13px]">
+              {info.machines.find((item) => item.machine.id === fixedMachineId)?.machine.name ??
+                fixedMachineId}
+            </p>
+          </div>
+        ) : (
+          <Select
+            aria-label="交接或收回的 Machine"
+            data-testid="lease-transfer-machine"
+            value={pickedMachineId}
+            onChange={(event) => setPickedMachineId(event.target.value)}
+          >
+            <option value="">请选择持有中的 Machine</option>
+            {info.leases.items
+              .filter((lease) => lease.state === "held")
+              .map((lease) => (
+                <option key={lease.machineId} value={lease.machineId}>
+                  {info.machines.find((item) => item.machine.id === lease.machineId)?.machine
+                    .name ?? lease.machineId}
+                </option>
+              ))}
+          </Select>
+        )}
         <Select
           aria-label="交接目标分身"
+          data-testid="lease-transfer-target"
           value={targetInstanceId}
           onChange={(event) => setTargetInstanceId(event.target.value)}
         >
