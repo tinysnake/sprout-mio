@@ -10,8 +10,14 @@ export function migrateDatabase(
 ): void {
   const { sqlite, db } = openDatabase(databaseUrl);
   try {
+    // 迁移 SQL 里的表重建（PRAGMA foreign_keys=OFF 在事务内无效）必须以连接级关闭外键为前提，
+    // 否则从零建库会静默跳过该 PRAGMA 并在 DROP TABLE 处撞上引用它的行。迁移结束后再校验。
+    sqlite.pragma("foreign_keys = OFF");
     migrate(db, { migrationsFolder: resolve(migrationsFolder) });
+    const violations = sqlite.pragma("foreign_key_check") as unknown[];
+    if (violations.length > 0) throw new Error("迁移后外键校验失败");
   } finally {
+    sqlite.pragma("foreign_keys = ON");
     sqlite.close();
   }
 }
