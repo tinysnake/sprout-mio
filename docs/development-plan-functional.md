@@ -105,7 +105,7 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ### P4b 实现分身持有与远端操作
 
-技术交付与两轮验收记录见 [P4b 结论](p4b/summary.md)。首轮独立技术验收 `b5c34db` PASS，第二轮技术复验 `243fd53` PASS；三项安全返工已合入，coordinator 在独立 checkout 复跑 260 条测试及 30 个验收脚本，failed=0。此后同章又合入强制收回 `c42bae1`、DM 标题 `5c8dfa4`、页面信息架构返工 `5ade997` 与收据修复 `5869bf3`/`dd3fa80`/`8ffa7e6`，基线 `8ffa7e6` 上为 287 条测试与 30 个脚本，第三轮独立技术验收重新派发中。以下勾选逐项对应结论中的实现报告、脚本与反证。Human 体验仍待明确确认（九条界面反馈已落地，但不等于确认通过），`p4b-fence-liveness` 已由 Human 裁决为 B 并在 `c42bae1` 实现，跨机网络与真机软键盘未验证。docs 门禁已更新为 per-section 证据门禁，`l-docs.sh` 与 `l-docs-probes.sh` 均退出 0。P4c 及以后未启动。
+技术交付与两轮验收记录见 [P4b 结论](p4b/summary.md)。首轮独立技术验收 `b5c34db` PASS，第二轮技术复验 `243fd53` PASS；三项安全返工已合入，coordinator 在独立 checkout 复跑 260 条测试及 30 个验收脚本，failed=0。此后同章又合入强制收回 `c42bae1`、Chat 标题 `5c8dfa4`、页面信息架构返工 `5ade997` 与收据修复 `5869bf3`/`dd3fa80`/`8ffa7e6`，基线 `8ffa7e6` 上为 287 条测试与 30 个脚本，第三轮独立技术验收重新派发中。以下勾选逐项对应结论中的实现报告、脚本与反证。Human 体验仍待明确确认（九条界面反馈已落地，但不等于确认通过），`p4b-fence-liveness` 已由 Human 裁决为 B 并在 `c42bae1` 实现，跨机网络与真机软键盘未验证。docs 门禁已更新为 per-section 证据门禁，`l-docs.sh` 与 `l-docs-probes.sh` 均退出 0。P4c 及以后未启动。
 
 - [x] 实现申请与释放，数据库约束保证 Project × Machine 内互斥。证据 [P4b 功能交付](p4b/summary.md#1-申请释放与互斥)，重跑 `bash scripts/verify/v-lease-contracts.sh`、`bash scripts/verify/w-worker-remote.sh`。
 - [x] 以分身为 holder，验证 run 结束后租约保留，一个分身可以持有多台 Machine。证据 [跨 run 与多机持有](p4b/summary.md#2-分身-holder跨-run-与多机持有)，多机组合限数据库、投影与演示；重跑 `bash scripts/verify/w-worker-remote.sh`、`bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。

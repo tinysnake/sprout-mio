@@ -1,6 +1,6 @@
 # P4b 分身持租与远端操作
 
-P4b 已交付 Project × Machine 租约、以分身为 holder 的跨 run 持有、服务端授权代次核验、真实 macOS Worker 的 shell、文件与进程操作，以及 Chat、Machine 页面和 inspector 的同源事实呈现。首轮独立技术验收在 `b5c34db` 判定 PASS，第二轮技术复验在 `243fd53` 判定 PASS，三个安全返工点均有修复前后对照。coordinator 在带 Git 历史的独立 checkout 复跑 check、typecheck、260 条测试、应用和 Worker 构建及 30 个验收脚本，记录 `failed=0`（该轮基线为含验证去重改动的 `d003b54`）。两轮之后同章又合入四批能力：Human 强制收回 `c42bae1`、DM 标题 `5c8dfa4`（merge `147193b`）、页面信息架构返工 `5ade997`（merge `e28a149`）与租约收据修复 `5869bf3`/`dd3fa80`/`8ffa7e6`，见下文「体验后变更与安全返工」及两个「体验后」小节。刷新后的文档基线是 `8ffa7e6`：该提交上 `pnpm test` 为 287 条、38 个文件（本单元实跑），`bash scripts/verify.sh` 为 30 个脚本 `failed=0`（coordinator 在该 SHA 上复跑，见 store 的 `decisions.tsv`），`scripts/verify/l-docs.sh` 与 `scripts/verify/l-docs-probes.sh` 均退出 0。第三轮独立技术验收因行为已变（强制收回、标题、收据语义）而重新派发，写入本文件时仍在进行中，尚未有结论。
+P4b 已交付 Project × Machine 租约、以分身为 holder 的跨 run 持有、服务端授权代次核验、真实 macOS Worker 的 shell、文件与进程操作，以及 Chat、Machine 页面和 inspector 的同源事实呈现。首轮独立技术验收在 `b5c34db` 判定 PASS，第二轮技术复验在 `243fd53` 判定 PASS，三个安全返工点均有修复前后对照。coordinator 在带 Git 历史的独立 checkout 复跑 check、typecheck、260 条测试、应用和 Worker 构建及 30 个验收脚本，记录 `failed=0`（该轮基线为含验证去重改动的 `d003b54`）。两轮之后同章又合入四批能力：Human 强制收回 `c42bae1`、Chat 标题 `5c8dfa4`（merge `147193b`）、页面信息架构返工 `5ade997`（merge `e28a149`）与租约收据修复 `5869bf3`/`dd3fa80`/`8ffa7e6`，见下文「体验后变更与安全返工」及两个「体验后」小节。刷新后的文档基线是 `8ffa7e6`：该提交上 `pnpm test` 为 287 条、38 个文件（本单元实跑），`bash scripts/verify.sh` 为 30 个脚本 `failed=0`（coordinator 在该 SHA 上复跑，见 store 的 `decisions.tsv`），`scripts/verify/l-docs.sh` 与 `scripts/verify/l-docs-probes.sh` 均退出 0。第三轮独立技术验收因行为已变（强制收回、标题、收据语义）而重新派发，写入本文件时仍在进行中，尚未有结论。
 
 章节仍待 Human 明确体验确认，不能据技术 PASS 宣告章节完成。验证拓扑为同一台 macOS 上的真实服务、SQLite、Chromium、新账号与 Worker，跨机网络和真机软键盘未验证。同一分身持有多台 Machine 的组合有数据库、投影与演示证据，没有两台物理 Machine 的联合实测。Worker 永久失踪后的 fencing 已由 Human 裁决为 B 并实现：Human 可用独立的强制收回命令越过等待，但页面与文档均不得因此声称旧操作已排空；gate `p4b-fence-liveness` 已闭合，代价见「已知限制与未闭合项」。
 
@@ -26,7 +26,7 @@ P4b 已交付 Project × Machine 租约、以分身为 holder 的跨 run 持有�
 | `execution_result`      | 保存 execution 对应的有界终态结果与截断事实，区别于执行请求。                       |
 | `remote_tool_grant`     | 保存绑定 user、Project、Chat、instance、run 的短期私有 grant 的 hash 与撤销状态。   |
 
-七表由新增迁移 [0009_hard_chameleon.sql](../../drizzle/0009_hard_chameleon.sql) 建立，未修改已合并迁移。强制收回没有新增列或迁移：它复用 `lease_mutation` 的 Human / reclaim 收据，`forcedReclaim` 由该收据投影，详见「体验后变更与安全返工」的 F-13。DM 标题另用一处只加约束的迁移 [0010_chat_title_check.sql](../../drizzle/0010_chat_title_check.sql)，见「体验后新增能力：DM 标题」。复跑使用新的隔离 `DATABASE_URL`，不得删除共享业务数据，规则见 [迁移约定](../p1/conventions.md#数据库约束与迁移)。
+七表由新增迁移 [0009_hard_chameleon.sql](../../drizzle/0009_hard_chameleon.sql) 建立，未修改已合并迁移。强制收回没有新增列或迁移：它复用 `lease_mutation` 的 Human / reclaim 收据，`forcedReclaim` 由该收据投影，详见「体验后变更与安全返工」的 F-13。Chat 标题另用一处只加约束的迁移 [0010_chat_title_check.sql](../../drizzle/0010_chat_title_check.sql)，见「体验后新增能力：Chat 标题」。复跑使用新的隔离 `DATABASE_URL`，不得删除共享业务数据，规则见 [迁移约定](../p1/conventions.md#数据库约束与迁移)。
 
 ## 功能交付证据
 
@@ -96,7 +96,7 @@ y 断言三处共用持租投影，run completed 仍显示 held，并区分 run 
 
 ## 体验后 UI 返工（A 方案信息架构）
 
-Human 亲身体验真实页面后给出九条反馈，其中七条落在页面信息架构与呈现（本节 1–7 条），另有一条是 Chat 无法辨认（由后续 `5c8dfa4` 的 DM 标题单元承担，见下一节）。实现链为 `7e2249a` → `371e7dc` → `fdc38db` → `f4da042` → `cbb4a53` → `79c7c50` → `5ade997`，合并提交 `e28a149`；`fencing-facts` 的卡片形态在 `064d517` 已定，本轮只改成「一句话摘要 + 问号 Dialog」。逐条结果：
+Human 亲身体验真实页面后给出九条反馈，其中七条落在页面信息架构与呈现（本节 1–7 条），另有一条是 Chat 无法辨认（由后续 `5c8dfa4` 的 Chat 标题单元承担，见下一节）。实现链为 `7e2249a` → `371e7dc` → `fdc38db` → `f4da042` → `cbb4a53` → `79c7c50` → `5ade997`，合并提交 `e28a149`；`fencing-facts` 的卡片形态在 `064d517` 已定，本轮只改成「一句话摘要 + 问号 Dialog」。逐条结果：
 
 1. Machine root 与 Project 绑定的观察信息只保留「当前可达」，不再重复派生路径或以同一行拖观察时间、连接代次与 revision。
 2. 远端操作卡片里的**命令正文整体移除**，也没有「展开原文」按钮：shell 命令、`cwd`、文件绝对路径、maxBytes 都不上界面。这是一期有意的取舍——一期没有审计产品，命令正文与远端输出都可能含密钥；代价是 Human 无法在界面上回看当时跑了什么。保留并可读的是操作类型、目标、状态、失败原因、结果元信息、授权代次与时间。
@@ -110,9 +110,9 @@ fencing 呈现改为「一句话摘要 `FENCING_SUMMARY` + 问号按钮背后的
 
 反证与回归：`z-lease-integration.sh` 断言命令正文不落界面、深链入口存在、交接与收回的目标固定；`y-lease-ui.sh` 与 `p4b-lease-scenes.mjs` 覆盖浅暗主题 × 390 / 901 / 1199 / 1200 / 1440px。本轮没有改 `src/contracts`、`src/domain`、`src/server`、迁移或任何 verify 脚本的断言方向（只新增真实页面断言）。重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
-## 体验后新增能力：DM 标题
+## 体验后新增能力：Chat 标题
 
-`5c8dfa4`（merge `147193b`）为每个 DM 提供人类可读的标题与显式改名。它是独立能力，不是租约或远端操作的一部分。
+`5c8dfa4`（merge `147193b`）为每个 Chat 提供人类可读的标题与显式改名。按 [统一术语](../core-scope.md#统一术语chat对话)，Chat 涵盖 DM、Group 与 Public Channel；当前 `chat.kind` 的契约只有 `dm` 一种，因此本轮实测覆盖的是 DM 形态。它是独立能力，不是租约或远端操作的一部分。
 
 - 数据形状：标题仍是 `chat.title`（可空文本列），语义固定为人工命名的显示覆盖；`null` 表示未命名，不用空字符串表达第二种空值。新增迁移 [0010_chat_title_check.sql](../../drizzle/0010_chat_title_check.sql) 只加 `CHECK("title" is null or length(trim("title")) between 1 and 80)`，未改动已合并迁移的结构。
 - 写入路径：真实存在的 `updateChatTitle` / `clearChatTitle`（领域）与 `updateChatTitleFn` / `clearChatTitleFn`（服务端）；服务端先 `requireSession` 再校验契约，空白与超长得 `validation_failed` + `fieldErrors.title`。
@@ -159,7 +159,7 @@ F-14，`5869bf3`（收据核对）、`dd3fa80`（状态隔离与注入时钟）�
 | 首轮独立技术验收          | `b5c34db`，`reports/p4b-acceptance/acceptance.md`：11 项 PASS，含真实 Pi、Worker、服务、SQLite、Chromium。发现旧占位断言和构建产物顺序问题，后由 `6428b5c` 修复并全量复跑。                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 第二轮技术复验            | `243fd53`，`reports/acceptance-2.md`：1–12 PASS，12a、12b、12c 均有修复前后对照，`reports/acceptance-2/` 保存 34 份证据。这是技术复验记录；模型独立性的调度限制另见 store 的 `decisions.tsv`，不据此增列 Human 确认。                                                                                                                                                                                                                                                                                                                                                                                     |
 | **本轮（`8ffa7e6`）补充** | 同章后续两批能力（`c42bae1` 强制收回、`5c8dfa4` 标题、`5ade997` 页面返工、`5869bf3`/`dd3fa80`/`8ffa7e6` 收据修复）均已合入 main 并有各自单元的实现报告与反证：`reports/fence-force-implementation.md`、`reports/chat-title-implementation.md`、`reports/ui-refine-implementation.md`、`reports/zfix-implementation.md`、`reports/receipt-implementation.md`。`c42bae1` 上 `pnpm test` 为 261 条；`8ffa7e6` 上为 287 条 / 38 个文件（实测日志 `/tmp/p4b-test-now.log`）。`vp check` 在未跟踪的 `brief.md` 存在时因该文件格式退出 1，移出后为 `314 files formatted` + `260 files lint/type clean`、退出 0。 |
-| 第三轮独立技术验收        | 因行为已变（强制收回、DM 标题、收据语义）而重新派发，写入本文件时**仍在进行中**，尚无 PASS/FAIL 结论；不得把本轮写成已完成。                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 第三轮独立技术验收        | 因行为已变（强制收回、Chat 标题、收据语义）而重新派发，写入本文件时**仍在进行中**，尚无 PASS/FAIL 结论；不得把本轮写成已完成。                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 第二轮全量验证里的 `l-docs`、`l-docs-probes` 两条失败来自 `git archive` 副本没有 `.git`，无法解析历史提交。相同 SHA 在带历史工作树里 `L_EXIT=0`、`LP_EXIT=0`，coordinator 的 30 脚本验证也为零失败，证据 `reports/acceptance-2/acc2-ldocs-git.log`。这两条是环境性假失败，不是产品缺陷。
 
@@ -197,10 +197,10 @@ F-14，`5869bf3`（收据核对）、`dd3fa80`（状态隔离与注入时钟）�
 | `bash scripts/verify/z-lease-integration.sh`                                                                                                                                                                     | Chat 到真实 Worker 的生产接入、三处一致、权限反证与进程文件保留。                                      |
 | `bash scripts/verify/a-base.sh`                                                                                                                                                                                  | 真实 Pi `sprout_status` 原行为。                                                                       |
 | `bash scripts/verify/s-machine-contracts.sh`、`bash scripts/verify/t-machine-worker.sh`、`bash scripts/verify/u-machine-ui.sh`                                                                                   | P4a 契约、连接、票据、root、origin、刷新及能力回归；u 使用独立空闲 `BASE_URL` 避免既存 3120 端口冲突。 |
-| `pnpm exec vp test run tests/worker-report-budget.test.ts tests/quota-scope.test.ts tests/lease-view.test.ts tests/project-lease-actions.test.ts tests/lease-contracts.test.ts tests/chat-title-display.test.ts` | 三项安全返工、租约收据与 DM 标题的定向回归。                                                           |
+| `pnpm exec vp test run tests/worker-report-budget.test.ts tests/quota-scope.test.ts tests/lease-view.test.ts tests/project-lease-actions.test.ts tests/lease-contracts.test.ts tests/chat-title-display.test.ts` | 三项安全返工、租约收据与 Chat 标题的定向回归。                                                         |
 | `node --import tsx tests/fixtures/quota-scope-live.ts`                                                                                                                                                           | 隔离 SQLite、真实服务与 Worker 的双 Project 预算及私有哨兵。                                           |
 | `node --import tsx tests/fixtures/lease-force-contracts.ts`、`node --import tsx tests/fixtures/lease-force-live.ts`                                                                                              | Human 强制收回的契约反证与真实服务 / 真实 Worker 路径（已由 v、w 驱动）。                              |
-| `bash scripts/verify/i-chat.sh`                                                                                                                                                                                  | DM 标题的未登录、跨用户改名反证与真实浏览器改名流程。                                                  |
+| `bash scripts/verify/i-chat.sh`                                                                                                                                                                                  | Chat 标题的未登录、跨用户改名反证与真实浏览器改名流程。                                                |
 | `bash scripts/verify/f-docs.sh`、`bash scripts/verify/l-docs.sh`、`bash scripts/verify/l-docs-probes.sh`、`pnpm exec vp check`                                                                                   | 文档链接、计划证据门禁与格式检查；l-docs 与探针在 `8ffa7e6` 上均退出 0。                               |
 
 脚本产物默认写各自 `.verify/` 子目录，复跑后读取当次结果，不将启动命令返回当成执行成功。独立端口、隔离库与 state-dir 由对应夹具管理，localhost 请求绕过代理，禁止触碰 Human 正在使用的 :3000。
