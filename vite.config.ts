@@ -46,6 +46,8 @@ export default defineConfig({
       "drizzle/meta/**",
       "src/routeTree.gen.ts",
       "src/db/auth-schema.ts",
+      // 证据快照按探针实际写出的字节保存，格式化成别的形状就和被验产物对不上了。
+      "docs/r1/evidence/**",
     ],
   },
   lint: {
