@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import type { McpCatalogView, McpConfig } from "../../src/contracts/mcp";
+import type { WorkerExchangeRemoteInput } from "../../src/contracts/worker";
 import { sqlite } from "../../src/db";
 import { loadPiMcp } from "../../src/extension/mcp-load";
 import { connectSproutMcp } from "../../src/extension/mcp-client";
@@ -196,7 +197,31 @@ const configured = {
 const workerRuntime = new McpRuntime([configured]);
 await workerRuntime.start();
 const dispatcher = new RemoteDispatcher(worker, capability, Date.now, workerRuntime);
-let workerSeq = 0;
+let dispatcherAcceptedSeq = 0;
+// Normal exchanges advance this row only when the authenticated gateway commits.
+// Read it for every batch so a rejected or rolled-back exchange cannot consume a seq.
+const committedExchangeSeq = () => {
+  const row = sqlite
+    .prepare("SELECT seq FROM machine_connection WHERE machine_id=? AND generation=?")
+    .get(machineId, worker.generation) as { seq: number };
+  return row.seq;
+};
+const exchangeBatch = (remote: WorkerExchangeRemoteInput) => {
+  workerContext.now = new Date();
+  const exchangeSeq = committedExchangeSeq() + 1;
+  return exchangeWorker(
+    {
+      ...wire,
+      session: worker,
+      seq: exchangeSeq,
+      mode: "normal",
+      capability,
+      observations: [],
+      remote,
+    },
+    workerContext,
+  );
+};
 let receivedFrames = 0;
 let dispatchedFrames = 0;
 const frameCommits: { sessionId: string; at: number }[] = [];
@@ -208,25 +233,13 @@ const httpExchanges: {
   newFrameCommitted: boolean;
 }[] = [];
 const tick = () => {
-  workerContext.now = new Date();
   const outgoing = dispatcher.outgoing();
   const newFrames = outgoing.mcp.filter(
     (item) =>
       item.type === "frame" &&
       !sqlite.prepare("SELECT id FROM mcp_frame WHERE id=?").get(item.frameId),
   );
-  const response = exchangeWorker(
-    {
-      ...wire,
-      session: worker,
-      seq: ++workerSeq,
-      mode: "normal",
-      capability,
-      observations: [],
-      remote: outgoing,
-    },
-    workerContext,
-  );
+  const response = exchangeBatch(outgoing);
   for (const item of newFrames)
     if (item.type === "frame")
       frameCommits.push({ sessionId: item.sessionId, at: performance.now() });
@@ -234,9 +247,26 @@ const tick = () => {
   dispatchedFrames += response.remote.mcp.filter(
     (item: { type: string }) => item.type === "frame",
   ).length;
-  dispatcher.accept(response, workerSeq, []);
+  dispatcher.accept(response, response.seq, []);
+  dispatcherAcceptedSeq = response.seq;
 };
 tick();
+// A rejected MCP fact must leave the committed sequence available for the next tick.
+const rejectedExchangeBeforeSeq = committedExchangeSeq();
+assert.throws(
+  () =>
+    exchangeBatch({
+      ...dispatcher.outgoing(),
+      mcp: [
+        { type: "registration_fact", registration: { ...configured, configHash: "0".repeat(64) } },
+      ],
+    }),
+  { code: "remote_request_conflict" },
+);
+const rejectedExchangeAfterSeq = committedExchangeSeq();
+assert.equal(rejectedExchangeAfterSeq, rejectedExchangeBeforeSeq);
+tick();
+assert.equal(dispatcherAcceptedSeq, rejectedExchangeBeforeSeq + 1);
 const processRow = sqlite
   .prepare("SELECT id,pid FROM mcp_server_process WHERE registration_id=? AND state='running'")
   .get(registrationId) as { id: string; pid: number };
@@ -426,28 +456,19 @@ pass(`draining 期间 mcp_session_exchange 响应 ${drainMs} ms（< 100 ms）`);
 const runtimeEvidence = await loadExtensionInRealRuntime();
 
 // ---------------------------------------------------------------- close
-await connection.close();
 clearInterval(timer);
+if (tickError) throw tickError;
+assert.equal(dispatcherAcceptedSeq, committedExchangeSeq());
+await connection.close();
 assert(process.kill(processRow.pid, 0), "closing Pi session preserves the actual server process");
 // A process identity is currently single-use (mcp_session_process_unique).
 // Timing controls use a second real process, leaving the measured MCP client alone.
 const controlRuntime = new McpRuntime([configured]);
 await controlRuntime.start();
 const controlDispatcher = new RemoteDispatcher(worker, capability, Date.now, controlRuntime);
-workerContext.now = new Date();
-// Advertise the separate control process. Timing inputs below intentionally bypass dispatcher.accept.
-exchangeWorker(
-  {
-    ...wire,
-    session: worker,
-    seq: ++workerSeq,
-    mode: "normal",
-    capability,
-    observations: [],
-    remote: controlDispatcher.outgoing(),
-  },
-  workerContext,
-);
+// The main dispatcher is stopped. Advertise the independent control runtime through
+// its own committed exchange; that response must not advance dispatcherAcceptedSeq.
+const controlResponse = exchangeBatch(controlDispatcher.outgoing());
 const controlProcess = sqlite
   .prepare(
     "SELECT id,worker_incarnation_id FROM mcp_server_process WHERE registration_id=? AND id<>? AND state='running'",
@@ -467,7 +488,7 @@ const wakeControls = await measureWakeControls({
   workerContext,
   capability,
   wire,
-  nextSeq: () => ++workerSeq,
+  nextSeq: () => committedExchangeSeq() + 1,
   registration: catalog.registrations[0]!,
   process: {
     processId: controlProcess.id,
@@ -475,6 +496,9 @@ const wakeControls = await measureWakeControls({
     lastObservedAt: Date.now(),
   },
 });
+assert.equal(controlResponse.seq, dispatcherAcceptedSeq + 1);
+// Only the successful wake trial commits; the outer-rollback trial consumes no seq.
+assert.equal(committedExchangeSeq(), controlResponse.seq + 1);
 await controlRuntime.stop();
 assert.equal(
   sqlite.prepare("SELECT state FROM mcp_server_process WHERE id=?").get(processId)?.state,
@@ -501,7 +525,14 @@ const evidence = {
   realServer: config.args[1],
   realServerToolCount: toolNames.length,
   toolCount: toolNames.length,
-  workerExchanges: workerSeq,
+  workerExchanges: committedExchangeSeq(),
+  sequenceEvidence: {
+    dispatcherAcceptedSeq,
+    controlCommittedSeq: controlResponse.seq,
+    finalCommittedSeq: committedExchangeSeq(),
+    rejectedExchangeBeforeSeq,
+    rejectedExchangeAfterSeq,
+  },
   workerDispatcherClientFrames: dispatchedFrames,
   workerDispatcherServerFrames: receivedFrames,
   serverPid: processRow.pid,
