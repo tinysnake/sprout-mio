@@ -10,6 +10,13 @@ import { hashCredential } from "../domain/machine";
 import { config } from "../lib/config";
 import { acquireLease, getLease, handoffLease, releaseLease } from "./lease";
 import type { AgentRemoteContext } from "./lease";
+import {
+  mcpCatalogGet,
+  mcpSessionClose,
+  mcpSessionExchange,
+  mcpSessionOpen,
+  parseMcpExchange,
+} from "./mcp-relay";
 import type { PiSessionProcess } from "./pi-host/process";
 import { RemoteError, getExecution, requestExecution } from "./remote";
 import { machineRuntimeContext, runtimeSnapshot } from "./runtime";
@@ -195,6 +202,16 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
             return requestExecution(parsed.call.input, actorContext);
           case "execution_get":
             return getExecution(parsed.call.input, actorContext);
+          case "mcp_catalog_get":
+            return mcpCatalogGet(parsed.call.input, actorContext);
+          case "mcp_session_open":
+            return mcpSessionOpen(parsed.call.input, actorContext);
+          case "mcp_session_close":
+            return mcpSessionClose(parsed.call.input, actorContext);
+          case "mcp_session_exchange":
+            // exchange 是唯一有界 hold 的 call，不能把等待塞进 immediate 事务：
+            // 这里只把已验证的身份交出去，落盘与 hold 由 mcp-relay 自己开合事务。
+            return { hold: parseMcpExchange(parsed.call.input), context: actorContext };
           case "lease_mutate": {
             const input = parsed.call.input;
             switch (input.action) {
@@ -209,7 +226,9 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
         }
       })
       .immediate();
-    const encoded = JSON.stringify({ ok: true, data, requestId });
+    const payload =
+      "hold" in data && data.hold ? await mcpSessionExchange(data.hold, data.context) : data;
+    const encoded = JSON.stringify({ ok: true, data: payload, requestId });
     if (Buffer.byteLength(encoded) > 512 * 1024) throw new RemoteError("too_many_requests");
     return new Response(encoded, { headers: { ...headers, "content-type": "application/json" } });
   } catch (error) {
