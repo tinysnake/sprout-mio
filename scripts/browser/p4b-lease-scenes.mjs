@@ -437,8 +437,118 @@ await check("Machine 详情显示租约与远端操作目标", async () => {
     assert.ok(
       (await page.getByTestId("machine-detail-remote-operations").textContent()) !== "未实现，P4b",
     );
+    // 第 6 条：Machine 详情页不再要求重选目标，目标就是当前这台；表单仍要求代次匹配。
+    const form = page.getByTestId("machine-lease-section-overview-mutation");
+    await form.waitFor();
+    assert.equal(
+      await form.getByTestId("machine-lease-section-overview-mutation-machine").count(),
+      0,
+      "no target picker when the page is already a single Machine",
+    );
+    assert.match(
+      await form.getByTestId("machine-lease-section-overview-mutation-target").innerText(),
+      /工作室 Mac mini/,
+    );
+    assert.doesNotMatch(await form.innerText(), /必须显式选择；没有默认目标/);
+    assert.match(
+      await form.getByTestId("machine-lease-section-overview-mutation-target-hint").innerText(),
+      /目标就是你当前所在的这台 Machine/,
+    );
+    // 下拉框与按钮同一行基线；窄屏换行但不塌。
+    const aligned = await form.evaluate((node) => {
+      const target = node.querySelector(
+        '[data-testid="machine-lease-section-overview-mutation-target"]',
+      );
+      const submit = node.querySelector(
+        '[data-testid="machine-lease-section-overview-mutation-submit"]',
+      );
+      const a = target.getBoundingClientRect();
+      const b = submit.getBoundingClientRect();
+      return {
+        sameRow: Math.abs(a.bottom - b.bottom) <= 8,
+        targetRight: a.right,
+        submitLeft: b.left,
+      };
+    });
+    assert.ok(aligned.sameRow, `表单控件与按钮同一基线: ${JSON.stringify(aligned)}`);
+    assert.ok(aligned.submitLeft >= aligned.targetRight - 1, "按钮在目标之后，不重叠");
+    assert.match(
+      await page.getByTestId("machine-lease-detail").innerText(),
+      /租约单位是 Project × Machine/,
+    );
+    // 第 5 条：配置类区块仍在同一页，只是排在租约与远端操作之后。
+    const order = await page.evaluate(() => {
+      const order = [
+        "machine-lease-detail",
+        "machine-remote-executions",
+        "machine-connection-section",
+        "machine-shells",
+        "machine-root-section",
+        "machine-bindings",
+        "machine-restart-section",
+      ];
+      return order.map((id) => {
+        const node = document.querySelector(`[data-testid="${id}"]`);
+        return {
+          id,
+          present: Boolean(node),
+          y: node ? node.getBoundingClientRect().top + window.scrollY : -1,
+        };
+      });
+    });
+    for (const entry of order) assert.ok(entry.present, `缺少区块 ${entry.id}`);
+    for (let index = 1; index < order.length; index += 1)
+      assert.ok(
+        order[index].y > order[index - 1].y,
+        `${order[index].id} 应排在 ${order[index - 1].id} 之后`,
+      );
+    assert.equal(
+      await page.getByTestId("machine-settings-group").count(),
+      1,
+      "配置区块归入设置分组",
+    );
+    // 第 4 条：页头的租约入口是按钮而不是文字链接，点击后落到本页租约区块并给出可见焦点。
+    const jump = page.getByTestId("machine-lease-jump");
+    await jump.waitFor();
+    assert.equal(await jump.getAttribute("role"), null);
+    const jumpStyle = await jump.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        border: parseFloat(style.borderTopWidth),
+        underline: style.textDecorationLine,
+        height: node.getBoundingClientRect().height,
+      };
+    });
+    assert.ok(
+      jumpStyle.border >= 1 && jumpStyle.height >= 28,
+      `按钮形态: ${JSON.stringify(jumpStyle)}`,
+    );
+    assert.notEqual(jumpStyle.underline, "underline", "不再是下划线文字链");
+    await jump.click();
+    await page.waitForFunction(
+      () => document.activeElement?.closest('[data-testid="machine-lease-detail"]') !== null,
+    );
     await shootAt(page, "machine-lease-detail", "machine-detail-lease");
     await shootAt(page, "machine-executions", "machine-detail-executions");
+    for (const colorScheme of ["light", "dark"]) {
+      for (const width of [390, 901, 1199, 1200, 1440]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.emulateMedia({ colorScheme });
+        await page.evaluate((theme) => localStorage.setItem("sprout:theme", theme), colorScheme);
+        await page.getByTestId("machine-detail-page").waitFor();
+        await page.getByTestId("machine-lease-detail").waitFor();
+        assert.ok(
+          await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+          `${colorScheme} ${width}px 无横向溢出`,
+        );
+        await shootAt(page, "machine-lease-detail", `machine-lease-${colorScheme}-${width}`);
+        await shootAt(
+          page,
+          "machine-remote-executions",
+          `machine-executions-${colorScheme}-${width}`,
+        );
+      }
+    }
   } finally {
     await context.close();
   }

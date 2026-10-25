@@ -109,6 +109,26 @@ export function MachineDetailPanel({
     ? (detail.bindings.find((item) => item.intent.projectId === bindingProject.id) ?? null)
     : null;
 
+  /**
+   * 租约入口：按钮形态而不是下划线文字链，权重与「刷新连接与观察」一致。
+   * 点击后定位到本页的租约与持有者区块，并让该区块里第一个控件获得可见焦点。
+   */
+  function revealLeaseBlock() {
+    const node = document.querySelector<HTMLElement>('[data-testid="machine-lease-detail"]');
+    if (!node) return;
+    node.scrollIntoView({ block: "start", behavior: "smooth" });
+    const focusable = node.querySelector<HTMLElement>(
+      'select, input, button, a[href], [tabindex]:not([tabindex="-1"])',
+    );
+    focusable?.focus({ preventScroll: true });
+  }
+
+  const leaseJump = bindingProject ? (
+    <Button variant="secondary" data-testid="machine-lease-jump" onClick={revealLeaseBlock}>
+      租约详情
+    </Button>
+  ) : null;
+
   const enrollmentSection = (
     <SettingsSection title="配对与安装" testId="machine-enrollment-section">
       <MachineEnrollmentPanel
@@ -134,7 +154,12 @@ export function MachineDetailPanel({
         </span>
       }
       back={back}
-      actions={actions}
+      actions={
+        <>
+          {leaseJump}
+          {actions}
+        </>
+      }
       testId="machine-detail-page"
     >
       <div className="grid grid-cols-1">

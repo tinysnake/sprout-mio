@@ -50,21 +50,19 @@ function MachinePage() {
   const router = useRouter();
   const { enrollment, setEnrollment } = useMachineEnrollment();
 
-  /** 滚到本页租约区块并让它里面第一个可操作控件获得真实焦点（可见焦点环）。 */
-  function revealLeaseBlock() {
-    const node = document.querySelector<HTMLElement>('[data-testid="machine-lease-detail"]');
-    if (!node) return;
-    node.scrollIntoView({ block: "start", behavior: "smooth" });
-    const focusable = node.querySelector<HTMLElement>(
-      'select, input, button, a[href], [tabindex]:not([tabindex="-1"])',
-    );
-    focusable?.focus({ preventScroll: true });
-  }
-
-  // 从 Project settings 带着 lease=1 进来：直接定位到租约区块，不需要人自己找。
+  // 从 Project settings 带着 lease=1 进来：直接定位到租约区块并给出可见焦点。
   useEffect(() => {
     if (lease !== "1") return;
-    const timer = window.setTimeout(revealLeaseBlock, 0);
+    const timer = window.setTimeout(() => {
+      const node = document.querySelector<HTMLElement>('[data-testid="machine-lease-detail"]');
+      if (!node) return;
+      node.scrollIntoView({ block: "start", behavior: "smooth" });
+      node
+        .querySelector<HTMLElement>(
+          'select, input, button, a[href], [tabindex]:not([tabindex="-1"])',
+        )
+        ?.focus({ preventScroll: true });
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [lease, projectId, detail]);
   useEffect(() => {
@@ -143,11 +141,7 @@ function MachinePage() {
       onBindingSaved={() => void router.invalidate()}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          {projectId ? (
-            <Button variant="secondary" data-testid="machine-lease-jump" onClick={revealLeaseBlock}>
-              租约详情
-            </Button>
-          ) : (
+          {!projectId &&
             detail.data.bindings.map((binding) => (
               <Link
                 key={binding.intent.projectId}
@@ -161,8 +155,7 @@ function MachinePage() {
                   binding.intent.projectId}{" "}
                 的租约
               </Link>
-            ))
-          )}
+            ))}
           <Button
             variant="outline"
             data-testid="machine-refresh"

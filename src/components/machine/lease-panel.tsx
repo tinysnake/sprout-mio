@@ -283,7 +283,10 @@ export function LeaseMutationForm({
       <p className="text-[0.6875rem] leading-5 text-muted-foreground">
         动作与期望代次一起提交；代次失效时服务端拒绝，界面不把拒绝显示为成功。租约变更不会终止进程或删除文件。
       </p>
-      {/* 同一基线对齐：下拉框与按钮同排，窄屏才换行，不经对自动列宽把按钮挤到下一行右侧。 */}
+      {/*
+        目标控件与提交按钮同排、同一基线：说明文字移出这一行，否则 items-end 会把按钮
+        对齐到说明底部而不是控件底部。窄屏（<1200px）纵向堆叠，不把按钮挤到下一行右侧。
+      */}
       <div className="flex flex-col gap-3 desktop:flex-row desktop:items-end">
         <div className="min-w-0 desktop:flex-1">
           {fixedTargetId ? (
@@ -292,16 +295,14 @@ export function LeaseMutationForm({
               <p className="min-h-9.5 rounded-control border border-input bg-muted px-2.75 py-2 text-[13px] break-all">
                 {fixedTarget}
               </p>
-              <p className="text-xs leading-6 text-muted-foreground">
-                目标就是你当前所在的这台 Machine，租约单位是 Project × Machine。
-              </p>
             </div>
           ) : (
-            <Field label="目标 Machine" hint="必须显式选择；没有默认目标。">
+            <Field label="目标 Machine">
               <Select
                 data-testid={`${testId}-machine`}
                 value={draft.machineId}
                 disabled={pending}
+                aria-describedby={`${testId}-target-hint`}
                 onChange={(event) => {
                   setDraft({ machineId: event.target.value, lastAction: null });
                   setError(null);
@@ -343,6 +344,15 @@ export function LeaseMutationForm({
           )}
         </div>
       </div>
+      <p
+        id={`${testId}-target-hint`}
+        data-testid={`${testId}-target-hint`}
+        className="text-xs leading-6 text-muted-foreground"
+      >
+        {fixedTargetId
+          ? "目标就是你当前所在的这台 Machine；租约单位是 Project × Machine。"
+          : "必须显式选择；没有默认目标。"}
+      </p>
       <p data-testid={`${testId}-context`} className="text-[0.6875rem] text-muted-foreground">
         {lease
           ? `当前：${leaseStateLabel(lease.state).label} · 代次 ${lease.generation} · ${
