@@ -476,6 +476,16 @@ await check("Machine 详情显示租约与远端操作目标", async () => {
       await page.getByTestId("machine-lease-detail").innerText(),
       /租约单位是 Project × Machine/,
     );
+    // 第 6 条：交接与收回同样不要求重选 Machine。演示场景直接注入变更回调，
+    // 因此只在真实页面的 ProjectLeaseActions 出现时才断言（真实路径由 z-lease-integration.sh 覆盖）。
+    if ((await page.getByTestId("lease-transfer-controls").count()) > 0) {
+      assert.equal(
+        await page.getByLabel("交接或收回的 Machine").count(),
+        0,
+        "no machine picker for handoff and reclaim",
+      );
+      assert.match(await page.getByTestId("lease-transfer-machine").innerText(), /工作室 Mac mini/);
+    }
     // 第 5 条：配置类区块仍在同一页，只是排在租约与远端操作之后。
     const order = await page.evaluate(() => {
       const order = [

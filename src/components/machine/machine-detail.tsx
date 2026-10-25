@@ -177,7 +177,11 @@ export function MachineDetailPanel({
               {leaseError ? (
                 <ResultError error={leaseError} />
               ) : leaseInfo ? (
-                <ProjectLeaseActions key={leaseInfo.projectId} info={leaseInfo}>
+                <ProjectLeaseActions
+                  key={leaseInfo.projectId}
+                  info={leaseInfo}
+                  fixedMachineId={detail.machine.id}
+                >
                   {(mutate) => (
                     <MachineLeaseSection
                       projectId={bindingProject.id}

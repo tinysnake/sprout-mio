@@ -100,8 +100,8 @@ export function ProjectMachinesPanel({
 }
 
 /**
- * 深链到 Machine 详情页的租约区块。`lease=1` 表示进入后定位到该区块并让它获得焦点；
- * 沿用既有 `?projectId=` 约定，不新增路由或契约字段。
+ * 深链到 Machine 详情页的租约区块：租约现在排在详情页的第一段，带着既有
+ * `?projectId=` 进来就在那里；页头还有一个按钮做页内定位。不新增路由参数。
  */
 export function LeaseManageLink({
   projectId,
@@ -116,7 +116,7 @@ export function LeaseManageLink({
     <Link
       to="/machines/$machineId"
       params={{ machineId }}
-      search={{ projectId, lease: "1" }}
+      search={{ projectId }}
       data-testid="lease-manage-link"
       className="inline-flex min-h-6 items-center gap-1 text-[0.6875rem] text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
     >

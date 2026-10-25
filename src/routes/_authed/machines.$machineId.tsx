@@ -18,8 +18,8 @@ import { listProjectsFn } from "../../server/functions/project";
 import { useMachineEnrollment } from "../../components/machine/machine-enrollment-context";
 
 export const Route = createFileRoute("/_authed/machines/$machineId")({
-  // `lease=1` 是 Machine 详情页租约区块的定位深链（Project settings 的租约入口用它进来）。
-  validateSearch: z.object({ projectId: z.string().optional(), lease: z.string().optional() }),
+  // 只沿用既有 `?projectId=` 约定：Project settings 的租约入口用它深链到本页租约区块。
+  validateSearch: z.object({ projectId: z.string().optional() }),
   loaderDeps: ({ search }) => ({ projectId: search.projectId }),
   loader: async ({ params, deps }) => {
     const [detail, projects] = await Promise.all([
@@ -46,25 +46,10 @@ export const Route = createFileRoute("/_authed/machines/$machineId")({
 
 function MachinePage() {
   const { detail, projects, info, executions } = Route.useLoaderData();
-  const { projectId, lease } = Route.useSearch();
+  const { projectId } = Route.useSearch();
   const router = useRouter();
   const { enrollment, setEnrollment } = useMachineEnrollment();
 
-  // 从 Project settings 带着 lease=1 进来：直接定位到租约区块并给出可见焦点。
-  useEffect(() => {
-    if (lease !== "1") return;
-    const timer = window.setTimeout(() => {
-      const node = document.querySelector<HTMLElement>('[data-testid="machine-lease-detail"]');
-      if (!node) return;
-      node.scrollIntoView({ block: "start", behavior: "smooth" });
-      node
-        .querySelector<HTMLElement>(
-          'select, input, button, a[href], [tabindex]:not([tabindex="-1"])',
-        )
-        ?.focus({ preventScroll: true });
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [lease, projectId, detail]);
   useEffect(() => {
     let stopped = false;
     let refreshing = false;
@@ -147,7 +132,7 @@ function MachinePage() {
                 key={binding.intent.projectId}
                 to="/machines/$machineId"
                 params={{ machineId: detail.data.machine.id }}
-                search={{ projectId: binding.intent.projectId, lease: "1" }}
+                search={{ projectId: binding.intent.projectId }}
                 data-testid="machine-lease-link"
                 className="inline-flex min-h-8.5 items-center rounded-control border border-border bg-background px-2.75 text-xs font-medium text-foreground hover:border-foreground"
               >

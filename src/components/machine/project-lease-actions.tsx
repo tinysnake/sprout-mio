@@ -40,15 +40,22 @@ function chatNameResolver(info: ProjectInfoHub) {
 /** Human requests a Chat turn; only the grant-bound agent can mutate a holder lease. */
 export function ProjectLeaseActions({
   info,
+  fixedMachineId,
   children,
 }: {
   info: ProjectInfoHub;
+  /**
+   * 已经在单台 Machine 的页面上时传入：交接与收回的目标就是这台，不再要求重选。
+   * 跨机器操作（Project settings 等）不传，保留显式选择。
+   */
+  fixedMachineId?: string;
   children: (mutate: LeaseMutationHandler) => ReactNode;
 }) {
   const router = useRouter();
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatId, setChatId] = useState("");
-  const [machineId, setMachineId] = useState("");
+  const [pickedMachineId, setPickedMachineId] = useState("");
+  const machineId = fixedMachineId ?? pickedMachineId;
   const [targetInstanceId, setTargetInstanceId] = useState("");
   const [error, setError] = useState<AppError | null>(null);
   const [pending, setPending] = useState(false);
@@ -189,23 +196,35 @@ export function ProjectLeaseActions({
         data-testid="lease-transfer-controls"
       >
         <p className="text-xs font-medium">交接与收回</p>
-        <Select
-          aria-label="交接或收回的 Machine"
-          value={machineId}
-          onChange={(event) => setMachineId(event.target.value)}
-        >
-          <option value="">请选择持有中的 Machine</option>
-          {info.leases.items
-            .filter((lease) => lease.state === "held")
-            .map((lease) => (
-              <option key={lease.machineId} value={lease.machineId}>
-                {info.machines.find((item) => item.machine.id === lease.machineId)?.machine.name ??
-                  lease.machineId}
-              </option>
-            ))}
-        </Select>
+        {fixedMachineId ? (
+          <div data-testid="lease-transfer-machine" className="flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">目标 Machine</span>
+            <p className="min-h-9.5 rounded-control border border-input bg-muted px-2.75 py-2 text-[13px]">
+              {info.machines.find((item) => item.machine.id === fixedMachineId)?.machine.name ??
+                fixedMachineId}
+            </p>
+          </div>
+        ) : (
+          <Select
+            aria-label="交接或收回的 Machine"
+            data-testid="lease-transfer-machine"
+            value={pickedMachineId}
+            onChange={(event) => setPickedMachineId(event.target.value)}
+          >
+            <option value="">请选择持有中的 Machine</option>
+            {info.leases.items
+              .filter((lease) => lease.state === "held")
+              .map((lease) => (
+                <option key={lease.machineId} value={lease.machineId}>
+                  {info.machines.find((item) => item.machine.id === lease.machineId)?.machine
+                    .name ?? lease.machineId}
+                </option>
+              ))}
+          </Select>
+        )}
         <Select
           aria-label="交接目标分身"
+          data-testid="lease-transfer-target"
           value={targetInstanceId}
           onChange={(event) => setTargetInstanceId(event.target.value)}
         >

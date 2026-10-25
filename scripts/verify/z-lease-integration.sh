@@ -103,15 +103,16 @@ try {
   browser = await chromium.launch(); context = await browser.newContext({viewport:{width:1440,height:1000}});
   await context.addCookies(cookie.split('; ').map(v=>{const i=v.indexOf('=');return {name:v.slice(0,i),value:v.slice(i+1),url:base};}));
   const page = await context.newPage();
-  // Project settings 只给摘要与入口：它的租约管理入口必须深链到 Machine 详情的租约区块。
+  // Project settings 只给摘要与入口：租约管理入口深链到该 Machine 详情的租约区块。
   await page.goto(`${base}/projects/${projectId}/settings`);
   assert.equal(await page.getByTestId('lease-mutation-form').count(),0,'no lease mutation form in Project settings');
   const manageHref = await page.getByTestId('lease-manage-link').first().getAttribute('href');
-  assert.equal(manageHref,`/machines/${machineId}?projectId=${projectId}&lease=1`,'lease entry deep-links to Machine detail');
+  assert.equal(manageHref,`/machines/${machineId}?projectId=${projectId}`,'lease entry deep-links to Machine detail');
   await page.getByTestId('lease-manage-link').first().click();
-  assert.equal(new URL(page.url()).searchParams.get('lease'),'1','deep link keeps lease=1');
+  await page.waitForURL(`**/machines/${machineId}?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
-  // 深链进入后租约区块获得真实焦点，人不需要自己找。
+  // 页头的租约详情按钮把租约区块滚到可见处并给出可见焦点。
+  await page.getByTestId('machine-lease-jump').click();
   await page.waitForFunction(()=>document.activeElement?.closest('[data-testid="machine-lease-detail"]')!==null,null,{timeout:15000});
   pass('Project settings lease entry deep-links to the Machine lease block');
   // Machine 详情页不要求重选目标：目标就是当前这台。
@@ -144,6 +145,9 @@ try {
   assert(authorization.includes('由该分身的一次运行发起'),'run is described, not printed as a bare id');
   await page.getByTestId('machine-remote-executions').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'machine-result-light.png'),fullPage:true});
+  // 第 6 条：交接与收回也不用重选 Machine，目标就是本页这台。
+  assert.equal(await page.getByLabel('交接或收回的 Machine').count(),0,'no machine picker for handoff/reclaim');
+  assert((await page.getByTestId('lease-transfer-machine').innerText()).includes('Integration Mac'),'handoff target is the current Machine');
   pass('real remote shell and process result visible on production Machine page');
   await settled(chatId);
   const nonHolderProfile=await call('createAgentProfileFn',{name:'Non holder',persona:'Use the requested remote tool once, report its returned error, never acquire a lease.',...(process.env.SPROUT_VERIFY_PI_MODEL?{model:process.env.SPROUT_VERIFY_PI_MODEL}:{}),effort:'off'});
@@ -189,13 +193,12 @@ try {
   const reacquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'reacquire from page',180000);
   await page.getByTestId('machine-lease-section-overview-mutation-success').waitFor({timeout:65000});
   await settled(chatId);
-  await page.getByLabel('交接或收回的 Machine').selectOption(machineId);
   await page.getByLabel('交接目标分身').selectOption(nonHolder.instance.id);
   await page.getByRole('button',{name:'请求分身交接'}).click();
   const transferred=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held' && lease.holderInstanceId===nonHolder.instance.id ? lease:null;},'handoff through page and real holder tool',180000);
   assert(transferred.generation>reacquired.generation); process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','handoff preserves sentinel');
   await page.reload();
-  await page.getByLabel('交接或收回的 Machine').selectOption(machineId);
+  await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByRole('button',{name:'收回租约',exact:true}).click();
   await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','authenticated Human reclaim');
   process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','reclaim preserves sentinel');
