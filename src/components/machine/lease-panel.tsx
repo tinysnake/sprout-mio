@@ -165,7 +165,8 @@ export function LeaseOverview({
           data-testid={`${testId}-dense-note`}
           className="text-[0.6875rem] leading-5 text-muted-foreground"
         >
-          租约的申请、释放、交接与收回在对应 Machine 详情的租约区块进行；本处与它们读同一份租约事实。
+          租约的申请、释放、交接与收回在对应 Machine
+          详情的租约区块进行；本处与它们读同一份租约事实。
         </p>
       ) : (
         <Notice

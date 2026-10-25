@@ -83,9 +83,7 @@ export function ProjectMachinesPanel({
           <LeaseManageLink
             projectId={projectId}
             machineId={lease.machineId}
-            machineName={
-              machines.find((item) => item.machine.id === lease.machineId)?.machine.name
-            }
+            machineName={machines.find((item) => item.machine.id === lease.machineId)?.machine.name}
           />
         )}
         testId="info-hub-leases"

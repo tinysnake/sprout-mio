@@ -109,7 +109,10 @@ for (const colorScheme of ["light", "dark"]) {
           "聚合框文案不得再出现",
         );
         const counts = await page.getByTestId("lease-holder-count").allTextContents();
-        assert.ok(counts.some((text) => text.includes("持有 2 台")), `台数标记: ${counts}`);
+        assert.ok(
+          counts.some((text) => text.includes("持有 2 台")),
+          `台数标记: ${counts.join(" | ")}`,
+        );
         // 状态、holder、Machine 名称齐全。
         assert.ok((await page.getByTestId("lease-state").count()) >= 3);
         assert.ok((await page.getByTestId("lease-holder-instance").count()) >= 2);
@@ -137,17 +140,27 @@ for (const colorScheme of ["light", "dark"]) {
           assert.doesNotMatch(text, /holder ins_|run run_/, "卡片回了裸 id 标签");
         }
         // 人类可决策的事实仍在，且 holder 显示分身名称而不是 instance id。
-        const firstAuthorization = await cards.first().getByTestId("remote-executions-item-authorization").innerText();
+        const firstAuthorization = await cards
+          .first()
+          .getByTestId("remote-executions-item-authorization")
+          .innerText();
         assert.match(firstAuthorization, /授权代次 4/);
         assert.match(firstAuthorization, /持有者 重构搭档/);
         assert.doesNotMatch(firstAuthorization, /ins_aaaaaaaa/);
         assert.match(firstAuthorization, /由该分身的一次运行发起/);
         assert.match(firstAuthorization, /run_12345678/);
-        assert.equal(await cards.first().getByTestId("remote-executions-item-run").getAttribute("title"),
-          "run_12345678-1234-4234-8234-1234567890ab");
-        assert.equal(await cards.first().getByTestId("remote-executions-item-operation").count(), 0,
-          "不再渲染操作正文段落");
-        assert.ok((await cards.first().getByTestId("remote-executions-item-result").innerText()).length > 0);
+        assert.equal(
+          await cards.first().getByTestId("remote-executions-item-run").getAttribute("title"),
+          "run_12345678-1234-4234-8234-1234567890ab",
+        );
+        assert.equal(
+          await cards.first().getByTestId("remote-executions-item-operation").count(),
+          0,
+          "不再渲染操作正文段落",
+        );
+        assert.ok(
+          (await cards.first().getByTestId("remote-executions-item-result").innerText()).length > 0,
+        );
         assert.deepEqual(errors, [], `console errors: ${errors.join(" | ")}`);
         await shoot(page, `leases-${colorScheme}-${width}`);
         const fencing = page.locator('[data-lease-state="fencing"]');

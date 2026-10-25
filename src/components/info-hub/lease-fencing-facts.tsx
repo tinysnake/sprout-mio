@@ -139,7 +139,10 @@ export function LeaseFencingFacts({
   }
 
   return (
-    <div data-testid="lease-fencing-facts" className="min-w-0 space-y-2 break-words text-xs leading-6">
+    <div
+      data-testid="lease-fencing-facts"
+      className="min-w-0 space-y-2 break-words text-xs leading-6"
+    >
       {/* 卡片正文只留一句可决策的简介；完整事实在问号按钮后的 Dialog 里。 */}
       <div className="flex min-w-0 items-start gap-1.5">
         <p data-testid="lease-fencing-summary" className="min-w-0 flex-1 text-status-warning">
