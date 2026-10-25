@@ -300,6 +300,16 @@ export function applyMcpExchange(
             .where(eq(mcpSession.processId, fact.id))
             .all())
             terminal(row, "failed", "target_lost", ctx);
+      } else if (item.type === "session_detach_ack") {
+        const row = sessionFor(item, ctx);
+        if (active(row.state)) fail("MCP detach acknowledgement for active session");
+        if (row.workerDetachedAt === null) {
+          db.update(mcpSession)
+            .set({ workerDetachedAt: ctx.now.getTime() })
+            .where(eq(mcpSession.id, row.id))
+            .run();
+          audit(ctx, row.projectId, "mcp.session.detached");
+        }
       } else if (item.type === "session_fact") {
         const row = sessionFor(item, ctx);
         const { stateHash, ...value } = item;
@@ -553,7 +563,7 @@ export function applyMcpExchange(
             mutationId: row.fenceMutationId,
             sessions: [{ sessionId: row.id, processId: row.processId }],
           });
-        } else if (row.attachedAt !== null && row.workerDetachedAt === null)
+        } else if (row.workerDetachedAt === null)
           emit({
             type: "session_detach",
             ...bound,

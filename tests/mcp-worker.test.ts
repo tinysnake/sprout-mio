@@ -34,6 +34,10 @@ describe("MCP Worker", () => {
         expect(runtime.outgoing().mcp).not.toContainEqual(
           expect.objectContaining({ type: "process_fact" }),
         );
+        expect(runtime.outgoing().mcp).toContainEqual({
+          type: "session_detach_ack",
+          ...mcpBound({ ...session, id: detach.sessionId }),
+        });
       }
       runtime.accept(
         [

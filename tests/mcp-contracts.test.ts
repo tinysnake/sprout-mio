@@ -826,6 +826,7 @@ function wireProbe() {
       stateRevision: 1,
       stateHash: "a".repeat(64),
     },
+    { type: "session_detach_ack", ...bound },
     { type: "session_fence_ack", ...fence, detached: true },
     { type: "frame", ...bound, ...frame, direction: "server_to_client" },
   ];

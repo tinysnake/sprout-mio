@@ -425,6 +425,7 @@ export const mcpWorkerItemSchema = z
       stateRevision: positive,
       stateHash: hash,
     }),
+    z.strictObject({ type: z.literal("session_detach_ack"), ...bound }),
     z.strictObject({ type: z.literal("session_fence_ack"), ...fence, detached: z.literal(true) }),
     z
       .strictObject({ ...wireFrame, direction: z.literal("server_to_client") })
