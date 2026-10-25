@@ -24,9 +24,11 @@ const tree = process.env.PROBE_TREE;
 const head = execFileSync('git', ['-C', tree, 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 10000 }).trim();
 const functional = 'docs/development-plan-functional.md';
 const packagePlan = 'docs/development-plan.md';
+const uiPlan = 'docs/development-plan-ui.md';
 const summary = 'docs/p4a/summary.md';
 const probe = 'docs/p4a/probe.md';
-const files = [functional, packagePlan, summary, probe];
+const p4bSummary = 'docs/p4b/summary.md';
+const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary];
 const originals = new Map(files.map((file) => [file, fs.existsSync(path.join(tree, file)) ? fs.readFileSync(path.join(tree, file), 'utf8') : null]));
 const restore = () => {
   for (const [file, text] of originals) {
@@ -47,18 +49,28 @@ const within = (lines, heading) => {
   }
   return [start, lines.length];
 };
-const setBox = (file, prefix, text, heading) => {
+const setBox = (file, prefix, text, heading, state = 'x') => {
   const lines = read(file).split('\n');
   const [start, end] = heading ? within(lines, heading) : [0, lines.length];
   const index = lines.findIndex((line, position) => position >= start && position < end && /^- \[[ x]\] /.test(line) && line.slice(6).startsWith(prefix));
   if (index < 0) throw new Error(`probe could not find ${prefix} in ${file}`);
-  lines[index] = `- [x] ${text}`;
+  lines[index] = `- [${state}] ${text}`;
   write(file, lines.join('\n'));
 };
 const evidence = (section, commit, command) => `# Probe 证据\n\n## ${section}\n\n实现提交 \`${commit}\`，重跑 \`${command}\`。\n`;
 const acceptance = (human) =>
   `# I-P4a 验收摘要\n\n## 交付范围\n\n章节范围。\n\n## 体验后变更\n\nHuman 体验反馈改变的领域决定。\n\n## 功能交付证据\n\n功能基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## 技术验收证据\n\n独立验收基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## human-体验确认\n\n${human}\n`;
+const p4bHuman = (line) => {
+  const file = path.join(tree, p4bSummary);
+  fs.writeFileSync(file, read(p4bSummary).replace('## Human 体验确认\n', `## Human 体验确认\n\n${line}\n`));
+};
+const p4bSection = (heading, line) => {
+  fs.writeFileSync(path.join(tree, p4bSummary), read(p4bSummary).replace(`### ${heading}\n`, `### ${heading}\n\n${line}\n`));
+};
+const humanBox = () =>
+  setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4b');
 const link = '证据见 [P4a 证据](p4a/probe.md#p4a-证据)。';
+const p4bLink = '证据见 [申请释放与互斥](p4b/summary.md#1-申请释放与互斥)。';
 const gate = () => {
   const run = spawnSync('bash', ['scripts/verify/l-docs.sh'], { cwd: tree, encoding: 'utf8', timeout: 180000 });
   return { code: run.status, output: `${run.stdout ?? ''}${run.stderr ?? ''}` };
@@ -90,9 +102,41 @@ probeCase('human confirmation without a record fails', () => {
   write(summary, acceptance(`- 待确认：等待 Human 体验，版本 \`${head}\`。`));
   setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4a');
 }, { code: 1, includes: 'I-P4a human acceptance requires an explicit confirmation record' });
-probeCase('future stage checkbox fails', () => {
-  setBox(functional, '实现申请与释放', '临时探针勾选 P4b。');
-}, { code: 1, includes: 'P4b checkbox must remain unchecked' });
+probeCase('unchecked P4b stays legal', () => {
+  for (const prefix of ['实现申请与释放', '以分身为 holder', '实现 shell、文件与进程操作', '保留宿主工具的原有行为', '验证不同 Projects']) {
+    setBox(functional, prefix, '章节尚未开工，保持未勾选。', '### P4b', ' ');
+  }
+  for (const prefix of ['完成租约与 holder', '展示远端 shell', '在 Chat、Machine 详情']) {
+    setBox(uiPlan, prefix, '章节尚未开工，保持未勾选。', '## UI-P4b', ' ');
+  }
+}, { code: 0 });
+probeCase('checked P4b without evidence fails', () => {
+  setBox(functional, '实现申请与释放', '临时探针勾选 P4b，没有章节证据。');
+}, { code: 1, includes: 'P4b checkbox 1: missing docs/p4b evidence' });
+probeCase('P4b evidence from another chapter fails', () => {
+  setBox(functional, '实现申请与释放', '证据见 [P4a 验收](p4a/summary.md#技术验收证据)。');
+}, { code: 1, includes: 'P4b checkbox 1: missing docs/p4b/summary.md evidence' });
+probeCase('complete P4b evidence passes', () => {
+  setBox(functional, '实现申请与释放', p4bLink);
+}, { code: 0 });
+probeCase('P4b evidence with an unresolved commit fails', () => {
+  p4bSection('1. 申请、释放与互斥', '实现提交 `deadbeef`。');
+  setBox(functional, '实现申请与释放', p4bLink);
+}, { code: 1, includes: 'P4b checkbox 1: commit deadbeef does not resolve' });
+probeCase('checked I-P4b technical acceptance passes', () => {
+  setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4b');
+}, { code: 0 });
+probeCase('I-P4b human confirmation without a record fails', () => {
+  humanBox();
+}, { code: 1, includes: 'I-P4b human acceptance requires an explicit confirmation record' });
+probeCase('I-P4b pending confirmation does not count as confirmed', () => {
+  p4bHuman(`- 待确认：等待 Human 体验，版本 \`${head}\`。`);
+  humanBox();
+}, { code: 1, includes: 'I-P4b human acceptance must not treat pending confirmation as confirmed' });
+probeCase('I-P4b recorded human confirmation passes', () => {
+  p4bHuman(`- 确认记录：Human 亲自体验确认通过，版本 \`${head}\``);
+  humanBox();
+}, { code: 0 });
 probeCase('complete P4a evidence passes', () => {
   write(probe, evidence('P4a 证据', head, 'bash scripts/verify/s-machine-contracts.sh'));
   write(summary, acceptance(`- 确认记录：Human 亲自体验确认通过，版本 \`${head}\``));

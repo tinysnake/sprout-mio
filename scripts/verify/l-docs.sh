@@ -200,21 +200,23 @@ const commitExists = (sha) => {
 const boxesIn = (section) => [...section.matchAll(/^- \[([ x])\] (.+)$/gm)].map((match) => ({ state: match[1], text: match[2] }));
 const sectionOf = (text, heading, level) =>
   text.match(new RegExp(`^${'#'.repeat(level)} ${heading} [^\\n]*\\n([\\s\\S]*?)(?=^${'#'.repeat(level)} |^${'#'.repeat(level - 1)} |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
-const evidenceTargets = (line, source) =>
+const evidenceTargets = (line, source, prefix) =>
   linksIn(line)
     .filter((link) => !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(link))
     .map((link) => {
       const [file, fragment = ''] = link.split('#');
       return { file: path.resolve(path.dirname(source), decodeURIComponent(file)), fragment: decodeURIComponent(fragment) };
     })
-    .filter((target) => target.file.startsWith(path.resolve('docs/p4a') + path.sep));
+    .filter((target) => target.file.startsWith(path.resolve(prefix) + path.sep));
 const commitPattern = /`([0-9a-f]{7,40})`/g;
 const commandPattern = /`(bash scripts\/verify\/[\w-]+\.sh)`/g;
-const evidenceIn = (body, label) => {
-  const commits = [...body.matchAll(commitPattern)].map((match) => match[1]);
+const commitRefsIn = (body) => [...body.matchAll(commitPattern)].map((match) => match[1]);
+const requireCommits = (commits, label) => {
   check(commits.length > 0, `${label}: evidence section lacks a Git commit`);
   for (const sha of commits) check(commitExists(sha), `${label}: commit ${sha} does not resolve`);
   totals.commits += commits.length;
+};
+const commandsInBody = (body, label) => {
   const commands = [...body.matchAll(commandPattern)].map((match) => match[1]);
   check(commands.length > 0, `${label}: evidence section lacks a rerun command`);
   for (const command of commands) {
@@ -222,16 +224,41 @@ const evidenceIn = (body, label) => {
     check(fs.existsSync(command.slice(5)), `${label}: missing command ${command}`);
   }
 };
-const checkP4aLine = (line, label, source) => {
-  const evidence = evidenceTargets(line, source);
-  check(evidence.length > 0, `${label}: missing docs/p4a evidence`);
+const evidenceIn = (body, label) => {
+  requireCommits(commitRefsIn(body), label);
+  commandsInBody(body, label);
+};
+const resolveEvidence = (line, label, source, prefix) => {
+  const evidence = evidenceTargets(line, source, prefix);
+  check(evidence.length > 0, `${label}: missing ${prefix} evidence`);
+  const targets = [];
   for (const target of evidence) {
     totals.evidence++;
     const document = documents.get(target.file);
     check(Boolean(document), `${label}: missing evidence document ${target.file}`);
     check(Boolean(target.fragment) && Boolean(document?.sections.has(target.fragment)), `${label}: missing evidence section ${target.fragment}`);
-    evidenceIn(document?.sections.get(target.fragment) ?? '', label);
+    targets.push({ document, body: document?.sections.get(target.fragment) ?? '' });
   }
+  return targets;
+};
+const checkP4aLine = (line, label, source) => {
+  for (const { body } of resolveEvidence(line, label, source, 'docs/p4a')) evidenceIn(body, label);
+};
+// P4b 的五条交付行必须指向 docs/p4b/summary.md 的真实小节。命令按行核验：至少一条
+// 被引用的小节必须带可执行的重跑命令；可解析的 Git commit 是 P4b 小结的交付基线，
+// 五行共用同一基线，所以按同一证据文档核验。交叉引用的补充小节（如安全边界）
+// 只需 fragment 可解析，不必自己再写一份重跑命令。
+const p4bEvidenceFile = path.resolve('docs/p4b/summary.md');
+const checkP4bLine = (line, label, source) => {
+  const targets = resolveEvidence(line, label, source, 'docs/p4b');
+  check(targets.some(({ document }) => document && path.resolve(document.file) === p4bEvidenceFile), `${label}: missing docs/p4b/summary.md evidence`);
+  const commands = targets.flatMap(({ body }) => [...body.matchAll(commandPattern)].map((match) => match[1]));
+  check(commands.length > 0, `${label}: evidence section lacks a rerun command`);
+  for (const command of commands) {
+    totals.commands++;
+    check(fs.existsSync(command.slice(5)), `${label}: missing command ${command}`);
+  }
+  requireCommits(commitRefsIn(documents.get(p4bEvidenceFile)?.body ?? ''), label);
 };
 const functional = 'docs/development-plan-functional.md';
 const p4 = sectionOf(plan, 'P4', 2);
@@ -241,7 +268,12 @@ check(p4aBoxes.length === 4, `P4a must contain four checkboxes, found ${p4aBoxes
 for (let i = 0; i < p4aBoxes.length; i++) {
   if (p4aBoxes[i].state === 'x') checkP4aLine(p4aBoxes[i].text, `P4a checkbox ${i + 1}`, functional);
 }
-for (const sub of ['P4b', 'P4c', 'P4d']) {
+const p4bBoxes = boxesIn(sectionOf(p4, 'P4b', 3));
+check(p4bBoxes.length === 5, `P4b must contain five checkboxes, found ${p4bBoxes.length}`);
+for (let i = 0; i < p4bBoxes.length; i++) {
+  if (p4bBoxes[i].state === 'x') checkP4bLine(p4bBoxes[i].text, `P4b checkbox ${i + 1}`, functional);
+}
+for (const sub of ['P4c', 'P4d']) {
   const boxes = boxesIn(sectionOf(p4, sub, 3));
   for (const box of boxes) check(box.state === ' ', `${sub} checkbox must remain unchecked: ${box.text}`);
 }
@@ -267,13 +299,39 @@ if (humanBox?.state === 'x') {
   check(Boolean(record) && commitExists(record), `I-P4a human acceptance version ${record || '(none)'} does not resolve`);
   check(!/^[-*]\s*待确认/m.test(body), 'I-P4a human acceptance must not treat pending confirmation as confirmed');
 }
-for (const stage of ['I-P4b', 'I-P4c', 'I-P4d', 'I-P5a', 'I-P5b', 'I-P6', 'I-P7']) {
+const integrationP4b = sectionOf(packagePlan, 'I-P4b', 3);
+const integrationP4bBoxes = boxesIn(integrationP4b);
+check(integrationP4bBoxes.length === 4, `I-P4b must contain four checkboxes, found ${integrationP4bBoxes.length}`);
+const p4bSummary = documents.get(path.resolve('docs/p4b/summary.md'));
+const p4bTechnicalBox = integrationP4bBoxes[2];
+if (p4bTechnicalBox?.state === 'x') {
+  const body = p4bSummary?.sections.get('技术验收证据') ?? '';
+  check(Boolean(p4bSummary), 'I-P4b technical acceptance requires docs/p4b/summary.md');
+  check(Boolean(body), 'I-P4b technical acceptance requires docs/p4b/summary.md#技术验收证据');
+  evidenceIn(body, 'I-P4b technical acceptance');
+}
+const p4bHumanBox = integrationP4bBoxes[3];
+if (p4bHumanBox?.state === 'x') {
+  const body = p4bSummary?.sections.get('human-体验确认') ?? '';
+  check(Boolean(p4bSummary), 'I-P4b human acceptance requires docs/p4b/summary.md');
+  check(Boolean(body), 'I-P4b human acceptance requires docs/p4b/summary.md#human-体验确认');
+  const record = body.match(/^- 确认记录：Human 亲自体验确认通过，版本 `([0-9a-f]{7,40})`$/m)?.[1] ?? '';
+  check(Boolean(record), 'I-P4b human acceptance requires an explicit confirmation record');
+  check(Boolean(record) && commitExists(record), `I-P4b human acceptance version ${record || '(none)'} does not resolve`);
+  check(!/^[-*]\s*待确认/m.test(body), 'I-P4b human acceptance must not treat pending confirmation as confirmed');
+}
+for (const stage of ['I-P4c', 'I-P4d', 'I-P5a', 'I-P5b', 'I-P6', 'I-P7']) {
   const boxes = boxesIn(sectionOf(packagePlan, stage, 3));
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
 }
 const uiPlan = fs.readFileSync('docs/development-plan-ui.md', 'utf8');
-for (const stage of ['UI-P4b', 'UI-P4c', 'UI-P4d', 'UI-P5a', 'UI-P5b', 'UI-P6', 'UI-P7']) {
+const uiP4bBoxes = boxesIn(sectionOf(uiPlan, 'UI-P4b', 2));
+check(uiP4bBoxes.length === 3, `UI-P4b must contain three checkboxes, found ${uiP4bBoxes.length}`);
+for (let i = 0; i < uiP4bBoxes.length; i++) {
+  if (uiP4bBoxes[i].state === 'x') checkP4bLine(uiP4bBoxes[i].text, `UI-P4b checkbox ${i + 1}`, 'docs/development-plan-ui.md');
+}
+for (const stage of ['UI-P4c', 'UI-P4d', 'UI-P5a', 'UI-P5b', 'UI-P6', 'UI-P7']) {
   const boxes = boxesIn(sectionOf(uiPlan, stage, 2));
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
@@ -300,7 +358,8 @@ console.log('PASS P3 seven checkboxes and summary states match: six checked, che
 console.log('PASS P3 summary, acceptance, stage status and completion record; PR #19 to #22 match Git titles and second parents');
 console.log('PASS P2 final range 28d4fb2..db185f8 and P3 range db185f8..e5e2b4e match Git baselines and merges');
 console.log(`PASS P4a accepts evidence-linked commits and commands; unchecked=${p4aBoxes.filter((box) => box.state !== 'x').length}`);
-console.log('PASS P4b and later checkboxes remain unchecked in functional, plan and UI documents');
+console.log(`PASS P4b and UI-P4b accept checked rows with resolvable evidence; functional checked=${p4bBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4bBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4bBoxes.filter((box) => box.state === 'x').length}`);
+console.log('PASS P4c, P4d and later checkboxes remain unchecked in functional, plan and UI documents');
 console.log(`PASS P5 to P8 and R1 checkboxes remain unchecked=${futureCount}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);
 console.log('PASS l-docs all checks passed');
