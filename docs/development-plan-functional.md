@@ -105,11 +105,13 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ### P4b 实现分身持有与远端操作
 
-- [ ] 实现申请与释放，数据库约束保证 Project × Machine 内互斥。
-- [ ] 以分身为 holder，验证 run 结束后租约保留，一个分身可以持有多台 Machine。
-- [ ] 实现 shell、文件与进程操作，每次执行核验当前参与权和授权代次。
-- [ ] 保留宿主工具的原有行为，远端工具明确指定 Machine。
-- [ ] 验证不同 Projects 在同一物理 Machine 的租约独立，不暴露其他 Project 的工作信息。
+技术交付与两轮验收记录见 [P4b 结论](p4b/summary.md)。首轮独立技术验收 `b5c34db` PASS，第二轮技术复验 `243fd53` PASS；三项安全返工已合入，coordinator 在独立 checkout 复跑 260 条测试及 30 个验收脚本，failed=0。以下勾选逐项对应结论中的实现报告、脚本与反证。Human 体验待明确确认，Worker 永久失踪后的 fencing 强制推进仍未裁决，跨机网络与真机软键盘未验证。本次勾选触发 l-docs 的旧“P4b 必须未勾选”约束，门禁更新待 coordinator 分派，不宣称本次文档检查全绿。P4c 及以后未启动。
+
+- [x] 实现申请与释放，数据库约束保证 Project × Machine 内互斥。证据 [P4b 功能交付](p4b/summary.md#1-申请释放与互斥)，重跑 `bash scripts/verify/v-lease-contracts.sh`、`bash scripts/verify/w-worker-remote.sh`。
+- [x] 以分身为 holder，验证 run 结束后租约保留，一个分身可以持有多台 Machine。证据 [跨 run 与多机持有](p4b/summary.md#2-分身-holder跨-run-与多机持有)，多机组合限数据库、投影与演示；重跑 `bash scripts/verify/w-worker-remote.sh`、`bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
+- [x] 实现 shell、文件与进程操作，每次执行核验当前参与权和授权代次。证据 [操作与授权](p4b/summary.md#3-shell文件进程操作与授权)，核验边界及已启动 OS 副作用限制见 [安全边界](p4b/summary.md#安全边界与反证)；重跑 `bash scripts/verify/w-worker-remote.sh`、`bash scripts/verify/x-remote-tools.sh`、`bash scripts/verify/z-lease-integration.sh`。
+- [x] 保留宿主工具的原有行为，远端工具明确指定 Machine。证据 [宿主与远端目标](p4b/summary.md#4-宿主工具保留远端目标明确)，重跑 `bash scripts/verify/a-base.sh`、`bash scripts/verify/x-remote-tools.sh`。
+- [x] 验证不同 Projects 在同一物理 Machine 的租约独立，不暴露其他 Project 的工作信息。证据 [Project 独立](p4b/summary.md#5-跨-project-独立与不可见)，预算为 Project × Machine，物理资源不隔离；重跑 `bash scripts/verify/v-lease-contracts.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
 ### P4c 实现长命令与不确定结果
 

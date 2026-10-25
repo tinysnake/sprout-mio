@@ -178,6 +178,15 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 对应 [UI-P4b](development-plan-ui.md#ui-p4b-展示分身持租与远端操作) 与功能计划的 P4b。依赖 P4a 技术验收通过、P4b 功能与 UI 交付就绪。
 
+编排与交付记录：
+
+- 已分派并合入功能与接入单元：contracts `9001f8e`、migrate-callers `b4e204f`、worker `dc61189`、tools `46d9d17`（merge `b9ba470`）、build-fix `1651dcd`、UI `e8ec38c`（merge `1ffb40a`）、integration `c771250`、fixture-sync `b5c34db`、verify-fullgreen `6428b5c`。提交均为本次文档基线 `d003b54` 的祖先。
+- 安全探测后的三项返工已合入：report-budget `f11ec13` 修复 Worker 编码、整帧预算与拒收恢复；quota-scope `39dca15`（测试 `ba2f30b`，merge `77658e5`）把预算改为 Project × Machine；fencing-facts `064d517`（merge `243fd53`）呈现等待与未知事实。`d003b54` 另统一全量测试入口，避免 verify 重复运行测试。
+- coordinator 在带 Git 历史的独立 checkout `/tmp/p4b-verify2` 复跑 check、typecheck、260 条测试、应用及 Worker build，并完成 30 个验收脚本，failed=0；F-1 与 F-3 的修复前后对照已亲自复现。证据索引为 `orchestrate/sprout-mio-p4b/local-verification.tsv`、`decisions.tsv` 及对应日志，章节归纳见 [P4b 结论](p4b/summary.md#技术验收证据)。
+- 技术验收两轮：首轮独立验收 `b5c34db` PASS，报告 `reports/p4b-acceptance/acceptance.md`；第二轮技术复验 `243fd53` PASS，报告 `reports/acceptance-2.md`，含 34 份证据及 12a、12b、12c 双向对照。模型独立性的调度限制另见 `decisions.tsv`。第二轮 l-docs 两条失败来自 archive 无 `.git`，同 SHA 在带历史工作树复跑为 `L_EXIT=0`、`LP_EXIT=0`，不作为产品缺陷。
+- 已分派 closeout 文档单元，功能五项、UI 三项按证据勾选；本次勾选暴露 l-docs 的旧“P4b 必须未勾选”约束，门禁更新超出文档单元范围，待 coordinator 分派并复跑后才能声称文档检查全绿。总计划四步 checklist 仅由 coordinator 修改，本次保持原状。
+- Human 体验确认待记录：待 Human 明确确认及确认版本。`p4b-fence-liveness` 仍 open，Worker 失踪后的 fencing 没有强制推进路径；跨机网络与真机软键盘未验证。下一章 P4c 及以后未启动。
+
 - 接入范围包括租约和 holder 展示、申请与释放反馈、一个分身持有多台 Machine 的关联，以及远端 shell、文件和进程操作的目标与结果。Chat、Machine 页面与 inspector 使用同一事实来源，不扩展为完整终端或文件管理产品。
 - 主要路径是 Human 在 Chat 请求分身使用指定 Machine，分身申请租约并执行远端操作，Human 查看目标与结果。run 结束后仍可看到租约保留，下一轮由同一分身继续使用，随后显式释放。
 - 关键异常与回归覆盖同 Project 竞争申请、无租约操作、旧授权请求与不同 Projects 在同一 Machine 上的独立租约。验证宿主原有工具行为保留、远端目标明确、租约互斥按 Project × Machine 生效，且不泄露其他 Project 的工作信息。
