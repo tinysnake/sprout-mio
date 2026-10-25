@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "75147c56-b764-46f3-ae3f-d96f97a3010f",
+  "id": "656bb97a-e034-4f62-a714-982f6e93981f",
   "prevId": "5b083bec-e8aa-41a8-bd96-dce5ba52f44e",
   "tables": {
     "agent_instance": {
@@ -2424,7 +2424,7 @@
         },
         "mcp_process_lifecycle": {
           "name": "mcp_process_lifecycle",
-          "value": "(state IN ('starting','running') AND ended_at IS NULL AND end_reason IS NULL AND exit_code IS NULL) OR (state IN ('exited','failed','lost') AND ended_at IS NOT NULL AND end_reason IS NOT NULL)"
+          "value": "(state IN ('starting','running','stopping') AND ended_at IS NULL AND end_reason IS NULL AND exit_code IS NULL) OR (state IN ('exited','failed','lost') AND ended_at IS NOT NULL AND end_reason IS NOT NULL)"
         },
         "mcp_process_end_reason": {
           "name": "mcp_process_end_reason",

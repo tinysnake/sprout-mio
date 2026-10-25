@@ -76,7 +76,7 @@ CREATE TABLE `mcp_server_process` (
 	CONSTRAINT "mcp_process_state" CHECK(state IN ('starting','running','stopping','exited','failed','lost')),
 	CONSTRAINT "mcp_process_endpoint" CHECK(transport='streamableHttp' OR endpoint IS NULL),
 	CONSTRAINT "mcp_process_running" CHECK(state<>'running' OR (pid IS NOT NULL OR (transport='streamableHttp' AND endpoint IS NOT NULL))),
-	CONSTRAINT "mcp_process_lifecycle" CHECK((state IN ('starting','running') AND ended_at IS NULL AND end_reason IS NULL AND exit_code IS NULL) OR (state IN ('exited','failed','lost') AND ended_at IS NOT NULL AND end_reason IS NOT NULL)),
+	CONSTRAINT "mcp_process_lifecycle" CHECK((state IN ('starting','running','stopping') AND ended_at IS NULL AND end_reason IS NULL AND exit_code IS NULL) OR (state IN ('exited','failed','lost') AND ended_at IS NOT NULL AND end_reason IS NOT NULL)),
 	CONSTRAINT "mcp_process_end_reason" CHECK(end_reason IS NULL OR end_reason IN ('owner_stopped','spawn_failed','exited','crashed','unreachable','worker_lost','config_retired'))
 );
 --> statement-breakpoint
