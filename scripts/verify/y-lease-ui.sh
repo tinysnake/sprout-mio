@@ -13,7 +13,8 @@ log="$log_dir/dev-server.log"
 : > "$log"
 
 set -m
-pnpm exec vp dev --host 127.0.0.1 --port "$port" --strictPort >>"$log" 2>&1 &
+# PORT 必须一起给：仓库 .env.local 的 PORT=3000 会让 dev server 先去绑 3000，撞上 Human 的服务。
+PORT="$port" pnpm exec vp dev --host 127.0.0.1 --port "$port" --strictPort >>"$log" 2>&1 &
 server_pid=$!
 cleanup() {
   if kill -0 "$server_pid" 2>/dev/null; then
