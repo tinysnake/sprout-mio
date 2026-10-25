@@ -11,6 +11,8 @@ import {
 } from "../contracts/worker";
 import type { WorkerExchangeResponse } from "../contracts/worker";
 import type { WorkerSession } from "../contracts/worker-session";
+import { McpRuntime } from "./mcp";
+import type { McpServerRegistration } from "../contracts/mcp";
 import type { Identity } from "./identity";
 import { emptyWorkerRemote, RemoteDispatcher } from "./remote";
 import { probeCapability, probeDirectory } from "./probes";
@@ -105,11 +107,17 @@ export function enroll(identity: Identity, ticket: string) {
     workerEnrollResponseSchema,
   );
 }
-export function workerProgram(identity: Identity) {
+export function workerProgram(identity: Identity, mcpRegistrations: McpServerRegistration[] = []) {
   return Effect.scoped(
     Effect.gen(function* () {
       let session: WorkerSession | undefined;
       let dispatcher: RemoteDispatcher | undefined;
+      const mcp = new McpRuntime(mcpRegistrations);
+      yield* Effect.addFinalizer(() => Effect.promise(() => mcp.stop()));
+      yield* Effect.tryPromise({
+        try: () => mcp.start(),
+        catch: () => new ClientError("mcp_start_failed"),
+      });
       yield* Effect.addFinalizer(() => {
         dispatcher?.disconnect();
         return session
@@ -146,8 +154,11 @@ export function workerProgram(identity: Identity) {
           try: () => probeCapability(capabilityCheckedAt),
           catch: () => new ClientError("probe_failed"),
         });
-        dispatcher = new RemoteDispatcher(session, capability, () =>
-          Effect.runSync(Clock.currentTimeMillis),
+        dispatcher = new RemoteDispatcher(
+          session,
+          capability,
+          () => Effect.runSync(Clock.currentTimeMillis),
+          mcp,
         );
         let configuration:
           | Extract<WorkerExchangeResponse, { ok: true }>["data"]["configuration"]
@@ -261,8 +272,11 @@ export function workerProgram(identity: Identity) {
     }),
   );
 }
-export async function runWorker(identity: Identity) {
-  const fiber = Effect.runFork(workerProgram(identity));
+export async function runWorker(
+  identity: Identity,
+  mcpRegistrations: McpServerRegistration[] = [],
+) {
+  const fiber = Effect.runFork(workerProgram(identity, mcpRegistrations));
   let stopping = false;
   const stop = () => {
     if (stopping) return;

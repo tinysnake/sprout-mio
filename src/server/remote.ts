@@ -1,3 +1,6 @@
+import { machineBindings } from "../domain/machine";
+import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
+import type { WorkerExchangeRemoteInput } from "../contracts/worker";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { ShellFact } from "../contracts/machine";
 import { ID_PREFIXES, newId } from "../contracts/ids";
@@ -7,7 +10,6 @@ import type {
   ExecutionSubmitInput,
   ExecutionView,
   RemoteCommand,
-  RemoteExchangeInput,
   RemoteReport,
 } from "../contracts/remote";
 import type { AppErrorCode } from "../contracts/result";
@@ -351,10 +353,26 @@ function delivery(report: RemoteReport, ctx: AuthenticatedWorkerContext) {
     throw new RemoteError("remote_request_conflict");
   return row;
 }
+function remoteExchangeBytes(remote: RemoteWireOutput, ctx: AuthenticatedWorkerContext) {
+  const root = db.select().from(machine).where(eq(machine.id, ctx.session.machineId)).get()!;
+  const configuration =
+    ctx.mode === "normal"
+      ? {
+          root: root.rootDirectory,
+          rootRevision: root.rootRevision,
+          bindings: machineBindings(ctx.session.machineId).map(({ projectId, description }) => ({
+            projectId,
+            description,
+          })),
+        }
+      : null;
+  return Buffer.byteLength(
+    JSON.stringify({ mode: ctx.mode, session: ctx.session, seq: ctx.seq, configuration, remote }),
+  );
+}
 /** Called only inside the gateway's authenticated immediate transaction; never awaits. */
-// MCP relay 的领域处理与落库由 r1-worker 交付；此处只保持 wire 形状自洽。
 export function applyRemoteExchange(
-  input: RemoteExchangeInput,
+  input: WorkerExchangeRemoteInput,
   ctx: AuthenticatedWorkerContext,
 ): RemoteWireOutput {
   const output: RemoteWireOutput = {
@@ -526,6 +544,19 @@ export function applyRemoteExchange(
         });
     }
   }
+  try {
+    const budget =
+      1048576 -
+      remoteExchangeBytes(output, ctx) +
+      Buffer.byteLength(JSON.stringify({ mcp: [], mcpCursors: [] }));
+    Object.assign(
+      output,
+      applyMcpExchange(input, ctx, Math.min(budget, ctx.seq % 2 ? 655360 : 65536)),
+    );
+  } catch (error) {
+    if (error instanceof McpExchangeError) throw new RemoteError(error.code);
+    throw error;
+  }
   if (ctx.mode === "normal") {
     const conn = connection(ctx.session.machineId, ctx);
     for (const row of db
@@ -597,6 +628,10 @@ export function applyRemoteExchange(
         directoryRevision: row.directoryRevision,
         deadlineAt: row.deadlineAt.toISOString(),
       };
+      if (
+        remoteExchangeBytes({ ...output, commands: [...output.commands, command] }, ctx) > 1048576
+      )
+        break;
       db.update(remoteExecution)
         .set({
           state: "dispatched",

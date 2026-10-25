@@ -82,6 +82,7 @@ export async function probeCapability(checkedAt: string): Promise<CapabilitySnap
   ];
   const shells = await Promise.all(paths.map((path) => shell(path, checkedAt)));
   return {
+    mcpRelay: { version: 1, transports: ["stdio"], maxMessageBytes: 131072 },
     platform: "darwin",
     arch: process.arch,
     workerVersion: APP_VERSION,

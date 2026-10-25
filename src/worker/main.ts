@@ -3,11 +3,12 @@ import { z } from "zod";
 import { machineIdSchema } from "../contracts/machine";
 import { APP_VERSION } from "../contracts/version";
 import { WORKER_PROTOCOL_VERSION } from "../contracts/worker";
+import { readMcpConfig } from "./mcp";
 import { enroll, runWorker } from "./client";
 import { httpOriginSchema, initializeIdentity, readIdentity, readTicket } from "./identity";
 
 const HELP = `sprout-worker init --server <origin> --machine <id> --state-dir <directory> [--ticket-file <private-file>] [--allow-http <origin> ...]
-sprout-worker run --state-dir <directory>
+sprout-worker run --state-dir <directory> [--mcp-config <explicit-registration-file>]
 sprout-worker help
 sprout-worker version
 
@@ -15,8 +16,10 @@ init reads the enrollment ticket without echo and persists a private identity be
 HTTP defaults to loopback only. For non-loopback HTTP, repeat --allow-http <complete origin>
 to explicitly authorize each exact origin (including its port). Authorizations persist in identity.json.
 HTTPS needs no flag. --allow-http never disables TLS verification.
-run connects this macOS Machine and reports shell and directory observations.
-Remote operations are not implemented. No LaunchAgent is installed.`;
+run connects this Machine and executes authorized remote operations.
+--mcp-config loads only the explicit registration array and autostarts configured stdio services.
+Closing a relay session leaves its service running. Worker exit stops its managed services.
+No LaunchAgent is installed.`;
 async function main() {
   if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0")
     throw new Error("TLS verification is required");
@@ -69,8 +72,17 @@ async function main() {
     await Effect.runPromise(enroll(identity, ticket));
     console.log("Machine enrolled. Start sprout-worker run with the same --state-dir.");
   } else if (command === "run") {
-    const parsed = z.strictObject({ "--state-dir": z.string().min(1) }).parse(options);
-    await runWorker(await readIdentity(parsed["--state-dir"]));
+    const parsed = z
+      .strictObject({
+        "--state-dir": z.string().min(1),
+        "--mcp-config": z.string().min(1).optional(),
+      })
+      .parse(options);
+    const identity = await readIdentity(parsed["--state-dir"]);
+    const registrations = parsed["--mcp-config"]
+      ? await readMcpConfig(parsed["--mcp-config"], identity.machineId)
+      : [];
+    await runWorker(identity, registrations);
   } else throw new Error("Unknown command");
 }
 try {

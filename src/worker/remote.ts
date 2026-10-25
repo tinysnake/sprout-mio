@@ -10,6 +10,7 @@ import type {
   RemoteReport,
   RemoteResultPayload,
 } from "../contracts/remote";
+import { McpRuntime } from "./mcp";
 import type { WorkerSession } from "../contracts/worker-session";
 import type { WorkerExchangeRemoteInput, WorkerExchangeResponse } from "../contracts/worker";
 
@@ -118,7 +119,10 @@ export class RemoteDispatcher {
     readonly session: WorkerSession,
     private capability: CapabilitySnapshot,
     private now: () => number,
-  ) {}
+    private mcp: McpRuntime = new McpRuntime(),
+  ) {
+    this.mcp.bind(session);
+  }
   get admissionClosed() {
     return this.closed;
   }
@@ -126,11 +130,13 @@ export class RemoteDispatcher {
     return (
       [...this.entries.values()].every((entry) => entry.done) &&
       this.fences.size === 0 &&
-      this.entries.size === 0
+      this.entries.size === 0 &&
+      this.mcp.drained
     );
   }
   disconnect() {
     this.closed = true;
+    this.mcp.disconnect();
     for (const entry of this.entries.values()) if (!entry.done) entry.controller.abort();
   }
   rejectReports(batch: RemoteExchangeInput) {
@@ -141,6 +147,9 @@ export class RemoteDispatcher {
   }
   outgoing(maxBytes = MAX_EXCHANGE_BYTES): WorkerExchangeRemoteInput {
     const batch = emptyWorkerRemote();
+    const mcp = this.mcp.outgoing(Math.min(maxBytes, this.highWater % 2 ? 65536 : 655360));
+    batch.mcp = mcp.mcp;
+    batch.mcpCursors = mcp.mcpCursors;
     let used = jsonBytes(batch);
     const entries = [...this.entries.values()].sort(
       (a, b) =>
@@ -242,6 +251,7 @@ export class RemoteDispatcher {
         if (pending.executionIds.length === 0) this.fences.delete(ack.mutationId);
       }
     }
+    this.mcp.accept(frame.remote.mcp, frame.remote.mcpCursors, frame.remote.authorizations);
     if (frame.mode === "drain") {
       this.disconnect();
       return;
