@@ -320,8 +320,12 @@ await run('c','node',['--import','tsx',join(dir,'c-live.mts')],{DATABASE_URL:joi
 const c=existsSync(join(dir,'c-evidence.json'))?read(join(dir,'c-evidence.json')):{};
 class EvidenceUnavailable extends Error {}
 const passed=name=>{
-  if(executions[name].timedOut||executions[name].launchError||!sources[name]) throw new EvidenceUnavailable(`${name} evidence unavailable`);
-  assert.equal(executions[name].exitCode,0,`${name} completed with failing assertions`);
+  const execution=executions[name];
+  // 跑完但断言不成立 = FAIL；没跑完/超时/缺产物 = INCONCLUSIVE。次序不能倒过来，
+  // 否则一个真正失败的断言会被报成「无法判定」而掩盖回归。
+  if(execution.timedOut||execution.launchError) throw new EvidenceUnavailable(`${name} did not finish`);
+  assert.equal(execution.exitCode,0,`${name} completed with failing assertions`);
+  if(!sources[name]) throw new EvidenceUnavailable(`${name} evidence unavailable`);
 };
 const requireProbe=name=>{
   if(!c[name]) throw new EvidenceUnavailable(`missing C probe ${name}`);
