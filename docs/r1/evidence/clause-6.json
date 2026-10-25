@@ -1,6 +1,33 @@
 {
   "clause": 6,
   "status": "PASS",
+  "verified": {
+    "autostart": {
+      "path": "y2.ownerManaged.autostart",
+      "expect": false,
+      "value": false
+    },
+    "noSpawn": {
+      "path": "y2.ownerManaged.noSpawn",
+      "expect": true,
+      "value": true
+    },
+    "aliveAfterDelete": {
+      "path": "y2.ownerManaged.runningAfterDelete",
+      "expect": true,
+      "value": true
+    },
+    "aliveAfterWorkerExit": {
+      "path": "y2.ownerManaged.aliveAfterWorkerExit",
+      "expect": true,
+      "value": true
+    },
+    "configuredServiceAliveAfterWorkerExit": {
+      "path": "y2.configuredService.aliveAfterWorkerExit",
+      "expect": false,
+      "value": false
+    }
+  },
   "assertions": {
     "autostart": false,
     "noSpawn": true,
@@ -47,33 +74,47 @@
   ],
   "executions": {
     "y2": {
-      "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
-      "startedAt": "2026-10-25T20:53:23.933Z",
-      "elapsedMs": 2226,
+      "command": [
+        "bash",
+        "scripts/verify/y2-mcp-http-worker.sh"
+      ],
+      "startedAt": "2026-10-25T23:02:20.740Z",
+      "elapsedMs": 2350,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
-      "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
-      "startedAt": "2026-10-25T20:53:26.162Z",
-      "elapsedMs": 11323,
+      "command": [
+        "bash",
+        "scripts/verify/x2-mcp-extension.sh"
+      ],
+      "startedAt": "2026-10-25T23:02:23.092Z",
+      "elapsedMs": 11375,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
-      "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
-      "startedAt": "2026-10-25T20:53:37.485Z",
-      "elapsedMs": 2131,
+      "command": [
+        "bash",
+        "scripts/verify/x3-mcp-extension-surface.sh"
+      ],
+      "startedAt": "2026-10-25T23:02:34.467Z",
+      "elapsedMs": 2323,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
-      "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
-      "startedAt": "2026-10-25T20:53:39.616Z",
-      "elapsedMs": 5593,
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "$Z3_DIR/c-live.mts"
+      ],
+      "startedAt": "2026-10-25T23:02:36.791Z",
+      "elapsedMs": 5537,
       "exitCode": 0,
       "signal": null,
       "timedOut": false

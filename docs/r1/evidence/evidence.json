@@ -1,74 +1,88 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-25T20:53:45.228Z",
-  "sourceCommit": "80609aa6e2ccf2dec98b90c1082dde25b76f6121",
-  "scriptSha256": "6366638b4f398f6ac67e37ece67aeda56c53ad2a1b9f746571f40cd58c6d6669",
+  "generatedAt": "2026-10-25T23:02:42.342Z",
+  "sourceCommit": "b5c5854d7f6fcbdc6dae5d1d9f1ce6f97d896c44",
+  "scriptSha256": "17b349e5c2760b2eaa81dc8da9a9f67e1922053dca26496f532f48cb517d913b",
   "results": [
     {
       "clause": 1,
       "status": "PASS",
-      "evidencePath": ".verify/z3-mcp-acceptance-xn2XHI/clause-1.json"
+      "evidencePath": ".verify/z3-mcp-acceptance-Dcau5I/clause-1.json"
     },
     {
       "clause": 2,
       "status": "PASS",
-      "evidencePath": ".verify/z3-mcp-acceptance-xn2XHI/clause-2.json"
+      "evidencePath": ".verify/z3-mcp-acceptance-Dcau5I/clause-2.json"
     },
     {
       "clause": 3,
       "status": "PASS",
-      "evidencePath": ".verify/z3-mcp-acceptance-xn2XHI/clause-3.json"
+      "evidencePath": ".verify/z3-mcp-acceptance-Dcau5I/clause-3.json"
     },
     {
       "clause": 4,
       "status": "PASS",
-      "evidencePath": ".verify/z3-mcp-acceptance-xn2XHI/clause-4.json"
+      "evidencePath": ".verify/z3-mcp-acceptance-Dcau5I/clause-4.json"
     },
     {
       "clause": 5,
       "status": "PASS",
-      "evidencePath": ".verify/z3-mcp-acceptance-xn2XHI/clause-5.json"
+      "evidencePath": ".verify/z3-mcp-acceptance-Dcau5I/clause-5.json"
     },
     {
       "clause": 6,
       "status": "PASS",
-      "evidencePath": ".verify/z3-mcp-acceptance-xn2XHI/clause-6.json"
+      "evidencePath": ".verify/z3-mcp-acceptance-Dcau5I/clause-6.json"
     },
     {
       "clause": 7,
       "status": "PASS",
-      "evidencePath": ".verify/z3-mcp-acceptance-xn2XHI/clause-7.json"
+      "evidencePath": ".verify/z3-mcp-acceptance-Dcau5I/clause-7.json"
     }
   ],
   "executions": {
     "y2": {
-      "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
-      "startedAt": "2026-10-25T20:53:23.933Z",
-      "elapsedMs": 2226,
+      "command": [
+        "bash",
+        "scripts/verify/y2-mcp-http-worker.sh"
+      ],
+      "startedAt": "2026-10-25T23:02:20.740Z",
+      "elapsedMs": 2350,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
-      "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
-      "startedAt": "2026-10-25T20:53:26.162Z",
-      "elapsedMs": 11323,
+      "command": [
+        "bash",
+        "scripts/verify/x2-mcp-extension.sh"
+      ],
+      "startedAt": "2026-10-25T23:02:23.092Z",
+      "elapsedMs": 11375,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
-      "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
-      "startedAt": "2026-10-25T20:53:37.485Z",
-      "elapsedMs": 2131,
+      "command": [
+        "bash",
+        "scripts/verify/x3-mcp-extension-surface.sh"
+      ],
+      "startedAt": "2026-10-25T23:02:34.467Z",
+      "elapsedMs": 2323,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
-      "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
-      "startedAt": "2026-10-25T20:53:39.616Z",
-      "elapsedMs": 5593,
+      "command": [
+        "node",
+        "--import",
+        "tsx",
+        "$Z3_DIR/c-live.mts"
+      ],
+      "startedAt": "2026-10-25T23:02:36.791Z",
+      "elapsedMs": 5537,
       "exitCode": 0,
       "signal": null,
       "timedOut": false

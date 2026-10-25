@@ -20,7 +20,7 @@ R1 七条技术验证均为 PASS：7 PASS、0 FAIL、0 INCONCLUSIVE。统一入�
 
 运行 `bash scripts/verify/z3-mcp-acceptance.sh`。脚本为每次执行创建独立 `.verify/z3-mcp-acceptance-*` 目录，输出 `PASS/FAIL/INCONCLUSIVE R1-<n> <evidence-path>`，任一条非 PASS 则退出 1。缺失或未完成的前置执行记为 INCONCLUSIVE；已完成探针的断言不成立记为 FAIL。
 
-刷新本目录的证据快照时，跑完上面这条后把新目录里的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 复制进 `docs/r1/evidence/`，再跑 `pnpm exec vp check --fix`（脚本产出的 JSON 不由格式化器生成，`pnpm check` 会要求它先被格式化）。不复制新快照就会让条款 7 的 `scriptSha256` 检查变红。
+刷新本目录的证据快照时，跑完上面这条后把新目录里的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 按原字节复制进 `docs/r1/evidence/`。该目录已从格式化检查中排除，不运行格式化修复；字节一致性属于证据的一部分。不复制新快照就会让条款 7 的 `scriptSha256` 检查变红。
 
 脚本直接编排 A 的 `y2-mcp-http-worker.sh` 与 B 的 `x2-mcp-extension.sh`、`x3-mcp-extension-surface.sh`，不另写它们的探针。新增组合探针仅补齐不同 root 的实例隔离、Pi 工具面与中继组合、资源和生命周期证据。固定 300 秒的执行上限使未完成调用有明确退出结论。
 
@@ -30,6 +30,8 @@ R1 七条技术验证均为 PASS：7 PASS、0 FAIL、0 INCONCLUSIVE。统一入�
 
 每条证据保留其实际执行信息。证据只含布尔值、数量、工具名、状态和错误码，不包含工具输出正文、图片内容、secret 或 cookie。runner 耗时是各子进程从启动到退出的实测时间，不等于后台启动命令的返回时间。
 
+逐项突变复跑用 `python3 docs/r1/gate-round2-mutations.py`。从干净提交开始，日志保存在 `.verify/d2-mutations-*`，每项结束后恢复原字节并检查工作树为空。
+
 ## 已知限制与待确认事项
 
 - Human 在 `2026-10-25T03:44Z` 授权更换验证载体，见编排工作区 `orchestrate/sprout-mio-r1/decisions.tsv` 第 4 行。第 3 条实际采用两个自有最小 server，第 4 条采用 server-everything；Unity Editor/Blender 的发现机制、插件和软件特有行为没有验证，不计入本轮 PASS 范围。七条计划原文完整保留。
@@ -37,5 +39,5 @@ R1 七条技术验证均为 PASS：7 PASS、0 FAIL、0 INCONCLUSIVE。统一入�
 - “可被模型调用”通过真实 Pi 活动工具面与 Pi 持有的工具定义执行验证，没有发起付费模型推理。目录变化证据覆盖新工具加入与 refresh 保持，未扩大为所有插件热更新行为的保证。
 - owner_managed 登记适用于 streamableHttp 服务；不支持接管任意已运行进程的 stdio。官方 SDK 的两种传输对照用于参考，产品客户端仍为锁定的 Pi 1.4.0。
 - 条款 7 只校验可以机器判定的东西：`docs/r1/summary.md` 与 `docs/r1/design.md` 存在、design 的关键组合词（薄 bridge、帧中继、Pi 原生客户端、SDK、长连接）出现、范围文档写了 MCP 接入与 P4c，以及 `docs/r1/evidence/evidence.json` 的 `scriptSha256` 等于**当前** z3 脚本的 SHA-256、`sourceCommit` 是当前 HEAD 的祖先或等于它。**文档内容是否与代码相符不由本门禁保证**：把 `owner_managed` 那句改成与代码相反的断言后条款 7 仍然 PASS（实测），语义一致性由独立验收者逐条核对。改过 z3 脚本后必须重跑并把新的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 复制进 `docs/r1/evidence/`，否则条款 7 变红。
-- 每条条款有一份独立于条款 body 的必需字段清单（`scripts/verify/z3-mcp-acceptance.sh` 里的 `REQUIRED`）。条款的 `assertions` 必须包含这些键，每个键必须有一次真实的证据取值路径，且断言值必须等于那次取到的证据值；`clause-<n>.json` 记录该条款的 `projections` 作为取值来源。把条款 body 整条清空（`()=>({})`）或改为手写字面量都会让该条款 FAIL，而不是静默 PASS。
+- 每条条款的必需字段表 `REQUIRED` 固定 `{path, expect}`。遍历循环先从这些固定路径读取证据并核对精确值或命名谓词，再运行条款 body。返回的 `assertions` 必须齐全、等于已核实的值，且 body 的取值路径必须与固定路径一致；`clause-<n>.json` 同时记录 `verified` 和 `projections`。清空 body、写死正确字面量或给 `evidenceAt` 起别名读取无关路径都会 FAIL。SDK 版本与实际导入包同目录的 `package.json` 核对；x2 的端到端成功同时要求帧往返与工具名集合等于 z2 的唯一预期清单。生产 runner 的 allowlist 用 TypeScript AST 定位真实 `sdk.createAgentSession` 的 `tools` 数组，注释与字符串里的伪调用不参与取样。
 - 技术 PASS 不代替 Human 体验确认，也不自动改变一期验收范围。阶段纳入和四步 checklist 仍由编排者/Human 决定；本轮无需先改一期能力表或一期验收表。
