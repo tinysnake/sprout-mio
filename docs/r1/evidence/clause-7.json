@@ -2,54 +2,84 @@
   "clause": 7,
   "status": "PASS",
   "assertions": {
-    "summary": "docs/r1/summary.md",
-    "design": "docs/r1/design.md",
-    "stage": "P4c 之后纳入一期",
-    "humanConfirmationRequired": true
+    "summaryExists": true,
+    "designExists": true,
+    "evidenceIndexExists": true,
+    "keyCombinationsPresent": true,
+    "evidenceScriptCurrent": true,
+    "evidenceSourceCommitAncestor": true,
+    "evidenceScriptSha256": "6366638b4f398f6ac67e37ece67aeda56c53ad2a1b9f746571f40cd58c6d6669",
+    "evidenceSourceCommit": "24abe54cd78b7fe3a97784365937187235edd182",
+    "head": "80609aa6e2ccf2dec98b90c1082dde25b76f6121",
+    "scope": "条款 7 只校验文档存在、关键组合词与证据来源一致；文档语义由独立验收者逐条核对，本门禁不保证"
   },
+  "projections": [
+    {
+      "field": "summaryExists",
+      "path": "docs.summaryExists"
+    },
+    {
+      "field": "designExists",
+      "path": "docs.designExists"
+    },
+    {
+      "field": "evidenceIndexExists",
+      "path": "docs.evidenceIndexExists"
+    },
+    {
+      "field": "keyCombinationsPresent",
+      "path": "docs.keyCombinationsPresent"
+    },
+    {
+      "field": "summaryMentionsStage",
+      "path": "docs.summaryMentionsStage"
+    },
+    {
+      "field": "summaryHasNoPendingMarker",
+      "path": "docs.summaryHasNoPendingMarker"
+    },
+    {
+      "field": "scopeMentionsMcpAndPhase",
+      "path": "docs.scopeMentionsMcpAndPhase"
+    },
+    {
+      "field": "evidenceScriptCurrent",
+      "path": "docs.evidenceScriptCurrent"
+    },
+    {
+      "field": "evidenceSourceCommitAncestor",
+      "path": "docs.evidenceSourceCommitAncestor"
+    }
+  ],
   "executions": {
     "y2": {
-      "command": [
-        "bash",
-        "scripts/verify/y2-mcp-http-worker.sh"
-      ],
-      "startedAt": "2026-10-25T19:06:50.651Z",
-      "elapsedMs": 2269,
+      "command": ["bash", "scripts/verify/y2-mcp-http-worker.sh"],
+      "startedAt": "2026-10-25T20:53:23.933Z",
+      "elapsedMs": 2226,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x2": {
-      "command": [
-        "bash",
-        "scripts/verify/x2-mcp-extension.sh"
-      ],
-      "startedAt": "2026-10-25T19:06:52.921Z",
-      "elapsedMs": 11251,
+      "command": ["bash", "scripts/verify/x2-mcp-extension.sh"],
+      "startedAt": "2026-10-25T20:53:26.162Z",
+      "elapsedMs": 11323,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "x3": {
-      "command": [
-        "bash",
-        "scripts/verify/x3-mcp-extension-surface.sh"
-      ],
-      "startedAt": "2026-10-25T19:07:04.172Z",
-      "elapsedMs": 2214,
+      "command": ["bash", "scripts/verify/x3-mcp-extension-surface.sh"],
+      "startedAt": "2026-10-25T20:53:37.485Z",
+      "elapsedMs": 2131,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
     },
     "c": {
-      "command": [
-        "node",
-        "--import",
-        "tsx",
-        "$Z3_DIR/c-live.mts"
-      ],
-      "startedAt": "2026-10-25T19:07:06.387Z",
-      "elapsedMs": 5635,
+      "command": ["node", "--import", "tsx", "$Z3_DIR/c-live.mts"],
+      "startedAt": "2026-10-25T20:53:39.616Z",
+      "elapsedMs": 5593,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
