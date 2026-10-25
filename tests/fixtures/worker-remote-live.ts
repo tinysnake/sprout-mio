@@ -349,7 +349,7 @@ try {
     authorizationGeneration: 1,
     operation: {
       kind: "shell" as const,
-      command: `printf x >> '${counter}'; printf '%070000d' 0`,
+      command: `printf x >> '${counter}'; ${JSON.stringify(process.execPath)} -e 'process.stdout.write(Buffer.alloc(65536,255));process.stderr.write(Buffer.alloc(8192,255))'`,
       cwd: directory,
       waitMs: 1000,
     },
@@ -376,6 +376,15 @@ try {
   );
   const result = (await get(execution.executionId)).result;
   assert(result?.kind === "shell" && "truncated" in result && result.truncated);
+  assert(Buffer.byteLength(result.stdout) <= 65536);
+  assert(Buffer.byteLength(result.stderr) <= 8192);
+  assert.equal(worker.exitCode, null);
+  facts.reportBudget = {
+    stdoutUtf8Bytes: Buffer.byteLength(result.stdout),
+    stderrUtf8Bytes: Buffer.byteLength(result.stderr),
+    truncated: result.truncated,
+    workerAlive: worker.exitCode === null,
+  };
   assert.equal(statSync(counter).size, 1);
   assert.equal((await submit(input)).executionId, execution.executionId);
   await stop(worker);

@@ -16,7 +16,10 @@ import { RemoteDispatcher } from "./remote";
 import { probeCapability, probeDirectory } from "./probes";
 
 export class ClientError extends Error {
-  constructor(readonly code: string) {
+  constructor(
+    readonly code: string,
+    readonly status?: number,
+  ) {
     super(code);
     this.name = "ClientError";
   }
@@ -46,7 +49,10 @@ function post<S extends z.ZodType>(
       try {
         result = schema.parse(await response.json());
       } catch {
-        throw new ClientError(response.status >= 500 ? "network" : "invalid_response");
+        throw new ClientError(
+          response.status >= 500 ? "network" : "invalid_response",
+          response.status,
+        );
       }
       return result;
     },
@@ -82,7 +88,12 @@ function request<S extends z.ZodType>(
     Effect.retry({
       schedule: backoff,
       while: (error) =>
-        error.code === "network" || error.code === "internal" || error.code === "stopping",
+        error.code === "network" ||
+        error.code === "internal" ||
+        error.code === "stopping" ||
+        (path === "exchange" &&
+          error.code === "invalid_response" &&
+          (error.status === undefined || error.status < 400)),
     }),
   );
 }
@@ -159,23 +170,44 @@ export function workerProgram(identity: Identity) {
             },
             catch: () => new ClientError("probe_failed"),
           });
+          const exchange = draining
+            ? { mode: "drain" as const, session, seq }
+            : { mode: "normal" as const, session, seq, capability, observations };
+          const emptyRemote = { results: [], fenceAcks: [] };
+          const envelopeBytes = Buffer.byteLength(
+            JSON.stringify({
+              version: WORKER_PROTOCOL_VERSION,
+              requestId: newId(ID_PREFIXES.request),
+              secret: identity.secret,
+              ...exchange,
+              remote: emptyRemote,
+            }),
+          );
+          const remote = dispatcher.outgoing(
+            1048576 - envelopeBytes + Buffer.byteLength(JSON.stringify(emptyRemote)),
+          );
           const exchanged = yield* request(
             identity,
             "exchange",
-            draining
-              ? { mode: "drain", session, seq, remote: dispatcher.outgoing() }
-              : {
-                  mode: "normal",
-                  session,
-                  seq,
-                  capability,
-                  observations,
-                  remote: dispatcher.outgoing(),
-                },
+            { ...exchange, remote },
             workerExchangeResponseSchema,
             () => dispatcher?.disconnect(),
           ).pipe(Effect.result);
           if (exchanged._tag === "Failure") {
+            if (
+              ["validation_failed", "invalid_response", "remote_limit", "remote_conflict"].includes(
+                exchanged.failure.code,
+              )
+            ) {
+              // Rejection is not an execution failure of the Worker. Close admission,
+              // keep delivery identities, and drain explicit degraded results at this seq.
+              dispatcher.rejectReports(remote);
+              dispatcher.disconnect();
+              configuration = undefined;
+              draining = true;
+              yield* Effect.sleep(opened.success.data.pollIntervalMs);
+              continue;
+            }
             // A lost normal response may already occupy this seq. Drain skips that
             // committed frame once; it never retries a command under a new identity.
             if (draining && exchanged.failure.code === "conflict" && !drainAdvanced) {

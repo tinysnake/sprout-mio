@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { open } from "node:fs/promises";
 import type { CapabilitySnapshot, DirectoryObservation } from "../contracts/machine";
+import { remoteReportSchema } from "../contracts/remote";
 import type {
   RemoteCommand,
   RemoteExchangeInput,
@@ -25,11 +26,65 @@ const sameSession = (a: WorkerSession, b: WorkerSession) =>
   a.generation === b.generation &&
   a.bootId === b.bootId &&
   a.attemptId === b.attemptId;
-// Decode only complete UTF-8 prefixes; NUL is excluded by the result wire contract.
-function boundedText(buffer: Buffer, limit: number) {
-  return new TextDecoder("utf-8", { fatal: false })
-    .decode(buffer.subarray(0, limit), { stream: true })
-    .replaceAll("\0", "");
+type BoundedText = { text: string; truncated: boolean };
+const MAX_EXCHANGE_BYTES = 1048576;
+const jsonBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8");
+// Decoding invalid input can expand it; bound the encoded text as well as the raw input.
+function boundedText(buffer: Buffer, limit: number): BoundedText {
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const decoded = decoder.decode(buffer.subarray(0, limit), { stream: true });
+  const incomplete = decoder.decode().length > 0;
+  const encoded = Buffer.from(decoded.replaceAll("\0", ""), "utf8");
+  return {
+    text: new TextDecoder().decode(encoded.subarray(0, limit), { stream: true }),
+    truncated:
+      buffer.length > limit || encoded.length > limit || incomplete || decoded.includes("\0"),
+  };
+}
+function degradedReport(
+  report: Extract<RemoteReport, { phase: "terminal" }>,
+  minimal = false,
+): RemoteReport {
+  const original = "failureReason" in report.payload ? report.payload.partial : report.payload;
+  let partial = original;
+  if (original?.kind === "shell") {
+    partial = {
+      ...original,
+      stdout: minimal ? "" : boundedText(Buffer.from(original.stdout), 65536).text,
+      stderr: minimal ? "" : boundedText(Buffer.from(original.stderr), 8192).text,
+      truncated: true,
+    };
+  } else if (original?.kind === "file_read") {
+    // Leave room for worst-case JSON escaping and the rest of the exchange envelope.
+    partial = {
+      ...original,
+      content: minimal ? "" : boundedText(Buffer.from(original.content), 65536).text,
+      truncated: true,
+    };
+  } else if (original?.kind === "process_list") {
+    partial = {
+      ...original,
+      items: minimal
+        ? []
+        : original.items.slice(0, 200).map((item) => ({
+            ...item,
+            command: boundedText(Buffer.from(item.command), 256).text,
+          })),
+      truncated: true,
+    };
+  }
+  const failure = {
+    ...report,
+    outcome: "failed" as const,
+    payload: {
+      kind: report.payload.kind,
+      failureReason: "executor_error" as const,
+      ...(partial ? { partial } : {}),
+    },
+  };
+  return remoteReportSchema.safeParse(failure).success
+    ? failure
+    : { ...failure, payload: { kind: report.payload.kind, failureReason: "executor_error" } };
 }
 class AdmissionError extends Error {
   constructor(
@@ -72,15 +127,56 @@ export class RemoteDispatcher {
     this.closed = true;
     for (const entry of this.entries.values()) if (!entry.done) entry.controller.abort();
   }
-  outgoing(): RemoteExchangeInput {
-    return {
-      results: [...this.entries.values()].map((entry) => entry.report).slice(0, 64),
-      fenceAcks: [...this.fences.values()]
-        .filter((ack) =>
-          ack.executionIds.every((id) => !this.entries.has(id) || this.entries.get(id)!.done),
-        )
-        .slice(0, 64),
-    };
+  rejectReports(batch: RemoteExchangeInput) {
+    for (const report of batch.results) {
+      const entry = this.entries.get(report.executionId);
+      if (entry?.report.phase === "terminal") entry.report = degradedReport(entry.report, true);
+    }
+  }
+  outgoing(maxBytes = MAX_EXCHANGE_BYTES): RemoteExchangeInput {
+    const batch: RemoteExchangeInput = { results: [], fenceAcks: [] };
+    let used = jsonBytes(batch);
+    const entries = [...this.entries.values()].sort(
+      (a, b) =>
+        a.command.dispatchSeq - b.command.dispatchSeq ||
+        (a.command.executionId < b.command.executionId
+          ? -1
+          : a.command.executionId === b.command.executionId
+            ? 0
+            : 1),
+    );
+    for (const entry of entries) {
+      if (batch.results.length === 64) break;
+      if (
+        entry.report.phase === "terminal" &&
+        (!remoteReportSchema.safeParse(entry.report).success ||
+          jsonBytes(entry.report) + jsonBytes({ results: [], fenceAcks: [] }) > maxBytes)
+      )
+        entry.report = degradedReport(entry.report);
+      if (
+        entry.report.phase === "terminal" &&
+        jsonBytes(entry.report) + jsonBytes({ results: [], fenceAcks: [] }) > maxBytes
+      )
+        entry.report = degradedReport(entry.report, true);
+      const cost = jsonBytes(entry.report) + (batch.results.length ? 1 : 0);
+      if (used + cost > maxBytes) break;
+      batch.results.push(entry.report);
+      used += cost;
+    }
+    const fences = [...this.fences.values()].sort((a, b) =>
+      a.mutationId < b.mutationId ? -1 : a.mutationId === b.mutationId ? 0 : 1,
+    );
+    for (const ack of fences) {
+      if (batch.fenceAcks.length === 64) break;
+      if (!ack.executionIds.every((id) => !this.entries.has(id) || this.entries.get(id)!.done))
+        continue;
+      const ordered = { ...ack, executionIds: [...ack.executionIds].sort() };
+      const cost = jsonBytes(ordered) + (batch.fenceAcks.length ? 1 : 0);
+      if (used + cost > maxBytes) break;
+      batch.fenceAcks.push(ordered);
+      used += cost;
+    }
+    return batch;
   }
   accept(frame: Frame, expectedSeq: number, observations: DirectoryObservation[]) {
     if (
@@ -266,14 +362,16 @@ export class RemoteDispatcher {
           if (entry.controller.signal.aborted) finish();
         });
         collecting = false; // Keep consuming/discarding pipes; never close or signal the child.
+        const output = boundedText(stdout, 65536);
+        const errorOutput = boundedText(stderr, 8192);
         payload = {
           kind: "shell",
           pid: child.pid!,
           exited,
           exitCode,
-          stdout: boundedText(stdout, 65536),
-          stderr: boundedText(stderr, 8192),
-          truncated,
+          stdout: output.text,
+          stderr: errorOutput.text,
+          truncated: truncated || output.truncated || errorOutput.truncated,
         };
         if (exited && exitCode !== 0) {
           outcome = "failed";
@@ -287,10 +385,11 @@ export class RemoteDispatcher {
           this.gate(entry);
           const buffer = Buffer.alloc(operation.maxBytes + 1);
           const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+          const content = boundedText(buffer.subarray(0, bytesRead), operation.maxBytes);
           payload = {
             kind: "file_read",
-            content: boundedText(buffer.subarray(0, bytesRead), operation.maxBytes),
-            truncated: bytesRead > operation.maxBytes,
+            content: content.text,
+            truncated: content.truncated,
           };
         } finally {
           await file.close();
@@ -335,9 +434,10 @@ export class RemoteDispatcher {
           .split("\n")
           .flatMap((line) => {
             const match = /^\s*(\d+)\s+(.+)$/.exec(line);
-            return match
-              ? [{ pid: Number(match[1]), command: boundedText(Buffer.from(match[2]), 1024) }]
-              : [];
+            if (!match) return [];
+            const command = boundedText(Buffer.from(match[2]), 1024);
+            truncated ||= command.truncated;
+            return [{ pid: Number(match[1]), command: command.text }];
           });
         payload = {
           kind: "process_list",
