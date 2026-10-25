@@ -80,16 +80,18 @@ const otherLease = acquireLease(
 assert.equal(otherLease.completedGeneration, 1);
 assert.equal(listProjectLeases({ projectId }, ctx).length, 1);
 const secret = "w".repeat(43),
-  wire = { machineId, secret, version: 2 as const, requestId };
+  wire = { machineId, secret, version: 3 as const, requestId };
 enrollWorker({ ...wire, ticket: machine.ticket }, ctx);
 const session = openWorker({ ...wire, attemptId: randomUUID() }, ctx).session;
 let seq = 0;
 const exchange = (
-  remote = { results: [], fenceAcks: [] } as Parameters<typeof exchangeWorker>[0]["remote"],
+  remote = { results: [], fenceAcks: [], mcp: [], mcpCursors: [] } as Parameters<
+    typeof exchangeWorker
+  >[0]["remote"],
 ) =>
   exchangeWorker(
     {
-      version: 2,
+      version: 3,
       requestId,
       secret,
       session,
@@ -169,13 +171,21 @@ const report = {
   payload: { kind: "file_write" as const, bytesWritten: 7 },
 };
 assert.throws(
-  () => exchange({ results: [{ ...report, projectId: otherProjectId }], fenceAcks: [] }),
+  () =>
+    exchange({
+      results: [{ ...report, projectId: otherProjectId }],
+      fenceAcks: [],
+      mcp: [],
+      mcpCursors: [],
+    }),
   fail("not_found"),
 );
 seq--; // rolled-back frame
 const completed = exchange({
   results: [report],
   fenceAcks: [{ ...fence, dispatchSession: session }],
+  mcp: [],
+  mcpCursors: [],
 });
 assert(remoteExchangeOutputSchema.safeParse(completed.remote).success);
 assert.equal(getExecution({ ...key, executionId: execution.executionId }, ctx).state, "rejected");
@@ -234,7 +244,7 @@ const {
 } = drainCommand;
 const drainResponse = exchangeWorker(
   {
-    version: 2,
+    version: 3,
     requestId,
     secret,
     session,
@@ -251,6 +261,8 @@ const drainResponse = exchangeWorker(
         },
       ],
       fenceAcks: [],
+      mcp: [],
+      mcpCursors: [],
     },
   },
   ctx,

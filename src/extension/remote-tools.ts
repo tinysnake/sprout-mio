@@ -55,7 +55,7 @@ function buildRequest(name: ToolName, parameters: unknown, projectId: string): R
   } else {
     throw new Error("无效远端工具");
   }
-  return remoteAgentRequestSchema.parse({ version: 1, call });
+  return remoteAgentRequestSchema.parse({ version: 2, call });
 }
 
 function result(response: RemoteToolResponse): SproutToolResult {

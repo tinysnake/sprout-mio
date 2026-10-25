@@ -6,9 +6,12 @@ import { join } from "node:path";
 import { expect, test } from "vite-plus/test";
 import { ID_PREFIXES, newId } from "../src/contracts/ids";
 import { remoteReportSchema } from "../src/contracts/remote";
-import type { RemoteCommand, RemoteExchangeOutput } from "../src/contracts/remote";
+import type { RemoteCommand } from "../src/contracts/remote";
+import type { WorkerExchangeResponse } from "../src/contracts/worker";
 import type { CapabilitySnapshot } from "../src/contracts/machine";
 import { RemoteDispatcher } from "../src/worker/remote";
+
+type RemoteWireOutput = Extract<WorkerExchangeResponse, { ok: true }>["data"]["remote"];
 
 const id = () => ({
   projectId: newId(ID_PREFIXES.project),
@@ -43,14 +46,16 @@ function fixture() {
     commands: RemoteCommand[] = [],
     generation = 1,
     state: "active" | "draining" = "active",
-  ): RemoteExchangeOutput => ({
+  ): RemoteWireOutput => ({
     commands,
     authorizations: [{ ...key, generation, state }],
     fences: [],
     resultAcks: [],
     fenceAcks: [],
+    mcp: [],
+    mcpCursors: [],
   });
-  const apply = (seq: number, remote: RemoteExchangeOutput) =>
+  const apply = (seq: number, remote: RemoteWireOutput) =>
     dispatcher.accept(
       {
         mode: "normal",

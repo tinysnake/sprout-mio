@@ -272,6 +272,14 @@ function sqliteProbe() {
       end_reason: "invented",
     });
     rejects("running cannot report exit code", "mcp_server_process", processRow, { exit_code: 0 });
+    const stopping = { ...processRow, state: "stopping" };
+    rollback(() => insert("mcp_server_process", stopping));
+    pass("stopping with all end fields NULL and PID accepted");
+    rejects("stopping cannot report end time", "mcp_server_process", stopping, { ended_at: 11 });
+    rejects("stopping cannot report end reason", "mcp_server_process", stopping, {
+      end_reason: "owner_stopped",
+    });
+    rejects("stopping cannot report exit code", "mcp_server_process", stopping, { exit_code: 0 });
     insert("mcp_server_process", processRow);
     const session: Row = {
       id: "session",

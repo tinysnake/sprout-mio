@@ -257,7 +257,7 @@ describe("P4b shared contracts", () => {
 
   it("separates normal/drain frames and validates delivery session/seq and total byte budget", () => {
     const frame = {
-      version: 2,
+      version: 3,
       requestId,
       secret: "x".repeat(43),
       mode: "normal",
@@ -265,7 +265,7 @@ describe("P4b shared contracts", () => {
       seq: 1,
       capability,
       observations: [],
-      remote: { results: [], fenceAcks: [] },
+      remote: { results: [], fenceAcks: [], mcp: [], mcpCursors: [] },
     };
     expect(workerExchangeInput.safeParse(frame).success).toBe(true);
     const { capability: _capability, observations: _observations, ...base } = frame;
@@ -289,9 +289,9 @@ describe("P4b shared contracts", () => {
       session,
       seq: 1,
       configuration: { root: null, rootRevision: 1, bindings: [] },
-      remote: { ...remote, commands: [command] },
+      remote: { ...remote, commands: [command], mcp: [], mcpCursors: [] },
     };
-    const response = { version: 2, requestId, ok: true, data };
+    const response = { version: 3, requestId, ok: true, data };
     expect(workerExchangeResponseSchema.safeParse(response).success).toBe(true);
     expect(
       workerExchangeResponseSchema.safeParse({ ...response, data: { ...data, seq: 2 } }).success,
@@ -305,7 +305,12 @@ describe("P4b shared contracts", () => {
     expect(
       workerExchangeResponseSchema.safeParse({
         ...response,
-        data: { ...data, mode: "drain", configuration: null, remote },
+        data: {
+          ...data,
+          mode: "drain",
+          configuration: null,
+          remote: { ...remote, mcp: [], mcpCursors: [] },
+        },
       }).success,
     ).toBe(true);
     const payload = { kind: "file_read", content: "x".repeat(262144), truncated: false };
@@ -320,12 +325,14 @@ describe("P4b shared contracts", () => {
     expect(
       workerExchangeInput.safeParse({
         ...frame,
-        remote: { results: reports.slice(0, 3), fenceAcks: [] },
+        remote: { results: reports.slice(0, 3), fenceAcks: [], mcp: [], mcpCursors: [] },
       }).success,
     ).toBe(true);
     expect(
-      workerExchangeInput.safeParse({ ...frame, remote: { results: reports, fenceAcks: [] } })
-        .success,
+      workerExchangeInput.safeParse({
+        ...frame,
+        remote: { results: reports, fenceAcks: [], mcp: [], mcpCursors: [] },
+      }).success,
     ).toBe(false);
     expect(
       remoteExchangeOutputSchema.safeParse({

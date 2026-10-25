@@ -8,12 +8,12 @@ import type {
   ExecutionView,
   RemoteCommand,
   RemoteExchangeInput,
-  RemoteExchangeOutput,
   RemoteReport,
 } from "../contracts/remote";
 import type { AppErrorCode } from "../contracts/result";
 import type { WorkerSession } from "../contracts/worker-session";
 import { WORKER_STALE_AFTER_MS } from "../contracts/worker";
+import type { WorkerExchangeResponse } from "../contracts/worker";
 import { db, sqlite } from "../db";
 import {
   diagnosticEvent,
@@ -57,6 +57,8 @@ export type AuthenticatedWorkerContext = {
   now: Date;
   bootId: string;
 };
+/** Worker v3 出站 wire 形状：基座 remote 加上 relay 空批字段。 */
+type RemoteWireOutput = Extract<WorkerExchangeResponse, { ok: true }>["data"]["remote"];
 function connection(machineId: string, ctx: Pick<MachineContext, "now" | "bootId">) {
   const counter = db
     .select()
@@ -350,16 +352,19 @@ function delivery(report: RemoteReport, ctx: AuthenticatedWorkerContext) {
   return row;
 }
 /** Called only inside the gateway's authenticated immediate transaction; never awaits. */
+// MCP relay 的领域处理与落库由 r1-worker 交付；此处只保持 wire 形状自洽。
 export function applyRemoteExchange(
   input: RemoteExchangeInput,
   ctx: AuthenticatedWorkerContext,
-): RemoteExchangeOutput {
-  const output: RemoteExchangeOutput = {
+): RemoteWireOutput {
+  const output: RemoteWireOutput = {
     authorizations: [],
     commands: [],
     fences: [],
     resultAcks: [],
     fenceAcks: [],
+    mcp: [],
+    mcpCursors: [],
   };
   const leases = db
     .select()

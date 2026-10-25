@@ -1156,7 +1156,7 @@ export const mcpServerProcess = sqliteTable(
     ),
     check(
       "mcp_process_lifecycle",
-      sql`(state IN ('starting','running') AND ended_at IS NULL AND end_reason IS NULL AND exit_code IS NULL) OR (state IN ('exited','failed','lost') AND ended_at IS NOT NULL AND end_reason IS NOT NULL)`,
+      sql`(state IN ('starting','running','stopping') AND ended_at IS NULL AND end_reason IS NULL AND exit_code IS NULL) OR (state IN ('exited','failed','lost') AND ended_at IS NOT NULL AND end_reason IS NOT NULL)`,
     ),
     check(
       "mcp_process_end_reason",

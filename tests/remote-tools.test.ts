@@ -245,7 +245,7 @@ function grant(endpoint: string): RemoteToolGrant {
   return { endpoint, secret: "a".repeat(43), projectId, expiresAt: "2026-10-24T00:15:00.000Z" };
 }
 const read: RemoteAgentRequest = {
-  version: 1,
+  version: 2,
   call: { type: "lease_get", input: { projectId, machineId } },
 };
 

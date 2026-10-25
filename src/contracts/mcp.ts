@@ -175,7 +175,7 @@ export const mcpServerProcessSchema = z
       (value.state !== "running" ||
         value.pid !== null ||
         (value.transport === "streamableHttp" && value.endpoint !== null)) &&
-      (["starting", "running"].includes(value.state)
+      (["starting", "running", "stopping"].includes(value.state)
         ? value.endedAt === null && value.endReason === null && value.exitCode === null
         : ["exited", "failed", "lost"].includes(value.state) &&
           value.endedAt !== null &&

@@ -45,12 +45,12 @@ for (const actor of [a!, b!]) {
   );
 }
 const secret = "q".repeat(43);
-const wire = { version: 2 as const, requestId: req(), machineId, secret };
+const wire = { version: 3 as const, requestId: req(), machineId, secret };
 enrollWorker({ ...wire, ticket: machine.ticket }, a!);
 const session = openWorker({ ...wire, attemptId: randomUUID() }, a!).session;
 exchangeWorker(
   {
-    version: 2,
+    version: 3,
     requestId: req(),
     secret,
     session,
@@ -64,7 +64,7 @@ exchangeWorker(
       remoteOperations: ["file_read"],
     },
     observations: [],
-    remote: { results: [], fenceAcks: [] },
+    remote: { results: [], fenceAcks: [], mcp: [], mcpCursors: [] },
   },
   a!,
 );

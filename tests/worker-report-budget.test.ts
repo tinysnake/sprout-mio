@@ -8,9 +8,12 @@ import { expect, test } from "vite-plus/test";
 import { ID_PREFIXES, newId } from "../src/contracts/ids";
 import type { CapabilitySnapshot } from "../src/contracts/machine";
 import { remoteExchangeInputSchema, remoteReportSchema } from "../src/contracts/remote";
-import type { RemoteCommand, RemoteExchangeOutput, RemoteReport } from "../src/contracts/remote";
+import type { RemoteCommand, RemoteReport } from "../src/contracts/remote";
+import type { WorkerExchangeResponse } from "../src/contracts/worker";
 import { workerExchangeInput, WORKER_PROTOCOL_VERSION } from "../src/contracts/worker";
 import { RemoteDispatcher } from "../src/worker/remote";
+
+type RemoteWireOutput = Extract<WorkerExchangeResponse, { ok: true }>["data"]["remote"];
 
 const MAX_BYTES = 1048576;
 function fixture() {
@@ -41,14 +44,16 @@ function fixture() {
     ],
   };
   const dispatcher = new RemoteDispatcher(session, capability, Date.now);
-  const remote = (commands: RemoteCommand[] = []): RemoteExchangeOutput => ({
+  const remote = (commands: RemoteCommand[] = []): RemoteWireOutput => ({
     commands,
     authorizations: [{ ...key, generation: 1, state: "active" }],
     fences: [],
     resultAcks: [],
     fenceAcks: [],
+    mcp: [],
+    mcpCursors: [],
   });
-  const apply = (seq: number, output: RemoteExchangeOutput) =>
+  const apply = (seq: number, output: RemoteWireOutput) =>
     dispatcher.accept(
       {
         mode: "normal",
