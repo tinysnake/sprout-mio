@@ -76,7 +76,13 @@ type Cancellation = typeof executionCancellation.$inferSelect;
 /** 已由 runner 证据确定的终态：后续报告与恢复事实都不能改写。 */
 const SETTLED_STATES = new Set(["succeeded", "failed", "rejected"]);
 /** 只能被带 runner token 的恢复事实单向归约的状态。 */
-const RECOVERABLE_STATES = new Set(["unknown", "timed_out", "dispatched", "running", "draining"]);
+const RECOVERABLE_STATES: ReadonlyArray<Execution["state"]> = [
+  "unknown",
+  "timed_out",
+  "dispatched",
+  "running",
+  "draining",
+];
 export type AuthenticatedWorkerContext = {
   session: WorkerSession;
   mode: "normal" | "drain";
@@ -176,7 +182,9 @@ function runnerOnline(machineId: string, now: Date) {
     )
     .get();
   return Boolean(
-    row && row.status === "open" && now.getTime() - row.lastSeenAt.getTime() < WORKER_STALE_AFTER_MS,
+    row &&
+    row.status === "open" &&
+    now.getTime() - row.lastSeenAt.getTime() < WORKER_STALE_AFTER_MS,
   );
 }
 function executionByKey(executionId: string, key: Pick<LeaseClaim, "projectId" | "machineId">) {
@@ -338,8 +346,7 @@ function logAckOf(row: Execution) {
     availableFromSequence: row.availableFromSeq,
   };
 }
-const recoveryMessage =
-  "已根据 runner 恢复事实把执行归约为终态";
+const recoveryMessage = "已根据 runner 恢复事实把执行归约为终态";
 /**
  * B1 阻塞项的解法：新会话上报旧执行的终态。`delivery()` 要求同一 dispatchSession，
  * 所以恢复必须自己核对归属、token 与单向性，且必须带证据。
@@ -361,7 +368,7 @@ export function applyExecutionRecovery(
   )
     throw new RemoteError("execution_log_unavailable");
   if (SETTLED_STATES.has(row.state)) return;
-  if (!RECOVERABLE_STATES.has(row.state)) return;
+  if (!RECOVERABLE_STATES.includes(row.state)) return;
   const produced = recovery.producedThroughSequence;
   if (produced !== null && produced > (row.producedThroughSeq ?? 0))
     db.update(remoteExecution)
@@ -428,12 +435,7 @@ export function applyExecutionRecovery(
       terminalAt: ctx.now,
     })
     // 单向性：只允许从可恢复状态进入已知终态，已确定的终态不回头。
-    .where(
-      and(
-        eq(remoteExecution.id, row.id),
-        inArray(remoteExecution.state, [...RECOVERABLE_STATES]),
-      ),
-    )
+    .where(and(eq(remoteExecution.id, row.id), inArray(remoteExecution.state, RECOVERABLE_STATES)))
     .run();
   db.insert(diagnosticEvent)
     .values({
@@ -520,10 +522,7 @@ export function requestExecution(
               eq(remoteExecution.projectId, input.projectId),
               eq(remoteExecution.machineId, input.machineId),
               // `unknown` 已不再收窄终态：可恢复行仍占一个活跃名额，避免失联行堆积。
-              or(
-                isNull(remoteExecution.terminalAt),
-                eq(remoteExecution.state, "unknown"),
-              ),
+              or(isNull(remoteExecution.terminalAt), eq(remoteExecution.state, "unknown")),
             ),
           )
           .all().length >= 64
@@ -850,10 +849,7 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
       .select()
       .from(machineLease)
       .where(
-        and(
-          eq(machineLease.projectId, row.projectId),
-          eq(machineLease.machineId, row.machineId),
-        ),
+        and(eq(machineLease.projectId, row.projectId), eq(machineLease.machineId, row.machineId)),
       )
       .get();
     if (
@@ -865,7 +861,9 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
       continue;
     db.update(executionCancellation)
       .set({ state: "delivered", deliveredAt: now, signalOutcome: "term_delivered" })
-      .where(and(eq(executionCancellation.id, row.id), eq(executionCancellation.state, "requested")))
+      .where(
+        and(eq(executionCancellation.id, row.id), eq(executionCancellation.state, "requested")),
+      )
       .run();
     const delivered = db
       .select()
@@ -904,7 +902,9 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
     if (now.getTime() - sentAt < CANCELLATION_CONFIRM_WINDOW_MS) continue;
     db.update(executionCancellation)
       .set({ state: "failed", failureReason: "delivery_unconfirmed" })
-      .where(and(eq(executionCancellation.id, row.id), eq(executionCancellation.state, "delivered")))
+      .where(
+        and(eq(executionCancellation.id, row.id), eq(executionCancellation.state, "delivered")),
+      )
       .run();
     sends.delete(row.id);
   }
@@ -1272,9 +1272,7 @@ export function applyRemoteExchange(
       }
       const runtimeDeadlineAt =
         row.runtimeDeadlineAt ??
-        (row.maxRuntimeMs === null
-          ? null
-          : new Date(ctx.now.getTime() + row.maxRuntimeMs));
+        (row.maxRuntimeMs === null ? null : new Date(ctx.now.getTime() + row.maxRuntimeMs));
       const runnerToken = row.runnerToken ?? randomBytes(16).toString("hex");
       const command: RemoteCommand = {
         executionId: row.id,

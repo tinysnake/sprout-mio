@@ -8,18 +8,13 @@ import {
   executionLogReadViewSchema,
   executionViewSchema,
 } from "../../src/contracts/remote";
+import type { RemoteCommand } from "../../src/contracts/remote";
 import { migrateDatabase } from "../../src/db/migrate";
 import { db, sqlite } from "../../src/db";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
 import { eq } from "drizzle-orm";
 import { remoteExecution } from "../../src/db/schema";
-import {
-  acquireLease,
-  expireExecutions,
-  handoffLease,
-  LeaseError,
-  releaseLease,
-} from "../../src/server/lease";
+import { acquireLease, expireExecutions, LeaseError } from "../../src/server/lease";
 import {
   applyExecutionRecovery,
   enqueueCancellation,
@@ -83,9 +78,11 @@ const wire = { machineId, secret, version: 3 as const, requestId: req() };
 enrollWorker({ ...wire, ticket: machine.ticket }, ctx);
 const session = openWorker({ ...wire, attemptId: randomUUID() }, ctx).session;
 let seq = 0;
-const exchange = (remote = { results: [], fenceAcks: [], mcp: [], mcpCursors: [] } as Parameters<
-  typeof exchangeWorker
->[0]["remote"]) =>
+const exchange = (
+  remote = { results: [], fenceAcks: [], mcp: [], mcpCursors: [] } as Parameters<
+    typeof exchangeWorker
+  >[0]["remote"],
+) =>
   exchangeWorker(
     {
       version: 3,
@@ -122,8 +119,27 @@ const shellInput = (requestId = req()) => ({
   operation: { kind: "shell" as const, command: "true", cwd: "/tmp", waitMs: 1000 },
 });
 const submit = (input: ReturnType<typeof shellInput>) => requestExecution(input, ctx);
-const identityOf = (command: Record<string, unknown>) => {
-  const { operation: _operation, requestId: _requestId, dispatchDeadlineAt: _deadline, directoryRevision: _dir, runtimeDeadlineAt: _runtime, maxRuntimeMs: _max, runnerToken: _token, ...identity } = command as Record<string, never>;
+type CommandIdentity = {
+  projectId: string;
+  machineId: string;
+  executionId: string;
+  authorizationGeneration: number;
+  holderInstanceId: string;
+  dispatchSession: typeof session;
+  dispatchSeq: number;
+  fingerprint: string;
+};
+const identityOf = (command: RemoteCommand): CommandIdentity => {
+  const {
+    operation: _operation,
+    requestId: _requestId,
+    dispatchDeadlineAt: _deadline,
+    directoryRevision: _dir,
+    runtimeDeadlineAt: _runtime,
+    maxRuntimeMs: _max,
+    runnerToken: _token,
+    ...identity
+  } = command;
   return identity;
 };
 
@@ -189,7 +205,13 @@ assert.deepEqual(continued.nextCursor, { nextSequence: 2 });
 pass("日志游标续读返回相同行，空范围不被当成完整日志");
 
 // 重复帧幂等：同一 sequence 再送一次不新增行、不推进位点。
-const replay = exchange({ results: [], fenceAcks: [], mcp: [], mcpCursors: [], logFrames: [logFrame(2, "line two\n")] });
+const replay = exchange({
+  results: [],
+  fenceAcks: [],
+  mcp: [],
+  mcpCursors: [],
+  logFrames: [logFrame(2, "line two\n")],
+});
 assert.equal(replay.remote.logAcks![0]!.acknowledgedThroughSequence, 2);
 const frameCount = sqlite
   .prepare("SELECT COUNT(*) AS n FROM execution_log_frame WHERE execution_id = ?")
@@ -203,7 +225,17 @@ exchange({
   fenceAcks: [],
   mcp: [],
   mcpCursors: [],
-  logFrames: [{ ...identity, sequence: 3, stream: "stderr", byteStart: 0, byteEnd: 0, checksum: digest(""), gapTo: 5 }],
+  logFrames: [
+    {
+      ...identity,
+      sequence: 3,
+      stream: "stderr",
+      byteStart: 0,
+      byteEnd: 0,
+      checksum: digest(""),
+      gapTo: 5,
+    },
+  ],
 });
 const afterGap = readExecutionLog(
   { ...key, executionId: submitted.executionId, cursor: { nextSequence: 2 }, limitBytes: 65536 },
@@ -222,7 +254,12 @@ sqlite
 assert.throws(
   () =>
     readExecutionLog(
-      { ...key, executionId: submitted.executionId, cursor: { nextSequence: 0 }, limitBytes: 65536 },
+      {
+        ...key,
+        executionId: submitted.executionId,
+        cursor: { nextSequence: 0 },
+        limitBytes: 65536,
+      },
       ctx,
     ),
   fail("execution_log_gap"),
@@ -238,7 +275,9 @@ pass("游标早于 available_from_seq 返回 execution_log_gap，不冒充完整
 restoreConnection();
 function restoreConnection() {
   sqlite
-    .prepare("UPDATE machine_connection SET last_seen_at = ? WHERE machine_id = ? AND generation = ?")
+    .prepare(
+      "UPDATE machine_connection SET last_seen_at = ? WHERE machine_id = ? AND generation = ?",
+    )
     .run(Date.now(), machineId, session.generation);
 }
 const later = new Date(Date.now() + 60000);
@@ -320,18 +359,29 @@ assert.equal(getExecution({ ...key, executionId: second.executionId }, ctx).stat
 pass("反证：token 不符的恢复被拒，执行仍停在 dispatched");
 
 // 反证 3：跨 Machine / 跨 Project 的恢复与日志读取被拒。
-anotherMachine: {
+{
   const otherSecret = "x".repeat(43);
-  const otherWire = { machineId: otherMachineId, secret: otherSecret, version: 3 as const, requestId: req() };
+  const otherWire = {
+    machineId: otherMachineId,
+    secret: otherSecret,
+    version: 3 as const,
+    requestId: req(),
+  };
   enrollWorker({ ...otherWire, ticket: otherMachine.ticket }, ctx);
   const otherSession = openWorker({ ...otherWire, attemptId: randomUUID() }, ctx).session;
   assert.throws(
     () =>
       applyExecutionRecovery(
-        { ...secondIdentity, runnerToken: secondRow.runnerToken! ,
-          observedState: "exited", exitCode: 0, signal: null,
-          observedExitedAt: new Date().toISOString(), producedThroughSequence: null,
-          claimEvidenceAt: new Date().toISOString() },
+        {
+          ...secondIdentity,
+          runnerToken: secondRow.runnerToken!,
+          observedState: "exited",
+          exitCode: 0,
+          signal: null,
+          observedExitedAt: new Date().toISOString(),
+          producedThroughSequence: null,
+          claimEvidenceAt: new Date().toISOString(),
+        },
         { session: otherSession, now: new Date(), requestId: req() },
       ),
     fail("execution_log_unavailable"),
@@ -341,7 +391,13 @@ anotherMachine: {
 assert.throws(
   () =>
     readExecutionLog(
-      { projectId: another.projectId, machineId, executionId: second.executionId, cursor: null },
+      {
+        projectId: another.projectId,
+        machineId,
+        executionId: second.executionId,
+        cursor: null,
+        limitBytes: 65536,
+      },
       another,
     ),
   fail("not_found"),
@@ -349,7 +405,7 @@ assert.throws(
 assert.throws(
   () =>
     readExecutionLog(
-      { projectId, machineId, executionId: second.executionId, cursor: null },
+      { projectId, machineId, executionId: second.executionId, cursor: null, limitBytes: 65536 },
       { ...ctx, userId: "" },
     ),
   fail("unauthorized"),
@@ -357,7 +413,13 @@ assert.throws(
 assert.throws(
   () =>
     readExecutionLog(
-      { projectId: otherProjectId, machineId, executionId: second.executionId, cursor: null },
+      {
+        projectId: otherProjectId,
+        machineId,
+        executionId: second.executionId,
+        cursor: null,
+        limitBytes: 65536,
+      },
       another,
     ),
   fail("not_found"),
@@ -370,6 +432,8 @@ const cancelInput = {
   executionId: second.executionId,
   requestId: req(),
   authorizationGeneration: 1,
+  policy: "term_then_kill" as const,
+  termWaitMs: 2000,
 };
 const requested = enqueueCancellation(cancelInput, ctx);
 assert(executionCancellationViewSchema.safeParse(requested).success);
