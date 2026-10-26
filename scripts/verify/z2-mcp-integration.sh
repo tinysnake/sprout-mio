@@ -19,7 +19,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 const evidence = JSON.parse(readFileSync(process.argv[2], "utf8"));
 assert.equal(evidence.endToEndToolsList, "pass");
-assert.equal(evidence.toolCount, 20);
+// 工具数从实际 listTools 结果推导，不写死常量：pinned server 升级或多出来的工具不会变成过期断言。
+assert.equal(evidence.toolCount, evidence.rawToolNames.length);
 assert.equal(evidence.nativePiVersion, "1.4.0", "locked Pi version, probed from package.json");
 // Expected names are assertions; evidence.rawToolNames is the actual native listTools result.
 const expectedEverythingTools = [

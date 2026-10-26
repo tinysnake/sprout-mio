@@ -514,6 +514,9 @@ export const remoteToolInputSchemas = {
     machineId: leaseKeySchema.shape.machineId,
     executionId: executionIdSchema,
   }),
+  /** 取消只暴露意图与当前代次；Project 由宿主注入，`cancelId` 由服务端生成。 */
+  sprout_remote_execution_cancel: executionCancelInputSchema.omit({ projectId: true }),
+  sprout_remote_execution_log: executionLogReadInputSchema.omit({ projectId: true }),
 } as const;
 export type RemoteOperation = z.infer<typeof remoteOperationSchema>;
 export type RemoteResultPayload = z.infer<typeof remoteResultPayloadSchema>;

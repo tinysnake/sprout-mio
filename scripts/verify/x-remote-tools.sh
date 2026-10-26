@@ -10,4 +10,4 @@ cd "$(dirname "$0")/../.."
 # Production grant/lease authorization and real Worker effects remain worker/integration gates.
 # Run grant cleanup → real child abort/close/exit and late disposer registration.
 pnpm exec vp test run tests/remote-tools.test.ts tests/pi-host-dispose.test.ts
-node tests/fixtures/remote-tools-runner.mjs
+node --import tsx tests/fixtures/remote-tools-runner.mjs

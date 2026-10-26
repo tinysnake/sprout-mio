@@ -15,6 +15,7 @@ const evidencePath =
 const projectId = "prj_00000000-0000-4000-8000-000000000000";
 const machineId = "mch_00000000-0000-4000-8000-000000000000";
 const requestId = "req_00000000-0000-4000-8000-000000000000";
+const executionId = "exe_00000000-0000-4000-8000-000000000000";
 const secret = randomBytes(32).toString("base64url");
 let validCalls = 0;
 let identityInjected = false;
@@ -63,12 +64,18 @@ const port = server.address().port;
 const probePath = join(directory, "probe.mjs");
 const resultPath = join(directory, "probe.json");
 const actualEntry = pathToFileURL(join(root, "pi/sprout-extension.ts")).href;
+// 期望工具名从契约推导（由 tsx 加载 TypeScript 契约），probe 只拿到名词表，不写死数量。
+const { remoteToolInputSchemas } = await import(
+  pathToFileURL(join(root, "src/contracts/remote.ts")).href
+);
+const expectedToolNames = Object.keys(remoteToolInputSchemas).sort();
 writeFileSync(
   probePath,
   `
 import assert from 'node:assert/strict';
 import {writeFileSync} from 'node:fs';
 import actualEntry from ${JSON.stringify(actualEntry)};
+const expectedToolNames = ${JSON.stringify(expectedToolNames)};
 export default function probe(pi) {
   actualEntry(pi);
   const registered = new Map();
@@ -76,10 +83,21 @@ export default function probe(pi) {
   pi.registerTool = (tool) => { registered.set(tool.name, tool); register(tool); };
   pi.on('session_start', async () => {
     const tools = [...registered.values()];
-    assert.equal(tools.length, 10);
+    // 工具面数量从契约推导，不写死常量：新增工具不会再让这里变成过期断言。
+    assert.deepEqual(tools.map(tool=>tool.name).sort(), expectedToolNames);
+    assert.ok(expectedToolNames.includes('sprout_remote_execution_cancel'));
+    assert.ok(expectedToolNames.includes('sprout_remote_execution_log'));
     for (const tool of tools) {
       assert.ok(tool.parameters.required.includes('machineId'));
       assert.equal(tool.parameters.additionalProperties, false);
+    }
+    for (const name of ['sprout_remote_execution_cancel', 'sprout_remote_execution_log']) {
+      const schema = registered.get(name).parameters;
+      assert.ok(schema.required.includes('machineId'), name + ' must require an explicit Machine');
+      assert.equal(schema.additionalProperties, false);
+      const missing = await registered.get(name).execute('missing', {executionId:${JSON.stringify(executionId)}});
+      assert.equal(missing.isError, true);
+      assert.equal(missing.details.error.code, 'validation_failed');
     }
     const shell = registered.get('sprout_remote_shell');
     const missing = await shell.execute('missing', {requestId:${JSON.stringify(requestId)},authorizationGeneration:1,command:'true'});
@@ -94,10 +112,19 @@ export default function probe(pi) {
     const valid = await get.execute('valid', {machineId:${JSON.stringify(machineId)}});
     assert.equal(valid.isError, false);
     assert.equal(valid.details.data.lease.projectId, ${JSON.stringify(projectId)});
+    const cancel = registered.get('sprout_remote_execution_cancel');
+    const cancelled = await cancel.execute('cancel', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},requestId:${JSON.stringify(requestId)},authorizationGeneration:1,policy:'kill',termWaitMs:10001});
+    assert.equal(cancelled.isError, true);
+    assert.equal(cancelled.details.error.code, 'validation_failed');
+    const log = registered.get('sprout_remote_execution_log');
+    const oversized = await log.execute('log', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},cursor:null,limitBytes:65537});
+    assert.equal(oversized.isError, true);
+    assert.equal(oversized.details.error.code, 'validation_failed');
     writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify({
       toolNames: tools.map(tool=>tool.name).sort(),
       schemas: Object.fromEntries(tools.map(tool=>[tool.name,tool.parameters])),
-      missingMachineRejected:true, forgedIdentityRejected:true, validCallSucceeded:true
+      missingMachineRejected:true, forgedIdentityRejected:true, validCallSucceeded:true,
+      termWaitRejected:true, limitBytesRejected:true
     }));
   });
 }
@@ -105,7 +132,7 @@ export default function probe(pi) {
 );
 let runner;
 try {
-  runner = spawn(process.execPath, [join(root, "scripts/pi-host-runner.mjs")], {
+  runner = spawn(process.execPath, ["--import", "tsx", join(root, "scripts/pi-host-runner.mjs")], {
     cwd: root,
     stdio: ["pipe", "pipe", "pipe"],
     env: {
@@ -199,7 +226,7 @@ try {
   };
   writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
   console.log(
-    `PASS real runner: 10 tools; N12 missing Machine rejected; forged identity rejected; 1 HTTP call with injected Project; safe evidence ${evidencePath}`,
+    `PASS real runner: ${probe.toolNames.length} tools (registry-derived); N12 missing Machine rejected; forged identity rejected; termWaitMs/limitBytes rejected; 1 HTTP call with injected Project; safe evidence ${evidencePath}`,
   );
 } finally {
   if (runner && runner.exitCode === null) {

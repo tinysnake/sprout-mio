@@ -11,6 +11,8 @@ import {
   mcpSessionOpenOutputSchema,
 } from "../contracts/mcp";
 import {
+  executionCancellationViewSchema,
+  executionLogReadViewSchema,
   executionViewSchema,
   remoteAgentRequestSchema,
   remoteToolGrantSchema,
@@ -35,6 +37,8 @@ const leaseReadSchema = z.strictObject({
 });
 type RemoteData =
   | z.infer<typeof executionViewSchema>
+  | z.infer<typeof executionCancellationViewSchema>
+  | z.infer<typeof executionLogReadViewSchema>
   | z.infer<typeof leaseMutationViewSchema>
   | z.infer<typeof leaseReadSchema>
   | z.infer<typeof mcpCatalogViewSchema>
@@ -57,37 +61,50 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   if (!envelope.data.ok) return { outcome: "response", result: envelope.data };
   const { call } = request;
   if (call.type.startsWith("mcp_")) return readMcpResponse(envelope.data, request);
-  const schema =
-    call.type === "lease_mutate"
-      ? leaseMutationViewSchema
-      : call.type === "lease_get"
-        ? leaseReadSchema
-        : executionViewSchema;
-  const parsed = schema.safeParse(envelope.data.data);
-  if (!parsed.success) return { outcome: "unknown", reason: "invalid_response" };
-  const data = parsed.data;
-  const identity = "lease" in data ? data.lease : data;
-  if (identity.projectId !== call.input.projectId || identity.machineId !== call.input.machineId)
-    return { outcome: "unknown", reason: "invalid_response" };
-  if (
-    ("lease" in data &&
-      data.mutation !== null &&
-      (data.mutation.projectId !== call.input.projectId ||
-        data.mutation.machineId !== call.input.machineId)) ||
-    (call.type === "execution_get" &&
-      "executionId" in data &&
-      data.executionId !== call.input.executionId) ||
-    (call.type === "execution_submit" &&
-      "executionId" in data &&
-      (data.requestId !== call.input.requestId ||
-        data.authorizationGeneration !== call.input.authorizationGeneration ||
-        data.operation.kind !== call.input.operation.kind))
-  )
-    return { outcome: "unknown", reason: "invalid_response" };
-  return {
+  const sameBinding = (data: { projectId: string; machineId: string }) =>
+    data.projectId === call.input.projectId && data.machineId === call.input.machineId;
+  const ok = (data: RemoteData): RemoteToolResponse => ({
     outcome: "response",
     result: { ok: true, data, requestId: envelope.data.requestId },
-  };
+  });
+  const bad: RemoteToolResponse = { outcome: "unknown", reason: "invalid_response" };
+  const raw = envelope.data.data;
+  if (call.type === "lease_get") {
+    const parsed = leaseReadSchema.safeParse(raw);
+    if (!parsed.success) return bad;
+    const { lease, mutation } = parsed.data;
+    if (!sameBinding(lease) || (mutation !== null && !sameBinding(mutation))) return bad;
+    return ok(parsed.data);
+  }
+  if (call.type === "lease_mutate") {
+    const parsed = leaseMutationViewSchema.safeParse(raw);
+    if (!parsed.success || !sameBinding(parsed.data)) return bad;
+    return ok(parsed.data);
+  }
+  if (call.type === "execution_cancel") {
+    const parsed = executionCancellationViewSchema.safeParse(raw);
+    if (!parsed.success || !sameBinding(parsed.data)) return bad;
+    // 取消响应只接受本次请求的 execution；其余一律不可信。
+    if (parsed.data.executionId !== call.input.executionId) return bad;
+    return ok(parsed.data);
+  }
+  if (call.type === "execution_log_read") {
+    const parsed = executionLogReadViewSchema.safeParse(raw);
+    if (!parsed.success || !sameBinding(parsed.data)) return bad;
+    if (parsed.data.executionId !== call.input.executionId) return bad;
+    return ok(parsed.data);
+  }
+  const parsed = executionViewSchema.safeParse(raw);
+  if (!parsed.success || !sameBinding(parsed.data)) return bad;
+  if (
+    (call.type === "execution_get" && parsed.data.executionId !== call.input.executionId) ||
+    (call.type === "execution_submit" &&
+      (parsed.data.requestId !== call.input.requestId ||
+        parsed.data.authorizationGeneration !== call.input.authorizationGeneration ||
+        parsed.data.operation.kind !== call.input.operation.kind))
+  )
+    return bad;
+  return ok(parsed.data);
 }
 
 /**
