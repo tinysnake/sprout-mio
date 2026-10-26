@@ -105,15 +105,37 @@ try {
   browser = await chromium.launch(); context = await browser.newContext({viewport:{width:1440,height:1000}});
   await context.addCookies(cookie.split('; ').map(v=>{const i=v.indexOf('=');return {name:v.slice(0,i),value:v.slice(i+1),url:base};}));
   page = await context.newPage();
-  // Project settings 只给摘要与入口：租约管理入口深链到该 Machine 详情的租约区块。
+  // 无 Project 的租约入口明确阻断，不能静默退化为 Machine 页。
+  await page.goto(`${base}/machines/${machineId}/lease`);
+  await page.getByTestId('machine-lease-context-required').waitFor();
+  assert.equal(await page.getByTestId('machine-settings-group').count(),0);
+  assert.equal(await page.getByTestId('machine-lease-detail').count(),0);
+  await page.getByTestId('machine-detail-back').click();
+  await page.waitForURL(`**/machines/${machineId}`);
+  await page.getByTestId('machine-settings-group').waitFor();
+  assert.equal(await page.getByTestId('machine-lease-detail').count(),0);
+  assert.equal(await page.getByTestId('machine-remote-executions').count(),0);
+  assert.equal(await page.getByTestId('machine-lease-link').first().getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
+  // 带 Project 的 Machine 设置仍可编辑绑定，并通过页头入口导航到独立租约页。
+  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  await page.getByTestId('machine-binding-form').waitFor();
+  assert.equal(await page.getByTestId('machine-lease-jump').getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-jump').click();
+  await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
+  pass('lease context required and Machine settings entry navigates to standalone lease route');
+  // Project settings 只给摘要与入口：租约管理入口深链到独立租约路由。
   await page.goto(`${base}/projects/${projectId}/settings`);
   await page.getByTestId('info-hub-project-machines').waitFor();
   assert.equal(await page.locator('[data-testid$="-mutation"]').count(),0,'no lease mutation form in Project settings');
   const manageHref = await page.getByTestId('lease-manage-link').first().getAttribute('href');
-  assert.equal(manageHref,`/machines/${machineId}?projectId=${projectId}`,'lease entry deep-links to Machine detail');
+  assert.equal(manageHref,`/machines/${machineId}/lease?projectId=${projectId}`,'lease entry deep-links to Machine detail');
   await page.getByTestId('lease-manage-link').first().click();
-  await page.waitForURL(`**/machines/${machineId}?projectId=${projectId}`);
+  await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
+  for (const id of ['machine-settings-group','machine-connection-section','machine-shells','machine-root-section','machine-bindings','machine-restart-section','machine-binding-form']) {
+    assert.equal(await page.getByTestId(id).count(),0,`lease route must exclude ${id}`);
+  }
   // 页头的租约详情按钮把租约区块滚到可见处并给出可见焦点。
   await page.getByTestId('machine-lease-jump').click();
   await page.waitForFunction(()=>document.activeElement?.closest('[data-testid="machine-lease-detail"]')!==null,null,{timeout:15000});
@@ -185,7 +207,7 @@ try {
     throw cause;
   }
   pass('page acquire -> authenticated Chat -> real Pi lease tool -> held lease');
-  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await until(async()=> (await page.getByTestId('machine-lease-detail').innerText()).includes(acquired.holderInstanceId),'Machine lease fact');
   await page.getByTestId('machine-lease-detail').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'machine-held-light.png'),fullPage:true});
@@ -228,7 +250,7 @@ try {
   }
   const crossed=await browserRpc(page,'getExecutionFn',{projectId:projectB,machineId,executionId:execution.executionId}); assert.equal(crossed.ok,false); assert.equal(crossed.error.code,'not_found');
   const otherContext=await browser.newContext(); await otherContext.addCookies(otherCookie.split('; ').map(v=>{const i=v.indexOf('=');return {name:v.slice(0,i),value:v.slice(i+1),url:base};}));
-  const foreignPage=await otherContext.newPage();await foreignPage.goto(`${base}/machines/${machineId}?projectId=${projectId}`); await foreignPage.getByTestId('result-error').waitFor().catch(()=>{});
+  const foreignPage=await otherContext.newPage();await foreignPage.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`); await foreignPage.getByTestId('result-error').waitFor().catch(()=>{});
   assert((await foreignPage.locator('body').innerText()).includes('not_found'));
   await foreignPage.screenshot({path:join(evidence,'cross-user-denied.png'),fullPage:true}); await otherContext.close();
   pass('real HTTP unauthenticated/cross-user and browser cross-Project denial');
@@ -237,7 +259,7 @@ try {
   assert((await page.getByTestId('chat-machine-facts').innerText()).includes(acquired.holderInstanceId));
   await page.getByTestId('chat-machine-facts').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'chat-inspector-light.png'),fullPage:true,mask:[page.getByTestId('message-list')]});
-  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByTestId('lease-chat-select').selectOption(chatId);
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
@@ -248,7 +270,7 @@ try {
   await deniedTool(page,chatId,acquired.generation,'lease_stale_generation',join(root,projectId,'stale-must-not-exist'));
   process.kill(pid,0);
   pass('browser Chat request -> real old-generation HTTP rejection and absent sentinel');
-  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByTestId('lease-chat-select').selectOption(chatId);
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
@@ -300,7 +322,7 @@ try {
     await page.setViewportSize({width,height:1000});
     for (const theme of ['light','dark']) {
       await page.evaluate(theme=>localStorage.setItem('sprout:theme',theme),theme);
-      await page.emulateMedia({colorScheme:theme}); await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+      await page.emulateMedia({colorScheme:theme}); await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
       assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('dark')),theme==='dark');
       await page.getByTestId('machine-lease-detail').waitFor();
       await page.getByTestId('machine-lease-detail').scrollIntoViewIfNeeded();
@@ -311,9 +333,9 @@ try {
   await page.setViewportSize({width:390,height:1000});
   await page.getByTestId('machine-detail-back').click(); await page.waitForURL(`**/projects/${projectId}/settings`);
   await page.getByTestId('machine-item').filter({hasText:'Integration Mac'}).click();
-  await page.waitForURL(`**/machines/${machineId}?projectId=${projectId}`);
+  await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   await page.goBack(); await page.waitForURL(`**/projects/${projectId}/settings`);
-  await page.goForward(); await page.waitForURL(`**/machines/${machineId}?projectId=${projectId}`); await page.reload();
+  await page.goForward(); await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`); await page.reload();
   pass('production stable URL refresh back/forward and 390/900/1200 light/dark');
   process.kill(-pid,'SIGTERM'); cleanupPid=undefined;
   await context.close(); await browser.close(); browser=undefined;
@@ -322,8 +344,13 @@ try {
   writeFileSync(join(evidence,'failure.txt'), String(error instanceof Error ? error.message : 'verification failure'));
   try {
     if (page) {
-      await page.screenshot({path:join(evidence,'failure.png'),fullPage:true});
-      writeFileSync(join(evidence,'failure-page.txt'), await page.locator('body').innerText());
+      await page.screenshot({path:join(evidence,'failure.png'),fullPage:true,mask:[page.getByTestId('message-list')]});
+      const safePageText = await page.locator('body').evaluate(body=>{
+        const copy=body.cloneNode(true);
+        copy.querySelectorAll('[data-testid="message-list"],script,style').forEach(node=>node.remove());
+        return copy.textContent;
+      });
+      writeFileSync(join(evidence,'failure-page.txt'), safePageText ?? '');
     }
   } catch {}
   console.error(error instanceof Error ? error.message : 'verification failure'); process.exitCode=1;

@@ -410,7 +410,7 @@ await check("Chat inspector 与 Project settings 呈现同一租约事实", asyn
       nodes.map((node) => node.getAttribute("href")),
     );
     for (const href of hrefs)
-      assert.match(href ?? "", /^\/machines\/mch_[0-9a-f-]+\?projectId=prj_[0-9a-f-]+$/);
+      assert.match(href ?? "", /^\/machines\/mch_[0-9a-f-]+\/lease\?projectId=prj_[0-9a-f-]+$/);
     // 第 1 条：绑定行只留可达性，不重复派生路径、不展示观察时间 / 代次 / revision。
     const bindingText = await page.getByTestId("info-hub-machine-binding").allInnerTexts();
     for (const text of bindingText) {
@@ -423,8 +423,8 @@ await check("Chat inspector 与 Project settings 呈现同一租约事实", asyn
   }
 });
 
-// Machine 详情：租约、holder、远端操作目标在同一台 Machine 上对齐。
-await check("Machine 详情显示租约与远端操作目标", async () => {
+// 独立租约路由：租约、holder、远端操作目标对齐，Machine 设置保留在原路由。
+await check("独立租约路由隔离设置并显示租约与远端操作目标", async () => {
   const { context, page } = await open({
     width: 1200,
     height: 1000,
@@ -437,7 +437,61 @@ await check("Machine 详情显示租约与远端操作目标", async () => {
       .locator('[data-machine-id="mch_11111111-1111-4111-8111-111111111111"]')
       .first()
       .click();
+    // Machine 路由保持完整设置及其顺序；租约已迁至独立路由。
+    const order = await page.evaluate(() => {
+      const order = [
+        "machine-connection-section",
+        "machine-shells",
+        "machine-root-section",
+        "machine-bindings",
+        "machine-restart-section",
+      ];
+      return order.map((id) => {
+        const node = document.querySelector(`[data-testid="${id}"]`);
+        return {
+          id,
+          present: Boolean(node),
+          y: node ? node.getBoundingClientRect().top + window.scrollY : -1,
+        };
+      });
+    });
+    for (const entry of order) assert.ok(entry.present, `缺少区块 ${entry.id}`);
+    for (let index = 1; index < order.length; index += 1)
+      assert.ok(
+        order[index].y > order[index - 1].y,
+        `${order[index].id} 应排在 ${order[index - 1].id} 之后`,
+      );
+    assert.equal(
+      await page.getByTestId("machine-settings-group").count(),
+      1,
+      "配置区块归入设置分组",
+    );
+    assert.equal(await page.getByTestId("machine-binding-form").count(), 1);
+    assert.equal(await page.getByTestId("machine-lease-detail").count(), 0);
+    assert.equal(await page.getByTestId("machine-remote-executions").count(), 0);
+    assert.ok(
+      (await page.getByTestId("machine-detail-remote-operations").textContent()) !== "未实现，P4b",
+    );
+    await page.getByTestId("machine-lease-jump").click();
     await page.getByTestId("machine-lease-detail").waitFor();
+    // Project × Machine 租约路由只呈现租约事实，不渲染 Machine 配置或绑定编辑。
+    for (const id of [
+      "machine-settings-group",
+      "machine-connection-section",
+      "machine-shells",
+      "machine-root-section",
+      "machine-bindings",
+      "machine-restart-section",
+      "machine-binding-form",
+    ])
+      assert.equal(await page.getByTestId(id).count(), 0, `租约页不得包含 ${id}`);
+    const leaseOrder = await page.evaluate(() =>
+      ["machine-lease-detail", "machine-remote-executions"].map((id) => {
+        const node = document.querySelector(`[data-testid="${id}"]`);
+        return node ? node.getBoundingClientRect().top + window.scrollY : -1;
+      }),
+    );
+    assert.ok(leaseOrder[0] >= 0 && leaseOrder[1] > leaseOrder[0], "租约在远端操作之前");
     const section = page.getByTestId("machine-lease-detail");
     assert.ok((await section.getByTestId("lease-state").count()) === 1);
     assert.match(
@@ -450,9 +504,6 @@ await check("Machine 详情显示租约与远端操作目标", async () => {
       .locator('[data-testid$="-target"]')
       .evaluateAll((nodes) => nodes.map((node) => node.textContent));
     for (const target of targets) assert.match(target ?? "", /远端 Worker/);
-    assert.ok(
-      (await page.getByTestId("machine-detail-remote-operations").textContent()) !== "未实现，P4b",
-    );
     // 第 6 条：Machine 详情页不再要求重选目标，目标就是当前这台；表单仍要求代次匹配。
     const form = page.getByTestId("machine-lease-section-overview-mutation");
     await form.waitFor();
@@ -502,37 +553,6 @@ await check("Machine 详情显示租约与远端操作目标", async () => {
       );
       assert.match(await page.getByTestId("lease-transfer-machine").innerText(), /工作室 Mac mini/);
     }
-    // 第 5 条：配置类区块仍在同一页，只是排在租约与远端操作之后。
-    const order = await page.evaluate(() => {
-      const order = [
-        "machine-lease-detail",
-        "machine-remote-executions",
-        "machine-connection-section",
-        "machine-shells",
-        "machine-root-section",
-        "machine-bindings",
-        "machine-restart-section",
-      ];
-      return order.map((id) => {
-        const node = document.querySelector(`[data-testid="${id}"]`);
-        return {
-          id,
-          present: Boolean(node),
-          y: node ? node.getBoundingClientRect().top + window.scrollY : -1,
-        };
-      });
-    });
-    for (const entry of order) assert.ok(entry.present, `缺少区块 ${entry.id}`);
-    for (let index = 1; index < order.length; index += 1)
-      assert.ok(
-        order[index].y > order[index - 1].y,
-        `${order[index].id} 应排在 ${order[index - 1].id} 之后`,
-      );
-    assert.equal(
-      await page.getByTestId("machine-settings-group").count(),
-      1,
-      "配置区块归入设置分组",
-    );
     // 第 4 条：页头的租约入口是按钮而不是文字链接，点击后落到本页租约区块并给出可见焦点。
     const jump = page.getByTestId("machine-lease-jump");
     await jump.waitFor();
@@ -561,7 +581,7 @@ await check("Machine 详情显示租约与远端操作目标", async () => {
         await page.setViewportSize({ width, height: 1000 });
         await page.emulateMedia({ colorScheme });
         await page.evaluate((theme) => localStorage.setItem("sprout:theme", theme), colorScheme);
-        await page.getByTestId("machine-detail-page").waitFor();
+        await page.getByTestId("machine-lease-page").waitFor();
         await page.getByTestId("machine-lease-detail").waitFor();
         assert.ok(
           await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),

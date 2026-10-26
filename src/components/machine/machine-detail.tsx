@@ -25,19 +25,12 @@ import { Icon } from "../ui/icon";
 import { MachineBindingForm } from "./machine-binding-form";
 import { MachineEnrollmentPanel } from "./machine-enrollment-panel";
 import { StatusLine } from "./machine-list";
-import { ProjectLeaseActions } from "./project-lease-actions";
-import type { ProjectInfoHub } from "../../contracts/info-hub";
-import { MachineLeaseSection } from "./lease-panel";
-import { RemoteExecutionList } from "./remote-execution-panel";
-import type { LeaseView } from "../../contracts/lease";
-import type { ExecutionView } from "../../contracts/remote";
 import {
   bindingDirectory,
   connectionLabel,
   enrollmentLabel,
   formatMoment,
   observationLabel,
-  type LeaseMutationHandler,
 } from "./machine-view";
 
 export function MachineDetailPanel({
@@ -55,14 +48,6 @@ export function MachineDetailPanel({
   onEnrollmentRevoked,
   installOrigin,
   actions,
-  leases = [],
-  holderNames = {},
-  runs = [],
-  executions = [],
-  onLeaseMutate,
-  leaseInfo,
-  leaseError,
-  executionError,
 }: {
   detail: MachineDetail;
   back?: ReactNode;
@@ -71,16 +56,6 @@ export function MachineDetailPanel({
   /** 当前 Project 上下文；有值时显示加入/编辑绑定表单。 */
   bindingProject?: { id: string; name: string } | null;
   projectNames?: Record<string, string>;
-  /** 本 Project 的租约视图；Machine 详情与 inspector 读同一份事实。 */
-  leases?: readonly LeaseView[];
-  holderNames?: Readonly<Record<string, string>>;
-  runs?: readonly { runId: string; status: string }[];
-  executions?: readonly ExecutionView[];
-  /** 未注入时不渲染变更表单，按约定标为未接入。 */
-  leaseInfo?: ProjectInfoHub;
-  leaseError?: AppError;
-  executionError?: AppError;
-  onLeaseMutate?: LeaseMutationHandler;
   onRenewEnrollment?: (machineId: string) => Promise<MachineResult<MachineEnrollment>>;
   onSaveBinding?: (
     input: SaveProjectMachineBindingInput,
@@ -109,26 +84,6 @@ export function MachineDetailPanel({
     ? (detail.bindings.find((item) => item.intent.projectId === bindingProject.id) ?? null)
     : null;
 
-  /**
-   * 租约入口：按钮形态而不是下划线文字链，权重与「刷新连接与观察」一致。
-   * 点击后定位到本页的租约与持有者区块，并让该区块里第一个控件获得可见焦点。
-   */
-  function revealLeaseBlock() {
-    const node = document.querySelector<HTMLElement>('[data-testid="machine-lease-detail"]');
-    if (!node) return;
-    node.scrollIntoView({ block: "start", behavior: "smooth" });
-    const focusable = node.querySelector<HTMLElement>(
-      'select, input, button, a[href], [tabindex]:not([tabindex="-1"])',
-    );
-    focusable?.focus({ preventScroll: true });
-  }
-
-  const leaseJump = bindingProject ? (
-    <Button variant="secondary" data-testid="machine-lease-jump" onClick={revealLeaseBlock}>
-      租约详情
-    </Button>
-  ) : null;
-
   const enrollmentSection = (
     <SettingsSection title="配对与安装" testId="machine-enrollment-section">
       <MachineEnrollmentPanel
@@ -154,12 +109,7 @@ export function MachineDetailPanel({
         </span>
       }
       back={back}
-      actions={
-        <>
-          {leaseJump}
-          {actions}
-        </>
-      }
+      actions={actions}
       testId="machine-detail-page"
     >
       <div className="grid grid-cols-1">
@@ -167,66 +117,6 @@ export function MachineDetailPanel({
           <div className="min-w-0">{enrollmentSection}</div>
         )}
         <div className="min-w-0">
-          {/* 当前事实：租约与远端操作先出现；配置类区块（连接、Shell、root、绑定、安装）归入后面的设置分组。 */}
-          {bindingProject && (
-            <SettingsSection
-              title="租约与持有者"
-              description="租约单位是 Project × Machine；变更不会终止进程或删除文件。"
-              testId="machine-lease-detail"
-            >
-              {leaseError ? (
-                <ResultError error={leaseError} />
-              ) : leaseInfo ? (
-                <ProjectLeaseActions
-                  key={leaseInfo.projectId}
-                  info={leaseInfo}
-                  fixedMachineId={detail.machine.id}
-                >
-                  {(mutate) => (
-                    <MachineLeaseSection
-                      projectId={bindingProject.id}
-                      detail={detail}
-                      leases={leases}
-                      holderNames={holderNames}
-                      runs={runs}
-                      onMutate={mutate}
-                    />
-                  )}
-                </ProjectLeaseActions>
-              ) : (
-                <MachineLeaseSection
-                  projectId={bindingProject.id}
-                  detail={detail}
-                  leases={leases}
-                  holderNames={holderNames}
-                  runs={runs}
-                  onMutate={onLeaseMutate}
-                />
-              )}
-            </SettingsSection>
-          )}
-
-          {bindingProject && (
-            <SettingsSection
-              title="远端操作"
-              description="操作目标由请求自身指定；宿主工具与远端操作分开记录，结果未经确认时显示未知。"
-              testId="machine-remote-executions"
-            >
-              {executionError ? (
-                <ResultError error={executionError} />
-              ) : (
-                <RemoteExecutionList
-                  executions={executions.filter(
-                    (execution) => execution.machineId === detail.machine.id,
-                  )}
-                  machines={[detail]}
-                  holderNames={holderNames}
-                  testId="machine-executions"
-                />
-              )}
-            </SettingsSection>
-          )}
-
           {/* 配置分组：连接、Shell 能力、root、绑定与安装维护都在这里，能力与信息一项不少。 */}
           <div data-testid="machine-settings-group" role="group" aria-label="设置">
             <p className="pt-6 text-sm font-medium text-muted-foreground">设置</p>

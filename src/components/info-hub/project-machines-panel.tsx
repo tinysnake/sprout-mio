@@ -38,7 +38,7 @@ export function ProjectMachinesPanel({
       <MachineList
         machines={machines}
         emptyText="还没有绑定 Machine。"
-        href={(id) => `/machines/${id}?projectId=${projectId}`}
+        href={(id) => `/machines/${id}/lease?projectId=${projectId}`}
         renderLink={({ href, ...props }) => <Link to={href} {...props} />}
       />
       <dl className="min-w-0 divide-y divide-border text-xs leading-6">
@@ -114,13 +114,13 @@ export function LeaseManageLink({
 }): ReactNode {
   return (
     <Link
-      to="/machines/$machineId"
+      to="/machines/$machineId/lease"
       params={{ machineId }}
       search={{ projectId }}
       data-testid="lease-manage-link"
       className="inline-flex min-h-6 items-center gap-1 text-[0.6875rem] text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
     >
-      在 Machine 详情管理{machineName ? ` ${machineName} 的` : ""}租约
+      管理{machineName ? ` ${machineName} 的` : ""}租约
     </Link>
   );
 }
