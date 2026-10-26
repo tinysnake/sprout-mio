@@ -169,7 +169,7 @@ export function ExecutionLogViewer({
       {rows.length > 0 && (
         <ol
           data-testid={`${testId}-rows`}
-          className="max-h-64 min-w-0 overflow-auto rounded-lg border border-border bg-card px-3 py-2 text-[0.6875rem] leading-5"
+          className="max-h-64 min-w-0 overflow-auto rounded-lg border border-border bg-card px-3 py-2 font-mono text-[0.6875rem] leading-5"
         >
           {rows.map((row) =>
             row.kind === "gap" ? (
