@@ -1,5 +1,9 @@
 import type { LeaseMutationView, LeaseView } from "../../contracts/lease";
-import type { ExecutionView, RemoteOperation } from "../../contracts/remote";
+import type {
+  ExecutionCancellationView,
+  ExecutionView,
+  RemoteOperation,
+} from "../../contracts/remote";
 import type { StatusTone } from "./machine-view";
 
 /**
@@ -39,6 +43,12 @@ export const FENCING_SUMMARY = "等待 Worker 确认旧授权已关闸，期间�
 export function shortRunId(runId: string): string {
   const hex = runId.replace(/^run_/, "").split("-")[0] ?? "";
   return `run_${hex.slice(0, 8)}`;
+}
+
+/** 执行 id 是稳定定位：短值上界面，完整值放工具提示；刷新或重连后指向同一条执行。 */
+export function shortExecutionId(executionId: string): string {
+  const hex = executionId.replace(/^exe_/, "").split("-")[0] ?? "";
+  return `exe_${hex.slice(0, 8)}`;
 }
 
 export const LEASE_MUTATION_LABELS: Record<LeaseMutationView["action"], string> = {
@@ -336,6 +346,136 @@ function partialSummary(payload: NonNullable<ExecutionView["result"]>): string {
 /** 目标 Machine 与宿主工具必须分开表达：远端操作的执行位置是 Worker 所在 Machine。 */
 export function executionTarget(execution: ExecutionView, machineName: string | undefined): string {
   return `${machineName ?? execution.machineId} · 远端 Worker`;
+}
+
+/**
+ * 下发窗口与运行上限是两个不同的截止时间：前者限定 Worker 何时之前取走命令，
+ * 后者限定取走后能跑多久。这里分成两条事实返回，界面与测试都不允许合成一个 deadline。
+ */
+export type DeadlineFact = {
+  key: "dispatch" | "runtime";
+  label: string;
+  at: string | null;
+  note: string;
+};
+
+export function deadlineFacts(execution: ExecutionView): DeadlineFact[] {
+  const facts: DeadlineFact[] = [
+    {
+      key: "dispatch",
+      label: "下发窗口",
+      at: execution.dispatchDeadlineAt,
+      note: "Worker 必须在这个时刻之前取走命令；过期后不会再下发。",
+    },
+  ];
+  if (execution.runtimeDeadlineAt === null) {
+    facts.push({
+      key: "runtime",
+      label: "运行上限",
+      at: null,
+      note: "本次执行没有登记运行上限，只有下发窗口到期才会写成超时。",
+    });
+  } else {
+    facts.push({
+      key: "runtime",
+      label: "运行上限",
+      at: execution.runtimeDeadlineAt,
+      note: `Worker 取走后最多运行 ${formatRuntime(execution.maxRuntimeMs)}；到期由 Worker 侧终止。`,
+    });
+  }
+  return facts;
+}
+
+export function formatRuntime(maxRuntimeMs: number | null): string {
+  if (maxRuntimeMs === null) return "未登记时长";
+  const seconds = Math.round(maxRuntimeMs / 1000);
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  return seconds % 60 === 0 ? `${minutes} 分` : `${minutes} 分 ${seconds % 60} 秒`;
+}
+
+/**
+ * 超时的两种来源靠 `runtimeDeadlineAt` 区分：没有运行上限的执行只可能因下发窗口到期超时。
+ * 界面如实点名来源，不把两种超时说成同一个 deadline。
+ */
+export function timeoutSourceLabel(execution: ExecutionView): string | null {
+  if (execution.state !== "timed_out") return null;
+  return execution.runtimeDeadlineAt === null
+    ? "因下发窗口到期写为超时：没有登记运行上限。"
+    : "因运行上限到期写为超时：Worker 侧按登记的运行上限终止。";
+}
+
+/**
+ * `unknown` 与 `timed_out` 都是「不知道命令最后做了什么」。界面只说这一件事，
+ * 并明确不在本页重发原命令：重跑必须是 Human 重新发起的显式动作。
+ */
+export function uncertainResultNote(execution: ExecutionView): string | null {
+  if (execution.state === "unknown")
+    return "结果未知：没有确认到终态。已有的副作用无法从本页判断，也不会在这里重发原命令。";
+  if (execution.state === "timed_out")
+    return "超时：Worker 没给出结果，命令是否已停止无法从本页确认。也不会在这里重发原命令。";
+  return null;
+}
+
+/** 取消六态各自一句话；`delivered` 不是「已停止」，六态都不冒充执行终态。 */
+export const CANCELLATION_STATE_LABELS: Record<
+  ExecutionCancellationView["state"],
+  { label: string; detail: string; tone: StatusTone; stopped: boolean }
+> = {
+  requested: {
+    label: "取消已请求",
+    detail: "请求已登记，尚未送达 Worker；命令可能仍在运行。",
+    tone: "warning",
+    stopped: false,
+  },
+  delivered: {
+    label: "取消已送达",
+    detail: "Worker 收到了信号请求。送达不等于已停止，进程可能仍在运行。",
+    tone: "warning",
+    stopped: false,
+  },
+  exited_observed: {
+    label: "已观察到退出",
+    detail: "Worker 报告进程已退出。退出是否由本次取消引起，以执行终态为准。",
+    tone: "muted",
+    stopped: true,
+  },
+  already_exited: {
+    label: "此前已结束",
+    detail: "取消到达前进程已经结束，本次取消没有改变状态。",
+    tone: "muted",
+    stopped: true,
+  },
+  failed: {
+    label: "取消失败",
+    detail: "取消没有成功送达或投递失败；命令可能仍在运行。",
+    tone: "danger",
+    stopped: false,
+  },
+  unknown: {
+    label: "取消结果未知",
+    detail: "没有确认到取消的结果；不能当作已停止。",
+    tone: "warning",
+    stopped: false,
+  },
+};
+
+/** 只有 Worker 真的观察到退出才算停止；其余状态一律不写「已停止」。 */
+export function cancellationSignalFacts(cancellation: ExecutionCancellationView): string[] {
+  const outcome =
+    cancellation.signalOutcome === "term_delivered"
+      ? "SIGTERM 调用已投递"
+      : cancellation.signalOutcome === "kill_delivered"
+        ? "SIGKILL 调用已投递"
+        : "尚未投递信号";
+  const facts = [outcome];
+  facts.push(cancellation.deliveredAt ? `送达时间 ${cancellation.deliveredAt}` : "没有送达记录");
+  facts.push(
+    cancellation.exitedAt ? `观察到退出 ${cancellation.exitedAt}` : "没有观察到退出的记录",
+  );
+  if (cancellation.failureReason === "signal_failed") facts.push("信号调用失败");
+  if (cancellation.failureReason === "delivery_unconfirmed") facts.push("送达未确认");
+  return facts;
 }
 
 export const HOST_TOOL_NOTE =

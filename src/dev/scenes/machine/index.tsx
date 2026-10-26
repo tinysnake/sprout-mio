@@ -37,6 +37,7 @@ import {
   secondProject,
 } from "./fixtures";
 import { LeasesScene } from "./leases";
+import { ExecutionsScene } from "./executions";
 import {
   demoExecutions,
   demoHolderNames,
@@ -777,6 +778,16 @@ export function MachineScenes() {
           >
             租约与远端操作
           </a>
+          <a
+            href="/machines/executions"
+            data-testid="machine-executions-link"
+            onClick={(event) => {
+              event.preventDefault();
+              go("/machines/executions");
+            }}
+          >
+            长命令与不确定结果
+          </a>
           <p className="mt-4 text-xs leading-6 text-muted-foreground">
             Machines 展示连接与 Project 绑定；租约与远端操作在专用演示场景和 Machine 详情里查看。
           </p>
@@ -796,6 +807,7 @@ export function MachineScenes() {
   const machineId = location.pathname.replace(/^\/machines\//, "").replace(/\/lease$/, "");
   if (machineId === "lifecycle") return <MachineLifecycleProbe go={go} />;
   if (machineId === "leases") return <LeasesScene go={go} />;
+  if (machineId === "executions") return <ExecutionsScene go={go} />;
   const detail = draft.machines.find((item) => item.machine.id === machineId);
   if (!detail) {
     return (
