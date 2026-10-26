@@ -134,8 +134,11 @@ export function MachineDetailPanel({
                       data-project-id={item.intent.projectId}
                       className="flex min-h-16 min-w-0 items-center justify-between gap-3 px-4 py-3 hover:bg-hover max-mobile:flex-wrap"
                     >
-                      <span className="min-w-0 break-words text-sm font-medium">
-                        {projectNames[item.intent.projectId] ?? item.intent.projectId}
+                      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <span className="shrink-0 text-xs font-medium text-muted-foreground">Project</span>
+                        <span className="min-w-0 break-words text-sm font-medium">
+                          {projectNames[item.intent.projectId] ?? item.intent.projectId}
+                        </span>
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">查看租约 →</span>
                     </Link>

@@ -124,8 +124,13 @@ try {
     await page.goto(machineDetailsRoute);
     const leaseList = page.getByTestId('machine-lease-list');
     await leaseList.waitFor();
-    assert((await page.getByTestId('machine-lease-link').first().innerText()).includes('Lease integration'),'Project identity is visible on Machine details');
-    assert.equal(await page.getByTestId('machine-lease-link').first().getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
+    const leaseRows = page.getByTestId('machine-lease-link');
+    assert.equal(await leaseRows.count(),1,'the bound Project has one lease row');
+    for (const row of await leaseRows.all()) {
+      assert.equal((await row.getByText('Project',{exact:true}).count()),1,'lease row explicitly labels its identity as Project');
+      assert((await row.innerText()).includes('Lease integration'),'lease row preserves the Project name');
+      assert.equal(await row.getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`,'lease row opens this Project-scoped route');
+    }
     const layout = await page.evaluate(() => {
       const list = document.querySelector('[data-testid="machine-lease-list"]');
       const row = list?.querySelector('a[data-testid="machine-lease-link"]');
