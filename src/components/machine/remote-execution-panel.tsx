@@ -287,12 +287,15 @@ export function RemoteExecutionCard({
           </p>
         )}
       </div>
-      <p
-        data-testid={`${testId}-no-rerun`}
-        className="text-[0.6875rem] leading-5 text-muted-foreground"
-      >
-        本页不提供重跑：未知或超时的执行只能重新显式发起一次新操作。
-      </p>
+      {/* 只有不确定的执行点名「本页没有重跑」：确定的终态不需要一句重复的免责。 */}
+      {uncertain && (
+        <p
+          data-testid={`${testId}-no-rerun`}
+          className="text-[0.6875rem] leading-5 text-muted-foreground"
+        >
+          本页不提供重跑：要继续只能在新的显式操作里重新发起。
+        </p>
+      )}
     </div>
   );
 }
