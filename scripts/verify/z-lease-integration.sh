@@ -118,6 +118,28 @@ try {
   assert.equal(await page.getByTestId('machine-lease-link').first().getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
   assert.equal(await page.getByTestId('machine-lease-list').count(),1,'Machine details show the Project × Machine lease list');
   assert.equal(await page.getByTestId('machine-lease-jump').count(),0,'no per-context lease action in the page header');
+  const machineDetailsRoute = `${base}/machines/${machineId}`;
+  for (const viewport of [{width:390,height:844},{width:1200,height:900}]) {
+    await page.setViewportSize(viewport);
+    await page.goto(machineDetailsRoute);
+    const leaseList = page.getByTestId('machine-lease-list');
+    await leaseList.waitFor();
+    assert((await page.getByTestId('machine-lease-link').first().innerText()).includes('Lease integration'),'Project identity is visible on Machine details');
+    assert.equal(await page.getByTestId('machine-lease-link').first().getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
+    const layout = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="machine-lease-list"]');
+      const row = list?.querySelector('a[data-testid="machine-lease-link"]');
+      const bounds = row?.getBoundingClientRect();
+      return {scrollWidth:document.documentElement.scrollWidth,innerWidth:window.innerWidth,rowLeft:bounds?.left,rowRight:bounds?.right};
+    });
+    assert(layout.scrollWidth <= layout.innerWidth + 1,`no horizontal overflow at ${viewport.width}px`);
+    assert(layout.rowLeft !== undefined && layout.rowLeft >= 0 && layout.rowRight <= viewport.width + 1,`lease row stays within ${viewport.width}px viewport`);
+    await page.screenshot({path:join(evidence,`machine-details-leases-${viewport.width}.png`)});
+  }
+  await page.getByTestId('machine-lease-link').click();
+  await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('projectId'),projectId,'lease entry preserves its Project context');
   // 带 Project 的 Machine 设置仍可编辑绑定，租约列表从绑定上下文进入。
   await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
   await page.getByTestId('machine-binding-form').waitFor();
