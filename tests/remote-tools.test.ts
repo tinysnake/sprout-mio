@@ -3,6 +3,7 @@ import type { RequestListener } from "node:http";
 import { once } from "node:events";
 import { describe, expect, it } from "vite-plus/test";
 import { remoteToolInputSchemas } from "../src/contracts/remote";
+import type { ExecutionCancellationView, ExecutionLogReadView } from "../src/contracts/remote";
 import { createRemoteClient } from "../src/extension/remote-client";
 import { registerRemoteTools } from "../src/extension/remote-tools";
 import sproutExtension from "../src/extension/main";
@@ -62,6 +63,8 @@ const cases = {
   sprout_remote_process_list: base,
   sprout_remote_process_signal: { ...base, pid: 1234, signal: "TERM" },
   sprout_remote_execution_get: { machineId, executionId },
+  sprout_remote_execution_cancel: { ...base, executionId },
+  sprout_remote_execution_log: { machineId, executionId, cursor: null },
 };
 
 describe("远端 Pi 工具边界", () => {
@@ -107,6 +110,8 @@ describe("远端 Pi 工具边界", () => {
       "lease_get",
       ...Array(5).fill("execution_submit"),
       "execution_get",
+      "execution_cancel",
+      "execution_log_read",
     ]);
     const shell = requests[4]!.call;
     expect(shell).toMatchObject({
@@ -205,6 +210,116 @@ describe("远端 Pi 工具边界", () => {
     expect(await tool.execute("probe", cases.sprout_lease_release)).toMatchObject({
       isError: false,
       details: { outcome: "pending", data: { state: "pending" } },
+    });
+  });
+
+  it("取消与日志：送达不等于已停止，不完整日志不当空，跨执行响应不可冒充", async () => {
+    const cancellation = (
+      state: ExecutionCancellationView["state"],
+      overrides: Partial<ExecutionCancellationView> = {},
+    ): ExecutionCancellationView => ({
+      projectId,
+      machineId,
+      cancelId: "cnl_00000000-0000-4000-8000-000000000000",
+      executionId,
+      state,
+      requestedAt: time,
+      deliveredAt: state === "requested" ? null : time,
+      exitedAt: state === "exited_observed" ? time : null,
+      signalOutcome: state === "requested" ? "none" : "kill_delivered",
+      failureReason: null,
+      ...overrides,
+    });
+    const logRead = (
+      logState: ExecutionLogReadView["logState"],
+      overrides: Partial<ExecutionLogReadView> = {},
+    ): ExecutionLogReadView => ({
+      projectId,
+      machineId,
+      executionId,
+      frames: [],
+      nextCursor: { nextSequence: 1 },
+      availableFromSequence: null,
+      acknowledgedThroughSequence: null,
+      producedThroughSequence: null,
+      gapRanges: [],
+      logState,
+      workerOnline: true,
+      ...overrides,
+    });
+    let response: RemoteToolResponse = {
+      outcome: "response",
+      result: { ok: true, requestId, data: cancellation("delivered") },
+    };
+    const registered = tools({ projectId, request: async () => response });
+    const cancel = registered.get("sprout_remote_execution_cancel")!;
+    // 送达不是已停：不算错，但 stopped 必须为 false，文案必须区分。
+    const delivered = await cancel.execute("probe", cases.sprout_remote_execution_cancel);
+    expect(delivered).toMatchObject({
+      isError: false,
+      details: { outcome: "delivered", stopped: false },
+    });
+    expect(String(delivered.details.message)).toContain("不表示进程已停");
+    for (const state of ["failed", "unknown"] as const) {
+      response = {
+        outcome: "response",
+        result: { ok: true, requestId, data: cancellation(state) },
+      };
+      const failed = await cancel.execute("probe", cases.sprout_remote_execution_cancel);
+      expect(failed).toMatchObject({ isError: true, details: { outcome: state, stopped: false } });
+    }
+    response = {
+      outcome: "response",
+      result: { ok: true, requestId, data: cancellation("exited_observed") },
+    };
+    expect(await cancel.execute("probe", cases.sprout_remote_execution_cancel)).toMatchObject({
+      isError: false,
+      details: { outcome: "exited_observed", stopped: true },
+    });
+    // 跨执行响应不可信。
+    response = {
+      outcome: "response",
+      result: {
+        ok: true,
+        requestId,
+        data: cancellation("exited_observed", {
+          executionId: "exe_11111111-1111-4111-8111-111111111111",
+        }),
+      },
+    };
+    expect(await cancel.execute("probe", cases.sprout_remote_execution_cancel)).toMatchObject({
+      isError: true,
+      details: { outcome: "unknown" },
+    });
+    const read = registered.get("sprout_remote_execution_log")!;
+    for (const [logState, incomplete] of [
+      ["gap", true],
+      ["truncated", true],
+      ["partial", true],
+      ["none", false],
+      ["full", false],
+    ] as const) {
+      response = {
+        outcome: "response",
+        result: { ok: true, requestId, data: logRead(logState) },
+      };
+      const result = await read.execute("probe", cases.sprout_remote_execution_log);
+      expect(result).toMatchObject({
+        isError: false,
+        details: { logState, incomplete, outcome: incomplete ? "incomplete" : "succeeded" },
+      });
+    }
+    response = {
+      outcome: "response",
+      result: {
+        ok: true,
+        requestId,
+        data: logRead("full", { executionId: "exe_11111111-1111-4111-8111-111111111111" }),
+      },
+    };
+    expect(await read.execute("probe", cases.sprout_remote_execution_log)).toMatchObject({
+      isError: true,
+      details: { outcome: "unknown", reason: "invalid_response" },
     });
   });
 

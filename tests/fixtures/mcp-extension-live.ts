@@ -444,7 +444,8 @@ const expectedToolNames = expectedArrays[0]!.elements
   .sort();
 const toolsListMatchesExpected = isDeepStrictEqual(rawToolNames, expectedToolNames);
 const toolNames = connection.tools.map((tool) => mcpToolName("everything", tool.name)).sort();
-assert.equal(toolNames.length, 20, "pinned server-everything tools/list");
+// 数量从 z2 的期望名单推导（上一段已用 AST 读出并断言同名），不另存一份常量。
+assert.equal(toolNames.length, expectedToolNames.length, "pinned server-everything tools/list");
 assert(toolNames.every((name) => name.startsWith("mcp__everything__")));
 pass(`真实 tools/list 返回 ${toolNames.length} 个工具`);
 const realFrameWakes = httpExchanges.filter(
