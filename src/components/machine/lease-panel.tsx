@@ -43,6 +43,7 @@ export function LeaseOverview({
   fencingSnapshot,
   fixedTargetId,
   manageLink,
+  chatRow,
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -61,6 +62,8 @@ export function LeaseOverview({
    * 租约数据仍属于 Project × Machine，这里只换入口位置。
    */
   manageLink?: (lease: LeaseView) => ReactNode;
+  /** 租约请求的 Chat 选择行；与申请/释放表单同处一张卡片，所以紧贴表单上方。 */
+  chatRow?: ReactNode;
   testId?: string;
 }) {
   const [forcedReceipts, setForcedReceipts] = useState<Record<string, LeaseMutationView>>({});
@@ -185,6 +188,7 @@ export function LeaseOverview({
           leases={visible}
           submit={onMutate}
           {...(fixedTargetId ? { fixedTargetId } : {})}
+          {...(chatRow ? { chatRow } : {})}
           testId={`${testId}-mutation`}
         />
       ) : dense ? (
@@ -237,6 +241,7 @@ export function LeaseMutationForm({
   leases,
   submit,
   fixedTargetId,
+  chatRow,
   testId = "lease-mutation-form",
 }: {
   projectId: string;
@@ -248,6 +253,8 @@ export function LeaseMutationForm({
    * 不再要求人从下拉框里重选一台。跨机器选择（Project settings）不传。
    */
   fixedTargetId?: string;
+  /** 租约请求要发到某个 Chat；选择行放在本表单标题与控件之间，而不是另起一张卡片。 */
+  chatRow?: ReactNode;
   testId?: string;
 }) {
   const firstMachine = fixedTargetId ?? machines.at(0)?.machine.id ?? "";
@@ -316,6 +323,7 @@ export function LeaseMutationForm({
       <p className="text-[0.6875rem] leading-5 text-muted-foreground">
         动作与期望代次一起提交；代次失效时服务端拒绝，界面不把拒绝显示为成功。租约变更不会终止进程或删除文件。
       </p>
+      {chatRow}
       {/*
         目标控件与提交按钮同排、同一基线：说明文字移出这一行，否则 items-end 会把按钮
         对齐到说明底部而不是控件底部。窄屏（<1200px）纵向堆叠，不把按钮挤到下一行右侧。
@@ -423,6 +431,8 @@ export function MachineLeaseSection({
   holderNames = {},
   runs,
   onMutate,
+  chatRow = null,
+  transferControls = null,
   testId = "machine-lease-section",
 }: {
   projectId: string;
@@ -431,6 +441,10 @@ export function MachineLeaseSection({
   holderNames?: Readonly<Record<string, string>>;
   runs?: readonly { runId: string; status: string }[];
   onMutate?: LeaseMutationHandler;
+  /** 租约请求的 Chat 选择行；有申请/释放表单时紧贴表单上方。 */
+  chatRow?: ReactNode;
+  /** 交接与收回卡片；必须落在申请/释放之后、同一个租约小节里。 */
+  transferControls?: ReactNode;
   testId?: string;
 }) {
   // 详情页只投影这一台 Machine 的租约；同 Project 其他 Machine 的租约留在列表与 Project 视图。
@@ -446,9 +460,11 @@ export function MachineLeaseSection({
         holderNames={holderNames}
         onMutate={onMutate}
         fixedTargetId={detail.machine.id}
+        {...(chatRow ? { chatRow } : {})}
         testId={`${testId}-overview`}
       />
       <RunHoldingNote leases={scoped} machines={[detail]} runs={runs} />
+      {transferControls}
     </div>
   );
 }

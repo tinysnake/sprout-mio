@@ -130,7 +130,15 @@ export function ProjectLeaseActions({
    * 跨机器操作（Project settings 等）不传，保留显式选择。
    */
   fixedMachineId?: string;
-  children: (mutate: LeaseMutationHandler) => ReactNode;
+  /**
+   * 三段界面由调用方决定位置：`chatRow` 紧贴申请/释放表单（Chat 列表就绪后才有），
+   * `chatPicker` 是已选 Chat 时的一行确认，`transferControls` 是交接与收回卡片。
+   * 把 Chat 选择器分到远处会让人先跳一章再回来选，所以不在这里固定版式。
+   */
+  children: (
+    mutate: LeaseMutationHandler,
+    chrome: { chatRow: ReactNode; chatPicker: ReactNode; transferControls: ReactNode },
+  ) => ReactNode;
 }) {
   const router = useRouter();
   const [chats, setChats] = useState<Chat[]>([]);
@@ -140,6 +148,7 @@ export function ProjectLeaseActions({
   const [targetInstanceId, setTargetInstanceId] = useState("");
   const [error, setError] = useState<AppError | null>(null);
   const [pending, setPending] = useState(false);
+  const [chatsReady, setChatsReady] = useState(false);
   const chatName = chatNameResolver(info);
   useEffect(() => {
     let live = true;
@@ -147,6 +156,7 @@ export function ProjectLeaseActions({
       if (!live) return;
       if (result.ok) setChats(result.data);
       else setError(result.error);
+      setChatsReady(true);
     });
     return () => {
       live = false;
@@ -188,123 +198,145 @@ export function ProjectLeaseActions({
       setPending(false);
     }
   }
-  return (
-    <div className="space-y-4" data-testid="project-lease-actions">
-      <div className="space-y-2 rounded-lg border border-border-soft p-4">
-        <label className="text-xs font-medium" htmlFor={`lease-chat-${info.projectId}`}>
-          执行租约请求的 Chat
-        </label>
-        <Select
-          id={`lease-chat-${info.projectId}`}
-          value={chatId}
-          onChange={(event) => setChatId(event.target.value)}
-          data-testid="lease-chat-select"
-        >
-          <option value="">请选择 Chat</option>
-          {chats.map((chat) => (
-            <option key={chat.id} value={chat.id}>
-              {chatName(chat)}
-            </option>
-          ))}
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          申请、释放与交接会发送给所选 Chat 的分身，收到服务端收据后才显示成功。租约与 run
-          独立；释放和收回不会终止进程或删除文件。
-        </p>
-        {chatId ? (
-          <Link
-            to="/projects/$projectId/chats/$chatId"
-            params={{ projectId: info.projectId, chatId }}
-            className="text-xs underline"
-          >
-            打开所选 Chat
-          </Link>
-        ) : (
-          <Link
-            to="/projects/$projectId/chats"
-            params={{ projectId: info.projectId }}
-            className="text-xs underline"
-          >
-            打开对话列表
-          </Link>
-        )}
-      </div>
-      {children(mutate)}
-      <div
-        className="space-y-2 rounded-lg border border-border-soft p-4"
-        data-testid="lease-transfer-controls"
+  // Chat 选择就落在申请/释放表单里：动作紧跟在它后面，不用先滚到另一张卡片再回来。
+  // 这里不加自己的边框，避免表单内套一层卡片。
+  const chatRow = (
+    <div className="space-y-2 border-t border-border pt-4">
+      <label className="text-xs font-medium" htmlFor={`lease-chat-${info.projectId}`}>
+        执行租约请求的 Chat
+      </label>
+      <Select
+        id={`lease-chat-${info.projectId}`}
+        value={chatId}
+        onChange={(event) => setChatId(event.target.value)}
+        data-testid="lease-chat-select"
       >
-        <p className="text-xs font-medium">交接与收回</p>
-        {fixedMachineId ? (
-          <div data-testid="lease-transfer-machine" className="flex flex-col gap-1">
-            <span className="text-xs text-muted-foreground">目标 Machine</span>
-            <p className="min-h-9.5 rounded-control border border-input bg-muted px-2.75 py-2 text-[13px]">
-              {info.machines.find((item) => item.machine.id === fixedMachineId)?.machine.name ??
-                fixedMachineId}
-            </p>
-          </div>
-        ) : (
-          <Select
-            aria-label="交接或收回的 Machine"
-            data-testid="lease-transfer-machine"
-            value={pickedMachineId}
-            onChange={(event) => setPickedMachineId(event.target.value)}
-          >
-            <option value="">请选择持有中的 Machine</option>
-            {info.leases.items
-              .filter((lease) => lease.state === "held")
-              .map((lease) => (
-                <option key={lease.machineId} value={lease.machineId}>
-                  {info.machines.find((item) => item.machine.id === lease.machineId)?.machine
-                    .name ?? lease.machineId}
-                </option>
-              ))}
-          </Select>
-        )}
-        <Select
-          aria-label="交接目标分身"
-          data-testid="lease-transfer-target"
-          value={targetInstanceId}
-          onChange={(event) => setTargetInstanceId(event.target.value)}
+        <option value="">请选择 Chat</option>
+        {chats.map((chat) => (
+          <option key={chat.id} value={chat.id}>
+            {chatName(chat)}
+          </option>
+        ))}
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        申请、释放与交接会发送给所选 Chat 的分身，收到服务端收据后才显示成功。租约与 run
+        独立；释放和收回不会终止进程或删除文件。
+      </p>
+      {chatId ? (
+        <Link
+          to="/projects/$projectId/chats/$chatId"
+          params={{ projectId: info.projectId, chatId }}
+          className="text-xs underline"
         >
-          <option value="">请选择交接目标分身</option>
-          {info.agents.agents
-            .filter((instance) => instance.instanceId)
-            .map((instance) => (
-              <option key={instance.instanceId} value={instance.instanceId}>
-                {instance.name} · {instance.instanceId}
+          打开所选 Chat
+        </Link>
+      ) : (
+        <Link
+          to="/projects/$projectId/chats"
+          params={{ projectId: info.projectId }}
+          className="text-xs underline"
+        >
+          打开对话列表
+        </Link>
+      )}
+    </div>
+  );
+  // 已选 Chat 时交接卡片只给一行确认，不再放第二个选择器：页面上只有一处 Chat 选择。
+  const picked = chats.find((chat) => chat.id === chatId);
+  const chatPicker = picked ? (
+    <p className="text-xs text-muted-foreground" data-testid="lease-chat-picked">
+      执行请求的 Chat：
+      <Link
+        to="/projects/$projectId/chats/$chatId"
+        params={{ projectId: info.projectId, chatId }}
+        className="underline"
+      >
+        {chatName(picked)}
+      </Link>
+    </p>
+  ) : null;
+  // 交接必须选中 Chat：选择器就在上方同一区段（申请/释放卡片顶部），这里用一行确认代替重复选择。
+  const transferControls = (
+    <div
+      className="space-y-2 rounded-lg border border-border-soft p-4"
+      data-testid="lease-transfer-controls"
+    >
+      <p className="text-xs font-medium">交接与收回</p>
+      {chatsReady && chatId ? chatPicker : null}
+      {fixedMachineId ? (
+        <div data-testid="lease-transfer-machine" className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">目标 Machine</span>
+          <p className="min-h-9.5 rounded-control border border-input bg-muted px-2.75 py-2 text-[13px]">
+            {info.machines.find((item) => item.machine.id === fixedMachineId)?.machine.name ??
+              fixedMachineId}
+          </p>
+        </div>
+      ) : (
+        <Select
+          aria-label="交接或收回的 Machine"
+          data-testid="lease-transfer-machine"
+          value={pickedMachineId}
+          onChange={(event) => setPickedMachineId(event.target.value)}
+        >
+          <option value="">请选择持有中的 Machine</option>
+          {info.leases.items
+            .filter((lease) => lease.state === "held")
+            .map((lease) => (
+              <option key={lease.machineId} value={lease.machineId}>
+                {info.machines.find((item) => item.machine.id === lease.machineId)?.machine.name ??
+                  lease.machineId}
               </option>
             ))}
         </Select>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pending || !machineId || !targetInstanceId || !chatId}
-            onClick={() => void extra("handoff")}
-          >
-            请求分身交接
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pending || !machineId}
-            onClick={() => void extra("reclaim")}
-          >
-            收回租约
-          </Button>
-        </div>
-        {!chatId && machineId && targetInstanceId && (
-          <p className="text-xs text-muted-foreground" data-testid="lease-handoff-chat-required">
-            请先在上方选择执行请求的 Chat，再请求分身交接。
-          </p>
-        )}
-        {pending && (
-          <p role="status" className="text-xs text-muted-foreground">
-            等待服务端租约收据…
-          </p>
-        )}
+      )}
+      <Select
+        aria-label="交接目标分身"
+        data-testid="lease-transfer-target"
+        value={targetInstanceId}
+        onChange={(event) => setTargetInstanceId(event.target.value)}
+      >
+        <option value="">请选择交接目标分身</option>
+        {info.agents.agents
+          .filter((instance) => instance.instanceId)
+          .map((instance) => (
+            <option key={instance.instanceId} value={instance.instanceId}>
+              {instance.name} · {instance.instanceId}
+            </option>
+          ))}
+      </Select>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending || !machineId || !targetInstanceId || !chatId}
+          onClick={() => void extra("handoff")}
+        >
+          请求分身交接
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending || !machineId}
+          onClick={() => void extra("reclaim")}
+        >
+          收回租约
+        </Button>
       </div>
+      {!chatId && machineId && targetInstanceId && (
+        <p className="text-xs text-status-warning" data-testid="lease-handoff-chat-required">
+          请先在上方选择执行请求的 Chat，再请求分身交接。
+        </p>
+      )}
+      {pending && (
+        <p role="status" className="text-xs text-muted-foreground">
+          等待服务端租约收据…
+        </p>
+      )}
+    </div>
+  );
+  return (
+    <div className="space-y-4" data-testid="project-lease-actions">
+      {children(mutate, { chatRow, chatPicker, transferControls })}
       {error && <ResultError error={error} />}
     </div>
   );

@@ -50,7 +50,11 @@ export function MachineLeasePanel({
   executionError?: AppError;
   onLeaseMutate?: LeaseMutationHandler;
 }) {
-  const leaseSection = (onMutate?: LeaseMutationHandler) => (
+  const leaseSection = (
+    onMutate?: LeaseMutationHandler,
+    chatRow?: ReactNode,
+    transferControls?: ReactNode,
+  ) => (
     <MachineLeaseSection
       projectId={project.id}
       detail={detail}
@@ -58,6 +62,8 @@ export function MachineLeasePanel({
       holderNames={holderNames}
       runs={runs}
       onMutate={onMutate}
+      {...(chatRow ? { chatRow } : {})}
+      {...(transferControls ? { transferControls } : {})}
     />
   );
 
@@ -95,7 +101,7 @@ export function MachineLeasePanel({
             info={leaseInfo}
             fixedMachineId={detail.machine.id}
           >
-            {(mutate) => leaseSection(mutate)}
+            {(mutate, chrome) => leaseSection(mutate, chrome.chatRow, chrome.transferControls)}
           </ProjectLeaseActions>
         ) : (
           leaseSection(onLeaseMutate)
