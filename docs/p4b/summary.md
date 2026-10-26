@@ -2,7 +2,7 @@
 
 P4b 已交付 Project × Machine 租约、以分身为 holder 的跨 run 持有、服务端授权代次核验、真实 macOS Worker 的 shell、文件与进程操作，以及 Chat、Machine 页面和 inspector 的同源事实呈现。首轮独立技术验收在 `b5c34db` 判定 PASS，第二轮技术复验在 `243fd53` 判定 PASS，三个安全返工点均有修复前后对照。coordinator 在带 Git 历史的独立 checkout 复跑 check、typecheck、260 条测试、应用和 Worker 构建及 30 个验收脚本，记录 `failed=0`（该轮基线为含验证去重改动的 `d003b54`）。两轮之后同章又合入四批能力：Human 强制收回 `c42bae1`、Chat 标题 `5c8dfa4`（merge `147193b`）、页面信息架构返工 `5ade997`（merge `e28a149`）与租约收据修复 `5869bf3`/`dd3fa80`/`8ffa7e6`，见下文「体验后变更与安全返工」及两个「体验后」小节。刷新后的文档基线是 `8ffa7e6`：该提交上 `pnpm test` 为 287 条、38 个文件（本单元实跑），`bash scripts/verify.sh` 为 30 个脚本 `failed=0`（coordinator 在该 SHA 上复跑，见 store 的 `decisions.tsv`），`scripts/verify/l-docs.sh` 与 `scripts/verify/l-docs-probes.sh` 均退出 0。第三轮独立技术验收因行为已变（强制收回、标题、收据语义）而重新派发，写入本文件时仍在进行中，尚未有结论。
 
-章节仍待 Human 明确体验确认，不能据技术 PASS 宣告章节完成。验证拓扑为同一台 macOS 上的真实服务、SQLite、Chromium、新账号与 Worker，跨机网络和真机软键盘未验证。同一分身持有多台 Machine 的组合有数据库、投影与演示证据，没有两台物理 Machine 的联合实测。Worker 永久失踪后的 fencing 已由 Human 裁决为 B 并实现：Human 可用独立的强制收回命令越过等待，但页面与文档均不得因此声称旧操作已排空；gate `p4b-fence-liveness` 已闭合，代价见「已知限制与未闭合项」。
+Human 已于 `c6653f4` 亲自体验并确认通过；该版本与交付基线的可见界面一致。验证拓扑为同一台 macOS 上的真实服务、SQLite、Chromium、新账号与 Worker，跨机网络和真机软键盘未验证。同一分身持有多台 Machine 的组合有数据库、投影与演示证据，没有两台物理 Machine 的联合实测。Worker 永久失踪后的 fencing 已由 Human 裁决为 B 并实现：Human 可用独立的强制收回命令越过等待，但页面与文档均不得因此声称旧操作已排空；gate `p4b-fence-liveness` 已闭合，代价见「已知限制与未闭合项」。
 
 本文件沿用 [P4a 结论](../p4a/summary.md) 的章节证据结构。P4a 的票据生命周期三组、root 派生路径模型、allow-http 逐 origin 授权、五秒自动刷新及断联不显示 shell 能力均沿用，回归入口是 `s-machine-contracts.sh`、`t-machine-worker.sh`、`u-machine-ui.sh`。P4c 及以后未启动。
 
@@ -139,7 +139,7 @@ fencing 呈现改为「一句话摘要 `FENCING_SUMMARY` + 问号按钮背后的
 
 ## 体验后变更与安全返工
 
-本章尚无 Human 体验确认记录。以下是实现与技术验收期间的返工，不冒称 Human 已确认。
+Human 体验确认已记录于「Human 体验确认」小节（版本 `c6653f4`，与交付基线的可见 UI 一致）。以下是实现与技术验收期间的返工记录。
 
 F-1，`f11ec13`：原 Worker 按输入原始字节截断，非法 UTF-8 再编码或 JSON 转义后超出 wire 上限；多结果整批超预算及拒收还可能使 Worker 退出，进而永久 fencing。修复位于 Worker 生产和发送侧：按编码后字节截断，结果与 fence ack 共用完整 exchange 预算，过大或非法报告降级为明确失败并保留截断事实，明确拒收后 drain 重报，损坏 2xx 响应用原身份重试。服务端契约上限没有放宽。第二轮 12a 与 coordinator 对照记录：OLD stdout 196608 bytes、truncated=false、wire 非法，NEW 65535 bytes、truncated=true、wire 合法；整批 1578604→530012 bytes。见 `reports/report-budget-implementation.md`、`reports/acceptance-2/acc2-f1-{old,new}.json`、`/tmp/coord-f1-{old,new}.log`。
 
@@ -218,7 +218,18 @@ F-15，`eb48f58`、`c6653f4`、`38d35c8`：Human 在真实预览上提出的四�
 
 ## Human 体验确认
 
-待 Human 明确确认。当前没有 P4b 的确认版本，不勾选总计划 Human 条目。技术 PASS、截图或沉默都不算确认。
+- 确认记录：Human 亲自体验确认通过，版本 `c6653f4`
+
+Human 于 2026-10-26 在真实运行的 P4b 预览环境上亲自体验，明确确认所用版本 `c6653f4`。该版本与交付基线 `809c384` 之间的差异只有文档、验收脚本与测试（`git diff --name-only c6653f4..809c384 -- src/` 为空），可见界面与交互一致，因此确认覆盖交付形状。
+
+本轮体验反馈两条已落地并复验：
+
+1. **Chat 选择器位置**：选择器原本独占顶部一张卡片，而它服务的交接与收回动作在两张卡片之下，选 Chat 要先滚走再滚回。现渲染在申请/释放表单内、目标 Machine 之上，交接卡片只保留一行已选 Chat 的确认；Project settings 保留完整布局，因为它跨 Machine 操作。页面上 `lease-chat-select` 数量恒为 1。
+2. **等待前置条件的提示色**：`lease-handoff-chat-required` 从 muted 改为 warning 语义色，与其它前置等待态一致，使用 `theme.css` 既有 token，不新增硬编码色值。
+
+两项均已写入仓库回归断言（`809c384` 的 `scripts/verify/z-lease-integration.sh`），并由第五轮独立技术验收逐条做红态反证确认能抓回归。
+
+以下检查点仍属建议范围，未被本次确认覆盖为已逐项核对；跨机网络与真机软键盘未验证。
 
 Human 的建议检查点：
 

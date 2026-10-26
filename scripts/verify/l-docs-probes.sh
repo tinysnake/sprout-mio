@@ -64,6 +64,15 @@ const p4bHuman = (line) => {
   const file = path.join(tree, p4bSummary);
   fs.writeFileSync(file, read(p4bSummary).replace('## Human 体验确认\n', `## Human 体验确认\n\n${line}\n`));
 };
+// 探针必须自己制造「已勾选但没有确认记录」的状态。真实文档可能已经带了合法的
+// 确认记录，只勾选 checkbox 无法再触发该校验，探针就会假通过。
+const p4bHumanNoRecord = () => {
+  const file = path.join(tree, p4bSummary);
+  fs.writeFileSync(
+    file,
+    read(p4bSummary).replace(/^- 确认记录：Human 亲自体验确认通过，版本 `[0-9a-f]{7,40}`$/gm, ''),
+  );
+};
 const p4bSection = (heading, line) => {
   fs.writeFileSync(path.join(tree, p4bSummary), read(p4bSummary).replace(`### ${heading}\n`, `### ${heading}\n\n${line}\n`));
 };
@@ -170,6 +179,7 @@ probeCase('checked I-P4b technical acceptance passes', () => {
   setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4b');
 }, { code: 0 });
 probeCase('I-P4b human confirmation without a record fails', () => {
+  p4bHumanNoRecord();
   humanBox();
 }, { code: 1, includes: 'I-P4b human acceptance requires an explicit confirmation record' });
 probeCase('I-P4b pending confirmation does not count as confirmed', () => {
