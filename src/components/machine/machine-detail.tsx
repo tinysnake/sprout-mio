@@ -121,9 +121,14 @@ export function MachineDetailPanel({
           {/* 配置分组：连接、Shell 能力、root、绑定与安装维护都在这里，能力与信息一项不少。 */}
           <SettingsSection title="租约" testId="machine-lease-list-section">
             {detail.bindings.length === 0 ? (
-              <p className="text-xs leading-6 text-muted-foreground">此 Machine 尚未绑定 Project。</p>
+              <p className="text-xs leading-6 text-muted-foreground">
+                此 Machine 尚未绑定 Project。
+              </p>
             ) : (
-              <ul data-testid="machine-lease-list" className="divide-y divide-border overflow-hidden rounded-container border border-border">
+              <ul
+                data-testid="machine-lease-list"
+                className="divide-y divide-border overflow-hidden rounded-container border border-border"
+              >
                 {detail.bindings.map((item) => (
                   <li key={item.intent.projectId}>
                     <Link
@@ -135,7 +140,9 @@ export function MachineDetailPanel({
                       className="flex min-h-16 min-w-0 items-center justify-between gap-3 px-4 py-3 hover:bg-hover max-mobile:flex-wrap"
                     >
                       <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <span className="shrink-0 text-xs font-medium text-muted-foreground">Project</span>
+                        <span className="shrink-0 text-xs font-medium text-muted-foreground">
+                          Project
+                        </span>
                         <span className="min-w-0 break-words text-sm font-medium">
                           {projectNames[item.intent.projectId] ?? item.intent.projectId}
                         </span>
