@@ -663,6 +663,8 @@ try {
     fences: [],
     resultAcks: [],
     fenceAcks: [],
+    logAcks: [],
+    cancellations: [],
     mcp: [],
     mcpCursors: [],
   });
