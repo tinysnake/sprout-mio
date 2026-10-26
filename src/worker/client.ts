@@ -15,6 +15,7 @@ import { McpRuntime } from "./mcp";
 import type { McpServerRegistration } from "../contracts/mcp";
 import type { Identity } from "./identity";
 import { emptyWorkerRemote, RemoteDispatcher } from "./remote";
+import { ExecutionRegistry, ExecutionStore } from "./executions";
 import { probeCapability, probeDirectory } from "./probes";
 
 export class ClientError extends Error {
@@ -107,7 +108,13 @@ export function enroll(identity: Identity, ticket: string) {
     workerEnrollResponseSchema,
   );
 }
-export function workerProgram(identity: Identity, mcpRegistrations: McpServerRegistration[] = []) {
+export function workerProgram(
+  identity: Identity,
+  mcpRegistrations: McpServerRegistration[] = [],
+  stateDirectory?: string,
+) {
+  // 执行与日志的 durable outbox 在 state-dir 下：进程重启后靠它报恢复事实。
+  const registry = new ExecutionRegistry(new ExecutionStore(stateDirectory), () => Date.now());
   return Effect.scoped(
     Effect.gen(function* () {
       let session: WorkerSession | undefined;
@@ -159,6 +166,7 @@ export function workerProgram(identity: Identity, mcpRegistrations: McpServerReg
           capability,
           () => Effect.runSync(Clock.currentTimeMillis),
           mcp,
+          registry,
         );
         let configuration:
           | Extract<WorkerExchangeResponse, { ok: true }>["data"]["configuration"]
@@ -196,6 +204,7 @@ export function workerProgram(identity: Identity, mcpRegistrations: McpServerReg
           );
           const remote = dispatcher.outgoing(
             1048576 - envelopeBytes + Buffer.byteLength(JSON.stringify(emptyRemote)),
+            seq,
           );
           const exchanged = yield* request(
             identity,
@@ -275,8 +284,9 @@ export function workerProgram(identity: Identity, mcpRegistrations: McpServerReg
 export async function runWorker(
   identity: Identity,
   mcpRegistrations: McpServerRegistration[] = [],
+  stateDirectory?: string,
 ) {
-  const fiber = Effect.runFork(workerProgram(identity, mcpRegistrations));
+  const fiber = Effect.runFork(workerProgram(identity, mcpRegistrations, stateDirectory));
   let stopping = false;
   const stop = () => {
     if (stopping) return;

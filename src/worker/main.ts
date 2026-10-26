@@ -83,7 +83,7 @@ async function main() {
     const registrations = parsed["--mcp-config"]
       ? await readMcpConfig(parsed["--mcp-config"], identity.machineId)
       : [];
-    await runWorker(identity, registrations);
+    await runWorker(identity, registrations, parsed["--state-dir"]);
   } else throw new Error("Unknown command");
 }
 try {
