@@ -1,8 +1,12 @@
 import { spawn } from "node:child_process";
 import { open } from "node:fs/promises";
 import type { CapabilitySnapshot, DirectoryObservation } from "../contracts/machine";
-import { remoteReportSchema } from "../contracts/remote";
+import {
+  EXECUTION_LOG_FRAMES_PER_EXCHANGE,
+  remoteReportSchema,
+} from "../contracts/remote";
 import type {
+  ExecutionLogFrame,
   RemoteCommand,
   RemoteExchangeInput,
   RemoteExchangeOutput,
@@ -11,6 +15,7 @@ import type {
   RemoteResultPayload,
 } from "../contracts/remote";
 import { McpRuntime } from "./mcp";
+import { ExecutionRegistry, ExecutionStore, restoredCommand, type Run } from "./executions";
 import type { WorkerSession } from "../contracts/worker-session";
 import type { WorkerExchangeRemoteInput, WorkerExchangeResponse } from "../contracts/worker";
 
@@ -29,6 +34,10 @@ const sameSession = (a: WorkerSession, b: WorkerSession) =>
   a.attemptId === b.attemptId;
 type BoundedText = { text: string; truncated: boolean };
 const MAX_EXCHANGE_BYTES = 1048576;
+/** 中止路径的 TERM 宽限；到点仍未退出才 KILL。 */
+const SIGNAL_GRACE_MS = 2000;
+/** 中止后等待真实退出事件的上限；到点只报运行态，不伪造终态。 */
+const EXIT_OBSERVATION_MS = 5000;
 export const emptyWorkerRemote = (): WorkerExchangeRemoteInput => ({
   results: [],
   fenceAcks: [],
@@ -105,7 +114,38 @@ class AdmissionError extends Error {
     super(reason);
   }
 }
-/** One dispatcher per connection; a closed session can drain but never regain admission. */
+type SignalOutcome = "term_delivered" | "kill_delivered" | "none";
+/** 先 TERM 整个进程组，宽限后 KILL；只报告 OS 是否接受信号调用。 */
+function terminateGroup(pid: number, policy: "term_then_kill" | "kill", graceMs: number) {
+  if (policy === "kill") {
+    try {
+      process.kill(-pid, "SIGKILL");
+      return "kill_delivered" as SignalOutcome;
+    } catch {
+      return "none" as SignalOutcome;
+    }
+  }
+  let outcome: SignalOutcome = "none";
+  try {
+    process.kill(-pid, "SIGTERM");
+    outcome = "term_delivered";
+  } catch {
+    return outcome;
+  }
+  setTimeout(() => {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // 进程组已经消失：TERM 够用，不补 KILL。
+    }
+  }, graceMs).unref();
+  return outcome;
+}
+/**
+ * One dispatcher per connection; a closed session can drain but never regain admission.
+ * 执行与连接代次、租约、会话都独立：断联只解除本会话的投递，不终止子进程。
+ * 只有运行上限、撤权、fence 与显式取消会发信号。
+ */
 export class RemoteDispatcher {
   private highWater = 0;
   private closed = false;
@@ -115,13 +155,20 @@ export class RemoteDispatcher {
   private fences = new Map<string, RemoteFenceAck>();
   private configuration: Frame["configuration"] = null;
   private observations: DirectoryObservation[] = [];
+  private frames: ExecutionLogFrame[] = [];
   constructor(
     readonly session: WorkerSession,
     private capability: CapabilitySnapshot,
     private now: () => number,
     private mcp: McpRuntime = new McpRuntime(),
+    private readonly registry: ExecutionRegistry = new ExecutionRegistry(
+      new ExecutionStore(),
+      () => Date.now(),
+    ),
   ) {
     this.mcp.bind(session);
+    // 进程重启后的遗留执行：装回 claim 与未确认帧，再由恢复事实与日志帧交代。
+    this.registry.restore();
   }
   get admissionClosed() {
     return this.closed;
@@ -137,6 +184,7 @@ export class RemoteDispatcher {
   disconnect() {
     this.closed = true;
     this.mcp.disconnect();
+    // 断联只关闭准入与本会话的投递；已 spawn 的子进程继续运行，由恢复事实交代。
     for (const entry of this.entries.values()) if (!entry.done) entry.controller.abort();
   }
   rejectReports(batch: RemoteExchangeInput) {
@@ -144,8 +192,13 @@ export class RemoteDispatcher {
       const entry = this.entries.get(report.executionId);
       if (entry?.report.phase === "terminal") entry.report = degradedReport(entry.report, true);
     }
+    for (const frame of this.frames) this.registry.releaseInflight(frame.executionId);
+    this.frames = [];
+    // 被拒的 exchange 没有送到宿主：恢复事实与日志帧都要在下一轮重报。
+    this.registry.forgetReported(this.session.attemptId);
   }
-  outgoing(maxBytes = MAX_EXCHANGE_BYTES): WorkerExchangeRemoteInput {
+  /** `nextSeq` 是承载本批的 exchange 序号；日志帧的 dispatchSeq 必须等于它。 */
+  outgoing(maxBytes = MAX_EXCHANGE_BYTES, nextSeq = this.highWater + 1): WorkerExchangeRemoteInput {
     const batch = emptyWorkerRemote();
     const mcp = this.mcp.outgoing(Math.min(maxBytes, this.highWater % 2 ? 65536 : 655360));
     batch.mcp = mcp.mcp;
@@ -191,6 +244,40 @@ export class RemoteDispatcher {
       batch.fenceAcks.push(ordered);
       used += cost;
     }
+    // 恢复事实只带宿主认可过的 token，体积小且不可延后；放在 fence 与终端报告之后。
+    const recoveries = [];
+    for (const recovery of this.registry.recoveries(this.session, 8)) {
+      const cost = jsonBytes(recovery) + (recoveries.length ? 1 : 0);
+      if (used + cost > maxBytes) break;
+      recoveries.push(recovery);
+      used += cost;
+    }
+    if (recoveries.length) batch.recoveries = recoveries;
+    // 日志帧最后使用剩余预算：fence、终端报告与恢复事实先占位，日志不得饿死它们。
+    this.frames = [];
+    for (const { run, frame } of this.registry.rotate(EXECUTION_LOG_FRAMES_PER_EXCHANGE)) {
+      if (this.frames.length === EXECUTION_LOG_FRAMES_PER_EXCHANGE) break;
+      const wire: ExecutionLogFrame = {
+        executionId: run.claim.executionId,
+        projectId: run.claim.projectId,
+        machineId: run.claim.machineId,
+        authorizationGeneration: run.claim.authorizationGeneration,
+        holderInstanceId: run.claim.holderInstanceId,
+        dispatchSession: this.session,
+        dispatchSeq: nextSeq,
+        sequence: frame.sequence,
+        stream: frame.stream,
+        byteStart: frame.byteStart,
+        byteEnd: frame.byteEnd,
+        checksum: frame.checksum,
+        ...(frame.bytes === undefined ? { gapTo: frame.gapTo } : { bytes: frame.bytes }),
+      };
+      const cost = jsonBytes(wire) + (this.frames.length ? 1 : 0);
+      if (used + cost > maxBytes) break;
+      this.frames.push(wire);
+      used += cost;
+    }
+    if (this.frames.length) batch.logFrames = [...this.frames];
     return batch;
   }
   accept(frame: Frame, expectedSeq: number, observations: DirectoryObservation[]) {
@@ -219,7 +306,19 @@ export class RemoteDispatcher {
           entry.command.authorizationGeneration <= fence.authorizationGeneration &&
           !entry.done
         )
+          // 停掉旧授权代次的在途执行：不能让它事后声称成功。
           entry.controller.abort();
+      for (const run of this.registry.runs.values())
+        if (
+          run.claim.projectId === fence.projectId &&
+          run.claim.authorizationGeneration <= fence.authorizationGeneration &&
+          run.started &&
+          !run.exited
+        ) {
+          // 旧代次执行的进程同样不得继续跑：先 TERM 后 KILL，并留下可观测的终止事实。
+          run.terminated = true;
+          terminateGroup(run.claim.pid, "term_then_kill", SIGNAL_GRACE_MS);
+        }
     }
     for (const auth of frame.remote.authorizations) {
       if (auth.machineId !== this.session.machineId) throw new AdmissionError("stale_generation");
@@ -241,15 +340,31 @@ export class RemoteDispatcher {
             auth.state !== "active" ||
             auth.holderInstanceId !== entry.command.holderInstanceId)
         )
+          // 撤权同样不终止进程，也不删文件；只是让本次投递不能声称成功。
           entry.controller.abort();
     }
-    for (const ack of frame.remote.resultAcks) this.entries.delete(ack.executionId);
+    for (const ack of frame.remote.resultAcks) {
+      this.entries.delete(ack.executionId);
+      this.registry.settle(ack.executionId);
+    }
     for (const ack of frame.remote.fenceAcks) {
       const pending = this.fences.get(ack.mutationId);
       if (pending) {
         pending.executionIds = pending.executionIds.filter((id) => !ack.executionIds.includes(id));
         if (pending.executionIds.length === 0) this.fences.delete(ack.mutationId);
       }
+    }
+    for (const ack of frame.remote.logAcks ?? [])
+      this.registry.acknowledge(
+        ack.executionId,
+        ack.acknowledgedThroughSequence,
+        ack.availableFromSequence,
+      );
+    for (const cancellation of frame.remote.cancellations ?? []) {
+      if (this.registry.runs.get(cancellation.executionId)?.claim.runnerToken !== cancellation.runnerToken)
+        continue;
+      this.entries.get(cancellation.executionId)?.controller.abort();
+      this.signal(cancellation.executionId, cancellation.policy, cancellation.termWaitMs);
     }
     this.mcp.accept(frame.remote.mcp, frame.remote.mcpCursors, frame.remote.authorizations);
     if (frame.mode === "drain") {
@@ -272,6 +387,7 @@ export class RemoteDispatcher {
         continue;
       }
       this.seen.set(command.executionId, command);
+      const run = this.registry.create(command);
       const {
         requestId: _requestId,
         operation: _operation,
@@ -282,16 +398,27 @@ export class RemoteDispatcher {
         runnerToken: _runnerToken,
         ...identity
       } = command;
+      if (run.done || run.started) {
+        // 上次进程已经跑过这条执行：不重跑，交给恢复事实交代。
+        continue;
+      }
       const entry: Entry = {
         command,
-        controller: new AbortController(),
+        controller: run.controller,
         done: false,
         report: { ...identity, phase: "running", drained: false },
       };
       this.entries.set(command.executionId, entry);
       // Registration is synchronous; side effects begin after the entire frame has closed gates.
-      void Promise.resolve().then(() => this.execute(entry));
+      void Promise.resolve().then(() => this.execute(entry, run));
     }
+  }
+  /** 只在中止路径上发信号：命令由信号而停，取消或撤权不伪装成自然退出。 */
+  private signal(executionId: string, policy: "term_then_kill" | "kill", graceMs: number) {
+    const run = this.registry.runs.get(executionId);
+    if (!run || run.claim.pid === 0 || run.exited) return "none" as SignalOutcome;
+    run.terminated = true;
+    return terminateGroup(run.claim.pid, policy, graceMs);
   }
   private gate(entry: Entry) {
     const command = entry.command;
@@ -325,15 +452,17 @@ export class RemoteDispatcher {
     )
       throw new AdmissionError("directory_unavailable");
   }
-  private async execute(entry: Entry) {
+  private async execute(entry: Entry, run: Run) {
     let outcome: Outcome = "succeeded";
     let payload: RemoteResultPayload;
     const operation = entry.command.operation;
     let started = false;
-    const deadline = setTimeout(
+    // 下发窗口只约束「能否开始执行」，开始之后运行寿命只看 maxRuntimeMs / runtimeDeadlineAt。
+    const admission = setTimeout(
       () => entry.controller.abort(),
       Math.max(0, Date.parse(entry.command.dispatchDeadlineAt) - this.now()),
     );
+    let runtimeLimit: ReturnType<typeof setTimeout> | undefined;
     try {
       this.gate(entry);
       if (operation.kind === "shell") {
@@ -347,14 +476,13 @@ export class RemoteDispatcher {
         });
         started = true;
         child.unref();
-        let stdout = Buffer.alloc(0),
-          stderr = Buffer.alloc(0),
-          truncated = false,
+        let exitCode: number | null = null,
+          exitSignal: string | null = null,
           exited = false,
-          exitCode: number | null = null;
-        let collecting = true;
-        const collect = (chunk: Buffer, stream: "stdout" | "stderr") => {
-          if (!collecting) return;
+          truncated = false,
+          stdout = Buffer.alloc(0),
+          stderr = Buffer.alloc(0);
+        const retain = (chunk: Buffer, stream: "stdout" | "stderr") => {
           const cap = stream === "stdout" ? 65536 : 8192;
           const old = stream === "stdout" ? stdout : stderr;
           if (old.length + chunk.length > cap) truncated = true;
@@ -362,39 +490,143 @@ export class RemoteDispatcher {
           if (stream === "stdout") stdout = next;
           else stderr = next;
         };
-        child.stdout.on("data", (chunk: Buffer) => collect(chunk, "stdout"));
-        child.stderr.on("data", (chunk: Buffer) => collect(chunk, "stderr"));
-        await new Promise<void>((resolve, reject) => {
-          const finish = () => {
-            clearTimeout(timer);
-            entry.controller.signal.removeEventListener("abort", finish);
-            resolve();
-          };
-          const timer = setTimeout(finish, operation.waitMs);
-          entry.controller.signal.addEventListener("abort", finish, { once: true });
+        // 终态确立后仍继续消费管道（不关闭、不发信号），但不再产新帧。
+        child.stdout.on("data", (chunk: Buffer) => {
+          retain(chunk, "stdout");
+          if (run.collecting) run.log.append("stdout", chunk);
+        });
+        child.stderr.on("data", (chunk: Buffer) => {
+          retain(chunk, "stderr");
+          if (run.collecting) run.log.append("stderr", chunk);
+        });
+        run.log.bind({ stdout: child.stdout, stderr: child.stderr });
+        const exitedEvent = new Promise<void>((resolve, reject) => {
           child.once("error", reject);
           child.once("exit", (code, signal) => {
             exited = true;
-            exitCode = code ?? (signal ? 128 : 1);
+            exitCode = code;
+            exitSignal = signal;
+            this.registry.markExit(run, code, signal);
+            resolve();
           });
-          child.once("close", finish);
-          if (entry.controller.signal.aborted) finish();
         });
-        collecting = false; // Keep consuming/discarding pipes; never close or signal the child.
-        const output = boundedText(stdout, 65536);
-        const errorOutput = boundedText(stderr, 8192);
-        payload = {
-          kind: "shell",
-          pid: child.pid!,
-          exited,
-          exitCode,
-          stdout: output.text,
-          stderr: errorOutput.text,
-          truncated: truncated || output.truncated || errorOutput.truncated,
-        };
-        if (exited && exitCode !== 0) {
-          outcome = "failed";
-          payload = { kind: "shell", failureReason: "executor_error", partial: payload };
+        if (child.pid !== undefined) this.registry.markSpawned(run, child.pid);
+        // 运行上限只对「已开始执行」生效；null 表示沿用短操作语义。
+        const runtimeDeadline =
+          entry.command.runtimeDeadlineAt === null
+            ? null
+            : Date.parse(entry.command.runtimeDeadlineAt);
+        if (runtimeDeadline !== null)
+          runtimeLimit = setTimeout(
+            () => {
+              if (run.exited) return;
+              run.terminated = true;
+              if (run.claim.pid !== 0)
+                terminateGroup(run.claim.pid, "term_then_kill", SIGNAL_GRACE_MS);
+            },
+            Math.max(0, runtimeDeadline - this.now()),
+          );
+        const aborted = new Promise<"aborted">((resolve) => {
+          if (entry.controller.signal.aborted) resolve("aborted");
+          else
+            entry.controller.signal.addEventListener("abort", () => resolve("aborted"), {
+              once: true,
+            });
+        });
+        // 有运行上限时等到上限或退出：运行上限才是这次执行的真实寿命。
+        // 没有运行上限时沿用短操作语义，waitMs 到点就放手，终态留给后续 exchange。
+        const waited =
+          runtimeDeadline === null
+            ? await Promise.race([
+                exitedEvent.then(() => "exited" as const),
+                aborted,
+                new Promise<"waited">((resolve) =>
+                  setTimeout(() => resolve("waited"), Math.max(0, operation.waitMs)),
+                ),
+              ])
+            : await Promise.race([exitedEvent.then(() => "exited" as const), aborted]);
+        if (waited === "waited") {
+          const {
+            requestId: _requestId,
+            operation: _operation,
+            directoryRevision: _revision,
+            dispatchDeadlineAt: _deadline,
+            runtimeDeadlineAt: _runtimeDeadline,
+            maxRuntimeMs: _maxRuntime,
+            runnerToken: _runnerToken,
+            ...identity
+          } = entry.command;
+          entry.report = { ...identity, phase: "running", drained: false };
+          return;
+        }
+        if (exited) run.log.flush();
+        else if (waited === "aborted") {
+          // 只有运行上限与显式取消会发信号；租约、fence 与断联只撤销本次投递，不杀进程，
+          // 也不删除文件。被信号中止后必须等真实退出事件才算停止。
+          if (!run.terminated) throw new AdmissionError("authorization_revoked");
+          await Promise.race([
+            exitedEvent.catch(() => undefined),
+            new Promise<void>((resolve) => setTimeout(resolve, EXIT_OBSERVATION_MS)),
+          ]);
+          if (!exited) {
+            // 信号已发出但没有观测到退出：不写终态，留给恢复事实与日志读取交代。
+            const {
+              requestId: _requestId,
+              operation: _operation,
+              directoryRevision: _revision,
+              dispatchDeadlineAt: _deadline,
+              runtimeDeadlineAt: _runtimeDeadline,
+              maxRuntimeMs: _maxRuntime,
+              runnerToken: _runnerToken,
+              ...identity
+            } = entry.command;
+            run.collecting = false;
+            entry.report = { ...identity, phase: "running", drained: false };
+            return;
+          }
+          run.log.flush();
+        }
+        if (exited) {
+          const output = boundedText(stdout, 65536);
+          const errorOutput = boundedText(stderr, 8192);
+          payload = {
+            kind: "shell",
+            pid: child.pid!,
+            exited: true,
+            exitCode: exitCode ?? (exitSignal ? 128 : 1),
+            stdout: output.text,
+            stderr: errorOutput.text,
+            truncated: truncated || output.truncated || errorOutput.truncated,
+          };
+          const overRuntime =
+            runtimeDeadline !== null &&
+            run.terminated &&
+            this.now() >= runtimeDeadline - SIGNAL_GRACE_MS;
+          if (overRuntime) {
+            // 运行上限到期：终态是限时，不是下发窗口到期。
+            outcome = "timed_out";
+            payload = { kind: "shell", failureReason: "deadline", partial: payload };
+          } else if (run.terminated || entry.controller.signal.aborted) {
+            outcome = "unknown";
+            payload = { kind: "shell", failureReason: "authorization_revoked", partial: payload };
+          } else if (exitCode !== 0) {
+            outcome = "failed";
+            payload = { kind: "shell", failureReason: "executor_error", partial: payload };
+          }
+        } else {
+          // 短操作语义：未到运行上限、按 waitMs 放手，子进程继续跑；只报运行态。
+          const {
+            requestId: _requestId,
+            operation: _operation,
+            directoryRevision: _revision,
+            dispatchDeadlineAt: _deadline,
+            runtimeDeadlineAt: _runtimeDeadline,
+            maxRuntimeMs: _maxRuntime,
+            runnerToken: _runnerToken,
+            ...identity
+          } = entry.command;
+          entry.report = { ...identity, phase: "running", drained: false };
+          return;
         }
       } else if (operation.kind === "file_read") {
         this.gate(entry);
@@ -472,21 +704,33 @@ export class RemoteDispatcher {
           : entry.controller.signal.aborted
             ? "authorization_revoked"
             : "executor_error";
-      const expired = this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
-      outcome = expired
+      const admissionExpired = this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
+      const runtimeExpired =
+        entry.command.runtimeDeadlineAt !== null &&
+        this.now() >= Date.parse(entry.command.runtimeDeadlineAt);
+      outcome = admissionExpired
         ? started
           ? "unknown"
           : "timed_out"
-        : reason === "executor_error"
-          ? "failed"
-          : started && reason === "authorization_revoked"
-            ? "unknown"
-            : "rejected";
-      payload = { kind: operation.kind, failureReason: expired ? "deadline" : reason };
+        : runtimeExpired
+          ? started
+            ? "timed_out"
+            : "rejected"
+          : reason === "executor_error"
+            ? "failed"
+            : started && reason === "authorization_revoked"
+              ? "unknown"
+              : "rejected";
+      payload = {
+        kind: operation.kind,
+        failureReason: admissionExpired || runtimeExpired ? "deadline" : reason,
+      };
     } finally {
-      clearTimeout(deadline);
+      clearTimeout(admission);
+      if (runtimeLimit) clearTimeout(runtimeLimit);
     }
     entry.done = true;
+    run.collecting = false;
     const {
       requestId: _requestId,
       operation: _operation,
@@ -498,5 +742,7 @@ export class RemoteDispatcher {
       ...identity
     } = entry.command;
     entry.report = { ...identity, phase: "terminal", drained: true, outcome, payload };
+    this.registry.finish(run);
   }
 }
+export const recoveredCommand = restoredCommand;
