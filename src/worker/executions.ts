@@ -133,6 +133,9 @@ export class ExecutionStore {
   }
   appendFrame(executionId: string, frame: LogFrameDraft) {
     if (!this.directory) return;
+    // 宿主确认终态后 claim 已被清理：不再为已结算的执行重建 outbox 目录。
+    const directory = join(this.directory, "executions", executionId);
+    if (!existsSync(join(directory, "claim.json"))) return;
     const path = join(this.executionDirectory(executionId), "frames.jsonl");
     if (!existsSync(path)) writePrivate(path, "");
     const handle = openSync(path, "a", 0o600);
@@ -170,25 +173,6 @@ const observed = (run: Run): ExecutionRecovery["observedState"] => {
     return "unknown";
   }
 };
-const commandFor = (claim: DurableClaim, session: WorkerSession): RemoteCommand => ({
-  executionId: claim.executionId,
-  projectId: claim.projectId,
-  machineId: claim.machineId,
-  authorizationGeneration: claim.authorizationGeneration,
-  holderInstanceId: claim.holderInstanceId,
-  requestId: claim.executionId,
-  fingerprint: claim.fingerprint,
-  dispatchSession: session,
-  dispatchSeq: 1,
-  operation: { kind: "shell", command: "", cwd: "/", waitMs: 0 },
-  directoryRevision: null,
-  dispatchDeadlineAt: new Date(0).toISOString(),
-  runtimeDeadlineAt: null,
-  maxRuntimeMs: null,
-  runnerToken: claim.runnerToken,
-});
-/** 上次进程留下的 claim 形状的只读视图，用于登记遗留执行而不重跑。 */
-export const restoredCommand = commandFor;
 /**
  * 进程级执行登记表。执行与租约、会话、连接代次都独立：换会话不影响子进程，
  * 新会话只能通过带 token 的恢复事实与日志帧描述遗留执行。

@@ -13,7 +13,7 @@ import type {
   RemoteResultPayload,
 } from "../contracts/remote";
 import { McpRuntime } from "./mcp";
-import { ExecutionRegistry, ExecutionStore, restoredCommand, type Run } from "./executions";
+import { ExecutionRegistry, ExecutionStore, type Run } from "./executions";
 import type { WorkerSession } from "../contracts/worker-session";
 import type { WorkerExchangeRemoteInput, WorkerExchangeResponse } from "../contracts/worker";
 
@@ -741,4 +741,3 @@ export class RemoteDispatcher {
     this.registry.finish(run);
   }
 }
-export const recoveredCommand = restoredCommand;
