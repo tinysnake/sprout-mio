@@ -36,7 +36,11 @@ function charLength(buffer: Buffer, index: number): number {
   if (lead >= 0xe0 && lead <= 0xef) {
     const second = buffer[index + 1];
     if (second === undefined) return -1;
-    if (!continuation(second) || (lead === 0xe0 && second < 0xa0) || (lead === 0xed && second > 0x9f))
+    if (
+      !continuation(second) ||
+      (lead === 0xe0 && second < 0xa0) ||
+      (lead === 0xed && second > 0x9f)
+    )
       return 0;
     if (buffer[index + 2] === undefined) return -1;
     return continuation(buffer[index + 2]) ? 3 : 0;
@@ -81,7 +85,11 @@ export function sliceBuffer(buffer: Buffer, final: boolean): Segment[] {
       break;
     }
     if (length > 0) {
-      const end = frameEnd(buffer, position, Math.min(buffer.length, position + EXECUTION_LOG_FRAME_MAX_BYTES));
+      const end = frameEnd(
+        buffer,
+        position,
+        Math.min(buffer.length, position + EXECUTION_LOG_FRAME_MAX_BYTES),
+      );
       if (end > position) {
         segments.push({ start: position, end, text: buffer.toString("utf8", position, end) });
         position = end;

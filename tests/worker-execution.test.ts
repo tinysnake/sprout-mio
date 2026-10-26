@@ -200,7 +200,10 @@ test("日志帧增量上行：跨流共享单调序、原始字节位点单调�
   const resent = f.dispatcher.outgoing(1048576, 999).logFrames ?? [];
   expect(resent.some((frame) => frame.sequence <= acknowledgedThrough)).toBe(false);
   // 全部 ACK 后 outbox 清空，且 durable outbox 只剩未确认帧。
-  const leftover = await readFile(join(directory, "executions", command.executionId, "frames.jsonl"), "utf8");
+  const leftover = await readFile(
+    join(directory, "executions", command.executionId, "frames.jsonl"),
+    "utf8",
+  );
   expect(leftover.trim()).toBe("");
 });
 
@@ -243,7 +246,11 @@ test("runner_token 跨重启报恢复事实，未观测到退出只报 unknown",
     { runnerToken: "c".repeat(32) },
   );
   first.apply(1, first.output([command]));
-  for (let i = 0; i < 200 && first.dispatcher.registry.runs.get(command.executionId)?.claim.pid === 0; i++)
+  for (
+    let i = 0;
+    i < 200 && first.dispatcher.registry.runs.get(command.executionId)?.claim.pid === 0;
+    i++
+  )
     await sleep(10);
   const pid = first.dispatcher.registry.runs.get(command.executionId)!.claim.pid;
   expect(pid).toBeGreaterThan(0);
@@ -294,9 +301,9 @@ test("上行预算内 fence 与终端报告优先，日志帧每批不超过上�
   expect((frame.logFrames ?? []).length).toBeLessThanOrEqual(EXECUTION_LOG_FRAMES_PER_EXCHANGE);
   const tiny = f.dispatcher.outgoing(4096, 3);
   expect(tiny.logFrames ?? []).toEqual([]);
-  expect(JSON.stringify(tiny.results).length + JSON.stringify(tiny.fenceAcks).length).toBeGreaterThan(
-    0,
-  );
+  expect(
+    JSON.stringify(tiny.results).length + JSON.stringify(tiny.fenceAcks).length,
+  ).toBeGreaterThan(0);
 });
 
 test("无效 UTF-8 与 NUL 记为 gap，不静默丢弃也不假装是空输出", () => {
@@ -311,9 +318,7 @@ test("无效 UTF-8 与 NUL 记为 gap，不静默丢弃也不假装是空输出"
   ]);
   // 末尾不完整码点等待下一批；final 时记为 gap。
   expect(sliceBuffer(Buffer.from([0xe4, 0xb8]), false)).toEqual([]);
-  expect(sliceBuffer(Buffer.from([0xe4, 0xb8]), true)).toEqual([
-    { start: 0, end: 2, text: null },
-  ]);
+  expect(sliceBuffer(Buffer.from([0xe4, 0xb8]), true)).toEqual([{ start: 0, end: 2, text: null }]);
   expect(sliceBuffer(Buffer.from([0x00]), true)).toEqual([{ start: 0, end: 1, text: null }]);
 });
 
@@ -369,7 +374,12 @@ test("未下发就被撤销的命令不执行，文件不存在", async () => {
   f.apply(2, f.output([], [], 1, "draining"));
   const report = await terminalOf(f.dispatcher, command.executionId);
   expect(report.outcome).not.toBe("succeeded");
-  expect(await stat(path).then(() => true, () => false)).toBe(false);
+  expect(
+    await stat(path).then(
+      () => true,
+      () => false,
+    ),
+  ).toBe(false);
 });
 
 test("进程不在但无退出事实时恢复报 unknown，不猜退出码", async () => {

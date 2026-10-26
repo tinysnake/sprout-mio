@@ -114,10 +114,7 @@ export function workerProgram(
   stateDirectory?: string,
 ) {
   // 执行与日志的 durable outbox 在 state-dir 下：进程重启后靠它报恢复事实。
-  const registry = new ExecutionRegistry(
-    new ExecutionStore(stateDirectory),
-    () => Date.now(),
-  );
+  const registry = new ExecutionRegistry(new ExecutionStore(stateDirectory), () => Date.now());
   return Effect.scoped(
     Effect.gen(function* () {
       let session: WorkerSession | undefined;

@@ -239,7 +239,11 @@ async function control(action: "issue" | "revoke" | "cleanup", runId?: string) {
   });
 }
 try {
-  server = launch(["--import", "tsx", "tests/fixtures/worker-remote-service.ts"], "service.log", true);
+  server = launch(
+    ["--import", "tsx", "tests/fixtures/worker-remote-service.ts"],
+    "service.log",
+    true,
+  );
   await until(async () => {
     try {
       return (await fetch(base + "/api/health", { signal: AbortSignal.timeout(1000) })).ok;
@@ -377,7 +381,10 @@ try {
   const own = observedFrames.filter((frame) => frame.executionId === longExecution.executionId);
   assert(own.length >= 2, `real Worker must send incremental frames, saw ${own.length}`);
   const sequences = own.map((frame) => frame.sequence);
-  assert.deepEqual(sequences, [...sequences].sort((a, b) => a - b));
+  assert.deepEqual(
+    sequences,
+    [...sequences].sort((a, b) => a - b),
+  );
   assert.equal(new Set(sequences).size, sequences.length, "one monotonic sequence across streams");
   assert.deepEqual(
     [...new Set(own.map((frame) => frame.stream))].sort(),
@@ -387,7 +394,10 @@ try {
   for (const frame of own) assert(frame.byteEnd >= frame.byteStart);
   for (const stream of new Set(own.map((frame) => frame.stream))) {
     const offsets = own.filter((frame) => frame.stream === stream).map((frame) => frame.byteStart);
-    assert.deepEqual(offsets, [...offsets].sort((a, b) => a - b));
+    assert.deepEqual(
+      offsets,
+      [...offsets].sort((a, b) => a - b),
+    );
   }
   const view = await get(longExecution.executionId);
   assert(view.producedThroughSequence !== null || own.length > 0);
@@ -458,13 +468,21 @@ try {
   // 4. 运行上限到期先 TERM 后 KILL：忽略 TERM 的进程只在宽限后停下。
   const killMarker = join(directory, "kill-marker"),
     pidFile = join(directory, "stubborn-pid");
-  await good("lease_mutate", { ...key, action: "acquire", requestId: req(), expectedGeneration: 2 });
-  const stubborn = await submitGeneration({
-    kind: "shell",
-    command: `echo $$ > '${pidFile}'; trap '' TERM; sleep 40; printf done > '${killMarker}'`,
-    cwd: directory,
-    waitMs: 1000,
-  }, 3);
+  await good("lease_mutate", {
+    ...key,
+    action: "acquire",
+    requestId: req(),
+    expectedGeneration: 2,
+  });
+  const stubborn = await submitGeneration(
+    {
+      kind: "shell",
+      command: `echo $$ > '${pidFile}'; trap '' TERM; sleep 40; printf done > '${killMarker}'`,
+      cwd: directory,
+      waitMs: 1000,
+    },
+    3,
+  );
   injectRuntime = { executionId: stubborn.executionId, ms: 1500 };
   await until(() => existsSync(pidFile), "stubborn shell started", 30000);
   const stubbornPid = Number(readFileSync(pidFile, "utf8"));
@@ -530,7 +548,9 @@ try {
     tokenShaped: recovery.tokenShaped,
     childAliveAfterRestart: true,
   };
-  pass("runner_token persists across a real Worker restart and a live child is reported as running");
+  pass(
+    "runner_token persists across a real Worker restart and a live child is reported as running",
+  );
   try {
     process.kill(detachedPid, "SIGKILL");
   } catch {
@@ -571,7 +591,9 @@ try {
   assert.equal(revoked.result.ok, false);
   rejection.afterRevocation = revoked.result.ok ? "accepted" : revoked.result.error.code;
   const succeeded = sqlite
-    .prepare("SELECT COUNT(*) AS total FROM remote_execution WHERE machine_id=? AND state='succeeded'")
+    .prepare(
+      "SELECT COUNT(*) AS total FROM remote_execution WHERE machine_id=? AND state='succeeded'",
+    )
     .get(machineId) as { total: number };
   assert.equal(succeeded.total, 1, "only the genuinely successful long command is succeeded");
   facts.revocation = { code: rejection.afterRevocation, succeededRows: succeeded.total };
@@ -590,11 +612,7 @@ try {
     .join("\n");
   for (const forbidden of [machine.ticket, "BETTER_AUTH_SECRET", "DATABASE_URL", "sleep 40"])
     assert.equal(outbox.includes(forbidden), false, "outbox must not carry secrets or commands");
-  assert.equal(
-    outbox.includes("trap '' TERM"),
-    false,
-    "outbox must not carry the command text",
-  );
+  assert.equal(outbox.includes("trap '' TERM"), false, "outbox must not carry the command text");
   facts.noSecrets = { checked: 4, contains: false };
   pass("worker outbox, claims and log frames carry no ticket, secret, env or command text");
 

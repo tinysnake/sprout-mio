@@ -1,10 +1,7 @@
 import { spawn } from "node:child_process";
 import { open } from "node:fs/promises";
 import type { CapabilitySnapshot, DirectoryObservation } from "../contracts/machine";
-import {
-  EXECUTION_LOG_FRAMES_PER_EXCHANGE,
-  remoteReportSchema,
-} from "../contracts/remote";
+import { EXECUTION_LOG_FRAMES_PER_EXCHANGE, remoteReportSchema } from "../contracts/remote";
 import type {
   ExecutionLogFrame,
   RemoteCommand,
@@ -163,9 +160,8 @@ export class RemoteDispatcher {
     private capability: CapabilitySnapshot,
     private now: () => number,
     private mcp: McpRuntime = new McpRuntime(),
-    readonly registry: ExecutionRegistry = new ExecutionRegistry(
-      new ExecutionStore(),
-      () => Date.now(),
+    readonly registry: ExecutionRegistry = new ExecutionRegistry(new ExecutionStore(), () =>
+      Date.now(),
     ),
   ) {
     this.mcp.bind(session);
@@ -363,7 +359,10 @@ export class RemoteDispatcher {
         ack.availableFromSequence,
       );
     for (const cancellation of frame.remote.cancellations ?? []) {
-      if (this.registry.runs.get(cancellation.executionId)?.claim.runnerToken !== cancellation.runnerToken)
+      if (
+        this.registry.runs.get(cancellation.executionId)?.claim.runnerToken !==
+        cancellation.runnerToken
+      )
         continue;
       this.entries.get(cancellation.executionId)?.controller.abort();
       this.signal(cancellation.executionId, cancellation.policy, cancellation.termWaitMs);

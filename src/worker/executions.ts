@@ -155,10 +155,7 @@ export class ExecutionStore {
         (availableFrom === null || frame.sequence >= availableFrom),
     );
     const temporary = join(directory, "frames.tmp");
-    writePrivate(
-      temporary,
-      kept.map((frame) => frameLine(executionId, frame)).join(""),
-    );
+    writePrivate(temporary, kept.map((frame) => frameLine(executionId, frame)).join(""));
     renameSync(temporary, path);
   }
 }
@@ -290,7 +287,8 @@ export class ExecutionRegistry {
     this.saveProgress(run);
   }
   private saveProgress(run: Run) {
-    run.claim.producedThroughSequence = run.log.producedThrough > 0 ? run.log.producedThrough : null;
+    run.claim.producedThroughSequence =
+      run.log.producedThrough > 0 ? run.log.producedThrough : null;
     this.store.saveClaim(run.claim);
   }
   /** 宿主 ACK 只推进已落盘前缀：确认的帧删除，在途未确认的帧下一轮重发。 */
@@ -298,7 +296,8 @@ export class ExecutionRegistry {
     const run = this.runs.get(executionId);
     if (!run) return;
     run.log.acknowledge(through, availableFrom);
-    for (const sequence of [...run.inflight]) if (sequence <= through) run.inflight.delete(sequence);
+    for (const sequence of [...run.inflight])
+      if (sequence <= through) run.inflight.delete(sequence);
     this.store.prune(executionId, through, availableFrom);
   }
   /** 恢复事实真正随 exchange 出去之后才记签名：没送到的下一轮必须重报。 */
