@@ -11,6 +11,11 @@ test.each([
     marker: "PASS domain",
   },
   {
+    name: "false acknowledgements preserve cleanup and bounded reconciliation admits fresh sessions",
+    fixture: "mcp-ack-backlog.ts",
+    marker: "E2b ",
+  },
+  {
     name: "close releases the exact process during attach and converges after lost session state",
     fixture: "mcp-attach-window.ts",
     marker: "E2 ",

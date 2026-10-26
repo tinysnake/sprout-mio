@@ -826,11 +826,24 @@ function wireProbe() {
       stateRevision: 1,
       stateHash: "a".repeat(64),
     },
-    { type: "session_detach_ack", ...bound },
+    {
+      type: "session_reconcile_ack",
+      machineId: bound.machineId,
+      workerSession,
+      closedHash: "a".repeat(64),
+      sessions: [bound],
+    },
     { type: "session_fence_ack", ...fence, detached: true },
     { type: "frame", ...bound, ...frame, direction: "server_to_client" },
   ];
   const serverItems = [
+    {
+      type: "session_reconcile",
+      machineId: bound.machineId,
+      workerSession,
+      closedHash: "a".repeat(64),
+      sessions: [bound],
+    },
     { type: "session_attach", ...bound, session, configHash: registration.configHash },
     { type: "session_protocol", ...bound, protocolVersion: "negotiated" },
     { type: "session_detach", ...bound, reason: "client_closed" },
@@ -850,6 +863,22 @@ function wireProbe() {
       assert(schema.safeParse(item).success, "valid " + item.type);
       assert(!schema.safeParse({ ...item, extra: true }).success);
     }
+  assert(!mcp.mcpWorkerItemSchema.safeParse({ type: "session_detach_ack", ...bound }).success);
+  for (const type of ["session_reconcile", "session_reconcile_ack"]) {
+    const schema = type === "session_reconcile" ? mcp.mcpServerItemSchema : mcp.mcpWorkerItemSchema;
+    const snapshot = {
+      type,
+      machineId: bound.machineId,
+      workerSession,
+      closedHash: "a".repeat(64),
+      sessions: [bound],
+    };
+    assert(!schema.safeParse({ ...snapshot, sessions: [bound, bound] }).success);
+    assert(
+      !schema.safeParse({ ...snapshot, sessions: Array.from({ length: 9 }, () => bound) }).success,
+    );
+    assert(!schema.safeParse({ ...snapshot, closedHash: "invalid" }).success);
+  }
   assert(mcp.mcpServerProcessSchema.safeParse(processRow).success);
   assert(!mcp.mcpServerProcessSchema.safeParse({ ...processRow, pid: null }).success);
   assert(mcp.mcpSessionSchema.safeParse(session).success);
@@ -943,16 +972,20 @@ function wireProbe() {
   assert(!mcp.mcpConfigSchema.safeParse({ ...config, envRefs: {} }).success);
   assert(!mcp.mcpConfigSchema.safeParse({ ...config, workingDirectory: "relative" }).success);
   assert(
-    !mcp.mcpWorkerItemSchema.safeParse({ ...workerItems[5], direction: "client_to_server" })
-      .success,
-  );
-  assert(
-    !mcp.mcpServerItemSchema.safeParse({ ...serverItems[5], direction: "server_to_client" })
-      .success,
+    !mcp.mcpWorkerItemSchema.safeParse({
+      ...workerItems.find((item) => item.type === "frame"),
+      direction: "client_to_server",
+    }).success,
   );
   assert(
     !mcp.mcpServerItemSchema.safeParse({
-      ...serverItems[0],
+      ...serverItems.find((item) => item.type === "frame"),
+      direction: "server_to_client",
+    }).success,
+  );
+  assert(
+    !mcp.mcpServerItemSchema.safeParse({
+      ...serverItems.find((item) => item.type === "session_attach"),
       sessionId: newId(ID_PREFIXES.mcpSession),
     }).success,
   );

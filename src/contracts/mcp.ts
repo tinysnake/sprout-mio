@@ -401,6 +401,19 @@ const fence = {
   mutationId: id(ID_PREFIXES.leaseMutation),
   sessions: targets,
 };
+const reconciliation = {
+  machineId: id(ID_PREFIXES.machine),
+  workerSession: workerSessionSchema,
+  closedHash: hash,
+  sessions: z
+    .array(z.strictObject(bound))
+    .max(8)
+    .refine(
+      (values) =>
+        new Set(values.map((value) => value.sessionId)).size === values.length &&
+        new Set(values.map((value) => value.processId)).size === values.length,
+    ),
+};
 const wireFrame = { type: z.literal("frame"), ...bound, ...framePayload };
 const matchingWorker = (value: { machineId: string; workerSession: { machineId: string } }) =>
   value.machineId === value.workerSession.machineId;
@@ -425,7 +438,7 @@ export const mcpWorkerItemSchema = z
       stateRevision: positive,
       stateHash: hash,
     }),
-    z.strictObject({ type: z.literal("session_detach_ack"), ...bound }),
+    z.strictObject({ type: z.literal("session_reconcile_ack"), ...reconciliation }),
     z.strictObject({ type: z.literal("session_fence_ack"), ...fence, detached: z.literal(true) }),
     z
       .strictObject({ ...wireFrame, direction: z.literal("server_to_client") })
@@ -437,6 +450,7 @@ export const mcpWorkerItemSchema = z
   .refine((value) => !("workerSession" in value) || matchingWorker(value));
 export const mcpServerItemSchema = z
   .discriminatedUnion("type", [
+    z.strictObject({ type: z.literal("session_reconcile"), ...reconciliation }),
     z.strictObject({
       type: z.literal("session_attach"),
       ...bound,
