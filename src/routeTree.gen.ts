@@ -28,6 +28,8 @@ import { Route as ApiWorkerCloseRouteImport } from './routes/api/worker/close'
 import { Route as ApiWorkerEnrollRouteImport } from './routes/api/worker/enroll'
 import { Route as ApiWorkerExchangeRouteImport } from './routes/api/worker/exchange'
 import { Route as ApiWorkerOpenRouteImport } from './routes/api/worker/open'
+import { Route as AuthedMachinesMachineIdIndexRouteImport } from './routes/_authed/machines.$machineId.index'
+import { Route as AuthedMachinesMachineIdLeaseRouteImport } from './routes/_authed/machines.$machineId.lease'
 import { Route as AuthedProjectsProjectIdIndexRouteImport } from './routes/_authed/projects.$projectId.index'
 import { Route as AuthedProjectsProjectIdChatsRouteImport } from './routes/_authed/projects.$projectId.chats'
 import { Route as AuthedProjectsProjectIdMembersRouteImport } from './routes/_authed/projects.$projectId.members'
@@ -130,6 +132,18 @@ const ApiWorkerOpenRoute = ApiWorkerOpenRouteImport.update({
   path: '/api/worker/open',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthedMachinesMachineIdIndexRoute =
+  AuthedMachinesMachineIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthedMachinesMachineIdRoute,
+  } as any)
+const AuthedMachinesMachineIdLeaseRoute =
+  AuthedMachinesMachineIdLeaseRouteImport.update({
+    id: '/lease',
+    path: '/lease',
+    getParentRoute: () => AuthedMachinesMachineIdRoute,
+  } as any)
 const AuthedProjectsProjectIdIndexRoute =
   AuthedProjectsProjectIdIndexRouteImport.update({
     id: '/',
@@ -175,7 +189,7 @@ export interface FileRoutesByFullPath {
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
-  '/machines/$machineId': typeof AuthedMachinesMachineIdRoute
+  '/machines/$machineId': typeof AuthedMachinesMachineIdRouteWithChildren
   '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
@@ -186,9 +200,11 @@ export interface FileRoutesByFullPath {
   '/agents/': typeof AuthedAgentsIndexRoute
   '/machines/': typeof AuthedMachinesIndexRoute
   '/projects/': typeof AuthedProjectsIndexRoute
+  '/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/machines/$machineId/': typeof AuthedMachinesMachineIdIndexRoute
   '/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
   '/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
@@ -199,7 +215,6 @@ export interface FileRoutesByTo {
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
-  '/machines/$machineId': typeof AuthedMachinesMachineIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
@@ -209,8 +224,10 @@ export interface FileRoutesByTo {
   '/agents': typeof AuthedAgentsIndexRoute
   '/machines': typeof AuthedMachinesIndexRoute
   '/projects': typeof AuthedProjectsIndexRoute
+  '/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/machines/$machineId': typeof AuthedMachinesMachineIdIndexRoute
   '/projects/$projectId': typeof AuthedProjectsProjectIdIndexRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsIndexRoute
@@ -225,7 +242,7 @@ export interface FileRoutesById {
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/_authed/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
-  '/_authed/machines/$machineId': typeof AuthedMachinesMachineIdRoute
+  '/_authed/machines/$machineId': typeof AuthedMachinesMachineIdRouteWithChildren
   '/_authed/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
@@ -236,9 +253,11 @@ export interface FileRoutesById {
   '/_authed/agents/': typeof AuthedAgentsIndexRoute
   '/_authed/machines/': typeof AuthedMachinesIndexRoute
   '/_authed/projects/': typeof AuthedProjectsIndexRoute
+  '/_authed/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/_authed/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
   '/_authed/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/_authed/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/_authed/machines/$machineId/': typeof AuthedMachinesMachineIdIndexRoute
   '/_authed/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
   '/_authed/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
   '/_authed/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
@@ -264,9 +283,11 @@ export interface FileRouteTypes {
     | '/agents/'
     | '/machines/'
     | '/projects/'
+    | '/machines/$machineId/lease'
     | '/projects/$projectId/chats'
     | '/projects/$projectId/members'
     | '/projects/$projectId/settings'
+    | '/machines/$machineId/'
     | '/projects/$projectId/'
     | '/projects/$projectId/chats/$chatId'
     | '/projects/$projectId/chats/'
@@ -277,7 +298,6 @@ export interface FileRouteTypes {
     | '/api/diagnostics'
     | '/api/health'
     | '/agents/$agentProfileId'
-    | '/machines/$machineId'
     | '/api/auth/$'
     | '/api/remote/agent'
     | '/api/worker/close'
@@ -287,8 +307,10 @@ export interface FileRouteTypes {
     | '/agents'
     | '/machines'
     | '/projects'
+    | '/machines/$machineId/lease'
     | '/projects/$projectId/members'
     | '/projects/$projectId/settings'
+    | '/machines/$machineId'
     | '/projects/$projectId'
     | '/projects/$projectId/chats/$chatId'
     | '/projects/$projectId/chats'
@@ -313,9 +335,11 @@ export interface FileRouteTypes {
     | '/_authed/agents/'
     | '/_authed/machines/'
     | '/_authed/projects/'
+    | '/_authed/machines/$machineId/lease'
     | '/_authed/projects/$projectId/chats'
     | '/_authed/projects/$projectId/members'
     | '/_authed/projects/$projectId/settings'
+    | '/_authed/machines/$machineId/'
     | '/_authed/projects/$projectId/'
     | '/_authed/projects/$projectId/chats/$chatId'
     | '/_authed/projects/$projectId/chats/'
@@ -470,6 +494,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWorkerOpenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authed/machines/$machineId/': {
+      id: '/_authed/machines/$machineId/'
+      path: '/'
+      fullPath: '/machines/$machineId/'
+      preLoaderRoute: typeof AuthedMachinesMachineIdIndexRouteImport
+      parentRoute: typeof AuthedMachinesMachineIdRoute
+    }
+    '/_authed/machines/$machineId/lease': {
+      id: '/_authed/machines/$machineId/lease'
+      path: '/lease'
+      fullPath: '/machines/$machineId/lease'
+      preLoaderRoute: typeof AuthedMachinesMachineIdLeaseRouteImport
+      parentRoute: typeof AuthedMachinesMachineIdRoute
+    }
     '/_authed/projects/$projectId/': {
       id: '/_authed/projects/$projectId/'
       path: '/'
@@ -515,13 +553,29 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthedMachinesMachineIdRouteChildren {
+  AuthedMachinesMachineIdLeaseRoute: typeof AuthedMachinesMachineIdLeaseRoute
+  AuthedMachinesMachineIdIndexRoute: typeof AuthedMachinesMachineIdIndexRoute
+}
+
+const AuthedMachinesMachineIdRouteChildren: AuthedMachinesMachineIdRouteChildren =
+  {
+    AuthedMachinesMachineIdLeaseRoute: AuthedMachinesMachineIdLeaseRoute,
+    AuthedMachinesMachineIdIndexRoute: AuthedMachinesMachineIdIndexRoute,
+  }
+
+const AuthedMachinesMachineIdRouteWithChildren =
+  AuthedMachinesMachineIdRoute._addFileChildren(
+    AuthedMachinesMachineIdRouteChildren,
+  )
+
 interface AuthedMachinesRouteChildren {
-  AuthedMachinesMachineIdRoute: typeof AuthedMachinesMachineIdRoute
+  AuthedMachinesMachineIdRoute: typeof AuthedMachinesMachineIdRouteWithChildren
   AuthedMachinesIndexRoute: typeof AuthedMachinesIndexRoute
 }
 
 const AuthedMachinesRouteChildren: AuthedMachinesRouteChildren = {
-  AuthedMachinesMachineIdRoute: AuthedMachinesMachineIdRoute,
+  AuthedMachinesMachineIdRoute: AuthedMachinesMachineIdRouteWithChildren,
   AuthedMachinesIndexRoute: AuthedMachinesIndexRoute,
 }
 

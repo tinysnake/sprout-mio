@@ -255,6 +255,7 @@ const router = createRouter({
     route("/agents/$agentProfileId"),
     route("/machines"),
     route("/machines/$machineId"),
+    route("/machines/$machineId/lease"),
   ]),
   history: createMemoryHistory({ initialEntries: [initialPath()] }),
 });

@@ -1,4 +1,6 @@
 import { Profiler, useEffect, useRef, useState } from "react";
+import { Button } from "../../../components/ui/button";
+import { MachineLeasePanel } from "../../../components/machine/machine-lease";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { MachineCreateDialog } from "../../../components/machine/machine-create-dialog";
@@ -790,7 +792,8 @@ export function MachineScenes() {
     );
   }
 
-  const machineId = location.pathname.replace(/^\/machines\//, "");
+  const isLease = location.pathname.endsWith("/lease");
+  const machineId = location.pathname.replace(/^\/machines\//, "").replace(/\/lease$/, "");
   if (machineId === "lifecycle") return <MachineLifecycleProbe go={go} />;
   if (machineId === "leases") return <LeasesScene go={go} />;
   const detail = draft.machines.find((item) => item.machine.id === machineId);
@@ -816,31 +819,60 @@ export function MachineScenes() {
 
   return (
     <>
-      <MachineDetailPanel
-        detail={detail}
-        back={<BackToMachines go={go} />}
-        enrollment={draft.tickets[machineId] ?? null}
-        bindingProject={{ id: project.id, name: projectName }}
-        projectNames={demoProjectNames}
-        installOrigin="http://192.168.1.10:3210"
-        leases={draft.leases}
-        holderNames={demoHolderNames}
-        runs={[{ runId: "run_12345678-1234-4234-8234-1234567890ab", status: "completed" }]}
-        executions={demoExecutions}
-        onLeaseMutate={leaseMutation}
-        onRenewEnrollment={renew}
-        onSaveBinding={saveBinding}
-        onSaveRoot={saveRoot}
-        onEnrollmentCreated={(enrollment) => {
-          update({ tickets: { ...draft.tickets, [machineId]: enrollment } });
-        }}
-        onEnrollmentRevoked={(target) => {
-          if (target !== machineId) return;
-          const tickets = { ...draft.tickets };
-          delete tickets[target];
-          update({ tickets });
-        }}
-      />
+      {isLease ? (
+        <MachineLeasePanel
+          detail={detail}
+          project={{ id: project.id, name: projectName }}
+          back={<BackToMachines go={go} />}
+          enrollment={draft.tickets[machineId] ?? null}
+          installOrigin="http://192.168.1.10:3210"
+          leases={draft.leases}
+          holderNames={demoHolderNames}
+          runs={[{ runId: "run_12345678-1234-4234-8234-1234567890ab", status: "completed" }]}
+          executions={demoExecutions}
+          onLeaseMutate={leaseMutation}
+          onRenewEnrollment={renew}
+          onEnrollmentCreated={(enrollment) => {
+            update({ tickets: { ...draft.tickets, [machineId]: enrollment } });
+          }}
+          onEnrollmentRevoked={(target) => {
+            if (target !== machineId) return;
+            const tickets = { ...draft.tickets };
+            delete tickets[target];
+            update({ tickets });
+          }}
+        />
+      ) : (
+        <MachineDetailPanel
+          detail={detail}
+          back={<BackToMachines go={go} />}
+          enrollment={draft.tickets[machineId] ?? null}
+          bindingProject={{ id: project.id, name: projectName }}
+          projectNames={demoProjectNames}
+          installOrigin="http://192.168.1.10:3210"
+          onRenewEnrollment={renew}
+          onSaveBinding={saveBinding}
+          onSaveRoot={saveRoot}
+          actions={
+            <Button
+              variant="secondary"
+              data-testid="machine-lease-jump"
+              onClick={() => go(`/machines/${machineId}/lease?projectId=${project.id}`)}
+            >
+              租约详情
+            </Button>
+          }
+          onEnrollmentCreated={(enrollment) => {
+            update({ tickets: { ...draft.tickets, [machineId]: enrollment } });
+          }}
+          onEnrollmentRevoked={(target) => {
+            if (target !== machineId) return;
+            const tickets = { ...draft.tickets };
+            delete tickets[target];
+            update({ tickets });
+          }}
+        />
+      )}
       <DemoControls
         state={draft}
         update={update}
