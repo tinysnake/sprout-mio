@@ -2,7 +2,7 @@
 
 > **编排唯一入口。** 编排者必须从本文开始，确定当前集成单元、依赖、暂停安排与验收状态，再分派功能线、UI 线和集成线任务。禁止从专项计划独立启动编排。
 
-状态：I-P1/P2 与 I-P3 两个集成单元已按四步 checklist 收尾（`869bf22`）。I-P4a 已于 2026-10-23 从 `d8614dd` 启动，功能、共用 UI 与真实接入均已合入 main，第一轮独立技术验收通过（`e10a5b4`）。Human 于 2026-10-24 亲自体验 `3df7f2c` 并给出反馈，其中工作目录模型按 Human 决定重构，本章进入第二轮；四步 checklist 全部取消勾选，等待新形状复验。I-P4b 及以后未开工。本文定义协作规则、追赶安排、章节接入范围与验收目标；验证命令与证据随当前章节交付记录补齐。
+状态：I-P1/P2 与 I-P3 两个集成单元已按四步 checklist 收尾（`869bf22`）。I-P4a 已于 2026-10-23 从 `d8614dd` 启动，功能、共用 UI 与真实接入均已合入 main，第一轮独立技术验收通过（`e10a5b4`）。Human 于 2026-10-24 亲自体验 `3df7f2c` 并给出反馈，其中工作目录模型按 Human 决定重构，本章进入第二轮；四步 checklist 全部取消勾选，等待新形状复验。I-P4b 功能、UI 与集成均已合入 main，独立技术验收第五轮在 `809c384` 判定 PASS（见下文章节记录）；本章四条 checklist 中前三条已按证据勾选，Human 体验确认待记录。I-P4c 及以后未开工。本文定义协作规则、追赶安排、章节接入范围与验收目标；验证命令与证据随当前章节交付记录补齐。
 
 本文是开发编排与章节进度的统一入口，协调功能、UI 和集成三条线，负责跨线依赖、集成顺序、反馈和阶段完成判定。
 
@@ -185,7 +185,8 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 - 两项流程性交付：review-harness `3b118e5` 建立可持续供 Human 体验的 P4b 环境，docs-gate `9737b42` 与 docs-gate-parity `f8c1b99` 把 l-docs 从「P4b 必须未勾选」改为与 P4a 同级的 per-section 证据门禁（无文档级兜底，探针 15→17）。
 - 文档基线之后又有五个单元合入：fence-force `c42bae1`（Human 强制收回，gate `p4b-fence-liveness` 裁决为 B 并实现）；chat-title `5c8dfa4`（merge `147193b`，Chat 标题与显式改名，含迁移 `0010`）；ui-refine `5ade997`（merge `e28a149`，A 方案信息架构与 fencing 摘要 + Dialog）；zfix `780a703`（修合并冲突并收紧 z 的收据关联断言）；receipt `5869bf3`/`dd3fa80`/`8ffa7e6`（收据核对、`lease_result_unconfirmed` 与动作自身 requestId、远端错误码保持严格别名）。逐项说明见 [P4b 结论](p4b/summary.md#体验后变更与安全返工)。
 - coordinator 在带 Git 历史的独立 checkout `/tmp/p4b-verify2` 复跑 check、typecheck、260 条测试、应用及 Worker build，并完成 30 个验收脚本，failed=0；F-1 与 F-3 的修复前后对照已亲自复现。证据索引为 `orchestrate/sprout-mio-p4b/local-verification.tsv`、`decisions.tsv` 及对应日志。上述五单元合入后的基线 `8ffa7e6` 上，`pnpm test` 为 287 条 / 38 个文件，`bash scripts/verify.sh` 为 30 个脚本 failed=0，`l-docs` 与探针均退出 0。
-- 技术验收两轮：首轮独立验收 `b5c34db` PASS，报告 `reports/p4b-acceptance/acceptance.md`；第二轮技术复验 `243fd53` PASS，报告 `reports/acceptance-2.md`，含 34 份证据及 12a、12b、12c 双向对照。模型独立性的调度限制另见 `decisions.tsv`。第二轮 l-docs 两条失败来自 archive 无 `.git`，同 SHA 在带历史工作树复跑为 `L_EXIT=0`、`LP_EXIT=0`，不作为产品缺陷。因强制收回、Chat 标题与收据语义已改变行为，第三轮独立技术验收正在重新派发，尚无结论；两轮 PASS 不自动代表当前基线。
+- 技术验收五轮：首轮独立验收 `b5c34db` PASS，报告 `reports/p4b-acceptance/acceptance.md`；第二轮技术复验 `243fd53` PASS，报告 `reports/acceptance-2.md`，含 34 份证据及 12a、12b、12c 双向对照。模型独立性的调度限制另见 `decisions.tsv`。第二轮 l-docs 两条失败来自 archive 无 `.git`，同 SHA 在带历史工作树复跑为 `L_EXIT=0`、`LP_EXIT=0`，不作为产品缺陷。因强制收回、Chat 标题与收据语义已改变行为而重派第三轮，该轮 PASS（`8ffa7e6`）。此后合入独立租约路由 `6c4f94d` 与 F-15 四项改动，第四轮在 `a872aad` 判定 FAIL：唯一失败项是全量门禁 `Verification scripts=37 failed=2`（`b-tooling.sh` 的 counter 断言与 `drain-http.sh` 的 10 秒关闭超时），报告 `reports/acceptance-4.md`；前六项与 9 项回归、8 条反向注入均通过。
+- 第五轮在 `809c384` 判定 PASS，报告 `reports/acceptance-5.md`。该轮修正两处余量不足的时序假设（`drain-http` 非 timeout 场景的观测窗口窄于产品自身 8 秒排空预算；`worker-report-budget` 在 ack 后立即采样由子进程写入的 counter），并把 F-15 的滚动、Chat 选择器唯一性与 warning 语义色补进 `z-lease-integration.sh`。独立验收把两处修复均判为「修掉真实缺陷、断言强度不变」并各自做了红态反证，六条反向注入全部真红；有效门禁 `failed=0`、exit 0、801.291 秒，两个独立 clone 全量测试均 45 文件 / 332 条通过。
 - 文档门禁已闭合：`9737b42` 把旧“P4b 必须未勾选”约束改成与 P4a 同级的证据门禁，`f8c1b99` 收紧为 per-section commit 校验；P4b 功能五项与 UI 三项按证据勾选，每个被引用小节自带可解析 commit 与存在的重跑命令。`bash scripts/verify/l-docs.sh` 与 `bash scripts/verify/l-docs-probes.sh` 在 `8ffa7e6` 上均退出 0。总计划四步 checklist 仍仅由 coordinator 修改，本次保持原状。
 - Human 体验确认待记录：Human 已亲自使用真实页面并提出九条界面反馈（已由 ui-refine 与 fence-force 落地），但这不等于确认通过；四步 checklist 的 Human 条目仍待 coordinator 根据明确确认后处理。跨机网络与真机软键盘未验证。下一章 P4c 及以后未启动。
 
@@ -194,9 +195,9 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 - 关键异常与回归覆盖同 Project 竞争申请、无租约操作、旧授权请求与不同 Projects 在同一 Machine 上的独立租约。验证宿主原有工具行为保留、远端目标明确、租约互斥按 Project × Machine 生效，且不泄露其他 Project 的工作信息。
 - 章节证据补充真实远端操作、holder 与授权记录、并发申请反证、跨 run 持有与显式释放记录，以及宿主和远端操作目标对照。
 
-- [ ] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
-- [ ] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。
-- [ ] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。
+- [x] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
+- [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。
+- [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。
 - [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。
 
 ### I-P4c 集成长命令日志与恢复查询
