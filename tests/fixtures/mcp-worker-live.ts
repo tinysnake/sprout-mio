@@ -152,7 +152,9 @@ try {
   const rapidClose = exchange(undefined, false);
   assert.equal(
     rapidClose.remote.mcp.some(
-      (item: ServerMcpItem) => item.type === "session_detach" && item.sessionId === rapidSession.id,
+      (item: ServerMcpItem) =>
+        item.type === "session_reconcile" &&
+        !item.sessions.some((bound) => bound.sessionId === rapidSession.id),
     ),
     true,
     "relay must reconcile a closed session even before its first Worker exchange",
@@ -228,7 +230,9 @@ try {
       const closing = exchange();
       assert.ok(
         closing.remote.mcp.some(
-          (item: ServerMcpItem) => item.type === "session_detach" && item.sessionId === session.id,
+          (item: ServerMcpItem) =>
+            item.type === "session_reconcile" &&
+            !item.sessions.some((bound) => bound.sessionId === session.id),
         ),
         "relay must still detach an attached session",
       );

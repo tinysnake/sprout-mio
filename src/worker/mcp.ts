@@ -324,6 +324,30 @@ export class McpRuntime {
     );
   }
   private acceptItem(item: ServerMcpItem) {
+    if (item.type === "session_reconcile") {
+      if (
+        !this.workerSession ||
+        item.machineId !== this.workerSession.machineId ||
+        !sameWorker(item.workerSession, this.workerSession) ||
+        item.sessions.some(
+          (bound) =>
+            bound.machineId !== item.machineId ||
+            !sameWorker(bound.workerSession, item.workerSession) ||
+            !this.authorized(bound),
+        )
+      )
+        throw new Error("MCP reconciliation identity rejected");
+      const retained = new Map(item.sessions.map((bound) => [bound.sessionId, bound]));
+      for (const [id, entry] of this.sessions) {
+        const bound = retained.get(id);
+        if (bound && !mcpSameBound(bound, mcpBound(entry.session)))
+          throw new Error("MCP reconciliation session identity rejected");
+      }
+      for (const [id, entry] of this.sessions)
+        if (!retained.has(id)) this.endSession(entry, "closed", "client_closed");
+      this.controls.set("reconcile", { ...item, type: "session_reconcile_ack" });
+      return;
+    }
     if (item.type === "session_fence") {
       if (!this.workerSession || !sameWorker(item.workerSession, this.workerSession))
         throw new Error("MCP stale fence");
@@ -413,16 +437,6 @@ export class McpRuntime {
         !sameWorker(item.workerSession, this.workerSession)
       )
         throw new Error("MCP session identity rejected");
-      this.controls.set(`detach:${item.sessionId}`, {
-        type: "session_detach_ack",
-        sessionId: item.sessionId,
-        projectId: item.projectId,
-        machineId: item.machineId,
-        authorizationGeneration: item.authorizationGeneration,
-        holderInstanceId: item.holderInstanceId,
-        processId: item.processId,
-        workerSession: item.workerSession,
-      });
       return;
     }
     if (!entry || !mcpSameBound(item, mcpBound(entry.session)))

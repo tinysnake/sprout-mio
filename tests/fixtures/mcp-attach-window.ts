@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
-import type { ServerMcpItem } from "../../src/contracts/mcp";
+import { mcpWorkerItemSchema, type ServerMcpItem } from "../../src/contracts/mcp";
 import type { WorkerExchangeRemoteInput } from "../../src/contracts/worker";
 import { workerExchangeOutputRemoteSchema } from "../../src/contracts/worker";
 import { migrateDatabase } from "../../src/db/migrate";
@@ -16,7 +16,7 @@ import { McpRuntime } from "../../src/worker/mcp";
 import { RemoteDispatcher } from "../../src/worker/remote";
 import { seedRemoteActor } from "./remote-actors";
 import { registration } from "./mcp-runtime";
-import { mcpBound } from "../../src/domain/mcp/protocol";
+import { mcpBound, mcpHash } from "../../src/domain/mcp/protocol";
 migrateDatabase();
 const bootId = newId(ID_PREFIXES.boot),
   requestId = newId(ID_PREFIXES.request);
@@ -125,25 +125,43 @@ try {
       ctx,
     );
   const row = (id: string) => db.select().from(mcpSession).where(eq(mcpSession.id, id)).get()!;
-  const settle = (id: string) =>
-    Array.from(
-      { length: 4 },
-      () =>
-        exchange().remote.mcp.filter(
-          (item: ServerMcpItem) => item.type === "session_detach" && item.sessionId === id,
-        ).length,
-    );
+  const settle = (id: string) => {
+    const pending: number[] = [];
+    const snapshots: number[] = [];
+    const detaches: number[] = [];
+    for (let round = 0; round < 4; round++) {
+      const response = exchange();
+      pending.push(row(id).workerDetachedAt === null ? 1 : 0);
+      snapshots.push(
+        response.remote.mcp.filter((item: ServerMcpItem) => item.type === "session_reconcile")
+          .length,
+      );
+      detaches.push(
+        response.remote.mcp.filter((item: ServerMcpItem) => item.type === "session_detach").length,
+      );
+    }
+    assert.deepEqual(snapshots, [1, 1, 1, 1]);
+    assert.deepEqual(detaches, [0, 0, 0, 0]);
+    return pending;
+  };
   const rapid = open();
   close(rapid.id);
-  const rapidDetaches = settle(rapid.id);
+  const rapidPending = settle(rapid.id);
   evidence.rapid = {
-    detaches: rapidDetaches,
+    pendingConfirmation: rapidPending,
     workerDetached: row(rapid.id).workerDetachedAt !== null,
   };
-  assert.deepEqual(rapidDetaches, [1, 0, 0, 0]);
+  assert.deepEqual(rapidPending, [1, 0, 0, 0]);
   assert.notEqual(row(rapid.id).workerDetachedAt, null);
-  const acknowledgement = { type: "session_detach_ack" as const, ...mcpBound(rapid) };
-  const mismatches: Partial<typeof acknowledgement>[] = [
+  const acknowledgement = {
+    type: "session_reconcile_ack" as const,
+    machineId,
+    workerSession: worker,
+    closedHash: mcpHash([rapid.id]),
+    sessions: [] as ReturnType<typeof mcpBound>[],
+  };
+  const bound = mcpBound(rapid);
+  const mismatches: Partial<typeof bound>[] = [
     { projectId: newId(ID_PREFIXES.project) },
     { machineId: newId(ID_PREFIXES.machine) },
     { authorizationGeneration: rapid.authorizationGeneration + 1 },
@@ -159,7 +177,7 @@ try {
       () =>
         exchange({
           ...dispatcher.outgoing(),
-          mcp: [{ ...acknowledgement, ...mismatch }],
+          mcp: [{ ...acknowledgement, sessions: [{ ...bound, ...mismatch }] }],
         }),
       "mismatched detach acknowledgement must be rejected",
     );
@@ -173,15 +191,25 @@ try {
   }
   process.kill(fact.pid!, 0);
   const window = open();
-  assert.throws(
-    () =>
-      exchange({
-        ...dispatcher.outgoing(),
-        mcp: [{ type: "session_detach_ack", ...mcpBound(window) }],
-      }),
-    "active session must reject detach acknowledgement",
+  assert.equal(
+    mcpWorkerItemSchema.safeParse({ type: "session_detach_ack", ...mcpBound(window) }).success,
+    false,
+    "active session must reject the removed detach acknowledgement",
+  );
+  exchange(
+    {
+      ...dispatcher.outgoing(),
+      mcp: [
+        {
+          ...acknowledgement,
+          closedHash: mcpHash([rapid.id, window.id].sort((a, b) => a.localeCompare(b))),
+        },
+      ],
+    },
+    false,
   );
   assert.equal(row(window.id).workerDetachedAt, null);
+  evidence.activeAck = { legacyRejected: true, reconcileCannotConfirmActive: true };
   exchange();
   assert.equal(
     row(window.id).attachedAt,
@@ -189,9 +217,9 @@ try {
     "probe must close inside the unconfirmed attach window",
   );
   close(window.id);
-  const windowDetaches = settle(window.id);
+  const windowPending = settle(window.id);
   evidence.window = {
-    detaches: windowDetaches,
+    pendingConfirmation: windowPending,
     workerDetached: row(window.id).workerDetachedAt !== null,
   };
   const next = open();
@@ -203,7 +231,7 @@ try {
   assert.notEqual(row(next.id).workerDetachedAt, null);
   evidence.reopened = true;
   assert.notEqual(row(window.id).workerDetachedAt, null);
-  assert.deepEqual(windowDetaches, [1, 0, 0, 0]);
+  assert.deepEqual(windowPending, [1, 0, 0, 0]);
   for (const loss of ["undelivered_attach", "rebind", "pruned"] as const) {
     const session = open();
     exchange(undefined, loss !== "undelivered_attach");
@@ -216,14 +244,14 @@ try {
       runtime.outgoing();
       runtime.accept([], [], []);
     }
-    const detaches = settle(session.id);
+    const pendingConfirmation = settle(session.id);
     const result = {
-      detaches,
+      pendingConfirmation,
       workerDetached: row(session.id).workerDetachedAt !== null,
       workerStateRevision: row(session.id).workerStateRevision,
     };
     evidence[loss] = result;
-    assert.deepEqual(detaches, [1, 0, 0, 0], loss);
+    assert.deepEqual(pendingConfirmation, [1, 0, 0, 0], loss);
     assert.equal(result.workerDetached, true, loss);
   }
   process.kill(fact.pid!, 0);

@@ -221,13 +221,16 @@ export const workerExchangeResponseSchema = z.union([
         if (
           value.mode === "drain" &&
           value.remote.mcp.some(
-            (item) => item.type !== "session_detach" && item.type !== "session_fence",
+            (item) =>
+              item.type !== "session_detach" &&
+              item.type !== "session_fence" &&
+              !(item.type === "session_reconcile" && item.sessions.length === 0),
           )
         )
           ctx.addIssue({
             code: "custom",
             path: ["remote", "mcp"],
-            message: "drain 只能接收 MCP detach 或 fence",
+            message: "drain 只能接收 MCP detach、fence 或空 reconcile",
           });
         for (const command of value.remote.commands) {
           if (

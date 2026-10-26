@@ -126,6 +126,26 @@ function sessionFor(item: ReturnType<typeof mcpBound>, ctx: AuthenticatedWorkerC
   return row;
 }
 
+function reconciliation(rows: SessionRow[], ctx: AuthenticatedWorkerContext) {
+  const retained = rows.filter(
+    (row) => ctx.mode === "normal" && active(row.state) && !authorized(row, ctx),
+  );
+  const ids = new Set(retained.map((row) => row.id));
+  return {
+    machineId: ctx.session.machineId,
+    workerSession: ctx.session,
+    closedHash: mcpHash(
+      rows
+        .filter((row) => !ids.has(row.id))
+        .map((row) => row.id)
+        .sort(),
+    ),
+    sessions: retained
+      .map((row) => mcpBound(mcpSessionSchema.parse(row)))
+      .sort((a, b) => a.sessionId.localeCompare(b.sessionId)),
+  };
+}
+
 /** Runs inside the authenticated exchange transaction; callers cannot admit a new lease here. */
 export function applyMcpExchange(
   input: Pick<WorkerExchangeRemoteInput, "mcp" | "mcpCursors">,
@@ -300,10 +320,34 @@ export function applyMcpExchange(
             .where(eq(mcpSession.processId, fact.id))
             .all())
             terminal(row, "failed", "target_lost", ctx);
-      } else if (item.type === "session_detach_ack") {
-        const row = sessionFor(item, ctx);
-        if (active(row.state)) fail("MCP detach acknowledgement for active session");
-        if (row.workerDetachedAt === null) {
+      } else if (item.type === "session_reconcile_ack") {
+        if (
+          item.machineId !== ctx.session.machineId ||
+          mcpHash(item.workerSession) !== mcpHash(ctx.session)
+        )
+          fail("MCP reconciliation identity mismatch");
+        const retained: SessionRow[] = db
+          .select()
+          .from(mcpSession)
+          .where(
+            and(
+              eq(mcpSession.machineId, ctx.session.machineId),
+              eq(mcpSession.workerConnectionGeneration, ctx.session.generation),
+              eq(mcpSession.serverBootId, ctx.session.bootId),
+              eq(mcpSession.workerAttemptId, ctx.session.attemptId),
+            ),
+          )
+          .all();
+        for (const bound of item.sessions) sessionFor(bound, ctx);
+        const expected = reconciliation(retained, ctx);
+        if (
+          item.closedHash !== expected.closedHash ||
+          mcpHash(expected.sessions) !==
+            mcpHash([...item.sessions].sort((a, b) => a.sessionId.localeCompare(b.sessionId)))
+        )
+          continue;
+        for (const row of retained) {
+          if (active(row.state) || row.workerDetachedAt !== null) continue;
           db.update(mcpSession)
             .set({ workerDetachedAt: ctx.now.getTime() })
             .where(eq(mcpSession.id, row.id))
@@ -524,7 +568,7 @@ export function applyMcpExchange(
       const row = db.select().from(mcpSession).where(eq(mcpSession.id, frame.sessionId)).get()!;
       terminal(row, "failed", "timeout", ctx);
     }
-    const rows = db
+    const rows: SessionRow[] = db
       .select()
       .from(mcpSession)
       .where(
@@ -535,14 +579,40 @@ export function applyMcpExchange(
           eq(mcpSession.workerAttemptId, ctx.session.attemptId),
         ),
       )
-      .orderBy(asc(mcpSession.workerDetachedAt), asc(mcpSession.createdAt))
-      .all();
-    for (let row of rows) {
-      const reason = authorized(row, ctx);
-      if (active(row.state) && (reason || ctx.mode === "drain")) {
-        terminal(row, reason === "target_lost" ? "failed" : "closed", reason ?? "worker_lost", ctx);
-        row = db.select().from(mcpSession).where(eq(mcpSession.id, row.id)).get()!;
-      }
+      .orderBy(asc(mcpSession.createdAt))
+      .all()
+      .map((row: SessionRow) => {
+        if (!active(row.state)) return row;
+        const reason = authorized(row, ctx);
+        if (reason || ctx.mode === "drain") {
+          terminal(
+            row,
+            reason === "target_lost" ? "failed" : "closed",
+            reason ?? "worker_lost",
+            ctx,
+          );
+          return db.select().from(mcpSession).where(eq(mcpSession.id, row.id)).get()!;
+        }
+        return row;
+      });
+    const retained = rows.filter((row) => active(row.state));
+    // This authoritative retry is independent of all acknowledgements and terminal history.
+    const reconciled = emit({ type: "session_reconcile", ...reconciliation(rows, ctx) });
+    const deferredAttach = new Set<string>();
+    for (const row of retained) {
+      if (
+        row.attachedAt === null &&
+        (!reconciled ||
+          !emit({
+            type: "session_attach",
+            ...mcpBound(mcpSessionSchema.parse(row)),
+            session: mcpSessionSchema.parse(row),
+            configHash: row.configHash,
+          }))
+      )
+        deferredAttach.add(row.id);
+    }
+    for (const row of [...retained, ...rows.filter((row) => !active(row.state))]) {
       const bound = mcpBound(mcpSessionSchema.parse(row));
       const cursor = {
         ...bound,
@@ -563,25 +633,10 @@ export function applyMcpExchange(
             mutationId: row.fenceMutationId,
             sessions: [{ sessionId: row.id, processId: row.processId }],
           });
-        } else if (row.workerDetachedAt === null)
-          emit({
-            type: "session_detach",
-            ...bound,
-            reason: row.endReason as NonNullable<McpSession["endReason"]>,
-          });
+        }
         continue;
       }
-      if (ctx.mode !== "normal") continue;
-      if (
-        row.attachedAt === null &&
-        !emit({
-          type: "session_attach",
-          ...bound,
-          session: mcpSessionSchema.parse(row),
-          configHash: row.configHash,
-        })
-      )
-        continue;
+      if (ctx.mode !== "normal" || deferredAttach.has(row.id)) continue;
       if (
         row.protocolVersion !== null &&
         row.connectedAt === null &&

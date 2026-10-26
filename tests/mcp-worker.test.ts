@@ -34,10 +34,6 @@ describe("MCP Worker", () => {
         expect(runtime.outgoing().mcp).not.toContainEqual(
           expect.objectContaining({ type: "process_fact" }),
         );
-        expect(runtime.outgoing().mcp).toContainEqual({
-          type: "session_detach_ack",
-          ...mcpBound({ ...session, id: detach.sessionId }),
-        });
       }
       runtime.accept(
         [
@@ -85,7 +81,38 @@ describe("MCP Worker", () => {
             [authorization(session)],
           ),
         ).toThrow("MCP session identity rejected");
+        expect(() =>
+          runtime.accept(
+            [
+              {
+                type: "session_reconcile",
+                machineId: session.machineId,
+                workerSession: bound.workerSession,
+                closedHash: "0".repeat(64),
+                sessions: [{ ...bound, ...mismatch }],
+              },
+            ],
+            [],
+            [authorization(session)],
+          ),
+        ).toThrow(/MCP reconciliation .*identity.*rejected/);
       }
+      runtime.accept(
+        [
+          clientFrame(session, 1, {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "fixture/ping",
+            params: { alive: true },
+          }),
+        ],
+        [],
+        [authorization(session)],
+      );
+      const reply = await waitFor(() =>
+        serverFrames(runtime).find((frame) => decoded(frame).id === 1),
+      );
+      expect(decoded(reply).result).toEqual({ echo: { alive: true } });
       const detach = {
         type: "session_detach" as const,
         ...bound,
