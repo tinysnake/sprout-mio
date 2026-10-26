@@ -18,7 +18,7 @@ import {
   parseMcpExchange,
 } from "./mcp-relay";
 import type { PiSessionProcess } from "./pi-host/process";
-import { RemoteError, getExecution, requestExecution } from "./remote";
+import { enqueueCancellation, getExecution, readExecutionLog, requestExecution, RemoteError } from "./remote";
 import { machineRuntimeContext, runtimeSnapshot } from "./runtime";
 
 type RuntimeContext = { bootId: string; requestId: string; now: Date };
@@ -202,6 +202,11 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
             return requestExecution(parsed.call.input, actorContext);
           case "execution_get":
             return getExecution(parsed.call.input, actorContext);
+          case "execution_cancel":
+            // 入队意图，不代表进程已停。
+            return enqueueCancellation(parsed.call.input, actorContext);
+          case "execution_log_read":
+            return readExecutionLog(parsed.call.input, actorContext);
           case "mcp_catalog_get":
             return mcpCatalogGet(parsed.call.input, actorContext);
           case "mcp_session_open":
