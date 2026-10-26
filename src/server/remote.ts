@@ -1,12 +1,28 @@
+import { createHash, randomBytes } from "node:crypto";
 import { machineBindings } from "../domain/machine";
 import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
 import type { WorkerExchangeRemoteInput } from "../contracts/worker";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import type { ShellFact } from "../contracts/machine";
 import { ID_PREFIXES, newId } from "../contracts/ids";
-import { executionReadInputSchema, executionSubmitInputSchema } from "../contracts/remote";
+import {
+  CANCELLATION_INTENT_NAMESPACE,
+  EXECUTION_LOG_FRAME_MAX_BYTES,
+  executionCancelInputSchema,
+  executionLogReadInputSchema,
+  executionReadInputSchema,
+  executionSubmitInputSchema,
+} from "../contracts/remote";
 import type {
+  ExecutionCancel,
+  ExecutionCancelInput,
+  ExecutionCancellationView,
+  ExecutionLogFrame,
+  ExecutionLogReadInput,
+  ExecutionLogReadView,
+  ExecutionLogState,
   ExecutionReadInput,
+  ExecutionRecovery,
   ExecutionSubmitInput,
   ExecutionView,
   RemoteCommand,
@@ -20,6 +36,8 @@ import { db, sqlite } from "../db";
 import {
   diagnosticEvent,
   directoryObservation,
+  executionCancellation,
+  executionLogFrame,
   executionResult,
   leaseMutation,
   machine,
@@ -54,6 +72,17 @@ export class RemoteError extends Error {
   }
 }
 type Execution = typeof remoteExecution.$inferSelect;
+type Cancellation = typeof executionCancellation.$inferSelect;
+/** 已由 runner 证据确定的终态：后续报告与恢复事实都不能改写。 */
+const SETTLED_STATES = new Set(["succeeded", "failed", "rejected"]);
+/** 只能被带 runner token 的恢复事实单向归约的状态。 */
+const RECOVERABLE_STATES: ReadonlyArray<Execution["state"]> = [
+  "unknown",
+  "timed_out",
+  "dispatched",
+  "running",
+  "draining",
+];
 export type AuthenticatedWorkerContext = {
   session: WorkerSession;
   mode: "normal" | "drain";
@@ -126,13 +155,302 @@ function executionView(row: Execution): ExecutionView {
     availableFromSequence: row.availableFromSeq,
   };
 }
-function liveLease(input: ExecutionSubmitInput, ctx: AgentRemoteContext) {
+type LeaseClaim = { projectId: string; machineId: string; authorizationGeneration: number };
+function liveLease(input: LeaseClaim, ctx: AgentRemoteContext) {
   const lease = ensureLease(input, ctx.now);
   if (lease.generation !== input.authorizationGeneration)
     throw new RemoteError("lease_stale_generation");
   if (lease.state === "fencing") throw new RemoteError("lease_fencing");
   if (lease.state !== "held" || lease.holderInstanceId !== ctx.instanceId)
     throw new RemoteError("lease_not_holder");
+}
+function runnerOnline(machineId: string, now: Date) {
+  const counter = db
+    .select()
+    .from(machineConnectionCounter)
+    .where(eq(machineConnectionCounter.machineId, machineId))
+    .get();
+  if (!counter) return false;
+  const row = db
+    .select()
+    .from(machineConnection)
+    .where(
+      and(
+        eq(machineConnection.machineId, machineId),
+        eq(machineConnection.generation, counter.highWater),
+      ),
+    )
+    .get();
+  return Boolean(
+    row &&
+    row.status === "open" &&
+    now.getTime() - row.lastSeenAt.getTime() < WORKER_STALE_AFTER_MS,
+  );
+}
+function executionByKey(executionId: string, key: Pick<LeaseClaim, "projectId" | "machineId">) {
+  return db
+    .select()
+    .from(remoteExecution)
+    .where(
+      and(
+        eq(remoteExecution.id, executionId),
+        eq(remoteExecution.projectId, key.projectId),
+        eq(remoteExecution.machineId, key.machineId),
+      ),
+    )
+    .get();
+}
+function logStateAfterProduce(row: Execution, producedThrough: number): ExecutionLogState {
+  if (row.logState !== "none") return row.logState;
+  return producedThrough >= 1 ? "partial" : row.logState;
+}
+const checksumOf = (payload: Buffer | null) =>
+  createHash("sha256")
+    .update(payload ?? Buffer.alloc(0))
+    .digest("hex");
+function textOf(payload: Buffer | null) {
+  if (!payload) return null;
+  const text = payload.toString("utf8");
+  // 损坏的不完整 UTF-8 不得静默显示为正文。
+  return text.includes("\ufffd") ? null : text;
+}
+/**
+ * 上行日志帧。会话归属由 `dispatchSession` + `dispatchSeq` 核对，只接受本行下发过的那一次投递。
+ * 重复帧幂等，且返回本 exchange 已确认的前缀，用于下行 `logAcks`。
+ */
+function applyLogFrames(
+  frames: ReadonlyArray<ExecutionLogFrame>,
+  ctx: AuthenticatedWorkerContext,
+): Map<string, Execution> {
+  const touched = new Map<string, Execution>();
+  for (const frame of frames) {
+    if (frame.machineId !== ctx.session.machineId) throw new RemoteError("not_found");
+    const row = executionByKey(frame.executionId, frame);
+    if (
+      !row ||
+      !sameSession(frame.dispatchSession, ctx.session) ||
+      row.authorizationGeneration !== frame.authorizationGeneration ||
+      row.holderInstanceId !== frame.holderInstanceId ||
+      row.dispatchConnectionGeneration !== ctx.session.generation ||
+      row.dispatchSeq !== frame.dispatchSeq
+    )
+      throw new RemoteError("not_found");
+    const payload = frame.bytes === undefined ? null : Buffer.from(frame.bytes, "utf8");
+    if (payload && payload.byteLength > EXECUTION_LOG_FRAME_MAX_BYTES)
+      throw new RemoteError("remote_request_conflict");
+    const gapRow = frame.gapTo !== undefined;
+    if (payload && checksumOf(payload) !== frame.checksum) {
+      // 帧损坏不得冒充 missing 之外的另一种事实：只认 gap，不落正文。
+      db.insert(executionLogFrame)
+        .values({
+          executionId: row.id,
+          sequence: frame.sequence,
+          projectId: row.projectId,
+          machineId: row.machineId,
+          authorizationGeneration: row.authorizationGeneration,
+          holderInstanceId: row.holderInstanceId,
+          stream: frame.stream,
+          byteStart: frame.byteStart,
+          byteEnd: frame.byteStart,
+          payloadBytes: null,
+          checksum: checksumOf(null),
+          gapFromSeq: frame.sequence,
+          gapToSeq: frame.gapTo ?? frame.sequence,
+          durableAt: ctx.now,
+        })
+        .onConflictDoNothing()
+        .run();
+    } else
+      db.insert(executionLogFrame)
+        .values({
+          executionId: row.id,
+          sequence: frame.sequence,
+          projectId: row.projectId,
+          machineId: row.machineId,
+          authorizationGeneration: row.authorizationGeneration,
+          holderInstanceId: row.holderInstanceId,
+          stream: frame.stream,
+          byteStart: frame.byteStart,
+          byteEnd: frame.byteEnd,
+          payloadBytes: payload,
+          checksum: frame.checksum,
+          gapFromSeq: gapRow ? frame.sequence : null,
+          gapToSeq: gapRow ? frame.gapTo! : null,
+          durableAt: ctx.now,
+        })
+        .onConflictDoNothing()
+        .run();
+    const produced = Math.max(
+      row.producedThroughSeq ?? 0,
+      frame.sequence,
+      frame.gapTo ?? frame.sequence,
+    );
+    db.update(remoteExecution)
+      .set({
+        producedThroughSeq: produced,
+        logState: logStateAfterProduce(row, produced),
+      })
+      .where(eq(remoteExecution.id, row.id))
+      .run();
+    touched.set(
+      row.id,
+      db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+    );
+  }
+  return touched;
+}
+/** 只推进到连续前缀：仍缺失的 sequence 会阻止 ACK 越过它。 */
+function acknowledgeLogPrefix(row: Execution) {
+  const produced = row.producedThroughSeq;
+  if (produced === null) return row;
+  const sequences = new Set(
+    db
+      .select({ sequence: executionLogFrame.sequence })
+      .from(executionLogFrame)
+      .where(eq(executionLogFrame.executionId, row.id))
+      .all()
+      .map((frame: { sequence: number }) => frame.sequence),
+  );
+  let contiguous = row.acknowledgedThroughSeq ?? 0;
+  while (sequences.has(contiguous + 1)) contiguous += 1;
+  const acknowledged = contiguous === 0 ? null : contiguous;
+  const availableFrom = row.availableFromSeq;
+  const full =
+    acknowledged !== null &&
+    acknowledged === produced &&
+    (availableFrom === null || availableFrom === 1);
+  db.update(remoteExecution)
+    .set({
+      acknowledgedThroughSeq: acknowledged,
+      logState: full ? "full" : logStateAfterProduce(row, produced),
+    })
+    .where(eq(remoteExecution.id, row.id))
+    .run();
+  return db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!;
+}
+function logAckOf(row: Execution) {
+  if (row.producedThroughSeq === null) return null;
+  const frames = db
+    .select({ stream: executionLogFrame.stream })
+    .from(executionLogFrame)
+    .where(eq(executionLogFrame.executionId, row.id))
+    .all();
+  return {
+    executionId: row.id,
+    stream: (frames.every((frame: { stream: string }) => frame.stream === "stdout")
+      ? "stdout"
+      : frames.every((frame: { stream: string }) => frame.stream === "stderr")
+        ? "stderr"
+        : "both") as "stdout" | "stderr" | "both",
+    acknowledgedThroughSequence: row.acknowledgedThroughSeq ?? 0,
+    availableFromSequence: row.availableFromSeq,
+  };
+}
+const recoveryMessage = "已根据 runner 恢复事实把执行归约为终态";
+/**
+ * B1 阻塞项的解法：新会话上报旧执行的终态。`delivery()` 要求同一 dispatchSession，
+ * 所以恢复必须自己核对归属、token 与单向性，且必须带证据。
+ */
+export function applyExecutionRecovery(
+  recovery: ExecutionRecovery,
+  ctx: { session: WorkerSession; now: Date; requestId: string },
+): void {
+  const row = executionByKey(recovery.executionId, recovery);
+  // runner token 由宿主下发，且只随那一次 command 交出。token 不符意味着这条事实不是
+  // 我们交给这台 Machine 的那次下发产生的，因此没有可信终态：拒绝改写，保留原行。
+  if (
+    !row ||
+    row.machineId !== ctx.session.machineId ||
+    row.authorizationGeneration !== recovery.authorizationGeneration ||
+    row.holderInstanceId !== recovery.holderInstanceId ||
+    !row.runnerToken ||
+    row.runnerToken !== recovery.runnerToken
+  )
+    throw new RemoteError("execution_log_unavailable");
+  if (SETTLED_STATES.has(row.state)) return;
+  if (!RECOVERABLE_STATES.includes(row.state)) return;
+  const produced = recovery.producedThroughSequence;
+  if (produced !== null && produced > (row.producedThroughSeq ?? 0))
+    db.update(remoteExecution)
+      .set({ producedThroughSeq: produced, logState: logStateAfterProduce(row, produced) })
+      .where(eq(remoteExecution.id, row.id))
+      .run();
+  if (recovery.observedState === "unknown" || recovery.observedState === "running") return;
+  // 证据不足时不归约：unknown 保留，不当作成功或失败。
+  if (recovery.claimEvidenceAt === null || recovery.observedExitedAt === null) return;
+  if (recovery.observedExitedAt < recovery.claimEvidenceAt) return;
+  const succeeded = recovery.exitCode === 0 && recovery.signal === null;
+  const failureReason = succeeded ? null : "executor_error";
+  if (recovery.exitCode === null && recovery.signal === null) {
+    // runner 只报了退出时间，没有退出事实：保留可恢复标记，不猜终态。
+    db.update(remoteExecution)
+      .set({ state: "unknown", failureReason: "worker_lost", terminalAt: ctx.now })
+      .where(eq(remoteExecution.id, row.id))
+      .run();
+    return;
+  }
+  const existing = db
+    .select()
+    .from(executionResult)
+    .where(eq(executionResult.executionId, row.id))
+    .get();
+  if (!existing) {
+    const outcome = succeeded ? ("succeeded" as const) : ("failed" as const);
+    // 恢复事实只带退出码与信号，不重写原本就未知的输出正文；`recovered: true` 让视图与 UI
+    // 知道这份结果来自恢复而不是 runner 的原生报告，不把空正文当成「没有输出」。
+    const payload = succeeded
+      ? {
+          kind: row.operationJson.kind,
+          recovered: true,
+          exitCode: 0,
+          signal: null,
+        }
+      : {
+          kind: row.operationJson.kind,
+          recovered: true,
+          exitCode: recovery.exitCode,
+          signal: recovery.signal,
+          failureReason: failureReason!,
+        };
+    db.insert(executionResult)
+      .values({
+        executionId: row.id,
+        projectId: row.projectId,
+        machineId: row.machineId,
+        authorizationGeneration: row.authorizationGeneration,
+        holderInstanceId: row.holderInstanceId,
+        payloadHash: payloadHash(payload),
+        outcome,
+        payloadJson: payload as never,
+        recordedAt: ctx.now,
+      })
+      .onConflictDoNothing()
+      .run();
+  }
+  db.update(remoteExecution)
+    .set({
+      state: succeeded ? "succeeded" : "failed",
+      failureReason,
+      drainedAt: row.drainedAt ?? ctx.now,
+      terminalAt: ctx.now,
+    })
+    // 单向性：只允许从可恢复状态进入已知终态，已确定的终态不回头。
+    .where(and(eq(remoteExecution.id, row.id), inArray(remoteExecution.state, RECOVERABLE_STATES)))
+    .run();
+  db.insert(diagnosticEvent)
+    .values({
+      id: newId(ID_PREFIXES.diagnostic),
+      at: ctx.now,
+      level: "info",
+      event: "remote.recovered",
+      requestId: ctx.requestId,
+      projectId: row.projectId,
+      runId: row.runId,
+      chatId: row.chatId,
+      executionId: row.id,
+      message: recoveryMessage,
+    })
+    .run();
 }
 export function requestExecution(
   raw: ExecutionSubmitInput,
@@ -203,7 +521,8 @@ export function requestExecution(
             and(
               eq(remoteExecution.projectId, input.projectId),
               eq(remoteExecution.machineId, input.machineId),
-              isNull(remoteExecution.terminalAt),
+              // `unknown` 已不再收窄终态：可恢复行仍占一个活跃名额，避免失联行堆积。
+              or(isNull(remoteExecution.terminalAt), eq(remoteExecution.state, "unknown")),
             ),
           )
           .all().length >= 64
@@ -314,6 +633,310 @@ export function listProjectExecutions(
       );
     })
     .immediate();
+}
+/**
+ * 游标读取日志。游标早于可读起点时返回 gap，不静默从新起点称完整。
+ * `frames` 为空只说明该范围内无帧，完整性以 `logState` 为准。
+ */
+export function readExecutionLog(
+  raw: ExecutionLogReadInput,
+  ctx: MachineContext | AgentRemoteContext,
+): ExecutionLogReadView {
+  const input = executionLogReadInputSchema.parse(raw);
+  return sqlite
+    .transaction(() => {
+      assertRemoteAccess(input, ctx);
+      expireExecutions(input, ctx.now, ctx.bootId);
+      const row = executionByKey(input.executionId, input);
+      if (!row) throw new RemoteError("not_found");
+      const cursor = input.cursor?.nextSequence ?? 0;
+      const from = row.availableFromSeq;
+      if (from !== null && cursor + 1 < from) throw new RemoteError("execution_log_gap");
+      if (row.producedThroughSeq === null && row.logState !== "none")
+        throw new RemoteError("execution_log_unavailable");
+      const rows = db
+        .select()
+        .from(executionLogFrame)
+        .where(
+          and(
+            eq(executionLogFrame.executionId, row.id),
+            gte(executionLogFrame.sequence, cursor + 1),
+          ),
+        )
+        .orderBy(executionLogFrame.sequence)
+        .all();
+      const frames: ExecutionLogReadView["frames"] = [];
+      const gapRanges: ExecutionLogReadView["gapRanges"] = [];
+      let used = 0;
+      let nextSequence = cursor;
+      for (const frame of rows) {
+        if (frame.payloadBytes === null) {
+          gapRanges.push({ fromSequence: frame.gapFromSeq!, toSequence: frame.gapToSeq! });
+          if (nextSequence <= frame.gapToSeq!) nextSequence = frame.gapToSeq!;
+          continue;
+        }
+        const size = frame.payloadBytes.byteLength;
+        if (used + size > input.limitBytes) break;
+        used += size;
+        frames.push({
+          sequence: frame.sequence,
+          stream: frame.stream,
+          byteStart: frame.byteStart,
+          byteEnd: frame.byteEnd,
+          text: textOf(frame.payloadBytes),
+          checksum: frame.checksum,
+        });
+        if (nextSequence <= frame.sequence) nextSequence = frame.sequence;
+      }
+      if (gapRanges.length) {
+        const current = db
+          .select()
+          .from(remoteExecution)
+          .where(eq(remoteExecution.id, row.id))
+          .get()!;
+        if (current.logState !== "truncated")
+          db.update(remoteExecution)
+            .set({ logState: "gap" })
+            .where(eq(remoteExecution.id, row.id))
+            .run();
+      }
+      const current = db
+        .select()
+        .from(remoteExecution)
+        .where(eq(remoteExecution.id, row.id))
+        .get()!;
+      return {
+        projectId: row.projectId,
+        machineId: row.machineId,
+        executionId: row.id,
+        frames,
+        nextCursor: { nextSequence },
+        availableFromSequence: current.availableFromSeq,
+        acknowledgedThroughSequence: current.acknowledgedThroughSeq,
+        producedThroughSequence: current.producedThroughSeq,
+        gapRanges,
+        logState: current.logState,
+        workerOnline: runnerOnline(row.machineId, ctx.now),
+      };
+    })
+    .immediate();
+}
+function cancellationView(row: Cancellation): ExecutionCancellationView {
+  return {
+    projectId: row.projectId,
+    machineId: row.machineId,
+    cancelId: row.id,
+    executionId: row.executionId,
+    state: row.state,
+    requestedAt: row.requestedAt.toISOString(),
+    deliveredAt: row.deliveredAt?.toISOString() ?? null,
+    exitedAt: row.exitedAt?.toISOString() ?? null,
+    signalOutcome: row.signalOutcome,
+    failureReason: row.failureReason,
+  };
+}
+/**
+ * 取消只入队一个意图。`delivered` 说明 Worker 收到了意图，不说明进程已停；
+ * 进程只有 runner 落盘的 durable result 才能归约为 `exited_observed`。
+ */
+export function enqueueCancellation(
+  raw: ExecutionCancelInput,
+  ctx: AgentRemoteContext,
+): ExecutionCancellationView {
+  const input = executionCancelInputSchema.parse(raw);
+  return sqlite
+    .transaction(() => {
+      assertAgentContext(input, ctx);
+      const row = executionByKey(input.executionId, input);
+      if (!row) throw new RemoteError("cancellation_not_found");
+      const key = `${CANCELLATION_INTENT_NAMESPACE}${ctx.instanceId}:${input.requestId}`;
+      const old = db
+        .select()
+        .from(executionCancellation)
+        .where(
+          and(
+            eq(executionCancellation.holderInstanceId, row.holderInstanceId),
+            eq(executionCancellation.requestId, key),
+          ),
+        )
+        .get();
+      if (old) {
+        if (old.executionId !== row.id) throw new RemoteError("remote_request_conflict");
+        return cancellationView(old);
+      }
+      if (SETTLED_STATES.has(row.state) || row.terminalAt)
+        throw new RemoteError("cancellation_already_terminal");
+      const open = db
+        .select()
+        .from(executionCancellation)
+        .where(
+          and(
+            eq(executionCancellation.executionId, row.id),
+            inArray(executionCancellation.state, ["requested", "delivered"]),
+          ),
+        )
+        .get();
+      // 已有未完成意图时只返回同样的事实，不重复投递。
+      if (open) throw new RemoteError("cancellation_delivery_unconfirmed");
+      liveLease(row, ctx);
+      const id = newId(ID_PREFIXES.cancellation);
+      db.insert(executionCancellation)
+        .values({
+          id,
+          executionId: row.id,
+          requestId: key,
+          projectId: row.projectId,
+          machineId: row.machineId,
+          authorizationGeneration: row.authorizationGeneration,
+          holderInstanceId: row.holderInstanceId,
+          actorInstanceId: ctx.instanceId,
+          state: "requested",
+          signalOutcome: "none",
+          // 调用方声明的策略是事实：落库后原样下发给 Worker，不再用常量顶替。
+          policy: input.policy,
+          termWaitMs: input.termWaitMs,
+          requestedAt: ctx.now,
+        })
+        .run();
+      db.insert(diagnosticEvent)
+        .values({
+          id: newId(ID_PREFIXES.diagnostic),
+          at: ctx.now,
+          level: "info",
+          event: "remote.cancel_requested",
+          requestId: ctx.requestId,
+          projectId: row.projectId,
+          runId: row.runId,
+          chatId: row.chatId,
+          executionId: row.id,
+          instanceId: ctx.instanceId,
+          message: "已入队取消意图，尚未确认进程退出",
+        })
+        .run();
+      return cancellationView(
+        db.select().from(executionCancellation).where(eq(executionCancellation.id, id)).get()!,
+      );
+    })
+    .immediate();
+}
+/** 取消送达后等待 runner 确认退出证据的窗口。超时只写 delivery_unconfirmed。 */
+const CANCELLATION_CONFIRM_WINDOW_MS = 15000;
+/**
+ * 构建尚未下发的取消意图供 Worker 拉取。发送前只标 `delivered`（送达），
+ * 旧授权代次的意图直接作废，不能借租约操作别人的 Machine。
+ */
+function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel[] {
+  const shared = globalThis as typeof globalThis & {
+    sproutCancellationSends?: Map<string, number>;
+  };
+  const sends = (shared.sproutCancellationSends ??= new Map());
+  const output: ExecutionCancel[] = [];
+  for (const row of db
+    .select()
+    .from(executionCancellation)
+    .where(
+      and(
+        eq(executionCancellation.machineId, machineId),
+        eq(executionCancellation.state, "requested"),
+      ),
+    )
+    .all()) {
+    if (output.length >= 4) break;
+    const execution = db
+      .select()
+      .from(remoteExecution)
+      .where(eq(remoteExecution.id, row.executionId))
+      .get();
+    if (!execution?.runnerToken || execution.terminalAt) continue;
+    const lease = db
+      .select()
+      .from(machineLease)
+      .where(
+        and(eq(machineLease.projectId, row.projectId), eq(machineLease.machineId, row.machineId)),
+      )
+      .get();
+    if (
+      !lease ||
+      lease.state !== "held" ||
+      lease.generation !== row.authorizationGeneration ||
+      lease.holderInstanceId !== row.holderInstanceId
+    )
+      continue;
+    db.update(executionCancellation)
+      .set({ state: "delivered", deliveredAt: now, signalOutcome: "term_delivered" })
+      .where(
+        and(eq(executionCancellation.id, row.id), eq(executionCancellation.state, "requested")),
+      )
+      .run();
+    const delivered = db
+      .select()
+      .from(executionCancellation)
+      .where(eq(executionCancellation.id, row.id))
+      .get()!;
+    if (delivered.state !== "delivered") continue;
+    sends.set(delivered.id, now.getTime());
+    output.push({
+      cancelId: delivered.id,
+      executionId: delivered.executionId,
+      projectId: delivered.projectId,
+      machineId: delivered.machineId,
+      authorizationGeneration: delivered.authorizationGeneration,
+      runnerToken: execution.runnerToken,
+      policy: delivered.policy,
+      termWaitMs: delivered.termWaitMs,
+    });
+  }
+  // 送达后没有 durable result 的意图不得停成「已停止」，只能写投递未确认。
+  for (const row of db
+    .select()
+    .from(executionCancellation)
+    .where(
+      and(
+        eq(executionCancellation.machineId, machineId),
+        eq(executionCancellation.state, "delivered"),
+      ),
+    )
+    .all()) {
+    const sentAt = sends.get(row.id);
+    if (sentAt === undefined) {
+      sends.set(row.id, now.getTime());
+      continue;
+    }
+    if (now.getTime() - sentAt < CANCELLATION_CONFIRM_WINDOW_MS) continue;
+    db.update(executionCancellation)
+      .set({ state: "failed", failureReason: "delivery_unconfirmed" })
+      .where(
+        and(eq(executionCancellation.id, row.id), eq(executionCancellation.state, "delivered")),
+      )
+      .run();
+    sends.delete(row.id);
+  }
+  return output;
+}
+/**
+ * runner 落盘的 durable result 是取消的唯一退出证据：意图已送达而命令随后退出写 `exited_observed`，
+ * 意图尚未送达而命令自然退出写 `already_exited`。不重写执行结果本身。
+ */
+function settleCancellations(executionId: string, now: Date) {
+  for (const row of db
+    .select()
+    .from(executionCancellation)
+    .where(
+      and(
+        eq(executionCancellation.executionId, executionId),
+        inArray(executionCancellation.state, ["requested", "delivered"]),
+      ),
+    )
+    .all())
+    db.update(executionCancellation)
+      .set({
+        state: row.deliveredAt === null ? "already_exited" : "exited_observed",
+        // 未送达时 delivered_at 必须 NULL（check_5 要求退出时间晚于送达时间）。
+        deliveredAt: row.deliveredAt ?? now,
+        exitedAt: now,
+      })
+      .where(eq(executionCancellation.id, row.id))
+      .run();
 }
 function sameSession(a: WorkerSession, b: WorkerSession) {
   return (
@@ -467,8 +1090,17 @@ export function applyRemoteExchange(
         })
         .run();
     }
+    // runner 落盘的 durable result 是取消的唯一退出证据；送达本身不算进程已停。
+    settleCancellations(row.id, ctx.now);
     output.resultAcks.push({ executionId: row.id, disposition });
   }
+  const logRows = input.logFrames?.length ? applyLogFrames(input.logFrames, ctx) : new Map();
+  for (const row of logRows.values()) {
+    const ack = logAckOf(acknowledgeLogPrefix(row));
+    if (ack) output.logAcks!.push(ack);
+  }
+  for (const recovery of input.recoveries ?? [])
+    applyExecutionRecovery(recovery, { ...ctx, requestId: "worker-exchange" });
   for (const ack of input.fenceAcks) {
     const mutation = db
       .select()
@@ -584,6 +1216,7 @@ export function applyRemoteExchange(
     throw error;
   }
   if (ctx.mode === "normal") {
+    output.cancellations!.push(...drainCancellationIntents(ctx.session.machineId, ctx.now));
     const conn = connection(ctx.session.machineId, ctx);
     for (const row of db
       .select()
@@ -640,6 +1273,10 @@ export function applyRemoteExchange(
           .run();
         continue;
       }
+      const runtimeDeadlineAt =
+        row.runtimeDeadlineAt ??
+        (row.maxRuntimeMs === null ? null : new Date(ctx.now.getTime() + row.maxRuntimeMs));
+      const runnerToken = row.runnerToken ?? randomBytes(16).toString("hex");
       const command: RemoteCommand = {
         executionId: row.id,
         projectId: row.projectId,
@@ -653,9 +1290,9 @@ export function applyRemoteExchange(
         operation: row.operationJson as RemoteCommand["operation"],
         directoryRevision: row.directoryRevision,
         dispatchDeadlineAt: row.dispatchDeadlineAt.toISOString(),
-        runtimeDeadlineAt: row.runtimeDeadlineAt?.toISOString() ?? null,
+        runtimeDeadlineAt: runtimeDeadlineAt?.toISOString() ?? null,
         maxRuntimeMs: row.maxRuntimeMs,
-        runnerToken: row.runnerToken,
+        runnerToken,
       };
       if (
         remoteExchangeBytes({ ...output, commands: [...output.commands, command] }, ctx) > 1048576
@@ -667,6 +1304,8 @@ export function applyRemoteExchange(
           dispatchConnectionGeneration: ctx.session.generation,
           dispatchSeq: ctx.seq,
           dispatchedAt: ctx.now,
+          runnerToken,
+          runtimeDeadlineAt,
         })
         .where(eq(remoteExecution.id, row.id))
         .run();

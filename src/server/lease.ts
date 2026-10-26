@@ -143,6 +143,13 @@ export function ensureLease(key: LeaseKey, now: Date) {
   }
   return row;
 }
+/**
+ * 到期判定分两种语义，不互相替代：
+ * - 下发窗口到期且尚未下发：`timed_out` + `failure_reason='deadline'`，没有 runner 可以上报，必须收尾。
+ * - 已下发却失联：保留可恢复的非终态位点（`dispatch_connection_generation` / `dispatch_seq` /
+ *   `runner_token`），等带 token 的恢复事实单向归约；不先写 `unknown` 把自己封死。
+ * - 运行上限到期：只记 `runtime_deadline_at`，归约交回恢复事实或 durable result。
+ */
 export function expireExecutions(key: LeaseKey, now: Date, bootId?: string) {
   for (const row of db
     .select()
@@ -155,41 +162,40 @@ export function expireExecutions(key: LeaseKey, now: Date, bootId?: string) {
       ),
     )
     .all()) {
-    const counter =
-      row.dispatchConnectionGeneration === null
-        ? null
-        : db
-            .select()
-            .from(machineConnectionCounter)
-            .where(eq(machineConnectionCounter.machineId, row.machineId))
-            .get();
-    const connection =
-      row.dispatchConnectionGeneration === null
-        ? null
-        : db
-            .select()
-            .from(machineConnection)
-            .where(
-              and(
-                eq(machineConnection.machineId, row.machineId),
-                eq(machineConnection.generation, row.dispatchConnectionGeneration),
-              ),
-            )
-            .get();
+    const dispatched = row.dispatchConnectionGeneration !== null;
+    if (!dispatched) {
+      if (row.dispatchDeadlineAt <= now)
+        db.update(remoteExecution)
+          .set({ state: "timed_out", failureReason: "deadline", terminalAt: now })
+          .where(eq(remoteExecution.id, row.id))
+          .run();
+      continue;
+    }
+    const counter = db
+      .select()
+      .from(machineConnectionCounter)
+      .where(eq(machineConnectionCounter.machineId, row.machineId))
+      .get();
+    const connection = db
+      .select()
+      .from(machineConnection)
+      .where(
+        and(
+          eq(machineConnection.machineId, row.machineId),
+          eq(machineConnection.generation, row.dispatchConnectionGeneration!),
+        ),
+      )
+      .get();
     const lost =
-      row.dispatchConnectionGeneration !== null &&
-      (!connection ||
-        connection.status !== "open" ||
-        connection.generation !== counter?.highWater ||
-        (bootId !== undefined && connection.bootId !== bootId) ||
-        now.getTime() - connection.lastSeenAt.getTime() >= WORKER_STALE_AFTER_MS);
-    if (row.dispatchDeadlineAt <= now || lost)
+      !connection ||
+      connection.status !== "open" ||
+      connection.generation !== counter?.highWater ||
+      (bootId !== undefined && connection.bootId !== bootId) ||
+      now.getTime() - connection.lastSeenAt.getTime() >= WORKER_STALE_AFTER_MS;
+    // 失联只降级当前会话的可见性，不写终态；归约必须带 runner token。
+    if (lost && row.state !== "unknown")
       db.update(remoteExecution)
-        .set({
-          state: row.state === "queued" ? "timed_out" : "unknown",
-          failureReason: lost ? "worker_lost" : "deadline",
-          terminalAt: now,
-        })
+        .set({ state: "unknown", failureReason: "worker_lost", terminalAt: now })
         .where(eq(remoteExecution.id, row.id))
         .run();
   }
