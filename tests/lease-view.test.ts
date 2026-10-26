@@ -236,6 +236,16 @@ describe("远端操作目标与结果", () => {
     expect(EXECUTION_STATE_LABELS[unknown.state].terminal).toBe(true);
   });
 
+  it("所有非终态都不使用成功色", () => {
+    for (const [state, label] of Object.entries(EXECUTION_STATE_LABELS)) {
+      if (!label.terminal) expect(label.tone, state).not.toBe("success");
+    }
+  });
+
+  it("成功状态保留终态语义与成功色", () => {
+    expect(EXECUTION_STATE_LABELS.succeeded).toMatchObject({ terminal: true, tone: "success" });
+  });
+
   it("未到终态的执行不标为终态", () => {
     for (const state of ["queued", "dispatched", "running", "draining"] as const)
       expect(EXECUTION_STATE_LABELS[state].terminal).toBe(false);

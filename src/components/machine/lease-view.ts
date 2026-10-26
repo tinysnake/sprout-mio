@@ -249,7 +249,7 @@ export const EXECUTION_STATE_LABELS: Record<ExecutionView["state"], ExecutionLab
     tone: "warning",
     terminal: false,
   },
-  running: { label: "运行中", detail: "Worker 已报告开始执行。", tone: "success", terminal: false },
+  running: { label: "运行中", detail: "Worker 已报告开始执行。", tone: "warning", terminal: false },
   draining: {
     label: "收尾中",
     detail: "授权正在撤回，Worker 正在处理已投递的命令。",
