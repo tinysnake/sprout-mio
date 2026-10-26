@@ -597,7 +597,12 @@ export function applyMcpExchange(
       });
     const retained = rows.filter((row) => active(row.state));
     // This authoritative retry is independent of all acknowledgements and terminal history.
-    const reconciled = emit({ type: "session_reconcile", ...reconciliation(rows, ctx) });
+    // A machine that never opened a session has nothing to reconcile; sending an empty snapshot
+    // would only tell the Worker to drop entries the relay has no record of.
+    // Drain is exactly when the Worker is most likely to still hold entries the relay has already
+    // terminated, so the empty snapshot must still be sent there.
+    const reconciled =
+      rows.length === 0 || emit({ type: "session_reconcile", ...reconciliation(rows, ctx) });
     const deferredAttach = new Set<string>();
     for (const row of retained) {
       if (
