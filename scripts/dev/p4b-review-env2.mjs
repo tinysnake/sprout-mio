@@ -52,10 +52,10 @@ process.umask(0o077);
 process.env.NO_PROXY = "127.0.0.1,localhost,::1";
 process.env.no_proxy = process.env.NO_PROXY;
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const stateDir = realpathSync(mkdtempSync(join(tmpdir(), "sprout-p4b-review2-")));
+const stateDir = realpathSync(mkdtempSync(join(tmpdir(), "sprout-p4b-review3-")));
 // The Human-facing document outlives the throwaway state directory, so cleanup can remove the
 // private SQLite and Worker state while the instructions stay readable.
-const infoDir = join(tmpdir(), "p4b-reviewenv2");
+const infoDir = join(tmpdir(), "p4b-reviewenv3");
 mkdirSync(infoDir, { recursive: true, mode: 0o700 });
 const databasePath = join(stateDir, "private.sqlite");
 const children = new Map();
@@ -63,7 +63,7 @@ const remotePids = new Map();
 const shutdown = new AbortController();
 const stopped = new Promise((resolveStop) => {
   for (const signal of ["SIGINT", "SIGTERM"]) {
-    process.once(signal, () => {
+    process.on(signal, () => {
       shutdown.abort();
       resolveStop();
     });
@@ -271,7 +271,7 @@ async function prepare() {
   }, "service health");
   db = new Database(databasePath, { readonly: true });
   const ids = serverFunctionIds(join(repo, ".output/server"));
-  const email = `p4b-review2-${randomUUID()}@example.test`;
+  const email = `p4b-review3-${randomUUID()}@example.test`;
   const password = randomBytes(18).toString("base64url");
   const signUp = await fetch(`${origin}/api/auth/sign-up/email`, {
     method: "POST",
@@ -641,7 +641,7 @@ async function prepare() {
     machineId: fact.machine.id,
     machineIndex: fact.machine.index,
     name: fact.machine.name,
-    detailUrl: `${origin}/machines/${fact.machine.id}?projectId=${project.id}`,
+    detailUrl: `${origin}/machines/${fact.machine.id}/lease?projectId=${project.id}`,
     lease: {
       state: fact.lease.state,
       generation: fact.lease.generation,
@@ -667,6 +667,10 @@ async function prepare() {
         : "留给 Human 亲手强制收回的现场，脚本不碰",
   }));
   const humanFencing = fencingDoc.find((entry) => entry.machineId === human.id);
+  const probePidDirectory = join(stateDir, "running-probe-pids");
+  mkdirSync(probePidDirectory, { mode: 0o700 });
+  const infoPath = join(infoDir, `review-info-${port}.json`);
+  const runningProbeCommand = `node ${quote(join(repo, "scripts/dev/p4b-running-probe.mjs"))} ${quote(infoPath)}`;
   const info = {
     stateDir,
     origin,
@@ -681,7 +685,7 @@ async function prepare() {
         name: machine.name,
         root: machine.root,
         workspace: machine.workspace,
-        detailUrl: `${origin}/machines/${machine.id}?projectId=${project.id}`,
+        detailUrl: `${origin}/machines/${machine.id}/lease?projectId=${project.id}`,
         connectionState: fencedMachine ? "closed" : "open",
         lease: fencedMachine
           ? fencedMachine.lease
@@ -749,28 +753,51 @@ async function prepare() {
       chatUrl: `${origin}/projects/${project.id}/chats/${nextChat.id}`,
       note: "强制收回后租约变 free、代次 +1；在 Machine 详情“执行租约请求的 Chat”里选 P4b second agent 的 Chat，再点“申请租约”，新 holder 才出现（走真实 Pi run，可能要几十秒）。",
     },
+    runningProbe: {
+      machineId: machines[0].id,
+      chatId: holderChat.id,
+      leaseUrl: `${origin}/machines/${machines[0].id}/lease?projectId=${project.id}`,
+      machineSettingsUrl: `${origin}/machines/${machines[0].id}`,
+      cwd: machines[0].workspace,
+      pidDirectory: probePidDirectory,
+      command: runningProbeCommand,
+      observationWindow:
+        "Inspect immediately after running confirmed. The execution has a 10-second maximum observation window and only a few seconds may remain when the Worker reports running. Auto-refresh is every 5 seconds; reload if needed. Repeat only when the original holder Chat is idle. The shell sleeps 20 seconds; waitMs=10000 is the execution observation window, not process termination.",
+      lastObservation: null,
+    },
     processes: [...children.values()]
       .filter((record) => !record.exited)
       .map(({ label, child }) => ({ label, pid: child.pid })),
     instructions: [
-      "先读：Machine 1 的 Worker 在线、租约 held。Machine 2 与 3 的 Worker 已被 SIGKILL，两份租约停在 fencing 等 Human 处理。M2 是实现者自验的对照组（可能已被推进），M3 是留给你亲手的现场。",
-      `1) 登录：打开 login.url，用 login.email / login.password。端口是 ${port}，不是 3000。`,
+      "先读：Machine 1 的 Worker 在线、租约 held。Machine 2 与 3 的 Worker 已被 SIGKILL，两份租约停在 fencing 等 Human 处理。M2 是实现者自验的对照组（可能已被推进），M3 是留给你亲手的现场。租约在 /machines/<id>/lease?projectId=…；该页只有租约与远端操作，不应出现‘连接与配对’‘Shell 能力’‘工作目录’‘Project 绑定’‘安装与维护’区块，也不应有‘设置’分组标题。",
+      `1) 登录：打开 login.url，用 login.email / login.password。端口是 ${port}，不是 3000。另打开 runningProbe.machineSettingsUrl，即 /machines/<id>（不带 projectId），应该看到全部五个设置区块。两个方向都亲眼核对。`,
       "2) 租约事实：打开 machines[0].detailUrl（Machine 1）。核对租约状态、代次、持有者名称与 instance、“申请与释放”表单下的收据，并确认说明写着租约单位是 Project × Machine、变更不会终止进程或删除文件。",
-      "3) fencing 摘要 + 问号 Dialog：打开 machines[2].detailUrl（Machine 3）。租约行显示“等待 Worker 确认”，正文只有一句摘要；点右侧问号打开 Dialog，应能看到等待时长、待处理动作与代次、收据 id、执行总数与未知（unknown / worker_lost）执行条数与 executionId。该 Machine 的连接区块显示断开，这是 Worker 被 SIGKILL 的真实后果。",
+      "3) fencing 摘要 + 问号 Dialog：打开 machines[2].detailUrl（Machine 3）。租约行显示“等待 Worker 确认”，正文只有一句摘要；点右侧问号打开 Dialog，应能看到等待时长、待处理动作与代次、收据 id、执行总数与未知（unknown / worker_lost）执行条数与 executionId。该 Machine 的设置页连接区块显示断开，这是 Worker 被 SIGKILL 的真实后果；租约页不显示该设置区块。",
       `4) 强制收回五步（gate B）：仍在该 Dialog —— (a) 风险确认复选框默认未勾选；(b) 未勾选时“强制收回”按钮不可点；(c) 勾选后点“强制收回”；(d) 出现收据（mutationId + completed，文案标明“未确认 Worker 排空”）；(e) 关闭 Dialog 等 5 秒自动刷新，租约变“空闲”、代次 ${(humanFencing?.lease.generation ?? 0) + 1}，强制收回入口消失。`,
       `5) 新 holder 取得租约：同一页面上方“执行租约请求的 Chat”里选择 P4b second agent 的 Chat（即 chats[1]），再点“申请租约”；收到服务端收据后租约变“持有中”、持有者是 P4b second agent、代次 ${(humanFencing?.lease.generation ?? 0) + 2}。这会启动一次真实 Pi run，可能要几十秒。`,
       `6) 进程与文件仍在：强制收回前后各跑一次 survival.verifyCommand（原样复制），两次都应 exit 0。它检查 pid ${survivalPid}（/bin/sleep 86400）、marker 与 pid 文件——这台 Machine 的 Worker 已被杀、租约已被强制收回，进程与文件仍在，说明租约动作不终止进程、不删除文件。`,
-      "7) Project settings 只剩摘要 + 深链（A 方案）：打开 settingsUrl 的租约区块，不应有申请/释放表单，只有摘要与到 Machine 详情租约区块的链接；点深链应跳到 /machines/<id>?projectId=… 的租约区块。",
-      "8) 远端操作卡片不显示命令正文：Machine 1 的“远端操作”区块只显示操作类型、状态与不确定性，页面里搜不到 /bin/sleep 之类的命令原文。",
+      "7) Project settings 只剩摘要 + 深链（A 方案）：打开 settingsUrl 的租约区块，不应有申请/释放表单，只有摘要与到 Machine 租约页的链接；点深链应跳到 /machines/<id>/lease?projectId=…，只见租约与远端操作。",
+      "8) 真实 running 色：先打开 runningProbe.leaseUrl，再在终端执行 runningProbe.command。经真实 Chat → sprout_remote_shell → macOS Worker 执行 20 秒 shell（waitMs=10000）。看到 running confirmed 后立即观察/刷新（运行窗口上限 10 秒，确认时可能只剩数秒；自动刷新 5 秒），远端操作中‘运行中’标签应为警告色而非成功绿，旁边写着‘未到终态：不显示成功’。runningProbe.lastObservation 记录执行 id、当时 state=running、时间及真实 PID 检查；错过窗口后等 Chat 空闲再重跑。卡片只展示类型、状态与不确定性，不显示命令正文、路径、stdout/stderr，页面搜不到 /bin/sleep。",
       "9) Chat 标题：打开 chats[0].url 改标题（列表与 header 跟着变），再恢复默认（回落到分身名 P4b review agent；分身名缺失时回落 Agent）。列表与 header 不应出现裸 chat id。",
-      "10) 主题与宽度：浅色/暗色各一遍，并在 390px / 901px / 1200px / 1440px 下确认以上内容可读、无横向溢出。",
+      "10) 主题与宽度：浅色/暗色各一遍，并在 390px / 900px / 1200px / 1440px 下确认以上内容可读、无横向溢出。",
       "11) 结束：Ctrl-C 或 SIGTERM 结束脚本。服务、三台 Worker、远端 sleep 与私有状态目录都会被回收，review-info.json 保留。重复运行会得到全新端口、账号与目录。",
       "已知限制：跨机网络未验证（三台 Worker 都在本机）；真机软键盘未验证。",
     ],
   };
-  const infoPath = join(infoDir, `review-info-${port}.json`);
-  const document = `${JSON.stringify(info, null, 2)}\n`;
-  writeFileSync(infoPath, document, { mode: 0o600 });
+  writeFileSync(infoPath, `${JSON.stringify(info, null, 2)}\n`, { mode: 0o600 });
+  await until(
+    async () => (await agentRun(holderChat.id))?.status === "completed",
+    "release run completion",
+    240_000,
+  );
+  await run(
+    process.execPath,
+    ["scripts/dev/p4b-running-probe.mjs", infoPath],
+    "running-probe",
+    env,
+    240_000,
+  );
+  const document = readFileSync(infoPath, "utf8");
   writeFileSync(join(infoDir, "review-info.json"), document, { mode: 0o600 });
   ready = true;
   progress(`Ready on ${origin} (port ${port}); instructions: ${infoPath}`);
@@ -794,6 +821,19 @@ function signalGroup(record, signal) {
 /** Idempotent: safe to run twice, and leaves no service, Worker or remote process behind. */
 async function cleanup() {
   shutdown.abort();
+  const probePidDirectory = join(stateDir, "running-probe-pids");
+  if (existsSync(probePidDirectory)) {
+    for (const file of readdirSync(probePidDirectory)) {
+      const pid = Number(readFileSync(join(probePidDirectory, file), "utf8"));
+      if (!Number.isSafeInteger(pid) || pid <= 1) continue;
+      const command = spawnSync("/bin/ps", ["-p", String(pid), "-o", "command="], {
+        encoding: "utf8",
+        timeout: 2_000,
+      });
+      if (command.status === 0 && command.stdout.trim() === "/bin/sleep 20")
+        remotePids.set(file, pid);
+    }
+  }
   try {
     db?.close();
   } catch {
