@@ -151,6 +151,15 @@ F-13，`c42bae1`（gate `p4b-fence-liveness` 选 B 并实现）：Human 明确�
 
 F-14，`5869bf3`（收据核对）、`dd3fa80`（状态隔离与注入时钟）、`8ffa7e6`（远端错误码保持应用错误码的严格别名）：UI 租约操作未收到收据时，原来返回 `conflict` 并回报发消息的 Fn id；现在改为 `lease_result_unconfirmed` 并回报动作自身的 `requestId`，等待预算 180 秒、退避 500ms 到 2s，到期后重读 lease 与 receipt，若 mutation 已 completed 则返回成功而非报未知。这条缺陷的反证方式是并发：全量并发跑它必现，单独跑三次不现，才被确认为产品缺陷而不是链路慢；此前把同一现象当成“真实链路时长波动”是错误定性。`8ffa7e6` 另外拒绝了一处门禁作弊：`REMOTE_ERROR_CODES` 不得为了保住旧计数而把 `lease_result_unconfirmed` 过滤掉，它仍是 `APP_ERROR_CODES` 的纯别名。回归在 `tests/project-lease-actions.test.ts` 与 `tests/lease-contracts.test.ts`，真实路径由 z 覆盖。重跑 `bash scripts/verify/z-lease-integration.sh`、`pnpm exec vp test run tests/project-lease-actions.test.ts tests/lease-contracts.test.ts`。
 
+F-15，`eb48f58`、`c6653f4`、`38d35c8`：Human 在真实预览上提出的四项反馈落地，并修掉一处由此暴露的门禁空洞。
+
+- 返回导航（`eb48f58`）：租约页返回按钮原本读 `window.history.state.idx`，而 TanStack History 从不写这个键，判断恒为假，所以所有出口都落到硬编码的 Project settings。现在改用 `useCanGoBack()` 加 `router.history.back()`，跟随真实来源；直接打开才用 fallback。
+- 滚动（`eb48f58`）：`scrollRestoration: true` 恢复的是 window，而本应用滚动容器是页面内层 div，上一页的偏移量被写到新路由上，从 Project settings 底部进入会直接停在底部。该配置已关闭，租约页进入时自行回到顶部。代价是「返回时恢复来源页滚动位置」也随之消失，这一行为由 Human 确认保持现状。
+- Chat 选择器位置（`c6653f4`）：选择器原本独占顶部一张卡片，而它服务的交接与收回在两张卡片之下，选 Chat 要先滚走再滚回。现在选择器渲染在申请/释放表单内、目标 Machine 之上，交接卡片只保留一行已选 Chat 的确认；Project settings 保留完整布局，因为它跨 Machine 操作。同一次改动把「请先选择 Chat」提示改为 warning 语义色。
+- 门禁空洞（`38d35c8`）：独立租约路由 `6c4f94d` 把全部租约事实移到 `/machines/$id/lease`，但 `tests/fixtures/lease-force-live.ts` 仍导航到 `/machines/$id` 并等 `lease-fencing-facts`，导致 `w-worker-remote.sh` 在 main 上稳定超时——第三轮验收基线 `8ffa7e6` 早于该路由拆分，所以当时没有暴露。同一夹具还有一处竞速：shell 固定 `sleep 25` 才写副作用，而 UI 侧要在 30 秒窗口内跑完多轮 reload、截图与强制收回。现改为由测试在强制收回完成、新持有者拿到租约之后写放行文件，副作用不再依赖墙钟对齐。
+
+验证：`pnpm check`、`pnpm typecheck`、`pnpm test`（332 条 / 45 文件）全部通过；`bash scripts/verify/y-lease-ui.sh` 18 checks / 0 failed，`bash scripts/verify/z-lease-integration.sh` 13 PASS / exit 0，`bash scripts/verify.sh` 37 个脚本 `failed=0`。预览侧用真实账号与 Playwright 真点击复验：从 `/machines` 列表进详情再进租约后返回落在详情页（0/200/800/2500ms 四个停留时长一致），从 settings 底部 `scrollTop=3447` 进入租约为 `scrollTop=0`，返回落在 settings；390px 无横向溢出；页面上 Chat 选择器数量恒为 1。
+
 ## 技术验收证据
 
 | 层次                      | 版本、实际结果与证据                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -186,7 +195,7 @@ F-14，`5869bf3`（收据核对）、`dd3fa80`（状态隔离与注入时钟）�
 
 ## 重跑清单
 
-在带完整 Git 历史、独占写入的隔离 checkout 中使用 `pnpm verify` 跑完整验证。该命令包括全量测试，不再另外追加 `pnpm test`。完整验证会清理自己的验证产物，不在活跃 Worker checkout 运行。当前基线 `8ffa7e6` 的已知结果：`pnpm test` 287 条 / 38 个文件全过，`bash scripts/verify.sh` 30 个脚本 `failed=0`，`l-docs` 与探针均退出 0。本刷新单元没有启动服务、浏览器或完整 verify（它只改文档）。
+在带完整 Git 历史、独占写入的隔离 checkout 中使用 `pnpm verify` 跑完整验证。该命令包括全量测试，不再另外追加 `pnpm test`。完整验证会清理自己的验证产物，不在活跃 Worker checkout 运行。当前基线 `c6653f4` 的实测结果：`pnpm test` 332 条 / 45 个文件全过，`bash scripts/verify.sh` 37 个脚本 `failed=0`，`l-docs` 与探针均退出 0。完整验证与全量测试在同一基线复跑，不再另外追加重跑。
 
 | 入口                                                                                                                                                                                                             | 对应范围                                                                                               |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
