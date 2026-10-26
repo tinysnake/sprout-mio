@@ -1,4 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useCanGoBack, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { z } from "zod";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineLeasePanel } from "../../components/machine/machine-lease";
@@ -33,16 +34,26 @@ function MachineLeasePage() {
   const { machineId } = Route.useParams();
   const { projectId } = Route.useSearch();
   const navigate = useNavigate();
+  const canGoBack = useCanGoBack();
   const router = useMachineRefresh();
   const { enrollment, setEnrollment } = useMachineEnrollment();
+  // 从长页面（如 Project settings 底部）点进来时，滚动容器会沿用上一页的位置，
+  // 导致租约页直接停在底部。进入本页时把页面滚动回顶部；返回时不干涉历史恢复。
+  useEffect(() => {
+    const scroller = document.querySelector<HTMLElement>('[data-testid="machine-lease-page"]');
+    if (scroller) scroller.scrollTop = 0;
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  }, [machineId, projectId]);
+  // 租约页有多条入口路径（Machines 列表、Machine 详情、Project settings），
+  // 返回必须沿真实历史回去，不能硬编码某一个来源；只有直接打开（无历史）才用 fallback。
   const back = (
     <button
       type="button"
       data-testid="machine-detail-back"
       className="text-sm text-foreground underline-offset-4 hover:underline"
       onClick={() => {
-        if (typeof window !== "undefined" && Number(window.history.state?.idx) > 0) {
-          window.history.back();
+        if (canGoBack) {
+          router.history.back();
         } else {
           void navigate({
             to: projectId ? "/projects/$projectId/settings" : "/machines/$machineId",
