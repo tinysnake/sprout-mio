@@ -21,6 +21,7 @@ import {
   REMOTE_FAILURE_REASONS,
   REMOTE_OUTCOMES,
   CANCELLATION_FAILURE_REASONS,
+  CANCELLATION_POLICIES,
   CANCELLATION_SIGNAL_OUTCOMES,
   CANCELLATION_STATES,
 } from "../contracts/remote";
@@ -1038,6 +1039,9 @@ export const executionCancellation = sqliteTable(
     signalOutcome: text("signal_outcome", { enum: CANCELLATION_SIGNAL_OUTCOMES })
       .notNull()
       .default("none"),
+    // 取消策略是入参事实，不是下发时的常量：请求留下什么，Worker 就收到什么。
+    policy: text("policy", { enum: CANCELLATION_POLICIES }).notNull(),
+    termWaitMs: integer("term_wait_ms").notNull(),
     requestedAt: integer("requested_at", { mode: "timestamp_ms" }).notNull(),
     deliveredAt: integer("delivered_at", { mode: "timestamp_ms" }),
     exitedAt: integer("exited_at", { mode: "timestamp_ms" }),
@@ -1080,6 +1084,8 @@ export const executionCancellation = sqliteTable(
       "execution_cancellation_check_8",
       sql`length(request_id)>7 AND substr(request_id,1,7)='cancel:'`,
     ),
+    check("execution_cancellation_check_9", sql`policy IN ('term_then_kill','kill')`),
+    check("execution_cancellation_check_10", sql`term_wait_ms BETWEEN 1 AND 10000`),
     uniqueIndex("execution_cancellation_holder_instance_id_request_id_unique").on(
       t.holderInstanceId,
       t.requestId,

@@ -432,15 +432,19 @@ const cancelInput = {
   executionId: second.executionId,
   requestId: req(),
   authorizationGeneration: 1,
-  policy: "term_then_kill" as const,
-  termWaitMs: 2000,
+  // 声明非默认值，证明下发用的是入参而不是常量。
+  policy: "kill" as const,
+  termWaitMs: 500,
 };
 const requested = enqueueCancellation(cancelInput, ctx);
 assert(executionCancellationViewSchema.safeParse(requested).success);
 assert.equal(requested.state, "requested");
+assert.equal(requested.policy, "kill");
+assert.equal(requested.termWaitMs, 500);
 assert.match(requested.cancelId, /^cnl_/);
 assert.equal(enqueueCancellation(cancelInput, ctx).cancelId, requested.cancelId);
 pass("取消入队幂等，request_id 落在 cancel: 命名空间且状态停在 requested");
+pass("反证：声明 kill/500ms 的取消策略原样下发，不被常量 term_then_kill/2000 覆盖");
 
 const deliveredFrame = exchange();
 const intent = deliveredFrame.remote.cancellations?.[0];
@@ -449,6 +453,9 @@ assert.equal(intent.cancelId, requested.cancelId);
 assert.equal(deliveredFrame.remote.cancellations!.length, 1);
 // runner token 只能来自宿主下发：随 exchange 下发的值与落库值一致。
 assert.equal(intent.runnerToken, secondRow.runnerToken);
+// 反证：声明 kill/500ms 的意图不能被常量 term_then_kill/2000 顶替。
+assert.equal(intent.policy, "kill");
+assert.equal(intent.termWaitMs, 500);
 const deliveredRow = sqlite
   .prepare("SELECT state, request_id FROM execution_cancellation WHERE id = ?")
   .get(requested.cancelId) as { state: string; request_id: string };

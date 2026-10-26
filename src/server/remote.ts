@@ -728,6 +728,8 @@ function cancellationView(row: Cancellation): ExecutionCancellationView {
     cancelId: row.id,
     executionId: row.executionId,
     state: row.state,
+    policy: row.policy,
+    termWaitMs: row.termWaitMs,
     requestedAt: row.requestedAt.toISOString(),
     deliveredAt: row.deliveredAt?.toISOString() ?? null,
     exitedAt: row.exitedAt?.toISOString() ?? null,
@@ -792,6 +794,9 @@ export function enqueueCancellation(
           actorInstanceId: ctx.instanceId,
           state: "requested",
           signalOutcome: "none",
+          // 调用方声明的策略是事实：落库后原样下发给 Worker，不再用常量顶替。
+          policy: input.policy,
+          termWaitMs: input.termWaitMs,
           requestedAt: ctx.now,
         })
         .run();
@@ -879,8 +884,8 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
       machineId: delivered.machineId,
       authorizationGeneration: delivered.authorizationGeneration,
       runnerToken: execution.runnerToken,
-      policy: "term_then_kill",
-      termWaitMs: 2000,
+      policy: delivered.policy,
+      termWaitMs: delivered.termWaitMs,
     });
   }
   // 送达后没有 durable result 的意图不得停成「已停止」，只能写投递未确认。

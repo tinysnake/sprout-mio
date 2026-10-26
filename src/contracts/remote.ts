@@ -91,6 +91,8 @@ export const CANCELLATION_STATES = [
   "failed",
   "unknown",
 ] as const;
+/** 取消策略是调用方声明的事实，服务端落库并原样下发给 Worker。 */
+export const CANCELLATION_POLICIES = ["term_then_kill", "kill"] as const;
 /** 只记录 OS 是否接受信号调用，不证明进程已退出。 */
 export const CANCELLATION_SIGNAL_OUTCOMES = ["none", "term_delivered", "kill_delivered"] as const;
 export const CANCELLATION_FAILURE_REASONS = ["signal_failed", "delivery_unconfirmed"] as const;
@@ -363,7 +365,7 @@ export const executionCancelSchema = z.strictObject({
   ...leaseKeySchema.shape,
   authorizationGeneration: positiveSafeIntegerSchema,
   runnerToken: runnerTokenSchema,
-  policy: z.enum(["term_then_kill", "kill"]),
+  policy: z.enum(CANCELLATION_POLICIES),
   termWaitMs: positiveSafeIntegerSchema.max(10000),
 });
 export const remoteExchangeOutputSchema = z.strictObject({
@@ -410,7 +412,7 @@ export const executionCancelInputSchema = leaseKeySchema.extend({
   executionId: executionIdSchema,
   requestId: requestIdSchema,
   authorizationGeneration: positiveSafeIntegerSchema,
-  policy: z.enum(["term_then_kill", "kill"]).default("term_then_kill"),
+  policy: z.enum(CANCELLATION_POLICIES).default("term_then_kill"),
   termWaitMs: positiveSafeIntegerSchema.max(10000).default(2000),
 });
 /** 游标读取结果：`frames` 为空只说明该范围无帧，不证明「没有输出」；`logState` 才区分。 */
@@ -444,6 +446,8 @@ export const executionCancellationViewSchema = leaseKeySchema.extend({
   cancelId: id(ID_PREFIXES.cancellation),
   executionId: executionIdSchema,
   state: z.enum(CANCELLATION_STATES),
+  policy: z.enum(CANCELLATION_POLICIES),
+  termWaitMs: positiveSafeIntegerSchema,
   requestedAt: timestampSchema,
   deliveredAt: timestampSchema.nullable(),
   exitedAt: timestampSchema.nullable(),
@@ -536,4 +540,5 @@ export type ExecutionLogReadView = z.infer<typeof executionLogReadViewSchema>;
 export type ExecutionCancellationView = z.infer<typeof executionCancellationViewSchema>;
 export type ExecutionLogState = (typeof EXECUTION_LOG_STATES)[number];
 export type CancellationState = (typeof CANCELLATION_STATES)[number];
+export type CancellationPolicy = (typeof CANCELLATION_POLICIES)[number];
 export type RemoteToolGrant = z.infer<typeof remoteToolGrantSchema>;

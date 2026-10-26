@@ -346,6 +346,8 @@ try {
     actor_instance_id: "instance-a",
     state: "requested",
     signal_outcome: "none",
+    policy: "term_then_kill",
+    term_wait_ms: 2000,
     requested_at: 20,
     delivered_at: null,
     exited_at: null,
@@ -354,6 +356,22 @@ try {
   insert("execution_cancellation", cancellation);
   rejects("execution_cancellation", { ...cancellation, request_id: "req_public" }, /CHECK/);
   rejects("execution_cancellation", { ...cancellation, request_id: "cancel:" }, /CHECK/);
+  // 9. 取消策略与宽限期是落库事实，不是下发时的常量。
+  rejects("execution_cancellation", { ...cancellation, policy: "kill_all" }, /CHECK/);
+  rejects("execution_cancellation", { ...cancellation, term_wait_ms: 0 }, /CHECK/);
+  rejects("execution_cancellation", { ...cancellation, term_wait_ms: 10001 }, /CHECK/);
+  rollback(() =>
+    insert("execution_cancellation", {
+      ...cancellation,
+      id: "cancel-kill",
+      request_id: "cancel:instance-a:req_kill",
+      policy: "kill",
+      term_wait_ms: 1,
+    }),
+  );
+  console.log(
+    "PASS cancellation policy and term wait are stored facts with CHECK ranges (kill/1 accepted, bogus/0/10001 rejected)",
+  );
   rejects(
     "execution_cancellation",
     {
@@ -405,10 +423,10 @@ try {
         .prepare(
           `INSERT INTO execution_cancellation
              (id, execution_id, request_id, project_id, machine_id, authorization_generation,
-              holder_instance_id, actor_instance_id, state, signal_outcome, requested_at,
-              delivered_at, exited_at, failure_reason)
+              holder_instance_id, actor_instance_id, state, signal_outcome, policy, term_wait_ms,
+              requested_at, delivered_at, exited_at, failure_reason)
            VALUES (?, 'execution', ?, 'a', 'machine', 1, 'instance-a', 'instance-a', 'requested',
-                   'none', 20, NULL, NULL, NULL)`,
+                   'none', 'term_then_kill', 2000, 20, NULL, NULL, NULL)`,
         )
         .run(id, requestId);
     // 内部命名空间可落库。
