@@ -155,15 +155,16 @@ export class RemoteDispatcher {
   private observations: DirectoryObservation[] = [];
   private frames: ExecutionLogFrame[] = [];
   private pendingRecoveries: ExecutionRecovery[] = [];
+  readonly registry: ExecutionRegistry;
   constructor(
     readonly session: WorkerSession,
     private capability: CapabilitySnapshot,
     private now: () => number,
     private mcp: McpRuntime = new McpRuntime(),
-    readonly registry: ExecutionRegistry = new ExecutionRegistry(new ExecutionStore(), () =>
-      Date.now(),
-    ),
+    registry?: ExecutionRegistry,
   ) {
+    // 时钟只有一个来源：注入的 `now`。不在这里就地读墙钟，见 docs/architecture-direction.md。
+    this.registry = registry ?? new ExecutionRegistry(new ExecutionStore(), () => this.now());
     this.mcp.bind(session);
     // 进程重启后的遗留执行：装回 claim 与未确认帧，再由恢复事实与日志帧交代。
     this.registry.restore();
@@ -196,8 +197,14 @@ export class RemoteDispatcher {
     this.registry.forgetReported(this.session.attemptId);
     this.pendingRecoveries = [];
   }
-  /** `nextSeq` 是承载本批的 exchange 序号；日志帧的 dispatchSeq 必须等于它。 */
-  outgoing(maxBytes = MAX_EXCHANGE_BYTES, nextSeq = this.highWater + 1): WorkerExchangeRemoteInput {
+  /**
+   * `carrierSeq` 是承载本批的 exchange 序号。日志帧的 `dispatchSeq` 必须等于它：
+   * `docs/p4c/contracts.md` 要求帧属于本 exchange 的 `session` 与 `seq`。
+   */
+  outgoing(
+    maxBytes = MAX_EXCHANGE_BYTES,
+    carrierSeq = this.highWater + 1,
+  ): WorkerExchangeRemoteInput {
     const batch = emptyWorkerRemote();
     const mcp = this.mcp.outgoing(Math.min(maxBytes, this.highWater % 2 ? 65536 : 655360));
     batch.mcp = mcp.mcp;
@@ -257,7 +264,10 @@ export class RemoteDispatcher {
     }
     // 日志帧最后使用剩余预算：fence、终端报告与恢复事实先占位，日志不得饿死它们。
     this.frames = [];
-    for (const { run, frame } of this.registry.rotate(EXECUTION_LOG_FRAMES_PER_EXCHANGE)) {
+    for (const { run, frame } of this.registry.rotate(
+      this.session,
+      EXECUTION_LOG_FRAMES_PER_EXCHANGE,
+    )) {
       if (this.frames.length === EXECUTION_LOG_FRAMES_PER_EXCHANGE) break;
       const wire: ExecutionLogFrame = {
         executionId: run.claim.executionId,
@@ -266,7 +276,7 @@ export class RemoteDispatcher {
         authorizationGeneration: run.claim.authorizationGeneration,
         holderInstanceId: run.claim.holderInstanceId,
         dispatchSession: this.session,
-        dispatchSeq: nextSeq,
+        dispatchSeq: carrierSeq,
         sequence: frame.sequence,
         stream: frame.stream,
         byteStart: frame.byteStart,
