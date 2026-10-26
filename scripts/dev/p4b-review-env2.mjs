@@ -156,7 +156,7 @@ async function freePort() {
   const socket = createServer();
   await new Promise((resolveListen, reject) => {
     socket.once("error", reject);
-    socket.listen(0, "127.0.0.1", resolveListen);
+    socket.listen(0, "0.0.0.0", resolveListen);
   });
   const port = socket.address().port;
   await new Promise((resolveClose, reject) =>
@@ -237,14 +237,42 @@ async function prepare() {
     await run("pnpm", ["worker:build"], "worker-build");
   }
   const port = await freePort();
-  origin = `http://127.0.0.1:${port}`;
+  let reviewHost = process.env.SPROUT_REVIEW_HOST?.trim();
+  if (!reviewHost) {
+    const detected = spawnSync("ipconfig", ["getifaddr", "en0"], {
+      encoding: "utf8",
+      timeout: 2_000,
+    });
+    reviewHost = detected.status === 0 ? detected.stdout.trim() : "";
+    if (!reviewHost) {
+      reviewHost = "127.0.0.1";
+      console.warn(
+        "[p4b-review] LAN host detection failed; using loopback. Set SPROUT_REVIEW_HOST to a hostname reachable from the review device.",
+      );
+    }
+  }
+  const reviewAddress = new URL(`http://${reviewHost}`);
+  if (
+    reviewAddress.username ||
+    reviewAddress.password ||
+    reviewAddress.port ||
+    reviewAddress.pathname !== "/" ||
+    reviewAddress.search ||
+    reviewAddress.hash
+  ) {
+    throw new Error("SPROUT_REVIEW_HOST must be a hostname or IP address without a port");
+  }
+  reviewAddress.port = String(port);
+  origin = reviewAddress.origin;
+  process.env.NO_PROXY += `,${reviewAddress.hostname}`;
+  process.env.no_proxy = process.env.NO_PROXY;
   const env = {
     ...process.env,
     NODE_ENV: "production",
     PORT: String(port),
-    HOST: "127.0.0.1",
+    HOST: "0.0.0.0",
     NITRO_PORT: String(port),
-    NITRO_HOST: "127.0.0.1",
+    NITRO_HOST: "0.0.0.0",
     DATABASE_URL: databasePath,
     APP_ORIGIN: origin,
     BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
@@ -769,6 +797,7 @@ async function prepare() {
       .filter((record) => !record.exited)
       .map(({ label, child }) => ({ label, pid: child.pid })),
     instructions: [
+      "安全边界：这是临时私有体验环境，能以运行用户的权限执行真实远程 shell、文件与进程操作，工作目录不是安全边界。应用监听 0.0.0.0，同一内网可达；仅在评审期间保持运行，结束后向本脚本发送 SIGTERM 清理。不要在人多或不可信网络上开启。登录仍须使用本次真实账号密码；凭据只保存在权限为 0600 的 review-info.json，不要公开分享。",
       "先读：Machine 1 的 Worker 在线、租约 held。Machine 2 与 3 的 Worker 已被 SIGKILL，两份租约停在 fencing 等 Human 处理。M2 是实现者自验的对照组（可能已被推进），M3 是留给你亲手的现场。租约在 /machines/<id>/lease?projectId=…；该页只有租约与远端操作，不应出现‘连接与配对’‘Shell 能力’‘工作目录’‘Project 绑定’‘安装与维护’区块，也不应有‘设置’分组标题。",
       `1) 登录：打开 login.url，用 login.email / login.password。端口是 ${port}，不是 3000。另打开 runningProbe.machineSettingsUrl，即 /machines/<id>（不带 projectId），应该看到全部五个设置区块。两个方向都亲眼核对。`,
       "2) 租约事实：打开 machines[0].detailUrl（Machine 1）。核对租约状态、代次、持有者名称与 instance、“申请与释放”表单下的收据，并确认说明写着租约单位是 Project × Machine、变更不会终止进程或删除文件。",

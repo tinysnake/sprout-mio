@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /** Trigger one real operation for the private review environment's running-color check. */
 import { randomUUID } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { networkInterfaces } from "node:os";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -37,8 +39,25 @@ async function probe() {
   const info = JSON.parse(readFileSync(infoPath, "utf8"));
   const { runningProbe, origin, project } = info;
   const url = new URL(origin);
-  if (!runningProbe || url.hostname !== "127.0.0.1" || url.port === "3000")
-    throw new Error("Requires a private review environment");
+  const localAddresses = new Set([
+    "127.0.0.1",
+    "::1",
+    ...Object.values(networkInterfaces()).flatMap(
+      (entries) => entries?.map((entry) => entry.address) ?? [],
+    ),
+  ]);
+  const addresses = await lookup(url.hostname.replace(/^\[|\]$/g, ""), { all: true });
+  if (
+    !runningProbe ||
+    url.protocol !== "http:" ||
+    !url.port ||
+    url.port === "3000" ||
+    addresses.length === 0 ||
+    !addresses.every((entry) => localAddresses.has(entry.address))
+  )
+    throw new Error("Requires a private review environment on this host");
+  process.env.NO_PROXY += `,${url.hostname}`;
+  process.env.no_proxy = process.env.NO_PROXY;
   const login = await fetch(`${origin}/api/auth/sign-in/email`, {
     method: "POST",
     headers: { "content-type": "application/json", origin },
