@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { machineBindings } from "../domain/machine";
 import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
 import type { WorkerExchangeRemoteInput } from "../contracts/worker";
-import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import type { ShellFact } from "../contracts/machine";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
@@ -389,32 +389,20 @@ export function applyExecutionRecovery(
     .get();
   if (!existing) {
     const outcome = succeeded ? ("succeeded" as const) : ("failed" as const);
+    // 恢复事实只带退出码与信号，不重写原本就未知的输出正文；`recovered: true` 让视图与 UI
+    // 知道这份结果来自恢复而不是 runner 的原生报告，不把空正文当成「没有输出」。
     const payload = succeeded
       ? {
           kind: row.operationJson.kind,
-          ...(row.operationJson.kind === "shell"
-            ? {
-                pid: 1,
-                exited: true,
-                exitCode: 0,
-                stdout: "",
-                stderr: "",
-                truncated: true,
-              }
-            : row.operationJson.kind === "file_read"
-              ? { content: "", truncated: true }
-              : row.operationJson.kind === "file_write"
-                ? { bytesWritten: 0 }
-                : row.operationJson.kind === "process_list"
-                  ? { items: [], truncated: true }
-                  : {
-                      pid: row.operationJson.pid,
-                      signal: row.operationJson.signal,
-                      delivered: true as const,
-                    }),
+          recovered: true,
+          exitCode: 0,
+          signal: null,
         }
       : {
           kind: row.operationJson.kind,
+          recovered: true,
+          exitCode: recovery.exitCode,
+          signal: recovery.signal,
           failureReason: failureReason!,
         };
     db.insert(executionResult)
@@ -426,7 +414,7 @@ export function applyExecutionRecovery(
         holderInstanceId: row.holderInstanceId,
         payloadHash: payloadHash(payload),
         outcome,
-        payloadJson: payload,
+        payloadJson: payload as never,
         recordedAt: ctx.now,
       })
       .onConflictDoNothing()
@@ -526,7 +514,10 @@ export function requestExecution(
               eq(remoteExecution.projectId, input.projectId),
               eq(remoteExecution.machineId, input.machineId),
               // `unknown` 已不再收窄终态：可恢复行仍占一个活跃名额，避免失联行堆积。
-              eq(remoteExecution.state, "unknown"),
+              or(
+                isNull(remoteExecution.terminalAt),
+                eq(remoteExecution.state, "unknown"),
+              ),
             ),
           )
           .all().length >= 64
@@ -914,10 +905,10 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
   return output;
 }
 /**
- * runner 落盘的 durable result 是取消的唯一退出证据：命令先自然退出写 already_exited，
- * 由取消而停写 exited_observed。不重写执行结果本身。
+ * runner 落盘的 durable result 是取消的唯一退出证据：意图已送达而命令随后退出写 `exited_observed`，
+ * 意图尚未送达而命令自然退出写 `already_exited`。不重写执行结果本身。
  */
-function settleCancellations(executionId: string, wasCancelled: boolean, now: Date) {
+function settleCancellations(executionId: string, now: Date) {
   for (const row of db
     .select()
     .from(executionCancellation)
@@ -929,7 +920,12 @@ function settleCancellations(executionId: string, wasCancelled: boolean, now: Da
     )
     .all())
     db.update(executionCancellation)
-      .set({ state: wasCancelled ? "exited_observed" : "already_exited", exitedAt: now })
+      .set({
+        state: row.deliveredAt === null ? "already_exited" : "exited_observed",
+        // 未送达时 delivered_at 必须 NULL（check_5 要求退出时间晚于送达时间）。
+        deliveredAt: row.deliveredAt ?? now,
+        exitedAt: now,
+      })
       .where(eq(executionCancellation.id, row.id))
       .run();
 }
@@ -1086,11 +1082,7 @@ export function applyRemoteExchange(
         .run();
     }
     // runner 落盘的 durable result 是取消的唯一退出证据；送达本身不算进程已停。
-    settleCancellations(
-      row.id,
-      row.terminalAt === null && report.outcome !== "succeeded" && report.outcome !== "rejected",
-      ctx.now,
-    );
+    settleCancellations(row.id, ctx.now);
     output.resultAcks.push({ executionId: row.id, disposition });
   }
   const logRows = input.logFrames?.length ? applyLogFrames(input.logFrames, ctx) : new Map();
