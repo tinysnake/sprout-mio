@@ -181,6 +181,21 @@ try {
   await page.getByTestId('machine-detail-back').click();
   await page.waitForURL(`**/projects/${projectId}/settings`);
   pass('direct lease route refresh uses Project settings fallback');
+  // F-15：从已滚动的设置页进入租约路由时，租约页从顶部开始，不继承来源页滚动量。
+  await page.goto(`${base}/projects/${projectId}/settings`);
+  await page.getByTestId('info-hub-project-machines').waitFor();
+  const sourceScroll = await page.getByTestId('project-settings-page').evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+    return node.scrollTop;
+  });
+  assert(sourceScroll > 0, 'settings scroll container genuinely scrolled before navigation');
+  await page.getByTestId('lease-manage-link').first().click();
+  await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
+  assert.equal(await page.getByTestId('machine-lease-page').evaluate((node) => node.scrollTop), 0, 'lease route starts at the top instead of inheriting the source scroll');
+  await page.getByTestId('machine-detail-back').click();
+  await page.waitForURL(`**/projects/${projectId}/settings`);
+  pass('lease entry does not carry over the settings scroll position');
   await page.getByTestId('lease-manage-link').first().click();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   // Machine 详情页不要求重选目标：目标就是当前这台。
@@ -193,8 +208,26 @@ try {
   assert.notEqual(await page.getByTestId('lease-transfer-target').inputValue(),'');
   assert.equal(await handoffWithoutChat.isDisabled(),true,'handoff waits for explicit Chat selection');
   assert.equal(await page.getByTestId('lease-handoff-chat-required').innerText(),'请先在上方选择执行请求的 Chat，再请求分身交接。');
+  // F-15：等待前置条件的提示用 warning 语义色，与其它前置等待态一致。
+  const requiredWarning = page.getByTestId('lease-handoff-chat-required');
+  const warningColor = await requiredWarning.evaluate((node) => getComputedStyle(node).color);
+  const warningToken = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.className = 'text-status-warning';
+    probe.style.position = 'absolute';
+    probe.style.visibility = 'hidden';
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  assert.equal(warningColor, warningToken, 'precondition hint uses the shared warning semantic color');
+  assert.notEqual(warningColor, await page.evaluate(() => getComputedStyle(document.body).color), 'precondition hint is not the default text color');
   await page.screenshot({path:join(evidence,'handoff-needs-chat.png'),fullPage:true});
+  // F-15：选择器与动作同表单，页面上只有一个 Chat 选择器。
+  assert.equal(await page.getByTestId('lease-chat-select').count(),1,'exactly one Chat selector is rendered');
   await page.getByTestId('lease-chat-select').selectOption(chatId);
+  assert((await page.getByTestId('lease-chat-picked').innerText()).startsWith('执行请求的 Chat：'),'transfer card confirms the chosen Chat');
   assert.equal(await handoffWithoutChat.isEnabled(),true,'handoff is enabled after selecting a Chat');
   assert.equal(await page.getByTestId('lease-handoff-chat-required').count(),0);
   await page.screenshot({path:join(evidence,'handoff-chat-selected.png'),fullPage:true});

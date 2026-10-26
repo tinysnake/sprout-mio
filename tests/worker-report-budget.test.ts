@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { statSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -418,7 +419,19 @@ for (const rejection of [
       expect(validBeforeRejection).toBe(true);
       expect(degraded).toBe(rejection !== "budget" && rejection !== "lost_response");
       if (rejection === "lost_response") expect(replayUnchanged).toBe(true);
-      expect((await stat(counter)).size).toBe(commands.length);
+      // Acknowledged only means the Worker answered the rejected dispatch; the shell
+      // command it launched appends to the counter on its own schedule. Wait for the
+      // write instead of sampling a file the subprocess may not have reached yet.
+      let counted = 0;
+      await until(() => {
+        try {
+          counted = statSync(counter).size;
+        } catch {
+          counted = 0;
+        }
+        return counted === commands.length;
+      }, 10000).catch(() => {});
+      expect(counted).toBe(commands.length);
       expect(maxFrameBytes).toBeLessThanOrEqual(MAX_BYTES);
     } finally {
       child.kill("SIGTERM");

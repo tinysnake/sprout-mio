@@ -164,10 +164,16 @@ async function scenario(name, signal, timeout, ci) {
         1,
       );
     }
+    // The product drains for 8s and only then shuts down; the outer observation
+    // window must outlast that budget plus the in-flight work it is meant to
+    // observe, otherwise a loaded machine reports a harness timeout for correct
+    // product behaviour. Timeout runs settle at the product deadline, so they
+    // keep the tighter window.
+    const observationMs = timeout ? 10000 : 20000;
     const result = await Promise.race([
       completion,
-      delay(10000).then(() => {
-        throw new Error("shutdown exceeded 10 seconds");
+      delay(observationMs).then(() => {
+        throw new Error(`shutdown exceeded ${observationMs / 1000} seconds`);
       }),
     ]);
     children.delete(child);
