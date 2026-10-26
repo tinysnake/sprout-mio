@@ -301,14 +301,25 @@ export class ExecutionRegistry {
     for (const sequence of [...run.inflight]) if (sequence <= through) run.inflight.delete(sequence);
     this.store.prune(executionId, through, availableFrom);
   }
+  /** 恢复事实真正随 exchange 出去之后才记签名：没送到的下一轮必须重报。 */
+  markRecovered(session: WorkerSession, facts: readonly ExecutionRecovery[]) {
+    for (const fact of facts) {
+      const run = this.runs.get(fact.executionId);
+      if (!run) continue;
+      run.reported.set(
+        session.attemptId,
+        `${fact.observedState}:${run.exitedAt ?? ""}:${run.log.producedThrough}`,
+      );
+    }
+  }
   markInflight(executionId: string, sequences: readonly number[]) {
     const run = this.runs.get(executionId);
     if (!run) return;
     for (const sequence of sequences) run.inflight.add(sequence);
   }
-  /** 上行未成功时，本批帧回到可发送状态。 */
-  releaseInflight(executionId: string) {
-    this.runs.get(executionId)?.inflight.clear();
+  /** 送达或拒收后，本批帧回到「可再发」状态；只有 ACK 才从队列里删除。 */
+  releaseAllInflight() {
+    for (const run of this.runs.values()) run.inflight.clear();
   }
   /** 上行被拒时清掉本会话的上报签名，让恢复事实在下一轮重报。 */
   forgetReported(attemptId: string) {
@@ -319,8 +330,8 @@ export class ExecutionRegistry {
     this.runs.delete(executionId);
     this.store.deleteClaim(executionId);
   }
-  /** 每个遗留执行每会话只报一次；观测或产出序号变化时重报。 */
-  recoveries(session: WorkerSession, limit: number): ExecutionRecovery[] {
+  /** 只读：本会话还要交代哪些遗留执行。标记已上报由 `markRecovered` 在真正上行后做。 */
+  pendingRecoveries(session: WorkerSession, limit: number): ExecutionRecovery[] {
     const facts: ExecutionRecovery[] = [];
     for (const run of this.runs.values()) {
       if (facts.length === limit) break;
@@ -332,7 +343,6 @@ export class ExecutionRegistry {
       const state = observed(run);
       const stamp = `${state}:${run.exitedAt ?? ""}:${run.log.producedThrough}`;
       if (run.reported.get(session.attemptId) === stamp) continue;
-      run.reported.set(session.attemptId, stamp);
       facts.push({
         executionId: run.claim.executionId,
         projectId: run.claim.projectId,
