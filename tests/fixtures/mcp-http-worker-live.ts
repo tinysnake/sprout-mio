@@ -37,7 +37,11 @@ const directory = dirname(evidencePath);
 const oldMigrations = join(directory, "before-0012");
 await mkdir(join(oldMigrations, "meta"), { recursive: true });
 const journal = JSON.parse(await readFile("drizzle/meta/_journal.json", "utf8"));
-const oldEntries = journal.entries.filter((entry: { idx: number }) => entry.idx < 12);
+const targetTag = "0012_active_mcp_sessions";
+const targetIndex = journal.entries.findIndex((entry: { tag: string }) => entry.tag === targetTag);
+assert(targetIndex > 0, `journal 里必须有 ${targetTag}`);
+const oldEntries = journal.entries.slice(0, targetIndex);
+assert.equal(oldEntries.at(-1).idx, targetIndex - 1, `旧账本必须止于 ${targetTag} 的前一条`);
 for (const entry of oldEntries)
   await copyFile(`drizzle/${entry.tag}.sql`, join(oldMigrations, `${entry.tag}.sql`));
 await writeFile(
@@ -56,7 +60,8 @@ migrateDatabase();
 const afterCount = (
   sqlite.prepare("SELECT count(*) n FROM __drizzle_migrations").get() as { n: number }
 ).n;
-assert.equal(afterCount, beforeCount + 1);
+assert.equal(afterCount, journal.entries.length, "前向迁移后账本等于 journal 总条数");
+assert(beforeCount < afterCount);
 migrateDatabase();
 assert.equal(
   (sqlite.prepare("SELECT count(*) n FROM __drizzle_migrations").get() as { n: number }).n,
@@ -619,7 +624,7 @@ try {
     "PASS same process closed then reopened; SQLite rejects two active sessions; gateway returns remote_request_conflict",
   );
   console.log(
-    `PASS migration 0011->0012 ${beforeCount}->${afterCount}; repeat migrate ledger unchanged`,
+    `PASS migration ${oldEntries.at(-1).tag}->${targetTag} then forward to ${journal.entries.at(-1).tag}: ${beforeCount}->${afterCount}; repeat migrate ledger unchanged`,
   );
 } finally {
   if (worker && worker.exitCode === null && worker.signalCode === null) {
