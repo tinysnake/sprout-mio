@@ -183,7 +183,7 @@ export function expireExecutions(key: LeaseKey, now: Date, bootId?: string) {
         connection.generation !== counter?.highWater ||
         (bootId !== undefined && connection.bootId !== bootId) ||
         now.getTime() - connection.lastSeenAt.getTime() >= WORKER_STALE_AFTER_MS);
-    if (row.deadlineAt <= now || lost)
+    if (row.dispatchDeadlineAt <= now || lost)
       db.update(remoteExecution)
         .set({
           state: row.state === "queued" ? "timed_out" : "unknown",

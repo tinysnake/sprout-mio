@@ -92,6 +92,13 @@
       "when": 1792949613746,
       "tag": "0012_active_mcp_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1793037759301,
+      "tag": "0013_long_command_execution",
+      "breakpoints": true
     }
   ]
 }

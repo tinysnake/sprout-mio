@@ -109,10 +109,21 @@ function executionView(row: Execution): ExecutionView {
     operation: row.operationJson,
     state: row.state,
     createdAt: row.createdAt.toISOString(),
-    deadlineAt: row.deadlineAt.toISOString(),
+    dispatchDeadlineAt: row.dispatchDeadlineAt.toISOString(),
+    runtimeDeadlineAt: row.runtimeDeadlineAt?.toISOString() ?? null,
+    maxRuntimeMs: row.maxRuntimeMs,
+    dispatchConnectionGeneration: row.dispatchConnectionGeneration,
+    dispatchSeq: row.dispatchSeq,
+    dispatchedAt: row.dispatchedAt?.toISOString() ?? null,
+    drainedAt: row.drainedAt?.toISOString() ?? null,
+    payloadHash: row.payloadHash,
     terminalAt: row.terminalAt?.toISOString() ?? null,
     failureReason: row.failureReason,
     result: result?.payloadJson ?? null,
+    logState: row.logState,
+    producedThroughSequence: row.producedThroughSeq,
+    acknowledgedThroughSequence: row.acknowledgedThroughSeq,
+    availableFromSequence: row.availableFromSeq,
   };
 }
 function liveLease(input: ExecutionSubmitInput, ctx: AgentRemoteContext) {
@@ -214,7 +225,7 @@ export function requestExecution(
           directoryRevision,
           state: "queued",
           createdAt: ctx.now,
-          deadlineAt: new Date(ctx.now.getTime() + 30000),
+          dispatchDeadlineAt: new Date(ctx.now.getTime() + 30000),
         })
         .run();
       db.insert(diagnosticEvent)
@@ -383,6 +394,8 @@ export function applyRemoteExchange(
     fences: [],
     resultAcks: [],
     fenceAcks: [],
+    logAcks: [],
+    cancellations: [],
     mcp: [],
     mcpCursors: [],
   };
@@ -639,7 +652,10 @@ export function applyRemoteExchange(
         dispatchSeq: ctx.seq,
         operation: row.operationJson as RemoteCommand["operation"],
         directoryRevision: row.directoryRevision,
-        deadlineAt: row.deadlineAt.toISOString(),
+        dispatchDeadlineAt: row.dispatchDeadlineAt.toISOString(),
+        runtimeDeadlineAt: row.runtimeDeadlineAt?.toISOString() ?? null,
+        maxRuntimeMs: row.maxRuntimeMs,
+        runnerToken: row.runnerToken,
       };
       if (
         remoteExchangeBytes({ ...output, commands: [...output.commands, command] }, ctx) > 1048576

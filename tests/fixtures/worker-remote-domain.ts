@@ -160,7 +160,7 @@ assert(fence);
 const {
   operation: _operation,
   requestId: _requestId,
-  deadlineAt: _deadlineAt,
+  dispatchDeadlineAt: _dispatchDeadlineAt,
   directoryRevision: _directoryRevision,
   ...identity
 } = command;
@@ -239,7 +239,7 @@ const drainCommand = exchange().remote.commands[0]!;
 const {
   operation: _drainOperation,
   requestId: _drainRequest,
-  deadlineAt: _drainDeadline,
+  dispatchDeadlineAt: _drainDeadline,
   directoryRevision: _drainDirectory,
   ...drainIdentity
 } = drainCommand;

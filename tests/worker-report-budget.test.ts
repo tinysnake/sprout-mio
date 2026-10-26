@@ -79,7 +79,10 @@ function fixture() {
     authorizationGeneration: 1,
     fingerprint: "a".repeat(64),
     directoryRevision: null,
-    deadlineAt: new Date(Date.now() + 30000).toISOString(),
+    dispatchDeadlineAt: new Date(Date.now() + 30000).toISOString(),
+    runtimeDeadlineAt: null,
+    maxRuntimeMs: null,
+    runnerToken: null,
     operation,
   });
   return { key, session, dispatcher, remote, apply, command };

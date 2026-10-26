@@ -19,6 +19,12 @@ export const APP_ERROR_CODES = [
   "remote_request_conflict",
   "remote_grant_invalid",
   "remote_run_inactive",
+  "execution_log_gap",
+  "execution_log_cursor_stale",
+  "execution_log_unavailable",
+  "cancellation_not_found",
+  "cancellation_already_terminal",
+  "cancellation_delivery_unconfirmed",
 ] as const;
 /** 只允许登记的错误码，不接受未知字符串。 */
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];

@@ -115,7 +115,7 @@ export function RemoteExecutionCard({
         </span>
       </p>
       <p className="text-muted-foreground">
-        提交 {formatMoment(execution.createdAt)} · 截止 {formatMoment(execution.deadlineAt)}
+        提交 {formatMoment(execution.createdAt)} · 截止 {formatMoment(execution.dispatchDeadlineAt)}
         {execution.terminalAt ? ` · 终态 ${formatMoment(execution.terminalAt)}` : ""}
       </p>
       {reason && (

@@ -276,7 +276,7 @@ export class RemoteDispatcher {
         requestId: _requestId,
         operation: _operation,
         directoryRevision: _revision,
-        deadlineAt: _deadline,
+        dispatchDeadlineAt: _deadline,
         ...identity
       } = command;
       const entry: Entry = {
@@ -305,7 +305,7 @@ export class RemoteDispatcher {
       throw new AdmissionError("stale_generation");
     if (auth.state !== "active" || auth.holderInstanceId !== command.holderInstanceId)
       throw new AdmissionError("authorization_revoked");
-    if (Date.parse(command.deadlineAt) <= this.now()) throw new AdmissionError("deadline");
+    if (Date.parse(command.dispatchDeadlineAt) <= this.now()) throw new AdmissionError("deadline");
     if (!this.capability.remoteOperations.includes(command.operation.kind))
       throw new AdmissionError("capability_unavailable");
     if (
@@ -329,7 +329,7 @@ export class RemoteDispatcher {
     let started = false;
     const deadline = setTimeout(
       () => entry.controller.abort(),
-      Math.max(0, Date.parse(entry.command.deadlineAt) - this.now()),
+      Math.max(0, Date.parse(entry.command.dispatchDeadlineAt) - this.now()),
     );
     try {
       this.gate(entry);
@@ -469,7 +469,7 @@ export class RemoteDispatcher {
           : entry.controller.signal.aborted
             ? "authorization_revoked"
             : "executor_error";
-      const expired = this.now() >= Date.parse(entry.command.deadlineAt);
+      const expired = this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
       outcome = expired
         ? started
           ? "unknown"
@@ -488,7 +488,7 @@ export class RemoteDispatcher {
       requestId: _requestId,
       operation: _operation,
       directoryRevision: _revision,
-      deadlineAt: _deadline,
+      dispatchDeadlineAt: _deadline,
       ...identity
     } = entry.command;
     entry.report = { ...identity, phase: "terminal", drained: true, outcome, payload };

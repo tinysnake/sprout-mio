@@ -245,7 +245,7 @@ describe("P4b shared contracts", () => {
       operation: { kind: "shell", command: "true" },
       state: "succeeded",
       createdAt: at,
-      deadlineAt: "2026-10-24T00:00:10.000Z",
+      dispatchDeadlineAt: "2026-10-24T00:00:10.000Z",
       terminalAt: at,
       failureReason: null,
       result,
@@ -278,7 +278,7 @@ describe("P4b shared contracts", () => {
       requestId,
       operation: { kind: "shell", command: "true", cwd: "/tmp" },
       directoryRevision: 1,
-      deadlineAt: at,
+      dispatchDeadlineAt: at,
     };
     expect(remoteCommandSchema.safeParse(command).success).toBe(true);
     expect(

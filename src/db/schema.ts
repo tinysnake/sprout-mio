@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  blob,
   check,
   foreignKey,
   index,
@@ -15,9 +16,13 @@ import type { RunConfigSnapshot } from "../contracts/agent-run";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 import type { CapabilitySnapshot } from "../contracts/machine";
 import {
+  EXECUTION_LOG_STATES,
   REMOTE_EXECUTION_STATES,
   REMOTE_FAILURE_REASONS,
   REMOTE_OUTCOMES,
+  CANCELLATION_FAILURE_REASONS,
+  CANCELLATION_SIGNAL_OUTCOMES,
+  CANCELLATION_STATES,
 } from "../contracts/remote";
 import type { RemoteOperation, RemoteResultPayload } from "../contracts/remote";
 import type { McpConfig } from "../contracts/mcp";
@@ -816,7 +821,14 @@ export const remoteExecution = sqliteTable(
     directoryRevision: integer("directory_revision"),
     state: text("state", { enum: REMOTE_EXECUTION_STATES }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-    deadlineAt: integer("deadline_at", { mode: "timestamp_ms" }).notNull(),
+    dispatchDeadlineAt: integer("dispatch_deadline_at", { mode: "timestamp_ms" }).notNull(),
+    runtimeDeadlineAt: integer("runtime_deadline_at", { mode: "timestamp_ms" }),
+    maxRuntimeMs: integer("max_runtime_ms"),
+    runnerToken: text("runner_token"),
+    logState: text("log_state", { enum: EXECUTION_LOG_STATES }).notNull().default("none"),
+    producedThroughSeq: integer("produced_through_seq"),
+    acknowledgedThroughSeq: integer("acknowledged_through_seq"),
+    availableFromSeq: integer("available_from_seq"),
     dispatchConnectionGeneration: integer("dispatch_connection_generation"),
     dispatchSeq: integer("dispatch_seq"),
     dispatchedAt: integer("dispatched_at", { mode: "timestamp_ms" }),
@@ -848,11 +860,11 @@ export const remoteExecution = sqliteTable(
     check("remote_execution_check_6", sql`typeof(created_at)='integer' AND created_at>=0`),
     check(
       "remote_execution_check_7",
-      sql`typeof(deadline_at)='integer' AND deadline_at>created_at`,
+      sql`typeof(dispatch_deadline_at)='integer' AND dispatch_deadline_at>created_at`,
     ),
     check(
       "remote_execution_check_8",
-      sql`failure_reason IN ('stale_generation','not_holder','authorization_revoked','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
+      sql`failure_reason IS NULL OR failure_reason IN ('stale_generation','not_holder','authorization_revoked','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
     ),
     uniqueIndex("remote_execution_holder_instance_id_request_id_unique").on(
       t.holderInstanceId,
@@ -911,6 +923,188 @@ export const remoteExecution = sqliteTable(
         (state='succeeded' AND terminal_at IS NOT NULL AND typeof(terminal_at)='integer' AND terminal_at>=created_at AND failure_reason IS NULL) OR
         (state IN ('failed','rejected','timed_out','unknown') AND terminal_at IS NOT NULL AND typeof(terminal_at)='integer' AND terminal_at>=created_at AND failure_reason IS NOT NULL)`,
     ),
+    check(
+      "remote_execution_check_20",
+      sql`runner_token IS NULL OR (length(runner_token)=32 AND runner_token NOT GLOB '*[^0-9a-f]*')`,
+    ),
+    check(
+      "remote_execution_check_21",
+      sql`log_state IN ('none','partial','full','gap','truncated')`,
+    ),
+    check(
+      "remote_execution_check_22",
+      sql`(max_runtime_ms IS NULL AND runtime_deadline_at IS NULL) OR
+        (max_runtime_ms IS NOT NULL AND typeof(max_runtime_ms)='integer' AND max_runtime_ms BETWEEN 1 AND 9007199254740991
+          AND runtime_deadline_at IS NOT NULL AND typeof(runtime_deadline_at)='integer'
+          AND dispatched_at IS NOT NULL AND runtime_deadline_at>=dispatched_at)`,
+    ),
+    check(
+      "remote_execution_check_23",
+      sql`(produced_through_seq IS NULL OR (typeof(produced_through_seq)='integer' AND produced_through_seq>=1))
+        AND (acknowledged_through_seq IS NULL OR (typeof(acknowledged_through_seq)='integer' AND acknowledged_through_seq>=1))
+        AND (available_from_seq IS NULL OR (typeof(available_from_seq)='integer' AND available_from_seq>=1))
+        AND (acknowledged_through_seq IS NULL OR produced_through_seq IS NOT NULL)
+        AND (acknowledged_through_seq IS NULL OR produced_through_seq IS NULL OR acknowledged_through_seq<=produced_through_seq)
+        AND (available_from_seq IS NULL OR produced_through_seq IS NULL OR available_from_seq<=produced_through_seq+1)`,
+    ),
+    check(
+      "remote_execution_check_24",
+      sql`log_state='none' OR produced_through_seq IS NOT NULL`,
+    ),
+    check(
+      "remote_execution_check_25",
+      sql`log_state!='full' OR acknowledged_through_seq IS NOT NULL`,
+    ),
+  ],
+);
+
+/** 追加流：一行一个有序帧，或者一行只表达 gap。裁剪不新建表，靠 `available_from_seq` + gap 行。 */
+export const executionLogFrame = sqliteTable(
+  "execution_log_frame",
+  {
+    executionId: text("execution_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    authorizationGeneration: integer("authorization_generation").notNull(),
+    holderInstanceId: text("holder_instance_id").notNull(),
+    stream: text("stream", { enum: ["stdout", "stderr"] }).notNull(),
+    byteStart: integer("byte_start").notNull(),
+    byteEnd: integer("byte_end").notNull(),
+    payloadBytes: blob("payload_bytes", { mode: "buffer" }),
+    checksum: text("checksum").notNull(),
+    gapFromSeq: integer("gap_from_seq"),
+    gapToSeq: integer("gap_to_seq"),
+    durableAt: integer("durable_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    check(
+      "execution_log_frame_check_1",
+      sql`typeof(sequence)='integer' AND sequence BETWEEN 1 AND 9007199254740991`,
+    ),
+    check("execution_log_frame_check_2", sql`stream IN ('stdout','stderr')`),
+    check(
+      "execution_log_frame_check_3",
+      sql`typeof(byte_start)='integer' AND byte_start>=0 AND typeof(byte_end)='integer' AND byte_end>=byte_start`,
+    ),
+    check(
+      "execution_log_frame_check_4",
+      sql`payload_bytes IS NULL OR length(payload_bytes)<=16384`,
+    ),
+    check(
+      "execution_log_frame_check_5",
+      sql`length(checksum)=64 AND checksum NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    check("execution_log_frame_check_6", sql`typeof(durable_at)='integer' AND durable_at>=0`),
+    check(
+      "execution_log_frame_check_7",
+      sql`(payload_bytes IS NOT NULL AND gap_from_seq IS NULL AND gap_to_seq IS NULL) OR
+        (payload_bytes IS NULL AND gap_from_seq IS NOT NULL AND gap_to_seq IS NOT NULL
+          AND typeof(gap_from_seq)='integer' AND typeof(gap_to_seq)='integer'
+          AND gap_from_seq>=1 AND gap_to_seq>=gap_from_seq)`,
+    ),
+    primaryKey({ columns: [t.executionId, t.sequence] }),
+    foreignKey({
+      columns: [
+        t.executionId,
+        t.projectId,
+        t.machineId,
+        t.authorizationGeneration,
+        t.holderInstanceId,
+      ],
+      foreignColumns: [
+        remoteExecution.id,
+        remoteExecution.projectId,
+        remoteExecution.machineId,
+        remoteExecution.authorizationGeneration,
+        remoteExecution.holderInstanceId,
+      ],
+    }),
+  ],
+);
+
+/** 取消是独立于执行与租约的事实：`delivered` 只证明意图送达，不证明进程已停。 */
+export const executionCancellation = sqliteTable(
+  "execution_cancellation",
+  {
+    id: text("id").primaryKey().notNull(),
+    executionId: text("execution_id").notNull(),
+    requestId: text("request_id").notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    authorizationGeneration: integer("authorization_generation").notNull(),
+    holderInstanceId: text("holder_instance_id").notNull(),
+    actorInstanceId: text("actor_instance_id").notNull(),
+    state: text("state", { enum: CANCELLATION_STATES }).notNull(),
+    signalOutcome: text("signal_outcome", { enum: CANCELLATION_SIGNAL_OUTCOMES })
+      .notNull()
+      .default("none"),
+    requestedAt: integer("requested_at", { mode: "timestamp_ms" }).notNull(),
+    deliveredAt: integer("delivered_at", { mode: "timestamp_ms" }),
+    exitedAt: integer("exited_at", { mode: "timestamp_ms" }),
+    failureReason: text("failure_reason", { enum: CANCELLATION_FAILURE_REASONS }),
+  },
+  (t) => [
+    check(
+      "execution_cancellation_check_1",
+      sql`state IN ('requested','delivered','exited_observed','already_exited','failed','unknown')`,
+    ),
+    check(
+      "execution_cancellation_check_2",
+      sql`signal_outcome IN ('none','term_delivered','kill_delivered')`,
+    ),
+    check(
+      "execution_cancellation_check_3",
+      sql`typeof(requested_at)='integer' AND requested_at>=0`,
+    ),
+    check(
+      "execution_cancellation_check_4",
+      sql`delivered_at IS NULL OR (typeof(delivered_at)='integer' AND delivered_at>=requested_at)`,
+    ),
+    check(
+      "execution_cancellation_check_5",
+      sql`exited_at IS NULL OR (typeof(exited_at)='integer' AND delivered_at IS NOT NULL AND exited_at>=delivered_at)`,
+    ),
+    check(
+      "execution_cancellation_check_6",
+      sql`failure_reason IS NULL OR failure_reason IN ('signal_failed','delivery_unconfirmed')`,
+    ),
+    check(
+      "execution_cancellation_check_7",
+      sql`(state='requested' AND delivered_at IS NULL AND exited_at IS NULL AND failure_reason IS NULL AND signal_outcome='none') OR
+        (state='delivered' AND delivered_at IS NOT NULL AND exited_at IS NULL AND failure_reason IS NULL) OR
+        (state IN ('exited_observed','already_exited') AND delivered_at IS NOT NULL AND exited_at IS NOT NULL AND failure_reason IS NULL) OR
+        (state='failed' AND delivered_at IS NOT NULL AND exited_at IS NULL AND failure_reason IS NOT NULL) OR
+        (state='unknown' AND exited_at IS NULL AND failure_reason IS NOT NULL)`,
+    ),
+    check(
+      "execution_cancellation_check_8",
+      sql`length(request_id)>7 AND substr(request_id,1,7)='cancel:'`,
+    ),
+    uniqueIndex("execution_cancellation_holder_instance_id_request_id_unique").on(
+      t.holderInstanceId,
+      t.requestId,
+    ),
+    uniqueIndex(
+      "execution_cancellation_id_project_id_machine_id_authorization_generation_holder_instance_id_unique",
+    ).on(t.id, t.projectId, t.machineId, t.authorizationGeneration, t.holderInstanceId),
+    foreignKey({
+      columns: [t.executionId],
+      foreignColumns: [remoteExecution.id],
+    }),
+    foreignKey({
+      columns: [t.projectId, t.machineId, t.authorizationGeneration, t.holderInstanceId],
+      foreignColumns: [
+        leaseAuthorization.projectId,
+        leaseAuthorization.machineId,
+        leaseAuthorization.generation,
+        leaseAuthorization.holderInstanceId,
+      ],
+    }),
+    foreignKey({
+      columns: [t.actorInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
+    }),
   ],
 );
 

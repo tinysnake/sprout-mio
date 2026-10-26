@@ -76,7 +76,10 @@ function fixture() {
     authorizationGeneration: generation,
     fingerprint: "a".repeat(64),
     directoryRevision: null,
-    deadlineAt: new Date(Date.now() + 30000).toISOString(),
+    dispatchDeadlineAt: new Date(Date.now() + 30000).toISOString(),
+    runtimeDeadlineAt: null,
+    maxRuntimeMs: null,
+    runnerToken: null,
     operation,
   });
   return { key, session, dispatcher, output, apply, command };
@@ -155,7 +158,7 @@ test("old generation, wrong Machine, expired deadline, and cross Project admissi
     if (mismatch === "generation") command.authorizationGeneration = 2;
     if (mismatch === "machine") command.machineId = newId(ID_PREFIXES.machine);
     if (mismatch === "project") command.projectId = newId(ID_PREFIXES.project);
-    if (mismatch === "deadline") command.deadlineAt = new Date(Date.now() - 1).toISOString();
+    if (mismatch === "deadline") command.dispatchDeadlineAt = new Date(Date.now() - 1).toISOString();
     if (mismatch === "machine") expect(() => f.apply(1, f.output([command]))).toThrow();
     else {
       f.apply(1, f.output([command]));
@@ -244,7 +247,7 @@ test("shell deadline ends waiting with unknown/deadline and leaves the process a
     cwd: root,
     waitMs: 10000,
   });
-  command.deadlineAt = new Date(Date.now() + 250).toISOString();
+  command.dispatchDeadlineAt = new Date(Date.now() + 250).toISOString();
   f.apply(1, f.output([command]));
   const report = await terminal(f.dispatcher, command.executionId);
   expect(report.outcome).toBe("unknown");
