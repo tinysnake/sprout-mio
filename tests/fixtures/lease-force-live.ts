@@ -296,6 +296,9 @@ try {
   const survivor = join(directory, "preserved-file");
   const pidPath = join(directory, "survivor-pid");
   const late = join(directory, "late-side-effect");
+  // 副作用由测试放行，而不是靠固定 sleep 与 UI 流程竞速：这个 shell 一直活到
+  // Human 强制收回之后，再由放行文件让它落地，因此旧副作用仍能写出而不依赖 25 秒窗口。
+  const ackPath = join(directory, "side-effect-go");
   const sentinel = join(directory, "old-generation-must-not-execute");
   const submit = (input: unknown) => good<ExecutionView>("execution_submit", input);
   const execution = await submit({
@@ -306,7 +309,7 @@ try {
       kind: "shell",
       cwd: directory,
       waitMs: 10000,
-      command: `printf '%s' "$$" > '${pidPath}'; printf x > '${survivor}'; sleep 25; printf x > '${late}'; sleep 300`,
+      command: `printf '%s' "$$" > '${pidPath}'; printf x > '${survivor}'; while [ ! -f '${ackPath}' ]; do sleep 0.2; done; printf x > '${late}'; sleep 300`,
     },
   });
   await until(() => existsSync(pidPath) && existsSync(survivor), "real shell started before kill");
@@ -409,7 +412,8 @@ try {
   ])
     await rejected("lease_mutate", input, "lease_fencing", grant, 200);
   pass("ordinary release and handoff still return lease_fencing without Human override");
-  await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
+  // 租约事实只出现在独立租约路由上：Machine 设置页现在只列绑定。
+  await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   const widget = page.getByTestId("lease-fencing-facts").first();
   await widget.waitFor();
   await page.setViewportSize({ width: 1200, height: 1000 });
@@ -509,10 +513,12 @@ try {
   );
   process.kill(survivorPid, 0);
   assert.equal(statSync(survivor).size, 1);
+  // 强制收回已完成、新持有者已拿到租约，此刻才让旧 shell 落地副作用。
+  writeFileSync(ackPath, "go");
   await until(
     () => existsSync(late),
     "old shell continues its side effect after Worker SIGKILL",
-    30000,
+    60000,
   );
   process.kill(survivorPid, 0);
   assert.equal(statSync(late).size, 1);
