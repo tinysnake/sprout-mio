@@ -378,7 +378,7 @@ export function applyExecutionRecovery(
     // runner 只报了退出时间，没有退出事实：保留可恢复标记，不猜终态。
     db.update(remoteExecution)
       .set({ state: "unknown", failureReason: "worker_lost", terminalAt: ctx.now })
-      .where(and(eq(remoteExecution.id, row.id), isNull(remoteExecution.terminalAt)))
+      .where(eq(remoteExecution.id, row.id))
       .run();
     return;
   }
@@ -427,7 +427,13 @@ export function applyExecutionRecovery(
       drainedAt: row.drainedAt ?? ctx.now,
       terminalAt: ctx.now,
     })
-    .where(and(eq(remoteExecution.id, row.id), isNull(remoteExecution.terminalAt)))
+    // 单向性：只允许从可恢复状态进入已知终态，已确定的终态不回头。
+    .where(
+      and(
+        eq(remoteExecution.id, row.id),
+        inArray(remoteExecution.state, [...RECOVERABLE_STATES]),
+      ),
+    )
     .run();
   db.insert(diagnosticEvent)
     .values({
