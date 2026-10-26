@@ -198,7 +198,7 @@ try {
     directory_revision: null,
     state: "queued",
     created_at: 10,
-    deadline_at: 20,
+    dispatch_deadline_at: 20,
   };
   rejects("remote_execution", { ...execution, authorization_generation: 0 }, /CHECK/);
   rejects("remote_execution", { ...execution, authorization_generation: 2 }, /FOREIGN KEY/);
@@ -336,7 +336,11 @@ try {
     ["lease_authorization", authorization, ["generation", "issued_at"]],
     ["lease_mutation", mutation, ["expected_generation", "created_at"]],
     ["worker_exchange_frame", frame, ["connection_generation", "seq", "created_at"]],
-    ["remote_execution", execution, ["authorization_generation", "created_at", "deadline_at"]],
+    [
+      "remote_execution",
+      execution,
+      ["authorization_generation", "created_at", "dispatch_deadline_at"],
+    ],
     ["execution_result", result, ["recorded_at"]],
     ["remote_tool_grant", grant, ["issued_at", "expires_at"]],
   ];

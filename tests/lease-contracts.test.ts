@@ -96,7 +96,7 @@ describe("P4b shared contracts", () => {
     ).toBe(false);
     for (const schema of Object.values(remoteToolInputSchemas))
       expect(schema.safeParse({}).success).toBe(false);
-    expect(new Set(REMOTE_ERROR_CODES).size).toBe(17);
+    expect(new Set(REMOTE_ERROR_CODES).size).toBe(23);
     expect([...REMOTE_ERROR_CODES]).toEqual([...humanContracts.APP_ERROR_CODES]);
   });
 
@@ -246,9 +246,20 @@ describe("P4b shared contracts", () => {
       state: "succeeded",
       createdAt: at,
       dispatchDeadlineAt: "2026-10-24T00:00:10.000Z",
+      runtimeDeadlineAt: null,
+      maxRuntimeMs: null,
+      dispatchConnectionGeneration: 1,
+      dispatchSeq: 1,
+      dispatchedAt: "2026-10-24T00:00:01.000Z",
+      drainedAt: at,
+      payloadHash: "a".repeat(64),
       terminalAt: at,
       failureReason: null,
       result,
+      logState: "none",
+      producedThroughSequence: null,
+      acknowledgedThroughSequence: null,
+      availableFromSequence: null,
     };
     expect(executionViewSchema.safeParse(view).success).toBe(true);
     for (const state of ["invented", "running", "failed"])

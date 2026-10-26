@@ -886,6 +886,8 @@ export const remoteExecution = sqliteTable(
       columns: [t.runId, t.holderInstanceId, t.projectId, t.chatId],
       foreignColumns: [agentRun.id, agentRun.instanceId, agentRun.projectId, agentRun.chatId],
     }),
+    // 投递帧在同一 immediate 事务里后写，因此 0013 把这条外键写成
+    // DEFERRABLE INITIALLY DEFERRED；drizzle 的 schema DSL 不表达该修饰，SQL 才是权威。
     foreignKey({
       columns: [t.machineId, t.dispatchConnectionGeneration, t.dispatchSeq],
       foreignColumns: [
@@ -947,10 +949,7 @@ export const remoteExecution = sqliteTable(
         AND (acknowledged_through_seq IS NULL OR produced_through_seq IS NULL OR acknowledged_through_seq<=produced_through_seq)
         AND (available_from_seq IS NULL OR produced_through_seq IS NULL OR available_from_seq<=produced_through_seq+1)`,
     ),
-    check(
-      "remote_execution_check_24",
-      sql`log_state='none' OR produced_through_seq IS NOT NULL`,
-    ),
+    check("remote_execution_check_24", sql`log_state='none' OR produced_through_seq IS NOT NULL`),
     check(
       "remote_execution_check_25",
       sql`log_state!='full' OR acknowledged_through_seq IS NOT NULL`,

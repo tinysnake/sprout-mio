@@ -158,7 +158,8 @@ test("old generation, wrong Machine, expired deadline, and cross Project admissi
     if (mismatch === "generation") command.authorizationGeneration = 2;
     if (mismatch === "machine") command.machineId = newId(ID_PREFIXES.machine);
     if (mismatch === "project") command.projectId = newId(ID_PREFIXES.project);
-    if (mismatch === "deadline") command.dispatchDeadlineAt = new Date(Date.now() - 1).toISOString();
+    if (mismatch === "deadline")
+      command.dispatchDeadlineAt = new Date(Date.now() - 1).toISOString();
     if (mismatch === "machine") expect(() => f.apply(1, f.output([command]))).toThrow();
     else {
       f.apply(1, f.output([command]));

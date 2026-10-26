@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { newId, ID_PREFIXES } from "../src/contracts/ids";
 import { APP_ERROR_CODES } from "../src/contracts/result";
 import {
@@ -23,7 +23,7 @@ import {
   remoteExchangeInputSchema,
   remoteExchangeOutputSchema,
 } from "../src/contracts/remote";
-import { workerExchangeInput, workerExchangeResponseSchema } from "../src/contracts/worker";
+import { workerExchangeInput } from "../src/contracts/worker";
 
 const projectId = newId(ID_PREFIXES.project);
 const machineId = newId(ID_PREFIXES.machine);
@@ -91,9 +91,9 @@ describe("execution log and cancellation contracts", () => {
     // 上限：单帧 16384 bytes，单 exchange 8 帧。
     expect(EXECUTION_LOG_FRAME_MAX_BYTES).toBe(16384);
     expect(EXECUTION_LOG_FRAMES_PER_EXCHANGE).toBe(8);
-    expect(
-      executionLogFrameSchema.safeParse({ ...frame, bytes: "x".repeat(16385) }).success,
-    ).toBe(false);
+    expect(executionLogFrameSchema.safeParse({ ...frame, bytes: "x".repeat(16385) }).success).toBe(
+      false,
+    );
     expect(
       remoteExchangeInputSchema.safeParse({
         results: [],
@@ -140,9 +140,9 @@ describe("execution log and cancellation contracts", () => {
       termWaitMs: 2000,
     };
     expect(executionCancelSchema.safeParse(cancel).success).toBe(true);
-    expect(remoteExchangeOutputSchema.safeParse({ ...downlink, cancellations: [cancel] }).success).toBe(
-      true,
-    );
+    expect(
+      remoteExchangeOutputSchema.safeParse({ ...downlink, cancellations: [cancel] }).success,
+    ).toBe(true);
     // 下行 ACK 方向：出现在 output，不在 input。
     expect(
       remoteExchangeOutputSchema.safeParse({
@@ -174,9 +174,9 @@ describe("execution log and cancellation contracts", () => {
     // 取消策略与等待上限封闭。
     expect(executionCancelSchema.safeParse({ ...cancel, termWaitMs: 10001 }).success).toBe(false);
     expect(executionCancelSchema.safeParse({ ...cancel, policy: "kill_all" }).success).toBe(false);
-    expect(executionCancelSchema.safeParse({ ...cancel, runnerToken: "a".repeat(31) }).success).toBe(
-      false,
-    );
+    expect(
+      executionCancelSchema.safeParse({ ...cancel, runnerToken: "a".repeat(31) }).success,
+    ).toBe(false);
   });
 
   it("counts uplink log frames and recoveries in the 1 MiB worker exchange budget", () => {
@@ -199,7 +199,10 @@ describe("execution log and cancellation contracts", () => {
     // 恢复到 1 MiB 之内可以通过。
     const frameBytes = JSON.stringify(frame).length;
     const budget = Math.floor(1048576 * 0.98);
-    const count = Math.min(EXECUTION_LOG_FRAMES_PER_EXCHANGE, Math.floor(budget / (frameBytes + 1)));
+    const count = Math.min(
+      EXECUTION_LOG_FRAMES_PER_EXCHANGE,
+      Math.floor(budget / (frameBytes + 1)),
+    );
     const logFrames = Array.from({ length: count }, (_, index) => ({
       ...frame,
       sequence: index + 1,
@@ -310,7 +313,9 @@ describe("execution log and cancellation contracts", () => {
     expect(executionRecoverySchema.safeParse({ ...recovery, runnerToken: undefined }).success).toBe(
       false,
     );
-    expect(executionRecoverySchema.safeParse({ ...recovery, runnerToken: "zz" }).success).toBe(false);
+    expect(executionRecoverySchema.safeParse({ ...recovery, runnerToken: "zz" }).success).toBe(
+      false,
+    );
   });
 
   it("exposes the log cursor API and keeps log state orthogonal to execution state", () => {
@@ -322,10 +327,14 @@ describe("execution log and cancellation contracts", () => {
       limitBytes: 65536,
     };
     expect(executionLogReadInputSchema.safeParse(read).success).toBe(true);
-    expect(executionLogReadInputSchema.safeParse({ ...read, limitBytes: 65537 }).success).toBe(false);
+    expect(executionLogReadInputSchema.safeParse({ ...read, limitBytes: 65537 }).success).toBe(
+      false,
+    );
     expect(
-      remoteAgentRequestSchema.safeParse({ version: 2, call: { type: "execution_log_read", input: read } })
-        .success,
+      remoteAgentRequestSchema.safeParse({
+        version: 2,
+        call: { type: "execution_log_read", input: read },
+      }).success,
     ).toBe(true);
     const view = {
       ...key,
@@ -364,13 +373,13 @@ describe("execution log and cancellation contracts", () => {
     };
     expect(executionCancellationViewSchema.safeParse(cancellationView).success).toBe(true);
     // delivered 不显示为已停止：取消视图没有「已退出」的字段。
-    expect(executionCancellationViewSchema.safeParse({ ...cancellationView, exitedAt: at }).success).toBe(
-      true,
-    );
+    expect(
+      executionCancellationViewSchema.safeParse({ ...cancellationView, exitedAt: at }).success,
+    ).toBe(true);
     for (const state of CANCELLATION_STATES)
-      expect(executionCancellationViewSchema.safeParse({ ...cancellationView, state }).success).toBe(
-        true,
-      );
+      expect(
+        executionCancellationViewSchema.safeParse({ ...cancellationView, state }).success,
+      ).toBe(true);
     expect(
       executionCancellationViewSchema.safeParse({ ...cancellationView, state: "stopped" }).success,
     ).toBe(false);
@@ -421,17 +430,26 @@ describe("execution log and cancellation contracts", () => {
       }).success,
     ).toBe(true);
     expect(
-      executionViewSchema.safeParse({ ...executionView, logState: "full", acknowledgedThroughSequence: null })
-        .success,
+      executionViewSchema.safeParse({
+        ...executionView,
+        logState: "full",
+        acknowledgedThroughSequence: null,
+      }).success,
     ).toBe(false);
     expect(
-      executionViewSchema.safeParse({ ...executionView, logState: "partial", producedThroughSequence: null })
-        .success,
+      executionViewSchema.safeParse({
+        ...executionView,
+        logState: "partial",
+        producedThroughSequence: null,
+      }).success,
     ).toBe(false);
     // 下发窗口与运行上限可区分：只有下发窗口时没有运行上限。
     expect(
-      executionViewSchema.safeParse({ ...executionView, runtimeDeadlineAt: null, maxRuntimeMs: null })
-        .success,
+      executionViewSchema.safeParse({
+        ...executionView,
+        runtimeDeadlineAt: null,
+        maxRuntimeMs: null,
+      }).success,
     ).toBe(true);
     expect(
       executionViewSchema.safeParse({
@@ -549,13 +567,19 @@ describe("execution log and cancellation contracts", () => {
         ["--import", "tsx", "tests/fixtures/execution-log-contracts.ts"],
         {
           cwd: process.cwd(),
-          env: { ...process.env, DATABASE_URL: join(directory, "fixture.sqlite"), NODE_ENV: "test" },
+          env: {
+            ...process.env,
+            DATABASE_URL: join(directory, "fixture.sqlite"),
+            NODE_ENV: "test",
+          },
           encoding: "utf8",
         },
       );
       expect(result.stderr).toBe("");
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain("PASS 0013 replays without duplication and keeps FK integrity");
+      expect(result.stdout).toContain(
+        "PASS 0013 replays without duplication and keeps FK integrity",
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

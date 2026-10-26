@@ -92,7 +92,7 @@ CREATE TABLE `__new_remote_execution` (
 	`failure_reason` text,
 	FOREIGN KEY (`project_id`,`machine_id`,`authorization_generation`,`holder_instance_id`) REFERENCES `lease_authorization`(`project_id`,`machine_id`,`generation`,`holder_instance_id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`run_id`,`holder_instance_id`,`project_id`,`chat_id`) REFERENCES `agent_run`(`id`,`instance_id`,`project_id`,`chat_id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`machine_id`,`dispatch_connection_generation`,`dispatch_seq`) REFERENCES `worker_exchange_frame`(`machine_id`,`connection_generation`,`seq`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`machine_id`,`dispatch_connection_generation`,`dispatch_seq`) REFERENCES `worker_exchange_frame`(`machine_id`,`connection_generation`,`seq`) ON UPDATE no action ON DELETE no action DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT "remote_execution_check_1" CHECK(typeof(authorization_generation)='integer' AND authorization_generation BETWEEN 1 AND 9007199254740991),
 	CONSTRAINT "remote_execution_check_2" CHECK(length(payload_hash)=64 AND payload_hash NOT GLOB '*[^0-9a-f]*'),
 	CONSTRAINT "remote_execution_check_3" CHECK(CASE WHEN json_valid(operation_json) THEN json_type(operation_json)='object' ELSE 0 END),

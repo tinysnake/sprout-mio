@@ -277,6 +277,9 @@ export class RemoteDispatcher {
         operation: _operation,
         directoryRevision: _revision,
         dispatchDeadlineAt: _deadline,
+        runtimeDeadlineAt: _runtimeDeadline,
+        maxRuntimeMs: _maxRuntime,
+        runnerToken: _runnerToken,
         ...identity
       } = command;
       const entry: Entry = {
@@ -489,6 +492,9 @@ export class RemoteDispatcher {
       operation: _operation,
       directoryRevision: _revision,
       dispatchDeadlineAt: _deadline,
+      runtimeDeadlineAt: _runtimeDeadline,
+      maxRuntimeMs: _maxRuntime,
+      runnerToken: _runnerToken,
       ...identity
     } = entry.command;
     entry.report = { ...identity, phase: "terminal", drained: true, outcome, payload };

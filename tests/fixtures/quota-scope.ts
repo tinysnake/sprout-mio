@@ -111,7 +111,7 @@ if (process.argv[2] === "independence") {
   const deadline = Math.max(a!.now.getTime(), b!.now.getTime()) + 1000;
   const afterDeadline = new Date(deadline + 1);
   sqlite
-    .prepare("UPDATE remote_execution SET deadline_at=? WHERE id IN (?,?)")
+    .prepare("UPDATE remote_execution SET dispatch_deadline_at=? WHERE id IN (?,?)")
     .run(deadline, firstA.executionId, firstB.executionId);
   submit(a, afterDeadline); // Reclaims only A's expired slot; B must remain untouched.
   const row = (id: string) =>

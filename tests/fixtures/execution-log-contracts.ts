@@ -322,7 +322,11 @@ try {
   rejects("execution_log_frame", { ...frame, sequence: 3, gap_to_seq: 5 }, /CHECK/);
   rejects("execution_log_frame", { ...gap, sequence: 4, payload_bytes: Buffer.from("x") }, /CHECK/);
   rejects("execution_log_frame", { ...gap, sequence: 5, gap_from_seq: null }, /CHECK/);
-  rejects("execution_log_frame", { ...frame, sequence: 6, payload_bytes: Buffer.alloc(16385) }, /CHECK/);
+  rejects(
+    "execution_log_frame",
+    { ...frame, sequence: 6, payload_bytes: Buffer.alloc(16385) },
+    /CHECK/,
+  );
   rejects("execution_log_frame", { ...frame, sequence: 7, byte_end: -1 }, /CHECK/);
   rejects("execution_log_frame", { ...frame, sequence: 8, checksum: "D".repeat(64) }, /CHECK/);
   rejects("execution_log_frame", { ...frame, sequence: 1 }, /UNIQUE|PRIMARY/);
@@ -366,12 +370,22 @@ try {
   );
   rejects(
     "execution_cancellation",
-    { ...cancellation, id: "cross-machine", machine_id: "other-machine", request_id: "cancel:a:req_cross2" },
+    {
+      ...cancellation,
+      id: "cross-machine",
+      machine_id: "other-machine",
+      request_id: "cancel:a:req_cross2",
+    },
     /FOREIGN KEY/,
   );
   rejects(
     "execution_cancellation",
-    { ...cancellation, id: "cross-actor", actor_instance_id: "instance-b", request_id: "cancel:a:req_cross3" },
+    {
+      ...cancellation,
+      id: "cross-actor",
+      actor_instance_id: "instance-b",
+      request_id: "cancel:a:req_cross3",
+    },
     /FOREIGN KEY/,
   );
   rejects(
@@ -418,9 +432,7 @@ try {
       /UNIQUE/,
     );
   });
-  console.log(
-    "PASS cancel: namespace cannot collide with public req_ keys under one holder",
-  );
+  console.log("PASS cancel: namespace cannot collide with public req_ keys under one holder");
   for (const changes of [
     { state: "delivered", delivered_at: null },
     { state: "delivered", delivered_at: 15 },
@@ -474,10 +486,7 @@ try {
   // 9. 迁移重放保持可用且外键完整。
   migrateDatabase(databaseUrl);
   assert.deepEqual(sqlite.pragma("foreign_key_check"), []);
-  assert.deepEqual(
-    sqlite.prepare("SELECT count(*) AS n FROM execution_log_frame").get(),
-    { n: 2 },
-  );
+  assert.deepEqual(sqlite.prepare("SELECT count(*) AS n FROM execution_log_frame").get(), { n: 2 });
   console.log("PASS 0013 replays without duplication and keeps FK integrity");
 } finally {
   sqlite.close();

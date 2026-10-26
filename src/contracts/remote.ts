@@ -219,7 +219,8 @@ export const executionViewSchema = leaseKeySchema
         (value.result.kind !== value.operation.kind ||
           !terminal ||
           !validOutcome(value.state as (typeof REMOTE_OUTCOMES)[number], value.result) ||
-          ("failureReason" in value.result && value.result.failureReason !== value.failureReason))) ||
+          ("failureReason" in value.result &&
+            value.result.failureReason !== value.failureReason))) ||
       // 下发窗口与运行上限是两个独立事实；未下发时不能有运行上限。
       (value.runtimeDeadlineAt !== null &&
         (value.maxRuntimeMs === null ||
@@ -256,9 +257,9 @@ export const remoteCommandSchema = z
     operation: dispatchedOperationSchema,
     directoryRevision: positiveSafeIntegerSchema.nullable(),
     dispatchDeadlineAt: timestampSchema,
-    runtimeDeadlineAt: timestampSchema.nullable(),
-    maxRuntimeMs: positiveSafeIntegerSchema.nullable(),
-    runnerToken: runnerTokenSchema.nullable(),
+    runtimeDeadlineAt: timestampSchema.nullable().default(null),
+    maxRuntimeMs: positiveSafeIntegerSchema.nullable().default(null),
+    runnerToken: runnerTokenSchema.nullable().default(null),
   })
   .refine(
     (value) =>

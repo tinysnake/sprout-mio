@@ -165,6 +165,8 @@ assert.deepEqual(configuration.remote, {
   fences: [],
   resultAcks: [],
   fenceAcks: [],
+  logAcks: [],
+  cancellations: [],
   mcp: [],
   mcpCursors: [],
 });
@@ -249,6 +251,8 @@ assert.deepEqual(supersededDrain.remote, {
   fences: [],
   resultAcks: [],
   fenceAcks: [],
+  logAcks: [],
+  cancellations: [],
   mcp: [],
   mcpCursors: [],
 });
