@@ -294,6 +294,11 @@ export function ProjectLeaseActions({
             收回租约
           </Button>
         </div>
+        {!chatId && machineId && targetInstanceId && (
+          <p className="text-xs text-muted-foreground" data-testid="lease-handoff-chat-required">
+            请先在上方选择执行请求的 Chat，再请求分身交接。
+          </p>
+        )}
         {pending && (
           <p role="status" className="text-xs text-muted-foreground">
             等待服务端租约收据…

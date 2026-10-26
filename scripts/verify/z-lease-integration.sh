@@ -181,7 +181,18 @@ try {
   // Machine 详情页不要求重选目标：目标就是当前这台。
   assert.equal(await page.getByTestId('machine-lease-section-overview-mutation-machine').count(),0,'no machine picker on the machine page');
   assert((await page.getByTestId('machine-lease-section-overview-mutation-target').innerText()).includes('Integration Mac'),'fixed target names the current Machine');
+  await page.getByTestId('lease-transfer-target').waitFor();
+  await page.getByTestId('lease-transfer-target').selectOption({ index: 1 });
+  const handoffWithoutChat=page.getByRole('button',{name:'请求分身交接'});
+  assert((await page.getByTestId('lease-transfer-machine').innerText()).includes('Integration Mac'));
+  assert.notEqual(await page.getByTestId('lease-transfer-target').inputValue(),'');
+  assert.equal(await handoffWithoutChat.isDisabled(),true,'handoff waits for explicit Chat selection');
+  assert.equal(await page.getByTestId('lease-handoff-chat-required').innerText(),'请先在上方选择执行请求的 Chat，再请求分身交接。');
+  await page.screenshot({path:join(evidence,'handoff-needs-chat.png'),fullPage:true});
   await page.getByTestId('lease-chat-select').selectOption(chatId);
+  assert.equal(await handoffWithoutChat.isEnabled(),true,'handoff is enabled after selecting a Chat');
+  assert.equal(await page.getByTestId('lease-handoff-chat-required').count(),0);
+  await page.screenshot({path:join(evidence,'handoff-chat-selected.png'),fullPage:true});
   const uiRequestIds=new Set();
   page.on('request',request=>{
     if(request.method()==='POST' && request.url().includes(ids.getLeaseRequestFn)) {
