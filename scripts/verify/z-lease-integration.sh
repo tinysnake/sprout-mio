@@ -116,11 +116,35 @@ try {
   assert.equal(await page.getByTestId('machine-lease-detail').count(),0);
   assert.equal(await page.getByTestId('machine-remote-executions').count(),0);
   assert.equal(await page.getByTestId('machine-lease-link').first().getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
-  // 带 Project 的 Machine 设置仍可编辑绑定，并通过页头入口导航到独立租约页。
+  assert.equal(await page.getByTestId('machine-lease-list').count(),1,'Machine details show the Project × Machine lease list');
+  assert.equal(await page.getByTestId('machine-lease-jump').count(),0,'no per-context lease action in the page header');
+  const machineDetailsRoute = `${base}/machines/${machineId}`;
+  for (const viewport of [{width:390,height:844},{width:1200,height:900}]) {
+    await page.setViewportSize(viewport);
+    await page.goto(machineDetailsRoute);
+    const leaseList = page.getByTestId('machine-lease-list');
+    await leaseList.waitFor();
+    assert((await page.getByTestId('machine-lease-link').first().innerText()).includes('Lease integration'),'Project identity is visible on Machine details');
+    assert.equal(await page.getByTestId('machine-lease-link').first().getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
+    const layout = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="machine-lease-list"]');
+      const row = list?.querySelector('a[data-testid="machine-lease-link"]');
+      const bounds = row?.getBoundingClientRect();
+      return {scrollWidth:document.documentElement.scrollWidth,innerWidth:window.innerWidth,rowLeft:bounds?.left,rowRight:bounds?.right};
+    });
+    assert(layout.scrollWidth <= layout.innerWidth + 1,`no horizontal overflow at ${viewport.width}px`);
+    assert(layout.rowLeft !== undefined && layout.rowLeft >= 0 && layout.rowRight <= viewport.width + 1,`lease row stays within ${viewport.width}px viewport`);
+    await page.screenshot({path:join(evidence,`machine-details-leases-${viewport.width}.png`)});
+  }
+  await page.getByTestId('machine-lease-link').click();
+  await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('projectId'),projectId,'lease entry preserves its Project context');
+  // 带 Project 的 Machine 设置仍可编辑绑定，租约列表从绑定上下文进入。
   await page.goto(`${base}/machines/${machineId}?projectId=${projectId}`);
   await page.getByTestId('machine-binding-form').waitFor();
-  assert.equal(await page.getByTestId('machine-lease-jump').getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
-  await page.getByTestId('machine-lease-jump').click();
+  assert.equal(await page.getByTestId('machine-lease-link').first().getAttribute('href'),`/machines/${machineId}/lease?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-link').click();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
   pass('lease context required and Machine settings entry navigates to standalone lease route');
@@ -136,10 +160,24 @@ try {
   for (const id of ['machine-settings-group','machine-connection-section','machine-shells','machine-root-section','machine-bindings','machine-restart-section','machine-binding-form']) {
     assert.equal(await page.getByTestId(id).count(),0,`lease route must exclude ${id}`);
   }
-  // 页头的租约详情按钮把租约区块滚到可见处并给出可见焦点。
-  await page.getByTestId('machine-lease-jump').click();
-  await page.waitForFunction(()=>document.activeElement?.closest('[data-testid="machine-lease-detail"]')!==null,null,{timeout:15000});
-  pass('Project settings lease entry deep-links to the Machine lease block');
+  assert.equal(await page.getByTestId('machine-lease-jump').count(),0,'lease page has no self-navigation action');
+  await page.goBack();
+  await page.waitForURL(`**/projects/${projectId}/settings`);
+  await page.goForward();
+  await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
+  await page.reload();
+  await page.getByTestId('machine-lease-detail').waitFor();
+  await page.getByTestId('machine-detail-back').click();
+  await page.waitForURL(`**/projects/${projectId}/settings`);
+  pass('Project settings entry preserves browser back/forward and lease refresh route');
+  await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
+  await page.getByTestId('machine-lease-detail').waitFor();
+  await page.reload();
+  await page.getByTestId('machine-detail-back').click();
+  await page.waitForURL(`**/projects/${projectId}/settings`);
+  pass('direct lease route refresh uses Project settings fallback');
+  await page.getByTestId('lease-manage-link').first().click();
+  await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   // Machine 详情页不要求重选目标：目标就是当前这台。
   assert.equal(await page.getByTestId('machine-lease-section-overview-mutation-machine').count(),0,'no machine picker on the machine page');
   assert((await page.getByTestId('machine-lease-section-overview-mutation-target').innerText()).includes('Integration Mac'),'fixed target names the current Machine');

@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineLeasePanel } from "../../components/machine/machine-lease";
@@ -32,25 +32,27 @@ function MachineLeasePage() {
   const data = Route.useLoaderData();
   const { machineId } = Route.useParams();
   const { projectId } = Route.useSearch();
+  const navigate = useNavigate();
   const router = useMachineRefresh();
   const { enrollment, setEnrollment } = useMachineEnrollment();
-  const back = projectId ? (
-    <Link
-      to="/projects/$projectId/settings"
-      params={{ projectId }}
+  const back = (
+    <button
+      type="button"
       data-testid="machine-detail-back"
+      className="text-sm text-foreground underline-offset-4 hover:underline"
+      onClick={() => {
+        if (typeof window !== "undefined" && Number(window.history.state?.idx) > 0) {
+          window.history.back();
+        } else {
+          void navigate({
+            to: projectId ? "/projects/$projectId/settings" : "/machines/$machineId",
+            params: projectId ? { projectId } : { machineId },
+          });
+        }
+      }}
     >
-      返回 Project settings
-    </Link>
-  ) : (
-    <Link
-      to="/machines/$machineId"
-      params={{ machineId }}
-      search={{ projectId }}
-      data-testid="machine-detail-back"
-    >
-      返回 Machine
-    </Link>
+      返回
+    </button>
   );
   if (!data || !projectId)
     return (

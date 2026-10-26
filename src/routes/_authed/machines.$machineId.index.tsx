@@ -81,32 +81,6 @@ function MachinePage() {
       onBindingSaved={() => void router.invalidate()}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          {projectId && (
-            <Link
-              to="/machines/$machineId/lease"
-              params={{ machineId: detail.data.machine.id }}
-              search={{ projectId }}
-              data-testid="machine-lease-jump"
-              className="inline-flex min-h-8.5 items-center rounded-control border border-border bg-background px-2.75 text-xs font-medium text-foreground hover:border-foreground"
-            >
-              租约详情
-            </Link>
-          )}
-          {!projectId &&
-            detail.data.bindings.map((binding) => (
-              <Link
-                key={binding.intent.projectId}
-                to="/machines/$machineId/lease"
-                params={{ machineId: detail.data.machine.id }}
-                search={{ projectId: binding.intent.projectId }}
-                data-testid="machine-lease-link"
-                className="inline-flex min-h-8.5 items-center rounded-control border border-border bg-background px-2.75 text-xs font-medium text-foreground hover:border-foreground"
-              >
-                {availableProjects.find((p) => p.id === binding.intent.projectId)?.name ??
-                  binding.intent.projectId}{" "}
-                的租约
-              </Link>
-            ))}
           <Button
             variant="outline"
             data-testid="machine-refresh"

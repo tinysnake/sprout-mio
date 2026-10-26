@@ -469,10 +469,11 @@ await check("独立租约路由隔离设置并显示租约与远端操作目标"
     assert.equal(await page.getByTestId("machine-binding-form").count(), 1);
     assert.equal(await page.getByTestId("machine-lease-detail").count(), 0);
     assert.equal(await page.getByTestId("machine-remote-executions").count(), 0);
+    assert.ok((await page.getByTestId("machine-lease-list").count()) > 0);
     assert.ok(
       (await page.getByTestId("machine-detail-remote-operations").textContent()) !== "未实现，P4b",
     );
-    await page.getByTestId("machine-lease-jump").click();
+    await page.getByTestId("machine-lease-link").first().click();
     await page.getByTestId("machine-lease-detail").waitFor();
     // Project × Machine 租约路由只呈现租约事实，不渲染 Machine 配置或绑定编辑。
     for (const id of [
@@ -553,27 +554,7 @@ await check("独立租约路由隔离设置并显示租约与远端操作目标"
       );
       assert.match(await page.getByTestId("lease-transfer-machine").innerText(), /工作室 Mac mini/);
     }
-    // 第 4 条：页头的租约入口是按钮而不是文字链接，点击后落到本页租约区块并给出可见焦点。
-    const jump = page.getByTestId("machine-lease-jump");
-    await jump.waitFor();
-    assert.equal(await jump.getAttribute("role"), null);
-    const jumpStyle = await jump.evaluate((node) => {
-      const style = getComputedStyle(node);
-      return {
-        border: parseFloat(style.borderTopWidth),
-        underline: style.textDecorationLine,
-        height: node.getBoundingClientRect().height,
-      };
-    });
-    assert.ok(
-      jumpStyle.border >= 1 && jumpStyle.height >= 28,
-      `按钮形态: ${JSON.stringify(jumpStyle)}`,
-    );
-    assert.notEqual(jumpStyle.underline, "underline", "不再是下划线文字链");
-    await jump.click();
-    await page.waitForFunction(
-      () => document.activeElement?.closest('[data-testid="machine-lease-detail"]') !== null,
-    );
+    assert.equal(await page.getByTestId("machine-lease-jump").count(), 0, "租约页没有自跳按钮");
     await shootAt(page, "machine-lease-detail", "machine-detail-lease");
     await shootAt(page, "machine-executions", "machine-detail-executions");
     for (const colorScheme of ["light", "dark"]) {
