@@ -7,7 +7,6 @@ import type { AppError } from "../../contracts/result";
 import { PageFrame } from "../layout/page-frame";
 import { SettingsSection } from "../project/settings-section";
 import { ResultError } from "../project/result-error";
-import { Button } from "../ui/button";
 import { MachineEnrollmentPanel } from "./machine-enrollment-panel";
 import { MachineLeaseSection } from "./lease-panel";
 import { RemoteExecutionList } from "./remote-execution-panel";
@@ -51,15 +50,6 @@ export function MachineLeasePanel({
   executionError?: AppError;
   onLeaseMutate?: LeaseMutationHandler;
 }) {
-  function revealLeaseBlock() {
-    const node = document.querySelector<HTMLElement>('[data-testid="machine-lease-detail"]');
-    if (!node) return;
-    node.scrollIntoView({ block: "start", behavior: "smooth" });
-    node
-      .querySelector<HTMLElement>('select, input, button, a[href], [tabindex]:not([tabindex="-1"])')
-      ?.focus({ preventScroll: true });
-  }
-
   const leaseSection = (onMutate?: LeaseMutationHandler) => (
     <MachineLeaseSection
       projectId={project.id}
@@ -76,14 +66,7 @@ export function MachineLeasePanel({
       title={<span data-testid="machine-detail-name">{detail.machine.name}</span>}
       description={`${project.name} · 租约`}
       back={back}
-      actions={
-        <>
-          <Button variant="secondary" data-testid="machine-lease-jump" onClick={revealLeaseBlock}>
-            租约详情
-          </Button>
-          {actions}
-        </>
-      }
+      actions={actions}
       testId="machine-lease-page"
     >
       {detail.enrollmentStatus === "pending" && (
