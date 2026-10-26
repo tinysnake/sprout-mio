@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { useMachineRefresh } from "../../components/machine/use-machine-refresh";
 import { PageFrame } from "../../components/layout/page-frame";

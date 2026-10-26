@@ -1,6 +1,6 @@
 # P4b Human feedback: navigation and Machine lease list
 
-Status: implementation committed; browser verification blocked by this checkout's missing dependencies. No merge performed.
+Status: implementation committed; independent integration reported and fixed a typecheck regression. Demo browser scenes pass; the real route integration currently fails at the new Machine lease list assertion in an independently checked-out commit. No merge performed.
 
 ## Changes
 
@@ -12,8 +12,11 @@ Status: implementation committed; browser verification blocked by this checkout'
 ## Verification
 
 - `git diff --check`: passed.
-- Attempted `perl -e 'alarm 300; exec @ARGV' bash scripts/verify/y-lease-ui.sh`: failed before browser startup. `.verify/p4b-ui/dev-server.log` reports `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL` and `Command "vp" not found`; this checkout has no `node_modules/.bin`.
-- The supported `scripts/verify/u-machine-ui.sh` and real integration verification `scripts/verify/z-lease-integration.sh` were not run because required dependencies are absent. No browser interaction or screenshot evidence was produced for this change.
+- Initial `scripts/verify/y-lease-ui.sh` attempt in this isolated worktree could not resolve dependencies through the temporary symlink to `/tmp/p4b-verify13/node_modules`; Vite resolved package files relative to that other checkout. No source changes were made there.
+- Ran `pnpm typecheck` in this worktree using the temporary dependency symlink: passed. Removed the symlink before commit.
+- Ran `scripts/verify/y-lease-ui.sh` from the clean `/tmp/p4b-verify13` checkout at commit `d5000df`, which contains this implementation: passed 18/18, evidence at `/private/tmp/p4b-verify13/.verify/p4b-ui/evidence`.
+- Ran `scripts/verify/z-lease-integration.sh` from the independent checkout: failed at `Machine details show the Project × Machine lease list` (`0 !== 1`). This checkout's current source was later checked at `0fcbdba`, which predates the feature, so it is not valid evidence for the intended feature. The real route path, back/forward, direct-open fallback, and refresh remain unverified; run this integration against a checkout that includes the fix commit.
+- P4a scripts are not required because this unit changes neither Worker behavior nor capability shapes.
 - P4a scripts are not required because this unit changes neither Worker behavior nor capability shapes.
 - Cross-machine networking and physical-device soft keyboard remain unverified, consistent with the chapter's existing limits.
 
@@ -23,4 +26,4 @@ Reviewed `/tmp/p4b-fb-review/vision-findings.md` and the four supplied images: `
 
 ## Scope
 
-No changes to `docs/development-plan.md`; no P4c work; no changes to Worker or capability behavior. The only started server attempt targeted port 3099 and failed before binding; port 3000 was not used.
+No changes to `docs/development-plan.md`; no P4c work; no changes to Worker or capability behavior. UI scene verification used port 3099. No server was started on port 3000.
