@@ -439,9 +439,13 @@ const cancelInput = {
 const requested = enqueueCancellation(cancelInput, ctx);
 assert(executionCancellationViewSchema.safeParse(requested).success);
 assert.equal(requested.state, "requested");
-assert.equal(requested.policy, "kill");
-assert.equal(requested.termWaitMs, 500);
 assert.match(requested.cancelId, /^cnl_/);
+// 声明值必须落库：视图不扩形状，直接读行证明入参没有被常量顶替。
+const declared = sqlite
+  .prepare("SELECT policy, term_wait_ms FROM execution_cancellation WHERE id = ?")
+  .get(requested.cancelId) as { policy: string; term_wait_ms: number };
+assert.equal(declared.policy, "kill");
+assert.equal(declared.term_wait_ms, 500);
 assert.equal(enqueueCancellation(cancelInput, ctx).cancelId, requested.cancelId);
 pass("取消入队幂等，request_id 落在 cancel: 命名空间且状态停在 requested");
 pass("反证：声明 kill/500ms 的取消策略原样下发，不被常量 term_then_kill/2000 覆盖");

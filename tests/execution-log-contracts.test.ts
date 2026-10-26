@@ -365,8 +365,6 @@ describe("execution log and cancellation contracts", () => {
       cancelId,
       executionId,
       state: "delivered",
-      policy: "term_then_kill",
-      termWaitMs: 2000,
       requestedAt: at,
       deliveredAt: at,
       exitedAt: null,

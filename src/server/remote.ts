@@ -728,8 +728,6 @@ function cancellationView(row: Cancellation): ExecutionCancellationView {
     cancelId: row.id,
     executionId: row.executionId,
     state: row.state,
-    policy: row.policy,
-    termWaitMs: row.termWaitMs,
     requestedAt: row.requestedAt.toISOString(),
     deliveredAt: row.deliveredAt?.toISOString() ?? null,
     exitedAt: row.exitedAt?.toISOString() ?? null,
