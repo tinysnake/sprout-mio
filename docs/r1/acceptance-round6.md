@@ -41,15 +41,15 @@ EXIT=0
 
 另一次基线（`.verify/z3-mcp-acceptance-YJO1nz`）同样 exit 0、七条 PASS；把它的 `clause-*.json` 与 `docs/r1/evidence/` 逐字段 diff，**只差 `startedAt`/`elapsedMs`（以及 clause-7 的 `head`）**，说明快照可由当前脚本确定性复现。
 
-| 条款 | 判定 | 我的依据 | 证据端是否可信 |
-| --- | --- | --- | --- |
-| R1-1 stdio 与 streamableHttp | PASS（行为）/ 证据端有洞 | y2 真实打包 Worker CLI + x2 真中继；`observed.toolsListMatchesExpected` 由门禁用自己的 20 工具名单与 x2 私有原始名单独比对（v4 修复，我用手工 M1 复现变红） | 部分：`officialSdk` 只核版本，不核连接（§3.3-②） |
-| R1-2 Pi 工具面 / allowlist / 显式登记 | PASS（行为）/ 证据端有洞 | 真实 Pi AgentSession，5 个 `mcp__*`、read 可执行、notify 不注册、host_sentinel 不进 catalog 且未启动 | 部分：`predicates.mcpTools` 仍接受 `['mcp__']`（§3.3-③） |
-| R1-3 指定实例 / root 隔离 / 不改投 | PASS | 两个独立 stdio server；`observed.crossRootReadRejected` / `crossRootWriteRejected` 由门禁读 root 调用日志重算（v4，手工 M3 由驱动+报告证实变红） | 可信（该两条已 gate-computed） |
-| R1-4 图片与 structuredContent | PASS | `x3ImageBytesEqual` / `x3StructuredContentEqual` 由门禁对私有原始观察值（含 SHA 承诺）自己算；两个 M2 变异实测 R1-4 FAIL | 可信（x3 路径）；`c.image.bytesEqual/structuredContentEqual` 仍是探针自报，但不再是唯一依据 |
-| R1-5 资源 / 目录变化 / 重建 / 超时 / 旧代次 | PASS | `requestReachedServer`、`oldGenerationRejected` 均由门禁重算（含自己打开 SQLite 数 `mcp_frame`）；M5/M6 实测 FAIL | 可信（该两条已 gate-computed） |
-| R1-6 生命周期与已有服务 | PASS | `configuredServiceExited` 由门禁自己 `process.kill(pid,0)` 判 ESRCH；手工 M4 实测 R1-6 FAIL | 可信（终止事实）；不证明「为什么终止」（报告已自认） |
-| R1-7 组合与纳入阶段 | PASS（是它声明的那种检查） | 文档存在、design 关键词、summary/scope 关键词、`scriptSha256` 等于当前脚本、`sourceCommit` 是 HEAD 祖先 | 只做一致性，不做语义（见 §5/§6） |
+| 条款                                        | 判定                       | 我的依据                                                                                                                                                    | 证据端是否可信                                                                              |
+| ------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| R1-1 stdio 与 streamableHttp                | PASS（行为）/ 证据端有洞   | y2 真实打包 Worker CLI + x2 真中继；`observed.toolsListMatchesExpected` 由门禁用自己的 20 工具名单与 x2 私有原始名单独比对（v4 修复，我用手工 M1 复现变红） | 部分：`officialSdk` 只核版本，不核连接（§3.3-②）                                            |
+| R1-2 Pi 工具面 / allowlist / 显式登记       | PASS（行为）/ 证据端有洞   | 真实 Pi AgentSession，5 个 `mcp__*`、read 可执行、notify 不注册、host_sentinel 不进 catalog 且未启动                                                        | 部分：`predicates.mcpTools` 仍接受 `['mcp__']`（§3.3-③）                                    |
+| R1-3 指定实例 / root 隔离 / 不改投          | PASS                       | 两个独立 stdio server；`observed.crossRootReadRejected` / `crossRootWriteRejected` 由门禁读 root 调用日志重算（v4，手工 M3 由驱动+报告证实变红）            | 可信（该两条已 gate-computed）                                                              |
+| R1-4 图片与 structuredContent               | PASS                       | `x3ImageBytesEqual` / `x3StructuredContentEqual` 由门禁对私有原始观察值（含 SHA 承诺）自己算；两个 M2 变异实测 R1-4 FAIL                                    | 可信（x3 路径）；`c.image.bytesEqual/structuredContentEqual` 仍是探针自报，但不再是唯一依据 |
+| R1-5 资源 / 目录变化 / 重建 / 超时 / 旧代次 | PASS                       | `requestReachedServer`、`oldGenerationRejected` 均由门禁重算（含自己打开 SQLite 数 `mcp_frame`）；M5/M6 实测 FAIL                                           | 可信（该两条已 gate-computed）                                                              |
+| R1-6 生命周期与已有服务                     | PASS                       | `configuredServiceExited` 由门禁自己 `process.kill(pid,0)` 判 ESRCH；手工 M4 实测 R1-6 FAIL                                                                 | 可信（终止事实）；不证明「为什么终止」（报告已自认）                                        |
+| R1-7 组合与纳入阶段                         | PASS（是它声明的那种检查） | 文档存在、design 关键词、summary/scope 关键词、`scriptSha256` 等于当前脚本、`sourceCommit` 是 HEAD 祖先                                                     | 只做一致性，不做语义（见 §5/§6）                                                            |
 
 判定说明：七条**行为**没有再发现新的产品缺陷；问题都在「证据端能否独立支撑这个 PASS」。上一轮已经确立「PASS 但证据端可伪造 = 不算通过」的口径，本轮沿用。
 
