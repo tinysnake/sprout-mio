@@ -26,7 +26,7 @@ CLI 输出一行 JSON 后保持运行，Ctrl+C 或 SIGTERM 会关闭自有代理
 
 ## 应用入口与访问
 
-位置参数接受 `/path` 或本机 / 内网 HTTP URL，省略时从 `/login` 开始。应用 origin 依次取 `SPROUT_HUMAN_REVIEW_APP`、`APP_ORIGIN`、仓库 `.env.local` / `.env` 的 `APP_ORIGIN`，最后使用 `http://localhost:3000`。带参数的路由需选择已有数据；未登录时重定向到登录页属于正常应用行为。
+位置参数接受 `/path` 或本机 / 内网 HTTP URL。省略入口时先探应用是否提供 [开发登录](#开发登录)，提供就用 `/dev-login`，否则用 `/login`。应用 origin 依次取 `SPROUT_HUMAN_REVIEW_APP`、`APP_ORIGIN`、仓库 `.env.local` / `.env` 的 `APP_ORIGIN`，最后使用 `http://localhost:3000`。带参数的路由需选择已有数据；未登录时重定向到登录页属于正常应用行为。
 
 可信预览接受回环、私有网段、CGNAT、`.local` 与相应本地 IPv6 地址，拒绝公网域名、URL 凭据和非 HTTP 协议。代理监听全部接口，Lavish 后端仅监听回环。请求 Host 与 Origin 仍需通过检查。
 
@@ -37,6 +37,24 @@ node scripts/human-review/cli.mjs http://192.168.1.10:3000/login
 ```
 
 预览与应用沿用相同 hostname，保持 cookie 的站点条件。用 localhost 启动后再把预览链接的 hostname 改成局域网地址，会让远端设备的 iframe 指向其自身 localhost。
+
+## 开发登录
+
+远程评审时手输长账号密码很麻烦。dev server 提供 `/dev-login`：用固定开发账号建会话，把会话 cookie 写在 303 响应里，浏览器一次往返就带着登录态落地，不需要知道或输入账号密码。
+
+- 只在 dev server 生效。构建期 `import.meta.env.DEV` 为真才开放，生产构建（`pnpm build` / `pnpm start` 的产物）与验收库的 `/dev-login` 一律 404。
+- 默认开启，可用 `DEV_LOGIN_ENABLED=false` 关掉（例如把 dev server 暴露在不信任的网络里）。
+- 账号由 `DEV_LOGIN_EMAIL`（默认 `dev@sprout.test`）、`DEV_LOGIN_NAME`（默认「开发评审」）、`DEV_LOGIN_PASSWORD`（默认 `sprout-dev-login`）决定。首次访问自动建号，并沿用注册钩子播种默认 Project 与 Agent；已有账号只把密码对齐到配置值。想换身份就改邮箱，不要复用人类自己注册的邮箱。
+- 目标页面用 `?to=` 指定，只接受站内绝对路径（`/projects`、`/projects/prj_…/chats`），其他一律回到 `/`。
+- 登录页在 dev server 上多出一个「用开发账号直接进入」的入口，点击等同打开 `/dev-login?to=/`；生产构建不渲染它。
+- 会话是正常的 better-auth session，登出、`getSession`、限流与身份判定都走原有路径，没有旁路鉴权。
+
+```bash
+# 直接打开
+open http://192.168.1.10:3000/dev-login?to=/projects
+# 评审默认入口（省略位置参数时自动优先选它）
+node scripts/human-review/cli.mjs
+```
 
 ## 尺寸切换
 

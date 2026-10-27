@@ -16,7 +16,7 @@ try {
   if (values.help) {
     console.log(
       "用法: node scripts/human-review/cli.mjs [入口路径或本机 / 内网 URL] [--port 4400] [--lavish-port 4401] [--state-dir <目录>] [--strict-ports]\n" +
-        "省略入口时从 /login 开始；应用 origin 取自 SPROUT_HUMAN_REVIEW_APP、APP_ORIGIN 或仓库 env，默认 http://localhost:3000。\n" +
+        "省略入口时优先用应用的开发生登录（/dev-login），应用没开就从 /login 开始；应用 origin 取自 SPROUT_HUMAN_REVIEW_APP、APP_ORIGIN 或仓库 env，默认 http://localhost:3000。\n" +
         "端口被占时自动后移；--strict-ports 改为报错。代理监听全部接口，Lavish 后端仅监听本机回环。\n" +
         "启动后输出 JSON 描述符并保持运行；Ctrl+C 或 SIGTERM 清理自有服务。\n" +
         "按描述符的 lavishBin、file 和 env 运行原生 lavish-axi poll / reply；CLI 不监听反馈，也不注册 Pi 工具。",

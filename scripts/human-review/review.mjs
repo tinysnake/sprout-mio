@@ -14,6 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 /** review 默认从登录页进入；入口只在显式给出路径或 URL 时改变。 */
 export const defaultEntry = "/login";
+export const devLoginEntry = "/dev-login";
 
 /** 回环、私有网段与 mDNS 名都视为本机可达地址；公网域名不进入预览。 */
 export function localHostname(hostname) {
@@ -58,6 +59,50 @@ export function localAppUrl(value) {
   if (url.protocol !== "http:" || !localHostname(url.hostname) || url.username || url.password)
     throw new Error("预览只接受 http 的本机或内网应用 URL（回环、私有网段、CGNAT 或 .local）");
   return url;
+}
+
+/**
+ * 应用是否提供开发登录：/dev-login 的 HEAD 返回 200。用 node:http 而不是 fetch，
+ * 理由同 probeHealth —— 宿主给全局 fetch 装的代理会把回环请求带偏。
+ */
+function devLoginAvailable(origin) {
+  return new Promise((resolve) => {
+    const url = new URL(devLoginEntry, origin);
+    const probe = request(
+      {
+        host: url.hostname,
+        port: url.port || 80,
+        path: url.pathname,
+        method: "HEAD",
+        agent: false,
+      },
+      (response) => {
+        response.resume();
+        response.on("end", () => resolve(response.statusCode === 200));
+        response.on("error", () => resolve(false));
+      },
+    );
+    probe.setTimeout(1500, () => {
+      probe.destroy();
+      resolve(false);
+    });
+    probe.on("error", () => resolve(false));
+    probe.end();
+  });
+}
+
+/**
+ * 应用开了开发登录（dev server + DEV_LOGIN_ENABLED）时，默认入口换成 `/dev-login`：
+ * 打开预览就是登录态，省掉手输长账号密码。应用不可达或没开就继续用登录页。
+ * 显式给出的入口路径或 URL 不会被改写。
+ */
+export async function resolveEntry(entry = "") {
+  if (entry.trim()) return resolveAppUrl(entry);
+  const origin = await appOrigin();
+  const url = (await devLoginAvailable(origin))
+    ? new URL(devLoginEntry, origin)
+    : new URL(defaultEntry, origin);
+  return localAppUrl(url.href).href;
 }
 
 function replaceOnce(source, before, after) {
@@ -241,7 +286,7 @@ export async function startReview({
   autoPorts = false,
   stateDir,
 }) {
-  const app = new URL(await resolveAppUrl(url));
+  const app = new URL(await resolveEntry(url));
   for (const number of [port, lavishPort]) {
     if (!Number.isInteger(number) || number < 1 || number > 65535)
       throw new Error("端口必须在 1–65535 之间");

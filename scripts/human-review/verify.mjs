@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
-import { allowedRequest, localAppUrl, startReview } from "./review.mjs";
+import { allowedRequest, localAppUrl, resolveEntry, startReview } from "./review.mjs";
 
 const exec = promisify(execFile);
 const cliPath = fileURLToPath(new URL("./cli.mjs", import.meta.url));
@@ -48,8 +48,13 @@ const stop = async () => {
     clearTimeout(timer);
   }
 };
+const fixtureState = { devLogin: false };
 const fixture = createServer((req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
+  if (pathname === "/dev-login") {
+    res.writeHead(fixtureState.devLogin ? 200 : 404, { "cache-control": "no-store" }).end();
+    return;
+  }
   if (pathname === "/sign-in") {
     res
       .writeHead(302, {
@@ -119,6 +124,21 @@ try {
     );
   }
   pass("可信预览接受回环与内网地址，拒绝公网域名、凭据 URL 和非 HTTP 协议");
+  const fixtureOrigin = new URL(appUrl).origin;
+  const previousApp = process.env.SPROUT_HUMAN_REVIEW_APP;
+  process.env.SPROUT_HUMAN_REVIEW_APP = fixtureOrigin;
+  try {
+    assert.equal(await resolveEntry(""), `${fixtureOrigin}/login`);
+    assert.equal(await resolveEntry("/projects"), `${fixtureOrigin}/projects`);
+    assert.equal(await resolveEntry(appUrl), appUrl);
+    fixtureState.devLogin = true;
+    assert.equal(await resolveEntry(""), `${fixtureOrigin}/dev-login`);
+    fixtureState.devLogin = false;
+  } finally {
+    if (previousApp === undefined) delete process.env.SPROUT_HUMAN_REVIEW_APP;
+    else process.env.SPROUT_HUMAN_REVIEW_APP = previousApp;
+  }
+  pass("省略入口时优先选开发登录，应用不提供或显式给出入口时保持原路径");
   cli = spawn(
     process.execPath,
     [
