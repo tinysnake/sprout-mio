@@ -157,13 +157,17 @@ async function control(
   );
 }
 async function healthy(ms = 60000) {
-  await until(async () => {
-    try {
-      return (await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(1000) })).ok;
-    } catch {
-      return false;
-    }
-  }, "production health", ms);
+  await until(
+    async () => {
+      try {
+        return (await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(1000) })).ok;
+      } catch {
+        return false;
+      }
+    },
+    "production health",
+    ms,
+  );
 }
 
 type RegisteredTool = Parameters<Pick<SproutExtensionAPI, "registerTool">["registerTool"]>[0];
@@ -243,7 +247,11 @@ async function getView(id: string): Promise<ExecutionView> {
   assert.equal(details.data.executionId, id);
   return details.data;
 }
-const readLog = async (executionId: string, cursor: { nextSequence: number } | null, limitBytes = 65536) =>
+const readLog = async (
+  executionId: string,
+  cursor: { nextSequence: number } | null,
+  limitBytes = 65536,
+) =>
   accept<LogDetails>("sprout_remote_execution_log", {
     machineId,
     executionId,
@@ -281,9 +289,7 @@ async function withActiveRun<T>(runId: string, action: () => Promise<T>): Promis
   const deadline = Date.now() + 60000;
   for (;;) {
     sqlite
-      .prepare(
-        "UPDATE agent_run SET status='running',started_at=COALESCE(started_at,?) WHERE id=?",
-      )
+      .prepare("UPDATE agent_run SET status='running',started_at=COALESCE(started_at,?) WHERE id=?")
       .run(Math.floor(Date.now() / 1000), runId);
     try {
       return await action();
@@ -341,8 +347,11 @@ const proxy = createServer(async (request, response) => {
         };
         let changed = false;
         for (const command of parsed.data?.remote?.commands ?? []) {
-          if (command.operation && (command.operation as { kind?: string }).kind === "shell" &&
-              command.maxRuntimeMs === null) {
+          if (
+            command.operation &&
+            (command.operation as { kind?: string }).kind === "shell" &&
+            command.maxRuntimeMs === null
+          ) {
             Object.assign(command, {
               maxRuntimeMs: 180000,
               runtimeDeadlineAt: new Date(Date.now() + 180000).toISOString(),
@@ -370,7 +379,11 @@ await new Promise<void>((res) => proxy.listen(proxyPort, "127.0.0.1", res));
 
 let generation = 1;
 try {
-  service = launch(["--import", "tsx", "tests/fixtures/execution-live-service.ts"], "service.log", true);
+  service = launch(
+    ["--import", "tsx", "tests/fixtures/execution-live-service.ts"],
+    "service.log",
+    true,
+  );
   await healthy();
   const owner = await signup("live-owner");
   const other = await signup("live-other");
@@ -419,7 +432,18 @@ try {
   const ticket = join(directory, "private-ticket");
   writeFileSync(ticket, machine.ticket, { mode: 0o600 });
   const init = launch(
-    ["dist/worker/main.js", "init", "--server", workerBase, "--machine", machineId, "--state-dir", state, "--ticket-file", ticket],
+    [
+      "dist/worker/main.js",
+      "init",
+      "--server",
+      workerBase,
+      "--machine",
+      machineId,
+      "--state-dir",
+      state,
+      "--ticket-file",
+      ticket,
+    ],
     "init.log",
   );
   await until(() => init.exitCode !== null, "Worker enrollment");
@@ -472,7 +496,11 @@ try {
 
   const beforeDedupe = await getView(primary.executionId);
   const replayed = await submitShell({ requestId, command });
-  assert.equal(replayed.data.executionId, primary.executionId, "same requestId reuses the execution");
+  assert.equal(
+    replayed.data.executionId,
+    primary.executionId,
+    "same requestId reuses the execution",
+  );
   assert.equal(processCount(marker), 1, "only one real child process for the same requestId");
   const afterDedupe = await getView(primary.executionId);
   assert.equal(afterDedupe.dispatchSeq, beforeDedupe.dispatchSeq, "dedupe must not dispatch again");
@@ -520,7 +548,11 @@ try {
   );
   // 跨执行游标：按实现记录真实行为，不改写。
   const shortExecution = (
-    await submitShell({ requestId: newId(ID_PREFIXES.request), command: "echo b1; echo b2; echo b3", waitMs: 4000 })
+    await submitShell({
+      requestId: newId(ID_PREFIXES.request),
+      command: "echo b1; echo b2; echo b3",
+      waitMs: 4000,
+    })
   ).data;
   await until(
     async () => (await getView(shortExecution.executionId)).terminalAt !== null,
@@ -554,7 +586,11 @@ try {
         "i=0; while [ $i -lt 3000 ]; do printf 'x%07d-0123456789abcdefghijklmnopqrstuvwxyz\\n' \"$i\"; i=$((i+1)); done",
     })
   ).data;
-  await until(async () => (await getView(big.executionId)).terminalAt !== null, "big output terminal", 60000);
+  await until(
+    async () => (await getView(big.executionId)).terminalAt !== null,
+    "big output terminal",
+    60000,
+  );
   const bigFinal = await getView(big.executionId);
   const allSequences: number[] = [];
   let bigCursor: { nextSequence: number } | null = null;
@@ -562,8 +598,7 @@ try {
   for (let page = 0; page < 80; page++) {
     const view = await readLog(big.executionId, bigCursor, 16384);
     if (page === 0)
-      firstPageRemaining =
-        (view.producedThroughSequence ?? 0) - view.nextCursor.nextSequence;
+      firstPageRemaining = (view.producedThroughSequence ?? 0) - view.nextCursor.nextSequence;
     for (const frame of view.frames) allSequences.push(frame.sequence);
     if (view.nextCursor.nextSequence === bigCursor?.nextSequence) break;
     bigCursor = view.nextCursor;
@@ -575,7 +610,11 @@ try {
   }
   const unique = [...new Set(allSequences)];
   assert.equal(unique.length, allSequences.length, "paged read must not duplicate frames");
-  assert.deepEqual(unique, [...unique].sort((a, b) => a - b), "paged read stays ordered");
+  assert.deepEqual(
+    unique,
+    [...unique].sort((a, b) => a - b),
+    "paged read stays ordered",
+  );
   assert.equal(unique.length, bigFinal.producedThroughSequence, "every produced frame is readable");
   const finalLog = await readLog(big.executionId, null, 65536);
   assert.equal(finalLog.availableFromSequence, null, "host currently never trims the log");
@@ -637,7 +676,9 @@ try {
   assert.equal(unknownObservation.state, "unknown");
   assert.equal(processCount(disconnectMarker), 1, "unknown must not re-run the command");
   const beforeRestartExecutions = (
-    sqlite.prepare("SELECT COUNT(*) AS n FROM remote_execution WHERE request_id=?").get(disconnect.requestId) as {
+    sqlite
+      .prepare("SELECT COUNT(*) AS n FROM remote_execution WHERE request_id=?")
+      .get(disconnect.requestId) as {
       n: number;
     }
   ).n;
@@ -655,7 +696,9 @@ try {
     );
   assert.equal(processCount(disconnectMarker), 1, "reconnect must not spawn a second process");
   const afterRestartExecutions = (
-    sqlite.prepare("SELECT COUNT(*) AS n FROM remote_execution WHERE request_id=?").get(disconnect.requestId) as {
+    sqlite
+      .prepare("SELECT COUNT(*) AS n FROM remote_execution WHERE request_id=?")
+      .get(disconnect.requestId) as {
       n: number;
     }
   ).n;
@@ -680,20 +723,23 @@ try {
   };
   pass("S8 a Worker restart makes the execution unknown without re-running the command");
 
-
   // —— 场景 6：分身经工具面取消另一条长命令。 ——
   const cancelledMarker = markerOf();
   const doomed = (
-    await submitShell({ requestId: newId(ID_PREFIXES.request), command: `echo pid=$$; : ${cancelledMarker}; trap '' TERM; i=0; while [ $i -lt 40 ]; do echo tick=$i; sleep 1; done`, waitMs: 1000 })
+    await submitShell({
+      requestId: newId(ID_PREFIXES.request),
+      command: `echo pid=$$; : ${cancelledMarker}; trap '' TERM; i=0; while [ $i -lt 40 ]; do echo tick=$i; sleep 1; done`,
+      waitMs: 1000,
+    })
   ).data;
   await until(
     async () => (await getView(doomed.executionId)).state === "running",
     "cancelled command running",
     30000,
   );
-  const cancelledPid = (
-    await readLog(doomed.executionId, null, 4096)
-  ).frames.map((frame) => /pid=(\d+)/.exec(frame.text ?? "")?.[1]).find(Boolean);
+  const cancelledPid = (await readLog(doomed.executionId, null, 4096)).frames
+    .map((frame) => /pid=(\d+)/.exec(frame.text ?? "")?.[1])
+    .find(Boolean);
   assert(cancelledPid, "cancelled command pid");
   childrenPids.add(Number(cancelledPid));
   const cancelRequest = newId(ID_PREFIXES.request);
@@ -763,7 +809,11 @@ try {
   // —— 场景 7：人类在 Web 侧取消；未登录与另一用户被拒。 ——
   const humanMarker = markerOf();
   const humanTarget = (
-    await submitShell({ requestId: newId(ID_PREFIXES.request), command: `echo pid=$$; : ${humanMarker}; i=0; while [ $i -lt 30 ]; do echo tick=$i; sleep 1; done`, waitMs: 1000 })
+    await submitShell({
+      requestId: newId(ID_PREFIXES.request),
+      command: `echo pid=$$; : ${humanMarker}; i=0; while [ $i -lt 30 ]; do echo tick=$i; sleep 1; done`,
+      waitMs: 1000,
+    })
   ).data;
   await until(
     async () => (await getView(humanTarget.executionId)).state === "running",
@@ -816,7 +866,11 @@ try {
   assert.equal(humanRow.actor_kind, "human", "human cancel records the human actor");
   assert.equal(humanRow.actor_id, userId);
   assert.equal(humanFinal.cancellation?.state, "exited_observed");
-  assert.notEqual(humanFinal.state, "succeeded", "a human-cancelled command must not read as success");
+  assert.notEqual(
+    humanFinal.state,
+    "succeeded",
+    "a human-cancelled command must not read as success",
+  );
   facts.scenario7 = {
     executionId: humanTarget.executionId,
     pid: Number(humanPid),
@@ -833,7 +887,11 @@ try {
   // —— 场景 9：命令运行中服务进程重启。 ——
   const restartMarker = markerOf();
   const restartTarget = (
-    await submitShell({ requestId: newId(ID_PREFIXES.request), command: `echo pid=$$; : ${restartMarker}; i=0; while [ $i -lt 20 ]; do echo f=$i; sleep 1; done`, waitMs: 1000 })
+    await submitShell({
+      requestId: newId(ID_PREFIXES.request),
+      command: `echo pid=$$; : ${restartMarker}; i=0; while [ $i -lt 20 ]; do echo f=$i; sleep 1; done`,
+      waitMs: 1000,
+    })
   ).data;
   await until(
     async () => (await getView(restartTarget.executionId)).state === "running",
@@ -877,11 +935,14 @@ try {
   const persistedLog = await withActiveRun(secondActor.runId, () =>
     readLog(restartTarget.executionId, null, 4096),
   );
-  assert(persistedLog.frames.length >= restartLog.frames.length, "pre-restart frames stay readable");
+  assert(
+    persistedLog.frames.length >= restartLog.frames.length,
+    "pre-restart frames stay readable",
+  );
   await until(
     async () =>
-      (await withActiveRun(secondActor.runId, () => getView(restartTarget.executionId))).terminalAt !==
-      null,
+      (await withActiveRun(secondActor.runId, () => getView(restartTarget.executionId)))
+        .terminalAt !== null,
     "restart target settles",
     120000,
   );
@@ -895,7 +956,9 @@ try {
   ).n;
   assert.equal(restartRows, 1, "one requestId still has exactly one execution");
   assert(
-    restartFinal.state === "succeeded" || restartFinal.state === "failed" || restartFinal.state === "unknown",
+    restartFinal.state === "succeeded" ||
+      restartFinal.state === "failed" ||
+      restartFinal.state === "unknown",
   );
   facts.scenario9 = {
     executionId: restartTarget.executionId,
