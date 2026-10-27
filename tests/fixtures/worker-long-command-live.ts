@@ -412,12 +412,27 @@ try {
   assert(hostStored > 0, "host must persist the frames the Worker sent");
   assert.notEqual(view.logState, "none", "host log_state must leave none once frames landed");
   assert(view.producedThroughSequence !== null, "host must record produced_through_seq");
+  // 关键反证：帧在命令下发之后的批次上行，仍被宿主接受。
+  // 纠正前契约要求 frame.dispatchSeq === 本批 seq，这种帧根本无法发出。
+  const dispatchSeq = view.dispatchSeq;
+  assert(dispatchSeq !== null, "dispatched execution must carry its dispatch seq");
+  const carrierSeqs = [...new Set(own.map((frame) => frame.carrierSeq))];
+  assert(
+    carrierSeqs.some((seq) => seq > dispatchSeq),
+    `frames must ride batches later than dispatch seq ${dispatchSeq}, saw ${carrierSeqs.join(",")}`,
+  );
+  assert(
+    own.every((frame) => frame.dispatchSeq === dispatchSeq),
+    "frames must keep the dispatching batch seq, not the carrying batch seq",
+  );
   facts.logging = {
     frames: own.length,
     hostStoredFrames: hostStored,
     streams: [...new Set(own.map((frame) => frame.stream))].sort(),
     firstSequence: sequences[0],
     lastSequence: sequences.at(-1),
+    dispatchSeq,
+    carrierSeqs,
     logState: view.logState,
     producedThroughSequence: view.producedThroughSequence,
   };
