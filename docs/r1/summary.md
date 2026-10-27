@@ -40,6 +40,7 @@ R1 七条当前行为复核均为 PASS，独立技术验收第七轮判通过。
 
 ## 已知限制与待确认事项
 
+- **Human 体验确认：不适用。** R1 没有用户界面，交付物是可重跑的无界面 server 验证与证据快照，没有可供亲手体验的页面或交互。Human 于 `2026-10-27T15:42Z` 判定本项不适用，不设体验步骤，也不以本次纳入作为界面交付的确认。一期中真正承载 MCP 工具调用的界面由后续章节按各自的 Human 体验确认规则处理。
 - Human 在 `2026-10-25T03:44Z` 授权更换验证载体，见编排工作区 `orchestrate/sprout-mio-r1/decisions.tsv` 第 4 行。第 3 条实际采用两个自有最小 server，第 4 条采用 server-everything；Unity Editor/Blender 的发现机制、插件和软件特有行为没有验证，不计入本轮 PASS 范围。七条计划原文完整保留。
 - 新组合探针使用真实生产 relay service、Worker runtime/dispatcher、SQLite、独立进程与真实 Pi 工具定义，主体和租约由隔离 fixture 创建；service 调用直接进入生产入口。受认证 HTTP 边界由复用的 x2/y2 单独实测。目录新增到模型工具面的证据来自 x3 的真实 stdio/Pi 路径，未把它描述为一条新的远端 HTTP 场景。
 - “可被模型调用”通过真实 Pi 活动工具面与 Pi 持有的工具定义执行验证，没有发起付费模型推理。目录变化证据覆盖新工具加入与 refresh 保持，未扩大为所有插件热更新行为的保证。
@@ -55,7 +56,7 @@ R1 七条当前行为复核均为 PASS，独立技术验收第七轮判通过。
 - 生产 runner 调用 `registerSproutMcp` 时没有提供 sampling handler。elicitation 仅支持 absent 或 `{action:'cancel'}`。这些限制与固定 fixture 的协议往返证据一致，不代表生产模型采样或 Human 表单交互。
 - `y2-mcp-http-worker.sh` 使用打包的 Worker CLI 子进程连接真实 stdio MCP server 和 streamableHttp server，已覆盖跨进程 stdio。没有真实模型自动选择 MCP 工具的一轮推理。
 - Worker 下行 dispatch 项若未通过 `dispatcher.accept` 的身份校验会转成 `invalid_response` 并结束当前 Worker fiber，Worker 随后需要重连。该情况不会报告为 MCP 调用成功。
-- 第五轮独立验收报告 [第五轮独立验收记录](acceptance-round5.md) 确认七条当前行为通过，同时发现 z3 六种证据变异仍全绿、且真实 drain response 违反响应契约。第六轮独立验收报告 [第六轮独立验收记录](acceptance-round6.md) 判定「部分通过」：drain 修复有效且有会实质变红的集成测试；第五轮六类变异全部被拒；但另有三条同类证据生产端伪造路径仍可绕过门禁。这三条已由 `41b8df0` 修复，快照可复现性由 `685532c` 修复。第七轮独立验收判通过，并指出本文件对官方 SDK 私有产物的「附承诺」表述不准确、以及 R1-4 仍有四个探针字面量字段，两处已在上述边界里改正。Human 体验确认仍未完成（R1 无界面，由 Human 判断是否适用）；一期范围纳入已由 Human 确认。
+- 第五轮独立验收报告 [第五轮独立验收记录](acceptance-round5.md) 确认七条当前行为通过，同时发现 z3 六种证据变异仍全绿、且真实 drain response 违反响应契约。第六轮独立验收报告 [第六轮独立验收记录](acceptance-round6.md) 判定「部分通过」：drain 修复有效且有会实质变红的集成测试；第五轮六类变异全部被拒；但另有三条同类证据生产端伪造路径仍可绕过门禁。这三条已由 `41b8df0` 修复，快照可复现性由 `685532c` 修复。第七轮独立验收判通过，并指出本文件对官方 SDK 私有产物的「附承诺」表述不准确、以及 R1-4 仍有四个探针字面量字段，两处已在上述边界里改正。Human 体验确认经判定对本项不适用（R1 无界面，见「已知限制与待确认事项」）；一期范围纳入已由 Human 确认。
 
 ## 第五轮独立复核补充（`efc7c28`）
 

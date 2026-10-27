@@ -203,7 +203,7 @@ Human 于 `2026-10-25T03:44Z` 授权以无需大型软件的 MCP 验证透传能
 
 ### 当前证据
 
-七条行为判定、实际证据路径和载体限制见 [R1 验证结论](r1/summary.md)，组合理由见 [R1 设计](r1/design.md)。统一重跑入口为 `bash scripts/verify/z3-mcp-acceptance.sh`。七条已按上述载体替换完成独立技术验收（第七轮判定通过），上方勾选逐项对应结论中的证据链接。R1 **已由 Human 确认纳入一期**；一期能力表（[core-scope](core-scope.md) 的一期范围与 Machines 职责）已同步更新，Unity Editor 与 Blender 本体未验证，不计入本期验收。
+七条行为判定、实际证据路径和载体限制见 [R1 验证结论](r1/summary.md)，组合理由见 [R1 设计](r1/design.md)。统一重跑入口为 `bash scripts/verify/z3-mcp-acceptance.sh`。七条已按上述载体替换完成独立技术验收（第七轮判定通过），上方勾选逐项对应结论中的证据链接。R1 **已由 Human 确认纳入一期**；一期能力表（[core-scope](core-scope.md) 的一期范围与 Machines 职责）已同步更新，Unity Editor 与 Blender 本体未验证，不计入本期验收。Human 体验确认经判定对本项**不适用**：R1 无用户界面，交付物是无界面 server 验证与可重跑证据，理由记录在 [R1 验证结论](r1/summary.md#已知限制与待确认事项)。
 
 ## P8 在一期完成后展开二期
 
