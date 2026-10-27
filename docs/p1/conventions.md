@@ -85,6 +85,6 @@ Drizzle SQLite migrator 按 journal 的 `when`，即 `folderMillis`，决定是�
 10. 行为测试写在 `tests/<feature>.test.ts`，用子进程（`tsx` 加独立 `DATABASE_URL`）导入模块，因为 `src/lib/config.ts` 在导入时读取 env。断言用户可观察的结果（数据库行、载荷、字段错误），不测内部调用。boundary 函数可直接调用，不需要起 HTTP。
 11. 验收脚本 `scripts/verify/<unit>.sh` 启动真实生产进程并用 curl 驱动。server function 的请求体是 Seroval CrossJSON，函数 id 从 `.output/server` 按 `name` 提取。公开的 `pnpm build` 先删 `.output` 再构建，防止残留 `.output/public/_shell.html` 引用上一次构建的资源名。
 12. 浏览器验收用 Playwright 加真实 Chromium，每步打印 PASS/FAIL，截图默认写入 `.verify/<unit>/evidence/`。已提交的章节证据目录只放交付版本：章节交付或记录更新时由人手动复制过去，并同时更新该目录的索引。验收脚本不直接写 `docs/`，否则重跑一次就会静默改写历史章节的证据图。
-13. 开发过程中先运行受影响领域的定向测试。集成时运行 `pnpm fmt`、`pnpm check` 与 `pnpm verify`。完整验证中的全量 `pnpm test` 由 `scripts/verify/b-tooling.sh` 统一执行，不再另外追加；各领域验收仍保留定向测试。生成文件不手动改格式。
+13. 按[验证约定](../verification.md)选择本次改动所需的检查与验收。集成或交付节点的完整验证使用 `pnpm verify`，全量测试的执行入口与去重规则由验证约定统一维护。生成文件不手动改格式。
 
 `src/routeTree.gen.ts`、`src/db/auth-schema.ts` 与 `drizzle/meta/**` 在根格式配置中排除。现存实验和根 `docs/` 文档不由应用格式命令改写。CI 使用 `pnpm check`，不加 `--fix`。验证脚本使用 PASS 和 FAIL 断言字符串说明步骤，不添加描述执行阶段的注释。分 unit 的验收脚本由 `scripts/verify.sh` 按文件名顺序执行，脚本之间不共享进程、cookie 或数据库文件。
