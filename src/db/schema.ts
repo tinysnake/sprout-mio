@@ -1039,8 +1039,10 @@ export const executionCancellation = sqliteTable(
       .notNull()
       .default("none"),
     // 取消策略是入参事实，不是下发时的常量：请求留下什么，Worker 就收到什么。
-    policy: text("policy", { enum: ["term_then_kill", "kill"] }).notNull(),
-    termWaitMs: integer("term_wait_ms").notNull(),
+    policy: text("policy", { enum: ["term_then_kill", "kill"] })
+      .notNull()
+      .default("term_then_kill"),
+    termWaitMs: integer("term_wait_ms").notNull().default(2000),
     requestedAt: integer("requested_at", { mode: "timestamp_ms" }).notNull(),
     deliveredAt: integer("delivered_at", { mode: "timestamp_ms" }),
     exitedAt: integer("exited_at", { mode: "timestamp_ms" }),
