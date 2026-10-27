@@ -609,6 +609,10 @@ try {
       newWhen: journal.entries.at(-1).when,
     },
   };
+  // The gate reads this pid back and checks liveness itself; this file never claims termination.
+  const gateObservationPath = process.env.Y2_GATE_RAW;
+  if (gateObservationPath)
+    await writeFile(gateObservationPath, JSON.stringify({ managedPid }), { mode: 0o600 });
   await writeFile(evidencePath, JSON.stringify(evidence, null, 2) + "\n");
   console.log(
     "PASS real Worker CLI HTTP initialize, JSON tools/list, SSE tools/call, GET stream and DELETE attachment",

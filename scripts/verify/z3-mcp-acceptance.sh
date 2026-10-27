@@ -11,9 +11,14 @@ unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy || true
 # Generated probes stay private. Published evidence contains assertions and counts only.
 cat > "$run_dir/root-server.mjs" <<'SERVER'
 import { createInterface } from 'node:readline';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve, sep } from 'node:path';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 const root = resolve(process.argv[2]);
+// The gate owns the directory; this server, not the probe, records what it received.
+// Only the tool name, the JSON-RPC id and whether the resolved path stayed inside the root
+// are written: no path text and no file content ever reaches this log.
+const callLog = join(dirname(root), `calls-${basename(root)}.log`);
+const logCall = entry => appendFileSync(callLog, `${JSON.stringify(entry)}\n`);
 let subscribed = false;
 const send = value => process.stdout.write(JSON.stringify({jsonrpc:'2.0', ...value})+'\n');
 const tools = ['read','write','notify','never_reply'].map(name => ({name, inputSchema:{type:'object',properties:{path:{type:'string'},text:{type:'string'}}}}));
@@ -32,13 +37,16 @@ createInterface({input:process.stdin}).on('line', line => {
       case 'resources/unsubscribe': subscribed = false; result = {}; break;
       case 'tools/call': {
         const {name,arguments:a={}} = m.params;
-        if (name === 'never_reply') { writeFileSync(resolve(root,'request-observed'),'1'); return; }
+        if (name === 'never_reply') { logCall({tool:name,id:m.id,outcome:'no_reply'}); writeFileSync(resolve(root,'request-observed'),'1'); return; }
         if (name === 'notify') {
+          logCall({tool:name,id:m.id,outcome:'ok'});
           if (subscribed) send({method:'notifications/resources/updated',params:{uri:'z3://root/value'}});
           result = {content:[{type:'text',text:'notified'}]}; break;
         }
         const path = resolve(root,a.path);
-        if (!path.startsWith(root+sep)) throw new Error('outside_root');
+        const insideRoot = path.startsWith(root+sep);
+        if (!insideRoot) { logCall({tool:name,id:m.id,insideRoot,outcome:'rejected'}); throw new Error('outside_root'); }
+        logCall({tool:name,id:m.id,insideRoot,outcome:'ok'});
         if (name === 'write') writeFileSync(path,a.text);
         else if (name !== 'read') throw new Error('unknown_tool');
         result = {content:[{type:'text',text:name === 'read' ? readFileSync(path,'utf8') : 'written'}]}; break;
@@ -174,7 +182,11 @@ try {
     assert(!existsSync(join(roots[0]!,'forbidden.txt')));
     assert.notEqual(a.transport.sessionId,b.transport.sessionId);
     assert.notEqual(processA.id,processB.id);
-    return {simultaneousSessions:2,distinctProcesses:true,ownReads:true,ownWrites:true,crossRootReadRejected:true,crossRootWriteRejected:true};
+    const callsA=readFileSync(join(dir,'calls-root-a.log'),'utf8').trim().split('\n').map(line=>JSON.parse(line));
+    const callsB=readFileSync(join(dir,'calls-root-b.log'),'utf8').trim().split('\n').map(line=>JSON.parse(line));
+    const crossReadObserved=callsA.some((call:any)=>call.tool==='read'&&call.outcome==='rejected');
+    const crossWriteObserved=callsB.some((call:any)=>call.tool==='write'&&call.outcome==='rejected');
+    return {simultaneousSessions:2,distinctProcesses:true,ownReads:true,ownWrites:true,crossRootReadRejected:crossReadObserved,crossRootWriteRejected:crossWriteObserved};
   });
   await checked('resources',async()=>{
     const client:any = b.client;
@@ -231,7 +243,9 @@ try {
     const result=await execute('mcp__root-1__never_reply',{});
     assert(existsSync(join(roots[1]!,'request-observed')));
     assert.equal(result.details.outcome,'unknown');
-    return {requestReachedServer:true,outcome:result.details.outcome};
+    const calls=readFileSync(join(dir,'calls-root-b.log'),'utf8').trim().split('\n').map(line=>JSON.parse(line));
+    const requestObserved=calls.some((call:any)=>call.tool==='never_reply'&&call.outcome==='no_reply');
+    return {requestReachedServer:requestObserved,outcome:result.details.outcome};
   });
   await checked('disappearance',async()=>{
     const before=sqlite.prepare('SELECT id,process_id FROM mcp_session ORDER BY id').all();
@@ -269,7 +283,8 @@ try {
     const running=facts.filter(f=>f.id!==processA.id); assert(running.every(f=>alive(f.pid)));
     let code:string|undefined;
     const framesBefore=sqlite.prepare('SELECT count(*) AS n FROM mcp_frame').get() as any;
-    try {ctx.now=new Date(); await mcpSessionExchange({projectId,machineId,authorizationGeneration:1,sessionId:connections.at(-1).transport.sessionId,frames:[],ackServerSeq:0,cancelClientSeqs:[],protocolVersion:null,confirmInitialized:false,holdMs:0},ctx);} catch(e) {code=(e as any).code;}
+    // 只有真的捕获到错误才写这份原始观察值：没有发生调用就没有文件，门禁据此判 FAIL。
+    try {ctx.now=new Date(); await mcpSessionExchange({projectId,machineId,authorizationGeneration:1,sessionId:connections.at(-1).transport.sessionId,frames:[],ackServerSeq:0,cancelClientSeqs:[],protocolVersion:null,confirmInitialized:false,holdMs:0},ctx);} catch(e) {code=(e as any).code; writeFileSync(join(dir,'release-observation.json'),JSON.stringify({code:code??null,framesBefore:framesBefore.n,framesAfter:(sqlite.prepare('SELECT count(*) AS n FROM mcp_frame').get() as any).n}));}
     assert.equal(code,'lease_stale_generation');
     assert.deepEqual(sqlite.prepare('SELECT count(*) AS n FROM mcp_frame').get(),framesBefore);
     return {leaseState:row.state,generationAdvanced:true,remainingServerProcessesAlive:running.length,oldGenerationRejected:code};
@@ -292,6 +307,7 @@ cat > "$run_dir/run.mjs" <<'RUNNER'
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import Database from 'better-sqlite3';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -320,8 +336,8 @@ async function run(name,command,args,env={},prefix,evidenceFile) {
 // Existing A/B scripts remain the single owners of their probes; no copied assertions/pumps here.
 const x3EvidencePath=join(dir,'x3-evidence.json');
 const x3ObservationPath=join(dir,'x3-observations.json');
-await run('y2','bash',['scripts/verify/y2-mcp-http-worker.sh'],{},'y2-mcp-http-worker-');
-await run('x2','bash',['scripts/verify/x2-mcp-extension.sh'],{},'x2-mcp-extension-');
+await run('y2','bash',['scripts/verify/y2-mcp-http-worker.sh'],{Y2_GATE_RAW:join(dir,'y2-child.json')},'y2-mcp-http-worker-');
+await run('x2','bash',['scripts/verify/x2-mcp-extension.sh'],{X2_GATE_RAW:join(dir,'x2-tools.json')},'x2-mcp-extension-');
 await run('x3','bash',['scripts/verify/x3-mcp-extension-surface.sh'],{X3_DIR:dir,X3_EVIDENCE:x3EvidencePath,X3_RAW:x3ObservationPath},null,x3EvidencePath);
 await run('c','node',['--import','tsx',join(dir,'c-live.mts')],{DATABASE_URL:join(dir,'private.sqlite'),SPROUT_PI_ENABLED:'false'});
 const c=existsSync(join(dir,'c-evidence.json'))?read(join(dir,'c-evidence.json')):{};
@@ -410,10 +426,45 @@ try {
 } catch(e) {
   Object.assign(observationState,{status:e instanceof EvidenceUnavailable?'unavailable':'failed',error:e.message});
 }
-if(observationState.status==='computed') sources.observed={x3:{
+if(observationState.status==='computed') sources.observed={...(sources.observed??{}),x3:{
   imageBytesEqual:observationState.imageBytesEqual,
   structuredContentEqual:observationState.structuredContentEqual,
 }};
+const x2RawPath=join(dir,'x2-tools.json');
+// 固定清单由门禁自己持有：探针交来的两个数组都要对上它，改任何一侧都逃不过。
+const expectedEverythingTools=['echo','get-annotated-message','get-env','get-header-params','get-resource-links','get-resource-reference','get-roots-list','get-structured-content','get-sum','get-tiny-image','gzip-file-as-resource','toggle-simulated-logging','toggle-subscriber-updates','trigger-elicitation-request','trigger-list-changed','trigger-log-messages','trigger-long-running-operation','trigger-multi-step-elicitation','trigger-resource-update','trigger-sampling-request'].sort();
+let toolsMatch=false;
+try {
+  const commitment=read(`${x2RawPath}.commitment`);
+  const bytes=readFileSync(x2RawPath);
+  if(bytes.length===commitment.bytes&&createHash('sha256').update(bytes).digest('hex')===commitment.sha256) {
+    const raw=JSON.parse(bytes.toString('utf8'));
+    toolsMatch=Array.isArray(raw.rawToolNames)&&isDeepStrictEqual([...raw.rawToolNames].sort(),expectedEverythingTools)
+      &&Array.isArray(raw.expectedToolNames)&&isDeepStrictEqual([...raw.expectedToolNames].sort(),expectedEverythingTools);
+  }
+} catch {}
+const y2RawPath=join(dir,'y2-child.json');
+let configuredServiceExited=false;
+try { const y2Raw=read(y2RawPath); try { process.kill(y2Raw.managedPid,0); } catch (error) { configuredServiceExited=error.code==='ESRCH'; } } catch {}
+const observed={
+  toolsListMatchesExpected:toolsMatch,
+  configuredServiceExited,
+  crossRootReadRejected:readFileSync(join(dir,'calls-root-a.log'),'utf8').split('\n').some(line=>{try{const call=JSON.parse(line);return call.tool==='read'&&call.outcome==='rejected';}catch{return false;}}),
+  crossRootWriteRejected:readFileSync(join(dir,'calls-root-b.log'),'utf8').split('\n').some(line=>{try{const call=JSON.parse(line);return call.tool==='write'&&call.outcome==='rejected';}catch{return false;}}),
+  timeoutRequestReachedServer:readFileSync(join(dir,'calls-root-b.log'),'utf8').split('\n').some(line=>{try{const call=JSON.parse(line);return call.tool==='never_reply'&&call.outcome==='no_reply';}catch{return false;}}),
+};
+if(observationState.status==='computed') observed.x3={imageBytesEqual:observationState.imageBytesEqual,structuredContentEqual:observationState.structuredContentEqual};
+let oldGenerationRejected=false;
+try {
+  const release=read(join(dir,'release-observation.json'));
+  // 帧数不取自探针：门禁自己打开这份私有库数一遍，探针的自述只用来和它对齐。
+  const database=new Database(join(dir,'private.sqlite'));
+  const frames=database.prepare('SELECT count(*) AS n FROM mcp_frame').get().n;
+  database.close();
+  oldGenerationRejected=release.code==='lease_stale_generation'&&release.framesBefore===release.framesAfter&&release.framesAfter===frames&&frames>0;
+} catch {}
+observed.oldGenerationRejected=oldGenerationRejected;
+sources.observed=observed;
 
 // The harness owns both the evidence path and the expected behavior. A clause's
 // projection is checked separately; choosing an unrelated equal value is invalid.
@@ -430,6 +481,7 @@ const predicates={
 const REQUIRED = {
   1: {
     toolCount:{path:'x2.toolCount',expect:20},
+    toolsListMatchesExpected:{path:'observed.toolsListMatchesExpected',expect:true},
     clientFrames:{path:'x2.workerDispatcherClientFrames',expect:{predicate:'positiveCount'}},
     serverFrames:{path:'x2.workerDispatcherServerFrames',expect:{predicate:'positiveCount'}},
     endToEndToolsList:{path:'x2.endToEndToolsList',expect:'pass'},
@@ -444,8 +496,8 @@ const REQUIRED = {
   },
   3: {
     distinctProcesses:{path:'c.isolation.distinctProcesses',expect:true},
-    crossRootReadRejected:{path:'c.isolation.crossRootReadRejected',expect:true},
-    crossRootWriteRejected:{path:'c.isolation.crossRootWriteRejected',expect:true},
+    crossRootReadRejected:{path:'observed.crossRootReadRejected',expect:true},
+    crossRootWriteRejected:{path:'observed.crossRootWriteRejected',expect:true},
     callRejected:{path:'c.disappearance.callRejected',expect:true},
     sessionTargetsUnchanged:{path:'c.disappearance.sessionTargetsUnchanged',expect:true},
     noWriteOnSurvivor:{path:'c.disappearance.noWriteOnSurvivor',expect:true},
@@ -470,13 +522,15 @@ const REQUIRED = {
     callTextMatchesServer:{path:'x3.listChanged.callTextMatchesServer',expect:true},
     stillDeclaredAfterExplicitRefresh:{path:'x3.listChanged.stillDeclaredAfterExplicitRefresh',expect:true},
     blockedSurfaceOutcome:{path:'x3.refreshOnBlockedSurface.outcome',expect:'failed'},
-    oldGenerationRejected:{path:'c.release.oldGenerationRejected',expect:'lease_stale_generation'},
+    requestReachedServer:{path:'observed.timeoutRequestReachedServer',expect:true},
+    oldGenerationRejected:{path:'observed.oldGenerationRejected',expect:true},
   },
   6: {
     autostart:{path:'y2.ownerManaged.autostart',expect:false},
     noSpawn:{path:'y2.ownerManaged.noSpawn',expect:true},
     aliveAfterDelete:{path:'y2.ownerManaged.runningAfterDelete',expect:true},
     aliveAfterWorkerExit:{path:'y2.ownerManaged.aliveAfterWorkerExit',expect:true},
+    configuredServiceExited:{path:'observed.configuredServiceExited',expect:true},
     configuredServiceAliveAfterWorkerExit:{path:'y2.configuredService.aliveAfterWorkerExit',expect:false},
   },
   7: {
@@ -550,6 +604,7 @@ const clauses = [
     assert.equal(evidenceAt('configuredServiceSpawned','y2.configuredService.spawnedServerPidMatched'),true,'y2 的 configured_service 确实被 spawn');
     requireProbe('officialSdk');
     return {
+      toolsListMatchesExpected:evidenceAt('toolsListMatchesExpected','observed.toolsListMatchesExpected'),
       toolCount:evidenceAt('toolCount','x2.toolCount'),
       clientFrames:evidenceAt('clientFrames','x2.workerDispatcherClientFrames'),
       serverFrames:evidenceAt('serverFrames','x2.workerDispatcherServerFrames'),
@@ -578,8 +633,8 @@ const clauses = [
     requireProbe('isolation');requireProbe('disappearance');
     return {
       distinctProcesses:evidenceAt('distinctProcesses','c.isolation.distinctProcesses'),
-      crossRootReadRejected:evidenceAt('crossRootReadRejected','c.isolation.crossRootReadRejected'),
-      crossRootWriteRejected:evidenceAt('crossRootWriteRejected','c.isolation.crossRootWriteRejected'),
+      crossRootReadRejected:evidenceAt('crossRootReadRejected','observed.crossRootReadRejected'),
+      crossRootWriteRejected:evidenceAt('crossRootWriteRejected','observed.crossRootWriteRejected'),
       callRejected:evidenceAt('callRejected','c.disappearance.callRejected'),
       sessionTargetsUnchanged:evidenceAt('sessionTargetsUnchanged','c.disappearance.sessionTargetsUnchanged'),
       noWriteOnSurvivor:evidenceAt('noWriteOnSurvivor','c.disappearance.noWriteOnSurvivor'),
@@ -624,7 +679,8 @@ const clauses = [
       callTextMatchesServer:evidenceAt('callTextMatchesServer','x3.listChanged.callTextMatchesServer'),
       stillDeclaredAfterExplicitRefresh:evidenceAt('stillDeclaredAfterExplicitRefresh','x3.listChanged.stillDeclaredAfterExplicitRefresh'),
       blockedSurfaceOutcome:evidenceAt('blockedSurfaceOutcome','x3.refreshOnBlockedSurface.outcome'),
-      oldGenerationRejected:evidenceAt('oldGenerationRejected','c.release.oldGenerationRejected'),
+      oldGenerationRejected:evidenceAt('oldGenerationRejected','observed.oldGenerationRejected'),
+      requestReachedServer:evidenceAt('requestReachedServer','observed.timeoutRequestReachedServer'),
       resources:requireProbe('resources'),
       sessionRebuild:requireProbe('detach'),
       timeout:requireProbe('timeout'),
@@ -639,6 +695,7 @@ const clauses = [
       noSpawn:evidenceAt('noSpawn','y2.ownerManaged.noSpawn'),
       aliveAfterDelete:evidenceAt('aliveAfterDelete','y2.ownerManaged.runningAfterDelete'),
       aliveAfterWorkerExit:evidenceAt('aliveAfterWorkerExit','y2.ownerManaged.aliveAfterWorkerExit'),
+      configuredServiceExited:evidenceAt('configuredServiceExited','observed.configuredServiceExited'),
       configuredServiceAliveAfterWorkerExit:evidenceAt('configuredServiceAliveAfterWorkerExit','y2.configuredService.aliveAfterWorkerExit'),
       detach:requireProbe('detach'),
       release:requireProbe('release'),

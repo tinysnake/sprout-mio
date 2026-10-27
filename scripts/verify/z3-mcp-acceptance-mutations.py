@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -33,6 +35,8 @@ ROOT = Path(__file__).resolve().parents[2]
 GATE = Path("scripts/verify/z3-mcp-acceptance.sh")
 X3_SCRIPT = Path("scripts/verify/x3-mcp-extension-surface.sh")
 FIXTURE = Path("tests/fixtures/mcp-extension-surface.ts")
+X2_FIXTURE = Path("tests/fixtures/mcp-extension-live.ts")
+Y2_FIXTURE = Path("tests/fixtures/mcp-http-worker-live.ts")
 INSTALL_TIMEOUT_SECONDS = 300
 CLONE_TIMEOUT_SECONDS = 120
 # The gate's own probe cap is 300 s; give the whole gate room and fail loudly if it hangs.
@@ -51,11 +55,12 @@ class DriverError(RuntimeError):
 class Mutation:
     """One attack: a probe edit plus the reason it should now be rejected."""
 
-    def __init__(self, name: str, target: Path, why: str, apply) -> None:
+    def __init__(self, name: str, target: Path, why: str, apply, expected_clause: int = 4) -> None:
         self.name = name
         self.target = target
         self.why = why
         self.apply = apply
+        self.expected_clause = expected_clause
 
 
 def run(args: list[str], cwd: Path, *, timeout: int):
@@ -187,6 +192,99 @@ def delete_observations_after_success(x3: Path) -> None:
     )
 
 
+def weaken_tools_list_comparison(fixture: Path) -> None:
+    """M1: the deep comparison becomes a comparison of `rawToolNames` with itself."""
+    mutate(
+        fixture,
+        "const toolsListMatchesExpected = isDeepStrictEqual(rawToolNames, expectedToolNames);",
+        "const toolsListMatchesExpected = isDeepStrictEqual(rawToolNames, rawToolNames);",
+    )
+
+
+def truncate_received_tool_names(fixture: Path) -> None:
+    """M1 witness: what Pi received is no longer the server's list, and nothing else complains.
+
+    The probe's own length assertion counts `toolNames`, which is derived separately, so the
+    weakened check above still passes and the probe exits 0.
+    """
+    mutate(
+        fixture,
+        "const rawToolNames = connection.tools.map((tool) => tool.name).sort();",
+        "const rawToolNames = connection.tools.map((tool) => tool.name).sort().slice(1);",
+    )
+
+
+def drop_cross_root_read_assertion(gate: Path) -> None:
+    """M3: the cross-root read is no longer attempted, so no rejection can be observed."""
+    mutate(
+        gate,
+        "    await assert.rejects(a.client.callTool('read',{path:join(roots[1]!,'value.txt')}));\n",
+        "    // 跨 root read 断言已删除\n",
+    )
+
+
+def hardcode_timeout_result(gate: Path) -> None:
+    """M5: the timeout probe returns a literal instead of calling the server."""
+    mutate(
+        gate,
+        "  await checked('timeout',async()=>{\n"
+        "    const result=await execute('mcp__root-1__never_reply',{});\n"
+        "    assert(existsSync(join(roots[1]!,'request-observed')));\n"
+        "    assert.equal(result.details.outcome,'unknown');\n"
+        "    const calls=readFileSync(join(dir,'calls-root-b.log'),'utf8').trim().split('\\n').map(line=>JSON.parse(line));\n"
+        "    const requestObserved=calls.some((call:any)=>call.tool==='never_reply'&&call.outcome==='no_reply');\n"
+        "    return {requestReachedServer:requestObserved,outcome:result.details.outcome};\n"
+        "  });\n",
+        "  await checked('timeout',async()=>{ return {requestReachedServer:true,outcome:'unknown'}; });\n",
+    )
+
+
+def hardcode_stale_generation(gate: Path) -> None:
+    """M6: the old-generation exchange is replaced by a local constant."""
+    mutate(
+        gate,
+        "    try {ctx.now=new Date(); await mcpSessionExchange({projectId,machineId,authorizationGeneration:1,"
+        "sessionId:connections.at(-1).transport.sessionId,frames:[],ackServerSeq:0,cancelClientSeqs:[],"
+        "protocolVersion:null,confirmInitialized:false,holdMs:0},ctx);} catch(e) {code=(e as any).code; "
+        "writeFileSync(join(dir,'release-observation.json'),JSON.stringify({code:code??null,"
+        "framesBefore:framesBefore.n,framesAfter:(sqlite.prepare('SELECT count(*) AS n FROM mcp_frame').get() "
+        "as any).n}));}\n",
+        "    code='lease_stale_generation';\n",
+    )
+
+
+def assert_configured_service_terminated(y2: Path) -> None:
+    """M4: stop waiting, hardcode the claim, and keep the child alive to make the claim false.
+
+    `waitFor(() => !live(...))` becomes `waitFor(() => true)`, the evidence field becomes a
+    literal `false`, the Worker is SIGKILLed so its own shutdown never terminates the managed
+    service, and the fixture no longer clears the survivor. The probe still exits 0 while the
+    configured service is alive after the Worker is gone.
+    """
+    mutate(
+        y2,
+        '  worker.kill("SIGTERM");\n'
+        "  await waitFor(() => worker!.exitCode !== null || worker!.signalCode !== null, 8000);\n"
+        "  const exit = await exited;\n"
+        "  assert.deepEqual(exit, { code: 0, signal: null });\n"
+        "  await waitFor(() => !live(managedPid!));\n",
+        '  worker.kill("SIGKILL");\n'
+        "  await waitFor(() => worker!.exitCode !== null || worker!.signalCode !== null, 8000);\n"
+        "  const exit = await exited;\n"
+        "  await waitFor(() => true);\n",
+    )
+    mutate(y2, "      aliveAfterWorkerExit: live(managedPid),", "      aliveAfterWorkerExit: false,")
+    mutate(
+        y2,
+        "  if (managedPid && live(managedPid)) {\n"
+        "    try {\n"
+        '      process.kill(-managedPid, "SIGKILL");\n'
+        "    } catch {}\n"
+        "  }\n",
+        "",
+    )
+
+
 def build_mutations() -> list[Mutation]:
     return [
         # Required class 1: real byte comparison gone, probe still exits 0, witness disagrees.
@@ -241,6 +339,43 @@ def build_mutations() -> list[Mutation]:
             FIXTURE,
             "Pi 侧原始观察值不是 PNG",
             lambda copy: replace_image_with_non_png(copy / FIXTURE),
+        ),
+        # Round 4: M1/M3/M4/M5/M6. Each probe still exits 0 and still reports success; the gate
+        # rejects it because the value it needs comes from an observation the mutation destroyed.
+        Mutation(
+            "tools-list-comparison-removed",
+            X2_FIXTURE,
+            "M1：tools/list 改成与自身深度比较，Pi 收到的名字还少了一个",
+            lambda copy: (weaken_tools_list_comparison(copy / X2_FIXTURE), truncate_received_tool_names(copy / X2_FIXTURE)),
+            expected_clause=1,
+        ),
+        Mutation(
+            "cross-root-read-assertion-removed",
+            GATE,
+            "M3：删掉跨 root read 拒绝断言，探针仍以 0 退出并声称拒绝",
+            lambda copy: drop_cross_root_read_assertion(copy / GATE),
+            expected_clause=3,
+        ),
+        Mutation(
+            "configured-service-liveness-hardcoded",
+            Y2_FIXTURE,
+            "M4：不再等 configured_service 终止，证据写死 false，子进程实际存活",
+            lambda copy: assert_configured_service_terminated(copy / Y2_FIXTURE),
+            expected_clause=6,
+        ),
+        Mutation(
+            "timeout-probe-hardcoded",
+            GATE,
+            "M5：timeout 探针直接返回字面量，从未调用永不响应工具",
+            lambda copy: hardcode_timeout_result(copy / GATE),
+            expected_clause=5,
+        ),
+        Mutation(
+            "stale-generation-constant",
+            GATE,
+            "M6：旧代次 exchange 换成常量 lease_stale_generation，不再走服务端路径",
+            lambda copy: hardcode_stale_generation(copy / GATE),
+            expected_clause=5,
         ),
     ]
 
@@ -338,6 +473,27 @@ def prepare(copy: Path, source: Path, baseline: str) -> None:
         raise DriverError(f"dependency install failed: {install.stderr.strip()[-400:]}")
 
 
+def reap_orphans(copy: Path) -> None:
+    """A mutation may deliberately leave a survivor; the driver must not leak it to the next case."""
+    directories = sorted((copy / ".verify").glob("z3-mcp-acceptance-*"), key=lambda path: path.stat().st_mtime_ns)
+    if not directories:
+        return
+    artifact = directories[-1] / "y2-child.json"
+    if not artifact.exists():
+        return
+    try:
+        pid = json.loads(artifact.read_text()).get("managedPid")
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(pid, int):
+        return
+    for target in (-pid, pid):
+        try:
+            os.kill(target, signal.SIGKILL)
+        except OSError:
+            pass
+
+
 def run_case(name: str, mutation: Mutation | None, *, source: Path, baseline: str, temp_root: Path) -> dict[str, object]:
     copy = temp_root / name
     started = time.monotonic()
@@ -348,6 +504,8 @@ def run_case(name: str, mutation: Mutation | None, *, source: Path, baseline: st
         result = run(["bash", str(GATE)], copy, timeout=CASE_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         raise DriverError(f"{name}: gate exceeded {CASE_TIMEOUT_SECONDS}s") from None
+    finally:
+        reap_orphans(copy)
     elapsed = round(time.monotonic() - started, 1)
     output = result.stdout + result.stderr
     statuses = clause_statuses(result.stdout)
@@ -360,21 +518,23 @@ def run_case(name: str, mutation: Mutation | None, *, source: Path, baseline: st
         "rawValuesVisible": False,
     }
     assert_no_raw_values(name, copy, output)
-    clause4 = json.loads((run_dir(copy) / "clause-4.json").read_text())
+    target = mutation.expected_clause if mutation else 4
+    target_record = json.loads((run_dir(copy) / f"clause-{target}.json").read_text())
     if mutation is None:
         if result.returncode != 0 or any(state != "PASS" for state in statuses.values()):
             failing = {number: state for number, state in statuses.items() if state != "PASS"}
-            raise DriverError(f"clean baseline did not pass: exit {result.returncode}, {failing}, {clause4.get('error')}")
-        record["gateComputed"] = clause4["gateComputed"]
+            raise DriverError(f"clean baseline did not pass: exit {result.returncode}, {failing}, {target_record.get('error')}")
+        record["gateComputed"] = json.loads((run_dir(copy) / "clause-4.json").read_text())["gateComputed"]
         return record
-    if statuses[4] == "INCONCLUSIVE":
-        raise DriverError(f"{name}: gate answered INCONCLUSIVE, a probe that reported success must be rejected as FAIL")
-    if statuses[4] == "PASS":
-        raise DriverError(f"{name}: gate answered PASS, the mutation is not detected")
+    if statuses[target] == "INCONCLUSIVE":
+        raise DriverError(f"{name}: gate answered R1-{target} INCONCLUSIVE, a probe that reported success must be rejected as FAIL")
+    if statuses[target] == "PASS":
+        raise DriverError(f"{name}: gate answered R1-{target} PASS, the mutation is not detected")
     if result.returncode == 0:
-        raise DriverError(f"{name}: gate exited 0 with R1-4 FAIL")
-    record["clause4Error"] = clause4.get("error")
-    record["clause4GateComputed"] = clause4.get("gateComputed")
+        raise DriverError(f"{name}: gate exited 0 with R1-{target} FAIL")
+    record["clause"] = target
+    record["clauseError"] = target_record.get("error")
+    record["clauseGateComputed"] = target_record.get("gateComputed")
     return record
 
 

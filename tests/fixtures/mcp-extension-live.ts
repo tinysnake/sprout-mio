@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -37,6 +37,7 @@ import type { AgentRemoteContext } from "../../src/server/lease";
 
 const evidencePath = process.env.X2_EVIDENCE ?? "/tmp/x2-mcp-extension-evidence.json";
 const directory = process.env.X2_DIR ?? "/tmp/x2-mcp-extension";
+const gateRawPath = process.env.X2_GATE_RAW;
 mkdirSync(directory, { recursive: true });
 const pass = (name: string) => console.log(`PASS ${name}`);
 const HOUR = 3_600_000;
@@ -443,6 +444,18 @@ const expectedToolNames = expectedArrays[0]!.elements
   })
   .sort();
 const toolsListMatchesExpected = isDeepStrictEqual(rawToolNames, expectedToolNames);
+if (gateRawPath) {
+  const bytes = Buffer.from(JSON.stringify({ rawToolNames, expectedToolNames }));
+  writeFileSync(gateRawPath, bytes, { mode: 0o600 });
+  writeFileSync(
+    `${gateRawPath}.commitment`,
+    JSON.stringify({
+      bytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    }),
+    { mode: 0o600 },
+  );
+}
 const toolNames = connection.tools.map((tool) => mcpToolName("everything", tool.name)).sort();
 // 数量从 z2 的期望名单推导（上一段已用 AST 读出并断言同名），不另存一份常量。
 assert.equal(toolNames.length, expectedToolNames.length, "pinned server-everything tools/list");
