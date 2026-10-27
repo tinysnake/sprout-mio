@@ -29,7 +29,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
 | P6 | 完成小脑接续、Info Hub 与成员治理 | P4、P5 | 待开始 |
 | P7 | 完成手机、PWA、恢复与一期整体验收 | P6 | 待开始 |
-| R1 | 验证项目及软件 MCP 接入 | P4 的协议与授权稳定后 | 七条已完成独立技术验收（第七轮通过，结论见 [r1/summary.md](r1/summary.md)）；纳入一期待 Human 确认 |
+| R1 | 验证项目及软件 MCP 接入 | P4 的协议与授权稳定后 | 已完成：七条独立技术验收第七轮通过，并由 Human 确认纳入一期（结论见 [r1/summary.md](r1/summary.md)） |
 | P8 | 实施二期能力 | P7 | 后续细化 |
 
 默认按 P0 至 P7 顺序推进。P4 与 P5 在共同契约稳定后可以由不同实现者并行。Info Hub、响应式 UI 和错误呈现随对象逐步接入，P6 与 P7 负责补齐和整体验收，不是首次开始这些工作。
@@ -191,7 +191,7 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 - [x] 验证 Blender 连接目标实例，并将图片与 structuredContent 完整送达 Pi。载体已按同上授权替换为 server-everything，证据见 [R1 验证结论](r1/summary.md#验收证据与复跑)，重跑 `bash scripts/verify/z3-mcp-acceptance.sh`：经 Worker、SQLite 帧中继、Sprout transport 与真实 Pi 工具定义执行，图片 base64 逐字节相同，structuredContent 与原生结果深度相等。Blender 本体未验证。
 - [x] 验证 resources、工具目录变化、session 重建、超时未知与旧租约请求拒绝。证据见 [R1 验证结论](r1/summary.md#验收证据与复跑)，重跑 `bash scripts/verify/z3-mcp-acceptance.sh`。列出并读取资源、订阅后退订；list_changed 后新工具进入活动工具面并可调用；关闭后同一 process 可重开 session；server 已收到不返回响应的请求而 Pi 报告 `unknown`；释放租约后旧代次返回 `lease_stale_generation` 且不插新帧。
 - [x] 区分 Worker 管理的 server 进程与已运行的软件服务，不把断开 Pi session 等同于关闭软件或撤销所有长期工作。证据见 [R1 验证结论](r1/summary.md#验收证据与复跑)，重跑 `bash scripts/verify/z3-mcp-acceptance.sh`。owner_managed、autostart=false 的服务不 spawn，DELETE 与 Worker 退出后仍运行；configured_service 随 Worker 退出终止，由门禁自己 `kill(pid, 0)` 只接受 ESRCH 判定。
-- [x] 根据证据记录采用 SDK、proxy 或薄 bridge 的具体组合，并明确纳入哪个交付阶段。纳入一期时同步修改 core-scope 与验收表。组合与阶段记录见 `docs/r1/design.md` 的「组合与边界」，验收证据与重跑命令见 [R1 验证结论](r1/summary.md#验收证据与复跑)，重跑 `bash scripts/verify/z3-mcp-acceptance.sh`。组合是薄 bridge + 帧中继 + Pi 原生客户端，官方 SDK 仅作参考。阶段为「P4c 之后纳入一期」，触发条件仍待 Human 确认，本轮未改一期能力表、验收表与开发计划四步 checklist。
+- [x] 根据证据记录采用 SDK、proxy 或薄 bridge 的具体组合，并明确纳入哪个交付阶段。纳入一期时同步修改 core-scope 与验收表。组合与阶段记录见 `docs/r1/design.md` 的「组合与边界」，验收证据与重跑命令见 [R1 验证结论](r1/summary.md#验收证据与复跑)，重跑 `bash scripts/verify/z3-mcp-acceptance.sh`。组合是薄 bridge + 帧中继 + Pi 原生客户端，官方 SDK 仅作参考。阶段为**已纳入一期**：Human 在第七轮验收通过后确认纳入，原 P4c 与 P4d 前置由 Human 豁免；[core-scope](core-scope.md) 的一期范围与 Machines 职责已同步更新。
 
 ### 验证载体变更
 
@@ -203,7 +203,7 @@ Human 于 `2026-10-25T03:44Z` 授权以无需大型软件的 MCP 验证透传能
 
 ### 当前证据
 
-七条行为判定、实际证据路径和载体限制见 [R1 验证结论](r1/summary.md)，组合理由见 [R1 设计](r1/design.md)。统一重跑入口为 `bash scripts/verify/z3-mcp-acceptance.sh`。七条已按上述载体替换完成独立技术验收（第七轮判定通过），上方勾选逐项对应结论中的证据链接。R1 仍是独立验证任务，**尚未纳入一期**：纳入需 Human 确认，确认前不改一期能力表、一期验收表与 Human 确认 checklist。
+七条行为判定、实际证据路径和载体限制见 [R1 验证结论](r1/summary.md)，组合理由见 [R1 设计](r1/design.md)。统一重跑入口为 `bash scripts/verify/z3-mcp-acceptance.sh`。七条已按上述载体替换完成独立技术验收（第七轮判定通过），上方勾选逐项对应结论中的证据链接。R1 **已由 Human 确认纳入一期**；一期能力表（[core-scope](core-scope.md) 的一期范围与 Machines 职责）已同步更新，Unity Editor 与 Blender 本体未验证，不计入本期验收。
 
 ## P8 在一期完成后展开二期
 

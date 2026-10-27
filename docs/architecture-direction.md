@@ -126,7 +126,7 @@ SQLite + Drizzle 是单宿主部署的默认组合。driver 已由 P0 收敛为 
 | Task | 属于 Project，由 Chat 承接 | 保持 proposed、assigned、finished、canceled 四态 |
 | Wake request | 目标分身、来源、去重身份与处理记录 | 持久恢复，执行前重新检查参与权和暂停控制 |
 | Repository snapshot | 仓库来源、commit 或 ref、获取时点 | 不混同 Machine 的未推送与未提交现场 |
-| MCP binding | Project、Machine、server、目标实例 | 接入预案，交付分期待单独确认 |
+| MCP binding | Project、Machine、server、目标实例 | 已纳入一期；allowlist 约束注册，server 进程归 Worker 管理 |
 
 P2 的身份与持久数据已落实。全局 Agent profile 按创建者授权，可复用于本人多个 Project。`src/domain/access.ts` 的 `assertProjectAccess` 按 projectId 与当前 userId 查询 Project，只有创建者可访问；不存在和越权统一抛出 `not_found`，消息为「对象不存在」。通过 Chat 或分身查询时从实际对象取得 projectId 再授权，关联查询过滤已授权 Project。两用户生产 HTTP 与页面隔离、错误 requestId 和零泄漏反证见 [独立验收](p2/acceptance.md#隔离反证与正常对照)。P2 没有运行时快照，其隔离未验证。
 

@@ -2,7 +2,7 @@
 
 R1 七条当前行为复核均为 PASS，独立技术验收第七轮判通过。z3 返回 0 且七条全 PASS，逐条 JSON 与运行输出保存在 [evidence/](evidence/)。第七轮验收重建了第六轮点名的四条攻击并逐条确认被拒；它的能力边界与仍须记录的残余见下方「门禁能力与其边界」。这些行为复核适用于 Human 授权替换后的无界面 server，不表示已验证 Unity 或 Blender 插件。
 
-**R1 当前仍是独立验证任务，尚未纳入一期。** 原纳入建议要求 P4c 身份与授权契约稳定、R1 独立验收通过并完成 Human 确认。第五轮发现门禁抵抗性不足且 drain exchange 被响应契约拒绝；两项均已修复（drain 为 `f7f1c0c`，门禁经 v3 至 v5 三轮整改），第六轮判「部分通过」后，第七轮独立验收判通过。技术验收已完成，一期纳入与 Human 确认仍未完成。
+**R1 已完成独立技术验收，并已由 Human 确认纳入一期。** 原纳入建议要求 P4c 身份与授权契约稳定、R1 独立验收通过并完成 Human 确认；Human 在第七轮验收通过后确认纳入，并明确豁免 P4c、P4d 前置。第五轮发现门禁抵抗性不足且 drain exchange 被响应契约拒绝；两项均已修复（drain 为 `f7f1c0c`，门禁经 v3 至 v5 三轮整改），第六轮判「部分通过」后，第七轮独立验收判通过。一期的能力范围与边界已同步到 [core-scope](../core-scope.md)。
 
 ## 七条证据
 
@@ -14,7 +14,7 @@ R1 七条当前行为复核均为 PASS，独立技术验收第七轮判通过。
 | 4：图片与 structuredContent 送达 Pi   | PASS | server-everything 经 Worker、SQLite 帧中继、Sprout transport 和真实 Pi 工具定义执行，图片仍为 `image/png` 的 `image` 块，base64 长度 5380 且与原生客户端结果逐字节相同；另一个真实工具的 structuredContent 与原生结果深度相等。[clause-4.json](evidence/clause-4.json)                                                                                                                                                                          |
 | 5：资源、目录变化、重建、超时与旧代次 | PASS | 列出并读取资源、订阅并收到 1 次更新后退订；x3 的真实 list_changed 后新工具进入 Pi 活动工具面并可调用（`callReturned` 与 `callTextMatchesServer` 由那次真实调用返回值算出，不是字面量），显式 refresh 后仍可用，受阻工具面有可见失败诊断；关闭后对同一 process 重开 session；server 已收到不返回响应的请求，Pi 仍报告 `unknown`；释放租约后的旧代次 exchange 返回 `lease_stale_generation` 且不插入新帧。[clause-5.json](evidence/clause-5.json) |
 | 6：生命周期与已有服务登记             | PASS | 真实 Pi AgentSession dispose 并关闭 MCP attachment 后 server 存活，同一 process 可重连；释放租约并收敛到 free 后两个剩余 server 仍存活。y2 的 owner_managed、autostart=false 服务不 spawn、可从 catalog 选择并调用，DELETE 和 Worker 退出后仍运行；configured_service 随 Worker 退出终止。[clause-6.json](evidence/clause-6.json)                                                                                                               |
-| 7：采用组合与纳入阶段                 | PASS | [design.md](design.md) 记录薄 bridge + 帧中继 + Pi 原生客户端、官方 SDK 作为参考的理由，以及不开新 Sprout 长连接的理由；范围文档将 MCP 列为明确后续能力，写明 P4c 后纳入一期的触发条件。[clause-7.json](evidence/clause-7.json)                                                                                                                                                                                                                 |
+| 7：采用组合与纳入阶段                 | PASS | [design.md](design.md) 记录薄 bridge + 帧中继 + Pi 原生客户端、官方 SDK 作为参考的理由，以及不开新 Sprout 长连接的理由；范围文档将 MCP tools 接入写为一期能力并标注已纳入一期。[clause-7.json](evidence/clause-7.json)                                                                                                                                                                                                                          |
 
 ## 验收证据与复跑
 
@@ -44,7 +44,7 @@ R1 七条当前行为复核均为 PASS，独立技术验收第七轮判通过。
 - 新组合探针使用真实生产 relay service、Worker runtime/dispatcher、SQLite、独立进程与真实 Pi 工具定义，主体和租约由隔离 fixture 创建；service 调用直接进入生产入口。受认证 HTTP 边界由复用的 x2/y2 单独实测。目录新增到模型工具面的证据来自 x3 的真实 stdio/Pi 路径，未把它描述为一条新的远端 HTTP 场景。
 - “可被模型调用”通过真实 Pi 活动工具面与 Pi 持有的工具定义执行验证，没有发起付费模型推理。目录变化证据覆盖新工具加入与 refresh 保持，未扩大为所有插件热更新行为的保证。
 - owner_managed 登记适用于 streamableHttp 服务；不支持接管任意已运行进程的 stdio。官方 SDK 的两种传输对照用于参考，产品客户端仍为锁定的 Pi 1.4.0。
-- 条款 7 只校验可以机器判定的东西：`docs/r1/summary.md` 与 `docs/r1/design.md` 存在、design 的关键组合词（薄 bridge、帧中继、Pi 原生客户端、SDK、长连接）出现、范围文档写了 MCP 接入与 P4c，以及 `docs/r1/evidence/evidence.json` 的 `scriptSha256` 等于**当前** z3 脚本的 SHA-256、`sourceCommit` 是当前 HEAD 的祖先或等于它。**文档内容是否与代码相符不由本门禁保证**：把 `owner_managed` 那句改成与代码相反的断言后条款 7 仍然 PASS（实测），语义一致性由独立验收者逐条核对。改过 z3 脚本后必须重跑并把新的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 复制进 `docs/r1/evidence/`，否则条款 7 变红。
+- 条款 7 只校验可以机器判定的东西：`docs/r1/summary.md` 与 `docs/r1/design.md` 存在、design 的关键组合词（薄 bridge、帧中继、Pi 原生客户端、SDK、长连接）出现、范围文档写了 MCP 接入且标注已纳入一期，以及 `docs/r1/evidence/evidence.json` 的 `scriptSha256` 等于**当前** z3 脚本的 SHA-256、`sourceCommit` 是当前 HEAD 的祖先或等于它。**文档内容是否与代码相符不由本门禁保证**：把 `owner_managed` 那句改成与代码相反的断言后条款 7 仍然 PASS（实测），语义一致性由独立验收者逐条核对。改过 z3 脚本后必须重跑并把新的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 复制进 `docs/r1/evidence/`，否则条款 7 变红。
 - 每条条款的必需字段表 `REQUIRED` 固定 `{path, expect}`。遍历循环先从这些固定路径读取证据并核对精确值或命名谓词，再运行条款 body。返回的 `assertions` 必须齐全、等于已核实的值，且 body 的取值路径必须与固定路径一致；`clause-<n>.json` 同时记录 `verified` 和 `projections`。清空 body、写死正确字面量或给 `evidenceAt` 起别名读取无关路径都会 FAIL。
 - **证据生产端（v3 至 v5 整改）**：下列事实由门禁自己观测或重算，不再采信探针写进 evidence 的布尔值——R1-1 的 20 个工具名集合（私有产物附 SHA-256 承诺）、官方 SDK 两种传输的真实工具名集合（私有产物无承诺）、R1-2 的 5 个活动工具名、R1-3 的跨 root 拒绝（门禁从自己生成的 root server 调用日志重算）、R1-4 的图片字节与 structuredContent（私有原始观察值附承诺）、R1-5 的请求到达与旧代次拒绝（门禁自己打开私有库数 `mcp_frame` 行数）、R1-6 的 configured_service 终止（门禁自己 `kill(pid, 0)` 只接受 ESRCH）。
 - **这层保护的上限：门禁只能校验「探针交来的私有产物是否与门禁期望一致」，识别不了一个故意伪造该产物的探针。** 官方 SDK 那份产物没有承诺，把工具名数组写死为期望集合、不真连一次，R1-1 仍会 PASS（第七轮实测）。x3 与 x2 的产物有 SHA-256 承诺也只能证明「产物没被改」，不证明探针真的执行了比较。R1-4 的 `c.image.bytesEqual`/`structuredContentEqual`/`throughSproutRelay`/`throughRealPiToolDefinition` 四个字段仍是 C 探针的字面量 `true`，真实比较靠探针内 `assert`；它们已不是唯一依据（门禁另有自算的 `x3BytesEqual`/`x3StructuredContentEqual`），但仍在 `REQUIRED` 里。消除这类残余需要让探针无法伪造自己的产物（例如签名或由门禁代写），当前未做。
@@ -55,7 +55,7 @@ R1 七条当前行为复核均为 PASS，独立技术验收第七轮判通过。
 - 生产 runner 调用 `registerSproutMcp` 时没有提供 sampling handler。elicitation 仅支持 absent 或 `{action:'cancel'}`。这些限制与固定 fixture 的协议往返证据一致，不代表生产模型采样或 Human 表单交互。
 - `y2-mcp-http-worker.sh` 使用打包的 Worker CLI 子进程连接真实 stdio MCP server 和 streamableHttp server，已覆盖跨进程 stdio。没有真实模型自动选择 MCP 工具的一轮推理。
 - Worker 下行 dispatch 项若未通过 `dispatcher.accept` 的身份校验会转成 `invalid_response` 并结束当前 Worker fiber，Worker 随后需要重连。该情况不会报告为 MCP 调用成功。
-- 第五轮独立验收报告 [第五轮独立验收记录](acceptance-round5.md) 确认七条当前行为通过，同时发现 z3 六种证据变异仍全绿、且真实 drain response 违反响应契约。第六轮独立验收报告 [第六轮独立验收记录](acceptance-round6.md) 判定「部分通过」：drain 修复有效且有会实质变红的集成测试；第五轮六类变异全部被拒；但另有三条同类证据生产端伪造路径仍可绕过门禁。这三条已由 `41b8df0` 修复，快照可复现性由 `685532c` 修复。第七轮独立验收判通过，并指出本文件对官方 SDK 私有产物的「附承诺」表述不准确、以及 R1-4 仍有四个探针字面量字段，两处已在上述边界里改正。Human 体验确认与一期范围纳入仍未完成。
+- 第五轮独立验收报告 [第五轮独立验收记录](acceptance-round5.md) 确认七条当前行为通过，同时发现 z3 六种证据变异仍全绿、且真实 drain response 违反响应契约。第六轮独立验收报告 [第六轮独立验收记录](acceptance-round6.md) 判定「部分通过」：drain 修复有效且有会实质变红的集成测试；第五轮六类变异全部被拒；但另有三条同类证据生产端伪造路径仍可绕过门禁。这三条已由 `41b8df0` 修复，快照可复现性由 `685532c` 修复。第七轮独立验收判通过，并指出本文件对官方 SDK 私有产物的「附承诺」表述不准确、以及 R1-4 仍有四个探针字面量字段，两处已在上述边界里改正。Human 体验确认仍未完成（R1 无界面，由 Human 判断是否适用）；一期范围纳入已由 Human 确认。
 
 ## 第五轮独立复核补充（`efc7c28`）
 

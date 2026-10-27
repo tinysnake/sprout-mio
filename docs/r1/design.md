@@ -1,6 +1,6 @@
 # R1 MCP 组合与交付阶段
 
-R1 采用薄 bridge + 帧中继 + Pi 原生客户端。Machine 上的 Worker 负责进程与传输，Sprout 保存会话身份和有序帧，Pi extension 把已有客户端接到这条通道上。MCP 接入在 P4c 之后纳入一期；触发条件是 P4c 的身份与授权契约稳定、R1 独立验收通过并完成 Human 确认。本轮保留一期能力表、一期验收表和开发计划四步 checklist。
+R1 采用薄 bridge + 帧中继 + Pi 原生客户端。Machine 上的 Worker 负责进程与传输，Sprout 保存会话身份和有序帧，Pi extension 把已有客户端接到这条通道上。MCP 接入已纳入一期：R1 第七轮独立验收通过后由 Human 确认纳入，原 P4c 身份与授权契约前置由 Human 豁免。一期能力表（[core-scope](../core-scope.md)）已同步，开发计划四步 checklist 不变。
 
 ## 组合与边界
 

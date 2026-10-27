@@ -22,6 +22,8 @@ Sprout Mio 是 Sprout 的简化重制版，大量代码和设计可以直接参�
 
 Info Hub 的多视角聚合、快照与变更提示，以及宿主侧仓库入口保持一期范围，不采用进一步裁剪。
 
+**MCP tools 接入** 已纳入一期。Human 于 R1 第七轮独立验收通过后确认纳入，原触发条件中的 P4c 与 P4d 前置由 Human 明确豁免。一期范围：宿主 MCP 入口受 allowlist 约束注册，stdio 与 streamableHttp MCP server 的工具经真实 Pi 工具面调用，图片与 structuredContent 完整送达；Worker 管理的 server 进程与已运行软件服务分开表达。证据见 [R1 验证结论](r1/summary.md)。Unity Editor 与 Blender 本体的发现机制和插件行为未验证，不计入本期验收。
+
 ## 一期目标
 
 人类在 Project 内与有稳定人设的 Agent 分身沟通。分身可以在宿主侧访问项目仓库，直接回答日常仓库问题；需要 Machine 现场时，通过 Pi extension 取得远端 Machine 的租约并操作。Chat 承接 Task，Group owner 组织开发，Task 保存目标、归属、checklist 与施工记录，完成结果就是最后一条施工记录。Info Hub 为人类和 Agents 聚合基本信息及其关联。人类可以随时干预运行或收回租约。
@@ -62,7 +64,7 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 
 | 环节 | 一期职责 | 一期不承担的职责 |
 | --- | --- | --- |
-| Machines | Worker 稳定连接；macOS 平台验收；shell、文件、进程操作；长命令持续执行、日志与结果查询、重连接续及请求去重；Project × Machine 内分身独占、跨 run 持有、直接原子交接；人类强制收回 | 挂靠与领取、系统自动资源协调、Windows Worker（二期）；Machine 上安装 harness、自动能力匹配、租约动作自动清理进程、图形桌面工具 |
+| Machines | Worker 稳定连接；macOS 平台验收；shell、文件、进程操作；长命令持续执行、日志与结果查询、重连接续及请求去重；宿主 MCP 入口与 stdio/streamableHttp MCP server 的工具调用；Project × Machine 内分身独占、跨 run 持有、直接原子交接；人类强制收回 | 挂靠与领取、系统自动资源协调、Windows Worker（二期）；Machine 上安装 harness、自动能力匹配、租约动作自动清理进程、图形桌面工具 |
 | Project profiles | Agent 信息与上下文隔离；Agent 与 Machine 成员名单；受前置清理约束的 Agent 移除；一个主工作目录、最多一个仓库；宿主侧仓库访问；每台 Machine 的目录绑定；Git 配置与约定 | Agent 强制移除与自动善后（二期）；项目级 Agent 权限等级、多仓库配置体系、集中 Git 凭据、专门 Git 操作界面 |
 | Agent profiles | 人设与默认执行配置；profile × Chat 的持续分身；配置下一轮更新；Pi 配置与模型认证继承；简单的运行、待机与出错状态 | 多 harness 同时接入、原有工具自动转向远端、跨分身共享租约、成本统计 |
 | 沟通渠道 | Project 内 DM、Group、Public Channel；小脑/JEV 可选判定；多 Agent 唤醒；群内分工回报；自动接续；运行中接收消息 | 系统自动租约协调（二期）；固定轮数限制、项目外共享对话、Agent 自行变更 Group 治理 |
@@ -109,7 +111,6 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 - **挂靠超时处理**：提醒 Human；通知或唤醒 owner 协调，无法处理时升级给 Human。超时不自动释放。
 - **Agent 强制移除及自动善后**：中止本项目 runs、撤权，owner 默认转 Human、Tasks 留在原对话，DM 未完成 Tasks 退回 proposed；确认旧操作权撤销后释放租约，无法确认时保留待处理占用。历史、施工记录、文件和进程不随之删除，其他 Projects 不受影响。
 - **Windows Worker**：一期支持 macOS，二期补齐 Windows，并验证 Windows 路径、shell、进程和长命令能力。
-- **MCP tools 接入**：列为明确的后续交付能力。触发条件为 P4c 身份与授权契约稳定、R1 独立验收通过及 Human 确认；条件满足后在 P4c 之后纳入一期，并同步更新一期能力表与一期验收表。本轮技术证据见 [R1 验证结论](r1/summary.md)，当前不改这两张表。
 
 ## 未来方向：保留想法，时间未定
 

@@ -639,7 +639,7 @@ sources.docs={
   missingKeyCombinations:missingPhrases,
   summaryMentionsStage:summary.includes('P4c')&&summary.includes('纳入一期'),
   summaryHasNoPendingMarker:!summary.includes('待 z3 运行'),
-  scopeMentionsMcpAndPhase:scope.includes('**MCP tools 接入**')&&scope.includes('P4c'),
+  scopeMentionsMcpAndPhase:scope.includes('**MCP tools 接入**')&&scope.includes('已纳入一期'),
   evidenceScriptSha256:snapshot.scriptSha256,
   currentScriptSha256:currentScriptSha,
   evidenceScriptCurrent:snapshot.scriptSha256===currentScriptSha,
@@ -764,7 +764,7 @@ const clauses = [
   ()=>{
     assert.equal(evidenceAt('summaryMentionsStage','docs.summaryMentionsStage'),true,'summary.md 写了纳入阶段');
     assert.equal(evidenceAt('summaryHasNoPendingMarker','docs.summaryHasNoPendingMarker'),true,'summary.md 没有留下「待 z3 运行」');
-    assert.equal(evidenceAt('scopeMentionsMcpAndPhase','docs.scopeMentionsMcpAndPhase'),true,'范围文档写了 MCP 接入与 P4c');
+    assert.equal(evidenceAt('scopeMentionsMcpAndPhase','docs.scopeMentionsMcpAndPhase'),true,'范围文档写了 MCP 接入且已纳入一期');
     return {
       summaryExists:evidenceAt('summaryExists','docs.summaryExists'),
       designExists:evidenceAt('designExists','docs.designExists'),
