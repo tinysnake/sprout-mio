@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# 真实 macOS Worker + 真实服务 + 真实 SQLite + 真实 agent 工具面。
+# 私有库、ticket、cookie、命令正文与日志正文都留在 .verify 下的临时目录，不进输出。
+export NODE_ENV=test
+export SPROUT_PI_ENABLED=false
+export NO_PROXY=localhost,127.0.0.1,::1
+export no_proxy="$NO_PROXY"
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy || true
+node --import tsx tests/fixtures/execution-live-e2e.ts
+printf 'PASS execution live e2e (execution id ↔ process, dedupe, cursor, disconnect, cancels, restarts)\n'
