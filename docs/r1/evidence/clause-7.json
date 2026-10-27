@@ -41,8 +41,8 @@
     "evidenceScriptCurrent": true,
     "evidenceSourceCommitAncestor": true,
     "evidenceScriptSha256": "17b349e5c2760b2eaa81dc8da9a9f67e1922053dca26496f532f48cb517d913b",
-    "evidenceSourceCommit": "20789808b247c97e00e22088ac8b0380c9f8b99f",
-    "head": "683e3e56c4b429bc941fd6f8818632dfd268803f",
+    "evidenceSourceCommit": "683e3e56c4b429bc941fd6f8818632dfd268803f",
+    "head": "f0c87156caa8826331c23afd83f237f45f6c7bf1",
     "scope": "条款 7 只校验文档存在、关键组合词与证据来源一致；文档语义由独立验收者逐条核对，本门禁不保证"
   },
   "projections": [
@@ -89,8 +89,8 @@
         "bash",
         "scripts/verify/y2-mcp-http-worker.sh"
       ],
-      "startedAt": "2026-10-26T00:40:25.443Z",
-      "elapsedMs": 2469,
+      "startedAt": "2026-10-27T03:13:23.979Z",
+      "elapsedMs": 2637,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -100,8 +100,8 @@
         "bash",
         "scripts/verify/x2-mcp-extension.sh"
       ],
-      "startedAt": "2026-10-26T00:40:27.913Z",
-      "elapsedMs": 11369,
+      "startedAt": "2026-10-27T03:13:26.617Z",
+      "elapsedMs": 11543,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -111,8 +111,8 @@
         "bash",
         "scripts/verify/x3-mcp-extension-surface.sh"
       ],
-      "startedAt": "2026-10-26T00:40:39.283Z",
-      "elapsedMs": 2355,
+      "startedAt": "2026-10-27T03:13:38.162Z",
+      "elapsedMs": 2295,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -124,8 +124,8 @@
         "tsx",
         "$Z3_DIR/c-live.mts"
       ],
-      "startedAt": "2026-10-26T00:40:41.639Z",
-      "elapsedMs": 5655,
+      "startedAt": "2026-10-27T03:13:40.457Z",
+      "elapsedMs": 5553,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
