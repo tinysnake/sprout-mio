@@ -26,6 +26,21 @@ type Entry = {
   done: boolean;
   /** 不可逆动作已经开始：下发窗口只约束准入，此后不再参与任何判定。 */
   started: boolean;
+  /** waitMs 快照已被服务端收下：不再重发同一快照，等真实退出后覆盖为终态。 */
+  snapshotAcked?: boolean;
+};
+const reportIdentity = (command: RemoteCommand) => {
+  const {
+    requestId: _requestId,
+    operation: _operation,
+    directoryRevision: _revision,
+    dispatchDeadlineAt: _deadline,
+    runtimeDeadlineAt: _runtimeDeadline,
+    maxRuntimeMs: _maxRuntime,
+    runnerToken: _runnerToken,
+    ...identity
+  } = command;
+  return identity;
 };
 const sameSession = (a: WorkerSession, b: WorkerSession) =>
   a.machineId === b.machineId &&
@@ -222,6 +237,8 @@ export class RemoteDispatcher {
     );
     for (const entry of entries) {
       if (batch.results.length === 64) break;
+      // 快照已经确认：它只用于让工具面看到 pid，终态报告在真实退出后单独发。
+      if (entry.snapshotAcked && !entry.done) continue;
       if (
         entry.report.phase === "terminal" &&
         (!remoteReportSchema.safeParse(entry.report).success ||
@@ -357,6 +374,18 @@ export class RemoteDispatcher {
           entry.controller.abort();
     }
     for (const ack of frame.remote.resultAcks) {
+      const entry = this.entries.get(ack.executionId);
+      if (
+        entry &&
+        !entry.done &&
+        entry.report.phase === "terminal" &&
+        !("failureReason" in entry.report.payload) &&
+        entry.report.payload.kind === "shell" &&
+        !entry.report.payload.exited
+      ) {
+        entry.snapshotAcked = true;
+        continue;
+      }
       this.entries.delete(ack.executionId);
       this.registry.settle(ack.executionId);
     }
@@ -535,7 +564,7 @@ export class RemoteDispatcher {
           });
         });
         if (child.pid !== undefined) this.registry.markSpawned(run, child.pid);
-        // 运行上限只对「已开始执行」生效；null 表示沿用短操作语义。
+        // 运行上限只对「已开始执行」生效；null 表示没有运行上限，寿命由退出或显式取消决定。
         const runtimeDeadline =
           entry.command.runtimeDeadlineAt === null
             ? null
@@ -557,26 +586,26 @@ export class RemoteDispatcher {
               once: true,
             });
         });
-        // 有运行上限时等到上限或退出：运行上限才是这次执行的真实寿命。
-        // 没有运行上限时沿用短操作语义，waitMs 到点就放手，终态留给后续 exchange。
-        const waited =
-          runtimeDeadline === null
-            ? await Promise.race([
-                exitedEvent.then(() => "exited" as const),
-                aborted,
-                new Promise<"waited">((resolve) =>
-                  setTimeout(() => resolve("waited"), Math.max(0, operation.waitMs)),
-                ),
-              ])
-            : await Promise.race([exitedEvent.then(() => "exited" as const), aborted]);
-        // waitMs 到点只决定「要不要提前放手」，不决定终态推导：只要已经观测到退出，就走下面的终态路径。
-        // 长命令（有 runtimeDeadline）根本不进这条等待分支，所以这里完全是 P4b 短操作语义。
-        if (waited === "waited") {
-          // 短操作语义维持 P4b 行为：waitMs 到点即交出结果并解除投递，进程继续运行。
-          // 命令已在 waitMs 内退出时不得写 exited:false，交给下面的终态推导用真实退出码。
-          if (!exited) {
-            run.collecting = false;
-            payload = {
+        // waitMs 只决定何时交出一次「仍在运行」的观察，不决定终态：短操作在窗口内退出时
+        // 行为不变；超过窗口仍在运行的命令继续采集日志并保持 running，直到退出、运行上限或取消。
+        const waitWindow = new Promise<"waited">((resolve) =>
+          setTimeout(() => resolve("waited"), Math.max(0, operation.waitMs)),
+        );
+        const firstSignal = await Promise.race([
+          exitedEvent.then(() => "exited" as const),
+          aborted,
+          waitWindow,
+        ]);
+        // 窗口到点交一张「已启动」快照：pid 与当前输出给工具面，但执行不落终态、
+        // 采集不停止；真实退出后同一 entry 的报告覆盖为终态。
+        if (firstSignal === "waited") {
+          run.log.flush();
+          entry.report = {
+            ...reportIdentity(entry.command),
+            phase: "terminal",
+            drained: true,
+            outcome: "succeeded",
+            payload: {
               kind: "shell",
               pid: child.pid!,
               exited: false,
@@ -584,9 +613,14 @@ export class RemoteDispatcher {
               stdout: boundedText(stdout, 65536).text,
               stderr: boundedText(stderr, 8192).text,
               truncated,
-            };
-          }
+            },
+          };
         }
+        // 已经退出时走终态推导；仍在运行就继续等真实退出或中止。
+        const waited =
+          firstSignal === "waited"
+            ? await Promise.race([exitedEvent.then(() => "exited" as const), aborted])
+            : firstSignal;
         if (exited) run.log.flush();
         else if (waited === "aborted") {
           // 只有运行上限与显式取消会发信号；租约、fence 与断联只撤销本次投递，不杀进程，
@@ -752,18 +786,15 @@ export class RemoteDispatcher {
       payload = { kind: operation.kind, failureReason: "executor_error" };
     }
     entry.done = true;
+    entry.snapshotAcked = false;
     run.collecting = false;
-    const {
-      requestId: _requestId,
-      operation: _operation,
-      directoryRevision: _revision,
-      dispatchDeadlineAt: _deadline,
-      runtimeDeadlineAt: _runtimeDeadline,
-      maxRuntimeMs: _maxRuntime,
-      runnerToken: _runnerToken,
-      ...identity
-    } = entry.command;
-    entry.report = { ...identity, phase: "terminal", drained: true, outcome, payload };
+    entry.report = {
+      ...reportIdentity(entry.command),
+      phase: "terminal",
+      drained: true,
+      outcome,
+      payload,
+    };
     this.registry.finish(run);
   }
 }

@@ -489,3 +489,41 @@ test("spawn 失败前不写 pid，恢复事实不得声称 exited", async () => 
     .find((item) => item.executionId === stale.executionId);
   expect(fact?.observedState).toBe("unknown");
 });
+
+test("waitMs 快照交出 pid 但不落终态：真实退出后同一执行覆盖为终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-snapshot-"));
+  const f = await fixture(directory);
+  const command = f.command({
+    kind: "shell",
+    command: "sleep 0.6; echo still-running",
+    cwd: directory,
+    waitMs: 100,
+  });
+  f.apply(1, f.output([command]));
+  const snapshot = await terminalOf(f.dispatcher, command.executionId);
+  expect(snapshot.payload.kind === "shell" && snapshot.payload.exited).toBe(false);
+  expect(snapshot.payload.kind === "shell" && snapshot.payload.pid > 0).toBe(true);
+  // ACK 快照只表示宿主收下了 pid；entry 仍在，不能把同一张快照每轮重发。
+  f.apply(2, {
+    ...f.output(),
+    resultAcks: [{ executionId: command.executionId, disposition: "accepted" }],
+  });
+  expect(
+    f.dispatcher
+      .outgoing(1048576)
+      .results.some((report) => report.executionId === command.executionId),
+  ).toBe(false);
+  let final: Awaited<ReturnType<typeof terminalOf>> | undefined;
+  for (let attempt = 0; attempt < 600; attempt++) {
+    const report = f.dispatcher
+      .outgoing(1048576)
+      .results.find((item) => item.executionId === command.executionId);
+    if (report?.phase === "terminal" && report.payload.kind === "shell" && report.payload.exited) {
+      final = report;
+      break;
+    }
+    await sleep(10);
+  }
+  expect(final?.outcome).toBe("succeeded");
+  expect(final?.payload.kind === "shell" && final.payload.stdout).toContain("still-running");
+});

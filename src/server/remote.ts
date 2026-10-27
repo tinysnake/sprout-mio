@@ -1261,28 +1261,56 @@ export function applyRemoteExchange(
       const payload = authorized
         ? report.payload
         : { kind: row.operationJson.kind, failureReason: "authorization_revoked" as const };
-      db.update(remoteExecution)
-        .set({
-          state: outcome,
-          drainedAt: ctx.now,
-          terminalAt: ctx.now,
-          failureReason: "failureReason" in payload ? payload.failureReason : null,
-        })
-        .where(eq(remoteExecution.id, row.id))
-        .run();
-      db.insert(executionResult)
-        .values({
-          executionId: row.id,
-          projectId: row.projectId,
-          machineId: row.machineId,
-          authorizationGeneration: row.authorizationGeneration,
-          holderInstanceId: row.holderInstanceId,
-          payloadHash: hash,
-          outcome,
-          payloadJson: payload,
-          recordedAt: ctx.now,
-        })
-        .run();
+      // shell 的 waitMs 快照（exited:false）只是「已启动」的观察：要把 pid/当前输出
+      // 交给工具面，但不能把执行落成终态，否则长命令在窗口后既不能取消也不再采日志。
+      // 真正的终态报告随后覆盖同一行结果，并把执行归约。
+      const provisional =
+        authorized &&
+        !("failureReason" in report.payload) &&
+        report.payload.kind === "shell" &&
+        !report.payload.exited;
+      if (provisional) {
+        if (row.state === "dispatched")
+          db.update(remoteExecution)
+            .set({ state: "running" })
+            .where(eq(remoteExecution.id, row.id))
+            .run();
+      } else
+        db.update(remoteExecution)
+          .set({
+            state: outcome,
+            drainedAt: ctx.now,
+            terminalAt: ctx.now,
+            failureReason: "failureReason" in payload ? payload.failureReason : null,
+          })
+          .where(eq(remoteExecution.id, row.id))
+          .run();
+      const values = {
+        executionId: row.id,
+        projectId: row.projectId,
+        machineId: row.machineId,
+        authorizationGeneration: row.authorizationGeneration,
+        holderInstanceId: row.holderInstanceId,
+        payloadHash: hash,
+        outcome,
+        payloadJson: payload,
+        recordedAt: ctx.now,
+      } as const;
+      if (previous)
+        db.update(executionResult)
+          .set({
+            payloadHash: hash,
+            outcome,
+            payloadJson: payload,
+            recordedAt: ctx.now,
+          })
+          .where(eq(executionResult.executionId, row.id))
+          .run();
+      else db.insert(executionResult).values(values).run();
+      if (provisional) {
+        output.resultAcks.push({ executionId: row.id, disposition });
+        continue;
+      }
     }
     // runner 落盘的 durable result 是取消的唯一退出证据；送达本身不算进程已停。
     settleCancellations(row.id, ctx.now);
