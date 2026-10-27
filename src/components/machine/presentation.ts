@@ -53,6 +53,45 @@ export function isIncompleteLogState(state: ExecutionLogReadView["logState"]): b
   return state === "partial" || state === "gap" || state === "truncated";
 }
 
+export type LogCompleteness = {
+  label: string;
+  detail: string;
+  tone: StatusTone;
+  /** 已知前缀仍然成立，但不代表当前状态：Worker 离线或连接断开。 */
+  stale: boolean;
+};
+
+/**
+ * 日志完整性的呈现事实。完整性有两层：已知前缀完整（`logState`）与「现在是否新鲜」（Worker 在线 + 连接）。
+ * Worker 离线时不得把已知前缀说成整体完整，必须明说「日志停在此处」。
+ */
+export function logCompleteness({
+  logState,
+  workerOnline,
+  connection,
+}: {
+  logState: ExecutionLogReadView["logState"];
+  /** `null` 表示这一页读视图没有给出 Worker 在线事实（如尚未读取）。 */
+  workerOnline: boolean | null;
+  connection: LogConnection;
+}): LogCompleteness {
+  const base = LOG_STATE_LABELS[logState];
+  const stale = workerOnline === false || !connection.online;
+  if (workerOnline !== false) return { ...base, stale };
+  if (logState === "full")
+    return {
+      label: "日志停在此处",
+      detail: "日志停在此处：Worker 离线，已显示的是已知前缀，不是 Worker 当前完整输出。",
+      tone: "warning",
+      stale,
+    };
+  return {
+    ...base,
+    detail: `${base.detail} Worker 当前离线，未收到的部分仍未知。`,
+    stale,
+  };
+}
+
 export const LOG_STATE_LABELS: Record<
   ExecutionLogReadView["logState"],
   { label: string; detail: string; tone: StatusTone }

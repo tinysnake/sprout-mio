@@ -9,8 +9,8 @@ import { EXECUTION_LOG_READ_LIMIT_MAX_BYTES } from "../../contracts/remote";
 import { Button } from "../ui/button";
 import { StatusLine } from "./machine-list";
 import {
-  LOG_STATE_LABELS,
   isIncompleteLogState,
+  logCompleteness,
   type ExecutionLogReader,
   type LogConnection,
 } from "./presentation";
@@ -104,7 +104,11 @@ export function ExecutionLogViewer({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
 
-  const stateLabel = LOG_STATE_LABELS[view?.logState ?? execution.logState];
+  const stateLabel = logCompleteness({
+    logState: view?.logState ?? execution.logState,
+    workerOnline: view ? view.workerOnline : null,
+    connection,
+  });
   const incomplete = view
     ? isIncompleteLogState(view.logState)
     : isIncompleteLogState(execution.logState);

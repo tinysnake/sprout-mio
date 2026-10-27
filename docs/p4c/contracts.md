@@ -160,7 +160,7 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 }
 ```
 
-`text` 为 `null` 表示该行是 gap 行，不是空输出。重复读同一 `nextSequence` 必须返回相同行。游标绑定执行：`cursor.executionId` 与请求的 `executionId` 不一致时返回 `execution_log_cursor_stale`，不把别的执行的序号当作本执行的前缀。游标早于 `availableFromSequence` 返回 `execution_log_gap`，不静默从新起点称完整。`frames` 为空数组只表示该范围内无帧，与 `logState` 一起区分「没有输出」与「未收到」。正文按原始 UTF-8 bytes 计限额，游标不以字符数推进。
+`text` 为 `null` 表示该行是 gap 行，不是空输出。重复读同一 `nextSequence` 必须返回相同行。游标绑定执行：`cursor.executionId` 与请求的 `executionId` 不一致时返回 `execution_log_cursor_stale`，不把别的执行的序号当作本执行的前缀。游标早于 `availableFromSequence` 返回 `execution_log_gap`，不静默从新起点称完整。`frames` 为空数组只表示该范围内无帧，与 `logState` 一起区分「没有输出」与「未收到」。正文按原始 UTF-8 bytes 计限额，游标不以字符数推进。`limitBytes` 是软预算：只要还有可读帧，即使单帧大于预算也至少返回一帧，保证分页游标单调前进；硬上限仍是 `EXECUTION_LOG_READ_LIMIT_MAX_BYTES`。
 
 ## 预算语义（B7）
 

@@ -473,10 +473,16 @@ try {
       .get(execution.executionId),
     { state: "unknown", failure_reason: "worker_lost", drained_at: null },
   );
-  assert.equal(
-    (await good<ExecutionView>("execution_get", { ...key, executionId: execution.executionId }))
-      .state,
-    "unknown",
+  // 强制收回后代次前进到 2、holder 清空：旧 holder 的真实 HTTP 读取被拒，状态由库事实核。
+  await rejected(
+    "execution_get",
+    { ...key, executionId: execution.executionId },
+    "lease_not_holder",
+  );
+  await rejected(
+    "execution_log_read",
+    { ...key, executionId: execution.executionId, cursor: null, limitBytes: 65536 },
+    "lease_not_holder",
   );
   pass(
     "real Chromium Human confirmation advances exactly once; unknown worker_lost retains NULL drained_at",
@@ -516,7 +522,7 @@ try {
   // 强制收回已完成、新持有者已拿到租约，此刻才让旧 shell 落地副作用。
   writeFileSync(ackPath, "go");
   await until(
-    () => existsSync(late),
+    () => existsSync(late) && statSync(late).size === 1,
     "old shell continues its side effect after Worker SIGKILL",
     60000,
   );

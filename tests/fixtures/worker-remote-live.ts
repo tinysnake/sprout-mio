@@ -466,7 +466,18 @@ try {
   assert.equal((await lease()).lease.generation, 1);
   await rejected("execution_submit", { ...input, requestId: req() }, "lease_fencing");
   await until(async () => (await lease()).lease.generation === 2, "real fence/ack generation bump");
-  const inFlightState = (await get(running.executionId)).state;
+  // 代次已前进到 2、租约不再由旧 holder 持有时，真实 HTTP 读取执行与日志都被拒；状态从库事实核。
+  await rejected("execution_get", { ...key, executionId: running.executionId }, "lease_not_holder");
+  await rejected(
+    "execution_log_read",
+    { ...key, executionId: running.executionId, cursor: null, limitBytes: 65536 },
+    "lease_not_holder",
+  );
+  const inFlightState = (
+    sqlite.prepare("SELECT state FROM remote_execution WHERE id = ?").get(running.executionId) as {
+      state: string;
+    }
+  ).state;
   assert.notEqual(inFlightState, "succeeded");
   process.kill(pid, 0);
   await rejected("execution_submit", { ...input, requestId: req() }, "lease_stale_generation");
