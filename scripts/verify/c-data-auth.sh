@@ -58,6 +58,16 @@ async function command(command, args, log, settings = env, limit = 300000) {
     children.delete(child)
   }
 }
+async function capture(command, args) {
+  const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  let stdout = '', stderr = ''
+  child.stdout.on('data', (data) => { stdout += data })
+  child.stderr.on('data', (data) => { stderr += data })
+  return new Promise((resolve, reject) => {
+    child.on('error', reject)
+    child.on('close', (code) => resolve({ code, stdout, stderr }))
+  })
+}
 async function portIsFree() {
   await new Promise((resolve, reject) => {
     const socket = net.connect(port, 'localhost')
@@ -96,8 +106,25 @@ let server
 try {
   await portIsFree()
   for (const suffix of ['', '-shm', '-wal']) rmSync(databaseUrl + suffix, { force: true })
+  // 门禁：db:generate 必须证明 schema.ts 与迁移产物一致。
+  // 只断言退出码 0 不够 —— drizzle-kit 凭空生成迁移时同样退出 0，
+  // 产出的 0015 会被后续 setup 静默应用，账本计数照样相等。
+  // 因此以 git 记录的 drizzle/ 为准，断言前后都无新增迁移、_journal.json 未被修改。
+  const drizzleBefore = await capture('git', ['status', '--porcelain', '--', 'drizzle'])
+  assert.equal(drizzleBefore.code, 0, `git status failed: ${drizzleBefore.stderr}`)
+  assert.equal(drizzleBefore.stdout.trim(), '',
+    `drizzle/ 在 db:generate 之前就与 git 记录不一致，无法判断漂移来源:\n${drizzleBefore.stdout}`)
   await command('pnpm', ['db:generate'], 'generate.log')
-  pass('db:generate', 'drizzle/0000_pale_famine.sql; see generate.log')
+  const generateOutput = readFileSync(join(logDir, 'generate.log'), 'utf8')
+  assert.match(generateOutput, /No schema changes, nothing to migrate/,
+    'db:generate 必须报告无 schema 变化（schema.ts 与迁移产物不一致会凭空生成迁移）')
+  const drizzleAfter = await capture('git', ['status', '--porcelain', '--', 'drizzle'])
+  assert.equal(drizzleAfter.code, 0, `git status failed: ${drizzleAfter.stderr}`)
+  assert.equal(drizzleAfter.stdout.trim(), '',
+    `db:generate 改动了 drizzle/：不得新增迁移文件或修改 _journal.json:\n${drizzleAfter.stdout}`)
+  const sqlFiles = readdirSync('drizzle').filter((file) => file.endsWith('.sql')).sort()
+  pass('db:generate produces no new migration',
+    `${sqlFiles.length} SQL files; no schema changes; drizzle/ clean against git; see generate.log`)
   await command('pnpm', ['setup'], 'setup.log')
   pass('setup from deleted database', databaseUrl)
   await command('pnpm', ['db:migrate'], 'migrate-again.log')

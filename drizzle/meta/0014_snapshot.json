@@ -1161,6 +1161,14 @@
         "execution_cancellation_check_8": {
           "name": "execution_cancellation_check_8",
           "value": "length(request_id)>7 AND substr(request_id,1,7)='cancel:'"
+        },
+        "execution_cancellation_check_9": {
+          "name": "execution_cancellation_check_9",
+          "value": "policy IN ('term_then_kill','kill')"
+        },
+        "execution_cancellation_check_10": {
+          "name": "execution_cancellation_check_10",
+          "value": "term_wait_ms BETWEEN 1 AND 10000"
         }
       }
     },
