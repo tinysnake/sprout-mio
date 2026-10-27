@@ -16,6 +16,12 @@ R1 七条当前行为复核均为 PASS，独立技术验收第七轮判通过。
 | 6：生命周期与已有服务登记             | PASS | 真实 Pi AgentSession dispose 并关闭 MCP attachment 后 server 存活，同一 process 可重连；释放租约并收敛到 free 后两个剩余 server 仍存活。y2 的 owner_managed、autostart=false 服务不 spawn、可从 catalog 选择并调用，DELETE 和 Worker 退出后仍运行；configured_service 随 Worker 退出终止。[clause-6.json](evidence/clause-6.json)                                                                                                               |
 | 7：采用组合与纳入阶段                 | PASS | [design.md](design.md) 记录薄 bridge + 帧中继 + Pi 原生客户端、官方 SDK 作为参考的理由，以及不开新 Sprout 长连接的理由；范围文档将 MCP 列为明确后续能力，写明 P4c 后纳入一期的触发条件。[clause-7.json](evidence/clause-7.json)                                                                                                                                                                                                                 |
 
+## 验收证据与复跑
+
+七条行为的实现与验收证据：drain 窄投影与响应契约修复在 `f7f1c0c`；门禁证据生产端三轮整改在 `41b8df0`，快照可复现性在 `685532c`；第七轮独立验收结论与 summary 修正记录在 `62817c1`。当前 HEAD 上七条 PASS、16 个证据生产端变异全部被拒。
+
+重跑：`bash scripts/verify/z3-mcp-acceptance.sh` 与 `python3 scripts/verify/z3-mcp-acceptance-mutations.py`。
+
 ## 重跑与证据来源
 
 运行 `bash scripts/verify/z3-mcp-acceptance.sh`。脚本为每次执行创建独立 `.verify/z3-mcp-acceptance-*` 目录，输出 `PASS/FAIL/INCONCLUSIVE R1-<n> <evidence-path>`，任一条非 PASS 则退出 1。缺失或未完成的前置执行记为 INCONCLUSIVE；已完成探针的断言不成立记为 FAIL。

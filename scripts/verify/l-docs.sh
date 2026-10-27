@@ -330,8 +330,20 @@ for (const stage of ['UI-P4c', 'UI-P4d', 'UI-P5a', 'UI-P5b', 'UI-P6', 'UI-P7']) 
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
 }
+const r1Section = plan.match(/^## R1 [^\n]*\n([\s\S]*?)(?=^## |$(?![\s\S]))/m)?.[1] ?? '';
+const r1Boxes = boxesIn(r1Section);
+check(r1Boxes.length === 7, `R1 must contain seven checkboxes, found ${r1Boxes.length}`);
+for (const [index, box] of r1Boxes.entries()) {
+  const label = `R1 checkbox ${index + 1}`;
+  if (box.state === 'x') {
+    const targets = resolveEvidence(box.text, label, functional, 'docs/r1');
+    for (const { body } of targets) evidenceIn(body, label);
+  } else {
+    check(box.state === ' ', `${label} must be checked or explicitly blank`);
+  }
+}
 let futureCount = 0;
-for (const stage of ['P5', 'P6', 'P7', 'P8', 'R1']) {
+for (const stage of ['P5', 'P6', 'P7', 'P8']) {
   const section = plan.match(new RegExp(`^## ${stage} [^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
   const futureBoxes = [...section.matchAll(/^- \[([^\]])\] /gm)];
   check(futureBoxes.length > 0, `${stage} checklist missing`);
@@ -354,7 +366,8 @@ console.log('PASS P2 final range 28d4fb2..db185f8 and P3 range db185f8..e5e2b4e 
 console.log(`PASS P4a accepts evidence-linked commits and commands; unchecked=${p4aBoxes.filter((box) => box.state !== 'x').length}`);
 console.log(`PASS P4b and UI-P4b accept checked rows with resolvable evidence; functional checked=${p4bBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4bBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4bBoxes.filter((box) => box.state === 'x').length}`);
 console.log('PASS P4c, P4d and later checkboxes remain unchecked in functional, plan and UI documents');
-console.log(`PASS P5 to P8 and R1 checkboxes remain unchecked=${futureCount}`);
+console.log(`PASS P5 to P8 checkboxes remain unchecked=${futureCount}`);
+console.log(`PASS R1 checked rows carry docs/r1 evidence with commits and rerun commands; checked=${r1Boxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);
 console.log('PASS l-docs all checks passed');
 NODE

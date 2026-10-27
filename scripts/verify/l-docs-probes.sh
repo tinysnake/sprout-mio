@@ -28,7 +28,8 @@ const uiPlan = 'docs/development-plan-ui.md';
 const summary = 'docs/p4a/summary.md';
 const probe = 'docs/p4a/probe.md';
 const p4bSummary = 'docs/p4b/summary.md';
-const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary];
+const r1Summary = 'docs/r1/summary.md';
+const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary, r1Summary];
 const originals = new Map(files.map((file) => [file, fs.existsSync(path.join(tree, file)) ? fs.readFileSync(path.join(tree, file), 'utf8') : null]));
 const restore = () => {
   for (const [file, text] of originals) {
@@ -120,6 +121,20 @@ probeCase('unchecked P4b stays legal', () => {
     setBox(uiPlan, prefix, '章节尚未开工，保持未勾选。', '## UI-P4b', ' ');
   }
 }, { code: 0 });
+probeCase('checked R1 without evidence fails', () => {
+  setBox(functional, '在 P4 的身份与授权契约稳定后', '临时探针勾选 R1，没有章节证据。', '## R1');
+}, { code: 1, includes: 'R1 checkbox 1: missing docs/r1 evidence' });
+probeCase('checked R1 evidence with an unresolved commit fails', () => {
+  const file = r1Summary;
+  write(file, read(file).replace('## 验收证据与复跑\n', '## 验收证据与复跑\n\n提交 `deadbeef`。\n'));
+}, { code: 1, includes: 'R1 checkbox 1: commit deadbeef does not resolve' });
+probeCase('checked R1 evidence without a rerun command fails', () => {
+  const file = r1Summary;
+  write(file, read(file).replace(/`bash scripts\/verify\/z3-mcp-acceptance\.sh`/g, '`bash scripts/verify/nope.sh`'));
+}, { code: 1, includes: 'R1 checkbox 1: missing command bash scripts/verify/nope.sh' });
+probeCase('checked R1 evidence from another chapter fails', () => {
+  setBox(functional, '在 P4 的身份与授权契约稳定后', '证据见 [P4a 验收](p4a/summary.md#技术验收证据)，重跑 `bash scripts/verify/z3-mcp-acceptance.sh`。', '## R1');
+}, { code: 1, includes: 'R1 checkbox 1: missing docs/r1 evidence' });
 probeCase('checked P4b without evidence fails', () => {
   setBox(functional, '实现申请与释放', '临时探针勾选 P4b，没有章节证据。');
 }, { code: 1, includes: 'P4b checkbox 1: missing docs/p4b evidence' });
