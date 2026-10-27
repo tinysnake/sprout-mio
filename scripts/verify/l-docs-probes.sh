@@ -28,8 +28,9 @@ const uiPlan = 'docs/development-plan-ui.md';
 const summary = 'docs/p4a/summary.md';
 const probe = 'docs/p4a/probe.md';
 const p4bSummary = 'docs/p4b/summary.md';
+const p4cSummary = 'docs/p4c/summary.md';
 const r1Summary = 'docs/r1/summary.md';
-const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary, r1Summary];
+const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary, p4cSummary, r1Summary];
 const originals = new Map(files.map((file) => [file, fs.existsSync(path.join(tree, file)) ? fs.readFileSync(path.join(tree, file), 'utf8') : null]));
 const restore = () => {
   for (const [file, text] of originals) {
@@ -77,6 +78,12 @@ const p4bHumanNoRecord = () => {
 const p4bSection = (heading, line) => {
   fs.writeFileSync(path.join(tree, p4bSummary), read(p4bSummary).replace(`### ${heading}\n`, `### ${heading}\n\n${line}\n`));
 };
+const p4cHuman = (line) => {
+  const file = path.join(tree, p4cSummary);
+  fs.writeFileSync(file, read(p4cSummary).replace('## Human 体验确认\n', `## Human 体验确认\n\n${line}\n`));
+};
+const p4cHumanBox = () =>
+  setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4c');
 const humanBox = () =>
   setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4b');
 const link = '证据见 [P4a 证据](p4a/probe.md#p4a-证据)。';
@@ -190,6 +197,40 @@ probeCase('P4b delivery section with an unresolvable commit fails', () => {
   write(p4bSummary, lines.join('\n'));
   setBox(functional, '验证不同 Projects', p4bLink5);
 }, { code: 1, includes: 'P4b checkbox 5: commit deadbeef does not resolve' });
+probeCase('checked P4c without evidence fails', () => {
+  setBox(functional, '实现稳定请求 ID', '临时探针勾选 P4c，没有章节证据。', '### P4c');
+}, { code: 1, includes: 'P4c checkbox 1: missing docs/p4c evidence' });
+probeCase('P4c evidence from another chapter fails', () => {
+  setBox(functional, '实现稳定请求 ID', '证据见 [P4b 验收](p4b/summary.md#技术验收证据)。', '### P4c');
+}, { code: 1, includes: 'P4c checkbox 1: missing docs/p4c/summary.md evidence' });
+const p4cLink = '证据见 [稳定标识与取消](p4c/summary.md#1-稳定请求-id执行-id日志游标状态退出结果和显式取消)。';
+probeCase('complete P4c evidence passes', () => {
+  setBox(functional, '实现稳定请求 ID', p4cLink, '### P4c');
+}, { code: 0 });
+probeCase('P4c evidence with an unresolved commit fails', () => {
+  const file = path.join(tree, p4cSummary);
+  fs.writeFileSync(
+    file,
+    read(p4cSummary).replace(
+      '### 1. 稳定请求 ID、执行 ID、日志游标、状态、退出结果和显式取消\n',
+      '### 1. 稳定请求 ID、执行 ID、日志游标、状态、退出结果和显式取消\n\n实现提交 `deadbeef`。\n',
+    ),
+  );
+  setBox(functional, '实现稳定请求 ID', p4cLink, '### P4c');
+}, { code: 1, includes: 'P4c checkbox 1: commit deadbeef does not resolve' });
+probeCase('I-P4c technical acceptance without a summary fails', () => {
+  fs.rmSync(path.join(tree, p4cSummary), { force: true });
+  setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4c');
+}, { code: 1, includes: 'I-P4c technical acceptance requires docs/p4c/summary.md' });
+probeCase('I-P4c human confirmation without a record fails', () => {
+  const file = path.join(tree, p4cSummary);
+  fs.writeFileSync(file, read(p4cSummary).replace(/^Human 尚未亲自体验.*$/gm, ''));
+  p4cHumanBox();
+}, { code: 1, includes: 'I-P4c human acceptance requires an explicit confirmation record' });
+probeCase('I-P4c recorded human confirmation passes', () => {
+  p4cHuman(`- 确认记录：Human 亲自体验确认通过，版本 \`${head}\``);
+  p4cHumanBox();
+}, { code: 0 });
 probeCase('checked I-P4b technical acceptance passes', () => {
   setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4b');
 }, { code: 0 });
