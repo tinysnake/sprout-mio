@@ -294,11 +294,12 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 const dir=process.env.Z3_DIR;
 const executions={};
 const sources={};
 const read=path=>JSON.parse(readFileSync(path,'utf8'));
-async function run(name,command,args,env={},prefix) {
+async function run(name,command,args,env={},prefix,evidenceFile) {
   const before=new Set(readdirSync('.verify'));
   const startedAt=new Date().toISOString();
   const start=performance.now();
@@ -308,24 +309,35 @@ async function run(name,command,args,env={},prefix) {
   const result=await new Promise(resolve=>{child.on('error',()=>resolve({exitCode:null,launchError:true}));child.on('exit',(exitCode,signal)=>resolve({exitCode,signal}));});
   clearTimeout(timer);
   executions[name]={command:[command,...args].map(x=>x.replace(dir,'$Z3_DIR')),startedAt,elapsedMs:Math.round(performance.now()-start),...result,timedOut};
-  if(prefix) {
+  if(evidenceFile) {
+    // The harness names the artifact, so it never has to infer which directory a probe chose.
+    if(existsSync(evidenceFile)) sources[name]=read(evidenceFile);
+  } else if(prefix) {
     const fresh=readdirSync('.verify').filter(x=>x.startsWith(prefix)&&!before.has(x));
     if(fresh.length===1&&existsSync(join('.verify',fresh[0],'evidence.json'))) sources[name]=read(join('.verify',fresh[0],'evidence.json'));
   }
 }
 // Existing A/B scripts remain the single owners of their probes; no copied assertions/pumps here.
+const x3EvidencePath=join(dir,'x3-evidence.json');
+const x3ObservationPath=join(dir,'x3-observations.json');
 await run('y2','bash',['scripts/verify/y2-mcp-http-worker.sh'],{},'y2-mcp-http-worker-');
 await run('x2','bash',['scripts/verify/x2-mcp-extension.sh'],{},'x2-mcp-extension-');
-await run('x3','bash',['scripts/verify/x3-mcp-extension-surface.sh'],{},'x3-mcp-extension-surface-');
+await run('x3','bash',['scripts/verify/x3-mcp-extension-surface.sh'],{X3_DIR:dir,X3_EVIDENCE:x3EvidencePath,X3_RAW:x3ObservationPath},null,x3EvidencePath);
 await run('c','node',['--import','tsx',join(dir,'c-live.mts')],{DATABASE_URL:join(dir,'private.sqlite'),SPROUT_PI_ENABLED:'false'});
 const c=existsSync(join(dir,'c-evidence.json'))?read(join(dir,'c-evidence.json')):{};
+// Missing output of a probe that never finished is unknown; missing output of a probe that
+// reported success is a contradiction. The first is INCONCLUSIVE, the second is FAIL.
 class EvidenceUnavailable extends Error {}
+class ObservationContract extends Error {}
 const passed=name=>{
   const execution=executions[name];
   // 跑完但断言不成立 = FAIL；没跑完/超时/缺产物 = INCONCLUSIVE。次序不能倒过来，
   // 否则一个真正失败的断言会被报成「无法判定」而掩盖回归。
   if(execution.timedOut||execution.launchError) throw new EvidenceUnavailable(`${name} did not finish`);
   assert.equal(execution.exitCode,0,`${name} completed with failing assertions`);
+  // For the probes whose output path is discovered by glob, a missing file is ambiguous:
+  // unproven, not contradicted. x3's path is named by the harness, so its own check below
+  // treats a missing artifact as a contradiction instead.
   if(!sources[name]) throw new EvidenceUnavailable(`${name} evidence unavailable`);
 };
 const requireProbe=name=>{
@@ -336,6 +348,72 @@ const requireProbe=name=>{
 };
 const http=sources.y2, extension=sources.x2, surface=sources.x3;
 sources.c=c;
+
+// ---------------------------------------------------------------- R1-4 raw observations
+// A check is a triple: the probe's exit code, bounded raw values captured from the real Pi call
+// and from an independent server call, and a comparison the gate computes itself. The probe's
+// `matchesServerBytes`/`structuredContentMatchesServer` booleans are not evidence and are not
+// read here.
+//
+// Two different failures stay different:
+//   * the probe never claimed raw observations, or never finished → INCONCLUSIVE;
+//   * the probe claimed them and then did not deliver → FAIL, because a probe that reports
+//     success and cannot produce its own artifacts contradicts itself.
+const maxObservationBytes=256*1024;
+const pngSignature='89504e47';
+const base64Sha256=value=>createHash('sha256').update(value,'utf8').digest('hex');
+const boundedBase64=value=>typeof value==='string'&&value.length>100&&Buffer.byteLength(value,'utf8')<=maxObservationBytes;
+const boundedJson=value=>{
+  try {
+    const serialized=JSON.stringify(value);
+    return serialized!==undefined&&Buffer.byteLength(serialized,'utf8')<=maxObservationBytes;
+  } catch { return false; }
+};
+const pngLike=value=>{
+  try { return Buffer.from(value,'base64').subarray(0,4).toString('hex')===pngSignature; } catch { return false; }
+};
+const observe=()=>{
+  const execution=executions.x3;
+  // Exit status is part of the evidence. Not finishing is unknown; a failing probe is a failure.
+  if(!execution||execution.timedOut||execution.launchError) throw new EvidenceUnavailable('x3 did not finish');
+  if(execution.exitCode!==0) throw new ObservationContract('x3 completed with failing assertions');
+  if(!surface) throw new ObservationContract('x3 exited 0 but published no evidence');
+  const commitment=surface.image?.rawObservations;
+  // A probe that publishes evidence without claiming raw observations leaves the comparison
+  // unproven; that is an absence of evidence, not a contradiction.
+  if(!commitment) throw new EvidenceUnavailable('x3 published evidence without raw observations');
+  if(typeof commitment.sha256!=='string'||!/^[0-9a-f]{64}$/.test(commitment.sha256)) throw new ObservationContract('x3 raw observation commitment is malformed');
+  if(!existsSync(x3ObservationPath)) throw new ObservationContract('x3 committed raw observations but left no artifact');
+  let serialized;
+  try { serialized=readFileSync(x3ObservationPath,'utf8'); } catch { throw new ObservationContract('x3 raw observation artifact is unreadable'); }
+  if(base64Sha256(serialized)!==commitment.sha256) throw new ObservationContract('x3 raw observation artifact does not match its commitment');
+  let observed;
+  try { observed=JSON.parse(serialized); } catch { throw new ObservationContract('x3 raw observation artifact is not JSON'); }
+  const usable=
+    observed!==null&&typeof observed==='object'&&
+    boundedBase64(observed.piImageBase64)&&boundedBase64(observed.serverImageBase64)&&
+    pngLike(observed.piImageBase64)&&pngLike(observed.serverImageBase64)&&
+    observed.piImageBase64.length===surface.image?.base64Length&&
+    observed.piStructuredContent!==undefined&&observed.serverStructuredContent!==undefined&&
+    boundedJson(observed.piStructuredContent)&&boundedJson(observed.serverStructuredContent);
+  if(!usable) throw new ObservationContract('x3 raw observations are out of contract');
+  // The gate owns the comparisons: strict string equality for bytes, deep equality for JSON.
+  return {
+    imageBytesEqual:observed.piImageBase64===observed.serverImageBase64,
+    structuredContentEqual:isDeepStrictEqual(observed.piStructuredContent,observed.serverStructuredContent),
+  };
+};
+// Resolved once, before any clause reads a value, so the R1-4 requirement paths exist.
+const observationState={status:'pending'};
+try {
+  Object.assign(observationState,{status:'computed'},observe());
+} catch(e) {
+  Object.assign(observationState,{status:e instanceof EvidenceUnavailable?'unavailable':'failed',error:e.message});
+}
+if(observationState.status==='computed') sources.observed={x3:{
+  imageBytesEqual:observationState.imageBytesEqual,
+  structuredContentEqual:observationState.structuredContentEqual,
+}};
 
 // The harness owns both the evidence path and the expected behavior. A clause's
 // projection is checked separately; choosing an unrelated equal value is invalid.
@@ -380,8 +458,10 @@ const REQUIRED = {
     structuredContentEqual:{path:'c.image.structuredContentEqual',expect:true},
     throughSproutRelay:{path:'c.image.throughSproutRelay',expect:true},
     throughRealPiToolDefinition:{path:'c.image.throughRealPiToolDefinition',expect:true},
-    x3BytesEqual:{path:'x3.image.matchesServerBytes',expect:true},
-    x3StructuredContentEqual:{path:'x3.image.structuredContentMatchesServer',expect:true},
+    // Gate-computed, not probe-declared: both values come from bounded raw observations the
+    // probe wrote, compared here with strict string equality and isDeepStrictEqual.
+    x3ImageBytesEqual:{path:'observed.x3.imageBytesEqual',expect:true},
+    x3StructuredContentEqual:{path:'observed.x3.structuredContentEqual',expect:true},
   },
   5: {
     newToolDeclared:{path:'x3.listChanged.newToolDeclared',expect:true},
@@ -421,7 +501,15 @@ let currentClause = 0;
 let projections = [];
 const evidenceAt = (field,path) => {
   const value = resolvePath(path);
-  if (value === undefined) throw new ClauseContract(`R1-${currentClause}: 证据路径 ${path} 取不到值`);
+  if (value === undefined) {
+    // A gate-computed value is missing for exactly one reason, and that reason decides the verdict:
+    // the probe never captured observations (unproven) versus captured then broke its contract.
+    if(path.startsWith('observed.')&&observationState.status!=='computed') {
+      if(observationState.status==='unavailable') throw new EvidenceUnavailable(observationState.error);
+      throw new ObservationContract(observationState.error);
+    }
+    throw new ClauseContract(`R1-${currentClause}: 证据路径 ${path} 取不到值`);
+  }
   projections.push({clause:currentClause,field,path,value});
   return value;
 };
@@ -498,12 +586,17 @@ const clauses = [
       simultaneousSessions:evidenceAt('simultaneousSessions','c.isolation.simultaneousSessions'),
     };
   },
-  // R1-4：图片与 structuredContent 送达 Pi。每一项都取自真实探针的实测断言：C 探针的
-  // bytesEqual/structuredContentEqual 来自它自己的逐字节与深度比较，x3 的两份布尔来自 x3 与
-  // 真实 server 返回值的比较。本条款不写死任何一个值，也不允许自己被清空。
+  // R1-4：图片与 structuredContent 送达 Pi。C 探针的 bytesEqual/structuredContentEqual 来自它
+  // 自己的逐字节与深度比较；x3 的两项由门禁从原始观察值重算（见 observationState）。本条款
+  // 不写死任何一个值，也不接受探针自称的布尔。
   ()=>{
     passed('x3');
     requireProbe('image');
+    // The clause's own evidence is the raw observations. Their classification decides the
+    // verdict: nothing captured is unproven (INCONCLUSIVE); captured-then-missing is a
+    // contradiction (FAIL).
+    if(observationState.status==='unavailable') throw new EvidenceUnavailable(observationState.error);
+    if(observationState.status!=='computed') throw new ObservationContract(observationState.error);
     return {
       blockType:evidenceAt('blockType','c.image.blockType'),
       mimeType:evidenceAt('mimeType','c.image.mimeType'),
@@ -512,8 +605,8 @@ const clauses = [
       structuredContentEqual:evidenceAt('structuredContentEqual','c.image.structuredContentEqual'),
       throughSproutRelay:evidenceAt('throughSproutRelay','c.image.throughSproutRelay'),
       throughRealPiToolDefinition:evidenceAt('throughRealPiToolDefinition','c.image.throughRealPiToolDefinition'),
-      x3BytesEqual:evidenceAt('x3BytesEqual','x3.image.matchesServerBytes'),
-      x3StructuredContentEqual:evidenceAt('x3StructuredContentEqual','x3.image.structuredContentMatchesServer'),
+      x3ImageBytesEqual:evidenceAt('x3ImageBytesEqual','observed.x3.imageBytesEqual'),
+      x3StructuredContentEqual:evidenceAt('x3StructuredContentEqual','observed.x3.structuredContentEqual'),
     };
   },
   // R1-5：资源、目录变化、重建、超时与旧代次。`newToolCallable` 必须来自 x3 那次真实调用
@@ -593,7 +686,8 @@ for(const [index,check] of clauses.entries()) {
     assertions=check();
   }
   catch(e) {
-    // Missing evidence is inconclusive; an executed probe's failed assertion is a failure.
+    // Missing evidence is inconclusive; an executed probe's failed assertion or a broken
+    // evidence commitment is a failure.
     status=e instanceof EvidenceUnavailable?'INCONCLUSIVE':'FAIL'; error=e.message;
   }
   if(status==='PASS') {
@@ -614,7 +708,17 @@ for(const [index,check] of clauses.entries()) {
   }
   const path=join(dir,`clause-${currentClause}.json`);
   const provenances=[...new Map(projections.map(p=>[`${p.field}@${p.path}`,p])).values()].map(({field,path})=>({field,path}));
-  const record={clause:currentClause,status,verified,...(assertions?{assertions}:{}),...(status==='PASS'?{projections:provenances}:{}),...(error?{error}:{}),executions};
+  // Every executed value is persisted: comparisons the gate computed, never the values behind
+  // them. Raw observations stay in the private run directory and are never serialized here.
+  const gateComputed=currentClause===4?{
+    rawObservationState:observationState.status,
+    ...(observationState.status==='computed'?{
+      imageBytesEqual:observationState.imageBytesEqual,
+      structuredContentEqual:observationState.structuredContentEqual,
+    }:{}),
+    ...(observationState.error?{reason:observationState.error}:{}),
+  }:undefined;
+  const record={clause:currentClause,status,verified,...(assertions?{assertions}:{}),...(status==='PASS'?{projections:provenances}:{}),...(error?{error}:{}),...(gateComputed?{gateComputed}:{}),executions};
   writeFileSync(path,JSON.stringify(record,null,2)+'\n');
   const evidencePath=relative(process.cwd(),path);
   results.push({clause:currentClause,status,evidencePath});

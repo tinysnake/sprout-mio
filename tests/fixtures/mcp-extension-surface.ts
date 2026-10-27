@@ -12,10 +12,12 @@
  *   B2 工具面可见性：新注册的 MCP 工具是否真的出现在 `getActiveToolNames()`（=声明给模型
  *      的工具）里，三种 allowlist 形状各测一次；结论写进 evidence，脚本按结论断言。
  *
- * 证据只写块类型、字节长度、工具名与数量：不写 base64 内容、不写工具输出正文。
+ * 证据分两层：`evidence.json` 只写块类型、字节长度、工具名与数量，可发布；原始观察值
+ * （Pi 与 server 各自返回的图片 base64 与 structuredContent）写进 `$X3_RAW`，供 z3 自己重算
+ * 比较结果。探针自己的布尔不是证据：它只断言，不签发结论。
  */
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -30,6 +32,8 @@ import type { SproutExtensionAPI } from "../../src/extension/types";
 import type { PiMcpModule } from "../../src/extension/mcp-pi-types";
 
 const evidencePath = process.env.X3_EVIDENCE ?? "/tmp/x3-mcp-extension-surface.json";
+// 原始观察值单独落盘，`0600`，只给门禁看；缺失或与证据里的承诺不符时门禁判失败。
+const observationPath = process.env.X3_RAW;
 const directory = process.env.X3_DIR ?? mkdtempSync(join(tmpdir(), "x3-surface-"));
 mkdirSync(directory, { recursive: true });
 const pass = (name: string) => console.log(`PASS ${name}`);
@@ -593,9 +597,9 @@ const evidence = {
     blockTypes: result.content.map((block) => block.type),
     mimeType: imageBlock.mimeType,
     base64Length: imageBlock.data.length,
-    matchesServerBytes: imageBase64MatchesServer,
-    structuredContentInDetails: structuredResult.details.structuredContent ?? null,
-    structuredContentMatchesServer,
+    // 可发布的形状事实。比较结论不在这里：z3 从 rawObservations 自己算。
+    structuredContentPresent: structuredResult.details.structuredContent !== undefined,
+    structuredContentKeys: Object.keys(structuredResult.details.structuredContent as object),
   },
   surface,
   runnerAllowlistHasMcpStar,
@@ -618,5 +622,51 @@ const evidence = {
     "Real Pi AgentSession + real @modelcontextprotocol/server-everything@2.0.1 over stdio. Sprout relay transport is covered by x2.",
 };
 writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-console.log(`DONE x3 mcp extension surface (evidence ${evidencePath})`);
+
+// 原始观察值：门禁据此重算 base64 严格相等与 structuredContent 深度相等。有界，超限即视为
+// 不可用（门禁因此 INCONCLUSIVE），不截断——截断后的“相等”不是证据。
+const observationLimit = 256 * 1024;
+const withinLimit = (value: string) => Buffer.byteLength(value, "utf8") <= observationLimit;
+const serializedStructured = JSON.stringify(structuredResult.details.structuredContent);
+const serializedStructuredExpected = JSON.stringify(directStructured.structuredContent);
+assert(serializedStructured !== undefined && serializedStructuredExpected !== undefined);
+assert(
+  withinLimit(imageBlock.data) && withinLimit(directImage.data),
+  "原始图片观察值必须在有界范围内",
+);
+assert(
+  withinLimit(serializedStructured) && withinLimit(serializedStructuredExpected),
+  "原始 structuredContent 观察值必须在有界范围内",
+);
+const observations = {
+  piImageBase64: imageBlock.data,
+  piImageMimeType: imageBlock.mimeType,
+  serverImageBase64: directImage.data,
+  serverImageMimeType: directImage.mimeType,
+  piStructuredContent: structuredResult.details.structuredContent,
+  serverStructuredContent: directStructured.structuredContent,
+};
+const serialized = JSON.stringify(observations);
+writeFileSync(observationPath, serialized, { mode: 0o600 });
+writeFileSync(
+  evidencePath,
+  `${JSON.stringify(
+    {
+      ...evidence,
+      image: {
+        ...evidence.image,
+        // Commitment, not content: names the artifact the gate must read and hash. It carries no
+        // base64 and no structuredContent, so publishing it does not leak either.
+        rawObservations: {
+          blobBytes: Buffer.byteLength(serialized, "utf8"),
+          sha256: createHash("sha256").update(serialized, "utf8").digest("hex"),
+        },
+      },
+    },
+    null,
+    2,
+  )}\n`,
+  { mode: 0o600 },
+);
+console.log("DONE x3 mcp extension surface");
 process.exit(0);

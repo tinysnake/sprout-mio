@@ -119,8 +119,8 @@
         "bash",
         "scripts/verify/y2-mcp-http-worker.sh"
       ],
-      "startedAt": "2026-10-27T04:46:16.360Z",
-      "elapsedMs": 2737,
+      "startedAt": "2026-10-27T07:06:04.161Z",
+      "elapsedMs": 2657,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -130,8 +130,8 @@
         "bash",
         "scripts/verify/x2-mcp-extension.sh"
       ],
-      "startedAt": "2026-10-27T04:46:19.099Z",
-      "elapsedMs": 11594,
+      "startedAt": "2026-10-27T07:06:06.818Z",
+      "elapsedMs": 11419,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -141,8 +141,8 @@
         "bash",
         "scripts/verify/x3-mcp-extension-surface.sh"
       ],
-      "startedAt": "2026-10-27T04:46:30.694Z",
-      "elapsedMs": 2232,
+      "startedAt": "2026-10-27T07:06:18.238Z",
+      "elapsedMs": 2267,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -154,8 +154,8 @@
         "tsx",
         "$Z3_DIR/c-live.mts"
       ],
-      "startedAt": "2026-10-27T04:46:32.926Z",
-      "elapsedMs": 5532,
+      "startedAt": "2026-10-27T07:06:20.505Z",
+      "elapsedMs": 5527,
       "exitCode": 0,
       "signal": null,
       "timedOut": false

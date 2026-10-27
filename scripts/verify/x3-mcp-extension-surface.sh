@@ -7,40 +7,58 @@ cd "$(dirname "$0")/../.."
 # `list_changed` 后新工具到不了模型工具面、refresh() 静默返回 ok → 三种 allowlist 形状实测
 #   工具面 + 真实 refresh() 的可见失败断言。
 # 断言写死成「能」或「不能」 → 夹具要求两种结论同时存在，脚本按 evidence 核对。
+# 「相同」被探针布尔冒充 → 探针只写有界原始观察值，base64 严格相等与 structuredContent
+#   深度相等由 z3 自己从原始值算出。
 # 证据只写块类型、字节长度、工具名与数量：不含 base64 内容、不含工具输出正文、不含 secret。
-rand="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
-dir=".verify/x3-mcp-extension-surface-$rand"
+# 原始观察值走单独的 0600 文件，由 z3 指定路径，不打印、不发布。
+if [[ -n "${X3_DIR:-}" ]]; then
+  dir="$X3_DIR"
+else
+  rand="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
+  dir="$PWD/.verify/x3-mcp-extension-surface-$rand"
+fi
 mkdir -p "$dir"
-export X3_EVIDENCE="$PWD/$dir/evidence.json"
-export X3_DIR="$PWD/$dir"
+export X3_DIR="$dir"
+export X3_EVIDENCE="${X3_EVIDENCE:-$X3_DIR/evidence.json}"
+export X3_RAW="${X3_RAW:-$X3_DIR/observations.json}"
 export NO_PROXY="localhost,127.0.0.1,::1"
 export no_proxy="$NO_PROXY"
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy || true
 
 trap 'printf "FAIL MCP extension surface (x3)\n" >&2' ERR
 pnpm exec tsx tests/fixtures/mcp-extension-surface.ts
-node --input-type=module - "$X3_EVIDENCE" <<'NODE'
+node --input-type=module - "$X3_EVIDENCE" "$X3_RAW" <<'NODE'
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 const evidence = JSON.parse(readFileSync(process.argv[2], "utf8"));
+const observationsPath = process.argv[3];
 
 // ---- B1 图片不降级
+// 这里断言形状与规模；“与 server 相同”由 z3 从原始观察值自己算，本脚本不签发那个结论。
 assert(evidence.image.blockTypes.includes("image"), "content 里出现 image 块");
 assert.notEqual(evidence.image.blockTypes[0], undefined);
 assert.equal(evidence.image.mimeType, "image/png", "mimeType 原样");
 assert(evidence.image.base64Length > 100, "base64 非空");
-assert.equal(evidence.image.matchesServerBytes, true, "base64 与真实 server 返回值逐字节相同");
+assert.equal(evidence.image.structuredContentPresent, true, "structuredContent 仍在 details");
 assert(
-  evidence.image.structuredContentInDetails !== null,
-  "structuredContent 仍在 details",
+  Array.isArray(evidence.image.structuredContentKeys) && evidence.image.structuredContentKeys.length > 0,
+  "structuredContent 非空",
+);
+// 单独跑 x3 时也要在原始观察值缺失时立刻失败，但只报事实、不打印内容。
+assert(existsSync(observationsPath), "原始观察值产物必须存在");
+const observations = JSON.parse(readFileSync(observationsPath, "utf8"));
+assert.equal(
+  Buffer.byteLength(observations.piImageBase64, "utf8"),
+  evidence.image.base64Length,
+  "原始观察值的长度与已发布长度一致",
 );
 assert.equal(
-  evidence.image.structuredContentMatchesServer,
-  true,
-  "details.structuredContent 与真实 server 返回值一致",
+  observations.piImageMimeType,
+  evidence.image.mimeType,
+  "原始观察值的 mimeType 与已发布值一致",
 );
 console.log(
-  `PASS 真实 get-tiny-image 经 Pi 工具面：块类型=${JSON.stringify(evidence.image.blockTypes)}，${evidence.image.mimeType} base64 ${evidence.image.base64Length} 字节原样，structuredContent=${JSON.stringify(evidence.image.structuredContentInDetails)}`,
+  `PASS 真实 get-tiny-image 经 Pi 工具面：块类型=${JSON.stringify(evidence.image.blockTypes)}，${evidence.image.mimeType} base64 长度=${evidence.image.base64Length}，原始观察值已落盘待门禁重算；structuredContent 键=${JSON.stringify(evidence.image.structuredContentKeys)}`,
 );
 
 // ---- B2 工具面结论必须与实测一致
@@ -113,4 +131,4 @@ console.log(
   `PASS refresh() 可见失败：${evidence.refreshOnBlockedSurface.registeredNotDeclared} 个工具已注册未声明，outcome=failed，诊断非空`,
 );
 NODE
-printf 'PASS MCP extension surface verification (evidence %s)\n' "$X3_EVIDENCE"
+printf 'PASS MCP extension surface verification\n'
