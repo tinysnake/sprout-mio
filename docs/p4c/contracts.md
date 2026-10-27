@@ -62,17 +62,23 @@
 
 取消是独立于执行与租约的事实。`delivered` 只证明意图送达，不证明进程已停。
 
-| 列                                                                           | 约束                                                                                                                              |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                                                                         | 主键，前缀 `cnl`（`ID_PREFIXES.cancellation`）。                                                                                  |
-| `execution_id`                                                               | 外键指向 `remote_execution.id`。                                                                                                  |
-| `request_id`                                                                 | 幂等键。内部命名空间 `cancel:<actor>:<req_...>`，CHECK `substr(request_id,1,7)='cancel:'`。与公开 `req_` 在同一 holder 下不相撞。 |
-| `project_id`、`machine_id`、`authorization_generation`、`holder_instance_id` | 复合外键指向 `lease_authorization`，形状同 `remote_execution`。                                                                   |
-| `actor_instance_id`                                                          | 发起者分身，外键指向 `agent_instance(id, project_id)`。                                                                           |
-| `state`                                                                      | `requested` / `delivered` / `exited_observed` / `already_exited` / `failed` / `unknown`。                                         |
-| `signal_outcome`                                                             | `none` / `term_delivered` / `kill_delivered`。只记录 OS 是否接受信号调用。                                                        |
-| `requested_at`、`delivered_at`、`exited_at`                                  | 时间字段，`delivered_at >= requested_at`、`exited_at >= delivered_at`。                                                           |
-| `failure_reason`                                                             | `signal_failed` / `delivery_unconfirmed`。                                                                                        |
+| 列                                                                           | 约束                                                                                                                                |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                                                         | 主键，前缀 `cnl`（`ID_PREFIXES.cancellation`）。                                                                                    |
+| `execution_id`                                                               | 外键指向 `remote_execution.id`。                                                                                                    |
+| `request_id`                                                                 | 幂等键。内部命名空间 `cancel:<actor_kind>:<actor_id>:<req_...>`，CHECK 只校验前缀 `cancel:`。与公开 `req_` 在同一 holder 下不相撞。 |
+| `project_id`、`machine_id`、`authorization_generation`、`holder_instance_id` | 复合外键指向 `lease_authorization`，形状同 `remote_execution`。                                                                     |
+| `actor_kind`                                                                 | 发起者种类，`agent` / `human`，CHECK 11。                                                                                           |
+| `actor_id`                                                                   | 发起者身份：分身取消写 `instanceId`，人类取消写 `userId`，CHECK 12 拒绝空串。                                                       |
+| `state`                                                                      | `requested` / `delivered` / `exited_observed` / `already_exited` / `failed` / `unknown`。                                           |
+| `signal_outcome`                                                             | `none` / `term_delivered` / `kill_delivered`。只记录 OS 是否接受信号调用。                                                          |
+| `requested_at`、`delivered_at`、`exited_at`                                  | 时间字段，`delivered_at >= requested_at`、`exited_at >= delivered_at`。                                                             |
+| `failure_reason`                                                             | `signal_failed` / `delivery_unconfirmed`。                                                                                          |
+
+发起者不再只可能是分身：Web 侧的人类取消在数据里如实记为 `actor_kind='human'`，不冒充分身。
+`actor_instance_id` 与外键 `(actor_instance_id, project_id) -> agent_instance` 已删除（0015）；
+旧行由迁移写成 `actor_kind='agent'` 且 `actor_id` 等于原 `actor_instance_id`。
+其余列、CHECK 名、两个唯一索引与其余外键保持不变。
 
 `execution_cancellation_check_7` 是状态与时间字段的一致性矩阵，逐条对应冻结状态机。
 
@@ -96,10 +102,11 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 | `executionLogFrameSchema`         | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, dispatchSession, dispatchSeq, sequence, stream, byteStart, byteEnd, checksum, bytes?, gapTo?}`，`bytes` 与 `gapTo` 二选一，`byteEnd >= byteStart`，`gapTo >= sequence` |
 | `executionRecoverySchema`         | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, runnerToken, observedState: running\|exited\|unknown, exitCode, signal, observedExitedAt, producedThroughSequence, claimEvidenceAt}`                                   |
 | `executionCancelSchema`           | 下行       | `{cancelId, executionId, projectId, machineId, authorizationGeneration, runnerToken, policy: term_then_kill\|kill, termWaitMs <= 10000}`                                                                                                               |
+| `executionCancelRequestSchema`    | Web call   | `strictObject({executionId, requestId})`，幂等键取自 body，请求头 requestId 只做日志关联                                                                                                                                                               |
 | `executionCancelInputSchema`      | agent call | `leaseKeySchema.extend({executionId, requestId, authorizationGeneration, policy, termWaitMs})`                                                                                                                                                         |
 | `executionLogReadInputSchema`     | agent call | `leaseKeySchema.extend({executionId, cursor: {nextSequence}\|null, limitBytes <= 65536})`                                                                                                                                                              |
 | `executionLogReadViewSchema`      | 返回       | `{executionId, frames[], nextCursor, availableFromSequence, acknowledgedThroughSequence, producedThroughSequence, gapRanges[], logState, workerOnline}`                                                                                                |
-| `executionCancellationViewSchema` | 返回       | `{cancelId, executionId, state, requestedAt, deliveredAt, exitedAt, signalOutcome, failureReason}`                                                                                                                                                     |
+| `executionCancellationViewSchema` | 返回       | `{cancelId, executionId, state, requestedAt, deliveredAt, exitedAt, signalOutcome, failureReason}`；`executionViewSchema` 用 `cancellation` 字段带出最近一条（按 `requestedAt` 降序，同值按 `id` 降序），无记录为 `null`                               |
 | `executionViewSchema`             | 返回       | 见下                                                                                                                                                                                                                                                   |
 
 `remoteExchangeInputSchema` 增加 `logFrames`（≤8，可选，缺省即无帧）与 `recoveries`（≤8，可选）。`remoteExchangeOutputSchema` 增加 `logAcks`（≤8，可选）与 `cancellations`（≤4，可选）。两者都用可选而非默认值：`src/contracts/worker.ts` 用 `.extend()` 叠加 MCP 字段，`z.strictObject(...).extend` 无法在已有默认值之上继续推导可选性。
@@ -117,7 +124,9 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 
 ### ExecutionView 扩展
 
-`src/contracts/remote.ts` 的 `executionViewSchema` 新增 `dispatchDeadlineAt`（替换 `deadlineAt`）、`runtimeDeadlineAt`、`maxRuntimeMs`、`dispatchConnectionGeneration`、`dispatchSeq`、`dispatchedAt`、`drainedAt`、`payloadHash`、`logState`、`producedThroughSequence`、`acknowledgedThroughSequence`、`availableFromSequence`。视图层新增的不变量：
+`src/contracts/remote.ts` 的 `executionViewSchema` 新增 `cancellation`：它是读视图事实，不是执行终态。取消意图存在、甚至已经 `delivered`，执行状态都可能仍是 `dispatched`。
+
+`executionViewSchema` 同时新增 `dispatchDeadlineAt`（替换 `deadlineAt`）、`runtimeDeadlineAt`、`maxRuntimeMs`、`dispatchConnectionGeneration`、`dispatchSeq`、`dispatchedAt`、`drainedAt`、`payloadHash`、`logState`、`producedThroughSequence`、`acknowledgedThroughSequence`、`availableFromSequence`。视图层新增的不变量：
 
 - `dispatchDeadlineAt > createdAt`。
 - `runtimeDeadlineAt` 与 `maxRuntimeMs` 同生同灭；两者都存在时必须有 `dispatchedAt` 且 `runtimeDeadlineAt >= dispatchedAt`。
@@ -204,10 +213,10 @@ CANCELLATION_SIGNAL_OUTCOMES, CANCELLATION_FAILURE_REASONS,
 EXECUTION_LOG_FRAME_MAX_BYTES, EXECUTION_LOG_FRAMES_PER_EXCHANGE,
 EXECUTION_LOG_READ_LIMIT_MAX_BYTES, CANCELLATION_INTENT_NAMESPACE
 executionLogFrameSchema, executionRecoverySchema, executionCancelSchema,
-executionCancelInputSchema, executionLogReadInputSchema,
+executionCancelInputSchema, executionCancelRequestSchema, executionLogReadInputSchema,
 executionLogReadViewSchema, executionCancellationViewSchema, executionViewSchema
 ExecutionLogFrame, ExecutionRecovery, ExecutionCancel, ExecutionCancelInput,
-ExecutionLogReadInput, ExecutionLogReadView, ExecutionCancellationView,
+ExecutionLogReadInput, ExecutionLogReadView, ExecutionCancellationView, ExecutionCancelRequest, ExecutionCancelRequest,
 ExecutionLogState, CancellationState
 ID_PREFIXES.cancellation ('cnl')
 EXECUTION_ERROR_MESSAGES  （src/server/functions/domain-errors.ts）

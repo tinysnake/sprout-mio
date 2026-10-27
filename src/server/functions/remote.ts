@@ -2,7 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { leaseKeySchema } from "../../contracts/lease";
-import { executionReadInputSchema } from "../../contracts/remote";
+import {
+  executionCancelRequestSchema,
+  executionLogReadInputSchema,
+  executionReadInputSchema,
+} from "../../contracts/remote";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { AppResult } from "../../contracts/result";
 import type { MachineContext } from "../../domain/machine";
@@ -52,6 +56,15 @@ export const getExecutionBoundary = (raw: unknown, headers: Headers, requestId: 
   boundary(raw, headers, requestId, executionReadInputSchema, (d, i, c) => d.getExecution(i, c));
 export const listProjectExecutionsBoundary = (raw: unknown, headers: Headers, requestId: string) =>
   boundary(raw, headers, requestId, listInput, (d, i, c) => d.listProjectExecutions(i, c));
+export const readExecutionLogBoundary = (raw: unknown, headers: Headers, requestId: string) =>
+  boundary(raw, headers, requestId, executionLogReadInputSchema, (d, i, c) =>
+    d.readExecutionLog(i, c),
+  );
+// 幂等键取自 body：客户端重试复用同一个 requestId，请求头只做日志关联。
+export const cancelExecutionBoundary = (raw: unknown, headers: Headers, requestId: string) =>
+  boundary(raw, headers, requestId, executionCancelRequestSchema, (d, i, c) =>
+    d.cancelExecution(i, c),
+  );
 export const getExecutionFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
@@ -61,4 +74,14 @@ export const listProjectExecutionsFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     listProjectExecutionsBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+export const readExecutionLogFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    readExecutionLogBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+export const cancelExecutionFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    cancelExecutionBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );

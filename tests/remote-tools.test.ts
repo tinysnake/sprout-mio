@@ -171,6 +171,7 @@ describe("远端 Pi 工具边界", () => {
             producedThroughSequence: null,
             acknowledgedThroughSequence: null,
             availableFromSequence: null,
+            cancellation: null,
           },
         },
       };
@@ -459,6 +460,7 @@ describe("真实 HTTP transport", () => {
       producedThroughSequence: null,
       acknowledgedThroughSequence: null,
       availableFromSequence: null,
+      cancellation: null,
     };
     const http = await service((_req, res) =>
       res.end(JSON.stringify({ ok: true, requestId, data })),

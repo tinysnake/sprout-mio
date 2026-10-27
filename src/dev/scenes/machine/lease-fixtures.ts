@@ -99,6 +99,7 @@ const executionBase = {
   producedThroughSequence: null,
   acknowledgedThroughSequence: null,
   availableFromSequence: null,
+  cancellation: null,
 };
 
 export const demoExecutions: ExecutionView[] = [
