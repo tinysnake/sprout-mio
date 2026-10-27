@@ -70,6 +70,8 @@ const env = {
   BETTER_AUTH_SECRET: secret,
   SPROUT_PI_ENABLED: "false",
   SPROUT_PI_DATA_DIR: join(directory, "private-pi"),
+  // 私有验收库缩小保留阈值，让真实写入在可接受时间内触发裁剪。
+  SPROUT_EXECUTION_LOG_RETAIN_BYTES: "65536",
 };
 /** 服务进程与 fixture 进程各持一份 SQLite 连接；两边都只读写同一私有库。 */
 Object.assign(process.env, {
@@ -88,6 +90,11 @@ function launch(args: string[], name: string, ipc = false) {
   });
   closeSync(fd);
   children.push(child);
+  child.once("exit", (code, signal) => {
+    // 诊断：真实链路上一旦进程意外退出，日志里必须能看见是谁、因为什么。
+    if (name !== "service.log" && name !== "service-restart.log")
+      console.log(`[fixture] ${name} exited code=${code} signal=${signal}`);
+  });
   return child;
 }
 async function stop(child: ReturnType<typeof spawn>) {
@@ -289,7 +296,9 @@ async function withActiveRun<T>(runId: string, action: () => Promise<T>): Promis
   const deadline = Date.now() + 60000;
   for (;;) {
     sqlite
-      .prepare("UPDATE agent_run SET status='running',started_at=COALESCE(started_at,?) WHERE id=?")
+      .prepare(
+        "UPDATE agent_run SET status='running',started_at=COALESCE(started_at,?),settled_at=NULL WHERE id=?",
+      )
       .run(Math.floor(Date.now() / 1000), runId);
     try {
       return await action();
@@ -320,62 +329,9 @@ async function signup(label: string) {
 }
 
 const markerOf = () => `marker-${randomUUID()}`;
-/**
- * 宿主下发的 shell 命令没有 max_runtime_ms 入参（属于 p4c-tools / p4c-execution）。
- * 本脚本在真实 Worker 与真实服务之间加一个只改这一字段的代理：给每条 shell 命令补上
- * 运行上限，其余字节原样转发。没有运行上限时 Worker 走 P4b 短操作语义，waitMs 到点就
- * 交终态，长命令根本无法被观察，也无法取消。
- */
-const proxyPort = await freePort([port]);
-const workerBase = `http://127.0.0.1:${proxyPort}`;
-const proxy = createServer(async (request, response) => {
-  try {
-    const chunks: Buffer[] = [];
-    for await (const part of request) chunks.push(Buffer.from(part));
-    const body = Buffer.concat(chunks);
-    const upstream = await fetch(base + request.url!, {
-      method: request.method,
-      headers: { "content-type": "application/json" },
-      body,
-      signal: AbortSignal.timeout(30000),
-    });
-    const text = await upstream.text();
-    if (request.url === "/api/worker/exchange" && upstream.ok) {
-      try {
-        const parsed = JSON.parse(text) as {
-          data?: { remote?: { commands?: Record<string, unknown>[] } };
-        };
-        let changed = false;
-        for (const command of parsed.data?.remote?.commands ?? []) {
-          if (
-            command.operation &&
-            (command.operation as { kind?: string }).kind === "shell" &&
-            command.maxRuntimeMs === null
-          ) {
-            Object.assign(command, {
-              maxRuntimeMs: 180000,
-              runtimeDeadlineAt: new Date(Date.now() + 180000).toISOString(),
-            });
-            changed = true;
-          }
-        }
-        if (changed) {
-          response.writeHead(upstream.status, { "content-type": "application/json" });
-          response.end(JSON.stringify(parsed));
-          return;
-        }
-      } catch {}
-    }
-    response.writeHead(upstream.status, {
-      "content-type": upstream.headers.get("content-type") ?? "application/json",
-    });
-    response.end(text);
-  } catch {
-    response.writeHead(502);
-    response.end();
-  }
-});
-await new Promise<void>((res) => proxy.listen(proxyPort, "127.0.0.1", res));
+// 宿主下发的 shell 命令没有 max_runtime_ms 入参：真实产品路径默认无运行上限，
+// 这里直接连真实服务，不再由 fixture 代理补字段。
+const workerBase = base;
 
 let generation = 1;
 try {
@@ -586,13 +542,14 @@ try {
   };
   pass("S3 cursor paging is monotonic, idempotent, and a cross-execution cursor is rejected");
 
-  // —— 场景 4/10：超出单次读取预算的输出，逐页读全；保留裁剪按实现记录。 ——
+  // —— 场景 4/10：真实写入触发保留裁剪，旧游标被拒，新起点可续读，结果字段保留不变。 ——
   const bigRequest = newId(ID_PREFIXES.request);
   const big = (
     await submitShell({
       requestId: bigRequest,
       command:
         "i=0; while [ $i -lt 3000 ]; do printf 'x%07d-0123456789abcdefghijklmnopqrstuvwxyz\\n' \"$i\"; i=$((i+1)); done",
+      waitMs: 8000,
     })
   ).data;
   await until(
@@ -601,11 +558,30 @@ try {
     60000,
   );
   const bigFinal = await getView(big.executionId);
+  assert.equal(bigFinal.logState, "truncated", "a 64 KiB threshold must trim the real log");
+  assert(bigFinal.availableFromSequence !== null && bigFinal.availableFromSequence > 1);
+  // 旧游标（起点 0）早于可读起点：必须明确报 gap，不静默从新起点称完整。
+  const staleRead = await call("sprout_remote_execution_log", {
+    machineId,
+    executionId: big.executionId,
+    cursor: null,
+    limitBytes: 4096,
+  });
+  assert.equal(staleRead.isError, true, "a cursor before the available start must be rejected");
+  assert.equal(
+    (staleRead.details as { error?: { code?: string } }).error?.code,
+    "execution_log_gap",
+  );
+  // 从可读起点逐页读到产出位点：序号单调、不重复、能读到最后。
+  let bigCursor: { executionId: string; nextSequence: number } | null = {
+    executionId: big.executionId,
+    nextSequence: bigFinal.availableFromSequence! - 1,
+  };
   const allSequences: number[] = [];
-  let bigCursor: { executionId: string; nextSequence: number } | null = null;
   let firstPageRemaining: number | null = null;
   for (let page = 0; page < 80; page++) {
     const view = await readLog(big.executionId, bigCursor, 16384);
+    assert.equal(view.logState, "truncated");
     if (page === 0)
       firstPageRemaining = (view.producedThroughSequence ?? 0) - view.nextCursor.nextSequence;
     for (const frame of view.frames) allSequences.push(frame.sequence);
@@ -620,38 +596,138 @@ try {
   const unique = [...new Set(allSequences)];
   assert.equal(unique.length, allSequences.length, "paged read must not duplicate frames");
   assert.deepEqual(
-    unique,
     [...unique].sort((a, b) => a - b),
+    unique,
     "paged read stays ordered",
   );
-  assert.equal(unique.length, bigFinal.producedThroughSequence, "every produced frame is readable");
-  const finalLog = await readLog(big.executionId, null, 65536);
-  assert.equal(finalLog.availableFromSequence, null, "host currently never trims the log");
-  assert.notEqual(finalLog.logState, "truncated");
+  assert.equal(unique[0], bigFinal.availableFromSequence, "only retained frames are readable");
+  assert.equal(
+    unique[unique.length - 1],
+    bigFinal.producedThroughSequence,
+    "the retained suffix reaches the last produced frame",
+  );
   assert(firstPageRemaining !== null && firstPageRemaining > 0, "one page cannot hold the output");
+  assert(
+    (bigFinal.result as { truncated?: boolean } | null)?.truncated === true,
+    "the shell result keeps its own stdout cap and truncated flag",
+  );
   facts.scenario4 = {
     executionId: big.executionId,
     requestId: bigRequest,
     producedThroughSequence: bigFinal.producedThroughSequence,
     framesRead: unique.length,
-    pagesNeeded: allSequences.length > 0,
+    firstRetainedSequence: bigFinal.availableFromSequence,
     firstPageFramesRemaining: firstPageRemaining,
-    logState: finalLog.logState,
-    availableFromSequence: finalLog.availableFromSequence,
-    retentionTruncationReachable: false,
+    logState: bigFinal.logState,
+    resultTruncated: (bigFinal.result as { truncated?: boolean } | null)?.truncated,
   };
   facts.scenario10 = {
-    fixedRetentionRule: "host 无 available_from_seq 写入路径；无裁剪发生，故不存在静默丢失",
-    earlyStopDetectable: firstPageRemaining !== null && firstPageRemaining > 0,
+    fixedRetentionRule: "1 MiB / 512 帧先到者触发（私有库 env 缩小到 64 KiB）",
+    staleCursorCode: "execution_log_gap",
+    silentLoss: false,
   };
-  pass("S4/S10 the real log is read in full across pages and no silent trim claims completeness");
+  pass(
+    "S4/S10 real writes trigger retention, stale cursors are rejected, the retained suffix reads",
+  );
+
+  // —— 场景 11：跨过 30 秒下发窗口的真实长命令仍在运行、日志继续、可取消。 ——
+  const longMarker = markerOf();
+  const longSubmittedAt = Date.now();
+  const longRun = (
+    await submitShell({
+      requestId: newId(ID_PREFIXES.request),
+      command: `echo pid=$$; : ${longMarker}; i=0; while [ $i -lt 120 ]; do echo tick=$i; i=$((i+1)); sleep 1; done`,
+      waitMs: 1000,
+    })
+  ).data;
+  await until(
+    async () => (await getView(longRun.executionId)).state === "running",
+    "long command running",
+    30000,
+  );
+  const longStartLog = await readLog(
+    longRun.executionId,
+    { executionId: longRun.executionId, nextSequence: 0 },
+    65536,
+  );
+  const longPid = Number(
+    /pid=(\d+)/.exec(longStartLog.frames.map((frame) => frame.text ?? "").join(""))![1],
+  );
+  childrenPids.add(longPid);
+  const longCursor = longStartLog.nextCursor;
+  await until(
+    async () => Date.now() >= longSubmittedAt + 40000,
+    "cross the dispatch window",
+    90000,
+  );
+  let afterWindow = await getView(longRun.executionId);
+  assert.equal(afterWindow.state, "running", "a long command must survive its dispatch window");
+  assert.equal(afterWindow.terminalAt, null, "no terminal before the real exit");
+  assert.equal(afterWindow.runtimeDeadlineAt, null, "the product path has no runtime limit");
+  assert.equal(afterWindow.maxRuntimeMs, null);
+  assert(
+    Date.now() > Date.parse(afterWindow.dispatchDeadlineAt),
+    "the observation must be after the 30s dispatch window",
+  );
+  assert.equal(processCount(longMarker), 1, "exactly one long child process");
+  // 日志按 5 秒一轮上行：等它追上 30 秒后的 tick，而不是拿某一瞬间的读取碰运气。
+  let longLaterLog = await readLog(longRun.executionId, longCursor, 65536);
+  await until(
+    async () => {
+      longLaterLog = await readLog(longRun.executionId, longCursor, 65536);
+      return /tick=(3[1-9]|[4-9][0-9])/.test(
+        longLaterLog.frames.map((frame) => frame.text ?? "").join(""),
+      );
+    },
+    "logs cover ticks after 30 seconds",
+    60000,
+  );
+  afterWindow = await getView(longRun.executionId);
+  assert.equal(afterWindow.state, "running");
+  const longCancel = await accept<CancelDetails>("sprout_remote_execution_cancel", {
+    machineId,
+    executionId: longRun.executionId,
+    requestId: newId(ID_PREFIXES.request),
+    authorizationGeneration: generation,
+    policy: "term_then_kill",
+    termWaitMs: 2000,
+  });
+  assert.equal(longCancel.stopped, false, "delivery of the cancel intent is not a stopped process");
+  await until(
+    async () => (await getView(longRun.executionId)).cancellation?.state === "exited_observed",
+    "long command cancel observed",
+    60000,
+  );
+  const longFinal = await getView(longRun.executionId);
+  assert.notEqual(
+    longFinal.state,
+    "succeeded",
+    "a cancelled long command must not read as success",
+  );
+  assert.equal(longFinal.failureReason, "authorization_revoked");
+  assert.equal(processCount(longMarker), 0, "the cancelled process must be gone");
+  facts.scenario11 = {
+    executionId: longRun.executionId,
+    pid: longPid,
+    runtimeDeadlineAt: afterWindow.runtimeDeadlineAt,
+    dispatchDeadlineAt: afterWindow.dispatchDeadlineAt,
+    stateAfterDispatchWindow: afterWindow.state,
+    logFramesAfterWindow: longLaterLog.frames.length,
+    cancelState: longFinal.cancellation?.state,
+    finalState: longFinal.state,
+    failureReason: longFinal.failureReason,
+  };
+  pass("S11 a real long command crosses the dispatch window, keeps logging, and is cancelled");
 
   // —— 场景 5/8：命令运行中 Worker 掉线并重启。 ——
   const disconnectMarker = markerOf();
   const disconnect = (
     await submitShell({
       requestId: newId(ID_PREFIXES.request),
-      command: `echo pid=$$; : ${disconnectMarker}; i=0; while [ $i -lt 20 ]; do echo d=$i; sleep 1; done`,
+      // 命令启动后不再写 stdout：Worker 进程退出会关闭管道，持续写会因 SIGPIPE 死亡，
+      // 那会掩盖「断联本身不发信号」这一被验证的事实。
+      // `: marker` 放在最后，shell 不会把 argv exec 成 sleep，marker 才始终在进程命令行里。
+      command: `echo pid=$$; sleep 20; : ${disconnectMarker}`,
     })
   ).data;
   await until(
@@ -896,6 +972,73 @@ try {
   };
   pass("S7 human Web cancel is authorised on the server boundary and records the human actor");
 
+  // —— 场景 12：断线期间产生真实终态，同一 Worker 会话重连后由 durable 上行补送。 ——
+  // 提交命令必须由租约持有者的实例发出：沿用同一条真实 run 和既有的真实 grant。
+  useGrant(issued.grant);
+  const offlineMarker = markerOf();
+  const offlineGate = join(directory, "offline-gate");
+  const offline = (
+    await withActiveRun(actor.runId, () =>
+      submitShell({
+        requestId: newId(ID_PREFIXES.request),
+        command: `echo pid=$$; while [ ! -f '${offlineGate}' ]; do sleep 0.2; done; echo offline-terminal; : ${offlineMarker}`,
+        waitMs: 1000,
+      }),
+    )
+  ).data;
+  await until(
+    async () =>
+      (await withActiveRun(actor.runId, () => getView(offline.executionId))).state === "running",
+    "offline target running",
+    30000,
+  );
+  const offlineLog = await withActiveRun(actor.runId, () =>
+    readLog(offline.executionId, null, 4096),
+  );
+  const offlinePid = Number(
+    /pid=(\d+)/.exec(offlineLog.frames.map((frame) => frame.text ?? "").join(""))![1],
+  );
+  childrenPids.add(offlinePid);
+  // 冻结服务进程而不是重启：bootId 不变，Worker 的会话仍然有效，重连是同一会话。
+  assert(service?.pid, "service process required");
+  process.kill(service.pid, "SIGSTOP");
+  writeFileSync(offlineGate, "go");
+  await until(() => !alive(offlinePid), "the command exits while the service is frozen", 30000);
+  await sleep(4000);
+  process.kill(service.pid, "SIGCONT");
+  await until(
+    async () =>
+      (await withActiveRun(actor.runId, () => getView(offline.executionId))).terminalAt !== null,
+    "offline terminal delivered after the same-session reconnect",
+    90000,
+  );
+  const offlineFinal = await withActiveRun(actor.runId, () => getView(offline.executionId));
+  assert.equal(offlineFinal.state, "succeeded", "the observed exit must reconcile the row");
+  const offlineResult = offlineFinal.result as {
+    recovered?: boolean;
+    exitCode?: number;
+    stdout?: string;
+  } | null;
+  assert.equal(
+    offlineResult?.recovered ?? false,
+    false,
+    "the resent native report is not a recovery guess",
+  );
+  assert.equal(offlineResult?.exitCode, 0);
+  assert((offlineResult?.stdout ?? "").includes("offline-terminal"));
+  assert.equal(processCount(offlineMarker), 0, "the command must not be re-run");
+  facts.scenario12 = {
+    executionId: offline.executionId,
+    pid: offlinePid,
+    exitedWhileServiceFrozen: true,
+    stateAfterReconnect: offlineFinal.state,
+    nativeResult: !(offlineResult?.recovered ?? false),
+    exitCode: offlineResult?.exitCode ?? null,
+    stdoutHasMarker: (offlineResult?.stdout ?? "").includes("offline-terminal"),
+    implicitRerun: false,
+  };
+  pass("S12 a real exit produced during the outage is resent natively on the same Worker session");
+
   // —— 场景 9：命令运行中服务进程重启。 ——
   const restartMarker = markerOf();
   const restartTarget = (
@@ -986,6 +1129,7 @@ try {
     implicitRerun: false,
   };
   pass("S9 a service restart keeps the same facts, reports unknown, and never re-runs the command");
+
   await until(
     async () => (await getView(disconnect.executionId)).terminalAt !== null,
     "primary execution settles after the Worker restart",
@@ -1017,7 +1161,6 @@ try {
   for (const pid of childrenPids) if (alive(pid)) process.kill(pid, "SIGKILL");
   if (service?.connected) await control("cleanup").catch(() => {});
   for (const child of children.reverse()) await stop(child).catch(() => {});
-  await new Promise<void>((res) => proxy.close(() => res()));
   writeFileSync(
     evidencePath,
     JSON.stringify(
