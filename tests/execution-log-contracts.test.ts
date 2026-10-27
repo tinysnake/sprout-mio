@@ -447,6 +447,7 @@ describe("execution log and cancellation contracts", () => {
       producedThroughSequence: 9,
       acknowledgedThroughSequence: 8,
       availableFromSequence: 2,
+      cancellation: null,
     };
     expect(executionViewSchema.safeParse(executionView).success).toBe(true);
     expect(

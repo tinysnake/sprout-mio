@@ -260,6 +260,7 @@ describe("P4b shared contracts", () => {
       producedThroughSequence: null,
       acknowledgedThroughSequence: null,
       availableFromSequence: null,
+      cancellation: null,
     };
     expect(executionViewSchema.safeParse(view).success).toBe(true);
     for (const state of ["invented", "running", "failed"])

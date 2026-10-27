@@ -343,7 +343,8 @@ try {
     machine_id: "machine",
     authorization_generation: 1,
     holder_instance_id: "instance-a",
-    actor_instance_id: "instance-a",
+    actor_kind: "agent",
+    actor_id: "instance-a",
     state: "requested",
     signal_outcome: "none",
     policy: "term_then_kill",
@@ -396,15 +397,26 @@ try {
     },
     /FOREIGN KEY/,
   );
+  // 取消发起者的两种 actor 共用列形状：非法 kind 与空 id 都由 CHECK 拒绝。
   rejects(
     "execution_cancellation",
     {
       ...cancellation,
-      id: "cross-actor",
-      actor_instance_id: "instance-b",
-      request_id: "cancel:a:req_cross3",
+      id: "bad-actor-kind",
+      actor_kind: "system",
+      request_id: "cancel:a:req_actor1",
     },
-    /FOREIGN KEY/,
+    /CHECK/,
+  );
+  rejects(
+    "execution_cancellation",
+    {
+      ...cancellation,
+      id: "empty-actor-id",
+      actor_id: "",
+      request_id: "cancel:a:req_actor2",
+    },
+    /CHECK/,
   );
   rejects(
     "execution_cancellation",
@@ -423,10 +435,10 @@ try {
         .prepare(
           `INSERT INTO execution_cancellation
              (id, execution_id, request_id, project_id, machine_id, authorization_generation,
-              holder_instance_id, actor_instance_id, state, signal_outcome, policy, term_wait_ms,
+              holder_instance_id, actor_kind, actor_id, state, signal_outcome, policy, term_wait_ms,
               requested_at, delivered_at, exited_at, failure_reason)
-           VALUES (?, 'execution', ?, 'a', 'machine', 1, 'instance-a', 'instance-a', 'requested',
-                   'none', 'term_then_kill', 2000, 20, NULL, NULL, NULL)`,
+           VALUES (?, 'execution', ?, 'a', 'machine', 1, 'instance-a', 'agent', 'instance-a',
+                   'requested', 'none', 'term_then_kill', 2000, 20, NULL, NULL, NULL)`,
         )
         .run(id, requestId);
     // 内部命名空间可落库。

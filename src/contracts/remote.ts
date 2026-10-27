@@ -178,6 +178,17 @@ export const executionSubmitInputSchema = leaseKeySchema.extend({
   operation: remoteOperationSchema,
 });
 export const executionReadInputSchema = leaseKeySchema.extend({ executionId: executionIdSchema });
+/** 取消尝试的可见状态。`delivered` 不显示为已停止。 */
+export const executionCancellationViewSchema = leaseKeySchema.extend({
+  cancelId: id(ID_PREFIXES.cancellation),
+  executionId: executionIdSchema,
+  state: z.enum(CANCELLATION_STATES),
+  requestedAt: timestampSchema,
+  deliveredAt: timestampSchema.nullable(),
+  exitedAt: timestampSchema.nullable(),
+  signalOutcome: z.enum(CANCELLATION_SIGNAL_OUTCOMES),
+  failureReason: z.enum(CANCELLATION_FAILURE_REASONS).nullable(),
+});
 /** 日志列与执行状态正交，恢复事实只改运行位点，不改已确定的终态。 */
 export const executionViewSchema = leaseKeySchema
   .extend({
@@ -205,6 +216,8 @@ export const executionViewSchema = leaseKeySchema
     producedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
     acknowledgedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
     availableFromSequence: nonnegativeSafeIntegerSchema.nullable(),
+    // 读视图事实，不是执行终态：取消存在也不代表进程已停。
+    cancellation: executionCancellationViewSchema.nullable(),
   })
   .superRefine((value, ctx) => {
     const terminal = REMOTE_OUTCOMES.some((state) => state === value.state);
@@ -439,16 +452,10 @@ export const executionLogReadViewSchema = leaseKeySchema.extend({
   logState: z.enum(EXECUTION_LOG_STATES),
   workerOnline: z.boolean(),
 });
-/** 取消尝试的可见状态。`delivered` 不显示为已停止。 */
-export const executionCancellationViewSchema = leaseKeySchema.extend({
-  cancelId: id(ID_PREFIXES.cancellation),
+/** Web 侧取消请求：幂等键在 body，requestId 头只做日志关联。 */
+export const executionCancelRequestSchema = z.strictObject({
   executionId: executionIdSchema,
-  state: z.enum(CANCELLATION_STATES),
-  requestedAt: timestampSchema,
-  deliveredAt: timestampSchema.nullable(),
-  exitedAt: timestampSchema.nullable(),
-  signalOutcome: z.enum(CANCELLATION_SIGNAL_OUTCOMES),
-  failureReason: z.enum(CANCELLATION_FAILURE_REASONS).nullable(),
+  requestId: requestIdSchema,
 });
 export const remoteAgentRequestSchema = z.strictObject({
   version: z.literal(2),
@@ -534,6 +541,7 @@ export type ExecutionLogFrame = z.infer<typeof executionLogFrameSchema>;
 export type ExecutionRecovery = z.infer<typeof executionRecoverySchema>;
 export type ExecutionCancel = z.infer<typeof executionCancelSchema>;
 export type ExecutionCancelInput = z.infer<typeof executionCancelInputSchema>;
+export type ExecutionCancelRequest = z.infer<typeof executionCancelRequestSchema>;
 export type ExecutionLogReadInput = z.infer<typeof executionLogReadInputSchema>;
 export type ExecutionLogReadView = z.infer<typeof executionLogReadViewSchema>;
 export type ExecutionCancellationView = z.infer<typeof executionCancellationViewSchema>;

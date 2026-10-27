@@ -1033,7 +1033,9 @@ export const executionCancellation = sqliteTable(
     machineId: text("machine_id").notNull(),
     authorizationGeneration: integer("authorization_generation").notNull(),
     holderInstanceId: text("holder_instance_id").notNull(),
-    actorInstanceId: text("actor_instance_id").notNull(),
+    // 取消是人类或分身的显式动作：两种 actor 共用一列形状，不用可空外键冒充。
+    actorKind: text("actor_kind", { enum: ["agent", "human"] }).notNull(),
+    actorId: text("actor_id").notNull(),
     state: text("state", { enum: CANCELLATION_STATES }).notNull(),
     signalOutcome: text("signal_outcome", { enum: CANCELLATION_SIGNAL_OUTCOMES })
       .notNull()
@@ -1087,6 +1089,8 @@ export const executionCancellation = sqliteTable(
     ),
     check("execution_cancellation_check_9", sql`policy IN ('term_then_kill','kill')`),
     check("execution_cancellation_check_10", sql`term_wait_ms BETWEEN 1 AND 10000`),
+    check("execution_cancellation_check_11", sql`actor_kind IN ('agent','human')`),
+    check("execution_cancellation_check_12", sql`length(actor_id)>0`),
     uniqueIndex("execution_cancellation_holder_instance_id_request_id_unique").on(
       t.holderInstanceId,
       t.requestId,
@@ -1106,10 +1110,6 @@ export const executionCancellation = sqliteTable(
         leaseAuthorization.generation,
         leaseAuthorization.holderInstanceId,
       ],
-    }),
-    foreignKey({
-      columns: [t.actorInstanceId, t.projectId],
-      foreignColumns: [agentInstance.id, agentInstance.projectId],
     }),
   ],
 );

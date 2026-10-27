@@ -9,6 +9,7 @@ import {
   CANCELLATION_INTENT_NAMESPACE,
   EXECUTION_LOG_FRAME_MAX_BYTES,
   executionCancelInputSchema,
+  executionCancelRequestSchema,
   executionLogReadInputSchema,
   executionReadInputSchema,
   executionSubmitInputSchema,
@@ -16,6 +17,7 @@ import {
 import type {
   ExecutionCancel,
   ExecutionCancelInput,
+  ExecutionCancelRequest,
   ExecutionCancellationView,
   ExecutionLogFrame,
   ExecutionLogReadInput,
@@ -131,6 +133,12 @@ function executionView(row: Execution): ExecutionView {
     .from(executionResult)
     .where(eq(executionResult.executionId, row.id))
     .get();
+  const cancellation = db
+    .select()
+    .from(executionCancellation)
+    .where(eq(executionCancellation.executionId, row.id))
+    .orderBy(desc(executionCancellation.requestedAt), desc(executionCancellation.id))
+    .get();
   return {
     executionId: row.id,
     projectId: row.projectId,
@@ -158,15 +166,28 @@ function executionView(row: Execution): ExecutionView {
     producedThroughSequence: row.producedThroughSeq,
     acknowledgedThroughSequence: row.acknowledgedThroughSeq,
     availableFromSequence: row.availableFromSeq,
+    cancellation: cancellation ? cancellationView(cancellation) : null,
   };
 }
 type LeaseClaim = { projectId: string; machineId: string; authorizationGeneration: number };
+/** 租约是否仍授权这次执行：状态、代次与 holder 三项都属于通道事实，与调用者是谁无关。 */
+function leaseHeldBy(
+  lease: typeof machineLease.$inferSelect,
+  authorizationGeneration: number,
+  holderInstanceId: string,
+) {
+  return (
+    lease.state === "held" &&
+    lease.generation === authorizationGeneration &&
+    lease.holderInstanceId === holderInstanceId
+  );
+}
 function liveLease(input: LeaseClaim, ctx: AgentRemoteContext) {
   const lease = ensureLease(input, ctx.now);
   if (lease.generation !== input.authorizationGeneration)
     throw new RemoteError("lease_stale_generation");
   if (lease.state === "fencing") throw new RemoteError("lease_fencing");
-  if (lease.state !== "held" || lease.holderInstanceId !== ctx.instanceId)
+  if (!leaseHeldBy(lease, input.authorizationGeneration, ctx.instanceId))
     throw new RemoteError("lease_not_holder");
 }
 function runnerOnline(machineId: string, now: Date) {
@@ -740,6 +761,10 @@ function cancellationView(row: Cancellation): ExecutionCancellationView {
     failureReason: row.failureReason,
   };
 }
+/** 取消幂等键带 actor 身份：人取消与分身取消共用一张表，但不互相冒充。 */
+type CancellationActor = { kind: "agent" | "human"; id: string };
+const cancellationRequestKey = (actor: CancellationActor, requestId: string) =>
+  `${CANCELLATION_INTENT_NAMESPACE}${actor.kind}:${actor.id}:${requestId}`;
 /**
  * 取消只入队一个意图。`delivered` 说明 Worker 收到了意图，不说明进程已停；
  * 进程只有 runner 落盘的 durable result 才能归约为 `exited_observed`。
@@ -754,7 +779,7 @@ export function enqueueCancellation(
       assertAgentContext(input, ctx);
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("cancellation_not_found");
-      const key = `${CANCELLATION_INTENT_NAMESPACE}${ctx.instanceId}:${input.requestId}`;
+      const key = cancellationRequestKey({ kind: "agent", id: ctx.instanceId }, input.requestId);
       const old = db
         .select()
         .from(executionCancellation)
@@ -794,7 +819,8 @@ export function enqueueCancellation(
           machineId: row.machineId,
           authorizationGeneration: row.authorizationGeneration,
           holderInstanceId: row.holderInstanceId,
-          actorInstanceId: ctx.instanceId,
+          actorKind: "agent",
+          actorId: ctx.instanceId,
           state: "requested",
           signalOutcome: "none",
           // 调用方声明的策略是事实：落库后原样下发给 Worker，不再用常量顶替。
@@ -816,6 +842,103 @@ export function enqueueCancellation(
           executionId: row.id,
           instanceId: ctx.instanceId,
           message: "已入队取消意图，尚未确认进程退出",
+        })
+        .run();
+      return cancellationView(
+        db.select().from(executionCancellation).where(eq(executionCancellation.id, id)).get()!,
+      );
+    })
+    .immediate();
+}
+/**
+ * 人类在 Web 侧发起的显式取消。授权、归属与投递通道都在服务端边界核对；
+ * 幂等键按人类身份归属，所以人类取消不会冒充分身。通道不成立时只报「未确认」，
+ * 既不写新行，也不假装已入队。
+ */
+export function cancelExecution(
+  raw: ExecutionCancelRequest,
+  ctx: MachineContext,
+): ExecutionCancellationView {
+  const input = executionCancelRequestSchema.parse(raw);
+  return sqlite
+    .transaction(() => {
+      if (!ctx.userId) throw new RemoteError("unauthorized");
+      const found = db
+        .select()
+        .from(remoteExecution)
+        .where(eq(remoteExecution.id, input.executionId))
+        .get();
+      // 不区分「不存在」与「别人的」：两者都是 not_found。
+      if (!found) throw new RemoteError("not_found");
+      assertRemoteAccess({ projectId: found.projectId, machineId: found.machineId }, ctx);
+      expireExecutions(
+        { projectId: found.projectId, machineId: found.machineId },
+        ctx.now,
+        ctx.bootId,
+      );
+      const row = db.select().from(remoteExecution).where(eq(remoteExecution.id, found.id)).get()!;
+      const key = cancellationRequestKey({ kind: "human", id: ctx.userId }, input.requestId);
+      const old = db
+        .select()
+        .from(executionCancellation)
+        .where(
+          and(
+            eq(executionCancellation.actorKind, "human"),
+            eq(executionCancellation.actorId, ctx.userId),
+            eq(executionCancellation.requestId, key),
+          ),
+        )
+        .get();
+      if (old) {
+        if (old.executionId !== row.id) throw new RemoteError("remote_request_conflict");
+        return cancellationView(old);
+      }
+      if (row.terminalAt !== null) throw new RemoteError("cancellation_already_terminal");
+      const open = db
+        .select()
+        .from(executionCancellation)
+        .where(
+          and(
+            eq(executionCancellation.executionId, row.id),
+            inArray(executionCancellation.state, ["requested", "delivered"]),
+          ),
+        )
+        .get();
+      if (open) throw new RemoteError("cancellation_delivery_unconfirmed");
+      const lease = ensureLease({ projectId: row.projectId, machineId: row.machineId }, ctx.now);
+      // 旧授权代次或已换 holder 时，这条意图没有任何人能被投递到。
+      if (!leaseHeldBy(lease, row.authorizationGeneration, row.holderInstanceId))
+        throw new RemoteError("cancellation_delivery_unconfirmed");
+      const id = newId(ID_PREFIXES.cancellation);
+      db.insert(executionCancellation)
+        .values({
+          id,
+          executionId: row.id,
+          requestId: key,
+          projectId: row.projectId,
+          machineId: row.machineId,
+          authorizationGeneration: row.authorizationGeneration,
+          holderInstanceId: row.holderInstanceId,
+          actorKind: "human",
+          actorId: ctx.userId,
+          state: "requested",
+          signalOutcome: "none",
+          policy: "term_then_kill",
+          termWaitMs: 2000,
+          requestedAt: ctx.now,
+        })
+        .run();
+      db.insert(diagnosticEvent)
+        .values({
+          id: newId(ID_PREFIXES.diagnostic),
+          at: ctx.now,
+          level: "info",
+          event: "remote.cancel_requested",
+          requestId: ctx.requestId,
+          projectId: row.projectId,
+          executionId: row.id,
+          message: "人类已入队取消意图，尚未确认进程退出",
+          data: JSON.stringify({ executionId: row.id, actorKind: "human" }),
         })
         .run();
       return cancellationView(
