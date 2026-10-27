@@ -193,7 +193,23 @@ const completed = exchange({
   mcpCursors: [],
 });
 assert(workerExchangeOutputRemoteSchema.safeParse(completed.remote).success);
-assert.equal(getExecution({ ...key, executionId: execution.executionId }, ctx).state, "rejected");
+// 释放完成后旧 holder 不再持有租约：它的读取被拒，人类仍能看到这条执行的 rejected 终态。
+assert.throws(
+  () => getExecution({ ...key, executionId: execution.executionId }, ctx),
+  fail("lease_not_holder"),
+);
+assert.equal(
+  getExecution(
+    { ...key, executionId: execution.executionId },
+    {
+      userId: ctx.userId,
+      requestId: req(),
+      bootId,
+      now: new Date(),
+    },
+  ).state,
+  "rejected",
+);
 assert.equal(
   getLease({ ...key, mutationId: release.mutationId }, ctx).mutation?.completedGeneration,
   2,

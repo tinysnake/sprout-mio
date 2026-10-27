@@ -56,6 +56,7 @@ import {
 import type { MachineContext } from "../domain/machine";
 import {
   assertAgentContext,
+  assertExecutionHolder,
   assertRemoteAccess,
   completeLeaseMutation,
   ensureLease,
@@ -683,6 +684,7 @@ export function getExecution(
         )
         .get();
       if (!row) throw new RemoteError("not_found");
+      assertExecutionHolder(row, ctx);
       return executionView(row);
     })
     .immediate();
@@ -744,6 +746,7 @@ export function readExecutionLog(
       expireExecutions(input, ctx.now, ctx.bootId);
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("not_found");
+      assertExecutionHolder(row, ctx);
       const cursor = input.cursor?.nextSequence ?? 0;
       // 游标属于它的执行：跨执行的序号不构成续读起点，必须重读，不冒充完整。
       if (input.cursor && input.cursor.executionId !== input.executionId)
@@ -774,7 +777,8 @@ export function readExecutionLog(
           continue;
         }
         const size = frame.payloadBytes.byteLength;
-        if (used + size > input.limitBytes) break;
+        // `limitBytes` 是软预算：只要还有可读帧就至少给一帧，分页游标才不会停在原地。
+        if (frames.length > 0 && used + size > input.limitBytes) break;
         used += size;
         frames.push({
           sequence: frame.sequence,
@@ -880,6 +884,9 @@ export function enqueueCancellation(
         .get();
       // 已有未完成意图时只返回同样的事实，不重复投递。
       if (open) throw new RemoteError("cancellation_delivery_unconfirmed");
+      // 调用方声明的代次必须就是这条执行的代次；不相等一律当旧代次，不得写取消行。
+      if (input.authorizationGeneration !== row.authorizationGeneration)
+        throw new RemoteError("lease_stale_generation");
       liveLease(row, ctx);
       const id = newId(ID_PREFIXES.cancellation);
       db.insert(executionCancellation)
@@ -1019,8 +1026,22 @@ export function cancelExecution(
     })
     .immediate();
 }
-/** 取消送达后等待 runner 确认退出证据的窗口。超时只写 delivery_unconfirmed。 */
-const CANCELLATION_CONFIRM_WINDOW_MS = 15000;
+/**
+ * 取消送达后等多久才敢写「投递未确认」的窗口基准。窗口从这次取消的 `termWaitMs` 派生：
+ * 必须覆盖「TERM→KILL 宽限 + 退出观测 + 报告往返」，否则合法的宽限取消会被抢先判成失败。
+ */
+const CANCELLATION_CONFIRM_WINDOW_FLOOR_MS = 15000;
+/** Worker 在信号之后观测退出的固定窗口，与 `src/worker/remote.ts` 的 `EXIT_OBSERVATION_MS` 同值。 */
+const CANCELLATION_EXIT_OBSERVATION_MS = 5000;
+/** 余量：runner 落盘 durable result 后由下一次 exchange 上行报告的往返。 */
+const CANCELLATION_CONFIRM_MARGIN_MS = 5000;
+/** 派生窗口。只影响 `delivery_unconfirmed` 的写入时机，不抢先于 durable result 判失败。 */
+export function cancellationConfirmWindowMs(termWaitMs: number) {
+  return Math.max(
+    CANCELLATION_CONFIRM_WINDOW_FLOOR_MS,
+    termWaitMs + CANCELLATION_EXIT_OBSERVATION_MS + CANCELLATION_CONFIRM_MARGIN_MS,
+  );
+}
 /**
  * 构建尚未下发的取消意图供 Worker 拉取。发送前只标 `delivered`（送达），
  * 旧授权代次的意图直接作废，不能借租约操作别人的 Machine。
@@ -1102,7 +1123,7 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
       sends.set(row.id, now.getTime());
       continue;
     }
-    if (now.getTime() - sentAt < CANCELLATION_CONFIRM_WINDOW_MS) continue;
+    if (now.getTime() - sentAt < cancellationConfirmWindowMs(row.termWaitMs)) continue;
     db.update(executionCancellation)
       .set({ state: "failed", failureReason: "delivery_unconfirmed" })
       .where(

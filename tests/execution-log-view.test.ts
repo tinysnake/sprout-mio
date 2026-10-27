@@ -9,7 +9,11 @@ import {
   uncertainResultNote,
 } from "../src/components/machine/lease-view";
 import { cursorFacts, logRows, resumeFacts } from "../src/components/machine/execution-log";
-import { LOG_STATE_LABELS, isIncompleteLogState } from "../src/components/machine/presentation";
+import {
+  LOG_STATE_LABELS,
+  isIncompleteLogState,
+  logCompleteness,
+} from "../src/components/machine/presentation";
 import {
   demoCancellationStates,
   demoCancellations,
@@ -151,6 +155,51 @@ describe("日志状态不冒充完整", () => {
     expect(isIncompleteLogState(demoTruncatedLogPage.logState)).toBe(true);
     expect(demoTruncatedLogPage.availableFromSequence).toBe(31);
     expect(cursorFacts(demoTruncatedLogPage)[2]).toContain("#31");
+  });
+});
+
+describe("日志完整性与新鲜度", () => {
+  it("Worker 离线时不把已知前缀说成整体完整", () => {
+    const presentation = logCompleteness({
+      logState: "full",
+      workerOnline: false,
+      connection: { online: true, detail: null },
+    });
+    expect(presentation.label).not.toBe(LOG_STATE_LABELS.full.label);
+    expect(presentation.label).toContain("停在此处");
+    expect(presentation.detail).toContain("Worker 离线");
+    expect(presentation.stale).toBe(true);
+  });
+
+  it("Worker 在线且连接正常时完整才是完整", () => {
+    const presentation = logCompleteness({
+      logState: "full",
+      workerOnline: true,
+      connection: { online: true, detail: null },
+    });
+    expect(presentation.label).toBe(LOG_STATE_LABELS.full.label);
+    expect(presentation.stale).toBe(false);
+  });
+
+  it("离线的缺口页仍点名缺口，同时标出不新鲜", () => {
+    const presentation = logCompleteness({
+      logState: demoGapLogPage.logState,
+      workerOnline: demoGapLogPage.workerOnline,
+      connection: { online: true, detail: null },
+    });
+    expect(presentation.label).toBe(LOG_STATE_LABELS.gap.label);
+    expect(presentation.detail).toContain("离线");
+    expect(presentation.stale).toBe(true);
+  });
+
+  it("连接断开但没有读视图时不冒充新鲜，也不改写过快照的 logState", () => {
+    const presentation = logCompleteness({
+      logState: demoLongExecution.logState,
+      workerOnline: null,
+      connection: { online: false, detail: "浏览器已离线" },
+    });
+    expect(presentation.label).toBe(LOG_STATE_LABELS[demoLongExecution.logState].label);
+    expect(presentation.stale).toBe(true);
   });
 });
 

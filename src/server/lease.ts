@@ -98,6 +98,35 @@ export function assertRemoteAccess(key: LeaseKey, ctx: MachineContext | AgentRem
   )
     throw new LeaseError("not_found");
 }
+/**
+ * 执行与日志只有当前 holder 能读。人类身份仍按 Project 创建者与 Machine 归属判定；分身身份
+ * 额外核对执行归属、Machine 当前租约状态、holder 与代次，任一不满足一律 `lease_not_holder`。
+ * 读取是只读裁决：租约缺失按「不成立」处理，不借读路径补建租约行。
+ */
+export function assertExecutionHolder(
+  execution: {
+    projectId: string;
+    machineId: string;
+    holderInstanceId: string;
+    authorizationGeneration: number;
+  },
+  ctx: MachineContext | AgentRemoteContext,
+) {
+  if (!("instanceId" in ctx)) return;
+  const lease = db
+    .select()
+    .from(machineLease)
+    .where(leaseWhere({ projectId: execution.projectId, machineId: execution.machineId }))
+    .get();
+  if (
+    execution.holderInstanceId !== ctx.instanceId ||
+    !lease ||
+    lease.state !== "held" ||
+    lease.holderInstanceId !== ctx.instanceId ||
+    lease.generation !== execution.authorizationGeneration
+  )
+    throw new LeaseError("lease_not_holder");
+}
 export function assertAgentContext(key: LeaseKey, ctx: AgentRemoteContext) {
   assertRemoteAccess(key, ctx);
   const instance = db

@@ -12,15 +12,15 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 ## 数据形状
 
-| 形状              | 建模                                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------------------- |
-| 执行              | `remote_execution` 行，状态机 `pending → dispatched → running →` 终态，终态只在收到 durable result 时落   |
-| 请求 ID           | 每次提交一个 `req_`，重试复用同一 ID，幂等键为「同请求 ID 与同操作摘要」                                  |
-| 日志              | `execution_log_frame` 追加帧，`produced/acknowledged/available_from` 三个水位决定完整性                  |
-| 日志读取          | `{ executionId, cursor: { executionId, nextSequence }, limitBytes }`，游标自带执行归属                    |
-| 保留              | `EXECUTION_LOG_RETAIN_BYTES = 1048576` 与 `EXECUTION_LOG_RETAIN_FRAMES = 512` 先到者，只裁前缀            |
-| 取消              | `execution_cancellation` 独立行，`actor_kind` 为 `agent` 或 `human`，幂等键 `cancel:<kind>:<actor>:<req>` |
-| 运行时长          | 工具面只有 `waitMs`（观察窗口），没有运行上限；寿命由真实退出、显式取消或宿主重启决定                     |
+| 形状     | 建模                                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------------------- |
+| 执行     | `remote_execution` 行，状态机 `pending → dispatched → running →` 终态，终态只在收到 durable result 时落   |
+| 请求 ID  | 每次提交一个 `req_`，重试复用同一 ID，幂等键为「同请求 ID 与同操作摘要」                                  |
+| 日志     | `execution_log_frame` 追加帧，`produced/acknowledged/available_from` 三个水位决定完整性                   |
+| 日志读取 | `{ executionId, cursor: { executionId, nextSequence }, limitBytes }`，游标自带执行归属                    |
+| 保留     | `EXECUTION_LOG_RETAIN_BYTES = 1048576` 与 `EXECUTION_LOG_RETAIN_FRAMES = 512` 先到者，只裁前缀            |
+| 取消     | `execution_cancellation` 独立行，`actor_kind` 为 `agent` 或 `human`，幂等键 `cancel:<kind>:<actor>:<req>` |
+| 运行时长 | 工具面只有 `waitMs`（观察窗口），没有运行上限；寿命由真实退出、显式取消或宿主重启决定                     |
 
 ## 功能交付证据
 

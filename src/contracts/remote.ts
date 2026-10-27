@@ -425,6 +425,7 @@ export const executionLogCursorSchema = z.strictObject({
 export const executionLogReadInputSchema = leaseKeySchema.extend({
   executionId: executionIdSchema,
   cursor: executionLogCursorSchema.nullable(),
+  /** 软预算：仍有可读帧时至少返回一帧，保证分页游标单调前进。 */
   limitBytes: positiveSafeIntegerSchema.max(EXECUTION_LOG_READ_LIMIT_MAX_BYTES).default(65536),
 });
 export const executionCancelInputSchema = leaseKeySchema.extend({

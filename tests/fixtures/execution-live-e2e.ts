@@ -894,6 +894,72 @@ try {
   };
   pass("S6 agent cancel goes requested → delivered → exited_observed without faking a stop");
 
+  // —— 场景 6b：合法的 10 秒 TERM 宽限。——
+  // 忽略 TERM 的命令 + termWaitMs=10000：KILL 在 10 秒后才到，退出观测必须覆盖这段宽限，
+  // 否则 Worker 提前交回 running、确认窗口又把它判成 delivery_unconfirmed。
+  const graceMarker = markerOf();
+  const graceTarget = (
+    await submitShell({
+      requestId: newId(ID_PREFIXES.request),
+      command: `echo pid=$$; : ${graceMarker}; trap '' TERM; i=0; while [ $i -lt 30 ]; do echo tick=$i; sleep 1; done`,
+      waitMs: 1000,
+    })
+  ).data;
+  await until(
+    async () => (await getView(graceTarget.executionId)).state === "running",
+    "grace command running",
+    30000,
+  );
+  const gracePid = (await readLog(graceTarget.executionId, null, 4096)).frames
+    .map((frame) => /pid=(\d+)/.exec(frame.text ?? "")?.[1])
+    .find(Boolean);
+  assert(gracePid, "grace command pid");
+  childrenPids.add(Number(gracePid));
+  const graceRequest = newId(ID_PREFIXES.request);
+  const graceCancel = await accept<CancelDetails>("sprout_remote_execution_cancel", {
+    machineId,
+    executionId: graceTarget.executionId,
+    requestId: graceRequest,
+    authorizationGeneration: generation,
+    policy: "term_then_kill",
+    termWaitMs: 10000,
+  });
+  assert(!graceCancel.stopped, "a 10s grace cancel is still only an intent");
+  const graceStates: string[] = [graceCancel.cancellation.state];
+  const graceStartedAt = Date.now();
+  await until(
+    async () => {
+      const view = await getView(graceTarget.executionId);
+      const state = view.cancellation?.state ?? "none";
+      if (graceStates.at(-1) !== state) graceStates.push(state);
+      return state === "exited_observed" || state === "failed" || state === "unknown";
+    },
+    "10s grace cancel settled",
+    60000,
+  );
+  const graceSettledMs = Date.now() - graceStartedAt;
+  const graceFinal = await getView(graceTarget.executionId);
+  assert.equal(
+    graceFinal.cancellation?.state,
+    "exited_observed",
+    `a legal 10s grace must end exited_observed, not ${graceFinal.cancellation?.state}`,
+  );
+  assert.equal(graceFinal.cancellation?.failureReason, null);
+  assert.notEqual(graceFinal.terminalAt, null, "the execution reaches a terminal state");
+  assert.notEqual(graceFinal.state, "running", "the execution does not stay running");
+  assert.notEqual(graceFinal.state, "succeeded", "a killed command must not read as success");
+  assert.ok(graceSettledMs < 60000, `settled within the derived window (${graceSettledMs}ms)`);
+  facts.scenario6b = {
+    executionId: graceTarget.executionId,
+    pid: Number(gracePid),
+    termWaitMs: 10000,
+    cancelStates: graceStates,
+    settledMs: graceSettledMs,
+    finalExecutionState: graceFinal.state,
+    terminalAt: graceFinal.terminalAt,
+  };
+  pass("S6b a legal 10s TERM grace ends exited_observed with a terminal execution");
+
   // —— 场景 7：人类在 Web 侧取消；未登录与另一用户被拒。 ——
   const humanMarker = markerOf();
   const humanTarget = (
@@ -1068,26 +1134,31 @@ try {
     true,
   );
   await healthy(90000);
-  const bootId2 = (
-    sqlite.prepare("SELECT id FROM runtime_boot ORDER BY started_at DESC LIMIT 1").get() as {
-      id: string;
-    }
-  ).id;
-  const secondActor = seedRemoteActor(sqlite, userId, projectId, bootId2, false);
+  // 服务重启后真实产品沿用同一 chat 与同一 agent instance，只新建一条 run 与 grant。
+  // 换 instance 等于换执行归属者，不能代表重启后的会话（F1 的 holder 规则会拒读）。
+  const restartRunId = `run_${randomUUID()}`;
   sqlite
-    .prepare("UPDATE agent_run SET status='queued',started_at=NULL WHERE id=?")
-    .run(secondActor.runId);
-  const secondGrant = await control("issue", { runId: secondActor.runId });
-  assert(secondGrant.ok && secondGrant.grant, "post-restart grant for a new instance");
+    .prepare(
+      "INSERT INTO agent_run(id,instance_id,chat_id,project_id,request_id,status,started_at,session_id) VALUES (?,?,?,?,?,'running',?,?)",
+    )
+    .run(
+      restartRunId,
+      actor.instanceId,
+      actor.chatId,
+      projectId,
+      newId(ID_PREFIXES.request),
+      Math.floor(Date.now() / 1000),
+      randomBytes(16).toString("hex"),
+    );
+  const secondGrant = await control("issue", { runId: restartRunId });
+  assert(secondGrant.ok && secondGrant.grant, "post-restart grant for the same instance");
   useGrant(secondGrant.grant);
-  const afterRestart = await withActiveRun(secondActor.runId, () =>
-    getView(restartTarget.executionId),
-  );
+  const afterRestart = await withActiveRun(restartRunId, () => getView(restartTarget.executionId));
   assert.equal(afterRestart.requestId, restartTarget.requestId, "facts survive the restart");
   assert.equal(afterRestart.createdAt, restartTarget.createdAt);
   assert.equal(afterRestart.state, "unknown", "a boot change makes the execution unconfirmable");
   assert.equal(processCount(restartMarker), 1, "a server restart must not re-dispatch");
-  const persistedLog = await withActiveRun(secondActor.runId, () =>
+  const persistedLog = await withActiveRun(restartRunId, () =>
     readLog(restartTarget.executionId, null, 4096),
   );
   assert(
@@ -1096,14 +1167,12 @@ try {
   );
   await until(
     async () =>
-      (await withActiveRun(secondActor.runId, () => getView(restartTarget.executionId)))
-        .terminalAt !== null,
+      (await withActiveRun(restartRunId, () => getView(restartTarget.executionId))).terminalAt !==
+      null,
     "restart target settles",
     120000,
   );
-  const restartFinal = await withActiveRun(secondActor.runId, () =>
-    getView(restartTarget.executionId),
-  );
+  const restartFinal = await withActiveRun(restartRunId, () => getView(restartTarget.executionId));
   const restartRows = (
     sqlite
       .prepare("SELECT COUNT(*) AS n FROM remote_execution WHERE request_id=?")

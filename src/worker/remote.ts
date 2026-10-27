@@ -53,6 +53,13 @@ const MAX_EXCHANGE_BYTES = 1048576;
 const SIGNAL_GRACE_MS = 2000;
 /** 中止后等待真实退出事件的上限；到点只报运行态，不伪造终态。 */
 const EXIT_OBSERVATION_MS = 5000;
+/**
+ * 信号发出后要等多久才承认「退出未观测」：先让声明的 TERM 宽限走完（KILL 已排队），
+ * 再加固定退出观测。用固定窗口会把 10 秒宽限的合法取消提前交回 running，终态报告就没人发了。
+ */
+function exitObservationBudgetMs(graceMs: number) {
+  return Math.max(0, graceMs) + EXIT_OBSERVATION_MS;
+}
 export const emptyWorkerRemote = (): WorkerExchangeRemoteInput => ({
   results: [],
   fenceAcks: [],
@@ -464,6 +471,7 @@ export class RemoteDispatcher {
     const run = this.registry.runs.get(executionId);
     if (!run || run.claim.pid === 0 || run.exited) return "none" as SignalOutcome;
     run.terminated = true;
+    run.signalGraceMs = policy === "kill" ? 0 : graceMs;
     return terminateGroup(run.claim.pid, policy, graceMs);
   }
   private gate(entry: Entry) {
@@ -574,6 +582,7 @@ export class RemoteDispatcher {
             () => {
               if (run.exited) return;
               run.terminated = true;
+              run.signalGraceMs = SIGNAL_GRACE_MS;
               if (run.claim.pid !== 0)
                 terminateGroup(run.claim.pid, "term_then_kill", SIGNAL_GRACE_MS);
             },
@@ -628,7 +637,9 @@ export class RemoteDispatcher {
           if (!run.terminated) throw new AdmissionError("authorization_revoked");
           await Promise.race([
             exitedEvent.catch(() => undefined),
-            new Promise<void>((resolve) => setTimeout(resolve, EXIT_OBSERVATION_MS)),
+            new Promise<void>((resolve) =>
+              setTimeout(resolve, exitObservationBudgetMs(run.signalGraceMs)),
+            ),
           ]);
           if (!exited) {
             // 信号已发出但没有观测到退出：不写终态，留给恢复事实与日志读取交代。

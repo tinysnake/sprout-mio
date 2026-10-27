@@ -47,6 +47,8 @@ export type Run = {
   exitedAt: number | null;
   /** 运行上限、撤权、fence 或取消触发过信号：不伪装成自然退出。 */
   terminated: boolean;
+  /** 发信号时声明的 TERM 宽限（毫秒）。退出观测要等足它，不能按固定窗口提前放弃。 */
+  signalGraceMs: number;
   /** 本会话已报过的恢复事实签名，避免每帧重复上报。 */
   reported: Map<string, string>;
   /** 还在为本次执行产新帧；终态确立后停止采集，但队列里未确认的帧仍要上行。 */
@@ -201,6 +203,7 @@ export class ExecutionRegistry {
         signal: claim.signal,
         exitedAt: claim.exitedAt,
         terminated: false,
+        signalGraceMs: 0,
         collecting: false,
         reported: new Map(),
         inflight: new Set(),
@@ -239,6 +242,7 @@ export class ExecutionRegistry {
       signal: null,
       exitedAt: null,
       terminated: false,
+      signalGraceMs: 0,
       collecting: true,
       reported: new Map(),
       inflight: new Set(),
