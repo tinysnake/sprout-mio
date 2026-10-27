@@ -501,8 +501,17 @@ test("waitMs 快照交出 pid 但不落终态：真实退出后同一执行覆�
   });
   f.apply(1, f.output([command]));
   const snapshot = await terminalOf(f.dispatcher, command.executionId);
-  expect(snapshot.payload.kind === "shell" && snapshot.payload.exited).toBe(false);
-  expect(snapshot.payload.kind === "shell" && snapshot.payload.pid > 0).toBe(true);
+  const snapshotPayload = snapshot.payload;
+  expect(
+    snapshotPayload.kind === "shell" &&
+      !("failureReason" in snapshotPayload) &&
+      snapshotPayload.exited,
+  ).toBe(false);
+  expect(
+    snapshotPayload.kind === "shell" &&
+      !("failureReason" in snapshotPayload) &&
+      snapshotPayload.pid > 0,
+  ).toBe(true);
   // ACK 快照只表示宿主收下了 pid；entry 仍在，不能把同一张快照每轮重发。
   f.apply(2, {
     ...f.output(),
@@ -518,12 +527,20 @@ test("waitMs 快照交出 pid 但不落终态：真实退出后同一执行覆�
     const report = f.dispatcher
       .outgoing(1048576)
       .results.find((item) => item.executionId === command.executionId);
-    if (report?.phase === "terminal" && report.payload.kind === "shell" && report.payload.exited) {
+    if (
+      report?.phase === "terminal" &&
+      report.payload.kind === "shell" &&
+      !("failureReason" in report.payload) &&
+      report.payload.exited
+    ) {
       final = report;
       break;
     }
     await sleep(10);
   }
   expect(final?.outcome).toBe("succeeded");
-  expect(final?.payload.kind === "shell" && final.payload.stdout).toContain("still-running");
+  const finalPayload = final?.payload;
+  expect(
+    finalPayload?.kind === "shell" && !("failureReason" in finalPayload) ? finalPayload.stdout : "",
+  ).toContain("still-running");
 });

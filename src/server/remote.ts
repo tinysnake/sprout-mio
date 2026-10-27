@@ -129,7 +129,7 @@ function connection(machineId: string, ctx: Pick<MachineContext, "now" | "bootId
     throw new RemoteError("machine_unavailable");
   return row;
 }
-function executionView(row: Execution): ExecutionView {
+function executionView(row: Execution, provisionalResult = false): ExecutionView {
   const result = db
     .select()
     .from(executionResult)
@@ -163,7 +163,20 @@ function executionView(row: Execution): ExecutionView {
     payloadHash: row.payloadHash,
     terminalAt: row.terminalAt?.toISOString() ?? null,
     failureReason: row.failureReason,
-    result: result?.payloadJson ?? null,
+    // Agent 读视图的契约是：未落终态就没有结果。Web 列表额外允许 waitMs 快照
+    // （exited:false）用于显示 pid，但执行本身仍是 running；一旦落成 unknown/failed，
+    // 快照不再是这次执行的结果，不能拿它冒充终态正文。
+    result: (() => {
+      const payload = result?.payloadJson;
+      const provisional =
+        payload !== null &&
+        payload !== undefined &&
+        payload.kind === "shell" &&
+        !("failureReason" in payload) &&
+        !payload.exited;
+      if (provisional && row.terminalAt !== null) return null;
+      return provisionalResult || row.terminalAt !== null ? (payload ?? null) : null;
+    })(),
     logState: row.logState,
     producedThroughSequence: row.producedThroughSeq,
     acknowledgedThroughSequence: row.acknowledgedThroughSeq,
@@ -710,6 +723,7 @@ export function listProjectExecutions(
       return rows.map((row: Execution) =>
         executionView(
           db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+          true,
         ),
       );
     })
