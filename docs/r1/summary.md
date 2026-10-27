@@ -1,8 +1,8 @@
 # R1 MCP 验证结论
 
-R1 七条当前行为复核均为 PASS，但 R1 整体技术验收尚未完成：第六轮独立验收判定「部分通过」，第七轮整改后仍待复验。z3 返回 0 且七条全 PASS，逐条 JSON 与运行输出保存在 [evidence/](evidence/)。z3 不能单独作为技术验收结论，因为门禁只覆盖它能观测到的东西；它的能力边界见下方「门禁能力与其边界」。这些行为复核适用于 Human 授权替换后的无界面 server，不表示已验证 Unity 或 Blender 插件。
+R1 七条当前行为复核均为 PASS，独立技术验收第七轮判通过。z3 返回 0 且七条全 PASS，逐条 JSON 与运行输出保存在 [evidence/](evidence/)。第七轮验收重建了第六轮点名的四条攻击并逐条确认被拒；它的能力边界与仍须记录的残余见下方「门禁能力与其边界」。这些行为复核适用于 Human 授权替换后的无界面 server，不表示已验证 Unity 或 Blender 插件。
 
-**R1 当前仍是独立验证任务，尚未纳入一期。** 原纳入建议要求 P4c 身份与授权契约稳定、R1 独立验收通过并完成 Human 确认。第五轮发现门禁抵抗性不足且 drain exchange 被响应契约拒绝；drain 已修复，门禁经三轮整改（v3 至 v5）后已能抵抗已知的证据生产端变异，但独立复验尚未完成，因此技术验收未通过。
+**R1 当前仍是独立验证任务，尚未纳入一期。** 原纳入建议要求 P4c 身份与授权契约稳定、R1 独立验收通过并完成 Human 确认。第五轮发现门禁抵抗性不足且 drain exchange 被响应契约拒绝；两项均已修复（drain 为 `f7f1c0c`，门禁经 v3 至 v5 三轮整改），第六轮判「部分通过」后，第七轮独立验收判通过。技术验收已完成，一期纳入与 Human 确认仍未完成。
 
 ## 七条证据
 
@@ -40,7 +40,8 @@ R1 七条当前行为复核均为 PASS，但 R1 整体技术验收尚未完成�
 - owner_managed 登记适用于 streamableHttp 服务；不支持接管任意已运行进程的 stdio。官方 SDK 的两种传输对照用于参考，产品客户端仍为锁定的 Pi 1.4.0。
 - 条款 7 只校验可以机器判定的东西：`docs/r1/summary.md` 与 `docs/r1/design.md` 存在、design 的关键组合词（薄 bridge、帧中继、Pi 原生客户端、SDK、长连接）出现、范围文档写了 MCP 接入与 P4c，以及 `docs/r1/evidence/evidence.json` 的 `scriptSha256` 等于**当前** z3 脚本的 SHA-256、`sourceCommit` 是当前 HEAD 的祖先或等于它。**文档内容是否与代码相符不由本门禁保证**：把 `owner_managed` 那句改成与代码相反的断言后条款 7 仍然 PASS（实测），语义一致性由独立验收者逐条核对。改过 z3 脚本后必须重跑并把新的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 复制进 `docs/r1/evidence/`，否则条款 7 变红。
 - 每条条款的必需字段表 `REQUIRED` 固定 `{path, expect}`。遍历循环先从这些固定路径读取证据并核对精确值或命名谓词，再运行条款 body。返回的 `assertions` 必须齐全、等于已核实的值，且 body 的取值路径必须与固定路径一致；`clause-<n>.json` 同时记录 `verified` 和 `projections`。清空 body、写死正确字面量或给 `evidenceAt` 起别名读取无关路径都会 FAIL。
-- **证据生产端（v3 至 v5 整改）**：下列事实由门禁自己观测或重算，不再采信探针写进 evidence 的布尔值——R1-1 的 20 个工具名集合与官方 SDK 两种传输的真实工具名集合（探针把实际结果写进私有产物并附承诺，门禁读回比对）、R1-2 的 5 个活动工具名、R1-3 的跨 root 拒绝（门禁从自己生成的 root server 调用日志重算）、R1-4 的图片字节与 structuredContent（门禁从私有原始观察值重算）、R1-5 的请求到达与旧代次拒绝（门禁自己打开私有库数 `mcp_frame` 行数）、R1-6 的 configured_service 终止（门禁自己 `kill(pid, 0)` 只接受 ESRCH）。
+- **证据生产端（v3 至 v5 整改）**：下列事实由门禁自己观测或重算，不再采信探针写进 evidence 的布尔值——R1-1 的 20 个工具名集合（私有产物附 SHA-256 承诺）、官方 SDK 两种传输的真实工具名集合（私有产物无承诺）、R1-2 的 5 个活动工具名、R1-3 的跨 root 拒绝（门禁从自己生成的 root server 调用日志重算）、R1-4 的图片字节与 structuredContent（私有原始观察值附承诺）、R1-5 的请求到达与旧代次拒绝（门禁自己打开私有库数 `mcp_frame` 行数）、R1-6 的 configured_service 终止（门禁自己 `kill(pid, 0)` 只接受 ESRCH）。
+- **这层保护的上限：门禁只能校验「探针交来的私有产物是否与门禁期望一致」，识别不了一个故意伪造该产物的探针。** 官方 SDK 那份产物没有承诺，把工具名数组写死为期望集合、不真连一次，R1-1 仍会 PASS（第七轮实测）。x3 与 x2 的产物有 SHA-256 承诺也只能证明「产物没被改」，不证明探针真的执行了比较。R1-4 的 `c.image.bytesEqual`/`structuredContentEqual`/`throughSproutRelay`/`throughRealPiToolDefinition` 四个字段仍是 C 探针的字面量 `true`，真实比较靠探针内 `assert`；它们已不是唯一依据（门禁另有自算的 `x3BytesEqual`/`x3StructuredContentEqual`），但仍在 `REQUIRED` 里。消除这类残余需要让探针无法伪造自己的产物（例如签名或由门禁代写），当前未做。
 - **探针退出码与条款的绑定是结构性的**：`evidenceAt()` 记录每个条款实际读取过的探针来源，所有条款跑完后门禁统一核对每个被引用探针的 `exitCode === 0`。该检查在条款 body 之外，删掉 body 里的 `passed()` 不能绕过。
 - **门禁能力与其边界**：上述机制证明的是「门禁读了它自己观测到的值」，不是「门禁二进制本身可信」。变异驱动不能覆盖「把整个门禁替换成打印七条 PASS 的桩」这类更极端的攻击。R1-7 仍只做可机器判定的脚本/提交一致性，不校验文档语义：把 `owner_managed` 那句改成与代码相反的断言后条款 7 仍然 PASS（实测）。改过 z3 脚本后必须重跑并把新的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 复制进 `docs/r1/evidence/`，否则条款 7 变红。
 - E2b 之后的 MCP 会话收敛依据是 relay 每轮下发的权威活跃集合，不是对端的确认报文。`session_detach_ack` 已删除；确认报文只记录时间，不关闭重试。第五轮真实 gateway 探针确认 drain mode 到达 MCP domain，但完整 response 仍含 drain schema 禁止的 lease authorization，Worker 会拒收。该缺陷由 main `f7f1c0c` 修复：`applyRemoteExchange` 为 drain 返回窄投影 `DrainProjection`，`drainRemoteResponse` 补空 `authorizations`/`commands`/`cancellations`，normal 路径保持投递。覆盖测试为 `tests/worker-remote-domain.test.ts`（断言整个响应能被 `workerExchangeResponseSchema` 接受，不只是形状匹配）；第六轮回退实验确认完整退回修复前行为会实质变红（`authorizations.length` `2 !== 0`）。该修复已在主 checkout 通过完整 z3 与全量 verify（42 scripts，failed=0）。8192 字节预算时 attach 暂缓，恢复预算后补发。
@@ -48,7 +49,7 @@ R1 七条当前行为复核均为 PASS，但 R1 整体技术验收尚未完成�
 - 生产 runner 调用 `registerSproutMcp` 时没有提供 sampling handler。elicitation 仅支持 absent 或 `{action:'cancel'}`。这些限制与固定 fixture 的协议往返证据一致，不代表生产模型采样或 Human 表单交互。
 - `y2-mcp-http-worker.sh` 使用打包的 Worker CLI 子进程连接真实 stdio MCP server 和 streamableHttp server，已覆盖跨进程 stdio。没有真实模型自动选择 MCP 工具的一轮推理。
 - Worker 下行 dispatch 项若未通过 `dispatcher.accept` 的身份校验会转成 `invalid_response` 并结束当前 Worker fiber，Worker 随后需要重连。该情况不会报告为 MCP 调用成功。
-- 第五轮独立验收报告 [第五轮独立验收记录](acceptance-round5.md) 确认七条当前行为通过，同时发现 z3 六种证据变异仍全绿、且真实 drain response 违反响应契约。第六轮独立验收报告 [第六轮独立验收记录](acceptance-round6.md) 判定「部分通过」：drain 修复有效且有会实质变红的集成测试；第五轮六类变异全部被拒；但另有三条同类证据生产端伪造路径仍可绕过门禁。这三条（`officialSdk` 只核版本不核连接、探针退出码绑定过弱、`predicates.mcpTools` 接受裸前缀）已由 `41b8df0` 修复，证据快照的可复现性由 `685532c` 修复，仍待独立复验。Human 体验确认与一期范围纳入仍未完成。
+- 第五轮独立验收报告 [第五轮独立验收记录](acceptance-round5.md) 确认七条当前行为通过，同时发现 z3 六种证据变异仍全绿、且真实 drain response 违反响应契约。第六轮独立验收报告 [第六轮独立验收记录](acceptance-round6.md) 判定「部分通过」：drain 修复有效且有会实质变红的集成测试；第五轮六类变异全部被拒；但另有三条同类证据生产端伪造路径仍可绕过门禁。这三条已由 `41b8df0` 修复，快照可复现性由 `685532c` 修复。第七轮独立验收判通过，并指出本文件对官方 SDK 私有产物的「附承诺」表述不准确、以及 R1-4 仍有四个探针字面量字段，两处已在上述边界里改正。Human 体验确认与一期范围纳入仍未完成。
 
 ## 第五轮独立复核补充（`efc7c28`）
 
