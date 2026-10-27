@@ -344,9 +344,14 @@ export class ExecutionRegistry {
     return facts;
   }
   /** 按 execution 轮转取未确认且未在途的帧，单个执行不得独占用全部名额。 */
-  rotate(limit: number): { run: Run; frame: LogFrameDraft }[] {
+  /**
+   * 只轮转本会话本次下发的执行：上次进程或上一会话遗留的执行没有本批归属，
+   * 其事实由恢复事实交代，不冒充本次下发。
+   */
+  rotate(session: WorkerSession, limit: number): { run: Run; frame: LogFrameDraft }[] {
     const picked: { run: Run; frame: LogFrameDraft }[] = [];
     const queues = [...this.runs.values()]
+      .filter((run) => run.owningAttempt === session.attemptId)
       .sort((a, b) => a.order - b.order)
       .map((run) => ({
         run,

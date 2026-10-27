@@ -238,7 +238,8 @@ describe("execution log and cancellation contracts", () => {
         },
       }).success,
     ).toBe(false);
-    // 帧必须属于本 exchange 会话与 seq，否则无法确定归属。
+    // 帧归属于「宿主下发这条命令的那一次投递」，不要求等于承载本批的 seq：
+    // 长命令的帧必然在后续批次上行，等于本批 seq 反而无法持续上报。
     expect(
       workerExchangeInput.safeParse({
         ...base,
@@ -246,6 +247,34 @@ describe("execution log and cancellation contracts", () => {
           results: [],
           fenceAcks: [],
           logFrames: [{ ...frame, dispatchSeq: 4 }],
+          mcp: [],
+          mcpCursors: [],
+        },
+      }).success,
+    ).toBe(true);
+    // 归属由会话决定：dispatchSession 不符的帧仍被拒。
+    expect(
+      workerExchangeInput.safeParse({
+        ...base,
+        remote: {
+          results: [],
+          fenceAcks: [],
+          logFrames: [
+            { ...frame, dispatchSession: { ...session, attemptId: crypto.randomUUID() } },
+          ],
+          mcp: [],
+          mcpCursors: [],
+        },
+      }).success,
+    ).toBe(false);
+    // 同批重复的 executionId:sequence 被拒。
+    expect(
+      workerExchangeInput.safeParse({
+        ...base,
+        remote: {
+          results: [],
+          fenceAcks: [],
+          logFrames: [frame, { ...frame }],
           mcp: [],
           mcpCursors: [],
         },

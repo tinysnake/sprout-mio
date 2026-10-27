@@ -155,15 +155,16 @@ export class RemoteDispatcher {
   private observations: DirectoryObservation[] = [];
   private frames: ExecutionLogFrame[] = [];
   private pendingRecoveries: ExecutionRecovery[] = [];
+  readonly registry: ExecutionRegistry;
   constructor(
     readonly session: WorkerSession,
     private capability: CapabilitySnapshot,
     private now: () => number,
     private mcp: McpRuntime = new McpRuntime(),
-    readonly registry: ExecutionRegistry = new ExecutionRegistry(new ExecutionStore(), () =>
-      Date.now(),
-    ),
+    registry?: ExecutionRegistry,
   ) {
+    // 时钟只有一个来源：注入的 `now`。不在这里就地读墙钟，见 docs/architecture-direction.md。
+    this.registry = registry ?? new ExecutionRegistry(new ExecutionStore(), () => this.now());
     this.mcp.bind(session);
     // 进程重启后的遗留执行：装回 claim 与未确认帧，再由恢复事实与日志帧交代。
     this.registry.restore();
@@ -196,8 +197,11 @@ export class RemoteDispatcher {
     this.registry.forgetReported(this.session.attemptId);
     this.pendingRecoveries = [];
   }
-  /** `nextSeq` 是承载本批的 exchange 序号；日志帧的 dispatchSeq 必须等于它。 */
-  outgoing(maxBytes = MAX_EXCHANGE_BYTES, nextSeq = this.highWater + 1): WorkerExchangeRemoteInput {
+  /**
+   * `maxBytes` 是本批上行体积上限。日志帧不要求等于本批序号：帧的 `dispatchSeq` 是该执行的
+   * **命令下发序号**，归属由服务端 `applyLogFrames` 按 `row.dispatchSeq` 权威核对。
+   */
+  outgoing(maxBytes = MAX_EXCHANGE_BYTES): WorkerExchangeRemoteInput {
     const batch = emptyWorkerRemote();
     const mcp = this.mcp.outgoing(Math.min(maxBytes, this.highWater % 2 ? 65536 : 655360));
     batch.mcp = mcp.mcp;
@@ -257,8 +261,15 @@ export class RemoteDispatcher {
     }
     // 日志帧最后使用剩余预算：fence、终端报告与恢复事实先占位，日志不得饿死它们。
     this.frames = [];
-    for (const { run, frame } of this.registry.rotate(EXECUTION_LOG_FRAMES_PER_EXCHANGE)) {
+    for (const { run, frame } of this.registry.rotate(
+      this.session,
+      EXECUTION_LOG_FRAMES_PER_EXCHANGE,
+    )) {
       if (this.frames.length === EXECUTION_LOG_FRAMES_PER_EXCHANGE) break;
+      // 帧归属于「宿主下发这条命令的那一次投递」，不是承载本批的 exchange。
+      // 没有对应 entry 就没有可信的下发序号，不发帧，由恢复事实交代。
+      const dispatchSeq = this.entries.get(run.claim.executionId)?.command.dispatchSeq;
+      if (dispatchSeq === undefined) continue;
       const wire: ExecutionLogFrame = {
         executionId: run.claim.executionId,
         projectId: run.claim.projectId,
@@ -266,7 +277,7 @@ export class RemoteDispatcher {
         authorizationGeneration: run.claim.authorizationGeneration,
         holderInstanceId: run.claim.holderInstanceId,
         dispatchSession: this.session,
-        dispatchSeq: nextSeq,
+        dispatchSeq,
         sequence: frame.sequence,
         stream: frame.stream,
         byteStart: frame.byteStart,
@@ -549,20 +560,23 @@ export class RemoteDispatcher {
                 ),
               ])
             : await Promise.race([exitedEvent.then(() => "exited" as const), aborted]);
+        // waitMs 到点只决定「要不要提前放手」，不决定终态推导：只要已经观测到退出，就走下面的终态路径。
+        // 长命令（有 runtimeDeadline）根本不进这条等待分支，所以这里完全是 P4b 短操作语义。
         if (waited === "waited") {
           // 短操作语义维持 P4b 行为：waitMs 到点即交出结果并解除投递，进程继续运行。
-          // 之后的退出事实改由恢复事实交代，不重写这次已经交出的结果。
-          run.collecting = false;
-          payload = {
-            kind: "shell",
-            pid: child.pid!,
-            exited: false,
-            exitCode: null,
-            stdout: boundedText(stdout, 65536).text,
-            stderr: boundedText(stderr, 8192).text,
-            truncated,
-          };
-          this.registry.finish(run);
+          // 命令已在 waitMs 内退出时不得写 exited:false，交给下面的终态推导用真实退出码。
+          if (!exited) {
+            run.collecting = false;
+            payload = {
+              kind: "shell",
+              pid: child.pid!,
+              exited: false,
+              exitCode: null,
+              stdout: boundedText(stdout, 65536).text,
+              stderr: boundedText(stderr, 8192).text,
+              truncated,
+            };
+          }
         }
         if (exited) run.log.flush();
         else if (waited === "aborted") {

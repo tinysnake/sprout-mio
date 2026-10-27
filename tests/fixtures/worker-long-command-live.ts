@@ -37,13 +37,17 @@ const children: ReturnType<typeof spawn>[] = [],
   checks: string[] = [];
 const facts: Record<string, unknown> = {};
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
-async function until(check: () => boolean | Promise<boolean>, message: string, ms = 60000) {
+async function until(
+  check: () => boolean | Promise<boolean>,
+  message: string | (() => string),
+  ms = 60000,
+) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
     if (await check()) return;
     await sleep(100);
   }
-  throw new Error(`Timeout: ${message}`);
+  throw new Error(`Timeout: ${typeof message === "function" ? message() : message}`);
 }
 async function freePort(except: number[] = []) {
   const server = createServer();
@@ -111,6 +115,8 @@ type LogFrameObservation = {
   stream: string;
   byteStart: number;
   byteEnd: number;
+  dispatchSeq: number;
+  carrierSeq: number;
 };
 type RecoveryObservation = {
   executionId: string;
@@ -120,8 +126,11 @@ type RecoveryObservation = {
 };
 /** 只记录位点与形状，不记录日志正文与 token 正文。 */
 const observedFrames: LogFrameObservation[] = [];
+/** 网关对每次上行 exchange 的判决；失败时用它代替裸超时。 */
+const exchangeVerdicts: { seq: number; code: string }[] = [];
 const observedRecoveries: RecoveryObservation[] = [];
-let injectedAcks = 0;
+/** 只统计宿主真实下发的 ACK 数量，不注入。 */
+let hostAcks = 0;
 /**
  * 宿主侧目前没有 max_runtime_ms 入参（属于 p4c-tools / p4c-execution）。本脚本在代理层
  * 给指定执行的下发命令补上运行上限字段，其余命令形状与真实下发的完全一致。
@@ -143,8 +152,14 @@ const proxy = createServer(async (request, response) => {
       ok: boolean;
       data?: { remote?: { logFrames?: unknown[]; recoveries?: unknown[] }; mode?: string };
     };
+    if (request.url === "/api/worker/exchange" && !parsed.ok)
+      exchangeVerdicts.push({
+        seq: (JSON.parse(body.toString("utf8")) as { seq: number }).seq,
+        code: (parsed as { error?: { code?: string } }).error?.code ?? "unknown",
+      });
     if (request.url === "/api/worker/exchange" && parsed.ok) {
       const input = JSON.parse(body.toString("utf8")) as {
+        seq: number;
         remote?: {
           logFrames?: {
             executionId: string;
@@ -152,6 +167,7 @@ const proxy = createServer(async (request, response) => {
             stream: string;
             byteStart: number;
             byteEnd: number;
+            dispatchSeq: number;
           }[];
           recoveries?: {
             executionId: string;
@@ -161,17 +177,16 @@ const proxy = createServer(async (request, response) => {
           }[];
         };
       };
-      const acks = new Map<string, number>();
-      for (const frame of input.remote?.logFrames ?? []) {
+      for (const frame of input.remote?.logFrames ?? [])
         observedFrames.push({
           executionId: frame.executionId,
           sequence: frame.sequence,
           stream: frame.stream,
           byteStart: frame.byteStart,
           byteEnd: frame.byteEnd,
+          dispatchSeq: frame.dispatchSeq,
+          carrierSeq: input.seq,
         });
-        acks.set(frame.executionId, Math.max(acks.get(frame.executionId) ?? 0, frame.sequence));
-      }
       for (const recovery of input.remote?.recoveries ?? [])
         observedRecoveries.push({
           executionId: recovery.executionId,
@@ -193,21 +208,9 @@ const proxy = createServer(async (request, response) => {
             injectRuntime = null;
           }
       }
-      // 宿主侧日志落盘属于 p4c-execution；这里只补上「已落盘前缀」的 ACK 事实，
-      // 让真实 Worker 的「ACK 后不重发」路径可被观测。ACK 不携带正文。
-      if (parsed.data?.remote && acks.size) {
-        const remote = parsed.data.remote as { logAcks?: unknown[] };
-        remote.logAcks = [
-          ...(remote.logAcks ?? []),
-          ...[...acks].map(([executionId, through]) => ({
-            executionId,
-            stream: "both",
-            acknowledgedThroughSequence: through,
-            availableFromSequence: null,
-          })),
-        ];
-        injectedAcks += acks.size;
-      }
+      // 宿主自己回 ACK 并落盘日志；这里只统计下行 ACK，绝不补发（补发会让脚本假绿）。
+      if (parsed.data?.remote)
+        hostAcks += ((parsed.data.remote as { logAcks?: unknown[] }).logAcks ?? []).length;
     }
     response.writeHead(upstream.status, { "content-type": "application/json" });
     response.end(JSON.stringify(parsed));
@@ -375,7 +378,7 @@ try {
   await until(() => existsSync(marker), "long command completion", 60000);
   await until(
     async () => (await get(longExecution.executionId)).state === "succeeded",
-    "long command terminal",
+    () => `long command terminal; gateway verdicts=${JSON.stringify(exchangeVerdicts.slice(0, 4))}`,
     30000,
   );
   const own = observedFrames.filter((frame) => frame.executionId === longExecution.executionId);
@@ -400,9 +403,18 @@ try {
     );
   }
   const view = await get(longExecution.executionId);
-  assert(view.producedThroughSequence !== null || own.length > 0);
+  // 只断言「Worker 发了帧」会漏掉宿主整批拒收（合并期真实发生过）：必须看到落盘。
+  const hostStored = (
+    sqlite
+      .prepare("SELECT COUNT(*) AS n FROM execution_log_frame WHERE execution_id=?")
+      .get(longExecution.executionId) as { n: number }
+  ).n;
+  assert(hostStored > 0, "host must persist the frames the Worker sent");
+  assert.notEqual(view.logState, "none", "host log_state must leave none once frames landed");
+  assert(view.producedThroughSequence !== null, "host must record produced_through_seq");
   facts.logging = {
     frames: own.length,
+    hostStoredFrames: hostStored,
     streams: [...new Set(own.map((frame) => frame.stream))].sort(),
     firstSequence: sequences[0],
     lastSequence: sequences.at(-1),
@@ -436,7 +448,7 @@ try {
   facts.acknowledgement = {
     ackedThrough,
     resentCount: resent.length,
-    injectedAcks,
+    hostAcks,
     remainingOutboxLines: durableFrames.length,
   };
   pass("acknowledged log prefix is pruned and never resent by the real Worker");

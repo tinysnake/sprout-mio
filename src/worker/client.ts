@@ -112,9 +112,11 @@ export function workerProgram(
   identity: Identity,
   mcpRegistrations: McpServerRegistration[] = [],
   stateDirectory?: string,
+  now: () => number = () => Effect.runSync(Clock.currentTimeMillis),
 ) {
   // 执行与日志的 durable outbox 在 state-dir 下：进程重启后靠它报恢复事实。
-  const registry = new ExecutionRegistry(new ExecutionStore(stateDirectory), () => Date.now());
+  // 时钟走 Effect 的 Clock，不就地读墙钟，见 docs/architecture-direction.md。
+  const registry = new ExecutionRegistry(new ExecutionStore(stateDirectory), now);
   return Effect.scoped(
     Effect.gen(function* () {
       let session: WorkerSession | undefined;
@@ -204,7 +206,6 @@ export function workerProgram(
           );
           const remote = dispatcher.outgoing(
             1048576 - envelopeBytes + Buffer.byteLength(JSON.stringify(emptyRemote)),
-            seq,
           );
           const exchanged = yield* request(
             identity,

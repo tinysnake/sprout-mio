@@ -107,7 +107,7 @@ function exchangeLogs(
   seq: number,
   options: { ack?: boolean; maxBytes?: number } = {},
 ) {
-  const remote = f.dispatcher.outgoing(options.maxBytes, seq);
+  const remote = f.dispatcher.outgoing(options.maxBytes);
   const frames = remote.logFrames ?? [];
   const acks: LogAck[] = options.ack === false ? [] : acked(frames);
   f.apply(seq, f.output([], acks));
@@ -142,7 +142,7 @@ async function collectUntilIdle(
       sawFrames = true;
       idle = 0;
     } else idle += 1;
-    const pending = f.dispatcher.outgoing(1048576, seq + 1).logFrames ?? [];
+    const pending = f.dispatcher.outgoing(1048576).logFrames ?? [];
     if (sawFrames && frames.length === 0 && pending.length === 0) return;
     if (!sawFrames && idle > 100) throw new Error("no log frames produced");
     await sleep(10);
@@ -151,7 +151,7 @@ async function collectUntilIdle(
 async function terminalOf(dispatcher: RemoteDispatcher, executionId: string, rounds = 600) {
   for (let attempt = 0; attempt < rounds; attempt++) {
     const report = dispatcher
-      .outgoing(1048576, 900)
+      .outgoing(1048576)
       .results.find((report) => report.executionId === executionId);
     if (report?.phase === "terminal") {
       expect(remoteReportSchema.safeParse(report).success).toBe(true);
@@ -196,8 +196,11 @@ test("日志帧增量上行：跨流共享单调序、原始字节位点单调�
     expect(offsets).toEqual([...offsets].sort((a, b) => a - b));
     expect(new Set(offsets).size).toBe(offsets.length);
   }
+  // 帧归属于「下发这条命令的那一次投递」，而不是承载它的 exchange。
+  // command.dispatchSeq 是 1（下发批），而帧跨越了后续多个批次上行。
+  expect(new Set(frames.map((frame) => frame.dispatchSeq))).toEqual(new Set([command.dispatchSeq]));
   const acknowledgedThrough = Math.max(...frames.map((frame) => frame.sequence));
-  const resent = f.dispatcher.outgoing(1048576, 999).logFrames ?? [];
+  const resent = f.dispatcher.outgoing(1048576).logFrames ?? [];
   expect(resent.some((frame) => frame.sequence <= acknowledgedThrough)).toBe(false);
   // 全部 ACK 后 outbox 清空，且 durable outbox 只剩未确认帧。
   const leftover = await readFile(
@@ -270,13 +273,13 @@ test("runner_token 跨重启报恢复事实，未观测到退出只报 unknown",
   expect(fact!.exitCode).toBeNull();
   expect(fact!.claimEvidenceAt).toBe(claimEvidence(fact!.claimEvidenceAt));
   // 新会话的 outgoing 必须真的把恢复事实带出去。
-  const wire = second.dispatcher.outgoing(1048576, 1);
+  const wire = second.dispatcher.outgoing(1048576);
   expect(wire.recoveries?.some((item) => item.executionId === command.executionId)).toBe(true);
   // 送达之后同一会话不重复上报同一条事实。
   second.apply(1, second.output([]));
   expect(
     second.dispatcher
-      .outgoing(1048576, 2)
+      .outgoing(1048576)
       .recoveries?.some((item) => item.executionId === command.executionId) ?? false,
   ).toBe(false);
   process.kill(pid, "SIGKILL");
@@ -297,9 +300,9 @@ test("上行预算内 fence 与终端报告优先，日志帧每批不超过上�
   f.apply(1, f.output([noisy]));
   await sleep(400);
   // 三种上限一起压：满额的终端报告、fence 与日志帧争同一份额。
-  const frame = f.dispatcher.outgoing(1048576, 2);
+  const frame = f.dispatcher.outgoing(1048576);
   expect((frame.logFrames ?? []).length).toBeLessThanOrEqual(EXECUTION_LOG_FRAMES_PER_EXCHANGE);
-  const tiny = f.dispatcher.outgoing(4096, 3);
+  const tiny = f.dispatcher.outgoing(4096);
   expect(tiny.logFrames ?? []).toEqual([]);
   expect(
     JSON.stringify(tiny.results).length + JSON.stringify(tiny.fenceAcks).length,
@@ -345,7 +348,7 @@ test("旧授权代次不得声称成功，且租约动作不终止进程（代�
   f.apply(2, f.output([], [], 2));
   await sleep(500);
   // 旧代次不能报成功；租约动作不发信号，进程继续运行（P4a/P4b 已确认的代价）。
-  const report = f.dispatcher.outgoing(1048576, 3).results[0];
+  const report = f.dispatcher.outgoing(1048576).results[0];
   expect(report?.phase === "terminal" ? report.outcome : "running").not.toBe("succeeded");
   expect(alive(pid)).toBe(true);
   process.kill(pid, "SIGKILL");
