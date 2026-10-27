@@ -32,10 +32,11 @@ import type { SproutExtensionAPI } from "../../src/extension/types";
 import type { PiMcpModule } from "../../src/extension/mcp-pi-types";
 
 const evidencePath = process.env.X3_EVIDENCE ?? "/tmp/x3-mcp-extension-surface.json";
-// 原始观察值单独落盘，`0600`，只给门禁看；缺失或与证据里的承诺不符时门禁判失败。
-const observationPath = process.env.X3_RAW;
 const directory = process.env.X3_DIR ?? mkdtempSync(join(tmpdir(), "x3-surface-"));
 mkdirSync(directory, { recursive: true });
+// 原始观察值单独落盘，`0600`，只给门禁看；缺失或与证据里的承诺不符时门禁判失败。
+// 直接跑本夹具时没有调用方指定路径，落到同一个私有目录；门禁自己传路径时以它为准。
+const observationPath = process.env.X3_RAW ?? join(directory, "observations.json");
 const pass = (name: string) => console.log(`PASS ${name}`);
 
 const piMcp = await loadPiMcp();
