@@ -20,6 +20,7 @@ import { listMachinesFn, saveProjectMachineBindingFn } from "../../server/functi
 import { MachineBindingForm } from "../../components/machine/machine-binding-form";
 import { getProjectInfoHubFn } from "../../server/functions/info-hub";
 import { getProjectRepoStateFn, prepareProjectRepoFn } from "../../server/functions/repository";
+import { useExecutionWiring } from "../../lib/execution-wiring";
 
 export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
   loader: async ({ params }) => {
@@ -45,6 +46,13 @@ function ProjectSettingsPage() {
   const { project, profile, repo, infoHub, machines, executions } = Route.useLoaderData();
   const [selectedMachine, setSelectedMachine] = useState("");
   const { projectId } = Route.useParams();
+  // 执行列表已在 loader 里查询；读取日志、取消与连接状态都接真实服务端入口。
+  const executionRows = executions.ok ? executions.data : [];
+  const executionWiring = useExecutionWiring({
+    projectId,
+    executions: executionRows,
+    listError: executions.ok ? null : executions.error,
+  });
   const router = useRouter();
   const invalidate = () => void router.invalidate();
   useEffect(() => {
@@ -180,6 +188,12 @@ function ProjectSettingsPage() {
                 executions={executions.data}
                 machines={infoHub.ok ? infoHub.data.machines : []}
                 holderNames={infoHub.ok ? holderNames(infoHub.data) : {}}
+                logReader={executionWiring.logReader}
+                canceller={executionWiring.canceller}
+                connection={executionWiring.connection}
+                cancellations={executionWiring.cancellations}
+                onCancelled={executionWiring.onCancelled}
+                testId="settings-executions"
               />
             ) : (
               <ResultError error={executions.error} />

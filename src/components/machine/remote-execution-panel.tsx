@@ -47,6 +47,8 @@ export function RemoteExecutionList({
   cancellations = {},
   onCancelled,
   dense = false,
+  /** 只读表面的原因：页面写清这里为什么没有日志读取与取消，不留一句「尚未接入」。 */
+  readOnlyNote,
   testId = "remote-executions",
 }: {
   executions: readonly ExecutionView[];
@@ -60,6 +62,7 @@ export function RemoteExecutionList({
   onCancelled?: (view: ExecutionCancellationView) => void;
   /** 只读掠影：位点照常显示，日志与取消控件收起来（inspector、设置页）。 */
   dense?: boolean;
+  readOnlyNote?: string;
   testId?: string;
 }) {
   // 没有注入读取与取消入口时自动收成只读：不在每条执行上重复一行「尚未接入」。
@@ -79,13 +82,22 @@ export function RemoteExecutionList({
       >
         {REMOTE_TARGET_NOTE}
       </p>
-      {!wired && (
+      {readOnlyNote ? (
         <p
-          data-testid={`${testId}-not-wired`}
+          data-testid={`${testId}-read-only`}
           className="text-[0.6875rem] leading-5 text-muted-foreground"
         >
-          日志续读与取消入口尚未接入服务端：此处只显示已知的执行事实与日志位点，未接入前不提供读取与取消操作。
+          {readOnlyNote}
         </p>
+      ) : (
+        !wired && (
+          <p
+            data-testid={`${testId}-not-wired`}
+            className="text-[0.6875rem] leading-5 text-muted-foreground"
+          >
+            日志续读与取消入口尚未接入服务端：此处只显示已知的执行事实与日志位点，未接入前不提供读取与取消操作。
+          </p>
+        )
       )}
       {connectionCompletenessNote(connection) && (
         <p data-testid={`${testId}-offline`} className="text-xs text-status-warning">

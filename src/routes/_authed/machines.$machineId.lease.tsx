@@ -6,6 +6,7 @@ import { MachineLeasePanel } from "../../components/machine/machine-lease";
 import { holderNames } from "../../components/machine/project-lease-actions";
 import { useMachineEnrollment } from "../../components/machine/machine-enrollment-context";
 import { useMachineRefresh } from "../../components/machine/use-machine-refresh";
+import { useExecutionWiring } from "../../lib/execution-wiring";
 import { ResultError } from "../../components/project/result-error";
 import { Button } from "../../components/ui/button";
 import { getMachineFn, renewMachineEnrollmentFn } from "../../server/functions/machine";
@@ -37,6 +38,16 @@ function MachineLeasePage() {
   const canGoBack = useCanGoBack();
   const router = useMachineRefresh();
   const { enrollment, setEnrollment } = useMachineEnrollment();
+  // 执行列表在 loader 里已经查过；日志读取、取消与连接事实都接到真实服务端入口，
+  // 不在页面里另造在线状态或取消结果。
+  const executionsResult = data?.executions ?? null;
+  const executions = executionsResult?.ok ? executionsResult.data : [];
+  const executionsError = executionsResult && !executionsResult.ok ? executionsResult.error : null;
+  const executionWiring = useExecutionWiring({
+    projectId: projectId ?? "",
+    executions,
+    listError: executionsError,
+  });
   // 从长页面（如 Project settings 底部）点进来时，滚动容器会沿用上一页的位置，
   // 导致租约页直接停在底部。进入本页时把页面滚动回顶部；返回时不干涉历史恢复。
   useEffect(() => {
@@ -101,8 +112,13 @@ function MachineLeasePage() {
       leaseInfo={data.info.data}
       leases={data.info.data.leases.items}
       holderNames={holderNames(data.info.data)}
-      executions={data.executions.ok ? data.executions.data : []}
-      executionError={data.executions.ok ? undefined : data.executions.error}
+      executions={executions}
+      executionError={executionsError ?? undefined}
+      logReader={executionWiring.logReader}
+      canceller={executionWiring.canceller}
+      connection={executionWiring.connection}
+      cancellations={executionWiring.cancellations}
+      onCancelled={executionWiring.onCancelled}
       enrollment={enrollment?.detail.machine.id === machineId ? enrollment : null}
       installOrigin={typeof window === "undefined" ? undefined : window.location.origin}
       onRenewEnrollment={(id) => renewMachineEnrollmentFn({ data: { machineId: id } })}

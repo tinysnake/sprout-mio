@@ -245,6 +245,8 @@ export function ChatInspector({
                   executions={machineFacts.executions}
                   machines={machineFacts.machines}
                   holderNames={machineFacts.holderNames ?? {}}
+                  dense
+                  readOnlyNote="此面板只读：只展示已知的执行事实与日志位点。读取日志与取消这次执行请在 Machine 详情页操作。"
                   testId="chat-executions"
                 />
               </div>
@@ -255,7 +257,7 @@ export function ChatInspector({
           <Icon as={ShieldCheck} size={14} className="mt-0.5" />
           {machineFacts
             ? "远端操作以 Worker 运行用户权限执行在工作目录之外；租约不随 run 结束释放。"
-            : "分析基于固定快照。分身可以读取仓库；远端操作的呈现随 P4b 集成接入。"}
+            : "分析基于固定快照。分身可以读取仓库；远端操作的日志读取与取消在 Machine 详情页进行。"}
         </p>
       </div>
       <div className="border-t border-border px-5 py-3.5 text-[10px] text-muted-foreground max-desktop:pb-[max(14px,env(safe-area-inset-bottom))]">
