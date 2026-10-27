@@ -25,7 +25,7 @@ import {
 import { hashCredential, machineBindings, matchesCredential } from "../domain/machine";
 import { getRequestContext, REQUEST_ID_HEADER } from "./request-context";
 import { machineRuntimeContext, runtimeSnapshot } from "./runtime";
-import { applyRemoteExchange, RemoteError } from "./remote";
+import { applyRemoteExchange, drainRemoteResponse, RemoteError } from "./remote";
 import { LeaseError } from "./lease";
 
 type WorkerCode = (typeof WORKER_ERROR_CODES)[number];
@@ -366,7 +366,9 @@ function drainExchange(input: DrainExchange, ctx: WorkerContext): ExchangeData {
     session,
     seq,
     configuration: null,
-    remote: applyRemoteExchange(input.remote, { ...ctx, session, seq, mode: "drain" }),
+    remote: drainRemoteResponse(
+      applyRemoteExchange(input.remote, { ...ctx, session, seq, mode: "drain" }),
+    ),
   };
   db.insert(workerExchangeFrame)
     .values({

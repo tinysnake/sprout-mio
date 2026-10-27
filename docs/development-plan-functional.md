@@ -203,7 +203,7 @@ Human 于 `2026-10-25T03:44Z` 授权以无需大型软件的 MCP 验证透传能
 
 ### 当前证据
 
-七条技术判定、实际证据路径和载体限制见 [R1 验证结论](r1/summary.md)，组合理由见 [R1 设计](r1/design.md)。统一重跑入口为 `bash scripts/verify/z3-mcp-acceptance.sh`。R1 的 MCP 接入在 P4c 之后纳入一期；本轮只更新后续方向与证据，不修改一期能力表、一期验收表或 Human 确认 checklist。
+七条行为判定、实际证据路径和载体限制见 [R1 验证结论](r1/summary.md)，组合理由见 [R1 设计](r1/design.md)。统一重跑入口为 `bash scripts/verify/z3-mcp-acceptance.sh`。R1 仍是独立验证任务，尚未纳入一期。第五轮发现验收门禁可被探针自报值绕过，且真实 Worker drain response 不符合响应契约；修复与独立复验完成前，不修改一期能力表、一期验收表或 Human 确认 checklist。
 
 ## P8 在一期完成后展开二期
 

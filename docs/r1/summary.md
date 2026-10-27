@@ -1,8 +1,8 @@
 # R1 MCP 验证结论
 
-R1 七条技术验证均为 PASS：7 PASS、0 FAIL、0 INCONCLUSIVE。统一入口 `bash scripts/verify/z3-mcp-acceptance.sh` 返回 0，逐条 JSON 与实际输出保存在 [evidence/](evidence/)。这些结论适用于 Human 授权替换后的无界面 server，不表示已验证 Unity/Blender 插件。
+R1 七条当前行为复核均为 PASS，但 R1 整体技术验收未通过。z3 返回 0 且七条全 PASS，逐条 JSON 与运行输出保存在 [evidence/](evidence/)。第五轮证明 z3 仍可被证据生产端变异绕过，且发现真实 Worker drain response 契约冲突，因此 z3 结果不能单独作为技术验收结论。这些行为复核适用于 Human 授权替换后的无界面 server，不表示已验证 Unity 或 Blender 插件。
 
-**R1 的 MCP 接入在 P4c 之后纳入一期。** 触发条件是 P4c 身份与授权契约稳定、R1 独立验收通过并完成 Human 确认。本轮记录技术证据和纳入建议，不修改一期能力表、一期验收表，不勾选 `docs/development-plan.md` 的四步 checklist。
+**R1 当前仍是独立验证任务，尚未纳入一期。** 原纳入建议要求 P4c 身份与授权契约稳定、R1 独立验收通过并完成 Human 确认。第五轮发现门禁抵抗性不足且 drain exchange 被响应契约拒绝，因此技术验收未通过。
 
 ## 七条证据
 
@@ -41,6 +41,18 @@ R1 七条技术验证均为 PASS：7 PASS、0 FAIL、0 INCONCLUSIVE。统一入�
 - 条款 7 只校验可以机器判定的东西：`docs/r1/summary.md` 与 `docs/r1/design.md` 存在、design 的关键组合词（薄 bridge、帧中继、Pi 原生客户端、SDK、长连接）出现、范围文档写了 MCP 接入与 P4c，以及 `docs/r1/evidence/evidence.json` 的 `scriptSha256` 等于**当前** z3 脚本的 SHA-256、`sourceCommit` 是当前 HEAD 的祖先或等于它。**文档内容是否与代码相符不由本门禁保证**：把 `owner_managed` 那句改成与代码相反的断言后条款 7 仍然 PASS（实测），语义一致性由独立验收者逐条核对。改过 z3 脚本后必须重跑并把新的 `clause-*.json`、`evidence.json`、`c-evidence.json`、`run.log` 复制进 `docs/r1/evidence/`，否则条款 7 变红。
 - 每条条款的必需字段表 `REQUIRED` 固定 `{path, expect}`。遍历循环先从这些固定路径读取证据并核对精确值或命名谓词，再运行条款 body。返回的 `assertions` 必须齐全、等于已核实的值，且 body 的取值路径必须与固定路径一致；`clause-<n>.json` 同时记录 `verified` 和 `projections`。清空 body、写死正确字面量或给 `evidenceAt` 起别名读取无关路径都会 FAIL。
 - **上面这一条只约束条款 body，不约束证据生产端。** 门禁读到的是探针自己写进 evidence 的布尔值，它核的是「这个值等于 harness 写的期望值」，**不是「探针真的算过这个值」**。第四轮实测：把 x3 的 `structuredContentMatchesServer` 真实 `isDeepStrictEqual` 与 `assert` 整体删掉、字面量写 `true`，z3 七条全 PASS（exit 0）；把 C 探针里 `assert.equal(block.data, original.data)` 删掉并同步快照 `scriptSha256`，同样七条全 PASS。同类还有：`predicates.mcpTools` 接受 `['mcp__']`；`officialSdkVersion` 只证明「探针读到的版本等于磁盘上的版本」，不证明真的连过官方 SDK；删掉条款 body 里的 `passed('y2')` 后探针的红退出码不再被核。SDK 版本与实际导入包同目录的 `package.json` 核对；x2 的端到端成功同时要求帧往返与工具名集合等于 z2 的唯一预期清单。生产 runner 的 allowlist 用 TypeScript AST 定位真实 `sdk.createAgentSession` 的 `tools` 数组，注释与字符串里的伪调用不参与取样。
-- E2b 之后的 MCP 会话收敛依据是 relay 每轮下发的权威活跃集合，不是对端的确认报文。`session_detach_ack` 已删除；确认报文只记录时间，不关闭重试。未验：reconcile 在 drain 模式下只测了 `applyMcpExchange` 层（完整 gateway drain 探针被既有响应契约拒绝，行为来自范围外的 `src/server/remote.ts`）；control 预算极紧（8192 字节）时的 attach 延迟只测到「恢复预算后补发」这一种。
+- E2b 之后的 MCP 会话收敛依据是 relay 每轮下发的权威活跃集合，不是对端的确认报文。`session_detach_ack` 已删除；确认报文只记录时间，不关闭重试。第五轮真实 gateway 探针确认 drain mode 到达 MCP domain。随后 `3d0a0e4` 为 drain exchange 加上窄投影，阻止 lease authorization 进入响应。该修复已在主 checkout 通过 `tests/worker-remote-domain.test.ts`、`pnpm typecheck`、`v-lease-contracts.sh` 和 `w-worker-remote.sh`。主 checkout 尚未重跑完整 z3 与全量 verify。8192 字节预算时 attach 暂缓，恢复预算后补发。
 - `session_fence` 的 closed 行分支在生产代码里没有 `fenceMutationId` 写入点，只有读取，属 P4b 租约语义，R1 未接上也未删除。
-- 技术 PASS 不代替 Human 体验确认，也不自动改变一期验收范围。阶段纳入和四步 checklist 仍由编排者/Human 决定；本轮无需先改一期能力表或一期验收表。
+- 生产 runner 调用 `registerSproutMcp` 时没有提供 sampling handler。elicitation 仅支持 absent 或 `{action:'cancel'}`。这些限制与固定 fixture 的协议往返证据一致，不代表生产模型采样或 Human 表单交互。
+- `y2-mcp-http-worker.sh` 使用打包的 Worker CLI 子进程连接真实 stdio MCP server 和 streamableHttp server，已覆盖跨进程 stdio。没有真实模型自动选择 MCP 工具的一轮推理。
+- Worker 下行 dispatch 项若未通过 `dispatcher.accept` 的身份校验会转成 `invalid_response` 并结束当前 Worker fiber，Worker 随后需要重连。该情况不会报告为 MCP 调用成功。
+- 第五轮独立验收报告 [第五轮独立验收记录](acceptance-round5.md) 确认七条当前行为通过，同时发现 z3 六种证据变异仍全绿。z3 不能独立证明探针实际执行其声称的语义比较或故障路径，因此 z3 PASS 仅是必要检查，不是独立技术验收结论。技术验收仍待门禁整改与复验。Human 体验确认与一期范围纳入仍未完成。
+
+## 第五轮独立复核补充（`efc7c28`）
+
+第五轮在当前构建产物上复跑 z3 七条全 PASS，42 个 verify scripts 全绿，z2 连跑五次全绿。其独立探针重测了 Worker MCP session reconcile：合法但陈旧的对端确认不会停止权威快照重试；220 条历史积压时连续三轮均能发出新 attach；8192 字节极紧预算会暂缓 attach，预算恢复后补发。真实 gateway drain mode 已到达 MCP domain，但完整 response 仍含 drain schema 禁止的 lease authorization，因此 Worker 会拒收；此项作为 R1 整改阻塞，不能由 z3 七条 PASS 覆盖。报告见 `orchestrate/sprout-mio-r1/reports/acceptance-round5.md`。
+
+- 生产 extension runner 调用 `registerSproutMcp` 时没有注入 sampling handler；当前验证 fixture 会注入固定响应。elicitation 合同只允许 absent 或 cancel，测试 handler 返回 `{action:'cancel'}`。两项都没有真实模型采样或 Human 表单交互。
+- `y2-mcp-http-worker.sh` 通过打包 Worker CLI 子进程和真实 stdio MCP server 跑过端到端调用。没有真实模型按工具名自动选用 MCP 工具的一轮推理。
+- Worker dispatcher 任一下行项目若在 `dispatcher.accept` 的 bound/身份校验失败，会转为 `invalid_response` 并结束当前 Worker fiber。该行为不是 MCP 工具调用成功，服务端需要等待 Worker 重连；本轮未修改该既有策略。
+- z3 仍不能独立证明探针实际执行了其声称的比较或故障路径。第五轮六种新证据变异均保持七条 PASS。因此 z3 是可重复的必要检查，不是独立技术验收结论；R1 收口必须依赖独立审查证据生产路径，或先修门禁并通过新的变异攻击复核。

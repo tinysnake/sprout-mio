@@ -92,6 +92,11 @@ export type AuthenticatedWorkerContext = {
 };
 /** Worker v3 出站 wire 形状：基座 remote 加上 relay 空批字段。 */
 type RemoteWireOutput = Extract<WorkerExchangeResponse, { ok: true }>["data"]["remote"];
+type NormalRemoteOutput = RemoteWireOutput;
+export type DrainProjection = Pick<
+  RemoteWireOutput,
+  "fences" | "resultAcks" | "fenceAcks" | "logAcks" | "mcp" | "mcpCursors"
+>;
 function connection(machineId: string, ctx: Pick<MachineContext, "now" | "bootId">) {
   const counter = db
     .select()
@@ -1009,8 +1014,16 @@ function remoteExchangeBytes(remote: RemoteWireOutput, ctx: AuthenticatedWorkerC
 /** Called only inside the gateway's authenticated immediate transaction; never awaits. */
 export function applyRemoteExchange(
   input: WorkerExchangeRemoteInput,
+  ctx: Omit<AuthenticatedWorkerContext, "mode"> & { mode: "normal" },
+): NormalRemoteOutput;
+export function applyRemoteExchange(
+  input: WorkerExchangeRemoteInput,
+  ctx: Omit<AuthenticatedWorkerContext, "mode"> & { mode: "drain" },
+): DrainProjection;
+export function applyRemoteExchange(
+  input: WorkerExchangeRemoteInput,
   ctx: AuthenticatedWorkerContext,
-): RemoteWireOutput {
+): NormalRemoteOutput | DrainProjection {
   const output: RemoteWireOutput = {
     authorizations: [],
     commands: [],
@@ -1149,13 +1162,14 @@ export function applyRemoteExchange(
     .from(machineLease)
     .where(eq(machineLease.machineId, ctx.session.machineId))
     .all()) {
-    output.authorizations.push({
-      projectId: lease.projectId,
-      machineId: lease.machineId,
-      generation: lease.generation,
-      holderInstanceId: lease.holderInstanceId,
-      state: lease.state === "held" ? "active" : lease.state === "fencing" ? "draining" : "free",
-    });
+    if (ctx.mode === "normal")
+      output.authorizations.push({
+        projectId: lease.projectId,
+        machineId: lease.machineId,
+        generation: lease.generation,
+        holderInstanceId: lease.holderInstanceId,
+        state: lease.state === "held" ? "active" : lease.state === "fencing" ? "draining" : "free",
+      });
     if (lease.state === "fencing") {
       const mutation = db
         .select()
@@ -1215,8 +1229,20 @@ export function applyRemoteExchange(
     if (error instanceof McpExchangeError) throw new RemoteError(error.code);
     throw error;
   }
-  if (ctx.mode === "normal") {
-    output.cancellations!.push(...drainCancellationIntents(ctx.session.machineId, ctx.now));
+  if (ctx.mode === "drain") {
+    const projection: DrainProjection = {
+      fences: output.fences,
+      resultAcks: output.resultAcks,
+      fenceAcks: output.fenceAcks,
+      logAcks: output.logAcks ?? [],
+      mcp: output.mcp,
+      mcpCursors: output.mcpCursors,
+    };
+    return projection;
+  }
+  const normalOutput: NormalRemoteOutput = output;
+  {
+    normalOutput.cancellations!.push(...drainCancellationIntents(ctx.session.machineId, ctx.now));
     const conn = connection(ctx.session.machineId, ctx);
     for (const row of db
       .select()
@@ -1228,7 +1254,7 @@ export function applyRemoteExchange(
         ),
       )
       .all()) {
-      if (output.commands.length >= 8) break;
+      if (normalOutput.commands.length >= 8) break;
       const lease = db.select().from(machineLease).where(leaseWhere(row)).get();
       let failure:
         | "authorization_revoked"
@@ -1309,8 +1335,23 @@ export function applyRemoteExchange(
         })
         .where(eq(remoteExecution.id, row.id))
         .run();
-      output.commands.push(command);
+      normalOutput.commands.push(command);
     }
   }
-  return output;
+  return normalOutput;
+}
+
+/** Build the Worker drain envelope from its closed projection. */
+export function drainRemoteResponse(projection: DrainProjection): RemoteWireOutput {
+  return {
+    authorizations: [],
+    commands: [],
+    cancellations: [],
+    fences: projection.fences,
+    resultAcks: projection.resultAcks,
+    fenceAcks: projection.fenceAcks,
+    logAcks: projection.logAcks,
+    mcp: projection.mcp,
+    mcpCursors: projection.mcpCursors,
+  };
 }

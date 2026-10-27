@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { executionViewSchema } from "../../src/contracts/remote";
-import { workerExchangeOutputRemoteSchema } from "../../src/contracts/worker";
+import {
+  workerExchangeOutputRemoteSchema,
+  workerExchangeResponseSchema,
+} from "../../src/contracts/worker";
 import { leaseMutationViewSchema, leaseViewSchema } from "../../src/contracts/lease";
 import { migrateDatabase } from "../../src/db/migrate";
 import { sqlite } from "../../src/db";
@@ -145,6 +148,7 @@ assert.throws(
 );
 const dispatched = exchange();
 assert(workerExchangeOutputRemoteSchema.safeParse(dispatched.remote).success);
+assert.equal(dispatched.remote.authorizations.length, 2);
 assert.equal(dispatched.remote.commands.length, 1);
 const command = dispatched.remote.commands[0]!;
 const release = releaseLease(
@@ -268,7 +272,42 @@ const drainResponse = exchangeWorker(
   },
   ctx,
 );
+assert.equal(drainResponse.remote.authorizations.length, 0);
 assert.equal(drainResponse.remote.commands.length, 0);
+assert.equal(drainResponse.remote.cancellations.length, 0);
+const drainWire = {
+  version: 3 as const,
+  requestId,
+  ok: true as const,
+  data: drainResponse,
+};
+assert.equal(workerExchangeResponseSchema.safeParse(drainWire).success, true);
+const replayedDrain = exchangeWorker(
+  {
+    version: 3,
+    requestId,
+    secret,
+    session,
+    seq,
+    mode: "drain",
+    remote: {
+      results: [
+        {
+          ...drainIdentity,
+          phase: "terminal",
+          drained: true,
+          outcome: "succeeded",
+          payload: { kind: "file_write", bytesWritten: 7 },
+        },
+      ],
+      fenceAcks: [],
+      mcp: [],
+      mcpCursors: [],
+    },
+  },
+  ctx,
+);
+assert.deepEqual(replayedDrain, drainResponse);
 assert.equal(
   getExecution({ ...key, executionId: drainedExecution.executionId }, ctx).state,
   "succeeded",
