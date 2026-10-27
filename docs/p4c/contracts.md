@@ -111,7 +111,9 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 { type: 'execution_log_read', input: executionLogReadInputSchema }
 ```
 
-`src/contracts/worker.ts` 的 `workerExchangeInput` 新增校验：日志帧必须属于本 exchange 的 `session` 与 `seq`，且同一 `executionId+sequence` 在一批内唯一；恢复事实的 `machineId` 必须等于本会话 Machine。上行总预算仍是 1 MiB，日志帧与恢复事实一起计入。
+`src/contracts/worker.ts` 的 `workerExchangeInput` 新增校验：日志帧必须属于本 exchange 的 `session`（`dispatchSession` 的 machineId / generation / bootId / attemptId 全部相符），且同一 `executionId+sequence` 在一批内唯一；恢复事实的 `machineId` 必须等于本会话 Machine。上行总预算仍是 1 MiB，日志帧与恢复事实一起计入。
+
+日志帧的 `dispatchSeq` **不要求**等于承载本批的 exchange `seq`。它是「宿主下发这条命令的那一次投递」的序号：长命令的帧必然在下发之后的多个批次里陆续上行，要求等于本批 seq 会让日志永远无法持续上报。权威归属由服务端 `applyLogFrames` 按 `row.dispatchSeq` 核对（帧必须归属于宿主曾下发该执行的那一次投递），与终端报告、fence ACK 只核对 `dispatchSession` 的先例一致。
 
 ### ExecutionView 扩展
 

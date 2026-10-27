@@ -206,7 +206,6 @@ export function workerProgram(
           );
           const remote = dispatcher.outgoing(
             1048576 - envelopeBytes + Buffer.byteLength(JSON.stringify(emptyRemote)),
-            seq,
           );
           const exchanged = yield* request(
             identity,

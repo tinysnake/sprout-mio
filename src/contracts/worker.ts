@@ -87,13 +87,12 @@ export const workerExchangeInput = z
         frame.dispatchSession.generation !== value.session.generation ||
         frame.dispatchSession.bootId !== value.session.bootId ||
         frame.dispatchSession.attemptId !== value.session.attemptId ||
-        frame.dispatchSeq !== value.seq ||
         seenFrames.has(dedupe)
       )
         ctx.addIssue({
           code: "custom",
           path: ["remote", "logFrames", index],
-          message: "日志帧必须属于本 exchange 会话/seq 且唯一",
+          message: "日志帧必须属于本 exchange 会话且批内唯一",
         });
       seenFrames.add(dedupe);
     });
