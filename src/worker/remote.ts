@@ -24,6 +24,8 @@ type Entry = {
   controller: AbortController;
   report: RemoteReport;
   done: boolean;
+  /** 不可逆动作已经开始：下发窗口只约束准入，此后不再参与任何判定。 */
+  started: boolean;
 };
 const sameSession = (a: WorkerSession, b: WorkerSession) =>
   a.machineId === b.machineId &&
@@ -418,6 +420,7 @@ export class RemoteDispatcher {
         command,
         controller: run.controller,
         done: false,
+        started: false,
         report: { ...identity, phase: "running", drained: false },
       };
       this.entries.set(command.executionId, entry);
@@ -447,7 +450,8 @@ export class RemoteDispatcher {
       throw new AdmissionError("stale_generation");
     if (auth.state !== "active" || auth.holderInstanceId !== command.holderInstanceId)
       throw new AdmissionError("authorization_revoked");
-    if (Date.parse(command.dispatchDeadlineAt) <= this.now()) throw new AdmissionError("deadline");
+    if (Date.parse(command.dispatchDeadlineAt) <= this.now() && !entry.started)
+      throw new AdmissionError("deadline");
     if (!this.capability.remoteOperations.includes(command.operation.kind))
       throw new AdmissionError("capability_unavailable");
     if (
@@ -468,10 +472,11 @@ export class RemoteDispatcher {
     let outcome: Outcome = "succeeded";
     let payload: RemoteResultPayload | undefined;
     const operation = entry.command.operation;
-    let started = false;
-    // 下发窗口只约束「能否开始执行」，开始之后运行寿命只看 maxRuntimeMs / runtimeDeadlineAt。
+    // 下发窗口只约束「能否开始执行」：准入兑现后立即解除，运行寿命只看运行上限与显式取消。
     const admission = setTimeout(
-      () => entry.controller.abort(),
+      () => {
+        if (!entry.started) entry.controller.abort();
+      },
       Math.max(0, Date.parse(entry.command.dispatchDeadlineAt) - this.now()),
     );
     let runtimeLimit: ReturnType<typeof setTimeout> | undefined;
@@ -486,7 +491,8 @@ export class RemoteDispatcher {
           detached: true,
           stdio: ["ignore", "pipe", "pipe"],
         });
-        started = true;
+        entry.started = true;
+        clearTimeout(admission);
         child.unref();
         let exitCode: number | null = null,
           exitSignal: string | null = null,
@@ -636,7 +642,8 @@ export class RemoteDispatcher {
       } else if (operation.kind === "file_read") {
         this.gate(entry);
         const file = await open(operation.path, "r");
-        started = true;
+        entry.started = true;
+        clearTimeout(admission);
         try {
           this.gate(entry);
           const buffer = Buffer.alloc(operation.maxBytes + 1);
@@ -653,7 +660,8 @@ export class RemoteDispatcher {
       } else if (operation.kind === "file_write") {
         this.gate(entry);
         const file = await open(operation.path, operation.mode === "append" ? "a" : "w");
-        started = true;
+        entry.started = true;
+        clearTimeout(admission);
         try {
           this.gate(entry);
           await file.writeFile(operation.content, "utf8");
@@ -664,14 +672,16 @@ export class RemoteDispatcher {
       } else if (operation.kind === "process_signal") {
         this.gate(entry);
         process.kill(operation.pid, `SIG${operation.signal}`);
-        started = true;
+        entry.started = true;
+        clearTimeout(admission);
         payload = { ...operation, delivered: true };
       } else {
         this.gate(entry);
         const child = spawn("/bin/ps", ["-axo", "pid=,comm="], {
           stdio: ["ignore", "pipe", "pipe"],
         });
-        started = true;
+        entry.started = true;
+        clearTimeout(admission);
         let buffer = Buffer.alloc(0),
           truncated = false;
         child.stdout.on("data", (chunk: Buffer) => {
@@ -709,21 +719,19 @@ export class RemoteDispatcher {
           : entry.controller.signal.aborted
             ? "authorization_revoked"
             : "executor_error";
-      const admissionExpired = this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
+      const admissionExpired = !entry.started && this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
       const runtimeExpired =
         entry.command.runtimeDeadlineAt !== null &&
         this.now() >= Date.parse(entry.command.runtimeDeadlineAt);
       outcome = admissionExpired
-        ? started
-          ? "unknown"
-          : "timed_out"
+        ? "timed_out"
         : runtimeExpired
-          ? started
+          ? entry.started
             ? "timed_out"
             : "rejected"
           : reason === "executor_error"
             ? "failed"
-            : started && reason === "authorization_revoked"
+            : entry.started && reason === "authorization_revoked"
               ? "unknown"
               : "rejected";
       payload = {

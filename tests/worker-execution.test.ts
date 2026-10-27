@@ -236,6 +236,29 @@ test("运行上限到期先 TERM 后 KILL，终态是限时而不是下发窗口
   expect(elapsed).toBeLessThan(20000);
 });
 
+test("下发窗口只约束准入：跨过截止时间仍在运行的长命令按真实退出码终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-admission-"));
+  const f = await fixture(directory);
+  const command = f.command(
+    {
+      kind: "shell",
+      command: "sleep 1; echo admitted",
+      cwd: directory,
+      waitMs: 5000,
+    },
+    {
+      dispatchDeadlineAt: new Date(Date.now() + 200).toISOString(),
+      runtimeDeadlineAt: new Date(Date.now() + 30000).toISOString(),
+      maxRuntimeMs: 30000,
+    },
+  );
+  f.apply(1, f.output([command]));
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  // 下发窗口在准入之后不再参与任何判定：命令跑过 200ms 仍是真实成功。
+  expect(report.outcome).toBe("succeeded");
+  expect(report.payload.kind === "shell" && report.payload.stdout).toContain("admitted");
+});
+
 test("runner_token 跨重启报恢复事实，未观测到退出只报 unknown", async () => {
   const directory = await mkdtemp(join(tmpdir(), "p4c-recovery-"));
   const first = await fixture(directory);
