@@ -247,9 +247,7 @@ describe("取消事实合并", () => {
     }));
     const local = { [first!.executionId]: cancellation(first!.executionId) };
     const merged = mergeExecutionCancellations(local, executions);
-    expect(merged?.[first!.executionId]?.cancelId).toBe(
-      "cnl_00000000-0000-4000-8000-000000000002",
-    );
+    expect(merged?.[first!.executionId]?.cancelId).toBe("cnl_00000000-0000-4000-8000-000000000002");
   });
 
   it("没有新事实时返回 null，避免多余渲染", () => {
