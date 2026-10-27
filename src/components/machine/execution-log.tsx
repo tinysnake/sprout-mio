@@ -109,7 +109,7 @@ export function ExecutionLogViewer({
     ? isIncompleteLogState(view.logState)
     : isIncompleteLogState(execution.logState);
 
-  async function load(cursor: { nextSequence: number } | null) {
+  async function load(cursor: ExecutionLogReadView["nextCursor"] | null) {
     if (!read || pending) return;
     setPending(true);
     setError(null);
@@ -232,7 +232,7 @@ export function ExecutionLogViewer({
             variant="secondary"
             data-testid={`${testId}-resume`}
             disabled={!read || pending || !view || !resume?.canContinue}
-            onClick={() => view && void load({ nextSequence: view.nextCursor.nextSequence })}
+            onClick={() => view && void load(view.nextCursor)}
           >
             从游标续读
           </Button>
@@ -262,7 +262,7 @@ function logFactsFallback(execution: ExecutionView): ExecutionLogReadView {
     machineId: execution.machineId,
     executionId: execution.executionId,
     frames: [],
-    nextCursor: { nextSequence: 1 },
+    nextCursor: { executionId: execution.executionId, nextSequence: 1 },
     availableFromSequence: execution.availableFromSequence,
     acknowledgedThroughSequence: execution.acknowledgedThroughSequence,
     producedThroughSequence: execution.producedThroughSequence,

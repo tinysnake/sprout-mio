@@ -18,7 +18,7 @@ const logView = (executionId: string): ExecutionLogReadView => ({
   machineId,
   executionId,
   frames: [],
-  nextCursor: { nextSequence: 1 },
+  nextCursor: { executionId, nextSequence: 1 },
   availableFromSequence: null,
   acknowledgedThroughSequence: null,
   producedThroughSequence: null,
@@ -71,13 +71,19 @@ describe("日志读取请求映射", () => {
       executionLogInput(
         {
           executionId: "exe_00000000-0000-4000-8000-000000000000",
-          cursor: { nextSequence: 7 },
+          cursor: {
+            executionId: "exe_00000000-0000-4000-8000-000000000000",
+            nextSequence: 7,
+          },
           limitBytes: 100,
         },
         projectId,
         machineId,
       )?.cursor,
-    ).toEqual({ nextSequence: 7 });
+    ).toEqual({
+      executionId: "exe_00000000-0000-4000-8000-000000000000",
+      nextSequence: 7,
+    });
   });
 
   it("没有 Machine 归属时返回 null，不拿别的 Machine 猜", () => {

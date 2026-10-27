@@ -128,7 +128,10 @@ describe("日志状态不冒充完整", () => {
 
   it("续读到产出位点后明确没有更多区段", () => {
     expect(resumeFacts(demoLogPage).canContinue).toBe(true);
-    const finished = { ...demoLogPage, nextCursor: { nextSequence: 25 } };
+    const finished = {
+      ...demoLogPage,
+      nextCursor: { ...demoLogPage.nextCursor, nextSequence: 25 },
+    };
     expect(resumeFacts(finished).canContinue).toBe(false);
     expect(resumeFacts(finished).text).toContain("没有更多可读区段");
   });

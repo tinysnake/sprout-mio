@@ -256,7 +256,34 @@ test("下发窗口只约束准入：跨过截止时间仍在运行的长命令�
   const report = await terminalOf(f.dispatcher, command.executionId);
   // 下发窗口在准入之后不再参与任何判定：命令跑过 200ms 仍是真实成功。
   expect(report.outcome).toBe("succeeded");
-  expect(report.payload.kind === "shell" && report.payload.stdout).toContain("admitted");
+  expect(
+    report.payload.kind === "shell" && "stdout" in report.payload && report.payload.stdout,
+  ).toContain("admitted");
+});
+
+test("断线不终止已开始的执行：重连后补送断线期间产生的真实终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-offline-terminal-"));
+  const f = await fixture(directory);
+  const command = f.command({
+    kind: "shell",
+    command: "sleep 0.4; echo offline-done",
+    cwd: directory,
+    waitMs: 10000,
+  });
+  f.apply(1, f.output([command]));
+  await sleep(100);
+  // 连接断开（exchange 失败）：只关闭准入，不撤销已经开始执行的命令。
+  f.dispatcher.disconnect();
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  expect(report.outcome).toBe("succeeded");
+  expect(
+    report.payload.kind === "shell" && "stdout" in report.payload && report.payload.stdout,
+  ).toContain("offline-done");
+  // 同一条终态报告在重连后的下一批上行里仍在，直到宿主 ACK。
+  const resent = f.dispatcher
+    .outgoing(1048576)
+    .results.find((item) => item.executionId === command.executionId);
+  expect(resent?.phase).toBe("terminal");
 });
 
 test("runner_token 跨重启报恢复事实，未观测到退出只报 unknown", async () => {

@@ -185,8 +185,10 @@ export class RemoteDispatcher {
   disconnect() {
     this.closed = true;
     this.mcp.disconnect();
-    // 断联只关闭准入与本会话的投递；已 spawn 的子进程继续运行，由恢复事实交代。
-    for (const entry of this.entries.values()) if (!entry.done) entry.controller.abort();
+    // 断联只关闭准入：已经开始执行的命令继续运行并保留终态报告，重连后由 durable 上行补送。
+    // 只有尚未开始的准入被撤销；子进程本身从不因断联收到信号。
+    for (const entry of this.entries.values())
+      if (!entry.done && !entry.started) entry.controller.abort();
   }
   rejectReports(batch: RemoteExchangeInput) {
     for (const report of batch.results) {
@@ -437,7 +439,8 @@ export class RemoteDispatcher {
   }
   private gate(entry: Entry) {
     const command = entry.command;
-    if (this.closed || entry.controller.signal.aborted)
+    // 断联只关闭准入：已开始的执行仍可交出真实终态，授权由服务端边界再核对。
+    if (entry.controller.signal.aborted || (this.closed && !entry.started))
       throw new AdmissionError("authorization_revoked");
     const auth = this.authorizations.get(command.projectId);
     if (
@@ -719,7 +722,8 @@ export class RemoteDispatcher {
           : entry.controller.signal.aborted
             ? "authorization_revoked"
             : "executor_error";
-      const admissionExpired = !entry.started && this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
+      const admissionExpired =
+        !entry.started && this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
       const runtimeExpired =
         entry.command.runtimeDeadlineAt !== null &&
         this.now() >= Date.parse(entry.command.runtimeDeadlineAt);

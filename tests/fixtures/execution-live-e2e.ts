@@ -177,7 +177,7 @@ type LogDetails = {
   incomplete: boolean;
   logState: string;
   frames: LogFrame[];
-  nextCursor: { nextSequence: number };
+  nextCursor: { executionId: string; nextSequence: number };
   producedThroughSequence: number | null;
   acknowledgedThroughSequence: number | null;
   availableFromSequence: number | null;
@@ -249,7 +249,7 @@ async function getView(id: string): Promise<ExecutionView> {
 }
 const readLog = async (
   executionId: string,
-  cursor: { nextSequence: number } | null,
+  cursor: { executionId: string; nextSequence: number } | null,
   limitBytes = 65536,
 ) =>
   accept<LogDetails>("sprout_remote_execution_log", {
@@ -515,7 +515,7 @@ try {
 
   // 游标：小预算分页读到 line=5，序号单调、不重复、nextCursor 推进。
   const pages: { cursor: number; sequences: number[]; nextCursor: number }[] = [];
-  let cursor: { nextSequence: number } | null = null;
+  let cursor: { executionId: string; nextSequence: number } | null = null;
   let reachedFive = false;
   const seenSequences = new Set<number>();
   const pageDeadline = Date.now() + 60000;
@@ -538,7 +538,10 @@ try {
     await sleep(view.frames.length ? 50 : 300);
   }
   assert(reachedFive, "cursor paging must reach line=5 of the real log");
-  const idempotentCursor = { nextSequence: pages[1]!.nextCursor };
+  const idempotentCursor = {
+    executionId: primary.executionId,
+    nextSequence: pages[1]!.nextCursor,
+  };
   const idempotent = await readLog(primary.executionId, idempotentCursor, 65536);
   const again = await readLog(primary.executionId, idempotentCursor, 65536);
   assert.deepEqual(
@@ -559,7 +562,15 @@ try {
     "short execution terminal",
     30000,
   );
-  const cross = await readLog(shortExecution.executionId, { nextSequence: 40 }, 4096);
+  const cross = await call("sprout_remote_execution_log", {
+    machineId,
+    executionId: shortExecution.executionId,
+    cursor: { executionId: primary.executionId, nextSequence: 40 },
+    limitBytes: 4096,
+  });
+  assert.equal(cross.isError, true, "cross-execution cursor must be rejected");
+  const crossCode = (cross.details as { error?: { code?: string } }).error?.code;
+  assert.equal(crossCode, "execution_log_cursor_stale");
   facts.scenario3 = {
     pages: pages.length,
     sequencesMonotonic: true,
@@ -569,13 +580,11 @@ try {
       executionFrom: primary.executionId,
       executionTo: shortExecution.executionId,
       cursor: 40,
-      outcome: cross.outcome,
-      frameCount: cross.frames.length,
-      logState: cross.logState,
-      rejected: false,
+      rejected: true,
+      code: crossCode,
     },
   };
-  pass("S3 cursor paging is monotonic, idempotent, and its cross-execution behaviour is recorded");
+  pass("S3 cursor paging is monotonic, idempotent, and a cross-execution cursor is rejected");
 
   // —— 场景 4/10：超出单次读取预算的输出，逐页读全；保留裁剪按实现记录。 ——
   const bigRequest = newId(ID_PREFIXES.request);
@@ -593,7 +602,7 @@ try {
   );
   const bigFinal = await getView(big.executionId);
   const allSequences: number[] = [];
-  let bigCursor: { nextSequence: number } | null = null;
+  let bigCursor: { executionId: string; nextSequence: number } | null = null;
   let firstPageRemaining: number | null = null;
   for (let page = 0; page < 80; page++) {
     const view = await readLog(big.executionId, bigCursor, 16384);
@@ -686,7 +695,10 @@ try {
   await until(() => connectionSeq() >= 2, "Worker reconnect");
   const afterReconnect = await readLog(
     disconnect.executionId,
-    { nextSequence: cursorBeforeDrop.nextCursor.nextSequence },
+    {
+      executionId: disconnect.executionId,
+      nextSequence: cursorBeforeDrop.nextCursor.nextSequence,
+    },
     65536,
   );
   for (const frame of cursorBeforeDrop.frames)

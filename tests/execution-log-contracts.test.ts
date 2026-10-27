@@ -352,7 +352,7 @@ describe("execution log and cancellation contracts", () => {
     const read = {
       ...key,
       executionId,
-      cursor: { nextSequence: 3 },
+      cursor: { executionId, nextSequence: 3 },
       limitBytes: 65536,
     };
     expect(executionLogReadInputSchema.safeParse(read).success).toBe(true);
@@ -378,7 +378,7 @@ describe("execution log and cancellation contracts", () => {
           checksum: "c".repeat(64),
         },
       ],
-      nextCursor: { nextSequence: 4 },
+      nextCursor: { executionId, nextSequence: 4 },
       availableFromSequence: 3,
       acknowledgedThroughSequence: 4,
       producedThroughSequence: 4,
