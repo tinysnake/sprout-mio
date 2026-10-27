@@ -217,6 +217,41 @@ describe("取消事实合并", () => {
     expect(mergeExecutionCancellations(local, executions)).toBeNull();
   });
 
+  it("同一次取消在服务端推进后覆盖本地快照，不回退", () => {
+    const executions = records.map((execution, index) => ({
+      ...execution,
+      cancellation:
+        index === 0
+          ? cancellation(execution.executionId, {
+              state: "delivered" as const,
+              deliveredAt: "2026-10-24T00:00:02.000Z",
+              signalOutcome: "term_delivered" as const,
+            })
+          : null,
+    }));
+    const local = { [first!.executionId]: cancellation(first!.executionId) };
+    const merged = mergeExecutionCancellations(local, executions);
+    expect(merged?.[first!.executionId]?.state).toBe("delivered");
+  });
+
+  it("换一次取消尝试时按发起时间取新，旧尝试不盖住新的", () => {
+    const executions = records.map((execution, index) => ({
+      ...execution,
+      cancellation:
+        index === 0
+          ? cancellation(execution.executionId, {
+              cancelId: "cnl_00000000-0000-4000-8000-000000000002",
+              requestedAt: "2026-10-24T00:10:00.000Z",
+            })
+          : null,
+    }));
+    const local = { [first!.executionId]: cancellation(first!.executionId) };
+    const merged = mergeExecutionCancellations(local, executions);
+    expect(merged?.[first!.executionId]?.cancelId).toBe(
+      "cnl_00000000-0000-4000-8000-000000000002",
+    );
+  });
+
   it("没有新事实时返回 null，避免多余渲染", () => {
     expect(
       mergeExecutionCancellations(

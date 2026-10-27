@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExecutionLogReadInput } from "../contracts/remote";
 import type {
+  CancellationState,
   ExecutionCancellationView,
   ExecutionLogReadView,
   ExecutionView,
@@ -114,9 +115,31 @@ export function executionCanceller(
   };
 }
 
+/** 取消事实的推进次序：同一次尝试只前进，不因刷新回退。 */
+const CANCELLATION_RANK: Record<CancellationState, number> = {
+  requested: 0,
+  delivered: 1,
+  failed: 1,
+  unknown: 1,
+  exited_observed: 2,
+  already_exited: 2,
+};
+
+/** 两次尝试之间比新旧，同一次尝试之间比推进程度。 */
+function preferCancellation(
+  current: ExecutionCancellationView,
+  incoming: ExecutionCancellationView,
+): ExecutionCancellationView {
+  if (current.cancelId !== incoming.cancelId) {
+    return Date.parse(incoming.requestedAt) > Date.parse(current.requestedAt) ? incoming : current;
+  }
+  return CANCELLATION_RANK[incoming.state] > CANCELLATION_RANK[current.state] ? incoming : current;
+}
+
 /**
- * 合并取消事实：服务端返回的取消视图是唯一来源。页面本地刚收到的取消视图优先，
- * 避免刷新前后的旧事实把新状态盖回去。没有变化时返回 null，不触发额外渲染。
+ * 合并取消事实：服务端返回的取消视图是唯一来源，页面只保留更新的一条。
+ * 同一次尝试按推进程度取新（`requested` 不会盖住 `delivered`），换尝试按发起时间取新。
+ * 没有变化时返回 null，不触发额外渲染。
  */
 export function mergeExecutionCancellations(
   current: Readonly<Record<string, ExecutionCancellationView>>,
@@ -125,9 +148,12 @@ export function mergeExecutionCancellations(
   let next: Record<string, ExecutionCancellationView> | null = null;
   for (const execution of executions) {
     const fact = execution.cancellation;
-    if (!fact || current[execution.executionId]) continue;
+    if (!fact) continue;
+    const previous = current[execution.executionId];
+    const preferred = previous ? preferCancellation(previous, fact) : fact;
+    if (preferred === previous) continue;
     next ??= { ...current };
-    next[execution.executionId] = fact;
+    next[execution.executionId] = preferred;
   }
   return next;
 }
