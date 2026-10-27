@@ -153,6 +153,9 @@ try {
       const stdioTools=await stdio.listTools(); assert(stdioTools.tools.some((tool:any)=>tool.name==='read'));
       await http.connect(httpTransport);
       const httpTools=await http.listTools(); assert(httpTools.tools.some((tool:any)=>tool.name==='wire_echo'));
+      // The gate, not the probe, owns the expected names. Only the names each transport actually
+      // returned are written, and only to the private run directory.
+      writeFileSync(join(dir,'sdk-observations.json'),JSON.stringify({stdioTools:stdioTools.tools.map((tool:any)=>tool.name),httpTools:httpTools.tools.map((tool:any)=>tool.name)}),{mode:0o600});
       await httpTransport.terminateSession();
       return {version:sdkVersion,stdioConnected:true,stdioToolCount:stdioTools.tools.length,streamableHttpConnected:true,httpToolCount:httpTools.tools.length,referenceOnly:true};
     } finally {await stdio.close();await http.close();await server.close();}
@@ -365,6 +368,41 @@ const requireProbe=name=>{
 const http=sources.y2, extension=sources.x2, surface=sources.x3;
 sources.c=c;
 
+// ---------------------------------------------------------------- R1-1 official SDK connection
+// The C probe writes the tool names each transport actually returned into a private artifact.
+// The gate owns the expected names and compares them itself; the probe's connected/count
+// booleans are not read. Deleting the real connect()/listTools() calls leaves no artifact, so
+// a probe that still reports success contradicts its own output and the clause is FAIL.
+const sdkObservationPath=join(dir,'sdk-observations.json');
+const expectedSdkStdioTools=['never_reply','notify','read','write'];
+const expectedSdkHttpTools=['wire_echo'];
+const sdkState={status:'pending'};
+try {
+  const execution=executions.c;
+  if(!execution||execution.timedOut||execution.launchError) throw new EvidenceUnavailable('c did not finish');
+  if(execution.exitCode!==0) throw new ObservationContract('c completed with failing assertions');
+  const probe=c.officialSdk;
+  if(!probe) throw new EvidenceUnavailable('c published no officialSdk probe');
+  if(probe.status!=='PASS') throw new ObservationContract('officialSdk probe did not pass');
+  if(!existsSync(sdkObservationPath)) throw new ObservationContract('officialSdk reported success but left no connection observation');
+  const observation=read(sdkObservationPath);
+  const stdio=observation.stdioTools, httpTools=observation.httpTools;
+  if(!Array.isArray(stdio)||!Array.isArray(httpTools)) throw new ObservationContract('officialSdk connection observation is malformed');
+  assert.deepEqual([...stdio].sort(),expectedSdkStdioTools,'stdio tools must be the gate-owned expected set');
+  assert.deepEqual([...httpTools].sort(),expectedSdkHttpTools,'streamableHttp tools must be the gate-owned expected set');
+  Object.assign(sdkState,{status:'computed',stdioConnected:stdio.length>0,streamableHttpConnected:httpTools.length>0,stdioToolCount:stdio.length,httpToolCount:httpTools.length});
+} catch(e) {
+  Object.assign(sdkState,{status:e instanceof EvidenceUnavailable?'unavailable':'failed',error:e.message});
+}
+if(sdkState.status==='computed') sources.sdk={
+  stdioConnected:sdkState.stdioConnected,
+  streamableHttpConnected:sdkState.streamableHttpConnected,
+  stdioToolCount:sdkState.stdioToolCount,
+  httpToolCount:sdkState.httpToolCount,
+};
+// R1-2's tool surface is a fixed set the gate owns. The probe only supplies the names Pi reports.
+const expectedMcpSurfaceTools=['mcp__everything__get-structured-content','mcp__everything__get-tiny-image','mcp__root-1__never_reply','mcp__root-1__read','mcp__root-1__write'];
+
 // ---------------------------------------------------------------- R1-4 raw observations
 // A check is a triple: the probe's exit code, bounded raw values captured from the real Pi call
 // and from an independent server call, and a comparison the gate computes itself. The probe's
@@ -486,9 +524,13 @@ const REQUIRED = {
     serverFrames:{path:'x2.workerDispatcherServerFrames',expect:{predicate:'positiveCount'}},
     endToEndToolsList:{path:'x2.endToEndToolsList',expect:'pass'},
     officialSdkVersion:{path:'c.officialSdk.version',expect:expectedSdkVersion},
+    officialSdkStdioConnected:{path:'sdk.stdioConnected',expect:true},
+    officialSdkStreamableHttpConnected:{path:'sdk.streamableHttpConnected',expect:true},
+    officialSdkStdioToolCount:{path:'sdk.stdioToolCount',expect:{predicate:'positiveCount'}},
+    officialSdkHttpToolCount:{path:'sdk.httpToolCount',expect:{predicate:'positiveCount'}},
   },
   2: {
-    activeMcpTools:{path:'c.surface.activeMcpTools',expect:{predicate:'mcpTools'}},
+    activeMcpTools:{path:'c.surface.activeMcpTools',expect:expectedMcpSurfaceTools},
     allowlistExcludedNotify:{path:'c.surface.allowlistExcludedNotify',expect:true},
     allowedToolExecuted:{path:'c.surface.allowedToolExecuted',expect:true},
     hostServerNotStarted:{path:'c.surface.hostServerNotStarted',expect:true},
@@ -553,6 +595,9 @@ const resolvePath = path => {
 };
 let currentClause = 0;
 let projections = [];
+// Which probe outputs each clause actually read. After all clauses run, every one of those probes
+// must have exited 0; that binding lives here, not in a `passed()` call a clause body can omit.
+const clauseProbeRefs = new Map();
 const evidenceAt = (field,path) => {
   const value = resolvePath(path);
   if (value === undefined) {
@@ -562,9 +607,18 @@ const evidenceAt = (field,path) => {
       if(observationState.status==='unavailable') throw new EvidenceUnavailable(observationState.error);
       throw new ObservationContract(observationState.error);
     }
+    if(path.startsWith('sdk.')&&sdkState.status!=='computed') {
+      if(sdkState.status==='unavailable') throw new EvidenceUnavailable(sdkState.error);
+      throw new ObservationContract(sdkState.error);
+    }
     throw new ClauseContract(`R1-${currentClause}: 证据路径 ${path} 取不到值`);
   }
   projections.push({clause:currentClause,field,path,value});
+  const probe=path.split('.')[0];
+  if(['y2','x2','x3','c'].includes(probe)) {
+    const refs=clauseProbeRefs.get(currentClause)??new Set();
+    refs.add(probe); clauseProbeRefs.set(currentClause,refs);
+  }
   return value;
 };
 
@@ -610,6 +664,10 @@ const clauses = [
       serverFrames:evidenceAt('serverFrames','x2.workerDispatcherServerFrames'),
       endToEndToolsList:evidenceAt('endToEndToolsList','x2.endToEndToolsList'),
       officialSdkVersion:evidenceAt('officialSdkVersion','c.officialSdk.version'),
+      officialSdkStdioConnected:evidenceAt('officialSdkStdioConnected','sdk.stdioConnected'),
+      officialSdkStreamableHttpConnected:evidenceAt('officialSdkStreamableHttpConnected','sdk.streamableHttpConnected'),
+      officialSdkStdioToolCount:evidenceAt('officialSdkStdioToolCount','sdk.stdioToolCount'),
+      officialSdkHttpToolCount:evidenceAt('officialSdkHttpToolCount','sdk.httpToolCount'),
       transports:evidenceAt('transports','y2.worker.transports'),
     };
   },
@@ -722,6 +780,7 @@ const clauses = [
   },
 ];
 const results=[];
+const pending=[];
 for(const [index,check] of clauses.entries()) {
   currentClause=index+1;
   let status='PASS',assertions,error;
@@ -776,10 +835,29 @@ for(const [index,check] of clauses.entries()) {
     ...(observationState.error?{reason:observationState.error}:{}),
   }:undefined;
   const record={clause:currentClause,status,verified,...(assertions?{assertions}:{}),...(status==='PASS'?{projections:provenances}:{}),...(error?{error}:{}),...(gateComputed?{gateComputed}:{}),executions};
-  writeFileSync(path,JSON.stringify(record,null,2)+'\n');
   const evidencePath=relative(process.cwd(),path);
+  pending.push({path,record});
   results.push({clause:currentClause,status,evidencePath});
-  console.log(`${status} R1-${currentClause} ${evidencePath}`);
+}
+// Structural exit-code binding: a clause cannot opt out of it. Every probe whose output a clause
+// read must have exited 0; a timeout, launch failure or non-zero exit is FAIL here regardless of
+// what the clause body did or which `passed()` calls it remembered to make.
+for(const {record} of pending) {
+  const refs=clauseProbeRefs.get(record.clause)??new Set();
+  const failed=[...refs].filter(name=>{
+    const execution=executions[name];
+    return !execution||execution.timedOut||execution.launchError||execution.exitCode!==0;
+  });
+  if(failed.length) {
+    record.status='FAIL';
+    record.error=`探针退出码非 0：${failed.join(', ')}`;
+    delete record.assertions; delete record.projections;
+  }
+}
+for(const [index,{path,record}] of pending.entries()) {
+  writeFileSync(path,JSON.stringify(record,null,2)+'\n');
+  results[index].status=record.status;
+  console.log(`${record.status} R1-${record.clause} ${results[index].evidencePath}`);
 }
 writeFileSync(join(dir,'evidence.json'),JSON.stringify({schemaVersion:1,generatedAt:new Date().toISOString(),sourceCommit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),scriptSha256:createHash('sha256').update(readFileSync('scripts/verify/z3-mcp-acceptance.sh')).digest('hex'),results,executions},null,2)+'\n');
 writeFileSync(join(dir,'run.log'),results.map(r=>`${r.status} R1-${r.clause} ${r.evidencePath}`).join('\n')+'\n');

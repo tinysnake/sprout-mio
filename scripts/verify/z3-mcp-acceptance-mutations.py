@@ -34,6 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 GATE = Path("scripts/verify/z3-mcp-acceptance.sh")
 X3_SCRIPT = Path("scripts/verify/x3-mcp-extension-surface.sh")
+Y2_SCRIPT = Path("scripts/verify/y2-mcp-http-worker.sh")
 FIXTURE = Path("tests/fixtures/mcp-extension-surface.ts")
 X2_FIXTURE = Path("tests/fixtures/mcp-extension-live.ts")
 Y2_FIXTURE = Path("tests/fixtures/mcp-http-worker-live.ts")
@@ -253,6 +254,62 @@ def hardcode_stale_generation(gate: Path) -> None:
     )
 
 
+def remove_official_sdk_connections(gate: Path) -> None:
+    """R1-1: the SDK probe stops connecting and only publishes the booleans it used to derive.
+
+    Both `connect()`/`listTools()` calls are deleted; the probe still exits 0 and still claims
+    `stdioConnected`/`httpToolCount` as literals. Nothing the gate used to check the version
+    string notices, because the version lookup stays (so the failure is the connection, not a
+    malformed version).
+    """
+    content = gate.read_text()
+    start = content.index("  await checked('officialSdk',async()=>{")
+    end = content.index("  const catalog = () =>", start)
+    body = content[start:end]
+    for marker in ("await stdio.connect(", "await stdio.listTools()", "await http.connect(", "await http.listTools()"):
+        if marker not in body:
+            raise DriverError(f"officialSdk mutation anchor not found: {marker}")
+    replacement = (
+        "  await checked('officialSdk',async()=>{\n"
+        "    const entries=readdirSync('node_modules/.pnpm').filter(name=>name.startsWith('@modelcontextprotocol+sdk@'));\n"
+        "    assert.equal(entries.length,1,'one unambiguous installed official SDK');\n"
+        "    const sdkRoot=join(process.cwd(),'node_modules/.pnpm',entries[0]!,'node_modules/@modelcontextprotocol/sdk');\n"
+        "    const sdkVersion=JSON.parse(readFileSync(join(sdkRoot,'package.json'),'utf8')).version;\n"
+        "    return {version:sdkVersion,stdioConnected:true,stdioToolCount:4,streamableHttpConnected:true,httpToolCount:1,referenceOnly:true};\n"
+        "  });\n"
+    )
+    gate.write_text(content[:start] + replacement + content[end:])
+
+
+def y2_exit_after_success(copy: Path) -> None:
+    """R1-1: y2 finishes its evidence and then exits 1, while every `passed('y2')` is deleted.
+
+    This is the strongest form of the weak-binding attack: no clause body asks about the probe
+    exit code any more, so only a check the gate performs outside the clause bodies can keep the
+    failing probe from being published as PASS.
+    """
+    mutate(
+        copy / Y2_SCRIPT,
+        "printf 'PASS MCP HTTP Worker evidence %s/evidence.json\\n' \"$verification_dir\"\n",
+        "printf 'PASS MCP HTTP Worker evidence %s/evidence.json\\n' \"$verification_dir\"\nexit 1\n",
+    )
+    gate = copy / GATE
+    content = gate.read_text()
+    occurrences = content.count("passed('y2');")
+    if occurrences != 3:
+        raise DriverError(f"expected three passed('y2') calls in {gate}, found {occurrences}")
+    gate.write_text(content.replace("passed('y2');", ""))
+
+
+def prefix_only_mcp_tools(gate: Path) -> None:
+    """R1-2: the surface probe returns the bare prefix instead of the tools Pi actually has."""
+    mutate(
+        gate,
+        "    return {activeMcpTools:active,allowlistExcludedNotify:true",
+        "    return {activeMcpTools:['mcp__'],allowlistExcludedNotify:true",
+    )
+
+
 def assert_configured_service_terminated(y2: Path) -> None:
     """M4: stop waiting, hardcode the claim, and keep the child alive to make the claim false.
 
@@ -376,6 +433,29 @@ def build_mutations() -> list[Mutation]:
             "M6：旧代次 exchange 换成常量 lease_stale_generation，不再走服务端路径",
             lambda copy: hardcode_stale_generation(copy / GATE),
             expected_clause=5,
+        ),
+        # Round 7: the three remaining evidence-production paths. Each probe still exits 0 (or
+        # in the y2 case exiting 1 must itself be enough), and the target clause must be FAIL.
+        Mutation(
+            "official-sdk-connections-removed",
+            GATE,
+            "R1-1：SDK 探针删掉两种传输的 connect/listTools，只返回连接布尔与工具数",
+            lambda copy: remove_official_sdk_connections(copy / GATE),
+            expected_clause=1,
+        ),
+        Mutation(
+            "y2-exits-after-success-without-passed",
+            Y2_SCRIPT,
+            "R1-1：y2 写完证据后 exit 1，且三条 passed('y2') 全被删除",
+            lambda copy: y2_exit_after_success(copy),
+            expected_clause=1,
+        ),
+        Mutation(
+            "mcp-tools-bare-prefix",
+            GATE,
+            "R1-2：Pi 工具面只返回 ['mcp__']，不是真实 5 个工具名",
+            lambda copy: prefix_only_mcp_tools(copy / GATE),
+            expected_clause=2,
         ),
     ]
 
