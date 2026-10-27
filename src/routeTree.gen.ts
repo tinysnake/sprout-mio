@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as DevLoginRouteImport } from './routes/dev-login'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedMachinesRouteImport } from './routes/_authed/machines'
 import { Route as AuthedProjectsRouteImport } from './routes/_authed/projects'
@@ -44,6 +45,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevLoginRoute = DevLoginRouteImport.update({
+  id: '/dev-login',
+  path: '/dev-login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -183,6 +189,7 @@ const AuthedProjectsProjectIdChatsChatIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/dev-login': typeof DevLoginRoute
   '/login': typeof LoginRoute
   '/machines': typeof AuthedMachinesRouteWithChildren
   '/projects': typeof AuthedProjectsRouteWithChildren
@@ -211,6 +218,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/dev-login': typeof DevLoginRoute
   '/login': typeof LoginRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
@@ -236,6 +244,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
+  '/dev-login': typeof DevLoginRoute
   '/login': typeof LoginRoute
   '/_authed/machines': typeof AuthedMachinesRouteWithChildren
   '/_authed/projects': typeof AuthedProjectsRouteWithChildren
@@ -266,6 +275,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/dev-login'
     | '/login'
     | '/machines'
     | '/projects'
@@ -294,6 +304,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/dev-login'
     | '/login'
     | '/api/diagnostics'
     | '/api/health'
@@ -318,6 +329,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authed'
+    | '/dev-login'
     | '/login'
     | '/_authed/machines'
     | '/_authed/projects'
@@ -348,6 +360,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthedRoute: typeof AuthedRouteWithChildren
+  DevLoginRoute: typeof DevLoginRoute
   LoginRoute: typeof LoginRoute
   ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
   ApiHealthRoute: typeof ApiHealthRoute
@@ -373,6 +386,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev-login': {
+      id: '/dev-login'
+      path: '/dev-login'
+      fullPath: '/dev-login'
+      preLoaderRoute: typeof DevLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -656,6 +676,7 @@ const AuthedRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthedRoute: AuthedRouteWithChildren,
+  DevLoginRoute: DevLoginRoute,
   LoginRoute: LoginRoute,
   ApiDiagnosticsRoute: ApiDiagnosticsRoute,
   ApiHealthRoute: ApiHealthRoute,

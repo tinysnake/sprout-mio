@@ -87,6 +87,19 @@ async function curl(url, name, { body, cookie = false, header } = {}) {
   const text = readFileSync(target, 'utf8')
   return { status: Number(output), text, headers: readFileSync(headers, 'utf8'), body: JSON.parse(text) }
 }
+async function raw(url, name, method = 'GET', cookie = false) {
+  const args = ['--noproxy', '*', '--connect-timeout', '2', '--max-time', '10', '-sS', '-D', join(directory, `${name}.headers`), '-o', join(directory, `${name}.body`), '-w', '%{http_code}', '-X', method, url]
+  if (cookie) args.push('-b', join(directory, 'cookies.txt'), '-c', join(directory, 'cookies.txt'))
+  const child = spawn('curl', args, { stdio: ['ignore', 'pipe', 'pipe'], env: environment })
+  let output = '', errors = ''
+  child.stdout.on('data', (data) => { output += data })
+  child.stderr.on('data', (data) => { errors += data })
+  await new Promise((resolve, reject) => {
+    child.once('error', reject)
+    child.once('close', (code) => code === 0 ? resolve() : reject(new Error(errors)))
+  })
+  return { status: Number(output), headers: readFileSync(join(directory, `${name}.headers`), 'utf8') }
+}
 async function health(child, origin, name) {
   for (let attempt = 0; attempt < 120; attempt++) {
     if (child.exitCode !== null || child.signalCode !== null) break
@@ -237,6 +250,22 @@ try {
   const devBase = `http://localhost:${devPort}`
   const dev = launch('pnpm', ['exec', 'vp', 'dev', '--port', String(devPort)], 'dev.log', { ...environment, APP_ORIGIN: devBase, PORT: String(devPort), NITRO_PORT: String(devPort), NODE_ENV: 'development' })
   const devFirst = await health(dev, devBase, 'dev-health-before')
+  const devLogin = await raw(`${devBase}/dev-login`, 'dev-login-head', 'HEAD')
+  assert.equal(devLogin.status, 200, 'dev server exposes the development login')
+  const devLoginGet = await raw(`${devBase}/dev-login?to=/projects`, 'dev-login', 'GET', true)
+  assert.equal(devLoginGet.status, 303, 'development login redirects')
+  assert.match(devLoginGet.headers, /\nlocation: \/projects/)
+  assert.match(devLoginGet.headers, /set-cookie: better-auth\.session_token=/i)
+  const devSession = await curl(`${devBase}/api/auth/get-session`, 'dev-session', { cookie: true })
+  assert.equal(devSession.body.user.email, 'dev@sprout.test')
+  const devLedger = new Database(databaseUrl)
+  try {
+    assert.equal(devLedger.prepare('SELECT count(*) AS count FROM user WHERE email = ?').get('dev@sprout.test').count, 1)
+    const userId = devLedger.prepare('SELECT id FROM user WHERE email = ?').get('dev@sprout.test').id
+    assert.equal(devLedger.prepare('SELECT count(*) AS count FROM project WHERE created_by = ?').get(userId).count, 1)
+    assert.equal(devLedger.prepare('SELECT count(*) AS count FROM session WHERE user_id = ?').get(userId).count, 1)
+  } finally { devLedger.close() }
+  pass('dev server exposes /dev-login and seeds one demo Human, Project and session', { head: devLogin.status, get: devLoginGet.status })
   const before = modules('dev.log')
   assert(before.length > 0, 'dev runtime module evidence')
   const initial = before.at(-1)

@@ -5,6 +5,7 @@ import type { LoginMode, LoginValues } from "../components/auth/login-view";
 import type { AppError } from "../contracts/result";
 import { toAppError } from "../contracts/result";
 import { ID_PREFIXES, newId } from "../contracts/ids";
+import { getDevLoginStatus } from "../server/dev-login";
 import { authenticate, getSessionInfo } from "../server/session";
 
 export const Route = createFileRoute("/login")({
@@ -13,11 +14,16 @@ export const Route = createFileRoute("/login")({
     const result = await getSessionInfo();
     if (result.ok && result.data) throw redirect({ to: "/" });
   },
+  loader: async () => {
+    const status = await getDevLoginStatus();
+    return status.ok && status.data.enabled ? status.data.href : null;
+  },
   component: Login,
 });
 
 /** 认证边界在 server function：这里只把结果映射成 pending 与可追踪错误。 */
 function Login() {
+  const devLoginHref = Route.useLoaderData();
   const [mode, setMode] = useState<LoginMode>("login");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -57,6 +63,7 @@ function Login() {
       pending={pending}
       error={error}
       onSubmit={(values) => void submit(values)}
+      devLoginHref={devLoginHref}
     />
   );
 }

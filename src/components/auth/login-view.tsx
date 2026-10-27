@@ -35,6 +35,7 @@ export function LoginView({
   error,
   onSubmit,
   embedded = false,
+  devLoginHref = null,
 }: {
   mode: LoginMode;
   onModeChange: (mode: LoginMode) => void;
@@ -43,6 +44,8 @@ export function LoginView({
   onSubmit: (values: LoginValues) => void;
   /** 嵌在既有布局里时按容器高度铺满，而不是占满整个视口。 */
   embedded?: boolean;
+  /** 开发运行时提供的一步登录入口；生产构建与演示场景传 null 时不显示。 */
+  devLoginHref?: string | null;
 }) {
   const register = mode === "register";
 
@@ -165,6 +168,16 @@ export function LoginView({
           >
             {pending ? "正在验证…" : register ? "创建账号" : "登录工作空间"}
           </Button>
+
+          {devLoginHref && (
+            <a
+              href={devLoginHref}
+              data-testid="dev-login"
+              className="mt-3 flex min-h-8.5 items-center justify-center rounded-control border border-dashed border-border px-3 text-xs text-muted-foreground transition-colors hover:border-foreground hover:text-foreground max-desktop:min-h-11"
+            >
+              用开发账号直接进入
+            </a>
+          )}
         </form>
       </main>
       <footer className="pb-5 text-center text-xs text-muted-foreground">

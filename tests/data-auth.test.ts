@@ -103,6 +103,20 @@ describe("持久层与认证边界", () => {
     expect(output.trim()).toBe("null");
   });
 
+  it("开发登录只接受站内跳转目标，拒绝协议相对与反斜杠路径", async () => {
+    const { devLoginTarget } = await import("../src/server/dev-login");
+    expect(devLoginTarget("?to=/projects")).toBe("/projects");
+    expect(devLoginTarget("?to=/projects/prj_1/chats?info=1")).toBe("/projects/prj_1/chats?info=1");
+    for (const search of [
+      "",
+      "?to=",
+      "?to=//evil.example",
+      "?to=https://evil.example",
+      "?to=/a\\b",
+    ])
+      expect(devLoginTarget(search)).toBe("/");
+  });
+
   it("配置拒绝必填字段的空值与非法值", () => {
     for (const env of [
       { DATABASE_URL: "" },

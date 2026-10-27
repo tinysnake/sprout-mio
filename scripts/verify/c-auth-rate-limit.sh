@@ -171,6 +171,15 @@ try {
   assert.equal((await authenticate({ action: 'login', email: 'rotating-3@example.test', password: wrongPassword })).error?.code, 'too_many_requests')
   assert.equal((await authenticate({ action: 'logout' })).ok, true)
   pass('global budget and logout', 'rotating accounts hit total max=2; logout remains available; response header requestId matches AppResult')
+  const productionDevLogin = await request('/dev-login?to=/projects')
+  assert.equal(productionDevLogin.status, 404)
+  const productionDevLoginHead = await fetch(base + '/dev-login', { method: 'HEAD' })
+  assert.equal(productionDevLoginHead.status, 404)
+  const ledger = new Database(databaseUrl)
+  try {
+    assert.equal(ledger.prepare("SELECT count(*) AS count FROM user WHERE email = 'dev@sprout.test'").get().count, 0)
+  } finally { ledger.close() }
+  pass('production build exposes no development login', 'GET /dev-login 404; HEAD 404; no demo Human created')
   kill(restarted)
   await bounded(restarted, 10000)
   pass('c-auth-rate-limit all checks passed', 'servers exit=0; evidence.json')

@@ -104,6 +104,18 @@ const environmentSchema = z.object({
         .filter(Boolean),
     )
     .pipe(z.array(originPatternSchema)),
+  /**
+   * 开发登录：dev server 上把固定账号写进会话 cookie 后跳到目标页面，省掉手输长账号
+   * 密码。只在构建期 `import.meta.env.DEV` 为真的 dev server 生效，生产构建与验收库
+   * 一律没有这个入口；把它设成 false 可以关掉（例如 dev server 暴露在不信任网络里）。
+   */
+  DEV_LOGIN_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  DEV_LOGIN_EMAIL: z.email().default("dev@sprout.test"),
+  DEV_LOGIN_NAME: z.string().trim().min(1).max(80).default("开发评审"),
+  DEV_LOGIN_PASSWORD: z.string().min(8).max(128).default("sprout-dev-login"),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(5),
   AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
   AUTH_RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().min(1).max(10_000).default(100),
@@ -112,6 +124,12 @@ const environmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: z.enum(DIAGNOSTIC_LEVELS).default("info"),
 });
+
+/** 开发登录相关配置的类型；登录页只需要这几个值，不引入服务端模块。 */
+export type DevLoginSettings = Pick<
+  ReturnType<typeof parseConfig>,
+  "APP_ORIGIN" | "DEV_LOGIN_ENABLED" | "DEV_LOGIN_EMAIL" | "DEV_LOGIN_NAME" | "DEV_LOGIN_PASSWORD"
+>;
 
 /** 环境只在边界解析，返回值冻结，后续模块不能改写配置。 */
 export function parseConfig(env: Record<string, string | undefined>) {
