@@ -100,6 +100,9 @@ export const EXECUTION_LOG_FRAME_MAX_BYTES = 16384;
 export const EXECUTION_LOG_FRAMES_PER_EXCHANGE = 8;
 /** 单条日志读取请求的正文预算上限。 */
 export const EXECUTION_LOG_READ_LIMIT_MAX_BYTES = 65536;
+/** 单执行保留上限：payload 字节与帧数先到者触发前缀裁剪。 */
+export const EXECUTION_LOG_RETAIN_BYTES = 1048576;
+export const EXECUTION_LOG_RETAIN_FRAMES = 512;
 export const CANCELLATION_INTENT_NAMESPACE = "cancel:";
 export const REMOTE_OUTCOMES = ["succeeded", "failed", "rejected", "timed_out", "unknown"] as const;
 export const REMOTE_FAILURE_REASONS = [
@@ -414,9 +417,14 @@ const agentMutationInputSchema = z.discriminatedUnion("action", [
   leaseMutationInputSchema.options[1],
   leaseMutationInputSchema.options[2],
 ]);
+/** 游标绑定执行：用执行 A 的游标读执行 B 必须被拒，不静默跳过 B 的前缀。 */
+export const executionLogCursorSchema = z.strictObject({
+  executionId: executionIdSchema,
+  nextSequence: nonnegativeSafeIntegerSchema,
+});
 export const executionLogReadInputSchema = leaseKeySchema.extend({
   executionId: executionIdSchema,
-  cursor: z.strictObject({ nextSequence: nonnegativeSafeIntegerSchema }).nullable(),
+  cursor: executionLogCursorSchema.nullable(),
   limitBytes: positiveSafeIntegerSchema.max(EXECUTION_LOG_READ_LIMIT_MAX_BYTES).default(65536),
 });
 export const executionCancelInputSchema = leaseKeySchema.extend({
@@ -439,7 +447,7 @@ export const executionLogReadViewSchema = leaseKeySchema.extend({
       checksum: fingerprintSchema,
     }),
   ),
-  nextCursor: z.strictObject({ nextSequence: nonnegativeSafeIntegerSchema }),
+  nextCursor: executionLogCursorSchema,
   availableFromSequence: nonnegativeSafeIntegerSchema.nullable(),
   acknowledgedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
   producedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),

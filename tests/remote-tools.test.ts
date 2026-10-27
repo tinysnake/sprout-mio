@@ -239,7 +239,7 @@ describe("远端 Pi 工具边界", () => {
       machineId,
       executionId,
       frames: [],
-      nextCursor: { nextSequence: 1 },
+      nextCursor: { executionId, nextSequence: 1 },
       availableFromSequence: null,
       acknowledgedThroughSequence: null,
       producedThroughSequence: null,

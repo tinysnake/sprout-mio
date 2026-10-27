@@ -254,15 +254,26 @@ const ownerRead = await readExecutionLogBoundary(
   req(),
 );
 assert(ownerRead.ok, JSON.stringify(ownerRead));
-assert.deepEqual(ownerRead.data.nextCursor, { nextSequence: 0 });
+assert.deepEqual(ownerRead.data.nextCursor, {
+  executionId: running.executionId,
+  nextSequence: 0,
+});
 assert.equal(ownerRead.data.logState, "none");
 const unknownCursor = await readExecutionLogBoundary(
-  { ...own.key, executionId: running.executionId, cursor: { nextSequence: 7 }, limitBytes: 65536 },
+  {
+    ...own.key,
+    executionId: running.executionId,
+    cursor: { executionId: running.executionId, nextSequence: 7 },
+    limitBytes: 65536,
+  },
   owner.headers,
   req(),
 );
 assert(unknownCursor.ok);
-assert.deepEqual(unknownCursor.data.nextCursor, { nextSequence: 7 });
+assert.deepEqual(unknownCursor.data.nextCursor, {
+  executionId: running.executionId,
+  nextSequence: 7,
+});
 assert.equal(unknownCursor.data.frames.length, 0);
 assert.equal(unknownCursor.data.logState, "none");
 pass("创建者经 Web boundary 读到游标与 logState，空范围不被当成有输出");

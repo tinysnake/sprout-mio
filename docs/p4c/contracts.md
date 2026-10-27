@@ -150,7 +150,7 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 {
   executionId: string;
   frames: { sequence, stream, byteStart, byteEnd, text: string | null, checksum }[];
-  nextCursor: { nextSequence: number };
+  nextCursor: { executionId: string; nextSequence: number };
   availableFromSequence: number | null;
   acknowledgedThroughSequence: number | null;
   producedThroughSequence: number | null;
@@ -160,7 +160,7 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 }
 ```
 
-`text` 为 `null` 表示该行是 gap 行，不是空输出。重复读同一 `nextSequence` 必须返回相同行。游标早于 `availableFromSequence` 返回 `execution_log_gap`，不静默从新起点称完整。`frames` 为空数组只表示该范围内无帧，与 `logState` 一起区分「没有输出」与「未收到」。正文按原始 UTF-8 bytes 计限额，游标不以字符数推进。
+`text` 为 `null` 表示该行是 gap 行，不是空输出。重复读同一 `nextSequence` 必须返回相同行。游标绑定执行：`cursor.executionId` 与请求的 `executionId` 不一致时返回 `execution_log_cursor_stale`，不把别的执行的序号当作本执行的前缀。游标早于 `availableFromSequence` 返回 `execution_log_gap`，不静默从新起点称完整。`frames` 为空数组只表示该范围内无帧，与 `logState` 一起区分「没有输出」与「未收到」。正文按原始 UTF-8 bytes 计限额，游标不以字符数推进。
 
 ## 预算语义（B7）
 
@@ -178,6 +178,17 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 | 单 Machine 日志总量上限   | 同一 Worker 并发多个 execution，测宿主库增长与裁剪触发点                          |
 | 宿主总量上限              | 长跑至磁盘阈值，记录 `available_from_seq` 推进与 `truncated` 出现时刻             |
 | 单 exchange 实际可带帧数  | 终端报告满载时测 fence 与终端报告仍通过、帧被降级的边界                           |
+
+## 保留规则
+
+单执行日志保留上限固定为 `EXECUTION_LOG_RETAIN_BYTES = 1048576`（payload 字节）与 `EXECUTION_LOG_RETAIN_FRAMES = 512` 帧，先到者触发。触发时只裁前缀：
+
+- 删除最早的帧，把 `remote_execution.available_from_seq` 推进到最早保留帧的序号，`log_state` 置 `truncated`；已是 `truncated` 不重复改写。
+- `acknowledged_through_seq` 不得小于 `available_from_seq - 1`：被裁掉的前缀不再等待 Worker 确认，下一次 `logAcks` 把新的可读起点交回 Worker。
+- 读侧不变：游标早于可读起点返回 `execution_log_gap`；视图必须给出 `availableFromSequence` 与 `logState='truncated'`，不得把裁剪后的内容说成完整。
+- 保留是服务端职责，Worker 不因裁剪停采。结果字段的保留规则不变：stdout 65536 / stderr 8192 加 `truncated` 标志，终态行不删。
+
+私有验收库可用 `SPROUT_EXECUTION_LOG_RETAIN_BYTES` / `SPROUT_EXECUTION_LOG_RETAIN_FRAMES` 缩小阈值，让真实写入在可接受时间内触发裁剪；产品默认值不随请求或环境漂移。
 
 ## 错误码
 

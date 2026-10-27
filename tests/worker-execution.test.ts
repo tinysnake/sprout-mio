@@ -236,6 +236,56 @@ test("运行上限到期先 TERM 后 KILL，终态是限时而不是下发窗口
   expect(elapsed).toBeLessThan(20000);
 });
 
+test("下发窗口只约束准入：跨过截止时间仍在运行的长命令按真实退出码终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-admission-"));
+  const f = await fixture(directory);
+  const command = f.command(
+    {
+      kind: "shell",
+      command: "sleep 1; echo admitted",
+      cwd: directory,
+      waitMs: 5000,
+    },
+    {
+      dispatchDeadlineAt: new Date(Date.now() + 200).toISOString(),
+      runtimeDeadlineAt: new Date(Date.now() + 30000).toISOString(),
+      maxRuntimeMs: 30000,
+    },
+  );
+  f.apply(1, f.output([command]));
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  // 下发窗口在准入之后不再参与任何判定：命令跑过 200ms 仍是真实成功。
+  expect(report.outcome).toBe("succeeded");
+  expect(
+    report.payload.kind === "shell" && "stdout" in report.payload && report.payload.stdout,
+  ).toContain("admitted");
+});
+
+test("断线不终止已开始的执行：重连后补送断线期间产生的真实终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-offline-terminal-"));
+  const f = await fixture(directory);
+  const command = f.command({
+    kind: "shell",
+    command: "sleep 0.4; echo offline-done",
+    cwd: directory,
+    waitMs: 10000,
+  });
+  f.apply(1, f.output([command]));
+  await sleep(100);
+  // 连接断开（exchange 失败）：只关闭准入，不撤销已经开始执行的命令。
+  f.dispatcher.disconnect();
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  expect(report.outcome).toBe("succeeded");
+  expect(
+    report.payload.kind === "shell" && "stdout" in report.payload && report.payload.stdout,
+  ).toContain("offline-done");
+  // 同一条终态报告在重连后的下一批上行里仍在，直到宿主 ACK。
+  const resent = f.dispatcher
+    .outgoing(1048576)
+    .results.find((item) => item.executionId === command.executionId);
+  expect(resent?.phase).toBe("terminal");
+});
+
 test("runner_token 跨重启报恢复事实，未观测到退出只报 unknown", async () => {
   const directory = await mkdtemp(join(tmpdir(), "p4c-recovery-"));
   const first = await fixture(directory);
@@ -438,4 +488,59 @@ test("spawn 失败前不写 pid，恢复事实不得声称 exited", async () => 
     .pendingRecoveries(second.session, 8)
     .find((item) => item.executionId === stale.executionId);
   expect(fact?.observedState).toBe("unknown");
+});
+
+test("waitMs 快照交出 pid 但不落终态：真实退出后同一执行覆盖为终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-snapshot-"));
+  const f = await fixture(directory);
+  const command = f.command({
+    kind: "shell",
+    command: "sleep 0.6; echo still-running",
+    cwd: directory,
+    waitMs: 100,
+  });
+  f.apply(1, f.output([command]));
+  const snapshot = await terminalOf(f.dispatcher, command.executionId);
+  const snapshotPayload = snapshot.payload;
+  expect(
+    snapshotPayload.kind === "shell" &&
+      !("failureReason" in snapshotPayload) &&
+      snapshotPayload.exited,
+  ).toBe(false);
+  expect(
+    snapshotPayload.kind === "shell" &&
+      !("failureReason" in snapshotPayload) &&
+      snapshotPayload.pid > 0,
+  ).toBe(true);
+  // ACK 快照只表示宿主收下了 pid；entry 仍在，不能把同一张快照每轮重发。
+  f.apply(2, {
+    ...f.output(),
+    resultAcks: [{ executionId: command.executionId, disposition: "accepted" }],
+  });
+  expect(
+    f.dispatcher
+      .outgoing(1048576)
+      .results.some((report) => report.executionId === command.executionId),
+  ).toBe(false);
+  let final: Awaited<ReturnType<typeof terminalOf>> | undefined;
+  for (let attempt = 0; attempt < 600; attempt++) {
+    const report = f.dispatcher
+      .outgoing(1048576)
+      .results.find((item) => item.executionId === command.executionId);
+    if (
+      report?.phase === "terminal" &&
+      report.payload.kind === "shell" &&
+      !("failureReason" in report.payload) &&
+      report.payload.exited
+    ) {
+      final = report;
+      break;
+    }
+    await sleep(10);
+  }
+  expect(final?.outcome).toBe("succeeded");
+  const finalPayload = final?.payload;
+  expect(
+    finalPayload?.kind === "shell" && !("failureReason" in finalPayload) ? finalPayload.stdout : "",
+  ).toContain("still-running");
 });

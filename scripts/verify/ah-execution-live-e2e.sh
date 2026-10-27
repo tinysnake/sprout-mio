@@ -7,6 +7,9 @@ export NODE_ENV=test
 export SPROUT_PI_ENABLED=false
 export NO_PROXY=localhost,127.0.0.1,::1
 export no_proxy="$NO_PROXY"
+# 门禁必须验证当前源码：产物存在也重建，避免旧 bundle 让门禁假绿。
+NODE_ENV=production pnpm build >/dev/null
+NODE_ENV=production pnpm worker:build >/dev/null
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy || true
 node --import tsx tests/fixtures/execution-live-e2e.ts
 printf 'PASS execution live e2e (execution id ↔ process, dedupe, cursor, disconnect, cancels, restarts)\n'

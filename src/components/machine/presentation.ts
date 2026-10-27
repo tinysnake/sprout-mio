@@ -14,7 +14,7 @@ import type { StatusTone } from "./machine-view";
 /** 读取请求只带游标与分页上限；服务端权威事实（可读起点、位点、gap）不在请求里。 */
 export interface ExecutionLogReadRequest {
   executionId: string;
-  cursor: { nextSequence: number } | null;
+  cursor: { executionId: string; nextSequence: number } | null;
   limitBytes: number;
 }
 

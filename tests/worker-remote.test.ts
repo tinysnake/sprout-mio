@@ -238,7 +238,7 @@ test("process signal needs a current explicit Machine lease; stale authorization
   expect(await exited).toBe("SIGTERM");
 });
 
-test("shell deadline ends waiting with unknown/deadline and leaves the process alive", async () => {
+test("shell crossing the dispatch window still ends on its real exit code", async () => {
   const root = await mkdtemp(join(tmpdir(), "p4b-deadline-"));
   const f = fixture(),
     pidPath = join(root, "pid");
@@ -251,10 +251,13 @@ test("shell deadline ends waiting with unknown/deadline and leaves the process a
   command.dispatchDeadlineAt = new Date(Date.now() + 250).toISOString();
   f.apply(1, f.output([command]));
   const report = await terminal(f.dispatcher, command.executionId);
-  expect(report.outcome).toBe("unknown");
-  expect("failureReason" in report.payload && report.payload.failureReason).toBe("deadline");
+  // 下发窗口只约束准入：spawn 之后跨过截止时间仍是真实成功，不报 deadline。
+  expect(report.outcome).toBe("succeeded");
+  expect(
+    report.payload.kind === "shell" && "exited" in report.payload && report.payload.exited,
+  ).toBe(true);
   const pid = Number(await readFile(pidPath, "utf8"));
-  expect(() => process.kill(pid, 0)).not.toThrow();
+  expect(() => process.kill(pid, 0)).toThrow();
 });
 
 test("disconnect cannot reopen admission and acknowledged deliveries are not replayed by old frames", async () => {

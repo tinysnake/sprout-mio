@@ -2,12 +2,14 @@ import { createHash, randomBytes } from "node:crypto";
 import { machineBindings } from "../domain/machine";
 import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
 import type { WorkerExchangeRemoteInput } from "../contracts/worker";
-import { and, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import type { ShellFact } from "../contracts/machine";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
   CANCELLATION_INTENT_NAMESPACE,
   EXECUTION_LOG_FRAME_MAX_BYTES,
+  EXECUTION_LOG_RETAIN_BYTES,
+  EXECUTION_LOG_RETAIN_FRAMES,
   executionCancelInputSchema,
   executionCancelRequestSchema,
   executionLogReadInputSchema,
@@ -127,7 +129,7 @@ function connection(machineId: string, ctx: Pick<MachineContext, "now" | "bootId
     throw new RemoteError("machine_unavailable");
   return row;
 }
-function executionView(row: Execution): ExecutionView {
+function executionView(row: Execution, provisionalResult = false): ExecutionView {
   const result = db
     .select()
     .from(executionResult)
@@ -161,7 +163,20 @@ function executionView(row: Execution): ExecutionView {
     payloadHash: row.payloadHash,
     terminalAt: row.terminalAt?.toISOString() ?? null,
     failureReason: row.failureReason,
-    result: result?.payloadJson ?? null,
+    // Agent 读视图的契约是：未落终态就没有结果。Web 列表额外允许 waitMs 快照
+    // （exited:false）用于显示 pid，但执行本身仍是 running；一旦落成 unknown/failed，
+    // 快照不再是这次执行的结果，不能拿它冒充终态正文。
+    result: (() => {
+      const payload = result?.payloadJson;
+      const provisional =
+        payload !== null &&
+        payload !== undefined &&
+        payload.kind === "shell" &&
+        !("failureReason" in payload) &&
+        !payload.exited;
+      if (provisional && row.terminalAt !== null) return null;
+      return provisionalResult || row.terminalAt !== null ? (payload ?? null) : null;
+    })(),
     logState: row.logState,
     producedThroughSequence: row.producedThroughSeq,
     acknowledgedThroughSequence: row.acknowledgedThroughSeq,
@@ -230,6 +245,53 @@ function logStateAfterProduce(row: Execution, producedThrough: number): Executio
   if (row.logState !== "none") return row.logState;
   return producedThrough >= 1 ? "partial" : row.logState;
 }
+/** 单执行保留上限。私有验收库可用 env 缩小阈值；产品默认值固定，不随请求变化。 */
+function retentionLimit(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= 1 ? value : fallback;
+}
+/**
+ * 前缀裁剪：只删除最早的帧，把可读起点推进到最早保留帧。
+ * 裁剪是服务端职责，Worker 不因此停采；ACK 不得落后于可读起点，否则 CHECK 先拒。
+ */
+function trimLogPrefix(executionId: string): void {
+  const row = db.select().from(remoteExecution).where(eq(remoteExecution.id, executionId)).get();
+  if (!row) return;
+  const frames = db
+    .select({ sequence: executionLogFrame.sequence, payload: executionLogFrame.payloadBytes })
+    .from(executionLogFrame)
+    .where(eq(executionLogFrame.executionId, executionId))
+    .orderBy(executionLogFrame.sequence)
+    .all() as Array<{ sequence: number; payload: Buffer | null }>;
+  const frameLimit = retentionLimit(
+    "SPROUT_EXECUTION_LOG_RETAIN_FRAMES",
+    EXECUTION_LOG_RETAIN_FRAMES,
+  );
+  const byteLimit = retentionLimit("SPROUT_EXECUTION_LOG_RETAIN_BYTES", EXECUTION_LOG_RETAIN_BYTES);
+  let bytes = frames.reduce((sum, frame) => sum + (frame.payload?.byteLength ?? 0), 0);
+  let drop = 0;
+  while (drop < frames.length && (frames.length - drop > frameLimit || bytes > byteLimit)) {
+    bytes -= frames[drop]!.payload?.byteLength ?? 0;
+    drop += 1;
+  }
+  if (drop === 0) return;
+  const from = frames[drop]!.sequence;
+  db.delete(executionLogFrame)
+    .where(
+      and(eq(executionLogFrame.executionId, executionId), lt(executionLogFrame.sequence, from)),
+    )
+    .run();
+  db.update(remoteExecution)
+    .set({
+      availableFromSeq: from,
+      acknowledgedThroughSeq: Math.max(row.acknowledgedThroughSeq ?? 0, from - 1),
+      logState: "truncated",
+    })
+    .where(eq(remoteExecution.id, executionId))
+    .run();
+}
 const checksumOf = (payload: Buffer | null) =>
   createHash("sha256")
     .update(payload ?? Buffer.alloc(0))
@@ -248,7 +310,7 @@ function applyLogFrames(
   frames: ReadonlyArray<ExecutionLogFrame>,
   ctx: AuthenticatedWorkerContext,
 ): Map<string, Execution> {
-  const touched = new Map<string, Execution>();
+  const touched = new Set<string>();
   for (const frame of frames) {
     if (frame.machineId !== ctx.session.machineId) throw new RemoteError("not_found");
     const row = executionByKey(frame.executionId, frame);
@@ -318,12 +380,18 @@ function applyLogFrames(
       })
       .where(eq(remoteExecution.id, row.id))
       .run();
-    touched.set(
-      row.id,
-      db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+    touched.add(row.id);
+  }
+  const rows = new Map<string, Execution>();
+  for (const executionId of touched) {
+    // 一批帧写完后只裁一次前缀，避免逐帧重算保留量。
+    trimLogPrefix(executionId);
+    rows.set(
+      executionId,
+      db.select().from(remoteExecution).where(eq(remoteExecution.id, executionId)).get()!,
     );
   }
-  return touched;
+  return rows;
 }
 /** 只推进到连续前缀：仍缺失的 sequence 会阻止 ACK 越过它。 */
 function acknowledgeLogPrefix(row: Execution) {
@@ -655,6 +723,7 @@ export function listProjectExecutions(
       return rows.map((row: Execution) =>
         executionView(
           db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+          true,
         ),
       );
     })
@@ -676,6 +745,9 @@ export function readExecutionLog(
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("not_found");
       const cursor = input.cursor?.nextSequence ?? 0;
+      // 游标属于它的执行：跨执行的序号不构成续读起点，必须重读，不冒充完整。
+      if (input.cursor && input.cursor.executionId !== input.executionId)
+        throw new RemoteError("execution_log_cursor_stale");
       const from = row.availableFromSeq;
       if (from !== null && cursor + 1 < from) throw new RemoteError("execution_log_gap");
       if (row.producedThroughSeq === null && row.logState !== "none")
@@ -736,7 +808,7 @@ export function readExecutionLog(
         machineId: row.machineId,
         executionId: row.id,
         frames,
-        nextCursor: { nextSequence },
+        nextCursor: { executionId: row.id, nextSequence },
         availableFromSequence: current.availableFromSeq,
         acknowledgedThroughSequence: current.acknowledgedThroughSeq,
         producedThroughSequence: current.producedThroughSeq,
@@ -1203,28 +1275,56 @@ export function applyRemoteExchange(
       const payload = authorized
         ? report.payload
         : { kind: row.operationJson.kind, failureReason: "authorization_revoked" as const };
-      db.update(remoteExecution)
-        .set({
-          state: outcome,
-          drainedAt: ctx.now,
-          terminalAt: ctx.now,
-          failureReason: "failureReason" in payload ? payload.failureReason : null,
-        })
-        .where(eq(remoteExecution.id, row.id))
-        .run();
-      db.insert(executionResult)
-        .values({
-          executionId: row.id,
-          projectId: row.projectId,
-          machineId: row.machineId,
-          authorizationGeneration: row.authorizationGeneration,
-          holderInstanceId: row.holderInstanceId,
-          payloadHash: hash,
-          outcome,
-          payloadJson: payload,
-          recordedAt: ctx.now,
-        })
-        .run();
+      // shell 的 waitMs 快照（exited:false）只是「已启动」的观察：要把 pid/当前输出
+      // 交给工具面，但不能把执行落成终态，否则长命令在窗口后既不能取消也不再采日志。
+      // 真正的终态报告随后覆盖同一行结果，并把执行归约。
+      const provisional =
+        authorized &&
+        !("failureReason" in report.payload) &&
+        report.payload.kind === "shell" &&
+        !report.payload.exited;
+      if (provisional) {
+        if (row.state === "dispatched")
+          db.update(remoteExecution)
+            .set({ state: "running" })
+            .where(eq(remoteExecution.id, row.id))
+            .run();
+      } else
+        db.update(remoteExecution)
+          .set({
+            state: outcome,
+            drainedAt: ctx.now,
+            terminalAt: ctx.now,
+            failureReason: "failureReason" in payload ? payload.failureReason : null,
+          })
+          .where(eq(remoteExecution.id, row.id))
+          .run();
+      const values = {
+        executionId: row.id,
+        projectId: row.projectId,
+        machineId: row.machineId,
+        authorizationGeneration: row.authorizationGeneration,
+        holderInstanceId: row.holderInstanceId,
+        payloadHash: hash,
+        outcome,
+        payloadJson: payload,
+        recordedAt: ctx.now,
+      } as const;
+      if (previous)
+        db.update(executionResult)
+          .set({
+            payloadHash: hash,
+            outcome,
+            payloadJson: payload,
+            recordedAt: ctx.now,
+          })
+          .where(eq(executionResult.executionId, row.id))
+          .run();
+      else db.insert(executionResult).values(values).run();
+      if (provisional) {
+        output.resultAcks.push({ executionId: row.id, disposition });
+        continue;
+      }
     }
     // runner 落盘的 durable result 是取消的唯一退出证据；送达本身不算进程已停。
     settleCancellations(row.id, ctx.now);

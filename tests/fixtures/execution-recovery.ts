@@ -190,7 +190,10 @@ assert.deepEqual(
   firstRead.frames.map((frame) => frame.text),
   ["line one\n", "line two\n"],
 );
-assert.deepEqual(firstRead.nextCursor, { nextSequence: 2 });
+assert.deepEqual(firstRead.nextCursor, {
+  executionId: submitted.executionId,
+  nextSequence: 2,
+});
 const reread = readExecutionLog(
   { ...key, executionId: submitted.executionId, cursor: null, limitBytes: 65536 },
   ctx,
@@ -201,7 +204,10 @@ const continued = readExecutionLog(
   ctx,
 );
 assert.equal(continued.frames.length, 0);
-assert.deepEqual(continued.nextCursor, { nextSequence: 2 });
+assert.deepEqual(continued.nextCursor, {
+  executionId: submitted.executionId,
+  nextSequence: 2,
+});
 pass("日志游标续读返回相同行，空范围不被当成完整日志");
 
 // 重复帧幂等：同一 sequence 再送一次不新增行、不推进位点。
@@ -238,7 +244,12 @@ exchange({
   ],
 });
 const afterGap = readExecutionLog(
-  { ...key, executionId: submitted.executionId, cursor: { nextSequence: 2 }, limitBytes: 65536 },
+  {
+    ...key,
+    executionId: submitted.executionId,
+    cursor: { executionId: submitted.executionId, nextSequence: 2 },
+    limitBytes: 65536,
+  },
   ctx,
 );
 assert.deepEqual(afterGap.gapRanges, [{ fromSequence: 3, toSequence: 5 }]);
@@ -257,7 +268,7 @@ assert.throws(
       {
         ...key,
         executionId: submitted.executionId,
-        cursor: { nextSequence: 0 },
+        cursor: { executionId: submitted.executionId, nextSequence: 0 },
         limitBytes: 65536,
       },
       ctx,
@@ -265,11 +276,32 @@ assert.throws(
   fail("execution_log_gap"),
 );
 const fromAvailable = readExecutionLog(
-  { ...key, executionId: submitted.executionId, cursor: { nextSequence: 2 }, limitBytes: 65536 },
+  {
+    ...key,
+    executionId: submitted.executionId,
+    cursor: { executionId: submitted.executionId, nextSequence: 2 },
+    limitBytes: 65536,
+  },
   ctx,
 );
 assert.equal(fromAvailable.availableFromSequence, 3);
 pass("游标早于 available_from_seq 返回 execution_log_gap，不冒充完整日志");
+
+// 跨执行游标：不属于本执行的序号不能被当成续读起点。
+assert.throws(
+  () =>
+    readExecutionLog(
+      {
+        ...key,
+        executionId: submitted.executionId,
+        cursor: { executionId: newId(ID_PREFIXES.execution), nextSequence: 0 },
+        limitBytes: 65536,
+      },
+      ctx,
+    ),
+  fail("execution_log_cursor_stale"),
+);
+pass("跨执行游标被 execution_log_cursor_stale 拒绝，不静默当续读");
 
 // 3. 恢复归约：失联写 unknown 后，带 token 的新会话把 unknown 归约为 succeeded。
 restoreConnection();
@@ -517,6 +549,150 @@ const timedOut = getExecution({ ...key, executionId: queued.executionId }, ctx);
 assert.equal(timedOut.state, "timed_out");
 assert.equal(timedOut.failureReason, "deadline");
 pass("下发窗口到期且未下发写 timed_out + failure_reason='deadline'");
+
+// 5b. 保留裁剪：真实帧写入触发，只删前缀，旧游标报 gap，新游标可续读。
+process.env.SPROUT_EXECUTION_LOG_RETAIN_FRAMES = "3";
+const retained = submit(shellInput());
+const retainedFrame = exchange();
+const retainedCommand = retainedFrame.remote.commands.find(
+  (candidate: RemoteCommand) => candidate.executionId === retained.executionId,
+)!;
+const retainedIdentity = identityOf(retainedCommand);
+const retainedFrameAt = (sequence: number, text: string) => ({
+  ...retainedIdentity,
+  sequence,
+  stream: "stdout" as const,
+  byteStart: 0,
+  byteEnd: Buffer.byteLength(text),
+  checksum: digest(text),
+  bytes: text,
+});
+const retainedRow = () =>
+  sqlite
+    .prepare(
+      "SELECT available_from_seq, log_state, acknowledged_through_seq FROM remote_execution WHERE id = ?",
+    )
+    .get(retained.executionId) as {
+    available_from_seq: number | null;
+    log_state: string;
+    acknowledged_through_seq: number | null;
+  };
+exchange({
+  results: [],
+  fenceAcks: [],
+  mcp: [],
+  mcpCursors: [],
+  logFrames: Array.from({ length: 8 }, (_, index) =>
+    retainedFrameAt(index + 1, `retained line ${index + 1}\n`),
+  ),
+});
+assert.deepEqual(retainedRow(), {
+  available_from_seq: 6,
+  log_state: "truncated",
+  acknowledged_through_seq: 8,
+});
+const keptFrames = sqlite
+  .prepare("SELECT COUNT(*) AS n FROM execution_log_frame WHERE execution_id = ?")
+  .get(retained.executionId) as { n: number };
+assert.equal(keptFrames.n, 3);
+assert.throws(
+  () =>
+    readExecutionLog(
+      {
+        ...key,
+        executionId: retained.executionId,
+        cursor: { executionId: retained.executionId, nextSequence: 1 },
+        limitBytes: 65536,
+      },
+      ctx,
+    ),
+  fail("execution_log_gap"),
+);
+const retainedRead = readExecutionLog(
+  {
+    ...key,
+    executionId: retained.executionId,
+    cursor: { executionId: retained.executionId, nextSequence: 5 },
+    limitBytes: 65536,
+  },
+  ctx,
+);
+assert.equal(retainedRead.availableFromSequence, 6);
+assert.equal(retainedRead.logState, "truncated");
+assert.deepEqual(
+  retainedRead.frames.map((frame) => frame.sequence),
+  [6, 7, 8],
+);
+assert.deepEqual(retainedRead.nextCursor, {
+  executionId: retained.executionId,
+  nextSequence: 8,
+});
+pass("保留裁剪只删前缀：旧游标报 gap，新游标可续读，log_state 为 truncated");
+
+// 同一执行继续写入：保留窗口随之滑动，truncated 不被后续读取改回 full。
+const secondBatch = exchange({
+  results: [],
+  fenceAcks: [],
+  mcp: [],
+  mcpCursors: [],
+  logFrames: [retainedFrameAt(9, "retained line 9\n"), retainedFrameAt(10, "retained line 10\n")],
+});
+assert.equal(secondBatch.remote.logAcks![0]!.availableFromSequence, 8);
+assert.equal(retainedRow().available_from_seq, 8);
+assert.equal(retainedRow().log_state, "truncated");
+const afterSlide = readExecutionLog(
+  {
+    ...key,
+    executionId: retained.executionId,
+    cursor: { executionId: retained.executionId, nextSequence: 7 },
+    limitBytes: 65536,
+  },
+  ctx,
+);
+assert.equal(afterSlide.logState, "truncated");
+assert.deepEqual(
+  afterSlide.frames.map((frame) => frame.sequence),
+  [8, 9, 10],
+);
+pass("保留窗口滑动后仍是 truncated，后续读取不改写裁剪事实");
+
+// 字节上限同样触发：阈值小于两帧正文时只保留最新一帧。
+process.env.SPROUT_EXECUTION_LOG_RETAIN_FRAMES = "512";
+process.env.SPROUT_EXECUTION_LOG_RETAIN_BYTES = "10";
+const byteBatch = exchange({
+  results: [],
+  fenceAcks: [],
+  mcp: [],
+  mcpCursors: [],
+  logFrames: [retainedFrameAt(11, "abcdefgh"), retainedFrameAt(12, "ijklmnop")],
+});
+assert.equal(byteBatch.remote.logAcks![0]!.availableFromSequence, 12);
+assert.deepEqual(
+  (
+    sqlite
+      .prepare("SELECT sequence FROM execution_log_frame WHERE execution_id = ? ORDER BY sequence")
+      .all(retained.executionId) as Array<{ sequence: number }>
+  ).map((row) => row.sequence),
+  [12],
+);
+pass("保留字节上限先到也触发裁剪，只保留最新帧");
+
+// 裁剪不影响取消路径：同一执行仍可入队并送达取消意图。
+const trimCancel = enqueueCancellation(
+  { ...cancelInput, executionId: retained.executionId, requestId: req() },
+  ctx,
+);
+assert.equal(trimCancel.state, "requested");
+const trimCancelDelivery = exchange();
+assert.equal(
+  trimCancelDelivery.remote.cancellations?.some(
+    (intent: { executionId: string }) => intent.executionId === retained.executionId,
+  ),
+  true,
+);
+pass("裁剪不改写执行身份：同一执行的取消仍可入队并送达");
+delete process.env.SPROUT_EXECUTION_LOG_RETAIN_FRAMES;
+delete process.env.SPROUT_EXECUTION_LOG_RETAIN_BYTES;
 
 // 6. 错误码登记：6 个新码全部在 domain-errors 有固定文案。
 for (const code of [
