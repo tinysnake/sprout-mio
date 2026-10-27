@@ -35,6 +35,30 @@
       "path": "c.officialSdk.version",
       "expect": "1.32.1",
       "value": "1.32.1"
+    },
+    "officialSdkStdioConnected": {
+      "path": "sdk.stdioConnected",
+      "expect": true,
+      "value": true
+    },
+    "officialSdkStreamableHttpConnected": {
+      "path": "sdk.streamableHttpConnected",
+      "expect": true,
+      "value": true
+    },
+    "officialSdkStdioToolCount": {
+      "path": "sdk.stdioToolCount",
+      "expect": {
+        "predicate": "positiveCount"
+      },
+      "value": 4
+    },
+    "officialSdkHttpToolCount": {
+      "path": "sdk.httpToolCount",
+      "expect": {
+        "predicate": "positiveCount"
+      },
+      "value": 1
     }
   },
   "assertions": {
@@ -44,6 +68,10 @@
     "serverFrames": 6,
     "endToEndToolsList": "pass",
     "officialSdkVersion": "1.32.1",
+    "officialSdkStdioConnected": true,
+    "officialSdkStreamableHttpConnected": true,
+    "officialSdkStdioToolCount": 4,
+    "officialSdkHttpToolCount": 1,
     "transports": [
       "stdio",
       "streamableHttp"
@@ -91,6 +119,22 @@
       "path": "c.officialSdk.version"
     },
     {
+      "field": "officialSdkStdioConnected",
+      "path": "sdk.stdioConnected"
+    },
+    {
+      "field": "officialSdkStreamableHttpConnected",
+      "path": "sdk.streamableHttpConnected"
+    },
+    {
+      "field": "officialSdkStdioToolCount",
+      "path": "sdk.stdioToolCount"
+    },
+    {
+      "field": "officialSdkHttpToolCount",
+      "path": "sdk.httpToolCount"
+    },
+    {
       "field": "transports",
       "path": "y2.worker.transports"
     }
@@ -101,8 +145,8 @@
         "bash",
         "scripts/verify/y2-mcp-http-worker.sh"
       ],
-      "startedAt": "2026-10-27T10:04:50.891Z",
-      "elapsedMs": 2466,
+      "startedAt": "2026-10-27T12:24:44.511Z",
+      "elapsedMs": 2390,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -112,8 +156,8 @@
         "bash",
         "scripts/verify/x2-mcp-extension.sh"
       ],
-      "startedAt": "2026-10-27T10:04:53.358Z",
-      "elapsedMs": 11625,
+      "startedAt": "2026-10-27T12:24:46.902Z",
+      "elapsedMs": 11344,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -123,8 +167,8 @@
         "bash",
         "scripts/verify/x3-mcp-extension-surface.sh"
       ],
-      "startedAt": "2026-10-27T10:05:04.983Z",
-      "elapsedMs": 2303,
+      "startedAt": "2026-10-27T12:24:58.246Z",
+      "elapsedMs": 2264,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
@@ -136,8 +180,8 @@
         "tsx",
         "$Z3_DIR/c-live.mts"
       ],
-      "startedAt": "2026-10-27T10:05:07.286Z",
-      "elapsedMs": 5519,
+      "startedAt": "2026-10-27T12:25:00.510Z",
+      "elapsedMs": 5567,
       "exitCode": 0,
       "signal": null,
       "timedOut": false
