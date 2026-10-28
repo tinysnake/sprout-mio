@@ -12,6 +12,7 @@ import {
   demoCancellations,
   demoExecutionRecords,
   demoHolderNames,
+  demoLeases,
   demoLogPageResumed,
   demoLogPages,
 } from "./lease-fixtures";
@@ -180,6 +181,7 @@ export function ExecutionsScene({ go }: { go: (to: string) => void }) {
             executions={demoExecutionRecords}
             machines={demoMachineDetails}
             holderNames={demoHolderNames}
+            leases={demoLeases}
             logReader={read}
             canceller={cancel}
             connection={

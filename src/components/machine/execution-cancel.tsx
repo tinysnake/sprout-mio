@@ -23,6 +23,7 @@ export function ExecutionCancelControl({
   connection,
   cancellation,
   onCancelled,
+  label = "取消这次执行",
   testId = "execution-cancel",
 }: {
   execution: ExecutionView;
@@ -31,6 +32,8 @@ export function ExecutionCancelControl({
   /** 页面上已知的取消事实：来自本页刚发出的请求，或服务端返回的既有事实。 */
   cancellation: ExecutionCancellationView | null;
   onCancelled?: (view: ExecutionCancellationView) => void;
+  /** 摘要区的警示卡可以把它写成「重试取消」，行为不变。 */
+  label?: string;
   testId?: string;
 }) {
   const [pending, setPending] = useState(false);
@@ -71,7 +74,7 @@ export function ExecutionCancelControl({
           disabled={!cancel || pending || terminal}
           onClick={() => void run()}
         >
-          取消这次执行
+          {label}
         </Button>
         <span className="text-[0.6875rem] text-muted-foreground">
           {terminal ? "执行已到终态，取消不再适用。" : "取消由 Worker 执行；送达不等于已停止。"}

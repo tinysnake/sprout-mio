@@ -1,3 +1,4 @@
+import type { LeaseView } from "../../contracts/lease";
 import type { ExecutionView } from "../../contracts/remote";
 import type { ExecutionCancellationView } from "../../contracts/remote";
 import type { MachineDetail } from "../../contracts/machine";
@@ -22,9 +23,26 @@ import { StatusLine } from "./machine-list";
 import { ExecutionLogViewer } from "./execution-log";
 import { ExecutionCancelControl } from "./execution-cancel";
 import {
+  ExecutionAttentionList,
+  ExecutionSummaryBlock,
+  type AttentionItem,
+} from "./execution-summary";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
+import {
   connectionCompletenessNote,
+  executionAttention,
+  executionSummary,
   type ExecutionCanceller,
   type ExecutionLogReader,
+  type LeaseFacts,
   type LogConnection,
 } from "./presentation";
 
@@ -46,6 +64,7 @@ export function RemoteExecutionList({
   canceller,
   connection = ONLINE,
   cancellations = {},
+  leases = [],
   onCancelled,
   dense = false,
   /** 只读表面的原因：页面写清这里为什么没有日志读取与取消，不留一句「尚未接入」。 */
@@ -60,6 +79,8 @@ export function RemoteExecutionList({
   canceller?: ExecutionCanceller;
   connection?: LogConnection;
   cancellations?: Readonly<Record<string, ExecutionCancellationView>>;
+  /** 租约事实只用于判定执行是否还归发起它的分身；缺省时不猜。 */
+  leases?: readonly LeaseView[];
   onCancelled?: (view: ExecutionCancellationView) => void;
   /** 只读掠影：位点照常显示，日志与取消控件收起来（inspector、设置页）。 */
   dense?: boolean;
@@ -69,6 +90,34 @@ export function RemoteExecutionList({
   // 没有注入读取与取消入口时自动收成只读：不在每条执行上重复一行「尚未接入」。
   const wired = Boolean(logReader ?? canceller);
   const compact = dense || !wired;
+  const now = new Date();
+  const machineLabel = (machineId: string) =>
+    machines.find((item) => item.machine.id === machineId)?.machine.name ?? machineId;
+  const leaseFor = (execution: ExecutionView): LeaseFacts | null => {
+    const lease = leases.find(
+      (item) => item.projectId === execution.projectId && item.machineId === execution.machineId,
+    );
+    if (!lease) return null;
+    return {
+      state: lease.state,
+      holderInstanceId: lease.holderInstanceId,
+      generation: lease.generation,
+    };
+  };
+  // 页面刚发出的取消事实比执行视图里的旧值新，判定与卡片都用同一份。
+  const withCancellation = (execution: ExecutionView): ExecutionView => {
+    const cancellation = cancellations[execution.executionId];
+    if (!cancellation || cancellation === execution.cancellation) return execution;
+    return { ...execution, cancellation };
+  };
+  const summarized = executionSummary(executions);
+  const attentionItems: AttentionItem[] = executions.flatMap((execution) => {
+    const view = withCancellation(execution);
+    const attention = executionAttention(view, leaseFor(execution), now);
+    return attention
+      ? [{ execution: view, attention, machineLabel: machineLabel(execution.machineId) }]
+      : [];
+  });
   return (
     <section data-testid={testId} className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -110,7 +159,100 @@ export function RemoteExecutionList({
           还没有远端操作记录。
         </p>
       ) : (
-        <ol data-testid={`${testId}-list`} className="min-w-0 divide-y divide-border">
+        <div className="space-y-4">
+          <ExecutionAttentionList
+            items={attentionItems}
+            {...(canceller ? { canceller } : {})}
+            connection={connection}
+            cancellations={cancellations}
+            {...(onCancelled ? { onCancelled } : {})}
+            testId={`${testId}-attention`}
+          />
+          <div data-testid={`${testId}-list`} className="space-y-3">
+            {summarized.map((summary) => (
+              <ExecutionSummaryBlock
+                key={summary.machineId}
+                summary={summary}
+                machineLabel={machineLabel(summary.machineId)}
+                debugSlot={
+                  <ExecutionDebugDialog
+                    machineLabel={machineLabel(summary.machineId)}
+                    executions={executions.filter(
+                      (execution) => execution.machineId === summary.machineId,
+                    )}
+                    machines={machines}
+                    holderNames={holderNames}
+                    {...(logReader ? { logReader } : {})}
+                    {...(canceller ? { canceller } : {})}
+                    {...(onCancelled ? { onCancelled } : {})}
+                    connection={connection}
+                    cancellations={cancellations}
+                    dense={compact}
+                    testId={`${testId}-debug-${summary.machineId}`}
+                  />
+                }
+                testId={`${testId}-summary`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      <p
+        data-testid={`${testId}-host-note`}
+        className="text-[0.6875rem] leading-5 text-muted-foreground"
+      >
+        {HOST_TOOL_NOTE}
+      </p>
+    </section>
+  );
+}
+
+/**
+ * 调试详情：默认不渲染，点开才挂载今天的执行卡片。
+ * 日志读取仍走注入的 `logReader`；Dialog 关闭即卸载内容，日志请求状态不保留。
+ */
+function ExecutionDebugDialog({
+  machineLabel,
+  executions,
+  machines,
+  holderNames = {},
+  logReader,
+  canceller,
+  connection,
+  cancellations,
+  onCancelled,
+  dense,
+  testId,
+}: {
+  machineLabel: string;
+  executions: readonly ExecutionView[];
+  machines: MachineDetail[];
+  holderNames?: Readonly<Record<string, string>>;
+  logReader?: ExecutionLogReader;
+  canceller?: ExecutionCanceller;
+  connection: LogConnection;
+  cancellations: Readonly<Record<string, ExecutionCancellationView>>;
+  onCancelled?: (view: ExecutionCancellationView) => void;
+  dense: boolean;
+  testId: string;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger
+        render={<Button type="button" size="xs" variant="ghost" data-testid={`${testId}-open`} />}
+      >
+        调试详情
+      </DialogTrigger>
+      <DialogContent data-testid={`${testId}-dialog`} className="w-[min(760px,calc(100%-2.5rem))]">
+        <DialogHeader>
+          <DialogTitle>调试详情</DialogTitle>
+          <DialogDescription>
+            {machineLabel} ·
+            今天的执行卡片：状态、退出结果、日志正文与游标、保留限制、恢复原因与取消事实。
+            关闭抽屉后不保留日志请求。
+          </DialogDescription>
+        </DialogHeader>
+        <ol className="min-w-0 divide-y divide-border">
           {executions.map((execution) => (
             <li key={execution.executionId} className="min-w-0 py-3">
               <RemoteExecutionCard
@@ -122,20 +264,14 @@ export function RemoteExecutionList({
                 {...(onCancelled ? { onCancelled } : {})}
                 connection={connection}
                 cancellation={cancellations[execution.executionId] ?? null}
-                dense={compact}
+                dense={dense}
                 testId={`${testId}-item`}
               />
             </li>
           ))}
         </ol>
-      )}
-      <p
-        data-testid={`${testId}-host-note`}
-        className="text-[0.6875rem] leading-5 text-muted-foreground"
-      >
-        {HOST_TOOL_NOTE}
-      </p>
-    </section>
+      </DialogContent>
+    </Dialog>
   );
 }
 
