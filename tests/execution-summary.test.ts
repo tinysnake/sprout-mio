@@ -58,7 +58,8 @@ describe("需要处理的执行", () => {
       now,
     );
     expect(attention?.reason).toBe("lease_released");
-    expect(attention?.kind).toBe("decision");
+    expect(attention?.kind).toBe("pending");
+    expect(attention?.needsCancel).toBe(false);
   });
 
   it("租约代次与授权代次不符时命中 generation_mismatch", () => {
@@ -68,7 +69,14 @@ describe("需要处理的执行", () => {
       now,
     );
     expect(attention?.reason).toBe("generation_mismatch");
+    expect(attention?.kind).toBe("pending");
+  });
+
+  it("运行中仍持有租约但已超过运行上限时命中 running_too_long 并给取消入口", () => {
+    const attention = executionAttention(runningWithoutCancellation, runningLease, now);
+    expect(attention?.reason).toBe("running_too_long");
     expect(attention?.kind).toBe("decision");
+    expect(attention?.needsCancel).toBe(true);
   });
 
   it("queued 过了下发窗口时命中 dispatch_window_expired", () => {
@@ -98,14 +106,17 @@ describe("需要处理的执行", () => {
   });
 
   it("没有需要处理的事实时返回 null", () => {
-    expect(executionAttention(runningWithoutCancellation, runningLease, now)).toBeNull();
+    const healthy: ExecutionView = {
+      ...runningWithoutCancellation,
+      dispatchedAt: "2026-10-18T08:58:00.000Z",
+      runtimeDeadlineAt: null,
+      maxRuntimeMs: null,
+      cancellation: null,
+    };
+    expect(executionAttention(healthy, runningLease, now)).toBeNull();
     expect(
       executionAttention(
-        {
-          ...runningWithoutCancellation,
-          state: "queued",
-          dispatchDeadlineAt: "2026-10-18T10:00:00.000Z",
-        },
+        { ...healthy, state: "queued", dispatchDeadlineAt: "2026-10-18T10:00:00.000Z" },
         runningLease,
         now,
       ),
@@ -113,7 +124,7 @@ describe("需要处理的执行", () => {
     expect(
       executionAttention(
         {
-          ...running,
+          ...healthy,
           cancellation: {
             ...demoCancellations[running.executionId]!,
             state: "requested",
@@ -126,18 +137,14 @@ describe("需要处理的执行", () => {
     ).toBeNull();
     expect(
       executionAttention(
-        {
-          ...runningWithoutCancellation,
-          state: "draining",
-          dispatchedAt: "2026-10-18T08:59:30.000Z",
-        },
+        { ...healthy, state: "draining", dispatchedAt: "2026-10-18T08:59:30.000Z" },
         runningLease,
         now,
       ),
     ).toBeNull();
     expect(
       executionAttention(
-        { ...running, state: "succeeded", terminalAt: "2026-10-18T08:00:00.000Z" },
+        { ...healthy, state: "succeeded", terminalAt: "2026-10-18T08:00:00.000Z" },
         { ...runningLease, state: "free", holderInstanceId: null },
         now,
       ),
@@ -149,12 +156,12 @@ describe("需要处理的执行", () => {
   });
 
   it("needsCancel 只在 kind === 'decision'", () => {
-    const decision = executionAttention(
+    const decision = executionAttention(runningWithoutCancellation, runningLease, now);
+    const pending = executionAttention(
       runningWithoutCancellation,
-      { ...runningLease, generation: runningLease.generation + 1 },
+      { ...runningLease, state: "free", holderInstanceId: null },
       now,
     );
-    const pending = executionAttention(runningWithCancellation, runningLease, now);
     expect(decision?.needsCancel).toBe(true);
     expect(pending?.needsCancel).toBe(false);
   });

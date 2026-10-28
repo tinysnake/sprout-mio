@@ -219,6 +219,7 @@ export type ExecutionAttention = {
   kind: "decision" | "pending";
   reason:
     | "dispatch_window_expired"
+    | "running_too_long"
     | "lease_released"
     | "generation_mismatch"
     | "cancellation_unconfirmed"
@@ -234,15 +235,22 @@ export const EXECUTION_ATTENTION_LABELS: Record<ExecutionAttention["reason"], st
   generation_mismatch: "授权代次已变化",
   cancellation_unconfirmed: "取消未确认",
   drain_unconfirmed: "收尾未确认",
+  running_too_long: "长时间占用机器",
 };
+
+/** 超过这个时长仍占着租约的执行，用户才值得被打断一次。 */
+export const EXECUTION_LONG_RUNNING_MS = 5 * 60 * 1000;
 
 /**
  * 一条执行是否需要人处理。终态永远返回 `null`：已确定的终态不会自己变化。
  *
- * 「需要你决定」只在 `running` 上判定，因为只有已经开始的执行才可能在租约
- * 失效后继续运行；没有租约事实时不做归属判断。`queued` / `dispatched` 过了
- * 下发窗口、`draining` 过了确认窗口、取消停在 `requested` 超过窗口，都属于
- * 「等待自动收尾」：不给取消按钮，只写清事实与后果。
+ * 只有一种情况值得打断用户：`running` 且租约仍归它，命令却已经跑了很久，
+ * 占着这台机器让别的执行进不来。这种取消能真正到达 Worker。
+ *
+ * 其余都落到「等待自动收尾」：租约已经不归它的执行，服务端会按恢复事实收尾成
+ * 带原因的 unknown；下发窗口过期的会被服务端收成超时；未送达的取消与未收尾的
+ * draining 也都由服务端推进。这些都不给取消按钮，因为此刻取消既发不出去、
+ * 也不能改变终态。
  */
 export function executionAttention(
   view: ExecutionView,
@@ -252,22 +260,47 @@ export function executionAttention(
   if (view.terminalAt !== null) return null;
   const at = now.getTime();
 
+  const cancelOverdue =
+    view.cancellation?.state === "requested" &&
+    at - Date.parse(view.cancellation.requestedAt) > EXECUTION_CONFIRM_WINDOW_MS;
+  if (cancelOverdue)
+    return {
+      kind: "pending",
+      reason: "cancellation_unconfirmed",
+      needsCancel: false,
+      detail:
+        "取消停在「已请求」超过确认窗口，没有送达记录。服务端不会自动把它推进到送达，命令可能仍在运行；重试取消才会再发一次。",
+    };
+
   if (view.state === "running" && lease) {
-    if (lease.state !== "held" || lease.holderInstanceId !== view.holderInstanceId)
+    const holdsLease =
+      lease.state === "held" &&
+      lease.holderInstanceId === view.holderInstanceId &&
+      lease.generation === view.authorizationGeneration;
+    if (!holdsLease)
       return {
-        kind: "decision",
-        reason: "lease_released",
-        needsCancel: true,
+        kind: "pending",
+        reason:
+          lease.state === "held" && lease.holderInstanceId === view.holderInstanceId
+            ? "generation_mismatch"
+            : "lease_released",
+        needsCancel: false,
         detail:
-          "租约已不再由发起这次执行的分身持有。执行不会自己走到终态，命令可能仍在机器上运行。",
+          "租约已不再归发起这次执行的分身。服务端会按恢复事实把它收尾，取消此刻不会送到 Worker，命令可能仍在机器上运行。",
       };
-    if (lease.generation !== view.authorizationGeneration)
+    const startedAt = Date.parse(view.dispatchedAt ?? view.createdAt);
+    const overdue = view.runtimeDeadlineAt !== null && at > Date.parse(view.runtimeDeadlineAt);
+    if (overdue || at - startedAt >= EXECUTION_LONG_RUNNING_MS) {
+      const minutes = Math.max(1, Math.round((at - startedAt) / 60000));
       return {
         kind: "decision",
-        reason: "generation_mismatch",
+        reason: "running_too_long",
         needsCancel: true,
-        detail: `租约代次已推进到 ${lease.generation}，这次执行记录的授权代次是 ${view.authorizationGeneration}。Worker 不会再收尾这次执行，命令可能仍在机器上运行。`,
+        detail: overdue
+          ? `已超过运行上限，仍占着这台机器 ${minutes} 分钟。别的执行要等它让出租约。`
+          : `已经跑了 ${minutes} 分钟，仍占着这台机器。别的执行要等它让出租约。`,
       };
+    }
   }
 
   if (
@@ -279,18 +312,6 @@ export function executionAttention(
       reason: "dispatch_window_expired",
       needsCancel: false,
       detail: "已过下发窗口仍未投递完成。服务端会按超时收尾；命令不会开始，也不会自动重试。",
-    };
-
-  if (
-    view.cancellation?.state === "requested" &&
-    at - Date.parse(view.cancellation.requestedAt) > EXECUTION_CONFIRM_WINDOW_MS
-  )
-    return {
-      kind: "pending",
-      reason: "cancellation_unconfirmed",
-      needsCancel: false,
-      detail:
-        "取消停在「已请求」超过确认窗口，没有送达记录。服务端不会自动把它推进到送达，命令可能仍在运行。",
     };
 
   if (view.state === "draining") {

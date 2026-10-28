@@ -24,3 +24,6 @@ data/
 
 # poteto-mode decision trails
 .audit/
+
+# Lavish 评审 artifact 是给人类看的临时页面，不入库
+.lavish/
