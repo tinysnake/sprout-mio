@@ -4,7 +4,7 @@
 // 私有库、runner token、state-dir 与命令正文都留在 mktemp，不进日志。
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isIncompleteLogState } from "../../src/components/machine/presentation";
