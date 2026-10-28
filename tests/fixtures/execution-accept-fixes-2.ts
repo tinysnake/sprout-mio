@@ -546,15 +546,14 @@ assert.equal(alive(stubbornRunner.childPid!), false, "KILL 之后命令组不留
 pass("R4 正证 2：忽略 TERM 的命令被 KILL，信号只打命令组，runner 落盘 → 取消仍是 exited_observed");
 
 // ── R4 反证：只有 runner 缺席才叫「退出未被记录」 ────────────────────────────
-// 确定性制造没有 result 的局面：命令收到取消后杀掉自己的 runner（`kill -9 $PPID`），
-// 磁盘上永远不会出现 result.json。不靠宽限窗口的时序碰运气。
-const absentSentinel = join(stateDirectory, "absent-runner-sentinel");
-rmSync(absentSentinel, { force: true });
+// 确定性制造没有 result 的局面：命令在收到 TERM 的 trap 里杀掉自己的 runner。
+// term_then_kill 先送 TERM 再送 KILL，runner 在这两段之间死掉，磁盘上永远不会出现 result.json；
+// 不用「轮询哨兵文件」，避免命令还没反应过来就被 KILL 打死的时序窗口。
 const absentWorker = makeDispatcher();
 const absent = submit(
   nextHolder,
   generation,
-  `echo pid=$$; trap '' TERM; while [ ! -f '${absentSentinel}' ]; do sleep 0.2; done; kill -9 $PPID; sleep 30`,
+  `echo pid=$$; trap 'kill -9 $PPID' TERM; while :; do sleep 0.2; done`,
   500,
 );
 round(absentWorker);
@@ -564,8 +563,6 @@ await pumpUntil(
   "absent runner running",
 );
 await cancelAndDeliver(absent.executionId, absentWorker);
-// 意图已送达才让命令动手：runner 死在这次取消之后，不存在「抢先退出」的解释。
-writeFileSync(absentSentinel, "go", { mode: 0o600 });
 await pumpUntil(
   absentWorker,
   () => {
