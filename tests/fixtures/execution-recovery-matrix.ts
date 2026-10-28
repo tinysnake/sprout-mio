@@ -428,7 +428,16 @@ async function runCell(cell: Cell) {
   ).n;
   assert.equal(rows, 1, `${cell.id} one execution per requestId`);
   const effectsBefore = effects(marker);
-  if (cell.status !== "long-running") assert.equal(effectsBefore, 1, `${cell.id} effects once`);
+  // 机器全灭时命令死在副作用之前：这一格证明「没有第二次执行」，不是「副作用发生过」。
+  // 已完成未取结果的格相反：副作用在死前就写完了，必须仍是 1 行。
+  const expectedEffects =
+    cell.status === "long-running"
+      ? null
+      : cell.status === "completed-unretrieved" || cell.fault !== "machine-restart"
+        ? 1
+        : 0;
+  if (expectedEffects !== null)
+    assert.equal(effectsBefore, expectedEffects, `${cell.id} effects ${expectedEffects}`);
   const replay = await withActiveRun(() => submit(requestId, command));
   assert.equal(replay.executionId, first.executionId, `${cell.id} replay reuses the execution`);
   assert.equal(replay.state, settled.state, `${cell.id} replay keeps the same state`);

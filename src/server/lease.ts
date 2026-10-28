@@ -247,19 +247,30 @@ export function expireExecutions(key: LeaseKey, now: Date, bootId?: string) {
           )
           .get()
       : undefined;
-    // unknown/worker_lost 的唯一宿主侧出口：新连接代次已经接上，且在整个恢复宽限内
-    // 没有对这条执行交过任何归约报告。Worker 报告过 running 就是在看着它，不能替它收尾。
-    if (
-      row.state === "unknown" ||
-      !successor ||
-      successor.status !== "open" ||
-      successor.generation <= row.dispatchConnectionGeneration! ||
-      (bootId !== undefined && successor.bootId !== bootId) ||
-      now.getTime() - successor.openedAt.getTime() < WORKER_RECOVERY_GRACE_MS ||
-      (row.recoveryReportedAt !== null &&
-        row.recoveryReportedAt.getTime() >= successor.openedAt.getTime())
-    )
-      continue;
+    if (row.state === "unknown") continue;
+    // 宿主侧只有两个收尾出口，都要等恢复宽限走完：
+    // (b) 更新代次已经接上，却从未对这条执行交过任何归约报告（Worker 报告过 running
+    //     就是在看着它，不能替它收尾）；
+    // (b') 派发会话已经正常关闭，且机器上始终没有更新的活连接——不会再有任何一代能报告，
+    //     一直挂在 running 比带原因的 unknown 更假。
+    const successorLive =
+      successor !== undefined &&
+      successor.status === "open" &&
+      successor.generation > row.dispatchConnectionGeneration! &&
+      (bootId === undefined || successor.bootId === bootId);
+    const closedAt =
+      connection?.status === "closed" ? (connection.closedAt ?? connection.lastSeenAt) : null;
+    const abandoned =
+      !successorLive &&
+      closedAt !== null &&
+      now.getTime() - closedAt.getTime() >= WORKER_RECOVERY_GRACE_MS &&
+      (row.recoveryReportedAt === null || row.recoveryReportedAt.getTime() < closedAt.getTime());
+    const superseded =
+      successorLive &&
+      now.getTime() - successor!.openedAt.getTime() >= WORKER_RECOVERY_GRACE_MS &&
+      (row.recoveryReportedAt === null ||
+        row.recoveryReportedAt.getTime() < successor!.openedAt.getTime());
+    if (!abandoned && !superseded) continue;
     db.update(remoteExecution)
       .set({
         state: "unknown",
