@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { mcpWorkerExchangeShape, mcpServerExchangeShape } from "./mcp";
-import { remoteExchangeInputSchema, remoteExchangeOutputSchema } from "./remote";
+import {
+  remoteExchangeInputSchema,
+  remoteExchangeOutputSchema,
+  type ExecutionLogFact,
+} from "./remote";
 import { workerSecretSchema, workerSessionSchema } from "./worker-session";
 import type { WorkerSession } from "./worker-session";
 import { appIdPattern, ID_PREFIXES } from "./ids";
@@ -95,6 +99,32 @@ export const workerExchangeInput = z
           message: "日志帧必须属于本 exchange 会话且批内唯一",
         });
       seenFrames.add(dedupe);
+    });
+    const seenFacts = new Map<string, ExecutionLogFact>();
+    (value.remote.logFacts ?? []).forEach((fact, index) => {
+      if (fact.machineId !== value.session.machineId || seenFacts.has(fact.executionId))
+        ctx.addIssue({
+          code: "custom",
+          path: ["remote", "logFacts", index],
+          message: "日志位点事实必须属于本 exchange 会话且同一执行只出现一次",
+        });
+      seenFacts.set(fact.executionId, fact);
+    });
+    (value.remote.logFrames ?? []).forEach((frame, index) => {
+      const fact = seenFacts.get(frame.executionId);
+      if (
+        fact &&
+        (fact.projectId !== frame.projectId ||
+          fact.authorizationGeneration !== frame.authorizationGeneration ||
+          fact.holderInstanceId !== frame.holderInstanceId ||
+          fact.producedThroughSequence === null ||
+          fact.producedThroughSequence < Math.max(frame.sequence, frame.gapTo ?? frame.sequence))
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["remote", "logFrames", index],
+          message: "同一执行的日志位点事实不得低于本批帧覆盖的序号",
+        });
     });
     for (const recovery of value.remote.recoveries ?? []) {
       if (recovery.machineId !== value.session.machineId)

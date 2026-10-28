@@ -565,6 +565,18 @@ try {
     "big output terminal",
     60000,
   );
+  // 终态 ACK 不等于日志已交代：Worker 的产出位点可能高于已送达帧，等补送与封口事实都到位。
+  await until(
+    async () => {
+      const view = await getView(big.executionId);
+      return (
+        view.producedThroughSequence !== null &&
+        view.acknowledgedThroughSequence === view.producedThroughSequence
+      );
+    },
+    "big output log backfill",
+    120000,
+  );
   const bigFinal = await getView(big.executionId);
   assert.equal(bigFinal.logState, "truncated", "a 64 KiB threshold must trim the real log");
   assert(bigFinal.availableFromSequence !== null && bigFinal.availableFromSequence > 1);

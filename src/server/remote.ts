@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { machineBindings } from "../domain/machine";
 import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
 import type { WorkerExchangeRemoteInput } from "../contracts/worker";
-import { and, desc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { ShellFact } from "../contracts/machine";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
@@ -22,6 +22,7 @@ import type {
   ExecutionCancelRequest,
   ExecutionCancellationView,
   ExecutionLogFrame,
+  ExecutionLogFact,
   ExecutionLogReadInput,
   ExecutionLogReadView,
   ExecutionLogState,
@@ -245,9 +246,41 @@ function executionByKey(executionId: string, key: Pick<LeaseClaim, "projectId" |
     )
     .get();
 }
-function logStateAfterProduce(row: Execution, producedThrough: number): ExecutionLogState {
-  if (row.logState !== "none") return row.logState;
-  return producedThrough >= 1 ? "partial" : row.logState;
+/**
+ * 日志完整性只由可以核对的事实推出，不用「宿主已收到的前缀」冒充「Worker 的全部产出」：
+ * - 裁剪过的前缀永远是不完整，`truncated` 优先于 `full`；
+ * - 存在缺口行就是 `gap`；
+ * - `full` 必须同时成立：Worker 已声明封口、已确认前缀覆盖全部已产出位点、没有可读起点裁剪；
+ * - 其余只要有产出就是 `partial`。`sealed` 缺失时永远停在 `partial`，可以回退但不能越过事实。
+ */
+function deriveLogState(row: Execution): ExecutionLogState {
+  const availableFrom = row.availableFromSeq;
+  if (availableFrom !== null && availableFrom > 1) return "truncated";
+  const produced = row.producedThroughSeq;
+  if (produced === null || produced === 0) return "none";
+  if (hasLogGap(row.id)) return "gap";
+  if (
+    row.logSealed &&
+    row.acknowledgedThroughSeq !== null &&
+    row.acknowledgedThroughSeq === produced
+  )
+    return "full";
+  return "partial";
+}
+function hasLogGap(executionId: string): boolean {
+  return (
+    db
+      .select({ sequence: executionLogFrame.sequence })
+      .from(executionLogFrame)
+      .where(
+        and(
+          eq(executionLogFrame.executionId, executionId),
+          isNotNull(executionLogFrame.gapFromSeq),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
 }
 /** 单执行保留上限。私有验收库可用 env 缩小阈值；产品默认值固定，不随请求变化。 */
 function retentionLimit(name: string, fallback: number) {
@@ -390,7 +423,7 @@ function applyLogFrames(
     db.update(remoteExecution)
       .set({
         producedThroughSeq: produced,
-        logState: logStateAfterProduce(row, produced),
+        logState: deriveLogState({ ...row, producedThroughSeq: produced }),
       })
       .where(eq(remoteExecution.id, row.id))
       .run();
@@ -407,7 +440,7 @@ function applyLogFrames(
   }
   return rows;
 }
-/** 只推进到连续前缀：仍缺失的 sequence 会阻止 ACK 越过它。 */
+/** 只推进到连续前缀：仍缺失的 sequence 会阻止 ACK 越过它。`full` 另需 Worker 的封口事实。 */
 function acknowledgeLogPrefix(row: Execution) {
   const produced = row.producedThroughSeq;
   if (produced === null) return row;
@@ -422,19 +455,63 @@ function acknowledgeLogPrefix(row: Execution) {
   let contiguous = row.acknowledgedThroughSeq ?? 0;
   while (sequences.has(contiguous + 1)) contiguous += 1;
   const acknowledged = contiguous === 0 ? null : contiguous;
-  const availableFrom = row.availableFromSeq;
-  const full =
-    acknowledged !== null &&
-    acknowledged === produced &&
-    (availableFrom === null || availableFrom === 1);
   db.update(remoteExecution)
     .set({
       acknowledgedThroughSeq: acknowledged,
-      logState: full ? "full" : logStateAfterProduce(row, produced),
+      logState: deriveLogState({ ...row, acknowledgedThroughSeq: acknowledged }),
     })
     .where(eq(remoteExecution.id, row.id))
     .run();
   return db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!;
+}
+/**
+ * Worker 上行日志位点事实：把「已知产出」抬到 Worker 声明的值，并记录是否已封口。
+ * 与日志帧使用同一套归属核对：事实只能描述本 Machine 收到过的那次下发。
+ */
+function applyLogFacts(
+  facts: ReadonlyArray<ExecutionLogFact>,
+  ctx: AuthenticatedWorkerContext,
+): Map<string, Execution> {
+  const rows = new Map<string, Execution>();
+  for (const fact of facts) {
+    if (fact.machineId !== ctx.session.machineId) throw new RemoteError("not_found");
+    const row = executionByKey(fact.executionId, fact);
+    if (!row) throw new RemoteError("not_found");
+    const dispatchedHere =
+      row.dispatchConnectionGeneration !== null &&
+      row.dispatchConnectionGeneration === ctx.session.generation;
+    const superseding =
+      row.dispatchConnectionGeneration !== null &&
+      row.dispatchConnectionGeneration < ctx.session.generation;
+    if (
+      row.machineId !== fact.machineId ||
+      row.projectId !== fact.projectId ||
+      row.authorizationGeneration !== fact.authorizationGeneration ||
+      row.holderInstanceId !== fact.holderInstanceId ||
+      !(dispatchedHere || superseding)
+    )
+      throw new RemoteError("not_found");
+    // 「已知产出」是单调的：事实只能让位点前移，不能拿旧事实把已落库帧吞回去。
+    const produced = Math.max(row.producedThroughSeq ?? 0, fact.producedThroughSequence ?? 0);
+    const next = {
+      ...row,
+      producedThroughSeq: produced > 0 ? produced : row.producedThroughSeq,
+      logSealed: fact.sealed,
+    };
+    db.update(remoteExecution)
+      .set({
+        producedThroughSeq: next.producedThroughSeq,
+        logSealed: next.logSealed,
+        logState: deriveLogState(next),
+      })
+      .where(eq(remoteExecution.id, row.id))
+      .run();
+    rows.set(
+      row.id,
+      db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+    );
+  }
+  return rows;
 }
 function logAckOf(row: Execution) {
   if (row.producedThroughSeq === null) return null;
@@ -480,7 +557,10 @@ export function applyExecutionRecovery(
   const produced = recovery.producedThroughSequence;
   if (produced !== null && produced > (row.producedThroughSeq ?? 0))
     db.update(remoteExecution)
-      .set({ producedThroughSeq: produced, logState: logStateAfterProduce(row, produced) })
+      .set({
+        producedThroughSeq: produced,
+        logState: deriveLogState({ ...row, producedThroughSeq: produced }),
+      })
       .where(eq(remoteExecution.id, row.id))
       .run();
   // 任何被接受的归约报告都算「这一代 Worker 交代过这条执行」：宿主侧的丢失宽限据此
@@ -1460,7 +1540,11 @@ export function applyRemoteExchange(
     settleCancellations(row.id, ctx.now, report.recoveryReason === undefined);
     output.resultAcks.push({ executionId: row.id, disposition });
   }
-  const logRows = input.logFrames?.length ? applyLogFrames(input.logFrames, ctx) : new Map();
+  // 先落位点事实，再落帧：事实抬高「已知产出」，帧只负责把正文补齐，不能因此把完整度说小。
+  const logRows = new Map([
+    ...(input.logFacts?.length ? applyLogFacts(input.logFacts, ctx) : []),
+    ...(input.logFrames?.length ? applyLogFrames(input.logFrames, ctx) : []),
+  ]);
   for (const row of logRows.values()) {
     const ack = logAckOf(acknowledgeLogPrefix(row));
     if (ack) output.logAcks!.push(ack);

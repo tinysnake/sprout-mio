@@ -370,6 +370,19 @@ export const executionLogFrameSchema = z
       (value.gapTo === undefined || value.gapTo >= value.sequence),
     "日志帧要么带正文要么声明 gap，且字节位点单调",
   );
+/**
+ * 上行日志位点事实。`producedThroughSequence` 是 Worker 自己已经产出的最后一个序号，
+ * 不等于宿主收到了多少；`sealed` 表示这次执行已经终态、Worker 不会再产出新帧。
+ * 宿主只有在收到 `sealed` 且已确认前缀覆盖全部已产出位点时才允许判定 `full`。
+ */
+export const executionLogFactSchema = z.strictObject({
+  executionId: executionIdSchema,
+  ...leaseKeySchema.shape,
+  authorizationGeneration: positiveSafeIntegerSchema,
+  holderInstanceId: instanceIdSchema,
+  producedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
+  sealed: z.boolean(),
+});
 /** 上行恢复事实。必须带 runner token；token 只能来自宿主曾向这台 Machine 下发过的命令。 */
 export const executionRecoverySchema = z.strictObject({
   executionId: executionIdSchema,
@@ -392,6 +405,7 @@ export const remoteExchangeInputSchema = z.strictObject({
   results: z.array(remoteReportSchema).max(64),
   fenceAcks: z.array(remoteFenceAckSchema).max(64),
   logFrames: z.array(executionLogFrameSchema).max(EXECUTION_LOG_FRAMES_PER_EXCHANGE).optional(),
+  logFacts: z.array(executionLogFactSchema).max(64).optional(),
   recoveries: z.array(executionRecoverySchema).max(8).optional(),
 });
 const authorizationSchema = leaseKeySchema
@@ -575,6 +589,7 @@ export type RemoteReport = z.infer<typeof remoteReportSchema>;
 export type RemoteFence = z.infer<typeof remoteFenceSchema>;
 export type RemoteFenceAck = z.infer<typeof remoteFenceAckSchema>;
 export type RemoteExchangeInput = z.infer<typeof remoteExchangeInputSchema>;
+export type ExecutionLogFact = z.infer<typeof executionLogFactSchema>;
 export type RemoteExchangeOutput = z.infer<typeof remoteExchangeOutputSchema>;
 export type RemoteAgentRequest = z.infer<typeof remoteAgentRequestSchema>;
 export type ExecutionSubmitInput = z.infer<typeof executionSubmitInputSchema>;

@@ -346,12 +346,14 @@ const burst = submit(nextHolder, generation, "head -c 1800000 /dev/zero | tr '\\
 const worker = makeDispatcher();
 round(worker);
 let producedAtSettle = -1;
+let ackedAtSettle = -1;
 let settledRound = -1;
 for (let index = 0; index < 400; index++) {
   round(worker);
   const current = view(burst.executionId, nextHolder);
   if (worker.registry.runs.get(burst.executionId)?.settled === true && producedAtSettle < 0) {
     producedAtSettle = current.producedThroughSequence ?? 0;
+    ackedAtSettle = current.acknowledgedThroughSequence ?? 0;
     settledRound = index;
   }
   if (!executionFiles(burst.executionId).includes("claim.json")) break;
@@ -377,9 +379,11 @@ assert.equal(burstView.state, "succeeded");
 assert.ok(settledRound >= 0, "终态必须在补送过程中被 ACK");
 assert.ok(producedAtSettle > 8, `终态 ACK 时宿主只收到 ${producedAtSettle} 帧，仍有帧没送出去`);
 assert.ok(
-  producedAtSettle < (burstLog.producedThroughSequence ?? 0),
-  "终态 ACK 之后仍应有未送达的帧：这证明 outbox 留到了日志 ACK，而不是随终态一起删掉",
+  ackedAtSettle < producedAtSettle,
+  `终态 ACK 时已确认前缀 ${ackedAtSettle} 必须小于 Worker 声明的产出位点 ${producedAtSettle}：` +
+    "宿主不能把已收到的前缀当成全部产出",
 );
+assert.equal(burstView.logState === "full", false, "补送完成前不得出现 logState=full");
 assert.equal(
   burstLog.acknowledgedThroughSequence,
   burstLog.producedThroughSequence,
@@ -394,7 +398,7 @@ assert.ok(
   "日志 ACK 覆盖全部已产出帧之后，durable outbox 才清理",
 );
 pass(
-  `R2 正证：1.8 MB 快速输出共 ${burstLog.producedThroughSequence} 帧，终态 ACK 时只到了 ${producedAtSettle} 帧，最终 truncated + availableFrom=${burstLog.availableFromSequence}`,
+  `R2 正证：1.8 MB 快速输出共 ${burstLog.producedThroughSequence} 帧，终态 ACK 时已确认 ${ackedAtSettle} 帧（产出位点 ${producedAtSettle}），最终 truncated + availableFrom=${burstLog.availableFromSequence}`,
 );
 
 // R2 反证：终态 ACK 后立刻重启 Worker，遗留帧仍能被新一代连接补送。
@@ -411,6 +415,8 @@ for (let index = 0; index < 400; index++) {
   await suspend(1);
 }
 const producedBeforeRestart = view(restarted.executionId, nextHolder).producedThroughSequence ?? 0;
+const acknowledgedBeforeRestart =
+  view(restarted.executionId, nextHolder).acknowledgedThroughSequence ?? 0;
 assert.ok(restartSettled, "终态必须先被 ACK，再模拟 Worker 重启");
 assert.ok(
   executionFiles(restarted.executionId).includes("frames.jsonl"),
@@ -439,15 +445,15 @@ const restartedLog = readExecutionLog(
   },
   nextHolder,
 );
-assert.ok(
-  (restartedLog.producedThroughSequence ?? 0) > producedBeforeRestart,
-  `重启后必须补送剩余帧：重启前 ${producedBeforeRestart}，重启后 ${restartedLog.producedThroughSequence}`,
-);
 assert.equal(restartedLog.logState, "truncated");
 assert.equal(restartedLog.acknowledgedThroughSequence, restartedLog.producedThroughSequence);
+assert.ok(
+  (restartedLog.acknowledgedThroughSequence ?? 0) > acknowledgedBeforeRestart,
+  `重启后必须把剩余帧补送到宿主：重启前已确认 ${acknowledgedBeforeRestart}，重启后 ${restartedLog.acknowledgedThroughSequence}`,
+);
 assert.ok(!executionFiles(restarted.executionId).includes("result.json"));
 pass(
-  `R2 反证：终态 ACK 后立即重启 Worker，新一代连接把 ${producedBeforeRestart} → ${restartedLog.producedThroughSequence} 帧补送完`,
+  `R2 反证：终态 ACK 后立即重启 Worker，新一代连接把已确认前缀 ${acknowledgedBeforeRestart} → ${restartedLog.acknowledgedThroughSequence}（产出位点 ${producedBeforeRestart} → ${restartedLog.producedThroughSequence}）补送完`,
 );
 
 // ── R4：没有 durable result 的退出不得当成已观测 ──────────────────────────────

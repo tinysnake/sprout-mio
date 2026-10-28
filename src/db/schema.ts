@@ -827,6 +827,8 @@ export const remoteExecution = sqliteTable(
     maxRuntimeMs: integer("max_runtime_ms"),
     runnerToken: text("runner_token"),
     logState: text("log_state", { enum: EXECUTION_LOG_STATES }).notNull().default("none"),
+    /** Worker 已声明该执行不会再产出新帧；没有这个事实就不能判 `full`。 */
+    logSealed: integer("log_sealed", { mode: "boolean" }).notNull().default(false),
     producedThroughSeq: integer("produced_through_seq"),
     acknowledgedThroughSeq: integer("acknowledged_through_seq"),
     availableFromSeq: integer("available_from_seq"),

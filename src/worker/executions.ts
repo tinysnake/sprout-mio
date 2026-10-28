@@ -13,7 +13,7 @@ import {
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { ExecutionRecovery, RemoteCommand } from "../contracts/remote";
+import type { ExecutionLogFact, ExecutionRecovery, RemoteCommand } from "../contracts/remote";
 import type { WorkerSession } from "../contracts/worker-session";
 import { ExecutionLog, type LogFrameDraft } from "./execution-log";
 
@@ -95,6 +95,10 @@ export type Run = {
   collecting: boolean;
   /** 已上行但尚未被 ACK 的序号，重发前不选第二次。 */
   inflight: Set<number>;
+  /** 已随本次 exchange 上行「已封口」事实，等宿主收下后置为已送达。 */
+  sealedPending: boolean;
+  /** 宿主已收下「已封口」事实：在此之前不得删掉这条执行的 durable outbox。 */
+  sealedDelivered: boolean;
   /** 下发该执行的会话 attemptId；null 表示上次进程遗留。 */
   owningAttempt: string | null;
   /** 轮转顺序，保证多执行之间不互相饿死。 */
@@ -285,6 +289,8 @@ export class ExecutionRegistry {
         collecting: false,
         reported: new Map(),
         inflight: new Set(),
+        sealedPending: false,
+        sealedDelivered: false,
         owningAttempt: null,
         order: this.runs.size,
       });
@@ -352,6 +358,8 @@ export class ExecutionRegistry {
       collecting: true,
       reported: new Map(),
       inflight: new Set(),
+      sealedPending: false,
+      sealedDelivered: false,
       owningAttempt: command.dispatchSession.attemptId,
       order: this.runs.size,
     };
@@ -403,6 +411,18 @@ export class ExecutionRegistry {
     // 宿主的日志 ACK 覆盖到已产出帧之后，durable outbox 才算交代完。
     this.release(executionId);
   }
+  /** 上行批次已被宿主收下：其中携带的「已封口」事实此刻生效。 */
+  confirmLogFacts() {
+    for (const run of this.runs.values()) {
+      if (!run.sealedPending) continue;
+      run.sealedPending = false;
+      run.sealedDelivered = true;
+    }
+  }
+  /** 上行被拒的批次没有送达：封口事实要随下一轮重报。 */
+  forgetLogFacts() {
+    for (const run of this.runs.values()) run.sealedPending = false;
+  }
   /** 恢复事实真正随 exchange 出去之后才记签名：没送到的下一轮必须重报。 */
   markRecovered(session: WorkerSession, facts: readonly ExecutionRecovery[]) {
     for (const fact of facts) {
@@ -444,10 +464,12 @@ export class ExecutionRegistry {
     this.saveProgress(run);
     this.release(executionId);
   }
-  /** outbox 只有在「终态已确认 且 没有未确认帧」时才可删；其余情况继续补送。 */
+  /** outbox 只有在「终态已确认 且 没有未确认帧 且 已封口事实送达」时才可删；其余情况继续补送。 */
   private release(executionId: string) {
     const run = this.runs.get(executionId);
     if (!run || !run.settled || run.log.frames.length > 0) return;
+    // 有产出的执行必须先让宿主收到「已封口」：少了它，宿主只能诚实地说不完整。
+    if (run.log.producedThrough > 0 && !run.sealedDelivered) return;
     this.runs.delete(executionId);
     this.store.deleteClaim(executionId);
   }
@@ -489,6 +511,32 @@ export class ExecutionRegistry {
             : null,
         producedThroughSequence: run.log.producedThrough > 0 ? run.log.producedThrough : null,
         claimEvidenceAt: new Date(run.claim.claimedAt).toISOString(),
+      });
+    }
+    return facts;
+  }
+  /**
+   * 上行日志位点事实：有产出的执行每轮都报告自己产到哪、是否已封口。
+   * 事实不是 ACK，不说明宿主收到了多少；`sealed` 只由「终态且不再采集」决定。
+   */
+  logFacts(limit: number): { run: Run; fact: ExecutionLogFact }[] {
+    const facts: { run: Run; fact: ExecutionLogFact }[] = [];
+    for (const run of this.runs.values()) {
+      if (facts.length === limit) break;
+      if (run.claim.dispatchSeq <= 0) continue;
+      const produced = run.log.producedThrough;
+      if (produced <= 0) continue;
+      facts.push({
+        run,
+        fact: {
+          executionId: run.claim.executionId,
+          projectId: run.claim.projectId,
+          machineId: run.claim.machineId,
+          authorizationGeneration: run.claim.authorizationGeneration,
+          holderInstanceId: run.claim.holderInstanceId,
+          producedThroughSequence: produced,
+          sealed: run.done && !run.collecting,
+        },
       });
     }
     return facts;
