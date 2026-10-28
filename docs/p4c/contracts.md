@@ -73,7 +73,7 @@
 | `state`                                                                      | `requested` / `delivered` / `exited_observed` / `already_exited` / `failed` / `unknown`。                                           |
 | `signal_outcome`                                                             | `none` / `term_delivered` / `kill_delivered`。只记录 OS 是否接受信号调用。                                                          |
 | `requested_at`、`delivered_at`、`exited_at`                                  | 时间字段，`delivered_at >= requested_at`、`exited_at >= delivered_at`。                                                             |
-| `failure_reason`                                                             | `signal_failed` / `delivery_unconfirmed`。                                                                                          |
+| `failure_reason`                                                             | `signal_failed` / `delivery_unconfirmed` / `exit_not_observed`（0017）。                                                            |
 
 发起者不再只可能是分身：Web 侧的人类取消在数据里如实记为 `actor_kind='human'`，不冒充分身。
 `actor_instance_id` 与外键 `(actor_instance_id, project_id) -> agent_instance` 已删除（0015）；
@@ -92,6 +92,9 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 ```
 
 租约 acquire、release、handoff、reclaim 与断联都不写入本表。`exited_observed` 只由 runner 落盘的 durable result 触发。
+
+没有 durable result 的退出不得被确认：执行落 `unknown` 且带 `recovery_reason='child-exited-without-result'`，取消落 `failed` + `failure_reason='exit_not_observed'` 且 `exited_at` 为空。
+命令由 runner 用独立进程组托管，取消与运行上限的信号只打命令组（`runner.json.childPid`）。所以「我们杀掉了它」本身有 durable result：KILL 之后 runner 仍写出 `result.json`，取消按送达与否落 `exited_observed` / `already_exited`。`exit_not_observed` 只留给 runner 也一起消失的场景（宿主断电、机器全灭、命令杀掉自己的 runner），`childPid` 尚未落盘时的回退窗口同样落这里。
 
 ## Zod 形状（`src/contracts/remote.ts`）
 
@@ -210,6 +213,10 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 - `acknowledged_through_seq` 不得小于 `available_from_seq - 1`：被裁掉的前缀不再等待 Worker 确认，下一次 `logAcks` 把新的可读起点交回 Worker。
 - 读侧不变：游标早于可读起点返回 `execution_log_gap`；视图必须给出 `availableFromSequence` 与 `logState='truncated'`，不得把裁剪后的内容说成完整。
 - 保留是服务端职责，Worker 不因裁剪停采。结果字段的保留规则不变：stdout 65536 / stderr 8192 加 `truncated` 标志，终态行不删。
+
+终态 ACK 只表示宿主收下了结果，不代表日志已经交代清楚。Worker 的 durable outbox 必须保留到该执行已追加的帧全部被日志 ACK 覆盖；在此之前 `result.json` 与 `frames.jsonl` 一起留着，Worker 重启后仍能补送。任何丢掉字节的路径都要让读侧看到 `truncated` 或 `gap`：`log_state='full'` 的含义收紧为「已产出帧全部在服务端，且服务端已 ACK 到 `produced_through_seq`」。
+
+运行上限到期后，如果命令不响应 TERM，KILL 由 runner 托管并留下 durable result，执行落 `timed_out` + `failure_reason='deadline'`；不下沉为 `unknown`。只有 runner 缺席时才回到 `unknown:child-exited-without-result`。
 
 私有验收库可用 `SPROUT_EXECUTION_LOG_RETAIN_BYTES` / `SPROUT_EXECUTION_LOG_RETAIN_FRAMES` 缩小阈值，让真实写入在可接受时间内触发裁剪；产品默认值不随请求或环境漂移。
 
