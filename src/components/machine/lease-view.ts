@@ -293,6 +293,7 @@ export const REMOTE_FAILURE_REASON_LABELS: Record<string, string> = {
   stale_generation: "授权代次已失效，命令未执行",
   not_holder: "请求方不是该租约的持有者",
   authorization_revoked: "授权已被撤回，在途操作被拒绝",
+  cancelled: "收到取消请求，已按请求终止",
   deadline: "超过截止时间",
   worker_lost: "Worker 连接丢失，结果未能确认",
   executor_error: "Worker 执行器报错",

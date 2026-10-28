@@ -142,18 +142,33 @@ export type LeaseFacts = Pick<LeaseView, "state" | "holderInstanceId" | "generat
 /** 取消与收尾各自的确认窗口。超过窗口仍无推进，就不再假设它会自己回来。 */
 export const EXECUTION_CONFIRM_WINDOW_MS = 2 * 60 * 1000;
 
-/** 摘要条与图例的固定顺序：同一台 Machine 的块在每次渲染里顺序一致。 */
-export const EXECUTION_STATE_ORDER = [
+/**
+ * 摘要分段 key：执行状态，外加由 `failed` + `failure_reason='cancelled'` 划出的独立一段。
+ * 取消仍是终态 failed，不为它新增执行状态枚举值；分段只是摘要与图例的投影。
+ */
+export const EXECUTION_SEGMENT_ORDER = [
   "queued",
   "dispatched",
   "running",
   "draining",
   "succeeded",
   "failed",
+  "cancelled",
   "rejected",
   "timed_out",
   "unknown",
-] as const satisfies readonly ExecutionView["state"][];
+] as const;
+
+export type ExecutionSegmentKey = (typeof EXECUTION_SEGMENT_ORDER)[number];
+
+/**
+ * 执行落入哪一段：只有 `failed` 且原因是取消时才另起一段，其余按状态归段。
+ */
+export function executionSegmentKey(
+  view: Pick<ExecutionView, "state" | "failureReason">,
+): ExecutionSegmentKey {
+  return view.state === "failed" && view.failureReason === "cancelled" ? "cancelled" : view.state;
+}
 
 /**
  * 状态到语义色的映射。只用 `docs/frontend-design.md` 已定义的 `status-*` 令牌，
@@ -171,8 +186,26 @@ export const EXECUTION_STATE_FILL: Record<ExecutionView["state"], string> = {
   unknown: "bg-status-unknown",
 };
 
+/**
+ * 分段的文字与颜色。`cancelled` 不是失败：它用 muted 的 unknown 令牌，
+ * 与「结果未知」共享颜色但图例文字分开，不冒充失败。
+ */
+export function executionSegmentPresentation(key: ExecutionSegmentKey): {
+  label: string;
+  tone: StatusTone;
+  fill: string;
+} {
+  if (key === "cancelled") return { label: "已取消", tone: "muted", fill: "bg-status-unknown" };
+  return {
+    label: EXECUTION_STATE_LABELS[key].label,
+    tone: EXECUTION_STATE_LABELS[key].tone,
+    fill: EXECUTION_STATE_FILL[key],
+  };
+}
+
 export type ExecutionSummarySegment = {
-  state: ExecutionView["state"];
+  /** 分段 key。多数情况下就是执行状态，`cancelled` 是唯一不由状态枚举表达的段。 */
+  key: ExecutionSegmentKey;
   label: string;
   count: number;
   tone: StatusTone;
@@ -182,29 +215,28 @@ export type ExecutionSummarySegment = {
 export type ExecutionMachineSummary = {
   machineId: string;
   total: number;
-  /** 只含非零状态：零值状态不出现，图例与分段条都不占位。 */
+  /** 只含非零分段：零值段不出现，图例与分段条都不占位。 */
   segments: ExecutionSummarySegment[];
 };
 
 /**
- * 按 Machine 归并执行次数。机器顺序按首次出现稳定排列，状态按固定顺序排列；
- * 零值状态直接省略，条与图例都只描述真实存在的执行。
+ * 按 Machine 归并执行次数。机器顺序按首次出现稳定排列，分段按固定顺序排列；
+ * 零值段直接省略，条与图例都只描述真实存在的执行。
  */
 export function executionSummary(views: readonly ExecutionView[]): ExecutionMachineSummary[] {
-  const counts = new Map<string, Map<ExecutionView["state"], number>>();
+  const counts = new Map<string, Map<ExecutionSegmentKey, number>>();
   for (const view of views) {
-    const bucket = counts.get(view.machineId) ?? new Map<ExecutionView["state"], number>();
-    bucket.set(view.state, (bucket.get(view.state) ?? 0) + 1);
+    const bucket = counts.get(view.machineId) ?? new Map<ExecutionSegmentKey, number>();
+    const key = executionSegmentKey(view);
+    bucket.set(key, (bucket.get(key) ?? 0) + 1);
     counts.set(view.machineId, bucket);
   }
   return [...counts].map(([machineId, bucket]) => {
-    const segments = EXECUTION_STATE_ORDER.filter((state) => (bucket.get(state) ?? 0) > 0).map(
-      (state) => ({
-        state,
-        label: EXECUTION_STATE_LABELS[state].label,
-        count: bucket.get(state) ?? 0,
-        tone: EXECUTION_STATE_LABELS[state].tone,
-        fill: EXECUTION_STATE_FILL[state],
+    const segments = EXECUTION_SEGMENT_ORDER.filter((key) => (bucket.get(key) ?? 0) > 0).map(
+      (key) => ({
+        key,
+        ...executionSegmentPresentation(key),
+        count: bucket.get(key) ?? 0,
       }),
     );
     return {

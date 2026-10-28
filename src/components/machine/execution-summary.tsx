@@ -69,8 +69,8 @@ export function ExecutionSummaryBlock({
       >
         {summary.segments.map((segment) => (
           <span
-            key={segment.state}
-            data-state={segment.state}
+            key={segment.key}
+            data-state={segment.key}
             data-count={segment.count}
             style={{ flexGrow: segment.count }}
             className={cn("block min-w-0.5 rounded-[2px]", segment.fill)}
@@ -82,7 +82,7 @@ export function ExecutionSummaryBlock({
         className="mt-3 flex flex-wrap gap-x-4 gap-y-1 p-0 text-xs"
       >
         {summary.segments.map((segment) => (
-          <li key={segment.state} className="flex items-center gap-1.5 whitespace-nowrap">
+          <li key={segment.key} className="flex items-center gap-1.5 whitespace-nowrap">
             <span aria-hidden="true" className={cn("size-2 rounded-[2px]", segment.fill)} />
             <span>{segment.label}</span>
             <span className="tabular-nums text-muted-foreground">{segment.count}</span>
