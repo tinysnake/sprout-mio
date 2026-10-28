@@ -39,6 +39,8 @@ import {
 import {
   connectionCompletenessNote,
   executionAttention,
+  executionSegmentKey,
+  executionSegmentPresentation,
   executionSummary,
   type ExecutionCanceller,
   type ExecutionLogReader,
@@ -299,6 +301,8 @@ export function RemoteExecutionCard({
   testId?: string;
 }) {
   const state = EXECUTION_STATE_LABELS[execution.state];
+  // 取消仍是终态 failed，但卡片展示的是分段语义：已取消不等于失败。
+  const segment = executionSegmentPresentation(executionSegmentKey(execution));
   const reason = failureReasonLabel(execution.failureReason);
   const recoveryReason = recoveryReasonLabel(execution.recoveryReason);
   const summary = resultSummary(execution);
@@ -323,7 +327,15 @@ export function RemoteExecutionCard({
             {executionTarget(execution, machine?.machine.name)}
           </span>
         </p>
-        <StatusLine label={state.label} tone={state.tone} testId={`${testId}-state`} />
+        <span className="flex flex-none flex-wrap items-baseline gap-1.5">
+          <StatusLine label={segment.label} tone={segment.tone} testId={`${testId}-state`} />
+          {/* 状态与原因同一行：取消不能一边说失败、一边把原因另起一段。 */}
+          {reason && (
+            <span data-testid={`${testId}-reason`} className={toneText[segment.tone]}>
+              · {reason}
+            </span>
+          )}
+        </span>
       </div>
       <p className="text-muted-foreground">{state.detail}</p>
       {/*
@@ -392,11 +404,6 @@ export function RemoteExecutionCard({
             </li>
           ))}
         </ul>
-      )}
-      {reason && (
-        <p data-testid={`${testId}-reason`} className={toneText.danger}>
-          失败原因：{reason}
-        </p>
       )}
       {recoveryReason && (
         <p data-testid={`${testId}-recovery-reason`} className={toneText.warning}>

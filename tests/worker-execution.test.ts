@@ -99,7 +99,20 @@ async function fixture(stateDirectory?: string) {
     operation,
     ...overrides,
   });
-  return { key, session, dispatcher, output, apply, command };
+  const cancellation = (
+    executionId: string,
+    overrides: Partial<NonNullable<RemoteWireOutput["cancellations"]>[number]> = {},
+  ): NonNullable<RemoteWireOutput["cancellations"]>[number] => ({
+    cancelId: newId(ID_PREFIXES.cancellation),
+    executionId,
+    ...key,
+    authorizationGeneration: 1,
+    runnerToken: "b".repeat(32),
+    policy: "term_then_kill",
+    termWaitMs: 1000,
+    ...overrides,
+  });
+  return { key, session, dispatcher, output, apply, command, cancellation };
 }
 /** 把未上行帧交给宿主并模拟 ACK，返回本批日志帧。 */
 function exchangeLogs(
@@ -448,10 +461,56 @@ test("旧授权代次不得声称成功，且租约动作不终止进程（代�
   f.apply(2, f.output([], [], 2));
   await sleep(500);
   // 旧代次不能报成功；租约动作不发信号，进程继续运行（P4a/P4b 已确认的代价）。
-  const report = f.dispatcher.outgoing(1048576).results[0];
-  expect(report?.phase === "terminal" ? report.outcome : "running").not.toBe("succeeded");
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  // 撤权不是取消：没有人为这次执行下发终止信号，终态只能停在带原因的未知。
+  expect(report.outcome).toBe("unknown");
+  expect(report.payload).toMatchObject({ failureReason: "authorization_revoked" });
   expect(alive(pid)).toBe(true);
   process.kill(pid, "SIGKILL");
+}, 20000);
+
+test("收到取消帧并因此终止的执行报 cancelled，不冒充撤权", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-cancel-reason-"));
+  const f = await fixture(directory);
+  const pidPath = join(directory, "pid");
+  const command = f.command({
+    kind: "shell",
+    command: `echo $$ > '${pidPath}'; exec sleep 30`,
+    cwd: directory,
+    waitMs: 10000,
+  });
+  f.apply(1, f.output([command]));
+  for (let i = 0; i < 200; i++) {
+    const exists = await stat(pidPath).then(
+      () => true,
+      () => false,
+    );
+    if (exists) break;
+    await sleep(10);
+  }
+  const pid = Number(await readFile(pidPath, "utf8"));
+  f.apply(2, { ...f.output(), cancellations: [f.cancellation(command.executionId)] });
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  // 取消结果是确定的失败，不是「结果未知」：进程确实被我们按取消杀掉了。
+  expect(report.outcome).toBe("failed");
+  expect(report.payload).toMatchObject({ failureReason: "cancelled" });
+  expect(alive(pid)).toBe(false);
+}, 20000);
+
+test("运行上限到期终止执行时仍报超时，不把取消的标志借给它", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-runtime-limit-"));
+  const f = await fixture(directory);
+  const command = f.command(
+    { kind: "shell", command: "exec sleep 30", cwd: directory, waitMs: 10000 },
+    {
+      runtimeDeadlineAt: new Date(Date.now() + 1000).toISOString(),
+      maxRuntimeMs: 1000,
+    },
+  );
+  f.apply(1, f.output([command]));
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  expect(report.outcome).toBe("timed_out");
+  expect(report.payload).toMatchObject({ failureReason: "deadline" });
 }, 20000);
 
 function alive(pid: number) {

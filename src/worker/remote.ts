@@ -29,6 +29,11 @@ type Entry = {
   done: boolean;
   /** 不可逆动作已经开始：下发窗口只约束准入，此后不再参与任何判定。 */
   started: boolean;
+  /**
+   * 这条执行收到过取消帧并因此终止：终态原因是 `cancelled`，不是授权被撤回。
+   * 与 `started` 一样是本次执行的事实，换连接不重算。
+   */
+  cancelled: boolean;
   /** waitMs 快照已被服务端收下：不再重发同一快照，等真实退出后覆盖为终态。 */
   snapshotAcked?: boolean;
 };
@@ -470,8 +475,21 @@ export class RemoteDispatcher {
         cancellation.runnerToken
       )
         continue;
-      this.entries.get(cancellation.executionId)?.controller.abort();
-      this.signal(cancellation.executionId, cancellation.policy, cancellation.termWaitMs);
+      const entry = this.entries.get(cancellation.executionId);
+      const run = this.registry.runs.get(cancellation.executionId);
+      entry?.controller.abort();
+      const signal = this.signal(
+        cancellation.executionId,
+        cancellation.policy,
+        cancellation.termWaitMs,
+      );
+      // 只有真的下发了信号才记「因取消而终止」。已经退出或从未 spawn 的执行没有
+      // 被这次取消停掉，终态由真实退出事实自己说话。标记同时落在执行与本次 entry 上：
+      // 前者随执行登记表跨连接保留，后者给当前执行路径用。
+      if (signal !== "none") {
+        if (run) run.cancelled = true;
+        if (entry) entry.cancelled = true;
+      }
     }
     this.mcp.accept(frame.remote.mcp, frame.remote.mcpCursors, frame.remote.authorizations);
     if (frame.mode === "drain") {
@@ -514,6 +532,8 @@ export class RemoteDispatcher {
         controller: run.controller,
         done: false,
         started: false,
+        // 这个执行在上一轮连接里已经被取消过：不把取消事实丢给新的 entry。
+        cancelled: run.cancelled,
         report: { ...identity, phase: "running", drained: false },
       };
       this.entries.set(command.executionId, entry);
@@ -789,7 +809,11 @@ export class RemoteDispatcher {
             runtimeDeadline !== null &&
             run.terminated &&
             this.now() >= runtimeDeadline - SIGNAL_GRACE_MS;
-          if (overRuntime) {
+          if (run.cancelled || entry.cancelled) {
+            // 取消请求下发了终止信号，命令因此停下：终态是失败，原因是取消，不是撤权。
+            outcome = "failed";
+            payload = { kind: "shell", failureReason: "cancelled", partial: payload };
+          } else if (overRuntime) {
             // 运行上限到期：终态是限时，不是下发窗口到期。
             outcome = "timed_out";
             payload = { kind: "shell", failureReason: "deadline", partial: payload };
@@ -886,6 +910,10 @@ export class RemoteDispatcher {
             : entry.controller.signal.aborted
               ? "authorization_revoked"
               : "executor_error";
+        // 已经开始的执行被取消信号停下与授权被撤回是两件事：前者是用户要的结果，
+        // 后者是链路失效。只有前者报 `cancelled`。
+        const cancelStopped =
+          (run.cancelled || entry.cancelled) && entry.started && reason === "authorization_revoked";
         const admissionExpired =
           !entry.started && this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
         const runtimeExpired =
@@ -900,11 +928,14 @@ export class RemoteDispatcher {
             : reason === "executor_error"
               ? "failed"
               : entry.started && reason === "authorization_revoked"
-                ? "unknown"
+                ? cancelStopped
+                  ? "failed"
+                  : "unknown"
                 : "rejected";
         payload = {
           kind: operation.kind,
-          failureReason: admissionExpired || runtimeExpired ? "deadline" : reason,
+          failureReason:
+            admissionExpired || runtimeExpired ? "deadline" : cancelStopped ? "cancelled" : reason,
         };
       }
     } finally {

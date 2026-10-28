@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ExecutionView } from "../src/contracts/remote";
 import {
   executionAttention,
+  executionSegmentKey,
   executionSummary,
   type LeaseFacts,
 } from "../src/components/machine/presentation";
@@ -30,8 +31,8 @@ describe("执行摘要", () => {
     const summaries = executionSummary(demoExecutionRecords);
     const machine = summaries.find((item) => item.machineId === running.machineId)!;
     expect(machine.segments.every((segment) => segment.count > 0)).toBe(true);
-    expect(machine.segments.some((segment) => segment.state === "queued")).toBe(false);
-    expect(machine.segments.some((segment) => segment.state === "dispatched")).toBe(false);
+    expect(machine.segments.some((segment) => segment.key === "queued")).toBe(false);
+    expect(machine.segments.some((segment) => segment.key === "dispatched")).toBe(false);
   });
 
   it("总数、分段计数都与执行视图一致", () => {
@@ -44,9 +45,27 @@ describe("执行摘要", () => {
       expect(summary.total).toBe(views.length);
       expect(summary.segments.reduce((sum, segment) => sum + segment.count, 0)).toBe(summary.total);
       for (const segment of summary.segments) {
-        expect(segment.count).toBe(views.filter((item) => item.state === segment.state).length);
+        expect(segment.count).toBe(
+          views.filter((item) => executionSegmentKey(item) === segment.key).length,
+        );
       }
     }
+  });
+
+  it("failed + cancelled 落到「已取消」段，不并入失败", () => {
+    const failed = demoExecutionRecords.find((execution) => execution.state === "failed")!;
+    const cancelled: ExecutionView = {
+      ...failed,
+      failureReason: "cancelled",
+      result: { kind: failed.operation.kind, failureReason: "cancelled" },
+    };
+    const [summary] = executionSummary([failed, cancelled]);
+    const cancelledSegment = summary.segments.find((segment) => segment.key === "cancelled")!;
+    const failedSegment = summary.segments.find((segment) => segment.key === "failed")!;
+    expect(cancelledSegment.label).toBe("已取消");
+    expect(cancelledSegment.count).toBe(1);
+    expect(failedSegment.count).toBe(1);
+    expect(summary.total).toBe(2);
   });
 });
 

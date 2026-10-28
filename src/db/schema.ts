@@ -873,7 +873,7 @@ export const remoteExecution = sqliteTable(
     ),
     check(
       "remote_execution_check_8",
-      sql`failure_reason IS NULL OR failure_reason IN ('stale_generation','not_holder','authorization_revoked','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
+      sql`failure_reason IS NULL OR failure_reason IN ('stale_generation','not_holder','authorization_revoked','cancelled','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
     ),
     uniqueIndex("remote_execution_holder_instance_id_request_id_unique").on(
       t.holderInstanceId,
@@ -897,6 +897,8 @@ export const remoteExecution = sqliteTable(
     }),
     // 投递帧在同一 immediate 事务里后写，因此 0013 把这条外键写成
     // DEFERRABLE INITIALLY DEFERRED；drizzle 的 schema DSL 不表达该修饰，SQL 才是权威。
+    // 任何重建 remote_execution 的迁移（如 0019）都必须手写保留该修饰，否卿首次下发
+    // 会在帧写入之前撞上外键检查，命令永远发不出去。
     foreignKey({
       columns: [t.machineId, t.dispatchConnectionGeneration, t.dispatchSeq],
       foreignColumns: [

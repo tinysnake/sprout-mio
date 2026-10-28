@@ -719,12 +719,10 @@ try {
     60000,
   );
   const longFinal = await getView(longRun.executionId);
-  assert.notEqual(
-    longFinal.state,
-    "succeeded",
-    "a cancelled long command must not read as success",
-  );
-  assert.equal(longFinal.failureReason, "authorization_revoked");
+  // 用户主动取消不是掤权：执行仍然是终态 failed，但原因必须说「已取消」。
+  assert.equal(longFinal.state, "failed", "a cancelled long command stays a failed terminal");
+  assert.equal(longFinal.failureReason, "cancelled");
+  assert.equal(longFinal.recoveryReason, null, "there is a durable result: nothing is unrecorded");
   assert.equal(processCount(longMarker), 0, "the cancelled process must be gone");
   facts.scenario11 = {
     executionId: longRun.executionId,
@@ -895,8 +893,8 @@ try {
   );
   assert.notEqual(cancelled.cancellation?.exitedAt, null, "a durable result carries the exit time");
   assert.equal(cancelled.cancellation?.failureReason, null);
-  assert.equal(cancelled.state, "unknown", "the execution is no longer running");
-  assert.equal(cancelled.failureReason, "authorization_revoked");
+  assert.equal(cancelled.state, "failed", "the execution is no longer running");
+  assert.equal(cancelled.failureReason, "cancelled");
   assert.equal(cancelled.recoveryReason, null, "there is a durable result: nothing is unrecorded");
   assert.equal(processCount(cancelledMarker), 0, "the killed command group leaves nothing behind");
   const cancelPayload = cancelled.result as {
@@ -905,7 +903,7 @@ try {
     partial?: { exited?: boolean; exitCode?: number | null };
   };
   assert.equal(cancelPayload.kind, "shell");
-  assert.equal(cancelPayload.failureReason, "authorization_revoked");
+  assert.equal(cancelPayload.failureReason, "cancelled");
   // 取消后终态最后一关（不能绕过已撤销的授权）会收起正文本体，这是既有行为；
   // durable result 的存在由上面的 exitedAt 与 recoveryReason=null 证明。
   assert.notEqual(cancelled.cancellation.signalOutcome, "none", "the signal delivery is recorded");
@@ -987,7 +985,8 @@ try {
   );
   assert.notEqual(graceFinal.terminalAt, null, "the execution reaches a terminal state");
   assert.notEqual(graceFinal.state, "running", "the execution does not stay running");
-  assert.notEqual(graceFinal.state, "succeeded", "a killed command must not read as success");
+  assert.equal(graceFinal.state, "failed", "a killed command must not read as success");
+  assert.equal(graceFinal.failureReason, "cancelled", "the reason is the cancel, not a revocation");
   assert.equal(processCount(graceMarker), 0, "the killed command group leaves nothing behind");
   assert.ok(graceSettledMs < 60000, `settled within the derived window (${graceSettledMs}ms)`);
   facts.scenario6b = {
@@ -1142,11 +1141,8 @@ try {
   assert.equal(humanRow.actor_kind, "human", "human cancel records the human actor");
   assert.equal(humanRow.actor_id, userId);
   assert.equal(humanFinal.cancellation?.state, "exited_observed");
-  assert.notEqual(
-    humanFinal.state,
-    "succeeded",
-    "a human-cancelled command must not read as success",
-  );
+  assert.equal(humanFinal.state, "failed", "a human-cancelled command ends as a failed terminal");
+  assert.equal(humanFinal.failureReason, "cancelled", "the human cancel is the stated reason");
   facts.scenario7 = {
     executionId: humanTarget.executionId,
     pid: Number(humanPid),

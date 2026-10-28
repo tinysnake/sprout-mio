@@ -117,6 +117,8 @@ export const REMOTE_FAILURE_REASONS = [
   "stale_generation",
   "not_holder",
   "authorization_revoked",
+  // 收到取消请求并因此终止：终态仍是 failed，原因与撤权分开。
+  "cancelled",
   "deadline",
   "worker_lost",
   "executor_error",
