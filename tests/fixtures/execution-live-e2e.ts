@@ -744,22 +744,21 @@ try {
   await until(() => worker.exitCode !== null, "worker stopped for restart");
   assert(alive(disconnectPid), "disconnect must not kill the running child process");
   const cursorBeforeDrop = await readLog(disconnect.executionId, null, 65536);
-  const unknownObservation: { state?: string; failureReason?: string | null } = {};
-  await until(
-    async () => {
-      const view = await getView(disconnect.executionId);
-      if (view.state === "unknown") {
-        unknownObservation.state = view.state;
-        unknownObservation.failureReason = view.failureReason;
-        return true;
-      }
-      return false;
-    },
-    "execution becomes unknown while the Worker is gone",
-    60000,
+  // 断联只影响新鲜度，不产生终态：每次读取都会跑 expireExecutions，状态必须一直是 running。
+  // 命令可能还在跑，也可能已经落盘退出，这两种事实都只能由 Worker 归约后交回。
+  const whileWorkerDown: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const view = await getView(disconnect.executionId);
+    whileWorkerDown.push(view.state);
+    assert.equal(view.terminalAt, null, "a lost connection must not produce a terminal");
+    await sleep(250);
+  }
+  assert.deepEqual(
+    [...new Set(whileWorkerDown)],
+    ["running"],
+    "the execution must stay non-terminal while the Worker is gone",
   );
-  assert.equal(unknownObservation.state, "unknown");
-  assert.equal(processCount(disconnectMarker), 1, "unknown must not re-run the command");
+  assert.equal(processCount(disconnectMarker), 1, "no terminal state may re-run the command");
   const beforeRestartExecutions = (
     sqlite
       .prepare("SELECT COUNT(*) AS n FROM remote_execution WHERE request_id=?")
@@ -802,14 +801,14 @@ try {
   };
   facts.scenario8 = {
     executionId: disconnect.executionId,
-    stateWhileWorkerDown: unknownObservation.state,
-    failureReasonWhileWorkerDown: unknownObservation.failureReason,
+    stateWhileWorkerDown: "running",
+    failureReasonWhileWorkerDown: null,
     processCountWhileDown: processCount(disconnectMarker),
     pidBeforeRestart: disconnectPid,
     pidAfterRestart: disconnectPid,
     implicitRerun: false,
   };
-  pass("S8 a Worker restart makes the execution unknown without re-running the command");
+  pass("S8 a Worker restart leaves the execution non-terminal until a real exit fact arrives");
 
   // —— 场景 6：分身经工具面取消另一条长命令。 ——
   const cancelledMarker = markerOf();
@@ -1156,7 +1155,13 @@ try {
   const afterRestart = await withActiveRun(restartRunId, () => getView(restartTarget.executionId));
   assert.equal(afterRestart.requestId, restartTarget.requestId, "facts survive the restart");
   assert.equal(afterRestart.createdAt, restartTarget.createdAt);
-  assert.equal(afterRestart.state, "unknown", "a boot change makes the execution unconfirmable");
+  // 宿主重启不产生终态：命令可能还在跑，结果也可能已经落盘，只有 Worker 的归约事实能收尾。
+  assert.equal(afterRestart.terminalAt, null, "a boot change must not terminalise the execution");
+  assert.equal(
+    afterRestart.state,
+    "running",
+    "the execution stays non-terminal across the restart",
+  );
   assert.equal(processCount(restartMarker), 1, "a server restart must not re-dispatch");
   const persistedLog = await withActiveRun(restartRunId, () =>
     readLog(restartTarget.executionId, null, 4096),

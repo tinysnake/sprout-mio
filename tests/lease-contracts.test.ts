@@ -255,6 +255,7 @@ describe("P4b shared contracts", () => {
       payloadHash: "a".repeat(64),
       terminalAt: at,
       failureReason: null,
+      recoveryReason: null,
       result,
       logState: "none",
       producedThroughSequence: null,

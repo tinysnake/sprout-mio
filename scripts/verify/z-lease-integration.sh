@@ -7,7 +7,9 @@ source "$(dirname "$0")/lib/ensure-worker-artifact.sh"
 ensure_worker_artifact
 node --input-type=module <<'NODE'
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+/** 第三层 runner 是进程组组长：命令 pid 自己的 pgid 才是要收的组。 */
+const processGroupOf = (pid) => { const r = spawnSync('ps', ['-o', 'pgid=', '-p', String(pid)], {encoding:'utf8'}); const g = Number(r.stdout.trim()); return Number.isSafeInteger(g) && g > 1 ? g : null; };
 import { createServer } from 'node:net';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, openSync, closeSync, unlinkSync, existsSync } from 'node:fs';
@@ -424,7 +426,7 @@ try {
   await page.goBack(); await page.waitForURL(`**/projects/${projectId}/settings`);
   await page.goForward(); await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`); await page.reload();
   pass('production stable URL refresh back/forward and 390/900/1200 light/dark');
-  process.kill(-pid,'SIGTERM'); cleanupPid=undefined;
+  { const group=processGroupOf(pid); if(group) process.kill(-group,'SIGTERM'); } cleanupPid=undefined;
   await context.close(); await browser.close(); browser=undefined;
   console.log(`Evidence: ${evidence}`);
 } catch(error) {
@@ -453,7 +455,7 @@ try {
     } catch { console.log('TIMING unavailable'); } finally { timingDb.close(); }
   }
   await browser?.close();
-  if(cleanupPid) {try { process.kill(-cleanupPid,'SIGTERM'); } catch {}}
+  if(cleanupPid) {try { const group=processGroupOf(cleanupPid); if(group) process.kill(-group,'SIGTERM'); } catch {}}
   for(const child of children.reverse()) if(child.exitCode===null) child.kill('SIGTERM');
   await Promise.all(children.map(c=>Promise.race([c.done,new Promise(r=>setTimeout(r,3000))])));
   for(const child of children) if(child.exitCode===null) child.kill('SIGKILL');

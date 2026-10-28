@@ -550,7 +550,14 @@ try {
     runnerToken: string | null;
     pid: number;
   };
-  assert.equal(claim.pid, detachedPid, "claim records the real child pid");
+  // 第三层把「执行」与「命令」分成两个 pid：claim.pid 是 runner（进程组组长），
+  // runner.json.childPid 才是命令本身。两者都要与真实进程一致。
+  const runnerClaim = JSON.parse(
+    readFileSync(join(claimsRoot, detached.executionId, "runner.json"), "utf8"),
+  ) as { pid: number; childPid: number | null; token: string };
+  assert.equal(runnerClaim.childPid, detachedPid, "runner claim records the real child pid");
+  assert.equal(runnerClaim.pid, claim.pid, "durable claim points at the runner process");
+  assert.equal(runnerClaim.token, runnerToken, "runner token persists in the runner claim");
   assert.equal(claim.runnerToken, runnerToken, "runner token persists in the durable claim");
   await stop(worker);
   await until(() => worker.exitCode !== null, "worker stop for restart");

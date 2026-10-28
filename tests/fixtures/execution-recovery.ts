@@ -303,7 +303,7 @@ assert.throws(
 );
 pass("跨执行游标被 execution_log_cursor_stale 拒绝，不静默当续读");
 
-// 3. 恢复归约：失联写 unknown 后，带 token 的新会话把 unknown 归约为 succeeded。
+// 3. 连接丢失不写终态：执行留在非终态位点，等 Worker 带 token 的归约事实。
 restoreConnection();
 function restoreConnection() {
   sqlite
@@ -322,14 +322,35 @@ const lostRow = db
   .from(remoteExecution)
   .where(eq(remoteExecution.id, submitted.executionId))
   .get()!;
-assert.equal(lostRow.state, "unknown");
+assert.equal(lostRow.terminalAt, null, "失联不产生终态，命令可能还在跑");
+assert.equal(lostRow.failureReason, null, "失联不写 worker_lost");
 assert.equal(lostRow.runnerToken, command.runnerToken, "失联不清除 runner token");
-pass("已下发却失联保留 runner token，归约仍有据可依");
+pass("已下发却失联保留非终态位点与 runner token，不写 worker_lost");
 
+// 3b. Worker 归约出的 unknown 带原因，页面与 execution_get 都透出该字符串。
+const unknownReport = {
+  ...identity,
+  runnerToken: command.runnerToken!,
+  observedState: "unknown" as const,
+  observedReason: "child-exited-without-result" as const,
+  exitCode: null,
+  signal: null,
+  observedExitedAt: null,
+  producedThroughSequence: null,
+  claimEvidenceAt: new Date(Date.now() - 60000).toISOString(),
+};
+applyExecutionRecovery(unknownReport, { session, now: new Date(), requestId: req() });
+const unknownView = getExecution({ ...key, executionId: submitted.executionId }, ctx);
+assert.equal(unknownView.state, "unknown");
+assert.equal(unknownView.recoveryReason, "child-exited-without-result");
+pass("Worker 归约的 unknown 落 recovery_reason，不伪装成宿主猜测");
+
+// 3c. runner result 到达后，unknown 被提升为真实终态（单向，且清空原因）。
 const recovery = {
   ...identity,
   runnerToken: command.runnerToken!,
   observedState: "exited" as const,
+  observedReason: null,
   exitCode: 0,
   signal: null,
   observedExitedAt: new Date(Date.now() - 1000).toISOString(),
@@ -340,8 +361,9 @@ applyExecutionRecovery(recovery, { session, now: new Date(), requestId: req() })
 const recovered = getExecution({ ...key, executionId: submitted.executionId }, ctx);
 assert.equal(recovered.state, "succeeded");
 assert.equal(recovered.failureReason, null);
+assert.equal(recovered.recoveryReason, null);
 assert.equal(recovered.terminalAt !== null, true);
-pass("带 token 的恢复把 unknown 单向归约为 succeeded");
+pass("带 token 的 runner result 把 unknown 单向提升为 succeeded");
 
 // 反证 1：succeeded 不被后续报告改写。
 applyExecutionRecovery(

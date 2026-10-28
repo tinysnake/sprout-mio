@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -92,6 +92,12 @@ function pass(name: string) {
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 let server: ReturnType<typeof spawn> | undefined;
 let ownedProcessPid: number | undefined;
+/** 第三层 runner 是进程组组长：命令的 pid 不再是组长，按它自己的 pgid 找组。 */
+function processGroupOf(pid: number): number | null {
+  const ps = spawnSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" });
+  const pgid = Number(ps.stdout.trim());
+  return Number.isSafeInteger(pgid) && pgid > 1 ? pgid : null;
+}
 async function control(
   action: "issue" | "revoke" | "cleanup",
   runId?: string,
@@ -556,7 +562,10 @@ try {
     .getByTestId(`lease-row-${machineId}`)
     .first()
     .screenshot({ path: resolve(".verify/p4b-fence-force/after-force-dark.png") });
-  process.kill(-survivorPid, "SIGTERM");
+  {
+    const group = processGroupOf(survivorPid);
+    if (group) process.kill(-group, "SIGTERM");
+  }
   ownedProcessPid = undefined;
   facts.force = {
     workerSigkill: true,
@@ -591,7 +600,8 @@ try {
 } finally {
   if (ownedProcessPid) {
     try {
-      process.kill(-ownedProcessPid, "SIGTERM");
+      const group = processGroupOf(ownedProcessPid);
+      if (group) process.kill(-group, "SIGTERM");
     } catch {
       /* Already exited. */
     }

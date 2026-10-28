@@ -11,6 +11,7 @@ import {
   deadlineFacts,
   executionTarget,
   failureReasonLabel,
+  recoveryReasonLabel,
   resultSummary,
   shortExecutionId,
   shortRunId,
@@ -163,6 +164,7 @@ export function RemoteExecutionCard({
 }) {
   const state = EXECUTION_STATE_LABELS[execution.state];
   const reason = failureReasonLabel(execution.failureReason);
+  const recoveryReason = recoveryReasonLabel(execution.recoveryReason);
   const summary = resultSummary(execution);
   const holderName = holderNames[execution.holderInstanceId] ?? "未知分身";
   const deadlines = deadlineFacts(execution);
@@ -258,6 +260,11 @@ export function RemoteExecutionCard({
       {reason && (
         <p data-testid={`${testId}-reason`} className={toneText.danger}>
           失败原因：{reason}
+        </p>
+      )}
+      {recoveryReason && (
+        <p data-testid={`${testId}-recovery-reason`} className={toneText.warning}>
+          未知的原因：{recoveryReason}
         </p>
       )}
       {uncertain && (
