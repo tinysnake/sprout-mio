@@ -70,16 +70,17 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 ### 6. 执行详情、运行状态、日志读取、退出结果和取消反馈的设计及演示
 
-执行卡片并列展示下发窗口与运行上限两条事实，日志查看器按游标续读并区分 `none/partial/full/gap/truncated`，取消控件有六态且送达前不显示已停止。演示场景 `src/dev/scenes/machine/executions.tsx` 用 fixture 日志复现这些状态。
+Human 评审后远端操作区改成按机器汇总的计数视图：默认每台机器一行，给出请求总数与各状态计数、分段条与图例，零值状态不出现；只有仍占用机器且跑得过久的执行才进入「需要处理」并给出取消入口；执行卡片、日志查看器、退出结果与取消六态收进「调试详情」抽屉。日志查看器按游标续读并区分 `none/partial/full/gap/truncated`，取消控件送达前不显示已停止。演示场景 `src/dev/scenes/machine/executions.tsx` 与 `src/dev/scenes/machine/lease-fixtures.ts` 用 fixture 复现这些状态，含长占用与租约已释放两条事实。
 
-- 实现提交 `7f8a9d0`。
+- 实现提交 `7f8a9d0`、`4d7c915`、`981882d`、`89e209f`。
+- 反证：默认层没有执行卡片；租约已释放的执行不给取消按钮，因为那时取消发不到 Worker；`ad` 的「不提供隐式重跑」断言收窄为只认重跑原命令的措辞，不把「重试取消」当成重跑。
 - 重跑：`bash scripts/verify/ad-execution-log-ui.sh`。
 
 ### 7. 日志续读、保留限制、断线、重连与结果未知的呈现，明确信息是否完整
 
 `isIncompleteLogState` 决定「不完整」提示；连接状态来自真实列表读取与浏览器在线状态，不硬编码；断线时读取位点不前进，重连后从本地游标继续；`unknown` 与 `timed_out` 显示不可重跑的说明。
 
-- 实现提交 `134e443`、`e00e991`。
+- 实现提交 `134e443`、`e00e991`、`4d7c915`。
 - 反证：Worker 还有未确认产出时页面显示「日志不完整」，封口且全部确认后才显示「日志完整」；断开网络后读取位点不前进。
 - 重跑：`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/ad-execution-log-ui.sh`、`bash scripts/verify/am-execution-log-honesty.sh`。
 
@@ -87,7 +88,7 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 执行列表按执行主键定位，刷新页面后重新从服务端取同一批执行与取消事实，合并规则按推进程度取新，不会把本地 `requested` 快照覆盖服务端的 `delivered`；取消后不改写执行终态，`unknown` 上没有任何隐式重跑入口。
 
-- 实现提交 `134e443`。
+- 实现提交 `134e443`、`4d7c915`。
 - 反证：刷新后同一 `executionId` 仍可展开、取消事实存活、另一用户读同一执行得到 `not_found`。
 - 重跑：`bash scripts/verify/ag-execution-wiring-ui.sh`。
 
