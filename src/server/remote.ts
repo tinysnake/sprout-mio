@@ -164,16 +164,19 @@ function executionView(row: Execution, provisionalResult = false): ExecutionView
     payloadHash: row.payloadHash,
     terminalAt: row.terminalAt?.toISOString() ?? null,
     failureReason: row.failureReason,
+    recoveryReason: row.recoveryReason ?? null,
     // Agent 读视图的契约是：未落终态就没有结果。Web 列表额外允许 waitMs 快照
     // （exited:false）用于显示 pid，但执行本身仍是 running；一旦落成 unknown/failed，
     // 快照不再是这次执行的结果，不能拿它冒充终态正文。
     result: (() => {
       const payload = result?.payloadJson;
+      // waitMs 快照没有 `exited`；恢复事实带 `recovered`，它不是快照，不能当成空结果。
       const provisional =
         payload !== null &&
         payload !== undefined &&
         payload.kind === "shell" &&
         !("failureReason" in payload) &&
+        !("recovered" in payload) &&
         !payload.exited;
       if (provisional && row.terminalAt !== null) return null;
       return provisionalResult || row.terminalAt !== null ? (payload ?? null) : null;
@@ -470,7 +473,27 @@ export function applyExecutionRecovery(
       .set({ producedThroughSeq: produced, logState: logStateAfterProduce(row, produced) })
       .where(eq(remoteExecution.id, row.id))
       .run();
-  if (recovery.observedState === "unknown" || recovery.observedState === "running") return;
+  // 任何被接受的归约报告都算「这一代 Worker 交代过这条执行」：宿主侧的丢失宽限据此
+  // 判断自己该不该替它收尾，不能把 Worker 正在看的执行也写成 unknown。
+  db.update(remoteExecution)
+    .set({ recoveryReportedAt: ctx.now })
+    .where(eq(remoteExecution.id, row.id))
+    .run();
+  if (recovery.observedState === "running") return;
+  if (recovery.observedState === "unknown") {
+    // Worker 归约出的 unknown 也是终态，但它是「带原因的未知」，不是宿主猜的 worker_lost；
+    // 它仍可被后来带 runner result 的恢复事实提升，见下方单向归约。
+    db.update(remoteExecution)
+      .set({
+        state: "unknown",
+        failureReason: "worker_lost",
+        recoveryReason: recovery.observedReason ?? "child-exited-without-result",
+        terminalAt: row.terminalAt ?? ctx.now,
+      })
+      .where(eq(remoteExecution.id, row.id))
+      .run();
+    return;
+  }
   // 证据不足时不归约：unknown 保留，不当作成功或失败。
   if (recovery.claimEvidenceAt === null || recovery.observedExitedAt === null) return;
   if (recovery.observedExitedAt < recovery.claimEvidenceAt) return;
@@ -479,7 +502,12 @@ export function applyExecutionRecovery(
   if (recovery.exitCode === null && recovery.signal === null) {
     // runner 只报了退出时间，没有退出事实：保留可恢复标记，不猜终态。
     db.update(remoteExecution)
-      .set({ state: "unknown", failureReason: "worker_lost", terminalAt: ctx.now })
+      .set({
+        state: "unknown",
+        failureReason: "worker_lost",
+        recoveryReason: "child-exited-without-result",
+        terminalAt: ctx.now,
+      })
       .where(eq(remoteExecution.id, row.id))
       .run();
     return;
@@ -489,43 +517,86 @@ export function applyExecutionRecovery(
     .from(executionResult)
     .where(eq(executionResult.executionId, row.id))
     .get();
-  if (!existing) {
+  // waitMs 快照只是「已启动」的观察，不是结果：恢复事实到了就用真实退出覆盖它，
+  // 否则终态执行会带着一份 exited:false 的正文，页面只能把它当空结果。
+  const provisionalExisting =
+    existing !== undefined &&
+    existing.payloadJson.kind === "shell" &&
+    !("failureReason" in existing.payloadJson) &&
+    !existing.payloadJson.exited;
+  if (!existing || provisionalExisting) {
     const outcome = succeeded ? ("succeeded" as const) : ("failed" as const);
     // 恢复事实只带退出码与信号，不重写原本就未知的输出正文；`recovered: true` 让视图与 UI
     // 知道这份结果来自恢复而不是 runner 的原生报告，不把空正文当成「没有输出」。
-    const payload = succeeded
+    // 只有 shell 有 runner result；其余操作没有第三层，不能凭空造退出正文。
+    const recoveredPid = typeof recovery.pid === "number" ? recovery.pid : null;
+    const shell = row.operationJson.kind === "shell" && recoveredPid !== null;
+    const recoveredSuccess = shell
       ? {
-          kind: row.operationJson.kind,
-          recovered: true,
+          kind: "shell" as const,
+          recovered: true as const,
+          pid: recoveredPid!,
+          // 正文已随上一个 Worker 丢失：`truncated` 是诚实说法，不是「没有输出」。
+          exited: true,
           exitCode: 0,
-          signal: null,
+          stdout: "",
+          stderr: "",
+          truncated: true,
         }
-      : {
+      : null;
+    const payload = succeeded
+      ? (recoveredSuccess ?? {
           kind: row.operationJson.kind,
           recovered: true,
-          exitCode: recovery.exitCode,
-          signal: recovery.signal,
           failureReason: failureReason!,
-        };
-    db.insert(executionResult)
-      .values({
-        executionId: row.id,
-        projectId: row.projectId,
-        machineId: row.machineId,
-        authorizationGeneration: row.authorizationGeneration,
-        holderInstanceId: row.holderInstanceId,
-        payloadHash: payloadHash(payload),
-        outcome,
-        payloadJson: payload as never,
-        recordedAt: ctx.now,
-      })
-      .onConflictDoNothing()
-      .run();
+        })
+      : shell
+        ? {
+            kind: "shell" as const,
+            recovered: true as const,
+            failureReason: failureReason!,
+            partial: {
+              ...recoveredSuccess!,
+              exitCode: recovery.exitCode ?? 1,
+            },
+          }
+        : {
+            kind: row.operationJson.kind,
+            recovered: true,
+            failureReason: failureReason!,
+          };
+    if (provisionalExisting)
+      db.update(executionResult)
+        .set({
+          payloadHash: payloadHash(payload),
+          outcome,
+          payloadJson: payload as never,
+          recordedAt: ctx.now,
+        })
+        .where(eq(executionResult.executionId, row.id))
+        .run();
+    else
+      db.insert(executionResult)
+        .values({
+          executionId: row.id,
+          projectId: row.projectId,
+          machineId: row.machineId,
+          authorizationGeneration: row.authorizationGeneration,
+          holderInstanceId: row.holderInstanceId,
+          payloadHash: payloadHash(payload),
+          outcome,
+          payloadJson: payload as never,
+          recordedAt: ctx.now,
+        })
+        .onConflictDoNothing()
+        .run();
   }
   db.update(remoteExecution)
     .set({
       state: succeeded ? "succeeded" : "failed",
       failureReason,
+      // runner result 到达即推翻「未知」：这是唯一允许改写 unknown/worker_lost 的路径。
+      recoveryReason: null,
       drainedAt: row.drainedAt ?? ctx.now,
       terminalAt: ctx.now,
     })
@@ -1274,7 +1345,10 @@ export function applyRemoteExchange(
       .where(eq(executionResult.executionId, row.id))
       .get();
     let disposition: "accepted" | "ignored_terminal" = "accepted";
-    if (row.terminalAt) {
+    // unknown/worker_lost 不是不可推翻的结论：真正的退出报告到了就归约成真实终态。
+    // 已被 exited/timed_out/canceled/failed 封住的执行仍按 ignored_terminal 处理。
+    const promotable = row.state === "unknown" && row.failureReason === "worker_lost";
+    if (row.terminalAt && !promotable) {
       if (
         previous &&
         previous.payloadHash !== hash &&
@@ -1317,6 +1391,7 @@ export function applyRemoteExchange(
             drainedAt: ctx.now,
             terminalAt: ctx.now,
             failureReason: "failureReason" in payload ? payload.failureReason : null,
+            recoveryReason: null,
           })
           .where(eq(remoteExecution.id, row.id))
           .run();

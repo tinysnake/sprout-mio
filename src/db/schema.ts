@@ -18,6 +18,7 @@ import type { CapabilitySnapshot } from "../contracts/machine";
 import {
   EXECUTION_LOG_STATES,
   REMOTE_EXECUTION_STATES,
+  EXECUTION_RECOVERY_REASONS,
   REMOTE_FAILURE_REASONS,
   REMOTE_OUTCOMES,
   CANCELLATION_FAILURE_REASONS,
@@ -835,6 +836,12 @@ export const remoteExecution = sqliteTable(
     drainedAt: integer("drained_at", { mode: "timestamp_ms" }),
     terminalAt: integer("terminal_at", { mode: "timestamp_ms" }),
     failureReason: text("failure_reason", { enum: REMOTE_FAILURE_REASONS }),
+    // 恢复归约给出的 unknown 原因。取值由 contracts/remote 的枚举约束，不在这里再写 CHECK：
+    // SQLite 加检查约束要重建整张表，而它已被结果、日志、取消三张表按复合键引用。
+    recoveryReason: text("recovery_reason", { enum: EXECUTION_RECOVERY_REASONS }),
+    // 最近一次被接受、且来自当前或更新连接代次的归约报告时间。过期判定只认这个事实，
+    // 不把「没收到任何报告」和「报告说 running」混为一谈。
+    recoveryReportedAt: integer("recovery_reported_at", { mode: "timestamp_ms" }),
   },
   (t) => [
     check(

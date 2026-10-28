@@ -96,6 +96,7 @@ const executionBase = {
   drainedAt: "2026-10-18T07:14:42.000Z",
   payloadHash: "a".repeat(64),
   logState: "none" as const,
+  recoveryReason: null,
   producedThroughSequence: null,
   acknowledgedThroughSequence: null,
   availableFromSequence: null,

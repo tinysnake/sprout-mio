@@ -87,7 +87,7 @@ export default defineConfig({
   pack: [
     {
       name: "worker",
-      entry: ["src/worker/main.ts"],
+      entry: ["src/worker/main.ts", "src/worker/runner.mjs"],
       tsconfig: "tsconfig.worker.json",
       outDir: "dist/worker",
       deps: { alwaysBundle: [/^effect(?:\/|$)/, /^zod(?:\/|$)/] },

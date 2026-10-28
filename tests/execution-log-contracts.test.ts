@@ -434,6 +434,7 @@ describe("execution log and cancellation contracts", () => {
       payloadHash: "d".repeat(64),
       terminalAt: at,
       failureReason: null,
+      recoveryReason: null,
       result: {
         kind: "shell",
         pid: 42,

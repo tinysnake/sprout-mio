@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import type { CapabilitySnapshot, DirectoryObservation } from "../contracts/machine";
 import { EXECUTION_LOG_FRAMES_PER_EXCHANGE, remoteReportSchema } from "../contracts/remote";
 import type {
@@ -137,6 +139,17 @@ class AdmissionError extends Error {
   }
 }
 type SignalOutcome = "term_delivered" | "kill_delivered" | "none";
+/**
+ * 第三层 runner 的入口文件。打包后的 Worker 是 `dist/worker/main.js`，旁边是 `runner.js`；
+ * 源码（单测经 tsx 直接跑 src）同目录是 `runner.mjs`，node 能直接执行，不需要额外 loader。
+ */
+function runnerEntry(): string | null {
+  for (const candidate of ["./runner.js", "./runner.mjs"]) {
+    const path = fileURLToPath(new URL(candidate, import.meta.url));
+    if (existsSync(path)) return path;
+  }
+  return null;
+}
 /** 先 TERM 整个进程组，宽限后 KILL；只报告 OS 是否接受信号调用。 */
 function terminateGroup(pid: number, policy: "term_then_kill" | "kill", graceMs: number) {
   if (policy === "kill") {
@@ -192,6 +205,26 @@ export class RemoteDispatcher {
     this.mcp.bind(session);
     // 进程重启后的遗留执行：装回 claim 与未确认帧，再由恢复事实与日志帧交代。
     this.registry.restore();
+  }
+  /**
+   * shell 走 runner 包装：它先落 claim（pid + token），命令退出后再落 result。
+   * 没有 state-dir 或找不到 runner 时退回直接 spawn：行为与以前一致，但少了第三层，
+   * 此时重启后的归约只能报 unknown。
+   */
+  private shellCommand(command: RemoteCommand, shellPath: string, text: string) {
+    const entry = runnerEntry();
+    const stateDirectory = this.registry.store.stateDirectory;
+    if (!entry || !stateDirectory) return { file: shellPath, args: ["-lc", text], env: undefined };
+    return {
+      file: process.execPath,
+      args: [entry, command.executionId, command.runnerToken ?? "", stateDirectory, shellPath],
+      // 命令正文不进 argv：runner 自己的命令行不该出现第二条同名命令。
+      env: { ...process.env, SPROUT_RUNNER_COMMAND: text },
+    };
+  }
+  /** 回报给工具面的 pid 是命令本身的 pid；拿不到时才退回 runner 的 pid。 */
+  private shellPid(executionId: string, fallback: number) {
+    return this.registry.store.runnerClaim(executionId)?.childPid ?? fallback;
   }
   get admissionClosed() {
     return this.closed;
@@ -526,9 +559,11 @@ export class RemoteDispatcher {
         const shell = this.capability.shells.find((shell) => shell.probe.kind === "success");
         if (!shell) throw new AdmissionError("capability_unavailable");
         this.gate(entry);
-        const child = spawn(shell.path, ["-lc", operation.command], {
+        const launched = this.shellCommand(entry.command, shell.path, operation.command);
+        const child = spawn(launched.file, launched.args, {
           cwd: operation.cwd,
           detached: true,
+          env: launched.env,
           stdio: ["ignore", "pipe", "pipe"],
         });
         entry.started = true;
@@ -565,9 +600,17 @@ export class RemoteDispatcher {
           child.once("error", reject);
           child.once("exit", (code, signal) => {
             exited = true;
-            exitCode = code;
-            exitSignal = signal;
-            this.registry.markExit(run, code, signal);
+            // runner 在退出前已把 result.json 落盘：它才是退出码与信号的原生事实。
+            // 没落盘（被杀在写结果之前）就只能用本进程观测到的 wrapper 退出，不猜。
+            const recorded = this.registry.store.runnerResult(entry.command.executionId);
+            if (recorded) {
+              exitCode = recorded.exitCode;
+              exitSignal = recorded.signal;
+            } else {
+              exitCode = code;
+              exitSignal = signal;
+            }
+            this.registry.markExit(run, exitCode, exitSignal);
             resolve();
           });
         });
@@ -616,7 +659,7 @@ export class RemoteDispatcher {
             outcome: "succeeded",
             payload: {
               kind: "shell",
-              pid: child.pid!,
+              pid: this.shellPid(entry.command.executionId, child.pid!),
               exited: false,
               exitCode: null,
               stdout: boundedText(stdout, 65536).text,
@@ -664,7 +707,7 @@ export class RemoteDispatcher {
           const errorOutput = boundedText(stderr, 8192);
           payload = {
             kind: "shell",
-            pid: child.pid!,
+            pid: this.shellPid(entry.command.executionId, child.pid!),
             exited: true,
             exitCode: exitCode ?? (exitSignal ? 128 : 1),
             stdout: output.text,

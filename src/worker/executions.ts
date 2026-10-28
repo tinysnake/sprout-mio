@@ -34,6 +34,35 @@ export type DurableClaim = {
   signal: string | null;
   producedThroughSequence: number | null;
 };
+/** Runner 起命令前写的 fence 记录：执行端自己的 pid 与 token，不依赖宿主内存。 */
+export type RunnerClaim = {
+  executionId: string;
+  pid: number;
+  childPid: number | null;
+  token: string;
+  startedAt: string;
+};
+/** Runner 在子进程退出后写的唯一结果。它存在就意味着这次执行有确定终态。 */
+export type RunnerResult = {
+  executionId: string;
+  exitCode: number | null;
+  signal: string | null;
+  exitedAt: string;
+};
+/** 恢复归约的结论：只消费磁盘事实，不把「查不到」当成没跑过。 */
+export type ObservedRun = {
+  state: ExecutionRecovery["observedState"];
+  reason: NonNullable<ExecutionRecovery["observedReason"]> | null;
+};
+function readable<T>(path: string, accept: (value: T) => boolean): T | null {
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as T;
+    return accept(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 export type Run = {
   claim: DurableClaim;
   log: ExecutionLog;
@@ -84,10 +113,34 @@ function remove(path: string) {
  */
 export class ExecutionStore {
   constructor(private readonly directory?: string) {}
+  /** runner 进程需要真实路径：它就是要把 claim 与 result 写进这个目录。 */
+  get stateDirectory() {
+    return this.directory ?? null;
+  }
   private executionDirectory(executionId: string) {
     const path = join(this.directory!, "executions", executionId);
     privateDirectory(path);
     return path;
+  }
+  runnerClaim(executionId: string): RunnerClaim | null {
+    if (!this.directory) return null;
+    const path = join(this.directory, "executions", executionId, "runner.json");
+    return readable<RunnerClaim>(
+      path,
+      (value) => value.executionId === executionId && Number.isSafeInteger(value.pid),
+    );
+  }
+  runnerResult(executionId: string): RunnerResult | null {
+    if (!this.directory) return null;
+    const path = join(this.directory, "executions", executionId, "result.json");
+    return readable<RunnerResult>(
+      path,
+      (value) =>
+        value.executionId === executionId &&
+        (value.exitCode === null || Number.isInteger(value.exitCode)) &&
+        typeof value.exitedAt === "string" &&
+        Number.isFinite(Date.parse(value.exitedAt)),
+    );
   }
   claims(): DurableClaim[] {
     if (!this.directory) return [];
@@ -132,6 +185,8 @@ export class ExecutionStore {
     const directory = join(this.directory, "executions", executionId);
     remove(join(directory, "claim.json"));
     remove(join(directory, "frames.jsonl"));
+    remove(join(directory, "runner.json"));
+    remove(join(directory, "result.json"));
   }
   appendFrame(executionId: string, frame: LogFrameDraft) {
     if (!this.directory) return;
@@ -164,15 +219,19 @@ export class ExecutionStore {
     renameSync(temporary, path);
   }
 }
-/** 只报真实观测：进程不存在但本机没有退出事实时是 unknown，不是 exited。 */
-const observed = (run: Run): ExecutionRecovery["observedState"] => {
-  if (run.exited) return "exited";
-  if (run.claim.pid === 0) return "unknown";
+/** 归约顺序就是 P0 的承诺：result 存在才是 exited；pid 活着才是 running；否则 unknown 带原因。 */
+const observed = (run: Run, runnerClaim: RunnerClaim | null): ObservedRun => {
+  if (run.exited) return { state: "exited", reason: null };
+  // pid 0 表示宿主连 spawn 都没兑现：没有 fence 记录，这不是「跑了但不知道结果」。
+  if (run.claim.pid === 0) return { state: "unknown", reason: "no-fence-record" };
+  // token 对不上说明这条 pid 事实不是我们发的那次执行产生的，不能拿来认领。
+  if (runnerClaim && run.claim.runnerToken && runnerClaim.token !== run.claim.runnerToken)
+    return { state: "unknown", reason: "no-fence-record" };
   try {
     process.kill(run.claim.pid, 0);
-    return "running";
+    return { state: "running", reason: null };
   } catch {
-    return "unknown";
+    return { state: "unknown", reason: "child-exited-without-result" };
   }
 };
 /**
@@ -210,7 +269,31 @@ export class ExecutionRegistry {
         owningAttempt: null,
         order: this.runs.size,
       });
+      this.adoptResult(this.runs.get(claim.executionId)!);
     }
+  }
+  /**
+   * 第三层归约：runner 的 result 文件是终态的唯一依据。上一代进程死在交报告之前也没关系，
+   * 只要命令真的退出了，磁盘上就有结果；没有结果就不猜。每次交代前重读，不缓存。
+   */
+  adoptResult(run: Run): boolean {
+    if (run.exited) return true;
+    const result = this.store.runnerResult(run.claim.executionId);
+    if (!result) return false;
+    const claim = this.store.runnerClaim(run.claim.executionId);
+    if (claim && run.claim.runnerToken && claim.token !== run.claim.runnerToken) return false;
+    const exitedAt = Date.parse(result.exitedAt);
+    if (!Number.isFinite(exitedAt) || exitedAt < run.claim.claimedAt) return false;
+    run.exited = true;
+    run.exitCode = result.exitCode;
+    run.signal = result.signal;
+    run.exitedAt = exitedAt;
+    run.done = true;
+    run.claim.exitCode = result.exitCode;
+    run.claim.signal = result.signal;
+    run.claim.exitedAt = exitedAt;
+    this.store.saveClaim(run.claim);
+    return true;
   }
   create(command: RemoteCommand): Run {
     const existing = this.runs.get(command.executionId);
@@ -295,7 +378,7 @@ export class ExecutionRegistry {
       if (!run) continue;
       run.reported.set(
         session.attemptId,
-        `${fact.observedState}:${run.exitedAt ?? ""}:${run.log.producedThrough}`,
+        `${fact.observedState}:${fact.observedReason ?? ""}:${run.exitedAt ?? ""}:${run.log.producedThrough}`,
       );
     }
   }
@@ -327,8 +410,11 @@ export class ExecutionRegistry {
       // token 只能来自宿主随命令下发的值；没有 token 就不报，避免伪造恢复事实。
       if (run.claim.runnerToken === null) continue;
       if (run.claim.claimedAt === 0) continue;
-      const state = observed(run);
-      const stamp = `${state}:${run.exitedAt ?? ""}:${run.log.producedThrough}`;
+      // 在每次交代前重读磁盘：孤儿进程可能在两次 exchange 之间才退出并落盘结果。
+      this.adoptResult(run);
+      const seen = observed(run, this.store.runnerClaim(run.claim.executionId));
+      const state = seen.state;
+      const stamp = `${state}:${seen.reason ?? ""}:${run.exitedAt ?? ""}:${run.log.producedThrough}`;
       if (run.reported.get(session.attemptId) === stamp) continue;
       facts.push({
         executionId: run.claim.executionId,
@@ -338,6 +424,8 @@ export class ExecutionRegistry {
         holderInstanceId: run.claim.holderInstanceId,
         runnerToken: run.claim.runnerToken,
         observedState: state,
+        observedReason: seen.reason,
+        pid: run.exited ? (this.store.runnerClaim(run.claim.executionId)?.childPid ?? null) : null,
         exitCode: run.exited ? run.exitCode : null,
         signal: run.exited ? run.signal : null,
         observedExitedAt: run.exitedAt === null ? null : new Date(run.exitedAt).toISOString(),

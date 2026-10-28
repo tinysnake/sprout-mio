@@ -115,11 +115,23 @@ export const REMOTE_FAILURE_REASONS = [
   "capability_unavailable",
   "directory_unavailable",
 ] as const;
+/**
+ * 恢复归约得出的 unknown 原因。只有 Worker 能给出：它读的是自己的 durable claim 与 runner
+ * 落盘的结果文件，不是宿主的内存。原因字符串随执行视图透出，页面不把两种缺失混成一句。
+ */
+export const EXECUTION_RECOVERY_REASONS = [
+  "child-exited-without-result",
+  "no-fence-record",
+] as const;
+export type ExecutionRecoveryReason = (typeof EXECUTION_RECOVERY_REASONS)[number];
+const recoveryReasonSchema = z.enum(EXECUTION_RECOVERY_REASONS);
 const failureReasonSchema = z.enum(REMOTE_FAILURE_REASONS);
 const shellSuccessSchema = z
   .strictObject({
     kind: z.literal("shell"),
     pid: positiveSafeIntegerSchema,
+    // 由 runner result 归约出的终态：正文不可得，`recovered` 让页面不把它当成原生结果。
+    recovered: z.boolean().optional(),
     exited: z.boolean(),
     exitCode: z.number().int().nullable(),
     stdout: bytes(65536),
@@ -154,6 +166,7 @@ const successPayloadSchema = z.discriminatedUnion("kind", successPayloads);
 const failurePayloadSchema = z
   .strictObject({
     kind: z.enum(REMOTE_OPERATION_KINDS),
+    recovered: z.boolean().optional(),
     failureReason: failureReasonSchema,
     partial: successPayloadSchema.optional(),
   })
@@ -214,6 +227,8 @@ export const executionViewSchema = leaseKeySchema
     payloadHash: fingerprintSchema,
     terminalAt: timestampSchema.nullable(),
     failureReason: failureReasonSchema.nullable(),
+    // 只对 unknown 有意义：说清是「子进程已退出且没有结果文件」还是「根本没有 fence 记录」。
+    recoveryReason: recoveryReasonSchema.nullable(),
     result: remoteResultPayloadSchema.nullable(),
     logState: z.enum(EXECUTION_LOG_STATES),
     producedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
@@ -229,6 +244,7 @@ export const executionViewSchema = leaseKeySchema
       terminal !== (value.terminalAt !== null) ||
       (value.terminalAt !== null && Date.parse(value.terminalAt) < Date.parse(value.createdAt)) ||
       (!terminal && (value.failureReason !== null || value.result !== null)) ||
+      (value.recoveryReason !== null && value.state !== "unknown") ||
       (value.state === "succeeded" && value.failureReason !== null) ||
       (terminal && value.state !== "succeeded" && value.failureReason === null) ||
       (value.result !== null &&
@@ -348,6 +364,10 @@ export const executionRecoverySchema = z.strictObject({
   holderInstanceId: instanceIdSchema,
   runnerToken: runnerTokenSchema,
   observedState: z.enum(["running", "exited", "unknown"]),
+  // unknown 必须带原因；running/exited 时为空。旧调用方可以省略，服务端按 null 处理。
+  observedReason: recoveryReasonSchema.nullable().optional(),
+  // 命令本身的 pid：恢复事实只能从 runner claim 得到它，用于恢复出的 shell 结果。
+  pid: positiveSafeIntegerSchema.nullable().optional(),
   exitCode: z.number().int().min(-1).max(255).nullable(),
   signal: z.string().max(16).nullable(),
   observedExitedAt: timestampSchema.nullable(),

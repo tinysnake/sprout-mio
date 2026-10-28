@@ -97,17 +97,17 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 
 方向按冻结设计 B4：日志帧、恢复事实上行；`logAcks`、`cancellations` 下行。
 
-| 导出                              | 方向       | 形状                                                                                                                                                                                                                                                   |
-| --------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `executionLogFrameSchema`         | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, dispatchSession, dispatchSeq, sequence, stream, byteStart, byteEnd, checksum, bytes?, gapTo?}`，`bytes` 与 `gapTo` 二选一，`byteEnd >= byteStart`，`gapTo >= sequence` |
-| `executionRecoverySchema`         | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, runnerToken, observedState: running\|exited\|unknown, exitCode, signal, observedExitedAt, producedThroughSequence, claimEvidenceAt}`                                   |
-| `executionCancelSchema`           | 下行       | `{cancelId, executionId, projectId, machineId, authorizationGeneration, runnerToken, policy: term_then_kill\|kill, termWaitMs <= 10000}`                                                                                                               |
-| `executionCancelRequestSchema`    | Web call   | `strictObject({executionId, requestId})`，幂等键取自 body，请求头 requestId 只做日志关联                                                                                                                                                               |
-| `executionCancelInputSchema`      | agent call | `leaseKeySchema.extend({executionId, requestId, authorizationGeneration, policy, termWaitMs})`                                                                                                                                                         |
-| `executionLogReadInputSchema`     | agent call | `leaseKeySchema.extend({executionId, cursor: {nextSequence}\|null, limitBytes <= 65536})`                                                                                                                                                              |
-| `executionLogReadViewSchema`      | 返回       | `{executionId, frames[], nextCursor, availableFromSequence, acknowledgedThroughSequence, producedThroughSequence, gapRanges[], logState, workerOnline}`                                                                                                |
-| `executionCancellationViewSchema` | 返回       | `{cancelId, executionId, state, requestedAt, deliveredAt, exitedAt, signalOutcome, failureReason}`；`executionViewSchema` 用 `cancellation` 字段带出最近一条（按 `requestedAt` 降序，同值按 `id` 降序），无记录为 `null`                               |
-| `executionViewSchema`             | 返回       | 见下                                                                                                                                                                                                                                                   |
+| 导出                              | 方向       | 形状                                                                                                                                                                                                                                                                                      |
+| --------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `executionLogFrameSchema`         | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, dispatchSession, dispatchSeq, sequence, stream, byteStart, byteEnd, checksum, bytes?, gapTo?}`，`bytes` 与 `gapTo` 二选一，`byteEnd >= byteStart`，`gapTo >= sequence`                                    |
+| `executionRecoverySchema`         | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, runnerToken, observedState: running\|exited\|unknown, observedReason?: child-exited-without-result\|no-fence-record\|null, exitCode, signal, observedExitedAt, producedThroughSequence, claimEvidenceAt}` |
+| `executionCancelSchema`           | 下行       | `{cancelId, executionId, projectId, machineId, authorizationGeneration, runnerToken, policy: term_then_kill\|kill, termWaitMs <= 10000}`                                                                                                                                                  |
+| `executionCancelRequestSchema`    | Web call   | `strictObject({executionId, requestId})`，幂等键取自 body，请求头 requestId 只做日志关联                                                                                                                                                                                                  |
+| `executionCancelInputSchema`      | agent call | `leaseKeySchema.extend({executionId, requestId, authorizationGeneration, policy, termWaitMs})`                                                                                                                                                                                            |
+| `executionLogReadInputSchema`     | agent call | `leaseKeySchema.extend({executionId, cursor: {nextSequence}\|null, limitBytes <= 65536})`                                                                                                                                                                                                 |
+| `executionLogReadViewSchema`      | 返回       | `{executionId, frames[], nextCursor, availableFromSequence, acknowledgedThroughSequence, producedThroughSequence, gapRanges[], logState, workerOnline}`                                                                                                                                   |
+| `executionCancellationViewSchema` | 返回       | `{cancelId, executionId, state, requestedAt, deliveredAt, exitedAt, signalOutcome, failureReason}`；`executionViewSchema` 用 `cancellation` 字段带出最近一条（按 `requestedAt` 降序，同值按 `id` 降序），无记录为 `null`                                                                  |
+| `executionViewSchema`             | 返回       | 见下                                                                                                                                                                                                                                                                                      |
 
 `remoteExchangeInputSchema` 增加 `logFrames`（≤8，可选，缺省即无帧）与 `recoveries`（≤8，可选）。`remoteExchangeOutputSchema` 增加 `logAcks`（≤8，可选）与 `cancellations`（≤4，可选）。两者都用可选而非默认值：`src/contracts/worker.ts` 用 `.extend()` 叠加 MCP 字段，`z.strictObject(...).extend` 无法在已有默认值之上继续推导可选性。
 
@@ -135,6 +135,29 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 - `logState='full'` 必须有 `acknowledgedThroughSequence`。
 
 ## 状态机与不变量
+
+### 恢复的三层权威（P4c-recovery-model）
+
+恢复只承认三层磁盘/执行端事实，宿主不猜：
+
+1. **宿主意图**：`remote_execution` 行本身就是意图记录，服务重启后据此知道还有哪些在途执行。连接丢失只改新鲜度（`workerOnline`）与租约，**不写终态**。
+2. **Worker 执行日志**：state-dir 下 `executions/<executionId>/claim.json`（pid、runner token、归属、日志位点）。
+3. **Runner claim 与 result**：同目录 `runner.json`（runner pid、`childPid`、token）与 `result.json`（`exitCode`、`signal`、`exitedAt`）。runner 在起命令前写 claim，命令退出后写 result 再退出；被杀在 result 之前，磁盘上就没有结果。
+
+归约规则（Worker 侧，`ExecutionRegistry`）：
+
+- `result.json` 存在且 `exitedAt >= claimedAt` → `exited{code, signal}`，来源 `runner_result`。
+- 无 result，`claim.pid != 0`，pid 存活且 `runner.json` 的 token 与该次下发一致 → `running`。
+- 无 result，pid 已死或 token 不符 → `unknown`，`observedReason` 为 `child-exited-without-result`。
+- `claim.pid == 0`（从未 spawn）→ `unknown`，`observedReason` 为 `no-fence-record`。
+- 归约只读磁盘，绝不重新 spawn 非终态记录。
+
+服务端归约与 `unknown` 的产生点：
+
+- `expireExecutions` 不因连接丢失写终态。`unknown / worker_lost` 只有两个出口：(a) Worker 归约后上报 `unknown`（带 `observedReason`，落 `recovery_reason`）；(b) 已有更新连接代次接上、宽限（`WORKER_RECOVERY_GRACE_MS`，默认 30s）走完，且该代次从未对这条执行交过任何恢复报告（`recovery_reported_at < 新代次 opened_at`）。
+- `unknown / worker_lost` **不是不可推翻的结论**：携带 runner result 派生退出事实的恢复报告，或同一投递会话的真实终态报告，可以把 `unknown` 改写成 `succeeded`/`failed` 并清空 `recovery_reason`。已被 `succeeded`/`failed`/`rejected`/`timed_out` 封住的执行仍返回 `ignored_terminal`。
+- `waitMs` 快照（`provisional`）仍不是终态，不阻止后续真实终态。
+- `recovery_reason` 只对 `unknown` 有值；视图 superRefine 拒绝其他状态带它。页面与 `execution_get` 的 `data` 都透出该字符串。
 
 执行状态保留 9 值。新增两条不变量：`unknown` 与 `timed_out` 只有在带 `runnerToken` 的恢复事实或带证据的归约下才能改为已知终态；`succeeded` 与 `failed` 不因后续报告改变。schema 层能表达的单向性是：带 token 的条件更新能把 `unknown` 归约为 `succeeded` 或 `failed`；不带 token 时同一 UPDATE 命中 0 行。这两条都由 `tests/fixtures/execution-log-contracts.ts` 用真实 SQL 反证。
 

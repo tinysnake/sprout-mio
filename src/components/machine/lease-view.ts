@@ -1,6 +1,7 @@
 import type { LeaseMutationView, LeaseView } from "../../contracts/lease";
 import type {
   ExecutionCancellationView,
+  ExecutionRecoveryReason,
   ExecutionView,
   RemoteOperation,
 } from "../../contracts/remote";
@@ -302,6 +303,20 @@ export const REMOTE_FAILURE_REASON_LABELS: Record<string, string> = {
 export function failureReasonLabel(reason: string | null): string | null {
   if (!reason) return null;
   return REMOTE_FAILURE_REASON_LABELS[reason] ?? reason;
+}
+
+/**
+ * unknown 的两种来源不能混成一句：一个是子进程退出了但没留下结果，一个是从未兑现 spawn。
+ * 原因字符串由 Worker 归约磁盘事实得出，页面只负责把它说清楚。
+ */
+export const RECOVERY_REASON_LABELS: Record<ExecutionRecoveryReason, string> = {
+  "child-exited-without-result": "子进程已退出，但没有留下结果文件",
+  "no-fence-record": "没有找到这次执行的 fence 记录，命令可能从未启动",
+};
+
+export function recoveryReasonLabel(reason: string | null): string | null {
+  if (!reason) return null;
+  return RECOVERY_REASON_LABELS[reason as ExecutionRecoveryReason] ?? reason;
 }
 
 const encoder = new TextEncoder();
