@@ -93,7 +93,15 @@ export const CANCELLATION_STATES = [
 ] as const;
 /** 只记录 OS 是否接受信号调用，不证明进程已退出。 */
 export const CANCELLATION_SIGNAL_OUTCOMES = ["none", "term_delivered", "kill_delivered"] as const;
-export const CANCELLATION_FAILURE_REASONS = ["signal_failed", "delivery_unconfirmed"] as const;
+/**
+ * `exit_not_observed`：Worker 观测到进程不再运行，但 runner 没有落盘 result。
+ * 它不是「已停止」：退出码与信号都不可知，取消只能停在未确认态。
+ */
+export const CANCELLATION_FAILURE_REASONS = [
+  "signal_failed",
+  "delivery_unconfirmed",
+  "exit_not_observed",
+] as const;
 /** 单帧正文上限按原始 UTF-8 bytes 计，写进 `execution_log_frame` 的 CHECK。 */
 export const EXECUTION_LOG_FRAME_MAX_BYTES = 16384;
 /** 单 exchange 的日志帧数量上限，与命令数组同级。 */
@@ -308,12 +316,18 @@ export const remoteReportSchema = z
       drained: z.literal(true),
       outcome: z.enum(REMOTE_OUTCOMES),
       payload: remoteResultPayloadSchema,
+      // 只有 runner 的 durable result 才算观测到退出。没有 result 时 Worker 必须在这里
+      // 交出原因，宿主据此拒绝把执行写成终态、也拒绝把取消写成 `exited_observed`。
+      recoveryReason: recoveryReasonSchema.optional(),
     }),
   ])
   .superRefine((value, ctx) => {
     if (
       value.machineId !== value.dispatchSession.machineId ||
-      (value.phase === "terminal" && !validOutcome(value.outcome, value.payload))
+      (value.phase === "terminal" && !validOutcome(value.outcome, value.payload)) ||
+      (value.phase === "terminal" &&
+        value.recoveryReason !== undefined &&
+        value.outcome !== "unknown")
     ) {
       ctx.addIssue({ code: "custom", message: "报告必须匹配投递身份与结果状态" });
     }

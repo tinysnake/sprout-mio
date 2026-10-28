@@ -3,7 +3,7 @@ import type { ExecutionCancellationView } from "../../contracts/remote";
 import type { MachineDetail } from "../../contracts/machine";
 import { formatMoment } from "./machine-view";
 import {
-  CANCELLATION_STATE_LABELS,
+  cancellationDisplay,
   EXECUTION_STATE_LABELS,
   HOST_TOOL_NOTE,
   OPERATION_KIND_LABELS,
@@ -301,8 +301,7 @@ export function RemoteExecutionCard({
             data-cancellation-state={cancellation.state}
             className="text-[0.6875rem] leading-5 text-muted-foreground"
           >
-            {CANCELLATION_STATE_LABELS[cancellation.state].label} ·{" "}
-            {CANCELLATION_STATE_LABELS[cancellation.state].detail}
+            {cancellationDisplay(cancellation).label} · {cancellationDisplay(cancellation).detail}
           </p>
         )}
       </div>

@@ -210,7 +210,7 @@ test("日志帧增量上行：跨流共享单调序、原始字节位点单调�
   expect(leftover.trim()).toBe("");
 });
 
-test("运行上限到期先 TERM 后 KILL，终态是限时而不是下发窗口", async () => {
+test("运行上限到期先 TERM 后 KILL；连 runner 一起打死时只报未观测，不写已知限时", async () => {
   const directory = await mkdtemp(join(tmpdir(), "p4c-runtime-"));
   const f = await fixture(directory);
   const runtimeDeadlineAt = new Date(Date.now() + 400).toISOString();
@@ -228,12 +228,32 @@ test("运行上限到期先 TERM 后 KILL，终态是限时而不是下发窗口
   f.apply(1, f.output([command]));
   const report = await terminalOf(f.dispatcher, command.executionId);
   const elapsed = Date.now() - startedAt;
-  expect(report.outcome).toBe("timed_out");
-  expect("failureReason" in report.payload && report.payload.failureReason).toBe("deadline");
-  expect(report.payload.kind === "shell" && "partial" in report.payload).toBe(true);
   // TERM 被忽略，进程只在 2000ms 宽限后的 KILL 才死：耗时必须超过宽限，说明确实先 TERM 后 KILL。
   expect(elapsed).toBeGreaterThanOrEqual(2300);
   expect(elapsed).toBeLessThan(20000);
+  // KILL 连 runner 一起打死，磁盘上不会留下 result：退出没有被观测到，
+  // 不能写成 timed_out（那是声称一个已知终态），只能带原因停在 unknown。
+  expect(report.outcome).toBe("unknown");
+  expect("failureReason" in report.payload && report.payload.failureReason).toBe("worker_lost");
+  expect(report.recoveryReason).toBe("child-exited-without-result");
+  expect(report.payload.kind === "shell" && "partial" in report.payload).toBe(true);
+});
+
+test("运行上限到期时命令在宽限内自行退出：runner result 落盘，终态是限时", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-runtime-durable-"));
+  const f = await fixture(directory);
+  const runtimeDeadlineAt = new Date(Date.now() + 400).toISOString();
+  // 尊重 TERM：宽限内退出，runner 能写下 result.json。这才是已知的「限时」终态。
+  const command = f.command(
+    { kind: "shell", command: "sleep 20", cwd: directory, waitMs: 10000 },
+    { runtimeDeadlineAt, maxRuntimeMs: 400 },
+  );
+  f.apply(1, f.output([command]));
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  expect(report.outcome).toBe("timed_out");
+  expect("failureReason" in report.payload && report.payload.failureReason).toBe("deadline");
+  expect(report.payload.kind === "shell" && "partial" in report.payload).toBe(true);
+  expect(report.recoveryReason).toBeUndefined();
 });
 
 test("下发窗口只约束准入：跨过截止时间仍在运行的长命令按真实退出码终态", async () => {
@@ -450,6 +470,7 @@ test("进程不在但无退出事实时恢复报 unknown，不猜退出码", asy
     runnerToken: "d".repeat(32),
     pid: 999_999,
     claimedAt: Date.now(),
+    dispatchSeq: 1,
     exitedAt: null,
     exitCode: null,
     signal: null,

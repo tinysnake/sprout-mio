@@ -3,7 +3,7 @@ import type { AppError } from "../../contracts/result";
 import type { ExecutionCancellationView, ExecutionView } from "../../contracts/remote";
 import { Button } from "../ui/button";
 import { StatusLine } from "./machine-list";
-import { CANCELLATION_STATE_LABELS, cancellationSignalFacts } from "./lease-view";
+import { cancellationDisplay, cancellationSignalFacts } from "./lease-view";
 import type { ExecutionCanceller, LogConnection } from "./presentation";
 
 const toneText = {
@@ -57,7 +57,7 @@ export function ExecutionCancelControl({
     }
   }
 
-  const state = cancellation ? CANCELLATION_STATE_LABELS[cancellation.state] : null;
+  const state = cancellation ? cancellationDisplay(cancellation) : null;
 
   return (
     <div data-testid={testId} className="space-y-2">

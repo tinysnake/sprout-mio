@@ -29,10 +29,14 @@ export type DurableClaim = {
   /** 0 表示从未真正 spawn 出子进程；此时恢复只能报 unknown。 */
   pid: number;
   claimedAt: number;
+  /** 宿主下发序号：重启后补送未确认帧要靠它，不能只靠内存里的 entries。 */
+  dispatchSeq: number;
   exitedAt: number | null;
   exitCode: number | null;
   signal: string | null;
   producedThroughSequence: number | null;
+  /** 宿主已经 ACK 过终态结果：报告不用再发，但日志 outbox 仍要补送。 */
+  settled?: boolean;
 };
 /** Runner 起命令前写的 fence 记录：执行端自己的 pid 与 token，不依赖宿主内存。 */
 export type RunnerClaim = {
@@ -70,7 +74,14 @@ export type Run = {
   started: boolean;
   /** 本次生命周期内的执行逻辑已收敛；不代表宿主已确认终态。 */
   done: boolean;
+  /** 宿主的终态 ACK 已到：不再重发报告，但 outbox 要留到日志 ACK 覆盖已产出帧。 */
+  settled: boolean;
   exited: boolean;
+  /**
+   * 退出是否由 runner 落盘的 result 证明。false 表示只看过进程消失：
+   * 那不是「已观测到退出」，只能报 unknown: child-exited-without-result。
+   */
+  durableExit: boolean;
   exitCode: number | null;
   signal: string | null;
   exitedAt: number | null;
@@ -221,7 +232,12 @@ export class ExecutionStore {
 }
 /** 归约顺序就是 P0 的承诺：result 存在才是 exited；pid 活着才是 running；否则 unknown 带原因。 */
 const observed = (run: Run, runnerClaim: RunnerClaim | null): ObservedRun => {
-  if (run.exited) return { state: "exited", reason: null };
+  // 只有 runner 落盘的 result 是「已退出」。看过进程消失但没有结果，是「退出未被观测」：
+  // 既不猜退出码，也不把执行写成已知终态。
+  if (run.exited)
+    return run.durableExit
+      ? { state: "exited", reason: null }
+      : { state: "unknown", reason: "child-exited-without-result" };
   // pid 0 表示宿主连 spawn 都没兑现：没有 fence 记录，这不是「跑了但不知道结果」。
   if (run.claim.pid === 0) return { state: "unknown", reason: "no-fence-record" };
   // token 对不上说明这条 pid 事实不是我们发的那次执行产生的，不能拿来认领。
@@ -257,7 +273,10 @@ export class ExecutionRegistry {
         controller: new AbortController(),
         started: claim.pid !== 0,
         done: claim.exitedAt !== null,
+        settled: claim.settled === true,
         exited: claim.exitedAt !== null,
+        // claim 里的 exitedAt 只能由 runner result 写入：重启后的退出都是 durable 的。
+        durableExit: claim.exitedAt !== null,
         exitCode: claim.exitCode,
         signal: claim.signal,
         exitedAt: claim.exitedAt,
@@ -277,7 +296,7 @@ export class ExecutionRegistry {
    * 只要命令真的退出了，磁盘上就有结果；没有结果就不猜。每次交代前重读，不缓存。
    */
   adoptResult(run: Run): boolean {
-    if (run.exited) return true;
+    if (run.exited && run.durableExit) return true;
     const result = this.store.runnerResult(run.claim.executionId);
     if (!result) return false;
     const claim = this.store.runnerClaim(run.claim.executionId);
@@ -285,6 +304,7 @@ export class ExecutionRegistry {
     const exitedAt = Date.parse(result.exitedAt);
     if (!Number.isFinite(exitedAt) || exitedAt < run.claim.claimedAt) return false;
     run.exited = true;
+    run.durableExit = true;
     run.exitCode = result.exitCode;
     run.signal = result.signal;
     run.exitedAt = exitedAt;
@@ -308,6 +328,7 @@ export class ExecutionRegistry {
       runnerToken: command.runnerToken,
       pid: 0,
       claimedAt: this.now(),
+      dispatchSeq: command.dispatchSeq,
       exitedAt: null,
       exitCode: null,
       signal: null,
@@ -320,7 +341,9 @@ export class ExecutionRegistry {
       controller: new AbortController(),
       started: false,
       done: false,
+      settled: false,
       exited: false,
+      durableExit: false,
       exitCode: null,
       signal: null,
       exitedAt: null,
@@ -341,15 +364,22 @@ export class ExecutionRegistry {
     run.claim.pid = pid;
     this.store.saveClaim(run.claim);
   }
-  markExit(run: Run, code: number | null, signal: string | null) {
+  /**
+   * 退出事实分两种，必须分开记：runner 落盘的 result 是 durable 退出；
+   * 只看进程消失而没有 result 时不写 claim 的退出字段，留待 result 补上。
+   */
+  markExit(run: Run, code: number | null, signal: string | null, durable = true) {
     if (this.runs.get(run.claim.executionId) !== run) return; // 已被宿主确认终态，不要再复活 claim。
     run.exited = true;
-    run.exitCode = code;
-    run.signal = signal;
+    run.durableExit = durable;
     run.exitedAt = this.now();
-    run.claim.exitCode = code;
-    run.claim.signal = signal;
-    run.claim.exitedAt = run.exitedAt;
+    if (durable) {
+      run.exitCode = code;
+      run.signal = signal;
+      run.claim.exitCode = code;
+      run.claim.signal = signal;
+      run.claim.exitedAt = run.exitedAt;
+    }
     this.saveProgress(run);
   }
   finish(run: Run) {
@@ -370,6 +400,8 @@ export class ExecutionRegistry {
     for (const sequence of [...run.inflight])
       if (sequence <= through) run.inflight.delete(sequence);
     this.store.prune(executionId, through, availableFrom);
+    // 宿主的日志 ACK 覆盖到已产出帧之后，durable outbox 才算交代完。
+    this.release(executionId);
   }
   /** 恢复事实真正随 exchange 出去之后才记签名：没送到的下一轮必须重报。 */
   markRecovered(session: WorkerSession, facts: readonly ExecutionRecovery[]) {
@@ -395,8 +427,27 @@ export class ExecutionRegistry {
   forgetReported(attemptId: string) {
     for (const run of this.runs.values()) run.reported.delete(attemptId);
   }
-  /** 宿主确认终态后 claim 才算处理完；进程本身可能仍在运行，不动它。 */
+  /**
+   * 宿主确认终态只说明它收下了结果，不说明日志已经交代清楚。
+   * 还留在队列里的帧必须继续上行，所以 claim 与 `frames.jsonl` 要留到日志 ACK 覆盖它们；
+   * 这个「已结算」位点也写进 durable claim，进程重启后仍能接着补送。
+   */
   settle(executionId: string) {
+    const run = this.runs.get(executionId);
+    if (!run) {
+      this.store.deleteClaim(executionId);
+      return;
+    }
+    run.settled = true;
+    run.collecting = false;
+    run.claim.settled = true;
+    this.saveProgress(run);
+    this.release(executionId);
+  }
+  /** outbox 只有在「终态已确认 且 没有未确认帧」时才可删；其余情况继续补送。 */
+  private release(executionId: string) {
+    const run = this.runs.get(executionId);
+    if (!run || !run.settled || run.log.frames.length > 0) return;
     this.runs.delete(executionId);
     this.store.deleteClaim(executionId);
   }
@@ -425,10 +476,17 @@ export class ExecutionRegistry {
         runnerToken: run.claim.runnerToken,
         observedState: state,
         observedReason: seen.reason,
-        pid: run.exited ? (this.store.runnerClaim(run.claim.executionId)?.childPid ?? null) : null,
-        exitCode: run.exited ? run.exitCode : null,
-        signal: run.exited ? run.signal : null,
-        observedExitedAt: run.exitedAt === null ? null : new Date(run.exitedAt).toISOString(),
+        // 没有 durable result 的执行不交退出码与信号：那是未观测，不是已知退出。
+        pid:
+          run.exited && run.durableExit
+            ? (this.store.runnerClaim(run.claim.executionId)?.childPid ?? null)
+            : null,
+        exitCode: run.exited && run.durableExit ? run.exitCode : null,
+        signal: run.exited && run.durableExit ? run.signal : null,
+        observedExitedAt:
+          run.exited && run.durableExit && run.exitedAt !== null
+            ? new Date(run.exitedAt).toISOString()
+            : null,
         producedThroughSequence: run.log.producedThrough > 0 ? run.log.producedThrough : null,
         claimEvidenceAt: new Date(run.claim.claimedAt).toISOString(),
       });
@@ -437,13 +495,13 @@ export class ExecutionRegistry {
   }
   /** 按 execution 轮转取未确认且未在途的帧，单个执行不得独占用全部名额。 */
   /**
-   * 只轮转本会话本次下发的执行：上次进程或上一会话遗留的执行没有本批归属，
-   * 其事实由恢复事实交代，不冒充本次下发。
+   * 轮转所有有下发序号的执行：本次下发的、以及上次进程或上一会话遗留的。
+   * 遗留执行的帧正好是宿主还没 ACK 的那部分，不能因为换了会话就丢掉。
    */
-  rotate(session: WorkerSession, limit: number): { run: Run; frame: LogFrameDraft }[] {
+  rotate(limit: number): { run: Run; frame: LogFrameDraft }[] {
     const picked: { run: Run; frame: LogFrameDraft }[] = [];
     const queues = [...this.runs.values()]
-      .filter((run) => run.owningAttempt === session.attemptId)
+      .filter((run) => run.claim.dispatchSeq > 0)
       .sort((a, b) => a.order - b.order)
       .map((run) => ({
         run,

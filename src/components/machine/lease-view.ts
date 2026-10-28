@@ -475,6 +475,28 @@ export const CANCELLATION_STATE_LABELS: Record<
   },
 };
 
+/**
+ * 是否算「已停止」只看 durable 退出证据。`exited_observed` 由 runner 落盘的结果触发；
+ * 只是「进程不见了但没有结果」是 `failed/exit_not_observed`，不是已停止，也不显示退出码。
+ */
+export function cancellationDisplay(cancellation: ExecutionCancellationView): {
+  label: string;
+  detail: string;
+  tone: StatusTone;
+  stopped: boolean;
+} {
+  const base = CANCELLATION_STATE_LABELS[cancellation.state];
+  if (cancellation.state !== "failed" || cancellation.failureReason !== "exit_not_observed")
+    return base;
+  return {
+    label: "取消失败：退出未被记录",
+    detail:
+      "Worker 报告进程已不再运行，但 runner 没有落盘退出结果。不能当作已观测到退出，也不能推断退出码。",
+    tone: "warning",
+    stopped: false,
+  };
+}
+
 /** 只有 Worker 真的观察到退出才算停止；其余状态一律不写「已停止」。 */
 export function cancellationSignalFacts(cancellation: ExecutionCancellationView): string[] {
   const outcome =
@@ -490,6 +512,8 @@ export function cancellationSignalFacts(cancellation: ExecutionCancellationView)
   );
   if (cancellation.failureReason === "signal_failed") facts.push("信号调用失败");
   if (cancellation.failureReason === "delivery_unconfirmed") facts.push("送达未确认");
+  if (cancellation.failureReason === "exit_not_observed")
+    facts.push("进程已不再运行，但退出没有被记录");
   return facts;
 }
 

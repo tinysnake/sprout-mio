@@ -14,7 +14,7 @@ import type { WorkerSession } from "../../src/contracts/worker-session";
 import { sqlite } from "../../src/db";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
 import { acquireLease } from "../../src/server/lease";
-import { requestExecution } from "../../src/server/remote";
+import { getExecution, requestExecution } from "../../src/server/remote";
 import { enrollWorker, exchangeWorker, openWorker } from "../../src/server/worker-gateway";
 import { seedRemoteActor } from "./remote-actors";
 
@@ -325,6 +325,15 @@ try {
   // 每代连接的 seq 各自从 1 开始；新会话不能沿用旧连接的序号。
   seq = 0;
   exchange();
+  // 反证「一看到新连接就立刻 unknown」：恢复宽限期没走完之前，旧连接上的执行仍是 dispatched。
+  // 这条事实由生产读取入口取证，页面稍后再断言服务端归约出的 unknown（不是夹具写库）。
+  const beforeGrace = getExecution({ projectId, machineId, executionId: lost.executionId }, actor);
+  assert.equal(
+    beforeGrace.state,
+    "dispatched",
+    "恢复宽限期未过时服务端不得把旧连接的执行判成 unknown",
+  );
+  results.unknownBeforeGrace = beforeGrace.state;
 
   // D：当前连接上派出的长命令，用于人类取消；心跳让连接保持在线，命令保持未终止。
   const running = submit();
@@ -472,16 +481,29 @@ try {
     results.cancellationAfterReload = cancellationState;
   });
 
-  await check("unknown 执行没有重跑入口，也不伪装成已知结果", async () => {
-    const target = card(lost.executionId);
-    assert.equal(await target.getAttribute("data-execution-state"), "unknown");
-    await target.getByTestId("machine-executions-item-no-rerun").waitFor();
-    assert.equal(
-      await target.getByRole("button", { name: /重跑|重新运行/ }).count(),
-      0,
-      "unknown 上不得出现重跑入口",
-    );
-  });
+  await check(
+    "unknown 由服务端归约：恢复宽限过后没有恢复报告，才落 unknown 且不提供重跑",
+    async () => {
+      // 页面只读服务端事实：宽限期由服务端自己算（SPROUT_WORKER_RECOVERY_GRACE_MS 只缩短等待），
+      // 夹具不写库、也不替服务端下结论；这里只等生产读取入口把过期判定跑出来。
+      await until(
+        async () =>
+          getExecution({ projectId, machineId, executionId: lost.executionId }, actor).state ===
+          "unknown",
+        "server-side unknown after recovery grace",
+      );
+      results.unknownAfterGrace = "unknown";
+      await reload();
+      const target = card(lost.executionId);
+      assert.equal(await target.getAttribute("data-execution-state"), "unknown");
+      await target.getByTestId("machine-executions-item-no-rerun").waitFor();
+      assert.equal(
+        await target.getByRole("button", { name: /重跑|重新运行/ }).count(),
+        0,
+        "unknown 上不得出现重跑入口",
+      );
+    },
+  );
 
   await check("断线时明说不完整，读取失败不推进位点", async () => {
     const target = logOf(full.executionId);

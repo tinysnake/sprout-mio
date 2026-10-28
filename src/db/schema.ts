@@ -1080,7 +1080,7 @@ export const executionCancellation = sqliteTable(
     ),
     check(
       "execution_cancellation_check_6",
-      sql`failure_reason IS NULL OR failure_reason IN ('signal_failed','delivery_unconfirmed')`,
+      sql`failure_reason IS NULL OR failure_reason IN ('signal_failed','delivery_unconfirmed','exit_not_observed')`,
     ),
     check(
       "execution_cancellation_check_7",

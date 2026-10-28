@@ -866,17 +866,28 @@ try {
     60000,
   );
   const cancelled = await getView(doomed.executionId);
-  assert.equal(cancelled.cancellation?.state, "exited_observed", "cancel must observe the exit");
-  // 取消导致的退出不得被伪造成成功：结果只报 partial 与授权撤销原因，取消事实单独记录。
+  // 忽略 TERM 的命令在 1 秒宽限后被 KILL，连 runner 一起打死：磁盘上没有 result.json，
+  // 所以这里只能停在「进程已不再运行、退出未被记录」，不能写 exited_observed。
+  assert.equal(
+    cancelled.cancellation?.state,
+    "failed",
+    "a KILL without a runner result must not claim an observed exit",
+  );
+  assert.equal(cancelled.cancellation?.failureReason, "exit_not_observed");
+  assert.equal(cancelled.cancellation?.exitedAt, null, "no exit time without a durable result");
+  assert.equal(cancelled.state, "unknown", "the execution stays unknown without a runner result");
+  assert.equal(cancelled.recoveryReason, "child-exited-without-result");
+  // 取消导致的退出不得被伪造成成功：结果只报 partial，退出码与信号都不猜。
   assert.notEqual(cancelled.state, "succeeded", "a cancelled command must not read as success");
-  assert(cancelled.result !== null, "the observed exit keeps a result payload");
+  assert(cancelled.result !== null, "the unobserved exit keeps the partial payload");
   const cancelPayload = cancelled.result as {
     kind: string;
     failureReason?: string;
     partial?: { exited?: boolean };
   };
   assert.equal(cancelPayload.kind, "shell");
-  assert.equal(cancelPayload.failureReason, "authorization_revoked");
+  assert.equal(cancelPayload.failureReason, "worker_lost");
+  assert.equal(cancelPayload.partial?.exited, false, "no exit code is invented");
   assert.notEqual(cancelled.cancellation.signalOutcome, "none", "the signal delivery is recorded");
   facts.scenario6 = {
     executionId: doomed.executionId,
@@ -891,7 +902,9 @@ try {
         .get(doomed.executionId) as { actor_kind: string }
     ).actor_kind,
   };
-  pass("S6 agent cancel goes requested → delivered → exited_observed without faking a stop");
+  pass(
+    "S6 agent cancel without a runner result stops at failed/exit_not_observed, never a fake stop",
+  );
 
   // —— 场景 6b：合法的 10 秒 TERM 宽限。——
   // 忽略 TERM 的命令 + termWaitMs=10000：KILL 在 10 秒后才到，退出观测必须覆盖这段宽限，
@@ -938,12 +951,20 @@ try {
   );
   const graceSettledMs = Date.now() - graceStartedAt;
   const graceFinal = await getView(graceTarget.executionId);
+  // 这条命令忽略 TERM 且永远跑不完：KILL 在 10 秒宽限后才到，连 runner 一起打死，
+  // 磁盘上没有 result.json。合法宽限的性质是「宽限走完就给出取消终态，不被确认窗口抢先判成
+  // delivery_unconfirmed」，而不是「一定观测到退出」——没有 result 就只能停在未确认。
   assert.equal(
     graceFinal.cancellation?.state,
-    "exited_observed",
-    `a legal 10s grace must end exited_observed, not ${graceFinal.cancellation?.state}`,
+    "failed",
+    `a legal 10s grace must end a cancellation terminal, not ${graceFinal.cancellation?.state}`,
   );
-  assert.equal(graceFinal.cancellation?.failureReason, null);
+  assert.equal(
+    graceFinal.cancellation?.failureReason,
+    "exit_not_observed",
+    "without a runner result the only honest failure reason is exit_not_observed",
+  );
+  assert.equal(graceFinal.cancellation?.exitedAt, null);
   assert.notEqual(graceFinal.terminalAt, null, "the execution reaches a terminal state");
   assert.notEqual(graceFinal.state, "running", "the execution does not stay running");
   assert.notEqual(graceFinal.state, "succeeded", "a killed command must not read as success");
@@ -957,7 +978,9 @@ try {
     finalExecutionState: graceFinal.state,
     terminalAt: graceFinal.terminalAt,
   };
-  pass("S6b a legal 10s TERM grace ends exited_observed with a terminal execution");
+  pass(
+    "S6b a legal 10s TERM grace settles inside the derived window (failed/exit_not_observed, never delivery_unconfirmed)",
+  );
 
   // —— 场景 7：人类在 Web 侧取消；未登录与另一用户被拒。 ——
   const humanMarker = markerOf();
