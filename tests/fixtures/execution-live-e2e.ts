@@ -1109,7 +1109,7 @@ try {
   const restartTarget = (
     await submitShell({
       requestId: newId(ID_PREFIXES.request),
-      command: `echo pid=$$; : ${restartMarker}; i=0; while [ $i -lt 20 ]; do echo f=$i; sleep 1; done`,
+      command: `echo pid=$$; : ${restartMarker}; i=0; while [ $i -lt 40 ]; do echo f=$i; i=$((i+1)); sleep 1; done`,
       waitMs: 1000,
     })
   ).data;
