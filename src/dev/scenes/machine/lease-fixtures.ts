@@ -330,6 +330,7 @@ export const demoGapExecution: ExecutionView = {
   drainedAt: null,
   terminalAt: "2026-10-18T07:52:00.000Z",
   failureReason: "worker_lost",
+  recoveryReason: "child-exited-without-result",
   result: { kind: "shell", failureReason: "worker_lost" },
   logState: "gap",
   producedThroughSequence: 55,
@@ -337,11 +338,50 @@ export const demoGapExecution: ExecutionView = {
   availableFromSequence: 1,
 };
 
+/** 长时间占用机器：仍在运行、租约仍归它，早已超过运行观察窗口。 */
+export const demoLongRunningExecution: ExecutionView = {
+  ...executionBase,
+  executionId: "exe_88888888-8888-4888-8888-888888888888",
+  requestId: "req_88888888-8888-4888-8888-888888888888",
+  state: "running",
+  operation: { kind: "process_list", limit: 100 },
+  createdAt: "2026-10-18T07:39:00.000Z",
+  dispatchDeadlineAt: "2026-10-18T07:41:00.000Z",
+  dispatchedAt: "2026-10-18T07:39:05.000Z",
+  drainedAt: null,
+  terminalAt: null,
+  failureReason: null,
+  result: null,
+};
+
+/**
+ * 租约已不归它、却仍在运行的执行：这台 Machine 的租约已经进入 fencing，
+ * 持有者是另一个分身。服务端会按恢复事实收尾，页面不该再给取消入口。
+ */
+export const demoReleasedLeaseExecution: ExecutionView = {
+  ...executionBase,
+  executionId: "exe_99999999-9999-4999-8999-999999999999",
+  requestId: "req_99999999-9999-4999-8999-999999999999",
+  machineId: demoMachineDetails[3].machine.id,
+  authorizationGeneration: 7,
+  state: "running",
+  operation: { kind: "process_list", limit: 100 },
+  createdAt: "2026-10-18T07:09:00.000Z",
+  dispatchDeadlineAt: "2026-10-18T07:11:00.000Z",
+  dispatchedAt: "2026-10-18T07:09:10.000Z",
+  drainedAt: null,
+  terminalAt: null,
+  failureReason: null,
+  result: null,
+};
+
 export const demoExecutionRecords: ExecutionView[] = [
   ...demoExecutions,
   demoLongExecution,
   demoTruncatedExecution,
   demoGapExecution,
+  demoLongRunningExecution,
+  demoReleasedLeaseExecution,
 ];
 
 /*
