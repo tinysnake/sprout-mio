@@ -254,8 +254,20 @@ try {
     checksum: digest(""),
     gapTo,
   });
-  const finish = (execution: ExecutionView, command: Command) => {
+  const finish = (execution: ExecutionView, command: Command, producedThroughSequence: number) => {
     exchange({
+      // 终态与封口事实同一批上行：没有 sealed，宿主只能说不完整。
+      logFacts: [
+        {
+          executionId: execution.executionId,
+          projectId,
+          machineId,
+          authorizationGeneration: execution.authorizationGeneration,
+          holderInstanceId: execution.holderInstanceId,
+          producedThroughSequence,
+          sealed: true,
+        },
+      ],
       results: [
         {
           executionId: execution.executionId,
@@ -294,7 +306,7 @@ try {
     logFrames: [frame(full, fullCommand, 1, longLine(1)), frame(full, fullCommand, 2, longLine(2))],
   });
   exchange({ logFrames: [frame(full, fullCommand, 3, longLine(3))] });
-  finish(full, fullCommand);
+  finish(full, fullCommand, 3);
 
   // B：缺一帧的部分日志（1、2 已确认，4 已产出）→ partial，不是「没有输出」。
   const partial = submit();
@@ -307,7 +319,7 @@ try {
       frame(partial, partialCommand, 4, "partial-4\n"),
     ],
   });
-  finish(partial, partialCommand);
+  finish(partial, partialCommand, 4);
 
   // C：真正的缺口（1 号帧声明覆盖到 3）→ gap，界面必须点名缺口。
   const gap = submit();
@@ -315,7 +327,7 @@ try {
   exchange({
     logFrames: [gapFrame(gap, gapCommand, 1, 3), frame(gap, gapCommand, 4, "after-gap\n")],
   });
-  finish(gap, gapCommand);
+  finish(gap, gapCommand, 4);
 
   // X：在旧连接上派出、永不结束；下一代会话接手后它只能是 unknown，页面不得提供重跑。
   const lost = submit();

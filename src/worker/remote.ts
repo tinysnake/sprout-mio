@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { CapabilitySnapshot, DirectoryObservation } from "../contracts/machine";
 import { EXECUTION_LOG_FRAMES_PER_EXCHANGE, remoteReportSchema } from "../contracts/remote";
 import type {
+  ExecutionLogFact,
   ExecutionLogFrame,
   RemoteCommand,
   RemoteExchangeInput,
@@ -263,6 +264,7 @@ export class RemoteDispatcher {
     this.frames = [];
     // 被拒的 exchange 没有送到宿主：恢复事实与日志帧都要在下一轮重报。
     this.registry.forgetReported(this.session.attemptId);
+    this.registry.forgetLogFacts();
     this.pendingRecoveries = [];
   }
   /**
@@ -329,6 +331,19 @@ export class RemoteDispatcher {
       batch.recoveries = recoveries;
       this.pendingRecoveries = recoveries;
     }
+    // 日志位点事实先于帧占预算：帧可以分批，事实小且决定宿主能不能说「完整」。
+    // 本批重新计算哪些封口事实真的被携带，不继承上一次 outgoing 的 pending。
+    this.registry.forgetLogFacts();
+    const factEntries: ExecutionLogFact[] = [];
+    for (const { run, fact } of this.registry.logFacts(64)) {
+      const cost = jsonBytes(fact) + (factEntries.length ? 1 : 0);
+      if (used + cost > maxBytes) break;
+      factEntries.push(fact);
+      used += cost;
+      // 只有随真正被接受的上行批次，封口事实才算送达。
+      if (fact.sealed) run.sealedPending = true;
+    }
+    if (factEntries.length) batch.logFacts = factEntries;
     // 日志帧最后使用剩余预算：fence、终端报告与恢复事实先占位，日志不得饿死它们。
     this.frames = [];
     for (const { run, frame } of this.registry.rotate(EXECUTION_LOG_FRAMES_PER_EXCHANGE)) {
@@ -371,6 +386,7 @@ export class RemoteDispatcher {
     this.highWater = frame.seq;
     // 上一批已经随 exchange 送到宿主：恢复事实与日志帧的签名此刻才生效。
     this.registry.markRecovered(this.session, this.pendingRecoveries);
+    this.registry.confirmLogFacts();
     this.pendingRecoveries = [];
     // 送达即解除在途标记：未 ACK 的帧仍留在队列里，下一轮重发。
     this.registry.releaseAllInflight();

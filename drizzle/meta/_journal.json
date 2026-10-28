@@ -127,6 +127,13 @@
       "when": 1793153713592,
       "tag": "0017_cheerful_big_bertha",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793165342775,
+      "tag": "0018_elite_strong_guy",
+      "breakpoints": true
     }
   ]
 }

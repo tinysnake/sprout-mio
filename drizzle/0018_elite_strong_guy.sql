@@ -1,0 +1,1 @@
+ALTER TABLE `remote_execution` ADD `log_sealed` integer DEFAULT false NOT NULL;

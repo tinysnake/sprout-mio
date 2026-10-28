@@ -21,7 +21,8 @@
 | `max_runtime_ms`           | integer，可空                                                                  | 仅 shell 有值，来自工具入参。NULL 表示沿用短操作语义。                                                                               |
 | `runner_token`             | text，可空                                                                     | 32 位小写 hex。宿主在 command 下发时生成并随 `remoteCommandSchema` 交出；runner 写进 claim 与 result。新会话报告恢复事实必须带该值。 |
 | `log_state`                | text enum `none` / `partial` / `full` / `gap` / `truncated`，非空，默认 `none` | 日志完整性与执行结果正交。                                                                                                           |
-| `produced_through_seq`     | integer，可空                                                                  | 已产出（宿主已落盘）的最大 sequence。                                                                                                |
+| `log_sealed`               | integer boolean，非空，默认 false                                              | Worker 已声明该执行终态且不会再产新帧。没有这个事实时 `log_state` 不得为 `full`。                                                    |
+| `produced_through_seq`     | integer，可空                                                                  | 已知产出位点：已落库帧的最大序号与 Worker 声明值的较大者，单调不回退。                                                               |
 | `acknowledged_through_seq` | integer，可空                                                                  | 连续前缀已确认的最大 sequence。                                                                                                      |
 | `available_from_seq`       | integer，可空                                                                  | 可读起点。裁剪只推进这一个事实。                                                                                                     |
 
@@ -103,6 +104,7 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 | 导出                              | 方向       | 形状                                                                                                                                                                                                                                                                                      |
 | --------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `executionLogFrameSchema`         | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, dispatchSession, dispatchSeq, sequence, stream, byteStart, byteEnd, checksum, bytes?, gapTo?}`，`bytes` 与 `gapTo` 二选一，`byteEnd >= byteStart`，`gapTo >= sequence`                                    |
+| `executionLogFactSchema`          | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, producedThroughSequence, sealed}`；同一 exchange 同一执行只出现一次，且位点不得低于本批帧覆盖的序号                                                                                                       |
 | `executionRecoverySchema`         | 上行       | `{executionId, projectId, machineId, authorizationGeneration, holderInstanceId, runnerToken, observedState: running\|exited\|unknown, observedReason?: child-exited-without-result\|no-fence-record\|null, exitCode, signal, observedExitedAt, producedThroughSequence, claimEvidenceAt}` |
 | `executionCancelSchema`           | 下行       | `{cancelId, executionId, projectId, machineId, authorizationGeneration, runnerToken, policy: term_then_kill\|kill, termWaitMs <= 10000}`                                                                                                                                                  |
 | `executionCancelRequestSchema`    | Web call   | `strictObject({executionId, requestId})`，幂等键取自 body，请求头 requestId 只做日志关联                                                                                                                                                                                                  |
@@ -112,7 +114,7 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 | `executionCancellationViewSchema` | 返回       | `{cancelId, executionId, state, requestedAt, deliveredAt, exitedAt, signalOutcome, failureReason}`；`executionViewSchema` 用 `cancellation` 字段带出最近一条（按 `requestedAt` 降序，同值按 `id` 降序），无记录为 `null`                                                                  |
 | `executionViewSchema`             | 返回       | 见下                                                                                                                                                                                                                                                                                      |
 
-`remoteExchangeInputSchema` 增加 `logFrames`（≤8，可选，缺省即无帧）与 `recoveries`（≤8，可选）。`remoteExchangeOutputSchema` 增加 `logAcks`（≤8，可选）与 `cancellations`（≤4，可选）。两者都用可选而非默认值：`src/contracts/worker.ts` 用 `.extend()` 叠加 MCP 字段，`z.strictObject(...).extend` 无法在已有默认值之上继续推导可选性。
+`remoteExchangeInputSchema` 增加 `logFrames`（≤8，可选，缺省即无帧）、`logFacts`（≤64，可选，缺省即未知封口）与 `recoveries`（≤8，可选）。`remoteExchangeOutputSchema` 增加 `logAcks`（≤8，可选）与 `cancellations`（≤4，可选）。两者都用可选而非默认值：`src/contracts/worker.ts` 用 `.extend()` 叠加 MCP 字段，`z.strictObject(...).extend` 无法在已有默认值之上继续推导可选性。
 
 `remoteAgentRequestSchema` 新增两个分支：
 
@@ -214,11 +216,15 @@ unknown          -> 无 exited_at，有 failure_reason（允许同时有 deliver
 - 读侧不变：游标早于可读起点返回 `execution_log_gap`；视图必须给出 `availableFromSequence` 与 `logState='truncated'`，不得把裁剪后的内容说成完整。
 - 保留是服务端职责，Worker 不因裁剪停采。结果字段的保留规则不变：stdout 65536 / stderr 8192 加 `truncated` 标志，终态行不删。
 
-终态 ACK 只表示宿主收下了结果，不代表日志已经交代清楚。Worker 的 durable outbox 必须保留到该执行已追加的帧全部被日志 ACK 覆盖；在此之前 `result.json` 与 `frames.jsonl` 一起留着，Worker 重启后仍能补送。任何丢掉字节的路径都要让读侧看到 `truncated` 或 `gap`：`log_state='full'` 的含义收紧为「已产出帧全部在服务端，且服务端已 ACK 到 `produced_through_seq`」。
+终态 ACK 只表示宿主收下了结果，不代表日志已经交代清楚。Worker 的 durable outbox 必须保留到该执行已追加的帧全部被日志 ACK 覆盖；在此之前 `result.json` 与 `frames.jsonl` 一起留着，Worker 重启后仍能补送。任何丢掉字节的路径都要让读侧看到 `truncated` 或 `gap`。
+
+`log_state='full'` 当且仅当 `log_sealed` 为真、`acknowledged_through_seq = produced_through_seq`、`available_from_seq` 为 1 或空，且没有 gap 行。其余情况按裁剪、缺口与已确认前缀给 `truncated` / `gap` / `partial` / `none`。收到 `sealed=false` 的新事实时允许 `full` 回退为 `partial`，这是唯一允许的完整性回退。`produced_through_seq` 取已落库帧与 Worker 声明值的较大者，所以「宿主收到的前缀」不再被当成 Worker 的全部产出。
 
 运行上限到期后，如果命令不响应 TERM，KILL 由 runner 托管并留下 durable result，执行落 `timed_out` + `failure_reason='deadline'`；不下沉为 `unknown`。只有 runner 缺席时才回到 `unknown:child-exited-without-result`。
 
 私有验收库可用 `SPROUT_EXECUTION_LOG_RETAIN_BYTES` / `SPROUT_EXECUTION_LOG_RETAIN_FRAMES` 缩小阈值，让真实写入在可接受时间内触发裁剪；产品默认值不随请求或环境漂移。
+
+迁移 `0018_elite_strong_guy.sql` 只给 `remote_execution` 增加 `log_sealed` 列（默认 false），不复用旧行推断封口：旧执行的 `log_state` 可能停在 `partial`，不会因为服务端重启或迁移变成 `full`。
 
 ## 错误码
 
