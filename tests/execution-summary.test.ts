@@ -6,6 +6,7 @@ import {
   executionSummary,
   type LeaseFacts,
 } from "../src/components/machine/presentation";
+import { executionDetailLabel } from "../src/components/machine/lease-view";
 import {
   demoCancellations,
   demoExecutionRecords,
@@ -183,5 +184,17 @@ describe("需要处理的执行", () => {
     );
     expect(decision?.needsCancel).toBe(true);
     expect(pending?.needsCancel).toBe(false);
+  });
+});
+
+describe("执行卡片的状态说明", () => {
+  it("取消请求终止的执行不说成执行失败", () => {
+    const cancelled: ExecutionView = { ...running, state: "failed", failureReason: "cancelled" };
+    expect(executionDetailLabel(cancelled)).toBe("执行已按取消请求终止。");
+  });
+
+  it("普通失败仍说明 Worker 报告执行失败", () => {
+    const failed: ExecutionView = { ...running, state: "failed", failureReason: "executor_error" };
+    expect(executionDetailLabel(failed)).toBe("Worker 报告执行失败。");
   });
 });

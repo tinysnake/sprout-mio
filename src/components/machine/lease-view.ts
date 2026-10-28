@@ -306,6 +306,14 @@ export function failureReasonLabel(reason: string | null): string | null {
   return REMOTE_FAILURE_REASON_LABELS[reason] ?? reason;
 }
 
+export function executionDetailLabel(
+  execution: Pick<ExecutionView, "state" | "failureReason">,
+): string {
+  // 取消后执行仍落 failed，但原因是按请求终止，不能对用户说「执行失败」。
+  if (execution.failureReason === "cancelled") return "执行已按取消请求终止。";
+  return EXECUTION_STATE_LABELS[execution.state].detail;
+}
+
 /**
  * unknown 的两种来源不能混成一句：一个是子进程退出了但没留下结果，一个是从未兑现 spawn。
  * 原因字符串由 Worker 归约磁盘事实得出，页面只负责把它说清楚。

@@ -6,6 +6,7 @@ import { formatMoment } from "./machine-view";
 import {
   cancellationDisplay,
   EXECUTION_STATE_LABELS,
+  executionDetailLabel,
   HOST_TOOL_NOTE,
   OPERATION_KIND_LABELS,
   REMOTE_TARGET_NOTE,
@@ -337,7 +338,7 @@ export function RemoteExecutionCard({
           )}
         </span>
       </div>
-      <p className="text-muted-foreground">{state.detail}</p>
+      <p className="text-muted-foreground">{executionDetailLabel(execution)}</p>
       {/*
         稳定定位：执行 id 在页面恢复、刷新与重连后不变，是继续查看同一条执行的唯一入口。
         它可与下发会话/序号区分：后者是投递事实，不是执行身份。

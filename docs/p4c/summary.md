@@ -10,19 +10,22 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 - 执行详情与日志 UI：`src/components/machine/presentation.ts`、`execution-log.tsx`、`execution-cancel.tsx`、`remote-execution-panel.tsx`（`7f8a9d0`）。
 - 集成接入：服务端读取与取消 Fn、人类取消的 actor 模型（`818a134`，merge `30e1c5c`）；Web 三处消费方接线（`134e443`，merge `2068d29`）；真实长命令端到端场景（`1d26a24`，merge `416630c`）。
 - 集成后按独立验收返工：非 holder 读取围栏、分身取消的代次比较与确认窗口（`bf31cc3`）；runner 第三层恢复权威与 12 格恢复矩阵（`16f17aa`、`de506de`）；取消幂等重放的通道核对、runner 独立托管命令组（`748ec9d`、`effdcd8`，merge `0253ca0`）；日志完整性只由 Worker 的封口事实支撑（`e00e991`，merge `d028aa1`）。
+- Human 评审后的两项修正：远端操作区改为按机器的计数摘要，只有长时间占用租约的执行才给取消入口（`4d7c915`、`981882d`）；取消终止归因为 `failed` + `cancelled`，与真正的撤权分开（`5528dee`、`42a5c13`、`5b31dba`，迁移 `0019`）。
+- 迁移入口：`pnpm db:migrate` 走 `src/db/migrate.ts`，在连接级关闭外键后再跑 `drizzle-kit` 的迁移并校验 `foreign_key_check`；有数据的老库升级由 `tests/migration-rebuild.test.ts` 守着（`e2de94a`）。
 
 ## 数据形状
 
-| 形状     | 建模                                                                                                      |
-| -------- | --------------------------------------------------------------------------------------------------------- |
-| 执行     | `remote_execution` 行，状态机 `pending → dispatched → running →` 终态，终态只在收到 durable result 时落   |
-| 请求 ID  | 每次提交一个 `req_`，重试复用同一 ID，幂等键为「同请求 ID 与同操作摘要」                                  |
-| 日志     | `execution_log_frame` 追加帧，`produced/acknowledged/available_from` 三个水位加 `log_sealed` 决定完整性   |
-| 日志读取 | `{ executionId, cursor: { executionId, nextSequence }, limitBytes }`，游标自带执行归属                    |
-| 保留     | `EXECUTION_LOG_RETAIN_BYTES = 1048576` 与 `EXECUTION_LOG_RETAIN_FRAMES = 512` 先到者，只裁前缀            |
-| 取消     | `execution_cancellation` 独立行，`actor_kind` 为 `agent` 或 `human`，幂等键 `cancel:<kind>:<actor>:<req>` |
-| 恢复     | 三层权威：宿主意图行、Worker `claim.json`、runner 的 `result.json`；没有 durable result 就不确认退出      |
-| 运行时长 | 工具面只有 `waitMs`（观察窗口），没有运行上限；寿命由真实退出、显式取消或宿主重启决定                     |
+| 形状     | 建模                                                                                                       |
+| -------- | ---------------------------------------------------------------------------------------------------------- |
+| 执行     | `remote_execution` 行，状态机 `pending → dispatched → running →` 终态，终态只在收到 durable result 时落    |
+| 请求 ID  | 每次提交一个 `req_`，重试复用同一 ID，幂等键为「同请求 ID 与同操作摘要」                                   |
+| 日志     | `execution_log_frame` 追加帧，`produced/acknowledged/available_from` 三个水位加 `log_sealed` 决定完整性    |
+| 日志读取 | `{ executionId, cursor: { executionId, nextSequence }, limitBytes }`，游标自带执行归属                     |
+| 保留     | `EXECUTION_LOG_RETAIN_BYTES = 1048576` 与 `EXECUTION_LOG_RETAIN_FRAMES = 512` 先到者，只裁前缀             |
+| 取消     | `execution_cancellation` 独立行，`actor_kind` 为 `agent` 或 `human`，幂等键 `cancel:<kind>:<actor>:<req>`  |
+| 取消归因 | 执行仍落终态 `failed`，`failure_reason='cancelled'` 表示按请求终止；`authorization_revoked` 只表示真的撤权 |
+| 恢复     | 三层权威：宿主意图行、Worker `claim.json`、runner 的 `result.json`；没有 durable result 就不确认退出       |
+| 运行时长 | 工具面只有 `waitMs`（观察窗口），没有运行上限；寿命由真实退出、显式取消或宿主重启决定                      |
 
 ## 功能交付证据
 
@@ -30,7 +33,7 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 契约冻结了提交、读取、日志与取消四个形状，执行视图、日志读视图与取消视图都在 `src/contracts/remote.ts` 有 schema 与不变量校验；服务端 `readExecutionLog`、`cancelExecution`、`enqueueCancellation` 与 Worker 侧采集、取消下发、恢复归约由 `ca63613` 实现，取消的人类入口在 `818a134` 里与分身入口共用同一张表。
 
-- 实现提交 `fa5a40c`、`ca63613`、`818a134`、`bf31cc3`、`748ec9d`。
+- 实现提交 `fa5a40c`、`ca63613`、`818a134`、`bf31cc3`、`748ec9d`、`5528dee`、`42a5c13`。
 - 反证：终态拒绝取消（`cancellation_already_terminal`）、旧授权代次与非 holder 拒绝（`lease_stale_generation`、`lease_not_holder`）、跨 Project 与跨用户一律 `not_found`、复用同一 requestId 但声明错代次仍被拒且不落行。
 - 重跑：`bash scripts/verify/aa-execution-log-contracts.sh`、`bash scripts/verify/af-execution-cancel-authority.sh`、`bash scripts/verify/ai-execution-accept-fixes.sh`、`bash scripts/verify/ak-execution-accept-fixes-2.sh`。
 
@@ -72,7 +75,7 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 Human 评审后远端操作区改成按机器汇总的计数视图：默认每台机器一行，给出请求总数与各状态计数、分段条与图例，零值状态不出现；只有仍占用机器且跑得过久的执行才进入「需要处理」并给出取消入口；执行卡片、日志查看器、退出结果与取消六态收进「调试详情」抽屉。日志查看器按游标续读并区分 `none/partial/full/gap/truncated`，取消控件送达前不显示已停止。演示场景 `src/dev/scenes/machine/executions.tsx` 与 `src/dev/scenes/machine/lease-fixtures.ts` 用 fixture 复现这些状态，含长占用与租约已释放两条事实。
 
-- 实现提交 `7f8a9d0`、`4d7c915`、`981882d`、`89e209f`。
+- 实现提交 `7f8a9d0`、`4d7c915`、`981882d`、`89e209f`、`5b31dba`。
 - 反证：默认层没有执行卡片；租约已释放的执行不给取消按钮，因为那时取消发不到 Worker；`ad` 的「不提供隐式重跑」断言收窄为只认重跑原命令的措辞，不把「重试取消」当成重跑。
 - 重跑：`bash scripts/verify/ad-execution-log-ui.sh`。
 
@@ -111,6 +114,7 @@ Human 评审后远端操作区改成按机器汇总的计数视图：默认每�
 - 已裁剪日志在页面里明确给出 `execution_log_gap` 与新的 `availableFromSequence`，但没有「从可读起点重读」的按钮，需要人工改游标或等新帧。完整性判据仍成立，记为可用性限制（`retained-read`）。
 - 未验证：跨机网络与网络分区、真机软键盘与触控、物理断电与文件系统掉电（以 runner 与命令进程组消失模拟 Machine 重启）、长时间容量与多 Machine 极限负载、像素级视觉评审。
 - Worker 运行时长默认无上限，只有 `waitMs` 观察窗口；寿命由真实退出、显式取消或宿主重启决定。
+- 表重建类迁移在事务内无法自行关闭外键，依赖调用方以连接级 `PRAGMA foreign_keys = OFF` 进入；`pnpm db:migrate` 已改为这个入口，直接用 `drizzle-kit migrate` 升级有数据的老库会失败。
 
 ## Human 体验确认
 
