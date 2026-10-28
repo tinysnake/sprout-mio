@@ -93,6 +93,13 @@ const p4cHuman = (line) => {
   const file = path.join(tree, p4cSummary);
   fs.writeFileSync(file, read(p4cSummary).replace('## Human 体验确认\n', `## Human 体验确认\n\n${line}\n`));
 };
+const p4cHumanNoRecord = () => {
+  const file = path.join(tree, p4cSummary);
+  fs.writeFileSync(
+    file,
+    read(p4cSummary).replace(/^- 确认记录：Human 亲自体验确认通过，版本 `[0-9a-f]{7,40}`$/gm, ''),
+  );
+};
 const p4cHumanBox = () =>
   setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4c');
 const humanBox = () =>
@@ -240,8 +247,7 @@ probeCase('I-P4c technical acceptance without a summary fails', () => {
   setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4c');
 }, { code: 1, includes: 'I-P4c technical acceptance requires docs/p4c/summary.md' });
 probeCase('I-P4c human confirmation without a record fails', () => {
-  const file = path.join(tree, p4cSummary);
-  fs.writeFileSync(file, read(p4cSummary).replace(/^Human 尚未亲自体验.*$/gm, ''));
+  p4cHumanNoRecord();
   p4cHumanBox();
 }, { code: 1, includes: 'I-P4c human acceptance requires an explicit confirmation record' });
 probeCase('I-P4c recorded human confirmation passes', () => {
