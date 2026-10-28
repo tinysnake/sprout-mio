@@ -1,10 +1,16 @@
 // 第三层恢复权威：执行端自己的 claim 与 result 文件。
 //
-// Worker 用 `detached` 起这个进程，它就是该执行的进程组组长，命令行参数是
-//   <executionId> <runnerToken> <stateDirectory> <shellPath>
+// 托管分离：Worker 用 `detached` 起这个进程，它自己就是一条独立的观察者；命令再由它用
+// **自己的**进程组起（`detached: true`）。Worker 的中止信号只打命令组，runner 不陪葬，
+// 于是 KILL 之后 result.json 仍然会落盘——退出是被观测到的，不是「不知道它怎么结束」。
+//
+// 命令行参数是 <executionId> <runnerToken> <stateDirectory> <shellPath>；
 // 命令正文走环境变量，不进 argv：同一台机器上按命令行匹配进程的工具只该看到一个命令进程。
-// 顺序很重要：先把 runner claim 落盘（pid 与 token），再起真正的命令；命令退出后再落
-// result。被杀在 result 之前，磁盘上就没有结果——这正是「不猜」的可执行版本。
+//
+// 顺序很重要：先把 runner claim（pid 与 token）落盘，再起真正的命令；命令起来后立刻把
+// childPid 补进同一份 claim（Worker 的信号目标从这里解析）；命令退出后再落 result。
+// 被 KILL 在 result 之前（宿主断电、runner 自己也被杀），磁盘上就没有结果——这正是「不猜」
+// 的可执行版本。
 //
 // 只用 node 内置模块，源码(tree)与打包(dist)都能直接跑，不依赖 tsx 或任何构建产物。
 import { spawn } from "node:child_process";
@@ -27,29 +33,26 @@ function writeJson(directory, name, value) {
   renameSync(temporary, join(directory, name));
 }
 
-// 宿主发信号的对象是「命令与它所在的进程组」。包装进程不能替命令先死：那样 Worker 会把
-// 「包装进程被 TERM 打死」当成命令已停，真实的退出码与信号就再也拿不到。TERM/INT/HUP 交给
-// 命令自己处理；SIGKILL 打整个组时两者一起消失，磁盘上不留结果，恢复只能报 unknown。
+// Worker 在 childPid 落盘前只能按旧行为把信号打到这里所在的组。观察者不能替命令先死：
+// 那样 Worker 会把「runner 被 TERM 打死」当成命令已停，真实的退出码与信号就再也落不了盘。
+// 这个窗口只有一次 spawn 的宽度；宽限到点时 Worker 会重新解析 childPid，改打命令组。
 for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => {});
 
 const directory = join(stateDirectory, "executions", executionId);
 mkdirSync(directory, { recursive: true, mode: 0o700 });
-writeJson(directory, "runner.json", {
+const claim = {
   executionId,
   pid: process.pid,
   token: runnerToken,
   startedAt: new Date().toISOString(),
-});
+};
+writeJson(directory, "runner.json", claim);
 
-const child = spawn(shellPath, ["-lc", command], { stdio: "inherit" });
-// 命令的 pid 单独记：工具面与页面看到的是「命令」，不是这个包装进程。
-writeJson(directory, "runner.json", {
-  executionId,
-  pid: process.pid,
-  childPid: child.pid ?? null,
-  token: runnerToken,
-  startedAt: new Date().toISOString(),
-});
+// detached：命令自成进程组，组号就是 child.pid。Worker 的取消/超时信号打 -childPid，
+// runner 留在自己的组里继续当观察者。stdio 继承，日志帧仍然直达 Worker 的管道。
+const child = spawn(shellPath, ["-lc", command], { stdio: "inherit", detached: true });
+// 命令的 pid 单独记：工具面、页面与信号目标看到的是「命令」，不是这个包装进程。
+writeJson(directory, "runner.json", { ...claim, childPid: child.pid ?? null });
 const [code, signal] = await new Promise((resolve) => {
   child.once("error", () => resolve([127, null]));
   child.once("exit", (exitCode, exitSignal) => resolve([exitCode, exitSignal]));

@@ -150,31 +150,36 @@ function runnerEntry(): string | null {
   }
   return null;
 }
-/** 先 TERM 整个进程组，宽限后 KILL；只报告 OS 是否接受信号调用。 */
-function terminateGroup(pid: number, policy: "term_then_kill" | "kill", graceMs: number) {
-  if (policy === "kill") {
+/**
+ * 中止信号只打命令自己的进程组（`-childPid`），不打 runner 所在的组：runner 是观察者，
+ * 它必须活到把 result.json 落盘，退出才叫「被观测到」。
+ *
+ * `resolveTarget` 返回 `exact`：命中的是命令组，还是 `childPid` 还没落盘时的回退（runner 组）。
+ * 回退时，宽限到点的 KILL 再解析一次，覆盖「宽限期间 childPid 才落盘」的窗口；已经命中
+ * 命令组就把这个目标记住——终态 ACK 之后 outbox 会被清掉，那时再解析只会失去目标，
+ * 把刚启动的命令留成孤儿。只报告 OS 是否接受信号调用。
+ */
+function terminateCommandGroup(
+  resolveTarget: () => { pid: number; exact: boolean },
+  policy: "term_then_kill" | "kill",
+  graceMs: number,
+) {
+  const send = (target: { pid: number }, signal: NodeJS.Signals) => {
     try {
-      process.kill(-pid, "SIGKILL");
-      return "kill_delivered" as SignalOutcome;
+      process.kill(-target.pid, signal);
+      return true;
     } catch {
-      return "none" as SignalOutcome;
+      return false;
     }
-  }
-  let outcome: SignalOutcome = "none";
-  try {
-    process.kill(-pid, "SIGTERM");
-    outcome = "term_delivered";
-  } catch {
-    return outcome;
-  }
+  };
+  const target = resolveTarget();
+  if (policy === "kill") return send(target, "SIGKILL") ? "kill_delivered" : "none";
+  if (!send(target, "SIGTERM")) return "none";
   setTimeout(() => {
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-      // 进程组已经消失：TERM 够用，不补 KILL。
-    }
+    // 进程组已经消失也不报错：TERM 够用，不补 KILL。
+    send(target.exact ? target : resolveTarget(), "SIGKILL");
   }, graceMs).unref();
-  return outcome;
+  return "term_delivered";
 }
 /**
  * One dispatcher per connection; a closed session can drain but never regain admission.
@@ -214,12 +219,16 @@ export class RemoteDispatcher {
   private shellCommand(command: RemoteCommand, shellPath: string, text: string) {
     const entry = runnerEntry();
     const stateDirectory = this.registry.store.stateDirectory;
-    if (!entry || !stateDirectory) return { file: shellPath, args: ["-lc", text], env: undefined };
+    // `runner: false` 是降级模式：没有 state-dir 或找不到 runner 时没有第三层，
+    // 退出证据只能来自本进程直接观测（见 docs/p0/recovery-promises.md 的三层权威）。
+    if (!entry || !stateDirectory)
+      return { file: shellPath, args: ["-lc", text], env: undefined, runner: false };
     return {
       file: process.execPath,
       args: [entry, command.executionId, command.runnerToken ?? "", stateDirectory, shellPath],
       // 命令正文不进 argv：runner 自己的命令行不该出现第二条同名命令。
       env: { ...process.env, SPROUT_RUNNER_COMMAND: text },
+      runner: true,
     };
   }
   /** 回报给工具面的 pid 是命令本身的 pid；拿不到时才退回 runner 的 pid。 */
@@ -322,14 +331,11 @@ export class RemoteDispatcher {
     }
     // 日志帧最后使用剩余预算：fence、终端报告与恢复事实先占位，日志不得饿死它们。
     this.frames = [];
-    for (const { run, frame } of this.registry.rotate(
-      this.session,
-      EXECUTION_LOG_FRAMES_PER_EXCHANGE,
-    )) {
+    for (const { run, frame } of this.registry.rotate(EXECUTION_LOG_FRAMES_PER_EXCHANGE)) {
       if (this.frames.length === EXECUTION_LOG_FRAMES_PER_EXCHANGE) break;
       // 帧归属于「宿主下发这条命令的那一次投递」，不是承载本批的 exchange。
-      // 没有对应 entry 就没有可信的下发序号，不发帧，由恢复事实交代。
-      const dispatchSeq = this.entries.get(run.claim.executionId)?.command.dispatchSeq;
+      // 下发序号来自 durable claim：宿主已确认终态、甚至 Worker 重启之后，未确认帧仍要补送。
+      const dispatchSeq = run.claim.dispatchSeq > 0 ? run.claim.dispatchSeq : undefined;
       if (dispatchSeq === undefined) continue;
       const wire: ExecutionLogFrame = {
         executionId: run.claim.executionId,
@@ -505,7 +511,21 @@ export class RemoteDispatcher {
     if (!run || run.claim.pid === 0 || run.exited) return "none" as SignalOutcome;
     run.terminated = true;
     run.signalGraceMs = policy === "kill" ? 0 : graceMs;
-    return terminateGroup(run.claim.pid, policy, graceMs);
+    return terminateCommandGroup(
+      () => this.signalTarget(executionId, run.claim.pid),
+      policy,
+      graceMs,
+    );
+  }
+  /**
+   * 信号目标的 pid：命令自己的进程组组长（`runner.json.childPid`）。
+   * 它还没落盘时退回 runner 的 pid（旧行为：打 runner 组），这时取消只能落在未确认态。
+   */
+  private signalTarget(executionId: string, runnerPid: number) {
+    const childPid = this.registry.store.runnerClaim(executionId)?.childPid ?? null;
+    return childPid !== null && childPid > 1
+      ? { pid: childPid, exact: true }
+      : { pid: runnerPid, exact: false };
   }
   private gate(entry: Entry) {
     const command = entry.command;
@@ -544,6 +564,8 @@ export class RemoteDispatcher {
   private async execute(entry: Entry, run: Run) {
     let outcome: Outcome = "succeeded";
     let payload: RemoteResultPayload | undefined;
+    // 没有 runner result 的退出：终态报告必须把这个原因一起交出去，宿主才敢不写「已退出」。
+    let unrecordedExit = false;
     const operation = entry.command.operation;
     // 下发窗口只约束「能否开始执行」：准入兑现后立即解除，运行寿命只看运行上限与显式取消。
     const admission = setTimeout(
@@ -560,6 +582,7 @@ export class RemoteDispatcher {
         if (!shell) throw new AdmissionError("capability_unavailable");
         this.gate(entry);
         const launched = this.shellCommand(entry.command, shell.path, operation.command);
+        const runnerBacked = launched.runner;
         const child = spawn(launched.file, launched.args, {
           cwd: operation.cwd,
           detached: true,
@@ -572,6 +595,8 @@ export class RemoteDispatcher {
         let exitCode: number | null = null,
           exitSignal: string | null = null,
           exited = false,
+          // runner 落盘 result 才算「观测到退出」；只看进程消失是未观测，不是终态。
+          exitObserved = true,
           truncated = false,
           stdout = Buffer.alloc(0),
           stderr = Buffer.alloc(0);
@@ -601,16 +626,21 @@ export class RemoteDispatcher {
           child.once("exit", (code, signal) => {
             exited = true;
             // runner 在退出前已把 result.json 落盘：它才是退出码与信号的原生事实。
-            // 没落盘（被杀在写结果之前）就只能用本进程观测到的 wrapper 退出，不猜。
+            // 没落盘（被杀在结果写盘之前）就只有「进程不见了」这一件事：wrapper 的
+            // code/signal 不写进 claim，也不冒充执行退出，留给恢复事实与取消未确认态。
             const recorded = this.registry.store.runnerResult(entry.command.executionId);
+            exitObserved = recorded !== null || !runnerBacked;
             if (recorded) {
               exitCode = recorded.exitCode;
               exitSignal = recorded.signal;
-            } else {
+              this.registry.markExit(run, exitCode, exitSignal);
+            } else if (runnerBacked) this.registry.markExit(run, null, null, false);
+            else if (!runnerBacked) {
+              // 降级模式：直接 spawn 的 shell 自己就是被观测的进程，它的退出是唯一事实。
               exitCode = code;
               exitSignal = signal;
+              this.registry.markExit(run, exitCode, exitSignal);
             }
-            this.registry.markExit(run, exitCode, exitSignal);
             resolve();
           });
         });
@@ -626,8 +656,14 @@ export class RemoteDispatcher {
               if (run.exited) return;
               run.terminated = true;
               run.signalGraceMs = SIGNAL_GRACE_MS;
+              // 运行上限只打命令组：runner 活着才能把「命令被 KILL」写成 durable result，
+              // 于是终态是已知的限时，而不是「退出未被记录」。
               if (run.claim.pid !== 0)
-                terminateGroup(run.claim.pid, "term_then_kill", SIGNAL_GRACE_MS);
+                terminateCommandGroup(
+                  () => this.signalTarget(entry.command.executionId, run.claim.pid),
+                  "term_then_kill",
+                  SIGNAL_GRACE_MS,
+                );
             },
             Math.max(0, runtimeDeadline - this.now()),
           );
@@ -702,7 +738,26 @@ export class RemoteDispatcher {
           }
           run.log.flush();
         }
-        if (exited) {
+        if (exited && !exitObserved) {
+          // 进程不再运行，但没有 durable result：没有退出码可用，也不能说成功或失败。
+          const output = boundedText(stdout, 65536);
+          const errorOutput = boundedText(stderr, 8192);
+          unrecordedExit = true;
+          outcome = "unknown";
+          payload = {
+            kind: "shell",
+            failureReason: "worker_lost",
+            partial: {
+              kind: "shell",
+              pid: this.shellPid(entry.command.executionId, child.pid!),
+              exited: false,
+              exitCode: null,
+              stdout: output.text,
+              stderr: errorOutput.text,
+              truncated: truncated || output.truncated || errorOutput.truncated,
+            },
+          };
+        } else if (exited) {
           const output = boundedText(stdout, 65536);
           const errorOutput = boundedText(stderr, 8192);
           payload = {
@@ -804,32 +859,38 @@ export class RemoteDispatcher {
       }
       this.gate(entry); // No success can escape a revoked gate, even after an irreversible OS call.
     } catch (error) {
-      const reason =
-        error instanceof AdmissionError
-          ? error.reason
-          : entry.controller.signal.aborted
-            ? "authorization_revoked"
-            : "executor_error";
-      const admissionExpired =
-        !entry.started && this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
-      const runtimeExpired =
-        entry.command.runtimeDeadlineAt !== null &&
-        this.now() >= Date.parse(entry.command.runtimeDeadlineAt);
-      outcome = admissionExpired
-        ? "timed_out"
-        : runtimeExpired
-          ? entry.started
-            ? "timed_out"
-            : "rejected"
-          : reason === "executor_error"
-            ? "failed"
-            : entry.started && reason === "authorization_revoked"
-              ? "unknown"
-              : "rejected";
-      payload = {
-        kind: operation.kind,
-        failureReason: admissionExpired || runtimeExpired ? "deadline" : reason,
-      };
+      // 进程已经不在、只是没有 durable result：这个事实比「撤权」更强，不能因为终态前的
+      // 撤权核对把它改写成另一个原因。恢复事实与取消未确认态都要能看见 child-exited-without-result。
+      if (unrecordedExit && payload !== undefined) {
+        // 保留上面推导出的 unknown: worker_lost + 部分输出。
+      } else {
+        const reason =
+          error instanceof AdmissionError
+            ? error.reason
+            : entry.controller.signal.aborted
+              ? "authorization_revoked"
+              : "executor_error";
+        const admissionExpired =
+          !entry.started && this.now() >= Date.parse(entry.command.dispatchDeadlineAt);
+        const runtimeExpired =
+          entry.command.runtimeDeadlineAt !== null &&
+          this.now() >= Date.parse(entry.command.runtimeDeadlineAt);
+        outcome = admissionExpired
+          ? "timed_out"
+          : runtimeExpired
+            ? entry.started
+              ? "timed_out"
+              : "rejected"
+            : reason === "executor_error"
+              ? "failed"
+              : entry.started && reason === "authorization_revoked"
+                ? "unknown"
+                : "rejected";
+        payload = {
+          kind: operation.kind,
+          failureReason: admissionExpired || runtimeExpired ? "deadline" : reason,
+        };
+      }
     } finally {
       clearTimeout(admission);
       if (runtimeLimit) clearTimeout(runtimeLimit);
@@ -848,6 +909,7 @@ export class RemoteDispatcher {
       drained: true,
       outcome,
       payload,
+      ...(unrecordedExit ? { recoveryReason: "child-exited-without-result" as const } : {}),
     };
     this.registry.finish(run);
   }

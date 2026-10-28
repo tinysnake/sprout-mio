@@ -318,13 +318,23 @@ function applyLogFrames(
   for (const frame of frames) {
     if (frame.machineId !== ctx.session.machineId) throw new RemoteError("not_found");
     const row = executionByKey(frame.executionId, frame);
+    if (!row) throw new RemoteError("not_found");
+    // 帧有两类合法发送方：真正承载那次下发的会话，以及同一台 Machine 之后的连接。
+    // 后者是 Worker 重启后的补送：终态结果早已 ACK，但日志 outbox 里还有没送到宿主的前缀。
+    // 它仍必须带着那次下发的序号，并且代次与 holder 与执行行一致，不能借新连接冒充别的执行。
+    const dispatchedHere =
+      sameSession(frame.dispatchSession, ctx.session) &&
+      row.dispatchConnectionGeneration === ctx.session.generation;
+    const superseding =
+      row.dispatchConnectionGeneration !== null &&
+      row.dispatchConnectionGeneration < ctx.session.generation;
     if (
-      !row ||
-      !sameSession(frame.dispatchSession, ctx.session) ||
+      row.machineId !== frame.machineId ||
+      row.projectId !== frame.projectId ||
       row.authorizationGeneration !== frame.authorizationGeneration ||
       row.holderInstanceId !== frame.holderInstanceId ||
-      row.dispatchConnectionGeneration !== ctx.session.generation ||
-      row.dispatchSeq !== frame.dispatchSeq
+      row.dispatchSeq !== frame.dispatchSeq ||
+      !(dispatchedHere || superseding)
     )
       throw new RemoteError("not_found");
     const payload = frame.bytes === undefined ? null : Buffer.from(frame.bytes, "utf8");
@@ -492,6 +502,10 @@ export function applyExecutionRecovery(
       })
       .where(eq(remoteExecution.id, row.id))
       .run();
+    // 子进程已经不在但没有 result：取消不能停在 delivered 等满确认窗口才说投递未确认，
+    // 它现在就能诚实地说「进程已不再运行，退出没有被记录」。
+    if (recovery.observedReason === "child-exited-without-result")
+      settleCancellations(row.id, ctx.now, false);
     return;
   }
   // 证据不足时不归约：unknown 保留，不当作成功或失败。
@@ -603,6 +617,8 @@ export function applyExecutionRecovery(
     // 单向性：只允许从可恢复状态进入已知终态，已确定的终态不回头。
     .where(and(eq(remoteExecution.id, row.id), inArray(remoteExecution.state, RECOVERABLE_STATES)))
     .run();
+  // durable result 到达，退出证据同时成立：取消不必等满确认窗口才能说已观测到退出。
+  settleCancellations(row.id, ctx.now);
   db.insert(diagnosticEvent)
     .values({
       id: newId(ID_PREFIXES.diagnostic),
@@ -926,6 +942,11 @@ export function enqueueCancellation(
       assertAgentContext(input, ctx);
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("cancellation_not_found");
+      // 通道核对先于幂等返回：幂等键只保证「同一请求不重复投递」，不保证调用方还有权碰这台
+      // Machine。旧代次、已换 holder 或已释放的租约在命中旧行时同样要拒，且不读写任何行。
+      if (input.authorizationGeneration !== row.authorizationGeneration)
+        throw new RemoteError("lease_stale_generation");
+      liveLease(row, ctx);
       const key = cancellationRequestKey({ kind: "agent", id: ctx.instanceId }, input.requestId);
       const old = db
         .select()
@@ -955,10 +976,6 @@ export function enqueueCancellation(
         .get();
       // 已有未完成意图时只返回同样的事实，不重复投递。
       if (open) throw new RemoteError("cancellation_delivery_unconfirmed");
-      // 调用方声明的代次必须就是这条执行的代次；不相等一律当旧代次，不得写取消行。
-      if (input.authorizationGeneration !== row.authorizationGeneration)
-        throw new RemoteError("lease_stale_generation");
-      liveLease(row, ctx);
       const id = newId(ID_PREFIXES.cancellation);
       db.insert(executionCancellation)
         .values({
@@ -1027,6 +1044,11 @@ export function cancelExecution(
         ctx.bootId,
       );
       const row = db.select().from(remoteExecution).where(eq(remoteExecution.id, found.id)).get()!;
+      // 幂等命中同样要核对投递通道：旧代次或已换 holder 时，这条意图没有任何人能被投递到，
+      // 不能因为「同一个 requestId」就把它当成仍然成立。
+      const lease = ensureLease({ projectId: row.projectId, machineId: row.machineId }, ctx.now);
+      if (!leaseHeldBy(lease, row.authorizationGeneration, row.holderInstanceId))
+        throw new RemoteError("cancellation_delivery_unconfirmed");
       const key = cancellationRequestKey({ kind: "human", id: ctx.userId }, input.requestId);
       const old = db
         .select()
@@ -1055,10 +1077,6 @@ export function cancelExecution(
         )
         .get();
       if (open) throw new RemoteError("cancellation_delivery_unconfirmed");
-      const lease = ensureLease({ projectId: row.projectId, machineId: row.machineId }, ctx.now);
-      // 旧授权代次或已换 holder 时，这条意图没有任何人能被投递到。
-      if (!leaseHeldBy(lease, row.authorizationGeneration, row.holderInstanceId))
-        throw new RemoteError("cancellation_delivery_unconfirmed");
       const id = newId(ID_PREFIXES.cancellation);
       db.insert(executionCancellation)
         .values({
@@ -1208,8 +1226,13 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
 /**
  * runner 落盘的 durable result 是取消的唯一退出证据：意图已送达而命令随后退出写 `exited_observed`，
  * 意图尚未送达而命令自然退出写 `already_exited`。不重写执行结果本身。
+ *
+ * `exitObserved === false` 表示 Worker 只看到进程不见了、没有 result 落盘。此时既不能写
+ * `exited_observed`（没有退出码可确认），也不能沿用 `already_exited`（不知道是不是自然退出）：
+ * 诚实的终态是未确认，原因 `exit_not_observed`。送达过的记 `failed`，没送达的记 `unknown`
+ * （check_7 要求 `failed` 有送达时间）。
  */
-function settleCancellations(executionId: string, now: Date) {
+function settleCancellations(executionId: string, now: Date, exitObserved = true) {
   for (const row of db
     .select()
     .from(executionCancellation)
@@ -1220,15 +1243,24 @@ function settleCancellations(executionId: string, now: Date) {
       ),
     )
     .all())
-    db.update(executionCancellation)
-      .set({
-        state: row.deliveredAt === null ? "already_exited" : "exited_observed",
-        // 未送达时 delivered_at 必须 NULL（check_5 要求退出时间晚于送达时间）。
-        deliveredAt: row.deliveredAt ?? now,
-        exitedAt: now,
-      })
-      .where(eq(executionCancellation.id, row.id))
-      .run();
+    if (!exitObserved)
+      db.update(executionCancellation)
+        .set({
+          state: row.deliveredAt === null ? "unknown" : "failed",
+          failureReason: "exit_not_observed",
+        })
+        .where(eq(executionCancellation.id, row.id))
+        .run();
+    else
+      db.update(executionCancellation)
+        .set({
+          state: row.deliveredAt === null ? "already_exited" : "exited_observed",
+          // 未送达时 delivered_at 必须 NULL（check_5 要求退出时间晚于送达时间）。
+          deliveredAt: row.deliveredAt ?? now,
+          exitedAt: now,
+        })
+        .where(eq(executionCancellation.id, row.id))
+        .run();
 }
 function sameSession(a: WorkerSession, b: WorkerSession) {
   return (
@@ -1391,7 +1423,9 @@ export function applyRemoteExchange(
             drainedAt: ctx.now,
             terminalAt: ctx.now,
             failureReason: "failureReason" in payload ? payload.failureReason : null,
-            recoveryReason: null,
+            // 没有 runner result 的退出把原因一起交上来：执行停在 understandable 的未知，
+            // 不写成已知终态，也不让取消冒认「已观测到退出」。
+            recoveryReason: report.recoveryReason ?? null,
           })
           .where(eq(remoteExecution.id, row.id))
           .run();
@@ -1423,7 +1457,7 @@ export function applyRemoteExchange(
       }
     }
     // runner 落盘的 durable result 是取消的唯一退出证据；送达本身不算进程已停。
-    settleCancellations(row.id, ctx.now);
+    settleCancellations(row.id, ctx.now, report.recoveryReason === undefined);
     output.resultAcks.push({ executionId: row.id, disposition });
   }
   const logRows = input.logFrames?.length ? applyLogFrames(input.logFrames, ctx) : new Map();
