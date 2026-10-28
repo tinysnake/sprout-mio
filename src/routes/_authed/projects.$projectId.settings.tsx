@@ -188,6 +188,7 @@ function ProjectSettingsPage() {
                 executions={executions.data}
                 machines={infoHub.ok ? infoHub.data.machines : []}
                 holderNames={infoHub.ok ? holderNames(infoHub.data) : {}}
+                leases={infoHub.ok ? infoHub.data.leases.items : []}
                 logReader={executionWiring.logReader}
                 canceller={executionWiring.canceller}
                 connection={executionWiring.connection}

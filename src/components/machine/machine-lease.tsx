@@ -132,6 +132,7 @@ export function MachineLeasePanel({
             executions={executions.filter((execution) => execution.machineId === detail.machine.id)}
             machines={[detail]}
             holderNames={holderNames}
+            leases={leases}
             {...(logReader ? { logReader } : {})}
             {...(canceller ? { canceller } : {})}
             {...(connection ? { connection } : {})}
