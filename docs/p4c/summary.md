@@ -9,6 +9,7 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 - 工具面：`sprout_remote_execution_cancel` 与 `sprout_remote_execution_log`（`95b7bd3`）。
 - 执行详情与日志 UI：`src/components/machine/presentation.ts`、`execution-log.tsx`、`execution-cancel.tsx`、`remote-execution-panel.tsx`（`7f8a9d0`）。
 - 集成接入：服务端读取与取消 Fn、人类取消的 actor 模型（`818a134`，merge `30e1c5c`）；Web 三处消费方接线（`134e443`，merge `2068d29`）；真实长命令端到端场景（`1d26a24`，merge `416630c`）。
+- 集成后按独立验收返工：非 holder 读取围栏、分身取消的代次比较与确认窗口（`bf31cc3`）；runner 第三层恢复权威与 12 格恢复矩阵（`16f17aa`、`de506de`）；取消幂等重放的通道核对、runner 独立托管命令组（`748ec9d`、`effdcd8`，merge `0253ca0`）；日志完整性只由 Worker 的封口事实支撑（`e00e991`，merge `d028aa1`）。
 
 ## 数据形状
 
@@ -16,10 +17,11 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 | -------- | --------------------------------------------------------------------------------------------------------- |
 | 执行     | `remote_execution` 行，状态机 `pending → dispatched → running →` 终态，终态只在收到 durable result 时落   |
 | 请求 ID  | 每次提交一个 `req_`，重试复用同一 ID，幂等键为「同请求 ID 与同操作摘要」                                  |
-| 日志     | `execution_log_frame` 追加帧，`produced/acknowledged/available_from` 三个水位决定完整性                   |
+| 日志     | `execution_log_frame` 追加帧，`produced/acknowledged/available_from` 三个水位加 `log_sealed` 决定完整性   |
 | 日志读取 | `{ executionId, cursor: { executionId, nextSequence }, limitBytes }`，游标自带执行归属                    |
 | 保留     | `EXECUTION_LOG_RETAIN_BYTES = 1048576` 与 `EXECUTION_LOG_RETAIN_FRAMES = 512` 先到者，只裁前缀            |
 | 取消     | `execution_cancellation` 独立行，`actor_kind` 为 `agent` 或 `human`，幂等键 `cancel:<kind>:<actor>:<req>` |
+| 恢复     | 三层权威：宿主意图行、Worker `claim.json`、runner 的 `result.json`；没有 durable result 就不确认退出      |
 | 运行时长 | 工具面只有 `waitMs`（观察窗口），没有运行上限；寿命由真实退出、显式取消或宿主重启决定                     |
 
 ## 功能交付证据
@@ -28,9 +30,9 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 契约冻结了提交、读取、日志与取消四个形状，执行视图、日志读视图与取消视图都在 `src/contracts/remote.ts` 有 schema 与不变量校验；服务端 `readExecutionLog`、`cancelExecution`、`enqueueCancellation` 与 Worker 侧采集、取消下发、恢复归约由 `ca63613` 实现，取消的人类入口在 `818a134` 里与分身入口共用同一张表。
 
-- 实现提交 `fa5a40c`、`ca63613`、`818a134`。
-- 反证：终态拒绝取消（`cancellation_already_terminal`）、旧授权代次与非 holder 拒绝、跨 Project 与跨用户一律 `not_found`。
-- 重跑：`bash scripts/verify/aa-execution-log-contracts.sh`、`bash scripts/verify/af-execution-cancel-authority.sh`。
+- 实现提交 `fa5a40c`、`ca63613`、`818a134`、`bf31cc3`、`748ec9d`。
+- 反证：终态拒绝取消（`cancellation_already_terminal`）、旧授权代次与非 holder 拒绝（`lease_stale_generation`、`lease_not_holder`）、跨 Project 与跨用户一律 `not_found`、复用同一 requestId 但声明错代次仍被拒且不落行。
+- 重跑：`bash scripts/verify/aa-execution-log-contracts.sh`、`bash scripts/verify/af-execution-cancel-authority.sh`、`bash scripts/verify/ai-execution-accept-fixes.sh`、`bash scripts/verify/ak-execution-accept-fixes-2.sh`。
 
 ### 2. 响应丢失后的重复提交不重复启动已确认的同一命令
 
@@ -44,25 +46,25 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 断联只关闭准入与本次投递，已经开始执行的子进程不接收信号；终态报告留在 Worker 的 durable 上行里，重连后补送。日志读取权威在宿主侧，所以 Worker 离线时当前持有者仍能读到已确认前缀并看到运行状态。
 
-- 实现提交 `416630c`、`f807af8`。
-- 反证：断连后进程仍存活、重连后同一 `executionId` 续读到退出结果；断连期间的日志不留空洞假象。
+- 实现提交 `416630c`、`f807af8`、`3538145`。
+- 反证：断连后进程仍存活、重连后同一 `executionId` 续读到退出结果；命令跨过下发窗口后仍继续记录与取消；断连期间的日志不留空洞假象。
 - 重跑：`bash scripts/verify/ah-execution-live-e2e.sh`、`bash scripts/verify/ac-execution-recovery-log.sh`。
 
 ### 4. 按 P0 恢复范围验证宿主、Worker 和 Machine 重启，未知结果不重跑
 
-宿主重启按 durable 事实归约：执行仍在则继续，进程不在而结果未到则落 `unknown`；Worker 重启让进行中的执行落 `unknown/worker_lost`，原命令继续运行也不重跑；Machine 上的租约与执行读取关系保持。任何 `unknown` 都不提供隐式重跑。
+恢复有三层权威：宿主侧的意图行、Worker 的 `claim.json`、runner 落盘的 `result.json`。只有第三层真的写下退出事实，执行才进 `exited_observed`；runner 也一起消失时才落 `unknown` 并带原因，同时说明原命令继续运行也不重跑。宿主不再因为连接丢失就把进行中的执行改写成 `unknown`，而是在新连接代次的宽限内等真实报告。
 
-- 实现提交 `ca63613`、`356233d`。
-- 反证：三类重启前后同一执行的可查询性、`state='unknown'` 与 `failureReason` 的对应、页面与工具面均无重跑动作。
-- 重跑：`bash scripts/verify/ac-execution-recovery-log.sh`、`bash scripts/verify/ah-execution-live-e2e.sh`。
+- 实现提交 `16f17aa`、`de506de`。
+- 反证：P0 承诺的 12 格（本机断连/重启、Worker 重启、Machine 重启各短长两档）逐格断言状态与页面一致，`unknown` 一定带 `recovery_reason`，页面与工具面都没有重跑动作；命令杀掉自己的 runner 才得到 `exit_not_observed`。
+- 重跑：`bash scripts/verify/aj-recovery-matrix.sh`、`bash scripts/verify/al-execution-exit-custody.sh`、`bash scripts/verify/ah-execution-live-e2e.sh`。
 
 ### 5. 固定日志和结果保留规则，达到限制时明确告知
 
-日志按字节与帧数双阈值裁前缀，裁剪推进 `available_from` 并把状态置为 `truncated`，读取侧返回 `meta.truncated` 与 `availableFromSequence`；游标落在已裁剪区时报 `execution_log_gap`，跨执行复用游标报 `execution_log_cursor_stale`，都不静默补成「完整」。
+日志按字节与帧数双阈值裁前缀，裁剪推进 `available_from` 并把状态置为 `truncated`；游标落在已裁剪区报 `execution_log_gap`，跨执行复用游标报 `execution_log_cursor_stale`。完整性只认 Worker 的封口事实：`log_state='full'` 需要 Worker 声明该执行不再产帧、且已确认前缀覆盖全部已产出位点；终态结果 ACK 不等于日志交代完毕，未送达的帧留在 outbox 继续补送。
 
-- 实现提交 `f807af8`、`d268969`。
-- 反证：裁剪后 `logState='truncated'`、缺口与陈旧游标都是显式错误码而不是空日志。
-- 重跑：`bash scripts/verify/ah-execution-live-e2e.sh`、`bash scripts/verify/ae-remote-tools-cancel-log.sh`。
+- 实现提交 `f807af8`、`d268969`、`e00e991`。
+- 反证：快速大输出后冻结 Worker 时宿主只有连续前缀也不得宣称完整，恢复补送后按预算变 `truncated`；伪造封口但位点高于已确认前缀仍是 `partial`。
+- 重跑：`bash scripts/verify/am-execution-log-honesty.sh`、`bash scripts/verify/ak-execution-accept-fixes-2.sh`、`bash scripts/verify/ae-remote-tools-cancel-log.sh`。
 
 ## UI 交付证据
 
@@ -77,8 +79,9 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 `isIncompleteLogState` 决定「不完整」提示；连接状态来自真实列表读取与浏览器在线状态，不硬编码；断线时读取位点不前进，重连后从本地游标继续；`unknown` 与 `timed_out` 显示不可重跑的说明。
 
-- 实现提交 `134e443`。
-- 重跑：`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/ad-execution-log-ui.sh`。
+- 实现提交 `134e443`、`e00e991`。
+- 反证：Worker 还有未确认产出时页面显示「日志不完整」，封口且全部确认后才显示「日志完整」；断开网络后读取位点不前进。
+- 重跑：`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/ad-execution-log-ui.sh`、`bash scripts/verify/am-execution-log-honesty.sh`。
 
 ### 8. 保留稳定 execution 定位，页面恢复后可继续查看既有执行
 
@@ -94,10 +97,19 @@ P4c 把远端的「一次操作」升级成可反复查询的「一次执行」�
 
 ## 技术验收证据
 
-独立技术验收由未参与实现的模型家族执行，被验对象为集成线收口提交，逐条从计划原文重推导并给出 PASS/FAIL/UNVERIFIED，报告见 `orchestrate/sprout-mio-p4c/reports/acceptance.md`。
+独立技术验收由未参与实现的模型家族（`magpie/codex/gpt-6.1-sol`）执行，被验对象为集成线与返工后的收口提交，逐条从计划原文重推导并给出 PASS/FAIL/UNVERIFIED。五轮记录依次是 `orchestrate/sprout-mio-p4c/reports/acceptance.md`、`acceptance-2.md`、`acceptance-3.md`、`acceptance-4.md`、`acceptance-5.md`；前四轮的 FAIL 项（非 holder 读取、分身取消代次、取消确认窗口、P0 6 格退化、取消幂等重放、日志提前宣称完整）都已返工并被下一轮独立复验。
 
-- 验收提交 `356233d`。
-- 重跑：`bash scripts/verify/ah-execution-live-e2e.sh`。
+第五轮在 `d028aa1` 判定 **PASS**（限技术验收范围）：功能 P4c 五项、UI-P4c 三项与 I-P4c 三项技术就绪判据全通过；隔离 checkout 内完整 `pnpm verify` 退出 0、50 个脚本 0 失败（runner 1381.049 秒），P4c 的 `aa`–`am` 十三个门禁独立复跑全 0；自编真实请求与真实 Chromium 探针退出 0（140.499 秒），增强恢复矩阵 12 格全通过（189.440 秒）；前四轮九项问题逐项复验 PASS；Human 项保持 UNVERIFIED。证据目录 `/tmp/p4c-acceptance5-evidence-20261028T083545Z/`。第四轮唯一阻塞是 P4a 范围的 `y-mcp-worker.sh` 首个 MCP 请求 20 秒超时，coordinator 在隔离 checkout 复跑该脚本 5 次、第五轮验收者复跑整轮完整验证，均 0 失败，记为偶发。
+
+- 验收提交 `d028aa1`。
+- 重跑：`bash scripts/verify/aj-recovery-matrix.sh`、`bash scripts/verify/am-execution-log-honesty.sh`、`bash scripts/verify/ah-execution-live-e2e.sh`、`bash scripts/verify/af-execution-cancel-authority.sh`。
+
+## 已知限制
+
+- 读到日志末尾后「从游标续读」按钮仍启用（`canContinue` 用 `<=` 与 API 的已读末序号边界不一致），再点只得到空范围，游标不推进。不重跑命令、不越权、不把不完整日志说成完整，因此记为可用性限制。证据见第五轮验收报告的 `ui-pagination`（`acceptance-5.md`）。
+- 已裁剪日志在页面里明确给出 `execution_log_gap` 与新的 `availableFromSequence`，但没有「从可读起点重读」的按钮，需要人工改游标或等新帧。完整性判据仍成立，记为可用性限制（`retained-read`）。
+- 未验证：跨机网络与网络分区、真机软键盘与触控、物理断电与文件系统掉电（以 runner 与命令进程组消失模拟 Machine 重启）、长时间容量与多 Machine 极限负载、像素级视觉评审。
+- Worker 运行时长默认无上限，只有 `waitMs` 观察窗口；寿命由真实退出、显式取消或宿主重启决定。
 
 ## Human 体验确认
 

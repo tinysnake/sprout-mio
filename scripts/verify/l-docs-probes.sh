@@ -59,6 +59,17 @@ const setBox = (file, prefix, text, heading, state = 'x') => {
   lines[index] = `- [${state}] ${text}`;
   write(file, lines.join('\n'));
 };
+const stripP4cLinks = (file) => {
+  write(file, read(file).replace(/\[([^\]]*)\]\(p4c\/summary\.md[^)]*\)/g, '$1'));
+};
+
+const uncheck = (file, heading) => {
+  const lines = read(file).split('\n');
+  const [start, end] = within(lines, heading);
+  for (let index = start; index < end; index++) lines[index] = lines[index].replace(/^- \[x\] /, '- [ ] ');
+  write(file, lines.join('\n'));
+};
+
 const evidence = (section, commit, command) => `# Probe 证据\n\n## ${section}\n\n实现提交 \`${commit}\`，重跑 \`${command}\`。\n`;
 const acceptance = (human) =>
   `# I-P4a 验收摘要\n\n## 交付范围\n\n章节范围。\n\n## 体验后变更\n\nHuman 体验反馈改变的领域决定。\n\n## 功能交付证据\n\n功能基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## 技术验收证据\n\n独立验收基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## human-体验确认\n\n${human}\n`;
@@ -219,6 +230,12 @@ probeCase('P4c evidence with an unresolved commit fails', () => {
   setBox(functional, '实现稳定请求 ID', p4cLink, '### P4c');
 }, { code: 1, includes: 'P4c checkbox 1: commit deadbeef does not resolve' });
 probeCase('I-P4c technical acceptance without a summary fails', () => {
+  // 章节已勾选时删掉 summary 会先被 f-docs 的悬空链接捕获；探针要单独考察
+  // 「技术验收已勾选但没有 summary」，所以先把功能与 UI 的勾选退回未选。
+  uncheck(functional, '### P4c');
+  uncheck(uiPlan, '## UI-P4c');
+  uncheck(packagePlan, '### I-P4c');
+  for (const file of [functional, uiPlan, packagePlan]) stripP4cLinks(file);
   fs.rmSync(path.join(tree, p4cSummary), { force: true });
   setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4c');
 }, { code: 1, includes: 'I-P4c technical acceptance requires docs/p4c/summary.md' });
