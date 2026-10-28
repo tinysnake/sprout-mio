@@ -873,7 +873,7 @@ export const remoteExecution = sqliteTable(
     ),
     check(
       "remote_execution_check_8",
-      sql`failure_reason IS NULL OR failure_reason IN ('stale_generation','not_holder','authorization_revoked','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
+      sql`failure_reason IS NULL OR failure_reason IN ('stale_generation','not_holder','authorization_revoked','cancelled','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
     ),
     uniqueIndex("remote_execution_holder_instance_id_request_id_unique").on(
       t.holderInstanceId,
