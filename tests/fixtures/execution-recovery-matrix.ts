@@ -252,18 +252,25 @@ const effects = (marker: string) => {
 };
 const claimPath = (executionId: string) => join(state, "executions", executionId, "claim.json");
 const resultPath = (executionId: string) => join(state, "executions", executionId, "result.json");
-/** P0 的「机器全灭」口径：Worker 与命令所在的整个进程组一起消失。 */
+/** P0 的「机器全灭」口径：runner 与命令所在的整个进程组一起消失。 */
 function killExecutionGroup(executionId: string) {
   if (!existsSync(claimPath(executionId))) return;
   const claim = JSON.parse(readFileSync(claimPath(executionId), "utf8")) as { pid: number };
-  if (!claim.pid) return;
-  const ps = spawnSync("ps", ["-o", "pgid=", "-p", String(claim.pid)], { encoding: "utf8" });
-  const pgid = Number(ps.stdout.trim());
-  if (!Number.isSafeInteger(pgid) || pgid <= 1) return;
-  try {
-    process.kill(-pgid, "SIGKILL");
-  } catch {
-    // 进程组已经消失即目标状态。
+  // 托管分离后 runner 与命令在两个进程组：机器全灭要两个组都打，否则命令会被留成孤儿。
+  const runnerPath = join(state, "executions", executionId, "runner.json");
+  const runnerClaim = existsSync(runnerPath)
+    ? (JSON.parse(readFileSync(runnerPath, "utf8")) as { childPid?: number | null })
+    : null;
+  for (const pid of [claim.pid, runnerClaim?.childPid ?? 0]) {
+    if (!pid) continue;
+    const ps = spawnSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" });
+    const pgid = Number(ps.stdout.trim());
+    if (!Number.isSafeInteger(pgid) || pgid <= 1) continue;
+    try {
+      process.kill(-pgid, "SIGKILL");
+    } catch {
+      // 进程组已经消失即目标状态。
+    }
   }
 }
 async function startWorker() {

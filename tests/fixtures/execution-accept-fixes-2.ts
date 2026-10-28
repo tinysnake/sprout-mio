@@ -4,7 +4,7 @@
 // 私有库、runner token、state-dir 与命令正文都留在 mktemp，不进日志。
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isIncompleteLogState } from "../../src/components/machine/presentation";
@@ -74,6 +74,15 @@ const rowCount = () =>
 const diagnosticCount = () =>
   (sqlite.prepare("SELECT COUNT(*) AS n FROM diagnostic_event").get() as { n: number }).n;
 const suspend = (ms: number) => new Promise((done) => setTimeout(done, ms));
+/** 只看内核还认不认这个 pid：命令组没有任何残留才叫收尸完毕。 */
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 acquireLease({ ...key, action: "acquire", requestId: req(), expectedGeneration: 0 }, firstHolder);
 const secret = "b".repeat(43);
@@ -118,10 +127,24 @@ const exchange = (remote: Record<string, unknown> = {}) => {
   return { used, response };
 };
 exchange();
+/** durable 退出证据在终态 ACK 之前快照：ACK 之后 outbox（含 result.json）就该被清掉。 */
+const watched = new Set<string>();
+const durableResults = new Map<string, { exitCode: number | null; signal: string | null }>();
+function snapshotDurable() {
+  for (const executionId of watched) {
+    const path = join(stateDirectory, "executions", executionId, "result.json");
+    if (!existsSync(path)) continue;
+    durableResults.set(
+      executionId,
+      JSON.parse(readFileSync(path, "utf8")) as { exitCode: number | null; signal: string | null },
+    );
+  }
+}
 /** 一次真实往返：Worker 出站批 → 宿主领域函数 → Worker 接收宿主回复。 */
 function round(worker: RemoteDispatcher) {
   const outgoing = worker.outgoing(1048576);
   const { used, response } = exchange(outgoing as never);
+  snapshotDurable();
   worker.accept(response, used, []);
   return response;
 }
@@ -140,8 +163,8 @@ const shell = (command: string, waitMs = 1000) => ({
   cwd: "/tmp",
   waitMs,
 });
-const submit = (ctx: AgentRemoteContext, generation: number, command: string, waitMs = 1000) =>
-  requestExecution(
+const submit = (ctx: AgentRemoteContext, generation: number, command: string, waitMs = 1000) => {
+  const submitted = requestExecution(
     {
       ...key,
       requestId: req(),
@@ -150,6 +173,9 @@ const submit = (ctx: AgentRemoteContext, generation: number, command: string, wa
     },
     ctx,
   );
+  watched.add(submitted.executionId);
+  return submitted;
+};
 const view = (executionId: string, ctx: AgentRemoteContext | MachineContext = firstHolder) =>
   getExecution({ ...key, executionId }, ctx);
 const logOf = (executionId: string, ctx: AgentRemoteContext | MachineContext = firstHolder) =>
@@ -178,6 +204,17 @@ function cancellationOf(executionId: string): ExecutionCancellationView | null {
     failureReason: row.failure_reason as ExecutionCancellationView["failureReason"],
   };
 }
+/**
+ * 「命令真的跑起来了」的确定性判据：runner claim 里已经有 childPid。
+ * 只看 runner.json 存在会把「runner 已起、命令还没起」的那一次 spawn 宽度当成已启动。
+ */
+const runnerStarted = (worker: RemoteDispatcher, executionId: string) => {
+  if (worker.registry.runs.get(executionId)?.started !== true) return false;
+  const path = join(stateDirectory, "executions", executionId, "runner.json");
+  if (!existsSync(path)) return false;
+  const claimed = JSON.parse(readFileSync(path, "utf8")) as { childPid?: number | null };
+  return typeof claimed.childPid === "number" && claimed.childPid > 1;
+};
 /** 终态报告的身份来自真实执行行；投递会话就是当初下发它的那一代。 */
 function reportIdentity(executionId: string) {
   const row = sqlite.prepare("SELECT * FROM remote_execution WHERE id = ?").get(executionId) as {
@@ -455,9 +492,7 @@ round(gracefulWorker);
 // 取消必须发生在命令真的跑起来之后：runner 已经落盘 claim，pid 已登记。
 await pumpUntil(
   gracefulWorker,
-  () =>
-    gracefulWorker.registry.runs.get(graceful.executionId)?.started === true &&
-    executionFiles(graceful.executionId).includes("runner.json"),
+  () => runnerStarted(gracefulWorker, graceful.executionId),
   "graceful running",
 );
 await cancelAndDeliver(graceful.executionId, gracefulWorker);
@@ -476,35 +511,78 @@ const stubborn = submit(nextHolder, generation, "trap '' TERM; sleep 30", 500);
 round(stubbornWorker);
 await pumpUntil(
   stubbornWorker,
-  () =>
-    stubbornWorker.registry.runs.get(stubborn.executionId)?.started === true &&
-    executionFiles(stubborn.executionId).includes("runner.json"),
+  () => runnerStarted(stubbornWorker, stubborn.executionId),
   "stubborn running",
 );
+// runner.json 会在终态 ACK 后被清掉：命令自己的 pid 在取消前记下，收尸断言才有目标。
+const stubbornRunner = JSON.parse(
+  readFileSync(join(stateDirectory, "executions", stubborn.executionId, "runner.json"), "utf8"),
+) as { pid: number; childPid: number | null };
+assert.notEqual(stubbornRunner.childPid, null, "runner 必须记下命令自己的 pid");
 await cancelAndDeliver(stubborn.executionId, stubbornWorker);
 await pumpUntil(
   stubbornWorker,
-  () => {
-    const current = cancellationOf(stubborn.executionId);
-    return current !== null && current.state !== "requested" && current.state !== "delivered";
-  },
+  () => cancellationOf(stubborn.executionId)?.state === "exited_observed",
   "stubborn cancel settle",
 );
 const stubbornView = view(stubborn.executionId, nextHolder);
 const stubbornCancel = cancellationOf(stubborn.executionId)!;
-assert.equal(
-  executionFiles(stubborn.executionId).includes("result.json"),
-  false,
-  "KILL 连 runner 一起打死时磁盘上不应有 result.json",
+assert.ok(
+  durableResults.has(stubborn.executionId),
+  "托管分离：KILL 只打命令组，runner 必须落下 result.json",
 );
-assert.equal(stubbornView.state, "unknown");
-assert.equal(stubbornView.recoveryReason, "child-exited-without-result");
-assert.equal(stubbornView.failureReason, "worker_lost");
-assert.equal(stubbornCancel.state, "failed");
-assert.equal(stubbornCancel.failureReason, "exit_not_observed");
-assert.equal(stubbornCancel.exitedAt, null, "没有 result 时不得写「观察到退出」的时间");
+assert.notEqual(stubbornCancel.exitedAt, null, "有 durable result 的取消必须记下退出时间");
+assert.equal(stubbornCancel.failureReason, null);
+assert.equal(stubbornView.state, "unknown", "被取消的命令不是成功也不是仍在运行");
+assert.equal(stubbornView.failureReason, "authorization_revoked");
+assert.equal(stubbornView.recoveryReason, null, "有 durable result 就没有未记录原因");
+assert.equal(alive(stubbornRunner.childPid!), false, "KILL 之后命令组不留孤儿");
+pass("R4 正证 2：忽略 TERM 的命令被 KILL，信号只打命令组，runner 落盘 → 取消仍是 exited_observed");
+
+// ── R4 反证：只有 runner 缺席才叫「退出未被记录」 ────────────────────────────
+// 确定性制造没有 result 的局面：命令收到取消后杀掉自己的 runner（`kill -9 $PPID`），
+// 磁盘上永远不会出现 result.json。不靠宽限窗口的时序碰运气。
+const absentSentinel = join(stateDirectory, "absent-runner-sentinel");
+rmSync(absentSentinel, { force: true });
+const absentWorker = makeDispatcher();
+const absent = submit(
+  nextHolder,
+  generation,
+  `echo pid=$$; trap '' TERM; while [ ! -f '${absentSentinel}' ]; do sleep 0.2; done; kill -9 $PPID; sleep 30`,
+  500,
+);
+round(absentWorker);
+await pumpUntil(
+  absentWorker,
+  () => runnerStarted(absentWorker, absent.executionId),
+  "absent runner running",
+);
+await cancelAndDeliver(absent.executionId, absentWorker);
+// 意图已送达才让命令动手：runner 死在这次取消之后，不存在「抢先退出」的解释。
+writeFileSync(absentSentinel, "go", { mode: 0o600 });
+await pumpUntil(
+  absentWorker,
+  () => {
+    const current = cancellationOf(absent.executionId);
+    return current !== null && current.state !== "requested" && current.state !== "delivered";
+  },
+  "absent runner cancel settle",
+);
+const absentView = view(absent.executionId, nextHolder);
+const absentCancel = cancellationOf(absent.executionId)!;
+assert.equal(
+  durableResults.has(absent.executionId),
+  false,
+  "runner 缺席时磁盘上不应有 result.json",
+);
+assert.equal(absentView.state, "unknown");
+assert.equal(absentView.recoveryReason, "child-exited-without-result");
+assert.equal(absentView.failureReason, "worker_lost");
+assert.equal(absentCancel.state, "failed");
+assert.equal(absentCancel.failureReason, "exit_not_observed");
+assert.equal(absentCancel.exitedAt, null, "没有 result 时不得写「观察到退出」的时间");
 pass(
-  "R4 反证：无 runner result 的退出停在 unknown:child-exited-without-result，取消是 failed:exit_not_observed 且没有退出时间",
+  "R4 反证：runner 缺席的退出停在 unknown:child-exited-without-result，取消是 failed:exit_not_observed 且没有退出时间",
 );
 
 console.log(`execution-accept-fixes-2: PASS (${checks.length} checks)`);

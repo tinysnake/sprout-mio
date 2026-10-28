@@ -4,7 +4,15 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
@@ -866,28 +874,28 @@ try {
     60000,
   );
   const cancelled = await getView(doomed.executionId);
-  // 忽略 TERM 的命令在 1 秒宽限后被 KILL，连 runner 一起打死：磁盘上没有 result.json，
-  // 所以这里只能停在「进程已不再运行、退出未被记录」，不能写 exited_observed。
+  // 托管分离后 KILL 只打命令组，runner 活着把 result.json 落盘：退出是被观测到的。
+  // 「取消成功但显示退出未被记录」是反向的不诚实，这里必须回到 exited_observed。
   assert.equal(
     cancelled.cancellation?.state,
-    "failed",
-    "a KILL without a runner result must not claim an observed exit",
+    "exited_observed",
+    "a KILL of the command group keeps the runner alive, so the exit is observed",
   );
-  assert.equal(cancelled.cancellation?.failureReason, "exit_not_observed");
-  assert.equal(cancelled.cancellation?.exitedAt, null, "no exit time without a durable result");
-  assert.equal(cancelled.state, "unknown", "the execution stays unknown without a runner result");
-  assert.equal(cancelled.recoveryReason, "child-exited-without-result");
-  // 取消导致的退出不得被伪造成成功：结果只报 partial，退出码与信号都不猜。
-  assert.notEqual(cancelled.state, "succeeded", "a cancelled command must not read as success");
-  assert(cancelled.result !== null, "the unobserved exit keeps the partial payload");
+  assert.notEqual(cancelled.cancellation?.exitedAt, null, "a durable result carries the exit time");
+  assert.equal(cancelled.cancellation?.failureReason, null);
+  assert.equal(cancelled.state, "unknown", "the execution is no longer running");
+  assert.equal(cancelled.failureReason, "authorization_revoked");
+  assert.equal(cancelled.recoveryReason, null, "there is a durable result: nothing is unrecorded");
+  assert.equal(processCount(cancelledMarker), 0, "the killed command group leaves nothing behind");
   const cancelPayload = cancelled.result as {
     kind: string;
     failureReason?: string;
-    partial?: { exited?: boolean };
+    partial?: { exited?: boolean; exitCode?: number | null };
   };
   assert.equal(cancelPayload.kind, "shell");
-  assert.equal(cancelPayload.failureReason, "worker_lost");
-  assert.equal(cancelPayload.partial?.exited, false, "no exit code is invented");
+  assert.equal(cancelPayload.failureReason, "authorization_revoked");
+  // 取消后终态最后一关（不能绕过已撤销的授权）会收起正文本体，这是既有行为；
+  // durable result 的存在由上面的 exitedAt 与 recoveryReason=null 证明。
   assert.notEqual(cancelled.cancellation.signalOutcome, "none", "the signal delivery is recorded");
   facts.scenario6 = {
     executionId: doomed.executionId,
@@ -903,7 +911,7 @@ try {
     ).actor_kind,
   };
   pass(
-    "S6 agent cancel without a runner result stops at failed/exit_not_observed, never a fake stop",
+    "S6 agent cancel of a TERM-ignoring command is exited_observed: command group killed, runner survives",
   );
 
   // —— 场景 6b：合法的 10 秒 TERM 宽限。——
@@ -951,23 +959,24 @@ try {
   );
   const graceSettledMs = Date.now() - graceStartedAt;
   const graceFinal = await getView(graceTarget.executionId);
-  // 这条命令忽略 TERM 且永远跑不完：KILL 在 10 秒宽限后才到，连 runner 一起打死，
-  // 磁盘上没有 result.json。合法宽限的性质是「宽限走完就给出取消终态，不被确认窗口抢先判成
-  // delivery_unconfirmed」，而不是「一定观测到退出」——没有 result 就只能停在未确认。
+  // 这条命令忽略 TERM 且永远跑不完：KILL 在 10 秒宽限后才到。合法宽限的性质是「宽限走完就
+  // 给出取消终态，不被确认窗口抢先判成 delivery_unconfirmed」；信号只打命令组，runner 落盘，
+  // 所以宽限结束时退出同样是被观测到的。
   assert.equal(
     graceFinal.cancellation?.state,
-    "failed",
-    `a legal 10s grace must end a cancellation terminal, not ${graceFinal.cancellation?.state}`,
+    "exited_observed",
+    `a legal 10s grace must observe the killed command, not ${graceFinal.cancellation?.state}`,
   );
-  assert.equal(
-    graceFinal.cancellation?.failureReason,
-    "exit_not_observed",
-    "without a runner result the only honest failure reason is exit_not_observed",
+  assert.equal(graceFinal.cancellation?.failureReason, null);
+  assert.notEqual(
+    graceFinal.cancellation?.exitedAt,
+    null,
+    "a durable result carries the exit time",
   );
-  assert.equal(graceFinal.cancellation?.exitedAt, null);
   assert.notEqual(graceFinal.terminalAt, null, "the execution reaches a terminal state");
   assert.notEqual(graceFinal.state, "running", "the execution does not stay running");
   assert.notEqual(graceFinal.state, "succeeded", "a killed command must not read as success");
+  assert.equal(processCount(graceMarker), 0, "the killed command group leaves nothing behind");
   assert.ok(graceSettledMs < 60000, `settled within the derived window (${graceSettledMs}ms)`);
   facts.scenario6b = {
     executionId: graceTarget.executionId,
@@ -979,7 +988,86 @@ try {
     terminalAt: graceFinal.terminalAt,
   };
   pass(
-    "S6b a legal 10s TERM grace settles inside the derived window (failed/exit_not_observed, never delivery_unconfirmed)",
+    "S6b a legal 10s TERM grace ends in exited_observed inside the derived window (never delivery_unconfirmed)",
+  );
+
+  // —— 场景 6c：runner 缺席是唯一还该停在「未确认」的情况。 ——
+  // 命令收到取消后杀掉自己的观察者（`kill -9 $PPID`）：磁盘上永远不会出现 result.json，
+  // 于是「进程已不在、退出没有被记录」只能诚实说成未确认，不写已停止也不猜退出码。
+  // 这是新规则的反证：exited_observed 不是把未确认态整体删掉。
+  const absentMarker = markerOf();
+  const absentSentinel = join(directory, "absent-runner-sentinel");
+  rmSync(absentSentinel, { force: true });
+  const absentTarget = (
+    await submitShell({
+      requestId: newId(ID_PREFIXES.request),
+      command: `echo pid=$$; : ${absentMarker}; trap '' TERM; while [ ! -f '${absentSentinel}' ]; do sleep 0.2; done; kill -9 $PPID; sleep 60`,
+      waitMs: 1000,
+    })
+  ).data;
+  await until(
+    async () => (await getView(absentTarget.executionId)).state === "running",
+    "absent-runner command running",
+    30000,
+  );
+  const absentPid = (await readLog(absentTarget.executionId, null, 4096)).frames
+    .map((frame) => /pid=(\d+)/.exec(frame.text ?? "")?.[1])
+    .find(Boolean);
+  assert(absentPid, "absent-runner command pid");
+  childrenPids.add(Number(absentPid));
+  const absentCancel = await accept<CancelDetails>("sprout_remote_execution_cancel", {
+    machineId,
+    executionId: absentTarget.executionId,
+    requestId: newId(ID_PREFIXES.request),
+    authorizationGeneration: generation,
+    policy: "term_then_kill",
+    termWaitMs: 2000,
+  });
+  assert(!absentCancel.stopped, "a cancel intent is not a stop");
+  await until(
+    async () => (await getView(absentTarget.executionId)).cancellation?.state === "delivered",
+    "absent-runner cancel delivered",
+    40000,
+  );
+  // 确定性：只有意图已经送达，才让命令动手杀掉 runner。不靠时序窗口碰运气。
+  writeFileSync(absentSentinel, "go", { mode: 0o600 });
+  await until(
+    async () => {
+      const state = (await getView(absentTarget.executionId)).cancellation?.state;
+      return state === "failed" || state === "unknown" || state === "exited_observed";
+    },
+    "absent-runner cancel settled",
+    60000,
+  );
+  const absentFinal = await getView(absentTarget.executionId);
+  assert.equal(
+    absentFinal.cancellation?.state,
+    "failed",
+    "without a runner result a cancel must not claim an observed exit",
+  );
+  assert.equal(absentFinal.cancellation?.failureReason, "exit_not_observed");
+  assert.equal(absentFinal.cancellation?.exitedAt, null, "no exit time without a durable result");
+  assert.equal(absentFinal.state, "unknown");
+  assert.equal(absentFinal.recoveryReason, "child-exited-without-result");
+  assert.notEqual(absentFinal.state, "succeeded", "a killed observer must not read as success");
+  const absentPayload = absentFinal.result as {
+    kind: string;
+    failureReason?: string;
+    partial?: { exited?: boolean };
+  };
+  assert.equal(absentPayload.kind, "shell");
+  assert.equal(absentPayload.failureReason, "worker_lost");
+  assert.equal(absentPayload.partial?.exited, false, "no exit code is invented");
+  facts.scenario6c = {
+    executionId: absentTarget.executionId,
+    pid: Number(absentPid),
+    cancelState: absentFinal.cancellation?.state,
+    failureReason: absentFinal.cancellation?.failureReason,
+    finalExecutionState: absentFinal.state,
+    recoveryReason: absentFinal.recoveryReason,
+  };
+  pass(
+    "S6c a missing runner is the only honest unknown: failed/exit_not_observed with no invented exit",
   );
 
   // —— 场景 7：人类在 Web 侧取消；未登录与另一用户被拒。 ——

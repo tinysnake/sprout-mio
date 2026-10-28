@@ -150,31 +150,36 @@ function runnerEntry(): string | null {
   }
   return null;
 }
-/** 先 TERM 整个进程组，宽限后 KILL；只报告 OS 是否接受信号调用。 */
-function terminateGroup(pid: number, policy: "term_then_kill" | "kill", graceMs: number) {
-  if (policy === "kill") {
+/**
+ * 中止信号只打命令自己的进程组（`-childPid`），不打 runner 所在的组：runner 是观察者，
+ * 它必须活到把 result.json 落盘，退出才叫「被观测到」。
+ *
+ * `resolveTarget` 返回 `exact`：命中的是命令组，还是 `childPid` 还没落盘时的回退（runner 组）。
+ * 回退时，宽限到点的 KILL 再解析一次，覆盖「宽限期间 childPid 才落盘」的窗口；已经命中
+ * 命令组就把这个目标记住——终态 ACK 之后 outbox 会被清掉，那时再解析只会失去目标，
+ * 把刚启动的命令留成孤儿。只报告 OS 是否接受信号调用。
+ */
+function terminateCommandGroup(
+  resolveTarget: () => { pid: number; exact: boolean },
+  policy: "term_then_kill" | "kill",
+  graceMs: number,
+) {
+  const send = (target: { pid: number }, signal: NodeJS.Signals) => {
     try {
-      process.kill(-pid, "SIGKILL");
-      return "kill_delivered" as SignalOutcome;
+      process.kill(-target.pid, signal);
+      return true;
     } catch {
-      return "none" as SignalOutcome;
+      return false;
     }
-  }
-  let outcome: SignalOutcome = "none";
-  try {
-    process.kill(-pid, "SIGTERM");
-    outcome = "term_delivered";
-  } catch {
-    return outcome;
-  }
+  };
+  const target = resolveTarget();
+  if (policy === "kill") return send(target, "SIGKILL") ? "kill_delivered" : "none";
+  if (!send(target, "SIGTERM")) return "none";
   setTimeout(() => {
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch {
-      // 进程组已经消失：TERM 够用，不补 KILL。
-    }
+    // 进程组已经消失也不报错：TERM 够用，不补 KILL。
+    send(target.exact ? target : resolveTarget(), "SIGKILL");
   }, graceMs).unref();
-  return outcome;
+  return "term_delivered";
 }
 /**
  * One dispatcher per connection; a closed session can drain but never regain admission.
@@ -506,7 +511,21 @@ export class RemoteDispatcher {
     if (!run || run.claim.pid === 0 || run.exited) return "none" as SignalOutcome;
     run.terminated = true;
     run.signalGraceMs = policy === "kill" ? 0 : graceMs;
-    return terminateGroup(run.claim.pid, policy, graceMs);
+    return terminateCommandGroup(
+      () => this.signalTarget(executionId, run.claim.pid),
+      policy,
+      graceMs,
+    );
+  }
+  /**
+   * 信号目标的 pid：命令自己的进程组组长（`runner.json.childPid`）。
+   * 它还没落盘时退回 runner 的 pid（旧行为：打 runner 组），这时取消只能落在未确认态。
+   */
+  private signalTarget(executionId: string, runnerPid: number) {
+    const childPid = this.registry.store.runnerClaim(executionId)?.childPid ?? null;
+    return childPid !== null && childPid > 1
+      ? { pid: childPid, exact: true }
+      : { pid: runnerPid, exact: false };
   }
   private gate(entry: Entry) {
     const command = entry.command;
@@ -637,8 +656,14 @@ export class RemoteDispatcher {
               if (run.exited) return;
               run.terminated = true;
               run.signalGraceMs = SIGNAL_GRACE_MS;
+              // 运行上限只打命令组：runner 活着才能把「命令被 KILL」写成 durable result，
+              // 于是终态是已知的限时，而不是「退出未被记录」。
               if (run.claim.pid !== 0)
-                terminateGroup(run.claim.pid, "term_then_kill", SIGNAL_GRACE_MS);
+                terminateCommandGroup(
+                  () => this.signalTarget(entry.command.executionId, run.claim.pid),
+                  "term_then_kill",
+                  SIGNAL_GRACE_MS,
+                );
             },
             Math.max(0, runtimeDeadline - this.now()),
           );

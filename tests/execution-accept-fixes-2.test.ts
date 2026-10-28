@@ -25,7 +25,7 @@ test("acceptance fixes 2 hold on real SQLite and real subprocesses", () => {
     if (child.status !== 0)
       throw new Error(`accept-fixes-2 fixture failed: ${child.stderr || child.stdout}`);
     expect(child.status).toBe(0);
-    expect(child.stdout).toContain("execution-accept-fixes-2: PASS (12 checks)");
+    expect(child.stdout).toContain("execution-accept-fixes-2: PASS (13 checks)");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
