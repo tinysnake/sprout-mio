@@ -19,3 +19,7 @@ export NODE_ENV=test
 export NO_PROXY=localhost,127.0.0.1
 export no_proxy="$NO_PROXY"
 node --import tsx tests/fixtures/public-channel.ts
+# 授权回归使用独立库与 runtime；Pi 宿主关闭，不启动真实模型。
+DATABASE_URL="$verification_dir/remote-membership.sqlite" SPROUT_PI_ENABLED=false \
+  BETTER_AUTH_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')" \
+  SPROUT_PI_DATA_DIR="$verification_dir/data" node --import tsx tests/fixtures/remote-agent-membership.ts

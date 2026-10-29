@@ -15,6 +15,7 @@ import {
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
+import { recordDiagnostic } from "../diagnostics";
 import { markRunNoticeDelivered, noticeDeliveryText, pendingRunNotices } from "../notices";
 import { issueRemoteToolGrant, revokeRemoteToolGrant } from "../remote-agent-gateway";
 import { machineRuntimeContext } from "../runtime";
@@ -185,6 +186,31 @@ export function executeRun(
                     : error instanceof RepositoryError
                       ? new PiHostFailure(error.code, error.message)
                       : new PiHostFailure("run_failed", "Agent run 执行失败");
+                // 与宿主级诊断一样保留原因；只取错误分类和消息，不序列化异常附带的凭据等字段。
+                const diagnostic = {
+                  level: "error" as const,
+                  event: "pi_host.run_failed",
+                  requestId: run.requestId,
+                  projectId: run.projectId,
+                  chatId: run.chatId,
+                  instanceId: run.instanceId,
+                  runId: run.id,
+                  message: "Agent run 执行失败",
+                  data: {
+                    errorName: error instanceof Error ? error.name : "UnknownError",
+                    ...(error instanceof Error && "code" in error && typeof error.code === "string"
+                      ? { errorCode: error.code }
+                      : {}),
+                    cause:
+                      error instanceof Error
+                        ? error.message
+                        : typeof error === "string"
+                          ? error
+                          : "未知错误",
+                  },
+                };
+                console.error("[pi-host] Run 执行失败", diagnostic);
+                recordDiagnostic(diagnostic);
                 transitionAgentRun(
                   run.id,
                   "failed",
