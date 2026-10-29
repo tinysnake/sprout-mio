@@ -34,11 +34,15 @@ type Access = "never" | "member" | "owner";
 const OWNER_ACTIONS = CHAT_ACTIONS.filter((action) => EXPECTED[action].human === "owner");
 const AGENT_DENIED_ACTIONS = CHAT_ACTIONS.filter((action) => EXPECTED[action].agent === "never");
 
-function expectForbidden(
-  action: ChatAction,
-  actor: ChatActor,
-  chat?: { ownerKind: "human" | "agent"; ownerId: string },
-) {
+/** owner 档判定吃的是对话所有者加 `project.created_by`（裁定 d6），用例按这份事实构造。 */
+type Facts = { ownerKind: "human" | "agent"; ownerId: string; projectCreatedBy: string };
+const facts = (ownerKind: "human" | "agent", ownerId: string, projectCreatedBy: string): Facts => ({
+  ownerKind,
+  ownerId,
+  projectCreatedBy,
+});
+
+function expectForbidden(action: ChatAction, actor: ChatActor, chat?: Facts) {
   expect(() => assertChatCapability(action, actor, chat)).toThrow(ChatError);
   let code: string | undefined;
   try {
@@ -64,8 +68,8 @@ describe("chat 能力表", () => {
       CHAT_ACTIONS.filter((action) => action !== "message_send"),
     );
     for (const action of AGENT_DENIED_ACTIONS) {
-      expectForbidden(action, agent("agp_1"), { ownerKind: "human", ownerId: "usr_1" });
-      expectForbidden(action, agent("agp_1"), { ownerKind: "agent", ownerId: "agp_1" });
+      expectForbidden(action, agent("agp_1"), facts("human", "usr_1", "usr_1"));
+      expectForbidden(action, agent("agp_1"), facts("agent", "agp_1", "usr_1"));
       expectForbidden(action, agent("agp_1"));
     }
   });
@@ -73,10 +77,7 @@ describe("chat 能力表", () => {
   it("Agent 可以发言", () => {
     expect(() => assertChatCapability("message_send", agent("agp_1"))).not.toThrow();
     expect(() =>
-      assertChatCapability("message_send", agent("agp_1"), {
-        ownerKind: "human",
-        ownerId: "usr_1",
-      }),
+      assertChatCapability("message_send", agent("agp_1"), facts("human", "usr_1", "usr_1")),
     ).not.toThrow();
   });
 
@@ -84,20 +85,40 @@ describe("chat 能力表", () => {
     expect(() => assertChatCapability("group_create", human("usr_2"))).not.toThrow();
     expect(() => assertChatCapability("message_send", human("usr_2"))).not.toThrow();
     for (const action of OWNER_ACTIONS)
-      expectForbidden(action, human("usr_2"), { ownerKind: "human", ownerId: "usr_1" });
+      expectForbidden(action, human("usr_2"), facts("human", "usr_1", "usr_1"));
   });
 
   it("Human 所有者能执行全部 owner 档动作", () => {
     for (const action of OWNER_ACTIONS)
       expect(() =>
-        assertChatCapability(action, human("usr_1"), { ownerKind: "human", ownerId: "usr_1" }),
+        assertChatCapability(action, human("usr_1"), facts("human", "usr_1", "usr_1")),
       ).not.toThrow();
   });
 
-  it("登记为 Agent 所有者时没有任何 Human 通过 owner 档", () => {
+  // 裁定 d6：只认人类所有者的写法会让「Human 指定 Agent 为 owner」的群组永久冻结，
+  // 所以 owner_kind='agent' 时由 project.created_by 的人类兜底，且只兜底这一个人类。
+  it("Agent 所有者只让 Project 创建者的人类做治理兜底", () => {
     for (const action of OWNER_ACTIONS) {
-      expectForbidden(action, human("usr_1"), { ownerKind: "agent", ownerId: "agp_1" });
+      expect(() =>
+        assertChatCapability(action, human("usr_1"), facts("agent", "agp_1", "usr_1")),
+      ).not.toThrow();
+      expectForbidden(action, human("usr_2"), facts("agent", "agp_1", "usr_1"));
+    }
+  });
+
+  it("人类所有者与 Project 创建者不是同一人时，只有所有者本人通过", () => {
+    for (const action of OWNER_ACTIONS) {
+      expectForbidden(action, human("usr_1"), facts("human", "usr_2", "usr_1"));
+      expect(() =>
+        assertChatCapability(action, human("usr_2"), facts("human", "usr_2", "usr_1")),
+      ).not.toThrow();
+    }
+  });
+
+  it("缺少归属事实时 owner 档一律拒绝，Agent 更是连事实都不需要", () => {
+    for (const action of OWNER_ACTIONS) {
       expectForbidden(action, human("usr_1"));
+      expectForbidden(action, agent("agp_1"));
     }
   });
 

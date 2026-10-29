@@ -2,10 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import {
+  addGroupMemberInput,
   chatIdInput,
   clearChatTitleInput,
   createDirectChatInput,
+  createGroupChatInput,
+  removeGroupMemberInput,
   sendMessageInput,
+  setChatOwnerInput,
   updateChatTitleInput,
 } from "../../contracts/chat";
 import type {
@@ -19,6 +23,7 @@ import type {
 import { fieldErrorsFrom, projectIdInput } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
+import type { ChatActor } from "../../domain/chat-actor";
 import type { DiagnosticInput } from "../diagnostics";
 import { getRequestContext } from "../request-context";
 import { toDomainAppError } from "./domain-errors";
@@ -74,6 +79,14 @@ async function chatBoundary<T>(
 
 function invalidInput(error: z.ZodError, requestId: string): ChatResult<never> {
   return { ...fail(toAppError(error, requestId)), fieldErrors: fieldErrorsFrom(error) };
+}
+
+/**
+ * 页面请求只可能是 Human。行动者从认证会话构造，Agent 身份永远不从浏览器来；
+ * 治理能力判定在领域层按 `ChatActor` 的身份分支做，边界不自行判权限。
+ */
+function humanActor(context: ProjectContext): ChatActor {
+  return { kind: "human", userId: context.userId, ctx: context };
 }
 
 export async function createDirectChatBoundary(
@@ -248,4 +261,104 @@ export const clearChatTitleFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     clearChatTitleBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+/** 建群：成员、所有者与唤醒策略的边界校验在服务端完成，Agent 行动者由领域层回 forbidden。 */
+export async function createGroupChatBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = createGroupChatInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.createGroupChat(parsed.data.projectId, parsed.data, humanActor(context)),
+      requestId,
+    );
+  });
+}
+
+export async function addGroupMemberBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = addGroupMemberInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.addGroupMember(
+        parsed.data.chatId,
+        parsed.data.member,
+        parsed.data.expectedRevision,
+        humanActor(context),
+      ),
+      requestId,
+    );
+  });
+}
+
+export async function removeGroupMemberBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = removeGroupMemberInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.removeGroupMember(
+        parsed.data.chatId,
+        parsed.data.member,
+        parsed.data.expectedRevision,
+        humanActor(context),
+      ),
+      requestId,
+    );
+  });
+}
+
+export async function setChatOwnerBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = setChatOwnerInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.setChatOwner(
+        parsed.data.chatId,
+        parsed.data.owner,
+        parsed.data.expectedRevision,
+        humanActor(context),
+      ),
+      requestId,
+    );
+  });
+}
+
+export const createGroupChatFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    createGroupChatBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const addGroupMemberFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    addGroupMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const removeGroupMemberFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    removeGroupMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const setChatOwnerFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    setChatOwnerBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
