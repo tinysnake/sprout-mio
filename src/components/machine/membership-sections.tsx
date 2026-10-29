@@ -618,17 +618,24 @@ function PendingRow({
           tone={presentation.tone}
         />
       </p>
-      <p
-        data-testid={`${testId}-pending-detail`}
-        className="mt-1 text-xs leading-6 text-muted-foreground"
-      >
-        {presentation.detail}
-      </p>
       <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.6875rem] leading-5 text-muted-foreground">
         <span data-testid={`${testId}-pending-age`}>{presentation.ageText}</span>
         <span data-testid={`${testId}-pending-worker`}>{presentation.workerText}</span>
-        <span>{presentation.evidenceText}</span>
+        <span>
+          下一步：
+          {pending.canForceReclaim ? "可确认强制收回，或继续等待。" : "继续等待服务端事实推进。"}
+        </span>
       </p>
+      <details data-testid={`${testId}-pending-detail`} className="group mt-1">
+        <summary className="flex cursor-pointer list-none items-center gap-1 text-[0.6875rem] text-muted-foreground">
+          <Icon as={ChevronRight} size={12} className="transition-transform group-open:rotate-90" />
+          查看待处理细节
+        </summary>
+        <p className="mt-1 text-xs leading-6 text-muted-foreground">{presentation.detail}</p>
+        <p className="text-[0.6875rem] leading-5 text-muted-foreground">
+          {presentation.evidenceText}
+        </p>
+      </details>
       {pending.overdue && (
         <p
           data-testid={`${testId}-pending-overdue`}
