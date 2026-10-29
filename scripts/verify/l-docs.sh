@@ -261,6 +261,13 @@ const checkP4cLine = (line, label, source) => {
   check(targets.some(({ document }) => document && path.resolve(document.file) === p4cEvidenceFile), `${label}: missing docs/p4c/summary.md evidence`);
   for (const { body } of targets) evidenceIn(body, label);
 };
+// P4d 与 P4c 同级：被引用的 docs/p4d/summary.md 小节必须自带可解析提交与存在的重跑命令。
+const p4dEvidenceFile = path.resolve('docs/p4d/summary.md');
+const checkP4dLine = (line, label, source) => {
+  const targets = resolveEvidence(line, label, source, 'docs/p4d');
+  check(targets.some(({ document }) => document && path.resolve(document.file) === p4dEvidenceFile), `${label}: missing docs/p4d/summary.md evidence`);
+  for (const { body } of targets) evidenceIn(body, label);
+};
 const functional = 'docs/development-plan-functional.md';
 const p4 = sectionOf(plan, 'P4', 2);
 const p4a = sectionOf(p4, 'P4a', 3);
@@ -279,9 +286,10 @@ check(p4cBoxes.length === 5, `P4c must contain five checkboxes, found ${p4cBoxes
 for (let i = 0; i < p4cBoxes.length; i++) {
   if (p4cBoxes[i].state === 'x') checkP4cLine(p4cBoxes[i].text, `P4c checkbox ${i + 1}`, functional);
 }
-for (const sub of ['P4d']) {
-  const boxes = boxesIn(sectionOf(p4, sub, 3));
-  for (const box of boxes) check(box.state === ' ', `${sub} checkbox must remain unchecked: ${box.text}`);
+const p4dBoxes = boxesIn(sectionOf(p4, 'P4d', 3));
+check(p4dBoxes.length === 6, `P4d must contain six checkboxes, found ${p4dBoxes.length}`);
+for (let i = 0; i < p4dBoxes.length; i++) {
+  if (p4dBoxes[i].state === 'x') checkP4dLine(p4dBoxes[i].text, `P4d checkbox ${i + 1}`, functional);
 }
 const packagePlan = fs.readFileSync('docs/development-plan.md', 'utf8');
 const integration = sectionOf(packagePlan, 'I-P4a', 3);
@@ -347,7 +355,28 @@ if (p4cHumanBox?.state === 'x') {
   check(Boolean(record) && commitExists(record), `I-P4c human acceptance version ${record || '(none)'} does not resolve`);
   check(!/^[-*]\s*待确认/m.test(body), 'I-P4c human acceptance must not treat pending confirmation as confirmed');
 }
-for (const stage of ['I-P4d', 'I-P5a', 'I-P5b', 'I-P6', 'I-P7']) {
+const integrationP4d = sectionOf(packagePlan, 'I-P4d', 3);
+const integrationP4dBoxes = boxesIn(integrationP4d);
+check(integrationP4dBoxes.length === 4, `I-P4d must contain four checkboxes, found ${integrationP4dBoxes.length}`);
+const p4dSummary = documents.get(path.resolve('docs/p4d/summary.md'));
+const p4dTechnicalBox = integrationP4dBoxes[2];
+if (p4dTechnicalBox?.state === 'x') {
+  const body = p4dSummary?.sections.get('技术验收证据') ?? '';
+  check(Boolean(p4dSummary), 'I-P4d technical acceptance requires docs/p4d/summary.md');
+  check(Boolean(body), 'I-P4d technical acceptance requires docs/p4d/summary.md#技术验收证据');
+  evidenceIn(body, 'I-P4d technical acceptance');
+}
+const p4dHumanBox = integrationP4dBoxes[3];
+if (p4dHumanBox?.state === 'x') {
+  const body = p4dSummary?.sections.get('human-体验确认') ?? '';
+  check(Boolean(p4dSummary), 'I-P4d human acceptance requires docs/p4d/summary.md');
+  check(Boolean(body), 'I-P4d human acceptance requires docs/p4d/summary.md#human-体验确认');
+  const record = body.match(/^- 确认记录：Human 亲自体验确认通过，版本 `([0-9a-f]{7,40})`$/m)?.[1] ?? '';
+  check(Boolean(record), 'I-P4d human acceptance requires an explicit confirmation record');
+  check(Boolean(record) && commitExists(record), `I-P4d human acceptance version ${record || '(none)'} does not resolve`);
+  check(!/^[-*]\s*待确认/m.test(body), 'I-P4d human acceptance must not treat pending confirmation as confirmed');
+}
+for (const stage of ['I-P5a', 'I-P5b', 'I-P6', 'I-P7']) {
   const boxes = boxesIn(sectionOf(packagePlan, stage, 3));
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
@@ -363,7 +392,12 @@ check(uiP4cBoxes.length === 3, `UI-P4c must contain three checkboxes, found ${ui
 for (let i = 0; i < uiP4cBoxes.length; i++) {
   if (uiP4cBoxes[i].state === 'x') checkP4cLine(uiP4cBoxes[i].text, `UI-P4c checkbox ${i + 1}`, 'docs/development-plan-ui.md');
 }
-for (const stage of ['UI-P4d', 'UI-P5a', 'UI-P5b', 'UI-P6', 'UI-P7']) {
+const uiP4dBoxes = boxesIn(sectionOf(uiPlan, 'UI-P4d', 2));
+check(uiP4dBoxes.length === 3, `UI-P4d must contain three checkboxes, found ${uiP4dBoxes.length}`);
+for (let i = 0; i < uiP4dBoxes.length; i++) {
+  if (uiP4dBoxes[i].state === 'x') checkP4dLine(uiP4dBoxes[i].text, `UI-P4d checkbox ${i + 1}`, 'docs/development-plan-ui.md');
+}
+for (const stage of ['UI-P5a', 'UI-P5b', 'UI-P6', 'UI-P7']) {
   const boxes = boxesIn(sectionOf(uiPlan, stage, 2));
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
@@ -404,7 +438,8 @@ console.log('PASS P2 final range 28d4fb2..db185f8 and P3 range db185f8..e5e2b4e 
 console.log(`PASS P4a accepts evidence-linked commits and commands; unchecked=${p4aBoxes.filter((box) => box.state !== 'x').length}`);
 console.log(`PASS P4b and UI-P4b accept checked rows with resolvable evidence; functional checked=${p4bBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4bBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4bBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4c and UI-P4c accept checked rows with resolvable evidence; functional checked=${p4cBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4cBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4cBoxes.filter((box) => box.state === 'x').length}`);
-console.log('PASS P4d and later checkboxes remain unchecked in functional, plan and UI documents');
+console.log(`PASS P4d and UI-P4d accept checked rows with resolvable evidence; functional checked=${p4dBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4dBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4dBoxes.filter((box) => box.state === 'x').length}`);
+console.log('PASS I-P5a and later checkboxes remain unchecked in plan and UI documents');
 console.log(`PASS P5 to P8 checkboxes remain unchecked=${futureCount}`);
 console.log(`PASS R1 checked rows carry docs/r1 evidence with commits and rerun commands; checked=${r1Boxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);

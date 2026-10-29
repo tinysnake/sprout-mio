@@ -190,9 +190,9 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应 [P4d](development-plan-functional.md#p4d-实现交接收回与-machine-移除)。
 
-- [ ] 完成向指定分身交接、Human 强制收回和 Machine 移除的交互、警告与确认。
-- [ ] 呈现授权变化、离线待处理和无法确认撤权的状态，相关页面与 inspector 更新为同一事实。
-- [ ] 说明交接、释放与收回对既有执行的实际影响，避免让用户误以为租约操作会清理进程或文件。
+- [x] 完成向指定分身交接、Human 强制收回和 Machine 移除的交互、警告与确认。证据 [交接与移除交互](p4d/summary.md#7-完成向指定分身交接human-强制收回和-machine-移除的交互警告与确认)，重跑 `bash scripts/verify/aq-p4d-pages.sh`。
+- [x] 呈现授权变化、离线待处理和无法确认撤权的状态，相关页面与 inspector 更新为同一事实。证据 [待处理与未确认撤权](p4d/summary.md#8-呈现授权变化离线待处理和无法确认撤权的状态相关页面与-inspector-更新为同一事实)，重跑 `bash scripts/verify/aq-p4d-pages.sh`。
+- [x] 说明交接、释放与收回对既有执行的实际影响，避免让用户误以为租约操作会清理进程或文件。证据 [影响说明与只读历史](p4d/summary.md#9-说明交接释放与收回对既有执行的实际影响避免让用户误以为租约操作会清理进程或文件)，重跑 `bash scripts/verify/aq-p4d-pages.sh`。
 
 出口条件是操作前后 holder 与权限变化明确，待处理不会显示为成功。集成时验证旧 holder 失权、新 holder 接续查询与带租约移除的真实结果。
 
