@@ -152,15 +152,30 @@ function instanceIdsOf(chatId: string, agentProfileId: string): string[] {
     .map((row: { id: string }) => row.id);
 }
 
+/**
+ * 该 Agent 在本 Project 的全部 instance。项目级处置要跨对话一次算齐：群组移除只算一个对话的，
+ * 项目移除要算该 Agent 在本 Project 所有对话里的。instance 本身按 (对话, Agent) 唯一，
+ * 所以拿到 id 集合就等于拿到了「这人参与过哪些对话的运行」。
+ */
+function projectInstanceIdsOf(projectId: string, agentProfileId: string): string[] {
+  return db
+    .select({ id: agentInstance.id })
+    .from(agentInstance)
+    .where(
+      and(eq(agentInstance.projectId, projectId), eq(agentInstance.agentProfileId, agentProfileId)),
+    )
+    .all()
+    .map((row: { id: string }) => row.id);
+}
+
 /** 活跃 run：`queued` 或 `running`，同一个 instance 由局部唯一索引保证至多一条。 */
-function activeRunOf(chatId: string, instanceIds: readonly string[]): string | undefined {
+function activeRunOf(instanceIds: readonly string[]): string | undefined {
   if (instanceIds.length === 0) return undefined;
   return db
     .select({ id: agentRun.id })
     .from(agentRun)
     .where(
       and(
-        eq(agentRun.chatId, chatId),
         inArray(agentRun.instanceId, [...instanceIds]),
         inArray(agentRun.status, ["queued", "running"]),
       ),
@@ -171,13 +186,14 @@ function activeRunOf(chatId: string, instanceIds: readonly string[]): string | u
 /**
  * 未下发输入的取消：只动 `pending`。`delivered` 已经进入那轮上下文，停它走 P4c 的执行取消路径
  * （裁定 d11）；把两套取消语义混在一起，历史里就说不清是谁停的。
+ * 范围用 instance id 集合表达：群组移除给一个对话的，项目移除给整个 Project 的。
  */
-function cancelPendingRunInputs(chatId: string, instanceIds: readonly string[]): number {
+function cancelPendingRunInputs(instanceIds: readonly string[]): number {
   if (instanceIds.length === 0) return 0;
   const runs = db
     .select({ id: agentRun.id })
     .from(agentRun)
-    .where(and(eq(agentRun.chatId, chatId), inArray(agentRun.instanceId, [...instanceIds])))
+    .where(inArray(agentRun.instanceId, [...instanceIds]))
     .all()
     .map((row: { id: string }) => row.id);
   if (runs.length === 0) return 0;
@@ -697,7 +713,7 @@ export function removeGroupMember(
       if (current.owner.kind === member.kind && current.owner.id === member.id)
         throw new ChatError("conflict", "所有者不能被移出群组，请先变更所有者");
       const instanceIds = member.kind === "agent" ? instanceIdsOf(chatId, member.id) : [];
-      const activeRun = activeRunOf(chatId, instanceIds);
+      const activeRun = activeRunOf(instanceIds);
       if (activeRun) throw new ChatError("conflict", "该成员仍有活跃运行，不能移出群组");
       return writeIdentity(
         actor.ctx,
@@ -708,7 +724,7 @@ export function removeGroupMember(
           chatId,
         },
         () => {
-          cancelPendingRunInputs(chatId, instanceIds);
+          cancelPendingRunInputs(instanceIds);
           db.delete(chatMember)
             .where(
               and(
@@ -724,6 +740,68 @@ export function removeGroupMember(
       );
     })
     .immediate();
+}
+
+/**
+ * 项目级移除的对话侧处置（设计 §4.4 的第二、三步，裁定 d20 把这个单元放在 fanout 之后）。
+ * 三件事都在调用方的事务里做，顺序就是「先断言、后动手」：
+ *
+ * 1. **阻断**：该 Agent 仍是某个普通 Group 的所有者时整次移除被拒（`conflict`）。
+ *    所有者是 `chat.owner_*` 上的治理事实，移除另一个成员不应该替人换 owner；
+ *    先 `setChatOwner` 再移除是唯一不让群组悬空所有者的路径（沿用 d6 的所有权语义，
+ *    没有新增「项目移除自动换 owner」这类旁路）。
+ * 2. **在途**：该 Agent 在本 Project 任意对话里有 `queued`/`running` 的 run 时整次移除被拒
+ *    （`conflict`、断言 d10 的「拒绝优先于取消」）。pending 输入一条都不动：一次被拒的
+ *    治理请求不能留下副作用，否则「移除失败但输入已取消」在历史里无法解释。
+ * 3. **清理**：过了上面两关才动手——把该 Agent 在本 Project 全部 run 的 `pending` 输入按
+ *    `membership_revoked` 取消（d11：只动未下发的），再物理删除它在普通 Group 的
+ *    `chat_member` 行。频道没有成员行可删（成员是 Project 成员的派生事实，裁定 d7/d8），
+ *    DM 的成员行保留（d14：历史仍可读；发言资格由 `sendMessage` 的 Project 成员判定收回，d19）。
+ *    不推进 `governance_revision`：d15 的三类治理写入是群组成员与 owner 的显式命令，
+ *    项目级移除是另一个入口，调用方没有也不该有群组版本号。
+ */
+export function revokeProjectAgentEnrollment(projectId: string, agentProfileId: string): void {
+  const ownerGroups = db
+    .select({ id: chat.id, title: chat.title })
+    .from(chat)
+    .where(
+      and(
+        eq(chat.projectId, projectId),
+        eq(chat.kind, "group"),
+        eq(chat.ownerKind, "agent"),
+        eq(chat.ownerId, agentProfileId),
+      ),
+    )
+    .all();
+  if (ownerGroups.length > 0) {
+    const names = ownerGroups
+      .map((row: { id: string; title: string | null }) => row.title ?? row.id)
+      .join("、");
+    throw new ChatError("conflict", `该 Agent 仍是群组「${names}」的所有者，请先变更所有者`);
+  }
+  const instanceIds = projectInstanceIdsOf(projectId, agentProfileId);
+  // 两个帮手的空集合行为一致（无 instance 就没有 run、也没有 run 输入），
+  // 不能在这里提前返回：从未建过 instance 的 Agent 仍然可能有普通群的成员行要删。
+  if (activeRunOf(instanceIds))
+    throw new ChatError("conflict", "该 Agent 仍有活跃运行，不能移出 Project");
+  cancelPendingRunInputs(instanceIds);
+  // 只有普通 Group 有可删的成员行：频道的行由触发器与视图排除，DM 的行按 d14 保留。
+  const groupIds = db
+    .select({ id: chat.id })
+    .from(chat)
+    .where(and(eq(chat.projectId, projectId), eq(chat.kind, "group")))
+    .all()
+    .map((row: { id: string }) => row.id);
+  if (groupIds.length === 0) return;
+  db.delete(chatMember)
+    .where(
+      and(
+        inArray(chatMember.chatId, groupIds),
+        eq(chatMember.memberKind, "agent"),
+        eq(chatMember.memberId, agentProfileId),
+      ),
+    )
+    .run();
 }
 
 /**
