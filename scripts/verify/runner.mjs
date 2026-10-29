@@ -322,6 +322,7 @@ async function runPooledBatch(scripts, runDirectory) {
   );
   const required = new Set(scripts.flatMap((script) => SUITE_PLAN[script.id].preparation));
   let preparationFailure = null;
+  const prepared = new Set();
   for (const kind of ["install", "server", "worker", "extension"].filter((kind) =>
     required.has(kind),
   )) {
@@ -347,12 +348,16 @@ async function runPooledBatch(scripts, runDirectory) {
       preparationFailure = preparation;
       break;
     }
+    prepared.add(kind);
   }
   const outcomes = [];
   const pending = [];
   const queuedAt = performance.now();
   for (const script of scripts) {
-    if (preparationFailure && SUITE_PLAN[script.id].preparation.length) {
+    if (
+      preparationFailure &&
+      SUITE_PLAN[script.id].preparation.some((kind) => !prepared.has(kind))
+    ) {
       const logPath = join(runDirectory, `${script.id}.log`);
       writeFileSync(
         logPath,

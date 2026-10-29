@@ -428,6 +428,29 @@ process.exit(id === 'u' ? 7 : 0);
     expect(readFileSync(report.outcomes[1].logPath, "utf8")).toContain("exit=19");
   });
 
+  it("runs gates whose own preparation succeeded when an unrelated producer fails", () => {
+    const fixture = makeFixture();
+    for (const id of ["e-project", "x2-mcp-extension"])
+      fixture.writeScript(id, `echo ${id} >> marker.log\n`);
+    writeFileSync(join(fixture.root, "fail-preparation"), "extension");
+    const result = fixture.run([]);
+    expect(result.status).toBe(1);
+    expect(markerLines(fixture.root)).toEqual(["e-project"]);
+    const report = JSON.parse(
+      readFileSync(join(fixture.singleRunDirectory(), "report.json"), "utf8"),
+    );
+    expect(
+      report.outcomes.map((entry: { id: string; exitCode: number | null }) => [
+        entry.id,
+        entry.exitCode,
+      ]),
+    ).toEqual([
+      ["e-project", 0],
+      ["x2-mcp-extension", null],
+    ]);
+    expect(report.outcomes[1].blockedBy).toBe("prepare-extension");
+  });
+
   it("overlaps stable API consumers and joins them before an unknown gate", async () => {
     const fixture = makeFixture();
     for (const id of ["e-project", "h-project-agents"])
