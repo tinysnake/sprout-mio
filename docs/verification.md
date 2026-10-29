@@ -17,6 +17,16 @@
 
 格式检查使用仓库配置的工具。现有 `pnpm check` 包含格式、lint 与类型检查，若采用它，应如实记录该命令的范围。定向验证与独立验收不能用构建通过代替。
 
+## 运行器、选择与报告
+
+`pnpm verify` 通过 `scripts/verify.sh` 调用 `scripts/verify/runner.mjs`，按文件名字典序串行执行 `scripts/verify/*.sh`。单个脚本失败不会中止后续脚本；全部执行完后，任一失败即退出 1。运行器导出 `SPROUT_PI_ENABLED=false` 和 `SPROUT_VERIFY_RUN_DIR`，领域脚本仍由自身的 trap 管理其后台进程，运行器不承诺超出转发与等待范围的进程隔离。
+
+`pnpm verify --only aa-execution-log-contracts,af-execution-cancel-authority` 只执行列出的脚本 id（文件名去掉 `.sh`）。未知、重复、空或越界的 id，以及未知参数，都在清理数据库和运行脚本之前拒绝；`pnpm verify --help` 只打印用法，不创建运行目录或执行脚本。包管理器转发的单个前导 `--` 会被忽略。
+
+每次运行独占 `.verify/runs/<id>/`：每个脚本的 stdout 与 stderr 通过继承的文件描述符写入该目录下的 `<script>.log`，运行结束写出 `report.json`。报告记录脚本 id、路径、状态、退出码或信号、ISO 开始时间、单调计时得到的 `durationMs` 和日志路径；`durationMs` 只表示实际总耗时，不累加脚本内的嵌套计时。终端按慢到快打印摘要，保留原有的 `Verification scripts=N failed=N` 汇总行，并额外打印总耗时与报告路径。失败脚本会打印有上限的日志尾部用于定位。
+
+完整运行沿用 `.verify/*/verification.sqlite` 的清理；`--only` 只清理选中脚本对应目录的同一文件，避免删除未选中单元的证据。`.verify/runs` 与脚本的数据库目录相互独立。收到 `SIGINT` 或 `SIGTERM` 时，运行器停止派发后续脚本，把信号转发给当前脚本所在的独立进程组，等待其 trap 清理，超时后强制结束并写出部分报告；中断以 130 / 143 退出，绝不计为通过。
+
 ## worker 与 coordinator 的职责
 
 每份 brief 的验证计划写明以下内容：
