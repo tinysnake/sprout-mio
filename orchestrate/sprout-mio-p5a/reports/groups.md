@@ -29,10 +29,10 @@
 | 治理命令入参 | `src/contracts/chat.ts:102/109/116` | `addGroupMemberInput` / `removeGroupMemberInput` / `setChatOwnerInput`，都带 `expectedRevision` |
 | 服务端边界 | `src/server/functions/chat.ts:267/282/302/322` | `createGroupChatBoundary` / `addGroupMemberBoundary` / `removeGroupMemberBoundary` / `setChatOwnerBoundary`，行动者由会话构造（`humanActor`，`:262`） |
 | serverFn | `src/server/functions/chat.ts:342/348/354/360` | `createGroupChatFn` / `addGroupMemberFn` / `removeGroupMemberFn` / `setChatOwnerFn` |
-| d12 迁移修正 | `drizzle/0021_p5a_multichat_schema.sql:82-91` | 只留 `chat_member_no_channel_insert`，删除不可达的 `chat_member_no_channel_delete` 并写明原因 |
+| d12 迁移修正（按 d13 落地） | `drizzle/0023_p5a_drop_channel_delete_trigger.sql`；登记：`drizzle/meta/_journal.json:166-172`、`drizzle/meta/0023_snapshot.json` | 新增迁移 `DROP TRIGGER IF EXISTS chat_member_no_channel_delete`，理由写在首行注释；`drizzle/0021_p5a_multichat_schema.sql` 保持 `82a8c2f` 基线原样（含 delete 触发器） |
 | 门禁 | `scripts/verify/i2-group-chat.sh` + `tests/fixtures/group-chat.ts`（13 项断言组） | 真实 SQLite + 真实领域命令，不 mock 领域层 |
 | 能力判定用例 | `tests/chat-capabilities.test.ts:38` `Facts`、`:99` d6 用例、`:108` 所有者与创建者不同人 | 原「Agent owner 时没有任何 Human 通过」的断言按 d6 改写为「只有创建者通过，其他人类仍被拒」 |
-| 触发器回归 | `tests/migration-rebuild.test.ts:416` | 断言频道 delete 触发器不存在（d12 从「不可测死代码」变成可测事实） |
+| 触发器回归 | `tests/migration-rebuild.test.ts:432-435`（全集）、`:530-534` 与 `:546-549`（0022→0023 的新旧库对比） | 跑完全部迁移后 `chat_member` 的触发器集合必须恰好是 `chat_member_no_channel_insert` + `chat_member_identity_immutable`；只跑到 0022 时 delete 触发器必须存在，0023 之后必须消失——「新迁移对既有库生效」有事实证据 |
 
 ---
 
@@ -45,7 +45,7 @@
 | **d8** Public Channel 成员是派生事实，不能独立调整 | `src/domain/chat.ts:94` `assertGovernableGroup`；门禁 `d12.channel-insert-trigger-only` | 对频道调 `addGroupMember` / `removeGroupMember` 返回既有错误码 `channel_membership_managed`（`src/contracts/result.ts` 已由 contracts 单元登记，本单元**未新增任何错误码**）。频道的成员同步本身不做（`p5a-channel`） |
 | **d10** 有活跃 run 时移除被拒、pending 输入取消，两者同时可发生时以拒绝为准 | `src/domain/chat.ts:654-712`（`activeRunOf` + `cancelPendingRunInputs`） | 拒绝在前：先算活跃 run，命中就抛 `conflict`，**此时不执行任何取消**（门禁断言被拒那一次 `disposition` 仍是 `pending`、run 仍是 `queued`、成员行仍在）。只有没有活跃 run 时才把该 Agent 在本对话里的 `pending` 输入改成 `cancelled` / `cancelled_at` / `cancel_reason='membership_revoked'`，然后再删成员行、推进版本 |
 | **d11** cancelled 只作用于未下发的 pending，delivered 不转 cancelled | `src/domain/chat.ts:174-193` | 取消条件写死 `eq(agentRunInput.disposition, "pending")`；`delivered_at` 保持非空语义，运行中的停止仍走 P4c 的执行取消路径。门禁断言 `cancelled_at` 有值且 `delivered_at` 为 null |
-| **d12** `chat_member` 只保留 insert 触发器，删掉不可测的 delete 触发器 | `drizzle/0021_p5a_multichat_schema.sql:82-91`；`tests/migration-rebuild.test.ts:416-422` | 迁移里删除 `chat_member_no_channel_delete` 并把理由写成注释（insert 已挡住向频道写成员行、`chat_kind_immutable` 钉死 kind ⇒ 不存在可删的频道成员行）。门禁 `d12.channel-insert-trigger-only` 断言 `chat_member` 的触发器集合恰好是 `chat_member_no_channel_insert` + `chat_member_identity_immutable`，并实测直接 `INSERT` 触发 `public_channel_members_derived` |
+| **d12** `chat_member` 只保留 insert 触发器，删掉不可测的 delete 触发器（删除动作按 d13 落在新迁移） | `drizzle/0023_p5a_drop_channel_delete_trigger.sql`；`drizzle/0021_p5a_multichat_schema.sql:83-93`（基线原样）；`tests/migration-rebuild.test.ts:432-435` | d12 的实质结论不变：insert 已挡住向频道写成员行、`chat_kind_immutable` 钉死 kind ⇒ 不存在可删的频道成员行，delete 分支不可达。落地方式按 d13：`0021` 不动，由新增的 `0023` 用 `DROP TRIGGER IF EXISTS` 删掉已建库上的孤儿触发器（`IF EXISTS` 使未应用过 0021 的库也不报错）。门禁 `d12.channel-insert-trigger-only` 仍断言 `chat_member` 的触发器集合恰好是 `chat_member_no_channel_insert` + `chat_member_identity_immutable`，并实测直接 `INSERT` 触发 `public_channel_members_derived` |
 
 ---
 
@@ -90,7 +90,7 @@ PASS i2-group-chat 13 checks
 
 ## 4. 与冻结设计的偏差（每条都给理由）
 
-1. **`drizzle/0021` 就地修改（d12）**。设计 §4.2 同时列了 insert 与 delete 两个触发器，`decisions.tsv` 的 d12 要求删掉 delete 那个，但 brief 又写明「本单元不需要新迁移，若你认为必须有新迁移，先在报告里停手并提出」。两条要求只能二选一：这里选择就地改 `0021`（不新增迁移号、不动 `drizzle/meta/*` 快照，`db:generate` 前后都报 no schema changes 且 `drizzle/` 干净）。见第 6 节需要主控裁决的第 1 条。
+1. **`chat_member` 的 delete 触发器由新增迁移 `drizzle/0023` 删掉，`drizzle/0021` 保持基线原样**（主控已按 d13 裁定）。设计 §4.2 同时列了 insert 与 delete 两个触发器，d12 要求删掉不可达的 delete 那个。`0021` 已合入 `integration/p5a`，按 `docs/p1/conventions.md:68`「迁移一旦合并或被任何共享 DB 应用，就不得原地编辑或重生成同一文件，必须新增迁移」，删除动作落在新增的 `drizzle/0023_p5a_drop_channel_delete_trigger.sql`（内容只有 `DROP TRIGGER IF EXISTS chat_member_no_channel_delete;` 与一行理由注释）。`0021` 已逐字节还原成基线：`git diff 82a8c2f -- drizzle/0021_p5a_multichat_schema.sql` 为空，`git diff bc6856b -- …` 恰好是那次就地修改的反向（+6 / -3：`0021:89-93` 的 delete 触发器带 `--> statement-breakpoint` 回到原位，当时加的三行 d12 注释抽掉）。迁移机制与本仓既有手写迁移一致：`_journal.json` 追加 `idx=23`、`when=1793301330629`（大于 0022 的 `…628`，所以已应用过 0022 的库会向后推到 0023）、`version="6"`、`breakpoints=true`；快照按 `0022` 的做法——复制上一份、只改 `id`/`prevId`（`0023` 的 `prevId` 即 `0022` 的 `id`，`tables`/`views` 逐字节相等）。事实：`pnpm exec drizzle-kit generate` 报 `No schema changes, nothing to migrate`，`git status --porcelain -- drizzle` 在 generate 前后都为空（这正是 `c-data-auth.sh` 的漂移门禁要求先入库的断言），`bash scripts/verify/i2-group-chat.sh` 用真实 `migrateDatabase()` 建库后 `d12.channel-insert-trigger-only` 仍报恰好两道触发器，证明 0023 在完整迁移链上确实生效。
 2. **`assertChatCapability` 第三参从 `{ownerKind, ownerId}` 扩成 `{ownerKind, ownerId, projectCreatedBy}`**（设计 §3.2 只写了前两个）。d6 的兜底需要 `project.created_by`，把它放进同一份「归属事实」而不是加第四个可选参数，是为了让调用方无法漏传、也无法各自判 owner。
 3. **三类治理写入都带 `expectedRevision`**。设计 §4.3 只要求换 owner 做 CAS。这里让加成员 / 移出成员同样带版本：`governance_revision` 的语义是「治理事实的版本」，允许无版本写入就等于允许静默覆盖别人刚做完的治理。代价是重复加成员要用**当前**版本才幂等成功（用过期版本仍 `conflict`），门禁把这两种情形分别断言。
 4. **`createGroupChatInput` 的成员形状从 `agentProfileIds: string[]` 改为 `members: {kind,id}[]`**。brief 要求「至少一个人类成员」，旧形状连人类成员都表达不了；这属于 brief 点名的过宽契约，不是设计形状变更。
@@ -105,7 +105,7 @@ PASS i2-group-chat 13 checks
 2. **`listChatMembers` 读的是 `chat_member` 而不是 `chat_effective_member`**（`src/domain/chat.ts:375`）。因此项目级移除 Agent 之后，Group 的成员接口仍会列出这个 Agent（参与权视图已经不再包含它）。本单元没改这条读路径：它同时服务 UI 和 Info Hub，改动会与 `p5a-ui` / `p5a-info` 的读取契约交叉。建议由 `p5a-channel` 或 `p5a-info` 统一改成读视图。
 3. **建群不会隐式把创建者加入成员**。契约要求显式给出成员（含至少一名人类），所以 UI 必须自己把当前用户放进 `members`。若主控希望「创建者自动入群」，那是契约层的决定，未擅自加。
 4. **没有「不能移出最后一名人类成员」的规则**。移走最后一个人之后群组的人类通路只剩 d6 兜底（`project.created_by`），治理不会冻结，所以没加这条限制；是否要把「至少一名人类成员」从创建约束升格为不变量，需要裁决。
-5. **已经迁移到 0021/0022 的既有本地库仍留着旧的 delete 触发器**。in-place 修改只对新建库生效（drizzle 迁移器按 `created_at` 顺序推进，不会重跑已应用的迁移）。所有门禁与集成线都用一次性库，`db:generate` 与 `drizzle/` 干净；但 `data/sprout.sqlite` 这类长期开发库需要一个 `DROP TRIGGER IF EXISTS chat_member_no_channel_delete` 才彻底对齐。见第 6 节第 1 条。
+5. **（已关闭）已经迁移到 0021/0022 的既有本地库会留着旧的 delete 触发器**。drizzle 迁移器按 `__drizzle_migrations.created_at` 推进，不会重跑已应用的迁移，所以就地改 `0021` 只对新建库生效，`data/sprout.sqlite` 这类长期库会留着孤儿触发器。主控按 d13 裁定用新增迁移推进：`0023_p5a_drop_channel_delete_trigger.sql` 就是给既有库用的那一步，`tests/migration-rebuild.test.ts:530-549` 用「同一库先跑到 0022、再补跑 0023」证明它确实把孤儿删掉。本条不再是缺口，实现与证据见第 4 节第 1 条。
 6. **`ensureInstance` 没有写 `agent_instance.created` 诊断**。它会被 fanout 在 `sendMessage` 的事务里按候选逐个调用，写诊断会变成每次唤醒都刷一条事件；需要「谁第一次拿到 instance」的证据时，run 的 `agent_run.queued` 诊断已经覆盖。若评审要求，可以只在实际插入时补一条。
 7. **`src/domain/agent-run.ts:appendHumanRunInput` 仍只对 DM 生效**（`current.kind !== "dm"` 直接返回），所以 Human 往 Group 发消息还不会产生任何 run/输入。这是 `p5a-fanout` 的范围，本单元按边界没动。
 
@@ -113,7 +113,7 @@ PASS i2-group-chat 13 checks
 
 ## 6. 需要主控裁决的分歧
 
-1. **d12 的删除方式**：本单元就地改了已合入 `integration/p5a` 的 `drizzle/0021`（不加迁移号、快照不动），代价是「已迁移库保留孤儿触发器」。备选是新增 `0024_p5a_drop_channel_delete_trigger.sql` 做 `DROP TRIGGER IF EXISTS`（`0023` 归 `p5a-fanout`），对既有库也彻底。若主控要求迁移文件不可变，这个单元需要重做成新增迁移；请裁决，我按裁决改。
+1. **（已裁定 → d13）d12 的删除方式**：主控裁定已合入集成分支的迁移不可就地修改，删除动作改为新增迁移。本单元已按裁决重做：`drizzle/0021` 还原成 `82a8c2f` 基线原样（含 `chat_member_no_channel_delete`），新增 `drizzle/0023_p5a_drop_channel_delete_trigger.sql` 做 `DROP TRIGGER IF EXISTS`，并登记进 `_journal.json` 与快照链；`tests/migration-rebuild.test.ts` 补了「跑到 0022 时存在、跑到 0023 后消失」的断言。落点、机制一致性与门禁事实见第 4 节第 1 条，本条不再等待裁决。编号影响：`0023` 已被本修正占用，`p5a-fanout` 重建 `agent_run` 的迁移改用 `0024`（d9 的约束内容不变，只换编号）。
 2. **公共频道成员删除的物理底线**：d12 删掉 delete 触发器之后，若有外部直写库存量频道成员行，数据库层没有拦截。我认为这符合 d12「不留不可达保护」的取舍（insert 触发器 + `chat_kind_immutable` 已经封死产生路径），但这一条是「用可达性换防线」的取舍，值得主控确认。
 3. **Group 成员移除是否物理删 `chat_member` 行**：d7 说「Agent 移出后 instance 与 chat_member 行保留」。我把这条读成「项目级移除沿用视图派生、不清理成员行」，而 Group 上的显式移除必须删行——否则视图没有任何字段能表达「还在项目里但已被移出这个群」，d10 的移除语义也无从落地。若主控把 d7 读成「Group 移除也保留行」，那需要给视图引入新的判据，属于契约变更。
 4. **治理写入是否统一要求 `expectedRevision`**（第 4 节第 3 条）。若只要 owner change 带版本，加成员 / 移出成员的入参可以去掉该字段；但那样 `governance_revision` 只覆盖一部分治理事实。
