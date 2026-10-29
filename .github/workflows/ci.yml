@@ -26,7 +26,7 @@ jobs:
       SPROUT_PI_ENABLED: "false"
       SPROUT_VERIFY_CHAT_MODE: model-fixture
       MCP_EVERYTHING: "0"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sprout-playwright
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.verify/browsers
       BETTER_AUTH_SECRET: sprout-ci-only-not-production-secret
       NO_PROXY: localhost,127.0.0.1,::1
     steps:
