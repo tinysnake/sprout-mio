@@ -99,7 +99,7 @@ export function getMachine(input: GetMachineInput, ctx: MachineContext): Machine
       .select()
       .from(machineCredential)
       .where(eq(machineCredential.machineId, row.id))
-      .get()!;
+      .get();
     const connection = db
       .select()
       .from(machineConnection)
@@ -187,7 +187,7 @@ export function getMachine(input: GetMachineInput, ctx: MachineContext): Machine
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       },
-      enrollmentStatus: credential.secretHash && credential.activatedAt ? "active" : "pending",
+      enrollmentStatus: credential?.secretHash && credential.activatedAt ? "active" : "pending",
       connection: live
         ? {
             kind: connection.capability ? "online" : "connecting",
@@ -290,7 +290,9 @@ export function renewMachineEnrollment(
         .select()
         .from(machineCredential)
         .where(eq(machineCredential.machineId, machineId))
-        .get()!;
+        .get();
+      // 缺入网凭据的机器无法重新登记，直接说明原因，而不是让读取 undefined 崩成 internal。
+      if (!credential) throw new MachineError("conflict", "Machine 缺少入网凭据，请删除后重新添加");
       if (credential.secretHash !== null) throw new MachineError("conflict", "Machine 已激活");
       const result = ticket(machineId, ctx);
       diagnostic("machine.enrollment_renewed", ctx, hooks);
