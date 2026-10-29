@@ -310,9 +310,15 @@ export const agentRun = sqliteTable(
     errorMessage: text("error_message"),
     sessionId: text("session_id").notNull(),
     configSnapshot: text("config_snapshot", { mode: "json" }).$type<RunConfigSnapshot>(),
-    assistantMessageId: text("assistant_message_id").references(() => message.id),
+    // 回复消息必须与 run 同属一个 chat（裁定 d9）。单列 message(id) 外键被这条复合外键覆盖，
+    // 不再重复声明；目标由 message 上的 uniqueIndex("message_id_chat_unique") 提供。
+    assistantMessageId: text("assistant_message_id"),
   },
   (table) => [
+    foreignKey({
+      columns: [table.assistantMessageId, table.chatId],
+      foreignColumns: [message.id, message.chatId],
+    }),
     uniqueIndex("agent_run_one_active_instance")
       .on(table.instanceId)
       .where(sql`${table.status} in ('queued', 'running')`),

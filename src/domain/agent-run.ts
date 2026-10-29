@@ -6,7 +6,7 @@ import type {
   AgentRunStatus,
   RunConfigSnapshot,
 } from "../contracts/agent-run";
-import type { Message } from "../contracts/chat";
+import type { AgentInstance, Chat, ChatMember, ChatWakeDispatch, Message } from "../contracts/chat";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import {
@@ -20,7 +20,9 @@ import {
 } from "../db/schema";
 import { ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
-import { getChat, sendMessage } from "./chat";
+import { readChatEffectiveMembers } from "./channel";
+import { getChat, ensureInstance, sendMessage } from "./chat";
+import { routeWakeCandidates } from "./chat-wake";
 
 export class AgentRunError extends Error {
   constructor(
@@ -130,16 +132,16 @@ function diagnostic(
     .run();
 }
 
-/** 与 human message 共用事务，输入失败就回滚消息。 */
-export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
-  const current = getChat(saved.chatId, ctx);
-  if (saved.senderKind !== "human" || current.kind !== "dm") return;
-  const instance = db
-    .select()
-    .from(agentInstance)
-    .where(eq(agentInstance.chatId, current.id))
-    .get();
-  if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
+/**
+ * 把一条人类消息挂到某个 instance 的活跃 run 上；没有活跃 run 就排队一条新 run。
+ * DM 与群/频道派发共用这一步，保证「同一 instance 串行」只有一份实现。
+ */
+function attachMessageToRun(
+  saved: Message,
+  current: Chat,
+  instance: Pick<AgentInstance, "id">,
+  ctx: ProjectContext,
+): void {
   let run = db
     .select()
     .from(agentRun)
@@ -169,6 +171,90 @@ export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
   db.insert(agentRunInput)
     .values({ runId: run.id, messageId: saved.id, disposition: "pending" })
     .run();
+}
+
+/**
+ * 候选 Agent 的 `agent_profile_id` → 展示名字典（契约 `chatWakeDispatchSchema`）。
+ * `routeWakeCandidates` 的点名规则按名字匹配，成员视图只给 id，所以名字必须在这里补；
+ * 读不到名字时字典项只有 id，点名退化为 `@<agent_profile_id>`。
+ */
+function profileDictionary(members: readonly ChatMember[]): ChatWakeDispatch["agentProfiles"] {
+  const agentIds = members
+    .filter((member) => member.memberKind === "agent")
+    .map((member) => member.memberId);
+  if (agentIds.length === 0) return [];
+  const names = new Map<string, string>();
+  for (const row of db
+    .select({ id: agentProfile.id, name: agentProfile.name })
+    .from(agentProfile)
+    .where(inArray(agentProfile.id, agentIds))
+    .all())
+    names.set(row.id, row.name);
+  return agentIds.map((agentProfileId) => {
+    const profileName = names.get(agentProfileId);
+    return profileName === undefined ? { agentProfileId } : { agentProfileId, profileName };
+  });
+}
+
+/**
+ * 群与公共频道的人类消息派发（裁定 §3.3 / §4.5 / d18）：
+ * - 候选只由 `routeWakeCandidates` 决定，这里不加 kind 分支，所以频道里只唤醒被点名的 Agent
+ *   （owner 恒为人类，`owner_led` 在频道里本就不产生候选），绝不按成员广播；
+ * - 每个候选在**自己的 instance** 上各得一条 run 与一条 `agent_run_input`，这就是扇出的物化
+ *   （输入主键是 `(run_id, message_id)`）；
+ * - 同一 instance 已有活跃 run 时输入挂到那条 run，不新建第二个（数据库部分唯一索引是底线）。
+ */
+function fanoutHumanMessage(saved: Message, current: Chat, ctx: ProjectContext): void {
+  const members = readChatEffectiveMembers(current.id, current.projectId);
+  // 派发契约只带 id → 名字的字典与消息内容；规则函数要的其余成员事实仍由视图给全。
+  const dispatch: ChatWakeDispatch = {
+    chatId: current.id,
+    body: saved.body,
+    agentProfiles: profileDictionary(members),
+  };
+  const names = new Map(
+    dispatch.agentProfiles.map((entry) => [entry.agentProfileId, entry.profileName] as const),
+  );
+  const candidates = routeWakeCandidates({
+    body: dispatch.body,
+    chat: {
+      id: dispatch.chatId,
+      kind: current.kind,
+      wakePolicy: current.wakePolicy,
+      ownerKind: current.owner.kind,
+      ownerId: current.owner.id,
+    },
+    effectiveMembers: members.map((member) => {
+      const profileName = names.get(member.memberId);
+      return {
+        memberKind: member.memberKind,
+        memberId: member.memberId,
+        ...(profileName === undefined ? {} : { profileName }),
+      };
+    }),
+  });
+  for (const candidate of candidates) {
+    const instance = ensureInstance(current.id, candidate.agentProfileId, ctx);
+    attachMessageToRun(saved, current, instance, ctx);
+  }
+}
+
+/** 与 human message 共用事务，输入失败就回滚消息。 */
+export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
+  const current = getChat(saved.chatId, ctx);
+  if (saved.senderKind !== "human") return;
+  // DM 保持「一条消息一条 run」的既有语义：对话里恰有一个 instance，不看唤醒规则。
+  if (current.kind === "dm") {
+    const instance = db
+      .select()
+      .from(agentInstance)
+      .where(eq(agentInstance.chatId, current.id))
+      .get();
+    if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
+    attachMessageToRun(saved, current, instance, ctx);
+    return;
+  }
+  fanoutHumanMessage(saved, current, ctx);
 }
 
 type TransitionData = {
@@ -300,6 +386,7 @@ export function completeAgentRun(
         )
         .get();
       if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
+      // 回复由 run 自己的 instance 分身发出；带上 run 身份，让发送资格判定与宿主执行同一套。
       const reply = sendMessage(
         row.chatId,
         {
@@ -307,21 +394,34 @@ export function completeAgentRun(
           senderId: instance.agentProfileId,
           body: body.trim(),
         },
-        ctx,
+        {
+          ...ctx,
+          agent: {
+            agentProfileId: instance.agentProfileId,
+            instanceId: row.instanceId,
+            runId: id,
+          },
+        },
       );
       return transitionAgentRun(id, "completed", { stopReason, assistantMessageId: reply.id }, ctx);
     })
     .immediate();
 }
 
-/** 只供受管宿主调用。actor 与 project 归属从 chat 推导。 */
+/** 只供受管宿主调用。actor 与 project 归属从 chat 推导；执行身份另取 run 自己的记录。 */
 export function queuedRunWork(): {
   run: typeof agentRun.$inferSelect;
   profile: typeof agentProfile.$inferSelect;
   ownerId: string;
+  agentProfileId: string;
 }[] {
   return db
-    .select({ run: agentRun, profile: agentProfile, ownerId: chat.createdBy })
+    .select({
+      run: agentRun,
+      profile: agentProfile,
+      ownerId: chat.createdBy,
+      agentProfileId: agentInstance.agentProfileId,
+    })
     .from(agentRun)
     .innerJoin(chat, and(eq(chat.id, agentRun.chatId), eq(chat.projectId, agentRun.projectId)))
     .innerJoin(

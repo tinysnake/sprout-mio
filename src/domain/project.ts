@@ -5,8 +5,25 @@ import { db, sqlite } from "../db";
 import { diagnosticEvent, project } from "../db/schema";
 import { ensureProjectChannel } from "./channel";
 
-/** 调用者身份与请求关联在边界确定，业务服务不读取 HTTP 概念。 */
-export type ProjectContext = { userId: string; requestId: string };
+/**
+ * 一次 Agent run 的执行身份。它是从 run 行与它引用的 instance 读出的，不由调用方传入：
+ * 人类消息开出的 run 同样以分身身份执行域代码，宿主也不需要从 `userId` 猜这段代码是谁在跑。
+ */
+export type RunAgentIdentity = {
+  readonly agentProfileId: string;
+  readonly instanceId: string;
+  readonly runId: string;
+};
+
+/**
+ * 调用者身份与请求关联在边界确定，业务服务不读取 HTTP 概念。
+ * `userId` 只承担 Project 归属（agent_run 的 owner 语义不变）；`agent` 在 run 里执行时出现。
+ */
+export type ProjectContext = {
+  readonly userId: string;
+  readonly requestId: string;
+  readonly agent?: RunAgentIdentity;
+};
 
 /** 业务服务只登记调用方可以据以行动的失败，其余错误由边界映射为 internal。 */
 export type ProjectErrorCode = "not_found";

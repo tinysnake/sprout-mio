@@ -1472,7 +1472,9 @@ if (scenario === "steer") {
   const fake = makeProcess(1);
   const profile = db.select().from(agentProfile).where(eq(agentProfile.id, profileId)).get()!;
   await Effect.runPromise(
-    executeRun({ run: work, profile, ownerId }, fake as never, { isStopping: () => false }),
+    executeRun({ run: work, profile, ownerId, agentProfileId: profileId }, fake as never, {
+      isStopping: () => false,
+    }),
   );
   const notice = pendingRunNotices({ runId }, { userId: ownerId, requestId: req() });
   assert.equal(notice.length, 0, "成功 steer 后通知被标记已投递");
