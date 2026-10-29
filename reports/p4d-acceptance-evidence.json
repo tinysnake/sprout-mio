@@ -1,0 +1,415 @@
+{
+  "baseline": "0ad4e1d",
+  "branch": "p4d/acceptance",
+  "verdict": "FAIL",
+  "firstRun": {
+    "runId": "2026-10-29T14-32-48-594Z-29283-0",
+    "count": 53,
+    "passed": 44,
+    "failed": 9,
+    "durationMs": 1418394
+  },
+  "retry": {
+    "runId": "2026-10-29T14-59-17-677Z-77954-0",
+    "count": 8,
+    "passed": 3,
+    "failed": 5,
+    "durationMs": 357196
+  },
+  "final": {
+    "count": 53,
+    "passed": 47,
+    "failed": 6,
+    "skipped": 0
+  },
+  "gates": [
+    {
+      "id": "a-base",
+      "firstStatus": "passed",
+      "firstDurationMs": 39794,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "aa-execution-log-contracts",
+      "firstStatus": "passed",
+      "firstDurationMs": 1729,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ab-worker-long-command",
+      "firstStatus": "passed",
+      "firstDurationMs": 33551,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ac-execution-recovery-log",
+      "firstStatus": "passed",
+      "firstDurationMs": 790,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ad-execution-log-ui",
+      "firstStatus": "passed",
+      "firstDurationMs": 33589,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ae-remote-tools-cancel-log",
+      "firstStatus": "passed",
+      "firstDurationMs": 1354,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "af-execution-cancel-authority",
+      "firstStatus": "passed",
+      "firstDurationMs": 2028,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ag-execution-wiring-ui",
+      "firstStatus": "passed",
+      "firstDurationMs": 7505,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ah-execution-live-e2e",
+      "firstStatus": "passed",
+      "firstDurationMs": 257488,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ai-execution-accept-fixes",
+      "firstStatus": "failed",
+      "firstDurationMs": 1876,
+      "finalStatus": "failed"
+    },
+    {
+      "id": "aj-recovery-matrix",
+      "firstStatus": "passed",
+      "firstDurationMs": 189999,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ak-execution-accept-fixes-2",
+      "firstStatus": "passed",
+      "firstDurationMs": 13020,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "al-execution-exit-custody",
+      "firstStatus": "passed",
+      "firstDurationMs": 12897,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "am-execution-log-honesty",
+      "firstStatus": "passed",
+      "firstDurationMs": 6241,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "an-p4d-authority",
+      "firstStatus": "passed",
+      "firstDurationMs": 25390,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "ap-p4d-handoff-worker",
+      "firstStatus": "passed",
+      "firstDurationMs": 55637,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "aq-p4d-pages",
+      "firstStatus": "passed",
+      "firstDurationMs": 22159,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "b-tooling",
+      "firstStatus": "failed",
+      "firstDurationMs": 1807,
+      "retryStatus": "failed",
+      "retryDurationMs": 33872,
+      "finalStatus": "failed"
+    },
+    {
+      "id": "c-auth-rate-limit",
+      "firstStatus": "passed",
+      "firstDurationMs": 1431,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "c-data-auth",
+      "firstStatus": "passed",
+      "firstDurationMs": 6344,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "d-runtime",
+      "firstStatus": "passed",
+      "firstDurationMs": 20291,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "drain-http",
+      "firstStatus": "passed",
+      "firstDurationMs": 21941,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "e-project",
+      "firstStatus": "passed",
+      "firstDurationMs": 3912,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "f-docs",
+      "firstStatus": "passed",
+      "firstDurationMs": 127,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "g-identity-data",
+      "firstStatus": "failed",
+      "firstDurationMs": 10982,
+      "retryStatus": "passed",
+      "retryDurationMs": 12357,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "h-project-agents",
+      "firstStatus": "passed",
+      "firstDurationMs": 4800,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "i-chat",
+      "firstStatus": "passed",
+      "firstDurationMs": 9381,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "j-info-hub",
+      "firstStatus": "passed",
+      "firstDurationMs": 4347,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "k-acceptance",
+      "firstStatus": "passed",
+      "firstDurationMs": 38024,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "k2-cross-family-isolation",
+      "firstStatus": "passed",
+      "firstDurationMs": 4366,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "l-docs",
+      "firstStatus": "passed",
+      "firstDurationMs": 1323,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "l-docs-probes",
+      "firstStatus": "passed",
+      "firstDurationMs": 35285,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "m-error-mapping",
+      "firstStatus": "passed",
+      "firstDurationMs": 962,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "n-pi-session",
+      "firstStatus": "passed",
+      "firstDurationMs": 11339,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "o-turn-semantics",
+      "firstStatus": "passed",
+      "firstDurationMs": 6712,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "p-repo-entry",
+      "firstStatus": "passed",
+      "firstDurationMs": 16882,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "q-info-hub-runs",
+      "firstStatus": "passed",
+      "firstDurationMs": 4126,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "r-ui-layout",
+      "firstStatus": "passed",
+      "firstDurationMs": 18378,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "s-machine-contracts",
+      "firstStatus": "passed",
+      "firstDurationMs": 2929,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "t-machine-worker",
+      "firstStatus": "failed",
+      "firstDurationMs": 54133,
+      "retryStatus": "passed",
+      "retryDurationMs": 50227,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "u-machine-ui",
+      "firstStatus": "passed",
+      "firstDurationMs": 73877,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "v-lease-contracts",
+      "firstStatus": "passed",
+      "firstDurationMs": 2867,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "v-mcp-contracts",
+      "firstStatus": "failed",
+      "firstDurationMs": 7052,
+      "retryStatus": "passed",
+      "retryDurationMs": 8817,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "w-worker-remote",
+      "firstStatus": "passed",
+      "firstDurationMs": 62660,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "x-remote-tools",
+      "firstStatus": "passed",
+      "firstDurationMs": 2310,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "x2-mcp-extension",
+      "firstStatus": "failed",
+      "firstDurationMs": 1388,
+      "retryStatus": "failed",
+      "retryDurationMs": 1349,
+      "finalStatus": "failed"
+    },
+    {
+      "id": "x3-mcp-extension-surface",
+      "firstStatus": "passed",
+      "firstDurationMs": 2620,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "y-lease-ui",
+      "firstStatus": "passed",
+      "firstDurationMs": 33736,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "y-mcp-worker",
+      "firstStatus": "passed",
+      "firstDurationMs": 5296,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "y2-mcp-http-worker",
+      "firstStatus": "passed",
+      "firstDurationMs": 1923,
+      "finalStatus": "passed"
+    },
+    {
+      "id": "z-lease-integration",
+      "firstStatus": "failed",
+      "firstDurationMs": 226980,
+      "retryStatus": "failed",
+      "retryDurationMs": 237525,
+      "finalStatus": "failed"
+    },
+    {
+      "id": "z2-mcp-integration",
+      "firstStatus": "failed",
+      "firstDurationMs": 1126,
+      "retryStatus": "failed",
+      "retryDurationMs": 1291,
+      "finalStatus": "failed"
+    },
+    {
+      "id": "z3-mcp-acceptance",
+      "firstStatus": "failed",
+      "firstDurationMs": 11659,
+      "retryStatus": "failed",
+      "retryDurationMs": 11753,
+      "finalStatus": "failed"
+    }
+  ],
+  "supplemental": {
+    "authority": {
+      "status": "failed",
+      "expectedFailures": [
+        "removed execution reads return membership_removed, including production HTTP handler",
+        "directory observation accepted while detaching",
+        "pre-rejoin observation current after binding revision changes",
+        "unproven terminal accepted and poisoned state survives proof restoration"
+      ]
+    },
+    "migration": {
+      "status": "passed",
+      "legacyBindings": 3,
+      "productionMigrator": true,
+      "replay": true,
+      "deferredFKInsertThenParentCommit": true,
+      "unresolvedFKCommitRejected": true,
+      "foreignKeyCheckEmpty": true
+    },
+    "pages": {
+      "status": "failed",
+      "actualDisabled": false,
+      "forceGenerationBefore": 1,
+      "forceGenerationAfter": 2,
+      "forceStateAfter": "free"
+    },
+    "finalCheck": {
+      "status": "passed",
+      "errors": 0,
+      "existingWarnings": 2
+    },
+    "finalTypecheck": {
+      "status": "passed",
+      "tsconfigs": 3
+    }
+  },
+  "q1": {
+    "verdict": "allowed_by_frozen_exception",
+    "realWorker": true,
+    "originGeneration": 1,
+    "currentGeneration": 2,
+    "state": "unknown",
+    "failureReason": "authorization_revoked",
+    "pidAlive": true,
+    "framesBefore": 8,
+    "framesSeenByNewHolder": 24,
+    "writesBefore": 23,
+    "writesAfter": 70,
+    "maxGapMs": 707,
+    "newHolderCancel": "cancellation_already_terminal",
+    "oldHolderCancel": "lease_not_holder",
+    "newHolderOriginGenerationCancel": "lease_stale_generation",
+    "d4OriginalAbsentFromProvidedDecisions": true
+  }
+}
