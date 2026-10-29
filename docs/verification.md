@@ -27,6 +27,14 @@
 
 完整运行沿用 `.verify/*/verification.sqlite` 的清理；`--only` 只清理选中脚本对应目录的同一文件，避免删除未选中单元的证据。`.verify/runs` 与脚本的数据库目录相互独立。收到 `SIGINT` 或 `SIGTERM` 时，运行器停止派发后续脚本，把信号转发给当前脚本所在的独立进程组，等待其 trap 清理，超时后强制结束并写出部分报告；中断以 130 / 143 退出，绝不计为通过。
 
+## 本地完整验证与 GitHub Actions
+
+完整测试与真实行为验证在本机 macOS 执行。全量 `pnpm test` 由 `pnpm verify` 内的 `scripts/verify/b-tooling.sh` 运行，覆盖真实 Worker 与需要受管 Pi 的 MCP 场景；GitHub Actions 的 Ubuntu runner 不具备这些前提。
+
+`.github/workflows/ci.yml` 的 Linux job 只执行安装、`pnpm check`、server 构建、数据库迁移、生产 smoke、worker 与 extension 产物检查。它证明这些静态检查与构建在 Linux 上通过，不代表全量测试通过，不能替代本地完整验证，也不作为行为或 Worker / MCP 集成的证据。
+
+因此两处不重复执行全量测试：执行 `pnpm verify` 时不再另加 `pnpm test`，因为前者已包含（见[完整验证与去重](#完整验证与去重)）。集成与交付节点仍按本文要求执行完整验证；本地证据必须绑定当前 diff，按[证据复用与失效](#证据复用与失效)记录基准 commit、完整 diff 与内容哈希。
+
 ## 当前 run 的构建准备
 
 构建调用统一通过 `node scripts/verify/prepare.mjs install|server|worker|extension [--fresh]`。运行器在新建的 `.verify/runs/<id>/context.json` 记录仓库根目录、run id 和 owner PID。helper 只在目录、根目录和活着的 owner 均匹配时读取该 run 的成功 receipt；传入失效或损坏的内部 context 会明确失败。没有 `SPROUT_VERIFY_RUN_DIR` 时，独立调用总会基于当前源码执行，不因旧产物存在而跳过。不同 run 不复用；同一 checkout 仍只支持一个串行验证调用。
