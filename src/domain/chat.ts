@@ -29,6 +29,7 @@ import { assertProjectAccess, ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
 import { getAgentProfile } from "./agent";
 import { appendHumanRunInput } from "./agent-run";
+import { assertChannelMemberChangeAllowed, readChatEffectiveMembers } from "./channel";
 import { assertChatCapability } from "./chat-capabilities";
 import type { ChatOwnerFacts } from "./chat-capabilities";
 import type { ChatActor } from "./chat-actor";
@@ -89,11 +90,11 @@ function ownerFacts(row: Chat): ChatOwnerFacts {
 
 /**
  * 成员与所有者治理只对普通 Group 生效。Public Channel 的成员是 Project 成员的派生事实（裁定 d8），
- * 独立增删一律 `channel_membership_managed`；DM 的成员由创建时固定，没有可调整的成员集。
+ * 独立增删一律 `channel_membership_managed`（拒绝入口在 `domain/channel.ts`）；
+ * DM 的成员由创建时固定，没有可调整的成员集。
  */
 function assertGovernableGroup(row: Chat): void {
-  if (row.kind === "public_channel")
-    throw new ChatError("channel_membership_managed", "公共频道成员跟随项目自动同步，不可独立修改");
+  assertChannelMemberChangeAllowed(row);
   if (row.kind !== "group") throw new ChatError("forbidden", "只有群组可以调整成员与所有者");
 }
 
@@ -372,19 +373,14 @@ export function clearChatTitle(
     .immediate();
 }
 
+/**
+ * 成员列表读 `chat_effective_member`（裁定 d7），不读 `chat_member`：
+ * 频道的成员来自 Project 成员，Project 级移除后该 Agent 立即不在这里出现，
+ * 但它的历史消息、instance 与 run 仍然可读。
+ */
 export function listChatMembers(chatId: string, ctx: ProjectContext): ChatMember[] {
   const current = getChat(chatId, ctx);
-  return db
-    .select({ member: chatMember })
-    .from(chatMember)
-    .innerJoin(chat, eq(chat.id, chatMember.chatId))
-    .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
-    .orderBy(asc(chatMember.addedAt), asc(sql`${chatMember}.rowid`))
-    .all()
-    .map(({ member }: { member: typeof chatMember.$inferSelect }) => ({
-      ...member,
-      addedAt: member.addedAt.toISOString(),
-    }));
+  return readChatEffectiveMembers(chatId, current.projectId);
 }
 
 export function listInstancesForChat(chatId: string, ctx: ProjectContext): AgentInstance[] {
@@ -427,16 +423,17 @@ export function sendMessage(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
+      // 发言资格与成员列表同源（`chat_effective_member`）：频道里没有 chat_member 行，
+      // 只读成员表会让频道永远发不出消息；只读成员表也无法收回 Project 移除后的参与权。
       const sender = db
-        .select({ member: chatMember })
-        .from(chatMember)
-        .innerJoin(chat, eq(chat.id, chatMember.chatId))
+        .select({ memberId: chatEffectiveMember.memberId })
+        .from(chatEffectiveMember)
         .where(
           and(
-            eq(chat.id, chatId),
-            eq(chat.projectId, current.projectId),
-            eq(chatMember.memberKind, input.senderKind),
-            eq(chatMember.memberId, input.senderId),
+            eq(chatEffectiveMember.chatId, chatId),
+            eq(chatEffectiveMember.projectId, current.projectId),
+            eq(chatEffectiveMember.memberKind, input.senderKind),
+            eq(chatEffectiveMember.memberId, input.senderId),
           ),
         )
         .get();

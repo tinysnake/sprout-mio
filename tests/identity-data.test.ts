@@ -126,7 +126,8 @@ describe("P2 身份、Project 授权与持久对话", () => {
       const first = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       const second = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       assert.deepEqual(first, second);
-      assert.equal(count('chat'), 1);
+      assert.equal(sqlite.prepare("SELECT count(*) AS n FROM chat WHERE kind = 'dm'").get().n, 1);
+      assert.equal(sqlite.prepare("SELECT count(*) AS n FROM chat WHERE kind = 'public_channel'").get().n, 2);
       assert.equal(count('agent_instance'), 1);
       assert.equal(count('chat_member'), 2);
       const members = dm.listChatMembers(first.chat.id, ctxA);
@@ -140,7 +141,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
       const other = dm.createDirectChat(another.id, profileA.id, ctxA);
       assert.notEqual(first.chat.id, other.chat.id);
       assert.notEqual(first.instance.id, other.instance.id);
-      assert.deepEqual(dm.listChats(projectA.id, ctxA), [first.chat]);
+      assert.deepEqual(dm.listChats(projectA.id, ctxA).filter((chat) => chat.kind === 'dm'), [first.chat]);
       const events = sqlite.prepare("SELECT * FROM diagnostic_event WHERE event='chat.created' AND project_id=?").all(projectA.id);
       assert.equal(events.length, 1);
       assert.equal(events[0].chat_id, first.chat.id);
@@ -215,7 +216,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
         () => dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxB.userId, body: 'stolen' }, ctxB),
       ]) notFound(denied);
       assert.deepEqual(agent.listAgentProfiles(ctxB).map(row => row.id), [profileB.id]);
-      assert.deepEqual(dm.listChats(projectB.id, ctxB).map(row => row.id), [other.chat.id]);
+      assert.deepEqual(dm.listChats(projectB.id, ctxB).filter((chat) => chat.kind === 'dm').map(row => row.id), [other.chat.id]);
       assert.deepEqual(dm.listMessages(other.chat.id, ctxB).map(row => row.body), ['B private']);
       const errorShape = (fn) => { try { fn(); assert.fail('must fail'); } catch (error) { return [error.code, error.message]; } };
       assert.deepEqual(errorShape(() => dm.getChat(direct.chat.id, ctxB)), errorShape(() => dm.getChat(newId(ID_PREFIXES.chat), ctxB)));

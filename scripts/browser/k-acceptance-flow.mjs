@@ -340,13 +340,13 @@ async function before() {
       key: "chats",
       path: `${project.path}/chats`,
       assert: async () => {
-        await test(page, "chat-item").waitFor();
-        assert.deepEqual(
-          await test(page, "chat-item").evaluateAll((nodes) =>
-            nodes.map((node) => node.dataset.chatId),
-          ),
-          [observed.chatId],
+        await test(page, "chat-item").first().waitFor();
+        const listed = await test(page, "chat-item").evaluateAll((nodes) =>
+          nodes.map((node) => node.dataset.chatId),
         );
+        // Project 出生即带唯一公共频道（I-P5a 频道单元）：列表恒为「最新更新的 DM + 频道」。
+        assert.equal(listed.length, 2);
+        assert.equal(listed[0], observed.chatId);
       },
     },
     {
@@ -561,13 +561,14 @@ async function after() {
     await sameInput(page, "agent-edit-persona", before.persona);
     return { before: before.persona, after: await test(page, "agent-edit-persona").inputValue() };
   });
-  await check("restart_single_chat_literal", page, async () => {
+  await check("restart_dm_and_channel_literal", page, async () => {
     await goto(page, `${state.project.path}/chats`);
-    await test(page, "chat-item").waitFor();
+    await test(page, "chat-item").first().waitFor();
     const list = await test(page, "chat-item").evaluateAll((nodes) =>
       nodes.map((node) => node.dataset.chatId),
     );
-    assert.deepEqual(list, [before.chatId]);
+    assert.equal(list.length, 2);
+    assert.equal(list[0], before.chatId);
     return { before: [before.chatId], after: list };
   });
 }

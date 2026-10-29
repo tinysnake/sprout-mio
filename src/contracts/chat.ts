@@ -120,6 +120,18 @@ export const setChatOwnerInput = z.object({
 });
 export type SetChatOwnerInput = z.infer<typeof setChatOwnerInput>;
 
+/** 频道没有 title 字段（裁定 d8），会话列表与详情用这条固定文案代替。 */
+export const PUBLIC_CHANNEL_DISPLAY_TITLE = "公共频道（Project 范围）";
+
+/**
+ * 会话列表项（也是对话详情里的 chat 部分）。三种 kind 共用一份形状：
+ * - `dm` / `group`：`title` 可选，缺省时页面回落到参与分身名；
+ * - `public_channel`：没有 `title`，页面显示 `PUBLIC_CHANNEL_DISPLAY_TITLE`；
+ *   `createdBy` 就是 `project.created_by`（自动创建，没有命名者），
+ *   `owner` 恒为 `{ kind: 'human', id: project.created_by }`；
+ *   `wakePolicy` 是 §4.1 的冻结值 `owner_led`，但频道 owner 一定是人类，
+ *   所以频道里的有效唤醒只有点名规则：一条消息只唤醒被点名的 Agent，绝不广播给全体成员。
+ */
 export const chatSchema = z.object({
   id: chatId,
   projectId,
