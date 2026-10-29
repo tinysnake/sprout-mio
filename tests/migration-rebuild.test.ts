@@ -413,6 +413,13 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
           )
           .run(channelId),
       ).toThrow(/public_channel_members_derived/);
+      // 裁定 d12：频道的 delete 触发器是不可达死代码，已删除；insert 是唯一的物理底线。
+      // 频道成员行既然插不进去，就不存在可删的频道成员行，留一个删不掉的保护无法被验证。
+      expect(
+        sqlite
+          .prepare(`SELECT count(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name = ?`)
+          .get("chat_member_no_channel_delete"),
+      ).toEqual({ n: 0 });
       expect(() =>
         sqlite.prepare(`DELETE FROM chat_member WHERE chat_id = 'cnv_legacy'`).run(),
       ).not.toThrow();

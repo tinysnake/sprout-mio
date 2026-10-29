@@ -1,20 +1,37 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   CHAT_TITLE_MAX_LENGTH,
   type AgentInstance,
   type Chat,
   type ChatDetail,
   type ChatMember,
+  type ChatMemberInput,
+  type ChatOwner,
+  type CreateGroupChatInput,
   type Message,
   type SendMessageInput,
 } from "../contracts/chat";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
-import { agentInstance, chat, chatMember, message, projectMember } from "../db/schema";
+import {
+  agentInstance,
+  agentRun,
+  agentRunInput,
+  chat,
+  chatEffectiveMember,
+  chatMember,
+  message,
+  project,
+  projectMember,
+  user,
+} from "../db/schema";
 import { assertProjectAccess, ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
 import { getAgentProfile } from "./agent";
 import { appendHumanRunInput } from "./agent-run";
+import { assertChatCapability } from "./chat-capabilities";
+import type { ChatOwnerFacts } from "./chat-capabilities";
+import type { ChatActor } from "./chat-actor";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
 
@@ -50,6 +67,130 @@ function toInstance(row: typeof agentInstance.$inferSelect): AgentInstance {
 
 function toMessage(row: typeof message.$inferSelect): Message {
   return { ...row, createdAt: row.createdAt.toISOString() };
+}
+
+/**
+ * 治理事实一次查齐：对话所有者加上 `project.created_by`。
+ * 能力判定只吃这份事实（裁定 d6），调用方不需要、也不允许自己再比一次 owner。
+ */
+function ownerFacts(row: Chat): ChatOwnerFacts {
+  const parent = db
+    .select({ createdBy: project.createdBy })
+    .from(project)
+    .where(eq(project.id, row.projectId))
+    .get();
+  if (!parent) throw new ProjectAccessError();
+  return {
+    ownerKind: row.owner.kind,
+    ownerId: row.owner.id,
+    projectCreatedBy: parent.createdBy,
+  };
+}
+
+/**
+ * 成员与所有者治理只对普通 Group 生效。Public Channel 的成员是 Project 成员的派生事实（裁定 d8），
+ * 独立增删一律 `channel_membership_managed`；DM 的成员由创建时固定，没有可调整的成员集。
+ */
+function assertGovernableGroup(row: Chat): void {
+  if (row.kind === "public_channel")
+    throw new ChatError("channel_membership_managed", "公共频道成员跟随项目自动同步，不可独立修改");
+  if (row.kind !== "group") throw new ChatError("forbidden", "只有群组可以调整成员与所有者");
+}
+
+/**
+ * 治理写入的乐观并发生效点：只有调用方看到的版本仍是当前版本时才写，
+ * 影响行数为 0 就是 `conflict`——别人已经改过，覆盖它就是无声丢失一次治理操作。
+ */
+function applyGovernance(
+  row: Chat,
+  revision: number,
+  patch: { ownerKind?: "human" | "agent"; ownerId?: string } = {},
+): Chat {
+  const updated = db
+    .update(chat)
+    .set({ ...patch, governanceRevision: row.governanceRevision + 1, updatedAt: new Date() })
+    .where(
+      and(
+        eq(chat.id, row.id),
+        eq(chat.projectId, row.projectId),
+        eq(chat.governanceRevision, revision),
+      ),
+    )
+    .returning()
+    .get();
+  if (!updated) throw new ChatError("conflict", "群组已被并发修改，请刷新后重试");
+  return toChat(updated);
+}
+
+/** Agent 成员与 Agent 所有者共用这条前置：必须先属于本项目，否则群组引用一个项目外分身。 */
+function requireProjectAgent(projectId: string, agentProfileId: string, ctx: ProjectContext): void {
+  getAgentProfile(agentProfileId, ctx);
+  const member = db
+    .select({ agentProfileId: projectMember.agentProfileId })
+    .from(projectMember)
+    .where(
+      and(eq(projectMember.projectId, projectId), eq(projectMember.agentProfileId, agentProfileId)),
+    )
+    .get();
+  if (!member) throw new ChatError("not_found", "Project 成员不存在");
+}
+
+/** Human 成员的 id 来自认证供应方，没有前缀；用 user 行存在性收口，不写悬空成员。 */
+function requireUser(userId: string): void {
+  const row = db.select({ id: user.id }).from(user).where(eq(user.id, userId)).get();
+  if (!row) throw new ChatError("not_found", "用户不存在");
+}
+
+/** 该 Agent 在本对话里的全部 instance（群组也只有一个，DM 亦然；按集合写便于两种对话共用）。 */
+function instanceIdsOf(chatId: string, agentProfileId: string): string[] {
+  return db
+    .select({ id: agentInstance.id })
+    .from(agentInstance)
+    .where(and(eq(agentInstance.chatId, chatId), eq(agentInstance.agentProfileId, agentProfileId)))
+    .all()
+    .map((row: { id: string }) => row.id);
+}
+
+/** 活跃 run：`queued` 或 `running`，同一个 instance 由局部唯一索引保证至多一条。 */
+function activeRunOf(chatId: string, instanceIds: readonly string[]): string | undefined {
+  if (instanceIds.length === 0) return undefined;
+  return db
+    .select({ id: agentRun.id })
+    .from(agentRun)
+    .where(
+      and(
+        eq(agentRun.chatId, chatId),
+        inArray(agentRun.instanceId, [...instanceIds]),
+        inArray(agentRun.status, ["queued", "running"]),
+      ),
+    )
+    .get()?.id;
+}
+
+/**
+ * 未下发输入的取消：只动 `pending`。`delivered` 已经进入那轮上下文，停它走 P4c 的执行取消路径
+ * （裁定 d11）；把两套取消语义混在一起，历史里就说不清是谁停的。
+ */
+function cancelPendingRunInputs(chatId: string, instanceIds: readonly string[]): number {
+  if (instanceIds.length === 0) return 0;
+  const runs = db
+    .select({ id: agentRun.id })
+    .from(agentRun)
+    .where(and(eq(agentRun.chatId, chatId), inArray(agentRun.instanceId, [...instanceIds])))
+    .all()
+    .map((row: { id: string }) => row.id);
+  if (runs.length === 0) return 0;
+  const cancelled = db
+    .update(agentRunInput)
+    .set({
+      disposition: "cancelled",
+      cancelledAt: new Date(),
+      cancelReason: "membership_revoked",
+    })
+    .where(and(inArray(agentRunInput.runId, runs), eq(agentRunInput.disposition, "pending")))
+    .returning({ runId: agentRunInput.runId })
+    .all();
+  return cancelled.length;
 }
 
 export function createDirectChat(
@@ -341,6 +482,276 @@ export function sendMessage(
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx);
           return saved;
         },
+        hooks,
+      );
+    })
+    .immediate();
+}
+
+/**
+ * 取得某 Agent 在本对话里的 instance，没有就建一个。
+ * 成员资格以 `chat_effective_member` 为准（裁定 d7）：instance 行在 Agent 被移出后物理保留，
+ * 历史消息与 run 还要引用它，但「还在这对话里」只认视图。fanout 与消息发送共用这一个入口，
+ * 避免两处各写一份参与权判定。
+ */
+export function ensureInstance(
+  chatId: string,
+  agentProfileId: string,
+  ctx: ProjectContext,
+): AgentInstance {
+  const current = getChat(chatId, ctx);
+  const member = db
+    .select({ memberId: chatEffectiveMember.memberId })
+    .from(chatEffectiveMember)
+    .where(
+      and(
+        eq(chatEffectiveMember.chatId, chatId),
+        eq(chatEffectiveMember.projectId, current.projectId),
+        eq(chatEffectiveMember.memberKind, "agent"),
+        eq(chatEffectiveMember.memberId, agentProfileId),
+      ),
+    )
+    .get();
+  if (!member) throw new ChatError("not_found", "对话成员不存在");
+  const existing = db
+    .select()
+    .from(agentInstance)
+    .where(and(eq(agentInstance.chatId, chatId), eq(agentInstance.agentProfileId, agentProfileId)))
+    .get();
+  if (existing) return toInstance(existing);
+  // 唯一索引 agent_instance_profile_chat_unique 兜住并发：两个唤醒抢同一 instance 时后者不写。
+  db.insert(agentInstance)
+    .values({
+      id: newId(ID_PREFIXES.instance),
+      agentProfileId,
+      chatId,
+      projectId: current.projectId,
+    })
+    .onConflictDoNothing()
+    .run();
+  const created = db
+    .select()
+    .from(agentInstance)
+    .where(and(eq(agentInstance.chatId, chatId), eq(agentInstance.agentProfileId, agentProfileId)))
+    .get();
+  if (!created) throw new ChatError("conflict", "Instance 创建失败");
+  return toInstance(created);
+}
+
+/**
+ * 建群：Human 建立 Group、指定 Human 或 Agent 做所有者、给出初始成员集。
+ * 行动者是 Agent 时能力表直接拒绝（`group_create` 是 never），进不到事务，
+ * 所以这条路径上不存在「分身冒充 Human 建群」。
+ */
+export function createGroupChat(
+  projectId: string,
+  input: CreateGroupChatInput,
+  actor: ChatActor,
+  hooks: IdentityWriteHooks = {},
+): Chat {
+  assertChatCapability("group_create", actor);
+  return sqlite
+    .transaction(() => {
+      assertProjectAccess(actor.ctx, projectId);
+      for (const member of input.members) {
+        if (member.kind === "agent") requireProjectAgent(projectId, member.id, actor.ctx);
+        else requireUser(member.id);
+      }
+      // 契约只保证 Agent 所有者是成员之一；「属本 Project」要查库，在这里补上。
+      if (input.initialOwner.kind === "agent")
+        requireProjectAgent(projectId, input.initialOwner.id, actor.ctx);
+      const chatId = newId(ID_PREFIXES.chat);
+      return writeIdentity(
+        actor.ctx,
+        { event: "chat.group_created", message: "群组已创建", projectId, chatId },
+        () => {
+          const created = db
+            .insert(chat)
+            .values({
+              id: chatId,
+              projectId,
+              kind: "group",
+              title: input.title ?? null,
+              ownerKind: input.initialOwner.kind,
+              ownerId: input.initialOwner.id,
+              wakePolicy: input.wakePolicy,
+              governanceRevision: 0,
+              createdBy: actor.ctx.userId,
+            })
+            .returning()
+            .get();
+          db.insert(chatMember)
+            .values(
+              input.members.map((member) => ({
+                chatId,
+                memberKind: member.kind,
+                memberId: member.id,
+              })),
+            )
+            .run();
+          return toChat(created);
+        },
+        hooks,
+      );
+    })
+    .immediate();
+}
+
+/**
+ * 加成员。所有者档动作，Agent 一律 `forbidden`（裁定 d6 的入口先拦）。
+ * 重复加同一成员是幂等成功：治理事实没有变化，就不推进 `governance_revision`；
+ * 但调用方带的版本必须是当前版本，否则仍按并发冲突回绝，而不是悄悄放行一次过期写入。
+ */
+export function addGroupMember(
+  chatId: string,
+  member: ChatMemberInput,
+  expectedRevision: number,
+  actor: ChatActor,
+  hooks: IdentityWriteHooks = {},
+): Chat {
+  return sqlite
+    .transaction(() => {
+      const current = getChat(chatId, actor.ctx);
+      assertGovernableGroup(current);
+      assertChatCapability("member_add", actor, ownerFacts(current));
+      if (member.kind === "agent") requireProjectAgent(current.projectId, member.id, actor.ctx);
+      else requireUser(member.id);
+      return writeIdentity(
+        actor.ctx,
+        {
+          event: "chat.member_added",
+          message: "群组成员已添加",
+          projectId: current.projectId,
+          chatId,
+        },
+        () => {
+          const inserted = db
+            .insert(chatMember)
+            .values({ chatId, memberKind: member.kind, memberId: member.id })
+            .onConflictDoNothing()
+            .returning()
+            .get();
+          if (!inserted) {
+            if (current.governanceRevision !== expectedRevision)
+              throw new ChatError("conflict", "群组已被并发修改，请刷新后重试");
+            return current;
+          }
+          return applyGovernance(current, expectedRevision);
+        },
+        hooks,
+      );
+    })
+    .immediate();
+}
+
+/**
+ * 移出成员。裁定 d10 的两条处置在这里分开：
+ * 仍有活跃 run 时以拒绝为准（`conflict`），连 pending 输入都不动——先取消再拒绝会让一次
+ * 被拒的治理请求仍然产生副作用；只有没有活跃 run 时才把未下发的 `pending` 输入按
+ * `membership_revoked` 取消，然后删成员行。
+ * 当前所有者不能被直接移出：所有者身份由 `chat.owner_*` 独立表达，先换成别人再移。
+ */
+export function removeGroupMember(
+  chatId: string,
+  member: ChatMemberInput,
+  expectedRevision: number,
+  actor: ChatActor,
+  hooks: IdentityWriteHooks = {},
+): Chat {
+  return sqlite
+    .transaction(() => {
+      const current = getChat(chatId, actor.ctx);
+      assertGovernableGroup(current);
+      assertChatCapability("member_remove", actor, ownerFacts(current));
+      const existing = db
+        .select({ memberId: chatMember.memberId })
+        .from(chatMember)
+        .where(
+          and(
+            eq(chatMember.chatId, chatId),
+            eq(chatMember.memberKind, member.kind),
+            eq(chatMember.memberId, member.id),
+          ),
+        )
+        .get();
+      if (!existing) throw new ChatError("not_found", "对话成员不存在");
+      if (current.owner.kind === member.kind && current.owner.id === member.id)
+        throw new ChatError("conflict", "所有者不能被移出群组，请先变更所有者");
+      const instanceIds = member.kind === "agent" ? instanceIdsOf(chatId, member.id) : [];
+      const activeRun = activeRunOf(chatId, instanceIds);
+      if (activeRun) throw new ChatError("conflict", "该成员仍有活跃运行，不能移出群组");
+      return writeIdentity(
+        actor.ctx,
+        {
+          event: "chat.member_removed",
+          message: "群组成员已移出",
+          projectId: current.projectId,
+          chatId,
+        },
+        () => {
+          cancelPendingRunInputs(chatId, instanceIds);
+          db.delete(chatMember)
+            .where(
+              and(
+                eq(chatMember.chatId, chatId),
+                eq(chatMember.memberKind, member.kind),
+                eq(chatMember.memberId, member.id),
+              ),
+            )
+            .run();
+          return applyGovernance(current, expectedRevision);
+        },
+        hooks,
+      );
+    })
+    .immediate();
+}
+
+/**
+ * 换所有者。所有者档动作 + CAS：设计 4.3 要求 `expectedRevision`，过期版本一律 `conflict`。
+ * 合法性按同一节：Agent 所有者必须是本对话的当前有效成员（读 `chat_effective_member`，
+ * 所以项目移除后的 Agent 不能再被指定），Human 所有者必须是 `project.created_by`。
+ */
+export function setChatOwner(
+  chatId: string,
+  owner: ChatOwner,
+  expectedRevision: number,
+  actor: ChatActor,
+  hooks: IdentityWriteHooks = {},
+): Chat {
+  return sqlite
+    .transaction(() => {
+      const current = getChat(chatId, actor.ctx);
+      assertGovernableGroup(current);
+      const facts = ownerFacts(current);
+      assertChatCapability("owner_change", actor, facts);
+      if (owner.kind === "agent") {
+        const member = db
+          .select({ memberId: chatEffectiveMember.memberId })
+          .from(chatEffectiveMember)
+          .where(
+            and(
+              eq(chatEffectiveMember.chatId, chatId),
+              eq(chatEffectiveMember.projectId, current.projectId),
+              eq(chatEffectiveMember.memberKind, "agent"),
+              eq(chatEffectiveMember.memberId, owner.id),
+            ),
+          )
+          .get();
+        if (!member) throw new ChatError("not_found", "新所有者不是该对话的成员");
+      } else if (facts.projectCreatedBy !== owner.id) {
+        throw new ChatError("forbidden", "Human 所有者必须是 Project 创建者");
+      }
+      return writeIdentity(
+        actor.ctx,
+        {
+          event: "chat.owner_changed",
+          message: "群组所有者已变更",
+          projectId: current.projectId,
+          chatId,
+        },
+        () =>
+          applyGovernance(current, expectedRevision, { ownerKind: owner.kind, ownerId: owner.id }),
         hooks,
       );
     })

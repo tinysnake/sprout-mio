@@ -46,15 +46,79 @@ export type UpdateChatTitleInput = z.infer<typeof updateChatTitleInput>;
 export const clearChatTitleInput = z.object({ chatId });
 export type ClearChatTitleInput = z.infer<typeof clearChatTitleInput>;
 
-/** 新建 Group：初始成员至少一名分身，所有者与唤醒策略由调用方显式给出。 */
-export const createGroupChatInput = z.object({
-  projectId,
-  title: chatTitle.optional(),
-  agentProfileIds: z.array(z.string()).min(1, "群组至少要有一个分身成员"),
-  initialOwner: chatOwnerSchema,
-  wakePolicy: chatWakePolicySchema.default("owner_led"),
+/**
+ * 群组成员条目。Agent 一律用既有 `agp_` id 模式；Human 的 id 来自认证供应方，没有前缀，
+ * 只收非空标识并由领域层核对 user 行存在性，不用正则发明一个认证层没有的格式。
+ */
+export const chatMemberInput = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("agent"), id: agentProfileIdSchema }),
+  z.object({ kind: z.literal("human"), id: z.string().trim().min(1, "成员标识不能为空") }),
+]);
+export type ChatMemberInput = z.infer<typeof chatMemberInput>;
+
+/** 治理命令里的所有者：Agent 带 `agp_` 模式，Human 是认证供应方的 user.id。 */
+export const chatOwnerInput = chatOwnerSchema.superRefine((owner, ctx) => {
+  if (owner.kind === "agent" && !agentProfileIdSchema.safeParse(owner.id).success)
+    ctx.addIssue({ code: "custom", path: ["id"], message: "分身标识格式无效" });
 });
+export type ChatOwnerInput = z.infer<typeof chatOwnerInput>;
+
+/**
+ * 新建 Group。成员不重复、至少一名人类成员、Agent 所有者必须是成员之一，
+ * 这三条是纯形状约束；「成员与 Agent 所有者属本 Project」要查库，归领域层。
+ * 没有人类成员的群与没有成员的群一样无法治理，所以在入口就拦掉。
+ */
+export const createGroupChatInput = z
+  .object({
+    projectId,
+    title: chatTitle.optional(),
+    members: z.array(chatMemberInput).min(1, "群组至少要有一个成员"),
+    initialOwner: chatOwnerInput,
+    wakePolicy: chatWakePolicySchema.default("owner_led"),
+  })
+  .superRefine((input, ctx) => {
+    const keys = input.members.map((member) => `${member.kind}:${member.id}`);
+    if (new Set(keys).size !== keys.length)
+      ctx.addIssue({ code: "custom", path: ["members"], message: "成员不能重复" });
+    if (!input.members.some((member) => member.kind === "human"))
+      ctx.addIssue({ code: "custom", path: ["members"], message: "群组至少要有一名人类成员" });
+    if (
+      input.initialOwner.kind === "agent" &&
+      !input.members.some(
+        (member) => member.kind === "agent" && member.id === input.initialOwner.id,
+      )
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["initialOwner"],
+        message: "Agent 所有者必须是群组成员",
+      });
+  });
 export type CreateGroupChatInput = z.infer<typeof createGroupChatInput>;
+
+/** `governance_revision` 是治理写入的乐观并发令牌，调用方必须带上自己看到的那一版。 */
+const expectedRevision = z.number().int().nonnegative();
+
+export const addGroupMemberInput = z.object({
+  chatId,
+  member: chatMemberInput,
+  expectedRevision,
+});
+export type AddGroupMemberInput = z.infer<typeof addGroupMemberInput>;
+
+export const removeGroupMemberInput = z.object({
+  chatId,
+  member: chatMemberInput,
+  expectedRevision,
+});
+export type RemoveGroupMemberInput = z.infer<typeof removeGroupMemberInput>;
+
+export const setChatOwnerInput = z.object({
+  chatId,
+  owner: chatOwnerInput,
+  expectedRevision,
+});
+export type SetChatOwnerInput = z.infer<typeof setChatOwnerInput>;
 
 export const chatSchema = z.object({
   id: chatId,

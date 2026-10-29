@@ -80,14 +80,11 @@ CREATE INDEX `agent_run_input_run_disposition_idx` ON `agent_run_input` (`run_id
 CREATE UNIQUE INDEX `message_id_chat_unique` ON `message` (`id`,`chat_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `agent_run_assistant_message_unique` ON `agent_run` (`assistant_message_id`) WHERE "agent_run"."assistant_message_id" is not null;--> statement-breakpoint
 -- 公共频道成员是在读派生事实，写进成员表就是第二份真值；触发器给出物理底线。
+-- 裁定 d12：只保留 insert 这一道。insert 已经挡住向频道写成员行，`chat_kind_immutable` 又钉死 kind，
+-- 所以不存在「某个对话变成频道后留下可删的成员行」这条路径 —— delete 分支不可达，
+-- 留着等于给评审一个无法验证的承诺。这里删除成员行只在 DM 与 Group 上发生。
 CREATE TRIGGER chat_member_no_channel_insert BEFORE INSERT ON chat_member
 WHEN EXISTS (SELECT 1 FROM chat WHERE id = NEW.chat_id AND kind = 'public_channel')
-BEGIN
-  SELECT RAISE(ABORT, 'public_channel_members_derived');
-END;
---> statement-breakpoint
-CREATE TRIGGER chat_member_no_channel_delete BEFORE DELETE ON chat_member
-WHEN EXISTS (SELECT 1 FROM chat WHERE id = OLD.chat_id AND kind = 'public_channel')
 BEGIN
   SELECT RAISE(ABORT, 'public_channel_members_derived');
 END;
