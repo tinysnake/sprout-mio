@@ -250,7 +250,7 @@ test.each([
       const pid = Number(readFileSync(join(f.root, "producer-pid"), "utf8"));
       const descendant = Number(readFileSync(join(f.root, "descendant-pid"), "utf8"));
       child.kill(signal);
-      expect(await completed).toBe(exitCode);
+      expect(await completed, stderr).toBe(exitCode);
       expect(stderr).toContain(evidence);
       expect(() => process.kill(pid, 0)).toThrow();
       const gone = () => {
