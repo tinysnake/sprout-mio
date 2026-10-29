@@ -22,6 +22,5 @@ export BETTER_AUTH_SECRET="$(node -e 'process.stdout.write(require("node:crypto"
 export NO_PROXY=localhost,127.0.0.1,::1
 export no_proxy="$NO_PROXY"
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy || true
-node --import tsx tests/fixtures/execution-accept-fixes-2.ts
 pnpm exec vp test run tests/execution-accept-fixes-2.test.ts
 printf 'PASS execution accept fixes 2: cancel replay channel checks, burst log honesty, exit evidence\n'

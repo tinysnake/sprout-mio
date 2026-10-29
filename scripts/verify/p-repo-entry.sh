@@ -206,7 +206,7 @@ try {
   mkdirSync(repoRoot, { recursive: true })
   writeFileSync(runner, stub); chmodSync(runner, 0o700)
   await command('pnpm', ['exec', 'vp', 'test', 'run', 'tests/repository.test.ts'], 'repository-test.log')
-  await command('pnpm', ['build'], 'build.log')
+  await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log')
   server = launch(process.execPath, ['.output/server/index.mjs'], 'server.log')
   await health(server)
   db = new Database(databaseUrl)

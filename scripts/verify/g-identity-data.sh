@@ -130,7 +130,7 @@ try {
   await command('pnpm', ['exec', 'vp', 'test', 'run', 'tests/identity-data.test.ts'], 'identity-test.log', { ...environment, NODE_ENV: 'test' })
   const buildEnvironment = { ...environment }
   delete buildEnvironment.BETTER_AUTH_SECRET
-  await command('pnpm', ['build'], 'build.log', buildEnvironment)
+  await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log', buildEnvironment)
   const first = launch('pnpm', ['start'], 'server-first.log')
   const firstHealth = await health(first, 'server-first')
   const db = new Database(databaseUrl)

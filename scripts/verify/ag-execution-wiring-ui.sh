@@ -31,10 +31,7 @@ export SPROUT_PI_ENABLED=false
 export SPROUT_WORKER_RECOVERY_GRACE_MS=2000
 export BETTER_AUTH_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')"
 
-# 页面断言跑在生产包上：缺产物就先构建一次，不手改产物。
-if [ ! -f .output/server/index.mjs ]; then
-  pnpm build
-fi
+node scripts/verify/prepare.mjs server
 
 node --import tsx tests/fixtures/execution-wiring-ui.ts
 printf 'PASS execution wiring machine log/cancel, settings read, inspector read-only, cross-user refusal (evidence %s)\n' "$SPROUT_WIRING_EVIDENCE"

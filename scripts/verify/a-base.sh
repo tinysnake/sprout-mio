@@ -107,10 +107,10 @@ get_200() {
 port_guard "$prod_port"
 port_guard "$dev_port"
 [ "$prod_port" != "$dev_port" ] || fail 'production and dev ports must differ'
-run 'clean frozen installation' install bash -c 'rm -rf node_modules dist .output && pnpm install --frozen-lockfile'
+run 'ensure frozen installation' install node scripts/verify/prepare.mjs install
 run 'typecheck Web, Worker and extension' typecheck pnpm typecheck
 run 'format lint and type gate' check pnpm check
-run 'Nitro production build' build pnpm build
+run 'ensure Nitro production artifact' build node scripts/verify/prepare.mjs server
 [ -f .output/server/index.mjs ] || fail 'missing .output/server/index.mjs'
 [ -f .output/public/_shell.html ] || fail 'missing .output/public/_shell.html'
 [ -n "$(find .output/public/assets -type f -name '*.js' -print -quit)" ] || fail 'missing client assets'
@@ -160,7 +160,7 @@ stop_server
 port_guard "$dev_port"
 pass 'dev process group stopped'
 
-run 'Worker build' worker-build pnpm worker:build
+run 'ensure Worker artifact' worker-build node scripts/verify/prepare.mjs worker
 [ -f dist/worker/main.js ] || fail 'missing dist/worker/main.js'
 run 'Worker version' worker-version node dist/worker/main.js --version
 version="$(node --input-type=module -e "import { APP_VERSION } from './src/contracts/version.ts'; console.log(APP_VERSION)")"
@@ -173,7 +173,7 @@ grep -qF 'sprout-worker version' "$log_dir/worker-help.log" || fail 'Worker help
 pass "Worker output $(<"$log_dir/worker-version.log")"
 pass "Worker output $(<"$log_dir/worker-default.log")"
 
-run 'extension build' extension-build pnpm extension:build
+run 'ensure extension artifact' extension-build node scripts/verify/prepare.mjs extension
 [ -f dist/extension/main.js ] || fail 'missing dist/extension/main.js'
 [ -x "$pi_bin" ] || fail "Pi binary is unavailable $pi_bin"
 pi_args=(--no-extensions --no-skills --no-prompt-templates --no-themes -e dist/extension/main.js --tools sprout_status --mode json --session-dir "$log_dir/pi-sessions" -p)

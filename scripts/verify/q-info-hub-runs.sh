@@ -197,7 +197,7 @@ try {
   writeFileSync(runner, stub); chmodSync(runner, 0o700)
   execFileSync(process.execPath, ['--check', runner], { stdio: 'pipe' })
   await command('pnpm', ['exec', 'vp', 'test', 'run', 'tests/info-hub-runs.test.ts'], 'info-hub-runs-test.log')
-  await command('pnpm', ['build'], 'build.log')
+  await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log')
   server = launch(process.execPath, ['.output/server/index.mjs'], 'server.log')
   await health(server)
   db = new Database(databaseUrl)

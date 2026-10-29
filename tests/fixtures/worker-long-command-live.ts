@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -19,17 +19,10 @@ import type { LeaseView } from "../../src/contracts/lease";
 import type { AppResult } from "../../src/contracts/result";
 
 assert.equal(process.platform, "darwin", "real macOS Worker required");
-if (!existsSync(".output/server/index.mjs") || !existsSync("dist/worker/main.js")) {
-  const missing = [
-    [".output/server/index.mjs", ["pnpm", "build"]],
-    ["dist/worker/main.js", ["pnpm", "worker:build"]],
-  ] as const;
-  for (const [path, command] of missing) {
-    if (existsSync(path)) continue;
-    const result = spawnSync(command[0], command.slice(1), { stdio: "inherit" });
-    assert.equal(result.status, 0, `${command.join(" ")} failed while restoring ${path}`);
-  }
-}
+assert(
+  existsSync(".output/server/index.mjs") && existsSync("dist/worker/main.js"),
+  "run the matching scripts/verify shell entry to prepare current app and Worker artifacts",
+);
 mkdirSync(".verify", { recursive: true });
 const directory = mkdtempSync(resolve(".verify/ab-worker-long-command-"));
 const children: ReturnType<typeof spawn>[] = [],

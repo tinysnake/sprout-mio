@@ -27,6 +27,16 @@
 
 完整运行沿用 `.verify/*/verification.sqlite` 的清理；`--only` 只清理选中脚本对应目录的同一文件，避免删除未选中单元的证据。`.verify/runs` 与脚本的数据库目录相互独立。收到 `SIGINT` 或 `SIGTERM` 时，运行器停止派发后续脚本，把信号转发给当前脚本所在的独立进程组，等待其 trap 清理，超时后强制结束并写出部分报告；中断以 130 / 143 退出，绝不计为通过。
 
+## 当前 run 的构建准备
+
+构建调用统一通过 `node scripts/verify/prepare.mjs install|server|worker|extension [--fresh]`。运行器在新建的 `.verify/runs/<id>/context.json` 记录仓库根目录、run id 和 owner PID。helper 只在目录、根目录和活着的 owner 均匹配时读取该 run 的成功 receipt；传入失效或损坏的内部 context 会明确失败。没有 `SPROUT_VERIFY_RUN_DIR` 时，独立调用总会基于当前源码执行，不因旧产物存在而跳过。不同 run 不复用；同一 checkout 仍只支持一个串行验证调用。
+
+receipt 记录 artifact kind、仓库根目录、输入指纹、原始成功日志、实际构建耗时和必要产物路径。源码、依赖清单与 lockfile、构建配置、`.env` 输入及相关编译环境参与指纹；只保存哈希，不写入秘密值。构建完成后重新计算指纹以包含生成的 route tree。复用还要求原始日志和必要产物仍存在，不对完整输出目录或 `node_modules` 反复做内容哈希。输入变化、产物缺失、构建失败或中断均不能获得复用成功。主动中断即使被调用命令的 trap 返回 0 也失败，日志保留实际 code、signal 和中断原因。
+
+server 准备固定使用 `NODE_ENV=production` 并删除 `BETTER_AUTH_SECRET`，保留其他继承的编译配置。领域的运行时数据库、origin 和随机 auth secret 不导致相同编译配置反复构建。`d-runtime` 明确使用 `server --fresh` 再执行一次实际 secretless build，保留它自身数据库的无 `runtime_boot` 行检查和真实构建日志。`--fresh` 成功替换 receipt，旧原始日志仍保留。
+
+同 run 的第二次 install 请求复用首次成功安装，不删除前序脚本已构建的产物；需要实际安装时才清理 `node_modules`、`dist`、`.output`，同时使旧构建 receipt 失效。复用输出明确的 `REUSE` 和原生产者日志，不能称为新执行的构建；`durationMs` 表示原生产者的执行耗时。独立调用的原始日志保留在 `.verify/preparation-*/`。
+
 ## worker 与 coordinator 的职责
 
 每份 brief 的验证计划写明以下内容：
@@ -49,6 +59,8 @@ coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范
 同一轮完整验证不再另外追加全量测试。领域验证同样去重。例如 `scripts/verify/g-identity-data.sh` 已包含 `pnpm check` 和 `tests/identity-data.test.ts` 的定向测试，未发生相关改动时，不在同一执行者的同一轮计划中另加相同检查。修复前后对照、快速定位失败或独立验收需要重复执行时，保留并说明目的。
 
 只有后续改动、验证失败或尚未解决的具体风险要求时，才扩大或重复验证，并记录原因。
+
+`aa-execution-log-contracts`、`af-execution-cancel-authority`、`ai-execution-accept-fixes`、`ak-execution-accept-fixes-2` 通过各自的 Vitest wrapper 执行一次隔离 fixture，移除脚本内相同 fixture 的直接重复调用。wrapper 保留独立子进程、私有数据库、test 环境、禁用 Pi、所需随机 auth secret、proxy 前提、PASS/退出与超时检查，并在 finally 清理临时目录。独立 live/browser 验收和 `b-tooling` 全量测试仍保留。`ac-execution-recovery-log` 与测试中的 recovery fixture 尚未证明环境等价，继续各自取证。
 
 ## 证据复用与失效
 

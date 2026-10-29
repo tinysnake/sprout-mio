@@ -29,7 +29,7 @@ Context7 文档查询返回 fetch failed；上述版本相关结论来自已安�
 
 ## HTTP 方法、证据与限制
 
-复跑 [drain-http.sh](../../scripts/verify/drain-http.sh)，内部由 [drain-http.mjs](../../scripts/verify/drain-http.mjs) 驱动真实生产进程。脚本默认清理产物并构建；已有同版本产物可使用 SPROUT_VERIFY_DRAIN_SKIP_BUILD=1。原始响应、生产日志、独立 SQLite 与汇总在 `.verify/drain-http/`，均为忽略的本地产物，不提交认证数据。没有向生产代码加入 verify-only 慢路径。
+复跑 [drain-http.sh](../../scripts/verify/drain-http.sh)，内部由 [drain-http.mjs](../../scripts/verify/drain-http.mjs) 驱动真实生产进程。脚本通过 prepare helper 准备当前源码的生产产物；同 run 的复用边界见[验证约定](../verification.md#当前-run-的构建准备)。原始响应、生产日志、独立 SQLite 与汇总在 `.verify/drain-http/`，均为忽略的本地产物，不提交认证数据。没有向生产代码加入 verify-only 慢路径。
 
 采用真实 `POST /api/auth/sign-up/email`：先发送完整 headers 和 JSON 第一个字符，保留剩余 body，等请求进入应用后发送信号。日志确认 activeRequests=1，DB 确认 stopping 且 stopped_at=null，进程保持运行。另一个信号前只发部分 headers 的连接，在信号后补完为注册请求，得到 503；断言 rejected 用户不存在，diagnostic_event 数量不变。保持原慢上传至少 350ms 后补完 JSON，观察 HTTP 200、实际用户行、boot stopped、进程 exit 0，并断言日志顺序 stopping → drained → scope-disposed → stopped。普通环境覆盖 SIGTERM，CI=true 禁用 srvx listener 的环境覆盖 SIGINT。
 

@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +17,15 @@ test("acceptance fixes 2 hold on real SQLite and real subprocesses", () => {
         env: {
           ...process.env,
           DATABASE_URL: join(directory, "accept2.sqlite"),
+          NODE_ENV: "test",
           SPROUT_PI_ENABLED: "false",
+          BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
+          NO_PROXY: "localhost,127.0.0.1,::1",
+          no_proxy: "localhost,127.0.0.1,::1",
+          HTTP_PROXY: undefined,
+          HTTPS_PROXY: undefined,
+          http_proxy: undefined,
+          https_proxy: undefined,
         },
         encoding: "utf8",
         timeout: 120000,

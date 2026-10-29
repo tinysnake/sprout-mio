@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +16,11 @@ test("acceptance fixes hold on real SQLite: holder reads, cancel generation, sof
         env: {
           ...process.env,
           DATABASE_URL: join(directory, "accept.sqlite"),
+          NODE_ENV: "test",
           SPROUT_PI_ENABLED: "false",
+          BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
+          NO_PROXY: "localhost,127.0.0.1,::1",
+          no_proxy: "localhost,127.0.0.1,::1",
         },
         encoding: "utf8",
         timeout: 60000,

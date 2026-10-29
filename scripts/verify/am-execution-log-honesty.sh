@@ -25,10 +25,7 @@ export NODE_ENV=production
 export SPROUT_PI_ENABLED=false
 export BETTER_AUTH_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')"
 
-# 页面断言跑在当前源码的生产包上：缺产物先构建一次，不手改产物。
-if [ ! -f .output/server/index.mjs ]; then
-  pnpm build
-fi
+node scripts/verify/prepare.mjs server
 
 node --import tsx tests/fixtures/execution-log-honesty.ts
 printf 'PASS execution log honesty: paused outbox is not full, backfill trims, sealed+acked is full, forged sealed refused (evidence %s)\n' "$SPROUT_LOG_HONESTY_EVIDENCE"

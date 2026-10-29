@@ -137,7 +137,7 @@ try {
   rmSync(join(directory, 'cookies.txt'), { force: true })
   const buildEnvironment = { ...environment }
   delete buildEnvironment.BETTER_AUTH_SECRET
-  await command('pnpm', ['build'], 'build.log', buildEnvironment)
+  await command('node', ['scripts/verify/prepare.mjs', 'server', '--fresh'], 'build.log', buildEnvironment)
   assert(!readFileSync(join(directory, 'build.log'), 'utf8').includes('[runtime] phase'), 'prerender must not start runtime')
   if (existsSync(databaseUrl)) {
     const builtDatabase = new Database(databaseUrl)
@@ -146,7 +146,7 @@ try {
       if (table) assert.equal(builtDatabase.prepare('SELECT count(*) AS count FROM runtime_boot').get().count, 0)
     } finally { builtDatabase.close() }
   }
-  pass('pnpm build without auth secret', '.output/server/index.mjs; exit 0; no runtime phases or boot rows; build.log')
+  pass('fresh secretless production build', '.output/server/index.mjs; exit 0; no runtime phases or boot rows; build.log')
   for (const [name, changes, field] of [
     ['invalid-port', { PORT: 'abc' }, 'PORT'],
     ['missing-secret', { BETTER_AUTH_SECRET: '' }, 'BETTER_AUTH_SECRET'],

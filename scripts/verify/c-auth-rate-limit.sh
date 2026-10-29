@@ -69,10 +69,7 @@ try {
     socket.once('error', (error) => error.code === 'ECONNREFUSED' ? resolve() : reject(error))
   })
   for (const suffix of ['', '-wal', '-shm']) rmSync(databaseUrl + suffix, { force: true })
-  if (process.env.SPROUT_VERIFY_RATE_LIMIT_SKIP_BUILD !== '1') {
-    rmSync('.output', { recursive: true, force: true })
-    await bounded(launch('pnpm', ['build'], 'build.log'), 300000)
-  }
+  await bounded(launch('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log'), 300000)
   const requireStart = createRequire(import.meta.resolve('@tanstack/react-start'))
   const { fromCrossJSON, toJSONAsync } = requireStart('seroval')
   const code = files(resolve('.output/server')).filter((file) => file.endsWith('.mjs'))
