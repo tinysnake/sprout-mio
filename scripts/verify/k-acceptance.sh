@@ -99,8 +99,8 @@ try {
   for (const name of ['acceptance.sqlite', 'acceptance.sqlite-wal', 'acceptance.sqlite-shm', 'state.json', 'before.json', 'after.json', 'browser-before.json', 'browser-after.json']) rmSync(join(directory, name), { force: true })
   const buildEnv = { ...environment }
   delete buildEnv.BETTER_AUTH_SECRET
-  const build = await bounded(launch('pnpm', ['build'], 'build.log', buildEnv), 300000)
-  assert.equal(build.code, 0, 'pnpm build failed; see build.log')
+  const build = await bounded(launch('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log', buildEnv), 300000)
+  assert.equal(build.code, 0, 'node scripts/verify/prepare.mjs server failed; see build.log')
   const shell = readFileSync('.output/public/_shell.html', 'utf8')
   const assets = readdirSync('.output/public/assets')
   const referenced = [...shell.matchAll(/assets\/([A-Za-z0-9._-]+\.js)/g)].map(match => match[1])

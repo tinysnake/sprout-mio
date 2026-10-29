@@ -18,6 +18,5 @@ export SPROUT_PI_ENABLED=false
 export BETTER_AUTH_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')"
 export NO_PROXY=localhost,127.0.0.1
 export no_proxy="$NO_PROXY"
-node --import tsx tests/fixtures/execution-accept-fixes.ts
 pnpm exec vp test run tests/execution-accept-fixes.test.ts
 printf 'PASS execution accept fixes: holder-only reads, cancel generation fence, soft log byte budget\n'

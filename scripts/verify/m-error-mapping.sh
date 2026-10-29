@@ -173,8 +173,8 @@ try {
   rmSync(join(directory, 'cookies.txt'), { force: true })
   const buildEnvironment = { ...environment }
   delete buildEnvironment.BETTER_AUTH_SECRET
-  await command('pnpm', ['build'], 'build.log', buildEnvironment)
-  pass('pnpm build', { buildLog: 'build.log' })
+  await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log', buildEnvironment)
+  pass('node scripts/verify/prepare.mjs server', { buildLog: 'build.log' })
 
   server = launch('pnpm', ['start'], 'server.log')
   const ready = await waitForHealth(server)

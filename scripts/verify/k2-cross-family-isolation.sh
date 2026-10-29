@@ -160,8 +160,8 @@ try {
       rmSync(join(directory, name), { force: true })
   const buildEnv = { ...environment }
   delete buildEnv.BETTER_AUTH_SECRET
-  const build = await bounded(launch('pnpm', ['build'], 'build.log', buildEnv), 300000)
-  assert.equal(build.code, 0, 'pnpm build failed; see build.log')
+  const build = await bounded(launch('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log', buildEnv), 300000)
+  assert.equal(build.code, 0, 'node scripts/verify/prepare.mjs server failed; see build.log')
   const walk = path => readdirSync(path, { withFileTypes: true })
     .flatMap(entry => entry.isDirectory() ? walk(join(path, entry.name)) : entry.name.endsWith('.mjs') ? [join(path, entry.name)] : [])
   const source = walk('.output/server').map(path => readFileSync(path, 'utf8')).join('\n')

@@ -107,16 +107,16 @@ get_200() {
 
 port_guard "$prod_port"
 
-printf 'RUN  clean frozen installation with timing\n'
+printf 'RUN  frozen installation preparation with timing\n'
 install_start="$(date +%s)"
-run 'clean frozen installation' install bash -c 'rm -rf node_modules dist .output && pnpm install --frozen-lockfile'
+run 'ensure frozen installation' install node scripts/verify/prepare.mjs install
 install_seconds="$(( $(date +%s) - install_start ))"
 [ -d node_modules ] || fail 'node_modules missing after install'
-pass "frozen lockfile install took ${install_seconds}s (pnpm store not cold: COLD store untested)"
+pass "frozen lockfile preparation request took ${install_seconds}s; original producer/reuse details: $log_dir/install.log (pnpm store not cold: COLD store untested)"
 
 run 'format lint and type gate' check pnpm check
 run 'contract and tooling tests' test pnpm test
-run 'Nitro production build' build pnpm build
+run 'ensure Nitro production artifact' build node scripts/verify/prepare.mjs server
 [ -f .output/server/index.mjs ] || fail 'missing .output/server/index.mjs'
 [ -f .output/public/_shell.html ] || fail 'missing .output/public/_shell.html'
 [ -n "$(find .output/public/assets -type f -name '*.js' -print -quit)" ] || fail 'missing client assets'
@@ -154,4 +154,4 @@ server_pid=""
 pass 'SIGTERM stopped the production process group within 10s'
 port_guard "$prod_port"
 
-pass "b-tooling all checks passed (clean install ${install_seconds}s)"
+pass "b-tooling all checks passed (installation preparation ${install_seconds}s)"

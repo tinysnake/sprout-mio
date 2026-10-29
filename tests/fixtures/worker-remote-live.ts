@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -20,21 +20,10 @@ import type { LeaseMutationView, LeaseView } from "../../src/contracts/lease";
 import type { AppResult } from "../../src/contracts/result";
 
 assert.equal(process.platform, "darwin", "real macOS Worker required");
-if (!existsSync(".output/server/index.mjs") || !existsSync("dist/worker/main.js")) {
-  // 产物缺失时自补：全量 verify 轮里早序脚本的 pnpm build 会清掉 dist/，不得依赖前序副作用。
-  const missing = [
-    [".output/server/index.mjs", ["pnpm", "build"]],
-    ["dist/worker/main.js", ["pnpm", "worker:build"]],
-  ] as const;
-  for (const [path, command] of missing) {
-    if (existsSync(path)) continue;
-    const result = spawnSync(command[0], command.slice(1), { stdio: "inherit" });
-    assert.equal(result.status, 0, `${command.join(" ")} failed while restoring ${path}`);
-  }
-}
+
 assert(
   existsSync(".output/server/index.mjs") && existsSync("dist/worker/main.js"),
-  "build app and Worker first",
+  "run scripts/verify/w-worker-remote.sh to prepare current app and Worker artifacts",
 );
 mkdirSync(".verify", { recursive: true });
 const directory = mkdtempSync(resolve(".verify/w-worker-remote-"));

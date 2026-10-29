@@ -143,12 +143,12 @@ try {
   rmSync(join(directory, 'cookies.txt'), { force: true })
   const buildEnvironment = { ...environment }
   delete buildEnvironment.BETTER_AUTH_SECRET
-  await command('pnpm', ['build'], 'build.log', buildEnvironment)
+  await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log', buildEnvironment)
   const shell = readFileSync('.output/public/_shell.html', 'utf8')
   const clientAssets = readdirSync('.output/public/assets')
   const referenced = [...shell.matchAll(/assets\/([A-Za-z0-9._-]+\.js)/g)].map((match) => match[1])
   assert(referenced.length > 0 && referenced.every((file) => clientAssets.includes(file)), 'SPA shell 必须只引用本次构建的客户端资源')
-  pass('pnpm build', { shell: '.output/public/_shell.html', referenced, buildLog: 'build.log' })
+  pass('node scripts/verify/prepare.mjs server', { shell: '.output/public/_shell.html', referenced, buildLog: 'build.log' })
 
   server = launch('pnpm', ['start'], 'server.log')
   const ready = await waitForHealth(server)

@@ -150,7 +150,7 @@ Verification scripts=4 failed=0
 
 ## 在途 HTTP 排空补充验证
 
-历史 SIGTERM 证据只验证空闲关闭，未证明在途请求安全；该缺口由 [排空报告](graceful-drain-report.md) 的新 HTTP 证据补充。复跑 `bash scripts/verify/drain-http.sh` 会清理产物并构建，再运行真实生产 HTTP/1.1；已有同版本构建时可设 `SPROUT_VERIFY_DRAIN_SKIP_BUILD=1`。探针不在生产代码加入慢路径，使用真实注册请求的部分 JSON 上传，信号后补完，再观察 200、用户行和 stopped 顺序。它证明上传中的请求能跨信号继续进入认证、scrypt 和写库，不证明信号恰好打断 scrypt 的瞬间。
+历史 SIGTERM 证据只验证空闲关闭，未证明在途请求安全；该缺口由 [排空报告](graceful-drain-report.md) 的新 HTTP 证据补充。复跑 `bash scripts/verify/drain-http.sh` 通过 prepare helper 准备当前源码的生产产物，再运行真实生产 HTTP/1.1；同 run 的复用边界见[验证约定](../verification.md#当前-run-的构建准备)。探针不在生产代码加入慢路径，使用真实注册请求的部分 JSON 上传，信号后补完，再观察 200、用户行和 stopped 顺序。它证明上传中的请求能跨信号继续进入认证、scrypt 和写库，不证明信号恰好打断 scrypt 的瞬间。
 
 探针还在信号前建立不完整 headers 连接，信号后补成新的注册请求，断言 503 且无用户行和诊断新增。普通环境 SIGTERM、CI 禁用 srvx listener 下 SIGINT，以及持续不补完 body 的真实 8 秒超时均覆盖。日志、原始 HTTP 与汇总位于 `.verify/drain-http/`。`tests/http-drain.test.ts` 单独保护处理与发送的双边界、断开后仍有业务、重复通知和排空截止；现有 runtime 关闭幂等测试保留。
 

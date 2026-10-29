@@ -182,7 +182,7 @@ try {
   rmSync(join(directory, 'pi-data'), { recursive: true, force: true })
   rmSync(spawnLog, { force: true })
   writeFileSync(runner, stub); chmodSync(runner, 0o700)
-  await command('pnpm', ['build'], 'build.log')
+  await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log')
   await command('pnpm', ['exec','vp','test','run','tests/agent-run-turn.test.ts'], 'agent-run-turn-test.log')
   server = launch(process.execPath, ['.output/server/index.mjs'], 'server.log')
   const firstHealth = await health(server)

@@ -286,6 +286,10 @@ async function main() {
       : allScripts.filter((script) => parsed.only.includes(script.id));
 
   const run = createRunDirectory();
+  writeFileSync(
+    join(run.directory, "context.json"),
+    `${JSON.stringify({ root, runId: run.id, ownerPid: process.pid })}\n`,
+  );
   const startedAt = new Date().toISOString();
   const runStarted = performance.now();
   const outcomes = [];

@@ -7,7 +7,6 @@ export DATABASE_URL="$verification_dir/contracts.sqlite"
 export NODE_ENV=test
 export NO_PROXY=localhost,127.0.0.1
 export no_proxy="$NO_PROXY"
-node --import tsx tests/fixtures/execution-log-contracts.ts
 node --import tsx src/db/migrate.ts
 pnpm exec vp test run tests/execution-log-contracts.test.ts
 printf 'PASS execution log and cancellation contracts isolated migration, SQL constraints and wire schemas\n'

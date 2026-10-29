@@ -151,7 +151,7 @@ try {
     console.log(JSON.stringify({tables,indexes,count,migrationFiles})); db.close();
   `], 'schema.log')
   pass('schema and indexes', readFileSync(join(logDir, 'schema.log'), 'utf8').trim())
-  await command('pnpm', ['build'], 'build.log')
+  await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log')
   pass('production build', '.output/server/index.mjs')
 
   const requireStart = createRequire(import.meta.resolve('@tanstack/react-start'))

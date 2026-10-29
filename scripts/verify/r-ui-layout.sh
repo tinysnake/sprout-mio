@@ -49,7 +49,7 @@ try {
     probe.listen(port, 'localhost', () => probe.close(resolve))
   })
   for (const suffix of ['', '-wal', '-shm']) rmSync(database + suffix, { force: true })
-  await command('pnpm', ['build'], 'build.log')
+  await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log')
   server = launch(process.execPath, ['.output/server/index.mjs'], 'server.log')
   let ready = false
   for (let attempt = 0; attempt < 60; attempt++) {

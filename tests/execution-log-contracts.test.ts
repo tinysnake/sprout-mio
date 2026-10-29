@@ -603,8 +603,12 @@ describe("execution log and cancellation contracts", () => {
             ...process.env,
             DATABASE_URL: join(directory, "fixture.sqlite"),
             NODE_ENV: "test",
+            SPROUT_PI_ENABLED: "false",
+            NO_PROXY: "localhost,127.0.0.1,::1",
+            no_proxy: "localhost,127.0.0.1,::1",
           },
           encoding: "utf8",
+          timeout: 60000,
         },
       );
       expect(result.stderr).toBe("");
