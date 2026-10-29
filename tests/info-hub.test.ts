@@ -104,7 +104,7 @@ beforeAll(() => {
 
       const hub = await infoHub.getProjectInfoHubBoundary({ projectId }, userA.headers, "req_j8");
       const info = await infoHub.getChatInfoBoundary({ chatId }, userA.headers, "req_j9");
-      const instanceMatchesDm = info.ok && info.data.instance?.instanceId === dmInstanceId;
+      const instanceMatchesDm = info.ok && info.data.instances[0]?.instanceId === dmInstanceId;
       const latestMatchesSecondMessage = info.ok && msg2.ok && info.data.messages.latestAt === msg2.data.createdAt;
 
       console.log("EVIDENCE " + JSON.stringify({
@@ -126,7 +126,7 @@ beforeAll(() => {
         } : null,
         info: info.ok ? {
           members: info.data.members.map((entry) => ({ kind: entry.memberKind, name: entry.displayName })),
-          instanceId: info.data.instance?.instanceId ?? null,
+          instanceId: info.data.instances[0]?.instanceId ?? null,
           kind: info.data.kind,
           archived: info.data.archived,
           messages: info.data.messages,

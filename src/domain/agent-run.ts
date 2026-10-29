@@ -99,8 +99,12 @@ export function listAgentRunInputs(id: string, ctx: ProjectContext): AgentRunInp
     .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
     .all()
     .map(({ input }: { input: typeof agentRunInput.$inferSelect }) => ({
-      ...input,
+      runId: input.runId,
+      messageId: input.messageId,
+      disposition: input.disposition,
       deliveredAt: input.deliveredAt?.toISOString(),
+      cancelledAt: input.cancelledAt?.toISOString(),
+      cancelReason: input.cancelReason ?? undefined,
     }));
 }
 

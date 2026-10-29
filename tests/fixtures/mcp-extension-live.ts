@@ -111,7 +111,7 @@ const runId = newId(ID_PREFIXES.run);
 let grantId = "";
 insert("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'X2 agent','owner')", profileId);
 insert(
-  "INSERT INTO chat(id,project_id,kind,created_by) VALUES (?,?,'dm','owner')",
+  "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human','owner','owner')",
   chatId,
   projectId,
 );

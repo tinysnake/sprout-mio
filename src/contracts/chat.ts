@@ -8,6 +8,21 @@ const chatId = z.string().regex(appIdPattern(ID_PREFIXES.chat));
 const projectId = z.string().regex(appIdPattern(ID_PREFIXES.project));
 const memberKind = z.enum(["human", "agent"]);
 
+/** 对话种类：DM 一对一、Group 普通群组、Public Channel 项目内唯一公共频道。 */
+export const chatKindSchema = z.enum(["dm", "group", "public_channel"]);
+export type ChatKind = z.infer<typeof chatKindSchema>;
+
+/** 唤醒策略：contextual 在 I-P5a 按裁定回退为 owner_led 语义。 */
+export const chatWakePolicySchema = z.enum(["mention_only", "owner_led", "contextual"]);
+export type ChatWakePolicy = z.infer<typeof chatWakePolicySchema>;
+
+/** 对话所有者：Human 引用 user.id，Agent 引用 agentProfileId；DM 只能是创建者本人。 */
+export const chatOwnerSchema = z.object({
+  kind: memberKind,
+  id: z.string().min(1, "所有者标识不能为空"),
+});
+export type ChatOwner = z.infer<typeof chatOwnerSchema>;
+
 export const createDirectChatInput = z.object({
   projectId,
   agentProfileId: agentProfileIdSchema,
@@ -31,12 +46,25 @@ export type UpdateChatTitleInput = z.infer<typeof updateChatTitleInput>;
 export const clearChatTitleInput = z.object({ chatId });
 export type ClearChatTitleInput = z.infer<typeof clearChatTitleInput>;
 
+/** 新建 Group：初始成员至少一名分身，所有者与唤醒策略由调用方显式给出。 */
+export const createGroupChatInput = z.object({
+  projectId,
+  title: chatTitle.optional(),
+  agentProfileIds: z.array(z.string()).min(1, "群组至少要有一个分身成员"),
+  initialOwner: chatOwnerSchema,
+  wakePolicy: chatWakePolicySchema.default("owner_led"),
+});
+export type CreateGroupChatInput = z.infer<typeof createGroupChatInput>;
+
 export const chatSchema = z.object({
   id: chatId,
   projectId,
-  kind: z.literal("dm"),
+  kind: chatKindSchema,
   title: z.string().optional(),
   archivedAt: z.iso.datetime().optional(),
+  owner: chatOwnerSchema,
+  wakePolicy: chatWakePolicySchema,
+  governanceRevision: z.number().int().nonnegative(),
   createdBy: z.string().min(1),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -60,7 +88,14 @@ export const agentInstanceSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 export type AgentInstance = z.infer<typeof agentInstanceSchema>;
-export type DirectChat = { chat: Chat; instance: AgentInstance };
+
+/** 对话详情：DM 恰有一个分身，群组与公共分身的集合由后续单元按成员展开。 */
+export type ChatDetail = { chat: Chat; instance: AgentInstance };
+/**
+ * @deprecated 名称把「一对一」写进了通用类型，I-P5a 起统一用 ChatDetail。
+ * 别名只保留一个阶段，新代码不要再引用它。
+ */
+export type DirectChat = ChatDetail;
 
 export const sendMessageInput = z.object({
   senderKind: memberKind,

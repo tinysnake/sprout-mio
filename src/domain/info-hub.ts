@@ -51,6 +51,7 @@ function runSummary(run: AgentRun, ctx: ProjectContext): InfoHubRunSummary {
     pendingInputs,
     ...(run.errorCode ? { errorCode: run.errorCode } : {}),
     ...(run.errorMessage ? { errorMessage: run.errorMessage } : {}),
+    ...(run.assistantMessageId ? { assistantMessageId: run.assistantMessageId } : {}),
     ...(repo
       ? {
           repo: {
@@ -155,7 +156,6 @@ export function getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView {
   const members = listChatMembers(chatId, ctx);
   const instances = listInstancesForChat(chatId, ctx);
   const messages = listMessages(chatId, ctx);
-  const instance = instances.at(0);
   const latest = messages.at(-1);
   return {
     chatId: chat.id,
@@ -168,13 +168,12 @@ export function getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView {
       displayName:
         member.memberKind === "human" ? "Human" : getAgentProfile(member.memberId, ctx).name,
     })),
-    instance: instance
-      ? {
-          instanceId: instance.id,
-          agentProfileId: instance.agentProfileId,
-          profileName: getAgentProfile(instance.agentProfileId, ctx).name,
-        }
-      : null,
+    owner: chat.owner,
+    instances: instances.map((instance) => ({
+      instanceId: instance.id,
+      agentProfileId: instance.agentProfileId,
+      profileName: getAgentProfile(instance.agentProfileId, ctx).name,
+    })),
     messages: {
       count: messages.length,
       ...(latest ? { latestAt: latest.createdAt } : {}),

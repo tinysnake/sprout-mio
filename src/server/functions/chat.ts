@@ -13,7 +13,7 @@ import type {
   Chat,
   ChatMember,
   ChatResult,
-  DirectChat,
+  ChatDetail,
   Message,
 } from "../../contracts/chat";
 import { fieldErrorsFrom, projectIdInput } from "../../contracts/project";
@@ -80,8 +80,8 @@ export async function createDirectChatBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
-): Promise<ChatResult<DirectChat>> {
-  return chatBoundary<DirectChat>(headers, requestId, (deps, context) => {
+): Promise<ChatResult<ChatDetail>> {
+  return chatBoundary<ChatDetail>(headers, requestId, (deps, context) => {
     const parsed = createDirectChatInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
     return ok(

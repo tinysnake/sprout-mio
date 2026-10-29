@@ -3,6 +3,7 @@ import { leaseViewSchema } from "./lease";
 import { machineDetailSchema } from "./machine";
 import { AGENT_RUN_STATUSES } from "./agent-run";
 import { agentProfileIdSchema } from "./agent";
+import { chatKindSchema, chatOwnerSchema } from "./chat";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import { REPO_SOURCE_KINDS } from "./repository";
 import type { FieldErrors } from "./project";
@@ -48,6 +49,8 @@ export const infoHubRunSummarySchema = z.object({
   pendingInputs: z.number().int().min(0),
   errorCode: z.string().optional(),
   errorMessage: z.string().optional(),
+  /** 本轮回报的助手消息；run 未正常完成时没有归属，字段缺省。 */
+  assistantMessageId: z.string().optional(),
   repo: infoHubRunRepoSchema.optional(),
 });
 export type InfoHubRunSummary = z.infer<typeof infoHubRunSummarySchema>;
@@ -94,10 +97,11 @@ export const chatInstanceViewSchema = z.object({
 export const chatInfoViewSchema = z.object({
   chatId,
   projectId,
-  kind: z.literal("dm"),
+  kind: chatKindSchema,
   archived: z.boolean(),
   members: z.array(chatMemberEntrySchema),
-  instance: chatInstanceViewSchema.nullable(),
+  owner: chatOwnerSchema,
+  instances: z.array(chatInstanceViewSchema),
   messages: z.object({
     count: z.number().int().min(0),
     latestAt: z.iso.datetime().optional(),
