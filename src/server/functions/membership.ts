@@ -19,7 +19,7 @@ async function boundary<I, O>(
   headers: Headers,
   requestId: string,
   schema: z.ZodType<I>,
-  operation: (domain: Domain, input: I, ctx: MachineContext) => O,
+  operation: (domain: Domain, input: I, ctx: MachineContext) => O | Promise<O>,
 ): Promise<ProjectResult<O>> {
   try {
     const [{ requireSession }, domain, { machineRuntimeContext }] = await Promise.all([
@@ -37,7 +37,11 @@ async function boundary<I, O>(
       };
     const runtime = await machineRuntimeContext();
     return ok(
-      operation(domain, parsed.data, { userId: session.data.userId, requestId, ...runtime }),
+      await operation(domain, parsed.data, {
+        userId: session.data.userId,
+        requestId,
+        ...runtime,
+      }),
       requestId,
     );
   } catch (error) {
@@ -88,3 +92,58 @@ export const membershipViewFn = createServerFn({ method: "POST" })
   );
 
 export type MembershipBoundaryView = MembershipView | null;
+
+// ---------------------------------------------------------------------------
+// 关系列表与只读历史：只组装 `MembershipView` / `PendingFactView` 与既有收据行，
+// 不新增业务事实，也不把 epoch / generation 的授权判断搬到客户端。
+// 实际读取放在 server-only 模块里动态加载，避免客户端入口引入数据库模块。
+// ---------------------------------------------------------------------------
+
+export type {
+  MachineRelationView,
+  MembershipHistoryView,
+  MembershipReceiptView,
+} from "../membership-relations";
+
+const projectRelationInput = z.strictObject({ projectId: z.string().min(1) });
+const machineRelationInput = z.strictObject({ machineId: z.string().min(1) });
+
+export const projectMachineRelationsBoundary = (
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+) =>
+  boundary(raw, headers, requestId, projectRelationInput, async (_domain, input, ctx) => {
+    const relations = await import("../membership-relations");
+    return relations.projectMachineRelations(input.projectId, ctx);
+  });
+
+export const machineRelationsBoundary = (raw: unknown, headers: Headers, requestId: string) =>
+  boundary(raw, headers, requestId, machineRelationInput, async (_domain, input, ctx) => {
+    const relations = await import("../membership-relations");
+    return relations.machineRelations(input.machineId, ctx);
+  });
+
+export const membershipHistoryBoundary = (raw: unknown, headers: Headers, requestId: string) =>
+  boundary(raw, headers, requestId, leaseKeySchema, async (_domain, input, ctx) => {
+    const relations = await import("../membership-relations");
+    return relations.membershipHistory(input, ctx);
+  });
+
+export const projectMachineRelationsFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    projectMachineRelationsBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const machineRelationsFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    machineRelationsBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const membershipHistoryFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    membershipHistoryBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
