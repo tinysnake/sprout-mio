@@ -307,13 +307,18 @@ try {
   assert(readFileSync(marker,'utf8')==='integration-proof','private sentinel matches');
   const pid=execution.result.pid; cleanupPid=pid; process.kill(pid,0);
   await page.reload();
-  await page.getByTestId('machine-executions-item').waitFor({timeout:15000});
-  const visible=await page.getByTestId('machine-executions').innerText(); assert(visible.includes('pid') || visible.includes('运行'));
+  await page.getByTestId('machine-executions-list').waitFor({timeout:15000});
+  // 卡片只在「调试详情」抽屉里：先打开抽屉再取证。
+  await page.getByTestId(/^machine-executions-debug-[^ ]+-open$/).click();
+  const debugDialog=page.getByTestId(/^machine-executions-debug-[^ ]+-dialog$/);
+  await debugDialog.waitFor({timeout:15000});
+  await page.getByTestId(/^machine-executions-debug-[^ ]+-item$/).first().waitFor({timeout:15000});
+  const visible=await debugDialog.innerText(); assert(visible.includes('pid') || visible.includes('运行'));
   // 命令正文（含绝对路径与可能含密钥的内容）不得进入界面。
   assert(!visible.includes('integration-proof'),'command body and output are not echoed');
   assert(!visible.includes(marker),'target path is not echoed');
   assert(!visible.includes('sleep 900'),'shell command text is not echoed');
-  const authorization=await page.getByTestId('machine-executions-item-authorization').first().innerText();
+  const authorization=await page.getByTestId(/^machine-executions-debug-[^ ]+-item-authorization$/).first().innerText();
   assert(!/ins_[0-9a-f-]{36}/.test(authorization),`holder rendered by name, got ${authorization}`);
   assert(authorization.includes('由该分身的一次运行发起'),'run is described, not printed as a bare id');
   await page.getByTestId('machine-remote-executions').scrollIntoViewIfNeeded();
