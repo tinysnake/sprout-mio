@@ -24,7 +24,14 @@ export no_proxy="$NO_PROXY"
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy || true
 
 trap 'printf "FAIL MCP extension (x2)\n" >&2' ERR
-pnpm exec tsx tests/fixtures/mcp-extension-live.ts
+if pnpm exec tsx tests/fixtures/mcp-extension-live.ts > "$dir/probe.log" 2>&1; then
+  cat "$dir/probe.log"
+else
+  probe_status=$?
+  cat "$dir/probe.log"
+  printf "FAIL MCP extension (x2)\n" >&2
+  exit "$probe_status"
+fi
 node --input-type=module - "$X2_EVIDENCE" <<'NODE'
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

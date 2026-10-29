@@ -311,7 +311,7 @@ import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import Database from 'better-sqlite3';
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 const dir=process.env.Z3_DIR;
@@ -322,16 +322,12 @@ async function run(name,command,args,env={},prefix,evidenceFile) {
   const before=new Set(readdirSync('.verify'));
   const startedAt=new Date().toISOString();
   const start=performance.now();
-  const logPath=join(dir,name+'.log');
-  const log=openSync(logPath,'w',0o600);
-  let child;
-  try { child=spawn(command,args,{env:{...process.env,...env},stdio:['ignore',log,log],detached:true}); }
-  finally { closeSync(log); }
+  const child=spawn(command,args,{env:{...process.env,...env},stdio:'ignore',detached:true});
   let timedOut=false;
   const timer=setTimeout(()=>{timedOut=true; try{process.kill(-child.pid,'SIGKILL');}catch{}},300000);
   const result=await new Promise(resolve=>{child.on('error',()=>resolve({exitCode:null,launchError:true}));child.on('exit',(exitCode,signal)=>resolve({exitCode,signal}));});
   clearTimeout(timer);
-  executions[name]={command:[command,...args].map(x=>x.replace(dir,'$Z3_DIR')),startedAt,elapsedMs:Math.round(performance.now()-start),...result,timedOut,logPath:relative(process.cwd(),logPath)};
+  executions[name]={command:[command,...args].map(x=>x.replace(dir,'$Z3_DIR')),startedAt,elapsedMs:Math.round(performance.now()-start),...result,timedOut};
   if(evidenceFile) {
     // The harness names the artifact, so it never has to infer which directory a probe chose.
     if(existsSync(evidenceFile)) sources[name]=read(evidenceFile);
