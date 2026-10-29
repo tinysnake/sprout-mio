@@ -30,6 +30,9 @@ export type {
   ExecutionSubmitInput,
   ExecutionReadInput,
   ExecutionView,
+  ExecutionAuthority,
   RemoteOperation,
   RemoteResultPayload,
 } from "./remote";
+export * from "./membership";
+export * from "./notice";

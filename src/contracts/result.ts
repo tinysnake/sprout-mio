@@ -13,6 +13,9 @@ export const APP_ERROR_CODES = [
   "lease_result_unconfirmed",
   "lease_not_holder",
   "lease_stale_generation",
+  // 按冻结决定 10 的先后登记：最新 removed 的其他操作先判，detaching 的操作再判。
+  "membership_removed",
+  "detach_pending",
   "lease_fencing",
   "machine_unavailable",
   "directory_unavailable",

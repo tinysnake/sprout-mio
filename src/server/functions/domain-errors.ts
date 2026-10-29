@@ -16,6 +16,15 @@ export const EXECUTION_ERROR_MESSAGES = {
   cancellation_already_terminal: "该取消请求已有终态",
   cancellation_delivery_unconfirmed: "取消尚未送达，命令可能仍在运行",
 } as const;
+/** 移出状态只拒绝「其他操作」；Human 历史、收据与强制收回仍按其自身闸门可达。 */
+export const MEMBERSHIP_ERROR_MESSAGES = {
+  detach_pending: "这台 Machine 正在从本 Project 移出，请等待确认完成",
+  membership_removed: "本 Project 已移除这台 Machine，需要显式重新加入",
+} as const;
+const DOMAIN_ERROR_MESSAGES: Record<string, string> = {
+  ...EXECUTION_ERROR_MESSAGES,
+  ...MEMBERSHIP_ERROR_MESSAGES,
+};
 type DomainErrorCode = AppErrorCode;
 type DomainErrorClass = abstract new (...args: never[]) => Error & {
   code: string;
@@ -67,10 +76,7 @@ export async function toDomainAppError(
       const code = isDomainErrorCode(error.code) ? error.code : "conflict";
       return {
         code,
-        message:
-          code in EXECUTION_ERROR_MESSAGES
-            ? EXECUTION_ERROR_MESSAGES[code as keyof typeof EXECUTION_ERROR_MESSAGES]
-            : error.message,
+        message: DOMAIN_ERROR_MESSAGES[code] ?? error.message,
         requestId,
       };
     }

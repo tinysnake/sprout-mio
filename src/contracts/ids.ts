@@ -19,6 +19,7 @@ export const ID_PREFIXES = {
   boot: "boot",
   request: "req",
   cancellation: "cnl",
+  notice: "ntc",
 } as const;
 /** 前缀只允许已登记的对象类别。 */
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];
