@@ -6,10 +6,11 @@ import type {
   UpdateAgentProfileInput,
 } from "../contracts/agent";
 import { ID_PREFIXES, newId } from "../contracts/ids";
-import { db } from "../db";
+import { db, sqlite } from "../db";
 import { agentProfile, projectMember } from "../db/schema";
 import { assertProjectAccess } from "./access";
 import type { ProjectContext } from "./access";
+import { revokeProjectAgentEnrollment } from "./chat";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
 
@@ -137,25 +138,43 @@ export function removeProjectMember(
   ctx: ProjectContext,
   hooks: IdentityWriteHooks = {},
 ): void {
-  writeIdentity(
-    ctx,
-    { event: "project_member.removed", message: "Project 成员已移除", projectId },
-    () => {
+  // 一个事务把「参与权、在途运行、待发输入」三件事一起处理（设计 §4.4，裁定 d20）：
+  // 断言的读（所有者、活跃 run）与后面的写必须原子，否则检查完到写入之间能挤进一条新的 run。
+  sqlite
+    .transaction(() => {
       assertProjectAccess(ctx, projectId);
+      getAgentProfile(agentProfileId, ctx);
       const row = db
-        .delete(projectMember)
+        .select({ agentProfileId: projectMember.agentProfileId })
+        .from(projectMember)
         .where(
           and(
             eq(projectMember.projectId, projectId),
             eq(projectMember.agentProfileId, agentProfileId),
           ),
         )
-        .returning()
         .get();
-      if (!row) throw new AgentError("not_found", "Project 成员不存在");
-    },
-    hooks,
-  );
+      // 幂等：已经不在 Project 的 Agent 再调一次是无副作用的成功——不写诊断事件、不碰对话。
+      // 真正不存在的 profile 仍由上面的 getAgentProfile 给 `not_found`，拼错的 id 不会被静默吞掉。
+      if (!row) return;
+      writeIdentity(
+        ctx,
+        { event: "project_member.removed", message: "Project 成员已移除", projectId },
+        () => {
+          revokeProjectAgentEnrollment(projectId, agentProfileId);
+          db.delete(projectMember)
+            .where(
+              and(
+                eq(projectMember.projectId, projectId),
+                eq(projectMember.agentProfileId, agentProfileId),
+              ),
+            )
+            .run();
+        },
+        hooks,
+      );
+    })
+    .immediate();
 }
 
 export function listProjectMembers(projectId: string, ctx: ProjectContext): ProjectMember[] {
