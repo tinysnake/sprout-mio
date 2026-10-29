@@ -171,7 +171,7 @@ assert.deepEqual(
   [
     { id: agentA.id, source: "project_member" },
     { id: agentB.id, source: "project_member" },
-  ],
+  ].sort((left, right) => (left.id < right.id ? -1 : 1)),
   "频道 Agent 成员来源必须是 project_member",
 );
 assert.equal(
