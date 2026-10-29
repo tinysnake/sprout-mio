@@ -26,6 +26,9 @@ export function seedRemoteActor(
     )
     .run(chatId, projectId, userId, userId);
   sqlite
+    .prepare("INSERT INTO project_member(project_id,agent_profile_id,added_by) VALUES (?,?,?)")
+    .run(projectId, profileId, userId);
+  sqlite
     .prepare("INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES (?,'agent',?)")
     .run(chatId, profileId);
   sqlite
