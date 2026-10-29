@@ -617,6 +617,9 @@ try {
         { ...key, executionId: execution.executionId, cursor: null, limitBytes: 65536 },
       ],
       ["execution_list", { ...key, limit: 20 }],
+    ] as const)
+      await rejected(type, parameters, "lease_not_holder", credential);
+    for (const [type, parameters] of [
       [
         "execution_cancel",
         {

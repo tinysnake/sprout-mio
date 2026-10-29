@@ -357,14 +357,19 @@ sqlite
   )
   .run(req(), "a".repeat(64), human.now.getTime(), human.now.getTime(), projectId, machineId);
 for (const actor of [a, b]) {
-  for (const action of [
+  // 冻结决定 10：执行读在任何非 active 关系下都是 lease_not_holder；
+  // membership_removed 只留给 request/cancel 等非读操作路径。
+  for (const read of [
     () => get(first.executionId, actor),
     () => log(first.executionId, actor),
     () => listHolderExecutions({ machineId, limit: 20 }, actor),
+  ])
+    assert.throws(read, fail("lease_not_holder"));
+  for (const operation of [
     () => cancel(first.executionId, 6, actor),
     () => requestExecution(actor === a ? input : fourthInput, actor),
   ])
-    assert.throws(action, fail("membership_removed"));
+    assert.throws(operation, fail("membership_removed"));
 }
 assert.throws(
   () => cancelExecution({ executionId: first.executionId, requestId: req() }, human),
