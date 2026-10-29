@@ -35,6 +35,17 @@ import {
 } from "../db/schema";
 import type { MachineContext } from "../domain/machine";
 
+/**
+ * Worker 重启后的恢复宽限：新连接代次接上后，先给归约事实留出这段时间。
+ * 取值按 Worker 的退避上限（10s）加一次完整 exchange 往返留余量，不把重连抖动当丢失。
+ * 只用 env 给私有验收缩短，产品默认值固定。
+ */
+export const WORKER_RECOVERY_GRACE_MS = (() => {
+  const raw = process.env.SPROUT_WORKER_RECOVERY_GRACE_MS;
+  const value = raw === undefined || raw === "" ? Number.NaN : Number(raw);
+  return Number.isSafeInteger(value) && value >= 0 ? value : 30000;
+})();
+
 export type AgentRemoteContext = MachineContext & {
   projectId: string;
   chatId: string;
@@ -97,6 +108,35 @@ export function assertRemoteAccess(key: LeaseKey, ctx: MachineContext | AgentRem
       .get()
   )
     throw new LeaseError("not_found");
+}
+/**
+ * 执行与日志只有当前 holder 能读。人类身份仍按 Project 创建者与 Machine 归属判定；分身身份
+ * 额外核对执行归属、Machine 当前租约状态、holder 与代次，任一不满足一律 `lease_not_holder`。
+ * 读取是只读裁决：租约缺失按「不成立」处理，不借读路径补建租约行。
+ */
+export function assertExecutionHolder(
+  execution: {
+    projectId: string;
+    machineId: string;
+    holderInstanceId: string;
+    authorizationGeneration: number;
+  },
+  ctx: MachineContext | AgentRemoteContext,
+) {
+  if (!("instanceId" in ctx)) return;
+  const lease = db
+    .select()
+    .from(machineLease)
+    .where(leaseWhere({ projectId: execution.projectId, machineId: execution.machineId }))
+    .get();
+  if (
+    execution.holderInstanceId !== ctx.instanceId ||
+    !lease ||
+    lease.state !== "held" ||
+    lease.holderInstanceId !== ctx.instanceId ||
+    lease.generation !== execution.authorizationGeneration
+  )
+    throw new LeaseError("lease_not_holder");
 }
 export function assertAgentContext(key: LeaseKey, ctx: AgentRemoteContext) {
   assertRemoteAccess(key, ctx);
@@ -192,12 +232,54 @@ export function expireExecutions(key: LeaseKey, now: Date, bootId?: string) {
       connection.generation !== counter?.highWater ||
       (bootId !== undefined && connection.bootId !== bootId) ||
       now.getTime() - connection.lastSeenAt.getTime() >= WORKER_STALE_AFTER_MS;
-    // 失联只降级当前会话的可见性，不写终态；归约必须带 runner token。
-    if (lost && row.state !== "unknown")
-      db.update(remoteExecution)
-        .set({ state: "unknown", failureReason: "worker_lost", terminalAt: now })
-        .where(eq(remoteExecution.id, row.id))
-        .run();
+    // 连接丢失只影响新鲜度与租约，不产生终态：命令可能还在跑，结果也可能已经落盘，
+    // 这两件事都只能由 Worker 的归约事实回答。把它写成 unknown 会把真实终态封在门外。
+    if (!lost) continue;
+    const successor = counter
+      ? db
+          .select()
+          .from(machineConnection)
+          .where(
+            and(
+              eq(machineConnection.machineId, row.machineId),
+              eq(machineConnection.generation, counter.highWater),
+            ),
+          )
+          .get()
+      : undefined;
+    if (row.state === "unknown") continue;
+    // 宿主侧只有两个收尾出口，都要等恢复宽限走完：
+    // (b) 更新代次已经接上，却从未对这条执行交过任何归约报告（Worker 报告过 running
+    //     就是在看着它，不能替它收尾）；
+    // (b') 派发会话已经正常关闭，且机器上始终没有更新的活连接——不会再有任何一代能报告，
+    //     一直挂在 running 比带原因的 unknown 更假。
+    const successorLive =
+      successor !== undefined &&
+      successor.status === "open" &&
+      successor.generation > row.dispatchConnectionGeneration! &&
+      (bootId === undefined || successor.bootId === bootId);
+    const closedAt =
+      connection?.status === "closed" ? (connection.closedAt ?? connection.lastSeenAt) : null;
+    const abandoned =
+      !successorLive &&
+      closedAt !== null &&
+      now.getTime() - closedAt.getTime() >= WORKER_RECOVERY_GRACE_MS &&
+      (row.recoveryReportedAt === null || row.recoveryReportedAt.getTime() < closedAt.getTime());
+    const superseded =
+      successorLive &&
+      now.getTime() - successor!.openedAt.getTime() >= WORKER_RECOVERY_GRACE_MS &&
+      (row.recoveryReportedAt === null ||
+        row.recoveryReportedAt.getTime() < successor!.openedAt.getTime());
+    if (!abandoned && !superseded) continue;
+    db.update(remoteExecution)
+      .set({
+        state: "unknown",
+        failureReason: "worker_lost",
+        recoveryReason: null,
+        terminalAt: now,
+      })
+      .where(eq(remoteExecution.id, row.id))
+      .run();
   }
 }
 // Internal idempotency namespace cannot collide with public req_* request IDs.

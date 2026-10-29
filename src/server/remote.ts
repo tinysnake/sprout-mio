@@ -2,13 +2,16 @@ import { createHash, randomBytes } from "node:crypto";
 import { machineBindings } from "../domain/machine";
 import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
 import type { WorkerExchangeRemoteInput } from "../contracts/worker";
-import { and, desc, eq, gte, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { ShellFact } from "../contracts/machine";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
   CANCELLATION_INTENT_NAMESPACE,
   EXECUTION_LOG_FRAME_MAX_BYTES,
+  EXECUTION_LOG_RETAIN_BYTES,
+  EXECUTION_LOG_RETAIN_FRAMES,
   executionCancelInputSchema,
+  executionCancelRequestSchema,
   executionLogReadInputSchema,
   executionReadInputSchema,
   executionSubmitInputSchema,
@@ -16,8 +19,10 @@ import {
 import type {
   ExecutionCancel,
   ExecutionCancelInput,
+  ExecutionCancelRequest,
   ExecutionCancellationView,
   ExecutionLogFrame,
+  ExecutionLogFact,
   ExecutionLogReadInput,
   ExecutionLogReadView,
   ExecutionLogState,
@@ -52,6 +57,7 @@ import {
 import type { MachineContext } from "../domain/machine";
 import {
   assertAgentContext,
+  assertExecutionHolder,
   assertRemoteAccess,
   completeLeaseMutation,
   ensureLease,
@@ -125,11 +131,17 @@ function connection(machineId: string, ctx: Pick<MachineContext, "now" | "bootId
     throw new RemoteError("machine_unavailable");
   return row;
 }
-function executionView(row: Execution): ExecutionView {
+function executionView(row: Execution, provisionalResult = false): ExecutionView {
   const result = db
     .select()
     .from(executionResult)
     .where(eq(executionResult.executionId, row.id))
+    .get();
+  const cancellation = db
+    .select()
+    .from(executionCancellation)
+    .where(eq(executionCancellation.executionId, row.id))
+    .orderBy(desc(executionCancellation.requestedAt), desc(executionCancellation.id))
     .get();
   return {
     executionId: row.id,
@@ -153,20 +165,49 @@ function executionView(row: Execution): ExecutionView {
     payloadHash: row.payloadHash,
     terminalAt: row.terminalAt?.toISOString() ?? null,
     failureReason: row.failureReason,
-    result: result?.payloadJson ?? null,
+    recoveryReason: row.recoveryReason ?? null,
+    // Agent 读视图的契约是：未落终态就没有结果。Web 列表额外允许 waitMs 快照
+    // （exited:false）用于显示 pid，但执行本身仍是 running；一旦落成 unknown/failed，
+    // 快照不再是这次执行的结果，不能拿它冒充终态正文。
+    result: (() => {
+      const payload = result?.payloadJson;
+      // waitMs 快照没有 `exited`；恢复事实带 `recovered`，它不是快照，不能当成空结果。
+      const provisional =
+        payload !== null &&
+        payload !== undefined &&
+        payload.kind === "shell" &&
+        !("failureReason" in payload) &&
+        !("recovered" in payload) &&
+        !payload.exited;
+      if (provisional && row.terminalAt !== null) return null;
+      return provisionalResult || row.terminalAt !== null ? (payload ?? null) : null;
+    })(),
     logState: row.logState,
     producedThroughSequence: row.producedThroughSeq,
     acknowledgedThroughSequence: row.acknowledgedThroughSeq,
     availableFromSequence: row.availableFromSeq,
+    cancellation: cancellation ? cancellationView(cancellation) : null,
   };
 }
 type LeaseClaim = { projectId: string; machineId: string; authorizationGeneration: number };
+/** 租约是否仍授权这次执行：状态、代次与 holder 三项都属于通道事实，与调用者是谁无关。 */
+function leaseHeldBy(
+  lease: typeof machineLease.$inferSelect,
+  authorizationGeneration: number,
+  holderInstanceId: string,
+) {
+  return (
+    lease.state === "held" &&
+    lease.generation === authorizationGeneration &&
+    lease.holderInstanceId === holderInstanceId
+  );
+}
 function liveLease(input: LeaseClaim, ctx: AgentRemoteContext) {
   const lease = ensureLease(input, ctx.now);
   if (lease.generation !== input.authorizationGeneration)
     throw new RemoteError("lease_stale_generation");
   if (lease.state === "fencing") throw new RemoteError("lease_fencing");
-  if (lease.state !== "held" || lease.holderInstanceId !== ctx.instanceId)
+  if (!leaseHeldBy(lease, input.authorizationGeneration, ctx.instanceId))
     throw new RemoteError("lease_not_holder");
 }
 function runnerOnline(machineId: string, now: Date) {
@@ -205,9 +246,88 @@ function executionByKey(executionId: string, key: Pick<LeaseClaim, "projectId" |
     )
     .get();
 }
-function logStateAfterProduce(row: Execution, producedThrough: number): ExecutionLogState {
-  if (row.logState !== "none") return row.logState;
-  return producedThrough >= 1 ? "partial" : row.logState;
+/**
+ * 日志完整性只由可以核对的事实推出，不用「宿主已收到的前缀」冒充「Worker 的全部产出」：
+ * - 裁剪过的前缀永远是不完整，`truncated` 优先于 `full`；
+ * - 存在缺口行就是 `gap`；
+ * - `full` 必须同时成立：Worker 已声明封口、已确认前缀覆盖全部已产出位点、没有可读起点裁剪；
+ * - 其余只要有产出就是 `partial`。`sealed` 缺失时永远停在 `partial`，可以回退但不能越过事实。
+ */
+function deriveLogState(row: Execution): ExecutionLogState {
+  const availableFrom = row.availableFromSeq;
+  if (availableFrom !== null && availableFrom > 1) return "truncated";
+  const produced = row.producedThroughSeq;
+  if (produced === null || produced === 0) return "none";
+  if (hasLogGap(row.id)) return "gap";
+  if (
+    row.logSealed &&
+    row.acknowledgedThroughSeq !== null &&
+    row.acknowledgedThroughSeq === produced
+  )
+    return "full";
+  return "partial";
+}
+function hasLogGap(executionId: string): boolean {
+  return (
+    db
+      .select({ sequence: executionLogFrame.sequence })
+      .from(executionLogFrame)
+      .where(
+        and(
+          eq(executionLogFrame.executionId, executionId),
+          isNotNull(executionLogFrame.gapFromSeq),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+/** 单执行保留上限。私有验收库可用 env 缩小阈值；产品默认值固定，不随请求变化。 */
+function retentionLimit(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= 1 ? value : fallback;
+}
+/**
+ * 前缀裁剪：只删除最早的帧，把可读起点推进到最早保留帧。
+ * 裁剪是服务端职责，Worker 不因此停采；ACK 不得落后于可读起点，否则 CHECK 先拒。
+ */
+function trimLogPrefix(executionId: string): void {
+  const row = db.select().from(remoteExecution).where(eq(remoteExecution.id, executionId)).get();
+  if (!row) return;
+  const frames = db
+    .select({ sequence: executionLogFrame.sequence, payload: executionLogFrame.payloadBytes })
+    .from(executionLogFrame)
+    .where(eq(executionLogFrame.executionId, executionId))
+    .orderBy(executionLogFrame.sequence)
+    .all() as Array<{ sequence: number; payload: Buffer | null }>;
+  const frameLimit = retentionLimit(
+    "SPROUT_EXECUTION_LOG_RETAIN_FRAMES",
+    EXECUTION_LOG_RETAIN_FRAMES,
+  );
+  const byteLimit = retentionLimit("SPROUT_EXECUTION_LOG_RETAIN_BYTES", EXECUTION_LOG_RETAIN_BYTES);
+  let bytes = frames.reduce((sum, frame) => sum + (frame.payload?.byteLength ?? 0), 0);
+  let drop = 0;
+  while (drop < frames.length && (frames.length - drop > frameLimit || bytes > byteLimit)) {
+    bytes -= frames[drop]!.payload?.byteLength ?? 0;
+    drop += 1;
+  }
+  if (drop === 0) return;
+  const from = frames[drop]!.sequence;
+  db.delete(executionLogFrame)
+    .where(
+      and(eq(executionLogFrame.executionId, executionId), lt(executionLogFrame.sequence, from)),
+    )
+    .run();
+  db.update(remoteExecution)
+    .set({
+      availableFromSeq: from,
+      acknowledgedThroughSeq: Math.max(row.acknowledgedThroughSeq ?? 0, from - 1),
+      logState: "truncated",
+    })
+    .where(eq(remoteExecution.id, executionId))
+    .run();
 }
 const checksumOf = (payload: Buffer | null) =>
   createHash("sha256")
@@ -227,17 +347,27 @@ function applyLogFrames(
   frames: ReadonlyArray<ExecutionLogFrame>,
   ctx: AuthenticatedWorkerContext,
 ): Map<string, Execution> {
-  const touched = new Map<string, Execution>();
+  const touched = new Set<string>();
   for (const frame of frames) {
     if (frame.machineId !== ctx.session.machineId) throw new RemoteError("not_found");
     const row = executionByKey(frame.executionId, frame);
+    if (!row) throw new RemoteError("not_found");
+    // 帧有两类合法发送方：真正承载那次下发的会话，以及同一台 Machine 之后的连接。
+    // 后者是 Worker 重启后的补送：终态结果早已 ACK，但日志 outbox 里还有没送到宿主的前缀。
+    // 它仍必须带着那次下发的序号，并且代次与 holder 与执行行一致，不能借新连接冒充别的执行。
+    const dispatchedHere =
+      sameSession(frame.dispatchSession, ctx.session) &&
+      row.dispatchConnectionGeneration === ctx.session.generation;
+    const superseding =
+      row.dispatchConnectionGeneration !== null &&
+      row.dispatchConnectionGeneration < ctx.session.generation;
     if (
-      !row ||
-      !sameSession(frame.dispatchSession, ctx.session) ||
+      row.machineId !== frame.machineId ||
+      row.projectId !== frame.projectId ||
       row.authorizationGeneration !== frame.authorizationGeneration ||
       row.holderInstanceId !== frame.holderInstanceId ||
-      row.dispatchConnectionGeneration !== ctx.session.generation ||
-      row.dispatchSeq !== frame.dispatchSeq
+      row.dispatchSeq !== frame.dispatchSeq ||
+      !(dispatchedHere || superseding)
     )
       throw new RemoteError("not_found");
     const payload = frame.bytes === undefined ? null : Buffer.from(frame.bytes, "utf8");
@@ -293,18 +423,24 @@ function applyLogFrames(
     db.update(remoteExecution)
       .set({
         producedThroughSeq: produced,
-        logState: logStateAfterProduce(row, produced),
+        logState: deriveLogState({ ...row, producedThroughSeq: produced }),
       })
       .where(eq(remoteExecution.id, row.id))
       .run();
-    touched.set(
-      row.id,
-      db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+    touched.add(row.id);
+  }
+  const rows = new Map<string, Execution>();
+  for (const executionId of touched) {
+    // 一批帧写完后只裁一次前缀，避免逐帧重算保留量。
+    trimLogPrefix(executionId);
+    rows.set(
+      executionId,
+      db.select().from(remoteExecution).where(eq(remoteExecution.id, executionId)).get()!,
     );
   }
-  return touched;
+  return rows;
 }
-/** 只推进到连续前缀：仍缺失的 sequence 会阻止 ACK 越过它。 */
+/** 只推进到连续前缀：仍缺失的 sequence 会阻止 ACK 越过它。`full` 另需 Worker 的封口事实。 */
 function acknowledgeLogPrefix(row: Execution) {
   const produced = row.producedThroughSeq;
   if (produced === null) return row;
@@ -319,19 +455,63 @@ function acknowledgeLogPrefix(row: Execution) {
   let contiguous = row.acknowledgedThroughSeq ?? 0;
   while (sequences.has(contiguous + 1)) contiguous += 1;
   const acknowledged = contiguous === 0 ? null : contiguous;
-  const availableFrom = row.availableFromSeq;
-  const full =
-    acknowledged !== null &&
-    acknowledged === produced &&
-    (availableFrom === null || availableFrom === 1);
   db.update(remoteExecution)
     .set({
       acknowledgedThroughSeq: acknowledged,
-      logState: full ? "full" : logStateAfterProduce(row, produced),
+      logState: deriveLogState({ ...row, acknowledgedThroughSeq: acknowledged }),
     })
     .where(eq(remoteExecution.id, row.id))
     .run();
   return db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!;
+}
+/**
+ * Worker 上行日志位点事实：把「已知产出」抬到 Worker 声明的值，并记录是否已封口。
+ * 与日志帧使用同一套归属核对：事实只能描述本 Machine 收到过的那次下发。
+ */
+function applyLogFacts(
+  facts: ReadonlyArray<ExecutionLogFact>,
+  ctx: AuthenticatedWorkerContext,
+): Map<string, Execution> {
+  const rows = new Map<string, Execution>();
+  for (const fact of facts) {
+    if (fact.machineId !== ctx.session.machineId) throw new RemoteError("not_found");
+    const row = executionByKey(fact.executionId, fact);
+    if (!row) throw new RemoteError("not_found");
+    const dispatchedHere =
+      row.dispatchConnectionGeneration !== null &&
+      row.dispatchConnectionGeneration === ctx.session.generation;
+    const superseding =
+      row.dispatchConnectionGeneration !== null &&
+      row.dispatchConnectionGeneration < ctx.session.generation;
+    if (
+      row.machineId !== fact.machineId ||
+      row.projectId !== fact.projectId ||
+      row.authorizationGeneration !== fact.authorizationGeneration ||
+      row.holderInstanceId !== fact.holderInstanceId ||
+      !(dispatchedHere || superseding)
+    )
+      throw new RemoteError("not_found");
+    // 「已知产出」是单调的：事实只能让位点前移，不能拿旧事实把已落库帧吞回去。
+    const produced = Math.max(row.producedThroughSeq ?? 0, fact.producedThroughSequence ?? 0);
+    const next = {
+      ...row,
+      producedThroughSeq: produced > 0 ? produced : row.producedThroughSeq,
+      logSealed: fact.sealed,
+    };
+    db.update(remoteExecution)
+      .set({
+        producedThroughSeq: next.producedThroughSeq,
+        logSealed: next.logSealed,
+        logState: deriveLogState(next),
+      })
+      .where(eq(remoteExecution.id, row.id))
+      .run();
+    rows.set(
+      row.id,
+      db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+    );
+  }
+  return rows;
 }
 function logAckOf(row: Execution) {
   if (row.producedThroughSeq === null) return null;
@@ -377,10 +557,37 @@ export function applyExecutionRecovery(
   const produced = recovery.producedThroughSequence;
   if (produced !== null && produced > (row.producedThroughSeq ?? 0))
     db.update(remoteExecution)
-      .set({ producedThroughSeq: produced, logState: logStateAfterProduce(row, produced) })
+      .set({
+        producedThroughSeq: produced,
+        logState: deriveLogState({ ...row, producedThroughSeq: produced }),
+      })
       .where(eq(remoteExecution.id, row.id))
       .run();
-  if (recovery.observedState === "unknown" || recovery.observedState === "running") return;
+  // 任何被接受的归约报告都算「这一代 Worker 交代过这条执行」：宿主侧的丢失宽限据此
+  // 判断自己该不该替它收尾，不能把 Worker 正在看的执行也写成 unknown。
+  db.update(remoteExecution)
+    .set({ recoveryReportedAt: ctx.now })
+    .where(eq(remoteExecution.id, row.id))
+    .run();
+  if (recovery.observedState === "running") return;
+  if (recovery.observedState === "unknown") {
+    // Worker 归约出的 unknown 也是终态，但它是「带原因的未知」，不是宿主猜的 worker_lost；
+    // 它仍可被后来带 runner result 的恢复事实提升，见下方单向归约。
+    db.update(remoteExecution)
+      .set({
+        state: "unknown",
+        failureReason: "worker_lost",
+        recoveryReason: recovery.observedReason ?? "child-exited-without-result",
+        terminalAt: row.terminalAt ?? ctx.now,
+      })
+      .where(eq(remoteExecution.id, row.id))
+      .run();
+    // 子进程已经不在但没有 result：取消不能停在 delivered 等满确认窗口才说投递未确认，
+    // 它现在就能诚实地说「进程已不再运行，退出没有被记录」。
+    if (recovery.observedReason === "child-exited-without-result")
+      settleCancellations(row.id, ctx.now, false);
+    return;
+  }
   // 证据不足时不归约：unknown 保留，不当作成功或失败。
   if (recovery.claimEvidenceAt === null || recovery.observedExitedAt === null) return;
   if (recovery.observedExitedAt < recovery.claimEvidenceAt) return;
@@ -389,7 +596,12 @@ export function applyExecutionRecovery(
   if (recovery.exitCode === null && recovery.signal === null) {
     // runner 只报了退出时间，没有退出事实：保留可恢复标记，不猜终态。
     db.update(remoteExecution)
-      .set({ state: "unknown", failureReason: "worker_lost", terminalAt: ctx.now })
+      .set({
+        state: "unknown",
+        failureReason: "worker_lost",
+        recoveryReason: "child-exited-without-result",
+        terminalAt: ctx.now,
+      })
       .where(eq(remoteExecution.id, row.id))
       .run();
     return;
@@ -399,49 +611,94 @@ export function applyExecutionRecovery(
     .from(executionResult)
     .where(eq(executionResult.executionId, row.id))
     .get();
-  if (!existing) {
+  // waitMs 快照只是「已启动」的观察，不是结果：恢复事实到了就用真实退出覆盖它，
+  // 否则终态执行会带着一份 exited:false 的正文，页面只能把它当空结果。
+  const provisionalExisting =
+    existing !== undefined &&
+    existing.payloadJson.kind === "shell" &&
+    !("failureReason" in existing.payloadJson) &&
+    !existing.payloadJson.exited;
+  if (!existing || provisionalExisting) {
     const outcome = succeeded ? ("succeeded" as const) : ("failed" as const);
     // 恢复事实只带退出码与信号，不重写原本就未知的输出正文；`recovered: true` 让视图与 UI
     // 知道这份结果来自恢复而不是 runner 的原生报告，不把空正文当成「没有输出」。
-    const payload = succeeded
+    // 只有 shell 有 runner result；其余操作没有第三层，不能凭空造退出正文。
+    const recoveredPid = typeof recovery.pid === "number" ? recovery.pid : null;
+    const shell = row.operationJson.kind === "shell" && recoveredPid !== null;
+    const recoveredSuccess = shell
       ? {
-          kind: row.operationJson.kind,
-          recovered: true,
+          kind: "shell" as const,
+          recovered: true as const,
+          pid: recoveredPid!,
+          // 正文已随上一个 Worker 丢失：`truncated` 是诚实说法，不是「没有输出」。
+          exited: true,
           exitCode: 0,
-          signal: null,
+          stdout: "",
+          stderr: "",
+          truncated: true,
         }
-      : {
+      : null;
+    const payload = succeeded
+      ? (recoveredSuccess ?? {
           kind: row.operationJson.kind,
           recovered: true,
-          exitCode: recovery.exitCode,
-          signal: recovery.signal,
           failureReason: failureReason!,
-        };
-    db.insert(executionResult)
-      .values({
-        executionId: row.id,
-        projectId: row.projectId,
-        machineId: row.machineId,
-        authorizationGeneration: row.authorizationGeneration,
-        holderInstanceId: row.holderInstanceId,
-        payloadHash: payloadHash(payload),
-        outcome,
-        payloadJson: payload as never,
-        recordedAt: ctx.now,
-      })
-      .onConflictDoNothing()
-      .run();
+        })
+      : shell
+        ? {
+            kind: "shell" as const,
+            recovered: true as const,
+            failureReason: failureReason!,
+            partial: {
+              ...recoveredSuccess!,
+              exitCode: recovery.exitCode ?? 1,
+            },
+          }
+        : {
+            kind: row.operationJson.kind,
+            recovered: true,
+            failureReason: failureReason!,
+          };
+    if (provisionalExisting)
+      db.update(executionResult)
+        .set({
+          payloadHash: payloadHash(payload),
+          outcome,
+          payloadJson: payload as never,
+          recordedAt: ctx.now,
+        })
+        .where(eq(executionResult.executionId, row.id))
+        .run();
+    else
+      db.insert(executionResult)
+        .values({
+          executionId: row.id,
+          projectId: row.projectId,
+          machineId: row.machineId,
+          authorizationGeneration: row.authorizationGeneration,
+          holderInstanceId: row.holderInstanceId,
+          payloadHash: payloadHash(payload),
+          outcome,
+          payloadJson: payload as never,
+          recordedAt: ctx.now,
+        })
+        .onConflictDoNothing()
+        .run();
   }
   db.update(remoteExecution)
     .set({
       state: succeeded ? "succeeded" : "failed",
       failureReason,
+      // runner result 到达即推翻「未知」：这是唯一允许改写 unknown/worker_lost 的路径。
+      recoveryReason: null,
       drainedAt: row.drainedAt ?? ctx.now,
       terminalAt: ctx.now,
     })
     // 单向性：只允许从可恢复状态进入已知终态，已确定的终态不回头。
     .where(and(eq(remoteExecution.id, row.id), inArray(remoteExecution.state, RECOVERABLE_STATES)))
     .run();
+  // durable result 到达，退出证据同时成立：取消不必等满确认窗口才能说已观测到退出。
+  settleCancellations(row.id, ctx.now);
   db.insert(diagnosticEvent)
     .values({
       id: newId(ID_PREFIXES.diagnostic),
@@ -594,6 +851,7 @@ export function getExecution(
         )
         .get();
       if (!row) throw new RemoteError("not_found");
+      assertExecutionHolder(row, ctx);
       return executionView(row);
     })
     .immediate();
@@ -634,6 +892,7 @@ export function listProjectExecutions(
       return rows.map((row: Execution) =>
         executionView(
           db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+          true,
         ),
       );
     })
@@ -654,9 +913,15 @@ export function readExecutionLog(
       expireExecutions(input, ctx.now, ctx.bootId);
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("not_found");
-      const cursor = input.cursor?.nextSequence ?? 0;
+      assertExecutionHolder(row, ctx);
       const from = row.availableFromSeq;
-      if (from !== null && cursor + 1 < from) throw new RemoteError("execution_log_gap");
+      // 没带游标时从可读起点开始：前缀被裁剪的执行从 0 读会直接撞 gap，页面没有别的入口。
+      const cursor = input.cursor?.nextSequence ?? (from !== null ? from - 1 : 0);
+      // 游标属于它的执行：跨执行的序号不构成续读起点，必须重读，不冒充完整。
+      if (input.cursor && input.cursor.executionId !== input.executionId)
+        throw new RemoteError("execution_log_cursor_stale");
+      if (input.cursor && from !== null && cursor + 1 < from)
+        throw new RemoteError("execution_log_gap");
       if (row.producedThroughSeq === null && row.logState !== "none")
         throw new RemoteError("execution_log_unavailable");
       const rows = db
@@ -681,7 +946,8 @@ export function readExecutionLog(
           continue;
         }
         const size = frame.payloadBytes.byteLength;
-        if (used + size > input.limitBytes) break;
+        // `limitBytes` 是软预算：只要还有可读帧就至少给一帧，分页游标才不会停在原地。
+        if (frames.length > 0 && used + size > input.limitBytes) break;
         used += size;
         frames.push({
           sequence: frame.sequence,
@@ -710,17 +976,30 @@ export function readExecutionLog(
         .from(remoteExecution)
         .where(eq(remoteExecution.id, row.id))
         .get()!;
+      // 能否再前进取决于服务端还存着没有更大的帧，不是 Worker 声明的产水位。
+      const hasMore =
+        db
+          .select({ sequence: executionLogFrame.sequence })
+          .from(executionLogFrame)
+          .where(
+            and(
+              eq(executionLogFrame.executionId, row.id),
+              gt(executionLogFrame.sequence, nextSequence),
+            ),
+          )
+          .get() !== undefined;
       return {
         projectId: row.projectId,
         machineId: row.machineId,
         executionId: row.id,
         frames,
-        nextCursor: { nextSequence },
+        nextCursor: { executionId: row.id, nextSequence },
         availableFromSequence: current.availableFromSeq,
         acknowledgedThroughSequence: current.acknowledgedThroughSeq,
         producedThroughSequence: current.producedThroughSeq,
         gapRanges,
         logState: current.logState,
+        hasMore,
         workerOnline: runnerOnline(row.machineId, ctx.now),
       };
     })
@@ -740,6 +1019,10 @@ function cancellationView(row: Cancellation): ExecutionCancellationView {
     failureReason: row.failureReason,
   };
 }
+/** 取消幂等键带 actor 身份：人取消与分身取消共用一张表，但不互相冒充。 */
+type CancellationActor = { kind: "agent" | "human"; id: string };
+const cancellationRequestKey = (actor: CancellationActor, requestId: string) =>
+  `${CANCELLATION_INTENT_NAMESPACE}${actor.kind}:${actor.id}:${requestId}`;
 /**
  * 取消只入队一个意图。`delivered` 说明 Worker 收到了意图，不说明进程已停；
  * 进程只有 runner 落盘的 durable result 才能归约为 `exited_observed`。
@@ -754,7 +1037,12 @@ export function enqueueCancellation(
       assertAgentContext(input, ctx);
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("cancellation_not_found");
-      const key = `${CANCELLATION_INTENT_NAMESPACE}${ctx.instanceId}:${input.requestId}`;
+      // 通道核对先于幂等返回：幂等键只保证「同一请求不重复投递」，不保证调用方还有权碰这台
+      // Machine。旧代次、已换 holder 或已释放的租约在命中旧行时同样要拒，且不读写任何行。
+      if (input.authorizationGeneration !== row.authorizationGeneration)
+        throw new RemoteError("lease_stale_generation");
+      liveLease(row, ctx);
+      const key = cancellationRequestKey({ kind: "agent", id: ctx.instanceId }, input.requestId);
       const old = db
         .select()
         .from(executionCancellation)
@@ -783,7 +1071,6 @@ export function enqueueCancellation(
         .get();
       // 已有未完成意图时只返回同样的事实，不重复投递。
       if (open) throw new RemoteError("cancellation_delivery_unconfirmed");
-      liveLease(row, ctx);
       const id = newId(ID_PREFIXES.cancellation);
       db.insert(executionCancellation)
         .values({
@@ -794,7 +1081,8 @@ export function enqueueCancellation(
           machineId: row.machineId,
           authorizationGeneration: row.authorizationGeneration,
           holderInstanceId: row.holderInstanceId,
-          actorInstanceId: ctx.instanceId,
+          actorKind: "agent",
+          actorId: ctx.instanceId,
           state: "requested",
           signalOutcome: "none",
           // 调用方声明的策略是事实：落库后原样下发给 Worker，不再用常量顶替。
@@ -824,8 +1112,120 @@ export function enqueueCancellation(
     })
     .immediate();
 }
-/** 取消送达后等待 runner 确认退出证据的窗口。超时只写 delivery_unconfirmed。 */
-const CANCELLATION_CONFIRM_WINDOW_MS = 15000;
+/**
+ * 人类在 Web 侧发起的显式取消。授权、归属与投递通道都在服务端边界核对；
+ * 幂等键按人类身份归属，所以人类取消不会冒充分身。通道不成立时只报「未确认」，
+ * 既不写新行，也不假装已入队。
+ */
+export function cancelExecution(
+  raw: ExecutionCancelRequest,
+  ctx: MachineContext,
+): ExecutionCancellationView {
+  const input = executionCancelRequestSchema.parse(raw);
+  return sqlite
+    .transaction(() => {
+      if (!ctx.userId) throw new RemoteError("unauthorized");
+      const found = db
+        .select()
+        .from(remoteExecution)
+        .where(eq(remoteExecution.id, input.executionId))
+        .get();
+      // 不区分「不存在」与「别人的」：两者都是 not_found。
+      if (!found) throw new RemoteError("not_found");
+      assertRemoteAccess({ projectId: found.projectId, machineId: found.machineId }, ctx);
+      expireExecutions(
+        { projectId: found.projectId, machineId: found.machineId },
+        ctx.now,
+        ctx.bootId,
+      );
+      const row = db.select().from(remoteExecution).where(eq(remoteExecution.id, found.id)).get()!;
+      // 幂等命中同样要核对投递通道：旧代次或已换 holder 时，这条意图没有任何人能被投递到，
+      // 不能因为「同一个 requestId」就把它当成仍然成立。
+      const lease = ensureLease({ projectId: row.projectId, machineId: row.machineId }, ctx.now);
+      if (!leaseHeldBy(lease, row.authorizationGeneration, row.holderInstanceId))
+        throw new RemoteError("cancellation_delivery_unconfirmed");
+      const key = cancellationRequestKey({ kind: "human", id: ctx.userId }, input.requestId);
+      const old = db
+        .select()
+        .from(executionCancellation)
+        .where(
+          and(
+            eq(executionCancellation.actorKind, "human"),
+            eq(executionCancellation.actorId, ctx.userId),
+            eq(executionCancellation.requestId, key),
+          ),
+        )
+        .get();
+      if (old) {
+        if (old.executionId !== row.id) throw new RemoteError("remote_request_conflict");
+        return cancellationView(old);
+      }
+      if (row.terminalAt !== null) throw new RemoteError("cancellation_already_terminal");
+      const open = db
+        .select()
+        .from(executionCancellation)
+        .where(
+          and(
+            eq(executionCancellation.executionId, row.id),
+            inArray(executionCancellation.state, ["requested", "delivered"]),
+          ),
+        )
+        .get();
+      if (open) throw new RemoteError("cancellation_delivery_unconfirmed");
+      const id = newId(ID_PREFIXES.cancellation);
+      db.insert(executionCancellation)
+        .values({
+          id,
+          executionId: row.id,
+          requestId: key,
+          projectId: row.projectId,
+          machineId: row.machineId,
+          authorizationGeneration: row.authorizationGeneration,
+          holderInstanceId: row.holderInstanceId,
+          actorKind: "human",
+          actorId: ctx.userId,
+          state: "requested",
+          signalOutcome: "none",
+          policy: "term_then_kill",
+          termWaitMs: 2000,
+          requestedAt: ctx.now,
+        })
+        .run();
+      db.insert(diagnosticEvent)
+        .values({
+          id: newId(ID_PREFIXES.diagnostic),
+          at: ctx.now,
+          level: "info",
+          event: "remote.cancel_requested",
+          requestId: ctx.requestId,
+          projectId: row.projectId,
+          executionId: row.id,
+          message: "人类已入队取消意图，尚未确认进程退出",
+          data: JSON.stringify({ executionId: row.id, actorKind: "human" }),
+        })
+        .run();
+      return cancellationView(
+        db.select().from(executionCancellation).where(eq(executionCancellation.id, id)).get()!,
+      );
+    })
+    .immediate();
+}
+/**
+ * 取消送达后等多久才敢写「投递未确认」的窗口基准。窗口从这次取消的 `termWaitMs` 派生：
+ * 必须覆盖「TERM→KILL 宽限 + 退出观测 + 报告往返」，否则合法的宽限取消会被抢先判成失败。
+ */
+const CANCELLATION_CONFIRM_WINDOW_FLOOR_MS = 15000;
+/** Worker 在信号之后观测退出的固定窗口，与 `src/worker/remote.ts` 的 `EXIT_OBSERVATION_MS` 同值。 */
+const CANCELLATION_EXIT_OBSERVATION_MS = 5000;
+/** 余量：runner 落盘 durable result 后由下一次 exchange 上行报告的往返。 */
+const CANCELLATION_CONFIRM_MARGIN_MS = 5000;
+/** 派生窗口。只影响 `delivery_unconfirmed` 的写入时机，不抢先于 durable result 判失败。 */
+export function cancellationConfirmWindowMs(termWaitMs: number) {
+  return Math.max(
+    CANCELLATION_CONFIRM_WINDOW_FLOOR_MS,
+    termWaitMs + CANCELLATION_EXIT_OBSERVATION_MS + CANCELLATION_CONFIRM_MARGIN_MS,
+  );
+}
 /**
  * 构建尚未下发的取消意图供 Worker 拉取。发送前只标 `delivered`（送达），
  * 旧授权代次的意图直接作废，不能借租约操作别人的 Machine。
@@ -907,7 +1307,7 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
       sends.set(row.id, now.getTime());
       continue;
     }
-    if (now.getTime() - sentAt < CANCELLATION_CONFIRM_WINDOW_MS) continue;
+    if (now.getTime() - sentAt < cancellationConfirmWindowMs(row.termWaitMs)) continue;
     db.update(executionCancellation)
       .set({ state: "failed", failureReason: "delivery_unconfirmed" })
       .where(
@@ -921,8 +1321,13 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
 /**
  * runner 落盘的 durable result 是取消的唯一退出证据：意图已送达而命令随后退出写 `exited_observed`，
  * 意图尚未送达而命令自然退出写 `already_exited`。不重写执行结果本身。
+ *
+ * `exitObserved === false` 表示 Worker 只看到进程不见了、没有 result 落盘。此时既不能写
+ * `exited_observed`（没有退出码可确认），也不能沿用 `already_exited`（不知道是不是自然退出）：
+ * 诚实的终态是未确认，原因 `exit_not_observed`。送达过的记 `failed`，没送达的记 `unknown`
+ * （check_7 要求 `failed` 有送达时间）。
  */
-function settleCancellations(executionId: string, now: Date) {
+function settleCancellations(executionId: string, now: Date, exitObserved = true) {
   for (const row of db
     .select()
     .from(executionCancellation)
@@ -933,15 +1338,24 @@ function settleCancellations(executionId: string, now: Date) {
       ),
     )
     .all())
-    db.update(executionCancellation)
-      .set({
-        state: row.deliveredAt === null ? "already_exited" : "exited_observed",
-        // 未送达时 delivered_at 必须 NULL（check_5 要求退出时间晚于送达时间）。
-        deliveredAt: row.deliveredAt ?? now,
-        exitedAt: now,
-      })
-      .where(eq(executionCancellation.id, row.id))
-      .run();
+    if (!exitObserved)
+      db.update(executionCancellation)
+        .set({
+          state: row.deliveredAt === null ? "unknown" : "failed",
+          failureReason: "exit_not_observed",
+        })
+        .where(eq(executionCancellation.id, row.id))
+        .run();
+    else
+      db.update(executionCancellation)
+        .set({
+          state: row.deliveredAt === null ? "already_exited" : "exited_observed",
+          // 未送达时 delivered_at 必须 NULL（check_5 要求退出时间晚于送达时间）。
+          deliveredAt: row.deliveredAt ?? now,
+          exitedAt: now,
+        })
+        .where(eq(executionCancellation.id, row.id))
+        .run();
 }
 function sameSession(a: WorkerSession, b: WorkerSession) {
   return (
@@ -1058,7 +1472,10 @@ export function applyRemoteExchange(
       .where(eq(executionResult.executionId, row.id))
       .get();
     let disposition: "accepted" | "ignored_terminal" = "accepted";
-    if (row.terminalAt) {
+    // unknown/worker_lost 不是不可推翻的结论：真正的退出报告到了就归约成真实终态。
+    // 已被 exited/timed_out/canceled/failed 封住的执行仍按 ignored_terminal 处理。
+    const promotable = row.state === "unknown" && row.failureReason === "worker_lost";
+    if (row.terminalAt && !promotable) {
       if (
         previous &&
         previous.payloadHash !== hash &&
@@ -1080,34 +1497,69 @@ export function applyRemoteExchange(
       const payload = authorized
         ? report.payload
         : { kind: row.operationJson.kind, failureReason: "authorization_revoked" as const };
-      db.update(remoteExecution)
-        .set({
-          state: outcome,
-          drainedAt: ctx.now,
-          terminalAt: ctx.now,
-          failureReason: "failureReason" in payload ? payload.failureReason : null,
-        })
-        .where(eq(remoteExecution.id, row.id))
-        .run();
-      db.insert(executionResult)
-        .values({
-          executionId: row.id,
-          projectId: row.projectId,
-          machineId: row.machineId,
-          authorizationGeneration: row.authorizationGeneration,
-          holderInstanceId: row.holderInstanceId,
-          payloadHash: hash,
-          outcome,
-          payloadJson: payload,
-          recordedAt: ctx.now,
-        })
-        .run();
+      // shell 的 waitMs 快照（exited:false）只是「已启动」的观察：要把 pid/当前输出
+      // 交给工具面，但不能把执行落成终态，否则长命令在窗口后既不能取消也不再采日志。
+      // 真正的终态报告随后覆盖同一行结果，并把执行归约。
+      const provisional =
+        authorized &&
+        !("failureReason" in report.payload) &&
+        report.payload.kind === "shell" &&
+        !report.payload.exited;
+      if (provisional) {
+        if (row.state === "dispatched")
+          db.update(remoteExecution)
+            .set({ state: "running" })
+            .where(eq(remoteExecution.id, row.id))
+            .run();
+      } else
+        db.update(remoteExecution)
+          .set({
+            state: outcome,
+            drainedAt: ctx.now,
+            terminalAt: ctx.now,
+            failureReason: "failureReason" in payload ? payload.failureReason : null,
+            // 没有 runner result 的退出把原因一起交上来：执行停在 understandable 的未知，
+            // 不写成已知终态，也不让取消冒认「已观测到退出」。
+            recoveryReason: report.recoveryReason ?? null,
+          })
+          .where(eq(remoteExecution.id, row.id))
+          .run();
+      const values = {
+        executionId: row.id,
+        projectId: row.projectId,
+        machineId: row.machineId,
+        authorizationGeneration: row.authorizationGeneration,
+        holderInstanceId: row.holderInstanceId,
+        payloadHash: hash,
+        outcome,
+        payloadJson: payload,
+        recordedAt: ctx.now,
+      } as const;
+      if (previous)
+        db.update(executionResult)
+          .set({
+            payloadHash: hash,
+            outcome,
+            payloadJson: payload,
+            recordedAt: ctx.now,
+          })
+          .where(eq(executionResult.executionId, row.id))
+          .run();
+      else db.insert(executionResult).values(values).run();
+      if (provisional) {
+        output.resultAcks.push({ executionId: row.id, disposition });
+        continue;
+      }
     }
     // runner 落盘的 durable result 是取消的唯一退出证据；送达本身不算进程已停。
-    settleCancellations(row.id, ctx.now);
+    settleCancellations(row.id, ctx.now, report.recoveryReason === undefined);
     output.resultAcks.push({ executionId: row.id, disposition });
   }
-  const logRows = input.logFrames?.length ? applyLogFrames(input.logFrames, ctx) : new Map();
+  // 先落位点事实，再落帧：事实抬高「已知产出」，帧只负责把正文补齐，不能因此把完整度说小。
+  const logRows = new Map([
+    ...(input.logFacts?.length ? applyLogFacts(input.logFacts, ctx) : []),
+    ...(input.logFrames?.length ? applyLogFrames(input.logFrames, ctx) : []),
+  ]);
   for (const row of logRows.values()) {
     const ack = logAckOf(acknowledgeLogPrefix(row));
     if (ack) output.logAcks!.push(ack);

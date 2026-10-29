@@ -28,8 +28,9 @@ const uiPlan = 'docs/development-plan-ui.md';
 const summary = 'docs/p4a/summary.md';
 const probe = 'docs/p4a/probe.md';
 const p4bSummary = 'docs/p4b/summary.md';
+const p4cSummary = 'docs/p4c/summary.md';
 const r1Summary = 'docs/r1/summary.md';
-const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary, r1Summary];
+const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary, p4cSummary, r1Summary];
 const originals = new Map(files.map((file) => [file, fs.existsSync(path.join(tree, file)) ? fs.readFileSync(path.join(tree, file), 'utf8') : null]));
 const restore = () => {
   for (const [file, text] of originals) {
@@ -58,6 +59,17 @@ const setBox = (file, prefix, text, heading, state = 'x') => {
   lines[index] = `- [${state}] ${text}`;
   write(file, lines.join('\n'));
 };
+const stripP4cLinks = (file) => {
+  write(file, read(file).replace(/\[([^\]]*)\]\(p4c\/summary\.md[^)]*\)/g, '$1'));
+};
+
+const uncheck = (file, heading) => {
+  const lines = read(file).split('\n');
+  const [start, end] = within(lines, heading);
+  for (let index = start; index < end; index++) lines[index] = lines[index].replace(/^- \[x\] /, '- [ ] ');
+  write(file, lines.join('\n'));
+};
+
 const evidence = (section, commit, command) => `# Probe 证据\n\n## ${section}\n\n实现提交 \`${commit}\`，重跑 \`${command}\`。\n`;
 const acceptance = (human) =>
   `# I-P4a 验收摘要\n\n## 交付范围\n\n章节范围。\n\n## 体验后变更\n\nHuman 体验反馈改变的领域决定。\n\n## 功能交付证据\n\n功能基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## 技术验收证据\n\n独立验收基线 \`${head}\`，重跑 \`bash scripts/verify/s-machine-contracts.sh\`。\n\n## human-体验确认\n\n${human}\n`;
@@ -77,6 +89,19 @@ const p4bHumanNoRecord = () => {
 const p4bSection = (heading, line) => {
   fs.writeFileSync(path.join(tree, p4bSummary), read(p4bSummary).replace(`### ${heading}\n`, `### ${heading}\n\n${line}\n`));
 };
+const p4cHuman = (line) => {
+  const file = path.join(tree, p4cSummary);
+  fs.writeFileSync(file, read(p4cSummary).replace('## Human 体验确认\n', `## Human 体验确认\n\n${line}\n`));
+};
+const p4cHumanNoRecord = () => {
+  const file = path.join(tree, p4cSummary);
+  fs.writeFileSync(
+    file,
+    read(p4cSummary).replace(/^- 确认记录：Human 亲自体验确认通过，版本 `[0-9a-f]{7,40}`$/gm, ''),
+  );
+};
+const p4cHumanBox = () =>
+  setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4c');
 const humanBox = () =>
   setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4b');
 const link = '证据见 [P4a 证据](p4a/probe.md#p4a-证据)。';
@@ -190,6 +215,45 @@ probeCase('P4b delivery section with an unresolvable commit fails', () => {
   write(p4bSummary, lines.join('\n'));
   setBox(functional, '验证不同 Projects', p4bLink5);
 }, { code: 1, includes: 'P4b checkbox 5: commit deadbeef does not resolve' });
+probeCase('checked P4c without evidence fails', () => {
+  setBox(functional, '实现稳定请求 ID', '临时探针勾选 P4c，没有章节证据。', '### P4c');
+}, { code: 1, includes: 'P4c checkbox 1: missing docs/p4c evidence' });
+probeCase('P4c evidence from another chapter fails', () => {
+  setBox(functional, '实现稳定请求 ID', '证据见 [P4b 验收](p4b/summary.md#技术验收证据)。', '### P4c');
+}, { code: 1, includes: 'P4c checkbox 1: missing docs/p4c/summary.md evidence' });
+const p4cLink = '证据见 [稳定标识与取消](p4c/summary.md#1-稳定请求-id执行-id日志游标状态退出结果和显式取消)。';
+probeCase('complete P4c evidence passes', () => {
+  setBox(functional, '实现稳定请求 ID', p4cLink, '### P4c');
+}, { code: 0 });
+probeCase('P4c evidence with an unresolved commit fails', () => {
+  const file = path.join(tree, p4cSummary);
+  fs.writeFileSync(
+    file,
+    read(p4cSummary).replace(
+      '### 1. 稳定请求 ID、执行 ID、日志游标、状态、退出结果和显式取消\n',
+      '### 1. 稳定请求 ID、执行 ID、日志游标、状态、退出结果和显式取消\n\n实现提交 `deadbeef`。\n',
+    ),
+  );
+  setBox(functional, '实现稳定请求 ID', p4cLink, '### P4c');
+}, { code: 1, includes: 'P4c checkbox 1: commit deadbeef does not resolve' });
+probeCase('I-P4c technical acceptance without a summary fails', () => {
+  // 章节已勾选时删掉 summary 会先被 f-docs 的悬空链接捕获；探针要单独考察
+  // 「技术验收已勾选但没有 summary」，所以先把功能与 UI 的勾选退回未选。
+  uncheck(functional, '### P4c');
+  uncheck(uiPlan, '## UI-P4c');
+  uncheck(packagePlan, '### I-P4c');
+  for (const file of [functional, uiPlan, packagePlan]) stripP4cLinks(file);
+  fs.rmSync(path.join(tree, p4cSummary), { force: true });
+  setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4c');
+}, { code: 1, includes: 'I-P4c technical acceptance requires docs/p4c/summary.md' });
+probeCase('I-P4c human confirmation without a record fails', () => {
+  p4cHumanNoRecord();
+  p4cHumanBox();
+}, { code: 1, includes: 'I-P4c human acceptance requires an explicit confirmation record' });
+probeCase('I-P4c recorded human confirmation passes', () => {
+  p4cHuman(`- 确认记录：Human 亲自体验确认通过，版本 \`${head}\``);
+  p4cHumanBox();
+}, { code: 0 });
 probeCase('checked I-P4b technical acceptance passes', () => {
   setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4b');
 }, { code: 0 });

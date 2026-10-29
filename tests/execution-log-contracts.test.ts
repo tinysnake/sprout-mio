@@ -352,7 +352,7 @@ describe("execution log and cancellation contracts", () => {
     const read = {
       ...key,
       executionId,
-      cursor: { nextSequence: 3 },
+      cursor: { executionId, nextSequence: 3 },
       limitBytes: 65536,
     };
     expect(executionLogReadInputSchema.safeParse(read).success).toBe(true);
@@ -378,12 +378,13 @@ describe("execution log and cancellation contracts", () => {
           checksum: "c".repeat(64),
         },
       ],
-      nextCursor: { nextSequence: 4 },
+      nextCursor: { executionId, nextSequence: 4 },
       availableFromSequence: 3,
       acknowledgedThroughSequence: 4,
       producedThroughSequence: 4,
       gapRanges: [{ fromSequence: 1, toSequence: 2 }],
       logState: "gap",
+      hasMore: false,
       workerOnline: false,
     };
     expect(executionLogReadViewSchema.safeParse(view).success).toBe(true);
@@ -434,6 +435,7 @@ describe("execution log and cancellation contracts", () => {
       payloadHash: "d".repeat(64),
       terminalAt: at,
       failureReason: null,
+      recoveryReason: null,
       result: {
         kind: "shell",
         pid: 42,
@@ -447,6 +449,7 @@ describe("execution log and cancellation contracts", () => {
       producedThroughSequence: 9,
       acknowledgedThroughSequence: 8,
       availableFromSequence: 2,
+      cancellation: null,
     };
     expect(executionViewSchema.safeParse(executionView).success).toBe(true);
     expect(

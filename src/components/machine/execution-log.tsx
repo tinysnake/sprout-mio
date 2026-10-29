@@ -9,8 +9,8 @@ import { EXECUTION_LOG_READ_LIMIT_MAX_BYTES } from "../../contracts/remote";
 import { Button } from "../ui/button";
 import { StatusLine } from "./machine-list";
 import {
-  LOG_STATE_LABELS,
   isIncompleteLogState,
+  logCompleteness,
   type ExecutionLogReader,
   type LogConnection,
 } from "./presentation";
@@ -64,14 +64,14 @@ export function cursorFacts(view: ExecutionLogReadView): string[] {
   ];
 }
 
-/** 续读游标：能继续读时给下一序号，读到尾时明确说明没有更多可读区段。 */
+/** 续读游标：能再前进时给下一序号；不能时明确说明服务端已无更大帧。 */
 export function resumeFacts(view: ExecutionLogReadView): {
   canContinue: boolean;
   text: string;
 } {
   const next = view.nextCursor.nextSequence;
   const produced = view.producedThroughSequence;
-  const canContinue = produced !== null && next <= produced;
+  const canContinue = view.hasMore;
   return {
     canContinue,
     text: canContinue
@@ -104,12 +104,16 @@ export function ExecutionLogViewer({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
 
-  const stateLabel = LOG_STATE_LABELS[view?.logState ?? execution.logState];
+  const stateLabel = logCompleteness({
+    logState: view?.logState ?? execution.logState,
+    workerOnline: view ? view.workerOnline : null,
+    connection,
+  });
   const incomplete = view
     ? isIncompleteLogState(view.logState)
     : isIncompleteLogState(execution.logState);
 
-  async function load(cursor: { nextSequence: number } | null) {
+  async function load(cursor: ExecutionLogReadView["nextCursor"] | null) {
     if (!read || pending) return;
     setPending(true);
     setError(null);
@@ -207,7 +211,7 @@ export function ExecutionLogViewer({
         <p data-testid={`${testId}-error`} className={toneText.danger}>
           {error.message}
           {error.code === "execution_log_gap"
-            ? " 请从新的可读起点重新读取，不静默续读。"
+            ? " 前缀已被裁剪，请点「读取日志」从可读起点重读，不静默续读。"
             : error.code === "execution_log_cursor_stale"
               ? " 游标已过期，请从最新一页重新开始。"
               : ""}
@@ -232,7 +236,7 @@ export function ExecutionLogViewer({
             variant="secondary"
             data-testid={`${testId}-resume`}
             disabled={!read || pending || !view || !resume?.canContinue}
-            onClick={() => view && void load({ nextSequence: view.nextCursor.nextSequence })}
+            onClick={() => view && void load(view.nextCursor)}
           >
             从游标续读
           </Button>
@@ -262,12 +266,13 @@ function logFactsFallback(execution: ExecutionView): ExecutionLogReadView {
     machineId: execution.machineId,
     executionId: execution.executionId,
     frames: [],
-    nextCursor: { nextSequence: 1 },
+    nextCursor: { executionId: execution.executionId, nextSequence: 1 },
     availableFromSequence: execution.availableFromSequence,
     acknowledgedThroughSequence: execution.acknowledgedThroughSequence,
     producedThroughSequence: execution.producedThroughSequence,
     gapRanges: [],
     logState: execution.logState,
+    hasMore: false,
     workerOnline: false,
   };
 }

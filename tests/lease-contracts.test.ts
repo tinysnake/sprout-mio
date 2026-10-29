@@ -255,11 +255,13 @@ describe("P4b shared contracts", () => {
       payloadHash: "a".repeat(64),
       terminalAt: at,
       failureReason: null,
+      recoveryReason: null,
       result,
       logState: "none",
       producedThroughSequence: null,
       acknowledgedThroughSequence: null,
       availableFromSequence: null,
+      cancellation: null,
     };
     expect(executionViewSchema.safeParse(view).success).toBe(true);
     for (const state of ["invented", "running", "failed"])

@@ -93,30 +93,55 @@ export const CANCELLATION_STATES = [
 ] as const;
 /** 只记录 OS 是否接受信号调用，不证明进程已退出。 */
 export const CANCELLATION_SIGNAL_OUTCOMES = ["none", "term_delivered", "kill_delivered"] as const;
-export const CANCELLATION_FAILURE_REASONS = ["signal_failed", "delivery_unconfirmed"] as const;
+/**
+ * `exit_not_observed`：Worker 观测到进程不再运行，但 runner 没有落盘 result。
+ * 它不是「已停止」：退出码与信号都不可知，取消只能停在未确认态。
+ */
+export const CANCELLATION_FAILURE_REASONS = [
+  "signal_failed",
+  "delivery_unconfirmed",
+  "exit_not_observed",
+] as const;
 /** 单帧正文上限按原始 UTF-8 bytes 计，写进 `execution_log_frame` 的 CHECK。 */
 export const EXECUTION_LOG_FRAME_MAX_BYTES = 16384;
 /** 单 exchange 的日志帧数量上限，与命令数组同级。 */
 export const EXECUTION_LOG_FRAMES_PER_EXCHANGE = 8;
 /** 单条日志读取请求的正文预算上限。 */
 export const EXECUTION_LOG_READ_LIMIT_MAX_BYTES = 65536;
+/** 单执行保留上限：payload 字节与帧数先到者触发前缀裁剪。 */
+export const EXECUTION_LOG_RETAIN_BYTES = 1048576;
+export const EXECUTION_LOG_RETAIN_FRAMES = 512;
 export const CANCELLATION_INTENT_NAMESPACE = "cancel:";
 export const REMOTE_OUTCOMES = ["succeeded", "failed", "rejected", "timed_out", "unknown"] as const;
 export const REMOTE_FAILURE_REASONS = [
   "stale_generation",
   "not_holder",
   "authorization_revoked",
+  // 收到取消请求并因此终止：终态仍是 failed，原因与撤权分开。
+  "cancelled",
   "deadline",
   "worker_lost",
   "executor_error",
   "capability_unavailable",
   "directory_unavailable",
 ] as const;
+/**
+ * 恢复归约得出的 unknown 原因。只有 Worker 能给出：它读的是自己的 durable claim 与 runner
+ * 落盘的结果文件，不是宿主的内存。原因字符串随执行视图透出，页面不把两种缺失混成一句。
+ */
+export const EXECUTION_RECOVERY_REASONS = [
+  "child-exited-without-result",
+  "no-fence-record",
+] as const;
+export type ExecutionRecoveryReason = (typeof EXECUTION_RECOVERY_REASONS)[number];
+const recoveryReasonSchema = z.enum(EXECUTION_RECOVERY_REASONS);
 const failureReasonSchema = z.enum(REMOTE_FAILURE_REASONS);
 const shellSuccessSchema = z
   .strictObject({
     kind: z.literal("shell"),
     pid: positiveSafeIntegerSchema,
+    // 由 runner result 归约出的终态：正文不可得，`recovered` 让页面不把它当成原生结果。
+    recovered: z.boolean().optional(),
     exited: z.boolean(),
     exitCode: z.number().int().nullable(),
     stdout: bytes(65536),
@@ -151,6 +176,7 @@ const successPayloadSchema = z.discriminatedUnion("kind", successPayloads);
 const failurePayloadSchema = z
   .strictObject({
     kind: z.enum(REMOTE_OPERATION_KINDS),
+    recovered: z.boolean().optional(),
     failureReason: failureReasonSchema,
     partial: successPayloadSchema.optional(),
   })
@@ -178,6 +204,17 @@ export const executionSubmitInputSchema = leaseKeySchema.extend({
   operation: remoteOperationSchema,
 });
 export const executionReadInputSchema = leaseKeySchema.extend({ executionId: executionIdSchema });
+/** 取消尝试的可见状态。`delivered` 不显示为已停止。 */
+export const executionCancellationViewSchema = leaseKeySchema.extend({
+  cancelId: id(ID_PREFIXES.cancellation),
+  executionId: executionIdSchema,
+  state: z.enum(CANCELLATION_STATES),
+  requestedAt: timestampSchema,
+  deliveredAt: timestampSchema.nullable(),
+  exitedAt: timestampSchema.nullable(),
+  signalOutcome: z.enum(CANCELLATION_SIGNAL_OUTCOMES),
+  failureReason: z.enum(CANCELLATION_FAILURE_REASONS).nullable(),
+});
 /** 日志列与执行状态正交，恢复事实只改运行位点，不改已确定的终态。 */
 export const executionViewSchema = leaseKeySchema
   .extend({
@@ -200,11 +237,15 @@ export const executionViewSchema = leaseKeySchema
     payloadHash: fingerprintSchema,
     terminalAt: timestampSchema.nullable(),
     failureReason: failureReasonSchema.nullable(),
+    // 只对 unknown 有意义：说清是「子进程已退出且没有结果文件」还是「根本没有 fence 记录」。
+    recoveryReason: recoveryReasonSchema.nullable(),
     result: remoteResultPayloadSchema.nullable(),
     logState: z.enum(EXECUTION_LOG_STATES),
     producedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
     acknowledgedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
     availableFromSequence: nonnegativeSafeIntegerSchema.nullable(),
+    // 读视图事实，不是执行终态：取消存在也不代表进程已停。
+    cancellation: executionCancellationViewSchema.nullable(),
   })
   .superRefine((value, ctx) => {
     const terminal = REMOTE_OUTCOMES.some((state) => state === value.state);
@@ -213,6 +254,7 @@ export const executionViewSchema = leaseKeySchema
       terminal !== (value.terminalAt !== null) ||
       (value.terminalAt !== null && Date.parse(value.terminalAt) < Date.parse(value.createdAt)) ||
       (!terminal && (value.failureReason !== null || value.result !== null)) ||
+      (value.recoveryReason !== null && value.state !== "unknown") ||
       (value.state === "succeeded" && value.failureReason !== null) ||
       (terminal && value.state !== "succeeded" && value.failureReason === null) ||
       (value.result !== null &&
@@ -276,12 +318,18 @@ export const remoteReportSchema = z
       drained: z.literal(true),
       outcome: z.enum(REMOTE_OUTCOMES),
       payload: remoteResultPayloadSchema,
+      // 只有 runner 的 durable result 才算观测到退出。没有 result 时 Worker 必须在这里
+      // 交出原因，宿主据此拒绝把执行写成终态、也拒绝把取消写成 `exited_observed`。
+      recoveryReason: recoveryReasonSchema.optional(),
     }),
   ])
   .superRefine((value, ctx) => {
     if (
       value.machineId !== value.dispatchSession.machineId ||
-      (value.phase === "terminal" && !validOutcome(value.outcome, value.payload))
+      (value.phase === "terminal" && !validOutcome(value.outcome, value.payload)) ||
+      (value.phase === "terminal" &&
+        value.recoveryReason !== undefined &&
+        value.outcome !== "unknown")
     ) {
       ctx.addIssue({ code: "custom", message: "报告必须匹配投递身份与结果状态" });
     }
@@ -324,6 +372,19 @@ export const executionLogFrameSchema = z
       (value.gapTo === undefined || value.gapTo >= value.sequence),
     "日志帧要么带正文要么声明 gap，且字节位点单调",
   );
+/**
+ * 上行日志位点事实。`producedThroughSequence` 是 Worker 自己已经产出的最后一个序号，
+ * 不等于宿主收到了多少；`sealed` 表示这次执行已经终态、Worker 不会再产出新帧。
+ * 宿主只有在收到 `sealed` 且已确认前缀覆盖全部已产出位点时才允许判定 `full`。
+ */
+export const executionLogFactSchema = z.strictObject({
+  executionId: executionIdSchema,
+  ...leaseKeySchema.shape,
+  authorizationGeneration: positiveSafeIntegerSchema,
+  holderInstanceId: instanceIdSchema,
+  producedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
+  sealed: z.boolean(),
+});
 /** 上行恢复事实。必须带 runner token；token 只能来自宿主曾向这台 Machine 下发过的命令。 */
 export const executionRecoverySchema = z.strictObject({
   executionId: executionIdSchema,
@@ -332,6 +393,10 @@ export const executionRecoverySchema = z.strictObject({
   holderInstanceId: instanceIdSchema,
   runnerToken: runnerTokenSchema,
   observedState: z.enum(["running", "exited", "unknown"]),
+  // unknown 必须带原因；running/exited 时为空。旧调用方可以省略，服务端按 null 处理。
+  observedReason: recoveryReasonSchema.nullable().optional(),
+  // 命令本身的 pid：恢复事实只能从 runner claim 得到它，用于恢复出的 shell 结果。
+  pid: positiveSafeIntegerSchema.nullable().optional(),
   exitCode: z.number().int().min(-1).max(255).nullable(),
   signal: z.string().max(16).nullable(),
   observedExitedAt: timestampSchema.nullable(),
@@ -342,6 +407,7 @@ export const remoteExchangeInputSchema = z.strictObject({
   results: z.array(remoteReportSchema).max(64),
   fenceAcks: z.array(remoteFenceAckSchema).max(64),
   logFrames: z.array(executionLogFrameSchema).max(EXECUTION_LOG_FRAMES_PER_EXCHANGE).optional(),
+  logFacts: z.array(executionLogFactSchema).max(64).optional(),
   recoveries: z.array(executionRecoverySchema).max(8).optional(),
 });
 const authorizationSchema = leaseKeySchema
@@ -401,9 +467,15 @@ const agentMutationInputSchema = z.discriminatedUnion("action", [
   leaseMutationInputSchema.options[1],
   leaseMutationInputSchema.options[2],
 ]);
+/** 游标绑定执行：用执行 A 的游标读执行 B 必须被拒，不静默跳过 B 的前缀。 */
+export const executionLogCursorSchema = z.strictObject({
+  executionId: executionIdSchema,
+  nextSequence: nonnegativeSafeIntegerSchema,
+});
 export const executionLogReadInputSchema = leaseKeySchema.extend({
   executionId: executionIdSchema,
-  cursor: z.strictObject({ nextSequence: nonnegativeSafeIntegerSchema }).nullable(),
+  cursor: executionLogCursorSchema.nullable(),
+  /** 软预算：仍有可读帧时至少返回一帧，保证分页游标单调前进。 */
   limitBytes: positiveSafeIntegerSchema.max(EXECUTION_LOG_READ_LIMIT_MAX_BYTES).default(65536),
 });
 export const executionCancelInputSchema = leaseKeySchema.extend({
@@ -426,7 +498,7 @@ export const executionLogReadViewSchema = leaseKeySchema.extend({
       checksum: fingerprintSchema,
     }),
   ),
-  nextCursor: z.strictObject({ nextSequence: nonnegativeSafeIntegerSchema }),
+  nextCursor: executionLogCursorSchema,
   availableFromSequence: nonnegativeSafeIntegerSchema.nullable(),
   acknowledgedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
   producedThroughSequence: nonnegativeSafeIntegerSchema.nullable(),
@@ -437,18 +509,14 @@ export const executionLogReadViewSchema = leaseKeySchema.extend({
     }),
   ),
   logState: z.enum(EXECUTION_LOG_STATES),
+  /** 服务端仍存着大于 `nextCursor.nextSequence` 的帧；产水位更高不代表还能前进。 */
+  hasMore: z.boolean(),
   workerOnline: z.boolean(),
 });
-/** 取消尝试的可见状态。`delivered` 不显示为已停止。 */
-export const executionCancellationViewSchema = leaseKeySchema.extend({
-  cancelId: id(ID_PREFIXES.cancellation),
+/** Web 侧取消请求：幂等键在 body，requestId 头只做日志关联。 */
+export const executionCancelRequestSchema = z.strictObject({
   executionId: executionIdSchema,
-  state: z.enum(CANCELLATION_STATES),
-  requestedAt: timestampSchema,
-  deliveredAt: timestampSchema.nullable(),
-  exitedAt: timestampSchema.nullable(),
-  signalOutcome: z.enum(CANCELLATION_SIGNAL_OUTCOMES),
-  failureReason: z.enum(CANCELLATION_FAILURE_REASONS).nullable(),
+  requestId: requestIdSchema,
 });
 export const remoteAgentRequestSchema = z.strictObject({
   version: z.literal(2),
@@ -525,6 +593,7 @@ export type RemoteReport = z.infer<typeof remoteReportSchema>;
 export type RemoteFence = z.infer<typeof remoteFenceSchema>;
 export type RemoteFenceAck = z.infer<typeof remoteFenceAckSchema>;
 export type RemoteExchangeInput = z.infer<typeof remoteExchangeInputSchema>;
+export type ExecutionLogFact = z.infer<typeof executionLogFactSchema>;
 export type RemoteExchangeOutput = z.infer<typeof remoteExchangeOutputSchema>;
 export type RemoteAgentRequest = z.infer<typeof remoteAgentRequestSchema>;
 export type ExecutionSubmitInput = z.infer<typeof executionSubmitInputSchema>;
@@ -534,6 +603,7 @@ export type ExecutionLogFrame = z.infer<typeof executionLogFrameSchema>;
 export type ExecutionRecovery = z.infer<typeof executionRecoverySchema>;
 export type ExecutionCancel = z.infer<typeof executionCancelSchema>;
 export type ExecutionCancelInput = z.infer<typeof executionCancelInputSchema>;
+export type ExecutionCancelRequest = z.infer<typeof executionCancelRequestSchema>;
 export type ExecutionLogReadInput = z.infer<typeof executionLogReadInputSchema>;
 export type ExecutionLogReadView = z.infer<typeof executionLogReadViewSchema>;
 export type ExecutionCancellationView = z.infer<typeof executionCancellationViewSchema>;

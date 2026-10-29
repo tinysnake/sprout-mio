@@ -39,7 +39,7 @@ const descriptions: Record<ToolName, string> = {
   sprout_remote_execution_cancel:
     "显式取消显式指定的远端 Machine 上一次执行，绝非宿主进程。machineId、executionId 与当前租约 authorizationGeneration 必填；requestId 标识同一次取消请求，重试请沿用同一个。policy 为 term_then_kill 或 kill，termWaitMs 最多 10000。取消是显式动作：送达（delivered）只说明 Worker 收到意图，不表示进程已停；取消不成功（failed / unknown / 停在 requested）不得当作已停止，仍需 execution_get 确认退出。取消不会释放租约、不会删除文件。",
   sprout_remote_execution_log:
-    "按游标增量读取显式指定的远端 Machine 上一次执行的日志，绝非宿主文件。machineId 必填，cursor 为 {nextSequence} 或 null 从起点读，limitBytes 最多 65536。frames 为空只表示该范围无帧，不等于没有输出。gapRanges 非空或 logState 为 gap / truncated 表示日志不完整，必须当作不完整展示；logState 为 none 才是确知无输出；workerOnline 为 false 时未收到的部分仍是 unknown。",
+    "按游标增量读取显式指定的远端 Machine 上一次执行的日志，绝非宿主文件。machineId 必填，cursor 为 {executionId,nextSequence} 或 null 从起点读；用别的执行的游标会被 execution_log_cursor_stale 拒绝，limitBytes 最多 65536。frames 为空只表示该范围无帧，不等于没有输出。gapRanges 非空或 logState 为 gap / truncated 表示日志不完整，必须当作不完整展示；logState 为 none 才是确知无输出；workerOnline 为 false 时未收到的部分仍是 unknown。",
 };
 
 function buildRequest(name: ToolName, parameters: unknown, projectId: string): RemoteAgentRequest {
@@ -127,7 +127,7 @@ function logDetail(view: z.infer<typeof executionLogReadViewSchema>) {
     view.logState === "none"
       ? "该执行尚无日志；这是确知的空，不是未收到。"
       : view.logState === "gap"
-        ? "日志存在被裁掉的区段（gapRanges），请从 availableFromSequence 重新读取；不要把缺口当作没有输出。"
+        ? "日志存在被裁掉的区段（gapRanges），从 availableFromSequence 重新读取；不要把缺口当作没有输出。"
         : view.logState === "truncated"
           ? "日志已按预算截断；已收到的帧不是全部输出。"
           : view.logState === "partial"
@@ -137,6 +137,7 @@ function logDetail(view: z.infer<typeof executionLogReadViewSchema>) {
     outcome: incomplete ? "incomplete" : "succeeded",
     logState: view.logState,
     incomplete,
+    hasMore: view.hasMore,
     gapRanges: view.gapRanges,
     frames: view.frames,
     nextCursor: view.nextCursor,

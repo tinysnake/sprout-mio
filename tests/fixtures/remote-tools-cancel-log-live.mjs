@@ -56,12 +56,13 @@ const logView = (logState, overrides = {}) => ({
             checksum: "a".repeat(64),
           },
         ],
-  nextCursor: { nextSequence: logState === "none" ? 1 : 2 },
+  nextCursor: { executionId, nextSequence: logState === "none" ? 1 : 2 },
   availableFromSequence: logState === "gap" ? 5 : 1,
   acknowledgedThroughSequence: logState === "full" ? 1 : null,
   producedThroughSequence: logState === "none" ? null : logState === "gap" ? 9 : 1,
   gapRanges: logState === "gap" ? [{ fromSequence: 2, toSequence: 4 }] : [],
   logState,
+  hasMore: false,
   workerOnline: logState !== "truncated",
   ...overrides,
 });
@@ -172,9 +173,9 @@ export default function probe(pi) {
     const delivered = await cancel.execute('delivered', {...base, policy:'term_then_kill'});
     const failed = await cancel.execute('failed', {...base, policy:'kill'});
     const truncated = await read.execute('truncated', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},cursor:null});
-    const gap = await read.execute('gap', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},cursor:{nextSequence:9}});
-    const empty = await read.execute('empty', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},cursor:{nextSequence:42}});
-    const impostor = await read.execute('impostor', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},cursor:{nextSequence:7}});
+    const gap = await read.execute('gap', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},cursor:{executionId:${JSON.stringify(executionId)},nextSequence:9}});
+    const empty = await read.execute('empty', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},cursor:{executionId:${JSON.stringify(executionId)},nextSequence:42}});
+    const impostor = await read.execute('impostor', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},cursor:{executionId:${JSON.stringify(executionId)},nextSequence:7}});
     const presentation = {
       // delivered 不等于已停：不算失败，但也不能显示为已停止。
       delivered: {isError: delivered.isError, stopped: delivered.details.stopped, state: delivered.details.outcome, message: delivered.details.message},

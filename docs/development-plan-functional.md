@@ -115,11 +115,11 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ### P4c 实现长命令与不确定结果
 
-- [ ] 实现稳定请求 ID、执行 ID、日志游标、状态、退出结果和显式取消。
-- [ ] 验证响应丢失后的重复提交不会重复启动已确认的同一命令。
-- [ ] 验证 run 结束及宿主连接中断不终止命令，当前持有者重连后能继续查询。
-- [ ] 按 P0 确定的恢复范围验证宿主、Worker 和 Machine 重启。无法确认时展示未知，不重跑未知命令。
-- [ ] 固定日志和结果保留规则。日志达到限制时明确告知，不静默丢弃后声称完整。
+- [x] 实现稳定请求 ID、执行 ID、日志游标、状态、退出结果和显式取消。证据 [稳定标识与取消](p4c/summary.md#1-稳定请求-id执行-id日志游标状态退出结果和显式取消)，重跑 `bash scripts/verify/aa-execution-log-contracts.sh`、`bash scripts/verify/af-execution-cancel-authority.sh`。
+- [x] 验证响应丢失后的重复提交不会重复启动已确认的同一命令。证据 [重复提交与去重](p4c/summary.md#2-响应丢失后的重复提交不重复启动已确认的同一命令)，反证见同节；重跑 `bash scripts/verify/ah-execution-live-e2e.sh`。
+- [x] 验证 run 结束及宿主连接中断不终止命令，当前持有者重连后能继续查询。证据 [断连与重连续读](p4c/summary.md#3-run-结束与宿主连接中断不终止命令持有者重连后继续查询)，重跑 `bash scripts/verify/ah-execution-live-e2e.sh`、`bash scripts/verify/ac-execution-recovery-log.sh`。
+- [x] 按 P0 确定的恢复范围验证宿主、Worker 和 Machine 重启。无法确认时展示未知，不重跑未知命令。证据 [恢复三层权威与 12 格](p4c/summary.md#4-按-p0-恢复范围验证宿主worker-和-machine-重启未知结果不重跑)，重跑 `bash scripts/verify/aj-recovery-matrix.sh`、`bash scripts/verify/al-execution-exit-custody.sh`。
+- [x] 固定日志和结果保留规则。日志达到限制时明确告知，不静默丢弃后声称完整。证据 [保留规则与封口事实](p4c/summary.md#5-固定日志和结果保留规则达到限制时明确告知)，重跑 `bash scripts/verify/am-execution-log-honesty.sh`、`bash scripts/verify/ak-execution-accept-fixes-2.sh`。
 
 ### P4d 实现交接、收回与 Machine 移除
 
@@ -256,4 +256,4 @@ Human 于 `2026-10-25T03:44Z` 授权以无需大型软件的 MCP 验证透传能
 | P2 | 已完成 Project 配置、全局 Agent profile 与成员、持久 DM 与分身、消息、创建者授权、稳定 URL 和 Info Hub 两个已有对象视角。实现基线 `28d4fb2`，P2 最终实现、验收与合入范围 `28d4fb2..db185f8`。原 a～e 的实现与合入范围 `28d4fb2..d8f4e2b`。PR #10 head `cfa5d4d` merge `6836b06`，PR #11 head `fdad1ca` merge `53c9cb7`，PR #12 head `bf7ffa4` merge `2b814eb`，PR #13 head `dc11b8a` merge `da4aebb`，PR #14 head `872e62d` merge `d8f4e2b`。逐项证据见 [p2/summary.md](p2/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0，真实 SQLite、真实 Chromium 七个 URL 的直接进入、刷新、前进后退，真实生产进程 SIGTERM 与重启后身份、消息、三项配置及人设字面量相等，两用户隔离覆盖六页与 17 个 RPC 且 B 正常对照可用。main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/actions/runs/39062616946) completed、success，覆盖检查测试构建迁移与生产 smoke，不含 Chromium。收尾复跑 `bash scripts/verify/l-docs.sh`、`bash scripts/verify.sh` 与 `pnpm check`。真实 Pi、run、宿主仓库、Machine、租约、Task、Group、Public Channel、自动接续、手机、PWA 与并发等未验证项见 summary |
 | P3 | 已完成真实 Pi session、轮次投递与停止、每轮快照、宿主仓库入口与 provenance、Info Hub run 事实与轮初上下文查询；第 2 条部分交付。实现基线 `db185f8`，a～d 的实现与合入范围 `db185f8..e5e2b4e`。PR #19 head `dcd1ddd` merge `34b078e`，PR #20 head `32eac6c` merge `a73770c`，PR #21 head `e51fe69` merge `0d51b1f`，PR #22 head `eb4d141` merge `55da85f`。e 为只读验收，无 PR；f 为收尾，PR #23 head `aa41061` merge `e5e2b4e`（文档落地与 `l-docs` 扩展）。逐项证据见 [p3/summary.md](p3/summary.md) | glm 家族在 P3 无既有产出的阶段验收，从 plan 推导命题，独立复跑真实模型、真实 SQLite、真实 Chromium、Git 与直接 SQL 反证。六条成立，第 2 条未完整交付，保持未勾；宿主配置、认证与 Sprout extension 已交付，codemode、tool_search、MCP 与用户 skills 未进分身工具面。验收基线 `55da85f`，完整边界与后续归属见 summary |
 
-当前下一任务是 P4 的 P4b，由总计划分派。P4a 已收尾：共享契约与数据库单元 `0a33103`、Worker 功能提交 `43d5f9b` 与四轮体验反馈修正均已合入，功能线四条 checklist 全部勾选，结论、验证命令与已知限制见 [p4a/summary.md](p4a/summary.md)。P4b 及以后不由本专项计划自行启动。P3 未验证项与第 2 条部分交付的后续决定见 [p3/summary.md](p3/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端仍留到 P4 对应单元记录。
+当前下一任务是 P4 的 P4c，等 Human 亲自体验后确认。P4b 已收尾：功能、UI 与集成均已合入 main，独立技术验收第五轮在 `809c384` 判定 PASS，Human 已在 `c6653f4` 确认通过，结论见 [p4b/summary.md](p4b/summary.md)。P4c 的功能、UI 与集成同样已合入 main 并在 `d028aa1` 通过第五轮独立技术验收，结论、验证命令与已知限制见 [p4c/summary.md](p4c/summary.md)；Human 体验确认待 Human 给出，P4d 不由本专项计划自行启动。P3 未验证项与第 2 条部分交付的后续决定见 [p3/summary.md](p3/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端留到 P4 对应单元记录。

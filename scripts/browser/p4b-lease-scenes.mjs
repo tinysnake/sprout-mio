@@ -116,51 +116,67 @@ for (const colorScheme of ["light", "dark"]) {
         // 状态、holder、Machine 名称齐全。
         assert.ok((await page.getByTestId("lease-state").count()) >= 3);
         assert.ok((await page.getByTestId("lease-holder-instance").count()) >= 2);
-        // 远端操作目标明确写出远端 Worker，且结果状态覆盖成功/失败/超时/未知。
-        assert.ok(
-          (await page
-            .locator('[data-testid="remote-executions"] [data-testid$="-target"]')
-            .count()) >= 4,
+        // 远端操作卡片只在「调试详情」抽屉里：按机器逐个打开取证，抽屉是模态所以一次一个。
+        const openButtons = page.locator(
+          '[data-testid="remote-executions"] [data-testid^="remote-executions-debug-"][data-testid$="-open"]',
         );
-        const states = await page
-          .locator('[data-testid="remote-executions-item"]')
-          .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-execution-state")));
+        const machineCount = await openButtons.count();
+        assert.ok(machineCount >= 1, `远端操作摘要块缺失（${machineCount}）`);
+        const cardTexts = [];
+        const states = [];
+        let targets = 0;
+        let firstAuthorization = null;
+        let runTitle = null;
+        let operationCount = 0;
+        let firstResultLength = 0;
+        for (let index = 0; index < machineCount; index += 1) {
+          await openButtons.nth(index).click();
+          // 抽屉由 portal 挂到 body，不能按 section 祖先取。
+          const dialog = page.locator(
+            '[data-testid^="remote-executions-debug-"][data-testid$="-dialog"]',
+          );
+          await dialog.waitFor();
+          targets += await dialog.locator('[data-testid$="-target"]').count();
+          const cards = dialog.locator('[data-testid$="-item"][data-execution-state]');
+          states.push(
+            ...(await cards.evaluateAll((nodes) =>
+              nodes.map((node) => node.getAttribute("data-execution-state")),
+            )),
+          );
+          cardTexts.push(...(await cards.allInnerTexts()));
+          if (firstAuthorization === null && (await cards.count()) > 0) {
+            const first = cards.first();
+            firstAuthorization = await first.getByTestId(/item-authorization$/).innerText();
+            runTitle = await first.getByTestId(/item-run$/).getAttribute("title");
+            operationCount = await first.getByTestId(/item-operation$/).count();
+            firstResultLength = (await first.getByTestId(/item-result$/).innerText()).length;
+          }
+          await page.keyboard.press("Escape");
+          await dialog.waitFor({ state: "detached" });
+        }
+        assert.ok(targets >= 4, `远端操作目标数 ${targets}`);
         for (const state of ["succeeded", "failed", "timed_out", "unknown"])
           assert.ok(states.includes(state), `missing state ${state}`);
         // 命令正文不进界面：shell 命令与目标路径（含绝对路径）都不得出现在远端操作卡片里。
-        const cards = page.locator('[data-testid="remote-executions-item"]');
-        const cardsText = await cards.allInnerTexts();
         for (const demo of demoCommands) {
-          for (const text of cardsText) {
+          for (const text of cardTexts) {
             assert.doesNotMatch(text, new RegExp(escapeRegExp(demo)), `卡片回显了命令正文 ${demo}`);
           }
         }
-        for (const text of cardsText) {
+        for (const text of cardTexts) {
           assert.doesNotMatch(text, /\/Users\/linche\/workspace/, "卡片回显了绝对路径");
           assert.doesNotMatch(text, /holder ins_|run run_/, "卡片回了裸 id 标签");
         }
         // 人类可决策的事实仍在，且 holder 显示分身名称而不是 instance id。
-        const firstAuthorization = await cards
-          .first()
-          .getByTestId("remote-executions-item-authorization")
-          .innerText();
+        assert.ok(firstAuthorization, "抽屉里没有任何执行卡片");
         assert.match(firstAuthorization, /授权代次 4/);
         assert.match(firstAuthorization, /持有者 重构搭档/);
         assert.doesNotMatch(firstAuthorization, /ins_aaaaaaaa/);
         assert.match(firstAuthorization, /由该分身的一次运行发起/);
         assert.match(firstAuthorization, /run_12345678/);
-        assert.equal(
-          await cards.first().getByTestId("remote-executions-item-run").getAttribute("title"),
-          "run_12345678-1234-4234-8234-1234567890ab",
-        );
-        assert.equal(
-          await cards.first().getByTestId("remote-executions-item-operation").count(),
-          0,
-          "不再渲染操作正文段落",
-        );
-        assert.ok(
-          (await cards.first().getByTestId("remote-executions-item-result").innerText()).length > 0,
-        );
+        assert.equal(runTitle, "run_12345678-1234-4234-8234-1234567890ab");
+        assert.equal(operationCount, 0, "不再渲染操作正文段落");
+        assert.ok(firstResultLength > 0);
         assert.deepEqual(errors, [], `console errors: ${errors.join(" | ")}`);
         await shoot(page, `leases-${colorScheme}-${width}`);
         const fencing = page.locator('[data-lease-state="fencing"]');
@@ -499,12 +515,19 @@ await check("独立租约路由隔离设置并显示租约与远端操作目标"
       (await section.getByTestId("lease-holder-instance").textContent()) ?? "",
       /ins_aaaaaaaa/,
     );
-    const executions = page.getByTestId("machine-executions");
+    // 卡片只在「调试详情」抽屉里；抽屉 portal 到 body，取证后关闭再继续本页其他断言。
+    await page.getByTestId(/^machine-executions-debug-[^ ]+-open$/).click();
+    const executions = page.locator(
+      '[data-testid^="machine-executions-debug-"][data-testid$="-dialog"]',
+    );
+    await executions.waitFor();
     assert.ok((await executions.locator('[data-testid$="-item"]').count()) >= 2);
     const targets = await executions
       .locator('[data-testid$="-target"]')
       .evaluateAll((nodes) => nodes.map((node) => node.textContent));
     for (const target of targets) assert.match(target ?? "", /远端 Worker/);
+    await page.keyboard.press("Escape");
+    await executions.waitFor({ state: "detached" });
     // 第 6 条：Machine 详情页不再要求重选目标，目标就是当前这台；表单仍要求代次匹配。
     const form = page.getByTestId("machine-lease-section-overview-mutation");
     await form.waitFor();

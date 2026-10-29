@@ -96,9 +96,11 @@ const executionBase = {
   drainedAt: "2026-10-18T07:14:42.000Z",
   payloadHash: "a".repeat(64),
   logState: "none" as const,
+  recoveryReason: null,
   producedThroughSequence: null,
   acknowledgedThroughSequence: null,
   availableFromSequence: null,
+  cancellation: null,
 };
 
 export const demoExecutions: ExecutionView[] = [
@@ -328,6 +330,7 @@ export const demoGapExecution: ExecutionView = {
   drainedAt: null,
   terminalAt: "2026-10-18T07:52:00.000Z",
   failureReason: "worker_lost",
+  recoveryReason: "child-exited-without-result",
   result: { kind: "shell", failureReason: "worker_lost" },
   logState: "gap",
   producedThroughSequence: 55,
@@ -335,11 +338,50 @@ export const demoGapExecution: ExecutionView = {
   availableFromSequence: 1,
 };
 
+/** 长时间占用机器：仍在运行、租约仍归它，早已超过运行观察窗口。 */
+export const demoLongRunningExecution: ExecutionView = {
+  ...executionBase,
+  executionId: "exe_88888888-8888-4888-8888-888888888888",
+  requestId: "req_88888888-8888-4888-8888-888888888888",
+  state: "running",
+  operation: { kind: "process_list", limit: 100 },
+  createdAt: "2026-10-18T07:39:00.000Z",
+  dispatchDeadlineAt: "2026-10-18T07:41:00.000Z",
+  dispatchedAt: "2026-10-18T07:39:05.000Z",
+  drainedAt: null,
+  terminalAt: null,
+  failureReason: null,
+  result: null,
+};
+
+/**
+ * 租约已不归它、却仍在运行的执行：这台 Machine 的租约已经进入 fencing，
+ * 持有者是另一个分身。服务端会按恢复事实收尾，页面不该再给取消入口。
+ */
+export const demoReleasedLeaseExecution: ExecutionView = {
+  ...executionBase,
+  executionId: "exe_99999999-9999-4999-8999-999999999999",
+  requestId: "req_99999999-9999-4999-8999-999999999999",
+  machineId: demoMachineDetails[3].machine.id,
+  authorizationGeneration: 7,
+  state: "running",
+  operation: { kind: "process_list", limit: 100 },
+  createdAt: "2026-10-18T07:09:00.000Z",
+  dispatchDeadlineAt: "2026-10-18T07:11:00.000Z",
+  dispatchedAt: "2026-10-18T07:09:10.000Z",
+  drainedAt: null,
+  terminalAt: null,
+  failureReason: null,
+  result: null,
+};
+
 export const demoExecutionRecords: ExecutionView[] = [
   ...demoExecutions,
   demoLongExecution,
   demoTruncatedExecution,
   demoGapExecution,
+  demoLongRunningExecution,
+  demoReleasedLeaseExecution,
 ];
 
 /*
@@ -383,12 +425,13 @@ export const demoLogPage: ExecutionLogReadView = {
     frame(21, "stdout", 52),
     frame(22, "stdout", 65),
   ],
-  nextCursor: { nextSequence: 23 },
+  nextCursor: { executionId: demoLongExecution.executionId, nextSequence: 23 },
   availableFromSequence: 1,
   acknowledgedThroughSequence: 18,
   producedThroughSequence: 24,
   gapRanges: [],
   logState: "partial",
+  hasMore: true,
   workerOnline: true,
 };
 
@@ -396,11 +439,12 @@ export const demoLogPage: ExecutionLogReadView = {
 export const demoLogPageResumed: ExecutionLogReadView = {
   ...demoLogPage,
   frames: [frame(23, "stdout", 78), frame(24, "stdout", 91)],
-  nextCursor: { nextSequence: 25 },
+  nextCursor: { executionId: demoLongExecution.executionId, nextSequence: 25 },
   acknowledgedThroughSequence: 24,
   producedThroughSequence: 24,
   gapRanges: [],
   logState: "partial",
+  hasMore: false,
   workerOnline: true,
 };
 
@@ -410,12 +454,13 @@ export const demoTruncatedLogPage: ExecutionLogReadView = {
   executionId: demoTruncatedExecution.executionId,
   machineId: demoTruncatedExecution.machineId,
   frames: [frame(31, "stdout", 0), frame(32, "stdout", 13)],
-  nextCursor: { nextSequence: 33 },
+  nextCursor: { executionId: demoTruncatedExecution.executionId, nextSequence: 33 },
   availableFromSequence: 31,
   acknowledgedThroughSequence: 96,
   producedThroughSequence: 120,
   gapRanges: [],
   logState: "truncated",
+  hasMore: true,
   workerOnline: true,
 };
 
@@ -425,12 +470,13 @@ export const demoGapLogPage: ExecutionLogReadView = {
   executionId: demoGapExecution.executionId,
   machineId: demoGapExecution.machineId,
   frames: [frame(50, "stdout", 0), frame(51, "stdout", 13)],
-  nextCursor: { nextSequence: 53 },
+  nextCursor: { executionId: demoGapExecution.executionId, nextSequence: 53 },
   availableFromSequence: 1,
   acknowledgedThroughSequence: 52,
   producedThroughSequence: 55,
   gapRanges: [{ fromSequence: 52, toSequence: 55 }],
   logState: "gap",
+  hasMore: true,
   workerOnline: false,
 };
 

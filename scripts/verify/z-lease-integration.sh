@@ -7,7 +7,9 @@ source "$(dirname "$0")/lib/ensure-worker-artifact.sh"
 ensure_worker_artifact
 node --input-type=module <<'NODE'
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+/** 第三层 runner 是进程组组长：命令 pid 自己的 pgid 才是要收的组。 */
+const processGroupOf = (pid) => { const r = spawnSync('ps', ['-o', 'pgid=', '-p', String(pid)], {encoding:'utf8'}); const g = Number(r.stdout.trim()); return Number.isSafeInteger(g) && g > 1 ? g : null; };
 import { createServer } from 'node:net';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, openSync, closeSync, unlinkSync, existsSync } from 'node:fs';
@@ -305,13 +307,18 @@ try {
   assert(readFileSync(marker,'utf8')==='integration-proof','private sentinel matches');
   const pid=execution.result.pid; cleanupPid=pid; process.kill(pid,0);
   await page.reload();
-  await page.getByTestId('machine-executions-item').waitFor({timeout:15000});
-  const visible=await page.getByTestId('machine-executions').innerText(); assert(visible.includes('pid') || visible.includes('运行'));
+  await page.getByTestId('machine-executions-list').waitFor({timeout:15000});
+  // 卡片只在「调试详情」抽屉里：先打开抽屉再取证。
+  await page.getByTestId(/^machine-executions-debug-[^ ]+-open$/).click();
+  const debugDialog=page.getByTestId(/^machine-executions-debug-[^ ]+-dialog$/);
+  await debugDialog.waitFor({timeout:15000});
+  await page.getByTestId(/^machine-executions-debug-[^ ]+-item$/).first().waitFor({timeout:15000});
+  const visible=await debugDialog.innerText(); assert(visible.includes('pid') || visible.includes('运行'));
   // 命令正文（含绝对路径与可能含密钥的内容）不得进入界面。
   assert(!visible.includes('integration-proof'),'command body and output are not echoed');
   assert(!visible.includes(marker),'target path is not echoed');
   assert(!visible.includes('sleep 900'),'shell command text is not echoed');
-  const authorization=await page.getByTestId('machine-executions-item-authorization').first().innerText();
+  const authorization=await page.getByTestId(/^machine-executions-debug-[^ ]+-item-authorization$/).first().innerText();
   assert(!/ins_[0-9a-f-]{36}/.test(authorization),`holder rendered by name, got ${authorization}`);
   assert(authorization.includes('由该分身的一次运行发起'),'run is described, not printed as a bare id');
   await page.getByTestId('machine-remote-executions').scrollIntoViewIfNeeded();
@@ -424,7 +431,7 @@ try {
   await page.goBack(); await page.waitForURL(`**/projects/${projectId}/settings`);
   await page.goForward(); await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`); await page.reload();
   pass('production stable URL refresh back/forward and 390/900/1200 light/dark');
-  process.kill(-pid,'SIGTERM'); cleanupPid=undefined;
+  { const group=processGroupOf(pid); if(group) process.kill(-group,'SIGTERM'); } cleanupPid=undefined;
   await context.close(); await browser.close(); browser=undefined;
   console.log(`Evidence: ${evidence}`);
 } catch(error) {
@@ -453,7 +460,7 @@ try {
     } catch { console.log('TIMING unavailable'); } finally { timingDb.close(); }
   }
   await browser?.close();
-  if(cleanupPid) {try { process.kill(-cleanupPid,'SIGTERM'); } catch {}}
+  if(cleanupPid) {try { const group=processGroupOf(cleanupPid); if(group) process.kill(-group,'SIGTERM'); } catch {}}
   for(const child of children.reverse()) if(child.exitCode===null) child.kill('SIGTERM');
   await Promise.all(children.map(c=>Promise.race([c.done,new Promise(r=>setTimeout(r,3000))])));
   for(const child of children) if(child.exitCode===null) child.kill('SIGKILL');

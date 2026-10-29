@@ -99,7 +99,20 @@ async function fixture(stateDirectory?: string) {
     operation,
     ...overrides,
   });
-  return { key, session, dispatcher, output, apply, command };
+  const cancellation = (
+    executionId: string,
+    overrides: Partial<NonNullable<RemoteWireOutput["cancellations"]>[number]> = {},
+  ): NonNullable<RemoteWireOutput["cancellations"]>[number] => ({
+    cancelId: newId(ID_PREFIXES.cancellation),
+    executionId,
+    ...key,
+    authorizationGeneration: 1,
+    runnerToken: "b".repeat(32),
+    policy: "term_then_kill",
+    termWaitMs: 1000,
+    ...overrides,
+  });
+  return { key, session, dispatcher, output, apply, command, cancellation };
 }
 /** 把未上行帧交给宿主并模拟 ACK，返回本批日志帧。 */
 function exchangeLogs(
@@ -210,7 +223,7 @@ test("日志帧增量上行：跨流共享单调序、原始字节位点单调�
   expect(leftover.trim()).toBe("");
 });
 
-test("运行上限到期先 TERM 后 KILL，终态是限时而不是下发窗口", async () => {
+test("运行上限到期先 TERM 后 KILL：信号只打命令组，runner 落盘后终态是已知限时", async () => {
   const directory = await mkdtemp(join(tmpdir(), "p4c-runtime-"));
   const f = await fixture(directory);
   const runtimeDeadlineAt = new Date(Date.now() + 400).toISOString();
@@ -228,12 +241,112 @@ test("运行上限到期先 TERM 后 KILL，终态是限时而不是下发窗口
   f.apply(1, f.output([command]));
   const report = await terminalOf(f.dispatcher, command.executionId);
   const elapsed = Date.now() - startedAt;
-  expect(report.outcome).toBe("timed_out");
-  expect("failureReason" in report.payload && report.payload.failureReason).toBe("deadline");
-  expect(report.payload.kind === "shell" && "partial" in report.payload).toBe(true);
   // TERM 被忽略，进程只在 2000ms 宽限后的 KILL 才死：耗时必须超过宽限，说明确实先 TERM 后 KILL。
   expect(elapsed).toBeGreaterThanOrEqual(2300);
   expect(elapsed).toBeLessThan(20000);
+  // 托管分离：KILL 只打命令组，runner 活着把 result.json 落盘，退出是被观测到的已知事实。
+  const durable = JSON.parse(
+    await readFile(join(directory, "executions", command.executionId, "result.json"), "utf8"),
+  ) as { exitCode: number | null; signal: string | null };
+  expect(durable.signal).toBe("SIGKILL");
+  expect(durable.exitCode).toBeNull();
+  expect(report.outcome).toBe("timed_out");
+  expect("failureReason" in report.payload && report.payload.failureReason).toBe("deadline");
+  expect(report.recoveryReason).toBeUndefined();
+  expect(report.payload.kind === "shell" && "partial" in report.payload).toBe(true);
+});
+
+test("runner 缺席（命令杀掉自己的观察者）时不猜：终态停在带原因的未知", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-runner-absent-"));
+  const f = await fixture(directory);
+  // 命令先杀掉 runner，再继续跑：磁盘上永远不会出现 result.json。
+  const command = f.command({
+    kind: "shell",
+    command: "kill -9 $PPID; sleep 30",
+    cwd: directory,
+    waitMs: 10000,
+  });
+  f.apply(1, f.output([command]));
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  // 退出没有被观测到：既不是限时也不是成功，只能带原因停在 unknown。
+  expect(report.outcome).toBe("unknown");
+  expect("failureReason" in report.payload && report.payload.failureReason).toBe("worker_lost");
+  expect(report.recoveryReason).toBe("child-exited-without-result");
+  await expect(
+    readFile(join(directory, "executions", command.executionId, "result.json"), "utf8"),
+  ).rejects.toThrow();
+  // 收尾：命令还在跑，按记录的 childPid 打命令组。
+  const claim = JSON.parse(
+    await readFile(join(directory, "executions", command.executionId, "runner.json"), "utf8"),
+  ) as { childPid: number | null };
+  if (claim.childPid) process.kill(-claim.childPid, "SIGKILL");
+}, 20000);
+
+test("运行上限到期时命令在宽限内自行退出：runner result 落盘，终态是限时", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-runtime-durable-"));
+  const f = await fixture(directory);
+  const runtimeDeadlineAt = new Date(Date.now() + 400).toISOString();
+  // 尊重 TERM：宽限内退出，runner 能写下 result.json。这才是已知的「限时」终态。
+  const command = f.command(
+    { kind: "shell", command: "sleep 20", cwd: directory, waitMs: 10000 },
+    { runtimeDeadlineAt, maxRuntimeMs: 400 },
+  );
+  f.apply(1, f.output([command]));
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  expect(report.outcome).toBe("timed_out");
+  expect("failureReason" in report.payload && report.payload.failureReason).toBe("deadline");
+  expect(report.payload.kind === "shell" && "partial" in report.payload).toBe(true);
+  expect(report.recoveryReason).toBeUndefined();
+});
+
+test("下发窗口只约束准入：跨过截止时间仍在运行的长命令按真实退出码终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-admission-"));
+  const f = await fixture(directory);
+  const command = f.command(
+    {
+      kind: "shell",
+      command: "sleep 1; echo admitted",
+      cwd: directory,
+      waitMs: 5000,
+    },
+    {
+      dispatchDeadlineAt: new Date(Date.now() + 200).toISOString(),
+      runtimeDeadlineAt: new Date(Date.now() + 30000).toISOString(),
+      maxRuntimeMs: 30000,
+    },
+  );
+  f.apply(1, f.output([command]));
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  // 下发窗口在准入之后不再参与任何判定：命令跑过 200ms 仍是真实成功。
+  expect(report.outcome).toBe("succeeded");
+  expect(
+    report.payload.kind === "shell" && "stdout" in report.payload && report.payload.stdout,
+  ).toContain("admitted");
+});
+
+test("断线不终止已开始的执行：重连后补送断线期间产生的真实终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-offline-terminal-"));
+  const f = await fixture(directory);
+  const command = f.command({
+    kind: "shell",
+    command: "sleep 0.4; echo offline-done",
+    cwd: directory,
+    waitMs: 10000,
+  });
+  f.apply(1, f.output([command]));
+  await sleep(100);
+  // 连接断开（exchange 失败）：只关闭准入，不撤销已经开始执行的命令。
+  f.dispatcher.disconnect();
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  expect(report.outcome).toBe("succeeded");
+  expect(
+    report.payload.kind === "shell" && "stdout" in report.payload && report.payload.stdout,
+  ).toContain("offline-done");
+  // 同一条终态报告在重连后的下一批上行里仍在，直到宿主 ACK。
+  const resent = f.dispatcher
+    .outgoing(1048576)
+    .results.find((item) => item.executionId === command.executionId);
+  expect(resent?.phase).toBe("terminal");
 });
 
 test("runner_token 跨重启报恢复事实，未观测到退出只报 unknown", async () => {
@@ -348,10 +461,56 @@ test("旧授权代次不得声称成功，且租约动作不终止进程（代�
   f.apply(2, f.output([], [], 2));
   await sleep(500);
   // 旧代次不能报成功；租约动作不发信号，进程继续运行（P4a/P4b 已确认的代价）。
-  const report = f.dispatcher.outgoing(1048576).results[0];
-  expect(report?.phase === "terminal" ? report.outcome : "running").not.toBe("succeeded");
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  // 撤权不是取消：没有人为这次执行下发终止信号，终态只能停在带原因的未知。
+  expect(report.outcome).toBe("unknown");
+  expect(report.payload).toMatchObject({ failureReason: "authorization_revoked" });
   expect(alive(pid)).toBe(true);
   process.kill(pid, "SIGKILL");
+}, 20000);
+
+test("收到取消帧并因此终止的执行报 cancelled，不冒充撤权", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-cancel-reason-"));
+  const f = await fixture(directory);
+  const pidPath = join(directory, "pid");
+  const command = f.command({
+    kind: "shell",
+    command: `echo $$ > '${pidPath}'; exec sleep 30`,
+    cwd: directory,
+    waitMs: 10000,
+  });
+  f.apply(1, f.output([command]));
+  for (let i = 0; i < 200; i++) {
+    const exists = await stat(pidPath).then(
+      () => true,
+      () => false,
+    );
+    if (exists) break;
+    await sleep(10);
+  }
+  const pid = Number(await readFile(pidPath, "utf8"));
+  f.apply(2, { ...f.output(), cancellations: [f.cancellation(command.executionId)] });
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  // 取消结果是确定的失败，不是「结果未知」：进程确实被我们按取消杀掉了。
+  expect(report.outcome).toBe("failed");
+  expect(report.payload).toMatchObject({ failureReason: "cancelled" });
+  expect(alive(pid)).toBe(false);
+}, 20000);
+
+test("运行上限到期终止执行时仍报超时，不把取消的标志借给它", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-runtime-limit-"));
+  const f = await fixture(directory);
+  const command = f.command(
+    { kind: "shell", command: "exec sleep 30", cwd: directory, waitMs: 10000 },
+    {
+      runtimeDeadlineAt: new Date(Date.now() + 1000).toISOString(),
+      maxRuntimeMs: 1000,
+    },
+  );
+  f.apply(1, f.output([command]));
+  const report = await terminalOf(f.dispatcher, command.executionId);
+  expect(report.outcome).toBe("timed_out");
+  expect(report.payload).toMatchObject({ failureReason: "deadline" });
 }, 20000);
 
 function alive(pid: number) {
@@ -400,6 +559,7 @@ test("进程不在但无退出事实时恢复报 unknown，不猜退出码", asy
     runnerToken: "d".repeat(32),
     pid: 999_999,
     claimedAt: Date.now(),
+    dispatchSeq: 1,
     exitedAt: null,
     exitCode: null,
     signal: null,
@@ -438,4 +598,59 @@ test("spawn 失败前不写 pid，恢复事实不得声称 exited", async () => 
     .pendingRecoveries(second.session, 8)
     .find((item) => item.executionId === stale.executionId);
   expect(fact?.observedState).toBe("unknown");
+});
+
+test("waitMs 快照交出 pid 但不落终态：真实退出后同一执行覆盖为终态", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "p4c-snapshot-"));
+  const f = await fixture(directory);
+  const command = f.command({
+    kind: "shell",
+    command: "sleep 0.6; echo still-running",
+    cwd: directory,
+    waitMs: 100,
+  });
+  f.apply(1, f.output([command]));
+  const snapshot = await terminalOf(f.dispatcher, command.executionId);
+  const snapshotPayload = snapshot.payload;
+  expect(
+    snapshotPayload.kind === "shell" &&
+      !("failureReason" in snapshotPayload) &&
+      snapshotPayload.exited,
+  ).toBe(false);
+  expect(
+    snapshotPayload.kind === "shell" &&
+      !("failureReason" in snapshotPayload) &&
+      snapshotPayload.pid > 0,
+  ).toBe(true);
+  // ACK 快照只表示宿主收下了 pid；entry 仍在，不能把同一张快照每轮重发。
+  f.apply(2, {
+    ...f.output(),
+    resultAcks: [{ executionId: command.executionId, disposition: "accepted" }],
+  });
+  expect(
+    f.dispatcher
+      .outgoing(1048576)
+      .results.some((report) => report.executionId === command.executionId),
+  ).toBe(false);
+  let final: Awaited<ReturnType<typeof terminalOf>> | undefined;
+  for (let attempt = 0; attempt < 600; attempt++) {
+    const report = f.dispatcher
+      .outgoing(1048576)
+      .results.find((item) => item.executionId === command.executionId);
+    if (
+      report?.phase === "terminal" &&
+      report.payload.kind === "shell" &&
+      !("failureReason" in report.payload) &&
+      report.payload.exited
+    ) {
+      final = report;
+      break;
+    }
+    await sleep(10);
+  }
+  expect(final?.outcome).toBe("succeeded");
+  const finalPayload = final?.payload;
+  expect(
+    finalPayload?.kind === "shell" && !("failureReason" in finalPayload) ? finalPayload.stdout : "",
+  ).toContain("still-running");
 });

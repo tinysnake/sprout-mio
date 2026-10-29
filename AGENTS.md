@@ -1,35 +1,31 @@
 # AGENTS.md
 
-## 项目阶段
+## 项目规范入口
 
-本项目处于极早期开发阶段，不做向后兼容。
+开始任务时，先读 [项目开发约定](docs/project-conventions.md)。再按下表读取本次任务涉及的文档；任务跨多个领域时合并读取，不预加载全部文档。动手前核对受影响的实现、业务契约与验收脚本。
 
-这意味着修改数据结构、契约、路由、标识符或术语时，直接改到目标形态，不保留旧形态的兼容层：不加别名、不写双读双写、不为旧数据补迁移脚本、不留 deprecation 过渡期。判定标准是同一次改动能否在同一轮里把调用方全部改完；能改完，就改完。
+| 遇到的任务                                                | 必读文档                                                                              |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| 确定当前阶段、分派任务、集成或记录完成状态                | [开发总计划](docs/development-plan.md)，再按任务进入功能计划或 UI 计划及对应章节      |
+| 新增或调整能力、术语、身份、权限或生命周期                | [核心范围](docs/core-scope.md)及对应领域决策文档，见下表                              |
+| 修改代码、共享契约、配置、数据库或迁移                    | [P1 开发约定](docs/p1/conventions.md)及对应章节的契约文档                             |
+| 修改前端设计、组件、页面、样式或交互                      | [前端设计基线](docs/frontend-design.md)和[前端开发约定](docs/frontend-conventions.md) |
+| 选择验证范围、编写 worker brief、执行验证或准备合并与交付 | [验证约定](docs/verification.md)                                                      |
+| 启动真实页面评审、处理 Human 页面反馈或记录体验确认       | [Human Review](docs/human-review.md)及仓库的 `human-review` skill                     |
+| 定位功能入口、选择操作路径或核对验收覆盖                  | [Feature map](docs/feature-map/README.md)，再读受影响的功能页                         |
+| 调整项目规范或沉淀编排经验                                | [项目开发约定](docs/project-conventions.md#维护项目规范)，再读受影响领域的规范        |
 
-数据库已经合并的迁移同样不做兼容处理。迁移文件在本机与验收库里都可重建，需要改表名或列名时直接新增迁移，不为已存在的旧库写兼容分支。共享库的处置按 `docs/p1/conventions.md` 的迁移约定执行。
+## 领域文档
 
-## 前端任务
+以下文档按任务领域读取；当前章节的具体契约从开发计划进入。
 
-修改前端前必须读取 `docs/frontend-design.md` 和 `docs/frontend-conventions.md`，并核对受影响组件、业务契约与验收脚本。
-
-- 后续设计与实现以仓库为准，不依赖 OpenDesign；历史原型仅作为 `design/archive/` 中的冻结参考。
-- 复用 React + TypeScript、Tailwind、shadcn + Base UI 与已有共享组件。现有默认组件尚未全部适配设计，不把默认外观或原型模板残留当作规范。
-- `src/theme.css` 是 token 唯一所有者。组件使用语义颜色，不硬编码色值或另起色板；常规外观使用 Tailwind，复杂布局允许有明确归属的少量 CSS。
-- 演示与真实页面共用呈现组件，fixture 和模拟操作限制在开发场景；正式代码不导入 dev 或归档实现。
-- 保持已确认的导航、900px / 1200px 布局边界及业务状态语义。隐藏的类型筛选停止过滤；不虚构未实现能力，不删除已有 P3 能力。
-- 视觉变更保存并查看截图，交互变更验证实际操作；构建通过不能替代浏览器检查。更新测试定位时保留身份、权限、持久性与状态的行为断言。
-- 新设计方向、技术验收和 Human 体验确认分别记录；常规实现沿用已授权规则直接推进，不为每个样式修改重复请求批准。
-
-## 验证
-
-- 开发过程中先运行受影响领域的定向测试；集成与合并前保留完整验证及独立验收。
-- `pnpm verify` 已包含全量 `pnpm test`。同一轮完整验证不再另外追加全量测试，失败后的修复重跑除外。
-- `scripts/verify/b-tooling.sh` 是完整验证中全量测试的唯一执行入口。其他验收脚本保留领域定向测试，不重复执行全量测试。
-
-## 相关文档
-
-- `docs/development-plan.md`：当前阶段、任务分派与完成记录
-- `docs/core-scope.md`：一期范围、二期范围与统一术语
-- `docs/p1/conventions.md`：数据库约束、迁移与新增功能的步骤
-- `docs/frontend-design.md`：前端设计基线、布局、导航、主题与交互规则
-- `docs/frontend-conventions.md`：前端组件、Tailwind / CSS、演示与真实接入、验证和交付约束
+| 领域               | 文档                                                        |
+| ------------------ | ----------------------------------------------------------- |
+| 整体架构与运行边界 | [架构方向](docs/architecture-direction.md)                  |
+| Web UI 与导航      | [Web UI 决策](docs/web-ui-decisions.md)                     |
+| Agent 配置         | [Agent Profiles 决策](docs/agent-profiles-decisions.md)     |
+| Project 配置       | [Project Profiles 决策](docs/project-profiles-decisions.md) |
+| Machine 与执行环境 | [Machines 决策](docs/machines-decisions.md)                 |
+| 通信               | [Communication 决策](docs/communication-decisions.md)       |
+| Info Hub           | [Info Hub 决策](docs/info-hub-decisions.md)                 |
+| Task               | [Tasks 决策](docs/tasks-decisions.md)                       |

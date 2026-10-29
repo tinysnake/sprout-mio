@@ -106,6 +106,41 @@
       "when": 1793046399301,
       "tag": "0014_cancellation_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1793122667114,
+      "tag": "0015_cancel_actor_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1793143651629,
+      "tag": "0016_curious_starfox",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1793153713592,
+      "tag": "0017_cheerful_big_bertha",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793165342775,
+      "tag": "0018_elite_strong_guy",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1793201531505,
+      "tag": "0019_wonderful_sage",
+      "breakpoints": true
     }
   ]
 }

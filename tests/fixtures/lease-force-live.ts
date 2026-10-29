@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -92,6 +92,12 @@ function pass(name: string) {
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 let server: ReturnType<typeof spawn> | undefined;
 let ownedProcessPid: number | undefined;
+/** 第三层 runner 是进程组组长：命令的 pid 不再是组长，按它自己的 pgid 找组。 */
+function processGroupOf(pid: number): number | null {
+  const ps = spawnSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" });
+  const pgid = Number(ps.stdout.trim());
+  return Number.isSafeInteger(pgid) && pgid > 1 ? pgid : null;
+}
 async function control(
   action: "issue" | "revoke" | "cleanup",
   runId?: string,
@@ -473,10 +479,16 @@ try {
       .get(execution.executionId),
     { state: "unknown", failure_reason: "worker_lost", drained_at: null },
   );
-  assert.equal(
-    (await good<ExecutionView>("execution_get", { ...key, executionId: execution.executionId }))
-      .state,
-    "unknown",
+  // 强制收回后代次前进到 2、holder 清空：旧 holder 的真实 HTTP 读取被拒，状态由库事实核。
+  await rejected(
+    "execution_get",
+    { ...key, executionId: execution.executionId },
+    "lease_not_holder",
+  );
+  await rejected(
+    "execution_log_read",
+    { ...key, executionId: execution.executionId, cursor: null, limitBytes: 65536 },
+    "lease_not_holder",
   );
   pass(
     "real Chromium Human confirmation advances exactly once; unknown worker_lost retains NULL drained_at",
@@ -516,7 +528,7 @@ try {
   // 强制收回已完成、新持有者已拿到租约，此刻才让旧 shell 落地副作用。
   writeFileSync(ackPath, "go");
   await until(
-    () => existsSync(late),
+    () => existsSync(late) && statSync(late).size === 1,
     "old shell continues its side effect after Worker SIGKILL",
     60000,
   );
@@ -550,7 +562,10 @@ try {
     .getByTestId(`lease-row-${machineId}`)
     .first()
     .screenshot({ path: resolve(".verify/p4b-fence-force/after-force-dark.png") });
-  process.kill(-survivorPid, "SIGTERM");
+  {
+    const group = processGroupOf(survivorPid);
+    if (group) process.kill(-group, "SIGTERM");
+  }
   ownedProcessPid = undefined;
   facts.force = {
     workerSigkill: true,
@@ -585,7 +600,8 @@ try {
 } finally {
   if (ownedProcessPid) {
     try {
-      process.kill(-ownedProcessPid, "SIGTERM");
+      const group = processGroupOf(ownedProcessPid);
+      if (group) process.kill(-group, "SIGTERM");
     } catch {
       /* Already exited. */
     }

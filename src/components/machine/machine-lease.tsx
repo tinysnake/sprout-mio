@@ -3,7 +3,9 @@ import type { MachineDetail, MachineEnrollment, MachineResult } from "../../cont
 import type { ProjectInfoHub } from "../../contracts/info-hub";
 import type { LeaseView } from "../../contracts/lease";
 import type { ExecutionView } from "../../contracts/remote";
+import type { ExecutionCancellationView } from "../../contracts/remote";
 import type { AppError } from "../../contracts/result";
+import type { ExecutionCanceller, ExecutionLogReader, LogConnection } from "./presentation";
 import { PageFrame } from "../layout/page-frame";
 import { SettingsSection } from "../project/settings-section";
 import { ResultError } from "../project/result-error";
@@ -30,6 +32,11 @@ export function MachineLeasePanel({
   leaseInfo,
   leaseError,
   executionError,
+  logReader,
+  canceller,
+  connection,
+  cancellations,
+  onCancelled,
   onLeaseMutate,
 }: {
   detail: MachineDetail;
@@ -48,6 +55,12 @@ export function MachineLeasePanel({
   leaseInfo?: ProjectInfoHub;
   leaseError?: AppError;
   executionError?: AppError;
+  /** 日志读取、取消与连接事实都由页面接线传入；未传就只显示已有事实。 */
+  logReader?: ExecutionLogReader;
+  canceller?: ExecutionCanceller;
+  connection?: LogConnection;
+  cancellations?: Readonly<Record<string, ExecutionCancellationView>>;
+  onCancelled?: (view: ExecutionCancellationView) => void;
   onLeaseMutate?: LeaseMutationHandler;
 }) {
   const leaseSection = (
@@ -119,6 +132,12 @@ export function MachineLeasePanel({
             executions={executions.filter((execution) => execution.machineId === detail.machine.id)}
             machines={[detail]}
             holderNames={holderNames}
+            leases={leases}
+            {...(logReader ? { logReader } : {})}
+            {...(canceller ? { canceller } : {})}
+            {...(connection ? { connection } : {})}
+            {...(cancellations ? { cancellations } : {})}
+            {...(onCancelled ? { onCancelled } : {})}
             testId="machine-executions"
           />
         )}

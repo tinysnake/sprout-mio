@@ -18,6 +18,7 @@ import type { CapabilitySnapshot } from "../contracts/machine";
 import {
   EXECUTION_LOG_STATES,
   REMOTE_EXECUTION_STATES,
+  EXECUTION_RECOVERY_REASONS,
   REMOTE_FAILURE_REASONS,
   REMOTE_OUTCOMES,
   CANCELLATION_FAILURE_REASONS,
@@ -826,6 +827,8 @@ export const remoteExecution = sqliteTable(
     maxRuntimeMs: integer("max_runtime_ms"),
     runnerToken: text("runner_token"),
     logState: text("log_state", { enum: EXECUTION_LOG_STATES }).notNull().default("none"),
+    /** Worker 已声明该执行不会再产出新帧；没有这个事实就不能判 `full`。 */
+    logSealed: integer("log_sealed", { mode: "boolean" }).notNull().default(false),
     producedThroughSeq: integer("produced_through_seq"),
     acknowledgedThroughSeq: integer("acknowledged_through_seq"),
     availableFromSeq: integer("available_from_seq"),
@@ -835,6 +838,12 @@ export const remoteExecution = sqliteTable(
     drainedAt: integer("drained_at", { mode: "timestamp_ms" }),
     terminalAt: integer("terminal_at", { mode: "timestamp_ms" }),
     failureReason: text("failure_reason", { enum: REMOTE_FAILURE_REASONS }),
+    // 恢复归约给出的 unknown 原因。取值由 contracts/remote 的枚举约束，不在这里再写 CHECK：
+    // SQLite 加检查约束要重建整张表，而它已被结果、日志、取消三张表按复合键引用。
+    recoveryReason: text("recovery_reason", { enum: EXECUTION_RECOVERY_REASONS }),
+    // 最近一次被接受、且来自当前或更新连接代次的归约报告时间。过期判定只认这个事实，
+    // 不把「没收到任何报告」和「报告说 running」混为一谈。
+    recoveryReportedAt: integer("recovery_reported_at", { mode: "timestamp_ms" }),
   },
   (t) => [
     check(
@@ -864,7 +873,7 @@ export const remoteExecution = sqliteTable(
     ),
     check(
       "remote_execution_check_8",
-      sql`failure_reason IS NULL OR failure_reason IN ('stale_generation','not_holder','authorization_revoked','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
+      sql`failure_reason IS NULL OR failure_reason IN ('stale_generation','not_holder','authorization_revoked','cancelled','deadline','worker_lost','executor_error','capability_unavailable','directory_unavailable')`,
     ),
     uniqueIndex("remote_execution_holder_instance_id_request_id_unique").on(
       t.holderInstanceId,
@@ -888,6 +897,8 @@ export const remoteExecution = sqliteTable(
     }),
     // 投递帧在同一 immediate 事务里后写，因此 0013 把这条外键写成
     // DEFERRABLE INITIALLY DEFERRED；drizzle 的 schema DSL 不表达该修饰，SQL 才是权威。
+    // 任何重建 remote_execution 的迁移（如 0019）都必须手写保留该修饰，否卿首次下发
+    // 会在帧写入之前撞上外键检查，命令永远发不出去。
     foreignKey({
       columns: [t.machineId, t.dispatchConnectionGeneration, t.dispatchSeq],
       foreignColumns: [
@@ -1033,7 +1044,9 @@ export const executionCancellation = sqliteTable(
     machineId: text("machine_id").notNull(),
     authorizationGeneration: integer("authorization_generation").notNull(),
     holderInstanceId: text("holder_instance_id").notNull(),
-    actorInstanceId: text("actor_instance_id").notNull(),
+    // 取消是人类或分身的显式动作：两种 actor 共用一列形状，不用可空外键冒充。
+    actorKind: text("actor_kind", { enum: ["agent", "human"] }).notNull(),
+    actorId: text("actor_id").notNull(),
     state: text("state", { enum: CANCELLATION_STATES }).notNull(),
     signalOutcome: text("signal_outcome", { enum: CANCELLATION_SIGNAL_OUTCOMES })
       .notNull()
@@ -1071,7 +1084,7 @@ export const executionCancellation = sqliteTable(
     ),
     check(
       "execution_cancellation_check_6",
-      sql`failure_reason IS NULL OR failure_reason IN ('signal_failed','delivery_unconfirmed')`,
+      sql`failure_reason IS NULL OR failure_reason IN ('signal_failed','delivery_unconfirmed','exit_not_observed')`,
     ),
     check(
       "execution_cancellation_check_7",
@@ -1087,6 +1100,8 @@ export const executionCancellation = sqliteTable(
     ),
     check("execution_cancellation_check_9", sql`policy IN ('term_then_kill','kill')`),
     check("execution_cancellation_check_10", sql`term_wait_ms BETWEEN 1 AND 10000`),
+    check("execution_cancellation_check_11", sql`actor_kind IN ('agent','human')`),
+    check("execution_cancellation_check_12", sql`length(actor_id)>0`),
     uniqueIndex("execution_cancellation_holder_instance_id_request_id_unique").on(
       t.holderInstanceId,
       t.requestId,
@@ -1106,10 +1121,6 @@ export const executionCancellation = sqliteTable(
         leaseAuthorization.generation,
         leaseAuthorization.holderInstanceId,
       ],
-    }),
-    foreignKey({
-      columns: [t.actorInstanceId, t.projectId],
-      foreignColumns: [agentInstance.id, agentInstance.projectId],
     }),
   ],
 );
