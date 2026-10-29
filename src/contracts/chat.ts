@@ -147,6 +147,25 @@ export const chatSchema = z.object({
 });
 export type Chat = z.infer<typeof chatSchema>;
 
+/**
+ * 人类在 Group / Public Channel 发消息时的唤醒派发契约（裁定 §3.3 / §4.5）。
+ *
+ * `routeWakeCandidates` 的点名规则按展示名匹配，而 `chat_effective_member` 只给成员 id，
+ * 所以派发方必须把「候选 Agent 的 `agent_profile_id` → 展示名」字典与消息内容一起交出去；
+ * 字典缺项时点名退化为 `@<agent_profile_id>`。名单顺序即派发顺序，函数自己不再排序。
+ */
+export const chatWakeDispatchSchema = z.object({
+  chatId,
+  body: z.string().trim().min(1, "消息不能为空").max(8000, "消息最多 8000 字"),
+  agentProfiles: z.array(
+    z.object({
+      agentProfileId: agentProfileIdSchema,
+      profileName: z.string().trim().min(1).optional(),
+    }),
+  ),
+});
+export type ChatWakeDispatch = z.infer<typeof chatWakeDispatchSchema>;
+
 export const chatMemberSchema = z.object({
   chatId,
   memberKind,

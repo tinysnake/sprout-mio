@@ -423,6 +423,13 @@ export function sendMessage(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
+      // run 里执行的域代码只能以本 run 的分身说话：否则人类消息开出的 run 就能冒充人类发言。
+      if (
+        ctx.agent &&
+        (input.senderKind !== "agent" || input.senderId !== ctx.agent.agentProfileId)
+      ) {
+        throw new ChatError("forbidden", "Agent run 只能以本 run 的分身身份发言");
+      }
       // 发言资格与成员列表同源（`chat_effective_member`）：频道里没有 chat_member 行，
       // 只读成员表会让频道永远发不出消息；只读成员表也无法收回 Project 移除后的参与权。
       const sender = db
@@ -439,6 +446,21 @@ export function sendMessage(
         .get();
       if (!sender || (input.senderKind === "human" && input.senderId !== ctx.userId)) {
         throw new ChatError("not_found", "对话成员不存在");
+      }
+      // 裁定 d19：视图的 DM 分支不查 project_member，Agent 移出 Project 后旧 DM 行仍在视图里。
+      // DM 里的 Agent 发送者必须仍是该 Project 成员，参与权不留在两处判定。
+      if (input.senderKind === "agent" && current.kind === "dm") {
+        const membership = db
+          .select({ agentProfileId: projectMember.agentProfileId })
+          .from(projectMember)
+          .where(
+            and(
+              eq(projectMember.projectId, current.projectId),
+              eq(projectMember.agentProfileId, input.senderId),
+            ),
+          )
+          .get();
+        if (!membership) throw new ChatError("not_found", "对话成员不存在");
       }
       const instance =
         input.senderKind === "agent"

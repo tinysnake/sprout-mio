@@ -32,7 +32,14 @@ export function executeRun(
 ): Effect.Effect<void> {
   return Effect.gen(function* () {
     const { run, profile } = work;
-    const ctx: ProjectContext = { userId: work.ownerId, requestId: run.requestId };
+    // 执行身份取自 run 自己的记录：`userId` 继续只是 Project 归属（agent_run 的 owner 语义不变），
+    // 分身身份取 run 引用的 instance；因此人类消息开出的 run 也以 Agent 身份执行域代码，
+    // 宿主不再靠 `userId` 分辨人与 Agent。
+    const ctx: ProjectContext = {
+      userId: work.ownerId,
+      requestId: run.requestId,
+      agent: { agentProfileId: work.agentProfileId, instanceId: run.instanceId, runId: run.id },
+    };
     const sent = new Set<string>();
     /** 与 messageId 共用 sent 而不冲突：通知按 `notice:<id>` 记账，只有成功交付才加入。 */
     const noticesSent = new Set<string>();

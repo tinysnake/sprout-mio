@@ -62,8 +62,13 @@ export const makePiHostLayer = <W extends PiHostWorkItem>(
 
       const dispatch = Effect.gen(function* () {
         if (signals.isStopping()) return;
+        const dispatched = new Set<string>();
         for (const work of deps.loadWork()) {
-          if (registry.has(work.instanceId)) continue;
+          // 去重键是 instance，不是 chat 也不是 run：一个会话里的扇出 run 属于不同 instance，
+          // 必须各自被拾起；同一 instance 同时只允许一条活跃 run（数据库部分唯一索引），
+          // 所以这个键既不漏跑也不重复跑。dispatched 只挡同一次 loadWork 里的重复行。
+          if (dispatched.has(work.instanceId) || registry.has(work.instanceId)) continue;
+          dispatched.add(work.instanceId);
           const run = deps.prepareRun(work, signals);
           const fiber = yield* run.body.pipe(
             Effect.ensuring(Effect.sync(() => registry.delete(work.instanceId))),

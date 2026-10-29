@@ -150,6 +150,8 @@ const dropTriggerIndex = indexOfTag("0023_p5a_drop_channel_delete_trigger");
 const multichat = migrations[multichatIndex];
 const backfill = migrations[backfillIndex];
 const dropTrigger = migrations[dropTriggerIndex];
+const agentRunFkIndex = indexOfTag("0024_p5a_agent_run_message_chat_fk");
+const agentRunFk = migrations[agentRunFkIndex];
 
 /** 表上实际存在的触发器名；排序后可直接比对集合，多余的孤儿触发器会立刻显形。 */
 function triggersOn(sqlite: Database.Database, table: string): string[] {
@@ -561,6 +563,73 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
       expect(() =>
         sqlite.prepare(`DELETE FROM chat_member WHERE chat_id = 'cnv_legacy'`).run(),
       ).not.toThrow();
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it(`${agentRunFk.tag} 重建后 run 的回复必须与 run 同属一个 chat`, () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, multichatIndex);
+      seedLegacyRows(sqlite);
+      applyRange(sqlite, multichatIndex, migrations.length);
+      sqlite.pragma("foreign_keys = ON");
+
+      // 重建不能丢行：排队中的 run 与它的输入都还在。
+      expect(sqlite.prepare(`SELECT count(*) AS n FROM agent_run`).get()).toEqual({ n: 2 });
+      expect(sqlite.prepare(`SELECT count(*) AS n FROM agent_run_input`).get()).toEqual({ n: 1 });
+      // 既有 4 条 CHECK、4 个索引与复合外键都在重建后的表上。
+      const ddl = String(
+        (
+          sqlite
+            .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_run'`)
+            .get() as { sql: string }
+        ).sql,
+      );
+      expect(ddl.match(/CONSTRAINT/g)).toHaveLength(4);
+      expect(ddl).toContain(
+        "FOREIGN KEY (`assistant_message_id`,`chat_id`) REFERENCES `message`(`id`,`chat_id`)",
+      );
+      expect(
+        sqlite
+          .prepare(
+            `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'agent_run'
+             AND name LIKE 'agent_run%' ORDER BY name`,
+          )
+          .all(),
+      ).toEqual([
+        { name: "agent_run_assistant_message_unique" },
+        { name: "agent_run_bound_identity_unique" },
+        { name: "agent_run_chat_queued_idx" },
+        { name: "agent_run_one_active_instance" },
+      ]);
+
+      // 同 chat 的回复是合法组合（合法对照）。
+      sqlite
+        .prepare(`UPDATE agent_run SET assistant_message_id = 'msg_legacy' WHERE id = 'run_legacy'`)
+        .run();
+      sqlite
+        .prepare(
+          `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by)
+           VALUES ('cnv_other', 'prj_legacy', 'dm', 'human', 'usr_legacy', 'usr_legacy')`,
+        )
+        .run();
+      sqlite
+        .prepare(
+          `INSERT INTO message (id, chat_id, sender_kind, sender_id, body)
+           VALUES ('msg_other', 'cnv_other', 'human', 'usr_legacy', 'other')`,
+        )
+        .run();
+      // 反证 4 的物理底线：把别的 chat 的消息绑到这条 run 上，数据库必须拒绝。
+      expect(() =>
+        sqlite
+          .prepare(
+            `UPDATE agent_run SET assistant_message_id = 'msg_other' WHERE id = 'run_legacy'`,
+          )
+          .run(),
+      ).toThrow(/FOREIGN KEY constraint failed/);
+      expect(sqlite.pragma("foreign_key_check")).toEqual([]);
     } finally {
       sqlite.close();
     }
