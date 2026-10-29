@@ -178,8 +178,6 @@ const submit = (ctx: AgentRemoteContext, generation: number, command: string, wa
 };
 const view = (executionId: string, ctx: AgentRemoteContext | MachineContext = firstHolder) =>
   getExecution({ ...key, executionId }, ctx);
-const logOf = (executionId: string, ctx: AgentRemoteContext | MachineContext = firstHolder) =>
-  readExecutionLog({ ...key, executionId, cursor: null, limitBytes: 65536 }, ctx);
 const executionFiles = (executionId: string) => {
   const directory = join(stateDirectory, "executions", executionId);
   return existsSync(directory) ? readdirSync(directory) : [];
@@ -360,8 +358,35 @@ for (let index = 0; index < 400; index++) {
   await suspend(1);
 }
 const burstView = view(burst.executionId, nextHolder);
-// 被裁剪之后，从「最早的可用起点之前」读必须被拒：旧的起点不能冒充完整历史。
-assert.throws(() => logOf(burst.executionId, nextHolder), fail("execution_log_gap"));
+// 被裁剪之后，不带游标的读取从可读起点开始，并如实说是裁剪，不冒充完整历史。
+assert.ok((burstView.availableFromSequence ?? 1) > 1, "1.8 MB 输出必须触发前缀裁剪");
+const burstFirstPage = readExecutionLog(
+  { ...key, executionId: burst.executionId, cursor: null, limitBytes: 65536 },
+  nextHolder,
+);
+assert.equal(burstFirstPage.availableFromSequence, burstView.availableFromSequence);
+assert.equal(burstFirstPage.logState, "truncated");
+assert.ok(
+  burstFirstPage.frames.every((frame) => frame.sequence >= burstView.availableFromSequence!),
+  "不带游标时不得从被裁掉的前缀开始",
+);
+// 显式早于可读起点的游标仍要报 gap，不静默从新起点续读。
+assert.throws(
+  () =>
+    readExecutionLog(
+      {
+        ...key,
+        executionId: burst.executionId,
+        cursor: {
+          executionId: burst.executionId,
+          nextSequence: burstView.availableFromSequence! - 2,
+        },
+        limitBytes: 65536,
+      },
+      nextHolder,
+    ),
+  fail("execution_log_gap"),
+);
 const burstLog = readExecutionLog(
   {
     ...key,
@@ -539,8 +564,8 @@ assert.ok(
 );
 assert.notEqual(stubbornCancel.exitedAt, null, "有 durable result 的取消必须记下退出时间");
 assert.equal(stubbornCancel.failureReason, null);
-assert.equal(stubbornView.state, "unknown", "被取消的命令不是成功也不是仍在运行");
-assert.equal(stubbornView.failureReason, "authorization_revoked");
+assert.equal(stubbornView.state, "failed", "被取消的命令不是成功也不是仍在运行");
+assert.equal(stubbornView.failureReason, "cancelled", "用户取消不是授权被撤回");
 assert.equal(stubbornView.recoveryReason, null, "有 durable result 就没有未记录原因");
 assert.equal(alive(stubbornRunner.childPid!), false, "KILL 之后命令组不留孤儿");
 pass("R4 正证 2：忽略 TERM 的命令被 KILL，信号只打命令组，runner 落盘 → 取消仍是 exited_observed");

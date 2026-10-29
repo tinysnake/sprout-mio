@@ -580,11 +580,36 @@ try {
   const bigFinal = await getView(big.executionId);
   assert.equal(bigFinal.logState, "truncated", "a 64 KiB threshold must trim the real log");
   assert(bigFinal.availableFromSequence !== null && bigFinal.availableFromSequence > 1);
-  // 旧游标（起点 0）早于可读起点：必须明确报 gap，不静默从新起点称完整。
-  const staleRead = await call("sprout_remote_execution_log", {
+  // 不带游标时从可读起点开始读：裁剪过的执行也能读到，不必先撞一次 gap。
+  const firstPage = await call("sprout_remote_execution_log", {
     machineId,
     executionId: big.executionId,
     cursor: null,
+    limitBytes: 4096,
+  });
+  assert.equal(
+    firstPage.isError,
+    false,
+    "reading without a cursor must start at the readable start",
+  );
+  const firstPageDetails = firstPage.details as {
+    availableFromSequence?: number | null;
+    logState?: string;
+    frames?: { sequence: number }[];
+  };
+  assert.equal(firstPageDetails.availableFromSequence, bigFinal.availableFromSequence);
+  assert.equal(firstPageDetails.logState, "truncated");
+  assert.ok(
+    (firstPageDetails.frames ?? []).every(
+      (frame) => frame.sequence >= bigFinal.availableFromSequence!,
+    ),
+    "the trimmed prefix must not be served as if it were readable",
+  );
+  // 显式早于可读起点的游标仍必须报 gap，不静默从新起点称完整。
+  const staleRead = await call("sprout_remote_execution_log", {
+    machineId,
+    executionId: big.executionId,
+    cursor: { executionId: big.executionId, nextSequence: 0 },
     limitBytes: 4096,
   });
   assert.equal(staleRead.isError, true, "a cursor before the available start must be rejected");

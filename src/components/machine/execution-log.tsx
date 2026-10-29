@@ -64,14 +64,14 @@ export function cursorFacts(view: ExecutionLogReadView): string[] {
   ];
 }
 
-/** 续读游标：能继续读时给下一序号，读到尾时明确说明没有更多可读区段。 */
+/** 续读游标：能再前进时给下一序号；不能时明确说明服务端已无更大帧。 */
 export function resumeFacts(view: ExecutionLogReadView): {
   canContinue: boolean;
   text: string;
 } {
   const next = view.nextCursor.nextSequence;
   const produced = view.producedThroughSequence;
-  const canContinue = produced !== null && next <= produced;
+  const canContinue = view.hasMore;
   return {
     canContinue,
     text: canContinue
@@ -211,7 +211,7 @@ export function ExecutionLogViewer({
         <p data-testid={`${testId}-error`} className={toneText.danger}>
           {error.message}
           {error.code === "execution_log_gap"
-            ? " 请从新的可读起点重新读取，不静默续读。"
+            ? " 前缀已被裁剪，请点「读取日志」从可读起点重读，不静默续读。"
             : error.code === "execution_log_cursor_stale"
               ? " 游标已过期，请从最新一页重新开始。"
               : ""}
@@ -272,6 +272,7 @@ function logFactsFallback(execution: ExecutionView): ExecutionLogReadView {
     producedThroughSequence: execution.producedThroughSequence,
     gapRanges: [],
     logState: execution.logState,
+    hasMore: false,
     workerOnline: false,
   };
 }

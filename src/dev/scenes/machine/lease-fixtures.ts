@@ -431,6 +431,7 @@ export const demoLogPage: ExecutionLogReadView = {
   producedThroughSequence: 24,
   gapRanges: [],
   logState: "partial",
+  hasMore: true,
   workerOnline: true,
 };
 
@@ -443,6 +444,7 @@ export const demoLogPageResumed: ExecutionLogReadView = {
   producedThroughSequence: 24,
   gapRanges: [],
   logState: "partial",
+  hasMore: false,
   workerOnline: true,
 };
 
@@ -458,6 +460,7 @@ export const demoTruncatedLogPage: ExecutionLogReadView = {
   producedThroughSequence: 120,
   gapRanges: [],
   logState: "truncated",
+  hasMore: true,
   workerOnline: true,
 };
 
@@ -473,6 +476,7 @@ export const demoGapLogPage: ExecutionLogReadView = {
   producedThroughSequence: 55,
   gapRanges: [{ fromSequence: 52, toSequence: 55 }],
   logState: "gap",
+  hasMore: true,
   workerOnline: false,
 };
 

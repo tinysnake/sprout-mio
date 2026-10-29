@@ -24,6 +24,7 @@ const logView = (executionId: string): ExecutionLogReadView => ({
   producedThroughSequence: null,
   gapRanges: [],
   logState: "none",
+  hasMore: false,
   workerOnline: true,
 });
 

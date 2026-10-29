@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { machineBindings } from "../domain/machine";
 import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
 import type { WorkerExchangeRemoteInput } from "../contracts/worker";
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import type { ShellFact } from "../contracts/machine";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
@@ -914,12 +914,14 @@ export function readExecutionLog(
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("not_found");
       assertExecutionHolder(row, ctx);
-      const cursor = input.cursor?.nextSequence ?? 0;
+      const from = row.availableFromSeq;
+      // 没带游标时从可读起点开始：前缀被裁剪的执行从 0 读会直接撞 gap，页面没有别的入口。
+      const cursor = input.cursor?.nextSequence ?? (from !== null ? from - 1 : 0);
       // 游标属于它的执行：跨执行的序号不构成续读起点，必须重读，不冒充完整。
       if (input.cursor && input.cursor.executionId !== input.executionId)
         throw new RemoteError("execution_log_cursor_stale");
-      const from = row.availableFromSeq;
-      if (from !== null && cursor + 1 < from) throw new RemoteError("execution_log_gap");
+      if (input.cursor && from !== null && cursor + 1 < from)
+        throw new RemoteError("execution_log_gap");
       if (row.producedThroughSeq === null && row.logState !== "none")
         throw new RemoteError("execution_log_unavailable");
       const rows = db
@@ -974,6 +976,18 @@ export function readExecutionLog(
         .from(remoteExecution)
         .where(eq(remoteExecution.id, row.id))
         .get()!;
+      // 能否再前进取决于服务端还存着没有更大的帧，不是 Worker 声明的产水位。
+      const hasMore =
+        db
+          .select({ sequence: executionLogFrame.sequence })
+          .from(executionLogFrame)
+          .where(
+            and(
+              eq(executionLogFrame.executionId, row.id),
+              gt(executionLogFrame.sequence, nextSequence),
+            ),
+          )
+          .get() !== undefined;
       return {
         projectId: row.projectId,
         machineId: row.machineId,
@@ -985,6 +999,7 @@ export function readExecutionLog(
         producedThroughSequence: current.producedThroughSeq,
         gapRanges,
         logState: current.logState,
+        hasMore,
         workerOnline: runnerOnline(row.machineId, ctx.now),
       };
     })

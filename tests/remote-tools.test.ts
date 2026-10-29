@@ -246,6 +246,7 @@ describe("远端 Pi 工具边界", () => {
       producedThroughSequence: null,
       gapRanges: [],
       logState,
+      hasMore: false,
       workerOnline: true,
       ...overrides,
     });

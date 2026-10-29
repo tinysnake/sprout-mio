@@ -127,7 +127,7 @@ function logDetail(view: z.infer<typeof executionLogReadViewSchema>) {
     view.logState === "none"
       ? "该执行尚无日志；这是确知的空，不是未收到。"
       : view.logState === "gap"
-        ? "日志存在被裁掉的区段（gapRanges），请从 availableFromSequence 重新读取；不要把缺口当作没有输出。"
+        ? "日志存在被裁掉的区段（gapRanges），从 availableFromSequence 重新读取；不要把缺口当作没有输出。"
         : view.logState === "truncated"
           ? "日志已按预算截断；已收到的帧不是全部输出。"
           : view.logState === "partial"
@@ -137,6 +137,7 @@ function logDetail(view: z.infer<typeof executionLogReadViewSchema>) {
     outcome: incomplete ? "incomplete" : "succeeded",
     logState: view.logState,
     incomplete,
+    hasMore: view.hasMore,
     gapRanges: view.gapRanges,
     frames: view.frames,
     nextCursor: view.nextCursor,

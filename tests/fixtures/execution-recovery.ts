@@ -287,6 +287,70 @@ const fromAvailable = readExecutionLog(
 assert.equal(fromAvailable.availableFromSequence, 3);
 pass("游标早于 available_from_seq 返回 execution_log_gap，不冒充完整日志");
 
+// 不带游标时从可读起点开始读：裁剪过的执行也能拿到日志，不必先撞一次 gap。
+const withoutCursor = readExecutionLog(
+  { ...key, executionId: submitted.executionId, cursor: null, limitBytes: 65536 },
+  ctx,
+);
+assert.equal(withoutCursor.availableFromSequence, 3);
+assert.deepEqual(withoutCursor.gapRanges, [{ fromSequence: 3, toSequence: 5 }]);
+assert.equal(withoutCursor.nextCursor.nextSequence, 5);
+assert.equal(withoutCursor.hasMore, false, "服务端没有 6 往后的帧就不能再前进");
+pass("不带游标的读取从可读起点开始，裁剪过的执行也能读到");
+
+// 产水位高于已落库帧时不许再前进：Worker 声明 9、服务端只有 5 之前的内容。
+sqlite
+  .prepare("UPDATE remote_execution SET produced_through_seq = 9 WHERE id = ?")
+  .run(submitted.executionId);
+const aheadOfFrames = readExecutionLog(
+  {
+    ...key,
+    executionId: submitted.executionId,
+    cursor: { executionId: submitted.executionId, nextSequence: 5 },
+    limitBytes: 65536,
+  },
+  ctx,
+);
+assert.equal(aheadOfFrames.frames.length, 0);
+assert.equal(aheadOfFrames.producedThroughSequence, 9);
+assert.equal(aheadOfFrames.hasMore, false, "产水位不是可前进的依据");
+exchange({
+  results: [],
+  fenceAcks: [],
+  mcp: [],
+  mcpCursors: [],
+  logFrames: [logFrame(6, "line six\n"), logFrame(7, "line seven\n")],
+});
+const pagedOne = readExecutionLog(
+  {
+    ...key,
+    executionId: submitted.executionId,
+    cursor: { executionId: submitted.executionId, nextSequence: 5 },
+    limitBytes: 1,
+  },
+  ctx,
+);
+assert.deepEqual(
+  pagedOne.frames.map((frame) => frame.sequence),
+  [6],
+);
+assert.equal(pagedOne.hasMore, true, "后面还存着帧时才算能继续");
+const pagedRest = readExecutionLog(
+  {
+    ...key,
+    executionId: submitted.executionId,
+    cursor: pagedOne.nextCursor,
+    limitBytes: 65536,
+  },
+  ctx,
+);
+assert.deepEqual(
+  pagedRest.frames.map((frame) => frame.sequence),
+  [7],
+);
+assert.equal(pagedRest.hasMore, false);
+pass("hasMore 只按服务端已落库的帧判定，产水位更高不构成可前进");
+
 // 跨执行游标：不属于本执行的序号不能被当成续读起点。
 assert.throws(
   () =>

@@ -62,6 +62,7 @@ const logView = (logState, overrides = {}) => ({
   producedThroughSequence: logState === "none" ? null : logState === "gap" ? 9 : 1,
   gapRanges: logState === "gap" ? [{ fromSequence: 2, toSequence: 4 }] : [],
   logState,
+  hasMore: false,
   workerOnline: logState !== "truncated",
   ...overrides,
 });

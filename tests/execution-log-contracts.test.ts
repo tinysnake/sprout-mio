@@ -384,6 +384,7 @@ describe("execution log and cancellation contracts", () => {
       producedThroughSequence: 4,
       gapRanges: [{ fromSequence: 1, toSequence: 2 }],
       logState: "gap",
+      hasMore: false,
       workerOnline: false,
     };
     expect(executionLogReadViewSchema.safeParse(view).success).toBe(true);

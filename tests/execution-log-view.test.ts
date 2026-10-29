@@ -130,14 +130,17 @@ describe("日志状态不冒充完整", () => {
     for (const fact of facts) expect(fact).not.toMatch(/成功|完成/);
   });
 
-  it("续读到产出位点后明确没有更多区段", () => {
+  it("续读只按服务端已落库的帧说话，产水位更高不算能继续", () => {
     expect(resumeFacts(demoLogPage).canContinue).toBe(true);
     const finished = {
       ...demoLogPage,
+      hasMore: false,
       nextCursor: { ...demoLogPage.nextCursor, nextSequence: 25 },
     };
     expect(resumeFacts(finished).canContinue).toBe(false);
     expect(resumeFacts(finished).text).toContain("没有更多可读区段");
+    const aheadOfFrames = { ...demoLogPage, producedThroughSequence: 900, hasMore: false };
+    expect(resumeFacts(aheadOfFrames).canContinue).toBe(false);
   });
 
   it("缺口行标记为缺失而不是空输出", () => {

@@ -509,6 +509,8 @@ export const executionLogReadViewSchema = leaseKeySchema.extend({
     }),
   ),
   logState: z.enum(EXECUTION_LOG_STATES),
+  /** 服务端仍存着大于 `nextCursor.nextSequence` 的帧；产水位更高不代表还能前进。 */
+  hasMore: z.boolean(),
   workerOnline: z.boolean(),
 });
 /** Web 侧取消请求：幂等键在 body，requestId 头只做日志关联。 */
