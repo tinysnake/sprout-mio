@@ -86,6 +86,7 @@ Object.assign(process.env, {
   SPROUT_PI_ENABLED: "false",
 });
 function launch(args: string[], name: string, ipc = false) {
+  assert(!cleanupPromise, "no new components during cleanup");
   const log = join(directory, name);
   const fd = openSync(log, "w", 0o600);
   const child = spawn(process.execPath, args, {
@@ -138,6 +139,7 @@ function processStartedAt(pid: number) {
 }
 
 const childrenPids = new Set<number>();
+const completionFiles = new Set<string>();
 let service: ReturnType<typeof spawn> | undefined;
 async function control(
   action: "issue" | "revoke" | "cleanup" | "human_cancel",
@@ -336,6 +338,37 @@ const markerOf = () => `marker-${randomUUID()}`;
 // 宿主下发的 shell 命令没有 max_runtime_ms 入参：真实产品路径默认无运行上限，
 // 这里直接连真实服务，不再由 fixture 代理补字段。
 const workerBase = base;
+
+let cleanupPromise: Promise<void> | undefined;
+function cleanup() {
+  return (cleanupPromise ??= (async () => {
+    for (const path of completionFiles) writeFileSync(path, "release", { mode: 0o600 });
+    for (const pid of childrenPids) if (alive(pid)) process.kill(pid, "SIGKILL");
+    if (service?.connected) await control("cleanup").catch(() => {});
+    for (const child of children.reverse()) {
+      await stop(child).catch(() => child.kill("SIGKILL"));
+    }
+  })());
+}
+let interrupted = false;
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+] as const) {
+  process.on(signal, () => {
+    if (interrupted) return;
+    interrupted = true;
+    const deadline = setTimeout(() => {
+      for (const pid of childrenPids) if (alive(pid)) process.kill(pid, "SIGKILL");
+      for (const child of children) child.kill("SIGKILL");
+      process.exit(code);
+    }, 8000);
+    void cleanup().finally(() => {
+      clearTimeout(deadline);
+      process.exit(code);
+    });
+  });
+}
 
 let generation = 1;
 try {
@@ -1246,10 +1279,12 @@ try {
 
   // —— 场景 9：命令运行中服务进程重启。 ——
   const restartMarker = markerOf();
+  const restartRelease = join(directory, `${restartMarker}.release`);
+  completionFiles.add(restartRelease);
   const restartTarget = (
     await submitShell({
       requestId: newId(ID_PREFIXES.request),
-      command: `echo pid=$$; : ${restartMarker}; i=0; while [ $i -lt 40 ]; do echo f=$i; i=$((i+1)); sleep 1; done`,
+      command: `echo pid=$$; : ${restartMarker}; echo f=0; deadline=$(($(date +%s)+300)); while [ ! -e '${restartRelease}' ]; do [ $(date +%s) -lt $deadline ] || exit 124; sleep 0.15; done; echo f=complete`,
       waitMs: 1000,
     })
   ).data;
@@ -1310,6 +1345,8 @@ try {
     persistedLog.frames.length >= restartLog.frames.length,
     "pre-restart frames stay readable",
   );
+  assert(alive(Number(restartPid)), "the original command waits through post-restart checks");
+  writeFileSync(restartRelease, "release", { mode: 0o600 });
   await until(
     async () =>
       (await withActiveRun(restartRunId, () => getView(restartTarget.executionId))).terminalAt !==
@@ -1372,9 +1409,7 @@ try {
   };
   pass("S5 the reconnected Worker only reports observed recovery facts for the surviving process");
 } finally {
-  for (const pid of childrenPids) if (alive(pid)) process.kill(pid, "SIGKILL");
-  if (service?.connected) await control("cleanup").catch(() => {});
-  for (const child of children.reverse()) await stop(child).catch(() => {});
+  await cleanup();
   writeFileSync(
     evidencePath,
     JSON.stringify(
