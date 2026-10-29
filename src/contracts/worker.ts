@@ -236,6 +236,7 @@ export const workerExchangeResponseSchema = z.union([
                 z.strictObject({
                   projectId: z.string().regex(appIdPattern(ID_PREFIXES.project)),
                   description: z.string().max(500),
+                  revision: positiveSafeIntegerSchema,
                 }),
               )
               .max(1000),

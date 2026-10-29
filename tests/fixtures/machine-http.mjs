@@ -619,6 +619,7 @@ try {
               machineId,
               projectId,
               generation: session.generation,
+              bindingRevision: 1,
               revision: 2,
               seq: 2,
               checkedAt: new Date().toISOString(),

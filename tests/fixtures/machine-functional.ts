@@ -147,6 +147,7 @@ const exchange = {
       machineId,
       projectId,
       generation: first.generation,
+      bindingRevision: 1,
       revision: root.revision,
       seq: 1,
       checkedAt: now.toISOString(),
@@ -158,7 +159,9 @@ const configuration = exchangeWorker(exchange, ctx);
 assert.equal(configuration.mode, "normal");
 assert.equal(configuration.configuration?.root, "/tmp");
 assert.equal(configuration.configuration?.rootRevision, root.revision);
-assert.deepEqual(configuration.configuration?.bindings, [{ projectId, description: "local" }]);
+assert.deepEqual(configuration.configuration?.bindings, [
+  { projectId, description: "local", revision: 1 },
+]);
 assert.deepEqual(configuration.remote, {
   authorizations: [],
   commands: [],
@@ -185,11 +188,25 @@ assert.throws(
   fail("unauthorized"),
 );
 saveProjectMachineBinding({ ...binding, description: "new", expectedRevision: 1 }, ctx);
-assert.equal(getMachine({ machineId }, ctx).bindings[0]?.observation?.current, true);
+// 绑定 revision 1→2 与关系身份绑定：旧观测立即失效，携带旧 revision 的重投被拒。
+assert.equal(getMachine({ machineId }, ctx).bindings[0]?.observation, null);
+assert.throws(
+  () =>
+    exchangeWorker(
+      { ...exchange, seq: 2, observations: exchange.observations.map((o) => ({ ...o, seq: 2 })) },
+      ctx,
+    ),
+  fail("conflict"),
+);
 exchangeWorker(
-  { ...exchange, seq: 2, observations: exchange.observations.map((o) => ({ ...o, seq: 2 })) },
+  {
+    ...exchange,
+    seq: 2,
+    observations: exchange.observations.map((o) => ({ ...o, seq: 2, bindingRevision: 2 })),
+  },
   ctx,
 );
+assert.equal(getMachine({ machineId }, ctx).bindings[0]?.observation?.current, true);
 saveMachineRootDirectory({ machineId, directory: null, expectedRevision: root.revision }, ctx);
 assert.equal(getMachine({ machineId }, ctx).bindings[0]?.observation?.current, false);
 assert.throws(
@@ -201,6 +218,7 @@ assert.throws(
         observations: exchange.observations.map((o) => ({
           ...o,
           seq: 3,
+          bindingRevision: 2,
           revision: root.revision + 1,
         })),
       },
@@ -215,7 +233,11 @@ const refreshed = saveMachineRootDirectory(
 assert.throws(
   () =>
     exchangeWorker(
-      { ...exchange, seq: 3, observations: exchange.observations.map((o) => ({ ...o, seq: 3 })) },
+      {
+        ...exchange,
+        seq: 3,
+        observations: exchange.observations.map((o) => ({ ...o, seq: 3, bindingRevision: 2 })),
+      },
       ctx,
     ),
   fail("conflict"),

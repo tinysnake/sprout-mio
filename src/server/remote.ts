@@ -1502,10 +1502,9 @@ function remoteExchangeBytes(remote: RemoteWireOutput, ctx: AuthenticatedWorkerC
       ? {
           root: root.rootDirectory,
           rootRevision: root.rootRevision,
-          bindings: machineBindings(ctx.session.machineId).map(({ projectId, description }) => ({
-            projectId,
-            description,
-          })),
+          bindings: machineBindings(ctx.session.machineId).map(
+            ({ projectId, description, revision }) => ({ projectId, description, revision }),
+          ),
         }
       : null;
   return Buffer.byteLength(

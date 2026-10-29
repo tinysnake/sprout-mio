@@ -21,6 +21,7 @@ import { WORKER_STALE_AFTER_MS } from "../contracts/worker";
 import { db, sqlite } from "../db";
 import {
   diagnosticEvent,
+  directoryObservation,
   leaseAuthorization,
   leaseMutation,
   machineConnection,
@@ -35,7 +36,7 @@ import { assertRemoteAccess, LeaseError, payloadHash, reclaimLeaseInTransaction 
 import { insertRevokeNotice, oldestUndeliveredNotice } from "./notices";
 
 export type MembershipRow = typeof projectMachineMembership.$inferSelect;
-export type MembershipTx = Pick<typeof db, "select" | "insert" | "update">;
+export type MembershipTx = Pick<typeof db, "select" | "insert" | "update" | "delete">;
 /** 完成钩子只需要收据里的事实，调用方可以直接传自己的 `lease_mutation` 行。 */
 export type CompletedLeaseMutation = Pick<
   typeof leaseMutation.$inferSelect,
@@ -57,6 +58,22 @@ export const membershipWhere = (key: LeaseKey) =>
     eq(projectMachineMembership.projectId, key.projectId),
     eq(projectMachineMembership.machineId, key.machineId),
   );
+
+/**
+ * 目录观察是当前关系事实，不是历史：绑定 revision 或 membership 生命周期一变化，
+ * 旧观测立即失效。观测表没有绑定 revision 列，因此以删除旧行表达“不再属于当前关系”；
+ * 接收与读取仍分别核对 wire 绑定 revision 和最新 active。
+ */
+export function invalidateDirectoryObservations(tx: MembershipTx, key: LeaseKey) {
+  tx.delete(directoryObservation)
+    .where(
+      and(
+        eq(directoryObservation.projectId, key.projectId),
+        eq(directoryObservation.machineId, key.machineId),
+      ),
+    )
+    .run();
+}
 
 /** 最新一段加入生命周期。缺行返回 undefined，调用方一律当作不成立。 */
 export function latestMembership(key: LeaseKey): MembershipRow | undefined {
@@ -440,6 +457,7 @@ export function detachMachine(raw: DetachInput, ctx: MachineContext): Membership
           })
           .where(and(membershipWhere(key), eq(projectMachineMembership.epoch, current.epoch)))
           .run();
+        invalidateDirectoryObservations(db, key);
         insertRevokeNotice(db, {
           key,
           kind: "machine_removed",
@@ -487,6 +505,7 @@ export function detachMachine(raw: DetachInput, ctx: MachineContext): Membership
         })
         .where(and(membershipWhere(key), eq(projectMachineMembership.epoch, current.epoch)))
         .run();
+      invalidateDirectoryObservations(db, key);
       insertRevokeNotice(db, {
         key,
         kind: "machine_removed",
@@ -617,6 +636,7 @@ export function onLeaseMutationCompleted(
       ),
     )
     .run();
+  if (updated.changes > 0) invalidateDirectoryObservations(tx, key);
   return updated.changes > 0;
 }
 
