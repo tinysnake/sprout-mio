@@ -90,7 +90,9 @@ function actor(targetProject: string): AgentRemoteContext {
     .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'MCP fixture','owner')")
     .run(profileId);
   sqlite
-    .prepare("INSERT INTO chat(id,project_id,kind,created_by) VALUES (?,?,'dm','owner')")
+    .prepare(
+      "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human','owner','owner')",
+    )
     .run(chatId, targetProject);
   sqlite
     .prepare("INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES (?,'agent',?)")

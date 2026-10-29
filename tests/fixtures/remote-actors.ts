@@ -21,8 +21,10 @@ export function seedRemoteActor(
     .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'Remote fixture',?)")
     .run(profileId, userId);
   sqlite
-    .prepare("INSERT INTO chat(id,project_id,kind,created_by) VALUES (?,?,'dm',?)")
-    .run(chatId, projectId, userId);
+    .prepare(
+      "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human',?,?)",
+    )
+    .run(chatId, projectId, userId, userId);
   sqlite
     .prepare("INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES (?,'agent',?)")
     .run(chatId, profileId);

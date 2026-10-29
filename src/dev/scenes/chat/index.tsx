@@ -34,6 +34,9 @@ function chat(id: string, title: string, updatedAt: string): Chat {
     projectId: PROJECT_ID,
     kind: "dm",
     title,
+    owner: { kind: "human", id: "usr_demo" },
+    wakePolicy: "owner_led",
+    governanceRevision: 0,
     createdBy: "usr_demo",
     createdAt: "2026-06-18T02:00:00.000Z",
     updatedAt,
@@ -175,11 +178,14 @@ const infoView: ChatInfoView = {
     { memberKind: "human", memberId: "usr_demo", displayName: HUMAN },
     { memberKind: "agent", memberId: profiles[0]!.id, displayName: profiles[0]!.name },
   ],
-  instance: {
-    instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    agentProfileId: profiles[0]!.id,
-    profileName: profiles[0]!.name,
-  },
+  owner: { kind: "human", id: "usr_demo" },
+  instances: [
+    {
+      instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      agentProfileId: profiles[0]!.id,
+      profileName: profiles[0]!.name,
+    },
+  ],
   messages: { count: messages.length, latestAt: messages[2]!.createdAt },
   runs: {
     available: true,
@@ -259,7 +265,7 @@ function workspaceFixture(chat: Chat, currentMessages: Message[]) {
       memberId: member.memberId,
       displayName: member.memberKind === "human" ? HUMAN : profile.name,
     })),
-    instance: { instanceId: instance.id, agentProfileId: profile.id, profileName: profile.name },
+    instances: [{ instanceId: instance.id, agentProfileId: profile.id, profileName: profile.name }],
     messages: { count: threadMessages.length, latestAt: threadMessages.at(-1)?.createdAt },
     runs: first ? infoView.runs : { ...infoView.runs, active: [], recent: [] },
   };

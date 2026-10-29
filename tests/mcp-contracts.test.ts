@@ -85,7 +85,14 @@ function sqliteProbe() {
     });
     for (const p of ["a", "b"]) {
       insert("project", { id: p, name: p, created_by: "owner" });
-      insert("chat", { id: `chat-${p}`, project_id: p, kind: "dm", created_by: "owner" });
+      insert("chat", {
+        id: `chat-${p}`,
+        project_id: p,
+        kind: "dm",
+        owner_kind: "human",
+        owner_id: "owner",
+        created_by: "owner",
+      });
       insert("agent_instance", {
         id: `instance-${p}`,
         agent_profile_id: "profile",

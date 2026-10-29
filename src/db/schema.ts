@@ -7,6 +7,7 @@ import {
   integer,
   primaryKey,
   sqliteTable,
+  sqliteView,
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
@@ -112,9 +113,15 @@ export const chat = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => project.id),
-    kind: text("kind", { enum: ["dm"] }).notNull(),
+    kind: text("kind", { enum: ["dm", "group", "public_channel"] }).notNull(),
     title: text("title"),
     archivedAt: integer("archived_at", { mode: "timestamp" }),
+    ownerKind: text("owner_kind", { enum: ["human", "agent"] }).notNull(),
+    ownerId: text("owner_id").notNull(),
+    wakePolicy: text("wake_policy", { enum: ["mention_only", "owner_led", "contextual"] })
+      .notNull()
+      .default("owner_led"),
+    governanceRevision: integer("governance_revision").notNull().default(0),
     createdBy: text("created_by")
       .notNull()
       .references(() => user.id),
@@ -126,11 +133,36 @@ export const chat = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    check("chat_kind_check", sql`${table.kind} in ('dm')`),
+    check("chat_kind_check", sql`${table.kind} in ('dm', 'group', 'public_channel')`),
     check(
       "chat_title_check",
       sql`${table.title} is null or length(trim(${table.title})) between 1 and 80`,
     ),
+    check("chat_owner_kind_check", sql`${table.ownerKind} in ('human', 'agent')`),
+    check("chat_owner_id_check", sql`length(trim(${table.ownerId})) > 0`),
+    check(
+      "chat_wake_policy_check",
+      sql`${table.wakePolicy} in ('mention_only', 'owner_led', 'contextual')`,
+    ),
+    check(
+      "chat_governance_revision_check",
+      sql`typeof(${table.governanceRevision}) = 'integer' and ${table.governanceRevision} >= 0`,
+    ),
+    // DM 的所有者只能是创建它的人；群与频道的所有者可以是分身，由 p5a-groups 校验参与权。
+    check(
+      "chat_dm_owner_check",
+      sql`${table.kind} <> 'dm' or (${table.ownerKind} = 'human' and ${table.ownerId} = ${table.createdBy})`,
+    ),
+    check(
+      "chat_public_channel_archived_check",
+      sql`${table.kind} <> 'public_channel' or ${table.archivedAt} is null`,
+    ),
+    uniqueIndex("chat_id_project_unique").on(table.id, table.projectId),
+    uniqueIndex("chat_public_channel_project_unique")
+      .on(table.projectId)
+      .where(sql`${table.kind} = 'public_channel'`),
+    index("chat_project_updated_idx").on(table.projectId, table.updatedAt, table.id),
+    index("chat_project_owner_idx").on(table.projectId, table.ownerKind, table.ownerId),
   ],
 );
 
@@ -149,8 +181,62 @@ export const chatMember = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.chatId, table.memberKind, table.memberId] }),
     check("chat_member_kind_check", sql`${table.memberKind} in ('human', 'agent')`),
+    check("chat_member_id_check", sql`length(trim(${table.memberId})) > 0`),
+    index("chat_member_identity_idx").on(table.memberKind, table.memberId, table.chatId),
   ],
 );
+
+/**
+ * 成员唯一真值读视图：DM 与 Group 取 `chat_member`，Public Channel 从 `project_member`
+ * 与 `project.created_by` 当场派生，不给成员表复制 kind/project 事实。
+ * Group 的 Agent 行只在仍属本项目时存在，移出后同一读即消失；Human 行不受 project_member 限制。
+ */
+export const chatEffectiveMember = sqliteView("chat_effective_member", {
+  chatId: text("chat_id").notNull(),
+  projectId: text("project_id").notNull(),
+  memberKind: text("member_kind", { enum: ["human", "agent"] }).notNull(),
+  memberId: text("member_id").notNull(),
+  addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
+  source: text("source", { enum: ["chat_member", "project_member", "project_owner"] }).notNull(),
+}).as(sql`
+  SELECT
+    c.id AS chat_id,
+    c.project_id,
+    cm.member_kind,
+    cm.member_id,
+    cm.added_at,
+    'chat_member' AS source
+  FROM chat c
+  JOIN chat_member cm ON cm.chat_id = c.id
+  WHERE c.kind IN ('dm', 'group') AND (
+    cm.member_kind = 'human' OR c.kind = 'dm' OR EXISTS (
+      SELECT 1 FROM project_member pm
+      WHERE pm.project_id = c.project_id AND pm.agent_profile_id = cm.member_id
+    )
+  )
+  UNION ALL
+  SELECT
+    c.id AS chat_id,
+    c.project_id,
+    'agent' AS member_kind,
+    pm.agent_profile_id AS member_id,
+    pm.added_at,
+    'project_member' AS source
+  FROM chat c
+  JOIN project_member pm ON pm.project_id = c.project_id
+  WHERE c.kind = 'public_channel'
+  UNION ALL
+  SELECT
+    c.id AS chat_id,
+    c.project_id,
+    'human' AS member_kind,
+    p.created_by AS member_id,
+    p.created_at AS added_at,
+    'project_owner' AS source
+  FROM chat c
+  JOIN project p ON p.id = c.project_id
+  WHERE c.kind = 'public_channel'
+`);
 
 export const agentInstance = sqliteTable(
   "agent_instance",
@@ -195,6 +281,7 @@ export const message = sqliteTable(
   (table) => [
     check("message_sender_kind_check", sql`${table.senderKind} in ('human', 'agent')`),
     index("message_chat_created_at_idx").on(table.chatId, table.createdAt),
+    uniqueIndex("message_id_chat_unique").on(table.id, table.chatId),
   ],
 );
 
@@ -230,6 +317,9 @@ export const agentRun = sqliteTable(
       .on(table.instanceId)
       .where(sql`${table.status} in ('queued', 'running')`),
     index("agent_run_chat_queued_idx").on(table.chatId, table.queuedAt),
+    uniqueIndex("agent_run_assistant_message_unique")
+      .on(table.assistantMessageId)
+      .where(sql`${table.assistantMessageId} is not null`),
     uniqueIndex("agent_run_bound_identity_unique").on(
       table.id,
       table.instanceId,
@@ -268,25 +358,37 @@ export const agentRun = sqliteTable(
 export const agentRunInput = sqliteTable(
   "agent_run_input",
   {
-    messageId: text("message_id")
-      .primaryKey()
-      .references(() => message.id),
     runId: text("run_id")
       .notNull()
       .references(() => agentRun.id),
-    disposition: text("disposition", { enum: ["pending", "delivered"] })
+    messageId: text("message_id")
+      .notNull()
+      .references(() => message.id),
+    disposition: text("disposition", { enum: ["pending", "delivered", "cancelled"] })
       .notNull()
       .default("pending"),
     deliveredAt: integer("delivered_at", { mode: "timestamp" }),
+    cancelledAt: integer("cancelled_at", { mode: "timestamp" }),
+    cancelReason: text("cancel_reason", {
+      enum: ["membership_revoked", "human_stop", "group_dissolved"],
+    }),
   },
   (table) => [
-    index("agent_run_input_run_idx").on(table.runId),
+    // 联合主键让同一条消息可以扇出给多条 run；run_id 作为最左列继续服务按 run 的读取。
+    primaryKey({ columns: [table.runId, table.messageId] }),
+    index("agent_run_input_message_idx").on(table.messageId),
+    index("agent_run_input_run_disposition_idx").on(table.runId, table.disposition),
     check(
       "agent_run_input_disposition_check",
       sql`(
-      (${table.disposition} = 'pending' and ${table.deliveredAt} is null)
-      or (${table.disposition} = 'delivered' and ${table.deliveredAt} is not null)
+      (${table.disposition} = 'pending' and ${table.deliveredAt} is null and ${table.cancelledAt} is null and ${table.cancelReason} is null)
+      or (${table.disposition} = 'delivered' and ${table.deliveredAt} is not null and ${table.cancelledAt} is null and ${table.cancelReason} is null)
+      or (${table.disposition} = 'cancelled' and ${table.deliveredAt} is null and ${table.cancelledAt} is not null and ${table.cancelReason} is not null)
     )`,
+    ),
+    check(
+      "agent_run_input_cancel_reason_check",
+      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved')`,
     ),
   ],
 );

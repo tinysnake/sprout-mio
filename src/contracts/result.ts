@@ -28,6 +28,8 @@ export const APP_ERROR_CODES = [
   "cancellation_not_found",
   "cancellation_already_terminal",
   "cancellation_delivery_unconfirmed",
+  // I-P5a：公共频道成员是派生事实，独立增删它的请求用这个码回绝，其他治理越权仍用 forbidden。
+  "channel_membership_managed",
 ] as const;
 /** 只允许登记的错误码，不接受未知字符串。 */
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
