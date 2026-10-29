@@ -741,7 +741,7 @@ try {
       "S4/S10 real writes trigger retention, stale cursors are rejected, the retained suffix reads",
     );
   }
-  if (includes("cancellation")) {
+  if (includes("execution")) {
     // —— 场景 11：跨过 30 秒下发窗口的真实长命令仍在运行、日志继续、可取消。 ——
     const longMarker = markerOf();
     const longSubmittedAt = Date.now();

@@ -1,8 +1,8 @@
 import { AH_GROUPS } from "./native-lanes.mjs";
 
 export const AH_CHECKS = Object.freeze({
-  execution: Object.freeze(["service", "tools", "worker", "S1", "S2", "S3", "S4/S10"]),
-  cancellation: Object.freeze(["S11", "S6", "S6b", "S6c", "S7"]),
+  execution: Object.freeze(["service", "tools", "worker", "S1", "S2", "S3", "S4/S10", "S11"]),
+  cancellation: Object.freeze(["S6", "S6b", "S6c", "S7"]),
   recovery: Object.freeze(["S8", "S12", "S9", "S5"]),
 });
 

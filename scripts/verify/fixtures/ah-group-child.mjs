@@ -6,8 +6,8 @@ import { cleanupAhFixture } from "../lib/ah-cleanup.mjs";
 const [group, mode] = process.argv.slice(2);
 const directory = process.env.AH_FIXTURE_DIRECTORY;
 const ids = {
-  execution: ["service", "tools", "worker", "S1", "S2", "S3", "S4/S10"],
-  cancellation: ["S11", "S6", "S6b", "S6c", "S7"],
+  execution: ["service", "tools", "worker", "S1", "S2", "S3", "S4/S10", "S11"],
+  cancellation: ["S6", "S6b", "S6c", "S7"],
   recovery: ["S8", "S12", "S9", "S5"],
 };
 const checks = ids[group].map((id) => ({ id }));
