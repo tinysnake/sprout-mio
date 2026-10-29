@@ -108,10 +108,11 @@ get_200() {
   pass "GET $path returned 200"
 }
 
+run 'ensure frozen installation' install node scripts/verify/prepare.mjs install
+if [ "${SPROUT_VERIFY_TARGET-all}" != local ]; then
 port_guard "$prod_port"
 port_guard "$dev_port"
 [ "$prod_port" != "$dev_port" ] || fail 'production and dev ports must differ'
-run 'ensure frozen installation' install node scripts/verify/prepare.mjs install
 run 'typecheck Web, Worker and extension' typecheck pnpm typecheck
 run 'format lint and type gate' check pnpm check
 run 'ensure Nitro production artifact' build node scripts/verify/prepare.mjs server
@@ -176,9 +177,13 @@ run 'Worker help' worker-help node dist/worker/main.js --help
 grep -qF 'sprout-worker version' "$log_dir/worker-help.log" || fail 'Worker help is missing version'
 pass "Worker output $(<"$log_dir/worker-version.log")"
 pass "Worker output $(<"$log_dir/worker-default.log")"
+else
+  printf 'INFO portable A checks belong to the GitHub Actions target\n'
+fi
 
 run 'ensure extension artifact' extension-build node scripts/verify/prepare.mjs extension
 [ -f dist/extension/main.js ] || fail 'missing dist/extension/main.js'
+if [ "${SPROUT_VERIFY_TARGET-all}" != ci ]; then
 if [ "$SPROUT_VERIFY_CHAT_MODE" = model-fixture ]; then
   run 'real Pi sprout_status invocation (model-fixture)' pi node scripts/verify/lib/status-model-fixture.mjs dist/extension/main.js "$log_dir/model-mode.json"
 else
@@ -213,4 +218,7 @@ if (mode === 'live') {
 console.log('CHAT metadata', readFileSync(metadataPath,'utf8'))
 JS
 
-pass 'a-base all checks passed'
+else
+  printf 'INFO real Pi CLI invocation belongs to the local target\n'
+fi
+pass "a-base checks passed for target=${SPROUT_VERIFY_TARGET-all}"

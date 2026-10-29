@@ -526,6 +526,7 @@ async function main() {
     finishedAt: new Date().toISOString(),
     durationMs: totalDurationMs,
     selection: parsed.only,
+    target: process.env.SPROUT_VERIFY_TARGET ?? "all",
     interrupted:
       interrupted.signal === null
         ? null

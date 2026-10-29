@@ -105,6 +105,12 @@ get_200() {
   pass "GET $path returned 200 ($(wc -c <"$output" | tr -d ' ') bytes)"
 }
 
+if [ "${SPROUT_VERIFY_TARGET-all}" = local ]; then
+  run 'macOS and installed-Pi tests' test node scripts/verify/test-target.mjs local
+  pass 'b-tooling local tests passed; portable B checks belong to GitHub Actions'
+  exit 0
+fi
+
 port_guard "$prod_port"
 
 printf 'RUN  frozen installation preparation with timing\n'
@@ -115,7 +121,11 @@ install_seconds="$(( $(date +%s) - install_start ))"
 pass "frozen lockfile preparation request took ${install_seconds}s; original producer/reuse details: $log_dir/install.log (pnpm store not cold: COLD store untested)"
 
 run 'format lint and type gate' check pnpm check
-run 'contract and tooling tests' test pnpm test
+if [ "${SPROUT_VERIFY_TARGET-all}" = ci ]; then
+  run 'portable contract and tooling tests' test node scripts/verify/test-target.mjs ci
+else
+  run 'contract and tooling tests' test pnpm test
+fi
 run 'ensure Nitro production artifact' build node scripts/verify/prepare.mjs server
 [ -f .output/server/index.mjs ] || fail 'missing .output/server/index.mjs'
 [ -f .output/public/_shell.html ] || fail 'missing .output/public/_shell.html'
@@ -154,4 +164,4 @@ server_pid=""
 pass 'SIGTERM stopped the production process group within 10s'
 port_guard "$prod_port"
 
-pass "b-tooling all checks passed (installation preparation ${install_seconds}s)"
+pass "b-tooling checks passed for target=${SPROUT_VERIFY_TARGET-all} (installation preparation ${install_seconds}s)"
