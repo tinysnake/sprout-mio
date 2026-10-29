@@ -4,7 +4,7 @@ export const SUITE_CAPACITY = Object.freeze({
   process: 6,
   native: NATIVE_LANE_BUDGET,
   browser: 2,
-  unit: 1,
+  unit: 2,
   development: 2,
   sdk: 1,
   light: 2,
@@ -26,7 +26,7 @@ function plan(seconds, resources, preparation = [], sandbox = false) {
 }
 
 export const SUITE_PLAN = Object.freeze({
-  "a-base": plan(26.862, { development: 1, unit: 1, sdk: 1 }, privateTree, true),
+  "a-base": plan(26.862, { development: 1, unit: 1 }, privateTree, true),
   "aa-execution-log-contracts": plan(1.552, { unit: 1 }),
   "ab-worker-long-command": plan(33.303, { native: 1 }, worker),
   "ac-execution-recovery-log": plan(0.653, { unit: 1 }),
@@ -40,7 +40,7 @@ export const SUITE_PLAN = Object.freeze({
   "ak-execution-accept-fixes-2": plan(12.173, { unit: 1, native: 1 }),
   "al-execution-exit-custody": plan(12.665, { unit: 1, native: 1 }),
   "am-execution-log-honesty": plan(4.098, { browser: 1 }, server),
-  "b-tooling": plan(29.198, { unit: 1, sdk: 1 }, privateTree, true),
+  "b-tooling": plan(29.198, { unit: 1 }, privateTree, true),
   "c-auth-rate-limit": plan(1.364, { light: 1 }, server),
   "c-data-auth": plan(5.451, { development: 1, unit: 1, browser: 1 }, privateTree, true),
   "d-runtime": plan(17.213, { development: 1, unit: 1 }, privateTree, true),
