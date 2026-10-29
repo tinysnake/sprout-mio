@@ -2,6 +2,8 @@
 
 真实 Sprout 应用由仓库适配器嵌入 Lavish；反馈与回写使用 Lavish 原生 CLI。入口是 [human-review skill](../.agents/skills/human-review/SKILL.md)，运行时不注册 Pi tool、slash command 或消息投递扩展。
 
+章节收尾时的最终评审也走这条路径：集成完成后由 Human 看真实页面再给结论，顺序与方案选择的分工见[页面设计与实现的分工](project-conventions.md#页面设计与实现的分工)。
+
 ## 启动
 
 应用需要已经启动。前台手动体验：
