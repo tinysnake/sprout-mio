@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { NATIVE_GATE_WEIGHTS, NATIVE_LANE_BUDGET } from "./lib/native-lanes.mjs";
 import {
   closeSync,
   existsSync,
@@ -24,7 +25,8 @@ const tailCharacters = 4_000;
 
 const usage = `Usage: pnpm verify [--only <id>[,<id>...]] [--help]
 
-Runs every top-level scripts/verify/*.sh script in lexical order, sequentially.
+Runs top-level scripts/verify/*.sh scripts in lexical order, with the five fixed
+native gates gathered into one bounded batch. Other scripts remain sequential.
 A failing script does not stop later scripts. The command exits 1 when any
 script fails.
 
@@ -137,8 +139,8 @@ function formatDuration(durationMs) {
 
 /** @type {{ signal: string | null, exitCode: number | null }} */
 const interrupted = { signal: null, exitCode: null };
-let current = null;
-let forceStopTimer = null;
+const activeChildren = new Set();
+let cleanup = Promise.resolve();
 
 function signalProcessGroup(pid, signal) {
   try {
@@ -148,28 +150,80 @@ function signalProcessGroup(pid, signal) {
   }
 }
 
-function stopCurrent(signal) {
-  if (!current) return;
-  const child = current.child;
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  signalProcessGroup(child.pid, signal);
-  forceStopTimer = setTimeout(() => {
-    signalProcessGroup(child.pid, "SIGKILL");
-  }, forceStopMs);
-  forceStopTimer.unref?.();
-}
-
 function handleSignal(signal) {
   if (interrupted.signal !== null) return;
   interrupted.signal = signal;
   interrupted.exitCode = signal === "SIGINT" ? 130 : 143;
-  stopCurrent(signal);
+  const deadline = performance.now() + forceStopMs;
+  const descendants = new Set([...activeChildren].map((child) => child.pid).filter(Boolean));
+  // Remember detached descendants before their launcher can exit and reparent them.
+  function remainingProcesses() {
+    const result = spawnSync("ps", ["-axo", "pid=,ppid=,stat="], {
+      encoding: "utf8",
+      timeout: 1000,
+    });
+    if (result.status !== 0) return [...descendants];
+    const rows = result.stdout
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const [pid, parent, state] = line.trim().split(/\s+/);
+        return { pid: Number(pid), parent: Number(parent), state };
+      });
+    let changed;
+    do {
+      changed = false;
+      for (const row of rows) {
+        if (descendants.has(row.parent) && !descendants.has(row.pid)) {
+          descendants.add(row.pid);
+          changed = true;
+        }
+      }
+    } while (changed);
+    return rows
+      .filter((row) => descendants.has(row.pid) && !row.state?.startsWith("Z"))
+      .map((row) => row.pid);
+  }
+  remainingProcesses();
+  for (const child of activeChildren) {
+    if (child.pid) signalProcessGroup(child.pid, signal);
+  }
+  cleanup = new Promise((resolveCleanup) => {
+    let forced = false;
+    const check = () => {
+      const remaining = remainingProcesses();
+      if (remaining.length === 0 && activeChildren.size === 0) {
+        resolveCleanup();
+        return;
+      }
+      if (performance.now() >= deadline) {
+        // Give launchers the entire grace period to forward cleanup to private groups.
+        for (const pid of remaining) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch (error) {
+            if (error.code !== "ESRCH") throw error;
+          }
+        }
+        for (const child of activeChildren) {
+          if (child.pid) signalProcessGroup(child.pid, "SIGKILL");
+        }
+        if (forced && performance.now() >= deadline + 1000) {
+          resolveCleanup();
+          return;
+        }
+        forced = true;
+      }
+      setTimeout(check, 50);
+    };
+    check();
+  });
 }
 
 process.on("SIGINT", () => handleSignal("SIGINT"));
 process.on("SIGTERM", () => handleSignal("SIGTERM"));
 
-function runScript(script, runDirectory) {
+function runScript(script, runDirectory, environment = {}) {
   return new Promise((resolveOutcome) => {
     const relativePath = relative(root, script.file).split("\\").join("/");
     const logPath = join(runDirectory, `${script.id}.log`);
@@ -201,11 +255,7 @@ function runScript(script, runDirectory) {
         code === 0 && signal === null && !spawnError && interrupted.signal === null
           ? "passed"
           : "failed";
-      current = null;
-      if (forceStopTimer !== null) {
-        clearTimeout(forceStopTimer);
-        forceStopTimer = null;
-      }
+      activeChildren.delete(child);
       if (outcome.status === "passed") {
         console.log(`PASS ${script.id} ${relativePath} ${formatDuration(outcome.durationMs)}`);
       } else {
@@ -229,7 +279,7 @@ function runScript(script, runDirectory) {
       resolveOutcome(outcome);
     };
 
-    const child = spawn("bash", [script.file], {
+    const child = spawn(script.command ?? "bash", script.args ?? [script.file], {
       cwd: root,
       detached: true,
       stdio: ["ignore", logDescriptor, logDescriptor],
@@ -237,12 +287,89 @@ function runScript(script, runDirectory) {
         ...process.env,
         SPROUT_PI_ENABLED: "false",
         SPROUT_VERIFY_RUN_DIR: runDirectory,
+        ...environment,
       },
     });
-    current = { child };
+    activeChildren.add(child);
     child.on("error", (error) => finish(null, null, error));
     child.on("close", (code, signal) => finish(code, signal));
   });
+}
+
+async function runNativeBatch(scripts, runDirectory) {
+  console.log(
+    `Native batch gates=${scripts.map((script) => script.id).join(",")} fixtureBudget=${NATIVE_LANE_BUDGET}`,
+  );
+  const preparationStarted = performance.now();
+  for (const kind of ["install", "server", "worker"]) {
+    if (interrupted.signal !== null) return [];
+    const file = join(verifyDirectory, "prepare.mjs");
+    const preparation = await runScript(
+      {
+        id: `prepare-${kind}`,
+        file,
+        command: process.execPath,
+        args: [file, kind],
+      },
+      runDirectory,
+      {
+        ...(kind === "install" ? {} : { NODE_ENV: "production" }),
+        SPROUT_VERIFY_PREPARED_ONLY: "0",
+      },
+    );
+    if (interrupted.signal !== null) return [];
+    if (preparation.status !== "passed") {
+      return scripts.map((script) => {
+        const logPath = join(runDirectory, `${script.id}.log`);
+        writeFileSync(
+          logPath,
+          `Blocked by ${kind} preparation; exit=${preparation.exitCode} signal=${preparation.signal} log=${preparation.logPath}\n`,
+        );
+        console.log(`FAIL ${script.id} blocked by ${kind} preparation log=${logPath}`);
+        return {
+          id: script.id,
+          path: relative(root, script.file).split("\\").join("/"),
+          status: "failed",
+          exitCode: null,
+          signal: null,
+          startedAt: new Date().toISOString(),
+          durationMs: 0,
+          logPath,
+        };
+      });
+    }
+  }
+  console.log(`Native preparation total=${formatDuration(performance.now() - preparationStarted)}`);
+  const pending = [...scripts];
+  const running = new Map();
+  const outcomes = [];
+  let used = 0;
+  while (pending.length || running.size) {
+    if (interrupted.signal === null) {
+      let index;
+      while (
+        (index = pending.findIndex(
+          (script) => used + NATIVE_GATE_WEIGHTS[script.id] <= NATIVE_LANE_BUDGET,
+        )) !== -1
+      ) {
+        const [script] = pending.splice(index, 1);
+        used += NATIVE_GATE_WEIGHTS[script.id];
+        running.set(
+          script.id,
+          runScript(script, runDirectory, {
+            NODE_ENV: "production",
+            SPROUT_VERIFY_PREPARED_ONLY: "1",
+          }),
+        );
+      }
+    }
+    if (running.size === 0) break;
+    const outcome = await Promise.race(running.values());
+    running.delete(outcome.id);
+    used -= NATIVE_GATE_WEIGHTS[outcome.id];
+    outcomes.push(outcome);
+  }
+  return outcomes;
 }
 
 function writeReport(runDirectory, report) {
@@ -296,10 +423,22 @@ async function main() {
 
   cleanVerificationDatabases(parsed.only);
 
+  const nativeScripts = selected.filter((script) => Object.hasOwn(NATIVE_GATE_WEIGHTS, script.id));
+  let nativeDispatched = false;
   for (const script of selected) {
     if (interrupted.signal !== null) break;
-    outcomes.push(await runScript(script, run.directory));
+    if (Object.hasOwn(NATIVE_GATE_WEIGHTS, script.id)) {
+      if (nativeDispatched) continue;
+      nativeDispatched = true;
+      outcomes.push(...(await runNativeBatch(nativeScripts, run.directory)));
+    } else outcomes.push(await runScript(script, run.directory));
   }
+  await cleanup;
+  outcomes.sort(
+    (left, right) =>
+      selected.findIndex((script) => script.id === left.id) -
+      selected.findIndex((script) => script.id === right.id),
+  );
 
   const totalDurationMs = Math.round(performance.now() - runStarted);
   const failed = outcomes.filter((outcome) => outcome.status !== "passed").length;

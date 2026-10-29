@@ -203,6 +203,10 @@ async function main() {
     process.stdout.write(readFileSync(receipt.logPath));
     return 0;
   }
+  if (process.env.SPROUT_VERIFY_PREPARED_ONLY === "1")
+    throw new Error(
+      `Prepared-only verification forbids producing ${kind}; current-run receipt or outputs do not match`,
+    );
   if (receiptPath) rmSync(receiptPath, { force: true });
   if (kind === "install") {
     if (runDirectory)

@@ -123,6 +123,10 @@ test("runner context connects preparation across domains without a second instal
   const f = fixture();
   copyFileSync(resolve("scripts/verify/runner.mjs"), join(f.root, "scripts/verify/runner.mjs"));
   f.put(
+    "scripts/verify/lib/native-lanes.mjs",
+    readFileSync(resolve("scripts/verify/lib/native-lanes.mjs"), "utf8"),
+  );
+  f.put(
     "scripts/verify/a-first.sh",
     "set -eu\nnode scripts/verify/prepare.mjs install\nnode scripts/verify/prepare.mjs server\nnode scripts/verify/prepare.mjs worker\nnode scripts/verify/prepare.mjs extension\n",
   );
@@ -331,6 +335,37 @@ test("server preparation unsets auth secret, preserves compiler settings and ign
     .join("\n");
   expect(metadata).not.toContain("sensitive-value");
   expect(metadata).not.toContain("another-secret");
+});
+
+test("prepared-only consumers reuse receipts and reject producers before deleting receipts or outputs", () => {
+  const f = fixture();
+  for (const kind of ["install", "server", "worker"]) expect(f.invoke(kind).status).toBe(0);
+  const guarded = { SPROUT_VERIFY_PREPARED_ONLY: "1" };
+  expect(f.invoke("server", [], guarded).stdout).toContain("REUSE server");
+  const receipts = ["install", "server", "worker"].map((kind) =>
+    readFileSync(join(f.firstRun, `${kind}.json`), "utf8"),
+  );
+  const logs = readdirSync(f.firstRun).sort();
+  f.put("src/main.ts", "changed while consumers active");
+  for (const [kind, option, env] of [
+    ["server", [], guarded],
+    ["install", ["--fresh"], guarded],
+    ["worker", [], { ...guarded, NODE_ENV: "production" }],
+    ["server", [], { ...guarded, SPROUT_VERIFY_RUN_DIR: undefined }],
+  ] as const) {
+    const result = f.invoke(kind, [...option], env);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Prepared-only verification forbids producing");
+  }
+  expect(
+    ["install", "server", "worker"].map((kind) =>
+      readFileSync(join(f.firstRun, `${kind}.json`), "utf8"),
+    ),
+  ).toEqual(receipts);
+  expect(readdirSync(f.firstRun).sort()).toEqual(logs);
+  for (const path of ["node_modules/.installed", ".output/server/index.mjs", "dist/worker/main.js"])
+    expect(readFileSync(join(f.root, path), "utf8")).toBe("built");
+  expect(f.calls()).toEqual(["install", "server", "worker"]);
 });
 
 test("invalid internal run contexts fail clearly instead of reusing stale outputs", () => {

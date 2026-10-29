@@ -19,13 +19,13 @@
 
 ## 运行器、选择与报告
 
-`pnpm verify` 通过 `scripts/verify.sh` 调用 `scripts/verify/runner.mjs`，按文件名字典序串行执行 `scripts/verify/*.sh`。单个脚本失败不会中止后续脚本；全部执行完后，任一失败即退出 1。运行器导出 `SPROUT_PI_ENABLED=false` 和 `SPROUT_VERIFY_RUN_DIR`，领域脚本仍由自身的 trap 管理其后台进程，运行器不承诺超出转发与等待范围的进程隔离。
+`pnpm verify` 通过 `scripts/verify.sh` 调用 `scripts/verify/runner.mjs`。除固定的五个 native gate 外，`scripts/verify/*.sh` 按文件名字典序串行执行。运行器在首次遇到选中的 native gate 时汇集本次选中的 `ah-execution-live-e2e`、`aj-recovery-matrix`、`t-machine-worker`、`u-machine-ui`、`w-worker-remote`，先串行准备 install、server、worker，再运行这一批；完整运行中该批次位于 `a-base` 预检之后。批次 fixture 预算为 4：ah 占 3，aj 占 4 并独占，t/u/w 各占 1。权重表示 fixture 配额，不是 OS 进程上限；单个 gate 内部仍可能启动多个 Worker。该批次运行期间，其他 gate（包括 `b-tooling` 的安装和 `d-runtime` 的 fresh build）等待其结束，不能与消费产物的 gate 重叠。单个脚本失败不会中止后续脚本；全部执行完后，任一失败即退出 1。运行器导出 `SPROUT_PI_ENABLED=false` 和 `SPROUT_VERIFY_RUN_DIR`，领域脚本仍负责自身后台进程的正常清理。
 
 `pnpm verify --only aa-execution-log-contracts,af-execution-cancel-authority` 只执行列出的脚本 id（文件名去掉 `.sh`）。未知、重复、空或越界的 id，以及未知参数，都在清理数据库和运行脚本之前拒绝；`pnpm verify --help` 只打印用法，不创建运行目录或执行脚本。包管理器转发的单个前导 `--` 会被忽略。
 
-每次运行独占 `.verify/runs/<id>/`：每个脚本的 stdout 与 stderr 通过继承的文件描述符写入该目录下的 `<script>.log`，运行结束写出 `report.json`。报告记录脚本 id、路径、状态、退出码或信号、ISO 开始时间、单调计时得到的 `durationMs` 和日志路径；`durationMs` 只表示实际总耗时，不累加脚本内的嵌套计时。终端按慢到快打印摘要，保留原有的 `Verification scripts=N failed=N` 汇总行，并额外打印总耗时与报告路径。失败脚本会打印有上限的日志尾部用于定位。
+每次运行独占 `.verify/runs/<id>/`：每个脚本的 stdout 与 stderr 通过继承的文件描述符写入该目录下的 `<script>.log`，运行结束写出 `report.json`。报告记录脚本 id、路径、状态、退出码或信号、ISO 开始时间、单调计时得到的 `durationMs` 和日志路径；outcomes 按原始发现顺序排列，不受并行完成顺序影响。总 `durationMs` 包含串行准备和清理的实际总耗时，不累加并行脚本内的嵌套计时。准备过程另存 `prepare-install.log`、`prepare-server.log`、`prepare-worker.log`，终端打印准备耗时；准备失败时，该批次的 gate 均失败且不启动，gate 日志指向实际失败的准备日志，gate 退出码与信号记 null，其他 gate 继续。终端按慢到快打印摘要，保留原有的 `Verification scripts=N failed=N` 汇总行，并额外打印总耗时与报告路径。失败脚本会打印有上限的日志尾部用于定位。
 
-完整运行沿用 `.verify/*/verification.sqlite` 的清理；`--only` 只清理选中脚本对应目录的同一文件，避免删除未选中单元的证据。`.verify/runs` 与脚本的数据库目录相互独立。收到 `SIGINT` 或 `SIGTERM` 时，运行器停止派发后续脚本，把信号转发给当前脚本所在的独立进程组，等待其 trap 清理，超时后强制结束并写出部分报告；中断以 130 / 143 退出，绝不计为通过。
+完整运行沿用 `.verify/*/verification.sqlite` 的清理；`--only` 只清理选中脚本对应目录的同一文件，避免删除未选中单元的证据。`.verify/runs` 与脚本的数据库目录相互独立。收到第一个 `SIGINT` 或 `SIGTERM` 时，运行器停止派发，把信号转发给所有活跃 gate（或准备进程）的独立进程组，给 launcher 和 trap 留出同一个 10 秒清理窗口。运行器在转发前记录后代进程，并在清理期间继续观察；截止后强制终止仍存活的已观察后代，包括脱离 gate 进程组的后代，再写出部分报告。重复信号继续忽略，中断以首个信号对应的 130 / 143 退出，绝不计为通过。
 
 ## 本地完整验证与 GitHub Actions
 
@@ -49,7 +49,9 @@ stdout 和 `a-base/model-mode.json`、`p4b-integration/evidence/run-*/model-mode
 
 ## 当前 run 的构建准备
 
-构建调用统一通过 `node scripts/verify/prepare.mjs install|server|worker|extension [--fresh]`。运行器在新建的 `.verify/runs/<id>/context.json` 记录仓库根目录、run id 和 owner PID。helper 只在目录、根目录和活着的 owner 均匹配时读取该 run 的成功 receipt；传入失效或损坏的内部 context 会明确失败。没有 `SPROUT_VERIFY_RUN_DIR` 时，独立调用总会基于当前源码执行，不因旧产物存在而跳过。不同 run 不复用；同一 checkout 仍只支持一个串行验证调用。
+构建调用统一通过 `node scripts/verify/prepare.mjs install|server|worker|extension [--fresh]`。运行器在新建的 `.verify/runs/<id>/context.json` 记录仓库根目录、run id 和 owner PID。helper 只在目录、根目录和活着的 owner 均匹配时读取该 run 的成功 receipt；传入失效或损坏的内部 context 会明确失败。没有 `SPROUT_VERIFY_RUN_DIR` 时，独立调用总会基于当前源码执行，不因旧产物存在而跳过。不同 run 不复用；同一 checkout 仍只支持一个验证调用。
+
+native 批次即使由 `--only` 选择且不含 `a-base`，也先串行准备所需产物并建立本次 run 的 receipt。server 与 worker 准备及 native gate 统一使用 `NODE_ENV=production`。批次内导出的内部环境 `SPROUT_VERIFY_PREPARED_ONLY=1` 使 helper 只允许复用已验证 receipt；输入变化、缺失产物、无有效 context 或 `--fresh` 等需要生产的请求均在删除 receipt、产物或创建生产日志前失败。批次运行期间不能改源码或构建输入。该保护不改变 standalone helper 的正常构建语义。
 
 receipt 记录 artifact kind、仓库根目录、输入指纹、原始成功日志、实际构建耗时和必要产物路径。源码、依赖清单与 lockfile、构建配置、`.env` 输入及相关编译环境参与指纹；只保存哈希，不写入秘密值。构建完成后重新计算指纹以包含生成的 route tree。复用还要求原始日志和必要产物仍存在，不对完整输出目录或 `node_modules` 反复做内容哈希。输入变化、产物缺失、构建失败或中断均不能获得复用成功。主动中断即使被调用命令的 trap 返回 0 也失败，日志保留实际 code、signal 和中断原因。
 
