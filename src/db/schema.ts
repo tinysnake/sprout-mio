@@ -26,6 +26,9 @@ import {
   CANCELLATION_STATES,
 } from "../contracts/remote";
 import type { RemoteOperation, RemoteResultPayload } from "../contracts/remote";
+import { MEMBERSHIP_STATES } from "../contracts/membership";
+import { RUN_RESOURCE_NOTICE_KINDS } from "../contracts/notice";
+import type { RunResourceNoticePayload } from "../contracts/notice";
 import type { McpConfig } from "../contracts/mcp";
 import type { WorkerExchangeResponse } from "../contracts/worker";
 
@@ -768,6 +771,122 @@ export const leaseMutation = sqliteTable(
   ],
 );
 
+export const projectMachineMembership = sqliteTable(
+  "project_machine_membership",
+  {
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    /** 一段加入生命周期一行；rejoin 只新建 epoch+1，不删除历史行。 */
+    epoch: integer("epoch").notNull(),
+    state: text("state", { enum: MEMBERSHIP_STATES }).notNull(),
+    joinedAt: integer("joined_at", { mode: "timestamp_ms" }).notNull(),
+    requestedBy: text("requested_by"),
+    requestId: text("request_id"),
+    payloadHash: text("payload_hash"),
+    requestedAt: integer("requested_at", { mode: "timestamp_ms" }),
+    removalMutationId: text("removal_mutation_id"),
+    removedAt: integer("removed_at", { mode: "timestamp_ms" }),
+    revokedGeneration: integer("revoked_generation"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.machineId, t.epoch] }),
+    foreignKey({
+      columns: [t.projectId, t.machineId],
+      foreignColumns: [projectMachine.projectId, projectMachine.machineId],
+    }),
+    foreignKey({ columns: [t.removalMutationId], foreignColumns: [leaseMutation.id] }),
+    check(
+      "project_machine_membership_check_1",
+      sql`typeof(${t.epoch})='integer' AND ${t.epoch} BETWEEN 1 AND 9007199254740991`,
+    ),
+    check(
+      "project_machine_membership_check_2",
+      sql`${t.state} IN ('active','detaching','removed')`,
+    ),
+    check(
+      "project_machine_membership_check_3",
+      sql`typeof(${t.joinedAt})='integer' AND ${t.joinedAt}>=0`,
+    ),
+    check(
+      "project_machine_membership_check_4",
+      sql`${t.requestedAt} IS NULL OR (typeof(${t.requestedAt})='integer' AND ${t.requestedAt}>=${t.joinedAt})`,
+    ),
+    check(
+      "project_machine_membership_check_5",
+      sql`${t.removedAt} IS NULL OR (typeof(${t.removedAt})='integer' AND ${t.removedAt}>=0 AND ${t.requestedAt} IS NOT NULL AND ${t.removedAt}>=${t.requestedAt})`,
+    ),
+    check(
+      "project_machine_membership_check_6",
+      sql`${t.payloadHash} IS NULL OR (length(${t.payloadHash})=64 AND ${t.payloadHash} NOT GLOB '*[^0-9a-f]*')`,
+    ),
+    check(
+      "project_machine_membership_check_7",
+      sql`${t.revokedGeneration} IS NULL OR (typeof(${t.revokedGeneration})='integer' AND ${t.revokedGeneration} BETWEEN 0 AND 9007199254740991)`,
+    ),
+    // 可空参与项逐个显式判定，不让 NULL 让整条 CHECK 恒真。
+    check(
+      "project_machine_membership_check_8",
+      sql`(${t.state}='active' AND ${t.requestedBy} IS NULL AND ${t.requestId} IS NULL AND ${t.payloadHash} IS NULL AND ${t.requestedAt} IS NULL AND ${t.removalMutationId} IS NULL AND ${t.removedAt} IS NULL AND ${t.revokedGeneration} IS NULL) OR
+        (${t.state}='detaching' AND ${t.requestedBy} IS NOT NULL AND ${t.requestId} IS NOT NULL AND ${t.payloadHash} IS NOT NULL AND ${t.requestedAt} IS NOT NULL AND ${t.removalMutationId} IS NOT NULL AND ${t.removedAt} IS NULL AND ${t.revokedGeneration} IS NULL) OR
+        (${t.state}='removed' AND ${t.requestedBy} IS NOT NULL AND ${t.requestId} IS NOT NULL AND ${t.payloadHash} IS NOT NULL AND ${t.requestedAt} IS NOT NULL AND ${t.removedAt} IS NOT NULL AND ${t.revokedGeneration} IS NOT NULL)`,
+    ),
+    uniqueIndex("project_machine_membership_one_live_epoch")
+      .on(t.projectId, t.machineId)
+      .where(sql`state IN ('active','detaching')`),
+    uniqueIndex("project_machine_membership_actor_request_unique")
+      .on(t.requestedBy, t.requestId)
+      .where(sql`request_id IS NOT NULL`),
+  ],
+);
+
+export const runResourceNotice = sqliteTable(
+  "run_resource_notice",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    runId: text("run_id").notNull(),
+    instanceId: text("instance_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    kind: text("kind", { enum: RUN_RESOURCE_NOTICE_KINDS }).notNull(),
+    /** 前三者用原 lease mutation id；machine_removed 用 membership:<project>:<machine>:<epoch>。 */
+    causeId: text("cause_id").notNull(),
+    payloadJson: text("payload_json", { mode: "json" }).$type<RunResourceNoticePayload>().notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    deliveredAt: integer("delivered_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.projectId, t.machineId],
+      foreignColumns: [projectMachine.projectId, projectMachine.machineId],
+    }),
+    foreignKey({
+      columns: [t.runId, t.instanceId, t.projectId, t.chatId],
+      foreignColumns: [agentRun.id, agentRun.instanceId, agentRun.projectId, agentRun.chatId],
+    }),
+    check(
+      "run_resource_notice_check_1",
+      sql`${t.kind} IN ('lease_handed_off','lease_released','lease_reclaimed','machine_removed')`,
+    ),
+    check(
+      "run_resource_notice_check_2",
+      sql`CASE WHEN json_valid(${t.payloadJson}) THEN json_type(${t.payloadJson})='object' ELSE 0 END`,
+    ),
+    check(
+      "run_resource_notice_check_3",
+      sql`typeof(${t.createdAt})='integer' AND ${t.createdAt}>=0`,
+    ),
+    check(
+      "run_resource_notice_check_4",
+      sql`${t.deliveredAt} IS NULL OR (typeof(${t.deliveredAt})='integer' AND ${t.deliveredAt}>=${t.createdAt})`,
+    ),
+    uniqueIndex("run_resource_notice_kind_cause_id_run_id_unique").on(t.kind, t.causeId, t.runId),
+    index("run_resource_notice_undelivered_idx")
+      .on(t.runId, t.createdAt, t.id)
+      .where(sql`delivered_at IS NULL`),
+  ],
+);
+
 export const workerExchangeFrame = sqliteTable(
   "worker_exchange_frame",
   {
@@ -882,6 +1001,8 @@ export const remoteExecution = sqliteTable(
     uniqueIndex(
       "remote_execution_id_project_id_machine_id_authorization_generation_holder_instance_id_unique",
     ).on(t.id, t.projectId, t.machineId, t.authorizationGeneration, t.holderInstanceId),
+    // 本阶段对 remote_execution 的唯一 DDL：按 scope 的稳定分页索引，不重建表。
+    index("remote_execution_scope_idx").on(t.projectId, t.machineId, t.createdAt, t.id),
     foreignKey({
       columns: [t.projectId, t.machineId, t.authorizationGeneration, t.holderInstanceId],
       foreignColumns: [
