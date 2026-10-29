@@ -388,8 +388,8 @@ assert.throws(
   fail("cancellation_delivery_unconfirmed"),
 );
 assert.equal(rowCount(), beforeStale);
-// 收回完成后代次前进到 2，旧的 gen 1 执行仍然不可取消。收回的两阶段由宿主完成，
-// 这里直接落它写下的同形状租约事实：旧授权 revoked、新一代 active、租约代次 +1。
+// 当前授权代次前进到 2；Human 可以明确管理旧 gen 1 执行，取消行归属当前授权。
+// 这里直接落同形状租约事实：旧授权 revoked、新一代 active、租约代次 +1。
 const advanced = new Date();
 sqlite
   .prepare(
@@ -408,12 +408,27 @@ sqlite
     "UPDATE machine_lease SET generation = 2, state = 'held', holder_instance_id = ?, changed_at = ? WHERE project_id = ? AND machine_id = ?",
   )
   .run(own.actor.instanceId, advanced.getTime(), own.key.projectId, own.key.machineId);
-assert.throws(
-  () => cancelExecution({ executionId: stale.executionId, requestId: req() }, human),
-  fail("cancellation_delivery_unconfirmed"),
+const inheritedCancellation = cancelExecution(
+  { executionId: stale.executionId, requestId: req() },
+  human,
 );
-assert.equal(rowCount(), beforeStale);
-pass("反证：租约释放后与收回后旧代次的取消都报 delivery_unconfirmed，不写新行也不伪装成已入队");
+assert.equal(inheritedCancellation.state, "requested");
+assert.equal(rowCount(), beforeStale + 1);
+const inheritedCustody = sqlite
+  .prepare(
+    "SELECT authorization_generation,holder_instance_id FROM execution_cancellation WHERE id=?",
+  )
+  .get(inheritedCancellation.cancelId) as {
+  authorization_generation: number;
+  holder_instance_id: string;
+};
+assert.equal(inheritedCustody.authorization_generation, 2);
+assert.equal(inheritedCustody.holder_instance_id, own.actor.instanceId);
+assert.equal(
+  getExecution({ ...own.key, executionId: stale.executionId }, human).authorizationGeneration,
+  1,
+);
+pass("反证：fencing 取消拒绝；新授权 active 后 Human 可管理旧执行，取消记录当前代次而 origin 不变");
 
 // 8. 数据形状：非法 actor 由 CHECK 拒绝；0015 迁移按 agent 搬运旧 actor_instance_id。
 assert.throws(

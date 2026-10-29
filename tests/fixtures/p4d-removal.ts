@@ -390,7 +390,11 @@ if (scenario === "detach") {
     )
     .run(clock, clock, executionId);
   const updatedAt = tick(2000);
-  assert.equal(completeReceipt(busy.key, updatedAt), true);
+  assert.equal(
+    completeReceipt(busy.key, updatedAt),
+    false,
+    "completeLeaseMutation already advanced membership; the explicit hook retry is a no-op",
+  );
   const completed = membershipViewFor(busy.key, updatedAt)!;
   assert.equal(completed.state, "removed");
   assert.equal(completed.revokedGeneration, 1);
@@ -413,9 +417,12 @@ if (scenario === "detach") {
     handoffHolder,
   );
   const beforeFencing = membershipRowCount(handingOff.key)[0]!;
+  const beforeNotices = noticeRows(handingOff.key);
+  assert.equal(beforeNotices.length, 1);
+  assert.equal(beforeNotices[0]!.kind, "lease_handed_off");
   assert.throws(() => detach(handingOff.key, human()), fails("lease_fencing"));
   assert.deepEqual(membershipRowCount(handingOff.key)[0], beforeFencing);
-  assert.equal(noticeRows(handingOff.key).length, 0);
+  assert.deepEqual(noticeRows(handingOff.key), beforeNotices);
   console.log("PASS detach: free, held, in-flight detaching, fencing拒绝, CAS, replay and history");
 }
 
@@ -641,7 +648,11 @@ if (scenario === "force") {
       return onLeaseMutationCompleted(db, pending);
     })
     .immediate();
-  assert.equal(advanced, true);
+  assert.equal(
+    advanced,
+    false,
+    "forceReclaimLease already completed the matching membership in its transaction",
+  );
   const view = membershipViewFor(machine.key, tick())!;
   assert.equal(view.state, "removed");
   assert.equal(view.revocation, "unconfirmed");
@@ -845,7 +856,7 @@ if (scenario === "authority") {
         { ...held.key, action: "release", requestId: req(), expectedGeneration: 2 },
         holder,
       ),
-    fails("lease_not_holder"),
+    fails("membership_removed"),
   );
   assert.throws(
     () =>
@@ -853,7 +864,7 @@ if (scenario === "authority") {
         { ...held.key, action: "reclaim", requestId: req(), expectedGeneration: 2, confirm: true },
         human(),
       ),
-    fails("lease_not_holder"),
+    fails("membership_removed"),
   );
   console.log("PASS authority: non-member not_found, removed lease refused, agent cannot detach");
 }

@@ -1120,8 +1120,6 @@ export function enqueueCancellation(
       assertAgentContext(input, ctx);
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("cancellation_not_found");
-      // 通道核对先于幂等返回：幂等键只保证「同一请求不重复投递」，不保证调用方还有权碰这台
-      // Machine。旧代次、已换 holder 或已释放的租约在命中旧行时同样要拒，且不读写任何行。
       const authority = assertExecutionWrite(input, input.authorizationGeneration, ctx);
       assertExecutionContinuity(row, ctx);
       const key = cancellationRequestKey({ kind: "agent", id: ctx.instanceId }, input.requestId);
@@ -1224,8 +1222,6 @@ export function cancelExecution(
         ctx.bootId,
       );
       const row = db.select().from(remoteExecution).where(eq(remoteExecution.id, found.id)).get()!;
-      // 幂等命中同样要核对投递通道：旧代次或已换 holder 时，这条意图没有任何人能被投递到，
-      // 不能因为「同一个 requestId」就把它当成仍然成立。
       const current = authorityNow(row);
       if (!current || current.state !== "active" || !current.holderInstanceId)
         throw new RemoteError("cancellation_delivery_unconfirmed");
