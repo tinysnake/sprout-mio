@@ -96,7 +96,7 @@ describe("P4b shared contracts", () => {
     ).toBe(false);
     for (const schema of Object.values(remoteToolInputSchemas))
       expect(schema.safeParse({}).success).toBe(false);
-    expect(new Set(REMOTE_ERROR_CODES).size).toBe(23);
+    expect(new Set(REMOTE_ERROR_CODES).size).toBe(25);
     expect([...REMOTE_ERROR_CODES]).toEqual([...humanContracts.APP_ERROR_CODES]);
   });
 
