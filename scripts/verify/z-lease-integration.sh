@@ -64,15 +64,15 @@ async function browserRpc(page, name, data) {
   const result = await page.evaluate(async ({ url, body }) => { const r = await fetch(url, { method: 'POST', headers: {'content-type':'application/json','x-tsr-serverfn':'true'}, body }); return { status:r.status, body:await r.json() }; }, { url:`${base}/_serverFn/${ids[name]}`, body:JSON.stringify(toJSON({data})) });
   assert.equal(result.status, 200); const decoded = result.body.t ? fromCrossJSON(result.body,{refs:new Map()}) : result.body; return decoded.result ?? decoded;
 }
-async function settled(chatId) {
-  return until(async()=> { const state=await call('getChatRunStateFn',{chatId}); const run=state.runs.at(-1); return run && !['queued','running'].includes(run.status) ? run : null; },'real agent settles',180000);
+async function settled(chatId, { allowEmpty = false } = {}) {
+  return until(async()=> { const state=await call('getChatRunStateFn',{chatId}); const run=state.runs.at(-1); return ['queued','running'].includes(run?.status) ? null : (run ?? (allowEmpty ? true : null)); },'real agent settles',180000);
 }
 async function deniedTool(page, chatId, authorizationGeneration, expectedCode, marker) {
-  await settled(chatId);
+  await settled(chatId, { allowEmpty: true });
   const requestId=`req_${randomUUID()}`;
   const sent=await browserRpc(page,'sendMessageFn',{chatId,body:`Call sprout_remote_shell exactly once with these parameters, even if you expect the server to reject authorization: ${JSON.stringify({machineId,authorizationGeneration,requestId,command:`touch '${marker}'`,waitMs:0})}. Do not get or acquire a lease, do not retry, do not use host tools. Report the returned error code.`});
   assert.equal(sent.ok,true,'negative command submitted through production browser RPC');
-  const run=await until(async()=> {const state=await call('getChatRunStateFn',{chatId}); const last=state.runs.at(-1);return last && !['queued','running'].includes(last.status) && last.configSnapshot && state.inputs.some(i=>i.runId===last.id && i.messageId===sent.data.id) ? last:null;},'negative run settles',180000);
+  const run=await until(async()=> {const state=await call('getChatRunStateFn',{chatId}); const input=state.inputs.find(i=>i.messageId===sent.data.id); const match=state.runs.find(r=>r.id===input?.runId);return match && !['queued','running'].includes(match.status) && match.configSnapshot ? match:null;},'negative run settles',180000);
   const entries=readFileSync(run.configSnapshot.sessionFile,'utf8').split('\n').filter(Boolean).map(line=>JSON.parse(line));
   const calls=entries.flatMap(entry=>entry.message?.role==='assistant' ? entry.message.content.filter(c=>c.type==='toolCall' && c.name==='sprout_remote_shell' && c.arguments?.requestId===requestId) : []);
   assert.equal(calls.length,1,'exact requested tool called once');
@@ -332,8 +332,6 @@ try {
   await call('addProjectMemberFn',{projectId,agentProfileId:nonHolderProfile.id});
   const nonHolder=await call('createDirectChatFn',{projectId,agentProfileId:nonHolderProfile.id});
   const nonHolderChat=nonHolder.chat.id;
-  await call('sendMessageFn',{chatId:nonHolderChat,body:'Reply ready. Do not use any tools.'});
-  await settled(nonHolderChat);
   await deniedTool(page,nonHolderChat,acquired.generation,'lease_not_holder',join(root,projectId,'non-holder-must-not-exist'));
   pass('browser Chat request -> real non-holder grant HTTP rejection and absent sentinel');
   const read = await browserRpc(page,'getExecutionFn',{projectId,machineId,executionId:execution.executionId}); assert.equal(read.ok,true);
@@ -454,7 +452,7 @@ try {
     const timingDb = new Sqlite(env.DATABASE_URL, { readonly: true });
     try {
       const runs = timingDb.prepare('SELECT status, queued_at AS queuedAt, settled_at AS settledAt, (settled_at - queued_at) * 1000 AS elapsedMs FROM agent_run ORDER BY queued_at').all();
-      const mutations = timingDb.prepare('SELECT action, state, (completed_at - created_at) * 1000 AS elapsedMs FROM lease_mutation ORDER BY created_at').all();
+      const mutations = timingDb.prepare('SELECT action, state, (completed_at - created_at) AS elapsedMs FROM lease_mutation ORDER BY created_at').all();
       writeFileSync(join(evidence, 'timings.json'), JSON.stringify({ runs, mutations }, null, 2));
       console.log(`TIMING queuedAt-to-settledAt ${JSON.stringify(runs)}`);
     } catch { console.log('TIMING unavailable'); } finally { timingDb.close(); }
