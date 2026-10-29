@@ -2,7 +2,7 @@
 
 > **编排唯一入口。** 编排者必须从本文开始，确定当前集成单元、依赖、暂停安排与验收状态，再分派功能线、UI 线和集成线任务。禁止从专项计划独立启动编排。
 
-状态：I-P1/P2 与 I-P3 两个集成单元已按四步 checklist 收尾（`869bf22`）。I-P4a 已于 2026-10-23 从 `d8614dd` 启动，功能、共用 UI 与真实接入均已合入 main，第一轮独立技术验收通过（`e10a5b4`）。Human 于 2026-10-24 亲自体验 `3df7f2c` 并给出反馈，其中工作目录模型按 Human 决定重构，本章进入第二轮；四步 checklist 全部取消勾选，等待新形状复验。I-P4b 功能、UI 与集成均已合入 main，独立技术验收第五轮在 `809c384` 判定 PASS，Human 已在 `c6653f4` 亲自体验并明确确认通过（该版本与交付基线之间 `src/` 无差异），四条 checklist 全部按证据勾选。I-P4c 的功能、UI 与集成均已合入 main（收口提交 `d028aa1`），第五轮独立技术验收判定 PASS，三条技术项按证据勾选；Human 已于 2026-10-28 在 `981882d` 亲自体验并明确确认通过，四条 checklist 全部按证据勾选；P4d 及以后未开工。本文定义协作规则、追赶安排、章节接入范围与验收目标；验证命令与证据随当前章节交付记录补齐。
+状态：I-P1/P2 与 I-P3 两个集成单元已按四步 checklist 收尾（`869bf22`）。I-P4a 已于 2026-10-23 从 `d8614dd` 启动，功能、共用 UI 与真实接入均已合入 main，第一轮独立技术验收通过（`e10a5b4`）。Human 于 2026-10-24 亲自体验 `3df7f2c` 并给出反馈，其中工作目录模型按 Human 决定重构，本章进入第二轮；四步 checklist 全部取消勾选，等待新形状复验。I-P4b 功能、UI 与集成均已合入 main，独立技术验收第五轮在 `809c384` 判定 PASS，Human 已在 `c6653f4` 亲自体验并明确确认通过（该版本与交付基线之间 `src/` 无差异），四条 checklist 全部按证据勾选。I-P4c 的功能、UI 与集成均已合入 main（收口提交 `d028aa1`），第五轮独立技术验收判定 PASS，三条技术项按证据勾选；Human 已于 2026-10-28 在 `981882d` 亲自体验并明确确认通过，并于 2026-10-29 复验取消归因与缺凭据机器的呈现后回复验收通过（`a19112e`），四条 checklist 全部按证据勾选；P4d 及以后未开工。本文定义协作规则、追赶安排、章节接入范围与验收目标；验证命令与证据随当前章节交付记录补齐。
 
 本文是开发编排与章节进度的统一入口，协调功能、UI 和集成三条线，负责跨线依赖、集成顺序、反馈和阶段完成判定。
 
@@ -212,7 +212,7 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 - [x] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。证据 [P4c 功能交付证据](p4c/summary.md#功能交付证据)，重跑 `bash scripts/verify/ah-execution-live-e2e.sh`、`bash scripts/verify/aj-recovery-matrix.sh`。
 - [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P4c UI 交付证据](p4c/summary.md#ui-交付证据)，重跑 `bash scripts/verify/ad-execution-log-ui.sh`、`bash scripts/verify/ag-execution-wiring-ui.sh`。
 - [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P4c 技术验收证据](p4c/summary.md#技术验收证据)，第五轮在 `d028aa1` 判定 PASS，重跑 `bash scripts/verify/af-execution-cancel-authority.sh`、`bash scripts/verify/am-execution-log-honesty.sh`。
-- [x] Human 亲自体验并明确确认通过，编排者已记录确认版本。证据 [P4c Human 体验确认](p4c/summary.md#human-体验确认)，确认版本 `981882d`。
+- [x] Human 亲自体验并明确确认通过，编排者已记录确认版本。证据 [P4c Human 体验确认](p4c/summary.md#human-体验确认)，确认版本 `981882d`，复验版本 `a19112e`。
 
 ### I-P4d 集成交接收回与 Machine 移除
 
