@@ -60,6 +60,7 @@ await test("every gate and unit file has an explicit target; only split A/B over
   assert.deepEqual(validateUnitTargets(root).local, [
     "tests/extension-mcp.test.ts",
     "tests/machine-worker.test.ts",
+    "tests/worker-report-budget.test.ts",
   ]);
   const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
   assert(workflow.includes(`group: [${Object.keys(CI_GROUPS).join(", ")}]`));

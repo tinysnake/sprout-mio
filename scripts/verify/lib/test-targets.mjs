@@ -62,9 +62,12 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/worker-execution.test.ts",
     "tests/worker-remote-domain.test.ts",
     "tests/worker-remote.test.ts",
+  ],
+  local: [
+    "tests/extension-mcp.test.ts",
+    "tests/machine-worker.test.ts",
     "tests/worker-report-budget.test.ts",
   ],
-  local: ["tests/extension-mcp.test.ts", "tests/machine-worker.test.ts"],
 });
 
 export function validateUnitTargets(root) {

@@ -94,7 +94,9 @@ function privateIndex(original, root) {
 function processSnapshot(withEnvironment = false) {
   const result = spawnSync(
     "ps",
-    [...(withEnvironment ? ["eww"] : []), "-axo", "pid=,ppid=,stat=,lstart=,command="],
+    process.platform === "linux"
+      ? ["-e", "-o", "pid=,ppid=,stat=,lstart=,args=", ...(withEnvironment ? ["eww"] : [])]
+      : [...(withEnvironment ? ["eww"] : []), "-axo", "pid=,ppid=,stat=,lstart=,command="],
     {
       encoding: "utf8",
       detached: true,

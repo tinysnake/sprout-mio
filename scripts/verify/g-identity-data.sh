@@ -131,7 +131,7 @@ try {
   const buildEnvironment = { ...environment }
   delete buildEnvironment.BETTER_AUTH_SECRET
   await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log', buildEnvironment)
-  const first = launch('pnpm', ['start'], 'server-first.log')
+  const first = launch(process.execPath, ['.output/server/index.mjs'], 'server-first.log')
   const firstHealth = await health(first, 'server-first')
   const db = new Database(databaseUrl)
   try {
@@ -140,7 +140,7 @@ try {
     pass('startup uses migrated SQLite database', { migrations: migrations.length, bootId: firstHealth.bootId, phase: 'ready' })
   } finally { db.close() }
   await stop(first)
-  const second = launch('pnpm', ['start'], 'server-second.log')
+  const second = launch(process.execPath, ['.output/server/index.mjs'], 'server-second.log')
   const secondHealth = await health(second, 'server-second')
   assert.notEqual(firstHealth.bootId, secondHealth.bootId)
   await stop(second)

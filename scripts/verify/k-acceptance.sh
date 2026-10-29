@@ -110,7 +110,7 @@ try {
   const source = walk('.output/server').map(path => readFileSync(path, 'utf8')).join('\n')
   const ids = Object.fromEntries([...source.matchAll(/id: "([0-9a-f]{64})",\s*\n\s*name: "(\w+)"/g)].map(match => [match[2], match[1]]))
   writeFileSync(join(directory, 'server-functions.json'), JSON.stringify(ids, null, 2) + '\n')
-  const first = launch('pnpm', ['start'], 'server-before.log')
+  const first = launch(process.execPath, ['.output/server/index.mjs'], 'server-before.log')
   const before = await health(first, 'before')
   record('production_first_ready', true, { bootId: before.bootId })
   await browser('before')
@@ -126,7 +126,7 @@ try {
     })()
     record('profile_chat_duplicate_instance_rejected_by_SQLite', true, { agentProfileId: state.agentProfileId, chatId: snapshot.chatId, count: 1, code: 'SQLITE_CONSTRAINT_UNIQUE' })
   } finally { sqlite.close() }
-  const second = launch('pnpm', ['start'], 'server-after.log')
+  const second = launch(process.execPath, ['.output/server/index.mjs'], 'server-after.log')
   const after = await health(second, 'after')
   assert.match(before.bootId, /^boot_/)
   assert.match(after.bootId, /^boot_/)

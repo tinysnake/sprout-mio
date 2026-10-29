@@ -153,7 +153,7 @@ try {
   assert(referenced.length > 0 && referenced.every((file) => clientAssets.includes(file)), 'SPA shell 必须只引用本次构建的客户端资源')
   pass('node scripts/verify/prepare.mjs server', { shell: '.output/public/_shell.html', referenced, buildLog: 'build.log' })
 
-  server = launch('pnpm', ['start'], 'server.log')
+  server = launch(process.execPath, ['.output/server/index.mjs'], 'server.log')
   const ready = await waitForHealth(server)
   pass('production server ready', { requestId: ready.requestId, bootId: ready.body.bootId, version: ready.body.version })
 
