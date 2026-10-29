@@ -49,6 +49,30 @@ const toneText: Record<StatusTone, string> = {
   danger: "text-status-failed",
 };
 
+type WriteGate = { allowed: boolean; reason: string };
+
+/**
+ * 写入口的唯一闸门：只看页面事实是否新鲜（上次刷新是否成功、是否仍在读取）。
+ * 每个写入口都读它，而不各自缓存一个 disabled 布尔；已打开的对话框也读同一个闸门。
+ * 被关闭时必须给出原因，让用户知道为什么现在不能写，而不是只看到一个点不动的按钮。
+ */
+function membershipWriteGate(loading: boolean, error: AppError | null): WriteGate {
+  if (error) {
+    return {
+      allowed: false,
+      reason:
+        "当前状态未确认：上次刷新关系事实失败，暂停移出、重新加入与强制收回。刷新成功后才能提交。",
+    };
+  }
+  if (loading) {
+    return {
+      allowed: false,
+      reason: "正在读取关系事实，确认前不开放移出、重新加入与强制收回。",
+    };
+  }
+  return { allowed: true, reason: "" };
+}
+
 const ACTION_LABELS: Record<MembershipHistoryView["receipts"][number]["action"], string> = {
   acquire: "申请",
   release: "释放",
@@ -125,7 +149,7 @@ export function MembershipSections({
     .sort((left, right) => pendingOrder(left.relation.pending!, right.relation.pending!));
   const removed = rows.filter(({ relation }) => relation.membership?.state === "removed");
   const stale = error !== null;
-  const disabled = stale || loading;
+  const writeGate = membershipWriteGate(loading, error);
   const [notice, setNotice] = useState("");
 
   return (
@@ -181,7 +205,7 @@ export function MembershipSections({
                 binding={binding}
                 lease={lease}
                 holderNames={holderNames}
-                disabled={disabled}
+                writeGate={writeGate}
                 onChanged={onChanged}
                 onNotice={setNotice}
               />
@@ -220,7 +244,7 @@ export function MembershipSections({
                     ? null
                     : unfinishedExecutionCount(executions, relation.projectId, relation.machineId)
                 }
-                disabled={disabled}
+                writeGate={writeGate}
                 onChanged={onChanged}
                 onNotice={setNotice}
                 testId={testId}
@@ -247,7 +271,7 @@ export function MembershipSections({
                 projectName={projectNames[relation.projectId] ?? relation.projectId}
                 lease={lease}
                 bindingRevision={binding?.intent.revision ?? null}
-                disabled={disabled}
+                writeGate={writeGate}
                 onChanged={onChanged}
                 onNotice={setNotice}
                 testId={testId}
@@ -308,7 +332,7 @@ function CurrentResourceRow({
   binding,
   lease,
   holderNames,
-  disabled,
+  writeGate,
   onChanged,
   onNotice,
 }: {
@@ -319,7 +343,7 @@ function CurrentResourceRow({
   binding: MachineDetail["bindings"][number] | undefined;
   lease: LeaseView | undefined;
   holderNames: Readonly<Record<string, string>>;
-  disabled: boolean;
+  writeGate: WriteGate;
   onChanged: () => void;
   onNotice: (text: string) => void;
 }) {
@@ -408,7 +432,7 @@ function CurrentResourceRow({
               relation={relation}
               bindingsRevision={binding?.intent.revision ?? null}
               lease={lease}
-              disabled={disabled}
+              writeGate={writeGate}
               onChanged={onChanged}
               onNotice={onNotice}
             />
@@ -430,14 +454,14 @@ function DetachControl({
   relation,
   bindingsRevision,
   lease,
-  disabled,
+  writeGate,
   onChanged,
   onNotice,
 }: {
   relation: MachineRelationView;
   bindingsRevision: number | null;
   lease: LeaseView | undefined;
-  disabled: boolean;
+  writeGate: WriteGate;
   onChanged: () => void;
   onNotice: (text: string) => void;
 }) {
@@ -448,13 +472,9 @@ function DetachControl({
   const [notice, setNotice] = useState("");
   const membership = relation.membership;
   const disabledReason =
-    bindingsRevision === null
-      ? "没有读到绑定版本，无法提交移出。"
-      : disabled
-        ? "当前状态未确认，暂不能移出。"
-        : "";
+    bindingsRevision === null ? "没有读到绑定版本，无法提交移出。" : writeGate.reason;
   async function submit() {
-    if (!membership || bindingsRevision === null || pending) return;
+    if (!membership || bindingsRevision === null || pending || !writeGate.allowed) return;
     setPending(true);
     setError(null);
     setNotice("");
@@ -576,7 +596,7 @@ function PendingRow({
   lease,
   bindingRevision,
   executionCount,
-  disabled,
+  writeGate,
   onChanged,
   onNotice,
   testId,
@@ -588,7 +608,7 @@ function PendingRow({
   lease: LeaseView | undefined;
   bindingRevision: number | null;
   executionCount: number | null;
-  disabled: boolean;
+  writeGate: WriteGate;
   onChanged: () => void;
   onNotice: (text: string) => void;
   testId: string;
@@ -660,7 +680,7 @@ function PendingRow({
             pending={pending}
             bindingRevision={bindingRevision}
             lease={lease}
-            disabled={disabled}
+            writeGate={writeGate}
             onChanged={onChanged}
             onNotice={onNotice}
           />
@@ -675,7 +695,7 @@ function ForceReclaimControl({
   pending,
   bindingRevision,
   lease,
-  disabled,
+  writeGate,
   onChanged,
   onNotice,
 }: {
@@ -683,7 +703,7 @@ function ForceReclaimControl({
   pending: PendingFactView;
   bindingRevision: number | null;
   lease: LeaseView | undefined;
-  disabled: boolean;
+  writeGate: WriteGate;
   onChanged: () => void;
   onNotice: (text: string) => void;
 }) {
@@ -697,8 +717,13 @@ function ForceReclaimControl({
     pending.kind === "membership_detaching"
       ? (relation.membership?.removalMutationId ?? null)
       : (lease?.pendingMutationId ?? null);
+  const blockedReason = !writeGate.allowed
+    ? writeGate.reason
+    : mutationId
+      ? ""
+      : "没有可确认的待处理收据，不能强制收回。";
   async function submit() {
-    if (!mutationId || pendingSubmit) return;
+    if (!mutationId || pendingSubmit || !writeGate.allowed) return;
     setPendingSubmit(true);
     setError(null);
     setReceipt(null);
@@ -735,7 +760,7 @@ function ForceReclaimControl({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger
           render={<Button variant="outline" size="sm" />}
-          disabled={disabled || !mutationId}
+          disabled={Boolean(blockedReason)}
           data-testid="membership-force-trigger"
         >
           强制收回
@@ -768,14 +793,30 @@ function ForceReclaimControl({
             <Button
               variant="outline"
               onClick={() => void submit()}
-              disabled={!confirmed || pendingSubmit}
+              disabled={!confirmed || pendingSubmit || !writeGate.allowed}
               data-testid="membership-force-submit"
             >
               {pendingSubmit ? "正在提交…" : "确认强制收回"}
             </Button>
           </div>
+          {blockedReason && (
+            <p
+              data-testid="membership-force-blocked"
+              className="text-xs leading-6 text-status-warning"
+            >
+              {blockedReason}
+            </p>
+          )}
         </DialogContent>
       </Dialog>
+      {blockedReason && !open && (
+        <p
+          data-testid="membership-force-blocked-hint"
+          className="mt-1 text-[0.6875rem] leading-5 text-status-warning"
+        >
+          {blockedReason}
+        </p>
+      )}
       {receipt && (
         <p
           data-testid="membership-force-receipt"
@@ -797,7 +838,7 @@ function RemovedRow({
   projectName,
   lease,
   bindingRevision,
-  disabled,
+  writeGate,
   onChanged,
   onNotice,
   testId,
@@ -808,7 +849,7 @@ function RemovedRow({
   projectName: string;
   lease: LeaseView | undefined;
   bindingRevision: number | null;
-  disabled: boolean;
+  writeGate: WriteGate;
   onChanged: () => void;
   onNotice: (text: string) => void;
   testId: string;
@@ -818,7 +859,7 @@ function RemovedRow({
   const [error, setError] = useState<AppError | null>(null);
   const [notice, setNotice] = useState("");
   async function rejoin() {
-    if (bindingRevision === null || pending) return;
+    if (bindingRevision === null || pending || !writeGate.allowed) return;
     setPending(true);
     setError(null);
     setNotice("");
@@ -893,7 +934,7 @@ function RemovedRow({
         <Button
           size="sm"
           variant="outline"
-          disabled={disabled || pending || bindingRevision === null}
+          disabled={!writeGate.allowed || pending || bindingRevision === null}
           onClick={() => void rejoin()}
           data-testid={`${testId}-rejoin`}
         >
@@ -903,6 +944,14 @@ function RemovedRow({
           只对最新 removed 生效；冲突时刷新事实，不自动覆盖新关系。
         </span>
       </div>
+      {!writeGate.allowed && (
+        <p
+          data-testid={`${testId}-rejoin-blocked`}
+          className="mt-1 text-xs leading-6 text-status-warning"
+        >
+          {writeGate.reason}
+        </p>
+      )}
     </li>
   );
 }

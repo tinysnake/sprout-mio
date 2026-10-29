@@ -1193,6 +1193,43 @@ try {
     results.staleBanner = true;
   });
 
+  await check("刷新失败：已打开的强制收回对话框也停止，并说明原因", async () => {
+    const snapshot = relationSnapshots.get(page)!;
+    await pendingItem("lease_fencing").getByTestId("membership-force-trigger").click();
+    const dialog = page.getByTestId("membership-force-dialog");
+    await dialog.waitFor();
+    await page.getByTestId("membership-force-confirm").check();
+    assert.equal(
+      await page.getByTestId("membership-force-submit").isDisabled(),
+      false,
+      "刷新成功时，已勾选确认的强制收回提交必须可用",
+    );
+    const leaseBefore = leaseRow({ projectId: p1, machineId: m2.machineId })!.generation;
+    await page.route(snapshot.url, (route) => route.abort());
+    await page.getByTestId("info-hub-project-machines-stale").waitFor({ timeout: 15000 });
+    assert.equal(
+      await page.getByTestId("membership-force-submit").isDisabled(),
+      true,
+      "刷新失败后，已打开的强制收回对话框也不得提交",
+    );
+    assert.match(
+      await page.getByTestId("membership-force-blocked").innerText(),
+      /当前状态未确认/,
+      "已打开的强制收回对话框必须说明为什么现在不能提交",
+    );
+    assert.equal(
+      leaseRow({ projectId: p1, machineId: m2.machineId })!.generation,
+      leaseBefore,
+      "刷新失败不得让已打开的强制收回对话框写库",
+    );
+    await page.keyboard.press("Escape");
+    await page.unroute(snapshot.url);
+    await page
+      .getByTestId("info-hub-project-machines-stale")
+      .waitFor({ state: "hidden", timeout: 15000 });
+    results.staleForceDialog = true;
+  });
+
   // ═══ 8. 反证：缺 confirm 无写；跨 Project 不泄露 ══════════════════════════
   await check("反证：直接请求移出接口缺 confirm / confirm:false 一律无写", async () => {
     const key = { projectId: p1, machineId: m1.machineId };
