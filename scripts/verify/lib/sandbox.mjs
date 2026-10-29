@@ -95,9 +95,18 @@ function processSnapshot(withEnvironment = false) {
   const result = spawnSync(
     "ps",
     [...(withEnvironment ? ["eww"] : []), "-axo", "pid=,ppid=,stat=,lstart=,command="],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, env: { ...process.env, LC_ALL: "C" } },
+    {
+      encoding: "utf8",
+      detached: true,
+      timeout: 3000,
+      maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, LC_ALL: "C" },
+    },
   );
-  if (result.status !== 0) throw new Error(`Cannot inspect sandbox descendants: ${result.stderr}`);
+  if (result.status !== 0)
+    throw new Error(
+      `Cannot inspect sandbox descendants: status=${result.status} signal=${result.signal} error=${result.error?.message ?? "none"}; ${result.stderr}`,
+    );
   return result.stdout.split("\n").flatMap((line) => {
     const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\S+)\s+((?:\S+\s+){4}\S+)\s+(.*)$/);
     return match

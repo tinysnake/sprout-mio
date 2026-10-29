@@ -338,6 +338,45 @@ ${typeof outcome === "number" ? `process.exit(${outcome});` : "process.kill(proc
   },
 );
 
+test("group interruption during synchronous process inspection preserves cleanup", async () => {
+  const f = fixture();
+  const marker = join(f.root, "inspection-started");
+  const release = join(f.root, "inspection-release");
+  f.put(
+    "bin/ps",
+    `#!/bin/sh\necho $$ > '${marker}'\nwhile [ ! -f '${release}' ]; do /bin/sleep 0.01; done\nexec /bin/ps "$@"\n`,
+  );
+  chmodSync(join(f.root, "bin/ps"), 0o755);
+  f.environment.PATH = `${join(f.root, "bin")}:${process.env.PATH}`;
+  f.gate("setInterval(() => {}, 1000);");
+  const launcher = spawn(process.execPath, f.args, {
+    cwd: f.root,
+    env: f.environment,
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  processes.add(launcher.pid!);
+  let output = "";
+  launcher.stdout.on("data", (bytes) => (output += bytes));
+  launcher.stderr.on("data", (bytes) => (output += bytes));
+  const finished = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+    (resolveResult, reject) => {
+      launcher.once("error", reject);
+      launcher.once("close", (code, signal) => resolveResult({ code, signal }));
+    },
+  );
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(marker)) {
+    if (Date.now() >= deadline) throw new Error(`inspection never started: ${output}`);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+  }
+  process.kill(-launcher.pid!, "SIGTERM");
+  writeFileSync(release, "continue");
+  expect(await finished, output).toEqual({ code: null, signal: "SIGTERM" });
+  processes.delete(launcher.pid!);
+  f.clean();
+});
+
 test("process group interruption forwards SIGTERM and cleans detached live descendants", async () => {
   const f = fixture();
   f.gate(`

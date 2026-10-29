@@ -327,7 +327,7 @@ while :; do sleep 1; done
     expect(report.failed).toBe(1);
   }, 20_000);
 
-  it("accounts for all native fixtures, keeps aj exclusive, and releases capacity after failure", async () => {
+  it("accounts for native fixtures and admits aj beside two remaining lanes after failure", async () => {
     const fixture = makeFixture();
     writeFileSync(
       join(fixture.root, "native.mjs"),
@@ -358,22 +358,20 @@ process.exit(id === 'u' ? 7 : 0);
     const started = (id: string) => existsSync(join(fixture.root, `${id}.started`));
     const release = (id: string) => writeFileSync(join(fixture.root, `${id}.release`), "");
     try {
-      await waitFor(() => started("ah") && started("u"));
-      expect(["aj", "w", "ab"].filter(started)).toEqual([]);
+      await waitFor(() => ["ah", "u", "w", "ab"].every(started));
+      expect(started("aj")).toBe(false);
       expect(
         readFileSync(join(fixture.root, "preparation.log"), "utf8").trim().split("\n"),
       ).toEqual(["install:0", "server:0", "worker:0"]);
       release("u");
-      await waitFor(() => started("w"));
+      await waitFor(() => existsSync(join(fixture.root, "u.finished")));
       expect(started("aj")).toBe(false);
-      expect(started("ab")).toBe(false);
-      release("w");
-      await waitFor(() => started("ab"));
       release("ah");
-      await waitFor(() => existsSync(join(fixture.root, "ah.finished")));
-      expect(started("aj")).toBe(false);
-      release("ab");
       await waitFor(() => started("aj"));
+      expect(existsSync(join(fixture.root, "w.finished"))).toBe(false);
+      expect(existsSync(join(fixture.root, "ab.finished"))).toBe(false);
+      release("w");
+      release("ab");
       release("aj");
       expect(await completed).toBe(1);
       const report = JSON.parse(
@@ -583,8 +581,7 @@ nested.on('exit', () => process.exit(0));
     );
     for (const id of ["ah-execution-live-e2e", "u-machine-ui"])
       fixture.writeScript(id, `exec node launcher.mjs ${id.split("-")[0]}\n`);
-    for (const id of ["aj-recovery-matrix", "w-worker-remote"])
-      fixture.writeScript(id, `echo ${id} >> marker.log\n`);
+    for (const id of ["aj-recovery-matrix"]) fixture.writeScript(id, `echo ${id} >> marker.log\n`);
     const child = spawn(process.execPath, ["scripts/verify/runner.mjs"], {
       cwd: fixture.root,
       stdio: ["ignore", "ignore", "pipe"],

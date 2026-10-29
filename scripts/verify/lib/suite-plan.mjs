@@ -1,4 +1,4 @@
-import { NATIVE_LANE_BUDGET, AH_GROUPS } from "./native-lanes.mjs";
+import { NATIVE_LANE_BUDGET, NATIVE_GATE_WEIGHTS, AH_GROUPS } from "./native-lanes.mjs";
 
 export const SUITE_CAPACITY = Object.freeze({
   process: 6,
@@ -36,7 +36,7 @@ export const SUITE_PLAN = Object.freeze({
   "ag-execution-wiring-ui": plan(7.621, { browser: 1, light: 1, port3141: 1 }, server),
   "ah-execution-live-e2e": plan(94.515, { native: AH_GROUPS.length }, worker),
   "ai-execution-accept-fixes": plan(1.614, { unit: 1 }),
-  "aj-recovery-matrix": plan(62.067, { native: NATIVE_LANE_BUDGET }, worker),
+  "aj-recovery-matrix": plan(62.067, { native: NATIVE_GATE_WEIGHTS["aj-recovery-matrix"] }, worker),
   "ak-execution-accept-fixes-2": plan(12.173, { unit: 1, native: 1 }),
   "al-execution-exit-custody": plan(12.665, { unit: 1, native: 1 }),
   "am-execution-log-honesty": plan(4.098, { browser: 1 }, server),
@@ -56,7 +56,7 @@ export const SUITE_PLAN = Object.freeze({
   "l-docs": plan(1.286, { light: 1 }),
   "l-docs-probes": plan(34.493, { light: 1 }),
   "m-error-mapping": plan(0.96, { light: 1 }, server),
-  "n-pi-session": plan(11.366, { light: 1, sdk: 1 }),
+  "n-pi-session": plan(11.366, { light: 1, sdk: 1 }, server),
   "o-turn-semantics": plan(6.852, { light: 1 }, server),
   "p-repo-entry": plan(17.083, { light: 1 }, server),
   "q-info-hub-runs": plan(4.037, { light: 1 }, server),
