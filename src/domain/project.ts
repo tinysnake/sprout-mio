@@ -3,6 +3,7 @@ import { ID_PREFIXES, newId } from "../contracts/ids";
 import type { CreateProjectInput, Project, UpdateProjectInput } from "../contracts/project";
 import { db, sqlite } from "../db";
 import { diagnosticEvent, project } from "../db/schema";
+import { ensureProjectChannel } from "./channel";
 
 /** 调用者身份与请求关联在边界确定，业务服务不读取 HTTP 概念。 */
 export type ProjectContext = { userId: string; requestId: string };
@@ -35,7 +36,7 @@ function toProject(row: ProjectRow): Project {
   };
 }
 
-/** Project 行与 `project.created` 诊断在同一个事务里写入，任一步失败整体回滚。 */
+/** Project 行、它的公共频道与 `project.created` 诊断在同一个事务里写入，任一步失败整体回滚。 */
 export function createProject(
   input: CreateProjectInput,
   ctx: ProjectContext,
@@ -62,6 +63,9 @@ export function createProject(
       })
       .run();
     hooks.afterProjectInsert?.(created);
+    // 频道与 Project 一起出生（裁定 §4.1 的饥渴创建，不在读路径上补写）；同一事务保证
+    // 不会出现「有 Project 却没有频道」的中间态。
+    ensureProjectChannel(created.id);
     db.insert(diagnosticEvent)
       .values({
         id: newId(ID_PREFIXES.diagnostic),

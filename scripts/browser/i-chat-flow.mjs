@@ -103,15 +103,16 @@ async function verifyRestartedSession() {
     );
   });
 
-  await check("restart_list_shows_single_chat", async () => {
+  await check("restart_list_shows_dm_and_project_channel", async () => {
     await page.goto(`${BASE}${state.projectPath}/chats`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="dm-member-list"]', { timeout: 20000 });
     const items = await page.$$eval('[data-testid="chat-item"]', (nodes) =>
       nodes.map((node) => node.getAttribute("data-chat-id")),
     );
+    // Project 出生即带唯一的公共频道（I-P5a 频道单元），列表是「DM + 频道」两条；最新更新的 DM 在前。
     record(
-      "restart_list_shows_single_chat",
-      JSON.stringify(items) === JSON.stringify([state.chatId]),
+      "restart_list_shows_dm_and_project_channel",
+      items.length === 2 && items[0] === state.chatId,
       `重启后列表 ${JSON.stringify(items)}`,
     );
   });
@@ -244,7 +245,8 @@ if (process.env.CHAT_VERIFY === "1") {
       /^cnv_[0-9a-f-]{36}$/.test(chatId) &&
         /^ins_[0-9a-f-]{36}$/.test(instanceId) &&
         agentShown?.trim() === agentName &&
-        JSON.stringify(listedChats) === JSON.stringify([chatId]),
+        listedChats.length === 2 &&
+        listedChats[0] === chatId,
       `URL ${chatPath}，instance ${instanceId}，Agent ${JSON.stringify(agentShown?.trim())}，即时列表 ${JSON.stringify(listedChats)}`,
     );
   });
@@ -319,7 +321,7 @@ if (process.env.CHAT_VERIFY === "1") {
     await shot(page, "p2-i-chats-list");
     record(
       "repeat_start_opens_same_chat",
-      JSON.stringify(items) === JSON.stringify([chatId]) && pathOf() === chatPath,
+      items.length === 2 && items[0] === chatId && pathOf() === chatPath,
       `列表 ${JSON.stringify(items)}，再次发起后 URL ${pathOf()}`,
     );
   });

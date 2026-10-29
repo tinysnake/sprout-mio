@@ -20,8 +20,9 @@ import {
   setChatOwner,
 } from "../../src/domain/chat";
 import type { ChatActor } from "../../src/domain/chat-actor";
+import { ensureProjectChannel } from "../../src/domain/channel";
 import { createProject } from "../../src/domain/project";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 migrateDatabase();
 
@@ -153,9 +154,13 @@ assert.equal(
   "forbidden",
 );
 assert.equal(
-  db.select().from(chat).where(eq(chat.projectId, projectRow.id)).all().length,
+  db
+    .select()
+    .from(chat)
+    .where(and(eq(chat.projectId, projectRow.id), eq(chat.kind, "group")))
+    .all().length,
   0,
-  "被拒的建群不能留下任何 chat 行",
+  "被拒的建群不能留下任何 group 行（Project 自带的公共频道不算）",
 );
 pass("governance.agent-create-forbidden", { code: "forbidden", chatRows: 0 });
 
@@ -427,17 +432,17 @@ pass("d10.pending-input-cancelled", {
 });
 
 // ---------------------------------------------------------------- 11. d12：Public Channel 只能被 insert 触发器和领域层拒绝
-const channelId = newId(ID_PREFIXES.chat);
-db.insert(chat)
-  .values({
-    id: channelId,
-    projectId: projectRow.id,
-    kind: "public_channel",
-    ownerKind: "human",
-    ownerId: creatorId,
-    createdBy: creatorId,
-  })
-  .run();
+// Project 创建时就带着唯一的公共频道（裁定 §4.1），这里取回它而不是再插一条。
+const channelId = ensureProjectChannel(projectRow.id);
+assert.equal(
+  db
+    .select()
+    .from(chat)
+    .where(and(eq(chat.projectId, projectRow.id), eq(chat.kind, "public_channel")))
+    .all().length,
+  1,
+  "同一 Project 只能有一个公共频道",
+);
 assert.throws(
   () =>
     sqlite

@@ -168,7 +168,7 @@ beforeAll(() => {
         userB.headers,
         "req_b3",
       );
-      const bChatRows = sqlite.prepare("SELECT count(*) AS n FROM chat WHERE project_id = ?").get(bProjectId).n;
+      const bChatRows = sqlite.prepare("SELECT count(*) AS n FROM chat WHERE project_id = ? AND kind = 'dm'").get(bProjectId).n;
       const bInstanceRows = sqlite.prepare("SELECT count(*) AS n FROM agent_instance WHERE project_id = ?").get(bProjectId).n;
       const failedDiagnostics = sqlite
         .prepare("SELECT count(*) AS n FROM diagnostic_event WHERE event = 'chat.request_failed' AND request_id IN (?, ?)")
