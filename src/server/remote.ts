@@ -1553,6 +1553,9 @@ export function applyRemoteExchange(
       continue;
     }
     const hash = payloadHash(report);
+    // 终态归约与 ignored_terminal/drainedAt 更新之前先要求真实投递帧证明：
+    // 没有已提交 exchange frame 里的 command，同一 row/session/origin 也不能伪造终态。
+    if (!proven) throw new RemoteError("not_found");
     const previous = db
       .select()
       .from(executionResult)
@@ -1575,15 +1578,12 @@ export function applyRemoteExchange(
         .where(eq(remoteExecution.id, row.id))
         .run();
     } else {
-      const outcome = proven ? report.outcome : "rejected";
-      const payload = proven
-        ? report.payload
-        : { kind: row.operationJson.kind, failureReason: "authorization_revoked" as const };
+      const outcome = report.outcome;
+      const payload = report.payload;
       // shell 的 waitMs 快照（exited:false）只是「已启动」的观察：要把 pid/当前输出
       // 交给工具面，但不能把执行落成终态，否则长命令在窗口后既不能取消也不再采日志。
       // 真正的终态报告随后覆盖同一行结果，并把执行归约。
       const provisional =
-        proven &&
         !("failureReason" in report.payload) &&
         report.payload.kind === "shell" &&
         !report.payload.exited;

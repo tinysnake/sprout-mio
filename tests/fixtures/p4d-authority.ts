@@ -414,10 +414,21 @@ for (const frame of db.select().from(workerExchangeFrame).all()) {
       )
       .run();
 }
-exchange([terminal(dispatched.find((x) => x.executionId === third.executionId)!)]);
+// Missing dispatch-frame proof must fail closed: reject the report without writing
+// a terminal execution or result fact, and do not let it seal later real reports.
+assert.throws(
+  () => exchange([terminal(dispatched.find((x) => x.executionId === third.executionId)!)]),
+  fail("not_found"),
+);
 const unproven = getExecution({ ...key, executionId: third.executionId }, human);
-assert.equal(unproven.state, "rejected");
-assert.equal(unproven.failureReason, "authorization_revoked");
+assert.equal(unproven.state, "unknown");
+assert.equal(unproven.failureReason, "worker_lost");
+assert.equal(
+  sqlite
+    .prepare("SELECT COUNT(*) AS n FROM execution_result WHERE execution_id=?")
+    .get(third.executionId).n,
+  0,
+);
 assert.equal(sqlite.pragma("foreign_key_check").length, 0);
 console.log(
   "p4d-authority: PASS continuity, current cancellation, history, delivery proof, cross-generation fencing",
