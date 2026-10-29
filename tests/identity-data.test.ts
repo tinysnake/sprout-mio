@@ -68,7 +68,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
         agent_profile: ['id','name','persona','harness','model','effort','created_by','created_at','updated_at','job_title'],
         project_profile: ['project_id','git_remote','default_branch','work_directory','updated_at'],
         project_member: ['project_id','agent_profile_id','added_by','added_at'],
-        chat: ['id','project_id','kind','title','archived_at','created_by','created_at','updated_at'],
+        chat: ['id','project_id','kind','title','archived_at','owner_kind','owner_id','wake_policy','governance_revision','created_by','created_at','updated_at'],
         chat_member: ['chat_id','member_kind','member_id','added_at'],
         agent_instance: ['id','agent_profile_id','chat_id','project_id','created_at','updated_at'],
         message: ['id','chat_id','sender_kind','sender_id','body','created_at'],
@@ -84,7 +84,9 @@ describe("P2 身份、Project 授权与持久对话", () => {
       assert.deepEqual(sqlite.prepare('PRAGMA index_info(agent_instance_profile_chat_unique)').all().map(row => row.name), ['agent_profile_id','chat_id']);
       assert.equal(sqlite.prepare('PRAGMA index_list(agent_instance)').all().find(row => row.name === 'agent_instance_profile_chat_unique').unique, 1);
       assert.deepEqual(sqlite.prepare('PRAGMA index_info(message_chat_created_at_idx)').all().map(row => row.name), ['chat_id','created_at']);
-      assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,created_by) VALUES ('bad',?,'group',?)").run(projectA.id, ctxA.userId), /CHECK constraint/);
+      // kind 仍是封闭集合，且 DM 的 owner 只能是创建者本身。
+      assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('bad-kind',?,'channel','human',?,?)").run(projectA.id, ctxA.userId, ctxA.userId), /CHECK constraint failed: chat_kind_check/);
+      assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('bad-owner',?,'dm','agent',?,?)").run(projectA.id, profileA.id, ctxA.userId), /CHECK constraint failed: chat_dm_owner_check/);
       assert.throws(() => sqlite.prepare("INSERT INTO project_profile (project_id) VALUES ('missing')").run(), /FOREIGN KEY constraint/);
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
       const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);

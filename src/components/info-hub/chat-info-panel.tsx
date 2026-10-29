@@ -11,7 +11,7 @@ export function ChatFactsBlock({ view }: { view: ChatInfoView }) {
         <dd data-testid="info-chat-archived">{view.archived ? "已归档" : "未归档"}</dd>
         <dt className="text-muted-foreground">分身 Instance ID</dt>
         <dd data-testid="info-chat-instance-id" className="font-mono break-all">
-          {view.instance?.instanceId ?? "（缺少分身记录）"}
+          {view.instances.at(0)?.instanceId ?? "（缺少分身记录）"}
         </dd>
         <dt className="text-muted-foreground">消息数</dt>
         <dd data-testid="info-message-count">{view.messages.count}</dd>

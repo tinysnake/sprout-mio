@@ -96,7 +96,8 @@ describe("P4b shared contracts", () => {
     ).toBe(false);
     for (const schema of Object.values(remoteToolInputSchemas))
       expect(schema.safeParse({}).success).toBe(false);
-    expect(new Set(REMOTE_ERROR_CODES).size).toBe(25);
+    // 26 = 原 25 个码 + I-P5a 追加的 channel_membership_managed。
+    expect(new Set(REMOTE_ERROR_CODES).size).toBe(26);
     expect([...REMOTE_ERROR_CODES]).toEqual([...humanContracts.APP_ERROR_CODES]);
   });
 

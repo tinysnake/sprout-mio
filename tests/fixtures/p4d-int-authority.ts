@@ -1383,8 +1383,10 @@ if (scenario === "steer") {
     .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'Steer fixture',?)")
     .run(profileId, ownerId);
   sqlite
-    .prepare("INSERT INTO chat(id,project_id,kind,created_by) VALUES (?,?,'dm',?)")
-    .run(chatId, projectId2, ownerId);
+    .prepare(
+      "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human',?,?)",
+    )
+    .run(chatId, projectId2, ownerId, ownerId);
   sqlite
     .prepare("INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES (?,'agent',?)")
     .run(chatId, profileId);

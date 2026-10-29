@@ -3,8 +3,8 @@ import {
   CHAT_TITLE_MAX_LENGTH,
   type AgentInstance,
   type Chat,
+  type ChatDetail,
   type ChatMember,
-  type DirectChat,
   type Message,
   type SendMessageInput,
 } from "../contracts/chat";
@@ -20,7 +20,7 @@ import type { IdentityWriteHooks } from "./identity-write";
 
 export class ChatError extends Error {
   constructor(
-    readonly code: "not_found" | "conflict",
+    readonly code: "not_found" | "conflict" | "forbidden" | "channel_membership_managed",
     message: string,
   ) {
     super(message);
@@ -35,6 +35,9 @@ function toChat(row: typeof chat.$inferSelect): Chat {
     kind: row.kind,
     ...(row.title === null ? {} : { title: row.title }),
     ...(row.archivedAt === null ? {} : { archivedAt: row.archivedAt.toISOString() }),
+    owner: { kind: row.ownerKind, id: row.ownerId },
+    wakePolicy: row.wakePolicy,
+    governanceRevision: row.governanceRevision,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -54,7 +57,7 @@ export function createDirectChat(
   agentProfileId: string,
   ctx: ProjectContext,
   hooks: IdentityWriteHooks = {},
-): DirectChat {
+): ChatDetail {
   return sqlite
     .transaction(() => {
       assertProjectAccess(ctx, projectId);
@@ -106,7 +109,15 @@ export function createDirectChat(
         () => {
           const created = db
             .insert(chat)
-            .values({ id: chatId, projectId, kind: "dm", createdBy: ctx.userId })
+            .values({
+              id: chatId,
+              projectId,
+              kind: "dm",
+              createdBy: ctx.userId,
+              // DDL 要求 DM 的 owner 就是创建者本身，不留空让调用方选。
+              ownerKind: "human",
+              ownerId: ctx.userId,
+            })
             .returning()
             .get();
           db.insert(chatMember)
