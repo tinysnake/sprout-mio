@@ -687,8 +687,8 @@ describe("P4d 共享契约", () => {
       availableFromSequence: null,
       cancellation: null,
     };
-    // 接入单元补全投影前，两个字段缺省仍可解析；一旦给出就必须成对自洽。
-    expect(executionViewSchema.safeParse(view).success).toBe(true);
+    // 接入后两个字段都必填；缺省或只给一个字段必须拒绝。
+    expect(executionViewSchema.safeParse(view).success).toBe(false);
     expect(
       executionViewSchema.safeParse({
         ...view,

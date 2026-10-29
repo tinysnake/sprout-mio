@@ -14,6 +14,7 @@ import {
   executionCancellationViewSchema,
   executionLogReadViewSchema,
   executionViewSchema,
+  holderExecutionListViewSchema,
   remoteAgentRequestSchema,
   remoteToolGrantSchema,
 } from "../contracts/remote";
@@ -37,6 +38,7 @@ const leaseReadSchema = z.strictObject({
 });
 type RemoteData =
   | z.infer<typeof executionViewSchema>
+  | z.infer<typeof holderExecutionListViewSchema>
   | z.infer<typeof executionCancellationViewSchema>
   | z.infer<typeof executionLogReadViewSchema>
   | z.infer<typeof leaseMutationViewSchema>
@@ -79,6 +81,15 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   if (call.type === "lease_mutate") {
     const parsed = leaseMutationViewSchema.safeParse(raw);
     if (!parsed.success || !sameBinding(parsed.data)) return bad;
+    return ok(parsed.data);
+  }
+  if (call.type === "execution_list") {
+    const parsed = holderExecutionListViewSchema.safeParse(raw);
+    if (
+      !parsed.success ||
+      parsed.data.executions.some((view) => !sameBinding(view) || view.authority === "history")
+    )
+      return bad;
     return ok(parsed.data);
   }
   if (call.type === "execution_cancel") {
