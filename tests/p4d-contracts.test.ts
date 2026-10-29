@@ -70,6 +70,21 @@ function count(sqlite: Database.Database, table: string): number {
   return (sqlite.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
 }
 
+/** 0020 之前就存在的每张表的逐行逐列快照：迁移后必须逐列不变（新表另算）。 */
+function snapshotTables(sqlite: Database.Database): Record<string, unknown[]> {
+  const tables = (
+    sqlite
+      .prepare(
+        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      )
+      .all() as { name: string }[]
+  ).map((row) => row.name);
+  const snapshot: Record<string, unknown[]> = {};
+  for (const table of tables)
+    snapshot[table] = sqlite.prepare(`SELECT * FROM \`${table}\` ORDER BY rowid`).all();
+  return snapshot;
+}
+
 const insert = (sqlite: Database.Database, table: string, values: Record<string, unknown>) => {
   const columns = Object.keys(values);
   sqlite
@@ -230,6 +245,8 @@ describe("P4d membership 与通知数据约束", () => {
       });
       insert(sqlite, "agent_profile", { id: "profile", name: "Agent", created_by: "owner" });
       const scope = seedScope(sqlite, "prj_legacy", "mch_legacy");
+      // 第二个既有 binding：回填必须对每个 binding 各建一条，且不串号。
+      const second = seedScope(sqlite, "prj_legacy_b", "mch_legacy_b");
       insert(sqlite, "runtime_boot", {
         id: "boot",
         started_at: 1,
@@ -273,6 +290,45 @@ describe("P4d membership 与通知数据约束", () => {
         created_at: 200,
         dispatch_deadline_at: 300,
       });
+      // 既有的执行日志、执行结果与 MCP 历史都要逐列活过 0020。
+      insert(sqlite, "execution_log_frame", {
+        execution_id: "exe_legacy",
+        sequence: 1,
+        project_id: scope.project,
+        machine_id: scope.machine,
+        authorization_generation: 1,
+        holder_instance_id: scope.instance,
+        stream: "stdout",
+        byte_start: 0,
+        byte_end: 4,
+        payload_bytes: Buffer.from("true", "utf8"),
+        checksum: "d".repeat(64),
+        durable_at: 210,
+      });
+      insert(sqlite, "execution_result", {
+        execution_id: "exe_legacy",
+        project_id: scope.project,
+        machine_id: scope.machine,
+        authorization_generation: 1,
+        holder_instance_id: scope.instance,
+        payload_hash: "e".repeat(64),
+        outcome: "succeeded",
+        payload_json: JSON.stringify({ kind: "shell", exitCode: 0 }),
+        recorded_at: 220,
+      });
+      insert(sqlite, "mcp_server_registration", {
+        id: "mcpr_legacy",
+        revision: 1,
+        project_id: scope.project,
+        machine_id: scope.machine,
+        name: "legacy",
+        transport: "stdio",
+        config_ref: "legacy-ref",
+        config_hash: "f".repeat(64),
+        config_json: JSON.stringify({ transport: "stdio" }),
+        created_at: 230,
+      });
+      const tablesBefore = snapshotTables(sqlite);
       const executionBefore = sqlite
         .prepare("SELECT * FROM remote_execution WHERE id = 'exe_legacy'")
         .get();
@@ -289,16 +345,26 @@ describe("P4d membership 与通知数据约束", () => {
       expect(
         sqlite.prepare("SELECT * FROM project_machine WHERE project_id = 'prj_legacy'").get(),
       ).toEqual(bindingBefore);
-      expect(
-        sqlite
-          .prepare(
-            "SELECT epoch, state, joined_at FROM project_machine_membership WHERE project_id = ?",
-          )
-          .all("prj_legacy"),
-      ).toEqual([{ epoch: 1, state: "active", joined_at: 100 }]);
+      for (const bound of [scope, second])
+        expect(
+          sqlite
+            .prepare(
+              "SELECT epoch, state, joined_at FROM project_machine_membership WHERE project_id = ?",
+            )
+            .all(bound.project),
+          bound.project,
+        ).toEqual([{ epoch: 1, state: "active", joined_at: 100 }]);
       expect(tableSql(sqlite, "remote_execution")).toMatch(
         /REFERENCES `worker_exchange_frame`[\s\S]*DEFERRABLE INITIALLY DEFERRED/,
       );
+      // 0019 前存在的每张表逐行逐列不变；只新增两张表，没有重建或改名。
+      const tablesAfter = snapshotTables(sqlite);
+      expect(Object.keys(tablesAfter)).toEqual(
+        [...Object.keys(tablesBefore), "project_machine_membership", "run_resource_notice"].sort(),
+      );
+      for (const table of Object.keys(tablesBefore))
+        expect({ table, rows: tablesAfter[table] }).toEqual({ table, rows: tablesBefore[table] });
+      expect(tableSql(sqlite, "remote_execution")).not.toMatch(/custody|system/i);
     } finally {
       sqlite.close();
     }
