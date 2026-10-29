@@ -4,12 +4,12 @@
 
 ## 关系：`project_machine_membership`
 
-| 列 | 含义 |
-| --- | --- |
-| `project_id`、`machine_id` | 关系两侧，外键指向 Project 与 Machine |
-| `epoch` | 关系代次，同一对 Project × Machine 从 1 开始单调递增 |
-| `state` | `active`、`detaching`、`removed` |
-| `detach_reason`、`removed_at` | 移出原因与完成时点 |
+| 列                            | 含义                                                 |
+| ----------------------------- | ---------------------------------------------------- |
+| `project_id`、`machine_id`    | 关系两侧，外键指向 Project 与 Machine                |
+| `epoch`                       | 关系代次，同一对 Project × Machine 从 1 开始单调递增 |
+| `state`                       | `active`、`detaching`、`removed`                     |
+| `detach_reason`、`removed_at` | 移出原因与完成时点                                   |
 
 约束表达三件事：同一对 Project × Machine 同时最多一个非 `removed` 的 epoch（部分唯一索引）、epoch 必须为正、`detaching` 与 `removed` 必须有原因。`project_machine` 行不删除，因此历史关系与租约收据始终可读。
 
@@ -17,11 +17,11 @@
 
 ## 通知：`run_resource_notice`
 
-| 列 | 含义 |
-| --- | --- |
+| 列                           | 含义                                                  |
+| ---------------------------- | ----------------------------------------------------- |
 | `kind`、`cause_id`、`run_id` | 与原因绑定的唯一键，保证同一原因对同一 run 只投递一次 |
-| `body` | 投递给 run 的文本 |
-| `delivered_at` | 被 run 输入轮询取走时写入 |
+| `body`                       | 投递给 run 的文本                                     |
+| `delivered_at`               | 被 run 输入轮询取走时写入                             |
 
 投递走既有输入通道：`src/server/pi-host/run.ts` 以 `notice:<id>` 作为输入标识取走通知，不新开推送给 Agent 的旁路，也不因为通知存在而改变 run 的状态。
 
@@ -31,12 +31,12 @@
 
 「谁现在有权」由 `machine_lease` 当前行派生：holder 取 `machine_lease.holder_instance_id`，代次取 `machine_lease.generation`。不能用 `lease_authorization.holder_instance_id`，因为撤销只改该行的 state，行还在，会把被撤权的 holder 误判为持有者。
 
-| 派生值 | 含义 |
-| --- | --- |
-| `authority: "holder"` | 调用者就是当前 holder |
-| `authority: "inherited"` | 执行发起代次不晚于当前代次，且派发帧在历史里可证 |
-| `authority: "history"` | 关系已不 active，只能读历史 |
-| `currentAuthorizationGeneration` | 当前租约代次，用于与执行发起代次比较 |
+| 派生值                           | 含义                                             |
+| -------------------------------- | ------------------------------------------------ |
+| `authority: "holder"`            | 调用者就是当前 holder                            |
+| `authority: "inherited"`         | 执行发起代次不晚于当前代次，且派发帧在历史里可证 |
+| `authority: "history"`           | 关系已不 active，只能读历史                      |
+| `currentAuthorizationGeneration` | 当前租约代次，用于与执行发起代次比较             |
 
 判定顺序是四段合取：custody holder 是调用者、租约处于 `held`、租约 holder 是调用者、执行发起代次不晚于当前代次。任一段不成立都精确拒绝，不降级成「暂时当作没权限」。
 
@@ -46,9 +46,9 @@
 
 ## 错误码
 
-| 码 | 何时 |
-| --- | --- |
-| `detach_pending` | 移出尚未完成，关系停在 `detaching` |
-| `membership_removed` | 关系已移出，写操作与取消被拒 |
-| `lease_not_holder` | 调用者不是当前 holder，或关系非 active 时的连续性读 |
-| `conflict` | epoch、绑定 revision 或代次不匹配的乐观并发冲突 |
+| 码                   | 何时                                                |
+| -------------------- | --------------------------------------------------- |
+| `detach_pending`     | 移出尚未完成，关系停在 `detaching`                  |
+| `membership_removed` | 关系已移出，写操作与取消被拒                        |
+| `lease_not_holder`   | 调用者不是当前 holder，或关系非 active 时的连续性读 |
+| `conflict`           | epoch、绑定 revision 或代次不匹配的乐观并发冲突     |

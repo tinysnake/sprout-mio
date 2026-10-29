@@ -17,15 +17,15 @@ P4d 让「谁现在有权操作这台 Machine」从执行行上的一个代次�
 
 ## 数据形状
 
-| 形状 | 建模 |
-| --- | --- |
-| 关系 | `project_machine_membership` 按 `(projectId, machineId, epoch)` 存一行，`state` 为 `active`、`detaching`、`removed` |
-| 关系身份 | epoch 单调递增；重新加入写 `epoch + 1` 的 active 行；缺行一律拒绝 |
-| 执行权威 | 不落在执行行上，由 `machine_lease` 当前 holder 与代次派生；执行行只记派发时事实 |
-| 接续谓词 | 执行行的发起代次 ≤ 当前代次，且派发帧在历史里可证 |
-| 通知 | `run_resource_notice` 独立发件箱，唯一键 `(kind, causeId, runId)`，投递后由输入轮询取走 |
-| 待处理投影 | `membership_detaching > lease_fencing > notice_undelivered`，优先级与阈值由服务端给 |
-| 目录观测 | 携带 `bindingRevision`，只表达关系的当前事实；关系失效即删除 |
+| 形状       | 建模                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| 关系       | `project_machine_membership` 按 `(projectId, machineId, epoch)` 存一行，`state` 为 `active`、`detaching`、`removed` |
+| 关系身份   | epoch 单调递增；重新加入写 `epoch + 1` 的 active 行；缺行一律拒绝                                                   |
+| 执行权威   | 不落在执行行上，由 `machine_lease` 当前 holder 与代次派生；执行行只记派发时事实                                     |
+| 接续谓词   | 执行行的发起代次 ≤ 当前代次，且派发帧在历史里可证                                                                   |
+| 通知       | `run_resource_notice` 独立发件箱，唯一键 `(kind, causeId, runId)`，投递后由输入轮询取走                             |
+| 待处理投影 | `membership_detaching > lease_fencing > notice_undelivered`，优先级与阈值由服务端给                                 |
+| 目录观测   | 携带 `bindingRevision`，只表达关系的当前事实；关系失效即删除                                                        |
 
 ## 1. 向指定分身原子交接，占用不经过释放空窗
 
