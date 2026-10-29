@@ -368,19 +368,36 @@ try {
   };
 
   const leaseUrl = `${base}/machines/${machineId}/lease?projectId=${projectId}`;
-  const card = (executionId: string) => page.locator(`[data-execution-id="${executionId}"]`);
+  // 卡片如今只挂在「调试详情」抽屉里，摘要默认层只有计数；断言必须先把抽屉打开。
+  let debugList: Awaited<ReturnType<typeof page.getByTestId>> | null = null;
+  const openDebug = async (listTestId: string) => {
+    const dialog = page.getByTestId(new RegExp(`^${listTestId}-debug-[^ ]+-dialog$`));
+    if ((await dialog.count()) === 0) {
+      await page.getByTestId(new RegExp(`^${listTestId}-debug-[^ ]+-open$`)).click();
+      await dialog.waitFor();
+    }
+    const items = dialog.locator(`[data-testid^="${listTestId}-debug-"][data-execution-id]`);
+    await items.first().waitFor();
+    debugList = dialog;
+  };
+  const card = (executionId: string) => {
+    if (!debugList) throw new Error("调试详情未打开");
+    return debugList.locator(`[data-execution-id="${executionId}"]`);
+  };
   const logOf = (executionId: string) => card(executionId).getByTestId(/item-log$/);
   const reload = async () => {
     await page.reload();
     await page.getByTestId("machine-executions-list").waitFor();
+    await openDebug("machine-executions");
   };
 
   await check("Machine 详情页出现真实 executionId（来自服务端执行视图）", async () => {
     await page.goto(leaseUrl);
     await page.getByTestId("machine-executions-list").waitFor();
-    const listed = await page.$$eval('[data-testid="machine-executions-item"]', (nodes) =>
-      nodes.map((node) => node.getAttribute("data-execution-id") ?? ""),
-    );
+    await openDebug("machine-executions");
+    const listed = await debugList!
+      .locator('[data-testid^="machine-executions-debug-"][data-execution-id]')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-execution-id") ?? ""));
     const sorted = [...listed].sort((left, right) => left.localeCompare(right));
     assert.deepEqual(
       sorted,
@@ -394,77 +411,69 @@ try {
 
   await check("读取日志真的到服务端：第一页 2 帧、续读后位点推进到 #3", async () => {
     const target = logOf(full.executionId);
-    await target.getByTestId("machine-executions-item-log-load").click();
-    await target.getByTestId("machine-executions-item-log-frame").first().waitFor();
-    assert.equal(await target.getByTestId("machine-executions-item-log-frame").count(), 2);
-    assert.match(
-      await target.getByTestId("machine-executions-item-log-next-cursor").innerText(),
-      /#2/,
-    );
-    await target.getByTestId("machine-executions-item-log-resume").click();
+    await target.getByTestId(/item-log-load$/).click();
+    await target
+      .getByTestId(/item-log-frame$/)
+      .first()
+      .waitFor();
+    assert.equal(await target.getByTestId(/item-log-frame$/).count(), 2);
+    assert.match(await target.getByTestId(/item-log-next-cursor$/).innerText(), /#2/);
+    await target.getByTestId(/item-log-resume$/).click();
     // 续读显示的是下一段（一页一页读），不是把旧页拼起来。
     await until(
       async () =>
-        (await target.getByTestId("machine-executions-item-log-frame").count()) === 1 &&
-        /已产出到 #3/.test(
-          await target.getByTestId("machine-executions-item-log-cursors").innerText(),
-        ),
+        (await target.getByTestId(/item-log-frame$/).count()) === 1 &&
+        /已产出到 #3/.test(await target.getByTestId(/item-log-cursors$/).innerText()),
       "resume frames",
     );
     assert.match(
-      await target.getByTestId("machine-executions-item-log-frame").first().innerText(),
+      await target
+        .getByTestId(/item-log-frame$/)
+        .first()
+        .innerText(),
       /#3 out line-0003/,
     );
-    assert.match(
-      await target.getByTestId("machine-executions-item-log-next-cursor").innerText(),
-      /#3/,
-    );
-    assert.match(await target.getByTestId("machine-executions-item-log-state").innerText(), /完整/);
+    assert.match(await target.getByTestId(/item-log-next-cursor$/).innerText(), /#3/);
+    assert.match(await target.getByTestId(/item-log-state$/).innerText(), /完整/);
     await page.screenshot({ path: join(evidence, "machine-log-pages.png"), fullPage: true });
   });
 
   await check("反证：partial 与 gap 都显示为不完整，缺口单独点名且不当作空输出", async () => {
     const partialLog = logOf(partial.executionId);
-    await partialLog.getByTestId("machine-executions-item-log-load").click();
+    await partialLog.getByTestId(/item-log-load$/).click();
     // 先等这一页真的读回来，再断言呈现；不完整提示在读取前就已经存在，不能拿它当读取完成的信号。
-    await partialLog.getByTestId("machine-executions-item-log-frame").first().waitFor();
-    await partialLog.getByTestId("machine-executions-item-log-incomplete").waitFor();
-    assert.match(
-      await partialLog.getByTestId("machine-executions-item-log-state").innerText(),
-      /不完整/,
-    );
+    await partialLog
+      .getByTestId(/item-log-frame$/)
+      .first()
+      .waitFor();
+    await partialLog.getByTestId(/item-log-incomplete$/).waitFor();
+    assert.match(await partialLog.getByTestId(/item-log-state$/).innerText(), /不完整/);
     assert.equal(
-      await partialLog.getByTestId("machine-executions-item-log-gap").count(),
+      await partialLog.getByTestId(/item-log-gap$/).count(),
       0,
       "partial 不得凭空造出缺口",
     );
-    assert.equal(await partialLog.getByTestId("machine-executions-item-log-frame").count(), 3);
+    assert.equal(await partialLog.getByTestId(/item-log-frame$/).count(), 3);
     const gapLog = logOf(gap.executionId);
-    await gapLog.getByTestId("machine-executions-item-log-load").click();
-    await gapLog.getByTestId("machine-executions-item-log-gap").waitFor();
-    assert.match(await gapLog.getByTestId("machine-executions-item-log-state").innerText(), /缺口/);
-    assert.match(
-      await gapLog.getByTestId("machine-executions-item-log-gap").innerText(),
-      /缺失.*内容未知/,
-    );
+    await gapLog.getByTestId(/item-log-load$/).click();
+    await gapLog.getByTestId(/item-log-gap$/).waitFor();
+    assert.match(await gapLog.getByTestId(/item-log-state$/).innerText(), /缺口/);
+    assert.match(await gapLog.getByTestId(/item-log-gap$/).innerText(), /缺失.*内容未知/);
     await page.screenshot({ path: join(evidence, "machine-log-incomplete.png"), fullPage: true });
   });
 
   await check("尚无日志的执行显示「尚无日志」，不写成功也不写空", async () => {
     const target = logOf(running.executionId);
-    assert.equal(
-      (await target.getByTestId("machine-executions-item-log-state").innerText()).trim(),
-      "尚无日志",
-    );
-    assert.equal(await target.getByTestId("machine-executions-item-log-incomplete").count(), 0);
-    assert.equal(await target.getByTestId("machine-executions-item-log-empty-range").count(), 0);
+    assert.equal((await target.getByTestId(/item-log-state$/).innerText()).trim(), "尚无日志");
+    assert.equal(await target.getByTestId(/item-log-incomplete$/).count(), 0);
+    assert.equal(await target.getByTestId(/item-log-empty-range$/).count(), 0);
   });
 
   await check("取消是显式动作：显示请求事实，执行终态不被改写为已停止", async () => {
     const target = card(running.executionId);
     assert.equal(await target.getAttribute("data-execution-state"), "dispatched");
-    await target.getByTestId("machine-executions-item-cancel-request").click();
-    const state = target.getByTestId("machine-executions-item-cancel-state");
+    await target.getByTestId(/item-cancel-request$/).click();
+    const state = target.getByTestId(/item-cancel-state$/);
     await state.waitFor();
     const cancellationState = await state.getAttribute("data-cancellation-state");
     assert.ok(
@@ -478,7 +487,7 @@ try {
 
   await check("刷新后取消事实仍在（来自 executionView.cancellation），不显示为已停止", async () => {
     await reload();
-    const state = card(running.executionId).getByTestId("machine-executions-item-cancel-state");
+    const state = card(running.executionId).getByTestId(/item-cancel-state$/);
     await state.waitFor();
     const cancellationState = await state.getAttribute("data-cancellation-state");
     // 心跳可能把 requested 推进到 delivered；15 秒内没有 durable result 则记 delivery_unconfirmed。
@@ -508,7 +517,7 @@ try {
       await reload();
       const target = card(lost.executionId);
       assert.equal(await target.getAttribute("data-execution-state"), "unknown");
-      await target.getByTestId("machine-executions-item-no-rerun").waitFor();
+      await target.getByTestId(/item-no-rerun$/).waitFor();
       assert.equal(
         await target.getByRole("button", { name: /重跑|重新运行/ }).count(),
         0,
@@ -519,29 +528,24 @@ try {
 
   await check("断线时明说不完整，读取失败不推进位点", async () => {
     const target = logOf(full.executionId);
-    await target.getByTestId("machine-executions-item-log-load").click();
+    await target.getByTestId(/item-log-load$/).click();
     await until(
-      async () => (await target.getByTestId("machine-executions-item-log-frame").count()) === 2,
+      async () => (await target.getByTestId(/item-log-frame$/).count()) === 2,
       "online page read",
     );
-    const before = await target.getByTestId("machine-executions-item-log-cursors").innerText();
-    const beforeCursor = await target
-      .getByTestId("machine-executions-item-log-next-cursor")
-      .innerText();
+    const before = await target.getByTestId(/item-log-cursors$/).innerText();
+    const beforeCursor = await target.getByTestId(/item-log-next-cursor$/).innerText();
     await context.setOffline(true);
     await page.getByTestId("machine-executions-offline").waitFor();
-    await target.getByTestId("machine-executions-item-log-offline").waitFor();
-    await target.getByTestId("machine-executions-item-log-load").click();
-    await target.getByTestId("machine-executions-item-log-error").waitFor();
+    await target.getByTestId(/item-log-offline$/).waitFor();
+    await target.getByTestId(/item-log-load$/).click();
+    await target.getByTestId(/item-log-error$/).waitFor();
     assert.equal(
-      await target.getByTestId("machine-executions-item-log-cursors").innerText(),
+      await target.getByTestId(/item-log-cursors$/).innerText(),
       before,
       "断线不得让位点前进",
     );
-    assert.equal(
-      await target.getByTestId("machine-executions-item-log-next-cursor").innerText(),
-      beforeCursor,
-    );
+    assert.equal(await target.getByTestId(/item-log-next-cursor$/).innerText(), beforeCursor);
     await page.screenshot({ path: join(evidence, "machine-offline.png"), fullPage: true });
     await context.setOffline(false);
   });
@@ -549,14 +553,15 @@ try {
   await check("Project settings 用同一服务端入口读取日志", async () => {
     await page.goto(`${base}/projects/${projectId}/settings`);
     await page.getByTestId("settings-executions-list").waitFor();
+    await openDebug("settings-executions");
     const target = card(full.executionId);
-    await target.getByTestId("settings-executions-item-log-load").click();
-    await target.getByTestId("settings-executions-item-log-frame").first().waitFor();
-    assert.equal(await target.getByTestId("settings-executions-item-log-frame").count(), 2);
-    assert.match(
-      await target.getByTestId("settings-executions-item-log-state").innerText(),
-      /完整/,
-    );
+    await target.getByTestId(/item-log-load$/).click();
+    await target
+      .getByTestId(/item-log-frame$/)
+      .first()
+      .waitFor();
+    assert.equal(await target.getByTestId(/item-log-frame$/).count(), 2);
+    assert.match(await target.getByTestId(/item-log-state$/).innerText(), /完整/);
     await page.screenshot({ path: join(evidence, "settings-log.png"), fullPage: true });
   });
 
