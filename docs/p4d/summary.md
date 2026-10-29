@@ -99,6 +99,8 @@ Human 在 Lavish 评审里选定 D01 分区 B、D02 待处理摘要常显细节�
 
 第二轮独立验收在 `a1ccbed` 判 PASS，四项全部关闭，并核对既有断言没有被放宽。评审同时驳回「Worker 收到一次 conflict 后不再重试」的猜测：`src/worker/client.ts:179` 每轮按配置重探，`:247` 收到 conflict 后断开并转 drain，`:269` 结束内层循环后由 `:139` 重新 open。
 
+完整验证在 `0912047` 上跑过全量：`bash scripts/verify.sh` 的 53 个脚本全部通过，用时 1531 秒，报告 `.verify/runs/2026-10-29T16-56-04-997Z-79869-0/report.json`。
+
 重跑 `bash scripts/verify/an-p4d-authority.sh`、`bash scripts/verify/ap-p4d-handoff-worker.sh`、`bash scripts/verify/aq-p4d-pages.sh`、`bash scripts/verify/z-lease-integration.sh`。
 
 ## Human 体验确认
