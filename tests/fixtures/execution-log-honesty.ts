@@ -214,12 +214,20 @@ try {
   ) => readExecutionLog({ ...key, executionId, cursor, limitBytes: 65536 }, actor);
   const digest = (text: string) => createHash("sha256").update(text).digest("hex");
   const bytes = (text: string) => Buffer.byteLength(text, "utf8");
+  // 卡片只在「调试详情」抽屉里；断言先打开抽屉，再在抽屉内按执行定位。
+  const panel = () => page.getByTestId(/^machine-executions-debug-[^ ]+-dialog$/);
   const card = (executionId: string) =>
-    page.locator(`[data-execution-id="${executionId}"]`).getByTestId(/item-log$/);
+    panel()
+      .locator(`[data-execution-id="${executionId}"]`)
+      .getByTestId(/item-log$/);
   const openCardLog = async (executionId: string) => {
     await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
     await page.getByTestId("machine-executions-list").waitFor();
-    await card(executionId).getByTestId("machine-executions-item-log-load").click();
+    await page.getByTestId(/^machine-executions-debug-[^ ]+-open$/).click();
+    await panel().waitFor();
+    await card(executionId)
+      .getByTestId(/item-log-load$/)
+      .click();
   };
 
   // ── 场景 1：大输出后冻结 Worker，宿主只收到一部分帧 ─────────────────────────
@@ -266,9 +274,9 @@ try {
 
   // 真实 Chromium：同一现场，页面必须显示不完整，不得写「日志完整」。
   await openCardLog(burst.executionId);
-  await page.getByTestId("machine-executions-item-log-incomplete").waitFor();
+  await page.getByTestId(/item-log-incomplete$/).waitFor();
   const pausedStateText = await card(burst.executionId)
-    .getByTestId("machine-executions-item-log-state")
+    .getByTestId(/item-log-state$/)
     .innerText();
   assert.match(pausedStateText, /不完整/);
   assert.equal(/日志完整/.test(pausedStateText), false);
@@ -324,9 +332,12 @@ try {
     "full 的前提是已确认前缀覆盖全部产出",
   );
   await openCardLog(full.executionId);
-  await page.getByTestId("machine-executions-item-log-frame").first().waitFor();
+  await page
+    .getByTestId(/item-log-frame$/)
+    .first()
+    .waitFor();
   const fullStateText = await card(full.executionId)
-    .getByTestId("machine-executions-item-log-state")
+    .getByTestId(/item-log-state$/)
     .innerText();
   assert.match(fullStateText, /日志完整/);
   await page.screenshot({ path: join(evidence, "sealed-full.png"), fullPage: true });
