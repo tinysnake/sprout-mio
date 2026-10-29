@@ -122,10 +122,8 @@ test("reuses each artifact only within the living current run, and retains origi
 test("runner context connects preparation across domains without a second install deleting artifacts", () => {
   const f = fixture();
   copyFileSync(resolve("scripts/verify/runner.mjs"), join(f.root, "scripts/verify/runner.mjs"));
-  f.put(
-    "scripts/verify/lib/native-lanes.mjs",
-    readFileSync(resolve("scripts/verify/lib/native-lanes.mjs"), "utf8"),
-  );
+  for (const name of ["native-lanes.mjs", "suite-plan.mjs"])
+    f.put(`scripts/verify/lib/${name}`, readFileSync(resolve("scripts/verify/lib", name), "utf8"));
   f.put(
     "scripts/verify/a-first.sh",
     "set -eu\nnode scripts/verify/prepare.mjs install\nnode scripts/verify/prepare.mjs server\nnode scripts/verify/prepare.mjs worker\nnode scripts/verify/prepare.mjs extension\n",

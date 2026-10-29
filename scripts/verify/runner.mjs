@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { NATIVE_GATE_WEIGHTS, NATIVE_LANE_BUDGET } from "./lib/native-lanes.mjs";
+import { NATIVE_GATE_WEIGHTS } from "./lib/native-lanes.mjs";
+import { SUITE_CAPACITY, SUITE_PLAN, fitsResources, allocateResources } from "./lib/suite-plan.mjs";
 import {
   closeSync,
   existsSync,
@@ -25,8 +26,9 @@ const tailCharacters = 4_000;
 
 const usage = `Usage: pnpm verify [--only <id>[,<id>...]] [--help]
 
-Runs top-level scripts/verify/*.sh scripts in lexical order, with the five fixed
-native gates gathered into one bounded batch. Other scripts remain sequential.
+Runs known scripts/verify/*.sh gates in bounded resource pools after serial
+artifact preparation. Gates that modify source or outputs use private trees.
+Unknown gates run sequentially as barriers. Reports retain lexical gate order.
 A failing script does not stop later scripts. The command exits 1 when any
 script fails.
 
@@ -146,7 +148,22 @@ function signalProcessGroup(pid, signal) {
   try {
     process.kill(-pid, signal);
   } catch (error) {
-    if (error.code !== "ESRCH") throw error;
+    if (error.code === "ESRCH") return;
+    if (error.code === "EPERM") {
+      const snapshot = spawnSync("ps", ["-axo", "pgid=,stat="], {
+        encoding: "utf8",
+        timeout: 1000,
+      });
+      if (
+        snapshot.status === 0 &&
+        !snapshot.stdout.split("\n").some((line) => {
+          const [group, state] = line.trim().split(/\s+/);
+          return Number(group) === pid && !state?.startsWith("Z");
+        })
+      )
+        return;
+    }
+    throw error;
   }
 }
 
@@ -296,17 +313,24 @@ function runScript(script, runDirectory, environment = {}) {
   });
 }
 
-async function runNativeBatch(scripts, runDirectory) {
+const preparationOutcomes = [];
+const resourceEvents = [];
+
+async function runPooledBatch(scripts, runDirectory) {
   console.log(
-    `Native batch gates=${scripts.map((script) => script.id).join(",")} fixtureBudget=${NATIVE_LANE_BUDGET}`,
+    `Resource batch gates=${scripts.map((script) => script.id).join(",")} capacity=${JSON.stringify(SUITE_CAPACITY)}`,
   );
-  const preparationStarted = performance.now();
-  for (const kind of ["install", "server", "worker"]) {
+  const required = new Set(scripts.flatMap((script) => SUITE_PLAN[script.id].preparation));
+  let preparationFailure = null;
+  for (const kind of ["install", "server", "worker", "extension"].filter((kind) =>
+    required.has(kind),
+  )) {
     if (interrupted.signal !== null) return [];
     const file = join(verifyDirectory, "prepare.mjs");
+    const attempt = preparationOutcomes.filter((outcome) => outcome.kind === kind).length + 1;
     const preparation = await runScript(
       {
-        id: `prepare-${kind}`,
+        id: `prepare-${kind}${attempt === 1 ? "" : `-${attempt}`}`,
         file,
         command: process.execPath,
         args: [file, kind],
@@ -317,56 +341,102 @@ async function runNativeBatch(scripts, runDirectory) {
         SPROUT_VERIFY_PREPARED_ONLY: "0",
       },
     );
+    preparationOutcomes.push({ ...preparation, kind });
     if (interrupted.signal !== null) return [];
     if (preparation.status !== "passed") {
-      return scripts.map((script) => {
-        const logPath = join(runDirectory, `${script.id}.log`);
-        writeFileSync(
-          logPath,
-          `Blocked by ${kind} preparation; exit=${preparation.exitCode} signal=${preparation.signal} log=${preparation.logPath}\n`,
-        );
-        console.log(`FAIL ${script.id} blocked by ${kind} preparation log=${logPath}`);
-        return {
-          id: script.id,
-          path: relative(root, script.file).split("\\").join("/"),
-          status: "failed",
-          exitCode: null,
-          signal: null,
-          startedAt: new Date().toISOString(),
-          durationMs: 0,
-          logPath,
-        };
-      });
+      preparationFailure = preparation;
+      break;
     }
   }
-  console.log(`Native preparation total=${formatDuration(performance.now() - preparationStarted)}`);
-  const pending = [...scripts];
-  const running = new Map();
   const outcomes = [];
-  let used = 0;
+  const pending = [];
+  const queuedAt = performance.now();
+  for (const script of scripts) {
+    if (preparationFailure && SUITE_PLAN[script.id].preparation.length) {
+      const logPath = join(runDirectory, `${script.id}.log`);
+      writeFileSync(
+        logPath,
+        `Blocked by ${preparationFailure.id}; exit=${preparationFailure.exitCode} signal=${preparationFailure.signal} log=${preparationFailure.logPath}\n`,
+      );
+      console.log(`FAIL ${script.id} blocked by ${preparationFailure.id} log=${logPath}`);
+      outcomes.push({
+        id: script.id,
+        path: relative(root, script.file).split("\\").join("/"),
+        status: "failed",
+        exitCode: null,
+        signal: null,
+        startedAt: new Date().toISOString(),
+        durationMs: 0,
+        logPath,
+        blockedBy: preparationFailure.id,
+      });
+    } else pending.push(script);
+  }
+  pending.sort(
+    (left, right) =>
+      SUITE_PLAN[right.id].estimatedMs - SUITE_PLAN[left.id].estimatedMs ||
+      left.id.localeCompare(right.id),
+  );
+  const running = new Map();
+  const used = {};
   while (pending.length || running.size) {
     if (interrupted.signal === null) {
       let index;
       while (
-        (index = pending.findIndex(
-          (script) => used + NATIVE_GATE_WEIGHTS[script.id] <= NATIVE_LANE_BUDGET,
+        (index = pending.findIndex((script) =>
+          fitsResources(used, SUITE_PLAN[script.id].resources),
         )) !== -1
       ) {
         const [script] = pending.splice(index, 1);
-        used += NATIVE_GATE_WEIGHTS[script.id];
+        const plan = SUITE_PLAN[script.id];
+        allocateResources(used, plan.resources, 1);
+        resourceEvents.push({
+          id: script.id,
+          action: "acquire",
+          clockMs: performance.now(),
+          used: { ...used },
+        });
+        const queueDurationMs = Math.round(performance.now() - queuedAt);
+        const sandboxFile = join(verifyDirectory, "sandbox.mjs");
+        const invocation = plan.sandbox
+          ? {
+              ...script,
+              command: process.execPath,
+              args: [sandboxFile, "--gate", script.id, "--", script.file],
+            }
+          : script;
+        const environment = {
+          ...(Object.hasOwn(NATIVE_GATE_WEIGHTS, script.id) ? { NODE_ENV: "production" } : {}),
+          SPROUT_VERIFY_PREPARED_ONLY: "1",
+        };
+        console.log(
+          `ADMIT ${script.id} resources=${JSON.stringify(plan.resources)} queue=${queueDurationMs}ms mode=${plan.sandbox ? "sandbox" : "shared-read-only"}`,
+        );
         running.set(
           script.id,
-          runScript(script, runDirectory, {
-            NODE_ENV: "production",
-            SPROUT_VERIFY_PREPARED_ONLY: "1",
-          }),
+          runScript(invocation, runDirectory, environment).then((outcome) => ({
+            ...outcome,
+            resources: plan.resources,
+            queueDurationMs,
+            mode: plan.sandbox ? "sandbox" : "shared-read-only",
+          })),
         );
       }
     }
-    if (running.size === 0) break;
+    if (running.size === 0) {
+      if (pending.length && interrupted.signal === null)
+        throw new Error(`Unschedulable gates: ${pending.map((script) => script.id).join(",")}`);
+      break;
+    }
     const outcome = await Promise.race(running.values());
     running.delete(outcome.id);
-    used -= NATIVE_GATE_WEIGHTS[outcome.id];
+    allocateResources(used, SUITE_PLAN[outcome.id].resources, -1);
+    resourceEvents.push({
+      id: outcome.id,
+      action: "release",
+      clockMs: performance.now(),
+      used: { ...used },
+    });
     outcomes.push(outcome);
   }
   return outcomes;
@@ -423,16 +493,18 @@ async function main() {
 
   cleanVerificationDatabases(parsed.only);
 
-  const nativeScripts = selected.filter((script) => Object.hasOwn(NATIVE_GATE_WEIGHTS, script.id));
-  let nativeDispatched = false;
+  let batch = [];
   for (const script of selected) {
     if (interrupted.signal !== null) break;
-    if (Object.hasOwn(NATIVE_GATE_WEIGHTS, script.id)) {
-      if (nativeDispatched) continue;
-      nativeDispatched = true;
-      outcomes.push(...(await runNativeBatch(nativeScripts, run.directory)));
-    } else outcomes.push(await runScript(script, run.directory));
+    if (Object.hasOwn(SUITE_PLAN, script.id)) batch.push(script);
+    else {
+      if (batch.length) outcomes.push(...(await runPooledBatch(batch, run.directory)));
+      batch = [];
+      if (interrupted.signal === null) outcomes.push(await runScript(script, run.directory));
+    }
   }
+  if (batch.length && interrupted.signal === null)
+    outcomes.push(...(await runPooledBatch(batch, run.directory)));
   await cleanup;
   outcomes.sort(
     (left, right) =>
@@ -452,6 +524,10 @@ async function main() {
       interrupted.signal === null
         ? null
         : { signal: interrupted.signal, exitCode: interrupted.exitCode },
+    preparation: preparationOutcomes,
+    resourceCapacity: SUITE_CAPACITY,
+    resourceTimeOrigin: performance.timeOrigin,
+    resourceEvents,
     count: outcomes.length,
     passed: outcomes.length - failed,
     failed,
