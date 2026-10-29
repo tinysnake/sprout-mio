@@ -15,6 +15,7 @@ import {
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
+import { markRunNoticeDelivered, noticeDeliveryText, pendingRunNotices } from "../notices";
 import { issueRemoteToolGrant, revokeRemoteToolGrant } from "../remote-agent-gateway";
 import { machineRuntimeContext } from "../runtime";
 import { PiHostFailure, piInstancePaths } from "./process";
@@ -33,6 +34,8 @@ export function executeRun(
     const { run, profile } = work;
     const ctx: ProjectContext = { userId: work.ownerId, requestId: run.requestId };
     const sent = new Set<string>();
+    /** 与 messageId 共用 sent 而不冲突：通知按 `notice:<id>` 记账，只有成功交付才加入。 */
+    const noticesSent = new Set<string>();
     const close = Effect.tryPromise({ try: () => process.close(), catch: (error) => error });
     const outcome = yield* Effect.exit(
       Effect.gen(function* () {
@@ -134,6 +137,17 @@ export function executeRun(
                         );
                         return false;
                       }
+                    }
+                    try {
+                      for (const notice of pendingRunNotices({ runId: run.id }, ctx)) {
+                        const key = `notice:${notice.id}`;
+                        if (noticesSent.has(key)) continue;
+                        process.steer(key, noticeDeliveryText(notice));
+                        noticesSent.add(key);
+                        markRunNoticeDelivered(notice.id, new Date(now()));
+                      }
+                    } catch {
+                      // 通知投递失败保留 delivered_at=NULL 等待下一轮；不拉倒 run 也不重复记已发。
                     }
                     return true;
                   } catch {
