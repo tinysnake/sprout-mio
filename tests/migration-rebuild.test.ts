@@ -146,8 +146,21 @@ function indexOfTag(tag: string): number {
 }
 const multichatIndex = indexOfTag("0021_p5a_multichat_schema");
 const backfillIndex = indexOfTag("0022_p5a_public_channel_backfill");
+const dropTriggerIndex = indexOfTag("0023_p5a_drop_channel_delete_trigger");
 const multichat = migrations[multichatIndex];
 const backfill = migrations[backfillIndex];
+const dropTrigger = migrations[dropTriggerIndex];
+
+/** 表上实际存在的触发器名；排序后可直接比对集合，多余的孤儿触发器会立刻显形。 */
+function triggersOn(sqlite: Database.Database, table: string): string[] {
+  return (
+    sqlite
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?`)
+      .all(table) as { name: string }[]
+  )
+    .map((row) => row.name)
+    .sort();
+}
 
 function applyRange(sqlite: Database.Database, from: number, to: number) {
   for (const migration of migrations.slice(from, to))
@@ -413,13 +426,13 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
           )
           .run(channelId),
       ).toThrow(/public_channel_members_derived/);
-      // 裁定 d12：频道的 delete 触发器是不可达死代码，已删除；insert 是唯一的物理底线。
-      // 频道成员行既然插不进去，就不存在可删的频道成员行，留一个删不掉的保护无法被验证。
-      expect(
-        sqlite
-          .prepare(`SELECT count(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name = ?`)
-          .get("chat_member_no_channel_delete"),
-      ).toEqual({ n: 0 });
+      // 裁定 d12：频道的 delete 触发器是不可达死代码，insert 是唯一的物理底线。
+      // 裁定 d13：它由新迁移 0023 删掉，0021 保持基线原样；这里跑完全部迁移，
+      // chat_member 上的触发器集合必须恰好是 d12 认定的那两道，不多一道孤儿。
+      expect(triggersOn(sqlite, "chat_member")).toEqual([
+        "chat_member_identity_immutable",
+        "chat_member_no_channel_insert",
+      ]);
       expect(() =>
         sqlite.prepare(`DELETE FROM chat_member WHERE chat_id = 'cnv_legacy'`).run(),
       ).not.toThrow();
@@ -501,6 +514,53 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
                     JOIN chat c ON c.id = cm.chat_id WHERE c.kind = 'public_channel'`)
           .get(),
       ).toEqual({ n: 0 });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it(`${dropTrigger.tag} 对已迁到 0022 的既有库生效：delete 触发器从存在到消失`, () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, multichatIndex);
+      seedLegacyRows(sqlite);
+      // 长期库（data/sprout.sqlite 这类）此刻的样子：0021 按基线建了三道触发器，0022 只回填数据。
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
+      applyRange(sqlite, backfillIndex, backfillIndex + 1);
+      expect(triggersOn(sqlite, "chat_member")).toEqual([
+        "chat_member_identity_immutable",
+        "chat_member_no_channel_delete",
+        "chat_member_no_channel_insert",
+      ]);
+      const channelId = String(
+        (
+          sqlite.prepare(`SELECT id FROM chat WHERE kind = 'public_channel'`).get() as {
+            id: string;
+          }
+        ).id,
+      );
+
+      // 迁移器按 __drizzle_migrations.created_at 推进，不会重跑已应用的 0021/0022 ——
+      // 就地改 0021 对既有库无效，只能靠新的 0023 推进。同一连接补跑它就是既有库升级时发生的事。
+      applyRange(sqlite, dropTriggerIndex, dropTriggerIndex + 1);
+      expect(triggersOn(sqlite, "chat_member")).toEqual([
+        "chat_member_identity_immutable",
+        "chat_member_no_channel_insert",
+      ]);
+      // 再跑一次仍不报错：既有库可能已经按 0021 的原样建过，也可能被别的路径删过。
+      expect(() => applyRange(sqlite, dropTriggerIndex, dropTriggerIndex + 1)).not.toThrow();
+      // 删掉的只有不可达的那条：insert 这道物理底线在升级后的库上依旧生效。
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat_member (chat_id, member_kind, member_id) VALUES (?, 'human', 'usr_second')`,
+          )
+          .run(channelId),
+      ).toThrow(/public_channel_members_derived/);
+      // 升级后成员行可删，d14 的显式移除才有落点；DM 上删除不触发任何拒绝。
+      expect(() =>
+        sqlite.prepare(`DELETE FROM chat_member WHERE chat_id = 'cnv_legacy'`).run(),
+      ).not.toThrow();
     } finally {
       sqlite.close();
     }
