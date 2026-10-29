@@ -22,7 +22,11 @@ import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
-import type { ExecutionLogReadView, ExecutionView, RemoteToolGrant } from "../../src/contracts/remote";
+import type {
+  ExecutionLogReadView,
+  ExecutionView,
+  RemoteToolGrant,
+} from "../../src/contracts/remote";
 import type { LeaseView } from "../../src/contracts/lease";
 import type { AppResult } from "../../src/contracts/result";
 
@@ -125,7 +129,9 @@ function maxGapMs(times: number[]): number {
   return Math.round(gap);
 }
 const startRequire = createRequire(import.meta.resolve("@tanstack/react-start"));
-const clientRequire = createRequire(startRequire.resolve("@tanstack/start-client-core/package.json"));
+const clientRequire = createRequire(
+  startRequire.resolve("@tanstack/start-client-core/package.json"),
+);
 const { fromCrossJSON, toCrossJSON } = clientRequire("seroval") as {
   fromCrossJSON: (value: unknown, options: { refs: Map<unknown, unknown> }) => unknown;
   toCrossJSON: (value: unknown) => unknown;
@@ -159,7 +165,10 @@ function pass(name: string, output: Record<string, unknown> = {}) {
   facts[name] = output;
   console.log(`PASS LIVE ${name} ${JSON.stringify(output)}`);
 }
-async function control(action: "issue" | "cleanup", runId?: string): Promise<RemoteToolGrant | undefined> {
+async function control(
+  action: "issue" | "cleanup",
+  runId?: string,
+): Promise<RemoteToolGrant | undefined> {
   assert(server?.connected);
   const id = randomUUID();
   return new Promise((done, reject) => {
@@ -179,7 +188,11 @@ async function control(action: "issue" | "cleanup", runId?: string): Promise<Rem
   });
 }
 try {
-  server = launch(["--import", "tsx", "tests/fixtures/worker-remote-service.ts"], "service.log", true);
+  server = launch(
+    ["--import", "tsx", "tests/fixtures/worker-remote-service.ts"],
+    "service.log",
+    true,
+  );
   await until(async () => {
     try {
       return (await fetch(base + "/api/health", { signal: AbortSignal.timeout(1000) })).ok;
@@ -225,7 +238,8 @@ try {
     assert(result.ok, `${name} rejected ${JSON.stringify(result)}`);
     return result.data;
   }
-  const projectId = (await call<{ id: string }>("createProjectFn", { name: "P4d handoff model" })).id;
+  const projectId = (await call<{ id: string }>("createProjectFn", { name: "P4d handoff model" }))
+    .id;
   const profile = await call<{ id: string }>("createAgentProfileFn", {
     name: "Live handoff operator",
     persona:
@@ -281,16 +295,22 @@ try {
   assert.equal(init.exitCode, 0);
   worker = launch(["dist/worker/main.js", "run", "--state-dir", stateDir], "worker.log");
   await until(
-    async () => (await call<{ connection: { kind: string } }>("getMachineFn", { machineId })).connection.kind === "online",
+    async () =>
+      (await call<{ connection: { kind: string } }>("getMachineFn", { machineId })).connection
+        .kind === "online",
     "Worker online",
     60000,
   );
-  await until(async () => {
-    const machine = await call<{
-      bindings: { observation?: { fact?: { result?: { kind?: string } } } }[];
-    }>("getMachineFn", { machineId, projectId });
-    return machine.bindings[0]?.observation?.fact?.result?.kind === "accessible";
-  }, "directory ready", 60000);
+  await until(
+    async () => {
+      const machine = await call<{
+        bindings: { observation?: { fact?: { result?: { kind?: string } } } }[];
+      }>("getMachineFn", { machineId, projectId });
+      return machine.bindings[0]?.observation?.fact?.result?.kind === "accessible";
+    },
+    "directory ready",
+    60000,
+  );
   pass("real macOS Worker online and directory confirmed for the model path", { model });
 
   Object.assign(process.env, {
@@ -325,26 +345,33 @@ try {
     "After the calls, reply with one short line naming the returned states. Do not release the lease.",
   ].join("\n");
   await call("sendMessageFn", { chatId, body });
-  const lease = () =>
-    call<{ lease: LeaseView }>("getLeaseFn", { projectId, machineId });
+  const lease = () => call<{ lease: LeaseView }>("getLeaseFn", { projectId, machineId });
   let holderA = "";
-  await until(async () => {
-    const current = (await lease()).lease;
-    if (current.state !== "held") return false;
-    holderA = current.holderInstanceId!;
-    return true;
-  }, "model acquires lease", 180000);
+  await until(
+    async () => {
+      const current = (await lease()).lease;
+      if (current.state !== "held") return false;
+      holderA = current.holderInstanceId!;
+      return true;
+    },
+    "model acquires lease",
+    180000,
+  );
   assert(holderA, "model lease holder");
-  const execution = await until(() => {
-    const row = db
-      .prepare(
-        "SELECT id, state, authorization_generation FROM remote_execution WHERE project_id=? AND request_id=?",
-      )
-      .get(projectId, shellRequest) as
-      | { id: string; state: string; authorization_generation: number }
-      | undefined;
-    return row;
-  }, "model dispatches remote shell", 180000);
+  const execution = await until(
+    () => {
+      const row = db
+        .prepare(
+          "SELECT id, state, authorization_generation FROM remote_execution WHERE project_id=? AND request_id=?",
+        )
+        .get(projectId, shellRequest) as
+        | { id: string; state: string; authorization_generation: number }
+        | undefined;
+      return row;
+    },
+    "model dispatches remote shell",
+    180000,
+  );
   assert.equal(execution.authorization_generation, 1);
   await until(() => writeTimes(writes).length >= 3, "model command periodic writes", 60000);
   const pid = Number(readFileSync(pidFile, "utf8"));
@@ -356,11 +383,12 @@ try {
     "model handoff completes to g+1/B",
     180000,
   );
-  const framesAtHandoff = (
-    db
-      .prepare("SELECT MAX(sequence) AS max FROM execution_log_frame WHERE execution_id=?")
-      .get(execution.id) as { max: number | null }
-  ).max ?? 0;
+  const framesAtHandoff =
+    (
+      db
+        .prepare("SELECT MAX(sequence) AS max FROM execution_log_frame WHERE execution_id=?")
+        .get(execution.id) as { max: number | null }
+    ).max ?? 0;
   assert(framesAtHandoff > 0, "log frames must exist before the handoff completes");
   pass("real model acquired g/A, dispatched the long command and handed off to g+1/B", {
     acquireRequest,
@@ -370,11 +398,7 @@ try {
     model,
   });
 
-  async function good<T>(
-    type: string,
-    input: unknown,
-    credential: RemoteToolGrant,
-  ): Promise<T> {
+  async function good<T>(type: string, input: unknown, credential: RemoteToolGrant): Promise<T> {
     const response = await fetch(base + "/api/remote/agent", {
       method: "POST",
       headers: {
@@ -424,21 +448,31 @@ try {
   });
 
   const run = db
-    .prepare("SELECT id, status, config_snapshot FROM agent_run WHERE chat_id=? ORDER BY rowid DESC LIMIT 1")
-    .get(chatId) as
-    | { id: string; status: string; config_snapshot: string | null }
-    | undefined;
-  await until(() => {
-    const row = db
-      .prepare("SELECT status FROM agent_run WHERE chat_id=? ORDER BY rowid DESC LIMIT 1")
-      .get(chatId) as { status: string } | undefined;
-    return row && !["queued", "running"].includes(row.status);
-  }, "real model run settles", 180000);
+    .prepare(
+      "SELECT id, status, config_snapshot FROM agent_run WHERE chat_id=? ORDER BY rowid DESC LIMIT 1",
+    )
+    .get(chatId) as { id: string; status: string; config_snapshot: string | null } | undefined;
+  await until(
+    () => {
+      const row = db
+        .prepare("SELECT status FROM agent_run WHERE chat_id=? ORDER BY rowid DESC LIMIT 1")
+        .get(chatId) as { status: string } | undefined;
+      return row && !["queued", "running"].includes(row.status);
+    },
+    "real model run settles",
+    180000,
+  );
   const settled = db
-    .prepare("SELECT id, status, config_snapshot FROM agent_run WHERE chat_id=? ORDER BY rowid DESC LIMIT 1")
+    .prepare(
+      "SELECT id, status, config_snapshot FROM agent_run WHERE chat_id=? ORDER BY rowid DESC LIMIT 1",
+    )
     .get(chatId) as { id: string; status: string; config_snapshot: string | null };
   const snapshot = settled.config_snapshot
-    ? (JSON.parse(settled.config_snapshot) as { provider: string; model: string; sessionFile: string })
+    ? (JSON.parse(settled.config_snapshot) as {
+        provider: string;
+        model: string;
+        sessionFile: string;
+      })
     : undefined;
   const toolCalls: string[] = [];
   if (snapshot?.sessionFile && existsSync(snapshot.sessionFile)) {
@@ -460,7 +494,10 @@ try {
   assert(snapshot, "run config snapshot");
   assert(snapshot && `${snapshot.provider}/${snapshot.model}` === model, "real model snapshot");
   for (const name of ["sprout_lease_acquire", "sprout_remote_shell", "sprout_lease_handoff"])
-    assert(toolCalls.includes(name), `real model did not call ${name}: ${JSON.stringify(toolCalls)}`);
+    assert(
+      toolCalls.includes(name),
+      `real model did not call ${name}: ${JSON.stringify(toolCalls)}`,
+    );
   pass("real Pi transcript proves the model itself called acquire, shell and handoff", {
     runId: settled.id,
     status: settled.status,
