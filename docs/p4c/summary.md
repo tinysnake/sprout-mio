@@ -112,6 +112,7 @@ Human 评审后远端操作区改成按机器汇总的计数视图：默认每�
 ## 已知限制
 
 - 第五轮验收记下的两条日志读取可用性限制已修复（`9e2e91b`）：续读按钮改由服务端 `hasMore`（是否仍存着更大的帧）驱动，产水位高于已落库帧时不再给出转不动的按钮；不带游标的读取从 `availableFromSequence` 起，裁剪过的执行第一次点「读取日志」就能读到，显式早于可读起点的游标仍报 `execution_log_gap`。真实边界断言见 `tests/fixtures/execution-recovery.ts`，门禁 `ac`、`ae`、`ah` 与 UI 门禁 `ad` 复跑通过。
+- 摘要改版后，四个按旧形状取证的浏览器门禁随界面调整重新取证（`dff1e6d`、`8be97e5`、`f34bffc`）：`ag`、`am`、`y`、`z` 改为先打开「调试详情」抽屉，再在抽屉内按执行定位卡片与日志控件，不再依赖默认层的卡片 testid。`bash scripts/verify.sh` 在 `f34bffc` 复跑为 `scripts=50 failed=0`。
 - 未验证：跨机网络与网络分区、真机软键盘与触控、物理断电与文件系统掉电（以 runner 与命令进程组消失模拟 Machine 重启）、长时间容量与多 Machine 极限负载、像素级视觉评审。
 - Worker 运行时长默认无上限，只有 `waitMs` 观察窗口；寿命由真实退出、显式取消或宿主重启决定。
 - 表重建类迁移在事务内无法自行关闭外键，依赖调用方以连接级 `PRAGMA foreign_keys = OFF` 进入；`pnpm db:migrate` 已改为这个入口，直接用 `drizzle-kit migrate` 升级有数据的老库会失败。
