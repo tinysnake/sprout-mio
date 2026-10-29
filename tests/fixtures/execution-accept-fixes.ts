@@ -216,9 +216,10 @@ const handed = handoffLease(
   holder,
 );
 assert.equal(handed.state, "pending");
-assert.throws(
-  () => getExecution({ ...key, executionId: owned.executionId }, holder),
-  fail("lease_not_holder"),
+// fencing 窗口内旧 holder 仍可读自己已派发的执行；这时授权在 draining，不能冒充已交接。
+assert.equal(
+  getExecution({ ...key, executionId: owned.executionId }, holder).executionId,
+  owned.executionId,
 );
 exchange({
   results: [
@@ -259,15 +260,16 @@ assert.throws(
   fail("lease_not_holder"),
 );
 assert.throws(() => readLog(owned.executionId, holder), fail("lease_not_holder"));
-assert.throws(
-  () => getExecution({ ...key, executionId: owned.executionId }, sibling),
-  fail("lease_not_holder"),
+// 交接完成后新 holder 接续既有执行的读与管理，旧 holder 立即失效。
+assert.equal(
+  getExecution({ ...key, executionId: owned.executionId }, sibling).executionId,
+  owned.executionId,
 );
 assert.equal(
   getExecution({ ...key, executionId: owned.executionId }, human).executionId,
   owned.executionId,
 );
-pass("F1 反证：交接后旧 holder 的读取与日志都被拒；新 holder 也不接手旧执行的读权限");
+pass("F1 正证：fencing 内旧 holder 可读；交接后旧 holder 被拒，新 holder 接续取读同一执行");
 
 // 6. 新 holder 在新代次上的执行照常可读：拒绝是因为不成立，不是一律拒绝。
 const siblingExecution = requestExecution(

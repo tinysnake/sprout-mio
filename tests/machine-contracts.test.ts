@@ -36,6 +36,7 @@ const fact = {
   machineId,
   generation: 1,
   projectId,
+  bindingRevision: 1,
   revision: 1,
   seq: 1,
   checkedAt: "2026-01-01T00:00:00Z",

@@ -14,7 +14,12 @@ import {
   runResourceNotice,
 } from "../../src/db/schema";
 import type { MachineContext } from "../../src/domain/machine";
-import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
+import {
+  createMachine,
+  getMachine,
+  saveMachineRootDirectory,
+  saveProjectMachineBinding,
+} from "../../src/domain/machine";
 import {
   acquireLease,
   completeLeaseMutation,
@@ -544,6 +549,91 @@ if (scenario === "rejoin") {
         human(),
       ),
     fails("detach_pending"),
+  );
+  // 目录观测绑定关系身份：detaching/removed 后旧事实被清除，rejoin 后旧绑定 revision 的重投被拒。
+  const observationMachine = machineWithMembership();
+  const observationCtx = human();
+  const root = saveMachineRootDirectory(
+    { machineId: observationMachine.machineId, directory: "/tmp", expectedRevision: 1 },
+    observationCtx,
+  );
+  const observationWorker = workerConnection(
+    observationCtx,
+    observationMachine.machineId,
+    observationMachine.ticket,
+  );
+  const observation = (bindingRevision: number, seq: number) => ({
+    machineId: observationMachine.machineId,
+    generation: observationWorker.session.generation,
+    projectId,
+    bindingRevision,
+    revision: root.revision,
+    seq,
+    checkedAt: observationCtx.now.toISOString(),
+    result: { kind: "accessible" as const, realPath: "/tmp" },
+  });
+  const exchangeObservation = (fact: ReturnType<typeof observation>) =>
+    exchangeWorker(
+      {
+        version: 3,
+        requestId: req(),
+        secret: observationWorker.secret,
+        session: observationWorker.session,
+        seq: fact.seq,
+        mode: "normal",
+        capability: {
+          platform: "darwin",
+          arch: "arm64",
+          workerVersion: "removal-observation",
+          shells: [],
+          remoteOperations: [],
+        },
+        observations: [fact],
+        remote: { results: [], fenceAcks: [], mcp: [], mcpCursors: [] },
+      },
+      observationCtx,
+    );
+  exchangeObservation(observation(1, 1));
+  assert.equal(
+    getMachine({ machineId: observationMachine.machineId }, observationCtx).bindings[0]?.observation
+      ?.current,
+    true,
+  );
+  const observationRemoved = detach(observationMachine.key, human());
+  assert.equal(observationRemoved.state, "removed");
+  assert.equal(
+    getMachine({ machineId: observationMachine.machineId }, observationCtx).bindings[0]
+      ?.observation,
+    null,
+    "detaching/removed 后旧目录观测不再作为当前事实",
+  );
+  rejoinProjectMachine(
+    {
+      ...observationMachine.key,
+      requestId: req(),
+      expectedEpoch: 1,
+      expectedRevision: 1,
+      confirm: true,
+    },
+    human(),
+  );
+  assert.equal(
+    getMachine({ machineId: observationMachine.machineId }, observationCtx).bindings[0]
+      ?.observation,
+    null,
+    "rejoin 后没有任何新 epoch 的观测",
+  );
+  assert.throws(
+    () => exchangeObservation(observation(1, 2)),
+    fails("conflict"),
+    "rejoin 后携带旧 binding revision 的观测必须被拒",
+  );
+  exchangeObservation(observation(2, 2));
+  assert.equal(
+    getMachine({ machineId: observationMachine.machineId }, observationCtx).bindings[0]?.observation
+      ?.current,
+    true,
+    "新 epoch 携带新 binding revision 的观测才是当前事实",
   );
   // 未 removed 的 active epoch 不能 rejoin。
   assert.throws(

@@ -24,7 +24,12 @@ import {
   projectMachine,
   projectMachineMembership,
 } from "../db/schema";
-import { assertMembershipOperable, openInitialMembership } from "../server/membership";
+import {
+  assertMembershipOperable,
+  invalidateDirectoryObservations,
+  membershipActive,
+  openInitialMembership,
+} from "../server/membership";
 
 export type MachineContext = { userId: string; requestId: string; bootId: string; now: Date };
 export class MachineError extends Error {
@@ -174,6 +179,7 @@ export function getMachine(input: GetMachineInput, ctx: MachineContext): Machine
           observation: fact
             ? {
                 current:
+                  membershipActive(binding.projectId, binding.machineId) &&
                   current &&
                   fact.generation === connection?.generation &&
                   fact.revision === row.rootRevision &&
@@ -182,6 +188,7 @@ export function getMachine(input: GetMachineInput, ctx: MachineContext): Machine
                   machineId: fact.machineId,
                   generation: fact.generation,
                   projectId: fact.projectId,
+                  bindingRevision: binding.revision,
                   revision: fact.revision,
                   seq: fact.seq,
                   checkedAt: fact.checkedAt.toISOString(),
@@ -381,6 +388,7 @@ export function saveProjectMachineBinding(
         db.insert(projectMachine).values(values).run();
         openInitialMembership(db, { ...input, now: ctx.now });
       }
+      if (old) invalidateDirectoryObservations(db, input);
       diagnostic("machine.binding_saved", ctx, hooks, input.projectId);
       return toIntent(values);
     })

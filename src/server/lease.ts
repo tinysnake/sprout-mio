@@ -144,8 +144,9 @@ export function assertExecutionContinuity(
 ): AuthorityNow | undefined {
   assertRemoteScope(execution, ctx);
   if (!("instanceId" in ctx)) return;
-  if (latestMembership(execution)?.state === "detaching") throw new LeaseError("lease_not_holder");
-  assertActiveMembership(execution);
+  // 执行读只看执行连续性：任何非 active 关系（detaching/removed/缺行）都是
+  // lease_not_holder；membership_removed 留给 request/cancel 等操作路径。
+  if (latestMembership(execution)?.state !== "active") throw new LeaseError("lease_not_holder");
   const authority = authorityNow(execution);
   if (
     !authority ||

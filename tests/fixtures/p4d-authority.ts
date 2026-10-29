@@ -357,14 +357,19 @@ sqlite
   )
   .run(req(), "a".repeat(64), human.now.getTime(), human.now.getTime(), projectId, machineId);
 for (const actor of [a, b]) {
-  for (const action of [
+  // 冻结决定 10：执行读在任何非 active 关系下都是 lease_not_holder；
+  // membership_removed 只留给 request/cancel 等非读操作路径。
+  for (const read of [
     () => get(first.executionId, actor),
     () => log(first.executionId, actor),
     () => listHolderExecutions({ machineId, limit: 20 }, actor),
+  ])
+    assert.throws(read, fail("lease_not_holder"));
+  for (const operation of [
     () => cancel(first.executionId, 6, actor),
     () => requestExecution(actor === a ? input : fourthInput, actor),
   ])
-    assert.throws(action, fail("membership_removed"));
+    assert.throws(operation, fail("membership_removed"));
 }
 assert.throws(
   () => cancelExecution({ executionId: first.executionId, requestId: req() }, human),
@@ -409,10 +414,21 @@ for (const frame of db.select().from(workerExchangeFrame).all()) {
       )
       .run();
 }
-exchange([terminal(dispatched.find((x) => x.executionId === third.executionId)!)]);
+// Missing dispatch-frame proof must fail closed: reject the report without writing
+// a terminal execution or result fact, and do not let it seal later real reports.
+assert.throws(
+  () => exchange([terminal(dispatched.find((x) => x.executionId === third.executionId)!)]),
+  fail("not_found"),
+);
 const unproven = getExecution({ ...key, executionId: third.executionId }, human);
-assert.equal(unproven.state, "rejected");
-assert.equal(unproven.failureReason, "authorization_revoked");
+assert.equal(unproven.state, "unknown");
+assert.equal(unproven.failureReason, "worker_lost");
+assert.equal(
+  sqlite
+    .prepare("SELECT COUNT(*) AS n FROM execution_result WHERE execution_id=?")
+    .get(third.executionId).n,
+  0,
+);
 assert.equal(sqlite.pragma("foreign_key_check").length, 0);
 console.log(
   "p4d-authority: PASS continuity, current cancellation, history, delivery proof, cross-generation fencing",

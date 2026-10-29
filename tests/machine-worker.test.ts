@@ -112,15 +112,15 @@ test("directory facts resolve links and distinguish missing paths and files with
   const projectId = newId(ID_PREFIXES.project);
   await symlink(directory, join(root, projectId));
   const checkedAt = "2026-01-01T00:00:00Z";
-  const observed = await probeDirectory(root, projectId, 3, session, 1, checkedAt);
+  const observed = await probeDirectory(root, projectId, 3, 1, session, 1, checkedAt);
   expect(observed.result.kind).toBe("accessible");
   expect(observed.revision).toBe(3);
   expect(observed.projectId).toBe(projectId);
-  expect((await probeDirectory(root, "file", 3, session, 1, checkedAt)).result).toEqual({
+  expect((await probeDirectory(root, "file", 3, 1, session, 1, checkedAt)).result).toEqual({
     kind: "unavailable",
     reason: "not_directory",
   });
-  expect((await probeDirectory(root, "missing", 3, session, 1, checkedAt)).result).toEqual({
+  expect((await probeDirectory(root, "missing", 3, 1, session, 1, checkedAt)).result).toEqual({
     kind: "unavailable",
     reason: "missing",
   });

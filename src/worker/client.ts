@@ -185,7 +185,15 @@ export function workerProgram(
               const { root, rootRevision, bindings } = configuration;
               return Promise.all(
                 bindings.map((binding) =>
-                  probeDirectory(root, binding.projectId, rootRevision, session!, seq, checkedAt),
+                  probeDirectory(
+                    root,
+                    binding.projectId,
+                    rootRevision,
+                    binding.revision,
+                    session!,
+                    seq,
+                    checkedAt,
+                  ),
                 ),
               );
             },

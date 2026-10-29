@@ -847,17 +847,17 @@ if (scenario === "pq") {
     getExecution({ ...keyQ, executionId: nextQ.executionId }, human()).state,
     "succeeded",
   );
-  // P 的 Agent 读写被拒。
-  for (const action of [
+  // P 的 Agent 执行读是 lease_not_holder；提交等操作仍按 membership_removed。
+  for (const read of [
     () => getExecution({ ...keyP, executionId: executionP.executionId }, holderP),
     () =>
       readExecutionLog(
         { ...keyP, executionId: executionP.executionId, cursor: null, limitBytes: 4096 },
         holderP,
       ),
-    () => submit(projectId, machine.machineId, holderP),
   ])
-    assert.throws(action, fail("membership_removed"));
+    assert.throws(read, fail("lease_not_holder"));
+  assert.throws(() => submit(projectId, machine.machineId, holderP), fail("membership_removed"));
   // P 的 Human 执行、日志与租约 receipt 历史仍可读。
   assert.equal(
     getExecution({ ...keyP, executionId: executionP.executionId }, human()).executionId,
@@ -1008,7 +1008,7 @@ if (scenario === "http") {
   // 目标 holder 的旧代次请求被拒 lease_stale_generation。
   const staleGeneration = await call(submitCall({ authorizationGeneration: 1 }));
   assert.equal(staleGeneration.code, "lease_stale_generation");
-  // 移出后 Agent 全拒 membership_removed（无在途执行，同事务即时完成）。
+  // 移出后 Agent 执行读是 lease_not_holder（membership_removed 留给 submit 等操作）。
   const removedMembership = detachMachine(receipt(key, human()), human());
   assert.equal(removedMembership.state, "removed");
   const removedAgentRead = await call({
@@ -1018,7 +1018,7 @@ if (scenario === "http") {
       input: { ...key, executionId: execution.executionId },
     },
   });
-  assert.equal(removedAgentRead.code, "membership_removed");
+  assert.equal(removedAgentRead.code, "lease_not_holder");
   for (const result of [notHolder, crossProject, fencingCancel, staleGeneration, removedAgentRead])
     assert.equal(
       ["conflict", "internal"].includes(result.code ?? ""),

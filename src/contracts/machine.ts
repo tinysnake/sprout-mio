@@ -118,6 +118,7 @@ export const directoryObservationSchema = z.strictObject({
   machineId: machineIdSchema,
   generation: positiveSafeIntegerSchema,
   projectId: projectIdSchema,
+  bindingRevision: positiveSafeIntegerSchema,
   revision: positiveSafeIntegerSchema,
   seq: positiveSafeIntegerSchema,
   checkedAt: timestampSchema,
