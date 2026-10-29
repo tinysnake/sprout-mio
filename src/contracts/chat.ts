@@ -123,6 +123,24 @@ export type SetChatOwnerInput = z.infer<typeof setChatOwnerInput>;
 /** 频道没有 title 字段（裁定 d8），会话列表与详情用这条固定文案代替。 */
 export const PUBLIC_CHANNEL_DISPLAY_TITLE = "公共频道（Project 范围）";
 
+/** 会话没有任何可回落的参与分身名时的兜底：不把裸 chat id 当人类可读名字。 */
+export const UNNAMED_CHAT_DISPLAY_TITLE = "未命名对话";
+
+/**
+ * 会话的展示标题：频道一律用固定文案（d8）；其余人工标题优先，缺省回落到参与分身名。
+ * 纯规则只放一处，读模型与页面引用同一份回落链，不各写一套。
+ */
+export function chatDisplayTitle(
+  chat: Pick<Chat, "kind" | "title">,
+  agentNames: readonly string[],
+): string {
+  if (chat.kind === "public_channel") return PUBLIC_CHANNEL_DISPLAY_TITLE;
+  const title = chat.title?.trim();
+  if (title) return title;
+  const names = agentNames.map((name) => name.trim()).filter((name) => name.length > 0);
+  return names.length > 0 ? names.join("、") : UNNAMED_CHAT_DISPLAY_TITLE;
+}
+
 /**
  * 会话列表项（也是对话详情里的 chat 部分）。三种 kind 共用一份形状：
  * - `dm` / `group`：`title` 可选，缺省时页面回落到参与分身名；
@@ -184,7 +202,58 @@ export const agentInstanceSchema = z.object({
 });
 export type AgentInstance = z.infer<typeof agentInstanceSchema>;
 
-/** 对话详情：DM 恰有一个分身，群组与公共分身的集合由后续单元按成员展开。 */
+/** 会话里一个分身的活跃 run：同一分身至多一条活跃 run（`agent_run_one_active_instance` 局部唯一索引）。 */
+export const chatActiveRunSchema = z.object({
+  runId: z.string().regex(appIdPattern(ID_PREFIXES.run)),
+  status: z.enum(["queued", "running"]),
+  queuedAt: z.iso.datetime(),
+  /** 该 run 上未投递的输入数：与 Info Hub run 视角同一算法。 */
+  pendingInputs: z.number().int().min(0),
+});
+export type ChatActiveRun = z.infer<typeof chatActiveRunSchema>;
+
+/** 会话里的一个分身。DM 恰有一个；群与频道在扇出后可以同时有多个 Agent 的分身。 */
+export const chatSessionInstanceSchema = z.object({
+  instanceId: z.string().regex(appIdPattern(ID_PREFIXES.instance)),
+  agentProfileId: agentProfileIdSchema,
+  profileName: z.string(),
+  /** 没有排队中或运行中的 run 时整个字段缺省：这不是「缺数据」，是这个分身此刻没在跑。 */
+  activeRun: chatActiveRunSchema.optional(),
+});
+export type ChatSessionInstance = z.infer<typeof chatSessionInstanceSchema>;
+
+/**
+ * 会话读模型（多 Agent）：同一份读法按 kind 分形。
+ * - `dm` 的形状与改造前的 `ChatDetail` 逐字段一致（P2 冻结），只多出判别字段 `kind`；
+ * - `group` / `public_channel` 各带自己的成员与分身集合，不共用 DM 的 `{ chat, instance }`；
+ *   频道没有 `title` 列（裁定 d8），读模型直接给出固定文案，页面不再各自回落。
+ */
+export const dmChatSessionSchema = z.object({
+  kind: z.literal("dm"),
+  chat: chatSchema,
+  instance: agentInstanceSchema,
+});
+export const groupChatSessionSchema = z.object({
+  kind: z.literal("group"),
+  chat: chatSchema,
+  members: z.array(chatMemberSchema),
+  instances: z.array(chatSessionInstanceSchema),
+});
+export const publicChannelChatSessionSchema = z.object({
+  kind: z.literal("public_channel"),
+  chat: chatSchema,
+  displayTitle: z.literal(PUBLIC_CHANNEL_DISPLAY_TITLE),
+  members: z.array(chatMemberSchema),
+  instances: z.array(chatSessionInstanceSchema),
+});
+export const chatSessionSchema = z.discriminatedUnion("kind", [
+  dmChatSessionSchema,
+  groupChatSessionSchema,
+  publicChannelChatSessionSchema,
+]);
+export type ChatSession = z.infer<typeof chatSessionSchema>;
+
+/** DM 会话详情：DM 恰有一个分身，群组与公共频道的会话详情见 `ChatSession`（不共用本形状）。 */
 export type ChatDetail = { chat: Chat; instance: AgentInstance };
 /**
  * @deprecated 名称把「一对一」写进了通用类型，I-P5a 起统一用 ChatDetail。

@@ -18,6 +18,7 @@ import type {
   ChatMember,
   ChatResult,
   ChatDetail,
+  ChatSession,
   Message,
 } from "../../contracts/chat";
 import { fieldErrorsFrom, projectIdInput } from "../../contracts/project";
@@ -35,8 +36,12 @@ const sendMessageRequest = z.object({
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
-  const [session, chat] = await Promise.all([import("../session"), import("../../domain/chat")]);
-  return { requireSession: session.requireSession, ...chat };
+  const [session, chat, chatSession] = await Promise.all([
+    import("../session"),
+    import("../../domain/chat"),
+    import("../../domain/chat-session"),
+  ]);
+  return { requireSession: session.requireSession, ...chat, ...chatSession };
 }
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
 type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
@@ -187,6 +192,28 @@ export const createDirectChatFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     createDirectChatBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+/**
+ * 会话读模型：一个会话可以返回多个分身与它们各自的活跃 run；返回形状按 kind 分形
+ * （DM 与改造前的 ChatDetail 一致）。页面不必再自己拼 chat / members / instances 三次请求。
+ */
+export async function getChatSessionBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<ChatSession>> {
+  return chatBoundary<ChatSession>(headers, requestId, (deps, context) => {
+    const parsed = chatIdInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(deps.getChatSession(parsed.data.chatId, context), requestId);
+  });
+}
+
+export const getChatSessionFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    getChatSessionBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
 /** 重命名标题：归属、字段边界与写入都在服务端完成，UI 不自查权限。 */

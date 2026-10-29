@@ -122,6 +122,7 @@ export const demoInfoHub: ProjectInfoHub = {
       ],
     },
   },
+  chats: [],
   machines: [],
   leases: { available: true, items: [] },
 };
