@@ -35,6 +35,18 @@
 
 因此两处不重复执行全量测试：执行 `pnpm verify` 时不再另加 `pnpm test`，因为前者已包含（见[完整验证与去重](#完整验证与去重)）。集成与交付节点仍按本文要求执行完整验证；本地证据必须绑定当前 diff，按[证据复用与失效](#证据复用与失效)记录基准 commit、完整 diff 与内容哈希。
 
+## 验证中的模型调用
+
+`pnpm verify` 默认使用 `SPROUT_VERIFY_CHAT_MODE=model-fixture`。`a-base` 的 Pi CLI 状态探针与 `z-lease-integration` 的 Chat 场景都复用本地 SSE 模型 fixture。前者仍启动真实已安装 Pi CLI、加载 `dist/extension/main.js` 并断言一次成功的 `sprout_status` 完成事件；后者仍经过真实 Chat、`scripts/pi-host-runner.mjs`、Pi SDK、remote tools、HTTP、SQLite 和 Worker，保留原有 14 项验收条件，包括实际 shell PID/文件、授权拒绝、代次 fencing 和强制收据刷新。
+
+fixture 从 `PI_CODING_AGENT_DIR` 或默认 `~/.pi/agent` 发现已安装 SDK，仅在临时私有 agent 目录链接 SDK 可执行文件，并写入自己的 models.json、空 auth/settings 和 dummy key。模型目录只配置 loopback endpoint；operator、non-holder 和 CLI status 使用各自固定模型，reasoning=false、thinking=off。不会复制用户凭据、设置或扩展，也不替换 runner、SDK 事件或工具结果。CLI 使用 `--offline` 禁用启动联网。fixture 缺失、SDK 不可用或计划不符均失败，不转入 live；fixture 模式不读取 `SPROUT_VERIFY_PI_MODEL`，z 同时拒绝自定义 `SPROUT_PI_RUNNER`。
+
+每个场景有独立的有序工具计划。首次 toolCall 前必须验证本轮最新 user message：直接 Chat 请求逐字匹配预期；UI 租约请求验证固定消息格式以及 driver 指定的 action、Machine、generation 和 target，再将 UI 产生的 requestId 绑定到该次工具调用，原有收据检查继续核对该 requestId。历史消息不能满足新轮次。endpoint 核对注册工具 schema、固定参数和当前 call ID 的实际结果后才推进。它只发送 assistant toolCalls 与最终文本，不生成 toolResult、数据库事实或 shell 副作用。未使用步骤、错误模型、异常请求或结果顺序使验证失败。
+
+显式执行真实 provider 验证：`SPROUT_VERIFY_CHAT_MODE=live pnpm verify --only z-lease-integration`；CLI 探针可用 `--only a-base`。live 沿用真实模型选择和凭据，支持 `SPROUT_VERIFY_PI_MODEL=provider/model`。空值和未知 mode 在脚本准备产物前拒绝。fixture 通过证明真实工具与生命周期链路，不证明真实 provider 的认证、可达性或模型遵循指令的能力；这些能力应单独以 live 验证。
+
+stdout 和 `a-base/model-mode.json`、`p4b-integration/evidence/run-*/model-mode.json` 标明实际 mode、provider/model、thinking、请求数、完成计划和未使用步骤；live 中未跟踪的请求/计划数记为 null。导出的元数据不包含私有 prompt、session 或凭据。零付费模型调用的依据是私有模型目录、loopback endpoint 和所有调用方的模型固定配置，并非整台宿主的网络抓包结论。完整 runner 已令其他应用脚本的 `SPROUT_PI_ENABLED=false`，`n-pi-session` 使用明确的协议 stub；单独运行其他脚本时仍需另行判断其模型开关。fixture 需要本机已安装的 Pi SDK，不消除这一前提。
+
 ## 当前 run 的构建准备
 
 构建调用统一通过 `node scripts/verify/prepare.mjs install|server|worker|extension [--fresh]`。运行器在新建的 `.verify/runs/<id>/context.json` 记录仓库根目录、run id 和 owner PID。helper 只在目录、根目录和活着的 owner 均匹配时读取该 run 的成功 receipt；传入失效或损坏的内部 context 会明确失败。没有 `SPROUT_VERIFY_RUN_DIR` 时，独立调用总会基于当前源码执行，不因旧产物存在而跳过。不同 run 不复用；同一 checkout 仍只支持一个串行验证调用。

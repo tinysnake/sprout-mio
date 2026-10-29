@@ -4,11 +4,15 @@ set -m
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root"
+case "${SPROUT_VERIFY_CHAT_MODE-model-fixture}" in
+  model-fixture|live) export SPROUT_VERIFY_CHAT_MODE="${SPROUT_VERIFY_CHAT_MODE-model-fixture}" ;;
+  *) echo 'SPROUT_VERIFY_CHAT_MODE must be model-fixture or live' >&2; exit 2 ;;
+esac
 log_dir="$root/.verify/a-base"
 mkdir -p "$log_dir"
 prod_port="${SPROUT_VERIFY_PROD_PORT:-3111}"
 dev_port="${SPROUT_VERIFY_DEV_PORT:-3112}"
-pi_bin="${PI_BIN:-/Users/snake/.pi/agent/bin/pi}"
+pi_bin="${PI_BIN:-${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/bin/pi}"
 export no_proxy="localhost,127.0.0.1,::1"
 export NO_PROXY="$no_proxy"
 CURL=(curl --noproxy '*' --connect-timeout 2 --max-time 5 -sS)
@@ -175,13 +179,19 @@ pass "Worker output $(<"$log_dir/worker-default.log")"
 
 run 'ensure extension artifact' extension-build node scripts/verify/prepare.mjs extension
 [ -f dist/extension/main.js ] || fail 'missing dist/extension/main.js'
-[ -x "$pi_bin" ] || fail "Pi binary is unavailable $pi_bin"
-pi_args=(--no-extensions --no-skills --no-prompt-templates --no-themes -e dist/extension/main.js --tools sprout_status --mode json --session-dir "$log_dir/pi-sessions" -p)
-if [ -n "${SPROUT_VERIFY_PI_MODEL:-}" ]; then pi_args=(--model "$SPROUT_VERIFY_PI_MODEL" "${pi_args[@]}"); fi
-run 'real Pi sprout_status invocation' pi "$pi_bin" "${pi_args[@]}" 'Call sprout_status exactly once with empty arguments. Then report the returned payload. Do not use other tools.'
-node --input-type=module - "$log_dir/pi.log" <<'JS'
+if [ "$SPROUT_VERIFY_CHAT_MODE" = model-fixture ]; then
+  run 'real Pi sprout_status invocation (model-fixture)' pi node scripts/verify/lib/status-model-fixture.mjs dist/extension/main.js "$log_dir/model-mode.json"
+else
+  printf 'CHAT mode=live runner=installed-Pi-CLI\n'
+  [ -x "$pi_bin" ] || fail "Pi binary is unavailable $pi_bin"
+  pi_args=(--no-extensions --no-skills --no-prompt-templates --no-themes -e dist/extension/main.js --tools sprout_status --mode json --session-dir "$log_dir/pi-sessions" -p)
+  if [ -n "${SPROUT_VERIFY_PI_MODEL:-}" ]; then pi_args=(--model "$SPROUT_VERIFY_PI_MODEL" "${pi_args[@]}"); fi
+  run 'real Pi sprout_status invocation (live)' pi "$pi_bin" "${pi_args[@]}" 'Call sprout_status exactly once with empty arguments. Then report the returned payload. Do not use other tools.'
+fi
+node --input-type=module - "$log_dir/pi.log" "$SPROUT_VERIFY_CHAT_MODE" "$log_dir/model-mode.json" "$log_dir/pi-sessions" <<'JS'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 const events = readFileSync(process.argv[2], 'utf8').split('\n').filter(Boolean).flatMap((line) => {
   try { return [JSON.parse(line)] } catch { return [] }
 })
@@ -192,6 +202,15 @@ const result = JSON.parse(calls[0].result.content.find((part) => part.type === '
 assert.deepEqual(result, { app: 'sprout-mio', version: '0.1.0', contractVersion: 1, worker: 'unimplemented', piSession: 'unimplemented' })
 assert.deepEqual(calls[0].result.details, result)
 console.log('PASS real Pi tool_execution_end', JSON.stringify(result))
+const [, , , mode, metadataPath, sessions] = process.argv
+if (mode === 'live') {
+  const actualModels = events.filter(event => event.type === 'message_end' && event.message?.role === 'assistant').map(({message}) => ({provider:message.provider,model:message.model}))
+  const sessionId = events.find(event => event.type === 'session')?.id
+  assert(sessionId, 'live CLI reports its current session')
+  const actualThinking = readdirSync(sessions).filter(file => file.endsWith(`${sessionId}.jsonl`)).flatMap(file => readFileSync(join(sessions,file),'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line))).filter(entry => entry.type === 'thinking_level_change').map(entry => entry.thinkingLevel)
+  writeFileSync(metadataPath, JSON.stringify({mode,actualModels,actualThinking,requestCount:null,completedPlans:null,unusedSteps:null},null,2))
+}
+console.log('CHAT metadata', readFileSync(metadataPath,'utf8'))
 JS
 
 pass 'a-base all checks passed'
