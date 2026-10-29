@@ -518,7 +518,7 @@ function mutate(
   ctx: MachineContext | AgentRemoteContext,
 ): LeaseMutationView {
   return sqlite.inTransaction
-    ? mutateLeaseInTransaction(raw, ctx, raw.action === "reclaim")
+    ? mutateLeaseInTransaction(raw, ctx)
     : sqlite.transaction(() => mutateLeaseInTransaction(raw, ctx)).immediate();
 }
 function mutateLeaseInTransaction(

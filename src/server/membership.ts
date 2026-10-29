@@ -31,7 +31,7 @@ import {
   remoteExecution,
 } from "../db/schema";
 import type { MachineContext } from "../domain/machine";
-import { assertRemoteAccess, LeaseError, payloadHash, reclaimLease } from "./lease";
+import { assertRemoteAccess, LeaseError, payloadHash, reclaimLeaseInTransaction } from "./lease";
 import { insertRevokeNotice, oldestUndeliveredNotice } from "./notices";
 
 export type MembershipRow = typeof projectMachineMembership.$inferSelect;
@@ -464,7 +464,7 @@ export function detachMachine(raw: DetachInput, ctx: MachineContext): Membership
       }
       const executions = affectedExecutions(key, generation);
       const holder = holderAt(key, generation);
-      const receipt = reclaimLease(
+      const receipt = reclaimLeaseInTransaction(
         {
           ...key,
           requestId: input.requestId,
