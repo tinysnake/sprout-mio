@@ -24,14 +24,66 @@ function signal(pid, name, group = false) {
 export function killAhNativeCommands(state) {
   const executions = join(state, "executions");
   if (!existsSync(executions)) return;
+  const claims = [];
   for (const entry of readdirSync(executions, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const path = join(executions, entry.name, "runner.json");
     if (!existsSync(path)) continue;
     const claim = JSON.parse(readFileSync(path, "utf8"));
     if (claim.executionId !== entry.name) throw new Error(`Invalid private runner claim: ${path}`);
-    signal(claim.childPid, "SIGKILL", true);
-    signal(claim.pid, "SIGKILL", true);
+    claims.push(claim);
+  }
+  if (claims.length === 0) return;
+  // Freeze producers before taking ancestry: a spawned command may not yet be in runner.json.
+  for (const claim of claims) signal(claim.pid, "SIGSTOP", true);
+  try {
+    let processes;
+    const deadline = Date.now() + 2000;
+    for (;;) {
+      const snapshot = spawnSync("ps", ["-axo", "pid=,ppid=,pgid=,stat="], {
+        encoding: "utf8",
+      });
+      if (snapshot.status !== 0) throw new Error("Cannot inspect private runner descendants");
+      processes = snapshot.stdout
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [pid, ppid, pgid, status] = line.trim().split(/\s+/);
+          return { pid: Number(pid), ppid: Number(ppid), pgid: Number(pgid), status };
+        });
+      if (
+        claims.every((claim) => {
+          const runner = processes.find((row) => row.pid === claim.pid);
+          return !runner || runner.status.startsWith("T") || runner.status.startsWith("Z");
+        })
+      )
+        break;
+      if (Date.now() >= deadline) throw new Error("Private runners did not stop before cleanup");
+    }
+    const descendants = new Set(
+      claims.map((claim) => claim.pid).filter((pid) => Number.isSafeInteger(pid) && pid > 1),
+    );
+    let changed;
+    do {
+      changed = false;
+      for (const row of processes) {
+        if (descendants.has(row.ppid) && !descendants.has(row.pid)) {
+          descendants.add(row.pid);
+          changed = true;
+        }
+      }
+    } while (changed);
+    const groups = new Set(claims.map((claim) => claim.childPid));
+    for (const row of processes) {
+      if (descendants.has(row.pid)) groups.add(row.pgid);
+    }
+    const runnerGroups = new Set(claims.map((claim) => claim.pid));
+    for (const pgid of groups) {
+      if (!runnerGroups.has(pgid)) signal(pgid, "SIGKILL", true);
+    }
+  } finally {
+    for (const claim of claims) signal(claim.pid, "SIGKILL", true);
   }
 }
 

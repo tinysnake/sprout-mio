@@ -15,6 +15,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { runAhGroups } from "./ah-groups.mjs";
 import { selectAhGroups } from "./lib/ah-manifest.mjs";
+import { killAhNativeCommands } from "./lib/ah-cleanup.mjs";
 
 const fixture = resolve("scripts/verify/fixtures/ah-group-child.mjs");
 const groups = ["execution", "cancellation", "recovery"];
@@ -124,6 +125,65 @@ test("a fixture crash cleans its detached native group and stops native work in 
     summary.outcomes.every((outcome) => !outcome.error?.includes("cleanup:")),
     "already exited native groups must not report cleanup failure",
   );
+});
+
+test("cleanup finds the real detached command before childPid is published", async () => {
+  const directory = privateDirectory("before-claim");
+  const state = join(directory, "private-state");
+  const paused = join(directory, "paused.json");
+  const runner = spawn(
+    process.execPath,
+    [
+      "--import",
+      resolve("scripts/verify/fixtures/ah-runner-before-claim.mjs"),
+      resolve("src/worker/runner.mjs"),
+      "before-claim",
+      "private-test-token",
+      state,
+      "/bin/sh",
+    ],
+    {
+      detached: true,
+      env: {
+        ...process.env,
+        AH_TEST_PAUSED: paused,
+        SPROUT_RUNNER_COMMAND: "trap '' TERM; while :; do sleep 1; done",
+      },
+      stdio: "ignore",
+    },
+  );
+  const exit = new Promise((resolveExit) => runner.once("exit", resolveExit));
+  let owned = [runner.pid];
+  try {
+    await until(() => existsSync(paused), "runner paused before claim publication");
+    const unpublished = JSON.parse(readFileSync(paused, "utf8"));
+    owned.push(unpublished.childPid);
+    const claimPath = join(state, "executions/before-claim/runner.json");
+    assert.equal(JSON.parse(readFileSync(claimPath, "utf8")).childPid, undefined);
+    await until(
+      () => spawnSync("pgrep", ["-P", String(unpublished.childPid)]).status === 0,
+      "detached command grandchild ready",
+    );
+    owned.push(
+      ...spawnSync("pgrep", ["-P", String(unpublished.childPid)], { encoding: "utf8" })
+        .stdout.trim()
+        .split("\n")
+        .map(Number),
+    );
+    assert(owned.every(alive), "all real processes exist before cleanup");
+    killAhNativeCommands(state);
+    await until(() => owned.every((pid) => !alive(pid)), "unpublished native group exited");
+  } finally {
+    for (const pid of owned) {
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {}
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
+    }
+    await exit;
+  }
 });
 
 for (const mode of ["SIGINT", "SIGTERM", "deadline"]) {
