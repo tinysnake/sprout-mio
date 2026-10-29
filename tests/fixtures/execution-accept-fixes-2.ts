@@ -315,17 +315,17 @@ assert.throws(
 assert.equal(rowCount(), beforeRows);
 pass("R1 反证：租约换代次换 holder 后，原代次的重放与新建都被拒且不写取消行");
 
-// 人类路径同样先核对投递通道，再决定是否幂等返回。
+// 人类路径按当前授权管理旧执行；该执行已有终态，必须拒绝新增取消。
 assert.throws(
   () =>
     cancelExecution(
       { executionId: cancellable.executionId, requestId: req() },
       { ...human, now: new Date() },
     ),
-  fail("cancellation_delivery_unconfirmed"),
+  fail("cancellation_already_terminal"),
 );
 assert.equal(rowCount(), beforeRows);
-pass("R1 反证：执行所属代次已换人时，人类取消不写行、也不伪装成已入队");
+pass("R1 反证：当前代次的 Human 取消已终态旧执行返回 already_terminal，不写新行");
 
 assert.throws(
   () =>

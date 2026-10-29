@@ -22,7 +22,9 @@ import {
   machineCredential,
   project,
   projectMachine,
+  projectMachineMembership,
 } from "../db/schema";
+import { assertMembershipOperable, openInitialMembership } from "../server/membership";
 
 export type MachineContext = { userId: string; requestId: string; bootId: string; now: Date };
 export class MachineError extends Error {
@@ -84,11 +86,22 @@ export function toIntent(row: typeof projectMachine.$inferSelect): ProjectMachin
   };
 }
 export function machineBindings(machineId: string): ProjectMachineIntent[] {
+  const memberships = db
+    .select()
+    .from(projectMachineMembership)
+    .where(eq(projectMachineMembership.machineId, machineId))
+    .orderBy(desc(projectMachineMembership.epoch))
+    .all();
+  const latest = new Map<string, typeof projectMachineMembership.$inferSelect>();
+  for (const row of memberships) if (!latest.has(row.projectId)) latest.set(row.projectId, row);
   return db
     .select()
     .from(projectMachine)
     .where(eq(projectMachine.machineId, machineId))
     .all()
+    .filter(
+      (row: typeof projectMachine.$inferSelect) => latest.get(row.projectId)?.state === "active",
+    )
     .map(toIntent);
 }
 export function getMachine(input: GetMachineInput, ctx: MachineContext): MachineDetail {
@@ -338,6 +351,7 @@ export function saveProjectMachineBinding(
         eq(projectMachine.projectId, input.projectId),
       );
       const old = db.select().from(projectMachine).where(where).get();
+      if (old) assertMembershipOperable(input.projectId, input.machineId);
       if (old && old.description === input.description) return toIntent(old);
       if (
         (old?.revision ?? null) !== input.expectedRevision ||
@@ -363,7 +377,10 @@ export function saveProjectMachineBinding(
           })
           .where(where)
           .run();
-      else db.insert(projectMachine).values(values).run();
+      else {
+        db.insert(projectMachine).values(values).run();
+        openInitialMembership(db, { ...input, now: ctx.now });
+      }
       diagnostic("machine.binding_saved", ctx, hooks, input.projectId);
       return toIntent(values);
     })

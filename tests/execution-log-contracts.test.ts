@@ -419,6 +419,8 @@ describe("execution log and cancellation contracts", () => {
       executionId,
       authorizationGeneration: 1,
       holderInstanceId: instanceId,
+      authority: "holder",
+      currentAuthorizationGeneration: 1,
       runId: `run_${crypto.randomUUID()}`,
       chatId: newId(ID_PREFIXES.chat),
       requestId,

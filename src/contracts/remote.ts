@@ -225,8 +225,8 @@ export const executionViewSchema = leaseKeySchema
     authorizationGeneration: positiveSafeIntegerSchema,
     holderInstanceId: instanceIdSchema,
     // origin 代次不变；当前操作授权的代次与角色由读时裁决补充。
-    authority: z.enum(EXECUTION_AUTHORITIES).optional(),
-    currentAuthorizationGeneration: nonnegativeSafeIntegerSchema.nullable().optional(),
+    authority: z.enum(EXECUTION_AUTHORITIES),
+    currentAuthorizationGeneration: nonnegativeSafeIntegerSchema.nullable(),
     runId: runIdSchema,
     chatId: id(ID_PREFIXES.chat),
     requestId: requestIdSchema,
@@ -285,13 +285,12 @@ export const executionViewSchema = leaseKeySchema
       (value.logState === "none" && value.producedThroughSequence !== null) ||
       (value.logState === "full" && value.acknowledgedThroughSequence === null) ||
       (value.logState !== "none" && value.producedThroughSequence === null) ||
-      // 两个授权字段由读时裁决同时给出；接入前允许缺省，缺一个或角色/代次互相矛盾即无效。
-      (value.authority === undefined) !== (value.currentAuthorizationGeneration === undefined) ||
+      // origin 保持不变；holder 必须同代，继承读取必须声明当前代次。
       (value.authority === "history" && value.currentAuthorizationGeneration !== null) ||
-      (value.authority !== undefined &&
-        value.authority !== "history" &&
+      (value.authority === "holder" &&
+        value.currentAuthorizationGeneration !== value.authorizationGeneration) ||
+      (value.authority !== "history" &&
         (value.currentAuthorizationGeneration === null ||
-          value.currentAuthorizationGeneration === undefined ||
           value.currentAuthorizationGeneration < value.authorizationGeneration))
     ) {
       ctx.addIssue({ code: "custom", message: "执行状态、时间、日志位点与结果不一致" });
@@ -532,6 +531,14 @@ export const executionCancelRequestSchema = z.strictObject({
   executionId: executionIdSchema,
   requestId: requestIdSchema,
 });
+export const holderExecutionListRequestSchema = leaseKeySchema.extend({
+  limit: positiveSafeIntegerSchema.max(100).default(20),
+  before: z.string().min(1).max(256).optional(),
+});
+export const holderExecutionListViewSchema = z.strictObject({
+  executions: z.array(executionViewSchema),
+  nextCursor: z.string().nullable(),
+});
 export const remoteAgentRequestSchema = z.strictObject({
   version: z.literal(2),
   call: z.discriminatedUnion("type", [
@@ -539,6 +546,7 @@ export const remoteAgentRequestSchema = z.strictObject({
     z.strictObject({ type: z.literal("lease_get"), input: leaseReadInputSchema }),
     z.strictObject({ type: z.literal("execution_submit"), input: executionSubmitInputSchema }),
     z.strictObject({ type: z.literal("execution_get"), input: executionReadInputSchema }),
+    z.strictObject({ type: z.literal("execution_list"), input: holderExecutionListRequestSchema }),
     z.strictObject({ type: z.literal("execution_cancel"), input: executionCancelInputSchema }),
     z.strictObject({ type: z.literal("execution_log_read"), input: executionLogReadInputSchema }),
     mcpCatalogGetCall,
@@ -596,6 +604,7 @@ export const remoteToolInputSchemas = {
     machineId: leaseKeySchema.shape.machineId,
     executionId: executionIdSchema,
   }),
+  sprout_remote_execution_list: holderExecutionListRequestSchema.omit({ projectId: true }),
   /** 取消只暴露意图与当前代次；Project 由宿主注入，`cancelId` 由服务端生成。 */
   sprout_remote_execution_cancel: executionCancelInputSchema.omit({ projectId: true }),
   sprout_remote_execution_log: executionLogReadInputSchema.omit({ projectId: true }),
