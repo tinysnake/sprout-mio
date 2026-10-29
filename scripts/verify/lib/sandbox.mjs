@@ -326,6 +326,7 @@ export async function runSandbox(args) {
       SPROUT_REPO_DIR: join(privateData, "repos"),
       XDG_CACHE_HOME: join(privateData, "cache"),
       npm_config_cache: join(privateData, "npm-cache"),
+      SPROUT_VERIFY_FULL_SUITE: gate === "b-tooling" ? "1" : "0",
     });
     const originalAgent = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi/agent");
     const agent = join(privateData, "agent");

@@ -108,6 +108,37 @@ afterEach(() => {
 });
 
 describe("verify runner", () => {
+  it("runs the full unit suite before admitting other gates", async () => {
+    const fixture = makeFixture();
+    writeFileSync(
+      join(fixture.root, "scripts/verify/sandbox.mjs"),
+      `import { spawnSync } from 'node:child_process';
+const args = process.argv.slice(2);
+const result = spawnSync('bash', [args[args.indexOf('--') + 1]], { stdio: 'inherit' });
+process.exit(result.status ?? 1);
+`,
+    );
+    fixture.writeScript(
+      "b-tooling",
+      "echo b:start >> marker.log\nwhile [ ! -f release-b ]; do sleep 0.05; done\necho b:end >> marker.log",
+    );
+    fixture.writeScript("ah-execution-live-e2e", "echo ah >> marker.log");
+    fixture.writeScript("e-project", "echo e >> marker.log");
+    const child = spawn("node", ["scripts/verify/runner.mjs"], { cwd: fixture.root });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => (stderr += String(chunk)));
+    const completed = new Promise<number | null>((resolve) => child.on("close", resolve));
+    try {
+      await waitFor(() => markerLines(fixture.root).includes("b:start"));
+      expect(markerLines(fixture.root)).toEqual(["b:start"]);
+    } finally {
+      writeFileSync(join(fixture.root, "release-b"), "1");
+      expect(await completed, stderr).toBe(0);
+    }
+    expect(markerLines(fixture.root).slice(0, 2)).toEqual(["b:start", "b:end"]);
+    expect(markerLines(fixture.root).slice(2).sort()).toEqual(["ah", "e"]);
+  });
+
   it("declares an admissible resource plan for every current gate", () => {
     const ids = readdirSync(join(repositoryRoot, "scripts/verify"))
       .filter((name) => name.endsWith(".sh"))

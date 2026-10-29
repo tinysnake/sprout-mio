@@ -379,6 +379,7 @@ async function runPooledBatch(scripts, runDirectory) {
   }
   pending.sort(
     (left, right) =>
+      Number(right.id === "b-tooling") - Number(left.id === "b-tooling") ||
       SUITE_PLAN[right.id].estimatedMs - SUITE_PLAN[left.id].estimatedMs ||
       left.id.localeCompare(right.id),
   );
