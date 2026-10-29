@@ -181,7 +181,7 @@ try {
   const { createMachine, saveProjectMachineBinding } = await import("../../src/domain/machine");
   const { seedRemoteActor } = await import("./remote-actors");
   const { detachMachine } = await import("../../src/server/membership");
-    const bootId = (
+  const bootId = (
     sqlite.prepare("SELECT id FROM runtime_boot ORDER BY started_at DESC LIMIT 1").get() as {
       id: string;
     }
@@ -339,11 +339,15 @@ try {
   };
   assert(
     ["lease_fencing", "lease_not_holder"].includes(
-      bDuringFence.result.ok ? "allowed" : bDuringFence.result.error?.code ?? "",
+      bDuringFence.result.ok ? "allowed" : (bDuringFence.result.error?.code ?? ""),
     ),
     `B must not read during fencing, got ${JSON.stringify(bDuringFence.result)}`,
   );
-  await until(async () => (await lease()).lease.generation === 2, "handoff completion generation", 60000);
+  await until(
+    async () => (await lease()).lease.generation === 2,
+    "handoff completion generation",
+    60000,
+  );
   const afterHandoff = (await lease()).lease;
   assert.equal(afterHandoff.holderInstanceId, actorB.instanceId);
   pass("handoff request fences B and completes to g+1/B");
@@ -366,11 +370,14 @@ try {
   );
   assert(
     listB.executions.some(
-      (view) =>
-        view.executionId === inFlightA.executionId && view.authority === "inherited",
+      (view) => view.executionId === inFlightA.executionId && view.authority === "inherited",
     ),
   );
-  await rejected("execution_get", { ...key, executionId: inFlightA.executionId }, "lease_not_holder");
+  await rejected(
+    "execution_get",
+    { ...key, executionId: inFlightA.executionId },
+    "lease_not_holder",
+  );
   await rejected(
     "execution_log_read",
     { ...key, executionId: inFlightA.executionId, cursor: null, limitBytes: 65536 },
@@ -391,7 +398,10 @@ try {
   };
   pass("g+1/B reads the same execution and the pre-handoff log frames; A is rejected");
 
-  await until(() => writeTimes(writesA).length >= writesBefore + 5, "writes continue after handoff");
+  await until(
+    () => writeTimes(writesA).length >= writesBefore + 5,
+    "writes continue after handoff",
+  );
   assert(alive(pidAValue), "handoff must not kill the real command process");
   assert(!existsSync(stopA), "command still running");
   const writesAfter = writeTimes(writesA);
@@ -491,7 +501,10 @@ try {
     },
     grantB,
   );
-  assert(["requested", "delivered", "exited_observed"].includes(cancelB.state), `unexpected cancel state ${cancelB.state}`);
+  assert(
+    ["requested", "delivered", "exited_observed"].includes(cancelB.state),
+    `unexpected cancel state ${cancelB.state}`,
+  );
   const cancelRow = sqlite
     .prepare(
       "SELECT actor_kind, actor_id, authorization_generation FROM execution_cancellation WHERE execution_id=? ORDER BY rowid DESC LIMIT 1",
@@ -511,18 +524,30 @@ try {
   await until(() => !alive(pidBValue), "real Worker terminates cancelled command", 30000);
   // The process exit is observed first; the terminal row and the cancellation
   // receipt may trail it. Record whichever the server actually reached.
-  await until(() => {
-    const row = sqlite
-      .prepare("SELECT terminal_at FROM remote_execution WHERE id=?")
-      .get(inFlightB.executionId) as { terminal_at: number | null } | undefined;
-    return row?.terminal_at != null;
-  }, "cancelled execution terminal row", 15000).catch(() => undefined);
-  await until(() => {
-    const row = sqlite
-      .prepare("SELECT state FROM execution_cancellation WHERE execution_id=? ORDER BY rowid DESC LIMIT 1")
-      .get(inFlightB.executionId) as { state: string } | undefined;
-    return Boolean(row && ["exited_observed", "already_exited", "failed", "unknown"].includes(row.state));
-  }, "cancellation receipt settles", 15000).catch(() => undefined);
+  await until(
+    () => {
+      const row = sqlite
+        .prepare("SELECT terminal_at FROM remote_execution WHERE id=?")
+        .get(inFlightB.executionId) as { terminal_at: number | null } | undefined;
+      return row?.terminal_at != null;
+    },
+    "cancelled execution terminal row",
+    15000,
+  ).catch(() => undefined);
+  await until(
+    () => {
+      const row = sqlite
+        .prepare(
+          "SELECT state FROM execution_cancellation WHERE execution_id=? ORDER BY rowid DESC LIMIT 1",
+        )
+        .get(inFlightB.executionId) as { state: string } | undefined;
+      return Boolean(
+        row && ["exited_observed", "already_exited", "failed", "unknown"].includes(row.state),
+      );
+    },
+    "cancellation receipt settles",
+    15000,
+  ).catch(() => undefined);
   const cancelOutcome = sqlite
     .prepare("SELECT state, failure_reason, terminal_at FROM remote_execution WHERE id=?")
     .get(inFlightB.executionId) as {
@@ -531,7 +556,9 @@ try {
     terminal_at: number | null;
   };
   const cancelFinal = sqlite
-    .prepare("SELECT state, signal_outcome FROM execution_cancellation WHERE execution_id=? ORDER BY rowid DESC LIMIT 1")
+    .prepare(
+      "SELECT state, signal_outcome FROM execution_cancellation WHERE execution_id=? ORDER BY rowid DESC LIMIT 1",
+    )
     .get(inFlightB.executionId) as { state: string; signal_outcome: string } | undefined;
   facts.realInFlightCancel = {
     cancellationAcceptedState: cancelB.state,
@@ -543,7 +570,10 @@ try {
     processExited: !alive(pidBValue),
   };
   writeFileSync(stopB, "stop");
-  pass("real in-flight cancel accepted for g+1/B and the real Worker stops the process", facts.realInFlightCancel);
+  pass(
+    "real in-flight cancel accepted for g+1/B and the real Worker stops the process",
+    facts.realInFlightCancel,
+  );
 
   // Grant revocation and Project removal while a real command is running: the
   // lease/membership actions must not clean up the process or its files.

@@ -6,7 +6,8 @@ import { holderNames } from "../../components/machine/project-lease-actions";
 import { RemoteExecutionList } from "../../components/machine/remote-execution-panel";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { useEffect, useState } from "react";
-import { ProjectMachinesPanel } from "../../components/info-hub/project-machines-panel";
+import { MembershipSections } from "../../components/machine/membership-sections";
+import { useMachineRelations } from "../../components/machine/use-machine-relations";
 import { ProjectBasicInfoForm } from "../../components/project/project-basic-info-form";
 import { ProjectFacts } from "../../components/project/project-facts";
 import { SettingsSection } from "../../components/project/settings-section";
@@ -46,6 +47,7 @@ function ProjectSettingsPage() {
   const { project, profile, repo, infoHub, machines, executions } = Route.useLoaderData();
   const [selectedMachine, setSelectedMachine] = useState("");
   const { projectId } = Route.useParams();
+  const relationState = useMachineRelations({ projectId });
   // 执行列表已在 loader 里查询；读取日志、取消与连接状态都接真实服务端入口。
   const executionRows = executions.ok ? executions.data : [];
   const executionWiring = useExecutionWiring({
@@ -142,11 +144,21 @@ function ProjectSettingsPage() {
                 >
                   <option value="">选择 Machine</option>
                   {machines.ok &&
-                    machines.data.map((m) => (
-                      <option key={m.machine.id} value={m.machine.id}>
-                        {m.machine.name}
-                      </option>
-                    ))}
+                    machines.data
+                      .filter((m) => {
+                        if (relationState.lastSuccessAt === null) return true;
+                        const relation = relationState.relations.find(
+                          (item) => item.machineId === m.machine.id && item.projectId === projectId,
+                        );
+                        // 从未加入过的 Machine 仍可用于新增；detaching/removed 不再出现在
+                        // 新增使用选择器里，重新加入走已移出记录中的显式入口。
+                        return !relation || relation.membership?.state === "active";
+                      })
+                      .map((m) => (
+                        <option key={m.machine.id} value={m.machine.id}>
+                          {m.machine.name}
+                        </option>
+                      ))}
                 </select>
               </label>
               <Link to="/machines" className="text-xs underline">
@@ -174,11 +186,24 @@ function ProjectSettingsPage() {
             )}
             {!machines.ok && <ResultError error={machines.error} />}
             {infoHub.ok && (
-              <ProjectMachinesPanel
+              <MembershipSections
+                scope="project"
                 projectId={projectId}
+                projectNames={{ [projectId]: project.data.name }}
+                relations={relationState.relations}
                 machines={infoHub.data.machines}
                 leases={infoHub.data.leases.items}
                 holderNames={holderNames(infoHub.data)}
+                executions={executions.ok ? executions.data : null}
+                loading={relationState.loading}
+                error={relationState.error}
+                lastSuccessAt={relationState.lastSuccessAt}
+                onChanged={() => {
+                  relationState.refresh();
+                  invalidate();
+                }}
+                showLeaseOverview
+                testId="info-hub-project-machines"
               />
             )}
           </SettingsSection>
