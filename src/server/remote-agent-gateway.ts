@@ -5,7 +5,14 @@ import { remoteAgentRequestSchema } from "../contracts/remote";
 import type { RemoteToolGrant } from "../contracts/remote";
 import { toAppError } from "../contracts/result";
 import { db, sqlite } from "../db";
-import { agentInstance, agentRun, chatMember, project, remoteToolGrant } from "../db/schema";
+import {
+  agentInstance,
+  agentRun,
+  chatEffectiveMember,
+  project,
+  projectMember,
+  remoteToolGrant,
+} from "../db/schema";
 import { hashCredential } from "../domain/machine";
 import { config } from "../lib/config";
 import { acquireLease, getLease, handoffLease, releaseLease } from "./lease";
@@ -47,12 +54,21 @@ function actor(runId: string) {
     instance.chatId !== run.chatId ||
     !db
       .select()
-      .from(chatMember)
+      .from(chatEffectiveMember)
+      // 与 sendMessage 同源。DM 历史成员仍在视图里，d19 要求同时保有 Project 参与权。
+      .innerJoin(
+        projectMember,
+        and(
+          eq(projectMember.projectId, chatEffectiveMember.projectId),
+          eq(projectMember.agentProfileId, chatEffectiveMember.memberId),
+        ),
+      )
       .where(
         and(
-          eq(chatMember.chatId, run.chatId),
-          eq(chatMember.memberKind, "agent"),
-          eq(chatMember.memberId, instance.agentProfileId),
+          eq(chatEffectiveMember.projectId, run.projectId),
+          eq(chatEffectiveMember.chatId, run.chatId),
+          eq(chatEffectiveMember.memberKind, "agent"),
+          eq(chatEffectiveMember.memberId, instance.agentProfileId),
         ),
       )
       .get()
