@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type {
   AgentProfile,
   CreateAgentProfileInput,
@@ -7,7 +7,7 @@ import type {
 } from "../contracts/agent";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
-import { agentProfile, projectMember } from "../db/schema";
+import { agentProfile, chat, chatMember, projectMember } from "../db/schema";
 import { assertProjectAccess } from "./access";
 import type { ProjectContext } from "./access";
 import { revokeProjectAgentEnrollment } from "./chat";
@@ -41,6 +41,38 @@ function toAgentProfile(row: typeof agentProfile.$inferSelect): AgentProfile {
 
 function toProjectMember(row: typeof projectMember.$inferSelect): ProjectMember {
   return { ...row, addedAt: row.addedAt.toISOString() };
+}
+
+/**
+ * 项目级移除后的 DM 归档，与重新加入后的取消归档（`docs/communication-decisions.md`「一期」：
+ * 正常移除后「其 DM 归档、不可继续聊天」，「同一 Agent 重新加入 Project 时…恢复既有 DM」）。
+ *
+ * 两步都落在成员的写入事务里：成员行已经变了而对话还显示可用（或反之）是不能提交的中间态。
+ * DM 与 Agent 的对应关系读 `chat_member`：项目级移除按 d14 保留 DM 的成员行，
+ * 所以移除后仍能按它找回要归档的对话，重新加入后也能按它恢复。
+ */
+function setProjectAgentDirectChatsArchived(
+  projectId: string,
+  agentProfileId: string,
+  archivedAt: Date | null,
+): void {
+  const dmIds = db
+    .select({ id: chat.id })
+    .from(chat)
+    .innerJoin(
+      chatMember,
+      and(
+        eq(chatMember.chatId, chat.id),
+        eq(chatMember.memberKind, "agent"),
+        eq(chatMember.memberId, agentProfileId),
+      ),
+    )
+    .where(and(eq(chat.projectId, projectId), eq(chat.kind, "dm")))
+    .all()
+    .map((row: { id: string }) => row.id);
+  if (dmIds.length === 0) return;
+  // 只动归档事实，不碰 owner/wake 等治理字段：归档不是治理写入，不推 governance_revision。
+  db.update(chat).set({ archivedAt, updatedAt: new Date() }).where(inArray(chat.id, dmIds)).run();
 }
 
 export function createAgentProfile(
@@ -126,6 +158,8 @@ export function addProjectMember(
         .returning()
         .get();
       if (!row) throw new AgentError("conflict", "Agent 已是 Project 成员");
+      // 重新加入时恢复既有 DM（归档清除）；顺序在成员行之后，同事务内一起提交。
+      setProjectAgentDirectChatsArchived(projectId, agentProfileId, null);
       return toProjectMember(row);
     },
     hooks,
@@ -162,6 +196,7 @@ export function removeProjectMember(
         { event: "project_member.removed", message: "Project 成员已移除", projectId },
         () => {
           revokeProjectAgentEnrollment(projectId, agentProfileId);
+          setProjectAgentDirectChatsArchived(projectId, agentProfileId, new Date());
           db.delete(projectMember)
             .where(
               and(

@@ -6,14 +6,19 @@
 import assert from "node:assert/strict";
 import { Effect, ManagedRuntime } from "effect";
 import { eq } from "drizzle-orm";
+import type { RunConfigSnapshot } from "../../src/contracts/agent-run";
 import { PUBLIC_CHANNEL_DISPLAY_TITLE } from "../../src/contracts/chat";
+import type { Message } from "../../src/contracts/chat";
 import type { ProjectContext } from "../../src/domain/project";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { db, sqlite } from "../../src/db";
 import { agentInstance, agentRun, chatMember } from "../../src/db/schema";
 import { migrateDatabase } from "../../src/db/migrate";
+import { config } from "../../src/lib/config";
 import { addProjectMember, createAgentProfile, removeProjectMember } from "../../src/domain/agent";
 import {
+  appendHumanRunInput,
+  getAgentRun,
   interruptActiveAgentRuns,
   listAgentRunInputs,
   listAgentRuns,
@@ -32,9 +37,20 @@ import {
 import { ensureProjectChannel, readChatEffectiveMembers } from "../../src/domain/channel";
 import { createProject } from "../../src/domain/project";
 import { makePiHostLayer, startPiHost, stopPiHost } from "../../src/server/pi-host/host";
+import type { PiSessionProcess } from "../../src/server/pi-host/process";
+import { executeRun } from "../../src/server/pi-host/run";
 import type { Work } from "../../src/server/pi-host/run";
+import { shutdownRuntime, startRuntime } from "../../src/server/runtime";
 
 migrateDatabase();
+// A01/N01 的受控 Pi 进程适配器要调用真实的 executeRun，它需要 runtime 上下文（machine/租约授权）。
+// runtime 在这里启动一次：宿主被关掉（SPROUT_PI_ENABLED=false），排队 run 不会被真实宿主抢走。
+await startRuntime();
+assert.equal(
+  config.SPROUT_PI_ENABLED,
+  false,
+  "受控适配器门禁必须关闭真实 Pi 宿主，否则真模型子进程会抢走排队 run",
+);
 
 function pass(label: string, output: unknown = {}) {
   console.log(`PASS ${label} ${JSON.stringify(output)}`);
@@ -349,3 +365,318 @@ assert.equal(
   "被拒的发言不落消息行",
 );
 pass("d19.dm-agent-membership", { removed: agentB.id, code: "not_found" });
+
+// ---------------------------------------------------------------- 8b. A02：DM 排队入口自己查参与权（不依赖归档）
+// 直接删 `project_member` 行构造「历史 instance 还在、但已不是 Project 成员」的状态：
+// DM 没有经过移除命令，所以没有归档；`chat_effective_member` 的 DM 分支对历史成员放行。
+// 修复前 `appendHumanRunInput` 只按 chat 找历史 instance 就入队，Human 发消息会 ok 并排一条必败 run。
+const agentStray = createAgentProfile({ name: "Stray", persona: "", harness: "pi" }, ctx);
+addProjectMember(project.id, agentStray.id, ctx);
+const strayDm = createDirectChat(project.id, agentStray.id, ctx);
+const strayFirst = sendMessage(
+  strayDm.chat.id,
+  { senderKind: "human", senderId: creatorId, body: "参与权还在时的第一条" },
+  ctx,
+);
+assert.ok(strayFirst.id);
+sqlite
+  .prepare("DELETE FROM project_member WHERE project_id = ? AND agent_profile_id = ?")
+  .run(project.id, agentStray.id);
+assert.equal(getChat(strayDm.chat.id, ctx).archivedAt, undefined, "这条 DM 没有被归档（对照组）");
+const strayMessagesBefore = listMessages(strayDm.chat.id, ctx).length;
+const strayRunsBefore = listAgentRuns(strayDm.chat.id, ctx).length;
+assert.equal(
+  codeOf(() =>
+    sendMessage(
+      strayDm.chat.id,
+      { senderKind: "human", senderId: creatorId, body: "参与权没了的第二条" },
+      ctx,
+    ),
+  ),
+  "conflict",
+  "不再是 Project 成员时，Human 向这条 DM 发言被拒（排队入口自己查参与权）",
+);
+assert.equal(
+  listMessages(strayDm.chat.id, ctx).length,
+  strayMessagesBefore,
+  "被拒的 Human 消息不落库",
+);
+assert.equal(
+  listAgentRuns(strayDm.chat.id, ctx).length,
+  strayRunsBefore,
+  "被拒的 Human 消息不排队必败 run",
+);
+pass("a02.dm-participation-checked", {
+  code: "conflict",
+  messages: strayMessagesBefore,
+  runs: strayRunsBefore,
+});
+
+// ---------------------------------------------------------------- 9. A01：真实 executeRun 结束时把晚到输入交给下一轮
+// 受控 Pi 进程适配器（不启动模型子进程）：`prompt` 里先回报首条输入已投递，再在返回前插入
+// 第二条人类消息。这是「分身正在工作时又来一条消息」的合法时序，投递轮询的 100ms 间隔还来不及
+// steer 它，于是它必然停在 pending。run 正常完成后这条输入必须进入下一轮，而不是留在终态 run 上。
+type ControlledProcess = {
+  pid: number;
+  onDelivered?: (messageId: string) => void;
+  onRejected?: (messageId: string, reason: string) => void;
+  onDispose: (callback: () => void) => void;
+  open: () => Promise<RunConfigSnapshot>;
+  prompt: (messageId: string, text: string) => Promise<{ text: string; stopReason: string }>;
+  steer: (messageId: string, text: string) => void;
+  close: () => Promise<void>;
+};
+function controlledProcess(options: {
+  profile: { id: string; name: string; persona: string };
+  sessionId: string;
+  reply: string;
+  beforePromptSettles?: () => void;
+}) {
+  const disposers: (() => void)[] = [];
+  const delivered: string[] = [];
+  const steered: string[] = [];
+  const fake: ControlledProcess = {
+    pid: globalThis.process.pid,
+    onDispose: (callback) => {
+      disposers.push(callback);
+    },
+    open: async () => ({
+      provider: "gate",
+      model: "gate/controlled",
+      thinking: "off",
+      tools: [],
+      extensions: [],
+      sessionId: options.sessionId,
+      sessionFile: `/tmp/sprout-i4-controlled-${options.sessionId}.jsonl`,
+      cwd: "/tmp",
+      sdkVersion: "controlled-adapter",
+      profile: {
+        id: options.profile.id,
+        name: options.profile.name,
+        persona: options.profile.persona,
+        harness: "pi",
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+    prompt: (messageId, _text) => {
+      fake.onDelivered?.(messageId);
+      delivered.push(messageId);
+      options.beforePromptSettles?.();
+      return Promise.resolve({ text: options.reply, stopReason: "stop" });
+    },
+    steer: (messageId, _text) => {
+      steered.push(messageId);
+    },
+    close: async () => {
+      for (const callback of disposers.splice(0)) callback();
+    },
+  };
+  return { process: fake as unknown as PiSessionProcess, delivered, steered };
+}
+
+const agentLate = createAgentProfile({ name: "Late", persona: "", harness: "pi" }, ctx);
+addProjectMember(project.id, agentLate.id, ctx);
+const lateDm = createDirectChat(project.id, agentLate.id, ctx);
+const lateFirst = sendMessage(
+  lateDm.chat.id,
+  { senderKind: "human", senderId: creatorId, body: "A01 第一条" },
+  ctx,
+);
+const lateRuns = listAgentRuns(lateDm.chat.id, ctx);
+assert.equal(lateRuns.length, 1);
+const lateFirstRun = lateRuns[0];
+const lateWork = queuedRunWork().find((work) => work.run.id === lateFirstRun.id);
+assert.ok(lateWork, "DM 的第一条消息必须排队等执行");
+
+let lateSecond: Message | undefined;
+const firstTurn = controlledProcess({
+  profile: agentLate,
+  sessionId: lateWork.run.sessionId,
+  reply: "第一轮回复",
+  beforePromptSettles: () => {
+    lateSecond = sendMessage(
+      lateDm.chat.id,
+      { senderKind: "human", senderId: creatorId, body: "A01 prompt 返回前到达" },
+      ctx,
+    );
+  },
+});
+await Effect.runPromise(executeRun(lateWork, firstTurn.process, { isStopping: () => false }));
+assert.ok(lateSecond, "适配器必须在 prompt 返回前插入第二条消息");
+assert.equal(getAgentRun(lateFirstRun.id, ctx).status, "completed", "首轮正常完成");
+assert.deepEqual(firstTurn.delivered, [lateFirst.id], "首轮只投递了第一条输入");
+assert.deepEqual(firstTurn.steered, [], "晚到输入在 prompt 返回前没有被 steer 进首轮");
+assert.deepEqual(
+  listAgentRunInputs(lateFirstRun.id, ctx).map((input) => input.messageId),
+  [lateFirst.id],
+  "已完成的 run 不再持有晚到输入（不能滞留）",
+);
+assert.equal(
+  scalar(
+    `SELECT count(*) AS n FROM agent_run_input i JOIN agent_run r ON r.id = i.run_id
+     WHERE r.chat_id = ? AND r.status = 'completed' AND i.disposition = 'pending'`,
+    lateDm.chat.id,
+  ),
+  0,
+  "没有任何终态 run 还挂着 pending 输入",
+);
+const lateNextWork = queuedRunWork().filter((work) => work.run.chatId === lateDm.chat.id);
+assert.equal(lateNextWork.length, 1, "晚到输入必须确定地进入下一轮（A01）");
+const lateNextRun = lateNextWork[0].run;
+assert.notEqual(lateNextRun.id, lateFirstRun.id, "下一轮是新的 run，不是复活的终态 run");
+assert.deepEqual(
+  listAgentRunInputs(lateNextRun.id, ctx).map((input) => input.disposition),
+  ["pending"],
+  "下一轮的输入待投递",
+);
+assert.deepEqual(
+  listAgentRunInputs(lateNextRun.id, ctx).map((input) => input.messageId),
+  [lateSecond.id],
+  "下一轮带的正是晚到的那条消息",
+);
+pass("a01.late-input-carried", {
+  completedRun: lateFirstRun.id,
+  nextRun: lateNextRun.id,
+  lateMessage: lateSecond.id,
+  steerCalls: firstTurn.steered.length,
+});
+
+// 下一轮由真实宿主轮询拾起并投递，不是夹具自己再调一次 executeRun：
+// `loadWork` 仍是真实的 `queuedRunWork()`，只把范围收在这条 DM 上，避免别的对话的排队行混进来。
+const lateTurns = new Map<string, { process: PiSessionProcess; delivered: string[] }>();
+const lateHostFailures: string[] = [];
+const lateRuntime = ManagedRuntime.make(
+  makePiHostLayer({
+    loadWork: () =>
+      queuedRunWork()
+        .filter((work) => work.run.chatId === lateDm.chat.id)
+        .map((work) => ({ ...work, instanceId: work.run.instanceId })),
+    prepareRun: (work, signals) => {
+      const turn = controlledProcess({
+        profile: agentLate,
+        sessionId: work.run.sessionId,
+        reply: "第二轮回复",
+      });
+      lateTurns.set(work.run.id, turn);
+      return {
+        runId: work.run.id,
+        pid: undefined,
+        abort: () => {},
+        close: async () => {},
+        body: executeRun(work, turn.process, signals),
+      };
+    },
+    interruptActiveRuns: () => interruptActiveAgentRuns(),
+    reportFailure: (failure) => {
+      lateHostFailures.push(failure.event);
+    },
+  }),
+);
+try {
+  await lateRuntime.runPromise(
+    Effect.gen(function* () {
+      yield* startPiHost;
+      const settled = yield* Effect.gen(function* () {
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          if (getAgentRun(lateNextRun.id, ctx).status === "completed") return true;
+          yield* Effect.sleep("50 millis");
+        }
+        return false;
+      });
+      assert.equal(settled, true, "真实宿主必须在 5 秒内拾起下一轮并把它跑完");
+      yield* stopPiHost;
+    }),
+  );
+} finally {
+  await lateRuntime.dispose();
+}
+assert.deepEqual(lateHostFailures, [], "宿主调度不得报错");
+assert.equal(getAgentRun(lateNextRun.id, ctx).status, "completed", "下一轮正常完成");
+assert.deepEqual(
+  lateTurns.get(lateNextRun.id)?.delivered,
+  [lateSecond.id],
+  "下一轮投递的正是晚到的那条消息",
+);
+assert.deepEqual(
+  listAgentRunInputs(lateNextRun.id, ctx).map((input) => input.disposition),
+  ["delivered"],
+  "投递后输入状态是 delivered",
+);
+const perMessageInputs = sqlite
+  .prepare(
+    `SELECT m.id AS id, count(i.message_id) AS inputs FROM message m
+     LEFT JOIN agent_run_input i ON i.message_id = m.id
+     WHERE m.chat_id = ? AND m.sender_kind = 'human' GROUP BY m.id`,
+  )
+  .all(lateDm.chat.id) as { id: string; inputs: number }[];
+assert.deepEqual(
+  perMessageInputs.map((row) => row.inputs),
+  [1, 1],
+  "每条人类消息恰有一条输入行，交接不是复制",
+);
+assert.equal(
+  listAgentRuns(lateDm.chat.id, ctx).length,
+  2,
+  "两条人类消息 = 两轮 run，交接没有留下第三条",
+);
+pass("a01.next-round-delivers", {
+  runs: listAgentRuns(lateDm.chat.id, ctx).length,
+  delivered: lateTurns.get(lateNextRun.id)?.delivered,
+});
+
+// ---------------------------------------------------------------- 10. N01：同一 (message, agent) 在生命周期内幂等
+const agentReplay = createAgentProfile({ name: "Replay", persona: "", harness: "pi" }, ctx);
+addProjectMember(project.id, agentReplay.id, ctx);
+const replayDm = createDirectChat(project.id, agentReplay.id, ctx);
+const replayMessage = sendMessage(
+  replayDm.chat.id,
+  { senderKind: "human", senderId: creatorId, body: "N01 重复投递" },
+  ctx,
+);
+const replayRuns = listAgentRuns(replayDm.chat.id, ctx);
+assert.equal(replayRuns.length, 1);
+// 活跃 run 上重投：修复前这里抛 SQLITE_CONSTRAINT_PRIMARYKEY。
+assert.equal(
+  codeOf(() => appendHumanRunInput(replayMessage, ctx)),
+  "ok",
+  "同一条消息在活跃 run 上重复投递不抛原始主键错误",
+);
+assert.equal(listAgentRuns(replayDm.chat.id, ctx).length, 1, "活跃 run 上重投不新建 run");
+assert.deepEqual(inputsOf(replayRuns[0].id), [replayMessage.id], "活跃 run 上重投不新增输入行");
+// 终态 run 之后重投：修复前每个 Agent 各得第二条 run、第二条输入。
+transitionAgentRun(replayRuns[0].id, "aborted", { stopReason: "aborted" }, ctx);
+assert.equal(
+  codeOf(() => appendHumanRunInput(replayMessage, ctx)),
+  "ok",
+  "终态 run 之后重复投递仍是被接受的无副作用结果",
+);
+assert.equal(
+  listAgentRuns(replayDm.chat.id, ctx).length,
+  1,
+  "终态 run 之后重投不得再开一条 run（同一 message × agent）",
+);
+assert.deepEqual(inputsOf(replayRuns[0].id), [replayMessage.id], "终态 run 之后重投不新增输入行");
+// 扇出路径同样幂等：群消息对每个被唤醒 Agent 各有一条输入，重投不能翻倍。
+const fanoutRunsBefore = scalar("SELECT count(*) AS n FROM agent_run");
+assert.equal(
+  codeOf(() => appendHumanRunInput(firstMessage, ctx)),
+  "ok",
+  "群消息重投不抛原始主键错误",
+);
+assert.equal(
+  scalar("SELECT count(*) AS n FROM agent_run"),
+  fanoutRunsBefore,
+  "群消息重投不新建 run",
+);
+assert.equal(
+  scalar("SELECT count(*) AS n FROM agent_run_input WHERE message_id = ?", firstMessage.id),
+  2,
+  "群消息对两个 Agent 仍各有一条输入，重投没有翻倍",
+);
+pass("n01.replay-idempotent", {
+  dmRuns: listAgentRuns(replayDm.chat.id, ctx).length,
+  fanoutInputs: 2,
+  runs: fanoutRunsBefore,
+});
+
+await shutdownRuntime("i4-agent-fanout");

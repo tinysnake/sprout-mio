@@ -17,6 +17,7 @@ import {
   chat,
   diagnosticEvent,
   message,
+  projectMember,
 } from "../db/schema";
 import { ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
@@ -133,8 +134,64 @@ function diagnostic(
 }
 
 /**
+ * 同一 instance 的活跃 run（数据库部分唯一索引保证至多一条）；没有就排一条新的 queued run。
+ * 排队是 `attachMessageToRun` 与「上一轮的未投递输入交给下一轮」共用的唯一入口。
+ */
+function activeRunFor(
+  scope: { instanceId: string; chatId: string; projectId: string },
+  requestId: string,
+): typeof agentRun.$inferSelect {
+  const active = db
+    .select()
+    .from(agentRun)
+    .where(
+      and(
+        eq(agentRun.instanceId, scope.instanceId),
+        inArray(agentRun.status, ["queued", "running"]),
+      ),
+    )
+    .get();
+  if (active) {
+    if (active.chatId !== scope.chatId || active.projectId !== scope.projectId) {
+      throw new AgentRunError("conflict", "Run 归属不一致");
+    }
+    return active;
+  }
+  const created = db
+    .insert(agentRun)
+    .values({
+      id: `run_${randomUUID()}`,
+      instanceId: scope.instanceId,
+      chatId: scope.chatId,
+      projectId: scope.projectId,
+      requestId,
+      status: "queued",
+      sessionId: scope.instanceId,
+    })
+    .returning()
+    .get();
+  diagnostic(created, "agent_run.queued", "Agent run 已排队");
+  return created;
+}
+
+/** 这条消息是否已经属于该 instance 的某条 run（任何状态）。 */
+function runIdOfMessage(messageId: string, instanceId: string): string | undefined {
+  return db
+    .select({ runId: agentRunInput.runId })
+    .from(agentRunInput)
+    .innerJoin(agentRun, eq(agentRun.id, agentRunInput.runId))
+    .where(and(eq(agentRunInput.messageId, messageId), eq(agentRun.instanceId, instanceId)))
+    .get()?.runId;
+}
+
+/**
  * 把一条人类消息挂到某个 instance 的活跃 run 上；没有活跃 run 就排队一条新 run。
  * DM 与群/频道派发共用这一步，保证「同一 instance 串行」只有一份实现。
+ *
+ * 幂等（N01）：同一 (message, agentProfile) 在整条生命周期里至多一条 run、一条输入
+ * （instance 与 agent profile 在一条对话里一一对应，因此按 instance 判即可）。
+ * 重复投递同一个已保存的消息——活跃 run 上重投、或两条 run 都已终结后重投——
+ * 返回既有结果，既不抛 `SQLITE_CONSTRAINT_PRIMARYKEY`，也不为每个 Agent 再开第二条 run。
  */
 function attachMessageToRun(
   saved: Message,
@@ -142,35 +199,51 @@ function attachMessageToRun(
   instance: Pick<AgentInstance, "id">,
   ctx: ProjectContext,
 ): void {
-  let run = db
-    .select()
-    .from(agentRun)
-    .where(
-      and(eq(agentRun.instanceId, instance.id), inArray(agentRun.status, ["queued", "running"])),
-    )
-    .get();
-  if (run && (run.chatId !== current.id || run.projectId !== current.projectId)) {
-    throw new AgentRunError("conflict", "Run 归属不一致");
-  }
-  if (!run) {
-    run = db
-      .insert(agentRun)
-      .values({
-        id: `run_${randomUUID()}`,
-        instanceId: instance.id,
-        chatId: current.id,
-        projectId: current.projectId,
-        requestId: ctx.requestId,
-        status: "queued",
-        sessionId: instance.id,
-      })
-      .returning()
-      .get();
-    diagnostic(run, "agent_run.queued", "Agent run 已排队");
-  }
+  if (runIdOfMessage(saved.id, instance.id)) return;
+  const run = activeRunFor(
+    { instanceId: instance.id, chatId: current.id, projectId: current.projectId },
+    ctx.requestId,
+  );
   db.insert(agentRunInput)
     .values({ runId: run.id, messageId: saved.id, disposition: "pending" })
     .run();
+}
+
+/**
+ * `completed` 的 run 把仍未投递的输入交给同一 instance 的下一轮
+ * （`docs/communication-decisions.md` 的「当前一轮结束前仍未处理的消息进入下一轮」）。
+ *
+ * 这是 A01 的唯一解释点：交接靠**改挂输入行**（`run_id` 换成下一轮的 run），不是复制——
+ * 一条消息在整条生命周期里只有一条 `agent_run_input`，否则「每条人类消息恰一条输入」就不再成立。
+ *
+ * 边界：只有 `completed` 交接。`failed` / `aborted` / `interrupted` 保持现状不动，
+ * 因为（1）失败可能发生在输入投递之前，自动开下一轮会变成无限重试（A02 的必败 run 就是这种）；
+ * （2）人类停止不能被自动开的下一轮抵消（d10/d11，`o-turn-semantics` 也钉住 aborted 后 pending 仍为 pending）。
+ * 这两类的处置语义归后续阶段，不在这里用猜测的理由取消。
+ */
+function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, requestId: string): void {
+  const pending = db
+    .select({ messageId: agentRunInput.messageId })
+    .from(agentRunInput)
+    .where(and(eq(agentRunInput.runId, run.id), eq(agentRunInput.disposition, "pending")))
+    .all();
+  if (pending.length === 0) return;
+  // 下一轮就是「同 instance 没有活跃 run」时新排的那条 run；所有未投递输入共用它。
+  const next = activeRunFor(
+    { instanceId: run.instanceId, chatId: run.chatId, projectId: run.projectId },
+    requestId,
+  );
+  for (const entry of pending) {
+    db.update(agentRunInput)
+      .set({ runId: next.id })
+      .where(and(eq(agentRunInput.runId, run.id), eq(agentRunInput.messageId, entry.messageId)))
+      .run();
+  }
+  diagnostic(
+    next,
+    "agent_run.inputs_carried",
+    `上一轮结束时未投递的 ${pending.length} 条输入已交给下一轮`,
+  );
 }
 
 /**
@@ -239,6 +312,29 @@ function fanoutHumanMessage(saved: Message, current: Chat, ctx: ProjectContext):
   }
 }
 
+/**
+ * DM 里唯一的 Agent 是否还在这条对话上（A02）：对话未归档，且该 Agent 仍是 Project 成员。
+ *
+ * 不能只靠 `chat_effective_member`：它的 DM 分支为了让历史可读，对历史成员放行、不查
+ * `project_member`（d19 在 `sendMessage` 里已经补了同一层判定，这是排队入口的那一份）。
+ * 少了它，Agent 移出 Project 后旧 DM 仍会接受 Human 消息、落库、排一条必败的 run——
+ * 先成功再失败（`remote_run_inactive`），正是 A02 的缺陷。
+ */
+function assertDmAgentParticipates(current: Chat, agentProfileId: string): void {
+  if (current.archivedAt) throw new AgentRunError("conflict", "对话已归档，不能继续发送消息");
+  const membership = db
+    .select({ addedBy: projectMember.addedBy })
+    .from(projectMember)
+    .where(
+      and(
+        eq(projectMember.projectId, current.projectId),
+        eq(projectMember.agentProfileId, agentProfileId),
+      ),
+    )
+    .get();
+  if (!membership) throw new AgentRunError("conflict", "该 Agent 已不在 Project，对话不可继续");
+}
+
 /** 与 human message 共用事务，输入失败就回滚消息。 */
 export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
   const current = getChat(saved.chatId, ctx);
@@ -251,6 +347,8 @@ export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
       .where(eq(agentInstance.chatId, current.id))
       .get();
     if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
+    // 参与权先于排队：拒绝发生在写入之前，不靠执行时再失败。
+    assertDmAgentParticipates(current, instance.agentProfileId);
     attachMessageToRun(saved, current, instance, ctx);
     return;
   }
@@ -403,7 +501,16 @@ export function completeAgentRun(
           },
         },
       );
-      return transitionAgentRun(id, "completed", { stopReason, assistantMessageId: reply.id }, ctx);
+      const settled = transitionAgentRun(
+        id,
+        "completed",
+        { stopReason, assistantMessageId: reply.id },
+        ctx,
+      );
+      // 正常结束时仍未投递的输入交给下一轮（A01）。先落终态再交接：交接要找「同 instance
+      // 的活跃 run」，自己刚变成 completed 才算离开活跃集合，否则会把输入改挂回自己。
+      carryPendingInputsToNextRound(row, ctx.requestId);
+      return settled;
     })
     .immediate();
 }
