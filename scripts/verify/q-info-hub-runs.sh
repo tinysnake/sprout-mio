@@ -7,12 +7,15 @@ node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import net from 'node:net'
 
 const directory = resolve('.verify/q-info-hub-runs')
+// 以前有验收轮在这里留下指向别处的符号链接：证据和协议桩都会被写到不受本门禁控制的目录。
+if (existsSync(directory) && lstatSync(directory).isSymbolicLink()) rmSync(directory, { force: true })
+mkdirSync(directory, { recursive: true })
 const databaseUrl = join(directory, 'info-hub-runs.sqlite')
 const repoRoot = join(directory, 'repos')
 const remotes = join(directory, 'remotes')
@@ -172,8 +175,8 @@ const line=x=>process.stdout.write(JSON.stringify(x)+'\\n');
 input.on('line',raw=>{const x=JSON.parse(raw);
 if(x.type==='open') {const file=x.sessionFile??joinPath(x.sessionDirectory,x.sessionId+'.jsonl');
 if(!existsSync(file))writeFileSync(file,JSON.stringify({id:x.sessionId})+'\\n');
-const slash=x.profile.model.indexOf('/');
-line({type:'ready',id:x.id,snapshot:{provider:x.profile.model.slice(0,slash),model:x.profile.model.slice(slash+1),thinking:x.profile.effort??'off',tools:['bash','edit','read','write'],extensions:['sprout-extension'],sessionId:x.sessionId,sessionFile:file,cwd:x.cwd,sdkVersion:'protocol-stub',profile:x.profile}});
+const model=x.profile.model??'protocol/unknown';const slash=model.indexOf('/');
+line({type:'ready',id:x.id,snapshot:{provider:model.slice(0,slash),model:model.slice(slash+1),thinking:x.profile.effort??'off',tools:['bash','edit','read','write'],extensions:['sprout-extension'],sessionId:x.sessionId,sessionFile:file,cwd:x.cwd,sdkVersion:'protocol-stub',profile:x.profile}});
 } else if(x.type==='prompt') {line({type:'input_delivered',id:x.id,messageId:x.messageId});
 if(x.text.includes('SLOW_HOLD'))waitHold(()=>line({type:'settled',id:x.id,text:'SLOW_DONE',stopReason:'stop'}));
 else line({type:'settled',id:x.id,text:'PROTOCOL_STUB_REPLY',stopReason:'stop'});
