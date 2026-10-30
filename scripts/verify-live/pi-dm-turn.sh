@@ -11,6 +11,10 @@ else
   echo 'FAIL unexpected argument'
   exit 1
 fi
+if [[ "${SPROUT_VERIFY_PI_MODE}" == "live" ]]; then
+  source "$(dirname "${BASH_SOURCE[0]}")/../verify/lib/live-model.sh"
+  sprout_live_model
+fi
 node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
@@ -28,8 +32,13 @@ const databaseUrl = join(directory, 'pi.sqlite')
 const evidence = []
 const children = new Set()
 const delay = ms => new Promise(done => setTimeout(done, ms))
+const requireLiveModel = () => {
+  const named = process.env.SPROUT_VERIFY_PI_MODEL
+  if (!named) throw new Error('SPROUT_VERIFY_PI_MODEL is unset: a live run must name its model')
+  return named
+}
 const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
-const model = live ? process.env.SPROUT_VERIFY_PI_MODEL ?? 'magpie/auto/deepseek-v4.1-flash' : 'protocol/model'
+const model = live ? requireLiveModel() : 'protocol/model'
 const port = Number(process.env.SPROUT_VERIFY_PI_PORT ?? (live ? 3158 : 3157))
 const base = `http://localhost:${port}`
 const runner = join(directory, 'protocol-runner.mjs')
