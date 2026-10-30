@@ -96,8 +96,10 @@ describe("P4b shared contracts", () => {
     ).toBe(false);
     for (const schema of Object.values(remoteToolInputSchemas))
       expect(schema.safeParse({}).success).toBe(false);
-    // 26 = 原 25 个码 + I-P5a 追加的 channel_membership_managed。
-    expect(new Set(REMOTE_ERROR_CODES).size).toBe(26);
+    // 31 = 原 25 个码 + I-P5a 的 channel_membership_managed + I-P5b 的五个 Task 码
+    // （task_invalid_transition / task_assignment_invalid / task_record_required /
+    // task_reference_forbidden / task_record_immutable）。
+    expect(new Set(REMOTE_ERROR_CODES).size).toBe(31);
     expect([...REMOTE_ERROR_CODES]).toEqual([...humanContracts.APP_ERROR_CODES]);
   });
 

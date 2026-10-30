@@ -71,7 +71,13 @@ describe("P2 身份、Project 授权与持久对话", () => {
         chat: ['id','project_id','kind','title','archived_at','owner_kind','owner_id','wake_policy','governance_revision','created_by','created_at','updated_at'],
         chat_member: ['chat_id','member_kind','member_id','added_at'],
         agent_instance: ['id','agent_profile_id','chat_id','project_id','created_at','updated_at'],
-        message: ['id','chat_id','sender_kind','sender_id','body','created_at'],
+        // I-P5b 在 body 之后追加 9 个可空的 Task 归属列；其余列序与 P2 一致。
+        message: [
+          'id','chat_id','sender_kind','sender_id','body',
+          'task_id','task_project_id','task_record_seq','task_record_kind',
+          'task_reference_message_id','task_author_run_id','task_assignment_revision',
+          'task_governance_revision','task_start_recipient_id','created_at',
+        ],
       };
       for (const [table, columns] of Object.entries(expected)) {
         assert.deepEqual(sqlite.prepare('PRAGMA table_info(' + table + ')').all().map(row => row.name), columns);
