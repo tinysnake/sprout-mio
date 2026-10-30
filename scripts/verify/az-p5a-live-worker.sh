@@ -18,8 +18,8 @@ fi
 # live 模式下提供方偶发失败时 run 以 model_error 结束，重跑一次；只有这次尝试自己新建的证据
 # 目录里出现 model_error 才重跑——上一轮的旧错误不算理由。live 不猜模型：
 # SPROUT_VERIFY_PI_MODEL 从环境变量或仓库根 .env 读取，缺失时在准备产物前报错退出。显式选择
-# 的模型不可用/无余额时，换到网关的兜底模型重跑一次，并把这件事说出来。fixture 失败就是
-# 真失败，不重试。
+# 的模型没余额或不存在就报错停下，不换模型——换一个就是替人类选了他没选的提供商。
+# fixture 失败就是真失败，不重试。
 result=0
 live_model=""
 if [ "$SPROUT_VERIFY_CHAT_MODE" = live ]; then
@@ -27,7 +27,6 @@ if [ "$SPROUT_VERIFY_CHAT_MODE" = live ]; then
   sprout_live_model
   live_model="$SPROUT_VERIFY_PI_MODEL"
 fi
-fallback_model="magpie/auto/deepseek-v4.1-flash"
 model_errors() {
   local log="$1"
   if [ -f "$log" ]; then grep -c "errorCode: 'model_error'" "$log" || true; else echo 0; fi
@@ -58,11 +57,8 @@ for scenario in group channel; do
     attempt="$(latest_dir "$scenario")"
     if [ -z "$attempt" ] || [ "$attempt" = "$before" ]; then break; fi
     if no_balance "$attempt"; then
-      if [ "$live_model" = "$fallback_model" ]; then break; fi
-      echo "FALLBACK ${runner} to ${fallback_model}: ${live_model} has no balance"
-      live_model="$fallback_model"
-      export SPROUT_VERIFY_PI_MODEL="$live_model"
-      continue
+      echo "FAIL ${runner}: ${live_model} has no balance; name a funded model in SPROUT_VERIFY_PI_MODEL (environment or .env)"
+      break
     fi
     if [ "$(model_errors "$attempt/service.log")" -gt 0 ] && [ "$attempt_number" -lt 2 ]; then
       echo "RETRY ${runner} after the model provider failed this attempt's turn"
