@@ -310,13 +310,38 @@ pass("host.multi-run-pickup", { queued: queuedBefore.length, picked: picked.leng
 
 // ---------------------------------------------------------------- 8. d19：DM 里的 Agent 发送者仍须是 Project 成员
 const dmB = createDirectChat(project.id, agentB.id, ctx);
+// N04 之后，agent sender 必须带本次 run 的身份。这里只关心发言资格，不启动唤醒，
+// 所以按 fixtures 的既有做法直接写一条活跃 run 行；它的 instance 就是 DM 创建时那个分身。
+const dmBRunId = newId(ID_PREFIXES.run);
+db.insert(agentRun)
+  .values({
+    id: dmBRunId,
+    instanceId: dmB.instance.id,
+    chatId: dmB.chat.id,
+    projectId: project.id,
+    requestId: ctx.requestId,
+    status: "running",
+    startedAt: new Date(),
+    sessionId: dmB.instance.id,
+  })
+  .run();
+const ctxAgentB: ProjectContext = {
+  userId: creatorId,
+  requestId: newId(ID_PREFIXES.request),
+  agent: { agentProfileId: agentB.id, instanceId: dmB.instance.id, runId: dmBRunId },
+};
 assert.equal(
   codeOf(() =>
-    sendMessage(dmB.chat.id, { senderKind: "agent", senderId: agentB.id, body: "发言" }, ctx),
+    sendMessage(dmB.chat.id, { senderKind: "agent", senderId: agentB.id, body: "发言" }, ctxAgentB),
   ),
   "ok",
   "移除前 Agent 可以在自己的 DM 里发言",
 );
+// 移除要求没有活跃 run（d10）：这条发言 run 先结束，后面的拒绝来自它的已结束状态。
+db.update(agentRun)
+  .set({ status: "aborted", settledAt: new Date() })
+  .where(eq(agentRun.id, dmBRunId))
+  .run();
 removeProjectMember(project.id, agentB.id, ctx);
 assert.equal(
   readChatEffectiveMembers(dmB.chat.id, project.id).some(
@@ -348,15 +373,17 @@ assert.equal(
   true,
   "instance 行保留，历史消息与 run 还要引用它",
 );
+// N04 之后「旧 DM 里不再能发言」由已结束 run 的发言资格拒绝（frozen 规则：已结束 run → forbidden）；
+// d19 的 Project 成员判定仍在这条路径上，但这轮能走到它之前就已经被 run 状态拦住。
 assert.equal(
   codeOf(() =>
     sendMessage(
       dmB.chat.id,
       { senderKind: "agent", senderId: agentB.id, body: "移除后还想发言" },
-      ctx,
+      ctxAgentB,
     ),
   ),
-  "not_found",
+  "forbidden",
   "Agent 移出 Project 后，旧 DM 里不再能发言",
 );
 assert.equal(
@@ -364,7 +391,7 @@ assert.equal(
   1,
   "被拒的发言不落消息行",
 );
-pass("d19.dm-agent-membership", { removed: agentB.id, code: "not_found" });
+pass("d19.dm-agent-membership", { removed: agentB.id, code: "forbidden" });
 
 // ---------------------------------------------------------------- 8b. A02：DM 排队入口自己查参与权（不依赖归档）
 // 直接删 `project_member` 行构造「历史 instance 还在、但已不是 Project 成员」的状态：

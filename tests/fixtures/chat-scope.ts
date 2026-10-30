@@ -150,20 +150,20 @@ const agentActor: ChatActor = {
   ctx: ctxAlpha,
 };
 assert.equal(
-  codeOf(() => updateChatTitle(groupMain.id, "分身改的名字", ctxAlpha)),
+  codeOf(() => updateChatTitle(groupMain.id, "分身改的名字", agentActor)),
   "forbidden",
   "A03：Agent 执行身份改标题必须被拒",
 );
 assert.equal(getChat(groupMain.id, ctx).title, "群 A", "被拒的改名不能写标题");
 assert.equal(
-  codeOf(() => clearChatTitle(groupMain.id, ctxAlpha)),
+  codeOf(() => clearChatTitle(groupMain.id, agentActor)),
   "forbidden",
   "A03：Agent 执行身份清标题必须被拒",
 );
 assert.equal(getChat(groupMain.id, ctx).title, "群 A", "被拒的清标题不能清掉标题");
 // 上界：同一个入口对人类不变。
-assert.equal(updateChatTitle(groupMain.id, "人类改的名字", ctx).title, "人类改的名字");
-assert.equal(clearChatTitle(groupMain.id, ctx).title, undefined, "人类清标题回到默认展示");
+assert.equal(updateChatTitle(groupMain.id, "人类改的名字", human).title, "人类改的名字");
+assert.equal(clearChatTitle(groupMain.id, human).title, undefined, "人类清标题回到默认展示");
 pass("a03.agent-title-forbidden", {
   agentUpdate: "forbidden",
   agentClear: "forbidden",
@@ -323,11 +323,8 @@ pass("n04.domain-validates-run", {
 
 // ---------------------------------------------------------------- 4. A04：被移出之后，运行身份读不到那个对话
 const instanceEpsilon = ensureInstance(groupLeaving.id, epsilon.id, ctx);
-const epsilonHistory = sendMessage(
-  groupLeaving.id,
-  { senderKind: "agent", senderId: epsilon.id, body: "移出前的历史汇报" },
-  ctx,
-);
+// N04 之后，agent sender 必须带本次 run 的身份：历史消息也要先有一条真实 run，
+// 先以 running 写入那条历史，再把它结束（历史消息与 run 的引用关系不变）。
 const epsilonRunId = newId(ID_PREFIXES.run);
 db.insert(agentRun)
   .values({
@@ -336,12 +333,21 @@ db.insert(agentRun)
     chatId: groupLeaving.id,
     projectId: projectA.id,
     requestId: ctx.requestId,
-    status: "aborted",
-    settledAt: new Date(),
+    status: "running",
+    startedAt: new Date(),
     sessionId: instanceEpsilon.id,
   })
   .run();
 const ctxEpsilon = agentContext(epsilonRunId, instanceEpsilon.id, epsilon.id);
+const epsilonHistory = sendMessage(
+  groupLeaving.id,
+  { senderKind: "agent", senderId: epsilon.id, body: "移出前的历史汇报" },
+  ctxEpsilon,
+);
+db.update(agentRun)
+  .set({ status: "aborted", settledAt: new Date() })
+  .where(eq(agentRun.id, epsilonRunId))
+  .run();
 assert.equal(getChat(groupLeaving.id, ctxEpsilon).id, groupLeaving.id, "移出前自己的对话可读");
 
 // ---------------------------------------------------------------- 5. d30：项目驱动的成员变化推进受影响群的治理版本

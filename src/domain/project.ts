@@ -3,6 +3,7 @@ import { ID_PREFIXES, newId } from "../contracts/ids";
 import type { CreateProjectInput, Project, UpdateProjectInput } from "../contracts/project";
 import { db, sqlite } from "../db";
 import { diagnosticEvent, project } from "../db/schema";
+import { assertProjectAccess, ProjectAccessError, readRunScope } from "./access";
 import { ensureProjectChannel } from "./channel";
 
 /**
@@ -26,7 +27,7 @@ export type ProjectContext = {
 };
 
 /** 业务服务只登记调用方可以据以行动的失败，其余错误由边界映射为 internal。 */
-export type ProjectErrorCode = "not_found";
+export type ProjectErrorCode = "not_found" | "forbidden";
 
 export class ProjectError extends Error {
   constructor(
@@ -108,7 +109,10 @@ export function updateProject(
   now: Date = new Date(),
 ): Project {
   return sqlite.transaction(() => {
+    // 归属与范围先判（access.assertProjectAccess 是唯一判定点）：跨 Project 一律 not_found，
+    // 再对同一个 Project 里的写入判禁止。Agent 执行身份只能读自己 Project，Project 事实只由 Human 改。
     getProject(id, ctx);
+    if (ctx.agent) throw new ProjectError("forbidden", "Agent 执行身份不能修改 Project");
     const at = new Date(Math.floor(now.getTime() / 1000) * 1000);
     const row = db
       .update(project)
@@ -140,6 +144,13 @@ export function updateProject(
 
 /** 调用者只能列出自己创建的 Project，最新创建的排在前面。 */
 export function listProjects(ctx: ProjectContext): Project[] {
+  // Agent 执行身份的范围只有它 run 所在的 Project：列表也走同一个判定点，
+  // 而不是另写一份 `project.id === run.projectId` 的比较。
+  if (ctx.agent) {
+    const scope = readRunScope(ctx.agent.runId);
+    if (!scope) throw new ProjectAccessError();
+    return [assertProjectAccess(ctx, scope.projectId)];
+  }
   return db
     .select()
     .from(project)
@@ -149,13 +160,7 @@ export function listProjects(ctx: ProjectContext): Project[] {
     .map(toProject);
 }
 
-/** 不存在的 id 与不属于调用者的 id 同样返回 not_found，不泄漏两者的区别。 */
+/** 不存在的 id、不属于调用者的 id 与 Agent 跨 Project 的 id 同样返回 not_found，不泄漏三者的区别。 */
 export function getProject(id: string, ctx: ProjectContext): Project {
-  const row = db
-    .select()
-    .from(project)
-    .where(and(eq(project.id, id), eq(project.createdBy, ctx.userId)))
-    .get();
-  if (!row) throw new ProjectError("not_found", "Project 不存在");
-  return toProject(row);
+  return assertProjectAccess(ctx, id);
 }

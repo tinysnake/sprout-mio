@@ -33,6 +33,7 @@ import {
 } from "../../src/domain/channel";
 import type { ChatActor } from "../../src/domain/chat-actor";
 import { createProject } from "../../src/domain/project";
+import type { ProjectContext } from "../../src/domain/project";
 
 migrateDatabase();
 
@@ -74,6 +75,42 @@ const projectA = createProject({ name: "频道门禁 A" }, ctxA);
 const agentA = createAgentProfile({ name: "Alpha", persona: "", harness: "pi" }, ctxA);
 const agentB = createAgentProfile({ name: "Beta", persona: "", harness: "pi" }, ctxA);
 const outsider = createAgentProfile({ name: "Outsider", persona: "", harness: "pi" }, ctxA);
+
+/**
+ * N04 之后 agent sender 必须带本次 run 的身份。这些用例关心的是发言资格而不是唤醒，
+ * 所以按 fixtures 的既有做法直接写 run 行；instance 已经存在时必须复用，
+ * 否则会撞 `agent_instance_profile_chat_unique`（一个分身在一个对话里只有一行）。
+ */
+function seedRun(instanceId: string, chatId: string): string {
+  const runId = newId(ID_PREFIXES.run);
+  db.insert(agentRun)
+    .values({
+      id: runId,
+      instanceId,
+      chatId,
+      projectId: projectA.id,
+      requestId: ctxA.requestId,
+      status: "running",
+      startedAt: new Date(),
+      sessionId: instanceId,
+    })
+    .run();
+  return runId;
+}
+function seedInstance(chatId: string, agentProfileId: string): string {
+  const instanceId = newId(ID_PREFIXES.instance);
+  db.insert(agentInstance)
+    .values({ id: instanceId, agentProfileId, chatId, projectId: projectA.id })
+    .run();
+  return instanceId;
+}
+function agentContext(runId: string, instanceId: string, agentProfileId: string): ProjectContext {
+  return {
+    userId: creatorA,
+    requestId: newId(ID_PREFIXES.request),
+    agent: { agentProfileId, instanceId, runId },
+  };
+}
 
 // ---------------------------------------------------------------- 1. Project 出生即带唯一频道
 const channelId = ensureProjectChannel(projectA.id);
@@ -191,11 +228,8 @@ pass("channel.members-follow-project", {
 
 // ---------------------------------------------------------------- 3. Project 级移除 → 频道成员同步消失，历史仍可读
 const instanceA = ensureInstance(channelId, agentA.id, ctxA);
-const agentMessage = sendMessage(
-  channelId,
-  { senderKind: "agent", senderId: agentA.id, body: "频道里的历史汇报" },
-  ctxA,
-);
+// 历史消息也要带真实 run 身份（N04）：先开一条 running run，写完历史再把它结束，
+// 这样 `listAgentRuns` 仍只看到那条历史 run（runId）。
 const runId = newId(ID_PREFIXES.run);
 db.insert(agentRun)
   .values({
@@ -204,10 +238,20 @@ db.insert(agentRun)
     chatId: channelId,
     projectId: projectA.id,
     requestId: ctxA.requestId,
-    status: "aborted",
-    settledAt: new Date(),
+    status: "running",
+    startedAt: new Date(),
     sessionId: instanceA.id,
   })
+  .run();
+const ctxAgentA = agentContext(runId, instanceA.id, agentA.id);
+const agentMessage = sendMessage(
+  channelId,
+  { senderKind: "agent", senderId: agentA.id, body: "频道里的历史汇报" },
+  ctxAgentA,
+);
+db.update(agentRun)
+  .set({ status: "aborted", settledAt: new Date() })
+  .where(eq(agentRun.id, runId))
   .run();
 removeProjectMember(projectA.id, agentA.id, ctxA);
 assert.deepEqual(
@@ -239,7 +283,7 @@ assert.equal(
     sendMessage(
       channelId,
       { senderKind: "agent", senderId: agentA.id, body: "移出后还想发言" },
-      ctxA,
+      ctxAgentA,
     ),
   ),
   "not_found",
@@ -360,27 +404,50 @@ pass("channel.cross-project-isolation", {
 
 // ---------------------------------------------------------------- 6. 频道发言权限与 DM 一致
 const dm = createDirectChat(projectA.id, agentB.id, ctxA);
+// 两条路径都要求先拿到 instance（DM 在创建时就有了，频道靠首次参与建立），
+// 参与权判定一致由 `chat_effective_member` 提供；发言身份来自这次 run（N04）。
+const dmRunId = seedRun(dm.instance.id, dm.chat.id);
 assert.equal(
   codeOf(() =>
-    sendMessage(dm.chat.id, { senderKind: "agent", senderId: agentB.id, body: "DM 发言" }, ctxA),
+    sendMessage(
+      dm.chat.id,
+      { senderKind: "agent", senderId: agentB.id, body: "DM 发言" },
+      agentContext(dmRunId, dm.instance.id, agentB.id),
+    ),
   ),
   "ok",
 );
-// 两条路径都要求先拿到 instance（DM 在创建时就有了，频道靠首次参与建立），
-// 参与权判定一致由 `chat_effective_member` 提供。
-ensureInstance(channelId, agentB.id, ctxA);
+const instanceB = ensureInstance(channelId, agentB.id, ctxA);
+const channelRunB = seedRun(instanceB.id, channelId);
 assert.equal(
   codeOf(() =>
-    sendMessage(channelId, { senderKind: "agent", senderId: agentB.id, body: "频道发言" }, ctxA),
+    sendMessage(
+      channelId,
+      { senderKind: "agent", senderId: agentB.id, body: "频道发言" },
+      agentContext(channelRunB, instanceB.id, agentB.id),
+    ),
   ),
   "ok",
   "当前成员在频道里可以发言",
 );
+// 非成员也有自己的 run：拒绝来自参与权（`chat_effective_member`），不是因为「没有身份」。
+const outsiderDmInstance = seedInstance(dm.chat.id, outsider.id);
+const outsiderDmRun = seedRun(outsiderDmInstance, dm.chat.id);
+const outsiderChannelInstance = seedInstance(channelId, outsider.id);
+const outsiderChannelRun = seedRun(outsiderChannelInstance, channelId);
 const outsiderInDm = codeOf(() =>
-  sendMessage(dm.chat.id, { senderKind: "agent", senderId: outsider.id, body: "非成员" }, ctxA),
+  sendMessage(
+    dm.chat.id,
+    { senderKind: "agent", senderId: outsider.id, body: "非成员" },
+    agentContext(outsiderDmRun, outsiderDmInstance, outsider.id),
+  ),
 );
 const outsiderInChannel = codeOf(() =>
-  sendMessage(channelId, { senderKind: "agent", senderId: outsider.id, body: "非成员" }, ctxA),
+  sendMessage(
+    channelId,
+    { senderKind: "agent", senderId: outsider.id, body: "非成员" },
+    agentContext(outsiderChannelRun, outsiderChannelInstance, outsider.id),
+  ),
 );
 assert.equal(outsiderInDm, "not_found");
 assert.equal(outsiderInChannel, outsiderInDm, "同一个非成员在 DM 与频道得到同一个判定");

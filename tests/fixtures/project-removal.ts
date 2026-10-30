@@ -32,6 +32,7 @@ import {
 import { ensureProjectChannel } from "../../src/domain/channel";
 import type { ChatActor } from "../../src/domain/chat-actor";
 import { createProject } from "../../src/domain/project";
+import type { ProjectContext } from "../../src/domain/project";
 
 migrateDatabase();
 
@@ -231,21 +232,56 @@ pass("active-run.blocked", {
 const leavingGroupInstance = ensureInstance(sharedGroup.id, agentLeaving.id, ctx);
 const leavingDm = createDirectChat(project.id, agentLeaving.id, ctx);
 const leavingChannelInstance = ensureInstance(channelId, agentLeaving.id, ctx);
+// N04 之后 agent sender 必须带本次 run 的身份：三条历史消息各自开一条真实 run，
+// 写完就结束它（移除要求没有活跃 run，d10）。run 身份与消息归属因此可以逐条核对。
+function seedHistoryRun(instanceId: string, chatId: string) {
+  const runId = newId(ID_PREFIXES.run);
+  db.insert(agentRun)
+    .values({
+      id: runId,
+      instanceId,
+      chatId,
+      projectId: project.id,
+      requestId: ctx.requestId,
+      status: "running",
+      startedAt: new Date(),
+      sessionId: instanceId,
+    })
+    .run();
+  const agentCtx: ProjectContext = {
+    userId: creatorId,
+    requestId: newId(ID_PREFIXES.request),
+    agent: { agentProfileId: agentLeaving.id, instanceId, runId },
+  };
+  return { runId, agentCtx };
+}
+function settleHistoryRun(runId: string) {
+  db.update(agentRun)
+    .set({ status: "aborted", settledAt: new Date() })
+    .where(eq(agentRun.id, runId))
+    .run();
+}
+const groupHistory = seedHistoryRun(leavingGroupInstance.id, sharedGroup.id);
 const groupAgentMessage = sendMessage(
   sharedGroup.id,
   { senderKind: "agent", senderId: agentLeaving.id, body: "群里的历史汇报" },
-  ctx,
+  groupHistory.agentCtx,
 );
+settleHistoryRun(groupHistory.runId);
+const channelHistory = seedHistoryRun(leavingChannelInstance.id, channelId);
 const channelAgentMessage = sendMessage(
   channelId,
   { senderKind: "agent", senderId: agentLeaving.id, body: "频道里的历史汇报" },
-  ctx,
+  channelHistory.agentCtx,
 );
+settleHistoryRun(channelHistory.runId);
+const dmHistory = seedHistoryRun(leavingDm.instance.id, leavingDm.chat.id);
 const dmAgentMessage = sendMessage(
   leavingDm.chat.id,
   { senderKind: "agent", senderId: agentLeaving.id, body: "DM 里的历史汇报" },
-  ctx,
+  dmHistory.agentCtx,
 );
+settleHistoryRun(dmHistory.runId);
 
 const humanInGroup = sendMessage(
   sharedGroup.id,
@@ -427,7 +463,8 @@ assert.deepEqual(
   listAgentRuns(sharedGroup.id, ctx)
     .filter((run) => run.instanceId === leavingGroupInstance.id)
     .map((run) => run.id),
-  [settledRunId, deliveredRunId],
+  // N04 之后三条历史消息也要有 run：群里的那条排在最前（queued_at, rowid 升序）。
+  [groupHistory.runId, settledRunId, deliveredRunId],
   "移除后它的历史 run 仍可读",
 );
 assert.deepEqual(
@@ -440,30 +477,32 @@ assert.equal(
   "not_found",
   "移除后拿不到新 instance",
 );
+// 三个对话的发言都用真实的 run 身份（N04）：群与频道的参与权已收回（not_found），
+// DM 的成员行保留，拒绝来自已结束 run 的发言资格（forbidden，冻结的错误码规则）。
 const deniedSpeech = [
   codeOf(() =>
     sendMessage(
       sharedGroup.id,
       { senderKind: "agent", senderId: agentLeaving.id, body: "群里还想发言" },
-      ctx,
+      groupHistory.agentCtx,
     ),
   ),
   codeOf(() =>
     sendMessage(
       channelId,
       { senderKind: "agent", senderId: agentLeaving.id, body: "频道里还想发言" },
-      ctx,
+      channelHistory.agentCtx,
     ),
   ),
   codeOf(() =>
     sendMessage(
       leavingDm.chat.id,
       { senderKind: "agent", senderId: agentLeaving.id, body: "DM 里还想发言" },
-      ctx,
+      dmHistory.agentCtx,
     ),
   ),
 ];
-assert.deepEqual(deniedSpeech, ["not_found", "not_found", "not_found"], "三个对话的发言一律被拒");
+assert.deepEqual(deniedSpeech, ["not_found", "not_found", "forbidden"], "三个对话的发言一律被拒");
 assert.equal(
   db
     .select()
@@ -475,7 +514,7 @@ assert.equal(
 );
 pass("history.readable.speech.denied", {
   messages: 3,
-  runs: 2,
+  runs: 3,
   cancelledInput: "readable",
   denied: deniedSpeech,
 });

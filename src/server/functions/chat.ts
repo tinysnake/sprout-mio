@@ -225,7 +225,10 @@ export async function updateChatTitleBoundary(
   return chatBoundary<Chat>(headers, requestId, (deps, context) => {
     const parsed = updateChatTitleInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.updateChatTitle(parsed.data.chatId, parsed.data.title, context), requestId);
+    return ok(
+      deps.updateChatTitle(parsed.data.chatId, parsed.data.title, humanActor(context)),
+      requestId,
+    );
   });
 }
 
@@ -238,7 +241,7 @@ export async function clearChatTitleBoundary(
   return chatBoundary<Chat>(headers, requestId, (deps, context) => {
     const parsed = clearChatTitleInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.clearChatTitle(parsed.data.chatId, context), requestId);
+    return ok(deps.clearChatTitle(parsed.data.chatId, humanActor(context)), requestId);
   });
 }
 
