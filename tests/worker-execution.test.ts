@@ -223,10 +223,15 @@ test("日志帧增量上行：跨流共享单调序、原始字节位点单调�
   expect(leftover.trim()).toBe("");
 });
 
+// 运行上限只有在 runner 落盘 childPid 之后才能打到命令组；在此之前取消按设计落在
+// 未确认态（`src/worker/remote.ts:556-565`）。这个宽度必须容得下 runner 自己启动，
+// 否则满载机器上测到的是 node 启动耗时，不是「先 TERM 后 KILL」的语义。
+const DEADLINE_WINDOW_MS = 5000;
+
 test("运行上限到期先 TERM 后 KILL：信号只打命令组，runner 落盘后终态是已知限时", async () => {
   const directory = await mkdtemp(join(tmpdir(), "p4c-runtime-"));
   const f = await fixture(directory);
-  const runtimeDeadlineAt = new Date(Date.now() + 400).toISOString();
+  const runtimeDeadlineAt = new Date(Date.now() + DEADLINE_WINDOW_MS).toISOString();
   // 忽略 TERM：只有宽限后的 KILL 才能停下它。
   const command = f.command(
     {
@@ -235,11 +240,11 @@ test("运行上限到期先 TERM 后 KILL：信号只打命令组，runner 落�
       cwd: directory,
       waitMs: 10000,
     },
-    { runtimeDeadlineAt, maxRuntimeMs: 400 },
+    { runtimeDeadlineAt, maxRuntimeMs: DEADLINE_WINDOW_MS },
   );
   const startedAt = Date.now();
   f.apply(1, f.output([command]));
-  const report = await terminalOf(f.dispatcher, command.executionId);
+  const report = await terminalOf(f.dispatcher, command.executionId, 3000);
   const elapsed = Date.now() - startedAt;
   // TERM 被忽略，进程只在 2000ms 宽限后的 KILL 才死：耗时必须超过宽限，说明确实先 TERM 后 KILL。
   expect(elapsed).toBeGreaterThanOrEqual(2300);
@@ -285,14 +290,14 @@ test("runner 缺席（命令杀掉自己的观察者）时不猜：终态停在�
 test("运行上限到期时命令在宽限内自行退出：runner result 落盘，终态是限时", async () => {
   const directory = await mkdtemp(join(tmpdir(), "p4c-runtime-durable-"));
   const f = await fixture(directory);
-  const runtimeDeadlineAt = new Date(Date.now() + 400).toISOString();
+  const runtimeDeadlineAt = new Date(Date.now() + DEADLINE_WINDOW_MS).toISOString();
   // 尊重 TERM：宽限内退出，runner 能写下 result.json。这才是已知的「限时」终态。
   const command = f.command(
     { kind: "shell", command: "sleep 20", cwd: directory, waitMs: 10000 },
-    { runtimeDeadlineAt, maxRuntimeMs: 400 },
+    { runtimeDeadlineAt, maxRuntimeMs: DEADLINE_WINDOW_MS },
   );
   f.apply(1, f.output([command]));
-  const report = await terminalOf(f.dispatcher, command.executionId);
+  const report = await terminalOf(f.dispatcher, command.executionId, 1500);
   expect(report.outcome).toBe("timed_out");
   expect("failureReason" in report.payload && report.payload.failureReason).toBe("deadline");
   expect(report.payload.kind === "shell" && "partial" in report.payload).toBe(true);
@@ -503,8 +508,8 @@ test("运行上限到期终止执行时仍报超时，不把取消的标志借�
   const command = f.command(
     { kind: "shell", command: "exec sleep 30", cwd: directory, waitMs: 10000 },
     {
-      runtimeDeadlineAt: new Date(Date.now() + 1000).toISOString(),
-      maxRuntimeMs: 1000,
+      runtimeDeadlineAt: new Date(Date.now() + DEADLINE_WINDOW_MS).toISOString(),
+      maxRuntimeMs: DEADLINE_WINDOW_MS,
     },
   );
   f.apply(1, f.output([command]));
