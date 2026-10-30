@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -134,22 +134,9 @@ async function produce(args, environment, logPath) {
     try {
       process.kill(-child.pid, signal);
     } catch (error) {
-      if (error.code === "ESRCH") return;
-      if (error.code === "EPERM") {
-        const snapshot = spawnSync("ps", ["-axo", "pgid=,stat="], {
-          encoding: "utf8",
-          timeout: 1000,
-          detached: true,
-        });
-        if (
-          snapshot.status === 0 &&
-          !snapshot.stdout.split("\n").some((line) => {
-            const [group, state] = line.trim().split(/\s+/);
-            return Number(group) === child.pid && state && !state.startsWith("Z");
-          })
-        )
-          return;
-      }
+      // 生产者自己就是组长：组还在就是我们的组，信号到得了。EPERM 只可能是组号已被回收
+      // 给别人，那就没有我们的东西可停了，再打第二次就是打别人的进程组。
+      if (error.code === "ESRCH" || error.code === "EPERM") return;
       throw error;
     }
   };

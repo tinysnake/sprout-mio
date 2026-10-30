@@ -22,7 +22,7 @@ function fixture() {
     fake,
     `
 import { spawn } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, writeFileSync } from 'node:fs';
 const cells = process.env.SPROUT_MATRIX_CELLS.split(',');
 const fault = cells[0].split('__')[0];
 writeFileSync(fault + '.started', 'started');
@@ -37,7 +37,8 @@ function finish(code) {
 }
 process.on('SIGTERM', () => finish(143));
 process.on('SIGINT', () => finish(130));
-writeFileSync(fault + '.pids', JSON.stringify([process.pid, descendant.pid]));
+writeFileSync(fault + '.pids.tmp', JSON.stringify([process.pid, descendant.pid]));
+renameSync(fault + '.pids.tmp', fault + '.pids');
 const deadline = Date.now() + 8000;
 const timer = setInterval(() => {
   if (Date.now() > deadline) { clearInterval(timer); finish(124); return; }
