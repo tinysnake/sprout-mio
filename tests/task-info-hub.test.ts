@@ -153,7 +153,9 @@ describe("Task Info Hub real SQLite aggregates", () => {
     ).detail;
     // Equal timestamps exercise the documented id tie-break independently of insertion order.
     sqlite
-      .prepare("UPDATE task SET updated_at=created_at+1000 WHERE project_id=?")
+      .prepare(
+        "UPDATE task SET updated_at=created_at+1000, revision=revision+1 WHERE project_id=?",
+      )
       .run(f.project.id);
     const hub = projectInfoHubSchema.parse(f.hub());
     expect(hub.tasks.counts).toEqual({ proposed: 1, assigned: 3, finished: 1, canceled: 1 });
