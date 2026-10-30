@@ -313,11 +313,17 @@ try {
   await until(() => runsOf(main.chatId).find(row => row.id === slowRun.id)?.status === 'completed', 'held run completed after release', 30000)
   const settledTurn = await callOk('getTurnStartContextFn', { chatId: main.chatId })
   const settledInfo = await callOk('getChatInfoFn', { chatId: main.chatId })
-  assert.equal(settledTurn.activeRun, null)
+  // 松手后未投递的输入按 I-P5a 的 late-input 生命周期交给下一轮：活跃 run 不再是 null，
+  // 而是新开的那条 queued run，且仍带着那条未投递输入。
+  assert.ok(settledTurn.activeRun, 'carried run becomes the next active run')
+  assert.notEqual(settledTurn.activeRun.runId, slowRun.id, 'carry opens a new run, not the settled one')
+  assert.equal(settledTurn.activeRun.status, 'queued')
+  assert.equal(settledTurn.activeRun.pendingInputs, 1, 'the settled turn handed its pending input to the next run')
   assert.equal(settledTurn.workspace.basis, 'project_checkout')
   assert.equal(settledTurn.workspace.commit, bareHead, 'settled turn workspace comes from the ready checkout')
   assert.equal(settledTurn.injectedIntoPrompt, false)
-  assert.equal(settledInfo.runs.active.length, 0)
+  assert.equal(settledInfo.runs.active.length, 1)
+  assert.equal(settledInfo.runs.active[0].runId, settledTurn.activeRun.runId, 'both views name the same carried run')
   assert.equal(settledInfo.runs.recent.length, 2, 'both completed runs appear in the chat view')
   for (const run of settledInfo.runs.recent) {
     assert.equal(run.status, 'completed')
