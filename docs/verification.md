@@ -45,15 +45,15 @@ Actions 触发于 push、pull request 或 workflow_dispatch，取消同分支旧
 
 ## 验证中的模型调用
 
-`pnpm verify` 默认使用 `SPROUT_VERIFY_CHAT_MODE=model-fixture`。`a-base` 的 Pi CLI 状态探针与 `z-lease-integration` 的 Chat 场景都复用本地 SSE 模型 fixture。前者仍启动真实已安装 Pi CLI、加载 `dist/extension/main.js` 并断言一次成功的 `sprout_status` 完成事件；后者仍经过真实 Chat、`scripts/pi-host-runner.mjs`、Pi SDK、remote tools、HTTP、SQLite 和 Worker，保留原有 14 项验收条件，包括实际 shell PID/文件、授权拒绝、代次 fencing 和强制收据刷新。
+`pnpm verify` 默认使用 `SPROUT_VERIFY_CHAT_MODE=model-fixture`。`a-base` 的 Pi CLI 状态探针、`z-lease-integration` 的 Chat 场景和 `az-p5a-live-worker` 的 group/channel 场景都复用本地 SSE 模型 fixture。前者仍启动真实已安装 Pi CLI、加载 `dist/extension/main.js` 并断言一次成功的 `sprout_status` 完成事件；`z` 仍经过真实 Chat、`scripts/pi-host-runner.mjs`、Pi SDK、remote tools、HTTP、SQLite 和 Worker，保留原有 14 项验收条件，包括实际 shell PID/文件、授权拒绝、代次 fencing 和强制收据刷新。`az-p5a-live-worker` 同样经过真实 Chat、Pi SDK、真实 Worker、remote lease/shell 工具、HTTP 和 SQLite，两个场景分别证明 group fanout 与 public channel mention 的唤醒、同一 Agent 串行输入以及实际 shell 标记由 Worker 返回；fixture 只替换模型端点和计划，不替换这些链路。
 
-fixture 从 `PI_CODING_AGENT_DIR` 或默认 `~/.pi/agent` 发现已安装 SDK，仅在临时私有 agent 目录链接 SDK 可执行文件，并写入自己的 models.json、空 auth/settings 和 dummy key。模型目录只配置 loopback endpoint；operator、non-holder 和 CLI status 使用各自固定模型，reasoning=false、thinking=off。不会复制用户凭据、设置或扩展，也不替换 runner、SDK 事件或工具结果。CLI 使用 `--offline` 禁用启动联网。fixture 缺失、SDK 不可用或计划不符均失败，不转入 live；fixture 模式不读取 `SPROUT_VERIFY_PI_MODEL`，z 同时拒绝自定义 `SPROUT_PI_RUNNER`。
+fixture 从 `PI_CODING_AGENT_DIR` 或默认 `~/.pi/agent` 发现已安装 SDK，仅在临时私有 agent 目录链接 SDK 可执行文件，并写入自己的 models.json、空 auth/settings 和 dummy key。模型目录只配置 loopback endpoint；operator、non-holder 和 CLI status 使用各自固定模型，reasoning=false、thinking=off。不会复制用户凭据、设置或扩展，也不替换 runner、SDK 事件或工具结果。CLI 使用 `--offline` 禁用启动联网。fixture 缺失、SDK 不可用或计划不符均失败，不转入 live；fixture 模式不读取 `SPROUT_VERIFY_PI_MODEL`，z 与 az-p5a-live-worker 同时拒绝自定义 `SPROUT_PI_RUNNER`。
 
 每个场景有独立的有序工具计划。首次 toolCall 前必须验证本轮最新 user message：直接 Chat 请求逐字匹配预期；UI 租约请求验证固定消息格式以及 driver 指定的 action、Machine、generation 和 target，再将 UI 产生的 requestId 绑定到该次工具调用，原有收据检查继续核对该 requestId。历史消息不能满足新轮次。endpoint 核对注册工具 schema、固定参数和当前 call ID 的实际结果后才推进。它只发送 assistant toolCalls 与最终文本，不生成 toolResult、数据库事实或 shell 副作用。未使用步骤、错误模型、异常请求或结果顺序使验证失败。
 
-显式执行真实 provider 验证：`SPROUT_VERIFY_CHAT_MODE=live pnpm verify --only z-lease-integration`；CLI 探针可用 `--only a-base`。live 沿用真实模型选择和凭据，支持 `SPROUT_VERIFY_PI_MODEL=provider/model`。空值和未知 mode 在脚本准备产物前拒绝。fixture 通过证明真实工具与生命周期链路，不证明真实 provider 的认证、可达性或模型遵循指令的能力；这些能力应单独以 live 验证。
+显式执行真实 provider 验证：`SPROUT_VERIFY_CHAT_MODE=live pnpm verify --only z-lease-integration`；`az-p5a-live-worker` 用 `SPROUT_VERIFY_CHAT_MODE=live pnpm verify --only az-p5a-live-worker`，也可以直接运行 `SPROUT_VERIFY_CHAT_MODE=live bash scripts/verify/az-p5a-live-worker.sh`；CLI 探针可用 `--only a-base`。live 沿用真实凭据，但不猜模型：`SPROUT_VERIFY_PI_MODEL=provider/model` 从环境变量或仓库根 `.env` 读取（`scripts/verify/lib/live-model.sh` 的 `sprout_live_model`），两处都没有时脚本在准备产物前报错退出并说明如何配置，不存在内置默认值。空值和未知 mode 同样在准备产物前拒绝。fixture 通过证明真实工具与生命周期链路，不证明真实 provider 的认证、可达性或模型遵循指令的能力；这些能力应单独以 live 验证。`az-p5a-live-worker` 的 live 模式保留提供方偶发失败的一次重试；显式选择的模型不存在或没余额时报错停下，不换模型。fixture 模式不重试，失败即失败。
 
-stdout 和 `a-base/model-mode.json`、`p4b-integration/evidence/run-*/model-mode.json` 标明实际 mode、provider/model、thinking、请求数、完成计划和未使用步骤；live 中未跟踪的请求/计划数记为 null。导出的元数据不包含私有 prompt、session 或凭据。零付费模型调用的依据是私有模型目录、loopback endpoint 和所有调用方的模型固定配置，并非整台宿主的网络抓包结论。完整 runner 已令其他应用脚本的 `SPROUT_PI_ENABLED=false`，`n-pi-session` 使用明确的协议 stub；单独运行其他脚本时仍需另行判断其模型开关。fixture 需要本机已安装的 Pi SDK，不消除这一前提。
+stdout 和 `a-base/model-mode.json`、`p4b-integration/evidence/run-*/model-mode.json`、`.verify/p5a-live-*/model-mode.json` 标明实际 mode、provider/model、thinking、请求数、完成计划和未使用步骤；live 中未跟踪的请求/计划数记为 null。导出的元数据不包含私有 prompt、session 或凭据。零付费模型调用的依据是私有模型目录、loopback endpoint 和所有调用方的模型固定配置，并非整台宿主的网络抓包结论。完整 runner 已令其他应用脚本的 `SPROUT_PI_ENABLED=false`，`n-pi-session` 使用明确的协议 stub；单独运行其他脚本时仍需另行判断其模型开关。fixture 需要本机已安装的 Pi SDK，不消除这一前提。
 
 ## 当前 run 的构建准备
 
@@ -78,7 +78,7 @@ server 准备固定使用 `NODE_ENV=production` 并删除 `BETTER_AUTH_SECRET`�
 
 worker 按验证计划执行，不因“保险起见”自行追加全量验证。发现计划外风险时，记录具体风险和调整依据，再更新验证计划。报告区分计划执行、实际执行、通过、失败与跳过。
 
-coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范围。worker 自报通过是证据，不代替 coordinator 验证。文档单元复跑文档检查，代码单元复跑受影响领域检查；独立复跑不等于全量复跑。复跑前核对脚本内含的检查，去掉本轮执行计划中的重复项；保留重复项时写明新增风险或独立取证的理由。
+coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范围。worker 自报通过是证据，不代替 coordinator 验证。文档单元复跑文档检查，代码单元复跑受影响领域检查；独立复跑不等于全量复跑。复跑前核对脚本内含的检查，去掉本轮执行计划中的重复项；保留重复项时写明新增风险或独立取证的理由。完整 `bash scripts/verify.sh` 约七分钟且占用全部配额，它属于阶段集成与交付前的整段复核：同一 HEAD 已有一轮 0 失败就复用那份结果并记下来源，不因为「顺手再跑一遍」重跑第二遍。
 
 完整验证安排在明确的集成批次或交付节点，不在每个中间单元重复执行。独立验收的范围覆盖该节点的交付要求，不能因为单元定向验证通过而省略。在集成分支上，先把它与 `main` 同步、解决冲突，再在同步后的头部跑完整验证与独立验收，并把该 commit 记成受验对象；之后 `main` 只接收这个受验形态。
 

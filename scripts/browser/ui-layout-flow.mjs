@@ -334,12 +334,16 @@ try {
       const database = new DatabaseSync(process.env.DATABASE_URL);
       try {
         database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN");
-        assert.equal(
+        // Project 出生即带唯一的公共频道（I-P5a 频道单元）：删 Project 之前先删它的频道行，
+        // 否则 chat.project_id 的外键会挡住 teardown。
+        assert.deepEqual(
           database
-            .prepare("SELECT count(*) AS count FROM chat WHERE project_id = ?")
-            .get(owned[0].id).count,
-          0,
+            .prepare("SELECT kind FROM chat WHERE project_id = ?")
+            .all(owned[0].id)
+            .map((row) => row.kind),
+          ["public_channel"],
         );
+        database.prepare("DELETE FROM chat WHERE project_id = ?").run(owned[0].id);
         database.prepare("DELETE FROM project_member WHERE project_id = ?").run(owned[0].id);
         database.prepare("DELETE FROM project_profile WHERE project_id = ?").run(owned[0].id);
         database.prepare("DELETE FROM diagnostic_event WHERE project_id = ?").run(owned[0].id);
@@ -370,6 +374,17 @@ try {
       const fresh = await call(zeroContext, "listProjectsFn");
       assert.equal(fresh.length, 1);
       assert.equal(fresh[0].name, "零 Project 入口恢复");
+      // 新 Project 也自带频道，空列表状态只能靠删掉频道行构造；本检查守的是空列表布局本身。
+      const freshDatabase = new DatabaseSync(process.env.DATABASE_URL);
+      try {
+        freshDatabase.exec("PRAGMA busy_timeout = 5000");
+        freshDatabase
+          .prepare("DELETE FROM chat WHERE project_id = ? AND kind = 'public_channel'")
+          .run(fresh[0].id);
+      } finally {
+        freshDatabase.close();
+      }
+      await zeroPage.reload({ waitUntil: "networkidle" });
       await zeroPage.setViewportSize({ width: 390, height: 844 });
       await zeroPage
         .locator('[data-testid="chat-workspace"][data-layout="split"]')

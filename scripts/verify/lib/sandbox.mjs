@@ -157,7 +157,8 @@ function descendants(marker) {
       try {
         process.kill(row.pid, signal);
       } catch (error) {
-        if (error.code !== "ESRCH") throw error;
+        // 行是刚扫出来的，ESRCH 是它已退出，EPERM 是它已被回收。
+        if (error.code !== "ESRCH" && error.code !== "EPERM") throw error;
       }
     }
   }

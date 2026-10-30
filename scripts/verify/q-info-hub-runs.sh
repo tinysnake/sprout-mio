@@ -7,12 +7,15 @@ node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import net from 'node:net'
 
 const directory = resolve('.verify/q-info-hub-runs')
+// 以前有验收轮在这里留下指向别处的符号链接：证据和协议桩都会被写到不受本门禁控制的目录。
+if (existsSync(directory) && lstatSync(directory).isSymbolicLink()) rmSync(directory, { force: true })
+mkdirSync(directory, { recursive: true })
 const databaseUrl = join(directory, 'info-hub-runs.sqlite')
 const repoRoot = join(directory, 'repos')
 const remotes = join(directory, 'remotes')
@@ -172,8 +175,8 @@ const line=x=>process.stdout.write(JSON.stringify(x)+'\\n');
 input.on('line',raw=>{const x=JSON.parse(raw);
 if(x.type==='open') {const file=x.sessionFile??joinPath(x.sessionDirectory,x.sessionId+'.jsonl');
 if(!existsSync(file))writeFileSync(file,JSON.stringify({id:x.sessionId})+'\\n');
-const slash=x.profile.model.indexOf('/');
-line({type:'ready',id:x.id,snapshot:{provider:x.profile.model.slice(0,slash),model:x.profile.model.slice(slash+1),thinking:x.profile.effort??'off',tools:['bash','edit','read','write'],extensions:['sprout-extension'],sessionId:x.sessionId,sessionFile:file,cwd:x.cwd,sdkVersion:'protocol-stub',profile:x.profile}});
+const model=x.profile.model??'protocol/unknown';const slash=model.indexOf('/');
+line({type:'ready',id:x.id,snapshot:{provider:model.slice(0,slash),model:model.slice(slash+1),thinking:x.profile.effort??'off',tools:['bash','edit','read','write'],extensions:['sprout-extension'],sessionId:x.sessionId,sessionFile:file,cwd:x.cwd,sdkVersion:'protocol-stub',profile:x.profile}});
 } else if(x.type==='prompt') {line({type:'input_delivered',id:x.id,messageId:x.messageId});
 if(x.text.includes('SLOW_HOLD'))waitHold(()=>line({type:'settled',id:x.id,text:'SLOW_DONE',stopReason:'stop'}));
 else line({type:'settled',id:x.id,text:'PROTOCOL_STUB_REPLY',stopReason:'stop'});
@@ -286,6 +289,13 @@ try {
       // 历史 run 只保留聚合计数，不再逐条罗列每次开始与结束时间。
       const recentSummary = page.locator('[data-testid="info-hub-project-runs-recent"]')
       assert.match(await recentSummary.textContent(), /最近 \d+ 个 run：.*已完成 \d+/)
+      // 人类要求完成在前、失败在后，并用颜色区分两类结果。
+      const summaryText = await recentSummary.textContent()
+      if (summaryText.includes('失败')) {
+        assert.ok(summaryText.indexOf('已完成') < summaryText.indexOf('失败'), 'completed counts come before failed counts')
+        assert.match(await page.locator('[data-testid="info-hub-project-runs-recent-completed"]').getAttribute('class'), /text-status-success/)
+        assert.match(await page.locator('[data-testid="info-hub-project-runs-recent-failed"]').getAttribute('class'), /text-destructive/)
+      }
       assert.ok(Number(await recentSummary.getAttribute('data-run-count')) >= 1, 'project view keeps the recent run aggregate')
       assert.equal(await page.locator('[data-testid="info-hub-project-runs-recent-item"]').count(), 0, 'per-run history rows are gone')
       const repoBasis = page.locator('[data-testid="info-hub-project-runs-recent-repo"]')
@@ -313,11 +323,17 @@ try {
   await until(() => runsOf(main.chatId).find(row => row.id === slowRun.id)?.status === 'completed', 'held run completed after release', 30000)
   const settledTurn = await callOk('getTurnStartContextFn', { chatId: main.chatId })
   const settledInfo = await callOk('getChatInfoFn', { chatId: main.chatId })
-  assert.equal(settledTurn.activeRun, null)
+  // 松手后未投递的输入按 I-P5a 的 late-input 生命周期交给下一轮：活跃 run 不再是 null，
+  // 而是新开的那条 queued run，且仍带着那条未投递输入。
+  assert.ok(settledTurn.activeRun, 'carried run becomes the next active run')
+  assert.notEqual(settledTurn.activeRun.runId, slowRun.id, 'carry opens a new run, not the settled one')
+  assert.equal(settledTurn.activeRun.status, 'queued')
+  assert.equal(settledTurn.activeRun.pendingInputs, 1, 'the settled turn handed its pending input to the next run')
   assert.equal(settledTurn.workspace.basis, 'project_checkout')
   assert.equal(settledTurn.workspace.commit, bareHead, 'settled turn workspace comes from the ready checkout')
   assert.equal(settledTurn.injectedIntoPrompt, false)
-  assert.equal(settledInfo.runs.active.length, 0)
+  assert.equal(settledInfo.runs.active.length, 1)
+  assert.equal(settledInfo.runs.active[0].runId, settledTurn.activeRun.runId, 'both views name the same carried run')
   assert.equal(settledInfo.runs.recent.length, 2, 'both completed runs appear in the chat view')
   for (const run of settledInfo.runs.recent) {
     assert.equal(run.status, 'completed')

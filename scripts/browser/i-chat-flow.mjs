@@ -47,7 +47,7 @@ async function shot(page, name) {
 /** 身份事实只在 Info Hub 里展示：打开 `?info=1` 后从 inspector 读取。 */
 async function openChatInspector(page, chatPath) {
   await page.goto(`${BASE}${chatPath}?info=1`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="inspector-chat-id"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="inspector-copy-chat-id"]', { timeout: 20000 });
 }
 
 function finish() {
@@ -71,7 +71,9 @@ async function verifyRestartedSession() {
   await check("restart_chat_renders_same_instance", async () => {
     await openChatInspector(page, state.chatPath);
     const actual = await page.evaluate(() => ({
-      chatId: document.querySelector('[data-testid="inspector-chat-id"]')?.textContent,
+      chatId: document
+        .querySelector('[data-testid="inspector-copy-chat-id"]')
+        ?.getAttribute("data-chat-id"),
       instanceId: document.querySelector('[data-testid="inspector-instance-id"]')?.textContent,
       persona: document.querySelector('[data-testid="inspector-agent-persona"]')?.textContent,
       agentName: document.querySelector('[data-testid="inspector-agent-name"]')?.textContent,
@@ -103,15 +105,16 @@ async function verifyRestartedSession() {
     );
   });
 
-  await check("restart_list_shows_single_chat", async () => {
+  await check("restart_list_shows_dm_and_project_channel", async () => {
     await page.goto(`${BASE}${state.projectPath}/chats`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="dm-member-list"]', { timeout: 20000 });
     const items = await page.$$eval('[data-testid="chat-item"]', (nodes) =>
       nodes.map((node) => node.getAttribute("data-chat-id")),
     );
+    // Project 出生即带唯一的公共频道（I-P5a 频道单元），列表是「DM + 频道」两条；最新更新的 DM 在前。
     record(
-      "restart_list_shows_single_chat",
-      JSON.stringify(items) === JSON.stringify([state.chatId]),
+      "restart_list_shows_dm_and_project_channel",
+      items.length === 2 && items[0] === state.chatId,
       `重启后列表 ${JSON.stringify(items)}`,
     );
   });
@@ -244,7 +247,8 @@ if (process.env.CHAT_VERIFY === "1") {
       /^cnv_[0-9a-f-]{36}$/.test(chatId) &&
         /^ins_[0-9a-f-]{36}$/.test(instanceId) &&
         agentShown?.trim() === agentName &&
-        JSON.stringify(listedChats) === JSON.stringify([chatId]),
+        listedChats.length === 2 &&
+        listedChats[0] === chatId,
       `URL ${chatPath}，instance ${instanceId}，Agent ${JSON.stringify(agentShown?.trim())}，即时列表 ${JSON.stringify(listedChats)}`,
     );
   });
@@ -290,7 +294,7 @@ if (process.env.CHAT_VERIFY === "1") {
     await page.click('[data-testid="agent-edit-save"]');
     await page.waitForSelector('[data-testid="agent-edit-saved"]', { timeout: 20000 });
     await page.goto(`${BASE}${chatPath}?info=1`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="inspector-chat-id"]', { timeout: 20000 });
+    await page.waitForSelector('[data-testid="inspector-copy-chat-id"]', { timeout: 20000 });
     const state = await page.evaluate(() => ({
       instanceId: document.querySelector('[data-testid="inspector-instance-id"]')?.textContent,
       persona: document.querySelector('[data-testid="inspector-agent-persona"]')?.textContent,
@@ -319,14 +323,14 @@ if (process.env.CHAT_VERIFY === "1") {
     await shot(page, "p2-i-chats-list");
     record(
       "repeat_start_opens_same_chat",
-      JSON.stringify(items) === JSON.stringify([chatId]) && pathOf() === chatPath,
+      items.length === 2 && items[0] === chatId && pathOf() === chatPath,
       `列表 ${JSON.stringify(items)}，再次发起后 URL ${pathOf()}`,
     );
   });
 
   await check("deep_link_chat_renders", async () => {
     await openChatInspector(page, chatPath);
-    const id = await page.textContent('[data-testid="inspector-chat-id"]');
+    const id = await page.getAttribute('[data-testid="inspector-copy-chat-id"]', "data-chat-id");
     record("deep_link_chat_renders", id?.trim() === chatId, `深链直达对话页 ${chatPath}`);
   });
 

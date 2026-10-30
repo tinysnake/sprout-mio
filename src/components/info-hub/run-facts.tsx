@@ -13,20 +13,31 @@ function statusLabel(status: string) {
   return STATUS_LABELS[status] ?? status;
 }
 
-/** 历史 run 只做聚合：按状态计数，不逐条罗列每次开始与结束时间。 */
-function statusCounts(runs: AgentRunsView["recent"]) {
+export const SUMMARY_TONE: Record<string, string> = {
+  completed: "text-status-success",
+  failed: "text-destructive",
+};
+
+/** 历史 run 只做聚合：按状态计数，不逐条罗列每次开始与结束时间。完成在前、失败在后。 */
+export function orderedCounts(runs: AgentRunsView["recent"]) {
   const counts = new Map<string, number>();
   for (const run of runs) counts.set(run.status, (counts.get(run.status) ?? 0) + 1);
-  return [...counts].map(([status, count]) => `${statusLabel(status)} ${count}`).join("、");
+  const order = [
+    "completed",
+    ...[...counts.keys()].filter((status) => status !== "completed" && status !== "failed"),
+    "failed",
+  ];
+  return order
+    .filter((status) => counts.has(status))
+    .map((status) => ({ status, count: counts.get(status) ?? 0 }));
 }
 
 /**
  * run 事实只消费视图对象；pending 输入一律显示为未投递，仓库依据显示来源、
- * ref、真实 commit 与 fresh。当前 run 与失败汇总常显，历史 run 的流水账
- * 收敛成计数；需要细节时可从失败项与轮初上下文继续追踪。
+ * ref、真实 commit 与 fresh。当前 run 与状态汇总常显，历史 run 的流水账收敛成计数：
+ * 逐条错误串既没有上下文也没有可做的事，Human 评审要求不再平铺。
  */
 export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: string }) {
-  const failures = runs.recent.filter((run) => run.errorCode);
   // recent 为最新优先：取最近一次带仓库依据的 run，代表当前工作副本来源。
   const latestRepo = runs.recent.find((run) => run.repo)?.repo;
   return (
@@ -60,32 +71,22 @@ export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: s
         data-run-count={runs.recent.length}
         className="text-muted-foreground"
       >
-        {runs.recent.length === 0
-          ? "还没有历史 run。"
-          : `最近 ${runs.recent.length} 个 run：${statusCounts(runs.recent)}`}
+        {runs.recent.length === 0 ? (
+          "还没有历史 run。"
+        ) : (
+          <>
+            最近 {runs.recent.length} 个 run：
+            {orderedCounts(runs.recent).map(({ status, count }, index) => (
+              <span key={status}>
+                {index > 0 && "、"}
+                <span data-testid={`${testId}-recent-${status}`} className={SUMMARY_TONE[status]}>
+                  {statusLabel(status)} {count}
+                </span>
+              </span>
+            ))}
+          </>
+        )}
       </p>
-      {failures.length > 0 && (
-        <ul data-testid={`${testId}-failures`} className="space-y-1">
-          {failures.map((run) => (
-            <li
-              key={run.runId}
-              data-testid={`${testId}-recent-error`}
-              data-run-id={run.runId}
-              className="text-status-failed"
-            >
-              <span>
-                {statusLabel(run.status)}：{run.errorCode}：{run.errorMessage ?? "未知失败原因"}
-              </span>
-              <span
-                data-testid={`${testId}-recent-error-request`}
-                className="block font-mono break-all text-muted-foreground"
-              >
-                requestId: {run.requestId}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
       {latestRepo && (
         <p data-testid={`${testId}-recent-repo`} className="text-muted-foreground">
           最近一次 run 的仓库依据：{latestRepo.source}（
@@ -145,9 +146,6 @@ export function TurnStartContextBlock({ context }: { context: TurnStartContext }
             上一次 run：{statusLabel(context.previousRun.status)}
             {context.previousRun.errorCode &&
               `（${context.previousRun.errorCode}：${context.previousRun.errorMessage ?? "未知失败原因"}）`}
-            <span className="ml-2 font-mono break-all">
-              requestId: {context.previousRun.requestId}
-            </span>
           </>
         ) : (
           "上一次 run：还没有历史 run"

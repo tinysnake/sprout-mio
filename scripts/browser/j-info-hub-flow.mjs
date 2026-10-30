@@ -239,6 +239,11 @@ await check("lease_facts_render_real_state", async () => {
   // P4b 之后租约区投影真实 machine_lease 事实：这里没有租约，渲染明确空态与可操作表单，
   // 不再是「未实现」占位。原断言保护的 Info Hub 真实集合、无成功空值文案与可达性全部保留。
   await openProjectInfoHub(page);
+  // 关系事实是异步读的：面板先出加载态，加载态消失前 machine-empty 与 machine-item 都不在，
+  // 直接读会把「正在读取关系事实」当成空态。
+  await page
+    .locator('[data-testid="info-hub-project-machines-current-loading"]')
+    .waitFor({ state: "detached", timeout: 30000 });
   const leaseFacts = await page.evaluate(() => ({
     leasesSection: document.querySelector('[data-testid="info-hub-leases"]')?.textContent?.trim(),
     leasesEmpty: document.querySelector('[data-testid="info-hub-leases-empty"]')?.textContent,

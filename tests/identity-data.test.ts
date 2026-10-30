@@ -68,7 +68,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
         agent_profile: ['id','name','persona','harness','model','effort','created_by','created_at','updated_at','job_title'],
         project_profile: ['project_id','git_remote','default_branch','work_directory','updated_at'],
         project_member: ['project_id','agent_profile_id','added_by','added_at'],
-        chat: ['id','project_id','kind','title','archived_at','created_by','created_at','updated_at'],
+        chat: ['id','project_id','kind','title','archived_at','owner_kind','owner_id','wake_policy','governance_revision','created_by','created_at','updated_at'],
         chat_member: ['chat_id','member_kind','member_id','added_at'],
         agent_instance: ['id','agent_profile_id','chat_id','project_id','created_at','updated_at'],
         message: ['id','chat_id','sender_kind','sender_id','body','created_at'],
@@ -84,7 +84,9 @@ describe("P2 身份、Project 授权与持久对话", () => {
       assert.deepEqual(sqlite.prepare('PRAGMA index_info(agent_instance_profile_chat_unique)').all().map(row => row.name), ['agent_profile_id','chat_id']);
       assert.equal(sqlite.prepare('PRAGMA index_list(agent_instance)').all().find(row => row.name === 'agent_instance_profile_chat_unique').unique, 1);
       assert.deepEqual(sqlite.prepare('PRAGMA index_info(message_chat_created_at_idx)').all().map(row => row.name), ['chat_id','created_at']);
-      assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,created_by) VALUES ('bad',?,'group',?)").run(projectA.id, ctxA.userId), /CHECK constraint/);
+      // kind 仍是封闭集合，且 DM 的 owner 只能是创建者本身。
+      assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('bad-kind',?,'channel','human',?,?)").run(projectA.id, ctxA.userId, ctxA.userId), /CHECK constraint failed: chat_kind_check/);
+      assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('bad-owner',?,'dm','agent',?,?)").run(projectA.id, profileA.id, ctxA.userId), /CHECK constraint failed: chat_dm_owner_check/);
       assert.throws(() => sqlite.prepare("INSERT INTO project_profile (project_id) VALUES ('missing')").run(), /FOREIGN KEY constraint/);
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
       const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
@@ -124,7 +126,8 @@ describe("P2 身份、Project 授权与持久对话", () => {
       const first = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       const second = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       assert.deepEqual(first, second);
-      assert.equal(count('chat'), 1);
+      assert.equal(sqlite.prepare("SELECT count(*) AS n FROM chat WHERE kind = 'dm'").get().n, 1);
+      assert.equal(sqlite.prepare("SELECT count(*) AS n FROM chat WHERE kind = 'public_channel'").get().n, 2);
       assert.equal(count('agent_instance'), 1);
       assert.equal(count('chat_member'), 2);
       const members = dm.listChatMembers(first.chat.id, ctxA);
@@ -138,7 +141,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
       const other = dm.createDirectChat(another.id, profileA.id, ctxA);
       assert.notEqual(first.chat.id, other.chat.id);
       assert.notEqual(first.instance.id, other.instance.id);
-      assert.deepEqual(dm.listChats(projectA.id, ctxA), [first.chat]);
+      assert.deepEqual(dm.listChats(projectA.id, ctxA).filter((chat) => chat.kind === 'dm'), [first.chat]);
       const events = sqlite.prepare("SELECT * FROM diagnostic_event WHERE event='chat.created' AND project_id=?").all(projectA.id);
       assert.equal(events.length, 1);
       assert.equal(events[0].chat_id, first.chat.id);
@@ -213,7 +216,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
         () => dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxB.userId, body: 'stolen' }, ctxB),
       ]) notFound(denied);
       assert.deepEqual(agent.listAgentProfiles(ctxB).map(row => row.id), [profileB.id]);
-      assert.deepEqual(dm.listChats(projectB.id, ctxB).map(row => row.id), [other.chat.id]);
+      assert.deepEqual(dm.listChats(projectB.id, ctxB).filter((chat) => chat.kind === 'dm').map(row => row.id), [other.chat.id]);
       assert.deepEqual(dm.listMessages(other.chat.id, ctxB).map(row => row.body), ['B private']);
       const errorShape = (fn) => { try { fn(); assert.fail('must fail'); } catch (error) { return [error.code, error.message]; } };
       assert.deepEqual(errorShape(() => dm.getChat(direct.chat.id, ctxB)), errorShape(() => dm.getChat(newId(ID_PREFIXES.chat), ctxB)));
@@ -228,9 +231,13 @@ describe("P2 身份、Project 授权与持久对话", () => {
       `
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
       const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
+      // N04：agent sender 必须带本次 run 的身份（直接写一条活跃 run 行，只验发言资格）。
+      sqlite.prepare("INSERT INTO agent_run (id, instance_id, chat_id, project_id, request_id, status, started_at, session_id) VALUES (?,?,?,?,?,'running',unixepoch(),?)")
+        .run('run_identity_agent', direct.instance.id, direct.chat.id, projectA.id, ctxA.requestId, direct.instance.id);
+      const agentCtx = { ...ctxA, agent: { agentProfileId: profileA.id, instanceId: direct.instance.id, runId: 'run_identity_agent' } };
       const entries = [
         dm.sendMessage(direct.chat.id, contracts.sendMessageInput.parse({ senderKind: 'human', senderId: ctxA.userId, body: '  first  ' }), ctxA),
-        dm.sendMessage(direct.chat.id, { senderKind: 'agent', senderId: profileA.id, body: 'second' }, ctxA),
+        dm.sendMessage(direct.chat.id, { senderKind: 'agent', senderId: profileA.id, body: 'second' }, agentCtx),
         dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxA.userId, body: 'third' }, ctxA),
       ];
       entries.forEach(entry => contracts.messageSchema.parse(entry));
@@ -239,8 +246,13 @@ describe("P2 身份、Project 授权与持久对话", () => {
       sqlite.prepare('UPDATE message SET created_at=99 WHERE id=?').run(entries[2].id);
       assert.deepEqual(dm.listMessages(direct.chat.id, ctxA).map(row => row.body), ['third', 'first', 'second']);
       assert.deepEqual(dm.listMessages(direct.chat.id, ctxA), dm.listMessages(direct.chat.id, ctxA));
-      for (const [senderKind, senderId] of [['human', ctxB.userId], ['agent', profileB.id], ['agent', direct.instance.id]]) {
-        notFound(() => dm.sendMessage(direct.chat.id, { senderKind, senderId, body: 'forged' }, ctxA));
+      // 伪造的 Human sender 仍按参与权拒绝（not_found）；run 冒充别人则按身份拒绝（forbidden）。
+      notFound(() => dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxB.userId, body: 'forged' }, ctxA));
+      for (const senderId of [profileB.id, direct.instance.id]) {
+        assert.throws(
+          () => dm.sendMessage(direct.chat.id, { senderKind: 'agent', senderId, body: 'forged' }, agentCtx),
+          (error) => error.code === 'forbidden',
+        );
       }
       assert.equal(count('message'), 3);
       const event = sqlite.prepare("SELECT * FROM diagnostic_event WHERE event='message.sent' AND instance_id IS NOT NULL").get();

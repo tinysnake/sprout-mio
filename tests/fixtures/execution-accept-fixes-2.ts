@@ -580,20 +580,22 @@ pass("R4 正证 2：忽略 TERM 的命令被 KILL，信号只打命令组，runn
 
 // ── R4 反证：只有 runner 缺席才叫「退出未被记录」 ────────────────────────────
 // 确定性制造没有 result 的局面：命令在收到 TERM 的 trap 里杀掉自己的 runner。
-// term_then_kill 先送 TERM 再送 KILL，runner 在这两段之间死掉，磁盘上永远不会出现 result.json；
-// 不用「轮询哨兵文件」，避免命令还没反应过来就被 KILL 打死的时序窗口。
+// term_then_kill 先送 TERM 再送 KILL，runner 在这两段之间死掉，磁盘上永远不会出现 result.json。
+// 命令先落一个 trap 已装好的哨兵，等它出现再下取消：runner 记 childPid 早于命令装 trap，
+// 不握手的话 TERM 可能先到，命令按默认处置直接死，runner 反而把 result.json 写下来。
+const absentTrapReady = join(stateDirectory, "absent-trap-ready");
 const absentWorker = makeDispatcher();
 const absent = submit(
   nextHolder,
   generation,
-  `echo pid=$$; trap 'kill -9 $PPID' TERM; while :; do sleep 0.2; done`,
+  `echo pid=$$; trap 'kill -9 $PPID' TERM; : > ${absentTrapReady}; while :; do sleep 0.2; done`,
   500,
 );
 round(absentWorker);
 await pumpUntil(
   absentWorker,
-  () => runnerStarted(absentWorker, absent.executionId),
-  "absent runner running",
+  () => runnerStarted(absentWorker, absent.executionId) && existsSync(absentTrapReady),
+  "absent runner running with its TERM trap installed",
 );
 await cancelAndDeliver(absent.executionId, absentWorker);
 await pumpUntil(

@@ -211,7 +211,7 @@ await check("history_back_and_forward_keep_target", async () => {
   );
 });
 
-await check("empty_name_shows_field_error_and_request_id", async () => {
+await check("empty_name_shows_field_error_without_request_id", async () => {
   await openCreateDialog(page);
   const responsePromise = page.waitForResponse((response) =>
     response.url().includes("/_serverFn/"),
@@ -222,27 +222,27 @@ await check("empty_name_shows_field_error_and_request_id", async () => {
   const state = await page.evaluate(
     (field) => ({
       field,
-      error: document.querySelector('[data-testid="project-form-error"]')?.textContent,
       meta: document.querySelector('[data-testid="project-form-error-meta"]')?.textContent,
     }),
     field,
   );
-  const pageRequestId = state.meta?.match(/req_[0-9a-f-]{36}/)?.[0];
+  // 裁定 d43：页面只给错误码；requestId 留在响应头与诊断接口里，用户需要时仍可追。
   const headerRequestId = response.headers()["x-sprout-request-id"];
   const diagnostics = await page.evaluate(
     async (requestId) => (await fetch(`/api/diagnostics?requestId=${requestId}`)).json(),
-    pageRequestId,
+    headerRequestId,
   );
-  const diagnosed = diagnostics.data?.some((row) => row.requestId === pageRequestId);
+  const diagnosed = diagnostics.data?.some((row) => row.requestId === headerRequestId);
   await shot(page, "project-error");
   record(
-    "empty_name_shows_field_error_and_request_id",
+    "empty_name_shows_field_error_without_request_id",
     /名称不能为空/.test(state.field ?? "") &&
       /validation_failed/.test(state.meta ?? "") &&
-      pageRequestId !== undefined &&
-      pageRequestId === headerRequestId &&
+      !/req_/.test(state.meta ?? "") &&
+      typeof headerRequestId === "string" &&
+      headerRequestId.startsWith("req_") &&
       diagnosed === true,
-    `字段错误 ${JSON.stringify(state.field)}，页面 requestId ${pageRequestId}、响应头 ${headerRequestId} 与诊断行一致`,
+    `字段错误 ${JSON.stringify(state.field)}，页面错误码 ${JSON.stringify(state.meta)}，响应头 ${headerRequestId} 与诊断行一致`,
   );
 });
 

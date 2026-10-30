@@ -1,4 +1,5 @@
 import type {
+  ChatRunAggregate,
   AgentRunsView,
   ChatInfoView,
   InfoHubRunSummary,
@@ -9,9 +10,10 @@ import type {
 import type { LeaseView } from "../contracts/lease";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { leaseMutation, machineLease } from "../db/schema";
-import type { AgentRun } from "../contracts/agent-run";
+import { agentInstance, agentProfile, agentRun, leaseMutation, machineLease } from "../db/schema";
+import { AGENT_RUN_STATUSES, type AgentRun, type AgentRunStatus } from "../contracts/agent-run";
 import type { Chat } from "../contracts/chat";
+import { chatDisplayTitle } from "../contracts/chat";
 import { listProjectMachines } from "./machine";
 import type { MachineContext } from "./machine";
 import { config } from "../lib/config";
@@ -51,6 +53,7 @@ function runSummary(run: AgentRun, ctx: ProjectContext): InfoHubRunSummary {
     pendingInputs,
     ...(run.errorCode ? { errorCode: run.errorCode } : {}),
     ...(run.errorMessage ? { errorMessage: run.errorMessage } : {}),
+    ...(run.assistantMessageId ? { assistantMessageId: run.assistantMessageId } : {}),
     ...(repo
       ? {
           repo: {
@@ -90,13 +93,17 @@ export function getProjectInfoHub(projectId: string, ctx: MachineContext): Proje
   assertProjectAccess(ctx, projectId);
   const members = listProjectMembers(projectId, ctx);
   const chats = listChats(projectId, ctx);
-  const dmLinks = chats.flatMap((chat) =>
-    listInstancesForChat(chat.id, ctx).map((instance) => ({
-      agentProfileId: instance.agentProfileId,
-      chatId: chat.id,
-      instanceId: instance.id,
-    })),
-  );
+  // DM 关联只从 DM 会话取：扇出后一个 Agent 在群与频道里也有 instance，
+  // 把那些当成 DM 会让 Project → Agents 面板链到错误的会话。
+  const dmLinks = chats
+    .filter((chat) => chat.kind === "dm")
+    .flatMap((chat) =>
+      listInstancesForChat(chat.id, ctx).map((instance) => ({
+        agentProfileId: instance.agentProfileId,
+        chatId: chat.id,
+        instanceId: instance.id,
+      })),
+    );
   const agents: ProjectAgentEntry[] = members.map((member) => {
     const profile = getAgentProfile(member.agentProfileId, ctx);
     const link = dmLinks.find((entry) => entry.agentProfileId === member.agentProfileId);
@@ -113,9 +120,91 @@ export function getProjectInfoHub(projectId: string, ctx: MachineContext): Proje
       agents,
       runs: runsView(chats, ctx),
     },
+    chats: chatRunsView(chats, projectId),
     machines: listProjectMachines(projectId, ctx),
     leases: { available: true, items: leaseViews(projectId) },
   };
+}
+
+/** 会话聚合里的一次读事实：一个 instance 的一行，`status` 缺省表示它还没有任何 run。 */
+type ChatRunRow = {
+  chatId: string;
+  agentProfileId: string;
+  profileName: string;
+  runId: string | null;
+  status: AgentRunStatus | null;
+  queuedAt: Date | null;
+};
+
+function chatRunRows(projectId: string): ChatRunRow[] {
+  return db
+    .select({
+      chatId: agentInstance.chatId,
+      agentProfileId: agentInstance.agentProfileId,
+      profileName: agentProfile.name,
+      runId: agentRun.id,
+      status: agentRun.status,
+      queuedAt: agentRun.queuedAt,
+    })
+    .from(agentInstance)
+    .innerJoin(agentProfile, eq(agentProfile.id, agentInstance.agentProfileId))
+    .leftJoin(agentRun, eq(agentRun.instanceId, agentInstance.id))
+    .where(eq(agentInstance.projectId, projectId))
+    .all();
+}
+
+/**
+ * Info Hub 的 run 列表按会话聚合：每个会话给出会话 id、标题、去重 Agent 数与 run 状态分布。
+ *
+ * 一次查询取齐 Project 内全部 instance 及其 run（`left join`），按会话在内存里分组；不在会话
+ * 循环里再逐条查库。`agentCount` 只统计真实出过 run 的 Agent：`agent_profile_id` 去重，同一 Agent
+ * 的多条 run 只计 1 个。不做分页与缓存（归 P6，followups 已记）。
+ */
+function chatRunsView(chats: Chat[], projectId: string): ChatRunAggregate[] {
+  const rows = chatRunRows(projectId);
+  const facts = new Map<
+    string,
+    {
+      agents: Set<string>;
+      counts: Map<AgentRunStatus, number>;
+      names: Map<string, string>;
+      active: string[];
+      latest?: string;
+    }
+  >();
+  for (const row of rows) {
+    const fact = facts.get(row.chatId) ?? {
+      agents: new Set<string>(),
+      counts: new Map<AgentRunStatus, number>(),
+      names: new Map<string, string>(),
+      active: [] as string[],
+      latest: undefined as string | undefined,
+    };
+    facts.set(row.chatId, fact);
+    fact.names.set(row.agentProfileId, row.profileName);
+    if (row.status === null || row.queuedAt === null) continue;
+    fact.agents.add(row.agentProfileId);
+    fact.counts.set(row.status, (fact.counts.get(row.status) ?? 0) + 1);
+    const queuedAt = row.queuedAt.toISOString();
+    if (fact.latest === undefined || queuedAt > fact.latest) fact.latest = queuedAt;
+    if ((row.status === "queued" || row.status === "running") && row.runId) {
+      fact.active.push(row.runId);
+    }
+  }
+  return chats.map((chat) => {
+    const fact = facts.get(chat.id);
+    return {
+      chatId: chat.id,
+      kind: chat.kind,
+      displayTitle: chatDisplayTitle(chat, fact ? [...fact.names.values()] : []),
+      agentCount: fact?.agents.size ?? 0,
+      statusCounts: AGENT_RUN_STATUSES.filter((status) => fact?.counts.has(status)).map(
+        (status) => ({ status, count: fact?.counts.get(status) ?? 0 }),
+      ),
+      activeRunIds: fact?.active ?? [],
+      ...(fact?.latest ? { latestRunAt: fact.latest } : {}),
+    };
+  });
 }
 
 /**
@@ -155,7 +244,6 @@ export function getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView {
   const members = listChatMembers(chatId, ctx);
   const instances = listInstancesForChat(chatId, ctx);
   const messages = listMessages(chatId, ctx);
-  const instance = instances.at(0);
   const latest = messages.at(-1);
   return {
     chatId: chat.id,
@@ -168,13 +256,12 @@ export function getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView {
       displayName:
         member.memberKind === "human" ? "Human" : getAgentProfile(member.memberId, ctx).name,
     })),
-    instance: instance
-      ? {
-          instanceId: instance.id,
-          agentProfileId: instance.agentProfileId,
-          profileName: getAgentProfile(instance.agentProfileId, ctx).name,
-        }
-      : null,
+    owner: chat.owner,
+    instances: instances.map((instance) => ({
+      instanceId: instance.id,
+      agentProfileId: instance.agentProfileId,
+      profileName: getAgentProfile(instance.agentProfileId, ctx).name,
+    })),
     messages: {
       count: messages.length,
       ...(latest ? { latestAt: latest.createdAt } : {}),

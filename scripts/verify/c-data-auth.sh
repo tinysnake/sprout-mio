@@ -312,10 +312,11 @@ try {
     assert.equal(db.prepare('SELECT count(*) AS count FROM agent_profile').get().count, 2);
     assert.equal(db.prepare('SELECT count(*) AS count FROM project_member').get().count, 2);
     assert.equal(db.prepare('SELECT count(DISTINCT created_by) AS count FROM project').get().count, 2);
-    assert.equal(db.prepare('SELECT count(*) AS count FROM chat').get().count, 0);
-    console.log('users=2 projects=2 agentProfiles=2 members=2 chats=0'); db.close();
+    assert.equal(db.prepare("SELECT count(*) AS count FROM chat WHERE kind = 'dm'").get().count, 0);
+    assert.equal(db.prepare("SELECT count(*) AS count FROM chat WHERE kind = 'public_channel'").get().count, 2);
+    console.log('users=2 projects=2 agentProfiles=2 members=2 dmChats=0 channels=2'); db.close();
   `], 'default-project.log')
-  pass('registration creates one default Project and Agent per Human', 'users=2 projects=2 agentProfiles=2 members=2 chats=0')
+  pass('registration creates one default Project, Agent and public channel per Human', 'users=2 projects=2 agentProfiles=2 members=2 dmChats=0 channels=2')
   stop(server)
   await server.completion
   children.delete(server)

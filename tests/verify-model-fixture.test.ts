@@ -152,6 +152,43 @@ it("consumes ordered tool steps only after their actual call IDs return, retaini
   expect(fixture.metadata().models[0]).toMatchObject({ completedPlans: 1, unusedSteps: 0 });
 });
 
+it("queues a later driven turn while an earlier plan is still open", async () => {
+  const { fixture, next, input } = await setup();
+  fixture.arm("operator", plan());
+  fixture.arm("operator", {
+    expectedUserText: "second turn",
+    expectedUserPrefix: "second turn",
+    steps: [],
+    reply: "second reply",
+    queued: true,
+  });
+  const first = await next(input([user()]));
+  const call = first.tool_calls[0];
+  const history = [user(), assistant(call), result(call.id)];
+  expect((await next(input(history))).content).toBe(plan().reply);
+  const second = await next(
+    input([...history, { role: "assistant", content: plan().reply }, user("second turn")]),
+  );
+  expect(second.content).toBe("second reply");
+  expect(fixture.metadata().models[0]).toMatchObject({ completedPlans: 2, unusedSteps: 0 });
+  fixture.assertDrained();
+});
+
+it("holds a planned reply for its bounded delay", async () => {
+  const { fixture, next, input } = await setup();
+  fixture.arm("operator", {
+    expectedUserText: prompt,
+    expectedUserPrefix: prompt,
+    steps: [],
+    reply: "delayed reply",
+    delayMs: 100,
+  });
+  const started = Date.now();
+  expect((await next(input([user()]))).content).toBe("delayed reply");
+  expect(Date.now() - started).toBeGreaterThanOrEqual(80);
+  fixture.assertDrained();
+});
+
 it("isolates model queues even when both models have a pending turn", async () => {
   const { fixture, next, input } = await setup();
   fixture.arm("operator", plan());
@@ -445,3 +482,32 @@ it.each([undefined, "", "unknown", "live"] as const)(
     expect(existsSync(join(root, ".verify"))).toBe(false);
   },
 );
+
+it("claims a product-initiated turn by prefix and keeps later driven turns on their plans", async () => {
+  const { fixture, next, input } = await setup();
+  const notice = (suffix: string) => ({
+    role: "user",
+    content: `资源撤销通知 ntc_${suffix}：租约已交接给其他分身。`,
+  });
+  fixture.arm("operator", {
+    expectedUserPrefix: "资源撤销通知",
+    repeat: true,
+    steps: [],
+    reply: "notice acknowledged",
+  });
+  const first = await next(input([notice("1")]));
+  expect(first.content).toBe("notice acknowledged");
+  const history = [notice("1"), { role: "assistant", content: "notice acknowledged" }];
+  fixture.arm("operator", {
+    expectedUserText: prompt,
+    steps: [{ name: "sprout_lease_get", arguments: { machineId: "fixture-machine" } }],
+    reply: "driven turn",
+  });
+  const driven = await next(input([...history, user()]));
+  expect(driven.tool_calls[0].function.name).toBe("sprout_lease_get");
+  const repeated = await next(
+    input([...history, user(), { role: "assistant", content: "driven turn" }, notice("2")]),
+  );
+  expect(repeated.content).toBe("notice acknowledged");
+  expect(fixture.metadata().models[0].completedPlans).toBe(2);
+});

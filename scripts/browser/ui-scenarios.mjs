@@ -52,12 +52,14 @@ try {
     await page.locator(`[data-testid="chat-item"][data-chat-id="${secondId}"]`).click();
     await page.waitForFunction(
       (id) =>
-        document.querySelector('[data-testid="inspector-chat-id"]')?.textContent?.trim() === id,
+        document
+          .querySelector('[data-testid="inspector-copy-chat-id"]')
+          ?.getAttribute("data-chat-id") === id,
       secondId,
     );
     assert.equal(await test("message-input").inputValue(), "");
     assert.notEqual((await test("inspector-instance-id").textContent()).trim(), firstInstance);
-    assert.equal((await test("inspector-chat-id").textContent()).trim(), secondId);
+    assert.equal(await test("inspector-copy-chat-id").getAttribute("data-chat-id"), secondId);
     assert.equal(await test("message-item").count(), 0);
     await test("message-input").fill("第二条 Chat 的本地回显");
     await test("message-send").click();
@@ -71,7 +73,9 @@ try {
     await page.locator(`[data-testid="chat-item"][data-chat-id="${firstId}"]`).click();
     await page.waitForFunction(
       (id) =>
-        document.querySelector('[data-testid="inspector-chat-id"]')?.textContent?.trim() === id,
+        document
+          .querySelector('[data-testid="inspector-copy-chat-id"]')
+          ?.getAttribute("data-chat-id") === id,
       firstId,
     );
     assert.equal(await test("message-input").inputValue(), "第一条 Chat 的未发送草稿");

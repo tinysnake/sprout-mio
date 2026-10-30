@@ -169,6 +169,10 @@ type ChatWorkspaceProps = {
   inspector?: ReactNode;
   /** 是否选中了具体对话，决定窄屏显示列表还是对话。 */
   selected: boolean;
+  /** 桌面常驻详情栏：窄屏仍由 ?info=1 打开独立详情屏。 */
+  inspectorPersistent?: boolean;
+  /** 详情屏开关；缺省按 inspector 是否提供判断，兼容开发 fixture。 */
+  inspectorOpen?: boolean;
   testId?: string;
 };
 
@@ -177,18 +181,25 @@ export function ChatWorkspace({
   chat,
   inspector,
   selected,
+  inspectorPersistent = false,
+  inspectorOpen: inspectorOpenProp,
   testId = "chat-workspace",
 }: ChatWorkspaceProps) {
   const viewport = useViewportWidth();
   const { sidebarWidth } = useAppShell();
   const [preferred, setPreferred] = useInspectorWidth();
-  const inspectorOpen = inspector !== undefined && inspector !== null;
+  const requested = inspector !== undefined && inspector !== null;
+  const requestedOpen = inspectorOpenProp ?? requested;
+  const desktop = viewport >= CHAT_LAYOUT.desktopMinWidth;
+  const effectiveOpen =
+    requested && (desktop ? inspectorPersistent || requestedOpen : requestedOpen);
   const layout = chatWorkspaceLayout({
     viewport,
     sidebarWidth,
-    inspectorOpen,
+    inspectorOpen: effectiveOpen,
     inspectorPreferred: preferred,
   });
+  const showInspector = effectiveOpen;
   const style = {
     "--chat-list-width": `${layout.listWidth}px`,
     "--chat-inspector-width": `${layout.inspectorWidth ?? 0}px`,
@@ -199,13 +210,13 @@ export function ChatWorkspace({
       <div
         data-testid={testId}
         data-layout={layout.split ? "split" : "columns"}
-        data-inspector-open={inspectorOpen || undefined}
+        data-inspector-open={effectiveOpen || undefined}
         style={style}
         className={cn(
           "flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background",
           !layout.split && "grid",
           !layout.split &&
-            (inspectorOpen
+            (effectiveOpen
               ? "grid-cols-[var(--chat-list-width)_minmax(0,1fr)_var(--chat-inspector-width)]"
               : "grid-cols-[var(--chat-list-width)_minmax(0,1fr)]"),
         )}
@@ -225,16 +236,16 @@ export function ChatWorkspace({
           className={cn(
             "flex min-h-0 min-w-0 flex-col max-desktop:flex-1",
             !selected && "max-desktop:hidden",
-            inspectorOpen && "max-desktop:hidden",
+            effectiveOpen && "max-desktop:hidden",
           )}
         >
           {chat}
         </div>
-        {inspectorOpen && (
+        {showInspector && (
           <aside
             id="info-hub"
             data-testid="chat-inspector"
-            aria-label="Info Hub"
+            aria-label="会话详情"
             className="relative flex min-h-0 min-w-0 flex-col border-border bg-secondary max-desktop:flex-1 desktop:border-l"
           >
             {!layout.split && layout.inspectorWidth !== null && (

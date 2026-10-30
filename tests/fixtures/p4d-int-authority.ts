@@ -1383,8 +1383,10 @@ if (scenario === "steer") {
     .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'Steer fixture',?)")
     .run(profileId, ownerId);
   sqlite
-    .prepare("INSERT INTO chat(id,project_id,kind,created_by) VALUES (?,?,'dm',?)")
-    .run(chatId, projectId2, ownerId);
+    .prepare(
+      "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human',?,?)",
+    )
+    .run(chatId, projectId2, ownerId, ownerId);
   sqlite
     .prepare("INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES (?,'agent',?)")
     .run(chatId, profileId);
@@ -1470,7 +1472,9 @@ if (scenario === "steer") {
   const fake = makeProcess(1);
   const profile = db.select().from(agentProfile).where(eq(agentProfile.id, profileId)).get()!;
   await Effect.runPromise(
-    executeRun({ run: work, profile, ownerId }, fake as never, { isStopping: () => false }),
+    executeRun({ run: work, profile, ownerId, agentProfileId: profileId }, fake as never, {
+      isStopping: () => false,
+    }),
   );
   const notice = pendingRunNotices({ runId }, { userId: ownerId, requestId: req() });
   assert.equal(notice.length, 0, "成功 steer 后通知被标记已投递");

@@ -3,6 +3,7 @@ import { leaseViewSchema } from "./lease";
 import { machineDetailSchema } from "./machine";
 import { AGENT_RUN_STATUSES } from "./agent-run";
 import { agentProfileIdSchema } from "./agent";
+import { chatKindSchema, chatOwnerSchema } from "./chat";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import { REPO_SOURCE_KINDS } from "./repository";
 import type { FieldErrors } from "./project";
@@ -48,6 +49,8 @@ export const infoHubRunSummarySchema = z.object({
   pendingInputs: z.number().int().min(0),
   errorCode: z.string().optional(),
   errorMessage: z.string().optional(),
+  /** 本轮回报的助手消息；run 未正常完成时没有归属，字段缺省。 */
+  assistantMessageId: z.string().optional(),
   repo: infoHubRunRepoSchema.optional(),
 });
 export type InfoHubRunSummary = z.infer<typeof infoHubRunSummarySchema>;
@@ -77,6 +80,37 @@ export const projectAgentsViewSchema = z.object({
 });
 export type ProjectAgentsView = z.infer<typeof projectAgentsViewSchema>;
 
+/**
+ * 会话聚合里的 run 状态分布：只列出真实出现过的状态，顺序固定按 `AGENT_RUN_STATUSES`，
+ * 便于渲染与断言，不用「缺席即 0」的稀疏对象。
+ */
+export const chatRunStatusCountSchema = z.object({
+  status: z.enum(AGENT_RUN_STATUSES),
+  count: z.number().int().min(1),
+});
+export type ChatRunStatusCount = z.infer<typeof chatRunStatusCountSchema>;
+
+/**
+ * 会话聚合读模型：Info Hub 的 run 列表按会话聚合。
+ *
+ * - `agentCount` 按 `agent_profile_id` 去重，同一 Agent 的多条 run 只计 1 个；
+ * - `statusCounts` 覆盖该会话的全部 run（不只活跃与最近那几条）；
+ * - `displayTitle` 用 `chatDisplayTitle` 同一条规则：频道固定文案，其余标题优先、再回落分身名；
+ * - 不做分页与缓存，也不在一次读里按会话二次查库（N+1 收敛与分页归 P6，followups 已记）。
+ */
+export const chatRunAggregateSchema = z.object({
+  chatId,
+  kind: chatKindSchema,
+  displayTitle: z.string(),
+  agentCount: z.number().int().min(0),
+  statusCounts: z.array(chatRunStatusCountSchema),
+  /** 该会话当前排队中或运行中的 run id，供页面沿会话继续看详情。 */
+  activeRunIds: z.array(runId),
+  /** 该会话最近一条 run 的排队时间；还没有 run 时缺省。 */
+  latestRunAt: z.iso.datetime().optional(),
+});
+export type ChatRunAggregate = z.infer<typeof chatRunAggregateSchema>;
+
 export const chatMemberEntrySchema = z.object({
   memberKind: z.enum(["human", "agent"]),
   memberId: z.string().min(1),
@@ -94,10 +128,11 @@ export const chatInstanceViewSchema = z.object({
 export const chatInfoViewSchema = z.object({
   chatId,
   projectId,
-  kind: z.literal("dm"),
+  kind: chatKindSchema,
   archived: z.boolean(),
   members: z.array(chatMemberEntrySchema),
-  instance: chatInstanceViewSchema.nullable(),
+  owner: chatOwnerSchema,
+  instances: z.array(chatInstanceViewSchema),
   messages: z.object({
     count: z.number().int().min(0),
     latestAt: z.iso.datetime().optional(),
@@ -161,6 +196,8 @@ export type TurnStartContext = z.infer<typeof turnStartContextSchema>;
 export const projectInfoHubSchema = z.object({
   projectId,
   agents: projectAgentsViewSchema,
+  /** run 列表按会话聚合（P5a 多 Agent 会话视角）；一个 Project 的每个会话一条。 */
+  chats: z.array(chatRunAggregateSchema),
   machines: z.array(machineDetailSchema),
   leases: z.strictObject({ available: z.literal(true), items: z.array(leaseViewSchema).max(1000) }),
 });

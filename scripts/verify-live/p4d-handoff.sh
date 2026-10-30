@@ -9,7 +9,8 @@ node scripts/verify/prepare.mjs server
 ensure_worker_artifact
 export NO_PROXY=localhost,127.0.0.1,::1
 export no_proxy="$NO_PROXY"
-export SPROUT_VERIFY_PI_MODEL="${SPROUT_VERIFY_PI_MODEL:-deepseek/deepseek-flash}"
+source "$(dirname "${BASH_SOURCE[0]}")/../verify/lib/live-model.sh"
+sprout_live_model
 
 node --import tsx tests/fixtures/p4d-handoff-worker.ts
 

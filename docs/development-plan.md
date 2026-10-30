@@ -239,10 +239,10 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 - 关键异常与回归覆盖成员变化、owner 变更、无权治理和多分身同时活动。验证普通 Group 治理限于 Human，Public Channel 不能独立调整成员，同一分身仍串行，不混淆不同分身的消息与 run。回归 DM 历史、Project 隔离，以及本章已依赖的既有能力。
 - 章节证据补充真实多 Agent 对话与 runs、成员和 owner 变更、Public Channel 同步及权限反证。多成员查询与页面更新的已知限制在本章启动时评估，缺陷反馈责任线，不以示例消息替代真实协作验证。
 
-- [ ] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
-- [ ] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。
-- [ ] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。
-- [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。
+- [x] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。证据 [功能交付证据](p5a/summary.md#功能交付证据)，重跑 `bash scripts/verify/i2-group-chat.sh`。
+- [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [UI 交付证据](p5a/summary.md#ui-交付证据)，重跑 `bash scripts/verify/i-chat.sh`。
+- [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [技术验收证据](p5a/summary.md#技术验收证据)，重跑 `bash scripts/verify/b-tooling.sh`。
+- [x] Human 亲自体验并明确确认通过，编排者已记录确认版本。证据 [human-体验确认](p5a/summary.md#human-体验确认)，版本 `2fd0ee9`；重跑 `bash scripts/verify/i-chat.sh`。
 
 ### I-P5b 集成 Task 总览与生命周期
 

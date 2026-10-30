@@ -1,7 +1,10 @@
 import type { AppError } from "../../contracts/result";
 import type { FieldErrors } from "../../contracts/project";
 
-/** 失败呈现包含错误码与当前 requestId，用户可以直接拿它去 `/api/diagnostics` 查。 */
+/**
+ * 失败呈现包含错误码；requestId 只在页级 `not_found` 里露出，供用户拿去 `/api/diagnostics` 查。
+ * 其他失败都对应着用户做得到的事（移除被拒、深链写错），串号只会遮住那句话。
+ */
 export function ResultError({
   error,
   testId = "result-error",
@@ -17,7 +20,7 @@ export function ResultError({
     >
       <p>{error.message}</p>
       <p data-testid={`${testId}-meta`} className="mt-1 font-mono text-xs opacity-80">
-        {error.code} · {error.requestId}
+        {error.code === "not_found" ? `${error.code} · ${error.requestId}` : error.code}
       </p>
     </div>
   );

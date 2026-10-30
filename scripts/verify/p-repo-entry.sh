@@ -179,8 +179,8 @@ const line=x=>process.stdout.write(JSON.stringify(x)+'\\n');
 input.on('line',raw=>{const x=JSON.parse(raw);
 if(x.type==='open') {const file=x.sessionFile??join(x.sessionDirectory,x.sessionId+'.jsonl');
 if(!existsSync(file))writeFileSync(file,JSON.stringify({id:x.sessionId})+'\\n');
-const slash=x.profile.model.indexOf('/');
-line({type:'ready',id:x.id,snapshot:{provider:x.profile.model.slice(0,slash),model:x.profile.model.slice(slash+1),thinking:x.profile.effort??'off',tools:['bash','edit','read','write'],extensions:['sprout-extension'],sessionId:x.sessionId,sessionFile:file,cwd:x.cwd,sdkVersion:'protocol-stub',profile:x.profile}});
+const model=x.profile.model??'protocol/unknown';const slash=model.indexOf('/');
+line({type:'ready',id:x.id,snapshot:{provider:model.slice(0,slash),model:model.slice(slash+1),thinking:x.profile.effort??'off',tools:['bash','edit','read','write'],extensions:['sprout-extension'],sessionId:x.sessionId,sessionFile:file,cwd:x.cwd,sdkVersion:'protocol-stub',profile:x.profile}});
 } else if(x.type==='prompt') {line({type:'input_delivered',id:x.id,messageId:x.messageId});
 if(x.text.includes('stub-crash'))process.exit(23);
 else line({type:'settled',id:x.id,text:'PROTOCOL_STUB_REPLY',stopReason:'stop'});
@@ -377,12 +377,14 @@ try {
     await page.locator('[data-testid="repo-prepare"]').click()
     await page.waitForSelector('[data-testid="repo-panel-error"]', { timeout: 20000 })
     const errorMeta = await page.locator('[data-testid="repo-panel-error-meta"]').textContent()
-    assert.match(errorMeta, /conflict · req_/, 'failure shows code and requestId')
+    // 裁定 d43：普通失败页只给错误码，requestId 只在 not_found 诊断块里出现。
+    assert.match(errorMeta, /conflict/, 'failure shows the error code')
+    assert.doesNotMatch(errorMeta, /req_/, 'failure page hides the internal request id')
     assert.match(await page.locator('[data-testid="repo-panel-error"]').textContent(), /不存在/)
     const errorShot = join(screenshotDir, 'p3-c-repo-error.png')
     await page.screenshot({ path: errorShot, fullPage: true })
     assert.deepEqual(consoleErrors, [], 'settings page must render without console errors')
-    pass('settings page shows readable acquisition failure with requestId', { screenshot: errorShot, errorMeta })
+    pass('settings page shows readable acquisition failure with the error code only', { screenshot: errorShot, errorMeta })
   } finally {
     await browser.close()
   }

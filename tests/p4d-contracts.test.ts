@@ -85,6 +85,12 @@ function snapshotTables(sqlite: Database.Database): Record<string, unknown[]> {
   return snapshot;
 }
 
+function tableColumns(sqlite: Database.Database, table: string): string[] {
+  return (sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
+    (row) => row.name,
+  );
+}
+
 const insert = (sqlite: Database.Database, table: string, values: Record<string, unknown>) => {
   const columns = Object.keys(values);
   sqlite
@@ -119,12 +125,16 @@ function seedScope(sqlite: Database.Database, project: string, machine: string):
     run: `run-${project}`,
   };
   insert(sqlite, "project", { id: project, name: project, created_by: "owner" });
-  insert(sqlite, "chat", {
+  const chat: Record<string, unknown> = {
     id: scope.chat,
     project_id: project,
     kind: "dm",
     created_by: "owner",
-  });
+  };
+  // 0021 起 chat 的所有者与唤醒事实是必填列；旧库快照路径不带它们。
+  if (tableColumns(sqlite, "chat").includes("owner_kind"))
+    Object.assign(chat, { owner_kind: "human", owner_id: "owner" });
+  insert(sqlite, "chat", chat);
   insert(sqlite, "agent_instance", {
     id: scope.instance,
     agent_profile_id: "profile",

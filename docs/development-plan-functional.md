@@ -138,9 +138,9 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ### P5a 完成多人 Chat
 
-- [ ] 实现 Group 成员与 owner，Public Channel 成员随 Project 自动同步。
-- [ ] 实现 Group 消息、多 Agent 唤醒和成员回报，保持同分身串行。
-- [ ] 将成员、owner 与活动 runs 的关联接入 Info Hub。
+- [x] 实现 Group 成员与 owner，Public Channel 成员随 Project 自动同步。证据 [成员与 owner](p5a/summary.md#1-群里的人与分身共同参与单聊行为保持不变)，重跑 `bash scripts/verify/i2-group-chat.sh`、`bash scripts/verify/i3-public-channel.sh`。
+- [x] 实现 Group 消息、多 Agent 唤醒和成员回报，保持同分身串行。证据 [扇出与输入归属](p5a/summary.md#3-多分身扇出与输入归属)，重跑 `bash scripts/verify/i4-agent-fanout.sh`、`bash scripts/verify/i6-chat-info.sh`。
+- [x] 将成员、owner 与活动 runs 的关联接入 Info Hub。证据 [公共频道成员来源](p5a/summary.md#2-公共频道在一个-project-内唯一成员资格来自-project-成员)，重跑 `bash scripts/verify/i3-public-channel.sh`、`bash scripts/verify/i7-chat-scope.sh`。
 
 出口条件是 Human 可以建立 Group、指定 owner 并完成一次多 Agent 消息与回报流程；Public Channel 成员跟随 Project，相关界面与 Info Hub 展示一致。Task 生命周期在 P5b 验收。
 

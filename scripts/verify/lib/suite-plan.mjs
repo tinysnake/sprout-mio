@@ -9,7 +9,9 @@ export const SUITE_CAPACITY = Object.freeze({
   sdk: 1,
   light: 2,
   port3141: 1,
+  port3142: 1,
   port3144: 1,
+  timing: 1,
 });
 
 const server = ["install", "server"];
@@ -44,7 +46,7 @@ export const SUITE_PLAN = Object.freeze({
     native: 1,
   }),
   "am-execution-log-honesty": plan(5.358, { browser: 1 }, server),
-  "aq-p4d-pages": plan(19, { browser: 1 }, server),
+  "aq-p4d-pages": plan(19, { browser: 1, port3142: 1 }, server),
   "b-tooling": plan(69.675, { process: SUITE_CAPACITY.process, unit: 1 }, privateTree, true),
   "c-auth-rate-limit": plan(2.16, { light: 1 }, server),
   "c-data-auth": plan(21.026, { development: 1, unit: 1, browser: 1 }, privateTree, true),
@@ -53,8 +55,14 @@ export const SUITE_PLAN = Object.freeze({
   "e-project": plan(4.284, { light: 1, port3141: 1 }, server),
   "f-docs": plan(0.161, { light: 1 }),
   "g-identity-data": plan(11.336, { unit: 1, light: 1 }, server),
-  "h-project-agents": plan(5.78, { light: 1 }, server),
+  "h-project-agents": plan(5.78, { light: 1, port3142: 1 }, server),
   "i-chat": plan(10.695, { light: 1 }, server),
+  "i2-group-chat": plan(12, { light: 1 }, server),
+  "i3-public-channel": plan(12, { light: 1 }, server),
+  "i4-agent-fanout": plan(12, { light: 1 }, server),
+  "i5-project-removal": plan(4, { light: 1 }),
+  "i6-chat-info": plan(10, { light: 1 }, server),
+  "i7-chat-scope": plan(10, { light: 1 }, server),
   "an-p4d-authority": plan(14.016, { process: 1, light: 1 }),
   "j-info-hub": plan(8.758, { light: 1, port3144: 1 }, server),
   "k-acceptance": plan(41.234, { browser: 1 }, server),
@@ -74,15 +82,20 @@ export const SUITE_PLAN = Object.freeze({
   "v-mcp-contracts": plan(11.609, { unit: 1 }),
   "w-worker-remote": plan(66.076, { native: 1, browser: 1 }, worker),
   "ap-p4d-handoff-worker": plan(74, { native: 1, browser: 1 }, worker),
+  "az-p5a-live-worker": plan(42, { native: 1, sdk: 1, timing: 1 }, worker),
+  "as-p5a-chat-ui": plan(45, { browser: 1 }, server),
   "x-remote-tools": plan(2.063, { unit: 1, sdk: 1 }),
   "x2-mcp-extension": plan(13.791, { unit: 1, sdk: 1 }, extension),
   "x3-mcp-extension-surface": plan(2.805, { unit: 1, sdk: 1 }),
   "y-lease-ui": plan(60.044, { development: 1, browser: 1 }, privateTree, true),
   "y-mcp-worker": plan(5.408, { unit: 1, native: 1, sdk: 1 }),
   "y2-mcp-http-worker": plan(1.933, { unit: 1, native: 1, sdk: 1 }, ["install", "worker"]),
-  "z-lease-integration": plan(52.166, { native: 1, browser: 1, sdk: 1 }, worker),
-  "z2-mcp-integration": plan(11.638, { unit: 1, native: 1, sdk: 1 }),
-  "z3-mcp-acceptance": plan(27.517, { unit: 1, native: 2, sdk: 1 }, [...worker, "extension"]),
+  "z-lease-integration": plan(52.166, { native: 1, browser: 1, sdk: 1, timing: 1 }, worker),
+  "z2-mcp-integration": plan(11.638, { unit: 1, native: 1, sdk: 1, timing: 1 }),
+  "z3-mcp-acceptance": plan(27.517, { unit: 1, native: 2, sdk: 1, timing: 1 }, [
+    ...worker,
+    "extension",
+  ]),
 });
 
 export function fitsResources(used, requested) {

@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type {
   AgentProfile,
   CreateAgentProfileInput,
@@ -6,10 +6,11 @@ import type {
   UpdateAgentProfileInput,
 } from "../contracts/agent";
 import { ID_PREFIXES, newId } from "../contracts/ids";
-import { db } from "../db";
-import { agentProfile, projectMember } from "../db/schema";
+import { db, sqlite } from "../db";
+import { agentProfile, chat, chatMember, projectMember } from "../db/schema";
 import { assertProjectAccess } from "./access";
 import type { ProjectContext } from "./access";
+import { revokeProjectAgentEnrollment } from "./chat";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
 
@@ -40,6 +41,38 @@ function toAgentProfile(row: typeof agentProfile.$inferSelect): AgentProfile {
 
 function toProjectMember(row: typeof projectMember.$inferSelect): ProjectMember {
   return { ...row, addedAt: row.addedAt.toISOString() };
+}
+
+/**
+ * 项目级移除后的 DM 归档，与重新加入后的取消归档（`docs/communication-decisions.md`「一期」：
+ * 正常移除后「其 DM 归档、不可继续聊天」，「同一 Agent 重新加入 Project 时…恢复既有 DM」）。
+ *
+ * 两步都落在成员的写入事务里：成员行已经变了而对话还显示可用（或反之）是不能提交的中间态。
+ * DM 与 Agent 的对应关系读 `chat_member`：项目级移除按 d14 保留 DM 的成员行，
+ * 所以移除后仍能按它找回要归档的对话，重新加入后也能按它恢复。
+ */
+function setProjectAgentDirectChatsArchived(
+  projectId: string,
+  agentProfileId: string,
+  archivedAt: Date | null,
+): void {
+  const dmIds = db
+    .select({ id: chat.id })
+    .from(chat)
+    .innerJoin(
+      chatMember,
+      and(
+        eq(chatMember.chatId, chat.id),
+        eq(chatMember.memberKind, "agent"),
+        eq(chatMember.memberId, agentProfileId),
+      ),
+    )
+    .where(and(eq(chat.projectId, projectId), eq(chat.kind, "dm")))
+    .all()
+    .map((row: { id: string }) => row.id);
+  if (dmIds.length === 0) return;
+  // 只动归档事实，不碰 owner/wake 等治理字段：归档不是治理写入，不推 governance_revision。
+  db.update(chat).set({ archivedAt, updatedAt: new Date() }).where(inArray(chat.id, dmIds)).run();
 }
 
 export function createAgentProfile(
@@ -125,6 +158,8 @@ export function addProjectMember(
         .returning()
         .get();
       if (!row) throw new AgentError("conflict", "Agent 已是 Project 成员");
+      // 重新加入时恢复既有 DM（归档清除）；顺序在成员行之后，同事务内一起提交。
+      setProjectAgentDirectChatsArchived(projectId, agentProfileId, null);
       return toProjectMember(row);
     },
     hooks,
@@ -137,25 +172,44 @@ export function removeProjectMember(
   ctx: ProjectContext,
   hooks: IdentityWriteHooks = {},
 ): void {
-  writeIdentity(
-    ctx,
-    { event: "project_member.removed", message: "Project 成员已移除", projectId },
-    () => {
+  // 一个事务把「参与权、在途运行、待发输入」三件事一起处理（设计 §4.4，裁定 d20）：
+  // 断言的读（所有者、活跃 run）与后面的写必须原子，否则检查完到写入之间能挤进一条新的 run。
+  sqlite
+    .transaction(() => {
       assertProjectAccess(ctx, projectId);
+      getAgentProfile(agentProfileId, ctx);
       const row = db
-        .delete(projectMember)
+        .select({ agentProfileId: projectMember.agentProfileId })
+        .from(projectMember)
         .where(
           and(
             eq(projectMember.projectId, projectId),
             eq(projectMember.agentProfileId, agentProfileId),
           ),
         )
-        .returning()
         .get();
-      if (!row) throw new AgentError("not_found", "Project 成员不存在");
-    },
-    hooks,
-  );
+      // 幂等：已经不在 Project 的 Agent 再调一次是无副作用的成功——不写诊断事件、不碰对话。
+      // 真正不存在的 profile 仍由上面的 getAgentProfile 给 `not_found`，拼错的 id 不会被静默吞掉。
+      if (!row) return;
+      writeIdentity(
+        ctx,
+        { event: "project_member.removed", message: "Project 成员已移除", projectId },
+        () => {
+          revokeProjectAgentEnrollment(projectId, agentProfileId);
+          setProjectAgentDirectChatsArchived(projectId, agentProfileId, new Date());
+          db.delete(projectMember)
+            .where(
+              and(
+                eq(projectMember.projectId, projectId),
+                eq(projectMember.agentProfileId, agentProfileId),
+              ),
+            )
+            .run();
+        },
+        hooks,
+      );
+    })
+    .immediate();
 }
 
 export function listProjectMembers(projectId: string, ctx: ProjectContext): ProjectMember[] {

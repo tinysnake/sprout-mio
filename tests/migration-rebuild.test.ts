@@ -137,3 +137,547 @@ describe("表重建迁移", () => {
     expect(sql).toMatch(/REFERENCES `worker_exchange_frame`[\s\S]*DEFERRABLE INITIALLY DEFERRED/);
   });
 });
+
+// 迁移按 tag 定位，不假设 I-P5a 的重建永远是最后一条。
+function indexOfTag(tag: string): number {
+  const index = migrations.findIndex((migration) => migration.tag === tag);
+  if (index < 0) throw new Error(`找不到迁移 ${tag}`);
+  return index;
+}
+const multichatIndex = indexOfTag("0021_p5a_multichat_schema");
+const backfillIndex = indexOfTag("0022_p5a_public_channel_backfill");
+const dropTriggerIndex = indexOfTag("0023_p5a_drop_channel_delete_trigger");
+const multichat = migrations[multichatIndex];
+const backfill = migrations[backfillIndex];
+const dropTrigger = migrations[dropTriggerIndex];
+const agentRunFkIndex = indexOfTag("0024_p5a_agent_run_message_chat_fk");
+const agentRunFk = migrations[agentRunFkIndex];
+
+/** 表上实际存在的触发器名；排序后可直接比对集合，多余的孤儿触发器会立刻显形。 */
+function triggersOn(sqlite: Database.Database, table: string): string[] {
+  return (
+    sqlite
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?`)
+      .all(table) as { name: string }[]
+  )
+    .map((row) => row.name)
+    .sort();
+}
+
+function applyRange(sqlite: Database.Database, from: number, to: number) {
+  for (const migration of migrations.slice(from, to))
+    for (const statement of migration.statements) sqlite.exec(statement);
+}
+
+/** 迁移执行器把整个文件包在一个事务里，文件内的 PRAGMA foreign_keys 因此无效；测试同样如此。 */
+function applyRangeInTransaction(sqlite: Database.Database, from: number, to: number) {
+  sqlite.exec("BEGIN");
+  try {
+    applyRange(sqlite, from, to);
+    sqlite.exec("COMMIT");
+  } catch (error) {
+    sqlite.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** 0020 结束时的既有事实：一条 DM、两名成员、一条消息、一个分身与一次排队中的 run。 */
+function seedLegacyRows(sqlite: Database.Database) {
+  sqlite.pragma("foreign_keys = OFF");
+  sqlite
+    .prepare(
+      `INSERT INTO user (id, name, email, email_verified, created_at, updated_at)
+       VALUES ('usr_legacy', 'legacy', 'u@e.com', 0, 1, 1),
+              ('usr_second', 'second', '{{EMAIL_zcwcuhgzhx}}', 0, 1, 1)`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO project (id, name, created_by, created_at, updated_at)
+       VALUES ('prj_legacy', 'legacy', 'usr_legacy', 1, 1)`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO agent_profile (id, name, persona, harness, created_by, created_at, updated_at)
+       VALUES ('agp_legacy', 'legacy', 'persona', 'pi', 'usr_legacy', 1, 1),
+              ('agp_second', 'second', 'persona', 'pi', 'usr_legacy', 1, 1)`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO project_member (project_id, agent_profile_id, added_by, added_at)
+       VALUES ('prj_legacy', 'agp_legacy', 'usr_legacy', 1),
+              ('prj_legacy', 'agp_second', 'usr_legacy', 1)`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO chat (id, project_id, kind, created_by, created_at, updated_at)
+       VALUES ('cnv_legacy', 'prj_legacy', 'dm', 'usr_legacy', 2, 2)`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO chat_member (chat_id, member_kind, member_id, added_at)
+       VALUES ('cnv_legacy', 'human', 'usr_legacy', 2), ('cnv_legacy', 'agent', 'agp_legacy', 2)`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO agent_instance (id, agent_profile_id, chat_id, project_id, created_at, updated_at)
+       VALUES ('ins_legacy', 'agp_legacy', 'cnv_legacy', 'prj_legacy', 2, 2),
+              ('ins_second', 'agp_second', 'cnv_legacy', 'prj_legacy', 2, 2)`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO message (id, chat_id, sender_kind, sender_id, body, created_at)
+       VALUES ('msg_legacy', 'cnv_legacy', 'human', 'usr_legacy', 'hello', 3)`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO agent_run (id, instance_id, chat_id, project_id, request_id, status, queued_at, session_id)
+       VALUES ('run_legacy', 'ins_legacy', 'cnv_legacy', 'prj_legacy', 'req_legacy', 'queued', 3, 'ins_legacy'),
+              ('run_second', 'ins_second', 'cnv_legacy', 'prj_legacy', 'req_second', 'queued', 3, 'ins_second')`,
+    )
+    .run();
+  sqlite
+    .prepare(
+      `INSERT INTO agent_run_input (message_id, run_id, disposition)
+       VALUES ('msg_legacy', 'run_legacy', 'pending')`,
+    )
+    .run();
+}
+
+describe("I-P5a 多人 Chat 结构迁移", () => {
+  it(`${multichat.tag} 回填 DM 所有者并保留成员、消息与输入行`, () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, multichatIndex);
+      seedLegacyRows(sqlite);
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
+      applyRangeInTransaction(sqlite, backfillIndex, backfillIndex + 1);
+
+      expect(
+        sqlite
+          .prepare(
+            `SELECT kind, owner_kind, owner_id, wake_policy, governance_revision, created_at, updated_at
+             FROM chat WHERE id = 'cnv_legacy'`,
+          )
+          .get(),
+      ).toEqual({
+        kind: "dm",
+        owner_kind: "human",
+        owner_id: "usr_legacy",
+        wake_policy: "owner_led",
+        governance_revision: 0,
+        created_at: 2,
+        updated_at: 2,
+      });
+      expect(
+        sqlite.prepare(`SELECT count(*) AS n FROM chat_member WHERE chat_id = 'cnv_legacy'`).get(),
+      ).toEqual({ n: 2 });
+      expect(sqlite.prepare(`SELECT count(*) AS n FROM message`).get()).toEqual({ n: 1 });
+      expect(
+        sqlite
+          .prepare(
+            `SELECT run_id, message_id, disposition, delivered_at, cancelled_at, cancel_reason
+             FROM agent_run_input`,
+          )
+          .all(),
+      ).toEqual([
+        {
+          run_id: "run_legacy",
+          message_id: "msg_legacy",
+          disposition: "pending",
+          delivered_at: null,
+          cancelled_at: null,
+          cancel_reason: null,
+        },
+      ]);
+      expect(sqlite.pragma("foreign_key_check")).toEqual([]);
+      sqlite.pragma("foreign_keys = ON");
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it(`${multichat.tag} 的新主键允许一条消息扇出给多条 run`, () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, multichatIndex);
+      seedLegacyRows(sqlite);
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
+      sqlite.pragma("foreign_keys = ON");
+
+      sqlite
+        .prepare(
+          `INSERT INTO agent_run_input (run_id, message_id, disposition)
+           VALUES ('run_second', 'msg_legacy', 'pending')`,
+        )
+        .run();
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO agent_run_input (run_id, message_id, disposition)
+             VALUES ('run_second', 'msg_legacy', 'pending')`,
+          )
+          .run(),
+      ).toThrow(/UNIQUE constraint failed: agent_run_input\.run_id, agent_run_input\.message_id/);
+      sqlite
+        .prepare(
+          `UPDATE agent_run_input SET disposition = 'cancelled', cancelled_at = 5,
+             cancel_reason = 'membership_revoked'
+           WHERE run_id = 'run_second' AND message_id = 'msg_legacy'`,
+        )
+        .run();
+      expect(
+        sqlite
+          .prepare(
+            `SELECT disposition, cancelled_at, cancel_reason FROM agent_run_input
+             WHERE run_id = 'run_second'`,
+          )
+          .get(),
+      ).toEqual({ disposition: "cancelled", cancelled_at: 5, cancel_reason: "membership_revoked" });
+      // 取消态必须同时带上时间与原因，缺一个就被 CHECK 拒绝。
+      expect(() =>
+        sqlite
+          .prepare(
+            `UPDATE agent_run_input SET disposition = 'cancelled', cancelled_at = NULL
+             WHERE run_id = 'run_second'`,
+          )
+          .run(),
+      ).toThrow(/CHECK constraint failed: agent_run_input_disposition_check/);
+      expect(() =>
+        sqlite
+          .prepare(
+            `UPDATE agent_run_input SET disposition = 'pending', delivered_at = 6
+             WHERE run_id = 'run_second'`,
+          )
+          .run(),
+      ).toThrow(/CHECK constraint failed: agent_run_input_disposition_check/);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it(`${multichat.tag} 的触发器与视图守住派生成员和不可变身份`, () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, multichatIndex);
+      seedLegacyRows(sqlite);
+      applyRangeInTransaction(sqlite, multichatIndex, migrations.length);
+      sqlite.pragma("foreign_keys = ON");
+      const channelId = String(
+        (
+          sqlite.prepare(`SELECT id FROM chat WHERE kind = 'public_channel'`).get() as {
+            id: string;
+          }
+        ).id,
+      );
+
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by)
+             VALUES ('cnv_group', 'prj_legacy', 'group', 'agent', 'agp_second', 'usr_legacy')`,
+          )
+          .run(),
+      ).not.toThrow();
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by)
+             VALUES ('cnv_bad_owner', 'prj_legacy', 'dm', 'agent', 'agp_legacy', 'usr_legacy')`,
+          )
+          .run(),
+      ).toThrow(/CHECK constraint failed: chat_dm_owner_check/);
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by)
+             VALUES ('cnv_bad_kind', 'prj_legacy', 'channel', 'human', 'usr_legacy', 'usr_legacy')`,
+          )
+          .run(),
+      ).toThrow(/CHECK constraint failed: chat_kind_check/);
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by, archived_at)
+             VALUES ('cnv_archived', 'prj_legacy', 'public_channel', 'human', 'usr_legacy', 'usr_legacy', 9)`,
+          )
+          .run(),
+      ).toThrow(/CHECK constraint failed: chat_public_channel_archived_check/);
+      expect(() =>
+        sqlite.prepare(`UPDATE chat SET kind = 'group' WHERE id = 'cnv_legacy'`).run(),
+      ).toThrow(/chat_identity_immutable/);
+      expect(() =>
+        sqlite
+          .prepare(`UPDATE chat SET title = '改名', updated_at = 7 WHERE id = 'cnv_legacy'`)
+          .run(),
+      ).not.toThrow();
+      expect(() =>
+        sqlite.prepare(`UPDATE chat_member SET added_at = 9 WHERE chat_id = 'cnv_legacy'`).run(),
+      ).toThrow(/chat_member_identity_immutable/);
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat_member (chat_id, member_kind, member_id) VALUES (?, 'human', 'usr_second')`,
+          )
+          .run(channelId),
+      ).toThrow(/public_channel_members_derived/);
+      // 裁定 d12：频道的 delete 触发器是不可达死代码，insert 是唯一的物理底线。
+      // 裁定 d13：它由新迁移 0023 删掉，0021 保持基线原样；这里跑完全部迁移，
+      // chat_member 上的触发器集合必须恰好是 d12 认定的那两道，不多一道孤儿。
+      expect(triggersOn(sqlite, "chat_member")).toEqual([
+        "chat_member_identity_immutable",
+        "chat_member_no_channel_insert",
+      ]);
+      expect(() =>
+        sqlite.prepare(`DELETE FROM chat_member WHERE chat_id = 'cnv_legacy'`).run(),
+      ).not.toThrow();
+
+      expect(
+        sqlite
+          .prepare(
+            `SELECT member_kind, member_id, source FROM chat_effective_member WHERE chat_id = ?
+             ORDER BY member_kind, member_id`,
+          )
+          .all(channelId),
+      ).toEqual([
+        { member_kind: "agent", member_id: "agp_legacy", source: "project_member" },
+        { member_kind: "agent", member_id: "agp_second", source: "project_member" },
+        { member_kind: "human", member_id: "usr_legacy", source: "project_owner" },
+      ]);
+      // 移出项目后，同一连接的下次读取立刻失去该分身；不留双写窗口。
+      sqlite.prepare(`DELETE FROM project_member WHERE agent_profile_id = 'agp_legacy'`).run();
+      expect(
+        sqlite
+          .prepare(
+            `SELECT count(*) AS n FROM chat_effective_member
+             WHERE chat_id = ? AND member_id = 'agp_legacy'`,
+          )
+          .get(channelId),
+      ).toEqual({ n: 0 });
+      // 每个 Project 只能有一条公共频道。
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by)
+             VALUES ('cnv_channel2', 'prj_legacy', 'public_channel', 'human', 'usr_legacy', 'usr_legacy')`,
+          )
+          .run(),
+      ).toThrow(/UNIQUE constraint failed: chat\.project_id/);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it(`${backfill.tag} 幂等，且回填 id 仍满足契约的 chatId 形状`, () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, multichatIndex);
+      seedLegacyRows(sqlite);
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
+      applyRange(sqlite, backfillIndex, backfillIndex + 1);
+      applyRange(sqlite, backfillIndex, backfillIndex + 1);
+      sqlite.pragma("foreign_keys = ON");
+
+      const channels = sqlite
+        .prepare(`SELECT id, title, archived_at, owner_kind, owner_id, wake_policy, governance_revision
+                  FROM chat WHERE kind = 'public_channel'`)
+        .all() as {
+        id: string;
+        title: string | null;
+        archived_at: number | null;
+        owner_kind: string;
+        owner_id: string;
+        wake_policy: string;
+        governance_revision: number;
+      }[];
+      expect(channels).toHaveLength(1);
+      const [{ id: channelId, ...channelFacts }] = channels;
+      expect(channelFacts).toEqual({
+        title: null,
+        archived_at: null,
+        owner_kind: "human",
+        owner_id: "usr_legacy",
+        wake_policy: "owner_led",
+        governance_revision: 0,
+      });
+      expect(channelId).toMatch(
+        /^cnv_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      expect(
+        sqlite
+          .prepare(`SELECT count(*) AS n FROM chat_member cm
+                    JOIN chat c ON c.id = cm.chat_id WHERE c.kind = 'public_channel'`)
+          .get(),
+      ).toEqual({ n: 0 });
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it(`${dropTrigger.tag} 对已迁到 0022 的既有库生效：delete 触发器从存在到消失`, () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, multichatIndex);
+      seedLegacyRows(sqlite);
+      // 长期库（data/sprout.sqlite 这类）此刻的样子：0021 按基线建了三道触发器，0022 只回填数据。
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
+      applyRange(sqlite, backfillIndex, backfillIndex + 1);
+      expect(triggersOn(sqlite, "chat_member")).toEqual([
+        "chat_member_identity_immutable",
+        "chat_member_no_channel_delete",
+        "chat_member_no_channel_insert",
+      ]);
+      const channelId = String(
+        (
+          sqlite.prepare(`SELECT id FROM chat WHERE kind = 'public_channel'`).get() as {
+            id: string;
+          }
+        ).id,
+      );
+
+      // 迁移器按 __drizzle_migrations.created_at 推进，不会重跑已应用的 0021/0022 ——
+      // 就地改 0021 对既有库无效，只能靠新的 0023 推进。同一连接补跑它就是既有库升级时发生的事。
+      applyRange(sqlite, dropTriggerIndex, dropTriggerIndex + 1);
+      expect(triggersOn(sqlite, "chat_member")).toEqual([
+        "chat_member_identity_immutable",
+        "chat_member_no_channel_insert",
+      ]);
+      // 再跑一次仍不报错：既有库可能已经按 0021 的原样建过，也可能被别的路径删过。
+      expect(() => applyRange(sqlite, dropTriggerIndex, dropTriggerIndex + 1)).not.toThrow();
+      // 删掉的只有不可达的那条：insert 这道物理底线在升级后的库上依旧生效。
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat_member (chat_id, member_kind, member_id) VALUES (?, 'human', 'usr_second')`,
+          )
+          .run(channelId),
+      ).toThrow(/public_channel_members_derived/);
+      // 升级后成员行可删，d14 的显式移除才有落点；DM 上删除不触发任何拒绝。
+      expect(() =>
+        sqlite.prepare(`DELETE FROM chat_member WHERE chat_id = 'cnv_legacy'`).run(),
+      ).not.toThrow();
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it(`${agentRunFk.tag} 重建后 run 的回复必须与 run 同属一个 chat`, () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, multichatIndex);
+      seedLegacyRows(sqlite);
+      applyRange(sqlite, multichatIndex, migrations.length);
+      sqlite.pragma("foreign_keys = ON");
+
+      // 重建不能丢行：排队中的 run 与它的输入都还在。
+      expect(sqlite.prepare(`SELECT count(*) AS n FROM agent_run`).get()).toEqual({ n: 2 });
+      expect(sqlite.prepare(`SELECT count(*) AS n FROM agent_run_input`).get()).toEqual({ n: 1 });
+      // 既有 4 条 CHECK、4 个索引与复合外键都在重建后的表上。
+      const ddl = String(
+        (
+          sqlite
+            .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_run'`)
+            .get() as { sql: string }
+        ).sql,
+      );
+      expect(ddl.match(/CONSTRAINT/g)).toHaveLength(4);
+      expect(ddl).toContain(
+        "FOREIGN KEY (`assistant_message_id`,`chat_id`) REFERENCES `message`(`id`,`chat_id`)",
+      );
+      expect(
+        sqlite
+          .prepare(
+            `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'agent_run'
+             AND name LIKE 'agent_run%' ORDER BY name`,
+          )
+          .all(),
+      ).toEqual([
+        { name: "agent_run_assistant_message_unique" },
+        { name: "agent_run_bound_identity_unique" },
+        { name: "agent_run_chat_queued_idx" },
+        { name: "agent_run_one_active_instance" },
+      ]);
+
+      // 同 chat 的回复是合法组合（合法对照）。
+      sqlite
+        .prepare(`UPDATE agent_run SET assistant_message_id = 'msg_legacy' WHERE id = 'run_legacy'`)
+        .run();
+      sqlite
+        .prepare(
+          `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by)
+           VALUES ('cnv_other', 'prj_legacy', 'dm', 'human', 'usr_legacy', 'usr_legacy')`,
+        )
+        .run();
+      sqlite
+        .prepare(
+          `INSERT INTO message (id, chat_id, sender_kind, sender_id, body)
+           VALUES ('msg_other', 'cnv_other', 'human', 'usr_legacy', 'other')`,
+        )
+        .run();
+      // 反证 4 的物理底线：把别的 chat 的消息绑到这条 run 上，数据库必须拒绝。
+      expect(() =>
+        sqlite
+          .prepare(
+            `UPDATE agent_run SET assistant_message_id = 'msg_other' WHERE id = 'run_legacy'`,
+          )
+          .run(),
+      ).toThrow(/FOREIGN KEY constraint failed/);
+      expect(sqlite.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("重建后的表继续以外键引用父表", () => {
+    const sqlite = temporaryDatabase();
+    try {
+      applyRange(sqlite, 0, migrations.length);
+      sqlite.pragma("foreign_keys = ON");
+      const ddl = new Map<string, string>(
+        ["chat", "chat_member", "agent_run_input"].map((table) => [
+          table,
+          String(
+            (
+              sqlite
+                .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`)
+                .get(table) as { sql: string }
+            ).sql,
+          ),
+        ]),
+      );
+      expect(ddl.get("chat")).toContain("FOREIGN KEY (`project_id`) REFERENCES `project`(`id`)");
+      expect(ddl.get("chat")).toContain("FOREIGN KEY (`created_by`) REFERENCES `user`(`id`)");
+      expect(ddl.get("chat_member")).toContain("FOREIGN KEY (`chat_id`) REFERENCES `chat`(`id`)");
+      expect(ddl.get("agent_run_input")).toContain(
+        "FOREIGN KEY (`run_id`) REFERENCES `agent_run`(`id`)",
+      );
+      expect(ddl.get("agent_run_input")).toContain(
+        "FOREIGN KEY (`message_id`) REFERENCES `message`(`id`)",
+      );
+      expect(
+        (
+          sqlite
+            .prepare(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`)
+            .get("chat_public_channel_project_unique") as { sql: string }
+        ).sql,
+      ).toMatch(/WHERE "chat"\."kind" = 'public_channel'/);
+      expect(() =>
+        sqlite
+          .prepare(
+            `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by)
+             VALUES ('cnv_ghost', 'prj_ghost', 'group', 'human', 'usr_ghost', 'usr_ghost')`,
+          )
+          .run(),
+      ).toThrow(/FOREIGN KEY constraint failed/);
+    } finally {
+      sqlite.close();
+    }
+  });
+});

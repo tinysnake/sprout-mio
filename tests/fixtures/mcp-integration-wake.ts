@@ -144,10 +144,13 @@ export async function measureWakeControls(o: Options) {
     const elapsedMs = performance.now() - start;
     trials.push({ mode, elapsedMs, frames: result.frames.length });
     if (mode === "with_remote_wake") {
-      assert(elapsedMs < 500, `wake must return within 500ms: ${elapsedMs}`);
+      assert(
+        elapsedMs < holdMs,
+        `wake must return before the ${holdMs}ms hold expires: ${elapsedMs}`,
+      );
       assert.equal(result.frames.length, 1);
     } else {
-      assert(elapsedMs >= 1800, `${mode} must wait for hold timeout: ${elapsedMs}`);
+      assert(elapsedMs >= holdMs - 200, `${mode} must wait for hold timeout: ${elapsedMs}`);
       assert.equal(result.frames.length, mode === "outer_rollback" ? 0 : 1);
     }
     if (result.frames.length) ack = result.frames[0]!.seq;

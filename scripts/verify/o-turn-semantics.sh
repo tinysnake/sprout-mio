@@ -157,8 +157,8 @@ input.on('line',raw=>{const x=JSON.parse(raw);
 if(x.type==='open') {config=x;const file=x.sessionFile??join(x.sessionDirectory,x.sessionId+'.jsonl');
 if(!existsSync(file))writeFileSync(file,JSON.stringify({id:x.sessionId})+'\\n');
 line({type:'extension_ui_request',id:x.id});process.stdout.write('unrelated stdout\\n');line({type:'future_event',id:x.id});
-const slash=x.profile.model.indexOf('/');
-line({type:'ready',id:x.id,snapshot:{provider:x.profile.model.slice(0,slash),model:x.profile.model.slice(slash+1),thinking:x.profile.effort??'off',tools:['bash','edit','read','write'],extensions:['sprout-extension'],sessionId:x.sessionId,sessionFile:file,cwd:x.cwd,sdkVersion:'protocol-stub',profile:x.profile}});
+const model=x.profile.model??'protocol/unknown';const slash=model.indexOf('/');
+line({type:'ready',id:x.id,snapshot:{provider:model.slice(0,slash),model:model.slice(slash+1),thinking:x.profile.effort??'off',tools:['bash','edit','read','write'],extensions:['sprout-extension'],sessionId:x.sessionId,sessionFile:file,cwd:x.cwd,sdkVersion:'protocol-stub',profile:x.profile}});
 } else if(x.type==='prompt') {holding=x.text.includes('stub-hold');line({type:'input_delivered',id:x.id,messageId:x.messageId});
 if(x.text.includes('stub-crash'))process.exit(23);
 else if(x.text.includes('stub-error'))line({type:'settled',id:x.id,text:'THIS MUST NOT BE SAVED',stopReason:'error'});
@@ -327,10 +327,14 @@ try {
     const failedRow=allRuns().at(-1)
     assert.equal(await page.locator('[data-testid="pi-host-status"]').textContent(),'失败')
     assert.equal(await page.locator('[data-testid="run-failure"]').textContent(),failedRow.error_message)
-    assert((await page.locator('[data-testid="run-failure-request"]').textContent()).includes(failedRow.request_id))
+    // 裁定 d43：失败块只给文案与错误码，内部标识不上页面。
+    const failureBlock=await page.locator('[data-testid="run-status"]').innerText()
+    assert(!failureBlock.includes('requestId'),'失败块不得出现 requestId')
+    assert(!failureBlock.includes(failedRow.request_id),'失败块不得出现 request_id')
+    assert.equal(await page.locator('[data-testid="run-failure-code"]').textContent(),failedRow.error_code)
     const failedShot=join(screenshotDir,'p3-b-run-failed.png')
     await page.screenshot({path:failedShot,fullPage:true})
-    pass('UI shows failed state with errorMessage and requestId', {runId:failedRow.id,screenshot:failedShot})
+    pass('UI shows failed state with errorMessage and errorCode, no requestId', {runId:failedRow.id,screenshot:failedShot})
 
     await send('stub-hold')
     const uiRun=await waitRun('running',8)

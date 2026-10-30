@@ -15,6 +15,7 @@ import {
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
+import { recordDiagnostic } from "../diagnostics";
 import { markRunNoticeDelivered, noticeDeliveryText, pendingRunNotices } from "../notices";
 import { issueRemoteToolGrant, revokeRemoteToolGrant } from "../remote-agent-gateway";
 import { machineRuntimeContext } from "../runtime";
@@ -32,7 +33,14 @@ export function executeRun(
 ): Effect.Effect<void> {
   return Effect.gen(function* () {
     const { run, profile } = work;
-    const ctx: ProjectContext = { userId: work.ownerId, requestId: run.requestId };
+    // 执行身份取自 run 自己的记录：`userId` 继续只是 Project 归属（agent_run 的 owner 语义不变），
+    // 分身身份取 run 引用的 instance；因此人类消息开出的 run 也以 Agent 身份执行域代码，
+    // 宿主不再靠 `userId` 分辨人与 Agent。
+    const ctx: ProjectContext = {
+      userId: work.ownerId,
+      requestId: run.requestId,
+      agent: { agentProfileId: work.agentProfileId, instanceId: run.instanceId, runId: run.id },
+    };
     const sent = new Set<string>();
     /** 与 messageId 共用 sent 而不冲突：通知按 `notice:<id>` 记账，只有成功交付才加入。 */
     const noticesSent = new Set<string>();
@@ -178,6 +186,31 @@ export function executeRun(
                     : error instanceof RepositoryError
                       ? new PiHostFailure(error.code, error.message)
                       : new PiHostFailure("run_failed", "Agent run 执行失败");
+                // 与宿主级诊断一样保留原因；只取错误分类和消息，不序列化异常附带的凭据等字段。
+                const diagnostic = {
+                  level: "error" as const,
+                  event: "pi_host.run_failed",
+                  requestId: run.requestId,
+                  projectId: run.projectId,
+                  chatId: run.chatId,
+                  instanceId: run.instanceId,
+                  runId: run.id,
+                  message: "Agent run 执行失败",
+                  data: {
+                    errorName: error instanceof Error ? error.name : "UnknownError",
+                    ...(error instanceof Error && "code" in error && typeof error.code === "string"
+                      ? { errorCode: error.code }
+                      : {}),
+                    cause:
+                      error instanceof Error
+                        ? error.message
+                        : typeof error === "string"
+                          ? error
+                          : "未知错误",
+                  },
+                };
+                console.error("[pi-host] Run 执行失败", diagnostic);
+                recordDiagnostic(diagnostic);
                 transitionAgentRun(
                   run.id,
                   "failed",

@@ -3,6 +3,8 @@ set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export no_proxy=localhost,127.0.0.1
 export NO_PROXY="$no_proxy"
+source "$(dirname "${BASH_SOURCE[0]}")/../verify/lib/live-model.sh"
+sprout_live_model
 node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
 import { spawn, execFileSync } from 'node:child_process'
@@ -22,7 +24,8 @@ const evidence = []
 const children = new Set()
 const delay = ms => new Promise(done => setTimeout(done, ms))
 const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
-const model = process.env.SPROUT_VERIFY_PI_MODEL ?? 'deepseek/deepseek-flash'
+const model = process.env.SPROUT_VERIFY_PI_MODEL
+if (!model) throw new Error('SPROUT_VERIFY_PI_MODEL is unset: a live run must name its model')
 const port = Number(process.env.SPROUT_VERIFY_PI_LIVE_PORT ?? 3163)
 const base = `http://localhost:${port}`
 const environment = {

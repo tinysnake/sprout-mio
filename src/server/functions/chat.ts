@@ -2,10 +2,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import {
+  addGroupMemberInput,
   chatIdInput,
   clearChatTitleInput,
   createDirectChatInput,
+  createGroupChatInput,
+  removeGroupMemberInput,
   sendMessageInput,
+  setChatOwnerInput,
   updateChatTitleInput,
 } from "../../contracts/chat";
 import type {
@@ -13,12 +17,14 @@ import type {
   Chat,
   ChatMember,
   ChatResult,
-  DirectChat,
+  ChatDetail,
+  ChatSession,
   Message,
 } from "../../contracts/chat";
 import { fieldErrorsFrom, projectIdInput } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
+import type { ChatActor } from "../../domain/chat-actor";
 import type { DiagnosticInput } from "../diagnostics";
 import { getRequestContext } from "../request-context";
 import { toDomainAppError } from "./domain-errors";
@@ -30,8 +36,12 @@ const sendMessageRequest = z.object({
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
-  const [session, chat] = await Promise.all([import("../session"), import("../../domain/chat")]);
-  return { requireSession: session.requireSession, ...chat };
+  const [session, chat, chatSession] = await Promise.all([
+    import("../session"),
+    import("../../domain/chat"),
+    import("../../domain/chat-session"),
+  ]);
+  return { requireSession: session.requireSession, ...chat, ...chatSession };
 }
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
 type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
@@ -76,12 +86,20 @@ function invalidInput(error: z.ZodError, requestId: string): ChatResult<never> {
   return { ...fail(toAppError(error, requestId)), fieldErrors: fieldErrorsFrom(error) };
 }
 
+/**
+ * 页面请求只可能是 Human。行动者从认证会话构造，Agent 身份永远不从浏览器来；
+ * 治理能力判定在领域层按 `ChatActor` 的身份分支做，边界不自行判权限。
+ */
+function humanActor(context: ProjectContext): ChatActor {
+  return { kind: "human", userId: context.userId, ctx: context };
+}
+
 export async function createDirectChatBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
-): Promise<ChatResult<DirectChat>> {
-  return chatBoundary<DirectChat>(headers, requestId, (deps, context) => {
+): Promise<ChatResult<ChatDetail>> {
+  return chatBoundary<ChatDetail>(headers, requestId, (deps, context) => {
     const parsed = createDirectChatInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
     return ok(
@@ -176,6 +194,28 @@ export const createDirectChatFn = createServerFn({ method: "POST" })
     createDirectChatBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
+/**
+ * 会话读模型：一个会话可以返回多个分身与它们各自的活跃 run；返回形状按 kind 分形
+ * （DM 与改造前的 ChatDetail 一致）。页面不必再自己拼 chat / members / instances 三次请求。
+ */
+export async function getChatSessionBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<ChatSession>> {
+  return chatBoundary<ChatSession>(headers, requestId, (deps, context) => {
+    const parsed = chatIdInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(deps.getChatSession(parsed.data.chatId, context), requestId);
+  });
+}
+
+export const getChatSessionFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    getChatSessionBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
 /** 重命名标题：归属、字段边界与写入都在服务端完成，UI 不自查权限。 */
 export async function updateChatTitleBoundary(
   raw: unknown,
@@ -185,7 +225,10 @@ export async function updateChatTitleBoundary(
   return chatBoundary<Chat>(headers, requestId, (deps, context) => {
     const parsed = updateChatTitleInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.updateChatTitle(parsed.data.chatId, parsed.data.title, context), requestId);
+    return ok(
+      deps.updateChatTitle(parsed.data.chatId, parsed.data.title, humanActor(context)),
+      requestId,
+    );
   });
 }
 
@@ -198,7 +241,7 @@ export async function clearChatTitleBoundary(
   return chatBoundary<Chat>(headers, requestId, (deps, context) => {
     const parsed = clearChatTitleInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.clearChatTitle(parsed.data.chatId, context), requestId);
+    return ok(deps.clearChatTitle(parsed.data.chatId, humanActor(context)), requestId);
   });
 }
 
@@ -248,4 +291,104 @@ export const clearChatTitleFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     clearChatTitleBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+/** 建群：成员、所有者与唤醒策略的边界校验在服务端完成，Agent 行动者由领域层回 forbidden。 */
+export async function createGroupChatBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = createGroupChatInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.createGroupChat(parsed.data.projectId, parsed.data, humanActor(context)),
+      requestId,
+    );
+  });
+}
+
+export async function addGroupMemberBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = addGroupMemberInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.addGroupMember(
+        parsed.data.chatId,
+        parsed.data.member,
+        parsed.data.expectedRevision,
+        humanActor(context),
+      ),
+      requestId,
+    );
+  });
+}
+
+export async function removeGroupMemberBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = removeGroupMemberInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.removeGroupMember(
+        parsed.data.chatId,
+        parsed.data.member,
+        parsed.data.expectedRevision,
+        humanActor(context),
+      ),
+      requestId,
+    );
+  });
+}
+
+export async function setChatOwnerBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = setChatOwnerInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.setChatOwner(
+        parsed.data.chatId,
+        parsed.data.owner,
+        parsed.data.expectedRevision,
+        humanActor(context),
+      ),
+      requestId,
+    );
+  });
+}
+
+export const createGroupChatFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    createGroupChatBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const addGroupMemberFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    addGroupMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const removeGroupMemberFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    removeGroupMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const setChatOwnerFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    setChatOwnerBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );

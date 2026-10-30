@@ -268,6 +268,13 @@ const checkP4dLine = (line, label, source) => {
   check(targets.some(({ document }) => document && path.resolve(document.file) === p4dEvidenceFile), `${label}: missing docs/p4d/summary.md evidence`);
   for (const { body } of targets) evidenceIn(body, label);
 };
+// P5a 与 P4d 同级：被引用的 docs/p5a/summary.md 小节必须自带可解析提交与存在的重跑命令。
+const p5aEvidenceFile = path.resolve('docs/p5a/summary.md');
+const checkP5aLine = (line, label, source) => {
+  const targets = resolveEvidence(line, label, source, 'docs/p5a');
+  check(targets.some(({ document }) => document && path.resolve(document.file) === p5aEvidenceFile), `${label}: missing docs/p5a/summary.md evidence`);
+  for (const { body } of targets) evidenceIn(body, label);
+};
 const functional = 'docs/development-plan-functional.md';
 const p4 = sectionOf(plan, 'P4', 2);
 const p4a = sectionOf(p4, 'P4a', 3);
@@ -290,6 +297,11 @@ const p4dBoxes = boxesIn(sectionOf(p4, 'P4d', 3));
 check(p4dBoxes.length === 6, `P4d must contain six checkboxes, found ${p4dBoxes.length}`);
 for (let i = 0; i < p4dBoxes.length; i++) {
   if (p4dBoxes[i].state === 'x') checkP4dLine(p4dBoxes[i].text, `P4d checkbox ${i + 1}`, functional);
+}
+const p5aBoxes = boxesIn(sectionOf(sectionOf(plan, 'P5', 2), 'P5a', 3));
+check(p5aBoxes.length === 3, `P5a must contain three checkboxes, found ${p5aBoxes.length}`);
+for (let i = 0; i < p5aBoxes.length; i++) {
+  if (p5aBoxes[i].state === 'x') checkP5aLine(p5aBoxes[i].text, `P5a checkbox ${i + 1}`, functional);
 }
 const packagePlan = fs.readFileSync('docs/development-plan.md', 'utf8');
 const integration = sectionOf(packagePlan, 'I-P4a', 3);
@@ -376,7 +388,27 @@ if (p4dHumanBox?.state === 'x') {
   check(Boolean(record) && commitExists(record), `I-P4d human acceptance version ${record || '(none)'} does not resolve`);
   check(!/^[-*]\s*待确认/m.test(body), 'I-P4d human acceptance must not treat pending confirmation as confirmed');
 }
-for (const stage of ['I-P5a', 'I-P5b', 'I-P6', 'I-P7']) {
+const integrationP5aBoxes = boxesIn(sectionOf(packagePlan, 'I-P5a', 3));
+check(integrationP5aBoxes.length === 4, `I-P5a must contain four checkboxes, found ${integrationP5aBoxes.length}`);
+const p5aSummaryDoc = documents.get(path.resolve('docs/p5a/summary.md'));
+const p5aTechnicalBox = integrationP5aBoxes[2];
+if (p5aTechnicalBox?.state === 'x') {
+  const body = p5aSummaryDoc?.sections.get('技术验收证据') ?? '';
+  check(Boolean(p5aSummaryDoc), 'I-P5a technical acceptance requires docs/p5a/summary.md');
+  check(Boolean(body), 'I-P5a technical acceptance requires docs/p5a/summary.md#技术验收证据');
+  evidenceIn(body, 'I-P5a technical acceptance');
+}
+const p5aHumanBox = integrationP5aBoxes[3];
+if (p5aHumanBox?.state === 'x') {
+  const body = p5aSummaryDoc?.sections.get('human-体验确认') ?? '';
+  check(Boolean(p5aSummaryDoc), 'I-P5a human acceptance requires docs/p5a/summary.md');
+  check(Boolean(body), 'I-P5a human acceptance requires docs/p5a/summary.md#human-体验确认');
+  const record = body.match(/^- 确认记录：Human 亲自体验确认通过，版本 `([0-9a-f]{7,40})`$/m)?.[1] ?? '';
+  check(Boolean(record), 'I-P5a human acceptance requires an explicit confirmation record');
+  check(Boolean(record) && commitExists(record), `I-P5a human acceptance version ${record || '(none)'} does not resolve`);
+  check(!/^[-*]\s*待确认/m.test(body), 'I-P5a human acceptance must not treat pending confirmation as confirmed');
+}
+for (const stage of ['I-P5b', 'I-P6', 'I-P7']) {
   const boxes = boxesIn(sectionOf(packagePlan, stage, 3));
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
@@ -397,7 +429,12 @@ check(uiP4dBoxes.length === 3, `UI-P4d must contain three checkboxes, found ${ui
 for (let i = 0; i < uiP4dBoxes.length; i++) {
   if (uiP4dBoxes[i].state === 'x') checkP4dLine(uiP4dBoxes[i].text, `UI-P4d checkbox ${i + 1}`, 'docs/development-plan-ui.md');
 }
-for (const stage of ['UI-P5a', 'UI-P5b', 'UI-P6', 'UI-P7']) {
+const uiP5aBoxes = boxesIn(sectionOf(uiPlan, 'UI-P5a', 2));
+check(uiP5aBoxes.length === 3, `UI-P5a must contain three checkboxes, found ${uiP5aBoxes.length}`);
+for (let i = 0; i < uiP5aBoxes.length; i++) {
+  if (uiP5aBoxes[i].state === 'x') checkP5aLine(uiP5aBoxes[i].text, `UI-P5a checkbox ${i + 1}`, 'docs/development-plan-ui.md');
+}
+for (const stage of ['UI-P5b', 'UI-P6', 'UI-P7']) {
   const boxes = boxesIn(sectionOf(uiPlan, stage, 2));
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
@@ -415,12 +452,22 @@ for (const [index, box] of r1Boxes.entries()) {
   }
 }
 let futureCount = 0;
+const undelivered = ['P5b', 'P6', 'P7', 'P8'];
 for (const stage of ['P5', 'P6', 'P7', 'P8']) {
   const section = plan.match(new RegExp(`^## ${stage} [^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
   const futureBoxes = [...section.matchAll(/^- \[([^\]])\] /gm)];
   check(futureBoxes.length > 0, `${stage} checklist missing`);
-  for (const box of futureBoxes) check(box[1] === ' ', `${stage} checkbox must remain unchecked: ${box[0]}`);
+  for (const box of futureBoxes) {
+    if (stage === 'P5' && box[1] === 'x') continue;
+    check(box[1] === ' ', `${stage} checkbox must remain unchecked: ${box[0]}`);
+  }
   futureCount += futureBoxes.length;
+}
+for (const stage of ['P5b']) {
+  const section = plan.match(new RegExp(`^### ${stage} [^\\n]*\\n([\\s\\S]*?)(?=^### |^## |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
+  const boxes = [...section.matchAll(/^- \[([^\]])\] /gm)];
+  check(boxes.length > 0, `${stage} checklist missing`);
+  for (const box of boxes) check(box[1] === ' ', `${stage} checkbox must remain unchecked: ${box[0]}`);
 }
 if (failures.length) {
   for (const failure of failures) console.error(`FAIL ${failure}`);

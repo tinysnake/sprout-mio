@@ -178,11 +178,13 @@ describe("Project 配置与 Agent 成员边界", () => {
     });
   });
 
-  it("重复添加同一成员返回 conflict，移除一次后再移除返回 not_found", () => {
+  it("重复添加同一成员返回 conflict，移除重复调用是幂等成功", () => {
     expect(evidence.memberFirst).toEqual({ ok: true, code: "ok" });
     expect(evidence.memberSecond).toEqual({ ok: false, code: "conflict" });
     expect(evidence.removeFirst).toEqual({ ok: true, code: "ok" });
-    expect(evidence.removeSecond).toEqual({ ok: false, code: "not_found" });
+    // 裁定 d20 的移除路径要求幂等：已经不在项目里再移一次不报错（拼错的 profile id 仍 not_found，
+    // 由 error-mapping 的 agent-remove-member-missing 覆盖）。
+    expect(evidence.removeSecond).toEqual({ ok: true, code: "ok" });
   });
 
   it("人设修改后 profile id 不变且重新读取是新值", () => {

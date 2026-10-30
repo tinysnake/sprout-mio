@@ -22,7 +22,9 @@ afterEach(() => {
       try {
         process.kill(-Number(readFileSync(producerPath, "utf8")), "SIGKILL");
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+        // ESRCH 组已消失，EPERM 是组已被回收时 macOS 的回报，两者都只说明没有可杀的东西。
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ESRCH" && code !== "EPERM") throw error;
       }
     }
     rmSync(root, { recursive: true, force: true });

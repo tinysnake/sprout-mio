@@ -19,6 +19,9 @@ export const fixtureModels = Object.freeze({
   operator: "lease-operator",
   nonHolder: "lease-non-holder",
   status: "status-probe",
+  chatOwner: "chat-owner",
+  chatMentioned: "chat-mentioned",
+  chatUnmentioned: "chat-unmentioned",
 });
 const dummyKey = "sprout-local-fixture-key";
 
@@ -158,19 +161,46 @@ export async function startModelFixture({
         assert(Buffer.byteLength(body) <= 4 * 1024 * 1024, "fixture request size");
       }
       const input = JSON.parse(body);
-      requests++;
       const state = states.get(input.model);
       assert(state, "unexpected fixture model");
+      requests++;
       assert.equal(input.stream, true, "fixture requires streaming");
       assert(
         Array.isArray(input.messages) && Array.isArray(input.tools),
         "messages and tool schemas required",
       );
-      const plan = state.plans[0];
-      assert(plan, "no armed turn for this model");
       const users = input.messages.filter((message) => message.role === "user");
       const latestUser = input.messages.findLastIndex((message) => message.role === "user");
       const userText = textContent(input.messages[latestUser]?.content);
+      // 被驱动的一轮和产品自己发起的一轮（撤销通知之类）会交错到达，所以按对话文本认领计划，
+      // 而不是按排队顺序：先布好的计划不会被晚到的一轮挤掉。
+      // 认领优先级：完全一致的对话文本 > 前缀（产品自己发起的通知轮次）> 未绑定文本的租约轮次。
+      const claimRank = (candidate) =>
+        candidate.expectedUserText === userText
+          ? 0
+          : candidate.expectedUserPrefix !== undefined &&
+              userText.startsWith(candidate.expectedUserPrefix)
+            ? 1
+            : candidate.lease !== undefined
+              ? 2
+              : 3;
+      let planIndex = -1;
+      for (const [index, candidate] of state.plans.entries()) {
+        const rank = claimRank(candidate);
+        if (rank < 3 && (planIndex === -1 || rank < claimRank(state.plans[planIndex]))) {
+          planIndex = index;
+          if (rank === 0) break;
+        }
+      }
+      const plan = planIndex === -1 ? undefined : state.plans[planIndex];
+      assert(
+        plan,
+        `no armed turn for this model (model=${input.model} armed=${
+          state.plans.length
+        } completed=${state.completed} users=${users.length} lastUserCount=${
+          state.lastUserCount
+        } latestUser=${JSON.stringify(userText.slice(0, 160))})`,
+      );
       if (!plan.started) {
         assert(users.length > state.lastUserCount, "armed turn requires a NEW user message");
         assert.equal(
@@ -179,13 +209,19 @@ export async function startModelFixture({
           "new turn must end with its user message",
         );
         if (plan.lease) bindLeaseTurn(plan, userText);
-        assert.equal(userText, plan.expectedUserText, "new user message must match the armed turn");
+        if (plan.expectedUserText !== undefined)
+          assert.equal(
+            userText,
+            plan.expectedUserText,
+            "new user message must match the armed turn",
+          );
         assert(userText.length > 0, "new user message cannot be empty");
         plan.userCount = users.length;
         plan.started = true;
       }
       assert.equal(users.length, plan.userCount, "unexpected user message during a planned turn");
-      assert.equal(userText, plan.expectedUserText, "current user message changed");
+      if (plan.expectedUserText !== undefined)
+        assert.equal(userText, plan.expectedUserText, "current user message changed");
       const current = input.messages.slice(latestUser + 1);
       const calls = current.flatMap((message) => message.tool_calls ?? []);
       const results = current.filter((message) => message.role === "tool");
@@ -218,6 +254,7 @@ export async function startModelFixture({
           );
       }
       const step = plan.steps[plan.emitted.length];
+      if (plan.delayMs) await new Promise((resolve) => setTimeout(resolve, plan.delayMs));
       let delta;
       if (step) {
         compatibleTool(input.tools, step);
@@ -238,7 +275,11 @@ export async function startModelFixture({
         delta = { role: "assistant", content: plan.reply };
         state.lastUserCount = users.length;
         state.completed++;
-        state.plans.shift();
+        if (plan.repeat) {
+          plan.started = false;
+          plan.userCount = undefined;
+          plan.emitted = [];
+        } else state.plans.splice(planIndex, 1);
       }
       const chunk = (value, finish) => ({
         id: `chatcmpl-local-${requests}`,
@@ -247,13 +288,16 @@ export async function startModelFixture({
         model: input.model,
         choices: [{ index: 0, delta: value, finish_reason: finish }],
       });
+      const out = `data: ${JSON.stringify(chunk(delta, null))}\n\ndata: ${JSON.stringify(
+        chunk({}, step ? "tool_calls" : "stop"),
+      )}\n\ndata: [DONE]\n\n`;
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-      response.write(`data: ${JSON.stringify(chunk(delta, null))}\n\n`);
-      response.write(`data: ${JSON.stringify(chunk({}, step ? "tool_calls" : "stop"))}\n\n`);
-      response.end("data: [DONE]\n\n");
-    } catch {
+      response.end(out);
+    } catch (error) {
       failure ??= new Error(
-        "Local model fixture rejected an unexpected request, prompt, tool schema or result sequence",
+        `Local model fixture rejected an unexpected request, prompt, tool schema or result sequence: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       response.writeHead(400, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { message: failure.message } }));
@@ -311,22 +355,31 @@ export async function startModelFixture({
       assert(!closed && !failure, "fixture must be healthy and open");
       const state = states.get(fixtureModels[role]);
       assert(state, "known fixture role");
-      assert.equal(
-        state.plans.length,
-        0,
-        "previous model turn must complete before arming another",
+      assert(
+        state.plans.every((pending) => pending.repeat) || turn.queued === true,
+        "previous model turn must complete before arming another unless it is explicitly queued",
       );
       assert(
         turn.lease ||
-          (typeof turn.expectedUserText === "string" && turn.expectedUserText.length > 0),
+          (typeof turn.expectedUserText === "string" && turn.expectedUserText.length > 0) ||
+          (typeof turn.expectedUserPrefix === "string" && turn.expectedUserPrefix.length > 0),
         "explicit new user expectation",
       );
       assert(
-        turn.lease || (Array.isArray(turn.steps) && turn.steps.length > 0),
+        turn.lease ||
+          (Array.isArray(turn.steps) && turn.steps.length > 0) ||
+          turn.expectedUserPrefix !== undefined,
         "explicit tool steps",
       );
       assert(typeof turn.reply === "string" && turn.reply.length > 0, "explicit final reply");
-      state.plans.push({ ...structuredClone(turn), emitted: [], started: false });
+      if (turn.delayMs !== undefined)
+        assert(
+          Number.isSafeInteger(turn.delayMs) && turn.delayMs >= 0 && turn.delayMs <= 5000,
+          "bounded nonnegative reply delay",
+        );
+      const plan = structuredClone(turn);
+      delete plan.queued;
+      state.plans.push({ ...plan, emitted: [], started: false });
     },
     assertHealthy() {
       if (failure) throw failure;
@@ -334,7 +387,11 @@ export async function startModelFixture({
     assertDrained() {
       if (failure) throw failure;
       for (const state of states.values())
-        assert.equal(state.plans.length, 0, "unused model turn or tool steps");
+        assert.equal(
+          state.plans.filter((plan) => !plan.repeat).length,
+          0,
+          "unused model turn or tool steps",
+        );
     },
     metadata() {
       return {

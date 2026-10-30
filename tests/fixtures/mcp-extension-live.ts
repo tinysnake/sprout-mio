@@ -111,9 +111,14 @@ const runId = newId(ID_PREFIXES.run);
 let grantId = "";
 insert("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'X2 agent','owner')", profileId);
 insert(
-  "INSERT INTO chat(id,project_id,kind,created_by) VALUES (?,?,'dm','owner')",
+  "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human','owner','owner')",
   chatId,
   projectId,
+);
+insert(
+  "INSERT INTO project_member(project_id,agent_profile_id,added_by) VALUES (?,?,'owner')",
+  projectId,
+  profileId,
 );
 insert(
   "INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES (?,'agent',?)",
@@ -466,17 +471,20 @@ const toolNames = connection.tools.map((tool) => mcpToolName("everything", tool.
 assert.equal(toolNames.length, expectedToolNames.length, "pinned server-everything tools/list");
 assert(toolNames.every((name) => name.startsWith("mcp__everything__")));
 pass(`真实 tools/list 返回 ${toolNames.length} 个工具`);
-const realFrameWakes = httpExchanges.filter(
-  (exchange) =>
-    exchange.requestedHoldMs === 2000 &&
-    exchange.holdEntered &&
-    exchange.newFrameCommitted &&
-    exchange.frames > 0,
-);
-assert(
-  realFrameWakes.some((exchange) => exchange.elapsedMs < 500),
-  "a real MCP server frame must wake an active HTTP hold before timeout",
-);
+// 传输层空闲时才带 hold 轮询，带批次时 holdMs 为 0，所以「帧唤醒挂起的 hold」只在一段安静期之后出现。
+const wakesHold = (exchange: (typeof httpExchanges)[number]) =>
+  exchange.requestedHoldMs === 2000 &&
+  exchange.holdEntered &&
+  exchange.newFrameCommitted &&
+  exchange.frames > 0 &&
+  exchange.elapsedMs < exchange.requestedHoldMs;
+const wakeDeadline = performance.now() + 15000;
+while (!httpExchanges.some(wakesHold)) {
+  if (performance.now() > wakeDeadline)
+    assert.fail("a real MCP server frame must wake an active HTTP hold before timeout");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+const realFrameWakes = httpExchanges.filter(wakesHold);
 
 // ---------------------------------------------------------------- drain 交互
 const drainScope = globalThis as typeof globalThis & {

@@ -109,6 +109,9 @@ try {
     modelFixture = await startModelFixture({privateDir});
     env.PI_CODING_AGENT_DIR = modelFixture.agentDir;
     console.log(`CHAT provider/model=${modelFixture.model('operator')},${modelFixture.model('nonHolder')} thinking=off paid-model-calls=0 (private catalog, loopback endpoint, both profiles pinned)`);
+    // 任何一次释放/交接都会给上一任 holder 投递资源撤销通知，那一轮会真的调模型。
+    // 它不由门禁驱动、时机也不固定，所以从一开始就布一条按前缀常驻的计划。
+    modelFixture.arm('operator', { expectedUserPrefix: '资源撤销通知', repeat: true, steps: [], reply: '收到资源撤销通知，本轮不做操作。' });
   }
   const migration = launch(['--import', 'tsx', 'src/db/migrate.ts'], 'migrate'); assert.equal(await migration.done, 0);
   launch(['.output/server/index.mjs'], 'server');
