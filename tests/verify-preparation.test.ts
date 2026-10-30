@@ -124,8 +124,9 @@ test("reuses each artifact only within the living current run, and retains origi
 test("runner context connects preparation across domains without a second install deleting artifacts", () => {
   const f = fixture();
   copyFileSync(resolve("scripts/verify/runner.mjs"), join(f.root, "scripts/verify/runner.mjs"));
-  // 复制 runner 真正 import 的 lib 模块（含它们自己再 import 的），别再手维护清单：
-  // 之前漏了 spend.mjs，这条用例在干净 checkout 上一直是红的。
+  // 复制 runner 真正 import 的 lib 模块，别再手维护清单：之前漏了 spend.mjs，这条用例在干净
+  // checkout 上一直是红的。这里只扫 `from "./lib/<name>.mjs"` 这一种写法，lib 自己再引入的
+  // 同级模块（`from "./child.mjs"`）与动态导入不在范围内，新增这类依赖时要回来补。
   const pending = [readFileSync(resolve("scripts/verify/runner.mjs"), "utf8")];
   const copied = new Set<string>();
   while (pending.length > 0) {

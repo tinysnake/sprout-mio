@@ -34,8 +34,6 @@ export const CI_GROUPS = Object.freeze({
     "an-p4d-authority",
   ],
   tasks: ["ba-task-domain", "bc-task-start", "bd-task-migration", "be-task-info"],
-  integrations: ["bs-p5b-lifecycle"],
-  live: ["bb-task-live"],
   turns: [
     "k2-cross-family-isolation",
     "m-error-mapping",
@@ -67,6 +65,8 @@ export const LOCAL_GATES = Object.freeze({
   "t-machine-worker": "真实 macOS 环境及 shell 探测",
   "ap-p4d-handoff-worker": "真实 macOS Worker、生产服务与 Agent HTTP 边界",
   "az-p5a-live-worker": "真实 macOS Worker 与真实模型的多人对话链路",
+  "bb-task-live": "真实 macOS Worker、已安装 Pi SDK 与真实 HTTP Task 链路",
+  "bs-p5b-lifecycle": "真实 macOS Worker、已安装 Pi SDK 与生产 HTTP 生命周期",
   "u-machine-ui": "真实 macOS Worker 的页面链路",
   "w-worker-remote": "真实 macOS Worker 远程执行及 lease force",
   "y2-mcp-http-worker": "真实 Worker 初始化及环境探测",
