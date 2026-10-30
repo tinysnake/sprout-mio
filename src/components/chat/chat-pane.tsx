@@ -180,13 +180,16 @@ export function ChatPane({
       runFacts={runFacts}
       archived={Boolean(chat.archivedAt)}
       titleEditor={
-        <ChatTitleEditor
-          chat={chat}
-          currentName={displayTitle}
-          submit={(title) => updateChatTitleFn({ data: { chatId: chat.id, title } })}
-          restore={() => clearChatTitleFn({ data: { chatId: chat.id } })}
-          onChanged={onChanged}
-        />
+        // 标题治理已移入右栏治理段；只有 DM 保留消息头部的铅笔入口（P4b 形状）。
+        session.kind === "dm" ? (
+          <ChatTitleEditor
+            chat={chat}
+            currentName={displayTitle}
+            submit={(title) => updateChatTitleFn({ data: { chatId: chat.id, title } })}
+            restore={() => clearChatTitleFn({ data: { chatId: chat.id } })}
+            onChanged={onChanged}
+          />
+        ) : undefined
       }
     />
   );

@@ -19,7 +19,7 @@ import {
 import { Field } from "../ui/field";
 import { Icon } from "../ui/icon";
 import { Input } from "../ui/input";
-import { ResultError } from "../project/result-error";
+import { ChatErrorNotice } from "./chat-error-notice";
 
 /**
  * 对话标题的编辑入口。标题是人工命名的可选覆盖：可以留空恢复默认，
@@ -34,6 +34,7 @@ export function ChatTitleEditor({
   submit,
   restore,
   onChanged,
+  variant = "icon",
 }: {
   chat: Chat;
   /** 未命名时列表与标题栏显示的兜底名称（参与分身名）。 */
@@ -41,6 +42,11 @@ export function ChatTitleEditor({
   submit: (title: string) => Promise<ChatResult<Chat>>;
   restore: () => Promise<ChatResult<Chat>>;
   onChanged: () => void;
+  /**
+   * `icon` 是 DM 消息头部的铅笔入口（P4b 形状）；`button` 是右栏治理段的
+   * 文字入口，与「更改 Owner」同一行样式。两个入口共用同一套弹窗与提交。
+   */
+  variant?: "icon" | "button";
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<null | "save" | "restore">(null);
@@ -88,14 +94,25 @@ export function ChatTitleEditor({
 
   return (
     <Dialog open={open} onOpenChange={change}>
-      <DialogTrigger
-        data-testid="chat-title-edit"
-        aria-label="重命名对话"
-        title="重命名对话"
-        className="-my-1 flex size-6 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-11"
-      >
-        <Icon as={Pencil} size={13} />
-      </DialogTrigger>
+      {variant === "button" ? (
+        <DialogTrigger
+          data-testid="chat-title-edit"
+          data-governance-action="title_change"
+          render={<Button type="button" variant="secondary" size="sm" />}
+        >
+          <Icon as={Pencil} size={13} />
+          重命名
+        </DialogTrigger>
+      ) : (
+        <DialogTrigger
+          data-testid="chat-title-edit"
+          aria-label="重命名对话"
+          title="重命名对话"
+          className="-my-1 flex size-6 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-11"
+        >
+          <Icon as={Pencil} size={13} />
+        </DialogTrigger>
+      )}
       <DialogContent data-testid="chat-title-dialog">
         <DialogHeader>
           <DialogTitle>重命名对话</DialogTitle>
@@ -121,7 +138,7 @@ export function ChatTitleEditor({
               autoComplete="off"
             />
           </Field>
-          {error && <ResultError error={error} testId="chat-title-error" />}
+          {error && <ChatErrorNotice error={error} testId="chat-title-error" />}
           <DialogFooter>
             <Button
               type="button"

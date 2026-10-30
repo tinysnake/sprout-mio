@@ -76,12 +76,6 @@ export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: s
               <span>
                 {statusLabel(run.status)}：{run.errorCode}：{run.errorMessage ?? "未知失败原因"}
               </span>
-              <span
-                data-testid={`${testId}-recent-error-request`}
-                className="block font-mono break-all text-muted-foreground"
-              >
-                requestId: {run.requestId}
-              </span>
             </li>
           ))}
         </ul>
@@ -145,9 +139,6 @@ export function TurnStartContextBlock({ context }: { context: TurnStartContext }
             上一次 run：{statusLabel(context.previousRun.status)}
             {context.previousRun.errorCode &&
               `（${context.previousRun.errorCode}：${context.previousRun.errorMessage ?? "未知失败原因"}）`}
-            <span className="ml-2 font-mono break-all">
-              requestId: {context.previousRun.requestId}
-            </span>
           </>
         ) : (
           "上一次 run：还没有历史 run"

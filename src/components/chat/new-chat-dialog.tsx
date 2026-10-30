@@ -18,7 +18,7 @@ import {
   DialogTrigger,
 } from "../ui/dialog";
 import { Icon } from "../ui/icon";
-import { ResultError } from "../project/result-error";
+import { ChatErrorNotice } from "./chat-error-notice";
 
 /**
  * 发起 DM：成员集合来自 Project，创建走 createDirectChat 的幂等语义，
@@ -69,7 +69,7 @@ export function DmStarter({
   return (
     <section className="space-y-3">
       {heading && <h3 className="text-xs font-medium text-muted-foreground">发起新对话</h3>}
-      {error && <ResultError error={error} testId="dm-start-error" />}
+      {error && <ChatErrorNotice error={error} testId="dm-start-error" />}
       {members.length === 0 ? (
         <p data-testid="dm-no-members" className="text-xs leading-6 text-muted-foreground">
           这个 Project 还没有 Agent 成员，先到 Members 页添加。
@@ -128,6 +128,8 @@ function GroupCreateForm({
   const [wakePolicy, setWakePolicy] = useState<ChatWakePolicy>("owner_led");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
+  // 名称为空是本地校验：不发请求，也不让 domain 用「未命名」替名字。
+  const [titleError, setTitleError] = useState<string | null>(null);
   const names = new Map(profiles.map((profile) => [profile.id, profile.name]));
 
   function toggle(agentProfileId: string) {
@@ -141,6 +143,8 @@ function GroupCreateForm({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
+    const titleMessage = title.trim().length === 0 ? "群名称不能为空，请输入后再创建。" : null;
+    setTitleError(titleMessage);
     if (selected.length === 0) {
       setError({
         code: "validation_failed",
@@ -149,6 +153,7 @@ function GroupCreateForm({
       });
       return;
     }
+    if (titleMessage) return;
     setPending(true);
     setError(null);
     try {
@@ -185,17 +190,32 @@ function GroupCreateForm({
     <form onSubmit={submit} className="space-y-4" data-testid="group-create-form">
       <div>
         <label htmlFor="group-title" className="mb-1.5 block text-xs font-medium">
-          群名称（可选）
+          群名称
         </label>
         <input
           id="group-title"
           data-testid="group-title-input"
           value={title}
-          onChange={(event) => setTitle(event.target.value)}
+          onChange={(event) => {
+            setTitle(event.target.value);
+            if (titleError) setTitleError(null);
+          }}
           maxLength={80}
           placeholder="例如：发布协作"
-          className="min-h-8.5 w-full rounded-control border border-input bg-background px-2.5 text-xs outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:min-h-11"
+          aria-invalid={titleError ? true : undefined}
+          aria-describedby={titleError ? "group-title-error" : undefined}
+          className="min-h-8.5 w-full rounded-control border border-input bg-background px-2.5 text-xs outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring aria-invalid:border-destructive max-desktop:min-h-11"
         />
+        {titleError && (
+          <p
+            id="group-title-error"
+            data-testid="group-title-error"
+            role="alert"
+            className="mt-1.5 text-xs leading-6 text-destructive"
+          >
+            {titleError}
+          </p>
+        )}
       </div>
       <fieldset>
         <legend className="mb-1.5 text-xs font-medium">成员</legend>
@@ -249,7 +269,7 @@ function GroupCreateForm({
       <p data-testid="group-owner-default" className="text-[10px] text-muted-foreground">
         Owner：{humanName || "你"}（Human）
       </p>
-      {error && <ResultError error={error} testId="group-error" />}
+      {error && <ChatErrorNotice error={error} testId="group-error" />}
       <div className="flex justify-end gap-2">
         <Button type="submit" data-testid="group-submit" loading={pending}>
           创建群组
