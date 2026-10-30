@@ -519,8 +519,8 @@ console.log(`PASS P4a accepts evidence-linked commits and commands; unchecked=${
 console.log(`PASS P4b and UI-P4b accept checked rows with resolvable evidence; functional checked=${p4bBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4bBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4bBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4c and UI-P4c accept checked rows with resolvable evidence; functional checked=${p4cBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4cBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4cBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4d and UI-P4d accept checked rows with resolvable evidence; functional checked=${p4dBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4dBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4dBoxes.filter((box) => box.state === 'x').length}`);
-console.log('PASS I-P5a and later checkboxes remain unchecked in plan and UI documents');
-console.log(`PASS P5 to P8 checkboxes remain unchecked=${futureCount}`);
+console.log('PASS I-P6 and later checkboxes remain unchecked in plan and UI documents (I-P5b validated above)');
+console.log(`PASS P6 to P8 checkboxes remain unchecked=${futureCount} (P5a and P5b validated above)`);
 console.log(`PASS R1 checked rows carry docs/r1 evidence with commits and rerun commands; checked=${r1Boxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);
 console.log('PASS l-docs all checks passed');

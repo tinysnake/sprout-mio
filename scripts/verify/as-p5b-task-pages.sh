@@ -15,7 +15,7 @@ node --import tsx --input-type=module <<'JS'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { mkdirSync, existsSync, openSync, closeSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, existsSync, openSync, closeSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import net from 'node:net'
 import { chromium } from 'playwright'
@@ -35,10 +35,11 @@ const port = await new Promise((done, reject) => {
 const base = `http://localhost:${port}`
 Object.assign(process.env, {
   DATABASE_URL: database, APP_ORIGIN: base, BASE_URL: base,
+  PORT: String(port), NITRO_PORT: String(port),
   BETTER_AUTH_SECRET: randomBytes(32).toString('base64url'), SPROUT_PI_ENABLED: 'false',
 })
 const fd = openSync(join(directory, 'server.log'), 'w')
-const server = spawn('pnpm', ['exec', 'vp', 'dev', '--host', '0.0.0.0', '--port', String(port)], {
+const server = spawn('pnpm', ['exec', 'vp', 'dev', '--host', '0.0.0.0'], {
   env: process.env, detached: true, stdio: ['ignore', fd, fd],
 })
 closeSync(fd)
@@ -48,6 +49,9 @@ let browser
 let page
 const results = []
 function pass(id, detail = '') { results.push({ id, detail }); console.log(`PASS ${id} :: ${detail}`) }
+function tail(directory) {
+  try { return readFileSync(join(directory, 'server.log'), 'utf8').trim().split('\n').slice(-4).join(' | ') } catch { return '(server.log unreadable)' }
+}
 async function until(check, label, timeout = 45000) {
   const deadline = Date.now() + timeout
   while (Date.now() < deadline) {
@@ -55,7 +59,7 @@ async function until(check, label, timeout = 45000) {
     if (server.exitCode !== null) throw new Error(`dev server exited; ${join(directory, 'server.log')}`)
     await new Promise(done => setTimeout(done, 200))
   }
-  throw new Error(`timeout: ${label}`)
+  throw new Error(`timeout: ${label}; server.log says ${tail(directory)}`)
 }
 async function shot(name) { await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true }) }
 const totalTimer = setTimeout(() => { stop('SIGKILL'); void browser?.close(); process.exitCode = 1 }, 300000)
