@@ -6,18 +6,32 @@ import type {
   ProjectAgentEntry,
   ProjectInfoHub,
   TurnStartContext,
+  InfoHubTaskSummary,
+  TaskCounts,
 } from "../contracts/info-hub";
 import type { LeaseView } from "../contracts/lease";
-import { and, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { agentInstance, agentProfile, agentRun, leaseMutation, machineLease } from "../db/schema";
+import {
+  agentInstance,
+  agentProfile,
+  agentRun,
+  chatEffectiveMember,
+  leaseMutation,
+  machineLease,
+  message,
+  projectMember,
+  task,
+  taskChecklistItem,
+  taskEvent,
+} from "../db/schema";
 import { AGENT_RUN_STATUSES, type AgentRun, type AgentRunStatus } from "../contracts/agent-run";
 import type { Chat } from "../contracts/chat";
 import { chatDisplayTitle } from "../contracts/chat";
 import { listProjectMachines } from "./machine";
 import type { MachineContext } from "./machine";
 import { config } from "../lib/config";
-import { assertProjectAccess } from "./access";
+import { assertProjectAccess, ProjectAccessError, readRunScope } from "./access";
 import type { ProjectContext } from "./access";
 import { getAgentProfile, listProjectMembers } from "./agent";
 import { listAgentRunInputs, listAgentRuns } from "./agent-run";
@@ -89,13 +103,32 @@ function runsView(chats: Chat[], ctx: ProjectContext): AgentRunsView {
   };
 }
 
-export function getProjectInfoHub(projectId: string, ctx: MachineContext): ProjectInfoHub {
+export function getProjectInfoHub(
+  projectId: string,
+  ctx: MachineContext & ProjectContext,
+): ProjectInfoHub {
   assertProjectAccess(ctx, projectId);
   const members = listProjectMembers(projectId, ctx);
+  // Project membership permits basic summaries, never Task bodies or another Chat's detail.
+  const scope = ctx.agent ? readRunScope(ctx.agent.runId) : undefined;
+  if (
+    ctx.agent &&
+    (!scope?.active ||
+      scope.instanceId !== ctx.agent.instanceId ||
+      scope.agentProfileId !== ctx.agent.agentProfileId ||
+      !members.some((member) => member.agentProfileId === ctx.agent!.agentProfileId))
+  ) {
+    throw new ProjectAccessError();
+  }
   const chats = listChats(projectId, ctx);
+  const readableChats = ctx.agent ? chats.filter((chat) => chat.id === scope?.chatId) : chats;
+  const runRows = chatRunRows(projectId);
+  const chatAggregates = chatRunsView(chats, runRows);
+  const tasks = taskSummaries(projectId, chats, chatAggregates, runRows);
+  attachChatTasks(chatAggregates, tasks);
   // DM 关联只从 DM 会话取：扇出后一个 Agent 在群与频道里也有 instance，
   // 把那些当成 DM 会让 Project → Agents 面板链到错误的会话。
-  const dmLinks = chats
+  const dmLinks = readableChats
     .filter((chat) => chat.kind === "dm")
     .flatMap((chat) =>
       listInstancesForChat(chat.id, ctx).map((instance) => ({
@@ -118,9 +151,10 @@ export function getProjectInfoHub(projectId: string, ctx: MachineContext): Proje
     projectId,
     agents: {
       agents,
-      runs: runsView(chats, ctx),
+      runs: runsView(readableChats, ctx),
     },
-    chats: chatRunsView(chats, projectId),
+    tasks: { available: true, counts: countTasks(tasks), items: tasks },
+    chats: chatAggregates,
     machines: listProjectMachines(projectId, ctx),
     leases: { available: true, items: leaseViews(projectId) },
   };
@@ -129,6 +163,7 @@ export function getProjectInfoHub(projectId: string, ctx: MachineContext): Proje
 /** 会话聚合里的一次读事实：一个 instance 的一行，`status` 缺省表示它还没有任何 run。 */
 type ChatRunRow = {
   chatId: string;
+  instanceId: string;
   agentProfileId: string;
   profileName: string;
   runId: string | null;
@@ -140,6 +175,7 @@ function chatRunRows(projectId: string): ChatRunRow[] {
   return db
     .select({
       chatId: agentInstance.chatId,
+      instanceId: agentInstance.id,
       agentProfileId: agentInstance.agentProfileId,
       profileName: agentProfile.name,
       runId: agentRun.id,
@@ -160,8 +196,7 @@ function chatRunRows(projectId: string): ChatRunRow[] {
  * 循环里再逐条查库。`agentCount` 只统计真实出过 run 的 Agent：`agent_profile_id` 去重，同一 Agent
  * 的多条 run 只计 1 个。不做分页与缓存（归 P6，followups 已记）。
  */
-function chatRunsView(chats: Chat[], projectId: string): ChatRunAggregate[] {
-  const rows = chatRunRows(projectId);
+function chatRunsView(chats: Chat[], rows: ChatRunRow[]): ChatRunAggregate[] {
   const facts = new Map<
     string,
     {
@@ -201,10 +236,192 @@ function chatRunsView(chats: Chat[], projectId: string): ChatRunAggregate[] {
       statusCounts: AGENT_RUN_STATUSES.filter((status) => fact?.counts.has(status)).map(
         (status) => ({ status, count: fact?.counts.get(status) ?? 0 }),
       ),
-      activeRunIds: fact?.active ?? [],
+      activeRunIds: (fact?.active ?? []).sort(),
+      taskCounts: countTasks([]),
+      assignedTaskIds: [],
       ...(fact?.latest ? { latestRunAt: fact.latest } : {}),
     };
   });
+}
+
+/** Fixed-size batch reads: metadata only; no record body, run state or lease is read per Task. */
+function taskSummaries(
+  projectId: string,
+  chats: Chat[],
+  aggregates: ChatRunAggregate[],
+  runRows: ChatRunRow[],
+  chatId?: string,
+): InfoHubTaskSummary[] {
+  const scope = and(eq(task.projectId, projectId), chatId ? eq(task.chatId, chatId) : undefined);
+  const tasks: (Pick<InfoHubTaskSummary, "taskId" | "title" | "status" | "revision"> & {
+    chatId: string | null;
+    updatedAt: Date;
+  })[] = db
+    .select({
+      taskId: task.id,
+      title: task.title,
+      status: task.status,
+      revision: task.revision,
+      chatId: task.chatId,
+      updatedAt: task.updatedAt,
+    })
+    .from(task)
+    .where(scope)
+    .orderBy(desc(task.updatedAt), asc(task.id))
+    .all();
+  const checklist: { taskId: string; total: number; checked: number }[] = db
+    .select({
+      taskId: taskChecklistItem.taskId,
+      total: sql<number>`count(*)`,
+      checked: sql<number>`sum(${taskChecklistItem.checked})`,
+    })
+    .from(taskChecklistItem)
+    .innerJoin(task, eq(task.id, taskChecklistItem.taskId))
+    .where(and(scope, isNull(taskChecklistItem.removedAt)))
+    .groupBy(taskChecklistItem.taskId)
+    .all();
+  const records: {
+    taskId: string | null;
+    messageId: string;
+    seq: number | null;
+    chatId: string;
+  }[] = db
+    .select({
+      taskId: message.taskId,
+      messageId: message.id,
+      seq: message.taskRecordSeq,
+      chatId: message.chatId,
+    })
+    .from(message)
+    .innerJoin(task, eq(task.id, message.taskId))
+    .where(scope)
+    .orderBy(asc(message.taskRecordSeq))
+    .all();
+  const completions: { taskId: string; seq: number | null }[] = db
+    .select({
+      taskId: taskEvent.taskId,
+      seq: taskEvent.recordSeqAtEvent,
+    })
+    .from(taskEvent)
+    .innerJoin(task, eq(task.id, taskEvent.taskId))
+    .where(
+      and(
+        scope,
+        sql`(${taskEvent.action} = 'complete' or
+      (${taskEvent.action} = 'correct' and ${taskEvent.toStatus} = 'finished'))`,
+      ),
+    )
+    .orderBy(asc(taskEvent.seq))
+    .all();
+  const roster: { chatId: string; kind: "human" | "agent"; id: string }[] = db
+    .select({
+      chatId: chatEffectiveMember.chatId,
+      kind: chatEffectiveMember.memberKind,
+      id: chatEffectiveMember.memberId,
+    })
+    .from(chatEffectiveMember)
+    .where(eq(chatEffectiveMember.projectId, projectId))
+    .all();
+  const profiles: { id: string; name: string }[] = db
+    .select({ id: agentProfile.id, name: agentProfile.name })
+    .from(projectMember)
+    .innerJoin(agentProfile, eq(agentProfile.id, projectMember.agentProfileId))
+    .where(eq(projectMember.projectId, projectId))
+    .all();
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const chatById = new Map(chats.map((chat) => [chat.id, chat]));
+  const aggregateById = new Map(aggregates.map((aggregate) => [aggregate.chatId, aggregate]));
+  const checklistById = new Map(checklist.map((item) => [item.taskId, item]));
+  const recordsByTask = new Map<string, { messageId: string; seq: number; chatId: string }[]>();
+  for (const record of records) {
+    if (record.taskId === null || record.seq === null) continue;
+    const refs = recordsByTask.get(record.taskId) ?? [];
+    refs.push({ messageId: record.messageId, seq: record.seq, chatId: record.chatId });
+    recordsByTask.set(record.taskId, refs);
+  }
+  const completionById = new Map(completions.map((event) => [event.taskId, event.seq]));
+  const responsibilityByChat = new Map<string, InfoHubTaskSummary["responsibility"]>();
+  for (const current of chats) {
+    if (current.archivedAt) continue;
+    const members = roster.filter(
+      (member) =>
+        member.chatId === current.id && (member.kind === "human" || profileById.has(member.id)),
+    );
+    const dmAgents = members.filter((member) => member.kind === "agent");
+    const owner =
+      current.kind === "dm"
+        ? dmAgents.length === 1
+          ? { kind: "agent" as const, id: dmAgents[0]!.id }
+          : undefined
+        : current.owner;
+    // Public Channel Human membership is implicit; other Chat owners must remain members.
+    if (
+      !owner ||
+      (current.kind !== "public_channel" &&
+        !members.some((member) => member.kind === owner.kind && member.id === owner.id))
+    )
+      continue;
+    if (owner.kind === "human") {
+      responsibilityByChat.set(current.id, { kind: "human", userId: owner.id });
+    } else {
+      const profile = profileById.get(owner.id);
+      if (profile)
+        responsibilityByChat.set(current.id, {
+          kind: "agent",
+          agentProfileId: profile.id,
+          name: profile.name,
+          instanceId:
+            runRows.find((row) => row.chatId === current.id && row.agentProfileId === profile.id)
+              ?.instanceId ?? null,
+        });
+    }
+  }
+  return tasks.map((row) => {
+    const current = row.chatId ? chatById.get(row.chatId) : undefined;
+    const aggregate = row.chatId ? aggregateById.get(row.chatId) : undefined;
+    const refs = recordsByTask.get(row.taskId) ?? [];
+    const last = refs.at(-1);
+    const previous = refs.find((ref) => ref.seq === completionById.get(row.taskId));
+    const checklist = checklistById.get(row.taskId);
+    const responsibility = row.chatId ? responsibilityByChat.get(row.chatId) : undefined;
+    return {
+      taskId: row.taskId,
+      title: row.title,
+      status: row.status,
+      revision: row.revision,
+      ...(current
+        ? { chatId: current.id, chatKind: current.kind, chatDisplayTitle: aggregate!.displayTitle }
+        : {}),
+      ...(responsibility ? { responsibility } : {}),
+      checklistTotal: checklist?.total ?? 0,
+      checklistChecked: checklist?.checked ?? 0,
+      recordCount: refs.length,
+      ...(last ? { lastRecordRef: last } : {}),
+      ...(previous ? { previousCompletionRef: previous } : {}),
+      updatedAt: row.updatedAt.toISOString(),
+      context: {
+        activeRunIds: aggregate?.activeRunIds ?? [],
+        relation: "same_chat",
+        taskRunBinding: false,
+      },
+    };
+  });
+}
+
+function countTasks(tasks: InfoHubTaskSummary[]): TaskCounts {
+  const counts: TaskCounts = { proposed: 0, assigned: 0, finished: 0, canceled: 0 };
+  for (const task of tasks) counts[task.status]++;
+  return counts;
+}
+
+function attachChatTasks(chats: ChatRunAggregate[], tasks: InfoHubTaskSummary[]): void {
+  for (const chat of chats) {
+    const assigned = tasks.filter((task) => task.chatId === chat.chatId);
+    chat.taskCounts = countTasks(assigned);
+    chat.assignedTaskIds = assigned
+      .filter((task) => task.status === "assigned")
+      .map((task) => task.taskId);
+  }
 }
 
 /**
@@ -245,7 +462,13 @@ export function getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView {
   const instances = listInstancesForChat(chatId, ctx);
   const messages = listMessages(chatId, ctx);
   const latest = messages.at(-1);
+  const runRows = chatRunRows(chat.projectId);
+  const aggregates = chatRunsView([chat], runRows);
   return {
+    tasks: {
+      available: true,
+      items: taskSummaries(chat.projectId, [chat], aggregates, runRows, chatId),
+    },
     chatId: chat.id,
     projectId: chat.projectId,
     kind: chat.kind,
