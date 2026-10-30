@@ -25,6 +25,7 @@ export const CI_GROUPS = Object.freeze({
     "h-project-agents",
     "i-chat",
     "j-info-hub",
+    "an-p4d-authority",
   ],
   turns: [
     "k2-cross-family-isolation",
@@ -42,6 +43,7 @@ export const CI_GROUPS = Object.freeze({
     "k-acceptance",
     "r-ui-layout",
     "y-lease-ui",
+    "aq-p4d-pages",
   ],
 });
 
@@ -52,6 +54,7 @@ export const LOCAL_GATES = Object.freeze({
   "ah-execution-live-e2e": "真实 macOS Worker 生命周期",
   "aj-recovery-matrix": "真实 macOS Worker 恢复矩阵",
   "t-machine-worker": "真实 macOS 环境及 shell 探测",
+  "ap-p4d-handoff-worker": "真实 macOS Worker、生产服务与 Agent HTTP 边界",
   "u-machine-ui": "真实 macOS Worker 的页面链路",
   "w-worker-remote": "真实 macOS Worker 远程执行及 lease force",
   "y2-mcp-http-worker": "真实 Worker 初始化及环境探测",
