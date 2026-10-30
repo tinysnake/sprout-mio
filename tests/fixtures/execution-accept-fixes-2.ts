@@ -157,6 +157,12 @@ function makeDispatcher() {
     new ExecutionRegistry(new ExecutionStore(stateDirectory), Date.now),
   );
 }
+async function burstExited(executionId: string) {
+  const deadline = Date.now() + 5000;
+  const result = join(stateDirectory, "executions", executionId, "result.json");
+  while (!existsSync(result) && Date.now() < deadline) await suspend(1);
+  assert.ok(existsSync(result), "真实大输出命令必须先退出，再开始补送终态及积压帧");
+}
 const shell = (command: string, waitMs = 1000) => ({
   kind: "shell" as const,
   command,
@@ -343,6 +349,7 @@ const generation = 3;
 const burst = submit(nextHolder, generation, "head -c 1800000 /dev/zero | tr '\\0' 'x'", 1000);
 const worker = makeDispatcher();
 round(worker);
+await burstExited(burst.executionId);
 let producedAtSettle = -1;
 let ackedAtSettle = -1;
 let settledRound = -1;
@@ -430,6 +437,7 @@ pass(
 const restarted = submit(nextHolder, generation, "head -c 1800000 /dev/zero | tr '\\0' 'y'", 1000);
 const beforeRestartWorker = makeDispatcher();
 round(beforeRestartWorker);
+await burstExited(restarted.executionId);
 let restartSettled = false;
 for (let index = 0; index < 400; index++) {
   round(beforeRestartWorker);

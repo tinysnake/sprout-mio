@@ -21,7 +21,11 @@
     "worker:build": "vp pack --filter worker",
     "worker:start": "node dist/worker/main.js",
     "extension:build": "vp pack --filter extension",
-    "verify": "bash scripts/verify.sh"
+    "verify": "bash scripts/verify.sh",
+    "verify:local": "node scripts/verify/targets.mjs local",
+    "verify:ci": "node scripts/verify/targets.mjs ci",
+    "test:local": "node scripts/verify/test-target.mjs local",
+    "test:ci": "node scripts/verify/test-target.mjs ci"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

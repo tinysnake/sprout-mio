@@ -3,6 +3,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,12 +13,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
-    runs-on: ubuntu-latest
+  portable:
+    name: Linux / ${{ matrix.group }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
-
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        group: [base, tooling, docs, contracts, api, turns, browser]
+    env:
+      SPROUT_PI_ENABLED: "false"
+      SPROUT_VERIFY_CHAT_MODE: model-fixture
+      MCP_EVERYTHING: "0"
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.verify/browsers
+      BETTER_AUTH_SECRET: sprout-ci-only-not-production-secret
+      NO_PROXY: localhost,127.0.0.1,::1
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
@@ -28,70 +44,49 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
 
-      - name: Install
+      - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Check format, lint and types
-        run: pnpm check
+      - name: Install Linux test tools
+        run: sudo apt-get update && sudo apt-get install -y lsof
 
-      - name: Build
-        run: pnpm build
+      - name: Install Chromium and system dependencies
+        if: matrix.group == 'browser' || matrix.group == 'turns' || matrix.group == 'api'
+        run: pnpm exec playwright install --with-deps chromium
 
-      - name: Database migration
-        run: |
-          if [ -d drizzle ]; then
-            pnpm db:migrate
-          else
-            echo "SKIP pnpm db:migrate: drizzle/ does not exist yet, the schema unit owns migrations"
-          fi
-
-      - name: Production smoke
+      - name: Verify assigned gates
         env:
-          PORT: 3111
-          APP_ORIGIN: http://localhost:3111
-          BETTER_AUTH_SECRET: ci-only-secret-ci-only-secret-123456
-        run: |
-          set -euo pipefail
-          export no_proxy=localhost,127.0.0.1,::1
-          export NO_PROXY="$no_proxy"
-          setsid pnpm start > production.log 2>&1 &
-          server=$!
-          ready=0
-          for _ in $(seq 1 60); do
-            if curl --noproxy '*' -fsS -o /dev/null "http://localhost:3111/"; then
-              ready=1
-              break
-            fi
-            kill -0 "$server" 2>/dev/null || break
-            sleep 1
-          done
-          if [ "$ready" != 1 ]; then
-            cat production.log
-            exit 1
-          fi
-          for path in / /projects/does-not-exist /api/ping; do
-            code="$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' "http://localhost:3111$path")"
-            echo "GET $path -> $code"
-            [ "$code" = 200 ] || exit 1
-          done
-          curl --noproxy '*' -sS "http://localhost:3111/api/ping"
-          echo
-          kill -TERM "-$server" 2>/dev/null || true
-          for _ in $(seq 1 50); do
-            kill -0 "$server" 2>/dev/null || break
-            sleep 0.2
-          done
-          if kill -0 "$server" 2>/dev/null; then
-            echo "production process group survived SIGTERM"
-            exit 1
-          fi
-          echo "production process group stopped on SIGTERM"
+          VERIFY_GROUP: ${{ matrix.group }}
+        run: pnpm verify:ci --group "$VERIFY_GROUP"
 
-      - name: Worker artifact
-        run: |
-          set -euo pipefail
-          pnpm worker:build
-          node dist/worker/main.js --version
+      - name: Verify database migration command
+        if: matrix.group == 'base'
+        env:
+          DATABASE_URL: .verify/ci-migration.sqlite
+        run: pnpm db:migrate
 
-      - name: Extension artifact
-        run: pnpm extension:build
+      - name: Upload reports and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.group }}-${{ github.run_attempt }}
+          retention-days: 7
+          include-hidden-files: true
+          if-no-files-found: ignore
+          path: |
+            .verify/runs/**/report.json
+            .verify/runs/**/*.log
+            .verify/targets/*.json
+            .verify/a-base/*.log
+            .verify/b-tooling/*.log
+
+  verify:
+    if: always()
+    needs: portable
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require all Linux groups to pass
+        env:
+          PORTABLE_RESULT: ${{ needs.portable.result }}
+        run: test "$PORTABLE_RESULT" = success

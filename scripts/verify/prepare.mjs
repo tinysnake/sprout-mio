@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -134,7 +134,23 @@ async function produce(args, environment, logPath) {
     try {
       process.kill(-child.pid, signal);
     } catch (error) {
-      if (error.code !== "ESRCH") throw error;
+      if (error.code === "ESRCH") return;
+      if (error.code === "EPERM") {
+        const snapshot = spawnSync("ps", ["-axo", "pgid=,stat="], {
+          encoding: "utf8",
+          timeout: 1000,
+          detached: true,
+        });
+        if (
+          snapshot.status === 0 &&
+          !snapshot.stdout.split("\n").some((line) => {
+            const [group, state] = line.trim().split(/\s+/);
+            return Number(group) === child.pid && state && !state.startsWith("Z");
+          })
+        )
+          return;
+      }
+      throw error;
     }
   };
   const stop = (signal) => {
@@ -203,6 +219,10 @@ async function main() {
     process.stdout.write(readFileSync(receipt.logPath));
     return 0;
   }
+  if (process.env.SPROUT_VERIFY_PREPARED_ONLY === "1")
+    throw new Error(
+      `Prepared-only verification forbids producing ${kind}; current-run receipt or outputs do not match`,
+    );
   if (receiptPath) rmSync(receiptPath, { force: true });
   if (kind === "install") {
     if (runDirectory)

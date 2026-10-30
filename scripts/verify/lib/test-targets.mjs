@@ -1,0 +1,86 @@
+import { globSync } from "node:fs";
+
+export const UNIT_TARGETS = Object.freeze({
+  ci: [
+    "tests/agent-detail-return.test.ts",
+    "tests/agent-run-turn.test.ts",
+    "tests/agent-run.test.ts",
+    "tests/aj-recovery-matrix-runner.test.ts",
+    "tests/chat-title-display.test.ts",
+    "tests/chat-workspace.test.ts",
+    "tests/chat.test.ts",
+    "tests/contracts.test.ts",
+    "tests/data-auth.test.ts",
+    "tests/design-tokens.test.ts",
+    "tests/diagnostics.test.ts",
+    "tests/error-mapping.test.ts",
+    "tests/execution-accept-fixes-2.test.ts",
+    "tests/execution-accept-fixes.test.ts",
+    "tests/execution-cancel-authority.test.ts",
+    "tests/execution-log-contracts.test.ts",
+    "tests/execution-log-view.test.ts",
+    "tests/execution-recovery.test.ts",
+    "tests/execution-summary.test.ts",
+    "tests/execution-wiring.test.ts",
+    "tests/frontend-boundaries.test.ts",
+    "tests/http-drain.test.ts",
+    "tests/identity-data.test.ts",
+    "tests/info-hub-runs.test.ts",
+    "tests/info-hub.test.ts",
+    "tests/integration-mcp.test.ts",
+    "tests/lease-contracts.test.ts",
+    "tests/lease-view.test.ts",
+    "tests/machine-contracts.test.ts",
+    "tests/machine-credential-gap.test.ts",
+    "tests/machine-functional.test.ts",
+    "tests/machine-view.test.ts",
+    "tests/membership-view.test.ts",
+    "tests/mcp-contracts.test.ts",
+    "tests/mcp-extension-server.test.ts",
+    "tests/mcp-worker-domain.test.ts",
+    "tests/mcp-worker-evidence.test.ts",
+    "tests/p4d-authority.test.ts",
+    "tests/p4d-contracts.test.ts",
+    "tests/p4d-removal.test.ts",
+    "tests/mcp-worker.test.ts",
+    "tests/migration-rebuild.test.ts",
+    "tests/pi-host-clock.test.ts",
+    "tests/pi-host-dispose.test.ts",
+    "tests/pi-host-failure.test.ts",
+    "tests/project-agents.test.ts",
+    "tests/project-lease-actions.test.ts",
+    "tests/project.test.ts",
+    "tests/quota-scope.test.ts",
+    "tests/rate-limit.test.ts",
+    "tests/remote-tools.test.ts",
+    "tests/repository.test.ts",
+    "tests/runtime.test.ts",
+    "tests/theme-preference.test.ts",
+    "tests/tooling.test.ts",
+    "tests/verify-ah-groups.test.ts",
+    "tests/verify-model-fixture.test.ts",
+    "tests/verify-preparation.test.ts",
+    "tests/verify-runner.test.ts",
+    "tests/verify-sandbox.test.ts",
+    "tests/verify-targets.test.ts",
+    "tests/worker-execution.test.ts",
+    "tests/worker-remote-domain.test.ts",
+    "tests/worker-remote.test.ts",
+  ],
+  local: [
+    "tests/extension-mcp.test.ts",
+    "tests/machine-worker.test.ts",
+    "tests/worker-report-budget.test.ts",
+  ],
+});
+
+export function validateUnitTargets(root) {
+  const actual = globSync("tests/**/*.test.ts", { cwd: root }).sort();
+  const classified = Object.values(UNIT_TARGETS).flat().sort();
+  if (
+    new Set(classified).size !== classified.length ||
+    JSON.stringify(actual) !== JSON.stringify(classified)
+  )
+    throw new Error("Unit test inventory changed; classify every test file before running targets");
+  return UNIT_TARGETS;
+}

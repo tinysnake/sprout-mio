@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { NATIVE_GATE_WEIGHTS } from "./lib/native-lanes.mjs";
+import { SUITE_CAPACITY, SUITE_PLAN, fitsResources, allocateResources } from "./lib/suite-plan.mjs";
 import {
   closeSync,
   existsSync,
@@ -24,7 +26,9 @@ const tailCharacters = 4_000;
 
 const usage = `Usage: pnpm verify [--only <id>[,<id>...]] [--help]
 
-Runs every top-level scripts/verify/*.sh script in lexical order, sequentially.
+Runs known scripts/verify/*.sh gates in bounded resource pools after serial
+artifact preparation. Gates that modify source or outputs use private trees.
+Unknown gates run sequentially as barriers. Reports retain lexical gate order.
 A failing script does not stop later scripts. The command exits 1 when any
 script fails.
 
@@ -137,39 +141,106 @@ function formatDuration(durationMs) {
 
 /** @type {{ signal: string | null, exitCode: number | null }} */
 const interrupted = { signal: null, exitCode: null };
-let current = null;
-let forceStopTimer = null;
+const activeChildren = new Set();
+let cleanup = Promise.resolve();
 
 function signalProcessGroup(pid, signal) {
   try {
     process.kill(-pid, signal);
   } catch (error) {
-    if (error.code !== "ESRCH") throw error;
+    if (error.code === "ESRCH") return;
+    if (error.code === "EPERM") {
+      const snapshot = spawnSync("ps", ["-axo", "pgid=,stat="], {
+        encoding: "utf8",
+        timeout: 1000,
+      });
+      if (
+        snapshot.status === 0 &&
+        !snapshot.stdout.split("\n").some((line) => {
+          const [group, state] = line.trim().split(/\s+/);
+          return Number(group) === pid && !state?.startsWith("Z");
+        })
+      )
+        return;
+    }
+    throw error;
   }
-}
-
-function stopCurrent(signal) {
-  if (!current) return;
-  const child = current.child;
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  signalProcessGroup(child.pid, signal);
-  forceStopTimer = setTimeout(() => {
-    signalProcessGroup(child.pid, "SIGKILL");
-  }, forceStopMs);
-  forceStopTimer.unref?.();
 }
 
 function handleSignal(signal) {
   if (interrupted.signal !== null) return;
   interrupted.signal = signal;
   interrupted.exitCode = signal === "SIGINT" ? 130 : 143;
-  stopCurrent(signal);
+  const deadline = performance.now() + forceStopMs;
+  const descendants = new Set([...activeChildren].map((child) => child.pid).filter(Boolean));
+  // Remember detached descendants before their launcher can exit and reparent them.
+  function remainingProcesses() {
+    const result = spawnSync("ps", ["-axo", "pid=,ppid=,stat="], {
+      encoding: "utf8",
+      timeout: 1000,
+    });
+    if (result.status !== 0) return [...descendants];
+    const rows = result.stdout
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const [pid, parent, state] = line.trim().split(/\s+/);
+        return { pid: Number(pid), parent: Number(parent), state };
+      });
+    let changed;
+    do {
+      changed = false;
+      for (const row of rows) {
+        if (descendants.has(row.parent) && !descendants.has(row.pid)) {
+          descendants.add(row.pid);
+          changed = true;
+        }
+      }
+    } while (changed);
+    return rows
+      .filter((row) => descendants.has(row.pid) && !row.state?.startsWith("Z"))
+      .map((row) => row.pid);
+  }
+  remainingProcesses();
+  for (const child of activeChildren) {
+    if (child.pid) signalProcessGroup(child.pid, signal);
+  }
+  cleanup = new Promise((resolveCleanup) => {
+    let forced = false;
+    const check = () => {
+      const remaining = remainingProcesses();
+      if (remaining.length === 0 && activeChildren.size === 0) {
+        resolveCleanup();
+        return;
+      }
+      if (performance.now() >= deadline) {
+        // Give launchers the entire grace period to forward cleanup to private groups.
+        for (const pid of remaining) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch (error) {
+            if (error.code !== "ESRCH") throw error;
+          }
+        }
+        for (const child of activeChildren) {
+          if (child.pid) signalProcessGroup(child.pid, "SIGKILL");
+        }
+        if (forced && performance.now() >= deadline + 1000) {
+          resolveCleanup();
+          return;
+        }
+        forced = true;
+      }
+      setTimeout(check, 50);
+    };
+    check();
+  });
 }
 
 process.on("SIGINT", () => handleSignal("SIGINT"));
 process.on("SIGTERM", () => handleSignal("SIGTERM"));
 
-function runScript(script, runDirectory) {
+function runScript(script, runDirectory, environment = {}) {
   return new Promise((resolveOutcome) => {
     const relativePath = relative(root, script.file).split("\\").join("/");
     const logPath = join(runDirectory, `${script.id}.log`);
@@ -201,11 +272,7 @@ function runScript(script, runDirectory) {
         code === 0 && signal === null && !spawnError && interrupted.signal === null
           ? "passed"
           : "failed";
-      current = null;
-      if (forceStopTimer !== null) {
-        clearTimeout(forceStopTimer);
-        forceStopTimer = null;
-      }
+      activeChildren.delete(child);
       if (outcome.status === "passed") {
         console.log(`PASS ${script.id} ${relativePath} ${formatDuration(outcome.durationMs)}`);
       } else {
@@ -229,7 +296,7 @@ function runScript(script, runDirectory) {
       resolveOutcome(outcome);
     };
 
-    const child = spawn("bash", [script.file], {
+    const child = spawn(script.command ?? "bash", script.args ?? [script.file], {
       cwd: root,
       detached: true,
       stdio: ["ignore", logDescriptor, logDescriptor],
@@ -237,12 +304,148 @@ function runScript(script, runDirectory) {
         ...process.env,
         SPROUT_PI_ENABLED: "false",
         SPROUT_VERIFY_RUN_DIR: runDirectory,
+        ...environment,
       },
     });
-    current = { child };
+    activeChildren.add(child);
     child.on("error", (error) => finish(null, null, error));
     child.on("close", (code, signal) => finish(code, signal));
   });
+}
+
+const preparationOutcomes = [];
+const resourceEvents = [];
+
+async function runPooledBatch(scripts, runDirectory) {
+  console.log(
+    `Resource batch gates=${scripts.map((script) => script.id).join(",")} capacity=${JSON.stringify(SUITE_CAPACITY)}`,
+  );
+  const required = new Set(scripts.flatMap((script) => SUITE_PLAN[script.id].preparation));
+  let preparationFailure = null;
+  const prepared = new Set();
+  for (const kind of ["install", "server", "worker", "extension"].filter((kind) =>
+    required.has(kind),
+  )) {
+    if (interrupted.signal !== null) return [];
+    const file = join(verifyDirectory, "prepare.mjs");
+    const attempt = preparationOutcomes.filter((outcome) => outcome.kind === kind).length + 1;
+    const preparation = await runScript(
+      {
+        id: `prepare-${kind}${attempt === 1 ? "" : `-${attempt}`}`,
+        file,
+        command: process.execPath,
+        args: [file, kind],
+      },
+      runDirectory,
+      {
+        ...(kind === "install" ? {} : { NODE_ENV: "production" }),
+        SPROUT_VERIFY_PREPARED_ONLY: "0",
+      },
+    );
+    preparationOutcomes.push({ ...preparation, kind });
+    if (interrupted.signal !== null) return [];
+    if (preparation.status !== "passed") {
+      preparationFailure = preparation;
+      break;
+    }
+    prepared.add(kind);
+  }
+  const outcomes = [];
+  const pending = [];
+  const queuedAt = performance.now();
+  for (const script of scripts) {
+    if (
+      preparationFailure &&
+      SUITE_PLAN[script.id].preparation.some((kind) => !prepared.has(kind))
+    ) {
+      const logPath = join(runDirectory, `${script.id}.log`);
+      writeFileSync(
+        logPath,
+        `Blocked by ${preparationFailure.id}; exit=${preparationFailure.exitCode} signal=${preparationFailure.signal} log=${preparationFailure.logPath}\n`,
+      );
+      console.log(`FAIL ${script.id} blocked by ${preparationFailure.id} log=${logPath}`);
+      outcomes.push({
+        id: script.id,
+        path: relative(root, script.file).split("\\").join("/"),
+        status: "failed",
+        exitCode: null,
+        signal: null,
+        startedAt: new Date().toISOString(),
+        durationMs: 0,
+        logPath,
+        blockedBy: preparationFailure.id,
+      });
+    } else pending.push(script);
+  }
+  pending.sort(
+    (left, right) =>
+      Number(right.id === "b-tooling") - Number(left.id === "b-tooling") ||
+      SUITE_PLAN[right.id].estimatedMs - SUITE_PLAN[left.id].estimatedMs ||
+      left.id.localeCompare(right.id),
+  );
+  const running = new Map();
+  const used = {};
+  while (pending.length || running.size) {
+    if (interrupted.signal === null) {
+      let index;
+      while (
+        (index = pending.findIndex((script) =>
+          fitsResources(used, SUITE_PLAN[script.id].resources),
+        )) !== -1
+      ) {
+        const [script] = pending.splice(index, 1);
+        const plan = SUITE_PLAN[script.id];
+        allocateResources(used, plan.resources, 1);
+        resourceEvents.push({
+          id: script.id,
+          action: "acquire",
+          clockMs: performance.now(),
+          used: { ...used },
+        });
+        const queueDurationMs = Math.round(performance.now() - queuedAt);
+        const sandboxFile = join(verifyDirectory, "sandbox.mjs");
+        const invocation = plan.sandbox
+          ? {
+              ...script,
+              command: process.execPath,
+              args: [sandboxFile, "--gate", script.id, "--", script.file],
+            }
+          : script;
+        const environment = {
+          ...(Object.hasOwn(NATIVE_GATE_WEIGHTS, script.id) ? { NODE_ENV: "production" } : {}),
+          SPROUT_VERIFY_PREPARED_ONLY: "1",
+        };
+        console.log(
+          `ADMIT ${script.id} resources=${JSON.stringify(plan.resources)} queue=${queueDurationMs}ms mode=${plan.sandbox ? "sandbox" : "shared-read-only"}`,
+        );
+        running.set(
+          script.id,
+          runScript(invocation, runDirectory, environment).then((outcome) => ({
+            ...outcome,
+            resources: plan.resources,
+            queueDurationMs,
+            mode: plan.sandbox ? "sandbox" : "shared-read-only",
+          })),
+        );
+      }
+    }
+    if (running.size === 0) {
+      if (pending.length && interrupted.signal === null)
+        throw new Error(`Unschedulable gates: ${pending.map((script) => script.id).join(",")}`);
+      break;
+    }
+    const outcome = await Promise.race(running.values());
+    running.delete(outcome.id);
+    allocateResources(used, SUITE_PLAN[outcome.id].resources, -1);
+    resourceEvents.push({
+      id: outcome.id,
+      action: "release",
+      clockMs: performance.now(),
+      used: { ...used },
+    });
+    outcomes.push(outcome);
+  }
+  return outcomes;
 }
 
 function writeReport(runDirectory, report) {
@@ -296,10 +499,24 @@ async function main() {
 
   cleanVerificationDatabases(parsed.only);
 
+  let batch = [];
   for (const script of selected) {
     if (interrupted.signal !== null) break;
-    outcomes.push(await runScript(script, run.directory));
+    if (Object.hasOwn(SUITE_PLAN, script.id)) batch.push(script);
+    else {
+      if (batch.length) outcomes.push(...(await runPooledBatch(batch, run.directory)));
+      batch = [];
+      if (interrupted.signal === null) outcomes.push(await runScript(script, run.directory));
+    }
   }
+  if (batch.length && interrupted.signal === null)
+    outcomes.push(...(await runPooledBatch(batch, run.directory)));
+  await cleanup;
+  outcomes.sort(
+    (left, right) =>
+      selected.findIndex((script) => script.id === left.id) -
+      selected.findIndex((script) => script.id === right.id),
+  );
 
   const totalDurationMs = Math.round(performance.now() - runStarted);
   const failed = outcomes.filter((outcome) => outcome.status !== "passed").length;
@@ -309,10 +526,15 @@ async function main() {
     finishedAt: new Date().toISOString(),
     durationMs: totalDurationMs,
     selection: parsed.only,
+    target: process.env.SPROUT_VERIFY_TARGET ?? "all",
     interrupted:
       interrupted.signal === null
         ? null
         : { signal: interrupted.signal, exitCode: interrupted.exitCode },
+    preparation: preparationOutcomes,
+    resourceCapacity: SUITE_CAPACITY,
+    resourceTimeOrigin: performance.timeOrigin,
+    resourceEvents,
     count: outcomes.length,
     passed: outcomes.length - failed,
     failed,

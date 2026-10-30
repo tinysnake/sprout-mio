@@ -364,13 +364,15 @@ pass(
 // 确定性地制造没有 result 的局面：意图送达后才让命令杀掉自己的 runner（`kill -9 $PPID`），
 // 磁盘上永远不会出现 result.json。不靠宽限窗口的时序碰运气。
 const absentSentinel = join(pidDirectory, "absent-runner-sentinel");
+const absentReady = join(pidDirectory, "absent-runner-ready");
 const absentWorker = makeDispatcher();
 const absentTarget = submit(
-  `trap '' TERM; while [ ! -f '${absentSentinel}' ]; do sleep 0.2; done; kill -9 $PPID; sleep 120`,
+  `trap '' TERM; printf ready > '${absentReady}'; while [ ! -f '${absentSentinel}' ]; do sleep 0.2; done; kill -9 $PPID; sleep 120`,
 );
 round(absentWorker);
 await started(absentWorker, absentTarget.executionId, "absent runner running");
 const absentClaim = runnerClaim(absentTarget.executionId)!;
+await pump(absentWorker, () => existsSync(absentReady), "absent runner trap ready");
 enqueueCancel(absentTarget.executionId);
 await pump(
   absentWorker,

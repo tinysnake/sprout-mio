@@ -19,25 +19,47 @@
 
 ## 运行器、选择与报告
 
-`pnpm verify` 通过 `scripts/verify.sh` 调用 `scripts/verify/runner.mjs`，按文件名字典序串行执行 `scripts/verify/*.sh`。单个脚本失败不会中止后续脚本；全部执行完后，任一失败即退出 1。运行器导出 `SPROUT_PI_ENABLED=false` 和 `SPROUT_VERIFY_RUN_DIR`，领域脚本仍由自身的 trap 管理其后台进程，运行器不承诺超出转发与等待范围的进程隔离。
+`pnpm verify` 通过 `scripts/verify.sh` 调用 `scripts/verify/runner.mjs`。`scripts/verify/lib/suite-plan.mjs` 为当前 50 个 gate 声明资源、准备需求和隔离方式。运行器先按 install、server、worker、extension 的固定顺序串行准备本批所需共享产物；选中 b-tooling 时先让它独占六个入口完成完整单元套件，再按历史耗时优先派发能取得全部资源的其他 gate。入口配额为 6，native fixture 配额为 6，browser 为 3，重测试/check 和 development 各为 2，SDK 为 1，普通 API/docs 为 2；这些是调度配额，不是 OS 进程、CPU 核或 Chromium renderer 的数量上限。AH 占 3 个 native 配额，AJ 占 4，可与另外 2 个配额的 fixture 重叠；其他真实 native fixture 也计费。嵌套 MCP 验收与共享原树的其他 SDK gate 互斥，避免证据目录发现串扰；私有树的 a-base/b-tooling 使用独立 agent 和证据目录，不占原树 SDK 锁；i-chat 禁用 Pi，n-pi-session/q-info-hub-runs 使用独立 protocol stub，也不占 SDK 锁。默认端口相同的 e-project/ag-execution-wiring-ui 与 drain-http/j-info-hub 分别互斥，保留原端口和显式环境配置。退出归属的短时限验收 AL 占满入口配额，避免其 短时限与退出证据场景与其他受管 gate 争用；原有断言与限时保持不变。verify context 内的小范围 Vitest 调用最多同时运行 4 个 test-file worker；独占入口的 b-tooling 完整套件沿用 Vitest 默认可用并行度。两者都保留默认文件隔离与完整测试集合；这是每次调用的 worker 并发限制，套件内部派生进程仍由各测试负责。未知 gate 作为串行屏障，先等待左侧批次结束，执行自身后才派发右侧批次。单个脚本失败不会中止后续可运行脚本；任一失败即退出 1。运行器导出 `SPROUT_PI_ENABLED=false` 和 `SPROUT_VERIFY_RUN_DIR`，领域脚本仍负责自身后台进程的正常清理。
+
+`a-base`、`b-tooling`、`c-data-auth`、`d-runtime`、`ad-execution-log-ui`、`y-lease-ui`、`t-machine-worker` 通过 `scripts/verify/sandbox.mjs` 在私有测试树内执行原脚本。源码取当前 working tree 的实际内容，保留 staged index、脏改动和删除状态；Git refs/index/config、依赖可写目录、缓存、数据库、输出和 runtime 状态独立。macOS 使用 APFS COW 复制，Linux 使用 reflink/copy；依赖文件不与原树 hard link。私有树有自己的有效 run context，真实 install/build 建立自己的 receipt，不借用或伪造共享 producer receipt。fresh build、真实源码编辑/HMR、migration drift、完整 check/test 和现有时间契约都保留。私有树在结束后移除，选定日志、截图和模型/断言证据导出到原树 `.verify/<gate>/`，以 `sandbox-artifacts.json` 列出本次文件；数据库、身份、agent/session state 和 `.env` 不导出。强制 SIGKILL 无法运行 launcher 清理；正常中断使用 SIGINT/SIGTERM 并等待有界后代清理。
 
 `pnpm verify --only aa-execution-log-contracts,af-execution-cancel-authority` 只执行列出的脚本 id（文件名去掉 `.sh`）。未知、重复、空或越界的 id，以及未知参数，都在清理数据库和运行脚本之前拒绝；`pnpm verify --help` 只打印用法，不创建运行目录或执行脚本。包管理器转发的单个前导 `--` 会被忽略。
 
-每次运行独占 `.verify/runs/<id>/`：每个脚本的 stdout 与 stderr 通过继承的文件描述符写入该目录下的 `<script>.log`，运行结束写出 `report.json`。报告记录脚本 id、路径、状态、退出码或信号、ISO 开始时间、单调计时得到的 `durationMs` 和日志路径；`durationMs` 只表示实际总耗时，不累加脚本内的嵌套计时。终端按慢到快打印摘要，保留原有的 `Verification scripts=N failed=N` 汇总行，并额外打印总耗时与报告路径。失败脚本会打印有上限的日志尾部用于定位。
+每次运行独占 `.verify/runs/<id>/`：每个脚本的 stdout 与 stderr 通过继承的文件描述符写入 `<script>.log`，结束写出 `report.json`。报告记录脚本 id、路径、状态、真实退出码或信号、ISO 开始时间、单调计时的 `durationMs` 和日志路径；outcomes 按原始发现顺序排列，不受并行完成顺序影响。池内 gate 另记资源配额、排队耗时及 sandbox/shared-read-only 模式。`resourceEvents` 记录单调时钟的 acquire/release 和当时占用，配合 `resourceTimeOrigin`、`resourceCapacity` 审核资源上限。总 `durationMs` 包含串行准备、排队和清理的实际总耗时，不累加并行脚本的嵌套计时。`preparation` 单独保存每次实际准备调用的结果和日志；跨未知 gate 的后续批次使用独立日志名。准备失败时，依赖该准备的 gate 不启动，退出码和信号记 null，`blockedBy` 及日志指向实际失败调用；不依赖共享准备的 gate 继续。终端保留 `Verification scripts=N failed=N`、总耗时、报告路径和有上限的失败日志尾部。
 
-完整运行沿用 `.verify/*/verification.sqlite` 的清理；`--only` 只清理选中脚本对应目录的同一文件，避免删除未选中单元的证据。`.verify/runs` 与脚本的数据库目录相互独立。收到 `SIGINT` 或 `SIGTERM` 时，运行器停止派发后续脚本，把信号转发给当前脚本所在的独立进程组，等待其 trap 清理，超时后强制结束并写出部分报告；中断以 130 / 143 退出，绝不计为通过。
+完整运行沿用 `.verify/*/verification.sqlite` 的清理；`--only` 只清理选中脚本对应目录的同一文件，避免删除未选中单元的证据。`.verify/runs` 与脚本的数据库目录相互独立。收到第一个 `SIGINT` 或 `SIGTERM` 时，运行器停止派发，把信号转发给所有活跃 gate（或准备进程）的独立进程组，给 launcher 和 trap 留出同一个 10 秒清理窗口。运行器在转发前记录后代进程，并在清理期间继续观察；截止后强制终止仍存活的已观察后代，包括脱离 gate 进程组的后代，再写出部分报告。重复信号继续忽略，中断以首个信号对应的 130 / 143 退出，绝不计为通过。
 
-## 本地完整验证与 GitHub Actions
+## 本机与 GitHub Actions 分工
 
-完整测试与真实行为验证在本机 macOS 执行。全量 `pnpm test` 由 `pnpm verify` 内的 `scripts/verify/b-tooling.sh` 运行，覆盖真实 Worker 与需要受管 Pi 的 MCP 场景；GitHub Actions 的 Ubuntu runner 不具备这些前提。
+日常使用 `pnpm verify:local` 运行必须依赖真实 macOS 或已安装 Pi 的部分；GitHub Actions 的 Ubuntu job 执行其余部分。`pnpm verify` 仍是单机全量入口，包含全部原始断言与全量单测，便于完整复现；它不因分工而静默缩减范围。分工入口先校验完整门禁与测试文件清单，新文件未分类时立即失败。归属清单见 `scripts/verify/lib/targets-plan.mjs` 与 `scripts/verify/lib/test-targets.mjs`。
 
-`.github/workflows/ci.yml` 的 Linux job 只执行安装、`pnpm check`、server 构建、数据库迁移、生产 smoke、worker 与 extension 产物检查。它证明这些静态检查与构建在 Linux 上通过，不代表全量测试通过，不能替代本地完整验证，也不作为行为或 Worker / MCP 集成的证据。
+CI 分为 base、tooling、docs、contracts、api、turns、browser 七个独立 checkout 的 job，最多六个同时执行，每个 job 内串行运行自己的门禁，避免在 hosted runner 内再次过量并发。共接管 35 个门禁，本机保留 17 个；A/B 是两边明确拆分的部分，联合覆盖原有全部 50 个门禁。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
 
-因此两处不重复执行全量测试：执行 `pnpm verify` 时不再另加 `pnpm test`，因为前者已包含（见[完整验证与去重](#完整验证与去重)）。集成与交付节点仍按本文要求执行完整验证；本地证据必须绑定当前 diff，按[证据复用与失效](#证据复用与失效)记录基准 commit、完整 diff 与内容哈希。
+63 个测试文件中，CI 执行 60 个，本机执行 `tests/machine-worker.test.ts`（Darwin/sandbox-exec 分支）、`tests/extension-mcp.test.ts`（真实 Pi McpClient）和 `tests/worker-report-budget.test.ts`（真实 runWorker 环境探测）。`pnpm test:ci` 与 `pnpm test:local` 可单独运行各自测试集合；两边都保留文件隔离。CI 测试最多两个 file worker，使用空的临时 Pi agent 目录、清除 inherited Pi runner/module 设置并关闭 MCP_EVERYTHING，避免借用个人安装掩盖依赖。N/Q 等使用生成 protocol stub 的验证属于 CI，不因名称含 Pi 就保留本机；真实 Pi SDK、MCP extension、真实 Worker 初始化/环境探测仍留本机。
+
+`pnpm verify:ci --group docs` 可复现一个 CI job；省略 `--group` 顺序运行全部 CI 门禁。选择清单可通过 `pnpm verify:local --list`、`pnpm verify:ci --list`、`pnpm test:ci --list` 查看。范围由入口设置 `SPROUT_VERIFY_TARGET`，逐门禁报告和 `.verify/targets/<target>-<group>.json` 记录实际范围与退出结果；一个 CI 门禁失败仍继续执行该组其余门禁，最终保留失败退出码。原有 `--only` 继续用于单机全量入口。
+
+Actions 触发于 push、pull request 或 workflow_dispatch，取消同分支旧运行。Linux 中按 lockfile 安装依赖，浏览器组及包含页面链路的 API/turns 组安装 Chromium 和系统依赖，通过显式 `PLAYWRIGHT_BROWSERS_PATH` 供私有测试树读取同一份浏览器程序；可写缓存、数据库与 runtime 状态仍独立。生产生命周期场景直接启动当前 Node 的 `.output/server/index.mjs`，将信号及退出码断言绑定到 server 本身；A/B 的 package start smoke 继续覆盖 `pnpm start` 入口。不安装 Pi、不导入个人认证。仅上传报告及明确列出的 `.log`，不上传整个 `.verify`、数据库、身份或 session；artifact 保留七天。仓库所有者的 Actions 月度计算和存储预算仍适用，多个 job 的耗时分别累计。
+
+集成或交付可使用同一 commit 的 Actions 全部 job 成功结果，加上对应 commit 的 `verify:local` 成功结果，联合证明完整范围。单独一边通过不能称为完整验证通过；有未提交改动时，远端未包含的 diff 必须单独验证并按[证据复用与失效](#证据复用与失效)记录。单机全量验证也继续有效，不再额外重复执行 `pnpm test`。尚未实际运行的 Actions 配置只能报告为已配置，不能报告为 Ubuntu 门禁已通过。
+
+## 验证中的模型调用
+
+`pnpm verify` 默认使用 `SPROUT_VERIFY_CHAT_MODE=model-fixture`。`a-base` 的 Pi CLI 状态探针与 `z-lease-integration` 的 Chat 场景都复用本地 SSE 模型 fixture。前者仍启动真实已安装 Pi CLI、加载 `dist/extension/main.js` 并断言一次成功的 `sprout_status` 完成事件；后者仍经过真实 Chat、`scripts/pi-host-runner.mjs`、Pi SDK、remote tools、HTTP、SQLite 和 Worker，保留原有 14 项验收条件，包括实际 shell PID/文件、授权拒绝、代次 fencing 和强制收据刷新。
+
+fixture 从 `PI_CODING_AGENT_DIR` 或默认 `~/.pi/agent` 发现已安装 SDK，仅在临时私有 agent 目录链接 SDK 可执行文件，并写入自己的 models.json、空 auth/settings 和 dummy key。模型目录只配置 loopback endpoint；operator、non-holder 和 CLI status 使用各自固定模型，reasoning=false、thinking=off。不会复制用户凭据、设置或扩展，也不替换 runner、SDK 事件或工具结果。CLI 使用 `--offline` 禁用启动联网。fixture 缺失、SDK 不可用或计划不符均失败，不转入 live；fixture 模式不读取 `SPROUT_VERIFY_PI_MODEL`，z 同时拒绝自定义 `SPROUT_PI_RUNNER`。
+
+每个场景有独立的有序工具计划。首次 toolCall 前必须验证本轮最新 user message：直接 Chat 请求逐字匹配预期；UI 租约请求验证固定消息格式以及 driver 指定的 action、Machine、generation 和 target，再将 UI 产生的 requestId 绑定到该次工具调用，原有收据检查继续核对该 requestId。历史消息不能满足新轮次。endpoint 核对注册工具 schema、固定参数和当前 call ID 的实际结果后才推进。它只发送 assistant toolCalls 与最终文本，不生成 toolResult、数据库事实或 shell 副作用。未使用步骤、错误模型、异常请求或结果顺序使验证失败。
+
+显式执行真实 provider 验证：`SPROUT_VERIFY_CHAT_MODE=live pnpm verify --only z-lease-integration`；CLI 探针可用 `--only a-base`。live 沿用真实模型选择和凭据，支持 `SPROUT_VERIFY_PI_MODEL=provider/model`。空值和未知 mode 在脚本准备产物前拒绝。fixture 通过证明真实工具与生命周期链路，不证明真实 provider 的认证、可达性或模型遵循指令的能力；这些能力应单独以 live 验证。
+
+stdout 和 `a-base/model-mode.json`、`p4b-integration/evidence/run-*/model-mode.json` 标明实际 mode、provider/model、thinking、请求数、完成计划和未使用步骤；live 中未跟踪的请求/计划数记为 null。导出的元数据不包含私有 prompt、session 或凭据。零付费模型调用的依据是私有模型目录、loopback endpoint 和所有调用方的模型固定配置，并非整台宿主的网络抓包结论。完整 runner 已令其他应用脚本的 `SPROUT_PI_ENABLED=false`，`n-pi-session` 使用明确的协议 stub；单独运行其他脚本时仍需另行判断其模型开关。fixture 需要本机已安装的 Pi SDK，不消除这一前提。
 
 ## 当前 run 的构建准备
 
-构建调用统一通过 `node scripts/verify/prepare.mjs install|server|worker|extension [--fresh]`。运行器在新建的 `.verify/runs/<id>/context.json` 记录仓库根目录、run id 和 owner PID。helper 只在目录、根目录和活着的 owner 均匹配时读取该 run 的成功 receipt；传入失效或损坏的内部 context 会明确失败。没有 `SPROUT_VERIFY_RUN_DIR` 时，独立调用总会基于当前源码执行，不因旧产物存在而跳过。不同 run 不复用；同一 checkout 仍只支持一个串行验证调用。
+构建调用统一通过 `node scripts/verify/prepare.mjs install|server|worker|extension [--fresh]`。运行器在新建的 `.verify/runs/<id>/context.json` 记录仓库根目录、run id 和 owner PID。helper 只在目录、根目录和活着的 owner 均匹配时读取该 run 的成功 receipt；传入失效或损坏的内部 context 会明确失败。没有 `SPROUT_VERIFY_RUN_DIR` 时，独立调用总会基于当前源码执行，不因旧产物存在而跳过。不同 run 不复用；同一 checkout 仍只支持一个验证调用。
+
+`--only` 仍只执行精确选中的 gate；选中的共享消费者也先准备其声明的产物，不依赖 `a-base` 先运行。共享 server、worker、extension 的准备使用 `NODE_ENV=production`；Worker artifact helper 仅对编译调用固定该环境，保留调用方后续测试及 runtime 的环境。共享消费者导出的内部环境 `SPROUT_VERIFY_PREPARED_ONLY=1` 使 helper 只允许复用已验证 receipt；输入变化、缺失产物、无有效 context 或 `--fresh` 等生产请求均在删除 receipt、产物或创建生产日志前失败。隔离 launcher 在自己的树内改为 prepared-only=0，允许私有实际生产。批次期间不能外部修改共享源码或构建输入；同一 checkout 仍只支持一个验证调用。该保护不改变 standalone helper 的正常构建语义。
 
 receipt 记录 artifact kind、仓库根目录、输入指纹、原始成功日志、实际构建耗时和必要产物路径。源码、依赖清单与 lockfile、构建配置、`.env` 输入及相关编译环境参与指纹；只保存哈希，不写入秘密值。构建完成后重新计算指纹以包含生成的 route tree。复用还要求原始日志和必要产物仍存在，不对完整输出目录或 `node_modules` 反复做内容哈希。输入变化、产物缺失、构建失败或中断均不能获得复用成功。主动中断即使被调用命令的 trap 返回 0 也失败，日志保留实际 code、signal 和中断原因。
 

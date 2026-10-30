@@ -176,7 +176,7 @@ try {
   await command('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log', buildEnvironment)
   pass('node scripts/verify/prepare.mjs server', { buildLog: 'build.log' })
 
-  server = launch('pnpm', ['start'], 'server.log')
+  server = launch(process.execPath, ['.output/server/index.mjs'], 'server.log')
   const ready = await waitForHealth(server)
   pass('production server ready', { requestId: ready.requestId, bootId: ready.bootId, version: ready.version })
 
