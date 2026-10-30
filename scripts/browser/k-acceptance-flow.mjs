@@ -107,7 +107,7 @@ async function chat(page) {
   }
   await test(page, "info-chat-instance-id").waitFor();
   return {
-    chatId: await test(page, "inspector-chat-id").textContent(),
+    chatId: await test(page, "inspector-copy-chat-id").getAttribute("data-chat-id"),
     instanceId: await test(page, "inspector-instance-id").textContent(),
     messages: await test(page, "message-body").allTextContents(),
     persona: await test(page, "inspector-agent-persona").textContent(),

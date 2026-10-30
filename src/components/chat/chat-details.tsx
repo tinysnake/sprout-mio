@@ -304,10 +304,6 @@ export function ChatDetails({
               </p>
             )}
             <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 pt-2 text-[11px]">
-              <dt className="text-muted-foreground">Chat ID</dt>
-              <dd data-testid="inspector-chat-id" className="font-mono break-all">
-                {chat.id}
-              </dd>
               {/* 群与频道可能有多个分身，单独一行只能指其中一个；DM 仍是一对一指代。 */}
               {chat.kind === "dm" && (
                 <>
@@ -322,6 +318,11 @@ export function ChatDetails({
                 {info.ok ? info.data.messages.count : "未知"}
               </dd>
             </dl>
+            {chat.kind === "dm" && (
+              <div className="pt-2">
+                <CopyChatIdButton chatId={chat.id} />
+              </div>
+            )}
             {detailMember && (
               <div
                 data-testid="chat-inspector-identity"
@@ -425,6 +426,7 @@ export function ChatDetails({
                     variant="button"
                   />
                 )}
+                <CopyChatIdButton chatId={chat.id} />
               </div>
               {/* 治理提示只在这里出现一处；成员段只说明成员规则。 */}
               <p
@@ -851,5 +853,33 @@ function OwnerDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** 复制对话 ID：localhost 是安全上下文，点击本身是用户手势，因此只走 clipboard API。 */
+function CopyChatIdButton({ chatId }: { chatId: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(chatId);
+      setState("copied");
+    } catch {
+      setState("failed");
+    }
+    // 复制态是一次反馈，不是持久状态：过一会儿回到按钮本来的名字。
+    setTimeout(() => setState("idle"), 1600);
+  }
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      data-testid="inspector-copy-chat-id"
+      data-chat-id={chatId}
+      data-copy-state={state}
+      onClick={() => void copy()}
+    >
+      {state === "copied" ? "已复制" : state === "failed" ? "复制失败" : "复制 Chat ID"}
+    </Button>
   );
 }

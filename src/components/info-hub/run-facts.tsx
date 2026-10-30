@@ -22,11 +22,10 @@ function statusCounts(runs: AgentRunsView["recent"]) {
 
 /**
  * run 事实只消费视图对象；pending 输入一律显示为未投递，仓库依据显示来源、
- * ref、真实 commit 与 fresh。当前 run 与失败汇总常显，历史 run 的流水账
- * 收敛成计数；需要细节时可从失败项与轮初上下文继续追踪。
+ * ref、真实 commit 与 fresh。当前 run 与状态汇总常显，历史 run 的流水账收敛成计数：
+ * 逐条错误串既没有上下文也没有可做的事，Human 评审要求不再平铺。
  */
 export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: string }) {
-  const failures = runs.recent.filter((run) => run.errorCode);
   // recent 为最新优先：取最近一次带仓库依据的 run，代表当前工作副本来源。
   const latestRepo = runs.recent.find((run) => run.repo)?.repo;
   return (
@@ -64,22 +63,6 @@ export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: s
           ? "还没有历史 run。"
           : `最近 ${runs.recent.length} 个 run：${statusCounts(runs.recent)}`}
       </p>
-      {failures.length > 0 && (
-        <ul data-testid={`${testId}-failures`} className="space-y-1">
-          {failures.map((run) => (
-            <li
-              key={run.runId}
-              data-testid={`${testId}-recent-error`}
-              data-run-id={run.runId}
-              className="text-status-failed"
-            >
-              <span>
-                {statusLabel(run.status)}：{run.errorCode}：{run.errorMessage ?? "未知失败原因"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
       {latestRepo && (
         <p data-testid={`${testId}-recent-repo`} className="text-muted-foreground">
           最近一次 run 的仓库依据：{latestRepo.source}（

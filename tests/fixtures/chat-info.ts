@@ -140,15 +140,16 @@ pass("channel.session-derivation", {
 });
 
 // ---------------------------------------------------------------- 3. DM 读模型逐字段与改造前一致
-// 改造前的 DM 会话形状是 `ChatDetail = { chat, instance }`（P2 起冻结）。新读模型只多一个联合判别
-// 字段 `kind`；`chat` 与 `instance` 逐字段等于改造前的取值，P3 的 getChatInfo 视图一行未动。
+// 改造前的 DM 会话形状是 `ChatDetail = { chat, instance }`（P2 起冻结）。新读模型多出联合判别
+// 字段 `kind` 与 P5a 的 `governance`（裁定 d45：治理事实由领域一次算好、页面只读）；
+// `chat` 与 `instance` 逐字段等于改造前的取值，P3 的 getChatInfo 视图一行未动。
 const dm = createDirectChat(project.id, agentA.id, ctx);
 const dmSession = getChatSession(dm.chat.id, ctx);
 assert.equal(dmSession.kind, "dm");
 assert.deepEqual(
   Object.keys(dmSession).sort(),
-  ["chat", "instance", "kind"],
-  "DM 会话读模型只多出联合判别字段 kind",
+  ["chat", "governance", "instance", "kind"],
+  "DM 会话读模型多出 kind 与 governance 两个字段",
 );
 assert.deepEqual(
   { chat: dmSession.chat, instance: dmSession.instance },

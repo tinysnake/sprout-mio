@@ -64,7 +64,10 @@ async function readResults(page, id) {
 
 mkdirSync(EVIDENCE, { recursive: true });
 const browser = await chromium.launch();
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 900 },
+  permissions: ["clipboard-read", "clipboard-write"],
+});
 const page = await context.newPage();
 const consoleErrors = [];
 page.on("console", (message) => {
@@ -416,14 +419,15 @@ try {
     const count = (id) => document.querySelectorAll(`[data-testid="${id}"]`).length;
     const note = document.querySelector('[data-testid="chat-governance-note"]');
     const memberList = document.querySelector('[data-testid="inspector-member-list"]');
-    const facts = document.querySelector('[data-testid="inspector-chat-id"]')?.closest("dl");
+    const facts = document.querySelector('[data-testid="inspector-message-count"]')?.closest("dl");
     const memberSection = document.querySelector('[data-testid="chat-details-members"]');
     return {
       governanceNote: count("chat-governance-note"),
       memberNote: count("chat-member-note"),
       titleEdit: count("chat-title-edit"),
       memberList: count("inspector-member-list"),
-      chatId: count("inspector-chat-id"),
+      chatIdRow: count("inspector-chat-id"),
+      copyChatId: count("inspector-copy-chat-id"),
       instanceId: count("inspector-instance-id"),
       messageCount: count("inspector-message-count"),
       memberSelect: count("chat-member-select"),
@@ -443,7 +447,8 @@ try {
       !duplicates.memberSectionText.includes("Agent 不参与治理") &&
       duplicates.titleEdit === 1 &&
       duplicates.memberList === 1 &&
-      duplicates.chatId === 1 &&
+      duplicates.chatIdRow === 0 &&
+      duplicates.copyChatId === 1 &&
       duplicates.messageCount === 1 &&
       duplicates.instanceId === 0,
     JSON.stringify({
@@ -461,7 +466,7 @@ try {
     "group_details_drop_instance_row",
     duplicates.instanceId === 0 &&
       !duplicates.factsText.includes("Instance ID") &&
-      duplicates.factsText.includes("Chat ID") &&
+      !duplicates.factsText.includes("Chat ID") &&
       duplicates.factsText.includes("消息数"),
     `Instance 行 ${duplicates.instanceId}，事实行 ${JSON.stringify(duplicates.factsText)}`,
   );
@@ -638,6 +643,47 @@ try {
       namesAfterRemove.length === namesBefore.length - 1 &&
       !namesAfterRemove.some((name) => name?.includes(removedName)),
     `${namesBefore.length} -> ${namesAfterRemove.length}，移除 ${JSON.stringify(removedName)}`,
+  );
+
+  // 第四轮反馈：Chat ID 不再平铺成事实行，改成底部按钮行里的「复制 Chat ID」。
+  const copyButton = page.locator('[data-testid="inspector-copy-chat-id"]').first();
+  const copyTarget = await copyButton.getAttribute("data-chat-id");
+  // 复制按钮在治理段底部，段被收起时先展开：点 summary 只会翻转，不能用它“确保打开”。
+  await page.evaluate(() => {
+    const section = document.querySelector('[data-testid="chat-details-owner"]');
+    if (section instanceof HTMLDetailsElement && !section.open) {
+      section.querySelector("summary")?.click();
+    }
+  });
+  await page.waitForSelector('[data-testid="inspector-copy-chat-id"]', {
+    state: "visible",
+    timeout: 20000,
+  });
+  await copyButton.click();
+  await page
+    .waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="inspector-copy-chat-id"]')
+          ?.getAttribute("data-copy-state") !== "idle",
+      null,
+      { timeout: 5000 },
+    )
+    .catch(() => {});
+  const clipboard = await page.evaluate(async () => {
+    try {
+      return await navigator.clipboard.readText();
+    } catch {
+      return null;
+    }
+  });
+  const copyState = await copyButton.getAttribute("data-copy-state");
+  record(
+    "copy_chat_id_button",
+    Boolean(copyTarget) &&
+      copyState === "copied" &&
+      (clipboard === null || clipboard === copyTarget),
+    `按钮文案 ${copyTarget}，状态 ${copyState}，剪贴板 ${clipboard === null ? "不可读" : JSON.stringify(clipboard)}`,
   );
 
   // R2-UI02 只读分支：把 Owner 交给 Agent 后，右栏只剩只读标题与一处治理提示。

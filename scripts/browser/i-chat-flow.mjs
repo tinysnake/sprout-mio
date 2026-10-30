@@ -47,7 +47,7 @@ async function shot(page, name) {
 /** 身份事实只在 Info Hub 里展示：打开 `?info=1` 后从 inspector 读取。 */
 async function openChatInspector(page, chatPath) {
   await page.goto(`${BASE}${chatPath}?info=1`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="inspector-chat-id"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="inspector-copy-chat-id"]', { timeout: 20000 });
 }
 
 function finish() {
@@ -71,7 +71,9 @@ async function verifyRestartedSession() {
   await check("restart_chat_renders_same_instance", async () => {
     await openChatInspector(page, state.chatPath);
     const actual = await page.evaluate(() => ({
-      chatId: document.querySelector('[data-testid="inspector-chat-id"]')?.textContent,
+      chatId: document
+        .querySelector('[data-testid="inspector-copy-chat-id"]')
+        ?.getAttribute("data-chat-id"),
       instanceId: document.querySelector('[data-testid="inspector-instance-id"]')?.textContent,
       persona: document.querySelector('[data-testid="inspector-agent-persona"]')?.textContent,
       agentName: document.querySelector('[data-testid="inspector-agent-name"]')?.textContent,
@@ -292,7 +294,7 @@ if (process.env.CHAT_VERIFY === "1") {
     await page.click('[data-testid="agent-edit-save"]');
     await page.waitForSelector('[data-testid="agent-edit-saved"]', { timeout: 20000 });
     await page.goto(`${BASE}${chatPath}?info=1`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="inspector-chat-id"]', { timeout: 20000 });
+    await page.waitForSelector('[data-testid="inspector-copy-chat-id"]', { timeout: 20000 });
     const state = await page.evaluate(() => ({
       instanceId: document.querySelector('[data-testid="inspector-instance-id"]')?.textContent,
       persona: document.querySelector('[data-testid="inspector-agent-persona"]')?.textContent,
@@ -328,7 +330,7 @@ if (process.env.CHAT_VERIFY === "1") {
 
   await check("deep_link_chat_renders", async () => {
     await openChatInspector(page, chatPath);
-    const id = await page.textContent('[data-testid="inspector-chat-id"]');
+    const id = await page.getAttribute('[data-testid="inspector-copy-chat-id"]', "data-chat-id");
     record("deep_link_chat_renders", id?.trim() === chatId, `深链直达对话页 ${chatPath}`);
   });
 
