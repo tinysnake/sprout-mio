@@ -20,14 +20,9 @@ const facts = {
 };
 
 describe("chat governance affordance", () => {
-  it.each(GOVERNANCE_ACTIONS)(
-    "%s 与领域能力表对当前 Owner 的判断一致",
-    (action) => {
-      expect(governanceAvailability(facts)[action]).toBe(
-        CHAT_CAPABILITIES[action].human === "owner",
-      );
-    },
-  );
+  it.each(GOVERNANCE_ACTIONS)("%s 与领域能力表对当前 Owner 的判断一致", (action) => {
+    expect(governanceAvailability(facts)[action]).toBe(CHAT_CAPABILITIES[action].human === "owner");
+  });
 
   it.each(GOVERNANCE_ACTIONS)("%s 对非 Owner 的 Human 不渲染", (action) => {
     expect(governanceAvailability({ ...facts, actorId: "usr_other" })[action]).toBe(false);
