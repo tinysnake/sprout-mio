@@ -80,12 +80,16 @@ describe("chat 治理事实（领域算、页面只读）", () => {
     expect(facts.readOnlyReason).toContain("Agent");
   });
 
-  it("DM 与公共频道没有治理入口，重命名入口也不在右栏", () => {
-    for (const kind of ["dm", "public_channel"] as const) {
-      const facts = factsFor({ ...group, kind }, human("usr_owner"));
-      expect(Object.values(facts).filter((value) => value === true)).toEqual([]);
-      expect(facts.canRenameTitle).toBe(false);
-    }
+  it("DM 与公共频道没有成员治理入口，但 DM 可以改自己的标题", () => {
+    const dm = factsFor({ ...group, kind: "dm" }, human("usr_member"));
+    expect(dm.canChangeMembers).toBe(false);
+    expect(dm.canChangeOwner).toBe(false);
+    expect(dm.canChangeWakePolicy).toBe(false);
+    // 标题是会话自己的名字，DM 不依赖群组结构（d46）；改动只走头部入口，不进右栏治理段。
+    expect(dm.canRenameTitle).toBe(true);
+
+    const channel = factsFor({ ...group, kind: "public_channel" }, human("usr_owner"));
+    expect(Object.values(channel).filter((value) => value === true)).toEqual([]);
   });
 
   it("判定值与能力表的档位同源：member 档对 Human 开，owner 档看归属", () => {

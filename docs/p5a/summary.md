@@ -12,16 +12,16 @@ P5a 把对话从「一个 Human 对一个分身」扩展成三种形态：群组
 
 ## 数据形状
 
-| 形状         | 建模                                                                                                |
-| ------------ | --------------------------------------------------------------------------------------------------- |
-| 对话         | `chat.kind` 为 `dm`、`group`、`public_channel`；公共频道每个 Project 至多一条                        |
-| 成员         | `chat_member` 记成员行，`chat_effective_member` 视图只给出当下有效的成员                              |
-| 行动者       | `ChatActor` 分 Human 与 Agent 两支，Agent 必须带 `instanceId` 与 `runId`，权限不看宿主传的 `userId` |
-| 治理         | 能力表 `CHAT_CAPABILITIES` 是唯一来源；`chatGovernanceFacts` 一次算好，页面只读                      |
-| 动作与事实   | `factsAllow` 是「动作 → `can*`」的唯一映射，领域断言与页面入口都从这里取                              |
-| 唤醒         | `chat.wakePolicy` 为 `mention_only`、`owner_led`、`contextual`；路由优先级点名 → owner_led → 空集      |
-| 输入归属     | `agent_run_input` 以 `(runId, inputId)` 联合主键归属到具体分身的 run                                 |
-| Info Hub 聚合 | `ProjectInfoHub.chats` 一次给出每个会话的去重 Agent 数、分状态 run 计数与活跃 run id                  |
+| 形状          | 建模                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| 对话          | `chat.kind` 为 `dm`、`group`、`public_channel`；公共频道每个 Project 至多一条                       |
+| 成员          | `chat_member` 记成员行，`chat_effective_member` 视图只给出当下有效的成员                            |
+| 行动者        | `ChatActor` 分 Human 与 Agent 两支，Agent 必须带 `instanceId` 与 `runId`，权限不看宿主传的 `userId` |
+| 治理          | 能力表 `CHAT_CAPABILITIES` 是唯一来源；`chatGovernanceFacts` 一次算好，页面只读                     |
+| 动作与事实    | `factsAllow` 是「动作 → `can*`」的唯一映射，领域断言与页面入口都从这里取                            |
+| 唤醒          | `chat.wakePolicy` 为 `mention_only`、`owner_led`、`contextual`；路由优先级点名 → owner_led → 空集   |
+| 输入归属      | `agent_run_input` 以 `(runId, inputId)` 联合主键归属到具体分身的 run                                |
+| Info Hub 聚合 | `ProjectInfoHub.chats` 一次给出每个会话的去重 Agent 数、分状态 run 计数与活跃 run id                |
 
 ## 1. 群里的人与分身共同参与，单聊行为保持不变
 
