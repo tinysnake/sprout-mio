@@ -5,7 +5,7 @@ export no_proxy=localhost,127.0.0.1
 export NO_PROXY="$no_proxy"
 node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -114,14 +114,20 @@ async function health(child, origin, name) {
   }
   throw new Error(`health not ready at ${origin}; inspect server log`)
 }
+// EPERM 说的是「这组里有进程，只是不归我」：不能用它当「已经没了」。
+function groupAlive(pgid) {
+  try { process.kill(-pgid, 0); return true } catch (error) {
+    if (error.code === 'ESRCH') return false
+    if (error.code !== 'EPERM') throw error
+    const listing = spawnSync('ps', ['-A', '-o', 'pgid='], { encoding: 'utf8' })
+    return listing.stdout.split('\n').some((line) => line.trim() !== '' && Number(line.trim()) === pgid)
+  }
+}
 async function stop(child) {
   kill(child)
   const result = await bounded(child, 10000)
   for (let attempt = 0; attempt < 100; attempt++) {
-    try { process.kill(-child.pid, 0) } catch (error) {
-      if (error.code === 'ESRCH' || error.code === 'EPERM') return result
-      throw error
-    }
+    if (!groupAlive(child.pid)) return result
     await delay(100)
   }
   throw new Error(`process group ${child.pid} survived shutdown`)
