@@ -160,11 +160,24 @@ assert.deepEqual(dmSession.instance, listInstancesForChat(dm.chat.id, ctx)[0]);
 assert.equal(getChat(dm.chat.id, ctx).kind, "dm");
 
 // P3 的 Info Hub 会话视图（getChatInfo）是另一条冻结路径：字段集合与实例条目一个都不许变。
+// I-P5b 追加了 `tasks`（design §8.4/§9 的 Chat 侧 Task 摘要）：一次聚合读要同时给 inspector
+// 提供 Task 事实，另开接口会复制范围校验。其余键、instances 与 runs 的形状仍逐字段不变。
 const dmInfo = getChatInfo(dm.chat.id, ctx);
 assert.deepEqual(
   Object.keys(dmInfo).sort(),
-  ["archived", "chatId", "instances", "kind", "members", "messages", "owner", "projectId", "runs"],
-  "getChatInfo 的 DM 字段集合必须与改造前一致",
+  [
+    "archived",
+    "chatId",
+    "instances",
+    "kind",
+    "members",
+    "messages",
+    "owner",
+    "projectId",
+    "runs",
+    "tasks",
+  ],
+  "getChatInfo 的 DM 字段集合必须是 P3 字段加 I-P5b 的 tasks",
 );
 assert.deepEqual(Object.keys(dmInfo.instances[0]).sort(), [
   "agentProfileId",
