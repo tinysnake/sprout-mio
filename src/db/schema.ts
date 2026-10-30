@@ -485,10 +485,6 @@ export const task = sqliteTable(
       "task_assignment_check",
       sql`(${t.status}='proposed' and ${t.chatId} is null) or (${t.status} in ('assigned','finished') and ${t.chatId} is not null) or ${t.status}='canceled'`,
     ),
-    check(
-      "task_status_lifecycle_check",
-      sql`(${t.status}='proposed' and ${t.chatId} is null) or (${t.status} in ('assigned','finished') and ${t.chatId} is not null) or ${t.status}='canceled'`,
-    ),
     check("task_title_check", sql`length(trim(${t.title})) between 1 and 120`),
     check("task_description_check", sql`length(${t.description})<=8000`),
     check("task_constraints_check", sql`length(${t.constraints})<=8000`),

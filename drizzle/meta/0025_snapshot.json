@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6a282c0a-1507-47fa-a253-0d1eea82ed5c",
+  "id": "72f322ae-eccf-45d9-b396-80bd41ba510a",
   "prevId": "d46f074e-b7f0-45bf-bf7d-1bb225ea6916",
   "tables": {
     "agent_instance": {
@@ -5645,10 +5645,6 @@
         },
         "task_assignment_check": {
           "name": "task_assignment_check",
-          "value": "(\"task\".\"status\"='proposed' and \"task\".\"chat_id\" is null) or (\"task\".\"status\" in ('assigned','finished') and \"task\".\"chat_id\" is not null) or \"task\".\"status\"='canceled'"
-        },
-        "task_status_lifecycle_check": {
-          "name": "task_status_lifecycle_check",
           "value": "(\"task\".\"status\"='proposed' and \"task\".\"chat_id\" is null) or (\"task\".\"status\" in ('assigned','finished') and \"task\".\"chat_id\" is not null) or \"task\".\"status\"='canceled'"
         },
         "task_title_check": {

@@ -17,7 +17,6 @@ CREATE TABLE `task` (
 	FOREIGN KEY (`chat_id`,`project_id`) REFERENCES `chat`(`id`,`project_id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "task_status_check" CHECK("task"."status" in ('proposed','assigned','finished','canceled')),
 	CONSTRAINT "task_assignment_check" CHECK(("task"."status"='proposed' and "task"."chat_id" is null) or ("task"."status" in ('assigned','finished') and "task"."chat_id" is not null) or "task"."status"='canceled'),
-	CONSTRAINT "task_status_lifecycle_check" CHECK(("task"."status"='proposed' and "task"."chat_id" is null) or ("task"."status" in ('assigned','finished') and "task"."chat_id" is not null) or "task"."status"='canceled'),
 	CONSTRAINT "task_title_check" CHECK(length(trim("task"."title")) between 1 and 120),
 	CONSTRAINT "task_description_check" CHECK(length("task"."description")<=8000),
 	CONSTRAINT "task_constraints_check" CHECK(length("task"."constraints")<=8000),
@@ -158,37 +157,3 @@ ALTER TABLE `__new_message` RENAME TO `message`;--> statement-breakpoint
 CREATE INDEX `message_chat_created_at_idx` ON `message` (`chat_id`,`created_at`);--> statement-breakpoint
 CREATE UNIQUE INDEX `message_id_chat_unique` ON `message` (`id`,`chat_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `message_task_seq_unique` ON `message` (`task_id`,`task_record_seq`);
---> statement-breakpoint
-CREATE TRIGGER task_insert_proposed BEFORE INSERT ON task WHEN NEW.status<>'proposed' OR NEW.chat_id IS NOT NULL OR NEW.revision<>1 OR NEW.assignment_revision<>0 BEGIN SELECT RAISE(ABORT,'task_invalid_transition'); END;
---> statement-breakpoint
-CREATE TRIGGER task_status_transition BEFORE UPDATE OF status ON task WHEN NOT (NEW.status=OLD.status OR (OLD.status='proposed' AND NEW.status IN ('assigned','canceled')) OR (OLD.status='assigned' AND NEW.status IN ('proposed','finished','canceled')) OR (OLD.status IN ('finished','canceled') AND NEW.status='assigned')) BEGIN SELECT RAISE(ABORT,'task_invalid_transition'); END;
---> statement-breakpoint
-CREATE TRIGGER task_revision_monotone BEFORE UPDATE ON task WHEN NEW.revision<>OLD.revision+1 OR NEW.assignment_revision<OLD.assignment_revision BEGIN SELECT RAISE(ABORT,'task_revision_conflict'); END;
---> statement-breakpoint
-CREATE TRIGGER task_finished_record BEFORE UPDATE ON task WHEN NEW.status='finished' AND NOT EXISTS (SELECT 1 FROM message WHERE task_id=NEW.id AND task_record_seq=(SELECT max(task_record_seq) FROM message WHERE task_id=NEW.id) AND task_record_kind IN ('progress','correction')) BEGIN SELECT RAISE(ABORT,'task_record_required'); END;
---> statement-breakpoint
-CREATE TRIGGER message_task_append_guard BEFORE INSERT ON message WHEN NEW.task_id IS NOT NULL AND (NOT EXISTS (SELECT 1 FROM task t WHERE t.id=NEW.task_id AND t.project_id=NEW.task_project_id AND t.chat_id=NEW.chat_id AND ((NEW.task_record_kind IN ('start','progress') AND t.status='assigned') OR (NEW.task_record_kind='correction' AND t.status='finished' AND NEW.sender_kind='human'))) OR NEW.task_record_seq<>(SELECT coalesce(max(task_record_seq),0)+1 FROM message WHERE task_id=NEW.task_id) OR (NEW.sender_kind='agent' AND NOT EXISTS (SELECT 1 FROM agent_run r JOIN agent_instance i ON i.id=r.instance_id AND i.project_id=r.project_id AND i.chat_id=r.chat_id WHERE r.id=NEW.task_author_run_id AND r.status IN ('queued','running') AND r.project_id=NEW.task_project_id AND r.chat_id=NEW.chat_id AND i.agent_profile_id=NEW.sender_id))) BEGIN SELECT RAISE(ABORT,'task_record_invalid'); END;
---> statement-breakpoint
-CREATE TRIGGER message_task_no_update BEFORE UPDATE ON message WHEN OLD.task_id IS NOT NULL OR NEW.task_id IS NOT NULL BEGIN SELECT RAISE(ABORT,'task_record_immutable'); END;
---> statement-breakpoint
-CREATE TRIGGER message_task_no_delete BEFORE DELETE ON message WHEN OLD.task_id IS NOT NULL BEGIN SELECT RAISE(ABORT,'task_record_immutable'); END;
---> statement-breakpoint
-CREATE TRIGGER task_event_no_update BEFORE UPDATE ON task_event BEGIN SELECT RAISE(ABORT,'task_event_immutable'); END;
---> statement-breakpoint
-CREATE TRIGGER task_event_no_delete BEFORE DELETE ON task_event BEGIN SELECT RAISE(ABORT,'task_event_immutable'); END;
---> statement-breakpoint
-CREATE TRIGGER task_event_boundary BEFORE INSERT ON task_event WHEN NOT EXISTS (SELECT 1 FROM task t WHERE t.id=NEW.task_id AND t.project_id=NEW.project_id AND t.revision=NEW.seq AND t.status=NEW.to_status AND t.chat_id IS NEW.to_chat_id AND NEW.record_seq_at_event IS (SELECT max(task_record_seq) FROM message WHERE task_id=t.id)) BEGIN SELECT RAISE(ABORT,'task_event_invalid'); END;
---> statement-breakpoint
-CREATE TRIGGER agent_run_no_task_assistant BEFORE INSERT ON agent_run WHEN NEW.assistant_message_id IS NOT NULL AND EXISTS (SELECT 1 FROM message WHERE id=NEW.assistant_message_id AND task_id IS NOT NULL) BEGIN SELECT RAISE(ABORT,'task_record_not_assistant'); END;
---> statement-breakpoint
-CREATE TRIGGER agent_run_no_task_assistant_update BEFORE UPDATE OF assistant_message_id ON agent_run WHEN NEW.assistant_message_id IS NOT NULL AND EXISTS (SELECT 1 FROM message WHERE id=NEW.assistant_message_id AND task_id IS NOT NULL) BEGIN SELECT RAISE(ABORT,'task_record_not_assistant'); END;
---> statement-breakpoint
-CREATE TRIGGER task_input_admission_guard BEFORE UPDATE ON agent_run_input WHEN (OLD.admitted_at IS NOT NULL AND (NEW.admitted_at IS NOT OLD.admitted_at OR NEW.message_id<>OLD.message_id)) OR (NEW.admitted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM message WHERE id=NEW.message_id AND task_record_kind='start')) BEGIN SELECT RAISE(ABORT,'task_input_invalid'); END;
---> statement-breakpoint
-CREATE TRIGGER task_input_admission_guard_insert BEFORE INSERT ON agent_run_input WHEN NEW.admitted_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM message WHERE id=NEW.message_id AND task_record_kind='start') BEGIN SELECT RAISE(ABORT,'task_input_invalid'); END;
---> statement-breakpoint
-CREATE TRIGGER task_checklist_append_position BEFORE INSERT ON task_checklist_item WHEN NEW.position<>(SELECT coalesce(max(position),0)+1 FROM task_checklist_item WHERE task_id=NEW.task_id) BEGIN SELECT RAISE(ABORT,'task_checklist_invalid'); END;
---> statement-breakpoint
-CREATE TRIGGER task_checklist_identity_immutable BEFORE UPDATE ON task_checklist_item WHEN NEW.id<>OLD.id OR NEW.task_id<>OLD.task_id OR NEW.position<>OLD.position OR NEW.created_at<>OLD.created_at OR (OLD.removed_at IS NOT NULL AND (NEW.removed_at IS NOT OLD.removed_at OR NEW.body<>OLD.body OR NEW.checked<>OLD.checked)) BEGIN SELECT RAISE(ABORT,'task_checklist_invalid'); END;
---> statement-breakpoint
-CREATE TRIGGER task_checklist_no_delete BEFORE DELETE ON task_checklist_item BEGIN SELECT RAISE(ABORT,'task_checklist_invalid'); END;
