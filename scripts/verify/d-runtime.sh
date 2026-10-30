@@ -33,7 +33,10 @@ function pass(check, output) {
 }
 function kill(child, signal = 'SIGTERM') {
   if (!child?.pid) return
-  try { process.kill(-child.pid, signal) } catch (error) { if (error.code !== 'ESRCH') throw error }
+  // 进程组已消失（ESRCH）或子进程已被回收（EPERM）都只说明没有可停的东西。
+  try { process.kill(-child.pid, signal) } catch (error) {
+    if (error.code !== 'ESRCH' && error.code !== 'EPERM') throw error
+  }
 }
 function launch(command, args, name, env = environment) {
   const fd = openSync(join(directory, name), 'w')
@@ -116,7 +119,7 @@ async function stop(child) {
   const result = await bounded(child, 10000)
   for (let attempt = 0; attempt < 100; attempt++) {
     try { process.kill(-child.pid, 0) } catch (error) {
-      if (error.code === 'ESRCH') return result
+      if (error.code === 'ESRCH' || error.code === 'EPERM') return result
       throw error
     }
     await delay(100)

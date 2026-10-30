@@ -138,7 +138,7 @@ export async function startModelFixture({
   const states = new Map(
     Object.values(fixtureModels).map((model) => [
       model,
-      { plans: [], lastUserCount: 0, completed: 0, lastDigest: undefined, lastBody: undefined },
+      { plans: [], lastUserCount: 0, completed: 0 },
     ]),
   );
   let failure;
@@ -160,16 +160,6 @@ export async function startModelFixture({
       const input = JSON.parse(body);
       const state = states.get(input.model);
       assert(state, "unexpected fixture model");
-      const digest = JSON.stringify(input.messages);
-      // 同样的对话重发只可能是宿主对同一个请求的重试（连接被打断或超时），不是新的一轮。
-      if (state.lastDigest === digest && state.lastBody !== undefined) {
-        response.writeHead(200, {
-          "content-type": "text/event-stream",
-          "cache-control": "no-cache",
-        });
-        response.end(state.lastBody);
-        return;
-      }
       requests++;
       assert.equal(input.stream, true, "fixture requires streaming");
       assert(
@@ -260,8 +250,6 @@ export async function startModelFixture({
       const out = `data: ${JSON.stringify(chunk(delta, null))}\n\ndata: ${JSON.stringify(
         chunk({}, step ? "tool_calls" : "stop"),
       )}\n\ndata: [DONE]\n\n`;
-      state.lastDigest = digest;
-      state.lastBody = out;
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       response.end(out);
     } catch (error) {
