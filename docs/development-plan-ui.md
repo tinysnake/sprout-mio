@@ -210,10 +210,10 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应 [P5b](development-plan-functional.md#p5b-完成-task-协作)。
 
-- [x] 设计按 proposed、assigned、finished、canceled 分栏的 Task overview，确定卡片一级信息、空列、长标题和窄屏浏览方式。
-- [x] 完成 Task 详情、创建、分配给 Chat、可选立即开始、完成、取消、人类纠正与重开的设计及演示，具体迁移规则沿用功能契约。
-- [x] 完成 checklist、施工记录及末条记录中的完成结果，提供回到承接 Chat 和相关对象的入口。
-- [x] 在 Chat 与 inspector 中呈现 Task 关联，分别表达 Task 状态、run 活动与租约事实。
+- [x] 设计按 proposed、assigned、finished、canceled 分栏的 Task overview，确定卡片一级信息、空列、长标题和窄屏浏览方式。证据 [功能与 UI 交付证据](p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/as-p5b-task-pages.sh`。
+- [x] 完成 Task 详情、创建、分配给 Chat、可选立即开始、完成、取消、人类纠正与重开的设计及演示，具体迁移规则沿用功能契约。证据 [功能与 UI 交付证据](p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/as-p5b-task-pages.sh`。
+- [x] 完成 checklist、施工记录及末条记录中的完成结果，提供回到承接 Chat 和相关对象的入口。证据 [功能与 UI 交付证据](p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/as-p5b-task-pages.sh`。
+- [x] 在 Chat 与 inspector 中呈现 Task 关联，分别表达 Task 状态、run 活动与租约事实。证据 [功能与 UI 交付证据](p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/i6-chat-info.sh`。
 
 出口条件是用户可在演示中从分栏总览进入 Task，分配给 DM 或 Group，并完成记录、完成与重开路径。整节集成验证真实 Task 生命周期，不新增运行中 Task 状态或独立强制验收流程。
 

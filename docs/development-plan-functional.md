@@ -146,11 +146,11 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ### P5b 完成 Task 协作
 
-- [x] 实现 Project 所有、Chat 承接的 Task 四态，不增加执行或环境状态机。
-- [x] 实现可选立即开始，DM 唤醒唯一分身，Group 唤醒负责人。
-- [x] 实现 checklist、施工记录、末条施工记录中的完成结果、人类纠正与重开。
-- [x] 验证分配不等于启动，run 结束不代表 Task 完成，Task 完成不代表释放租约。
-- [x] 将 Tasks 与 Chat、负责人及活动 runs 的关联接入 Info Hub。
+- [x] 实现 Project 所有、Chat 承接的 Task 四态，不增加执行或环境状态机。证据 [四态生命周期与 Human 修正](p5b/summary.md#1-四态生命周期与-human-修正)，重跑 `bash scripts/verify/ba-task-domain.sh`、`bash scripts/verify/bd-task-migration.sh`。
+- [x] 实现可选立即开始，DM 唤醒唯一分身，Group 唤醒负责人。证据 [真实开始投递与 owner 协作](p5b/summary.md#2-真实开始投递与-owner-协作)，重跑 `bash scripts/verify/bc-task-start.sh`、`bash scripts/verify/bb-task-live.sh`。
+- [x] 实现 checklist、施工记录、末条施工记录中的完成结果、人类纠正与重开。证据 [四态生命周期与 Human 修正](p5b/summary.md#1-四态生命周期与-human-修正)，重跑 `bash scripts/verify/bs-p5b-lifecycle.sh`。
+- [x] 验证分配不等于启动，run 结束不代表 Task 完成，Task 完成不代表释放租约。证据 [四态生命周期与 Human 修正](p5b/summary.md#1-四态生命周期与-human-修正)，重跑 `bash scripts/verify/bs-p5b-lifecycle.sh`。
+- [x] 将 Tasks 与 Chat、负责人及活动 runs 的关联接入 Info Hub。证据 [功能与 UI 交付证据](p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/be-task-info.sh`。
 
 出口条件是 Human 能在 Group 分配一个 Task，由 owner 组织成员回报并完成记录，也能在 DM 完成相同 Task 生命周期。
 

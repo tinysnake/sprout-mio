@@ -26,13 +26,13 @@ P5b 交付 Project 所有、Chat 承接的 Task：四态分栏总览、详情、
 
 创建 proposed，分配进入 assigned；不勾立即开始只保存分配。完成要求末条进度或纠正记录，重开保留旧完成引用与历史；终态由 Human 专用入口纠正。Task/run/lease 不互相代替状态，也不绑定执行归属。
 
-证据：`ba-task-domain`、`bd-task-migration`、`be-task-info`，以及独立验收中的直接 SQL 反例、生产迁移升级库与六表回滚比较。
+证据提交 `c0e9c74`：重跑 `bash scripts/verify/ba-task-domain.sh`、`bash scripts/verify/bd-task-migration.sh`、`bash scripts/verify/be-task-info.sh`，以及独立验收中的直接 SQL 反例、生产迁移升级库与六表回滚比较。
 
 ## 2. 真实开始投递与 owner 协作
 
 DM 投给唯一分身，Agent owner Group 只投 owner；Human owner 的 Group/频道只留 Chat 叙述消息。已有活动 run 走 steer，无活动 run 走 prompt；发送前核对最新责任，owner Agent 显式 @ 成员可组织协作，普通成员回报不会继续级联。
 
-证据：`bc-task-start`、`bb-task-live`、`bs-p5b-lifecycle`；ACK 与撤回的先后以 admitted 同步发送尝试为界，不把 ACK 当作工作完成。
+证据提交 `c0e9c74`：重跑 `bash scripts/verify/bc-task-start.sh`、`bash scripts/verify/bb-task-live.sh`、`bash scripts/verify/bs-p5b-lifecycle.sh`；ACK 与撤回的先后以 admitted 同步发送尝试为界，不把 ACK 当作工作完成。
 
 ## 技术验收证据
 
@@ -73,7 +73,7 @@ DM 投给唯一分身，Agent owner Group 只投 owner；Human owner 的 Group/�
 
 ## 功能与 UI 交付证据
 
-功能线与 UI 线已在 `integration/p5b` 接入，契约与数据形状见本章及 `docs/p5b/contracts.md`。技术浏览器检查覆盖总览到详情、分配、记录、完成、Human 纠正与重开，Chat/inspector 同时表达 Task 与 run，租约事实独立。设计依据与 AFK 裁定见交付范围，技术证据见上述七门禁；功能计划 P5b 五项与 UI-P5b 四项按交付勾选。
+功能线与 UI 线已在 `integration/p5b` 接入，契约与数据形状见本章及 `docs/p5b/contracts.md`。证据提交 `c0e9c74`：重跑 `bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/be-task-info.sh`、`bash scripts/verify/i6-chat-info.sh`。技术浏览器检查覆盖总览到详情、分配、记录、完成、Human 纠正与重开，Chat/inspector 同时表达 Task 与 run，租约事实独立。设计依据与 AFK 裁定见交付范围，技术证据见上述七门禁；功能计划 P5b 五项与 UI-P5b 四项按交付勾选。
 
 ## P6 前置条件
 
