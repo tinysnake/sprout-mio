@@ -68,7 +68,14 @@ const actualEntry = pathToFileURL(join(root, "pi/sprout-extension.ts")).href;
 const { remoteToolInputSchemas } = await import(
   pathToFileURL(join(root, "src/contracts/remote.ts")).href
 );
-const expectedToolNames = Object.keys(remoteToolInputSchemas).sort();
+const { taskToolInputSchemas } = await import(
+  pathToFileURL(join(root, "src/contracts/task.ts")).href
+);
+const expectedToolNames = [
+  ...Object.keys(remoteToolInputSchemas),
+  ...Object.keys(taskToolInputSchemas),
+].sort();
+const machineScopedToolNames = Object.keys(remoteToolInputSchemas).sort();
 writeFileSync(
   probePath,
   `
@@ -76,6 +83,7 @@ import assert from 'node:assert/strict';
 import {writeFileSync} from 'node:fs';
 import actualEntry from ${JSON.stringify(actualEntry)};
 const expectedToolNames = ${JSON.stringify(expectedToolNames)};
+const machineScopedToolNames = ${JSON.stringify(machineScopedToolNames)};
 export default function probe(pi) {
   actualEntry(pi);
   const registered = new Map();
@@ -87,9 +95,14 @@ export default function probe(pi) {
     assert.deepEqual(tools.map(tool=>tool.name).sort(), expectedToolNames);
     assert.ok(expectedToolNames.includes('sprout_remote_execution_cancel'));
     assert.ok(expectedToolNames.includes('sprout_remote_execution_log'));
+    // Machine 作用域只属于 remote 工具；Task/Chat 工具从 run 的授权里取 Project 与 Chat。
     for (const tool of tools) {
-      assert.ok(tool.parameters.required.includes('machineId'));
       assert.equal(tool.parameters.additionalProperties, false);
+      assert.equal(
+        (tool.parameters.required ?? []).includes('machineId'),
+        machineScopedToolNames.includes(tool.name),
+        tool.name,
+      );
     }
     for (const name of ['sprout_remote_execution_cancel', 'sprout_remote_execution_log']) {
       const schema = registered.get(name).parameters;

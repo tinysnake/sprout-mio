@@ -270,7 +270,16 @@ async function open(config) {
   });
   const extensionErrors = [];
   await session.bindExtensions({ onError: (error) => extensionErrors.push(error) });
-  if (extensionErrors.length) throw new Error("Sprout extension 初始化失败");
+  if (extensionErrors.length)
+    throw new Error(
+      `Sprout extension 初始化失败：${extensionErrors
+        .map((error) =>
+          error instanceof Error
+            ? error.message
+            : JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})),
+        )
+        .join("; ")}`,
+    );
   if (session.model?.provider !== provider || session.model?.id !== modelId)
     throw new Error("Pi 实际模型与显式配置不匹配");
   const pkg = jsonFile(join(root, "package.json"), {});
