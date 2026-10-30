@@ -625,6 +625,8 @@ try {
     state: "visible",
     timeout: 20000,
   });
+  // 对话框自己说要把谁移出，断言就认这个名字：不移除别人，也不留下这一位。
+  const removedName = confirmDialogText.split("把 ")[1]?.split(" 移出这个群")[0]?.trim() ?? "";
   await page.click('[data-testid="chat-member-remove-confirm"]');
   await page
     .waitForSelector('[data-testid="chat-member-remove-dialog"]', {
@@ -632,10 +634,19 @@ try {
       timeout: 20000,
     })
     .catch(() => {});
+  // 对话框关掉只说明请求发出去了：列表要等刷新回来才不再列出这个人。
+  await page
+    .waitForFunction(
+      (name) =>
+        ![...document.querySelectorAll('[data-testid="inspector-member-list"] > li')].some((node) =>
+          (node.textContent ?? "").includes(name),
+        ),
+      removedName,
+      { timeout: 20000 },
+    )
+    .catch(() => {});
   await openMembersSection();
   const namesAfterRemove = await memberNames();
-  // 对话框自己说要把谁移出，断言就认这个名字：不移除别人，也不留下这一位。
-  const removedName = confirmDialogText.split("把 ")[1]?.split(" 移出这个群")[0]?.trim() ?? "";
   record(
     "member_removal_confirm_drops_member",
     Boolean(removedName) &&
