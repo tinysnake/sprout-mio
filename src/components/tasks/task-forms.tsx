@@ -101,7 +101,9 @@ export function TaskAssignmentPanel({
   pending: boolean;
   onSubmit: (targetChatId: string, startNow: boolean) => Promise<void>;
 }) {
-  const [target, setTarget] = useState(detail.assignmentTargets[0]?.chatId ?? "");
+  const [target, setTarget] = useState(
+    detail.chat?.id ?? detail.assignmentTargets[0]?.chatId ?? "",
+  );
   const [startNow, setStartNow] = useState(false);
   const chosen = detail.assignmentTargets.find((item) => item.chatId === target);
   return (

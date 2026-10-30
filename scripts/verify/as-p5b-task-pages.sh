@@ -129,6 +129,14 @@ try {
   const run = sqlite.prepare('select id from agent_run where chat_id = ? and status in (\'queued\',\'running\')').get(dm.chat.id)
   assert(run, 'start request must create actual active run')
   pass('checked_start_has_visible_start_record_and_active_run')
+  const runs = await import('./src/domain/agent-run.ts')
+  const queued = runs.getAgentRun(run.id, ctx)
+  // Model execution is outside this UI lane; admit its persisted run through the real transition boundary.
+  runs.transitionAgentRun(run.id, 'running', { configSnapshot: {
+    provider: 'fixture', model: 'ui-lane', thinking: 'off', tools: ['read'], extensions: ['sprout-extension'],
+    sessionId: queued.sessionId, sessionFile: join(directory, 'fixture-session.jsonl'), cwd: process.cwd(), sdkVersion: 'ui-fixture',
+    profile: { id: agent.id, name: agent.name, persona: agent.persona, harness: agent.harness, model: agent.model, effort: agent.effort, updatedAt: agent.updatedAt },
+  } }, ctx)
   const agentCtx = { ...ctx, agent: { runId: run.id, instanceId: dm.instance.id, agentProfileId: agent.id } }
   const detail = domain.getTaskDetail(taskId, agentCtx)
   domain.appendTaskRecord({ taskId, expectedRevision: detail.task.revision, body: '成员 Agent 已追加 progress；未勾选清单保持原样。' }, agentCtx)
@@ -156,14 +164,6 @@ try {
   for (const id of ['task-chat-runs', 'task-project-leases']) assert(!/Task.*已完成|已完成.*Task/.test(await page.getByTestId(id).innerText()))
   await shot('finished-with-run-and-lease')
   pass('finished_retains_independent_run_and_lease')
-  await page.getByRole('link', { name: /进入 Chat/ }).click()
-  await page.waitForURL(url => url.pathname.endsWith(`/chats/${dm.chat.id}`))
-  await page.goto(`${base}/projects/${projectId}/chats/${dm.chat.id}?info=1`)
-  await page.getByTestId('inspector-tasks').getByRole('link', { name: '核对 Task 页面生命周期', exact: true }).waitFor()
-  assert.equal(await page.getByTestId('task-associations').count(), 2)
-  await page.getByTestId('inspector-tasks').getByRole('link', { name: '核对 Task 页面生命周期', exact: true }).click()
-  await page.getByTestId('task-detail').waitFor()
-  pass('chat_header_and_inspector_link_back_to_task')
   await page.getByRole('button', { name: 'Human 纠正', exact: true }).click()
   await page.getByLabel('追加纠正记录', { exact: true }).fill('Human 纠正后的完成结果。')
   await page.getByRole('button', { name: '保存纠正', exact: true }).click()
@@ -227,10 +227,24 @@ try {
   }
   pass('non_owner_agent_denials_are_real_capabilities')
   await shot('member-agent-denials')
-  writeFileSync(join(evidence, 'results.json'), JSON.stringify({ base, database, results }, null, 2))
-  assert(results.length >= 14, 'all lifecycle and responsive checks must execute')
+  await page.goto(`${base}/projects/${projectId}/tasks/${taskId}`)
+  await page.getByTestId('task-detail').waitFor()
+  assert(await page.getByRole('button', { name: '重开 Task', exact: true }).isEnabled(), 'Human reopen remains available')
+  await page.getByRole('link', { name: /进入 Chat/ }).click()
+  await page.waitForURL(url => url.pathname.endsWith(`/chats/${dm.chat.id}`))
+  await page.goto(`${base}/projects/${projectId}/chats/${dm.chat.id}?info=1`)
+  await page.getByTestId('inspector-tasks').getByRole('link', { name: '核对 Task 页面生命周期', exact: true }).waitFor()
+  assert.equal(await page.getByTestId('task-associations').count(), 2)
+  await page.getByTestId('inspector-tasks').getByRole('link', { name: '核对 Task 页面生命周期', exact: true }).click()
+  await page.getByTestId('task-detail').waitFor()
+  pass('chat_header_and_inspector_link_back_to_task')
+  const required = ['empty_columns_preserve_four_states', 'created_proposed_matches_sqlite', 'assignment_without_start_has_no_record_or_run', 'full_start_snapshot_visible', 'checked_start_has_visible_start_record_and_active_run', 'agent_progress_visible_matches_sqlite', 'finished_retains_independent_run_and_lease', 'human_correction_appends_new_result', 'reopen_preserves_history_and_changes_chip', 'stale_revision_exposes_reload_without_overwrite', 'cancel_matches_sqlite', 'overview_enters_detail', 'responsive_768_no_horizontal_overflow', 'responsive_390_no_horizontal_overflow', 'non_owner_agent_denials_are_real_capabilities', 'chat_header_and_inspector_link_back_to_task']
+  const passed = new Set(results.map(result => result.id))
+  for (const id of required) assert(passed.has(id), `required browser assertion missing: ${id}`)
+  writeFileSync(join(evidence, 'results.json'), JSON.stringify({ status: 'passed', base, database, results }, null, 2))
   console.log(`PASS as-p5b-task-pages :: ${results.length} checks; ${evidence}`)
 } catch (error) {
+  writeFileSync(join(evidence, 'results.json'), JSON.stringify({ status: 'failed', base, database, results, error: String(error) }, null, 2))
   if (page) await shot('failure').catch(() => {})
   throw error
 } finally {

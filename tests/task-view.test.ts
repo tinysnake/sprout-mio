@@ -4,12 +4,29 @@ import { describe, expect, it } from "vitest";
 import { TaskBadge } from "../src/components/tasks/task-badge";
 import { TaskDetailView, TaskActionControl } from "../src/components/tasks/task-detail";
 import { TaskBoard } from "../src/components/tasks/task-board";
+import { TaskAssignmentPanel } from "../src/components/tasks/task-forms";
 import { taskPageDetail } from "./fixtures/task-pages";
 
 const renderDetail = (detail: ReturnType<typeof taskPageDetail>) =>
   renderToStaticMarkup(createElement(TaskDetailView, { detail, onCommand: async () => {} }));
 
 describe("Task 页面口径", () => {
+  it("重新分配面板默认保留当前承接 Chat，避免立即开始误换目标", () => {
+    const detail = taskPageDetail();
+    detail.assignmentTargets.unshift({
+      chatId: "cnv_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      kind: "public_channel",
+      displayTitle: "公共频道",
+      responsibility: { kind: "human", userId: "human-demo" },
+    });
+    const html = renderToStaticMarkup(
+      createElement(TaskAssignmentPanel, { detail, pending: false, onSubmit: async () => {} }),
+    );
+    const selected = html
+      .match(/<option[^>]+>/g)
+      ?.find((tag) => tag.includes(`value="${detail.chat?.id}"`));
+    expect(selected).toContain('selected=""');
+  });
   it("在 chip 层区分重开与尚无记录的分配", () => {
     expect(
       renderToStaticMarkup(createElement(TaskBadge, { status: "assigned", reopened: true })),
