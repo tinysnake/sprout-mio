@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Risk -> assertion: assignment accidentally starts work -> zero runs/inputs until explicit start.
 # Start fanout/late delivery -> original owner prompt, depth-one collaboration, ready/ACK barriers.
+# Observer integrity -> per-connection FIFO, flushed stdout receipt before model release, exit audit.
 # Concurrent records/results -> paired HTTP release, one revision winner, immutable event boundaries.
 # Chat leakage -> real old grant not_found; new grant restricted record and forbidden old reference.
 # Lifecycle coupling -> runner completion/model_error preserves Task; Task completion preserves lease/Machine.

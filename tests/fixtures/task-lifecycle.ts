@@ -242,22 +242,63 @@ const config = () => JSON.parse(readFileSync(${JSON.stringify(controls)}, 'utf8'
 const record = (direction, value, extra={}) => appendFileSync(${JSON.stringify(trace)}, JSON.stringify({at:Date.now(), pid:process.pid, direction, value, ...extra}) + '\\n');
 const child = spawn(process.execPath, [${JSON.stringify(resolve("scripts/pi-host-runner.mjs"))}], {env:{...process.env, NODE_OPTIONS:(process.env.NODE_OPTIONS ?? '') + ' --import ' + ${JSON.stringify(preload)}}, stdio:['pipe','pipe','inherit']});
 let readyTag; const ackTags = new Map();
-createInterface({input:process.stdin}).on('line', raw => {
+const input = createInterface({input:process.stdin});
+input.on('line', raw => {
   const value = JSON.parse(raw), c = config();
   if (value.type === 'open') readyTag = c.readyTag;
   if (['prompt','steer'].includes(value.type) && c.ackGate && value.text.includes(c.ackGate.text)) ackTags.set(value.messageId, c.ackGate.tag);
   record('command', value);
   child.stdin.write(raw + '\\n');
 }).on('close', () => child.stdin.end());
-createInterface({input:child.stdout}).on('line', async raw => {
+let received = 0, forwarded = 0, childClosed = false, observerError;
+let forwarding = Promise.resolve();
+const pending = new Map();
+function fail(error) {
+  if (observerError) return;
+  observerError = String(error);
+  record('observer-error', {error:observerError, received, forwarded, pending:[...pending.keys()]});
+  child.kill('SIGTERM');
+}
+createInterface({input:child.stdout}).on('line', raw => {
   const value = JSON.parse(raw);
   const tag = value.type === 'ready' ? readyTag : value.type === 'input_delivered' ? ackTags.get(value.messageId) : undefined;
-  record(tag ? 'held' : 'event', value, tag ? {tag} : {});
-  if (tag) while (!existsSync(${JSON.stringify(directory)} + '/release-' + tag)) await new Promise(done => setTimeout(done, 20));
-  process.stdout.write(raw + '\\n');
-  if (tag) record('released', value, {tag});
+  const sequence = ++received;
+  pending.set(sequence, {value, tag});
+  record(tag ? 'held' : 'event', value, {sequence, ...(tag ? {tag} : {})});
+  // Capture arrival synchronously; one queue owns every stdout write on this connection.
+  forwarding = forwarding.then(async () => {
+    while (tag && !existsSync(${JSON.stringify(directory)} + '/release-' + tag)) {
+      if (childClosed) throw new Error('runner closed with unreleased held frame ' + sequence + ' (' + tag + ')');
+      await new Promise(done => setTimeout(done, 20));
+    }
+    if (sequence !== forwarded + 1) throw new Error('runner frame forwarded out of arrival order: ' + sequence + ' after ' + forwarded);
+    await new Promise((done, reject) => process.stdout.write(raw + '\\n', error => error ? reject(error) : done()));
+    forwarded = sequence;
+    pending.delete(sequence);
+    record('forwarded', value, {sequence, ...(tag ? {tag} : {})});
+    if (tag) record('released', value, {tag, sequence});
+  });
+  void forwarding.catch(fail);
 });
-child.on('exit', code => process.exit(code ?? 1));
+// close waits for the child's stdout to end; exit alone can precede its last lines.
+child.on('close', async (code, signal) => {
+  childClosed = true;
+  for (const [sequence, frame] of pending) {
+    if (frame.tag && !existsSync(${JSON.stringify(directory)} + '/release-' + frame.tag)) {
+      fail(new Error('runner closed with unreleased held frame ' + sequence + ' (' + frame.tag + ')'));
+    }
+  }
+  try {
+    await forwarding;
+    if (pending.size || forwarded !== received) throw new Error('runner closed with unforwarded frames');
+  } catch (error) { fail(error); }
+  record('observer-exit', {code, signal, received, forwarded, pending:[...pending.keys()], error:observerError ?? null});
+  input.close();
+  process.stdout.end(() => process.exit(observerError ? 1 : code ?? 1));
+});
+child.on('error', fail);
+child.stdin.on('error', fail);
+process.stdout.on('error', fail);
 process.on('SIGTERM', () => child.kill('SIGTERM'));
 `,
   { mode: 0o700 },
@@ -278,6 +319,22 @@ async function modelHeld(tag: string) {
     () => wire().some((row) => row.direction === "model-held" && row.tag === tag),
     `model barrier ${tag}`,
   );
+}
+async function releaseForwarded(tag: string) {
+  const held = wire().find((row) => row.direction === "held" && row.tag === tag);
+  assert(held, `runner frame held for ${tag}`);
+  release(tag);
+  await until(() => {
+    const observed = wire();
+    const error = observed.find(
+      (row) => row.pid === held.pid && row.direction === "observer-error",
+    );
+    assert(!error, `runner observer failed: ${JSON.stringify(error)}`);
+    return observed.some(
+      (row) =>
+        row.pid === held.pid && row.direction === "forwarded" && row.sequence === held.sequence,
+    );
+  }, `runner frame forwarded for ${tag}`);
 }
 function grantFor(runId: string) {
   const opened = wire().find(
@@ -309,13 +366,49 @@ async function finish() {
   finishing = true;
   clearTimeout(totalTimer);
   facts.checks = checks;
-  facts.error =
-    failure instanceof Error ? { message: failure.message, stack: failure.stack } : failure;
-  facts.elapsedMs = Date.now() - startedAt;
   // Release held bytes before stopping processes, including assertion failure paths.
   for (const row of wire()) if (row.tag) release(row.tag);
   configure({ readyTag: null, modelGate: null, ackGate: null });
   for (const child of [...children].reverse()) await stop(child);
+  try {
+    const pids = [
+      ...new Set(
+        wire()
+          .filter((row) => row.direction === "command")
+          .map((row) => row.pid),
+      ),
+    ];
+    await until(
+      () =>
+        pids.every((pid) =>
+          wire().some((row) => row.pid === pid && row.direction === "observer-exit"),
+        ),
+      "all runner observers flushed before exit",
+      10000,
+    );
+    for (const pid of pids) {
+      const observed = wire().filter((row) => row.pid === pid);
+      assert(!observed.some((row) => row.direction === "observer-error"), `observer ${pid} failed`);
+      const arrivals = observed.filter((row) => ["held", "event"].includes(row.direction));
+      const forwards = observed.filter((row) => row.direction === "forwarded");
+      assert.deepEqual(
+        forwards.map((row) => ({ sequence: row.sequence, value: row.value })),
+        arrivals.map((row) => ({ sequence: row.sequence, value: row.value })),
+        `observer ${pid} must forward every original frame exactly once in arrival order`,
+      );
+      const exit = observed.find((row) => row.direction === "observer-exit").value;
+      assert.equal(exit.error, null, `observer ${pid} exit error`);
+      assert.deepEqual(exit.pending, [], `observer ${pid} left held/unforwarded frames`);
+      assert.equal(exit.forwarded, exit.received, `observer ${pid} did not flush`);
+    }
+    facts.observers = { connections: pids.length, flushed: true };
+  } catch (error) {
+    failure ??= error;
+    console.error(error);
+  }
+  facts.error =
+    failure instanceof Error ? { message: failure.message, stack: failure.stack } : failure;
+  facts.elapsedMs = Date.now() - startedAt;
   if (db) {
     for (const table of [
       "task",
@@ -736,7 +829,13 @@ try {
   );
   arm("status", taskPrefix(admitted.task.id), []);
   configure({ modelGate: null, ackGate: null });
-  release("admitted-ack");
+  await releaseForwarded("admitted-ack");
+  await until(
+    () =>
+      inputs().find((input) => input.message_id === beforeCancel.message_id).disposition ===
+      "delivered",
+    "forwarded real ACK persisted as delivered before model release",
+  );
   release("admitted-model");
   await settled(admittedChat.id);
   assert.equal(runs(admittedChat.id)[0].status, "completed");
@@ -747,6 +846,17 @@ try {
     "delivered",
   );
   assert.equal(sent().filter((row) => row.value.messageId === beforeCancel.message_id).length, 1);
+  assert.equal(
+    wire().filter(
+      (row) =>
+        row.direction === "forwarded" &&
+        row.value.type === "input_delivered" &&
+        row.value.messageId === beforeCancel.message_id,
+    ).length,
+    1,
+  );
+  assert.equal(runs(admittedChat.id).length, 1);
+  assert.equal(inputs().filter((input) => input.message_id === beforeCancel.message_id).length, 1);
   pass("admitted start survives Task cancellation, real ACK delivered exactly once", {
     messageId: beforeCancel.message_id,
     admittedAt: beforeCancel.admitted_at,
