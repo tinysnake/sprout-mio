@@ -249,6 +249,7 @@ export function ChatDetails({
                           revision={chat.governanceRevision}
                           memberKind={member.memberKind}
                           memberId={member.memberId}
+                          memberName={name}
                           onChanged={onChanged}
                         />
                       )}
@@ -664,14 +665,17 @@ function RemoveMemberButton({
   revision,
   memberKind,
   memberId,
+  memberName,
   onChanged,
 }: {
   chatId: string;
   revision: number;
   memberKind: "human" | "agent";
   memberId: string;
+  memberName: string;
   onChanged: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   async function remove() {
@@ -690,6 +694,7 @@ function RemoveMemberButton({
         setError(result.error);
         return;
       }
+      setOpen(false);
       onChanged();
     } catch (cause) {
       setError(toAppError(cause, newId(ID_PREFIXES.request)));
@@ -698,22 +703,52 @@ function RemoveMemberButton({
     }
   }
   return (
-    <span className="flex flex-col items-end gap-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (pending) return;
+        setOpen(next);
+        if (!next) setError(null);
+      }}
+    >
+      <DialogTrigger
         data-testid="chat-member-remove"
         data-governance-action="member_remove"
-        aria-label="移除成员"
+        aria-label={`移除 ${memberName}`}
         title="移除成员"
-        disabled={pending}
-        onClick={() => void remove()}
+        render={<Button type="button" variant="ghost" size="icon-xs" />}
       >
         ×
-      </Button>
-      {error && <ChatErrorNotice error={error} testId="chat-member-remove-error" />}
-    </span>
+      </DialogTrigger>
+      <DialogContent data-testid="chat-member-remove-dialog">
+        <DialogHeader>
+          <DialogTitle>移除成员</DialogTitle>
+          <DialogDescription>
+            把 {memberName} 移出这个群？移出后 TA 不再收到这个群的消息，历史消息保留。
+          </DialogDescription>
+        </DialogHeader>
+        {error && <ChatErrorNotice error={error} testId="chat-member-remove-error" />}
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            data-testid="chat-member-remove-cancel"
+            disabled={pending}
+            onClick={() => setOpen(false)}
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            data-testid="chat-member-remove-confirm"
+            loading={pending}
+            onClick={() => void remove()}
+          >
+            移除
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

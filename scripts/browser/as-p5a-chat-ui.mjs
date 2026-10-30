@@ -367,6 +367,9 @@ try {
   await shot(page, "p5a-group-details");
 
   // R2-UI02：标题治理在右栏治理段，消息头部没有治理动作；改完头部标题同步。
+  // 右栏在会话数据到达后才渲染治理入口，刷新后先等右栏落地再数按钮，否则会数到 0。
+  await page.waitForSelector('[data-testid="chat-details-title"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="chat-inspector"]', { timeout: 20000 });
   const headerGovernance = await page
     .locator('[data-testid="chat-pane"] [data-governance-action]')
     .count();
@@ -565,6 +568,77 @@ try {
   );
   // 本轮修复后的 1440px 证据：成员段、单一治理提示、右栏标题、选中成员资料块。
   await shot(page, "p5a-group-details-1440");
+
+  // 移除成员要先确认：点 × 只开对话框，取消不动数据，确认才真的移除。
+  const memberNames = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="inspector-member-list"] > li')].map((node) =>
+        node.textContent?.trim(),
+      ),
+    );
+  const openMembersSection = async () => {
+    const open = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="inspector-member-list"]');
+      if (list) return true;
+      const summaries = [...document.querySelectorAll("summary")];
+      summaries.find((node) => node.textContent?.includes("成员"))?.click();
+      return false;
+    });
+    if (!open)
+      await page.waitForSelector('[data-testid="inspector-member-list"]', { timeout: 20000 });
+  };
+  await openMembersSection();
+  const namesBefore = await memberNames();
+  const lastRemove = page.locator('[data-testid="chat-member-remove"]').last();
+  await lastRemove.click();
+  await page.waitForSelector('[data-testid="chat-member-remove-dialog"]', {
+    state: "visible",
+    timeout: 20000,
+  });
+  const confirmDialogText = await page
+    .locator('[data-testid="chat-member-remove-dialog"]')
+    .innerText();
+  await page.click('[data-testid="chat-member-remove-cancel"]');
+  await page
+    .waitForSelector('[data-testid="chat-member-remove-dialog"]', {
+      state: "detached",
+      timeout: 20000,
+    })
+    .catch(() => {});
+  await openMembersSection();
+  const namesAfterCancel = await memberNames();
+  record(
+    "member_removal_requires_confirmation",
+    confirmDialogText.includes("移除成员") &&
+      confirmDialogText.includes("历史消息保留") &&
+      namesAfterCancel.length === namesBefore.length &&
+      JSON.stringify(namesAfterCancel) === JSON.stringify(namesBefore),
+    `对话框 ${JSON.stringify(confirmDialogText)}，取消前 ${namesBefore.length} 行，取消后 ${namesAfterCancel.length} 行`,
+  );
+  await page.locator('[data-testid="chat-member-remove"]').last().click();
+  await page.waitForSelector('[data-testid="chat-member-remove-dialog"]', {
+    state: "visible",
+    timeout: 20000,
+  });
+  await page.click('[data-testid="chat-member-remove-confirm"]');
+  await page
+    .waitForSelector('[data-testid="chat-member-remove-dialog"]', {
+      state: "detached",
+      timeout: 20000,
+    })
+    .catch(() => {});
+  await openMembersSection();
+  const namesAfterRemove = await memberNames();
+  // 对话框自己说要把谁移出，断言就认这个名字：不移除别人，也不留下这一位。
+  const removedName = confirmDialogText.split("把 ")[1]?.split(" 移出这个群")[0]?.trim() ?? "";
+  record(
+    "member_removal_confirm_drops_member",
+    Boolean(removedName) &&
+      namesBefore.some((name) => name?.includes(removedName)) &&
+      namesAfterRemove.length === namesBefore.length - 1 &&
+      !namesAfterRemove.some((name) => name?.includes(removedName)),
+    `${namesBefore.length} -> ${namesAfterRemove.length}，移除 ${JSON.stringify(removedName)}`,
+  );
 
   // R2-UI02 只读分支：把 Owner 交给 Agent 后，右栏只剩只读标题与一处治理提示。
   await page.click('[data-testid="chat-owner-edit"]');
