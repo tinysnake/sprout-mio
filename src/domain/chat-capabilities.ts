@@ -28,8 +28,10 @@ export type AccessLevel = "never" | "member" | "owner";
 export const CHAT_CAPABILITIES: Record<ChatAction, { human: AccessLevel; agent: AccessLevel }> = {
   group_create: { human: "member", agent: "never" },
   group_dissolve: { human: "owner", agent: "never" },
-  member_add: { human: "owner", agent: "never" },
-  member_remove: { human: "owner", agent: "never" },
+  // 成员增删对任何 Human 有效成员开放：群是人协作的地方，让非 owner 只能旁观会把
+  // 每次加人都变成对 owner 的请求。参与权本身仍由 `chat_effective_member` 判定。
+  member_add: { human: "member", agent: "never" },
+  member_remove: { human: "member", agent: "never" },
   owner_change: { human: "owner", agent: "never" },
   wake_policy_change: { human: "owner", agent: "never" },
   // Human 档是 member 而不是 owner：标题没有 `expectedRevision`，不属于 d15 的三类治理写入，

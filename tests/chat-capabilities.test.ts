@@ -23,8 +23,8 @@ const agent = (agentProfileId: string): ChatActor => ({
 const EXPECTED: Record<ChatAction, { human: Access; agent: Access }> = {
   group_create: { human: "member", agent: "never" },
   group_dissolve: { human: "owner", agent: "never" },
-  member_add: { human: "owner", agent: "never" },
-  member_remove: { human: "owner", agent: "never" },
+  member_add: { human: "member", agent: "never" },
+  member_remove: { human: "member", agent: "never" },
   owner_change: { human: "owner", agent: "never" },
   wake_policy_change: { human: "owner", agent: "never" },
   // A03 补进表里的第八项：标题写入曾是能力表之外的治理写入路径。
