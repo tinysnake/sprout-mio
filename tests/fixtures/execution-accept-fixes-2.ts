@@ -586,7 +586,8 @@ const absentWorker = makeDispatcher();
 const absent = submit(
   nextHolder,
   generation,
-  `echo pid=$$; trap 'kill -9 $PPID' TERM; while :; do sleep 0.2; done`,
+  // 循环只用内建 read：trap 不必等一个 sleep 子进程被调度，满载时也能在宽限内打死 runner。
+  `echo pid=$$; trap 'kill -9 $PPID' TERM; while :; do read -t 0.02 -r _ || :; done`,
   500,
 );
 round(absentWorker);
