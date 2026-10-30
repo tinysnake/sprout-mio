@@ -1,11 +1,13 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import type { AgentProfile, ProjectMember } from "../../contracts/agent";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
-import { createDirectChatFn } from "../../server/functions/chat";
+import { createDirectChatFn, createGroupChatFn } from "../../server/functions/chat";
+import type { ChatWakePolicy } from "../../contracts/chat";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -104,20 +106,178 @@ export function DmStarter({
   );
 }
 
+/** 群创建表单：默认 Human 创建者 owner，wake policy 默认 owner_led。 */
+function GroupCreateForm({
+  projectId,
+  members,
+  profiles,
+  humanUserId,
+  humanName,
+  onCreated,
+}: {
+  projectId: string;
+  members: ProjectMember[];
+  profiles: AgentProfile[];
+  humanUserId: string;
+  humanName: string;
+  onCreated: () => void;
+}) {
+  const router = useRouter();
+  const [title, setTitle] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [wakePolicy, setWakePolicy] = useState<ChatWakePolicy>("owner_led");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<AppError | null>(null);
+  const names = new Map(profiles.map((profile) => [profile.id, profile.name]));
+
+  function toggle(agentProfileId: string) {
+    setSelected((current) =>
+      current.includes(agentProfileId)
+        ? current.filter((id) => id !== agentProfileId)
+        : [...current, agentProfileId],
+    );
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    if (selected.length === 0) {
+      setError({
+        code: "validation_failed",
+        message: "至少选择 1 位 Agent。",
+        requestId: newId(ID_PREFIXES.request),
+      });
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      const result = await createGroupChatFn({
+        data: {
+          projectId,
+          ...(title.trim() ? { title: title.trim() } : {}),
+          members: [
+            { kind: "human", id: humanUserId },
+            ...selected.map((id) => ({ kind: "agent" as const, id })),
+          ],
+          initialOwner: { kind: "human", id: humanUserId },
+          wakePolicy,
+        },
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      await router.invalidate({ sync: true });
+      onCreated();
+      await router.navigate({
+        to: "/projects/$projectId/chats/$chatId",
+        params: { projectId, chatId: result.data.id },
+      });
+    } catch (cause) {
+      setError(toAppError(cause, newId(ID_PREFIXES.request)));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4" data-testid="group-create-form">
+      <div>
+        <label htmlFor="group-title" className="mb-1.5 block text-xs font-medium">
+          群名称（可选）
+        </label>
+        <input
+          id="group-title"
+          data-testid="group-title-input"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          maxLength={80}
+          placeholder="例如：发布协作"
+          className="min-h-8.5 w-full rounded-control border border-input bg-background px-2.5 text-xs outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:min-h-11"
+        />
+      </div>
+      <fieldset>
+        <legend className="mb-1.5 text-xs font-medium">成员</legend>
+        <p className="mb-2 text-[10px] leading-5 text-muted-foreground">
+          当前 Human：{humanName || "你"}（创建者，默认 Owner）。至少选择 1 位 Agent。
+        </p>
+        {members.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">Project 还没有 Agent 成员。</p>
+        ) : (
+          <ul className="max-h-48 space-y-1 overflow-y-auto rounded-control border border-border p-2">
+            {members.map((member) => {
+              const name = names.get(member.agentProfileId) ?? member.agentProfileId;
+              return (
+                <li key={member.agentProfileId}>
+                  <label className="flex min-h-8 cursor-pointer items-center gap-2 rounded px-1.5 text-xs hover:bg-hover max-desktop:min-h-11">
+                    <input
+                      type="checkbox"
+                      data-testid="group-member-checkbox"
+                      data-agent-profile-id={member.agentProfileId}
+                      checked={selected.includes(member.agentProfileId)}
+                      onChange={() => toggle(member.agentProfileId)}
+                      className="size-3.5 accent-primary"
+                    />
+                    <span className="min-w-0 truncate">{name}</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </fieldset>
+      <div>
+        <label htmlFor="group-wake-policy" className="mb-1.5 block text-xs font-medium">
+          唤醒策略
+        </label>
+        <select
+          id="group-wake-policy"
+          data-testid="group-wake-policy"
+          value={wakePolicy}
+          onChange={(event) => setWakePolicy(event.target.value as ChatWakePolicy)}
+          className="min-h-8.5 w-full rounded-control border border-input bg-background px-2.5 text-xs outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:min-h-11"
+        >
+          <option value="owner_led">owner_led（默认）</option>
+          <option value="mention_only">mention_only</option>
+          <option value="contextual">contextual（P5a 按 owner_led 回退）</option>
+        </select>
+        <p className="mt-1.5 text-[10px] leading-5 text-muted-foreground">
+          初始 Owner 是 Human 创建者：没有点名时不会唤醒 Agent；Agent owner 不获得治理权。
+        </p>
+      </div>
+      <p data-testid="group-owner-default" className="text-[10px] text-muted-foreground">
+        Owner：{humanName || "你"}（Human）
+      </p>
+      {error && <ResultError error={error} testId="group-error" />}
+      <div className="flex justify-end gap-2">
+        <Button type="submit" data-testid="group-submit" loading={pending}>
+          创建群组
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 /**
- * 新建 DM 的入口。触发按钮按设计放在列表搜索栏右侧，弹层里复用同一份
- * DmStarter，因此演示与真实页面没有第二套成员列表。
+ * 新建对话入口：DM 与群组共用同一个弹层。触发按钮按设计放在列表搜索栏右侧，
+ * DM 复用 DmStarter，群组表单直接调用已冻结的 createGroupChatFn。
  */
 export function NewChatDialog({
   projectId,
   members,
   profiles,
+  humanUserId,
+  humanName,
 }: {
   projectId: string;
   members: ProjectMember[];
   profiles: AgentProfile[];
+  humanUserId: string;
+  humanName: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"dm" | "group">("dm");
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
@@ -132,16 +292,57 @@ export function NewChatDialog({
         <DialogHeader>
           <DialogTitle>新建对话</DialogTitle>
           <DialogDescription>
-            在当前 Project 中选择协作分身。同一成员始终对应同一条 DM 与同一个分身。
+            在当前 Project 中发起 DM，或创建一个由 Human 担任 Owner 的群组。
           </DialogDescription>
         </DialogHeader>
-        <DmStarter
-          projectId={projectId}
-          members={members}
-          profiles={profiles}
-          heading={false}
-          onStarted={() => setOpen(false)}
-        />
+        <div role="tablist" aria-label="对话类型" className="flex gap-1 border-b border-border">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "dm"}
+            data-testid="new-chat-mode-dm"
+            onClick={() => setMode("dm")}
+            className={
+              mode === "dm"
+                ? "border-b-2 border-foreground px-3 py-2 text-xs"
+                : "border-b-2 border-transparent px-3 py-2 text-xs text-muted-foreground"
+            }
+          >
+            DM
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "group"}
+            data-testid="new-chat-mode-group"
+            onClick={() => setMode("group")}
+            className={
+              mode === "group"
+                ? "border-b-2 border-foreground px-3 py-2 text-xs"
+                : "border-b-2 border-transparent px-3 py-2 text-xs text-muted-foreground"
+            }
+          >
+            群组
+          </button>
+        </div>
+        {mode === "dm" ? (
+          <DmStarter
+            projectId={projectId}
+            members={members}
+            profiles={profiles}
+            heading={false}
+            onStarted={() => setOpen(false)}
+          />
+        ) : (
+          <GroupCreateForm
+            projectId={projectId}
+            members={members}
+            profiles={profiles}
+            humanUserId={humanUserId}
+            humanName={humanName}
+            onCreated={() => setOpen(false)}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

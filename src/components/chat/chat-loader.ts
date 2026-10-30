@@ -1,10 +1,25 @@
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
-import type { AgentInstance, Chat, ChatMember, ChatResult, Message } from "../../contracts/chat";
-import type { ChatInfoView, InfoHubResult, TurnStartContext } from "../../contracts/info-hub";
+import type {
+  AgentInstance,
+  Chat,
+  ChatMember,
+  ChatResult,
+  ChatSession,
+  Message,
+} from "../../contracts/chat";
+import type {
+  ChatInfoView,
+  InfoHubResult,
+  ProjectInfoHub,
+  TurnStartContext,
+} from "../../contracts/info-hub";
 import type { AppError, AppResult } from "../../contracts/result";
+import type { ExecutionView } from "../../contracts/remote";
+import type { MachineDetail } from "../../contracts/machine";
+import type { LeaseView } from "../../contracts/lease";
 
-/** 列表里的每条 DM 关联到它的分身 profile。 */
+/** 列表里的每条对话关联的参与分身；群与频道可以有多条，DM 一条。 */
 export type ChatAgent = { chatId: string; agentProfileId?: string };
 
 /** 父 Chats 路由的列表数据：列表与详情共用，详情不再单独取一次列表。 */
@@ -13,16 +28,24 @@ export type ChatsLoaderData = {
   members: AppResult<ProjectMember[]>;
   profiles: AppResult<AgentProfile[]>;
   chatAgents: ChatAgent[];
+  infoHub: AppResult<ProjectInfoHub>;
 };
 
-/** 详情数据：身份、消息、Info Hub 与 run 状态各自带成功或失败，逐块呈现。 */
+export type ChatMachineFacts = {
+  projectId: string;
+  machines: MachineDetail[];
+  leases: readonly LeaseView[];
+  executions: readonly ExecutionView[];
+  holderNames?: Readonly<Record<string, string>>;
+};
+
+/** 详情数据：会话读模型与消息 / Info Hub / run 状态各自带成功或失败，逐块呈现。 */
 export type ChatDetailLoaderData =
   | { ok: false; error: AppError }
   | {
       ok: true;
-      chat: Chat;
+      session: ChatSession;
       members: ChatResult<ChatMember[]>;
-      instances: ChatResult<AgentInstance[]>;
       messages: ChatResult<Message[]>;
       profile: AgentResult<AgentProfile> | null;
       info: ChatResult<ChatInfoView>;
