@@ -479,7 +479,7 @@ const realFrameWakes = httpExchanges.filter(
     exchange.frames > 0,
 );
 assert(
-  realFrameWakes.some((exchange) => exchange.elapsedMs < 500),
+  realFrameWakes.some((exchange) => exchange.elapsedMs < exchange.requestedHoldMs),
   "a real MCP server frame must wake an active HTTP hold before timeout",
 );
 

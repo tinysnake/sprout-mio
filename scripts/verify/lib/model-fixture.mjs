@@ -138,7 +138,7 @@ export async function startModelFixture({
   const states = new Map(
     Object.values(fixtureModels).map((model) => [
       model,
-      { plans: [], lastUserCount: 0, completed: 0 },
+      { plans: [], lastUserCount: 0, completed: 0, lastDigest: undefined, lastBody: undefined },
     ]),
   );
   let failure;
@@ -158,9 +158,19 @@ export async function startModelFixture({
         assert(Buffer.byteLength(body) <= 4 * 1024 * 1024, "fixture request size");
       }
       const input = JSON.parse(body);
-      requests++;
       const state = states.get(input.model);
       assert(state, "unexpected fixture model");
+      const digest = JSON.stringify(input.messages);
+      // 同样的对话重发只可能是宿主对同一个请求的重试（连接被打断或超时），不是新的一轮。
+      if (state.lastDigest === digest && state.lastBody !== undefined) {
+        response.writeHead(200, {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+        });
+        response.end(state.lastBody);
+        return;
+      }
+      requests++;
       assert.equal(input.stream, true, "fixture requires streaming");
       assert(
         Array.isArray(input.messages) && Array.isArray(input.tools),
@@ -247,13 +257,18 @@ export async function startModelFixture({
         model: input.model,
         choices: [{ index: 0, delta: value, finish_reason: finish }],
       });
+      const out = `data: ${JSON.stringify(chunk(delta, null))}\n\ndata: ${JSON.stringify(
+        chunk({}, step ? "tool_calls" : "stop"),
+      )}\n\ndata: [DONE]\n\n`;
+      state.lastDigest = digest;
+      state.lastBody = out;
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-      response.write(`data: ${JSON.stringify(chunk(delta, null))}\n\n`);
-      response.write(`data: ${JSON.stringify(chunk({}, step ? "tool_calls" : "stop"))}\n\n`);
-      response.end("data: [DONE]\n\n");
-    } catch {
+      response.end(out);
+    } catch (error) {
       failure ??= new Error(
-        "Local model fixture rejected an unexpected request, prompt, tool schema or result sequence",
+        `Local model fixture rejected an unexpected request, prompt, tool schema or result sequence: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       response.writeHead(400, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { message: failure.message } }));

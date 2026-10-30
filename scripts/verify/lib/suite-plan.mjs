@@ -9,6 +9,7 @@ export const SUITE_CAPACITY = Object.freeze({
   sdk: 1,
   light: 2,
   port3141: 1,
+  port3142: 1,
   port3144: 1,
 });
 
@@ -44,7 +45,7 @@ export const SUITE_PLAN = Object.freeze({
     native: 1,
   }),
   "am-execution-log-honesty": plan(5.358, { browser: 1 }, server),
-  "aq-p4d-pages": plan(19, { browser: 1 }, server),
+  "aq-p4d-pages": plan(19, { browser: 1, port3142: 1 }, server),
   "b-tooling": plan(69.675, { process: SUITE_CAPACITY.process, unit: 1 }, privateTree, true),
   "c-auth-rate-limit": plan(2.16, { light: 1 }, server),
   "c-data-auth": plan(21.026, { development: 1, unit: 1, browser: 1 }, privateTree, true),
@@ -53,7 +54,7 @@ export const SUITE_PLAN = Object.freeze({
   "e-project": plan(4.284, { light: 1, port3141: 1 }, server),
   "f-docs": plan(0.161, { light: 1 }),
   "g-identity-data": plan(11.336, { unit: 1, light: 1 }, server),
-  "h-project-agents": plan(5.78, { light: 1 }, server),
+  "h-project-agents": plan(5.78, { light: 1, port3142: 1 }, server),
   "i-chat": plan(10.695, { light: 1 }, server),
   "i2-group-chat": plan(12, { light: 1 }, server),
   "i3-public-channel": plan(12, { light: 1 }, server),
