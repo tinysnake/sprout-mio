@@ -57,6 +57,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/quota-scope.test.ts",
     "tests/rate-limit.test.ts",
     "tests/remote-tools.test.ts",
+    "tests/run-status-failure.test.ts",
     "tests/repository.test.ts",
     "tests/runtime.test.ts",
     "tests/theme-preference.test.ts",

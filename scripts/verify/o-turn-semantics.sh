@@ -327,10 +327,14 @@ try {
     const failedRow=allRuns().at(-1)
     assert.equal(await page.locator('[data-testid="pi-host-status"]').textContent(),'失败')
     assert.equal(await page.locator('[data-testid="run-failure"]').textContent(),failedRow.error_message)
-    assert((await page.locator('[data-testid="run-failure-request"]').textContent()).includes(failedRow.request_id))
+    // 裁定 d43：失败块只给文案与错误码，内部标识不上页面。
+    const failureBlock=await page.locator('[data-testid="run-status"]').innerText()
+    assert(!failureBlock.includes('requestId'),'失败块不得出现 requestId')
+    assert(!failureBlock.includes(failedRow.request_id),'失败块不得出现 request_id')
+    assert.equal(await page.locator('[data-testid="run-failure-code"]').textContent(),failedRow.error_code)
     const failedShot=join(screenshotDir,'p3-b-run-failed.png')
     await page.screenshot({path:failedShot,fullPage:true})
-    pass('UI shows failed state with errorMessage and requestId', {runId:failedRow.id,screenshot:failedShot})
+    pass('UI shows failed state with errorMessage and errorCode, no requestId', {runId:failedRow.id,screenshot:failedShot})
 
     await send('stub-hold')
     const uiRun=await waitRun('running',8)
