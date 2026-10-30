@@ -208,18 +208,22 @@ export function TaskDetailView({
                 )}
                 {allowed("checklist_update") && (
                   <details className="w-full text-xs">
-                    <summary className="cursor-pointer text-muted-foreground">编辑清单文字</summary>
+                    <summary className="flex min-h-11 cursor-pointer items-center text-muted-foreground">
+                      编辑清单文字
+                    </summary>
                     <form
                       className="mt-3 space-y-3"
                       onSubmit={(e) => {
                         e.preventDefault();
                         const data = new FormData(e.currentTarget);
+                        const body = data.get("body");
+                        if (typeof body !== "string") return;
                         void onCommand({
                           action: "checklist_update",
                           input: {
                             ...write,
                             itemId: item.id,
-                            body: String(data.get("body") ?? ""),
+                            body,
                           },
                         });
                       }}
