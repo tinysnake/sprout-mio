@@ -200,9 +200,9 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应 [P5a](development-plan-functional.md#p5a-完成多人-chat)。本节交付完整的多人协作 UI，Task 总览与生命周期留到 UI-P5b。
 
-- [ ] 完成 Group 创建、成员管理、owner 指定与变更，以及 Public Channel 成员自动同步的设计及演示，操作范围遵循产品决定。
-- [ ] 扩展消息列表、发送者识别、多 Agent 活动与成员回报，保持主要聊天内容清楚，避免堆叠所有运行细节。
-- [ ] 在 header 和 inspector 中呈现成员、owner 与活动 runs 的关联，支持查看相关对象。
+- [x] 完成 Group 创建、成员管理、owner 指定与变更，以及 Public Channel 成员自动同步的设计及演示，操作范围遵循产品决定。证据 [UI 交付证据](p5a/summary.md#ui-交付证据)，重跑 `bash scripts/verify/i-chat.sh`。
+- [x] 扩展消息列表、发送者识别、多 Agent 活动与成员回报，保持主要聊天内容清楚，避免堆叠所有运行细节。证据 [UI 交付证据](p5a/summary.md#ui-交付证据)，重跑 `bash scripts/verify/i-chat.sh`。
+- [x] 在 header 和 inspector 中呈现成员、owner 与活动 runs 的关联，支持查看相关对象。证据 [UI 交付证据](p5a/summary.md#ui-交付证据)，重跑 `bash scripts/verify/i-chat.sh`。
 
 出口条件是用户可演示建立 Group、设置 owner、多人消息与回报，以及 Public Channel 的成员关系。以完整 P5a 进行集成，不按成员和消息分别集成。
 

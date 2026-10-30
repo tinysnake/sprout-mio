@@ -452,12 +452,22 @@ for (const [index, box] of r1Boxes.entries()) {
   }
 }
 let futureCount = 0;
+const undelivered = ['P5b', 'P6', 'P7', 'P8'];
 for (const stage of ['P5', 'P6', 'P7', 'P8']) {
   const section = plan.match(new RegExp(`^## ${stage} [^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
   const futureBoxes = [...section.matchAll(/^- \[([^\]])\] /gm)];
   check(futureBoxes.length > 0, `${stage} checklist missing`);
-  for (const box of futureBoxes) check(box[1] === ' ', `${stage} checkbox must remain unchecked: ${box[0]}`);
+  for (const box of futureBoxes) {
+    if (stage === 'P5' && box[1] === 'x') continue;
+    check(box[1] === ' ', `${stage} checkbox must remain unchecked: ${box[0]}`);
+  }
   futureCount += futureBoxes.length;
+}
+for (const stage of ['P5b']) {
+  const section = plan.match(new RegExp(`^### ${stage} [^\\n]*\\n([\\s\\S]*?)(?=^### |^## |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
+  const boxes = [...section.matchAll(/^- \[([^\]])\] /gm)];
+  check(boxes.length > 0, `${stage} checklist missing`);
+  for (const box of boxes) check(box[1] === ' ', `${stage} checkbox must remain unchecked: ${box[0]}`);
 }
 if (failures.length) {
   for (const failure of failures) console.error(`FAIL ${failure}`);
