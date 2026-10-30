@@ -57,11 +57,11 @@ describe("chat governance affordance", () => {
     expect(Object.values(dm).some(Boolean)).toBe(false);
   });
 
-  // 标题入口是 R2 明确要求的产品形状：Human owner 才能改，其他人只读。
-  // 这比领域表的 `title_change`（Human 档 member）更严，页面只收窄入口，服务端仍是最终判定点。
-  it("重命名入口只对当前 Human owner 的普通群组渲染", () => {
+  // 页面不再比领域表更严：`title_change` 是 member 档，普通群的 Human 成员都能看到入口，
+  // 隐藏一个 API 允许的动作只会让人以为不能改。服务端仍是最终判定点。
+  it("重命名入口对普通群的 Human 成员渲染", () => {
     expect(canRenameChat(facts)).toBe(true);
-    expect(canRenameChat({ ...facts, actorId: "usr_other" })).toBe(false);
+    expect(canRenameChat({ ...facts, actorId: "usr_other" })).toBe(true);
     expect(canRenameChat({ ...facts, kind: "dm" })).toBe(false);
     expect(canRenameChat({ ...facts, kind: "public_channel" })).toBe(false);
     expect(canRenameChat({ ...facts, actorKind: "agent", actorId: "agf_agent" })).toBe(false);

@@ -113,7 +113,7 @@ try {
     'group_details_drop_instance_row',
     'group_member_list_only_in_member_section',
     'member_row_selects_profile',
-    'non_owner_human_sees_readonly_title',
+    'agent_owner_group_keeps_title_entry',
     'dm_keeps_members_and_activity_only',
   ]
   const ids = new Set(checks.map((line) => line.split(' ')[1]))

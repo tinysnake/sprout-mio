@@ -1,4 +1,5 @@
 import type { ChatKind } from "../../contracts/chat";
+import { CHAT_CAPABILITIES, type AccessLevel } from "../../contracts/chat-capabilities";
 
 export type GovernanceAction =
   | "member_add"
@@ -27,21 +28,17 @@ export type GovernanceFacts = {
   readOnlyReason?: string;
 };
 
-const ACTION_LEVEL: Record<
-  GovernanceAction,
-  { human: "never" | "owner" | "member"; agent: "never" }
-> = {
-  // 与 src/domain/chat-capabilities.ts 的 CHAT_CAPABILITIES 同值；页面只消费规则，
-  // 不在浏览器 bundle 里引入带数据库依赖的领域模块。服务端仍是最终判定点。
-  // 成员增删对任何 Human 有效成员开放（165bc58），Agent 仍一律 never。
-  member_add: { human: "member", agent: "never" },
-  member_remove: { human: "member", agent: "never" },
-  owner_change: { human: "owner", agent: "never" },
-  wake_policy_change: { human: "owner", agent: "never" },
-  group_dissolve: { human: "owner", agent: "never" },
-  // 比领域表的 `title_change`（Human 档是 member）更严：P5a R2 的产品要求是
-  // 「Human owner 才能改，其他人只读」。页面只收窄入口，服务端仍是最终判定点。
-  title_change: { human: "owner", agent: "never" },
+/**
+ * 页面渲染读的就是领域层那张表：两侧各抄一份已经漂移过两次，
+ * `title_change` 页面更严、`member_add` 改档后页面滞后。
+ */
+const ACTION_LEVEL: Record<GovernanceAction, { human: AccessLevel; agent: AccessLevel }> = {
+  member_add: CHAT_CAPABILITIES.member_add,
+  member_remove: CHAT_CAPABILITIES.member_remove,
+  owner_change: CHAT_CAPABILITIES.owner_change,
+  wake_policy_change: CHAT_CAPABILITIES.wake_policy_change,
+  group_dissolve: CHAT_CAPABILITIES.group_dissolve,
+  title_change: CHAT_CAPABILITIES.title_change,
 };
 
 /**
@@ -100,9 +97,9 @@ export function governanceNote(facts: GovernanceFacts): string {
 }
 
 /**
- * 右栏治理段的重命名入口：普通 Group 且当前 Human 是 owner 才渲染。
- * DM 的标题入口保留在消息头部（P4b 形状），Public Channel 的治理按钮一律不渲染，
- * 因此这两类对话在这里直接返回 false，不另写分支判断。
+ * 右栏治理段的重命名入口：普通 Group 的当前 Human 成员都能看到，与领域表
+ * `title_change` 的 member 档一致。DM 的标题入口保留在消息头部（P4b 形状），
+ * Public Channel 的治理按钮一律不渲染，因此这两类对话在这里直接返回 false。
  */
 export function canRenameChat(facts: GovernanceFacts): boolean {
   return governanceAvailability(facts).title_change;

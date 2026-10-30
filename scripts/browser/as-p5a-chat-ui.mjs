@@ -571,21 +571,22 @@ try {
       { timeout: 20000 },
     )
     .catch(() => {});
-  const readonly = await page.evaluate(() => ({
+  const agentOwner = await page.evaluate(() => ({
     owner: document.querySelector('[data-testid="chat-owner-name"]')?.textContent?.trim(),
     titleEdit: document.querySelectorAll('[data-testid="chat-title-edit"]').length,
     note: document.querySelector('[data-testid="chat-governance-note"]')?.textContent?.trim(),
     title: document.querySelector('[data-testid="chat-details-title"]')?.textContent?.trim(),
   }));
   record(
-    "non_owner_human_sees_readonly_title",
-    Boolean(readonly.owner?.includes("Agent")) &&
-      readonly.titleEdit === 0 &&
-      Boolean(readonly.note?.includes("Agent 不参与治理")) &&
-      readonly.title === renamedTitle,
-    JSON.stringify(readonly),
+    "agent_owner_group_keeps_title_entry",
+    Boolean(agentOwner.owner?.includes("Agent")) &&
+      agentOwner.titleEdit === 1 &&
+      Boolean(agentOwner.note?.includes("Agent 不参与治理")) &&
+      !agentOwner.note?.includes("只有 owner") &&
+      agentOwner.title === renamedTitle,
+    JSON.stringify(agentOwner),
   );
-  await shot(page, "p5a-group-readonly-title-1440");
+  await shot(page, "p5a-group-agent-owner-1440");
 
   // V3：DM 保持 P4b 形状，只有成员段与活动段，没有治理段与治理提示。
   await page.goto(`${BASE}${projectPath}/chats`, { waitUntil: "domcontentloaded" });
