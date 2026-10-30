@@ -1,4 +1,19 @@
 import { z } from "zod";
+import { chatSessionSchema, messageSchema } from "./chat";
+import {
+  addTaskChecklistItemInputSchema,
+  appendTaskRecordInputSchema,
+  cancelTaskInputSchema,
+  completeTaskInputSchema,
+  removeTaskChecklistItemInputSchema,
+  taskCommandResultSchema,
+  taskDetailSchema,
+  taskIdSchema,
+  taskSummarySchema,
+  taskToolInputSchemas,
+  updateTaskChecklistItemInputSchema,
+  updateTaskInputSchema,
+} from "./task";
 import {
   mcpCatalogGetCall,
   mcpSessionOpenCall,
@@ -539,6 +554,72 @@ export const holderExecutionListViewSchema = z.strictObject({
   executions: z.array(executionViewSchema),
   nextCursor: z.string().nullable(),
 });
+const taskProjectFields = { projectId: id(ID_PREFIXES.project) };
+export const taskGetInputSchema = z.strictObject({ ...taskProjectFields, taskId: taskIdSchema });
+export const taskListInputSchema = z.strictObject(taskProjectFields);
+export const taskMutateInputSchema = z.discriminatedUnion("action", [
+  updateTaskInputSchema.extend({ ...taskProjectFields, action: z.literal("update") }),
+  addTaskChecklistItemInputSchema.extend({
+    ...taskProjectFields,
+    action: z.literal("checklist_add"),
+  }),
+  updateTaskChecklistItemInputSchema.safeExtend({
+    ...taskProjectFields,
+    action: z.literal("checklist_update"),
+  }),
+  removeTaskChecklistItemInputSchema.extend({
+    ...taskProjectFields,
+    action: z.literal("checklist_remove"),
+  }),
+  appendTaskRecordInputSchema.extend({ ...taskProjectFields, action: z.literal("record_append") }),
+  completeTaskInputSchema.extend({ ...taskProjectFields, action: z.literal("complete") }),
+  cancelTaskInputSchema.extend({ ...taskProjectFields, action: z.literal("cancel") }),
+]);
+export const chatGetInputSchema = z.strictObject(taskProjectFields);
+export const chatSendInputSchema = taskToolInputSchemas.sprout_chat_send.extend(taskProjectFields);
+
+export const taskGetResponseSchema = taskDetailSchema;
+export const taskMutateResponseSchema = taskCommandResultSchema;
+export const taskListResponseSchema = z
+  .strictObject({
+    ...taskProjectFields,
+    chatId: id(ID_PREFIXES.chat),
+    items: z.array(taskSummarySchema),
+  })
+  .refine(
+    (value) =>
+      value.items.every(
+        (item) => item.projectId === value.projectId && item.chatId === value.chatId,
+      ),
+    "Task 列表必须匹配 Project 与 Chat",
+  );
+export const chatGetResponseSchema = z
+  .strictObject({
+    ...taskProjectFields,
+    chatId: id(ID_PREFIXES.chat),
+    session: chatSessionSchema,
+    messages: z.array(messageSchema),
+  })
+  .refine(
+    (value) =>
+      value.session.chat.id === value.chatId &&
+      value.session.chat.projectId === value.projectId &&
+      value.messages.every((message) => message.chatId === value.chatId),
+    "会话与消息必须匹配 Project 与 Chat",
+  );
+export const chatSendResponseSchema = z
+  .strictObject({
+    ...taskProjectFields,
+    chatId: id(ID_PREFIXES.chat),
+    message: messageSchema,
+  })
+  .refine((value) => value.message.chatId === value.chatId, "消息必须匹配 Chat");
+export type TaskGetResponse = z.infer<typeof taskGetResponseSchema>;
+export type TaskMutateResponse = z.infer<typeof taskMutateResponseSchema>;
+export type TaskListResponse = z.infer<typeof taskListResponseSchema>;
+export type ChatGetResponse = z.infer<typeof chatGetResponseSchema>;
+export type ChatSendResponse = z.infer<typeof chatSendResponseSchema>;
+
 export const remoteAgentRequestSchema = z.strictObject({
   version: z.literal(2),
   call: z.discriminatedUnion("type", [
@@ -553,6 +634,11 @@ export const remoteAgentRequestSchema = z.strictObject({
     mcpSessionOpenCall,
     mcpSessionExchangeCall,
     mcpSessionCloseCall,
+    z.strictObject({ type: z.literal("task_get"), input: taskGetInputSchema }),
+    z.strictObject({ type: z.literal("task_list"), input: taskListInputSchema }),
+    z.strictObject({ type: z.literal("task_mutate"), input: taskMutateInputSchema }),
+    z.strictObject({ type: z.literal("chat_get"), input: chatGetInputSchema }),
+    z.strictObject({ type: z.literal("chat_send"), input: chatSendInputSchema }),
   ]),
 });
 export const remoteToolGrantSchema = z.strictObject({

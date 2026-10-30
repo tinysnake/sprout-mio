@@ -2,6 +2,11 @@ import { z } from "zod";
 
 /** 错误码为封闭集合，业务错误不能临时增加字符串。 */
 export const APP_ERROR_CODES = [
+  "task_invalid_transition",
+  "task_assignment_invalid",
+  "task_record_required",
+  "task_reference_forbidden",
+  "task_record_immutable",
   "validation_failed",
   "unauthorized",
   "forbidden",

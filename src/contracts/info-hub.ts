@@ -8,6 +8,13 @@ import { appIdPattern, ID_PREFIXES } from "./ids";
 import { REPO_SOURCE_KINDS } from "./repository";
 import type { FieldErrors } from "./project";
 import type { AppResult } from "./result";
+import {
+  taskContextSchema,
+  taskIdSchema,
+  taskRecordRefSchema,
+  taskResponsibilitySchema,
+  taskStatusSchema,
+} from "./task";
 
 const projectId = z.string().regex(appIdPattern(ID_PREFIXES.project));
 const chatId = z.string().regex(appIdPattern(ID_PREFIXES.chat));
@@ -90,6 +97,43 @@ export const chatRunStatusCountSchema = z.object({
 });
 export type ChatRunStatusCount = z.infer<typeof chatRunStatusCountSchema>;
 
+export const taskCountsSchema = z.strictObject({
+  proposed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  assigned: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  finished: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  canceled: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+});
+export type TaskCounts = z.infer<typeof taskCountsSchema>;
+
+export const infoHubTaskSummarySchema = z.strictObject({
+  taskId: taskIdSchema,
+  title: z.string().trim().min(1).max(120),
+  status: taskStatusSchema,
+  revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  chatId: chatId.optional(),
+  chatKind: chatKindSchema.optional(),
+  chatDisplayTitle: z.string().optional(),
+  responsibility: taskResponsibilitySchema.optional(),
+  checklistTotal: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  checklistChecked: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  recordCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  lastRecordRef: taskRecordRefSchema.optional(),
+  previousCompletionRef: taskRecordRefSchema.optional(),
+  updatedAt: z.iso.datetime(),
+  context: taskContextSchema,
+});
+export type InfoHubTaskSummary = z.infer<typeof infoHubTaskSummarySchema>;
+
+export const chatTasksViewSchema = z.strictObject({
+  available: z.literal(true),
+  items: z.array(infoHubTaskSummarySchema),
+});
+export type ChatTasksView = z.infer<typeof chatTasksViewSchema>;
+export const projectTasksInfoHubViewSchema = chatTasksViewSchema.extend({
+  counts: taskCountsSchema,
+});
+export type ProjectTasksInfoHubView = z.infer<typeof projectTasksInfoHubViewSchema>;
+
 /**
  * 会话聚合读模型：Info Hub 的 run 列表按会话聚合。
  *
@@ -99,6 +143,8 @@ export type ChatRunStatusCount = z.infer<typeof chatRunStatusCountSchema>;
  * - 不做分页与缓存，也不在一次读里按会话二次查库（N+1 收敛与分页归 P6，followups 已记）。
  */
 export const chatRunAggregateSchema = z.object({
+  taskCounts: taskCountsSchema,
+  assignedTaskIds: z.array(taskIdSchema),
   chatId,
   kind: chatKindSchema,
   displayTitle: z.string(),
@@ -138,6 +184,7 @@ export const chatInfoViewSchema = z.object({
     latestAt: z.iso.datetime().optional(),
   }),
   runs: agentRunsViewSchema,
+  tasks: chatTasksViewSchema,
 });
 export type ChatInfoView = z.infer<typeof chatInfoViewSchema>;
 
@@ -195,6 +242,7 @@ export type TurnStartContext = z.infer<typeof turnStartContextSchema>;
 
 export const projectInfoHubSchema = z.object({
   projectId,
+  tasks: projectTasksInfoHubViewSchema,
   agents: projectAgentsViewSchema,
   /** run 列表按会话聚合（P5a 多 Agent 会话视角）；一个 Project 的每个会话一条。 */
   chats: z.array(chatRunAggregateSchema),

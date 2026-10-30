@@ -300,6 +300,15 @@ export const messageSchema = sendMessageInput.extend({
   id: z.string().regex(appIdPattern(ID_PREFIXES.message)),
   chatId,
   createdAt: z.iso.datetime(),
+  taskRecord: z
+    .strictObject({
+      taskId: z.string().regex(appIdPattern(ID_PREFIXES.task)),
+      seq: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+      kind: z.enum(["start", "progress", "correction"]),
+      referenceMessageId: z.string().regex(appIdPattern(ID_PREFIXES.message)).optional(),
+      authorRunId: z.string().regex(appIdPattern(ID_PREFIXES.run)).optional(),
+    })
+    .optional(),
 });
 export type Message = z.infer<typeof messageSchema>;
 export type ChatResult<T> = AppResult<T> & { fieldErrors?: FieldErrors };

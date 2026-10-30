@@ -15,7 +15,11 @@ export const AGENT_RUN_STATUSES = [
 export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
 /** 输入行的投递态；cancelled 记录扇出后被成员变更或人类停止取消的输入。 */
 export type RunInputDisposition = "pending" | "delivered" | "cancelled";
-export type RunInputCancelReason = "membership_revoked" | "human_stop" | "group_dissolved";
+export type RunInputCancelReason =
+  | "membership_revoked"
+  | "human_stop"
+  | "group_dissolved"
+  | "task_context_changed";
 
 export type RunConfigSnapshot = {
   model: string;
@@ -62,6 +66,7 @@ export type AgentRunInput = {
   runId: string;
   messageId: string;
   disposition: RunInputDisposition;
+  admittedAt?: string;
   deliveredAt?: string;
   cancelledAt?: string;
   cancelReason?: RunInputCancelReason;
