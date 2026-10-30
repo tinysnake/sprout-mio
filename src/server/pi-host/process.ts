@@ -7,9 +7,9 @@ import type { OpenSession, PiHostCommand, PiHostEvent } from "./protocol";
 import { config } from "../../lib/config";
 import { piHostEvent } from "./protocol";
 
-// 关闭请求发出后子进程要先收尾正在写的会话文件，满载的机器上 1.5 秒不够；
-// 真挂住的 runner 仍然会被强制杀掉并报错，只是不把慢当成故障。
-const RUNNER_CLOSE_GRACE_MS = 10_000;
+// 关闭请求发出后到强杀之间的宽限。宿主整体关机必须在 9 秒内给出结论，
+// 所以这个预算不能放大：真挂住的 runner 由这里强制结束并报错。
+const RUNNER_CLOSE_GRACE_MS = 1_500;
 
 export class PiHostFailure extends Error {
   constructor(
@@ -32,6 +32,7 @@ type Waiter = {
 export class PiSessionProcess {
   private child: ChildProcessWithoutNullStreams;
   private buffer = "";
+  private stderrTail = "";
   private waiters = new Set<Waiter>();
   private fatal: Error | undefined;
   private exiting = false;
@@ -52,7 +53,10 @@ export class PiSessionProcess {
       env: { ...process.env, PI_TELEMETRY: "0" },
     });
     this.child.stdout.on("data", (chunk: Buffer) => this.receive(chunk.toString()));
-    this.child.stderr.on("data", () => {});
+    // 子进程退出码说明不了原因，把它的最后几行留下来。
+    this.child.stderr.on("data", (chunk: Buffer) => {
+      this.stderrTail = `${this.stderrTail}${chunk.toString()}`.slice(-2000);
+    });
     this.child.stdin.on("error", () =>
       this.fail(new PiHostFailure("runner_pipe_failed", "Pi runner 通信失败")),
     );
@@ -244,7 +248,9 @@ export class PiSessionProcess {
       if (forced || result.code !== 0 || result.signal)
         throw new PiHostFailure(
           "runner_shutdown_failed",
-          `Pi runner 未正常关闭（code=${result.code} signal=${result.signal} forced=${forced}）`,
+          `Pi runner 未正常关闭（code=${result.code} signal=${result.signal} forced=${forced}）${
+            this.stderrTail ? ` stderr=${JSON.stringify(this.stderrTail)}` : ""
+          }`,
         );
     } finally {
       clearTimeout(timer);
