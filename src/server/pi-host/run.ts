@@ -15,6 +15,7 @@ import {
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
+import { admitTaskStartInput } from "../../domain/task-input";
 import { recordDiagnostic } from "../diagnostics";
 import { markRunNoticeDelivered, noticeDeliveryText, pendingRunNotices } from "../notices";
 import { issueRemoteToolGrant, revokeRemoteToolGrant } from "../remote-agent-gateway";
@@ -48,8 +49,12 @@ export function executeRun(
     const outcome = yield* Effect.exit(
       Effect.gen(function* () {
         const input = yield* Effect.sync(() => firstPendingRunInput(run.id, ctx));
-        if (!input)
-          return yield* Effect.fail(new PiHostFailure("input_missing", "Run 缺少输入消息"));
+        if (!input) {
+          yield* Effect.sync(() =>
+            transitionAgentRun(run.id, "aborted", { stopReason: "input_invalid" }, ctx),
+          );
+          return;
+        }
         const prepared = yield* Effect.tryPromise({
           try: () => prepareRunRepo(run.id, ctx),
           catch: (error) => error,
@@ -117,11 +122,28 @@ export function executeRun(
             if (!signals.isStopping())
               recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
           };
-          sent.add(input.message.id);
         });
-        const promptTask = yield* Effect.sync(() =>
-          process.prompt(input.message.id, input.message.body),
-        );
+        // Session/repository preparation can outlive Task responsibility. Select again at
+        // the synchronous send boundary; admit persists the attempt before stdin.write.
+        const promptTask = yield* Effect.sync(() => {
+          for (;;) {
+            const selected = firstPendingRunInput(run.id, ctx);
+            if (!selected) {
+              transitionAgentRun(run.id, "aborted", { stopReason: "input_invalid" }, ctx);
+              return undefined;
+            }
+            const send = () => {
+              sent.add(selected.message.id);
+              return process.prompt(selected.message.id, selected.message.body);
+            };
+            if (selected.message.taskRecordKind !== "start") return send();
+            const attempted = admitTaskStartInput(run.id, selected.message.id, send);
+            if (attempted) return attempted;
+            // Another writer can invalidate responsibility between selection and admit.
+            // The rejected row has been cancelled: select the next input before returning.
+          }
+        });
+        if (!promptTask) return;
         const result = yield* Effect.scoped(
           Effect.gen(function* () {
             const runScope = yield* Effect.scope;
@@ -135,7 +157,11 @@ export function executeRun(
                       if (sent.has(pending.messageId)) continue;
                       sent.add(pending.messageId);
                       try {
-                        process.steer(pending.messageId, pending.text);
+                        if (pending.taskRecordKind === "start") {
+                          admitTaskStartInput(run.id, pending.messageId, () =>
+                            process.steer(pending.messageId, pending.text),
+                          );
+                        } else process.steer(pending.messageId, pending.text);
                       } catch {
                         recordRunInputDeliveryFailure(
                           run.id,

@@ -1,7 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
-import { remoteAgentRequestSchema } from "../contracts/remote";
+import {
+  remoteAgentRequestSchema,
+  taskGetResponseSchema,
+  taskListResponseSchema,
+  taskMutateResponseSchema,
+  chatGetResponseSchema,
+  chatSendResponseSchema,
+} from "../contracts/remote";
 import type { RemoteToolGrant } from "../contracts/remote";
 import { toAppError } from "../contracts/result";
 import { db, sqlite } from "../db";
@@ -13,6 +20,10 @@ import {
   projectMember,
   remoteToolGrant,
 } from "../db/schema";
+import type { ProjectContext } from "../domain/access";
+import { getTaskDetail, getTasksForChat, mutateTask } from "../domain/task";
+import { listMessages, sendMessage } from "../domain/chat";
+import { getChatSession } from "../domain/chat-session";
 import { hashCredential } from "../domain/machine";
 import { config } from "../lib/config";
 import { acquireLease, getLease, handoffLease, releaseLease } from "./lease";
@@ -219,6 +230,62 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
         if (parsed.call.input.projectId !== actorContext.projectId)
           throw new RemoteError("not_found");
         switch (parsed.call.type) {
+          case "task_get":
+          case "task_list":
+          case "task_mutate":
+          case "chat_get":
+          case "chat_send": {
+            const { instance } = actor(actorContext.runId);
+            const projectContext: ProjectContext = {
+              userId: actorContext.userId,
+              requestId,
+              agent: {
+                agentProfileId: instance.agentProfileId,
+                instanceId: actorContext.instanceId,
+                runId: actorContext.runId,
+              },
+            };
+            const call = parsed.call;
+            const projectId = actorContext.projectId;
+            const chatId = actorContext.chatId;
+            switch (call.type) {
+              case "task_get":
+                return taskGetResponseSchema.parse(
+                  getTaskDetail(call.input.taskId, projectContext),
+                );
+              case "task_list":
+                return taskListResponseSchema.parse({
+                  projectId,
+                  chatId,
+                  items: getTasksForChat(chatId, projectContext),
+                });
+              case "task_mutate": {
+                const { projectId: _projectId, action, ...input } = call.input;
+                return taskMutateResponseSchema.parse(mutateTask(action, input, projectContext));
+              }
+              case "chat_get":
+                return chatGetResponseSchema.parse({
+                  projectId,
+                  chatId,
+                  session: getChatSession(chatId, projectContext),
+                  messages: listMessages(chatId, projectContext),
+                });
+              case "chat_send":
+                return chatSendResponseSchema.parse({
+                  projectId,
+                  chatId,
+                  message: sendMessage(
+                    chatId,
+                    {
+                      senderKind: "agent",
+                      senderId: instance.agentProfileId,
+                      body: call.input.body,
+                    },
+                    projectContext,
+                  ),
+                });
+            }
+          }
           case "lease_get":
             return getLease(parsed.call.input, actorContext);
           case "execution_submit":

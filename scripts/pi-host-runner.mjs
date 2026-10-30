@@ -137,6 +137,12 @@ async function open(config) {
   const { registerRemoteTools } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/remote-tools.ts"),
   );
+  const { registerTaskTools } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/task-tools.ts"),
+  );
+  const { taskToolInputSchemas } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/task.ts"),
+  );
   const { remoteToolInputSchemas } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/remote.ts"),
   );
@@ -201,6 +207,7 @@ async function open(config) {
             authorizationGeneration: () => target?.generation ?? null,
           });
           registerRemoteTools(pi, remote);
+          registerTaskTools(pi, remote);
         },
       },
     ],
@@ -231,7 +238,15 @@ async function open(config) {
     // 不声明给模型（`_isActivatable` 对 `direct` exposure 恒为 false，`setActiveTools` 也救不回来）。
     // 这是 `list_changed` 后新工具到不了模型工具面的根因，详见
     // `orchestrate/sprout-mio-r1/reports/remediation-extension.md`。
-    tools: ["read", "bash", "edit", "write", "mcp__*", ...Object.keys(remoteToolInputSchemas)],
+    tools: [
+      "read",
+      "bash",
+      "edit",
+      "write",
+      "mcp__*",
+      ...Object.keys(remoteToolInputSchemas),
+      ...Object.keys(taskToolInputSchemas),
+    ],
     resourceLoader,
     settingsManager,
     sessionManager: manager,

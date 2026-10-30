@@ -17,6 +17,11 @@ import {
   holderExecutionListViewSchema,
   remoteAgentRequestSchema,
   remoteToolGrantSchema,
+  taskGetResponseSchema,
+  taskListResponseSchema,
+  taskMutateResponseSchema,
+  chatGetResponseSchema,
+  chatSendResponseSchema,
 } from "../contracts/remote";
 import type { RemoteAgentRequest, RemoteToolGrant } from "../contracts/remote";
 
@@ -37,6 +42,11 @@ const leaseReadSchema = z.strictObject({
   mutation: leaseMutationViewSchema.nullable(),
 });
 type RemoteData =
+  | z.infer<typeof taskGetResponseSchema>
+  | z.infer<typeof taskListResponseSchema>
+  | z.infer<typeof taskMutateResponseSchema>
+  | z.infer<typeof chatGetResponseSchema>
+  | z.infer<typeof chatSendResponseSchema>
   | z.infer<typeof executionViewSchema>
   | z.infer<typeof holderExecutionListViewSchema>
   | z.infer<typeof executionCancellationViewSchema>
@@ -62,9 +72,20 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   if (!envelope.success) return { outcome: "unknown", reason: "invalid_response" };
   if (!envelope.data.ok) return { outcome: "response", result: envelope.data };
   const { call } = request;
+  const taskResponse = readTaskChatResponse(envelope.data, request);
+  if (taskResponse) return taskResponse;
+  if (
+    call.type === "task_get" ||
+    call.type === "task_list" ||
+    call.type === "task_mutate" ||
+    call.type === "chat_get" ||
+    call.type === "chat_send"
+  )
+    return { outcome: "unknown", reason: "invalid_response" };
   if (call.type.startsWith("mcp_")) return readMcpResponse(envelope.data, request);
+  const input = call.input;
   const sameBinding = (data: { projectId: string; machineId: string }) =>
-    data.projectId === call.input.projectId && data.machineId === call.input.machineId;
+    data.projectId === input.projectId && data.machineId === input.machineId;
   const ok = (data: RemoteData): RemoteToolResponse => ({
     outcome: "response",
     result: { ok: true, data, requestId: envelope.data.requestId },
@@ -116,6 +137,59 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   )
     return bad;
   return ok(parsed.data);
+}
+
+export function readTaskChatResponse(
+  envelope: Extract<z.infer<typeof envelopeSchema>, { ok: true }>,
+  { call }: RemoteAgentRequest,
+): RemoteToolResponse | undefined {
+  const bad: RemoteToolResponse = { outcome: "unknown", reason: "invalid_response" };
+  const ok = (data: RemoteData): RemoteToolResponse => ({
+    outcome: "response",
+    result: { ok: true, data, requestId: envelope.requestId },
+  });
+  switch (call.type) {
+    case "task_get": {
+      const parsed = taskGetResponseSchema.safeParse(envelope.data);
+      return parsed.success &&
+        parsed.data.task.projectId === call.input.projectId &&
+        parsed.data.task.id === call.input.taskId
+        ? ok(parsed.data)
+        : bad;
+    }
+    case "task_mutate": {
+      const parsed = taskMutateResponseSchema.safeParse(envelope.data);
+      return parsed.success &&
+        parsed.data.detail.task.projectId === call.input.projectId &&
+        parsed.data.detail.task.id === call.input.taskId &&
+        !parsed.data.startDelivery
+        ? ok(parsed.data)
+        : bad;
+    }
+    case "task_list": {
+      const parsed = taskListResponseSchema.safeParse(envelope.data);
+      return parsed.success && parsed.data.projectId === call.input.projectId
+        ? ok(parsed.data)
+        : bad;
+    }
+    case "chat_get": {
+      const parsed = chatGetResponseSchema.safeParse(envelope.data);
+      return parsed.success && parsed.data.projectId === call.input.projectId
+        ? ok(parsed.data)
+        : bad;
+    }
+    case "chat_send": {
+      const parsed = chatSendResponseSchema.safeParse(envelope.data);
+      return parsed.success &&
+        parsed.data.projectId === call.input.projectId &&
+        parsed.data.message.senderKind === "agent" &&
+        parsed.data.message.body === call.input.body
+        ? ok(parsed.data)
+        : bad;
+    }
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -254,7 +328,18 @@ export function createRemoteClient(
             response.on("error", () => finish({ outcome: "unknown", reason: "transport_error" }));
             response.on("end", () => {
               try {
-                if (response.statusCode !== 200 && response.statusCode !== 401) {
+                const taskChatCall = [
+                  "task_get",
+                  "task_list",
+                  "task_mutate",
+                  "chat_get",
+                  "chat_send",
+                ].includes(parsed.data.call.type);
+                if (
+                  response.statusCode !== 200 &&
+                  response.statusCode !== 401 &&
+                  !(taskChatCall && response.statusCode === 403)
+                ) {
                   finish({ outcome: "unknown", reason: "invalid_response" });
                   return;
                 }
@@ -263,7 +348,7 @@ export function createRemoteClient(
                   parsed.data,
                 );
                 if (
-                  response.statusCode === 401 &&
+                  (response.statusCode === 401 || response.statusCode === 403) &&
                   result.outcome === "response" &&
                   result.result.ok
                 )

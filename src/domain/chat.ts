@@ -28,7 +28,7 @@ import {
 import { assertProjectAccess, ProjectAccessError, readRunScope } from "./access";
 import type { ProjectContext } from "./access";
 import { getAgentProfile } from "./agent";
-import { appendHumanRunInput } from "./agent-run";
+import { appendHumanRunInput, appendOwnerAgentRunInput } from "./agent-run";
 import { assertChannelMemberChangeAllowed, readChatEffectiveMembers } from "./channel";
 import { assertChatCapability } from "./chat-capabilities";
 import type { ChatGovernanceScope } from "./chat-capabilities";
@@ -67,7 +67,27 @@ function toInstance(row: typeof agentInstance.$inferSelect): AgentInstance {
 }
 
 function toMessage(row: typeof message.$inferSelect): Message {
-  return { ...row, createdAt: row.createdAt.toISOString() };
+  return {
+    id: row.id,
+    chatId: row.chatId,
+    senderKind: row.senderKind,
+    senderId: row.senderId,
+    body: row.body,
+    createdAt: row.createdAt.toISOString(),
+    ...(row.taskId !== null && row.taskRecordSeq !== null && row.taskRecordKind !== null
+      ? {
+          taskRecord: {
+            taskId: row.taskId,
+            seq: row.taskRecordSeq,
+            kind: row.taskRecordKind,
+            ...(row.taskReferenceMessageId === null
+              ? {}
+              : { referenceMessageId: row.taskReferenceMessageId }),
+            ...(row.taskAuthorRunId === null ? {} : { authorRunId: row.taskAuthorRunId }),
+          },
+        }
+      : {}),
+  };
 }
 
 /**
@@ -610,6 +630,7 @@ export function sendMessage(
             .run();
           const saved = toMessage(row);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx);
+          else appendOwnerAgentRunInput(saved, ctx);
           return saved;
         },
         hooks,

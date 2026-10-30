@@ -201,13 +201,14 @@ function result(request: RemoteAgentRequest, response: RemoteToolResponse): Spro
       isError = false;
     }
   } else if (request.call.type === "execution_list") {
+    const input = request.call.input;
     const parsed = holderExecutionListViewSchema.safeParse(response.result.data);
     if (
       !parsed.success ||
       parsed.data.executions.some(
         (view) =>
-          view.projectId !== request.call.input.projectId ||
-          view.machineId !== request.call.input.machineId ||
+          view.projectId !== input.projectId ||
+          view.machineId !== input.machineId ||
           view.authority === "history",
       )
     ) {

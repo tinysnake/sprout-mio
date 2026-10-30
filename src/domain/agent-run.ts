@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import type {
   AgentRun,
@@ -24,6 +24,7 @@ import { ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
 import { readChatEffectiveMembers } from "./channel";
 import { getChat, ensureInstance, sendMessage } from "./chat";
+import { cancelInvalidTaskStartInputs } from "./task-input";
 import { routeWakeCandidates } from "./chat-wake";
 import { taskResponsibilityFacts, TaskError } from "./task-capabilities";
 
@@ -107,6 +108,7 @@ export function listAgentRunInputs(id: string, ctx: ProjectContext): AgentRunInp
       runId: input.runId,
       messageId: input.messageId,
       disposition: input.disposition,
+      admittedAt: input.admittedAt?.toISOString(),
       deliveredAt: input.deliveredAt?.toISOString(),
       cancelledAt: input.cancelledAt?.toISOString(),
       cancelReason: input.cancelReason ?? undefined,
@@ -276,7 +278,13 @@ function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, reques
   const pending = db
     .select({ messageId: agentRunInput.messageId })
     .from(agentRunInput)
-    .where(and(eq(agentRunInput.runId, run.id), eq(agentRunInput.disposition, "pending")))
+    .where(
+      and(
+        eq(agentRunInput.runId, run.id),
+        eq(agentRunInput.disposition, "pending"),
+        isNull(agentRunInput.admittedAt),
+      ),
+    )
     .all();
   if (pending.length === 0) return;
   // 下一轮就是「同 instance 没有活跃 run」时新排的那条 run；所有未投递输入共用它。
@@ -328,7 +336,12 @@ function profileDictionary(members: readonly ChatMember[]): ChatWakeDispatch["ag
  *   （输入主键是 `(run_id, message_id)`）；
  * - 同一 instance 已有活跃 run 时输入挂到那条 run，不新建第二个（数据库部分唯一索引是底线）。
  */
-function fanoutHumanMessage(saved: Message, current: Chat, ctx: ProjectContext): void {
+function fanoutHumanMessage(
+  saved: Message,
+  current: Chat,
+  ctx: ProjectContext,
+  ownerAgent = false,
+): void {
   const members = readChatEffectiveMembers(current.id, current.projectId);
   // 派发契约只带 id → 名字的字典与消息内容；规则函数要的其余成员事实仍由视图给全。
   const dispatch: ChatWakeDispatch = {
@@ -339,7 +352,29 @@ function fanoutHumanMessage(saved: Message, current: Chat, ctx: ProjectContext):
   const names = new Map(
     dispatch.agentProfiles.map((entry) => [entry.agentProfileId, entry.profileName] as const),
   );
+  const effectiveMembers = members
+    .map((member) => ({
+      memberKind: member.memberKind,
+      memberId: member.memberId,
+      profileName: names.get(member.memberId),
+    }))
+    .filter(
+      (member) =>
+        !ownerAgent ||
+        [member.memberId, member.profileName].some((name) => {
+          if (!name) return false;
+          let from = 0;
+          for (;;) {
+            const at = saved.body.indexOf(`@${name}`, from);
+            if (at < 0) return false;
+            const after = saved.body[at + name.length + 1];
+            if (after === undefined || !/[A-Za-z0-9_-]/.test(after)) return true;
+            from = at + 1;
+          }
+        }),
+    );
   const candidates = routeWakeCandidates({
+    ...(ownerAgent ? { senderAgentProfileId: saved.senderId } : {}),
     body: dispatch.body,
     chat: {
       id: dispatch.chatId,
@@ -348,18 +383,14 @@ function fanoutHumanMessage(saved: Message, current: Chat, ctx: ProjectContext):
       ownerKind: current.owner.kind,
       ownerId: current.owner.id,
     },
-    effectiveMembers: members.map((member) => {
-      const profileName = names.get(member.memberId);
-      return {
-        memberKind: member.memberKind,
-        memberId: member.memberId,
-        ...(profileName === undefined ? {} : { profileName }),
-      };
-    }),
+    effectiveMembers,
   });
+  // Provisioning is internal dispatch work after the owner gate; the new run gets
+  // its own recipient instance identity, never the sender's execution identity.
+  const dispatchContext = ownerAgent ? { userId: ctx.userId, requestId: ctx.requestId } : ctx;
   for (const candidate of candidates) {
-    const instance = ensureInstance(current.id, candidate.agentProfileId, ctx);
-    attachMessageToRun(saved, current, instance, ctx);
+    const instance = ensureInstance(current.id, candidate.agentProfileId, dispatchContext);
+    attachMessageToRun(saved, current, instance, dispatchContext);
   }
 }
 
@@ -404,6 +435,20 @@ export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
     return;
   }
   fanoutHumanMessage(saved, current, ctx);
+}
+
+/** Only the current Agent owner may dispatch; member replies cannot cascade. */
+export function appendOwnerAgentRunInput(saved: Message, ctx: ProjectContext): void {
+  const current = getChat(saved.chatId, ctx);
+  if (
+    !ctx.agent ||
+    saved.senderKind !== "agent" ||
+    saved.senderId !== ctx.agent.agentProfileId ||
+    current.owner.kind !== "agent" ||
+    current.owner.id !== saved.senderId
+  )
+    return;
+  fanoutHumanMessage(saved, current, ctx, true);
 }
 
 type TransitionData = {
@@ -479,16 +524,31 @@ export function markRunInputDelivered(id: string, messageId: string, ctx: Projec
 export function pendingRunInputs(
   id: string,
   ctx: ProjectContext,
-): { messageId: string; text: string }[] {
+): {
+  messageId: string;
+  text: string;
+  taskRecordKind: typeof message.$inferSelect.taskRecordKind;
+}[] {
   const row = runRow(id, ctx);
+  cancelInvalidTaskStartInputs(id);
   return db
-    .select({ messageId: agentRunInput.messageId, text: message.body })
+    .select({
+      messageId: agentRunInput.messageId,
+      text: message.body,
+      taskRecordKind: message.taskRecordKind,
+    })
     .from(agentRunInput)
     .innerJoin(
       message,
       and(eq(message.id, agentRunInput.messageId), eq(message.chatId, row.chatId)),
     )
-    .where(and(eq(agentRunInput.runId, id), eq(agentRunInput.disposition, "pending")))
+    .where(
+      and(
+        eq(agentRunInput.runId, id),
+        eq(agentRunInput.disposition, "pending"),
+        isNull(agentRunInput.admittedAt),
+      ),
+    )
     .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
     .all();
 }
@@ -552,6 +612,25 @@ export function completeAgentRun(
           },
         },
       );
+      cancelInvalidTaskStartInputs(id);
+      const uncertain = db
+        .select()
+        .from(agentRunInput)
+        .where(
+          and(
+            eq(agentRunInput.runId, id),
+            eq(agentRunInput.disposition, "pending"),
+            sql`${agentRunInput.admittedAt} is not null`,
+          ),
+        )
+        .all();
+      if (uncertain.length)
+        diagnostic(
+          row,
+          "agent_run.task_delivery_unconfirmed",
+          `${uncertain.length} 条 Task 输入已尝试发送但未收到 ACK，保留原 run 且不重投`,
+          "warn",
+        );
       const settled = transitionAgentRun(
         id,
         "completed",
@@ -594,6 +673,7 @@ export function queuedRunWork(): {
 
 export function firstPendingRunInput(id: string, ctx: ProjectContext) {
   const row = runRow(id, ctx);
+  cancelInvalidTaskStartInputs(id);
   return db
     .select({ input: agentRunInput, message })
     .from(agentRunInput)
@@ -601,7 +681,13 @@ export function firstPendingRunInput(id: string, ctx: ProjectContext) {
       message,
       and(eq(message.id, agentRunInput.messageId), eq(message.chatId, row.chatId)),
     )
-    .where(and(eq(agentRunInput.runId, id), eq(agentRunInput.disposition, "pending")))
+    .where(
+      and(
+        eq(agentRunInput.runId, id),
+        eq(agentRunInput.disposition, "pending"),
+        isNull(agentRunInput.admittedAt),
+      ),
+    )
     .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
     .get();
 }
