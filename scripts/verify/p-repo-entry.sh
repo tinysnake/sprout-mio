@@ -377,12 +377,14 @@ try {
     await page.locator('[data-testid="repo-prepare"]').click()
     await page.waitForSelector('[data-testid="repo-panel-error"]', { timeout: 20000 })
     const errorMeta = await page.locator('[data-testid="repo-panel-error-meta"]').textContent()
-    assert.match(errorMeta, /conflict · req_/, 'failure shows code and requestId')
+    // 裁定 d43：普通失败页只给错误码，requestId 只在 not_found 诊断块里出现。
+    assert.match(errorMeta, /conflict/, 'failure shows the error code')
+    assert.doesNotMatch(errorMeta, /req_/, 'failure page hides the internal request id')
     assert.match(await page.locator('[data-testid="repo-panel-error"]').textContent(), /不存在/)
     const errorShot = join(screenshotDir, 'p3-c-repo-error.png')
     await page.screenshot({ path: errorShot, fullPage: true })
     assert.deepEqual(consoleErrors, [], 'settings page must render without console errors')
-    pass('settings page shows readable acquisition failure with requestId', { screenshot: errorShot, errorMeta })
+    pass('settings page shows readable acquisition failure with the error code only', { screenshot: errorShot, errorMeta })
   } finally {
     await browser.close()
   }
