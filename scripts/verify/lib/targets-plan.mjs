@@ -34,6 +34,7 @@ export const CI_GROUPS = Object.freeze({
     "an-p4d-authority",
   ],
   tasks: ["ba-task-domain", "bc-task-start", "bd-task-migration", "be-task-info"],
+  integrations: ["bs-p5b-lifecycle"],
   live: ["bb-task-live"],
   turns: [
     "k2-cross-family-isolation",

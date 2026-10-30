@@ -52,6 +52,7 @@ export const SUITE_PLAN = Object.freeze({
   "bc-task-start": plan(5.7, { unit: 1, process: 1 }),
   "bd-task-migration": plan(1.4, { unit: 1 }),
   "be-task-info": plan(1.2, { unit: 1 }),
+  "bs-p5b-lifecycle": plan(36, { unit: 1, native: 1, process: 1 }),
   "bb-task-live": plan(30, { native: 1, sdk: 1, timing: 1 }),
   "c-auth-rate-limit": plan(2.16, { light: 1 }, server),
   "c-data-auth": plan(21.026, { development: 1, unit: 1, browser: 1 }, privateTree, true),
