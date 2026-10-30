@@ -13,11 +13,23 @@ function statusLabel(status: string) {
   return STATUS_LABELS[status] ?? status;
 }
 
-/** 历史 run 只做聚合：按状态计数，不逐条罗列每次开始与结束时间。 */
-function statusCounts(runs: AgentRunsView["recent"]) {
+export const SUMMARY_TONE: Record<string, string> = {
+  completed: "text-status-success",
+  failed: "text-destructive",
+};
+
+/** 历史 run 只做聚合：按状态计数，不逐条罗列每次开始与结束时间。完成在前、失败在后。 */
+export function orderedCounts(runs: AgentRunsView["recent"]) {
   const counts = new Map<string, number>();
   for (const run of runs) counts.set(run.status, (counts.get(run.status) ?? 0) + 1);
-  return [...counts].map(([status, count]) => `${statusLabel(status)} ${count}`).join("、");
+  const order = [
+    "completed",
+    ...[...counts.keys()].filter((status) => status !== "completed" && status !== "failed"),
+    "failed",
+  ];
+  return order
+    .filter((status) => counts.has(status))
+    .map((status) => ({ status, count: counts.get(status) ?? 0 }));
 }
 
 /**
@@ -59,9 +71,21 @@ export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: s
         data-run-count={runs.recent.length}
         className="text-muted-foreground"
       >
-        {runs.recent.length === 0
-          ? "还没有历史 run。"
-          : `最近 ${runs.recent.length} 个 run：${statusCounts(runs.recent)}`}
+        {runs.recent.length === 0 ? (
+          "还没有历史 run。"
+        ) : (
+          <>
+            最近 {runs.recent.length} 个 run：
+            {orderedCounts(runs.recent).map(({ status, count }, index) => (
+              <span key={status}>
+                {index > 0 && "、"}
+                <span data-testid={`${testId}-recent-${status}`} className={SUMMARY_TONE[status]}>
+                  {statusLabel(status)} {count}
+                </span>
+              </span>
+            ))}
+          </>
+        )}
       </p>
       {latestRepo && (
         <p data-testid={`${testId}-recent-repo`} className="text-muted-foreground">

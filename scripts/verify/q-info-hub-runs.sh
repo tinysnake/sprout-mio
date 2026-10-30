@@ -289,6 +289,13 @@ try {
       // 历史 run 只保留聚合计数，不再逐条罗列每次开始与结束时间。
       const recentSummary = page.locator('[data-testid="info-hub-project-runs-recent"]')
       assert.match(await recentSummary.textContent(), /最近 \d+ 个 run：.*已完成 \d+/)
+      // 人类要求完成在前、失败在后，并用颜色区分两类结果。
+      const summaryText = await recentSummary.textContent()
+      if (summaryText.includes('失败')) {
+        assert.ok(summaryText.indexOf('已完成') < summaryText.indexOf('失败'), 'completed counts come before failed counts')
+        assert.match(await page.locator('[data-testid="info-hub-project-runs-recent-completed"]').getAttribute('class'), /text-status-success/)
+        assert.match(await page.locator('[data-testid="info-hub-project-runs-recent-failed"]').getAttribute('class'), /text-destructive/)
+      }
       assert.ok(Number(await recentSummary.getAttribute('data-run-count')) >= 1, 'project view keeps the recent run aggregate')
       assert.equal(await page.locator('[data-testid="info-hub-project-runs-recent-item"]').count(), 0, 'per-run history rows are gone')
       const repoBasis = page.locator('[data-testid="info-hub-project-runs-recent-repo"]')
