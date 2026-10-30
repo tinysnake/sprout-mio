@@ -406,6 +406,9 @@ try {
   await page.locator('[data-testid="machine-lease-section-overview-mutation-success"], [data-testid="machine-lease-section-overview-mutation-waiting"]').first().waitFor({timeout:65000});
   await settled(chatId);
   await page.getByLabel('交接目标分身').selectOption(nonHolder.instance.id);
+  // 交接把上一任 holder 变成非 holder，产品会给它投递一条资源撤销通知并真正开始一轮；
+  // 这一轮不是门禁驱动的，按前缀常驻认领，什么时候到都不会挤掉已布的计划。
+  modelFixture?.arm('operator', { expectedUserPrefix: '资源撤销通知', repeat: true, steps: [], reply: '收到资源撤销通知，本轮不做操作。' });
   await armLease('handoff',{machineId,expectedGeneration:reacquired.generation,targetInstanceId:nonHolder.instance.id});
   await page.getByRole('button',{name:'请求分身交接'}).click();
   const transferred=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held' && lease.holderInstanceId===nonHolder.instance.id ? lease:null;},'handoff through page and real holder tool',180000);

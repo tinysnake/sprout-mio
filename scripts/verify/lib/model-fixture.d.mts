@@ -1,7 +1,13 @@
 export type ToolStep = { name: string; arguments: Record<string, unknown> };
 export type TurnPlan =
   | { expectedUserText: string; steps: ToolStep[]; reply: string }
-  | { lease: { action: string; parameters: Record<string, unknown> }; reply: string };
+  | { lease: { action: string; parameters: Record<string, unknown> }; reply: string }
+  | {
+      expectedUserPrefix: string;
+      repeat: true;
+      steps?: ToolStep[];
+      reply: string;
+    };
 export type FixtureRole = "operator" | "nonHolder" | "status";
 export const fixtureProvider: string;
 export const fixtureModels: Readonly<Record<FixtureRole, string>>;

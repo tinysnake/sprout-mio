@@ -478,10 +478,22 @@ const realFrameWakes = httpExchanges.filter(
     exchange.newFrameCommitted &&
     exchange.frames > 0,
 );
-assert(
-  realFrameWakes.some((exchange) => exchange.elapsedMs < exchange.requestedHoldMs),
-  "a real MCP server frame must wake an active HTTP hold before timeout",
-);
+// 传输层空闲时才带 hold 轮询，带批次时 holdMs 为 0，所以「帧唤醒挂起的 hold」只在一段安静期之后出现。
+const wakeDeadline = performance.now() + 15000;
+while (
+  !httpExchanges.some(
+    (exchange) =>
+      exchange.requestedHoldMs === 2000 &&
+      exchange.holdEntered &&
+      exchange.newFrameCommitted &&
+      exchange.frames > 0 &&
+      exchange.elapsedMs < exchange.requestedHoldMs,
+  )
+) {
+  if (performance.now() > wakeDeadline)
+    assert.fail("a real MCP server frame must wake an active HTTP hold before timeout");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
 
 // ---------------------------------------------------------------- drain 交互
 const drainScope = globalThis as typeof globalThis & {

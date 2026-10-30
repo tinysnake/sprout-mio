@@ -445,3 +445,32 @@ it.each([undefined, "", "unknown", "live"] as const)(
     expect(existsSync(join(root, ".verify"))).toBe(false);
   },
 );
+
+it("claims a product-initiated turn by prefix and keeps later driven turns on their plans", async () => {
+  const { fixture, next, input } = await setup();
+  const notice = (suffix: string) => ({
+    role: "user",
+    content: `资源撤销通知 ntc_${suffix}：租约已交接给其他分身。`,
+  });
+  fixture.arm("operator", {
+    expectedUserPrefix: "资源撤销通知",
+    repeat: true,
+    steps: [],
+    reply: "notice acknowledged",
+  });
+  const first = await next(input([notice("1")]));
+  expect(first.content).toBe("notice acknowledged");
+  const history = [notice("1"), { role: "assistant", content: "notice acknowledged" }];
+  fixture.arm("operator", {
+    expectedUserText: prompt,
+    steps: [{ name: "sprout_lease_get", arguments: { machineId: "fixture-machine" } }],
+    reply: "driven turn",
+  });
+  const driven = await next(input([...history, user()]));
+  expect(driven.tool_calls[0].function.name).toBe("sprout_lease_get");
+  const repeated = await next(
+    input([...history, user(), { role: "assistant", content: "driven turn" }, notice("2")]),
+  );
+  expect(repeated.content).toBe("notice acknowledged");
+  expect(fixture.metadata().models[0].completedPlans).toBe(2);
+});
