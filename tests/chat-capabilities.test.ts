@@ -27,6 +27,8 @@ const EXPECTED: Record<ChatAction, { human: Access; agent: Access }> = {
   member_remove: { human: "owner", agent: "never" },
   owner_change: { human: "owner", agent: "never" },
   wake_policy_change: { human: "owner", agent: "never" },
+  // A03 补进表里的第八项：标题写入曾是能力表之外的治理写入路径。
+  title_change: { human: "member", agent: "never" },
   message_send: { human: "member", agent: "member" },
 };
 type Access = "never" | "member" | "owner";

@@ -18,3 +18,14 @@ export type ChatActor =
       readonly runId: string;
       readonly ctx: ProjectContext;
     };
+
+/**
+ * 从调用上下文派生行动者：带 `ctx.agent` 就是那次运行，没带就是 Human。
+ * 已有显式 `ChatActor` 形参的治理命令不用它；还没有 actor 形参的旧入口（标题写入）用它，
+ * 让这些入口也走同一张能力表，而不是各自在调用点补一个 if。
+ */
+export function actorFromContext(ctx: ProjectContext): ChatActor {
+  if (!ctx.agent) return { kind: "human", userId: ctx.userId, ctx };
+  const { agentProfileId, instanceId, runId } = ctx.agent;
+  return { kind: "agent", agentProfileId, instanceId, runId, ctx };
+}

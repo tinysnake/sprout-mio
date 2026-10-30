@@ -9,6 +9,9 @@ export const CHAT_ACTIONS = [
   "member_remove",
   "owner_change",
   "wake_policy_change",
+  // 标题写入与成员、owner 同类：它改的是「这段对话是什么」，不是「谁在说话」。
+  // 冻结形状只列了七项，验收 A03 证明八项之外的写入路径等于没有边界。
+  "title_change",
   "message_send",
 ] as const;
 
@@ -29,6 +32,9 @@ export const CHAT_CAPABILITIES: Record<ChatAction, { human: AccessLevel; agent: 
   member_remove: { human: "owner", agent: "never" },
   owner_change: { human: "owner", agent: "never" },
   wake_policy_change: { human: "owner", agent: "never" },
+  // Human 档是 member 而不是 owner：标题没有 `expectedRevision`，不属于 d15 的三类治理写入，
+  // 现有行为是「能进这个 Project 的 Human 就能改名」，收成 owner 会改变 Human 行为。
+  title_change: { human: "member", agent: "never" },
   message_send: { human: "member", agent: "member" },
 };
 

@@ -25,13 +25,14 @@ import {
   projectMember,
   user,
 } from "../db/schema";
-import { assertProjectAccess, ProjectAccessError } from "./access";
+import { assertProjectAccess, ProjectAccessError, readRunScope } from "./access";
 import type { ProjectContext } from "./access";
 import { getAgentProfile } from "./agent";
 import { appendHumanRunInput } from "./agent-run";
 import { assertChannelMemberChangeAllowed, readChatEffectiveMembers } from "./channel";
 import { assertChatCapability } from "./chat-capabilities";
 import type { ChatOwnerFacts } from "./chat-capabilities";
+import { actorFromContext } from "./chat-actor";
 import type { ChatActor } from "./chat-actor";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
@@ -99,12 +100,63 @@ function assertGovernableGroup(row: Chat): void {
 }
 
 /**
+ * Agent 执行身份的对话范围：run 自己的对话与 instance 是唯一判据，调用方传的 `projectId`
+ * 与 `chatId` 不能抬高范围。Human 不受影响，历史读取能力原样保留。
+ *
+ * 两层一起构成「这次运行就在这个对话里」：
+ * 1. run 的 Project/chat/instance 与 `ctx.agent` 一致——跨 Project、跨对话、拿别人的 instance 一律拒绝；
+ * 2. 该分身仍是 `chat_effective_member`——参与权只认视图（d7），与工具网关的 actor() 同源，
+ *    所以「成员行物理保留但已移出」的 instance 不会再被它自己读到。
+ * 活跃状态是第三层，但只对发言生效（见 `assertActiveRun`：结束后的运行仍可读自己的历史）。
+ */
+function assertChatScope(row: Chat, ctx: ProjectContext): void {
+  if (!ctx.agent) return;
+  const scope = readRunScope(ctx.agent.runId);
+  if (!scope) throw new ProjectAccessError();
+  if (
+    scope.projectId !== row.projectId ||
+    scope.chatId !== row.id ||
+    scope.instanceId !== ctx.agent.instanceId ||
+    scope.agentProfileId !== ctx.agent.agentProfileId
+  )
+    throw new ProjectAccessError();
+  const member = db
+    .select({ memberId: chatEffectiveMember.memberId })
+    .from(chatEffectiveMember)
+    .where(
+      and(
+        eq(chatEffectiveMember.chatId, row.id),
+        eq(chatEffectiveMember.projectId, row.projectId),
+        eq(chatEffectiveMember.memberKind, "agent"),
+        eq(chatEffectiveMember.memberId, scope.agentProfileId),
+      ),
+    )
+    .get();
+  if (!member) throw new ChatError("not_found", "对话成员不存在");
+}
+
+/** 发言比读取多一条：已结束的 run 不能再用它的身份写消息（N04）。 */
+function assertActiveRun(ctx: ProjectContext): void {
+  if (!ctx.agent) return;
+  const scope = readRunScope(ctx.agent.runId);
+  if (!scope?.active) throw new ChatError("forbidden", "Agent run 不在活跃状态，不能发言");
+}
+
+/**
+ * 治理版本推进的两种前置：调用方自己读到的版本（CAS），与项目驱动变化的无版本推进（裁定 d30）。
+ */
+type GovernanceExpectation = number | "unconditional";
+
+/**
  * 治理写入的乐观并发生效点：只有调用方看到的版本仍是当前版本时才写，
  * 影响行数为 0 就是 `conflict`——别人已经改过，覆盖它就是无声丢失一次治理操作。
+ *
+ * 项目驱动的成员变化（`revokeProjectAgentEnrollment`）没有调用方的群组版本号，传
+ * `"unconditional"` 走同一个推进入口：版本只在这里加，不在第二个地方各算一次。
  */
 function applyGovernance(
   row: Chat,
-  revision: number,
+  expected: GovernanceExpectation,
   patch: { ownerKind?: "human" | "agent"; ownerId?: string } = {},
 ): Chat {
   const updated = db
@@ -114,7 +166,7 @@ function applyGovernance(
       and(
         eq(chat.id, row.id),
         eq(chat.projectId, row.projectId),
-        eq(chat.governanceRevision, revision),
+        ...(expected === "unconditional" ? [] : [eq(chat.governanceRevision, expected)]),
       ),
     )
     .returning()
@@ -312,12 +364,16 @@ export function getChat(chatId: string, ctx: ProjectContext): Chat {
   const row = db.select().from(chat).where(eq(chat.id, chatId)).get();
   if (!row) throw new ProjectAccessError();
   assertProjectAccess(ctx, row.projectId);
-  return toChat(row);
+  const current = toChat(row);
+  assertChatScope(current, ctx);
+  return current;
 }
 
 /**
  * 重命名标题。归属与权限在服务端领域层核对：不属于当前用户 Project 的 Chat
  * 与不存在的 Chat 都返回 not_found，不暴露存在性。
+ * 标题写入是治理动作（`title_change`）：行动者从上下文派生，Agent 执行身份一律 forbidden，
+ * 判定只发生在能力表里，不在这里另写一个分支。
  */
 export function updateChatTitle(
   chatId: string,
@@ -329,6 +385,7 @@ export function updateChatTitle(
   if (normalized.length === 0) throw new ChatError("conflict", "标题不能为空");
   if (normalized.length > CHAT_TITLE_MAX_LENGTH)
     throw new ChatError("conflict", `标题最多 ${CHAT_TITLE_MAX_LENGTH} 字`);
+  assertChatCapability("title_change", actorFromContext(ctx));
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
@@ -356,12 +413,13 @@ export function updateChatTitle(
     .immediate();
 }
 
-/** 恢复默认标题：title 置回 null，展示回落到参与分身名。 */
+/** 恢复默认标题：title 置回 null，展示回落到参与分身名。权限与改名同一档（`title_change`）。 */
 export function clearChatTitle(
   chatId: string,
   ctx: ProjectContext,
   hooks: IdentityWriteHooks = {},
 ): Chat {
+  assertChatCapability("title_change", actorFromContext(ctx));
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
@@ -413,6 +471,8 @@ export function listInstancesForChat(chatId: string, ctx: ProjectContext): Agent
 export function getInstance(instanceId: string, ctx: ProjectContext): AgentInstance {
   const row = db.select().from(agentInstance).where(eq(agentInstance.id, instanceId)).get();
   if (!row) throw new ProjectAccessError();
+  // Agent 只能取自己 run 的那个 instance；同一对话里别人的 instance 也不在它的范围里。
+  if (ctx.agent && ctx.agent.instanceId !== instanceId) throw new ProjectAccessError();
   const current = getChat(row.chatId, ctx);
   if (current.projectId !== row.projectId) throw new ProjectAccessError();
   return toInstance(row);
@@ -439,6 +499,7 @@ export function sendMessage(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
+      assertActiveRun(ctx);
       // run 里执行的域代码只能以本 run 的分身说话：否则人类消息开出的 run 就能冒充人类发言。
       if (
         ctx.agent &&
@@ -535,6 +596,8 @@ export function ensureInstance(
   ctx: ProjectContext,
 ): AgentInstance {
   const current = getChat(chatId, ctx);
+  // Agent 只能给自己建 instance；替别的分身在同一个对话里准备运行不属于这次执行的范围。
+  if (ctx.agent && ctx.agent.agentProfileId !== agentProfileId) throw new ProjectAccessError();
   const member = db
     .select({ memberId: chatEffectiveMember.memberId })
     .from(chatEffectiveMember)
@@ -757,8 +820,9 @@ export function removeGroupMember(
  *    `membership_revoked` 取消（d11：只动未下发的），再物理删除它在普通 Group 的
  *    `chat_member` 行。频道没有成员行可删（成员是 Project 成员的派生事实，裁定 d7/d8），
  *    DM 的成员行保留（d14：历史仍可读；发言资格由 `sendMessage` 的 Project 成员判定收回，d19）。
- *    不推进 `governance_revision`：d15 的三类治理写入是群组成员与 owner 的显式命令，
- *    项目级移除是另一个入口，调用方没有也不该有群组版本号。
+ *    每删掉一行就推进那个群的 `governance_revision`（裁定 d30）：这次变化换掉了「谁能治理这个对话」的
+ *    参与者，不推进的话移除前拿到的 `expectedRevision` 会在移除后仍然生效，陈旧 CAS 仍能落地。
+ *    版本推进走 `applyGovernance` 的同一个收口点，只对真正删了行的群生效。
  */
 export function revokeProjectAgentEnrollment(projectId: string, agentProfileId: string): void {
   const ownerGroups = db
@@ -793,7 +857,8 @@ export function revokeProjectAgentEnrollment(projectId: string, agentProfileId: 
     .all()
     .map((row: { id: string }) => row.id);
   if (groupIds.length === 0) return;
-  db.delete(chatMember)
+  const deleted = db
+    .delete(chatMember)
     .where(
       and(
         inArray(chatMember.chatId, groupIds),
@@ -801,7 +866,13 @@ export function revokeProjectAgentEnrollment(projectId: string, agentProfileId: 
         eq(chatMember.memberId, agentProfileId),
       ),
     )
-    .run();
+    .returning({ chatId: chatMember.chatId })
+    .all() as { chatId: string }[];
+  // 只有真正删掉成员行的群才换了一版：没被这次移除碰到的群不该因为别处的事动版本。
+  for (const chatId of new Set(deleted.map((row) => row.chatId))) {
+    const row = db.select().from(chat).where(eq(chat.id, chatId)).get();
+    if (row) applyGovernance(toChat(row), "unconditional");
+  }
 }
 
 /**
