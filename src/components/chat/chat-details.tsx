@@ -262,7 +262,7 @@ export function ChatDetails({
                   (members.ok ? "（空）" : "成员读取失败")}
               </dd>
               <dt className="text-muted-foreground">消息数</dt>
-              <dd data-testid="info-message-count">
+              <dd data-testid="inspector-message-count">
                 {info.ok ? info.data.messages.count : "未知"}
               </dd>
             </dl>
