@@ -33,6 +33,7 @@ export const CI_GROUPS = Object.freeze({
     "i7-chat-scope",
     "an-p4d-authority",
   ],
+  tasks: ["ba-task-domain", "bc-task-start", "bd-task-migration", "be-task-info"],
   turns: [
     "k2-cross-family-isolation",
     "m-error-mapping",
