@@ -7,6 +7,10 @@ import type { OpenSession, PiHostCommand, PiHostEvent } from "./protocol";
 import { config } from "../../lib/config";
 import { piHostEvent } from "./protocol";
 
+// 关闭请求发出后子进程要先收尾正在写的会话文件，满载的机器上 1.5 秒不够；
+// 真挂住的 runner 仍然会被强制杀掉并报错，只是不把慢当成故障。
+const RUNNER_CLOSE_GRACE_MS = 10_000;
+
 export class PiHostFailure extends Error {
   constructor(
     readonly code: string,
@@ -233,12 +237,15 @@ export class PiSessionProcess {
           this.child.kill("SIGKILL");
         }
       }
-    }, 1500);
+    }, RUNNER_CLOSE_GRACE_MS);
     try {
       const result = await this.exit;
       this.fail(new PiHostFailure("runner_closed", "Pi runner 已关闭"));
       if (forced || result.code !== 0 || result.signal)
-        throw new PiHostFailure("runner_shutdown_failed", "Pi runner 未正常关闭");
+        throw new PiHostFailure(
+          "runner_shutdown_failed",
+          `Pi runner 未正常关闭（code=${result.code} signal=${result.signal} forced=${forced}）`,
+        );
     } finally {
       clearTimeout(timer);
     }
