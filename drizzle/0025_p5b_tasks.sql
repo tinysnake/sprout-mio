@@ -104,7 +104,6 @@ CREATE TABLE `__new_agent_run_input` (
 INSERT INTO `__new_agent_run_input`("run_id", "message_id", "disposition", "delivered_at", "cancelled_at", "admitted_at", "cancel_reason") SELECT "run_id", "message_id", "disposition", "delivered_at", "cancelled_at", NULL, "cancel_reason" FROM `agent_run_input`;--> statement-breakpoint
 DROP TABLE `agent_run_input`;--> statement-breakpoint
 ALTER TABLE `__new_agent_run_input` RENAME TO `agent_run_input`;--> statement-breakpoint
-PRAGMA foreign_keys=ON;--> statement-breakpoint
 CREATE INDEX `agent_run_input_message_idx` ON `agent_run_input` (`message_id`);--> statement-breakpoint
 CREATE INDEX `agent_run_input_run_disposition_idx` ON `agent_run_input` (`run_id`,`disposition`);--> statement-breakpoint
 CREATE TABLE `__new_message` (
@@ -158,6 +157,7 @@ CREATE INDEX `message_chat_created_at_idx` ON `message` (`chat_id`,`created_at`)
 CREATE UNIQUE INDEX `message_id_chat_unique` ON `message` (`id`,`chat_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `message_task_seq_unique` ON `message` (`task_id`,`task_record_seq`);
 --> statement-breakpoint
+PRAGMA foreign_keys=ON;--> statement-breakpoint
 CREATE TRIGGER task_insert_proposed BEFORE INSERT ON task WHEN NEW.status<>'proposed' OR NEW.chat_id IS NOT NULL OR NEW.revision<>1 OR NEW.assignment_revision<>0 BEGIN SELECT RAISE(ABORT,'task_invalid_transition'); END;
 --> statement-breakpoint
 CREATE TRIGGER task_status_transition BEFORE UPDATE OF status ON task WHEN NOT (NEW.status=OLD.status OR (OLD.status='proposed' AND NEW.status IN ('assigned','canceled')) OR (OLD.status='assigned' AND NEW.status IN ('proposed','finished','canceled')) OR (OLD.status IN ('finished','canceled') AND NEW.status='assigned')) BEGIN SELECT RAISE(ABORT,'task_invalid_transition'); END;

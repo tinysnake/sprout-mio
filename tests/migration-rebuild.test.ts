@@ -166,7 +166,13 @@ function triggersOn(sqlite: Database.Database, table: string): string[] {
 
 function applyRange(sqlite: Database.Database, from: number, to: number) {
   for (const migration of migrations.slice(from, to))
-    for (const statement of migration.statements) sqlite.exec(statement);
+    for (const [index, statement] of migration.statements.entries())
+      try {
+        sqlite.exec(statement);
+      } catch (error) {
+        const detail = statement.length > 160 ? `${statement.slice(0, 160)}…` : statement;
+        throw new Error(`${migration.tag} statement ${index + 1}: ${detail}`, { cause: error });
+      }
 }
 
 /** 迁移执行器把整个文件包在一个事务里，文件内的 PRAGMA foreign_keys 因此无效；测试同样如此。 */
