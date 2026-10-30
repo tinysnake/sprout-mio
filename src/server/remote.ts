@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { machineBindings } from "../domain/machine";
 import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
 import type { WorkerExchangeRemoteInput } from "../contracts/worker";
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import type { ShellFact } from "../contracts/machine";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
@@ -15,6 +15,7 @@ import {
   executionLogReadInputSchema,
   executionReadInputSchema,
   executionSubmitInputSchema,
+  holderExecutionListRequestSchema,
 } from "../contracts/remote";
 import type {
   ExecutionCancel,
@@ -33,6 +34,7 @@ import type {
   RemoteCommand,
   RemoteReport,
 } from "../contracts/remote";
+import type { HolderExecutionListInput, HolderExecutionListView } from "../contracts/membership";
 import type { AppErrorCode } from "../contracts/result";
 import type { WorkerSession } from "../contracts/worker-session";
 import { WORKER_STALE_AFTER_MS } from "../contracts/worker";
@@ -56,17 +58,20 @@ import {
 } from "../db/schema";
 import type { MachineContext } from "../domain/machine";
 import {
+  assertActiveMembership,
   assertAgentContext,
-  assertExecutionHolder,
-  assertRemoteAccess,
+  assertExecutionContinuity,
+  assertExecutionWrite,
+  assertRemoteScope,
+  authorityNow,
   completeLeaseMutation,
-  ensureLease,
   expireExecutions,
   leaseWhere,
   payloadHash,
 } from "./lease";
 import type { AgentRemoteContext } from "./lease";
 import { wakeMcpSession } from "./mcp-relay";
+import { membershipActive } from "./membership";
 
 export class RemoteError extends Error {
   constructor(
@@ -131,7 +136,12 @@ function connection(machineId: string, ctx: Pick<MachineContext, "now" | "bootId
     throw new RemoteError("machine_unavailable");
   return row;
 }
-function executionView(row: Execution, provisionalResult = false): ExecutionView {
+function executionView(
+  row: Execution,
+  ctx: MachineContext | AgentRemoteContext,
+  provisionalResult = false,
+): ExecutionView {
+  const authority = assertExecutionContinuity(row, ctx);
   const result = db
     .select()
     .from(executionResult)
@@ -149,6 +159,13 @@ function executionView(row: Execution, provisionalResult = false): ExecutionView
     machineId: row.machineId,
     authorizationGeneration: row.authorizationGeneration,
     holderInstanceId: row.holderInstanceId,
+    authority: authority
+      ? authority.holderInstanceId === row.holderInstanceId &&
+        authority.generation === row.authorizationGeneration
+        ? "holder"
+        : "inherited"
+      : "history",
+    currentAuthorizationGeneration: authority?.generation ?? null,
     runId: row.runId,
     chatId: row.chatId,
     requestId: row.requestId,
@@ -190,25 +207,8 @@ function executionView(row: Execution, provisionalResult = false): ExecutionView
   };
 }
 type LeaseClaim = { projectId: string; machineId: string; authorizationGeneration: number };
-/** 租约是否仍授权这次执行：状态、代次与 holder 三项都属于通道事实，与调用者是谁无关。 */
-function leaseHeldBy(
-  lease: typeof machineLease.$inferSelect,
-  authorizationGeneration: number,
-  holderInstanceId: string,
-) {
-  return (
-    lease.state === "held" &&
-    lease.generation === authorizationGeneration &&
-    lease.holderInstanceId === holderInstanceId
-  );
-}
 function liveLease(input: LeaseClaim, ctx: AgentRemoteContext) {
-  const lease = ensureLease(input, ctx.now);
-  if (lease.generation !== input.authorizationGeneration)
-    throw new RemoteError("lease_stale_generation");
-  if (lease.state === "fencing") throw new RemoteError("lease_fencing");
-  if (!leaseHeldBy(lease, input.authorizationGeneration, ctx.instanceId))
-    throw new RemoteError("lease_not_holder");
+  return assertExecutionWrite(input, input.authorizationGeneration, ctx);
 }
 function runnerOnline(machineId: string, now: Date) {
   const counter = db
@@ -735,9 +735,11 @@ export function requestExecution(
         .get();
       if (old) {
         if (old.payloadHash !== hash) throw new RemoteError("remote_request_conflict");
+        liveLease(input, ctx);
         expireExecutions(input, ctx.now, ctx.bootId);
         return executionView(
           db.select().from(remoteExecution).where(eq(remoteExecution.id, old.id)).get()!,
+          ctx,
         );
       }
       liveLease(input, ctx);
@@ -826,6 +828,7 @@ export function requestExecution(
         .run();
       return executionView(
         db.select().from(remoteExecution).where(eq(remoteExecution.id, id)).get()!,
+        ctx,
       );
     })
     .immediate();
@@ -837,8 +840,7 @@ export function getExecution(
   const input = executionReadInputSchema.parse(raw);
   return sqlite
     .transaction(() => {
-      assertRemoteAccess(input, ctx);
-      expireExecutions(input, ctx.now, ctx.bootId);
+      assertRemoteScope(input, ctx);
       const row = db
         .select()
         .from(remoteExecution)
@@ -851,11 +853,90 @@ export function getExecution(
         )
         .get();
       if (!row) throw new RemoteError("not_found");
-      assertExecutionHolder(row, ctx);
-      return executionView(row);
+      assertExecutionContinuity(row, ctx);
+      expireExecutions(input, ctx.now, ctx.bootId);
+      return executionView(
+        db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+        ctx,
+      );
     })
     .immediate();
 }
+export function listHolderExecutions(
+  raw: HolderExecutionListInput,
+  ctx: AgentRemoteContext,
+): HolderExecutionListView {
+  const input = holderExecutionListRequestSchema.parse({ ...raw, projectId: ctx.projectId });
+  return sqlite
+    .transaction(() => {
+      const authority = assertExecutionContinuity(
+        { ...input, authorizationGeneration: 0, holderInstanceId: ctx.instanceId },
+        ctx,
+      )!;
+      let before: { createdAt: Date; id: string } | undefined;
+      if (input.before) {
+        try {
+          const decoded = Buffer.from(input.before, "base64url");
+          const value = JSON.parse(decoded.toString("utf8"));
+          if (
+            decoded.toString("base64url") !== input.before ||
+            !value ||
+            value.projectId !== input.projectId ||
+            value.machineId !== input.machineId ||
+            !Number.isSafeInteger(value.createdAt) ||
+            value.createdAt < 0 ||
+            !executionReadInputSchema.shape.executionId.safeParse(value.id).success
+          )
+            throw new Error("invalid cursor");
+          before = { createdAt: new Date(value.createdAt), id: value.id };
+          if (!Number.isFinite(before.createdAt.getTime())) throw new Error("invalid cursor");
+        } catch {
+          throw new RemoteError("validation_failed");
+        }
+      }
+      expireExecutions(input, ctx.now, ctx.bootId);
+      const rows = db
+        .select()
+        .from(remoteExecution)
+        .where(
+          and(
+            eq(remoteExecution.projectId, input.projectId),
+            eq(remoteExecution.machineId, input.machineId),
+            lte(remoteExecution.authorizationGeneration, authority.generation),
+            before
+              ? or(
+                  lt(remoteExecution.createdAt, before.createdAt),
+                  and(
+                    eq(remoteExecution.createdAt, before.createdAt),
+                    lt(remoteExecution.id, before.id),
+                  ),
+                )
+              : undefined,
+          ),
+        )
+        .orderBy(desc(remoteExecution.createdAt), desc(remoteExecution.id))
+        .limit(input.limit + 1)
+        .all();
+      const page = rows.slice(0, input.limit);
+      const last = page.at(-1);
+      return {
+        executions: page.map((row: Execution) => executionView(row, ctx)),
+        nextCursor:
+          rows.length > input.limit && last
+            ? Buffer.from(
+                JSON.stringify({
+                  projectId: input.projectId,
+                  machineId: input.machineId,
+                  createdAt: last.createdAt.getTime(),
+                  id: last.id,
+                }),
+              ).toString("base64url")
+            : null,
+      };
+    })
+    .immediate();
+}
+
 export function listProjectExecutions(
   input: { projectId: string; machineId?: string; limit?: number },
   ctx: MachineContext,
@@ -872,7 +953,7 @@ export function listProjectExecutions(
       )
         throw new RemoteError("not_found");
       if (input.machineId)
-        assertRemoteAccess({ projectId: input.projectId, machineId: input.machineId }, ctx);
+        assertRemoteScope({ projectId: input.projectId, machineId: input.machineId }, ctx);
       const rows = db
         .select()
         .from(remoteExecution)
@@ -886,12 +967,13 @@ export function listProjectExecutions(
         .limit(Math.min(100, Math.max(1, input.limit ?? 20)))
         .all();
       for (const row of rows) {
-        assertRemoteAccess(row, ctx);
+        assertRemoteScope(row, ctx);
         expireExecutions(row, ctx.now, ctx.bootId);
       }
       return rows.map((row: Execution) =>
         executionView(
           db.select().from(remoteExecution).where(eq(remoteExecution.id, row.id)).get()!,
+          ctx,
           true,
         ),
       );
@@ -909,11 +991,12 @@ export function readExecutionLog(
   const input = executionLogReadInputSchema.parse(raw);
   return sqlite
     .transaction(() => {
-      assertRemoteAccess(input, ctx);
+      assertRemoteScope(input, ctx);
+      const found = executionByKey(input.executionId, input);
+      if (!found) throw new RemoteError("not_found");
+      assertExecutionContinuity(found, ctx);
       expireExecutions(input, ctx.now, ctx.bootId);
-      const row = executionByKey(input.executionId, input);
-      if (!row) throw new RemoteError("not_found");
-      assertExecutionHolder(row, ctx);
+      const row = executionByKey(input.executionId, input)!;
       const from = row.availableFromSeq;
       // 没带游标时从可读起点开始：前缀被裁剪的执行从 0 读会直接撞 gap，页面没有别的入口。
       const cursor = input.cursor?.nextSequence ?? (from !== null ? from - 1 : 0);
@@ -1037,18 +1120,15 @@ export function enqueueCancellation(
       assertAgentContext(input, ctx);
       const row = executionByKey(input.executionId, input);
       if (!row) throw new RemoteError("cancellation_not_found");
-      // 通道核对先于幂等返回：幂等键只保证「同一请求不重复投递」，不保证调用方还有权碰这台
-      // Machine。旧代次、已换 holder 或已释放的租约在命中旧行时同样要拒，且不读写任何行。
-      if (input.authorizationGeneration !== row.authorizationGeneration)
-        throw new RemoteError("lease_stale_generation");
-      liveLease(row, ctx);
+      const authority = assertExecutionWrite(input, input.authorizationGeneration, ctx);
+      assertExecutionContinuity(row, ctx);
       const key = cancellationRequestKey({ kind: "agent", id: ctx.instanceId }, input.requestId);
       const old = db
         .select()
         .from(executionCancellation)
         .where(
           and(
-            eq(executionCancellation.holderInstanceId, row.holderInstanceId),
+            eq(executionCancellation.holderInstanceId, authority.holderInstanceId!),
             eq(executionCancellation.requestId, key),
           ),
         )
@@ -1059,6 +1139,8 @@ export function enqueueCancellation(
       }
       if (SETTLED_STATES.has(row.state) || row.terminalAt)
         throw new RemoteError("cancellation_already_terminal");
+      if (row.dispatchConnectionGeneration === null || !runnerOnline(row.machineId, ctx.now))
+        throw new RemoteError("cancellation_delivery_unconfirmed");
       const open = db
         .select()
         .from(executionCancellation)
@@ -1079,8 +1161,8 @@ export function enqueueCancellation(
           requestId: key,
           projectId: row.projectId,
           machineId: row.machineId,
-          authorizationGeneration: row.authorizationGeneration,
-          holderInstanceId: row.holderInstanceId,
+          authorizationGeneration: authority.generation,
+          holderInstanceId: authority.holderInstanceId!,
           actorKind: "agent",
           actorId: ctx.instanceId,
           state: "requested",
@@ -1132,18 +1214,18 @@ export function cancelExecution(
         .get();
       // 不区分「不存在」与「别人的」：两者都是 not_found。
       if (!found) throw new RemoteError("not_found");
-      assertRemoteAccess({ projectId: found.projectId, machineId: found.machineId }, ctx);
+      assertRemoteScope({ projectId: found.projectId, machineId: found.machineId }, ctx);
+      assertActiveMembership(found);
       expireExecutions(
         { projectId: found.projectId, machineId: found.machineId },
         ctx.now,
         ctx.bootId,
       );
       const row = db.select().from(remoteExecution).where(eq(remoteExecution.id, found.id)).get()!;
-      // 幂等命中同样要核对投递通道：旧代次或已换 holder 时，这条意图没有任何人能被投递到，
-      // 不能因为「同一个 requestId」就把它当成仍然成立。
-      const lease = ensureLease({ projectId: row.projectId, machineId: row.machineId }, ctx.now);
-      if (!leaseHeldBy(lease, row.authorizationGeneration, row.holderInstanceId))
+      const current = authorityNow(row);
+      if (!current || current.state !== "active" || !current.holderInstanceId)
         throw new RemoteError("cancellation_delivery_unconfirmed");
+      const authority = assertExecutionWrite(row, current.generation, ctx);
       const key = cancellationRequestKey({ kind: "human", id: ctx.userId }, input.requestId);
       const old = db
         .select()
@@ -1161,6 +1243,8 @@ export function cancelExecution(
         return cancellationView(old);
       }
       if (row.terminalAt !== null) throw new RemoteError("cancellation_already_terminal");
+      if (row.dispatchConnectionGeneration === null || !runnerOnline(row.machineId, ctx.now))
+        throw new RemoteError("cancellation_delivery_unconfirmed");
       const open = db
         .select()
         .from(executionCancellation)
@@ -1180,8 +1264,8 @@ export function cancelExecution(
           requestId: key,
           projectId: row.projectId,
           machineId: row.machineId,
-          authorizationGeneration: row.authorizationGeneration,
-          holderInstanceId: row.holderInstanceId,
+          authorizationGeneration: authority.generation,
+          holderInstanceId: authority.holderInstanceId!,
           actorKind: "human",
           actorId: ctx.userId,
           state: "requested",
@@ -1253,16 +1337,11 @@ function drainCancellationIntents(machineId: string, now: Date): ExecutionCancel
       .where(eq(remoteExecution.id, row.executionId))
       .get();
     if (!execution?.runnerToken || execution.terminalAt) continue;
-    const lease = db
-      .select()
-      .from(machineLease)
-      .where(
-        and(eq(machineLease.projectId, row.projectId), eq(machineLease.machineId, row.machineId)),
-      )
-      .get();
+    const lease = authorityNow(row);
     if (
+      !membershipActive(row.projectId, row.machineId) ||
       !lease ||
-      lease.state !== "held" ||
+      lease.state !== "active" ||
       lease.generation !== row.authorizationGeneration ||
       lease.holderInstanceId !== row.holderInstanceId
     )
@@ -1395,18 +1474,26 @@ function delivery(report: RemoteReport, ctx: AuthenticatedWorkerContext) {
       ),
     )
     .get();
-  if (
-    !frame ||
-    !sameSession(frame.responseJson.session, ctx.session) ||
-    !frame.responseJson.remote.commands.some(
+  const proven = Boolean(
+    frame &&
+    sameSession(frame.responseJson.session, ctx.session) &&
+    frame.responseJson.remote.commands.some(
       (command: RemoteCommand) =>
-        command.executionId === row.id && command.fingerprint === report.fingerprint,
-    )
-  )
-    throw new RemoteError("not_found");
+        command.executionId === row.id &&
+        command.fingerprint === report.fingerprint &&
+        command.projectId === row.projectId &&
+        command.machineId === row.machineId &&
+        command.authorizationGeneration === row.authorizationGeneration &&
+        command.holderInstanceId === row.holderInstanceId,
+    ),
+  );
   if (report.phase === "terminal" && report.payload.kind !== row.operationJson.kind)
     throw new RemoteError("remote_request_conflict");
-  return row;
+  const current = db.select().from(machineLease).where(leaseWhere(row)).get();
+  return {
+    row,
+    proven: proven && current !== undefined && row.authorizationGeneration <= current.generation,
+  };
 }
 function remoteExchangeBytes(remote: RemoteWireOutput, ctx: AuthenticatedWorkerContext) {
   const root = db.select().from(machine).where(eq(machine.id, ctx.session.machineId)).get()!;
@@ -1415,10 +1502,9 @@ function remoteExchangeBytes(remote: RemoteWireOutput, ctx: AuthenticatedWorkerC
       ? {
           root: root.rootDirectory,
           rootRevision: root.rootRevision,
-          bindings: machineBindings(ctx.session.machineId).map(({ projectId, description }) => ({
-            projectId,
-            description,
-          })),
+          bindings: machineBindings(ctx.session.machineId).map(
+            ({ projectId, description, revision }) => ({ projectId, description, revision }),
+          ),
         }
       : null;
   return Buffer.byteLength(
@@ -1456,8 +1542,9 @@ export function applyRemoteExchange(
     .all();
   for (const key of leases) expireExecutions(key, ctx.now, ctx.bootId);
   for (const report of input.results) {
-    const row = delivery(report, ctx);
+    const { row, proven } = delivery(report, ctx);
     if (report.phase === "running") {
+      if (!proven) throw new RemoteError("not_found");
       if (row.state === "dispatched")
         db.update(remoteExecution)
           .set({ state: "running" })
@@ -1466,6 +1553,9 @@ export function applyRemoteExchange(
       continue;
     }
     const hash = payloadHash(report);
+    // 终态归约与 ignored_terminal/drainedAt 更新之前先要求真实投递帧证明：
+    // 没有已提交 exchange frame 里的 command，同一 row/session/origin 也不能伪造终态。
+    if (!proven) throw new RemoteError("not_found");
     const previous = db
       .select()
       .from(executionResult)
@@ -1488,20 +1578,12 @@ export function applyRemoteExchange(
         .where(eq(remoteExecution.id, row.id))
         .run();
     } else {
-      const lease = ensureLease(row, ctx.now);
-      const authorized =
-        lease.state === "held" &&
-        lease.generation === row.authorizationGeneration &&
-        lease.holderInstanceId === row.holderInstanceId;
-      const outcome = authorized ? report.outcome : "rejected";
-      const payload = authorized
-        ? report.payload
-        : { kind: row.operationJson.kind, failureReason: "authorization_revoked" as const };
+      const outcome = report.outcome;
+      const payload = report.payload;
       // shell 的 waitMs 快照（exited:false）只是「已启动」的观察：要把 pid/当前输出
       // 交给工具面，但不能把执行落成终态，否则长命令在窗口后既不能取消也不再采日志。
       // 真正的终态报告随后覆盖同一行结果，并把执行归约。
       const provisional =
-        authorized &&
         !("failureReason" in report.payload) &&
         report.payload.kind === "shell" &&
         !report.payload.exited;
@@ -1588,7 +1670,7 @@ export function applyRemoteExchange(
         !row ||
         row.projectId !== ack.projectId ||
         row.machineId !== ack.machineId ||
-        row.authorizationGeneration !== ack.authorizationGeneration ||
+        row.authorizationGeneration > ack.authorizationGeneration ||
         row.dispatchConnectionGeneration !== ctx.session.generation
       )
         throw new RemoteError("not_found");
@@ -1597,7 +1679,7 @@ export function applyRemoteExchange(
           drainedAt: ctx.now,
           ...(!row.terminalAt
             ? {
-                state: "rejected" as const,
+                state: "unknown" as const,
                 terminalAt: ctx.now,
                 failureReason: "authorization_revoked" as const,
               }
@@ -1614,13 +1696,16 @@ export function applyRemoteExchange(
     .from(machineLease)
     .where(eq(machineLease.machineId, ctx.session.machineId))
     .all()) {
+    const current = authorityNow(lease);
+    const revoked =
+      current?.state === "active" && !membershipActive(lease.projectId, lease.machineId);
     if (ctx.mode === "normal")
       output.authorizations.push({
         projectId: lease.projectId,
         machineId: lease.machineId,
         generation: lease.generation,
-        holderInstanceId: lease.holderInstanceId,
-        state: lease.state === "held" ? "active" : lease.state === "fencing" ? "draining" : "free",
+        holderInstanceId: revoked ? null : (current?.holderInstanceId ?? null),
+        state: revoked ? "free" : (current?.state ?? "free"),
       });
     if (lease.state === "fencing") {
       const mutation = db
@@ -1641,7 +1726,7 @@ export function applyRemoteExchange(
           and(
             eq(remoteExecution.projectId, lease.projectId),
             eq(remoteExecution.machineId, lease.machineId),
-            eq(remoteExecution.authorizationGeneration, lease.generation),
+            lte(remoteExecution.authorizationGeneration, lease.generation),
             eq(remoteExecution.dispatchConnectionGeneration, ctx.session.generation),
             isNull(remoteExecution.drainedAt),
           ),
@@ -1707,15 +1792,16 @@ export function applyRemoteExchange(
       )
       .all()) {
       if (normalOutput.commands.length >= 8) break;
-      const lease = db.select().from(machineLease).where(leaseWhere(row)).get();
+      const lease = authorityNow(row);
       let failure:
         | "authorization_revoked"
         | "capability_unavailable"
         | "directory_unavailable"
         | null = null;
       if (
+        !membershipActive(row.projectId, row.machineId) ||
         !lease ||
-        lease.state !== "held" ||
+        lease.state !== "active" ||
         lease.generation !== row.authorizationGeneration ||
         lease.holderInstanceId !== row.holderInstanceId
       )

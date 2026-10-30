@@ -191,6 +191,8 @@ try {
   const { sqlite } = await import("../../src/db");
   const { createMachine, saveProjectMachineBinding } = await import("../../src/domain/machine");
   const { seedRemoteActor } = await import("./remote-actors");
+  const { detachMachine, rejoinProjectMachine } = await import("../../src/server/membership");
+  const { getExecution } = await import("../../src/server/remote");
   const bootId = (
     sqlite.prepare("SELECT id FROM runtime_boot ORDER BY started_at DESC LIMIT 1").get() as {
       id: string;
@@ -536,20 +538,142 @@ try {
     expectedGeneration: 4,
     requestId: req(),
   });
+  const handed = await good<LeaseMutationView>("lease_mutate", {
+    ...key,
+    action: "handoff",
+    expectedGeneration: 5,
+    targetInstanceId: nonHolder.instanceId,
+    requestId: req(),
+  });
+  assert.equal(handed.state, "completed");
+  assert.equal(handed.completedGeneration, 6);
+  const inherited = await good<ExecutionView>(
+    "execution_get",
+    { ...key, executionId: execution.executionId },
+    nonHolderGrant,
+  );
+  assert.equal(inherited.executionId, execution.executionId);
+  assert.equal(inherited.holderInstanceId, actor.instanceId);
+  assert.equal(inherited.runId, actor.runId);
+  assert.equal(inherited.authorizationGeneration, 1);
+  assert.equal(inherited.authority, "inherited");
+  assert.equal(inherited.currentAuthorizationGeneration, 6);
+  assert.equal(inherited.state, "succeeded");
+  await good(
+    "execution_log_read",
+    { ...key, executionId: execution.executionId, cursor: null, limitBytes: 65536 },
+    nonHolderGrant,
+  );
+  const discovered = await good<{ executions: ExecutionView[]; nextCursor: string | null }>(
+    "execution_list",
+    { ...key, limit: 100 },
+    nonHolderGrant,
+  );
+  assert(
+    discovered.executions.some(
+      (view) => view.executionId === execution.executionId && view.authority === "inherited",
+    ),
+  );
+  await rejected(
+    "execution_get",
+    { ...key, executionId: execution.executionId },
+    "lease_not_holder",
+  );
+  await rejected(
+    "execution_log_read",
+    { ...key, executionId: execution.executionId, cursor: null, limitBytes: 65536 },
+    "lease_not_holder",
+  );
+  await rejected("execution_list", { ...key, limit: 20 }, "lease_not_holder");
+  await rejected(
+    "execution_cancel",
+    { ...key, executionId: execution.executionId, authorizationGeneration: 6, requestId: req() },
+    "lease_not_holder",
+  );
+  await rejected("execution_submit", input, "lease_stale_generation");
+  await rejected(
+    "execution_submit",
+    { ...input, requestId: req(), authorizationGeneration: 6 },
+    "lease_not_holder",
+  );
+  const human = { userId: actor.userId, bootId, now: new Date(), requestId: req() };
+  const removed = detachMachine(
+    {
+      ...key,
+      requestId: req(),
+      expectedEpoch: 1,
+      expectedRevision: 1,
+      expectedGeneration: 6,
+      confirm: true,
+    },
+    human,
+  );
+  assert.equal(removed.state, "removed");
+  for (const credential of [grant, nonHolderGrant]) {
+    for (const [type, parameters] of [
+      ["execution_get", { ...key, executionId: execution.executionId }],
+      [
+        "execution_log_read",
+        { ...key, executionId: execution.executionId, cursor: null, limitBytes: 65536 },
+      ],
+      ["execution_list", { ...key, limit: 20 }],
+    ] as const)
+      await rejected(type, parameters, "lease_not_holder", credential);
+    for (const [type, parameters] of [
+      [
+        "execution_cancel",
+        {
+          ...key,
+          executionId: execution.executionId,
+          authorizationGeneration: 6,
+          requestId: req(),
+        },
+      ],
+      ["execution_submit", input],
+    ] as const)
+      await rejected(type, parameters, "membership_removed", credential);
+  }
+  const history = getExecution({ ...key, executionId: execution.executionId }, human);
+  assert.equal(history.state, "succeeded");
+  assert.equal(history.authority, "history");
+  assert.equal(history.currentAuthorizationGeneration, null);
+  assert.equal(history.holderInstanceId, actor.instanceId);
+  rejoinProjectMachine(
+    { ...key, requestId: req(), expectedEpoch: 1, expectedRevision: 1, confirm: true },
+    human,
+  );
+  await good("lease_mutate", {
+    ...key,
+    action: "acquire",
+    expectedGeneration: 7,
+    requestId: req(),
+  });
+  facts.P4dContinuity = {
+    originGeneration: 1,
+    inheritedCurrentGeneration: 6,
+    originalHolderPreserved: true,
+    getLogListReadOverHttp: true,
+    oldHolderReadsWritesAndReplayRejected: true,
+    removedAgentGetLogListCancelReplayRejected: true,
+    humanOriginalSuccessPreserved: true,
+  };
+  pass(
+    "P4d HTTP handoff inherits get/log/list, keeps origin, rejects old holder and removed Agent paths; Human history retains success",
+  );
   await control("revoke", actor.runId);
   await rejected("lease_get", key, "remote_grant_invalid", grant, 401);
   const retainedLease = sqlite
     .prepare("SELECT state,generation FROM machine_lease WHERE project_id=? AND machine_id=?")
     .get(projectId, machineId) as { state: string; generation: number };
   assert.equal(retainedLease.state, "held");
-  assert.equal(retainedLease.generation, 5);
+  assert.equal(retainedLease.generation, 8);
   assert(existsSync(counter));
   assert.equal(
     (await good<{ lease: LeaseView }>("lease_get", { projectId: projectB, machineId }, grantB))
       .lease.generation,
     1,
   );
-  facts.grantRevocation = { leaseRetained: true, generation: 5, filesPreserved: true };
+  facts.grantRevocation = { leaseRetained: true, generation: 8, filesPreserved: true };
   pass("grant revocation rejects HTTP without releasing leases or deleting files");
   await control("cleanup");
   await stop(server);

@@ -86,6 +86,8 @@ const executionBase = {
   machineId: demoMachineDetails[0].machine.id,
   authorizationGeneration: 4,
   holderInstanceId: demoInstanceIds.primary,
+  authority: "history" as const,
+  currentAuthorizationGeneration: null,
   runId: "run_12345678-1234-4234-8234-1234567890ab",
   chatId: "cnv_44444444-4444-4444-8444-444444444444",
   runtimeDeadlineAt: null,

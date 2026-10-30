@@ -3,6 +3,10 @@ import { FolderOpen } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { MachineInstallInstructions } from "./machine-install-instructions";
 import { MachineShellSummary } from "./machine-shell-summary";
+import type { LeaseView } from "../../contracts/lease";
+import type { ExecutionView } from "../../contracts/remote";
+import type { MachineRelationView } from "../../server/functions/membership";
+import { MembershipSections } from "./membership-sections";
 import type {
   MachineDetail,
   MachineRootDirectory,
@@ -49,6 +53,14 @@ export function MachineDetailPanel({
   onEnrollmentRevoked,
   installOrigin,
   actions,
+  relations,
+  relationsLoading = false,
+  relationsError = null,
+  relationsLastSuccessAt = null,
+  onRelationsChanged,
+  leases = [],
+  holderNames = {},
+  executions = null,
 }: {
   detail: MachineDetail;
   back?: ReactNode;
@@ -77,6 +89,15 @@ export function MachineDetailPanel({
   onEnrollmentRevoked?: (machineId: string) => void;
   installOrigin?: string;
   actions?: ReactNode;
+  /** 关系列表由页面注入；未注入时保留旧绑定列表，供开发场景使用。 */
+  relations?: readonly MachineRelationView[];
+  relationsLoading?: boolean;
+  relationsError?: AppError | null;
+  relationsLastSuccessAt?: string | null;
+  onRelationsChanged?: () => void;
+  leases?: readonly LeaseView[];
+  holderNames?: Readonly<Record<string, string>>;
+  executions?: readonly ExecutionView[] | null;
 }) {
   const connection = connectionLabel(detail.connection);
   const pairing = enrollmentLabel(detail.enrollmentStatus);
@@ -84,6 +105,11 @@ export function MachineDetailPanel({
   const binding = bindingProject
     ? (detail.bindings.find((item) => item.intent.projectId === bindingProject.id) ?? null)
     : null;
+  const bindingRelation = bindingProject
+    ? relations?.find((relation) => relation.projectId === bindingProject.id)
+    : undefined;
+  const bindingActive = !bindingRelation || bindingRelation.membership?.state === "active";
+  const relationStale = relationsError !== null;
 
   const enrollmentSection = (
     <SettingsSection title="配对与安装" testId="machine-enrollment-section">
@@ -279,7 +305,22 @@ export function MachineDetailPanel({
               description="绑定保存 Project 归属与说明；路径由 Machine root 与 Project ID 派生，Worker 另外回报目录观察。"
               testId="machine-bindings"
             >
-              {detail.bindings.length === 0 ? (
+              {relations ? (
+                <MembershipSections
+                  scope="machine"
+                  projectNames={projectNames}
+                  relations={relations}
+                  machines={[detail]}
+                  leases={leases}
+                  holderNames={holderNames}
+                  executions={executions ?? undefined}
+                  loading={relationsLoading}
+                  error={relationsError}
+                  lastSuccessAt={relationsLastSuccessAt}
+                  onChanged={() => onRelationsChanged?.()}
+                  testId="machine-membership"
+                />
+              ) : detail.bindings.length === 0 ? (
                 <p
                   data-testid="machine-bindings-empty"
                   className="text-xs leading-6 text-muted-foreground"
@@ -343,7 +384,15 @@ export function MachineDetailPanel({
                   })}
                 </ul>
               )}
-              {bindingProject && onSaveBinding && (
+              {bindingProject && onSaveBinding && !bindingActive && (
+                <p
+                  data-testid="machine-binding-inactive-note"
+                  className="mt-4 text-xs leading-6 text-status-warning"
+                >
+                  当前关系不是 active；保存绑定不能复活已移出的关系。请先在已移出记录中重新加入。
+                </p>
+              )}
+              {bindingProject && onSaveBinding && bindingActive && (
                 <div className="mt-6">
                   <h3 className="text-sm font-medium">
                     {binding ? "编辑绑定" : `加入 ${bindingProject.name}`}
@@ -351,14 +400,16 @@ export function MachineDetailPanel({
                   <p className="mt-1 mb-4 text-xs leading-6 text-muted-foreground">
                     说明保存到当前 Project。工作路径在 Machine root 设置后派生，由 Worker 验证。
                   </p>
-                  <MachineBindingForm
-                    key={`${detail.machine.id}:${bindingProject.id}`}
-                    machineId={detail.machine.id}
-                    project={bindingProject}
-                    binding={binding}
-                    submit={onSaveBinding}
-                    onSaved={onBindingSaved}
-                  />
+                  <fieldset disabled={relationStale} className="min-w-0">
+                    <MachineBindingForm
+                      key={`${detail.machine.id}:${bindingProject.id}`}
+                      machineId={detail.machine.id}
+                      project={bindingProject}
+                      binding={binding}
+                      submit={onSaveBinding}
+                      onSaved={onBindingSaved}
+                    />
+                  </fieldset>
                 </div>
               )}
               {!bindingProject && (

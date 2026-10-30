@@ -123,12 +123,12 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ### P4d 实现交接、收回与 Machine 移除
 
-- [ ] 实现向指定分身原子交接，占用不经过释放空窗。
-- [ ] 验证旧请求、重复交接、响应丢失和离线重连，交接后旧 holder 不再有操作权。
-- [ ] 实现 Human 强制收回与带租约移除 Machine 的警告确认。无法确认撤权时保留待处理占用。
-- [ ] 验证新 holder 可以查询和管理原有执行，租约动作不自动清理进程或文件。
-- [ ] 向受影响的活动 runs 投递资源撤销通知，不一律停止 run。
-- [ ] 将 Machine、租约和执行相关事实接入已有页面与 Info Hub。
+- [x] 实现向指定分身原子交接，占用不经过释放空窗。证据 [原子交接](p4d/summary.md#1-向指定分身原子交接占用不经过释放空窗)，重跑 `bash scripts/verify/an-p4d-authority.sh`。
+- [x] 验证旧请求、重复交接、响应丢失和离线重连，交接后旧 holder 不再有操作权。证据 [旧请求与重连反证](p4d/summary.md#2-验证旧请求重复交接响应丢失和离线重连交接后旧-holder-不再有操作权)，重跑 `bash scripts/verify/an-p4d-authority.sh`、`bash scripts/verify/ap-p4d-handoff-worker.sh`。
+- [x] 实现 Human 强制收回与带租约移除 Machine 的警告确认。无法确认撤权时保留待处理占用。证据 [收回与带租约移除](p4d/summary.md#3-human-强制收回与带租约移除-machine-的警告确认无法确认撤权时保留待处理占用)，重跑 `bash scripts/verify/an-p4d-authority.sh`、`bash scripts/verify/aq-p4d-pages.sh`。
+- [x] 验证新 holder 可以查询和管理原有执行，租约动作不自动清理进程或文件。证据 [新 holder 接续与不清理](p4d/summary.md#4-验证新-holder-可以查询和管理原有执行租约动作不自动清理进程或文件)，重跑 `bash scripts/verify/ap-p4d-handoff-worker.sh`。
+- [x] 向受影响的活动 runs 投递资源撤销通知，不一律停止 run。证据 [撤销通知投递](p4d/summary.md#5-向受影响的活动-runs-投递资源撤销通知不一律停止-run)，重跑 `bash scripts/verify/an-p4d-authority.sh`。
+- [x] 将 Machine、租约和执行相关事实接入已有页面与 Info Hub。证据 [页面与 Info Hub 接入](p4d/summary.md#6-将-machine租约和执行相关事实接入已有页面与-info-hub)，重跑 `bash scripts/verify/aq-p4d-pages.sh`。
 
 出口条件是 Human 可以看到 Agent 使用真实 macOS Machine 完成一次执行、跨 run 接续、交接和收回。并发与故障场景必须有可重跑证据。
 

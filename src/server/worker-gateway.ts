@@ -27,6 +27,7 @@ import { getRequestContext, REQUEST_ID_HEADER } from "./request-context";
 import { machineRuntimeContext, runtimeSnapshot } from "./runtime";
 import { applyRemoteExchange, drainRemoteResponse, RemoteError } from "./remote";
 import { LeaseError } from "./lease";
+import { latestMembership } from "./membership";
 
 type WorkerCode = (typeof WORKER_ERROR_CODES)[number];
 export class WorkerError extends Error {
@@ -256,6 +257,10 @@ function normalExchange(input: NormalExchange, ctx: WorkerContext): ExchangeData
   }
   const root = db.select().from(machine).where(eq(machine.id, session.machineId)).get()!;
   for (const observation of input.observations) {
+    const membership = latestMembership({
+      projectId: observation.projectId,
+      machineId: session.machineId,
+    });
     const binding = db
       .select()
       .from(projectMachine)
@@ -266,7 +271,13 @@ function normalExchange(input: NormalExchange, ctx: WorkerContext): ExchangeData
         ),
       )
       .get();
-    if (!binding || root.rootRevision !== observation.revision || root.rootDirectory === null)
+    if (
+      membership?.state !== "active" ||
+      !binding ||
+      binding.revision !== observation.bindingRevision ||
+      root.rootRevision !== observation.revision ||
+      root.rootDirectory === null
+    )
       throw new WorkerError("conflict");
     const values = {
       machineId: session.machineId,
@@ -308,9 +319,10 @@ function normalExchange(input: NormalExchange, ctx: WorkerContext): ExchangeData
     configuration: {
       root: root.rootDirectory,
       rootRevision: root.rootRevision,
-      bindings: machineBindings(session.machineId).map(({ projectId, description }) => ({
+      bindings: machineBindings(session.machineId).map(({ projectId, description, revision }) => ({
         projectId,
         description,
+        revision,
       })),
     },
     remote: applyRemoteExchange(input.remote, { ...ctx, session, seq, mode: "normal" }),

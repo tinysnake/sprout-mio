@@ -464,7 +464,8 @@ try {
   }
   await page.setViewportSize({width:390,height:1000});
   await page.getByTestId('machine-detail-back').click(); await page.waitForURL(`**/projects/${projectId}/settings`);
-  await page.getByTestId('machine-item').filter({hasText:'Integration Mac'}).click();
+  // 真实入口是关系行内的「管理租约与执行」链接；machine-item 现在是 li，不再可点。
+  await page.getByTestId('machine-item').filter({hasText:'Integration Mac'}).getByTestId('lease-manage-link').click();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   await page.goBack(); await page.waitForURL(`**/projects/${projectId}/settings`);
   await page.goForward(); await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`); await page.reload();

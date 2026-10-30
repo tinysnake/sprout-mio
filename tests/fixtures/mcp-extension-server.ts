@@ -131,6 +131,11 @@ function actor(targetProject: string): AgentRemoteContext {
       "INSERT OR IGNORE INTO project_machine(project_id,machine_id,created_by,revision,created_at,updated_at) VALUES (?,?,'owner',1,1,1)",
     )
     .run(targetProject, machineId);
+  sqlite
+    .prepare(
+      "INSERT OR IGNORE INTO project_machine_membership(project_id,machine_id,epoch,state,joined_at) VALUES (?,?,1,'active',1)",
+    )
+    .run(targetProject, machineId);
   return {
     userId: "owner",
     projectId: targetProject,

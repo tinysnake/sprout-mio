@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
   forceReclaimLeaseInputSchema,
@@ -14,6 +14,7 @@ import type {
   LeaseReadInput,
   LeaseView,
 } from "../contracts/lease";
+import type { AuthorityNow, ExecutionOrigin } from "../contracts/membership";
 import type { AppErrorCode } from "../contracts/result";
 import { WORKER_STALE_AFTER_MS } from "../contracts/worker";
 import { db, sqlite } from "../db";
@@ -34,6 +35,10 @@ import {
   remoteToolGrant,
 } from "../db/schema";
 import type { MachineContext } from "../domain/machine";
+import { assertMembershipOperable, latestMembership, onLeaseMutationCompleted } from "./membership";
+import { hasNoticeCause, insertRevokeNotice } from "./notices";
+import type { RevokedExecution } from "./notices";
+import { membershipCauseId } from "../contracts/notice";
 
 /**
  * Worker 重启后的恢复宽限：新连接代次接上后，先给归约事实留出这段时间。
@@ -82,7 +87,7 @@ export const authorizationWhere = (key: LeaseKey, generation: number) =>
     eq(leaseAuthorization.machineId, key.machineId),
     eq(leaseAuthorization.generation, generation),
   );
-export function assertRemoteAccess(key: LeaseKey, ctx: MachineContext | AgentRemoteContext) {
+export function assertRemoteScope(key: LeaseKey, ctx: MachineContext | AgentRemoteContext) {
   if (!ctx.userId) throw new LeaseError("unauthorized");
   if (
     ("projectId" in ctx && key.projectId !== ctx.projectId) ||
@@ -108,38 +113,78 @@ export function assertRemoteAccess(key: LeaseKey, ctx: MachineContext | AgentRem
       .get()
   )
     throw new LeaseError("not_found");
+  if ("instanceId" in ctx) assertRunIdentity(key, ctx);
 }
-/**
- * 执行与日志只有当前 holder 能读。人类身份仍按 Project 创建者与 Machine 归属判定；分身身份
- * 额外核对执行归属、Machine 当前租约状态、holder 与代次，任一不满足一律 `lease_not_holder`。
- * 读取是只读裁决：租约缺失按「不成立」处理，不借读路径补建租约行。
- */
-export function assertExecutionHolder(
-  execution: {
-    projectId: string;
-    machineId: string;
-    holderInstanceId: string;
-    authorizationGeneration: number;
-  },
-  ctx: MachineContext | AgentRemoteContext,
-) {
-  if (!("instanceId" in ctx)) return;
-  const lease = db
+export const assertRemoteAccess = assertRemoteScope;
+
+/** Read-only projection; never creates a lease or repairs authorization history. */
+export function authorityNow(key: LeaseKey): AuthorityNow | undefined {
+  const lease = db.select().from(machineLease).where(leaseWhere(key)).get();
+  if (!lease) return;
+  const authorization = db
     .select()
-    .from(machineLease)
-    .where(leaseWhere({ projectId: execution.projectId, machineId: execution.machineId }))
+    .from(leaseAuthorization)
+    .where(authorizationWhere(key, lease.generation))
     .get();
+  if (!authorization || authorization.state === "revoked") return;
+  return {
+    generation: lease.generation,
+    holderInstanceId: lease.holderInstanceId,
+    state: authorization.state,
+  };
+}
+
+export function assertActiveMembership(key: LeaseKey) {
+  assertMembershipOperable(key.projectId, key.machineId);
+}
+
+export function assertExecutionContinuity(
+  execution: ExecutionOrigin,
+  ctx: MachineContext | AgentRemoteContext,
+): AuthorityNow | undefined {
+  assertRemoteScope(execution, ctx);
+  if (!("instanceId" in ctx)) return;
+  // 执行读只看执行连续性：任何非 active 关系（detaching/removed/缺行）都是
+  // lease_not_holder；membership_removed 留给 request/cancel 等操作路径。
+  if (latestMembership(execution)?.state !== "active") throw new LeaseError("lease_not_holder");
+  const authority = authorityNow(execution);
   if (
-    execution.holderInstanceId !== ctx.instanceId ||
-    !lease ||
-    lease.state !== "held" ||
-    lease.holderInstanceId !== ctx.instanceId ||
-    lease.generation !== execution.authorizationGeneration
+    !authority ||
+    authority.state === "free" ||
+    authority.holderInstanceId !== ctx.instanceId ||
+    execution.authorizationGeneration > authority.generation
   )
     throw new LeaseError("lease_not_holder");
+  return authority;
 }
+
+export function assertExecutionWrite(
+  key: LeaseKey,
+  generation: number,
+  ctx: MachineContext | AgentRemoteContext,
+): AuthorityNow {
+  assertRemoteScope(key, ctx);
+  assertActiveMembership(key);
+  const authority = authorityNow(key);
+  if (authority && authority.generation !== generation)
+    throw new LeaseError("lease_stale_generation");
+  if (authority?.state === "draining") throw new LeaseError("lease_fencing");
+  if (
+    !authority ||
+    authority.state !== "active" ||
+    !authority.holderInstanceId ||
+    ("instanceId" in ctx && authority.holderInstanceId !== ctx.instanceId)
+  )
+    throw new LeaseError("lease_not_holder");
+  return authority;
+}
+export const assertCurrentWrite = assertExecutionWrite;
+
 export function assertAgentContext(key: LeaseKey, ctx: AgentRemoteContext) {
-  assertRemoteAccess(key, ctx);
+  assertRemoteScope(key, ctx);
+  assertActiveMembership(key);
+}
+function assertRunIdentity(key: LeaseKey, ctx: AgentRemoteContext) {
   const instance = db
     .select()
     .from(agentInstance)
@@ -336,7 +381,70 @@ function leaseView(row: typeof machineLease.$inferSelect): LeaseView {
     .get();
   return { ...row, changedAt: row.changedAt.toISOString(), pendingMutationId: pending?.id ?? null };
 }
-export function completeLeaseMutation(key: LeaseKey, now: Date) {
+function affectedExecutions(key: LeaseKey, generation: number): RevokedExecution[] {
+  return db
+    .select()
+    .from(remoteExecution)
+    .where(
+      and(
+        eq(remoteExecution.projectId, key.projectId),
+        eq(remoteExecution.machineId, key.machineId),
+        lte(remoteExecution.authorizationGeneration, generation),
+        or(
+          isNull(remoteExecution.terminalAt),
+          and(
+            isNotNull(remoteExecution.dispatchConnectionGeneration),
+            isNull(remoteExecution.drainedAt),
+          ),
+        ),
+      ),
+    )
+    .all()
+    .map((row: typeof remoteExecution.$inferSelect) => ({
+      executionId: row.id,
+      runId: row.runId,
+      state: row.state,
+    }));
+}
+function revokeNotice(
+  mutation: typeof leaseMutation.$inferSelect,
+  holderInstanceId: string | null,
+  executions: RevokedExecution[],
+  revocation: "pending" | "confirmed" | "unconfirmed",
+  now: Date,
+) {
+  if (mutation.action === "acquire") return;
+  const key = { projectId: mutation.projectId, machineId: mutation.machineId };
+  const member = latestMembership(key);
+  if (
+    member?.removalMutationId === mutation.id ||
+    (member &&
+      hasNoticeCause(
+        "machine_removed",
+        membershipCauseId(key.projectId, key.machineId, member.epoch),
+      ))
+  )
+    return;
+  const kind =
+    mutation.action === "handoff"
+      ? "lease_handed_off"
+      : mutation.action === "release"
+        ? "lease_released"
+        : "lease_reclaimed";
+  if (hasNoticeCause(kind, mutation.id)) return;
+  insertRevokeNotice(db, {
+    key,
+    kind,
+    causeId: mutation.id,
+    generation: mutation.expectedGeneration,
+    holderInstanceId,
+    executions,
+    targetInstanceId: mutation.targetInstanceId,
+    revocation,
+    now,
+  });
+}
+export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = true) {
   const pending = db
     .select()
     .from(leaseMutation)
@@ -357,7 +465,7 @@ export function completeLeaseMutation(key: LeaseKey, now: Date) {
         and(
           eq(remoteExecution.projectId, key.projectId),
           eq(remoteExecution.machineId, key.machineId),
-          eq(remoteExecution.authorizationGeneration, pending.expectedGeneration),
+          lte(remoteExecution.authorizationGeneration, pending.expectedGeneration),
           isNull(remoteExecution.drainedAt),
         ),
       )
@@ -366,6 +474,7 @@ export function completeLeaseMutation(key: LeaseKey, now: Date) {
   )
     return;
   const old = ensureLease(key, now);
+  const executions = affectedExecutions(key, old.generation);
   if (old.generation >= Number.MAX_SAFE_INTEGER) throw new LeaseError("conflict");
   const generation = old.generation + 1;
   const holderInstanceId =
@@ -401,165 +510,184 @@ export function completeLeaseMutation(key: LeaseKey, now: Date) {
     .set({ state: "completed", completedGeneration: generation, completedAt: now })
     .where(eq(leaseMutation.id, pending.id))
     .run();
+  const completed = db.select().from(leaseMutation).where(eq(leaseMutation.id, pending.id)).get()!;
+  onLeaseMutationCompleted(db, completed);
+  if (emitNotice) revokeNotice(completed, old.holderInstanceId, executions, "confirmed", now);
 }
 function mutate(
   raw: LeaseMutationInput,
   ctx: MachineContext | AgentRemoteContext,
 ): LeaseMutationView {
+  return sqlite.inTransaction
+    ? mutateLeaseInTransaction(raw, ctx)
+    : sqlite.transaction(() => mutateLeaseInTransaction(raw, ctx)).immediate();
+}
+function mutateLeaseInTransaction(
+  raw: LeaseMutationInput,
+  ctx: MachineContext | AgentRemoteContext,
+  membershipRemoval = false,
+): LeaseMutationView {
   const input = leaseMutationInputSchema.parse(raw);
-  return sqlite
-    .transaction(() => {
-      if (input.action === "reclaim") {
-        if ("instanceId" in ctx) throw new LeaseError("forbidden");
-        assertRemoteAccess(input, ctx);
-      } else {
-        if (!("instanceId" in ctx)) throw new LeaseError("forbidden");
-        assertAgentContext(input, ctx);
-      }
-      const actorKind = input.action === "reclaim" ? "human" : "agent";
-      const actorId = "instanceId" in ctx ? ctx.instanceId : ctx.userId;
-      const hash = payloadHash(input);
-      const existing = db
+  if (input.action === "reclaim") {
+    if ("instanceId" in ctx) throw new LeaseError("forbidden");
+    assertRemoteAccess(input, ctx);
+    assertActiveMembership(input);
+  } else {
+    if (!("instanceId" in ctx)) throw new LeaseError("forbidden");
+    assertAgentContext(input, ctx);
+  }
+  const actorKind = input.action === "reclaim" ? "human" : "agent";
+  const actorId = "instanceId" in ctx ? ctx.instanceId : ctx.userId;
+  const hash = payloadHash(input);
+  const existing = db
+    .select()
+    .from(leaseMutation)
+    .where(
+      and(
+        eq(leaseMutation.actorKind, actorKind),
+        eq(leaseMutation.actorId, actorId),
+        eq(leaseMutation.requestId, input.requestId),
+      ),
+    )
+    .get();
+  if (existing) {
+    if (existing.payloadHash !== hash) throw new LeaseError("remote_request_conflict");
+    return mutationView(existing);
+  }
+  const key = { projectId: input.projectId, machineId: input.machineId };
+  const row = ensureLease(key, ctx.now);
+  const executions = affectedExecutions(key, row.generation);
+  expireExecutions(key, ctx.now, ctx.bootId);
+  if (row.generation !== input.expectedGeneration) throw new LeaseError("lease_stale_generation");
+  if (row.state === "fencing") throw new LeaseError("lease_fencing");
+  if (row.generation >= Number.MAX_SAFE_INTEGER) throw new LeaseError("conflict");
+  if (input.action === "acquire") {
+    if (row.state === "held" && row.holderInstanceId !== actorId)
+      throw new LeaseError("lease_conflict");
+  } else if (
+    row.state !== "held" ||
+    (input.action !== "reclaim" && row.holderInstanceId !== actorId)
+  )
+    throw new LeaseError("lease_not_holder");
+  if (input.action === "handoff") {
+    const target = db
+      .select()
+      .from(agentInstance)
+      .where(eq(agentInstance.id, input.targetInstanceId))
+      .get();
+    if (
+      !target ||
+      target.projectId !== input.projectId ||
+      !db
         .select()
-        .from(leaseMutation)
+        .from(chat)
+        .where(and(eq(chat.id, target.chatId), eq(chat.projectId, input.projectId)))
+        .get()
+    )
+      throw new LeaseError("not_found");
+    if (target.id === actorId) throw new LeaseError("conflict");
+  }
+  const id = newId(ID_PREFIXES.leaseMutation);
+  const noop = input.action === "acquire" && row.state === "held";
+  if (input.action === "acquire" && !noop) {
+    const generation = row.generation + 1;
+    db.update(leaseAuthorization)
+      .set({ state: "revoked", revokedAt: ctx.now })
+      .where(authorizationWhere(key, row.generation))
+      .run();
+    db.insert(leaseAuthorization)
+      .values({
+        ...key,
+        generation,
+        holderInstanceId: actorId,
+        state: "active",
+        reason: "acquire",
+        issuedAt: ctx.now,
+      })
+      .run();
+    db.update(machineLease)
+      .set({ generation, state: "held", holderInstanceId: actorId, changedAt: ctx.now })
+      .where(leaseWhere(key))
+      .run();
+  }
+  const completed = input.action === "acquire";
+  db.insert(leaseMutation)
+    .values({
+      id,
+      ...key,
+      actorKind,
+      actorId,
+      requestId: input.requestId,
+      payloadHash: hash,
+      action: input.action,
+      expectedGeneration: row.generation,
+      targetInstanceId: input.action === "handoff" ? input.targetInstanceId : null,
+      state: completed ? "completed" : "pending",
+      completedGeneration: completed ? row.generation + (noop ? 0 : 1) : null,
+      createdAt: ctx.now,
+      completedAt: completed ? ctx.now : null,
+    })
+    .run();
+  if (!completed) {
+    {
+      db.update(machineLease)
+        .set({ state: "fencing", changedAt: ctx.now })
+        .where(leaseWhere(key))
+        .run();
+      db.update(leaseAuthorization)
+        .set({ state: "draining" })
+        .where(authorizationWhere(key, row.generation))
+        .run();
+      for (const execution of db
+        .select()
+        .from(remoteExecution)
         .where(
           and(
-            eq(leaseMutation.actorKind, actorKind),
-            eq(leaseMutation.actorId, actorId),
-            eq(leaseMutation.requestId, input.requestId),
+            eq(remoteExecution.projectId, key.projectId),
+            eq(remoteExecution.machineId, key.machineId),
+            lte(remoteExecution.authorizationGeneration, row.generation),
+            isNull(remoteExecution.terminalAt),
           ),
         )
-        .get();
-      if (existing) {
-        if (existing.payloadHash !== hash) throw new LeaseError("remote_request_conflict");
-        return mutationView(existing);
-      }
-      const key = { projectId: input.projectId, machineId: input.machineId };
-      const row = ensureLease(key, ctx.now);
-      expireExecutions(key, ctx.now, ctx.bootId);
-      if (row.generation !== input.expectedGeneration)
-        throw new LeaseError("lease_stale_generation");
-      if (row.state === "fencing") throw new LeaseError("lease_fencing");
-      if (row.generation >= Number.MAX_SAFE_INTEGER) throw new LeaseError("conflict");
-      if (input.action === "acquire") {
-        if (row.state === "held" && row.holderInstanceId !== actorId)
-          throw new LeaseError("lease_conflict");
-      } else if (
-        row.state !== "held" ||
-        (input.action !== "reclaim" && row.holderInstanceId !== actorId)
-      )
-        throw new LeaseError("lease_not_holder");
-      if (input.action === "handoff") {
-        const target = db
-          .select()
-          .from(agentInstance)
-          .where(eq(agentInstance.id, input.targetInstanceId))
-          .get();
-        if (
-          !target ||
-          target.projectId !== input.projectId ||
-          !db
-            .select()
-            .from(chat)
-            .where(and(eq(chat.id, target.chatId), eq(chat.projectId, input.projectId)))
-            .get()
-        )
-          throw new LeaseError("not_found");
-        if (target.id === actorId) throw new LeaseError("conflict");
-      }
-      const id = newId(ID_PREFIXES.leaseMutation);
-      const noop = input.action === "acquire" && row.state === "held";
-      if (input.action === "acquire" && !noop) {
-        const generation = row.generation + 1;
-        db.update(leaseAuthorization)
-          .set({ state: "revoked", revokedAt: ctx.now })
-          .where(authorizationWhere(key, row.generation))
-          .run();
-        db.insert(leaseAuthorization)
-          .values({
-            ...key,
-            generation,
-            holderInstanceId: actorId,
-            state: "active",
-            reason: "acquire",
-            issuedAt: ctx.now,
-          })
-          .run();
-        db.update(machineLease)
-          .set({ generation, state: "held", holderInstanceId: actorId, changedAt: ctx.now })
-          .where(leaseWhere(key))
+        .all()) {
+        db.update(remoteExecution)
+          .set(
+            execution.state === "queued"
+              ? {
+                  state: "rejected",
+                  failureReason: "authorization_revoked",
+                  terminalAt: ctx.now,
+                }
+              : { state: "draining" },
+          )
+          .where(eq(remoteExecution.id, execution.id))
           .run();
       }
-      const completed = input.action === "acquire";
-      db.insert(leaseMutation)
-        .values({
-          id,
-          ...key,
-          actorKind,
-          actorId,
-          requestId: input.requestId,
-          payloadHash: hash,
-          action: input.action,
-          expectedGeneration: row.generation,
-          targetInstanceId: input.action === "handoff" ? input.targetInstanceId : null,
-          state: completed ? "completed" : "pending",
-          completedGeneration: completed ? row.generation + (noop ? 0 : 1) : null,
-          createdAt: ctx.now,
-          completedAt: completed ? ctx.now : null,
-        })
-        .run();
-      if (!completed) {
-        {
-          db.update(machineLease)
-            .set({ state: "fencing", changedAt: ctx.now })
-            .where(leaseWhere(key))
-            .run();
-          db.update(leaseAuthorization)
-            .set({ state: "draining" })
-            .where(authorizationWhere(key, row.generation))
-            .run();
-          for (const execution of db
-            .select()
-            .from(remoteExecution)
-            .where(
-              and(
-                eq(remoteExecution.projectId, key.projectId),
-                eq(remoteExecution.machineId, key.machineId),
-                eq(remoteExecution.authorizationGeneration, row.generation),
-                isNull(remoteExecution.terminalAt),
-              ),
-            )
-            .all()) {
-            db.update(remoteExecution)
-              .set(
-                execution.state === "queued"
-                  ? {
-                      state: "rejected",
-                      failureReason: "authorization_revoked",
-                      terminalAt: ctx.now,
-                    }
-                  : { state: "draining" },
-              )
-              .where(eq(remoteExecution.id, execution.id))
-              .run();
-          }
-        }
-        completeLeaseMutation(key, ctx.now);
-      }
-      db.insert(diagnosticEvent)
-        .values({
-          id: newId(ID_PREFIXES.diagnostic),
-          at: ctx.now,
-          level: "info",
-          event: "lease.mutated",
-          requestId: ctx.requestId,
-          projectId: input.projectId,
-          message: "租约动作已记录",
-        })
-        .run();
-      return mutationView(db.select().from(leaseMutation).where(eq(leaseMutation.id, id)).get()!);
+    }
+    completeLeaseMutation(key, ctx.now, false);
+    if (!membershipRemoval) {
+      const mutation = db.select().from(leaseMutation).where(eq(leaseMutation.id, id)).get()!;
+      revokeNotice(
+        mutation,
+        row.holderInstanceId,
+        executions,
+        mutation.state === "pending" ? "pending" : "confirmed",
+        ctx.now,
+      );
+    }
+  }
+  db.insert(diagnosticEvent)
+    .values({
+      id: newId(ID_PREFIXES.diagnostic),
+      at: ctx.now,
+      level: "info",
+      event: "lease.mutated",
+      requestId: ctx.requestId,
+      projectId: input.projectId,
+      message: "租约动作已记录",
     })
-    .immediate();
+    .run();
+  return mutationView(db.select().from(leaseMutation).where(eq(leaseMutation.id, id)).get()!);
 }
 export const acquireLease = (
   input: Extract<LeaseMutationInput, { action: "acquire" }>,
@@ -573,6 +701,10 @@ export const handoffLease = (
   input: Extract<LeaseMutationInput, { action: "handoff" }>,
   ctx: AgentRemoteContext,
 ) => mutate(input, ctx);
+export const reclaimLeaseInTransaction = (
+  input: Extract<LeaseMutationInput, { action: "reclaim" }>,
+  ctx: MachineContext,
+) => mutateLeaseInTransaction(input, ctx, true);
 export const reclaimLease = (
   input: Extract<LeaseMutationInput, { action: "reclaim" }>,
   ctx: MachineContext,
@@ -623,6 +755,7 @@ export function forceReclaimLease(raw: ForceReclaimLeaseInput, ctx: MachineConte
       )
         throw new LeaseError("conflict");
       if (row.generation >= Number.MAX_SAFE_INTEGER) throw new LeaseError("conflict");
+      const executions = affectedExecutions(key, row.generation);
       // Dispatched but unacknowledged work is uncertain even if an earlier result said success.
       for (const execution of db
         .select()
@@ -631,7 +764,7 @@ export function forceReclaimLease(raw: ForceReclaimLeaseInput, ctx: MachineConte
           and(
             eq(remoteExecution.projectId, key.projectId),
             eq(remoteExecution.machineId, key.machineId),
-            eq(remoteExecution.authorizationGeneration, row.generation),
+            lte(remoteExecution.authorizationGeneration, row.generation),
             isNull(remoteExecution.drainedAt),
           ),
         )
@@ -668,6 +801,13 @@ export function forceReclaimLease(raw: ForceReclaimLeaseInput, ctx: MachineConte
         .set({ state: "completed", completedGeneration: generation, completedAt: ctx.now })
         .where(eq(leaseMutation.id, pending.id))
         .run();
+      const completed = db
+        .select()
+        .from(leaseMutation)
+        .where(eq(leaseMutation.id, pending.id))
+        .get()!;
+      onLeaseMutationCompleted(db, completed);
+      revokeNotice(completed, row.holderInstanceId, executions, "unconfirmed", ctx.now);
       const id = newId(ID_PREFIXES.leaseMutation);
       db.insert(leaseMutation)
         .values({
@@ -705,6 +845,7 @@ export function getLease(raw: LeaseReadInput, ctx: MachineContext | AgentRemoteC
   return sqlite
     .transaction(() => {
       assertRemoteAccess(input, ctx);
+      if ("instanceId" in ctx) assertActiveMembership(input);
       const row = ensureLease(input, ctx.now);
       expireExecutions(input, ctx.now, ctx.bootId);
       const mutation = input.mutationId

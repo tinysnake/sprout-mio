@@ -13,6 +13,9 @@ import {
 } from "../../server/functions/machine";
 import { listProjectsFn } from "../../server/functions/project";
 import { useMachineEnrollment } from "../../components/machine/machine-enrollment-context";
+import { useMachineRelations } from "../../components/machine/use-machine-relations";
+import { listProjectLeasesFn } from "../../server/functions/lease";
+import { listProjectExecutionsFn } from "../../server/functions/remote";
 
 export const Route = createFileRoute("/_authed/machines/$machineId/")({
   // Project 上下文只用于绑定编辑；租约由独立路由承载。
@@ -28,15 +31,32 @@ export const Route = createFileRoute("/_authed/machines/$machineId/")({
       }),
       listProjectsFn(),
     ]);
-    return { detail, projects };
+    const projectIds = detail.ok
+      ? [...new Set(detail.data.bindings.map((item) => item.intent.projectId))]
+      : [];
+    const [leaseResults, executionResults] = await Promise.all([
+      Promise.all(projectIds.map((projectId) => listProjectLeasesFn({ data: { projectId } }))),
+      Promise.all(
+        projectIds.map((projectId) =>
+          listProjectExecutionsFn({ data: { projectId, machineId: params.machineId } }),
+        ),
+      ),
+    ]);
+    return {
+      detail,
+      projects,
+      leases: leaseResults.flatMap((result) => (result.ok ? result.data : [])),
+      executions: executionResults.flatMap((result) => (result.ok ? result.data : [])),
+    };
   },
   component: MachinePage,
 });
 
 function MachinePage() {
-  const { detail, projects } = Route.useLoaderData();
+  const { detail, projects, leases, executions } = Route.useLoaderData();
   const { projectId } = Route.useSearch();
   const router = useMachineRefresh();
+  const relationState = useMachineRelations({ machineId: Route.useParams().machineId });
   const { enrollment, setEnrollment } = useMachineEnrollment();
 
   const back = projectId ? (
@@ -78,7 +98,20 @@ function MachinePage() {
         await router.invalidate();
       }}
       onSaveBinding={(input) => saveProjectMachineBindingFn({ data: input })}
-      onBindingSaved={() => void router.invalidate()}
+      onBindingSaved={() => {
+        void router.invalidate();
+        relationState.refresh();
+      }}
+      relations={relationState.relations}
+      relationsLoading={relationState.loading}
+      relationsError={relationState.error}
+      relationsLastSuccessAt={relationState.lastSuccessAt}
+      onRelationsChanged={() => {
+        relationState.refresh();
+        void router.invalidate();
+      }}
+      leases={leases}
+      executions={executions}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Button

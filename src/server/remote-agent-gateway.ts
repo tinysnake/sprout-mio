@@ -21,6 +21,7 @@ import type { PiSessionProcess } from "./pi-host/process";
 import {
   enqueueCancellation,
   getExecution,
+  listHolderExecutions,
   readExecutionLog,
   requestExecution,
   RemoteError,
@@ -208,6 +209,8 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
             return requestExecution(parsed.call.input, actorContext);
           case "execution_get":
             return getExecution(parsed.call.input, actorContext);
+          case "execution_list":
+            return listHolderExecutions(parsed.call.input, actorContext);
           case "execution_cancel":
             // 入队意图，不代表进程已停。
             return enqueueCancellation(parsed.call.input, actorContext);

@@ -77,6 +77,11 @@ insert(
   projectId,
   machineId,
 );
+insert(
+  "INSERT INTO project_machine_membership(project_id,machine_id,epoch,state,joined_at) VALUES (?,?,1,'active',1)",
+  projectId,
+  machineId,
+);
 const workerSecret = randomBytes(32).toString("base64url");
 const wire = {
   machineId,

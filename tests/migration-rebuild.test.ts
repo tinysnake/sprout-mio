@@ -15,8 +15,14 @@ const migrations = journal.entries.map((entry) => ({
     .map((statement) => statement.trim())
     .filter(Boolean),
 }));
-const rebuild = migrations[migrations.length - 1];
-const earlier = migrations.slice(0, -1);
+// 不假设重建是最后一条迁移；后续迁移追加在它之后也要能定位最近一次重建。
+let rebuildIndex = -1;
+for (const [index, migration] of migrations.entries())
+  if (migration.statements.some((statement) => statement.includes("`__new_remote_execution`")))
+    rebuildIndex = index;
+if (rebuildIndex < 0) throw new Error("找不到重建 remote_execution 的迁移");
+const rebuild = migrations[rebuildIndex];
+const earlier = migrations.slice(0, rebuildIndex);
 
 const directories: string[] = [];
 
