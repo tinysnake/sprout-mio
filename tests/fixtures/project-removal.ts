@@ -18,7 +18,7 @@ import {
 } from "../../src/db/schema";
 import { migrateDatabase } from "../../src/db/migrate";
 import { addProjectMember, createAgentProfile, removeProjectMember } from "../../src/domain/agent";
-import { listAgentRunInputs, listAgentRuns } from "../../src/domain/agent-run";
+import { listAgentRunInputs, listAgentRuns, queuedRunWork } from "../../src/domain/agent-run";
 import {
   createDirectChat,
   createGroupChat,
@@ -298,6 +298,7 @@ assert.equal(
   "频道本来就没有 chat_member 行，成员是派生事实",
 );
 const eventsBeforeRemoval = removalEvents(project.id);
+assert.equal(getChat(leavingDm.chat.id, ctx).archivedAt, undefined, "移除前 DM 未归档（对照组）");
 const removed = codeOf(() => removeProjectMember(project.id, agentLeaving.id, ctx));
 assert.equal(removed, "ok", "无在途运行时移除成功");
 assert.equal(projectMemberOf(project.id, agentLeaving.id), undefined, "Project 成员行删除");
@@ -517,6 +518,65 @@ pass("channel.membership.synced", {
   before: channelMembersBefore.length,
   after: channelMembersAfter.length,
   human: `human:${creatorId}`,
+});
+
+// ---------------------------------------------------------------- 7. A02：移除后旧 DM 归档，Human 发言被明确拒绝
+// 规格 `docs/communication-decisions.md`「一期」：正常移除后其 DM 归档、不可继续聊天。
+// 修复前：Human 向旧 DM 发消息返回 ok、消息与排队 run 都落库，直到执行时才以 remote_run_inactive
+// 失败——先成功再失败。这里断言拒绝发生在写入之前：码明确、不落消息、不排队必败 run。
+assert.ok(
+  getChat(leavingDm.chat.id, ctx).archivedAt,
+  "移除后该 Agent 的 DM 归档（communication-decisions「其 DM 归档」）",
+);
+const dmMessagesBefore = listMessages(leavingDm.chat.id, ctx).length;
+const dmRunsBefore = listAgentRuns(leavingDm.chat.id, ctx).length;
+const dmQueuedBefore = queuedRunWork().filter(
+  (work) => work.run.chatId === leavingDm.chat.id,
+).length;
+const humanAfterRemoval = codeOf(() =>
+  sendMessage(
+    leavingDm.chat.id,
+    { senderKind: "human", senderId: creatorId, body: "移除后 Human 还想继续聊" },
+    ctx,
+  ),
+);
+assert.equal(
+  humanAfterRemoval,
+  "conflict",
+  "移除后 Human 向旧 DM 发言得到明确拒绝，不是先成功再失败",
+);
+assert.equal(listMessages(leavingDm.chat.id, ctx).length, dmMessagesBefore, "被拒的消息不落库");
+assert.equal(listAgentRuns(leavingDm.chat.id, ctx).length, dmRunsBefore, "被拒的消息不排队 run");
+assert.equal(
+  queuedRunWork().filter((work) => work.run.chatId === leavingDm.chat.id).length,
+  dmQueuedBefore,
+  "被拒的消息不留下必败的排队 run",
+);
+
+// 重新加入：既有 DM 恢复（communication-decisions「同一 Agent 重新加入 Project 时恢复既有 DM」）。
+addProjectMember(project.id, agentLeaving.id, ctx);
+assert.equal(
+  getChat(leavingDm.chat.id, ctx).archivedAt,
+  undefined,
+  "重新加入 Project 后既有 DM 取消归档",
+);
+const revivedMessage = sendMessage(
+  leavingDm.chat.id,
+  { senderKind: "human", senderId: creatorId, body: "重新加入后的第一条" },
+  ctx,
+);
+assert.ok(revivedMessage.id);
+assert.equal(
+  queuedRunWork().filter((work) => work.run.chatId === leavingDm.chat.id).length,
+  1,
+  "重新加入后 DM 又能开出一条 run",
+);
+pass("a02.removed-dm-archived", {
+  archivedAt: null,
+  humanSendCode: humanAfterRemoval,
+  messagesUnchanged: dmMessagesBefore,
+  runsUnchanged: dmRunsBefore,
+  revivedRun: queuedRunWork().filter((work) => work.run.chatId === leavingDm.chat.id).length,
 });
 
 // 项目级移除不能变成跨 Project 的越权入口。

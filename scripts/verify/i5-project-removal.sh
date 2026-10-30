@@ -14,6 +14,8 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # 移除后历史读不到或还能发言 → 群/DM/频道的历史消息、instance、run、输入（含取消事实）仍可读，
 #   以它身份发言在三个对话里一律 not_found 且不落消息行。
 # 频道成员不随移除消失 → 频道成员列表精确等于移除前的集合减去该 Agent（端到端断言）。
+# 移除后旧 DM 仍接受 Human 消息（A02）→ DM 归档，Human 发言在写入前得到 conflict，
+#   不落消息、不排队必败 run；重新加入 Project 后既有 DM 取消归档并恢复可用。
 # 项目级移除成为越权入口 → 非创建者调用返回 not_found 且不产生副作用。
 verification_dir="$(mktemp -d "${TMPDIR:-/tmp}/sprout-i5-project-removal.XXXXXX")"
 trap 'rm -rf "$verification_dir"' EXIT
