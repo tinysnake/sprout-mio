@@ -5,6 +5,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   FolderKanban,
+  ListChecks,
   LogOut,
   MessageSquare,
   Monitor,
@@ -91,6 +92,18 @@ function ProjectNavigation({ project, pathname, close, compact }: ProjectNavigat
         <Icon as={MessageSquare} />
         {!compact && <span>Chats</span>}
       </Link>
+      <a
+        href={`/projects/${project.id}/tasks`}
+        onClick={close}
+        aria-label="Tasks"
+        aria-current={active("tasks") ? "page" : undefined}
+        title={compact ? "Tasks" : undefined}
+        data-testid="tab-tasks"
+        className={`${navClass} ${active("tasks") ? selectedClass : ""} ${compact ? "justify-center px-0" : ""}`}
+      >
+        <Icon as={ListChecks} />
+        {!compact && <span>Tasks</span>}
+      </a>
       <Link
         to="/projects/$projectId/members"
         params={{ projectId: project.id }}

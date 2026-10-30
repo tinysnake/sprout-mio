@@ -31,11 +31,11 @@ describe("Task 页面口径", () => {
   it("禁用动作逐字呈现服务端 reason 与 code，不推断 owner", () => {
     const detail = taskPageDetail({ capabilities: { allowedActions: [], denials: { complete: { code: "forbidden", reason: "当前 Agent 不是推进负责人" } } } });
     const html = renderToStaticMarkup(createElement(TaskActionControl, { detail, action: "complete", label: "完成 Task", pending: false, onClick: () => {} }));
-    expect(html).toContain("disabled");
+    expect(html).toMatch(/<button[^>]*\sdisabled(?:=|\s|>)/);
     expect(html).toContain("当前 Agent 不是推进负责人");
     expect(html).toContain("forbidden");
     detail.capabilities.allowedActions = ["complete"];
-    expect(renderToStaticMarkup(createElement(TaskActionControl, { detail, action: "complete", label: "完成 Task", pending: false, onClick: () => {} }))).not.toContain("disabled");
+    expect(renderToStaticMarkup(createElement(TaskActionControl, { detail, action: "complete", label: "完成 Task", pending: false, onClick: () => {} }))).not.toMatch(/<button[^>]*\sdisabled(?:=|\s|>)/);
   });
   it("无记录卡片只陈述记录缺失，空列保留四态入口", () => {
     const detail = taskPageDetail();

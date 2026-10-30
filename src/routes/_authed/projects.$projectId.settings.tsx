@@ -2,6 +2,7 @@ import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ProjectAgentsPanel } from "../../components/info-hub/project-agents-panel";
+import { TaskAssociations } from "../../components/tasks/task-associations";
 import { holderNames } from "../../components/machine/project-lease-actions";
 import { RemoteExecutionList } from "../../components/machine/remote-execution-panel";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
@@ -240,7 +241,14 @@ function ProjectSettingsPage() {
               </summary>
               <div className="mt-4 flex flex-col gap-3">
                 {infoHub.ok ? (
-                  <ProjectAgentsPanel projectId={projectId} view={infoHub.data.agents} />
+                  <>
+                    <ProjectAgentsPanel projectId={projectId} view={infoHub.data.agents} />
+                    <section aria-label="Project Tasks" className="space-y-3 border-t border-border pt-4">
+                      <h3 className="text-xs font-medium">Tasks</h3>
+                      <p className="text-xs text-muted-foreground">待分配 {infoHub.data.tasks.counts.proposed} · 已分配 {infoHub.data.tasks.counts.assigned} · 已完成 {infoHub.data.tasks.counts.finished} · 已取消 {infoHub.data.tasks.counts.canceled}</p>
+                      <TaskAssociations projectId={projectId} items={infoHub.data.tasks.items} />
+                    </section>
+                  </>
                 ) : (
                   <ResultError error={infoHub.error} testId="info-hub-error" />
                 )}

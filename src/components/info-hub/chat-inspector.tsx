@@ -11,6 +11,7 @@ import type { ExecutionView } from "../../contracts/remote";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ResultError } from "../project/result-error";
+import { TaskAssociations } from "../tasks/task-associations";
 import { ChatAvatar } from "../chat/chat-avatar";
 import { ChatFactsBlock } from "./chat-info-panel";
 import { RunFactsBlock, TurnStartContextBlock } from "./run-facts";
@@ -89,6 +90,10 @@ export function ChatInspector({
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6">
+        <section className="border-b border-border py-5" data-testid="inspector-tasks">
+          <h3 className="mb-3.75 text-[10px] font-medium text-muted-foreground">Task 摘要</h3>
+          {info.ok ? <TaskAssociations projectId={chat.projectId} items={info.data.tasks.items} /> : <ResultError error={info.error} testId="info-hub-tasks-error" />}
+        </section>
         <section className="border-b border-border py-5">
           <h3 className="mb-3.75 text-[10px] font-medium text-muted-foreground">分身上下文</h3>
           {!members.ok ? (
