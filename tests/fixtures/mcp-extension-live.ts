@@ -116,6 +116,11 @@ insert(
   projectId,
 );
 insert(
+  "INSERT INTO project_member(project_id,agent_profile_id,added_by) VALUES (?,?,'owner')",
+  projectId,
+  profileId,
+);
+insert(
   "INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES (?,'agent',?)",
   chatId,
   profileId,
