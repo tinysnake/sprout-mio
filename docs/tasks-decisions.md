@@ -75,6 +75,6 @@
 
 ## 待收敛
 
-- Task 标题、说明、约束、完成要求、checklist 及施工记录的具体记录形式。
+- ~~Task 标题、说明、约束、完成要求、checklist 及施工记录的具体记录形式。~~ **P5b 已定**：元数据在 `task`；checklist 为独立条目表，position 按 Task 内历史最大值递增，软删除且不复用位置；施工记录为承接 Chat 的 message，按 Task 内 seq 递增、不可改删，分 start/progress/correction。完成结果沿用末条进度或纠正记录，只有 start 不能完成；Human 对 finished 的纠正追加记录并保留历史完成引用。具体形状见 [P5b 契约](p5b/contracts.md)。
 - 小脑周期检查的间隔、上下文范围、与普通聊天所选小脑/JEV 判定路径的关系，以及如何提供相关 runs 或外部工作的事实。
 - 重复检查和唤醒合并、持续失败时的重试或升级规则，以及人类停止后的恢复方式。

@@ -210,12 +210,14 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应 [P5b](development-plan-functional.md#p5b-完成-task-协作)。
 
-- [ ] 设计按 proposed、assigned、finished、canceled 分栏的 Task overview，确定卡片一级信息、空列、长标题和窄屏浏览方式。
-- [ ] 完成 Task 详情、创建、分配给 Chat、可选立即开始、完成、取消、人类纠正与重开的设计及演示，具体迁移规则沿用功能契约。
-- [ ] 完成 checklist、施工记录及末条记录中的完成结果，提供回到承接 Chat 和相关对象的入口。
-- [ ] 在 Chat 与 inspector 中呈现 Task 关联，分别表达 Task 状态、run 活动与租约事实。
+- [x] 设计按 proposed、assigned、finished、canceled 分栏的 Task overview，确定卡片一级信息、空列、长标题和窄屏浏览方式。
+- [x] 完成 Task 详情、创建、分配给 Chat、可选立即开始、完成、取消、人类纠正与重开的设计及演示，具体迁移规则沿用功能契约。
+- [x] 完成 checklist、施工记录及末条记录中的完成结果，提供回到承接 Chat 和相关对象的入口。
+- [x] 在 Chat 与 inspector 中呈现 Task 关联，分别表达 Task 状态、run 活动与租约事实。
 
 出口条件是用户可在演示中从分栏总览进入 Task，分配给 DM 或 Group，并完成记录、完成与重开路径。整节集成验证真实 Task 生命周期，不新增运行中 Task 状态或独立强制验收流程。
+
+设计、演示与真实 Chromium 自检已交付，`c0e9c74` 第二轮独立技术验收支持合入 main；证据见 [P5b 章节结论](p5b/summary.md)。设计依据含 AFK 期间协调者代人类裁定；浏览器自检采用 fixture config，Human 真实体验尚未确认，I-P5b 第四条仍为待办。
 
 ## UI-P6 完成自动接续与成员治理呈现
 
