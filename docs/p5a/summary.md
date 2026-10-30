@@ -54,7 +54,7 @@ P5a 把对话从「一个 Human 对一个分身」扩展成三种形态：群组
 | 真实 Worker 全链           | `bash scripts/verify.sh --only az-p5a-live-worker`                                                                            | group fanout 与 channel mention 通过                                                             |
 | 独立验收                   | `orchestrate/sprout-mio-p5a/reports/acceptance-r11.md`                                                                        | PASS，无阻断项                                                                                   |
 
-交付提交 `2fd0ee9`（run 汇总行排序与着色，Human 最终反馈）与 `1ecd7e7`、`b1a27a6`（交付验证中暴露的两处测试脆弱点：期限窗口小于 runner 启动、移除断言只等对话框关闭）之后，按 `docs/verification.md` 只复跑受影响范围：`b-tooling`、`as-p5a-chat-ui`、`y-lease-ui`、`ab-worker-long-command`、`drain-http`、`r-ui-layout` 全部单独通过。`b1a27a6` 上没有再取到一次完整的 0 失败全量：本机当时 load average 在 11 到 160 之间（Spotlight 索引与常驻进程），四次全量的失败脚本每次都不同且单独跑均通过，逐次复跑只会测机器负载。下次在空闲机器上复核交付时补一次完整 `bash scripts/verify.sh`。
+交付提交 `2fd0ee9`（run 汇总行排序与着色，Human 最终反馈）、`1ecd7e7` 与 `b1a27a6`（交付验证暴露的两处测试脆弱点：期限窗口小于 runner 启动、移除断言只等对话框关闭）之后，在 `f47b575` 上执行 `pnpm verify:local`：19 个 macOS 与真实 Pi 门禁、0 失败（`Verification scripts=19 failed=0`）。其余 42 个门禁由 CI 的 Linux 分组覆盖，因此本机不再重复整段 61 项。交付期间四次 `bash scripts/verify.sh` 失败均为满载假红：那次机器 load average 在 11 到 160 之间（我留下的 24 个 `yes` 进程、Spotlight 索引、两个常驻 agent 会话），失败脚本每次不同且单独跑全部通过。这条环境约束已写进 `docs/verification.md`。
 
 模型选择只经 `scripts/verify/lib/live-model.sh` 进入：`live` 模式必须由人类命名模型（`SPROUT_VERIFY_PI_MODEL` 或仓库 `.env`），缺失时在准备产物前退出，脚本里没有内置默认提供商。
 
