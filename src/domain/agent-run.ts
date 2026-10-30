@@ -18,12 +18,14 @@ import {
   diagnosticEvent,
   message,
   projectMember,
+  task,
 } from "../db/schema";
 import { ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
 import { readChatEffectiveMembers } from "./channel";
 import { getChat, ensureInstance, sendMessage } from "./chat";
 import { routeWakeCandidates } from "./chat-wake";
+import { taskResponsibilityFacts, TaskError } from "./task-capabilities";
 
 export class AgentRunError extends Error {
   constructor(
@@ -207,6 +209,55 @@ function attachMessageToRun(
   db.insert(agentRunInput)
     .values({ runId: run.id, messageId: saved.id, disposition: "pending" })
     .run();
+}
+
+/** Dedicated Task delivery: re-read persisted responsibility; never use chat wake routing. */
+export function appendTaskStartRunInput(messageId: string, ctx: ProjectContext): string {
+  return sqlite
+    .transaction(() => {
+      const saved = db.select().from(message).where(eq(message.id, messageId)).get();
+      const currentTask = saved?.taskId
+        ? db.select().from(task).where(eq(task.id, saved.taskId)).get()
+        : undefined;
+      if (
+        !saved ||
+        saved.taskRecordKind !== "start" ||
+        saved.senderKind !== "human" ||
+        ctx.agent ||
+        saved.senderId !== ctx.userId ||
+        !currentTask ||
+        currentTask.status !== "assigned" ||
+        currentTask.chatId !== saved.chatId ||
+        currentTask.projectId !== saved.taskProjectId ||
+        currentTask.assignmentRevision !== saved.taskAssignmentRevision
+      )
+        throw new TaskError("conflict", "开始消息的任务上下文已变化");
+      const current = getChat(saved.chatId, ctx);
+      const responsibility = taskResponsibilityFacts(current.id, ctx);
+      const governance = db.select().from(chat).where(eq(chat.id, current.id)).get()!;
+      if (
+        responsibility.kind !== "agent" ||
+        responsibility.agentProfileId !== saved.taskStartRecipientId ||
+        governance.governanceRevision !== saved.taskGovernanceRevision
+      )
+        throw new TaskError("conflict", "开始消息的负责人已变化");
+      const instance = ensureInstance(current.id, responsibility.agentProfileId, ctx);
+      attachMessageToRun(
+        {
+          id: saved.id,
+          chatId: saved.chatId,
+          senderKind: saved.senderKind,
+          senderId: saved.senderId,
+          body: saved.body,
+          createdAt: saved.createdAt.toISOString(),
+        },
+        current,
+        instance,
+        ctx,
+      );
+      return runIdOfMessage(saved.id, instance.id)!;
+    })
+    .immediate();
 }
 
 /**

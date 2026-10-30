@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnySQLiteColumn,
   blob,
   check,
   foreignKey,
@@ -11,6 +12,8 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { TASK_STATUSES } from "../contracts/task";
+import { TASK_ACTIONS } from "../contracts/task-capabilities";
 import { user } from "./auth-schema";
 import { AGENT_RUN_STATUSES } from "../contracts/agent-run";
 import type { RunConfigSnapshot } from "../contracts/agent-run";
@@ -274,6 +277,15 @@ export const message = sqliteTable(
     senderKind: text("sender_kind", { enum: ["human", "agent"] }).notNull(),
     senderId: text("sender_id").notNull(),
     body: text("body").notNull(),
+    taskId: text("task_id"),
+    taskProjectId: text("task_project_id"),
+    taskRecordSeq: integer("task_record_seq"),
+    taskRecordKind: text("task_record_kind", { enum: ["start", "progress", "correction"] }),
+    taskReferenceMessageId: text("task_reference_message_id"),
+    taskAuthorRunId: text("task_author_run_id").references((): AnySQLiteColumn => agentRun.id),
+    taskAssignmentRevision: integer("task_assignment_revision"),
+    taskGovernanceRevision: integer("task_governance_revision"),
+    taskStartRecipientId: text("task_start_recipient_id"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -282,6 +294,42 @@ export const message = sqliteTable(
     check("message_sender_kind_check", sql`${table.senderKind} in ('human', 'agent')`),
     index("message_chat_created_at_idx").on(table.chatId, table.createdAt),
     uniqueIndex("message_id_chat_unique").on(table.id, table.chatId),
+    foreignKey({
+      columns: [table.taskId, table.taskProjectId],
+      foreignColumns: [task.id, task.projectId],
+    }),
+    foreignKey({
+      columns: [table.chatId, table.taskProjectId],
+      foreignColumns: [chat.id, chat.projectId],
+    }),
+    foreignKey({
+      columns: [table.taskReferenceMessageId, table.chatId],
+      foreignColumns: [table.id, table.chatId],
+    }),
+    uniqueIndex("message_task_seq_unique").on(table.taskId, table.taskRecordSeq),
+    check(
+      "message_task_shape_check",
+      sql`(
+      (${table.taskId} is null and ${table.taskProjectId} is null and ${table.taskRecordSeq} is null
+        and ${table.taskRecordKind} is null and ${table.taskReferenceMessageId} is null
+        and ${table.taskAuthorRunId} is null and ${table.taskAssignmentRevision} is null
+        and ${table.taskGovernanceRevision} is null and ${table.taskStartRecipientId} is null)
+      or (${table.taskId} is not null and ${table.taskProjectId} is not null
+        and ${table.taskRecordSeq} is not null and typeof(${table.taskRecordSeq})='integer'
+        and ${table.taskRecordSeq} between 1 and 9007199254740991
+        and ${table.taskRecordKind} is not null and ${table.taskRecordKind} in ('start','progress','correction')
+        and length(trim(${table.body})) between 1 and 8000
+        and ((${table.senderKind}='human' and ${table.taskAuthorRunId} is null)
+          or (${table.senderKind}='agent' and ${table.taskAuthorRunId} is not null))
+        and ((${table.taskRecordKind}='start' and ${table.senderKind}='human'
+          and ${table.taskReferenceMessageId} is null
+          and typeof(${table.taskAssignmentRevision})='integer' and ${table.taskAssignmentRevision} between 0 and 9007199254740991
+          and typeof(${table.taskGovernanceRevision})='integer' and ${table.taskGovernanceRevision} between 0 and 9007199254740991
+          and ${table.taskStartRecipientId} is not null and length(trim(${table.taskStartRecipientId}))>0)
+        or (${table.taskRecordKind} in ('progress','correction') and ${table.taskAssignmentRevision} is null
+          and ${table.taskGovernanceRevision} is null and ${table.taskStartRecipientId} is null)))
+    )`,
+    ),
   ],
 );
 
@@ -375,8 +423,9 @@ export const agentRunInput = sqliteTable(
       .default("pending"),
     deliveredAt: integer("delivered_at", { mode: "timestamp" }),
     cancelledAt: integer("cancelled_at", { mode: "timestamp" }),
+    admittedAt: integer("admitted_at", { mode: "timestamp_ms" }),
     cancelReason: text("cancel_reason", {
-      enum: ["membership_revoked", "human_stop", "group_dissolved"],
+      enum: ["membership_revoked", "human_stop", "group_dissolved", "task_context_changed"],
     }),
   },
   (table) => [
@@ -394,7 +443,167 @@ export const agentRunInput = sqliteTable(
     ),
     check(
       "agent_run_input_cancel_reason_check",
-      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved')`,
+      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed')`,
+    ),
+    check(
+      "agent_run_input_admitted_at_check",
+      sql`${table.admittedAt} is null or (typeof(${table.admittedAt})='integer' and ${table.admittedAt}>=0)`,
+    ),
+  ],
+);
+
+export const task = sqliteTable(
+  "task",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    chatId: text("chat_id"),
+    status: text("status", { enum: TASK_STATUSES }).notNull().default("proposed"),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    constraints: text("constraints").notNull().default(""),
+    completionRequirements: text("completion_requirements").notNull().default(""),
+    revision: integer("revision").notNull().default(1),
+    assignmentRevision: integer("assignment_revision").notNull().default(0),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.projectId, t.createdBy],
+      foreignColumns: [project.id, project.createdBy],
+    }),
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    uniqueIndex("task_id_project_unique").on(t.id, t.projectId),
+    index("task_project_status_updated_idx").on(t.projectId, t.status, t.updatedAt, t.id),
+    index("task_chat_status_idx").on(t.chatId, t.status, t.id),
+    check("task_status_check", sql`${t.status} in ('proposed','assigned','finished','canceled')`),
+    check(
+      "task_assignment_check",
+      sql`(${t.status}='proposed' and ${t.chatId} is null) or (${t.status} in ('assigned','finished') and ${t.chatId} is not null) or ${t.status}='canceled'`,
+    ),
+    check(
+      "task_status_lifecycle_check",
+      sql`(${t.status}='proposed' and ${t.chatId} is null) or (${t.status} in ('assigned','finished') and ${t.chatId} is not null) or ${t.status}='canceled'`,
+    ),
+    check("task_title_check", sql`length(trim(${t.title})) between 1 and 120`),
+    check("task_description_check", sql`length(${t.description})<=8000`),
+    check("task_constraints_check", sql`length(${t.constraints})<=8000`),
+    check("task_requirements_check", sql`length(${t.completionRequirements})<=8000`),
+    check(
+      "task_revision_check",
+      sql`typeof(${t.revision})='integer' and ${t.revision} between 1 and 9007199254740991`,
+    ),
+    check(
+      "task_assignment_revision_check",
+      sql`typeof(${t.assignmentRevision})='integer' and ${t.assignmentRevision} between 0 and 9007199254740991`,
+    ),
+    check(
+      "task_timestamps_check",
+      sql`typeof(${t.createdAt})='integer' and ${t.createdAt}>=0 and typeof(${t.updatedAt})='integer' and ${t.updatedAt}>=${t.createdAt}`,
+    ),
+  ],
+);
+
+export const taskChecklistItem = sqliteTable(
+  "task_checklist_item",
+  {
+    id: text("id").primaryKey().notNull(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => task.id),
+    position: integer("position").notNull(),
+    body: text("body").notNull(),
+    checked: integer("checked", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    removedAt: integer("removed_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    uniqueIndex("task_checklist_position_unique").on(t.taskId, t.position),
+    uniqueIndex("task_checklist_task_id_unique").on(t.taskId, t.id),
+    check(
+      "task_checklist_position_check",
+      sql`typeof(${t.position})='integer' and ${t.position} between 1 and 9007199254740991`,
+    ),
+    check("task_checklist_body_check", sql`length(trim(${t.body})) between 1 and 1000`),
+    check("task_checklist_checked_check", sql`${t.checked} in (0,1)`),
+    check(
+      "task_checklist_timestamps_check",
+      sql`typeof(${t.createdAt})='integer' and ${t.createdAt}>=0 and typeof(${t.updatedAt})='integer' and ${t.updatedAt}>=${t.createdAt} and (${t.removedAt} is null or (typeof(${t.removedAt})='integer' and ${t.removedAt}>=${t.createdAt}))`,
+    ),
+  ],
+);
+
+export const taskEvent = sqliteTable(
+  "task_event",
+  {
+    id: text("id").primaryKey().notNull(),
+    taskId: text("task_id").notNull(),
+    projectId: text("project_id").notNull(),
+    seq: integer("seq").notNull(),
+    action: text("action", { enum: TASK_ACTIONS }).notNull(),
+    actorKind: text("actor_kind", { enum: ["human", "agent"] }).notNull(),
+    actorId: text("actor_id").notNull(),
+    actorRunId: text("actor_run_id").references(() => agentRun.id),
+    fromStatus: text("from_status", { enum: TASK_STATUSES }),
+    toStatus: text("to_status", { enum: TASK_STATUSES }).notNull(),
+    fromChatId: text("from_chat_id"),
+    toChatId: text("to_chat_id"),
+    recordSeqAtEvent: integer("record_seq_at_event"),
+    checklistItemId: text("checklist_item_id"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.taskId, t.projectId], foreignColumns: [task.id, task.projectId] }),
+    foreignKey({ columns: [t.fromChatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    foreignKey({ columns: [t.toChatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    foreignKey({
+      columns: [t.taskId, t.recordSeqAtEvent],
+      foreignColumns: [message.taskId, message.taskRecordSeq],
+    }),
+    foreignKey({
+      columns: [t.taskId, t.checklistItemId],
+      foreignColumns: [taskChecklistItem.taskId, taskChecklistItem.id],
+    }),
+    uniqueIndex("task_event_task_seq_unique").on(t.taskId, t.seq),
+    check(
+      "task_event_seq_check",
+      sql`typeof(${t.seq})='integer' and ${t.seq} between 1 and 9007199254740991`,
+    ),
+    check(
+      "task_event_action_check",
+      sql`${t.action} in (${sql.join(
+        TASK_ACTIONS.map((a) => sql.raw(`'${a}'`)),
+        sql`, `,
+      )})`,
+    ),
+    check(
+      "task_event_actor_check",
+      sql`${t.actorKind} in ('human','agent') and length(trim(${t.actorId}))>0 and ((${t.actorKind}='human' and ${t.actorRunId} is null) or (${t.actorKind}='agent' and ${t.actorRunId} is not null))`,
+    ),
+    check(
+      "task_event_status_check",
+      sql`(${t.fromStatus} is null or ${t.fromStatus} in ('proposed','assigned','finished','canceled')) and ${t.toStatus} in ('proposed','assigned','finished','canceled')`,
+    ),
+    check(
+      "task_event_record_seq_check",
+      sql`${t.recordSeqAtEvent} is null or (typeof(${t.recordSeqAtEvent})='integer' and ${t.recordSeqAtEvent} between 1 and 9007199254740991)`,
+    ),
+    check(
+      "task_event_create_check",
+      sql`(${t.action}='create' and ${t.fromStatus} is null and ${t.fromChatId} is null and ${t.toStatus}='proposed') or (${t.action}<>'create' and ${t.fromStatus} is not null)`,
+    ),
+    check(
+      "task_event_checklist_check",
+      sql`(${t.action} in ('checklist_add','checklist_update','checklist_remove') and ${t.checklistItemId} is not null) or (${t.action} not in ('checklist_add','checklist_update','checklist_remove') and ${t.checklistItemId} is null)`,
+    ),
+    check(
+      "task_event_created_at_check",
+      sql`typeof(${t.createdAt})='integer' and ${t.createdAt}>=0`,
     ),
   ],
 );

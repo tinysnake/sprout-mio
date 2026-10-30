@@ -21,7 +21,15 @@ export const MEMBERSHIP_ERROR_MESSAGES = {
   detach_pending: "这台 Machine 正在从本 Project 移出，请等待确认完成",
   membership_removed: "本 Project 已移除这台 Machine，需要显式重新加入",
 } as const;
+export const TASK_ERROR_MESSAGES = {
+  task_invalid_transition: "当前任务状态不允许该操作",
+  task_assignment_invalid: "目标对话不能承接该任务",
+  task_record_required: "完成任务需要末条进度或纠正记录",
+  task_reference_forbidden: "只能引用当前承接对话中可读取的消息",
+  task_record_immutable: "任务记录不可修改或删除，请追加纠正记录",
+} as const;
 const DOMAIN_ERROR_MESSAGES: Record<string, string> = {
+  ...TASK_ERROR_MESSAGES,
   ...EXECUTION_ERROR_MESSAGES,
   ...MEMBERSHIP_ERROR_MESSAGES,
 };
@@ -32,7 +40,7 @@ type DomainErrorClass = abstract new (...args: never[]) => Error & {
 };
 
 async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
-  const [project, agent, access, chat, agentRun, repository, machine, lease, remote] =
+  const [project, agent, access, chat, agentRun, repository, machine, lease, remote, task] =
     await Promise.all([
       import("../../domain/project"),
       import("../../domain/agent"),
@@ -43,6 +51,7 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
       import("../../domain/machine"),
       import("../lease"),
       import("../remote"),
+      import("../../domain/task"),
     ]);
   return [
     project.ProjectError,
@@ -54,6 +63,7 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
     machine.MachineError,
     lease.LeaseError,
     remote.RemoteError,
+    task.TaskError,
   ];
 }
 
