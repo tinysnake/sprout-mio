@@ -180,8 +180,8 @@ export function ChatPane({
       runFacts={runFacts}
       archived={Boolean(chat.archivedAt)}
       titleEditor={
-        // 标题治理已移入右栏治理段；只有 DM 保留消息头部的铅笔入口（P4b 形状）。
-        session.kind === "dm" ? (
+        // DM 保留消息头部的铅笔（P4b 形状，窄屏也能直接改名）；能不能改由治理事实决定，不按 kind 判。
+        session.kind === "dm" && session.governance.canRenameTitle ? (
           <ChatTitleEditor
             chat={chat}
             currentName={displayTitle}

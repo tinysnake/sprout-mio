@@ -68,6 +68,9 @@ export function chatGovernanceFacts(scope: ChatGovernanceScope, actor: ChatActor
   const canChangeMembers = can("member_add") && can("member_remove");
   const canChangeOwner = can("owner_change");
   const canChangeWakePolicy = can("wake_policy_change");
+  // 标题是会话自身的名字，不依赖群组结构，DM 也该能改名；公共频道的标题由 Project 派生，改不动。
+  const canRenameTitle =
+    scope.kind !== "public_channel" && decide("title_change", scope, actor.kind, actorId);
   const reason = group && !canChangeMembers ? denialReason(scope, actor.kind) : undefined;
   return {
     ownerKind: scope.ownerKind,
@@ -78,9 +81,33 @@ export function chatGovernanceFacts(scope: ChatGovernanceScope, actor: ChatActor
     canChangeMembers,
     canChangeOwner,
     canChangeWakePolicy,
-    canRenameTitle: can("title_change"),
+    canRenameTitle,
     ...(reason === undefined ? {} : { readOnlyReason: reason }),
   };
+}
+
+/**
+ * 动作与 `can*` 事实的对应关系只写在这里：页面看 `can*`，领域断言也看同一对，任何一方新加动作都要在
+ * 此表登记，否则编译期 `switch` 会漏。
+ */
+function factsAllow(action: ChatAction, facts: ChatOwnerFacts): boolean {
+  switch (action) {
+    case "member_add":
+    case "member_remove":
+      return facts.canChangeMembers;
+    case "owner_change":
+      return facts.canChangeOwner;
+    case "wake_policy_change":
+    case "group_dissolve":
+      return facts.canChangeWakePolicy;
+    case "title_change":
+      return facts.canRenameTitle;
+    case "group_create":
+    case "message_send":
+      // 两者是 member 档，只看身份类别，在 `assertChatCapability` 里就返回了；这里写 true 是为了让
+      // `switch` 保持全覆盖：登记新动作时编译器会逼你来改这一处，而不是默默落回某个 `can*`。
+      return true;
+  }
 }
 
 /**
@@ -97,12 +124,6 @@ export function assertChatCapability(
   if (level === "member") return;
   if (!scope) throw new ChatError("forbidden", "缺少对话归属信息，无法确认所有者");
   const facts = chatGovernanceFacts(scope, actor);
-  const allowed =
-    action === "owner_change"
-      ? facts.canChangeOwner
-      : action === "wake_policy_change" || action === "group_dissolve"
-        ? facts.canChangeWakePolicy
-        : facts.canChangeMembers;
-  if (!allowed)
+  if (!factsAllow(action, facts))
     throw new ChatError("forbidden", facts.readOnlyReason ?? denialReason(scope, actor.kind));
 }
