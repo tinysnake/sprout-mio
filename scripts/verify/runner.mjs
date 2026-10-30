@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { NATIVE_GATE_WEIGHTS } from "./lib/native-lanes.mjs";
+import { greenFullRunOn, spendEntry } from "./lib/spend.mjs";
 import { SUITE_CAPACITY, SUITE_PLAN, fitsResources, allocateResources } from "./lib/suite-plan.mjs";
 import {
   closeSync,
@@ -454,6 +455,13 @@ function writeReport(runDirectory, report) {
   return reportPath;
 }
 
+const spendLedger = join(verifyStateDirectory, "spend.jsonl");
+
+function headCommit() {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
+
 function printSummary(outcomes, totalDurationMs, reportPath) {
   console.log("Slowest first");
   for (const outcome of [...outcomes].sort((left, right) => right.durationMs - left.durationMs)) {
@@ -463,6 +471,16 @@ function printSummary(outcomes, totalDurationMs, reportPath) {
   }
   console.log(`Verification total=${formatDuration(totalDurationMs)}`);
   console.log(`Verification report=${relative(root, reportPath).split("\\").join("/")}`);
+}
+
+function appendSpend(report, head) {
+  mkdirSync(verifyStateDirectory, { recursive: true });
+  writeFileSync(spendLedger, `${JSON.stringify(spendEntry(report, head))}\n`, { flag: "a" });
+}
+
+function previousFullRun(head) {
+  if (!existsSync(spendLedger)) return null;
+  return greenFullRunOn(readFileSync(spendLedger, "utf8"), head);
 }
 
 async function main() {
@@ -483,6 +501,19 @@ async function main() {
   }
 
   const allScripts = discoverScripts();
+  if (parsed.only === null && !parsed.help) {
+    const head = headCommit();
+    const previous = previousFullRun(head);
+    if (previous && process.env.SPROUT_VERIFY_REPEAT !== "1") {
+      console.log(
+        `SKIP this HEAD already has a full run with 0 failures (${previous.at}, ${formatDuration(previous.durationMs)})`,
+      );
+      console.log(
+        `     ${head ? head.slice(0, 12) : "unknown HEAD"} — set SPROUT_VERIFY_REPEAT=1 to run it again, or use \`pnpm verify:local\` for the macOS share.`,
+      );
+      return 0;
+    }
+  }
   const selected =
     parsed.only === null
       ? allScripts
@@ -541,6 +572,7 @@ async function main() {
     outcomes,
   };
   const reportPath = writeReport(run.directory, report);
+  appendSpend(report, headCommit());
 
   printSummary(outcomes, totalDurationMs, reportPath);
 

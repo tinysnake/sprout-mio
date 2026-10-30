@@ -22,7 +22,7 @@ function makeFixture() {
   const root = mkdtempSync(join(tmpdir(), "verify-runner-"));
   temporaryRoots.push(root);
   mkdirSync(join(root, "scripts", "verify", "lib"), { recursive: true });
-  for (const name of ["native-lanes.mjs", "suite-plan.mjs"])
+  for (const name of ["native-lanes.mjs", "spend.mjs", "suite-plan.mjs"])
     copyFileSync(
       join(repositoryRoot, "scripts/verify/lib", name),
       join(root, "scripts/verify/lib", name),

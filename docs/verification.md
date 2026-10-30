@@ -90,6 +90,14 @@ coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范
 
 只有后续改动、验证失败或尚未解决的具体风险要求时，才扩大或重复验证，并记录原因。
 
+## 验证开销的账
+
+每次运行都把一行记进 `.verify/spend.jsonl`（HEAD、目标、总时长、逐门禁状态与耗时）。报告目录会被裁剪，账本不会，`pnpm verify:spend` 读它给出总时长、按目标与按门禁的聚合，以及「同一 HEAD 跑了几遍全量」。
+
+`pnpm verify` 在开始前查账本：同一 HEAD 已经有一轮 0 失败的全量就直接 `SKIP` 并退 0，只打印可复用的时长与来源。确实要重跑时设 `SPROUT_VERIFY_REPEAT=1`。`--only` 与 `pnpm verify:local` 不受这条限制。
+
+判断范围之前先看这三个数字：要证明的行为、该门禁的自身耗时（账本可查）、以及这台机器的 `uptime`。满载机器上的时间预算型门禁会假红，那种红不是证据。
+
 `aa-execution-log-contracts`、`af-execution-cancel-authority`、`ai-execution-accept-fixes`、`ak-execution-accept-fixes-2` 通过各自的 Vitest wrapper 执行一次隔离 fixture，移除脚本内相同 fixture 的直接重复调用。wrapper 保留独立子进程、私有数据库、test 环境、禁用 Pi、所需随机 auth secret、proxy 前提、PASS/退出与超时检查，并在 finally 清理临时目录。独立 live/browser 验收和 `b-tooling` 全量测试仍保留。`ac-execution-recovery-log` 与测试中的 recovery fixture 尚未证明环境等价，继续各自取证。
 
 ## 证据复用与失效

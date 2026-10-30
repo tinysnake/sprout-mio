@@ -25,7 +25,8 @@
     "verify:local": "node scripts/verify/targets.mjs local",
     "verify:ci": "node scripts/verify/targets.mjs ci",
     "test:local": "node scripts/verify/test-target.mjs local",
-    "test:ci": "node scripts/verify/test-target.mjs ci"
+    "test:ci": "node scripts/verify/test-target.mjs ci",
+    "verify:spend": "node scripts/verify/spend.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
