@@ -242,7 +242,7 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 - [x] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。证据 [功能交付证据](p5a/summary.md#功能交付证据)，重跑 `bash scripts/verify/i2-group-chat.sh`。
 - [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [UI 交付证据](p5a/summary.md#ui-交付证据)，重跑 `bash scripts/verify/i-chat.sh`。
 - [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [技术验收证据](p5a/summary.md#技术验收证据)，重跑 `bash scripts/verify/b-tooling.sh`。
-- [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。
+- [x] Human 亲自体验并明确确认通过，编排者已记录确认版本。证据 [human-体验确认](p5a/summary.md#human-体验确认)，版本 `2fd0ee9`；重跑 `bash scripts/verify/i-chat.sh`。
 
 ### I-P5b 集成 Task 总览与生命周期
 
