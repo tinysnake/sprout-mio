@@ -11,6 +11,7 @@ export const SUITE_CAPACITY = Object.freeze({
   port3141: 1,
   port3142: 1,
   port3144: 1,
+  timing: 1,
 });
 
 const server = ["install", "server"];
@@ -81,7 +82,7 @@ export const SUITE_PLAN = Object.freeze({
   "v-mcp-contracts": plan(11.609, { unit: 1 }),
   "w-worker-remote": plan(66.076, { native: 1, browser: 1 }, worker),
   "ap-p4d-handoff-worker": plan(74, { native: 1, browser: 1 }, worker),
-  "az-p5a-live-worker": plan(120, { native: 1, browser: 1 }, worker),
+  "az-p5a-live-worker": plan(120, { native: 1, browser: 1, timing: 1 }, worker),
   "as-p5a-chat-ui": plan(45, { browser: 1 }, server),
   "x-remote-tools": plan(2.063, { unit: 1, sdk: 1 }),
   "x2-mcp-extension": plan(13.791, { unit: 1, sdk: 1 }, extension),
@@ -89,9 +90,12 @@ export const SUITE_PLAN = Object.freeze({
   "y-lease-ui": plan(60.044, { development: 1, browser: 1 }, privateTree, true),
   "y-mcp-worker": plan(5.408, { unit: 1, native: 1, sdk: 1 }),
   "y2-mcp-http-worker": plan(1.933, { unit: 1, native: 1, sdk: 1 }, ["install", "worker"]),
-  "z-lease-integration": plan(52.166, { native: 1, browser: 1, sdk: 1 }, worker),
-  "z2-mcp-integration": plan(11.638, { unit: 1, native: 1, sdk: 1 }),
-  "z3-mcp-acceptance": plan(27.517, { unit: 1, native: 2, sdk: 1 }, [...worker, "extension"]),
+  "z-lease-integration": plan(52.166, { native: 1, browser: 1, sdk: 1, timing: 1 }, worker),
+  "z2-mcp-integration": plan(11.638, { unit: 1, native: 1, sdk: 1, timing: 1 }),
+  "z3-mcp-acceptance": plan(27.517, { unit: 1, native: 2, sdk: 1, timing: 1 }, [
+    ...worker,
+    "extension",
+  ]),
 });
 
 export function fitsResources(used, requested) {
