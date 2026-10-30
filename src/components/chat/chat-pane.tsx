@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
-import type { Chat, ChatResult, Message } from "../../contracts/chat";
+import type { ChatSession, ChatResult, Message } from "../../contracts/chat";
+import type { ChatInfoView } from "../../contracts/info-hub";
 import type { FieldErrors } from "../../contracts/project";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
@@ -13,6 +14,12 @@ import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server
 import { ChatThread } from "./chat-thread";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { useChatDraft } from "./chat-drafts";
+import {
+  sessionDisplayTitle,
+  sessionSenderNames,
+  sessionSubtitle,
+  senderKey,
+} from "./chat-session-display";
 
 /**
  * Chat 中栏的容器：只负责服务调用与请求状态，呈现全部交给 ChatThread。
@@ -20,27 +27,28 @@ import { useChatDraft } from "./chat-drafts";
  */
 export function ChatPane({
   projectId,
-  chat,
-  agentName,
+  session,
   profile,
   humanName,
   messages,
+  info,
   runState,
   inspectorOpen,
   onToggleInspector,
   onChanged,
 }: {
   projectId: string;
-  chat: Chat;
-  agentName: string;
+  session: ChatSession;
   profile: AgentResult<AgentProfile> | null;
   humanName: string;
   messages: ChatResult<Message[]>;
+  info: ChatResult<ChatInfoView>;
   runState: AgentRunResult<ChatRunState>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
   onChanged: () => void;
 }) {
+  const chat = session.chat;
   const [draft, setDraft] = useChatDraft(chat.id);
   const [sendPending, setSendPending] = useState(false);
   const [sendError, setSendError] = useState<AppError | null>(null);
@@ -56,6 +64,34 @@ export function ChatPane({
       alive.current = false;
     };
   }, []);
+
+  const displayTitle = sessionDisplayTitle(session, info.ok ? info.data : undefined);
+  const senderNames = useMemo(
+    () => sessionSenderNames(session, info.ok ? info.data : undefined, humanName),
+    [session, info, humanName],
+  );
+  const knownSenders = useMemo(() => {
+    if (!info.ok) return undefined;
+    return new Set(
+      info.data.members.map((member) => senderKey(member.memberKind, member.memberId)),
+    );
+  }, [info]);
+  const runFacts = useMemo(() => {
+    const map = new Map<string, import("../../contracts/info-hub").InfoHubRunSummary[]>();
+    if (!info.ok) return map;
+    for (const run of [...info.data.runs.active, ...info.data.runs.recent]) {
+      if (!run.assistantMessageId) continue;
+      const list = map.get(run.assistantMessageId) ?? [];
+      list.push(run);
+      map.set(run.assistantMessageId, list);
+    }
+    return map;
+  }, [info]);
+
+  const agentName =
+    senderNames.get(
+      senderKey("agent", session.kind === "dm" ? session.instance.agentProfileId : ""),
+    ) ?? displayTitle;
 
   async function send() {
     if (sendPending) return;
@@ -116,7 +152,7 @@ export function ChatPane({
       }
       chat={chat}
       agentName={agentName}
-      profile={profile}
+      profile={session.kind === "dm" ? profile : null}
       humanName={humanName}
       messages={messages}
       runState={runState}
@@ -136,10 +172,17 @@ export function ChatPane({
         input.current?.focus();
       }}
       inputRef={input}
+      displayTitle={displayTitle}
+      subtitle={sessionSubtitle(session)}
+      kind={session.kind}
+      senderNames={senderNames}
+      knownSenders={knownSenders}
+      runFacts={runFacts}
+      archived={Boolean(chat.archivedAt)}
       titleEditor={
         <ChatTitleEditor
           chat={chat}
-          currentName={agentName}
+          currentName={displayTitle}
           submit={(title) => updateChatTitleFn({ data: { chatId: chat.id, title } })}
           restore={() => clearChatTitleFn({ data: { chatId: chat.id } })}
           onChanged={onChanged}

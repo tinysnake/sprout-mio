@@ -27,13 +27,14 @@ function ProjectChatsIndex() {
             对话
           </h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            与 Project 内 Agent 成员的一对一 DM；同一成员始终对应同一条对话与同一个分身。
+            DM、群组与公共频道都在同一工作区；群组把多个 Agent 放在同一条对话里，公共频道随 Project
+            自动同步成员。
           </p>
         </header>
         {hasChats && (
           <ChatEmptyState
             title="选择一条 Chat"
-            body="从左侧选择一条对话继续上下文，或从下面的 Agent 成员发起新的对话。"
+            body="从左侧选择一条对话继续上下文，或从右上角新建 DM / 群组。"
           />
         )}
         <div className="mt-6 max-w-160">
