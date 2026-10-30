@@ -114,6 +114,7 @@ try {
     'group_member_list_only_in_member_section',
     'member_row_selects_profile',
     'agent_owner_group_keeps_title_entry',
+    'agent_owner_group_keeps_owner_fallback_entry',
     'dm_keeps_members_and_activity_only',
   ]
   const ids = new Set(checks.map((line) => line.split(' ')[1]))

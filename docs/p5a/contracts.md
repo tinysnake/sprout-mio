@@ -40,7 +40,7 @@ Group 的写路径仍然写 `chat_member`；`chat_member` 上有两条触发器�
 | `delivered_at`                  | 被 run 取走时写入                                                     |
 | `cancelled_at`、`cancel_reason` | 取消时点与原因：`membership_revoked`、`human_stop`、`group_dissolved` |
 
-一条 CHECK 把三种状态各自的列约束固定下来：`pending` 三列皆空，`delivered` 只有 `delivered_at`，`cancelled` 只有后两列。终态 run 的 pending 输入在 P5a 不迁移、不重投，等 P6 的取消原因落地。
+一条 CHECK 把三种状态各自的列约束固定下来：`pending` 三列皆空，`delivered` 只有 `delivered_at`，`cancelled` 只有后两列。run 正常完成时，仍留在 `pending` 的输入交给同 instance 的下一轮（`carryPendingInputsToNextRound`）——交接发生在终态落库之后，所以「下一轮」不会又挂回自己；异常终态（失败、中断、停止）不自动重投，`pending` 保持原样等 P6 的恢复策略。
 
 ## 回复归属：`agent_run`
 
@@ -59,14 +59,17 @@ Group 的写路径仍然写 `chat_member`；`chat_member` 上有两条触发器�
 
 `CHAT_CAPABILITIES` 是静态封闭表，八项动作逐一列出 Human 与 Agent 的门槛（`never`、`member`、`owner`）：
 
-| 动作                                                                                  | Human  | Agent  |
-| ------------------------------------------------------------------------------------- | ------ | ------ |
-| `group_create`                                                                        | member | never  |
-| `group_dissolve`、`member_add`、`member_remove`、`owner_change`、`wake_policy_change` | owner  | never  |
-| `title_change`                                                                        | member | never  |
-| `message_send`                                                                        | member | member |
+| 动作                                                   | Human  | Agent  |
+| ------------------------------------------------------ | ------ | ------ |
+| `group_create`                                         | member | never  |
+| `member_add`、`member_remove`                          | member | never  |
+| `group_dissolve`、`owner_change`、`wake_policy_change` | owner  | never  |
+| `title_change`                                         | member | never  |
+| `message_send`                                         | member | member |
 
-Agent 在所有治理动作上都是 `never`，因此「分身不能治理对话」是查表结果，不是散落在各入口的条件判断。`title_change` 的 Human 档是 `member`：标题写入没有 `expectedRevision`，收成 `owner` 会改变既有 Human 行为。
+Agent 在所有治理动作上都是 `never`，因此「分身不能治理对话」是查表结果，不是散落在各入口的条件判断。`title_change` 的 Human 档是 `member`：标题写入没有 `expectedRevision`，收成 `owner` 会改变既有 Human 行为。成员增删同样是 `member` 档（裁定 d42）：群是人协作的地方，非 owner 的 Human 成员照常能加人、移人；`member` 档只回答「是不是人」，「是不是这条对话的有效成员」由调用点读 `chat_effective_member` 补判（裁定 d7），所以被移出群的 Human 再调增删会得到 `not_found`。
+
+页面读的是同一份判定的结果：`chatOwnerFactsSchema`（`src/contracts/chat.ts`）把 `canChangeMembers`、`canChangeOwner`、`canChangeWakePolicy`、`canRenameTitle` 与 `readOnlyReason` 一起交给浏览器，三个会话变体各带一个 `governance` 字段。领域层在 `chatGovernanceFacts`（`src/domain/chat-capabilities.ts`）里用本表与裁定 d6 的 owner 兜底一次算完后，页面不再抄能力表、也不再自己比 owner。
 
 ## 唤醒：`routeWakeCandidates`
 

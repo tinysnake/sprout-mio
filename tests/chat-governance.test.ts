@@ -1,70 +1,135 @@
 import { describe, expect, it } from "vite-plus/test";
-import { canRenameChat, governanceAvailability } from "../src/components/chat/chat-governance";
-import { CHAT_CAPABILITIES } from "../src/domain/chat-capabilities";
 
-const GOVERNANCE_ACTIONS = [
-  "group_dissolve",
-  "member_add",
-  "member_remove",
-  "owner_change",
-  "wake_policy_change",
-] as const;
+// 领域层判定要装载 ChatError 与能力表：先把连接指到内存库，本文件不执行任何查询。
+process.env.DATABASE_URL ??= ":memory:";
 
-const facts = {
-  kind: "group" as const,
-  ownerKind: "human" as const,
+const { chatGovernanceFacts } = await import("../src/domain/chat-capabilities");
+const { governanceNote } = await import("../src/components/chat/chat-governance");
+const { CHAT_CAPABILITIES } = await import("../src/domain/chat-capabilities");
+import type { ChatGovernanceScope } from "../src/domain/chat-capabilities";
+import type { ChatActor } from "../src/domain/chat-actor";
+
+const ctx = { userId: "usr_owner", requestId: "req_test" };
+const human = (userId: string): ChatActor => ({ kind: "human", userId, ctx });
+const agent = (agentProfileId: string): ChatActor => ({
+  kind: "agent",
+  agentProfileId,
+  instanceId: "ins_1",
+  runId: "run_1",
+  ctx,
+});
+
+const group: ChatGovernanceScope = {
+  kind: "group",
+  ownerKind: "human",
   ownerId: "usr_owner",
-  actorKind: "human" as const,
-  actorId: "usr_owner",
   projectCreatedBy: "usr_owner",
 };
+const factsFor = (scope: ChatGovernanceScope, actor: ChatActor) =>
+  chatGovernanceFacts(scope, actor);
 
-/** 领域表是唯一真值：member 档对 Human 直接放行，owner 档还要求是当前所有者。 */
-function expected(action: (typeof GOVERNANCE_ACTIONS)[number], owner: boolean) {
-  const level = CHAT_CAPABILITIES[action].human;
-  if (level === "never") return false;
-  return level === "member" ? true : owner;
-}
-
-describe("chat governance affordance", () => {
-  it.each(GOVERNANCE_ACTIONS)("%s 与领域能力表对当前 Owner 的判断一致", (action) => {
-    expect(governanceAvailability(facts)[action]).toBe(expected(action, true));
+describe("chat 治理事实（领域算、页面只读）", () => {
+  it("Human owner 拿全部治理入口，成员档动作对任何 Human 成员都开", () => {
+    const facts = factsFor(group, human("usr_owner"));
+    expect(facts.canChangeMembers).toBe(true);
+    expect(facts.canChangeOwner).toBe(true);
+    expect(facts.canChangeWakePolicy).toBe(true);
+    expect(facts.canRenameTitle).toBe(true);
+    expect(facts.readOnlyReason).toBeUndefined();
+    expect(facts.actorKind).toBe("human");
+    expect(facts.actorId).toBe("usr_owner");
   });
 
-  it.each(GOVERNANCE_ACTIONS)("%s 对非 Owner 的 Human 按能力档位判定", (action) => {
-    expect(governanceAvailability({ ...facts, actorId: "usr_other" })[action]).toBe(
-      expected(action, false),
-    );
+  // 成员增删对任何 Human 成员开放（能力表 member 档，d42），Owner 变更仍是 owner 档。
+  it("非 owner 的 Human 成员能改成员、不能换 Owner", () => {
+    const facts = factsFor(group, human("usr_other"));
+    expect(facts.canChangeMembers).toBe(true);
+    expect(facts.canChangeOwner).toBe(false);
+    expect(facts.canChangeWakePolicy).toBe(false);
+    expect(facts.canRenameTitle).toBe(true);
   });
 
-  // 成员增删对任何 Human 成员开放（领域表 165bc58），页面照抄同一档位。
-  it("成员治理对非 Owner 的 Human 成员同样渲染", () => {
-    const other = governanceAvailability({ ...facts, actorId: "usr_other" });
-    expect(other.member_add).toBe(true);
-    expect(other.member_remove).toBe(true);
-    expect(other.owner_change).toBe(false);
-    expect(other.wake_policy_change).toBe(false);
+  // 反证（R3-UI02）：Owner 交给 Agent 之后，d6 的 Project 创建者兜底必须仍能换回 Owner，
+  // 否则「Human 指定 Agent 为 owner」的群组在页面上永久冻结。
+  it("Agent 当 owner 时，Project 创建者的人类仍可更改 Owner", () => {
+    const agentOwner: ChatGovernanceScope = {
+      kind: "group",
+      ownerKind: "agent",
+      ownerId: "agp_1",
+      projectCreatedBy: "usr_owner",
+    };
+    const creator = factsFor(agentOwner, human("usr_owner"));
+    expect(creator.canChangeOwner).toBe(true);
+    expect(creator.canChangeWakePolicy).toBe(true);
+    expect(creator.canChangeMembers).toBe(true);
+    expect(creator.projectCreatedBy).toBe("usr_owner");
+
+    const other = factsFor(agentOwner, human("usr_other"));
+    expect(other.canChangeOwner).toBe(false);
+    expect(other.canChangeWakePolicy).toBe(false);
+    // 成员治理不受 owner 档影响（d42 的 member 档），所以没有只读原因，只是不能换 Owner。
+    expect(other.readOnlyReason).toBeUndefined();
   });
 
-  it.each(GOVERNANCE_ACTIONS)("%s 对 Agent 永不渲染", (action) => {
-    expect(
-      governanceAvailability({ ...facts, actorKind: "agent", actorId: "agf_agent" })[action],
-    ).toBe(false);
+  it("Agent 在所有治理动作上都拿到 false，并被写明不参与治理", () => {
+    const facts = factsFor(group, agent("agp_1"));
+    expect(facts.canChangeMembers).toBe(false);
+    expect(facts.canChangeOwner).toBe(false);
+    expect(facts.canChangeWakePolicy).toBe(false);
+    expect(facts.canRenameTitle).toBe(false);
+    expect(facts.readOnlyReason).toContain("Agent");
   });
 
-  it("非群组没有治理动作", () => {
-    const dm = governanceAvailability({ ...facts, kind: "dm" });
-    expect(Object.values(dm).some(Boolean)).toBe(false);
+  it("DM 与公共频道没有治理入口，重命名入口也不在右栏", () => {
+    for (const kind of ["dm", "public_channel"] as const) {
+      const facts = factsFor({ ...group, kind }, human("usr_owner"));
+      expect(Object.values(facts).filter((value) => value === true)).toEqual([]);
+      expect(facts.canRenameTitle).toBe(false);
+    }
   });
 
-  // 页面不再比领域表更严：`title_change` 是 member 档，普通群的 Human 成员都能看到入口，
-  // 隐藏一个 API 允许的动作只会让人以为不能改。服务端仍是最终判定点。
-  it("重命名入口对普通群的 Human 成员渲染", () => {
-    expect(canRenameChat(facts)).toBe(true);
-    expect(canRenameChat({ ...facts, actorId: "usr_other" })).toBe(true);
-    expect(canRenameChat({ ...facts, kind: "dm" })).toBe(false);
-    expect(canRenameChat({ ...facts, kind: "public_channel" })).toBe(false);
-    expect(canRenameChat({ ...facts, actorKind: "agent", actorId: "agf_agent" })).toBe(false);
+  it("判定值与能力表的档位同源：member 档对 Human 开，owner 档看归属", () => {
+    expect(CHAT_CAPABILITIES.member_add.human).toBe("member");
+    expect(CHAT_CAPABILITIES.owner_change.human).toBe("owner");
     expect(CHAT_CAPABILITIES.title_change.human).toBe("member");
+    expect(CHAT_CAPABILITIES.member_add.agent).toBe("never");
+  });
+});
+
+describe("治理段文案读 facts，不再自己判身份", () => {
+  it("Agent owner 的兜底治理者看到的是「可以变更 Owner」", () => {
+    const facts = factsFor(
+      { kind: "group", ownerKind: "agent", ownerId: "agp_1", projectCreatedBy: "usr_owner" },
+      human("usr_owner"),
+    );
+    const note = governanceNote("group", facts);
+    expect(note).toContain("Owner 变更需要当前 Human owner");
+    expect(note).not.toContain("只有 owner");
+  });
+
+  it("非兜底者看到的是「当前身份不能变更 Owner」", () => {
+    const facts = factsFor(
+      { kind: "group", ownerKind: "agent", ownerId: "agp_1", projectCreatedBy: "usr_owner" },
+      human("usr_other"),
+    );
+    const note = governanceNote("group", facts);
+    expect(note).toContain("当前身份不能变更 Owner");
+    expect(note).toContain("Agent 不参与治理");
+  });
+
+  it("Agent 行动者看到领域给的只读原因", () => {
+    const facts = factsFor(group, agent("agp_1"));
+    const note = governanceNote("group", facts);
+    expect(note).toContain("Agent 不参与对话治理");
+  });
+
+  it("公共频道与 DM 的文案各按 kind 收口", () => {
+    expect(
+      governanceNote(
+        "public_channel",
+        factsFor({ ...group, kind: "public_channel" }, human("usr_owner")),
+      ),
+    ).toBe("公共频道 Owner 固定为 Project 创建者，成员跟随 Project 自动同步。");
+    expect(governanceNote("dm", factsFor({ ...group, kind: "dm" }, human("usr_owner")))).toBe("");
   });
 });

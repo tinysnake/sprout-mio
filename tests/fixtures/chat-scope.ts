@@ -456,7 +456,12 @@ assert.ok(
 );
 assert.equal(CHAT_CAPABILITIES.title_change.agent, "never");
 assert.equal(CHAT_CAPABILITIES.title_change.human, "member");
-const ownerFacts = { ownerKind: "human" as const, ownerId: creatorId, projectCreatedBy: creatorId };
+const ownerFacts = {
+  kind: "group" as const,
+  ownerKind: "human" as const,
+  ownerId: creatorId,
+  projectCreatedBy: creatorId,
+};
 for (const action of CHAT_ACTIONS) {
   if (action === "message_send") continue;
   assert.equal(

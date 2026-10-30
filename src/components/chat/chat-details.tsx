@@ -36,7 +36,7 @@ import { ChatAvatar } from "./chat-avatar";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { ChatFactsBlock } from "../info-hub/chat-info-panel";
 import { RunFactsBlock, TurnStartContextBlock } from "../info-hub/run-facts";
-import { canRenameChat, governanceAvailability, governanceNote } from "./chat-governance";
+import { governanceNote } from "./chat-governance";
 import type { ChatMachineFacts } from "./chat-loader";
 import { LeaseOverview } from "../machine/lease-panel";
 import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
@@ -110,17 +110,10 @@ export function ChatDetails({
         )?.displayName ??
         profileNames.get(chat.owner.id) ??
         "Agent");
-  const governanceFacts = {
-    kind: chat.kind,
-    ownerKind: chat.owner.kind,
-    ownerId: chat.owner.id,
-    actorKind: "human" as const,
-    actorId: humanUserId,
-  };
-  const actions = governanceAvailability(governanceFacts);
-  // 标题写入的入口只看冻结能力表：普通 Group 的 Human owner 才有，其他人只读。
-  const canRename = canRenameChat(governanceFacts);
-  const governanceCopy = governanceNote(governanceFacts);
+  // 治理事实只读领域层算好的那一份（裁定 d45）：页面不抄能力表、不比 owner。
+  // Agent 当 owner 时，`canChangeOwner` 已经包含 d6 的 Project 创建者兜底。
+  const governance = session.governance;
+  const governanceCopy = governanceNote(chat.kind, governance);
   const currentMembers: ChatMember[] = members.ok ? members.data : [];
   // 资料块跟着成员行的选中态；默认不选中，群组里因此没有「第一个 Agent」的猜测。
   // DM 只有一个 Agent 成员、没有歧义，沿用 P4b 的默认展示。
@@ -209,7 +202,8 @@ export function ChatDetails({
               <ul data-testid="inspector-member-list" className="space-y-1.5">
                 {currentMembers.map((member) => {
                   const key = memberKey(member);
-                  const isOwner =
+                  // 这一行是不是 Owner 行：展示用的事实，不是权限判定（能不能治理来自 governance）。
+                  const isOwnerRow =
                     chat.owner.kind === member.memberKind && chat.owner.id === member.memberId;
                   const name =
                     names.get(key) ??
@@ -218,7 +212,8 @@ export function ChatDetails({
                         ? humanName || "你"
                         : "Human"
                       : (profileNames.get(member.memberId) ?? "Agent"));
-                  const canRemove = actions.member_remove && !isOwner;
+                  // 能力判定来自领域层；「所有者不能被移出」是数据事实（chat.owner），不是权限比较。
+                  const canRemove = governance.canChangeMembers && !isOwnerRow;
                   // Agent 成员行可选中，选中后资料块展示这一位的职位与 persona。
                   const row =
                     member.memberKind === "agent" ? (
@@ -243,7 +238,7 @@ export function ChatDetails({
                   return (
                     <li key={key} className="flex items-center gap-2">
                       {row}
-                      {isOwner && (
+                      {isOwnerRow && (
                         <span className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground">
                           Owner
                         </span>
@@ -282,7 +277,7 @@ export function ChatDetails({
             )}
             {chat.kind === "group" && (
               <div className="flex flex-wrap items-center gap-2">
-                {actions.member_add ? (
+                {governance.canChangeMembers ? (
                   <AddMemberDialog
                     chatId={chat.id}
                     revision={chat.governanceRevision}
@@ -407,7 +402,7 @@ export function ChatDetails({
                 </dd>
               </dl>
               <div className="flex flex-wrap items-center gap-2">
-                {chat.kind === "group" && actions.owner_change && (
+                {chat.kind === "group" && governance.canChangeOwner && (
                   <OwnerDialog
                     chatId={chat.id}
                     revision={chat.governanceRevision}
@@ -419,7 +414,7 @@ export function ChatDetails({
                     onChanged={onChanged}
                   />
                 )}
-                {canRename && (
+                {governance.canRenameTitle && (
                   <ChatTitleEditor
                     chat={chat}
                     currentName={agentName}

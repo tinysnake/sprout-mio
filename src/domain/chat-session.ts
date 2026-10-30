@@ -3,7 +3,15 @@ import { PUBLIC_CHANNEL_DISPLAY_TITLE } from "../contracts/chat";
 import type { ProjectContext } from "./access";
 import { getAgentProfile } from "./agent";
 import { listAgentRunInputs, listAgentRuns } from "./agent-run";
-import { ChatError, getChat, listChatMembers, listInstancesForChat } from "./chat";
+import { actorFromContext } from "./chat-actor";
+import { chatGovernanceFacts } from "./chat-capabilities";
+import {
+  ChatError,
+  chatGovernanceScope,
+  getChat,
+  listChatMembers,
+  listInstancesForChat,
+} from "./chat";
 
 /**
  * 会话读模型（P5a 第四步）：一个会话可以返回多个分身与它们各自的活跃 run。
@@ -17,13 +25,15 @@ import { ChatError, getChat, listChatMembers, listInstancesForChat } from "./cha
  */
 export function getChatSession(chatId: string, ctx: ProjectContext): ChatSession {
   const chat = getChat(chatId, ctx);
+  // 治理事实由领域层一次算好（裁定 d45）：页面只读 `governance`，不再自己拼 facts 或比身份。
+  const governance = chatGovernanceFacts(chatGovernanceScope(chat), actorFromContext(ctx));
   const members = listChatMembers(chatId, ctx);
   const instances = listInstancesForChat(chatId, ctx);
   if (chat.kind === "dm") {
     const instance = instances.at(0);
     // DM 建立时就在同一事务里建好唯一分身；缺失说明数据被破坏，不静默返回半截视图。
     if (!instance) throw new ChatError("not_found", "对话分身不存在");
-    return { kind: "dm", chat, instance };
+    return { kind: "dm", chat, instance, governance };
   }
   const activeRuns = activeRunByInstance(chatId, ctx);
   const participants = instances.map((instance) => {
@@ -35,13 +45,15 @@ export function getChatSession(chatId: string, ctx: ProjectContext): ChatSession
       ...(active ? { activeRun: active } : {}),
     };
   });
-  if (chat.kind === "group") return { kind: "group", chat, members, instances: participants };
+  if (chat.kind === "group")
+    return { kind: "group", chat, members, instances: participants, governance };
   return {
     kind: "public_channel",
     chat,
     displayTitle: PUBLIC_CHANNEL_DISPLAY_TITLE,
     members,
     instances: participants,
+    governance,
   };
 }
 

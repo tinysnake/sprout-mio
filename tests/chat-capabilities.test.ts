@@ -4,8 +4,9 @@ import { describe, expect, it } from "vite-plus/test";
 // 本文件只断言纯判定、不执行任何查询：先把连接指到内存库，再动态载入被测模块。
 process.env.DATABASE_URL ??= ":memory:";
 const { ChatError } = await import("../src/domain/chat");
-const { CHAT_ACTIONS, CHAT_CAPABILITIES, assertChatCapability } =
+const { CHAT_ACTIONS, CHAT_CAPABILITIES, assertChatCapability, chatGovernanceFacts } =
   await import("../src/domain/chat-capabilities");
+import type { ChatGovernanceScope } from "../src/domain/chat-capabilities";
 import type { ChatAction } from "../src/domain/chat-capabilities";
 import type { ChatActor } from "../src/domain/chat-actor";
 
@@ -36,15 +37,21 @@ type Access = "never" | "member" | "owner";
 const OWNER_ACTIONS = CHAT_ACTIONS.filter((action) => EXPECTED[action].human === "owner");
 const AGENT_DENIED_ACTIONS = CHAT_ACTIONS.filter((action) => EXPECTED[action].agent === "never");
 
-/** owner 档判定吃的是对话所有者加 `project.created_by`（裁定 d6），用例按这份事实构造。 */
-type Facts = { ownerKind: "human" | "agent"; ownerId: string; projectCreatedBy: string };
+/** owner 档判定吃的是对话种类、所有者与 `project.created_by`（裁定 d6），用例按这份事实构造。 */
+type Facts = {
+  kind: "group" | "dm" | "public_channel";
+  ownerKind: "human" | "agent";
+  ownerId: string;
+  projectCreatedBy: string;
+};
 const facts = (ownerKind: "human" | "agent", ownerId: string, projectCreatedBy: string): Facts => ({
+  kind: "group",
   ownerKind,
   ownerId,
   projectCreatedBy,
 });
 
-function expectForbidden(action: ChatAction, actor: ChatActor, chat?: Facts) {
+function expectForbidden(action: ChatAction, actor: ChatActor, chat?: ChatGovernanceScope) {
   expect(() => assertChatCapability(action, actor, chat)).toThrow(ChatError);
   let code: string | undefined;
   try {
@@ -129,5 +136,22 @@ describe("chat 能力表", () => {
       if (EXPECTED[action].human === "member")
         expect(() => assertChatCapability(action, human("usr_1"))).not.toThrow();
     }
+  });
+
+  // 单一判定（裁定 d45）：领域拒绝与页面布尔值读的是同一个函数，不是两套规则。
+  it("owner 档的放行与 chatGovernanceFacts 的布尔值一一对应", () => {
+    const scope: ChatGovernanceScope = {
+      kind: "group",
+      ownerKind: "agent",
+      ownerId: "agp_1",
+      projectCreatedBy: "usr_1",
+    };
+    const ownerByFallback = human("usr_1");
+    expect(chatGovernanceFacts(scope, ownerByFallback).canChangeOwner).toBe(true);
+    expect(() => assertChatCapability("owner_change", ownerByFallback, scope)).not.toThrow();
+    const outsider = human("usr_2");
+    expect(chatGovernanceFacts(scope, outsider).canChangeOwner).toBe(false);
+    expectForbidden("owner_change", outsider, scope);
+    expect(() => assertChatCapability("title_change", outsider, scope)).not.toThrow();
   });
 });

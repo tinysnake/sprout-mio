@@ -11,6 +11,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/chat-workspace.test.ts",
     "tests/chat.test.ts",
     "tests/chat-governance.test.ts",
+    "tests/chat-member-participation.test.ts",
     "tests/chat-wake.test.ts",
     "tests/contracts.test.ts",
     "tests/data-auth.test.ts",

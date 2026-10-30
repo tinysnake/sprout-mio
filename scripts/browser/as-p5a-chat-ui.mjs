@@ -5,7 +5,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import Database from "better-sqlite3";
 import { chromium } from "playwright";
 import { createProject, waitForChats } from "./ui-navigation.mjs";
-import { governanceAvailability } from "../../src/components/chat/chat-governance.ts";
+import { chatGovernanceFacts } from "../../src/domain/chat-capabilities.ts";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const EVIDENCE = process.env.SPROUT_UI_EVIDENCE_DIR
@@ -191,13 +191,29 @@ try {
   );
   await shot(page, "p5a-public-channel");
 
-  const agentGovernance = governanceAvailability({
-    kind: "group",
-    ownerKind: "human",
-    ownerId: "human-owner",
-    actorKind: "agent",
-    actorId: "agent-actor",
-  });
+  // Agent 在所有治理动作上都是 never：判定值来自领域层唯一的 chatGovernanceFacts，
+  // 页面不再有第二份能力表可读（否则这条断言就又成了页面自证）。
+  const agentFacts = chatGovernanceFacts(
+    {
+      kind: "group",
+      ownerKind: "human",
+      ownerId: "human-owner",
+      projectCreatedBy: "human-creator",
+    },
+    {
+      kind: "agent",
+      agentProfileId: "agp_agent-actor",
+      instanceId: "ins_agent-actor",
+      runId: "run_agent-actor",
+      ctx: { userId: "human-owner", requestId: "req_agent-governance" },
+    },
+  );
+  const agentGovernance = {
+    canChangeMembers: agentFacts.canChangeMembers,
+    canChangeOwner: agentFacts.canChangeOwner,
+    canChangeWakePolicy: agentFacts.canChangeWakePolicy,
+    canRenameTitle: agentFacts.canRenameTitle,
+  };
   record(
     "agent_governance_never_rendered",
     Object.values(agentGovernance).every((value) => value === false),
@@ -587,6 +603,35 @@ try {
     JSON.stringify(agentOwner),
   );
   await shot(page, "p5a-group-agent-owner-1440");
+
+  // R3-UI02 兜底入口：Owner 是 Agent 时，Project 创建者的人类仍能打开「更改 Owner」把它换回来。
+  // 入口可见性来自领域算出的 governance.canChangeOwner（裁定 d6 的兜底），页面不再自己比身份。
+  const ownerFallback = await page.evaluate(() => ({
+    entry: document.querySelectorAll('[data-testid="chat-owner-edit"]').length,
+    note: document.querySelector('[data-testid="chat-governance-note"]')?.textContent?.trim(),
+  }));
+  await page.click('[data-testid="chat-owner-edit"]');
+  await page.waitForSelector('[data-testid="chat-owner-dialog"]', {
+    state: "visible",
+    timeout: 20000,
+  });
+  const ownerFallbackHumanOptions = await page.evaluate(
+    () =>
+      [...document.querySelectorAll('[data-testid="chat-owner-select"] option')].filter((node) =>
+        node.textContent?.includes("（Human）"),
+      ).length,
+  );
+  await page.keyboard.press("Escape");
+  await page
+    .waitForSelector('[data-testid="chat-owner-dialog"]', { state: "detached", timeout: 20000 })
+    .catch(() => {});
+  record(
+    "agent_owner_group_keeps_owner_fallback_entry",
+    ownerFallback.entry === 1 &&
+      Boolean(ownerFallback.note?.includes("Owner 变更需要当前 Human owner")) &&
+      ownerFallbackHumanOptions >= 1,
+    JSON.stringify({ ...ownerFallback, humanOptions: ownerFallbackHumanOptions }),
+  );
 
   // V3：DM 保持 P4b 形状，只有成员段与活动段，没有治理段与治理提示。
   await page.goto(`${BASE}${projectPath}/chats`, { waitUntil: "domcontentloaded" });

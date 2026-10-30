@@ -31,7 +31,7 @@ import { getAgentProfile } from "./agent";
 import { appendHumanRunInput } from "./agent-run";
 import { assertChannelMemberChangeAllowed, readChatEffectiveMembers } from "./channel";
 import { assertChatCapability } from "./chat-capabilities";
-import type { ChatOwnerFacts } from "./chat-capabilities";
+import type { ChatGovernanceScope } from "./chat-capabilities";
 import type { ChatActor } from "./chat-actor";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
@@ -71,10 +71,11 @@ function toMessage(row: typeof message.$inferSelect): Message {
 }
 
 /**
- * 治理事实一次查齐：对话所有者加上 `project.created_by`。
+ * 治理判定的事实一次查齐：对话种类与所有者，加上 `project.created_by`。
  * 能力判定只吃这份事实（裁定 d6），调用方不需要、也不允许自己再比一次 owner。
+ * 导出给会话读模型：页面要读的 `governance` 与领域拒绝读的是同一份输入。
  */
-function ownerFacts(row: Chat): ChatOwnerFacts {
+export function chatGovernanceScope(row: Chat): ChatGovernanceScope {
   const parent = db
     .select({ createdBy: project.createdBy })
     .from(project)
@@ -82,6 +83,7 @@ function ownerFacts(row: Chat): ChatOwnerFacts {
     .get();
   if (!parent) throw new ProjectAccessError();
   return {
+    kind: row.kind,
     ownerKind: row.owner.kind,
     ownerId: row.owner.id,
     projectCreatedBy: parent.createdBy,
@@ -412,7 +414,7 @@ export function updateChatTitle(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
-      assertChatCapability("title_change", actor, ownerFacts(current));
+      assertChatCapability("title_change", actor, chatGovernanceScope(current));
       if (actor.kind === "human" && !isEffectiveMember(actor, current))
         throw new ChatError("not_found", "对话成员不存在");
       return writeIdentity(
@@ -448,7 +450,7 @@ export function clearChatTitle(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
-      assertChatCapability("title_change", actor, ownerFacts(current));
+      assertChatCapability("title_change", actor, chatGovernanceScope(current));
       if (actor.kind === "human" && !isEffectiveMember(actor, current))
         throw new ChatError("not_found", "对话成员不存在");
       return writeIdentity(
@@ -728,7 +730,9 @@ export function createGroupChat(
 }
 
 /**
- * 加成员。所有者档动作，Agent 一律 `forbidden`（裁定 d6 的入口先拦）。
+ * 加成员。Human 成员档动作，Agent 一律 `forbidden`（裁定 d6 的入口先拦）。
+ * 能力表的 `member` 档只回答「是不是人」，「是不是这条对话的成员」由运行时事实补上（裁定 d42）：
+ * 被移出群的 Human 不再能调整成员，与会话标题的写入路径同码同文案。
  * 重复加同一成员是幂等成功：治理事实没有变化，就不推进 `governance_revision`；
  * 但调用方带的版本必须是当前版本，否则仍按并发冲突回绝，而不是悄悄放行一次过期写入。
  */
@@ -743,7 +747,9 @@ export function addGroupMember(
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
       assertGovernableGroup(current);
-      assertChatCapability("member_add", actor, ownerFacts(current));
+      assertChatCapability("member_add", actor, chatGovernanceScope(current));
+      if (actor.kind === "human" && !isEffectiveMember(actor, current))
+        throw new ChatError("not_found", "对话成员不存在");
       if (member.kind === "agent") requireProjectAgent(current.projectId, member.id, actor.ctx);
       else requireUser(member.id);
       return writeIdentity(
@@ -792,7 +798,9 @@ export function removeGroupMember(
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
       assertGovernableGroup(current);
-      assertChatCapability("member_remove", actor, ownerFacts(current));
+      assertChatCapability("member_remove", actor, chatGovernanceScope(current));
+      if (actor.kind === "human" && !isEffectiveMember(actor, current))
+        throw new ChatError("not_found", "对话成员不存在");
       const existing = db
         .select({ memberId: chatMember.memberId })
         .from(chatMember)
@@ -923,8 +931,8 @@ export function setChatOwner(
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
       assertGovernableGroup(current);
-      const facts = ownerFacts(current);
-      assertChatCapability("owner_change", actor, facts);
+      const scope = chatGovernanceScope(current);
+      assertChatCapability("owner_change", actor, scope);
       if (owner.kind === "agent") {
         const member = db
           .select({ memberId: chatEffectiveMember.memberId })
@@ -939,7 +947,7 @@ export function setChatOwner(
           )
           .get();
         if (!member) throw new ChatError("not_found", "新所有者不是该对话的成员");
-      } else if (facts.projectCreatedBy !== owner.id) {
+      } else if (scope.projectCreatedBy !== owner.id) {
         throw new ChatError("forbidden", "Human 所有者必须是 Project 创建者");
       }
       return writeIdentity(

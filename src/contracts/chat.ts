@@ -23,6 +23,32 @@ export const chatOwnerSchema = z.object({
 });
 export type ChatOwner = z.infer<typeof chatOwnerSchema>;
 
+/**
+ * 会话的治理事实（裁定 d6 / d45）：Owner 与「当前行动者能不能做什么」由领域层一次算好，
+ * 页面只读这份结果。页面自己拼 facts 连续两轮出错（Agent owner 的兜底入口丢失、标题门槛漂移），
+ * 所以身份比较只允许出现在 `domain/chat-capabilities.ts` 一处。
+ *
+ * `projectCreatedBy` 只在 `ownerKind === "agent"` 时是兜底治理者；`readOnlyReason` 是领域层给出的
+ * 只读说明，页面直接展示，不再自己判断「为什么不能」。
+ *
+ * 这里只放「谁能做什么」：`owner`、`wakePolicy`、`governanceRevision` 已经在同一会话的 `chat` 上，
+ * 不复写一份，避免两处同步。
+ */
+export const chatOwnerFactsSchema = z.object({
+  ownerKind: memberKind,
+  ownerId: z.string().min(1),
+  actorKind: memberKind,
+  actorId: z.string().min(1),
+  projectCreatedBy: z.string().min(1).optional(),
+  canChangeMembers: z.boolean(),
+  canChangeOwner: z.boolean(),
+  canChangeWakePolicy: z.boolean(),
+  /** 右栏的重命名入口：只有普通 Group 有；DM 的入口在消息头部（P4b 形状），频道没有入口。 */
+  canRenameTitle: z.boolean(),
+  readOnlyReason: z.string().optional(),
+});
+export type ChatOwnerFacts = z.infer<typeof chatOwnerFactsSchema>;
+
 export const createDirectChatInput = z.object({
   projectId,
   agentProfileId: agentProfileIdSchema,
@@ -232,12 +258,14 @@ export const dmChatSessionSchema = z.object({
   kind: z.literal("dm"),
   chat: chatSchema,
   instance: agentInstanceSchema,
+  governance: chatOwnerFactsSchema,
 });
 export const groupChatSessionSchema = z.object({
   kind: z.literal("group"),
   chat: chatSchema,
   members: z.array(chatMemberSchema),
   instances: z.array(chatSessionInstanceSchema),
+  governance: chatOwnerFactsSchema,
 });
 export const publicChannelChatSessionSchema = z.object({
   kind: z.literal("public_channel"),
@@ -245,6 +273,7 @@ export const publicChannelChatSessionSchema = z.object({
   displayTitle: z.literal(PUBLIC_CHANNEL_DISPLAY_TITLE),
   members: z.array(chatMemberSchema),
   instances: z.array(chatSessionInstanceSchema),
+  governance: chatOwnerFactsSchema,
 });
 export const chatSessionSchema = z.discriminatedUnion("kind", [
   dmChatSessionSchema,
