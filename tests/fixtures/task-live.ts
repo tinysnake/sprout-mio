@@ -440,7 +440,8 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       requestMessages(input)
         .filter((message) => message.role === "user")
         .map((message) => textOf(message.content ?? message.parts))
-        .findLast((text) => text.startsWith("已分配并请求立即开始\nTask：")) ?? ""
+        .filter((text) => text.startsWith("已分配并请求立即开始\nTask："))
+        .at(-1) ?? ""
     );
   }
   function requestToolTexts(input: any): string[] {

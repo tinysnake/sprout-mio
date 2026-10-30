@@ -53,6 +53,7 @@ export const CI_GROUPS = Object.freeze({
     "y-lease-ui",
     "aq-p4d-pages",
     "as-p5a-chat-ui",
+    "as-p5b-task-pages",
   ],
 });
 

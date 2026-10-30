@@ -69,6 +69,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/task-info-hub.test.ts",
     "tests/task-migration.test.ts",
     "tests/task-start.test.ts",
+    "tests/task-view.test.ts",
     "tests/tooling.test.ts",
     "tests/verify-ah-groups.test.ts",
     "tests/verify-model-fixture.test.ts",
