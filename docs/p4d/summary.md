@@ -105,7 +105,8 @@ Human 在 Lavish 评审里选定 D01 分区 B、D02 待处理摘要常显细节�
 
 ## Human 体验确认
 
-- 待确认：本章尚未经过 Human 亲自体验。
+- 确认记录：Human 亲自体验确认通过，版本 `d275a9c`
+- Human 于 2026-10-30 在 `d275a9c` 的集成分支上亲自体验 Machine 详情页的关系分区、待处理与已移出呈现，回复「p4d 没问题，评审通过」。评审环境为 `integration/p4d` 的 dev server 加独立评审库，库内种子只含 3 台机器与 1 条移出记录，未接真实 Worker，因此在线状态、租约与执行段落为空态，交接与强制收回的真实结果由门禁覆盖，重跑 `bash scripts/verify/an-p4d-authority.sh`、`bash scripts/verify/ap-p4d-handoff-worker.sh` 与 `bash scripts/verify/aq-p4d-pages.sh`。
 
 ## 已知限制
 
