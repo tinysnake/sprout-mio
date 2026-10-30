@@ -170,6 +170,7 @@ const demoMachineFacts: ChatMachineFacts = {
 };
 
 const infoView: ChatInfoView = {
+  tasks: { available: true, items: [] },
   chatId: chats[0]!.id,
   projectId: PROJECT_ID,
   kind: "dm",

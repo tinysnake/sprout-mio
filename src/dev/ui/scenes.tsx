@@ -29,6 +29,7 @@ import {
   demoProfiles,
   demoProject,
 } from "../scenes/management/fixtures";
+import { TaskScenes } from "../scenes/tasks";
 import { Gallery } from "./gallery";
 
 const entries = [
@@ -42,6 +43,7 @@ const entries = [
   ["chat-states", "Chat 状态"],
   ["chat-messages", "消息与追加"],
   ["chat-inspector", "Info Hub"],
+  ["tasks", "Task 四态与详情"],
   ["machines", "Machines"],
 ] as const;
 const requested = new URLSearchParams(location.search).get("scene") ?? "components";
@@ -140,7 +142,9 @@ function SceneContent() {
           {notice}
         </p>
       )}
-      {selected === "machines" ? (
+      {selected === "tasks" ? (
+        <TaskScenes />
+      ) : selected === "machines" ? (
         <MachineScenes />
       ) : newlyCreated ? (
         chat ? (
