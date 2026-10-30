@@ -98,6 +98,16 @@ coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范
 
 判断范围之前先看这三个数字：要证明的行为、该门禁的自身耗时（账本可查）、以及这台机器的 `uptime`。满载机器上的时间预算型门禁会假红，那种红不是证据。
 
+## 门禁自身写对了吗
+
+一条门禁红了，先分清是产品错了还是门禁判错了。三类真实的判错，各自有固定写法。
+
+- 等效果，不等中间信号。移除成员后不能只等对话框关闭，要等那个人真的从列表消失；对话框关闭只说明请求发出去了。
+- 时间预算要覆盖被测进程自己的启动。期限小于 runner 落盘 `childPid` 的时间时，取消按设计落在未确认态，用例量到的是 node 启动耗时。`tests/worker-execution.test.ts` 的期限窗口是 5 秒，不要调回毫秒级。
+- 语义收紧后要重新问「这条断言还排除得了什么」。把 hold 唤醒预算从 `<500ms` 改成 `<requestedHoldMs` 之后，能排除的只剩「只等 timer 的唤醒」，性能预算不再被覆盖，这一点要写在门禁说明里而不是让它默认成立。
+
+失败定位不在全量里循环。改一处跑一次全量等于用七分钟换一行日志，定位阶段只跑那一个门禁。
+
 `aa-execution-log-contracts`、`af-execution-cancel-authority`、`ai-execution-accept-fixes`、`ak-execution-accept-fixes-2` 通过各自的 Vitest wrapper 执行一次隔离 fixture，移除脚本内相同 fixture 的直接重复调用。wrapper 保留独立子进程、私有数据库、test 环境、禁用 Pi、所需随机 auth secret、proxy 前提、PASS/退出与超时检查，并在 finally 清理临时目录。独立 live/browser 验收和 `b-tooling` 全量测试仍保留。`ac-execution-recovery-log` 与测试中的 recovery fixture 尚未证明环境等价，继续各自取证。
 
 ## 证据复用与失效
