@@ -175,7 +175,17 @@ beforeAll(() => {
         .get("req_b2", "req_b3").n;
 
       const ctx = { userId: userA.userId, requestId: "req_dom" };
-      domain.sendMessage(chatId, { senderKind: "agent", senderId: profileId, body: "agent 第一条" }, ctx);
+      // N04：agent sender 必须带本次 run 的身份。这条用例只验发言资格与顺序，
+      // 所以直接写一条活跃 run 行（instance 就是 DM 创建时那个分身）。
+      sqlite.prepare(
+        "INSERT INTO agent_run (id, instance_id, chat_id, project_id, request_id, status, started_at, session_id) VALUES (?,?,?,?,?,'running',unixepoch(),?)",
+      ).run("run_chat_test_agent_first", instanceId, chatId, projectId, "req_dom", instanceId);
+      const agentCtx = {
+        userId: userA.userId,
+        requestId: "req_dom",
+        agent: { agentProfileId: profileId, instanceId, runId: "run_chat_test_agent_first" },
+      };
+      domain.sendMessage(chatId, { senderKind: "agent", senderId: profileId, body: "agent 第一条" }, agentCtx);
       const agentFirst = domain.listMessages(chatId, ctx);
       const agentFirstAgain = domain.listMessages(chatId, ctx);
       const humanSend = await chats.sendMessageBoundary({ chatId, body: "human 第二条" }, userA.headers, "req_h1");

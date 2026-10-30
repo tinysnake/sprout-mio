@@ -32,7 +32,6 @@ import { appendHumanRunInput } from "./agent-run";
 import { assertChannelMemberChangeAllowed, readChatEffectiveMembers } from "./channel";
 import { assertChatCapability } from "./chat-capabilities";
 import type { ChatOwnerFacts } from "./chat-capabilities";
-import { actorFromContext } from "./chat-actor";
 import type { ChatActor } from "./chat-actor";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
@@ -140,6 +139,31 @@ function assertActiveRun(ctx: ProjectContext): void {
   if (!ctx.agent) return;
   const scope = readRunScope(ctx.agent.runId);
   if (!scope?.active) throw new ChatError("forbidden", "Agent run 不在活跃状态，不能发言");
+}
+
+/**
+ * 有效参与权（裁定 d7）：只认 `chat_effective_member` 这一份视图，不在应用层另拼一份。
+ * 能力表只判「是不是人」（`title_change` 的 member 档），「是不是这条对话的成员」是运行时事实，
+ * 由这个判定补上——A03 的缺口就是两边都以为对方会查。
+ */
+export function isEffectiveMember(
+  actor: ChatActor,
+  current: { readonly id: string; readonly projectId: string },
+): boolean {
+  const memberId = actor.kind === "human" ? actor.userId : actor.agentProfileId;
+  const row = db
+    .select({ memberId: chatEffectiveMember.memberId })
+    .from(chatEffectiveMember)
+    .where(
+      and(
+        eq(chatEffectiveMember.chatId, current.id),
+        eq(chatEffectiveMember.projectId, current.projectId),
+        eq(chatEffectiveMember.memberKind, actor.kind),
+        eq(chatEffectiveMember.memberId, memberId),
+      ),
+    )
+    .get();
+  return row !== undefined;
 }
 
 /**
@@ -372,25 +396,27 @@ export function getChat(chatId: string, ctx: ProjectContext): Chat {
 /**
  * 重命名标题。归属与权限在服务端领域层核对：不属于当前用户 Project 的 Chat
  * 与不存在的 Chat 都返回 not_found，不暴露存在性。
- * 标题写入是治理动作（`title_change`）：行动者从上下文派生，Agent 执行身份一律 forbidden，
- * 判定只发生在能力表里，不在这里另写一个分支。
+ * 标题写入是治理动作（`title_change`）：行动者的身份类别由能力表判定（Agent 一律 forbidden），
+ * Human 还要是本对话的有效成员（R2-A03）——能力表只回答「是不是人」，参与权读视图。
  */
 export function updateChatTitle(
   chatId: string,
   title: string,
-  ctx: ProjectContext,
+  actor: ChatActor,
   hooks: IdentityWriteHooks = {},
 ): Chat {
   const normalized = title.trim();
   if (normalized.length === 0) throw new ChatError("conflict", "标题不能为空");
   if (normalized.length > CHAT_TITLE_MAX_LENGTH)
     throw new ChatError("conflict", `标题最多 ${CHAT_TITLE_MAX_LENGTH} 字`);
-  assertChatCapability("title_change", actorFromContext(ctx));
   return sqlite
     .transaction(() => {
-      const current = getChat(chatId, ctx);
+      const current = getChat(chatId, actor.ctx);
+      assertChatCapability("title_change", actor, ownerFacts(current));
+      if (actor.kind === "human" && !isEffectiveMember(actor, current))
+        throw new ChatError("not_found", "对话成员不存在");
       return writeIdentity(
-        ctx,
+        actor.ctx,
         {
           event: "chat.title_updated",
           message: "对话标题已更新",
@@ -416,15 +442,17 @@ export function updateChatTitle(
 /** 恢复默认标题：title 置回 null，展示回落到参与分身名。权限与改名同一档（`title_change`）。 */
 export function clearChatTitle(
   chatId: string,
-  ctx: ProjectContext,
+  actor: ChatActor,
   hooks: IdentityWriteHooks = {},
 ): Chat {
-  assertChatCapability("title_change", actorFromContext(ctx));
   return sqlite
     .transaction(() => {
-      const current = getChat(chatId, ctx);
+      const current = getChat(chatId, actor.ctx);
+      assertChatCapability("title_change", actor, ownerFacts(current));
+      if (actor.kind === "human" && !isEffectiveMember(actor, current))
+        throw new ChatError("not_found", "对话成员不存在");
       return writeIdentity(
-        ctx,
+        actor.ctx,
         {
           event: "chat.title_cleared",
           message: "对话标题已恢复默认",
@@ -499,6 +527,10 @@ export function sendMessage(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
+      // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
+      // 后面的成员与 instance 检查也证明不了「这次写入属于哪次运行」，所以在入口就拒绝。
+      if (input.senderKind === "agent" && !ctx.agent)
+        throw new ChatError("forbidden", "Agent 发言必须带本次 run 的身份");
       assertActiveRun(ctx);
       // run 里执行的域代码只能以本 run 的分身说话：否则人类消息开出的 run 就能冒充人类发言。
       if (

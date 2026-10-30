@@ -231,9 +231,13 @@ describe("P2 身份、Project 授权与持久对话", () => {
       `
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
       const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
+      // N04：agent sender 必须带本次 run 的身份（直接写一条活跃 run 行，只验发言资格）。
+      sqlite.prepare("INSERT INTO agent_run (id, instance_id, chat_id, project_id, request_id, status, started_at, session_id) VALUES (?,?,?,?,?,'running',unixepoch(),?)")
+        .run('run_identity_agent', direct.instance.id, direct.chat.id, projectA.id, ctxA.requestId, direct.instance.id);
+      const agentCtx = { ...ctxA, agent: { agentProfileId: profileA.id, instanceId: direct.instance.id, runId: 'run_identity_agent' } };
       const entries = [
         dm.sendMessage(direct.chat.id, contracts.sendMessageInput.parse({ senderKind: 'human', senderId: ctxA.userId, body: '  first  ' }), ctxA),
-        dm.sendMessage(direct.chat.id, { senderKind: 'agent', senderId: profileA.id, body: 'second' }, ctxA),
+        dm.sendMessage(direct.chat.id, { senderKind: 'agent', senderId: profileA.id, body: 'second' }, agentCtx),
         dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxA.userId, body: 'third' }, ctxA),
       ];
       entries.forEach(entry => contracts.messageSchema.parse(entry));
@@ -242,8 +246,13 @@ describe("P2 身份、Project 授权与持久对话", () => {
       sqlite.prepare('UPDATE message SET created_at=99 WHERE id=?').run(entries[2].id);
       assert.deepEqual(dm.listMessages(direct.chat.id, ctxA).map(row => row.body), ['third', 'first', 'second']);
       assert.deepEqual(dm.listMessages(direct.chat.id, ctxA), dm.listMessages(direct.chat.id, ctxA));
-      for (const [senderKind, senderId] of [['human', ctxB.userId], ['agent', profileB.id], ['agent', direct.instance.id]]) {
-        notFound(() => dm.sendMessage(direct.chat.id, { senderKind, senderId, body: 'forged' }, ctxA));
+      // 伪造的 Human sender 仍按参与权拒绝（not_found）；run 冒充别人则按身份拒绝（forbidden）。
+      notFound(() => dm.sendMessage(direct.chat.id, { senderKind: 'human', senderId: ctxB.userId, body: 'forged' }, ctxA));
+      for (const senderId of [profileB.id, direct.instance.id]) {
+        assert.throws(
+          () => dm.sendMessage(direct.chat.id, { senderKind: 'agent', senderId, body: 'forged' }, agentCtx),
+          (error) => error.code === 'forbidden',
+        );
       }
       assert.equal(count('message'), 3);
       const event = sqlite.prepare("SELECT * FROM diagnostic_event WHERE event='message.sent' AND instance_id IS NOT NULL").get();
