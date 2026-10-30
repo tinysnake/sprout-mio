@@ -70,7 +70,7 @@ async function freePort() {
 }
 const port = await freePort();
 const base = `http://127.0.0.1:${port}`;
-const model = process.env.SPROUT_VERIFY_PI_MODEL ?? "deepseek/deepseek-flash";
+const model = process.env.SPROUT_VERIFY_PI_MODEL ?? "magpie/auto/deepseek-v4.1-flash";
 const environment = {
   ...process.env,
   NO_PROXY: "localhost,127.0.0.1,::1",

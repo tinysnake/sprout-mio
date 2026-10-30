@@ -22,7 +22,7 @@ const evidence = []
 const children = new Set()
 const delay = ms => new Promise(done => setTimeout(done, ms))
 const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
-const model = process.env.SPROUT_VERIFY_PI_MODEL ?? 'deepseek/deepseek-flash'
+const model = process.env.SPROUT_VERIFY_PI_MODEL ?? 'magpie/auto/deepseek-v4.1-flash'
 const port = Number(process.env.SPROUT_VERIFY_PI_LIVE_PORT ?? 3163)
 const base = `http://localhost:${port}`
 const environment = {

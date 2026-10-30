@@ -9,7 +9,7 @@ node scripts/verify/prepare.mjs server
 ensure_worker_artifact
 export NO_PROXY=localhost,127.0.0.1,::1
 export no_proxy="$NO_PROXY"
-export SPROUT_VERIFY_PI_MODEL="${SPROUT_VERIFY_PI_MODEL:-deepseek/deepseek-flash}"
+export SPROUT_VERIFY_PI_MODEL="${SPROUT_VERIFY_PI_MODEL:-magpie/auto/deepseek-v4.1-flash}"
 
 node --import tsx tests/fixtures/p4d-handoff-worker.ts
 

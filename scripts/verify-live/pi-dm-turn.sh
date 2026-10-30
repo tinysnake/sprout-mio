@@ -29,7 +29,7 @@ const evidence = []
 const children = new Set()
 const delay = ms => new Promise(done => setTimeout(done, ms))
 const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), '.pi', 'agent')
-const model = live ? process.env.SPROUT_VERIFY_PI_MODEL ?? 'deepseek/deepseek-flash' : 'protocol/model'
+const model = live ? process.env.SPROUT_VERIFY_PI_MODEL ?? 'magpie/auto/deepseek-v4.1-flash' : 'protocol/model'
 const port = Number(process.env.SPROUT_VERIFY_PI_PORT ?? (live ? 3158 : 3157))
 const base = `http://localhost:${port}`
 const runner = join(directory, 'protocol-runner.mjs')
