@@ -49,8 +49,9 @@ export function RunStatusBadge({ status }: { status: AgentRunStatus }) {
 }
 
 /**
- * run 事实与未投递输入：状态、未投递条数、失败原因与 requestId 全部来自
+ * run 事实与未投递输入：状态、未投递条数、失败原因与错误码全部来自
  * 领域查询，pending 输入永远显示为未投递，不冒充已处理。
+ * 失败块只给文案与错误码：`requestId` 是内部标识（裁定 d43），页面不展示。
  */
 export function RunStatusPanel({
   state,
@@ -100,12 +101,15 @@ export function RunStatusPanel({
       {run?.status === "failed" && (
         <div
           role="alert"
+          data-error-code={run.errorCode ?? "run_failed"}
           className="rounded-lg border border-status-failed/35 bg-destructive-soft px-3.5 py-3 text-[11px] text-status-failed"
         >
           <p data-testid="run-failure">{run.errorMessage ?? "未知失败原因"}</p>
-          <p data-testid="run-failure-request" className="mt-1 font-mono text-[11px]">
-            requestId: {run.requestId}
-          </p>
+          {run.errorCode && (
+            <p data-testid="run-failure-code" className="mt-1 font-mono text-[11px] opacity-80">
+              {run.errorCode}
+            </p>
+          )}
         </div>
       )}
     </section>
