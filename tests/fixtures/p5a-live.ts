@@ -1,4 +1,5 @@
-// I-P5a live gate: production HTTP, private SQLite, one real Worker and real Pi models.
+// I-P5a live gate: production HTTP, private SQLite, one real Worker and real Pi models,
+// or the same chain with the loopback model fixture in routine verify.
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -16,23 +17,35 @@ import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
+import { startModelFixture, type FixtureRole } from "../../scripts/verify/lib/model-fixture.mjs";
 
 const scenario = process.argv[2];
 assert(scenario === "group" || scenario === "channel", "expected group or channel");
+const chatMode = process.env.SPROUT_VERIFY_CHAT_MODE ?? "model-fixture";
+assert(["model-fixture", "live"].includes(chatMode), "expected model-fixture or live chat mode");
 const directory = resolve(
   process.env.SPROUT_P5A_EVIDENCE_DIR ?? `.verify/p5a-live-${Date.now()}-${scenario}`,
 );
 mkdirSync(directory, { recursive: true, mode: 0o700 });
 console.log(`EVIDENCE ${directory}`);
-const model = process.env.SPROUT_VERIFY_PI_MODEL ?? "deepseek/deepseek-flash";
+const model = chatMode === "live" ? process.env.SPROUT_VERIFY_PI_MODEL : undefined;
+function requireLiveModel() {
+  assert(model, "SPROUT_VERIFY_PI_MODEL is unset: a live run must name its model");
+  return model;
+}
+let modelFixture: Awaited<ReturnType<typeof startModelFixture>> | undefined;
+const fixtureRoles: readonly FixtureRole[] =
+  scenario === "group" ? ["chatOwner", "chatMentioned"] : ["chatOwner", "chatUnmentioned"];
 const children: ChildProcess[] = [];
 const checks: unknown[] = [];
 const facts: Record<string, unknown> = {
   scenario,
-  model,
+  mode: chatMode,
+  model: chatMode === "live" ? model : undefined,
   directory,
   startedAt: new Date().toISOString(),
 };
+let actualModels: { provider: string; model: string; thinking: string }[] = [];
 let db: Database.Database | undefined;
 let failure: unknown;
 let chatId = "";
@@ -219,9 +232,34 @@ async function finish() {
     await db.backup(join(directory, "snapshot.sqlite"));
   }
   writeFileSync(join(directory, "samples.json"), JSON.stringify(samples, null, 2));
+  if (db && chatId && actualModels.length === 0) {
+    try {
+      actualModels = rows(
+        "SELECT config_snapshot FROM agent_run WHERE chat_id=? AND config_snapshot IS NOT NULL ORDER BY queued_at",
+        chatId,
+      ).map((row) => {
+        const snapshot = JSON.parse(row.config_snapshot);
+        return { provider: snapshot.provider, model: snapshot.model, thinking: snapshot.thinking };
+      });
+    } catch {}
+  }
+  const modelMetadata = {
+    ...(modelFixture?.metadata() ?? {
+      mode: chatMode,
+      requestCount: null,
+      completedPlans: null,
+      unusedSteps: null,
+    }),
+    scenario,
+    actualModels,
+  };
+  writeFileSync(join(directory, "model-mode.json"), JSON.stringify(modelMetadata, null, 2));
+  console.log(`CHAT metadata ${JSON.stringify(modelMetadata)}`);
+  if (chatMode === "model-fixture") console.log("paid-model-calls=0");
   writeFileSync(join(directory, "result.json"), JSON.stringify(facts, null, 2));
   for (const child of [...children].reverse()) await stop(child);
   db?.close();
+  await modelFixture?.close();
   console.log(`${failure ? "FAIL" : "PASS"} LIVE p5a-${scenario}; evidence ${directory}`);
   process.exitCode = failure ? 1 : 0;
 }
@@ -235,11 +273,22 @@ process.once("SIGINT", () => {
 });
 try {
   assert.equal(process.platform, "darwin", "real macOS Worker required");
-  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi/agent");
-  assert(
-    existsSync(join(agentDir, "auth.json")),
-    "real Pi credentials missing; live gate is not PASS",
-  );
+  if (chatMode === "model-fixture") {
+    modelFixture = await startModelFixture({ privateDir: join(directory, "model-fixture") });
+    environment.PI_CODING_AGENT_DIR = modelFixture.agentDir;
+    const pinned = fixtureRoles.map((role) => modelFixture!.model(role));
+    facts.model = pinned;
+    console.log(
+      `CHAT mode=model-fixture provider/model=${pinned.join(",")} thinking=off paid-model-calls=0 (private catalog, loopback endpoint, profiles pinned)`,
+    );
+  } else {
+    requireLiveModel();
+    const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi/agent");
+    assert(
+      existsSync(join(agentDir, "auth.json")),
+      "real Pi credentials missing; live gate is not PASS",
+    );
+  }
   launch([".output/server/index.mjs"], "service.log");
   await until(async () => {
     try {
@@ -267,10 +316,11 @@ try {
   const project = await call("createProjectFn", { name: `P5a live ${scenario}` });
   facts.projectId = project.id;
   const agents: { id: string; name: string }[] = [];
-  for (const name of ["LiveAlpha", "LiveBeta"]) {
+  for (const [index, name] of ["LiveAlpha", "LiveBeta"].entries()) {
+    const role = fixtureRoles[index]!;
     const profile = await call("createAgentProfileFn", {
       name,
-      model,
+      model: modelFixture ? modelFixture.model(role) : requireLiveModel(),
       effort: "off",
       persona: `You are ${name}. Follow the user's exact Sprout tool instructions. Never use host bash/read/edit. Reply with your own name and a concise result; never mention another agent or repeat the user's mentions. Do not delegate, ask questions, or send chat messages through tools.`,
     });
@@ -373,7 +423,10 @@ try {
         ?.fact?.result?.kind === "accessible",
     "Worker directory accessible",
   );
-  pass("one real Worker online with accessible Project directory", { machineId, model });
+  pass("one real Worker online with accessible Project directory", {
+    machineId,
+    model: facts.model,
+  });
   sampler = setInterval(() => {
     const current = runs();
     samples.push({
@@ -382,15 +435,46 @@ try {
     });
   }, 50);
   const marker = `P5A_${scenario.toUpperCase()}_${randomUUID().replaceAll("-", "")}`;
+  const leaseParameters = {
+    machineId,
+    expectedGeneration: 0,
+    requestId: `req_${randomUUID()}`,
+  };
+  const shellParameters = {
+    machineId,
+    authorizationGeneration: 1,
+    requestId: `req_${randomUUID()}`,
+    command: `printf '${marker}\\n'`,
+    cwd: join(root, project.id),
+    waitMs: 1000,
+  };
   const toolInstructions = [
-    `Only LiveAlpha: call sprout_lease_acquire once with ${JSON.stringify({ machineId, expectedGeneration: 0, requestId: `req_${randomUUID()}` })}.`,
-    `Then call sprout_remote_shell once with ${JSON.stringify({ machineId, authorizationGeneration: 1, requestId: `req_${randomUUID()}`, command: `printf '${marker}\\n'`, cwd: join(root, project.id), waitMs: 1000 })}.`,
+    `Only LiveAlpha: call sprout_lease_acquire once with ${JSON.stringify(leaseParameters)}.`,
+    `Then call sprout_remote_shell once with ${JSON.stringify(shellParameters)}.`,
     "After the tools reply briefly with your own name and the shell output. Never mention any other agent.",
   ].join("\n");
   const body =
     scenario === "group"
       ? `@LiveAlpha @LiveBeta please each reply once in this conversation. LiveBeta: reply only with your own name and READY; do not call tools.\n${toolInstructions}`
       : `@LiveAlpha please run this real Worker check and reply once.\n${toolInstructions}`;
+  if (modelFixture) {
+    modelFixture.arm("chatOwner", {
+      expectedUserText: body,
+      expectedUserPrefix: body,
+      steps: [
+        { name: "sprout_lease_acquire", arguments: leaseParameters },
+        { name: "sprout_remote_shell", arguments: shellParameters },
+      ],
+      reply: "LiveAlpha completed the requested tools; inspect the real Worker receipt.",
+    });
+    if (scenario === "group")
+      modelFixture.arm("chatMentioned", {
+        expectedUserText: body,
+        expectedUserPrefix: body,
+        steps: [],
+        reply: "LiveBeta READY",
+      });
+  }
   const sentAtMs = Date.now();
   const human = await call("sendMessageFn", { chatId, body });
   facts.humanMessage = human;
@@ -472,9 +556,30 @@ try {
     frameCount: frames.length,
   });
   if (scenario === "group") {
+    const serialFirstBody =
+      "@LiveAlpha Give a thoughtful two sentence explanation of how serial task processing works. Use no tools and mention no other agent.";
+    const serialSecondBody =
+      "@LiveAlpha Also acknowledge SERIAL_SECOND in your response. Use no tools and mention no other agent.";
+    if (modelFixture) {
+      modelFixture.arm("chatOwner", {
+        expectedUserText: serialFirstBody,
+        expectedUserPrefix: serialFirstBody,
+        steps: [],
+        reply:
+          "Serial task processing runs one task to completion before the next begins, so runs of one agent never overlap. Each queued human input is delivered once to the active or next run.",
+        delayMs: 1500,
+      });
+      modelFixture.arm("chatOwner", {
+        expectedUserText: serialSecondBody,
+        expectedUserPrefix: serialSecondBody,
+        steps: [],
+        reply: "SERIAL_SECOND acknowledged.",
+        queued: true,
+      });
+    }
     const first = await call("sendMessageFn", {
       chatId,
-      body: "@LiveAlpha Give a thoughtful two sentence explanation of how serial task processing works. Use no tools and mention no other agent.",
+      body: serialFirstBody,
     });
     const running = await until(
       () => runs().find((r) => r.agent_profile_id === agents[0].id && r.status === "running"),
@@ -482,7 +587,7 @@ try {
     );
     const second = await call("sendMessageFn", {
       chatId,
-      body: "@LiveAlpha Also acknowledge SERIAL_SECOND in your response. Use no tools and mention no other agent.",
+      body: serialSecondBody,
     });
     facts.serialMessages = { first, second };
     const linked = inputs().filter((i) => i.message_id === second.id);
@@ -531,10 +636,35 @@ try {
   }
   const transcripts = collectTranscripts();
   assert(transcripts.length > 0, "real Pi session transcripts retained");
-  assert(
-    transcripts.every((session) => `${session.provider}/${session.model}` === model),
-    "actual model matches selected live model",
-  );
+  actualModels = rows(
+    "SELECT config_snapshot FROM agent_run WHERE chat_id=? AND config_snapshot IS NOT NULL ORDER BY queued_at",
+    chatId,
+  ).map((row) => {
+    const snapshot = JSON.parse(row.config_snapshot);
+    return { provider: snapshot.provider, model: snapshot.model, thinking: snapshot.thinking };
+  });
+  if (modelFixture) {
+    const fixture = modelFixture;
+    const pinned = fixtureRoles.map((role) => fixture.model(role));
+    assert(actualModels.length > 0, "agent runs must record their actual model snapshot");
+    assert(
+      actualModels.every(
+        ({ provider, model, thinking }) =>
+          pinned.includes(`${provider}/${model}`) && thinking === "off",
+      ),
+      "every agent run must use a pinned local fixture model with thinking off",
+    );
+    assert(
+      transcripts.every((session) => pinned.includes(`${session.provider}/${session.model}`)),
+      "actual model matches the pinned fixture models",
+    );
+  } else {
+    assert(
+      transcripts.every((session) => `${session.provider}/${session.model}` === requireLiveModel()),
+      "actual model matches selected live model",
+    );
+  }
+  facts.actualModels = actualModels;
   const toolCalls = transcripts.flatMap((session) =>
     session.assistantMessages.flatMap((entry) =>
       entry.message.content
@@ -546,7 +676,12 @@ try {
     toolCalls.includes("sprout_lease_acquire") && toolCalls.includes("sprout_remote_shell"),
     "Pi transcript proves real model requested Worker execution",
   );
-  pass("real Pi transcripts retained", { sessions: transcripts.length, model, toolCalls });
+  modelFixture?.assertDrained();
+  pass("real Pi transcripts retained", {
+    sessions: transcripts.length,
+    model: facts.model,
+    toolCalls,
+  });
 } catch (error) {
   failure = error;
   console.error(error);

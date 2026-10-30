@@ -19,6 +19,9 @@ export const fixtureModels = Object.freeze({
   operator: "lease-operator",
   nonHolder: "lease-non-holder",
   status: "status-probe",
+  chatOwner: "chat-owner",
+  chatMentioned: "chat-mentioned",
+  chatUnmentioned: "chat-unmentioned",
 });
 const dummyKey = "sprout-local-fixture-key";
 
@@ -251,6 +254,7 @@ export async function startModelFixture({
           );
       }
       const step = plan.steps[plan.emitted.length];
+      if (plan.delayMs) await new Promise((resolve) => setTimeout(resolve, plan.delayMs));
       let delta;
       if (step) {
         compatibleTool(input.tools, step);
@@ -352,8 +356,8 @@ export async function startModelFixture({
       const state = states.get(fixtureModels[role]);
       assert(state, "known fixture role");
       assert(
-        state.plans.every((pending) => pending.repeat),
-        "previous model turn must complete before arming another",
+        state.plans.every((pending) => pending.repeat) || turn.queued === true,
+        "previous model turn must complete before arming another unless it is explicitly queued",
       );
       assert(
         turn.lease ||
@@ -368,7 +372,14 @@ export async function startModelFixture({
         "explicit tool steps",
       );
       assert(typeof turn.reply === "string" && turn.reply.length > 0, "explicit final reply");
-      state.plans.push({ ...structuredClone(turn), emitted: [], started: false });
+      if (turn.delayMs !== undefined)
+        assert(
+          Number.isSafeInteger(turn.delayMs) && turn.delayMs >= 0 && turn.delayMs <= 5000,
+          "bounded nonnegative reply delay",
+        );
+      const plan = structuredClone(turn);
+      delete plan.queued;
+      state.plans.push({ ...plan, emitted: [], started: false });
     },
     assertHealthy() {
       if (failure) throw failure;
