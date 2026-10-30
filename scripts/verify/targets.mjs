@@ -32,7 +32,8 @@ if (list) {
         try {
           process.kill(active.pid, signal);
         } catch (error) {
-          if (error.code !== "ESRCH") throw error;
+          // 组已消失（ESRCH）与组已被回收（EPERM）都只说明没有可停的东西。
+          if (error.code !== "ESRCH" && error.code !== "EPERM") throw error;
         }
       }
     });

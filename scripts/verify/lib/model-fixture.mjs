@@ -167,10 +167,15 @@ export async function startModelFixture({
         "messages and tool schemas required",
       );
       const plan = state.plans[0];
-      assert(plan, "no armed turn for this model");
       const users = input.messages.filter((message) => message.role === "user");
       const latestUser = input.messages.findLastIndex((message) => message.role === "user");
       const userText = textContent(input.messages[latestUser]?.content);
+      assert(
+        plan,
+        `no armed turn for this model (model=${input.model} armed=${state.plans.length} completed=${state.completed} users=${users.length} lastUserCount=${state.lastUserCount} latestUser=${JSON.stringify(
+          userText.slice(0, 160),
+        )})`,
+      );
       if (!plan.started) {
         assert(users.length > state.lastUserCount, "armed turn requires a NEW user message");
         assert.equal(
