@@ -124,8 +124,19 @@ test("reuses each artifact only within the living current run, and retains origi
 test("runner context connects preparation across domains without a second install deleting artifacts", () => {
   const f = fixture();
   copyFileSync(resolve("scripts/verify/runner.mjs"), join(f.root, "scripts/verify/runner.mjs"));
-  for (const name of ["native-lanes.mjs", "suite-plan.mjs"])
-    f.put(`scripts/verify/lib/${name}`, readFileSync(resolve("scripts/verify/lib", name), "utf8"));
+  // 复制 runner 真正 import 的 lib 模块（含它们自己再 import 的），别再手维护清单：
+  // 之前漏了 spend.mjs，这条用例在干净 checkout 上一直是红的。
+  const pending = [readFileSync(resolve("scripts/verify/runner.mjs"), "utf8")];
+  const copied = new Set<string>();
+  while (pending.length > 0) {
+    for (const [, name] of pending.pop()!.matchAll(/from "\.\/lib\/([\w-]+\.mjs)"/g)) {
+      if (copied.has(name)) continue;
+      copied.add(name);
+      const source = readFileSync(resolve("scripts/verify/lib", name), "utf8");
+      f.put(`scripts/verify/lib/${name}`, source);
+      pending.push(source);
+    }
+  }
   f.put(
     "scripts/verify/a-first.sh",
     "set -eu\nnode scripts/verify/prepare.mjs install\nnode scripts/verify/prepare.mjs server\nnode scripts/verify/prepare.mjs worker\nnode scripts/verify/prepare.mjs extension\n",
