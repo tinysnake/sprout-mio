@@ -4,7 +4,8 @@ import type { FieldErrors } from "../../contracts/project";
 import type { AppError } from "../../contracts/result";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
-import { FieldError, ResultError } from "../project/result-error";
+import { FieldError } from "../project/result-error";
+import { ChatErrorNotice } from "./chat-error-notice";
 
 export const MESSAGE_MAX_LENGTH = 8000;
 
@@ -118,8 +119,8 @@ export function MessageComposer({
         </div>
       </form>
       {fieldErrors.body && <FieldError errors={fieldErrors} name="body" />}
-      {error && <ResultError error={error} testId="message-error" />}
-      {stopError && <ResultError error={stopError} testId="run-stop-error" />}
+      {error && <ChatErrorNotice error={error} testId="message-error" />}
+      {stopError && <ChatErrorNotice error={stopError} testId="run-stop-error" />}
       <p className="mt-2 text-center text-[9px] text-muted-foreground">
         Project 的信息与分析依据，会随 Chat 一起保留。
       </p>

@@ -14,7 +14,13 @@ import type {
 import type { AppError } from "../../contracts/result";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
-import { addGroupMemberFn, removeGroupMemberFn, setChatOwnerFn } from "../../server/functions/chat";
+import {
+  addGroupMemberFn,
+  clearChatTitleFn,
+  removeGroupMemberFn,
+  setChatOwnerFn,
+  updateChatTitleFn,
+} from "../../server/functions/chat";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import {
@@ -25,11 +31,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../ui/dialog";
-import { ResultError } from "../project/result-error";
+import { ChatErrorNotice } from "./chat-error-notice";
 import { ChatAvatar } from "./chat-avatar";
+import { ChatTitleEditor } from "./chat-title-editor";
 import { ChatFactsBlock } from "../info-hub/chat-info-panel";
 import { RunFactsBlock, TurnStartContextBlock } from "../info-hub/run-facts";
-import { governanceAvailability } from "./chat-governance";
+import { canRenameChat, governanceAvailability, governanceNote } from "./chat-governance";
 import type { ChatMachineFacts } from "./chat-loader";
 import { LeaseOverview } from "../machine/lease-panel";
 import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
@@ -103,14 +110,41 @@ export function ChatDetails({
         )?.displayName ??
         profileNames.get(chat.owner.id) ??
         "Agent");
-  const actions = governanceAvailability({
+  const governanceFacts = {
     kind: chat.kind,
     ownerKind: chat.owner.kind,
     ownerId: chat.owner.id,
-    actorKind: "human",
+    actorKind: "human" as const,
     actorId: humanUserId,
-  });
+  };
+  const actions = governanceAvailability(governanceFacts);
+  // 标题写入的入口只看冻结能力表：普通 Group 的 Human owner 才有，其他人只读。
+  const canRename = canRenameChat(governanceFacts);
+  const governanceCopy = governanceNote(governanceFacts);
   const currentMembers: ChatMember[] = members.ok ? members.data : [];
+  // 资料块跟着成员行的选中态；默认不选中，群组里因此没有「第一个 Agent」的猜测。
+  // DM 只有一个 Agent 成员、没有歧义，沿用 P4b 的默认展示。
+  const [selectedMember, setSelectedMember] = useState<string | null>(null);
+  const soleDmAgent =
+    chat.kind === "dm" ? currentMembers.filter((m) => m.memberKind === "agent") : [];
+  const detailKey = selectedMember ?? (soleDmAgent.length === 1 ? memberKey(soleDmAgent[0]) : null);
+  const detailMember = detailKey
+    ? currentMembers.find((member) => memberKey(member) === detailKey)
+    : undefined;
+  const detailName = detailMember
+    ? (names.get(memberKey(detailMember)) ??
+      (detailMember.memberKind === "human"
+        ? detailMember.memberId === humanUserId
+          ? humanName || "你"
+          : "Human"
+        : (profileNames.get(detailMember.memberId) ?? "Agent")))
+    : undefined;
+  const detailProfile =
+    detailMember?.memberKind === "agent"
+      ? chat.kind === "dm" && profile?.ok
+        ? profile.data
+        : projectProfiles.find((entry) => entry.id === detailMember.memberId)
+      : undefined;
   const currentKeys = new Set(currentMembers.map(memberKey));
   const allAgents = projectMembers.map((member) => ({
     id: member.agentProfileId,
@@ -170,9 +204,9 @@ export function ChatDetails({
           </summary>
           <div className="space-y-3 pt-3">
             {!members.ok ? (
-              <ResultError error={members.error} testId="chat-load-error" />
+              <ChatErrorNotice error={members.error} testId="chat-load-error" />
             ) : (
-              <ul data-testid="chat-member-list" className="space-y-1.5">
+              <ul data-testid="inspector-member-list" className="space-y-1.5">
                 {currentMembers.map((member) => {
                   const key = memberKey(member);
                   const isOwner =
@@ -185,10 +219,30 @@ export function ChatDetails({
                         : "Human"
                       : (profileNames.get(member.memberId) ?? "Agent"));
                   const canRemove = actions.member_remove && !isOwner;
+                  // Agent 成员行可选中，选中后资料块展示这一位的职位与 persona。
+                  const row =
+                    member.memberKind === "agent" ? (
+                      <button
+                        type="button"
+                        data-testid="chat-member-select"
+                        data-member-key={key}
+                        aria-pressed={detailKey === key}
+                        aria-label={`查看 ${name} 的资料`}
+                        onClick={() => setSelectedMember(detailKey === key ? null : key)}
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded-control border border-transparent px-1 py-0.5 text-left hover:border-input aria-pressed:border-border aria-pressed:bg-selected"
+                      >
+                        <ChatAvatar name={name} small />
+                        <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
+                      </button>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
+                        <ChatAvatar name={name} human small />
+                        <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
+                      </div>
+                    );
                   return (
                     <li key={key} className="flex items-center gap-2">
-                      <ChatAvatar name={name} human={member.memberKind === "human"} small />
-                      <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
+                      {row}
                       {isOwner && (
                         <span className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground">
                           Owner
@@ -236,14 +290,20 @@ export function ChatDetails({
                     onChanged={onChanged}
                   />
                 ) : (
-                  <p className="text-[10px] leading-5 text-muted-foreground">
-                    仅当前 Human owner 可修改。Agent owner 不拥有治理权限。
+                  <p
+                    data-testid="chat-member-note"
+                    className="text-[10px] leading-5 text-muted-foreground"
+                  >
+                    成员决定谁能收到消息与唤醒；仍在活动 run 或持有租约的成员不能直接移除。
                   </p>
                 )}
               </div>
             )}
             {chat.kind === "dm" && (
-              <p className="text-[10px] leading-5 text-muted-foreground">
+              <p
+                data-testid="chat-member-note"
+                className="text-[10px] leading-5 text-muted-foreground"
+              >
                 DM 成员固定为两位参与者，不提供独立成员治理。
               </p>
             )}
@@ -252,45 +312,48 @@ export function ChatDetails({
               <dd data-testid="inspector-chat-id" className="font-mono break-all">
                 {chat.id}
               </dd>
-              <dt className="text-muted-foreground">分身 Instance ID</dt>
-              <dd data-testid="inspector-instance-id" className="font-mono break-all">
-                {instanceId ?? "（群内还没有分身）"}
-              </dd>
-              <dt className="text-muted-foreground">成员</dt>
-              <dd data-testid="inspector-member-list">
-                {infoMembers.map((member) => member.displayName).join("、") ||
-                  (members.ok ? "（空）" : "成员读取失败")}
-              </dd>
+              {/* 群与频道可能有多个分身，单独一行只能指其中一个；DM 仍是一对一指代。 */}
+              {chat.kind === "dm" && (
+                <>
+                  <dt className="text-muted-foreground">分身 Instance ID</dt>
+                  <dd data-testid="inspector-instance-id" className="font-mono break-all">
+                    {instanceId ?? "（还没有分身实例）"}
+                  </dd>
+                </>
+              )}
               <dt className="text-muted-foreground">消息数</dt>
               <dd data-testid="inspector-message-count">
                 {info.ok ? info.data.messages.count : "未知"}
               </dd>
             </dl>
-            {profile && (
+            {detailMember && (
               <div
                 data-testid="chat-inspector-identity"
                 className="space-y-2 border-t border-border pt-3"
               >
-                {!profile.ok && (
-                  <ResultError error={profile.error} testId="inspector-profile-error" />
+                {profile && !profile.ok && (
+                  <ChatErrorNotice error={profile.error} testId="inspector-profile-error" />
                 )}
                 <div className="flex items-center gap-2.5">
-                  <ChatAvatar name={agentName} />
+                  <ChatAvatar name={detailName ?? agentName} />
                   <div className="min-w-0 flex-1">
                     <strong
                       data-testid="inspector-agent-name"
                       className="block truncate text-xs font-semibold"
                     >
-                      {agentName}
+                      {detailName ?? agentName}
                     </strong>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      {profile.ok && profile.data.jobTitle ? profile.data.jobTitle : "未设置职位"}
+                    <p
+                      data-testid="inspector-agent-job-title"
+                      className="mt-0.5 text-[10px] text-muted-foreground"
+                    >
+                      {detailProfile?.jobTitle ?? "未设置职位"}
                     </p>
                   </div>
-                  {profile.ok && (
+                  {detailProfile && (
                     <Link
                       to="/agents/$agentProfileId"
-                      params={{ agentProfileId: profile.data.id }}
+                      params={{ agentProfileId: detailProfile.id }}
                       search={agentDetailFromChat(chat)}
                       data-testid="inspector-agent-profile-link"
                       className="shrink-0 text-[10px] text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
@@ -303,60 +366,80 @@ export function ChatDetails({
                   data-testid="inspector-agent-persona"
                   className="text-[11px] leading-6 break-words whitespace-pre-wrap"
                 >
-                  {profile.ok ? profile.data.persona || "（空）" : ""}
+                  {detailProfile?.persona || "（空）"}
                 </p>
               </div>
             )}
           </div>
         </details>
 
-        <details
-          open
-          data-testid="chat-details-owner"
-          className="group border-b border-border py-4"
-        >
-          <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
-            <span>Owner</span>
-            <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
-              {ownerName}
-              <Icon
-                as={ChevronRight}
-                size={12}
-                className="transition-transform group-open:rotate-90"
-              />
-            </span>
-          </summary>
-          <div className="space-y-3 pt-3">
-            <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1.5 text-[11px]">
-              <dt className="text-muted-foreground">Owner</dt>
-              <dd data-testid="chat-owner-name">
-                {ownerName}（{chat.owner.kind === "human" ? "Human" : "Agent"}）
-              </dd>
-              <dt className="text-muted-foreground">唤醒策略</dt>
-              <dd data-testid="chat-wake-policy">{WAKE_POLICY_LABELS[chat.wakePolicy]}</dd>
-              <dt className="text-muted-foreground">治理版本</dt>
-              <dd data-testid="chat-governance-revision">{chat.governanceRevision}</dd>
-            </dl>
-            {chat.kind === "group" && actions.owner_change ? (
-              <OwnerDialog
-                chatId={chat.id}
-                revision={chat.governanceRevision}
-                members={currentMembers}
-                names={names}
-                humanUserId={humanUserId}
-                humanName={humanName}
-                agentNames={profileNames}
-                onChanged={onChanged}
-              />
-            ) : (
-              <p className="text-[10px] leading-5 text-muted-foreground">
-                {chat.kind === "public_channel"
-                  ? "公共频道 Owner 固定为 Project 创建者。"
-                  : "仅当前 Human owner 可修改。Agent owner 不拥有治理权限。"}
+        {/* DM 保持 P4b 形状：没有独立成员治理，因此不渲染治理段。 */}
+        {chat.kind !== "dm" && (
+          <details
+            open
+            data-testid="chat-details-owner"
+            className="group border-b border-border py-4"
+          >
+            <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
+              <span>Owner</span>
+              <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
+                {ownerName}
+                <Icon
+                  as={ChevronRight}
+                  size={12}
+                  className="transition-transform group-open:rotate-90"
+                />
+              </span>
+            </summary>
+            <div className="space-y-3 pt-3">
+              <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1.5 text-[11px]">
+                <dt className="text-muted-foreground">Owner</dt>
+                <dd data-testid="chat-owner-name">
+                  {ownerName}（{chat.owner.kind === "human" ? "Human" : "Agent"}）
+                </dd>
+                <dt className="text-muted-foreground">唤醒策略</dt>
+                <dd data-testid="chat-wake-policy">{WAKE_POLICY_LABELS[chat.wakePolicy]}</dd>
+                <dt className="text-muted-foreground">治理版本</dt>
+                <dd data-testid="chat-governance-revision">{chat.governanceRevision}</dd>
+                <dt className="text-muted-foreground">标题</dt>
+                <dd data-testid="chat-details-title" className="break-words">
+                  {chat.title?.trim() ? chat.title : `未命名，显示为「${agentName}」`}
+                </dd>
+              </dl>
+              <div className="flex flex-wrap items-center gap-2">
+                {chat.kind === "group" && actions.owner_change && (
+                  <OwnerDialog
+                    chatId={chat.id}
+                    revision={chat.governanceRevision}
+                    members={currentMembers}
+                    names={names}
+                    humanUserId={humanUserId}
+                    humanName={humanName}
+                    agentNames={profileNames}
+                    onChanged={onChanged}
+                  />
+                )}
+                {canRename && (
+                  <ChatTitleEditor
+                    chat={chat}
+                    currentName={agentName}
+                    submit={(title) => updateChatTitleFn({ data: { chatId: chat.id, title } })}
+                    restore={() => clearChatTitleFn({ data: { chatId: chat.id } })}
+                    onChanged={onChanged}
+                    variant="button"
+                  />
+                )}
+              </div>
+              {/* 治理提示只在这里出现一处；成员段只说明成员规则。 */}
+              <p
+                data-testid="chat-governance-note"
+                className="text-[10px] leading-5 text-muted-foreground"
+              >
+                {governanceCopy}
               </p>
-            )}
-          </div>
-        </details>
+            </div>
+          </details>
+        )}
 
         <details
           open
@@ -406,9 +489,9 @@ export function ChatDetails({
               </ul>
             )}
             {!info.ok ? (
-              <ResultError error={info.error} testId="info-hub-chat-error" />
+              <ChatErrorNotice error={info.error} testId="info-hub-chat-error" />
             ) : !turnStart.ok ? (
-              <ResultError error={turnStart.error} testId="info-hub-turn-context-error" />
+              <ChatErrorNotice error={turnStart.error} testId="info-hub-turn-context-error" />
             ) : (
               <div className="space-y-4">
                 <RunFactsBlock runs={info.data.runs} testId="info-chat-runs" />
@@ -448,7 +531,9 @@ export function ChatDetails({
                       : "未接入，P4b 集成"}
                 </span>
               </div>
-              {machineFactsError && <ResultError error={machineFactsError} />}
+              {machineFactsError && (
+                <ChatErrorNotice error={machineFactsError} testId="chat-machine-error" />
+              )}
               {machineFacts && (
                 <div data-testid="chat-machine-facts" className="space-y-4">
                   <LeaseOverview
@@ -567,7 +652,7 @@ function AddMemberDialog({
               ))}
             </select>
           )}
-          {error && <ResultError error={error} testId="chat-member-add-error" />}
+          {error && <ChatErrorNotice error={error} testId="chat-member-add-error" />}
           <div className="flex justify-end">
             <Button type="submit" data-testid="chat-member-add-submit" loading={pending}>
               添加
@@ -632,7 +717,7 @@ function RemoveMemberButton({
       >
         ×
       </Button>
-      {error && <ResultError error={error} testId="chat-member-remove-error" />}
+      {error && <ChatErrorNotice error={error} testId="chat-member-remove-error" />}
     </span>
   );
 }
@@ -727,7 +812,7 @@ function OwnerDialog({
               );
             })}
           </select>
-          {error && <ResultError error={error} testId="chat-owner-error" />}
+          {error && <ChatErrorNotice error={error} testId="chat-owner-error" />}
           <div className="flex justify-end">
             <Button type="submit" data-testid="chat-owner-submit" loading={pending}>
               保存 Owner

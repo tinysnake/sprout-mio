@@ -105,7 +105,20 @@ try {
   }
   const output = readFileSync(join(directory, 'browser.log'), 'utf8')
   const checks = output.split('\n').filter((line) => /^(PASS|FAIL) [a-z0-9_]/.test(line))
-  assert(checks.length >= 12, `expected at least 12 browser assertions, got ${checks.length}`)
+  const required = [
+    'group_blank_title_blocks_create',
+    'chat_page_hides_request_id',
+    'group_title_edited_from_details_rail',
+    'group_governance_note_and_testids_once',
+    'group_details_drop_instance_row',
+    'group_member_list_only_in_member_section',
+    'member_row_selects_profile',
+    'non_owner_human_sees_readonly_title',
+    'dm_keeps_members_and_activity_only',
+  ]
+  const ids = new Set(checks.map((line) => line.split(' ')[1]))
+  for (const id of required) assert(ids.has(id), `browser assertion ${id} 缺失`)
+  assert(checks.length >= 26, `expected at least 26 browser assertions, got ${checks.length}`)
   for (const line of checks) console.log(line)
   assert(checks.every((line) => line.startsWith('PASS ')), 'every browser assertion must pass')
   pass('as-p5a-browser-assertions', { count: checks.length, evidence: join(directory, 'evidence/results.json') })

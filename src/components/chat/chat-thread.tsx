@@ -9,7 +9,7 @@ import type { InfoHubRunSummary } from "../../contracts/info-hub";
 import type { AppError } from "../../contracts/result";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
-import { ResultError } from "../project/result-error";
+import { ChatErrorNotice } from "./chat-error-notice";
 import { MessageComposer } from "./message-composer";
 import { MessageList } from "./message-list";
 import { chatDisplayName } from "./chat-display";
@@ -163,7 +163,7 @@ export function ChatThread({
         className="min-h-0 flex-1 overflow-y-auto px-7 pt-5.75 pb-4.5 max-desktop:px-3.75 max-desktop:py-5"
       >
         {!messages.ok ? (
-          <ResultError error={messages.error} testId="messages-load-error" />
+          <ChatErrorNotice error={messages.error} testId="messages-load-error" />
         ) : !runState.ok ? (
           <>
             <MessageList
@@ -174,7 +174,7 @@ export function ChatThread({
               knownSenders={knownSenders}
               runFacts={runFacts}
             />
-            <ResultError error={runState.error} testId="run-state-load-error" />
+            <ChatErrorNotice error={runState.error} testId="run-state-load-error" />
           </>
         ) : (
           <>
