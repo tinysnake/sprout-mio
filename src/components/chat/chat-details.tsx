@@ -36,6 +36,7 @@ import { ChatAvatar } from "./chat-avatar";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { ChatFactsBlock } from "../info-hub/chat-info-panel";
 import { RunFactsBlock, TurnStartContextBlock } from "../info-hub/run-facts";
+import { TaskAssociations } from "../tasks/task-associations";
 import { governanceNote } from "./chat-governance";
 import type { ChatMachineFacts } from "./chat-loader";
 import { LeaseOverview } from "../machine/lease-panel";
@@ -179,6 +180,14 @@ export function ChatDetails({
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6">
+        <section data-testid="inspector-tasks" className="space-y-3 border-b border-border py-5">
+          <h3 className="text-[10px] font-medium text-muted-foreground">Task 摘要</h3>
+          {info.ok ? (
+            <TaskAssociations projectId={projectId} items={info.data.tasks.items} />
+          ) : (
+            <ChatErrorNotice error={info.error} testId="info-hub-tasks-error" />
+          )}
+        </section>
         <details
           open
           data-testid="chat-details-members"

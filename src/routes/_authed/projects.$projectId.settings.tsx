@@ -243,9 +243,17 @@ function ProjectSettingsPage() {
                 {infoHub.ok ? (
                   <>
                     <ProjectAgentsPanel projectId={projectId} view={infoHub.data.agents} />
-                    <section aria-label="Project Tasks" className="space-y-3 border-t border-border pt-4">
+                    <section
+                      aria-label="Project Tasks"
+                      className="space-y-3 border-t border-border pt-4"
+                    >
                       <h3 className="text-xs font-medium">Tasks</h3>
-                      <p className="text-xs text-muted-foreground">待分配 {infoHub.data.tasks.counts.proposed} · 已分配 {infoHub.data.tasks.counts.assigned} · 已完成 {infoHub.data.tasks.counts.finished} · 已取消 {infoHub.data.tasks.counts.canceled}</p>
+                      <p className="text-xs text-muted-foreground">
+                        待分配 {infoHub.data.tasks.counts.proposed} · 已分配{" "}
+                        {infoHub.data.tasks.counts.assigned} · 已完成{" "}
+                        {infoHub.data.tasks.counts.finished} · 已取消{" "}
+                        {infoHub.data.tasks.counts.canceled}
+                      </p>
                       <TaskAssociations projectId={projectId} items={infoHub.data.tasks.items} />
                     </section>
                   </>

@@ -8,8 +8,20 @@ const tones: Record<TaskStatus, string> = {
   canceled: "bg-muted text-muted-foreground",
 };
 
-export function TaskBadge({ status, reopened = false }: { status: TaskStatus; reopened?: boolean }) {
-  return <span data-testid="task-badge" className={`inline-flex shrink-0 rounded-control px-2 py-1 text-[10px] ${tones[status]}`}>
-    {taskStatusLabels[status]}{status === "assigned" && reopened ? " · 重开" : ""}
-  </span>;
+export function TaskBadge({
+  status,
+  reopened = false,
+}: {
+  status: TaskStatus;
+  reopened?: boolean;
+}) {
+  return (
+    <span
+      data-testid="task-badge"
+      className={`inline-flex shrink-0 rounded-control px-2 py-1 text-[10px] ${tones[status]}`}
+    >
+      {taskStatusLabels[status]}
+      {status === "assigned" && reopened ? " · 重开" : ""}
+    </span>
+  );
 }

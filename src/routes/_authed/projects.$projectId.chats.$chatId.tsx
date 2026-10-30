@@ -110,22 +110,29 @@ function ProjectChatDetailPage() {
 
   return (
     <>
-    {loader.info.ok && loader.info.data.tasks.items.length > 0 && <div className="max-h-36 shrink-0 overflow-y-auto border-b border-border px-5 py-3" aria-label="关联 Task"><TaskAssociations projectId={projectId} items={loader.info.data.tasks.items} compact /></div>}
-    <ChatPane
-      // 换一条对话就换一个实例：草稿、发送错误与停止 pending 都按 Chat 隔离，
-      // 旧对话的异步结果也不会写进新对话。
-      key={chatId}
-      projectId={projectId}
-      session={loader.session}
-      profile={loader.profile}
-      humanName={human?.name ?? ""}
-      messages={loader.messages}
-      info={loader.info}
-      runState={loader.runState}
-      inspectorOpen={open}
-      onToggleInspector={() => setOpen(!open)}
-      onChanged={() => void router.invalidate()}
-    />
+      {loader.info.ok && loader.info.data.tasks.items.length > 0 && (
+        <div
+          className="max-h-36 shrink-0 overflow-y-auto border-b border-border px-5 py-3"
+          aria-label="关联 Task"
+        >
+          <TaskAssociations projectId={projectId} items={loader.info.data.tasks.items} compact />
+        </div>
+      )}
+      <ChatPane
+        // 换一条对话就换一个实例：草稿、发送错误与停止 pending 都按 Chat 隔离，
+        // 旧对话的异步结果也不会写进新对话。
+        key={chatId}
+        projectId={projectId}
+        session={loader.session}
+        profile={loader.profile}
+        humanName={human?.name ?? ""}
+        messages={loader.messages}
+        info={loader.info}
+        runState={loader.runState}
+        inspectorOpen={open}
+        onToggleInspector={() => setOpen(!open)}
+        onChanged={() => void router.invalidate()}
+      />
     </>
   );
 }

@@ -35,8 +35,10 @@ import { Route as AuthedProjectsProjectIdIndexRouteImport } from './routes/_auth
 import { Route as AuthedProjectsProjectIdChatsRouteImport } from './routes/_authed/projects.$projectId.chats'
 import { Route as AuthedProjectsProjectIdMembersRouteImport } from './routes/_authed/projects.$projectId.members'
 import { Route as AuthedProjectsProjectIdSettingsRouteImport } from './routes/_authed/projects.$projectId.settings'
+import { Route as AuthedProjectsProjectIdTasksRouteImport } from './routes/_authed/projects.$projectId.tasks'
 import { Route as AuthedProjectsProjectIdChatsIndexRouteImport } from './routes/_authed/projects.$projectId.chats.index'
 import { Route as AuthedProjectsProjectIdChatsChatIdRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId'
+import { Route as AuthedProjectsProjectIdTasksTaskIdRouteImport } from './routes/_authed/projects.$projectId.tasks.$taskId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -174,6 +176,12 @@ const AuthedProjectsProjectIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => AuthedProjectsProjectIdRoute,
   } as any)
+const AuthedProjectsProjectIdTasksRoute =
+  AuthedProjectsProjectIdTasksRouteImport.update({
+    id: '/tasks',
+    path: '/tasks',
+    getParentRoute: () => AuthedProjectsProjectIdRoute,
+  } as any)
 const AuthedProjectsProjectIdChatsIndexRoute =
   AuthedProjectsProjectIdChatsIndexRouteImport.update({
     id: '/',
@@ -185,6 +193,12 @@ const AuthedProjectsProjectIdChatsChatIdRoute =
     id: '/$chatId',
     path: '/$chatId',
     getParentRoute: () => AuthedProjectsProjectIdChatsRoute,
+  } as any)
+const AuthedProjectsProjectIdTasksTaskIdRoute =
+  AuthedProjectsProjectIdTasksTaskIdRouteImport.update({
+    id: '/$taskId',
+    path: '/$taskId',
+    getParentRoute: () => AuthedProjectsProjectIdTasksRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -211,9 +225,11 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/machines/$machineId/': typeof AuthedMachinesMachineIdIndexRoute
   '/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
+  '/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -235,9 +251,11 @@ export interface FileRoutesByTo {
   '/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/machines/$machineId': typeof AuthedMachinesMachineIdIndexRoute
   '/projects/$projectId': typeof AuthedProjectsProjectIdIndexRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
+  '/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 export interface FileRoutesById {
@@ -266,9 +284,11 @@ export interface FileRoutesById {
   '/_authed/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
   '/_authed/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/_authed/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/_authed/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/_authed/machines/$machineId/': typeof AuthedMachinesMachineIdIndexRoute
   '/_authed/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
   '/_authed/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
+  '/_authed/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/_authed/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 export interface FileRouteTypes {
@@ -297,9 +317,11 @@ export interface FileRouteTypes {
     | '/projects/$projectId/chats'
     | '/projects/$projectId/members'
     | '/projects/$projectId/settings'
+    | '/projects/$projectId/tasks'
     | '/machines/$machineId/'
     | '/projects/$projectId/'
     | '/projects/$projectId/chats/$chatId'
+    | '/projects/$projectId/tasks/$taskId'
     | '/projects/$projectId/chats/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -321,9 +343,11 @@ export interface FileRouteTypes {
     | '/machines/$machineId/lease'
     | '/projects/$projectId/members'
     | '/projects/$projectId/settings'
+    | '/projects/$projectId/tasks'
     | '/machines/$machineId'
     | '/projects/$projectId'
     | '/projects/$projectId/chats/$chatId'
+    | '/projects/$projectId/tasks/$taskId'
     | '/projects/$projectId/chats'
   id:
     | '__root__'
@@ -351,9 +375,11 @@ export interface FileRouteTypes {
     | '/_authed/projects/$projectId/chats'
     | '/_authed/projects/$projectId/members'
     | '/_authed/projects/$projectId/settings'
+    | '/_authed/projects/$projectId/tasks'
     | '/_authed/machines/$machineId/'
     | '/_authed/projects/$projectId/'
     | '/_authed/projects/$projectId/chats/$chatId'
+    | '/_authed/projects/$projectId/tasks/$taskId'
     | '/_authed/projects/$projectId/chats/'
   fileRoutesById: FileRoutesById
 }
@@ -556,6 +582,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedProjectsProjectIdSettingsRouteImport
       parentRoute: typeof AuthedProjectsProjectIdRoute
     }
+    '/_authed/projects/$projectId/tasks': {
+      id: '/_authed/projects/$projectId/tasks'
+      path: '/tasks'
+      fullPath: '/projects/$projectId/tasks'
+      preLoaderRoute: typeof AuthedProjectsProjectIdTasksRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdRoute
+    }
     '/_authed/projects/$projectId/chats/': {
       id: '/_authed/projects/$projectId/chats/'
       path: '/'
@@ -569,6 +602,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId/chats/$chatId'
       preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdRouteImport
       parentRoute: typeof AuthedProjectsProjectIdChatsRoute
+    }
+    '/_authed/projects/$projectId/tasks/$taskId': {
+      id: '/_authed/projects/$projectId/tasks/$taskId'
+      path: '/$taskId'
+      fullPath: '/projects/$projectId/tasks/$taskId'
+      preLoaderRoute: typeof AuthedProjectsProjectIdTasksTaskIdRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdTasksRoute
     }
   }
 }
@@ -621,10 +661,26 @@ const AuthedProjectsProjectIdChatsRouteWithChildren =
     AuthedProjectsProjectIdChatsRouteChildren,
   )
 
+interface AuthedProjectsProjectIdTasksRouteChildren {
+  AuthedProjectsProjectIdTasksTaskIdRoute: typeof AuthedProjectsProjectIdTasksTaskIdRoute
+}
+
+const AuthedProjectsProjectIdTasksRouteChildren: AuthedProjectsProjectIdTasksRouteChildren =
+  {
+    AuthedProjectsProjectIdTasksTaskIdRoute:
+      AuthedProjectsProjectIdTasksTaskIdRoute,
+  }
+
+const AuthedProjectsProjectIdTasksRouteWithChildren =
+  AuthedProjectsProjectIdTasksRoute._addFileChildren(
+    AuthedProjectsProjectIdTasksRouteChildren,
+  )
+
 interface AuthedProjectsProjectIdRouteChildren {
   AuthedProjectsProjectIdChatsRoute: typeof AuthedProjectsProjectIdChatsRouteWithChildren
   AuthedProjectsProjectIdMembersRoute: typeof AuthedProjectsProjectIdMembersRoute
   AuthedProjectsProjectIdSettingsRoute: typeof AuthedProjectsProjectIdSettingsRoute
+  AuthedProjectsProjectIdTasksRoute: typeof AuthedProjectsProjectIdTasksRouteWithChildren
   AuthedProjectsProjectIdIndexRoute: typeof AuthedProjectsProjectIdIndexRoute
 }
 
@@ -634,6 +690,8 @@ const AuthedProjectsProjectIdRouteChildren: AuthedProjectsProjectIdRouteChildren
       AuthedProjectsProjectIdChatsRouteWithChildren,
     AuthedProjectsProjectIdMembersRoute: AuthedProjectsProjectIdMembersRoute,
     AuthedProjectsProjectIdSettingsRoute: AuthedProjectsProjectIdSettingsRoute,
+    AuthedProjectsProjectIdTasksRoute:
+      AuthedProjectsProjectIdTasksRouteWithChildren,
     AuthedProjectsProjectIdIndexRoute: AuthedProjectsProjectIdIndexRoute,
   }
 

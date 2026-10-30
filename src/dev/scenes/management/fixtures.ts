@@ -97,7 +97,11 @@ export const demoRepoState: ProjectRepoState = {
 };
 
 export const demoInfoHub: ProjectInfoHub = {
-  tasks: { available: true, items: [], counts: { proposed: 0, assigned: 0, finished: 0, canceled: 0 } },
+  tasks: {
+    available: true,
+    items: [],
+    counts: { proposed: 0, assigned: 0, finished: 0, canceled: 0 },
+  },
   projectId: DEMO_PROJECT_ID,
   agents: {
     agents: demoMembers.map((member, index) => ({
