@@ -153,7 +153,7 @@ try {
     ['short-secret', { BETTER_AUTH_SECRET: 'short' }, 'BETTER_AUTH_SECRET'],
     ['placeholder-secret', { BETTER_AUTH_SECRET: 'local-development-only-replace-with-a-random-secret' }, 'BETTER_AUTH_SECRET'],
   ]) {
-    const result = await bounded(launch('pnpm', ['start'], `${name}.log`, { ...environment, ...changes }), 15000)
+    const result = await bounded(launch(process.execPath, ['.output/server/index.mjs'], `${name}.log`, { ...environment, ...changes }), 15000)
     assert(result.code !== null && result.code !== 0, `${name} must exit nonzero, not time out`)
     const log = readFileSync(join(directory, `${name}.log`), 'utf8')
     assert(log.includes(field) && log.includes('环境变量校验失败'), `${name} readable error`)
@@ -174,7 +174,7 @@ try {
   unrecoverable.exec('DROP TABLE runtime_boot')
   unrecoverable.close()
   for (const [phase, target] of [['migrating', migrationFailureUrl], ['recovering', recoveryFailureUrl]]) {
-    const result = await bounded(launch('pnpm', ['start'], `${phase}-failure.log`, { ...environment, DATABASE_URL: target }), 15000)
+    const result = await bounded(launch(process.execPath, ['.output/server/index.mjs'], `${phase}-failure.log`, { ...environment, DATABASE_URL: target }), 15000)
     assert.equal(result.code, 1, `${phase} failure must exit 1`)
     const log = readFileSync(join(directory, `${phase}-failure.log`), 'utf8')
     assert(log.includes(`[runtime] 失败 ${phase}`) && log.includes('[runtime] 启动失败'), `${phase} readable failure`)
@@ -182,7 +182,7 @@ try {
     await freePort(port)
     pass(`pnpm start rejects ${phase} failure`, { ...result, log: `${phase}-failure.log` })
   }
-  const server = launch('pnpm', ['start'], 'production.log')
+  const server = launch(process.execPath, ['.output/server/index.mjs'], 'production.log')
   const first = await health(server, base, 'health-first')
   const second = await curl(`${base}/api/health`, 'health-second', { header: 'x-sprout-request-id: req_spoofed' })
   const bootId = first.body.bootId

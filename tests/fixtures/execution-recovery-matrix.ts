@@ -79,6 +79,7 @@ Object.assign(process.env, {
   SPROUT_PI_ENABLED: "false",
 });
 function launch(args: string[], name: string, ipc = false) {
+  assert(!cleanupPromise, "no new components during cleanup");
   const log = join(directory, name);
   const fd = openSync(log, "a", 0o600);
   const child = spawn(process.execPath, args, {
@@ -183,7 +184,9 @@ async function pollView(executionId: string): Promise<ExecutionView | null> {
     return null;
   }
 }
+const ownedRequests = new Set<string>();
 async function submit(requestId: string, command: string): Promise<ExecutionView> {
+  ownedRequests.add(requestId);
   const deadline = Date.now() + 45000;
   for (;;) {
     // unknown 会让工具报 isError，但 data 仍是执行视图：重提交的断言只看视图事实。
@@ -250,14 +253,15 @@ const claimPath = (executionId: string) => join(state, "executions", executionId
 const resultPath = (executionId: string) => join(state, "executions", executionId, "result.json");
 /** P0 的「机器全灭」口径：runner 与命令所在的整个进程组一起消失。 */
 function killExecutionGroup(executionId: string) {
-  if (!existsSync(claimPath(executionId))) return;
-  const claim = JSON.parse(readFileSync(claimPath(executionId), "utf8")) as { pid: number };
+  const claim = existsSync(claimPath(executionId))
+    ? (JSON.parse(readFileSync(claimPath(executionId), "utf8")) as { pid: number })
+    : null;
   // 托管分离后 runner 与命令在两个进程组：机器全灭要两个组都打，否则命令会被留成孤儿。
   const runnerPath = join(state, "executions", executionId, "runner.json");
   const runnerClaim = existsSync(runnerPath)
-    ? (JSON.parse(readFileSync(runnerPath, "utf8")) as { childPid?: number | null })
+    ? (JSON.parse(readFileSync(runnerPath, "utf8")) as { pid: number; childPid?: number | null })
     : null;
-  for (const pid of [claim.pid, runnerClaim?.childPid ?? 0]) {
+  for (const pid of new Set([claim?.pid ?? 0, runnerClaim?.pid ?? 0, runnerClaim?.childPid ?? 0])) {
     if (!pid) continue;
     const ps = spawnSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" });
     const pgid = Number(ps.stdout.trim());
@@ -457,6 +461,41 @@ async function runCell(cell: Cell) {
   );
 }
 
+let cleanupPromise: Promise<void> | undefined;
+function cleanup() {
+  return (cleanupPromise ??= (async () => {
+    for (const child of children) {
+      if (child.exitCode !== null || child.signalCode !== null) continue;
+      try {
+        child.kill("SIGCONT");
+        child.kill("SIGKILL");
+      } catch {}
+    }
+    await until(
+      () => children.every((child) => child.exitCode !== null || child.signalCode !== null),
+      "owned components stop",
+      5000,
+    ).catch(() => {});
+    for (const requestId of ownedRequests) {
+      const row = sqlite
+        ?.prepare("SELECT id FROM remote_execution WHERE request_id=?")
+        .get(requestId) as { id: string } | undefined;
+      if (row) killExecutionGroup(row.id);
+    }
+  })());
+}
+let interrupted = false;
+for (const [signal, code] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+] as const) {
+  process.on(signal, () => {
+    if (interrupted) return;
+    interrupted = true;
+    void cleanup().finally(() => process.exit(code));
+  });
+}
+
 try {
   service = launch(
     ["--import", "tsx", "tests/fixtures/execution-live-service.ts"],
@@ -548,17 +587,5 @@ try {
   for (const cell of cells)
     console.log(`  ${cell.cell}: expected=${cell.expected} actual=${cell.actual}`);
 } finally {
-  for (const child of children.reverse()) {
-    try {
-      process.kill(child.pid!, "SIGCONT");
-    } catch {
-      // 不在冻结状态即目标状态。
-    }
-    try {
-      child.kill("SIGKILL");
-    } catch {
-      // 已退出即目标状态。
-    }
-  }
-  await sleep(200);
+  await cleanup();
 }

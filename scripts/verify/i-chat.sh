@@ -153,7 +153,7 @@ try {
   assert(referenced.length > 0 && referenced.every((file) => clientAssets.includes(file)), 'SPA shell 必须只引用本次构建的客户端资源')
   pass('node scripts/verify/prepare.mjs server', { shell: '.output/public/_shell.html', referenced, buildLog: 'build.log' })
 
-  server = launch('pnpm', ['start'], 'server.log')
+  server = launch(process.execPath, ['.output/server/index.mjs'], 'server.log')
   const ready = await waitForHealth(server)
   const firstBootId = ready.body.bootId
   pass('production server ready', { requestId: ready.requestId, bootId: firstBootId, version: ready.body.version })
@@ -289,7 +289,7 @@ try {
   assert.equal(shutdown.code, 0, '生产进程必须退出 0')
   pass('生产进程 SIGTERM 退出', shutdown)
 
-  restarted = launch('pnpm', ['start'], 'server-second.log')
+  restarted = launch(process.execPath, ['.output/server/index.mjs'], 'server-second.log')
   const rebooted = await waitForHealth(restarted)
   assert(rebooted.body.bootId !== firstBootId, '重启后必须是新的 bootId')
   pass('生产进程重启后健康检查通过', { bootId: rebooted.body.bootId })

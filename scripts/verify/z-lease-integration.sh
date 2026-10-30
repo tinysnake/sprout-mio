@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+case "${SPROUT_VERIFY_CHAT_MODE-model-fixture}" in
+  model-fixture|live) export SPROUT_VERIFY_CHAT_MODE="${SPROUT_VERIFY_CHAT_MODE-model-fixture}" ;;
+  *) echo 'SPROUT_VERIFY_CHAT_MODE must be model-fixture or live' >&2; exit 2 ;;
+esac
+if [[ "$SPROUT_VERIFY_CHAT_MODE" == model-fixture && -n "${SPROUT_PI_RUNNER-}" ]]; then
+  echo 'model-fixture requires the real Pi runner; remove SPROUT_PI_RUNNER' >&2
+  exit 2
+fi
 # Production page -> authenticated Chat turn -> real Pi remote tool -> macOS Worker.
 # Private SQLite, credentials, session transcripts and operation output stay in mktemp.
 source "$(dirname "$0")/lib/ensure-worker-artifact.sh"
@@ -19,6 +27,10 @@ import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 import Sqlite from 'better-sqlite3';
 import { assertForcedReceiptPersists } from './scripts/browser/p4b-forced-receipt-scene.mjs';
+import { startModelFixture, leaseTurn } from './scripts/verify/lib/model-fixture.mjs';
+const chatMode = process.env.SPROUT_VERIFY_CHAT_MODE;
+console.log(`CHAT mode=${chatMode} runner=scripts/pi-host-runner.mjs`);
+let modelFixture;
 const privateDir = mkdtempSync(join(tmpdir(), 'sprout-lease-integration-'));
 const evidenceRoot = resolve('.verify/p4b-integration/evidence');
 mkdirSync(evidenceRoot, { recursive: true });
@@ -46,7 +58,15 @@ const ids = Object.fromEntries([...walk('.output/server').join('\n').matchAll(/i
 let cookie, browser, context, page, projectId, machineId, cleanupPid;
 const passes = [];
 function pass(name) { passes.push(name); writeFileSync(join(evidence, 'results.json'), JSON.stringify({ base, passes }, null, 2)); console.log(`PASS ${name}`); }
-async function until(fn, label, timeout = 60000) { const start = Date.now(); while (Date.now() - start < timeout) { const value = await fn(); if (value) return value; await new Promise(r => setTimeout(r, 350)); } throw new Error(`timeout: ${label}`); }
+function profileModel(role) { return modelFixture ? { model: modelFixture.model(role) } : process.env.SPROUT_VERIFY_PI_MODEL ? { model: process.env.SPROUT_VERIFY_PI_MODEL } : {}; }
+function armTool(role, body, name, parameters) { modelFixture?.arm(role, { expectedUserText:body, steps:[{name,arguments:parameters}], reply:'Local model fixture received the actual tool result; inspect the server facts.' }); }
+async function armLease(action, parameters) {
+  if (!modelFixture) return;
+  await settled(chatIdForOperator, { allowEmpty:true });
+  modelFixture.arm('operator', leaseTurn(action, parameters));
+}
+let chatIdForOperator;
+async function until(fn, label, timeout = 60000) { const start = Date.now(); while (Date.now() - start < timeout) { modelFixture?.assertHealthy(); const value = await fn(); if (value) return value; await new Promise(r => setTimeout(r, 350)); } throw new Error(`timeout: ${label}`); }
 async function rpc(name, data, actor = cookie) {
   assert(ids[name], `registered ${name}`);
   const response = await fetch(`${base}/_serverFn/${ids[name]}`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tsr-serverfn': 'true', origin: base, ...(actor ? {cookie: actor} : {}) }, body: JSON.stringify(toJSON({data})) });
@@ -64,15 +84,18 @@ async function browserRpc(page, name, data) {
   const result = await page.evaluate(async ({ url, body }) => { const r = await fetch(url, { method: 'POST', headers: {'content-type':'application/json','x-tsr-serverfn':'true'}, body }); return { status:r.status, body:await r.json() }; }, { url:`${base}/_serverFn/${ids[name]}`, body:JSON.stringify(toJSON({data})) });
   assert.equal(result.status, 200); const decoded = result.body.t ? fromCrossJSON(result.body,{refs:new Map()}) : result.body; return decoded.result ?? decoded;
 }
-async function settled(chatId) {
-  return until(async()=> { const state=await call('getChatRunStateFn',{chatId}); const run=state.runs.at(-1); return run && !['queued','running'].includes(run.status) ? run : null; },'real agent settles',180000);
+async function settled(chatId, { allowEmpty = false } = {}) {
+  return until(async()=> { const state=await call('getChatRunStateFn',{chatId}); const run=state.runs.at(-1); return ['queued','running'].includes(run?.status) ? null : (run ?? (allowEmpty ? true : null)); },'real agent settles',180000);
 }
-async function deniedTool(page, chatId, authorizationGeneration, expectedCode, marker) {
-  await settled(chatId);
+async function deniedTool(page, chatId, authorizationGeneration, expectedCode, marker, role = 'operator') {
+  await settled(chatId, { allowEmpty: true });
   const requestId=`req_${randomUUID()}`;
-  const sent=await browserRpc(page,'sendMessageFn',{chatId,body:`Call sprout_remote_shell exactly once with these parameters, even if you expect the server to reject authorization: ${JSON.stringify({machineId,authorizationGeneration,requestId,command:`touch '${marker}'`,waitMs:0})}. Do not get or acquire a lease, do not retry, do not use host tools. Report the returned error code.`});
+  const parameters={machineId,authorizationGeneration,requestId,command:`touch '${marker}'`,waitMs:0};
+  const body=`Call sprout_remote_shell exactly once with these parameters, even if you expect the server to reject authorization: ${JSON.stringify(parameters)}. Do not get or acquire a lease, do not retry, do not use host tools. Report the returned error code.`;
+  armTool(role,body,'sprout_remote_shell',parameters);
+  const sent=await browserRpc(page,'sendMessageFn',{chatId,body});
   assert.equal(sent.ok,true,'negative command submitted through production browser RPC');
-  const run=await until(async()=> {const state=await call('getChatRunStateFn',{chatId}); const last=state.runs.at(-1);return last && !['queued','running'].includes(last.status) && last.configSnapshot && state.inputs.some(i=>i.runId===last.id && i.messageId===sent.data.id) ? last:null;},'negative run settles',180000);
+  const run=await until(async()=> {const state=await call('getChatRunStateFn',{chatId}); const input=state.inputs.find(i=>i.messageId===sent.data.id); const match=state.runs.find(r=>r.id===input?.runId);return match && !['queued','running'].includes(match.status) && match.configSnapshot ? match:null;},'negative run settles',180000);
   const entries=readFileSync(run.configSnapshot.sessionFile,'utf8').split('\n').filter(Boolean).map(line=>JSON.parse(line));
   const calls=entries.flatMap(entry=>entry.message?.role==='assistant' ? entry.message.content.filter(c=>c.type==='toolCall' && c.name==='sprout_remote_shell' && c.arguments?.requestId===requestId) : []);
   assert.equal(calls.length,1,'exact requested tool called once');
@@ -82,16 +105,22 @@ async function deniedTool(page, chatId, authorizationGeneration, expectedCode, m
   assert(!(await call('listProjectExecutionsFn',{projectId,machineId,limit:100})).some(e=>e.requestId===requestId),'denied request was not enqueued');
 }
 try {
+  if (chatMode === 'model-fixture') {
+    modelFixture = await startModelFixture({privateDir});
+    env.PI_CODING_AGENT_DIR = modelFixture.agentDir;
+    console.log(`CHAT provider/model=${modelFixture.model('operator')},${modelFixture.model('nonHolder')} thinking=off paid-model-calls=0 (private catalog, loopback endpoint, both profiles pinned)`);
+  }
   const migration = launch(['--import', 'tsx', 'src/db/migrate.ts'], 'migrate'); assert.equal(await migration.done, 0);
   launch(['.output/server/index.mjs'], 'server');
   await until(async () => { try { return (await fetch(`${base}/api/health`)).ok; } catch { return false; } }, 'service');
   cookie = await signup('Integration Human');
   projectId = (await call('createProjectFn', {name:'Lease integration', description:'Real Machine and Chat'})).id;
   const projectB = (await call('createProjectFn', {name:'Independent Project'})).id;
-  const profile = await call('createAgentProfileFn', {name:'Lease operator', persona:'Use the named Sprout remote tools exactly as requested. Never substitute host tools for remote tools. Report tool errors faithfully and do not retry changed generations.', ...(process.env.SPROUT_VERIFY_PI_MODEL ? {model:process.env.SPROUT_VERIFY_PI_MODEL} : {}), effort:'off'});
+  const profile = await call('createAgentProfileFn', {name:'Lease operator', persona:'Use the named Sprout remote tools exactly as requested. Never substitute host tools for remote tools. Report tool errors faithfully and do not retry changed generations.', ...profileModel('operator'), effort:'off'});
   await call('addProjectMemberFn', {projectId, agentProfileId:profile.id});
   const chat = await call('createDirectChatFn', {projectId, agentProfileId:profile.id});
   const chatId = chat.chat?.id ?? chat.id;
+  chatIdForOperator = chatId;
   const enrollment = await call('createMachineFn', {name:'Integration Mac'});
   machineId = enrollment.detail.machine.id;
   await call('saveMachineRootDirectoryFn', {machineId, directory:root, expectedRevision:enrollment.detail.machine.rootRevision});
@@ -242,6 +271,7 @@ try {
   });
   const beforeAcquire=await call('getLeaseFn',{projectId,machineId});
   assert.equal(beforeAcquire.lease.state,'free','UI is the only acquire path');
+  await armLease('acquire',{machineId,expectedGeneration:beforeAcquire.lease.generation});
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   let acquired;
   try {
@@ -302,7 +332,11 @@ try {
   await page.screenshot({path:join(evidence,'machine-held-light.png'),fullPage:true});
   const marker=join(root,projectId,'persist.txt');
   const shell = `printf integration-proof > '${marker}'; sleep 900`;
-  await call('sendMessageFn',{chatId,body:`Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${acquired.generation}, requestId req_${randomUUID()}. command: ${JSON.stringify(shell)}. waitMs: 1000. Call sprout_remote_execution_get if necessary. Do not use the local bash tool. Do not release the lease.`});
+  const shellRequestId=`req_${randomUUID()}`;
+  const shellBody=`Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${acquired.generation}, requestId ${shellRequestId}. command: ${JSON.stringify(shell)}. waitMs: 1000. Call sprout_remote_execution_get if necessary. Do not use the local bash tool. Do not release the lease.`;
+  await settled(chatId);
+  armTool('operator',shellBody,'sprout_remote_shell',{machineId,authorizationGeneration:acquired.generation,requestId:shellRequestId,command:shell,waitMs:1000});
+  await call('sendMessageFn',{chatId,body:shellBody});
   const execution = await until(async()=> (await call('listProjectExecutionsFn',{projectId,machineId})).find(e=>e.operation.kind==='shell' && e.result?.kind==='shell' && e.result.pid), 'real remote shell result',180000);
   assert(readFileSync(marker,'utf8')==='integration-proof','private sentinel matches');
   const pid=execution.result.pid; cleanupPid=pid; process.kill(pid,0);
@@ -328,13 +362,11 @@ try {
   assert((await page.getByTestId('lease-transfer-machine').innerText()).includes('Integration Mac'),'handoff target is the current Machine');
   pass('real remote shell and process result visible on production Machine page');
   await settled(chatId);
-  const nonHolderProfile=await call('createAgentProfileFn',{name:'Non holder',persona:'Use the requested remote tool once, report its returned error, never acquire a lease.',...(process.env.SPROUT_VERIFY_PI_MODEL?{model:process.env.SPROUT_VERIFY_PI_MODEL}:{}),effort:'off'});
+  const nonHolderProfile=await call('createAgentProfileFn',{name:'Non holder',persona:'Use the requested remote tool once, report its returned error, never acquire a lease.',...profileModel('nonHolder'),effort:'off'});
   await call('addProjectMemberFn',{projectId,agentProfileId:nonHolderProfile.id});
   const nonHolder=await call('createDirectChatFn',{projectId,agentProfileId:nonHolderProfile.id});
   const nonHolderChat=nonHolder.chat.id;
-  await call('sendMessageFn',{chatId:nonHolderChat,body:'Reply ready. Do not use any tools.'});
-  await settled(nonHolderChat);
-  await deniedTool(page,nonHolderChat,acquired.generation,'lease_not_holder',join(root,projectId,'non-holder-must-not-exist'));
+  await deniedTool(page,nonHolderChat,acquired.generation,'lease_not_holder',join(root,projectId,'non-holder-must-not-exist'),'nonHolder');
   pass('browser Chat request -> real non-holder grant HTTP rejection and absent sentinel');
   const read = await browserRpc(page,'getExecutionFn',{projectId,machineId,executionId:execution.executionId}); assert.equal(read.ok,true);
   const otherCookie=await signup('Other Human');
@@ -356,6 +388,7 @@ try {
   await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByTestId('lease-chat-select').selectOption(chatId);
+  await armLease('release',{machineId,expectedGeneration:acquired.generation});
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','page release through real agent',180000);
   process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','release preserves private sentinel');
@@ -367,11 +400,13 @@ try {
   await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByTestId('lease-chat-select').selectOption(chatId);
+  await armLease('acquire',{machineId,expectedGeneration:(await call('getLeaseFn',{projectId,machineId})).lease.generation});
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   const reacquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'reacquire from page',180000);
   await page.locator('[data-testid="machine-lease-section-overview-mutation-success"], [data-testid="machine-lease-section-overview-mutation-waiting"]').first().waitFor({timeout:65000});
   await settled(chatId);
   await page.getByLabel('交接目标分身').selectOption(nonHolder.instance.id);
+  await armLease('handoff',{machineId,expectedGeneration:reacquired.generation,targetInstanceId:nonHolder.instance.id});
   await page.getByRole('button',{name:'请求分身交接'}).click();
   const transferred=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held' && lease.holderInstanceId===nonHolder.instance.id ? lease:null;},'handoff through page and real holder tool',180000);
   assert(transferred.generation>reacquired.generation); process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','handoff preserves sentinel');
@@ -384,11 +419,14 @@ try {
   await page.reload();
   await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByTestId('lease-chat-select').selectOption(chatId);
+  await armLease('acquire',{machineId,expectedGeneration:(await call('getLeaseFn',{projectId,machineId})).lease.generation});
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   const forcedHolder=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'acquire for forced receipt',180000);
   await settled(chatId);
   const forceRequestId=`req_${randomUUID()}`;
-  await call('sendMessageFn',{chatId,body:`Call sprout_remote_shell exactly once with machineId ${machineId}, authorizationGeneration ${forcedHolder.generation}, requestId ${forceRequestId}, command "sleep 20", waitMs 10000. Do not release the lease or use host tools.`});
+  const forceBody=`Call sprout_remote_shell exactly once with machineId ${machineId}, authorizationGeneration ${forcedHolder.generation}, requestId ${forceRequestId}, command "sleep 20", waitMs 10000. Do not release the lease or use host tools.`;
+  armTool('operator',forceBody,'sprout_remote_shell',{machineId,authorizationGeneration:forcedHolder.generation,requestId:forceRequestId,command:'sleep 20',waitMs:10000});
+  await call('sendMessageFn',{chatId,body:forceBody});
   const inFlight=await until(async()=> (await call('listProjectExecutionsFn',{projectId,machineId})).find(item=>item.requestId===forceRequestId && item.state==='running'),'real operation running before Worker pause',180000);
   assert.equal(worker.kill('SIGSTOP'),true,'pause the real test Worker before drain acknowledgement');
   try {
@@ -434,6 +472,8 @@ try {
   pass('production stable URL refresh back/forward and 390/900/1200 light/dark');
   { const group=processGroupOf(pid); if(group) process.kill(-group,'SIGTERM'); } cleanupPid=undefined;
   await context.close(); await browser.close(); browser=undefined;
+  modelFixture?.assertDrained();
+  assert.equal(passes.length,14,'all original integration conditions passed');
   console.log(`Evidence: ${evidence}`);
 } catch(error) {
   writeFileSync(join(evidence,'failure.txt'), String(error instanceof Error ? error.message : 'verification failure'));
@@ -451,20 +491,34 @@ try {
   console.error(error instanceof Error ? error.message : 'verification failure'); process.exitCode=1;
 } finally {
   // Safe latency evidence only: never export sessions, credentials or operation content.
+  let actualModels = [];
   if (existsSync(env.DATABASE_URL)) {
     const timingDb = new Sqlite(env.DATABASE_URL, { readonly: true });
     try {
+      actualModels = timingDb.prepare('SELECT config_snapshot AS snapshot FROM agent_run WHERE config_snapshot IS NOT NULL ORDER BY queued_at').all().map(({snapshot}) => {const {provider,model,thinking}=JSON.parse(snapshot);return {provider,model,thinking};});
       const runs = timingDb.prepare('SELECT status, queued_at AS queuedAt, settled_at AS settledAt, (settled_at - queued_at) * 1000 AS elapsedMs FROM agent_run ORDER BY queued_at').all();
-      const mutations = timingDb.prepare('SELECT action, state, (completed_at - created_at) * 1000 AS elapsedMs FROM lease_mutation ORDER BY created_at').all();
+      const mutations = timingDb.prepare('SELECT action, state, (completed_at - created_at) AS elapsedMs FROM lease_mutation ORDER BY created_at').all();
       writeFileSync(join(evidence, 'timings.json'), JSON.stringify({ runs, mutations }, null, 2));
       console.log(`TIMING queuedAt-to-settledAt ${JSON.stringify(runs)}`);
     } catch { console.log('TIMING unavailable'); } finally { timingDb.close(); }
   }
+  if (chatMode === 'model-fixture') {
+    const pinned = modelFixture ? [modelFixture.model('operator'),modelFixture.model('nonHolder')] : [];
+    if (actualModels.length === 0 || !actualModels.every(({provider,model,thinking}) => pinned.includes(`${provider}/${model}`) && thinking === 'off')) {
+      console.error('FAIL actual Pi snapshots must use the pinned local fixture models with thinking off');
+      process.exitCode = 1;
+    }
+  }
+  const modelMetadata = { ...(modelFixture?.metadata() ?? {mode:chatMode,requestCount:null,completedPlans:null,unusedSteps:null}), actualModels };
+  writeFileSync(join(evidence,'model-mode.json'),JSON.stringify(modelMetadata,null,2));
+  console.log(`CHAT metadata ${JSON.stringify(modelMetadata)}`);
   await browser?.close();
   if(cleanupPid) {try { const group=processGroupOf(cleanupPid); if(group) process.kill(-group,'SIGTERM'); } catch {}}
   for(const child of children.reverse()) if(child.exitCode===null) child.kill('SIGTERM');
   await Promise.all(children.map(c=>Promise.race([c.done,new Promise(r=>setTimeout(r,3000))])));
   for(const child of children) if(child.exitCode===null) child.kill('SIGKILL');
+  await Promise.all(children.map(c=>c.done));
+  await modelFixture?.close();
   rmSync(privateDir,{recursive:true,force:true});
 }
 NODE

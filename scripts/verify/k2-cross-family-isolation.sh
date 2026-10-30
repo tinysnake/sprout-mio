@@ -169,7 +169,7 @@ try {
   writeFileSync(join(directory, 'server-functions.json'), JSON.stringify(ids, null, 2) + '\n')
   record('production_build_current', true, { code: build.code, functions: Object.keys(ids).length })
 
-  server = launch('pnpm', ['start'], 'server.log')
+  server = launch(process.execPath, ['.output/server/index.mjs'], 'server.log')
   const ready = await health(server)
   assert.match(ready.bootId, /^boot_/)
   record('production_server_ready', true, { bootId: ready.bootId })
