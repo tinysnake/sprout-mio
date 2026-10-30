@@ -81,6 +81,7 @@ export const SUITE_PLAN = Object.freeze({
   "w-worker-remote": plan(66.076, { native: 1, browser: 1 }, worker),
   "ap-p4d-handoff-worker": plan(74, { native: 1, browser: 1 }, worker),
   "az-p5a-live-worker": plan(120, { native: 1, browser: 1 }, worker),
+  "as-p5a-chat-ui": plan(45, { browser: 1 }, server),
   "x-remote-tools": plan(2.063, { unit: 1, sdk: 1 }),
   "x2-mcp-extension": plan(13.791, { unit: 1, sdk: 1 }, extension),
   "x3-mcp-extension-surface": plan(2.805, { unit: 1, sdk: 1 }),
