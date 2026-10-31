@@ -208,16 +208,19 @@ export async function startModelFixture({
       const users = input.messages.filter((message) => message.role === "user");
       const latestUser = input.messages.findLastIndex((message) => message.role === "user");
       // P6b 起，runner 把轮初上下文以一行 JSON 前缀进同一条 user 消息（`<context>\n\n<text>`）。
-      // 计划绑定的是那轮真正的指令文本，所以匹配前剥掉信封；信封本身由 bf-p6b-turn-context 证明。
-      const userText = stripTurnContext(textContent(input.messages[latestUser]?.content));
+      // 有的计划绑定整条消息（用 expectedUserPrefix 认领信封），有的绑定那轮真正的指令文本，
+      // 所以两处都算匹配：原样文本与剥掉信封后的正文。信封本身由 bf-p6b-turn-context 证明。
+      const userText = textContent(input.messages[latestUser]?.content);
+      const userBody = stripTurnContext(userText);
       // 被驱动的一轮和产品自己发起的一轮（撤销通知之类）会交错到达，所以按对话文本认领计划，
       // 而不是按排队顺序：先布好的计划不会被晚到的一轮挤掉。
       // 认领优先级：完全一致的对话文本 > 前缀（产品自己发起的通知轮次）> 未绑定文本的租约轮次。
       const claimRank = (candidate) =>
-        candidate.expectedUserText === userText
+        candidate.expectedUserText === userText || candidate.expectedUserText === userBody
           ? 0
           : candidate.expectedUserPrefix !== undefined &&
-              userText.startsWith(candidate.expectedUserPrefix)
+              (userText.startsWith(candidate.expectedUserPrefix) ||
+                userBody.startsWith(candidate.expectedUserPrefix))
             ? 1
             : candidate.lease !== undefined
               ? 2
@@ -248,9 +251,8 @@ export async function startModelFixture({
         );
         if (plan.lease) bindLeaseTurn(plan, userText);
         if (plan.expectedUserText !== undefined)
-          assert.equal(
-            userText,
-            plan.expectedUserText,
+          assert(
+            userText === plan.expectedUserText || userBody === plan.expectedUserText,
             "new user message must match the armed turn",
           );
         assert(userText.length > 0, "new user message cannot be empty");
@@ -259,7 +261,10 @@ export async function startModelFixture({
       }
       assert.equal(users.length, plan.userCount, "unexpected user message during a planned turn");
       if (plan.expectedUserText !== undefined)
-        assert.equal(userText, plan.expectedUserText, "current user message changed");
+        assert(
+          userText === plan.expectedUserText || userBody === plan.expectedUserText,
+          "current user message changed",
+        );
       const current = input.messages.slice(latestUser + 1);
       const calls = current.flatMap((message) => message.tool_calls ?? []);
       const results = current.filter((message) => message.role === "tool");
