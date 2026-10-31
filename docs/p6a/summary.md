@@ -69,14 +69,14 @@ bash scripts/verify/p6a-pages.sh
 
 ## 集成线与技术验收证据
 
-
 证据提交 `bde6383`：重跑 `bash scripts/verify/bf-p6a-lifecycle.sh`。
-| 结论                                                 | 级别 | 证据                                                                                                                                                            |
-| ---------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 集成线完成接入与自检                                 | 实测 | `bf-p6a-lifecycle` exit 0、177 条断言（生产 `startRuntime()` + 真实 SQLite + 生产 scheduler，只替换模型边界）；`P6A_SCENARIO=stale` exit 0、52 条断言           |
-| 独立技术验收通过、可以合入 main                      | 引用 | 第二轮独立验收在 `303fbf5` 判定 12 条判据全部成立，结论「可以合入 main」，见 `p6a-acceptance-round2.md`（编排目录，不进本仓库） |
-| 9 条判据里与「自动行为不抵消人类控制」直接相关的两条 | 引用 | 同报告判据 6（人类控制优先）与判据 3（周期检查真的发生）                                                                                                        |
-| 既有 P5a/P5b 未被弄坏                                | 引用 | 第二轮验收判据 9：12 个回归门禁 exit 0、全量单元 84 文件 711 测试通过、CI `tasks` 11/11、`browser` 11/11                                                        |
+
+| 结论                                                 | 级别 | 证据                                                                                                                                                  |
+| ---------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 集成线完成接入与自检                                 | 实测 | `bf-p6a-lifecycle` exit 0、177 条断言（生产 `startRuntime()` + 真实 SQLite + 生产 scheduler，只替换模型边界）；`P6A_SCENARIO=stale` exit 0、52 条断言 |
+| 独立技术验收通过、可以合入 main                      | 引用 | 第二轮独立验收在 `303fbf5` 判定 12 条判据全部成立，结论「可以合入 main」，见 `p6a-acceptance-round2.md`（编排目录，不进本仓库）                       |
+| 9 条判据里与「自动行为不抵消人类控制」直接相关的两条 | 引用 | 同报告判据 6（人类控制优先）与判据 3（周期检查真的发生）                                                                                              |
+| 既有 P5a/P5b 未被弄坏                                | 引用 | 第二轮验收判据 9：12 个回归门禁 exit 0、全量单元 84 文件 711 测试通过、CI `tasks` 11/11、`browser` 11/11                                              |
 
 复跑：
 
@@ -111,7 +111,6 @@ P6A_SCENARIO=stale bash scripts/verify/bf-p6a-lifecycle.sh
 
 ## 控制面收敛到三个动作
 
-
 证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-control.sh`、`bash scripts/verify/p6a-pages.sh`。
 结论：控制面最终只有 `enabled` / `off` 两态，只有 **enable / disable / abort** 三个改态动作；`retry` 与 `reissue` 是针对单份判定与单份投递的运维动作，不改 `mode`、不改 `epoch`（`retry` 会递增 `revision` 并把 `next_due_at` 提前到当下，`reissue` 另建一份新 delivery identity 并链接原未知投递）。
 
@@ -127,7 +126,6 @@ P6A_SCENARIO=stale bash scripts/verify/bf-p6a-lifecycle.sh
 页面文案仍未跟上模型，见[已知限制 P3-2](#p3-2-disable-的页面文案)。
 
 ## 判定准确率只报不判
-
 
 证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-live-routing.sh`（人工门禁，需真实凭据与 `SPROUT_VERIFY_PI_MODEL`）。
 Human 在 m02131 的原话裁决：判定准确率**只报不判**。也就是说准确率是给人看的测量量，不是门禁的布尔条件。这条已经落进判据（见 `p6a-live-policy.md` 的「协调者修正」一节，编排目录、不进本仓库），不是口头约定。
@@ -307,10 +305,9 @@ PROBE_BASE=integration/p6a bash scripts/verify/l-docs-probes.sh
 
 ## 已知限制
 
-
 本节结论对应的提交 `bde6383`；复现其中任一条的最小证据请重跑 `bash scripts/verify/p6a-pages.sh` 或 `bash scripts/verify/p6a-control.sh`。
-### P3-2 disable 的页面文案
 
+### P3-2 disable 的页面文案
 
 证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-pages.sh`。
 页面用「暂停自动接续」表示 `disable`，而契约与协议里只有 `enabled` / `off`；旁边的「全部停止」是 `abort`。两个词读起来像同一类事情，差别（一个不中止当前轮次、一个中止）只在卡片正文里解释。
