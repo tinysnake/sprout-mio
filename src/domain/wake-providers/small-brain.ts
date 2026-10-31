@@ -108,6 +108,8 @@ export function createSmallBrainJudge(options: SmallBrainOptions): WakeJudge {
     try {
       if (input.policy.provider !== "small_brain")
         throw new WakeProviderError("provider_unavailable", "小脑不能处理其他 provider 的请求");
+      if (!input.policy.model)
+        throw new WakeProviderError("provider_unavailable", "小脑模型尚未由宿主解析");
       const completion = completionSchema.parse(
         await (options.complete ?? completeOnHost)({
           agentDir: options.agentDir,

@@ -19,6 +19,14 @@ process.env.BETTER_AUTH_SECRET ??= randomBytes(32).toString("hex");
 process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
 process.env.SPROUT_REPO_DIR = join(directory, "repos");
 const originalKey = process.env.JEV_API_KEY;
+const originalRuntimeAgentDir = process.env.PI_CODING_AGENT_DIR;
+const runtimeAgentDir = join(directory, "runtime-host-defaults");
+mkdirSync(runtimeAgentDir, { recursive: true });
+writeFileSync(
+  join(runtimeAgentDir, "settings.json"),
+  JSON.stringify({ defaultProvider: "fixture", defaultModel: "runtime-default-model" }),
+);
+process.env.PI_CODING_AGENT_DIR = runtimeAgentDir;
 delete process.env.JEV_API_KEY;
 
 let assertions = 0;
@@ -118,11 +126,11 @@ try {
       new Date(),
     );
   }
-  function group() {
+  function group(projectId = project.id) {
     const chat = createGroupChat(
-      project.id,
+      projectId,
       {
-        projectId: project.id,
+        projectId,
         title: "接线验证",
         wakePolicy: "owner_led",
         members: [
@@ -133,7 +141,7 @@ try {
       },
       { kind: "human", userId: ctx.userId, ctx },
     );
-    const task = createTask({ projectId: project.id, title: "推进实现" }, ctx).detail;
+    const task = createTask({ projectId, title: "推进实现" }, ctx).detail;
     assignTask(
       { taskId: task.task.id, expectedRevision: task.task.revision, targetChatId: chat.id },
       ctx,
@@ -161,10 +169,10 @@ try {
     await scheduler.settled();
     return latest(chatId);
   }
-  function pause(chatId: string) {
+  function pause(chatId: string, projectId = project.id) {
     automation.applyChatAutomationCommand(
       {
-        projectId: project.id,
+        projectId,
         chatId,
         action: "pause",
         expectedRevision: schedule.controlFor(chatId).revision,
@@ -373,6 +381,176 @@ try {
     }
   }
   failure = "none";
+
+  const defaultProject = createProject({ name: "默认判定策略" }, ctx);
+  addProjectMember(defaultProject.id, profile.id, ctx);
+  const defaultChat = group(defaultProject.id);
+  sqlite.exec(`CREATE TEMP TABLE default_project_updates(project_id TEXT NOT NULL);
+    CREATE TEMP TRIGGER record_default_project_updates AFTER UPDATE ON main.project
+    BEGIN INSERT INTO default_project_updates VALUES(NEW.id); END`);
+  const beforeDefault = { calls: { ...calls }, deliveries: count("continuation_delivery") };
+  const defaultEvaluation = await due(defaultChat.id);
+  equal(
+    defaultEvaluation.result && result(defaultEvaluation).provider,
+    "small_brain",
+    "NULL policy reaches the real small-brain runtime and persists its receipt",
+  );
+  equal(
+    schedule.one<{ n: number }>(
+      "SELECT count(*) n FROM wake_evaluation WHERE chat_id=?",
+      defaultChat.id,
+    )!.n,
+    1,
+    "new Project receives exactly one wake evaluation",
+  );
+  equal(
+    count("continuation_delivery"),
+    beforeDefault.deliveries + 1,
+    "default policy creates exactly one continuation delivery",
+  );
+  equal(
+    calls,
+    { small_brain: beforeDefault.calls.small_brain + 1, jev: beforeDefault.calls.jev },
+    "default policy invokes only the existing small-brain completion substitute",
+  );
+  equal(count("default_project_updates"), 0, "default evaluation never UPDATEs project");
+  equal(
+    schedule.one<{ wake_policy: string | null }>(
+      "SELECT wake_policy FROM project WHERE id=?",
+      defaultProject.id,
+    )!.wake_policy,
+    null,
+    "read-time default leaves persisted wake_policy NULL",
+  );
+  const defaultInput = JSON.parse(defaultEvaluation.input!) as WakeEvaluationInput;
+  equal(
+    defaultInput.policy,
+    { provider: "small_brain", configRevision: 1, thresholdVersion: "p6a-design-default-v1" },
+    "immutable snapshot contains the design default without a model",
+  );
+  equal(
+    schedule.hash({ ...defaultInput, snapshotHash: undefined }),
+    defaultInput.snapshotHash,
+    "snapshot hash reproducibly includes the synthesized default policy",
+  );
+  equal(
+    observedRequest!.model,
+    "fixture/runtime-default-model",
+    "runtime resolves the default policy using isolated host settings",
+  );
+  equal(
+    result(defaultEvaluation).model,
+    observedRequest!.model,
+    "receipt records the resolved host model",
+  );
+  ok(
+    schedule.deliveryContextMatches(
+      schedule.one<import("../../src/domain/chat-schedule").DeliveryContext>(
+        "SELECT * FROM continuation_delivery WHERE evaluation_id=?",
+        defaultEvaluation.id,
+      )!,
+    ),
+    "NULL persisted policy remains current through delivery validation",
+  );
+  sqlite.exec("DROP TRIGGER record_default_project_updates; DROP TABLE default_project_updates");
+  pause(defaultChat.id, defaultProject.id);
+
+  function configureDefaultProject(provider: "small_brain" | "jev", model?: string) {
+    return updateProjectWakePolicy(
+      {
+        projectId: defaultProject.id,
+        provider,
+        expectedConfigRevision: getProject(defaultProject.id, ctx).wakePolicy?.configRevision ?? 1,
+        requestId: newId(ID_PREFIXES.request),
+      },
+      ctx,
+      { ...(model === undefined ? {} : { model }), thresholdVersion: "p6a-design-default-v1" },
+      new Date(),
+    );
+  }
+  const configuredJev = configureDefaultProject("jev", "jev-latest");
+  equal(
+    configuredJev.wakePolicy?.configRevision,
+    2,
+    "first human configuration advances revision to 2",
+  );
+  const explicitJevChat = group(defaultProject.id);
+  const beforeExplicitJev = { ...calls };
+  const explicitJev = await due(explicitJevChat.id);
+  equal(
+    JSON.parse(explicitJev.input!).policy,
+    {
+      provider: "jev",
+      model: "jev-latest",
+      configRevision: 2,
+      thresholdVersion: "p6a-design-default-v1",
+    },
+    "same Project's next check snapshots its explicit JEV policy and revision",
+  );
+  equal(result(explicitJev).provider, "jev", "next configured check uses JEV");
+  equal(
+    calls,
+    { small_brain: beforeExplicitJev.small_brain, jev: beforeExplicitJev.jev + 1 },
+    "explicit JEV remains the sole selected provider",
+  );
+  pause(explicitJevChat.id, defaultProject.id);
+
+  configureDefaultProject("small_brain", "fixture/explicit-model");
+  const explicitModelChat = group(defaultProject.id);
+  const explicitModel = await due(explicitModelChat.id);
+  equal(
+    JSON.parse(explicitModel.input!).policy.model,
+    "fixture/explicit-model",
+    "snapshot preserves an explicit model",
+  );
+  equal(
+    observedRequest!.model,
+    "fixture/explicit-model",
+    "explicit model overrides the distinct host default",
+  );
+  equal(
+    result(explicitModel).model,
+    "fixture/explicit-model",
+    "receipt preserves the explicit model",
+  );
+  pause(explicitModelChat.id, defaultProject.id);
+
+  const explicitDefaultPolicy = configureDefaultProject("small_brain");
+  equal(
+    explicitDefaultPolicy.wakePolicy?.model,
+    undefined,
+    "human configuration accepts an omitted model",
+  );
+  const explicitDefaultChat = group(defaultProject.id);
+  const beforeExplicitDefault = calls.small_brain;
+  const explicitDefault = await due(explicitDefaultChat.id);
+  equal(
+    JSON.parse(explicitDefault.input!).policy.model,
+    undefined,
+    "explicit omitted-model snapshot stays unresolved",
+  );
+  equal(
+    JSON.parse(explicitDefault.input!).policy.configRevision,
+    4,
+    "omitted model preserves configuration revision semantics",
+  );
+  equal(
+    calls.small_brain,
+    beforeExplicitDefault + 1,
+    "explicit omitted-model policy invokes small brain",
+  );
+  equal(
+    observedRequest!.model,
+    "fixture/runtime-default-model",
+    "runtime resolves an explicit omitted model from host defaults",
+  );
+  equal(
+    result(explicitDefault).model,
+    "fixture/runtime-default-model",
+    "explicit omitted-model receipt records the host model",
+  );
+  pause(explicitDefaultChat.id, defaultProject.id);
+
   for (const table of sideEffectTables)
     equal(sideEffects[table], 0, `${table} side-effect count is zero`);
   writeFileSync(
@@ -385,6 +563,8 @@ try {
   );
   console.log(`PASS p6a-wiring: ${assertions} assertions`);
 } finally {
+  if (originalRuntimeAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = originalRuntimeAgentDir;
   if (originalKey === undefined) delete process.env.JEV_API_KEY;
   else process.env.JEV_API_KEY = originalKey;
   await runtime.shutdownRuntime("p6a-wiring-complete");

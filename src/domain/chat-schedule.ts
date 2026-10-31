@@ -2,6 +2,7 @@ import type { WakeEvaluationInput } from "../contracts/wake-evaluation";
 import { createHash, randomUUID } from "node:crypto";
 import { sqlite } from "../db";
 import { CHAT_AUTOMATION_POLICY as POLICY } from "../contracts/chat-automation";
+import { DEFAULT_PROJECT_WAKE_POLICY } from "../contracts/project-wake-policy";
 
 export const INTERVAL_MS = POLICY.intervalSeconds * 1000;
 export const CLAIM_LEASE_MS = 120_000;
@@ -221,9 +222,8 @@ export function deliveryContextMatches(row: DeliveryContext) {
       ),
     ) &&
     chat?.governance_revision === input.chat.governanceRevision - 1 &&
-    policy !== null &&
     policy !== undefined &&
-    hash(JSON.parse(policy)) === hash(input.policy)
+    hash(policy === null ? DEFAULT_PROJECT_WAKE_POLICY : JSON.parse(policy)) === hash(input.policy)
   );
 }
 export function hasUnknownDeliveryBarrier(chatId: string) {

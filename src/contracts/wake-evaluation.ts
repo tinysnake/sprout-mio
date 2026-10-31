@@ -297,7 +297,8 @@ export const wakeEvaluationResultSchema = z
     selectedRecipients: z.array(recipient),
     probability: z.number().min(0).max(1).nullable(),
     provider: wakeProviderSchema,
-    model: identifier,
+    // Provider resolution can fail before a host default model is known.
+    model: identifier.optional(),
     version: identifier,
     snapshotHash: hash,
     errorCode: wakeEvaluationErrorCodeSchema.nullable(),
@@ -342,7 +343,7 @@ export function wakeEvaluationResultForInputSchema(input: WakeEvaluationInput) {
     if (
       value.snapshotHash !== input.snapshotHash ||
       value.provider !== input.policy.provider ||
-      value.model !== input.policy.model
+      (input.policy.model !== undefined && value.model !== input.policy.model)
     ) {
       ctx.addIssue({
         code: "custom",

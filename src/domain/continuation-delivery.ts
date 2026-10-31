@@ -7,7 +7,10 @@ import {
   type ContinuationDelivery,
   type ContinuationInputEnvelope,
 } from "../contracts/chat-automation";
-import { projectWakePolicySchema } from "../contracts/project-wake-policy";
+import {
+  DEFAULT_PROJECT_WAKE_POLICY,
+  projectWakePolicySchema,
+} from "../contracts/project-wake-policy";
 import {
   WAKE_CONTEXT_LIMITS as LIMITS,
   wakeEvaluationInputSchema,
@@ -73,8 +76,9 @@ export function buildPeriodicInput(evaluation: Evaluation, now: Date): WakeEvalu
     "SELECT wake_policy FROM project WHERE id=?",
     evaluation.project_id,
   )!.wake_policy;
-  if (!rawPolicy) throw new Error("provider_unavailable");
-  const policy = projectWakePolicySchema.parse(JSON.parse(rawPolicy));
+  const policy = projectWakePolicySchema.parse(
+    rawPolicy === null ? DEFAULT_PROJECT_WAKE_POLICY : JSON.parse(rawPolicy),
+  );
   const runs = owner.instanceId
     ? all<{
         id: string;
