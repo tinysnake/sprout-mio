@@ -39,6 +39,18 @@ import type { PiSessionProcess } from "./process";
 export type Work = ReturnType<typeof queuedRunWork>[number];
 export type PiHostSignals = { readonly isStopping: () => boolean };
 
+/**
+ * 是否把宿主 skills 与 prompt templates 装进分身的 resource loader。默认关闭。
+ *
+ * 不用 profile 字段承载：profile 存 DB，本单元不改 schema；这是宿主侧运行边界，
+ * 与 `SPROUT_PI_PROVIDER_ROOT` 同类，由父进程在这里解析后随 open 显式传给 runner，
+ * 开关状态再随 ready 快照落库（`configSnapshot.resources.inheritHostResources`）。
+ */
+function inheritHostResources(): boolean {
+  const value = globalThis.process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
+  return value === "true" || value === "1";
+}
+
 export function executeRun(
   work: Work,
   process: PiSessionProcess,
@@ -101,6 +113,7 @@ export function executeRun(
                 globalThis.process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
               ),
               extensionPath: resolve("pi/sprout-extension.ts"),
+              inheritHostResources: inheritHostResources(),
               remote,
               profile: {
                 id: profile.id,

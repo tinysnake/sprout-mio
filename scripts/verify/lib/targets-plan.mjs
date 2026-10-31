@@ -98,6 +98,7 @@ export const LOCAL_GATES = Object.freeze({
   "x-remote-tools": "真实已安装 Pi SDK 的 remote tools",
   "x2-mcp-extension": "真实 Pi McpClient/DefaultResourceLoader",
   "x3-mcp-extension-surface": "真实 Pi extension 运行环境",
+  "p7-pi-inheritance": "真实已安装 Pi SDK 的默认 resource loader 与生产 runner",
   "bf-p6b-lifecycle": "真实 macOS Worker、已安装 Pi SDK 与生产 HTTP Info Hub 生命周期",
   "y-mcp-worker": "真实 Pi 版本探测",
   "z-lease-integration": "真实 Pi runner/model/tool 链路",

@@ -21,16 +21,39 @@ export type RunInputCancelReason =
   | "group_dissolved"
   | "task_context_changed";
 
+export type RunResourceSnapshot = {
+  /** 宿主 skills 与 prompt templates 是否进入本轮 loader。 */
+  inheritHostResources: boolean;
+  /** 本轮 loader 的 agentDir：分身自己的受控目录，不是宿主 Pi 配置目录。 */
+  agentDir: string;
+  /** 宿主 Pi 配置目录：只用于凭据、模型目录与（开关打开时）skills/prompts。 */
+  hostAgentDir: string;
+  skillPaths: string[];
+  promptPaths: string[];
+  skills: string[];
+  prompts: string[];
+  themes: string[];
+  contextFiles: string[];
+  systemPromptChars: number;
+};
+
 export type RunConfigSnapshot = {
   model: string;
   provider: string;
   thinking: string;
   tools: string[];
+  /** registry 里注册的全部工具（含未加入 allowlist、未声明给模型的）。 */
+  registeredTools?: string[];
   extensions: string[];
   sessionId: string;
   sessionFile: string;
   cwd: string;
   sdkVersion: string;
+  /**
+   * 本轮 Pi resource loader 的实际装载结果与继承开关状态。
+   * 旧快照没有这一段字段，读取侧可选。
+   */
+  resources?: RunResourceSnapshot;
   /** 本轮实际使用的仓库工作副本与 commit；Project 未配置仓库时缺省。 */
   repo?: RunRepoSnapshot;
   profile: {

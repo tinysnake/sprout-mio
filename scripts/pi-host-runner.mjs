@@ -166,6 +166,14 @@ async function open(config) {
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/mcp-extension.ts"),
   );
   const remoteClient = createRemoteClient(config.remote);
+  // 继承边界：默认不读宿主资源。纯布尔判断（不用真值强制），关闭时与 P3 行为逐字节相同。
+  const inheritHostResources = config.inheritHostResources === true;
+  const inheritedPaths = inheritHostResources
+    ? {
+        skills: [join(config.agentDir, "skills")].filter((path) => existsSync(path)),
+        prompts: [join(config.agentDir, "prompts")].filter((path) => existsSync(path)),
+      }
+    : { skills: [], prompts: [] };
   const resourceLoader = new sdk.DefaultResourceLoader({
     cwd: config.cwd,
     agentDir: controlledDir,
@@ -175,6 +183,10 @@ async function open(config) {
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
+    // 开关只搬 skills 与 prompt templates。extensions / themes / context files 仍然关闭：
+    // 它们才是 P3 记录的失败与超时来源（context7、UnityMCP），也是跨 Project 内容泄漏的入口。
+    additionalSkillPaths: inheritedPaths.skills,
+    additionalPromptTemplatePaths: inheritedPaths.prompts,
     extensionFactories: [
       {
         name: "sprout-extension",
@@ -301,6 +313,8 @@ async function open(config) {
   if (session.model?.provider !== provider || session.model?.id !== modelId)
     throw new Error("Pi 实际模型与显式配置不匹配");
   const pkg = jsonFile(join(root, "package.json"), {});
+  // 边界证据随 ready 快照返回：谁被加载、谁没被加载由 loader 自己的读取结果回答，
+  // 不靠读代码推断。只写名字与计数，不写 skill/prompt 正文。
   line({
     type: "ready",
     id: config.id,
@@ -309,9 +323,40 @@ async function open(config) {
       model: session.model.id,
       thinking: session.thinkingLevel,
       tools: session.getActiveToolNames().sort(),
+      // registry 里注册的全部工具：与 tools（声明给模型的那一份）分开记录，
+      // 因为「注册成功但不在 allowlist」是 Pi 的一个真实状态（sprout_status 就是）。
+      registeredTools: session
+        .getAllTools()
+        .map((tool) => tool.name)
+        .sort(),
       extensions: extensions.extensions.map((extension) =>
         extension.path.replace(/^<inline:(.*)>$/, "$1"),
       ),
+      resources: {
+        inheritHostResources,
+        agentDir: controlledDir,
+        hostAgentDir: config.agentDir,
+        skillPaths: inheritedPaths.skills,
+        promptPaths: inheritedPaths.prompts,
+        skills: resourceLoader
+          .getSkills()
+          .skills.map((skill) => skill.name)
+          .sort(),
+        prompts: resourceLoader
+          .getPrompts()
+          .prompts.map((prompt) => prompt.name)
+          .sort(),
+        themes: resourceLoader
+          .getThemes()
+          .themes.map((theme) => theme.name)
+          .sort(),
+        contextFiles: resourceLoader
+          .getAgentsFiles()
+          .agentsFiles.map((file) => file.path)
+          .sort(),
+        // 模型实际收到的系统提示长度：技能文本进的是这里，不是 loader 的 base prompt。
+        systemPromptChars: (session.systemPrompt ?? "").length,
+      },
       sessionId: config.sessionId,
       sessionFile: session.sessionFile,
       cwd: config.cwd,

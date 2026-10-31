@@ -17,6 +17,11 @@ export type OpenSession = {
   cwd: string;
   agentDir: string;
   extensionPath: string;
+  /**
+   * 是否让宿主 skills 与 prompt templates 进入分身的 resource loader。
+   * 默认（缺省或 false）与 P3 相同：只加载 Sprout extension 与四个基础工具。
+   */
+  inheritHostResources?: boolean;
   profile: RunConfigSnapshot["profile"];
   remote: RemoteToolGrant;
 };
@@ -38,7 +43,24 @@ const snapshotSchema = z.object({
   provider: z.string().min(1),
   thinking: z.string().min(1),
   tools: z.array(z.string()),
+  // registry 里注册的工具；`tools` 是真正声明给模型的那一份。旧快照没有，可选。
+  registeredTools: z.array(z.string()).optional(),
   extensions: z.array(z.string()),
+  // 继承边界的实测结果（runner 从 loader 自己读出）。旧快照没有这一段，所以可选。
+  resources: z
+    .object({
+      inheritHostResources: z.boolean(),
+      agentDir: z.string().min(1),
+      hostAgentDir: z.string().min(1),
+      skillPaths: z.array(z.string()),
+      promptPaths: z.array(z.string()),
+      skills: z.array(z.string()),
+      prompts: z.array(z.string()),
+      themes: z.array(z.string()),
+      contextFiles: z.array(z.string()),
+      systemPromptChars: z.number().int().nonnegative(),
+    })
+    .optional(),
   sessionId: z.string().min(1),
   sessionFile: z.string().min(1),
   cwd: z.string().min(1),

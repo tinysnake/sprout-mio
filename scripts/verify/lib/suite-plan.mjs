@@ -116,6 +116,7 @@ export const SUITE_PLAN = Object.freeze({
   "x-remote-tools": plan(2.063, { unit: 1, sdk: 1 }),
   "x2-mcp-extension": plan(13.791, { unit: 1, sdk: 1 }, extension),
   "x3-mcp-extension-surface": plan(2.805, { unit: 1, sdk: 1 }),
+  "p7-pi-inheritance": plan(3.65, { unit: 1, sdk: 1 }),
   "y-lease-ui": plan(60.044, { development: 1, browser: 1 }, privateTree, true),
   "y-mcp-worker": plan(5.408, { unit: 1, native: 1, sdk: 1 }),
   "y2-mcp-http-worker": plan(1.933, { unit: 1, native: 1, sdk: 1 }, ["install", "worker"]),
