@@ -920,5 +920,5 @@ try {
   );
 }
 console.log(
-  `PASS p6a-lifecycle: ${assertions + childAssertions} assertions; real SQLite ${process.env.DATABASE_URL}`,
+  `PASS bf-p6a-lifecycle: ${assertions + childAssertions} assertions; real SQLite ${process.env.DATABASE_URL}`,
 );
