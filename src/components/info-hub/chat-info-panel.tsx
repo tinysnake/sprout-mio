@@ -1,7 +1,15 @@
-import type { ChatInfoView } from "../../contracts/info-hub";
+import { AgentStatusFact, LeaseSummaryFact } from "./basic-facts";
+
+import { chatInfoViewSchema, type ChatInfoView } from "../../contracts/info-hub";
 
 /** Chat → 自身与成员视角：只消费 getChatInfo 的视图对象，不自行查询。 */
 export function ChatFactsBlock({ view }: { view: ChatInfoView }) {
+  if (!chatInfoViewSchema.safeParse(view).success)
+    return (
+      <p role="alert" className="text-[11px] text-destructive">
+        Chat 事实读取失败：返回数据不符合 Info Hub 契约。
+      </p>
+    );
   return (
     <section data-testid="info-hub-chat" className="space-y-3">
       <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-[11px]">
@@ -30,10 +38,41 @@ export function ChatFactsBlock({ view }: { view: ChatInfoView }) {
               {member.memberKind === "human"
                 ? `${member.displayName}（Human）`
                 : `${member.displayName}（Agent）`}
+              {member.memberKind === "agent" && (
+                <AgentStatusFact status={member.status} error={member.error} />
+              )}
             </li>
           ))}
         </ul>
       </div>
+      <div data-testid="info-chat-instance-leases" className="space-y-3 text-[11px]">
+        <h4 className="font-medium">本 Chat 分身租约</h4>
+        {view.instances.length === 0 ? (
+          <p className="text-muted-foreground">本 Chat 还没有分身，无分身租约。</p>
+        ) : (
+          view.instances.map((instance) => (
+            <div key={instance.instanceId} className="min-w-0 space-y-1">
+              <p>
+                {instance.profileName} · <span className="break-all">{instance.instanceId}</span>
+              </p>
+              {instance.leases.length === 0 ? (
+                <p data-testid="info-lease-empty" className="text-muted-foreground">
+                  此分身未持有 Machine 租约。
+                </p>
+              ) : (
+                instance.leases.map((lease) => (
+                  <LeaseSummaryFact key={lease.machineId} lease={lease} />
+                ))
+              )}
+            </div>
+          ))
+        )}
+      </div>
+      {view.members.every((member) => member.memberKind !== "agent") && (
+        <p data-testid="info-agents-empty" className="text-[11px] text-muted-foreground">
+          本 Chat 没有 Agent 成员。
+        </p>
+      )}
     </section>
   );
 }

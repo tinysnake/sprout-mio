@@ -103,11 +103,13 @@ export const demoInfoHub: ProjectInfoHub = {
     counts: { proposed: 0, assigned: 0, finished: 0, canceled: 0 },
   },
   projectId: DEMO_PROJECT_ID,
+  projectName: demoProject.name,
   agents: {
     agents: demoMembers.map((member, index) => ({
       agentProfileId: member.agentProfileId,
       name: demoProfiles.find((profile) => profile.id === member.agentProfileId)?.name ?? "Agent",
-      personaSummary: "负责当前 Project 的一段协作分工。",
+      status: "idle",
+      error: null,
       ...(index === 0 ? { chatId: "cnv_77777777-7777-4777-8777-777777777777" } : {}),
     })),
     runs: {
@@ -117,6 +119,9 @@ export const demoInfoHub: ProjectInfoHub = {
       recent: [
         {
           runId: "run_88888888-8888-4888-8888-888888888888",
+          chatId: "cnv_77777777-7777-4777-8777-777777777777",
+          instanceId: "ins_77777777-7777-4777-8777-777777777777",
+          agentProfileId: demoMembers[0]!.agentProfileId,
           status: "completed",
           queuedAt: "2026-10-18T06:40:00.000Z",
           startedAt: "2026-10-18T06:40:05.000Z",

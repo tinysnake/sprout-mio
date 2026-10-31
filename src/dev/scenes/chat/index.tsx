@@ -177,7 +177,13 @@ const infoView: ChatInfoView = {
   archived: false,
   members: [
     { memberKind: "human", memberId: "usr_demo", displayName: HUMAN },
-    { memberKind: "agent", memberId: profiles[0]!.id, displayName: profiles[0]!.name },
+    {
+      memberKind: "agent",
+      memberId: profiles[0]!.id,
+      displayName: profiles[0]!.name,
+      status: "idle",
+      error: null,
+    },
   ],
   owner: { kind: "human", id: "usr_demo" },
   instances: [
@@ -185,6 +191,7 @@ const infoView: ChatInfoView = {
       instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       agentProfileId: profiles[0]!.id,
       profileName: profiles[0]!.name,
+      leases: [],
     },
   ],
   messages: { count: messages.length, latestAt: messages[2]!.createdAt },
@@ -195,6 +202,9 @@ const infoView: ChatInfoView = {
     recent: [
       {
         runId: "run_99999999-9999-4999-8999-999999999999",
+        chatId: chats[0]!.id,
+        instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        agentProfileId: profiles[0]!.id,
         status: "completed",
         queuedAt: "2026-06-18T02:28:00.000Z",
         startedAt: "2026-06-18T02:28:01.000Z",
@@ -207,6 +217,39 @@ const infoView: ChatInfoView = {
 };
 
 const turnStart: TurnStartContext = {
+  schemaVersion: 1,
+  runId: "run_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  capturedAt: "2026-06-18T02:28:00.000Z",
+  basisRevision: "demo-snapshot-1",
+  serializedText: "Demo turn context",
+  contentHash: "bce9baafc87a7b907e4e0dcd03f70e35f08f7bb6218e83279a1b56bb6f7d1488",
+  deliveryState: "prepared",
+  submittedAt: null,
+  failureCode: null,
+  truncated: false,
+  omittedCounts: { members: 0, runs: 0, tasks: 0, leases: 0, pendingLeaseRequests: 0 },
+  projectName: "Mio",
+  chatTitle: "项目协作",
+  chatKind: "dm",
+  chatArchived: false,
+  owner: infoView.owner,
+  members: infoView.members,
+  status: "running",
+  heldMachines: [],
+  pendingLeaseRequests: [],
+  taskCounts: { proposed: 0, assigned: 0, finished: 0, canceled: 0 },
+  projectSummary: { agentCount: 1, chatCount: 2, machineCount: 0 },
+  chatRuns: [
+    {
+      runId: "run_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      chatId: chats[0]!.id,
+      instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      agentProfileId: profiles[0]!.id,
+      status: "running",
+      isSelf: true,
+    },
+  ],
+  tasks: [],
   projectId: PROJECT_ID,
   chatId: chats[0]!.id,
   instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -214,12 +257,10 @@ const turnStart: TurnStartContext = {
   profileName: profiles[0]!.name,
   hostEnabled: true,
   workspace: null,
-  activeRun: null,
-  previousRun: {
-    runId: "run_99999999-9999-4999-8999-999999999999",
-    status: "completed",
-    requestId: "req_sm_demo",
-    settledAt: "2026-06-18T02:28:30.000Z",
+  activeRun: {
+    runId: "run_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    status: "running",
+    pendingInputs: 0,
   },
   injectedIntoPrompt: false,
 };
@@ -261,12 +302,25 @@ function workspaceFixture(chat: Chat, currentMessages: Message[]) {
   const info: ChatInfoView = {
     ...infoView,
     chatId: chat.id,
-    members: chatMembers.map((member) => ({
-      memberKind: member.memberKind,
-      memberId: member.memberId,
-      displayName: member.memberKind === "human" ? HUMAN : profile.name,
-    })),
-    instances: [{ instanceId: instance.id, agentProfileId: profile.id, profileName: profile.name }],
+    members: chatMembers.map((member) =>
+      member.memberKind === "human"
+        ? { memberKind: "human", memberId: member.memberId, displayName: HUMAN }
+        : {
+            memberKind: "agent",
+            memberId: profile.id,
+            displayName: profile.name,
+            status: "idle",
+            error: null,
+          },
+    ),
+    instances: [
+      {
+        instanceId: instance.id,
+        agentProfileId: profile.id,
+        profileName: profile.name,
+        leases: [],
+      },
+    ],
     messages: { count: threadMessages.length, latestAt: threadMessages.at(-1)?.createdAt },
     runs: first ? infoView.runs : { ...infoView.runs, active: [], recent: [] },
   };
@@ -276,7 +330,14 @@ function workspaceFixture(chat: Chat, currentMessages: Message[]) {
     instanceId: instance.id,
     agentProfileId: profile.id,
     profileName: profile.name,
-    previousRun: first ? turnStart.previousRun : null,
+    members: info.members,
+    owner: info.owner,
+    chatRuns: turnStart.chatRuns.map((run) => ({
+      ...run,
+      chatId: chat.id,
+      instanceId: instance.id,
+      agentProfileId: profile.id,
+    })),
   };
   return {
     profile,

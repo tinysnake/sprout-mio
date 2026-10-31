@@ -13,6 +13,7 @@ import { Select } from "../ui/select";
 import { Button } from "../ui/button";
 import type { AppError } from "../../contracts/result";
 import { chatAgentName, type ChatAgent } from "../chat/chat-list";
+import { ProjectContextFacts } from "../info-hub/project-context-facts";
 
 export const requestProjectLease = async (
   input: LeaseMutationInput,
@@ -267,7 +268,7 @@ export function ProjectLeaseActions({
         <div data-testid="lease-transfer-machine" className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">目标 Machine</span>
           <p className="min-h-9.5 rounded-control border border-input bg-muted px-2.75 py-2 text-[13px]">
-            {info.machines.find((item) => item.machine.id === fixedMachineId)?.machine.name ??
+            {info.machines.find((item) => item.machineId === fixedMachineId)?.name ??
               fixedMachineId}
           </p>
         </div>
@@ -283,7 +284,7 @@ export function ProjectLeaseActions({
             .filter((lease) => lease.state === "held")
             .map((lease) => (
               <option key={lease.machineId} value={lease.machineId}>
-                {info.machines.find((item) => item.machine.id === lease.machineId)?.machine.name ??
+                {info.machines.find((item) => item.machineId === lease.machineId)?.name ??
                   lease.machineId}
               </option>
             ))}
@@ -335,7 +336,8 @@ export function ProjectLeaseActions({
     </div>
   );
   return (
-    <div className="space-y-4" data-testid="project-lease-actions">
+    <div className="min-w-0 space-y-4" data-testid="project-lease-actions">
+      <ProjectContextFacts info={info} machineId={fixedMachineId} />
       {children(mutate, { chatRow, chatPicker, transferControls })}
       {error && <ResultError error={error} />}
     </div>

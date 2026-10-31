@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ProjectAgentsView } from "../../contracts/info-hub";
+import { AgentStatusFact } from "./basic-facts";
 import { RunFactsBlock } from "./run-facts";
 
 /** Project → Agents 视角：只消费 getProjectInfoHub 的视图对象，不自行查询。 */
@@ -11,11 +12,8 @@ export function ProjectAgentsPanel({
   view: ProjectAgentsView;
 }) {
   return (
-    <section
-      data-testid="info-hub-project-agents"
-      className="space-y-4 rounded-lg border border-dashed p-6"
-    >
-      <h2 data-testid="info-agents-title" className="text-lg font-semibold">
+    <section data-testid="info-hub-project-agents" className="min-w-0 space-y-4">
+      <h2 data-testid="info-agents-title" className="text-sm font-medium">
         Agent 成员与分身（Info Hub）
       </h2>
       {view.agents.length === 0 ? (
@@ -29,9 +27,9 @@ export function ProjectAgentsPanel({
               key={agent.agentProfileId}
               data-testid="info-agent-item"
               data-agent-profile-id={agent.agentProfileId}
-              className="flex items-center justify-between gap-4 px-4 py-3"
+              className="flex min-w-0 flex-wrap items-center justify-between gap-4 px-4 py-3"
             >
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <p data-testid="info-agent-name" className="font-medium">
                   {agent.name}
                 </p>
@@ -39,8 +37,9 @@ export function ProjectAgentsPanel({
                   data-testid="info-agent-persona-summary"
                   className="text-sm text-muted-foreground"
                 >
-                  {agent.personaSummary || "（无人设）"}
+                  {agent.jobTitle || "未设置职位"}
                 </p>
+                <AgentStatusFact status={agent.status} error={agent.error} />
               </div>
               {agent.chatId ? (
                 <Link
