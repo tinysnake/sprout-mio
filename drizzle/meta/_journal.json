@@ -190,6 +190,13 @@
       "when": 1793418990347,
       "tag": "0026_p6a_continuation",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1793427423860,
+      "tag": "0027_p6a_automation_off",
+      "breakpoints": true
     }
   ]
 }

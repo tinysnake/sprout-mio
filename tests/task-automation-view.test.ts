@@ -20,8 +20,8 @@ const render = (name: Parameters<typeof automationFixture>[0]) =>
   );
 
 describe("自动接续页面事实与 Human 控制", () => {
-  it("暂停后仍显示服务端保留的活动 run，不把调度开关当作 run 状态", () => {
-    const view = automationFixture("paused");
+  it("关闭自动接续后仍显示服务端保留的活动 run，不把调度开关当作 run 状态", () => {
+    const view = { ...automationFixture("idle"), mode: "off" as const };
     view.activeRunIds = [p6aIds.run];
     const html = renderToStaticMarkup(createElement(AutomationCard, { view }));
     expect(html).toContain("自动接续不会来");
@@ -43,14 +43,13 @@ describe("自动接续页面事实与 Human 控制", () => {
     expect(html).toContain("当前没有安排下次自动检查");
     expect(html).not.toContain("已安排下次自动检查");
   });
-  it("暂停与停止明确说明不会来，但不宣称当前 run 被停止", () => {
-    for (const name of ["paused", "stopped"] as const) {
-      const html = render(name);
-      expect(html).toContain("自动接续不会来");
-      expect(html).toContain("不会停止当前 run");
-      expect(html).toContain("恢复自动接续");
-      expect(html).not.toContain("暂停 Task");
-    }
+  it("关闭开关明确说明不会来，但不宣称当前 run 被停止", () => {
+    const view = { ...automationFixture("idle"), mode: "off" as const };
+    const html = renderToStaticMarkup(createElement(AutomationCard, { view }));
+    expect(html).toContain("自动接续不会来");
+    expect(html).toContain("不会停止当前 run");
+    expect(html).toContain("开启自动接续");
+    expect(html).not.toContain("暂停 Task");
   });
   it("失败与退避可见，不能呈现为正常或本轮无需接续", () => {
     const html = render("failure");
@@ -68,9 +67,14 @@ describe("自动接续页面事实与 Human 控制", () => {
     expect(html).not.toContain("当前无活动 run");
   });
   it("禁用操作逐字展示 denials.reason 与 code", () => {
-    const html = render("denied");
+    const html = renderToStaticMarkup(
+      createElement(AutomationCard, {
+        view: automationFixture("idle"),
+        denials: { disable: { code: "forbidden", reason: "当前身份无权关闭此 Chat 的自动接续" } },
+      }),
+    );
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>暂停自动接续/);
-    expect(html).toContain("当前身份无权暂停此 Chat");
+    expect(html).toContain("当前身份无权关闭此 Chat 的自动接续");
     expect(html).toContain("forbidden");
   });
   it("投递未知保留原 run 并要求人工确认补发", () => {

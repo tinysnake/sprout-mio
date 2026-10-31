@@ -9,7 +9,7 @@ export const CLAIM_LEASE_MS = 120_000;
 export type SchedulerContext = { now: Date; requestId: string; workerId: string };
 export type Control = {
   chat_id: string;
-  mode: "enabled" | "paused" | "stopped";
+  mode: "enabled" | "off";
   epoch: number;
   revision: number;
   changed_by: string | null;
@@ -255,13 +255,11 @@ export function reconcileChatSchedule(chatId: string, now: Date): void {
     if (invalid)
       cancelUnadmitted(
         chatId,
-        control.mode === "paused"
-          ? "human_paused"
-          : control.mode === "stopped"
-            ? "human_stopped"
-            : chat.archived_at !== null
-              ? "chat_archived"
-              : "task_context_changed",
+        control.mode === "off"
+          ? "human_disabled"
+          : chat.archived_at !== null
+            ? "chat_archived"
+            : "task_context_changed",
       );
     write(
       "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE chat_id=? AND state IN ('pending','claimed','retry_wait')",

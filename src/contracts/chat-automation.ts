@@ -19,7 +19,7 @@ const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const hash = z.string().regex(/^[0-9a-f]{64}$/);
 const reason = z.string().trim().min(1).max(2000);
 
-export const chatAutomationModeSchema = z.enum(["enabled", "paused", "stopped"]);
+export const chatAutomationModeSchema = z.enum(["enabled", "off"]);
 export type ChatAutomationMode = z.infer<typeof chatAutomationModeSchema>;
 export const chatAutomationErrorCodeSchema = z.enum([
   "unauthorized",
@@ -44,8 +44,8 @@ export const CHAT_AUTOMATION_POLICY = {
 } as const;
 
 export const continuationCancelReasonSchema = z.enum([
-  "human_paused",
-  "human_stopped",
+  "human_disabled",
+  "human_aborted",
   "membership_revoked",
   "task_context_changed",
   "chat_archived",
@@ -192,24 +192,18 @@ const commandBase = {
 export const chatAutomationCommandSchema = z.discriminatedUnion("action", [
   z.strictObject({
     ...commandBase,
-    action: z.literal("pause"),
+    action: z.literal("disable"),
     reason: reason.optional(),
   }),
   z.strictObject({
     ...commandBase,
-    action: z.literal("resume"),
+    action: z.literal("enable"),
     reason: reason.optional(),
   }),
   z.strictObject({
     ...commandBase,
-    action: z.literal("stop"),
-    scope: z.literal("chat"),
-    reason: reason.optional(),
-  }),
-  z.strictObject({
-    ...commandBase,
-    action: z.literal("stop_run"),
-    runId: runIdSchema,
+    action: z.literal("abort"),
+    runId: runIdSchema.optional(),
     reason: reason.optional(),
   }),
   z.strictObject({
