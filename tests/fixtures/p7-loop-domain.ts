@@ -117,7 +117,9 @@ if (mode === "restart" && !phase) {
       );
       assert.notEqual(rt.bootId, saved.bootId);
       assert.deepEqual(
-        row("SELECT config_snapshot FROM agent_run WHERE id=?", saved.activeIds[0]),
+        // Name the run that really owned a snapshot: `activeIds` has no defined order and the
+        // queued run never received one before the crash.
+        row("SELECT config_snapshot FROM agent_run WHERE id=?", saved.snapshotRunId),
         saved.snapshot,
       );
       assert.equal(readFileSync(saved.artifact, "utf8"), "pre-crash transcript marker\n");
@@ -249,6 +251,7 @@ if (mode === "restart" && !phase) {
           JSON.stringify(
             {
               bootId: rt.bootId,
+              snapshotRunId: a.runId,
               activeIds: all("SELECT id FROM agent_run WHERE status IN ('queued','running')").map(
                 (value) => value.id,
               ),
