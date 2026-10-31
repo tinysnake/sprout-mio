@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AppResult } from "./result";
 import { appIdPattern, ID_PREFIXES } from "./ids";
-import { projectWakePolicySchema, wakeProviderSchema } from "./wake-evaluation";
+import { projectWakePolicySchema, wakeProviderSchema } from "./project-wake-policy";
 
 const projectIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.project));
 

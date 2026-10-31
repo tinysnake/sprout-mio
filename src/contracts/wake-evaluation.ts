@@ -4,17 +4,9 @@ import { runIdSchema } from "./agent-run";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import { taskIdSchema, taskRecordKindSchema, taskRecordRefSchema } from "./task";
 
-export const wakeProviderSchema = z.enum(["small_brain", "jev"]);
-export type WakeProvider = z.infer<typeof wakeProviderSchema>;
-
-/** One selected provider per Project; configuration contains no credentials or fallback. */
-export const projectWakePolicySchema = z.strictObject({
-  provider: wakeProviderSchema,
-  configRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  model: z.string().trim().min(1).max(200),
-  thresholdVersion: z.string().trim().min(1).max(80),
-});
-export type ProjectWakePolicy = z.infer<typeof projectWakePolicySchema>;
+import { projectWakePolicySchema, wakeProviderSchema } from "./project-wake-policy";
+export { projectWakePolicySchema, wakeProviderSchema } from "./project-wake-policy";
+export type { ProjectWakePolicy, WakeProvider } from "./project-wake-policy";
 
 export const wakeEvaluationSourceSchema = z.enum(["message", "task_periodic"]);
 export type WakeEvaluationSource = z.infer<typeof wakeEvaluationSourceSchema>;
