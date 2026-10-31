@@ -39,6 +39,8 @@ export const SUITE_PLAN = Object.freeze({
   "bf-p6a-lifecycle": plan(5, { unit: 1 }),
   "p6a-wiring": plan(1, { unit: 1 }),
   "p6a-pages": plan(40, { development: 1, browser: 1 }, privateTree, true),
+  "p7-service-baseline": plan(30, { light: 1, timing: 1 }, server),
+  "p7-storage-recovery": plan(40, { unit: 1 }, server),
   "bf-p6b-pages": plan(27, { development: 1, browser: 1 }, privateTree, true),
   "bf-p6b-info": plan(0.5, { unit: 1 }),
   "bf-p6b-turn-context": plan(1.4, { unit: 1 }),
