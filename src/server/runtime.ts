@@ -1,4 +1,5 @@
 import type { AutomationScheduler } from "./automation-scheduler";
+import type { WakeRuntimeOptions } from "./wake-runtime";
 import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
 import { ID_PREFIXES, newId } from "../contracts/ids";
@@ -162,13 +163,15 @@ function failPhase(error: unknown) {
   console.error("[runtime] 失败", state.phase, error instanceof Error ? error.message : "未知错误");
 }
 
-export function startRuntime(): Promise<void> {
+export function startRuntime(
+  wakeOptions: Pick<WakeRuntimeOptions, "complete" | "fetch"> = {},
+): Promise<void> {
   if (state.startup) return state.startup;
-  state.startup = initializeRuntime();
+  state.startup = initializeRuntime(wakeOptions);
   return state.startup;
 }
 
-async function initializeRuntime() {
+async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete" | "fetch">) {
   transition("starting");
   try {
     state.databaseUrl = config.DATABASE_URL;
@@ -239,7 +242,11 @@ async function initializeRuntime() {
     sqlite.prepare("UPDATE runtime_boot SET phase = 'ready' WHERE id = ?").run(bootId);
     transition("ready");
     if (config.SPROUT_PI_ENABLED) await state.managed.runPromise(startPiHost);
-    const { createAutomationScheduler } = await import("./automation-scheduler");
+    const { createAutomationScheduler, installWakeEvaluator } =
+      await import("./automation-scheduler");
+    const { createWakeEvaluator } = await import("./wake-runtime");
+    const clock = () => performance.now();
+    installWakeEvaluator(createWakeEvaluator({ clock, ...wakeOptions }));
     state.automation = createAutomationScheduler({ abort: signalRunAbort });
     state.automation.start();
     recordDiagnostic({
