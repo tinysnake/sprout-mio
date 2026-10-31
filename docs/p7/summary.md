@@ -85,18 +85,22 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 证据提交 `fef2612`：重跑 `bash scripts/verify/i-chat.sh`、`bash scripts/verify/aq-p4d-pages.sh`、`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/c-data-auth.sh`。
 
+- **main 上的全量 LOCAL 复核**（`abcfac6`）跑完 24 个 LOCAL 门禁，21 个绿；三处 harness 缺陷在同一轮暴露并修掉：`scripts/verify/lib/sandbox.mjs` 只按顶层名排除，把 `orchestrate/` 里指向已删 worktree 的软链也 `cpSync` 过去，`b-tooling`/`a-base`/`t-machine-worker` 同因 ENOENT 红（`dcdba95`）；`u-machine-ui` 被 service worker 接走只读白名单的 `getMachineFn` 后 `page.route` 永不触发，挂到 `unsettled top-level await`（同提交给该门禁 `serviceWorkers: "block"`），并加了「端口已被占用就报错」的守卫与 `error.stack` 输出；其 Info Hub Machine 摘要断言用的 `bindings` 字段早已不存在（`src/contracts/info-hub.ts:119` 无该字段），改成 `machineId`/`projectMembership` 加 `listProjectMachinesFn` 的 `data[0].bindings[0].intent.description`。
+
+证据提交 `abcfac6`：重跑 `bash scripts/verify/b-tooling.sh`、`bash scripts/verify/x-remote-tools.sh`、`bash scripts/verify/ae-remote-tools-cancel-log.sh`、`bash scripts/verify/z-lease-integration.sh`。
+
 ## 已知限制与未证明项
 
 1. **没有真机证据。** 手机相关结论全部来自 Chromium 视口模拟（宽 390×844），没有 iOS Safari 或 Android Chrome 的物理设备、软键盘、真实滚动惯性。I-P7 第 4 条与 UI-P7 第 4 条因此保持未勾选。
 2. **跨机与现场恢复未验证。** 只在本机全新目录恢复并启动；没有第二台机器、不同文件系统、网络挂载，也没有 ENOSPC、`fsync` 失败、VACUUM 过程中断电。Worker 的 journal/结果文件、Git checkout、模型 session 文件都在库外，不在备份范围。
-3. **性能基线是单机单请求。** 5 个端点、并发 1、keep-alive、单机 M4；没有并发吞吐、冷缓存、跨网络、鉴权失败、写请求。数字写进 `.verify/p7-service-baseline.json`，不设产品 SLA。
+3. **性能基线是单机单请求。** 5 个端点、并发 1、keep-alive、单机 M4；没有并发吞吐、冷缓存、跨网络、鉴权失败、写请求。数字写进 `.verify/p7-service-baseline.json`，不设产品 SLA。空载复跑（load average 4）的实测：`health` p95 0.393ms、`auth-session` 1.018ms、`diagnostics-project-page-200` 1.576ms；日志读取 `pageP95` 2.618ms、`fullP95` 16.987ms。早前 1.39→10.71ms 与 16.82→60.70ms 的抖动是三个 worker 同时占 CPU 造成的，不能当基线。
 4. **付费模型路由未验。** `p7-loop-multiround` 只跑 `model-fixture`（`paid-model-calls=0`）；真实 provider 表现属 MANUAL `p6a-live-routing`。
 5. **Pi 继承只测了合成宿主目录。** 真实 `~/.pi/agent` 里的技能可能有非法 frontmatter、重名、超大正文；prompt templates 在产品路径上实际不可用（`expandPromptTemplates: false`）；只在 macOS + Pi 1.4.0 上验证。
 6. **并发上限只有可测口径。** 产品没有「同时运行 Agent 数」的封顶，只声明并实测每 instance 在途 run = 1、消息 8000 字、扇出 = 点名 Agent 数；「超过 N 个明确拒绝」不存在，这是缺口不是通过。
 7. **重启语义是「都不继续」。** `queued` 与 `running` 一律 `interrupted`；Worker 失联后的租约自动回收与冻结契约冲突，未实现也未改契约。
 8. **离线只有读。** 没有离线写队列，断线时的执行动作不可用；缓存命中的读标为未确认，不代表服务端现状。
 9. **诊断过滤入口有限。** `/api/diagnostics` 只支持 `requestId`/`projectId`，没有 Chat/run/execution 的 HTTP 过滤入口。
-10. **三条 main 上就红的旧门禁**（`x-remote-tools`、`ae-remote-tools-cancel-log`、`z-lease-integration`）不是 P7 引入：前两条是「工具注册面 vs `remoteToolInputSchemas`」的口径分歧（P7 只多注册 `sprout_status`，该工具在 `53d23e9` 时已在），`z-lease-integration` 是模型夹具的 armed lease intent 不匹配。三者在 `main@8f0ddf3` 上各跑两次同样红，相关脚本与夹具在 `main..HEAD` 逐字未变。
+10. **三条长期红的 tools 门禁已修好，修的是断言不是产品**（`x-remote-tools`、`ae-remote-tools-cancel-log`、`z-lease-integration`）。它们从 P6b/P7 陆续加工具起就红：工具面断言只从 `remoteToolInputSchemas` 一张表推，漏了 info-hub 与 `sprout_status`；参数检查假定每个工具顶层写 `additionalProperties`，而联合类型的 Info Hub 工具把它写在分支上；租约意图比对没有剥掉轮初上下文那行 JSON 前缀。三者在 `main@8f0ddf3` 上各跑两次同样红，说明不是本轮引入；修好后各跑一次全绿（`abcfac6`）。
 
 ## human-体验确认
 
