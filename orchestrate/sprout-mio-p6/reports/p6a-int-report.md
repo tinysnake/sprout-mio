@@ -1,31 +1,14 @@
-# I-P6a 章节集成验证：在途暂停的审计状态不符合 brief
+# I-P6a 章节集成验证
 
-状态：**阻塞，未通过章节验收**。发现产品契约失败后，按 brief 的产品缺陷边界停止。没有修改产品代码、迁移、既有门禁、既有断言或门禁登记文件。
+当前状态：**协调者修复已复验，后续验收进行中**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
 
-分支 `p6a/int`。开工时 `HEAD` 与 `integration/p6a` 同为 `d565ab80b9057fd3609b5381519ac0e569da2aa5`。冻结设计从主 checkout 的 `orchestrate/sprout-mio-p6/reports/p6a-design.md` 读取；该忽略文件没有复制进本单元。
+开工基点为 `d565ab80b9057fd3609b5381519ac0e569da2aa5`。首批三个文件先提交为 `cf5ea73`，再按协调者要求 rebase 到修复 `b837f820b0dc901262a0e50efe8663b5a7d43376`，首批提交变为 `3f33f54`。冻结设计从主 checkout 的 `orchestrate/sprout-mio-p6/reports/p6a-design.md` 读取，未复制进本单元。
 
-新增交付文件为 `tests/fixtures/p6a-lifecycle.ts`、8 行的 `scripts/verify/p6a-lifecycle.sh` 和本报告。夹具启动生产 `startRuntime()`、真实 SQLite 和生产 scheduler。只替换 `complete` 与 `fetch` 模型边界。owner 通过真实 `PiSessionProcess`、`executeRun`、remote grant 和 HTTP gateway 使用 Task 命令。运行不需要 `.env`，没有调用外部模型。
+## 协调者修复 + 复验
 
-## 阻塞：Human 暂停使在途 evaluation 成为 canceled
+修复前，默认 Project 建 Group Chat 和 assigned Task，不立即开始。让生产 scheduler 到期，`complete` 模型替身停在 Promise 屏障。此时真实 SQLite 已有 `claimed` evaluation、input、claim token 和 epoch 1。Human 暂停后，control 成为 `paused`、epoch 2；释放模型请求并等待 `scheduler.settled()`，evaluation 最终为 `canceled`，与 brief 要求的 `stale` 不符。
 
-brief 第 3 条要求：判定在途时 Human 暂停，epoch 改变，落地结果记为 `stale`，零 run 输入、零消息，并且不能静默记为成功。
-
-实际调用链为：
-
-1. 默认 Project 创建 Group Chat 和 assigned Task，不立即开始。
-2. 令 schedule 到期，调用 runtime 的 `scheduler.advance()`。
-3. `complete` 替身停在 Promise 屏障。数据库已有 `claimed` evaluation，保存了 input、claim token 和 epoch 1。
-4. Human 调用 `applyChatAutomationCommand({ action: "pause", ... })`。control 立刻成为 `paused`、epoch 2。
-5. 释放模型屏障，返回有效的继续判定，等待 `scheduler.settled()`。
-6. evaluation 保持 `canceled`，`result` 为 NULL。断言期望 `stale`，实际为 `canceled`，进程 exit 1。
-
-最小复现入口：
-
-```bash
-P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh
-```
-
-失败信息：
+原失败断言保持不变：
 
 ```text
 AssertionError [ERR_ASSERTION]: pause leaves a visible stale result
@@ -34,90 +17,55 @@ AssertionError [ERR_ASSERTION]: pause leaves a visible stale result
 - 'stale'
 ```
 
-最终独立复现的 SQLite 是 `.verify/p6a-lifecycle/run/1793424202793-af121a15-68e0-4988-b5f4-4655c32dfac8/lifecycle.sqlite`。JSONL 是同级 `1793424202793-af121a15-68e0-4988-b5f4-4655c32dfac8-main.jsonl`。`human-race-outcome` 保存了变化前后的 evaluation、control、Task 以及所有可见副作用。
+修复前的独立复现位于 `.verify/p6a-lifecycle/run/1793424202793-af121a15-68e0-4988-b5f4-4655c32dfac8-main.jsonl`，SQLite 位于同名目录的 `lifecycle.sqlite`。该轮 exit 1，9 条断言通过，fixture 计时 820.9255 ms。日志保存了 claimed → canceled、control epoch 1 → 2、零 delivery、零 run、零 message、Task 仍 assigned、schedule 已删除。
 
-该次复现的实际事实：
+协调者裁定该失败为产品缺陷，在 `integration/p6a` 提交 `b837f82` 修复。`drizzle/0026_p6a_continuation.sql` 的 `p6a_control_disabled` trigger 现在只把 pending 标 canceled，把 claimed 与 retry_wait 标 stale。本单元通过 rebase 引入修复，没有修改产品代码，也没有放宽断言。
 
-| 事实                    | 结果                                                     |
-| ----------------------- | -------------------------------------------------------- |
-| 模型请求数              | 1                                                        |
-| 暂停前 evaluation       | claimed，control_epoch 1，claim_token 非空，input 已保存 |
-| 暂停后 control          | paused，epoch 2，revision 2                              |
-| 判定返回后的 evaluation | canceled，claim_token NULL，result NULL                  |
-| continuation_delivery   | 0                                                        |
-| agent_run               | 0                                                        |
-| message                 | 0                                                        |
-| Task 状态               | assigned                                                 |
-| chat_schedule           | 无                                                       |
+在 `3f33f54` 基础上的最终复验命令：
 
-这不是重复投递或暂停失效。失败在于本 brief 要求的审计状态没有保留。
+```bash
+P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh
+```
 
-相关产品位置：
+该轮 **exit 0、35 条断言通过、fixture 计时 741.710042 ms**。日志为 `.verify/p6a-lifecycle/run/1793425157602-2043ed60-8773-411a-84ff-f88b7e9cafc4-main.jsonl`，SQLite 为同名目录的 `lifecycle.sqlite`。
 
-- `src/domain/chat-automation.ts:280` 更新 control mode 和 epoch。
-- `drizzle/0026_p6a_continuation.sql:180` 的 `p6a_control_disabled` trigger 在 mode 禁用时执行。
-- 同一迁移的第 182 行把 pending、claimed、retry_wait evaluation 全部改为 `canceled`，并清空 token。
-- `src/domain/continuation-delivery.ts:352` 检查 evaluation 仍为 claimed 且 token 相同。当前行已经 canceled，因此直接返回，未进入第 354 行把过时结果记为 stale 的分支。
-- `src/domain/chat-schedule.ts:267` 的 reconcile 仅把 pending、claimed、retry_wait 改成 stale，无法再修改 trigger 已取消的行。
+| 在途变更      | 最终 evaluation | delivery | agent_run | agent_run_input | message |
+| ------------- | --------------- | -------- | --------- | --------------- | ------- |
+| Human pause   | stale           | 0        | 0         | 0               | 0       |
+| Human stop    | stale           | 0        | 0         | 0               | 0       |
+| Task reassign | stale           | 0        | 0         | 0               | 0       |
 
-按本单元契约，已发出模型请求的 claimed evaluation 在 Human 改变 epoch 后应保留 `stale` 审计语义，同时仍然禁止投递。尚未执行的 pending 检查是否继续采用 canceled，交由产品实现单元与协调者确定。此单元不修改迁移或提交逻辑，也不把断言放宽成 `stale | canceled`。
+`human-race-outcome` 保存每种变更前后的 evaluation、control、run、run input、消息、Task 和 schedule。run input 使用真实 `agent_run_input JOIN agent_run` 计数，不以零 run 推断。修复前后的证据同时保留。
 
-## 不变量与已执行覆盖
+## 生命周期与七个不变量
 
-| 要求               | 夹具中的断言或证据                                                                                                                                                                              | 实际状态                                                                    |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| 连续生命周期       | 无 policy override，宿主默认模型，assigned 不创建 run，两轮 due，两次 owner 输入和 ACK，第一轮写记录与发言，第二轮通过 HTTP 完成 Task，无 Task 删 schedule 和 timer，暂停、恢复、停止、显式恢复 | 首次完整执行中全部经过并通过；随后在 stale 场景失败。尚无完整绿色验收       |
-| 1：同 due 并发     | 两个生产 scheduler 并发 advance，模型屏障保持 claimed，evaluation 数 1、provider 请求 1、attempt 1、第二 writer 无 claim、delivery 数 1                                                         | 经过并通过；未做故意破坏，不能宣称已完成 CAS 破坏验证                       |
-| 2：跨 Project 隔离 | 两 Project 四 Chat 的四个请求同时在途，Project 名、persona、Task 标题带独立 canary，候选和 delivery 只属于本 Chat                                                                               | 经过并通过；没有单独构造另一 Project 的历史消息正文                         |
-| 3：stale 不投递    | 在途 pause、stop、reassign；检查 state、delivery、run、message、schedule                                                                                                                        | pause 的零副作用断言通过，state 断言失败。stop 和 reassign 因停止规则未继续 |
-| 4：重启恢复        | 同文件 crash、recover、recover-again 模式；提交后 observer 真实 SIGKILL，再启动 runtime 扫描，检查 delivery identity、next due、host 输入一次                                                   | 已编写，未执行。失败前没有到达此场景                                        |
-| 5：Human 优先      | 连续生命周期的立即控制、停止后新 assigned 不复活、显式恢复可再到期；在途 pause 的零副作用                                                                                                       | 上述路径经过并通过；在途 stop、reassign 后续覆盖未执行                      |
-| 6：业务写边界      | TEMP trigger 记录所有 main table 的 INSERT、UPDATE、DELETE；调度观察窗口允许业务执行表和调度元数据表，Task 状态不变                                                                             | 已编写，未执行。当前只观察专用调度窗口，还不是整条生命周期的完成证据        |
-| 7：预算            | 65 个完整 assigned Task 超 24000 字符，拒绝 input 和模型调用、零 delivery；Human 减少 assigned Task 后下一轮恢复                                                                                | 已编写，未执行。未声称预算边界通过                                          |
+夹具启动生产 `startRuntime()`、真实 SQLite 和生产 scheduler。只替换 `complete` 与 `fetch` 模型边界。owner 经真实 `PiSessionProcess`、`executeRun`、remote grant、HTTP gateway 使用 Task 命令，不联网调用真实模型。
 
-重启和预算后半段保留为未验证代码，方便协调者修复 blocker 后继续验收。仅 typecheck 通过不证明这些路径正确。
+当前夹具已经加入下列断言，完整范围与最终结果将在后续小步提交记录：
 
-## 实测命令与退出码
+| 范围                | 断言                                                                                                                                                                                                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 连续生命周期        | 新 Project 没有 policy override，默认 small_brain 使用宿主模型；assigned 不立即执行；两轮 due、receipt、owner envelope、ACK、发言、Task 完成；无 assigned Task 删除 schedule 和 timer；Human 暂停、恢复、停止、显式恢复 |
+| 1：一次检查一次判定 | 两个生产 scheduler 并发 advance；evaluation、provider 请求、attempt、delivery 各最多一份；错误 claim token 提交不得写入 receipt 或 delivery                                                                             |
+| 2：不跨 Chat 泄漏   | 两 Project 四 Chat 同时在途；成员、Task 与真实消息正文包含各 Project 私有 canary；候选和 delivery 只属于本 Chat                                                                                                         |
+| 3：stale 不投递     | 在途 pause、stop、reassign 后 stale、零 delivery、零 run input、零消息                                                                                                                                                  |
+| 4：重启恢复         | 提交后 observer 真实 SIGKILL；两个独立进程重启 runtime；检查原 receipt、delivery identity、next due 与 host 输入次数                                                                                                    |
+| 5：Human 优先       | 立即控制、停止后新 assigned 不复活、显式恢复可再到期；在途 Human 变更废止旧判定                                                                                                                                         |
+| 6：不越权           | 整条主生命周期使用 TEMP trigger 记录所有 main table 的 INSERT、UPDATE、DELETE；记录 Human、owner、automation 来源与 Task 状态变化                                                                                       |
+| 7：预算             | 65 个完整 assigned Task 超 24000 字符，确定性拒绝且不调用模型、不投递；Human 减少 assigned Task 后下一轮正常恢复                                                                                                        |
 
-| 命令                                                                                       | 实际退出码 | 结果                                         |
-| ------------------------------------------------------------------------------------------ | ---------- | -------------------------------------------- |
-| `pnpm install --prefer-offline`                                                            | 0          | 依赖安装成功                                 |
-| `pnpm typecheck`，最终版本                                                                 | 0          | 三份 tsconfig 均无错误                       |
-| `pnpm exec vp lint tests/fixtures/p6a-lifecycle.ts`，最终版本                              | 0          | 无告警                                       |
-| `pnpm exec vp fmt --check tests/fixtures/p6a-lifecycle.ts scripts/verify/p6a-lifecycle.sh` | 0          | 改动匹配文件格式通过，shell 不由该格式器处理 |
-| `node --import tsx tests/fixtures/p6a-lifecycle.ts`，首次完整执行                          | 1          | 71 条断言通过，随后 pause/stale 断言失败     |
-| `P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh`，独立复现 1                      | 1          | 9 条断言通过，同一 pause/stale 断言失败      |
-| `P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh`，最终独立复现                    | 1          | 9 条断言通过，同一 pause/stale 断言失败      |
-| `shasum -a 256 -c .verify/p6a-lifecycle/source-sha256.txt`                                 | 0          | 最终 fixture、薄壳与产品来源哈希匹配         |
+TEMP 审计把身份、run input、run 关联、diagnostic 和 schedule、evaluation、delivery 元数据列为执行基础设施。业务表仍按 brief 限制；额外断言 automation 不写 Task、Task event 或 message，Task 状态只来自 Human 或 owner 命令。审计用实际 SQL trigger 计数，不靠最终状态猜测是否写过。
 
-上述三个实际产品失败的 fixture 计时分别为 1112.770166 ms、785.416292 ms、820.9255 ms。计时从 fixture 初始化到写入 result，未计最后的 runtime shutdown，也不是 shell 总耗时或工具等待耗时。没有三个 exit 0，不能把这些失败复现记作要求的三次绿色运行。
+## 破坏验证
 
-更早的夹具开发轮次先后暴露两个 TypeScript 编译问题，以及 Project API 省略默认 `wakePolicy` 字段导致的一次断言编写错误。已仅在新增夹具中修正。该 API 断言错误的 JSONL 保留在证据目录，不能算产品失败。最终同时验证 API 字段为 undefined、SQLite policy override 为 NULL。
+第 1、3、4 条的独立副本破坏验证待记录。当前 checkout 的 `src/**` 和 `drizzle/**` 不用于故意改坏。
 
-按“发现产品代码缺陷后报告并停止”的边界，下列要求的门禁**未执行，退出码均为 N/A**：
+## 新门禁与既有门禁
 
-| 门禁              | 退出码 | 原因           |
-| ----------------- | ------ | -------------- |
-| i2-group-chat     | N/A    | blocker 后停止 |
-| i3-public-channel | N/A    | blocker 后停止 |
-| i4-agent-fanout   | N/A    | blocker 后停止 |
-| i6-chat-info      | N/A    | blocker 后停止 |
-| ba-task-domain    | N/A    | blocker 后停止 |
-| bs-p5b-lifecycle  | N/A    | blocker 后停止 |
-| p6a-scheduler     | N/A    | blocker 后停止 |
-| p6a-delivery      | N/A    | blocker 后停止 |
-| p6a-control       | N/A    | blocker 后停止 |
-| p6a-integration   | N/A    | blocker 后停止 |
-| p6a-wiring        | N/A    | blocker 后停止 |
-| as-p5b-task-pages | N/A    | blocker 后停止 |
-| p6a-pages         | N/A    | blocker 后停止 |
+连续三次绿色运行与 brief 指定的 13 个既有门禁结果待后续提交登记。定向 stale 复验不替代无筛选的新门禁。
 
-第 1、3、4 条要求的“改坏 → 红 → 修回 → 绿”均未执行。第 3 条目前直接在原产品上为红，不存在可据实报告的修回绿色证据。
+依赖已执行 `pnpm install --prefer-offline`，exit 0。当前 TypeScript、lint、格式检查与最终源码证据将在验收结束时统一记录。
 
-## 证据与交接
+`.verify/p6a-lifecycle/` 保存 `base-commit`、`source-sha256.txt`、`exit-code`、`run/*.jsonl`、每轮 SQLite、生成的确定性 owner runner 与 host-inputs JSONL。fixture 计时从初始化到 result 写入，不含最后的 shutdown；shell 进程总耗时另行记录，不把工具等待计入 runner 耗时。
 
-`.verify/p6a-lifecycle/` 包含 `base-commit`、`source-sha256.txt`、`exit-code`、`run/*.jsonl`、每次运行自己的 SQLite、生成的确定性 owner runner 和 host-inputs JSONL。最终 `exit-code` 为 1。薄壳保留失败退出码，不使用 `|| true`。
-
-独立复现只运行 `P6A_SCENARIO=stale`，该选择是定位入口，不能替代最终无筛选门禁。默认入口仍然尝试完整连续生命周期和全部场景。
-
-协调者需要先解决或明确修订 claimed evaluation 在 Human pause 后的 stale 契约，再交由新的验证单元继续后半段、三个绿色运行、破坏验证和列出的既有门禁。本报告没有将 I-P6a 登记为完成。
+首轮调试曾将 Project API 省略的 `wakePolicy` 字段误写为期望 NULL。已改为 API 字段 undefined、SQLite override NULL 的两个断言，该早期夹具错误不记作产品缺陷。首轮产品失败前通过的 71 条断言也不记作完整绿色验收。

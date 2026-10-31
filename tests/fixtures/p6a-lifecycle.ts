@@ -4,7 +4,10 @@ import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
-import type { WakeEvaluationInput } from "../../src/contracts/wake-evaluation";
+import type {
+  WakeEvaluationInput,
+  WakeEvaluationResult,
+} from "../../src/contracts/wake-evaluation";
 import type { Evaluation, Schedule } from "../../src/domain/chat-schedule";
 import type { DeliveryRow } from "../../src/domain/continuation-delivery";
 import type { AutomationScheduler } from "../../src/server/automation-scheduler";
@@ -32,6 +35,17 @@ writeFileSync(
 );
 delete process.env.JEV_API_KEY;
 let assertions = 0;
+let childAssertions = 0;
+let actor: "automation" | "human" | "owner" = "automation";
+function human<T>(command: () => T): T {
+  const previous = actor;
+  actor = "human";
+  try {
+    return command();
+  } finally {
+    actor = previous;
+  }
+}
 function log(event: string, data: unknown) {
   appendFileSync(logFile, JSON.stringify({ event, mode, data }) + "\n");
 }
@@ -92,6 +106,7 @@ const schedule = await import("../../src/domain/chat-schedule");
 const automation = await import("../../src/domain/chat-automation");
 const task = await import("../../src/domain/task");
 const runs = await import("../../src/domain/agent-run");
+const delivery = await import("../../src/domain/continuation-delivery");
 const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
 const { createProject } = await import("../../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
@@ -102,6 +117,11 @@ const count = (table: string, chatId?: string) =>
   schedule.one<{ n: number }>(
     `SELECT count(*) AS n FROM ${table}${chatId ? " WHERE chat_id=?" : ""}`,
     ...(chatId ? [chatId] : []),
+  )!.n;
+const runInputCount = (chatId: string) =>
+  schedule.one<{ n: number }>(
+    "SELECT count(*) AS n FROM agent_run_input i JOIN agent_run r ON r.id=i.run_id WHERE r.chat_id=?",
+    chatId,
   )!.n;
 const row = (chatId: string) =>
   schedule.one<Schedule>("SELECT * FROM chat_schedule WHERE chat_id=?", chatId);
@@ -116,49 +136,57 @@ const deliveries = (chatId: string) =>
     chatId,
   );
 const control = (projectId: string, chatId: string, action: "pause" | "resume" | "stop") =>
-  automation.applyChatAutomationCommand(
-    {
-      projectId,
-      chatId,
-      action,
-      ...(action === "stop" ? { scope: "chat" as const } : {}),
-      expectedRevision: schedule.controlFor(chatId).revision,
-      requestId: newId(ID_PREFIXES.request),
-    },
-    ctx,
-    new Date(),
+  human(() =>
+    automation.applyChatAutomationCommand(
+      {
+        projectId,
+        chatId,
+        action,
+        ...(action === "stop" ? { scope: "chat" as const } : {}),
+        expectedRevision: schedule.controlFor(chatId).revision,
+        requestId: newId(ID_PREFIXES.request),
+      },
+      ctx,
+      new Date(),
+    ),
   );
 function seed(name: string) {
-  const project = createProject({ name }, ctx);
-  const profile = createAgentProfile(
-    { name: `${name} owner`, persona: `${name} 的专属成员`, harness: "pi" },
-    ctx,
+  const project = human(() => createProject({ name }, ctx));
+  const profile = human(() =>
+    createAgentProfile(
+      { name: `${name} owner`, persona: `${name} 的专属成员`, harness: "pi" },
+      ctx,
+    ),
   );
-  addProjectMember(project.id, profile.id, ctx);
+  human(() => addProjectMember(project.id, profile.id, ctx));
   return { project, profile };
 }
 function group(owner: ReturnType<typeof seed>, title: string) {
-  return createGroupChat(
-    owner.project.id,
-    {
-      projectId: owner.project.id,
-      title,
-      wakePolicy: "owner_led",
-      members: [
-        { kind: "human", id: ctx.userId },
-        { kind: "agent", id: owner.profile.id },
-      ],
-      initialOwner: { kind: "agent", id: owner.profile.id },
-    },
-    { kind: "human", userId: ctx.userId, ctx },
+  return human(() =>
+    createGroupChat(
+      owner.project.id,
+      {
+        projectId: owner.project.id,
+        title,
+        wakePolicy: "owner_led",
+        members: [
+          { kind: "human", id: ctx.userId },
+          { kind: "agent", id: owner.profile.id },
+        ],
+        initialOwner: { kind: "agent", id: owner.profile.id },
+      },
+      { kind: "human", userId: ctx.userId, ctx },
+    ),
   );
 }
 function assigned(projectId: string, chatId: string, title = "推进真实生命周期") {
-  const created = task.createTask({ projectId, title }, ctx).detail;
-  return task.assignTask(
-    { taskId: created.task.id, expectedRevision: created.task.revision, targetChatId: chatId },
-    ctx,
-  ).detail;
+  return human(() => {
+    const created = task.createTask({ projectId, title }, ctx).detail;
+    return task.assignTask(
+      { taskId: created.task.id, expectedRevision: created.task.revision, targetChatId: chatId },
+      ctx,
+    ).detail;
+  });
 }
 let scheduler: AutomationScheduler;
 let competitor: AutomationScheduler | undefined;
@@ -215,9 +243,15 @@ async function execute(chatId: string) {
   const { executeRun } = await import("../../src/server/pi-host/run");
   const { Effect } = await import("effect");
   const processHandle = new PiSessionProcess(pending!.run.id, runner);
-  await Effect.runPromise(
-    executeRun(pending!, processHandle, { isStopping: () => false }, Date.now),
-  );
+  const previous = actor;
+  actor = "owner";
+  try {
+    await Effect.runPromise(
+      executeRun(pending!, processHandle, { isStopping: () => false }, Date.now),
+    );
+  } finally {
+    actor = previous;
+  }
   equal(
     schedule.one<{ status: string }>("SELECT status FROM agent_run WHERE id=?", pending!.run.id)!
       .status,
@@ -235,6 +269,79 @@ function hostInputs() {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
+}
+function installWriteAudit() {
+  sqlite.function("lifecycle_actor", () => actor);
+  sqlite.exec("CREATE TEMP TABLE lifecycle_mutations(actor TEXT, table_name TEXT, operation TEXT)");
+  sqlite.exec(
+    "CREATE TEMP TABLE lifecycle_task_status(actor TEXT, task_id TEXT, before_status TEXT, after_status TEXT)",
+  );
+  const tables = schedule.all<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+  );
+  for (const [index, { name }] of tables.entries())
+    for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
+      sqlite.exec(
+        `CREATE TEMP TRIGGER lifecycle_${index}_${operation} AFTER ${operation} ON main."${name}" BEGIN INSERT INTO lifecycle_mutations VALUES(lifecycle_actor(),'${name}','${operation}'); END`,
+      );
+    }
+  sqlite.exec(
+    "CREATE TEMP TRIGGER lifecycle_task_status_changed AFTER UPDATE OF status ON main.task WHEN OLD.status<>NEW.status BEGIN INSERT INTO lifecycle_task_status VALUES(lifecycle_actor(),NEW.id,OLD.status,NEW.status); END",
+  );
+}
+function assertWriteAudit() {
+  const writes = schedule.all<{ actor: string; table_name: string; operation: string; n: number }>(
+    "SELECT actor,table_name,operation,count(*) AS n FROM lifecycle_mutations GROUP BY actor,table_name,operation ORDER BY actor,table_name,operation",
+  );
+  const transitions = schedule.all<{
+    actor: string;
+    task_id: string;
+    before_status: string;
+    after_status: string;
+  }>("SELECT * FROM lifecycle_task_status");
+  log("lifecycle-table-writes", { writes, transitions });
+  // Run identity, run inputs, diagnostics and scheduling receipts are execution infrastructure.
+  // All other business tables are denied unless the write comes from an explicit Human/owner command.
+  const allowed = new Set([
+    "chat",
+    "message",
+    "task",
+    "task_event",
+    "machine_lease",
+    "lease_authorization",
+    "lease_mutation",
+    "agent_instance",
+    "agent_run",
+    "agent_run_input",
+    "agent_run_task",
+    "chat_schedule",
+    "chat_automation_control",
+    "wake_evaluation",
+    "wake_evaluation_task",
+    "continuation_delivery",
+    "continuation_delivery_task",
+    "diagnostic_event",
+  ]);
+  const automated = writes.filter((item) => item.actor === "automation");
+  ok(
+    automated.some((item) => item.table_name === "wake_evaluation"),
+    "TEMP audit observes actual automated evaluation writes",
+  );
+  equal(
+    automated.filter((item) => !allowed.has(item.table_name)),
+    [],
+    "whole lifecycle TEMP audit detects no forbidden automation business writes",
+  );
+  equal(
+    automated.filter((item) => ["task", "task_event", "message"].includes(item.table_name)),
+    [],
+    "judge and scheduler do not mutate Task or manufacture messages",
+  );
+  equal(
+    transitions.filter((item) => item.actor !== "human" && item.actor !== "owner"),
+    [],
+    "Task status transitions originate exclusively in Human or owner commands",
+  );
 }
 const crashState = join(directory, "crash-state.json");
 if (mode === "crash") {
@@ -341,11 +448,14 @@ try {
       "repeated startup cannot requeue delivered input",
     );
   } else {
-    sqlite
-      .prepare(
-        "INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES(?,?,?,0,1,1)",
-      )
-      .run(ctx.userId, "Lifecycle Human", "lifecycle@sprout.test");
+    if (mode === "main") installWriteAudit();
+    human(() =>
+      sqlite
+        .prepare(
+          "INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES(?,?,?,0,1,1)",
+        )
+        .run(ctx.userId, "Lifecycle Human", "lifecycle@sprout.test"),
+    );
     if (mode === "crash") {
       const owner = seed("crash-only");
       const chat = group(owner, "崩溃恢复");
@@ -440,6 +550,42 @@ try {
         undefined,
         "second writer cannot claim the leased epoch",
       );
+      const input = requests.at(-1)!;
+      const losingResult: WakeEvaluationResult = {
+        decision: "continue",
+        reason: "Losing claim must never commit.",
+        reasonCode: "fixture_continue",
+        recipients: input.candidates.map((candidate) => ({
+          recipient: candidate.recipient,
+          decision: "yes",
+          reason: "current owner",
+          probability: null,
+        })),
+        selectedRecipients: input.candidates.map((candidate) => candidate.recipient),
+        probability: null,
+        provider: input.policy.provider,
+        ...(input.policy.model ? { model: input.policy.model } : {}),
+        version: input.policy.thresholdVersion,
+        snapshotHash: input.snapshotHash,
+        errorCode: null,
+      };
+      equal(
+        delivery.commitEvaluationResult(
+          { ...claimed, claim_token: `${claimed.claim_token}:loser` },
+          input,
+          losingResult,
+          new Date(),
+        ),
+        null,
+        "losing claim token fails CAS before writing receipt or delivery",
+      );
+      equal(
+        latest(chat.id).claim_token,
+        claimed.claim_token,
+        "losing writer cannot overwrite winning claim token",
+      );
+      equal(latest(chat.id).result, null, "losing writer persists no successful receipt");
+      equal(deliveries(chat.id).length, 0, "losing writer creates no continuation delivery");
       held.release();
       held = undefined;
       await Promise.all([scheduler.settled(), competitor.settled()]);
@@ -457,7 +603,21 @@ try {
       const chats = owners.flatMap((owner) =>
         [0, 1].map((index) => {
           const chat = group(owner, `${owner.project.name}-${index}`);
-          assigned(owner.project.id, chat.id, `${owner.project.name} 机密任务 ${index}`);
+          const work = assigned(
+            owner.project.id,
+            chat.id,
+            `${owner.project.name} 机密任务 ${index}`,
+          );
+          human(() =>
+            task.appendTaskRecord(
+              {
+                taskId: work.task.id,
+                expectedRevision: work.task.revision,
+                body: `${owner.project.name} 私密正文 ${index}`,
+              },
+              ctx,
+            ),
+          );
           return { owner, chat };
         }),
       );
@@ -470,6 +630,10 @@ try {
         const input = requests.slice(before).find((item) => item.chatId === chat.id)!;
         ok(input, "each Chat receives its own snapshot");
         const foreign = owners.find((candidate) => candidate.project.id !== owner.project.id)!;
+        ok(
+          JSON.stringify(input).includes(`${owner.project.name} 私密正文`),
+          "snapshot includes its own real message body canary",
+        );
         equal(
           JSON.stringify(input).includes(foreign.project.name),
           false,
@@ -511,9 +675,15 @@ try {
         equal(evaluation.state, "claimed", "Human race starts with an in-flight evaluation");
         const messages = count("message", chat.id);
         if (change === "reassign")
-          task.reassignTask(
-            { taskId: work.task.id, expectedRevision: work.task.revision, targetChatId: target.id },
-            ctx,
+          human(() =>
+            task.reassignTask(
+              {
+                taskId: work.task.id,
+                expectedRevision: work.task.revision,
+                targetChatId: target.id,
+              },
+              ctx,
+            ),
           );
         else control(owner.project.id, chat.id, change);
         held.release();
@@ -526,12 +696,14 @@ try {
           control: schedule.controlFor(chat.id),
           deliveries: deliveries(chat.id),
           runs: count("agent_run", chat.id),
+          runInputs: runInputCount(chat.id),
           messages: count("message", chat.id),
           schedule: row(chat.id) ?? null,
           task: task.getTaskDetail(work.task.id, ctx).task,
         });
         equal(count("continuation_delivery", chat.id), 0, `${change} admits zero stale deliveries`);
-        equal(count("agent_run", chat.id), 0, `${change} creates zero run inputs`);
+        equal(count("agent_run", chat.id), 0, `${change} creates zero runs`);
+        equal(runInputCount(chat.id), 0, `${change} creates zero run inputs`);
         equal(count("message", chat.id), messages, `${change} creates zero stale messages`);
         equal(row(chat.id), undefined, `${change} immediately removes automatic schedule`);
         await scheduler.advance();
@@ -568,7 +740,12 @@ try {
         "all assigned Tasks survive budget rejection",
       );
       for (const detail of tasks.slice(1))
-        task.unassignTask({ taskId: detail.task.id, expectedRevision: detail.task.revision }, ctx);
+        human(() =>
+          task.unassignTask(
+            { taskId: detail.task.id, expectedRevision: detail.task.revision },
+            ctx,
+          ),
+        );
       const retried = await due(chat.id);
       equal(
         retried.state,
@@ -591,48 +768,7 @@ try {
       const owner = seed("authority");
       const chat = group(owner, "判定和调度写边界");
       const work = assigned(owner.project.id, chat.id);
-      // Provision the identity before the observed automation window; identity setup is not a model decision.
-      schedule.ensureResponsibleInstance(chat.id, new Date());
-      const tables = schedule
-        .all<{ name: string }>(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
-        )
-        .map((item) => item.name);
-      sqlite.exec("CREATE TEMP TABLE lifecycle_mutations(table_name TEXT, operation TEXT)");
-      for (const [index, table] of tables.entries())
-        for (const operation of ["INSERT", "UPDATE", "DELETE"]) {
-          sqlite.exec(
-            `CREATE TEMP TRIGGER lifecycle_${index}_${operation} AFTER ${operation} ON main."${table}" BEGIN INSERT INTO lifecycle_mutations VALUES('${table}','${operation}'); END`,
-          );
-        }
-      const allowed = new Set([
-        "chat",
-        "message",
-        "task",
-        "task_event",
-        "machine_lease",
-        "lease_authorization",
-        "lease_mutation",
-        "agent_run",
-        "agent_run_input",
-        "agent_run_task",
-        "chat_schedule",
-        "chat_automation_control",
-        "wake_evaluation",
-        "wake_evaluation_task",
-        "continuation_delivery",
-        "continuation_delivery_task",
-      ]);
       await due(chat.id);
-      const writes = schedule.all<{ table_name: string; operation: string; n: number }>(
-        "SELECT table_name,operation,count(*) AS n FROM lifecycle_mutations GROUP BY table_name,operation",
-      );
-      log("automation-table-writes", writes);
-      equal(
-        writes.filter((item) => !allowed.has(item.table_name)),
-        [],
-        "TEMP triggers detect no automation writes outside authorized business and scheduling tables",
-      );
       equal(
         task.getTaskDetail(work.task.id, ctx).task.status,
         "assigned",
@@ -643,14 +779,11 @@ try {
         0,
         "scheduler and evaluator cannot manufacture owner speech",
       );
-      for (const [index] of tables.entries())
-        for (const operation of ["INSERT", "UPDATE", "DELETE"])
-          sqlite.exec(`DROP TRIGGER lifecycle_${index}_${operation}`);
       control(owner.project.id, chat.id, "pause");
     }
     if (!scenario || scenario === "recovery") {
       async function child(childMode: string) {
-        return await new Promise<{
+        const outcome = await new Promise<{
           code: number | null;
           signal: NodeJS.Signals | null;
           stdout: string;
@@ -682,6 +815,14 @@ try {
             done({ code, signal, stdout });
           });
         });
+        const rows = readFileSync(join(root, "run", `${runId}-${childMode}.jsonl`), "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as { event: string; data: { passed?: boolean } });
+        childAssertions += rows.filter(
+          (entry) => entry.event === "assertion" && entry.data.passed,
+        ).length;
+        return outcome;
       }
       const killed = await child("crash");
       equal(
@@ -704,20 +845,25 @@ try {
         "second fresh runtime proves no duplicate admission",
       );
     }
+    if (mode === "main") assertWriteAudit();
   }
   log("result", {
     status: "passed",
-    assertions,
+    assertions: assertions + childAssertions,
+    ownAssertions: assertions,
+    childAssertions,
     durationMs: performance.now() - startedAt,
     database: process.env.DATABASE_URL,
   });
   console.log(
-    `PASS p6a-lifecycle: ${assertions} assertions; real SQLite ${process.env.DATABASE_URL}`,
+    `PASS p6a-lifecycle: ${assertions + childAssertions} assertions; real SQLite ${process.env.DATABASE_URL}`,
   );
 } catch (error) {
   log("result", {
     status: "failed",
-    assertions,
+    assertions: assertions + childAssertions,
+    ownAssertions: assertions,
+    childAssertions,
     durationMs: performance.now() - startedAt,
     error: String(error),
     stack: error instanceof Error ? error.stack : null,
