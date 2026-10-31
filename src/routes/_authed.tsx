@@ -13,8 +13,10 @@ export const Route = createFileRoute("/_authed")({
     if (import.meta.env.SSR) return { human: null };
     const result = await getProtectedSession();
     if (!result.ok) {
-      if (result.error.code === "unauthorized")
-        throw redirect({ to: "/login", search: { next: safeReturnTarget(location.href) } });
+      if (result.error.code === "unauthorized") {
+        const next = safeReturnTarget(location.href);
+        throw redirect(next === "/" ? { to: "/login" } : { to: "/login", search: { next } });
+      }
       throw new Error(result.error.message);
     }
     return { human: result.data };
