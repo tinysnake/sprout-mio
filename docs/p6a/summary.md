@@ -21,7 +21,9 @@ Human 体验确认：**尚无确认版本**。
 
 ## 功能线证据
 
-基线 `bde6383`。本轮实际执行，全部 exit 0：
+基线 `bde6383`
+
+证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-scheduler.sh`、`bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`、`bash scripts/verify/p6a-integration.sh`。。本轮实际执行，全部 exit 0：
 
 ```bash
 bash scripts/verify/p6a-scheduler.sh   # 23 条断言
@@ -45,7 +47,9 @@ bash scripts/verify/p6a-integration.sh # 13 条断言
 
 ## ui-线证据
 
-基线 `bde6383`。复跑：
+基线 `bde6383`
+
+证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-pages.sh`。。复跑：
 
 ```bash
 bash scripts/verify/p6a-pages.sh
@@ -61,14 +65,16 @@ bash scripts/verify/p6a-pages.sh
 | 拒绝原因与错误码可见                               | 实测 | `*_denial_reason_and_code`、`*_unknown_requires_explicit_confirmation`                                                                                                                                                                                           |
 | 普通信息可见性与正文/操作权分离                    | 引用 | 第二轮验收判据 8 的 17 条 authz 探针，见 [集成线与技术验收证据](#集成线与技术验收证据)；本轮未重跑                                                                                                                                                               |
 
-页面形状来源：Human 选定方案 A（`orchestrate/sprout-mio-p6/ui/design-a.html`，该目录只存在于主 checkout，本 worktree 未纳入 Git），三条视觉必修项来自视觉评审，落实记录见 [P6a UI 实现报告](../../orchestrate/sprout-mio-p6/reports/p6a-ui-report.md)。**引用**
+页面形状来源：Human 选定方案 A（`orchestrate/sprout-mio-p6/ui/design-a.html`，该目录只存在于主 checkout，本 worktree 未纳入 Git），三条视觉必修项来自视觉评审，落实记录见 `p6a-ui-report.md`（编排目录，不进本仓库）。**引用**
 
 ## 集成线与技术验收证据
 
+
+证据提交 `bde6383`：重跑 `bash scripts/verify/bf-p6a-lifecycle.sh`。
 | 结论                                                 | 级别 | 证据                                                                                                                                                            |
 | ---------------------------------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 集成线完成接入与自检                                 | 实测 | `bf-p6a-lifecycle` exit 0、177 条断言（生产 `startRuntime()` + 真实 SQLite + 生产 scheduler，只替换模型边界）；`P6A_SCENARIO=stale` exit 0、52 条断言           |
-| 独立技术验收通过、可以合入 main                      | 引用 | 第二轮独立验收在 `303fbf5` 判定 12 条判据全部成立，结论「可以合入 main」，见 [第二轮验收报告](../../orchestrate/sprout-mio-p6/reports/p6a-acceptance-round2.md) |
+| 独立技术验收通过、可以合入 main                      | 引用 | 第二轮独立验收在 `303fbf5` 判定 12 条判据全部成立，结论「可以合入 main」，见 `p6a-acceptance-round2.md`（编排目录，不进本仓库） |
 | 9 条判据里与「自动行为不抵消人类控制」直接相关的两条 | 引用 | 同报告判据 6（人类控制优先）与判据 3（周期检查真的发生）                                                                                                        |
 | 既有 P5a/P5b 未被弄坏                                | 引用 | 第二轮验收判据 9：12 个回归门禁 exit 0、全量单元 84 文件 711 测试通过、CI `tasks` 11/11、`browser` 11/11                                                        |
 
@@ -105,6 +111,8 @@ P6A_SCENARIO=stale bash scripts/verify/bf-p6a-lifecycle.sh
 
 ## 控制面收敛到三个动作
 
+
+证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-control.sh`、`bash scripts/verify/p6a-pages.sh`。
 结论：控制面最终只有 `enabled` / `off` 两态，只有 **enable / disable / abort** 三个改态动作；`retry` 与 `reissue` 是针对单份判定与单份投递的运维动作，不改 `mode`、不改 `epoch`（`retry` 会递增 `revision` 并把 `next_due_at` 提前到当下，`reissue` 另建一份新 delivery identity 并链接原未知投递）。
 
 收敛过程：原型与早期实现里有 `paused` / `stopped` 两个独立状态，Human 在 m02876 指出「暂停自动接续」与「全部停止」在页面上读起来像同一件事。协调者据此裁定收敛为两态三动作，并用一条判据把区别钉住：
@@ -120,11 +128,13 @@ P6A_SCENARIO=stale bash scripts/verify/bf-p6a-lifecycle.sh
 
 ## 判定准确率只报不判
 
-Human 在 m02131 的原话裁决：判定准确率**只报不判**。也就是说准确率是给人看的测量量，不是门禁的布尔条件。这条已经落进判据（[live 判据与实测](../../orchestrate/sprout-mio-p6/reports/p6a-live-policy.md#协调者修正2026-10-31)），不是口头约定。
+
+证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-live-routing.sh`（人工门禁，需真实凭据与 `SPROUT_VERIFY_PI_MODEL`）。
+Human 在 m02131 的原话裁决：判定准确率**只报不判**。也就是说准确率是给人看的测量量，不是门禁的布尔条件。这条已经落进判据（见 `p6a-live-policy.md` 的「协调者修正」一节，编排目录、不进本仓库），不是口头约定。
 
 门禁真正判的是结构性错误，与模型概率无关：候选集之外的接收者、任何副作用写入（run/message/input 非零）、快照哈希不一致、同一样本多次调用、以及「已付费响应必须完全合契约」。未取得付费响应时只允许 `provider_unavailable` / `provider_timeout` / `provider_invalid_response`，且每 provider 每轮最多容忍 1 次。**引用**
 
-小脑的真实回放记录（8 条固定 live 输入，未改期望、无重试）：**共 5 次真实回放，8/8、7/8、8/8、8/8、7/8**。前四次记在 [live 判据与实测](../../orchestrate/sprout-mio-p6/reports/p6a-live-policy.md#两次真实运行) 与同文「协调者修正」两节，第五次是第二轮独立验收自己跑的一次（`small_brain 12,641 tokens`，7/8，exit 0）。**引用**（本轮没有重跑 live 门禁）
+小脑的真实回放记录（8 条固定 live 输入，未改期望、无重试）：**共 5 次真实回放，8/8、7/8、8/8、8/8、7/8**。前四次记在 `p6a-live-policy.md` 的「两次真实运行」与「协调者修正」两节，第五次是第二轮独立验收自己跑的一次（`small_brain 12,641 tokens`，7/8，exit 0）。**引用**（本轮没有重跑 live 门禁）
 
 一处口径更正：本轮派工单写的是「三轮回放 8/8、7/8、8/8」。按可查记录实际是 **5 次**（多出协调者修正后的第二轮 8/8 与验收轮自己的 7/8）。本文以记录为准，不把次数改小到与派工单一致。
 
@@ -143,7 +153,7 @@ JEV 在这套中文样本上**不可用**，产品不部署它：
 因此成本事实只存在于两处，都不进产品库：
 
 - `p6a-live-routing` 的每轮收据（`.verify/p6a-live-routing/<UTC>/`，含每条样本的 usage 与 `summary.json`），不纳入 Git。**引用**
-- 校准报告与 [live 报告](../../orchestrate/sprout-mio-p6/reports/p6a-live-policy.md) 里的累计数字。**引用**
+- 校准报告与 `p6a-live-policy.md` 里的累计数字（两份都在编排目录、不进本仓库）。**引用**
 
 已知的真实花费：live 报告两轮 32 次调用、32 次拿到计费 usage；第二轮验收一次 16 次付费调用、29,657 tokens（small_brain 12,641、JEV 17,016）。**引用**
 
@@ -183,14 +193,14 @@ node scripts/verify/targets.test.mjs
 
 这条结论来自第一轮验收发现的产品缺陷（在途判定期间暂停，结果落成 `canceled` 而不是 `stale`），修复后被独立复证过两次：
 
-1. **第一轮修复**：`integration/p6a` 的 `b837f82` 把 `p6a_control_disabled` 改成只把 `pending` 标 `canceled`、把 `claimed` 与 `retry_wait` 标 `stale`。复验命令 `P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh` exit 0、当时 35 条断言通过（本轮同一命令 exit 0、52 条断言，断言数随门禁加固增长），见 [I-P6a 章节集成验证](../../orchestrate/sprout-mio-p6/reports/p6a-int-report.md#协调者修复--复验)。**引用**
-2. **第二轮独立复证**：验收者不只看门禁，另用独立探针重跑了一遍：`/tmp/p6a-r2-probes/out/control.log` 记录在途判定期间 disable 后 `epoch+1`、`mode=off`、timer 删除，晚到结果落 `stale`、`result` 为 `null`、delivery=0；`/tmp/p6a-r2-probes/out/migration.log` 记录升级前 paused 行的在途结果落地为 `stale/result=null`、pending delivery 变 `canceled/human_disabled`，stopped 行的 claimed evaluation 由第一次 `recoverSchedules` 变 `stale` 并删掉 timer。见 [第二轮验收报告](../../orchestrate/sprout-mio-p6/reports/p6a-acceptance-round2.md) 的「12 条判据」第 6 项与「升级路径」小节。**引用**（验收者执行，本轮未重跑其探针）
+1. **第一轮修复**：`integration/p6a` 的 `b837f82` 把 `p6a_control_disabled` 改成只把 `pending` 标 `canceled`、把 `claimed` 与 `retry_wait` 标 `stale`。复验命令 `P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh` exit 0、当时 35 条断言通过（本轮同一命令 exit 0、52 条断言，断言数随门禁加固增长），见 `p6a-int-report.md` 的「协调者修复 + 复验」一节（编排目录，不进本仓库）。**引用**
+2. **第二轮独立复证**：验收者不只看门禁，另用独立探针重跑了一遍：`/tmp/p6a-r2-probes/out/control.log` 记录在途判定期间 disable 后 `epoch+1`、`mode=off`、timer 删除，晚到结果落 `stale`、`result` 为 `null`、delivery=0；`/tmp/p6a-r2-probes/out/migration.log` 记录升级前 paused 行的在途结果落地为 `stale/result=null`、pending delivery 变 `canceled/human_disabled`，stopped 行的 claimed evaluation 由第一次 `recoverSchedules` 变 `stale` 并删掉 timer。见 `p6a-acceptance-round2.md` 的「12 条判据」第 6 项与「升级路径」小节（编排目录，不进本仓库）。**引用**（验收者执行，本轮未重跑其探针）
 
 这条之所以值得单列：它是「自动行为不抵消人类控制」的唯一硬证据形式。落成 `canceled` 会让「已经付出去的判定」和「从没发生的判定」在库里长得一样，事后无法区分到底是 Human 抢在前面还是系统漏了一次。
 
 ## 第一轮验收缺陷的关闭证据
 
-第一轮验收共留 9 条：1 条 P1、4 条 P2、4 条 P3。逐条去向如下，全部指向 [门禁加固报告](../../orchestrate/sprout-mio-p6/reports/p6a-gate-hardening-report.md) 与 [第二轮验收报告](../../orchestrate/sprout-mio-p6/reports/p6a-acceptance-round2.md) 的「第一轮 P1/P2/P3 复核」表。
+第一轮验收共留 9 条：1 条 P1、4 条 P2、4 条 P3。逐条去向如下，全部对应 `p6a-gate-hardening-report.md` 与 `p6a-acceptance-round2.md` 的「第一轮 P1/P2/P3 复核」表（两份都在编排目录，不进本仓库）。
 
 | 编号 | 内容                                                 | 状态               | 关闭证据                                                                                                                                                                                                                                  |
 | ---- | ---------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -297,8 +307,12 @@ PROBE_BASE=integration/p6a bash scripts/verify/l-docs-probes.sh
 
 ## 已知限制
 
+
+本节结论对应的提交 `bde6383`；复现其中任一条的最小证据请重跑 `bash scripts/verify/p6a-pages.sh` 或 `bash scripts/verify/p6a-control.sh`。
 ### P3-2 disable 的页面文案
 
+
+证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-pages.sh`。
 页面用「暂停自动接续」表示 `disable`，而契约与协议里只有 `enabled` / `off`；旁边的「全部停止」是 `abort`。两个词读起来像同一类事情，差别（一个不中止当前轮次、一个中止）只在卡片正文里解释。
 
 协调者裁定：`disable` 不中止当前轮次、`abort` 才中止，这是**语义**结论；这个语义差别由 Human 体验确认时一并裁决是否改文案。本轮不改文案，也不改测试（`tests/fixtures/p6a-pages-browser.ts:124,150,178` 仍按「暂停自动接续」定位按钮）。**实测**（本轮执行 `grep -n "暂停自动接续" tests/fixtures/p6a-pages-browser.ts` 命中 124、150、178 行；第二轮验收 P3-2 亦判未关闭）

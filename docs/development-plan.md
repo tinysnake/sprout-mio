@@ -273,7 +273,7 @@ P6 原先“暂按整章集成”是契约未冻结时的暂定安排；现按�
 
 - [x] 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6a 功能线证据](p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`、`bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`；已知限制见 [P6a 已知限制](p6a/summary.md#已知限制)。
 - [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P6a UI 线证据](p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；页面形状为 Human 选定的方案 A。
-- [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P6a 集成线与技术验收证据](p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/bf-p6a-lifecycle.sh`；第二轮独立验收在 `303fbf5` 判「可以合入 main」，见 [第二轮验收报告](../orchestrate/sprout-mio-p6/reports/p6a-acceptance-round2.md)。
+- [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P6a 集成线与技术验收证据](p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/bf-p6a-lifecycle.sh`；第二轮独立验收在 `303fbf5` 判「可以合入 main」（验收报告在编排目录，不进本仓库）。
 - [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。
 
 本章技术交付基线为 `bde6383`，契约与总结见 [P6a 契约](p6a/contracts.md)和[P6a 章节结论](p6a/summary.md)。前三条按证据勾选；Human 体验确认尚未进行，尚无确认版本，第四条保持待办。本轮只改文档，`l-docs` 仍把本章钉成「必须留空」，失败原文与处置见 [计划状态与本轮门禁冲突](p6a/summary.md#计划状态与本轮门禁冲突)。

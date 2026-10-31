@@ -61,7 +61,7 @@
 | `run_repeated_failure`      | 同一 run 反复失败    | 达到 `repeatedRunFailureLimit`           |
 | `internal_failure`          | Sprout 自身失败      | 非上述原因                               |
 
-`provider_low_certainty` 是**合法结果**而非失败：它参与准确率测量，不阻断投递判定流程，也不触发自动降级。**引用**（判据见 [live 判据与实测](../../orchestrate/sprout-mio-p6/reports/p6a-live-policy.md#判据)）
+`provider_low_certainty` 是**合法结果**而非失败：它参与准确率测量，不阻断投递判定流程，也不触发自动降级。**引用**（判据见 `p6a-live-policy` 报告的「判据」一节；该报告写在编排目录，不进本仓库）
 
 ### `wakeEvaluationResultForInputSchema` 的绑定语义
 
