@@ -67,6 +67,9 @@ export const CI_GROUPS = Object.freeze({
     "as-p5b-task-pages",
     "p6a-pages",
     "bf-p6b-pages",
+    "bf-p6b-info",
+    "bf-p6b-turn-context",
+    "bf-p6b-agent-tool",
   ],
 });
 
