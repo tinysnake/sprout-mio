@@ -11,6 +11,7 @@ import {
   mcpSessionOpenOutputSchema,
 } from "../contracts/mcp";
 import {
+  chatAutomationGetResponseSchema,
   executionCancellationViewSchema,
   executionLogReadViewSchema,
   executionViewSchema,
@@ -42,6 +43,7 @@ const leaseReadSchema = z.strictObject({
   mutation: leaseMutationViewSchema.nullable(),
 });
 type RemoteData =
+  | z.infer<typeof chatAutomationGetResponseSchema>
   | z.infer<typeof taskGetResponseSchema>
   | z.infer<typeof taskListResponseSchema>
   | z.infer<typeof taskMutateResponseSchema>
@@ -72,6 +74,15 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   if (!envelope.success) return { outcome: "unknown", reason: "invalid_response" };
   if (!envelope.data.ok) return { outcome: "response", result: envelope.data };
   const { call } = request;
+  if (call.type === "chat_automation_get") {
+    const parsed = chatAutomationGetResponseSchema.safeParse(envelope.data.data);
+    return parsed.success && parsed.data.projectId === call.input.projectId
+      ? {
+          outcome: "response",
+          result: { ok: true, data: parsed.data, requestId: envelope.data.requestId },
+        }
+      : { outcome: "unknown", reason: "invalid_response" };
+  }
   const taskResponse = readTaskChatResponse(envelope.data, request);
   if (taskResponse) return taskResponse;
   if (

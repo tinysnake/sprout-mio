@@ -26,6 +26,9 @@ import { readChatEffectiveMembers } from "./channel";
 import { getChat, ensureInstance, sendMessage } from "./chat";
 import { cancelInvalidTaskStartInputs } from "./task-input";
 import { routeWakeCandidates } from "./chat-wake";
+import { persistAutomationRunStop } from "./chat-automation";
+import { controlFor } from "./chat-schedule";
+import { settleContinuationRun } from "./continuation-delivery";
 import { taskResponsibilityFacts, TaskError } from "./task-capabilities";
 
 export class AgentRunError extends Error {
@@ -120,11 +123,12 @@ function diagnostic(
   event: string,
   detail: string,
   level: "info" | "warn" | "error" = "info",
+  now: Date = new Date(),
 ) {
   db.insert(diagnosticEvent)
     .values({
       id: newId(ID_PREFIXES.diagnostic),
-      at: new Date(),
+      at: now,
       level,
       event,
       requestId: row.requestId,
@@ -144,6 +148,7 @@ function diagnostic(
 function activeRunFor(
   scope: { instanceId: string; chatId: string; projectId: string },
   requestId: string,
+  now?: Date,
 ): typeof agentRun.$inferSelect {
   const active = db
     .select()
@@ -171,11 +176,21 @@ function activeRunFor(
       requestId,
       status: "queued",
       sessionId: scope.instanceId,
+      ...(now ? { queuedAt: now } : {}),
     })
     .returning()
     .get();
-  diagnostic(created, "agent_run.queued", "Agent run 已排队");
+  diagnostic(created, "agent_run.queued", "Agent run 已排队", "info", now);
   return created;
+}
+
+/** Trusted internal allocator; callers revalidate control and responsibility under the writer lock. */
+export function allocateContinuationRun(
+  scope: { instanceId: string; chatId: string; projectId: string },
+  requestId: string,
+  now: Date,
+) {
+  return activeRunFor(scope, requestId, now);
 }
 
 /** 这条消息是否已经属于该 instance 的某条 run（任何状态）。 */
@@ -275,6 +290,7 @@ export function appendTaskStartRunInput(messageId: string, ctx: ProjectContext):
  * 这两类的处置语义归后续阶段，不在这里用猜测的理由取消。
  */
 function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, requestId: string): void {
+  if (controlFor(run.chatId).mode !== "enabled") return;
   const pending = db
     .select({ messageId: agentRunInput.messageId })
     .from(agentRunInput)
@@ -342,6 +358,7 @@ function fanoutHumanMessage(
   ctx: ProjectContext,
   ownerAgent = false,
 ): void {
+  if (controlFor(current.id).mode !== "enabled") return;
   const members = readChatEffectiveMembers(current.id, current.projectId);
   // 派发契约只带 id → 名字的字典与消息内容；规则函数要的其余成员事实仍由视图给全。
   const dispatch: ChatWakeDispatch = {
@@ -499,6 +516,7 @@ export function transitionAgentRun(
         `Agent run ${status}`,
         status === "failed" ? "error" : status === "interrupted" ? "warn" : "info",
       );
+      settleContinuationRun(id, status, updated.settledAt ?? updated.startedAt!);
       return toRun(updated);
     })
     .immediate();
@@ -568,7 +586,13 @@ export function recordRunInputDeliveryFailure(
 }
 
 export function abortAgentRun(id: string, ctx: ProjectContext): AgentRun {
-  return transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
+  return sqlite
+    .transaction(() => {
+      const row = runRow(id, ctx);
+      persistAutomationRunStop(row.chatId, [id], ctx, new Date());
+      return transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
+    })
+    .immediate();
 }
 
 export function completeAgentRun(

@@ -5,6 +5,7 @@ import {
   fieldErrorsFrom,
   projectIdInput,
   updateProjectInput,
+  updateProjectWakePolicyInputSchema,
 } from "../../contracts/project";
 import type { Project, ProjectResult } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
@@ -128,6 +129,38 @@ export async function updateProjectBoundary(
     return ok(deps.updateProject(id.data.projectId, parsed.data, context), requestId);
   });
 }
+
+export async function updateProjectWakePolicyBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ProjectResult<Project>> {
+  return projectBoundary<Project>(headers, requestId, (deps, context) => {
+    const parsed = updateProjectWakePolicyInputSchema.safeParse(raw);
+    if (!parsed.success) return fail(toAppError(parsed.error, requestId));
+    const model =
+      parsed.data.provider === "jev"
+        ? process.env.SPROUT_WAKE_JEV_MODEL
+        : process.env.SPROUT_WAKE_SMALL_BRAIN_MODEL;
+    const thresholdVersion = process.env.SPROUT_WAKE_THRESHOLD_VERSION;
+    if (!model || !thresholdVersion)
+      return fail({
+        code: "wake_provider_unavailable",
+        message: "所选判定器尚未配置模型与阈值版本。",
+        requestId,
+      });
+    return ok(
+      deps.updateProjectWakePolicy(parsed.data, context, { model, thresholdVersion }, new Date()),
+      requestId,
+    );
+  });
+}
+
+export const updateProjectWakePolicyFn = createServerFn({ method: "POST" })
+  .validator((raw: unknown) => raw)
+  .handler(async ({ data }) =>
+    updateProjectWakePolicyBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
 
 export const createProjectFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)

@@ -1,3 +1,4 @@
+import type { AutomationScheduler } from "./automation-scheduler";
 import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
 import { ID_PREFIXES, newId } from "../contracts/ids";
@@ -38,6 +39,7 @@ type RuntimeState = {
   connection: DatabaseConnection | null;
   managed: ManagedRuntime.ManagedRuntime<RuntimeDatabase | PiHost, never> | null;
   piHost: PiHostShape | null;
+  automation: AutomationScheduler | null;
   piHostStop: Promise<void> | null;
   ready: Promise<void>;
   resolveReady: () => void;
@@ -66,6 +68,7 @@ function createState(): RuntimeState {
     connection: null,
     managed: null,
     piHost: null,
+    automation: null,
     piHostStop: null,
     ready,
     resolveReady,
@@ -236,6 +239,9 @@ async function initializeRuntime() {
     sqlite.prepare("UPDATE runtime_boot SET phase = 'ready' WHERE id = ?").run(bootId);
     transition("ready");
     if (config.SPROUT_PI_ENABLED) await state.managed.runPromise(startPiHost);
+    const { createAutomationScheduler } = await import("./automation-scheduler");
+    state.automation = createAutomationScheduler({ abort: signalRunAbort });
+    state.automation.start();
     recordDiagnostic({
       level: "info",
       event: "runtime.ready",
@@ -245,6 +251,7 @@ async function initializeRuntime() {
     });
     state.resolveReady();
   } catch (error) {
+    state.automation?.stop();
     failPhase(error);
     state.rejectReady(error);
     await state.managed?.dispose();
@@ -273,6 +280,7 @@ export function shutdownRuntime(reason: string): Promise<void> {
 }
 
 function stopPiHostOnce(): Promise<void> {
+  state.automation?.stop();
   return (state.piHostStop ??= state.managed?.cachedContext
     ? state.managed.runPromise(stopPiHost)
     : Promise.resolve());

@@ -40,19 +40,31 @@ type DomainErrorClass = abstract new (...args: never[]) => Error & {
 };
 
 async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
-  const [project, agent, access, chat, agentRun, repository, machine, lease, remote, task] =
-    await Promise.all([
-      import("../../domain/project"),
-      import("../../domain/agent"),
-      import("../../domain/access"),
-      import("../../domain/chat"),
-      import("../../domain/agent-run"),
-      import("../../domain/repository"),
-      import("../../domain/machine"),
-      import("../lease"),
-      import("../remote"),
-      import("../../domain/task"),
-    ]);
+  const [
+    project,
+    agent,
+    access,
+    chat,
+    agentRun,
+    repository,
+    machine,
+    lease,
+    remote,
+    task,
+    automation,
+  ] = await Promise.all([
+    import("../../domain/project"),
+    import("../../domain/agent"),
+    import("../../domain/access"),
+    import("../../domain/chat"),
+    import("../../domain/agent-run"),
+    import("../../domain/repository"),
+    import("../../domain/machine"),
+    import("../lease"),
+    import("../remote"),
+    import("../../domain/task"),
+    import("../../domain/chat-automation"),
+  ]);
   return [
     project.ProjectError,
     agent.AgentError,
@@ -64,6 +76,7 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
     lease.LeaseError,
     remote.RemoteError,
     task.TaskError,
+    automation.ChatAutomationError,
   ];
 }
 

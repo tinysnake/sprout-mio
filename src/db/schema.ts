@@ -12,6 +12,9 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { ProjectWakePolicy } from "../contracts/project-wake-policy";
+import type { WakeEvaluationInput, WakeEvaluationResult } from "../contracts/wake-evaluation";
+import type { ContinuationInputEnvelope } from "../contracts/chat-automation";
 import { TASK_STATUSES } from "../contracts/task";
 import { TASK_ACTIONS } from "../contracts/task-capabilities";
 import { user } from "./auth-schema";
@@ -43,6 +46,7 @@ export const project = sqliteTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    wakePolicy: text("wake_policy", { mode: "json" }).$type<ProjectWakePolicy>(),
     description: text("description"),
     createdBy: text("created_by")
       .notNull()
@@ -603,6 +607,253 @@ export const taskEvent = sqliteTable(
     ),
   ],
 );
+
+export const projectWakePolicyCommand = sqliteTable("project_wake_policy_command", {
+  requestId: text("request_id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => project.id),
+  payload: text("payload").notNull(),
+  result: text("result").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const chatAutomationControl = sqliteTable(
+  "chat_automation_control",
+  {
+    chatId: text("chat_id")
+      .primaryKey()
+      .references(() => chat.id),
+    mode: text("mode", { enum: ["enabled", "paused", "stopped"] })
+      .notNull()
+      .default("enabled"),
+    epoch: integer("epoch").notNull().default(1),
+    revision: integer("revision").notNull().default(1),
+    changedBy: text("changed_by").references(() => user.id),
+    changedAt: integer("changed_at"),
+    reason: text("reason"),
+  },
+  (t) => [
+    check("automation_mode_check", sql`${t.mode} in ('enabled','paused','stopped')`),
+    check(
+      "automation_revision_check",
+      sql`${t.epoch} between 1 and 9007199254740991 and ${t.revision} between 1 and 9007199254740991`,
+    ),
+    check("automation_audit_check", sql`(${t.changedBy} is null) = (${t.changedAt} is null)`),
+  ],
+);
+
+export const chatSchedule = sqliteTable(
+  "chat_schedule",
+  {
+    chatId: text("chat_id").primaryKey(),
+    projectId: text("project_id").notNull(),
+    nextDueAt: integer("next_due_at"),
+    round: integer("round").notNull().default(0),
+    fingerprint: text("fingerprint").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    index("chat_schedule_due_idx").on(t.nextDueAt),
+    check("chat_schedule_round_check", sql`${t.round} >= 0`),
+  ],
+);
+
+export const wakeEvaluation = sqliteTable(
+  "wake_evaluation",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    source: text("source").notNull().default("task_periodic"),
+    round: integer("round").notNull(),
+    controlEpoch: integer("control_epoch").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    state: text("state").notNull(),
+    attempt: integer("attempt").notNull().default(0),
+    claimToken: text("claim_token"),
+    leaseUntil: integer("lease_until"),
+    nextAttemptAt: integer("next_attempt_at"),
+    input: text("input", { mode: "json" }).$type<WakeEvaluationInput>(),
+    result: text("result", { mode: "json" }).$type<WakeEvaluationResult>(),
+    errorCode: text("error_code"),
+    requestId: text("request_id").notNull(),
+    createdAt: integer("created_at").notNull(),
+    evaluatedAt: integer("evaluated_at"),
+  },
+  (t) => [
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    uniqueIndex("wake_evaluation_scope_unique").on(t.id, t.projectId, t.chatId),
+    uniqueIndex("wake_evaluation_project_unique").on(t.id, t.projectId),
+    uniqueIndex("wake_evaluation_round_unique").on(t.chatId, t.round),
+    uniqueIndex("wake_evaluation_active_unique")
+      .on(t.chatId)
+      .where(sql`${t.state} in ('pending','claimed','retry_wait')`),
+    check(
+      "wake_evaluation_state_check",
+      sql`${t.state} in ('pending','claimed','retry_wait','decided','attention','stale','canceled')`,
+    ),
+    check(
+      "wake_evaluation_attempt_check",
+      sql`${t.attempt} between 0 and 3 and ${t.round}>0 and ${t.controlEpoch}>0`,
+    ),
+    check(
+      "wake_evaluation_claim_check",
+      sql`(${t.state}='claimed' and ${t.claimToken} is not null and ${t.leaseUntil} is not null) or (${t.state}<>'claimed' and ${t.claimToken} is null and ${t.leaseUntil} is null)`,
+    ),
+  ],
+);
+
+export const wakeEvaluationTask = sqliteTable(
+  "wake_evaluation_task",
+  {
+    evaluationId: text("evaluation_id")
+      .notNull()
+      .references(() => wakeEvaluation.id),
+    taskId: text("task_id").notNull(),
+    projectId: text("project_id").notNull(),
+    revision: integer("revision").notNull(),
+    assignmentRevision: integer("assignment_revision").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.evaluationId, t.taskId] }),
+    foreignKey({ columns: [t.taskId, t.projectId], foreignColumns: [task.id, task.projectId] }),
+    foreignKey({
+      columns: [t.evaluationId, t.projectId],
+      foreignColumns: [wakeEvaluation.id, wakeEvaluation.projectId],
+    }),
+    check(
+      "wake_evaluation_task_revision_check",
+      sql`${t.revision}>0 and ${t.assignmentRevision}>0`,
+    ),
+  ],
+);
+
+export const continuationDelivery = sqliteTable(
+  "continuation_delivery",
+  {
+    id: text("id").primaryKey(),
+    evaluationId: text("evaluation_id").notNull(),
+    projectId: text("project_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    recipientKind: text("recipient_kind").notNull(),
+    recipientId: text("recipient_id").notNull(),
+    instanceId: text("instance_id").references(() => agentInstance.id),
+    runId: text("run_id"),
+    controlEpoch: integer("control_epoch").notNull(),
+    snapshotHash: text("snapshot_hash").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    state: text("state").notNull(),
+    attempt: integer("attempt").notNull().default(0),
+    envelope: text("envelope", { mode: "json" }).$type<ContinuationInputEnvelope>(),
+    createdAt: integer("created_at").notNull(),
+    admittedAt: integer("admitted_at"),
+    deliveredAt: integer("delivered_at"),
+    presentedAt: integer("presented_at"),
+    nextAttemptAt: integer("next_attempt_at"),
+    cancelReason: text("cancel_reason"),
+    errorCode: text("error_code"),
+    supersedesDeliveryId: text("supersedes_delivery_id"),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.evaluationId, t.projectId, t.chatId],
+      foreignColumns: [wakeEvaluation.id, wakeEvaluation.projectId, wakeEvaluation.chatId],
+    }),
+    foreignKey({
+      columns: [t.runId, t.instanceId, t.projectId, t.chatId],
+      foreignColumns: [agentRun.id, agentRun.instanceId, agentRun.projectId, agentRun.chatId],
+    }),
+    uniqueIndex("continuation_scope_unique").on(t.id, t.projectId, t.chatId),
+    uniqueIndex("continuation_project_unique").on(t.id, t.projectId),
+    uniqueIndex("continuation_evaluation_recipient_unique").on(
+      t.evaluationId,
+      t.recipientKind,
+      t.recipientId,
+    ),
+    uniqueIndex("continuation_pending_chat_unique")
+      .on(t.chatId)
+      .where(sql`${t.state} in ('pending','bound')`),
+    check(
+      "continuation_supersedes_check",
+      sql`${t.supersedesDeliveryId} is null or ${t.supersedesDeliveryId}<>${t.id}`,
+    ),
+    check(
+      "continuation_state_check",
+      sql`${t.state} in ('pending','bound','admitted','delivered','attention','canceled','presented','stale')`,
+    ),
+    check("continuation_attempt_check", sql`${t.attempt} between 0 and 3 and ${t.controlEpoch}>0`),
+    check(
+      "continuation_recipient_check",
+      sql`(${t.recipientKind}='human' and ${t.instanceId} is null and ${t.runId} is null and ${t.admittedAt} is null and ${t.deliveredAt} is null and ${t.state} in ('presented','stale','canceled')) or (${t.recipientKind}='agent' and ${t.instanceId} is not null and ${t.presentedAt} is null and ${t.state}<>'presented')`,
+    ),
+    check(
+      "continuation_admission_check",
+      sql`(${t.state} not in ('bound','admitted','delivered') or ${t.runId} is not null) and (${t.admittedAt} is null or (${t.runId} is not null and ${t.attempt}>0 and ${t.state} in ('admitted','delivered','attention'))) and (${t.state} not in ('admitted','delivered') or ${t.admittedAt} is not null)`,
+    ),
+    check(
+      "continuation_ack_check",
+      sql`(${t.state}='delivered') = (${t.deliveredAt} is not null) and (${t.deliveredAt} is null or ${t.deliveredAt}>=${t.admittedAt})`,
+    ),
+    check(
+      "continuation_cancel_check",
+      sql`(${t.state}='canceled') = (${t.cancelReason} is not null)`,
+    ),
+    check(
+      "continuation_retry_check",
+      sql`${t.nextAttemptAt} is null or (${t.state}='pending' and ${t.admittedAt} is null and ${t.attempt}<3)`,
+    ),
+    check(
+      "continuation_unknown_check",
+      sql`${t.errorCode} is null or ${t.errorCode}<>'delivery_unknown' or (${t.state}='attention' and ${t.admittedAt} is not null and ${t.nextAttemptAt} is null and ${t.deliveredAt} is null)`,
+    ),
+    check(
+      "continuation_attention_check",
+      sql`${t.state}<>'attention' or ${t.errorCode} is not null`,
+    ),
+  ],
+);
+
+export const continuationDeliveryTask = sqliteTable(
+  "continuation_delivery_task",
+  {
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => continuationDelivery.id),
+    taskId: text("task_id").notNull(),
+    projectId: text("project_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.deliveryId, t.taskId] }),
+    foreignKey({
+      columns: [t.deliveryId, t.projectId],
+      foreignColumns: [continuationDelivery.id, continuationDelivery.projectId],
+    }),
+    foreignKey({ columns: [t.taskId, t.projectId], foreignColumns: [task.id, task.projectId] }),
+  ],
+);
+
+export const chatAutomationCommand = sqliteTable("chat_automation_command", {
+  requestId: text("request_id").primaryKey(),
+  chatId: text("chat_id")
+    .notNull()
+    .references(() => chat.id),
+  payload: text("payload").notNull(),
+  result: text("result").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const chatAutomationAbort = sqliteTable("chat_automation_abort", {
+  runId: text("run_id")
+    .primaryKey()
+    .references(() => agentRun.id),
+  chatId: text("chat_id")
+    .notNull()
+    .references(() => chat.id),
+  requestedAt: integer("requested_at").notNull(),
+  signaledAt: integer("signaled_at"),
+});
 
 export const diagnosticEvent = sqliteTable(
   "diagnostic_event",

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
+  chatAutomationGetResponseSchema,
   remoteAgentRequestSchema,
   taskGetResponseSchema,
   taskListResponseSchema,
@@ -21,6 +22,7 @@ import {
   remoteToolGrant,
 } from "../db/schema";
 import type { ProjectContext } from "../domain/access";
+import { getChatAutomation } from "../domain/chat-automation";
 import { getTaskDetail, getTasksForChat, mutateTask } from "../domain/task";
 import { listMessages, sendMessage } from "../domain/chat";
 import { getChatSession } from "../domain/chat-session";
@@ -230,6 +232,7 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
         if (parsed.call.input.projectId !== actorContext.projectId)
           throw new RemoteError("not_found");
         switch (parsed.call.type) {
+          case "chat_automation_get":
           case "task_get":
           case "task_list":
           case "task_mutate":
@@ -249,6 +252,10 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
             const projectId = actorContext.projectId;
             const chatId = actorContext.chatId;
             switch (call.type) {
+              case "chat_automation_get":
+                return chatAutomationGetResponseSchema.parse(
+                  getChatAutomation(projectId, chatId, projectContext).view,
+                );
               case "task_get":
                 return taskGetResponseSchema.parse(
                   getTaskDetail(call.input.taskId, projectContext),

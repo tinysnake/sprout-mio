@@ -1,3 +1,4 @@
+import { signalScheduleChange } from "./chat-schedule";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   CHAT_TITLE_MAX_LENGTH,
@@ -218,6 +219,7 @@ function applyGovernance(
     .returning()
     .get();
   if (!updated) throw new ChatError("conflict", "群组已被并发修改，请刷新后重试");
+  signalScheduleChange();
   return toChat(updated);
 }
 
@@ -631,6 +633,7 @@ export function sendMessage(
           const saved = toMessage(row);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx);
           else appendOwnerAgentRunInput(saved, ctx);
+          signalScheduleChange();
           return saved;
         },
         hooks,

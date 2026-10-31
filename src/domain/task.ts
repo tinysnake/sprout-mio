@@ -1,3 +1,4 @@
+import { signalScheduleChange } from "./chat-schedule";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import * as contract from "../contracts/task";
@@ -400,6 +401,8 @@ export function mutateTask(
       .immediate();
   } catch (error) {
     return rethrowTaskError(error);
+  } finally {
+    signalScheduleChange();
   }
 }
 

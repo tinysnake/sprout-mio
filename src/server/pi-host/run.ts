@@ -1,3 +1,9 @@
+import {
+  admitContinuation,
+  pendingContinuations,
+  acknowledgeContinuation,
+  rejectContinuation,
+} from "../../domain/continuation-delivery";
 import { Effect } from "effect";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -30,7 +36,7 @@ export function executeRun(
   work: Work,
   process: PiSessionProcess,
   signals: PiHostSignals,
-  now = Date.now,
+  now = () => new Date().getTime(),
 ): Effect.Effect<void> {
   return Effect.gen(function* () {
     const { run, profile } = work;
@@ -49,7 +55,7 @@ export function executeRun(
     const outcome = yield* Effect.exit(
       Effect.gen(function* () {
         const input = yield* Effect.sync(() => firstPendingRunInput(run.id, ctx));
-        if (!input) {
+        if (!input && pendingContinuations(run.id).length === 0) {
           yield* Effect.sync(() =>
             transitionAgentRun(run.id, "aborted", { stopReason: "input_invalid" }, ctx),
           );
@@ -112,15 +118,19 @@ export function executeRun(
           process.onDelivered = (messageId) => {
             if (signals.isStopping()) return;
             try {
-              markRunInputDelivered(run.id, messageId, ctx);
+              if (messageId.startsWith("delivery_"))
+                acknowledgeContinuation(messageId, run.id, new Date(now()));
+              else markRunInputDelivered(run.id, messageId, ctx);
             } catch (error) {
               // 用户停止后迟到的投递确认保持 pending，不升级成进程故障。
               if (!(error instanceof AgentRunError && error.code === "conflict")) throw error;
             }
           };
           process.onRejected = (messageId, reason) => {
-            if (!signals.isStopping())
-              recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
+            if (!signals.isStopping()) {
+              if (messageId.startsWith("delivery_")) rejectContinuation(messageId, run.id);
+              else recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
+            }
           };
         });
         // Session/repository preparation can outlive Task responsibility. Select again at
@@ -129,6 +139,17 @@ export function executeRun(
           for (;;) {
             const selected = firstPendingRunInput(run.id, ctx);
             if (!selected) {
+              const continuation = pendingContinuations(run.id)[0];
+              if (continuation) {
+                const attempted = admitContinuation(
+                  continuation.deliveryId,
+                  run.id,
+                  new Date(now()),
+                  (envelope) => process.prompt(envelope.deliveryId, JSON.stringify(envelope)),
+                );
+                if (attempted) return attempted;
+                continue;
+              }
               transitionAgentRun(run.id, "aborted", { stopReason: "input_invalid" }, ctx);
               return undefined;
             }
@@ -171,6 +192,17 @@ export function executeRun(
                         );
                         return false;
                       }
+                    }
+                    for (const continuation of pendingContinuations(run.id)) {
+                      admitContinuation(
+                        continuation.deliveryId,
+                        run.id,
+                        new Date(now()),
+                        (envelope) => {
+                          process.steer(envelope.deliveryId, JSON.stringify(envelope));
+                          return true;
+                        },
+                      );
                     }
                     try {
                       for (const notice of pendingRunNotices({ runId: run.id }, ctx)) {
