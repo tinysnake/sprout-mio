@@ -1,6 +1,6 @@
 # I-P6a 章节集成验证
 
-当前状态：**协调者修复已复验，七个不变量完整运行通过；破坏验证与三次连续绿色待完成**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
+当前状态：**七个不变量与第 1、3、4 条破坏验证通过；三次连续绿色待完成**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
 
 开工基点为 `d565ab80b9057fd3609b5381519ac0e569da2aa5`。首批三个文件先提交为 `cf5ea73`，再按协调者要求 rebase 到修复 `b837f820b0dc901262a0e50efe8663b5a7d43376`，首批提交变为 `3f33f54`。冻结设计从主 checkout 的 `orchestrate/sprout-mio-p6/reports/p6a-design.md` 读取，未复制进本单元。
 
@@ -62,7 +62,23 @@ TEMP 审计把身份、run input、run 关联、diagnostic 和 schedule、evalua
 
 ## 破坏验证
 
-第 1、3、4 条的独立副本破坏验证待记录。当前 checkout 的 `src/**` 和 `drizzle/**` 不用于故意改坏。
+在 `7292439` 上完成第 1、3、4 条的“改坏 → 红 → 修回 → 绿”。每个实验都复制产品代码、迁移、同一份 fixture 和配置到 `/tmp/p6a-int/mutation-checkouts/<scenario>`，只改独立副本。当前 checkout 的 `src/**` 和 `drizzle/**` 全程不变。
+
+| 不变量       | 故意破坏                                                                        | 红证据（exit 1）                                                                                                                         | 恢复后的绿证据（exit 0）                    |
+| ------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| 1：claim CAS | 删除 `commitEvaluationResult` 对 claim_token 的比较，保留 state 检查            | `losing claim token fails CAS before writing receipt or delivery` 期望 NULL，却得到新 delivery ID；失败前通过 8 条断言                   | 原比较恢复，18 条通过                       |
+| 3：stale     | 将 `p6a_control_disabled` 恢复为修复前的取消逻辑                                | `pause leaves a visible stale result` 期望 stale，实际 canceled；失败前通过 10 条                                                        | 修复后的两条状态更新恢复，52 条通过         |
+| 4：重启      | 为 pending 扫描 SQL 添加 `WHERE 0 AND ...`，使恢复扫描漏掉所有 pending delivery | 真 SIGKILL 后 recover 子进程的 `startup scanner binds durable pending delivery` 期望 bound，实际 pending；父进程也因 recover exit 1 失败 | 原扫描恢复，34 条通过，包括子进程中的 26 条 |
+
+三组实验的红进程耗时分别为 941.051958 ms、812.409584 ms、2098.119334 ms；绿进程耗时分别为 763.147208 ms、801.042125 ms、2893.633125 ms。这里是完整子进程耗时，不是 fixture 内部计时。
+
+证据保存在 `.verify/p6a-lifecycle/mutations/{claim,stale,recovery}/`：`mutation.patch`、`mutation.json`、`result.json`、`red/exit-code`、`green/exit-code`、标准输出、JSONL 与真实 SQLite。总表为 `mutations/results.json`，复现脚本为 `mutations/reproduce.py`。每组原源码 SHA-256 与恢复后 SHA-256 完全相等；三组 fixture SHA-256 都是 `3ad917070d9af105217d9da2d480c9a50b4cd6c3257d6aacaad55c84d4ad88cd`。
+
+复现会重新创建 `/tmp` 下对应副本，不改当前产品源码：
+
+```bash
+python3 .verify/p6a-lifecycle/mutations/reproduce.py
+```
 
 ## 新门禁与既有门禁
 
