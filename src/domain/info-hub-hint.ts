@@ -60,7 +60,8 @@ export class InfoHubHintChannel {
     }
     return { scope, facts };
   }
-  async tick(now = Date.now()): Promise<void> {
+  /** 时间由宿主注入：这个类不读时钟，合并窗口与最小间隔都按传入的同一时刻判断。 */
+  async tick(at: number): Promise<void> {
     if (this.disposed) return;
     if (!readRunScope(this.runId)?.active) {
       this.dispose();
@@ -81,13 +82,13 @@ export class InfoHubHintChannel {
       if (this.seen.has(dedupeKey)) continue;
       this.seen.add(dedupeKey);
       this.pending.set(key, { change, revision });
-      this.pendingSince ??= now;
+      this.pendingSince ??= at;
     }
     this.basis = facts;
     if (
       this.pendingSince === null ||
-      now - this.pendingSince < INFO_HUB_LIMITS.hintMergeWindowMs ||
-      now - this.lastSent < INFO_HUB_LIMITS.hintMinimumIntervalMs
+      at - this.pendingSince < INFO_HUB_LIMITS.hintMergeWindowMs ||
+      at - this.lastSent < INFO_HUB_LIMITS.hintMinimumIntervalMs
     )
       return;
     const changes = [...this.pending.values()].map((value) => value.change);
@@ -100,7 +101,7 @@ export class InfoHubHintChannel {
         projectId: scope.projectId,
         chatId: scope.chatId,
         instanceId: scope.instanceId,
-        asOf: new Date(now).toISOString(),
+        asOf: new Date(at).toISOString(),
         revision,
         heldMachineIds: [
           ...new Set(
@@ -121,8 +122,8 @@ export class InfoHubHintChannel {
       this.pending.delete(
         `${change.kind}:${"chatId" in change ? change.chatId : change.machineId}`,
       );
-    this.pendingSince = this.pending.size ? now : null;
-    this.lastSent = now;
+    this.pendingSince = this.pending.size ? at : null;
+    this.lastSent = at;
     // Failed steering is deliberately discarded. Never persist, emit a Chat message, or admit a run.
     try {
       await this.deliver(hint);

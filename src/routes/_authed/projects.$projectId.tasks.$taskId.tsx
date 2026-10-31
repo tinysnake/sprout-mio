@@ -11,6 +11,7 @@ import { LeaseOverview } from "../../components/machine/lease-panel";
 import { holderNames } from "../../components/machine/project-lease-actions";
 import type { AppError } from "../../contracts/result";
 import { getChatInfoFn, getProjectInfoHubFn } from "../../server/functions/info-hub";
+import { listMachinesFn } from "../../server/functions/machine";
 import {
   getTaskDetailFn,
   updateTaskFn,
@@ -47,7 +48,7 @@ const commands = {
 export const Route = createFileRoute("/_authed/projects/$projectId/tasks/$taskId")({
   loader: async ({ params }) => {
     const detail = await getTaskDetailFn({ data: { taskId: params.taskId } });
-    if (!detail.ok) return { detail, chatInfo: null, infoHub: null };
+    if (!detail.ok) return { detail, chatInfo: null, infoHub: null, machines: null };
     if (detail.data.task.projectId !== params.projectId)
       return {
         detail: {
@@ -57,12 +58,15 @@ export const Route = createFileRoute("/_authed/projects/$projectId/tasks/$taskId
         },
         chatInfo: null,
         infoHub: null,
+        machines: null,
       };
-    const [chatInfo, infoHub] = await Promise.all([
+    const [chatInfo, infoHub, machines] = await Promise.all([
       detail.data.chat ? getChatInfoFn({ data: { chatId: detail.data.chat.id } }) : null,
       getProjectInfoHubFn({ data: { projectId: params.projectId } }),
+      // 租约摘要只回答「谁占着」，机器名与绑定要 MachineDetail，读同一份 Machine 列表。
+      listMachinesFn({ data: {} }),
     ]);
-    return { detail, chatInfo, infoHub };
+    return { detail, chatInfo, infoHub, machines };
   },
   component: ProjectTaskDetailPage,
 });
@@ -150,7 +154,7 @@ function ProjectTaskDetailPage() {
                   {loader.infoHub?.ok ? (
                     <LeaseOverview
                       projectId={loader.detail.data.task.projectId}
-                      machines={loader.infoHub.data.machines}
+                      machines={loader.machines?.ok ? loader.machines.data : []}
                       leases={loader.infoHub.data.leases.items}
                       holderNames={holderNames(loader.infoHub.data)}
                       dense

@@ -313,7 +313,13 @@ try {
       assert.match(await page.locator('[data-testid="info-chat-runs-active-pending"]').textContent(), /1 条输入未投递/)
       assert.equal(await page.locator('[data-testid="info-turn-workspace-commit"]').textContent(), bareHead)
       assert.equal(await page.locator('[data-testid="info-turn-workspace-fresh"]').textContent(), '宿主已更新工作树')
-      assert.match(await page.locator('[data-testid="info-turn-prompt-injection"]').textContent(), /注入模型 prompt：否/)
+      // 语义变化（P6a/P6b）：旧断言 `注入模型 prompt：否` 表达的是「声明不注入」；现在这一行
+      // 表达的是「按 runId 读到的持久化提交收据」。prepared 快照没有收据，所以既不能出现
+      // 「已注入」，也必须明确说出「尚无提交收据」。submitted 收据才允许展示提交事实
+      //（由 tests/fixtures/p6b-turn-context.ts 与 bf-p6b-pages 的 submitted 用例证明）。
+      const injection = await page.locator('[data-testid="info-turn-prompt-injection"]').textContent()
+      assert.match(injection, /本次上下文尚无提交收据/, 'prepared snapshot states it has no submission receipt')
+      assert.doesNotMatch(injection, /已注入/, 'prepared snapshot must not claim injection')
       assert.equal(await page.locator('[data-testid="info-turn-previous-run"]').count(), 0, 'P6b snapshots exclude previousRun; history remains in recent runs')
       assert.ok((await page.locator('[data-testid="info-chat-runs-recent"]').textContent()).includes('已完成'))
       const chatShot = join(screenshotDir, 'p3-d-info-hub-chat-runs.png')

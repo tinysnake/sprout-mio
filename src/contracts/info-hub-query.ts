@@ -85,6 +85,17 @@ export type InfoHubAgentInstance = z.infer<typeof infoHubAgentInstanceSchema>;
 export const infoHubAgentSummarySchema = projectAgentEntrySchema;
 export type InfoHubAgentSummary = z.infer<typeof infoHubAgentSummarySchema>;
 
+/**
+ * Agent 视角的生产入口输入。冻结的 query 联合里 `runs` 只回答活动 run，
+ * 没有「某分身的最近 run」这一节；页面需要一个能直接渲染的完整视图，
+ * 所以这里只参数化对象，不分节：一次读回同一投影的三个部分。
+ */
+export const agentInfoHubInputSchema = z.strictObject({
+  projectId,
+  agentProfileId: agentProfileIdSchema,
+});
+export type AgentInfoHubInput = z.infer<typeof agentInfoHubInputSchema>;
+
 export const agentInfoViewSchema = z
   .strictObject({
     projectId,

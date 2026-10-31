@@ -10,6 +10,10 @@ import { RunFactsBlock } from "../src/components/info-hub/run-facts";
  */
 const run = (status: AgentRunsView["recent"][number]["status"], runId: string) => ({
   runId,
+  // run 身份是这个投影的必要部分：Chat、分身与 profile 都来自 run 自身，不靠上层补齐。
+  chatId: "cnv_11111111-1111-4111-8111-111111111111",
+  instanceId: "ins_11111111-1111-4111-8111-111111111111",
+  agentProfileId: "agp_11111111-1111-4111-8111-111111111111",
   status,
   queuedAt: "2026-10-30T00:00:00.000Z",
   requestId: `req_${runId}`,

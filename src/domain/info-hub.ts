@@ -40,6 +40,8 @@ import {
   infoHubViewSchema,
   infoHubCursorPayloadSchema,
   infoHubCursorValidationSchema,
+  agentInfoViewSchema,
+  type AgentInfoView,
   type InfoHubQuery,
   type InfoHubView,
   type InfoHubRefreshResult,
@@ -202,6 +204,14 @@ export function getProjectInfoHub(
     .innerJoin(agentProfile, eq(agentProfile.id, projectMember.agentProfileId))
     .where(eq(projectMember.projectId, projectId))
     .all();
+  // 成员指向一个已不存在的 profile 是坏引用：宁可整块报 not_found，
+  // 也不能靠 inner join 静默少一行、把「少了一个成员」显示成正常事实。
+  const memberCount = db
+    .select({ count: sql<number>`count(*)` })
+    .from(projectMember)
+    .where(eq(projectMember.projectId, projectId))
+    .get()!.count;
+  if (memberCount !== profiles.length) throw new InfoHubError("not_found");
   const agents = profiles.map(({ profile }): ProjectAgentEntry => {
     const dm = rows.find(
       (row) =>
@@ -211,6 +221,8 @@ export function getProjectInfoHub(
     return {
       agentProfileId: profile.id,
       name: profile.name,
+      // 人设与职位是两件事实：P6b 之前列表只有人设，之后只有职位，这里两个都留着。
+      personaSummary: profile.persona.slice(0, 600),
       ...(profile.jobTitle ? { jobTitle: profile.jobTitle } : {}),
       ...agentState(runs.filter((run) => run.agentProfileId === profile.id)),
       ...(dm ? { instanceId: dm.instanceId, chatId: dm.chatId } : {}),
@@ -709,15 +721,59 @@ export function getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView {
   };
 }
 
+/**
+ * Agent 视角：同一个 Project 聚合里的 profile、status、活动/历史 run 与完整分身清单。
+ *
+ * 冻结的 query 联合里 `{view:"agent",section:"runs"}` 只回答活动 run，`section:"instances"`
+ * 只回答分身，各自缺一块；这里用同一批投影组装 `agentInfoViewSchema`，不新增事实来源：
+ * 分身清单来自 `agent_instance` 自身，不由「持有租约的分身」倒推。
+ */
+export function getAgentInfo(
+  projectId: string,
+  agentProfileId: string,
+  ctx: ProjectContext,
+): AgentInfoView {
+  const hub = getProjectInfoHub(projectId, ctx);
+  const agent = hub.agents.agents.find((entry) => entry.agentProfileId === agentProfileId);
+  if (!agent) throw new InfoHubError("not_found");
+  const runs = projectRuns(projectId).filter((run) => run.agentProfileId === agentProfileId);
+  const instances: (typeof agentInstance.$inferSelect)[] = db
+    .select()
+    .from(agentInstance)
+    .where(
+      and(eq(agentInstance.projectId, projectId), eq(agentInstance.agentProfileId, agentProfileId)),
+    )
+    .all();
+  return agentInfoViewSchema.parse({
+    projectId,
+    agent,
+    runs: runsView(runs),
+    instances: instances.map((instance) => {
+      const chat = hub.chats.find((entry) => entry.chatId === instance.chatId);
+      // 分身指向本视角看不到的 Chat 就是 scope 越界：不编一个 chatKind 填空。
+      if (!chat) throw new InfoHubError("not_found");
+      return {
+        instanceId: instance.id,
+        agentProfileId: instance.agentProfileId,
+        chatId: instance.chatId,
+        chatDisplayTitle: chat.displayTitle,
+        chatKind: chat.kind,
+        leases: hub.leases.items.filter((lease) => lease.holderInstanceId === instance.id),
+      };
+    }),
+  });
+}
+
 const cursorSecret = randomBytes(32);
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-function signCursor(payload: unknown): string {
-  const body = Buffer.from(
-    JSON.stringify({ expiresAt: Date.now() + 5 * 60_000, payload }),
-  ).toString("base64url");
+/** 游标过期时间是参与判断的时间：时钟由调用参数注入，不在判断处就地读。 */
+function signCursor(payload: unknown, now: () => number = Date.now): string {
+  const body = Buffer.from(JSON.stringify({ expiresAt: now() + 5 * 60_000, payload })).toString(
+    "base64url",
+  );
   return `${body}.${createHmac("sha256", cursorSecret).update(body).digest("base64url")}`;
 }
-function parseCursor(cursor: string): unknown {
+function parseCursor(cursor: string, now: () => number = Date.now): unknown {
   try {
     const [body, signature, extra] = cursor.split(".");
     const expected = createHmac("sha256", cursorSecret).update(body!).digest();
@@ -731,7 +787,7 @@ function parseCursor(cursor: string): unknown {
       !("expiresAt" in envelope) ||
       typeof envelope.expiresAt !== "number" ||
       !Number.isFinite(envelope.expiresAt) ||
-      envelope.expiresAt <= Date.now() ||
+      envelope.expiresAt <= now() ||
       !("payload" in envelope)
     )
       throw new Error();

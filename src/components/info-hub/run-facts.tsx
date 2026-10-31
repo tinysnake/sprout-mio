@@ -107,13 +107,30 @@ export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: s
   );
 }
 
+/**
+ * 注入事实的唯一表达：只有持久化的 submitted 收据能说明这次上下文跨过了 SDK 提交边界。
+ * prepared、failed 与「还没有快照」都只能读作「未注入」，并且不能说成「已注入」。
+ */
+function TurnPromptInjectionFact({ injected }: { injected: boolean }) {
+  return (
+    <p data-testid="info-turn-prompt-injection" className="text-[10px] text-muted-foreground">
+      {injected
+        ? "已注入；本次上下文已跨过 SDK 提交边界，收据只确认提交，不表示模型已理解。"
+        : "注入模型 prompt：否 · 本次上下文尚无提交收据。"}
+    </p>
+  );
+}
+
 /** 持久化的轮初快照；只有 submitted 收据能够证明已跨过 SDK 提交边界。 */
 export function TurnStartContextBlock({ context }: { context: TurnStartContext | null }) {
   if (!context)
     return (
-      <p data-testid="info-turn-context-empty" className="text-[11px] text-muted-foreground">
-        还没有本轮上下文快照。
-      </p>
+      <section data-testid="info-turn-context-none" className="space-y-1.5 text-[11px]">
+        <p data-testid="info-turn-context-empty" className="text-muted-foreground">
+          还没有本轮上下文快照。
+        </p>
+        <TurnPromptInjectionFact injected={false} />
+      </section>
     );
   if (!turnStartContextSchema.safeParse(context).success)
     return (
@@ -188,11 +205,7 @@ export function TurnStartContextBlock({ context }: { context: TurnStartContext |
           ? `已有活动 run（${statusLabel(context.activeRun.status)}），${context.activeRun.pendingInputs} 条输入未投递`
           : "尚无排队中或运行中的 run"}
       </p>
-      <p data-testid="info-turn-prompt-injection" className="text-[10px] text-muted-foreground">
-        {context.deliveryState === "submitted" && context.submittedAt
-          ? "本次上下文已注入；收据仅确认 SDK 提交，不表示模型已理解。"
-          : "本次上下文尚无提交收据。"}
-      </p>
+      <TurnPromptInjectionFact injected={context.injectedIntoPrompt} />
     </section>
   );
 }

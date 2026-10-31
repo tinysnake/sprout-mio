@@ -18,6 +18,8 @@ const counts = { proposed: 1, assigned: 0, finished: 0, canceled: 0 };
 const agent = {
   agentProfileId,
   name: "Mio",
+  personaSummary: "只读仓库事实，按 commit 与文件路径说明结论。",
+  jobTitle: "Repository reviewer",
   status: "running",
   error: null,
   instanceId,

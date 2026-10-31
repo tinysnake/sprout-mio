@@ -7,12 +7,8 @@ import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-re
 import { agentDetailFromChat } from "../agent/agent-detail-search";
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
 import type { ChatMember, ChatSession, ChatWakePolicy } from "../../contracts/chat";
-import type {
-  ChatInfoView,
-  ChatRunAggregate,
-  InfoHubResult,
-  TurnStartContext,
-} from "../../contracts/info-hub";
+import type { ChatInfoView, ChatRunAggregate, InfoHubResult } from "../../contracts/info-hub";
+import type { TurnContextReadResult } from "../../contracts/turn-context";
 import type { AppError } from "../../contracts/result";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
@@ -37,7 +33,7 @@ import { ChatErrorNotice } from "./chat-error-notice";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { ChatFactsBlock } from "../info-hub/chat-info-panel";
-import { RunFactsBlock, TurnStartContextBlock } from "../info-hub/run-facts";
+import { ChatActivityFacts } from "../info-hub/chat-activity";
 import { TaskAssociations } from "../tasks/task-associations";
 import { governanceNote } from "./chat-governance";
 import type { ChatMachineFacts } from "./chat-loader";
@@ -67,7 +63,7 @@ export function ChatDetails({
   members,
   profile,
   info,
-  turnStart,
+  turnContext,
   activity,
   projectMembers,
   projectProfiles,
@@ -85,7 +81,7 @@ export function ChatDetails({
   members: AgentResult<ChatMember[]>;
   profile: AgentResult<AgentProfile> | null;
   info: AgentResult<ChatInfoView>;
-  turnStart: InfoHubResult<TurnStartContext>;
+  turnContext: InfoHubResult<TurnContextReadResult> | null;
   activity?: ChatRunAggregate;
   projectMembers: ProjectMember[];
   projectProfiles: AgentProfile[];
@@ -506,13 +502,8 @@ export function ChatDetails({
             )}
             {!info.ok ? (
               <ChatErrorNotice error={info.error} testId="info-hub-chat-error" />
-            ) : !turnStart.ok ? (
-              <ChatErrorNotice error={turnStart.error} testId="info-hub-turn-context-error" />
             ) : (
-              <div className="space-y-4">
-                <RunFactsBlock runs={info.data.runs} testId="info-chat-runs" />
-                <TurnStartContextBlock context={turnStart.data} />
-              </div>
+              <ChatActivityFacts info={info.data} turnContext={turnContext} />
             )}
             <details className="group border-t border-border pt-3" open>
               <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] hover:underline [&::-webkit-details-marker]:hidden">

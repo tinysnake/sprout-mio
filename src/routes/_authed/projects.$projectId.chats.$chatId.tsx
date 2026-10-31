@@ -5,6 +5,8 @@ import { TaskAssociations } from "../../components/tasks/task-associations";
 import { useChatInspector } from "../../components/chat/chat-search";
 import type { ChatDetailLoaderData } from "../../components/chat/chat-loader";
 import { ResultError } from "../../components/project/result-error";
+import { useInfoHubLive } from "../../components/info-hub/info-hub-live";
+import { mergeChatRuns } from "../../components/info-hub/merge-info-hub";
 import { getAgentProfileFn } from "../../server/functions/agent";
 import { getChatRunStateFn } from "../../server/functions/agent-run";
 import { getChatInfoFn, readTurnContextFn } from "../../server/functions/info-hub";
@@ -26,26 +28,15 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
       getChatInfoFn({ data: { chatId: params.chatId } }),
       getChatRunStateFn({ data: { chatId: params.chatId } }),
     ]);
-    // Human diagnostics select an explicit run; the host captures identity independently by runId.
+    // Human 诊断按明确 runId 读持久化快照：优先活动 run，否则取这条 Chat 最近一条 run。
+    // 不查「Chat 的第一个分身」来造快照；没有 run 就传 null，让页面显示「还没有本轮上下文快照」。
     const snapshotRun = runState.ok
       ? (runState.data.runs.find((run) => run.status === "running" || run.status === "queued") ??
         runState.data.runs.at(-1))
       : undefined;
-    const snapshot = snapshotRun
+    const turnContext = snapshotRun
       ? await readTurnContextFn({ data: { projectId: params.projectId, runId: snapshotRun.id } })
       : null;
-    const turnStart =
-      snapshot?.ok && snapshot.data.kind === "captured"
-        ? { ...snapshot, data: snapshot.data.record }
-        : {
-            ok: false as const,
-            error: {
-              code: "turn_context_unavailable" as const,
-              message: "本轮尚无上下文快照",
-              requestId: session.requestId,
-            },
-            requestId: session.requestId,
-          };
     const agentProfileId =
       session.data.kind === "dm"
         ? session.data.instance.agentProfileId
@@ -58,7 +49,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
       messages,
       profile,
       info,
-      turnStart,
+      turnContext,
       runState,
     };
   },
@@ -96,6 +87,7 @@ function ProjectChatDetailPage() {
   const router = useRouter();
   const { human } = useRouteContext({ from: "/_authed" });
   const { open, setOpen } = useChatInspector(projectId, chatId);
+  const live = useInfoHubLive();
   const watching = hasActiveRun(loader);
 
   useEffect(() => {
@@ -127,14 +119,18 @@ function ProjectChatDetailPage() {
       </div>
     );
 
+  const liveInfo = loader.info.ok
+    ? { ...loader.info, data: mergeChatRuns(loader.info.data, live?.view ?? null) }
+    : loader.info;
+
   return (
     <>
-      {loader.info.ok && loader.info.data.tasks.items.length > 0 && (
+      {liveInfo?.ok && liveInfo.data.tasks.items.length > 0 && (
         <div
           className="max-h-36 shrink-0 overflow-y-auto border-b border-border px-5 py-3"
           aria-label="关联 Task"
         >
-          <TaskAssociations projectId={projectId} items={loader.info.data.tasks.items} compact />
+          <TaskAssociations projectId={projectId} items={liveInfo.data.tasks.items} compact />
         </div>
       )}
       <ChatPane
@@ -146,7 +142,7 @@ function ProjectChatDetailPage() {
         profile={loader.profile}
         humanName={human?.name ?? ""}
         messages={loader.messages}
-        info={loader.info}
+        info={liveInfo}
         runState={loader.runState}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}

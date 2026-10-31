@@ -5,7 +5,8 @@ import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-re
 import { agentDetailFromChat } from "../agent/agent-detail-search";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentInstance, Chat, ChatMember, ChatResult } from "../../contracts/chat";
-import type { ChatInfoView, InfoHubResult, TurnStartContext } from "../../contracts/info-hub";
+import type { ChatInfoView, InfoHubResult } from "../../contracts/info-hub";
+import type { TurnContextReadResult } from "../../contracts/turn-context";
 import type { AppError } from "../../contracts/result";
 import type { MachineDetail } from "../../contracts/machine";
 import type { LeaseView } from "../../contracts/lease";
@@ -16,7 +17,7 @@ import { ResultError } from "../project/result-error";
 import { TaskAssociations } from "../tasks/task-associations";
 import { ChatAvatar } from "../chat/chat-avatar";
 import { ChatFactsBlock } from "./chat-info-panel";
-import { RunFactsBlock, TurnStartContextBlock } from "./run-facts";
+import { ChatActivityFacts } from "./chat-activity";
 import { LeaseOverview } from "../machine/lease-panel";
 import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
 
@@ -44,7 +45,7 @@ export function ChatInspector({
   instances,
   profile,
   info,
-  turnStart,
+  turnContext,
   machineFacts = null,
   machineFactsError,
   automation,
@@ -58,7 +59,7 @@ export function ChatInspector({
   instances: ChatResult<AgentInstance[]>;
   profile: AgentResult<AgentProfile> | null;
   info: ChatResult<ChatInfoView>;
-  turnStart: InfoHubResult<TurnStartContext>;
+  turnContext: InfoHubResult<TurnContextReadResult> | null;
   /** 为 null 时按未接入呈现；不伪造空租约或空执行列表。 */
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
@@ -177,8 +178,6 @@ export function ChatInspector({
           <h3 className="mb-3.75 text-[10px] font-medium text-muted-foreground">运行</h3>
           {!info.ok ? (
             <ResultError error={info.error} testId="info-hub-chat-error" />
-          ) : !turnStart.ok ? (
-            <ResultError error={turnStart.error} testId="info-hub-turn-context-error" />
           ) : (
             <details className="group" open>
               <summary className="flex min-h-9.5 cursor-pointer list-none items-center justify-between gap-2 text-[11px] hover:underline [&::-webkit-details-marker]:hidden">
@@ -197,8 +196,7 @@ export function ChatInspector({
                 </span>
               </summary>
               <div className="space-y-4 pt-2 pb-3">
-                <RunFactsBlock runs={info.data.runs} testId="info-chat-runs" />
-                <TurnStartContextBlock context={turnStart.data} />
+                <ChatActivityFacts info={info.data} turnContext={turnContext} />
               </div>
             </details>
           )}

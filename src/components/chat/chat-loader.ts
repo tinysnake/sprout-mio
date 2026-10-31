@@ -8,12 +8,8 @@ import type {
   ChatSession,
   Message,
 } from "../../contracts/chat";
-import type {
-  ChatInfoView,
-  InfoHubResult,
-  ProjectInfoHub,
-  TurnStartContext,
-} from "../../contracts/info-hub";
+import type { ChatInfoView, InfoHubResult, ProjectInfoHub } from "../../contracts/info-hub";
+import type { TurnContextReadResult } from "../../contracts/turn-context";
 import type { AppError, AppResult } from "../../contracts/result";
 import type { ExecutionView } from "../../contracts/remote";
 import type { MachineDetail } from "../../contracts/machine";
@@ -49,7 +45,11 @@ export type ChatDetailLoaderData =
       messages: ChatResult<Message[]>;
       profile: AgentResult<AgentProfile> | null;
       info: ChatResult<ChatInfoView>;
-      turnStart: InfoHubResult<TurnStartContext>;
+      /**
+       * 轮初快照按明确 runId 读：`null` 表示这条 Chat 还没有任何 run，连可读的 runId 都没有；
+       * `not_captured` 表示这个 run 还没被宿主捕获。两者都不是错误，也不伪造快照。
+       */
+      turnContext: InfoHubResult<TurnContextReadResult> | null;
       runState: AgentRunResult<ChatRunState>;
     };
 

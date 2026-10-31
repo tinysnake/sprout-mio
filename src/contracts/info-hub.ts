@@ -186,6 +186,8 @@ export const projectAgentEntrySchema = z
     ...agentStateFields,
     agentProfileId: agentProfileIdSchema,
     name: z.string().min(1),
+    /** 人设摘要：列表里既有的身份事实，与职位并列，不互相替代。 */
+    personaSummary: z.string().max(600),
     jobTitle: z.string().max(40).optional(),
     instanceId: instanceId.optional(),
     chatId: chatId.optional(),

@@ -108,6 +108,8 @@ export const demoInfoHub: ProjectInfoHub = {
     agents: demoMembers.map((member, index) => ({
       agentProfileId: member.agentProfileId,
       name: demoProfiles.find((profile) => profile.id === member.agentProfileId)?.name ?? "Agent",
+      personaSummary:
+        demoProfiles.find((profile) => profile.id === member.agentProfileId)?.persona ?? "",
       status: "idle",
       error: null,
       ...(index === 0 ? { chatId: "cnv_77777777-7777-4777-8777-777777777777" } : {}),

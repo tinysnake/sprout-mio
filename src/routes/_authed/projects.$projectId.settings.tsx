@@ -20,10 +20,21 @@ import { getProjectProfileFn, updateProjectProfileFn } from "../../server/functi
 import { getProjectFn, updateProjectFn } from "../../server/functions/project";
 import { listMachinesFn, saveProjectMachineBindingFn } from "../../server/functions/machine";
 import { MachineBindingForm } from "../../components/machine/machine-binding-form";
-import { getProjectInfoHubFn } from "../../server/functions/info-hub";
+import {
+  getAgentInfoHubFn,
+  getProjectInfoHubFn,
+  refreshInfoHubFn,
+} from "../../server/functions/info-hub";
 import { getProjectRepoStateFn, prepareProjectRepoFn } from "../../server/functions/repository";
 import { useExecutionWiring } from "../../lib/execution-wiring";
 import { WakeProviderSelect } from "../../components/automation/wake-provider-select";
+import {
+  InfoHubLiveProvider,
+  InfoHubPollingStatus,
+  unwrapRefreshResult,
+  useInfoHubLive,
+} from "../../components/info-hub/info-hub-live";
+import { mergeProjectMachines } from "../../components/info-hub/merge-info-hub";
 
 export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
   loader: async ({ params }) => {
@@ -46,7 +57,26 @@ export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
  * 没有独立的 Project 详情页。
  */
 function ProjectSettingsPage() {
+  return (
+    <InfoHubLiveProvider
+      projectId={Route.useParams().projectId}
+      query={SETTINGS_LIVE_QUERY}
+      refresh={(input, signal) => unwrapRefreshResult(refreshInfoHubFn({ data: input, signal }))}
+    >
+      <ProjectSettingsView />
+    </InfoHubLiveProvider>
+  );
+}
+
+/** 本页一直在用的 Hub 视角是 Machines：租约占用是这里唯一会自己变的 Hub 事实。 */
+const SETTINGS_LIVE_QUERY = { view: "project", section: "machines", limit: 25 } as const;
+
+function ProjectSettingsView() {
   const { project, profile, repo, infoHub, machines, executions } = Route.useLoaderData();
+  const live = useInfoHubLive();
+  const liveHub = infoHub.ok
+    ? { ...infoHub, data: mergeProjectMachines(infoHub.data, live?.view ?? null) }
+    : infoHub;
   const [selectedMachine, setSelectedMachine] = useState("");
   const { projectId } = Route.useParams();
   const relationState = useMachineRelations({ projectId });
@@ -96,6 +126,7 @@ function ProjectSettingsPage() {
             onSaved={invalidate}
           />
           <WakeProviderSelect policy={project.data.wakePolicy} />
+          <InfoHubPollingStatus />
           <SettingsSection
             title="基本事实"
             description="Project 的身份与本次查询的诊断标识；排查问题时可以引用 requestId。"
@@ -188,15 +219,16 @@ function ProjectSettingsPage() {
               </div>
             )}
             {!machines.ok && <ResultError error={machines.error} />}
-            {infoHub.ok && (
+            {liveHub.ok && (
               <MembershipSections
                 scope="project"
                 projectId={projectId}
                 projectNames={{ [projectId]: project.data.name }}
                 relations={relationState.relations}
-                machines={infoHub.data.machines}
-                leases={infoHub.data.leases.items}
-                holderNames={holderNames(infoHub.data)}
+                // 关系、绑定与工作目录是 MachineDetail 的事实，摘要投影不能顶替。
+                machines={machines.ok ? machines.data : []}
+                leases={liveHub.data.leases.items}
+                holderNames={holderNames(liveHub.data)}
                 executions={executions.ok ? executions.data : null}
                 loading={relationState.loading}
                 error={relationState.error}
@@ -214,9 +246,9 @@ function ProjectSettingsPage() {
             {executions.ok ? (
               <RemoteExecutionList
                 executions={executions.data}
-                machines={infoHub.ok ? infoHub.data.machines : []}
-                holderNames={infoHub.ok ? holderNames(infoHub.data) : {}}
-                leases={infoHub.ok ? infoHub.data.leases.items : []}
+                machines={machines.ok ? machines.data : []}
+                holderNames={liveHub.ok ? holderNames(liveHub.data) : {}}
+                leases={liveHub.ok ? liveHub.data.leases.items : []}
                 logReader={executionWiring.logReader}
                 canceller={executionWiring.canceller}
                 connection={executionWiring.connection}
@@ -242,25 +274,31 @@ function ProjectSettingsPage() {
                 展开 Project 的关联信息
               </summary>
               <div className="mt-4 flex flex-col gap-3">
-                {infoHub.ok ? (
+                {liveHub.ok ? (
                   <>
-                    <ProjectAgentsPanel projectId={projectId} view={infoHub.data.agents} />
+                    <ProjectAgentsPanel
+                      projectId={projectId}
+                      view={liveHub.data.agents}
+                      loadAgentView={(agentProfileId) =>
+                        getAgentInfoHubFn({ data: { projectId, agentProfileId } })
+                      }
+                    />
                     <section
                       aria-label="Project Tasks"
                       className="space-y-3 border-t border-border pt-4"
                     >
                       <h3 className="text-xs font-medium">Tasks</h3>
                       <p className="text-xs text-muted-foreground">
-                        待分配 {infoHub.data.tasks.counts.proposed} · 已分配{" "}
-                        {infoHub.data.tasks.counts.assigned} · 已完成{" "}
-                        {infoHub.data.tasks.counts.finished} · 已取消{" "}
-                        {infoHub.data.tasks.counts.canceled}
+                        待分配 {liveHub.data.tasks.counts.proposed} · 已分配{" "}
+                        {liveHub.data.tasks.counts.assigned} · 已完成{" "}
+                        {liveHub.data.tasks.counts.finished} · 已取消{" "}
+                        {liveHub.data.tasks.counts.canceled}
                       </p>
-                      <TaskAssociations projectId={projectId} items={infoHub.data.tasks.items} />
+                      <TaskAssociations projectId={projectId} items={liveHub.data.tasks.items} />
                     </section>
                   </>
                 ) : (
-                  <ResultError error={infoHub.error} testId="info-hub-error" />
+                  <ResultError error={liveHub.error} testId="info-hub-error" />
                 )}
               </div>
             </details>

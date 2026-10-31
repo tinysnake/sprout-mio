@@ -39,6 +39,22 @@ type Evidence = {
       recent: unknown[];
     };
   } | null;
+  agentView: {
+    agentProfileId: string;
+    personaSummary: string;
+    status: string;
+    hostEnabled: boolean;
+    active: { runId: string; status: string }[];
+    recentCount: number;
+    instances: {
+      instanceId: string;
+      agentProfileId: string;
+      chatId: string;
+      chatKind: string;
+      leaseCount: number;
+    }[];
+  } | null;
+  outsiderAgentViewCode: string;
   instanceMatchesDm: boolean;
   latestMatchesSecondMessage: boolean;
   joinedProfileId: string;
@@ -104,6 +120,9 @@ beforeAll(() => {
 
       const hub = await infoHub.getProjectInfoHubBoundary({ projectId }, userA.headers, "req_j8");
       const info = await infoHub.getChatInfoBoundary({ chatId }, userA.headers, "req_j9");
+      // Agent 视角的生产入口：一次读回 status、活动/历史 run 与完整分身清单；未加入的 Agent 不得可见。
+      const agentView = await infoHub.getAgentInfoHubBoundary({ projectId, agentProfileId: joined.data.id }, userA.headers, "req_j10");
+      const outsiderAgentView = await infoHub.getAgentInfoHubBoundary({ projectId, agentProfileId: outsider.data.id }, userA.headers, "req_j11");
       const instanceMatchesDm = info.ok && info.data.instances[0]?.instanceId === dmInstanceId;
       const latestMatchesSecondMessage = info.ok && msg2.ok && info.data.messages.latestAt === msg2.data.createdAt;
 
@@ -132,6 +151,22 @@ beforeAll(() => {
           messages: info.data.messages,
           runs: info.data.runs,
         } : null,
+        agentView: agentView.ok ? {
+          agentProfileId: agentView.data.agent.agentProfileId,
+          personaSummary: agentView.data.agent.personaSummary,
+          status: agentView.data.agent.status,
+          hostEnabled: agentView.data.runs.hostEnabled,
+          active: agentView.data.runs.active.map((run) => ({ runId: run.runId, status: run.status })),
+          recentCount: agentView.data.runs.recent.length,
+          instances: agentView.data.instances.map((instance) => ({
+            instanceId: instance.instanceId,
+            agentProfileId: instance.agentProfileId,
+            chatId: instance.chatId,
+            chatKind: instance.chatKind,
+            leaseCount: instance.leases.length,
+          })),
+        } : null,
+        outsiderAgentViewCode: code(outsiderAgentView),
         instanceMatchesDm,
         latestMatchesSecondMessage,
         joinedProfileId: joined.data.id,
@@ -202,6 +237,29 @@ describe("Info Hub 聚合与数据库一致", () => {
     expect(evidence.hub?.agents.map((agent) => agent.agentProfileId)).not.toContain(
       evidence.outsiderProfileId,
     );
+    // 列表里的人设事实（P6b 之前就在这里）不能被职位替换掉。
+    expect(evidence.hub?.agents[0]?.personaSummary).toBe("人设正文");
+  });
+
+  it("Agent 视角一次读回 status、活动 run 与完整分身清单，未加入的 Agent 是 not_found", () => {
+    expect(evidence.outsiderAgentViewCode).toBe("not_found");
+    const view = evidence.agentView;
+    expect(view?.agentProfileId).toBe(evidence.joinedProfileId);
+    expect(view?.personaSummary).toBe("人设正文");
+    expect(view?.hostEnabled).toEqual(expect.any(Boolean));
+    // 分身清单来自 agent_instance 本身：这条 DM 的分身必须在，且归属同一个 profile。
+    expect(view?.instances).toEqual([
+      {
+        instanceId: evidence.info?.instanceId,
+        agentProfileId: evidence.joinedProfileId,
+        chatId: expect.stringMatching(/^cnv_/),
+        chatKind: "dm",
+        leaseCount: 0,
+      },
+    ]);
+    expect(view?.active).toHaveLength(1);
+    expect(view?.active[0]?.status).toBe("queued");
+    expect(view?.recentCount).toBe(0);
   });
 
   it("chat 视角的成员含 human 与 agent，instance 与对话页一致", () => {

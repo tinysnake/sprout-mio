@@ -6,6 +6,8 @@ import type { ChatInfoView, InfoHubResult, ProjectInfoHub } from "../../contract
 import {
   infoHubGetInputSchema,
   infoHubRefreshInputSchema,
+  agentInfoHubInputSchema,
+  type AgentInfoView,
   type InfoHubView,
   type InfoHubRefreshResult,
 } from "../../contracts/info-hub-query";
@@ -114,6 +116,16 @@ export function readTurnContextBoundary(
     ok(deps.readTurnContext(turnContextReadInputSchema.parse(raw), context), requestId),
   );
 }
+export function getAgentInfoHubBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<InfoHubResult<AgentInfoView>> {
+  return infoHubBoundary<AgentInfoView>(headers, requestId, (deps, context) => {
+    const parsed = agentInfoHubInputSchema.parse(raw);
+    return ok(deps.getAgentInfo(parsed.projectId, parsed.agentProfileId, context), requestId);
+  });
+}
 export function getInfoHubBoundary(
   raw: unknown,
   headers: Headers,
@@ -162,6 +174,13 @@ export const getInfoHubFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     getInfoHubBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+/** Agent 视角的生产入口：status、活动/历史 run 与完整分身清单一次读回。 */
+export const getAgentInfoHubFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    getAgentInfoHubBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 export const refreshInfoHubFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)

@@ -62,7 +62,13 @@ const run = {
   requestId: "request-a",
   pendingInputs: 0,
 };
-const agent = { agentProfileId, name: "Builder", status: "running", error: null };
+const agent = {
+  agentProfileId,
+  name: "Builder",
+  personaSummary: "契约维护者",
+  status: "running",
+  error: null,
+};
 const lease = {
   projectId,
   machineId,
@@ -270,6 +276,12 @@ describe("P6b basic projections", () => {
     expect(
       infoHubMachineSummarySchema.safeParse({ ...machine, projectId: otherProjectId }).success,
     ).toBe(false);
+  });
+
+  it("keeps persona and job title as separate list facts", () => {
+    const parsed = projectAgentEntrySchema.parse({ ...agent, jobTitle: "Reviewer" });
+    expect(parsed.personaSummary).toBe("契约维护者");
+    expect(parsed.jobTitle).toBe("Reviewer");
   });
 
   it("requires the project-level error to identify the source run", () => {

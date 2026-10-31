@@ -697,7 +697,11 @@ function WorkspaceScene() {
               instances={{ ok: true, data: fixture.instances, requestId: "req_demo" }}
               profile={{ ok: true, data: fixture.profile, requestId: "req_demo" }}
               info={{ ok: true, data: fixture.info, requestId: "req_demo" }}
-              turnStart={{ ok: true, data: fixture.context, requestId: "req_demo" }}
+              turnContext={{
+                ok: true,
+                data: { kind: "captured", record: fixture.context },
+                requestId: "req_demo",
+              }}
               machineFacts={demoMachineFacts}
               onClose={() => openInspector(false)}
             />
@@ -721,7 +725,11 @@ function InspectorScene() {
           instances={{ ok: true, data: demoInstances, requestId: "req_demo" }}
           profile={{ ok: true, data: profiles[0]!, requestId: "req_demo" }}
           info={{ ok: true, data: infoView, requestId: "req_demo" }}
-          turnStart={{ ok: true, data: turnStart, requestId: "req_demo" }}
+          turnContext={{
+            ok: true,
+            data: { kind: "captured", record: turnStart },
+            requestId: "req_demo",
+          }}
           machineFacts={demoMachineFacts}
           onClose={() => undefined}
         />
@@ -736,7 +744,11 @@ function InspectorScene() {
           instances={{ ok: false, error: demoError("internal", "内部错误"), requestId: "req_demo" }}
           profile={null}
           info={{ ok: false, error: demoError("internal", "内部错误"), requestId: "req_demo" }}
-          turnStart={{ ok: false, error: demoError("internal", "内部错误"), requestId: "req_demo" }}
+          turnContext={{
+            ok: false,
+            error: demoError("internal", "内部错误"),
+            requestId: "req_demo",
+          }}
           onClose={() => undefined}
         />
       </div>
