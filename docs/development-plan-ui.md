@@ -225,10 +225,12 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应[P6a](development-plan-functional.md#p6a-完成自动接续与人类控制)、[I-P6a](development-plan.md#i-p6a-集成自动接续与人类控制)。P6 原暂按整章交付，现按 a/b/c 三节交付。先比较 2–3 套 Lavish 原型并记录 Human 选定结论，再实现页面。
 
-- [ ] 完成自动接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。
-- [ ] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。
+- [x] 完成自动接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](p6a/summary.md#p3-2-disable-的页面文案)。
+- [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [UI 线证据](p6a/summary.md#ui-线证据)与[集成线与技术验收证据](p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`。
 
 包含 Project 判定器选择与不可用原因、Human owner 提醒、判定不确定/退避/投递未知、无 assigned 不检查的表达；Info Hub 仅接入 P6a 必要摘要，P6b 会扩展。
+
+设计、演示与真实 Chromium 自检已交付，`bde6383` 的第二轮独立技术验收支持合入 main；Human 真实体验尚未确认，本节不冒充确认。
 
 ## UI-P6b 完成 Info Hub 全部一期视角呈现
 

@@ -179,7 +179,8 @@ END;
 --> statement-breakpoint
 CREATE TRIGGER p6a_control_disabled AFTER UPDATE OF mode,epoch ON chat_automation_control WHEN NEW.mode<>'enabled' BEGIN
   DELETE FROM chat_schedule WHERE chat_id=NEW.chat_id;
-  UPDATE wake_evaluation SET state='canceled',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE chat_id=NEW.chat_id AND state IN ('pending','claimed','retry_wait');
+  UPDATE wake_evaluation SET state='canceled',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE chat_id=NEW.chat_id AND state='pending';
+  UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE chat_id=NEW.chat_id AND state IN ('claimed','retry_wait');
   UPDATE continuation_delivery SET state='canceled',cancel_reason=CASE NEW.mode WHEN 'paused' THEN 'human_paused' ELSE 'human_stopped' END,next_attempt_at=NULL WHERE chat_id=NEW.chat_id AND state IN ('pending','bound') AND admitted_at IS NULL;
   UPDATE continuation_delivery SET state='stale' WHERE chat_id=NEW.chat_id AND state='presented';
 END;

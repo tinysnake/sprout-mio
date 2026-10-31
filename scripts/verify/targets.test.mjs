@@ -37,6 +37,7 @@ function fixture(t) {
     "lib/targets-plan.mjs",
     "lib/suite-plan.mjs",
     "lib/native-lanes.mjs",
+    "lib/sandbox.mjs",
     "lib/test-targets.mjs",
   ]) {
     mkdirSync(dirname(join(directory, "scripts/verify", file)), { recursive: true });
@@ -81,6 +82,17 @@ await test("unclassified gates and test files fail before any command executes",
   rmSync(join(directory, "tests/new-platform.test.ts"));
   writeFileSync(join(directory, "scripts/verify/new-platform.sh"), "");
   assert.throws(() => validateGateTargets(directory), /gate inventory changed/);
+});
+
+await test("a planned sandbox gate the sandbox whitelist omits fails before any command runs", (t) => {
+  const directory = fixture(t);
+  const file = join(directory, "scripts/verify/lib/sandbox.mjs");
+  writeFileSync(file, readFileSync(file, "utf8").replace(/\n  "p6a-pages",/, ""));
+  assert.throws(() => validateGateTargets(directory), /does not whitelist it/);
+  const result = call(directory, "targets.mjs", ["ci", "--group", "docs"]);
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /does not whitelist it/);
+  assert.equal(existsSync(join(directory, ".verify")), false);
 });
 
 await test("CI continues after a failing gate and reports its real failure within its assigned group", (t) => {

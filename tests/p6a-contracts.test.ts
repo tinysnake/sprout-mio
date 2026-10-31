@@ -620,9 +620,9 @@ describe("P6a evaluation output", () => {
 
 describe("P6a continuation and Human controls", () => {
   it("freezes modes, timing policy and cancellation reasons separately from failures", () => {
-    for (const mode of ["enabled", "paused", "stopped"])
-      expect(chatAutomationModeSchema.parse(mode)).toBe(mode);
-    expect(chatAutomationModeSchema.safeParse("disabled").success).toBe(false);
+    for (const mode of ["enabled", "off"]) expect(chatAutomationModeSchema.parse(mode)).toBe(mode);
+    for (const mode of ["disabled", "paused", "stopped"])
+      expect(chatAutomationModeSchema.safeParse(mode).success).toBe(false);
     expect(CHAT_AUTOMATION_POLICY).toEqual({
       version: 1,
       intervalSeconds: 300,
@@ -631,8 +631,8 @@ describe("P6a continuation and Human controls", () => {
       repeatedRunFailureLimit: 3,
     });
     expect(continuationCancelReasonSchema.options).toEqual([
-      "human_paused",
-      "human_stopped",
+      "human_disabled",
+      "human_aborted",
       "membership_revoked",
       "task_context_changed",
       "chat_archived",
@@ -669,7 +669,8 @@ describe("P6a continuation and Human controls", () => {
         admittedAt: at,
         errorCode: "delivery_unknown",
       },
-      { ...pending, state: "canceled", cancelReason: "human_paused" },
+      { ...pending, state: "canceled", cancelReason: "human_disabled" },
+      { ...pending, state: "canceled", cancelReason: "human_aborted" },
       {
         ...pending,
         recipient: human,
@@ -703,7 +704,7 @@ describe("P6a continuation and Human controls", () => {
         errorCode: "delivery_unknown",
         nextAttemptAt: at,
       },
-      { ...delivery(), state: "canceled", errorCode: "human_paused" },
+      { ...delivery(), state: "canceled", errorCode: "human_disabled" },
       { ...delivery(), state: "canceled" },
       { ...delivery(), state: "presented", presentedAt: at },
       { ...delivery(), attempt: 3, nextAttemptAt: at },
@@ -731,10 +732,10 @@ describe("P6a continuation and Human controls", () => {
   it("requires revision/idempotency and explicit confirmation when reissuing unknown input", () => {
     const base = { projectId, chatId, expectedRevision: 1, requestId };
     for (const command of [
-      { ...base, action: "pause" },
-      { ...base, action: "resume" },
-      { ...base, action: "stop", scope: "chat" },
-      { ...base, action: "stop_run", runId },
+      { ...base, action: "disable" },
+      { ...base, action: "enable" },
+      { ...base, action: "abort" },
+      { ...base, action: "abort", runId },
       { ...base, action: "retry", evaluationId: "evaluation-1" },
       {
         ...base,
@@ -745,8 +746,16 @@ describe("P6a continuation and Human controls", () => {
     ])
       expect(chatAutomationCommandSchema.safeParse(command).success).toBe(true);
     for (const command of [
-      { ...base, action: "pause", expectedRevision: 0 },
-      { ...base, action: "stop" },
+      { ...base, action: "disable", expectedRevision: 0 },
+      { ...base, action: "pause" },
+      { ...base, action: "resume" },
+      { ...base, action: "stop", scope: "chat" },
+      { ...base, action: "stop_run", runId },
+      { ...base, action: "abort", runId: null },
+      { ...base, action: "abort", runId: "invalid" },
+      { ...base, action: "abort", scope: "chat" },
+      { ...base, action: "disable", runId },
+      { ...base, action: "enable", runId },
       { ...base, action: "retry", deliveryId: "delivery-1" },
       { ...base, action: "reissue", deliveryId: "delivery-1" },
       {
@@ -755,7 +764,7 @@ describe("P6a continuation and Human controls", () => {
         deliveryId: "delivery-1",
         confirmedUnknown: false,
       },
-      { ...base, action: "resume", actor: { kind: "system" } },
+      { ...base, action: "enable", actor: { kind: "system" } },
     ])
       expect(chatAutomationCommandSchema.safeParse(command).success).toBe(false);
   });
@@ -788,11 +797,11 @@ describe("P6a continuation and Human controls", () => {
     );
     // No reminder is invented merely because the owner is Human, before evaluation.
     expect(chatAutomationViewSchema.safeParse({ ...view(), owner: human }).success).toBe(true);
-    expect(chatAutomationViewSchema.safeParse({ ...view(), mode: "paused" }).success).toBe(false);
+    expect(chatAutomationViewSchema.safeParse({ ...view(), mode: "off" }).success).toBe(false);
     expect(
       chatAutomationViewSchema.safeParse({
         ...view(),
-        mode: "stopped",
+        mode: "off",
         nextDueAt: null,
       }).success,
     ).toBe(true);
@@ -822,9 +831,9 @@ describe("P6a continuation and Human controls", () => {
       "project.wake_policy.read": { human: "project", agent: "project" },
       "project.wake_policy.update": { human: "human", agent: "never" },
       "chat.automation.read": { human: "member", agent: "member" },
-      "chat.automation.pause": { human: "member", agent: "never" },
-      "chat.automation.resume": { human: "member", agent: "never" },
-      "chat.automation.stop": { human: "member", agent: "never" },
+      "chat.automation.disable": { human: "member", agent: "never" },
+      "chat.automation.enable": { human: "member", agent: "never" },
+      "chat.automation.abort": { human: "member", agent: "never" },
       "chat.automation.retry": { human: "member", agent: "never" },
       "chat.automation.reissue": { human: "member", agent: "never" },
     };
@@ -891,7 +900,7 @@ describe("P6a additive Project, Info Hub and remote boundaries", () => {
     expect(
       chatAutomationSummarySchema.safeParse({
         ...summary(),
-        mode: "paused",
+        mode: "off",
         nextDueAt: at,
       }).success,
     ).toBe(false);
@@ -929,7 +938,7 @@ describe("P6a additive Project, Info Hub and remote boundaries", () => {
     expect(remoteToolInputSchemas.sprout_chat_automation_get.parse({})).toEqual({});
     expect(
       remoteToolInputSchemas.sprout_chat_automation_get.safeParse({
-        action: "pause",
+        action: "disable",
       }).success,
     ).toBe(false);
     const call = { type: "chat_automation_get", input: { projectId } };
@@ -941,14 +950,14 @@ describe("P6a additive Project, Info Hub and remote boundaries", () => {
     expect(
       chatAutomationGetCall.safeParse({
         ...call,
-        type: "chat_automation_pause",
+        type: "chat_automation_disable",
       }).success,
     ).toBe(false);
     expect(remoteAgentRequestSchema.safeParse({ version: 2, call }).success).toBe(true);
     expect(
       remoteAgentRequestSchema.safeParse({
         version: 2,
-        call: { type: "chat_automation_pause", input: { projectId } },
+        call: { type: "chat_automation_disable", input: { projectId } },
       }).success,
     ).toBe(false);
     expect(chatAutomationGetResponseSchema.parse(view())).toEqual(view());

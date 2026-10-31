@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "node:http";
@@ -183,6 +183,59 @@ async function check(chatId: string, now = atDue(chatId), evaluate = yes) {
   await delivery.evaluateClaim(e!, evaluate, internal(now));
   return latest(chatId);
 }
+/**
+ * Landing gate: while the provider is deciding, only the persisted policy fact moves, so neither a
+ * database trigger nor the domain reconciler touches the evaluation row. `commitEvaluationResult`'s
+ * epoch check is then the single writer that can fence the late result, and the row itself (state,
+ * result) is what proves the fence ran; a delivery-row assertion alone cannot see this choice.
+ */
+async function landingFence() {
+  const fleeting = group();
+  assigned(fleeting.id);
+  const now = atDue(fleeting.id);
+  const claimed = schedule.claimDueEvaluation(internal(now))!;
+  const input = delivery.buildPeriodicInput(claimed, now);
+  const result = await yes(input);
+  const policy = schedule.one<{ wake_policy: string }>(
+    "SELECT wake_policy FROM project WHERE id=?",
+    project.id,
+  )!.wake_policy;
+  schedule.write(
+    "UPDATE project SET wake_policy=? WHERE id=?",
+    JSON.stringify({ ...JSON.parse(policy), thresholdVersion: "landing-fence" }),
+    project.id,
+  );
+  try {
+    equal(
+      [latest(fleeting.id).state, latest(fleeting.id).result],
+      ["claimed", null],
+      "a policy fact change alone leaves the evaluation claimed for the landing gate",
+    );
+    equal(
+      delivery.commitEvaluationResult(claimed, input, result, now),
+      null,
+      "landing gate rejects a late result whose facts moved after the snapshot",
+    );
+    equal(
+      [
+        latest(fleeting.id).state,
+        latest(fleeting.id).result,
+        latest(fleeting.id).claim_token,
+        latest(fleeting.id).lease_until,
+        latest(fleeting.id).next_attempt_at,
+      ],
+      ["stale", null, null, null, null],
+      "fenced landing marks the evaluation stale without storing the result",
+    );
+    equal(
+      schedule.one("SELECT 1 FROM continuation_delivery WHERE chat_id=?", fleeting.id),
+      undefined,
+      "a fenced landing writes no continuation delivery",
+    );
+  } finally {
+    schedule.write("UPDATE project SET wake_policy=? WHERE id=?", policy, project.id);
+  }
+}
 async function restart(now: Date) {
   const { stdout } = await promisify(execFile)(
     process.execPath,
@@ -200,13 +253,18 @@ async function restart(now: Date) {
       .slice(8),
   );
 }
-function control(chatId: string, action: "pause" | "resume" | "stop", now: Date) {
+function control(
+  chatId: string,
+  action: "disable" | "enable" | "abort",
+  now: Date,
+  runId?: string,
+) {
   return automation.applyChatAutomationCommand(
     {
       projectId: project.id,
       chatId,
       action,
-      ...(action === "stop" ? { scope: "chat" } : {}),
+      ...(runId ? { runId } : {}),
       expectedRevision: schedule.controlFor(chatId).revision,
       requestId: newId(ID_PREFIXES.request),
     },
@@ -261,6 +319,38 @@ try {
     await scheduler.settled();
     equal(latest(chat.id).state, "decided", "startup-restored timer drives real evaluation");
     equal(
+      row(chat.id)!.next_due_at! - now.getTime(),
+      schedule.INTERVAL_MS,
+      "a successful check re-arms exactly one policy interval from now",
+    );
+    // P2-2: the trigger writes the interval as a SQL literal, so read the migration text (the
+    // newest definition is the one that runs) and hold it equal to the constant. Asserting only the
+    // TypeScript config would let the constant and the trigger drift apart unnoticed.
+    const intervalLiterals = readdirSync(resolve("drizzle"))
+      .filter((name) => name.endsWith(".sql"))
+      .sort()
+      .flatMap((name) =>
+        [...readFileSync(resolve("drizzle", name), "utf8").matchAll(/NEW\.updated_at\+(\d+)/g)].map(
+          (match) => ({ name, literal: Number(match[1]) }),
+        ),
+      );
+    ok(
+      intervalLiterals.length > 0,
+      "migrations write the schedule interval as an explicit literal",
+    );
+    const newestIntervalMigration = intervalLiterals.at(-1)!.name;
+    equal(
+      [
+        ...new Set(
+          intervalLiterals
+            .filter((entry) => entry.name === newestIntervalMigration)
+            .map((entry) => entry.literal),
+        ),
+      ],
+      [schedule.INTERVAL_MS],
+      `newest migration trigger literal in ${newestIntervalMigration} equals INTERVAL_MS`,
+    );
+    equal(
       schedule.all("SELECT * FROM wake_evaluation_task").length,
       2,
       "round snapshots complete assigned Task set",
@@ -314,7 +404,7 @@ try {
     ).detail;
     task.reopenTask({ taskId: moved.task.id, expectedRevision: moved.task.revision }, ctx);
     ok(row(target.id), "reopening an assigned Task restores schedule membership");
-    control(target.id, "pause", new Date());
+    control(target.id, "disable", new Date());
     const contextual = group();
     assigned(contextual.id);
     const messageIds: string[] = [];
@@ -402,11 +492,11 @@ try {
       "admitted unknown is never selected again",
     );
     const reissueAt = new Date(item.created_at + 900000);
-    control(chat.id, "pause", reissueAt);
-    control(chat.id, "resume", reissueAt);
+    control(chat.id, "disable", reissueAt);
+    control(chat.id, "enable", reissueAt);
     ok(
       schedule.hasUnknownDeliveryBarrier(chat.id),
-      "resume does not automatically resend an unknown input",
+      "enable does not automatically resend an unknown input",
     );
     const reissued = automation.applyChatAutomationCommand(
       {
@@ -467,14 +557,14 @@ try {
       1,
       "an independent explicit Agent run remains real",
     );
-    control(reminder.id, "stop", new Date());
+    control(reminder.id, "abort", new Date());
     equal(
       schedule.one<{ n: number }>(
         "SELECT count(*) AS n FROM agent_run WHERE chat_id=? AND status IN ('queued','running')",
         reminder.id,
       )!.n,
       0,
-      "Chat stop aborts all real runs even when responsible owner is Human",
+      "Chat abort stops every live run even when the responsible owner is Human",
     );
     const changing = group();
     let changingWork = assigned(changing.id);
@@ -516,7 +606,7 @@ try {
       profiles[1].id,
       "next evaluation resolves the new unique responsible Agent",
     );
-    control(ownerChanged.id, "pause", new Date());
+    control(ownerChanged.id, "disable", new Date());
     const backoff = group();
     assigned(backoff.id);
     const unavailable = async (input: WakeEvaluationInput): Promise<WakeEvaluationResult> => ({
@@ -587,6 +677,7 @@ try {
       3,
       "repeated failure budget prevents a fourth automatic run",
     );
+    await landingFence();
   }
   if (suite === "control") {
     const chat = group();
@@ -595,11 +686,11 @@ try {
     const e = schedule.claimDueEvaluation(internal(now))!;
     const input = delivery.buildPeriodicInput(e, now);
     const result = await yes(input);
-    const paused = control(chat.id, "pause", now);
+    const disabled = control(chat.id, "disable", now);
     equal(
-      [paused.view.mode, paused.view.epoch, count("chat_schedule")],
-      ["paused", 2, 0],
-      "pause increments epoch and removes executable schedule",
+      [disabled.view.mode, disabled.view.epoch, count("chat_schedule")],
+      ["off", 2, 0],
+      "disable increments epoch and removes executable schedule",
     );
     equal(
       delivery.commitEvaluationResult(e, input, result, now),
@@ -614,13 +705,13 @@ try {
     equal(
       schedule.claimDueEvaluation(internal(new Date(now.getTime() + 3600000))),
       undefined,
-      "first epoch gate prevents checks while paused",
+      "first epoch gate prevents checks while automation is off",
     );
-    control(chat.id, "resume", now);
+    control(chat.id, "enable", now);
     equal(
       row(chat.id)!.next_due_at,
       now.getTime() + 300000,
-      "Human resume starts a fresh interval",
+      "Human enable starts a fresh interval",
     );
     await check(chat.id);
     delivery.bindPendingDeliveries(atDue(chat.id));
@@ -632,16 +723,21 @@ try {
       "UPDATE agent_run SET status='running',started_at=queued_at WHERE id=?",
       bound.run_id,
     );
-    control(chat.id, "pause", atDue(chat.id));
+    control(chat.id, "disable", atDue(chat.id));
     equal(
       schedule.one<{ status: string }>("SELECT status FROM agent_run WHERE id=?", bound.run_id)!
         .status,
       "running",
-      "pause permits current run to finish",
+      "disable permits current run to finish",
+    );
+    equal(
+      [drow(bound.id).state, drow(bound.id).cancel_reason],
+      ["canceled", "human_disabled"],
+      "disable cancels the unadmitted continuation instead of admitting it",
     );
     let sends = 0;
     delivery.admitContinuation(bound.id, bound.run_id!, now, () => ++sends);
-    equal(sends, 0, "third epoch gate rejects admission after control change");
+    equal(sends, 0, "disabled Chat cannot admit a canceled continuation");
     const agentCtx = {
       ...ctx,
       agent: {
@@ -651,7 +747,7 @@ try {
       },
     };
     ok(
-      automation.getChatAutomation(project.id, chat.id, agentCtx).denials.resume,
+      automation.getChatAutomation(project.id, chat.id, agentCtx).denials.enable,
       "Agent read explains denied controls",
     );
     let agentCode = "";
@@ -660,7 +756,7 @@ try {
         {
           projectId: project.id,
           chatId: chat.id,
-          action: "resume",
+          action: "enable",
           expectedRevision: schedule.controlFor(chat.id).revision,
           requestId: newId(ID_PREFIXES.request),
         },
@@ -671,14 +767,32 @@ try {
       agentCode = (error as { code: string }).code;
     }
     equal(agentCode, "forbidden", "Agent identity cannot impersonate Project Human for control");
-    control(chat.id, "resume", now);
-    const stopped = control(chat.id, "stop", now);
-    equal(stopped.view.mode, "stopped", "Human stop stores stopped mode");
+    control(chat.id, "enable", now);
+    // A fresh unadmitted continuation proves what a chat-wide abort cancels and stops.
+    await check(chat.id);
+    delivery.bindPendingDeliveries(atDue(chat.id));
+    const abortable = schedule.one<DeliveryRow>(
+      "SELECT * FROM continuation_delivery WHERE chat_id=? AND admitted_at IS NULL AND state IN ('pending','bound')",
+      chat.id,
+    )!;
+    ok(abortable, "enabled Chat builds a fresh unadmitted continuation");
+    const beforeAbort = schedule.controlFor(chat.id);
+    const closed = control(chat.id, "abort", now);
+    equal(
+      [closed.view.mode, closed.view.epoch],
+      ["off", beforeAbort.epoch + 1],
+      "chat-wide abort closes automation and advances the epoch again",
+    );
     equal(
       schedule.one<{ status: string }>("SELECT status FROM agent_run WHERE id=?", bound.run_id)!
         .status,
       "aborted",
-      "stop aborts current run",
+      "chat-wide abort stops the running run",
+    );
+    equal(
+      [drow(abortable.id).state, drow(abortable.id).cancel_reason],
+      ["canceled", "human_aborted"],
+      "chat-wide abort cancels the unadmitted continuation with the Human abort reason",
     );
     equal(count("chat_automation_abort"), 1, "host abort intent persists");
     const recovered = await restart(new Date(now.getTime() + 3600000));
@@ -688,14 +802,14 @@ try {
         recovered.schedules.length,
         recovered.claim,
       ],
-      ["stopped", 0, null],
-      "fresh process cannot bypass stop",
+      ["off", 0, null],
+      "fresh process cannot bypass abort",
     );
     const another = assigned(chat.id);
     equal(count("chat_schedule"), 0, "new assignment cannot restore automation");
     task.cancelTask({ taskId: another.task.id, expectedRevision: another.task.revision }, ctx);
     const command = {
-      action: "resume" as const,
+      action: "enable" as const,
       projectId: project.id,
       chatId: chat.id,
       expectedRevision: schedule.controlFor(chat.id).revision,
@@ -709,17 +823,52 @@ try {
     );
     let code = "";
     try {
-      automation.applyChatAutomationCommand({ ...command, action: "pause" }, ctx, now);
+      automation.applyChatAutomationCommand({ ...command, action: "disable" }, ctx, now);
     } catch (error) {
       code = (error as { code: string }).code;
     }
     equal(code, "conflict", "same request with different payload conflicts");
     const view = automation.getChatAutomation(project.id, chat.id, ctx);
     ok(
-      view.allowedActions.includes("chat.automation.pause") && !view.denials.pause,
+      view.allowedActions.includes("chat.automation.disable") && !view.denials.disable,
       "read data includes permitted controls",
     );
     equal(count("message"), 0, "control and automatic checks never forge Human messages");
+    // Run-scoped abort: two Agent runs in one Chat, only the named one stops.
+    const scoped = group(true);
+    sendMessage(
+      scoped.id,
+      { senderKind: "human", senderId: ctx.userId, body: "@Alpha @Beta 各自确认一次" },
+      ctx,
+    );
+    const live = schedule.all<{ id: string }>(
+      "SELECT id FROM agent_run WHERE chat_id=? AND status IN ('queued','running') ORDER BY rowid",
+      scoped.id,
+    );
+    equal(live.length, 2, "two named Agents open two live runs");
+    const scopedBefore = schedule.controlFor(scoped.id);
+    const scopedView = control(scoped.id, "abort", now, live[0].id);
+    const scopedAfter = schedule.controlFor(scoped.id);
+    equal(
+      [scopedView.view.mode, scopedAfter.mode, scopedAfter.epoch],
+      ["enabled", "enabled", scopedBefore.epoch],
+      "run-scoped abort leaves the Chat switch and its epoch untouched",
+    );
+    equal(
+      [
+        schedule.one<{ status: string }>("SELECT status FROM agent_run WHERE id=?", live[0].id)!
+          .status,
+        schedule.one<{ status: string }>("SELECT status FROM agent_run WHERE id=?", live[1].id)!
+          .status,
+      ],
+      ["aborted", "queued"],
+      "run-scoped abort stops only the named run",
+    );
+    equal(
+      count("chat_automation_abort"),
+      2,
+      "each run-scoped abort persists its own host abort intent",
+    );
     const revoked = group();
     schedule.write("DELETE FROM chat_member WHERE chat_id=? AND member_kind='human'", revoked.id);
     let revokedCode = "";
@@ -754,13 +903,13 @@ try {
       internal(hangingNow),
     );
     await enteredPromise;
-    control(hanging.id, "pause", hangingNow);
+    control(hanging.id, "disable", hangingNow);
     finish({} as WakeEvaluationResult);
     await judging;
     equal(
       schedule.one("SELECT 1 FROM continuation_delivery WHERE chat_id=?", hanging.id),
       undefined,
-      "pause during external provider request fences the late result",
+      "disable during external provider request fences the late result",
     );
     const carry = group();
     assigned(carry.id);
@@ -802,13 +951,13 @@ try {
       },
       ctx,
     );
-    control(carry.id, "pause", now);
+    control(carry.id, "disable", now);
     runs.completeAgentRun(carrying.id, "本轮正常结束。", "stop", ctx);
     equal(
       schedule.one<{ n: number }>("SELECT count(*) AS n FROM agent_run WHERE chat_id=?", carry.id)!
         .n,
       1,
-      "normal completion cannot carry pending work into a new run while paused",
+      "normal completion cannot carry pending work into a new run while automation is off",
     );
     equal(
       schedule.one<{ disposition: string }>(
@@ -816,8 +965,9 @@ try {
         message.id,
       )!.disposition,
       "pending",
-      "pause preserves unadmitted ordinary input without automatically reopening a run",
+      "disable preserves unadmitted ordinary input without automatically reopening a run",
     );
+    await landingFence();
   }
   if (suite === "integration") {
     const runtime = await import("../../src/server/runtime");

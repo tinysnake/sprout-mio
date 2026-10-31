@@ -666,7 +666,7 @@ export const chatAutomationControl = sqliteTable(
     chatId: text("chat_id")
       .primaryKey()
       .references(() => chat.id),
-    mode: text("mode", { enum: ["enabled", "paused", "stopped"] })
+    mode: text("mode", { enum: ["enabled", "off"] })
       .notNull()
       .default("enabled"),
     epoch: integer("epoch").notNull().default(1),
@@ -676,7 +676,7 @@ export const chatAutomationControl = sqliteTable(
     reason: text("reason"),
   },
   (t) => [
-    check("automation_mode_check", sql`${t.mode} in ('enabled','paused','stopped')`),
+    check("automation_mode_check", sql`${t.mode} in ('enabled','off')`),
     check(
       "automation_revision_check",
       sql`${t.epoch} between 1 and 9007199254740991 and ${t.revision} between 1 and 9007199254740991`,

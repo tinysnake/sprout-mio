@@ -169,12 +169,12 @@ try {
     await scheduler.settled();
     return latest(chatId);
   }
-  function pause(chatId: string, projectId = project.id) {
+  function disable(chatId: string, projectId = project.id) {
     automation.applyChatAutomationCommand(
       {
         projectId,
         chatId,
-        action: "pause",
+        action: "disable",
         expectedRevision: schedule.controlFor(chatId).revision,
         requestId: newId(ID_PREFIXES.request),
       },
@@ -343,23 +343,27 @@ try {
     "policy change invalidates the old retry without replacing its receipt",
   );
 
-  const paused = group();
-  const beforePause = { ...calls };
-  const evaluationsBeforePause = count("wake_evaluation");
+  const disabled = group();
+  const beforeDisable = { ...calls };
+  const evaluationsBeforeDisable = count("wake_evaluation");
   schedule.write(
     "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
     Date.now() - 1,
-    paused.id,
+    disabled.id,
   );
-  pause(paused.id);
+  disable(disabled.id);
   await scheduler.advance();
   await scheduler.settled();
-  equal(calls, beforePause, "paused due Chat makes no provider requests");
-  equal(count("wake_evaluation"), evaluationsBeforePause, "paused due Chat produces no evaluation");
+  equal(calls, beforeDisable, "disabled due Chat makes no provider requests");
+  equal(
+    count("wake_evaluation"),
+    evaluationsBeforeDisable,
+    "disabled due Chat produces no evaluation",
+  );
 
   // Transport failures and malformed completions exercise the same production validation path.
-  pause(chat.id);
-  pause(jevChat.id);
+  disable(chat.id);
+  disable(jevChat.id);
   await assertPure(JSON.parse(first.input!));
   await assertPure(JSON.parse(jev.input!));
   for (const provider of ["small_brain", "jev"] as const) {
@@ -377,7 +381,7 @@ try {
       ok(result(failed).errorCode, `${provider} ${mode} has an error code`);
       const other = provider === "jev" ? "small_brain" : "jev";
       equal(calls[other], before[other], `${provider} ${mode} never falls back`);
-      pause(failingChat.id);
+      disable(failingChat.id);
     }
   }
   failure = "none";
@@ -453,7 +457,7 @@ try {
     "NULL persisted policy remains current through delivery validation",
   );
   sqlite.exec("DROP TRIGGER record_default_project_updates; DROP TABLE default_project_updates");
-  pause(defaultChat.id, defaultProject.id);
+  disable(defaultChat.id, defaultProject.id);
 
   function configureDefaultProject(provider: "small_brain" | "jev", model?: string) {
     return updateProjectWakePolicy(
@@ -493,7 +497,7 @@ try {
     { small_brain: beforeExplicitJev.small_brain, jev: beforeExplicitJev.jev + 1 },
     "explicit JEV remains the sole selected provider",
   );
-  pause(explicitJevChat.id, defaultProject.id);
+  disable(explicitJevChat.id, defaultProject.id);
 
   configureDefaultProject("small_brain", "fixture/explicit-model");
   const explicitModelChat = group(defaultProject.id);
@@ -513,7 +517,7 @@ try {
     "fixture/explicit-model",
     "receipt preserves the explicit model",
   );
-  pause(explicitModelChat.id, defaultProject.id);
+  disable(explicitModelChat.id, defaultProject.id);
 
   const explicitDefaultPolicy = configureDefaultProject("small_brain");
   equal(
@@ -549,7 +553,7 @@ try {
     "fixture/runtime-default-model",
     "explicit omitted-model receipt records the host model",
   );
-  pause(explicitDefaultChat.id, defaultProject.id);
+  disable(explicitDefaultChat.id, defaultProject.id);
 
   for (const table of sideEffectTables)
     equal(sideEffects[table], 0, `${table} side-effect count is zero`);

@@ -27,7 +27,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 已完成（第 2 条部分交付，结论见 [p3/summary.md](p3/summary.md)） |
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | P4a 技术验收通过、待 Human 体验确认，其余待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
-| P6a | 自动接续与人类控制 | P4、P5 全部集成单元技术验收通过 | 设计冻结，未交付 |
+| P6a | 自动接续与人类控制 | P4、P5 全部集成单元技术验收通过 | 技术验收通过，待 Human 体验确认 |
 | P6b | Info Hub 全部一期视角 | P6a 技术验收通过 | 待开始 |
 | P6c | 成员治理、移除与重新加入 | P6a、P6b 技术验收通过 | 待开始 |
 | P7 | 完成手机、PWA、恢复与一期整体验收 | P6a、P6b、P6c 全部技术验收通过 | 待开始 |
@@ -162,11 +162,13 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 按总计划 I-P6a 分派；P6 由原暂按整章交付拆为 a/b/c，不减少原范围。契约与中文样本采用结论随本章交付归档，页面形状按项目约定确认。
 
-- [ ] 用中文协作样本验证聊天唤醒判定，确定 Jev 的采用方式和失败回退。
-- [ ] 对有 assigned Task 的 Chat 周期检查小脑；没有 assigned Task 时停止检查。
-- [ ] 实现持久唤醒去重、运行中合并、重启恢复与失败退避。人类暂停和停止优先，自动检查不能立即重新启动已暂停的工作。
+- [x] 用中文协作样本验证聊天唤醒判定，确定 Jev 的采用方式和失败回退。证据 [判定准确率只报不判](p6a/summary.md#判定准确率只报不判)：小脑 5 次真实回放 8/8 至 7/8、JEV 校准 12/15 与留出 9/15 且概率反序、产品默认小脑不部署 JEV、不自动回退；基线 `bde6383`，重跑 `bash scripts/verify/p6a-live-routing.sh`（人工门禁，需真实凭据与 `SPROUT_VERIFY_PI_MODEL`）。
+- [x] 对有 assigned Task 的 Chat 周期检查小脑；没有 assigned Task 时停止检查。证据 [功能线证据](p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`。
+- [x] 实现持久唤醒去重、运行中合并、重启恢复与失败退避。人类暂停和停止优先，自动检查不能立即重新启动已暂停的工作。证据 [功能线证据](p6a/summary.md#功能线证据)与[控制面收敛到三个动作](p6a/summary.md#控制面收敛到三个动作)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`、`bash scripts/verify/bf-p6a-lifecycle.sh`。
 
 上述“小脑”描述按已冻结的 Project 所选小脑/JEV 判定路径实施；同一次判定只走一路，不自动级联回退。Task 保留四态，调度、控制和提醒使用独立事实；Human owner 只提醒，不虚构 Agent run。
+
+技术出口已在 `bde6383` 由第二轮独立验收确认，契约、门禁与证据边界见 [P6a 章节结论](p6a/summary.md)；Human 亲自体验仍待 I-P6a 第四条确认，不随本节勾选。
 
 ## P6b 完成 Info Hub 全部一期视角
 

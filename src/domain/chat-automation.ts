@@ -163,14 +163,14 @@ export function getChatAutomation(
         : null,
   });
   const denials: AutomationDenials = {};
-  for (const action of ["pause", "resume", "stop", "stop_run", "retry", "reissue"] as const) {
+  for (const action of ["disable", "enable", "abort", "retry", "reissue"] as const) {
     if (ctx.agent) denials[action] = { code: "forbidden", reason: "自动接续控制仅供 Human 操作。" };
-    else if (action === "pause" && control.mode !== "enabled")
-      denials[action] = { code: "conflict", reason: "自动接续已关闭，请明确恢复后再调整。" };
-    else if (action === "resume" && control.mode === "enabled")
+    else if (action === "disable" && control.mode !== "enabled")
+      denials[action] = { code: "conflict", reason: "自动接续已关闭，请明确开启后再调整。" };
+    else if (action === "enable" && control.mode === "enabled")
       denials[action] = { code: "conflict", reason: "自动接续已开启。" };
     else if ((action === "retry" || action === "reissue") && control.mode !== "enabled")
-      denials[action] = { code: "automation_disabled", reason: "请先恢复自动接续。" };
+      denials[action] = { code: "automation_disabled", reason: "请先开启自动接续。" };
     else if (
       action === "retry" &&
       (!evaluation || !["attention", "retry_wait"].includes(evaluation.state))
@@ -189,10 +189,9 @@ export function getChatAutomation(
       denials[action] = { code: "conflict", reason: "当前没有需核对的未知投递。" };
   }
   const map: Record<Action, ChatAutomationAction> = {
-    pause: "chat.automation.pause",
-    resume: "chat.automation.resume",
-    stop: "chat.automation.stop",
-    stop_run: "chat.automation.stop",
+    disable: "chat.automation.disable",
+    enable: "chat.automation.enable",
+    abort: "chat.automation.abort",
     retry: "chat.automation.retry",
     reissue: "chat.automation.reissue",
   };
@@ -205,26 +204,16 @@ export function getChatAutomation(
   );
   return { view, denials, allowedActions };
 }
-/** Stop intention commits before host abort, and survives a process exit between those operations. */
+/** Abort intention commits before host abort and never changes the Chat's control mode or epoch. */
 export function persistAutomationRunStop(
   chatId: string,
   runIds: readonly string[],
   ctx: ProjectContext,
   now: Date,
-  modeAlreadyStored = false,
 ) {
-  if (ctx.agent) throw new ChatAutomationError("forbidden", "只有 Human 可以停止自动接续。");
+  if (ctx.agent) throw new ChatAutomationError("forbidden", "只有 Human 可以停止运行。");
   const current = getChat(chatId, ctx);
   access(current.projectId, chatId, ctx);
-  if (!modeAlreadyStored) {
-    controlFor(chatId);
-    write(
-      "UPDATE chat_automation_control SET mode='stopped',epoch=epoch+1,revision=revision+1,changed_by=?,changed_at=? WHERE chat_id=?",
-      ctx.userId,
-      now.getTime(),
-      chatId,
-    );
-  }
   for (const id of runIds)
     write(
       "INSERT OR IGNORE INTO chat_automation_abort(run_id,chat_id,requested_at) SELECT id,chat_id,? FROM agent_run WHERE id=? AND chat_id=? AND status IN ('queued','running')",
@@ -260,9 +249,14 @@ export function applyChatAutomationCommand(
       const data = getChatAutomation(command.projectId, command.chatId, ctx),
         denial = data.denials[command.action];
       if (denial) throw new ChatAutomationError(denial.code, denial.reason);
-      if (["pause", "resume", "stop", "stop_run"].includes(command.action)) {
+      if (
+        command.action === "disable" ||
+        command.action === "enable" ||
+        command.action === "abort"
+      ) {
         if (
-          command.action === "stop_run" &&
+          command.action === "abort" &&
+          command.runId !== undefined &&
           !one(
             "SELECT 1 FROM agent_run WHERE id=? AND chat_id=? AND status IN ('queued','running')",
             command.runId,
@@ -270,30 +264,37 @@ export function applyChatAutomationCommand(
           )
         )
           throw new ChatAutomationError("not_found", "运行不存在。");
-        const mode =
-          command.action === "resume"
-            ? "enabled"
-            : command.action === "pause"
-              ? "paused"
-              : "stopped";
-        write(
-          "UPDATE chat_automation_control SET mode=?,epoch=epoch+1,revision=revision+1,changed_by=?,changed_at=?,reason=? WHERE chat_id=? AND revision=?",
-          mode,
-          ctx.userId,
-          now.getTime(),
-          "reason" in command ? (command.reason ?? null) : null,
-          command.chatId,
-          command.expectedRevision,
-        );
-        if (command.action === "stop" || command.action === "stop_run") {
+        if (command.action === "abort" && command.runId !== undefined) {
+          // Stopping one run must leave the Chat's continuation switch and epoch intact.
+          write(
+            "UPDATE chat_automation_control SET revision=revision+1 WHERE chat_id=?",
+            command.chatId,
+          );
+        } else {
+          if (command.action === "abort")
+            write(
+              "UPDATE continuation_delivery SET state='canceled',cancel_reason='human_aborted',next_attempt_at=NULL WHERE chat_id=? AND state IN ('pending','bound') AND admitted_at IS NULL",
+              command.chatId,
+            );
+          write(
+            "UPDATE chat_automation_control SET mode=?,epoch=epoch+1,revision=revision+1,changed_by=?,changed_at=?,reason=? WHERE chat_id=? AND revision=?",
+            command.action === "enable" ? "enabled" : "off",
+            ctx.userId,
+            now.getTime(),
+            command.reason ?? null,
+            command.chatId,
+            command.expectedRevision,
+          );
+        }
+        if (command.action === "abort") {
           const ids =
-            command.action === "stop_run"
+            command.runId !== undefined
               ? [command.runId]
               : all<{ id: string }>(
                   "SELECT id FROM agent_run WHERE chat_id=? AND status IN ('queued','running')",
                   command.chatId,
                 ).map((run) => run.id);
-          persistAutomationRunStop(command.chatId, ids, ctx, now, true);
+          persistAutomationRunStop(command.chatId, ids, ctx, now);
           for (const id of ids) transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
         }
         reconcileChatSchedule(command.chatId, now);

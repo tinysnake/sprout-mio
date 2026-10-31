@@ -331,11 +331,7 @@ function cancelInvalid(row: DeliveryRow) {
   const mode = controlFor(row.chat_id).mode;
   write(
     "UPDATE continuation_delivery SET state='canceled',cancel_reason=?,next_attempt_at=NULL WHERE id=? AND admitted_at IS NULL AND state IN ('pending','bound')",
-    mode === "paused"
-      ? "human_paused"
-      : mode === "stopped"
-        ? "human_stopped"
-        : "task_context_changed",
+    mode === "off" ? "human_disabled" : "task_context_changed",
     row.id,
   );
 }

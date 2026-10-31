@@ -77,10 +77,10 @@ try {
       pass(`${width}_${name}_scope_occupies_own_row`);
       assert(await page.getByRole("button", { name: "保存判定器", exact: true }).isDisabled());
       pass(`${width}_${name}_provider_disabled`);
-      if (name === "paused" || name === "stopped") {
+      if (name === "off") {
         assert((await card.innerText()).includes("自动接续不会来"));
-        assert(await page.getByRole("button", { name: "恢复自动接续", exact: true }).isEnabled());
-        pass(`${width}_${name}_human_can_resume`);
+        assert(await page.getByRole("button", { name: "开启自动接续", exact: true }).isEnabled());
+        pass(`${width}_${name}_human_can_enable`);
         assert(
           await page
             .getByTestId("automation-mode")
@@ -96,7 +96,7 @@ try {
         assert((await card.innerText()).includes("当前无活动 run"));
         assert((await card.innerText()).includes("当前没有安排下次自动检查"));
         pass(`${width}_three_independent_facts`);
-        const stopRun = page.getByRole("button", { name: "停止分身运行", exact: true });
+        const stopRun = page.getByRole("button", { name: "停止这个运行", exact: true });
         assert(await stopRun.isDisabled());
         assert(await stopRun.evaluate((button) => Number(getComputedStyle(button).opacity) >= 0.6));
         assert(
@@ -106,7 +106,7 @@ try {
               getComputedStyle(document.querySelector('[data-testid="automation-mode"]')!).color,
           ),
         );
-        pass(`${width}_disabled_stop_run_readable`);
+        pass(`${width}_disabled_run_stop_readable`);
       }
       if (name === "failure") {
         assert(
@@ -123,12 +123,12 @@ try {
       if (name === "denied") {
         assert(await page.getByRole("button", { name: "暂停自动接续", exact: true }).isDisabled());
         assert(
-          (await page.getByTestId("automation-pause-denial").innerText()).includes(
-            "当前身份无权暂停此 Chat",
+          (await page.getByTestId("automation-disable-denial").innerText()).includes(
+            "当前身份无权关闭此 Chat 的自动接续",
           ),
         );
         assert(
-          (await page.getByTestId("automation-pause-denial").innerText()).includes("forbidden"),
+          (await page.getByTestId("automation-disable-denial").innerText()).includes("forbidden"),
         );
         pass(`${width}_denial_reason_and_code`);
       }
@@ -148,37 +148,38 @@ try {
     }
     await page.getByTestId("fixture-case").selectOption("idle");
     await page.getByRole("button", { name: "暂停自动接续", exact: true }).click();
-    await page.getByText("自动接续已暂停", { exact: true }).waitFor();
+    await page.getByText("自动接续已关闭", { exact: true }).waitFor();
     assert(
       (await page.getByTestId("automation-expectation").innerText()).includes("自动接续不会来"),
     );
-    assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "pause");
-    pass(`${width}_pause_contract_and_read_response`);
-    await page.getByRole("button", { name: "恢复自动接续", exact: true }).click();
+    assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "disable");
+    pass(`${width}_disable_contract_and_read_response`);
+    await page.getByRole("button", { name: "开启自动接续", exact: true }).click();
     await page.getByText("自动接续已启用", { exact: true }).waitFor();
     assert(
       (await page.getByTestId("automation-expectation").innerText()).includes("已安排下次自动检查"),
     );
-    pass(`${width}_resume_contract_and_read_response`);
-    await page.getByRole("button", { name: "停止自动接续…", exact: true }).click();
-    assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "resume");
+    assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "enable");
+    pass(`${width}_enable_contract_and_read_response`);
+    await page.getByRole("button", { name: "全部停止", exact: true }).click();
+    assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "enable");
     await page.getByRole("button", { name: "取消", exact: true }).click();
     assert((await page.getByTestId("automation-mode").innerText()).includes("已启用"));
-    pass(`${width}_stop_can_cancel_without_write`);
-    await page.getByRole("button", { name: "停止自动接续…", exact: true }).click();
-    await page.getByRole("button", { name: "确认停止", exact: true }).click();
-    await page.getByText("自动接续已停止", { exact: true }).waitFor();
-    const stop = JSON.parse(await page.getByTestId("last-command").innerText());
-    assert.equal(stop.action, "stop");
-    assert.equal(stop.scope, "chat");
-    pass(`${width}_stop_has_explicit_chat_scope`);
+    pass(`${width}_abort_can_cancel_without_write`);
+    await page.getByRole("button", { name: "全部停止", exact: true }).click();
+    await page.getByRole("button", { name: "确认全部停止", exact: true }).click();
+    await page.getByText("自动接续已关闭", { exact: true }).waitFor();
+    const abort = JSON.parse(await page.getByTestId("last-command").innerText());
+    assert.equal(abort.action, "abort");
+    assert.equal("runId" in abort, false);
+    pass(`${width}_abort_without_run_id_closes_the_chat`);
     await page.getByTestId("fixture-case").selectOption("scheduled");
     await page.getByLabel("模拟写入冲突").check();
     await page.getByRole("button", { name: "暂停自动接续", exact: true }).click();
     await page.getByRole("alert").waitFor();
     assert((await page.getByRole("alert").innerText()).includes("conflict"));
     assert((await page.getByTestId("automation-mode").innerText()).includes("已启用"));
-    pass(`${width}_conflict_does_not_pretend_paused`);
+    pass(`${width}_conflict_does_not_pretend_disabled`);
   }
   assert.deepEqual(pageErrors, []);
   pass("pageerror_zero");

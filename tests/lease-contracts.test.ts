@@ -98,9 +98,10 @@ describe("P4b shared contracts", () => {
     // Project/Chat 身份读取，不接收任何参数。其余工具都必须拒绝空输入。
     for (const [name, schema] of Object.entries(remoteToolInputSchemas))
       expect(schema.safeParse({}).success).toBe(name === "sprout_chat_automation_get");
-    // 码表数量不写死：每阶段都会加码（I-P5a channel_membership_managed、I-P5b 五个 Task 码、
-    // I-P6a automation_disabled / wake_provider_unavailable / continuation_delivery_unknown）。
-    // 要守的是「无重复」以及下面那条「与 APP_ERROR_CODES 逐项一致」。
+    // 码表数量写死：新增码必须同步改这里，并写明属于哪个阶段（I-P5a channel_membership_managed、
+    // I-P5b 五个 Task 码、I-P6a automation_disabled / wake_provider_unavailable /
+    // continuation_delivery_unknown）。同时守「无重复」与「与 APP_ERROR_CODES 逐项一致」。
+    expect(humanContracts.APP_ERROR_CODES).toHaveLength(34);
     expect(new Set(REMOTE_ERROR_CODES).size).toBe(REMOTE_ERROR_CODES.length);
     expect([...REMOTE_ERROR_CODES]).toEqual([...humanContracts.APP_ERROR_CODES]);
   });
