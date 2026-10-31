@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { setConnected, useConnected } from "../../lib/connectivity";
+import { watchThemeColor } from "../../lib/pwa";
 import { safeReturnTarget } from "../../lib/return-target";
 
 /** Network errors never imply an empty collection or a confirmed write. */
@@ -75,6 +76,7 @@ export function ConnectivityStatus() {
 }
 
 export function PwaRegistration() {
+  useEffect(() => watchThemeColor(), []);
   useEffect(() => {
     if (import.meta.env.PROD && "serviceWorker" in navigator)
       void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(console.error);

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { RouteReadError } from "../components/layout/route-error";
 import { PwaRegistration } from "../components/layout/connectivity-status";
 import { APP_VERSION } from "../contracts/version";
+import { THEME_COLOR } from "../lib/pwa";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 import appCss from "../styles.css?url";
 
@@ -14,7 +15,7 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Sprout Mio" },
       { name: "application-name", content: "sprout-mio" },
-      { name: "theme-color", content: "#22483f" },
+      { name: "theme-color", content: THEME_COLOR.light },
       { name: "application-version", content: APP_VERSION },
     ],
     links: [
