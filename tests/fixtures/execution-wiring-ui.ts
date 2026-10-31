@@ -82,7 +82,12 @@ try {
   }, "production server health");
 
   browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  // 这个门禁靠中止请求来模拟「读日志失败」；service worker 会先接住白名单只读调用，
+  // 中止就打不到真实请求上。PWA 自己的缓存行为由 p7-client-pwa 证明。
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    serviceWorkers: "block",
+  });
   page = await context.newPage();
   page.setDefaultTimeout(20000);
   const serverFns: string[] = [];
@@ -613,7 +618,10 @@ try {
   });
 
   await check("反证：另一个用户读日志与取消都被拒绝，页面显示错误而不是空或成功", async () => {
-    const strangerContext = await browser!.newContext({ viewport: { width: 1440, height: 1000 } });
+    const strangerContext = await browser!.newContext({
+      viewport: { width: 1440, height: 1000 },
+      serviceWorkers: "block",
+    });
     const stranger = await strangerContext.newPage();
     stranger.setDefaultTimeout(20000);
     const strangerEmail = `wiring-stranger-${randomBytes(6).toString("hex")}@example.test`;
