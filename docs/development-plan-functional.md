@@ -27,12 +27,14 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 已完成（第 2 条部分交付，结论见 [p3/summary.md](p3/summary.md)） |
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | P4a 技术验收通过、待 Human 体验确认，其余待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
-| P6 | 完成小脑接续、Info Hub 与成员治理 | P4、P5 | 待开始 |
-| P7 | 完成手机、PWA、恢复与一期整体验收 | P6 | 待开始 |
+| P6a | 自动接续与人类控制 | P4、P5 全部集成单元技术验收通过 | 设计冻结，未交付 |
+| P6b | Info Hub 全部一期视角 | P6a 技术验收通过 | 待开始 |
+| P6c | 成员治理、移除与重新加入 | P6a、P6b 技术验收通过 | 待开始 |
+| P7 | 完成手机、PWA、恢复与一期整体验收 | P6a、P6b、P6c 全部技术验收通过 | 待开始 |
 | R1 | 验证项目及软件 MCP 接入 | P4 的协议与授权稳定后 | 已完成：七条独立技术验收第七轮通过，并由 Human 确认纳入一期（结论见 [r1/summary.md](r1/summary.md)） |
 | P8 | 实施二期能力 | P7 | 后续细化 |
 
-默认按 P0 至 P7 顺序推进。P4 与 P5 在共同契约稳定后可以由不同实现者并行。Info Hub、响应式 UI 和错误呈现随对象逐步接入，P6 与 P7 负责补齐和整体验收，不是首次开始这些工作。
+默认按 P0 至 P7 顺序推进。P6 按 a 自动接续、b Info Hub、c 成员治理三个单元交付；技术依赖与 Human 确认分别由总计划记录。P4 与 P5 在共同契约稳定后可以由不同实现者并行。Info Hub、响应式 UI 和错误呈现随对象逐步接入，P6a、P6b、P6c 与 P7 负责补齐和整体验收，不是首次开始这些工作。
 
 ## P0 验证关键选择并确定基础契约
 
@@ -87,7 +89,7 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 - [x] 实现同分身串行、新消息进入当前轮、停止及明确的错误结果。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/o-turn-semantics.sh`。
 - [x] 实现宿主仓库入口，支持复用已有副本与按需获取数据，不仅支持手动绑定目录。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/p-repo-entry.sh`。
 - [x] 记录分析依据的来源、commit 或 ref 与获取时点。处理并发更新、Git 认证失败和磁盘占用策略。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/p-repo-entry.sh`。
-- [x] 将 Agent status、活动 runs 和错误接入 Info Hub，提供轮初必要上下文。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，轮初上下文只供 Human 与后续 P6，`injectedIntoPrompt=false`，重跑 `bash scripts/verify/q-info-hub-runs.sh`。
+- [x] 将 Agent status、活动 runs 和错误接入 Info Hub，提供轮初必要上下文。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，轮初上下文只供 Human 与后续 P6（其中轮初上下文注入归属 P6b），`injectedIntoPrompt=false`，重跑 `bash scripts/verify/q-info-hub-runs.sh`。
 - [x] 验证 profile 更新仅影响下一轮，宿主重启后不虚构旧 run 已成功完成。证据见 [P3 验收](p3/acceptance.md#七条-checkbox-逐条判定)，重跑 `bash scripts/verify/n-pi-session.sh` 与 `bash scripts/verify/o-turn-semantics.sh`。
 
 出口条件是 Human 不创建 Task、不申请 Machine 租约，也能在 DM 分析已推送的仓库内容。后续轮次保持身份和会话历史，当前轮可接收新消息。
@@ -156,18 +158,32 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 技术出口已在 `c0e9c74` 由第二轮独立验收确认，契约、门禁与证据边界见 [P5b 章节结论](p5b/summary.md)；Group owner Agent 的显式 @ 协作、DM 生命周期和 Human owner 通知路径均有技术证据。公共频道变更 owner 尚未落地；Human 亲自体验仍待 I-P5b 第四条确认，不随本节勾选。
 
-## P6 完成自动接续、Info Hub 与成员治理
+## P6a 完成自动接续与人类控制
+
+按总计划 I-P6a 分派；P6 由原暂按整章交付拆为 a/b/c，不减少原范围。契约与中文样本采用结论随本章交付归档，页面形状按项目约定确认。
 
 - [ ] 用中文协作样本验证聊天唤醒判定，确定 Jev 的采用方式和失败回退。
 - [ ] 对有 assigned Task 的 Chat 周期检查小脑；没有 assigned Task 时停止检查。
 - [ ] 实现持久唤醒去重、运行中合并、重启恢复与失败退避。人类暂停和停止优先，自动检查不能立即重新启动已暂停的工作。
+
+上述“小脑”描述按已冻结的 Project 所选小脑/JEV 判定路径实施；同一次判定只走一路，不自动级联回退。Task 保留四态，调度、控制和提醒使用独立事实；Human owner 只提醒，不虚构 Agent run。
+
+## P6b 完成 Info Hub 全部一期视角
+
+按总计划 I-P6b 分派，依赖 P6a 技术验收通过，扩展其最小 automation 摘要。
+
 - [ ] 完成 Info Hub 的 Project、Chat、Agent 与 Machine 全部一期视角。
 - [ ] 完成轮初快照、运行中合并的简短变更提示与 Agent 主动查询。普通变化不单独唤醒空闲分身。
 - [ ] 验证基本信息可见性不授予聊天正文访问或对象操作权，Agent status 仅汇总当前 Project。
+
+## P6c 完成成员治理与重新加入
+
+按总计划 I-P6c 分派，默认依赖 P6a、P6b 技术验收通过。
+
 - [ ] 实现 Agent 正常移除的前置检查，阻止仍有活动 runs、租约、owner 职责或 DM assigned Tasks 的移除。
 - [ ] 实现正常移除后的 Group 退出与 DM 归档，以及重新加入后的 Public Channel 和 DM 恢复。旧消息与待处理唤醒不能恢复已撤销的参与权。
 
-出口条件是协作可自动接续，同时人类控制可靠；Info Hub 展示与源对象一致的事实，不自行改变生命周期。
+P6a 出口是协作可自动接续且人类控制可靠；P6b 出口是 Info Hub 展示与源对象一致，不自行改变生命周期；P6c 出口是移除/重加按当前授权生效。原 P6 整体出口在三节全部交付后核对，不因 a 完成而记作整章完成。
 
 ## P7 验收完整一期与客户端体验
 
@@ -221,18 +237,18 @@ Human 于 `2026-10-25T03:44Z` 授权以无需大型软件的 MCP 验证透传能
 | core-scope 能力 | 首次实现 | 最终验收 |
 | --- | --- | --- |
 | 框架约束、Human 登录与 SPA 路由 | P0、P1 | P7 |
-| Project 配置、成员和信息边界 | P2 | P6、P7 |
+| Project 配置、成员和信息边界 | P2 | P6b、P6c、P7 |
 | 持久分身、profile 下一轮生效、Pi 继承 | P2、P3 | P7 |
 | 宿主仓库按需访问、来源和版本 | P3 | P7 |
-| DM、Group、Public Channel、运行中消息 | P2、P3、P5a | P6、P7 |
+| DM、Group、Public Channel、运行中消息 | P2、P3、P5a | P6a、P6c、P7 |
 | macOS Worker、shell、文件、进程 | P4 | P7 |
 | 长命令、日志结果、去重与恢复查询 | P4 | P7 |
 | 跨 run 持租、直接交接、强制收回 | P4 | P7 |
 | Machine 移除及资源撤销通知 | P4 | P7 |
 | Task 四态、checklist、施工记录与重开 | P5b | P7 |
-| 小脑周期、自动接续、人类控制 | P6 | P7 |
-| Info Hub 多视角、快照和变更提示 | P2 起逐步接入 | P6、P7 |
-| Agent 移除前置检查、DM 归档和重新加入 | P6 | P7 |
+| 小脑周期、自动接续、人类控制 | P6a | P7 |
+| Info Hub 多视角、快照和变更提示 | P2 起逐步接入 | P6b、P7 |
+| Agent 移除前置检查、DM 归档和重新加入 | P6c | P7 |
 | 手机、在线 PWA、断线与旧数据 | 各阶段随页面接入 | P7 |
 
 ## 分派任务并管理完成记录
