@@ -96,7 +96,7 @@ try {
     probe.once('error', reject)
     probe.listen(port, () => probe.close(resolve))
   })
-  for (const name of ['acceptance.sqlite', 'acceptance.sqlite-wal', 'acceptance.sqlite-shm', 'state.json', 'before.json', 'after.json', 'browser-before.json', 'browser-after.json']) rmSync(join(directory, name), { force: true })
+  for (const name of ['acceptance.sqlite', 'acceptance.sqlite-wal', 'acceptance.sqlite-shm', 'state.json', 'before.json', 'after.json', 'receipts.json', 'browser-before.json', 'browser-after.json', 'browser-host-disabled.json']) rmSync(join(directory, name), { force: true })
   const buildEnv = { ...environment }
   delete buildEnv.BETTER_AUTH_SECRET
   const build = await bounded(launch('node', ['scripts/verify/prepare.mjs', 'server'], 'build.log', buildEnv), 300000)
@@ -125,7 +125,18 @@ try {
       assert.equal(sqlite.prepare('SELECT count(*) AS count FROM agent_instance WHERE agent_profile_id = ? AND chat_id = ?').get(state.agentProfileId, snapshot.chatId).count, 1)
     })()
     record('profile_chat_duplicate_instance_rejected_by_SQLite', true, { agentProfileId: state.agentProfileId, chatId: snapshot.chatId, count: 1, code: 'SQLITE_CONSTRAINT_UNIQUE' })
+    // 重启前已提交的 Agent 回执落成快照：after 轮用它证明页面按原序逐字渲染同一批回执。
+    const agentReceipts = sqlite.prepare("SELECT body FROM message WHERE chat_id = ? AND sender_kind = 'agent' ORDER BY created_at, rowid").all(snapshot.chatId).map(row => row.body)
+    writeFileSync(join(directory, 'receipts.json'), JSON.stringify(agentReceipts, null, 2) + '\n')
+    record('restart_agent_receipts_recorded', true, { chatId: snapshot.chatId, receipts: agentReceipts.length })
   } finally { sqlite.close() }
+  // 宿主关闭态的诚实表达需要独立的服务实例：只换 SPROUT_PI_ENABLED，同一份 SQLite 与同一批页面数据。
+  const hostDisabledEnv = { ...environment, SPROUT_PI_ENABLED: 'false' }
+  const disabled = launch(process.execPath, ['.output/server/index.mjs'], 'server-host-disabled.log', hostDisabledEnv)
+  const disabledReady = await health(disabled, 'host-disabled')
+  record('production_host_disabled_ready', true, { bootId: disabledReady.bootId, SPROUT_PI_ENABLED: 'false' })
+  await browser('host-disabled')
+  await stop(disabled, 'host-disabled')
   const second = launch(process.execPath, ['.output/server/index.mjs'], 'server-after.log')
   const after = await health(second, 'after')
   assert.match(before.bootId, /^boot_/)

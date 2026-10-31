@@ -16,7 +16,7 @@ const base = process.env.BASE_URL ?? "http://localhost:3145";
 const directory = resolve(process.env.ACCEPTANCE_DIRECTORY ?? ".verify/k-acceptance");
 const screenshots = resolve(process.env.SPROUT_UI_EVIDENCE_DIR ?? ".verify/k-acceptance/evidence");
 const mode = process.argv[2] ?? "before";
-assert(["before", "after"].includes(mode));
+assert(["before", "after", "host-disabled"].includes(mode));
 mkdirSync(directory, { recursive: true });
 mkdirSync(screenshots, { recursive: true });
 const results = [];
@@ -72,6 +72,114 @@ async function sameInput(page, id, expected) {
   await test(page, id).waitFor();
   assert.equal(await test(page, id).inputValue(), expected, id);
 }
+// 宿主状态的文案来自 src/components/info-hub/run-facts.tsx：`活动 run` 标题与宿主状态同排给出。
+const HOST_ENABLED = "宿主已启用";
+const HOST_DISABLED = "宿主未启用";
+// Chat 运行状态行的标签来自 src/components/chat/run-status.tsx 的 RUN_STATUS_LABELS（含无 run 时的「尚未运行」）。
+const RUN_STATUS_LABELS = /^(尚未运行|排队中|运行中|已完成|失败|已停止|已中断)$/;
+const flat = (text) => text.replace(/\s+/g, " ").trim();
+// 消息项自带 data-sender-kind 与正文：按既有字段区分人类与 Agent，不靠正文内容猜。
+async function messageItems(page) {
+  // 新 Chat 可能还没有消息：等消息列表或空态出现，再读现有条目（可能为空）。
+  await page
+    .locator('[data-testid="message-list"], [data-testid="messages-empty"]')
+    .first()
+    .waitFor();
+  const items = await test(page, "message-item").evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      senderKind: node.dataset.senderKind,
+      body: node.querySelector('[data-testid="message-body"]')?.textContent ?? null,
+    })),
+  );
+  assert(
+    items.every((item) => typeof item.body === "string" && item.body.length > 0),
+    `每条消息都必须有正文 ${JSON.stringify(items)}`,
+  );
+  return items;
+}
+function humanBodies(items) {
+  return items.filter((item) => item.senderKind === "human").map((item) => item.body);
+}
+async function agentBodies(page) {
+  return (await messageItems(page))
+    .filter((item) => item.senderKind === "agent")
+    .map((item) => item.body);
+}
+/**
+ * 人类发言必须以同样的正文、同样的顺序出现，且不存在第三个人类发言。
+ * Agent 的真实回执是 run 追加的事实，条数随宿主执行增长，因此只断言人类发言的投影，
+ * 不要求整张列表只有两条，也不允许用「包含某子串」代替逐条比对。
+ */
+async function assertHumanMessages(page, expected) {
+  const items = await messageItems(page);
+  assert(
+    items.every((item) => item.senderKind === "human" || item.senderKind === "agent"),
+    `未知的发送者种类 ${JSON.stringify(items.map((item) => item.senderKind))}`,
+  );
+  assert.deepEqual(
+    humanBodies(items),
+    expected,
+    "人类发言的正文与顺序必须逐条一致，且不存在第三个人类发言",
+  );
+  return { total: items.length, human: expected.length, agent: items.length - expected.length };
+}
+/**
+ * 注入事实必须与同一面板上的持久化收据一致（文案与状态均来自 src/components/info-hub/run-facts.tsx）：
+ * 只有 submitted 收据能把上下文读作已注入，prepared/failed/没有快照都只能读作未注入。
+ */
+async function assertTurnPromptInjectionHonest(page) {
+  const injection = await test(page, "info-turn-prompt-injection").textContent();
+  const delivered =
+    (await test(page, "info-turn-delivery-state").count()) > 0
+      ? await test(page, "info-turn-delivery-state").getAttribute("data-state")
+      : null;
+  if (delivered === "submitted") {
+    assert.equal(
+      injection,
+      "已注入；本次上下文已跨过 SDK 提交边界，收据只确认提交，不表示模型已理解。",
+      "submitted 收据必须读作已注入",
+    );
+    assert.notEqual(await test(page, "info-turn-submitted-at").textContent(), "尚无提交收据");
+  } else {
+    assert.equal(
+      injection,
+      "注入模型 prompt：否 · 本次上下文尚无提交收据。",
+      `${delivered ?? "没有快照"} 时只能读作未注入`,
+    );
+  }
+  return { delivered, injection };
+}
+async function assertHostState(page, runFacts, expected) {
+  await test(page, `${runFacts}-host-status`).waitFor();
+  assert.equal(
+    await test(page, `${runFacts}-host-status`).textContent(),
+    expected,
+    `${runFacts}-host-status`,
+  );
+  const heading = flat(await test(page, runFacts).innerText());
+  assert.match(
+    heading,
+    new RegExp(`^活动 run\\s*${expected}`),
+    `${runFacts} 必须把「活动 run」标题与宿主状态一起给出`,
+  );
+  return { runFacts, hostStatus: expected, heading };
+}
+/**
+ * Info Hub 的消息数必须等于渲染出的消息条数。回执由 run 追加，读取会撞上中间态，
+ * 所以最多等两秒收敛；事实与渲染真正不一致时永远收敛不了，照样变红。
+ */
+async function assertMessageCountMatchesRendered(page) {
+  let last = null;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    last = {
+      fact: Number(await test(page, "info-message-count").textContent()),
+      rendered: await test(page, "message-item").count(),
+    };
+    if (last.fact === last.rendered) return last;
+    await page.waitForTimeout(100);
+  }
+  assert.fail(`Info Hub 消息数 ${last.fact} 与渲染的 ${last.rendered} 条消息不一致`);
+}
 async function registerProject(page, role) {
   await goto(page, "/login");
   await page.getByTestId("register-tab").click();
@@ -109,7 +217,7 @@ async function chat(page) {
   return {
     chatId: await test(page, "inspector-copy-chat-id").getAttribute("data-chat-id"),
     instanceId: await test(page, "inspector-instance-id").textContent(),
-    messages: await test(page, "message-body").allTextContents(),
+    messages: humanBodies(await messageItems(page)),
     persona: await test(page, "inspector-agent-persona").textContent(),
   };
 }
@@ -148,15 +256,16 @@ function noLeaks(body, tokens) {
   assert.deepEqual(leaked, [], `isolated data leaked ${JSON.stringify(leaked)}`);
   return leaked;
 }
-async function unavailable(page, target) {
+async function unavailable(page, target, expectedHumanMessages) {
   // Project Info Hub 在 Settings 的折叠区，只有该目标承载项目面板与 run / Machine 视角。
   if (target.key === "settings") await openProjectInfoHub(page);
+  let summary = null;
   const body = await page.locator("body").innerText();
   assert(!/0 个活动 run|无活动 run|无 Machine/.test(body));
   if (target.key === "settings") {
     // P4b 之后租约区投影真实事实：这里没有租约，渲染明确空态；管理动作改在 Machine 详情页，
     // Project settings 只给摘要与可跳转入口。原断言保护的真实集合、空值文案与宿主状态全部保留。
-    await sameText(page, "info-hub-project-runs-host-status", "宿主未启用");
+    await assertHostState(page, "info-hub-project-runs", HOST_ENABLED);
     await test(page, "info-hub-project-runs-active").waitFor();
     await test(page, "info-hub-leases").waitFor();
     await test(page, "info-hub-leases-empty").waitFor();
@@ -175,24 +284,22 @@ async function unavailable(page, target) {
     );
   }
   if (target.key === "chat") {
-    await sameText(page, "info-chat-runs-host-status", "宿主未启用");
-    // The Chat inspector has no captured turn snapshot yet, so TurnPromptInjectionFact renders the
-    // prepared/absent branch: "注入模型 prompt：否 · 本次上下文尚无提交收据。" Pinning the whole sentence
-    // keeps a bare "否" (which would read as "not injected" without saying why) from passing.
+    await assertHostState(page, "info-chat-runs", HOST_ENABLED);
+    // run 事实与轮初快照是两件事：快照是否存在由交付状态决定，注入文案必须与之一致。
+    await assertTurnPromptInjectionHonest(page);
+    // 宿主已启用：运行状态行给出真实 run 标签，不再声称「宿主未启用」。
+    await test(page, "pi-host-status").waitFor();
     assert.match(
-      await test(page, "info-turn-prompt-injection").textContent(),
-      /注入模型 prompt：否 · 本次上下文尚无提交收据/,
+      (await test(page, "pi-host-status").textContent()) ?? "",
+      RUN_STATUS_LABELS,
+      "pi-host-status",
     );
-    await sameText(page, "pi-host-status", "宿主未启用");
-    assert.deepEqual(
-      await test(page, "message-item").evaluateAll((nodes) =>
-        nodes.map((node) => node.dataset.senderKind),
-      ),
-      ["human", "human"],
-    );
+    assert.match(flat(await test(page, "run-status").innerText()), /^分身运行状态：/);
+    summary = await assertHumanMessages(page, expectedHumanMessages);
   }
   return {
     path: target.path,
+    messages: summary,
     P3: target.key === "settings",
     P4: target.key === "settings",
   };
@@ -360,7 +467,8 @@ async function before() {
       assert: async () => {
         assert.deepEqual(await chat(page), observed);
         await sameText(page, "info-chat-instance-id", observed.instanceId);
-        await sameText(page, "info-message-count", "2");
+        await assertHumanMessages(page, messages);
+        await assertMessageCountMatchesRendered(page);
         assert.deepEqual(
           await test(page, "info-member-item").evaluateAll((nodes) =>
             nodes.map((node) => node.dataset.memberKind),
@@ -418,7 +526,7 @@ async function before() {
       await page.reload({ waitUntil: "networkidle" });
       return targetMatches(target);
     });
-    await check(`unavailable_${target.key}`, page, () => unavailable(page, target));
+    await check(`unavailable_${target.key}`, page, () => unavailable(page, target, messages));
     await shot(page, `deep-${target.key}`);
     await check(`back_${target.key}`, page, async () => {
       await goto(page, next.entry ?? next.path);
@@ -532,6 +640,17 @@ async function after() {
   const page = await newPage(context);
   await goto(page, state.chatPath);
   const actual = await chat(page);
+  // 重启前库里已提交的 Agent 回执，必须在重启后的页面上逐字按原序渲染。
+  const persistedReceipts = JSON.parse(readFileSync(join(directory, "receipts.json"), "utf8"));
+  await check("restart_agent_receipts_preserved", page, async () => {
+    const receipts = await agentBodies(page);
+    assert.deepEqual(
+      receipts.slice(0, persistedReceipts.length),
+      persistedReceipts,
+      "重启前已提交的 Agent 回执必须逐字保留",
+    );
+    return { persisted: persistedReceipts.length, rendered: receipts.length };
+  });
   await shot(page, "after-chat");
   await goto(page, `${state.project.path}/settings`);
   await test(page, "config-git-remote").waitFor();
@@ -575,8 +694,38 @@ async function after() {
     return { before: [before.chatId], after: list };
   });
 }
+/**
+ * 宿主关闭时的诚实表达：`SPROUT_PI_ENABLED=false` 的服务实例必须让页面说「宿主未启用」，
+ * 并给出与「活动 run」标题同排的状态，不伪造运行中的 run。默认启用态由 deep_* / unavailable_* 证明。
+ */
+async function hostDisabled() {
+  const state = JSON.parse(readFileSync(join(directory, "state.json"), "utf8"));
+  const before = JSON.parse(readFileSync(join(directory, "before.json"), "utf8"));
+  const context = await browser.newContext({ storageState: state.storageA });
+  const page = await newPage(context);
+  await check("host_disabled_settings_says_host_off", page, async () => {
+    await goto(page, `${state.project.path}/settings`);
+    await test(page, "config-git-remote").waitFor();
+    await openProjectInfoHub(page);
+    const facts = await assertHostState(page, "info-hub-project-runs", HOST_DISABLED);
+    await test(page, "info-hub-project-runs-active").waitFor();
+    await test(page, "info-hub-project-runs-recent").waitFor();
+    await shot(page, "host-disabled-settings");
+    return facts;
+  });
+  await check("host_disabled_chat_says_host_off", page, async () => {
+    await goto(page, chatInspectorPath(state.chatPath));
+    await sameText(page, "pi-host-status", HOST_DISABLED);
+    assert.match(flat(await test(page, "run-status").innerText()), /^分身运行状态：宿主未启用/);
+    const facts = await assertHostState(page, "info-chat-runs", HOST_DISABLED);
+    await assertHumanMessages(page, before.messages);
+    await shot(page, "host-disabled-chat");
+    return facts;
+  });
+}
 try {
   if (mode === "before") await before();
+  else if (mode === "host-disabled") await hostDisabled();
   else await after();
 } catch (error) {
   await check(`setup_${mode}`, null, () => {
