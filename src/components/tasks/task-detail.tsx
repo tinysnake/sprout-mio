@@ -61,10 +61,22 @@ export function TaskActionControl({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  /** 与标题同行的操作：不给它单独占一行。 */
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <section className="space-y-4 border-b border-border py-6">
-      <h2 className="text-sm font-medium">{title}</h2>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">{title}</h2>
+        {action}
+      </div>
       {children}
     </section>
   );
@@ -154,7 +166,23 @@ export function TaskDetailView({
           notice.label
         )}
       </div>
-      <Section title="目标与要求">
+      <Section
+        title="目标与要求"
+        action={
+          allowed("update") && !editingMetadata ? (
+            <button
+              type="button"
+              aria-label="编辑目标与要求"
+              title="编辑目标与要求"
+              data-testid="task-metadata-edit"
+              className="flex size-6 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-11"
+              onClick={() => setEditingMetadata(true)}
+            >
+              <Icon as={Pencil} size={13} />
+            </button>
+          ) : undefined
+        }
+      >
         {editingMetadata ? (
           <form
             className="space-y-4"
@@ -192,20 +220,6 @@ export function TaskDetailView({
           </form>
         ) : (
           <>
-            {allowed("update") && (
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  aria-label="编辑目标与要求"
-                  title="编辑目标与要求"
-                  data-testid="task-metadata-edit"
-                  className="flex size-6 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-11"
-                  onClick={() => setEditingMetadata(true)}
-                >
-                  <Icon as={Pencil} size={13} />
-                </button>
-              </div>
-            )}
             <dl className="space-y-5">
               {(
                 [
