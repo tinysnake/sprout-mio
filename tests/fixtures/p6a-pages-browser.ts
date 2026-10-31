@@ -106,7 +106,7 @@ try {
               getComputedStyle(document.querySelector('[data-testid="automation-mode"]')!).color,
           ),
         );
-        pass(`${width}_disabled_stop_run_readable`);
+        pass(`${width}_disabled_run_stop_readable`);
       }
       if (name === "failure") {
         assert(
