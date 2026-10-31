@@ -1,6 +1,6 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MANUAL_GATES } from "./suite-plan.mjs";
+import { MANUAL_GATES, SUITE_PLAN } from "./suite-plan.mjs";
 
 export const CI_GROUPS = Object.freeze({
   base: ["a-base"],
@@ -109,5 +109,25 @@ export function validateGateTargets(root) {
   const shared = remote.filter((id) => Object.hasOwn(LOCAL_GATES, id)).sort();
   if (JSON.stringify(shared) !== JSON.stringify(["a-base", "b-tooling"]))
     throw new Error("Only explicitly split A/B gates may have two targets");
+  // The plan says which gates need the isolated tree; lib/sandbox.mjs decides which gates it will
+  // accept. Two modules own one fact, so read the whitelist as text and compare it here: a
+  // sandbox:true gate the sandbox refuses must fail before any command spawns, not at spawn time.
+  const whitelist = sandboxGates(root);
+  const sandboxed = Object.entries(SUITE_PLAN)
+    .filter(([, plan]) => plan.sandbox)
+    .map(([id]) => id)
+    .sort();
+  const missing = sandboxed.filter((id) => !whitelist.includes(id));
+  if (missing.length)
+    throw new Error(
+      `Suite plan sandboxes ${missing.join(",")} but lib/sandbox.mjs does not whitelist it`,
+    );
   return { ci: remote, local: Object.keys(LOCAL_GATES), manual: [...MANUAL_GATES] };
+}
+
+export function sandboxGates(root) {
+  const source = readFileSync(join(root, "scripts/verify/lib/sandbox.mjs"), "utf8");
+  const block = source.match(/const gates = new Set\(\[([\s\S]*?)\]\);/);
+  if (!block) throw new Error("Cannot read the verification sandbox gate whitelist");
+  return [...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
 }
