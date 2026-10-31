@@ -8,6 +8,7 @@ import { toAppError } from "../contracts/result";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { getDevLoginStatus } from "../server/dev-login";
 import { authenticate, getSessionInfo } from "../server/session";
+import { clearOfflineReads } from "../lib/pwa";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { next?: string } => {
@@ -51,6 +52,7 @@ function Login() {
         setError(result.error);
         return;
       }
+      clearOfflineReads();
       window.location.assign(safeReturnTarget(next));
     } catch (cause) {
       setError(toAppError(cause, newId(ID_PREFIXES.request)));

@@ -7,6 +7,7 @@ import { ProjectFormDialog } from "../components/project/project-form-dialog";
 import { ResultError } from "../components/project/result-error";
 import { authenticate, getProtectedSession } from "../server/session";
 import { createProjectFn, listProjectsFn } from "../server/functions/project";
+import { clearOfflineReads } from "../lib/pwa";
 
 export const Route = createFileRoute("/_authed")({
   beforeLoad: async ({ location }) => {
@@ -49,6 +50,7 @@ function AuthedLayout() {
         setError(result.error.message);
         return;
       }
+      clearOfflineReads();
       await router.invalidate();
       await router.navigate({ to: "/login" });
     } catch {

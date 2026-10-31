@@ -27,9 +27,14 @@ self.addEventListener("install", (event) => {
     })(),
   );
 });
+self.addEventListener("message", (event) => {
+  // 身份变更后旧的只读缓存不能再拿来离线展示：页面显式要求时才清。
+  if (event.data && event.data.type === "clear-reads") event.waitUntil(caches.delete(READS));
+});
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
+      readManifest = await readFunctions();
       for (const name of await caches.keys())
         if (name.startsWith("sprout-") && ![SHELL, READS].includes(name)) await caches.delete(name);
       await self.clients.claim();
@@ -74,16 +79,12 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (request.method !== "GET") {
-    event.respondWith(
-      (async () => {
-        const id = url.pathname.split("/_serverFn/")[1];
-        if (id && (await readFunctions())[id]) return cachedRead(request);
-        // A confirmed mutation, including login/logout, invalidates prior-identity reads.
-        const response = await fetch(request);
-        if (response.ok) await caches.delete(READS);
-        return response;
-      })(),
-    );
+    // 只接白名单里的只读调用；写入一律交给页面自己发，service worker 不掺和
+    // （否则写入既可能被离线缓存插手，也让浏览器侧的抓取与中止看不到真实请求）。
+    const id = url.pathname.split("/_serverFn/")[1];
+    // 白名单在 activate 阶段就装进内存，这个判断才能同步做：不认识的写入直接放行，
+    // service worker 不接管，页面自己发请求。
+    if (id && readManifest && readManifest[id]) event.respondWith(cachedRead(request));
     return;
   }
   if (

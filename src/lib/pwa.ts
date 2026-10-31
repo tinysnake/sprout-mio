@@ -19,3 +19,11 @@ export function watchThemeColor(): () => void {
   applyThemeColor(getTheme());
   return subscribeTheme(() => applyThemeColor(getTheme()));
 }
+
+/** 身份变更后旧的只读缓存不能再拿来离线展示：请 service worker 清掉它。 */
+export function clearOfflineReads(): void {
+  if (!("serviceWorker" in navigator)) return;
+  void navigator.serviceWorker.ready
+    .then((registration) => registration.active?.postMessage({ type: "clear-reads" }))
+    .catch(() => undefined);
+}

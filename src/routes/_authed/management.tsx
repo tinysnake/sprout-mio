@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ThemeMenuToggle } from "../../components/layout/theme-toggle";
 import { Button } from "../../components/ui/button";
 import { authenticate } from "../../server/session";
+import { clearOfflineReads } from "../../lib/pwa";
 
 type Health = {
   version: string;
@@ -74,6 +75,7 @@ function Management() {
         setError(result.error.message);
         return;
       }
+      clearOfflineReads();
       await router.invalidate();
       await router.navigate({ to: "/login", search: { next: "/" } });
     } catch {
