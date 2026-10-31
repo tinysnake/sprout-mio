@@ -174,7 +174,9 @@ async function open(config) {
         prompts: [join(config.agentDir, "prompts")].filter((path) => existsSync(path)),
       }
     : { skills: [], prompts: [] };
-  const resourceLoader = new sdk.DefaultResourceLoader({
+  // 受控目录是分身自己的 loader/session 根。证据里报的 agentDir 就是这个对象里的值：
+  // 不让「声明的目录」和「喂给 loader 的目录」变成两个可以互相飘的常量。
+  const loaderOptions = {
     cwd: config.cwd,
     agentDir: controlledDir,
     settingsManager,
@@ -241,7 +243,8 @@ async function open(config) {
       },
     ],
     systemPrompt: config.profile.persona,
-  });
+  };
+  const resourceLoader = new sdk.DefaultResourceLoader(loaderOptions);
   await resourceLoader.reload();
   const extensions = resourceLoader.getExtensions();
   if (extensions.errors.length) throw new Error("Sprout extension 加载失败");
@@ -259,7 +262,7 @@ async function open(config) {
   if (manager.getSessionId() !== config.sessionId) throw new Error("Pi session 身份不匹配");
   ({ session } = await sdk.createAgentSession({
     cwd: config.cwd,
-    agentDir: controlledDir,
+    agentDir: loaderOptions.agentDir,
     modelRuntime: runtime,
     model,
     thinkingLevel: thinking,
@@ -334,7 +337,7 @@ async function open(config) {
       ),
       resources: {
         inheritHostResources,
-        agentDir: controlledDir,
+        agentDir: loaderOptions.agentDir,
         hostAgentDir: config.agentDir,
         skillPaths: inheritedPaths.skills,
         promptPaths: inheritedPaths.prompts,
