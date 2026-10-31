@@ -116,10 +116,11 @@ try {
     'agent_owner_group_keeps_title_entry',
     'agent_owner_group_keeps_owner_fallback_entry',
     'dm_keeps_members_and_activity_only',
+    'channel_owner_change_is_the_only_governance_action',
   ]
   const ids = new Set(checks.map((line) => line.split(' ')[1]))
   for (const id of required) assert(ids.has(id), `browser assertion ${id} 缺失`)
-  assert(checks.length >= 26, `expected at least 26 browser assertions, got ${checks.length}`)
+  assert(checks.length >= 27, `expected at least 27 browser assertions, got ${checks.length}`)
   for (const line of checks) console.log(line)
   assert(checks.every((line) => line.startsWith('PASS ')), 'every browser assertion must pass')
   pass('as-p5a-browser-assertions', { count: checks.length, evidence: join(directory, 'evidence/results.json') })

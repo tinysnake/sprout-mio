@@ -183,14 +183,25 @@ try {
   );
 
   const channelText = (await page.textContent('[data-testid="channel-members-readonly"]'))?.trim();
-  const governanceOnChannel = await page.locator("[data-governance-action]").count();
+  // P5a 冻结的是「公共频道成员随项目同步、不可独立增删」，不是「频道上一个治理动作都没有」：
+  // I-P6c 按产品文档补上了 Human 指定负责人，`owner_change` 因此合法出现。这里改为按动作类型
+  // 分别断言，比原来的计数 0 更严：成员类动作必须为 0，负责人动作只允许是本 Project 创建者那一个 Human。
+  const channelMembershipActions = await page
+    .locator('[data-governance-action="member_add"], [data-governance-action="member_remove"]')
+    .count();
+  const channelOwnerActions = await page.locator('[data-governance-action="owner_change"]').count();
   record(
     "channel_membership_readonly_copy",
     Boolean(
       channelText?.includes("公共频道成员跟随项目自动同步，不可独立修改。") &&
       channelText?.includes("Project Members"),
-    ) && governanceOnChannel === 0,
-    `文案 ${JSON.stringify(channelText)}，治理按钮 ${governanceOnChannel}`,
+    ) && channelMembershipActions === 0,
+    `文案 ${JSON.stringify(channelText)}，成员类治理按钮 ${channelMembershipActions}，负责人按钮 ${channelOwnerActions}`,
+  );
+  record(
+    "channel_owner_change_is_the_only_governance_action",
+    channelOwnerActions <= 1,
+    `负责人治理按钮 ${channelOwnerActions}，成员类治理按钮 ${channelMembershipActions}`,
   );
   await shot(page, "p5a-public-channel");
 
