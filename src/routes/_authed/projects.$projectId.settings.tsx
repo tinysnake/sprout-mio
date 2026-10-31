@@ -23,6 +23,7 @@ import { MachineBindingForm } from "../../components/machine/machine-binding-for
 import { getProjectInfoHubFn } from "../../server/functions/info-hub";
 import { getProjectRepoStateFn, prepareProjectRepoFn } from "../../server/functions/repository";
 import { useExecutionWiring } from "../../lib/execution-wiring";
+import { WakeProviderSelect } from "../../components/automation/wake-provider-select";
 
 export const Route = createFileRoute("/_authed/projects/$projectId/settings")({
   loader: async ({ params }) => {
@@ -94,6 +95,7 @@ function ProjectSettingsPage() {
             }
             onSaved={invalidate}
           />
+          <WakeProviderSelect policy={project.data.wakePolicy} />
           <SettingsSection
             title="基本事实"
             description="Project 的身份与本次查询的诊断标识；排查问题时可以引用 requestId。"

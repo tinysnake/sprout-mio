@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { AutomationPanel } from "../automation/automation-panel";
+import type { AutomationPageData, AutomationSubmit } from "../automation/automation-page-data";
 import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-react";
@@ -71,6 +73,8 @@ export function ChatDetails({
   projectProfiles,
   machineFacts = null,
   machineFactsError,
+  automation,
+  onAutomationCommand,
   onClose,
   onChanged,
 }: {
@@ -87,6 +91,8 @@ export function ChatDetails({
   projectProfiles: AgentProfile[];
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
+  automation?: AutomationPageData;
+  onAutomationCommand?: AutomationSubmit;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -180,6 +186,9 @@ export function ChatDetails({
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6">
+        <div className="py-5">
+          <AutomationPanel data={automation} onCommand={onAutomationCommand} />
+        </div>
         <section data-testid="inspector-tasks" className="space-y-3 border-b border-border py-5">
           <h3 className="text-[10px] font-medium text-muted-foreground">Task 摘要</h3>
           {info.ok ? (

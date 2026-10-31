@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AutomationPanel } from "../../components/automation/automation-panel";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { TaskDetailView } from "../../components/tasks/task-detail";
 import type { TaskPageCommand } from "../../components/tasks/task-detail";
@@ -134,16 +135,22 @@ function ProjectTaskDetailPage() {
           chatFacts={
             loader.detail.data.chat && (
               <div className="space-y-6">
-                <div data-testid="task-chat-runs" className="space-y-3">
-                  <h3 className="text-xs font-medium">Chat 活动 run</h3>
-                  {loader.chatInfo?.ok ? (
-                    <RunFactsBlock runs={loader.chatInfo.data.runs} testId="task-chat-run-facts" />
-                  ) : loader.chatInfo && !loader.chatInfo.ok ? (
-                    <ResultError error={loader.chatInfo.error} />
-                  ) : (
-                    <p className="text-xs text-muted-foreground">运行事实暂不可用</p>
-                  )}
-                </div>
+                <AutomationPanel />
+                {!(loader.chatInfo?.ok && loader.chatInfo.data.owner.kind === "human") && (
+                  <div data-testid="task-chat-runs" className="space-y-3">
+                    <h3 className="text-xs font-medium">Chat 活动 run</h3>
+                    {loader.chatInfo?.ok ? (
+                      <RunFactsBlock
+                        runs={loader.chatInfo.data.runs}
+                        testId="task-chat-run-facts"
+                      />
+                    ) : loader.chatInfo && !loader.chatInfo.ok ? (
+                      <ResultError error={loader.chatInfo.error} />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">运行事实暂不可用</p>
+                    )}
+                  </div>
+                )}
                 <div data-testid="task-project-leases">
                   {loader.infoHub?.ok ? (
                     <LeaseOverview
