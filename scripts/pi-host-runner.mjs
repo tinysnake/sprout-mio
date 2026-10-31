@@ -165,6 +165,11 @@ async function open(config) {
   const { registerSproutMcp } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/mcp-extension.ts"),
   );
+  // 诊断入口与被诊断的 MCP 工具面同源：`sprout_status` 读 `mcpSurfaceDiagnostics()`，
+  // 两者必须注册在同一个进程里，所以这里注册工具，而不是只在独立 CLI 的入口里注册。
+  const { registerSproutStatus, setSproutHostFacts } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/status.ts"),
+  );
   const remoteClient = createRemoteClient(config.remote);
   // 继承边界：默认不读宿主资源。纯布尔判断（不用真值强制），关闭时与 P3 行为逐字节相同。
   const inheritHostResources = config.inheritHostResources === true;
@@ -239,6 +244,7 @@ async function open(config) {
           registerRemoteTools(pi, remote);
           registerTaskTools(pi, remote);
           registerInfoHubTools(pi, remote);
+          registerSproutStatus(pi);
         },
       },
     ],
@@ -271,6 +277,7 @@ async function open(config) {
     // 这是 `list_changed` 后新工具到不了模型工具面的根因，详见
     // `orchestrate/sprout-mio-r1/reports/remediation-extension.md`。
     tools: [
+      "sprout_status",
       "read",
       "bash",
       "edit",
@@ -316,6 +323,34 @@ async function open(config) {
   if (session.model?.provider !== provider || session.model?.id !== modelId)
     throw new Error("Pi 实际模型与显式配置不匹配");
   const pkg = jsonFile(join(root, "package.json"), {});
+  // 宿主实况在 ready 之前写进 `sprout_status` 的槽：模型调它的时候读到的是这一轮会话的
+  // 真实事实（装载了哪些 extension、继承开关、真实模型、真正声明出去的工具有几个），
+  // 不是 extension 自己猜的常量。工具面在 allowlist 之后已定，这里读到的就是终值。
+  {
+    const facts = {
+      source: "pi-host-runner",
+      runtime: { node: process.versions.node, pi: pkg.version ?? "unknown" },
+      host: {
+        inheritHostResources,
+        extensions: extensions.extensions.map((extension) =>
+          extension.path.replace(/^<inline:(.*)>$/, "$1"),
+        ),
+      },
+      session: {
+        model: `${session.model.provider}/${session.model.id}`,
+        thinking: session.thinkingLevel,
+        activeTools: session.getActiveToolNames().length,
+        registeredTools: session.getAllTools().length,
+      },
+      run: { id: config.id },
+    };
+    if (!facts.session.activeTools) throw new Error("Pi 工具面为空，拒绝写宿主实况");
+    // 自守：注册了却不声明给模型是 Pi 的真实状态（不在 `tools` allowlist 里就会被丢弃）。
+    // 没被声明的工具对模型不存在，所以这里不静默放行，直接让 open 失败。
+    if (!session.getActiveToolNames().includes("sprout_status"))
+      throw new Error("sprout_status 未进入 Pi 工具面，拒绝把诊断入口缺失的会话交给模型");
+    setSproutHostFacts(facts);
+  }
   // 边界证据随 ready 快照返回：谁被加载、谁没被加载由 loader 自己的读取结果回答，
   // 不靠读代码推断。只写名字与计数，不写 skill/prompt 正文。
   line({
@@ -327,7 +362,8 @@ async function open(config) {
       thinking: session.thinkingLevel,
       tools: session.getActiveToolNames().sort(),
       // registry 里注册的全部工具：与 tools（声明给模型的那一份）分开记录，
-      // 因为「注册成功但不在 allowlist」是 Pi 的一个真实状态（sprout_status 就是）。
+      // 因为「注册成功但不在 allowlist」是 Pi 的一个真实状态（`mcp__*` 之外的宿主工具
+      // 一旦漏进 allowlist 就这样丢），两张表分开才能看出差别。
       registeredTools: session
         .getAllTools()
         .map((tool) => tool.name)

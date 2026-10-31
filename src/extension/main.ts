@@ -1,42 +1,11 @@
-import { APP_VERSION, CONTRACT_VERSION } from "../contracts/version";
-import type { SproutExtensionAPI } from "./types";
-import { mcpSurfaceDiagnostics } from "./mcp-extension";
-
-const status = {
-  app: "sprout-mio",
-  version: APP_VERSION,
-  contractVersion: CONTRACT_VERSION,
-  worker: "unimplemented",
-  piSession: "unimplemented",
-} as const;
+import { registerSproutStatus } from "./status";
 
 /**
- * `sprout_status` 是工具的诊断入口：`registerSproutMcp` 的失败经 `mcpSurfaceDiagnostics()`
- * 出现在这里，不再只落在一个没人读的 `onError` 上（B2 的可见性要求）。
+ * 独立 extension 入口（`dist/extension/main.js`）。
+ *
+ * 工具与命令的定义在 `status.ts`：生产 Pi 分身的 runner 也调那一个注册函数，
+ * 保证「独立 CLI 里的 `sprout_status`」和「分身里的 `sprout_status`」是同一份实现。
  */
-function withDiagnostics() {
-  const surface = mcpSurfaceDiagnostics();
-  return { ...status, ...(surface.lastError ? { mcpSurfaceError: surface.lastError } : {}) };
-}
-
-export default function sproutExtension(pi: SproutExtensionAPI) {
-  pi.registerTool({
-    name: "sprout_status",
-    label: "Sprout Status",
-    description: "返回 Sprout Mio 版本与未实现边界。查询 Sprout 状态时调用此工具。",
-    parameters: { type: "object", properties: {}, additionalProperties: false },
-    async execute() {
-      const current = withDiagnostics();
-      return {
-        content: [{ type: "text", text: JSON.stringify(current) }],
-        details: { ...current },
-      };
-    },
-  });
-  pi.registerCommand("sprout-status", {
-    description: "显示 Sprout Mio 版本与未实现边界。",
-    async handler(_args, context) {
-      context.ui.notify(JSON.stringify(withDiagnostics()), "info");
-    },
-  });
+export default function sproutExtension(pi: Parameters<typeof registerSproutStatus>[0]) {
+  registerSproutStatus(pi);
 }
