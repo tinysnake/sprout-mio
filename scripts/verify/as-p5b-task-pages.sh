@@ -258,10 +258,12 @@ try {
   const { renderToStaticMarkup } = await import('react-dom/server')
   const { TaskDetailView } = await import('./src/components/tasks/task-detail.tsx')
   await page.setContent(renderToStaticMarkup(createElement(TaskDetailView, { detail: scoped, onCommand: async () => {} })))
+  const agentViewText = await page.getByTestId('task-detail').innerText()
   for (const action of ['complete', 'cancel']) {
     assert.equal(await page.getByTestId(`task-action-${action}`).count(), 0, `denied ${action} must not render`)
     assert(scoped.capabilities.denials[action], `${action} must still carry a server denial`)
-    assert(!(await page.getByTestId('task-detail').innerText()).includes(scoped.capabilities.denials[action].code))
+    assert(!agentViewText.includes(scoped.capabilities.denials[action].code), `denied ${action} must not print its code`)
+    assert(!agentViewText.includes(scoped.capabilities.denials[action].reason), `denied ${action} must not print its reason`)
   }
   pass('non_owner_agent_denials_are_real_capabilities')
   await shot('member-agent-denials')
