@@ -135,14 +135,13 @@ const deliveries = (chatId: string) =>
     "SELECT * FROM continuation_delivery WHERE chat_id=? ORDER BY rowid",
     chatId,
   );
-const control = (projectId: string, chatId: string, action: "pause" | "resume" | "stop") =>
+const control = (projectId: string, chatId: string, action: "disable" | "enable" | "abort") =>
   human(() =>
     automation.applyChatAutomationCommand(
       {
         projectId,
         chatId,
         action,
-        ...(action === "stop" ? { scope: "chat" as const } : {}),
         expectedRevision: schedule.controlFor(chatId).revision,
         requestId: newId(ID_PREFIXES.request),
       },
@@ -513,19 +512,19 @@ try {
       equal(row(chat.id), undefined, "no assigned Task leaves no schedule");
       await scheduler.advance();
       equal(scheduler.snapshot().timerArmed, false, "no assigned Task leaves no scheduler timer");
-      control(owner.project.id, chat.id, "pause");
-      equal(schedule.controlFor(chat.id).mode, "paused", "Human pause applies immediately");
-      control(owner.project.id, chat.id, "resume");
-      equal(schedule.controlFor(chat.id).mode, "enabled", "Human resume applies immediately");
-      control(owner.project.id, chat.id, "stop");
-      assigned(owner.project.id, chat.id, "停止后显式接续");
+      control(owner.project.id, chat.id, "disable");
+      equal(schedule.controlFor(chat.id).mode, "off", "Human disable applies immediately");
+      control(owner.project.id, chat.id, "enable");
+      equal(schedule.controlFor(chat.id).mode, "enabled", "Human enable applies immediately");
+      control(owner.project.id, chat.id, "abort");
+      assigned(owner.project.id, chat.id, "全部停止后显式接续");
       await scheduler.advance();
-      equal(row(chat.id), undefined, "new assigned work cannot revive stopped automation");
+      equal(row(chat.id), undefined, "new assigned work cannot revive a closed Chat");
       const before = requests.length;
-      control(owner.project.id, chat.id, "resume");
+      control(owner.project.id, chat.id, "enable");
       await due(chat.id);
       equal(requests.length, before + 1, "explicit Human resumption permits the next check");
-      control(owner.project.id, chat.id, "pause");
+      control(owner.project.id, chat.id, "disable");
     }
     if (!scenario || scenario === "claim") {
       const owner = seed("concurrent-claim");
@@ -597,7 +596,7 @@ try {
         "concurrent due check creates at most one delivery",
       );
       equal(latest(chat.id).attempt, 1, "winning claim is never overwritten");
-      control(owner.project.id, chat.id, "pause");
+      control(owner.project.id, chat.id, "disable");
     }
     if (!scenario || scenario === "isolation") {
       const owners = [seed("PROJECT_A_PRIVATE_CANARY"), seed("PROJECT_B_PRIVATE_CANARY")];
@@ -660,11 +659,11 @@ try {
           [[chat.id, owner.project.id, owner.profile.id]],
           "delivery stays in its Chat and candidate set",
         );
-        control(owner.project.id, chat.id, "pause");
+        control(owner.project.id, chat.id, "disable");
       }
     }
     if (!scenario || scenario === "stale") {
-      for (const change of ["pause", "stop", "reassign", "resume"] as const) {
+      for (const change of ["disable", "abort", "reassign", "enable"] as const) {
         const owner = seed(`stale-${change}`);
         const chat = group(owner, `在途 ${change}`);
         const target = group(owner, "改派目标");
@@ -687,7 +686,7 @@ try {
             ),
           );
         else {
-          if (change === "resume") control(owner.project.id, chat.id, "pause");
+          if (change === "enable") control(owner.project.id, chat.id, "disable");
           control(owner.project.id, chat.id, change);
         }
         held.release();
@@ -709,8 +708,8 @@ try {
         equal(count("agent_run", chat.id), 0, `${change} creates zero runs`);
         equal(runInputCount(chat.id), 0, `${change} creates zero run inputs`);
         equal(count("message", chat.id), messages, `${change} creates zero stale messages`);
-        if (change === "resume")
-          ok(row(chat.id), "explicit in-flight resume preserves a new executable schedule");
+        if (change === "enable")
+          ok(row(chat.id), "explicit in-flight resumption preserves a new executable schedule");
         else equal(row(chat.id), undefined, `${change} immediately removes automatic schedule`);
         await scheduler.advance();
         equal(count("wake_evaluation", chat.id), 1, `${change} cannot revive the old evaluation`);
@@ -718,10 +717,10 @@ try {
         if (change !== "reassign")
           equal(
             schedule.controlFor(chat.id).epoch,
-            evaluation.control_epoch + (change === "resume" ? 2 : 1),
+            evaluation.control_epoch + (change === "enable" ? 2 : 1),
             `${change} immediately advances the Human control epoch`,
           );
-        if (change === "resume") {
+        if (change === "enable") {
           await due(chat.id);
           equal(
             latest(chat.id).state,
@@ -733,9 +732,9 @@ try {
             1,
             "in-flight resumption creates only the fresh continuation",
           );
-          control(owner.project.id, chat.id, "pause");
+          control(owner.project.id, chat.id, "disable");
         }
-        if (change === "reassign") control(owner.project.id, target.id, "pause");
+        if (change === "reassign") control(owner.project.id, target.id, "disable");
       }
     }
     if (!scenario || scenario === "budget") {
@@ -806,7 +805,7 @@ try {
         failed.round + 1,
         "recovery creates the next check with independent receipt",
       );
-      control(owner.project.id, chat.id, "pause");
+      control(owner.project.id, chat.id, "disable");
     }
     if (!scenario || scenario === "authority") {
       const owner = seed("authority");
@@ -823,7 +822,7 @@ try {
         0,
         "scheduler and evaluator cannot manufacture owner speech",
       );
-      control(owner.project.id, chat.id, "pause");
+      control(owner.project.id, chat.id, "disable");
     }
     if (!scenario || scenario === "recovery") {
       async function child(childMode: string) {
