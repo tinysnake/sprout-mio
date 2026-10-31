@@ -44,6 +44,7 @@ export const CI_GROUPS = Object.freeze({
     "p6a-control",
     "p6a-delivery",
     "p6a-integration",
+    "bf-p6a-lifecycle",
     "p6a-wiring",
   ],
   turns: [
