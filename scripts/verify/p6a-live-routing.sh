@@ -4,6 +4,16 @@ cd "$(dirname "$0")/../.."
 source scripts/verify/lib/live-model.sh
 # A missing small-brain model still leaves an explicit failed receipt for both providers.
 sprout_live_model || true
+# JEV takes its own credential, so the gate accepts it from the environment or this
+# checkout's .env. Without it every JEV case records an explicit failed receipt.
+if [ -z "${JEV_API_KEY:-}" ] && [ -f .env ]; then
+  JEV_API_KEY="$(
+    sed -n 's/^JEV_API_KEY=//p' .env |
+      tail -1 |
+      sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/" -e 's/[[:space:]]*$//'
+  )"
+fi
+export JEV_API_KEY="${JEV_API_KEY:-}"
 export SPROUT_VERIFY_DIR="${SPROUT_VERIFY_DIR:-.verify/p6a-live-routing/$(date -u +%Y%m%dT%H%M%SZ)}"
 mkdir -p "$SPROUT_VERIFY_DIR"
 export DATABASE_URL="$SPROUT_VERIFY_DIR/live.sqlite"

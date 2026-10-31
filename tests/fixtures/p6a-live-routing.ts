@@ -25,7 +25,7 @@ const judges = {
     agentDir: process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
     clock,
   }),
-  jev: createJevJudge({ apiKey: process.env.TYPESAFE_API_KEY, threshold, clock }),
+  jev: createJevJudge({ apiKey: process.env.JEV_API_KEY, threshold, clock }),
 };
 const counts = () =>
   Object.fromEntries(
@@ -78,7 +78,7 @@ for (const provider of ["small_brain", "jev"] as const) {
         },
       };
     } else {
-      if (provider === "jev" && !process.env.TYPESAFE_API_KEY?.trim()) attempted = false;
+      if (provider === "jev" && !process.env.JEV_API_KEY?.trim()) attempted = false;
       const unselected: WakeJudge = async () => {
         throw new Error("provider fallback forbidden");
       };

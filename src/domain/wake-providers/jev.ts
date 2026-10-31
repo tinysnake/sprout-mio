@@ -40,7 +40,7 @@ export function createJevJudge(options: JevOptions): WakeJudge {
       if (!options.apiKey?.trim())
         throw new WakeProviderError(
           "provider_unavailable",
-          "缺少独立 JEV 服务凭据 TYPESAFE_API_KEY",
+          "缺少独立 JEV 服务凭据 JEV_API_KEY",
         );
       if (input.policy.provider !== "jev" || input.policy.model !== JEV_MODEL)
         throw new WakeProviderError("provider_unavailable", `JEV 仅支持固定 model ${JEV_MODEL}`);

@@ -452,7 +452,7 @@ for (const provider of ["small_brain", "jev"] as const) {
     if (["low", "mixed"].includes(error)) equal(receipt.result.errorCode, "provider_low_certainty");
     if (error === "credentials") {
       equal(receipt.result.reasonCode, "wake_provider_unavailable");
-      ok(receipt.result.reason.includes("TYPESAFE_API_KEY"));
+      ok(receipt.result.reason.includes("JEV_API_KEY"));
     }
     equal(effects(), { runs: 0, messages: 0, inputs: 0 });
     console.log(
