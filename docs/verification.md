@@ -78,13 +78,13 @@ server 准备固定使用 `NODE_ENV=production` 并删除 `BETTER_AUTH_SECRET`�
 
 worker 按验证计划执行，不因“保险起见”自行追加全量验证。发现计划外风险时，记录具体风险和调整依据，再更新验证计划。报告区分计划执行、实际执行、通过、失败与跳过。
 
-coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范围。worker 自报通过是证据，不代替 coordinator 验证。文档单元复跑文档检查，代码单元复跑受影响领域检查；独立复跑不等于全量复跑。复跑前核对脚本内含的检查，去掉本轮执行计划中的重复项；保留重复项时写明新增风险或独立取证的理由。交付前的整段复核用 `pnpm verify:local`：它只跑 `scripts/verify/lib/targets-plan.mjs` 里 `LOCAL_GATES` 的 19 个门禁，即必须在本机 macOS 与真实 Pi 环境下跑的部分（真实 Worker、真实 Pi CLI/SDK/MCP、真实页面）；61 个门禁里另外 42 个由 CI 的 Linux 分组覆盖，只有 `a-base` 与 `b-tooling` 两边都跑（同名的两份检查只在 macOS 侧含本机专属用例）。同一 HEAD 已有一轮 0 失败就复用那份结果并记下来源，不因为「顺手再跑一遍」重跑第二遍。
+coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范围。worker 自报通过是证据，不代替 coordinator 验证。文档单元复跑文档检查，代码单元复跑受影响领域检查；独立复跑不等于全量复跑。复跑前核对脚本内含的检查，去掉本轮执行计划中的重复项；保留重复项时写明新增风险或独立取证的理由。交付前的整段复核用 `pnpm verify:local`：它只跑 `scripts/verify/lib/targets-plan.mjs` 里 `LOCAL_GATES` 的 24 个门禁，即必须在本机 macOS 与真实 Pi 环境下跑的部分（真实 Worker、真实 Pi CLI/SDK/MCP、真实页面）；98 个门禁里另外 73 个由 CI 的 Linux 分组覆盖，只有 `a-base` 与 `b-tooling` 两边都跑（同名的两份检查只在 macOS 侧含本机专属用例）。同一 HEAD 已有一轮 0 失败就复用那份结果并记下来源，不因为「顺手再跑一遍」重跑第二遍。
 
 完整验证安排在明确的集成批次或交付节点，不在每个中间单元重复执行。独立验收的范围覆盖该节点的交付要求，不能因为单元定向验证通过而省略。在集成分支上，先把它与 `main` 同步、解决冲突，再在同步后的头部跑完整验证与独立验收，并把该 commit 记成受验对象；之后 `main` 只接收这个受验形态。
 
 ## 完整验证与去重
 
-`pnpm verify` 调用 `scripts/verify.sh`，跑全部 61 个门禁并包含全量 `pnpm test`；它属于与 CI 对等的整段复核，在没有 CI 结果时才需要，日常交付用上面的 `pnpm verify:local`。本机 `scripts/verify.sh` 的并发上限（6 个进程、6 条 native 车道、3 个浏览器）按空闲机器估算，机器同时在跑索引或别的 agent 时，时间预算型的门禁会假红；判红前先看 `uptime`，再单独复跑该门禁。`scripts/verify/b-tooling.sh` 是完整验证中全量测试的唯一执行入口，其他验收脚本保留领域定向测试。
+`pnpm verify` 调用 `scripts/verify.sh`，跑全部 98 个门禁并包含全量 `pnpm test`；它属于与 CI 对等的整段复核，在没有 CI 结果时才需要，日常交付用上面的 `pnpm verify:local`。本机 `scripts/verify.sh` 的并发上限（6 个进程、6 条 native 车道、3 个浏览器）按空闲机器估算，机器同时在跑索引或别的 agent 时，时间预算型的门禁会假红；判红前先看 `uptime`，再单独复跑该门禁。`scripts/verify/b-tooling.sh` 是完整验证中全量测试的唯一执行入口，其他验收脚本保留领域定向测试。
 
 同一轮完整验证不再另外追加全量测试。领域验证同样去重。例如 `scripts/verify/g-identity-data.sh` 已包含 `pnpm check` 和 `tests/identity-data.test.ts` 的定向测试，未发生相关改动时，不在同一执行者的同一轮计划中另加相同检查。修复前后对照、快速定位失败或独立验收需要重复执行时，保留并说明目的。
 
