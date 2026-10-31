@@ -167,6 +167,20 @@ Chats 页的 1200ms 全 route invalidate 与设置页的 5 秒 invalidate 仍在
 - **超大单行返回 `too_many_requests`**：语义错配（应表达「响应过大」），事实本身没有被改写。重跑：`bash scripts/verify/bf-p6b-info.sh`。
 - **`deliveryState: 'failed'` 没有 producer**：迁移与契约允许，领域层只写 `prepared`/`submitted`。后果：契约里有一条走不通的分支，读契约的人需要知道。
 
+## 独立技术验收判定
+
+两轮独立技术验收都由未参与实现的单元在受验提交上重跑全部代码门禁，报告见编排目录的 `p6b-acceptance-round1.md` 与 `p6b-acceptance-round2.md`（不进本仓库）。
+
+第一轮判定「无 P1、2 个 P2、7 个 P3」；第二轮判定 **可以合入 main**，第一轮的问题全部关闭，并对 hint 合并窗口、`seen` 去重、`maxResponseBytes`、`chat.activeRunIds` 投影四处各做一次改坏，全部变红。
+
+证据提交 `6667601`：重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`。
+
+## 页面形状不需要 Human 裁定
+
+`docs/info-hub-decisions.md:13` 已否定一级 Info Hub 页面，本章没有新建路由，新增元素都是既有页面（Project 详情、Chat 详情、Agent 面板、Machine 面板）上的信息增补，不构成需要 Human 裁定的页面形状决定。因此 I-P6b 第 2 条按自检证据勾选，第 4 条（Human 亲自体验确认）仍留空。
+
+证据提交 `6667601`：重跑 `bash scripts/verify/bf-p6b-pages.sh`。
+
 ## 计划状态与本轮门禁冲突
 
 本轮按证据勾选了 I-P6b 第 1 条、功能计划 P6b 三条与 UI-P6b 两条，而 closeout 当时 `scripts/verify/l-docs.sh` 仍把这几处钉成「必须留空」（`for (const stage of ['I-P6b', 'I-P6c', 'I-P7'])`、`const undelivered = ['P6b', 'P6c', 'P7', 'P8']`、`for (const stage of ['UI-P6b', 'UI-P6c', 'UI-P7'])`）。文档单元按 brief 不动门禁，所以它把失败原文留在下一节交回。

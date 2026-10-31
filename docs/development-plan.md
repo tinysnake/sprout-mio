@@ -288,11 +288,11 @@ P6 原先“暂按整章集成”是契约未冻结时的暂定安排；现按�
 - 证据：页面、源对象和 Agent 上下文比较，刷新/变更提示时序及权限隔离矩阵。
 
 - [x] 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-info.sh`；契约见 `p6b/contracts.md`（P6b 契约）。
-- [ ] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。页面与轮询接线已在 `4d9545c` 实测通过（[P6b UI 线证据](p6b/summary.md#ui-线证据)，重跑 `bash scripts/verify/bf-p6b-pages.sh`），但本仓库没有 P6b 设计的 Human 确定记录，本项不勾。
-- [ ] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。自检已在 `4d9545c` 实测通过（[P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)，重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`），独立技术验收尚无报告与判定版本，本项不勾。
+- [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P6b UI 线证据](p6b/summary.md#ui-线证据)，基线 `6667601`，重跑 `bash scripts/verify/bf-p6b-pages.sh`。本章没有新增页面形状：`docs/info-hub-decisions.md:13` 已否定一级 Info Hub 页面，新增元素都是既有页面上的信息增补，因此不需要 Human 设计裁定，理由见 [P6b 章节结论](p6b/summary.md#页面形状不需要-human-裁定)。
+- [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)，基线 `6667601`，重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`；独立技术验收判定见 [P6b 章节结论](p6b/summary.md#独立技术验收判定)。
 - [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。尚无确认版本。
 
-本章技术交付基线为 `4d9545c`，契约与总结见 [P6b 契约](p6b/contracts.md)和[P6b 章节结论](p6b/summary.md)。第 1 条按证据勾选；第 2、3 条缺 Human 设计确定记录与独立技术验收报告，第 4 条缺 Human 体验确认，均保持待办。本轮只改文档，`l-docs` 仍把本章钉成「必须留空」，失败原文与处置见 [计划状态与本轮门禁冲突](p6b/summary.md#计划状态与本轮门禁冲突)。任务/运行/Task 语义仍以 P6a 契约为准，本章只扩展 Info Hub 读视图与轮初快照。
+本章技术交付基线为 `6667601`，契约与总结见 [P6b 契约](p6b/contracts.md)和[P6b 章节结论](p6b/summary.md)。前三条已按证据勾选（含两轮独立技术验收与第一轮 2 个 P2 + 7 个 P3 的关闭记录），第 4 条缺 Human 体验确认，保持待办。`l-docs` 已按 P6a 的同一形状放行本章的按证据勾选，授权理由与放宽后的约束见 [计划状态与本轮门禁冲突](p6b/summary.md#计划状态与本轮门禁冲突)。任务/运行/Task 语义仍以 P6a 契约为准，本章只扩展 Info Hub 读视图与轮初快照。
 
 ### I-P6c 集成成员治理与重新加入
 
