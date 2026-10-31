@@ -23,7 +23,7 @@
 | UI-P5b | Task 协作 | P5a 集成通过，P5b 契约就绪 | 按 P5b 集成 |
 | UI-P6a | 自动接续、人类控制与最小失败/恢复呈现 | P4、P5 集成技术验收通过，P6a 契约就绪 | 按 P6a 集成 |
 | UI-P6b | Info Hub 全部一期视角与 Agent 上下文 | P6a 技术验收通过，P6b 契约就绪 | 按 P6b 集成 |
-| UI-P6c | Agent 移除、归档与重新加入 | P6a、P6b 技术验收通过，P6c 契约就绪 | 按 P6c 集成 |
+| UI-P6c | Agent 移除、归档与重新加入 | P6a、P6b 技术验收通过，P6c 契约就绪 | 呈现已随 P6c 集成自检通过（`092d220`），待 Human 体验确认 |
 | UI-P7 | 手机、PWA、恢复与一期完整体验 | P6a、P6b、P6c 集成技术验收通过，P7 范围明确 | 完成一期整体验收 |
 
 表中“集成通过”指章节已通过技术验收。章节只有经 Human 亲自体验并明确确认后才算完成；人类体验确认不作为后续章节开工的必要条件，Human 明确 AFK 时可推迟体验验收。设计尚未经 Human 确定时，可以继续草案与功能开发，但不满足正式集成的 UI 交付条件。具体规则见 [开发总计划](development-plan.md)。
@@ -245,8 +245,10 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应[P6c](development-plan-functional.md#p6c-完成成员治理与重新加入)、[I-P6c](development-plan.md#i-p6c-集成成员治理与重新加入)，默认依赖 P6a、P6b 技术验收通过。
 
-- [ ] 完成 Agent 移除前置检查、阻塞原因与关联处理入口，以及正常移除后的 Group 退出、DM 归档和重新加入的恢复呈现。
-- [ ] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。
+- [x] 完成 Agent 移除前置检查、阻塞原因与关联处理入口，以及正常移除后的 Group 退出、DM 归档和重新加入的恢复呈现。证据 [P6c UI 线证据](p6c/summary.md#ui-线证据)，基线 `092d220`，重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；阻塞分组与对象链接形状见 [P6c 契约](p6c/contracts.md#阻塞检查的契约形状)。
+- [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [P6c 集成线与技术验收证据](p6c/summary.md#集成线与技术验收证据)与[P6c 契约](p6c/contracts.md#public-channel-换-owner-的边界)：频道只有 Project 创建者那个 Human 能成为新 owner、DM 无入口、移除后该 Agent 的对话读写按当前授权被拒；重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`。
+
+本节只交付呈现与自检证据：本仓库没有 P6c 设计的 Human 确定记录，Human 真实体验确认也尚未进行（I-P6c 第 4 条未勾），本节不冒充确认。
 
 各节均需验证自动行为不抵消人类控制；P6a 的 Task/run/检查语义清楚，P6b 信息视角与源对象一致，P6c 成员治理有明确阻塞/恢复反馈且移除后授权真实生效。原“暂按整章交付”改为三节独立技术验收及 Human 确认。
 

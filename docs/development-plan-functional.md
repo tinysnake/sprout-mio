@@ -29,7 +29,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
 | P6a | 自动接续与人类控制 | P4、P5 全部集成单元技术验收通过 | 技术验收通过，待 Human 体验确认 |
 | P6b | Info Hub 全部一期视角 | P6a 技术验收通过 | 自检门禁通过，待独立技术验收与 Human 体验确认（见 [p6b/summary.md](p6b/summary.md)） |
-| P6c | 成员治理、移除与重新加入 | P6a、P6b 技术验收通过 | 待开始 |
+| P6c | 成员治理、移除与重新加入 | P6a、P6b 技术验收通过 | 技术项已合入 `integration/p6c`，第二轮独立技术验收判可以合入 main，待 Human 体验确认（见 [p6c/summary.md](p6c/summary.md)） |
 | P7 | 完成手机、PWA、恢复与一期整体验收 | P6a、P6b、P6c 全部技术验收通过 | 待开始 |
 | R1 | 验证项目及软件 MCP 接入 | P4 的协议与授权稳定后 | 已完成：七条独立技术验收第七轮通过，并由 Human 确认纳入一期（结论见 [r1/summary.md](r1/summary.md)） |
 | P8 | 实施二期能力 | P7 | 后续细化 |
@@ -184,8 +184,11 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 按总计划 I-P6c 分派，默认依赖 P6a、P6b 技术验收通过。
 
-- [ ] 实现 Agent 正常移除的前置检查，阻止仍有活动 runs、租约、owner 职责或 DM assigned Tasks 的移除。
-- [ ] 实现正常移除后的 Group 退出与 DM 归档，以及重新加入后的 Public Channel 和 DM 恢复。旧消息与待处理唤醒不能恢复已撤销的参与权。
+- [x] 实现 Agent 正常移除的前置检查，阻止仍有活动 runs、租约、owner 职责或 DM assigned Tasks 的移除。证据 [P6c 功能线证据](p6c/summary.md#功能线证据)，基线 `092d220`，重跑 `bash scripts/verify/p6c-member-removal.sh`；四类判据与返回形状见 [P6c 契约](p6c/contracts.md#四类事实的判据)。
+- [x] 实现正常移除后的 Group 退出与 DM 归档，以及重新加入后的 Public Channel 和 DM 恢复。旧消息与待处理唤醒不能恢复已撤销的参与权。证据 [P6c 功能线证据](p6c/summary.md#功能线证据)与[P6c 集成线与技术验收证据](p6c/summary.md#集成线与技术验收证据)，重跑 `bash scripts/verify/p6c-participation-revocation.sh`、`bash scripts/verify/bf-p6c-lifecycle.sh`；恢复边界见 [P6c 契约](p6c/contracts.md#重新加入的恢复边界)。
+- [x] 核对阻塞、处理、移除与重加的权限和参与矩阵，Public Channel 换 owner 仅限 Project 创建者，移除后该 Agent 的对话读写按当前授权一律被拒。证据 [P6c 集成线与技术验收证据](p6c/summary.md#集成线与技术验收证据)，重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`；回归 `bash scripts/verify/i5-project-removal.sh`、`bash scripts/verify/i7-chat-scope.sh`；owner 边界见 [P6c 契约](p6c/contracts.md#public-channel-换-owner-的边界)。
+
+技术自检已在 `092d220` 由 `p6c-member-removal`、`p6c-participation-revocation`、`bf-p6c-lifecycle` 与 `p6c-member-governance-ui` 实测通过，第二轮独立技术验收判「可以合入 main」；契约、证据边界与已知限制见 [P6c 章节结论](p6c/summary.md)。本节原本只列了前两条交付项，第三条按 I-P6c 的「证据」行（权限与参与矩阵、撤权反证）补齐，不新增产品范围。
 
 P6a 出口是协作可自动接续且人类控制可靠；P6b 出口是 Info Hub 展示与源对象一致，不自行改变生命周期；P6c 出口是移除/重加按当前授权生效。原 P6 整体出口在三节全部交付后核对，不因 a 完成而记作整章完成。
 
