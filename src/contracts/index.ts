@@ -12,6 +12,10 @@ export * from "./wake-evaluation";
 export * from "./chat-automation";
 export * from "./chat-automation-capabilities";
 export * from "./info-hub";
+export * from "./info-hub-query";
+export * from "./info-hub-hint";
+export * from "./info-hub-capabilities";
+export * from "./turn-context";
 export * from "./machine";
 export * from "./lease";
 export type {

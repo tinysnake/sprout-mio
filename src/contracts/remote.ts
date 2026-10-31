@@ -1,3 +1,4 @@
+import { infoHubGetInputSchema, infoHubViewSchema } from "./info-hub-query";
 import { z } from "zod";
 import { chatSessionSchema, messageSchema } from "./chat";
 import { chatAutomationViewSchema } from "./chat-automation";
@@ -631,6 +632,13 @@ export type TaskListResponse = z.infer<typeof taskListResponseSchema>;
 export type ChatGetResponse = z.infer<typeof chatGetResponseSchema>;
 export type ChatSendResponse = z.infer<typeof chatSendResponseSchema>;
 
+export const infoHubGetCall = z.strictObject({
+  type: z.literal("info_hub_get"),
+  input: infoHubGetInputSchema,
+});
+export const infoHubGetResponseSchema = infoHubViewSchema;
+export type InfoHubGetResponse = z.infer<typeof infoHubGetResponseSchema>;
+
 export const remoteAgentRequestSchema = z.strictObject({
   version: z.literal(2),
   call: z.discriminatedUnion("type", [
@@ -649,6 +657,7 @@ export const remoteAgentRequestSchema = z.strictObject({
     z.strictObject({ type: z.literal("task_list"), input: taskListInputSchema }),
     z.strictObject({ type: z.literal("task_mutate"), input: taskMutateInputSchema }),
     chatAutomationGetCall,
+    infoHubGetCall,
     z.strictObject({ type: z.literal("chat_get"), input: chatGetInputSchema }),
     z.strictObject({ type: z.literal("chat_send"), input: chatSendInputSchema }),
   ]),

@@ -38,6 +38,8 @@ export const APP_ERROR_CODES = [
   "automation_disabled",
   "wake_provider_unavailable",
   "continuation_delivery_unknown",
+  "info_hub_cursor_stale",
+  "turn_context_unavailable",
 ] as const;
 /** 只允许登记的错误码，不接受未知字符串。 */
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
