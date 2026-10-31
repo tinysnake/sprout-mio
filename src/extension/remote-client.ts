@@ -3,7 +3,7 @@ import { request as httpsRequest } from "node:https";
 import { z } from "zod";
 import { leaseMutationViewSchema, leaseViewSchema } from "../contracts/lease";
 import { infoHubViewSchema } from "../contracts/info-hub-query";
-import { APP_ERROR_CODES, appErrorSchema } from "../contracts/result";
+import { appErrorSchema } from "../contracts/result";
 import type { AppResult } from "../contracts/result";
 import {
   mcpCatalogViewSchema,
