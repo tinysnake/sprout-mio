@@ -169,7 +169,11 @@ if (process.argv[2] === "--service") {
   // `abortAgentRunFn` and `getChatRunStateFn` deliberately stay on HTTP: stop must be observed
   // through the same boundary the UI calls, including its error mapping.
   const boundaryNames = [
-    "createTaskFn", "getTaskDetailFn", "assignTaskFn", "updateTaskFn", "cancelTaskFn",
+    "createTaskFn",
+    "getTaskDetailFn",
+    "assignTaskFn",
+    "updateTaskFn",
+    "cancelTaskFn",
   ];
   /** Raw boundary result: negative paths must observe the refusal instead of asserting success. */
   async function callResult(name: string, data: unknown): Promise<any> {
@@ -342,7 +346,9 @@ if (process.argv[2] === "--service") {
 
   const requestsFile = join(directory, "requests.jsonl");
   const preload = join(directory, "barrier.mjs");
-  writeFileSync(preload, `
+  writeFileSync(
+    preload,
+    `
 import { appendFileSync, existsSync } from 'node:fs';
 const originalFetch = globalThis.fetch;
 const tokens = ['P7_FIRST', 'P7_APPEND', 'P7_REDIRECT', 'P7_CORRECTION', 'P7_QUESTION'];
@@ -375,11 +381,19 @@ globalThis.fetch = async (url, options) => {
   }
   return originalFetch(url, options);
 };
-`);
-  environment.NODE_OPTIONS = [environment.NODE_OPTIONS, '--import=' + preload]
+`,
+  );
+  environment.NODE_OPTIONS = [environment.NODE_OPTIONS, "--import=" + preload]
     .filter(Boolean)
-    .join(' ');
-  const requests = (): any[] => existsSync(requestsFile) ? readFileSync(requestsFile, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+    .join(" ");
+  const requests = (): any[] =>
+    existsSync(requestsFile)
+      ? readFileSync(requestsFile, "utf8")
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+      : [];
   try {
     assert.equal(process.platform, "darwin", "real macOS Worker required");
     modelFixture = await startModelFixture({ privateDir: join(directory, "model-fixture") });
@@ -522,8 +536,12 @@ globalThis.fetch = async (url, options) => {
     };
 
     const detail = await call("createTaskFn", {
-      projectId: project.id, title: "P7_FIRST", description: "Preserve this Task and context across all turns.",
-      constraints: "Use only the specified remote tools.", completionRequirements: "Human decides when to stop.", checklist: ["retain context"],
+      projectId: project.id,
+      title: "P7_FIRST",
+      description: "Preserve this Task and context across all turns.",
+      constraints: "Use only the specified remote tools.",
+      completionRequirements: "Human decides when to stop.",
+      checklist: ["retain context"],
     });
     facts.taskId = detail.task.id;
     const ownRead = { name: "sprout_task_get", arguments: { taskId: detail.task.id } };
@@ -532,12 +550,17 @@ globalThis.fetch = async (url, options) => {
     // its reply is held until the next human message is acknowledged, so each intervention becomes a
     // new turn of the same run (`pi` steers a live session) instead of opening a second run.
     modelFixture!.arm("chatOwner", {
-      expectedUserPrefix: "已分配并请求立即开始\nTask：", steps: [ownRead], reply: "P7_FIRST_REPLY",
+      expectedUserPrefix: "已分配并请求立即开始\nTask：",
+      steps: [ownRead],
+      reply: "P7_FIRST_REPLY",
     });
     const startedTask = await call("assignTaskFn", {
-      taskId: detail.task.id, expectedRevision: detail.task.revision, targetChatId: chatId, startNow: true,
+      taskId: detail.task.id,
+      expectedRevision: detail.task.revision,
+      targetChatId: chatId,
+      startNow: true,
     });
-    await until(() => requests().some(row => row.index === 0), "first real SDK request");
+    await until(() => requests().some((row) => row.index === 0), "first real SDK request");
     const runId = runs()[0].id;
     await until(() => runs()[0]?.config_snapshot, "run config snapshot");
     const snapshotOf = (run: any) => JSON.parse(run.config_snapshot);
@@ -569,7 +592,7 @@ globalThis.fetch = async (url, options) => {
       await awaiting(gates[0], 1);
       const message = await call("sendMessageFn", { chatId, body });
       await until(
-        () => inputs().find(row => row.message_id === message.id)?.delivered_at != null,
+        () => inputs().find((row) => row.message_id === message.id)?.delivered_at != null,
         `human input acknowledged by the runner: ${body.slice(0, 20)}`,
         30000,
       );
@@ -582,28 +605,66 @@ globalThis.fetch = async (url, options) => {
       return message;
     }
 
-    const appendix = await intervene([0], "P7_APPEND: Also keep the checklist intact while you explain.", () =>
-      modelFixture!.arm("chatOwner", { queued: true, expectedUserPrefix: "P7_APPEND", steps: [ownRead], reply: "P7_APPEND_REPLY" }),
+    const appendix = await intervene(
+      [0],
+      "P7_APPEND: Also keep the checklist intact while you explain.",
+      () =>
+        modelFixture!.arm("chatOwner", {
+          queued: true,
+          expectedUserPrefix: "P7_APPEND",
+          steps: [ownRead],
+          reply: "P7_APPEND_REPLY",
+        }),
     );
-    await until(() => requests().some(row => row.index === 1 && row.results === 0), "append turn reached the model");
-    const redirect = await intervene([1], "P7_REDIRECT: Change the goal to explain the existing Task; keep its identity.", () =>
-      modelFixture!.arm("chatOwner", { queued: true, expectedUserPrefix: "P7_REDIRECT", steps: [ownRead], reply: "P7_REDIRECT_REPLY" }),
+    await until(
+      () => requests().some((row) => row.index === 1 && row.results === 0),
+      "append turn reached the model",
     );
-    await until(() => requests().some(row => row.index === 2 && row.results === 0), "redirect turn reached the model");
-    const correction = await intervene([2], "P7_CORRECTION: Replace my previous input goal with a shorter explanation.", () =>
-      modelFixture!.arm("chatOwner", { queued: true, expectedUserPrefix: "P7_CORRECTION", steps: [ownRead], reply: "P7_CORRECTION_REPLY" }),
+    const redirect = await intervene(
+      [1],
+      "P7_REDIRECT: Change the goal to explain the existing Task; keep its identity.",
+      () =>
+        modelFixture!.arm("chatOwner", {
+          queued: true,
+          expectedUserPrefix: "P7_REDIRECT",
+          steps: [ownRead],
+          reply: "P7_REDIRECT_REPLY",
+        }),
     );
-    await until(() => requests().some(row => row.index === 3 && row.results === 0), "correction turn reached the model");
-    const question = await intervene([3, 4], "P7_QUESTION: Which Task and goal did I just ask about?", () =>
-      modelFixture!.arm("chatOwner", {
-        queued: true, expectedUserPrefix: "P7_QUESTION", reply: "P7_QUESTION_REPLY",
-        steps: [
-          ownRead,
-          { name: "sprout_task_get", arguments: { taskId: foreign.id } },
-          { name: "sprout_lease_acquire", arguments: lease },
-          { name: "sprout_remote_shell", arguments: shell },
-        ],
-      }),
+    await until(
+      () => requests().some((row) => row.index === 2 && row.results === 0),
+      "redirect turn reached the model",
+    );
+    const correction = await intervene(
+      [2],
+      "P7_CORRECTION: Replace my previous input goal with a shorter explanation.",
+      () =>
+        modelFixture!.arm("chatOwner", {
+          queued: true,
+          expectedUserPrefix: "P7_CORRECTION",
+          steps: [ownRead],
+          reply: "P7_CORRECTION_REPLY",
+        }),
+    );
+    await until(
+      () => requests().some((row) => row.index === 3 && row.results === 0),
+      "correction turn reached the model",
+    );
+    const question = await intervene(
+      [3, 4],
+      "P7_QUESTION: Which Task and goal did I just ask about?",
+      () =>
+        modelFixture!.arm("chatOwner", {
+          queued: true,
+          expectedUserPrefix: "P7_QUESTION",
+          reply: "P7_QUESTION_REPLY",
+          steps: [
+            ownRead,
+            { name: "sprout_task_get", arguments: { taskId: foreign.id } },
+            { name: "sprout_lease_acquire", arguments: lease },
+            { name: "sprout_remote_shell", arguments: shell },
+          ],
+        }),
     );
     await awaiting(4, 4);
     // Wait for the Worker's own receipt before stopping: the stop must be observed on a run whose
@@ -620,24 +681,57 @@ globalThis.fetch = async (url, options) => {
     const userEntries = entries.filter((row: any) => row.message?.role === "user");
     assert.equal(userEntries.length, 5, "F4a five SDK user turns entered the same session");
     for (const body of [appendix.body, redirect.body, correction.body, question.body])
-      assert(JSON.stringify(userEntries).includes(body), "F4c every intervention is preserved verbatim in the SDK session");
+      assert(
+        JSON.stringify(userEntries).includes(body),
+        "F4c every intervention is preserved verbatim in the SDK session",
+      );
     assert(stops() >= 4, "F4a four completed model turns before the stop");
     assert(
       entries.filter((row: any) => row.message?.role === "assistant").length >= 5,
       "F4a the stopped run produced at least five assistant turns",
     );
-    const turnRequests = requests().filter(row => row.index >= 1);
-    assert(JSON.stringify(turnRequests[0].input).includes("P7_FIRST_REPLY"), "F4a the second turn's request carries the first reply: context survives");
-    assert(JSON.stringify(requests().at(-1).input).includes(detail.task.id), "F4a the Task id is still in the final request");
-    assert.equal(rows("SELECT chat_id FROM task WHERE id=?", detail.task.id)[0].chat_id, chatId, "F4a Task ownership stays on this Chat");
-    assert.equal(rows("SELECT COUNT(*) n FROM message WHERE chat_id=? AND body LIKE '%FOREIGN_SECRET%'", chatId)[0].n, 0, "F4a the foreign Task detail never entered this Chat");
+    const turnRequests = requests().filter((row) => row.index >= 1);
+    assert(
+      JSON.stringify(turnRequests[0].input).includes("P7_FIRST_REPLY"),
+      "F4a the second turn's request carries the first reply: context survives",
+    );
+    assert(
+      JSON.stringify(requests().at(-1).input).includes(detail.task.id),
+      "F4a the Task id is still in the final request",
+    );
+    assert.equal(
+      rows("SELECT chat_id FROM task WHERE id=?", detail.task.id)[0].chat_id,
+      chatId,
+      "F4a Task ownership stays on this Chat",
+    );
+    assert.equal(
+      rows(
+        "SELECT COUNT(*) n FROM message WHERE chat_id=? AND body LIKE '%FOREIGN_SECRET%'",
+        chatId,
+      )[0].n,
+      0,
+      "F4a the foreign Task detail never entered this Chat",
+    );
     const allInputs = inputs();
     assert.equal(allInputs.length, 5, "F4c all five human inputs are recorded once");
-    assert(allInputs.every(row => row.run_id === runId), "F4c every intervention stayed on the same run");
-    assert(allInputs.every(row => row.disposition === "delivered"), "F4c every intervention was delivered");
-    assert.equal(rows("SELECT body FROM message WHERE id=?", redirect.id)[0].body, "P7_REDIRECT: Change the goal to explain the existing Task; keep its identity.", "F4c a corrected instruction never rewrites the replaced one");
+    assert(
+      allInputs.every((row) => row.run_id === runId),
+      "F4c every intervention stayed on the same run",
+    );
+    assert(
+      allInputs.every((row) => row.disposition === "delivered"),
+      "F4c every intervention was delivered",
+    );
+    assert.equal(
+      rows("SELECT body FROM message WHERE id=?", redirect.id)[0].body,
+      "P7_REDIRECT: Change the goal to explain the existing Task; keep its identity.",
+      "F4c a corrected instruction never rewrites the replaced one",
+    );
     pass("F4a/F4c five same-run interventions and four completed turns", {
-      runId, taskId: detail.task.id, modelTurns: requests().length, bodies: [appendix.body, redirect.body, correction.body, question.body],
+      runId,
+      taskId: detail.task.id,
+      modelTurns: requests().length,
+      bodies: [appendix.body, redirect.body, correction.body, question.body],
     });
 
     // Explicit refusals: malformed human input is rejected with a field error and never queued.
@@ -653,51 +747,159 @@ globalThis.fetch = async (url, options) => {
     // F4c stop: the human stops the run while its last turn is still in flight.
     const stopped = await call("abortAgentRunFn", { runId });
     assert.equal(stopped.status, "aborted", "F4a human stop is never success");
-    await until(() => rows("SELECT * FROM remote_tool_grant WHERE run_id=? AND revoked_at IS NULL", runId).length === 0, "stop revokes grant");
+    await until(
+      () =>
+        rows("SELECT * FROM remote_tool_grant WHERE run_id=? AND revoked_at IS NULL", runId)
+          .length === 0,
+      "stop revokes grant",
+    );
     const settledAtStop = runs()[0].settled_at;
-    const before = inputs().filter(row => row.run_id === runId);
-    modelFixture!.arm("chatOwner", { queued: true, expectedUserPrefix: "P7_AFTER", steps: [], reply: "P7_NEW_RUN_REPLY" });
-    const afterMessage = await call("sendMessageFn", { chatId, body: "P7_AFTER: A new request after stopping the previous run." });
-    await until(() => runs().length === 2 && runs()[1].status === "completed", "new request settles in a new run");
+    const before = inputs().filter((row) => row.run_id === runId);
+    modelFixture!.arm("chatOwner", {
+      queued: true,
+      expectedUserPrefix: "P7_AFTER",
+      steps: [],
+      reply: "P7_NEW_RUN_REPLY",
+    });
+    const afterMessage = await call("sendMessageFn", {
+      chatId,
+      body: "P7_AFTER: A new request after stopping the previous run.",
+    });
+    await until(
+      () => runs().length === 2 && runs()[1].status === "completed",
+      "new request settles in a new run",
+    );
     assert.equal(runs()[0].status, "aborted", "F4a stopped run remains terminal");
-    assert.deepEqual(inputs().filter(row => row.run_id === runId), before, "F4a stopped run accepts no subsequent input");
-    assert.equal(rows("SELECT run_id FROM agent_run_input WHERE message_id=?", afterMessage.id)[0].run_id, runs()[1].id);
-    assert.equal(runs()[0].settled_at, settledAtStop, "F4a the stopped run is never re-settled or advanced");
-    assert.equal(rows("SELECT COUNT(*) n FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE r.id=? AND x.delivered_at IS NULL", runId)[0].n, 0, "F4a the stopped run has no undelivered input left to advance");
-    pass("F4a stop prevents subsequent rounds", { stoppedRun: runId, nextRun: runs()[1].id, completedTurnsBeforeStop: stops() - 1 });
+    assert.deepEqual(
+      inputs().filter((row) => row.run_id === runId),
+      before,
+      "F4a stopped run accepts no subsequent input",
+    );
+    assert.equal(
+      rows("SELECT run_id FROM agent_run_input WHERE message_id=?", afterMessage.id)[0].run_id,
+      runs()[1].id,
+    );
+    assert.equal(
+      runs()[0].settled_at,
+      settledAtStop,
+      "F4a the stopped run is never re-settled or advanced",
+    );
+    assert.equal(
+      rows(
+        "SELECT COUNT(*) n FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE r.id=? AND x.delivered_at IS NULL",
+        runId,
+      )[0].n,
+      0,
+      "F4a the stopped run has no undelivered input left to advance",
+    );
+    pass("F4a stop prevents subsequent rounds", {
+      stoppedRun: runId,
+      nextRun: runs()[1].id,
+      completedTurnsBeforeStop: stops() - 1,
+    });
 
     // F9d: one Chat's execution history — ordered rounds, status, elapsed time and the failure fact.
     const history = await call("getChatRunStateFn", { chatId });
-    assert.deepEqual(history.runs.map((row: any) => row.id), runs().map(row => row.id), "F9d API history is ordered");
-    assert.deepEqual(history.runs.map((row: any) => row.status), ["aborted", "completed"]);
+    assert.deepEqual(
+      history.runs.map((row: any) => row.id),
+      runs().map((row) => row.id),
+      "F9d API history is ordered",
+    );
+    assert.deepEqual(
+      history.runs.map((row: any) => row.status),
+      ["aborted", "completed"],
+    );
     for (const run of history.runs) {
-      assert(Date.parse(run.startedAt) >= Date.parse(run.queuedAt), "F9d start never precedes the queue");
-      assert(Date.parse(run.settledAt) >= Date.parse(run.startedAt), "F9d nonnegative elapsed time");
+      assert(
+        Date.parse(run.startedAt) >= Date.parse(run.queuedAt),
+        "F9d start never precedes the queue",
+      );
+      assert(
+        Date.parse(run.settledAt) >= Date.parse(run.startedAt),
+        "F9d nonnegative elapsed time",
+      );
     }
-    assert.equal(history.runs[0].stopReason, "aborted", "F9d the interrupted round carries its stop reason");
-    assert.equal(history.runs[0].assistantMessageId, undefined, "F9d interrupted run has no successful result");
-    assert.equal(history.runs[1].errorCode, undefined, "F9d a completed round carries no error code");
-    assert.equal(history.runs.filter((row: any) => row.status === "completed").length, 1, "F9d one success out of two rounds");
+    assert.equal(
+      history.runs[0].stopReason,
+      "aborted",
+      "F9d the interrupted round carries its stop reason",
+    );
+    assert.equal(
+      history.runs[0].assistantMessageId,
+      undefined,
+      "F9d interrupted run has no successful result",
+    );
+    assert.equal(
+      history.runs[1].errorCode,
+      undefined,
+      "F9d a completed round carries no error code",
+    );
+    assert.equal(
+      history.runs.filter((row: any) => row.status === "completed").length,
+      1,
+      "F9d one success out of two rounds",
+    );
     assert.equal(history.inputs.length, 1, "F9d inputs are reported for the latest run only");
-    pass("F9d API run history", history.runs.map((row: any) => ({ id: row.id, status: row.status, stopReason: row.stopReason, startedAt: row.startedAt, settledAt: row.settledAt })));
+    pass(
+      "F9d API run history",
+      history.runs.map((row: any) => ({
+        id: row.id,
+        status: row.status,
+        stopReason: row.stopReason,
+        startedAt: row.startedAt,
+        settledAt: row.settledAt,
+      })),
+    );
 
     // F9b: artifacts are real files reachable from the API, and a success claim is backed by them.
     const executions = rows("SELECT * FROM remote_execution");
     assert.equal(executions.length, 1);
     assert.equal(executions[0].state, "succeeded", "F9b actual Worker execution succeeded");
-    const frames = rows("SELECT * FROM execution_log_frame WHERE execution_id=? ORDER BY sequence", executions[0].id);
-    assert(frames.map(frame => Buffer.from(frame.payload_bytes).toString("utf8")).join("").includes(marker), "F9b real Worker output is readable");
-    assert(existsSync(snapshot.sessionFile) && readFileSync(snapshot.sessionFile, "utf8").length > 0, "F9b session artifact exists and is readable");
+    const frames = rows(
+      "SELECT * FROM execution_log_frame WHERE execution_id=? ORDER BY sequence",
+      executions[0].id,
+    );
+    assert(
+      frames
+        .map((frame) => Buffer.from(frame.payload_bytes).toString("utf8"))
+        .join("")
+        .includes(marker),
+      "F9b real Worker output is readable",
+    );
+    assert(
+      existsSync(snapshot.sessionFile) && readFileSync(snapshot.sessionFile, "utf8").length > 0,
+      "F9b session artifact exists and is readable",
+    );
     const completedRun = history.runs[1];
-    assert.equal(completedRun.configSnapshot.sessionFile, snapshot.sessionFile, "F9b API locates the session artifact");
+    assert.equal(
+      completedRun.configSnapshot.sessionFile,
+      snapshot.sessionFile,
+      "F9b API locates the session artifact",
+    );
     assert(completedRun.assistantMessageId, "F9b a completed run names its reply message");
-    assert.equal(rows("SELECT id FROM message WHERE id=?", completedRun.assistantMessageId).length, 1, "F9b the named reply really exists");
-    assert(existsSync(completedRun.configSnapshot.sessionFile), "F9b the success claim is backed by a readable artifact");
-    assert(existsSync(history.runs[0].configSnapshot.sessionFile), "F9b the stopped run keeps the transcript it really produced");
-    pass("F9b session artifact and Worker output", { sessionFile: snapshot.sessionFile, executionId: executions[0].id, frames: frames.length });
+    assert.equal(
+      rows("SELECT id FROM message WHERE id=?", completedRun.assistantMessageId).length,
+      1,
+      "F9b the named reply really exists",
+    );
+    assert(
+      existsSync(completedRun.configSnapshot.sessionFile),
+      "F9b the success claim is backed by a readable artifact",
+    );
+    assert(
+      existsSync(history.runs[0].configSnapshot.sessionFile),
+      "F9b the stopped run keeps the transcript it really produced",
+    );
+    pass("F9b session artifact and Worker output", {
+      sessionFile: snapshot.sessionFile,
+      executionId: executions[0].id,
+      frames: frames.length,
+    });
 
     // The aborted turn's reply stays unused; everything else was consumed exactly once.
-    const chatOwner = modelFixture!.metadata().models.find((row: any) => row.model === "chat-owner")!;
+    const chatOwner = modelFixture!
+      .metadata()
+      .models.find((row: any) => row.model === "chat-owner")!;
     assert.equal(chatOwner.unusedSteps, 0, "F4a every planned tool step really ran");
     assert.equal(chatOwner.unusedPlans, 1, "F4c only the aborted turn's reply is unused");
     modelFixture!.assertHealthy();
