@@ -339,7 +339,7 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
       }
       if (evaluation && evaluation.attempt >= POLICY.maxAttempts) {
         write(
-          "UPDATE wake_evaluation SET state='attention',error_code='provider_timeout',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=?",
+          "UPDATE wake_evaluation SET state='attention',error_code=coalesce(error_code,'provider_unavailable'),claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=?",
           evaluation.id,
         );
         write("UPDATE chat_schedule SET next_due_at=NULL WHERE chat_id=?", due.chat_id);
