@@ -7,7 +7,7 @@ import type { ChatDetailLoaderData } from "../../components/chat/chat-loader";
 import { ResultError } from "../../components/project/result-error";
 import { getAgentProfileFn } from "../../server/functions/agent";
 import { getChatRunStateFn } from "../../server/functions/agent-run";
-import { getChatInfoFn, getTurnStartContextFn } from "../../server/functions/info-hub";
+import { getChatInfoFn, readTurnContextFn } from "../../server/functions/info-hub";
 import { getChatSessionFn, listChatMembersFn, listMessagesFn } from "../../server/functions/chat";
 
 /** Project 上下文从 URL 推导：chat 不属于 URL 中的 projectId 时按 not_found 呈现。 */
@@ -20,13 +20,32 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
         ok: false,
         error: { code: "not_found", message: "对象不存在", requestId: session.requestId },
       };
-    const [members, messages, info, turnStart, runState] = await Promise.all([
+    const [members, messages, info, runState] = await Promise.all([
       listChatMembersFn({ data: { chatId: params.chatId } }),
       listMessagesFn({ data: { chatId: params.chatId } }),
       getChatInfoFn({ data: { chatId: params.chatId } }),
-      getTurnStartContextFn({ data: { chatId: params.chatId } }),
       getChatRunStateFn({ data: { chatId: params.chatId } }),
     ]);
+    // Human diagnostics select an explicit run; the host captures identity independently by runId.
+    const snapshotRun = runState.ok
+      ? (runState.data.runs.find((run) => run.status === "running" || run.status === "queued") ??
+        runState.data.runs.at(-1))
+      : undefined;
+    const snapshot = snapshotRun
+      ? await readTurnContextFn({ data: { projectId: params.projectId, runId: snapshotRun.id } })
+      : null;
+    const turnStart =
+      snapshot?.ok && snapshot.data.kind === "captured"
+        ? { ...snapshot, data: snapshot.data.record }
+        : {
+            ok: false as const,
+            error: {
+              code: "turn_context_unavailable" as const,
+              message: "本轮尚无上下文快照",
+              requestId: session.requestId,
+            },
+            requestId: session.requestId,
+          };
     const agentProfileId =
       session.data.kind === "dm"
         ? session.data.instance.agentProfileId

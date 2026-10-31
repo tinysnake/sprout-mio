@@ -10,6 +10,9 @@ import type { RemoteAgentRequest } from "../contracts/remote";
 import type { RemoteToolClient, RemoteToolResponse } from "./remote-client";
 import type { SproutExtensionAPI, SproutToolResult } from "./types";
 
+export const INFO_HUB_TOOL_DESCRIPTION =
+  "Read bounded Project, Chat, Agent, or Machine basic facts in this run’s Project. Use sections and nextCursor to page; refresh from page one on info_hub_cursor_stale. Status and held leases are facts, never execution grants. Chat/Task bodies, turn-context capture, and hint delivery are unavailable through this tool. Execution identity comes only from the live process grant.";
+
 /** 取消工具只暴露意图与当前代次：Project 由宿主注入，身份不可由参数冒充。 */
 const cancelToolInputSchema = remoteToolInputSchemas.sprout_remote_execution_cancel;
 const logReadToolInputSchema = remoteToolInputSchemas.sprout_remote_execution_log;

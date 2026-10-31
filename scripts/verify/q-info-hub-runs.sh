@@ -217,7 +217,7 @@ try {
   assert.equal(signupB.status, 200)
   const cookieB = signupB.headers.getSetCookie().find(value => value.includes('session_token=')).split(';')[0]
   ids = serverFnIds()
-  for (const required of ['getProjectInfoHubFn', 'getChatInfoFn', 'getTurnStartContextFn'])
+  for (const required of ['getProjectInfoHubFn', 'getChatInfoFn', 'readTurnContextFn'])
     assert(ids[required], `built server function ${required} missing`)
 
   const marker = `MARKER_P3D_${randomBytes(6).toString('hex')}`
@@ -237,7 +237,9 @@ try {
   assert.equal(inputs.length, 2)
   assert.equal(inputs[0].disposition, 'delivered', 'first input delivered into the running turn')
   assert.equal(inputs[1].disposition, 'pending', 'steer-rejected input stays pending in the database')
-  const heldTurn = await callOk('getTurnStartContextFn', { chatId: main.chatId })
+  const heldRead = await callOk('readTurnContextFn', { projectId: main.projectId, runId: slowRun.id })
+  assert.equal(heldRead.kind, 'captured')
+  const heldTurn = heldRead.record
   const heldInfo = await callOk('getChatInfoFn', { chatId: main.chatId })
   const heldHub = await callOk('getProjectInfoHubFn', { projectId: main.projectId })
   assert.equal(heldHub.agents.runs.available, true)
@@ -265,6 +267,7 @@ try {
   })
 
   const { chromium } = await import('playwright')
+  let browserFailure
   {
     const browser = await chromium.launch()
     try {
@@ -311,29 +314,41 @@ try {
       assert.equal(await page.locator('[data-testid="info-turn-workspace-commit"]').textContent(), bareHead)
       assert.equal(await page.locator('[data-testid="info-turn-workspace-fresh"]').textContent(), '宿主已更新工作树')
       assert.match(await page.locator('[data-testid="info-turn-prompt-injection"]').textContent(), /注入模型 prompt：否/)
-      assert.ok((await page.locator('[data-testid="info-turn-previous-run"]').textContent()).includes('已完成'))
+      assert.equal(await page.locator('[data-testid="info-turn-previous-run"]').count(), 0, 'P6b snapshots exclude previousRun; history remains in recent runs')
+      assert.ok((await page.locator('[data-testid="info-chat-runs-recent"]').textContent()).includes('已完成'))
       const chatShot = join(screenshotDir, 'p3-d-info-hub-chat-runs.png')
       await page.screenshot({ path: chatShot, fullPage: true })
       assert.deepEqual(consoleErrors, [], 'info hub pages must render without console errors')
       pass('real Chromium renders run facts, repo basis and turn context without console errors', { projectShot, chatShot })
+    } catch (error) {
+      // Continue the independent persistence/carry/auth checks, then fail with the original UI error.
+      browserFailure = error
+      console.error(`FAIL HERMETIC browser: ${error.stack ?? error}`)
+      const failedPage = browser.contexts()[0]?.pages()[0]
+      if (failedPage) await failedPage.screenshot({path: join(directory, 'p6b-ui-failure.png'), fullPage: true})
     } finally { await browser.close() }
   }
 
   writeFileSync(holdFlag, 'release\n')
   await until(() => runsOf(main.chatId).find(row => row.id === slowRun.id)?.status === 'completed', 'held run completed after release', 30000)
-  const settledTurn = await callOk('getTurnStartContextFn', { chatId: main.chatId })
+  const settledRead = await callOk('readTurnContextFn', { projectId: main.projectId, runId: slowRun.id })
+  assert.equal(settledRead.kind, 'captured')
+  const settledTurn = settledRead.record
   const settledInfo = await callOk('getChatInfoFn', { chatId: main.chatId })
-  // 松手后未投递的输入按 I-P5a 的 late-input 生命周期交给下一轮：活跃 run 不再是 null，
-  // 而是新开的那条 queued run，且仍带着那条未投递输入。
-  assert.ok(settledTurn.activeRun, 'carried run becomes the next active run')
-  assert.notEqual(settledTurn.activeRun.runId, slowRun.id, 'carry opens a new run, not the settled one')
-  assert.equal(settledTurn.activeRun.status, 'queued')
-  assert.equal(settledTurn.activeRun.pendingInputs, 1, 'the settled turn handed its pending input to the next run')
-  assert.equal(settledTurn.workspace.basis, 'project_checkout')
-  assert.equal(settledTurn.workspace.commit, bareHead, 'settled turn workspace comes from the ready checkout')
-  assert.equal(settledTurn.injectedIntoPrompt, false)
+  // P6b snapshots are immutable per run; late inputs still move into the next queued run.
+  assert.deepEqual(settledTurn, heldTurn, 'settlement cannot rewrite the captured run context')
+  assert.equal(settledTurn.workspace.basis, 'run_provenance')
+  assert.equal(settledTurn.workspace.commit, bareHead)
+  assert.equal(settledTurn.injectedIntoPrompt, false, 'fixture runner emits no SDK receipt')
   assert.equal(settledInfo.runs.active.length, 1)
-  assert.equal(settledInfo.runs.active[0].runId, settledTurn.activeRun.runId, 'both views name the same carried run')
+  const carried = settledInfo.runs.active[0]
+  assert.notEqual(carried.runId, slowRun.id, 'carry opens a new run, not the settled one')
+  assert.equal(carried.status, 'queued')
+  assert.equal(carried.pendingInputs, 1, 'the settled turn handed its pending input to the next run')
+  const carriedRead = await callOk('readTurnContextFn', {projectId: main.projectId, runId: carried.runId})
+  assert.equal(carriedRead.kind, 'not_captured', 'queued carry is captured only on host admission')
+  const checkout = db.prepare('SELECT * FROM repo_checkout WHERE project_id=?').get(main.projectId)
+  assert.equal(checkout.commit, bareHead, 'ready checkout retains the real remote HEAD')
   assert.equal(settledInfo.runs.recent.length, 2, 'both completed runs appear in the chat view')
   for (const run of settledInfo.runs.recent) {
     assert.equal(run.status, 'completed')
@@ -353,16 +368,16 @@ try {
   await send(ghost.chatId, 'analyze the missing copy')
   const ghostRun = await waitRun(ghost.chatId, 'failed')
   const ghostInfo = await callOk('getChatInfoFn', { chatId: ghost.chatId })
-  const ghostTurn = await callOk('getTurnStartContextFn', { chatId: ghost.chatId })
+  const ghostTurn = await callOk('readTurnContextFn', { projectId: ghost.projectId, runId: ghostRun.id })
   const failedSummary = ghostInfo.runs.recent[0]
   assert.equal(failedSummary.status, 'failed')
   assert.equal(failedSummary.errorCode, 'repo_workdir_missing')
   assert(failedSummary.errorMessage && failedSummary.errorMessage.trim(), 'failed run carries a readable error')
   assert.equal(failedSummary.requestId, ghostRun.request_id, 'failed run carries its requestId')
   assert.equal(failedSummary.repo, undefined, 'a failed preparation must not invent repo basis')
-  assert.equal(ghostTurn.previousRun.runId, ghostRun.id)
-  assert.equal(ghostTurn.previousRun.errorCode, 'repo_workdir_missing')
-  assert.equal(ghostTurn.workspace, null, 'no checkout and no provenance means workspace stays null')
+  assert.equal(ghostTurn.kind, 'not_captured', 'failed repository preparation never invents a snapshot')
+  assert.equal(ghostTurn.runId, ghostRun.id)
+  assert.equal(db.prepare('SELECT count(*) n FROM repo_provenance WHERE run_id=?').get(ghostRun.id).n, 0, 'missing copy has no invented workspace provenance')
   pass('failed run: readable errorCode, errorMessage and requestId in both views', {
     runId: ghostRun.id, errorCode: failedSummary.errorCode, requestId: failedSummary.requestId,
   })
@@ -371,9 +386,9 @@ try {
   for (const [name, input] of [
     ['getProjectInfoHubFn', { projectId: main.projectId }],
     ['getChatInfoFn', { chatId: main.chatId }],
-    ['getTurnStartContextFn', { chatId: main.chatId }],
+    ['readTurnContextFn', { projectId: main.projectId, runId: slowRun.id }],
     ['getChatInfoFn', { chatId: ghost.chatId }],
-    ['getTurnStartContextFn', { chatId: ghost.chatId }],
+    ['readTurnContextFn', { projectId: ghost.projectId, runId: ghostRun.id }],
   ]) {
     const { result, body } = await callAs(cookieB, name, input)
     assert.equal(result.ok, false, `${name} must reject the other user`)
@@ -385,6 +400,7 @@ try {
 
   const shutdown = await stop(server)
   pass('production shutdown', { directory, exit: shutdown.code })
+  if (browserFailure) throw browserFailure
 } catch (error) {
   console.error(`FAIL HERMETIC ${error.stack ?? error}`)
   process.exitCode = 1

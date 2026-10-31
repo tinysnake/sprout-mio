@@ -2,6 +2,7 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { z } from "zod";
 import { leaseMutationViewSchema, leaseViewSchema } from "../contracts/lease";
+import { infoHubViewSchema } from "../contracts/info-hub-query";
 import { APP_ERROR_CODES } from "../contracts/result";
 import type { AppResult } from "../contracts/result";
 import {
@@ -43,6 +44,7 @@ const leaseReadSchema = z.strictObject({
   mutation: leaseMutationViewSchema.nullable(),
 });
 type RemoteData =
+  | z.infer<typeof infoHubViewSchema>
   | z.infer<typeof chatAutomationGetResponseSchema>
   | z.infer<typeof taskGetResponseSchema>
   | z.infer<typeof taskListResponseSchema>
@@ -74,6 +76,13 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   if (!envelope.success) return { outcome: "unknown", reason: "invalid_response" };
   if (!envelope.data.ok) return { outcome: "response", result: envelope.data };
   const { call } = request;
+  if (call.type === "info_hub_get")
+    return (
+      readInfoHubResponse(envelope.data, request) ?? {
+        outcome: "unknown",
+        reason: "invalid_response",
+      }
+    );
   if (call.type === "chat_automation_get") {
     const parsed = chatAutomationGetResponseSchema.safeParse(envelope.data.data);
     return parsed.success && parsed.data.projectId === call.input.projectId
@@ -148,6 +157,30 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   )
     return bad;
   return ok(parsed.data);
+}
+
+export function readInfoHubResponse(
+  envelope: Extract<z.infer<typeof envelopeSchema>, { ok: true }>,
+  { call }: RemoteAgentRequest,
+): RemoteToolResponse | undefined {
+  if (call.type !== "info_hub_get") return;
+  const parsed = infoHubViewSchema.safeParse(envelope.data);
+  const bad: RemoteToolResponse = { outcome: "unknown", reason: "invalid_response" };
+  if (!parsed.success) return bad;
+  const view = parsed.data;
+  const input = call.input;
+  if (
+    view.projectId !== input.projectId ||
+    view.view !== input.view ||
+    ("section" in input && (!("section" in view) || view.section !== input.section)) ||
+    ("chatId" in input && (!("chatId" in view) || view.chatId !== input.chatId)) ||
+    ("agentProfileId" in input &&
+      (!("agentProfileId" in view) || view.agentProfileId !== input.agentProfileId)) ||
+    ("machineId" in input && (!("machineId" in view) || view.machineId !== input.machineId)) ||
+    ("page" in view && view.data.length > ("limit" in input ? input.limit : 25))
+  )
+    return bad;
+  return { outcome: "response", result: { ok: true, data: view, requestId: envelope.requestId } };
 }
 
 export function readTaskChatResponse(

@@ -5,6 +5,11 @@ import { join, resolve } from "node:path";
 import type { RunConfigSnapshot } from "../../contracts/agent-run";
 import type { OpenSession, PiHostCommand, PiHostEvent } from "./protocol";
 import { config } from "../../lib/config";
+import type {
+  TurnContextPromptInput,
+  TurnContextSubmissionReceipt,
+} from "../../contracts/turn-context";
+import type { InfoHubHint } from "../../contracts/info-hub-hint";
 import { piHostEvent } from "./protocol";
 
 // 关闭请求发出后到强杀之间的宽限。宿主整体关机必须在 9 秒内给出结论，
@@ -40,6 +45,8 @@ export class PiSessionProcess {
   private exit: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
   private disposed = false;
   private disposeCallbacks = new Set<() => void>();
+  turnContext: TurnContextPromptInput | undefined;
+  onTurnContextSubmitted: ((receipt: TurnContextSubmissionReceipt) => void) | undefined;
   onDelivered: ((messageId: string) => void) | undefined;
   onRejected: ((messageId: string, reason: string) => void) | undefined;
 
@@ -132,6 +139,15 @@ export class PiSessionProcess {
         this.fail(new PiHostFailure(event.code, event.message, event.stopReason));
         continue;
       }
+      if (event.type === "turn_context_submitted") {
+        try {
+          const { type: _type, id: _id, ...receipt } = event;
+          this.onTurnContextSubmitted?.(receipt);
+        } catch (error) {
+          this.fail(error instanceof Error ? error : new Error("Turn context receipt failed"));
+        }
+        continue;
+      }
       if (event.type === "input_delivered") {
         try {
           this.onDelivered?.(event.messageId);
@@ -191,9 +207,12 @@ export class PiSessionProcess {
   }
 
   async prompt(messageId: string, text: string): Promise<{ text: string; stopReason: string }> {
+    const turnContext = this.turnContext;
+    if (!turnContext || turnContext.runId !== this.id)
+      throw new PiHostFailure("turn_context_unavailable", "轮初上下文尚未准备");
     const settled = this.wait("settled", 600000);
     try {
-      this.send({ type: "prompt", id: this.id, messageId, text });
+      this.send({ type: "prompt", id: this.id, messageId, text, turnContext });
     } catch (error) {
       this.fail(error instanceof Error ? error : new Error("Pi runner 通信失败"));
     }
@@ -205,6 +224,12 @@ export class PiSessionProcess {
         event.type === "settled" ? event.stopReason : undefined,
       );
     return event;
+  }
+
+  infoHubHint(hint: InfoHubHint): void {
+    if (hint.runId !== this.id)
+      throw new PiHostFailure("turn_context_unavailable", "提示身份不匹配");
+    this.send({ type: "info_hub_hint", id: this.id, hint });
   }
 
   steer(messageId: string, text: string): void {

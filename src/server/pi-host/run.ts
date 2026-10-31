@@ -23,6 +23,13 @@ import type { ProjectContext } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
 import { admitTaskStartInput } from "../../domain/task-input";
 import { recordDiagnostic } from "../diagnostics";
+import {
+  captureTurnContext,
+  prepareTurnContext,
+  confirmTurnContext,
+} from "../../domain/turn-context";
+import { InfoHubError } from "../../domain/info-hub";
+import { InfoHubHintChannel } from "../../domain/info-hub-hint";
 import { markRunNoticeDelivered, noticeDeliveryText, pendingRunNotices } from "../notices";
 import { issueRemoteToolGrant, revokeRemoteToolGrant } from "../remote-agent-gateway";
 import { machineRuntimeContext } from "../runtime";
@@ -71,6 +78,7 @@ export function executeRun(
           try: machineRuntimeContext,
           catch: (error) => error,
         });
+        const hostContext = { userId: work.ownerId, requestId: run.requestId, ...runtime };
         const grantContext = { ...runtime, requestId: run.requestId };
         const remote = yield* Effect.sync(() => {
           const grant = issueRemoteToolGrant(run.id, process, grantContext);
@@ -136,6 +144,14 @@ export function executeRun(
         // Session/repository preparation can outlive Task responsibility. Select again at
         // the synchronous send boundary; admit persists the attempt before stdin.write.
         const promptTask = yield* Effect.sync(() => {
+          captureTurnContext({ projectId: run.projectId, runId: run.id }, hostContext);
+          process.turnContext = prepareTurnContext(
+            { projectId: run.projectId, runId: run.id },
+            hostContext,
+          );
+          process.onTurnContextSubmitted = (receipt) => {
+            confirmTurnContext(receipt, hostContext);
+          };
           for (;;) {
             const selected = firstPendingRunInput(run.id, ctx);
             if (!selected) {
@@ -165,6 +181,10 @@ export function executeRun(
           }
         });
         if (!promptTask) return;
+        const hints = new InfoHubHintChannel(run.id, hostContext, (hint) =>
+          process.infoHubHint?.(hint),
+        );
+        let hintSampleAt = 0;
         const result = yield* Effect.scoped(
           Effect.gen(function* () {
             const runScope = yield* Effect.scope;
@@ -174,6 +194,10 @@ export function executeRun(
                 const keepPolling = yield* Effect.sync(() => {
                   try {
                     if (signals.isStopping()) return true;
+                    if (now() - hintSampleAt >= 1000) {
+                      hintSampleAt = now();
+                      void hints.tick(now()).catch(() => {});
+                    }
                     for (const pending of pendingRunInputs(run.id, ctx)) {
                       if (sent.has(pending.messageId)) continue;
                       sent.add(pending.messageId);
@@ -226,7 +250,7 @@ export function executeRun(
             }).pipe(Effect.forkIn(runScope));
             return yield* Effect.tryPromise({ try: () => promptTask, catch: (error) => error });
           }),
-        );
+        ).pipe(Effect.ensuring(Effect.sync(() => hints.dispose())));
         yield* close;
         yield* Effect.sync(() => {
           if (!signals.isStopping()) completeAgentRun(run.id, result.text, result.stopReason, ctx);
@@ -241,7 +265,7 @@ export function executeRun(
                 const failure =
                   error instanceof PiHostFailure
                     ? error
-                    : error instanceof RepositoryError
+                    : error instanceof RepositoryError || error instanceof InfoHubError
                       ? new PiHostFailure(error.code, error.message)
                       : new PiHostFailure("run_failed", "Agent run 执行失败");
                 // 与宿主级诊断一样保留原因；只取错误分类和消息，不序列化异常附带的凭据等字段。

@@ -1,3 +1,4 @@
+import type { TurnContextRecord } from "../src/contracts/turn-context";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -10,30 +11,9 @@ type Evidence = {
   unauthorizedCodes: string[];
   crossCodes: string[];
   crossLeakTokens: string[];
-  turn0: {
-    projectId: string;
-    chatId: string;
-    instanceId: string | null;
-    agentProfileId: string | null;
-    profileName: string | null;
-    hostEnabled: boolean;
-    workspace: unknown;
-    activeRun: { runId: string; status: string; pendingInputs: number } | null;
-    previousRun: unknown;
-    injectedIntoPrompt: boolean;
-  } | null;
-  turn1: {
-    workspace: { basis: string; path: string; source: string; ref: string; commit: string } | null;
-    activeRun: unknown;
-    previousRun: {
-      runId: string;
-      status: string;
-      requestId: string;
-      errorCode?: string;
-      errorMessage?: string;
-    } | null;
-    injectedIntoPrompt: boolean;
-  } | null;
+  turn0: TurnContextRecord | null;
+  turn1: TurnContextRecord | null;
+  nextTurn: TurnContextRecord | null;
   hubRecent: {
     status: string;
     requestId: string;
@@ -94,59 +74,45 @@ beforeAll(() => {
       await chats.sendMessageBoundary({ chatId, body: "第一条" }, userA.headers, "req_q5");
       await chats.sendMessageBoundary({ chatId, body: "第二条" }, userA.headers, "req_q6");
 
+      const { captureTurnContext } = await import("./src/domain/turn-context.ts");
+      const runRow = sqlite.prepare("SELECT id FROM agent_run WHERE chat_id=?").get(chatId);
+      const readInput = {projectId, runId: runRow.id};
       const anonymous = new Headers();
       const unauthorized = [
-        await infoHub.getTurnStartContextBoundary({ chatId }, anonymous, "req_u1"),
+        await infoHub.readTurnContextBoundary(readInput, anonymous, "req_u1"),
       ];
-      const cross = await infoHub.getTurnStartContextBoundary({ chatId }, userB.headers, "req_x1");
+      const cross = await infoHub.readTurnContextBoundary(readInput, userB.headers, "req_x1");
       const crossLeak = JSON.stringify(cross);
       const crossLeakTokens = [joined.data.name, joined.data.id, chatId, dm.data.instance.id]
         .filter((token) => crossLeak.includes(token));
 
-      const turn0 = await infoHub.getTurnStartContextBoundary({ chatId }, userA.headers, "req_t0");
+      captureTurnContext(readInput, {userId: userA.userId, requestId: "req_capture"});
+      const unwrap = result => result.ok && result.data.kind === "captured" ? {ok: true, data: result.data.record} : {ok: false};
+      const turn0 = unwrap(await infoHub.readTurnContextBoundary(readInput, userA.headers, "req_t0"));
       if (!turn0.ok) throw new Error("轮初上下文查询失败");
-      const runRow = sqlite.prepare("SELECT id FROM agent_run WHERE chat_id=?").get(chatId);
       transitionAgentRun(runRow.id, "failed", { errorCode: "repo_workdir_missing", errorMessage: "工作副本不存在：/ghost" }, { userId: userA.userId, requestId: "req_fail" });
       const fixtureCommit = "${FIXTURE_COMMIT}";
       sqlite.prepare('INSERT INTO repo_checkout (id, project_id, path, source_kind, source, ref, "commit", resolved_at, size_bytes, status) VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch(), ?, ?)').run("repoc_00000000-0000-4000-8000-000000000001", projectId, "/verify/repos/prj-fixture", "bound_copy", "/verify/repos/prj-fixture", "main", fixtureCommit, 64, "ready");
 
-      const turn1 = await infoHub.getTurnStartContextBoundary({ chatId }, userA.headers, "req_t1");
+      const turn1 = unwrap(await infoHub.readTurnContextBoundary(readInput, userA.headers, "req_t1"));
+      await chats.sendMessageBoundary({chatId, body: "下一轮"}, userA.headers, "req_next");
+      const nextRun = sqlite.prepare("SELECT id FROM agent_run WHERE chat_id=? AND status='queued'").get(chatId);
+      const nextTurn = captureTurnContext({projectId, runId: nextRun.id}, {userId: userA.userId, requestId: "req_next_capture"});
+      transitionAgentRun(nextRun.id, "aborted", {}, {userId: userA.userId, requestId: "req_next_abort"});
       const hub = await infoHub.getProjectInfoHubBoundary({ projectId }, userA.headers, "req_t2");
       const info = await infoHub.getChatInfoBoundary({ chatId }, userA.headers, "req_t3");
       const failedRow = sqlite.prepare("SELECT request_id, status, error_code, error_message FROM agent_run WHERE id=?").get(runRow.id);
-      const turnMatchesDb = turn1.ok
-        && turn1.data.activeRun === null
-        && turn1.data.previousRun?.runId === runRow.id
-        && turn1.data.previousRun?.status === "failed"
-        && turn1.data.previousRun?.errorCode === failedRow.error_code
-        && turn1.data.previousRun?.errorMessage === failedRow.error_message
-        && turn1.data.previousRun?.requestId === failedRow.request_id
-        && turn1.data.workspace?.basis === "project_checkout"
-        && turn1.data.workspace?.commit === fixtureCommit;
+      const turnMatchesDb = turn1.ok && JSON.stringify(turn1.data) === JSON.stringify(turn0.data)
+        && hub.ok && hub.data.agents.runs.recent.some(run => run.runId === runRow.id && run.status === failedRow.status && run.errorCode === failedRow.error_code && run.errorMessage === failedRow.error_message && run.requestId === failedRow.request_id);
 
       console.log("EVIDENCE " + JSON.stringify({
         unauthorizedCodes: unauthorized.map(code),
         crossCodes: [code(cross)],
         crossLeakTokens,
-        turn0: turn0.ok ? {
-          projectId: turn0.data.projectId,
-          chatId: turn0.data.chatId,
-          instanceId: turn0.data.instanceId,
-          agentProfileId: turn0.data.agentProfileId,
-          profileName: turn0.data.profileName,
-          hostEnabled: turn0.data.hostEnabled,
-          workspace: turn0.data.workspace,
-          activeRun: turn0.data.activeRun,
-          previousRun: turn0.data.previousRun,
-          injectedIntoPrompt: turn0.data.injectedIntoPrompt,
-        } : null,
-        turn1: turn1.ok ? {
-          workspace: turn1.data.workspace,
-          activeRun: turn1.data.activeRun,
-          previousRun: turn1.data.previousRun,
-          injectedIntoPrompt: turn1.data.injectedIntoPrompt,
-        } : null,
-        hubRecent: hub.ok ? hub.data.agents.runs.recent : [],
+        turn0: turn0.ok ? turn0.data : null,
+        turn1: turn1.ok ? turn1.data : null,
+        nextTurn,
+        hubRecent: hub.ok ? hub.data.agents.runs.recent.filter(run => run.runId === runRow.id) : [],
         hubMachines: hub.ok ? hub.data.machines : null,
         hubLeases: hub.ok ? hub.data.leases : null,
         chatActive: info.ok ? info.data.runs.active : [],
@@ -198,7 +164,7 @@ describe("轮初必要上下文查询", () => {
     expect(evidence.turn0?.workspace).toBeNull();
     expect(evidence.turn0?.activeRun?.status).toBe("queued");
     expect(evidence.turn0?.activeRun?.pendingInputs).toBe(2);
-    expect(evidence.turn0?.previousRun).toBeNull();
+    expect(evidence.turn0).not.toHaveProperty("previousRun");
   });
 
   it("始终显式声明不注入模型 prompt", () => {
@@ -208,11 +174,12 @@ describe("轮初必要上下文查询", () => {
 
   it("失败 run 后：上一次 run 的错误与 requestId 来自数据库实值，workspace 取最近就绪副本", () => {
     expect(evidence.turnMatchesDb).toBe(true);
-    expect(evidence.turn1?.workspace?.basis).toBe("project_checkout");
-    expect(evidence.turn1?.workspace?.commit).toBe(FIXTURE_COMMIT);
-    expect(evidence.turn1?.activeRun).toBeNull();
-    expect(evidence.turn1?.previousRun?.errorCode).toBe("repo_workdir_missing");
-    expect(evidence.turn1?.previousRun?.errorMessage).toContain("工作副本不存在");
+    // P6b: the old run snapshot is immutable; the next run captures the new checkout.
+    expect(evidence.turn1).toEqual(evidence.turn0);
+    expect(evidence.nextTurn?.workspace?.basis).toBe("project_checkout");
+    expect(evidence.nextTurn?.workspace?.commit).toBe(FIXTURE_COMMIT);
+    expect(evidence.nextTurn?.activeRun.status).toBe("queued");
+    expect(evidence.nextTurn).not.toHaveProperty("previousRun");
   });
 });
 

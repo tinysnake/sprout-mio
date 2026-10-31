@@ -1,165 +1,245 @@
-import type {
-  ChatRunAggregate,
-  AgentRunsView,
-  ChatInfoView,
-  InfoHubRunSummary,
-  ProjectAgentEntry,
-  ProjectInfoHub,
-  TurnStartContext,
-  InfoHubTaskSummary,
-  TaskCounts,
-} from "../contracts/info-hub";
-import type { LeaseView } from "../contracts/lease";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   agentInstance,
   agentProfile,
   agentRun,
+  agentRunInput,
   chatEffectiveMember,
   leaseMutation,
+  machine,
+  machineConnection,
   machineLease,
   message,
+  project,
+  projectMachine,
   projectMember,
+  repoProvenance,
   task,
   taskChecklistItem,
   taskEvent,
 } from "../db/schema";
-import { AGENT_RUN_STATUSES, type AgentRun, type AgentRunStatus } from "../contracts/agent-run";
-import type { Chat } from "../contracts/chat";
-import { chatDisplayTitle } from "../contracts/chat";
-import { listProjectMachines } from "./machine";
-import type { MachineContext } from "./machine";
+import { AGENT_RUN_STATUSES, type AgentRunStatus } from "../contracts/agent-run";
+import {
+  INFO_HUB_LIMITS,
+  type AgentRunsView,
+  type ChatInfoView,
+  type ChatRunAggregate,
+  type InfoHubAgentStatus,
+  type InfoHubLeaseSummary,
+  type InfoHubMachineSummary,
+  type InfoHubRunSummary,
+  type InfoHubTaskSummary,
+  type ProjectAgentEntry,
+  type ProjectInfoHub,
+  type TaskCounts,
+} from "../contracts/info-hub";
+import {
+  infoHubQuerySchema,
+  infoHubViewSchema,
+  infoHubCursorPayloadSchema,
+  infoHubCursorValidationSchema,
+  type InfoHubQuery,
+  type InfoHubView,
+  type InfoHubRefreshResult,
+} from "../contracts/info-hub-query";
+import type { LeaseView } from "../contracts/lease";
+import { chatDisplayTitle, type Chat } from "../contracts/chat";
+import { WORKER_STALE_AFTER_MS } from "../contracts/worker";
 import { config } from "../lib/config";
-import { assertProjectAccess, ProjectAccessError, readRunScope } from "./access";
-import type { ProjectContext } from "./access";
-import { getAgentProfile, listProjectMembers } from "./agent";
-import { listAgentRunInputs, listAgentRuns } from "./agent-run";
-import { getChat, listChatMembers, listChats, listInstancesForChat, listMessages } from "./chat";
-import { getProjectRepoState, getRunRepoBasis } from "./repository";
+import {
+  assertProjectAccess,
+  ProjectAccessError,
+  readRunScope,
+  type ProjectContext,
+} from "./access";
+import type { MachineContext } from "./machine";
+import { getChat, listChatMembers, listChats } from "./chat";
 
-const PERSONA_SUMMARY_LIMIT = 120;
-const RECENT_RUNS_LIMIT = 5;
-
-function personaSummary(persona: string): string {
-  const trimmed = persona.trim();
-  return trimmed.length <= PERSONA_SUMMARY_LIMIT
-    ? trimmed
-    : `${trimmed.slice(0, PERSONA_SUMMARY_LIMIT)}…`;
+export class InfoHubError extends Error {
+  constructor(
+    readonly code:
+      | "info_hub_cursor_stale"
+      | "turn_context_unavailable"
+      | "too_many_requests"
+      | "forbidden"
+      | "not_found",
+    message = code,
+  ) {
+    super(message);
+  }
 }
+const active = (run: { status: string }) => run.status === "queued" || run.status === "running";
 
-function isActive(run: AgentRun): boolean {
-  return run.status === "queued" || run.status === "running";
+/** Fixed batch reads. Only run metadata and input counts are selected, never prompt/message bodies. */
+function projectRuns(projectId: string): InfoHubRunSummary[] {
+  const pending: { runId: string; count: number }[] = db
+    .select({ runId: agentRunInput.runId, count: sql<number>`count(*)` })
+    .from(agentRunInput)
+    .innerJoin(agentRun, eq(agentRun.id, agentRunInput.runId))
+    .where(and(eq(agentRun.projectId, projectId), eq(agentRunInput.disposition, "pending")))
+    .groupBy(agentRunInput.runId)
+    .all();
+  const counts = new Map(pending.map((row) => [row.runId, row.count]));
+  const provenance: (typeof repoProvenance.$inferSelect)[] = db
+    .select()
+    .from(repoProvenance)
+    .where(eq(repoProvenance.projectId, projectId))
+    .all();
+  const repos = new Map(provenance.map((row) => [row.runId, row]));
+  return db
+    .select({ run: agentRun, profileId: agentInstance.agentProfileId })
+    .from(agentRun)
+    .innerJoin(agentInstance, eq(agentInstance.id, agentRun.instanceId))
+    .where(eq(agentRun.projectId, projectId))
+    .orderBy(asc(agentRun.queuedAt), asc(agentRun.id))
+    .all()
+    .map(({ run, profileId }: { run: typeof agentRun.$inferSelect; profileId: string }) => {
+      const repo = repos.get(run.id);
+      return {
+        runId: run.id,
+        chatId: run.chatId,
+        instanceId: run.instanceId,
+        agentProfileId: profileId,
+        status: run.status,
+        queuedAt: run.queuedAt.toISOString(),
+        requestId: run.requestId,
+        pendingInputs: counts.get(run.id) ?? 0,
+        ...(run.startedAt ? { startedAt: run.startedAt.toISOString() } : {}),
+        ...(run.settledAt ? { settledAt: run.settledAt.toISOString() } : {}),
+        ...(run.errorCode ? { errorCode: run.errorCode } : {}),
+        ...(run.errorMessage ? { errorMessage: run.errorMessage } : {}),
+        ...(run.assistantMessageId ? { assistantMessageId: run.assistantMessageId } : {}),
+        ...(repo
+          ? {
+              repo: {
+                source: repo.source,
+                sourceKind: repo.sourceKind,
+                ref: repo.ref,
+                commit: repo.commit,
+                fresh: repo.fresh,
+                recordedAt: repo.recordedAt.toISOString(),
+                ...(repo.fetchedAt ? { fetchedAt: repo.fetchedAt.toISOString() } : {}),
+              },
+            }
+          : {}),
+      };
+    });
 }
-
-function runSummary(run: AgentRun, ctx: ProjectContext): InfoHubRunSummary {
-  const pendingInputs = listAgentRunInputs(run.id, ctx).filter(
-    (input) => input.disposition === "pending",
-  ).length;
-  const repo = getRunRepoBasis(run.id, ctx);
-  return {
-    runId: run.id,
-    status: run.status,
-    queuedAt: run.queuedAt,
-    ...(run.startedAt ? { startedAt: run.startedAt } : {}),
-    ...(run.settledAt ? { settledAt: run.settledAt } : {}),
-    requestId: run.requestId,
-    pendingInputs,
-    ...(run.errorCode ? { errorCode: run.errorCode } : {}),
-    ...(run.errorMessage ? { errorMessage: run.errorMessage } : {}),
-    ...(run.assistantMessageId ? { assistantMessageId: run.assistantMessageId } : {}),
-    ...(repo
-      ? {
-          repo: {
-            source: repo.source,
-            sourceKind: repo.sourceKind,
-            ref: repo.ref,
-            commit: repo.commit,
-            fresh: repo.fresh,
-            recordedAt: repo.recordedAt,
-            ...(repo.fetchedAt ? { fetchedAt: repo.fetchedAt } : {}),
-          },
-        }
-      : {}),
-  };
-}
-
-/** run 事实来自领域查询；pending 输入只以未投递计数出现，不重新拼装状态。 */
-function runsView(chats: Chat[], ctx: ProjectContext): AgentRunsView {
-  const runs = chats
-    .flatMap((chat) => listAgentRuns(chat.id, ctx))
-    .sort((left, right) =>
-      left.queuedAt === right.queuedAt ? 0 : left.queuedAt < right.queuedAt ? -1 : 1,
-    );
-  const recent = runs
-    .filter((run) => !isActive(run))
-    .slice(-RECENT_RUNS_LIMIT)
-    .reverse();
+function runsView(runs: InfoHubRunSummary[]): AgentRunsView {
   return {
     available: true,
     hostEnabled: config.SPROUT_PI_ENABLED,
-    active: runs.filter(isActive).map((run) => runSummary(run, ctx)),
-    recent: recent.map((run) => runSummary(run, ctx)),
+    active: runs.filter(active),
+    recent: runs
+      .filter((run) => !active(run))
+      .slice(-5)
+      .reverse(),
   };
 }
-
-export function getProjectInfoHub(
-  projectId: string,
-  ctx: MachineContext & ProjectContext,
-): ProjectInfoHub {
+function agentState(runs: InfoHubRunSummary[]): {
+  status: InfoHubAgentStatus;
+  error: ProjectAgentEntry["error"];
+} {
+  if (runs.some(active)) return { status: "running", error: null };
+  const latest = runs.at(-1);
+  if (latest?.status === "failed")
+    return {
+      status: "error",
+      error: {
+        runId: latest.runId,
+        chatId: latest.chatId,
+        code: latest.errorCode || "run_failed",
+        message: (latest.errorMessage || "Run failed").slice(0, 2000),
+      },
+    };
+  return { status: "idle", error: null };
+}
+function authorize(projectId: string, ctx: ProjectContext) {
   assertProjectAccess(ctx, projectId);
-  const members = listProjectMembers(projectId, ctx);
-  // Project membership permits basic summaries, never Task bodies or another Chat's detail.
-  const scope = ctx.agent ? readRunScope(ctx.agent.runId) : undefined;
-  if (
-    ctx.agent &&
-    (!scope?.active ||
+  if (ctx.agent) {
+    const scope = readRunScope(ctx.agent.runId);
+    const member = db
+      .select()
+      .from(projectMember)
+      .where(
+        and(
+          eq(projectMember.projectId, projectId),
+          eq(projectMember.agentProfileId, ctx.agent.agentProfileId),
+        ),
+      )
+      .get();
+    if (
+      !scope?.active ||
+      scope.projectId !== projectId ||
       scope.instanceId !== ctx.agent.instanceId ||
       scope.agentProfileId !== ctx.agent.agentProfileId ||
-      !members.some((member) => member.agentProfileId === ctx.agent!.agentProfileId))
-  ) {
-    throw new ProjectAccessError();
+      !member
+    )
+      throw new ProjectAccessError();
   }
+}
+export function getProjectInfoHub(
+  projectId: string,
+  ctx: ProjectContext & Partial<MachineContext>,
+): ProjectInfoHub {
+  authorize(projectId, ctx);
   const chats = listChats(projectId, ctx);
-  const readableChats = ctx.agent ? chats.filter((chat) => chat.id === scope?.chatId) : chats;
-  const runRows = chatRunRows(projectId);
-  const chatAggregates = chatRunsView(chats, runRows);
-  const tasks = taskSummaries(projectId, chats, chatAggregates, runRows);
-  attachChatTasks(chatAggregates, tasks);
-  // DM 关联只从 DM 会话取：扇出后一个 Agent 在群与频道里也有 instance，
-  // 把那些当成 DM 会让 Project → Agents 面板链到错误的会话。
-  const dmLinks = readableChats
-    .filter((chat) => chat.kind === "dm")
-    .flatMap((chat) =>
-      listInstancesForChat(chat.id, ctx).map((instance) => ({
-        agentProfileId: instance.agentProfileId,
-        chatId: chat.id,
-        instanceId: instance.id,
-      })),
+  const rows = chatRunRows(projectId);
+  const runs = projectRuns(projectId);
+  const aggregates = chatRunsView(chats, rows);
+  const tasks = taskSummaries(projectId, chats, aggregates, rows);
+  attachChatTasks(aggregates, tasks);
+  const roster: (typeof chatEffectiveMember.$inferSelect)[] = db
+    .select()
+    .from(chatEffectiveMember)
+    .where(eq(chatEffectiveMember.projectId, projectId))
+    .all();
+  const profiles: { profile: typeof agentProfile.$inferSelect }[] = db
+    .select({ profile: agentProfile })
+    .from(projectMember)
+    .innerJoin(agentProfile, eq(agentProfile.id, projectMember.agentProfileId))
+    .where(eq(projectMember.projectId, projectId))
+    .all();
+  const agents = profiles.map(({ profile }): ProjectAgentEntry => {
+    const dm = rows.find(
+      (row) =>
+        row.agentProfileId === profile.id &&
+        chats.some((chat) => chat.id === row.chatId && chat.kind === "dm"),
     );
-  const agents: ProjectAgentEntry[] = members.map((member) => {
-    const profile = getAgentProfile(member.agentProfileId, ctx);
-    const link = dmLinks.find((entry) => entry.agentProfileId === member.agentProfileId);
     return {
       agentProfileId: profile.id,
       name: profile.name,
-      personaSummary: personaSummary(profile.persona),
-      ...(link ? { chatId: link.chatId, instanceId: link.instanceId } : {}),
+      ...(profile.jobTitle ? { jobTitle: profile.jobTitle } : {}),
+      ...agentState(runs.filter((run) => run.agentProfileId === profile.id)),
+      ...(dm ? { instanceId: dm.instanceId, chatId: dm.chatId } : {}),
     };
   });
+  const summaries = aggregates.map((aggregate) => {
+    const chat = chats.find((chat) => chat.id === aggregate.chatId)!;
+    return {
+      ...aggregate,
+      archived: !!chat.archivedAt,
+      owner: chat.owner,
+      memberCount: roster.filter((member) => member.chatId === chat.id).length,
+    };
+  });
+  const leases = leaseSummaries(projectId, rows, summaries);
   return {
     projectId,
-    agents: {
-      agents,
-      runs: runsView(readableChats, ctx),
-    },
+    projectName: db
+      .select({ name: project.name })
+      .from(project)
+      .where(eq(project.id, projectId))
+      .get()!.name,
+    agents: { agents, runs: runsView(runs) },
+    chats: summaries,
     tasks: { available: true, counts: countTasks(tasks), items: tasks },
-    chats: chatAggregates,
-    machines: listProjectMachines(projectId, ctx),
-    leases: { available: true, items: leaseViews(projectId) },
+    machines: machineSummaries(projectId, leases, ctx),
+    leases: { available: true, items: leases },
   };
 }
-
 /** 会话聚合里的一次读事实：一个 instance 的一行，`status` 缺省表示它还没有任何 run。 */
 type ChatRunRow = {
   chatId: string;
@@ -455,109 +535,383 @@ function leaseViews(projectId: string): LeaseView[] {
     }));
 }
 
-/** Chat → 自身与成员视角：授权经 chat 自带的 projectId，越权与不存在同样抛 not_found。 */
+function leaseSummaries(
+  projectId: string,
+  rows: ChatRunRow[],
+  chats: ChatRunAggregate[],
+): InfoHubLeaseSummary[] {
+  return leaseViews(projectId).map((lease) => {
+    const instance = rows.find((row) => row.instanceId === lease.holderInstanceId);
+    const chat = instance && chats.find((chat) => chat.chatId === instance.chatId);
+    return {
+      ...lease,
+      holderResolution:
+        lease.holderInstanceId === null ? "none" : instance && chat ? "resolved" : "unknown",
+      holder:
+        instance && chat
+          ? {
+              instanceId: instance.instanceId,
+              agentProfileId: instance.agentProfileId,
+              displayName: instance.profileName,
+              chatId: instance.chatId,
+              chatDisplayTitle: chat.displayTitle,
+              chatKind: chat.kind,
+            }
+          : null,
+    };
+  });
+}
+function machineSummaries(
+  projectId: string,
+  leases: InfoHubLeaseSummary[],
+  ctx: Partial<MachineContext>,
+): InfoHubMachineSummary[] {
+  const bindings: {
+    binding: typeof projectMachine.$inferSelect;
+    machine: typeof machine.$inferSelect;
+  }[] = db
+    .select({ binding: projectMachine, machine })
+    .from(projectMachine)
+    .innerJoin(machine, eq(machine.id, projectMachine.machineId))
+    .where(eq(projectMachine.projectId, projectId))
+    .all();
+  const connections: { connection: typeof machineConnection.$inferSelect }[] = db
+    .select({ connection: machineConnection })
+    .from(machineConnection)
+    .where(
+      sql`${machineConnection.machineId} in (select machine_id from project_machine where project_id = ${projectId} union select machine_id from machine_lease where project_id = ${projectId})`,
+    )
+    .orderBy(desc(machineConnection.generation))
+    .all();
+  const machines: (typeof machine.$inferSelect)[] = db
+    .select()
+    .from(machine)
+    .where(
+      sql`${machine.id} in (select machine_id from machine_lease where project_id = ${projectId})`,
+    )
+    .all();
+  const ids = new Set([
+    ...bindings.map((row) => row.machine.id),
+    ...leases.map((lease) => lease.machineId),
+  ]);
+  return [...ids].sort().flatMap((id) => {
+    const binding = bindings.find((row) => row.machine.id === id);
+    const item = binding?.machine ?? machines.find((row) => row.id === id);
+    if (!item) return [];
+    // An unacquired initial binding has generation zero, matching lease.read. Stored held/fencing always wins.
+    const lease: InfoHubLeaseSummary = leases.find((lease) => lease.machineId === id) ?? {
+      projectId,
+      machineId: id,
+      generation: 0,
+      state: "free",
+      holderInstanceId: null,
+      changedAt: binding!.binding.createdAt.toISOString(),
+      pendingMutationId: null,
+      holderResolution: "none",
+      holder: null,
+    };
+    const connection = connections.find((row) => row.connection.machineId === id)?.connection;
+    const current =
+      connection &&
+      ctx.bootId &&
+      connection.bootId === ctx.bootId &&
+      connection.status === "open" &&
+      (ctx.now ?? new Date()).getTime() - connection.lastSeenAt.getTime() < WORKER_STALE_AFTER_MS;
+    return [
+      {
+        projectId,
+        machineId: id,
+        name: item.name,
+        description: binding?.binding.description ?? "",
+        projectMembership: binding ? ("current" as const) : ("removed" as const),
+        lease,
+        connection: !ctx.bootId
+          ? { kind: "unknown" as const }
+          : current
+            ? {
+                kind: connection.seq > 0 ? ("online" as const) : ("connecting" as const),
+                generation: connection.generation,
+                lastSeenAt: connection.lastSeenAt.toISOString(),
+              }
+            : {
+                kind: "offline" as const,
+                generation: connection?.generation ?? null,
+                lastSeenAt: connection?.lastSeenAt.toISOString() ?? null,
+                reason: !connection
+                  ? ("never_connected" as const)
+                  : connection.bootId !== ctx.bootId
+                    ? ("host_restarted" as const)
+                    : connection.status === "closed"
+                      ? ("closed" as const)
+                      : ("stale" as const),
+              },
+      },
+    ];
+  });
+}
 export function getChatInfo(chatId: string, ctx: ProjectContext): ChatInfoView {
   const chat = getChat(chatId, ctx);
-  const members = listChatMembers(chatId, ctx);
-  const instances = listInstancesForChat(chatId, ctx);
-  const messages = listMessages(chatId, ctx);
-  const latest = messages.at(-1);
-  const runRows = chatRunRows(chat.projectId);
-  const aggregates = chatRunsView([chat], runRows);
+  const hub = getProjectInfoHub(chat.projectId, ctx);
+  const roster = listChatMembers(chatId, ctx);
+  const profiles: (typeof agentProfile.$inferSelect)[] = db
+    .select()
+    .from(agentProfile)
+    .where(
+      sql`${agentProfile.id} in (select agent_profile_id from project_member where project_id = ${chat.projectId})`,
+    )
+    .all();
+  const instances: (typeof agentInstance.$inferSelect)[] = db
+    .select()
+    .from(agentInstance)
+    .where(eq(agentInstance.chatId, chatId))
+    .all();
+  const stats = db
+    .select({ count: sql<number>`count(*)`, latest: sql<number | null>`max(${message.createdAt})` })
+    .from(message)
+    .where(eq(message.chatId, chatId))
+    .get()!;
   return {
-    tasks: {
-      available: true,
-      items: taskSummaries(chat.projectId, [chat], aggregates, runRows, chatId),
-    },
-    chatId: chat.id,
+    chatId,
     projectId: chat.projectId,
     kind: chat.kind,
-    archived: chat.archivedAt !== undefined,
-    members: members.map((member) => ({
-      memberKind: member.memberKind,
-      memberId: member.memberId,
-      displayName:
-        member.memberKind === "human" ? "Human" : getAgentProfile(member.memberId, ctx).name,
-    })),
+    archived: !!chat.archivedAt,
     owner: chat.owner,
+    members: roster.map((member) =>
+      member.memberKind === "human"
+        ? { memberKind: "human" as const, memberId: member.memberId, displayName: "Human" }
+        : {
+            memberKind: "agent" as const,
+            memberId: member.memberId,
+            displayName:
+              profiles.find((profile) => profile.id === member.memberId)?.name ?? member.memberId,
+            ...(() => {
+              const agent = hub.agents.agents.find(
+                (agent) => agent.agentProfileId === member.memberId,
+              );
+              return { status: agent?.status ?? ("idle" as const), error: agent?.error ?? null };
+            })(),
+          },
+    ),
     instances: instances.map((instance) => ({
       instanceId: instance.id,
       agentProfileId: instance.agentProfileId,
-      profileName: getAgentProfile(instance.agentProfileId, ctx).name,
+      profileName:
+        profiles.find((profile) => profile.id === instance.agentProfileId)?.name ??
+        instance.agentProfileId,
+      leases: hub.leases.items.filter((lease) => lease.holderInstanceId === instance.id),
     })),
     messages: {
-      count: messages.length,
-      ...(latest ? { latestAt: latest.createdAt } : {}),
+      count: stats.count,
+      ...(stats.latest !== null ? { latestAt: new Date(stats.latest * 1000).toISOString() } : {}),
     },
-    runs: runsView([chat], ctx),
+    runs: runsView(projectRuns(chat.projectId).filter((run) => run.chatId === chatId)),
+    tasks: { available: true, items: hub.tasks.items.filter((task) => task.chatId === chatId) },
   };
 }
 
-/**
- * 轮初必要上下文：这个分身在这一轮开始时需要知道什么。
- * 不注入模型 prompt（见 contracts 的 `injectedIntoPrompt`）；只供人与后续 P6 查询消费。
- */
-export function getTurnStartContext(chatId: string, ctx: ProjectContext): TurnStartContext {
-  const chat = getChat(chatId, ctx);
-  const instance = listInstancesForChat(chatId, ctx).at(0);
-  const profile = instance ? getAgentProfile(instance.agentProfileId, ctx) : undefined;
-  const runs = listAgentRuns(chatId, ctx);
-  const active = runs.find(isActive);
-  const activeInputs = active ? listAgentRunInputs(active.id, ctx) : [];
-  const previous = runs.filter((run) => !isActive(run)).at(-1);
-
-  const activeBasis = active ? getRunRepoBasis(active.id, ctx) : undefined;
-  const checkout = getProjectRepoState(chat.projectId, ctx).checkout;
-  const workspace = activeBasis
-    ? {
-        basis: "run_provenance" as const,
-        path: activeBasis.path,
-        source: activeBasis.source,
-        sourceKind: activeBasis.sourceKind,
-        ref: activeBasis.ref,
-        commit: activeBasis.commit,
-        fresh: activeBasis.fresh,
-        recordedAt: activeBasis.recordedAt,
-        ...(activeBasis.fetchedAt ? { fetchedAt: activeBasis.fetchedAt } : {}),
+const cursorSecret = randomBytes(32);
+const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+function signCursor(payload: unknown): string {
+  const body = Buffer.from(
+    JSON.stringify({ expiresAt: Date.now() + 5 * 60_000, payload }),
+  ).toString("base64url");
+  return `${body}.${createHmac("sha256", cursorSecret).update(body).digest("base64url")}`;
+}
+function parseCursor(cursor: string): unknown {
+  try {
+    const [body, signature, extra] = cursor.split(".");
+    const expected = createHmac("sha256", cursorSecret).update(body!).digest();
+    const actual = Buffer.from(signature!, "base64url");
+    if (extra || actual.length !== expected.length || !timingSafeEqual(actual, expected))
+      throw new Error();
+    const envelope: unknown = JSON.parse(Buffer.from(body!, "base64url").toString());
+    if (
+      typeof envelope !== "object" ||
+      envelope === null ||
+      !("expiresAt" in envelope) ||
+      typeof envelope.expiresAt !== "number" ||
+      !Number.isFinite(envelope.expiresAt) ||
+      envelope.expiresAt <= Date.now() ||
+      !("payload" in envelope)
+    )
+      throw new Error();
+    return envelope.payload;
+  } catch {
+    throw new InfoHubError("info_hub_cursor_stale");
+  }
+}
+/** One short SQLite read transaction owns authorization, revision, and the selected page. */
+export function getInfoHub(
+  projectId: string,
+  rawQuery: InfoHubQuery,
+  ctx: ProjectContext & Partial<MachineContext>,
+): InfoHubView {
+  return db.transaction(() => {
+    const query = infoHubQuerySchema.parse(rawQuery);
+    const hub = getProjectInfoHub(projectId, ctx);
+    const actorScope = ctx.agent
+      ? `agent:${ctx.agent.runId}:${ctx.agent.instanceId}`
+      : `human:${ctx.userId}`;
+    const base = { projectId, revision: hash(hub), asOf: new Date().toISOString() };
+    let data: unknown;
+    let scope: Record<string, string> = {};
+    if (query.view === "machine") {
+      data = hub.machines.find((machine) => machine.machineId === query.machineId);
+      if (!data) throw new InfoHubError("not_found");
+      return infoHubViewSchema.parse({
+        ...base,
+        view: "machine",
+        machineId: query.machineId,
+        data,
+      });
+    }
+    const { cursor, ...range } = query;
+    if (query.view === "project")
+      data =
+        query.section === "agents"
+          ? hub.agents.agents
+          : query.section === "chats"
+            ? hub.chats
+            : query.section === "tasks"
+              ? hub.tasks.items
+              : hub.machines;
+    if (query.view === "chat") {
+      const summary = hub.chats.find((chat) => chat.chatId === query.chatId);
+      if (!summary) throw new InfoHubError("not_found");
+      scope = { chatId: query.chatId };
+      if (query.section === "summary") data = summary;
+      else if (query.section === "members") {
+        // Project membership grants these basic member/status facts even across Chats.
+        const members: (typeof chatEffectiveMember.$inferSelect)[] = db
+          .select()
+          .from(chatEffectiveMember)
+          .where(eq(chatEffectiveMember.chatId, query.chatId))
+          .all();
+        const runs = projectRuns(projectId);
+        data = members.map((member) =>
+          member.memberKind === "human"
+            ? { memberKind: "human", memberId: member.memberId, displayName: "Human" }
+            : {
+                memberKind: "agent",
+                memberId: member.memberId,
+                displayName:
+                  hub.agents.agents.find((agent) => agent.agentProfileId === member.memberId)
+                    ?.name ?? member.memberId,
+                ...agentState(runs.filter((run) => run.agentProfileId === member.memberId)),
+              },
+        );
+      } else if (query.section === "runs")
+        data = projectRuns(projectId).filter((run) => run.chatId === query.chatId && active(run));
+      else if (query.section === "tasks")
+        data = hub.tasks.items.filter((task) => task.chatId === query.chatId);
+      else data = hub.machines.filter((machine) => machine.lease.holder?.chatId === query.chatId);
+    }
+    if (query.view === "agent") {
+      const agent = hub.agents.agents.find(
+        (agent) => agent.agentProfileId === query.agentProfileId,
+      );
+      if (!agent) throw new InfoHubError("not_found");
+      scope = { agentProfileId: query.agentProfileId };
+      if (query.section === "summary") data = agent;
+      else if (query.section === "runs")
+        data = projectRuns(projectId).filter(
+          (run) => run.agentProfileId === query.agentProfileId && active(run),
+        );
+      else if (query.section === "machines")
+        data = hub.machines.filter(
+          (machine) => machine.lease.holder?.agentProfileId === query.agentProfileId,
+        );
+      else {
+        const instances: (typeof agentInstance.$inferSelect)[] = db
+          .select()
+          .from(agentInstance)
+          .where(
+            and(
+              eq(agentInstance.projectId, projectId),
+              eq(agentInstance.agentProfileId, query.agentProfileId),
+            ),
+          )
+          .all();
+        data = instances.map((instance) => ({
+          instanceId: instance.id,
+          agentProfileId: instance.agentProfileId,
+          chatId: instance.chatId,
+          chatDisplayTitle: hub.chats.find((chat) => chat.chatId === instance.chatId)!.displayTitle,
+          chatKind: hub.chats.find((chat) => chat.chatId === instance.chatId)!.kind,
+          leases: hub.leases.items.filter((lease) => lease.holderInstanceId === instance.id),
+        }));
       }
-    : checkout
-      ? {
-          basis: "project_checkout" as const,
-          path: checkout.path,
-          source: checkout.source,
-          sourceKind: checkout.sourceKind,
-          ref: checkout.ref,
-          commit: checkout.commit,
-          recordedAt: checkout.resolvedAt,
-          ...(checkout.fetchedAt ? { fetchedAt: checkout.fetchedAt } : {}),
-        }
-      : null;
-
-  return {
-    projectId: chat.projectId,
-    chatId: chat.id,
-    instanceId: instance?.id ?? null,
-    agentProfileId: profile?.id ?? null,
-    profileName: profile?.name ?? null,
-    hostEnabled: config.SPROUT_PI_ENABLED,
-    workspace,
-    activeRun: active
-      ? {
-          runId: active.id,
-          status: active.status,
-          pendingInputs: activeInputs.filter((input) => input.disposition === "pending").length,
-        }
-      : null,
-    previousRun: previous
-      ? {
-          runId: previous.id,
-          status: previous.status,
-          requestId: previous.requestId,
-          ...(previous.settledAt ? { settledAt: previous.settledAt } : {}),
-          ...(previous.errorCode ? { errorCode: previous.errorCode } : {}),
-          ...(previous.errorMessage ? { errorMessage: previous.errorMessage } : {}),
-        }
-      : null,
-    injectedIntoPrompt: false,
-  };
+    }
+    const envelope = { ...base, view: query.view, section: query.section, ...scope };
+    if (!Array.isArray(data)) return infoHubViewSchema.parse({ ...envelope, data });
+    const key = (item: Record<string, unknown>) =>
+      String(
+        query.section === "agents"
+          ? item.agentProfileId
+          : query.section === "members"
+            ? `${String(item.memberKind)}:${String(item.memberId)}`
+            : query.section === "runs"
+              ? item.runId
+              : query.section === "tasks"
+                ? item.taskId
+                : query.section === "machines"
+                  ? item.machineId
+                  : query.section === "instances"
+                    ? item.instanceId
+                    : item.chatId,
+      );
+    const sorted = (data as Record<string, unknown>[]).sort((a, b) => key(a).localeCompare(key(b)));
+    let offset = 0;
+    if (cursor) {
+      const payload = infoHubCursorPayloadSchema.safeParse(parseCursor(cursor));
+      if (
+        !payload.success ||
+        !infoHubCursorValidationSchema.safeParse({
+          cursor: payload.data,
+          expected: {
+            version: 1,
+            projectId,
+            actorScope,
+            query: range,
+            revision: base.revision,
+            sort: "stable_id_asc",
+          },
+        }).success
+      )
+        throw new InfoHubError("info_hub_cursor_stale");
+      offset = sorted.findIndex((item) => key(item) === payload.data.after) + 1;
+      if (!offset) throw new InfoHubError("info_hub_cursor_stale");
+    }
+    let items = sorted.slice(offset, offset + query.limit);
+    for (;;) {
+      const nextCursor =
+        offset + items.length < sorted.length
+          ? signCursor({
+              version: 1,
+              projectId,
+              actorScope,
+              query: range,
+              revision: base.revision,
+              sort: "stable_id_asc",
+              after: key(items.at(-1)!),
+            })
+          : null;
+      const result = { ...envelope, data: items, page: { total: sorted.length, nextCursor } };
+      if (Buffer.byteLength(JSON.stringify(result)) <= INFO_HUB_LIMITS.maxResponseBytes)
+        return infoHubViewSchema.parse(result);
+      if (items.length <= 1) throw new InfoHubError("too_many_requests");
+      items = items.slice(0, -1);
+    }
+  });
+}
+export function refreshInfoHub(
+  projectId: string,
+  query: InfoHubQuery,
+  knownRevision: string | undefined,
+  ctx: ProjectContext & Partial<MachineContext>,
+): InfoHubRefreshResult {
+  const view = getInfoHub(projectId, query, ctx);
+  return view.revision === knownRevision
+    ? { kind: "unchanged", projectId, query, revision: view.revision, asOf: view.asOf }
+    : { kind: "changed", view };
 }

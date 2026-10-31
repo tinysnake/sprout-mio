@@ -17,8 +17,8 @@ const { createAgentProfile, addProjectMember } = await import("../src/domain/age
 const { createDirectChat, createGroupChat, ensureInstance } = await import("../src/domain/chat");
 const { transitionAgentRun, completeAgentRun } = await import("../src/domain/agent-run");
 const tasks = await import("../src/domain/task");
-const { getProjectInfoHub, getChatInfo, getTurnStartContext } =
-  await import("../src/domain/info-hub");
+const { captureTurnContext } = await import("../src/domain/turn-context");
+const { getProjectInfoHub, getChatInfo } = await import("../src/domain/info-hub");
 const { projectInfoHubSchema, chatInfoViewSchema } = await import("../src/contracts/info-hub");
 
 sqlite
@@ -153,9 +153,7 @@ describe("Task Info Hub real SQLite aggregates", () => {
     ).detail;
     // Equal timestamps exercise the documented id tie-break independently of insertion order.
     sqlite
-      .prepare(
-        "UPDATE task SET updated_at=created_at+1000, revision=revision+1 WHERE project_id=?",
-      )
+      .prepare("UPDATE task SET updated_at=created_at+1000, revision=revision+1 WHERE project_id=?")
       .run(f.project.id);
     const hub = projectInfoHubSchema.parse(f.hub());
     expect(hub.tasks.counts).toEqual({ proposed: 1, assigned: 3, finished: 1, canceled: 1 });
@@ -193,7 +191,10 @@ describe("Task Info Hub real SQLite aggregates", () => {
     );
     expect(chat.tasks.items).toEqual(hub.tasks.items.filter((item) => item.chatId === f.chat.id));
     expect(hub.tasks.items.some((item) => item.taskId === canceled.task.id)).toBe(true);
-    expect(getTurnStartContext(f.chat.id, ctx).injectedIntoPrompt).toBe(false);
+    // P6b: an immutable run snapshot remains unsubmitted until an SDK receipt exists.
+    expect(
+      captureTurnContext({ projectId: f.project.id, runId: f.run.id }, ctx).injectedIntoPrompt,
+    ).toBe(false);
   });
 
   it("keeps every run and lease field unchanged when only Task state and records change", () => {

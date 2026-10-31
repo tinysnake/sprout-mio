@@ -22,6 +22,7 @@ import {
   remoteToolGrant,
 } from "../db/schema";
 import type { ProjectContext } from "../domain/access";
+import { getInfoHub } from "../domain/info-hub";
 import { getChatAutomation } from "../domain/chat-automation";
 import { getTaskDetail, getTasksForChat, mutateTask } from "../domain/task";
 import { listMessages, sendMessage } from "../domain/chat";
@@ -232,6 +233,7 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
         if (parsed.call.input.projectId !== actorContext.projectId)
           throw new RemoteError("not_found");
         switch (parsed.call.type) {
+          case "info_hub_get":
           case "chat_automation_get":
           case "task_get":
           case "task_list":
@@ -252,6 +254,10 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
             const projectId = actorContext.projectId;
             const chatId = actorContext.chatId;
             switch (call.type) {
+              case "info_hub_get": {
+                const { projectId: _projectId, ...query } = call.input;
+                return getInfoHub(projectId, query, { ...projectContext, ...current });
+              }
               case "chat_automation_get":
                 return chatAutomationGetResponseSchema.parse(
                   getChatAutomation(projectId, chatId, projectContext).view,

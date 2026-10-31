@@ -161,7 +161,7 @@ assert.equal(getChat(dm.chat.id, ctx).kind, "dm");
 
 // P3 的 Info Hub 会话视图（getChatInfo）是另一条冻结路径：字段集合与实例条目一个都不许变。
 // I-P5b 追加了 `tasks`（design §8.4/§9 的 Chat 侧 Task 摘要）：一次聚合读要同时给 inspector
-// 提供 Task 事实，另开接口会复制范围校验。其余键、instances 与 runs 的形状仍逐字段不变。
+// 提供 Task 事实。P6b 追加 instance.leases，逐字段验证真实持有者投影，其他键保持不变。
 const dmInfo = getChatInfo(dm.chat.id, ctx);
 assert.deepEqual(
   Object.keys(dmInfo).sort(),
@@ -182,8 +182,14 @@ assert.deepEqual(
 assert.deepEqual(Object.keys(dmInfo.instances[0]).sort(), [
   "agentProfileId",
   "instanceId",
+  "leases",
   "profileName",
 ]);
+assert.deepEqual(
+  dmInfo.instances[0].leases,
+  [],
+  "P6b: no held lease must stay an explicit empty array",
+);
 assert.deepEqual(Object.keys(dmInfo.runs).sort(), ["active", "available", "hostEnabled", "recent"]);
 pass("dm.session-frozen-shape", {
   sessionKeys: Object.keys(dmSession).sort(),

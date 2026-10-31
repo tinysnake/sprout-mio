@@ -2,12 +2,17 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { chatIdInput } from "../../contracts/chat";
-import type {
-  ChatInfoView,
-  InfoHubResult,
-  ProjectInfoHub,
-  TurnStartContext,
-} from "../../contracts/info-hub";
+import type { ChatInfoView, InfoHubResult, ProjectInfoHub } from "../../contracts/info-hub";
+import {
+  infoHubGetInputSchema,
+  infoHubRefreshInputSchema,
+  type InfoHubView,
+  type InfoHubRefreshResult,
+} from "../../contracts/info-hub-query";
+import {
+  turnContextReadInputSchema,
+  type TurnContextReadResult,
+} from "../../contracts/turn-context";
 import { fieldErrorsFrom, projectIdInput } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
@@ -17,11 +22,12 @@ import { toDomainAppError } from "./domain-errors";
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
-  const [session, infoHub] = await Promise.all([
+  const [session, infoHub, turnContext] = await Promise.all([
     import("../session"),
     import("../../domain/info-hub"),
+    import("../../domain/turn-context"),
   ]);
-  return { requireSession: session.requireSession, ...infoHub };
+  return { requireSession: session.requireSession, ...infoHub, ...turnContext };
 }
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
 type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
@@ -31,6 +37,10 @@ async function failure(
   requestId: string,
   recordDiagnostic: DiagnosticRecorder | undefined,
 ): Promise<InfoHubResult<never>> {
+  if (error instanceof z.ZodError) return invalidInput(error, requestId);
+  const { InfoHubError } = await import("../../domain/info-hub");
+  if (error instanceof InfoHubError)
+    return fail({ code: error.code, message: error.message, requestId });
   const mapped = await toDomainAppError(error, requestId);
   if (mapped) return fail(mapped);
   console.error("[info_hub] 请求失败", { requestId, error });
@@ -95,15 +105,44 @@ export async function getChatInfoBoundary(
   });
 }
 
-export async function getTurnStartContextBoundary(
+export function readTurnContextBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
-): Promise<InfoHubResult<TurnStartContext>> {
-  return infoHubBoundary<TurnStartContext>(headers, requestId, (deps, context) => {
-    const parsed = chatIdInput.safeParse(raw);
-    if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.getTurnStartContext(parsed.data.chatId, context), requestId);
+): Promise<InfoHubResult<TurnContextReadResult>> {
+  return infoHubBoundary<TurnContextReadResult>(headers, requestId, (deps, context) =>
+    ok(deps.readTurnContext(turnContextReadInputSchema.parse(raw), context), requestId),
+  );
+}
+export function getInfoHubBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<InfoHubResult<InfoHubView>> {
+  return infoHubBoundary<InfoHubView>(headers, requestId, async (deps, context) => {
+    const { projectId, ...query } = infoHubGetInputSchema.parse(raw);
+    const { machineRuntimeContext } = await import("../runtime");
+    return ok(
+      deps.getInfoHub(projectId, query, { ...context, ...(await machineRuntimeContext()) }),
+      requestId,
+    );
+  });
+}
+export function refreshInfoHubBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<InfoHubResult<InfoHubRefreshResult>> {
+  return infoHubBoundary<InfoHubRefreshResult>(headers, requestId, async (deps, context) => {
+    const { projectId, query, knownRevision } = infoHubRefreshInputSchema.parse(raw);
+    const { machineRuntimeContext } = await import("../runtime");
+    return ok(
+      deps.refreshInfoHub(projectId, query, knownRevision, {
+        ...context,
+        ...(await machineRuntimeContext()),
+      }),
+      requestId,
+    );
   });
 }
 
@@ -119,8 +158,19 @@ export const getChatInfoFn = createServerFn({ method: "POST" })
     getChatInfoBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
-export const getTurnStartContextFn = createServerFn({ method: "POST" })
+export const getInfoHubFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
-    getTurnStartContextBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+    getInfoHubBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+export const refreshInfoHubFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    refreshInfoHubBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const readTurnContextFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    readTurnContextBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );

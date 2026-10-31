@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  turnContextSubmittedEventSchema,
+  type TurnContextPromptInput,
+} from "../../contracts/turn-context";
+import type { InfoHubHint } from "../../contracts/info-hub-hint";
 import type { RunConfigSnapshot } from "../../contracts/agent-run";
 import type { RemoteToolGrant } from "../../contracts/remote";
 
@@ -17,7 +22,14 @@ export type OpenSession = {
 };
 export type PiHostCommand =
   | OpenSession
-  | { type: "prompt"; id: string; messageId: string; text: string }
+  | {
+      type: "prompt";
+      id: string;
+      messageId: string;
+      text: string;
+      turnContext: TurnContextPromptInput;
+    }
+  | { type: "info_hub_hint"; id: string; hint: InfoHubHint }
   | { type: "steer"; id: string; messageId: string; text: string }
   | { type: "abort" | "close"; id: string };
 
@@ -43,6 +55,7 @@ const snapshotSchema = z.object({
 });
 
 export const piHostEvent = z.discriminatedUnion("type", [
+  turnContextSubmittedEventSchema.extend({ id: z.string() }),
   z.object({
     type: z.literal("progress"),
     id: z.string(),

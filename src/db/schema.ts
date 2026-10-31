@@ -1,3 +1,4 @@
+import type { TurnContextRecord } from "../contracts/turn-context";
 import { sql } from "drizzle-orm";
 import {
   type AnySQLiteColumn,
@@ -409,6 +410,47 @@ export const agentRun = sqliteTable(
       sql`${table.status} != 'failed' or (
       ${table.errorCode} is not null and ${table.errorMessage} is not null and ${table.errorMessage} != ''
     )`,
+    ),
+  ],
+);
+
+export const turnContext = sqliteTable(
+  "turn_context",
+  {
+    runId: text("run_id")
+      .primaryKey()
+      .references(() => agentRun.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    instanceId: text("instance_id")
+      .notNull()
+      .references(() => agentInstance.id),
+    serializedText: text("serialized_text").notNull(),
+    contentHash: text("content_hash").notNull(),
+    basisRevision: text("basis_revision").notNull(),
+    capturedAt: integer("captured_at", { mode: "timestamp_ms" }).notNull(),
+    record: text("record", { mode: "json" }).$type<TurnContextRecord>().notNull(),
+    deliveryState: text("delivery_state", { enum: ["prepared", "submitted", "failed"] }).notNull(),
+    submittedAt: integer("submitted_at", { mode: "timestamp_ms" }),
+    failureCode: text("failure_code", {
+      enum: ["serialization_failed", "persistence_failed", "submission_failed"],
+    }),
+  },
+  (t) => [
+    index("turn_context_project_idx").on(t.projectId),
+    check(
+      "turn_context_text_budget",
+      sql`length(cast(${t.serializedText} as blob)) between 1 and 8192`,
+    ),
+    check(
+      "turn_context_hash_check",
+      sql`length(${t.contentHash}) = 64 and ${t.contentHash} not glob '*[^0-9a-f]*'`,
+    ),
+    check("turn_context_record_check", sql`json_valid(${t.record})`),
+    check(
+      "turn_context_delivery_check",
+      sql`(${t.deliveryState} = 'prepared' and ${t.submittedAt} is null and ${t.failureCode} is null) or (${t.deliveryState} = 'submitted' and ${t.submittedAt} >= ${t.capturedAt} and ${t.failureCode} is null) or (${t.deliveryState} = 'failed' and ${t.submittedAt} is null and ${t.failureCode} is not null)`,
     ),
   ],
 );

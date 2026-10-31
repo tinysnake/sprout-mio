@@ -1,3 +1,4 @@
+import { promptWithTurnContext } from "./pi-host-turn-context.mjs";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { createRequire, registerHooks } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -11,6 +12,9 @@ let opening = false;
 let prompting = false;
 let closing = false;
 let openId = "unknown";
+let turnContextPromptInputSchema;
+let infoHubHintSchema;
+const submittedContexts = new Set();
 
 function failure(id, code, message, stopReason) {
   line({ type: "failure", id, code, message, ...(stopReason ? { stopReason } : {}) });
@@ -140,6 +144,18 @@ async function open(config) {
   const { registerTaskTools } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/task-tools.ts"),
   );
+  const { registerInfoHubTools } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/info-hub-tools.ts"),
+  );
+  const { infoHubToolInputSchemas } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/info-hub-query.ts"),
+  );
+  ({ turnContextPromptInputSchema } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/turn-context.ts"),
+  ));
+  ({ infoHubHintSchema } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/info-hub-hint.ts"),
+  ));
   const { taskToolInputSchemas } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/task.ts"),
   );
@@ -208,6 +224,7 @@ async function open(config) {
           });
           registerRemoteTools(pi, remote);
           registerTaskTools(pi, remote);
+          registerInfoHubTools(pi, remote);
         },
       },
     ],
@@ -246,6 +263,7 @@ async function open(config) {
       "mcp__*",
       ...Object.keys(remoteToolInputSchemas),
       ...Object.keys(taskToolInputSchemas),
+      ...Object.keys(infoHubToolInputSchemas),
     ],
     resourceLoader,
     settingsManager,
@@ -308,7 +326,13 @@ async function prompt(command) {
   const start = session.messages.length;
   line({ type: "input_delivered", id: command.id, messageId: command.messageId });
   try {
-    await session.prompt(command.text, { expandPromptTemplates: false, source: "rpc" });
+    await promptWithTurnContext(
+      session,
+      command,
+      turnContextPromptInputSchema,
+      submittedContexts,
+      line,
+    );
     const assistants = session.messages.slice(start).filter((entry) => entry.role === "assistant");
     const failed = assistants.find(
       (entry) => entry.stopReason === "error" || entry.stopReason === "aborted",
@@ -415,6 +439,20 @@ input.on("line", (raw) => {
       input.close();
       process.exitCode = 1;
     });
+  } else if (command.type === "info_hub_hint" && session && prompting && !closing) {
+    const hint = infoHubHintSchema.safeParse(command.hint);
+    if (
+      hint.success &&
+      hint.data.runId === command.id &&
+      command.id === openId &&
+      session.isStreaming
+    ) {
+      void session
+        .steer(JSON.stringify({ channel: "sprout_info_hub_hint", ...hint.data }), undefined, {
+          source: "rpc",
+        })
+        .catch(() => {});
+    }
   } else if (command.type === "prompt" && session && !prompting && !closing) {
     void prompt(command);
   } else if (command.type === "steer" && session && !closing) {
