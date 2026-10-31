@@ -2,7 +2,7 @@
   "version": "6",
   "dialect": "sqlite",
   "id": "7e3134fb-316c-4442-b75e-eaf1686dba92",
-  "prevId": "88c3ffed-f8cf-4f34-8227-1efc1cb696f8",
+  "prevId": "90bd7a40-1548-40fa-b0de-89a42a262581",
   "tables": {
     "agent_instance": {
       "name": "agent_instance",
@@ -967,7 +967,7 @@
       "checkConstraints": {
         "automation_mode_check": {
           "name": "automation_mode_check",
-          "value": "\"chat_automation_control\".\"mode\" in ('enabled','paused','stopped')"
+          "value": "\"chat_automation_control\".\"mode\" in ('enabled','off')"
         },
         "automation_revision_check": {
           "name": "automation_revision_check",
