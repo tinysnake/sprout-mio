@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { chatSessionSchema, messageSchema } from "./chat";
+import { chatAutomationViewSchema } from "./chat-automation";
 import {
   addTaskChecklistItemInputSchema,
   appendTaskRecordInputSchema,
@@ -575,6 +576,16 @@ export const taskMutateInputSchema = z.discriminatedUnion("action", [
   completeTaskInputSchema.extend({ ...taskProjectFields, action: z.literal("complete") }),
   cancelTaskInputSchema.extend({ ...taskProjectFields, action: z.literal("cancel") }),
 ]);
+/** Chat is resolved from the active run grant, as with chat_get. */
+export const chatAutomationGetInputSchema = z.strictObject(taskProjectFields);
+export const chatAutomationGetCall = z.strictObject({
+  type: z.literal("chat_automation_get"),
+  input: chatAutomationGetInputSchema,
+});
+export const chatAutomationGetResponseSchema = chatAutomationViewSchema;
+export type ChatAutomationGetInput = z.infer<typeof chatAutomationGetInputSchema>;
+export type ChatAutomationGetResponse = z.infer<typeof chatAutomationGetResponseSchema>;
+
 export const chatGetInputSchema = z.strictObject(taskProjectFields);
 export const chatSendInputSchema = taskToolInputSchemas.sprout_chat_send.extend(taskProjectFields);
 
@@ -637,6 +648,7 @@ export const remoteAgentRequestSchema = z.strictObject({
     z.strictObject({ type: z.literal("task_get"), input: taskGetInputSchema }),
     z.strictObject({ type: z.literal("task_list"), input: taskListInputSchema }),
     z.strictObject({ type: z.literal("task_mutate"), input: taskMutateInputSchema }),
+    chatAutomationGetCall,
     z.strictObject({ type: z.literal("chat_get"), input: chatGetInputSchema }),
     z.strictObject({ type: z.literal("chat_send"), input: chatSendInputSchema }),
   ]),
@@ -664,6 +676,7 @@ const toolExecutionBase = {
   authorizationGeneration: positiveSafeIntegerSchema,
 };
 export const remoteToolInputSchemas = {
+  sprout_chat_automation_get: chatAutomationGetInputSchema.omit({ projectId: true }),
   sprout_lease_acquire: z.strictObject({
     ...toolMutationBase,
     expectedGeneration: nonnegativeSafeIntegerSchema,

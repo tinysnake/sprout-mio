@@ -8,6 +8,9 @@ export * from "./project-config";
 export * from "./chat";
 export * from "./task";
 export * from "./task-capabilities";
+export * from "./wake-evaluation";
+export * from "./chat-automation";
+export * from "./chat-automation-capabilities";
 export * from "./info-hub";
 export * from "./machine";
 export * from "./lease";
@@ -20,6 +23,9 @@ export type {
   McpFrame,
 } from "./mcp";
 export {
+  chatAutomationGetCall,
+  chatAutomationGetInputSchema,
+  chatAutomationGetResponseSchema,
   executionSubmitInputSchema,
   executionReadInputSchema,
   executionViewSchema,
@@ -29,6 +35,8 @@ export {
   REMOTE_ERROR_CODES,
 } from "./remote";
 export type {
+  ChatAutomationGetInput,
+  ChatAutomationGetResponse,
   ExecutionSubmitInput,
   ExecutionReadInput,
   ExecutionView,
