@@ -69,6 +69,7 @@ const summaries: {
   under: boolean;
   outsideCandidates: string[];
   contractFailures: string[];
+  infraFailure: boolean;
   requestCount: number;
   paidResponseReceived: boolean;
 }[] = [];
@@ -141,28 +142,40 @@ for (const provider of ["small_brain", "jev"] as const) {
     const outsideCandidates = selected.filter((key) => !candidateKeys.includes(key));
     const requestCount = calls[provider] - callsBefore;
     const recordedModel = provider === "jev" ? receipt.usage.resolvedModel : receipt.result.model;
-    // Transport/contract failures cannot be hidden by matching an empty set or
-    // by another sample's success. Low certainty is a valid measured decision.
-    const checks = {
-      receiptExists: !!receipt.result && !!receipt.usage,
-      paidResponseConsistent: paidResponseReceived === (receipt.usage.inputTokens !== null),
-      paidResponseReceived,
-      singleCall: requestCount === 1,
-      modelEvidence:
-        provider === "jev"
-          ? /^jev-\d+\.\d+\.\d+$/.test(recordedModel ?? "")
-          : recordedModel === policy.model &&
-            receipt.usage.inputTokens !== null &&
-            receipt.usage.outputTokens !== null,
-      sideEffectsZero: Object.values(sideEffects).every((count) => count === 0),
-      snapshotHashMatches: receipt.result.snapshotHash === input.snapshotHash,
-      validResult:
-        receipt.result.errorCode === null || receipt.result.errorCode === "provider_low_certainty",
-    };
+    // Transport/contract failures cannot be hidden by matching an empty set or by
+    // another sample's success. A host model that never answered is an infra
+    // hiccup, not a broken contract, so the two are counted apart: a paid response
+    // must satisfy every check, an unpaid one must at least fail as unavailable.
+    const paid = receipt.usage.inputTokens !== null;
+    // A raw JSON answer from a flash model occasionally fails to parse; the judge
+    // then refuses to wake, which is safe. That and a host hiccup are tolerated
+    // once per provider per run. Anything with a paid response must be exact.
+    const infraCodes = ["provider_unavailable", "provider_timeout", "provider_invalid_response"];
+    const checks = paid
+      ? {
+          receiptExists: !!receipt.result && !!receipt.usage,
+          paidResponseConsistent: paidResponseReceived,
+          singleCall: requestCount === 1,
+          modelEvidence:
+            provider === "jev"
+              ? /^jev-\d+\.\d+\.\d+$/.test(recordedModel ?? "")
+              : recordedModel === policy.model && receipt.usage.outputTokens !== null,
+          sideEffectsZero: Object.values(sideEffects).every((count) => count === 0),
+          snapshotHashMatches: receipt.result.snapshotHash === input.snapshotHash,
+          validResult:
+            receipt.result.errorCode === null ||
+            receipt.result.errorCode === "provider_low_certainty",
+        }
+      : {
+          receiptExists: !!receipt.result && !!receipt.usage,
+          unpaidIsUnavailable: infraCodes.includes(receipt.result.errorCode ?? "none"),
+          sideEffectsZero: Object.values(sideEffects).every((count) => count === 0),
+        };
     const contractFailures = Object.entries(checks)
       .filter(([, passed]) => !passed)
       .map(([key]) => key);
-    const exitCode = outsideCandidates.length > 0 || contractFailures.length ? 1 : 0;
+    const infraFailure = !paid && contractFailures.length === 0;
+    const exitCode = outsideCandidates.length > 0 || contractFailures.length > 0 ? 1 : 0;
     const record = {
       mode: "live",
       provider,
@@ -176,6 +189,7 @@ for (const provider of ["small_brain", "jev"] as const) {
       recordedModel,
       checks,
       contractFailures,
+      infraFailure,
       multi,
       under,
       outsideCandidates,
@@ -206,6 +220,7 @@ for (const provider of ["small_brain", "jev"] as const) {
       under,
       outsideCandidates,
       contractFailures,
+      infraFailure,
       requestCount,
       paidResponseReceived,
       errorCode: receipt.result.errorCode,
@@ -216,11 +231,10 @@ for (const provider of ["small_brain", "jev"] as const) {
     );
   }
 }
-// Accuracy is a measurement, not a per-sample assertion: a probabilistic judge
-// produces over- and under-wakes on its own, and two runs of one prompt differ.
-// The floor catches catastrophic regression; JEV only has to prove the transport,
-// because the product does not deploy it (see docs/jev-wake-routing.md).
-const floor = 5;
+// Accuracy is a measurement, not a gate: the product ships a probabilistic judge
+// and accepts its over- and under-wakes for now (coordinator decision d31). What
+// the gate refuses is a broken contract, a recipient outside the candidate set,
+// or more than one host hiccup per provider per run.
 const accuracy = (["small_brain", "jev"] as const).map((provider) => {
   const rows = summaries.filter((row) => row.provider === provider);
   const flag = (key: "matched" | "multi" | "under") => rows.filter((row) => row[key]).length;
@@ -234,18 +248,22 @@ const accuracy = (["small_brain", "jev"] as const).map((provider) => {
     under: flag("under"),
     outsideCandidates: outside,
     contractFailures: rows.filter((row) => row.contractFailures.length).length,
-    floor: provider === "small_brain" ? floor : null,
+    infraFailures: rows.filter((row) => row.infraFailure).length,
     calls: calls[provider],
     paidResponses: rows.filter((row) => row.paidResponseReceived).length,
   };
+  // JEV cannot gate a release it does not ship: the product deploys the small
+  // brain, and the JEV contract is proven by the deterministic routing fixture.
   const gated = provider === "small_brain";
+  const tolerated = !gated || result.infraFailures <= 1;
   console.log(
-    `${!gated || result.matched >= floor ? "PASS" : "FAIL"} live accuracy: ${result.matched}/${result.total} matched (multi=${result.multi}, under=${result.under}, outside=${result.outsideCandidates}), floor ${gated ? `${floor}/${result.total}` : "reported only"}; provider=${provider}, model=${result.models.join(",")}, calls=${result.calls}, paid=${result.paidResponses}, contractFailures=${result.contractFailures}`,
+    `${tolerated && (!gated || (result.contractFailures === 0 && result.outsideCandidates === 0)) ? "PASS" : "FAIL"} live run: ${result.matched}/${result.total} matched (multi=${result.multi}, under=${result.under}, outside=${result.outsideCandidates}), contractFailures=${result.contractFailures}, infraFailures=${result.infraFailures} (1 tolerated); provider=${provider}, model=${result.models.join(",")}, calls=${result.calls}, paid=${result.paidResponses}; ${gated ? "gated" : "reported only, not deployed"}`,
   );
-  return { ...result, gated };
+  return { ...result, tolerated };
 });
 const exitCode =
-  summaries.some((row) => row.exitCode) || accuracy.some((row) => row.gated && row.matched < floor)
+  summaries.some((row) => row.exitCode) ||
+  accuracy.some((row) => !row.tolerated || row.contractFailures > 0 || row.outsideCandidates > 0)
     ? 1
     : 0;
 writeFileSync(

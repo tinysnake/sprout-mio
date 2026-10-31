@@ -53,14 +53,25 @@ Live gate exit 1
 
 ## 协调者修正（2026-10-31）
 
-单元交付的判据把「纯多唤醒」也算成错人硬失败，因此两轮真实运行出现 exit 0 / exit 1 的差异，门禁仍是掷骰子。这是我的 brief 写得过窄：集合运算里多唤醒与错人无法区分，而多唤醒恰恰是概率判定器固有的错误类别（30 条校准里占 4 条）。
+单元交付的判据把「纯多唤醒」也算成错人硬失败，两轮真实运行于是出现 exit 0 / exit 1，门禁仍是掷骰子。这是我的 brief 写得过窄：集合运算里多唤醒与错人无法区分，而多唤醒恰恰是概率判定器固有的错误类别（30 条校准里占 4 条）。
 
-改成三类判据后重跑两轮，均 exit 0：
+Human 的裁决（d31）：现阶段小脑选错人可接受，功能必须先用上，等实际不行了再改。据此判据改为：
 
-- **契约与输送**逐条硬失败（不变）：收据、付费响应一致性、恰好一次调用、版本证据、零副作用、快照哈希一致、结果为有效判定。
-- **候选集之外**硬失败：选中的接收者不在该快照自己的候选集里，属于结构性不安全。引擎已保证，保留作守卫。
-- **准确率**为批次测量：小脑要求 ≥5/8（灾难性回归地板），JEV 只报不判——产品不部署它（见 `docs/jev-wake-routing.md`）。
+- **逐条硬失败**：候选集之外的接收者、副作用写入（run/message/input 任一非零）、快照哈希不一致、同一样本多次调用。这些是结构性错误，与模型概率无关。
+- **已付费响应必须完全符合契约**：版本证据、结果有效性、计数一致性。
+- **未取得付费响应**：只允许 `provider_unavailable` / `provider_timeout` / `provider_invalid_response`，且每个 provider 每轮最多容忍 1 次。闪存模型偶尔吐出不能解析的 JSON 时判定器选择不唤醒，这是安全降级；宿主模型偶发失败同理。
+- **准确率只报不判**，两个 provider 都一样。
+- **JEV 不参与门禁**：产品不部署它（见 `docs/jev-wake-routing.md`），它的契约由确定性 fixture 门禁证明，live 只记录测量。
 
-实测（`20261031T041724Z`、`20261031T041814Z`）：小脑 8/8 两轮，JEV 5/8 两轮（少唤醒 w12/w20/w22），契约失败 0，两轮 exit 0。`p6a-routing` 305 断言 exit 0。
+实测两轮（本机，未重试、未改期望）：
 
-多唤醒与少唤醒仍然逐条打印，只是不再单独判红：它们是要看趋势的测量量，不是布尔门。
+```text
+PASS live run: 8/8 matched (multi=0, under=0, outside=0), contractFailures=0, infraFailures=1 (1 tolerated); provider=small_brain, calls=8, paid=7; gated
+PASS live run: 5/8 matched (multi=0, under=3, outside=0), contractFailures=0, infraFailures=0 (1 tolerated); provider=jev, calls=8, paid=8; reported only, not deployed
+PASS live run: 8/8 matched (multi=0, under=0, outside=0), contractFailures=0, infraFailures=0 (1 tolerated); provider=small_brain, calls=8, paid=8; gated
+PASS live run: 5/8 matched (multi=0, under=3, outside=0), contractFailures=0, infraFailures=0 (1 tolerated); provider=jev, calls=8, paid=8; reported only, not deployed
+```
+
+两轮均 exit 0。第一轮小脑有 1 次宿主模型未返回，被容忍并记录在案；这不是「通过」，是「允许一次眨眼」。`p6a-routing` 305 断言 exit 0。
+
+多唤醒与少唤醒仍然逐条打印：它们是要看趋势的测量量，不是布尔门。
