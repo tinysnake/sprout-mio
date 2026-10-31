@@ -71,7 +71,7 @@ Human 确定的设计记录：**本仓库没有**。页面形状由接线单元�
 
 ## 集成线与技术验收证据
 
-基线 `4d9545c`。证据提交 `4d9545c`：重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`。本轮实测 `bash scripts/verify/bf-p6b-lifecycle.sh` exit 0，533 条断言，1 条真实 macOS Worker、已安装 Pi SDK、生产 HTTP 与私有 SQLite（模型侧只有 loopback fixture，`paidModelCalls: 0`）。六条不变量与实测值：
+基线 `4d9545c`。证据提交 `4d9545c`：重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`。本轮实测 `bash scripts/verify/bf-p6b-lifecycle.sh` exit 0，约 530 条断言（三次实测 530/536/536，夹具按实际变更条数循环，断言数不固定），1 条真实 macOS Worker、已安装 Pi SDK、生产 HTTP 与私有 SQLite（模型侧只有 loopback fixture，`paidModelCalls: 0`）。六条不变量与实测值：
 
 | 不变量                                     | 实测值                                                                                                                                                                               |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -91,10 +91,10 @@ Human 确定的设计记录：**本仓库没有**。页面形状由接线单元�
 本轮只写文档，没有改产品代码、测试、门禁或契约。
 
 - 工作分支 `p6b/closeout` @ `4d9545c`；该签出没有 `node_modules`，所以门禁都在同一提交的 `p6-int` 签出（`/Users/snake/workspace/p6-int`，`git status` 干净、`git rev-parse HEAD` = `4d9545c250e457d0b1490e7221f9aad2755afdbe`）上执行，受验源码与文档基线同一提交。
-- 门禁实测：`bf-p6b-info` exit 0（29 断言，1.2s）；`bf-p6b-turn-context` exit 0（42 断言，1.7s）；`bf-p6b-agent-tool` exit 0（24 断言，1.0s）；`bf-p6b-pages` exit 0（27+10 断言组，墙钟 43s）；`bf-p6b-lifecycle` exit 0（533 断言，墙钟 24s，证据目录 `.verify/p6b-lifecycle-wyhwpg9e`）；两个 p6b 测试文件 55 tests。
+- 门禁实测：`bf-p6b-info` exit 0（29 断言，1.2s）；`bf-p6b-turn-context` exit 0（42 断言，1.7s）；`bf-p6b-agent-tool` exit 0（24 断言，1.0s）；`bf-p6b-pages` exit 0（27+10 断言组，墙钟 43s）；`bf-p6b-lifecycle` exit 0（约 530 断言，三次实测 530/536/536，墙钟 24s，证据目录 `.verify/p6b-lifecycle-wyhwpg9e`）；两个 p6b 测试文件 55 tests。
 - 新增文档：本文件与 [P6b 契约](contracts.md)。
 - 计划状态：`docs/development-plan.md`（I-P6b）、`docs/development-plan-functional.md`（P6b）、`docs/development-plan-ui.md`（UI-P6b）按证据勾选，未取证的两项保持未勾。
-- 门禁登记：只核对，没有改 `scripts/verify/**`。
+- 门禁登记：文档单元只核对、没有改 `scripts/verify/**`；随后协调者在同一分支上按 P6a 的处置改了 `scripts/verify/l-docs.sh`（新增 `checkP6bLine`，理由与授权记录见下一节）。这句原本只描述文档单元的动作，验收据此判过一处「文档自述不实」，已按事实改写。
 
 ## 门禁登记核对
 
@@ -160,11 +160,20 @@ Chats 页的 1200ms 全 route invalidate 与设置页的 5 秒 invalidate 仍在
 - 设置页的轮询 scope 只覆盖 Machines：Agent status 与 Task 计数仍靠 loader 刷新。后果：一次只刷一个节（设计选择），要同时刷 agents 需要第二个 scope provider 或批量节，属契约变更。
 - 重跑：`bash scripts/verify/bf-p6b-pages.sh`、`bash scripts/verify/j-info-hub.sh`。
 
+### 第一轮独立验收记录的 P3
+
+- **P6a 的 `automation` 摘要只有契约没有投影**：`src/contracts/info-hub.ts` 的三处 `automation` 都是 optional，契约测试通过，但 `src/domain/info-hub.ts` 从不填充；唯一渲染 `AutomationPanel` 的 Info Hub 组件（`ChatInspector`）只挂在 dev scene。后果：Chat 视角目前拿不到自动化状态，要看它得去 Chat 页或 Task 页。重跑：`bash scripts/verify/bf-p6b-info.sh`。
+- **`seen` 去重层没有门禁**：关掉后 `bf-p6b-turn-context.sh` 仍绿，因为合并窗口与最小间隔先合并了同一批变化。后果：这一层只有单测保护。重跑：`bash scripts/verify/bf-p6b-turn-context.sh`。
+- **超大单行返回 `too_many_requests`**：语义错配（应表达「响应过大」），事实本身没有被改写。重跑：`bash scripts/verify/bf-p6b-info.sh`。
+- **`deliveryState: 'failed'` 没有 producer**：迁移与契约允许，领域层只写 `prepared`/`submitted`。后果：契约里有一条走不通的分支，读契约的人需要知道。
+
 ## 计划状态与本轮门禁冲突
 
 本轮按证据勾选了 I-P6b 第 1 条、功能计划 P6b 三条与 UI-P6b 两条，而 closeout 当时 `scripts/verify/l-docs.sh` 仍把这几处钉成「必须留空」（`for (const stage of ['I-P6b', 'I-P6c', 'I-P7'])`、`const undelivered = ['P6b', 'P6c', 'P7', 'P8']`、`for (const stage of ['UI-P6b', 'UI-P6c', 'UI-P7'])`）。文档单元按 brief 不动门禁，所以它把失败原文留在下一节交回。
 
 协调者随后照 P6a 的处置改了门禁：新增 `checkP6bLine`，I-P6b/UI-P6b/P6b 的勾选必须指向 `docs/p6b/summary.md` 的真实小节，且被引用小节自己带可解析提交与存在的重跑命令；I-P6c/UI-P6c/P7 继续钉死；I-P6b 第 4 条（Human 体验确认）要求 `docs/p6b/summary.md#human-体验确认` 里的显式确认记录，未确认就不能勾。同时把勾选行里指向 `p6b/contracts.md` 的无锚点链接改成代码路径，并给 `docs/p6b/contracts.md#agent-工具-sprout_info_hub_get` 补上提交与重跑命令。
+
+这条规则变更由协调者授权并在编排决策表里登记（P6b d64），依据是 P6a 已在 main 上按同一形状落地（`checkP6aLine`），且本分支的独立技术验收仍由未参与实现的单元重跑全部代码门禁。**独立验收不能用本分支的 `l-docs` 绿作为证据**：第一轮验收已据此判定「被验分支自放宽」，本轮把它记录在案而不是掩盖。放宽后仍保留的三条约束是证据可解析性、提交可解析性与 Human 确认框的反伪造。
 
 改后实测：
 
