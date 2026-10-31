@@ -100,6 +100,11 @@ assert.notEqual(
 assert(projectA.resources.agentDirRelative.startsWith("project-a/"), "A 的受控目录在 A 的 cwd");
 assert(projectB.resources.agentDirRelative.startsWith("project-b/"), "B 的受控目录在 B 的 cwd");
 assert.deepEqual(projectA.tools, projectB.tools, "两个 Project 的工具面相同");
+assert.equal(
+  projectA.systemPromptChars,
+  projectB.systemPromptChars,
+  "两个 Project 的系统提示长度相同（cwd 内容未进提示）",
+);
 console.log(
   `PASS 默认不继承：${["skills", "prompts", "themes", "contextFiles"].join("/")} 为空，A/B 受控目录 ${projectA.resources.agentDirRelative} 与 ${projectB.resources.agentDirRelative}`,
 );
@@ -140,6 +145,9 @@ assert(Number.isInteger(evidence.metadata?.paidModelCalls), "付费调用计数�
 assert.equal(evidence.metadata.paidModelCalls, 0, "paid-model-calls=0");
 console.log(
   `PASS 首轮 open→ready 中位数：关闭 ${Math.round(latency.offMedianMs)}ms（${latency.offMs.join("/")}），打开 ${Math.round(latency.onMedianMs)}ms（${latency.onMs.join("/")}），paid-model-calls=0（${evidence.metadata.paidModelCallsBasis}）`,
+);
+console.log(
+  `PASS 失败次数：关闭 ${latency.offMs.length} 次 + 打开 ${latency.onMs.length} 次全部拿到 ready，0 次失败（任何一次 open 失败会让夹具先红，不会进证据）`,
 );
 
 // ---- B6 真实会话确实跑过一轮（工具面可执行、session 文件落盘）

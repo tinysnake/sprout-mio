@@ -567,6 +567,12 @@ assert.deepEqual(offA.resources.contextFiles, [], "Project A 的 AGENTS.md 未�
 assert.deepEqual(offB.resources.contextFiles, [], "Project B 的 AGENTS.md 未进入 loader");
 assert.deepEqual(offA.resources.skills, [], "Project A 的 .pi/skills 未进入 loader");
 assert.deepEqual(offB.resources.skills, [], "Project B 的 .pi/skills 未进入 loader");
+// 同一个人设、不同的 cwd：模型实际看到的系统提示必须一样长，否则说明 cwd 内容进了提示。
+assert.equal(
+  offA.systemPromptChars,
+  offB.systemPromptChars,
+  "两个 Project 的系统提示长度相同，cwd 内容没有进提示",
+);
 pass(
   `隔离：A/B 受控目录 ${offA.resources.agentDirRelative} 与 ${offB.resources.agentDirRelative}，两个 AGENTS.md 与 .pi/skills 均未加载`,
 );
