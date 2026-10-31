@@ -75,6 +75,10 @@ async function sameInput(page, id, expected) {
 // 宿主状态的文案来自 src/components/info-hub/run-facts.tsx：`活动 run` 标题与宿主状态同排给出。
 const HOST_ENABLED = "宿主已启用";
 const HOST_DISABLED = "宿主未启用";
+// 期望值来自服务进程真实的 SPROUT_PI_ENABLED（脚本通过 EXPECTED_HOST_ENABLED 传入），
+// 页面只要与之不一致就是缺陷，两个取值都不许被写死成唯一正确。
+const EXPECTED_HOST_STATE =
+  process.env.EXPECTED_HOST_ENABLED === "false" ? HOST_DISABLED : HOST_ENABLED;
 // Chat 运行状态行的标签来自 src/components/chat/run-status.tsx 的 RUN_STATUS_LABELS（含无 run 时的「尚未运行」）。
 const RUN_STATUS_LABELS = /^(尚未运行|排队中|运行中|已完成|失败|已停止|已中断)$/;
 const flat = (text) => text.replace(/\s+/g, " ").trim();
@@ -265,7 +269,7 @@ async function unavailable(page, target, expectedHumanMessages) {
   if (target.key === "settings") {
     // P4b 之后租约区投影真实事实：这里没有租约，渲染明确空态；管理动作改在 Machine 详情页，
     // Project settings 只给摘要与可跳转入口。原断言保护的真实集合、空值文案与宿主状态全部保留。
-    await assertHostState(page, "info-hub-project-runs", HOST_ENABLED);
+    await assertHostState(page, "info-hub-project-runs", EXPECTED_HOST_STATE);
     await test(page, "info-hub-project-runs-active").waitFor();
     await test(page, "info-hub-leases").waitFor();
     await test(page, "info-hub-leases-empty").waitFor();
@@ -284,17 +288,22 @@ async function unavailable(page, target, expectedHumanMessages) {
     );
   }
   if (target.key === "chat") {
-    await assertHostState(page, "info-chat-runs", HOST_ENABLED);
+    await assertHostState(page, "info-chat-runs", EXPECTED_HOST_STATE);
     // run 事实与轮初快照是两件事：快照是否存在由交付状态决定，注入文案必须与之一致。
     await assertTurnPromptInjectionHonest(page);
-    // 宿主已启用：运行状态行给出真实 run 标签，不再声称「宿主未启用」。
     await test(page, "pi-host-status").waitFor();
-    assert.match(
-      (await test(page, "pi-host-status").textContent()) ?? "",
-      RUN_STATUS_LABELS,
-      "pi-host-status",
-    );
-    assert.match(flat(await test(page, "run-status").innerText()), /^分身运行状态：/);
+    if (EXPECTED_HOST_STATE === HOST_ENABLED) {
+      // 宿主已启用：运行状态行给出真实 run 标签，不再声称「宿主未启用」。
+      assert.match(
+        (await test(page, "pi-host-status").textContent()) ?? "",
+        RUN_STATUS_LABELS,
+        "pi-host-status",
+      );
+      assert.match(flat(await test(page, "run-status").innerText()), /^分身运行状态：/);
+    } else {
+      await sameText(page, "pi-host-status", HOST_DISABLED);
+      assert.match(flat(await test(page, "run-status").innerText()), /^分身运行状态：宿主未启用/);
+    }
     summary = await assertHumanMessages(page, expectedHumanMessages);
   }
   return {

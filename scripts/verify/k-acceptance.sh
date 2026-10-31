@@ -22,6 +22,8 @@ const environment = {
   NITRO_PORT: String(port), NODE_ENV: 'production',
   BETTER_AUTH_SECRET: randomBytes(32).toString('base64url'),
   BASE_URL: base, ACCEPTANCE_DIRECTORY: directory,
+  // 页面必须如实反映本进程实际的宿主开关，而不是假设某一个取值：CI 显式关宿主，本机默认开。
+  EXPECTED_HOST_ENABLED: String(process.env.SPROUT_PI_ENABLED !== 'false'),
 }
 const children = new Set()
 const results = []
