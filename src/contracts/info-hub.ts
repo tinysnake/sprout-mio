@@ -414,6 +414,9 @@ export const turnStartContextSchema = z
         "Turn context exceeds its UTF-8 budget",
       ),
     contentHash: z.string().regex(/^[0-9a-f]{64}$/),
+    // `failed` 是契约与迁移**预留**的投递失败态，当前没有 producer：领域层只写 prepared/submitted。
+    // 读路径已为它存在——confirmTurnContext 拒绝 failed 记录，superRefine 要求 failureCode 与 failed 同时出现，
+    // 页面也有「提交失败」标签——所以先保留，等真正的提交失败路径落地再决定是否收紧。
     deliveryState: z.enum(["prepared", "submitted", "failed"]),
     submittedAt: z.iso.datetime().nullable(),
     failureCode: z

@@ -549,6 +549,12 @@ describe("P6b active query and Human refresh", () => {
     expect(infoHubGetResponseSchema).toBe(infoHubViewSchema);
   });
 
+  it("pins each byte budget to its absolute value", () => {
+    expect(INFO_HUB_LIMITS.maxResponseBytes).toBe(65_536);
+    expect(INFO_HUB_LIMITS.maxTurnContextBytes).toBe(8_192);
+    expect(INFO_HUB_LIMITS.maxHintBytes).toBe(1_024);
+  });
+
   it("applies the shared page default and refuses oversized or incomplete ranges", () => {
     expect(infoHubQuerySchema.parse({ view: "project", section: "agents" })).toMatchObject({
       limit: INFO_HUB_LIMITS.defaultPageSize,

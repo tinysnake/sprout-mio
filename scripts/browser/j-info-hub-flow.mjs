@@ -334,7 +334,7 @@ await check("chat_info_panel_matches_page", async () => {
       state.count === "2" &&
       /^20\d{2}-\d{2}-\d{2}T/.test(state.latestAt ?? "") &&
       /宿主(已|未)启用/.test(state.runsHostStatus ?? "") &&
-      /注入模型 prompt：否/.test(state.turnInjection ?? "") &&
+      /注入模型 prompt：否 · 本次上下文尚无提交收据/.test(state.turnInjection ?? "") &&
       !state.body.includes("0 个活动 run") &&
       !state.body.includes("无活动 run"),
     `panel 分身 ${state.panelInstance} 与 inspector 身份一致，成员 ${JSON.stringify(state.kinds)}，消息 ${state.count} 条，run 视角宿主 ${state.runsHostStatus}`,

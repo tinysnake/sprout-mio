@@ -176,9 +176,12 @@ async function unavailable(page, target) {
   }
   if (target.key === "chat") {
     await sameText(page, "info-chat-runs-host-status", "宿主未启用");
+    // The Chat inspector has no captured turn snapshot yet, so TurnPromptInjectionFact renders the
+    // prepared/absent branch: "注入模型 prompt：否 · 本次上下文尚无提交收据。" Pinning the whole sentence
+    // keeps a bare "否" (which would read as "not injected" without saying why) from passing.
     assert.match(
       await test(page, "info-turn-prompt-injection").textContent(),
-      /注入模型 prompt：否/,
+      /注入模型 prompt：否 · 本次上下文尚无提交收据/,
     );
     await sameText(page, "pi-host-status", "宿主未启用");
     assert.deepEqual(

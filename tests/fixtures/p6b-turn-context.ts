@@ -207,6 +207,48 @@ try {
   f.equal(hints.length, 1, "minimum interval prevents a second early hint");
   await channel.tick(clock + 7000);
   f.equal(hints.length, 2);
+  // A → B → A on a fresh channel: adding a member delivers once, removing it delivers the reverse
+  // once, and adding again returns to the revision already reported. The `seen` layer must suppress
+  // that repeat — otherwise the basis (now B) sees a real diff and a third hint goes out at the same
+  // revision. A later, genuinely new revision proves the channel was still able to deliver.
+  const third = f.agents.createAgentProfile({ name: "Gamma", persona: "", harness: "pi" }, f.ctx);
+  f.agents.addProjectMember(f.p.id, third.id, f.ctx);
+  const actor = { kind: "human" as const, userId: f.ctx.userId, ctx: f.ctx };
+  const repeated: InfoHubHint[] = [];
+  const repeatChannel = new InfoHubHintChannel(f.runA, f.ctx, (hint) => {
+    repeated.push(hint);
+  });
+  const governance = () => f.chats.getChat(f.chat.id, f.ctx).governanceRevision;
+  const addThird = () =>
+    f.chats.addGroupMember(f.chat.id, { kind: "agent", id: third.id }, governance(), actor);
+  const removeThird = () =>
+    f.chats.removeGroupMember(f.chat.id, { kind: "agent", id: third.id }, governance(), actor);
+  addThird();
+  await repeatChannel.tick(clock + 30_000);
+  await repeatChannel.tick(clock + 32_000);
+  f.equal(repeated.length, 1, "a member change is delivered after the merge window");
+  const firstRevision = repeated[0]!.revision;
+  removeThird();
+  await repeatChannel.tick(clock + 33_000);
+  await repeatChannel.tick(clock + 40_000);
+  f.equal(repeated.length, 2, "the reverse change is delivered after the minimum interval");
+  f.check(
+    repeated[1]!.revision !== firstRevision,
+    "the reverse change carries a different revision",
+  );
+  addThird();
+  await repeatChannel.tick(clock + 41_000);
+  await repeatChannel.tick(clock + 50_000);
+  f.equal(
+    repeated.length,
+    2,
+    "returning to an already-reported revision delivers no second hint for it",
+  );
+  f.sqlite.prepare("UPDATE task SET revision=revision+1 WHERE project_id=?").run(f.p.id);
+  await repeatChannel.tick(clock + 51_000);
+  await repeatChannel.tick(clock + 56_000);
+  f.equal(repeated.length, 3, "the channel still delivers a revision it has never reported");
+  repeatChannel.dispose();
   f.check(
     hints.every(
       (hint) =>
@@ -225,6 +267,7 @@ try {
     before,
     "hints do not write messages, admit runs, or enqueue notices",
   );
+  const deliveredBeforeSettle = hints.length;
   f.sqlite
     .prepare(
       "UPDATE agent_run SET status='failed',settled_at=?,error_code='fixture',error_message='done' WHERE id=?",
@@ -232,7 +275,7 @@ try {
     .run(Date.now(), f.runA);
   f.sqlite.prepare("UPDATE task SET revision=revision+1 WHERE project_id=?").run(f.p.id);
   await channel.tick(clock + 20_000);
-  f.equal(hints.length, 2, "settled runs receive no hints");
+  f.equal(hints.length, deliveredBeforeSettle, "settled runs receive no hints");
   channel.dispose();
   f.finish();
 } catch (error) {

@@ -129,7 +129,7 @@ export const infoHubQuerySchema = z.discriminatedUnion("view", [
 - **runId 是快照主键**：`captureTurnContext({ projectId, runId }, ctx)` 只按 runId 取身份，其余身份（`instanceId`、`agentProfileId`、`chatId`）由宿主从 `agent_run` 解析，**不从 Chat 的第一个分身推断**；`scopeFor` 还要求 run 属于该 Project，Agent 主体只能读自己的 run。
 - **一次捕获，永不改写**：重复 `captureTurnContext` 返回**原始**快照（进程重启后一样），因为 `record`/`serializedText`/`contentHash` 列被触发器钉死。
 - **文本与哈希**：`contentHash` = `sha256(serializedText)`，读取时重算比对，不符即 `turn_context_unavailable`（防止「记录说注入了 A、实际注入 B」）。
-- **交付三态**：`prepared | submitted | failed`。`prepared` 表示已持久化但**尚未**进入 SDK prompt；`submitted` 必须带收据；`failed` 必须带 `failureCode`（`serialization_failed` / `persistence_failed` / `submission_failed`）。
+- **交付三态**：`prepared | submitted | failed`。`prepared` 表示已持久化但**尚未**进入 SDK prompt；`submitted` 必须带收据；`failed` 必须带 `failureCode`（`serialization_failed` / `persistence_failed` / `submission_failed`）。**`failed` 是为未来的投递失败预留的，当前无 producer**：领域层只写 `prepared`/`submitted`，但读路径已经处理它（`confirmTurnContext` 拒绝 failed 记录，页面有「提交失败」标签）。
 - **`injectedIntoPrompt` 是派生值**，`turnStartContextSchema.superRefine` 要求它严格等于 `deliveryState === "submitted"`，并要求 `submittedAt` 非空当且仅当 `submitted`、`failureCode` 非空当且仅当 `failed`。**页面因此不能把 `prepared` 说成「已注入」。**
 - **提交收据**：`turnContextSubmissionReceiptSchema = { runId, contentHash, submittedAt }`；`confirmTurnContext(receipt, ctx)` 校验 `record.contentHash === receipt.contentHash`、run 仍活跃、`deliveryState !== "failed"`，并用 `turnContextConfirmedSubmissionSchema` 再交叉校验 `record.submittedAt === receipt.submittedAt`，重复提交同一 `submittedAt` 幂等，不同 `submittedAt` 拒绝。
 - **prompt 边界**：`prepareTurnContext` 只接受 `deliveryState === "prepared"` 且 run 活跃，返回 `{ runId, contentHash, serializedText }` 交给 runner 前置一次；预置输入里没有别的字段，runner 不能借它改投递状态。

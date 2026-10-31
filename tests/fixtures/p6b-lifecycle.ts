@@ -127,6 +127,10 @@ if (process.argv[2] === "--service") {
           "SELECT id, chat_id, instance_id, status FROM agent_run WHERE project_id=? AND status IN ('queued','running') ORDER BY id",
           message.projectId,
         ),
+        projectActiveRuns: rows(
+          "SELECT id, chat_id FROM agent_run WHERE project_id=? AND status IN ('queued','running') ORDER BY id",
+          message.projectId,
+        ),
         chatRunStatus: rows(
           "SELECT status, count(*) AS n FROM agent_run WHERE chat_id=? GROUP BY status",
           message.chatId,
@@ -1053,6 +1057,30 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       60000,
     );
     const heldAt = Date.now();
+    // Pin once more while run 2 is still held at the model boundary: the final pinned read below
+    // happens after every run settles, so only this read has a non-empty Chat activeRunIds list.
+    const livePinned = await snapshot({
+      userId: accountId,
+      projectId,
+      chatId: group.id,
+      agentProfileId: beta.id,
+      machineId,
+    });
+    const liveChat = (livePinned.projectChats.data as any[]).find(
+      (chat) => chat.chatId === group.id,
+    );
+    A.deepEqual(
+      [...liveChat.activeRunIds].sort(byText),
+      (livePinned.sql.projectActiveRuns as any[])
+        .filter((run: any) => run.chat_id === group.id)
+        .map((run: any) => run.id)
+        .sort(byText),
+      "Chat active run ids equal the queued/running rows while a run is live",
+    );
+    A(
+      [...liveChat.activeRunIds].includes(run2.id),
+      "the pinned Chat reports the run that is still live",
+    );
     const snapshot2 = await call("readTurnContextFn", { projectId, runId: run2.id });
     A.equal(snapshot2.kind, "captured");
     A.equal(snapshot2.record.runId, run2.id);
@@ -1516,12 +1544,10 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       A.equal(chat.archived, row.archived_at !== null, `Chat archived for ${chat.chatId}`);
       A.deepEqual(
         [...chat.activeRunIds].sort(byText),
-        (sql.chatActiveRuns as any[])
+        (sql.projectActiveRuns as any[])
+          .filter((run: any) => run.chat_id === chat.chatId)
           .map((run: any) => run.id)
-          .sort(byText)
-          .includes(chat.chatId)
-          ? [...chat.activeRunIds]
-          : [],
+          .sort(byText),
         `Chat active run ids for ${chat.chatId}`,
       );
     }
