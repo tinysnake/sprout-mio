@@ -1,7 +1,7 @@
 import { promptWithTurnContext } from "./pi-host-turn-context.mjs";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { createRequire, registerHooks } from "node:module";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -329,6 +329,9 @@ async function open(config) {
   {
     const facts = {
       source: "pi-host-runner",
+      // 装载方式由装载者自己报：文件名就是装载它的那一个。改名会反映到载荷上，
+      // 不是 extension 里写死的常量（那份常量在 `src/extension/status.ts` 只作为降级值）。
+      loader: basename(fileURLToPath(import.meta.url)).replace(/\.mjs$/, ""),
       runtime: { node: process.versions.node, pi: pkg.version ?? "unknown" },
       host: {
         inheritHostResources,
@@ -337,6 +340,10 @@ async function open(config) {
         ),
       },
       session: {
+        // 会话身份与落盘文件：`manager` 就是喂给 Pi 的那个 session manager，
+        // 上面已经核对过它的 id 与 open 传入的 id 一致。
+        id: manager.getSessionId(),
+        file: session.sessionFile ?? null,
         model: `${session.model.provider}/${session.model.id}`,
         thinking: session.thinkingLevel,
         activeTools: session.getActiveToolNames().length,

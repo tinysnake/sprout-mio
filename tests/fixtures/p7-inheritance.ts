@@ -151,6 +151,8 @@ type OpenResult = {
   snapshot: Snapshot;
   runId: string;
   readyMs: number;
+  /** 夹具自己 spawn 出来的 runner 进程 pid（内核分配）：工具报的 `worker.pid` 要跟它对账。 */
+  runnerPid: number;
   turn?: { text: string; stopReason: string; turnMs: number };
 };
 
@@ -174,6 +176,9 @@ function openSession(options: {
       stdio: ["pipe", "pipe", "pipe"],
       env,
     });
+    // pid 在 spawn 当场就拿到：这是「工具报的 worker.pid」唯一的独立来源。
+    const runnerPid = child.pid;
+    if (!runnerPid) throw new Error(`${options.label}: runner 进程没有 pid`);
     const id = newId(ID_PREFIXES.run);
     const started = performance.now();
     let buffer = "";
@@ -204,6 +209,7 @@ function openSession(options: {
           runId: id,
           snapshot,
           readyMs: readyAt - started,
+          runnerPid,
           ...(turnResult ? { turn: turnResult } : {}),
         }),
       );
@@ -359,6 +365,12 @@ function readSproutStatusCall(sessionFile: string, label: string) {
     `${label}: 模型必须刚好发一次 sprout_status 调用`,
   );
   assert.equal(results.length, 1, `${label}: sprout_status 必须刚好有一条 toolResult`);
+  // session 文件自己写的第一条是 session 头（`type: "session"` + `id`）：这是会话身份的
+  // 独立来源，与工具报的那份对账用。
+  const header = entries.find((entry) => (entry as { type?: string }).type === "session") as
+    | { id?: unknown }
+    | undefined;
+  assert.equal(typeof header?.id, "string", `${label}: session 文件的第一条是带 id 的 session 头`);
   const content = results[0]!.message!.content;
   const text = (Array.isArray(content) ? content : []).find((part: any) => part.type === "text");
   assert(text?.text, `${label}: sprout_status 结果必须是 text 块`);
@@ -367,6 +379,7 @@ function readSproutStatusCall(sessionFile: string, label: string) {
     isError: results[0]!.message!.isError === true,
     payload: JSON.parse(text.text) as Record<string, unknown>,
     rawText: text.text as string,
+    sessionHeaderId: header!.id as string,
   };
 }
 
@@ -407,8 +420,12 @@ const runs: Array<{
     payload: Record<string, unknown>;
     /** 同一 session 文件里的 toolResult 原文，用来证明载荷来自这条真实调用。 */
     rawText: string;
+    /** session 文件自己没有写的那份会话 id（与工具报的 `piSession.id` 对账）。 */
+    sessionHeaderId: string;
   } | null;
   runId: string;
+  /** 夹具自己 spawn 出来的 runner 进程 pid。 */
+  runnerPid: number;
   provider: string;
   model: string;
   thinking: string;
@@ -468,6 +485,7 @@ async function run(options: {
     snapshot,
     runId,
     readyMs,
+    runnerPid,
     turn: turnResult,
   } = await openSession({
     label: options.label,
@@ -501,6 +519,7 @@ async function run(options: {
     },
     sproutStatusCall,
     runId,
+    runnerPid,
     provider: snapshot.provider,
     model: snapshot.model,
     thinking: snapshot.thinking,
@@ -673,11 +692,21 @@ const payload = statusCall.payload as {
   app?: string;
   version?: string;
   contractVersion?: number;
+  worker?: { pid?: number; loader?: string };
+  piSession?: { host?: string; id?: string | null; file?: string | null };
   host?: {
     source?: string;
+    loader?: string;
     runtime?: { node?: string; pi?: string };
     host?: { inheritHostResources?: boolean; extensions?: string[] };
-    session?: { model?: string; thinking?: string; activeTools?: number; registeredTools?: number };
+    session?: {
+      id?: string;
+      file?: string | null;
+      model?: string;
+      thinking?: string;
+      activeTools?: number;
+      registeredTools?: number;
+    };
     run?: { id?: string };
   };
   mcpSurfaceError?: string;
@@ -725,11 +754,46 @@ assert.equal(
   turnRun.runId,
   "载荷里的 run id 等于这次 open 真的生成的 run id（唯一，只能是实时值）",
 );
+// 进程与会话事实：P7 的分身是真进程、真会话，报「未实现」就是把排查引到错方向。
+const statusSessionFile = resolve(directory, turnRun.sessionFile);
+assert.equal(
+  payload.worker!.pid,
+  turnRun.runnerPid,
+  "载荷里的 worker.pid 等于夹具真的 spawn 出来的 runner 进程 pid（内核分配的，不是工具自证）",
+);
+assert.equal(payload.worker!.loader, "pi-host-runner", "装载方式是生产 runner 自报的那一个");
+assert.equal(
+  payload.piSession!.host,
+  "pi-host-runner",
+  "会话身份的写入者是生产 runner，不是降级的 none",
+);
+// 会话身份与落盘文件对账：工具报的 id 必须等于 session 文件自己写的那条 session 头。
+assert.equal(
+  payload.piSession!.id,
+  statusCall.sessionHeaderId,
+  "载荷里的 piSession.id 等于 session 文件里记的会话 id",
+);
+assert.equal(
+  basename(payload.piSession!.file ?? ""),
+  basename(statusSessionFile),
+  "载荷里的 piSession.file 就是这一轮的 session 文件",
+);
+// 宿主实况里的会话身份与工具报的那一份必须同一个：不许两处各自编一个。
+assert.equal(
+  payload.host!.session!.id,
+  payload.piSession!.id,
+  "宿主实况与 piSession 的会话 id 一致",
+);
+assert.equal(
+  payload.host!.session!.file,
+  payload.piSession!.file,
+  "宿主实况与 piSession 的会话文件一致",
+);
 // 诊断槽的诚实性：这一轮没有任何 MCP 失败，所以不能凭空多一条错误文本；
 // 真的失败时文本随工具返回的路径由 `tests/pi-host-inheritance.test.ts` 盯。
 assert.equal(payload.mcpSurfaceError, undefined, "没发生 MCP 失败时 sprout_status 不得凭空报错");
 pass(
-  `真实调用 sprout_status：返回 ${Object.keys(payload).join("/")}，host.run.id=${payload.host!.run!.id}，工具面 ${payload.host!.session!.activeTools} 个，无凭空诊断`,
+  `真实调用 sprout_status：返回 ${Object.keys(payload).join("/")}，host.run.id=${payload.host!.run!.id}，worker.pid=${payload.worker!.pid}（= runner 进程），loader=${payload.worker!.loader}，会话 ${payload.piSession!.id}，工具面 ${payload.host!.session!.activeTools} 个，无凭空诊断`,
 );
 
 // ---------------------------------------------------------------- 断言：开关打开只搬 skills/prompts
@@ -801,6 +865,9 @@ const evidence = {
       payload,
       runId: turnRun.runId,
       sessionFile: turnRun.sessionFile,
+      // 两条独立来源：夹具 spawn 出来的 runner pid、session 文件自己写的会话 id。
+      runnerPid: turnRun.runnerPid,
+      sessionHeaderId: statusCall.sessionHeaderId,
       source: "session 文件里的 toolResult entry（模型发起 → Pi 落盘 → 夹具读回解析）",
     },
   },

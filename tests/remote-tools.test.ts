@@ -343,8 +343,10 @@ describe("远端 Pi 工具边界", () => {
     const result = await registered.get("sprout_status")!.execute("probe", {});
     expect(result.details).toMatchObject({
       app: "sprout-mio",
-      worker: "unimplemented",
-      piSession: "unimplemented",
+      // 进程与会话事实不再报「未实现」：独立 CLI 装载时 pid 就是当前进程，
+      // 装载方式是独立 CLI，会话身份由 Pi 自己写（这里没有 Pi 上下文，所以为 null）。
+      worker: { pid: process.pid, loader: "standalone-cli" },
+      piSession: { host: "none", id: null, file: null },
     });
     let notification = "";
     await commands.get("sprout-status")!.handler("", {

@@ -15,6 +15,19 @@ export interface SproutToolResult {
   isError?: boolean;
 }
 
+/**
+ * Pi 交给工具/命令执行的上下文里本 extension 真的读的那一部分（Pi `ExtensionToolContext`、
+ * `ExtensionCommandContext` 都继承 `ExtensionContext`，`sessionManager` 在其中）。
+ *
+ * 只声明用来对账的两条：没有宿主写过实况时，会话身份从这里读，不从别处猜。
+ */
+export interface SproutToolContext {
+  sessionManager?: {
+    getSessionId?(): string;
+    getSessionFile?(): string | null;
+  };
+}
+
 /** 对齐 Pi 1.4.0 实际调用的参数位置与结果错误标记。 */
 export interface SproutExtensionAPI {
   registerTool(tool: {
@@ -22,10 +35,16 @@ export interface SproutExtensionAPI {
     label: string;
     description: string;
     parameters: Record<string, unknown>;
+    /**
+     * Pi 的位置参数依次是 `(toolCallId, params, signal, onUpdate, context)`：
+     * `onUpdate` 必须占住第四位，否则第五位的 `context` 会收到一个回调函数。
+     */
     execute(
       toolCallId: string,
       parameters: unknown,
       signal?: AbortSignal,
+      onUpdate?: unknown,
+      context?: SproutToolContext,
     ): Promise<SproutToolResult>;
   }): void;
   registerCommand(
@@ -34,7 +53,7 @@ export interface SproutExtensionAPI {
       description: string;
       handler(
         args: string,
-        context: {
+        context: SproutToolContext & {
           ui: { notify(message: string, type: "info"): void };
         },
       ): Promise<void>;

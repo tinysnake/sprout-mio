@@ -195,11 +195,20 @@ else
   [ -x "$pi_bin" ] || fail "Pi binary is unavailable $pi_bin"
   pi_args=(--no-extensions --no-skills --no-prompt-templates --no-themes -e dist/extension/main.js --tools sprout_status --mode json --session-dir "$log_dir/pi-sessions" -p)
   pi_args=(--model "$SPROUT_VERIFY_PI_MODEL" "${pi_args[@]}")
-  run 'real Pi sprout_status invocation (live)' pi "$pi_bin" "${pi_args[@]}" 'Call sprout_status exactly once with empty arguments. Then report the returned payload. Do not use other tools.'
+  # 自己起进程、留住内核分配的 pid：断言要拿 `worker.pid` 跟它对账，
+  # 否则「pid 是真是假」只剩工具自证。
+  "$pi_bin" "${pi_args[@]}" 'Call sprout_status exactly once with empty arguments. Then report the returned payload. Do not use other tools.' >"$log_dir/pi.log" 2>&1 &
+  pi_pid=$!
+  if wait "$pi_pid"; then
+    pass "real Pi sprout_status invocation (live) (log $log_dir/pi.log)"
+  else
+    tail -60 "$log_dir/pi.log"
+    fail 'real Pi sprout_status invocation (live)'
+  fi
 fi
-node --input-type=module - "$log_dir/pi.log" "$SPROUT_VERIFY_CHAT_MODE" "$log_dir/model-mode.json" "$log_dir/pi-sessions" <<'JS'
+node --input-type=module - "$log_dir/pi.log" "$SPROUT_VERIFY_CHAT_MODE" "$log_dir/model-mode.json" "$log_dir/pi-sessions" "${pi_pid-}" <<'JS'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 const events = readFileSync(process.argv[2], 'utf8').split('\n').filter(Boolean).flatMap((line) => {
   try { return [JSON.parse(line)] } catch { return [] }
@@ -208,17 +217,54 @@ const calls = events.filter((event) => event.type === 'tool_execution_end' && ev
 assert.equal(calls.length, 1, 'real Pi must emit one completed sprout_status tool call')
 assert.equal(calls[0].isError, false)
 const result = JSON.parse(calls[0].result.content.find((part) => part.type === 'text').text)
-assert.deepEqual(result, { app: 'sprout-mio', version: '0.1.0', contractVersion: 1, worker: 'unimplemented', piSession: 'unimplemented' })
+// 独立 CLI 装载一次真实 Pi：版本事实逐条钉住，载荷键集不许悄悄多一段（比如凭空长出一个 host）。
+assert.deepEqual(Object.keys(result).sort(), ['app', 'contractVersion', 'piSession', 'version', 'worker'])
+assert.equal(result.app, 'sprout-mio')
+assert.equal(result.version, '0.1.0')
+assert.equal(result.contractVersion, 1)
 assert.deepEqual(calls[0].result.details, result)
-console.log('PASS real Pi tool_execution_end', JSON.stringify(result))
+
+// ---- worker：真实进程身份 + 装载方式（都不许是「未实现」这种假事实）
+assert.deepEqual(Object.keys(result.worker).sort(), ['loader', 'pid'], 'worker reports pid and loader')
+// 这条路径本来就是独立 CLI 装的：报成别的装载方式（或退回「未实现」）都红。
+assert.equal(result.worker.loader, 'standalone-cli', 'standalone CLI load reports its own loading mode')
+assert.equal(Number.isInteger(result.worker.pid), true, 'worker pid is a real pid')
+const launchedPid = Number(process.argv[6] || 0)
+const alive = (pid) => {
+  try { process.kill(pid, 0); return true } catch (error) { return error.code === 'EPERM' }
+}
+if (launchedPid > 0) {
+  // live：pid 必须等于这次真的被拉起来的 Pi 进程（内核分配的 pid，不是工具自报）。
+  assert.equal(result.worker.pid, launchedPid, 'worker pid equals the Pi process this script launched')
+} else {
+  // 夹具分支：Pi 是夹具的子进程，a-base 拿不到它的 pid，只能证明它不是断言进程自己、
+  // 并且已经随那一轮退出。pid 与 `process.pid` 的等号由 tests/status-facts.test.ts 在同一进程内证。
+  assert.notEqual(result.worker.pid, process.pid, 'worker pid is not the asserting process')
+  assert.equal(alive(result.worker.pid), false, 'worker pid belongs to the Pi process that already exited')
+}
+
+// ---- piSession：会话身份来自 Pi 自己写入的实况，与 json 流里的 session 头对账
+assert.deepEqual(Object.keys(result.piSession).sort(), ['file', 'host', 'id'], 'piSession reports writer and identity')
+// 独立 CLI 装载时没有 Sprout 宿主写过实况：必须明说 none，不许把 Pi 的身份冒充成宿主写的。
+assert.equal(result.piSession.host, 'none', 'standalone CLI reports no Sprout host')
+const header = events.find((event) => event.type === 'session')
+assert(header?.id, 'Pi json stream carries its own session header')
+assert.equal(result.piSession.id, header.id, 'reported session id equals the id Pi wrote')
+assert.equal(typeof result.piSession.file, 'string', 'reported session file is a path')
+assert(result.piSession.file.endsWith(`_${header.id}.jsonl`), 'reported session file is the file Pi names after that id')
 const [, , , mode, metadataPath, sessions] = process.argv
 if (mode === 'live') {
+  // 落盘文件里的 session 头必须是同一个 id：工具的说法与文件记录对账，不是「存在即可」。
+  assert(existsSync(result.piSession.file), 'reported session file exists on disk')
+  const fileHeader = JSON.parse(readFileSync(result.piSession.file, 'utf8').split('\n').filter(Boolean)[0])
+  assert.equal(fileHeader.type, 'session')
+  assert.equal(fileHeader.id, result.piSession.id, 'session file header id equals the reported session id')
   const actualModels = events.filter(event => event.type === 'message_end' && event.message?.role === 'assistant').map(({message}) => ({provider:message.provider,model:message.model}))
-  const sessionId = events.find(event => event.type === 'session')?.id
-  assert(sessionId, 'live CLI reports its current session')
+  const sessionId = header.id
   const actualThinking = readdirSync(sessions).filter(file => file.endsWith(`${sessionId}.jsonl`)).flatMap(file => readFileSync(join(sessions,file),'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line))).filter(entry => entry.type === 'thinking_level_change').map(entry => entry.thinkingLevel)
   writeFileSync(metadataPath, JSON.stringify({mode,actualModels,actualThinking,requestCount:null,completedPlans:null,unusedSteps:null},null,2))
 }
+console.log('PASS real Pi tool_execution_end', JSON.stringify(result))
 console.log('CHAT metadata', readFileSync(metadataPath,'utf8'))
 JS
 
