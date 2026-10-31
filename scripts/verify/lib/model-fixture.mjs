@@ -88,6 +88,19 @@ export function leaseTurn(action, parameters) {
   };
 }
 
+const turnContextPrefix = '{"channel":"sprout_turn_context"';
+
+function stripTurnContext(text) {
+  if (!text.startsWith(turnContextPrefix)) return text;
+  const [envelope, ...rest] = text.split("\n\n");
+  try {
+    JSON.parse(envelope);
+  } catch {
+    return text;
+  }
+  return rest.join("\n\n");
+}
+
 function bindLeaseTurn(plan, userText) {
   const { action, parameters } = plan.lease;
   const prefix = leasePrefix(action);
@@ -194,7 +207,9 @@ export async function startModelFixture({
       );
       const users = input.messages.filter((message) => message.role === "user");
       const latestUser = input.messages.findLastIndex((message) => message.role === "user");
-      const userText = textContent(input.messages[latestUser]?.content);
+      // P6b 起，runner 把轮初上下文以一行 JSON 前缀进同一条 user 消息（`<context>\n\n<text>`）。
+      // 计划绑定的是那轮真正的指令文本，所以匹配前剥掉信封；信封本身由 bf-p6b-turn-context 证明。
+      const userText = stripTurnContext(textContent(input.messages[latestUser]?.content));
       // 被驱动的一轮和产品自己发起的一轮（撤销通知之类）会交错到达，所以按对话文本认领计划，
       // 而不是按排队顺序：先布好的计划不会被晚到的一轮挤掉。
       // 认领优先级：完全一致的对话文本 > 前缀（产品自己发起的通知轮次）> 未绑定文本的租约轮次。

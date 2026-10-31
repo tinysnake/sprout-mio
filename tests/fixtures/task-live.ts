@@ -435,11 +435,24 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     const messages = input.messages ?? input.input ?? input.contents;
     return Array.isArray(messages) ? messages : [];
   }
+  // P6b 起轮初上下文以一行 JSON 前缀进同一条 user 消息，这里剥掉信封再判正文。
+  function stripTurnContext(text: string): string {
+    if (!text.startsWith('{"channel":"sprout_turn_context"')) return text;
+    const [envelope, ...rest] = text.split("\n\n");
+    try {
+      JSON.parse(envelope);
+    } catch {
+      return text;
+    }
+    return rest.join("\n\n");
+  }
+
   function requestTaskText(input: any): string {
     return (
       requestMessages(input)
         .filter((message) => message.role === "user")
         .map((message) => textOf(message.content ?? message.parts))
+        .map(stripTurnContext)
         .filter((text) => text.startsWith("已分配并请求立即开始\nTask："))
         .at(-1) ?? ""
     );
