@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Pencil } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import type { TaskAction } from "../../contracts/task-capabilities";
 import type {
   TaskDetail,
@@ -86,6 +86,7 @@ export function TaskDetailView({
   const [newItem, setNewItem] = useState("");
   const [editingMetadata, setEditingMetadata] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
   const [correcting, setCorrecting] = useState(false);
   const [metadata, setMetadata] = useState({
     title: task.title,
@@ -230,19 +231,7 @@ export function TaskDetailView({
           {detail.checklist
             .filter((item) => !item.removedAt)
             .map((item) => (
-              <li key={item.id} className="flex flex-wrap items-start gap-2">
-                {allowed("checklist_update") && editingItemId !== item.id && (
-                  <button
-                    type="button"
-                    aria-label="编辑清单文字"
-                    title="编辑清单文字"
-                    data-testid={`task-checklist-edit-${item.id}`}
-                    className="mt-1 flex size-5 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-9"
-                    onClick={() => setEditingItemId(item.id)}
-                  >
-                    <Icon as={Pencil} size={12} />
-                  </button>
-                )}
+              <li key={item.id} className="flex flex-wrap items-center gap-2">
                 {editingItemId === item.id ? (
                   <form
                     className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
@@ -269,7 +258,7 @@ export function TaskDetailView({
                       className="min-w-0 flex-1"
                     />
                     <Button type="submit" disabled={pending} size="sm">
-                      保存
+                      确认
                     </Button>
                     <Button
                       type="button"
@@ -297,20 +286,60 @@ export function TaskDetailView({
                     <span>{item.body}</span>
                   </label>
                 )}
-                {allowed("checklist_remove") && (
-                  <Button
-                    variant="ghost"
-                    disabled={pending}
-                    onClick={() => {
-                      void onCommand({
-                        action: "checklist_remove",
-                        input: { ...write, itemId: item.id },
-                      });
-                    }}
-                  >
-                    移除
-                  </Button>
-                )}
+                {editingItemId !== item.id &&
+                  (removingItemId === item.id ? (
+                    <span className="flex shrink-0 items-center gap-2">
+                      <Button
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => {
+                          void onCommand({
+                            action: "checklist_remove",
+                            input: { ...write, itemId: item.id },
+                          }).then((saved) => {
+                            if (saved !== false) setRemovingItemId(null);
+                          });
+                        }}
+                      >
+                        确认
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setRemovingItemId(null)}
+                      >
+                        取消
+                      </Button>
+                    </span>
+                  ) : (
+                    <span className="flex shrink-0 items-center gap-1">
+                      {allowed("checklist_update") && (
+                        <button
+                          type="button"
+                          aria-label="编辑清单文字"
+                          title="编辑清单文字"
+                          data-testid={`task-checklist-edit-${item.id}`}
+                          className="flex size-5 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-9"
+                          onClick={() => setEditingItemId(item.id)}
+                        >
+                          <Icon as={Pencil} size={12} />
+                        </button>
+                      )}
+                      {allowed("checklist_remove") && (
+                        <button
+                          type="button"
+                          aria-label="移除清单项"
+                          title="移除清单项"
+                          data-testid={`task-checklist-remove-${item.id}`}
+                          className="flex size-5 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-9"
+                          onClick={() => setRemovingItemId(item.id)}
+                        >
+                          <Icon as={X} size={12} />
+                        </button>
+                      )}
+                    </span>
+                  ))}
               </li>
             ))}
         </ul>
