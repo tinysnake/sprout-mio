@@ -19,6 +19,7 @@ import { Field } from "../ui/field";
 import { Icon } from "../ui/icon";
 import { Select } from "../ui/select";
 import { ResultError } from "./result-error";
+import { MemberRemovalBlockers } from "./member-removal-blockers";
 
 function initial(name: string) {
   return name.slice(0, 1);
@@ -284,7 +285,7 @@ export function ProjectMembers({
           if (!next && !pending) setRemoving(null);
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>确认移除 Agent？</DialogTitle>
             <DialogDescription>
@@ -293,6 +294,9 @@ export function ProjectMembers({
             </DialogDescription>
           </DialogHeader>
           {error && <ResultError error={error} testId="members-error" />}
+          {error?.code === "project_member_removal_blocked" && (
+            <MemberRemovalBlockers details={error.details} />
+          )}
           <DialogFooter>
             <Button
               type="button"

@@ -116,8 +116,15 @@ export function ChatDetails({
   // 治理事实只读领域层算好的那一份（裁定 d45）：页面不抄能力表、不比 owner。
   // Agent 当 owner 时，`canChangeOwner` 已经包含 d6 的 Project 创建者兜底。
   const governance = session.governance;
-  const governanceCopy = governanceNote(chat.kind, governance);
   const currentMembers: ChatMember[] = members.ok ? members.data : [];
+  const ownerCandidates =
+    chat.kind === "public_channel"
+      ? currentMembers.filter(
+          (member) =>
+            member.memberKind === "human" && member.memberId === governance.projectCreatedBy,
+        )
+      : currentMembers;
+  const governanceCopy = governanceNote(chat.kind, governance);
   // 资料块跟着成员行的选中态；默认不选中，群组里因此没有「第一个 Agent」的猜测。
   // DM 只有一个 Agent 成员、没有歧义，沿用 P4b 的默认展示。
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
@@ -418,11 +425,12 @@ export function ChatDetails({
                 </dd>
               </dl>
               <div className="flex flex-wrap items-center gap-2">
-                {chat.kind === "group" && governance.canChangeOwner && (
+                {governance.canChangeOwner && ownerCandidates.length > 0 && (
                   <OwnerDialog
                     chatId={chat.id}
                     revision={chat.governanceRevision}
-                    members={currentMembers}
+                    publicChannel={chat.kind === "public_channel"}
+                    members={ownerCandidates}
                     names={names}
                     humanUserId={humanUserId}
                     humanName={humanName}
@@ -766,6 +774,7 @@ function RemoveMemberButton({
 function OwnerDialog({
   chatId,
   revision,
+  publicChannel,
   members,
   names,
   humanUserId,
@@ -775,6 +784,7 @@ function OwnerDialog({
 }: {
   chatId: string;
   revision: number;
+  publicChannel: boolean;
   members: ChatMember[];
   names: Map<string, string>;
   humanUserId: string;
@@ -821,13 +831,15 @@ function OwnerDialog({
         data-governance-action="owner_change"
         render={<Button type="button" variant="secondary" size="sm" />}
       >
-        更改 Owner
+        {publicChannel ? "变更负责人" : "更改 Owner"}
       </DialogTrigger>
       <DialogContent data-testid="chat-owner-dialog">
         <DialogHeader>
-          <DialogTitle>更改 Owner</DialogTitle>
+          <DialogTitle>{publicChannel ? "变更负责人" : "更改 Owner"}</DialogTitle>
           <DialogDescription>
-            写入会携带当前治理版本 {revision}；并发冲突时不会自动重放。
+            {publicChannel
+              ? "频道负责人必须是本 Project 的 Human 创建者。"
+              : "选择新的负责人；保存后将更新此 Chat 的负责人。"}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
