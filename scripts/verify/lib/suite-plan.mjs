@@ -85,6 +85,7 @@ export const SUITE_PLAN = Object.freeze({
   "i5-project-removal": plan(4, { light: 1 }),
   "p6c-member-removal": plan(4, { light: 1 }),
   "p6c-participation-revocation": plan(4, { light: 1 }),
+  "bf-p6c-lifecycle": plan(1, { light: 1 }),
   "p6c-member-governance-ui": plan(8, { browser: 1 }, server),
   "i6-chat-info": plan(10, { light: 1 }, server),
   "i7-chat-scope": plan(10, { light: 1 }, server),
