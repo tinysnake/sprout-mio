@@ -514,6 +514,10 @@ input.on("line", (raw) => {
         "持久 Pi session",
         "Pi session 身份",
         "Pi 实际模型",
+        // 工具面自守的失败原因必须原样带给宿主：把「诊断入口缺失」吞成一句通用的
+        // 「初始化失败」，等于在修诊断入口的同时又丢了一次诊断。
+        "Pi 工具面为空",
+        "sprout_status 未进入",
       ];
       const message = safe.some((prefix) => error.message?.startsWith(prefix))
         ? error.message

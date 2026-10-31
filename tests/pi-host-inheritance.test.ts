@@ -68,7 +68,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         provider: 'inheritance-test',
         model: 'none',
         thinking: 'off',
-        tools: ['bash', 'edit', 'read', 'write'],
+        tools: ['bash', 'edit', 'read', 'sprout_status', 'write'],
         registeredTools: ['bash', 'edit', 'read', 'sprout_status', 'write'],
         extensions: ['sprout-extension'],
         sessionId: command.sessionId,
