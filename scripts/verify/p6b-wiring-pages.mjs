@@ -345,6 +345,20 @@ try {
       "还没有 run 的 Chat 必须显示轮初空态，而不是伪造快照",
     );
     // run 事实与轮初块同时在场：新事实不许挤掉旧的宿主/活动 run 行。
+    // 自动接续面板必须接在真实 Chat 页上：夹具能渲染卡片，不代表页面接了服务。
+    assert.equal(
+      await page.locator('[data-testid="automation-unavailable"]').count(),
+      0,
+      "真实 Chat 页仍在渲染「服务尚未接入」占位",
+    );
+    assert.equal(
+      await page.locator('[data-testid="automation-card"]').count(),
+      1,
+      "真实 Chat 页没有渲染自动接续卡片",
+    );
+    pass("automation_panel_wired_on_real_chat", {
+      note: "真实路由取到 getChatAutomationFn 的视图，不是未接入占位",
+    });
     await page.waitForSelector('[data-testid="info-chat-runs-host-status"]', { timeout: 30000 });
     assert.equal(
       /宿主(已|未)启用/.test(

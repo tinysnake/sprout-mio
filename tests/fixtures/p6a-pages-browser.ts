@@ -104,9 +104,9 @@ try {
         pass(`${width}_no_run_stop_without_active_run`);
       }
       if (name === "failure") {
-        assert(
-          (await page.getByTestId("automation-failure").innerText()).includes("provider_timeout"),
-        );
+        const failure = page.getByTestId("automation-failure");
+        assert.equal(await failure.getAttribute("data-error-code"), "provider_timeout");
+        assert((await failure.innerText()).includes("判定服务没有及时回应"));
         assert((await page.getByTestId("automation-backoff").innerText()).includes("失败退避"));
         pass(`${width}_failure_and_backoff`);
       }
@@ -169,7 +169,8 @@ try {
     await page.getByLabel("模拟写入冲突").check();
     await page.getByRole("button", { name: "暂停自动接续", exact: true }).click();
     await page.getByRole("alert").waitFor();
-    assert((await page.getByRole("alert").innerText()).includes("conflict"));
+    assert((await page.getByRole("alert").getAttribute("data-error-code"))?.includes("conflict"));
+    assert.equal(/conflict/.test(await page.getByRole("alert").innerText()), false);
     assert((await page.getByTestId("automation-mode").innerText()).includes("已启用"));
     pass(`${width}_conflict_does_not_pretend_disabled`);
   }

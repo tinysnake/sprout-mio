@@ -22,6 +22,22 @@ const states = {
 const time = (value: string | null) =>
   value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "暂无记录";
 
+/** 内部失败码只说给人听的话，码本身留在 data-error-code 上给门禁与排查用。 */
+const failures: Record<string, string> = {
+  provider_timeout: "判定服务没有及时回应",
+  provider_unavailable: "判定服务当前不可用",
+  provider_auth_failed: "判定服务的凭据无效",
+  provider_invalid_response: "判定服务返回了无法识别的结果",
+  provider_low_certainty: "判定服务的把握不足",
+  context_budget_exceeded: "本轮上下文超出预算",
+  context_stale: "本轮上下文已过期",
+  delivery_unavailable: "投递通道当前不可用",
+  delivery_unknown: "投递结果未能确认",
+  run_repeated_failure: "本轮运行反复失败",
+  internal_failure: "内部处理失败",
+};
+const failureText = (code: string) => failures[code] ?? "检查未能完成";
+
 export function AutomationCard({
   view,
   denials = {},
@@ -33,7 +49,7 @@ export function AutomationCard({
 }) {
   const [pending, setPending] = useState(false);
   const [confirmation, setConfirmation] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ reason: string; code: string } | null>(null);
   const evaluation = view.latestEvaluation;
   // 页面只隐藏服务端明确拒绝的动作；没接控制器（静态渲染、夹具）时控件保留但不可点。
   const denial = (action: AutomationAction) => denials[action];
@@ -62,13 +78,10 @@ export function AutomationCard({
     setError(null);
     try {
       const result = await onCommand(command);
-      if (!result.ok)
-        setError(
-          `${result.error.reason} (${result.error.code})${result.error.requestId ? ` · ${result.error.requestId}` : ""}`,
-        );
+      if (!result.ok) setError({ reason: result.error.reason, code: result.error.code });
       else setConfirmation(null);
     } catch {
-      setError("请求未完成，操作结果未知。请刷新事实后再操作。");
+      setError({ reason: "请求未完成，操作结果未知。请刷新事实后再操作。", code: "unknown" });
     } finally {
       setPending(false);
     }
@@ -165,12 +178,16 @@ export function AutomationCard({
           className="space-y-1 border-l-2 border-destructive pl-3"
         >
           <p>需要处理：{view.attention.reason}</p>
-          <code>{view.attention.errorCode}</code>
+          <p data-error-code={view.attention.errorCode}>{failureText(view.attention.errorCode)}</p>
         </div>
       )}
       {evaluation?.errorCode && (
-        <p data-testid="automation-failure" className="text-destructive">
-          检查失败：{evaluation.errorCode}。判定失败不代表本轮无需接续。
+        <p
+          data-testid="automation-failure"
+          data-error-code={evaluation.errorCode}
+          className="text-destructive"
+        >
+          检查失败：{failureText(evaluation.errorCode)}。判定失败不代表本轮无需接续。
         </p>
       )}
       {evaluation?.nextAttemptAt && (
@@ -191,7 +208,11 @@ export function AutomationCard({
                 ? `Human 提醒 · ${delivery.state}`
                 : `接续输入 · ${delivery.state}`}
           </p>
-          {delivery.errorCode && <code className="text-destructive">{delivery.errorCode}</code>}
+          {delivery.errorCode && (
+            <p data-error-code={delivery.errorCode} className="text-destructive">
+              {failureText(delivery.errorCode)}
+            </p>
+          )}
           {delivery.nextAttemptAt && (
             <p>
               投递退避：{time(delivery.nextAttemptAt)}（已尝试 {delivery.attempt} 次）
@@ -276,8 +297,8 @@ export function AutomationCard({
         </div>
       )}
       {error && (
-        <p role="alert" className="text-destructive">
-          {error}
+        <p role="alert" data-error-code={error.code} className="text-destructive">
+          {error.reason}
         </p>
       )}
       <details>

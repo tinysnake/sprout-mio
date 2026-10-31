@@ -11,6 +11,7 @@ import type {
 import type { ChatInfoView, InfoHubResult, ProjectInfoHub } from "../../contracts/info-hub";
 import type { TurnContextReadResult } from "../../contracts/turn-context";
 import type { AppError, AppResult } from "../../contracts/result";
+import type { ChatAutomationData } from "../../domain/chat-automation";
 import type { ExecutionView } from "../../contracts/remote";
 import type { MachineDetail } from "../../contracts/machine";
 import type { LeaseView } from "../../contracts/lease";
@@ -51,6 +52,8 @@ export type ChatDetailLoaderData =
        */
       turnContext: InfoHubResult<TurnContextReadResult> | null;
       runState: AgentRunResult<ChatRunState>;
+      /** 自动接续的读模型与可用动作：页面按结果原样呈现，失败时不伪造状态。 */
+      automation: AppResult<ChatAutomationData>;
     };
 
 /** 分身身份优先取 instance 的 profile，其次取成员表里的 agent 成员。 */

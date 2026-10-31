@@ -21,7 +21,6 @@ export function AutomationPanel({
       <p className="text-muted-foreground">
         暂时无法确认是否会接续、最近检查与下次检查。请刷新事实后确认。
       </p>
-      <code>{AUTOMATION_UNAVAILABLE.code}</code>
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { getProjectInfoHubFn, refreshInfoHubFn } from "../../server/functions/info-hub";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { listMachinesFn } from "../../server/functions/machine";
@@ -27,6 +27,11 @@ import {
 import { mergeChatRuns, mergeProjectChats } from "../../components/info-hub/merge-info-hub";
 import { listAgentProfilesFn, listProjectMembersFn } from "../../server/functions/agent";
 import { listChatsFn } from "../../server/functions/chat";
+import { controlChatAutomationFn } from "../../server/functions/chat-automation";
+import type {
+  AutomationDenial,
+  AutomationSubmit,
+} from "../../components/automation/automation-page-data";
 
 const DETAIL_ROUTE_ID = "/_authed/projects/$projectId/chats/$chatId";
 
@@ -96,6 +101,23 @@ function ChatsLayout() {
   const members = loader.members.ok ? loader.members.data : [];
   const chat = detail?.loaderData as ChatDetailLoaderData | undefined;
   const selected = chat?.ok ? chat : undefined;
+  const submitAutomation = useCallback<AutomationSubmit>(
+    async (command) => {
+      const result = await controlChatAutomationFn({ data: command });
+      if (!result.ok)
+        return {
+          ok: false,
+          error: {
+            code: result.error.code as AutomationDenial["code"],
+            reason: result.error.message,
+            requestId: result.requestId,
+          },
+        };
+      void router.invalidate();
+      return { ok: true, data: { view: result.data.view, denials: result.data.denials } };
+    },
+    [router],
+  );
   const activity =
     selected && loader.infoHub.ok
       ? loader.infoHub.data.chats.find((entry) => entry.chatId === selected.session.chat.id)
@@ -199,6 +221,15 @@ function ChatsLayout() {
                 projectProfiles={profiles}
                 machineFacts={machineFacts}
                 machineFactsError={machineFactsError}
+                automation={
+                  selected.automation.ok
+                    ? {
+                        view: selected.automation.data.view,
+                        denials: selected.automation.data.denials,
+                      }
+                    : undefined
+                }
+                onAutomationCommand={submitAutomation}
                 onClose={() => setOpen(false)}
                 onChanged={() => void router.invalidate()}
               />
