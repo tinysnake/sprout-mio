@@ -620,8 +620,7 @@ describe("P6a evaluation output", () => {
 
 describe("P6a continuation and Human controls", () => {
   it("freezes modes, timing policy and cancellation reasons separately from failures", () => {
-    for (const mode of ["enabled", "off"])
-      expect(chatAutomationModeSchema.parse(mode)).toBe(mode);
+    for (const mode of ["enabled", "off"]) expect(chatAutomationModeSchema.parse(mode)).toBe(mode);
     for (const mode of ["disabled", "paused", "stopped"])
       expect(chatAutomationModeSchema.safeParse(mode).success).toBe(false);
     expect(CHAT_AUTOMATION_POLICY).toEqual({
