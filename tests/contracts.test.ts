@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   APP_ERROR_CODES,
+  appErrorSchema,
   appIdPattern,
   ID_PREFIXES,
   createProjectInput,
@@ -116,6 +117,16 @@ describe("共享契约", () => {
     expect(
       toAppError({ code: "project_member_removal_blocked", message: "有阻塞" }, "req_current"),
     ).toEqual({ code: "internal", message: "内部错误", requestId: "req_current" });
+    // 该分支是 strict 的：线上解码（远端响应）遇到多余字段必须整条拒绝，而不是静默透传。
+    // toAppError 只按字段白名单取值，看不出严格性，所以这里直接打 appErrorSchema。
+    const wire = {
+      code: "project_member_removal_blocked",
+      message: "有阻塞",
+      requestId: "req_current",
+      details,
+    };
+    expect(appErrorSchema.safeParse(wire).success).toBe(true);
+    expect(appErrorSchema.safeParse({ ...wire, unexpected: "注入字段" }).success).toBe(false);
   });
 
   it("拒绝空白与超长输入，接受限制内文本并修剪名称", () => {
