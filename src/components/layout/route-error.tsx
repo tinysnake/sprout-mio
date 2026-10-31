@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
 
 /** No cached target is different from an empty target or a confirmed deletion. */
-export function RouteReadError({ error }: { error: Error }) {
+export function RouteReadError({ error }: { error: unknown }) {
   const router = useRouter();
+  const message = error instanceof Error ? error.message : String(error);
   const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   const [pending, setPending] = useState(false);
   async function retry() {
@@ -44,7 +45,7 @@ export function RouteReadError({ error }: { error: Error }) {
         </p>
       )}
       <p role="alert" className="break-words text-sm text-muted-foreground">
-        {online ? error.message : "无法确认此目标的当前内容，请联网后重试。"}
+        {online ? message : "无法确认此目标的当前内容，请联网后重试。"}
       </p>
       <div className="flex flex-wrap items-center gap-4">
         <Button variant="outline" disabled={!online || pending} onClick={() => void retry()}>

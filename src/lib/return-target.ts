@@ -1,12 +1,8 @@
 /** Only same-origin application paths may survive authentication. */
 export function safeReturnTarget(value: unknown): string {
-  if (
-    typeof value !== "string" ||
-    !value.startsWith("/") ||
-    value.startsWith("//") ||
-    [...value].some((character) => character.charCodeAt(0) <= 32 || character === "\\")
-  )
-    return "/";
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return "/";
+  for (let index = 0; index < value.length; index++)
+    if (value.charCodeAt(index) <= 32 || value[index] === "\\") return "/";
   try {
     const url = new URL(value, "https://sprout.invalid");
     if (
