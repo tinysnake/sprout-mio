@@ -1,6 +1,6 @@
 # I-P6a 章节集成验证
 
-当前状态：**七个不变量、三组破坏验证、三次连续完整运行均通过；既有门禁与最终检查待登记**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
+当前状态：**七个不变量、三组破坏验证、三次连续完整运行和 13 个既有门禁均通过；最终交接复核中**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
 
 开工基点为 `d565ab80b9057fd3609b5381519ac0e569da2aa5`。首批三个文件先提交为 `cf5ea73`，再按协调者要求 rebase 到修复 `b837f820b0dc901262a0e50efe8663b5a7d43376`，首批提交变为 `3f33f54`。冻结设计从主 checkout 的 `orchestrate/sprout-mio-p6/reports/p6a-design.md` 读取，未复制进本单元。
 
@@ -94,7 +94,27 @@ python3 .verify/p6a-lifecycle/mutations/reproduce.py
 
 三轮均通过整条生命周期、并发与预算场景，并各自真实 SIGKILL 一次、启动两个恢复进程。脚本最终输出 `PASS p6a-lifecycle: 177 assertions; real SQLite <path>`。最终根目录 `exit-code` 为 0，来源哈希复核 exit 0。登记名 `bf-p6a-lifecycle` 由协调者统一登记，不另建重复脚本。
 
-brief 指定的 13 个既有门禁结果待下一步登记。定向 stale 复验没有计入这里的三次完整绿色运行。
+brief 指定的 13 个既有门禁均已实际执行，全部 exit 0，无超时、无跳过。均直接调用各自 `bash scripts/verify/<name>.sh`，native gate 使用 `SPROUT_VERIFY_CHAT_MODE=model-fixture`，没有调用外部真实模型。
+
+| 既有门禁          | exit code | 进程耗时        |
+| ----------------- | --------- | --------------- |
+| i2-group-chat     | 0         | 514.416458 ms   |
+| i3-public-channel | 0         | 1323.574042 ms  |
+| i4-agent-fanout   | 0         | 1121.268542 ms  |
+| i6-chat-info      | 0         | 471.752625 ms   |
+| ba-task-domain    | 0         | 3154.394125 ms  |
+| bs-p5b-lifecycle  | 0         | 16970.021166 ms |
+| p6a-scheduler     | 0         | 903.896125 ms   |
+| p6a-delivery      | 0         | 924.118333 ms   |
+| p6a-control       | 0         | 816.255834 ms   |
+| p6a-integration   | 0         | 1210.743958 ms  |
+| p6a-wiring        | 0         | 1053.090542 ms  |
+| as-p5b-task-pages | 0         | 12266.748542 ms |
+| p6a-pages         | 0         | 3804.248750 ms  |
+
+执行基点为 `3f33f54`，产品包含 `b837f82`。这些门禁在后续生命周期夹具细化前已完成；它们消费的产品、迁移、既有脚本和既有 fixture 此后没有变化。`.verify/p6a-lifecycle/legacy/consumer-changes-since-run.patch` 为空，来源文件哈希另存 `legacy/source-sha256.txt`。新增生命周期夹具的后续变化由当前 typecheck、定向场景和三次完整新门禁单独验证，没有用旧结果覆盖新增断言。
+
+逐门禁结果、退出码、无超时标记、进程耗时和日志路径在 `.verify/p6a-lifecycle/legacy/results.json`，标准输出与错误保存在同目录各门禁的 `.log`。`legacy/exit-code` 为 0。页面门禁使用真实页面、真实数据库和浏览器；native Task 门禁使用已安装 Pi SDK、真实 Worker 与 HTTP 生命周期。
 
 依赖已执行 `pnpm install --prefer-offline`，exit 0。当前 TypeScript、lint、格式检查与最终源码证据将在验收结束时统一记录。
 
