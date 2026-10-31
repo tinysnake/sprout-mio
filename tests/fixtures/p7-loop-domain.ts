@@ -732,6 +732,10 @@ if (mode === "restart" && !phase) {
           );
           // Fan-out is one run per named Agent; the same fan-out repeated eight times must not
           // duplicate runs, only inputs.
+          const simultaneous = row(
+            "SELECT COUNT(*) n FROM agent_run WHERE status IN ('queued','running')",
+          ).n;
+          assert(simultaneous >= 4, "F9e several runs are genuinely in flight at once");
           const groupRunsBefore = row(
             "SELECT COUNT(*) n FROM agent_run WHERE chat_id=?",
             group.id,
@@ -757,7 +761,7 @@ if (mode === "restart" && !phase) {
           );
           pass("F9e measured instance admission and fan-out bounds", {
             activeRunsPerInstance: 1,
-            simultaneousDomainRuns: 4,
+            simultaneousInFlightRuns: simultaneous,
             appendedInputs: 32,
             overflow: "SQLITE_CONSTRAINT_UNIQUE",
             fanoutPerMessage: 2,
