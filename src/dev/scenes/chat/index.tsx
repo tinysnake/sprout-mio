@@ -156,7 +156,10 @@ const scenarioRunState: Record<string, ChatRunState> = {
   disabled: { enabled: false, runs: [], inputs: [] },
 };
 
-function demoError(code: AppError["code"], message: string): AppError {
+function demoError(
+  code: Exclude<AppError["code"], "project_member_removal_blocked">,
+  message: string,
+): AppError {
   return { code, message, requestId: "req_demo_0000" };
 }
 

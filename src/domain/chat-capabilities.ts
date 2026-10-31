@@ -62,11 +62,11 @@ function denialReason(scope: ChatGovernanceScope, actorKind: "human" | "agent"):
  */
 export function chatGovernanceFacts(scope: ChatGovernanceScope, actor: ChatActor): ChatOwnerFacts {
   const actorId = actorIdOf(actor);
-  // 成员与 Owner 治理只对普通 Group 生效（频道成员是 Project 成员的派生事实，DM 成员固定）。
+  // 成员与唤醒治理只对普通 Group 生效；频道可变更 Owner，成员仍由 Project 派生，DM 成员固定。
   const group = scope.kind === "group";
   const can = (action: ChatAction) => group && decide(action, scope, actor.kind, actorId);
   const canChangeMembers = can("member_add") && can("member_remove");
-  const canChangeOwner = can("owner_change");
+  const canChangeOwner = scope.kind !== "dm" && decide("owner_change", scope, actor.kind, actorId);
   const canChangeWakePolicy = can("wake_policy_change");
   // 标题是会话自身的名字，不依赖群组结构，DM 也该能改名；公共频道的标题由 Project 派生，改不动。
   const canRenameTitle =

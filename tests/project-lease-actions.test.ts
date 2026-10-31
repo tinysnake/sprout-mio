@@ -49,7 +49,7 @@ const receipt: LeaseMutationView = {
   completedAt: "2026-01-01T00:00:01.000Z",
 };
 
-function deny(code: AppErrorCode) {
+function deny(code: Exclude<AppErrorCode, "project_member_removal_blocked">) {
   return fail({ code, message: "安全边界拒绝", requestId: readRequestId });
 }
 

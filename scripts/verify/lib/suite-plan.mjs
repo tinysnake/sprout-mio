@@ -83,6 +83,8 @@ export const SUITE_PLAN = Object.freeze({
   "i3-public-channel": plan(12, { light: 1 }, server),
   "i4-agent-fanout": plan(12, { light: 1 }, server),
   "i5-project-removal": plan(4, { light: 1 }),
+  "p6c-member-removal": plan(4, { light: 1 }),
+  "p6c-participation-revocation": plan(4, { light: 1 }),
   "i6-chat-info": plan(10, { light: 1 }, server),
   "i7-chat-scope": plan(10, { light: 1 }, server),
   "an-p4d-authority": plan(14.016, { process: 1, light: 1 }),

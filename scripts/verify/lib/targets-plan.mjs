@@ -30,6 +30,8 @@ export const CI_GROUPS = Object.freeze({
     "i3-public-channel",
     "i4-agent-fanout",
     "i5-project-removal",
+    "p6c-member-removal",
+    "p6c-participation-revocation",
     "i6-chat-info",
     "i7-chat-scope",
     "an-p4d-authority",

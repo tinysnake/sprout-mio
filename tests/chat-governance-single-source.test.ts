@@ -110,7 +110,7 @@ describe("DM 标题是会话自己的名字", () => {
 });
 
 describe("失败呈现只在 not_found 里露出 requestId", () => {
-  function markup(code: AppErrorCode): string {
+  function markup(code: Exclude<AppErrorCode, "project_member_removal_blocked">): string {
     return renderToStaticMarkup(
       createElement(ResultError, {
         error: {

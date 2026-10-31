@@ -22,6 +22,8 @@ import {
   agentInstance,
   agentRun,
   chat,
+  chatEffectiveMember,
+  projectMember,
   diagnosticEvent,
   leaseAuthorization,
   leaseMutation,
@@ -581,7 +583,38 @@ function mutateLeaseInTransaction(
       !db
         .select()
         .from(chat)
-        .where(and(eq(chat.id, target.chatId), eq(chat.projectId, input.projectId)))
+        .where(
+          and(
+            eq(chat.id, target.chatId),
+            eq(chat.projectId, input.projectId),
+            isNull(chat.archivedAt),
+          ),
+        )
+        .get()
+    )
+      throw new LeaseError("not_found");
+    if (
+      !db
+        .select()
+        .from(projectMember)
+        .where(
+          and(
+            eq(projectMember.projectId, input.projectId),
+            eq(projectMember.agentProfileId, target.agentProfileId),
+          ),
+        )
+        .get() ||
+      !db
+        .select()
+        .from(chatEffectiveMember)
+        .where(
+          and(
+            eq(chatEffectiveMember.projectId, input.projectId),
+            eq(chatEffectiveMember.chatId, target.chatId),
+            eq(chatEffectiveMember.memberKind, "agent"),
+            eq(chatEffectiveMember.memberId, target.agentProfileId),
+          ),
+        )
         .get()
     )
       throw new LeaseError("not_found");

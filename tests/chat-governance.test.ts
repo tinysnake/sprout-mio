@@ -89,7 +89,10 @@ describe("chat 治理事实（领域算、页面只读）", () => {
     expect(dm.canRenameTitle).toBe(true);
 
     const channel = factsFor({ ...group, kind: "public_channel" }, human("usr_owner"));
-    expect(Object.values(channel).filter((value) => value === true)).toEqual([]);
+    expect(channel.canChangeOwner).toBe(true);
+    expect(channel.canChangeMembers).toBe(false);
+    expect(channel.canChangeWakePolicy).toBe(false);
+    expect(channel.canRenameTitle).toBe(false);
   });
 
   it("判定值与能力表的档位同源：member 档对 Human 开，owner 档看归属", () => {

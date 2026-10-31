@@ -49,7 +49,10 @@ import {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function failure<T>(code: AppErrorCode, message: string): MachineResult<T> {
+function failure<T>(
+  code: Exclude<AppErrorCode, "project_member_removal_blocked">,
+  message: string,
+): MachineResult<T> {
   return {
     ok: false,
     error: { code, message, requestId: DEMO_REQUEST_ID },

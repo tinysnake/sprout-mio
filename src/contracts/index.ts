@@ -4,6 +4,7 @@ export * from "./project";
 export * from "./diagnostics";
 export * from "./version";
 export * from "./agent";
+export * from "./project-member-removal";
 export * from "./project-config";
 export * from "./chat";
 export * from "./task";

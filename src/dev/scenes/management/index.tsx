@@ -56,7 +56,10 @@ function demoSuccess<T>(data: T): AppResult<T> {
   return { ok: true, data, requestId: DEMO_REQUEST_ID };
 }
 
-function demoFailure<T>(code: AppErrorCode, message: string): AppResult<T> {
+function demoFailure<T>(
+  code: Exclude<AppErrorCode, "project_member_removal_blocked">,
+  message: string,
+): AppResult<T> {
   return {
     ok: false,
     error: { code, message, requestId: DEMO_REQUEST_ID },

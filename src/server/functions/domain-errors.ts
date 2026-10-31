@@ -1,4 +1,5 @@
 import { APP_ERROR_CODES } from "../../contracts/result";
+import { projectMemberRemovalBlockedErrorSchema } from "../../contracts/project-member-removal";
 import type { AppError, AppErrorCode } from "../../contracts/result";
 
 /** 领域错误按原码透出；`internal` 只留给真正的未知错误。
@@ -68,6 +69,7 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
   return [
     project.ProjectError,
     agent.AgentError,
+    agent.ProjectMemberRemovalBlockedError,
     access.ProjectAccessError,
     chat.ChatError,
     agentRun.AgentRunError,
@@ -97,6 +99,15 @@ export async function toDomainAppError(
   for (const cls of classes) {
     if (error instanceof cls) {
       const code = isDomainErrorCode(error.code) ? error.code : "conflict";
+      if (code === "project_member_removal_blocked") {
+        const parsed = projectMemberRemovalBlockedErrorSchema.safeParse({
+          code,
+          message: error.message,
+          requestId,
+          details: "details" in error ? error.details : undefined,
+        });
+        return parsed.success ? parsed.data : undefined;
+      }
       return {
         code,
         message: DOMAIN_ERROR_MESSAGES[code] ?? error.message,

@@ -161,7 +161,11 @@ const silentGroup = createGroupChat(
 // ---------------------------------------------------------------- 1. 所有者阻断：整次移除被拒，成员仍在
 const eventsBeforeOwner = removalEvents(project.id);
 const ownerRejected = codeOf(() => removeProjectMember(project.id, agentOwner.id, ctx));
-assert.equal(ownerRejected, "conflict", "所有者的项目级移除必须先换 owner 再移");
+assert.equal(
+  ownerRejected,
+  "project_member_removal_blocked",
+  "所有者的项目级移除必须先换 owner 再移",
+);
 assert.ok(projectMemberOf(project.id, agentOwner.id), "被拒的移除不能删 project_member 行");
 assert.equal(getChat(ownedGroup.id, ctx).owner.id, agentOwner.id, "被拒的移除不能改动群组所有者");
 assert.equal(
@@ -205,7 +209,11 @@ db.insert(agentRunInput)
   .run();
 const eventsBeforeBusy = removalEvents(project.id);
 const busyRejected = codeOf(() => removeProjectMember(project.id, agentBusy.id, ctx));
-assert.equal(busyRejected, "conflict", "d10：有活跃 run 时移除被拒（拒绝优先于取消）");
+assert.equal(
+  busyRejected,
+  "project_member_removal_blocked",
+  "d10：有活跃 run 时移除被拒（拒绝优先于取消）",
+);
 assert.equal(
   db.select().from(agentRun).where(eq(agentRun.id, busyRunId)).get()?.status,
   "queued",

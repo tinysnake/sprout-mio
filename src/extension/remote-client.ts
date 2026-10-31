@@ -3,7 +3,7 @@ import { request as httpsRequest } from "node:https";
 import { z } from "zod";
 import { leaseMutationViewSchema, leaseViewSchema } from "../contracts/lease";
 import { infoHubViewSchema } from "../contracts/info-hub-query";
-import { APP_ERROR_CODES } from "../contracts/result";
+import { APP_ERROR_CODES, appErrorSchema } from "../contracts/result";
 import type { AppResult } from "../contracts/result";
 import {
   mcpCatalogViewSchema,
@@ -31,11 +31,7 @@ const envelopeSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(true), data: z.unknown(), requestId: z.string() }),
   z.strictObject({
     ok: z.literal(false),
-    error: z.strictObject({
-      code: z.enum(APP_ERROR_CODES),
-      message: z.string(),
-      requestId: z.string(),
-    }),
+    error: appErrorSchema,
     requestId: z.string(),
   }),
 ]);
@@ -105,7 +101,9 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
   if (call.type.startsWith("mcp_")) return readMcpResponse(envelope.data, request);
   const input = call.input;
   const sameBinding = (data: { projectId: string; machineId: string }) =>
-    data.projectId === input.projectId && data.machineId === input.machineId;
+    data.projectId === input.projectId &&
+    "machineId" in input &&
+    data.machineId === input.machineId;
   const ok = (data: RemoteData): RemoteToolResponse => ({
     outcome: "response",
     result: { ok: true, data, requestId: envelope.data.requestId },

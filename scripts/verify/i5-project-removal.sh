@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # I-P5a 项目级移除门禁：真实 SQLite + 真实域入口（不 mock 领域层）。
 # Risk → Test
-# 移除所有者后群组悬空 owner → 该 Agent 是群 owner 时移除被拒（conflict），
+# 移除所有者后群组悬空 owner → 该 Agent 是群 owner 时移除被拒（project_member_removal_blocked），
 #   project_member、群 owner、普通群成员行与诊断事件全部不变。
 # 移除有活跃 run 的 Agent 留下无人接的输入 → 有 queued/running run 时整次移除被拒（d10 拒绝优先），
 #   run 仍 queued、pending 输入仍 pending、成员行仍在，且不写 project_member.removed 事件。

@@ -28,7 +28,11 @@ import {
 } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, readRunScope } from "./access";
 import type { ProjectContext } from "./access";
-import { getAgentProfile } from "./agent";
+import {
+  collectProjectMemberRemovalBlockers,
+  getAgentProfile,
+  ProjectMemberRemovalBlockedError,
+} from "./agent";
 import { appendHumanRunInput, appendOwnerAgentRunInput } from "./agent-run";
 import { assertChannelMemberChangeAllowed, readChatEffectiveMembers } from "./channel";
 import { assertChatCapability } from "./chat-capabilities";
@@ -870,48 +874,17 @@ export function removeGroupMember(
 }
 
 /**
- * 项目级移除的对话侧处置（设计 §4.4 的第二、三步，裁定 d20 把这个单元放在 fanout 之后）。
- * 三件事都在调用方的事务里做，顺序就是「先断言、后动手」：
- *
- * 1. **阻断**：该 Agent 仍是某个普通 Group 的所有者时整次移除被拒（`conflict`）。
- *    所有者是 `chat.owner_*` 上的治理事实，移除另一个成员不应该替人换 owner；
- *    先 `setChatOwner` 再移除是唯一不让群组悬空所有者的路径（沿用 d6 的所有权语义，
- *    没有新增「项目移除自动换 owner」这类旁路）。
- * 2. **在途**：该 Agent 在本 Project 任意对话里有 `queued`/`running` 的 run 时整次移除被拒
- *    （`conflict`、断言 d10 的「拒绝优先于取消」）。pending 输入一条都不动：一次被拒的
- *    治理请求不能留下副作用，否则「移除失败但输入已取消」在历史里无法解释。
- * 3. **清理**：过了上面两关才动手——把该 Agent 在本 Project 全部 run 的 `pending` 输入按
- *    `membership_revoked` 取消（d11：只动未下发的），再物理删除它在普通 Group 的
- *    `chat_member` 行。频道没有成员行可删（成员是 Project 成员的派生事实，裁定 d7/d8），
- *    DM 的成员行保留（d14：历史仍可读；发言资格由 `sendMessage` 的 Project 成员判定收回，d19）。
- *    每删掉一行就推进那个群的 `governance_revision`（裁定 d30）：这次变化换掉了「谁能治理这个对话」的
- *    参与者，不推进的话移除前拿到的 `expectedRevision` 会在移除后仍然生效，陈旧 CAS 仍能落地。
- *    版本推进走 `applyGovernance` 的同一个收口点，只对真正删了行的群生效。
+ * 调用方的移除事务先聚合四类责任，任一命中都抛结构化错误，清理前零写入。
+ * 全部解除后沿用 P5a：取消 pending 输入、删除普通 Group 成员并推进 governance_revision。
+ * Public Channel 参与权随 Project 成员派生；DM 成员行保留，归档由 Agent 域在同事务内处理。
  */
 export function revokeProjectAgentEnrollment(projectId: string, agentProfileId: string): void {
-  const ownerGroups = db
-    .select({ id: chat.id, title: chat.title })
-    .from(chat)
-    .where(
-      and(
-        eq(chat.projectId, projectId),
-        eq(chat.kind, "group"),
-        eq(chat.ownerKind, "agent"),
-        eq(chat.ownerId, agentProfileId),
-      ),
-    )
-    .all();
-  if (ownerGroups.length > 0) {
-    const names = ownerGroups
-      .map((row: { id: string; title: string | null }) => row.title ?? row.id)
-      .join("、");
-    throw new ChatError("conflict", `该 Agent 仍是群组「${names}」的所有者，请先变更所有者`);
-  }
+  const blockers = collectProjectMemberRemovalBlockers(projectId, agentProfileId);
+  if (blockers.length)
+    throw new ProjectMemberRemovalBlockedError({ projectId, agentProfileId, blockers });
   const instanceIds = projectInstanceIdsOf(projectId, agentProfileId);
   // 两个帮手的空集合行为一致（无 instance 就没有 run、也没有 run 输入），
   // 不能在这里提前返回：从未建过 instance 的 Agent 仍然可能有普通群的成员行要删。
-  if (activeRunOf(instanceIds))
-    throw new ChatError("conflict", "该 Agent 仍有活跃运行，不能移出 Project");
   cancelPendingRunInputs(instanceIds);
   // 只有普通 Group 有可删的成员行：频道的行由触发器与视图排除，DM 的行按 d14 保留。
   const groupIds = db
@@ -954,9 +927,11 @@ export function setChatOwner(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
-      assertGovernableGroup(current);
+      if (current.kind === "dm") throw new ChatError("forbidden", "DM 不支持变更所有者");
       const scope = chatGovernanceScope(current);
       assertChatCapability("owner_change", actor, scope);
+      if (current.kind === "public_channel" && owner.kind !== "human")
+        throw new ChatError("forbidden", "Public Channel 的新所有者必须是本 Project 的 Human");
       if (owner.kind === "agent") {
         const member = db
           .select({ memberId: chatEffectiveMember.memberId })

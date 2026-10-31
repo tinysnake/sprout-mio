@@ -7,7 +7,27 @@ import type {
 } from "../contracts/agent";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
-import { agentProfile, chat, chatMember, projectMember } from "../db/schema";
+import {
+  agentInstance,
+  agentProfile,
+  agentRun,
+  chat,
+  chatMember,
+  leaseMutation,
+  machine,
+  machineLease,
+  projectMember,
+  task,
+} from "../db/schema";
+import { projectMemberRemovalBlockersSchema } from "../contracts/project-member-removal";
+import type {
+  ProjectMemberRemovalBlocker,
+  ProjectMemberRemovalBlockers,
+  ProjectMemberRemovalLeaseRef,
+  ProjectMemberRemovalRunRef,
+  ProjectMemberRemovalOwnerRef,
+  ProjectMemberRemovalTaskRef,
+} from "../contracts/project-member-removal";
 import { assertProjectAccess } from "./access";
 import type { ProjectContext } from "./access";
 import { revokeProjectAgentEnrollment } from "./chat";
@@ -22,6 +42,171 @@ export class AgentError extends Error {
     super(message);
     this.name = "AgentError";
   }
+}
+
+export class ProjectMemberRemovalBlockedError extends Error {
+  readonly code = "project_member_removal_blocked" as const;
+  readonly details: ProjectMemberRemovalBlockers;
+  constructor(details: ProjectMemberRemovalBlockers) {
+    const hasFencing = details.blockers.some(
+      (blocker) =>
+        blocker.kind === "leases" && blocker.items.some((item) => item.state === "fencing"),
+    );
+    super(
+      `该 Agent 仍有未结责任，请先处理全部阻塞${hasFencing ? "；fencing 租约请等待确认或前往租约页处理" : ""}`,
+    );
+    this.name = "ProjectMemberRemovalBlockedError";
+    this.details = projectMemberRemovalBlockersSchema.parse(details);
+  }
+}
+
+const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+function uniqueBy<T>(items: T[], key: (item: T) => string): T[] {
+  return [...new Map(items.map((item) => [key(item), item])).values()];
+}
+
+/** Four responsibility sources share one snapshot and one stable, untruncated projection. */
+export function collectProjectMemberRemovalBlockers(
+  projectId: string,
+  agentProfileId: string,
+): ProjectMemberRemovalBlocker[] {
+  if (!sqlite.inTransaction)
+    return sqlite
+      .transaction(() => collectProjectMemberRemovalBlockers(projectId, agentProfileId))
+      .deferred();
+  const instances = db
+    .select({ id: agentInstance.id })
+    .from(agentInstance)
+    .where(
+      and(eq(agentInstance.projectId, projectId), eq(agentInstance.agentProfileId, agentProfileId)),
+    )
+    .all()
+    .map((row: { id: string }) => row.id);
+  const runs =
+    instances.length === 0
+      ? []
+      : (db
+          .select({
+            runId: agentRun.id,
+            instanceId: agentRun.instanceId,
+            status: agentRun.status,
+            chat: { chatId: chat.id, chatKind: chat.kind, title: chat.title },
+          })
+          .from(agentRun)
+          .innerJoin(chat, eq(chat.id, agentRun.chatId))
+          .where(
+            and(
+              eq(chat.projectId, projectId),
+              eq(agentRun.projectId, projectId),
+              inArray(agentRun.instanceId, instances),
+              inArray(agentRun.status, ["queued", "running"]),
+            ),
+          )
+          .all() as ProjectMemberRemovalRunRef[]);
+  const leases: ProjectMemberRemovalLeaseRef[] = [];
+  const currentLeases = db
+    .select({ lease: machineLease, machineName: machine.name })
+    .from(machineLease)
+    .innerJoin(machine, eq(machine.id, machineLease.machineId))
+    .where(
+      and(eq(machineLease.projectId, projectId), inArray(machineLease.state, ["held", "fencing"])),
+    )
+    .all() as { lease: typeof machineLease.$inferSelect; machineName: string }[];
+  const pendingMutations = db
+    .select()
+    .from(leaseMutation)
+    .where(and(eq(leaseMutation.projectId, projectId), eq(leaseMutation.state, "pending")))
+    .all() as (typeof leaseMutation.$inferSelect)[];
+  for (const { lease, machineName } of currentLeases) {
+    const pending = pendingMutations.find(
+      (mutation) =>
+        mutation.machineId === lease.machineId && mutation.expectedGeneration === lease.generation,
+    );
+    const holder = lease.holderInstanceId !== null && instances.includes(lease.holderInstanceId);
+    const target =
+      lease.state === "fencing" &&
+      pending?.action === "handoff" &&
+      pending.targetInstanceId != null &&
+      instances.includes(pending.targetInstanceId);
+    if ((!holder && !target) || lease.holderInstanceId === null) continue;
+    leases.push({
+      key: { projectId, machineId: lease.machineId },
+      machineName,
+      generation: lease.generation,
+      state: lease.state as "held" | "fencing",
+      holderInstanceId: lease.holderInstanceId,
+      pendingMutationId: lease.state === "fencing" ? (pending?.id ?? null) : null,
+      relation: holder ? "holder" : "handoff_target",
+    });
+  }
+  const owners = db
+    .select({ chat: { chatId: chat.id, chatKind: chat.kind, title: chat.title } })
+    .from(chat)
+    .where(
+      and(
+        eq(chat.projectId, projectId),
+        eq(chat.ownerKind, "agent"),
+        eq(chat.ownerId, agentProfileId),
+        inArray(chat.kind, ["group", "public_channel"]),
+      ),
+    )
+    .all() as ProjectMemberRemovalOwnerRef[];
+  const tasks = db
+    .select({
+      taskId: task.id,
+      title: task.title,
+      status: task.status,
+      chat: { chatId: chat.id, chatKind: chat.kind, title: chat.title },
+    })
+    .from(chat)
+    .innerJoin(
+      chatMember,
+      and(
+        eq(chatMember.chatId, chat.id),
+        eq(chatMember.memberKind, "agent"),
+        eq(chatMember.memberId, agentProfileId),
+      ),
+    )
+    .innerJoin(task, eq(task.chatId, chat.id))
+    .where(
+      and(
+        eq(chat.projectId, projectId),
+        eq(chat.kind, "dm"),
+        eq(task.projectId, projectId),
+        eq(task.status, "assigned"),
+      ),
+    )
+    .all() as ProjectMemberRemovalTaskRef[];
+  const blockers: ProjectMemberRemovalBlocker[] = [];
+  if (runs.length)
+    blockers.push({
+      kind: "active_runs",
+      items: uniqueBy(runs, (row) => row.runId).sort((a, b) => compareIds(a.runId, b.runId)),
+    });
+  if (leases.length)
+    blockers.push({
+      kind: "leases",
+      items: uniqueBy(leases, (row) => row.key.machineId).sort((a, b) =>
+        compareIds(a.key.machineId, b.key.machineId),
+      ),
+    });
+  if (owners.length)
+    blockers.push({
+      kind: "owner_duties",
+      items: uniqueBy(owners, (row) => row.chat.chatId).sort((a, b) =>
+        compareIds(a.chat.chatId, b.chat.chatId),
+      ),
+    });
+  if (tasks.length)
+    blockers.push({
+      kind: "dm_assigned_tasks",
+      items: uniqueBy(tasks, (row) => row.taskId).sort(
+        (a, b) => compareIds(a.chat.chatId, b.chat.chatId) || compareIds(a.taskId, b.taskId),
+      ),
+    });
+  return blockers.length
+    ? projectMemberRemovalBlockersSchema.parse({ projectId, agentProfileId, blockers }).blockers
+    : [];
 }
 
 function toAgentProfile(row: typeof agentProfile.$inferSelect): AgentProfile {
@@ -188,8 +373,7 @@ export function removeProjectMember(
           ),
         )
         .get();
-      // 幂等：已经不在 Project 的 Agent 再调一次是无副作用的成功——不写诊断事件、不碰对话。
-      // 真正不存在的 profile 仍由上面的 getAgentProfile 给 `not_found`，拼错的 id 不会被静默吞掉。
+      // This is an idempotent no-op: concurrent retries cannot repeat cleanup or diagnostics.
       if (!row) return;
       writeIdentity(
         ctx,

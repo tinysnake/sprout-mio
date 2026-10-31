@@ -1,3 +1,5 @@
+import { projectMemberRemovalBlockedErrorSchema } from "./project-member-removal";
+import type { ProjectMemberRemovalBlockedError } from "./project-member-removal";
 import { z } from "zod";
 
 /** 错误码为封闭集合，业务错误不能临时增加字符串。 */
@@ -37,6 +39,7 @@ export const APP_ERROR_CODES = [
   "channel_membership_managed",
   "automation_disabled",
   "wake_provider_unavailable",
+  "project_member_removal_blocked",
   "continuation_delivery_unknown",
   "info_hub_cursor_stale",
   "turn_context_unavailable",
@@ -44,11 +47,13 @@ export const APP_ERROR_CODES = [
 /** 只允许登记的错误码，不接受未知字符串。 */
 export type AppErrorCode = (typeof APP_ERROR_CODES)[number];
 /** 每个失败都有错误码、安全消息和 requestId。 */
-export interface AppError {
-  code: AppErrorCode;
-  message: string;
-  requestId: string;
-}
+export type AppError =
+  | ProjectMemberRemovalBlockedError
+  | {
+      code: Exclude<AppErrorCode, "project_member_removal_blocked">;
+      message: string;
+      requestId: string;
+    };
 /** 成功必有 data，失败必有 error，两个分支不能同时出现。 */
 export type AppResult<T> =
   | { ok: true; data: T; requestId: string; error?: never }
@@ -62,13 +67,26 @@ export function fail(error: AppError): AppResult<never> {
   return { ok: false, error, requestId: error.requestId };
 }
 
-const appErrorSchema = z.object({ code: z.enum(APP_ERROR_CODES), message: z.string() });
+export const appErrorSchema = z.discriminatedUnion("code", [
+  projectMemberRemovalBlockedErrorSchema.strict(),
+  z.strictObject({
+    code: z.enum(APP_ERROR_CODES).exclude(["project_member_removal_blocked"]),
+    message: z.string(),
+    requestId: z.string(),
+  }),
+]);
 
 export function toAppError(error: unknown, requestId: string): AppError {
   if (error instanceof z.ZodError) {
     return { code: "validation_failed", message: "输入校验失败", requestId };
   }
-  const parsed = appErrorSchema.safeParse(error);
+  const candidate = error as { code?: unknown; message?: unknown; details?: unknown } | null;
+  const parsed = appErrorSchema.safeParse({
+    code: candidate?.code,
+    message: candidate?.message,
+    requestId,
+    ...(candidate?.code === "project_member_removal_blocked" ? { details: candidate.details } : {}),
+  });
   if (parsed.success && parsed.data.code !== "internal") {
     return { ...parsed.data, requestId };
   }

@@ -10,6 +10,7 @@ import {
 } from "../../contracts/agent";
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
 import { projectIdInput } from "../../contracts/project";
+import { projectMemberRemovalBlockedErrorSchema } from "../../contracts/project-member-removal";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
 import type { DiagnosticInput } from "../diagnostics";
@@ -36,6 +37,8 @@ async function failure(
   recordDiagnostic: DiagnosticRecorder | undefined,
 ): Promise<AgentResult<never>> {
   const mapped = await toDomainAppError(error, requestId);
+  if (mapped?.code === "project_member_removal_blocked")
+    return fail(projectMemberRemovalBlockedErrorSchema.parse(mapped));
   if (mapped) return fail(mapped);
   console.error("[agent] 请求失败", { requestId, error });
   recordDiagnostic?.({
