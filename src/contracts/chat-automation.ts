@@ -49,6 +49,8 @@ export const continuationCancelReasonSchema = z.enum([
   "membership_revoked",
   "task_context_changed",
   "chat_archived",
+  // 预留值：当前代码不写它。改 Project 判定器策略时，未 admit 的投递实际由
+  // task_context_changed / 数据库触发器处理；将来真把它接上时必须同时补门禁。
   "policy_changed",
 ]);
 export type ContinuationCancelReason = z.infer<typeof continuationCancelReasonSchema>;
