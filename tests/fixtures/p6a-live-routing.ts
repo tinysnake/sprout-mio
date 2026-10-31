@@ -16,16 +16,35 @@ import { loadWakeCases } from "./p6a/cases";
 
 const directory = resolve(process.env.SPROUT_VERIFY_DIR ?? ".verify/p6a-live-routing");
 mkdirSync(directory, { recursive: true });
-const model = process.env.SPROUT_VERIFY_PI_MODEL;
+const model = process.env.SPROUT_VERIFY_PI_MODEL?.trim() || undefined;
 const now = new Date();
 const threshold = { version: "p6a-design-default-v1", yes: 0.8, no: 0.2 };
 const clock = () => performance.now();
+const calls = { small_brain: 0, jev: 0 };
+let jevPaidResponseReceived = false;
 const judges = {
   small_brain: createSmallBrainJudge({
     agentDir: process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
     clock,
   }),
-  jev: createJevJudge({ apiKey: process.env.JEV_API_KEY, threshold, clock }),
+  jev: createJevJudge({
+    apiKey: process.env.JEV_API_KEY,
+    threshold,
+    clock,
+    fetch: async (...args) => {
+      calls.jev++;
+      const response = await fetch(...args);
+      // Observe transport independently of evaluateWake's validated receipt.
+      if (response.ok) {
+        const data = await response
+          .clone()
+          .json()
+          .catch(() => null);
+        jevPaidResponseReceived = typeof data?.usage?.input_tokens === "number";
+      }
+      return response;
+    },
+  }),
 };
 const counts = () =>
   Object.fromEntries(
@@ -45,6 +64,13 @@ const summaries: {
   exitCode: number;
   errorCode: string | null;
   durationMs: number;
+  matched: boolean;
+  multi: boolean;
+  under: boolean;
+  wrong: boolean;
+  contractFailures: string[];
+  requestCount: number;
+  paidResponseReceived: boolean;
 }[] = [];
 for (const provider of ["small_brain", "jev"] as const) {
   for (const fixture of loadWakeCases().filter((item) => item.input)) {
@@ -61,6 +87,9 @@ for (const provider of ["small_brain", "jev"] as const) {
     const start = clock();
     // Direct adapter evaluation also measures explicit rule sample w22; this does not dispatch it.
     let attempted = true;
+    let paidResponseReceived = false;
+    jevPaidResponseReceived = false;
+    const callsBefore = calls[provider];
     let receipt: WakeReceipt;
     if (provider === "small_brain" && !model) {
       attempted = false;
@@ -82,17 +111,56 @@ for (const provider of ["small_brain", "jev"] as const) {
       const unselected: WakeJudge = async () => {
         throw new Error("provider fallback forbidden");
       };
+      const selectedJudge: WakeJudge = async (value) => {
+        if (provider === "small_brain") calls.small_brain++;
+        const raw = await judges[provider](value);
+        // Pi completion usage is the host runner's evidence of a paid response;
+        // JEV additionally has the independently observed HTTP usage above.
+        paidResponseReceived =
+          provider === "jev" ? jevPaidResponseReceived : raw.usage.inputTokens !== null;
+        return raw;
+      };
       receipt = await evaluateWake(input, {
-        small_brain: provider === "small_brain" ? judges.small_brain : unselected,
-        jev: provider === "jev" ? judges.jev : unselected,
+        small_brain: provider === "small_brain" ? selectedJudge : unselected,
+        jev: provider === "jev" ? selectedJudge : unselected,
       });
     }
     const selected = receipt.result.selectedRecipients.map(recipientKey).sort();
     const expected = [...fixture.expected.selected].sort();
     const sideEffects = counts();
     const matched = JSON.stringify(selected) === JSON.stringify(expected);
-    const sideEffectsZero = Object.values(sideEffects).every((count) => count === 0);
-    const exitCode = receipt.result.errorCode === null && matched && sideEffectsZero ? 0 : 1;
+    // Accuracy is measured across the batch: missing an intended recipient is
+    // allowed above the floor. Extra recipients are always unsafe (wrong person),
+    // including pure over-wakes; multi and under may overlap on a substitution.
+    const extra = selected.filter((key) => !expected.includes(key));
+    const missing = expected.filter((key) => !selected.includes(key));
+    const multi = extra.length > 0;
+    const under = missing.length > 0;
+    const wrong = extra.length > 0;
+    const requestCount = calls[provider] - callsBefore;
+    const recordedModel = provider === "jev" ? receipt.usage.resolvedModel : receipt.result.model;
+    // Transport/contract failures cannot be hidden by matching an empty set or
+    // by another sample's success. Low certainty is a valid measured decision.
+    const checks = {
+      receiptExists: !!receipt.result && !!receipt.usage,
+      paidResponseConsistent: paidResponseReceived === (receipt.usage.inputTokens !== null),
+      paidResponseReceived,
+      singleCall: requestCount === 1,
+      modelEvidence:
+        provider === "jev"
+          ? /^jev-\d+\.\d+\.\d+$/.test(recordedModel ?? "")
+          : recordedModel === policy.model &&
+            receipt.usage.inputTokens !== null &&
+            receipt.usage.outputTokens !== null,
+      sideEffectsZero: Object.values(sideEffects).every((count) => count === 0),
+      snapshotHashMatches: receipt.result.snapshotHash === input.snapshotHash,
+      validResult:
+        receipt.result.errorCode === null || receipt.result.errorCode === "provider_low_certainty",
+    };
+    const contractFailures = Object.entries(checks)
+      .filter(([, passed]) => !passed)
+      .map(([key]) => key);
+    const exitCode = wrong || contractFailures.length ? 1 : 0;
     const record = {
       mode: "live",
       provider,
@@ -101,7 +169,14 @@ for (const provider of ["small_brain", "jev"] as const) {
       source: fixture.source,
       evaluatedAt: now.toISOString(),
       requestAttempted: attempted,
-      paidResponseReceived: receipt.usage.inputTokens !== null,
+      requestCount,
+      paidResponseReceived,
+      recordedModel,
+      checks,
+      contractFailures,
+      multi,
+      under,
+      wrong,
       inputUsage: receipt.usage,
       runnerDurationMs: clock() - start,
       threshold:
@@ -121,21 +196,54 @@ for (const provider of ["small_brain", "jev"] as const) {
     );
     summaries.push({
       provider,
-      model: policy.model,
+      model: recordedModel ?? policy.model,
       sample: fixture.id,
       exitCode,
+      matched,
+      multi,
+      under,
+      wrong,
+      contractFailures,
+      requestCount,
+      paidResponseReceived,
       errorCode: receipt.result.errorCode,
       durationMs: receipt.usage.durationMs,
     });
     console.log(
-      `${exitCode ? "FAIL" : "PASS"} live ${provider}/${fixture.id}: ${receipt.result.decision}, selected=${selected.join(",") || "none"}, tokens=${receipt.usage.inputTokens ?? "unavailable"}, ms=${receipt.usage.durationMs.toFixed(0)}, reason=${receipt.result.reason}, receipt=${join(directory, `${provider}-${fixture.id}.json`)}`,
+      `${exitCode ? "FAIL" : "PASS"} live ${provider}/${fixture.id}: ${receipt.result.decision}, selected=${selected.join(",") || "none"}, model=${recordedModel ?? "unavailable"}, matched=${matched}, multi=${multi}, under=${under}, wrong=${wrong}, calls=${requestCount}, paid=${paidResponseReceived}, contract=${contractFailures.join(",") || "ok"}, tokens=${receipt.usage.inputTokens ?? "unavailable"}, ms=${receipt.usage.durationMs.toFixed(0)}, reason=${receipt.result.reason}, receipt=${join(directory, `${provider}-${fixture.id}.json`)}`,
     );
   }
 }
-const exitCode = summaries.some((row) => row.exitCode) ? 1 : 0;
+// A fixed low floor detects catastrophic regression without per-sample accuracy
+// assertions. Apply it independently so one provider cannot mask the other.
+const floor = 4;
+const accuracy = (["small_brain", "jev"] as const).map((provider) => {
+  const rows = summaries.filter((row) => row.provider === provider);
+  const count = (key: "matched" | "multi" | "under" | "wrong") =>
+    rows.filter((row) => row[key]).length;
+  const result = {
+    provider,
+    models: [...new Set(rows.map((row) => row.model))],
+    total: rows.length,
+    matched: count("matched"),
+    multi: count("multi"),
+    under: count("under"),
+    wrong: count("wrong"),
+    contractFailures: rows.filter((row) => row.contractFailures.length).length,
+    floor,
+    calls: calls[provider],
+    paidResponses: rows.filter((row) => row.paidResponseReceived).length,
+  };
+  console.log(
+    `${result.matched >= floor ? "PASS" : "FAIL"} live accuracy: ${result.matched}/${result.total} matched (multi=${result.multi}, under=${result.under}, wrong=${result.wrong}), floor ${floor}/${result.total}; provider=${provider}, model=${result.models.join(",")}, calls=${result.calls}, paid=${result.paidResponses}, contractFailures=${result.contractFailures}`,
+  );
+  return result;
+});
+const exitCode =
+  summaries.some((row) => row.exitCode) || accuracy.some((row) => row.matched < floor) ? 1 : 0;
 writeFileSync(
   join(directory, "summary.json"),
-  JSON.stringify({ mode: "live", exitCode, samples: summaries }, null, 2) + "\n",
+  JSON.stringify({ mode: "live", exitCode, accuracy, samples: summaries }, null, 2) + "\n",
 );
 console.log(`Live gate exit ${exitCode}; receipts ${directory}; no fixture transport used`);
 sqlite.close();

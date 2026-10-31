@@ -17,7 +17,7 @@ export JEV_API_KEY="${JEV_API_KEY:-}"
 # The JEV service answers HTTP 451 "not available in your region" on this host's
 # direct egress and 200 through the operator's proxy, so the gate lets Node's fetch
 # honour the proxy environment the rest of this checkout already uses.
-if [ -n "${https_proxy:-}${HTTPS_PROXY:-}${all_proxy:-}${ALL_PROXY:-}" ]; then
+if [ -n "${http_proxy:-}${HTTP_PROXY:-}${https_proxy:-}${HTTPS_PROXY:-}${all_proxy:-}${ALL_PROXY:-}" ]; then
   export NODE_USE_ENV_PROXY=1
 fi
 export SPROUT_VERIFY_DIR="${SPROUT_VERIFY_DIR:-.verify/p6a-live-routing/$(date -u +%Y%m%dT%H%M%SZ)}"
