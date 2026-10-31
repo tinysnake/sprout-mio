@@ -1,5 +1,6 @@
 import { HeadContent, Link, Scripts, createRootRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { RouteReadError } from "../components/layout/route-error";
 import { PwaRegistration } from "../components/layout/connectivity-status";
 import { APP_VERSION } from "../contracts/version";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
@@ -24,6 +25,7 @@ export const Route = createRootRoute({
     // 首屏样式前应用已保存的主题，避免浅色闪一下再变暗。
     scripts: [{ children: THEME_INIT_SCRIPT }],
   }),
+  errorComponent: RouteReadError,
   notFoundComponent: () => (
     <main className="mx-auto max-w-xl px-6 py-16">
       <h1 className="text-2xl font-semibold">页面不存在</h1>

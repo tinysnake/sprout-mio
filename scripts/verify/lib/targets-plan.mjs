@@ -61,6 +61,9 @@ export const CI_GROUPS = Object.freeze({
     "q-info-hub-runs",
   ],
   browser: [
+    "p7-client-navigation",
+    "p7-client-pwa",
+    "p7-client-states",
     "c-data-auth",
     "ad-execution-log-ui",
     "ag-execution-wiring-ui",

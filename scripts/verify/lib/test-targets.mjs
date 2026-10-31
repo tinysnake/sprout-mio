@@ -80,6 +80,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/verify-ah-groups.test.ts",
     "tests/verify-model-fixture.test.ts",
     "tests/verify-spend.test.ts",
+    "tests/verify-p7-client.test.ts",
     "tests/verify-preparation.test.ts",
     "tests/verify-runner.test.ts",
     "tests/verify-sandbox.test.ts",
