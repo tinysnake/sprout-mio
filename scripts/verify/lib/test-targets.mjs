@@ -49,6 +49,8 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/p4d-removal.test.ts",
     "tests/p6a-contracts.test.ts",
     "tests/task-automation-view.test.ts",
+    "tests/p6b-contracts.test.ts",
+    "tests/p6b-polling.test.ts",
     "tests/mcp-worker.test.ts",
     "tests/migration-rebuild.test.ts",
     "tests/pi-host-clock.test.ts",
