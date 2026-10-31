@@ -28,7 +28,10 @@ describe("工具链接口门禁", () => {
   });
 
   it("错误码映射保持封闭，未知码与旧 requestId 都不会透传", () => {
-    for (const code of APP_ERROR_CODES) {
+    // project_member_removal_blocked 必须带 details，裸载荷会被降级成 internal，因此单独在契约测试里覆盖。
+    for (const code of APP_ERROR_CODES.filter(
+      (code) => code !== "project_member_removal_blocked",
+    )) {
       expect(toAppError({ code, message: "诊断提示", requestId: "req_stale" }, "req_now")).toEqual({
         code,
         message: code === "internal" ? "内部错误" : "诊断提示",

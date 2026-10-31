@@ -131,12 +131,15 @@ describe("治理段文案读 facts，不再自己判身份", () => {
   });
 
   it("公共频道与 DM 的文案各按 kind 收口", () => {
+    // P6c 起公共频道可以变更负责人，文案随 canChangeOwner 分叉，不再是「固定为 Project 创建者」。
+    const factsChangeOwner =
+      "可将频道负责人变更为 Project 的 Human 创建者；成员跟随 Project 自动同步。";
     expect(
       governanceNote(
         "public_channel",
         factsFor({ ...group, kind: "public_channel" }, human("usr_owner")),
       ),
-    ).toBe("公共频道 Owner 固定为 Project 创建者，成员跟随 Project 自动同步。");
+    ).toBe(factsChangeOwner);
     expect(governanceNote("dm", factsFor({ ...group, kind: "dm" }, human("usr_owner")))).toBe("");
   });
 });

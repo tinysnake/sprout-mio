@@ -50,7 +50,9 @@ describe("共享契约", () => {
   });
 
   it("保留已知业务错误，使用当前 requestId，隐藏未知错误内容", () => {
-    for (const code of APP_ERROR_CODES.filter((code) => code !== "internal")) {
+    for (const code of APP_ERROR_CODES.filter(
+      (code) => code !== "internal" && code !== "project_member_removal_blocked",
+    )) {
       expect(
         toAppError(
           { code, message: "业务提示", requestId: "req_old", secret: "private" },
@@ -70,6 +72,50 @@ describe("共享契约", () => {
         requestId: "req_current",
       });
     }
+  });
+
+  it("阻塞类业务错误必须带 details，缺 details 时降级为内部错误", () => {
+    const details = {
+      projectId: "prj_11111111-1111-4111-8111-111111111111",
+      agentProfileId: "agp_22222222-2222-4222-8222-222222222222",
+      blockers: [
+        {
+          kind: "active_runs" as const,
+          items: [
+            {
+              runId: "run_33333333-3333-4333-8333-333333333333",
+              instanceId: "ins_44444444-4444-4444-8444-444444444444",
+              status: "running" as const,
+              chat: {
+                chatId: "cnv_55555555-5555-4555-8555-555555555555",
+                chatKind: "group" as const,
+                title: "平台组",
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      toAppError(
+        {
+          code: "project_member_removal_blocked",
+          message: "有阻塞",
+          requestId: "req_old",
+          details,
+        },
+        "req_current",
+      ),
+    ).toEqual({
+      code: "project_member_removal_blocked",
+      message: "有阻塞",
+      requestId: "req_current",
+      details,
+    });
+    // 缺 details 的同类载荷不能被当成同一种错误透传，否则消费方会读到 undefined 的阻塞列表。
+    expect(
+      toAppError({ code: "project_member_removal_blocked", message: "有阻塞" }, "req_current"),
+    ).toEqual({ code: "internal", message: "内部错误", requestId: "req_current" });
   });
 
   it("拒绝空白与超长输入，接受限制内文本并修剪名称", () => {
