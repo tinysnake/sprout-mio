@@ -1,6 +1,6 @@
 # I-P6a 章节集成验证
 
-当前状态：**七个不变量与第 1、3、4 条破坏验证通过；三次连续绿色待完成**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
+当前状态：**七个不变量、三组破坏验证、三次连续完整运行均通过；既有门禁与最终检查待登记**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
 
 开工基点为 `d565ab80b9057fd3609b5381519ac0e569da2aa5`。首批三个文件先提交为 `cf5ea73`，再按协调者要求 rebase 到修复 `b837f820b0dc901262a0e50efe8663b5a7d43376`，首批提交变为 `3f33f54`。冻结设计从主 checkout 的 `orchestrate/sprout-mio-p6/reports/p6a-design.md` 读取，未复制进本单元。
 
@@ -82,7 +82,19 @@ python3 .verify/p6a-lifecycle/mutations/reproduce.py
 
 ## 新门禁与既有门禁
 
-连续三次绿色运行与 brief 指定的 13 个既有门禁结果待后续提交登记。定向 stale 复验不替代无筛选的新门禁。
+在无未提交改动的 `46a4fc11ba5ff30de8c87a9a22c4a8afa45b0912` 上，连续执行三次无筛选门禁，全部 exit 0。三次 fixture 字节完全相同，SHA-256 与破坏验证记录一致。
+
+| 轮次 | exit code | 断言数                        | fixture 耗时   | 脚本进程总耗时 |
+| ---- | --------- | ----------------------------- | -------------- | -------------- |
+| 1    | 0         | 177（主进程 151 + 子进程 26） | 4689.096083 ms | 4926.263125 ms |
+| 2    | 0         | 177（主进程 151 + 子进程 26） | 4571.445125 ms | 4779.091667 ms |
+| 3    | 0         | 177（主进程 151 + 子进程 26） | 4590.090000 ms | 4775.725625 ms |
+
+三次执行的 JSONL、真实 SQLite 路径、基点、退出码、来源哈希和脚本输出汇总在 `.verify/p6a-lifecycle/consecutive/results.json`。每轮另存 `round-N-base-commit`、`round-N-source-sha256.txt`、`round-N-exit-code`、`round-N-changes.patch`；三轮 patch 均为空。
+
+三轮均通过整条生命周期、并发与预算场景，并各自真实 SIGKILL 一次、启动两个恢复进程。脚本最终输出 `PASS p6a-lifecycle: 177 assertions; real SQLite <path>`。最终根目录 `exit-code` 为 0，来源哈希复核 exit 0。登记名 `bf-p6a-lifecycle` 由协调者统一登记，不另建重复脚本。
+
+brief 指定的 13 个既有门禁结果待下一步登记。定向 stale 复验没有计入这里的三次完整绿色运行。
 
 依赖已执行 `pnpm install --prefer-offline`，exit 0。当前 TypeScript、lint、格式检查与最终源码证据将在验收结束时统一记录。
 
