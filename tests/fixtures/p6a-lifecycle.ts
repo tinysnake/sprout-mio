@@ -289,7 +289,7 @@ function installWriteAudit() {
     "CREATE TEMP TRIGGER lifecycle_task_status_changed AFTER UPDATE OF status ON main.task WHEN OLD.status<>NEW.status BEGIN INSERT INTO lifecycle_task_status VALUES(lifecycle_actor(),NEW.id,OLD.status,NEW.status); END",
   );
 }
-function assertWriteAudit() {
+function assertWriteAudit(expectEvaluation = true) {
   const writes = schedule.all<{ actor: string; table_name: string; operation: string; n: number }>(
     "SELECT actor,table_name,operation,count(*) AS n FROM lifecycle_mutations GROUP BY actor,table_name,operation ORDER BY actor,table_name,operation",
   );
@@ -323,10 +323,11 @@ function assertWriteAudit() {
     "diagnostic_event",
   ]);
   const automated = writes.filter((item) => item.actor === "automation");
-  ok(
-    automated.some((item) => item.table_name === "wake_evaluation"),
-    "TEMP audit observes actual automated evaluation writes",
-  );
+  if (expectEvaluation)
+    ok(
+      automated.some((item) => item.table_name === "wake_evaluation"),
+      "TEMP audit observes actual automated evaluation writes",
+    );
   equal(
     automated.filter((item) => !allowed.has(item.table_name)),
     [],
@@ -663,7 +664,7 @@ try {
       }
     }
     if (!scenario || scenario === "stale") {
-      for (const change of ["pause", "stop", "reassign"] as const) {
+      for (const change of ["pause", "stop", "reassign", "resume"] as const) {
         const owner = seed(`stale-${change}`);
         const chat = group(owner, `在途 ${change}`);
         const target = group(owner, "改派目标");
@@ -685,7 +686,10 @@ try {
               ctx,
             ),
           );
-        else control(owner.project.id, chat.id, change);
+        else {
+          if (change === "resume") control(owner.project.id, chat.id, "pause");
+          control(owner.project.id, chat.id, change);
+        }
         held.release();
         held = undefined;
         await scheduler.settled();
@@ -705,10 +709,32 @@ try {
         equal(count("agent_run", chat.id), 0, `${change} creates zero runs`);
         equal(runInputCount(chat.id), 0, `${change} creates zero run inputs`);
         equal(count("message", chat.id), messages, `${change} creates zero stale messages`);
-        equal(row(chat.id), undefined, `${change} immediately removes automatic schedule`);
+        if (change === "resume")
+          ok(row(chat.id), "explicit in-flight resume preserves a new executable schedule");
+        else equal(row(chat.id), undefined, `${change} immediately removes automatic schedule`);
         await scheduler.advance();
         equal(count("wake_evaluation", chat.id), 1, `${change} cannot revive the old evaluation`);
         equal(latest(chat.id).state, "stale", `${change} leaves a visible stale result`);
+        if (change !== "reassign")
+          equal(
+            schedule.controlFor(chat.id).epoch,
+            evaluation.control_epoch + (change === "resume" ? 2 : 1),
+            `${change} immediately advances the Human control epoch`,
+          );
+        if (change === "resume") {
+          await due(chat.id);
+          equal(
+            latest(chat.id).state,
+            "decided",
+            "explicit Human resumption permits a fresh result after fencing the in-flight one",
+          );
+          equal(
+            count("continuation_delivery", chat.id),
+            1,
+            "in-flight resumption creates only the fresh continuation",
+          );
+          control(owner.project.id, chat.id, "pause");
+        }
         if (change === "reassign") control(owner.project.id, target.id, "pause");
       }
     }
@@ -739,6 +765,19 @@ try {
         tasks.length,
         "all assigned Tasks survive budget rejection",
       );
+      equal(
+        row(chat.id)!.next_due_at,
+        null,
+        "oversized snapshot is visibly fenced until facts change or Human retries",
+      );
+      equal(
+        schedule
+          .assignedTasks(chat.id)
+          .map((item) => item.id)
+          .sort(),
+        tasks.map((item) => item.task.id).sort(),
+        "budget rejection preserves every assigned Task without truncation",
+      );
       for (const detail of tasks.slice(1))
         human(() =>
           task.unassignTask(
@@ -756,6 +795,11 @@ try {
         count("continuation_delivery", chat.id),
         1,
         "budget failure does not poison later scheduling",
+      );
+      equal(
+        (JSON.parse(retried.input!) as WakeEvaluationInput).tasks.map((item) => item.id),
+        [tasks[0].task.id],
+        "retry snapshot contains the complete remaining Task set",
       );
       equal(
         latest(chat.id).round,
@@ -845,7 +889,7 @@ try {
         "second fresh runtime proves no duplicate admission",
       );
     }
-    if (mode === "main") assertWriteAudit();
+    if (mode === "main") assertWriteAudit(scenario !== "recovery");
   }
   log("result", {
     status: "passed",
@@ -855,9 +899,6 @@ try {
     durationMs: performance.now() - startedAt,
     database: process.env.DATABASE_URL,
   });
-  console.log(
-    `PASS p6a-lifecycle: ${assertions + childAssertions} assertions; real SQLite ${process.env.DATABASE_URL}`,
-  );
 } catch (error) {
   log("result", {
     status: "failed",
@@ -878,3 +919,6 @@ try {
     http.close((error) => (error ? reject(error) : done())),
   );
 }
+console.log(
+  `PASS p6a-lifecycle: ${assertions + childAssertions} assertions; real SQLite ${process.env.DATABASE_URL}`,
+);

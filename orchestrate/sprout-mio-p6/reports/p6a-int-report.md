@@ -1,6 +1,6 @@
 # I-P6a 章节集成验证
 
-当前状态：**协调者修复已复验，后续验收进行中**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
+当前状态：**协调者修复已复验，七个不变量完整运行通过；破坏验证与三次连续绿色待完成**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
 
 开工基点为 `d565ab80b9057fd3609b5381519ac0e569da2aa5`。首批三个文件先提交为 `cf5ea73`，再按协调者要求 rebase 到修复 `b837f820b0dc901262a0e50efe8663b5a7d43376`，首批提交变为 `3f33f54`。冻结设计从主 checkout 的 `orchestrate/sprout-mio-p6/reports/p6a-design.md` 读取，未复制进本单元。
 
@@ -41,7 +41,11 @@ P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh
 
 夹具启动生产 `startRuntime()`、真实 SQLite 和生产 scheduler。只替换 `complete` 与 `fetch` 模型边界。owner 经真实 `PiSessionProcess`、`executeRun`、remote grant、HTTP gateway 使用 Task 命令，不联网调用真实模型。
 
-当前夹具已经加入下列断言，完整范围与最终结果将在后续小步提交记录：
+当前完整运行在 `b54f338` 加夹具变更上通过：**exit 0、177 条断言**，其中主进程 151 条、SIGKILL 与两次重启子进程合计 26 条。fixture 耗时 4759.802542 ms，整个脚本进程耗时 5022.008292 ms。每轮证据位于 `.verify/p6a-lifecycle/step2/`，主 JSONL 为 `.verify/p6a-lifecycle/run/1793425387702-8d2d140d-cf0f-44d4-95f5-f09b83a76a0f-main.jsonl`。
+
+主进程的 Task 命令用 Human 或 owner 来源标记，除此之外的整个观测区间默认标记为 automation。Human 同步命令结束后，后续 scheduler microtask 仍进入 automation 计数；执行 owner 的真实 run 与授权 HTTP 时使用 owner 标记。审计从 Project 创建前持续到生命周期及并发、预算场景结束。
+
+下列断言均已在同一次无筛选运行中通过：
 
 | 范围                | 断言                                                                                                                                                                                                                    |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -50,7 +54,7 @@ P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh
 | 2：不跨 Chat 泄漏   | 两 Project 四 Chat 同时在途；成员、Task 与真实消息正文包含各 Project 私有 canary；候选和 delivery 只属于本 Chat                                                                                                         |
 | 3：stale 不投递     | 在途 pause、stop、reassign 后 stale、零 delivery、零 run input、零消息                                                                                                                                                  |
 | 4：重启恢复         | 提交后 observer 真实 SIGKILL；两个独立进程重启 runtime；检查原 receipt、delivery identity、next due 与 host 输入次数                                                                                                    |
-| 5：Human 优先       | 立即控制、停止后新 assigned 不复活、显式恢复可再到期；在途 Human 变更废止旧判定                                                                                                                                         |
+| 5：Human 优先       | 立即控制、停止后新 assigned 不复活、显式恢复可再到期；在途先暂停再恢复使 epoch 前进两次，旧判定 stale，只有新判定产生 delivery                                                                                          |
 | 6：不越权           | 整条主生命周期使用 TEMP trigger 记录所有 main table 的 INSERT、UPDATE、DELETE；记录 Human、owner、automation 来源与 Task 状态变化                                                                                       |
 | 7：预算             | 65 个完整 assigned Task 超 24000 字符，确定性拒绝且不调用模型、不投递；Human 减少 assigned Task 后下一轮正常恢复                                                                                                        |
 
@@ -69,3 +73,5 @@ TEMP 审计把身份、run input、run 关联、diagnostic 和 schedule、evalua
 `.verify/p6a-lifecycle/` 保存 `base-commit`、`source-sha256.txt`、`exit-code`、`run/*.jsonl`、每轮 SQLite、生成的确定性 owner runner 与 host-inputs JSONL。fixture 计时从初始化到 result 写入，不含最后的 shutdown；shell 进程总耗时另行记录，不把工具等待计入 runner 耗时。
 
 首轮调试曾将 Project API 省略的 `wakePolicy` 字段误写为期望 NULL。已改为 API 字段 undefined、SQLite override NULL 的两个断言，该早期夹具错误不记作产品缺陷。首轮产品失败前通过的 71 条断言也不记作完整绿色验收。
+
+第 2 步补充 resume 竞态时曾直接对 enabled control 调用 resume，领域契约正确拒绝“自动接续已开启”。夹具已改为在旧请求仍在途时先 pause 再 resume。该次夹具错误保留在 `.verify/p6a-lifecycle/step2-initial/`，不记作产品缺陷，也不计入后续连续绿色运行。
