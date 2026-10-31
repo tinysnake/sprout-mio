@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
-import { db } from "../db";
+import { db, sqlite } from "../db";
 import { diagnosticEvent, project } from "../db/schema";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import type { DiagnosticEvent } from "../contracts/diagnostics";
@@ -31,6 +31,37 @@ export function recordDiagnostic(input: DiagnosticInput): boolean {
     });
     return false;
   }
+}
+
+/** Management reads existing durable facts; all queue counts follow project ownership. */
+export function queryManagementSummary(actorId: string) {
+  const migration = sqlite
+    .prepare(
+      "SELECT id, hash, created_at AS journalTimestamp FROM __drizzle_migrations ORDER BY id DESC LIMIT 1",
+    )
+    .get() as { id: number; hash: string; journalTimestamp: number } | undefined;
+  const notices = sqlite
+    .prepare(
+      "SELECT count(*) AS pending FROM run_resource_notice n JOIN project p ON p.id=n.project_id WHERE p.created_by=? AND n.delivered_at IS NULL",
+    )
+    .get(actorId) as { pending: number };
+  const continuations = sqlite
+    .prepare(
+      "SELECT count(*) AS pending FROM continuation_delivery d JOIN project p ON p.id=d.project_id WHERE p.created_by=? AND d.state IN ('pending','bound')",
+    )
+    .get(actorId) as { pending: number };
+  const frames = sqlite
+    .prepare(
+      "SELECT f.state, count(*) AS count, coalesce(sum(f.payload_bytes),0) AS bytes FROM mcp_frame f JOIN project p ON p.id=f.project_id WHERE p.created_by=? AND f.state IN ('queued','sent','unknown') GROUP BY f.state",
+    )
+    .all(actorId) as { state: string; count: number; bytes: number }[];
+  return {
+    asOf: new Date().toISOString(),
+    migration: migration ?? null,
+    pendingResourceNotices: notices.pending,
+    pendingContinuations: continuations.pending,
+    mcpFrames: frames,
+  };
 }
 
 export function queryDiagnostics(filter: DiagnosticFilter): DiagnosticEvent[] {

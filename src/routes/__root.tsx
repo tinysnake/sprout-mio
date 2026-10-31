@@ -1,5 +1,6 @@
 import { HeadContent, Link, Scripts, createRootRoute } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { PwaRegistration } from "../components/layout/connectivity-status";
 import { APP_VERSION } from "../contracts/version";
 import { THEME_INIT_SCRIPT } from "../lib/theme";
 import appCss from "../styles.css?url";
@@ -12,9 +13,14 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Sprout Mio" },
       { name: "application-name", content: "sprout-mio" },
+      { name: "theme-color", content: "#22483f" },
       { name: "application-version", content: APP_VERSION },
     ],
-    links: [{ rel: "stylesheet", href: appCss }],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icons/icon-192.png" },
+    ],
     // 首屏样式前应用已保存的主题，避免浅色闪一下再变暗。
     scripts: [{ children: THEME_INIT_SCRIPT }],
   }),
@@ -36,6 +42,7 @@ function RootDocument({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        <PwaRegistration />
         {children}
         <Scripts />
       </body>

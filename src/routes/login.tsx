@@ -10,7 +10,9 @@ import { getDevLoginStatus } from "../server/dev-login";
 import { authenticate, getSessionInfo } from "../server/session";
 
 export const Route = createFileRoute("/login")({
-  validateSearch: (search: Record<string, unknown>): { next?: string } => ({ next: safeReturnTarget(search.next) }),
+  validateSearch: (search: Record<string, unknown>): { next?: string } => ({
+    next: safeReturnTarget(search.next),
+  }),
   beforeLoad: async ({ search }) => {
     if (import.meta.env.SSR) return;
     const result = await getSessionInfo();

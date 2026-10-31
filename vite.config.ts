@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { OFFLINE_READ_FUNCTIONS } from "./src/lib/offline-read-functions";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, lazyPlugins } from "vite-plus";
@@ -31,6 +32,40 @@ function devComponentGallery(): Plugin {
         } catch (cause) {
           next(cause);
         }
+      });
+    },
+  };
+}
+
+/** Build the complete client chunk list; lazy detail routes work offline after install. */
+function pwaAssets(): Plugin {
+  return {
+    name: "sprout-pwa-assets",
+    apply: "build",
+    async generateBundle(_options, bundle) {
+      if (this.environment.name === "ssr") {
+        const reads: Record<string, string> = {};
+        for (const output of Object.values(bundle)) {
+          if (output.type !== "chunk") continue;
+          for (const match of output.code.matchAll(/id:\s*"([a-f0-9]+)",\s*name:\s*"([^"]+)"/g)) {
+            if ((OFFLINE_READ_FUNCTIONS as readonly string[]).includes(match[2]))
+              reads[match[1]] = match[2];
+          }
+        }
+        if (!Object.values(reads).includes("getChatSessionFn"))
+          throw new Error("PWA read manifest is missing getChatSessionFn");
+        await writeFile(join(projectRoot, ".output/public/pwa-reads.json"), JSON.stringify(reads));
+        return;
+      }
+      if (this.environment.name !== "client") return;
+      this.emitFile({
+        type: "asset",
+        fileName: "pwa-assets.json",
+        source: JSON.stringify(
+          Object.keys(bundle)
+            .filter((name) => /\.(?:js|css|woff2?)$/.test(name))
+            .map((name) => "/" + name),
+        ),
       });
     },
   };
@@ -73,6 +108,7 @@ export default defineConfig({
         }),
         tailwindcss(),
         devComponentGallery(),
+        pwaAssets(),
         tanstackStart({ spa: { enabled: true } }),
         viteReact(),
       ]),

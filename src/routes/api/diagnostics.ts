@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { fail, ok, toAppError } from "../../contracts/result";
-import { queryDiagnostics } from "../../server/diagnostics";
+import { queryDiagnostics, queryManagementSummary } from "../../server/diagnostics";
 import { getRequestContext, REQUEST_ID_HEADER } from "../../server/request-context";
 import { runtimeReady } from "../../server/runtime";
 import { requireSession } from "../../server/session";
@@ -23,7 +23,10 @@ export async function diagnosticsResponse(request: Request): Promise<Response> {
     await runtimeReady;
     const session = await requireSession(request.headers, requestId);
     if (!session.ok) return Response.json(session, { status: 401, headers });
-    const query = filters.safeParse(Object.fromEntries(new URL(request.url).searchParams));
+    const params = new URL(request.url).searchParams;
+    if (params.get("summary") === "1")
+      return Response.json(ok(queryManagementSummary(session.data.userId), requestId), { headers });
+    const query = filters.safeParse(Object.fromEntries(params));
     if (!query.success) {
       return Response.json(fail(toAppError(query.error, requestId)), { status: 400, headers });
     }
