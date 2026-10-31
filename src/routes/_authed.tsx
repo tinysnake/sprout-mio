@@ -1,17 +1,20 @@
 import { Outlet, createFileRoute, redirect, useLocation, useRouter } from "@tanstack/react-router";
 import { useRef, useState } from "react";
+import { safeReturnTarget } from "../lib/return-target";
 import { AppShell, projectCreationFocusTarget } from "../components/layout/app-shell";
+import { ConnectivityStatus } from "../components/layout/connectivity-status";
 import { ProjectFormDialog } from "../components/project/project-form-dialog";
 import { ResultError } from "../components/project/result-error";
 import { authenticate, getProtectedSession } from "../server/session";
 import { createProjectFn, listProjectsFn } from "../server/functions/project";
 
 export const Route = createFileRoute("/_authed")({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     if (import.meta.env.SSR) return { human: null };
     const result = await getProtectedSession();
     if (!result.ok) {
-      if (result.error.code === "unauthorized") throw redirect({ to: "/login" });
+      if (result.error.code === "unauthorized")
+        throw redirect({ to: "/login", search: { next: safeReturnTarget(location.href) } });
       throw new Error(result.error.message);
     }
     return { human: result.data };
@@ -89,6 +92,7 @@ function AuthedLayout() {
           <ResultError error={projects.error} testId="shell-projects-error" />
         </div>
       )}
+      <ConnectivityStatus />
       <Outlet />
     </AppShell>
   );

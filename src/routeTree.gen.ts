@@ -14,6 +14,7 @@ import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as DevLoginRouteImport } from './routes/dev-login'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedMachinesRouteImport } from './routes/_authed/machines'
+import { Route as AuthedManagementRouteImport } from './routes/_authed/management'
 import { Route as AuthedProjectsRouteImport } from './routes/_authed/projects'
 import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -62,6 +63,11 @@ const LoginRoute = LoginRouteImport.update({
 const AuthedMachinesRoute = AuthedMachinesRouteImport.update({
   id: '/machines',
   path: '/machines',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedManagementRoute = AuthedManagementRouteImport.update({
+  id: '/management',
+  path: '/management',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedProjectsRoute = AuthedProjectsRouteImport.update({
@@ -206,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/dev-login': typeof DevLoginRoute
   '/login': typeof LoginRoute
   '/machines': typeof AuthedMachinesRouteWithChildren
+  '/management': typeof AuthedManagementRoute
   '/projects': typeof AuthedProjectsRouteWithChildren
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
@@ -236,6 +243,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dev-login': typeof DevLoginRoute
   '/login': typeof LoginRoute
+  '/management': typeof AuthedManagementRoute
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
@@ -265,6 +273,7 @@ export interface FileRoutesById {
   '/dev-login': typeof DevLoginRoute
   '/login': typeof LoginRoute
   '/_authed/machines': typeof AuthedMachinesRouteWithChildren
+  '/_authed/management': typeof AuthedManagementRoute
   '/_authed/projects': typeof AuthedProjectsRouteWithChildren
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/health': typeof ApiHealthRoute
@@ -298,6 +307,7 @@ export interface FileRouteTypes {
     | '/dev-login'
     | '/login'
     | '/machines'
+    | '/management'
     | '/projects'
     | '/api/diagnostics'
     | '/api/health'
@@ -328,6 +338,7 @@ export interface FileRouteTypes {
     | '/'
     | '/dev-login'
     | '/login'
+    | '/management'
     | '/api/diagnostics'
     | '/api/health'
     | '/agents/$agentProfileId'
@@ -356,6 +367,7 @@ export interface FileRouteTypes {
     | '/dev-login'
     | '/login'
     | '/_authed/machines'
+    | '/_authed/management'
     | '/_authed/projects'
     | '/api/diagnostics'
     | '/api/health'
@@ -433,6 +445,13 @@ declare module '@tanstack/react-router' {
       path: '/machines'
       fullPath: '/machines'
       preLoaderRoute: typeof AuthedMachinesRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/management': {
+      id: '/_authed/management'
+      path: '/management'
+      fullPath: '/management'
+      preLoaderRoute: typeof AuthedManagementRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/projects': {
@@ -716,6 +735,7 @@ const AuthedProjectsRouteWithChildren = AuthedProjectsRoute._addFileChildren(
 
 interface AuthedRouteChildren {
   AuthedMachinesRoute: typeof AuthedMachinesRouteWithChildren
+  AuthedManagementRoute: typeof AuthedManagementRoute
   AuthedProjectsRoute: typeof AuthedProjectsRouteWithChildren
   AuthedAgentsAgentProfileIdRoute: typeof AuthedAgentsAgentProfileIdRoute
   AuthedAgentsIndexRoute: typeof AuthedAgentsIndexRoute
@@ -723,6 +743,7 @@ interface AuthedRouteChildren {
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedMachinesRoute: AuthedMachinesRouteWithChildren,
+  AuthedManagementRoute: AuthedManagementRoute,
   AuthedProjectsRoute: AuthedProjectsRouteWithChildren,
   AuthedAgentsAgentProfileIdRoute: AuthedAgentsAgentProfileIdRoute,
   AuthedAgentsIndexRoute: AuthedAgentsIndexRoute,

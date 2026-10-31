@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
+import { safeReturnTarget } from "../lib/return-target";
 import { LoginView } from "../components/auth/login-view";
 import type { LoginMode, LoginValues } from "../components/auth/login-view";
 import type { AppError } from "../contracts/result";
@@ -9,10 +10,11 @@ import { getDevLoginStatus } from "../server/dev-login";
 import { authenticate, getSessionInfo } from "../server/session";
 
 export const Route = createFileRoute("/login")({
-  beforeLoad: async () => {
+  validateSearch: (search: Record<string, unknown>): { next?: string } => ({ next: safeReturnTarget(search.next) }),
+  beforeLoad: async ({ search }) => {
     if (import.meta.env.SSR) return;
     const result = await getSessionInfo();
-    if (result.ok && result.data) throw redirect({ to: "/" });
+    if (result.ok && result.data) throw redirect({ href: safeReturnTarget(search.next) });
   },
   loader: async () => {
     const status = await getDevLoginStatus();
@@ -24,6 +26,7 @@ export const Route = createFileRoute("/login")({
 /** 认证边界在 server function：这里只把结果映射成 pending 与可追踪错误。 */
 function Login() {
   const devLoginHref = Route.useLoaderData();
+  const { next } = Route.useSearch();
   const [mode, setMode] = useState<LoginMode>("login");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -45,7 +48,7 @@ function Login() {
         setError(result.error);
         return;
       }
-      window.location.assign("/");
+      window.location.assign(safeReturnTarget(next));
     } catch (cause) {
       setError(toAppError(cause, newId(ID_PREFIXES.request)));
     } finally {

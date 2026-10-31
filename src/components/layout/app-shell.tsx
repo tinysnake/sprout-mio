@@ -312,6 +312,7 @@ export function AppShell({
     : (projects.find((p) => p.id === preferredProject) ?? projects[0]);
   const machinePage = pathname.startsWith("/machines");
   const agentPage = pathname.startsWith("/agents");
+  const managementPage = pathname.startsWith("/management");
   useEffect(() => {
     setMobileProjectsOpen(false);
   }, [pathname, mobile]);
@@ -403,18 +404,17 @@ export function AppShell({
                 <Icon as={Monitor} />
                 {!compact && <span>Machines</span>}
               </Link>
-              <div
-                aria-label="Management，未实现"
-                title="Management · 未实现"
-                className={`${navClass} cursor-default ${compact ? "justify-center px-0" : ""}`}
+              <Link
+                to="/management"
+                data-testid="nav-management"
+                aria-label="Management"
+                aria-current={managementPage ? "page" : undefined}
+                title={compact ? "Management" : undefined}
+                className={`${navClass} ${managementPage ? "bg-selected text-foreground [&_svg]:text-primary" : ""} ${compact ? "justify-center px-0" : ""}`}
               >
                 <Icon as={Settings2} />
-                {!compact && (
-                  <span>
-                    Management<span className="block text-[9px] font-normal">未实现</span>
-                  </span>
-                )}
-              </div>
+                {!compact && <span>Management</span>}
+              </Link>
             </nav>
             <div
               className={`shrink-0 border-t border-border py-2 ${compact ? "flex flex-col items-center gap-1" : "flex items-center gap-1"}`}
@@ -459,7 +459,7 @@ export function AppShell({
               <Popover.Trigger
                 aria-label="Projects"
                 data-testid="mobile-projects"
-                className={`flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] ${!agentPage && !machinePage ? "text-primary" : "text-muted-foreground"}`}
+                className={`flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] ${!agentPage && !machinePage && !managementPage ? "text-primary" : "text-muted-foreground"}`}
               >
                 <Icon as={FolderKanban} />
                 <span className="max-w-full truncate">Projects</span>
@@ -505,14 +505,17 @@ export function AppShell({
               <span className="max-w-full truncate">Machines</span>
               <span aria-hidden="true" className="text-[9px] leading-3" />
             </Link>
-            <span
-              aria-label="Management，未实现"
-              className="flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] text-muted-foreground"
+            <Link
+              to="/management"
+              aria-label="Management"
+              data-testid="mobile-management"
+              aria-current={managementPage ? "page" : undefined}
+              className={`flex min-h-12 min-w-0 flex-col items-center justify-start gap-1 px-1 pt-1.5 text-[10px] ${managementPage ? "text-primary" : "text-muted-foreground"}`}
             >
               <Icon as={Settings2} />
               <span className="max-w-full truncate">Management</span>
-              <span className="text-[9px] leading-3 whitespace-nowrap">未实现</span>
-            </span>
+              <span aria-hidden="true" className="text-[9px] leading-3" />
+            </Link>
             <div className="flex min-h-12 min-w-0 items-center justify-center">
               <AccountMenu
                 name={name}
