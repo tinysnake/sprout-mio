@@ -2,7 +2,7 @@
 
 P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要路径走完，并且看得见状态、看不见内部术语」这一层：登录后回到原来的目标、详情深链与刷新、断线与旧数据反馈、只读离线、Management 的服务与数据事实、备份恢复与响应基线、Pi 资源继承的明确边界，以及在真实页面上跑通的自动接续控制。判据、返回形状与边界见 [P7 契约](contracts.md)。
 
-技术交付基线：**`e338ffa`**（`integration/p7` 上三条回归修复之后的提交；本章门禁在这条提交上取证）。
+技术交付基线：**`fef2612`**（合入 main 的提交；`e338ffa` 之后只有文档、门禁与断言收紧）。
 
 | 项       | 值                                                                                                                                                                                |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -53,7 +53,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 - **判定器可用性**：`tests/p6a-contracts.test.ts` 覆盖无配置、缺凭据、可用三种输入下的 `wakeProviderAvailabilityFromEnv()` 结果；`p6a-pages` 断言 `wake-provider-unwired` 与 `wake-provider-unavailable` 两种形态与保存按钮数量。
 - **闭环**：`p7-loop-*` 四条在真实 SQLite 与真实 Worker 上跑多轮、扇出、交接、崩溃重启；`p7-loop-multiround` 的 `paid-model-calls=0`（模型由 `model-fixture` 在回环上代答）。
 
-证据提交 `e338ffa`：重跑 `bash scripts/verify/p7-client-navigation.sh`、`bash scripts/verify/p7-client-pwa.sh`、`bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/p7-loop-multiround.sh`、`bash scripts/verify/bf-p6b-pages.sh`。
+证据提交 `fef2612`：重跑 `bash scripts/verify/p7-client-navigation.sh`、`bash scripts/verify/p7-client-pwa.sh`、`bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/p7-loop-multiround.sh`、`bash scripts/verify/bf-p6b-pages.sh`。
 
 ## UI 线证据
 
@@ -67,7 +67,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 页面形状由 Human 在真实页面上逐条确认过（两轮反馈共 15 条），但**没有真机证据**，见下节。
 
-证据提交 `e338ffa`：重跑 `bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/p6a-pages.sh`。
+证据提交 `fef2612`：重跑 `bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/p6a-pages.sh`。
 
 ## 集成线与技术验收证据
 
@@ -81,9 +81,9 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 - **补上的门禁**：`info_hub_polling_line_stays_quiet`（去掉 `QUIET_STATES` 判断立即红）、`metadata_edit_shares_the_heading_row`（用 `boundingBox` 量中心线）、`non_owner_agent_denials_are_real_capabilities`（改成断言 `task-action-*` 数量为 0 且整页无 denial code）、`automation_panel_wired_on_real_chat`（真实 Chat 页不得出现 `automation-unavailable`）。
 - **drizzle 快照**：`0028_snapshot.json` 的 `prevId` 曾指向 0026 且 `chat_automation_control` 是 0027 重建前旧版，导致 `drizzle-kit` collision 与 `c-data-auth` 长期红。修法是只改快照（`prevId` + 表内容），不改 `_journal.json` 的 `when`（改晚会让已应用过 0028 的库重放它，撞 `table turn_context already exists`）。验证：`pnpm exec drizzle-kit generate` 输出 `No schema changes, nothing to migrate`，`c-data-auth` exit 0。
-- **增量验收**：`p7-acceptance2`（受验 `integration/p7` 当前头）复核三条回归是否真修好、三处改坏是否已被门禁守住、三条旧红门禁的现状。结论见编排目录的验收报告（不进本仓库）。
+- **增量验收**（`p7-acceptance2`，受验 `e338ffa`）判「可以合入」，四问的结论：三条回归各自两次全绿且修法经复核不是掩盖（`i-chat` 的 `chat-error` 真的来自服务端、写入请求确实由页面直接发出 `fromServiceWorker: false`、`item-log-error` 仍被断言）；三处改坏里两处已被新门禁守住（轮询行、编辑按钮同行），**第三处「被拒动作打印 reason」仍绿**——门禁只断言 code 不在页面上，协调者据此补了 reason 断言（`fef2612`），注入 reason 立即红；三条旧红门禁在 `main@8f0ddf3` 的临时工作树里各跑两次同样全红，脚本/fixture/契约在 `main..HEAD` 逐字未变，不是本轮引入也没被条件化跳过；`eed1dd7` 之后的页面裁定无回归（`bf-p6b-pages` 67.0s、`as-p5b-task-pages` 46.5s、`p6a-pages` 24.5s、`p7-client-navigation` 24.4s、`p7-client-states` 17.3s、`p7-client-pwa` 14.9s 全绿）。
 
-证据提交 `e338ffa`：重跑 `bash scripts/verify/i-chat.sh`、`bash scripts/verify/aq-p4d-pages.sh`、`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/c-data-auth.sh`。
+证据提交 `fef2612`：重跑 `bash scripts/verify/i-chat.sh`、`bash scripts/verify/aq-p4d-pages.sh`、`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/c-data-auth.sh`。
 
 ## 已知限制与未证明项
 
@@ -96,7 +96,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 7. **重启语义是「都不继续」。** `queued` 与 `running` 一律 `interrupted`；Worker 失联后的租约自动回收与冻结契约冲突，未实现也未改契约。
 8. **离线只有读。** 没有离线写队列，断线时的执行动作不可用；缓存命中的读标为未确认，不代表服务端现状。
 9. **诊断过滤入口有限。** `/api/diagnostics` 只支持 `requestId`/`projectId`，没有 Chat/run/execution 的 HTTP 过滤入口。
-10. **三条 main 上就红的旧门禁**（`x-remote-tools`、`ae-remote-tools-cancel-log`、`z-lease-integration`）不是 P7 引入，状态与归属以增量验收报告为准。
+10. **三条 main 上就红的旧门禁**（`x-remote-tools`、`ae-remote-tools-cancel-log`、`z-lease-integration`）不是 P7 引入：前两条是「工具注册面 vs `remoteToolInputSchemas`」的口径分歧（P7 只多注册 `sprout_status`，该工具在 `53d23e9` 时已在），`z-lease-integration` 是模型夹具的 armed lease intent 不匹配。三者在 `main@8f0ddf3` 上各跑两次同样红，相关脚本与夹具在 `main..HEAD` 逐字未变。
 
 ## human-体验确认
 

@@ -30,9 +30,12 @@ const gates = new Set([
   "y-lease-ui",
   "t-machine-worker",
 ]);
+// orchestrate/ 是本地编排目录（gitignored），里面的证据目录可能带指向已删除 worktree 的
+// node_modules 软链；私有树只复制源码与依赖，不复制它。
 const excluded = new Set([
   ".git",
   ".verify",
+  "orchestrate",
   "node_modules",
   "data",
   ".output",

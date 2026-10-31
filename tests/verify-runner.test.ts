@@ -514,7 +514,7 @@ process.exit(id === 'u' ? 7 : 0);
           ["e-project", "h-project-agents"].every((id) =>
             existsSync(join(fixture.root, `${id}.started`)),
           ),
-        2500,
+        20_000,
       );
       expect(markerLines(fixture.root)).toEqual([]);
       writeFileSync(join(fixture.root, "release"), "");

@@ -156,9 +156,19 @@ function functionIds() {
     ].map((m) => [m[2], m[1]]),
   );
 }
+async function assertPortFree() {
+  const inUse = await fetch(base + "/api/health")
+    .then(() => true)
+    .catch(() => false);
+  if (inUse)
+    throw new Error(
+      `${base} 已有进程在监听：门禁会连到别人的库上，静默给出错误结论。先释放端口再跑。`,
+    );
+}
 let browser;
 let db;
 try {
+  await assertPortFree();
   const server = launch([".output/server/index.mjs"], "production.log");
   await until(async () => {
     try {
@@ -169,7 +179,13 @@ try {
   }, "production health");
   const ids = functionIds();
   browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  // 这个门禁靠 page.route 拦住 getMachineFn 来模拟「刷新还在路上」；该 server fn 在
+  // 只读离线白名单里，service worker 会先接住它，路由就永远不触发。PWA 缓存行为
+  // 由 p7-client-pwa 证明，这里不看 service worker。
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    serviceWorkers: "block",
+  });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   const errors = [];
@@ -484,7 +500,14 @@ try {
   assert.equal(listed.data.length, 1);
   assert.equal((await rpc("listMachinesFn", {})).data.length, 1);
   const hub = await rpc("getProjectInfoHubFn", { projectId: projectB.id });
-  assert.equal(hub.data.machines[0].bindings[0].intent.description, "Project B independent");
+  assert.equal(hub.data.machines.length, 1);
+  assert.equal(hub.data.machines[0].machineId, machineId);
+  assert.equal(hub.data.machines[0].projectMembership, "current");
+  assert.equal(
+    (await rpc("listProjectMachinesFn", { projectId: projectB.id })).data[0].bindings[0].intent
+      .description,
+    "Project B independent",
+  );
   assert.equal(hub.data.leases.available, true);
   assert.deepEqual(hub.data.leases.items, []);
   await page.getByTestId("info-hub-leases").waitFor();
@@ -1267,7 +1290,7 @@ try {
   console.log(`EVIDENCE ${evidence}`);
   server.kill("SIGTERM");
 } catch (error) {
-  console.error(error.message);
+  console.error(error.stack ?? error.message);
   console.error(`EVIDENCE ${evidence}`);
   process.exitCode = 1;
 } finally {
