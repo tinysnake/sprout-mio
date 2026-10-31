@@ -359,6 +359,29 @@ try {
     pass("automation_panel_wired_on_real_chat", {
       note: "真实路由取到 getChatAutomationFn 的视图，不是未接入占位",
     });
+    // 轮询正常态不许进视野：内部 state 与 asOf 只留在 data-* 上。
+    const liveState = await page
+      .locator("[data-info-hub-live-state]")
+      .first()
+      .getAttribute("data-info-hub-live-state");
+    assert.equal(
+      ["current", "refreshing", "hidden"].includes(liveState ?? ""),
+      true,
+      `本轮轮询状态应为安静态，实际 ${liveState}`,
+    );
+    assert.equal(
+      await page.locator('[data-testid="info-hub-polling-state"]').count(),
+      0,
+      "轮询正常态不得渲染状态行",
+    );
+    const quietBody = await page.locator("body").innerText();
+    assert.equal(
+      /事实时间\s*\d{4}-\d{2}-\d{2}T/.test(quietBody),
+      false,
+      "正常态不得把 ISO 时间戳给人看",
+    );
+    assert.equal(/已是最新/.test(quietBody), false, "正常态不得告诉人类「已是最新」");
+    pass("info_hub_polling_line_stays_quiet", { liveState });
     await page.waitForSelector('[data-testid="info-chat-runs-host-status"]', { timeout: 30000 });
     assert.equal(
       /宿主(已|未)启用/.test(
