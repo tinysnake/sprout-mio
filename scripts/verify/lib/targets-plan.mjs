@@ -36,6 +36,9 @@ export const CI_GROUPS = Object.freeze({
     "i6-chat-info",
     "i7-chat-scope",
     "an-p4d-authority",
+    "p7-loop-collaboration",
+    "p7-loop-runtime",
+    "p7-loop-restart",
     "p7-storage-recovery",
     "p7-service-baseline",
   ],
@@ -84,6 +87,7 @@ export const CI_GROUPS = Object.freeze({
 });
 
 export const LOCAL_GATES = Object.freeze({
+  "p7-loop-multiround": "真实 macOS Worker、真实 Pi SDK，同 run 多轮停止与产物历史",
   "a-base": "真实已安装 Pi CLI；其他 A 检查由 CI 执行",
   "b-tooling": "macOS/Pi 专属测试文件；其他 B 检查由 CI 执行",
   "ab-worker-long-command": "真实 macOS Worker、信号及长命令",
