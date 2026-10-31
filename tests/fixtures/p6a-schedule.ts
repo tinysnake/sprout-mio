@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "node:http";
@@ -183,6 +183,59 @@ async function check(chatId: string, now = atDue(chatId), evaluate = yes) {
   await delivery.evaluateClaim(e!, evaluate, internal(now));
   return latest(chatId);
 }
+/**
+ * Landing gate: while the provider is deciding, only the persisted policy fact moves, so neither a
+ * database trigger nor the domain reconciler touches the evaluation row. `commitEvaluationResult`'s
+ * epoch check is then the single writer that can fence the late result, and the row itself (state,
+ * result) is what proves the fence ran; a delivery-row assertion alone cannot see this choice.
+ */
+async function landingFence() {
+  const fleeting = group();
+  assigned(fleeting.id);
+  const now = atDue(fleeting.id);
+  const claimed = schedule.claimDueEvaluation(internal(now))!;
+  const input = delivery.buildPeriodicInput(claimed, now);
+  const result = await yes(input);
+  const policy = schedule.one<{ wake_policy: string }>(
+    "SELECT wake_policy FROM project WHERE id=?",
+    project.id,
+  )!.wake_policy;
+  schedule.write(
+    "UPDATE project SET wake_policy=? WHERE id=?",
+    JSON.stringify({ ...JSON.parse(policy), thresholdVersion: "landing-fence" }),
+    project.id,
+  );
+  try {
+    equal(
+      [latest(fleeting.id).state, latest(fleeting.id).result],
+      ["claimed", null],
+      "a policy fact change alone leaves the evaluation claimed for the landing gate",
+    );
+    equal(
+      delivery.commitEvaluationResult(claimed, input, result, now),
+      null,
+      "landing gate rejects a late result whose facts moved after the snapshot",
+    );
+    equal(
+      [
+        latest(fleeting.id).state,
+        latest(fleeting.id).result,
+        latest(fleeting.id).claim_token,
+        latest(fleeting.id).lease_until,
+        latest(fleeting.id).next_attempt_at,
+      ],
+      ["stale", null, null, null, null],
+      "fenced landing marks the evaluation stale without storing the result",
+    );
+    equal(
+      schedule.one("SELECT 1 FROM continuation_delivery WHERE chat_id=?", fleeting.id),
+      undefined,
+      "a fenced landing writes no continuation delivery",
+    );
+  } finally {
+    schedule.write("UPDATE project SET wake_policy=? WHERE id=?", policy, project.id);
+  }
+}
 async function restart(now: Date) {
   const { stdout } = await promisify(execFile)(
     process.execPath,
@@ -265,6 +318,38 @@ try {
     await scheduler.advance();
     await scheduler.settled();
     equal(latest(chat.id).state, "decided", "startup-restored timer drives real evaluation");
+    equal(
+      row(chat.id)!.next_due_at! - now.getTime(),
+      schedule.INTERVAL_MS,
+      "a successful check re-arms exactly one policy interval from now",
+    );
+    // P2-2: the trigger writes the interval as a SQL literal, so read the migration text (the
+    // newest definition is the one that runs) and hold it equal to the constant. Asserting only the
+    // TypeScript config would let the constant and the trigger drift apart unnoticed.
+    const intervalLiterals = readdirSync(resolve("drizzle"))
+      .filter((name) => name.endsWith(".sql"))
+      .sort()
+      .flatMap((name) =>
+        [...readFileSync(resolve("drizzle", name), "utf8").matchAll(/NEW\.updated_at\+(\d+)/g)].map(
+          (match) => ({ name, literal: Number(match[1]) }),
+        ),
+      );
+    ok(
+      intervalLiterals.length > 0,
+      "migrations write the schedule interval as an explicit literal",
+    );
+    const newestIntervalMigration = intervalLiterals.at(-1)!.name;
+    equal(
+      [
+        ...new Set(
+          intervalLiterals
+            .filter((entry) => entry.name === newestIntervalMigration)
+            .map((entry) => entry.literal),
+        ),
+      ],
+      [schedule.INTERVAL_MS],
+      `newest migration trigger literal in ${newestIntervalMigration} equals INTERVAL_MS`,
+    );
     equal(
       schedule.all("SELECT * FROM wake_evaluation_task").length,
       2,
@@ -592,6 +677,7 @@ try {
       3,
       "repeated failure budget prevents a fourth automatic run",
     );
+    await landingFence();
   }
   if (suite === "control") {
     const chat = group();
@@ -881,6 +967,7 @@ try {
       "pending",
       "disable preserves unadmitted ordinary input without automatically reopening a run",
     );
+    await landingFence();
   }
   if (suite === "integration") {
     const runtime = await import("../../src/server/runtime");

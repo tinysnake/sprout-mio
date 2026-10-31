@@ -130,10 +130,13 @@ try {
   const beforeAbort = schedule.controlFor(chat.id);
   command(chat.id, "abort", run);
   prove("abort with runId aborts only one run and leaves mode/epoch unchanged", [state(run), state(otherRun), schedule.controlFor(chat.id).mode, schedule.controlFor(chat.id).epoch], ["aborted", "queued", "enabled", beforeAbort.epoch]);
-  for (const invalid of [run, queued(group().id, profiles[0])]) {
+  for (const [label, invalid] of [
+    ["terminal run", run],
+    ["other chat", queued(group().id, profiles[0])],
+  ]) {
     const beforeInvalid = schedule.controlFor(chat.id);
     assert.throws(() => command(chat.id, "abort", invalid), (error) => error.code === "not_found");
-    prove("terminal/other-Chat run rejection preserves the control", schedule.controlFor(chat.id), beforeInvalid);
+    prove(`terminal/other-Chat run rejection preserves the control (${label})`, schedule.controlFor(chat.id), beforeInvalid);
   }
   const pending = await pendingDelivery(chat.id);
   assert.equal(pending.state, "pending");
@@ -142,6 +145,48 @@ try {
   prove("abort without runId turns mode off, increments epoch, aborts all Chat runs and records human_aborted", [schedule.controlFor(chat.id).mode, schedule.controlFor(chat.id).epoch, schedule.all("SELECT status FROM agent_run WHERE chat_id=? ORDER BY id", chat.id).map((r) => r.status), schedule.one("SELECT state,cancel_reason FROM continuation_delivery WHERE id=?", pending.id)], ["off", beforeAll.epoch + 1, ["aborted", "aborted"], { state: "canceled", cancel_reason: "human_aborted" }]);
   const retained = schedule.one("SELECT id,status FROM agent_run WHERE chat_id<>?", chat.id);
   prove("abort all does not abort another Chat", retained.status, "queued");
+  // P2-1: the database trigger is the second, independent gate. Nothing below calls the domain
+  // layer to stop automation: one plain UPDATE must move the same rows a Human command moves.
+  function rawOff(chatId) {
+    const before = schedule.controlFor(chatId);
+    schedule.write("UPDATE chat_automation_control SET mode='off',epoch=epoch+1 WHERE chat_id=?", chatId);
+    return before.epoch;
+  }
+  function claimFor(chatId) {
+    const now = new Date(schedule.one("SELECT next_due_at FROM chat_schedule WHERE chat_id=?", chatId).next_due_at);
+    const evaluation = schedule.claimDueEvaluation({ now, workerId: "control-model", requestId: newId(ID_PREFIXES.request) });
+    assert.equal(evaluation.chat_id, chatId);
+    return evaluation;
+  }
+  function evaluationIn(chatId, state, nextAttemptAt = null) {
+    const evaluation = claimFor(chatId);
+    schedule.write("UPDATE wake_evaluation SET state=?,claim_token=NULL,lease_until=NULL,next_attempt_at=? WHERE id=?", state, nextAttemptAt, evaluation.id);
+    return evaluation.id;
+  }
+  const deliveryChat = group();
+  assign(deliveryChat.id);
+  const triggerPending = await pendingDelivery(deliveryChat.id);
+  const decidedBefore = schedule.one("SELECT state,result,evaluated_at FROM wake_evaluation WHERE chat_id=?", deliveryChat.id);
+  assert.equal(triggerPending.state, "pending");
+  assert.notEqual(decidedBefore.result, null);
+  const pendingChat = group();
+  assign(pendingChat.id);
+  const pendingEvaluation = evaluationIn(pendingChat.id, "pending");
+  const claimedChat = group();
+  assign(claimedChat.id);
+  const claimedEvaluation = claimFor(claimedChat.id).id;
+  const retryChat = group();
+  assign(retryChat.id);
+  const retryEvaluation = evaluationIn(retryChat.id, "retry_wait", Date.now() + 30000);
+  const rawChats = [deliveryChat.id, pendingChat.id, claimedChat.id, retryChat.id];
+  const epochs = rawChats.map(rawOff);
+  prove("raw SQL off advances the epoch without the domain layer", rawChats.map((chatId) => [schedule.controlFor(chatId).mode, schedule.controlFor(chatId).epoch]), rawChats.map((chatId, index) => ["off", epochs[index] + 1]));
+  prove("raw SQL off deletes every Chat schedule row", rawChats.map((chatId) => schedule.one("SELECT 1 FROM chat_schedule WHERE chat_id=?", chatId) === undefined), [true, true, true, true]);
+  prove("raw SQL off cancels the pending delivery as human_disabled", schedule.one("SELECT state,cancel_reason,next_attempt_at FROM continuation_delivery WHERE id=?", triggerPending.id), { state: "canceled", cancel_reason: "human_disabled", next_attempt_at: null });
+  prove("raw SQL off cancels a pending evaluation and clears its claim fields", schedule.one("SELECT state,claim_token,lease_until,next_attempt_at FROM wake_evaluation WHERE id=?", pendingEvaluation), { state: "canceled", claim_token: null, lease_until: null, next_attempt_at: null });
+  prove("raw SQL off stales a claimed evaluation and clears its claim fields", schedule.one("SELECT state,claim_token,lease_until FROM wake_evaluation WHERE id=?", claimedEvaluation), { state: "stale", claim_token: null, lease_until: null });
+  prove("raw SQL off stales a retry_wait evaluation and clears its retry time", schedule.one("SELECT state,claim_token,lease_until,next_attempt_at FROM wake_evaluation WHERE id=?", retryEvaluation), { state: "stale", claim_token: null, lease_until: null, next_attempt_at: null });
+  prove("raw SQL off leaves a decided evaluation and its result alone", schedule.one("SELECT state,result,evaluated_at FROM wake_evaluation WHERE chat_id=?", deliveryChat.id), decidedBefore);
   const result = { assertions, modeDistribution };
   writeFileSync(join(evidence, "control-model-result.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result));
