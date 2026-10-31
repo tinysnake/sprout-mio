@@ -51,7 +51,7 @@ await runProduction(async ({ page, context, base, directory, seeded: s }) => {
   const chatPath = `/projects/${s.projectId}/chats/${s.dmId}?info=1`;
   await page.goto(base + chatPath, { waitUntil: "domcontentloaded" });
   await page.getByTestId("message-input").waitFor();
-  await page.getByTestId("info-hub-polling-state").waitFor();
+  await page.locator("[data-info-hub-live-state]").waitFor();
   await page.goto(base + "/management", { waitUntil: "domcontentloaded" });
   await page.getByTestId("management-page").waitFor();
   let writes = 0;

@@ -28,15 +28,18 @@ export async function unwrapRefreshResult(
 }
 
 const STATE_LABELS = {
-  refreshing: "刷新中",
+  refreshing: "正在同步",
   current: "已是最新",
   hidden: "页面隐藏，已暂停",
   offline: "离线，已暂停",
-  retrying: "网络读取失败，事实可能已过期，退避重试中",
+  retrying: "网络读取失败，内容可能已过期，正在重试",
   unauthorized: "登录已失效，请重新登录",
   forbidden: "无权访问当前目标",
   not_found: "目标不存在或已删除",
 } as const;
+
+/** 只在真正需要提醒时才占版面：正常同步完成不向人类展示内部状态与事实时间。 */
+const QUIET_STATES: PollingState[] = ["current", "refreshing", "hidden"];
 
 type PollingState = keyof typeof STATE_LABELS;
 
@@ -99,21 +102,24 @@ export function InfoHubLiveProvider({
   );
   return (
     <InfoHubLiveContext.Provider value={value}>
-      {["unauthorized", "forbidden", "not_found"].includes(state) ? (
-        <div role="alert" className="p-4 text-sm">
-          <InfoHubPollingStatus />
-          {state === "unauthorized" && (
-            <a
-              className="underline"
-              href={`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`}
-            >
-              重新登录
-            </a>
-          )}
-        </div>
-      ) : (
-        children
-      )}
+      {/* 轮询状态只给门禁与调试看，正常态不占版面。 */}
+      <div data-info-hub-live-state={state} style={{ display: "contents" }}>
+        {["unauthorized", "forbidden", "not_found"].includes(state) ? (
+          <div role="alert" className="p-4 text-sm">
+            <InfoHubPollingStatus />
+            {state === "unauthorized" && (
+              <a
+                className="underline"
+                href={`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+              >
+                重新登录
+              </a>
+            )}
+          </div>
+        ) : (
+          children
+        )}
+      </div>
     </InfoHubLiveContext.Provider>
   );
 }
@@ -123,10 +129,10 @@ export function useInfoHubLive(): InfoHubLive | null {
   return useContext(InfoHubLiveContext);
 }
 
-/** 刷新状态与事实时间：失败时保留最后成功事实，不显示成空集合。 */
+/** 刷新状态：正常态不渲染，异常态用一句人话说明，内部状态与事实时间只进 DOM 属性。 */
 export function InfoHubPollingStatus() {
   const live = useInfoHubLive();
-  if (!live) return null;
+  if (!live || QUIET_STATES.includes(live.state)) return null;
   return (
     <p
       data-testid="info-hub-polling-state"
@@ -134,8 +140,7 @@ export function InfoHubPollingStatus() {
       data-as-of={live.asOf ?? ""}
       className="text-[10px] text-muted-foreground"
     >
-      Info Hub {STATE_LABELS[live.state]}
-      {live.asOf ? ` · 事实时间 ${live.asOf}` : ""}
+      {STATE_LABELS[live.state]}
     </p>
   );
 }

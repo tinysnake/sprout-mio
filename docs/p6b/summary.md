@@ -120,7 +120,7 @@ Human 确定的设计记录：**本仓库没有**。页面形状由接线单元�
 
 **不交付**。现有 hint 通道只服务运行中的 Agent：`src/domain/info-hub-hint.ts` + `src/server/pi-host/run.ts` 把提示投到 SDK prompt 边界，merge/dedupe 只服务那一次投递；`INFO_HUB_CAPABILITIES` 里 `hint.deliver` 对 Human 与 Agent 都是 `never`，既没有 producer 也没有 consumer。
 
-- 后果：页面没有「本页提示合并了几条」这类事实。页面能说的是传输层状态（`info-hub-polling-state` 的 `已是最新 / 刷新中 / 页面隐藏，已暂停 / 离线，已暂停 / 刷新失败，退避重试中` 加 `as-of` 事实时间），以及轮初块「本次上下文尚无提交收据」。`changes.length` 是**提示里的变化条数**，不是合并次数；把它显示成「合并 N 条」就是编数。页面门禁带一条否定断言：整页不得出现「合并 N 条」。
+- 后果：页面没有「本页提示合并了几条」这类事实。页面能说的是传输层状态（`info-hub-polling-state`，正常态不渲染，只有 `离线，已暂停 / 网络读取失败，内容可能已过期，正在重试 / 登录已失效 / 无权访问 / 目标不存在` 时才显示一句人话；内部 state 与 `asOf` 只进 `data-*` 属性），以及轮初块「本次上下文尚无提交收据」。`changes.length` 是**提示里的变化条数**，不是合并次数；把它显示成「合并 N 条」就是编数。页面门禁带一条否定断言：整页不得出现「合并 N 条」。
 - 要真交付 Human 收据，得把 run-local 的临时转向持久化（新表 + 生命周期 + 过期语义），那是 P6b 冻结范围之外的 schema 工作。
 - 重跑：`bash scripts/verify/bf-p6b-pages.sh`（否定断言与状态行文案）、`bash scripts/verify/bf-p6b-lifecycle.sh`（Agent 侧合并/限频与零副作用行）。
 

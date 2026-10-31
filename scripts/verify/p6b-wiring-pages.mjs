@@ -244,7 +244,7 @@ try {
         requestsSeen.push(request.postData()?.slice(0, 200) ?? "");
     });
     const mountedAt = Date.now();
-    await page.waitForSelector('[data-testid="info-hub-polling-state"]', { timeout: 30000 });
+    await page.waitForSelector("[data-info-hub-live-state]", { timeout: 30000 });
     while (refreshRequests.length === 0 && Date.now() - mountedAt < 3500) await delay(50);
     assert.equal(
       refreshRequests.length >= 1,
@@ -253,7 +253,7 @@ try {
     );
     const firstAt = refreshRequests[0].at - mountedAt;
     assert.equal(
-      await page.locator('[data-testid="info-hub-polling-state"]').count(),
+      await page.locator("[data-info-hub-live-state]").count(),
       1,
       "一个页面只有一个 polling owner 的状态行",
     );
@@ -367,7 +367,7 @@ try {
 
     // (6) Project settings 也只挂一个 owner：这里的刷新区是 Machines。
     await page.goto(`${base}/projects/${projectId}/settings`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector('[data-testid="info-hub-polling-state"]', { timeout: 30000 });
+    await page.waitForSelector("[data-info-hub-live-state]", { timeout: 30000 });
     refreshRequests.length = 0;
     const settingsAt = Date.now();
     while (refreshRequests.length === 0 && Date.now() - settingsAt < 3500) await delay(50);
