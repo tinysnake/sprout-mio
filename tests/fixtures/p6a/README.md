@@ -38,7 +38,7 @@ pnpm exec vp fmt tests/fixtures/p6a/zh-wake.json
 SPROUT_VERIFY_PI_MODEL=provider/model bash scripts/verify/p6a-live-routing.sh
 ```
 
-模型选择由 `scripts/verify/lib/live-model.sh` 读取。小脑使用 `PI_CODING_AGENT_DIR`（默认宿主 `~/.pi/agent`）中的模型目录和只读认证，直接发无工具 completion，不创建 Agent session/run。JEV 仅使用独立的 `TYPESAFE_API_KEY`，固定 `jev-1.14.0`；缺少凭据时写失败收据并退出非零，不调用 fixture transport。
+模型选择由 `scripts/verify/lib/live-model.sh` 读取。小脑使用 `PI_CODING_AGENT_DIR`（默认宿主 `~/.pi/agent`）中的模型目录和只读认证，直接发无工具 completion，不创建 Agent session/run。JEV 仅使用独立的 `JEV_API_KEY`，模型固定为 `jev-latest`；缺少凭据时写失败收据并退出非零，不调用 fixture transport。
 
 live 门禁对 8 条具有合法判定输入的样本分别直接测量两个适配器，包括 w22 的点名输入；这是适配器效果观察，生产装配仍将 w22 交给规则路径。每条收据包含 provider/model、输入快照、输入/输出用量、适配器耗时、runner 耗时、中文结论、期望对比、零副作用和退出码。证据默认写到 `.verify/p6a-live-routing/<UTC timestamp>/`，可用 `SPROUT_VERIFY_DIR` 指定。
 

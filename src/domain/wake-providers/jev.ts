@@ -8,7 +8,7 @@ import {
 } from "../wake-evaluation";
 import { providerFailure, tokenCount, WakeProviderError, wakeInstructions } from "./shared";
 
-export const JEV_MODEL = "jev-1.14.0";
+export const JEV_MODEL = "jev-latest";
 export type JevThreshold = { version: string; yes: number; no: number };
 export type JevOptions = {
   apiKey: string | undefined;
@@ -43,7 +43,7 @@ export function createJevJudge(options: JevOptions): WakeJudge {
           "缺少独立 JEV 服务凭据 JEV_API_KEY",
         );
       if (input.policy.provider !== "jev" || input.policy.model !== JEV_MODEL)
-        throw new WakeProviderError("provider_unavailable", `JEV 仅支持固定 model ${JEV_MODEL}`);
+        throw new WakeProviderError("provider_unavailable", `JEV 仅支持 model ${JEV_MODEL}`);
       const threshold = options.threshold;
       if (
         threshold.version !== input.policy.thresholdVersion ||
