@@ -23,6 +23,9 @@ const gates = new Set([
   "c-data-auth",
   "d-runtime",
   "ad-execution-log-ui",
+  "as-p5b-task-pages",
+  "p6a-pages",
+  "bf-p6b-pages",
   "y-lease-ui",
   "t-machine-worker",
 ]);
