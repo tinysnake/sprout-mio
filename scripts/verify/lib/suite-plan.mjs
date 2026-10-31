@@ -36,6 +36,7 @@ export const SUITE_PLAN = Object.freeze({
   "p6a-control": plan(0.8, { unit: 1 }),
   "p6a-delivery": plan(0.9, { unit: 1 }),
   "p6a-integration": plan(1.3, { unit: 1 }),
+  "p6a-wiring": plan(1, { unit: 1 }),
   "p6a-pages": plan(143, { development: 1, browser: 1 }, privateTree, true),
   "a-base": plan(54.969, { development: 1, unit: 1 }, privateTree, true),
   "aa-execution-log-contracts": plan(1.648, { unit: 1 }),

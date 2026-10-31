@@ -44,6 +44,7 @@ export const CI_GROUPS = Object.freeze({
     "p6a-control",
     "p6a-delivery",
     "p6a-integration",
+    "p6a-wiring",
   ],
   turns: [
     "k2-cross-family-isolation",
