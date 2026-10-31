@@ -1121,6 +1121,9 @@ try {
   process.exitCode = 1;
 }
 if (!process.exitCode) {
+  // 成功收尾时清掉本轮中断实验留下的标记，避免它被下一轮证据目录当成线索。
+  // 失败时保留，供取证。
+  rmSync(resolve(evidenceDirectory, "p6c-interrupt.marker"), { force: true });
   await runtime.shutdownRuntime("p6c-lifecycle-gate");
   const elapsedMs = Math.round(performance.now() - started);
   console.log(

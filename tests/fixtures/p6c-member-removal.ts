@@ -6,6 +6,7 @@ import {
   projectMemberRemovalBlockedErrorSchema,
 } from "../../src/contracts/project-member-removal";
 import { toAppError } from "../../src/contracts/result";
+import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { db } from "../../src/db";
 import {
   agentInstance,
@@ -16,9 +17,21 @@ import {
   machineLease,
   task,
 } from "../../src/db/schema";
-import { collectProjectMemberRemovalBlockers, removeProjectMember } from "../../src/domain/agent";
-import { createGroupChat, ensureInstance, getChat, setChatOwner } from "../../src/domain/chat";
+import {
+  addProjectMember,
+  collectProjectMemberRemovalBlockers,
+  removeProjectMember,
+} from "../../src/domain/agent";
+import {
+  createDirectChat,
+  createGroupChat,
+  ensureInstance,
+  getChat,
+  setChatOwner,
+} from "../../src/domain/chat";
 import { chatGovernanceFacts } from "../../src/domain/chat-capabilities";
+import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
+import { createProject } from "../../src/domain/project";
 import { mutateTask } from "../../src/domain/task";
 import { completeLeaseMutation } from "../../src/server/lease";
 import { toDomainAppError } from "../../src/server/functions/domain-errors";
@@ -200,6 +213,109 @@ assert.deepEqual(
 );
 pass("blockers.dm-assigned-tasks.excludes-other-states-and-group");
 
+// ── 跨 Project 对照组（设计 §2.1 最后一行、core-scope「移除不影响其他 Projects」）：
+// 同一个 Agent profile 在 B 里同时拥有 run、held 租约、Group owner 职责、DM assigned Task。
+// A 的阻塞与移除都不得碰到 B 的任何一行。
+const projectB = createProject({ name: "P6c Other" }, f.ctx);
+addProjectMember(projectB.id, f.agent.id, f.ctx);
+const dmB = createDirectChat(projectB.id, f.agent.id, f.ctx);
+const groupB = createGroupChat(
+  projectB.id,
+  createGroupChatInput.parse({
+    projectId: projectB.id,
+    title: "Other Project Group",
+    initialOwner: { kind: "agent", id: f.agent.id },
+    members: [
+      { kind: "human", id: f.ctx.userId },
+      { kind: "agent", id: f.agent.id },
+    ],
+  }),
+  human,
+);
+const instanceB = ensureInstance(groupB.id, f.agent.id, f.ctx);
+const runB = newId(ID_PREFIXES.run);
+db.insert(agentRun)
+  .values({
+    id: runB,
+    instanceId: instanceB.id,
+    chatId: groupB.id,
+    projectId: projectB.id,
+    requestId: newId(ID_PREFIXES.request),
+    status: "queued",
+    sessionId: instanceB.id,
+    startedAt: null,
+    settledAt: null,
+  })
+  .run();
+const machineB = createMachine({ name: "Other Project Machine" }, f.machineCtx);
+const machineKeyB = { projectId: projectB.id, machineId: machineB.detail.machine.id };
+saveProjectMachineBinding(
+  { ...machineKeyB, description: "", expectedRevision: null },
+  f.machineCtx,
+);
+db.insert(machineLease)
+  .values({
+    ...machineKeyB,
+    generation: 1,
+    state: "held",
+    holderInstanceId: instanceB.id,
+    changedAt: new Date(),
+  })
+  .run();
+const taskB = mutateTask("create", { projectId: projectB.id, title: "Other Project Task" }, f.ctx)
+  .detail.task;
+mutateTask(
+  "assign",
+  {
+    taskId: taskB.id,
+    expectedRevision: taskB.revision,
+    targetChatId: dmB.chat.id,
+    startNow: false,
+  },
+  f.ctx,
+);
+
+const blockersB = collectProjectMemberRemovalBlockers(projectB.id, f.agent.id);
+assert.deepEqual(
+  blockersB.map((group) => group.kind),
+  ["active_runs", "leases", "owner_duties", "dm_assigned_tasks"],
+  "the control Project must own all four responsibility classes",
+);
+const serializedB = JSON.stringify(blockersB);
+const crossProjectIds: [string, string][] = [
+  ["run", runB],
+  ["lease", machineKeyB.machineId],
+  ["owner duty", groupB.id],
+  ["DM task", taskB.id],
+];
+for (const [label, id] of crossProjectIds)
+  assert.ok(
+    serializedB.includes(id),
+    `the control Project blocker set must contain its own ${label}`,
+  );
+for (const [label, id] of crossProjectIds)
+  assert.ok(!JSON.stringify(collect()).includes(id), `A blockers must not mention B's ${label}`);
+/** B 的四类责任行，逐字段（不接受只比 id）在 A 移除前后比对。 */
+const crossProjectRows = () =>
+  JSON.stringify(
+    [
+      {
+        table: "agent_run",
+        rows: db.select().from(agentRun).where(eq(agentRun.projectId, projectB.id)).all(),
+      },
+      {
+        table: "machine_lease",
+        rows: db.select().from(machineLease).where(eq(machineLease.projectId, projectB.id)).all(),
+      },
+      { table: "chat", rows: db.select().from(chat).where(eq(chat.projectId, projectB.id)).all() },
+      { table: "task", rows: db.select().from(task).where(eq(task.projectId, projectB.id)).all() },
+    ].map(({ table, rows }) => ({
+      table,
+      rows: rows.map((row: unknown) => JSON.stringify(row)).sort(),
+    })),
+  );
+pass("blockers.cross-project.same-profile-control-group");
+
 const busyRun = seedRun(f);
 const busyLease = seedLease(f);
 db.update(chat)
@@ -216,6 +332,11 @@ assert.deepEqual(
   structured.details.blockers.map((group) => group.kind),
   ["active_runs", "leases", "owner_duties", "dm_assigned_tasks"],
 );
+for (const [label, id] of crossProjectIds)
+  assert.ok(
+    !JSON.stringify(structured.details.blockers).includes(id),
+    `combined A blockers must not mention B's ${label}`,
+  );
 assert.deepEqual(
   JSON.parse(JSON.stringify(structured)),
   projectMemberRemovalBlockedErrorSchema.parse(structured),
@@ -330,6 +451,7 @@ const events = () =>
     )
     .all().length;
 const beforeEvents = events();
+const beforeCrossProject = crossProjectRows();
 const workers = [0, 1].map(() =>
   fork(new URL("./p6c-remove-worker.ts", import.meta.url), [], {
     execArgv: ["--import", "tsx"],
@@ -384,5 +506,10 @@ assert.equal(
 const after = snapshot();
 remove();
 assert.deepEqual(snapshot(), after);
+assert.equal(
+  crossProjectRows(),
+  beforeCrossProject,
+  "removing from A must leave every B-owned run/lease/group/task row unchanged",
+);
 pass("removal.resolved.concurrent-exactly-once-effects");
 console.log(`p6c-member-removal: ${assertionCount} assertions passed`);

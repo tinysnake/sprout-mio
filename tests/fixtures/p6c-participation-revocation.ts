@@ -17,7 +17,9 @@ import {
   recoverAgentRuns,
 } from "../../src/domain/agent-run";
 import { ensureInstance, getChat, sendMessage, setChatOwner } from "../../src/domain/chat";
+import { claimDueEvaluation, reconcileChatSchedule } from "../../src/domain/chat-schedule";
 import { readChatEffectiveMembers } from "../../src/domain/channel";
+import { buildPeriodicInput, commitEvaluationResult } from "../../src/domain/continuation-delivery";
 import { mutateTask } from "../../src/domain/task";
 import {
   acquireLease,
@@ -326,7 +328,100 @@ assert.deepEqual(
   cancelledInputs,
 );
 pass("rejoin.only-channel-and-existing-dm.new-input-only");
-console.log(
-  "BLOCKED revoke.async-wake.stale-candidate: P6a scheduler materialization entry is absent from this baseline; integration must run the barrier scenario",
+
+// ─────────────────────────────── 撤销参与权时正在落地的周期检查
+// 候选已经 materialize（wake_evaluation_task 有行、评估为 claimed），此时撤销该 Agent 在 Chat
+// 的参与权，再放行模型结果：落地闸必须把它判成 stale 并丢弃结果，不能再造 run/input/message。
+// 用公共频道而不是 Group：频道的成员由 Project 派生，撤销只改 project_member，不改 chat 行，
+// 因此 `p6a_chat_changed` 触发器不会提前把它标 stale，真正被考的是落地闸本身。
+const barrierChat = f.channel.id;
+const barrierTask = mutateTask(
+  "create",
+  { projectId: f.project.id, title: "Periodic barrier task" },
+  f.ctx,
+).detail.task;
+mutateTask(
+  "assign",
+  {
+    taskId: barrierTask.id,
+    expectedRevision: barrierTask.revision,
+    targetChatId: barrierChat,
+    startNow: false,
+  },
+  f.ctx,
 );
+const barrierNow = new Date();
+reconcileChatSchedule(barrierChat, barrierNow);
+sqlite
+  .prepare("UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?")
+  .run(barrierNow.getTime(), barrierChat);
+const claimed = claimDueEvaluation({
+  now: barrierNow,
+  requestId: newId(ID_PREFIXES.request),
+  workerId: "p6c-barrier",
+});
+assert.ok(claimed, "barrier: a due periodic check must be claimed");
+assert.equal(claimed!.state, "claimed");
+assert.equal(
+  (
+    sqlite
+      .prepare("SELECT count(*) AS n FROM wake_evaluation_task WHERE evaluation_id=?")
+      .get(claimed!.id) as { n: number }
+  ).n,
+  1,
+  "barrier: the assigned Task candidate must be materialized before revocation",
+);
+const barrierInput = buildPeriodicInput(claimed!, barrierNow);
+const barrierResult = {
+  decision: "continue" as const,
+  reason: "周期检查认为负责人需要继续推进。",
+  reasonCode: "p6c_barrier",
+  recipients: barrierInput.candidates.map((candidate) => ({
+    recipient: candidate.recipient,
+    decision: "yes" as const,
+    reason: "当前责任人",
+    probability: null,
+  })),
+  selectedRecipients: barrierInput.candidates.map((candidate) => candidate.recipient),
+  probability: null,
+  provider: barrierInput.policy.provider,
+  model: barrierInput.policy.model,
+  version: barrierInput.policy.thresholdVersion,
+  snapshotHash: barrierInput.snapshotHash,
+  errorCode: null,
+};
+// 撤销需要没有活跃 run；之前新消息留下的排队 run 先收尾，屏障只考察这条已 claimed 的评估。
+for (const row of db.select().from(agentRun).where(eq(agentRun.projectId, f.project.id)).all())
+  if (row.status === "queued" || row.status === "running")
+    db.update(agentRun)
+      .set({ status: "aborted", settledAt: new Date() })
+      .where(eq(agentRun.id, row.id))
+      .run();
+const beforeRevocationRuns = db.select().from(agentRun).all();
+const beforeRevocationInputs = db.select().from(agentRunInput).all();
+const beforeRevocationMessages = db.select().from(message).all();
+remove();
+assert.equal(
+  (
+    sqlite.prepare("SELECT state FROM wake_evaluation WHERE id=?").get(claimed!.id) as {
+      state: string;
+    }
+  ).state,
+  "claimed",
+  "barrier: revocation must leave the evaluation claimed so the landing gate fences it",
+);
+assert.equal(
+  commitEvaluationResult(claimed!, barrierInput, barrierResult, barrierNow),
+  null,
+  "barrier: a result landing after participation revocation must be fenced",
+);
+const stale = sqlite
+  .prepare("SELECT state,result FROM wake_evaluation WHERE id=?")
+  .get(claimed!.id) as { state: string; result: string | null };
+assert.equal(stale.state, "stale");
+assert.equal(stale.result, null);
+assert.equal(db.select().from(agentRun).all().length, beforeRevocationRuns.length);
+assert.equal(db.select().from(agentRunInput).all().length, beforeRevocationInputs.length);
+assert.equal(db.select().from(message).all().length, beforeRevocationMessages.length);
+pass("revoke.async-wake.stale-candidate");
 console.log(`p6c-participation-revocation: ${assertionCount} assertions passed`);

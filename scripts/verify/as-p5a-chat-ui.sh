@@ -116,7 +116,7 @@ try {
     'agent_owner_group_keeps_title_entry',
     'agent_owner_group_keeps_owner_fallback_entry',
     'dm_keeps_members_and_activity_only',
-    'channel_owner_change_is_the_only_governance_action',
+    'channel_owner_change_button_existence_and_uniqueness',
   ]
   const ids = new Set(checks.map((line) => line.split(' ')[1]))
   for (const id of required) assert(ids.has(id), `browser assertion ${id} 缺失`)

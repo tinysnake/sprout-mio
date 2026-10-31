@@ -184,8 +184,10 @@ try {
 
   const channelText = (await page.textContent('[data-testid="channel-members-readonly"]'))?.trim();
   // P5a 冻结的是「公共频道成员随项目同步、不可独立增删」，不是「频道上一个治理动作都没有」：
-  // I-P6c 按产品文档补上了 Human 指定负责人，`owner_change` 因此合法出现。这里改为按动作类型
-  // 分别断言，比原来的计数 0 更严：成员类动作必须为 0，负责人动作只允许是本 Project 创建者那一个 Human。
+  // I-P6c 按产品文档补上了 Human 指定负责人，`owner_change` 因此合法出现。浏览器层这里只验证
+  // 按钮的**存在性与唯一性**（成员类动作 0 个、负责人动作恰好 1 个）；「只有 Project 创建者能
+  // 换 owner」以及 `title_change` 的身份档位由 tests/chat-governance.test.ts 覆盖，
+  // 页面不再用第二份候选列表自证。
   const channelMembershipActions = await page
     .locator('[data-governance-action="member_add"], [data-governance-action="member_remove"]')
     .count();
@@ -199,8 +201,8 @@ try {
     `文案 ${JSON.stringify(channelText)}，成员类治理按钮 ${channelMembershipActions}，负责人按钮 ${channelOwnerActions}`,
   );
   record(
-    "channel_owner_change_is_the_only_governance_action",
-    channelOwnerActions <= 1,
+    "channel_owner_change_button_existence_and_uniqueness",
+    channelOwnerActions === 1,
     `负责人治理按钮 ${channelOwnerActions}，成员类治理按钮 ${channelMembershipActions}`,
   );
   await shot(page, "p5a-public-channel");
