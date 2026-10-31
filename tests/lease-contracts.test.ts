@@ -100,8 +100,9 @@ describe("P4b shared contracts", () => {
       expect(schema.safeParse({}).success).toBe(name === "sprout_chat_automation_get");
     // 码表数量写死：新增码必须同步改这里，并写明属于哪个阶段（I-P5a channel_membership_managed、
     // I-P5b 五个 Task 码、I-P6a automation_disabled / wake_provider_unavailable /
-    // continuation_delivery_unknown）。同时守「无重复」与「与 APP_ERROR_CODES 逐项一致」。
-    expect(humanContracts.APP_ERROR_CODES).toHaveLength(34);
+    // continuation_delivery_unknown、I-P6b info_hub_cursor_stale / turn_context_unavailable）。
+    // 同时守「无重复」与「与 APP_ERROR_CODES 逐项一致」。
+    expect(humanContracts.APP_ERROR_CODES).toHaveLength(36);
     expect(new Set(REMOTE_ERROR_CODES).size).toBe(REMOTE_ERROR_CODES.length);
     expect([...REMOTE_ERROR_CODES]).toEqual([...humanContracts.APP_ERROR_CODES]);
   });
