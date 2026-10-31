@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import type { ProjectContext } from "../src/domain/access";
+import { registerSproutMcp } from "../src/extension/mcp-extension";
+import type { PiMcpModule } from "../src/extension/mcp-pi-types";
+import type { RemoteToolClient } from "../src/extension/remote-client";
+import { registerSproutStatus, sproutStatusPayload } from "../src/extension/status";
+import type { SproutExtensionAPI } from "../src/extension/types";
 
 /**
  * 继承开关的生产接线：`SPROUT_PI_INHERIT_HOST_RESOURCES` 在父进程解析，随 open 命令显式
@@ -168,6 +173,85 @@ describe("Pi 资源继承开关的父进程接线", () => {
     expect(open.inheritHostResources).toBe(false);
     expect(snapshot?.resources?.inheritHostResources).toBe(false);
     expect(snapshot?.registeredTools).toEqual(["bash", "edit", "read", "sprout_status", "write"]);
-    expect(snapshot?.tools).toEqual(["bash", "edit", "read", "write"]);
+    // 诊断入口现在是工具面的正式成员：registry 与工具面都有它，两张表都随协议完整落库。
+    expect(snapshot?.tools).toEqual(["bash", "edit", "read", "sprout_status", "write"]);
+  });
+});
+
+/**
+ * `sprout_status` 是 MCP 工具面失败的诊断入口：失败文本必须随工具返回，不能只停在
+ * extension 内部的 `onError` 上。这里用真实的 `registerSproutMcp` 失败路径造一条诊断
+ * （目录查询被远端拒绝），再读工具真的返回的那段 text。
+ */
+describe("sprout_status 的诊断通道", () => {
+  it("MCP 工具面失败时，错误文本随工具返回，而不是只落在内部 onError", async () => {
+    const remote: RemoteToolClient = {
+      projectId: newId(ID_PREFIXES.project),
+      async request() {
+        return {
+          outcome: "response",
+          result: {
+            ok: false as const,
+            error: {
+              code: "machine_unavailable" as const,
+              message: "机器不可用",
+              requestId: newId(ID_PREFIXES.request),
+            },
+            requestId: newId(ID_PREFIXES.request),
+          },
+        };
+      },
+    };
+    const events = new Map<string, () => void | Promise<void>>();
+    const extension = await registerSproutMcp(
+      {
+        registerTool() {
+          throw new Error("失败的目录不得注册工具");
+        },
+        on(event, handler) {
+          events.set(event, handler);
+        },
+      },
+      {
+        remote,
+        machineId: newId(ID_PREFIXES.machine),
+        authorizationGeneration: () => 1,
+        piMcp: {} as PiMcpModule,
+      },
+    );
+    const refreshed = await extension.refresh();
+    expect(refreshed.outcome).toBe("failed");
+    const failure = extension.lastError;
+    expect(failure).toContain("machine_unavailable");
+
+    const tools = new Map<string, Parameters<SproutExtensionAPI["registerTool"]>[0]>();
+    registerSproutStatus({
+      registerTool: (tool) => {
+        tools.set(tool.name, tool);
+      },
+      registerCommand: () => undefined,
+    });
+    const result = await tools.get("sprout_status")!.execute("probe", {});
+    const text = result.content.find((part) => part.type === "text") as { text: string };
+    // 两条路径看同一个载荷：工具返回的 details 与 text 块里的 JSON。
+    expect(JSON.parse(text.text)).toEqual(result.details);
+    expect(result.details.mcpSurfaceError).toBe(failure);
+    expect(JSON.stringify(result.details)).toContain("machine_unavailable");
+    // 宿主实况与诊断不冲突：没有宿主写过实况时，载荷里就没有 host 段。
+    expect(result.details).not.toHaveProperty("host");
+    expect(sproutStatusPayload().mcpSurfaceError).toBe(failure);
+
+    // 复位进程级诊断槽：失败必须能被下一次成功（或 idle）清掉，不残留成假事实。
+    const idle = await registerSproutMcp(
+      { registerTool: () => undefined, on: (event, handler) => void events.set(event, handler) },
+      {
+        remote,
+        machineId: () => null,
+        authorizationGeneration: () => null,
+        piMcp: {} as PiMcpModule,
+      },
+    );
+    expect(await idle.refresh()).toMatchObject({ outcome: "idle" });
+    expect(sproutStatusPayload()).not.toHaveProperty("mcpSurfaceError");
   });
 });

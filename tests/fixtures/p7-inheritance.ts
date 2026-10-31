@@ -31,6 +31,7 @@ import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
+import { APP_VERSION, CONTRACT_VERSION } from "../../src/contracts/version";
 import { infoHubToolInputSchemas } from "../../src/contracts/info-hub-query";
 import { remoteToolInputSchemas } from "../../src/contracts/remote";
 import { taskToolInputSchemas } from "../../src/contracts/task";
@@ -148,6 +149,7 @@ type Snapshot = {
 
 type OpenResult = {
   snapshot: Snapshot;
+  runId: string;
   readyMs: number;
   turn?: { text: string; stopReason: string; turnMs: number };
 };
@@ -198,7 +200,12 @@ function openSession(options: {
       const exit = new Promise<void>((resolveExit) => child.once("exit", () => resolveExit()));
       child.stdin.write(`${JSON.stringify({ type: "close", id })}\n`);
       void exit.then(() =>
-        done({ snapshot, readyMs: readyAt - started, ...(turnResult ? { turn: turnResult } : {}) }),
+        done({
+          runId: id,
+          snapshot,
+          readyMs: readyAt - started,
+          ...(turnResult ? { turn: turnResult } : {}),
+        }),
       );
     };
     child.stderr.setEncoding("utf8");
@@ -308,11 +315,12 @@ function openSession(options: {
   });
 }
 
-/** 契约里声明的 Sprout 工具名 + 四个基础工具 = 默认工具面的完整允许集合。 */
+/** 契约里声明的 Sprout 工具名 + 四个基础工具 + 诊断入口 = 默认工具面的完整允许集合。 */
 const expectedTools = [
   "bash",
   "edit",
   "read",
+  "sprout_status",
   "write",
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas),
@@ -320,12 +328,47 @@ const expectedTools = [
 ].sort();
 
 /**
- * registry 里可能出现的工具集 = 声明给模型的工具 + extension 自己注册但可能被 allowlist 挡住的项。
- * `sprout_status` 就是后者：`pi/sprout-extension.ts` 注册它，但 runner 的 `tools` allowlist
- * 没有它，Pi 在创建 session 时就把它从 registry 里丢掉。本单元不改工具面，只把状态写成事实。
+ * registry 必须与工具面逐条相等：注册了却不在 allowlist 里就是被 Pi 丢掉（对模型不存在）。
+ * 这里不再留例外——`sprout_status` 已经从「被丢掉的观察项」变成「工具面的正式成员」。
  */
-const registeredCandidates = ["sprout_status"];
-const allowedAnywhere = new Set([...expectedTools, ...registeredCandidates]);
+const allowedAnywhere = new Set(expectedTools);
+
+/**
+ * 从真实 session 文件里取出 `sprout_status` 的那条 `toolResult`。
+ *
+ * 证据链要求：模型发了一次工具调用 → Pi 记下结果 → 我们从文件里读回来解析。
+ * 不读 runner 自己报的字段，不让 runner 自己证明自己。
+ */
+function readSproutStatusCall(sessionFile: string, label: string) {
+  assert(sessionFile && existsSync(sessionFile), `${label}: session 文件必须存在`);
+  const entries = readFileSync(sessionFile, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { message?: Record<string, any> });
+  const calls = entries.flatMap((entry) =>
+    Array.isArray(entry.message?.content)
+      ? entry.message.content.filter((part: any) => part.type === "toolCall")
+      : [],
+  );
+  const results = entries.filter(
+    (entry) => entry.message?.role === "toolResult" && entry.message.toolName === "sprout_status",
+  );
+  assert.equal(
+    calls.filter((part: any) => part.name === "sprout_status").length,
+    1,
+    `${label}: 模型必须刚好发一次 sprout_status 调用`,
+  );
+  assert.equal(results.length, 1, `${label}: sprout_status 必须刚好有一条 toolResult`);
+  const content = results[0]!.message!.content;
+  const text = (Array.isArray(content) ? content : []).find((part: any) => part.type === "text");
+  assert(text?.text, `${label}: sprout_status 结果必须是 text 块`);
+  return {
+    toolName: "sprout_status",
+    isError: results[0]!.message!.isError === true,
+    payload: JSON.parse(text.text) as Record<string, unknown>,
+    rawText: text.text as string,
+  };
+}
 
 const median = (values: number[]) => {
   const sorted = [...values].sort((left, right) => left - right);
@@ -356,7 +399,19 @@ const runs: Array<{
   readyMs: number;
   tools: string[];
   registeredTools: string[];
-  sproutsStatus: { declared: boolean; registered: boolean };
+  sproutStatus: { declared: boolean; registered: boolean };
+  /** 真实调用 `sprout_status` 拿到的载荷，没安排调用时为 null。 */
+  sproutStatusCall: {
+    toolName: string;
+    isError: boolean;
+    payload: Record<string, unknown>;
+    /** 同一 session 文件里的 toolResult 原文，用来证明载荷来自这条真实调用。 */
+    rawText: string;
+  } | null;
+  runId: string;
+  provider: string;
+  model: string;
+  thinking: string;
   extensions: string[];
   sdkVersion: string;
   sessionFile: string;
@@ -392,20 +447,26 @@ async function run(options: {
   const cwd = join(directory, project.name);
   let turn: { text: string; readPath: string; reply: string } | undefined;
   if (options.withTurn) {
-    // 一轮真实对话：只用一个基础工具（read），证明工具面在会话里真的可执行。
+    // 一轮真实对话：先用基础工具（read）证明工具面在会话里真的可执行，再调一次
+    // `sprout_status`。前者是旧证据，后者是本单元的新事实：诊断入口不仅声明了，
+    // 还真的能被模型敲一次并返回真实数据。同一轮里两个步骤，模型夹具按顺序发两次工具调用。
     const target = join(directory, `probe-target-${options.label}.txt`);
     writeFileSync(target, "p7 inheritance probe target\n");
     const text = "p7 inheritance probe turn";
     const reply = "p7 inheritance probe reply";
     fixture.arm("status", {
       expectedUserText: text,
-      steps: [{ name: "read", arguments: { path: target } }],
+      steps: [
+        { name: "read", arguments: { path: target } },
+        { name: "sprout_status", arguments: {} },
+      ],
       reply,
     });
     turn = { text, readPath: target, reply };
   }
   const {
     snapshot,
+    runId,
     readyMs,
     turn: turnResult,
   } = await openSession({
@@ -420,6 +481,11 @@ async function run(options: {
   });
   const resources = snapshot.resources;
   assert(resources, `${options.label}: ready 快照必须带 resources 段（继承边界证据）`);
+  // 真实调用的证据来自 session 文件本身：模型发一次 `sprout_status` 工具调用，Pi 把结果
+  // 写成 `role: "toolResult"` 的那条 entry。不读 runner 自己报的字段，避免自己证明自己。
+  const sproutStatusCall = turnResult
+    ? readSproutStatusCall(snapshot.sessionFile, options.label)
+    : null;
   const relativeTo = (path: string) =>
     relative(directory, path).split("\\").join("/") || basename(path);
   runs.push({
@@ -429,10 +495,15 @@ async function run(options: {
     readyMs,
     tools: snapshot.tools,
     registeredTools: snapshot.registeredTools ?? [],
-    sproutsStatus: {
+    sproutStatus: {
       declared: snapshot.tools.includes("sprout_status"),
       registered: (snapshot.registeredTools ?? []).includes("sprout_status"),
     },
+    sproutStatusCall,
+    runId,
+    provider: snapshot.provider,
+    model: snapshot.model,
+    thinking: snapshot.thinking,
     extensions: snapshot.extensions,
     sdkVersion: snapshot.sdkVersion,
     sessionFile: relativeTo(snapshot.sessionFile),
@@ -467,9 +538,8 @@ async function run(options: {
       contextFiles: resources.contextFiles.map((path) => basename(path)),
     },
   });
-  return { snapshot, resources, readyMs, turn: turnResult };
+  return { snapshot, runId, resources, readyMs, turn: turnResult };
 }
-
 // ---------------------------------------------------------------- 默认关闭：a 三次（第一次带一轮真实对话）
 for (const repeat of [1, 2, 3])
   await run({
@@ -505,6 +575,14 @@ for (const entry of runs) {
     entry.registeredTools.every((name) => allowedAnywhere.has(name)),
     `${entry.label}: registry 里只有 Sprout 工具与四个基础工具，没有宿主工具`,
   );
+  // 注册了就必须声明给模型：两张表逐条相等，没有「注册了但被 allowlist 丢掉」的余量。
+  assert.deepEqual(
+    entry.registeredTools,
+    entry.tools,
+    `${entry.label}: registry 与工具面逐条相等（没有注册了却被 allowlist 丢掉的工具）`,
+  );
+  assert(entry.sproutStatus.declared, `${entry.label}: sprout_status 在工具面`);
+  assert(entry.sproutStatus.registered, `${entry.label}: sprout_status 在 registry`);
   for (const forbidden of ["codemode", "tool_search", markers.hostExtensionTool]) {
     assert(!entry.tools.includes(forbidden), `${entry.label}: 工具面不含 ${forbidden}`);
     assert(
@@ -526,7 +604,7 @@ for (const entry of runs) {
   if (entry.turn) assert(entry.sessionFileExists, `${entry.label}: 跑过一轮后 session 文件已落盘`);
 }
 pass(
-  `工具面 ${runs.length} 次均为 ${expectedTools.length} 个工具（${expectedTools.join(", ")}）；registry ${onRuns[0]!.registeredTools.length} 个，宿主工具/mcp__/codemode/tool_search 均未出现`,
+  `工具面 ${runs.length} 次均为 ${expectedTools.length} 个工具（${expectedTools.join(", ")}），且每次 registry 与工具面逐条相等；宿主工具/mcp__/codemode/tool_search 均未出现`,
 );
 
 // ---------------------------------------------------------------- 断言：默认不继承
@@ -585,6 +663,73 @@ assert.equal(turnRun.turn.text, "p7 inheritance probe reply", "真实一轮回�
 assert(turnRun.sessionFileExists, "真实一轮后 session 文件已落盘");
 pass(
   `真实一轮（read 工具）：stop_reason=${turnRun.turn.stopReason}，${turnRun.turn.turnMs}ms，session 文件 ${turnRun.sessionFileExists ? "已落盘" : "缺失"}`,
+);
+
+// ---------------------------------------------------------------- 断言：真的调用了一次 sprout_status
+const statusCall = turnRun.sproutStatusCall;
+assert(statusCall, "off-a-1 这一轮里应该调过一次 sprout_status");
+assert.equal(statusCall.isError, false, "sprout_status 调用不是错误结果");
+const payload = statusCall.payload as {
+  app?: string;
+  version?: string;
+  contractVersion?: number;
+  host?: {
+    source?: string;
+    runtime?: { node?: string; pi?: string };
+    host?: { inheritHostResources?: boolean; extensions?: string[] };
+    session?: { model?: string; thinking?: string; activeTools?: number; registeredTools?: number };
+    run?: { id?: string };
+  };
+  mcpSurfaceError?: string;
+};
+// 载荷必须是真事实，不是常量：每一条都能拿本夹具独立知道的东西对账。
+assert.equal(payload.app, "sprout-mio", "载荷里的 app 是 Sprout");
+assert.equal(payload.version, APP_VERSION, "载荷里的版本等于构建时注入的 APP_VERSION");
+assert.equal(payload.contractVersion, CONTRACT_VERSION, "载荷里的契约版本等于 CONTRACT_VERSION");
+assert(payload.host, "载荷必须带宿主实况（版本之外的运行时/开关/会话事实）");
+assert.equal(payload.host!.source, "pi-host-runner", "宿主实况标明来源进程");
+assert.equal(payload.host!.runtime!.node, process.versions.node, "运行时 node 版本是真实进程的");
+assert(payload.host!.runtime!.pi, "运行时带 Pi SDK 版本");
+assert.equal(
+  payload.host!.host!.inheritHostResources,
+  turnRun.resources.inheritHostResources,
+  "载荷里的宿主开关等于这一轮真的用的开关",
+);
+assert.deepEqual(
+  payload.host!.host!.extensions,
+  turnRun.extensions,
+  "载荷里的 extension 清单等于 ready 快照里真的加载的那份",
+);
+assert.equal(
+  payload.host!.session!.model,
+  `${turnRun.provider}/${turnRun.model}`,
+  "载荷里的模型等于这一轮真的在跑的模型",
+);
+assert.equal(
+  payload.host!.session!.thinking,
+  turnRun.thinking,
+  "载荷里的 thinking 等于 ready 快照里真的在用的那一档",
+);
+assert.equal(
+  payload.host!.session!.activeTools,
+  turnRun.tools.length,
+  "载荷里的工具面长度等于 ready 快照的工具面长度",
+);
+assert.equal(
+  payload.host!.session!.registeredTools,
+  turnRun.registeredTools.length,
+  "载荷里的 registry 长度等于 ready 快照的 registry 长度",
+);
+assert.equal(
+  payload.host!.run!.id,
+  turnRun.runId,
+  "载荷里的 run id 等于这次 open 真的生成的 run id（唯一，只能是实时值）",
+);
+// 诊断槽的诚实性：这一轮没有任何 MCP 失败，所以不能凭空多一条错误文本；
+// 真的失败时文本随工具返回的路径由 `tests/pi-host-inheritance.test.ts` 盯。
+assert.equal(payload.mcpSurfaceError, undefined, "没发生 MCP 失败时 sprout_status 不得凭空报错");
+pass(
+  `真实调用 sprout_status：返回 ${Object.keys(payload).join("/")}，host.run.id=${payload.host!.run!.id}，工具面 ${payload.host!.session!.activeTools} 个，无凭空诊断`,
 );
 
 // ---------------------------------------------------------------- 断言：开关打开只搬 skills/prompts
@@ -646,11 +791,18 @@ const evidence = {
   sdkVersion: runs[0]!.sdkVersion,
   markers,
   expectedTools,
-  registeredCandidates,
-  // 观察值，不是断言：`sprout_status` 是否真的能被模型调用，由 `sproutStatus` 两列读出。
+  // 不是「观察值」：工具面成员资格与「真的能调」都是硬断言，失败会在夹具层先红。
   sproutStatus: {
-    declared: runs[0]!.sproutsStatus.declared,
-    registered: runs[0]!.sproutsStatus.registered,
+    declared: runs.every((entry) => entry.sproutStatus.declared),
+    registered: runs.every((entry) => entry.sproutStatus.registered),
+    call: {
+      toolName: statusCall.toolName,
+      isError: statusCall.isError,
+      payload,
+      runId: turnRun.runId,
+      sessionFile: turnRun.sessionFile,
+      source: "session 文件里的 toolResult entry（模型发起 → Pi 落盘 → 夹具读回解析）",
+    },
   },
   runs: runs.map((entry) => ({ ...entry, readyMs: Math.round(entry.readyMs) })),
   latency: {
