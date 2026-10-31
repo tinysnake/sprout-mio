@@ -26,7 +26,6 @@ import { readChatEffectiveMembers } from "./channel";
 import { getChat, ensureInstance, sendMessage } from "./chat";
 import { cancelInvalidTaskStartInputs } from "./task-input";
 import { routeWakeCandidates } from "./chat-wake";
-import { persistAutomationRunStop } from "./chat-automation";
 import { controlFor } from "./chat-schedule";
 import { settleContinuationRun } from "./continuation-delivery";
 import { taskResponsibilityFacts, TaskError } from "./task-capabilities";
@@ -358,7 +357,6 @@ function fanoutHumanMessage(
   ctx: ProjectContext,
   ownerAgent = false,
 ): void {
-  if (controlFor(current.id).mode !== "enabled") return;
   const members = readChatEffectiveMembers(current.id, current.projectId);
   // 派发契约只带 id → 名字的字典与消息内容；规则函数要的其余成员事实仍由视图给全。
   const dispatch: ChatWakeDispatch = {
@@ -586,13 +584,7 @@ export function recordRunInputDeliveryFailure(
 }
 
 export function abortAgentRun(id: string, ctx: ProjectContext): AgentRun {
-  return sqlite
-    .transaction(() => {
-      const row = runRow(id, ctx);
-      persistAutomationRunStop(row.chatId, [id], ctx, new Date());
-      return transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
-    })
-    .immediate();
+  return transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
 }
 
 export function completeAgentRun(

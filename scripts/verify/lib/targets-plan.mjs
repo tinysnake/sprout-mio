@@ -34,7 +34,17 @@ export const CI_GROUPS = Object.freeze({
     "i7-chat-scope",
     "an-p4d-authority",
   ],
-  tasks: ["ba-task-domain", "bc-task-start", "bd-task-migration", "be-task-info", "p6a-routing"],
+  tasks: [
+    "ba-task-domain",
+    "bc-task-start",
+    "bd-task-migration",
+    "be-task-info",
+    "p6a-routing",
+    "p6a-scheduler",
+    "p6a-control",
+    "p6a-delivery",
+    "p6a-integration",
+  ],
   turns: [
     "k2-cross-family-isolation",
     "m-error-mapping",
@@ -54,6 +64,7 @@ export const CI_GROUPS = Object.freeze({
     "aq-p4d-pages",
     "as-p5a-chat-ui",
     "as-p5b-task-pages",
+    "p6a-pages",
   ],
 });
 
