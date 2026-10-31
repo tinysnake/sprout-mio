@@ -14,10 +14,18 @@ assert(evidence);
 const factsFile = join(evidence, "restart-facts.json");
 if (mode === "restart" && !phase) {
   async function child(stage: string, crash = false) {
+    // Capture the child's own diagnostics: a bare exit code hides which assertion inside the stage
+    // rejected the restart, and a stage that dies silently is not evidence of anything.
+    let output = "";
     const worker = fork(resolve("tests/fixtures/p7-loop-domain.ts"), ["restart", stage], {
       execArgv: ["--import", "tsx"],
-      stdio: ["ignore", "inherit", "inherit", "ipc"],
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
+    for (const stream of [worker.stdout, worker.stderr])
+      stream?.on("data", (chunk: Buffer) => {
+        output += chunk.toString();
+        process.stdout.write(chunk);
+      });
     const timer = setTimeout(() => worker.kill("SIGKILL"), 60000);
     try {
       if (crash) {
@@ -42,6 +50,7 @@ if (mode === "restart" && !phase) {
       assert.deepEqual(
         result,
         crash ? { code: null, signal: "SIGKILL" } : { code: 0, signal: null },
+        `restart stage ${stage} failed: ${output.trim().split("\n").slice(-6).join(" | ")}`,
       );
     } finally {
       clearTimeout(timer);
