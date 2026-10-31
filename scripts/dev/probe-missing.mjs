@@ -1,0 +1,11 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch();
+const page = await browser.newPage();
+page.on("pageerror", (e) => console.log("pageerror:", e.message));
+page.on("console", (m) => m.type() === "error" && console.log("console.error:", m.text().slice(0, 300)));
+await page.goto(process.argv[2], { waitUntil: "networkidle" });
+await page.waitForTimeout(2500);
+console.log("url:", page.url());
+console.log("chat-error count:", await page.locator('[data-testid="chat-error"]').count());
+console.log("body:", (await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 400));
+await browser.close();

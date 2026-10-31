@@ -104,7 +104,7 @@ export function InfoHubLiveProvider({
     <InfoHubLiveContext.Provider value={value}>
       {/* 轮询状态只给门禁与调试看，正常态不占版面。 */}
       <div data-info-hub-live-state={state} style={{ display: "contents" }}>
-        {["unauthorized", "forbidden", "not_found"].includes(state) ? (
+        {["unauthorized", "forbidden"].includes(state) && (
           <div role="alert" className="p-4 text-sm">
             <InfoHubPollingStatus />
             {state === "unauthorized" && (
@@ -116,9 +116,9 @@ export function InfoHubLiveProvider({
               </a>
             )}
           </div>
-        ) : (
-          children
         )}
+        {/* 轮询判定的身份/权限结论只加一条提示，不替页面决定渲染什么：页面自己的错误态更准。 */}
+        {children}
       </div>
     </InfoHubLiveContext.Provider>
   );
