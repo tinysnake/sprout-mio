@@ -236,8 +236,10 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应[P6b](development-plan-functional.md#p6b-完成-info-hub-全部一期视角)、[I-P6b](development-plan.md#i-p6b-集成-info-hub-全部一期视角)，依赖 P6a 技术验收通过。
 
-- [ ] 补齐 Info Hub 的 Project、Chat、Agent、Machine 一期视角，设计当前事实、轮初快照和更新提示的层级，不把全部字段默认展开。
-- [ ] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。
+- [x] 补齐 Info Hub 的 Project、Chat、Agent、Machine 一期视角，设计当前事实、轮初快照和更新提示的层级，不把全部字段默认展开。证据 [P6b UI 线证据](p6b/summary.md#ui-线证据)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-pages.sh`；三宽度断言的 `*_independent_status_run_lease` 与 `*_prepared_has_no_injection_claim` 同时钉住分层与收据文案。
+- [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [P6b UI 线证据](p6b/summary.md#ui-线证据)与[P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-pages.sh`；接线与组件清单见 `orchestrate/sprout-mio-p6/reports/p6b-wiring-report.md`。
+
+本节只交付呈现与自检证据：本仓库没有 P6b 设计的 Human 确定记录（I-P6b 第 2 条因此不勾），Human 真实体验确认也尚未进行，本节不冒充确认。
 
 ## UI-P6c 完成成员治理与重新加入呈现
 

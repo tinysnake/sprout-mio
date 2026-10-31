@@ -28,7 +28,7 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | P4a 技术验收通过、待 Human 体验确认，其余待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
 | P6a | 自动接续与人类控制 | P4、P5 全部集成单元技术验收通过 | 技术验收通过，待 Human 体验确认 |
-| P6b | Info Hub 全部一期视角 | P6a 技术验收通过 | 待开始 |
+| P6b | Info Hub 全部一期视角 | P6a 技术验收通过 | 自检门禁通过，待独立技术验收与 Human 体验确认（见 [p6b/summary.md](p6b/summary.md)） |
 | P6c | 成员治理、移除与重新加入 | P6a、P6b 技术验收通过 | 待开始 |
 | P7 | 完成手机、PWA、恢复与一期整体验收 | P6a、P6b、P6c 全部技术验收通过 | 待开始 |
 | R1 | 验证项目及软件 MCP 接入 | P4 的协议与授权稳定后 | 已完成：七条独立技术验收第七轮通过，并由 Human 确认纳入一期（结论见 [r1/summary.md](r1/summary.md)） |
@@ -174,9 +174,11 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 按总计划 I-P6b 分派，依赖 P6a 技术验收通过，扩展其最小 automation 摘要。
 
-- [ ] 完成 Info Hub 的 Project、Chat、Agent 与 Machine 全部一期视角。
-- [ ] 完成轮初快照、运行中合并的简短变更提示与 Agent 主动查询。普通变化不单独唤醒空闲分身。
-- [ ] 验证基本信息可见性不授予聊天正文访问或对象操作权，Agent status 仅汇总当前 Project。
+- [x] 完成 Info Hub 的 Project、Chat、Agent 与 Machine 全部一期视角。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)与[P6b 契约](p6b/contracts.md)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-info.sh`；四视角门禁断言见 [P6b 章节结论](p6b/summary.md)。
+- [x] 完成轮初快照、运行中合并的简短变更提示与 Agent 主动查询。普通变化不单独唤醒空闲分身。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)与[P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)：快照按 runId 不可改写、提示合并与 5 秒最小间隔、普通变化零唤醒（invariant 3）；重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`。
+- [x] 验证基本信息可见性不授予聊天正文访问或对象操作权，Agent status 仅汇总当前 Project。证据 [P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)：真实 grant 读四个视角 ok、跨 Project `not_found`、`task_update` 被拒，重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`；工具拒绝面见 [P6b 契约](p6b/contracts.md#agent-工具-sprout_info_hub_get)。
+
+技术自检已在 `4d9545c` 由五个 P6b 门禁实测通过，契约、证据边界与已知限制见 [P6b 章节结论](p6b/summary.md)。独立技术验收尚无报告，Human 亲自体验仍待 I-P6b 第四条确认，不随本节勾选。
 
 ## P6c 完成成员治理与重新加入
 
