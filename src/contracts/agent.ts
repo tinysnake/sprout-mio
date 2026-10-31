@@ -3,7 +3,7 @@ import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
 import type { AppResult } from "./result";
 
-export { fieldErrorsFrom } from "./project";
+export { fieldErrorsFrom } from "./field-errors";
 
 export const agentProfileIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.agentProfile));
 const name = z.string().trim().min(1, "名称不能为空").max(80, "名称最多 80 字");

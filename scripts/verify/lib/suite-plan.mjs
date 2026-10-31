@@ -27,7 +27,11 @@ function plan(seconds, resources, preparation = [], sandbox = false) {
   });
 }
 
+export const MANUAL_GATES = Object.freeze(["p6a-live-routing"]);
+
 export const SUITE_PLAN = Object.freeze({
+  "p6a-routing": plan(3, { unit: 1 }),
+  "p6a-live-routing": plan(400, { sdk: 1 }),
   "a-base": plan(54.969, { development: 1, unit: 1 }, privateTree, true),
   "aa-execution-log-contracts": plan(1.648, { unit: 1 }),
   "ab-worker-long-command": plan(34.493, { native: 1 }, worker),

@@ -16,6 +16,7 @@ export type GatePlan = Readonly<{
   sandbox: boolean;
 }>;
 export const SUITE_CAPACITY: Readonly<Record<ResourceName, number>>;
+export const MANUAL_GATES: readonly string[];
 export const SUITE_PLAN: Readonly<Record<string, GatePlan>>;
 export function fitsResources(used: ResourceClaims, requested: ResourceClaims): boolean;
 export function allocateResources(

@@ -1,5 +1,6 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
+import { MANUAL_GATES } from "./suite-plan.mjs";
 
 export const CI_GROUPS = Object.freeze({
   base: ["a-base"],
@@ -33,7 +34,7 @@ export const CI_GROUPS = Object.freeze({
     "i7-chat-scope",
     "an-p4d-authority",
   ],
-  tasks: ["ba-task-domain", "bc-task-start", "bd-task-migration", "be-task-info"],
+  tasks: ["ba-task-domain", "bc-task-start", "bd-task-migration", "be-task-info", "p6a-routing"],
   turns: [
     "k2-cross-family-isolation",
     "m-error-mapping",
@@ -87,7 +88,7 @@ export function validateGateTargets(root) {
     .sort();
   const remote = Object.values(CI_GROUPS).flat();
   if (new Set(remote).size !== remote.length) throw new Error("Duplicate CI gate assignment");
-  const covered = [...new Set([...remote, ...Object.keys(LOCAL_GATES)])].sort();
+  const covered = [...new Set([...remote, ...Object.keys(LOCAL_GATES), ...MANUAL_GATES])].sort();
   if (JSON.stringify(actual) !== JSON.stringify(covered))
     throw new Error(
       "Verification gate inventory changed; classify every gate before running targets",
@@ -95,5 +96,5 @@ export function validateGateTargets(root) {
   const shared = remote.filter((id) => Object.hasOwn(LOCAL_GATES, id)).sort();
   if (JSON.stringify(shared) !== JSON.stringify(["a-base", "b-tooling"]))
     throw new Error("Only explicitly split A/B gates may have two targets");
-  return { ci: remote, local: Object.keys(LOCAL_GATES) };
+  return { ci: remote, local: Object.keys(LOCAL_GATES), manual: [...MANUAL_GATES] };
 }

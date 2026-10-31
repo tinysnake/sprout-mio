@@ -2,7 +2,13 @@
 import { spawn, spawnSync } from "node:child_process";
 import { NATIVE_GATE_WEIGHTS } from "./lib/native-lanes.mjs";
 import { greenFullRunOn, spendEntry } from "./lib/spend.mjs";
-import { SUITE_CAPACITY, SUITE_PLAN, fitsResources, allocateResources } from "./lib/suite-plan.mjs";
+import {
+  MANUAL_GATES,
+  SUITE_CAPACITY,
+  SUITE_PLAN,
+  fitsResources,
+  allocateResources,
+} from "./lib/suite-plan.mjs";
 import {
   closeSync,
   existsSync,
@@ -31,7 +37,7 @@ Runs known scripts/verify/*.sh gates in bounded resource pools after serial
 artifact preparation. Gates that modify source or outputs use private trees.
 Unknown gates run sequentially as barriers. Reports retain lexical gate order.
 A failing script does not stop later scripts. The command exits 1 when any
-script fails.
+script fails. Gates listed as manual run only with --only or a direct script invocation.
 
 Options:
   --only <ids>  Run exactly these comma-separated script ids (file names without .sh).
@@ -516,7 +522,7 @@ async function main() {
   }
   const selected =
     parsed.only === null
-      ? allScripts
+      ? allScripts.filter((script) => !MANUAL_GATES.includes(script.id))
       : allScripts.filter((script) => parsed.only.includes(script.id));
 
   const run = createRunDirectory();

@@ -22,7 +22,7 @@ function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), "verify-targets-"));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const inventory = validateGateTargets(root);
-  for (const id of new Set([...inventory.ci, ...inventory.local])) {
+  for (const id of new Set([...inventory.ci, ...inventory.local, ...inventory.manual])) {
     const file = join(directory, "scripts/verify", `${id}.sh`);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, "");
@@ -35,6 +35,8 @@ function fixture(t) {
     "targets.mjs",
     "test-target.mjs",
     "lib/targets-plan.mjs",
+    "lib/suite-plan.mjs",
+    "lib/native-lanes.mjs",
     "lib/test-targets.mjs",
   ]) {
     mkdirSync(dirname(join(directory, "scripts/verify", file)), { recursive: true });
@@ -57,6 +59,9 @@ await test("every gate and unit file has an explicit target; only split A/B over
     "a-base",
     "b-tooling",
   ]);
+  assert.deepEqual(inventory.manual, ["p6a-live-routing"]);
+  assert(!inventory.ci.includes("p6a-live-routing"));
+  assert(!inventory.local.includes("p6a-live-routing"));
   assert.deepEqual(validateUnitTargets(root).local, [
     "tests/extension-mcp.test.ts",
     "tests/machine-worker.test.ts",

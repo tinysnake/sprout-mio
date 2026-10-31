@@ -1,0 +1,2147 @@
+[
+  {
+    "id": "w01",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w01",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["no_reply"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": {
+        "id": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "好，那我等你结果。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+      "recentMessages": [
+        {
+          "id": "msg_92bb14f3-6315-47cc-83e5-43403fcdf0b4",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "@阿界 429 的日志我拉下来了，是限流中间件在 shared session 上把窗口算到了别人头上。",
+          "createdAt": "2025-12-31T23:59:57.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_afb8c4b5-dc83-435a-86a2-a53e0a931c83",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "看到了，我先查窗口的 key 是按 session 还是按 instance 取的。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "好，那我等你结果。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "群里人类确认后只是等结果",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_1"
+            },
+            "instanceId": "ins_92bb14f3-6315-47cc-83e5-43403fcdf0b4",
+            "personaSummary": "阿界（订阅与限流接口）",
+            "responsibility": "订阅接口与 429 限流窗口的定位、修复与联调",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿界",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": []
+    },
+    "input": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "evaluatedAt": "2026-01-01T00:00:00.000Z",
+      "triggerMessage": {
+        "id": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "好，那我等你结果。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+      "recentMessages": [
+        {
+          "id": "msg_92bb14f3-6315-47cc-83e5-43403fcdf0b4",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "@阿界 429 的日志我拉下来了，是限流中间件在 shared session 上把窗口算到了别人头上。",
+          "createdAt": "2025-12-31T23:59:57.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_afb8c4b5-dc83-435a-86a2-a53e0a931c83",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "看到了，我先查窗口的 key 是按 session 还是按 instance 取的。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "好，那我等你结果。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "群里人类确认后只是等结果",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "candidates": [
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "instanceId": "ins_92bb14f3-6315-47cc-83e5-43403fcdf0b4",
+          "personaSummary": "阿界（订阅与限流接口）",
+          "responsibility": "订阅接口与 429 限流窗口的定位、修复与联调",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        }
+      ],
+      "tasks": [],
+      "truncation": {
+        "originalMessageCount": 3,
+        "includedMessageCount": 3,
+        "droppedMessageIdRange": null,
+        "tasksComplete": true,
+        "candidatesComplete": true,
+        "recentMessageCharacters": 103,
+        "characterBudget": 24000
+      },
+      "snapshotHash": "15faaaa2679327f1418d35a69b42a69a9e917a654d32798a7bf278c907e0cf42"
+    },
+    "expected": {
+      "preparation": "model",
+      "candidates": ["agent:agent_1"],
+      "selected": [],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 1
+    }
+  },
+  {
+    "id": "w06",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w06",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["multi_agent"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": {
+        "id": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "迁移和回归一起补吧：本机把 0026 跑通，再把 L3 回归重新刷一次。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+      "recentMessages": [
+        {
+          "id": "msg_bea4202f-eb67-4ed3-8a8b-fdadac4fb02c",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_1"
+          },
+          "body": "接口联调完了，0026 的迁移还没在本机跑过，回填那步可能过不了。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "迁移和回归一起补吧：本机把 0026 跑通，再把 L3 回归重新刷一次。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "不点名，但两类工作各自落在明确职责上",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_bea4202f-eb67-4ed3-8a8b-fdadac4fb02c",
+            "personaSummary": "阿迁（数据库迁移）",
+            "responsibility": "0026 迁移脚本的本机验证",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿迁",
+          "projectMember": true,
+          "effectiveMember": true
+        },
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_3"
+            },
+            "instanceId": "ins_09172f9d-dbac-4f6d-8985-3cab396803c3",
+            "personaSummary": "阿检（回归与门禁）",
+            "responsibility": "L3 回归与门禁",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿检",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": []
+    },
+    "input": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "evaluatedAt": "2026-01-01T00:00:00.000Z",
+      "triggerMessage": {
+        "id": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "迁移和回归一起补吧：本机把 0026 跑通，再把 L3 回归重新刷一次。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+      "recentMessages": [
+        {
+          "id": "msg_bea4202f-eb67-4ed3-8a8b-fdadac4fb02c",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_1"
+          },
+          "body": "接口联调完了，0026 的迁移还没在本机跑过，回填那步可能过不了。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "迁移和回归一起补吧：本机把 0026 跑通，再把 L3 回归重新刷一次。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "不点名，但两类工作各自落在明确职责上",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "candidates": [
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "instanceId": "ins_bea4202f-eb67-4ed3-8a8b-fdadac4fb02c",
+          "personaSummary": "阿迁（数据库迁移）",
+          "responsibility": "0026 迁移脚本的本机验证",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        },
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_3"
+          },
+          "instanceId": "ins_09172f9d-dbac-4f6d-8985-3cab396803c3",
+          "personaSummary": "阿检（回归与门禁）",
+          "responsibility": "L3 回归与门禁",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        }
+      ],
+      "tasks": [],
+      "truncation": {
+        "originalMessageCount": 2,
+        "includedMessageCount": 2,
+        "droppedMessageIdRange": null,
+        "tasksComplete": true,
+        "candidatesComplete": true,
+        "recentMessageCharacters": 69,
+        "characterBudget": 24000
+      },
+      "snapshotHash": "be9f244860725301fe788e409243c72a59d2280717df987a18bc87e5a6c74f79"
+    },
+    "expected": {
+      "preparation": "model",
+      "candidates": ["agent:agent_2", "agent:agent_3"],
+      "selected": ["agent:agent_2", "agent:agent_3"],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 1
+    }
+  },
+  {
+    "id": "w12",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w12",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["handoff"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": {
+        "id": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "现在卡在哪一步？",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+      "recentMessages": [
+        {
+          "id": "msg_339b6785-0331-4409-8b91-74f41c4cc592",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "429 这条从我这边正式转给阿检，阿界你那轮收尾就行。",
+          "createdAt": "2025-12-31T23:59:57.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_41a8f298-6f7e-4ac7-83c0-453ef429e3b8",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "收到，我先把复现脚本和窗口改动对齐一遍。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "现在卡在哪一步？",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "owner 已转给他人，无点名问进度只找新 owner",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_1"
+            },
+            "instanceId": "ins_339b6785-0331-4409-8b91-74f41c4cc592",
+            "personaSummary": "阿检（回归与门禁）",
+            "responsibility": "接手后的 429 修复推进",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿检",
+          "projectMember": true,
+          "effectiveMember": true
+        },
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_41a8f298-6f7e-4ac7-83c0-453ef429e3b8",
+            "personaSummary": "阿界（订阅与限流接口）",
+            "responsibility": "原负责人，手上的窗口改动已交回",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿界",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_39297a0c-9073-4b01-80ef-880adb6ce6e6",
+          "title": "修复 429 限流窗口误判",
+          "status": "assigned",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ]
+    },
+    "input": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "evaluatedAt": "2026-01-01T00:00:00.000Z",
+      "triggerMessage": {
+        "id": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "现在卡在哪一步？",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+      "recentMessages": [
+        {
+          "id": "msg_339b6785-0331-4409-8b91-74f41c4cc592",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "429 这条从我这边正式转给阿检，阿界你那轮收尾就行。",
+          "createdAt": "2025-12-31T23:59:57.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_41a8f298-6f7e-4ac7-83c0-453ef429e3b8",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "收到，我先把复现脚本和窗口改动对齐一遍。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "现在卡在哪一步？",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "owner 已转给他人，无点名问进度只找新 owner",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "candidates": [
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "instanceId": "ins_339b6785-0331-4409-8b91-74f41c4cc592",
+          "personaSummary": "阿检（回归与门禁）",
+          "responsibility": "接手后的 429 修复推进",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        },
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "instanceId": "ins_41a8f298-6f7e-4ac7-83c0-453ef429e3b8",
+          "personaSummary": "阿界（订阅与限流接口）",
+          "responsibility": "原负责人，手上的窗口改动已交回",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_39297a0c-9073-4b01-80ef-880adb6ce6e6",
+          "title": "修复 429 限流窗口误判",
+          "status": "assigned",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ],
+      "truncation": {
+        "originalMessageCount": 3,
+        "includedMessageCount": 3,
+        "droppedMessageIdRange": null,
+        "tasksComplete": true,
+        "candidatesComplete": true,
+        "recentMessageCharacters": 55,
+        "characterBudget": 24000
+      },
+      "snapshotHash": "a371599d818e5cfdd2e71ab5f914f62a4d0eec10c6146497f430d76e1d848104"
+    },
+    "expected": {
+      "preparation": "model",
+      "candidates": ["agent:agent_1", "agent:agent_2"],
+      "selected": ["agent:agent_1"],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 1
+    }
+  },
+  {
+    "id": "w13",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w13",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["supplement"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": {
+        "id": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "另外注意下，429 别加客户端重试，我们那条会话是共享的，重试会把窗口打得更乱。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+      "recentMessages": [
+        {
+          "id": "msg_113ca76e-f454-43f8-8e63-6624083d7586",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "窗口改成按 session + route 算，复现脚本已经 4/4 通过。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "另外注意下，429 别加客户端重试，我们那条会话是共享的，重试会把窗口打得更乱。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "工作中追加约束：429 不许加重试",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_1"
+            },
+            "instanceId": "ins_113ca76e-f454-43f8-8e63-6624083d7586",
+            "personaSummary": "阿界（订阅与限流接口）",
+            "responsibility": "429 限流窗口修复",
+            "activeRun": {
+              "id": "run_dd5ace9e-018d-4d62-836c-be039916ad7c",
+              "status": "running",
+              "updatedAt": "2026-01-01T00:00:00.000Z",
+              "pendingInputs": 0,
+              "attemptedInputs": 1
+            },
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿界",
+          "projectMember": true,
+          "effectiveMember": true
+        },
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+            "personaSummary": "阿检（回归与门禁）",
+            "responsibility": "L3 回归",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿检",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_593df096-ebd5-49ae-85f0-d5f24e0936c1",
+          "title": "修复 429 限流窗口误判",
+          "status": "assigned",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ]
+    },
+    "input": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "evaluatedAt": "2026-01-01T00:00:00.000Z",
+      "triggerMessage": {
+        "id": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "另外注意下，429 别加客户端重试，我们那条会话是共享的，重试会把窗口打得更乱。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+      "recentMessages": [
+        {
+          "id": "msg_113ca76e-f454-43f8-8e63-6624083d7586",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "窗口改成按 session + route 算，复现脚本已经 4/4 通过。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "另外注意下，429 别加客户端重试，我们那条会话是共享的，重试会把窗口打得更乱。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "工作中追加约束：429 不许加重试",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "candidates": [
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "instanceId": "ins_113ca76e-f454-43f8-8e63-6624083d7586",
+          "personaSummary": "阿界（订阅与限流接口）",
+          "responsibility": "429 限流窗口修复",
+          "activeRun": {
+            "id": "run_dd5ace9e-018d-4d62-836c-be039916ad7c",
+            "status": "running",
+            "updatedAt": "2026-01-01T00:00:00.000Z",
+            "pendingInputs": 0,
+            "attemptedInputs": 1
+          },
+          "latestRun": null,
+          "externalWork": []
+        },
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "instanceId": "ins_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+          "personaSummary": "阿检（回归与门禁）",
+          "responsibility": "L3 回归",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_593df096-ebd5-49ae-85f0-d5f24e0936c1",
+          "title": "修复 429 限流窗口误判",
+          "status": "assigned",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ],
+      "truncation": {
+        "originalMessageCount": 2,
+        "includedMessageCount": 2,
+        "droppedMessageIdRange": null,
+        "tasksComplete": true,
+        "candidatesComplete": true,
+        "recentMessageCharacters": 78,
+        "characterBudget": 24000
+      },
+      "snapshotHash": "2009fde5fcac782c714e3193331a3b962545766265707187fc302354fed299b1"
+    },
+    "expected": {
+      "preparation": "model",
+      "candidates": ["agent:agent_1", "agent:agent_2"],
+      "selected": ["agent:agent_1"],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 1
+    }
+  },
+  {
+    "id": "w17",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w17",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["wrap_up"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": {
+        "id": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "那就走 Noul 逐候选，阈值拿样本校准。今天到这，剩下的明天站会继续。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+      "recentMessages": [
+        {
+          "id": "msg_7ba9b7b9-75b1-4e43-8164-25f8183b3b36",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "两条路：一是给每个候选一问 Noul，二是用 Choice 每个人一问。Choice 是单选，表达不了各自独立。",
+          "createdAt": "2025-12-31T23:59:57.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_6e62f5b9-a942-4e7d-8901-3b587cfbd393",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "body": "样本能校准阈值就行，别照抄文档里的示例值。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "那就走 Noul 逐候选，阈值拿样本校准。今天到这，剩下的明天站会继续。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "讨论收尾并给出结论",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_1"
+            },
+            "instanceId": "ins_7ba9b7b9-75b1-4e43-8164-25f8183b3b36",
+            "personaSummary": "阿界（订阅与限流接口）",
+            "responsibility": "唤醒判定的接入评估",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿界",
+          "projectMember": true,
+          "effectiveMember": true
+        },
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_6e62f5b9-a942-4e7d-8901-3b587cfbd393",
+            "personaSummary": "阿检（回归与门禁）",
+            "responsibility": "样本与门禁",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿检",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": []
+    },
+    "input": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "evaluatedAt": "2026-01-01T00:00:00.000Z",
+      "triggerMessage": {
+        "id": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "那就走 Noul 逐候选，阈值拿样本校准。今天到这，剩下的明天站会继续。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+      "recentMessages": [
+        {
+          "id": "msg_7ba9b7b9-75b1-4e43-8164-25f8183b3b36",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "两条路：一是给每个候选一问 Noul，二是用 Choice 每个人一问。Choice 是单选，表达不了各自独立。",
+          "createdAt": "2025-12-31T23:59:57.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_6e62f5b9-a942-4e7d-8901-3b587cfbd393",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "body": "样本能校准阈值就行，别照抄文档里的示例值。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "那就走 Noul 逐候选，阈值拿样本校准。今天到这，剩下的明天站会继续。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "讨论收尾并给出结论",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "candidates": [
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "instanceId": "ins_7ba9b7b9-75b1-4e43-8164-25f8183b3b36",
+          "personaSummary": "阿界（订阅与限流接口）",
+          "responsibility": "唤醒判定的接入评估",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        },
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "instanceId": "ins_6e62f5b9-a942-4e7d-8901-3b587cfbd393",
+          "personaSummary": "阿检（回归与门禁）",
+          "responsibility": "样本与门禁",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        }
+      ],
+      "tasks": [],
+      "truncation": {
+        "originalMessageCount": 3,
+        "includedMessageCount": 3,
+        "droppedMessageIdRange": null,
+        "tasksComplete": true,
+        "candidatesComplete": true,
+        "recentMessageCharacters": 113,
+        "characterBudget": 24000
+      },
+      "snapshotHash": "138bdb35dbf60785420131b9567b33da5c9b48541059e29cc50dd70240e1a2eb"
+    },
+    "expected": {
+      "preparation": "model",
+      "candidates": ["agent:agent_1", "agent:agent_2"],
+      "selected": [],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 1
+    }
+  },
+  {
+    "id": "w20",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w20",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "Human owner 提醒改为设计 §1 的周期 owner 判定；原文保留在最近消息"
+    },
+    "covers": ["human_owner_reminder"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "task_periodic",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "periodic_w20",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": null,
+      "latestReadableMessageId": "msg_35d0cbed-e1af-48de-8fd5-5c019f9651c6",
+      "recentMessages": [
+        {
+          "id": "msg_31bcb190-d31d-4dcf-8ed3-b075ef5a0457",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "body": "0026 的脚本推上去了，本机全量还没跑，回填那步还没动。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_35d0cbed-e1af-48de-8fd5-5c019f9651c6",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_1"
+          },
+          "body": "这个 Task 卡在哪了？今天能出吗？",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "Human owner 的群里有人问进度",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_31bcb190-d31d-4dcf-8ed3-b075ef5a0457",
+            "personaSummary": "阿迁（数据库迁移）",
+            "responsibility": "0026 迁移脚本",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿迁",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_0079f272-70fc-4355-80e1-2dbbacef7dc2",
+          "title": "0026 迁移脚本",
+          "status": "assigned",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ]
+    },
+    "input": {
+      "source": "task_periodic",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "periodic_w20",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "evaluatedAt": "2026-01-01T00:00:00.000Z",
+      "triggerMessage": null,
+      "latestReadableMessageId": "msg_35d0cbed-e1af-48de-8fd5-5c019f9651c6",
+      "recentMessages": [
+        {
+          "id": "msg_31bcb190-d31d-4dcf-8ed3-b075ef5a0457",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "body": "0026 的脚本推上去了，本机全量还没跑，回填那步还没动。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_35d0cbed-e1af-48de-8fd5-5c019f9651c6",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_1"
+          },
+          "body": "这个 Task 卡在哪了？今天能出吗？",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "Human owner 的群里有人问进度",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "candidates": [
+        {
+          "recipient": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "instanceId": null,
+          "personaSummary": "Human owner",
+          "responsibility": "处理当前 Chat 中需要人类回应的事项",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_0079f272-70fc-4355-80e1-2dbbacef7dc2",
+          "title": "0026 迁移脚本",
+          "status": "assigned",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ],
+      "truncation": {
+        "originalMessageCount": 2,
+        "includedMessageCount": 2,
+        "droppedMessageIdRange": null,
+        "tasksComplete": true,
+        "candidatesComplete": true,
+        "recentMessageCharacters": 48,
+        "characterBudget": 24000
+      },
+      "snapshotHash": "a4b9346507fbf5723ab76899d53b1a0981ac30c047381008f82f89afefe9f3d0"
+    },
+    "expected": {
+      "preparation": "model",
+      "candidates": ["human:human_0"],
+      "selected": ["human:human_0"],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 1
+    }
+  },
+  {
+    "id": "w22",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w22",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["finished_task"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": {
+        "id": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "@阿检 迁移已经合了，你把这轮的结论贴到验收记录里，别再等迁移那边。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+      "recentMessages": [
+        {
+          "id": "msg_03aed2f9-011f-4013-81f4-29211e745ec7",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "0026 已经合了，回填性能问题留到 P7，先说清楚不在本轮范围。",
+          "createdAt": "2025-12-31T23:59:57.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_1b751518-9f63-4fa3-8b76-ae69c8373554",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "那这轮就收到这儿。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "@阿检 迁移已经合了，你把这轮的结论贴到验收记录里，别再等迁移那边。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "Task 已 finished，人类 @ 另一名成员收尾",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_1"
+            },
+            "instanceId": "ins_03aed2f9-011f-4013-81f4-29211e745ec7",
+            "personaSummary": "阿迁（数据库迁移）",
+            "responsibility": "0026 迁移脚本，已完成",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿迁",
+          "projectMember": true,
+          "effectiveMember": true
+        },
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_1b751518-9f63-4fa3-8b76-ae69c8373554",
+            "personaSummary": "阿检（回归与门禁）",
+            "responsibility": "验收记录与回归证据",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿检",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_93fde0c2-d236-47e6-8ec3-9d3653517c40",
+          "title": "0026 迁移脚本",
+          "status": "finished",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ]
+    },
+    "input": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "evaluatedAt": "2026-01-01T00:00:00.000Z",
+      "triggerMessage": {
+        "id": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "@阿检 迁移已经合了，你把这轮的结论贴到验收记录里，别再等迁移那边。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+      "recentMessages": [
+        {
+          "id": "msg_03aed2f9-011f-4013-81f4-29211e745ec7",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "0026 已经合了，回填性能问题留到 P7，先说清楚不在本轮范围。",
+          "createdAt": "2025-12-31T23:59:57.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_1b751518-9f63-4fa3-8b76-ae69c8373554",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "那这轮就收到这儿。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "@阿检 迁移已经合了，你把这轮的结论贴到验收记录里，别再等迁移那边。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "Task 已 finished，人类 @ 另一名成员收尾",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "candidates": [
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "instanceId": "ins_1b751518-9f63-4fa3-8b76-ae69c8373554",
+          "personaSummary": "阿检（回归与门禁）",
+          "responsibility": "验收记录与回归证据",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        }
+      ],
+      "tasks": [],
+      "truncation": {
+        "originalMessageCount": 3,
+        "includedMessageCount": 3,
+        "droppedMessageIdRange": null,
+        "tasksComplete": true,
+        "candidatesComplete": true,
+        "recentMessageCharacters": 76,
+        "characterBudget": 24000
+      },
+      "snapshotHash": "d74087a759048d152b78b63e44ae672e9e0b3cc5297d8e97de6d8190dfb356dd"
+    },
+    "expected": {
+      "preparation": "rule",
+      "candidates": ["agent:agent_2"],
+      "selected": ["agent:agent_2"],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 0
+    }
+  },
+  {
+    "id": "w23",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w23",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["finished_task"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": {
+        "id": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "那个迁移的结论我看过了，没问题。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+      "recentMessages": [
+        {
+          "id": "msg_33670c86-0ac2-4085-8ade-c755a19ee24f",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "迁移合了，结论在 task 最后一条记录里，回填留到 P7。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "那个迁移的结论我看过了，没问题。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "Task 已 finished，人类只是确认结论",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_1"
+            },
+            "instanceId": "ins_33670c86-0ac2-4085-8ade-c755a19ee24f",
+            "personaSummary": "阿迁（数据库迁移）",
+            "responsibility": "0026 迁移脚本，已完成",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿迁",
+          "projectMember": true,
+          "effectiveMember": true
+        },
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_48758a8f-349b-409a-883f-87912bc56b25",
+            "personaSummary": "阿检（回归与门禁）",
+            "responsibility": "L3 回归",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿检",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_746cb617-7135-4fc4-8a24-a0efa6029276",
+          "title": "0026 迁移脚本",
+          "status": "finished",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ]
+    },
+    "input": {
+      "source": "message",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "evaluatedAt": "2026-01-01T00:00:00.000Z",
+      "triggerMessage": {
+        "id": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+        "kind": "human",
+        "sender": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "body": "那个迁移的结论我看过了，没问题。",
+        "createdAt": "2025-12-31T23:59:59.000Z",
+        "truncated": false
+      },
+      "latestReadableMessageId": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+      "recentMessages": [
+        {
+          "id": "msg_33670c86-0ac2-4085-8ade-c755a19ee24f",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "迁移合了，结论在 task 最后一条记录里，回填留到 P7。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "那个迁移的结论我看过了，没问题。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "Task 已 finished，人类只是确认结论",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "candidates": [
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "instanceId": "ins_33670c86-0ac2-4085-8ade-c755a19ee24f",
+          "personaSummary": "阿迁（数据库迁移）",
+          "responsibility": "0026 迁移脚本，已完成",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        },
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "instanceId": "ins_48758a8f-349b-409a-883f-87912bc56b25",
+          "personaSummary": "阿检（回归与门禁）",
+          "responsibility": "L3 回归",
+          "activeRun": null,
+          "latestRun": null,
+          "externalWork": []
+        }
+      ],
+      "tasks": [],
+      "truncation": {
+        "originalMessageCount": 2,
+        "includedMessageCount": 2,
+        "droppedMessageIdRange": null,
+        "tasksComplete": true,
+        "candidatesComplete": true,
+        "recentMessageCharacters": 46,
+        "characterBudget": 24000
+      },
+      "snapshotHash": "bdbc83abdc5096464ef01bb4875d95bc38b47a25e094c207391e163ed801d402"
+    },
+    "expected": {
+      "preparation": "model",
+      "candidates": ["agent:agent_1", "agent:agent_2"],
+      "selected": [],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 1
+    }
+  },
+  {
+    "id": "w24",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w24",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["unassigned_task"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "task_periodic",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "periodic_w24",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": null,
+      "latestReadableMessageId": "msg_83d7e9ee-c02c-40f9-8f00-1a7bfcf2e3e9",
+      "recentMessages": [
+        {
+          "id": "msg_a2ae07d2-738f-4e66-8d27-9b9221d762cb",
+          "kind": "human",
+          "sender": {
+            "kind": "human",
+            "id": "human_0"
+          },
+          "body": "429 的复现脚本先放着，等周牧回来再定窗口方案。",
+          "createdAt": "2025-12-31T23:59:58.000Z",
+          "truncated": false
+        },
+        {
+          "id": "msg_83d7e9ee-c02c-40f9-8f00-1a7bfcf2e3e9",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "好，那我这边不动了。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "没有 Task 的群被周期检查触发",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "human",
+          "id": "human_0"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_1"
+            },
+            "instanceId": "ins_a2ae07d2-738f-4e66-8d27-9b9221d762cb",
+            "personaSummary": "阿界（订阅与限流接口）",
+            "responsibility": "429 限流窗口修复",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿界",
+          "projectMember": true,
+          "effectiveMember": true
+        },
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_83d7e9ee-c02c-40f9-8f00-1a7bfcf2e3e9",
+            "personaSummary": "阿检（回归与门禁）",
+            "responsibility": "L3 回归",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿检",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": []
+    },
+    "input": null,
+    "expected": {
+      "preparation": "skipped",
+      "candidates": [],
+      "selected": [],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 0
+    }
+  },
+  {
+    "id": "w25",
+    "source": {
+      "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
+      "id": "w25",
+      "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
+      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+    },
+    "covers": ["unassigned_task"],
+    "now": "2026-01-01T00:00:00.000Z",
+    "facts": {
+      "source": "task_periodic",
+      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
+      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "triggerId": "periodic_w25",
+      "round": 1,
+      "controlEpoch": 1,
+      "policy": {
+        "provider": "small_brain",
+        "configRevision": 1,
+        "model": "fixture/model",
+        "thresholdVersion": "fixture-v1"
+      },
+      "archived": false,
+      "triggerMessage": null,
+      "latestReadableMessageId": "msg_c302d787-56f1-4c1a-8f37-b219011b4da9",
+      "recentMessages": [
+        {
+          "id": "msg_c302d787-56f1-4c1a-8f37-b219011b4da9",
+          "kind": "agent",
+          "sender": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "body": "窗口改完，L3 全绿，task 标完成了，结论在最后一条记录里。",
+          "createdAt": "2025-12-31T23:59:59.000Z",
+          "truncated": false
+        }
+      ],
+      "chat": {
+        "kind": "group",
+        "goal": "Task 已 finished 的群被周期检查触发",
+        "collaboration": "按职责协作；确认、等待和收尾无需回复",
+        "owner": {
+          "kind": "agent",
+          "id": "agent_1"
+        },
+        "wakePolicy": "contextual",
+        "governanceRevision": 1
+      },
+      "members": [
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_1"
+            },
+            "instanceId": "ins_c302d787-56f1-4c1a-8f37-b219011b4da9",
+            "personaSummary": "阿检（回归与门禁）",
+            "responsibility": "429 修复，任务已完成",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿检",
+          "projectMember": true,
+          "effectiveMember": true
+        },
+        {
+          "candidate": {
+            "recipient": {
+              "kind": "agent",
+              "id": "agent_2"
+            },
+            "instanceId": "ins_4ca38678-eaec-439f-82f6-ef0150e5aa19",
+            "personaSummary": "阿迁（数据库迁移）",
+            "responsibility": "0026 迁移",
+            "activeRun": null,
+            "latestRun": null,
+            "externalWork": []
+          },
+          "profileName": "阿迁",
+          "projectMember": true,
+          "effectiveMember": true
+        }
+      ],
+      "tasks": [
+        {
+          "id": "tsk_75f15236-1112-4d25-82db-b736ea7acfa6",
+          "title": "修复 429 限流窗口误判",
+          "status": "finished",
+          "revision": 1,
+          "assignmentRevision": 1,
+          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "responsibility": {
+            "kind": "agent",
+            "id": "agent_1"
+          },
+          "checklistTotal": 1,
+          "checklistChecked": 0,
+          "recordCount": 0,
+          "lastRecord": null,
+          "previousCompletionRef": null
+        }
+      ]
+    },
+    "input": null,
+    "expected": {
+      "preparation": "skipped",
+      "candidates": [],
+      "selected": [],
+      "sideEffects": {
+        "runs": 0,
+        "messages": 0,
+        "inputs": 0
+      },
+      "providerCalls": 0
+    }
+  }
+]

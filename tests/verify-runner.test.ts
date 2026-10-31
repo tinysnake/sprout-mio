@@ -139,6 +139,18 @@ process.exit(result.status ?? 1);
     expect(markerLines(fixture.root).slice(2).sort()).toEqual(["ah", "e"]);
   });
 
+  it("requires an explicit selection before a manual live gate can run", () => {
+    const fixture = makeFixture();
+    fixture.writeScript("e-project", "echo fixture >> marker.log\n");
+    fixture.writeScript("p6a-live-routing", "echo paid-live >> marker.log\n");
+    const routine = fixture.run([]);
+    expect(routine.status, routine.stderr).toBe(0);
+    expect(markerLines(fixture.root)).toEqual(["fixture"]);
+    const explicit = fixture.run(["--only", "p6a-live-routing"]);
+    expect(explicit.status, explicit.stderr).toBe(0);
+    expect(markerLines(fixture.root)).toEqual(["fixture", "paid-live"]);
+  });
+
   it("declares an admissible resource plan for every current gate", () => {
     const ids = readdirSync(join(repositoryRoot, "scripts/verify"))
       .filter((name) => name.endsWith(".sh"))

@@ -71,12 +71,4 @@ export type ProjectResult<T> = AppResult<T> & { fieldErrors?: FieldErrors };
 /** 详情页与查询从 URL 取 id，使用完整 Project 相同的 ID 格式。 */
 export const projectIdInput = z.object({ projectId: projectIdSchema });
 
-/** 同一字段只保留第一条消息，路径为空的错误归到 `form`。 */
-export function fieldErrorsFrom(error: z.ZodError): FieldErrors {
-  const errors: FieldErrors = {};
-  for (const issue of error.issues) {
-    const field = issue.path.join(".") || "form";
-    errors[field] ??= issue.message;
-  }
-  return errors;
-}
+export { fieldErrorsFrom } from "./field-errors";
