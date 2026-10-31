@@ -39,10 +39,7 @@ export function createJevJudge(options: JevOptions): WakeJudge {
     };
     try {
       if (!options.apiKey?.trim())
-        throw new WakeProviderError(
-          "provider_unavailable",
-          "缺少独立 JEV 服务凭据 JEV_API_KEY",
-        );
+        throw new WakeProviderError("provider_unavailable", "缺少独立 JEV 服务凭据 JEV_API_KEY");
       if (input.policy.provider !== "jev" || input.policy.model !== JEV_MODEL)
         throw new WakeProviderError("provider_unavailable", `JEV 仅支持 model ${JEV_MODEL}`);
       const threshold = options.threshold;
@@ -79,7 +76,10 @@ export function createJevJudge(options: JevOptions): WakeJudge {
       // A rolling tag answers with the concrete version it resolved to, and evidence
       // that names the version is the only way a later reader can date the number.
       if (data.model !== JEV_MODEL && !RESOLVED_MODEL.test(data.model))
-        throw new WakeProviderError("provider_invalid_response", `JEV 返回了未知 model ${data.model}`);
+        throw new WakeProviderError(
+          "provider_invalid_response",
+          `JEV 返回了未知 model ${data.model}`,
+        );
       usage.resolvedModel = data.model;
       usage.inputTokens = data.usage.input_tokens;
       usage.outputTokens = data.usage.output_tokens;

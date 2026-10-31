@@ -120,11 +120,34 @@ function compatibleTool(tools, step) {
   );
   assert.equal(matches.length, 1, "planned tool must be registered exactly once");
   const schema = matches[0].function.parameters;
-  assert.equal(schema?.type, "object", "planned tool has an object schema");
-  for (const key of schema.required ?? [])
+  assert(schema && typeof schema === "object", "planned tool has an object schema");
+  // A discriminated tool (oneOf/anyOf) declares its fields per branch. The planned
+  // arguments must claim exactly one branch and satisfy that branch, so the check stays
+  // as strict as the flat case instead of waving the call through.
+  const branches = Array.isArray(schema.oneOf)
+    ? schema.oneOf
+    : Array.isArray(schema.anyOf)
+      ? schema.anyOf
+      : [schema];
+  const claims = (branch) => {
+    const properties = branch.properties ?? {};
+    return (
+      Object.keys(step.arguments).every((key) => {
+        const field = properties[key];
+        if (!field) return false;
+        if (field.const !== undefined) return field.const === step.arguments[key];
+        if (Array.isArray(field.enum)) return field.enum.includes(step.arguments[key]);
+        return true;
+      }) && (branch.required ?? []).every((key) => Object.hasOwn(step.arguments, key))
+    );
+  };
+  const branch = branches.length === 1 ? branches[0] : branches.find(claims);
+  assert(branch, "planned arguments must claim exactly one registered schema branch");
+  assert.equal(branch.type, "object", "planned tool has an object schema");
+  for (const key of branch.required ?? [])
     assert(Object.hasOwn(step.arguments, key), "planned arguments satisfy required schema fields");
   for (const [key, value] of Object.entries(step.arguments)) {
-    const field = schema.properties?.[key];
+    const field = branch.properties?.[key];
     assert(field, "planned argument must exist in registered tool schema");
     if (field.type === "integer") assert(Number.isSafeInteger(value), "planned integer argument");
     else if (["string", "number", "boolean"].includes(field.type))

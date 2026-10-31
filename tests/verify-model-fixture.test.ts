@@ -275,6 +275,81 @@ it.each([
   expect(fixture.metadata().models.every((model) => model.completedPlans === 0)).toBe(true);
 });
 
+it("validates a discriminated tool schema against the branch the plan claims", async () => {
+  const { fixture, request, input, next } = await setup();
+  const discriminated = {
+    type: "function",
+    function: {
+      name: "sprout_info_hub_get",
+      parameters: {
+        type: "object",
+        oneOf: [
+          {
+            type: "object",
+            properties: { view: { const: "project" }, section: { enum: ["agents", "tasks"] } },
+            required: ["view", "section"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: { view: { const: "machine" }, machineId: { type: "string" } },
+            required: ["view", "machineId"],
+            additionalProperties: false,
+          },
+        ],
+      },
+    },
+  };
+  fixture.arm("operator", {
+    expectedUserText: prompt,
+    steps: [
+      {
+        name: "sprout_info_hub_get",
+        arguments: { view: "machine", machineId: "fixture-machine" },
+      },
+    ],
+    reply: "Finished local fixture turn.",
+  });
+  const call = (await next(input([user()], undefined, [discriminated]))).tool_calls[0];
+  expect(JSON.parse(call.function.arguments)).toEqual({
+    view: "machine",
+    machineId: "fixture-machine",
+  });
+  const accepted = await request(
+    input([user(), assistant(call), result(call.id)], undefined, [discriminated]),
+  );
+  expect(accepted.status).toBe(200);
+  fixture.assertDrained();
+});
+
+it("rejects planned arguments that claim no branch of a discriminated schema", async () => {
+  const { fixture, request, input } = await setup();
+  const discriminated = {
+    type: "function",
+    function: {
+      name: "sprout_info_hub_get",
+      parameters: {
+        type: "object",
+        oneOf: [
+          {
+            type: "object",
+            properties: { view: { const: "machine" }, machineId: { type: "string" } },
+            required: ["view", "machineId"],
+          },
+        ],
+      },
+    },
+  };
+  fixture.arm("operator", {
+    expectedUserText: prompt,
+    steps: [{ name: "sprout_info_hub_get", arguments: { view: "machine" } }],
+    reply: "Finished local fixture turn.",
+  });
+  const response = await request(input([user()], undefined, [discriminated]));
+  expect(response.status).toBe(400);
+  expect(() => fixture.assertHealthy()).toThrow("rejected");
+});
+
 it.each(["missing", "wrong-id", "extra", "changed-args", "wrong-order", "empty-result"] as const)(
   "rejects %s results or call transcript without advancing",
   async (variant) => {
