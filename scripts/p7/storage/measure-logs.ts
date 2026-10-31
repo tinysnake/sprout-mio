@@ -32,11 +32,9 @@ sqlite
   )
   .run(userId, "measure", "measure-logs@sprout.test");
 const projectId = newId(ID_PREFIXES.project);
-sqlite.prepare("INSERT INTO project(id,name,created_by) VALUES (?,?,?)").run(
-  projectId,
-  "日志测量",
-  userId,
-);
+sqlite
+  .prepare("INSERT INTO project(id,name,created_by) VALUES (?,?,?)")
+  .run(projectId, "日志测量", userId);
 const bootId = newId(ID_PREFIXES.boot);
 sqlite
   .prepare(

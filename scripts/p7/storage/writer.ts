@@ -16,7 +16,9 @@ sqlite.pragma("wal_autocheckpoint = 0");
 sqlite.pragma("synchronous = NORMAL");
 const insert = sqlite.transaction((n: number) => {
   sqlite
-    .prepare("INSERT INTO message(id, chat_id, sender_kind, sender_id, body) VALUES (?, ?, 'human', 'usr_probe', ?)")
+    .prepare(
+      "INSERT INTO message(id, chat_id, sender_kind, sender_id, body) VALUES (?, ?, 'human', 'usr_probe', ?)",
+    )
     .run(`msg_probe_${n}`, chatId, `probe-${n}`);
   sqlite
     .prepare(

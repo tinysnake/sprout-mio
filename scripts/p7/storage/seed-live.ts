@@ -122,8 +122,7 @@ const submitted = requestExecution(
   remote,
 );
 const dispatched = exchange();
-if (dispatched.remote.commands.length !== 1)
-  throw new Error("快照夹具没有下发预期的远端命令");
+if (dispatched.remote.commands.length !== 1) throw new Error("快照夹具没有下发预期的远端命令");
 
 console.log(
   "SEED " +
@@ -140,7 +139,11 @@ console.log(
       executionId: submitted.executionId,
       executionRequestId: remote.requestId,
       bootId,
-      lease: { machineId, generation: authorizationGeneration, holderInstanceId: remote.instanceId },
+      lease: {
+        machineId,
+        generation: authorizationGeneration,
+        holderInstanceId: remote.instanceId,
+      },
     }),
 );
 sqlite.close();

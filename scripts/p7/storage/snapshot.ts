@@ -57,9 +57,7 @@ export function inspectDatabase(file: string): SnapshotReport {
     const hasMigrations = tableNames.includes("__drizzle_migrations");
     const migration = hasMigrations
       ? (sqlite
-          .prepare(
-            "SELECT count(*) AS count, max(created_at) AS latest FROM __drizzle_migrations",
-          )
+          .prepare("SELECT count(*) AS count, max(created_at) AS latest FROM __drizzle_migrations")
           .get() as { count: number; latest: number | null })
       : { count: 0, latest: null };
     const tables: Record<string, number> = {};

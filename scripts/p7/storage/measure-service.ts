@@ -7,7 +7,7 @@ import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSyn
 import net from "node:net";
 import { cpus, tmpdir, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -22,9 +22,7 @@ const LOCAL_MAX_P95_MS = 250;
 const children: ReturnType<typeof spawn>[] = [];
 
 function parseMarker(output: string, marker: string) {
-  const line = output
-    .split("\n")
-    .find((entry) => entry.startsWith(`${marker} `));
+  const line = output.split("\n").find((entry) => entry.startsWith(`${marker} `));
   if (!line) throw new Error(`找不到 ${marker} 输出:\n${output}`);
   return JSON.parse(line.slice(marker.length + 1));
 }
@@ -70,7 +68,10 @@ async function waitFor(condition: () => Promise<boolean> | boolean, timeoutMs: n
   throw new Error(`等待超时 ${timeoutMs}ms`);
 }
 
-async function httpJson(url: string, options: { method?: string; body?: unknown; cookie?: string; origin?: string } = {}) {
+async function httpJson(
+  url: string,
+  options: { method?: string; body?: unknown; cookie?: string; origin?: string } = {},
+) {
   const response = await fetch(url, {
     method: options.method ?? "GET",
     headers: {
@@ -82,7 +83,12 @@ async function httpJson(url: string, options: { method?: string; body?: unknown;
     signal: AbortSignal.timeout(10_000),
   });
   const text = await response.text();
-  return { status: response.status, headers: response.headers, text, body: text ? JSON.parse(text) : null };
+  return {
+    status: response.status,
+    headers: response.headers,
+    text,
+    body: text ? JSON.parse(text) : null,
+  };
 }
 
 async function measureOnce(url: string, cookie: string) {
@@ -181,19 +187,22 @@ try {
     {
       name: "diagnostics-request-list",
       path: `/api/diagnostics?requestId=${seeded.listRequestId}&limit=50`,
-      expected: (body: Record<string, unknown>) => Array.isArray(body.data) && body.data.length === 12,
+      expected: (body: Record<string, unknown>) =>
+        Array.isArray(body.data) && body.data.length === 12,
       count: 12,
     },
     {
       name: "diagnostics-project-page-50",
       path: `/api/diagnostics?projectId=${seeded.projectId}&limit=50`,
-      expected: (body: Record<string, unknown>) => Array.isArray(body.data) && body.data.length === 50,
+      expected: (body: Record<string, unknown>) =>
+        Array.isArray(body.data) && body.data.length === 50,
       count: 50,
     },
     {
       name: "diagnostics-project-page-200",
       path: `/api/diagnostics?projectId=${seeded.projectId}&limit=200`,
-      expected: (body: Record<string, unknown>) => Array.isArray(body.data) && body.data.length === 200,
+      expected: (body: Record<string, unknown>) =>
+        Array.isArray(body.data) && body.data.length === 200,
       count: 200,
     },
   ] as const;
@@ -225,7 +234,6 @@ try {
       result.roundP95.push(percentile(samples, 95));
       result.roundMax.push(Math.max(...samples));
       result.samples.push(...samples);
-      const p95 = result.roundP95.at(-1)!;
       const minP95 = Math.min(...result.roundP95);
       const maxP95 = Math.max(...result.roundP95);
       assert(
@@ -298,8 +306,7 @@ try {
       authRateLimitsRaised: true,
       authRateLimitNote: "auth-session 是单对象端点；测量时提高限流，避免 429 变成样本错误",
       localOnlyEnvelopeMs: LOCAL_MAX_P95_MS,
-      envelopeNote:
-        "识别把模型等待混入本地耗时的污染；不是产品 SLA，也不作为 CI 性能门槛",
+      envelopeNote: "识别把模型等待混入本地耗时的污染；不是产品 SLA，也不作为 CI 性能门槛",
     },
     machine: {
       platform: process.platform,

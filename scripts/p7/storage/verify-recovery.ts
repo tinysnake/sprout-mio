@@ -12,7 +12,6 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import net from "node:net";
@@ -47,9 +46,7 @@ function runNode(args: string[], env: NodeJS.ProcessEnv = {}) {
 }
 
 function parseMarker(output: string, marker: string) {
-  const line = output
-    .split("\n")
-    .find((entry) => entry.startsWith(`${marker} `));
+  const line = output.split("\n").find((entry) => entry.startsWith(`${marker} `));
   if (!line) throw new Error(`找不到 ${marker} 输出:\n${output}`);
   return JSON.parse(line.slice(marker.length + 1));
 }
@@ -254,13 +251,11 @@ try {
     entries: journal.entries.filter((entry) => entry.idx <= 25),
   };
   for (const entry of oldJournal.entries)
-    copyFileSync(
-      join(root, "drizzle", `${entry.tag}.sql`),
-      join(oldFolder, `${entry.tag}.sql`),
-    );
+    copyFileSync(join(root, "drizzle", `${entry.tag}.sql`), join(oldFolder, `${entry.tag}.sql`));
   writeFileSync(join(oldFolder, "meta", "_journal.json"), JSON.stringify(oldJournal));
   // 用真实 migrator 停在 0025；生产启动（而非门禁手工）负责应用 0026-0028。
-  const { migrateDatabase } = (await import("../../../src/db/migrate")) as typeof import("../../../src/db/migrate");
+  const { migrateDatabase } =
+    (await import("../../../src/db/migrate")) as typeof import("../../../src/db/migrate");
   migrateDatabase(historical, oldFolder);
   const history = new Database(historical);
   try {
@@ -281,8 +276,11 @@ try {
       INSERT INTO runtime_boot(id,started_at,phase,pid,app_version) VALUES ('boot_hist','1','ready',2147483647,'0025');
     `);
     assert.equal(
-      (history.prepare("SELECT count(*) AS count FROM __drizzle_migrations").get() as { count: number })
-        .count,
+      (
+        history.prepare("SELECT count(*) AS count FROM __drizzle_migrations").get() as {
+          count: number;
+        }
+      ).count,
       26,
     );
   } finally {
@@ -294,6 +292,11 @@ try {
       return {
         messages: sqlite.prepare("SELECT id, body FROM message ORDER BY id").all(),
         run: sqlite.prepare("SELECT * FROM agent_run WHERE id = 'run_hist'").get(),
+        input: sqlite
+          .prepare(
+            "SELECT run_id, message_id, disposition FROM agent_run_input WHERE run_id = 'run_hist'",
+          )
+          .all(),
         task: sqlite.prepare("SELECT * FROM task WHERE id = 'tsk_hist'").get(),
         taskEvent: sqlite.prepare("SELECT * FROM task_event WHERE id = 'tev_hist'").get(),
       };
@@ -305,6 +308,7 @@ try {
   const upgraded = await startServer(historical, "upgrade-boot");
   const upgradedHealth = await httpJson(`${upgraded.base}/api/health`);
   assert.equal(upgradedHealth.status, 200);
+  assert(upgradedHealth.body);
   assert.equal(upgradedHealth.body.ready, true);
   assert.deepEqual(upgradedHealth.body.database, { ok: true, migrationApplied: true });
   assertHealthyDatabase(historical);
@@ -314,12 +318,25 @@ try {
       historyAfter.prepare("SELECT id, body FROM message ORDER BY id").all(),
       historyBefore.messages,
     );
-    assert.deepEqual(historyAfter.prepare("SELECT * FROM task WHERE id = 'tsk_hist'").get(), historyBefore.task);
+    assert.deepEqual(
+      historyAfter.prepare("SELECT * FROM task WHERE id = 'tsk_hist'").get(),
+      historyBefore.task,
+    );
     assert.deepEqual(
       historyAfter.prepare("SELECT * FROM task_event WHERE id = 'tev_hist'").get(),
       historyBefore.taskEvent,
     );
-    const run = historyAfter.prepare("SELECT status, error_code, settled_at FROM agent_run WHERE id = 'run_hist'").get() as {
+    assert.deepEqual(
+      historyAfter
+        .prepare(
+          "SELECT run_id, message_id, disposition FROM agent_run_input WHERE run_id = 'run_hist'",
+        )
+        .all(),
+      historyBefore.input,
+    );
+    const run = historyAfter
+      .prepare("SELECT status, error_code, settled_at FROM agent_run WHERE id = 'run_hist'")
+      .get() as {
       status: string;
       error_code: string | null;
       settled_at: number | null;
@@ -352,7 +369,9 @@ try {
       1,
     );
     const wakePolicyColumn = historyAfter
-      .prepare("SELECT count(*) AS count FROM pragma_table_info('project') WHERE name = 'wake_policy'")
+      .prepare(
+        "SELECT count(*) AS count FROM pragma_table_info('project') WHERE name = 'wake_policy'",
+      )
       .get() as { count: number };
     assert.equal(wakePolicyColumn.count, 1, "0026 的新列必须已应用");
   } finally {
@@ -449,14 +468,7 @@ try {
     }, 30_000);
     const backup = join(directory, "snapshot.sqlite");
     const backupReport = JSON.parse(
-      runNode([
-        "scripts/p7/storage/snapshot.ts",
-        "backup",
-        "--database",
-        live,
-        "--out",
-        backup,
-      ]),
+      runNode(["scripts/p7/storage/snapshot.ts", "backup", "--database", live, "--out", backup]),
     ) as { path: string; tables: Record<string, number>; integrity: string };
     assert.equal(backupReport.integrity, "ok");
     const snapshot = new Database(backup, { readonly: true });
@@ -477,7 +489,9 @@ try {
       assert.equal(
         (
           snapshot
-            .prepare("SELECT count(*) AS count FROM diagnostic_event WHERE event = 'backup.required'")
+            .prepare(
+              "SELECT count(*) AS count FROM diagnostic_event WHERE event = 'backup.required'",
+            )
             .get() as { count: number }
         ).count,
         1,
@@ -492,7 +506,9 @@ try {
       assert.equal(
         (
           copied
-            .prepare("SELECT count(*) AS count FROM diagnostic_event WHERE event = 'backup.required'")
+            .prepare(
+              "SELECT count(*) AS count FROM diagnostic_event WHERE event = 'backup.required'",
+            )
             .get() as { count: number }
         ).count,
         0,
@@ -543,9 +559,9 @@ try {
     try {
       assert.equal(
         (
-          restoredSnapshot
-            .prepare("SELECT body FROM message WHERE id = 'msg_probe_1'")
-            .get() as { body: string }
+          restoredSnapshot.prepare("SELECT body FROM message WHERE id = 'msg_probe_1'").get() as {
+            body: string;
+          }
         ).body,
         "probe-1",
       );
@@ -601,6 +617,7 @@ try {
     const restoredServer = await startServer(restoredDatabase, "restored-boot");
     const restoredHealth = await httpJson(`${restoredServer.base}/api/health`);
     assert.equal(restoredHealth.status, 200);
+    assert(restoredHealth.body);
     assert.equal(restoredHealth.body.ready, true);
     const restoredBootId = String(restoredHealth.body.bootId);
     assert.notEqual(restoredBootId, seeded.bootId);
@@ -618,35 +635,40 @@ try {
       assert.equal(
         (
           recovered
-            .prepare("SELECT count(*) AS count FROM execution_result WHERE execution_id = ? AND outcome = 'succeeded'")
+            .prepare(
+              "SELECT count(*) AS count FROM execution_result WHERE execution_id = ? AND outcome = 'succeeded'",
+            )
             .get(seeded.executionId) as { count: number }
         ).count,
         0,
       );
       assert.equal(
         (
-          recovered
-            .prepare("SELECT phase FROM runtime_boot WHERE id = ?")
-            .get(seeded.bootId) as { phase: string }
+          recovered.prepare("SELECT phase FROM runtime_boot WHERE id = ?").get(seeded.bootId) as {
+            phase: string;
+          }
         ).phase,
         "interrupted",
       );
       assert.equal(
         (
-          recovered
-            .prepare("SELECT phase FROM runtime_boot WHERE id = ?")
-            .get(restoredBootId) as { phase: string }
+          recovered.prepare("SELECT phase FROM runtime_boot WHERE id = ?").get(restoredBootId) as {
+            phase: string;
+          }
         ).phase,
         "ready",
       );
     } finally {
       recovered.close();
     }
-    pass("restored backup boots in a fresh directory and keeps unknown/in-flight facts non-success", {
-      boot: restoredBootId,
-      run: "interrupted",
-      executionPreserved: true,
-    });
+    pass(
+      "restored backup boots in a fresh directory and keeps unknown/in-flight facts non-success",
+      {
+        boot: restoredBootId,
+        run: "interrupted",
+        executionPreserved: true,
+      },
+    );
 
     // 5. 诊断关联链：request -> project/chat/instance/run/execution 都必须落到真实行。
     const cookie = await signIn(restoredServer.base, seeded.email);
@@ -656,9 +678,7 @@ try {
     );
     assert.equal(byRequest.status, 200);
     const requestEvents = byRequest.body!.data as Record<string, unknown>[];
-    const executionEvent = requestEvents.find(
-      (event) => event.executionId === seeded.executionId,
-    );
+    const executionEvent = requestEvents.find((event) => event.executionId === seeded.executionId);
     assert(executionEvent, "按 requestId 必须查到带 executionId 的诊断");
     const byProject = await httpJson(
       `${restoredServer.base}/api/diagnostics?projectId=${seeded.projectId}&limit=200`,
@@ -785,6 +805,7 @@ try {
     const restarted = await startServer(restoredDatabase, "restart-boot");
     const restartedHealth = await httpJson(`${restarted.base}/api/health`);
     assert.equal(restartedHealth.status, 200);
+    assert(restartedHealth.body);
     assert.notEqual(restartedHealth.body.bootId, restoredBootId);
     const restartedBootId = String(restartedHealth.body.bootId);
     const afterRestart = new Database(restoredDatabase, { readonly: true });
@@ -798,9 +819,9 @@ try {
       });
       assert.equal(
         (
-          afterRestart
-            .prepare("SELECT status FROM agent_run WHERE id = ?")
-            .get(seeded.runId) as { status: string }
+          afterRestart.prepare("SELECT status FROM agent_run WHERE id = ?").get(seeded.runId) as {
+            status: string;
+          }
         ).status,
         "interrupted",
       );
