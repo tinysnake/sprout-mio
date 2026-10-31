@@ -17,8 +17,9 @@ export type JevOptions = {
   timeoutMs?: number;
   fetch?: typeof fetch;
 };
+const RESOLVED_MODEL = /^jev-\d+\.\d+\.\d+$/;
 const responseSchema = z.object({
-  model: z.literal(JEV_MODEL),
+  model: z.string().min(1),
   answers: z.record(
     z.string(),
     z.object({ type: z.literal("noul"), noul: z.number().min(0).max(1) }),
@@ -75,6 +76,11 @@ export function createJevJudge(options: JevOptions): WakeJudge {
           `JEV HTTP ${response.status}`,
         );
       const data = responseSchema.parse(await response.json());
+      // A rolling tag answers with the concrete version it resolved to, and evidence
+      // that names the version is the only way a later reader can date the number.
+      if (data.model !== JEV_MODEL && !RESOLVED_MODEL.test(data.model))
+        throw new WakeProviderError("provider_invalid_response", `JEV 返回了未知 model ${data.model}`);
+      usage.resolvedModel = data.model;
       usage.inputTokens = data.usage.input_tokens;
       usage.outputTokens = data.usage.output_tokens;
       if (Object.keys(data.answers).length !== input.candidates.length)

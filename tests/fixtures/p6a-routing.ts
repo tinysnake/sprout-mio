@@ -369,7 +369,7 @@ for (const provider of ["small_brain", "jev"] as const) {
               if (error === "auth" || error === "503")
                 return new Response(null, { status: error === "auth" ? 401 : 503 });
               return Response.json({
-                model: error === "model" ? "jev-0.9.9" : JEV_MODEL,
+                model: error === "model" ? "generic-4" : "jev-1.14.0",
                 answers: Object.fromEntries(
                   request.candidates.slice(error === "missing" ? 1 : 0).map((_, index) => [
                     `candidate_${index}`,

@@ -48,6 +48,8 @@ export type WakeUsage = {
   outputTokens: number | null;
   inputCharacters: number;
   durationMs: number;
+  /** The version a rolling model tag resolved to, when the provider reports one. */
+  resolvedModel?: string | null;
 };
 export type WakeReceipt = { result: WakeEvaluationResult; usage: WakeUsage };
 export type WakeJudge = (input: WakeEvaluationInput) => Promise<WakeReceipt>;
