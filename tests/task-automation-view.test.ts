@@ -66,16 +66,16 @@ describe("自动接续页面事实与 Human 控制", () => {
     expect(html).not.toContain('data-testid="automation-run-control"');
     expect(html).not.toContain("当前无活动 run");
   });
-  it("禁用操作逐字展示 denials.reason 与 code", () => {
+  it("不可用操作不渲染，也不打印原因", () => {
     const html = renderToStaticMarkup(
       createElement(AutomationCard, {
         view: automationFixture("idle"),
         denials: { disable: { code: "forbidden", reason: "当前身份无权关闭此 Chat 的自动接续" } },
       }),
     );
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>暂停自动接续/);
-    expect(html).toContain("当前身份无权关闭此 Chat 的自动接续");
-    expect(html).toContain("forbidden");
+    expect(html).not.toContain("暂停自动接续");
+    expect(html).not.toContain("当前身份无权关闭此 Chat 的自动接续");
+    expect(html).not.toContain("forbidden");
   });
   it("投递未知保留原 run 并要求人工确认补发", () => {
     const html = render("unknown");
@@ -90,12 +90,35 @@ describe("自动接续页面事实与 Human 控制", () => {
     expect(html).toContain("当前状态未知");
     expect(html).not.toContain("自动接续已启用");
   });
-  it("判定器未知和不可用原因可见，不给不可用选择一个可点击的保存入口", () => {
+  it("判定器未接线时只说明现状，不摆不可点击的控件也不写错误码", () => {
     const html = renderToStaticMarkup(createElement(WakeProviderSelect));
-    expect(html).toContain("当前判定器配置未知");
-    expect(html).toContain("Small Brain 不可用");
-    expect(html).toContain("JEV 不可用");
-    expect(html).toContain("wake_provider_unavailable");
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>保存判定器/);
+    expect(html).toContain("当前使用部署默认判定器");
+    expect(html).toContain("这台部署没有提供判定器配置");
+    expect(html).not.toContain("保存判定器");
+    expect(html).not.toContain("wake_provider_unavailable");
+  });
+  it("所有判定器都不可用时逐条说明原因，同样不给保存入口", () => {
+    const html = renderToStaticMarkup(
+      createElement(WakeProviderSelect, {
+        options: [
+          {
+            provider: "small_brain",
+            configured: false,
+            available: false,
+            unavailableReason: "missing_model",
+          },
+          {
+            provider: "jev",
+            configured: true,
+            available: false,
+            unavailableReason: "missing_credentials",
+          },
+        ],
+      }),
+    );
+    expect(html).toContain("这台部署没有可用的判定器");
+    expect(html).toContain("Small Brain：这台部署没有配置模型与阈值版本");
+    expect(html).toContain("JEV：这台部署没有配置凭据");
+    expect(html).not.toContain("保存判定器");
   });
 });

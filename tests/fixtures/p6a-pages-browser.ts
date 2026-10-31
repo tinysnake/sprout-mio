@@ -75,8 +75,9 @@ try {
       const cardBox = await card.boundingBox();
       assert(scopeBox && cardBox && scopeBox.width >= cardBox.width - 40);
       pass(`${width}_${name}_scope_occupies_own_row`);
-      assert(await page.getByRole("button", { name: "保存判定器", exact: true }).isDisabled());
-      pass(`${width}_${name}_provider_disabled`);
+      assert.equal(await page.getByRole("button", { name: "保存判定器", exact: true }).count(), 0);
+      assert((await page.getByTestId("wake-provider-unwired").innerText()).includes("暂不能更改"));
+      pass(`${width}_${name}_provider_unwired_copy`);
       if (name === "off") {
         assert((await card.innerText()).includes("自动接续不会来"));
         assert(await page.getByRole("button", { name: "开启自动接续", exact: true }).isEnabled());
@@ -96,17 +97,11 @@ try {
         assert((await card.innerText()).includes("当前无活动 run"));
         assert((await card.innerText()).includes("当前没有安排下次自动检查"));
         pass(`${width}_three_independent_facts`);
-        const stopRun = page.getByRole("button", { name: "停止这个运行", exact: true });
-        assert(await stopRun.isDisabled());
-        assert(await stopRun.evaluate((button) => Number(getComputedStyle(button).opacity) >= 0.6));
-        assert(
-          await stopRun.evaluate(
-            (button) =>
-              getComputedStyle(button).color ===
-              getComputedStyle(document.querySelector('[data-testid="automation-mode"]')!).color,
-          ),
+        assert.equal(
+          await page.getByRole("button", { name: "停止这个运行", exact: true }).count(),
+          0,
         );
-        pass(`${width}_disabled_run_stop_readable`);
+        pass(`${width}_no_run_stop_without_active_run`);
       }
       if (name === "failure") {
         assert(
@@ -121,16 +116,13 @@ try {
         pass(`${width}_human_without_run_bar`);
       }
       if (name === "denied") {
-        assert(await page.getByRole("button", { name: "暂停自动接续", exact: true }).isDisabled());
-        assert(
-          (await page.getByTestId("automation-disable-denial").innerText()).includes(
-            "当前身份无权关闭此 Chat 的自动接续",
-          ),
+        assert.equal(
+          await page.getByRole("button", { name: "暂停自动接续", exact: true }).count(),
+          0,
         );
-        assert(
-          (await page.getByTestId("automation-disable-denial").innerText()).includes("forbidden"),
-        );
-        pass(`${width}_denial_reason_and_code`);
+        assert.equal(await page.getByTestId("automation-disable-denial").count(), 0);
+        assert(!(await card.innerText()).includes("forbidden"));
+        pass(`${width}_denied_action_hidden`);
       }
       if (name === "unknown") {
         assert((await card.innerText()).includes("不会自动重投"));

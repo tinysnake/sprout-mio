@@ -17,7 +17,12 @@ import { ProjectRepoPanel } from "../../components/project-config/project-repo-p
 import { ResultError } from "../../components/project/result-error";
 import { Icon } from "../../components/ui/icon";
 import { getProjectProfileFn, updateProjectProfileFn } from "../../server/functions/project-config";
-import { getProjectFn, updateProjectFn } from "../../server/functions/project";
+import {
+  getProjectFn,
+  updateProjectFn,
+  updateProjectWakePolicyFn,
+} from "../../server/functions/project";
+import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { listMachinesFn, saveProjectMachineBindingFn } from "../../server/functions/machine";
 import { MachineBindingForm } from "../../components/machine/machine-binding-form";
 import {
@@ -125,7 +130,24 @@ function ProjectSettingsView() {
             }
             onSaved={invalidate}
           />
-          <WakeProviderSelect policy={project.data.wakePolicy} />
+          <WakeProviderSelect
+            policy={project.data.wakePolicy}
+            options={project.data.wakeProviderAvailability ?? []}
+            onSelect={async (provider) => {
+              const policy = project.data.wakePolicy;
+              if (!policy) return;
+              const result = await updateProjectWakePolicyFn({
+                data: {
+                  projectId,
+                  provider,
+                  expectedConfigRevision: policy.configRevision,
+                  requestId: newId(ID_PREFIXES.request),
+                },
+              });
+              if (!result.ok) throw new Error(result.error.message);
+              invalidate();
+            }}
+          />
           <InfoHubPollingStatus />
           <SettingsSection
             title="基本事实"
