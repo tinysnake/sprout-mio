@@ -25,6 +25,34 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     await page.getByTestId("management-page").waitFor();
     pass("detail_direct_refresh_back_forward", { path });
   }
+  await page.goto(base + `/projects/${s.projectId}`, { waitUntil: "domcontentloaded" });
+  await page.waitForURL((url) => url.pathname === `/projects/${s.projectId}/chats`);
+  await page.getByTestId("chat-list-content").waitFor();
+  pass("project_root_redirects_to_chats", { projectId: s.projectId });
+  const contextTargets = [
+    [`/machines/${s.machineId}?projectId=${s.projectId}`, "machine-detail-name"],
+    [`/machines/${s.machineId}/lease?projectId=${s.projectId}`, "machine-lease-page"],
+    [
+      `/agents/${s.agentId}?fromProjectId=${s.projectId}&fromChatId=${s.dmId}`,
+      "agent-detail-back-to-chat",
+    ],
+  ];
+  for (const [path, testId] of contextTargets) {
+    await page.goto(base + path, { waitUntil: "domcontentloaded" });
+    await page.getByTestId(testId).waitFor();
+    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, path);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByTestId(testId).waitFor();
+    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, path);
+    await page.goto(base + "/management", { waitUntil: "domcontentloaded" });
+    await page.getByTestId("management-page").waitFor();
+    await page.goBack({ waitUntil: "domcontentloaded" });
+    await page.getByTestId(testId).waitFor();
+    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, path);
+    await page.goForward({ waitUntil: "domcontentloaded" });
+    await page.getByTestId("management-page").waitFor();
+    pass("context_deep_link_refresh_back_forward", { path });
+  }
   for (const width of [1440, 980, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(base + "/management", { waitUntil: "domcontentloaded" });
@@ -91,8 +119,8 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     waitUntil: "domcontentloaded",
   });
   await login();
+  await page.waitForURL((url) => url.pathname === "/projects", { timeout: 30000 });
   assert.equal(new URL(page.url()).origin, base);
-  assert.notEqual(new URL(page.url()).pathname, "/login");
   pass("external_next_rejected");
   const invalid = [
     "/agents/agp_00000000-0000-4000-8000-000000000000",
@@ -100,6 +128,7 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     `/projects/${s.projectId}/tasks/tsk_00000000-0000-4000-8000-000000000000`,
     `/projects/${s.projectId}/chats/cnv_00000000-0000-4000-8000-000000000000`,
     "/projects/prj_00000000-0000-4000-8000-000000000000/settings",
+    `/machines/mch_00000000-0000-4000-8000-000000000000/lease?projectId=${s.projectId}`,
     "/this-page-does-not-exist",
   ];
   for (const path of invalid) {
