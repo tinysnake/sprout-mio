@@ -1,6 +1,6 @@
 # I-P6a 章节集成验证
 
-当前状态：**七个不变量、三组破坏验证、三次连续完整运行和 13 个既有门禁均通过；最终交接复核中**。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
+当前状态：**本单元技术验证完成，待协调者独立复核与统一登记**。七个不变量、三组破坏验证、三次连续完整运行和 13 个既有门禁均通过。门禁登记名为 `bf-p6a-lifecycle`，脚本为 `scripts/verify/p6a-lifecycle.sh`，夹具为 `tests/fixtures/p6a-lifecycle.ts`。本单元仅改这两个新增文件和本报告，不改产品实现、迁移、既有门禁与登记文件。
 
 开工基点为 `d565ab80b9057fd3609b5381519ac0e569da2aa5`。首批三个文件先提交为 `cf5ea73`，再按协调者要求 rebase 到修复 `b837f820b0dc901262a0e50efe8663b5a7d43376`，首批提交变为 `3f33f54`。冻结设计从主 checkout 的 `orchestrate/sprout-mio-p6/reports/p6a-design.md` 读取，未复制进本单元。
 
@@ -39,7 +39,7 @@ P6A_SCENARIO=stale bash scripts/verify/p6a-lifecycle.sh
 
 ## 生命周期与七个不变量
 
-夹具启动生产 `startRuntime()`、真实 SQLite 和生产 scheduler。只替换 `complete` 与 `fetch` 模型边界。owner 经真实 `PiSessionProcess`、`executeRun`、remote grant、HTTP gateway 使用 Task 命令，不联网调用真实模型。
+夹具启动生产 `startRuntime()`、真实 SQLite 和生产 scheduler。判定器只替换 `complete` 与 `fetch` 模型边界。owner 使用生成的确定性 JSONL runner 提供模型输出，沿用既有 p6a-integration 的 runner 方式；`PiSessionProcess`、`executeRun`、remote grant、HTTP gateway 和 Task 命令均为生产实现。新门禁不联网调用真实模型；真实 Pi SDK 与 Worker 的执行链另由列出的 native Task 门禁覆盖。
 
 当前完整运行在 `b54f338` 加夹具变更上通过：**exit 0、177 条断言**，其中主进程 151 条、SIGKILL 与两次重启子进程合计 26 条。fixture 耗时 4759.802542 ms，整个脚本进程耗时 5022.008292 ms。每轮证据位于 `.verify/p6a-lifecycle/step2/`，主 JSONL 为 `.verify/p6a-lifecycle/run/1793425387702-8d2d140d-cf0f-44d4-95f5-f09b83a76a0f-main.jsonl`。
 
@@ -116,7 +116,22 @@ brief 指定的 13 个既有门禁均已实际执行，全部 exit 0，无超时
 
 逐门禁结果、退出码、无超时标记、进程耗时和日志路径在 `.verify/p6a-lifecycle/legacy/results.json`，标准输出与错误保存在同目录各门禁的 `.log`。`legacy/exit-code` 为 0。页面门禁使用真实页面、真实数据库和浏览器；native Task 门禁使用已安装 Pi SDK、真实 Worker 与 HTTP 生命周期。
 
-依赖已执行 `pnpm install --prefer-offline`，exit 0。当前 TypeScript、lint、格式检查与最终源码证据将在验收结束时统一记录。
+依赖已执行 `pnpm install --prefer-offline`，exit 0。最终复核在 `da08b80` 的代码输入上执行，结果如下：
+
+| 最终检查                                                   | exit code | 证据                                                                                   |
+| ---------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------- |
+| `pnpm typecheck`                                           | 0         | `typecheck-final.log` 与 `typecheck-final-exit`，三份 tsconfig 无错误                  |
+| `pnpm exec vp lint tests/fixtures/p6a-lifecycle.ts`        | 0         | `lint-final.log` 与 `lint-final-exit`，无 lint 告警                                    |
+| `pnpm exec vp fmt --check`，三个新增文件                   | 0         | `fmt-final.log` 与 `fmt-final-exit`；TS 和 Markdown 匹配格式器，shell 不由该格式器处理 |
+| `bash -n scripts/verify/p6a-lifecycle.sh`                  | 0         | 脚本仍为 8 行                                                                          |
+| `shasum -a 256 -c .verify/p6a-lifecycle/source-sha256.txt` | 0         | `source-final-check.log`                                                               |
+| `git diff --check`                                         | 0         | 无空白错误                                                                             |
+
+以上日志相对 `.verify/p6a-lifecycle/`。从三次绿色运行的 `46a4fc1` 到交付仅修改报告；fixture 和脚本没有变化，因此沿用同一份已验代码证据。fixture SHA-256 为 `3ad917070d9af105217d9da2d480c9a50b4cd6c3257d6aacaad55c84d4ad88cd`，脚本为 `1dbf3199c1410daf0be4e9b2b53d2bddd9c210908dc4b9e419677e845fb8b07f`。
+
+相对 `b837f82` 的最终 diff 仅包含本报告、`scripts/verify/p6a-lifecycle.sh` 和 `tests/fixtures/p6a-lifecycle.ts`。`src/**`、`drizzle/**`、`scripts/verify/lib/**`、所有既有门禁和 `tests/fixtures/task-lifecycle.ts` 均无修改。没有登记门禁，也没有改动开发计划的章节完成状态。
+
+按要求保留小步提交：`b54f338` 修复复验，`7292439` 完整不变量，`46a4fc1` 破坏验证，`5b35c62` 三次连续绿色，`da08b80` 既有门禁退出码。最终报告另作独立提交。
 
 `.verify/p6a-lifecycle/` 保存 `base-commit`、`source-sha256.txt`、`exit-code`、`run/*.jsonl`、每轮 SQLite、生成的确定性 owner runner 与 host-inputs JSONL。fixture 计时从初始化到 result 写入，不含最后的 shutdown；shell 进程总耗时另行记录，不把工具等待计入 runner 耗时。
 
