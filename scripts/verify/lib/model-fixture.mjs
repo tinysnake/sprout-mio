@@ -101,7 +101,9 @@ function stripTurnContext(text) {
   return rest.join("\n\n");
 }
 
-function bindLeaseTurn(plan, userText) {
+function bindLeaseTurn(plan, rawUserText) {
+  // 轮初上下文以一行 JSON 前缀挂在同一条 user 消息上，租约意图是正文的开头与结尾。
+  const userText = stripTurnContext(rawUserText);
   const { action, parameters } = plan.lease;
   const prefix = leasePrefix(action);
   assert(

@@ -71,11 +71,28 @@ const { remoteToolInputSchemas } = await import(
 const { taskToolInputSchemas } = await import(
   pathToFileURL(join(root, "src/contracts/task.ts")).href
 );
+const { infoHubToolInputSchemas } = await import(
+  pathToFileURL(join(root, "src/contracts/info-hub-query.ts")).href
+);
+// 工具面从契约推导：remote、task、info-hub 各有一份输入 schema 表；sprout_status
+// 的参数在 src/extension/status.ts 里内联声明，没有契约表，只能点名列出。
 const expectedToolNames = [
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas),
+  ...Object.keys(infoHubToolInputSchemas),
+  "sprout_status",
 ].sort();
-const machineScopedToolNames = Object.keys(remoteToolInputSchemas).sort();
+// machineId 是 Machine 作用域的标志，不是「属于 remoteToolInputSchemas」的标志：
+// sprout_chat_automation_get 在这张表里，但它按 Project 取，不需要 Machine。
+const requiresMachine = (schema) => {
+  const shape =
+    schema?.shape ?? Object.assign({}, ...(schema?.options ?? []).map((option) => option.shape));
+  const field = shape?.machineId;
+  return Boolean(field) && !field.isOptional();
+};
+const machineScopedToolNames = Object.keys(remoteToolInputSchemas)
+  .filter((name) => requiresMachine(remoteToolInputSchemas[name]))
+  .sort();
 writeFileSync(
   probePath,
   `
@@ -95,9 +112,16 @@ export default function probe(pi) {
     assert.deepEqual(tools.map(tool=>tool.name).sort(), expectedToolNames);
     assert.ok(expectedToolNames.includes('sprout_remote_execution_cancel'));
     assert.ok(expectedToolNames.includes('sprout_remote_execution_log'));
+    // 参数 schema 必须拒绝未知字段；联合类型的工具（如 Info Hub 的四个 view）
+    // 把 additionalProperties 写在每个分支上，而不是顶层。
+    const rejectsUnknown = (schema) => {
+      if (schema.additionalProperties === false) return true;
+      const branches = schema.anyOf ?? schema.oneOf;
+      return Array.isArray(branches) && branches.length > 0 && branches.every(rejectsUnknown);
+    };
     // Machine 作用域只属于 remote 工具；Task/Chat 工具从 run 的授权里取 Project 与 Chat。
     for (const tool of tools) {
-      assert.equal(tool.parameters.additionalProperties, false);
+      assert.ok(rejectsUnknown(tool.parameters), tool.name + ' parameters must reject unknown fields');
       assert.equal(
         (tool.parameters.required ?? []).includes('machineId'),
         machineScopedToolNames.includes(tool.name),

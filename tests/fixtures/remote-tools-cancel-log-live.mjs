@@ -8,6 +8,8 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { remoteToolInputSchemas } from "../../src/contracts/remote.ts";
+import { taskToolInputSchemas } from "../../src/contracts/task.ts";
+import { infoHubToolInputSchemas } from "../../src/contracts/info-hub-query.ts";
 
 /**
  * 真实 Pi host runner + 真实 extension 注册流程，验证取消与日志两个新工具：
@@ -123,7 +125,14 @@ const port = server.address().port;
 const probePath = join(directory, "probe.mjs");
 const resultPath = join(directory, "probe.json");
 const actualEntry = pathToFileURL(join(root, "pi/sprout-extension.ts")).href;
-const expectedToolNames = Object.keys(remoteToolInputSchemas).sort();
+// 会话的工具面是 remote + task + info-hub 三张契约表加上内联声明参数的 sprout_status；
+// 只按 remote 表比会随任何一个新工具变成过期断言。
+const expectedToolNames = [
+  ...Object.keys(remoteToolInputSchemas),
+  ...Object.keys(taskToolInputSchemas),
+  ...Object.keys(infoHubToolInputSchemas),
+  "sprout_status",
+].sort();
 writeFileSync(
   probePath,
   `
