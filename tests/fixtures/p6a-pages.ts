@@ -12,8 +12,7 @@ export const p6aIds = {
 export const p6aCases = [
   "idle",
   "scheduled",
-  "paused",
-  "stopped",
+  "off",
   "failure",
   "unknown",
   "human",
@@ -44,9 +43,9 @@ export function automationFixture(name: P6aCase = "idle"): ChatAutomationView {
     attention: null,
   };
   if (name === "scheduled") view.nextDueAt = later;
-  if (name === "paused" || name === "stopped") {
-    view.mode = name;
-    view.reason = "Human 暂停推进，等待确认上下文。";
+  if (name === "off") {
+    view.mode = "off";
+    view.reason = "Human 关闭自动检查，等待确认上下文。";
   }
   if (name === "failure") {
     view.latestEvaluation = {
@@ -111,8 +110,8 @@ export function automationFixture(name: P6aCase = "idle"): ChatAutomationView {
 export function automationDenials(name: P6aCase): AutomationDenials {
   return name === "denied"
     ? {
-        pause: { code: "forbidden", reason: "当前身份无权暂停此 Chat" },
-        stop: { code: "forbidden", reason: "当前身份无权停止此 Chat" },
+        disable: { code: "forbidden", reason: "当前身份无权关闭此 Chat 的自动接续" },
+        abort: { code: "forbidden", reason: "当前身份无权中止此 Chat 的 run" },
       }
     : {};
 }

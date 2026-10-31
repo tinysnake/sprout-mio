@@ -4,7 +4,7 @@ import { newId } from "../../contracts/ids";
 import { Button } from "../ui/button";
 import type { AutomationAction, AutomationDenials, AutomationSubmit } from "./automation-page-data";
 
-const modes = { enabled: "自动接续已启用", paused: "自动接续已暂停", stopped: "自动接续已停止" };
+const modes = { enabled: "自动接续已启用", off: "自动接续已关闭" };
 const decisions = {
   continue: "建议接续",
   do_not_continue: "本轮无需接续",
@@ -39,8 +39,8 @@ export function AutomationCard({
     denials[action] ??
     (!onCommand ? { code: "wake_provider_unavailable", reason: "控制服务尚未接入" } : undefined);
   async function submit(
-    action: "pause" | "resume" | "stop" | "retry" | "reissue" | "stop_run",
-    deliveryId?: string,
+    action: "disable" | "enable" | "abort" | "retry" | "reissue",
+    targetId?: string,
   ) {
     if (!onCommand || pending || denial(action)) return;
     const base = {
@@ -50,16 +50,14 @@ export function AutomationCard({
       requestId: newId("req"),
     };
     let command: ChatAutomationCommand;
-    if (action === "stop_run") {
-      if (!deliveryId) return;
-      command = { ...base, action, runId: deliveryId };
-    } else if (action === "stop") command = { ...base, action, scope: "chat" };
+    if (action === "abort")
+      command = targetId ? { ...base, action, runId: targetId } : { ...base, action };
     else if (action === "retry") {
       if (!evaluation) return;
       command = { ...base, action, evaluationId: evaluation.evaluationId };
     } else if (action === "reissue") {
-      if (!deliveryId) return;
-      command = { ...base, action, deliveryId, confirmedUnknown: true };
+      if (!targetId) return;
+      command = { ...base, action, deliveryId: targetId, confirmedUnknown: true };
     } else command = { ...base, action };
     setPending(true);
     setError(null);
@@ -77,7 +75,7 @@ export function AutomationCard({
     }
   }
   function actionButton(
-    action: "pause" | "resume" | "stop" | "retry" | "reissue",
+    action: "disable" | "enable" | "abort" | "retry" | "reissue",
     label: string,
     click: () => void,
   ) {
@@ -86,9 +84,9 @@ export function AutomationCard({
       <div className="min-w-0 space-y-1">
         <Button
           type="button"
-          variant={action === "stop" ? "destructive" : "secondary"}
+          variant={action === "abort" ? "destructive" : "secondary"}
           className={
-            action === "stop"
+            action === "abort"
               ? "disabled:opacity-100 disabled:text-muted-foreground data-disabled:opacity-100 data-disabled:text-muted-foreground"
               : undefined
           }
@@ -124,17 +122,15 @@ export function AutomationCard({
         </span>
       </header>
       <p data-testid="automation-expectation">
-        {view.mode === "paused"
-          ? "自动接续不会来：此 Chat 已暂停自动检查。"
-          : view.mode === "stopped"
-            ? "自动接续不会来：此 Chat 已停止自动检查。"
-            : view.nextDueAt
-              ? "已安排下次自动检查，是否接续以检查结论为准。"
-              : "当前没有安排下次自动检查。启用不代表马上接续。"}
+        {view.mode === "off"
+          ? "自动接续不会来：此 Chat 已关闭自动检查。"
+          : view.nextDueAt
+            ? "已安排下次自动检查，是否接续以检查结论为准。"
+            : "当前没有安排下次自动检查。启用不代表马上接续。"}
       </p>
       <p data-testid="automation-scope" className="text-muted-foreground">
-        范围：仅此 Chat 的自动接续。Task 状态、当前 run
-        与自动检查各自独立；暂停或停止自动检查不会停止当前 run。
+        范围：仅此 Chat 的自动接续。Task 状态、当前 run 与自动检查各自独立；关闭自动检查不会停止当前
+        run。
       </p>
       <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
         <dt className="text-muted-foreground">关联 Task</dt>
@@ -233,33 +229,32 @@ export function AutomationCard({
       ))}
       <div className="flex flex-wrap items-start gap-3">
         {view.mode === "enabled"
-          ? actionButton("pause", "暂停自动接续", () => void submit("pause"))
-          : actionButton("resume", "恢复自动接续", () => void submit("resume"))}
-        {view.mode !== "stopped" &&
-          actionButton("stop", "停止自动接续…", () => setConfirmation("stop"))}
+          ? actionButton("disable", "暂停自动接续", () => void submit("disable"))
+          : actionButton("enable", "开启自动接续", () => void submit("enable"))}
+        {actionButton("abort", "全部停止", () => setConfirmation("abort"))}
         {evaluation &&
           (evaluation.state === "attention" || evaluation.state === "retry_wait") &&
           actionButton("retry", "重试检查", () => void submit("retry"))}
       </div>
       {view.owner.kind === "agent" && (
         <div className="space-y-2 border-t border-border pt-3" data-testid="automation-run-control">
-          <p>停止分身运行只针对选定 run，自动检查开关需单独控制。</p>
+          <p>停止这个运行只中止选定的 run，不改自动接续开关与 epoch；全部停止会关闭自动接续。</p>
           {(view.activeRunIds.length ? view.activeRunIds : [null]).map((runId) => (
             <div key={runId ?? "none"} className="space-y-1">
               <Button
                 type="button"
                 variant="destructive"
                 className="disabled:opacity-100 disabled:text-muted-foreground data-disabled:opacity-100 data-disabled:text-muted-foreground"
-                disabled={!runId || pending || !!denial("stop_run")}
-                onClick={() => runId && void submit("stop_run", runId)}
+                disabled={!runId || pending || !!denial("abort")}
+                onClick={() => runId && void submit("abort", runId)}
               >
-                停止分身运行{view.activeRunIds.length > 1 ? ` · ${runId?.slice(-8)}` : ""}
+                停止这个运行{view.activeRunIds.length > 1 ? ` · ${runId?.slice(-8)}` : ""}
               </Button>
               <p className="text-xs text-muted-foreground">
                 {!runId
                   ? "当前无活动 run"
-                  : denial("stop_run")
-                    ? `${denial("stop_run")!.reason} (${denial("stop_run")!.code})`
+                  : denial("abort")
+                    ? `${denial("abort")!.reason} (${denial("abort")!.code})`
                     : "只停止此 run"}
               </p>
             </div>
@@ -273,8 +268,8 @@ export function AutomationCard({
           className="space-y-3 border-t border-border pt-3"
         >
           <p>
-            {confirmation === "stop"
-              ? "确认停止此 Chat 的自动检查？Task 与当前 run 不会因此停止。后续可由 Human 恢复。"
+            {confirmation === "abort"
+              ? "确认全部停止？此 Chat 所有 queued/running 的 run 会被中止，自动接续随之关闭；Task 不受影响。"
               : "投递结果未知，人工补发可能造成重复处理。确认后将创建新的接续输入。"}
           </p>
           <div className="flex flex-wrap gap-2">
@@ -283,12 +278,12 @@ export function AutomationCard({
               disabled={pending}
               onClick={() =>
                 void submit(
-                  confirmation === "stop" ? "stop" : "reissue",
-                  confirmation === "stop" ? undefined : confirmation,
+                  confirmation === "abort" ? "abort" : "reissue",
+                  confirmation === "abort" ? undefined : confirmation,
                 )
               }
             >
-              确认{confirmation === "stop" ? "停止" : "补发"}
+              确认{confirmation === "abort" ? "全部停止" : "补发"}
             </Button>
             <Button
               type="button"

@@ -23,14 +23,19 @@ function Scenario({ name }: { name: P6aCase }) {
       };
     // Explicit UI responses only. This fixture does not implement scheduler policy or delivery.
     const next =
-      command.action === "pause"
-        ? automationFixture("paused")
-        : command.action === "stop"
-          ? automationFixture("stopped")
-          : command.action === "resume"
+      command.action === "disable"
+        ? automationFixture("off")
+        : command.action === "abort"
+          ? automationFixture("off")
+          : command.action === "enable"
             ? automationFixture("scheduled")
             : view;
-    next.activeRunIds = view.activeRunIds;
+    next.activeRunIds =
+      command.action === "abort" && command.runId
+        ? view.activeRunIds.filter((id) => id !== command.runId)
+        : command.action === "abort"
+          ? []
+          : view.activeRunIds;
     next.deliveries = view.deliveries;
     next.owner = view.owner;
     next.remindedHuman = view.remindedHuman;
