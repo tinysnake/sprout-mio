@@ -3,7 +3,9 @@ import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../con
 import type { MachineDetail } from "../../contracts/machine";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import type { AppError, AppResult } from "../../contracts/result";
-import { toAppError } from "../../contracts/result";
+import { isOffline } from "../../lib/connectivity";
+import { ActionOutcomeNotice } from "../ui/action-outcome";
+import type { ActionOutcome } from "../ui/action-outcome";
 import type { LeaseMutationHandler, StatusTone } from "./machine-view";
 import { formatMoment } from "./machine-view";
 import {
@@ -263,6 +265,7 @@ export function LeaseMutationForm({
     : null;
   const [draft, setDraft] = useState<MutationDraft>({ machineId: firstMachine, lastAction: null });
   const [pending, setPending] = useState(false);
+  const [outcome, setOutcome] = useState<ActionOutcome>(null);
   const [error, setError] = useState<AppError | null>(null);
   const [receipt, setReceipt] = useState<LeaseMutationView | null>(null);
 
@@ -278,6 +281,11 @@ export function LeaseMutationForm({
   async function run(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending || !action || !targetId) return;
+    if (isOffline()) {
+      setOutcome("failure");
+      return;
+    }
+    setOutcome("processing");
     setError(null);
     setReceipt(null);
     const input: LeaseMutationInput =
@@ -301,12 +309,14 @@ export function LeaseMutationForm({
     try {
       const result: AppResult<LeaseMutationView> = await submit(input);
       if (!result.ok) {
+        setOutcome(result.error.code === "lease_result_unconfirmed" ? "unknown" : "failure");
         setError(result.error);
         return;
       }
+      setOutcome(result.data.state === "completed" ? "success" : "processing");
       setReceipt(result.data);
-    } catch (cause) {
-      setError(toAppError(cause, newId(ID_PREFIXES.request)));
+    } catch {
+      setOutcome("unknown");
     } finally {
       setPending(false);
     }
@@ -406,6 +416,20 @@ export function LeaseMutationForm({
           请求已提交，等待服务端返回结果。结果未知前不显示成功。
         </p>
       )}
+      <ActionOutcomeNotice
+        action="租约动作"
+        state={outcome}
+        testId={`${testId}-outcome`}
+        detail={
+          outcome === "unknown"
+            ? "未收到确认，请刷新核对租约与代次后再操作"
+            : isOffline() && outcome === "failure"
+              ? "离线，未提交"
+              : outcome === "processing" && receipt
+                ? "等待 Worker 确认"
+                : undefined
+        }
+      />
       {error && <ResultError error={error} testId={`${testId}-error`} />}
       {receipt && (
         <div data-testid={`${testId}-receipt`} className="space-y-1 text-xs leading-6">

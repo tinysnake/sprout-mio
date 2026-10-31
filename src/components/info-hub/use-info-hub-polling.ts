@@ -8,7 +8,20 @@ import {
 } from "../../contracts/info-hub-query";
 
 type Refresh = (input: InfoHubRefreshInput, signal: AbortSignal) => Promise<unknown>;
-type PollingState = "refreshing" | "current" | "hidden" | "offline" | "retrying";
+export type PollingState =
+  | "refreshing"
+  | "current"
+  | "hidden"
+  | "offline"
+  | "retrying"
+  | "unauthorized"
+  | "forbidden"
+  | "not_found";
+export class InfoHubAccessError extends Error {
+  constructor(readonly code: "unauthorized" | "forbidden" | "not_found") {
+    super(code);
+  }
+}
 type Environment = {
   document: Pick<Document, "visibilityState" | "addEventListener" | "removeEventListener">;
   window: Pick<Window, "addEventListener" | "removeEventListener">;
@@ -41,6 +54,7 @@ export function createInfoHubPolling({
   let fullRefresh = true;
   let resumePending = false;
   let failures = 0;
+  let terminal = false;
   const { document, window, navigator } = environment;
   const paused = () =>
     document.visibilityState !== "visible" ? "hidden" : !navigator.onLine ? "offline" : null;
@@ -51,7 +65,7 @@ export function createInfoHubPolling({
 
   function schedule() {
     const pause = paused();
-    if (stopped || pause) {
+    if (stopped || pause || terminal) {
       if (pause) onState?.(pause);
       return;
     }
@@ -107,10 +121,15 @@ export function createInfoHubPolling({
       failures = 0;
       onResult(result);
       onState?.("current");
-    } catch {
+    } catch (cause) {
       if (!stopped) {
-        failures += 1;
-        onState?.("retrying");
+        if (cause instanceof InfoHubAccessError) {
+          terminal = true;
+          onState?.(cause.code);
+        } else {
+          failures += 1;
+          onState?.(paused() ?? "retrying");
+        }
       }
     } finally {
       clearTimeout(timeout);
@@ -129,6 +148,7 @@ export function createInfoHubPolling({
       onState?.(pause);
       return;
     }
+    terminal = false;
     fullRefresh = true;
     revision = undefined;
     if (inFlight) resumePending = true;

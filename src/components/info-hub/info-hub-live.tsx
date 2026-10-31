@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import type { InfoHubQuery, InfoHubView } from "../../contracts/info-hub-query";
 import type { InfoHubRefreshInput, InfoHubRefreshResult } from "../../contracts/info-hub-query";
 import type { InfoHubResult } from "../../contracts/info-hub";
-import { useInfoHubPolling } from "./use-info-hub-polling";
+import { InfoHubAccessError, useInfoHubPolling } from "./use-info-hub-polling";
 
 /** 刷新走哪条链路由路由决定：真实页面传 server function，组件自己不选 transport。 */
 export type InfoHubRefreshTransport = (
@@ -12,14 +12,18 @@ export type InfoHubRefreshTransport = (
 
 /**
  * server function 的边界结果包着 `ok`，controller 只吃视图判别联合。
- * 失败（含 401/not_found）在这里收成一次失败刷新：controller 负责退避，
- * 页面保留最后一次成功事实，不把失败渲染成空集合。
+ * 身份、权限与目标消失各自保留语义；网络失败才退避重试。
  */
 export async function unwrapRefreshResult(
   pending: Promise<InfoHubResult<InfoHubRefreshResult>>,
 ): Promise<InfoHubRefreshResult> {
   const result = await pending;
-  if (!result.ok) throw new Error(`info_hub_refresh_failed:${result.error.code}`);
+  if (!result.ok) {
+    const code = result.error.code;
+    if (code === "unauthorized" || code === "forbidden" || code === "not_found")
+      throw new InfoHubAccessError(code);
+    throw new Error(`info_hub_refresh_failed:${code}`);
+  }
   return result.data;
 }
 
@@ -28,7 +32,10 @@ const STATE_LABELS = {
   current: "已是最新",
   hidden: "页面隐藏，已暂停",
   offline: "离线，已暂停",
-  retrying: "刷新失败，退避重试中",
+  retrying: "网络读取失败，事实可能已过期，退避重试中",
+  unauthorized: "登录已失效，请重新登录",
+  forbidden: "无权访问当前目标",
+  not_found: "目标不存在或已删除",
 } as const;
 
 type PollingState = keyof typeof STATE_LABELS;
@@ -90,7 +97,25 @@ export function InfoHubLiveProvider({
     }),
     [state, scope, last],
   );
-  return <InfoHubLiveContext.Provider value={value}>{children}</InfoHubLiveContext.Provider>;
+  return (
+    <InfoHubLiveContext.Provider value={value}>
+      {["unauthorized", "forbidden", "not_found"].includes(state) ? (
+        <div role="alert" className="p-4 text-sm">
+          <InfoHubPollingStatus />
+          {state === "unauthorized" && (
+            <a
+              className="underline"
+              href={`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+            >
+              重新登录
+            </a>
+          )}
+        </div>
+      ) : (
+        children
+      )}
+    </InfoHubLiveContext.Provider>
+  );
 }
 
 /** 页面没挂 provider（或属于别的 scope）时返回 null，调用方退回 loader 事实。 */
