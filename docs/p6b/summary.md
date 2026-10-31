@@ -24,7 +24,7 @@ Human 体验确认：**尚无确认版本**。
 
 ## 功能线证据
 
-基线 `4d9545c`。本轮实测，全部 exit 0（命令在本仓库任意 `4d9545c` 签出上均可重跑）：
+基线 `4d9545c`。证据提交 `4d9545c`：重跑 `bash scripts/verify/bf-p6b-info.sh`、`bash scripts/verify/bf-p6b-turn-context.sh`、`bash scripts/verify/bf-p6b-agent-tool.sh`。本轮实测，全部 exit 0（命令在本仓库任意 `4d9545c` 签出上均可重跑）：
 
 ```bash
 bash scripts/verify/bf-p6b-info.sh          # 29 条断言
@@ -43,7 +43,7 @@ pnpm exec vp test run tests/p6b-contracts.test.ts tests/p6b-polling.test.ts  # 2
 
 ## UI 线证据
 
-基线 `4d9545c`。本轮实测，exit 0：
+基线 `4d9545c`。证据提交 `4d9545c`：重跑 `bash scripts/verify/bf-p6b-pages.sh`。本轮实测，exit 0：
 
 ```bash
 bash scripts/verify/bf-p6b-pages.sh
@@ -71,7 +71,7 @@ Human 确定的设计记录：**本仓库没有**。页面形状由接线单元�
 
 ## 集成线与技术验收证据
 
-基线 `4d9545c`。本轮实测 `bash scripts/verify/bf-p6b-lifecycle.sh` exit 0，533 条断言，1 条真实 macOS Worker、已安装 Pi SDK、生产 HTTP 与私有 SQLite（模型侧只有 loopback fixture，`paidModelCalls: 0`）。六条不变量与实测值：
+基线 `4d9545c`。证据提交 `4d9545c`：重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`。本轮实测 `bash scripts/verify/bf-p6b-lifecycle.sh` exit 0，533 条断言，1 条真实 macOS Worker、已安装 Pi SDK、生产 HTTP 与私有 SQLite（模型侧只有 loopback fixture，`paidModelCalls: 0`）。六条不变量与实测值：
 
 | 不变量                                     | 实测值                                                                                                                                                                               |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -162,13 +162,15 @@ Chats 页的 1200ms 全 route invalidate 与设置页的 5 秒 invalidate 仍在
 
 ## 计划状态与本轮门禁冲突
 
-本轮按证据勾选了 I-P6b 第 1 条、功能计划 P6b 三条与 UI-P6b 两条，而 `scripts/verify/l-docs.sh` 仍把这几处钉成「必须留空」（`for (const stage of ['I-P6b', 'I-P6c', 'I-P7'])`、`const undelivered = ['P6b', 'P6c', 'P7', 'P8']`、`for (const stage of ['UI-P6b', 'UI-P6c', 'UI-P7'])`）。门禁因此报 FAIL，失败原文见下节。
+本轮按证据勾选了 I-P6b 第 1 条、功能计划 P6b 三条与 UI-P6b 两条，而 closeout 当时 `scripts/verify/l-docs.sh` 仍把这几处钉成「必须留空」（`for (const stage of ['I-P6b', 'I-P6c', 'I-P7'])`、`const undelivered = ['P6b', 'P6c', 'P7', 'P8']`、`for (const stage of ['UI-P6b', 'UI-P6c', 'UI-P7'])`）。文档单元按 brief 不动门禁，所以它把失败原文留在下一节交回。
 
-这部分门禁由协调者改：本轮按 brief 不动 `scripts/verify/**`。勾选与证据本身在 `4d9545c` 上可复核：
+协调者随后照 P6a 的处置改了门禁：新增 `checkP6bLine`，I-P6b/UI-P6b/P6b 的勾选必须指向 `docs/p6b/summary.md` 的真实小节，且被引用小节自己带可解析提交与存在的重跑命令；I-P6c/UI-P6c/P7 继续钉死；I-P6b 第 4 条（Human 体验确认）要求 `docs/p6b/summary.md#human-体验确认` 里的显式确认记录，未确认就不能勾。同时把勾选行里指向 `p6b/contracts.md` 的无锚点链接改成代码路径，并给 `docs/p6b/contracts.md#agent-工具-sprout_info_hub_get` 补上提交与重跑命令。
+
+改后实测：
 
 ```bash
-bash scripts/verify/l-docs.sh
-bash scripts/verify/l-docs-probes.sh
+bash scripts/verify/l-docs.sh          # exit 0
+bash scripts/verify/l-docs-probes.sh   # exit 0，28 个探针全过
 ```
 
 ## 文档门禁的失败原文

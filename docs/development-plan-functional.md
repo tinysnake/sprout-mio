@@ -174,7 +174,7 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 按总计划 I-P6b 分派，依赖 P6a 技术验收通过，扩展其最小 automation 摘要。
 
-- [x] 完成 Info Hub 的 Project、Chat、Agent 与 Machine 全部一期视角。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)与[P6b 契约](p6b/contracts.md)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-info.sh`；四视角门禁断言见 [P6b 章节结论](p6b/summary.md)。
+- [x] 完成 Info Hub 的 Project、Chat、Agent 与 Machine 全部一期视角。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)与`p6b/contracts.md`（P6b 契约），基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-info.sh`；四视角门禁断言见 `p6b/summary.md`（P6b 章节结论）。
 - [x] 完成轮初快照、运行中合并的简短变更提示与 Agent 主动查询。普通变化不单独唤醒空闲分身。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)与[P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)：快照按 runId 不可改写、提示合并与 5 秒最小间隔、普通变化零唤醒（invariant 3）；重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`。
 - [x] 验证基本信息可见性不授予聊天正文访问或对象操作权，Agent status 仅汇总当前 Project。证据 [P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)：真实 grant 读四个视角 ok、跨 Project `not_found`、`task_update` 被拒，重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`；工具拒绝面见 [P6b 契约](p6b/contracts.md#agent-工具-sprout_info_hub_get)。
 

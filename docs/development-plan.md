@@ -287,7 +287,7 @@ P6 原先“暂按整章集成”是契约未冻结时的暂定安排；现按�
 - 异常与回归：基本信息可见不授予正文/操作权；普通变化不唤醒空闲分身；Agent status 只汇总当前 Project；自动接续仍遵守 P6a 控制锁。
 - 证据：页面、源对象和 Agent 上下文比较，刷新/变更提示时序及权限隔离矩阵。
 
-- [x] 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-info.sh`；契约见 [P6b 契约](p6b/contracts.md)。
+- [x] 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-info.sh`；契约见 `p6b/contracts.md`（P6b 契约）。
 - [ ] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。页面与轮询接线已在 `4d9545c` 实测通过（[P6b UI 线证据](p6b/summary.md#ui-线证据)，重跑 `bash scripts/verify/bf-p6b-pages.sh`），但本仓库没有 P6b 设计的 Human 确定记录，本项不勾。
 - [ ] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。自检已在 `4d9545c` 实测通过（[P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)，重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`），独立技术验收尚无报告与判定版本，本项不勾。
 - [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。尚无确认版本。

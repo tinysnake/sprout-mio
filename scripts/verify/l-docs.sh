@@ -292,6 +292,14 @@ const checkP6aLine = (line, label, source) => {
   check(targets.some(({ document }) => document && path.resolve(document.file) === p6aEvidenceFile), `${label}: missing docs/p6a/summary.md evidence`);
   for (const { body } of targets) evidenceIn(body, label);
 };
+// P6b 与 P6a 同一处置：行内证据必须指向 docs/p6b/summary.md 的真实小节，
+// 小节自己带可解析提交与存在的重跑命令；编排目录的报告不进仓库，只能作为纯文本提及。
+const p6bEvidenceFile = path.resolve('docs/p6b/summary.md');
+const checkP6bLine = (line, label, source) => {
+  const targets = resolveEvidence(line, label, source, 'docs/p6b');
+  check(targets.some(({ document }) => document && path.resolve(document.file) === p6bEvidenceFile), `${label}: missing docs/p6b/summary.md evidence`);
+  for (const { body } of targets) evidenceIn(body, label);
+};
 const functional = 'docs/development-plan-functional.md';
 const p4 = sectionOf(plan, 'P4', 2);
 const p4a = sectionOf(p4, 'P4a', 3);
@@ -462,7 +470,23 @@ if (p6aHumanBox?.state === 'x') {
   check(Boolean(record) && commitExists(record), `I-P6a human acceptance version ${record || '(none)'} does not resolve`);
   check(!/^[-*]\s*待确认/m.test(body), 'I-P6a human acceptance must not treat pending confirmation as confirmed');
 }
-for (const stage of ['I-P6b', 'I-P6c', 'I-P7']) {
+const integrationP6bBoxes = boxesIn(sectionOf(packagePlan, 'I-P6b', 3));
+check(integrationP6bBoxes.length === 4, `I-P6b must contain four checkboxes, found ${integrationP6bBoxes.length}`);
+for (const [index, box] of integrationP6bBoxes.entries()) {
+  if (index < 3 && box.state === 'x') checkP6bLine(box.text, `I-P6b checkbox ${index + 1}`, packagePlanPath);
+}
+const p6bSummaryDoc = documents.get(path.resolve('docs/p6b/summary.md'));
+const p6bHumanBox = integrationP6bBoxes[3];
+if (p6bHumanBox?.state === 'x') {
+  const body = p6bSummaryDoc?.sections.get('human-体验确认') ?? '';
+  check(Boolean(p6bSummaryDoc), 'I-P6b human acceptance requires docs/p6b/summary.md');
+  check(Boolean(body), 'I-P6b human acceptance requires docs/p6b/summary.md#human-体验确认');
+  const record = body.match(/^- 确认记录：Human 亲自体验确认通过，版本 `([0-9a-f]{7,40})`$/m)?.[1] ?? '';
+  check(Boolean(record), 'I-P6b human acceptance requires an explicit confirmation record');
+  check(Boolean(record) && commitExists(record), `I-P6b human acceptance version ${record || '(none)'} does not resolve`);
+  check(!/^[-*]\s*待确认/m.test(body), 'I-P6b human acceptance must not treat pending confirmation as confirmed');
+}
+for (const stage of ['I-P6c', 'I-P7']) {
   const boxes = boxesIn(sectionOf(packagePlan, stage, 3));
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
@@ -498,7 +522,12 @@ check(uiP6aBoxes.length === 2, `UI-P6a must contain two checkboxes, found ${uiP6
 for (const [index, box] of uiP6aBoxes.entries()) {
   if (box.state === 'x') checkP6aLine(box.text, `UI-P6a checkbox ${index + 1}`, 'docs/development-plan-ui.md');
 }
-for (const stage of ['UI-P6b', 'UI-P6c', 'UI-P7']) {
+const uiP6bBoxes = boxesIn(sectionOf(uiPlan, 'UI-P6b', 2));
+check(uiP6bBoxes.length === 2, `UI-P6b must contain two checkboxes, found ${uiP6bBoxes.length}`);
+for (const [index, box] of uiP6bBoxes.entries()) {
+  if (box.state === 'x') checkP6bLine(box.text, `UI-P6b checkbox ${index + 1}`, 'docs/development-plan-ui.md');
+}
+for (const stage of ['UI-P6c', 'UI-P7']) {
   const boxes = boxesIn(sectionOf(uiPlan, stage, 2));
   check(boxes.length > 0, `${stage} checklist missing`);
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
@@ -516,8 +545,8 @@ for (const [index, box] of r1Boxes.entries()) {
   }
 }
 let futureCount = 0;
-const undelivered = ['P6b', 'P6c', 'P7', 'P8'];
-for (const stage of ['P5', 'P6b', 'P6c', 'P7', 'P8']) {
+const undelivered = ['P6c', 'P7', 'P8'];
+for (const stage of ['P5', 'P6c', 'P7', 'P8']) {
   const section = plan.match(new RegExp(`^## ${stage} [^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
   const futureBoxes = [...section.matchAll(/^- \[([^\]])\] /gm)];
   check(futureBoxes.length > 0, `${stage} checklist missing`);
@@ -531,6 +560,11 @@ const p6aBoxes = boxesIn(sectionOf(plan, 'P6a', 2));
 check(p6aBoxes.length === 3, `P6a must contain three checkboxes, found ${p6aBoxes.length}`);
 for (const [index, box] of p6aBoxes.entries()) {
   if (box.state === 'x') checkP6aLine(box.text, `P6a checkbox ${index + 1}`, functional);
+}
+const p6bBoxes = boxesIn(sectionOf(plan, 'P6b', 2));
+check(p6bBoxes.length === 3, `P6b must contain three checkboxes, found ${p6bBoxes.length}`);
+for (const [index, box] of p6bBoxes.entries()) {
+  if (box.state === 'x') checkP6bLine(box.text, `P6b checkbox ${index + 1}`, functional);
 }
 const p5bBoxes = boxesIn(sectionOf(plan, 'P5b', 3));
 check(p5bBoxes.length === 5, `P5b must contain five checkboxes, found ${p5bBoxes.length}`);
@@ -554,7 +588,7 @@ console.log(`PASS P4a accepts evidence-linked commits and commands; unchecked=${
 console.log(`PASS P4b and UI-P4b accept checked rows with resolvable evidence; functional checked=${p4bBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4bBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4bBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4c and UI-P4c accept checked rows with resolvable evidence; functional checked=${p4cBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4cBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4cBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4d and UI-P4d accept checked rows with resolvable evidence; functional checked=${p4dBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4dBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4dBoxes.filter((box) => box.state === 'x').length}`);
-console.log(`PASS I-P6a accepts evidence-linked rows while its human confirmation stays unchecked=${integrationP6aBoxes.filter((box) => box.state !== 'x').length}; I-P6b/I-P6c/UI-P6b/UI-P6c and I-P7/UI-P7 remain unchecked`);
+console.log(`PASS I-P6a and I-P6b accept evidence-linked rows while their human confirmations stay unchecked=${integrationP6aBoxes.filter((box) => box.state !== 'x').length}/${integrationP6bBoxes.filter((box) => box.state !== 'x').length}; I-P6c/UI-P6c and I-P7/UI-P7 remain unchecked`);
 console.log(`PASS P6a accepts evidence-linked rows; P6b/P6c to P8 checkboxes remain unchecked=${futureCount} (P5a, P5b and P6a validated above)`);
 console.log(`PASS R1 checked rows carry docs/r1 evidence with commits and rerun commands; checked=${r1Boxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);

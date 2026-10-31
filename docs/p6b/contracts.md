@@ -172,6 +172,8 @@ or (failed and submitted_at is null and failure_code is not null)
 
 ## Agent 工具 sprout_info_hub_get
 
+证据提交 `4d9545c`：重跑 `bash scripts/verify/bf-p6b-agent-tool.sh`。工具面与拒绝面的实测在 `docs/p6b/summary.md#功能线证据`。
+
 `src/extension/info-hub-tools.ts` + `src/contracts/info-hub-query.ts#infoHubToolInputSchemas` + `src/server/remote-agent-gateway.ts`（**引用**）。
 
 **允许面**
