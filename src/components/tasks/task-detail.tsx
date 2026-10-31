@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { Pencil } from "lucide-react";
 import type { TaskAction } from "../../contracts/task-capabilities";
 import type {
   TaskDetail,
@@ -17,6 +18,7 @@ import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { Select } from "../ui/select";
+import { Icon } from "../ui/icon";
 import { TaskBadge } from "./task-badge";
 import { responsibilityLabel, resultNotice } from "./task-view";
 import { TaskAssignmentPanel, TaskMetadataFields } from "./task-forms";
@@ -48,18 +50,13 @@ export function TaskActionControl({
   pending: boolean;
   onClick: () => void;
 }) {
-  const allowed = detail.capabilities.allowedActions.includes(action);
-  const denial = detail.capabilities.denials[action];
+  // 不可用的动作不出现：置灰按钮加一行原因解释，人类看页面时只会被噪音干扰。
+  if (!detail.capabilities.allowedActions.includes(action)) return null;
   return (
     <div className="space-y-2" data-testid={`task-action-${action}`}>
-      <Button type="button" variant="secondary" disabled={pending || !allowed} onClick={onClick}>
+      <Button type="button" variant="secondary" disabled={pending} onClick={onClick}>
         {label}
       </Button>
-      {!allowed && denial && (
-        <p className="text-xs leading-5 break-words text-muted-foreground">
-          <span>{denial.reason}</span> · <code>{denial.code}</code>
-        </p>
-      )}
     </div>
   );
 }
@@ -87,7 +84,9 @@ export function TaskDetailView({
   const { task } = detail;
   const [record, setRecord] = useState("");
   const [newItem, setNewItem] = useState("");
-  const [editor, setEditor] = useState<"update" | "correct" | null>(null);
+  const [editingMetadata, setEditingMetadata] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [correcting, setCorrecting] = useState(false);
   const [metadata, setMetadata] = useState({
     title: task.title,
     description: task.description,
@@ -110,13 +109,15 @@ export function TaskDetailView({
       data-testid="task-detail"
       className="relative mx-auto w-full min-w-0 max-w-4xl text-sm [overflow-wrap:anywhere]"
     >
-      <header className="space-y-4 py-5">
-        <a
-          href={`/projects/${task.projectId}/tasks`}
-          className="text-xs text-muted-foreground underline underline-offset-4"
-        >
-          返回四态总览
-        </a>
+      <header className="space-y-5 pt-4 pb-6">
+        <div className="pb-1">
+          <a
+            href={`/projects/${task.projectId}/tasks`}
+            className="text-xs text-muted-foreground underline underline-offset-4"
+          >
+            返回四态总览
+          </a>
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <TaskBadge status={task.status} reopened={Boolean(detail.previousCompletionRecord)} />
           <span className="font-mono text-[10px] text-muted-foreground">
@@ -153,20 +154,73 @@ export function TaskDetailView({
         )}
       </div>
       <Section title="目标与要求">
-        <dl className="space-y-5">
-          {(
-            [
-              ["说明", task.description],
-              ["约束", task.constraints],
-              ["完成要求", task.completionRequirements],
-            ] as const
-          ).map(([label, body]) => (
-            <div key={label}>
-              <dt className="mb-1 text-xs text-muted-foreground">{label}</dt>
-              <dd className="text-sm leading-7 whitespace-pre-wrap">{body || "（空）"}</dd>
+        {editingMetadata ? (
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onCommand({ action: "update", input: { ...write, ...metadata } }).then(
+                (saved) => {
+                  if (saved !== false) setEditingMetadata(false);
+                },
+              );
+            }}
+          >
+            <TaskMetadataFields value={metadata} onChange={setMetadata} />
+            <div className="flex flex-wrap gap-3">
+              <Button type="submit" disabled={pending}>
+                保存
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                onClick={() => {
+                  setMetadata({
+                    title: task.title,
+                    description: task.description,
+                    constraints: task.constraints,
+                    completionRequirements: task.completionRequirements,
+                  });
+                  setEditingMetadata(false);
+                }}
+              >
+                取消
+              </Button>
             </div>
-          ))}
-        </dl>
+          </form>
+        ) : (
+          <>
+            {allowed("update") && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  aria-label="编辑目标与要求"
+                  title="编辑目标与要求"
+                  data-testid="task-metadata-edit"
+                  className="flex size-6 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-11"
+                  onClick={() => setEditingMetadata(true)}
+                >
+                  <Icon as={Pencil} size={13} />
+                </button>
+              </div>
+            )}
+            <dl className="space-y-5">
+              {(
+                [
+                  ["说明", task.description],
+                  ["约束", task.constraints],
+                  ["完成要求", task.completionRequirements],
+                ] as const
+              ).map(([label, body]) => (
+                <div key={label}>
+                  <dt className="mb-1 text-xs text-muted-foreground">{label}</dt>
+                  <dd className="text-sm leading-7 whitespace-pre-wrap">{body || "（空）"}</dd>
+                </div>
+              ))}
+            </dl>
+          </>
+        )}
       </Section>
       <Section title="Checklist">
         <p className="text-xs text-muted-foreground">
@@ -176,22 +230,73 @@ export function TaskDetailView({
           {detail.checklist
             .filter((item) => !item.removedAt)
             .map((item) => (
-              <li key={item.id} className="flex flex-wrap items-start gap-3">
-                <label className="flex min-w-0 flex-1 items-start gap-3 text-xs leading-6">
-                  <input
-                    className="mt-1"
-                    type="checkbox"
-                    checked={item.checked}
-                    disabled={pending || !allowed("checklist_update")}
-                    onChange={(e) => {
+              <li key={item.id} className="flex flex-wrap items-start gap-2">
+                {allowed("checklist_update") && editingItemId !== item.id && (
+                  <button
+                    type="button"
+                    aria-label="编辑清单文字"
+                    title="编辑清单文字"
+                    data-testid={`task-checklist-edit-${item.id}`}
+                    className="mt-1 flex size-5 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:size-9"
+                    onClick={() => setEditingItemId(item.id)}
+                  >
+                    <Icon as={Pencil} size={12} />
+                  </button>
+                )}
+                {editingItemId === item.id ? (
+                  <form
+                    className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const data = new FormData(e.currentTarget);
+                      const body = data.get("body");
+                      if (typeof body !== "string") return;
                       void onCommand({
                         action: "checklist_update",
-                        input: { ...write, itemId: item.id, checked: e.target.checked },
+                        input: { ...write, itemId: item.id, body },
+                      }).then((saved) => {
+                        if (saved !== false) setEditingItemId(null);
                       });
                     }}
-                  />
-                  <span>{item.body}</span>
-                </label>
+                  >
+                    <Input
+                      name="body"
+                      aria-label="清单文字"
+                      defaultValue={item.body}
+                      required
+                      maxLength={1000}
+                      autoFocus
+                      className="min-w-0 flex-1"
+                    />
+                    <Button type="submit" disabled={pending} size="sm">
+                      保存
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setEditingItemId(null)}
+                    >
+                      取消
+                    </Button>
+                  </form>
+                ) : (
+                  <label className="flex min-w-0 flex-1 items-start gap-3 text-xs leading-6">
+                    <input
+                      className="mt-1"
+                      type="checkbox"
+                      checked={item.checked}
+                      disabled={pending || !allowed("checklist_update")}
+                      onChange={(e) => {
+                        void onCommand({
+                          action: "checklist_update",
+                          input: { ...write, itemId: item.id, checked: e.target.checked },
+                        });
+                      }}
+                    />
+                    <span>{item.body}</span>
+                  </label>
+                )}
                 {allowed("checklist_remove") && (
                   <Button
                     variant="ghost"
@@ -205,37 +310,6 @@ export function TaskDetailView({
                   >
                     移除
                   </Button>
-                )}
-                {allowed("checklist_update") && (
-                  <details className="w-full text-xs">
-                    <summary className="flex min-h-11 cursor-pointer items-center text-muted-foreground">
-                      编辑清单文字
-                    </summary>
-                    <form
-                      className="mt-3 space-y-3"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const data = new FormData(e.currentTarget);
-                        const body = data.get("body");
-                        if (typeof body !== "string") return;
-                        void onCommand({
-                          action: "checklist_update",
-                          input: {
-                            ...write,
-                            itemId: item.id,
-                            body,
-                          },
-                        });
-                      }}
-                    >
-                      <Field label="清单文字">
-                        <Input name="body" defaultValue={item.body} required maxLength={1000} />
-                      </Field>
-                      <Button type="submit" disabled={pending}>
-                        保存清单文字
-                      </Button>
-                    </form>
-                  </details>
                 )}
               </li>
             ))}
@@ -374,17 +448,10 @@ export function TaskDetailView({
           ))}
           <TaskActionControl
             detail={detail}
-            action="update"
-            label="编辑目标与要求"
-            pending={pending}
-            onClick={() => setEditor("update")}
-          />
-          <TaskActionControl
-            detail={detail}
             action="correct"
             label="Human 纠正"
             pending={pending}
-            onClick={() => setEditor("correct")}
+            onClick={() => setCorrecting(true)}
           />
           <TaskActionControl
             detail={detail}
@@ -410,42 +477,38 @@ export function TaskDetailView({
             </Select>
           </Field>
         )}
-        {editor && (
+        {correcting && (
           <form
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              void onCommand(
-                editor === "correct"
-                  ? {
-                      action: "correct",
-                      input: {
-                        ...write,
-                        ...metadata,
-                        checklist: {
-                          update: checklistPatch
-                            .filter((item) => !item.remove)
-                            .map(({ itemId, body, checked }) => ({ itemId, body, checked })),
-                          removeIds: checklistPatch
-                            .filter((item) => item.remove)
-                            .map((item) => item.itemId),
-                          add: correctionAdds
-                            .split("\n")
-                            .map((body) => body.trim())
-                            .filter(Boolean)
-                            .map((body) => ({ body })),
-                        },
-                        ...(correction.trim() ? { record: { body: correction } } : {}),
-                      },
-                    }
-                  : { action: "update", input: { ...write, ...metadata } },
-              ).then((saved) => {
-                if (saved !== false) setEditor(null);
+              void onCommand({
+                action: "correct",
+                input: {
+                  ...write,
+                  ...metadata,
+                  checklist: {
+                    update: checklistPatch
+                      .filter((item) => !item.remove)
+                      .map(({ itemId, body, checked }) => ({ itemId, body, checked })),
+                    removeIds: checklistPatch
+                      .filter((item) => item.remove)
+                      .map((item) => item.itemId),
+                    add: correctionAdds
+                      .split("\n")
+                      .map((body) => body.trim())
+                      .filter(Boolean)
+                      .map((body) => ({ body })),
+                  },
+                  ...(correction.trim() ? { record: { body: correction } } : {}),
+                },
+              }).then((saved) => {
+                if (saved !== false) setCorrecting(false);
               });
             }}
           >
             <TaskMetadataFields value={metadata} onChange={setMetadata} />
-            {editor === "correct" && (
+            {correcting && (
               <div className="space-y-4">
                 <h3 className="text-xs font-medium">纠正 Checklist</h3>
                 {checklistPatch.map((item, index) => (
@@ -510,7 +573,7 @@ export function TaskDetailView({
                 </Field>
               </div>
             )}
-            {editor === "correct" && (
+            {correcting && (
               <Field
                 label="追加纠正记录"
                 hint="已完成 Task 的结果以追加的纠正记录为准，原记录保留。"
@@ -523,9 +586,9 @@ export function TaskDetailView({
               </Field>
             )}
             <Button type="submit" disabled={pending}>
-              保存{editor === "correct" ? "纠正" : "修改"}
+              保存纠正
             </Button>
-            <Button variant="ghost" type="button" onClick={() => setEditor(null)}>
+            <Button variant="ghost" type="button" onClick={() => setCorrecting(false)}>
               关闭
             </Button>
           </form>

@@ -50,7 +50,7 @@ describe("Task 页面口径", () => {
     expect(html).toContain("已核对实现与验证证据。");
     expect(html).not.toContain("结果正文");
   });
-  it("禁用动作逐字呈现服务端 reason 与 code，不推断 owner", () => {
+  it("不可用动作不渲染，也不打印原因", () => {
     const detail = taskPageDetail({
       capabilities: {
         allowedActions: [],
@@ -66,21 +66,21 @@ describe("Task 页面口径", () => {
         onClick: () => {},
       }),
     );
-    expect(html).toMatch(/<button[^>]*\sdisabled(?:=|\s|>)/);
-    expect(html).toContain("当前 Agent 不是推进负责人");
-    expect(html).toContain("forbidden");
+    expect(html).toBe("");
+    expect(html).not.toContain("当前 Agent 不是推进负责人");
+    expect(html).not.toContain("forbidden");
     detail.capabilities.allowedActions = ["complete"];
-    expect(
-      renderToStaticMarkup(
-        createElement(TaskActionControl, {
-          detail,
-          action: "complete",
-          label: "完成 Task",
-          pending: false,
-          onClick: () => {},
-        }),
-      ),
-    ).not.toMatch(/<button[^>]*\sdisabled(?:=|\s|>)/);
+    const allowedHtml = renderToStaticMarkup(
+      createElement(TaskActionControl, {
+        detail,
+        action: "complete",
+        label: "完成 Task",
+        pending: false,
+        onClick: () => {},
+      }),
+    );
+    expect(allowedHtml).toContain("完成 Task");
+    expect(allowedHtml).not.toMatch(/<button[^>]*\sdisabled(?:=|\s|>)/);
   });
   it("无记录卡片只陈述记录缺失，空列保留四态入口", () => {
     const detail = taskPageDetail();

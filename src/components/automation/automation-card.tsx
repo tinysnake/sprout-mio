@@ -35,9 +35,8 @@ export function AutomationCard({
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const evaluation = view.latestEvaluation;
-  const denial = (action: AutomationAction) =>
-    denials[action] ??
-    (!onCommand ? { code: "wake_provider_unavailable", reason: "控制服务尚未接入" } : undefined);
+  // 页面只隐藏服务端明确拒绝的动作；没接控制器（静态渲染、夹具）时控件保留但不可点。
+  const denial = (action: AutomationAction) => denials[action];
   async function submit(
     action: "disable" | "enable" | "abort" | "retry" | "reissue",
     targetId?: string,
@@ -79,32 +78,18 @@ export function AutomationCard({
     label: string,
     click: () => void,
   ) {
-    const denied = denial(action);
+    // 当前身份不可用的动作用不出现在页面上：置灰加一行原因只是噪音。
+    if (denial(action)) return null;
     return (
       <div className="min-w-0 space-y-1">
         <Button
           type="button"
           variant={action === "abort" ? "destructive" : "secondary"}
-          className={
-            action === "abort"
-              ? "disabled:opacity-100 disabled:text-muted-foreground data-disabled:opacity-100 data-disabled:text-muted-foreground"
-              : undefined
-          }
-          disabled={pending || !!denied}
+          disabled={pending || !onCommand}
           onClick={click}
-          aria-describedby={denied ? `automation-${view.chatId}-${action}-denial` : undefined}
         >
           {label}
         </Button>
-        {denied && (
-          <p
-            id={`automation-${view.chatId}-${action}-denial`}
-            data-testid={`automation-${action}-denial`}
-            className="text-xs break-words text-muted-foreground"
-          >
-            {denied.reason} <code>({denied.code})</code>
-          </p>
-        )}
       </div>
     );
   }
@@ -236,27 +221,21 @@ export function AutomationCard({
           (evaluation.state === "attention" || evaluation.state === "retry_wait") &&
           actionButton("retry", "重试检查", () => void submit("retry"))}
       </div>
-      {view.owner.kind === "agent" && (
+      {view.owner.kind === "agent" && view.activeRunIds.length > 0 && !denial("abort") && (
         <div className="space-y-2 border-t border-border pt-3" data-testid="automation-run-control">
           <p>停止这个运行只中止选定的 run，不改自动接续开关与 epoch；全部停止会关闭自动接续。</p>
-          {(view.activeRunIds.length ? view.activeRunIds : [null]).map((runId) => (
-            <div key={runId ?? "none"} className="space-y-1">
+          {view.activeRunIds.map((runId) => (
+            <div key={runId} className="space-y-1">
               <Button
                 type="button"
                 variant="destructive"
-                className="disabled:opacity-100 disabled:text-muted-foreground data-disabled:opacity-100 data-disabled:text-muted-foreground"
-                disabled={!runId || pending || !!denial("abort")}
-                onClick={() => runId && void submit("abort", runId)}
+                disabled={pending}
+                onClick={() => void submit("abort", runId)}
               >
-                停止这个运行{view.activeRunIds.length > 1 ? ` · ${runId?.slice(-8)}` : ""}
+                停止这个运行
+                {view.activeRunIds.length > 1 ? ` · ${runId.slice(-8)}` : ""}
               </Button>
-              <p className="text-xs text-muted-foreground">
-                {!runId
-                  ? "当前无活动 run"
-                  : denial("abort")
-                    ? `${denial("abort")!.reason} (${denial("abort")!.code})`
-                    : "只停止此 run"}
-              </p>
+              <p className="text-xs text-muted-foreground">只停止此 run</p>
             </div>
           ))}
         </div>
