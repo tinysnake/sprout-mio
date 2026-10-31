@@ -94,12 +94,14 @@ describe("P4b shared contracts", () => {
         call: { type: "lease_mutate", input: reclaim },
       }).success,
     ).toBe(false);
-    for (const schema of Object.values(remoteToolInputSchemas))
-      expect(schema.safeParse({}).success).toBe(false);
-    // 31 = 原 25 个码 + I-P5a 的 channel_membership_managed + I-P5b 的五个 Task 码
-    // （task_invalid_transition / task_assignment_invalid / task_record_required /
-    // task_reference_forbidden / task_record_immutable）。
-    expect(new Set(REMOTE_ERROR_CODES).size).toBe(31);
+    // I-P6a 的 sprout_chat_automation_get 是唯一无必填项的工具：它按 run 自己的
+    // Project/Chat 身份读取，不接收任何参数。其余工具都必须拒绝空输入。
+    for (const [name, schema] of Object.entries(remoteToolInputSchemas))
+      expect(schema.safeParse({}).success).toBe(name === "sprout_chat_automation_get");
+    // 码表数量不写死：每阶段都会加码（I-P5a channel_membership_managed、I-P5b 五个 Task 码、
+    // I-P6a automation_disabled / wake_provider_unavailable / continuation_delivery_unknown）。
+    // 要守的是「无重复」以及下面那条「与 APP_ERROR_CODES 逐项一致」。
+    expect(new Set(REMOTE_ERROR_CODES).size).toBe(REMOTE_ERROR_CODES.length);
     expect([...REMOTE_ERROR_CODES]).toEqual([...humanContracts.APP_ERROR_CODES]);
   });
 
