@@ -8,7 +8,7 @@ import {
   fsyncSync,
   mkdirSync,
   openSync,
-  readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
@@ -38,7 +38,30 @@ export type SnapshotReport = {
 export type RestoreReport = SnapshotReport & { restoredFrom: string };
 
 function sha256File(file: string): string {
-  return createHash("sha256").update(readFileSync(file)).digest("hex");
+  const descriptor = openSync(file, "r");
+  const hash = createHash("sha256");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  let offset = 0;
+  try {
+    for (;;) {
+      const bytes = readSync(descriptor, buffer, 0, buffer.length, offset);
+      if (bytes === 0) break;
+      hash.update(buffer.subarray(0, bytes));
+      offset += bytes;
+    }
+  } finally {
+    closeSync(descriptor);
+  }
+  return hash.digest("hex");
+}
+
+function fsyncFile(file: string): void {
+  const descriptor = openSync(file, "r+");
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 export function inspectDatabase(file: string): SnapshotReport {
@@ -95,6 +118,7 @@ export function backupDatabase(input: { database: string; out: string }): Snapsh
   } finally {
     sqlite.close();
   }
+  fsyncFile(out);
   const report = inspectDatabase(out);
   if (report.integrity !== "ok") throw new Error(`快照完整性校验失败: ${report.integrity}`);
   if (report.foreignKeyViolations > 0)
