@@ -601,6 +601,19 @@ for (const entry of onRuns) {
   assert.deepEqual(entry.resources.themes, [], `${entry.label}: 主题仍不加载`);
   assert.deepEqual(entry.resources.contextFiles, [], `${entry.label}: context file 仍不加载`);
   assert.equal(entry.resources.agentDirName, ".sprout-pi", `${entry.label}: 仍用受控目录`);
+  // 开关只多接两个宿主目录，不把 cwd 的 `.pi/*`、settings/packages 声明的技能包或别的根拉进来。
+  const relativeToHost = (suffix: string) =>
+    relative(directory, join(hostAgentDir, suffix)).split("\\").join("/");
+  assert.deepEqual(
+    entry.resources.skillPaths,
+    [relativeToHost("skills")],
+    `${entry.label}: 技能只来自宿主 skills 目录`,
+  );
+  assert.deepEqual(
+    entry.resources.promptPaths,
+    [relativeToHost("prompts")],
+    `${entry.label}: prompt 只来自宿主 prompts 目录`,
+  );
   const off = offRuns.find(
     (candidate) => candidate.project === entry.project && candidate.label.startsWith("off"),
   )!;

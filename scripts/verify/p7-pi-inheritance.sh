@@ -117,6 +117,13 @@ for (const run of on) {
   assert.deepEqual(run.resources.themes, [], `${run.label}: 主题仍不加载`);
   assert.deepEqual(run.resources.contextFiles, [], `${run.label}: context file 仍不加载`);
   assert(!run.resources.skills.includes(markers.projectA), `${run.label}: cwd 技能不进入`);
+  assert.equal(run.resources.skillPaths.length, 1, `${run.label}: 只多一个技能根`);
+  assert(run.resources.skillPaths[0].endsWith("/skills"), `${run.label}: 技能根是宿主 skills`);
+  assert.equal(run.resources.promptPaths.length, 1, `${run.label}: 只多一个 prompt 根`);
+  assert(
+    run.resources.promptPaths[0].endsWith("/prompts"),
+    `${run.label}: prompt 根是宿主 prompts`,
+  );
   assert.equal(run.resources.agentDirName, ".sprout-pi", `${run.label}: 仍用受控目录`);
   assert(
     run.systemPromptChars > off[0].systemPromptChars,
