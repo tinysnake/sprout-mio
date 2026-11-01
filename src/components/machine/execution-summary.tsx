@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "cn";
 import type { ExecutionCancellationView, ExecutionView } from "../../contracts/remote";
 import { ExecutionCancelControl } from "./execution-cancel";
-import { EXECUTION_STATE_LABELS, shortExecutionId } from "./lease-view";
+import { EXECUTION_STATE_LABELS } from "./lease-view";
 import {
   EXECUTION_ATTENTION_LABELS,
   type ExecutionAttention,
@@ -232,7 +232,7 @@ function AttentionCard({
       )}
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-        <span className="font-mono break-all">{shortExecutionId(execution.executionId)}</span>
+        <span className="font-mono break-all">{execution.executionId}</span>
         <span aria-hidden="true" className="text-muted-foreground">
           ·
         </span>

@@ -4,7 +4,6 @@ import {
   CANCELLATION_STATE_LABELS,
   deadlineFacts,
   formatRuntime,
-  shortExecutionId,
   timeoutSourceLabel,
   uncertainResultNote,
 } from "../src/components/machine/lease-view";
@@ -104,10 +103,6 @@ describe("用户可见文案", () => {
     expect(uncertainResultNote(demoLongExecution)).toBeNull();
   });
 
-  it("执行定位是稳定短值，完整 id 留在工具提示", () => {
-    expect(shortExecutionId("exe_12345678")).toBe("exe_12345678");
-    expect(shortExecutionId(demoGapExecution.executionId)).toMatch(/^exe_77777777$/);
-  });
 });
 
 describe("日志状态不冒充完整", () => {

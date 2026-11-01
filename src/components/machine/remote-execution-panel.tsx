@@ -15,8 +15,6 @@ import {
   failureReasonLabel,
   recoveryReasonLabel,
   resultSummary,
-  shortExecutionId,
-  shortRunId,
   timeoutSourceLabel,
   uncertainResultNote,
 } from "./lease-view";
@@ -346,7 +344,7 @@ export function RemoteExecutionCard({
       <p data-testid={`${testId}-identity`} className="text-muted-foreground">
         执行{" "}
         <span title={execution.executionId} data-testid={`${testId}-execution`}>
-          {shortExecutionId(execution.executionId)}
+          {execution.executionId}
         </span>
         <span className="text-muted-foreground"> · </span>
         下发会话{" "}
@@ -362,7 +360,7 @@ export function RemoteExecutionCard({
       <p data-testid={`${testId}-authorization`} className="text-muted-foreground">
         授权代次 {execution.authorizationGeneration} · 持有者 {holderName} · 由该分身的一次运行发起{" "}
         <span title={execution.runId} data-testid={`${testId}-run`}>
-          （{shortRunId(execution.runId)}）
+          （{execution.runId}）
         </span>
       </p>
       <p className="text-muted-foreground">

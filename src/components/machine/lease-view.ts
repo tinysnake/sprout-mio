@@ -40,18 +40,6 @@ export const LEASE_STATE_LABELS: Record<LeaseView["state"], LeaseLabel> = {
  */
 export const FENCING_SUMMARY = "等待 Worker 确认旧授权已关闸，期间不接受新的远端操作。";
 
-/** run 不印裸 id：只保留可在工具提示里定位的短值。 */
-export function shortRunId(runId: string): string {
-  const hex = runId.replace(/^run_/, "").split("-")[0] ?? "";
-  return `run_${hex.slice(0, 8)}`;
-}
-
-/** 执行 id 是稳定定位：短值上界面，完整值放工具提示；刷新或重连后指向同一条执行。 */
-export function shortExecutionId(executionId: string): string {
-  const hex = executionId.replace(/^exe_/, "").split("-")[0] ?? "";
-  return `exe_${hex.slice(0, 8)}`;
-}
-
 export const LEASE_MUTATION_LABELS: Record<LeaseMutationView["action"], string> = {
   acquire: "申请",
   release: "释放",
