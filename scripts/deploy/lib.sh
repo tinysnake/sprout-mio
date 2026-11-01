@@ -51,7 +51,14 @@ load_env() {
 db_path() { printf '%s/data/sprout.sqlite' "$(instance_dir "$1")"; }
 launchd_label() { printf 'dev.sprout.%s\n' "$1"; }
 launchd_plist() { printf '%s/Library/LaunchAgents/%s.plist\n' "$HOME" "$(launchd_label "$1")"; }
-launchd_installed() { [[ -f "$(launchd_plist "$1")" ]]; }
+launchd_installed() {
+  local plist root
+  plist="$(launchd_plist "$1")"
+  [[ -f "$plist" ]] || return 1
+  # 同名实例可能属于另一个运行根目录：plist 里写的根不是当前根就不算托管。
+  root="$(plutil -extract EnvironmentVariables.SPROUT_RUNTIME_ROOT raw -o - "$plist" 2>/dev/null || true)"
+  [[ "$root" == "$(runtime_root)" ]]
+}
 
 state_dir() {
   local dir

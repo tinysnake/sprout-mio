@@ -184,6 +184,8 @@ bash scripts/deploy/launchd.sh uninstall prod   # 卸载并停止
 
 装了 launchd 之后 `stop.sh` 用 `launchctl bootout`（`KeepAlive` 下 `kill` 会被立刻重起），`start.sh` 用 `bootstrap` 或 `kickstart -k`，不再写 pid 文件。`promote.sh` 因此仍然是一句话完成升级。
 
+plist 里记着它属于哪个运行根目录，`launchd_installed` 会核对这一项，所以临时运行根目录（selftest、rehearse）里的同名实例不会去碰真实的 prod 作业。
+
 `promote.sh` 会先 `reset --hard` 再 `clean -fd` 部署目录，因为本地改动或残留的未跟踪文件都会挡住 checkout。所以不要手改 `$SPROUT_RUNTIME_ROOT/prod/app` 里的文件，那里只该有构建产物与依赖。
 
 drill 不需要常驻，用 `drill.sh` 起、验完停。
