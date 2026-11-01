@@ -258,8 +258,8 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 - [x] 检查 Projects、Agents、Machines、Management 的导航、共享布局、主题切换和各入口的实际可用性。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-navigation.sh`。
 - [x] 检查详情深链、刷新、前进后退、登录后目标恢复，以及窄屏列表、详情、inspector 的进入与返回。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-navigation.sh`。
-- [x] 补齐 PWA 安装与独立窗口体验、断线、旧数据和重新进入后的同步反馈，不默认离线排队操作。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-pwa.sh`。
-- [ ] 在真实手机检查输入区、软键盘、滚动与主要操作，明确浏览器视口模拟与真机证据的区别。只做了 Chromium 视口模拟（390×844），没有物理设备证据，见 [P7 已知限制](p7/summary.md#已知限制与未证明项) 第 1 条。
+- [ ] 补齐 PWA 安装与独立窗口体验、断线、旧数据和重新进入后的同步反馈，不默认离线排队操作。装机与独立窗口的评审由 Human 决定延后到部署与 HTTPS 就绪之后（见 [P7 human-体验确认](p7/summary.md#human-体验确认)）；离线读、离线写入只报失败不排队、重连刷新与登出清缓存的契约已由 `p7-client-pwa` 覆盖。
+- [x] 在真实手机检查输入区、软键盘、滚动与主要操作，明确浏览器视口模拟与真机证据的区别。证据 [P7 human-体验确认](p7/summary.md#human-体验确认)，基线 `6a676a9`，重跑 `bash scripts/verify/p7-client-navigation.sh`；Human 在局域网预览上用手机逐项走过，未保留设备截图。
 - [x] 配合集成线完成一期七步开发闭环和故障场景，检查页面不将未知、失联或未支持能力显示为成功。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-states.sh`。
 
 出口条件是一期主要使用路径和必要异常路径有真实浏览器及设备证据，已知限制可定位。模型、Worker、恢复与授权的行为结论以对应集成证据为准。

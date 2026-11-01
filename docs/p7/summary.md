@@ -61,13 +61,14 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 - **导航与入口**：`app-shell.tsx` 打开 Projects、Agents、Machines、Management 四个入口，Management 不再是禁用项；主题切换与窄屏折叠在 `p7-client-navigation` 与 `p7-client-states` 里核对。
 - **深链与返回**：详情页 URL 直达、刷新后仍在原处、窄屏列表→详情→返回逐条走通。
-- **PWA**：`manifest.webmanifest` 可安装，独立窗口打开后应用壳可用，主题色随浅暗主题变化（`THEME_COLOR`）。
+- **PWA**：`manifest.webmanifest` 可安装，独立窗口打开后应用壳可用，主题色随浅暗主题变化（`THEME_COLOR`）。装机与独立窗口的评审由 Human 决定延后到部署与 HTTPS 之后，见下节遗留；离线读与离线写入（只报失败、不排队）的契约由 `p7-client-pwa` 覆盖。
 - **Human 反馈的落地**：Task 详情把「目标与要求」的铅笔放到标题同一行（中心线差 < 8px，`metadata_edit_shares_the_heading_row`）、清单行的铅笔与 `x` 就地换成「确认/取消」、被拒动作完全不渲染、Info Hub 轮询正常态不渲染状态行、判定器不可用说现状、自动接续面板显示真实判定。
+- **站内跳转**：Tasks 标签、任务卡片、返回总览与 Chat 关联原先用裸 `a[href]`，点一下整页重载、丢掉滚动位置与草稿。新增 `AppLink` 渲染真链接、有路由时接管点击，`p7-client-navigation` 按标签、卡片与返回链接各拦一次整页请求。
 - **Management**：服务与数据、账号与外观两张卡片，Human 评审时表示「先这么着，后续再优化」，本轮不再调整布局。
 
-页面形状由 Human 在真实页面上逐条确认过（两轮反馈共 15 条），但**没有真机证据**，见下节。
+页面形状由 Human 在真实页面上逐条确认过（两轮反馈共 15 条，另有一轮延续评审修掉站内跳转的整页重载），除 PWA 装机外的条目都在电脑与手机上走过一遍。
 
-证据提交 `fef2612`：重跑 `bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/p6a-pages.sh`。
+证据提交 `6a676a9`：重跑 `bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/p6a-pages.sh`、`bash scripts/verify/p7-client-navigation.sh`。
 
 ## 集成线与技术验收证据
 
@@ -110,9 +111,10 @@ Human 在真实页面上做了两轮评审，共 15 条反馈，逐条落地并�
 - 第二轮 7 条：清单编辑与移除的按钮位置与就地确认、编辑按钮与「目标与要求」同行、自动接续面板在真实页面上显示真实判定、任务页其余细节。
 
 - 确认记录：Human 亲自体验确认通过，版本 `fef2612`
+- 确认记录：Human 亲自体验确认通过，版本 `6a676a9`
 
-Human 在评审结束之后明确确认本章通过，并说明 P5b/P6a/P6b/P6c 各章的确认与本章同轮完成。确认版本取那次评审所在的 `integration/p7` 合入 main 的提交 `fef2612`，此后这些页面只有文档改动。
+第二条记录覆盖延续评审：Human 在局域网预览上把 UI-P7 的导航、深链、窄屏与真实手机交互逐项走过，除 PWA 外的条目全部通过，并确认本章 UI 线可以交付。确认版本取站内跳转修复所在的提交 `6a676a9`。
 
-**确认不含真机**：软键盘、滚动、输入区与 PWA 安装后的独立窗口仍只有 Chromium 390×844 视口模拟，没有真实设备证据。所以第 2 条（UI 线交付就绪）因为 UI-P7 第 4 条未勾而保持未勾，这一条不因本章确认而改变。
+**PWA 装机不在本次确认内**：Human 决定把安装、独立窗口与离线体验的评审延后到部署与 HTTPS 就绪之后。所以 [UI-P7](../development-plan-ui.md#ui-p7-完成客户端与一期体验验收) 第 3 条保持未勾，一期遗留项里记着这一条。
 
 - 复验：`bash scripts/verify/p7-client-navigation.sh`、`bash scripts/verify/p7-client-states.sh`。
