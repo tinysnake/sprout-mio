@@ -67,7 +67,8 @@ async function overlayText() {
     const overlay = document.querySelector('vite-error-overlay')
     if (!overlay) return null
     const source = overlay.shadowRoot ?? overlay
-    return (source.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 600) || '(empty overlay)'
+    const details = ['.message', '.file', '.frame', '.stack'].map(selector => source.querySelector(selector)?.textContent).filter(Boolean).join('\n')
+    return (details || source.textContent || '(empty overlay)').trim().slice(0, 4000)
   })
 }
 // dev 服务器的报错浮层会盖住页面、吞掉点击，最后只剩一条 60 秒超时。先把它自己说的话记下来。
@@ -340,8 +341,16 @@ try {
   writeFileSync(join(evidence, 'results.json'), JSON.stringify({ status: 'passed', base, database, results }, null, 2))
   console.log(`PASS as-p5b-task-pages :: ${results.length} checks; ${evidence}`)
 } catch (error) {
-  writeFileSync(join(evidence, 'results.json'), JSON.stringify({ status: 'failed', base, database, results, error: String(error) }, null, 2))
-  if (page) await shot('failure').catch(() => {})
+  const diagnostics = {
+    url: page?.url(),
+    overlay: page ? await overlayText().catch(() => '(overlay unreadable)') : null,
+    body: page ? await page.locator('body').innerText({ timeout: 2000 }).catch(() => '(body unreadable)') : null,
+    serverTail: readFileSync(join(directory, 'server.log'), 'utf8').trim().split('\n').slice(-80).join('\n'),
+  }
+  diagnostics.body = diagnostics.body?.slice(0, 6000) ?? null
+  writeFileSync(join(evidence, 'results.json'), JSON.stringify({ status: 'failed', base, database, results, error: String(error), stack: error?.stack, diagnostics }, null, 2))
+  console.error(`FAIL as-p5b-task-pages diagnostics :: ${JSON.stringify(diagnostics, null, 2)}`)
+  if (page) await page.screenshot({ path: join(evidence, 'failure.png'), fullPage: true, timeout: 2000 }).catch(() => {})
   throw error
 } finally {
   clearTimeout(totalTimer)
