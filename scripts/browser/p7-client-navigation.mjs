@@ -104,6 +104,52 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     pass("four_primary_entries_are_operable", { width });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+  let documents = 0;
+  const countDocument = (request) => {
+    if (request.resourceType() === "document") documents += 1;
+  };
+  page.on("request", countDocument);
+  const marker = () => page.evaluate(() => window.__sproutNavigationMarker ?? null);
+  await page.goto(base + `/projects/${s.projectId}/chats`, { waitUntil: "domcontentloaded" });
+  await page.getByTestId("chat-list-content").waitFor();
+  for (const [name, pattern] of [
+    ["Tasks", /\/tasks$/],
+    ["Members", /\/members$/],
+    ["Chats", /\/chats$/],
+  ]) {
+    await page.evaluate(() => {
+      window.__sproutNavigationMarker = "kept";
+    });
+    documents = 0;
+    await page.getByTestId("project-submenu").getByRole("link", { name, exact: true }).click();
+    await page.waitForURL((url) => pattern.test(url.pathname));
+    assert.equal(documents, 0, `${name} 站内跳转触发整页重新加载`);
+    assert.equal(await marker(), "kept", `${name} 站内跳转丢失页面状态`);
+    pass("in_app_navigation_stays_client_side", { name });
+  }
+  await page
+    .getByTestId("project-submenu")
+    .getByRole("link", { name: "Tasks", exact: true })
+    .click();
+  await page.waitForURL((url) => /\/tasks$/.test(url.pathname));
+  const card = page.locator('[data-testid^="task-card-"]').first();
+  if ((await card.count()) > 0) {
+    await page.evaluate(() => {
+      window.__sproutNavigationMarker = "kept";
+    });
+    documents = 0;
+    await card.click();
+    await page.waitForURL((url) => /\/tasks\/tsk_/.test(url.pathname));
+    assert.equal(documents, 0, "Task 卡片跳转触发整页重新加载");
+    assert.equal(await marker(), "kept");
+    documents = 0;
+    await page.getByRole("link", { name: "返回四态总览" }).click();
+    await page.waitForURL((url) => /\/tasks$/.test(url.pathname));
+    assert.equal(documents, 0, "返回四态总览触发整页重新加载");
+    assert.equal(await marker(), "kept");
+    pass("task_card_and_back_stay_client_side");
+  }
+  page.off("request", countDocument);
   const target = targets[4][0];
   await context.clearCookies();
   await page.goto(base + target, { waitUntil: "domcontentloaded" });

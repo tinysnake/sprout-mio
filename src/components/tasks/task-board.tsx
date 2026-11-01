@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ProjectTasksView, TaskStatus } from "../../contracts/task";
 import { TASK_STATUSES } from "../../contracts/task";
+import { AppLink } from "../ui/app-link";
 import { Button } from "../ui/button";
 import { TaskBadge } from "./task-badge";
 import { responsibilityLabel, taskStatusLabels } from "./task-view";
@@ -43,7 +44,7 @@ export function TaskBoard({ view }: { view: ProjectTasksView }) {
               </h2>
               <div className="space-y-3">
                 {items.map((item) => (
-                  <a
+                  <AppLink
                     key={item.id}
                     href={`/projects/${view.projectId}/tasks/${item.id}`}
                     data-testid={`task-card-${item.id}`}
@@ -84,7 +85,7 @@ export function TaskBoard({ view }: { view: ProjectTasksView }) {
                         {new Date(item.updatedAt).toLocaleString("zh-CN")}
                       </time>
                     </p>
-                  </a>
+                  </AppLink>
                 ))}
               </div>
               {items.length === 0 && (

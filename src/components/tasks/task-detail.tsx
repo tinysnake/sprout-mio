@@ -13,6 +13,7 @@ import type {
   RemoveTaskChecklistItemInput,
   AppendTaskRecordInput,
 } from "../../contracts/task";
+import { AppLink } from "../ui/app-link";
 import { Button } from "../ui/button";
 import { Field } from "../ui/field";
 import { Input } from "../ui/input";
@@ -124,12 +125,12 @@ export function TaskDetailView({
     >
       <header className="space-y-5 pt-4 pb-6">
         <div className="pb-1">
-          <a
+          <AppLink
             href={`/projects/${task.projectId}/tasks`}
             className="text-xs text-muted-foreground underline underline-offset-4"
           >
             返回四态总览
-          </a>
+          </AppLink>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <TaskBadge status={task.status} reopened={Boolean(detail.previousCompletionRecord)} />
@@ -144,12 +145,12 @@ export function TaskDetailView({
             <>
               {" "}
               ·{" "}
-              <a
+              <AppLink
                 className="underline underline-offset-4"
                 href={`/projects/${task.projectId}/chats/${detail.chat.id}`}
               >
                 {detail.chat.displayTitle} · 进入 Chat
-              </a>
+              </AppLink>
             </>
           )}
         </p>

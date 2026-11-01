@@ -17,6 +17,7 @@ import {
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { Project } from "../../contracts/project";
+import { AppLink } from "../ui/app-link";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ThemeMenuToggle } from "./theme-toggle";
@@ -92,7 +93,7 @@ function ProjectNavigation({ project, pathname, close, compact }: ProjectNavigat
         <Icon as={MessageSquare} />
         {!compact && <span>Chats</span>}
       </Link>
-      <a
+      <AppLink
         href={`/projects/${project.id}/tasks`}
         onClick={close}
         aria-label="Tasks"
@@ -103,7 +104,7 @@ function ProjectNavigation({ project, pathname, close, compact }: ProjectNavigat
       >
         <Icon as={ListChecks} />
         {!compact && <span>Tasks</span>}
-      </a>
+      </AppLink>
       <Link
         to="/projects/$projectId/members"
         params={{ projectId: project.id }}

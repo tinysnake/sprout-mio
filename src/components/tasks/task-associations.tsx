@@ -1,4 +1,5 @@
 import type { InfoHubTaskSummary } from "../../contracts/info-hub";
+import { AppLink } from "../ui/app-link";
 import { TaskBadge } from "./task-badge";
 import { responsibilityLabel } from "./task-view";
 
@@ -21,12 +22,12 @@ export function TaskAssociations({
         >
           <div className="flex flex-wrap items-center gap-2">
             <TaskBadge status={item.status} reopened={Boolean(item.previousCompletionRef)} />
-            <a
+            <AppLink
               className="min-w-0 text-xs leading-6 break-words underline underline-offset-4"
               href={`/projects/${projectId}/tasks/${item.taskId}`}
             >
               {item.title}
-            </a>
+            </AppLink>
           </div>
           {!compact && (
             <>
