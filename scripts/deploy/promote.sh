@@ -37,6 +37,9 @@ restore() {
 }
 
 git -C "$app" fetch --quiet origin --tags
+# 部署目录里只该有构建产物与依赖：本地改动与未跟踪文件都会挡住 checkout。
+git -C "$app" reset --hard --quiet
+git -C "$app" clean -qfd
 git -C "$app" checkout --quiet "$tag" || restore "取不到 tag $tag"
 pnpm --dir "$app" install --frozen-lockfile >/dev/null || restore "依赖安装失败"
 pnpm --dir "$app" build >/dev/null || restore "构建失败"
