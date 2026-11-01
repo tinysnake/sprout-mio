@@ -353,6 +353,17 @@ try {
         enabled ? 1 : 0,
         "due schedules are evaluated only when enabled",
       );
+      if (enabled) {
+        const issued = schedule.one<{ request_id: string }>(
+          "SELECT request_id FROM wake_evaluation WHERE chat_id=?",
+          chat.id,
+        );
+        equal(
+          new RegExp(`^${ID_PREFIXES.request}_[0-9a-f]{8,16}$`).test(issued?.request_id ?? ""),
+          true,
+          "scheduler-issued request id matches the app id format",
+        );
+      }
       equal(
         count("continuation_delivery"),
         enabled ? 1 : 0,

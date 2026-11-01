@@ -95,7 +95,7 @@ export const taskSceneBoard: ProjectTasksView = {
   projectId: taskSceneProjectId,
   items: TASK_STATUSES.map((status, index) => ({
     ...base,
-    id: `tsk_${index}3333333-3333-4333-8333-333333333333`,
+    id: `tsk_${String(index).padStart(2, "0")}333333`,
     status,
     title: status === "proposed" ? "核对边界与证据".repeat(16) : base.title,
     ...(status === "finished"

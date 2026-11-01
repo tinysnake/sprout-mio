@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ID_PREFIXES, newId } from "../contracts/ids";
 import { config } from "../lib/config";
 import {
   claimDueEvaluation,
@@ -77,7 +78,7 @@ export function createAutomationScheduler(
       bindPendingDeliveries(now);
       // Claims are synchronous; provider requests run concurrently without holding the writer lock.
       for (let n = 0; n < 100; n++) {
-        const ctx: SchedulerContext = { now, requestId: `req_${randomUUID()}`, workerId };
+        const ctx: SchedulerContext = { now, requestId: newId(ID_PREFIXES.request), workerId };
         const evaluation = claimDueEvaluation(ctx);
         if (!evaluation) break;
         const evaluator =
