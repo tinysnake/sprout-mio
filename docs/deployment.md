@@ -190,6 +190,24 @@ plist 里记着它属于哪个运行根目录，`launchd_installed` 会核对这
 
 drill 不需要常驻，用 `drill.sh` 起、验完停。
 
+## Worker 机器（执行环境）
+
+两件事不要混。**Pi 会话**由实例自己托管：`SPROUT_PI_ENABLED` 默认 `true`，会话目录是实例 env 里的 `SPROUT_PI_DATA_DIR`。**Machine** 是一台提供执行环境的机器，分身通过它跑 shell 与文件操作，由一个常驻的 Worker 进程代表。
+
+本机同时跑 prod 与它的 Worker 时，两者目录分开：
+
+```bash
+bash scripts/deploy/worker.sh prepare prod v0.1.4      # 克隆到 prod/worker/app 并构建
+# 在 prod 页面里建一台 Machine，取一次性票据文件
+bash scripts/deploy/worker.sh enroll prod <machine-id> <票据文件>
+bash scripts/deploy/worker.sh install prod             # 交给 launchd，崩溃重起、登录自启
+bash scripts/deploy/worker.sh status prod
+```
+
+`prepare` 用独立 clone，不用 worktree：`promote.sh` 会对部署目录做 `reset --hard` 与 `clean -fd`，worktree 又与开发 checkout 共用 `.git`，两条都会把 Worker 的代码卷进去。Worker 自己的身份、outbox 与日志在 `prod/worker/state` 与 `prod/worker/logs`。
+
+prod 升级之后 Worker 要单独跟一次：`worker.sh prepare prod <新 tag>`，再 `uninstall` + `install` 让它换上新代码。升级前先 `worker.sh` 里的 `version` 看一眼 `protocol=`，两边协议版本必须一致。
+
 ## 账号
 
 实例不预置账号。第一次打开 `/login` 切到「注册」，填名字、邮箱、密码，这个账号就是 Human（Project 创建者）。注册接口在部署后是开着的，谁走到这个地址谁都能注册；实例只在局域网内时这是可接受的，对外暴露前要先加限制。
