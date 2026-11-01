@@ -347,15 +347,23 @@ try {
   assert.equal(settledTurn.workspace.commit, bareHead)
   assert.equal(settledTurn.injectedIntoPrompt, false, 'fixture runner emits no SDK receipt')
   // 承载新一轮发生在 turn 落定之后，慢机器上这里和状态轮询之间有一段窗口。
+  let carryWatch = null
   const carried = await until(
     async () => {
       const info = await callOk('getChatInfoFn', { chatId: main.chatId })
-      return info.runs.active.length === 1 && info.runs.active[0].status === 'queued' ? info.runs.active[0] : null
+      carryWatch = {
+        active: info.runs.active.map(row => ({ status: row.status, pendingInputs: row.pendingInputs })),
+        recent: info.runs.recent.length,
+      }
+      return info.runs.active.length === 1 ? info.runs.active[0] : null
     },
     'the settled turn carries its pending input into the next queued run',
-  )
+    90000,
+  ).catch(error => {
+    throw new Error(`${error.message}; last seen ${JSON.stringify(carryWatch)}`)
+  })
   assert.notEqual(carried.runId, slowRun.id, 'carry opens a new run, not the settled one')
-  assert.equal(carried.status, 'queued')
+  assert.equal(carried.status, 'queued', `carried run status is ${carried.status}`)
   assert.equal(carried.pendingInputs, 1, 'the settled turn handed its pending input to the next run')
   const carriedRead = await callOk('readTurnContextFn', {projectId: main.projectId, runId: carried.runId})
   assert.equal(carriedRead.kind, 'not_captured', 'queued carry is captured only on host admission')
