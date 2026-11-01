@@ -7,6 +7,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 require_cmd sqlite3
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/sprout-deploy-selftest.XXXXXX")"
 export SPROUT_RUNTIME_ROOT="$scratch"
+export SPROUT_PORT_PROD=3320
+export SPROUT_PORT_DRILL=3321
+export SPROUT_PORT_DEV=3300
 
 cleanup() { rm -rf "$scratch"; }
 trap cleanup EXIT

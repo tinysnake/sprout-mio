@@ -9,6 +9,7 @@ tag="${1:-}"
 require_cmd git
 
 dir="$(instance_dir drill)"
+mkdir -p "$dir/logs" "$dir/state"
 app="$dir/app"
 bash "$REPO_ROOT/scripts/deploy/stop.sh" drill >/dev/null 2>&1 || true
 bash "$REPO_ROOT/scripts/deploy/refresh-data.sh" drill >/dev/null

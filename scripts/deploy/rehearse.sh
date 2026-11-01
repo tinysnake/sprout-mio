@@ -9,9 +9,10 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/sprout-deploy-rehearse.XXXXXX")"
 trap 'bash "$REPO_ROOT/scripts/deploy/stop.sh" prod >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 
 export SPROUT_RUNTIME_ROOT="$work/runtime"
+export SPROUT_PORT_PROD=3322
 export SPROUT_DEPLOY_REMOTE="$work/remote.git"
 
-assert_port_free 3220
+assert_port_free "$(port_for prod)"
 git clone --quiet --bare . "$SPROUT_DEPLOY_REMOTE"
 git clone --quiet "$SPROUT_DEPLOY_REMOTE" "$work/src"
 git -C "$work/src" checkout --quiet -B main

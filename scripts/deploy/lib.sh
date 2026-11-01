@@ -58,6 +58,12 @@ state_dir() {
 
 backup_dir() { printf '%s/backups' "$(instance_dir "$1")"; }
 port_for() {
+  local override
+  override="$(printenv "SPROUT_PORT_$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')" 2>/dev/null || true)"
+  if [[ -n "$override" ]]; then
+    printf '%s\n' "$override"
+    return
+  fi
   case "$1" in
     prod) printf '3220' ;;
     drill) printf '3221' ;;
@@ -77,7 +83,7 @@ require_db() {
   local path
   path="$(db_path "$1")"
   [[ -f "$path" ]] || fail "实例 $1 没有数据库：$path"
-  printf '%s' "$path"
+  printf '%s\n' "$path"
 }
 
 sqlite_scalar() { sqlite3 "$1" "$2"; }

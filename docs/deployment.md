@@ -110,6 +110,7 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/verify.sh <instance>` | 校验实例后置状态，含 `/api/health` 里的 `automationEnabled` |
 | `scripts/deploy/selftest.sh` | 在临时运行根目录里把上面整条链路跑一遍 |
 | `scripts/deploy/rehearse.sh` | 用本地裸远端演练首次部署、升级、回滚三条路径 |
+| `scripts/deploy/reset-password.sh <实例> <邮箱>` | 直接改某个账号的密码，不依赖发信服务 |
 | `scripts/worker/package.sh <输出目录>` | 从构建产物里取出两个文件并校验只依赖 node 内置模块 |
 
 
@@ -166,6 +167,18 @@ node ~/sprout-worker/dist/worker/main.js run --state-dir ~/sprout-worker-state
 更新：`git -C ~/sprout-worker fetch --tags && git -C ~/sprout-worker checkout <新 tag>`，再跑一次 `pnpm install --frozen-lockfile && pnpm worker:build`。
 
 依赖只在构建时用。`dist/worker/main.js` 与 `dist/worker/runner.js` 只 import node 内置模块，两个文件放同一目录就能运行，所以想搬到没有 `node_modules` 的地方拷这两个文件即可；`scripts/worker/package.sh <输出目录>` 会把它们连同 `VERSION` 一起打出来。`worker-artifact` 门禁每次都重新构建、在空目录里跑 `version`（确认运行期不依赖 `node_modules`）、检查 `init`/`run` 出现在 help 里、并对缺失参数报错，同时校验 `docs/deployment.md` 写的命令与 `package.json` 真实存在。
+
+## 账号
+
+实例不预置账号。第一次打开 `/login` 切到「注册」，填名字、邮箱、密码，这个账号就是 Human（Project 创建者）。注册接口在部署后是开着的，谁走到这个地址谁都能注册；实例只在局域网内时这是可接受的，对外暴露前要先加限制。
+
+忘记密码不发邮件，用脚本改：
+
+```bash
+bash scripts/deploy/reset-password.sh prod you@example.com
+```
+
+它借实例自己那份 `better-auth` 算哈希，直接写 `account.password`，所以和登录接口用的是同一套算法。
 
 ## 反向代理与 PWA
 

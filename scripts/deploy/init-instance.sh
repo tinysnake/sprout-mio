@@ -9,7 +9,7 @@ require_cmd openssl
 require_cmd sqlite3
 
 dir="$(instance_dir "$instance")"
-mkdir -p "$dir/data" "$dir/backups" "$dir/pi" "$dir/repos" "$dir/app"
+mkdir -p "$dir/data" "$dir/backups" "$dir/logs" "$dir/state" "$dir/pi" "$dir/repos" "$dir/app"
 
 env_file="$dir/env"
 if [[ -f "$env_file" ]]; then
