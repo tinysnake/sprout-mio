@@ -81,14 +81,25 @@ egress_out="$(SPROUT_VERIFY_EGRESS=1 bash "$REPO_ROOT/scripts/deploy/verify.sh" 
 printf '%s' "$egress_out" | grep -q '探不通远端' || fail "verify.sh 没为探不通的远端变红：${egress_out}"
 sqlite3 "$prod_db" "delete from project_profile where project_id='prj_selftest_egress';"
 
-step "负向用例：黑洞地址必须在上界内变红"
-sqlite3 "$prod_db" "insert into project_profile (project_id, git_remote, default_branch) values ('prj_selftest_blackhole', 'https://10.255.255.1/egress.git', 'main');"
-blackhole_start="$SECONDS"
+step "负向用例：不应答的远端必须在上界内被强杀"
+port_file="$scratch/silent-port"
+node -e 'const net = require("net"), fs = require("fs"); const server = net.createServer(() => {}); server.listen(0, "127.0.0.1", () => fs.writeFileSync(process.argv[1], String(server.address().port)));' "$port_file" &
+silent_pid=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -s "$port_file" ]] && break
+  sleep 0.2
+done
+[[ -s "$port_file" ]] || fail "没能起一个不应答的本地监听"
+silent_port="$(cat "$port_file")"
+sqlite3 "$prod_db" "insert into project_profile (project_id, git_remote, default_branch) values ('prj_selftest_silent', 'https://127.0.0.1:${silent_port}/egress.git', 'main');"
+silent_start="$SECONDS"
 egress_out="$(SPROUT_VERIFY_EGRESS=1 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod 2>&1 >/dev/null || true)"
-blackhole_elapsed=$(( SECONDS - blackhole_start ))
-printf '%s' "$egress_out" | grep -q '探不通远端' || fail "verify.sh 没为黑洞地址变红：${egress_out}"
-(( blackhole_elapsed < 45 )) || fail "黑洞地址探测没有上界，用了 ${blackhole_elapsed} 秒"
-sqlite3 "$prod_db" "delete from project_profile where project_id='prj_selftest_blackhole';"
+silent_elapsed=$(( SECONDS - silent_start ))
+kill "$silent_pid" 2>/dev/null || true
+sqlite3 "$prod_db" "delete from project_profile where project_id='prj_selftest_silent';"
+printf '%s' "$egress_out" | grep -q '探不通远端' || fail "verify.sh 没为不应答的远端变红：${egress_out}"
+(( silent_elapsed >= 20 )) || fail "不应答的远端在 ${silent_elapsed} 秒就变红，强杀上界没被验证到"
+(( silent_elapsed < 45 )) || fail "不应答的远端没有上界，用了 ${silent_elapsed} 秒"
 
 step "负向用例：refresh 不许碰 prod"
 if bash "$REPO_ROOT/scripts/deploy/refresh-data.sh" prod >/dev/null 2>&1; then

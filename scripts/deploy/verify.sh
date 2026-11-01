@@ -47,16 +47,19 @@ fi
 expected_automation="false"
 [[ "$instance" == "prod" ]] && expected_automation="true"
 
+# 探针会把 git-remote-https 这类子进程留在后面，按进程组收，不只杀直接子进程。
 run_bounded() {
   local limit="$1" pid waited=0
   shift
-  "$@" &
+  set -m
+  "$@" </dev/null &
   pid=$!
+  set +m
   while kill -0 "$pid" 2>/dev/null; do
     if (( waited >= limit )); then
-      kill -TERM "$pid" 2>/dev/null || true
+      kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
       sleep 1
-      kill -KILL "$pid" 2>/dev/null || true
+      kill -KILL -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
       wait "$pid" 2>/dev/null || true
       return 124
     fi
@@ -66,12 +69,15 @@ run_bounded() {
   wait "$pid"
 }
 
+# 远端地址可能带 token，报错只留主机与路径。
+redact_url() { printf '%s' "$1" | sed -E 's#//[^@/]*@#//***@#'; }
+
 check_git_egress() {
   require_cmd git
-  # 实例的 git 只拿实例 env。这里清掉调用方 shell 的代理变量，否则这项检查会被开发者的 shell 掩盖。
-  [[ -n "$(sqlite_scalar "$db" "select name from sqlite_master where type='table' and name='project_profile'")" ]] \
-    || fail "实例 $instance 的库里没有 project_profile 表，无法检查出网"
-  local remotes_raw remote
+  local env_file table remotes_raw remote name
+  env_file="$(instance_dir "$instance")/env"
+  table="$(sqlite_scalar "$db" "select count(*) from sqlite_master where type='table' and name='project_profile'")"
+  [[ "$table" == "1" ]] || fail "实例 $instance 的库里没有 project_profile 表，无法检查出网"
   remotes_raw="$(sqlite_scalar "$db" "select distinct git_remote from project_profile where git_remote is not null and git_remote <> ''")"
   local -a remotes=()
   while IFS= read -r remote; do
@@ -83,15 +89,21 @@ check_git_egress() {
     say "PASS 实例 $instance 没有需要探通的 http(s) 远端"
     return 0
   fi
+  # 实例能拿到的代理是实例 env 里的那份。只清调用方 shell 自己设的，否则会把实例配好的代理也清掉。
+  local -a scrub=()
+  for name in http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY no_proxy NO_PROXY GIT_PROXY_COMMAND; do
+    [[ -n "${!name:-}" ]] || continue
+    if [[ -f "$env_file" ]] && grep -qE "^(export )?${name}=" "$env_file"; then continue; fi
+    scrub+=(-u "$name")
+  done
   for remote in "${remotes[@]}"; do
-    if ! run_bounded 30 env -u http_proxy -u https_proxy -u all_proxy \
-      -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+    if ! run_bounded 30 env ${scrub[@]+"${scrub[@]}"} \
       GIT_TERMINAL_PROMPT=0 GIT_ASKPASS= SSH_ASKPASS= LC_ALL=C LANG=C \
       git -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
       ls-remote --heads "$remote" >/dev/null 2>&1; then
-      fail "实例 $instance 探不通远端 ${remote}：30 秒内没有成功，按实例 env 里的 git 出网配置排查，见 docs/deployment.md 实例出网"
+      fail "实例 $instance 探不通远端 $(redact_url "$remote")：30 秒上界内没有成功，按实例 env 里的 git 出网配置排查，见 docs/deployment.md 实例出网"
     fi
-    say "PASS 实例 $instance 能访问远端 ${remote}"
+    say "PASS 实例 $instance 能访问远端 $(redact_url "$remote")"
   done
 }
 
