@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { config } from "../lib/config";
 import {
   claimDueEvaluation,
   onScheduleChange,
@@ -115,7 +116,7 @@ export function createAutomationScheduler(
   }
   return {
     start() {
-      if (started) return;
+      if (!config.SPROUT_AUTOMATION_ENABLED || started) return;
       started = true;
       generation += 1;
       recoverSchedules(time.now());

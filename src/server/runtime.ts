@@ -242,13 +242,17 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     sqlite.prepare("UPDATE runtime_boot SET phase = 'ready' WHERE id = ?").run(bootId);
     transition("ready");
     if (config.SPROUT_PI_ENABLED) await state.managed.runPromise(startPiHost);
-    const { createAutomationScheduler, installWakeEvaluator } =
-      await import("./automation-scheduler");
-    const { createWakeEvaluator } = await import("./wake-runtime");
-    const clock = () => performance.now();
-    installWakeEvaluator(createWakeEvaluator({ clock, ...wakeOptions }));
-    state.automation = createAutomationScheduler({ abort: signalRunAbort });
-    state.automation.start();
+    if (config.SPROUT_AUTOMATION_ENABLED) {
+      const { createAutomationScheduler, installWakeEvaluator } =
+        await import("./automation-scheduler");
+      const { createWakeEvaluator } = await import("./wake-runtime");
+      const clock = () => performance.now();
+      installWakeEvaluator(createWakeEvaluator({ clock, ...wakeOptions }));
+      state.automation = createAutomationScheduler({ abort: signalRunAbort });
+      state.automation.start();
+    } else {
+      console.log("[runtime] automation disabled by SPROUT_AUTOMATION_ENABLED=false");
+    }
     recordDiagnostic({
       level: "info",
       event: "runtime.ready",

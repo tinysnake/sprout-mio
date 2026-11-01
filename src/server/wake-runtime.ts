@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { config } from "../lib/config";
 import type { EvaluateWake } from "../domain/continuation-delivery";
 import { evaluateWake } from "../domain/wake-evaluation";
 import { createJevJudge, type JevOptions } from "../domain/wake-providers/jev";
@@ -27,6 +28,7 @@ function hostDefaultModel(agentDir: string): string {
 export function createWakeEvaluator(options: WakeRuntimeOptions): EvaluateWake {
   const agentDir = resolve(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"));
   return async (input) => {
+    if (!config.SPROUT_AUTOMATION_ENABLED) throw new Error("provider_unavailable");
     const judges = {
       small_brain: createSmallBrainJudge({
         agentDir,
