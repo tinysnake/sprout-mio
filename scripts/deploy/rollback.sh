@@ -20,13 +20,16 @@ bash "$REPO_ROOT/scripts/deploy/stop.sh" prod >/dev/null 2>&1 || true
 cp "$target" "$(db_path prod)"
 rm -f "$(db_path prod)-wal" "$(db_path prod)-shm"
 
-previous_tag="$(git -C "$app" describe --tags --abbrev=0 2>/dev/null || true)"
-older_tag="$(git -C "$app" tag --sort=-creatordate | sed -n '2p' || true)"
-if [[ -n "$older_tag" ]]; then
-  git -C "$app" checkout --quiet "$older_tag"
+current="$(cat "$dir/state/current-deploy" 2>/dev/null || git -C "$app" describe --tags --abbrev=0 2>/dev/null || echo none)"
+previous="$(cat "$dir/state/previous-deploy" 2>/dev/null || echo none)"
+if [[ "$previous" == "none" ]]; then
+  say "没有上一版可回退，只恢复数据与重启"
+else
+  git -C "$app" checkout --quiet "$previous" || fail "回不到上一版代码：$previous"
   pnpm --dir "$app" install --frozen-lockfile >/dev/null
   pnpm --dir "$app" build >/dev/null
-  say "代码回滚：${previous_tag:-none} -> $older_tag"
+  printf '%s\n' "$previous" > "$dir/state/current-deploy"
+  say "代码回滚：${current} -> ${previous}"
 fi
 
 bash "$REPO_ROOT/scripts/deploy/start.sh" prod >/dev/null

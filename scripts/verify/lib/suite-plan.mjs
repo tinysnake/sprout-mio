@@ -106,6 +106,7 @@ export const SUITE_PLAN = Object.freeze({
   "worker-artifact": plan(8, { light: 1 }),
   "deploy-leaks": plan(6, { light: 1 }),
   "deploy-selftest": plan(45, { light: 1 }),
+  "deploy-rehearse": plan(180, { light: 2 }),
   "l-docs": plan(2.341, { light: 1 }),
   "l-docs-probes": plan(81.072, { light: 1 }),
   "m-error-mapping": plan(1.362, { light: 1 }, server),

@@ -109,6 +109,7 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/rollback.sh [备份文件]` | 恢复最近一次（或指定）备份并切回上一个 tag |
 | `scripts/deploy/verify.sh <instance>` | 校验实例后置状态，含 `/api/health` 里的 `automationEnabled` |
 | `scripts/deploy/selftest.sh` | 在临时运行根目录里把上面整条链路跑一遍 |
+| `scripts/deploy/rehearse.sh` | 用本地裸远端演练首次部署、升级、回滚三条路径 |
 | `scripts/worker/package.sh <输出目录>` | 从构建产物里取出两个文件并校验只依赖 node 内置模块 |
 
 

@@ -13,7 +13,7 @@ app="$dir/app"
 load_env prod
 port="$(port_for prod)"
 
-mkdir -p "$dir/backups" "$dir/logs"
+mkdir -p "$dir/backups" "$dir/logs" "$dir/state"
 if [[ ! -d "$app/.git" ]]; then
   say "首次部署：克隆到 $app"
   git clone --quiet "$(deploy_remote)" "$app"
@@ -33,7 +33,7 @@ restore() {
     pnpm --dir "$app" build >/dev/null 2>&1 || true
     bash "$REPO_ROOT/scripts/deploy/start.sh" prod >/dev/null 2>&1 || true
   fi
-  fail "$1（已恢复备份 $backup 与提交 $previous）"
+  fail "$1（已恢复备份 ${backup} 与提交 ${previous}）"
 }
 
 git -C "$app" fetch --quiet origin --tags
@@ -48,4 +48,6 @@ DATABASE_URL="$(db_path prod)" pnpm --dir "$app" db:migrate >"$dir/logs/migrate.
 bash "$REPO_ROOT/scripts/deploy/start.sh" prod >/dev/null || restore "启动失败"
 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null || restore "部署后校验失败"
 
-say "PASS prod 已部署 $tag（原 $previous），备份 $backup"
+printf '%s\n' "$previous" > "$dir/state/previous-deploy"
+printf '%s\n' "$tag" > "$dir/state/current-deploy"
+say "PASS prod 已部署 ${tag}（原 ${previous}），备份 ${backup}"

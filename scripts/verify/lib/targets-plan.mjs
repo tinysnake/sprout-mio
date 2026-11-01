@@ -112,6 +112,7 @@ export const LOCAL_GATES = Object.freeze({
   "z-lease-integration": "真实 Pi runner/model/tool 链路",
   "z2-mcp-integration": "真实 Pi MCP extension",
   "z3-mcp-acceptance": "内嵌真实 Pi MCP 验收及历史证据校验",
+  "deploy-rehearse": "本机端口与 pnpm 构建：首次部署、升级、回滚演练",
 });
 
 export function validateGateTargets(root) {

@@ -49,6 +49,13 @@ load_env() {
 }
 
 db_path() { printf '%s/data/sprout.sqlite' "$(instance_dir "$1")"; }
+state_dir() {
+  local dir
+  dir="$(instance_dir "$1")/state"
+  mkdir -p "$dir"
+  printf '%s\n' "$dir"
+}
+
 backup_dir() { printf '%s/backups' "$(instance_dir "$1")"; }
 port_for() {
   case "$1" in
