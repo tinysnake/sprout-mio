@@ -18,7 +18,8 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdirSync, existsSync, openSync, closeSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import net from 'node:net'
-import { chromium } from 'playwright'
+import { request as httpRequest } from 'node:http'
+import { chromium, errors } from 'playwright'
 
 const directory = resolve('.verify/as-p5b-task-pages')
 const evidence = join(directory, 'evidence')
@@ -85,6 +86,23 @@ try {
   browser = await chromium.launch()
   page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   await page.goto(`${base}/login`)
+  await page.getByTestId('register-tab').waitFor()
+  await new Promise((resolve, reject) => {
+    let canceled = false
+    const request = httpRequest(`${base}/api/health`, {
+      method: 'POST', headers: { Expect: '100-continue', 'Content-Length': '100000' },
+    })
+    request.once('continue', () => { canceled = true; request.destroy() })
+    request.once('error', error => { if (!canceled) reject(error) })
+    request.once('close', () => canceled ? resolve() : reject(new Error('abort probe closed before 100 Continue')))
+    request.setTimeout(5000, () => request.destroy(new Error('abort probe did not receive 100 Continue')))
+    request.flushHeaders()
+  })
+  await page.locator('vite-error-overlay').waitFor({ state: 'attached', timeout: 1000 }).catch(error => {
+    if (!(error instanceof errors.TimeoutError)) throw error
+  })
+  await assertNoOverlay('after canceled POST body')
+  pass('canceled_post_does_not_broadcast_overlay')
   await page.getByTestId('register-tab').click()
   const email = `p5b-ui-${Date.now()}@example.test`
   await page.locator('input[name="name"]').fill('P5b 页面验收')
@@ -316,7 +334,7 @@ try {
   await projectTasks.getByRole('link', { name: '核对 Task 页面生命周期', exact: true }).click()
   await page.getByTestId('task-detail').waitFor()
   pass('project_info_hub_uses_real_task_aggregate')
-  const required = ['empty_columns_preserve_four_states', 'created_proposed_matches_sqlite', 'assignment_without_start_has_no_record_or_run', 'full_start_snapshot_visible', 'checked_start_has_visible_start_record_and_active_run', 'agent_progress_visible_matches_sqlite', 'finished_retains_independent_run_and_lease', 'human_correction_appends_new_result', 'reopen_preserves_history_and_changes_chip', 'stale_revision_exposes_reload_without_overwrite', 'cancel_matches_sqlite', 'overview_enters_detail', 'responsive_768_no_horizontal_overflow', 'responsive_390_no_horizontal_overflow', 'non_owner_agent_denials_are_real_capabilities', 'chat_header_and_inspector_link_back_to_task', 'checklist_add_check_edit_remove_matches_sqlite', 'group_assignment_via_page_matches_sqlite', 'project_info_hub_uses_real_task_aggregate']
+  const required = ['canceled_post_does_not_broadcast_overlay', 'empty_columns_preserve_four_states', 'created_proposed_matches_sqlite', 'assignment_without_start_has_no_record_or_run', 'full_start_snapshot_visible', 'checked_start_has_visible_start_record_and_active_run', 'agent_progress_visible_matches_sqlite', 'finished_retains_independent_run_and_lease', 'human_correction_appends_new_result', 'reopen_preserves_history_and_changes_chip', 'stale_revision_exposes_reload_without_overwrite', 'cancel_matches_sqlite', 'overview_enters_detail', 'responsive_768_no_horizontal_overflow', 'responsive_390_no_horizontal_overflow', 'non_owner_agent_denials_are_real_capabilities', 'chat_header_and_inspector_link_back_to_task', 'checklist_add_check_edit_remove_matches_sqlite', 'group_assignment_via_page_matches_sqlite', 'project_info_hub_uses_real_task_aggregate']
   const passed = new Set(results.map(result => result.id))
   for (const id of required) assert(passed.has(id), `required browser assertion missing: ${id}`)
   writeFileSync(join(evidence, 'results.json'), JSON.stringify({ status: 'passed', base, database, results }, null, 2))
