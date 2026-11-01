@@ -49,7 +49,7 @@ bash "$REPO_ROOT/scripts/deploy/check-migration.sh" "$(db_path prod)" "$app" || 
 bash "$REPO_ROOT/scripts/deploy/stop.sh" prod >/dev/null 2>&1 || true
 DATABASE_URL="$(db_path prod)" pnpm --dir "$app" db:migrate >"$dir/logs/migrate.log" 2>&1 || restore "正式库迁移失败"
 bash "$REPO_ROOT/scripts/deploy/start.sh" prod >/dev/null || restore "启动失败"
-bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null || restore "部署后校验失败"
+SPROUT_VERIFY_EGRESS=1 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null || restore "部署后校验失败"
 
 printf '%s\n' "$previous" > "$dir/state/previous-deploy"
 printf '%s\n' "$tag" > "$dir/state/current-deploy"

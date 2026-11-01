@@ -77,6 +77,24 @@ prod 的代码 checkout（`$SPROUT_RUNTIME_ROOT/prod/app`）从远端 clone，�
 
 仓库里只允许出现 `.env.example` 的键名。`scripts/verify/deploy-leaks.sh` 逐项检查：`.gitignore` 是否真的忽略运行产物、tracked 文件里有没有密钥形状的字符串与绝对家目录路径、以及实例环境变量里的值有没有出现在任何 tracked 文件里。
 
+## 实例出网
+
+实例的 git 子进程继承实例进程的环境变量，不读调用方 shell 的变量。所以跑在需要代理的网络上的实例，代理必须写进该实例的 `env`；写在开发者 shell 里的 `https_proxy` 对 prod 无效。git 自己仍会读 `$HOME/.gitconfig`，`GIT_CONFIG_NOSYSTEM=1` 只关掉 system config。
+
+直连被拦的两种观测症状：`Error in the HTTP2 framing layer`，以及 `Failed to connect to github.com port 443 after <n> ms`。遇到这两种报错先查实例出网，不要先动 HTTP 版本或依赖包。
+
+优先只给 git 打代理，不要给整个进程设 `https_proxy`。后者会连带改掉 Pi 的模型调用等其它 https 出口，那些出口要不要走代理是另一件事。git 支持按 URL 前缀配代理，用实例 `env` 里的 `GIT_CONFIG_*` 三元组表达，只对目标主机生效：
+
+```text
+GIT_CONFIG_COUNT=1
+GIT_CONFIG_KEY_0=http.https://<host>/.proxy
+GIT_CONFIG_VALUE_0=http://<代理主机>:<端口>
+```
+
+具体值不要写进仓库。`scripts/verify/deploy-leaks.sh` 会拿实例 `env` 里键名形如 `[A-Z0-9_]+`、值长度不小于 16 的项去 grep tracked 文件，写了就红。
+
+出网检查是 preflight，不是每次校验都要跑的不变量。`SPROUT_VERIFY_EGRESS=1 bash scripts/deploy/verify.sh prod` 会对库里每个 http(s) 远端做一次 `ls-remote --heads`，30 秒内没有成功就 FAIL。`scripts/deploy/promote.sh` 在切版本后带上这个开关；`rollback.sh`、`drill.sh`、`rehearse.sh` 不带，这样断网不会阻塞回滚。检查是近似：它清掉调用方 shell 的代理变量、关掉终端交互提示，但仍和实例共用 `$HOME/.gitconfig`，也不是在 launchd 进程的环境里跑的。
+
 ## 机器与凭据
 
 Machine 是远端 Worker，注册与连接是两件事：

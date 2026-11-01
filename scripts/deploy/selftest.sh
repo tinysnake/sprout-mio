@@ -75,6 +75,21 @@ step "verify 两个实例"
 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null
 bash "$REPO_ROOT/scripts/deploy/verify.sh" drill >/dev/null
 
+step "负向用例：探不通的远端必须让 verify 变红"
+sqlite3 "$prod_db" "insert into project_profile (project_id, git_remote, default_branch) values ('prj_selftest_egress', 'https://127.0.0.1:1/egress.git', 'main');"
+egress_out="$(SPROUT_VERIFY_EGRESS=1 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod 2>&1 >/dev/null || true)"
+printf '%s' "$egress_out" | grep -q '探不通远端' || fail "verify.sh 没为探不通的远端变红：${egress_out}"
+sqlite3 "$prod_db" "delete from project_profile where project_id='prj_selftest_egress';"
+
+step "负向用例：黑洞地址必须在上界内变红"
+sqlite3 "$prod_db" "insert into project_profile (project_id, git_remote, default_branch) values ('prj_selftest_blackhole', 'https://10.255.255.1/egress.git', 'main');"
+blackhole_start="$SECONDS"
+egress_out="$(SPROUT_VERIFY_EGRESS=1 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod 2>&1 >/dev/null || true)"
+blackhole_elapsed=$(( SECONDS - blackhole_start ))
+printf '%s' "$egress_out" | grep -q '探不通远端' || fail "verify.sh 没为黑洞地址变红：${egress_out}"
+(( blackhole_elapsed < 45 )) || fail "黑洞地址探测没有上界，用了 ${blackhole_elapsed} 秒"
+sqlite3 "$prod_db" "delete from project_profile where project_id='prj_selftest_blackhole';"
+
 step "负向用例：refresh 不许碰 prod"
 if bash "$REPO_ROOT/scripts/deploy/refresh-data.sh" prod >/dev/null 2>&1; then
   fail "refresh-data.sh 接受了 prod，正式数据可能被覆盖"
@@ -106,4 +121,4 @@ for script in $listed $worker_listed; do
 done
 
 say ""
-say "PASS deploy selftest：init / backup / refresh / verify 与两个负向用例都符合预期，文档与脚本一一对应"
+say "PASS deploy selftest：init / backup / refresh / verify 与每个负向用例都符合预期，文档与脚本一一对应"

@@ -47,6 +47,59 @@ fi
 expected_automation="false"
 [[ "$instance" == "prod" ]] && expected_automation="true"
 
+run_bounded() {
+  local limit="$1" pid waited=0
+  shift
+  "$@" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( waited >= limit )); then
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 1
+      kill -KILL "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 1
+    waited=$(( waited + 1 ))
+  done
+  wait "$pid"
+}
+
+check_git_egress() {
+  require_cmd git
+  # 实例的 git 只拿实例 env。这里清掉调用方 shell 的代理变量，否则这项检查会被开发者的 shell 掩盖。
+  [[ -n "$(sqlite_scalar "$db" "select name from sqlite_master where type='table' and name='project_profile'")" ]] \
+    || fail "实例 $instance 的库里没有 project_profile 表，无法检查出网"
+  local remotes_raw remote
+  remotes_raw="$(sqlite_scalar "$db" "select distinct git_remote from project_profile where git_remote is not null and git_remote <> ''")"
+  local -a remotes=()
+  while IFS= read -r remote; do
+    case "$remote" in
+      https://* | http://*) remotes+=("$remote") ;;
+    esac
+  done <<< "$remotes_raw"
+  if (( ${#remotes[@]} == 0 )); then
+    say "PASS 实例 $instance 没有需要探通的 http(s) 远端"
+    return 0
+  fi
+  for remote in "${remotes[@]}"; do
+    if ! run_bounded 30 env -u http_proxy -u https_proxy -u all_proxy \
+      -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+      GIT_TERMINAL_PROMPT=0 GIT_ASKPASS= SSH_ASKPASS= LC_ALL=C LANG=C \
+      git -c credential.helper= -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
+      ls-remote --heads "$remote" >/dev/null 2>&1; then
+      fail "实例 $instance 探不通远端 ${remote}：30 秒内没有成功，按实例 env 里的 git 出网配置排查，见 docs/deployment.md 实例出网"
+    fi
+    say "PASS 实例 $instance 能访问远端 ${remote}"
+  done
+}
+
+# 出网是 preflight 而不是后置不变量：默认不查，否则断网时连回滚都会因为这项检查变红。
+if [[ "${SPROUT_VERIFY_EGRESS:-}" == "1" ]]; then
+  check_git_egress
+fi
+
 port="$(port_for "$instance")"
 health="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" 2>/dev/null || true)"
 if [[ -n "$health" ]]; then

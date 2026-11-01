@@ -49,7 +49,7 @@ if [[ -d "$root" ]]; then
   for env_file in "$root"/*/env; do
     [[ -f "$env_file" ]] || continue
     while IFS='=' read -r key value; do
-      [[ "$key" =~ ^[A-Z_]+$ ]] || continue
+      [[ "$key" =~ ^[A-Z0-9_]+$ ]] || continue
       [[ ${#value} -ge 16 ]] || continue
       if git grep -qI -F -- "$value" -- .; then
         fail "$env_file 里 $key 的值出现在 tracked 文件里"
