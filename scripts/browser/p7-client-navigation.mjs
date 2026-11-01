@@ -169,12 +169,12 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
   assert.equal(new URL(page.url()).origin, base);
   pass("external_next_rejected");
   const invalid = [
-    "/agents/agp_00000000-0000-4000-8000-000000000000",
-    "/machines/mch_00000000-0000-4000-8000-000000000000",
-    `/projects/${s.projectId}/tasks/tsk_00000000-0000-4000-8000-000000000000`,
-    `/projects/${s.projectId}/chats/cnv_00000000-0000-4000-8000-000000000000`,
-    "/projects/prj_00000000-0000-4000-8000-000000000000/settings",
-    `/machines/mch_00000000-0000-4000-8000-000000000000/lease?projectId=${s.projectId}`,
+    "/agents/agp_00000000",
+    "/machines/mch_00000000",
+    `/projects/${s.projectId}/tasks/tsk_00000000`,
+    `/projects/${s.projectId}/chats/cnv_00000000`,
+    "/projects/prj_00000000/settings",
+    `/machines/mch_00000000/lease?projectId=${s.projectId}`,
     "/this-page-does-not-exist",
   ];
   for (const path of invalid) {

@@ -51,7 +51,7 @@ try {
       await meta.first().waitFor();
       const text = await meta.first().textContent();
       assert.match(text, /not_found/, `${target.path} error code`);
-      assert.match(text, /req_[0-9a-f-]{36}/, `${target.path} error requestId`);
+      assert.match(text, /req_[0-9a-f]{8,16}/, `${target.path} error requestId`);
       const body = await page.locator("body").innerText();
       writeFileSync(join(directory, `isolation-page-${target.key}.txt`), body);
       const leaked = state.tokens.filter((token) => body.includes(token));

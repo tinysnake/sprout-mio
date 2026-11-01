@@ -77,18 +77,18 @@ describe("共享契约", () => {
 
   it("阻塞类业务错误必须带 details，缺 details 时降级为内部错误", () => {
     const details = {
-      projectId: "prj_11111111-1111-4111-8111-111111111111",
-      agentProfileId: "agp_22222222-2222-4222-8222-222222222222",
+      projectId: "prj_11111111",
+      agentProfileId: "agp_22222222",
       blockers: [
         {
           kind: "active_runs" as const,
           items: [
             {
-              runId: "run_33333333-3333-4333-8333-333333333333",
-              instanceId: "ins_44444444-4444-4444-8444-444444444444",
+              runId: "run_33333333",
+              instanceId: "ins_44444444",
               status: "running" as const,
               chat: {
-                chatId: "cnv_55555555-5555-4555-8555-555555555555",
+                chatId: "cnv_55555555",
                 chatKind: "group" as const,
                 title: "平台组",
               },

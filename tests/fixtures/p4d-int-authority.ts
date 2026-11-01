@@ -1377,7 +1377,7 @@ if (scenario === "steer") {
   const profileId = newId(ID_PREFIXES.agentProfile);
   const chatId = newId(ID_PREFIXES.chat);
   const instanceId = newId(ID_PREFIXES.instance);
-  const runId = `run_${randomUUID()}`;
+  const runId = newId(ID_PREFIXES.run);
   const messageId = newId(ID_PREFIXES.message);
   sqlite
     .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'Steer fixture',?)")

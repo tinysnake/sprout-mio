@@ -177,7 +177,7 @@ try {
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[type="password"]').fill(randomBytes(24).toString("base64url"));
   await page.locator('button[type="submit"]').click();
-  await page.waitForURL((url) => /^\/projects\/prj_[0-9a-f-]{36}\/chats$/.test(url.pathname));
+  await page.waitForURL((url) => /^\/projects\/prj_[0-9a-f]{8,16}\/chats$/.test(url.pathname));
   await page.keyboard.press("Escape");
 
   const owner = sqlite.prepare("SELECT id FROM user WHERE email = ?").get(email) as
@@ -1283,7 +1283,9 @@ try {
       .fill(`pages-stranger-${randomBytes(6).toString("hex")}@example.test`);
     await stranger.locator('input[type="password"]').fill(randomBytes(24).toString("base64url"));
     await stranger.locator('button[type="submit"]').click();
-    await stranger.waitForURL((url) => /^\/projects\/prj_[0-9a-f-]{36}\/chats$/.test(url.pathname));
+    await stranger.waitForURL((url) =>
+      /^\/projects\/prj_[0-9a-f]{8,16}\/chats$/.test(url.pathname),
+    );
     await stranger.keyboard.press("Escape");
 
     const foreignRelations = await rpc(strangerContext, "projectMachineRelationsFn", {

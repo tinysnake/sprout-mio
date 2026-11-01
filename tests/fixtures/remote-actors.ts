@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import type Database from "better-sqlite3";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { hashCredential } from "../../src/domain/machine";
@@ -15,7 +15,7 @@ export function seedRemoteActor(
   const profileId = newId(ID_PREFIXES.agentProfile);
   const chatId = newId(ID_PREFIXES.chat);
   const instanceId = newId(ID_PREFIXES.instance);
-  const runId = `run_${randomUUID()}`;
+  const runId = newId(ID_PREFIXES.run);
   const grantId = newId(ID_PREFIXES.remoteToolGrant);
   sqlite
     .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'Remote fixture',?)")

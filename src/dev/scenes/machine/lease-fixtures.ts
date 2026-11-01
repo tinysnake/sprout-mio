@@ -7,6 +7,7 @@ import type {
 } from "../../../contracts/remote";
 import type { MachineDetail } from "../../../contracts/machine";
 import { demoMachineDetails, demoProject, secondProject } from "./fixtures";
+import { ID_PREFIXES, newId } from "@/contracts/ids";
 
 /**
  * 租约与远端操作的演示数据。冻结样例，不做时间推进；正式模块不导入本目录。
@@ -14,11 +15,11 @@ import { demoMachineDetails, demoProject, secondProject } from "./fixtures";
  */
 export const demoInstanceIds = {
   /** 当前 Chat 的分身：同时持有两台 Machine。 */
-  primary: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  primary: "ins_aaaaaaaa",
   /** 同一 Project 的另一个分身。 */
-  sibling: "ins_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  sibling: "ins_bbbbbbbb",
   /** 本 Project 之外的持有者：只用于验证租约按 Project 隔离。 */
-  foreign: "ins_cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+  foreign: "ins_cccccccc",
 } as const;
 
 export const demoHolderNames: Record<string, string> = {
@@ -53,7 +54,7 @@ export const demoLeases: LeaseView[] = [
     state: "fencing",
     holderInstanceId: demoInstanceIds.sibling,
     changedAt: "2026-10-18T07:10:00.000Z",
-    pendingMutationId: "lmu_12345678-1234-4234-8234-1234567890ab",
+    pendingMutationId: "lmu_12345678",
   },
   {
     projectId: secondProject.id,
@@ -88,8 +89,8 @@ const executionBase = {
   holderInstanceId: demoInstanceIds.primary,
   authority: "history" as const,
   currentAuthorizationGeneration: null,
-  runId: "run_12345678-1234-4234-8234-1234567890ab",
-  chatId: "cnv_44444444-4444-4444-8444-444444444444",
+  runId: "run_12345678",
+  chatId: "cnv_44444444",
   runtimeDeadlineAt: null,
   maxRuntimeMs: null,
   dispatchConnectionGeneration: 7,
@@ -108,8 +109,8 @@ const executionBase = {
 export const demoExecutions: ExecutionView[] = [
   {
     ...executionBase,
-    executionId: "exe_11111111-1111-4111-8111-111111111111",
-    requestId: "req_11111111-1111-4111-8111-111111111111",
+    executionId: "exe_11111111",
+    requestId: "req_11111111",
     operation: {
       kind: "shell",
       command: "pnpm test tests/lease.test.ts",
@@ -133,8 +134,8 @@ export const demoExecutions: ExecutionView[] = [
   },
   {
     ...executionBase,
-    executionId: "exe_22222222-2222-4222-8222-222222222222",
-    requestId: "req_22222222-2222-4222-8222-222222222222",
+    executionId: "exe_22222222",
+    requestId: "req_22222222",
     machineId: demoMachineDetails[2].machine.id,
     authorizationGeneration: 2,
     operation: {
@@ -151,8 +152,8 @@ export const demoExecutions: ExecutionView[] = [
   },
   {
     ...executionBase,
-    executionId: "exe_33333333-3333-4333-8333-333333333333",
-    requestId: "req_33333333-3333-4333-8333-333333333333",
+    executionId: "exe_33333333",
+    requestId: "req_33333333",
     operation: { kind: "process_list", limit: 100 },
     state: "timed_out",
     createdAt: "2026-10-18T07:22:00.000Z",
@@ -163,8 +164,8 @@ export const demoExecutions: ExecutionView[] = [
   },
   {
     ...executionBase,
-    executionId: "exe_44444444-4444-4444-8444-444444444444",
-    requestId: "req_44444444-4444-4444-8444-444444444444",
+    executionId: "exe_44444444",
+    requestId: "req_44444444",
     operation: { kind: "shell", command: "say finish", waitMs: 1000 },
     state: "unknown",
     createdAt: "2026-10-18T07:26:00.000Z",
@@ -177,9 +178,7 @@ export const demoExecutions: ExecutionView[] = [
 
 export const demoRemoteMachines: MachineDetail[] = demoMachineDetails;
 
-export const demoRunFacts = [
-  { runId: "run_12345678-1234-4234-8234-1234567890ab", status: "completed" },
-];
+export const demoRunFacts = [{ runId: "run_12345678", status: "completed" }];
 
 /** 旧授权代次请求的反证样例：服务端拒绝，界面保留目标与原因。 */
 export const demoLeaseConflictReason = {
@@ -244,7 +243,7 @@ export function completedReceipt(
   return {
     projectId: input.projectId,
     machineId: input.machineId,
-    mutationId: `lmu_${crypto.randomUUID()}`,
+    mutationId: newId(ID_PREFIXES.leaseMutation),
     action: input.action,
     state: "completed",
     expectedGeneration: input.expectedGeneration,
@@ -270,8 +269,8 @@ function demoChecksum(seed: string): string {
  */
 export const demoLongExecution: ExecutionView = {
   ...executionBase,
-  executionId: "exe_55555555-5555-4555-8555-555555555555",
-  requestId: "req_55555555-5555-4555-8555-555555555555",
+  executionId: "exe_55555555",
+  requestId: "req_55555555",
   authorizationGeneration: 4,
   operation: { kind: "shell", command: "pnpm build", waitMs: 1000 },
   state: "succeeded",
@@ -301,8 +300,8 @@ export const demoLongExecution: ExecutionView = {
 /** 保留裁剪样例：早期行已按保留限制删除，可读起点因此抬到 #31。 */
 export const demoTruncatedExecution: ExecutionView = {
   ...demoLongExecution,
-  executionId: "exe_66666666-6666-4666-8666-666666666666",
-  requestId: "req_66666666-6666-4666-8666-666666666666",
+  executionId: "exe_66666666",
+  requestId: "req_66666666",
   state: "running",
   createdAt: "2026-10-18T07:40:00.000Z",
   dispatchDeadlineAt: "2026-10-18T07:42:00.000Z",
@@ -319,8 +318,8 @@ export const demoTruncatedExecution: ExecutionView = {
 /** 缺少中间行并且连 Worker 也失联的执行：`gap` 与断线同时成立。 */
 export const demoGapExecution: ExecutionView = {
   ...demoLongExecution,
-  executionId: "exe_77777777-7777-4777-8777-777777777777",
-  requestId: "req_77777777-7777-4777-8777-777777777777",
+  executionId: "exe_77777777",
+  requestId: "req_77777777",
   machineId: demoMachineDetails[2].machine.id,
   authorizationGeneration: 2,
   operation: { kind: "shell", command: "tail -f app.log", waitMs: 1000 },
@@ -343,8 +342,8 @@ export const demoGapExecution: ExecutionView = {
 /** 长时间占用机器：仍在运行、租约仍归它，早已超过运行观察窗口。 */
 export const demoLongRunningExecution: ExecutionView = {
   ...executionBase,
-  executionId: "exe_88888888-8888-4888-8888-888888888888",
-  requestId: "req_88888888-8888-4888-8888-888888888888",
+  executionId: "exe_88888888",
+  requestId: "req_88888888",
   state: "running",
   operation: { kind: "process_list", limit: 100 },
   createdAt: "2026-10-18T07:39:00.000Z",
@@ -362,8 +361,8 @@ export const demoLongRunningExecution: ExecutionView = {
  */
 export const demoReleasedLeaseExecution: ExecutionView = {
   ...executionBase,
-  executionId: "exe_99999999-9999-4999-8999-999999999999",
-  requestId: "req_99999999-9999-4999-8999-999999999999",
+  executionId: "exe_99999999",
+  requestId: "req_99999999",
   machineId: demoMachineDetails[3].machine.id,
   authorizationGeneration: 7,
   state: "running",
@@ -493,7 +492,7 @@ export const demoCancellations: Record<string, ExecutionCancellationView> = {
   [demoLongExecution.executionId]: {
     projectId: demoProject.id,
     machineId: demoLongExecution.machineId,
-    cancelId: "cnl_11111111-1111-4111-8111-111111111111",
+    cancelId: "cnl_11111111",
     executionId: demoLongExecution.executionId,
     state: "delivered",
     requestedAt: "2026-10-18T07:35:00.000Z",
@@ -505,7 +504,7 @@ export const demoCancellations: Record<string, ExecutionCancellationView> = {
   [demoTruncatedExecution.executionId]: {
     projectId: demoProject.id,
     machineId: demoTruncatedExecution.machineId,
-    cancelId: "cnl_22222222-2222-4222-8222-222222222222",
+    cancelId: "cnl_22222222",
     executionId: demoTruncatedExecution.executionId,
     state: "requested",
     requestedAt: "2026-10-18T07:41:30.000Z",
@@ -517,7 +516,7 @@ export const demoCancellations: Record<string, ExecutionCancellationView> = {
   [demoGapExecution.executionId]: {
     projectId: demoProject.id,
     machineId: demoGapExecution.machineId,
-    cancelId: "cnl_33333333-3333-4333-8333-333333333333",
+    cancelId: "cnl_33333333",
     executionId: demoGapExecution.executionId,
     state: "unknown",
     requestedAt: "2026-10-18T07:50:00.000Z",
@@ -563,7 +562,7 @@ function withoutExited(
 ): ExecutionCancellationView {
   return {
     ...base,
-    cancelId: `cnl_${state === "exited_observed" ? "44444444-4444-4444-8444-444444444444" : "55555555-5555-4555-8555-555555555555"}`,
+    cancelId: `cnl_${state === "exited_observed" ? "44444444" : "55555555"}`,
     state,
     exitedAt: state === "exited_observed" ? "2026-10-18T07:35:09.000Z" : null,
     signalOutcome: "term_delivered",

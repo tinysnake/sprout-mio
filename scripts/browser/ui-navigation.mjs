@@ -1,6 +1,6 @@
 // 迁移后的真实导航契约：`/` 与 `/projects` 分发到 Project Chats，Project 事实在 Settings，
 // 成员页是 `/projects/<id>/members`，登出与身份在 account-menu 弹层里。
-export const PROJECT_CHATS = /^\/projects\/(prj_[0-9a-f-]{36})\/chats$/;
+export const PROJECT_CHATS = /^\/projects\/(prj_[0-9a-f]{8,16})\/chats$/;
 
 export function chatInspectorPath(chatPath) {
   return `${chatPath}?info=1`;
@@ -14,7 +14,7 @@ export async function navigate(page, path) {
 
 export function projectBase(page) {
   const id = new URL(page.url()).pathname.split("/")[2] ?? "";
-  if (!/^prj_[0-9a-f-]{36}$/.test(id)) throw new Error(`不是 Project URL：${page.url()}`);
+  if (!/^prj_[0-9a-f]{8,16}$/.test(id)) throw new Error(`不是 Project URL：${page.url()}`);
   return { id, path: `/projects/${id}`, chatsPath: `/projects/${id}/chats` };
 }
 

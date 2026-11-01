@@ -8,8 +8,8 @@ import type { ProjectInfoHub } from "../../../contracts/info-hub";
  * 管理页场景的固定样例。全部是虚构数据，只在 src/dev 内使用；
  * 正式模块不导入这里，也不会拿它们冒充服务端结果。
  */
-export const DEMO_PROJECT_ID = "prj_11111111-1111-4111-8111-111111111111";
-export const DEMO_REQUEST_ID = "req_22222222-2222-4222-8222-222222222222";
+export const DEMO_PROJECT_ID = "prj_11111111";
+export const DEMO_REQUEST_ID = "req_22222222";
 
 export const demoProject: Project = {
   id: DEMO_PROJECT_ID,
@@ -21,7 +21,7 @@ export const demoProject: Project = {
 
 export const demoProfiles: AgentProfile[] = [
   {
-    id: "agp_33333333-3333-4333-8333-333333333333",
+    id: "agp_33333333",
     name: "Amenda",
     jobTitle: "全能秘书",
     persona:
@@ -32,7 +32,7 @@ export const demoProfiles: AgentProfile[] = [
     updatedAt: "2026-10-16T03:20:00.000Z",
   },
   {
-    id: "agp_44444444-4444-4444-8444-444444444444",
+    id: "agp_44444444",
     name: "Repo 分析员",
     persona: "只读仓库事实，按 commit 与文件路径说明结论，不猜测未读取的代码。",
     harness: "pi",
@@ -41,7 +41,7 @@ export const demoProfiles: AgentProfile[] = [
     updatedAt: "2026-10-02T05:10:00.000Z",
   },
   {
-    id: "agp_55555555-5555-4555-8555-555555555555",
+    id: "agp_55555555",
     name: "前端审阅",
     jobTitle: "视觉与可访问性",
     persona: "核对浅暗主题、宽窄屏与键盘操作，发现问题先说明影响再给改法。",
@@ -112,7 +112,7 @@ export const demoInfoHub: ProjectInfoHub = {
         demoProfiles.find((profile) => profile.id === member.agentProfileId)?.persona ?? "",
       status: "idle",
       error: null,
-      ...(index === 0 ? { chatId: "cnv_77777777-7777-4777-8777-777777777777" } : {}),
+      ...(index === 0 ? { chatId: "cnv_77777777" } : {}),
     })),
     runs: {
       available: true,
@@ -120,15 +120,15 @@ export const demoInfoHub: ProjectInfoHub = {
       active: [],
       recent: [
         {
-          runId: "run_88888888-8888-4888-8888-888888888888",
-          chatId: "cnv_77777777-7777-4777-8777-777777777777",
-          instanceId: "ins_77777777-7777-4777-8777-777777777777",
+          runId: "run_88888888",
+          chatId: "cnv_77777777",
+          instanceId: "ins_77777777",
           agentProfileId: demoMembers[0]!.agentProfileId,
           status: "completed",
           queuedAt: "2026-10-18T06:40:00.000Z",
           startedAt: "2026-10-18T06:40:05.000Z",
           settledAt: "2026-10-18T06:52:00.000Z",
-          requestId: "req_99999999-9999-4999-8999-999999999999",
+          requestId: "req_99999999",
           pendingInputs: 0,
         },
       ],

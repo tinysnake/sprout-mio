@@ -111,10 +111,7 @@ function bindLeaseTurn(plan, rawUserText) {
     "new user message must match the armed lease intent",
   );
   const actual = JSON.parse(userText.slice(prefix.length, -leaseSuffix.length));
-  assert.match(
-    actual.requestId,
-    /^req_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-  );
+  assert.match(actual.requestId, /^req_[0-9a-f]{8,16}$/);
   const { requestId, ...rest } = actual;
   assert.deepEqual(rest, parameters, "lease intent parameters match driver scenario");
   assert.equal(

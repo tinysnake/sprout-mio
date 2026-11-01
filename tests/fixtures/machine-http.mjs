@@ -161,7 +161,7 @@ async function rpc(name, data, actorCookie = cookie) {
   return result;
 }
 function wire(extra) {
-  return { version: 3, requestId: `req_${randomUUID()}`, ...extra };
+  return { version: 3, requestId: `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`, ...extra };
 }
 async function hiddenInit(args, ticketPath) {
   const child = launch(
@@ -225,7 +225,7 @@ try {
           "--server",
           origin,
           "--machine",
-          "mch_11111111-1111-4111-8111-111111111111",
+          "mch_11111111",
           "--state-dir",
           state,
           ...flags,

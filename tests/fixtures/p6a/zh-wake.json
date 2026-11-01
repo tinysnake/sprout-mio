@@ -11,9 +11,9 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_bf2a8fe9",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -24,7 +24,7 @@
       },
       "archived": false,
       "triggerMessage": {
-        "id": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+        "id": "msg_bf2a8fe9",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -34,10 +34,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+      "latestReadableMessageId": "msg_bf2a8fe9",
       "recentMessages": [
         {
-          "id": "msg_92bb14f3-6315-47cc-83e5-43403fcdf0b4",
+          "id": "msg_92bb14f3",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -48,7 +48,7 @@
           "truncated": false
         },
         {
-          "id": "msg_afb8c4b5-dc83-435a-86a2-a53e0a931c83",
+          "id": "msg_afb8c4b5",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -59,7 +59,7 @@
           "truncated": false
         },
         {
-          "id": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+          "id": "msg_bf2a8fe9",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -88,7 +88,7 @@
               "kind": "agent",
               "id": "agent_1"
             },
-            "instanceId": "ins_92bb14f3-6315-47cc-83e5-43403fcdf0b4",
+            "instanceId": "ins_92bb14f3",
             "personaSummary": "阿界（订阅与限流接口）",
             "responsibility": "订阅接口与 429 限流窗口的定位、修复与联调",
             "activeRun": null,
@@ -104,9 +104,9 @@
     },
     "input": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_bf2a8fe9",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -117,7 +117,7 @@
       },
       "evaluatedAt": "2026-01-01T00:00:00.000Z",
       "triggerMessage": {
-        "id": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+        "id": "msg_bf2a8fe9",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -127,10 +127,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+      "latestReadableMessageId": "msg_bf2a8fe9",
       "recentMessages": [
         {
-          "id": "msg_92bb14f3-6315-47cc-83e5-43403fcdf0b4",
+          "id": "msg_92bb14f3",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -141,7 +141,7 @@
           "truncated": false
         },
         {
-          "id": "msg_afb8c4b5-dc83-435a-86a2-a53e0a931c83",
+          "id": "msg_afb8c4b5",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -152,7 +152,7 @@
           "truncated": false
         },
         {
-          "id": "msg_bf2a8fe9-3d48-4f1e-8a37-1d52541ac21b",
+          "id": "msg_bf2a8fe9",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -180,7 +180,7 @@
             "kind": "agent",
             "id": "agent_1"
           },
-          "instanceId": "ins_92bb14f3-6315-47cc-83e5-43403fcdf0b4",
+          "instanceId": "ins_92bb14f3",
           "personaSummary": "阿界（订阅与限流接口）",
           "responsibility": "订阅接口与 429 限流窗口的定位、修复与联调",
           "activeRun": null,
@@ -224,9 +224,9 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_09172f9d",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -237,7 +237,7 @@
       },
       "archived": false,
       "triggerMessage": {
-        "id": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+        "id": "msg_09172f9d",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -247,10 +247,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+      "latestReadableMessageId": "msg_09172f9d",
       "recentMessages": [
         {
-          "id": "msg_bea4202f-eb67-4ed3-8a8b-fdadac4fb02c",
+          "id": "msg_bea4202f",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -261,7 +261,7 @@
           "truncated": false
         },
         {
-          "id": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+          "id": "msg_09172f9d",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -290,7 +290,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_bea4202f-eb67-4ed3-8a8b-fdadac4fb02c",
+            "instanceId": "ins_bea4202f",
             "personaSummary": "阿迁（数据库迁移）",
             "responsibility": "0026 迁移脚本的本机验证",
             "activeRun": null,
@@ -307,7 +307,7 @@
               "kind": "agent",
               "id": "agent_3"
             },
-            "instanceId": "ins_09172f9d-dbac-4f6d-8985-3cab396803c3",
+            "instanceId": "ins_09172f9d",
             "personaSummary": "阿检（回归与门禁）",
             "responsibility": "L3 回归与门禁",
             "activeRun": null,
@@ -323,9 +323,9 @@
     },
     "input": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_09172f9d",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -336,7 +336,7 @@
       },
       "evaluatedAt": "2026-01-01T00:00:00.000Z",
       "triggerMessage": {
-        "id": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+        "id": "msg_09172f9d",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -346,10 +346,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+      "latestReadableMessageId": "msg_09172f9d",
       "recentMessages": [
         {
-          "id": "msg_bea4202f-eb67-4ed3-8a8b-fdadac4fb02c",
+          "id": "msg_bea4202f",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -360,7 +360,7 @@
           "truncated": false
         },
         {
-          "id": "msg_09172f9d-dbac-4f6d-8985-3cab396803c3",
+          "id": "msg_09172f9d",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -388,7 +388,7 @@
             "kind": "agent",
             "id": "agent_2"
           },
-          "instanceId": "ins_bea4202f-eb67-4ed3-8a8b-fdadac4fb02c",
+          "instanceId": "ins_bea4202f",
           "personaSummary": "阿迁（数据库迁移）",
           "responsibility": "0026 迁移脚本的本机验证",
           "activeRun": null,
@@ -400,7 +400,7 @@
             "kind": "agent",
             "id": "agent_3"
           },
-          "instanceId": "ins_09172f9d-dbac-4f6d-8985-3cab396803c3",
+          "instanceId": "ins_09172f9d",
           "personaSummary": "阿检（回归与门禁）",
           "responsibility": "L3 回归与门禁",
           "activeRun": null,
@@ -444,9 +444,9 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_5cb3f53e",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -457,7 +457,7 @@
       },
       "archived": false,
       "triggerMessage": {
-        "id": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+        "id": "msg_5cb3f53e",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -467,10 +467,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+      "latestReadableMessageId": "msg_5cb3f53e",
       "recentMessages": [
         {
-          "id": "msg_339b6785-0331-4409-8b91-74f41c4cc592",
+          "id": "msg_339b6785",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -481,7 +481,7 @@
           "truncated": false
         },
         {
-          "id": "msg_41a8f298-6f7e-4ac7-83c0-453ef429e3b8",
+          "id": "msg_41a8f298",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -492,7 +492,7 @@
           "truncated": false
         },
         {
-          "id": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+          "id": "msg_5cb3f53e",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -521,7 +521,7 @@
               "kind": "agent",
               "id": "agent_1"
             },
-            "instanceId": "ins_339b6785-0331-4409-8b91-74f41c4cc592",
+            "instanceId": "ins_339b6785",
             "personaSummary": "阿检（回归与门禁）",
             "responsibility": "接手后的 429 修复推进",
             "activeRun": null,
@@ -538,7 +538,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_41a8f298-6f7e-4ac7-83c0-453ef429e3b8",
+            "instanceId": "ins_41a8f298",
             "personaSummary": "阿界（订阅与限流接口）",
             "responsibility": "原负责人，手上的窗口改动已交回",
             "activeRun": null,
@@ -552,12 +552,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_39297a0c-9073-4b01-80ef-880adb6ce6e6",
+          "id": "tsk_39297a0c",
           "title": "修复 429 限流窗口误判",
           "status": "assigned",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "agent",
             "id": "agent_1"
@@ -572,9 +572,9 @@
     },
     "input": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_5cb3f53e",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -585,7 +585,7 @@
       },
       "evaluatedAt": "2026-01-01T00:00:00.000Z",
       "triggerMessage": {
-        "id": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+        "id": "msg_5cb3f53e",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -595,10 +595,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+      "latestReadableMessageId": "msg_5cb3f53e",
       "recentMessages": [
         {
-          "id": "msg_339b6785-0331-4409-8b91-74f41c4cc592",
+          "id": "msg_339b6785",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -609,7 +609,7 @@
           "truncated": false
         },
         {
-          "id": "msg_41a8f298-6f7e-4ac7-83c0-453ef429e3b8",
+          "id": "msg_41a8f298",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -620,7 +620,7 @@
           "truncated": false
         },
         {
-          "id": "msg_5cb3f53e-3006-4d9f-8264-b5e7287c7867",
+          "id": "msg_5cb3f53e",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -648,7 +648,7 @@
             "kind": "agent",
             "id": "agent_1"
           },
-          "instanceId": "ins_339b6785-0331-4409-8b91-74f41c4cc592",
+          "instanceId": "ins_339b6785",
           "personaSummary": "阿检（回归与门禁）",
           "responsibility": "接手后的 429 修复推进",
           "activeRun": null,
@@ -660,7 +660,7 @@
             "kind": "agent",
             "id": "agent_2"
           },
-          "instanceId": "ins_41a8f298-6f7e-4ac7-83c0-453ef429e3b8",
+          "instanceId": "ins_41a8f298",
           "personaSummary": "阿界（订阅与限流接口）",
           "responsibility": "原负责人，手上的窗口改动已交回",
           "activeRun": null,
@@ -670,12 +670,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_39297a0c-9073-4b01-80ef-880adb6ce6e6",
+          "id": "tsk_39297a0c",
           "title": "修复 429 限流窗口误判",
           "status": "assigned",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "agent",
             "id": "agent_1"
@@ -722,9 +722,9 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_470e69dd",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -735,7 +735,7 @@
       },
       "archived": false,
       "triggerMessage": {
-        "id": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+        "id": "msg_470e69dd",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -745,10 +745,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+      "latestReadableMessageId": "msg_470e69dd",
       "recentMessages": [
         {
-          "id": "msg_113ca76e-f454-43f8-8e63-6624083d7586",
+          "id": "msg_113ca76e",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -759,7 +759,7 @@
           "truncated": false
         },
         {
-          "id": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+          "id": "msg_470e69dd",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -788,11 +788,11 @@
               "kind": "agent",
               "id": "agent_1"
             },
-            "instanceId": "ins_113ca76e-f454-43f8-8e63-6624083d7586",
+            "instanceId": "ins_113ca76e",
             "personaSummary": "阿界（订阅与限流接口）",
             "responsibility": "429 限流窗口修复",
             "activeRun": {
-              "id": "run_dd5ace9e-018d-4d62-836c-be039916ad7c",
+              "id": "run_dd5ace9e",
               "status": "running",
               "updatedAt": "2026-01-01T00:00:00.000Z",
               "pendingInputs": 0,
@@ -811,7 +811,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+            "instanceId": "ins_470e69dd",
             "personaSummary": "阿检（回归与门禁）",
             "responsibility": "L3 回归",
             "activeRun": null,
@@ -825,12 +825,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_593df096-ebd5-49ae-85f0-d5f24e0936c1",
+          "id": "tsk_593df096",
           "title": "修复 429 限流窗口误判",
           "status": "assigned",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "agent",
             "id": "agent_1"
@@ -845,9 +845,9 @@
     },
     "input": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_470e69dd",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -858,7 +858,7 @@
       },
       "evaluatedAt": "2026-01-01T00:00:00.000Z",
       "triggerMessage": {
-        "id": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+        "id": "msg_470e69dd",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -868,10 +868,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+      "latestReadableMessageId": "msg_470e69dd",
       "recentMessages": [
         {
-          "id": "msg_113ca76e-f454-43f8-8e63-6624083d7586",
+          "id": "msg_113ca76e",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -882,7 +882,7 @@
           "truncated": false
         },
         {
-          "id": "msg_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+          "id": "msg_470e69dd",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -910,11 +910,11 @@
             "kind": "agent",
             "id": "agent_1"
           },
-          "instanceId": "ins_113ca76e-f454-43f8-8e63-6624083d7586",
+          "instanceId": "ins_113ca76e",
           "personaSummary": "阿界（订阅与限流接口）",
           "responsibility": "429 限流窗口修复",
           "activeRun": {
-            "id": "run_dd5ace9e-018d-4d62-836c-be039916ad7c",
+            "id": "run_dd5ace9e",
             "status": "running",
             "updatedAt": "2026-01-01T00:00:00.000Z",
             "pendingInputs": 0,
@@ -928,7 +928,7 @@
             "kind": "agent",
             "id": "agent_2"
           },
-          "instanceId": "ins_470e69dd-626c-4a2b-8c25-cf2204c1307a",
+          "instanceId": "ins_470e69dd",
           "personaSummary": "阿检（回归与门禁）",
           "responsibility": "L3 回归",
           "activeRun": null,
@@ -938,12 +938,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_593df096-ebd5-49ae-85f0-d5f24e0936c1",
+          "id": "tsk_593df096",
           "title": "修复 429 限流窗口误判",
           "status": "assigned",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "agent",
             "id": "agent_1"
@@ -990,9 +990,9 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_3cc023b1",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -1003,7 +1003,7 @@
       },
       "archived": false,
       "triggerMessage": {
-        "id": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+        "id": "msg_3cc023b1",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -1013,10 +1013,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+      "latestReadableMessageId": "msg_3cc023b1",
       "recentMessages": [
         {
-          "id": "msg_7ba9b7b9-75b1-4e43-8164-25f8183b3b36",
+          "id": "msg_7ba9b7b9",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1027,7 +1027,7 @@
           "truncated": false
         },
         {
-          "id": "msg_6e62f5b9-a942-4e7d-8901-3b587cfbd393",
+          "id": "msg_6e62f5b9",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1038,7 +1038,7 @@
           "truncated": false
         },
         {
-          "id": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+          "id": "msg_3cc023b1",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1067,7 +1067,7 @@
               "kind": "agent",
               "id": "agent_1"
             },
-            "instanceId": "ins_7ba9b7b9-75b1-4e43-8164-25f8183b3b36",
+            "instanceId": "ins_7ba9b7b9",
             "personaSummary": "阿界（订阅与限流接口）",
             "responsibility": "唤醒判定的接入评估",
             "activeRun": null,
@@ -1084,7 +1084,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_6e62f5b9-a942-4e7d-8901-3b587cfbd393",
+            "instanceId": "ins_6e62f5b9",
             "personaSummary": "阿检（回归与门禁）",
             "responsibility": "样本与门禁",
             "activeRun": null,
@@ -1100,9 +1100,9 @@
     },
     "input": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_3cc023b1",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -1113,7 +1113,7 @@
       },
       "evaluatedAt": "2026-01-01T00:00:00.000Z",
       "triggerMessage": {
-        "id": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+        "id": "msg_3cc023b1",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -1123,10 +1123,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+      "latestReadableMessageId": "msg_3cc023b1",
       "recentMessages": [
         {
-          "id": "msg_7ba9b7b9-75b1-4e43-8164-25f8183b3b36",
+          "id": "msg_7ba9b7b9",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1137,7 +1137,7 @@
           "truncated": false
         },
         {
-          "id": "msg_6e62f5b9-a942-4e7d-8901-3b587cfbd393",
+          "id": "msg_6e62f5b9",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1148,7 +1148,7 @@
           "truncated": false
         },
         {
-          "id": "msg_3cc023b1-ee05-4121-8877-f6ed81ce12ea",
+          "id": "msg_3cc023b1",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1176,7 +1176,7 @@
             "kind": "agent",
             "id": "agent_1"
           },
-          "instanceId": "ins_7ba9b7b9-75b1-4e43-8164-25f8183b3b36",
+          "instanceId": "ins_7ba9b7b9",
           "personaSummary": "阿界（订阅与限流接口）",
           "responsibility": "唤醒判定的接入评估",
           "activeRun": null,
@@ -1188,7 +1188,7 @@
             "kind": "agent",
             "id": "agent_2"
           },
-          "instanceId": "ins_6e62f5b9-a942-4e7d-8901-3b587cfbd393",
+          "instanceId": "ins_6e62f5b9",
           "personaSummary": "阿检（回归与门禁）",
           "responsibility": "样本与门禁",
           "activeRun": null,
@@ -1232,8 +1232,8 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "task_periodic",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
       "triggerId": "periodic_w20",
       "round": 1,
       "controlEpoch": 1,
@@ -1245,10 +1245,10 @@
       },
       "archived": false,
       "triggerMessage": null,
-      "latestReadableMessageId": "msg_35d0cbed-e1af-48de-8fd5-5c019f9651c6",
+      "latestReadableMessageId": "msg_35d0cbed",
       "recentMessages": [
         {
-          "id": "msg_31bcb190-d31d-4dcf-8ed3-b075ef5a0457",
+          "id": "msg_31bcb190",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1259,7 +1259,7 @@
           "truncated": false
         },
         {
-          "id": "msg_35d0cbed-e1af-48de-8fd5-5c019f9651c6",
+          "id": "msg_35d0cbed",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1288,7 +1288,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_31bcb190-d31d-4dcf-8ed3-b075ef5a0457",
+            "instanceId": "ins_31bcb190",
             "personaSummary": "阿迁（数据库迁移）",
             "responsibility": "0026 迁移脚本",
             "activeRun": null,
@@ -1302,12 +1302,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_0079f272-70fc-4355-80e1-2dbbacef7dc2",
+          "id": "tsk_0079f272",
           "title": "0026 迁移脚本",
           "status": "assigned",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "human",
             "id": "human_0"
@@ -1322,8 +1322,8 @@
     },
     "input": {
       "source": "task_periodic",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
       "triggerId": "periodic_w20",
       "round": 1,
       "controlEpoch": 1,
@@ -1335,10 +1335,10 @@
       },
       "evaluatedAt": "2026-01-01T00:00:00.000Z",
       "triggerMessage": null,
-      "latestReadableMessageId": "msg_35d0cbed-e1af-48de-8fd5-5c019f9651c6",
+      "latestReadableMessageId": "msg_35d0cbed",
       "recentMessages": [
         {
-          "id": "msg_31bcb190-d31d-4dcf-8ed3-b075ef5a0457",
+          "id": "msg_31bcb190",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1349,7 +1349,7 @@
           "truncated": false
         },
         {
-          "id": "msg_35d0cbed-e1af-48de-8fd5-5c019f9651c6",
+          "id": "msg_35d0cbed",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1387,12 +1387,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_0079f272-70fc-4355-80e1-2dbbacef7dc2",
+          "id": "tsk_0079f272",
           "title": "0026 迁移脚本",
           "status": "assigned",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "human",
             "id": "human_0"
@@ -1439,9 +1439,9 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_956e0bcc",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -1452,7 +1452,7 @@
       },
       "archived": false,
       "triggerMessage": {
-        "id": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+        "id": "msg_956e0bcc",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -1462,10 +1462,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+      "latestReadableMessageId": "msg_956e0bcc",
       "recentMessages": [
         {
-          "id": "msg_03aed2f9-011f-4013-81f4-29211e745ec7",
+          "id": "msg_03aed2f9",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1476,7 +1476,7 @@
           "truncated": false
         },
         {
-          "id": "msg_1b751518-9f63-4fa3-8b76-ae69c8373554",
+          "id": "msg_1b751518",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1487,7 +1487,7 @@
           "truncated": false
         },
         {
-          "id": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+          "id": "msg_956e0bcc",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1516,7 +1516,7 @@
               "kind": "agent",
               "id": "agent_1"
             },
-            "instanceId": "ins_03aed2f9-011f-4013-81f4-29211e745ec7",
+            "instanceId": "ins_03aed2f9",
             "personaSummary": "阿迁（数据库迁移）",
             "responsibility": "0026 迁移脚本，已完成",
             "activeRun": null,
@@ -1533,7 +1533,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_1b751518-9f63-4fa3-8b76-ae69c8373554",
+            "instanceId": "ins_1b751518",
             "personaSummary": "阿检（回归与门禁）",
             "responsibility": "验收记录与回归证据",
             "activeRun": null,
@@ -1547,12 +1547,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_93fde0c2-d236-47e6-8ec3-9d3653517c40",
+          "id": "tsk_93fde0c2",
           "title": "0026 迁移脚本",
           "status": "finished",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "agent",
             "id": "agent_1"
@@ -1567,9 +1567,9 @@
     },
     "input": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_956e0bcc",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -1580,7 +1580,7 @@
       },
       "evaluatedAt": "2026-01-01T00:00:00.000Z",
       "triggerMessage": {
-        "id": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+        "id": "msg_956e0bcc",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -1590,10 +1590,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+      "latestReadableMessageId": "msg_956e0bcc",
       "recentMessages": [
         {
-          "id": "msg_03aed2f9-011f-4013-81f4-29211e745ec7",
+          "id": "msg_03aed2f9",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1604,7 +1604,7 @@
           "truncated": false
         },
         {
-          "id": "msg_1b751518-9f63-4fa3-8b76-ae69c8373554",
+          "id": "msg_1b751518",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1615,7 +1615,7 @@
           "truncated": false
         },
         {
-          "id": "msg_956e0bcc-99c4-4f46-85b0-3dbf231f7be9",
+          "id": "msg_956e0bcc",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1643,7 +1643,7 @@
             "kind": "agent",
             "id": "agent_2"
           },
-          "instanceId": "ins_1b751518-9f63-4fa3-8b76-ae69c8373554",
+          "instanceId": "ins_1b751518",
           "personaSummary": "阿检（回归与门禁）",
           "responsibility": "验收记录与回归证据",
           "activeRun": null,
@@ -1687,9 +1687,9 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_48758a8f",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -1700,7 +1700,7 @@
       },
       "archived": false,
       "triggerMessage": {
-        "id": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+        "id": "msg_48758a8f",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -1710,10 +1710,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+      "latestReadableMessageId": "msg_48758a8f",
       "recentMessages": [
         {
-          "id": "msg_33670c86-0ac2-4085-8ade-c755a19ee24f",
+          "id": "msg_33670c86",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1724,7 +1724,7 @@
           "truncated": false
         },
         {
-          "id": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+          "id": "msg_48758a8f",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1753,7 +1753,7 @@
               "kind": "agent",
               "id": "agent_1"
             },
-            "instanceId": "ins_33670c86-0ac2-4085-8ade-c755a19ee24f",
+            "instanceId": "ins_33670c86",
             "personaSummary": "阿迁（数据库迁移）",
             "responsibility": "0026 迁移脚本，已完成",
             "activeRun": null,
@@ -1770,7 +1770,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_48758a8f-349b-409a-883f-87912bc56b25",
+            "instanceId": "ins_48758a8f",
             "personaSummary": "阿检（回归与门禁）",
             "responsibility": "L3 回归",
             "activeRun": null,
@@ -1784,12 +1784,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_746cb617-7135-4fc4-8a24-a0efa6029276",
+          "id": "tsk_746cb617",
           "title": "0026 迁移脚本",
           "status": "finished",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "agent",
             "id": "agent_1"
@@ -1804,9 +1804,9 @@
     },
     "input": {
       "source": "message",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
-      "triggerId": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
+      "triggerId": "msg_48758a8f",
       "round": 1,
       "controlEpoch": 1,
       "policy": {
@@ -1817,7 +1817,7 @@
       },
       "evaluatedAt": "2026-01-01T00:00:00.000Z",
       "triggerMessage": {
-        "id": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+        "id": "msg_48758a8f",
         "kind": "human",
         "sender": {
           "kind": "human",
@@ -1827,10 +1827,10 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "latestReadableMessageId": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+      "latestReadableMessageId": "msg_48758a8f",
       "recentMessages": [
         {
-          "id": "msg_33670c86-0ac2-4085-8ade-c755a19ee24f",
+          "id": "msg_33670c86",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1841,7 +1841,7 @@
           "truncated": false
         },
         {
-          "id": "msg_48758a8f-349b-409a-883f-87912bc56b25",
+          "id": "msg_48758a8f",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1869,7 +1869,7 @@
             "kind": "agent",
             "id": "agent_1"
           },
-          "instanceId": "ins_33670c86-0ac2-4085-8ade-c755a19ee24f",
+          "instanceId": "ins_33670c86",
           "personaSummary": "阿迁（数据库迁移）",
           "responsibility": "0026 迁移脚本，已完成",
           "activeRun": null,
@@ -1881,7 +1881,7 @@
             "kind": "agent",
             "id": "agent_2"
           },
-          "instanceId": "ins_48758a8f-349b-409a-883f-87912bc56b25",
+          "instanceId": "ins_48758a8f",
           "personaSummary": "阿检（回归与门禁）",
           "responsibility": "L3 回归",
           "activeRun": null,
@@ -1925,8 +1925,8 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "task_periodic",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
       "triggerId": "periodic_w24",
       "round": 1,
       "controlEpoch": 1,
@@ -1938,10 +1938,10 @@
       },
       "archived": false,
       "triggerMessage": null,
-      "latestReadableMessageId": "msg_83d7e9ee-c02c-40f9-8f00-1a7bfcf2e3e9",
+      "latestReadableMessageId": "msg_83d7e9ee",
       "recentMessages": [
         {
-          "id": "msg_a2ae07d2-738f-4e66-8d27-9b9221d762cb",
+          "id": "msg_a2ae07d2",
           "kind": "human",
           "sender": {
             "kind": "human",
@@ -1952,7 +1952,7 @@
           "truncated": false
         },
         {
-          "id": "msg_83d7e9ee-c02c-40f9-8f00-1a7bfcf2e3e9",
+          "id": "msg_83d7e9ee",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -1981,7 +1981,7 @@
               "kind": "agent",
               "id": "agent_1"
             },
-            "instanceId": "ins_a2ae07d2-738f-4e66-8d27-9b9221d762cb",
+            "instanceId": "ins_a2ae07d2",
             "personaSummary": "阿界（订阅与限流接口）",
             "responsibility": "429 限流窗口修复",
             "activeRun": null,
@@ -1998,7 +1998,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_83d7e9ee-c02c-40f9-8f00-1a7bfcf2e3e9",
+            "instanceId": "ins_83d7e9ee",
             "personaSummary": "阿检（回归与门禁）",
             "responsibility": "L3 回归",
             "activeRun": null,
@@ -2037,8 +2037,8 @@
     "now": "2026-01-01T00:00:00.000Z",
     "facts": {
       "source": "task_periodic",
-      "projectId": "prj_244210e4-8437-4655-8980-a70249a99369",
-      "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+      "projectId": "prj_244210e4",
+      "chatId": "cnv_31e06f7d",
       "triggerId": "periodic_w25",
       "round": 1,
       "controlEpoch": 1,
@@ -2050,10 +2050,10 @@
       },
       "archived": false,
       "triggerMessage": null,
-      "latestReadableMessageId": "msg_c302d787-56f1-4c1a-8f37-b219011b4da9",
+      "latestReadableMessageId": "msg_c302d787",
       "recentMessages": [
         {
-          "id": "msg_c302d787-56f1-4c1a-8f37-b219011b4da9",
+          "id": "msg_c302d787",
           "kind": "agent",
           "sender": {
             "kind": "agent",
@@ -2082,7 +2082,7 @@
               "kind": "agent",
               "id": "agent_1"
             },
-            "instanceId": "ins_c302d787-56f1-4c1a-8f37-b219011b4da9",
+            "instanceId": "ins_c302d787",
             "personaSummary": "阿检（回归与门禁）",
             "responsibility": "429 修复，任务已完成",
             "activeRun": null,
@@ -2099,7 +2099,7 @@
               "kind": "agent",
               "id": "agent_2"
             },
-            "instanceId": "ins_4ca38678-eaec-439f-82f6-ef0150e5aa19",
+            "instanceId": "ins_4ca38678",
             "personaSummary": "阿迁（数据库迁移）",
             "responsibility": "0026 迁移",
             "activeRun": null,
@@ -2113,12 +2113,12 @@
       ],
       "tasks": [
         {
-          "id": "tsk_75f15236-1112-4d25-82db-b736ea7acfa6",
+          "id": "tsk_75f15236",
           "title": "修复 429 限流窗口误判",
           "status": "finished",
           "revision": 1,
           "assignmentRevision": 1,
-          "chatId": "cnv_31e06f7d-89fe-499a-8e6c-0affe198748c",
+          "chatId": "cnv_31e06f7d",
           "responsibility": {
             "kind": "agent",
             "id": "agent_1"

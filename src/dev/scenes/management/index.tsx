@@ -48,6 +48,7 @@ import {
 import { demoMachineDetails } from "../machine/fixtures";
 import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../../contracts/lease";
 import { SceneRouter } from "./scene-router";
+import { ID_PREFIXES, newId } from "@/contracts/ids";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -192,7 +193,7 @@ function AgentsScene({ embedded }: { embedded: boolean }) {
     const now = new Date().toISOString();
     const jobTitle = values.jobTitle.trim();
     return demoSuccess<AgentProfile>({
-      id: `agp_${crypto.randomUUID()}`,
+      id: newId(ID_PREFIXES.agentProfile),
       name: values.name,
       ...(jobTitle ? { jobTitle } : {}),
       persona: values.persona,

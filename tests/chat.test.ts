@@ -157,7 +157,7 @@ beforeAll(() => {
 
       const bProject = await projects.createProjectBoundary({ name: "B 的对话 Project" }, userB.headers, "req_b1");
       const bProjectId = bProject.data.id;
-      const ghostProfileId = "agp_00000000-0000-4000-8000-000000000000";
+      const ghostProfileId = "agp_00000000";
       const crossProfileDm = await chats.createDirectChatBoundary(
         { projectId: bProjectId, agentProfileId: profileId },
         userB.headers,

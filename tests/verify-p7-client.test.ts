@@ -46,7 +46,7 @@ it.each(["unauthorized", "forbidden", "not_found"] as const)(
     let invalid = true;
     const facts = {
       kind: "unchanged" as const,
-      projectId: "prj_11111111-1111-4111-8111-111111111111",
+      projectId: "prj_11111111",
       revision: "r2",
       asOf: "2026-07-01T00:00:00Z",
       query: { view: "project" as const, section: "agents" as const, limit: 25 },

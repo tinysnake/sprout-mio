@@ -364,7 +364,7 @@ try {
       await zeroPage.getByTestId("project-name-input").fill("零 Project 入口恢复");
       await zeroPage.getByTestId("project-submit").click();
       await zeroPage.waitForURL((url) =>
-        /^\/projects\/prj_[0-9a-f-]{36}\/chats$/.test(url.pathname),
+        /^\/projects\/prj_[0-9a-f]{8,16}\/chats$/.test(url.pathname),
       );
       await zeroPage.getByTestId("chats-title").waitFor();
       assert.match(

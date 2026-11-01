@@ -10,8 +10,8 @@ import {
 } from "../src/lib/execution-wiring";
 import { demoExecutionRecords } from "../src/dev/scenes/machine/lease-fixtures";
 
-const projectId = "prj_00000000-0000-4000-8000-000000000000";
-const machineId = "mch_00000000-0000-4000-8000-000000000000";
+const projectId = "prj_00000000";
+const machineId = "mch_00000000";
 
 const logView = (executionId: string): ExecutionLogReadView => ({
   projectId,
@@ -34,7 +34,7 @@ const cancellation = (
 ): ExecutionCancellationView => ({
   projectId,
   machineId,
-  cancelId: "cnl_00000000-0000-4000-8000-000000000000",
+  cancelId: "cnl_00000000",
   executionId,
   state: "requested",
   requestedAt: "2026-10-24T00:00:00.000Z",
@@ -50,7 +50,7 @@ describe("日志读取请求映射", () => {
     expect(
       executionLogInput(
         {
-          executionId: "exe_00000000-0000-4000-8000-000000000000",
+          executionId: "exe_00000000",
           cursor: null,
           limitBytes: 65536,
         },
@@ -60,7 +60,7 @@ describe("日志读取请求映射", () => {
     ).toEqual({
       projectId,
       machineId,
-      executionId: "exe_00000000-0000-4000-8000-000000000000",
+      executionId: "exe_00000000",
       cursor: null,
       limitBytes: 32768,
     });
@@ -71,9 +71,9 @@ describe("日志读取请求映射", () => {
     expect(
       executionLogInput(
         {
-          executionId: "exe_00000000-0000-4000-8000-000000000000",
+          executionId: "exe_00000000",
           cursor: {
-            executionId: "exe_00000000-0000-4000-8000-000000000000",
+            executionId: "exe_00000000",
             nextSequence: 7,
           },
           limitBytes: 100,
@@ -82,7 +82,7 @@ describe("日志读取请求映射", () => {
         machineId,
       )?.cursor,
     ).toEqual({
-      executionId: "exe_00000000-0000-4000-8000-000000000000",
+      executionId: "exe_00000000",
       nextSequence: 7,
     });
   });
@@ -90,7 +90,7 @@ describe("日志读取请求映射", () => {
   it("没有 Machine 归属时返回 null，不拿别的 Machine 猜", () => {
     expect(
       executionLogInput(
-        { executionId: "exe_00000000-0000-4000-8000-000000000000", cursor: null, limitBytes: 1024 },
+        { executionId: "exe_00000000", cursor: null, limitBytes: 1024 },
         projectId,
         undefined,
       ),
@@ -101,7 +101,7 @@ describe("日志读取请求映射", () => {
 describe("日志读取入口接真实服务端形状", () => {
   it("按 executionId 找到 Machine 后调用一次 transport，并原样返回结果", async () => {
     const calls: ExecutionLogReadInput[] = [];
-    const view = logView("exe_00000000-0000-4000-8000-000000000000");
+    const view = logView("exe_00000000");
     const read = executionLogReader(
       {
         projectId,
@@ -126,7 +126,7 @@ describe("日志读取入口接真实服务端形状", () => {
       return { ok: true, data: logView("exe_x"), requestId: "req_test" };
     });
     const result = await read({
-      executionId: "exe_00000000-0000-4000-8000-000000000000",
+      executionId: "exe_00000000",
       cursor: null,
       limitBytes: 32768,
     });
@@ -147,8 +147,8 @@ describe("取消入口的幂等键", () => {
       },
       () => `req_${++n}`,
     );
-    await cancel("exe_00000000-0000-4000-8000-000000000000");
-    await cancel("exe_00000000-0000-4000-8000-000000000000");
+    await cancel("exe_00000000");
+    await cancel("exe_00000000");
     expect(seen).toEqual(["req_1", "req_2"]);
   });
 
@@ -164,10 +164,8 @@ describe("取消入口的幂等键", () => {
       },
       () => `req_${attempt + 1}`,
     );
-    await expect(cancel("exe_00000000-0000-4000-8000-000000000000")).rejects.toThrow(
-      "network down",
-    );
-    await cancel("exe_00000000-0000-4000-8000-000000000000");
+    await expect(cancel("exe_00000000")).rejects.toThrow("network down");
+    await cancel("exe_00000000");
     expect(seen[0]).toBe(seen[1]);
   });
 
@@ -189,8 +187,8 @@ describe("取消入口的幂等键", () => {
       },
       () => `req_${++n}`,
     );
-    await cancel("exe_00000000-0000-4000-8000-000000000000");
-    await cancel("exe_00000000-0000-4000-8000-000000000000");
+    await cancel("exe_00000000");
+    await cancel("exe_00000000");
     expect(seen).toEqual(["req_1", "req_2"]);
   });
 });
@@ -247,14 +245,14 @@ describe("取消事实合并", () => {
       cancellation:
         index === 0
           ? cancellation(execution.executionId, {
-              cancelId: "cnl_00000000-0000-4000-8000-000000000002",
+              cancelId: "cnl_00000002",
               requestedAt: "2026-10-24T00:10:00.000Z",
             })
           : null,
     }));
     const local = { [first!.executionId]: cancellation(first!.executionId) };
     const merged = mergeExecutionCancellations(local, executions);
-    expect(merged?.[first!.executionId]?.cancelId).toBe("cnl_00000000-0000-4000-8000-000000000002");
+    expect(merged?.[first!.executionId]?.cancelId).toBe("cnl_00000002");
   });
 
   it("没有新事实时返回 null，避免多余渲染", () => {

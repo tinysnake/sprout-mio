@@ -324,8 +324,8 @@ async function prepare() {
     }
     return last;
   }
-  const requestIds = machines.map(() => `req_${randomUUID()}`);
-  const shellRequestId = `req_${randomUUID()}`;
+  const requestIds = machines.map(() => `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`);
+  const shellRequestId = `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
   await call("sendMessageFn", {
     chatId: chat.id,
     body: `Prepare this Human review environment now. Use ONLY Sprout tools (never local bash/read/write). First sprout_lease_get then sprout_lease_acquire for EACH of these explicit Machine IDs: ${machines.map((machine) => machine.id).join(", ")}. Use the generation returned by lease_get as expectedGeneration and a unique requestId for each mutation. Use these exact acquisition requestIds in Machine order: ${requestIds.join(", ")}. Hold BOTH leases as this same instance. Once held, call sprout_remote_shell on Machine ${machines[0].id}, authorizationGeneration from its held lease, cwd=${machines[0].workspace}, waitMs=1000, requestId=${shellRequestId}, and command exactly: ${command}. If shell returns queued/dispatched/running, poll sprout_remote_execution_get using that executionId; never repeat the shell. Keep both leases; do not release or handoff, do not signal any process. Do not read any file or print output. Reply only with Machine IDs and lease states.`,

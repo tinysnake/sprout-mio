@@ -4,7 +4,7 @@ import type { InfoHubRefreshInput } from "../src/contracts/info-hub-query";
 
 // Risk → evidence: background traffic / stale resume / overlap / retry storms /
 // disconnect recovery / disposed context writes. Fake clocks drive actual requests.
-const projectId = "prj_11111111-1111-4111-8111-111111111111";
+const projectId = "prj_11111111";
 const input: InfoHubRefreshInput = {
   projectId,
   query: { view: "project", section: "agents", limit: 25, cursor: "old-page" },

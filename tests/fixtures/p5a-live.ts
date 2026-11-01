@@ -18,6 +18,7 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { startModelFixture, type FixtureRole } from "../../scripts/verify/lib/model-fixture.mjs";
+import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 
 const scenario = process.argv[2];
 assert(scenario === "group" || scenario === "channel", "expected group or channel");
@@ -438,12 +439,12 @@ try {
   const leaseParameters = {
     machineId,
     expectedGeneration: 0,
-    requestId: `req_${randomUUID()}`,
+    requestId: newId(ID_PREFIXES.request),
   };
   const shellParameters = {
     machineId,
     authorizationGeneration: 1,
-    requestId: `req_${randomUUID()}`,
+    requestId: newId(ID_PREFIXES.request),
     command: `printf '${marker}\\n'`,
     cwd: join(root, project.id),
     waitMs: 1000,

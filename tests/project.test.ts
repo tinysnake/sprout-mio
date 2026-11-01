@@ -91,7 +91,7 @@ beforeAll(() => {
       const afterUpdateEvents = sqlite.prepare("SELECT event FROM diagnostic_event WHERE project_id = ? ORDER BY rowid").all(created.data.id).map((row) => row.event);
       const invalid = await boundary.createProjectBoundary({ name: "   ", description: "a".repeat(501) }, headers, "req_d");
       const unauthorized = await boundary.createProjectBoundary({ name: "无会话" }, new Headers(), "req_e");
-      const missing = await boundary.getProjectBoundary({ projectId: "prj_00000000-0000-4000-8000-000000000000" }, headers, "req_f");
+      const missing = await boundary.getProjectBoundary({ projectId: "prj_00000000" }, headers, "req_f");
       const brokenHeaders = new Proxy(headers, { get() { throw new Error("session infrastructure secret"); } });
       const infrastructure = await Promise.all([
         boundary.createProjectBoundary({ name: "不可创建" }, brokenHeaders, "req_x"),

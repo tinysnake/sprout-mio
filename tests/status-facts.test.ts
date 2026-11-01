@@ -81,7 +81,7 @@ describe("sprout_status 的 worker 与 piSession 事实", () => {
         activeTools: 31,
         registeredTools: 31,
       },
-      run: { id: "run_00000000-0000-4000-8000-000000000000" },
+      run: { id: "run_00000000" },
     });
     const payload = sproutStatusPayload(piContext);
     // 装载方式不是那条降级常量：宿主自报了什么就是什么。

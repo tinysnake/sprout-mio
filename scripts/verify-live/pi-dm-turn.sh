@@ -374,7 +374,7 @@ try {
       const pids=readFileSync(spawnLog,'utf8').trim().split('\n').map(row=>JSON.parse(row).pid)
       for (const pid of pids) assert.throws(()=>process.kill(pid,0),error=>error.code==='ESRCH','all Pi children must exit before stopped')
       pass('SIGTERM interrupts running run and preserves completed run', {before,after:allRuns().map(row=>({id:row.id,status:row.status})),pids})
-      const abandoned=`run_${randomUUID()}`
+      const abandoned=`run_${randomUUID().replaceAll("-", "").slice(0, 8)}`
       db.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id) VALUES (?,?,?,?,?,'queued',?)").run(abandoned,instanceId,chatId,projectId,'req_abandoned',instanceId)
       server=launch(process.execPath,['.output/server/index.mjs'],'server-second.log')
       const secondHealth=await health(server)
@@ -384,7 +384,7 @@ try {
       assert.equal(db.prepare('SELECT status FROM agent_run WHERE id=?').get(first.id).status,'completed')
       pass('startup recovery interrupts abandoned queued run', {id:abandoned,status:'interrupted',firstBootId:firstHealth.bootId,secondBootId:secondHealth.bootId})
       await stop(server)
-      const abandonedRunning=`run_${randomUUID()}`
+      const abandonedRunning=`run_${randomUUID().replaceAll("-", "").slice(0, 8)}`
       db.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,session_id,started_at) VALUES (?,?,?,?,?,'running',?,unixepoch())").run(abandonedRunning,instanceId,chatId,projectId,'req_abandoned_running',instanceId)
       const spawnCount=readFileSync(spawnLog,'utf8').trim().split('\n').length
       server=launch(process.execPath,['.output/server/index.mjs'],'server-disabled.log',{...environment,SPROUT_PI_ENABLED:'false'})

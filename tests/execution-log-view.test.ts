@@ -105,7 +105,7 @@ describe("用户可见文案", () => {
   });
 
   it("执行定位是稳定短值，完整 id 留在工具提示", () => {
-    expect(shortExecutionId("exe_12345678-1234-4234-8234-1234567890ab")).toBe("exe_12345678");
+    expect(shortExecutionId("exe_12345678")).toBe("exe_12345678");
     expect(shortExecutionId(demoGapExecution.executionId)).toMatch(/^exe_77777777$/);
   });
 });

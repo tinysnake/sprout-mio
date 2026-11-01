@@ -458,9 +458,11 @@ async function prepare() {
     }
     return last;
   }
-  const requestIds = machines.map(() => `req_${randomUUID()}`);
-  const survivalRequestId = `req_${randomUUID()}`;
-  const pipeRequestIds = [control, human].map(() => `req_${randomUUID()}`);
+  const requestIds = machines.map(() => `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`);
+  const survivalRequestId = `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  const pipeRequestIds = [control, human].map(
+    () => `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`,
+  );
   await call("sendMessageFn", {
     chatId: holderChat.id,
     body: [
@@ -556,7 +558,9 @@ async function prepare() {
   if (survivalCheck().exitCode !== 0) throw new Error("Survival check failed before fencing");
 
   // ------------------------------------- real fencing: release, then SIGKILL the Worker
-  const releaseIds = [control, human].map(() => `req_${randomUUID()}`);
+  const releaseIds = [control, human].map(
+    () => `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`,
+  );
   await call("sendMessageFn", {
     chatId: holderChat.id,
     body: [

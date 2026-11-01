@@ -90,7 +90,7 @@ async function probe() {
   const runState = await call("getChatRunStateFn", { chatId: runningProbe.chatId });
   if (runState.runs.some((run) => ["queued", "running"].includes(run.status)))
     throw new Error("Probe Chat is busy; wait for its run to finish");
-  const requestId = `req_${randomUUID()}`;
+  const requestId = `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
   const pidPath = join(runningProbe.pidDirectory, `${requestId}.pid`);
   const command = `printf '%s' "$$" > ${quote(pidPath)}; exec /bin/sleep 20`;
   await call("sendMessageFn", {

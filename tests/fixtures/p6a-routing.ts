@@ -223,7 +223,7 @@ ok(nonowner.kind === "model");
 const longFacts = clone();
 const messages = Array.from({ length: 25 }, (_, index) => ({
   ...longFacts.recentMessages[0],
-  id: `msg_00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+  id: `msg_${String(index).padStart(8, "0")}`,
   body: "😀".repeat(3000),
   createdAt: new Date(new Date(baseline.now).getTime() + index * 1000).toISOString(),
 }));
@@ -285,7 +285,7 @@ const periodic = prepareWakeEvaluation(
       assignedTask,
       {
         ...assignedTask,
-        id: "tsk_00000000-0000-4000-8000-000000000001",
+        id: "tsk_00000001",
         title: "第二个 assigned Task",
         recordCount: 1,
         lastRecord: {

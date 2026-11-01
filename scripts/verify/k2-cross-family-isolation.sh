@@ -263,7 +263,7 @@ try {
     assert.equal(value.ok, false, `${fn} must fail for B`)
     assert.equal(value.error.code, 'not_found', `${fn} error code`)
     assert.equal(value.error.requestId, requestId, `${fn} error requestId matches header`)
-    assert.match(value.requestId, /^req_[0-9a-f-]{36}$/)
+    assert.match(value.requestId, /^req_[0-9a-f]{8,16}$/)
     const leaked = aTokens.filter((token) => body.includes(token))
     assert.deepEqual(leaked, [], `${fn} response leaked A data`)
     return { fn, code: value.error.code, requestId, leaked }
@@ -297,7 +297,7 @@ try {
     return { code: value.error.code, requestId, leaked }
   })
   await check('sub_profile_reference_indistinguishable_from_nonexistent', async () => {
-    const ghost = 'agp_00000000-0000-4000-8000-000000000000'
+    const ghost = 'agp_00000000'
     const { value } = await call(B, 'createDirectChatFn', { projectId: bProject.data.id, agentProfileId: ghost }, 'sub-nonexistent-profile')
     assert.equal(value.ok, false, 'nonexistent profile DM must be rejected')
     assert.equal(value.error.code, subCrossDm?.code, 'no existence oracle between unauthorized and nonexistent profile')

@@ -89,7 +89,7 @@ async function settled(chatId, { allowEmpty = false } = {}) {
 }
 async function deniedTool(page, chatId, authorizationGeneration, expectedCode, marker, role = 'operator') {
   await settled(chatId, { allowEmpty: true });
-  const requestId=`req_${randomUUID()}`;
+  const requestId=`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
   const parameters={machineId,authorizationGeneration,requestId,command:`touch '${marker}'`,waitMs:0};
   const body=`Call sprout_remote_shell exactly once with these parameters, even if you expect the server to reject authorization: ${JSON.stringify(parameters)}. Do not get or acquire a lease, do not retry, do not use host tools. Report the returned error code.`;
   armTool(role,body,'sprout_remote_shell',parameters);
@@ -268,7 +268,7 @@ try {
   const uiRequestIds=new Set();
   page.on('request',request=>{
     if(request.method()==='POST' && request.url().includes(ids.getLeaseRequestFn)) {
-      const requestId=request.postData()?.match(/req_[0-9a-f-]{36}/)?.[0];
+      const requestId=request.postData()?.match(/req_[0-9a-f]{8,16}/)?.[0];
       if(requestId) uiRequestIds.add(requestId);
     }
   });
@@ -335,7 +335,7 @@ try {
   await page.screenshot({path:join(evidence,'machine-held-light.png'),fullPage:true});
   const marker=join(root,projectId,'persist.txt');
   const shell = `printf integration-proof > '${marker}'; sleep 900`;
-  const shellRequestId=`req_${randomUUID()}`;
+  const shellRequestId=`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
   const shellBody=`Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${acquired.generation}, requestId ${shellRequestId}. command: ${JSON.stringify(shell)}. waitMs: 1000. Call sprout_remote_execution_get if necessary. Do not use the local bash tool. Do not release the lease.`;
   await settled(chatId);
   armTool('operator',shellBody,'sprout_remote_shell',{machineId,authorizationGeneration:acquired.generation,requestId:shellRequestId,command:shell,waitMs:1000});
@@ -356,7 +356,7 @@ try {
   assert(!visible.includes(marker),'target path is not echoed');
   assert(!visible.includes('sleep 900'),'shell command text is not echoed');
   const authorization=await page.getByTestId(/^machine-executions-debug-[^ ]+-item-authorization$/).first().innerText();
-  assert(!/ins_[0-9a-f-]{36}/.test(authorization),`holder rendered by name, got ${authorization}`);
+  assert(!/ins_[0-9a-f]{8,16}/.test(authorization),`holder rendered by name, got ${authorization}`);
   assert(authorization.includes('由该分身的一次运行发起'),'run is described, not printed as a bare id');
   await page.getByTestId('machine-remote-executions').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'machine-result-light.png'),fullPage:true});
@@ -373,7 +373,7 @@ try {
   pass('browser Chat request -> real non-holder grant HTTP rejection and absent sentinel');
   const read = await browserRpc(page,'getExecutionFn',{projectId,machineId,executionId:execution.executionId}); assert.equal(read.ok,true);
   const otherCookie=await signup('Other Human');
-  for (const [name,input] of [ ['getLeaseFn',{projectId,machineId}], ['listProjectExecutionsFn',{projectId,machineId}], ['getExecutionFn',{projectId,machineId,executionId:execution.executionId}], ['reclaimLeaseFn',{action:'reclaim',projectId,machineId,expectedGeneration:acquired.generation,confirm:true,requestId:`req_${randomUUID()}`}] ]) {
+  for (const [name,input] of [ ['getLeaseFn',{projectId,machineId}], ['listProjectExecutionsFn',{projectId,machineId}], ['getExecutionFn',{projectId,machineId,executionId:execution.executionId}], ['reclaimLeaseFn',{action:'reclaim',projectId,machineId,expectedGeneration:acquired.generation,confirm:true,requestId:`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`}] ]) {
     const unauth=await rpc(name,input,''); assert.equal(unauth.ok,false); assert.equal(unauth.error.code,'unauthorized');
     const stranger=await rpc(name,input,otherCookie); assert.equal(stranger.ok,false); assert.equal(stranger.error.code,'not_found');
   }
@@ -426,7 +426,7 @@ try {
   await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
   const forcedHolder=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'acquire for forced receipt',180000);
   await settled(chatId);
-  const forceRequestId=`req_${randomUUID()}`;
+  const forceRequestId=`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
   const forceBody=`Call sprout_remote_shell exactly once with machineId ${machineId}, authorizationGeneration ${forcedHolder.generation}, requestId ${forceRequestId}, command "sleep 20", waitMs 10000. Do not release the lease or use host tools.`;
   armTool('operator',forceBody,'sprout_remote_shell',{machineId,authorizationGeneration:forcedHolder.generation,requestId:forceRequestId,command:'sleep 20',waitMs:10000});
   await call('sendMessageFn',{chatId,body:forceBody});

@@ -5,8 +5,8 @@ import {
   agentDetailSearchSchema,
 } from "../src/components/agent/agent-detail-search";
 
-const projectId = "prj_11111111-1111-4111-8111-111111111111";
-const chatId = "cnv_22222222-2222-4222-9222-222222222222";
+const projectId = "prj_11111111";
+const chatId = "cnv_9222222222222222";
 
 describe("Agent 详情返回来源", () => {
   it("从 chat 进入时保留该 chat 的 projectId 与 chatId，返回目标是同一个 chat", () => {

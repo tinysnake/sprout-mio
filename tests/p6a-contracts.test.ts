@@ -37,7 +37,7 @@ import {
 } from "../src/contracts";
 import { remoteAgentRequestSchema } from "../src/contracts/remote";
 
-const uuid = "00000000-0000-4000-8000-000000000001";
+const uuid = "00000001";
 const projectId = `prj_${uuid}`;
 const chatId = `${ID_PREFIXES.chat}_${uuid}`;
 const instanceId = `${ID_PREFIXES.instance}_${uuid}`;
@@ -56,7 +56,7 @@ const policy = {
   thresholdVersion: "v1",
 };
 const message = (body = "继续核对契约。", index = 1) => ({
-  id: `msg_00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+  id: `msg_${String(index).padStart(8, "0")}`,
   kind: "human",
   sender: human,
   body,
@@ -317,7 +317,7 @@ describe("P6a immutable evaluation snapshot", () => {
       { ...input(), now: () => at },
       {
         ...input(),
-        tasks: [{ ...task(), chatId: `cnv_00000000-0000-4000-8000-000000000002` }],
+        tasks: [{ ...task(), chatId: `cnv_00000002` }],
       },
       {
         ...input(),

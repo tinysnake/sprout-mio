@@ -258,7 +258,7 @@ try {
   tab.setDefaultTimeout(15000)
   tab.setDefaultNavigationTimeout(15000)
   tab.on('pageerror', (error) => browserErrors.push(error.message))
-  const chats = () => tab.waitForURL((url) => /^\/projects\/prj_[0-9a-f-]{36}\/chats$/.test(url.pathname), { timeout: 20000 })
+  const chats = () => tab.waitForURL((url) => /^\/projects\/prj_[0-9a-f]{8,16}\/chats$/.test(url.pathname), { timeout: 20000 })
   const identity = async () => {
     await tab.getByTestId('account-menu').click()
     await tab.getByTestId('session-email').waitFor()

@@ -2,12 +2,12 @@ import type { ChatAutomationView } from "../../src/contracts/chat-automation";
 import type { AutomationDenials } from "../../src/components/automation/automation-page-data";
 
 export const p6aIds = {
-  project: "prj_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-  chat: "cnv_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-  task: "tsk_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-  run: "run_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-  instance: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-  request: "req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  project: "prj_aaaaaaaa",
+  chat: "cnv_aaaaaaaa",
+  task: "tsk_aaaaaaaa",
+  run: "run_aaaaaaaa",
+  instance: "ins_aaaaaaaa",
+  request: "req_aaaaaaaa",
 };
 export const p6aCases = [
   "idle",
@@ -30,7 +30,7 @@ export function automationFixture(name: P6aCase = "idle"): ChatAutomationView {
     mode: "enabled",
     epoch: 1,
     revision: 1,
-    owner: { kind: "agent", id: "agp_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+    owner: { kind: "agent", id: "agp_aaaaaaaa" },
     changedBy: null,
     changedAt: null,
     reason: null,

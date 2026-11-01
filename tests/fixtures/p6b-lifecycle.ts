@@ -24,6 +24,7 @@ import Database from "better-sqlite3";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
 import { infoHubQuerySchema, infoHubToolInputSchemas } from "../../src/contracts/info-hub-query";
 import { INFO_HUB_CAPABILITIES } from "../../src/contracts/info-hub-capabilities";
+import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 
 // The runner prepends the turn snapshot, so every production model request starts with it.
 const TURN_CONTEXT_PREFIX = '{"channel":"sprout_turn_context"';
@@ -70,7 +71,7 @@ if (process.argv[2] === "--service") {
     const runtime = await machineRuntimeContext();
     const ctx = {
       userId: message.userId,
-      requestId: `req_${randomUUID()}`,
+      requestId: newId(ID_PREFIXES.request),
       ...runtime,
     };
     return db.transaction(() => ({
@@ -769,7 +770,7 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     // Production identity is not passed in: every tool call below is resolved from the
     // live grant the Pi host issued for this run.
     const run1Text = `RUN1_LEASE_AND_INFO_HUB ${stamp()}`;
-    const request1 = `req_${randomUUID()}`;
+    const request1 = newId(ID_PREFIXES.request);
     modelFixture.arm("chatOwner", {
       expectedUserPrefix: TURN_CONTEXT_PREFIX,
       steps: [
@@ -1281,7 +1282,7 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
 
     // ---- run 3: the same Agent profile in a second Project -------------------
     const run3Text = `RUN3_SIDE_LEASE ${stamp()}`;
-    const request3 = `req_${randomUUID()}`;
+    const request3 = newId(ID_PREFIXES.request);
     modelFixture.arm("operator", {
       expectedUserPrefix: TURN_CONTEXT_PREFIX,
       steps: [

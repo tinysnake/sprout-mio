@@ -184,10 +184,7 @@ async function assertPresentationMatrix() {
       await matrix.page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       for (const status of ["pending", "active"]) {
         await matrix.page.getByTestId("machine-list").waitFor();
-        const id =
-          status === "pending"
-            ? "mch_22222222-2222-4222-8222-222222222222"
-            : "mch_11111111-1111-4111-8111-111111111111";
+        const id = status === "pending" ? "mch_22222222" : "mch_11111111";
         await matrix.page.locator(`[data-machine-id="${id}"]`).click();
         await matrix.page.getByTestId("machine-detail-page").waitFor();
         const facts = await assertPresentation(matrix.page, status);
@@ -373,7 +370,7 @@ try {
           });
         }
         await test("machine-detail-back").click();
-        await p.locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]').click();
+        await p.locator('[data-machine-id="mch_44444444"]').click();
         await check("shell_summary_stale_snapshot_has_no_entry", async () => {
           assert.equal(await test("machine-shell-summary").count(), 0);
           assert.equal(await test("machine-detail-stale-capability").count(), 1);
@@ -584,7 +581,7 @@ try {
 
   await check("root_clear_disables_paths_and_two_projects_derive_distinct_paths", async () => {
     await test("machine-detail-back").click();
-    await page.locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]').click();
+    await page.locator('[data-machine-id="mch_44444444"]').click();
     await test("machine-root-directory").fill("/Users/linche/draft-root");
     await test("machine-root-submit").click();
     await test("machine-root-success").waitFor();
@@ -602,7 +599,7 @@ try {
       ),
     );
     await test("machine-detail-back").click();
-    await page.locator('[data-machine-id="mch_11111111-1111-4111-8111-111111111111"]').click();
+    await page.locator('[data-machine-id="mch_11111111"]').click();
   });
 
   await check("binding_failure_keeps_input_and_shows_error", async () => {
@@ -621,7 +618,7 @@ try {
   await check("back_returns_to_list_and_stale_observation_is_labelled", async () => {
     await test("machine-detail-back").click();
     await test("machine-list").waitFor();
-    await page.locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]').click();
+    await page.locator('[data-machine-id="mch_44444444"]').click();
     await test("machine-detail-page").waitFor();
     const text = await test("machine-bindings").innerText();
     assert.ok(text.includes("旧观察"), text);
@@ -634,7 +631,7 @@ try {
   await check("pending_machine_renews_ticket_and_hides_it_by_default", async () => {
     await test("machine-detail-back").click();
     await test("machine-list").waitFor();
-    await page.locator('[data-machine-id="mch_22222222-2222-4222-8222-222222222222"]').click();
+    await page.locator('[data-machine-id="mch_22222222"]').click();
     await test("machine-enrollment-status").waitFor();
     assert.ok((await test("machine-enrollment-panel").innerText()).includes("待配对"));
     assert.equal(await test("machine-ticket-value").count(), 0);
@@ -652,7 +649,7 @@ try {
   await check("active_machine_has_no_renew_button_and_shows_pending_state", async () => {
     await test("machine-detail-back").click();
     await test("machine-list").waitFor();
-    await page.locator('[data-machine-id="mch_33333333-3333-4333-8333-333333333333"]').click();
+    await page.locator('[data-machine-id="mch_33333333"]').click();
     await test("machine-detail-enrollment").filter({ hasText: "已配对" }).waitFor();
     assert.equal(await test("machine-renew").count(), 0, "active 不显示续签");
     assert.equal(await test("machine-enrollment-panel").count(), 0);
@@ -663,7 +660,7 @@ try {
   await check("renew_failure_shows_safe_error_and_keeps_retry", async () => {
     await test("machine-detail-back").click();
     await test("machine-list").waitFor();
-    await page.locator('[data-machine-id="mch_55555555-5555-4555-8555-555555555555"]').click();
+    await page.locator('[data-machine-id="mch_55555555"]').click();
     await test("machine-enrollment-status").waitFor();
     await openControls(page);
     await test("machine-throw-renew").check();
@@ -686,7 +683,7 @@ try {
   await check("renew_race_does_not_leak_ticket_to_next_machine", async () => {
     await test("machine-detail-back").click();
     await test("machine-list").waitFor();
-    await page.locator('[data-machine-id="mch_55555555-5555-4555-8555-555555555555"]').click();
+    await page.locator('[data-machine-id="mch_55555555"]').click();
     await test("machine-renew").click();
     await openControls(page);
     await test("machine-demo-switch").selectOption({ label: "刚唤醒的 Mac Studio" });
@@ -703,7 +700,7 @@ try {
   await check("pending_to_active_clears_ticket_without_navigation", async () => {
     await test("machine-detail-back").click();
     await test("machine-list").waitFor();
-    await page.locator('[data-machine-id="mch_22222222-2222-4222-8222-222222222222"]').click();
+    await page.locator('[data-machine-id="mch_22222222"]').click();
     await test("machine-ticket-toggle").waitFor();
     await openControls(page);
     await test("machine-demo-activate").click();
@@ -747,7 +744,7 @@ try {
   });
 
   await check("project_switch_changes_binding_form_target", async () => {
-    await page.locator('[data-machine-id="mch_11111111-1111-4111-8111-111111111111"]').click();
+    await page.locator('[data-machine-id="mch_11111111"]').click();
     await test("machine-detail-page").waitFor();
     assert.equal(
       await test("machine-binding-submit").innerText(),
@@ -762,8 +759,8 @@ try {
     assert.ok((await test("machine-binding-submit").innerText()).includes("第二个 Project"));
   });
 
-  const lifecycleA = "mch_11111111-1111-4111-8111-111111111111";
-  const lifecycleB = "mch_22222222-2222-4222-8222-222222222222";
+  const lifecycleA = "mch_11111111";
+  const lifecycleB = "mch_22222222";
   const probe = (run, arg) => page.evaluate(run, arg);
   const pendingRequests = () => probe(() => window.__machineLifecycle.pending());
   const settle = (index, kind) =>
@@ -796,7 +793,7 @@ try {
     await test("machine-list").waitFor();
     await test("machine-lifecycle-link").click();
     await test("machine-lifecycle-probe").waitFor();
-    await probe(() => window.__machineLifecycle.show("mch_11111111-1111-4111-8111-111111111111"));
+    await probe(() => window.__machineLifecycle.show("mch_11111111"));
     await test("machine-renew").waitFor();
   };
 
@@ -1028,9 +1025,7 @@ try {
   await check("390_light_list_and_detail_scroll_binding_and_install", async () => {
     await narrow.page.getByTestId("machine-list").waitFor();
     await shoots(narrow.page, "machines-list-390-light");
-    await narrow.page
-      .locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]')
-      .click();
+    await narrow.page.locator('[data-machine-id="mch_44444444"]').click();
     await narrow.page.getByTestId("machine-detail-page").waitFor();
     const overflow = await narrow.page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -1072,9 +1067,7 @@ try {
   await check("390_dark_list_and_detail_scroll_binding_and_install", async () => {
     await darkNarrow.page.getByTestId("machine-list").waitFor();
     await shoots(darkNarrow.page, "machines-list-390-dark");
-    await darkNarrow.page
-      .locator('[data-machine-id="mch_44444444-4444-4444-8444-444444444444"]')
-      .click();
+    await darkNarrow.page.locator('[data-machine-id="mch_44444444"]').click();
     await darkNarrow.page.getByTestId("machine-detail-page").waitFor();
     await darkNarrow.page.screenshot({
       path: join(evidence, "machine-detail-390-dark.png"),
@@ -1096,7 +1089,7 @@ try {
     await assertPresentationMatrix();
     await dark.page.getByTestId("machine-list").waitFor();
     await shoots(dark.page, "machines-list-1440-dark");
-    await dark.page.locator('[data-machine-id="mch_11111111-1111-4111-8111-111111111111"]').click();
+    await dark.page.locator('[data-machine-id="mch_11111111"]').click();
     await dark.page.getByTestId("machine-detail-page").waitFor();
     await shoots(dark.page, "machine-detail-1440-dark");
     assert.deepEqual(dark.errors, []);

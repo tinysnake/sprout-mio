@@ -1,15 +1,15 @@
 import type { ProjectTasksView, TaskDetail, TaskSummary } from "../../../contracts/task";
 import { TASK_STATUSES } from "../../../contracts/task";
 
-export const taskSceneProjectId = "prj_11111111-1111-4111-8111-111111111111";
-const chatId = "cnv_22222222-2222-4222-8222-222222222222";
+export const taskSceneProjectId = "prj_11111111";
+const chatId = "cnv_8222222222222222";
 const time = "2026-06-20T09:00:00.000Z";
-const taskId = "tsk_33333333-3333-4333-8333-333333333333";
+const taskId = "tsk_33333333";
 const record = {
   taskId,
   seq: 1,
   chatId,
-  messageId: "msg_44444444-4444-4444-8444-444444444444",
+  messageId: "msg_44444444",
   visibility: "readable" as const,
   kind: "progress" as const,
   senderKind: "agent" as const,
@@ -37,7 +37,7 @@ export const taskSceneDetail: TaskDetail = {
   responsibility: { kind: "human", userId: "human-demo" },
   checklist: [
     {
-      id: "tci_55555555-5555-4555-8555-555555555555",
+      id: "tci_55555555",
       taskId,
       position: 1,
       body: "核对 390 宽布局",
@@ -52,7 +52,7 @@ export const taskSceneDetail: TaskDetail = {
   lastRecord: record,
   completionRecord: null,
   previousCompletionRecord: record,
-  completionHistory: [{ eventId: "tev_66666666-6666-4666-8666-666666666666", eventSeq: 2, record }],
+  completionHistory: [{ eventId: "tev_66666666", eventSeq: 2, record }],
   capabilities: {
     allowedActions: [
       "complete",

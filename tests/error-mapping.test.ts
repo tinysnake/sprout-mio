@@ -245,9 +245,9 @@ beforeAll(() => {
       const orphanDm = (await chats.createDirectChatBoundary({ projectId: projectA.id, agentProfileId: orphanProfile.id }, userA.headers, "req_em_seed11")).data;
 
       const missing = {
-        projectId: "prj_00000000-0000-4000-8000-000000000000",
-        agentProfileId: "agp_00000000-0000-4000-8000-000000000000",
-        chatId: "cnv_00000000-0000-4000-8000-000000000000",
+        projectId: "prj_00000000",
+        agentProfileId: "agp_00000000",
+        chatId: "cnv_00000000",
       };
       const probes = [];
       let seq = 0;

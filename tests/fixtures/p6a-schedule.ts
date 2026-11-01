@@ -70,7 +70,7 @@ if (suite === "recover") {
     claim:
       schedule.claimDueEvaluation({
         now: new Date(process.env.P6A_NOW!),
-        requestId: "req_00000000-0000-4000-8000-000000000000",
+        requestId: "req_00000000",
         workerId: "restarted",
       }) ?? null,
   };

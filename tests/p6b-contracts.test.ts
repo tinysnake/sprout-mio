@@ -40,15 +40,15 @@ import {
 import { remoteAgentRequestSchema, infoHubGetResponseSchema } from "../src/contracts/remote";
 import { APP_ERROR_CODES } from "../src/contracts/result";
 
-const projectId = "prj_11111111-1111-4111-8111-111111111111";
-const otherProjectId = "prj_22222222-2222-4222-8222-222222222222";
-const chatId = "cnv_11111111-1111-4111-8111-111111111111";
-const otherChatId = "cnv_22222222-2222-4222-8222-222222222222";
-const instanceId = "ins_11111111-1111-4111-8111-111111111111";
-const agentProfileId = "agp_11111111-1111-4111-8111-111111111111";
-const machineId = "mch_11111111-1111-4111-8111-111111111111";
-const runId = "run_11111111-1111-4111-8111-111111111111";
-const otherRunId = "run_22222222-2222-4222-8222-222222222222";
+const projectId = "prj_11111111";
+const otherProjectId = "prj_22222222";
+const chatId = "cnv_11111111";
+const otherChatId = "cnv_8222222222222222";
+const instanceId = "ins_11111111";
+const agentProfileId = "agp_11111111";
+const machineId = "mch_11111111";
+const runId = "run_11111111";
+const otherRunId = "run_22222222";
 const at = "2026-05-01T00:00:00.000Z";
 const taskCounts = { proposed: 0, assigned: 0, finished: 0, canceled: 0 };
 const owner = { kind: "human", id: "human-a" };
@@ -398,7 +398,7 @@ describe("P6b run snapshots", () => {
 
   it("retains recorded Task states and refuses historical run results in the prompt", () => {
     const task = {
-      taskId: "tsk_11111111-1111-4111-8111-111111111111",
+      taskId: "tsk_11111111",
       title: "Delivered",
       status: "finished",
       revision: 1,
@@ -618,7 +618,7 @@ describe("P6b active query and Human refresh", () => {
   it("bounds complete query responses by UTF-8 bytes", () => {
     const data = Array.from({ length: 100 }, (_, index) => ({
       ...agent,
-      agentProfileId: `agp_11111111-1111-4111-8111-${index.toString().padStart(12, "0")}`,
+      agentProfileId: `agp_${index.toString().padStart(8, "0")}`,
       status: "error",
       error: { runId, chatId, code: "failed", message: "界".repeat(1000) },
     }));

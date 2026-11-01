@@ -14,12 +14,12 @@ vi.mock("../src/server/functions/lease", () => ({
 
 const input: LeaseMutationInput = {
   action: "acquire",
-  projectId: "prj_11111111-1111-4111-8111-111111111111",
-  machineId: "mch_22222222-2222-4222-8222-222222222222",
+  projectId: "prj_11111111",
+  machineId: "mch_22222222",
   expectedGeneration: 0,
-  requestId: "req_33333333-3333-4333-8333-333333333333",
+  requestId: "req_33333333",
 };
-const chatId = "cht_44444444-4444-4444-8444-444444444444";
+const chatId = "cht_44444444";
 const readRequestId = "req_receipt-read";
 const read = vi.mocked(getLeaseRequestFn);
 const getLease = vi.mocked(getLeaseFn);
@@ -37,7 +37,7 @@ const snapshot: { lease: LeaseView; mutation: null } = {
   mutation: null,
 };
 const receipt: LeaseMutationView = {
-  mutationId: "lmu_55555555-5555-4555-8555-555555555555",
+  mutationId: "lmu_55555555",
   projectId: input.projectId,
   machineId: input.machineId,
   action: "acquire",
@@ -60,7 +60,7 @@ describe("Project 租约收据等待", () => {
     vi.mocked(sendMessageFn).mockResolvedValue(
       ok(
         {
-          id: "msg_77777777-7777-4777-8777-777777777777",
+          id: "msg_77777777",
           chatId,
           senderKind: "human",
           senderId: "user",

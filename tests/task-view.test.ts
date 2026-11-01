@@ -14,7 +14,7 @@ describe("Task 页面口径", () => {
   it("重新分配面板默认保留当前承接 Chat，避免立即开始误换目标", () => {
     const detail = taskPageDetail();
     detail.assignmentTargets.unshift({
-      chatId: "cnv_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      chatId: "cnv_aaaaaaaa",
       kind: "public_channel",
       displayTitle: "公共频道",
       responsibility: { kind: "human", userId: "human-demo" },
