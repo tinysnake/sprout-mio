@@ -10,7 +10,6 @@ AGENTS.local.md
 # dev-pipeline local state (symlink or directory)
 .agents/dev-pipeline
 orchestrate/
-experiments/
 
 node_modules/
 dist/

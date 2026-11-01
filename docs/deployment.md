@@ -23,6 +23,8 @@
 
 运行根目录默认 `~/sprout-runtime`，可用 `SPROUT_RUNTIME_ROOT` 覆盖。
 
+`SPROUT_AUTOMATION_ENABLED` 是实例级开关，默认 `true`，只接受 `true` 或 `false`。关掉后运行时不装判定器、不启动调度器、判定边界直接拒绝，`/api/health` 的 `automationEnabled` 报告实际取值。`deploy-automation-off` 门禁在两种取值下各跑一遍并比对证据：关闭时到期排期不被认领、不产生判定与投递、两个模型边界调用数为 0；打开时同一轮判定与投递各发生一次，付费模型调用数为 0。
+
 ```text
 ~/sprout-runtime/
   prod/
@@ -92,7 +94,7 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/drill.sh <sha>` | 在演练实例上部署某个提交并做健康检查 |
 | `scripts/deploy/promote.sh <tag>` | 把某个 tag 部署到 prod，失败自动回滚 |
 | `scripts/deploy/rollback.sh [备份文件]` | 恢复最近一次（或指定）备份并切回上一个 tag |
-| `scripts/deploy/verify.sh <instance>` | 校验实例后置状态 |
+| `scripts/deploy/verify.sh <instance>` | 校验实例后置状态，含 `/api/health` 里的 `automationEnabled` |
 | `scripts/deploy/selftest.sh` | 在临时运行根目录里把上面整条链路跑一遍 |
 
 `selftest.sh` 是这套脚本自己的门禁。它不复述文档，而是真的建目录、建库、备份、刷新、校验，然后断言每一步的后置状态。文档与脚本不一致时它会红。
@@ -138,11 +140,12 @@ PWA 需要安全上下文，所以 prod 前面要有 HTTPS。用 Caddy 或 `tail
 ## 未确认项
 
 - 远端 Worker 的凭据存储形态，见上文。
-- `SPROUT_AUTOMATION_ENABLED=false` 时，除调度器外是否还有别的自动接续入口需要一并关闭。`deploy-automation-off` 门禁覆盖调度器与投递路径。
+- `SPROUT_AUTOMATION_ENABLED=false` 时是否还有未覆盖的自动接续入口。`deploy-automation-off` 门禁覆盖运行时接线、调度器、投递路径与两个判定器边界。
 
 ## 验证
 
 ```bash
+bash scripts/verify/deploy-automation-off.sh  # 实例开关的关闭与打开对照
 bash scripts/verify/deploy-leaks.sh     # 隐私数据不进仓库
 bash scripts/deploy/selftest.sh         # 脚本链路自检
 bash scripts/verify/deploy-selftest.sh  # 上面的门禁入口

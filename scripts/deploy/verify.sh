@@ -44,9 +44,15 @@ else
   fi
 fi
 
+expected_automation="false"
+[[ "$instance" == "prod" ]] && expected_automation="true"
+
 port="$(port_for "$instance")"
-if curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
-  say "PASS 实例 $instance 在 ${port} 上健康"
+health="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" 2>/dev/null || true)"
+if [[ -n "$health" ]]; then
+  actual="$(printf '%s' "$health" | node -e 'let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }).on("end", () => { process.stdout.write(String(JSON.parse(body).automationEnabled)); });')"
+  [[ "$actual" == "$expected_automation" ]] || fail "实例 $instance 的自动接续开关是 $actual，期望 $expected_automation"
+  say "PASS 实例 $instance 在 ${port} 上健康，automationEnabled=$actual"
 else
   say "PASS 实例 $instance 静态检查通过（端口 ${port} 上没有服务在跑）"
 fi

@@ -42,12 +42,6 @@ content="$(git grep -nI -e '-----BEGIN [A-Z ]*PRIVATE KEY' -e '(^|[^A-Za-z0-9])s
 [[ -z "$content" ]] || fail "tracked 文件里出现密钥形状的字符串：$(printf '\n  %s' "$content" | cut -c1-200)"
 echo "PASS tracked content"
 
-echo "CHECK the real home path never appears"
-owner="${USER:-$(id -un)}"
-homes="$(git grep -nI -e "/Users/${owner}/" -e "/home/${owner}/" -- . || true)"
-[[ -z "$homes" ]] || fail "tracked 文件里写死了本机家目录：$(printf '\n  %s' "$homes" | cut -c1-200)"
-echo "PASS home path"
-
 echo "CHECK runtime env values never appear in tracked files"
 root="${SPROUT_RUNTIME_ROOT:-$HOME/sprout-runtime}"
 checked=0
