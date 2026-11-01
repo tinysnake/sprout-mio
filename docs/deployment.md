@@ -109,8 +109,8 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/rollback.sh [备份文件]` | 恢复最近一次（或指定）备份并切回上一个 tag |
 | `scripts/deploy/verify.sh <instance>` | 校验实例后置状态，含 `/api/health` 里的 `automationEnabled` |
 | `scripts/deploy/selftest.sh` | 在临时运行根目录里把上面整条链路跑一遍 |
-| `scripts/worker/package.sh <输出目录>` | 打包 Worker 两个自包含文件并校验只依赖 node 内置模块 |
-| `scripts/worker/publish.sh` | 把产物推到 `worker-dist` 分支供 Worker 机器 clone |
+| `scripts/worker/package.sh <输出目录>` | 从构建产物里取出两个文件并校验只依赖 node 内置模块 |
+
 
 `selftest.sh` 是这套脚本自己的门禁。它不复述文档，而是真的建目录、建库、备份、刷新、校验，然后断言每一步的后置状态。文档与脚本不一致时它会红。
 
@@ -150,25 +150,21 @@ bash scripts/deploy/drill.sh <sha>
 
 ## Worker 机器接入
 
-Worker 机器只需要 `git` 与 `node`，不需要包管理器。发布端把打包产物推到一个只含产物与说明的分支：
+Worker 机器用源码装，仓库里不提交构建产物。它需要 `git`、`node` 与 `pnpm`：`pnpm` 只用来把仓库依赖装一次，运行期不用。
 
 ```bash
-bash scripts/worker/publish.sh          # 推到 worker-dist 分支，默认远端同部署来源
-```
-
-接入端：
-
-```bash
-git clone --depth 1 --branch worker-dist <仓库地址> ~/sprout-worker
-node ~/sprout-worker/main.js version
-node ~/sprout-worker/main.js init --server https://sprout.example \
+git clone --branch <tag> <仓库地址> ~/sprout-worker
+cd ~/sprout-worker && pnpm install --frozen-lockfile
+pnpm worker:build                      # 产出 dist/worker/main.js 与 dist/worker/runner.js
+node ~/sprout-worker/dist/worker/main.js version
+node ~/sprout-worker/dist/worker/main.js init --server https://sprout.example \
   --machine <machine-id> --ticket-file <一次性票据文件> --state-dir ~/sprout-worker-state
-node ~/sprout-worker/main.js run --state-dir ~/sprout-worker-state
+node ~/sprout-worker/dist/worker/main.js run --state-dir ~/sprout-worker-state
 ```
 
-更新换成 `git -C ~/sprout-worker fetch origin worker-dist && git -C ~/sprout-worker reset --hard origin/worker-dist`。
+更新：`git -C ~/sprout-worker fetch --tags && git -C ~/sprout-worker checkout <新 tag>`，再跑一次 `pnpm install --frozen-lockfile && pnpm worker:build`。
 
-产物只有 `main.js` 与 `runner.js`，二者只依赖 node 内置模块；`main.js` 在自身旁边找 `runner.js`，所以两个文件必须待在同一目录。`worker-dist` 门禁在每次验证时重新打包、检查依赖、`node --check`，再真的 `git clone` 一次并执行，因此「只要 git 与 node」这句话是脚本证明的。
+依赖只在构建时用。`dist/worker/main.js` 与 `dist/worker/runner.js` 只 import node 内置模块，两个文件放同一目录就能运行，所以想搬到没有 `node_modules` 的地方拷这两个文件即可；`scripts/worker/package.sh <输出目录>` 会把它们连同 `VERSION` 一起打出来。`worker-artifact` 门禁每次都重新构建、在空目录里跑 `version`（确认运行期不依赖 `node_modules`）、检查 `init`/`run` 出现在 help 里、并对缺失参数报错，同时校验 `docs/deployment.md` 写的命令与 `package.json` 真实存在。
 
 ## 反向代理与 PWA
 
@@ -184,7 +180,7 @@ PWA 需要安全上下文，所以 prod 前面要有 HTTPS。用 Caddy 或 `tail
 ```bash
 bash scripts/verify/deploy-automation-off.sh  # 实例开关的关闭与打开对照
 bash scripts/verify/deploy-leaks.sh     # 隐私数据不进仓库
-bash scripts/verify/worker-dist.sh      # Worker 产物自包含且 clone 后可运行
+bash scripts/verify/worker-artifact.sh  # 源码安装构建后运行期只要 node
 bash scripts/deploy/selftest.sh         # 脚本链路自检
 bash scripts/verify/deploy-selftest.sh  # 上面的门禁入口
 ```
