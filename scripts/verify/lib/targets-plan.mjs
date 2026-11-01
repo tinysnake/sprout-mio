@@ -48,6 +48,7 @@ export const CI_GROUPS = Object.freeze({
     "bd-task-migration",
     "be-task-info",
     "p6a-routing",
+    "deploy-automation-off",
     "p6a-scheduler",
     "p6a-control",
     "p6a-delivery",

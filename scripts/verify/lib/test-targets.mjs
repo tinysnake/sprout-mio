@@ -19,6 +19,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/design-tokens.test.ts",
     "tests/dev-client-disconnects.test.ts",
     "tests/diagnostics.test.ts",
+    "tests/deploy-automation-off.test.ts",
     "tests/error-mapping.test.ts",
     "tests/execution-accept-fixes-2.test.ts",
     "tests/execution-accept-fixes.test.ts",

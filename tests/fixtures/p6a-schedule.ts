@@ -273,6 +273,153 @@ function control(
   );
 }
 try {
+  if (suite === "deploy-automation-off") {
+    const enabled = process.env.SPROUT_AUTOMATION_ENABLED === "true";
+    let modelBoundaryCalls = 0;
+    let fetchBoundaryCalls = 0;
+    const complete: import("../../src/server/wake-runtime").WakeRuntimeOptions["complete"] = async (
+      request,
+    ) => {
+      modelBoundaryCalls++;
+      const input: WakeEvaluationInput = JSON.parse(request.prompt);
+      return {
+        text: JSON.stringify({
+          decisions: input.candidates.map((candidate) => ({
+            recipient: candidate.recipient,
+            decision: "yes",
+            certainty: "high",
+            reason: "当前负责人需要推进任务。",
+          })),
+        }),
+        inputTokens: 1,
+        outputTokens: 1,
+      };
+    };
+    const fetch: import("../../src/server/wake-runtime").WakeRuntimeOptions["fetch"] = async () => {
+      fetchBoundaryCalls++;
+      throw new Error("unexpected Jev boundary call");
+    };
+    const { startRuntime, shutdownRuntime } = await import("../../src/server/runtime");
+    const { healthResponse } = await import("../../src/routes/api/health");
+    const { initializeRequestContext } = await import("../../src/server/request-context");
+    await startRuntime({ complete, fetch });
+    let scheduler: ReturnType<typeof createAutomationScheduler> | undefined;
+    try {
+      const request = new Request("http://localhost/api/health");
+      initializeRequestContext(request);
+      const health = healthResponse(request);
+      equal(health.status, 200, "instance is healthy in both modes");
+      equal((await health.json()).automationEnabled, enabled, "health exposes instance switch");
+      const installed = (
+        globalThis as typeof globalThis & {
+          sproutWakeEvaluator?: unknown;
+        }
+      ).sproutWakeEvaluator;
+      equal(typeof installed, enabled ? "function" : "undefined", "runtime evaluator wiring");
+      const chat = group();
+      assigned(chat.id);
+      let now = atDue(chat.id);
+      const before = row(chat.id);
+      const beforeMessages = count("message");
+      const callbacks = new Map<number, () => void>();
+      let timerCalls = 0;
+      scheduler = createAutomationScheduler({
+        clock: {
+          now: () => now,
+          setTimeout: (callback) => {
+            callbacks.set(++timerCalls, callback);
+            return timerCalls;
+          },
+          clearTimeout: (handle) => {
+            callbacks.delete(handle as number);
+          },
+        },
+        onError: (error) => {
+          throw error;
+        },
+      });
+      scheduler.start();
+      await scheduler.advance();
+      await scheduler.settled();
+      now = new Date(now.getTime() + 1);
+      await scheduler.advance();
+      await scheduler.settled();
+      const snapshot = scheduler.snapshot();
+      equal(snapshot.started, enabled, "disabled scheduler never starts");
+      equal(snapshot.timerArmed, enabled, "only enabled scheduler arms a timer");
+      equal(timerCalls > 0, enabled, "disabled scheduler never calls setTimeout");
+      equal(
+        count("wake_evaluation"),
+        enabled ? 1 : 0,
+        "due schedules are evaluated only when enabled",
+      );
+      equal(
+        count("continuation_delivery"),
+        enabled ? 1 : 0,
+        "due schedules deliver only when enabled",
+      );
+      equal(count("agent_run"), enabled ? 1 : 0, "only enabled schedules queue continuation runs");
+      if (enabled) {
+        equal(
+          schedule.one<{ state: string; run_id: string | null }>(
+            "SELECT state,run_id FROM continuation_delivery WHERE chat_id=?",
+            chat.id,
+          ),
+          { state: "bound", run_id: runs.queuedRunWork()[0]?.run.id },
+          "enabled delivery binds to the queued run",
+        );
+      }
+      equal(count("message") - beforeMessages, 0, "scheduler does not fabricate messages");
+      equal(modelBoundaryCalls, enabled ? 1 : 0, "completion boundary calls match due rounds");
+      if (!enabled) {
+        equal(row(chat.id), before, "disabled scheduler leaves due schedule untouched");
+        const { prepareWakeEvaluation } = await import("../../src/domain/wake-evaluation");
+        const { createWakeEvaluator } = await import("../../src/server/wake-runtime");
+        const samples = JSON.parse(readFileSync("tests/fixtures/p6a/zh-wake.json", "utf8"));
+        const prepared = samples
+          .map((sample: { facts: Parameters<typeof prepareWakeEvaluation>[0]; now: string }) =>
+            prepareWakeEvaluation(sample.facts, new Date(sample.now)),
+          )
+          .find((item: ReturnType<typeof prepareWakeEvaluation>) => item.kind === "model");
+        assert(prepared?.kind === "model", "manual probe has a real model evaluation input");
+        const evaluate = createWakeEvaluator({ clock: () => 0, complete, fetch });
+        for (const provider of ["small_brain", "jev"] as const) {
+          await assert.rejects(
+            evaluate({ ...prepared.input, policy: { ...prepared.input.policy, provider } }),
+            { message: "provider_unavailable" },
+            "disabled manual evaluator rejects before either provider boundary",
+          );
+        }
+        equal(
+          [modelBoundaryCalls, fetchBoundaryCalls],
+          [0, 0],
+          "manual calls reach neither paid boundary",
+        );
+      }
+      const evidence = {
+        enabled,
+        scheduler: snapshot,
+        timerCalls,
+        evaluations: count("wake_evaluation"),
+        deliveries: count("continuation_delivery"),
+        runs: count("agent_run"),
+        runInputs: count("agent_run_input"),
+        modelBoundaryCalls,
+        fetchBoundaryCalls,
+        "paid-model-calls": 0,
+        paidModelCallsBasis:
+          "Pi host disabled; completion and fetch boundaries replaced with counting fixtures",
+      };
+      writeFileSync(
+        join(directory, "automation-evidence.json"),
+        JSON.stringify(evidence, null, 2) + "\n",
+      );
+      console.log("AUTOMATION " + JSON.stringify(evidence));
+    } finally {
+      scheduler?.stop();
+      await shutdownRuntime("deploy-automation-off-gate");
+    }
+  }
   if (suite === "scheduler") {
     let now = new Date();
     const callbacks = new Map<number, () => void>();

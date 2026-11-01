@@ -32,6 +32,7 @@ export const MANUAL_GATES = Object.freeze(["p6a-live-routing"]);
 export const SUITE_PLAN = Object.freeze({
   "p6a-routing": plan(3, { unit: 1 }),
   "p6a-live-routing": plan(400, { sdk: 1 }),
+  "deploy-automation-off": plan(3, { unit: 1 }),
   "p6a-scheduler": plan(1, { unit: 1 }),
   "p6a-control": plan(0.8, { unit: 1 }),
   "p6a-delivery": plan(0.9, { unit: 1 }),
