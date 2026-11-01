@@ -23,7 +23,6 @@ if (process.argv[2] === "--service") {
   // Same private IPC boundary seam as execution-live-service.ts: authenticated
   // server boundaries only; no domain function or database write is exposed.
   const task = await import("../../src/server/functions/task");
-  const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
   const boundaries = {
     createTaskFn: task.createTaskBoundary,
     getTaskDetailFn: task.getTaskDetailBoundary,

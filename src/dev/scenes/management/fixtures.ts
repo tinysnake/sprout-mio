@@ -81,7 +81,7 @@ export const demoRepoState: ProjectRepoState = {
   managedRoot: "/tmp/sprout-demo/repos",
   maxBytes: 536870912,
   checkout: {
-    id: "repoc_66666666-6666-4666-8666-666666666666",
+    id: "rco_66666666",
     projectId: DEMO_PROJECT_ID,
     path: "/tmp/sprout-demo/repos/mio",
     sourceKind: "managed_clone",
