@@ -14,7 +14,7 @@
 
 | schema                             | type 或导出             | 精确约束                                                                                                                                     |
 | ---------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `machineIdSchema`                  | `MachineId`             | `mch_` 加 8 位小写十六进制                                                                                                                               |
+| `machineIdSchema`                  | `MachineId`             | `mch_` 加 8 位小写十六进制                                                                                                                   |
 | `positiveSafeIntegerSchema`        | 无单独类型              | 整数 1 到 9007199254740991                                                                                                                   |
 | `macosAbsolutePathSchema`          | 无单独类型              | 1 到 4096 个 JS 字符，以 `/` 开头，无 NUL；不 trim、不展开 `~` 或变量，不做文件系统探测                                                      |
 | `machineSchema`                    | `Machine`               | id、trim 后 1 到 80 字 name、rootDirectory 为绝对路径或 null、rootRevision 为正 safe integer、非空 createdBy、ISO UTC createdAt 和 updatedAt |
