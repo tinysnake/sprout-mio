@@ -31,6 +31,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/execution-wiring.test.ts",
     "tests/frontend-boundaries.test.ts",
     "tests/http-drain.test.ts",
+    "tests/id-rekey.test.ts",
     "tests/identity-data.test.ts",
     "tests/info-hub-runs.test.ts",
     "tests/info-hub.test.ts",
