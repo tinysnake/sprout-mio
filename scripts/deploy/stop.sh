@@ -5,6 +5,16 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 instance="${1:-}"
 require_instance "${instance:-x}"
+if launchd_installed "$instance"; then
+  launchctl bootout "gui/$(id -u)/$(launchd_label "$instance")" >/dev/null 2>&1 || true
+  for _ in $(seq 1 20); do
+    lsof -nP -iTCP:"$(port_for "$instance")" -sTCP:LISTEN >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+  say "PASS 实例 ${instance} 已停止（下次 start.sh 或开机再起）"
+  exit 0
+fi
+
 pid_file="$(instance_dir "$instance")/run.pid"
 
 [[ -f "$pid_file" ]] || fail "实例 $instance 没有 pid 文件，可能没在跑"

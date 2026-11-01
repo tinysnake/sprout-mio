@@ -14,6 +14,20 @@ pid_file="$dir/run.pid"
 log_file="$dir/logs/server.log"
 
 [[ -f "$app/.output/server/index.mjs" ]] || fail "$app 没有构建产物，先跑 promote.sh 或 drill.sh"
+
+if launchd_installed "$instance"; then
+  mkdir -p "$dir/logs"
+  target="gui/$(id -u)/$(launchd_label "$instance")"
+  if launchctl print "$target" >/dev/null 2>&1; then
+    launchctl kickstart -k "$target" >/dev/null 2>&1 || fail "launchd 重启失败：$target"
+  else
+    launchctl bootstrap "gui/$(id -u)" "$(launchd_plist "$instance")" >/dev/null 2>&1 \
+      || fail "launchd 加载失败：$(launchd_plist "$instance")"
+  fi
+  wait_health "$port"
+  say "PASS 实例 ${instance} 由 launchd 托管，已在 ${port} 上就绪"
+  exit 0
+fi
 mkdir -p "$dir/logs"
 if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
   fail "实例 $instance 已经在跑（pid $(cat "$pid_file")）"

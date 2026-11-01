@@ -111,6 +111,8 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/selftest.sh` | 在临时运行根目录里把上面整条链路跑一遍 |
 | `scripts/deploy/rehearse.sh` | 用本地裸远端演练首次部署、升级、回滚三条路径 |
 | `scripts/deploy/reset-password.sh <实例> <邮箱>` | 直接改某个账号的密码，不依赖发信服务 |
+| `scripts/deploy/launchd.sh install\|uninstall\|status [实例]` | 用 launchd 托管实例：开机自启、崩溃重起 |
+| `scripts/deploy/serve.sh <实例>` | 前台跑实例，供 launchd 调用 |
 | `scripts/worker/package.sh <输出目录>` | 从构建产物里取出两个文件并校验只依赖 node 内置模块 |
 
 
@@ -167,6 +169,22 @@ node ~/sprout-worker/dist/worker/main.js run --state-dir ~/sprout-worker-state
 更新：`git -C ~/sprout-worker fetch --tags && git -C ~/sprout-worker checkout <新 tag>`，再跑一次 `pnpm install --frozen-lockfile && pnpm worker:build`。
 
 依赖只在构建时用。`dist/worker/main.js` 与 `dist/worker/runner.js` 只 import node 内置模块，两个文件放同一目录就能运行，所以想搬到没有 `node_modules` 的地方拷这两个文件即可；`scripts/worker/package.sh <输出目录>` 会把它们连同 `VERSION` 一起打出来。`worker-artifact` 门禁每次都重新构建、在空目录里跑 `version`（确认运行期不依赖 `node_modules`）、检查 `init`/`run` 出现在 help 里、并对缺失参数报错，同时校验 `docs/deployment.md` 写的命令与 `package.json` 真实存在。
+
+## 常驻：launchd
+
+prod 交给 launchd 托管，`start.sh` 与 `stop.sh` 自动认这条路：
+
+```bash
+bash scripts/deploy/launchd.sh install prod     # 写 ~/Library/LaunchAgents/dev.sprout.prod.plist 并加载
+bash scripts/deploy/launchd.sh status prod      # 看作业状态
+bash scripts/deploy/launchd.sh uninstall prod   # 卸载并停止
+```
+
+`KeepAlive` 为真，进程崩了十秒后自动重起，登录后自动加载。plist 里的 `PATH` 固定成 `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`，所以 node 必须在这几条路径里（Homebrew 装的就在）。日志写在 `$SPROUT_RUNTIME_ROOT/prod/logs/launchd.{out,err}.log`。
+
+装了 launchd 之后 `stop.sh` 用 `launchctl bootout`（`KeepAlive` 下 `kill` 会被立刻重起），`start.sh` 用 `bootstrap` 或 `kickstart -k`，不再写 pid 文件。`promote.sh` 因此仍然是一句话完成升级。
+
+drill 不需要常驻，用 `drill.sh` 起、验完停。
 
 ## 账号
 

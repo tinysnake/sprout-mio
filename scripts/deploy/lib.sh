@@ -49,6 +49,10 @@ load_env() {
 }
 
 db_path() { printf '%s/data/sprout.sqlite' "$(instance_dir "$1")"; }
+launchd_label() { printf 'dev.sprout.%s\n' "$1"; }
+launchd_plist() { printf '%s/Library/LaunchAgents/%s.plist\n' "$HOME" "$(launchd_label "$1")"; }
+launchd_installed() { [[ -f "$(launchd_plist "$1")" ]]; }
+
 state_dir() {
   local dir
   dir="$(instance_dir "$1")/state"
