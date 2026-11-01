@@ -1,5 +1,6 @@
 import type { WakeEvaluationInput } from "../contracts/wake-evaluation";
 import { createHash, randomUUID } from "node:crypto";
+import { ID_PREFIXES, newId } from "../contracts/ids";
 import { sqlite } from "../db";
 import { CHAT_AUTOMATION_POLICY as POLICY } from "../contracts/chat-automation";
 import { DEFAULT_PROJECT_WAKE_POLICY } from "../contracts/project-wake-policy";
@@ -150,7 +151,7 @@ export function ensureResponsibleInstance(chatId: string, now: Date) {
   if (owner?.kind === "agent" && owner.instanceId === null && chat) {
     write(
       "INSERT OR IGNORE INTO agent_instance(id,chat_id,project_id,agent_profile_id,created_at) VALUES(?,?,?,?,?)",
-      `ins_${randomUUID()}`,
+      newId(ID_PREFIXES.instance),
       chatId,
       chat.project_id,
       owner.id,
@@ -356,7 +357,7 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
           write("UPDATE chat_schedule SET next_due_at=NULL WHERE chat_id=?", due.chat_id);
           return undefined;
         }
-        const id = `evaluation_${randomUUID()}`;
+        const id = newId(ID_PREFIXES.wakeEvaluation);
         write(
           "INSERT INTO wake_evaluation(id,project_id,chat_id,round,control_epoch,fingerprint,state,request_id,created_at) VALUES(?,?,?,?,?,?,'pending',?,?)",
           id,

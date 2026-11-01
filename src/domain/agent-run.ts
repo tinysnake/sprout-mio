@@ -1,5 +1,4 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import type {
   AgentRun,
   AgentRunInput,
@@ -168,7 +167,7 @@ function activeRunFor(
   const created = db
     .insert(agentRun)
     .values({
-      id: `run_${randomUUID()}`,
+      id: newId(ID_PREFIXES.run),
       instanceId: scope.instanceId,
       chatId: scope.chatId,
       projectId: scope.projectId,

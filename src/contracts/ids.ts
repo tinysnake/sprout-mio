@@ -11,7 +11,6 @@ export const ID_PREFIXES = {
   mcpSession: "mcs",
   mcpFrame: "mcf",
   agentProfile: "agp",
-  projectMember: "pmb",
   task: "tsk",
   taskChecklistItem: "tci",
   taskEvent: "tev",
@@ -23,17 +22,25 @@ export const ID_PREFIXES = {
   request: "req",
   cancellation: "cnl",
   notice: "ntc",
+  repoCheckout: "rco",
+  repoProvenance: "rpn",
+  continuationDelivery: "dlv",
+  wakeEvaluation: "evl",
 } as const;
 /** 前缀只允许已登记的对象类别。 */
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];
 /** 前缀在类型中保留，避免混用不同类别的生成结果。 */
 export type AppId<P extends IdPrefix = IdPrefix> = `${P}_${string}`;
-/** 与 newId 一致的前缀 UUID v4 格式，供所有运行时边界复用。 */
+/**
+ * 随机段 8 位 hex：Prod 最大一族（diagnostic）约 9e3 行，单次插入撞上已存在 id 的概率是 2e-6。
+ * 校验上限留到 16 位，将来加长 id 只需要改这里，不用再迁一次数据。
+ */
+const SHORT_ID_HEX = 8;
+const SHORT_ID_HEX_MAX = 16;
+/** 与 newId 一致的前缀加随机段格式，供所有运行时边界复用。 */
 export function appIdPattern(prefix: IdPrefix): RegExp {
-  return new RegExp(
-    `^${prefix}_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
-  );
+  return new RegExp(`^${prefix}_[0-9a-f]{${SHORT_ID_HEX},${SHORT_ID_HEX_MAX}}$`);
 }
 export function newId<P extends IdPrefix>(prefix: P): AppId<P> {
-  return `${prefix}_${crypto.randomUUID()}`;
+  return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, SHORT_ID_HEX)}`;
 }

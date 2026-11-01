@@ -5,6 +5,7 @@ import {
   rejectContinuation,
 } from "../../domain/continuation-delivery";
 import { Effect } from "effect";
+import { ID_PREFIXES } from "../../contracts/ids";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -38,6 +39,8 @@ import type { PiSessionProcess } from "./process";
 
 export type Work = ReturnType<typeof queuedRunWork>[number];
 export type PiHostSignals = { readonly isStopping: () => boolean };
+/** 投递确认与 run 输入确认共用同一个回调，靠前缀区分 continuation 投递 id。 */
+const DELIVERY_ID_PREFIX = `${ID_PREFIXES.continuationDelivery}_`;
 
 /**
  * 是否把宿主 skills 与 prompt templates 装进分身的 resource loader。默认关闭。
@@ -139,7 +142,7 @@ export function executeRun(
           process.onDelivered = (messageId) => {
             if (signals.isStopping()) return;
             try {
-              if (messageId.startsWith("delivery_"))
+              if (messageId.startsWith(DELIVERY_ID_PREFIX))
                 acknowledgeContinuation(messageId, run.id, new Date(now()));
               else markRunInputDelivered(run.id, messageId, ctx);
             } catch (error) {
@@ -149,7 +152,7 @@ export function executeRun(
           };
           process.onRejected = (messageId, reason) => {
             if (!signals.isStopping()) {
-              if (messageId.startsWith("delivery_")) rejectContinuation(messageId, run.id);
+              if (messageId.startsWith(DELIVERY_ID_PREFIX)) rejectContinuation(messageId, run.id);
               else recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
             }
           };

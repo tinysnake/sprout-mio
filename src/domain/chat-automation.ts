@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { sqlite } from "../db";
+import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
   CHAT_AUTOMATION_ACTIONS,
   type ChatAutomationAction,
@@ -337,7 +337,7 @@ export function applyChatAutomationCommand(
         const result = JSON.parse(evaluation.result!) as WakeEvaluationResult;
         if (!deliveryContextMatches(old))
           throw new ChatAutomationError("conflict", "Task 或负责人已变化，请从当前事实重新检查。");
-        const id = `evaluation_${randomUUID()}`;
+        const id = newId(ID_PREFIXES.wakeEvaluation);
         const round = one<{ n: number }>(
           "SELECT max(round)+1 AS n FROM wake_evaluation WHERE chat_id=?",
           command.chatId,

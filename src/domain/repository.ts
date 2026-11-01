@@ -1,5 +1,4 @@
 import { and, eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type {
@@ -10,6 +9,7 @@ import type {
   RepoSourceKind,
   RunRepoSnapshot,
 } from "../contracts/repository";
+import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import { agentRun, chat, diagnosticEvent, repoCheckout, repoProvenance } from "../db/schema";
 import { config } from "../lib/config";
@@ -91,7 +91,7 @@ function upsertCheckout(row: {
   const updated = db
     .insert(repoCheckout)
     .values({
-      id: existing?.id ?? `repoc_${randomUUID()}`,
+      id: existing?.id ?? newId(ID_PREFIXES.repoCheckout),
       ...row,
       fetchedAt,
       resolvedAt: now,
@@ -206,7 +206,7 @@ async function prepareWorkingCopy(
       });
       db.insert(diagnosticEvent)
         .values({
-          id: `diag_${randomUUID()}`,
+          id: newId(ID_PREFIXES.diagnostic),
           at: new Date(),
           level: "info",
           event: "repository.prepared",
@@ -299,7 +299,7 @@ export function recordRunRepoBasis(
   return sqlite
     .transaction(() => {
       const recordedAt = new Date();
-      const id = `repop_${randomUUID()}`;
+      const id = newId(ID_PREFIXES.repoProvenance);
       db.insert(repoProvenance)
         .values({
           id,

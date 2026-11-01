@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { appIdPattern } from "./ids";
+import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
 import type { AppResult } from "./result";
 
@@ -23,9 +23,10 @@ export const REPO_ERROR_CODES = [
 ] as const;
 export type RepoErrorCode = (typeof REPO_ERROR_CODES)[number];
 
-const uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
-export const repoCheckoutIdSchema = z.string().regex(new RegExp(`^repoc_${uuidPattern}$`));
-export const repoProvenanceIdSchema = z.string().regex(new RegExp(`^repop_${uuidPattern}$`));
+export const repoCheckoutIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.repoCheckout));
+export const repoProvenanceIdSchema = z
+  .string()
+  .regex(appIdPattern(ID_PREFIXES.repoProvenance));
 
 export type RepoCheckout = {
   id: string;
