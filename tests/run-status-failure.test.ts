@@ -12,11 +12,11 @@ const state: ChatRunState = {
   enabled: true,
   runs: [
     {
-      id: "run_11111111-1111-4111-8111-111111111111",
-      instanceId: "ins_11111111-1111-4111-8111-111111111111",
-      chatId: "cnv_11111111-1111-4111-8111-111111111111",
-      projectId: "prj_11111111-1111-4111-8111-111111111111",
-      requestId: "req_11111111-1111-4111-8111-111111111111",
+      id: "run_11111111",
+      instanceId: "ins_11111111",
+      chatId: "cnv_11111111",
+      projectId: "prj_11111111",
+      requestId: "req_11111111",
       status: "failed",
       queuedAt: "2026-10-30T00:00:00.000Z",
       errorCode: "host_failed",
@@ -32,7 +32,7 @@ describe("失败横幅不显示内部请求标识", () => {
 
   it("渲染结果里没有 requestId 字段与 req_ 前缀", () => {
     expect(html).not.toContain("requestId");
-    expect(html).not.toMatch(/req_[0-9a-f-]{36}/);
+    expect(html).not.toMatch(/req_[0-9a-f]{8,16}/);
     expect(html).not.toContain(state.runs[0].requestId);
   });
 

@@ -261,7 +261,7 @@ try {
   // V5：Chat 页面任何位置都不显示 requestId（此处群校验错误横幅正显示着）。
   const requestIdOnPage = await page.evaluate(() => ({
     literal: document.body.innerText.includes("requestId"),
-    bare: /req_[0-9a-f-]{36}/.test(document.body.innerText),
+    bare: /req_[0-9a-f]{8,16}/.test(document.body.innerText),
   }));
   record(
     "chat_page_hides_request_id",
@@ -332,7 +332,7 @@ try {
   await page.waitForFunction((before) => location.pathname !== before, pathBeforeCreate, {
     timeout: 30000,
   });
-  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f]{8,16}$/.test(url.pathname), {
     timeout: 30000,
   });
   groupPath = new URL(page.url()).pathname;
@@ -786,7 +786,7 @@ try {
   await page.getByTestId("new-chat-mode-dm").click();
   await page.waitForSelector('[data-testid="dm-start"]', { timeout: 20000 });
   await page.locator('[data-testid="new-chat-dialog"] [data-testid="dm-start"]').first().click();
-  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f]{8,16}$/.test(url.pathname), {
     timeout: 30000,
   });
   dmPath = new URL(page.url()).pathname;

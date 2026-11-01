@@ -9,7 +9,7 @@ async function call(type, input) {
     headers: {
       authorization: `Bearer ${opened.remote.secret}`,
       "content-type": "application/json",
-      "x-request-id": `req_${randomUUID()}`,
+      "x-request-id": `req_${randomUUID().replaceAll("-", "").slice(0, 8)}`,
     },
     body: JSON.stringify({
       version: 2,

@@ -156,7 +156,7 @@ await check("project_list_shows_both_projects", async () => {
 await check("settings_shows_fields_and_request_id", async () => {
   await navigate(page, `${project.path}/settings`);
   const facts = await readProjectFacts(page);
-  const requestId = /req_[0-9a-f-]{36}/.exec(facts.requestId ?? "")?.[0];
+  const requestId = /req_[0-9a-f]{8,16}/.exec(facts.requestId ?? "")?.[0];
   await shot(page, "project-settings-facts");
   record(
     "settings_shows_fields_and_request_id",
@@ -264,7 +264,7 @@ await check("long_description_shows_field_error", async () => {
 });
 
 await check("missing_project_shows_not_found", async () => {
-  await page.goto(`${BASE}/projects/prj_00000000-0000-4000-8000-000000000000/chats`, {
+  await page.goto(`${BASE}/projects/prj_00000000/chats`, {
     waitUntil: "domcontentloaded",
   });
   await page.waitForSelector('[data-testid="project-error"]', { timeout: 20000 });
@@ -275,7 +275,7 @@ await check("missing_project_shows_not_found", async () => {
   await shot(page, "project-not-found");
   record(
     "missing_project_shows_not_found",
-    /not_found/.test(state.meta ?? "") && /req_[0-9a-f-]{36}/.test(state.meta ?? ""),
+    /not_found/.test(state.meta ?? "") && /req_[0-9a-f]{8,16}/.test(state.meta ?? ""),
     `不存在的 id 显示 ${JSON.stringify(state)}`,
   );
 });

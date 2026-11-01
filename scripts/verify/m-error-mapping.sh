@@ -161,9 +161,9 @@ async function assertNoErrorDiagnostic(requestId, label) {
 }
 
 const missing = {
-  projectId: 'prj_00000000-0000-4000-8000-000000000000',
-  agentProfileId: 'agp_00000000-0000-4000-8000-000000000000',
-  chatId: 'cnv_00000000-0000-4000-8000-000000000000',
+  projectId: 'prj_00000000',
+  agentProfileId: 'agp_00000000',
+  chatId: 'cnv_00000000',
 }
 
 let server

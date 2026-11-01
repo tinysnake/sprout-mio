@@ -138,7 +138,7 @@ await check("untitled_chat_falls_back_to_agent_name", async () => {
   await page.goto(`${BASE}${projectPath}/chats`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="dm-member-item"]', { timeout: 20000 });
   await page.click(`[data-testid="dm-start"][data-agent-profile-id="${agentId}"]`);
-  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f]{8,16}$/.test(url.pathname), {
     timeout: 20000,
   });
   chatPath = new URL(page.url()).pathname;
@@ -330,7 +330,7 @@ await check("second_human_cannot_see_or_rename_the_chat", async () => {
     record(
       "second_human_cannot_see_or_rename_the_chat",
       /not_found/.test(meta ?? "") &&
-        /req_[0-9a-f-]{36}/.test(meta ?? "") &&
+        /req_[0-9a-f]{8,16}/.test(meta ?? "") &&
         !body.includes(agentName) &&
         !body.includes(customTitle),
       `第二账号 ${email} 直连对话得到 ${JSON.stringify(meta)}，页面未出现该对话的分身名或标题`,

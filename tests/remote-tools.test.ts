@@ -11,11 +11,11 @@ import type { RemoteAgentRequest, RemoteToolGrant } from "../src/contracts/remot
 import type { RemoteToolClient, RemoteToolResponse } from "../src/extension/remote-client";
 import type { SproutExtensionAPI } from "../src/extension/types";
 
-const projectId = "prj_00000000-0000-4000-8000-000000000000";
-const machineId = "mch_00000000-0000-4000-8000-000000000000";
-const requestId = "req_00000000-0000-4000-8000-000000000000";
-const instanceId = "ins_00000000-0000-4000-8000-000000000000";
-const executionId = "exe_00000000-0000-4000-8000-000000000000";
+const projectId = "prj_00000000";
+const machineId = "mch_00000000";
+const requestId = "req_00000000";
+const instanceId = "ins_00000000";
+const executionId = "exe_00000000";
 const time = "2026-10-24T00:00:00.000Z";
 const free = {
   projectId,
@@ -88,7 +88,7 @@ describe("远端 Pi 工具边界", () => {
         missing,
         { ...parameters, machineId: "bad" },
         { ...parameters, instanceId },
-        { ...parameters, projectId: "prj_11111111-1111-4111-8111-111111111111" },
+        { ...parameters, projectId: "prj_11111111" },
       ]) {
         const result = await tool.execute("probe", bad);
         expect(result.isError).toBe(true);
@@ -153,8 +153,8 @@ describe("远端 Pi 工具边界", () => {
             holderInstanceId: instanceId,
             authority: "holder",
             currentAuthorizationGeneration: 1,
-            runId: "run_00000000-0000-4000-8000-000000000000",
-            chatId: "cnv_00000000-0000-4000-8000-000000000000",
+            runId: "run_00000000",
+            chatId: "cnv_00000000",
             requestId,
             operation: { kind: "shell", command: "true", waitMs: 0 },
             createdAt: time,
@@ -198,7 +198,7 @@ describe("远端 Pi 工具边界", () => {
     const data = {
       projectId,
       machineId,
-      mutationId: "lmu_00000000-0000-4000-8000-000000000000",
+      mutationId: "lmu_00000000",
       action: "release" as const,
       state: "pending" as const,
       expectedGeneration: 1,
@@ -224,7 +224,7 @@ describe("远端 Pi 工具边界", () => {
     ): ExecutionCancellationView => ({
       projectId,
       machineId,
-      cancelId: "cnl_00000000-0000-4000-8000-000000000000",
+      cancelId: "cnl_00000000",
       executionId,
       state,
       requestedAt: time,
@@ -288,7 +288,7 @@ describe("远端 Pi 工具边界", () => {
         ok: true,
         requestId,
         data: cancellation("exited_observed", {
-          executionId: "exe_11111111-1111-4111-8111-111111111111",
+          executionId: "exe_11111111",
         }),
       },
     };
@@ -319,7 +319,7 @@ describe("远端 Pi 工具边界", () => {
       result: {
         ok: true,
         requestId,
-        data: logRead("full", { executionId: "exe_11111111-1111-4111-8111-111111111111" }),
+        data: logRead("full", { executionId: "exe_11111111" }),
       },
     };
     expect(await read.execute("probe", cases.sprout_remote_execution_log)).toMatchObject({
@@ -448,8 +448,8 @@ describe("真实 HTTP transport", () => {
       holderInstanceId: instanceId,
       authority: "holder",
       currentAuthorizationGeneration: 1,
-      runId: "run_00000000-0000-4000-8000-000000000000",
-      chatId: "cnv_00000000-0000-4000-8000-000000000000",
+      runId: "run_00000000",
+      chatId: "cnv_00000000",
       operation: { kind: "shell", command: "true", waitMs: 0 },
       state: "timed_out",
       createdAt: time,
@@ -482,7 +482,7 @@ describe("真实 HTTP transport", () => {
         isError: true,
         details: { outcome: "timed_out" },
       });
-      data.executionId = "exe_11111111-1111-4111-8111-111111111111";
+      data.executionId = "exe_11111111";
       expect(await tool.execute("probe", { machineId, executionId })).toMatchObject({
         isError: true,
         details: { outcome: "unknown", reason: "invalid_response" },
@@ -540,7 +540,7 @@ describe("真实 HTTP transport", () => {
             ok: true,
             requestId,
             data: {
-              lease: { ...free, projectId: "prj_11111111-1111-4111-8111-111111111111" },
+              lease: { ...free, projectId: "prj_11111111" },
               mutation: null,
             },
           }),

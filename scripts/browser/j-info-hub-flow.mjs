@@ -156,7 +156,7 @@ await check("create_two_profiles_join_one", async () => {
     "create_two_profiles_join_one",
     Boolean(joinedId) &&
       !members.some((member) => member.id === outsiderId) &&
-      /^agp_[0-9a-f-]{36}$/.test(outsiderId),
+      /^agp_[0-9a-f]{8,16}$/.test(outsiderId),
     `成员 ${JSON.stringify(members)}，${outsiderName}（${outsiderId}）未加入`,
   );
 });
@@ -166,7 +166,7 @@ await check("start_dm_and_send_two_messages", async () => {
   await page.waitForSelector('[data-testid="dm-member-item"]', { timeout: 20000 });
   // 成员里还有默认 Agent，按本次加入的 profile id 点它的「发起对话」。
   await page.click(`[data-testid="dm-start"][data-agent-profile-id="${joinedId}"]`);
-  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f]{8,16}$/.test(url.pathname), {
     timeout: 20000,
   });
   chatPath = pathOf();
@@ -191,7 +191,7 @@ await check("start_dm_and_send_two_messages", async () => {
   );
   record(
     "start_dm_and_send_two_messages",
-    /^cnv_[0-9a-f-]{36}$/.test(chatId) && /^ins_[0-9a-f-]{36}$/.test(instanceId),
+    /^cnv_[0-9a-f]{8,16}$/.test(chatId) && /^ins_[0-9a-f]{8,16}$/.test(instanceId),
     `对话 ${chatId}，分身 ${instanceId}，两条消息已保存`,
   );
 });

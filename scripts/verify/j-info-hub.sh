@@ -166,13 +166,13 @@ try {
   const serverFnHeaders = ['x-tsr-serverfn: true', origin, 'accept: application/x-tss-framed, application/json']
   const anonymousHub = await curl(`${base}/_serverFn/${ids.getProjectInfoHubFn}`, 'info-hub-anonymous', {
     header: serverFnHeaders,
-    body: serverFnBody({ projectId: 'prj_00000000-0000-4000-8000-000000000000' }),
+    body: serverFnBody({ projectId: 'prj_00000000' }),
   })
   assert.equal(anonymousHub.status, 200, anonymousHub.text)
   assert(anonymousHub.text.includes('unauthorized'), '未登录调用 getProjectInfoHubFn 必须返回 unauthorized 载荷')
   const anonymousChat = await curl(`${base}/_serverFn/${ids.getChatInfoFn}`, 'chat-info-anonymous', {
     header: serverFnHeaders,
-    body: serverFnBody({ chatId: 'cnv_00000000-0000-4000-8000-000000000000' }),
+    body: serverFnBody({ chatId: 'cnv_00000000' }),
   })
   assert.equal(anonymousChat.status, 200, anonymousChat.text)
   assert(anonymousChat.text.includes('unauthorized'), '未登录调用 getChatInfoFn 必须返回 unauthorized 载荷')

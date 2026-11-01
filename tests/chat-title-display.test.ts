@@ -6,8 +6,8 @@ import {
 } from "../src/components/chat/chat-display";
 import { chatAgentName } from "../src/components/chat/chat-list";
 
-const CHAT_ID = "cnv_11111111-1111-4111-8111-111111111111";
-const PROFILE_ID = "agp_22222222-2222-4222-8222-222222222222";
+const CHAT_ID = "cnv_11111111";
+const PROFILE_ID = "agp_22222222";
 
 describe("Chat 展示名", () => {
   it("有人工标题时显示标题", () => {

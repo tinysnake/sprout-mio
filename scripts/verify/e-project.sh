@@ -181,7 +181,7 @@ try {
   assert.equal(created.status, 200, created.text)
   assert.match(created.requestId ?? '', /^req_/, '响应必须带 x-sprout-request-id')
   assert(created.text.includes('curl-验收样例'), '成功载荷必须包含名称')
-  const projectId = created.text.match(/prj_[0-9a-f-]{36}/)?.[0]
+  const projectId = created.text.match(/prj_[0-9a-f]{8,16}/)?.[0]
   assert(projectId, `成功载荷必须包含 project id: ${created.text.slice(0, 200)}`)
 
   const events = await curl(`${base}/api/diagnostics?requestId=${created.requestId}`, 'diagnostics', { cookie: true })
@@ -213,7 +213,7 @@ try {
 
   const missing = await curl(`${base}/_serverFn/${ids.getProjectFn}`, 'get-not-found', {
     ...createArgs,
-    body: serverFnBody({ projectId: 'prj_00000000-0000-4000-8000-000000000000' }),
+    body: serverFnBody({ projectId: 'prj_00000000' }),
   })
   assert.equal(missing.status, 200, missing.text)
   assert(missing.text.includes('not_found'), `不存在的 id 必须返回 not_found: ${missing.text.slice(0, 200)}`)

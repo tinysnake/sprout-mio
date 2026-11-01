@@ -220,7 +220,7 @@ if (process.env.CHAT_VERIFY === "1") {
     );
     record(
       "create_agent_profile_and_member",
-      /^agp_[0-9a-f-]{36}$/.test(agentId),
+      /^agp_[0-9a-f]{8,16}$/.test(agentId),
       `profile ${agentId} 已加入 Project 成员`,
     );
   });
@@ -230,7 +230,7 @@ if (process.env.CHAT_VERIFY === "1") {
     await page.waitForSelector('[data-testid="dm-member-item"]', { timeout: 20000 });
     // 成员里还有默认 Agent，按本次新建的 profile id 点它的「发起对话」。
     await page.click(`[data-testid="dm-start"][data-agent-profile-id="${agentId}"]`);
-    await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+    await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f]{8,16}$/.test(url.pathname), {
       timeout: 20000,
     });
     chatPath = pathOf();
@@ -244,8 +244,8 @@ if (process.env.CHAT_VERIFY === "1") {
     await shot(page, "p2-i-chat-started");
     record(
       "start_dm_navigates_to_chat",
-      /^cnv_[0-9a-f-]{36}$/.test(chatId) &&
-        /^ins_[0-9a-f-]{36}$/.test(instanceId) &&
+      /^cnv_[0-9a-f]{8,16}$/.test(chatId) &&
+        /^ins_[0-9a-f]{8,16}$/.test(instanceId) &&
         agentShown?.trim() === agentName &&
         listedChats.length === 2 &&
         listedChats[0] === chatId,
@@ -335,7 +335,7 @@ if (process.env.CHAT_VERIFY === "1") {
   });
 
   await check("missing_chat_shows_not_found", async () => {
-    await page.goto(`${BASE}${projectPath}/chats/cnv_00000000-0000-4000-8000-000000000000`, {
+    await page.goto(`${BASE}${projectPath}/chats/cnv_00000000`, {
       waitUntil: "domcontentloaded",
     });
     await page.waitForSelector('[data-testid="chat-error"]', { timeout: 20000 });
@@ -343,7 +343,7 @@ if (process.env.CHAT_VERIFY === "1") {
     await shot(page, "p2-i-chat-not-found");
     record(
       "missing_chat_shows_not_found",
-      /not_found/.test(meta ?? "") && /req_[0-9a-f-]{36}/.test(meta ?? ""),
+      /not_found/.test(meta ?? "") && /req_[0-9a-f]{8,16}/.test(meta ?? ""),
       `不存在的 chatId 显示 ${JSON.stringify(meta)}`,
     );
   });

@@ -121,7 +121,7 @@ try {
   const domain = await import('./src/domain/task.ts')
   const user = sqlite.prepare('select id from user where email = ?').get(email)
   assert(user, 'authenticated user must be persisted')
-  const ctx = { userId: user.id, requestId: `req_${randomUUID()}` }
+  const ctx = { userId: user.id, requestId: `req_${randomUUID().replaceAll("-", "").slice(0, 8)}` }
   const agent = createAgentProfile({ name: 'Task UI Agent', persona: '施工记录验收' }, ctx)
   addProjectMember(projectId, agent.id, ctx)
   const dm = createDirectChat(projectId, agent.id, ctx)
@@ -277,7 +277,7 @@ try {
   // Real Agent scope feeds the same view; browser authentication remains Human-only in P5b.
   const groupChat = createGroupChat(projectId, { projectId, title: '非 owner 成员', members: [{ kind: 'human', id: ctx.userId }, { kind: 'agent', id: agent.id }], initialOwner: { kind: 'human', id: ctx.userId }, wakePolicy: 'owner_led' }, { kind: 'human', userId: ctx.userId, ctx })
   const instance = ensureInstance(groupChat.id, agent.id, ctx)
-  const groupRunId = `run_${randomUUID()}`
+  const groupRunId = `run_${randomUUID().replaceAll("-", "").slice(0, 8)}`
   sqlite.prepare("insert into agent_run(id,instance_id,chat_id,project_id,request_id,status,session_id) values (?,?,?,?,?,'queued',?)").run(groupRunId, instance.id, groupChat.id, projectId, ctx.requestId, instance.id)
   const memberTask = domain.createTask({ projectId, title: '非 owner 能力', description: '', constraints: '', completionRequirements: '' }, ctx).detail
   await page.setViewportSize({ width: 1280, height: 900 })

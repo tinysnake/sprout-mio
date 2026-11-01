@@ -24,9 +24,10 @@ import type { AgentInstance, Chat, ChatMember, Message } from "../../../contract
 import type { ChatInfoView, TurnStartContext } from "../../../contracts/info-hub";
 import type { AppError } from "../../../contracts/result";
 import { ArrowLeftIcon, MessageSquareIcon } from "lucide-react";
+import { ID_PREFIXES, newId } from "@/contracts/ids";
 
 /** 场景数据全部是虚构样例；正式模块不导入本目录。 */
-const PROJECT_ID = "prj_11111111-1111-4111-8111-111111111111";
+const PROJECT_ID = "prj_11111111";
 
 function chat(id: string, title: string, updatedAt: string): Chat {
   return {
@@ -43,11 +44,11 @@ function chat(id: string, title: string, updatedAt: string): Chat {
   };
 }
 
-const CANONICAL_CHAT_ID = "cnv_44444444-4444-4444-8444-444444444444";
+const CANONICAL_CHAT_ID = "cnv_44444444";
 
 const chats: Chat[] = [
   chat(CANONICAL_CHAT_ID, "仓库首页架构评审", "2026-06-18T02:28:00.000Z"),
-  chat("cnv_55555555-5555-4555-8555-555555555555", "迁移顺序拆解", "2026-06-17T10:12:00.000Z"),
+  chat("cnv_55555555", "迁移顺序拆解", "2026-06-17T10:12:00.000Z"),
 ];
 
 const chatAgents: ChatAgent[] = chats.map((item, index) => ({
@@ -57,9 +58,9 @@ const chatAgents: ChatAgent[] = chats.map((item, index) => ({
 
 const demoInstances: AgentInstance[] = [
   {
-    id: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    id: "ins_aaaaaaaa",
     agentProfileId: profiles[0]!.id,
-    chatId: "cnv_44444444-4444-4444-8444-444444444444",
+    chatId: "cnv_44444444",
     projectId: PROJECT_ID,
     createdAt: "2026-06-18T02:00:00.000Z",
     updatedAt: "2026-06-18T02:00:00.000Z",
@@ -83,7 +84,7 @@ const members: ChatMember[] = [
 
 const messages: Message[] = [
   {
-    id: "msg_66666666-6666-4666-8666-666666666666",
+    id: "msg_66666666",
     chatId: chats[0]!.id,
     senderKind: "human",
     senderId: "usr_demo",
@@ -91,7 +92,7 @@ const messages: Message[] = [
     createdAt: "2026-06-18T02:24:00.000Z",
   },
   {
-    id: "msg_77777777-7777-4777-8777-777777777777",
+    id: "msg_77777777",
     chatId: chats[0]!.id,
     senderKind: "agent",
     senderId: profiles[0]!.id,
@@ -99,7 +100,7 @@ const messages: Message[] = [
     createdAt: "2026-06-18T02:26:00.000Z",
   },
   {
-    id: "msg_88888888-8888-4888-8888-888888888888",
+    id: "msg_88888888",
     chatId: chats[0]!.id,
     senderKind: "agent",
     senderId: profiles[0]!.id,
@@ -114,7 +115,7 @@ const scenarioRunState: Record<string, ChatRunState> = {
     enabled: true,
     runs: [
       {
-        id: "run_99999999-9999-4999-8999-999999999999",
+        id: "run_99999999",
         instanceId: "ins_demo",
         chatId: chats[0]!.id,
         projectId: PROJECT_ID,
@@ -127,7 +128,7 @@ const scenarioRunState: Record<string, ChatRunState> = {
     ],
     inputs: [
       {
-        runId: "run_99999999-9999-4999-8999-999999999999",
+        runId: "run_99999999",
         messageId: messages[0]!.id,
         disposition: "pending",
       },
@@ -137,7 +138,7 @@ const scenarioRunState: Record<string, ChatRunState> = {
     enabled: true,
     runs: [
       {
-        id: "run_99999999-9999-4999-8999-999999999999",
+        id: "run_99999999",
         instanceId: "ins_demo",
         chatId: chats[0]!.id,
         projectId: PROJECT_ID,
@@ -191,7 +192,7 @@ const infoView: ChatInfoView = {
   owner: { kind: "human", id: "usr_demo" },
   instances: [
     {
-      instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      instanceId: "ins_aaaaaaaa",
       agentProfileId: profiles[0]!.id,
       profileName: profiles[0]!.name,
       leases: [],
@@ -204,9 +205,9 @@ const infoView: ChatInfoView = {
     active: [],
     recent: [
       {
-        runId: "run_99999999-9999-4999-8999-999999999999",
+        runId: "run_99999999",
         chatId: chats[0]!.id,
-        instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        instanceId: "ins_aaaaaaaa",
         agentProfileId: profiles[0]!.id,
         status: "completed",
         queuedAt: "2026-06-18T02:28:00.000Z",
@@ -221,7 +222,7 @@ const infoView: ChatInfoView = {
 
 const turnStart: TurnStartContext = {
   schemaVersion: 1,
-  runId: "run_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  runId: "run_aaaaaaaa",
   capturedAt: "2026-06-18T02:28:00.000Z",
   basisRevision: "demo-snapshot-1",
   serializedText: "Demo turn context",
@@ -244,9 +245,9 @@ const turnStart: TurnStartContext = {
   projectSummary: { agentCount: 1, chatCount: 2, machineCount: 0 },
   chatRuns: [
     {
-      runId: "run_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      runId: "run_aaaaaaaa",
       chatId: chats[0]!.id,
-      instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      instanceId: "ins_aaaaaaaa",
       agentProfileId: profiles[0]!.id,
       status: "running",
       isSelf: true,
@@ -255,13 +256,13 @@ const turnStart: TurnStartContext = {
   tasks: [],
   projectId: PROJECT_ID,
   chatId: chats[0]!.id,
-  instanceId: "ins_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  instanceId: "ins_aaaaaaaa",
   agentProfileId: profiles[0]!.id,
   profileName: profiles[0]!.name,
   hostEnabled: true,
   workspace: null,
   activeRun: {
-    runId: "run_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    runId: "run_aaaaaaaa",
     status: "running",
     pendingInputs: 0,
   },
@@ -273,7 +274,7 @@ function workspaceFixture(chat: Chat, currentMessages: Message[]) {
   const profile = profiles[first ? 0 : 1]!;
   const instance: AgentInstance = {
     ...demoInstances[0]!,
-    id: first ? demoInstances[0]!.id : "ins_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    id: first ? demoInstances[0]!.id : "ins_bbbbbbbb",
     chatId: chat.id,
     agentProfileId: profile.id,
   };
@@ -424,7 +425,7 @@ function MessagesScene() {
             onSubmit={() => {
               if (!draft.trim()) return;
               const message: Message = {
-                id: `msg_${crypto.randomUUID()}`,
+                id: newId(ID_PREFIXES.message),
                 chatId: chats[0]!.id,
                 senderKind: "human",
                 senderId: "usr_demo",
@@ -653,7 +654,7 @@ function WorkspaceScene() {
               fixture={fixture}
               onSend={(body) => {
                 const message: Message = {
-                  id: `msg_${crypto.randomUUID()}`,
+                  id: newId(ID_PREFIXES.message),
                   chatId: selectedChat.id,
                   senderKind: "human",
                   senderId: "usr_demo",

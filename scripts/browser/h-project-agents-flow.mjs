@@ -192,7 +192,7 @@ await check("edit_persona_persists_with_same_id", async () => {
       afterReload.persona === updatedPersona &&
       afterReload.id === agentId &&
       afterReload.path === agentPath &&
-      /^agp_[0-9a-f-]{36}$/.test(agentId),
+      /^agp_[0-9a-f]{8,16}$/.test(agentId),
     `id ${agentId} 未变，URL ${afterReload.path}，人设 ${JSON.stringify(afterReload.persona)}`,
   );
 });
@@ -320,7 +320,7 @@ await check("back_forward_keep_target_and_project_context", async () => {
 });
 
 await check("missing_project_settings_shows_not_found", async () => {
-  await page.goto(`${BASE}/projects/prj_00000000-0000-4000-8000-000000000000/settings`, {
+  await page.goto(`${BASE}/projects/prj_00000000/settings`, {
     waitUntil: "domcontentloaded",
   });
   await page.waitForSelector('[data-testid="project-error"]', { timeout: 20000 });
@@ -328,13 +328,13 @@ await check("missing_project_settings_shows_not_found", async () => {
   await shot(page, "p2-h-settings-not-found");
   record(
     "missing_project_settings_shows_not_found",
-    /not_found/.test(meta ?? "") && /req_[0-9a-f-]{36}/.test(meta ?? ""),
+    /not_found/.test(meta ?? "") && /req_[0-9a-f]{8,16}/.test(meta ?? ""),
     `不存在的 projectId 子页显示 ${JSON.stringify(meta)}`,
   );
 });
 
 await check("missing_agent_profile_shows_not_found", async () => {
-  await page.goto(`${BASE}/agents/agp_00000000-0000-4000-8000-000000000000`, {
+  await page.goto(`${BASE}/agents/agp_00000000`, {
     waitUntil: "domcontentloaded",
   });
   await page.waitForSelector('[data-testid="agent-error"]', { timeout: 20000 });
@@ -342,7 +342,7 @@ await check("missing_agent_profile_shows_not_found", async () => {
   await shot(page, "p2-h-agent-not-found");
   record(
     "missing_agent_profile_shows_not_found",
-    /not_found/.test(meta ?? "") && /req_[0-9a-f-]{36}/.test(meta ?? ""),
+    /not_found/.test(meta ?? "") && /req_[0-9a-f]{8,16}/.test(meta ?? ""),
     `不存在的 profileId 显示 ${JSON.stringify(meta)}`,
   );
 });

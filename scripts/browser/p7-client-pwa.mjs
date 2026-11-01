@@ -83,7 +83,7 @@ await runProduction(async ({ page, context, base, directory, seeded: s }) => {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByTestId("message-input").waitFor();
   pass("offline_chat_deep_link_refresh_uses_audited_post_reads", { chatPath });
-  await page.goto(base + "/agents/agp_00000000-0000-4000-8000-000000000000", {
+  await page.goto(base + "/agents/agp_00000000", {
     waitUntil: "domcontentloaded",
   });
   await page.getByRole("heading", { name: "当前页面没有可用的离线副本" }).waitFor();

@@ -12,10 +12,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const directory = mkdtempSync(join(tmpdir(), "p4b-tools-runner-"));
 const evidencePath =
   process.env.SPROUT_REMOTE_TOOLS_EVIDENCE ?? "/tmp/p4b-tools-runner-evidence.json";
-const projectId = "prj_00000000-0000-4000-8000-000000000000";
-const machineId = "mch_00000000-0000-4000-8000-000000000000";
-const requestId = "req_00000000-0000-4000-8000-000000000000";
-const executionId = "exe_00000000-0000-4000-8000-000000000000";
+const projectId = "prj_00000000";
+const machineId = "mch_00000000";
+const requestId = "req_00000000";
+const executionId = "exe_00000000";
 const secret = randomBytes(32).toString("base64url");
 let validCalls = 0;
 let identityInjected = false;
@@ -141,7 +141,7 @@ export default function probe(pi) {
     assert.equal(missing.isError, true);
     assert.equal(missing.details.error.code, 'validation_failed');
     const get = registered.get('sprout_lease_get');
-    for (const forged of [{projectId:'prj_11111111-1111-4111-8111-111111111111'}, {instanceId:'ins_11111111-1111-4111-8111-111111111111'}, {runId:'run_11111111-1111-4111-8111-111111111111'}]) {
+    for (const forged of [{projectId:'prj_11111111'}, {instanceId:'ins_11111111'}, {runId:'run_11111111'}]) {
       const denied = await get.execute('forged', {machineId:${JSON.stringify(machineId)},...forged});
       assert.equal(denied.isError, true);
       assert.equal(denied.details.error.code, 'validation_failed');
@@ -218,12 +218,12 @@ try {
       }
     });
   });
-  const runId = "run_00000000-0000-4000-8000-000000000000";
+  const runId = "run_00000000";
   runner.stdin.write(
     `${JSON.stringify({
       type: "open",
       id: runId,
-      instanceId: "ins_00000000-0000-4000-8000-000000000000",
+      instanceId: "ins_00000000",
       sessionId: randomUUID(),
       sessionDirectory: join(directory, "sessions"),
       cwd: join(directory, "workspace"),
@@ -267,9 +267,7 @@ try {
   );
 } finally {
   if (runner && runner.exitCode === null) {
-    runner.stdin.end(
-      `${JSON.stringify({ type: "close", id: "run_00000000-0000-4000-8000-000000000000" })}\n`,
-    );
+    runner.stdin.end(`${JSON.stringify({ type: "close", id: "run_00000000" })}\n`);
     const timer = setTimeout(() => runner.kill("SIGKILL"), 3000);
     await once(runner, "exit");
     clearTimeout(timer);

@@ -252,7 +252,7 @@ async function call(context, name, input, label, method = "POST") {
   assert.equal(response.status(), 200, body);
   const { result: value } = fromCrossJSON(JSON.parse(body), { refs: new Map() });
   assert.equal(value.requestId, response.headers()["x-sprout-request-id"]);
-  assert.match(value.requestId, /^req_[0-9a-f-]{36}$/);
+  assert.match(value.requestId, /^req_[0-9a-f]{8,16}$/);
   return { value, body };
 }
 function noLeaks(body, tokens) {
@@ -562,7 +562,7 @@ async function before() {
       await meta.waitFor();
       const text = await meta.textContent();
       assert.match(text, /not_found/);
-      assert.match(text, /req_[0-9a-f-]{36}/);
+      assert.match(text, /req_[0-9a-f]{8,16}/);
       const body = await other.locator("body").innerText();
       writeFileSync(join(directory, `isolation-page-${label}.txt`), body);
       const leaked = noLeaks(body, tokens);

@@ -345,7 +345,7 @@ try {
   const cancellation = {
     id: "cancel-row",
     execution_id: "execution",
-    request_id: "cancel:instance-a:req_11111111-1111-4111-8111-111111111111",
+    request_id: "cancel:instance-a:req_11111111",
     project_id: "a",
     machine_id: "machine",
     authorization_generation: 1,

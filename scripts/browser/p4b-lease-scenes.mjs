@@ -174,7 +174,7 @@ for (const colorScheme of ["light", "dark"]) {
         assert.doesNotMatch(firstAuthorization, /ins_aaaaaaaa/);
         assert.match(firstAuthorization, /由该分身的一次运行发起/);
         assert.match(firstAuthorization, /run_12345678/);
-        assert.equal(runTitle, "run_12345678-1234-4234-8234-1234567890ab");
+        assert.equal(runTitle, "run_12345678");
         assert.equal(operationCount, 0, "不再渲染操作正文段落");
         assert.ok(firstResultLength > 0);
         assert.deepEqual(errors, [], `console errors: ${errors.join(" | ")}`);
@@ -213,10 +213,7 @@ for (const colorScheme of ["light", "dark"]) {
         assert.doesNotMatch(text, /已全部排空。|收回已完成|释放已确认|执行成功。/);
         assert.equal(await fencing.getAttribute("data-lease-state"), "fencing");
         await shoot(page, `fencing-details-${colorScheme}-${width}`);
-        assert.equal(
-          await fencing.getAttribute("data-holder-instance"),
-          "ins_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-        );
+        assert.equal(await fencing.getAttribute("data-holder-instance"), "ins_bbbbbbbb");
         const state = await fencing.getByTestId("lease-state").innerText();
         assert.doesNotMatch(state, /空闲|已释放|已收回|成功/);
         assert.equal(
@@ -264,20 +261,10 @@ await check("Project 隔离：当前 Project 看不到另一个 Project 的租�
   try {
     await gotoLeases(page);
     const current = page.getByTestId("lease-scene-overview");
-    assert.equal(
-      await current
-        .locator('[data-holder-instance="ins_cccccccc-cccc-4ccc-8ccc-cccccccccccc"]')
-        .count(),
-      0,
-    );
+    assert.equal(await current.locator('[data-holder-instance="ins_cccccccc"]').count(), 0);
     // 另一个 Project 的面板里能看到它自己的租约，说明在同一台物理 Machine 上独立成立。
     const other = page.getByTestId("lease-scene-other-project");
-    assert.equal(
-      await other
-        .locator('[data-holder-instance="ins_cccccccc-cccc-4ccc-8ccc-cccccccccccc"]')
-        .count(),
-      1,
-    );
+    assert.equal(await other.locator('[data-holder-instance="ins_cccccccc"]').count(), 1);
     assert.match(await other.innerText(), /其他 Project 的分身/);
     record("同一台物理 Machine 上两个 Project 的租约独立成立", true);
     await shoot(page, "project-isolation-dark-free");
@@ -449,10 +436,7 @@ await check("独立租约路由隔离设置并显示租约与远端操作目标"
   });
   try {
     await page.getByTestId("machines-page").waitFor();
-    await page
-      .locator('[data-machine-id="mch_11111111-1111-4111-8111-111111111111"]')
-      .first()
-      .click();
+    await page.locator('[data-machine-id="mch_11111111"]').first().click();
     // Machine 路由保持完整设置及其顺序；租约已迁至独立路由。
     const order = await page.evaluate(() => {
       const order = [

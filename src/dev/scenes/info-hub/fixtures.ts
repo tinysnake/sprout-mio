@@ -6,12 +6,12 @@ import {
   infoHubMachineSummarySchema,
 } from "../../../contracts/info-hub";
 
-export const projectId = "prj_11111111-1111-4111-8111-111111111111";
-const chatId = "cnv_22222222-2222-4222-8222-222222222222";
-const agentProfileId = "agp_33333333-3333-4333-8333-333333333333";
-const instanceId = "ins_44444444-4444-4444-8444-444444444444";
-const machineId = "mch_55555555-5555-4555-8555-555555555555";
-const runId = "run_66666666-6666-4666-8666-666666666666";
+export const projectId = "prj_11111111";
+const chatId = "cnv_8222222222222222";
+const agentProfileId = "agp_33333333";
+const instanceId = "ins_44444444";
+const machineId = "mch_55555555";
+const runId = "run_66666666";
 const now = "2026-06-18T02:28:00.000Z";
 const runs = { available: true, hostEnabled: true, active: [], recent: [] } as const;
 const counts = { proposed: 1, assigned: 0, finished: 0, canceled: 0 };

@@ -81,7 +81,7 @@ describe("自动接续页面事实与 Human 控制", () => {
     const html = render("unknown");
     expect(html).toContain("投递未知");
     expect(html).toContain("不会自动重投");
-    expect(html).toContain("run_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(html).toContain("run_aaaaaaaa");
     expect(html).toContain("人工补发…");
     expect(html).not.toContain("确认补发</button>");
   });

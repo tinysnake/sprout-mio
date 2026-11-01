@@ -183,7 +183,7 @@ try {
   })
   assert.equal(created.status, 200, created.text)
   assert.match(created.requestId ?? '', /^req_/, '响应必须带 x-sprout-request-id')
-  const agentProfileId = created.text.match(/agp_[0-9a-f-]{36}/)?.[0]
+  const agentProfileId = created.text.match(/agp_[0-9a-f]{8,16}/)?.[0]
   assert(agentProfileId, `成功载荷必须包含 agent profile id: ${created.text.slice(0, 200)}`)
   pass('server function 创建 Agent profile 成功', { agentProfileId, requestId: created.requestId })
 
@@ -206,7 +206,7 @@ try {
 
   const noOrigin = await curl(`${base}/_serverFn/${ids.listProjectMembersFn}`, 'agent-no-origin', {
     header: ['x-tsr-serverfn: true', 'accept: application/x-tss-framed, application/json'],
-    body: serverFnBody({ projectId: 'prj_00000000-0000-4000-8000-000000000000' }),
+    body: serverFnBody({ projectId: 'prj_00000000' }),
   })
   assert.equal(noOrigin.status, 200)
   assert(noOrigin.text.includes('unauthorized'), '无 Origin 且未登录必须返回 unauthorized 载荷')

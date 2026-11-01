@@ -17,6 +17,7 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
+import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 
 const mode = process.env.SPROUT_VERIFY_CHAT_MODE ?? "model-fixture";
 assert(["model-fixture", "live"].includes(mode));
@@ -604,7 +605,7 @@ try {
   const ownerSteps = [
     {
       name: "sprout_lease_acquire",
-      arguments: { machineId, expectedGeneration: 0, requestId: `req_${randomUUID()}` },
+      arguments: { machineId, expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
     },
     { name: "sprout_chat_send", arguments: { body: memberMessage } },
   ];

@@ -42,9 +42,9 @@ describe("Machine 呈现映射", () => {
     const stale = observationLabel({
       current: false,
       fact: {
-        machineId: "mch_44444444-4444-4444-8444-444444444444",
+        machineId: "mch_44444444",
         generation: 2,
-        projectId: "prj_11111111-1111-4111-8111-111111111111",
+        projectId: "prj_11111111",
         bindingRevision: 3,
         revision: 4,
         seq: 41,
@@ -59,9 +59,9 @@ describe("Machine 呈现映射", () => {
       observationLabel({
         current: true,
         fact: {
-          machineId: "mch_44444444-4444-4444-8444-444444444444",
+          machineId: "mch_44444444",
           generation: 3,
-          projectId: "prj_11111111-1111-4111-8111-111111111111",
+          projectId: "prj_11111111",
           bindingRevision: 5,
           revision: 5,
           seq: 42,
@@ -73,11 +73,8 @@ describe("Machine 呈现映射", () => {
   });
 
   it("安装命令只带身份与状态目录，不包含票据", () => {
-    const commands = installCommands("mch_11111111-1111-4111-8111-111111111111");
-    const http = installCommands(
-      "mch_11111111-1111-4111-8111-111111111111",
-      "http://192.168.1.10:3210",
-    );
+    const commands = installCommands("mch_11111111");
+    const http = installCommands("mch_11111111", "http://192.168.1.10:3210");
     expect(http.init).toContain("--allow-http http://192.168.1.10:3210");
     expect(http.run).not.toContain("--allow-http");
     for (const origin of [
@@ -86,10 +83,8 @@ describe("Machine 呈现映射", () => {
       "http://127.0.0.1:3210",
       "http://[::1]:3210",
     ])
-      expect(
-        installCommands("mch_11111111-1111-4111-8111-111111111111", origin).init,
-      ).not.toContain("--allow-http");
-    expect(commands.init).toContain("--machine mch_11111111-1111-4111-8111-111111111111");
+      expect(installCommands("mch_11111111", origin).init).not.toContain("--allow-http");
+    expect(commands.init).toContain("--machine mch_11111111");
     expect(commands.init).toContain("--state-dir");
     expect(commands.run).toBe(
       'node "$HOME/.local/share/sprout-worker/main.mjs" run --state-dir "$HOME/.local/share/sprout-worker/identity"',
@@ -99,8 +94,8 @@ describe("Machine 呈现映射", () => {
 
   it("绑定输入沿用共享 schema：空说明合法，限长且不再接受目录", () => {
     const input = {
-      machineId: "mch_11111111-1111-4111-8111-111111111111",
-      projectId: "prj_11111111-1111-4111-8111-111111111111",
+      machineId: "mch_11111111",
+      projectId: "prj_11111111",
       description: "",
       expectedRevision: null,
     };

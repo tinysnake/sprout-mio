@@ -25,8 +25,8 @@ function pending(overrides: Partial<PendingFactView>): PendingFactView {
 
 function membership(overrides: Partial<MembershipView>): MembershipView {
   return {
-    projectId: "prj_00000000-0000-4000-8000-000000000001",
-    machineId: "mch_00000000-0000-4000-8000-000000000001",
+    projectId: "prj_00000001",
+    machineId: "mch_00000001",
     epoch: 1,
     state: "active",
     joinedAt: "2026-01-01T00:00:00.000Z",
@@ -79,11 +79,11 @@ test("未投递通知按 evidence 说明不同原因，不提供强制收回", (
 
 test("active + fencing 仍在当前区但标暂不可用", () => {
   const view = membershipPresentation(membership({}), {
-    projectId: "prj_00000000-0000-4000-8000-000000000001",
-    machineId: "mch_00000000-0000-4000-8000-000000000001",
+    projectId: "prj_00000001",
+    machineId: "mch_00000001",
     generation: 3,
     state: "fencing",
-    holderInstanceId: "ins_00000000-0000-4000-8000-000000000001",
+    holderInstanceId: "ins_00000001",
     changedAt: "2026-01-01T00:00:00.000Z",
     pendingMutationId: null,
   });

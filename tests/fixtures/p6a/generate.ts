@@ -23,7 +23,7 @@ const raw = readFileSync(source, "utf8");
 const samples = JSON.parse(raw) as Sample[];
 const stableId = (prefix: string, value: string) => {
   const hex = createHash("sha256").update(value).digest("hex");
-  return `${prefix}_${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  return `${prefix}_${hex.slice(0, 8)}`;
 };
 const now = new Date("2026-01-01T00:00:00.000Z");
 const definitions = [

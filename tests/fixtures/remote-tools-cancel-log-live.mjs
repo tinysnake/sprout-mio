@@ -20,12 +20,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const directory = mkdtempSync(join(tmpdir(), "p4c-tools-cancel-log-"));
 const evidencePath =
   process.env.SPROUT_REMOTE_TOOLS_EVIDENCE ?? "/tmp/p4c-tools-cancel-log-evidence.json";
-const projectId = "prj_00000000-0000-4000-8000-000000000000";
-const machineId = "mch_00000000-0000-4000-8000-000000000000";
-const requestId = "req_00000000-0000-4000-8000-000000000000";
-const executionId = "exe_00000000-0000-4000-8000-000000000000";
-const cancelId = "cnl_00000000-0000-4000-8000-000000000000";
-const otherExecutionId = "exe_11111111-1111-4111-8111-111111111111";
+const projectId = "prj_00000000";
+const machineId = "mch_00000000";
+const requestId = "req_00000000";
+const executionId = "exe_00000000";
+const cancelId = "cnl_00000000";
+const otherExecutionId = "exe_11111111";
 const time = "2026-10-24T00:00:00.000Z";
 const secret = randomBytes(32).toString("base64url");
 
@@ -268,12 +268,12 @@ try {
       }
     });
   });
-  const runId = "run_00000000-0000-4000-8000-000000000000";
+  const runId = "run_00000000";
   runner.stdin.write(
     `${JSON.stringify({
       type: "open",
       id: runId,
-      instanceId: "ins_00000000-0000-4000-8000-000000000000",
+      instanceId: "ins_00000000",
       sessionId: randomUUID(),
       sessionDirectory: join(directory, "sessions"),
       cwd: join(directory, "workspace"),
@@ -340,9 +340,7 @@ try {
   );
 } finally {
   if (runner && runner.exitCode === null) {
-    runner.stdin.end(
-      `${JSON.stringify({ type: "close", id: "run_00000000-0000-4000-8000-000000000000" })}\n`,
-    );
+    runner.stdin.end(`${JSON.stringify({ type: "close", id: "run_00000000" })}\n`);
     const timer = setTimeout(() => runner.kill("SIGKILL"), 5000);
     await once(runner, "exit");
     clearTimeout(timer);

@@ -185,7 +185,7 @@ try {
     await page.fill('input[name="email"]', `p6b-wiring-${stamp}@example.test`);
     await page.fill('input[name="password"]', randomBytes(18).toString("base64url"));
     await page.click('button[type="submit"]');
-    await page.waitForURL((url) => /^\/projects\/prj_[0-9a-f-]{36}\/chats$/.test(url.pathname), {
+    await page.waitForURL((url) => /^\/projects\/prj_[0-9a-f]{8,16}\/chats$/.test(url.pathname), {
       timeout: 30000,
     });
     const projectId = new URL(page.url()).pathname.split("/")[2];
@@ -227,7 +227,7 @@ try {
       { timeout: 30000 },
     );
     await page.click(`[data-testid="dm-start"][data-agent-profile-id="${agentProfileId}"]`);
-    await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+    await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f]{8,16}$/.test(url.pathname), {
       timeout: 30000,
     });
     const chatPath = new URL(page.url()).pathname;

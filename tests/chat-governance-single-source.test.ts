@@ -14,7 +14,7 @@ import { ResultError } from "../src/components/project/result-error";
  */
 const ctx = {
   userId: "usr_requester",
-  requestId: "req_33333333-3333-4333-8333-333333333333",
+  requestId: "req_33333333",
 };
 
 const owner = { kind: "human" as const, userId: "usr_owner", ctx };
@@ -22,8 +22,8 @@ const member = { kind: "human" as const, userId: "usr_member", ctx };
 const agent = {
   kind: "agent" as const,
   agentProfileId: "agp_agent",
-  instanceId: "ins_33333333-3333-4333-8333-333333333333",
-  runId: "run_33333333-3333-4333-8333-333333333333",
+  instanceId: "ins_33333333",
+  runId: "run_33333333",
   ctx,
 };
 
@@ -116,7 +116,7 @@ describe("失败呈现只在 not_found 里露出 requestId", () => {
         error: {
           code,
           message: "当前对话不存在",
-          requestId: "req_22222222-2222-4222-8222-222222222222",
+          requestId: "req_22222222",
         },
       }),
     );
@@ -125,7 +125,7 @@ describe("失败呈现只在 not_found 里露出 requestId", () => {
   it("members 的 conflict 只说错误码", () => {
     const html = markup("conflict");
     expect(html).toContain("conflict");
-    expect(html).not.toMatch(/req_[0-9a-f-]{36}/);
+    expect(html).not.toMatch(/req_[0-9a-f]{8,16}/);
   });
 
   it("深链的 validation_failed 也不带内部标识", () => {
@@ -133,6 +133,6 @@ describe("失败呈现只在 not_found 里露出 requestId", () => {
   });
 
   it("not_found 保留 requestId，用户还能拿去查诊断", () => {
-    expect(markup("not_found")).toContain("req_22222222-2222-4222-8222-222222222222");
+    expect(markup("not_found")).toContain("req_22222222");
   });
 });

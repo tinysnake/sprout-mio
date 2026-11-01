@@ -31,6 +31,7 @@ import {
 } from "../scenes/management/fixtures";
 import { TaskScenes } from "../scenes/tasks";
 import { Gallery } from "./gallery";
+import { ID_PREFIXES, newId } from "@/contracts/ids";
 
 const entries = [
   ["components", "共享组件"],
@@ -49,7 +50,7 @@ const entries = [
 const requested = new URLSearchParams(location.search).get("scene") ?? "components";
 const selected = entries.some(([value]) => value === requested) ? requested : "components";
 const projectPath = `/projects/${demoProject.id}`;
-const chatPath = `${projectPath}/chats/cnv_44444444-4444-4444-8444-444444444444`;
+const chatPath = `${projectPath}/chats/cnv_44444444`;
 
 function ScenePicker() {
   return (
@@ -212,7 +213,7 @@ function SceneContent() {
             ok: true,
             data: {
               ...parsed.data,
-              id: `prj_${crypto.randomUUID()}`,
+              id: newId(ID_PREFIXES.project),
               createdAt: now,
               updatedAt: now,
             },

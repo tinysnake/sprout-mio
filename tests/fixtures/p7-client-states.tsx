@@ -4,8 +4,8 @@ import { ChatPane } from "../../src/components/chat/chat-pane";
 import { LeaseMutationForm } from "../../src/components/machine/lease-panel";
 import { ConnectivityStatus } from "../../src/components/layout/connectivity-status";
 import { request } from "./p7-client-actions";
-const projectId = "prj_00000000-0000-4000-8000-000000000001";
-const chatId = "cnv_00000000-0000-4000-8000-000000000002";
+const projectId = "prj_00000001";
+const chatId = "cnv_00000002";
 const ok = (data: any) => ({ ok: true as const, data, requestId: "req_p7" });
 const session: any = {
   kind: "group",

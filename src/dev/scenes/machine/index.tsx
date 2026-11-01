@@ -46,6 +46,7 @@ import {
   applyLeaseMutation,
   completedReceipt,
 } from "./lease-fixtures";
+import { ID_PREFIXES, newId } from "@/contracts/ids";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -396,7 +397,7 @@ function MachineLifecycleProbe({ go }: { go: (to: string) => void }) {
     parent: MachineEnrollment | null;
     mounted: boolean;
   }>({
-    machineId: "mch_11111111-1111-4111-8111-111111111111",
+    machineId: "mch_11111111",
     parent: null,
     mounted: true,
   });
@@ -572,7 +573,7 @@ export function MachineScenes() {
     const now = "2026-10-18T07:20:00.000Z";
     const detail: MachineDetail = {
       machine: {
-        id: `mch_${crypto.randomUUID()}`,
+        id: newId(ID_PREFIXES.machine),
         name: name.trim(),
         rootDirectory: null,
         rootRevision: 1,
@@ -843,7 +844,7 @@ export function MachineScenes() {
           installOrigin="http://192.168.1.10:3210"
           leases={draft.leases}
           holderNames={demoHolderNames}
-          runs={[{ runId: "run_12345678-1234-4234-8234-1234567890ab", status: "completed" }]}
+          runs={[{ runId: "run_12345678", status: "completed" }]}
           executions={demoExecutions}
           onLeaseMutate={leaseMutation}
           onRenewEnrollment={renew}

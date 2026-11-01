@@ -17,6 +17,7 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
+import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 
 if (process.argv[2] === "--service") {
   // Same private IPC boundary seam as execution-live-service.ts: authenticated
@@ -659,11 +660,11 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       "Worker directory accessible",
     );
     const marker = `TASK_WORKER_${randomUUID().replaceAll("-", "")}`;
-    const lease = { machineId, expectedGeneration: 0, requestId: `req_${randomUUID()}` };
+    const lease = { machineId, expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) };
     const shell = {
       machineId,
       authorizationGeneration: 1,
-      requestId: `req_${randomUUID()}`,
+      requestId: newId(ID_PREFIXES.request),
       command: `printf '${marker}\\n'`,
       cwd: join(root, project.id),
       waitMs: 1000,

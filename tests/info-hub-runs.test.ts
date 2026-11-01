@@ -92,7 +92,7 @@ beforeAll(() => {
       if (!turn0.ok) throw new Error("轮初上下文查询失败");
       transitionAgentRun(runRow.id, "failed", { errorCode: "repo_workdir_missing", errorMessage: "工作副本不存在：/ghost" }, { userId: userA.userId, requestId: "req_fail" });
       const fixtureCommit = "${FIXTURE_COMMIT}";
-      sqlite.prepare('INSERT INTO repo_checkout (id, project_id, path, source_kind, source, ref, "commit", resolved_at, size_bytes, status) VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch(), ?, ?)').run("repoc_00000000-0000-4000-8000-000000000001", projectId, "/verify/repos/prj-fixture", "bound_copy", "/verify/repos/prj-fixture", "main", fixtureCommit, 64, "ready");
+      sqlite.prepare('INSERT INTO repo_checkout (id, project_id, path, source_kind, source, ref, "commit", resolved_at, size_bytes, status) VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch(), ?, ?)').run("repoc_00000001", projectId, "/verify/repos/prj-fixture", "bound_copy", "/verify/repos/prj-fixture", "main", fixtureCommit, 64, "ready");
 
       const turn1 = unwrap(await infoHub.readTurnContextBoundary(readInput, userA.headers, "req_t1"));
       await chats.sendMessageBoundary({chatId, body: "下一轮"}, userA.headers, "req_next");

@@ -99,7 +99,7 @@ try {
   await page.locator('input[name="email"]').fill(email);
   await page.locator('input[type="password"]').fill(randomBytes(24).toString("base64url"));
   await page.locator('button[type="submit"]').click();
-  await page.waitForURL((url) => /^\/projects\/prj_[0-9a-f-]{36}\/chats$/.test(url.pathname));
+  await page.waitForURL((url) => /^\/projects\/prj_[0-9a-f]{8,16}\/chats$/.test(url.pathname));
   await page.waitForSelector('[data-testid="chat-list-content"]');
 
   await page.click('[data-testid="project-selector"]');
@@ -112,7 +112,7 @@ try {
   );
   await page.click('[data-testid="project-submit"]');
   await page.waitForURL((url) => {
-    const match = /^\/projects\/(prj_[0-9a-f-]{36})\/chats$/.exec(url.pathname);
+    const match = /^\/projects\/(prj_[0-9a-f]{8,16})\/chats$/.exec(url.pathname);
     return match !== null && match[1] !== previousProjectId;
   });
   const projectId = new URL(page.url()).pathname.split("/")[2]!;

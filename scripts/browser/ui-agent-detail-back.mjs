@@ -101,13 +101,14 @@ await check("setup_chat_and_profile", async () => {
     timeout: 20000,
   });
   await page.click(`[data-testid="dm-start"][data-agent-profile-id="${profileId}"]`);
-  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f-]{36}$/.test(url.pathname), {
+  await page.waitForURL((url) => /\/chats\/cnv_[0-9a-f]{8,16}$/.test(url.pathname), {
     timeout: 20000,
   });
   chatPath = pathOf();
   record(
     "setup_chat_and_profile",
-    /^agp_[0-9a-f-]{36}$/.test(profileId) && /^cnv_[0-9a-f-]{36}$/.test(chatPath.split("/").pop()),
+    /^agp_[0-9a-f]{8,16}$/.test(profileId) &&
+      /^cnv_[0-9a-f]{8,16}$/.test(chatPath.split("/").pop()),
     `profile ${profileId}，对话 ${chatPath}`,
   );
 });
@@ -143,7 +144,7 @@ await check("chat_profile_link_carries_source_and_back_returns", async () => {
   const instance = (await page.textContent('[data-testid="chat-instance-id"]'))?.trim();
   record(
     "back_returns_to_same_chat_with_inspector",
-    pathOf() === chatPath && searchAfter === "1" && /^ins_[0-9a-f-]{36}$/.test(instance ?? ""),
+    pathOf() === chatPath && searchAfter === "1" && /^ins_[0-9a-f]{8,16}$/.test(instance ?? ""),
     `返回到 ${pathOf()}${searchOf()}，分身 ${instance}`,
   );
 });

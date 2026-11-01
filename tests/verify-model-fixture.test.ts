@@ -385,7 +385,7 @@ it("validates the UI lease intent and binds its request ID to the exact mutation
     expectedGeneration: 2,
     targetInstanceId: "target-instance",
   };
-  const requestId = "req_41ba6f8b-527c-46ea-9f94-687e740d3e29";
+  const requestId = "req_41ba6f8b";
   const content = `请使用 sprout_lease_handoff 工具执行以下租约请求，参数必须保持一致。先读取当前租约，若代次已变化请报告冲突，不要自动重试。只操作这台明确指定的 Machine；不要运行 shell 或修改文件。参数：${JSON.stringify({ ...parameters, requestId })}。完成后报告服务端收据。`;
   fixture.arm("operator", leaseTurn("handoff", parameters));
   const tools = [
@@ -429,7 +429,7 @@ it.each(["action", "machine", "generation", "target", "request"] as const)(
       targetInstanceId: "target-instance",
     };
     fixture.arm("operator", leaseTurn("handoff", parameters));
-    const changed = { ...parameters, requestId: "req_41ba6f8b-527c-46ea-9f94-687e740d3e29" };
+    const changed = { ...parameters, requestId: "req_41ba6f8b" };
     if (variant === "machine") changed.machineId = "other-machine";
     if (variant === "generation") changed.expectedGeneration++;
     if (variant === "target") changed.targetInstanceId = "other-instance";

@@ -338,7 +338,7 @@ async function runCell(cell: Cell) {
     await healthy();
     // 宿主重启后进程内的 grant 注册表是空的：真实产品沿用同一 chat 与同一 agent instance，
     // 只新建一条 run 与 grant（与 execution-live-e2e 的 S9 同一条路径）。
-    const restartRunId = `run_${randomUUID()}`;
+    const restartRunId = newId(ID_PREFIXES.run);
     sqlite
       .prepare(
         "INSERT INTO agent_run(id,instance_id,chat_id,project_id,request_id,status,started_at,session_id) VALUES (?,?,?,?,?,'running',?,?)",

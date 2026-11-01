@@ -238,11 +238,7 @@ assert.throws(
   fail("not_found"),
 );
 assert.throws(
-  () =>
-    cancelExecution(
-      { executionId: "exe_00000000-0000-4000-8000-000000000000", requestId: req() },
-      human,
-    ),
+  () => cancelExecution({ executionId: "exe_00000000", requestId: req() }, human),
   fail("not_found"),
 );
 pass("反证：另一用户的 session、他人 Project/Machine 上的执行与不存在的执行都是 not_found");

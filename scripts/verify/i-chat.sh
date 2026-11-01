@@ -171,7 +171,7 @@ try {
   const origin = `Origin: ${base}`
   const anonymous = await curl(`${base}/_serverFn/${ids.sendMessageFn}`, 'chat-anonymous', {
     header: ['x-tsr-serverfn: true', origin, 'accept: application/x-tss-framed, application/json'],
-    body: serverFnBody({ chatId: 'cnv_00000000-0000-4000-8000-000000000000', body: '无会话' }),
+    body: serverFnBody({ chatId: 'cnv_00000000', body: '无会话' }),
   })
   assert.equal(anonymous.status, 200, anonymous.text)
   assert(anonymous.text.includes('unauthorized'), '未登录必须返回 unauthorized 载荷')
@@ -179,7 +179,7 @@ try {
 
   const noOrigin = await curl(`${base}/_serverFn/${ids.listChatsFn}`, 'chat-no-origin', {
     header: ['x-tsr-serverfn: true', 'accept: application/x-tss-framed, application/json'],
-    body: serverFnBody({ projectId: 'prj_00000000-0000-4000-8000-000000000000' }),
+    body: serverFnBody({ projectId: 'prj_00000000' }),
   })
   assert.equal(noOrigin.status, 200)
   assert(noOrigin.text.includes('unauthorized'), '无 Origin 且未登录必须返回 unauthorized 载荷')
@@ -200,7 +200,7 @@ try {
     body: serverFnBody({ name: '标题 HTTP 验收 A' }),
   })
   assert.equal(projectA.status, 200, projectA.text)
-  const projectAId = projectA.text.match(/prj_[0-9a-f-]{36}/)?.[0]
+  const projectAId = projectA.text.match(/prj_[0-9a-f]{8,16}/)?.[0]
   assert(projectAId, `创建 Project 必须返回 id: ${projectA.text.slice(0, 200)}`)
   const profileA = await curl(`${base}/_serverFn/${ids.createAgentProfileFn}`, 'title-profile-a', {
     cookie: true,
@@ -208,7 +208,7 @@ try {
     body: serverFnBody({ name: '标题 HTTP Agent' }),
   })
   assert.equal(profileA.status, 200, profileA.text)
-  const profileAId = profileA.text.match(/agp_[0-9a-f-]{36}/)?.[0]
+  const profileAId = profileA.text.match(/agp_[0-9a-f]{8,16}/)?.[0]
   assert(profileAId, `创建 profile 必须返回 id: ${profileA.text.slice(0, 200)}`)
   const memberA = await curl(`${base}/_serverFn/${ids.addProjectMemberFn}`, 'title-member-a', {
     cookie: true,
@@ -222,7 +222,7 @@ try {
     body: serverFnBody({ projectId: projectAId, agentProfileId: profileAId }),
   })
   assert.equal(dmA.status, 200, dmA.text)
-  const chatAId = dmA.text.match(/cnv_[0-9a-f-]{36}/)?.[0]
+  const chatAId = dmA.text.match(/cnv_[0-9a-f]{8,16}/)?.[0]
   assert(chatAId, `创建 DM 必须返回 chat id: ${dmA.text.slice(0, 200)}`)
 
   const anonymousTitle = await curl(`${base}/_serverFn/${ids.updateChatTitleFn}`, 'chat-title-anonymous', {
