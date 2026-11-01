@@ -83,7 +83,9 @@ prod 的代码 checkout（`$SPROUT_RUNTIME_ROOT/prod/app`）从远端 clone，�
 
 直连被拦时看到的是这类报错：`Error in the HTTP2 framing layer`，或 `Failed to connect to github.com port 443 after <n> ms`。拦截是间歇的，同一个入口可能一会儿通一会儿不通，所以判断实例自己的出网要看探针结果与 `repo_checkout` 有没有建成，不能看某一次 curl。
 
-优先只给 git 打代理，不要给整个进程设 `https_proxy`。后者会连带改掉 Pi 的模型调用等其它 https 出口，那些出口要不要走代理是另一件事。git 支持按 URL 前缀配代理，用实例 `env` 里的 `GIT_CONFIG_*` 三元组表达，只对目标主机生效：
+代理可以在两个层级上给。实例整体走代理用 `http_proxy`、`https_proxy`，配 `no_proxy` 排掉本机与内网（`localhost,127.0.0.1,<实例所在主机的内网 IP>,::1`），否则实例之间与浏览器访问也会绕进代理。这会让 Pi 的模型调用等其它 https 出口一起走代理，这是产品上的选择，不是技术上的限制：prod 现在是这个配置。
+
+只想让 git 出去时，用 `GIT_CONFIG_*` 三元组按 URL 前缀配，只对目标主机生效：
 
 ```text
 GIT_CONFIG_COUNT=1
@@ -91,7 +93,9 @@ GIT_CONFIG_KEY_0=http.https://<host>/.proxy
 GIT_CONFIG_VALUE_0=http://<代理主机>:<端口>
 ```
 
-具体值不要写进仓库。`scripts/verify/deploy-leaks.sh` 会拿实例 `env` 里键名形如 `[A-Z0-9_]+`、值长度不小于 16 的项去 grep tracked 文件，写了就红。
+两个层级可以同时开：实例整体系代理负责 git 之外的子进程（包安装、curl），`GIT_CONFIG_*` 把 git 钉在同一个出口上，`http_proxy` 被去掉时 git 仍然能出去。prod 两样都有。
+
+具体值不要写进仓库。`scripts/verify/deploy-leaks.sh` 会拿实例 `env` 里键名形如 `[A-Za-z0-9_]+`、值长度不小于 16 的项去 grep tracked 文件，写了就红。
 
 出网检查是 preflight，不是每次校验都要跑的不变量。`SPROUT_VERIFY_EGRESS=1 bash scripts/deploy/verify.sh prod` 会对库里每个 http(s) 远端做一次 `ls-remote --heads`，30 秒上界内没有成功就 FAIL。`scripts/deploy/promote.sh` 在 clone 之前带这个开关跑一次，失败就在动 prod 之前退出；部署后的校验、`rollback.sh`、`drill.sh` 与 `rehearse.sh` 的部署后校验不带开关，所以断网不会把一次已经成功的部署回滚。`scripts/deploy/selftest.sh` 的两个负向用例也带开关。
 
