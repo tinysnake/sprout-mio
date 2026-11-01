@@ -616,6 +616,8 @@ export function rekeyShortIds(options: RekeyOptions): RekeyResult {
       const fs = options.fs
         ? planFilesystem(mapping, options.repoRoot, options.piDataRoot)
         : undefined;
+      // 数据库已提交但文件系统阶段可能中断，所以已应用也要能单独重跑 --fs。
+      if (fs && options.apply) applyFilesystem(fs, mapping, log);
       return {
         status: "already-applied",
         columns: [],

@@ -53,6 +53,9 @@ bash "$REPO_ROOT/scripts/deploy/check-migration.sh" "$(db_path prod)" "$app" || 
 
 bash "$REPO_ROOT/scripts/deploy/stop.sh" prod >/dev/null 2>&1 || true
 DATABASE_URL="$(db_path prod)" pnpm --dir "$app" db:migrate >"$dir/logs/migrate.log" 2>&1 || restore "正式库迁移失败"
+# 短 id 重写必须紧跟在迁移后、启动前：新代码只接受 前缀_8 位 hex，旧库还是 前缀_UUID。
+# 脚本幂等，已应用的库零变更；文件系统阶段中断时可单独重跑 --fs 续上。
+bash "$REPO_ROOT/scripts/deploy/rekey-ids.sh" prod >"$dir/logs/rekey.log" 2>&1 || restore "ID 短格式重写失败"
 bash "$REPO_ROOT/scripts/deploy/start.sh" prod >/dev/null || restore "启动失败"
 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null || restore "部署后校验失败"
 

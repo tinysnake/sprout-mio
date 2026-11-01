@@ -318,4 +318,18 @@ describe("id 短格式重写迁移", () => {
     expect(again.fs?.rewrites).toHaveLength(0);
     expect(readdirSync(repoRoot)).toEqual([mapping.get(PROJECT_OLD)]);
   });
+
+  it("数据库已提交、文件系统阶段中断后，单独重跑 --fs 仍会把目录改过来", () => {
+    const { directory, dbPath } = fixture();
+    const repoRoot = join(directory, "repos");
+    mkdirSync(join(repoRoot, PROJECT_OLD), { recursive: true });
+
+    const first = rekeyShortIds({ dbPath, apply: true, fs: false, repoRoot });
+    expect(first.status).toBe("applied");
+    expect(readdirSync(repoRoot)).toEqual([PROJECT_OLD]);
+
+    const recovery = rekeyShortIds({ dbPath, apply: true, fs: true, repoRoot });
+    expect(recovery.status).toBe("already-applied");
+    expect(readdirSync(repoRoot)).toEqual([mappingOf(first).get(PROJECT_OLD)]);
+  });
 });

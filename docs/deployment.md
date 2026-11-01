@@ -128,6 +128,7 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/start.sh <instance>` | 起服务、写 pid 文件、等健康检查通过 |
 | `scripts/deploy/stop.sh <instance>` | 先 SIGTERM，十秒不退再 SIGKILL |
 | `scripts/deploy/check-migration.sh <db>` | 在库副本上先跑一次迁移并比对表数量与完整性 |
+| `scripts/deploy/rekey-ids.sh <instance>` | 把实例库与 `repos/`、`pi/` 里的旧格式 id 重写成 `前缀_8 位 hex`，幂等 |
 | `scripts/deploy/drill.sh <sha>` | 在演练实例上部署某个提交并做健康检查 |
 | `scripts/deploy/promote.sh <tag>` | 把某个 tag 部署到 prod，失败自动回滚 |
 | `scripts/deploy/rollback.sh [备份文件]` | 恢复最近一次（或指定）备份并切回上一个 tag |
@@ -156,10 +157,13 @@ bash scripts/deploy/promote.sh deploy/2026-11-01-1200
 3. `pnpm install --frozen-lockfile`。
 4. 在**库的副本**上跑迁移，用表与列快照对比确认只多了预期的变化。
 5. 迁移真库。
-6. `pnpm build`。
-7. 重启服务并等 `/api/health` 通过。
+6. 把库里的旧格式 id（`前缀_UUID`）重写成 `前缀_8 位 hex`，同时改名 `repos/` 与 `pi/` 下的目录（`scripts/deploy/rekey-ids.sh`）。
+7. `pnpm build`。
+8. 重启服务并等 `/api/health` 通过。
 
 第 4 步是关键。迁移是单向的，跑错就没得退，所以先在副本上跑一遍并比对快照，再动真库。
+
+第 6 步也是单向的。`rekey-short-ids.ts` 幂等，完成标记写进库（`__id_rekey_done`），第二次运行零变更；它在单个事务里改写 id 列与外键列、摘除并重建身份不可变触发器、跑 `foreign_key_check`，失败整体回滚。文件系统阶段在数据库提交之后，中断时可单独重跑 `--fs` 续上（由库里的 `id_map` 驱动，不靠重算）。散文列 `message.body` 与 `turn_context.serialized_text` 里的旧 id 原样保留。
 
 ## 演练
 
