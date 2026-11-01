@@ -92,7 +92,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 ## 已知限制与未证明项
 
-1. **没有真机证据。** 手机相关结论全部来自 Chromium 视口模拟（宽 390×844），没有 iOS Safari 或 Android Chrome 的物理设备、软键盘、真实滚动惯性。I-P7 第 4 条与 UI-P7 第 4 条因此保持未勾选。
+1. **真机只到 Human 亲自走过，没有留存设备取证。** Human 在局域网预览上用手机与电脑逐项验过 UI-P7 的导航、深链、窄屏与输入交互，并确认通过（`6a676a9`），但没有保留设备截图或录屏，也没有跨 iOS/Android 的对照。PWA 装机、独立窗口与离线体验的评审由 Human 决定推迟到部署与 HTTPS 就绪之后，因此 UI-P7 第 3 条保持未勾。
 2. **跨机与现场恢复未验证。** 只在本机全新目录恢复并启动；没有第二台机器、不同文件系统、网络挂载，也没有 ENOSPC、`fsync` 失败、VACUUM 过程中断电。Worker 的 journal/结果文件、Git checkout、模型 session 文件都在库外，不在备份范围。
 3. **性能基线是单机单请求。** 5 个端点、并发 1、keep-alive、单机 M4；没有并发吞吐、冷缓存、跨网络、鉴权失败、写请求。数字写进 `.verify/p7-service-baseline.json`，不设产品 SLA。空载复跑（load average 4）的实测：`health` p95 0.393ms、`auth-session` 1.018ms、`diagnostics-project-page-200` 1.576ms；日志读取 `pageP95` 2.618ms、`fullP95` 16.987ms。早前 1.39→10.71ms 与 16.82→60.70ms 的抖动是三个 worker 同时占 CPU 造成的，不能当基线。
 4. **付费模型路由未验。** `p7-loop-multiround` 只跑 `model-fixture`（`paid-model-calls=0`）；真实 provider 表现属 MANUAL `p6a-live-routing`。
