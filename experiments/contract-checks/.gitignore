@@ -1,5 +1,0 @@
-node_modules/
-.verify/
-*.db
-*.db-wal
-*.db-shm
