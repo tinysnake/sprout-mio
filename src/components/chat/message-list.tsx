@@ -129,7 +129,7 @@ export function MessageList({
                     ? "未关联 run · 不推断归属"
                     : links.map((run) => (
                         <span key={run.runId} className="mr-2 inline-flex items-center gap-1">
-                          <span className="font-mono">{run.runId.slice(0, 12)}…</span>
+                          <span className="font-mono">{run.runId}</span>
                           <span>{RUN_STATUS_LABELS[run.status] ?? run.status}</span>
                         </span>
                       ))}

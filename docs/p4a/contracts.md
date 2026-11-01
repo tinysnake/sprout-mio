@@ -6,7 +6,7 @@
 
 `src/contracts/machine.ts` 是 Human 投影和输入的唯一所有者。`src/contracts/worker.ts` 是 Worker 与 host 共用的私有 wire schema。两个模块只依赖 Zod 和共享契约，不依赖 Node、数据库、认证或 runtime。通用 `src/contracts/index.ts` 仅导出 Human 模块。
 
-`ID_PREFIXES.machine` 为 `mch`。`MachineId` 使用现有 `AppId<typeof ID_PREFIXES.machine>`，没有新的品牌体系。所有边界 Machine、Project、boot 和 request ID 使用现有 `appIdPattern` 的小写前缀 UUID v4。attemptId 使用无前缀 UUID v4。Human createdBy 是认证系统的非空 user ID。
+`ID_PREFIXES.machine` 为 `mch`。`MachineId` 使用现有 `AppId<typeof ID_PREFIXES.machine>`，没有新的品牌体系。所有边界 Machine、Project、boot 和 request ID 使用现有 `appIdPattern`，即 `前缀_` 加 8 位小写十六进制（见 [P1 开发约定](../p1/conventions.md#输入与错误)）。attemptId 使用无前缀 UUID v4。Human createdBy 是认证系统的非空 user ID。
 
 下文所有对象 schema 都拒绝未知字段。类型通过 Zod 推导。`MachineOperations` 是未来 server functions 的签名接口，没有占位实现。身份、连接代次、Project 工作目录意图分别建模。连接观察不表示租约、空闲、释放或远端操作能力。
 
@@ -14,7 +14,7 @@
 
 | schema                             | type 或导出             | 精确约束                                                                                                                                     |
 | ---------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `machineIdSchema`                  | `MachineId`             | `mch_` UUID v4                                                                                                                               |
+| `machineIdSchema`                  | `MachineId`             | `mch_` 加 8 位小写十六进制                                                                                                                               |
 | `positiveSafeIntegerSchema`        | 无单独类型              | 整数 1 到 9007199254740991                                                                                                                   |
 | `macosAbsolutePathSchema`          | 无单独类型              | 1 到 4096 个 JS 字符，以 `/` 开头，无 NUL；不 trim、不展开 `~` 或变量，不做文件系统探测                                                      |
 | `machineSchema`                    | `Machine`               | id、trim 后 1 到 80 字 name、rootDirectory 为绝对路径或 null、rootRevision 为正 safe integer、非空 createdBy、ISO UTC createdAt 和 updatedAt |

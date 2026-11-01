@@ -25,7 +25,7 @@ Human barrel `src/contracts/index.ts` 导出 lease 全部、`executionSubmitInpu
 
 以下 `O` 均为 `z.strictObject`，未知字段被拒绝；未写 `?` 的属性必须存在。`null` 与省略不同。
 
-- `I(prefix)`：`appIdPattern(ID_PREFIXES.*)` 的前缀 UUID v4 字符串。run 使用 `runIdSchema`，格式 `run_UUIDv4`。
+- `I(prefix)`：`appIdPattern(ID_PREFIXES.*)` 的 `前缀_` 加 8 位小写十六进制字符串。run 使用 `runIdSchema`，格式 `run_` 加 8 位十六进制。
 - `N`：整数且 `1 ≤ n ≤ 9007199254740991`。`Z`：整数且 `0 ≤ n ≤ 9007199254740991`。不做类型强转。
 - `T`：`z.iso.datetime()`。wire 使用 ISO datetime，数据库新时间列使用 Unix epoch 毫秒。
 - `H`：64 个小写十六进制字符。

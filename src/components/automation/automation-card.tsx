@@ -254,7 +254,7 @@ export function AutomationCard({
                 onClick={() => void submit("abort", runId)}
               >
                 停止这个运行
-                {view.activeRunIds.length > 1 ? ` · ${runId.slice(-8)}` : ""}
+                {view.activeRunIds.length > 1 ? ` · ${runId}` : ""}
               </Button>
               <p className="text-xs text-muted-foreground">只停止此 run</p>
             </div>

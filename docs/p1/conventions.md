@@ -16,7 +16,9 @@
 
 在 HTTP、server function、CLI 和环境变量边界使用 Zod 解析外部数据。内部代码接收已解析的类型，不重复校验同一份数据。
 
-Project 创建输入使用 `createProjectInput.parse()` 或 `safeParse()`。名称 trim 后长度为 1 到 80，description 可省略，存在时长度不超过 500。完整对象使用 `projectSchema` 校验带 `prj_` UUID 的 ID 与 ISO 日期。完整对象和详情输入的 ID 都复用 `src/contracts/ids.ts` 的 `appIdPattern(ID_PREFIXES.project)`，只接受相同的 UUID v4 格式。
+Project 创建输入使用 `createProjectInput.parse()` 或 `safeParse()`。名称 trim 后长度为 1 到 80，description 可省略，存在时长度不超过 500。完整对象使用 `projectSchema` 校验带 `prj_` 前缀的 ID 与 ISO 日期。完整对象和详情输入的 ID 都复用 `src/contracts/ids.ts` 的 `appIdPattern(ID_PREFIXES.project)`。
+
+应用自有 ID 统一为 `前缀_随机段`：前缀取自 `src/contracts/ids.ts` 的 `ID_PREFIXES`，随机段是 8 位小写十六进制（`newId(prefix)` 生成，例如 `prj_b9594a03`、`tsk_604bb2e1`）。`appIdPattern` 接受 8 到 16 位随机段，因此加长 ID 只改常量、不需要再迁一次数据。新 ID 只经 `newId` 生成，不在调用点拼字符串；外部系统的 ID（better-auth 的 user、session、account、verification，Worker wire 的 attemptId）不走这套格式。
 
 业务结果统一使用 `AppResult<T>`。成功分支为 `{ ok: true, data, requestId }`，失败分支为 `{ ok: false, error, requestId }`。成功必须有 data，失败必须有 error，不允许同时携带两个分支的字段。TypeScript 判别字段是 `ok`。
 
