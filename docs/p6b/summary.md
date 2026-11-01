@@ -242,7 +242,14 @@ FAIL l-docs-probes 8 of 28 probes failed
 ## 未验证项
 
 - 独立技术验收结论：无报告、无判定版本，本文件不作 PASS 声明。
-- Human 亲自体验：无确认版本（[I-P6b](../development-plan.md#i-p6b-集成-info-hub-全部一期视角) 第 4 条未勾）。
+- Human 亲自体验：已在 P7 评审中一并确认，见[human-体验确认](#human-体验确认)（[I-P6b](../development-plan.md#i-p6b-集成-info-hub-全部一期视角) 第 4 条）。
 - P6b 设计的 Human 确定记录：本仓库没有；页面形状由实现单元自检。
 - 真实页面上的 `submitted` 收据、真实网络下的退避/超时/离线：见上两节。
 - `l-docs` 本轮的 FAIL：见[计划状态与本轮门禁冲突](#计划状态与本轮门禁冲突)。
+
+## human-体验确认
+
+- 确认记录：Human 亲自体验确认通过，版本 `fef2612`
+- 确认范围：Project、Chat、Agent、Machine 四个视角的信息读取与「事实时间」，以及 Chat 页每轮带给 Agent 的轮初上下文与 `sprout_info_hub_get` 的实际调用结果。
+- 确认方式：Human 在 P7 章节的真实页面评审里一并走完本章页面，据此要求去掉状态行里给人类看的内部元数据（`Info Hub 已是最新 · 事实时间 …`）；评审结束时明确回复「评审完毕，可继续」。评审在 `integration/p7` 上进行，该状态后来以 `fef2612` 合入 main。
+- 复验：`bash scripts/verify/bf-p6b-pages.sh`。
