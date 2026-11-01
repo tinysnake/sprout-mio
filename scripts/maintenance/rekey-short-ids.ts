@@ -1,14 +1,7 @@
 import Database from "better-sqlite3";
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { existsSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ID_PREFIXES } from "../../src/contracts/ids";
 
 /**
@@ -773,7 +766,13 @@ function main(): void {
     console.log("（干跑：没有写入任何改动；加 --apply 才落库，加 --fs 处理文件系统）");
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// 部署目录可能是符号链接，realpath 之后再比，否则入口判断为假、脚本静默什么都不做却返回 0。
+const entryPath = process.argv[1];
+if (
+  entryPath &&
+  existsSync(entryPath) &&
+  realpathSync(entryPath) === realpathSync(fileURLToPath(import.meta.url))
+) {
   try {
     main();
   } catch (error) {

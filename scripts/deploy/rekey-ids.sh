@@ -17,11 +17,16 @@ script="$app/scripts/maintenance/rekey-short-ids.ts"
 load_env "$name"
 
 run() {
+  local log
+  log="$(mktemp)"
   # DATABASE_URL 让脚本与实例库一致；--db 显式传同一条路径，避免依赖 cwd。
   DATABASE_URL="$(db_path "$name")" node --import tsx "$script" \
     --db "$(db_path "$name")" \
     --repo-root "${SPROUT_REPO_DIR}" \
-    --pi-data-root "${SPROUT_PI_DATA_DIR}" "$@"
+    --pi-data-root "${SPROUT_PI_DATA_DIR}" "$@" | tee "$log"
+  # 入口判断误判时脚本会静默什么都不做并返回 0，所以必须有状态行才算真跑过。
+  grep -q '状态：' "$log" || fail "重写脚本没有报出状态行，这次调用实际没跑"
+  rm -f "$log"
 }
 
 say "ID 重写干跑"
