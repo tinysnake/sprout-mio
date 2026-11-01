@@ -128,8 +128,10 @@ export function issueRemoteToolGrant(
   // on failure/abort/close. Keeping the exact process here prevents a replacement
   // runner from sharing this run's grant.
   registry.set(grant.id, { runId, bootId: ctx.bootId, process });
+  // Runner 是本进程拉起的子进程，走回环直连本实例；经 APP_ORIGIN 回连要绕一趟
+  // 公网边缘（TLS 终止代理），实测出现数秒甚至超过客户端 15 秒超时的抖动。
   return {
-    endpoint: new URL("/api/remote/agent", config.APP_ORIGIN).href,
+    endpoint: new URL("/api/remote/agent", `http://127.0.0.1:${config.PORT}`).href,
     secret,
     expiresAt: grant.expiresAt.toISOString(),
     projectId: grant.projectId,
@@ -214,11 +216,9 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
   const { requestId } = getRequestContext(request);
   const headers = { [REQUEST_ID_HEADER]: requestId, "cache-control": "no-store" };
   try {
-    if (
-      request.headers.has("origin") ||
-      new URL(request.url).origin !== new URL(config.APP_ORIGIN).origin
-    )
-      throw new RemoteError("forbidden");
+    // 鉴权只有 grant 本身：每个 run 一份 43 字符 secret，且绑定 run/instance/chat/
+    // user 与本进程存活的 runner。request.url 的 origin 不能作为边界：实例在 TLS
+    // 终止代理之后运行，进程看到的是代理转发来的 http URL，与 APP_ORIGIN 永不相等。
     const runtime = await machineRuntimeContext();
     const ctx = { ...runtime, requestId };
     // Fail missing/invalid credentials before consuming body, then recheck in the

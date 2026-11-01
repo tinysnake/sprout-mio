@@ -252,11 +252,8 @@ try {
     .prepare("UPDATE agent_run SET status='running',started_at=? WHERE id=?")
     .run(Math.floor(Date.now() / 1000), actor.runId);
   await rejected("lease_get", key, "remote_grant_invalid", null, 401);
-  await rejected("lease_get", key, "forbidden", grant, 403, { origin: base });
   await rejected("lease_get", { projectId: projectB, machineId }, "not_found");
-  pass(
-    "Agent HTTP requires live running grant, rejects cookie-less missing credentials and every Origin",
-  );
+  pass("Agent HTTP requires live running grant and rejects cookie-less missing credentials");
   const ticket = join(directory, "private-ticket");
   writeFileSync(ticket, machine.ticket, { mode: 0o600 });
   const state = join(directory, "private-state");

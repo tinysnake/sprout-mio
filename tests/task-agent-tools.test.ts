@@ -48,6 +48,7 @@ await once(server, "listening");
 const address = server.address();
 if (!address || typeof address === "string") throw new Error("HTTP address missing");
 process.env.APP_ORIGIN = `http://127.0.0.1:${address.port}`;
+process.env.PORT = String(address.port);
 const { config } = await import("../src/lib/config");
 const { startRuntime, shutdownRuntime, machineRuntimeContext } =
   await import("../src/server/runtime");
@@ -473,7 +474,10 @@ describe("gateway 在 TLS 终止代理之后", () => {
           authorization: `Bearer ${grants[0]!.secret}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ version: 2, call: { type: "task_list", input: {} } }),
+        body: JSON.stringify({
+          version: 2,
+          call: { type: "task_list", input: { projectId: project.id } },
+        }),
       }),
     );
     expect(response.status).toBe(200);
@@ -483,7 +487,10 @@ describe("gateway 在 TLS 终止代理之后", () => {
     const response = await gateway(
       new Request("http://127.0.0.1:3220/api/remote/agent", {
         method: "POST",
-        body: JSON.stringify({ version: 2, call: { type: "task_list", input: {} } }),
+        body: JSON.stringify({
+          version: 2,
+          call: { type: "task_list", input: { projectId: project.id } },
+        }),
       }),
     );
     expect(response.status).toBe(401);
