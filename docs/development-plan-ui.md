@@ -23,7 +23,7 @@
 | UI-P5b | Task 协作 | P5a 集成通过，P5b 契约就绪 | 按 P5b 集成 |
 | UI-P6a | 自动接续、人类控制与最小失败/恢复呈现 | P4、P5 集成技术验收通过，P6a 契约就绪 | 按 P6a 集成 |
 | UI-P6b | Info Hub 全部一期视角与 Agent 上下文 | P6a 技术验收通过，P6b 契约就绪 | 按 P6b 集成 |
-| UI-P6c | Agent 移除、归档与重新加入 | P6a、P6b 技术验收通过，P6c 契约就绪 | 呈现已随 P6c 集成自检通过（`092d220`），待 Human 体验确认 |
+| UI-P6c | Agent 移除、归档与重新加入 | P6a、P6b 技术验收通过，P6c 契约就绪 | 呈现已随 P6c 集成自检通过（`480a2f0`），待 Human 体验确认 |
 | UI-P7 | 手机、PWA、恢复与一期完整体验 | P6a、P6b、P6c 集成技术验收通过，P7 范围明确 | 完成一期整体验收 |
 
 表中“集成通过”指章节已通过技术验收。章节只有经 Human 亲自体验并明确确认后才算完成；人类体验确认不作为后续章节开工的必要条件，Human 明确 AFK 时可推迟体验验收。设计尚未经 Human 确定时，可以继续草案与功能开发，但不满足正式集成的 UI 交付条件。具体规则见 [开发总计划](development-plan.md)。
@@ -245,7 +245,7 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应[P6c](development-plan-functional.md#p6c-完成成员治理与重新加入)、[I-P6c](development-plan.md#i-p6c-集成成员治理与重新加入)，默认依赖 P6a、P6b 技术验收通过。
 
-- [x] 完成 Agent 移除前置检查、阻塞原因与关联处理入口，以及正常移除后的 Group 退出、DM 归档和重新加入的恢复呈现。证据 [P6c UI 线证据](p6c/summary.md#ui-线证据)，基线 `092d220`，重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；阻塞分组与对象链接形状见 [P6c 契约](p6c/contracts.md#阻塞检查的契约形状)。
+- [x] 完成 Agent 移除前置检查、阻塞原因与关联处理入口，以及正常移除后的 Group 退出、DM 归档和重新加入的恢复呈现。证据 [P6c UI 线证据](p6c/summary.md#ui-线证据)，基线 `480a2f0`，重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；阻塞分组与对象链接形状见 [P6c 契约](p6c/contracts.md#阻塞检查的契约形状)。
 - [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [P6c 集成线与技术验收证据](p6c/summary.md#集成线与技术验收证据)与[P6c 契约](p6c/contracts.md#public-channel-换-owner-的边界)：频道只有 Project 创建者那个 Human 能成为新 owner、DM 无入口、移除后该 Agent 的对话读写按当前授权被拒；重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`。
 
 本节只交付呈现与自检证据：本仓库没有 P6c 设计的 Human 确定记录，Human 真实体验确认也尚未进行（I-P6c 第 4 条未勾），本节不冒充确认。
@@ -256,11 +256,11 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 范围对应 [P7](development-plan-functional.md#p7-验收完整一期与客户端体验)。此前各章均需提供浅暗主题和宽窄屏交付，本节补齐设备差异与完整使用路径。
 
-- [x] 检查 Projects、Agents、Machines、Management 的导航、共享布局、主题切换和各入口的实际可用性。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `e338ffa`，重跑 `bash scripts/verify/p7-client-navigation.sh`。
-- [x] 检查详情深链、刷新、前进后退、登录后目标恢复，以及窄屏列表、详情、inspector 的进入与返回。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `e338ffa`，重跑 `bash scripts/verify/p7-client-navigation.sh`。
-- [x] 补齐 PWA 安装与独立窗口体验、断线、旧数据和重新进入后的同步反馈，不默认离线排队操作。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `e338ffa`，重跑 `bash scripts/verify/p7-client-pwa.sh`。
+- [x] 检查 Projects、Agents、Machines、Management 的导航、共享布局、主题切换和各入口的实际可用性。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-navigation.sh`。
+- [x] 检查详情深链、刷新、前进后退、登录后目标恢复，以及窄屏列表、详情、inspector 的进入与返回。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-navigation.sh`。
+- [x] 补齐 PWA 安装与独立窗口体验、断线、旧数据和重新进入后的同步反馈，不默认离线排队操作。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-pwa.sh`。
 - [ ] 在真实手机检查输入区、软键盘、滚动与主要操作，明确浏览器视口模拟与真机证据的区别。只做了 Chromium 视口模拟（390×844），没有物理设备证据，见 [P7 已知限制](p7/summary.md#已知限制与未证明项) 第 1 条。
-- [x] 配合集成线完成一期七步开发闭环和故障场景，检查页面不将未知、失联或未支持能力显示为成功。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `e338ffa`，重跑 `bash scripts/verify/p7-client-states.sh`。
+- [x] 配合集成线完成一期七步开发闭环和故障场景，检查页面不将未知、失联或未支持能力显示为成功。证据 [P7 UI 线证据](p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-states.sh`。
 
 出口条件是一期主要使用路径和必要异常路径有真实浏览器及设备证据，已知限制可定位。模型、Worker、恢复与授权的行为结论以对应集成证据为准。
 

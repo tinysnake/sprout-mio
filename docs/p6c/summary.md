@@ -2,7 +2,7 @@
 
 P6c 交付「Human 在页面上看清一个 Agent 还背着哪几类未结责任、逐项处理后在正常移除后真实失去参与权，并在重新加入时按当前授权只恢复该恢复的部分」这一条链路。判据、返回形状、错误映射与边界见 [P6c 契约](contracts.md)。
 
-技术交付基线：**`092d220`**（`integration/p6c` 当前头，也是本轮取证的门禁受验提交）。
+技术交付基线：**`480a2f0`**（`integration/p6c` 当前头，也是本轮取证的门禁受验提交）。
 
 | 项       | 值                                                                                                       |
 | -------- | -------------------------------------------------------------------------------------------------------- |
@@ -47,7 +47,7 @@ P6c 交付「Human 在页面上看清一个 Agent 还背着哪几类未结责任
 - **移除与重加后的事实**：`bf-p6c-lifecycle` 第 4 条断言普通 Group 成员行消失、DM 归档、`chat_effective_member` 不再含它；重新加入后 DM 取消归档、Public Channel 参与权回来、Group 成员身份**不**自动回来。
 - **撤销与移除的分家**：`p6c-participation-revocation` 证明被取消的 pending 输入、迟到消息、旧 run 的 grant 都不再产生投递，重新加入只对新输入生效；`bf-p6c-lifecycle` 第 5 条用真实 grant 证明撤销后凭据失效但成员行不受影响。
 
-证据提交 `092d220`：重跑 `bash scripts/verify/p6c-member-removal.sh`、`bash scripts/verify/p6c-participation-revocation.sh`。
+证据提交 `480a2f0`：重跑 `bash scripts/verify/p6c-member-removal.sh`、`bash scripts/verify/p6c-participation-revocation.sh`。
 
 ## UI 线证据
 
@@ -60,7 +60,7 @@ P6c 交付「Human 在页面上看清一个 Agent 还背着哪几类未结责任
 
 页面形状由接线单元按 P6c 契约实现并自检，本仓库**没有** P6c 设计的 Human 确定记录（I-P6c 第 2 条按规则勾的是「UI 线交付就绪、编排者已核对范围与自检证据」，不等于 Human 选定了原型）；Human 真实体验确认仍未进行。
 
-证据提交 `092d220`：重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；聊天页回归 `bash scripts/verify/as-p5a-chat-ui.sh`。
+证据提交 `480a2f0`：重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；聊天页回归 `bash scripts/verify/as-p5a-chat-ui.sh`。
 
 ## 集成线与技术验收证据
 
@@ -68,18 +68,18 @@ P6c 交付「Human 在页面上看清一个 Agent 还背着哪几类未结责任
 
 需要说明比对口径：集成门禁比对四个分组的 kind 序列、每组的条数、以及每个条目**被选的 5 个标量字段**与诊断事件条数——不是「逐字段相等」。整行逐字段相等只在跨 Project 对照组里用（`crossProjectRows()` 快照）。
 
-**独立技术验收**：第二轮报告的总评是「可以合入 main」，受验提交 `c78fe8a`（与 `092d220` 之间的差异只有一处注释订正与一条 `.strict()` 解码断言，见下节）。第一轮的三条 P1/P2 全部关闭，各自用改坏实验证明能红；本轮无阻断项。验收报告在编排目录（不进本仓库），本章不因此视为 Human 体验确认。
+**独立技术验收**：第二轮报告的总评是「可以合入 main」，受验提交 `a2cd17b`（与 `480a2f0` 之间的差异只有一处注释订正与一条 `.strict()` 解码断言，见下节）。第一轮的三条 P1/P2 全部关闭，各自用改坏实验证明能红；本轮无阻断项。验收报告在编排目录（不进本仓库），本章不因此视为 Human 体验确认。
 
-证据提交 `092d220`：重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`。
+证据提交 `480a2f0`：重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`。
 
 ## 第二轮独立技术验收结论与残余
 
-第二轮验收在 `c78fe8a` 上判定「可以合入 main」，并留下以下非阻断结论。它们属于「已知且已解释」，不是待修缺陷：
+第二轮验收在 `a2cd17b` 上判定「可以合入 main」，并留下以下非阻断结论。它们属于「已知且已解释」，不是待修缺陷：
 
 1. **负载敏感的既有测试偶发红。** `tests/verify-runner.test.ts` 有一条信号测试在满载时（主机 load 约 13 / 10 核）偶发 `kill EPERM`：`signalProcessGroup` 的 `process.kill(-pid, SIGTERM)` 抛错，`ps` 兜底没通过后重抛，退出码 1 而不是 143。随后单文件 3/3 绿、全量 2/2 绿、`b-tooling` 2/2 绿。这是负载敏感，不是 P6c 引入的失败；重跑 `pnpm test tests/verify-runner.test.ts`。建议（留给协调者）把 `ps` 超时或非 0 视为「无存活进程组」，或把 `EPERM` 降级为日志。
 2. **跨 Project 隔离是冗余层。** `active_runs`、`leases`、`dm_assigned_tasks` 三类各有 2–3 层 Project 过滤（instance 归属、`agent_run`/`machine_lease`/`task.projectId`、`chat.projectId`）。只删任意一条，门禁仍是绿的；删掉某一类的整组过滤才会红。所以「每一处过滤都被单条断言钉住」不成立——被钉住的是**整类隔离**。见 [已知限制与未证明项](#已知限制与未证明项)。
-3. **`as-p5a-chat-ui` 的出处注释写错了，已在 `092d220` 订正。** 真正钉住「只有 Project 创建者能换 owner」的是 `bf-p6c-lifecycle` 的 `invariant.6.channel-owner`（删掉 `setChatOwner` 的创建者断言后该门禁红、`chat-governance` 单测仍绿），不是 `tests/chat-governance.test.ts`。同一个提交给阻塞类错误分支的 `.strict()` 线上解码补了断言（测的是 `appErrorSchema.safeParse`，因为 `toAppError` 只按字段白名单取值，看不出严格性）。
-4. **P3-2 与 P3-5 只是措辞问题。** 集成报告里的「逐字段相等」严于门禁实际做的 5 字段投影，已在 [集成线与技术验收证据](#集成线与技术验收证据) 写清；「格式门禁本来就红」在受验头上已过期（`pnpm exec vp fmt --check` 在 `9c286a3` 与 P6b 的修正之后就已是 exit 0）。
+3. **`as-p5a-chat-ui` 的出处注释写错了，已在 `480a2f0` 订正。** 真正钉住「只有 Project 创建者能换 owner」的是 `bf-p6c-lifecycle` 的 `invariant.6.channel-owner`（删掉 `setChatOwner` 的创建者断言后该门禁红、`chat-governance` 单测仍绿），不是 `tests/chat-governance.test.ts`。同一个提交给阻塞类错误分支的 `.strict()` 线上解码补了断言（测的是 `appErrorSchema.safeParse`，因为 `toAppError` 只按字段白名单取值，看不出严格性）。
+4. **P3-2 与 P3-5 只是措辞问题。** 集成报告里的「逐字段相等」严于门禁实际做的 5 字段投影，已在 [集成线与技术验收证据](#集成线与技术验收证据) 写清；「格式门禁本来就红」在受验头上已过期（`pnpm exec vp fmt --check` 在 `41db8f1` 与 P6b 的修正之后就已是 exit 0）。
 
 ## 已知限制与未证明项
 
@@ -147,10 +147,10 @@ P6c 交付「Human 在页面上看清一个 Agent 还背着哪几类未结责任
 失败原文（本轮实跑，`bash scripts/verify/l-docs.sh`，exit 1；f-docs 子步骤本身通过，上面五行 PASS 即其输出。三条打印成 `- [x]` 的行原文末尾有一个空格，已被格式化门禁去掉）：
 
 ```text
-FAIL I-P6c checkbox must remain unchecked: 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6c 功能线证据](p6c/summary.md#功能线证据)，基线 `092d220`，重跑 `bash scripts/verify/p6c-member-removal.sh`、`bash scripts/verify/p6c-participation-revocation.sh`；契约见 [P6c 契约](p6c/contracts.md#阻塞检查的契约形状)。
-FAIL I-P6c checkbox must remain unchecked: UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P6c UI 线证据](p6c/summary.md#ui-线证据)，基线 `092d220`，重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；页面形状由实现单元按 P6c 契约自检，本仓库没有 P6c 设计的 Human 确定记录（见该节同一条限制）。
-FAIL I-P6c checkbox must remain unchecked: 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P6c 集成线与技术验收证据](p6c/summary.md#集成线与技术验收证据)，基线 `092d220`，重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`；第二轮独立验收在 `c78fe8a` 判「可以合入 main」（验收报告在编排目录，不进本仓库）。
-FAIL UI-P6c checkbox must remain unchecked: 完成 Agent 移除前置检查、阻塞原因与关联处理入口，以及正常移除后的 Group 退出、DM 归档和重新加入的恢复呈现。证据 [P6c UI 线证据](p6c/summary.md#ui-线证据)，基线 `092d220`，重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；阻塞分组与对象链接形状见 [P6c 契约](p6c/contracts.md#阻塞检查的契约形状)。
+FAIL I-P6c checkbox must remain unchecked: 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6c 功能线证据](p6c/summary.md#功能线证据)，基线 `480a2f0`，重跑 `bash scripts/verify/p6c-member-removal.sh`、`bash scripts/verify/p6c-participation-revocation.sh`；契约见 [P6c 契约](p6c/contracts.md#阻塞检查的契约形状)。
+FAIL I-P6c checkbox must remain unchecked: UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P6c UI 线证据](p6c/summary.md#ui-线证据)，基线 `480a2f0`，重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；页面形状由实现单元按 P6c 契约自检，本仓库没有 P6c 设计的 Human 确定记录（见该节同一条限制）。
+FAIL I-P6c checkbox must remain unchecked: 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P6c 集成线与技术验收证据](p6c/summary.md#集成线与技术验收证据)，基线 `480a2f0`，重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`；第二轮独立验收在 `a2cd17b` 判「可以合入 main」（验收报告在编排目录，不进本仓库）。
+FAIL UI-P6c checkbox must remain unchecked: 完成 Agent 移除前置检查、阻塞原因与关联处理入口，以及正常移除后的 Group 退出、DM 归档和重新加入的恢复呈现。证据 [P6c UI 线证据](p6c/summary.md#ui-线证据)，基线 `480a2f0`，重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；阻塞分组与对象链接形状见 [P6c 契约](p6c/contracts.md#阻塞检查的契约形状)。
 FAIL UI-P6c checkbox must remain unchecked: 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [P6c 集成线与技术验收证据](p6c/summary.md#集成线与技术验收证据)与[P6c 契约](p6c/contracts.md#public-channel-换-owner-的边界)：频道只有 Project 创建者那个 Human 能成为新 owner、DM 无入口、移除后该 Agent 的对话读写按当前授权被拒；重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`。
 FAIL P6c checkbox must remain unchecked: - [x]
 FAIL P6c checkbox must remain unchecked: - [x]

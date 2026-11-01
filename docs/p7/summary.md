@@ -2,7 +2,7 @@
 
 P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要路径走完，并且看得见状态、看不见内部术语」这一层：登录后回到原来的目标、详情深链与刷新、断线与旧数据反馈、只读离线、Management 的服务与数据事实、备份恢复与响应基线、Pi 资源继承的明确边界，以及在真实页面上跑通的自动接续控制。判据、返回形状与边界见 [P7 契约](contracts.md)。
 
-技术交付基线：**`fef2612`**（合入 main 的提交；`e338ffa` 之后只有文档、门禁与断言收紧）。
+技术交付基线：**`fef2612`**（合入 main 的提交；`b828755` 之后只有文档、门禁与断言收紧）。
 
 | 项       | 值                                                                                                                                                                                |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -71,17 +71,17 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 ## 集成线与技术验收证据
 
-- **上一轮独立验收**（受验 `53d23e9`）判「需修复后再验」，指出 3 条 P7 引入的回归（`i-chat`、`aq-p4d-pages`、`ag-execution-wiring-ui`）、3 处改坏没被抓到、3 条 main 上就红的旧门禁。三条回归的根因与修法：
+- **上一轮独立验收**（受验 `f5ff9f1`）判「需修复后再验」，指出 3 条 P7 引入的回归（`i-chat`、`aq-p4d-pages`、`ag-execution-wiring-ui`）、3 处改坏没被抓到、3 条 main 上就红的旧门禁。三条回归的根因与修法：
 
 | 回归                                       | 根因                                                                                   | 修法                                                                                 |
 | ------------------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `i-chat` 的 `missing_chat_shows_not_found` | `info-hub-live.tsx` 对 `not_found` 用提示替换整页 children，页面自己的错误态渲染不出来 | 提示与 children 并列，`not_found` 交给页面错误态（`fc9b8a5`）                        |
-| `aq-p4d-pages` 的「刷新失败标未确认」      | `sw.js` 把非 GET 一律 `respondWith` 再 `fetch`，浏览器侧的中止打不到真实请求           | 白名单在 `activate` 装进内存，只接管白名单调用，其余放行（`6227b17`）                |
-| `ag-execution-wiring-ui` 的读日志失败      | 同上（`readExecutionLogFn` 在白名单里）                                                | 该门禁上下文 `serviceWorkers: "block"`，PWA 行为由 `p7-client-pwa` 证明（`e338ffa`） |
+| `i-chat` 的 `missing_chat_shows_not_found` | `info-hub-live.tsx` 对 `not_found` 用提示替换整页 children，页面自己的错误态渲染不出来 | 提示与 children 并列，`not_found` 交给页面错误态（`65f8566`）                        |
+| `aq-p4d-pages` 的「刷新失败标未确认」      | `sw.js` 把非 GET 一律 `respondWith` 再 `fetch`，浏览器侧的中止打不到真实请求           | 白名单在 `activate` 装进内存，只接管白名单调用，其余放行（`77ccfb8`）                |
+| `ag-execution-wiring-ui` 的读日志失败      | 同上（`readExecutionLogFn` 在白名单里）                                                | 该门禁上下文 `serviceWorkers: "block"`，PWA 行为由 `p7-client-pwa` 证明（`b828755`） |
 
 - **补上的门禁**：`info_hub_polling_line_stays_quiet`（去掉 `QUIET_STATES` 判断立即红）、`metadata_edit_shares_the_heading_row`（用 `boundingBox` 量中心线）、`non_owner_agent_denials_are_real_capabilities`（改成断言 `task-action-*` 数量为 0 且整页无 denial code）、`automation_panel_wired_on_real_chat`（真实 Chat 页不得出现 `automation-unavailable`）。
 - **drizzle 快照**：`0028_snapshot.json` 的 `prevId` 曾指向 0026 且 `chat_automation_control` 是 0027 重建前旧版，导致 `drizzle-kit` collision 与 `c-data-auth` 长期红。修法是只改快照（`prevId` + 表内容），不改 `_journal.json` 的 `when`（改晚会让已应用过 0028 的库重放它，撞 `table turn_context already exists`）。验证：`pnpm exec drizzle-kit generate` 输出 `No schema changes, nothing to migrate`，`c-data-auth` exit 0。
-- **增量验收**（`p7-acceptance2`，受验 `e338ffa`）判「可以合入」，四问的结论：三条回归各自两次全绿且修法经复核不是掩盖（`i-chat` 的 `chat-error` 真的来自服务端、写入请求确实由页面直接发出 `fromServiceWorker: false`、`item-log-error` 仍被断言）；三处改坏里两处已被新门禁守住（轮询行、编辑按钮同行），**第三处「被拒动作打印 reason」仍绿**——门禁只断言 code 不在页面上，协调者据此补了 reason 断言（`fef2612`），注入 reason 立即红；三条旧红门禁在 `main@8f0ddf3` 的临时工作树里各跑两次同样全红，脚本/fixture/契约在 `main..HEAD` 逐字未变，不是本轮引入也没被条件化跳过；`eed1dd7` 之后的页面裁定无回归（`bf-p6b-pages` 67.0s、`as-p5b-task-pages` 46.5s、`p6a-pages` 24.5s、`p7-client-navigation` 24.4s、`p7-client-states` 17.3s、`p7-client-pwa` 14.9s 全绿）。
+- **增量验收**（`p7-acceptance2`，受验 `b828755`）判「可以合入」，四问的结论：三条回归各自两次全绿且修法经复核不是掩盖（`i-chat` 的 `chat-error` 真的来自服务端、写入请求确实由页面直接发出 `fromServiceWorker: false`、`item-log-error` 仍被断言）；三处改坏里两处已被新门禁守住（轮询行、编辑按钮同行），**第三处「被拒动作打印 reason」仍绿**——门禁只断言 code 不在页面上，协调者据此补了 reason 断言（`fef2612`），注入 reason 立即红；三条旧红门禁在 `main@8f0ddf3` 的临时工作树里各跑两次同样全红，脚本/fixture/契约在 `main..HEAD` 逐字未变，不是本轮引入也没被条件化跳过；`72c7241` 之后的页面裁定无回归（`bf-p6b-pages` 67.0s、`as-p5b-task-pages` 46.5s、`p6a-pages` 24.5s、`p7-client-navigation` 24.4s、`p7-client-states` 17.3s、`p7-client-pwa` 14.9s 全绿）。
 
 证据提交 `fef2612`：重跑 `bash scripts/verify/i-chat.sh`、`bash scripts/verify/aq-p4d-pages.sh`、`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/c-data-auth.sh`。
 

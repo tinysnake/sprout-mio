@@ -61,7 +61,23 @@ async function until(check, label, timeout = 45000) {
   }
   throw new Error(`timeout: ${label}; server.log says ${tail(directory)}`)
 }
-async function shot(name) { await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true }) }
+async function overlayText() {
+  return page.evaluate(() => {
+    const overlay = document.querySelector('vite-error-overlay')
+    if (!overlay) return null
+    const source = overlay.shadowRoot ?? overlay
+    return (source.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 600) || '(empty overlay)'
+  })
+}
+// dev 服务器的报错浮层会盖住页面、吞掉点击，最后只剩一条 60 秒超时。先把它自己说的话记下来。
+async function assertNoOverlay(where) {
+  const text = await overlayText()
+  assert.equal(text, null, `dev server error overlay at ${where}: ${text}`)
+}
+async function shot(name) {
+  await assertNoOverlay(`before ${name}`)
+  await page.screenshot({ path: join(evidence, `${name}.png`), fullPage: true })
+}
 const totalTimer = setTimeout(() => { stop('SIGKILL'); void browser?.close(); process.exitCode = 1 }, 300000)
 try {
   await until(async () => { try { return (await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(1500) })).ok } catch { return false } }, 'real dev server ready')
@@ -273,6 +289,7 @@ try {
   await page.getByRole('link', { name: /进入 Chat/ }).click()
   await page.waitForURL(url => url.pathname.endsWith(`/chats/${dm.chat.id}`))
   await page.goto(`${base}/projects/${projectId}/chats/${dm.chat.id}?info=1`)
+  await assertNoOverlay('chat inspector page')
   await page.getByTestId('inspector-tasks').getByRole('link', { name: '核对 Task 页面生命周期', exact: true }).waitFor()
   assert.equal(await page.getByTestId('task-associations').count(), 2)
   const { getChatInfo, getProjectInfoHub } = await import('./src/domain/info-hub.ts')

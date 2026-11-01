@@ -134,6 +134,15 @@ probeCase('unresolved commit fails', () => {
   write(probe, evidence('P4a 证据', 'deadbeef', 'bash scripts/verify/s-machine-contracts.sh'));
   setBox(functional, '实现 macOS Worker 安装与启动', link);
 }, { code: 1, includes: 'P4a checkbox 1: commit deadbeef does not resolve' });
+probeCase('commit that only exists as a dangling object fails', () => {
+  // 证据提交被 rebase 重写、分支又删掉之后，对象还在本地却不在任何 ref 后面。新克隆看不到它。
+  const orphan = execFileSync('git', ['-C', tree, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'probe orphan'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  }).trim();
+  write(probe, evidence('P4a 证据', orphan.slice(0, 7), 'bash scripts/verify/s-machine-contracts.sh'));
+  setBox(functional, '实现 macOS Worker 安装与启动', link);
+}, { code: 1, includes: 'must stay reachable from a ref' });
 probeCase('human confirmation without a record fails', () => {
   write(summary, acceptance(`- 待确认：等待 Human 体验，版本 \`${head}\`。`));
   setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4a');

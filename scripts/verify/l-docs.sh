@@ -38,6 +38,35 @@ const git = (...args) => {
 };
 const slug = (heading) => heading.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}_\-\s]/gu, '').replace(/ /g, '-');
 const withoutFences = (text) => text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, '');
+/**
+ * 证据提交必须留在历史里，不只是留在对象库里。
+ *
+ * 只问 `cat-file -e` 会在工作副本里放过被 rebase 重写、分支又删掉的提交：那些对象
+ * 还躺在本地，CI 全新克隆里却不存在，于是本地绿、CI 红。从任何一个 ref 都能走到的
+ * 提交才和读文档的人看到的一致。
+ */
+const historicalCommits = new Set(
+  execFileSync('git', ['rev-list', '--all'], { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024, timeout: 120000 })
+    .split('\n')
+    .filter(Boolean),
+);
+const fullCommit = (sha) => {
+  try {
+    return execFileSync('git', ['rev-parse', `${sha}^{commit}`], { encoding: 'utf8', timeout: 10000 }).trim();
+  } catch {
+    return null;
+  }
+};
+const commitExists = (sha) => {
+  const full = fullCommit(sha);
+  return full !== null && historicalCommits.has(full);
+};
+const requireHistorical = (sha, label) => {
+  const full = fullCommit(sha);
+  if (full === null) throw new Error(`${label}: commit ${sha} does not resolve`);
+  if (!historicalCommits.has(full)) throw new Error(`${label}: commit ${sha} is not reachable from any ref, so a fresh clone cannot show it`);
+  return full;
+};
 const documents = new Map();
 for (const file of fs.globSync('docs/**/*.md')) {
   const text = fs.readFileSync(file, 'utf8');
@@ -128,7 +157,7 @@ check(/https:\/\/github\.com\/tinysnake\/sprout-mio\/actions\/runs\/\d+/.test(co
 check(linksIn(completion).includes('p2/summary.md'), 'P2 completion lacks summary link');
 for (const match of completion.matchAll(/`([0-9a-f]{7,40})(?:\.\.([0-9a-f]{7,40}))?`/g)) {
   for (const sha of match.slice(1).filter(Boolean)) {
-    git('cat-file', '-e', `${sha}^{commit}`);
+    requireHistorical(sha, 'P2 completion');
     totals.commits++;
   }
 }
@@ -189,14 +218,6 @@ check(git('rev-parse', '34b078e^1') === git('rev-parse', 'db185f8'), 'P3 baselin
 const p3Merges = git('log', '--first-parent', '--format=%h', 'db185f8..e5e2b4e').split('\n');
 check(p3Merges.join(',') === [...p3Units].reverse().map((unit) => unit.merge).join(','), 'P3 range differs from five recorded Git merges');
 git('merge-base', '--is-ancestor', '28d4fb2', 'db185f8');
-const commitExists = (sha) => {
-  try {
-    execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], { timeout: 10000, stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-};
 const boxesIn = (section) => [...section.matchAll(/^- \[([ x])\] (.+)$/gm)].map((match) => ({ state: match[1], text: match[2] }));
 const sectionOf = (text, heading, level) =>
   text.match(new RegExp(`^${'#'.repeat(level)} ${heading} [^\\n]*\\n([\\s\\S]*?)(?=^${'#'.repeat(level)} |^${'#'.repeat(level - 1)} |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
@@ -213,7 +234,13 @@ const commandPattern = /`(bash scripts\/verify\/[\w-]+\.sh)`/g;
 const commitRefsIn = (body) => [...body.matchAll(commitPattern)].map((match) => match[1]);
 const requireCommits = (commits, label) => {
   check(commits.length > 0, `${label}: evidence section lacks a Git commit`);
-  for (const sha of commits) check(commitExists(sha), `${label}: commit ${sha} does not resolve`);
+  for (const sha of commits) {
+    const full = fullCommit(sha);
+    check(
+      full !== null && historicalCommits.has(full),
+      `${label}: commit ${sha} ${full === null ? 'does not resolve' : 'must stay reachable from a ref, not only in the object database'}`,
+    );
+  }
   totals.commits += commits.length;
 };
 const commandsInBody = (body, label) => {

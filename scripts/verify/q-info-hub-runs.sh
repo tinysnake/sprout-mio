@@ -346,8 +346,14 @@ try {
   assert.equal(settledTurn.workspace.basis, 'run_provenance')
   assert.equal(settledTurn.workspace.commit, bareHead)
   assert.equal(settledTurn.injectedIntoPrompt, false, 'fixture runner emits no SDK receipt')
-  assert.equal(settledInfo.runs.active.length, 1)
-  const carried = settledInfo.runs.active[0]
+  // 承载新一轮发生在 turn 落定之后，慢机器上这里和状态轮询之间有一段窗口。
+  const carried = await until(
+    async () => {
+      const info = await callOk('getChatInfoFn', { chatId: main.chatId })
+      return info.runs.active.length === 1 && info.runs.active[0].status === 'queued' ? info.runs.active[0] : null
+    },
+    'the settled turn carries its pending input into the next queued run',
+  )
   assert.notEqual(carried.runId, slowRun.id, 'carry opens a new run, not the settled one')
   assert.equal(carried.status, 'queued')
   assert.equal(carried.pendingInputs, 1, 'the settled turn handed its pending input to the next run')

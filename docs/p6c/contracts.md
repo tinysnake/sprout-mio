@@ -1,6 +1,6 @@
 # P6c 契约：成员治理、移除与重新加入
 
-本文记录 I-P6c 在 `integration/p6c` 上冻结的共享契约，供后续章节（P7、R1）与前端接线引用。基线代码头 `092d220`（P6c 的最后一个代码与门禁提交；其后的提交只改文档）。
+本文记录 I-P6c 在 `integration/p6c` 上冻结的共享契约，供后续章节（P7、R1）与前端接线引用。基线代码头 `480a2f0`（P6c 的最后一个代码与门禁提交；其后的提交只改文档）。
 
 标注约定：**实测**＝本轮亲自执行并核对过输出；**引用**＝读源码、schema 或既有报告得出，未重复执行；**未验证**＝已知但未在本轮取证的推断。
 
@@ -26,7 +26,7 @@
 
 **排序与不截断**：分组内一律按对象 ID 升序，重复 join 先用 ID 去重再排序。活动 runs 按 `runId`；租约按 `key.machineId`（Project 已固定）；owner 职责按 `chatId`；DM assigned Tasks 按 `chatId` 再按 `taskId`。比较用固定 code-point 顺序（实现是 JavaScript 字符串 `<`，在本仓库的 ID 字符集 `前缀_小写十六进制` 下与 code-point 相同），不用 `localeCompare`、翻译后的标题、`rowid` 或创建时间决定对外顺序；查询不加 `LIMIT`，不因为「只显示五项」漏掉阻塞——页面可以折叠或分页，但不能让 collector 少返回一条。**引用**
 
-- 证据提交 `092d220`：重跑 `bash scripts/verify/p6c-member-removal.sh`。
+- 证据提交 `480a2f0`：重跑 `bash scripts/verify/p6c-member-removal.sh`。
 
 ## 错误码与边界映射
 
@@ -54,7 +54,7 @@ collector 是 `collectProjectMemberRemovalBlockers(projectId, agentProfileId)`�
 
 四类互不吞并：任何一类命中都返回完整列表，不会因为先命中 `active_runs` 就跳过租约或 Task 的读取。被拒时既有四类同时存在，也按固定顺序分段返回。
 
-- 证据提交 `092d220`：重跑 `bash scripts/verify/p6c-member-removal.sh`。
+- 证据提交 `480a2f0`：重跑 `bash scripts/verify/p6c-member-removal.sh`。
 
 ## `relation` 与 `pendingMutationId`
 
@@ -76,7 +76,7 @@ collector 是 `collectProjectMemberRemovalBlockers(projectId, agentProfileId)`�
 
 能力事实上，P6c 把「成员与 owner 治理只对普通 Group 生效」拆开：`canChangeMembers` 仍只看 `group`，`canChangeOwner` 变成 `kind !== "dm" && decide("owner_change", …)`，即频道重新出现一个合法的 owner 变更入口，而频道的成员仍由 Project 派生、不能独立增删。页面文案随之区分「可变更」与「当前身份不能变更负责人」。**引用**
 
-- 证据提交 `092d220`：重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`（第 6 条 `invariant.6.channel-owner`）；页面层回归 `bash scripts/verify/as-p5a-chat-ui.sh`。
+- 证据提交 `480a2f0`：重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`（第 6 条 `invariant.6.channel-owner`）；页面层回归 `bash scripts/verify/as-p5a-chat-ui.sh`。
 
 ## 移除与撤销的分工
 
@@ -85,7 +85,7 @@ collector 是 `collectProjectMemberRemovalBlockers(projectId, agentProfileId)`�
   - 行不存在就**幂等空操作**：不重复清理、不写诊断、不推进治理版本、不再归档 DM。两个进程同时移除时只有一个产生副作用。
   - 行存在才进入写入：`writeIdentity` 里依次 `revokeProjectAgentEnrollment`（先跑阻塞检查；命中就抛结构化错误，此时**零写入**）、归档该 Agent 的 DM、删除 `project_member` 行。
 - `revokeProjectAgentEnrollment` 是「Project 参与权撤销」的名称，与 `revokeRemoteToolGrant`（远端凭据）是两件事，不要混用：前者删普通 Group 的 `chat_member` 行（并只对真正被删到的群推进 `governance_revision`）、把该 Agent 全部 instance 的 `pending` 输入改成 `cancelled` / `membership_revoked`，后者只让一次运行的远端凭据失效。**引用**
-- 被拒的那次请求不改任何持久事实：`p6c-member-removal` 的每条反例都在调用前后做全库快照比对（`assert.deepEqual(snapshot(), before)`）。**实测**（该门禁在 `092d220` 上自检通过，退出码 0；本轮未复跑，见 [P6c 章节结论](summary.md#集成线与技术验收证据)）。
+- 被拒的那次请求不改任何持久事实：`p6c-member-removal` 的每条反例都在调用前后做全库快照比对（`assert.deepEqual(snapshot(), before)`）。**实测**（该门禁在 `480a2f0` 上自检通过，退出码 0；本轮未复跑，见 [P6c 章节结论](summary.md#集成线与技术验收证据)）。
 
 ## 重新加入的恢复边界
 
@@ -95,7 +95,7 @@ collector 是 `collectProjectMemberRemovalBlockers(projectId, agentProfileId)`�
 - **不恢复**：普通 Group 的成员身份。Group 的 `chat_member` 行在移除时被物理删除，重新加入不会补回——需要 Human 或群 owner 重新添加。
 - 旧消息与待处理唤醒**不恢复**已撤销的参与权：被取消的输入保持 `cancelled`，迟到的旧消息与旧 run 的 grant 不再产生投递；重新加入只对**新输入**生效。**引用**（`revoke.stale-message-and-old-run-grant.zero-delivery`、`rejoin.only-channel-and-existing-dm.new-input-only` 两条断言）
 
-- 证据提交 `092d220`：重跑 `bash scripts/verify/p6c-participation-revocation.sh`。
+- 证据提交 `480a2f0`：重跑 `bash scripts/verify/p6c-participation-revocation.sh`。
 
 ## 契约之外
 
