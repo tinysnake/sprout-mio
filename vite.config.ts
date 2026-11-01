@@ -9,6 +9,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
+import { devClientDisconnects } from "./scripts/dev/vite-client-disconnects";
 
 const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 
@@ -101,6 +102,7 @@ export default defineConfig({
   plugins: process.env.VITEST
     ? []
     : lazyPlugins(() => [
+        devClientDisconnects(),
         devtools(),
         nitro({
           plugins: ["./src/server/server-entry.ts"],
