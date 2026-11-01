@@ -4,7 +4,7 @@
     "baseline": "251ddbb",
     "head": "251ddbbb0d5fcee87143c418b2abca9720942211",
     "headSrcTree": "e61c23ae3d3fc029aaf8fc38fbb7bfb7453760a6",
-    "worktree": "/Users/snake/.herdr/worktrees/sprout-mio/ui-migrate-final-evidence",
+    "worktree": "~/.herdr/worktrees/sprout-mio/ui-migrate-final-evidence",
     "codeChanges": "证据提交本身不改 src；随后 cherry-pick 3c745a6（settings 页 ProjectConfigForm / ProjectRepoPanel 改用 profile-/repo- 前缀 key）作为修复合入，迁移记录与证据按修复后状态更新。",
     "fixCommit": {
       "original": "3c745a6",

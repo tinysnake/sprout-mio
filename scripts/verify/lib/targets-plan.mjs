@@ -4,8 +4,8 @@ import { MANUAL_GATES, SUITE_PLAN } from "./suite-plan.mjs";
 
 export const CI_GROUPS = Object.freeze({
   base: ["a-base"],
-  tooling: ["b-tooling"],
-  docs: ["f-docs", "l-docs", "l-docs-probes"],
+  tooling: ["b-tooling", "deploy-selftest"],
+  docs: ["f-docs", "l-docs", "l-docs-probes", "deploy-leaks"],
   contracts: [
     "s-machine-contracts",
     "v-lease-contracts",

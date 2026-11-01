@@ -33,7 +33,7 @@
 
 日常使用 `pnpm verify:local` 运行必须依赖真实 macOS 或已安装 Pi 的部分；GitHub Actions 的 Ubuntu job 执行其余部分。`pnpm verify` 仍是单机全量入口，包含全部原始断言与全量单测，便于完整复现；它不因分工而静默缩减范围。分工入口先校验完整门禁与测试文件清单，新文件未分类时立即失败。归属清单见 `scripts/verify/lib/targets-plan.mjs` 与 `scripts/verify/lib/test-targets.mjs`。
 
-CI 分为 base、tooling、docs、contracts、api、turns、browser 七个独立 checkout 的 job，最多六个同时执行，每个 job 内串行运行自己的门禁，避免在 hosted runner 内再次过量并发。共接管 73 个门禁，本机保留 24 个；另有 1 个 MANUAL 门禁只在真实付费模型下手工运行，合计 98 个。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
+CI 分为 base、tooling、docs、contracts、api、turns、browser 七个独立 checkout 的 job，最多六个同时执行，每个 job 内串行运行自己的门禁，避免在 hosted runner 内再次过量并发。共接管 75 个门禁，本机保留 24 个（`a-base` 与 `b-tooling` 两边都跑），另有 1 个 MANUAL 门禁只在真实付费模型下手工运行；去重后合计 98 个。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
 
 90 个测试文件中，CI 执行 87 个，本机执行 `tests/machine-worker.test.ts`（Darwin/sandbox-exec 分支）、`tests/extension-mcp.test.ts`（真实 Pi McpClient）和 `tests/worker-report-budget.test.ts`（真实 runWorker 环境探测）。`pnpm test:ci` 与 `pnpm test:local` 可单独运行各自测试集合；两边都保留文件隔离。CI 测试最多两个 file worker，使用空的临时 Pi agent 目录、清除 inherited Pi runner/module 设置并关闭 MCP_EVERYTHING，避免借用个人安装掩盖依赖。N/Q 等使用生成 protocol stub 的验证属于 CI，不因名称含 Pi 就保留本机；真实 Pi SDK、MCP extension、真实 Worker 初始化/环境探测仍留本机。
 
@@ -78,7 +78,7 @@ server 准备固定使用 `NODE_ENV=production` 并删除 `BETTER_AUTH_SECRET`�
 
 worker 按验证计划执行，不因“保险起见”自行追加全量验证。发现计划外风险时，记录具体风险和调整依据，再更新验证计划。报告区分计划执行、实际执行、通过、失败与跳过。
 
-coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范围。worker 自报通过是证据，不代替 coordinator 验证。文档单元复跑文档检查，代码单元复跑受影响领域检查；独立复跑不等于全量复跑。复跑前核对脚本内含的检查，去掉本轮执行计划中的重复项；保留重复项时写明新增风险或独立取证的理由。交付前的整段复核用 `pnpm verify:local`：它只跑 `scripts/verify/lib/targets-plan.mjs` 里 `LOCAL_GATES` 的 24 个门禁，即必须在本机 macOS 与真实 Pi 环境下跑的部分（真实 Worker、真实 Pi CLI/SDK/MCP、真实页面）；98 个门禁里另外 73 个由 CI 的 Linux 分组覆盖，只有 `a-base` 与 `b-tooling` 两边都跑（同名的两份检查只在 macOS 侧含本机专属用例）。同一 HEAD 已有一轮 0 失败就复用那份结果并记下来源，不因为「顺手再跑一遍」重跑第二遍。
+coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范围。worker 自报通过是证据，不代替 coordinator 验证。文档单元复跑文档检查，代码单元复跑受影响领域检查；独立复跑不等于全量复跑。复跑前核对脚本内含的检查，去掉本轮执行计划中的重复项；保留重复项时写明新增风险或独立取证的理由。交付前的整段复核用 `pnpm verify:local`：它只跑 `scripts/verify/lib/targets-plan.mjs` 里 `LOCAL_GATES` 的 24 个门禁，即必须在本机 macOS 与真实 Pi 环境下跑的部分（真实 Worker、真实 Pi CLI/SDK/MCP、真实页面）；98 个门禁里 75 个由 CI 的 Linux 分组覆盖，只有 `a-base` 与 `b-tooling` 两边都跑（同名的两份检查只在 macOS 侧含本机专属用例）。同一 HEAD 已有一轮 0 失败就复用那份结果并记下来源，不因为「顺手再跑一遍」重跑第二遍。
 
 完整验证安排在明确的集成批次或交付节点，不在每个中间单元重复执行。独立验收的范围覆盖该节点的交付要求，不能因为单元定向验证通过而省略。在集成分支上，先把它与 `main` 同步、解决冲突，再在同步后的头部跑完整验证与独立验收，并把该 commit 记成受验对象；之后 `main` 只接收这个受验形态。
 

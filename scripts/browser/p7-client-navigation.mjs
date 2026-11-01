@@ -131,7 +131,7 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     .getByTestId("project-submenu")
     .getByRole("link", { name: "Tasks", exact: true })
     .click();
-  await page.waitForURL((url) => /\/tasks$/.test(url.pathname));
+  await page.waitForURL((url) => url.pathname.endsWith("/tasks"));
   const card = page.locator('[data-testid^="task-card-"]').first();
   if ((await card.count()) > 0) {
     await page.evaluate(() => {
@@ -144,7 +144,7 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     assert.equal(await marker(), "kept");
     documents = 0;
     await page.getByRole("link", { name: "返回四态总览" }).click();
-    await page.waitForURL((url) => /\/tasks$/.test(url.pathname));
+    await page.waitForURL((url) => url.pathname.endsWith("/tasks"));
     assert.equal(documents, 0, "返回四态总览触发整页重新加载");
     assert.equal(await marker(), "kept");
     pass("task_card_and_back_stay_client_side");

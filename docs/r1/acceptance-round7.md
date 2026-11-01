@@ -1,6 +1,6 @@
 # R1（MCP tools 接入）第七轮独立验收
 
-- 仓库：`/Users/snake/workspace/sprout-mio`
+- 仓库：`~/workspace/sprout-mio`
 - 验收起点 head：`c7e4b5959c08a51aaa6dbfada177e2ba49d6b19f`（`docs(r1): summary 反映 v3-v5 门禁整改与第六轮验收结论`）
 - 验收期间 head 漂移：另一并发任务在 20:54 提交了 `be082db`（只格式化 `docs/r1/acceptance-round6.md`，未动 `scripts/**`、`docs/r1/evidence/**`、`docs/r1/summary.md`）。本报告结论对两者同时成立。
 - 只读执行：仓库文件未改动。所有变异在 `/tmp/r7-manual`、`/tmp/r7-repo` 的独立 clone 中完成；主 checkout 的 `git status --porcelain` 在验收结束时仍为空。

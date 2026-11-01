@@ -10,11 +10,18 @@ AGENTS.local.md
 # dev-pipeline local state (symlink or directory)
 .agents/dev-pipeline
 orchestrate/
+experiments/
 
 node_modules/
 dist/
 .output/
 data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.pem
+*.key
+*.plist
 .env*
 !.env.example
 .verify/

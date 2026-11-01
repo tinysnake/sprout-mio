@@ -90,7 +90,7 @@ Human 确定的设计记录：**本仓库没有**。页面形状由接线单元�
 
 本轮只写文档，没有改产品代码、测试、门禁或契约。
 
-- 工作分支 `p6b/closeout` @ `4d9545c`；该签出没有 `node_modules`，所以门禁都在同一提交的 `p6-int` 签出（`/Users/snake/workspace/p6-int`，`git status` 干净、`git rev-parse HEAD` = `4d9545c250e457d0b1490e7221f9aad2755afdbe`）上执行，受验源码与文档基线同一提交。
+- 工作分支 `p6b/closeout` @ `4d9545c`；该签出没有 `node_modules`，所以门禁都在同一提交的 `p6-int` 签出（`~/workspace/p6-int`，`git status` 干净、`git rev-parse HEAD` = `4d9545c250e457d0b1490e7221f9aad2755afdbe`）上执行，受验源码与文档基线同一提交。
 - 门禁实测：`bf-p6b-info` exit 0（29 断言，1.2s）；`bf-p6b-turn-context` exit 0（42 断言，1.7s）；`bf-p6b-agent-tool` exit 0（24 断言，1.0s）；`bf-p6b-pages` exit 0（27+10 断言组，墙钟 43s）；`bf-p6b-lifecycle` exit 0（约 530 断言，三次实测 530/536/536，墙钟 24s，证据目录 `.verify/p6b-lifecycle-wyhwpg9e`）；两个 p6b 测试文件 55 tests。
 - 新增文档：本文件与 [P6b 契约](contracts.md)。
 - 计划状态：`docs/development-plan.md`（I-P6b）、`docs/development-plan-functional.md`（P6b）、`docs/development-plan-ui.md`（UI-P6b）按证据勾选，未取证的两项保持未勾。

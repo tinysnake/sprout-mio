@@ -250,7 +250,7 @@ FAIL f-docs 1 checks failed
 
 ```bash
 sed -e 's|^bash scripts/verify/f-docs.sh$|# f-docs precheck skipped for this probe only|' \
-    -e 's|^root=.*|root="/Users/snake/.herdr/worktrees/sprout-mio/p6a-closeout"|' \
+    -e 's|^root=.*|root="~/.herdr/worktrees/sprout-mio/p6a-closeout"|' \
     scripts/verify/l-docs.sh > /tmp/l-docs-probe-nofdocs.sh
 bash /tmp/l-docs-probe-nofdocs.sh
 ```

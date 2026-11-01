@@ -36,7 +36,7 @@ DM 投给唯一分身，Agent owner Group 只投 owner；Human owner 的 Group/�
 
 ## 技术验收证据
 
-证据根为 `/Users/snake/workspace/sprout-mio/orchestrate/sprout-mio-p5b/reports/`。第一轮 `p5b-acceptance.md` 给出两个 P1：真 Worker 门禁误入 Ubuntu CI、ACK 观察器越序/丢帧。修复后第二轮在受验 HEAD `c0e9c748ed4f5d3fe108f7c5b6abe8eaed72700d` 独立复验。
+证据根为 `~/workspace/sprout-mio/orchestrate/sprout-mio-p5b/reports/`。第一轮 `p5b-acceptance.md` 给出两个 P1：真 Worker 门禁误入 Ubuntu CI、ACK 观察器越序/丢帧。修复后第二轮在受验 HEAD `c0e9c748ed4f5d3fe108f7c5b6abe8eaed72700d` 独立复验。
 
 **结论：可以合入 main。两个上一轮 P1 均已关闭；本轮没有发现新的 P1 或其他技术合入阻塞。** 判定基于第二轮独立执行的八轮生命周期、九个旁路门禁、登记测试、typecheck、CI 单元全集，以及故障注入、AST 和 SQLite 复核；详见 `p5b-acceptance-round2.md`。这不是全新 Ubuntu 的八组 CI 已运行，也不是 Human 体验确认。
 

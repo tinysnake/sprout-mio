@@ -102,6 +102,8 @@ export const SUITE_PLAN = Object.freeze({
   "j-info-hub": plan(8.758, { light: 1, port3144: 1 }, server),
   "k-acceptance": plan(41.234, { browser: 1 }, server),
   "k2-cross-family-isolation": plan(5.636, { light: 1 }, server),
+  "deploy-leaks": plan(6, { light: 1 }),
+  "deploy-selftest": plan(45, { light: 1 }),
   "l-docs": plan(2.341, { light: 1 }),
   "l-docs-probes": plan(81.072, { light: 1 }),
   "m-error-mapping": plan(1.362, { light: 1 }, server),

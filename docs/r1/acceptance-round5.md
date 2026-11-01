@@ -1,6 +1,6 @@
 # R1 第五轮独立技术评审
 
-- 仓库：`/Users/snake/workspace/sprout-mio` 的只读 worktree `/Users/snake/.herdr/worktrees/sprout-mio/r1-ac5b-readonly`
+- 仓库：`~/workspace/sprout-mio` 的只读 worktree `~/.herdr/worktrees/sprout-mio/r1-ac5b-readonly`
 - 冻结 head：`efc7c28139d2a4b5d47a7b41d1c43318dd3b9183`
 - 执行者模型：magpie/auto/deepseek-v4.1-flash（本轮执行）
 - 所有独立产物位于 `/tmp/r1-ac5b/`。完整验证与探针日志没有收录原始服务日志或 SQLite 内容。

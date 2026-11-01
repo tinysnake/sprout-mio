@@ -42,7 +42,7 @@ CLI 的启动参数在四种模式下都有效，所以工作目录、模型、�
 
 | 组件 | 值 |
 | --- | --- |
-| Pi | 1.3.0（`/Users/snake/.pi/agent/bin/pi`，托管安装） |
+| Pi | 1.3.0（`~/.pi/agent/bin/pi`，托管安装） |
 | Node | v26.11.1 |
 | 默认 provider / model | `magpie` / `group/auto-deepseek-v4-1-flash` |
 | magpie 来源 | `pi-magpie` extension 通过 `pi.registerProvider` 注册的自定义 gateway provider |
@@ -56,7 +56,7 @@ CLI 的启动参数在四种模式下都有效，所以工作目录、模型、�
 
 ```bash
 env -i HOME="$HOME" PATH="/opt/homebrew/bin:/usr/bin:/bin" \
-  /Users/snake/.pi/agent/bin/pi -p --session-dir /tmp/pi-probe-a2 \
+  ~/.pi/agent/bin/pi -p --session-dir /tmp/pi-probe-a2 \
   "Reply with exactly: PROBE_A_ENV_OK"
 ```
 
@@ -73,7 +73,7 @@ exit=0
 
 ```bash
 env HOME=/tmp/pi-probe-empty PI_CODING_AGENT_DIR=/tmp/pi-probe-empty/agent \
-  /Users/snake/.pi/agent/bin/pi -p --offline --session-dir /tmp/pi-probe-empty/sessions \
+  ~/.pi/agent/bin/pi -p --offline --session-dir /tmp/pi-probe-empty/sessions \
   "Reply with exactly: SHOULD_NOT_WORK"
 ```
 

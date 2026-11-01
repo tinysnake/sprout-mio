@@ -1,6 +1,6 @@
 # R1（MCP tools 接入）第六轮独立验收
 
-- 仓库：`/Users/snake/workspace/sprout-mio`
+- 仓库：`~/workspace/sprout-mio`
 - head：`22fe0fbcbf3de6b6ec955942c4c1bd1395726bff`
 - 只读执行：未修改仓库任何文件（验收前后 `git status --short` 均为空）；所有变异在 `/tmp/r6-manual`、`/tmp/r6-resid` 的独立 clone 中完成，临时产物只在 `/tmp`。
 - 执行者：poteto-agent（独立验收角色）

@@ -30,7 +30,7 @@ Human 已于 `c6653f4` 亲自体验并确认通过；该版本与交付基线的
 
 ## 功能交付证据
 
-以下五项对应功能计划 P4b 的五个 checkbox，均已具备实现、脚本断言与反证。报告路径以 `/Users/snake/workspace/sprout-mio/orchestrate/sprout-mio-p4b/` 为根；这是编排 store，不随仓库文档提交。原始私有库、凭据和操作输出不属于可复制证据。
+以下五项对应功能计划 P4b 的五个 checkbox，均已具备实现、脚本断言与反证。报告路径以 `~/workspace/sprout-mio/orchestrate/sprout-mio-p4b/` 为根；这是编排 store，不随仓库文档提交。原始私有库、凭据和操作输出不属于可复制证据。
 
 ### 1. 申请、释放与互斥
 
