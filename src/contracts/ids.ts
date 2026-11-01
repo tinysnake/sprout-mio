@@ -37,9 +37,13 @@ export type AppId<P extends IdPrefix = IdPrefix> = `${P}_${string}`;
  */
 const SHORT_ID_HEX = 8;
 const SHORT_ID_HEX_MAX = 16;
+/** 不带锚点的匹配片段，供复合 id（如 membership 台账键）拼进更大的正则。 */
+export function appIdSource(prefix: IdPrefix): string {
+  return `${prefix}_[0-9a-f]{${SHORT_ID_HEX},${SHORT_ID_HEX_MAX}}`;
+}
 /** 与 newId 一致的前缀加随机段格式，供所有运行时边界复用。 */
 export function appIdPattern(prefix: IdPrefix): RegExp {
-  return new RegExp(`^${prefix}_[0-9a-f]{${SHORT_ID_HEX},${SHORT_ID_HEX_MAX}}$`);
+  return new RegExp(`^${appIdSource(prefix)}$`);
 }
 export function newId<P extends IdPrefix>(prefix: P): AppId<P> {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, SHORT_ID_HEX)}`;

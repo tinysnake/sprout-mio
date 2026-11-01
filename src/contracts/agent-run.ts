@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { chatIdInput } from "./chat";
+import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
 import type { RunRepoSnapshot } from "./repository";
 import type { AppResult } from "./result";
@@ -95,9 +96,7 @@ export type AgentRunInput = {
   cancelReason?: RunInputCancelReason;
 };
 
-export const runIdSchema = z
-  .string()
-  .regex(/^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+export const runIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.run));
 
 export const abortAgentRunInput = z.object({ runId: runIdSchema });
 export const chatRunStateInput = chatIdInput;

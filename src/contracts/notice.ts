@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { runIdSchema } from "./agent-run";
-import { appIdPattern, ID_PREFIXES } from "./ids";
+import { appIdPattern, appIdSource, ID_PREFIXES } from "./ids";
 import { machineIdSchema, positiveSafeIntegerSchema } from "./machine";
 import { REMOTE_EXECUTION_STATES } from "./remote";
 
@@ -36,7 +36,9 @@ export function membershipCauseId(projectId: string, machineId: string, epoch: n
 const membershipCauseIdSchema = z
   .string()
   .regex(
-    /^membership:prj_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:mch_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}:[1-9][0-9]*$/,
+    new RegExp(
+      `^membership:${appIdSource(ID_PREFIXES.project)}:${appIdSource(ID_PREFIXES.machine)}:[1-9][0-9]*$`,
+    ),
   );
 
 const noticeExecutionSchema = z.strictObject({
