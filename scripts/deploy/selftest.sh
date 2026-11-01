@@ -112,6 +112,19 @@ if bash "$REPO_ROOT/scripts/deploy/verify.sh" drill >/dev/null 2>&1; then
   fail "verify.sh 没发现演练库的机器凭据不对"
 fi
 
+step "promote 必须在迁移之后、启动之前跑 id 重写"
+promote="$REPO_ROOT/scripts/deploy/promote.sh"
+migrate_line="$(grep -n 'db:migrate' "$promote" | head -1 | cut -d: -f1)"
+rekey_line="$(grep -n 'rekey-ids.sh" prod' "$promote" | head -1 | cut -d: -f1)"
+start_line="$(grep -n 'start.sh" prod >/dev/null || restore' "$promote" | head -1 | cut -d: -f1)"
+[[ -n "$migrate_line" && -n "$rekey_line" && -n "$start_line" ]] \
+  || fail "promote.sh 里找不到 migrate / rekey-ids.sh / start.sh 三个步骤"
+(( migrate_line < rekey_line )) || fail "id 重写没有排在迁移真库之后"
+(( rekey_line < start_line )) || fail "id 重写没有排在启动之前"
+if bash "$REPO_ROOT/scripts/deploy/rekey-ids.sh" nosuch >/dev/null 2>&1; then
+  fail "rekey-ids.sh 接受了未知实例"
+fi
+
 step "文档与脚本必须一一对应"
 documented="$(grep -oE 'scripts/deploy/[a-z-]+\.sh' "$REPO_ROOT/docs/deployment.md" | sort -u)"
 listed="$(cd "$REPO_ROOT/scripts/deploy" && ls *.sh | sed 's|^|scripts/deploy/|' | sort)"
