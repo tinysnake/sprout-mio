@@ -4,7 +4,9 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 source_db="${1:-}"
+app_dir="${2:-$REPO_ROOT}"
 [[ -f "$source_db" ]] || fail "没有可演练的库：$source_db"
+[[ -d "$app_dir" ]] || fail "没有可用的应用目录：$app_dir"
 require_cmd sqlite3
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/sprout-migrate-check.XXXXXX")"
@@ -13,7 +15,7 @@ copy="$work/copy.sqlite"
 sqlite3 "$source_db" "VACUUM INTO '$copy'"
 
 before="$(sqlite_scalar "$copy" "select count(*) from sqlite_master where type='table' and name not like 'sqlite_%'")"
-DATABASE_URL="$copy" pnpm --dir "$REPO_ROOT" db:migrate >"$work/migrate.log" 2>&1 || {
+DATABASE_URL="$copy" pnpm --dir "$app_dir" db:migrate >"$work/migrate.log" 2>&1 || {
   cat "$work/migrate.log" >&2
   fail "迁移在库副本上失败，正式库未改动"
 }

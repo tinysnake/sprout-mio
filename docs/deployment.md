@@ -21,7 +21,20 @@
 | 自动化 | 开 | 关（`SPROUT_AUTOMATION_ENABLED=false`） | 关 |
 | 端口 | 3220 | 3221 起 | 3000 |
 
-运行根目录默认 `~/sprout-runtime`，可用 `SPROUT_RUNTIME_ROOT` 覆盖。
+运行根目录可以在任意位置，默认 `~/sprout-runtime`。脚本按这个顺序解析：
+
+1. `SPROUT_RUNTIME_ROOT` 环境变量；
+2. `~/.sprout-runtime-root` 指针文件的第一行（可用 `SPROUT_RUNTIME_ROOT_FILE` 改路径）；
+3. `~/sprout-runtime`。
+
+三条路径都必须是绝对路径，脚本不接受相对路径，也不从仓库位置推导。把运行根目录放到别的盘上也一样：
+
+```bash
+printf '%s\n' /Volumes/Data/sprout > ~/.sprout-runtime-root
+bash scripts/deploy/init-instance.sh prod
+```
+
+prod 的代码 checkout（`$SPROUT_RUNTIME_ROOT/prod/app`）从远端 clone，默认取开发 checkout 的 `origin`，可用 `SPROUT_DEPLOY_REMOTE` 指定。部署脚本不使用开发 checkout 的路径，所以 prod 可以整体搬走，只要重跑一次 `init-instance.sh` 与 `promote.sh`。
 
 `SPROUT_AUTOMATION_ENABLED` 是实例级开关，默认 `true`，只接受 `true` 或 `false`。关掉后运行时不装判定器、不启动调度器、判定边界直接拒绝，`/api/health` 的 `automationEnabled` 报告实际取值。`deploy-automation-off` 门禁在两种取值下各跑一遍并比对证据：关闭时到期排期不被认领、不产生判定与投递、两个模型边界调用数为 0；打开时同一轮判定与投递各发生一次，付费模型调用数为 0。
 
@@ -96,6 +109,8 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/rollback.sh [备份文件]` | 恢复最近一次（或指定）备份并切回上一个 tag |
 | `scripts/deploy/verify.sh <instance>` | 校验实例后置状态，含 `/api/health` 里的 `automationEnabled` |
 | `scripts/deploy/selftest.sh` | 在临时运行根目录里把上面整条链路跑一遍 |
+| `scripts/worker/package.sh <输出目录>` | 打包 Worker 两个自包含文件并校验只依赖 node 内置模块 |
+| `scripts/worker/publish.sh` | 把产物推到 `worker-dist` 分支供 Worker 机器 clone |
 
 `selftest.sh` 是这套脚本自己的门禁。它不复述文档，而是真的建目录、建库、备份、刷新、校验，然后断言每一步的后置状态。文档与脚本不一致时它会红。
 
@@ -133,6 +148,28 @@ bash scripts/deploy/drill.sh <sha>
 - `drizzle/meta/_journal.json` 已发布的条目不许改 `when`。改了会让已经迁过的库重放该迁移，撞 `table ... already exists`，而且库会停在半应用状态。
 - 迁移跑在副本上时，用 `scripts/p7/storage/snapshot.ts` 那套表与列比对当断言。
 
+## Worker 机器接入
+
+Worker 机器只需要 `git` 与 `node`，不需要包管理器。发布端把打包产物推到一个只含产物与说明的分支：
+
+```bash
+bash scripts/worker/publish.sh          # 推到 worker-dist 分支，默认远端同部署来源
+```
+
+接入端：
+
+```bash
+git clone --depth 1 --branch worker-dist <仓库地址> ~/sprout-worker
+node ~/sprout-worker/main.js version
+node ~/sprout-worker/main.js init --server https://sprout.example \
+  --machine <machine-id> --ticket-file <一次性票据文件> --state-dir ~/sprout-worker-state
+node ~/sprout-worker/main.js run --state-dir ~/sprout-worker-state
+```
+
+更新换成 `git -C ~/sprout-worker fetch origin worker-dist && git -C ~/sprout-worker reset --hard origin/worker-dist`。
+
+产物只有 `main.js` 与 `runner.js`，二者只依赖 node 内置模块；`main.js` 在自身旁边找 `runner.js`，所以两个文件必须待在同一目录。`worker-dist` 门禁在每次验证时重新打包、检查依赖、`node --check`，再真的 `git clone` 一次并执行，因此「只要 git 与 node」这句话是脚本证明的。
+
 ## 反向代理与 PWA
 
 PWA 需要安全上下文，所以 prod 前面要有 HTTPS。用 Caddy 或 `tailscale serve` 终止 TLS，转发到 `127.0.0.1:3220`，并把 `APP_ORIGIN` 设成对外那个 https 地址。`APP_TRUSTED_ORIGINS` 用于同一进程经不同内网地址访问的情形。
@@ -147,6 +184,7 @@ PWA 需要安全上下文，所以 prod 前面要有 HTTPS。用 Caddy 或 `tail
 ```bash
 bash scripts/verify/deploy-automation-off.sh  # 实例开关的关闭与打开对照
 bash scripts/verify/deploy-leaks.sh     # 隐私数据不进仓库
+bash scripts/verify/worker-dist.sh      # Worker 产物自包含且 clone 后可运行
 bash scripts/deploy/selftest.sh         # 脚本链路自检
 bash scripts/verify/deploy-selftest.sh  # 上面的门禁入口
 ```

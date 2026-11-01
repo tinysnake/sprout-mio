@@ -9,7 +9,28 @@ say() { printf '%s\n' "$*"; }
 fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || fail "缺少命令 $1"; }
 
-runtime_root() { printf '%s' "${SPROUT_RUNTIME_ROOT:-$HOME/sprout-runtime}"; }
+# 运行根目录与仓库无关：显式变量优先，其次是本机指针文件，最后才是默认位置。
+runtime_root() {
+  if [[ -n "${SPROUT_RUNTIME_ROOT:-}" ]]; then
+    printf '%s' "$SPROUT_RUNTIME_ROOT"
+    return
+  fi
+  local pointer="${SPROUT_RUNTIME_ROOT_FILE:-$HOME/.sprout-runtime-root}"
+  if [[ -f "$pointer" ]]; then
+    printf '%s' "$(head -1 "$pointer")"
+    return
+  fi
+  printf '%s' "$HOME/sprout-runtime"
+}
+
+# 部署来源用远端 URL，不用开发 checkout 的路径，prod 才能搬去任意位置。
+deploy_remote() {
+  if [[ -n "${SPROUT_DEPLOY_REMOTE:-}" ]]; then
+    printf '%s' "$SPROUT_DEPLOY_REMOTE"
+    return
+  fi
+  git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || printf '%s' "$REPO_ROOT"
+}
 instance_dir() { printf '%s/%s' "$(runtime_root)" "$1"; }
 
 require_instance() {

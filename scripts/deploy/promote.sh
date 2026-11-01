@@ -16,7 +16,7 @@ port="$(port_for prod)"
 mkdir -p "$dir/backups" "$dir/logs"
 if [[ ! -d "$app/.git" ]]; then
   say "首次部署：克隆到 $app"
-  git clone --quiet "$REPO_ROOT" "$app"
+  git clone --quiet "$(deploy_remote)" "$app"
 fi
 
 previous="$(git -C "$app" rev-parse --short HEAD 2>/dev/null || echo none)"
@@ -41,10 +41,10 @@ git -C "$app" checkout --quiet "$tag" || restore "取不到 tag $tag"
 pnpm --dir "$app" install --frozen-lockfile >/dev/null || restore "依赖安装失败"
 pnpm --dir "$app" build >/dev/null || restore "构建失败"
 
-bash "$REPO_ROOT/scripts/deploy/check-migration.sh" "$(db_path prod)" || restore "迁移演练未通过"
+bash "$REPO_ROOT/scripts/deploy/check-migration.sh" "$(db_path prod)" "$app" || restore "迁移演练未通过"
 
 bash "$REPO_ROOT/scripts/deploy/stop.sh" prod >/dev/null 2>&1 || true
-DATABASE_URL="$(db_path prod)" pnpm --dir "$REPO_ROOT" db:migrate >"$dir/logs/migrate.log" 2>&1 || restore "正式库迁移失败"
+DATABASE_URL="$(db_path prod)" pnpm --dir "$app" db:migrate >"$dir/logs/migrate.log" 2>&1 || restore "正式库迁移失败"
 bash "$REPO_ROOT/scripts/deploy/start.sh" prod >/dev/null || restore "启动失败"
 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null || restore "部署后校验失败"
 

@@ -58,6 +58,16 @@ prod_sessions="$(sqlite_scalar "$prod_db" "select count(*) from session")"
 prod_secret="$(sqlite_scalar "$prod_db" "select secret_hash from machine_credential where machine_id='mch_selftest'")"
 [[ "$prod_secret" == "$(printf 'b%.0s' {1..64})" ]] || fail "prod 的机器凭据被动了：$prod_secret"
 
+step "迁移演练只碰副本"
+before_rows="$(sqlite_scalar "$prod_db" "select count(*) from user")"
+bash "$REPO_ROOT/scripts/deploy/check-migration.sh" "$prod_db" >/dev/null
+after_rows="$(sqlite_scalar "$prod_db" "select count(*) from user")"
+[[ "$before_rows" == "$after_rows" ]] || fail "迁移演练改动了源库"
+
+step "运行根目录可以由指针文件指定，不必在仓库旁边"
+printf '%s\n' "$scratch" > "$scratch/root-pointer"
+SPROUT_RUNTIME_ROOT= SPROUT_RUNTIME_ROOT_FILE="$scratch/root-pointer" bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null
+
 step "verify 两个实例"
 bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null
 bash "$REPO_ROOT/scripts/deploy/verify.sh" drill >/dev/null
@@ -81,7 +91,14 @@ missing="$(comm -13 <(printf '%s\n' "$documented") <(printf '%s\n' "$entries"))"
 unlisted="$(comm -23 <(printf '%s\n' "$documented") <(printf '%s\n' "$entries"))"
 [[ -z "$missing" ]] || fail "这些脚本没有写进 docs/deployment.md：$(printf '%s ' $missing)"
 [[ -z "$unlisted" ]] || fail "文档里提到但不存在或写错名的脚本：$(printf '%s ' $unlisted)"
-for script in $listed; do
+worker_listed="$(cd "$REPO_ROOT/scripts/worker" && ls *.sh | sed 's|^|scripts/worker/|' | sort)"
+worker_documented="$(grep -oE 'scripts/worker/[a-z-]+\.sh' "$REPO_ROOT/docs/deployment.md" | sort -u)"
+[[ -z "$(comm -13 <(printf '%s\n' "$worker_documented") <(printf '%s\n' "$worker_listed"))" ]] \
+  || fail "worker 脚本没有写进 docs/deployment.md：$(comm -13 <(printf '%s\n' "$worker_documented") <(printf '%s\n' "$worker_listed"))"
+[[ -z "$(comm -23 <(printf '%s\n' "$worker_documented") <(printf '%s\n' "$worker_listed"))" ]] \
+  || fail "文档里提到的 worker 脚本不存在：$(comm -23 <(printf '%s\n' "$worker_documented") <(printf '%s\n' "$worker_listed"))"
+
+for script in $listed $worker_listed; do
   [[ -x "$REPO_ROOT/$script" ]] || fail "$script 没有执行权限"
 done
 
