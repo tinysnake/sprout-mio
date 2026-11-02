@@ -1,5 +1,6 @@
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight } from "lucide-react";
+import { PageBackLink } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ProjectAgentsPanel } from "../../components/info-hub/project-agents-panel";
 import { TaskAssociations } from "../../components/tasks/task-associations";
@@ -134,10 +135,10 @@ function ProjectSettingsView() {
       title="Project settings"
       description="管理当前 Project 的基本信息与协作配置，查看 Chat 使用的仓库来源。"
       back={
-        <Link to="/projects/$projectId/chats" params={{ projectId }}>
+        <PageBackLink to="/projects/$projectId/chats" params={{ projectId }}>
           <Icon as={ArrowLeft} />
           返回 Chats
-        </Link>
+        </PageBackLink>
       }
       testId="project-settings-page"
     >

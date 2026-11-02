@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { AutomationPanel } from "../../components/automation/automation-panel";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
+import { PageBackLink } from "../../components/layout/page-back";
+import { Icon } from "../../components/ui/icon";
 import { TaskDetailView } from "../../components/tasks/task-detail";
 import type { TaskPageCommand } from "../../components/tasks/task-detail";
 import { PageFrame } from "../../components/layout/page-frame";
@@ -73,6 +76,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/tasks/$taskId
 
 function ProjectTaskDetailPage() {
   const loader = Route.useLoaderData();
+  const { projectId } = Route.useParams();
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -100,7 +104,29 @@ function ProjectTaskDetailPage() {
   return (
     <PageFrame
       testId="task-detail-page"
-      title="Task"
+      title={
+        loader.detail.ok ? (
+          <span
+            data-testid="task-detail-title"
+            className="line-clamp-2"
+            title={loader.detail.data.task.title}
+          >
+            {loader.detail.data.task.title}
+          </span>
+        ) : (
+          "Task"
+        )
+      }
+      back={
+        <PageBackLink
+          to="/projects/$projectId/tasks"
+          params={{ projectId }}
+          data-testid="task-detail-back"
+        >
+          <Icon as={ArrowLeft} />
+          返回 Tasks
+        </PageBackLink>
+      }
       actions={
         <Button variant="ghost" disabled={pending} onClick={() => void router.invalidate()}>
           刷新事实

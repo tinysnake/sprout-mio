@@ -1,6 +1,8 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { PageFrame } from "../../components/layout/page-frame";
 import { ThemeMenuToggle } from "../../components/layout/theme-toggle";
+import { Facts, SettingsSection } from "../../components/project/settings-section";
 import { Button } from "../../components/ui/button";
 import { authenticate } from "../../server/session";
 import { clearOfflineReads } from "../../lib/pwa";
@@ -96,120 +98,113 @@ function Management() {
     }
   }
   return (
-    <div
-      data-testid="management-page"
-      className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-6"
-    >
-      <div className="mx-auto w-full max-w-3xl space-y-6">
-        <header>
-          <h1 className="text-xl font-semibold">Management</h1>
-          <p className="mt-1 text-sm text-muted-foreground">服务、数据与个人偏好</p>
-        </header>
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-            {updated ? ` · 最后更新 ${updated}` : ""}
-          </p>
-        )}
-        <section
-          aria-labelledby="service-heading"
-          className="space-y-4 rounded-container border border-border bg-card p-4"
-        >
-          <h2 id="service-heading" className="font-semibold">
-            服务与数据
-          </h2>
-          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
-            <dt>服务版本</dt>
-            <dd data-testid="service-version" className="break-all">
-              {health?.version ?? "读取中…"}
-            </dd>
-            <dt>服务状态</dt>
-            <dd>{health?.phase ?? "尚未读取"}</dd>
-            <dt>数据库迁移</dt>
-            <dd data-testid="migration-version" className="break-all">
-              {health ? (health.database.migrationApplied ? "已应用" : "未应用") : "尚未读取"}
-              {summary?.migration
-                ? ` · 记录 #${summary.migration.id} · ${summary.migration.hash.slice(0, 16)}`
-                : ""}
-            </dd>
-            <dt>后台任务</dt>
-            <dd data-testid="background-tasks">{health?.activeBackgroundTasks ?? "尚未读取"}</dd>
-            <dt>待交付事件 / 续行</dt>
-            <dd data-testid="event-backlog">
-              {summary
+    <PageFrame title="Management" description="服务、数据与个人偏好" testId="management-page">
+      {error && (
+        <p role="alert" className="mb-6 text-sm text-destructive">
+          {error}
+          {updated ? ` · 最后更新 ${updated}` : ""}
+        </p>
+      )}
+      <SettingsSection
+        title="服务与数据"
+        description="当前部署、后台任务与交付队列的实时摘要。"
+        testId="management-service"
+      >
+        <Facts
+          items={[
+            {
+              label: "服务版本",
+              testId: "service-version",
+              value: health?.version ?? "读取中…",
+            },
+            { label: "服务状态", value: health?.phase ?? "尚未读取" },
+            {
+              label: "数据库迁移",
+              testId: "migration-version",
+              value: (
+                <>
+                  {health ? (health.database.migrationApplied ? "已应用" : "未应用") : "尚未读取"}
+                  {summary?.migration
+                    ? ` · 记录 #${summary.migration.id} · ${summary.migration.hash.slice(0, 16)}`
+                    : ""}
+                </>
+              ),
+            },
+            {
+              label: "后台任务",
+              testId: "background-tasks",
+              value: health?.activeBackgroundTasks ?? "尚未读取",
+            },
+            {
+              label: "交付队列",
+              testId: "event-backlog",
+              value: summary
                 ? `${summary.pendingResourceNotices} 个资源事件 · ${summary.pendingContinuations} 个续行（pending / bound）`
-                : "尚未读取"}
-            </dd>
-            <dt>MCP 队列水位</dt>
-            <dd data-testid="queue-watermark">
-              {summary
+                : "尚未读取",
+            },
+            {
+              label: "MCP 队列水位",
+              testId: "queue-watermark",
+              value: summary
                 ? ["queued", "sent", "unknown"]
                     .map((state) => {
                       const row = summary.mcpFrames.find((row) => row.state === state);
                       return `${state} ${row?.count ?? 0} 帧 / ${row?.bytes ?? 0} B`;
                     })
                     .join(" · ")
-                : "尚未读取"}
-            </dd>
-          </dl>
-          <p className="text-xs text-muted-foreground">
-            队列摘要仅含当前账号 Project 的资源通知、续行与 MCP 帧；sent 等待确认，unknown
-            表示交付结果未知。
+                : "尚未读取",
+            },
+          ]}
+        />
+        <p className="mt-4 max-w-[45rem] text-xs leading-6 text-muted-foreground">
+          队列摘要仅含当前账号 Project 的资源通知、续行与 MCP 帧；sent 等待确认，unknown
+          表示交付结果未知。
+        </p>
+        {updated && <p className="mt-1 text-xs text-muted-foreground">最后更新 {updated}</p>}
+      </SettingsSection>
+      <SettingsSection title="备份与恢复" testId="management-backup">
+        <div id="backup-restore" className="max-w-[45rem] space-y-2 text-sm">
+          <p>
+            由服务部署者在宿主机操作。先停止服务与写入，备份 DATABASE_URL 指向的 SQLite 数据库（默认
+            data/sprout.sqlite）及相关数据目录，保留配置与密钥。恢复前另存当前数据，恢复备份后启动服务并检查迁移、登录与对象详情。
           </p>
-          {updated && <p className="text-xs text-muted-foreground">最后更新 {updated}</p>}
-          <div id="backup-restore" className="space-y-2 border-t border-border pt-4 text-sm">
-            <h3 className="font-medium">备份与恢复</h3>
-            <p>
-              由服务部署者在宿主机操作。先停止服务与写入，备份 DATABASE_URL 指向的 SQLite
-              数据库（默认
-              data/sprout.sqlite）及相关数据目录，保留配置与密钥。恢复前另存当前数据，恢复备份后启动服务并检查迁移、登录与对象详情。
-            </p>
-            <p className="text-muted-foreground">
-              此页面提供操作说明；备份文件与恢复操作在服务宿主机上完成。
-            </p>
-            <a
-              href="/api/health"
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary underline"
-            >
-              查看服务与迁移检查
-            </a>
-          </div>
-          <div className="space-y-2 border-t border-border pt-4 text-sm">
-            <h3 className="font-medium">日志与诊断</h3>
-            <p>
-              服务日志输出到宿主进程的标准输出与标准错误，由部署者的进程管理器收集。诊断事件保存在应用数据库，可用错误提示中的
-              requestId 查询。
-            </p>
-            <form
-              action="/api/diagnostics"
-              target="_blank"
-              className="flex flex-wrap items-end gap-2"
-            >
-              <label className="min-w-0 flex-1">
-                requestId
-                <input
-                  name="requestId"
-                  required
-                  value={requestId}
-                  onChange={(event) => setRequestId(event.target.value)}
-                  className="mt-1 block w-full rounded-control border border-input bg-background px-3 py-2"
-                />
-              </label>
-              <Button type="submit" variant="outline">
-                打开诊断事件
-              </Button>
-            </form>
-          </div>
-        </section>
-        <section
-          aria-labelledby="account-heading"
-          className="space-y-3 rounded-container border border-border bg-card p-4"
-        >
-          <h2 id="account-heading" className="font-semibold">
-            账号与外观
-          </h2>
+          <p className="text-muted-foreground">
+            此页面提供操作说明；备份文件与恢复操作在服务宿主机上完成。
+          </p>
+          <a href="/api/health" target="_blank" rel="noreferrer" className="text-primary underline">
+            查看服务与迁移检查
+          </a>
+        </div>
+      </SettingsSection>
+      <SettingsSection title="日志与诊断" testId="management-diagnostics">
+        <div className="max-w-[40rem] space-y-3 text-sm">
+          <p>
+            服务日志输出到宿主进程的标准输出与标准错误，由部署者的进程管理器收集。诊断事件保存在应用数据库，可用错误提示中的
+            requestId 查询。
+          </p>
+          <form
+            action="/api/diagnostics"
+            target="_blank"
+            className="flex flex-wrap items-end gap-2"
+          >
+            <label className="min-w-0 flex-1">
+              requestId
+              <input
+                name="requestId"
+                required
+                value={requestId}
+                onChange={(event) => setRequestId(event.target.value)}
+                className="mt-1 block w-full rounded-control border border-input bg-background px-3 py-2"
+              />
+            </label>
+            <Button type="submit" variant="outline">
+              打开诊断事件
+            </Button>
+          </form>
+        </div>
+      </SettingsSection>
+      <SettingsSection title="账号与外观" testId="management-account">
+        <div className="space-y-3">
           <p className="break-all text-sm">
             {human?.name} · {human?.email}
           </p>
@@ -217,8 +212,8 @@ function Management() {
           <Button variant="outline" disabled={pending} onClick={() => void signOut()}>
             {pending ? "登出中…" : "登出"}
           </Button>
-        </section>
-      </div>
-    </div>
+        </div>
+      </SettingsSection>
+    </PageFrame>
   );
 }

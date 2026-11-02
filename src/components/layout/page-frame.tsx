@@ -33,7 +33,7 @@ export function PageFrame({ title, description, back, actions, children, testId 
             <div className="flex items-start justify-between gap-3">
               <h1
                 tabIndex={-1}
-                className="text-2xl leading-[1.4] font-semibold tracking-[-0.02em] outline-none"
+                className="min-w-0 text-2xl leading-[1.4] font-semibold tracking-[-0.02em] break-words outline-none"
               >
                 {title}
               </h1>
