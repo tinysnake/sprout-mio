@@ -96,7 +96,10 @@ export function MessageComposer({
   function sync(element: HTMLTextAreaElement) {
     const next = mentionQueryAt(element.value, element.selectionStart ?? element.value.length);
     setQuery((previous) =>
-      previous && next && previous.start === next.start && previous.end === next.end &&
+      previous &&
+      next &&
+      previous.start === next.start &&
+      previous.end === next.end &&
       previous.query === next.query
         ? previous
         : next,

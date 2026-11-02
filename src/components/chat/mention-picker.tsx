@@ -32,10 +32,7 @@ export function mentionQueryAt(value: string, caret: number): MentionQuery | nul
 }
 
 /** 按名字过滤；同名成员只留第一条，插入结果里出现两个同一个名字没有意义。 */
-export function matchMembers(
-  members: readonly MentionMember[],
-  query: string,
-): MentionMember[] {
+export function matchMembers(members: readonly MentionMember[], query: string): MentionMember[] {
   const needle = query.trim().toLowerCase();
   const seen = new Set<string>();
   const matched: MentionMember[] = [];
