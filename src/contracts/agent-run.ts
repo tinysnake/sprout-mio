@@ -108,10 +108,16 @@ export const chatRunStateInput = chatIdInput;
  */
 export type ChatRunSummary = Omit<AgentRun, "configSnapshot"> & { sessionFile?: string };
 
+/** 活动 run 只回答「有没有在跑、跑到哪个状态」：页面既不用它的配置快照，也不用它的时间线。 */
+export type ChatRunActiveRun = {
+  id: string;
+  status: AgentRunStatus;
+};
+
 export type ChatRunState = {
   enabled: boolean;
   /** 仍在排队或运行中的 run：每 tick 唯一需要观察的部分。 */
-  active: ChatRunSummary[];
+  active: ChatRunActiveRun[];
   /** 最近一条 run（任意状态）：状态标签、失败原因与输入投递态都读它。 */
   latest: ChatRunSummary | null;
   /** `latest` 的输入投递态。 */

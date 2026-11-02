@@ -83,7 +83,9 @@ export async function getChatRunStateBoundary(
     return ok(
       {
         enabled: piHostSnapshot().enabled,
-        active: deps.listActiveAgentRuns(parsed.data.chatId, context),
+        active: deps
+          .listActiveAgentRuns(parsed.data.chatId, context)
+          .map(({ id, status }) => ({ id, status })),
         latest,
         inputs: latest ? deps.listAgentRunInputs(latest.id, context) : [],
       },
