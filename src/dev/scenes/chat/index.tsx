@@ -96,6 +96,7 @@ const messages: Message[] = [
     senderId: "usr_demo",
     body: "仓库首页的分析入口应该怎么记录分析依据？我希望以后能知道结论来自哪个 commit。",
     createdAt: "2026-06-18T02:24:00.000Z",
+    mentions: [],
   },
   {
     id: "msg_77777777",
@@ -104,6 +105,7 @@ const messages: Message[] = [
     senderId: profiles[0]!.id,
     body: "建议把分析依据绑定到每次 run，而不是只写进首页文案。首页可以展示最新结论，但不应该成为证据的唯一存放位置。",
     createdAt: "2026-06-18T02:26:00.000Z",
+    mentions: [],
   },
   {
     id: "msg_88888888",
@@ -112,6 +114,7 @@ const messages: Message[] = [
     senderId: profiles[0]!.id,
     body: "取舍是：保存快照引用，不复制整个仓库。",
     createdAt: "2026-06-18T02:28:00.000Z",
+    mentions: [],
   },
 ];
 
@@ -438,6 +441,7 @@ function MessagesScene() {
                 senderId: "usr_demo",
                 body: draft,
                 createdAt: new Date().toISOString(),
+                mentions: [],
               };
               setSent((all) => [...all, message]);
               setDraft("");
@@ -671,6 +675,7 @@ function WorkspaceScene() {
                   senderId: "usr_demo",
                   body,
                   createdAt: new Date().toISOString(),
+                  mentions: [],
                 };
                 setLocalMessages((previous) => ({
                   ...previous,

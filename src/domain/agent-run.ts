@@ -265,6 +265,7 @@ export function appendTaskStartRunInput(messageId: string, ctx: ProjectContext):
           senderId: saved.senderId,
           body: saved.body,
           createdAt: saved.createdAt.toISOString(),
+          mentions: [],
         },
         current,
         instance,

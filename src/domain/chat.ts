@@ -9,6 +9,7 @@ import {
   type ChatMemberInput,
   type ChatOwner,
   type CreateGroupChatInput,
+  type MentionSpan,
   type Message,
   type SendMessageInput,
 } from "../contracts/chat";
@@ -40,6 +41,12 @@ import type { ChatGovernanceScope } from "./chat-capabilities";
 import type { ChatActor } from "./chat-actor";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
+import {
+  mentionCandidatesFor,
+  readMentionsFor,
+  resolveMessageMentions,
+  writeMessageMentions,
+} from "./message-mention";
 
 export class ChatError extends Error {
   constructor(
@@ -71,7 +78,7 @@ function toInstance(row: typeof agentInstance.$inferSelect): AgentInstance {
   return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
-function toMessage(row: typeof message.$inferSelect): Message {
+function toMessage(row: typeof message.$inferSelect, mentions: readonly MentionSpan[]): Message {
   return {
     id: row.id,
     chatId: row.chatId,
@@ -79,6 +86,7 @@ function toMessage(row: typeof message.$inferSelect): Message {
     senderId: row.senderId,
     body: row.body,
     createdAt: row.createdAt.toISOString(),
+    mentions: mentions.map((span) => ({ ...span })),
     ...(row.taskId !== null && row.taskRecordSeq !== null && row.taskRecordKind !== null
       ? {
           taskRecord: {
@@ -536,14 +544,19 @@ export function getInstance(instanceId: string, ctx: ProjectContext): AgentInsta
 
 export function listMessages(chatId: string, ctx: ProjectContext): Message[] {
   const current = getChat(chatId, ctx);
-  return db
+  const rows = db
     .select({ entry: message })
     .from(message)
     .innerJoin(chat, eq(chat.id, message.chatId))
     .where(and(eq(message.chatId, chatId), eq(chat.projectId, current.projectId)))
     .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
-    .all()
-    .map(({ entry }: { entry: typeof message.$inferSelect }) => toMessage(entry));
+    .all() as { entry: typeof message.$inferSelect }[];
+  // mention 一次读一批再按 messageId 归并，不按消息逐条查。
+  const mentions = readMentionsFor(
+    chatId,
+    rows.map((row) => row.entry.id),
+  );
+  return rows.map((row) => toMessage(row.entry, mentions.get(row.entry.id) ?? []));
 }
 
 export function sendMessage(
@@ -625,16 +638,28 @@ export function sendMessage(
           ...(instance ? { instanceId: instance.id } : {}),
         },
         () => {
+          // 点名在插入之前解析：picks 不合法（成员不在这条对话、位置与正文对不上）就整次发送失败，
+          // 不落一条无法解释的 message。候选只来自本对话的有效成员视图，不接受客户端送的成员表。
+          const { picks, ...fields } = input;
+          const members = readChatEffectiveMembers(chatId, current.projectId);
+          const spans = resolveMessageMentions({
+            body: fields.body,
+            members,
+            candidates: mentionCandidatesFor(members),
+            picks,
+          });
           const row = db
             .insert(message)
-            .values({ id: newId(ID_PREFIXES.message), chatId, ...input })
+            .values({ id: newId(ID_PREFIXES.message), chatId, ...fields })
             .returning()
             .get();
+          // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
+          writeMessageMentions(chatId, row.id, spans);
           db.update(chat)
             .set({ updatedAt: new Date() })
             .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
             .run();
-          const saved = toMessage(row);
+          const saved = toMessage(row, spans);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx);
           else appendOwnerAgentRunInput(saved, ctx);
           signalScheduleChange();
