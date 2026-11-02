@@ -101,12 +101,19 @@ export const runIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.run));
 export const abortAgentRunInput = z.object({ runId: runIdSchema });
 export const chatRunStateInput = chatIdInput;
 
+/**
+ * 状态轮询需要的 run 字段：整行去掉 `configSnapshot`。
+ * 配置快照只在诊断与验收里按需读，状态面板一个字段都不从它取。
+ * `sessionFile` 是唯一从快照里提出来的值，验收脚本靠它定位 Pi 会话文件。
+ */
+export type ChatRunSummary = Omit<AgentRun, "configSnapshot"> & { sessionFile?: string };
+
 export type ChatRunState = {
   enabled: boolean;
   /** 仍在排队或运行中的 run：每 tick 唯一需要观察的部分。 */
-  active: AgentRun[];
+  active: ChatRunSummary[];
   /** 最近一条 run（任意状态）：状态标签、失败原因与输入投递态都读它。 */
-  latest: AgentRun | null;
+  latest: ChatRunSummary | null;
   /** `latest` 的输入投递态。 */
   inputs: AgentRunInput[];
 };

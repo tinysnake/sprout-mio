@@ -95,8 +95,8 @@ async function deniedTool(page, chatId, authorizationGeneration, expectedCode, m
   armTool(role,body,'sprout_remote_shell',parameters);
   const sent=await browserRpc(page,'sendMessageFn',{chatId,body});
   assert.equal(sent.ok,true,'negative command submitted through production browser RPC');
-  const run=await until(async()=> {const state=await call('getChatRunStateFn',{chatId}); const input=state.inputs.find(i=>i.messageId===sent.data.id); const latest=state.latest; return latest && latest.id===input?.runId && !['queued','running'].includes(latest.status) && latest.configSnapshot ? latest:null;},'negative run settles',180000);
-  const entries=readFileSync(run.configSnapshot.sessionFile,'utf8').split('\n').filter(Boolean).map(line=>JSON.parse(line));
+  const run=await until(async()=> {const state=await call('getChatRunStateFn',{chatId}); const input=state.inputs.find(i=>i.messageId===sent.data.id); const latest=state.latest; return latest && latest.id===input?.runId && !['queued','running'].includes(latest.status) && latest.sessionFile ? latest:null;},'negative run settles',180000);
+  const entries=readFileSync(run.sessionFile,'utf8').split('\n').filter(Boolean).map(line=>JSON.parse(line));
   const calls=entries.flatMap(entry=>entry.message?.role==='assistant' ? entry.message.content.filter(c=>c.type==='toolCall' && c.name==='sprout_remote_shell' && c.arguments?.requestId===requestId) : []);
   assert.equal(calls.length,1,'exact requested tool called once');
   const result=entries.find(entry=>entry.message?.role==='toolResult' && entry.message.toolCallId===calls[0].id)?.message;
