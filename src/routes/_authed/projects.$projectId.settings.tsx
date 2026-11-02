@@ -6,6 +6,7 @@ import { TaskAssociations } from "../../components/tasks/task-associations";
 import { holderNames } from "../../components/machine/project-lease-actions";
 import { RemoteExecutionList } from "../../components/machine/remote-execution-panel";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
+import type { ExecutionView } from "../../contracts/remote";
 import { useEffect, useState } from "react";
 import { MembershipSections } from "../../components/machine/membership-sections";
 import { useMachineRelations } from "../../components/machine/use-machine-relations";
@@ -76,6 +77,9 @@ function ProjectSettingsPage() {
 /** 本页一直在用的 Hub 视角是 Machines：租约占用是这里唯一会自己变的 Hub 事实。 */
 const SETTINGS_LIVE_QUERY = { view: "project", section: "machines", limit: 25 } as const;
 
+/** 执行列表只读自己这一节，所以刷新间隔按这一节的需求定，不牵动页面其余事实。 */
+const EXECUTIONS_REFRESH_MS = 5000;
+
 function ProjectSettingsView() {
   const { project, profile, repo, infoHub, machines, executions } = Route.useLoaderData();
   const live = useInfoHubLive();
@@ -84,9 +88,39 @@ function ProjectSettingsView() {
     : infoHub;
   const [selectedMachine, setSelectedMachine] = useState("");
   const { projectId } = Route.useParams();
-  const relationState = useMachineRelations({ projectId });
-  // 执行列表已在 loader 里查询；读取日志、取消与连接状态都接真实服务端入口。
-  const executionRows = executions.ok ? executions.data : [];
+  const relationState = useMachineRelations({ projectId, revision: live?.view?.revision ?? null });
+  // 执行列表的活性来源就是下面这一条读取；loader 那一份只负责首屏，其余事实不再跟着它重跑。
+  const [freshExecutions, setFreshExecutions] = useState<{
+    projectId: string;
+    rows: ExecutionView[];
+  } | null>(null);
+  useEffect(() => {
+    let reading = false;
+    let stopped = false;
+    const read = async () => {
+      if (reading || document.visibilityState !== "visible") return;
+      reading = true;
+      try {
+        const result = await listProjectExecutionsFn({ data: { projectId, limit: 50 } });
+        if (!stopped && result.ok) setFreshExecutions({ projectId, rows: result.data });
+      } catch {
+        // 读取失败保留最近一次成功列表：连接状态由 executionWiring 呈现，不另造一条错误文案。
+      } finally {
+        reading = false;
+      }
+    };
+    const timer = window.setInterval(() => void read(), EXECUTIONS_REFRESH_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [projectId]);
+  // 换 Project 时上一页的列表立刻作废：只认同一个 Project 读到的事实。
+  const freshRows = freshExecutions?.projectId === projectId ? freshExecutions.rows : null;
+  const executionRows = freshRows ?? (executions.ok ? executions.data : []);
+  // loader 失败且还没成功刷新过时才是「未知」：拿到新鲜列表后它就是已知事实。
+  const knownExecutions = executions.ok || freshRows !== null ? executionRows : null;
+  // 读取日志、取消与连接状态都接真实服务端入口。
   const executionWiring = useExecutionWiring({
     projectId,
     executions: executionRows,
@@ -94,12 +128,6 @@ function ProjectSettingsView() {
   });
   const router = useRouter();
   const invalidate = () => void router.invalidate();
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void router.invalidate();
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [router]);
 
   return (
     <PageFrame
@@ -251,7 +279,7 @@ function ProjectSettingsView() {
                 machines={machines.ok ? machines.data : []}
                 leases={liveHub.data.leases.items}
                 holderNames={holderNames(liveHub.data)}
-                executions={executions.ok ? executions.data : null}
+                executions={knownExecutions}
                 loading={relationState.loading}
                 error={relationState.error}
                 lastSuccessAt={relationState.lastSuccessAt}
@@ -267,7 +295,7 @@ function ProjectSettingsView() {
           <SettingsSection title="远端操作" description="本 Project 的最近操作与执行结果。">
             {executions.ok ? (
               <RemoteExecutionList
-                executions={executions.data}
+                executions={executionRows}
                 machines={machines.ok ? machines.data : []}
                 holderNames={liveHub.ok ? holderNames(liveHub.data) : {}}
                 leases={liveHub.ok ? liveHub.data.leases.items : []}
