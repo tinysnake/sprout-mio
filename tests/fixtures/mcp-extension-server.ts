@@ -80,6 +80,8 @@ const connection = sqlite
   .prepare("SELECT attempt_id FROM machine_connection WHERE machine_id=?")
   .get(machineId) as { attempt_id: string };
 
+/** actor() 在同一个库里建多个 Agent：名字带序号，否则撞 owner 内唯一的 agent_profile.name。 */
+let actorSeq = 0;
 function actor(targetProject: string): AgentRemoteContext {
   const profileId = newId(ID_PREFIXES.agentProfile);
   const chatId = newId(ID_PREFIXES.chat);
@@ -87,8 +89,8 @@ function actor(targetProject: string): AgentRemoteContext {
   const runId = newId(ID_PREFIXES.run);
   const grantId = newId(ID_PREFIXES.remoteToolGrant);
   sqlite
-    .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'MCP fixture','owner')")
-    .run(profileId);
+    .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,?,'owner')")
+    .run(profileId, `MCP fixture ${actorSeq++}`);
   sqlite
     .prepare(
       "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human','owner','owner')",

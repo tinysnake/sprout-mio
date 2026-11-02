@@ -90,6 +90,11 @@ describe("P2 身份、Project 授权与持久对话", () => {
       assert.deepEqual(sqlite.prepare('PRAGMA index_info(agent_instance_profile_chat_unique)').all().map(row => row.name), ['agent_profile_id','chat_id']);
       assert.equal(sqlite.prepare('PRAGMA index_list(agent_instance)').all().find(row => row.name === 'agent_instance_profile_chat_unique').unique, 1);
       assert.deepEqual(sqlite.prepare('PRAGMA index_info(message_chat_created_at_idx)').all().map(row => row.name), ['chat_id','created_at']);
+      // 同一个 owner 不能有两个同名 Agent：@名字 要能唯一定位到一个人；换一个 owner 可以重名。
+      assert.deepEqual(sqlite.prepare('PRAGMA index_info(agent_profile_owner_name_unique)').all().map(row => row.name), ['created_by','name']);
+      assert.throws(() => sqlite.prepare('INSERT INTO agent_profile (id,name,created_by) VALUES (?,?,?)').run(newId(ID_PREFIXES.agentProfile), profileA.name, ctxA.userId), /UNIQUE constraint/);
+      sqlite.prepare('INSERT INTO agent_profile (id,name,created_by) VALUES (?,?,?)').run(newId(ID_PREFIXES.agentProfile), profileA.name, ctxB.userId);
+      assert.equal(count('agent_profile'), 3);
       // kind 仍是封闭集合，且 DM 的 owner 只能是创建者本身。
       assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('bad-kind',?,'channel','human',?,?)").run(projectA.id, ctxA.userId, ctxA.userId), /CHECK constraint failed: chat_kind_check/);
       assert.throws(() => sqlite.prepare("INSERT INTO chat (id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('bad-owner',?,'dm','agent',?,?)").run(projectA.id, profileA.id, ctxA.userId), /CHECK constraint failed: chat_dm_owner_check/);
