@@ -31,7 +31,10 @@ function Management() {
   const [pending, setPending] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
+    let inFlight = false;
     const refresh = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const [response, diagnostics] = await Promise.all([
           fetch("/api/health", { signal: controller.signal }),
@@ -51,15 +54,23 @@ function Management() {
       } catch (cause) {
         if (!controller.signal.aborted)
           setError(cause instanceof Error ? cause.message : "读取失败");
+      } finally {
+        inFlight = false;
       }
     };
-    void refresh();
-    const timer = setInterval(() => void refresh(), 15000);
-    window.addEventListener("online", refresh);
+    // 诊断摘要只在有人看的时候读：隐藏的标签页回来时会立刻补一次，不会看到陈旧数字。
+    const tick = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    tick();
+    const timer = setInterval(tick, 15000);
+    window.addEventListener("online", tick);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       controller.abort();
       clearInterval(timer);
-      window.removeEventListener("online", refresh);
+      window.removeEventListener("online", tick);
+      document.removeEventListener("visibilitychange", tick);
     };
   }, []);
   async function signOut() {

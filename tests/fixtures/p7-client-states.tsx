@@ -22,20 +22,20 @@ const session: any = {
     archivedAt: null,
   },
 };
+const activeRun = {
+  id: "run_p7",
+  projectId,
+  chatId,
+  instanceId: "instance",
+  status: "running",
+  queuedAt: new Date().toISOString(),
+  startedAt: new Date().toISOString(),
+  sessionId: "session_p7",
+};
 const runState: any = ok({
   enabled: true,
-  runs: [
-    {
-      id: "run_p7",
-      projectId,
-      chatId,
-      instanceId: "instance",
-      status: "running",
-      startedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      configSnapshot: {},
-    },
-  ],
+  active: [{ id: activeRun.id, status: activeRun.status }],
+  latest: activeRun,
   inputs: [],
 });
 const info: any = ok({ members: [], runs: { active: [], recent: [] } });
