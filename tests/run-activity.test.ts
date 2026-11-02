@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { RUN_ACTIVITY_ENTRY_LIMIT } from "../src/contracts/agent-run";
 import { describeToolCall } from "../src/lib/run-activity";
 import {
   clearRunActivity,
@@ -54,11 +55,7 @@ describe("工具调用摘要", () => {
   });
 
   it("Code Mode 的嵌套调用保留内层动作名", () => {
-    const described = describeToolCall(
-      "bash",
-      { command: "rg --files" },
-      { nested: true },
-    );
+    const described = describeToolCall("bash", { command: "rg --files" }, { nested: true });
     expect(described.kind).toBe("code_mode");
     expect(described.label).toBe("Code Mode · Bash 命令");
     expect(described.detail).toBe("rg --files");
@@ -66,9 +63,7 @@ describe("工具调用摘要", () => {
 
   it("未知工具不丢事件，回落到工具名或第一个字符串参数", () => {
     expect(describeToolCall("some_new_tool", {}).detail).toBe("some_new_tool");
-    expect(describeToolCall("some_new_tool", { description: "整理报告" }).detail).toBe(
-      "整理报告",
-    );
+    expect(describeToolCall("some_new_tool", { description: "整理报告" }).detail).toBe("整理报告");
   });
 
   it("超长摘要统一截断，避免把整段脚本文本塞进状态", () => {
@@ -78,11 +73,15 @@ describe("工具调用摘要", () => {
   });
 });
 
-describe("活动状态转移", () => {
-  it("tool_start 建立当前步骤，tool_end 用真实耗时收进 recent", () => {
-    const running = reduceRunActivity(undefined, start("call_1", "bash", "Bash 命令", "pnpm test"), at);
+describe("活动记录", () => {
+  it("tool_start 建立当前步骤，tool_end 用真实耗时收进记录", () => {
+    const running = reduceRunActivity(
+      undefined,
+      start("call_1", "bash", "Bash 命令", "pnpm test"),
+      at,
+    );
     expect(running?.current?.status).toBe("running");
-    expect(running?.current?.startedAt).toBe("2026-11-02T12:00:00.000Z");
+    expect(running?.entries[0]?.startedAt).toBe("2026-11-02T12:00:00.000Z");
 
     const done = reduceRunActivity(
       running,
@@ -96,7 +95,7 @@ describe("活动状态转移", () => {
       at + 500,
     );
     expect(done?.current).toBeNull();
-    expect(done?.recent[0]).toMatchObject({
+    expect(done?.entries[0]).toMatchObject({
       id: "call_1",
       status: "done",
       durationMs: 500,
@@ -111,21 +110,18 @@ describe("活动状态转移", () => {
       progress({ kind: "tool_end", toolCallId: "call_2", isError: true }),
       at + 1200,
     );
-    expect(failed?.recent[0]).toMatchObject({ status: "error", durationMs: 1200 });
+    expect(failed?.entries[0]).toMatchObject({ status: "error", durationMs: 1200 });
   });
 
   it("漏掉 end 的下一个 start 会把旧步骤按完成收尾，不丢历史", () => {
     const first = reduceRunActivity(undefined, start("call_1", "bash", "Bash 命令"), at);
-    const second = reduceRunActivity(
-      first,
-      start("call_2", "read", "读取文件", "b.ts"),
-      at + 800,
-    );
+    const second = reduceRunActivity(first, start("call_2", "read", "读取文件", "b.ts"), at + 800);
     expect(second?.current?.id).toBe("call_2");
-    expect(second?.recent[0]).toMatchObject({ id: "call_1", status: "done", durationMs: 800 });
+    expect(second?.entries[0]?.id).toBe("call_2");
+    expect(second?.entries[1]).toMatchObject({ id: "call_1", status: "done", durationMs: 800 });
   });
 
-  it("没看到 start 的 end 也留下一条已完成步骤", () => {
+  it("没看到 start 的 end 也留下一条已完成记录", () => {
     const ended = reduceRunActivity(
       undefined,
       progress({
@@ -138,22 +134,36 @@ describe("活动状态转移", () => {
       at,
     );
     expect(ended?.current).toBeNull();
-    expect(ended?.recent[0]).toMatchObject({ id: "call_9", status: "done", durationMs: 50 });
+    expect(ended?.entries[0]).toMatchObject({ id: "call_9", status: "done", durationMs: 50 });
   });
 
-  it("文本只保留尾部，工具开始时清空旧文本", () => {
-    const long = reduceRunActivity(
-      undefined,
-      progress({ kind: "text_delta", text: "x".repeat(300) }),
-      at,
+  it("结束事件可以收尾一个已被新步骤替换的旧记录", () => {
+    const first = reduceRunActivity(undefined, start("call_1", "bash", "Bash 命令"), at);
+    const second = reduceRunActivity(first, start("call_2", "read", "读取文件", "b.ts"), at + 10);
+    const done = reduceRunActivity(
+      second,
+      progress({ kind: "tool_end", toolCallId: "call_1", isError: false, durationMs: 900 }),
+      at + 900,
     );
-    expect(long?.text.length).toBe(240);
-
-    const cleared = reduceRunActivity(long, start("call_1", "bash", "Bash 命令"), at + 10);
-    expect(cleared?.text).toBe("");
+    expect(done?.current?.id).toBe("call_2");
+    expect(done?.entries.find((entry) => entry.id === "call_1")).toMatchObject({
+      status: "done",
+      durationMs: 900,
+    });
   });
 
-  it("MCP 工具面刷新失败作为独立错误步骤记录", () => {
+  it("assistant 文本不进入工作记录", () => {
+    const previous = reduceRunActivity(undefined, start("call_1", "bash", "Bash 命令"), at);
+    const next = reduceRunActivity(
+      previous,
+      progress({ kind: "text_delta", text: "我正在检查测试文件" }),
+      at + 10,
+    );
+    expect(next).toBeUndefined();
+    expect(previous?.entries).toHaveLength(1);
+  });
+
+  it("MCP 工具面刷新失败作为独立错误记录", () => {
     const snapshot = reduceRunActivity(
       undefined,
       progress({
@@ -162,14 +172,14 @@ describe("活动状态转移", () => {
       }),
       at,
     );
-    expect(snapshot?.recent[0]).toMatchObject({
+    expect(snapshot?.entries[0]).toMatchObject({
       kind: "mcp",
       status: "error",
       detail: "工具目录未刷新",
     });
   });
 
-  it("recent 最多保留 5 条，最新在前", () => {
+  it("不再只保留 3/5 条，普通 run 的全部记录都在", () => {
     let snapshot = reduceRunActivity(undefined, start("call_0", "bash", "Bash 命令"), at);
     for (let index = 1; index <= 7; index += 1) {
       snapshot = reduceRunActivity(
@@ -178,30 +188,43 @@ describe("活动状态转移", () => {
         at + index * 10,
       );
     }
-    expect(snapshot?.recent).toHaveLength(5);
-    expect(snapshot?.recent[0].id).toBe("call_6");
+    expect(snapshot?.entries).toHaveLength(8);
+    expect(snapshot?.entries[0]?.id).toBe("call_7");
+    expect(snapshot?.entries[7]?.id).toBe("call_0");
+  });
+
+  it("超长 run 仍有上限，避免无限占用进程内存", () => {
+    let snapshot = reduceRunActivity(undefined, start("call_0", "bash", "Bash 命令"), at);
+    for (let index = 1; index <= RUN_ACTIVITY_ENTRY_LIMIT + 4; index += 1) {
+      snapshot = reduceRunActivity(
+        snapshot,
+        start(`call_${index}`, "bash", "Bash 命令"),
+        at + index * 10,
+      );
+    }
+    expect(snapshot?.entries).toHaveLength(RUN_ACTIVITY_ENTRY_LIMIT);
+    expect(snapshot?.entries[0]?.id).toBe(`call_${RUN_ACTIVITY_ENTRY_LIMIT + 4}`);
   });
 });
 
 describe("进程内活动存储", () => {
   const runId = "run_22222222";
+  const at = 1_760_000_000_000;
 
   beforeEach(() => clearRunActivity(runId));
 
   it("写入后按 run 读取，未写入时为空", () => {
     expect(readRunActivity(runId)).toBeUndefined();
-    recordRunActivity(
-      runId,
-      start("call_1", "bash", "Bash 命令", "pnpm test"),
-    );
+    recordRunActivity(runId, start("call_1", "bash", "Bash 命令", "pnpm test"), at);
     const activity = readRunActivity(runId);
     expect(activity?.current?.label).toBe("Bash 命令");
     expect(activity?.current?.detail).toBe("pnpm test");
+    expect(activity?.entries).toHaveLength(1);
     expect(activity?.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   it("收尾清除后不残留旧活动", () => {
-    recordRunActivity(runId, start("call_1", "bash", "Bash 命令"));
+    recordRunActivity(runId, start("call_1", "bash", "Bash 命令"), at);
     clearRunActivity(runId);
     expect(readRunActivity(runId)).toBeUndefined();
   });

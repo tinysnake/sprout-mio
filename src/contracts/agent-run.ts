@@ -30,6 +30,9 @@ export const RUN_ACTIVITY_KINDS = [
 ] as const;
 export type RunActivityKind = (typeof RUN_ACTIVITY_KINDS)[number];
 export type RunActivityStatus = "running" | "done" | "error";
+
+/** 一次 run 的工作记录上限，防止长 run 无限占用进程内存。 */
+export const RUN_ACTIVITY_ENTRY_LIMIT = 200;
 /** 输入行的投递态；cancelled 记录扇出后被成员变更或人类停止取消的输入。 */
 export type RunInputDisposition = "pending" | "delivered" | "cancelled";
 export type RunInputCancelReason =
@@ -141,15 +144,15 @@ export type RunActivityStep = {
 };
 
 /**
- * 运行中的即时活动。它与 `status` 并列，不改变状态枚举：
- * status 回答「这个 run 处于哪个生命周期」，activity 只回答「这一秒在做什么」。
+ * 运行中的工作记录。它与 `status` 并列，不改变状态枚举：
+ * status 回答「这个 run 处于哪个生命周期」，activity 回答「这一秒在做什么」。
+ * 同一 run 的非 assistant 工作记录归为一组，由界面默认收起、只露出最后一条。
  */
 export type RunActivity = {
+  /** 正在执行的步骤；没有工具在跑时为 null。 */
   current: RunActivityStep | null;
-  /** 刚结束的步骤，最新在前，最多 5 条。 */
-  recent: RunActivityStep[];
-  /** 最近生成的文本尾部；工具开始后清空，避免把旧输出当成当前动作。 */
-  text?: string;
+  /** 本 run 的工作记录，最新在前；保留完整历史，上限见 RUN_ACTIVITY_ENTRY_LIMIT。 */
+  entries: RunActivityStep[];
   updatedAt: string;
 };
 

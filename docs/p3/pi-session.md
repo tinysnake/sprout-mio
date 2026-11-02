@@ -55,7 +55,7 @@ P1 的 recovering 事务内调用 `recoverAgentRuns()`。遗留 queued 与 runni
 | 父进程给 runner | `open`、`prompt`、`abort`、`close`                           |
 | runner 给父进程 | `ready`、`progress`、`input_delivered`、`settled`、`failure` |
 
-`ready` 返回实际快照。`progress` 包括文本增量与工具开始、结束，不把工具结果写到协议。工具事件还带一份可选的展示摘要：类别、名称、参数摘要、耗时与是否失败，由 runner 用纯函数从工具名和入参生成，供 Chat 的运行中活动展示；父进程只保存最近几步，run 结束即清除。协议里的摘要不是工具输出，也不持久化。`input_delivered` 表示 runner 已接收该 message ID 的 prompt。`settled` 只有最终文本与停止原因。父进程在 runner 正常关闭后才提交 completed，进程崩溃不会作为成功。
+`ready` 返回实际快照。`progress` 包括文本增量与工具开始、结束，不把工具结果写到协议。工具事件还带一份可选的展示摘要：类别、名称、参数摘要、耗时与是否失败，由 runner 用纯函数从工具名和入参生成，供 Chat 的运行中活动展示；父进程按 run 保存完整工作记录（上限 200 条），界面默认只展示最后一条、展开看全部，run 结束即清除。协议里的摘要不是工具输出，也不持久化。`input_delivered` 表示 runner 已接收该 message ID 的 prompt。`settled` 只有最终文本与停止原因。父进程在 runner 正常关闭后才提交 completed，进程崩溃不会作为成功。
 
 每轮快照保存实际 model、provider、thinking、生效工具、extension 名单、session ID 与文件、工作目录、SDK 版本，以及当轮 profile 的 ID、名称、人设、harness、model、effort、updatedAt。profile 后续修改不会改写已有快照。SDK 如果根据模型能力调整 thinking，快照保存 session 的实际 thinking。queued 或 session 打开失败时尚无实际执行配置，不补造快照。
 

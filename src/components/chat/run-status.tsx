@@ -1,6 +1,7 @@
 import { cn } from "cn";
 import type { AgentRunStatus, ChatRunState } from "../../contracts/agent-run";
 import type { Message } from "../../contracts/chat";
+import { RunActivityGroup } from "./run-activity";
 
 export const RUN_STATUS_LABELS: Record<string, string> = {
   queued: "排队中",
@@ -69,6 +70,8 @@ export function RunStatusPanel({
     .filter((body): body is string => Boolean(body));
   // 宿主已启用且还没有 run 时属于空闲，不占一行；其余状态与未投递事实同排一行。
   const showStatus = !state.enabled || Boolean(run);
+  const activity =
+    state.active.find((active) => active.id === run?.id)?.activity ?? state.active[0]?.activity;
   const restoreBody = undelivered[undelivered.length - 1];
   const showRestore = Boolean(onRestoreDraft && restoreBody);
 
@@ -97,6 +100,7 @@ export function RunStatusPanel({
           </button>
         )}
       </p>
+      {activity && <RunActivityGroup activity={activity} />}
       {run?.status === "failed" && (
         <div
           role="alert"

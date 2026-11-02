@@ -157,7 +157,7 @@ export function executeRun(
               else recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
             }
           };
-          process.onProgress = (event) => recordRunActivity(run.id, event);
+          process.onProgress = (event) => recordRunActivity(run.id, event, now());
         });
         // Session/repository preparation can outlive Task responsibility. Select again at
         // the synchronous send boundary; admit persists the attempt before stdin.write.

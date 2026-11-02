@@ -19,7 +19,7 @@ import { demoProfiles as profiles, demoHumanName as HUMAN } from "../management/
 import { demoMachineDetails } from "../machine/fixtures";
 import { demoExecutions, demoHolderNames, demoLeases } from "../machine/lease-fixtures";
 import type { ChatMachineFacts } from "@/components/info-hub/chat-inspector";
-import type { AgentRun, ChatRunState } from "../../../contracts/agent-run";
+import type { AgentRun, ChatRunState, RunActivity } from "../../../contracts/agent-run";
 import type { AgentInstance, Chat, ChatMember, Message } from "../../../contracts/chat";
 import type { ChatInfoView, TurnStartContext } from "../../../contracts/info-hub";
 import type { AppError } from "../../../contracts/result";
@@ -166,11 +166,68 @@ const scenarioRunInputs = [
   },
 ];
 
+const scenarioActivity: RunActivity = {
+  current: {
+    id: "call_demo_4",
+    kind: "bash",
+    label: "Bash 命令",
+    detail: "pnpm test",
+    toolName: "bash",
+    startedAt: "2026-06-18T02:28:20.000Z",
+    status: "running",
+  },
+  entries: [
+    {
+      id: "call_demo_4",
+      kind: "bash",
+      label: "Bash 命令",
+      detail: "pnpm test",
+      toolName: "bash",
+      startedAt: "2026-06-18T02:28:20.000Z",
+      status: "running",
+    },
+    {
+      id: "call_demo_3",
+      kind: "file",
+      label: "编辑文件",
+      detail: "src/components/chat/run-activity.tsx",
+      toolName: "edit",
+      startedAt: "2026-06-18T02:28:12.000Z",
+      finishedAt: "2026-06-18T02:28:19.000Z",
+      status: "done",
+      durationMs: 7000,
+    },
+    {
+      id: "call_demo_2",
+      kind: "file",
+      label: "读取文件",
+      detail: "src/contracts/agent-run.ts",
+      toolName: "read",
+      startedAt: "2026-06-18T02:28:08.000Z",
+      finishedAt: "2026-06-18T02:28:10.000Z",
+      status: "done",
+      durationMs: 2000,
+    },
+    {
+      id: "call_demo_1",
+      kind: "mcp",
+      label: "MCP 调用",
+      detail: "sentry · list_issues · is:unresolved",
+      toolName: "mcp__sentry__list_issues",
+      startedAt: "2026-06-18T02:28:02.000Z",
+      finishedAt: "2026-06-18T02:28:07.000Z",
+      status: "error",
+      durationMs: 5000,
+    },
+  ],
+  updatedAt: "2026-06-18T02:28:20.000Z",
+};
+
 const scenarioRunState: Record<string, ChatRunState> = {
   idle: { enabled: true, active: [], latest: null, inputs: [] },
   running: {
     enabled: true,
-    active: [scenarioRun],
+    active: [{ ...scenarioRun, activity: scenarioActivity }],
     latest: scenarioRun,
     inputs: scenarioRunInputs,
   },
