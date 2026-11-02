@@ -1,8 +1,8 @@
-import { useEffect } from "react";
 import { Link, createFileRoute, useRouteContext, useRouter } from "@tanstack/react-router";
 import { ChatPane } from "../../components/chat/chat-pane";
 import { TaskAssociations } from "../../components/tasks/task-associations";
 import { useChatInspector } from "../../components/chat/chat-search";
+import { isActiveRunState, useChatLive } from "../../components/chat/use-chat-live";
 import type { ChatDetailLoaderData } from "../../components/chat/chat-loader";
 import { ResultError } from "../../components/project/result-error";
 import { useInfoHubLive } from "../../components/info-hub/info-hub-live";
@@ -73,15 +73,14 @@ function ChatDetailPending() {
   );
 }
 
-/** 任一 run 仍在排队或运行就继续刷新；全部结束就停止活动轮询。 */
+/**
+ * 有没有值得继续轮询的活动 run。run 状态机是唯一真值：它读得到就只认它，
+ * 免得会话读模型里一个过期的 `activeRun` 让轮询永远停不下来。
+ */
 function hasActiveRun(loader: ChatDetailLoaderData): boolean {
   if (!loader.ok) return false;
-  if (loader.session.kind !== "dm" && loader.session.instances.some((item) => item.activeRun))
-    return true;
-  return (
-    loader.runState.ok &&
-    loader.runState.data.runs.some((run) => run.status === "queued" || run.status === "running")
-  );
+  if (loader.runState.ok) return isActiveRunState(loader.runState);
+  return loader.session.kind !== "dm" && loader.session.instances.some((item) => item.activeRun);
 }
 
 function ProjectChatDetailPage() {
@@ -92,21 +91,14 @@ function ProjectChatDetailPage() {
   const { open, setOpen } = useChatInspector(projectId, chatId);
   const live = useInfoHubLive();
   const watching = hasActiveRun(loader);
-
-  useEffect(() => {
-    if (!watching) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void router.invalidate();
-    }, 1200);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void router.invalidate();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [watching, router]);
+  // 活跃 run 期间只重读消息与 run 状态，不再重跑整棵路由的 loader；
+  // run 一推进或收尾，这里回报一次 invalidate，让会话、自动化、关联 Task 与 inspector 快照跟上。
+  const facts = useChatLive({
+    chatId,
+    active: watching,
+    loader,
+    onRunChanged: () => void router.invalidate(),
+  });
 
   if (!loader.ok)
     return (
@@ -125,6 +117,9 @@ function ProjectChatDetailPage() {
   const liveInfo = loader.info.ok
     ? { ...loader.info, data: mergeChatRuns(loader.info.data, live?.view ?? null) }
     : loader.info;
+  // tick 读到的两块盖住 loader 的同名事实；其余字段继续用 loader，两者不拼成一份新事实。
+  const messages = facts?.messages ?? loader.messages;
+  const runState = facts?.runState ?? loader.runState;
 
   return (
     <>
@@ -144,9 +139,9 @@ function ProjectChatDetailPage() {
         session={loader.session}
         profile={loader.profile}
         humanName={human?.name ?? ""}
-        messages={loader.messages}
+        messages={messages}
         info={liveInfo}
-        runState={loader.runState}
+        runState={runState}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}
         onChanged={() => void router.invalidate()}

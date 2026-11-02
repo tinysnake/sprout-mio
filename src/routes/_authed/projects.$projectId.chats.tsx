@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { getProjectInfoHubFn, refreshInfoHubFn } from "../../server/functions/info-hub";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { listMachinesFn } from "../../server/functions/machine";
@@ -76,23 +76,6 @@ function ChatsLayout() {
   const { projectId } = Route.useParams();
   const loader = Route.useLoaderData();
   const router = useRouter();
-  const active = loader.infoHub.ok
-    ? loader.infoHub.data.chats.some((chat) => chat.activeRunIds.length > 0)
-    : false;
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void router.invalidate();
-    }, 1200);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void router.invalidate();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [active, router]);
   const { human } = useRouteContext({ from: "/_authed" });
   const detail = useMatch({ from: DETAIL_ROUTE_ID, shouldThrow: false });
   const chatId = detail?.params.chatId;
