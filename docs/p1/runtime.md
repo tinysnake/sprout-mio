@@ -64,7 +64,7 @@ Nitro fetch 边界为每个请求生成 `req_*`，覆盖客户端传入的 `x-sp
 [request] {"requestId":"req_fa041482","method":"POST","path":"/_serverFn/952eaa7513f1fd2af8bd145ff2c6d88bcab19b60c9e2147bf4282b6a907a7da9","fn":"getProjectInfoHubFn","fnId":"952eaa7513f1fd2af8bd145ff2c6d88bcab19b60c9e2147bf4282b6a907a7da9","status":500,"bytes":132,"complete":true,"ms":45.1}
 ```
 
-`SPROUT_REQUEST_LOG` 默认开启，值 `off`、`0`、`false`（大小写不敏感）关闭。这条日志不影响 `http.response` 诊断：诊断仍经 `recordDiagnostic` 同步写 SQLite，仍只在非 draining 期间写，字段与时机都未改。聚合用 `node scripts/diagnostics/request-log.mjs <log-file>`，按 `fn ?? fnId ?? path` 分组输出调用次数、总字节、p50 / p95 / max 毫秒、`status >= 500` 数与 `complete === false` 数，按总字节降序并附合计行。百分位用 nearest-rank 升序取值，非 `[request] ` 前缀或 JSON 解析失败的行跳过。
+`SPROUT_REQUEST_LOG` 默认关闭，写成 `on`、`1`、`true`（大小写不敏感）开启。这条日志不影响 `http.response` 诊断：诊断仍经 `recordDiagnostic` 同步写 SQLite，仍只在非 draining 期间写，字段与时机都未改。聚合用 `node scripts/diagnostics/request-log.mjs <log-file>`，按 `fn ?? fnId ?? path` 分组输出调用次数、总字节、p50 / p95 / max 毫秒、`status >= 500` 数与 `complete === false` 数，按总字节降序并附合计行。百分位用 nearest-rank 升序取值，非 `[request] ` 前缀或 JSON 解析失败的行跳过。
 
 server function 通过 `getRequestContext().requestId` 获取当前值。直接持有 Request 的路由调用 `getRequestContext(request)`。这些函数要求请求已经通过 Nitro 边界，不会另造一个与响应头不同的 ID。e 的调用方式如下。
 

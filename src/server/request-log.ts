@@ -72,7 +72,7 @@ export function loadServerFnNames(): Map<string, string> {
 
 function requestLogEnabled(): boolean {
   const value = process.env.SPROUT_REQUEST_LOG?.trim().toLowerCase();
-  return value !== "off" && value !== "0" && value !== "false";
+  return value === "on" || value === "1" || value === "true";
 }
 
 export function logRequest(record: RequestLogRecord): void {

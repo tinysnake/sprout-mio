@@ -222,15 +222,15 @@ drill 不需要常驻，用 `drill.sh` 起、验完停。
 
 runtime 给每个 HTTP 请求往 stdout 写一行 `[request]`，字段是 requestId、method、path、fn、fnId、status、ms、bytes、complete。`path` 只含 pathname，不含 query 与 cookie。`/_serverFn/<hash>` 会按构建产物里的 `createServerRpc` 聚合表还原成函数名；dev 没有构建产物，只留 hash，这是预期退化。
 
-这些行落在 `$SPROUT_RUNTIME_ROOT/prod/logs/launchd.out.log`（`start.sh` 直接起动时是 `logs/server.log`），没有轮转。按每行 150 到 200 字节估算，一个空闲标签页每 3 秒取一次 section 约 25 MB 每天，所以它是测量窗口工具，不是常开的看板。
+这些行落在 `$SPROUT_RUNTIME_ROOT/prod/logs/launchd.out.log`（`start.sh` 直接起动时是 `logs/server.log`），没有轮转。按每行 150 到 200 字节估算，一个空闲标签页每 3 秒取一次 section 约 25 MB 每天，所以它默认关闭，只在测量窗口打开。
+
+打开开关要写实例 env 文件 `$SPROUT_RUNTIME_ROOT/prod/env`（`SPROUT_REQUEST_LOG=on`），再 `bash scripts/deploy/launchd.sh uninstall prod` 与 `install prod` 让它生效。量完把那一行改回 `off` 或删掉，再重启一次并把旧日志清空。
 
 ```bash
 node scripts/diagnostics/request-log.mjs "$SPROUT_RUNTIME_ROOT/prod/logs/launchd.out.log"
 ```
 
 脚本按函数聚合 count、总字节、p50、p95、max 与 5xx 计数。`ms` 对 server function 是处理耗时，对流式 HTML 是产出加写完全文的耗时，两组不要直接比 p95。
-
-看完把开关写进实例 env 文件 `$SPROUT_RUNTIME_ROOT/prod/env`（`SPROUT_REQUEST_LOG=off`），再 `bash scripts/deploy/launchd.sh uninstall prod` 与 `install prod` 让它生效，然后把旧日志清空。
 
 ## Worker 机器（执行环境）
 

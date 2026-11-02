@@ -95,8 +95,9 @@ describe("server function ids", () => {
 });
 
 describe("request log emit", () => {
-  it("writes one tagged line by default", () => {
+  it("writes one tagged line when explicitly enabled", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.env.SPROUT_REQUEST_LOG = "on";
     logRequest({ ...record, fn: "getProjectInfoHubFn", bytes: 12 });
     expect(log).toHaveBeenCalledTimes(1);
     expect(log).toHaveBeenCalledWith(
@@ -105,7 +106,7 @@ describe("request log emit", () => {
     );
   });
 
-  it.each(["off", "OFF", "0", "false", "False"])(
+  it.each(["", "off", "OFF", "0", "false", "False", "yes"])(
     "stays silent when SPROUT_REQUEST_LOG=%s",
     (value) => {
       const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -115,9 +116,15 @@ describe("request log emit", () => {
     },
   );
 
-  it("keeps logging for other values", () => {
+  it("stays silent when the variable is unset", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    process.env.SPROUT_REQUEST_LOG = "on";
+    logRequest(record);
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it.each(["on", "ON", "1", "true"]) ("logs when SPROUT_REQUEST_LOG=%s", (value) => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    process.env.SPROUT_REQUEST_LOG = value;
     logRequest(record);
     expect(log).toHaveBeenCalledTimes(1);
   });
