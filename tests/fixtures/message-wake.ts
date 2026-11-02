@@ -346,5 +346,27 @@ evidence.failureFallback = {
   reasonCode: failResult.reasonCode,
 };
 
+// 旧的 message 投递处于 delivery_unknown 时，不应永久挡住同一成员的新消息。
+const unknown = group();
+send(unknown.id, "旧消息");
+await evaluate([beta.id], at);
+delivery.bindPendingDeliveries(new Date(at.getTime() + 1_000));
+schedule.write(
+  "UPDATE continuation_delivery SET state='attention',error_code='delivery_unknown',admitted_at=?,attempt=1,next_attempt_at=NULL WHERE chat_id=?",
+  at.getTime(),
+  unknown.id,
+);
+send(unknown.id, "新消息");
+await evaluate([beta.id], new Date(at.getTime() + 61_000));
+const unknownDeliveries = schedule.all<{ state: string; error_code: string | null }>(
+  "SELECT state,error_code FROM continuation_delivery WHERE chat_id=? ORDER BY created_at",
+  unknown.id,
+);
+evidence.unknown = {
+  count: unknownDeliveries.length,
+  first: unknownDeliveries[0],
+  latest: unknownDeliveries.at(-1),
+};
+
 console.log(JSON.stringify(evidence));
 sqlite.close();

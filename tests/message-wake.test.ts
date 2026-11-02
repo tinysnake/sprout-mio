@@ -29,6 +29,7 @@ type Evidence = {
     scheduleRound: number;
   };
   failureFallback: { attempts: number; recipient: string; state: string; reasonCode: string };
+  unknown: { count: number; first: { state: string; error_code: string | null }; latest: { state: string; error_code: string | null } };
   owner: string;
   disabled: { wake: number; runs: number };
   race: { blocked: boolean; trigger: boolean; oldState: string; first: string };
@@ -127,6 +128,12 @@ describe("message-triggered wake", () => {
     expect(evidence.sources.messageRound).toBe(1);
     expect(evidence.sources.taskRound).toBe(2);
     expect(evidence.sources.scheduleRound).toBe(2);
+  });
+
+  it("does not let an unknown message delivery block a newer message", () => {
+    expect(evidence.unknown.count).toBe(2);
+    expect(evidence.unknown.first).toEqual({ state: "attention", error_code: "delivery_unknown" });
+    expect(["pending", "bound"]).toContain(evidence.unknown.latest.state);
   });
 
   it("falls back to the owner after the evaluator exhausts its retries", () => {

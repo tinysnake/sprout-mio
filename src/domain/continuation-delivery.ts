@@ -469,7 +469,12 @@ export function createContinuationDelivery(
       ids.push(existing.id);
       continue;
     }
-    if (!supersedes && hasUnknownDeliveryBarrier(evaluation.chat_id, target.recipient)) continue;
+    if (
+      !supersedes &&
+      evaluation.source === "task_periodic" &&
+      hasUnknownDeliveryBarrier(evaluation.chat_id, target.recipient)
+    )
+      continue;
     const id = newId(ID_PREFIXES.continuationDelivery);
     write(
       "INSERT INTO continuation_delivery(id,evaluation_id,project_id,chat_id,recipient_kind,recipient_id,instance_id,control_epoch,snapshot_hash,fingerprint,state,created_at,presented_at,supersedes_delivery_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
