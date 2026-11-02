@@ -247,7 +247,8 @@ try {
   ]) {
     const { value } = await call(A, name, input, `A-snapshot-${label}`)
     assert.equal(value.ok, true, `A snapshot ${label} readable`)
-    aSnapshot[label] = value.data
+    // 消息读回的是增量窗口 `{ messages, cursor }`；快照只要消息列表，游标不是被保护的数据。
+    aSnapshot[label] = label === 'messages' ? value.data.messages : value.data
   }
   writeFileSync(join(directory, 'a-snapshot.json'), JSON.stringify(aSnapshot, null, 2) + '\n')
   assert.deepEqual(aSnapshot.members.map((entry) => entry.agentProfileId), [aProfile.data.id])
@@ -393,9 +394,9 @@ try {
     const sent = (await call(B, 'sendMessageFn', { chatId: bDm.data.chat.id, senderKind: 'human', senderId: B.user.id, body: 'K2-B 正对照消息。' }, 'B-own-sendMessage')).value
     assert.equal(sent.ok, true)
     const after = (await call(B, 'listMessagesFn', { chatId: bDm.data.chat.id }, 'B-own-messages-after')).value
-    assert.equal(after.data.length, before.data.length + 1)
-    assert.equal(after.data.at(-1).body, 'K2-B 正对照消息。')
-    return { before: before.data.length, after: after.data.length }
+    assert.equal(after.data.messages.length, before.data.messages.length + 1)
+    assert.equal(after.data.messages.at(-1).body, 'K2-B 正对照消息。')
+    return { before: before.data.messages.length, after: after.data.messages.length }
   })
   await check('B_own_DM_idempotent_same_instance', async () => {
     const first = (await call(B, 'createDirectChatFn', { projectId: bProject.data.id, agentProfileId: bProfile.data.id }, 'B-own-DM-first')).value
@@ -419,7 +420,7 @@ try {
   ]) {
     const { value } = await call(A, name, input, `A-unchanged-${label}`)
     assert.equal(value.ok, true, `A ${label} still readable after attacks`)
-    aAfter[label] = value.data
+    aAfter[label] = label === 'messages' ? value.data.messages : value.data
   }
   await check('A_members_unchanged_after_attacks', async () => {
     assert.deepEqual(aAfter.members, aSnapshot.members)

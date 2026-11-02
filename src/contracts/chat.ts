@@ -326,3 +326,45 @@ export const messageSchema = sendMessageInput.extend({
 });
 export type Message = z.infer<typeof messageSchema>;
 export type ChatResult<T> = AppResult<T> & { fieldErrors?: FieldErrors };
+
+/**
+ * 消息增量读的游标：`<createdAt 秒>:<rowid>`。
+ * `createdAt` 只到秒，同一秒插入的多条消息靠 `rowid` 分先后；两者合起来才与领域查询的
+ * `asc(createdAt), asc(rowid)` 同序，单用时间戳会漏掉同一秒里后面的消息。
+ */
+export const messageCursorSchema = z.string().regex(/^\d+:\d+$/);
+export type MessageCursor = z.infer<typeof messageCursorSchema>;
+
+function cursorParts(cursor: MessageCursor): [createdAt: number, rowId: number] {
+  const [createdAt, rowId] = cursor.split(":");
+  return [Number(createdAt), Number(rowId)];
+}
+
+/** 按 (createdAt, rowid) 两个数值比，不按字符串比：`"10:2"` 晚于 `"9:11"`。 */
+export function compareMessageCursor(left: MessageCursor, right: MessageCursor): number {
+  const [leftCreatedAt, leftRowId] = cursorParts(left);
+  const [rightCreatedAt, rightRowId] = cursorParts(right);
+  return leftCreatedAt - rightCreatedAt || leftRowId - rightRowId;
+}
+
+/** 两个游标取较晚的一个。null 表示「还没有位置」，不是最早的位置。 */
+export function laterMessageCursor(
+  left: MessageCursor | null,
+  right: MessageCursor | null,
+): MessageCursor | null {
+  if (left === null) return right;
+  if (right === null) return left;
+  return compareMessageCursor(left, right) >= 0 ? left : right;
+}
+
+/** 一次消息读的结果：`cursor` 是这批消息之后的位置，下次增量读从它继续。 */
+export type MessageWindow = {
+  /** 本次新增的消息；首屏是无游标时的整段历史。 */
+  messages: Message[];
+  /** 空 Chat 且无游标时为 null；非空时恒为最后一条的游标，客户端直接存下即可。 */
+  cursor: MessageCursor | null;
+};
+
+/** 消息读：不带 `after` 读整段历史，带 `after` 只读它之后的增量。 */
+export const listMessagesInput = chatIdInput.extend({ after: messageCursorSchema.optional() });
+export type ListMessagesInput = z.infer<typeof listMessagesInput>;
