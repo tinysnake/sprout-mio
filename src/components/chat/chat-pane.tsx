@@ -81,12 +81,15 @@ export function ChatPane({
     );
   }, [info]);
   // @ 候选就是成员视图里的展示名；正文只插名字，所以这里不再带 memberKind。
+  // 只列 Agent：点名只对 Agent 有唤醒语义，把人自己列进去只是一行点了没反应的空选项。
   const mentionMembers = useMemo<MentionMember[]>(() => {
     if (!info.ok) return [];
-    return info.data.members.map((member) => ({
-      memberId: member.memberId,
-      name: member.displayName,
-    }));
+    return info.data.members
+      .filter((member) => member.memberKind === "agent")
+      .map((member) => ({
+        memberId: member.memberId,
+        name: member.displayName,
+      }));
   }, [info]);
   const runFacts = useMemo(() => {
     const map = new Map<string, import("../../contracts/info-hub").InfoHubRunSummary[]>();
