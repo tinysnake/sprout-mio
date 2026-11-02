@@ -25,11 +25,9 @@ export const CHANNEL_MEMBERSHIP_MANAGED_MESSAGE =
  * - `created_by` 与 `owner_id` 都取 `project.created_by`，`owner_kind` 恒为 `human`；
  * - `governance_revision` 从 0 起步，频道不参与成员治理，也不允许换 owner。
  *
- * 唤醒语义（wake_policy 保留 §4.1 的冻结值 `owner_led`，这里说明它在频道里的实际含义）：
- * 频道的 owner 一定是人类 Project 创建者，`owner_led` 的「所有者优先」规则要求
- * `owner_kind = 'agent'`，因此这条规则在频道里永远不产生候选。频道也绝不向全体成员广播：
- * 一条消息只会唤醒被点名的 Agent（`routeWakeCandidates` 的点名规则对所有对话一致）。
- * 也就是说，人把消息发进公共频道这个动作本身不会拉起任何 Agent。
+ * 唤醒语义：频道用 `contextual`，消息进频道后由判定器决定是否需要唤醒某个 Agent。
+ * 频道的 owner 仍是人类 Project 创建者，不进入 Agent 候选，也不会收到自动续接提醒。
+ * 显式点名仍是硬规则；判定器只能从当前有效的 Agent 成员里选人。
  */
 export function ensureProjectChannel(projectId: string): string {
   const existing = db
@@ -54,6 +52,7 @@ export function ensureProjectChannel(projectId: string): string {
       ownerKind: "human",
       ownerId: parent.createdBy,
       createdBy: parent.createdBy,
+      wakePolicy: "contextual",
     })
     .onConflictDoNothing()
     .returning({ id: chat.id })

@@ -748,6 +748,7 @@ export const wakeEvaluation = sqliteTable(
     projectId: text("project_id").notNull(),
     chatId: text("chat_id").notNull(),
     source: text("source").notNull().default("task_periodic"),
+    triggerMessageId: text("trigger_message_id").references(() => message.id),
     round: integer("round").notNull(),
     controlEpoch: integer("control_epoch").notNull(),
     fingerprint: text("fingerprint").notNull(),
@@ -774,6 +775,10 @@ export const wakeEvaluation = sqliteTable(
     check(
       "wake_evaluation_state_check",
       sql`${t.state} in ('pending','claimed','retry_wait','decided','attention','stale','canceled')`,
+    ),
+    check(
+      "wake_evaluation_source_check",
+      sql`(${t.source}='message') = (${t.triggerMessageId} is not null)`,
     ),
     check(
       "wake_evaluation_attempt_check",
@@ -808,6 +813,31 @@ export const wakeEvaluationTask = sqliteTable(
       "wake_evaluation_task_revision_check",
       sql`${t.revision}>0 and ${t.assignmentRevision}>0`,
     ),
+  ],
+);
+
+export const chatMessageWake = sqliteTable(
+  "chat_message_wake",
+  {
+    chatId: text("chat_id").primaryKey(),
+    projectId: text("project_id").notNull(),
+    triggerMessageId: text("trigger_message_id")
+      .notNull()
+      .references(() => message.id),
+    firstDueAt: integer("first_due_at").notNull(),
+    dueAt: integer("due_at").notNull(),
+    evaluationId: text("evaluation_id").references(() => wakeEvaluation.id),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    foreignKey({
+      columns: [t.triggerMessageId, t.chatId],
+      foreignColumns: [message.id, message.chatId],
+    }),
+    index("chat_message_wake_due_idx").on(t.dueAt),
+    check("chat_message_wake_due_check", sql`${t.dueAt}>=${t.firstDueAt}`),
   ],
 );
 
@@ -853,8 +883,8 @@ export const continuationDelivery = sqliteTable(
       t.recipientKind,
       t.recipientId,
     ),
-    uniqueIndex("continuation_pending_chat_unique")
-      .on(t.chatId)
+    uniqueIndex("continuation_pending_recipient_unique")
+      .on(t.chatId, t.recipientKind, t.recipientId)
       .where(sql`${t.state} in ('pending','bound')`),
     check(
       "continuation_supersedes_check",

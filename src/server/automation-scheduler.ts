@@ -15,6 +15,7 @@ import {
   type EvaluateWake,
 } from "../domain/continuation-delivery";
 import { drainAutomationAborts } from "../domain/chat-automation";
+import { claimDueMessageWake, evaluateMessageClaim } from "../domain/message-wake";
 
 export type SchedulerClock = {
   now: () => Date;
@@ -57,7 +58,7 @@ export function createAutomationScheduler(
     }
     // No assigned Task and no pending transport retry means no Task timer at all.
     const next = one<{ due: number | null }>(
-      "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL)",
+      "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL UNION ALL SELECT due_at AS due FROM chat_message_wake)",
     )?.due;
     if (next !== null && next !== undefined)
       timer = time.setTimeout(
@@ -79,7 +80,7 @@ export function createAutomationScheduler(
       // Claims are synchronous; provider requests run concurrently without holding the writer lock.
       for (let n = 0; n < 100; n++) {
         const ctx: SchedulerContext = { now, requestId: newId(ID_PREFIXES.request), workerId };
-        const evaluation = claimDueEvaluation(ctx);
+        const evaluation = claimDueEvaluation(ctx) ?? claimDueMessageWake(ctx);
         if (!evaluation) break;
         const evaluator =
           options.evaluateWake ??
@@ -89,10 +90,14 @@ export function createAutomationScheduler(
           });
         const claimedGeneration = generation;
         const live = () => started && generation === claimedGeneration;
-        const work = evaluateClaim(evaluation, evaluator, ctx, live, time.now)
-          .then(() => {
-            if (live()) bindPendingDeliveries(time.now());
-          })
+        const work =
+          (evaluation.source === "message"
+            ? evaluateMessageClaim(evaluation, evaluator, ctx, live, time.now)
+            : evaluateClaim(evaluation, evaluator, ctx, live, time.now)
+          )
+            .then(() => {
+              if (live()) bindPendingDeliveries(time.now());
+            })
           .catch(report)
           .finally(() => {
             inflight.delete(work);
@@ -134,7 +139,7 @@ export function createAutomationScheduler(
       timer = undefined;
     },
     advance,
-    settled: () => Promise.all([...inflight]),
+    settled: () => Promise.all(inflight),
     snapshot: () => ({ started, timerArmed: timer !== undefined, inflight: inflight.size }),
   };
 }

@@ -33,6 +33,7 @@ import {
   createContinuationDelivery,
   type DeliveryRow,
 } from "./continuation-delivery";
+import { messageWakeDue, reconcileMessageWake, retryMessageWake } from "./message-wake";
 import type { WakeEvaluationResult } from "../contracts/wake-evaluation";
 
 export class ChatAutomationError extends Error {
@@ -87,11 +88,8 @@ export function getChatAutomation(
   );
   const deliveries = rows.map(deliveryView);
   const activeRunIds = all<{ id: string }>(
-    "SELECT r.id FROM agent_run r JOIN agent_instance ai ON ai.id=r.instance_id WHERE r.chat_id=? AND r.status IN ('queued','running') AND (?='dm' OR (?='agent' AND ai.agent_profile_id=?)) ORDER BY r.id",
+    "SELECT r.id FROM agent_run r JOIN agent_instance ai ON ai.id=r.instance_id WHERE r.chat_id=? AND r.status IN ('queued','running') ORDER BY r.id",
     chatId,
-    chat.kind,
-    chat.owner.kind,
-    chat.owner.id,
   ).map((r) => r.id);
   const attention = rows.find(
     (d) =>
@@ -113,10 +111,15 @@ export function getChatAutomation(
     nextDueAt:
       control.mode === "enabled"
         ? iso(
-            one<{ next_due_at: number | null }>(
-              "SELECT next_due_at FROM chat_schedule WHERE chat_id=?",
-              chatId,
-            )?.next_due_at ?? null,
+            [
+              one<{ next_due_at: number | null }>(
+                "SELECT next_due_at FROM chat_schedule WHERE chat_id=?",
+                chatId,
+              )?.next_due_at ?? null,
+              messageWakeDue(chatId),
+            ]
+              .filter((value): value is number => value !== null)
+              .sort((a, b) => a - b)[0] ?? null,
           )
         : null,
     activeRunIds,
@@ -298,6 +301,7 @@ export function applyChatAutomationCommand(
           for (const id of ids) transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
         }
         reconcileChatSchedule(command.chatId, now);
+        reconcileMessageWake(command.chatId, now);
       } else if (command.action === "retry") {
         const e = one<Evaluation>(
           "SELECT * FROM wake_evaluation WHERE id=? AND chat_id=?",
@@ -311,11 +315,15 @@ export function applyChatAutomationCommand(
           e.id,
         );
         // Human retry explicitly opens a new budget; original history is immutable.
-        write(
-          "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
-          now.getTime(),
-          command.chatId,
-        );
+        if (e.source === "message") {
+          if (!retryMessageWake(e, now))
+            throw new ChatAutomationError("conflict", "当前没有可重试的消息判定。");
+        } else
+          write(
+            "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
+            now.getTime(),
+            command.chatId,
+          );
         write(
           "UPDATE chat_automation_control SET revision=revision+1 WHERE chat_id=?",
           command.chatId,
@@ -334,6 +342,11 @@ export function applyChatAutomationCommand(
           "SELECT * FROM wake_evaluation WHERE id=?",
           old.evaluation_id,
         )!;
+        if (evaluation.source === "message")
+          throw new ChatAutomationError(
+            "conflict",
+            "这条投递来自群消息，请让成员重新发言触发。",
+          );
         const result = JSON.parse(evaluation.result!) as WakeEvaluationResult;
         if (!deliveryContextMatches(old))
           throw new ChatAutomationError("conflict", "Task 或负责人已变化，请从当前事实重新检查。");
@@ -375,7 +388,7 @@ export function applyChatAutomationCommand(
             t.assignmentRevision,
           );
         const fresh = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", id)!;
-        if (!createContinuationDelivery(fresh, input, freshResult, now, old.id))
+        if (createContinuationDelivery(fresh, input, freshResult, now, old.id).length === 0)
           throw new ChatAutomationError("conflict", "Task 或负责人已变化，请从当前事实重新检查。");
         write("UPDATE chat_schedule SET round=? WHERE chat_id=?", round, command.chatId);
         write(

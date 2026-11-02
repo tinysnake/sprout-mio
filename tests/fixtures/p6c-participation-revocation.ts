@@ -413,7 +413,7 @@ assert.equal(
 );
 assert.equal(
   commitEvaluationResult(claimed!, barrierInput, barrierResult, barrierNow),
-  null,
+  [],
   "barrier: a result landing after participation revocation must be fenced",
 );
 const stale = sqlite

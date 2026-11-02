@@ -54,6 +54,7 @@
 
 - Agents 之间连续自动接续不设固定轮数上限。
 - 普通聊天的自动接续由所选判定器决定是否还需要唤醒；无人需要回应时自然结束。明确的 Task 行动事件按其规则投递。
+- 普通消息（Group 与 Public Channel）在 `contextual` 策略下进入消息判定：消息写入后按对话防抖（15 秒，最长 60 秒），判定器从当前有效 Agent 成员中选择 0..N 个收件人。显式点名仍即时硬路由；`owner_led` 与 `mention_only` 不走判定器。判定器不选人且 owner 是 Agent 时回退 owner；人类不进候选、不收提醒。Public Channel 默认 `contextual`。
 - Chat 中只要有 assigned Task，系统就定期唤醒小脑，依据 Task、对话上下文和当前运行情况判断是否需要唤醒负责人继续推进；没有 assigned Task 时停止该对话的 Task 周期检查。不以所有 Agents 停止执行为前提，也不在每次检查时直接唤醒负责人。Task 保留四态，不增加执行状态或强制结构化接续记录。需要接续时，Group / Public Channel 找当前 owner，DM 找唯一 Agent 分身，Human owner 则收到提醒。人类暂停和停止控制仍然有效；检查周期及与普通聊天判定器的关系留待设计，具体规则见 tasks-decisions.md。
 - 人类可以随时暂停自动唤醒或停止分身运行；Task 自动接续不得立即抵消人类的停止操作。
 

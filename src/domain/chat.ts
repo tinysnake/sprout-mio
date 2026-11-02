@@ -1,4 +1,5 @@
 import { signalScheduleChange } from "./chat-schedule";
+import { enqueueMessageWake } from "./message-wake";
 import { and, asc, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import {
   CHAT_TITLE_MAX_LENGTH,
@@ -714,12 +715,13 @@ export function sendMessage(
             .get();
           // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
           writeMessageMentions(chatId, row.id, spans);
+          const wakeQueued = enqueueMessageWake({ id: row.id, chatId, senderKind: input.senderKind });
           db.update(chat)
             .set({ updatedAt: new Date() })
             .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
             .run();
           const saved = toMessage(row, spans);
-          if (input.senderKind === "human") appendHumanRunInput(saved, ctx);
+          if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
           else appendOwnerAgentRunInput(saved, ctx);
           signalScheduleChange();
           return saved;

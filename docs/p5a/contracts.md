@@ -14,7 +14,7 @@
 
 约束表达四件事：`kind` 只有三个值；DM 的所有者恒为创建它的人；`public_channel` 不可归档；同一 Project 最多一个 `public_channel`（部分唯一索引 `chat_public_channel_project_unique`）。`chat_id_project_unique` 让 `agent_run` 能以 `(chat_id, ...)` 复合外键校验归属。
 
-`wake_policy` 是对话的公共列而不是按 kind 的隐含行为：P5a 里 `contextual` 与 `owner_led` 同义，保留取值是为了让判定器接入时不用改表。
+`wake_policy` 是对话的公共列而不是按 kind 的隐含行为：P5a 里 `contextual` 的即时扇出与 `owner_led` 同义；消息自动续接接入后，`contextual` 的判定器使用全部有效 Agent 候选，owner 仍是不选人时的回退。
 
 ## 消息：`message` 与 `message_mention`
 
@@ -86,7 +86,7 @@ Agent 在所有治理动作上都是 `never`，因此「分身不能治理对话
 纯函数，只吃调用点已读出的事实，不查库：
 
 1. 点名：`mentions` 里指向当前 Agent 成员的记录，按成员顺序返回；
-2. 所有者优先：无人被点名且策略为 `owner_led` 或 `contextual` 时，Agent 所有者进入候选；
+2. 所有者优先：无人被点名且策略为 `owner_led` 时，Agent 所有者进入候选；`contextual` 在判定器接管前仍把 Agent owner 作为回退，接管后由消息判定器用全成员候选；
 3. 其余退避为空集。
 
 路由读 `message_mention` 的记录而不是正文，所以「谁被点名」是写入时的一次判定，不在每次扇出时重新猜。点名在写消息时按这条对话当前有效成员的展示名解析（`src/domain/message-mention.ts`），正文里写的就是 `@名字`，id 不进正文，也不靠渲染层隐藏。

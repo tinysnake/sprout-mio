@@ -43,7 +43,7 @@ import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-exe
 const WAKE_POLICY_LABELS: Record<ChatWakePolicy, string> = {
   owner_led: "owner_led · 未点名时回退 Owner",
   mention_only: "mention_only · 仅点名唤醒",
-  contextual: "contextual · P5a 回退为 owner_led",
+  contextual: "contextual · 判定器决定唤醒成员",
 };
 
 function memberKey(member: Pick<ChatMember, "memberKind" | "memberId">) {

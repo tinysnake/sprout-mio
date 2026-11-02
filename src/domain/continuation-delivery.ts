@@ -29,6 +29,7 @@ import {
   chatFacts,
   assignedTasks,
   responsibleRecipient,
+  ensureAgentInstance,
   deliveryContextMatches,
   hasUnknownDeliveryBarrier,
   controlFor,
@@ -344,19 +345,19 @@ export function commitEvaluationResult(
   input: WakeEvaluationInput,
   raw: WakeEvaluationResult,
   now: Date,
-): string | null {
+): readonly string[] {
   return sqlite
     .transaction(() => {
       const current = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", evaluation.id)!;
       if (current.state !== "claimed" || current.claim_token !== evaluation.claim_token)
-        return null;
+        return [];
       if (!evaluationCurrent(current)) {
         write(
           "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL WHERE id=?",
           current.id,
         );
-        reconcileChatSchedule(current.chat_id, now);
-        return null;
+        if (current.source === "task_periodic") reconcileChatSchedule(current.chat_id, now);
+        return [];
       }
       const result = wakeEvaluationResultForInputSchema(input).parse(raw);
       write(
@@ -368,19 +369,20 @@ export function commitEvaluationResult(
       );
       if (result.decision === "indeterminate") {
         failEvaluation(current, result.errorCode ?? "provider_low_certainty", now);
-        return null;
+        return [];
       }
       write(
         "UPDATE wake_evaluation SET state='decided',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL,error_code=NULL WHERE id=?",
         current.id,
       );
-      write(
-        "UPDATE chat_schedule SET next_due_at=?,updated_at=? WHERE chat_id=?",
-        now.getTime() + INTERVAL_MS,
-        now.getTime(),
-        current.chat_id,
-      );
-      if (result.decision !== "continue") return null;
+      if (current.source === "task_periodic")
+        write(
+          "UPDATE chat_schedule SET next_due_at=?,updated_at=? WHERE chat_id=?",
+          now.getTime() + INTERVAL_MS,
+          now.getTime(),
+          current.chat_id,
+        );
+      if (result.decision !== "continue") return [];
       return createContinuationDelivery(current, input, result, now);
     })
     .immediate();
@@ -392,78 +394,111 @@ export function createContinuationDelivery(
   result: WakeEvaluationResult,
   now: Date,
   supersedes: string | null = null,
-): string | null {
+): readonly string[] {
   if (!evaluationCurrent(evaluation) || controlFor(evaluation.chat_id).epoch !== input.controlEpoch)
-    return null;
-  const owner = responsibleRecipient(evaluation.chat_id)!;
-  if (!result.selectedRecipients.some((r) => r.kind === owner.kind && r.id === owner.id))
-    return null;
-  const existing = one<DeliveryRow>(
-    "SELECT * FROM continuation_delivery WHERE chat_id=? AND (state IN ('pending','bound') OR (fingerprint=? AND state IN ('admitted','delivered','presented'))) ORDER BY created_at DESC LIMIT 1",
-    evaluation.chat_id,
-    evaluation.fingerprint,
-  );
-  if (existing && !supersedes) {
-    if (existing.state === "pending" || existing.state === "bound") {
-      // A fresh periodic conclusion may retry a failed run. Its terminal callback never does.
-      const active =
-        existing.run_id !== null &&
-        one(
-          "SELECT 1 FROM agent_run WHERE id=? AND status IN ('queued','running')",
-          existing.run_id,
-        );
-      const envelope =
-        active && existing.envelope
-          ? {
-              ...JSON.parse(existing.envelope),
-              evaluationId: evaluation.id,
-              snapshotHash: input.snapshotHash,
-            }
-          : null;
-      write(
-        "UPDATE continuation_delivery SET evaluation_id=?,snapshot_hash=?,fingerprint=?,state=?,run_id=?,envelope=? WHERE id=? AND admitted_at IS NULL",
-        evaluation.id,
-        input.snapshotHash,
-        evaluation.fingerprint,
-        active ? "bound" : "pending",
-        active ? existing.run_id : null,
-        envelope ? JSON.stringify(envelope) : null,
-        existing.id,
-      );
-      write("DELETE FROM continuation_delivery_task WHERE delivery_id=?", existing.id);
-      for (const t of input.tasks)
-        write(
-          "INSERT INTO continuation_delivery_task VALUES(?,?,?)",
-          existing.id,
-          t.id,
+    return [];
+  const targets: {
+    recipient: { kind: "human" | "agent"; id: string };
+    instanceId: string | null;
+  }[] = [];
+  if (evaluation.source === "message") {
+    for (const recipient of result.selectedRecipients) {
+      if (recipient.kind !== "agent") continue;
+      targets.push({
+        recipient,
+        instanceId: ensureAgentInstance(
+          evaluation.chat_id,
           evaluation.project_id,
-        );
+          recipient.id,
+          now,
+        ),
+      });
     }
-    return existing.id;
+  } else {
+    const owner = responsibleRecipient(evaluation.chat_id);
+    if (
+      owner &&
+      result.selectedRecipients.some((r) => r.kind === owner.kind && r.id === owner.id)
+    )
+      targets.push({ recipient: { kind: owner.kind, id: owner.id }, instanceId: owner.instanceId });
   }
-  if (!supersedes && hasUnknownDeliveryBarrier(evaluation.chat_id)) return null;
-  const id = newId(ID_PREFIXES.continuationDelivery);
-  write(
-    "INSERT INTO continuation_delivery(id,evaluation_id,project_id,chat_id,recipient_kind,recipient_id,instance_id,control_epoch,snapshot_hash,fingerprint,state,created_at,presented_at,supersedes_delivery_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-    id,
-    evaluation.id,
-    evaluation.project_id,
-    evaluation.chat_id,
-    owner.kind,
-    owner.id,
-    owner.instanceId,
-    evaluation.control_epoch,
-    input.snapshotHash,
-    evaluation.fingerprint,
-    owner.kind === "human" ? "presented" : "pending",
-    now.getTime(),
-    owner.kind === "human" ? now.getTime() : null,
-    supersedes,
-  );
-  for (const t of input.tasks)
-    write("INSERT INTO continuation_delivery_task VALUES(?,?,?)", id, t.id, evaluation.project_id);
-  signalScheduleChange();
-  return id;
+  const ids: string[] = [];
+  for (const target of targets) {
+    const existing = one<DeliveryRow>(
+      "SELECT * FROM continuation_delivery WHERE chat_id=? AND recipient_kind=? AND recipient_id=? AND (state IN ('pending','bound') OR (fingerprint=? AND state IN ('admitted','delivered','presented'))) ORDER BY created_at DESC LIMIT 1",
+      evaluation.chat_id,
+      target.recipient.kind,
+      target.recipient.id,
+      evaluation.fingerprint,
+    );
+    if (existing && !supersedes) {
+      if (existing.state === "pending" || existing.state === "bound") {
+        const active =
+          existing.run_id !== null &&
+          one(
+            "SELECT 1 FROM agent_run WHERE id=? AND status IN ('queued','running')",
+            existing.run_id,
+          );
+        const envelope =
+          active && existing.envelope
+            ? {
+                ...JSON.parse(existing.envelope),
+                evaluationId: evaluation.id,
+                snapshotHash: input.snapshotHash,
+              }
+            : null;
+        write(
+          "UPDATE continuation_delivery SET evaluation_id=?,snapshot_hash=?,fingerprint=?,state=?,run_id=?,envelope=? WHERE id=? AND admitted_at IS NULL",
+          evaluation.id,
+          input.snapshotHash,
+          evaluation.fingerprint,
+          active ? "bound" : "pending",
+          active ? existing.run_id : null,
+          envelope ? JSON.stringify(envelope) : null,
+          existing.id,
+        );
+        write("DELETE FROM continuation_delivery_task WHERE delivery_id=?", existing.id);
+        for (const t of input.tasks)
+          write(
+            "INSERT INTO continuation_delivery_task VALUES(?,?,?)",
+            existing.id,
+            t.id,
+            evaluation.project_id,
+          );
+      }
+      ids.push(existing.id);
+      continue;
+    }
+    if (!supersedes && hasUnknownDeliveryBarrier(evaluation.chat_id, target.recipient)) continue;
+    const id = newId(ID_PREFIXES.continuationDelivery);
+    write(
+      "INSERT INTO continuation_delivery(id,evaluation_id,project_id,chat_id,recipient_kind,recipient_id,instance_id,control_epoch,snapshot_hash,fingerprint,state,created_at,presented_at,supersedes_delivery_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      id,
+      evaluation.id,
+      evaluation.project_id,
+      evaluation.chat_id,
+      target.recipient.kind,
+      target.recipient.id,
+      target.instanceId,
+      evaluation.control_epoch,
+      input.snapshotHash,
+      evaluation.fingerprint,
+      target.recipient.kind === "human" ? "presented" : "pending",
+      now.getTime(),
+      target.recipient.kind === "human" ? now.getTime() : null,
+      supersedes,
+    );
+    for (const t of input.tasks)
+      write(
+        "INSERT INTO continuation_delivery_task VALUES(?,?,?)",
+        id,
+        t.id,
+        evaluation.project_id,
+      );
+    ids.push(id);
+  }
+  if (ids.length) signalScheduleChange();
+  return ids;
 }
 export function failEvaluation(evaluation: Evaluation, error: WakeEvaluationErrorCode, now: Date) {
   const retryable = ["provider_timeout", "provider_unavailable", "internal_failure"].includes(
@@ -479,11 +514,12 @@ export function failEvaluation(evaluation: Evaluation, error: WakeEvaluationErro
     evaluation.id,
     evaluation.claim_token,
   );
-  write(
-    "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
-    delay === null ? null : now.getTime() + delay,
-    evaluation.chat_id,
-  );
+  if (evaluation.source === "task_periodic")
+    write(
+      "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
+      delay === null ? null : now.getTime() + delay,
+      evaluation.chat_id,
+    );
   signalScheduleChange();
 }
 export async function evaluateClaim(
@@ -549,6 +585,10 @@ export function bindPendingDeliveries(now: Date) {
           cancelInvalid(current);
           return;
         }
+        const evaluation = one<Evaluation>(
+          "SELECT * FROM wake_evaluation WHERE id=?",
+          current.evaluation_id,
+        )!;
         // Three successive failed/interrupted rounds require Human attention instead of a run loop.
         const failures = all<{ status: string }>(
           "SELECT status FROM agent_run WHERE instance_id=? ORDER BY queued_at DESC,rowid DESC LIMIT ?",
@@ -563,7 +603,8 @@ export function bindPendingDeliveries(now: Date) {
             "UPDATE continuation_delivery SET state='attention',error_code='run_repeated_failure',next_attempt_at=NULL WHERE id=?",
             row.id,
           );
-          write("UPDATE chat_schedule SET next_due_at=NULL WHERE chat_id=?", row.chat_id);
+          if (evaluation.source === "task_periodic")
+            write("UPDATE chat_schedule SET next_due_at=NULL WHERE chat_id=?", row.chat_id);
           return;
         }
         try {
@@ -576,11 +617,9 @@ export function bindPendingDeliveries(now: Date) {
             newId(ID_PREFIXES.request),
             now,
           );
-          const evaluation = one<Evaluation>(
-            "SELECT * FROM wake_evaluation WHERE id=?",
-            current.evaluation_id,
-          )!;
           const input = JSON.parse(evaluation.input!) as WakeEvaluationInput;
+          const result = JSON.parse(evaluation.result!) as WakeEvaluationResult;
+          const messageSource = evaluation.source === "message";
           const envelope = continuationInputEnvelopeSchema.parse({
             kind: "continuation",
             deliveryId: current.id,
@@ -591,14 +630,18 @@ export function bindPendingDeliveries(now: Date) {
             instanceId: current.instance_id,
             controlEpoch: current.control_epoch,
             snapshotHash: current.snapshot_hash,
-            source: "task_periodic",
-            taskIds: input.tasks.map((t) => t.id),
-            recordRefs: input.tasks.flatMap((t) =>
-              t.lastRecord
-                ? [{ messageId: t.lastRecord.id, chatId: t.chatId, seq: t.lastRecord.seq }]
-                : [],
-            ),
-            body: `这是自动接续工作指令。请结合当前进展继续负责的 Task；按实际工作追加施工记录，达到完成要求后完成 Task。\n${input.tasks.map((t) => `${t.id}: ${t.title}`).join("\n")}\n判定理由：${(JSON.parse(evaluation.result!) as WakeEvaluationResult).reason}`,
+            source: evaluation.source,
+            taskIds: messageSource ? [] : input.tasks.map((t) => t.id),
+            recordRefs: messageSource
+              ? []
+              : input.tasks.flatMap((t) =>
+                  t.lastRecord
+                    ? [{ messageId: t.lastRecord.id, chatId: t.chatId, seq: t.lastRecord.seq }]
+                    : [],
+                ),
+            body: messageSource
+              ? `这是群消息触发的自动接续。触发消息 ${input.triggerMessage?.id ?? ""}：${input.triggerMessage?.body ?? ""}\n判定理由：${result.reason}\n请结合最近对话上下文决定是否回应；需要回应时直接在该对话发消息。`
+              : `这是自动接续工作指令。请结合当前进展继续负责的 Task；按实际工作追加施工记录，达到完成要求后完成 Task。\n${input.tasks.map((t) => `${t.id}: ${t.title}`).join("\n")}\n判定理由：${result.reason}`,
             supersedesDeliveryId: current.supersedes_delivery_id,
           });
           write(
