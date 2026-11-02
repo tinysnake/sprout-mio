@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "@tanstack/react-router";
+import { requestRouteReload } from "../../lib/route-reload";
 
 const REFRESH_MS = 5000;
 
@@ -117,7 +118,7 @@ export function useMachineRefresh({ revision }: { revision?: string | null } = {
 
   useEffect(() => {
     const reads = createMachineRefreshSchedule({
-      refresh: () => router.invalidate(),
+      refresh: () => requestRouteReload(router),
       intervalMs: REFRESH_MS,
       environment: { document, window },
     });
