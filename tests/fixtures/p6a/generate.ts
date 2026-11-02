@@ -5,6 +5,7 @@ import {
   recipientKey,
   type WakeSnapshotFacts,
 } from "../../../src/domain/wake-evaluation";
+import { resolveMentions } from "../../../src/domain/mention";
 
 type Sample = {
   id: string;
@@ -57,6 +58,17 @@ const cases = definitions.map((definition) => {
   const triggerMessage = periodic
     ? null
     : { ...recentMessages[recentMessages.length - 1], body: sample.trigger.body! };
+  // 点名在写时就已解析落库，fixture 按同一份成员名做一次解析，不再让路由读正文。
+  const triggerMentions = triggerMessage
+    ? resolveMentions(
+        triggerMessage.body,
+        sample.members.map((member) => ({
+          memberKind: member.kind,
+          memberId: identity(member.kind, member.name).id,
+          name: member.name,
+        })),
+      )
+    : [];
   const facts: WakeSnapshotFacts = {
     source: periodic ? "task_periodic" : "message",
     projectId: stableId("prj", "project"),
@@ -72,6 +84,7 @@ const cases = definitions.map((definition) => {
     },
     archived: false,
     triggerMessage,
+    mentions: triggerMentions,
     latestReadableMessageId: recentMessages.at(-1)?.id ?? null,
     recentMessages,
     chat: {

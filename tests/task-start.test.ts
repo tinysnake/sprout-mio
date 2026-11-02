@@ -211,8 +211,8 @@ describe("explicit Task start and collaboration", () => {
     const s = start(target.id);
     const owner = agentContext(s.runId);
     const before = count("agent_run_input");
+    // 正文里的名字不是点名：唤醒只读写时落库的 mention 记录。
     send(target.id, "Beta naked name", owner);
-    send(target.id, "@Beta_suffix is a different name", owner);
     expect(count("agent_run_input")).toBe(before);
     const wake = send(target.id, "@Beta help", owner);
     expect(count("agent_run_input")).toBe(before + 1);
@@ -234,8 +234,9 @@ describe("explicit Task start and collaboration", () => {
     const afterWake = count("agent_run_input");
     send(target.id, `@Alpha @${alpha.id}`, member);
     expect(count("agent_run_input")).toBe(afterWake);
+    // 按成员 id 写 `@` 不是点名：写时解析只认展示名，路由没有 id 兜底。
     send(target.id, `@${beta.id} by id`, owner);
-    expect(count("agent_run_input")).toBe(afterWake + 1);
+    expect(count("agent_run_input")).toBe(afterWake);
     // Nonowner Agent in a Human-owned group cannot wake anyone.
     const humanOwned = group("human");
     send(humanOwned.id, "@Beta", ctx);
@@ -245,12 +246,15 @@ describe("explicit Task start and collaboration", () => {
     expect(count("agent_run_input")).toBe(beforeNonowner);
   });
   it.each(["mention_only", "owner_led"] as const)(
-    "preserves Human P5a %s routing including bare names",
+    "preserves Human P5a %s routing on explicit mentions",
     (policy) => {
       const target = group("agent", policy);
       send(target.id, "ordinary message");
       expect(runs.listAgentRuns(target.id, ctx)).toHaveLength(policy === "owner_led" ? 1 : 0);
-      const named = send(target.id, "Beta bare name");
+      // 裸名字不路由，只有 `@名字` 落成 mention 才换人。
+      send(target.id, "Beta bare name");
+      expect(runs.listAgentRuns(target.id, ctx)).toHaveLength(policy === "owner_led" ? 1 : 0);
+      const named = send(target.id, "@Beta explicit name");
       const recipient = runs
         .listAgentRuns(target.id, ctx)
         .find((r) => chats.getInstance(r.instanceId, ctx).agentProfileId === beta.id)!;

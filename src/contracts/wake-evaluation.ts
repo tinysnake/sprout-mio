@@ -80,6 +80,17 @@ const run = z
     attemptedInputs: count,
   })
   .readonly();
+/**
+ * 触发消息的点名条目：模型看到的是结构，不从正文里猜。
+ * `explicit` 为 true 表示写时确实点了这名成员的名；false 只是弱证据——正文里出现了它的
+ * 名字，但没有任何 mention span 指向它。
+ */
+const mention = z
+  .strictObject({
+    recipient: snapshotRecipient,
+    explicit: z.boolean(),
+  })
+  .readonly();
 const candidate = z
   .strictObject({
     recipient: snapshotRecipient,
@@ -198,6 +209,7 @@ export const wakeEvaluationInputSchema = z
       })
       .readonly(),
     candidates: z.array(candidate).readonly(),
+    mentions: z.array(mention).readonly(),
     tasks: z.array(task).readonly(),
     truncation: z
       .strictObject({
@@ -254,6 +266,10 @@ export const wakeEvaluationInputSchema = z
       reject("Dropped message range must reflect omitted messages");
     const keys = value.candidates.map((item) => `${item.recipient.kind}:${item.recipient.id}`);
     if (new Set(keys).size !== keys.length) reject("Duplicate candidate");
+    const mentionKeys = value.mentions.map((item) => `${item.recipient.kind}:${item.recipient.id}`);
+    if (new Set(mentionKeys).size !== mentionKeys.length) reject("Duplicate mention recipient");
+    if (mentionKeys.some((mention) => !keys.includes(mention)))
+      reject("Mention entries must be candidates");
     if (new Set(value.tasks.map((item) => item.id)).size !== value.tasks.length)
       reject("Duplicate Task");
     if (value.tasks.some((item) => item.chatId !== value.chatId))

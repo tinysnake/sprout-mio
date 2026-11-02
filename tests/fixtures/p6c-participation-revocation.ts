@@ -73,14 +73,15 @@ acquireLease(
   holder,
 );
 const oldMessages = [
+  // 点名按展示名落库成 mention，路由只读那份记录：`@id` 不是点名。
   sendMessage(
     f.group.id,
-    { senderKind: "human", senderId: f.ctx.userId, body: `@${f.agent.id} group` },
+    { senderKind: "human", senderId: f.ctx.userId, body: `@${f.agent.name} group` },
     f.ctx,
   ),
   sendMessage(
     f.channel.id,
-    { senderKind: "human", senderId: f.ctx.userId, body: `@${f.agent.id} channel` },
+    { senderKind: "human", senderId: f.ctx.userId, body: `@${f.agent.name} channel` },
     f.ctx,
   ),
   sendMessage(
