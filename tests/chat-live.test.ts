@@ -4,15 +4,27 @@ import {
   createChatLiveRefresh,
   isActiveRunState,
 } from "../src/components/chat/use-chat-live";
+import type {
+  ChatLiveFacts,
+  ChatLiveRefresh,
+  ChatLiveSeed,
+} from "../src/components/chat/use-chat-live";
 import type { AgentRun, AgentRunResult, ChatRunState } from "../src/contracts/agent-run";
-import type { ChatResult, Message } from "../src/contracts/chat";
+import { compareMessageCursor, laterMessageCursor } from "../src/contracts/chat";
+import type { ChatResult, Message, MessageWindow } from "../src/contracts/chat";
 import { latestActivityAt } from "../src/components/chat/chat-list";
 
 // Risk → evidence: 活跃 run 期间的请求数与后台流量、隐藏页面、轮询重叠、
 // 一次读失败把轮询打死、run 收尾后还在刷、以及「跑完还要不要重读整树」这件事。
 // 假时钟驱动真实的 tick 逻辑，读函数是注入的，断言落在调用次数与并发上。
 
-const messages = { ok: true, data: [] as Message[], requestId: "req_1" } as ChatResult<Message[]>;
+const emptySeed: ChatLiveSeed = { messages: [], cursor: null };
+
+const emptyWindow = {
+  ok: true,
+  data: { messages: [] as Message[], cursor: null },
+  requestId: "req_1",
+} as ChatResult<MessageWindow>;
 
 function run(id: string, status: AgentRun["status"]): AgentRun {
   return { id, status } as AgentRun;
@@ -40,10 +52,10 @@ function environment(visible = true) {
   return { document };
 }
 
-const stops: (() => void)[] = [];
+const stops: ChatLiveRefresh[] = [];
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
-  stops.splice(0).forEach((stop) => stop());
+  stops.splice(0).forEach((refresh) => refresh.stop());
   vi.useRealTimers();
 });
 
@@ -53,14 +65,17 @@ describe("Chat 活跃 run 的定点刷新", () => {
     const settle: (() => void)[] = [];
     stops.push(
       createChatLiveRefresh({
+        seed: emptySeed,
         reads: {
           messages: () => {
             started.push("messages");
-            return new Promise((resolve) => settle.push(() => resolve(messages)));
+            return new Promise((resolve) => settle.push(() => resolve(emptyWindow)));
           },
           runState: () => {
             started.push("runState");
-            return new Promise((resolve) => settle.push(() => resolve(state(run("run_a", "running")))));
+            return new Promise((resolve) =>
+              settle.push(() => resolve(state(run("run_a", "running")))),
+            );
           },
         },
         onFacts: vi.fn(),
@@ -80,11 +95,12 @@ describe("Chat 活跃 run 的定点刷新", () => {
   it("页面隐藏时不发请求，切回可见立刻补一次", async () => {
     const env = environment(false);
     const refresh = {
-      messages: vi.fn().mockResolvedValue(messages),
+      messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
     };
     stops.push(
       createChatLiveRefresh({
+        seed: emptySeed,
         reads: refresh,
         onFacts: vi.fn(),
         onRunChanged: vi.fn(),
@@ -103,7 +119,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
   it("上一次读数还没回来就跳过这一轮，不叠请求", async () => {
     let pending: (() => void) | undefined;
     const reads = {
-      messages: vi.fn().mockResolvedValue(messages),
+      messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi
         .fn()
         .mockImplementationOnce(
@@ -116,6 +132,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
     };
     stops.push(
       createChatLiveRefresh({
+        seed: emptySeed,
         reads,
         onFacts: vi.fn(),
         onRunChanged: vi.fn(),
@@ -138,7 +155,8 @@ describe("Chat 活跃 run 的定点刷新", () => {
     const onRunChanged = vi.fn();
     stops.push(
       createChatLiveRefresh({
-        reads: { messages: vi.fn().mockResolvedValue(messages), runState },
+        seed: emptySeed,
+        reads: { messages: vi.fn().mockResolvedValue(emptyWindow), runState },
         onFacts,
         onRunChanged,
         seedSignature: "run_a:running",
@@ -158,8 +176,9 @@ describe("Chat 活跃 run 的定点刷新", () => {
     const onRunChanged = vi.fn();
     stops.push(
       createChatLiveRefresh({
+        seed: emptySeed,
         reads: {
-          messages: vi.fn().mockResolvedValue(messages),
+          messages: vi.fn().mockResolvedValue(emptyWindow),
           runState: vi.fn().mockResolvedValue(state(run("run_a", "completed"))),
         },
         onFacts: vi.fn(),
@@ -178,8 +197,9 @@ describe("Chat 活跃 run 的定点刷新", () => {
     const onRunChanged = vi.fn();
     stops.push(
       createChatLiveRefresh({
+        seed: emptySeed,
         reads: {
-          messages: vi.fn().mockResolvedValue(messages),
+          messages: vi.fn().mockResolvedValue(emptyWindow),
           runState: vi.fn().mockResolvedValue(state(run("run_a", "queued"))),
         },
         onFacts: vi.fn(),
@@ -194,12 +214,13 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("loader 已知的空闲指纹不触发重读，也不继续轮询", async () => {
     const reads = {
-      messages: vi.fn().mockResolvedValue(messages),
+      messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "completed"))),
     };
     const onRunChanged = vi.fn();
     stops.push(
       createChatLiveRefresh({
+        seed: emptySeed,
         reads,
         onFacts: vi.fn(),
         onRunChanged,
@@ -214,13 +235,14 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("一次读失败不回报、不停止，下一轮继续读", async () => {
     const reads = {
-      messages: vi.fn().mockRejectedValueOnce(new Error("network")).mockResolvedValue(messages),
+      messages: vi.fn().mockRejectedValueOnce(new Error("network")).mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
     };
     const onFacts = vi.fn();
     const onRunChanged = vi.fn();
     stops.push(
       createChatLiveRefresh({
+        seed: emptySeed,
         reads,
         onFacts,
         onRunChanged,
@@ -238,11 +260,12 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("停止后不再发请求，也不再报重读", async () => {
     const reads = {
-      messages: vi.fn().mockResolvedValue(messages),
+      messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"), run("run_b", "queued"))),
     };
     const onRunChanged = vi.fn();
-    const stop = createChatLiveRefresh({
+    const refresh = createChatLiveRefresh({
+      seed: emptySeed,
       reads,
       onFacts: vi.fn(),
       onRunChanged,
@@ -251,7 +274,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
     });
     await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
     expect(reads.runState).toHaveBeenCalledTimes(1);
-    stop();
+    refresh.stop();
     await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS * 5);
     expect(reads.runState).toHaveBeenCalledTimes(1);
     expect(onRunChanged).not.toHaveBeenCalled();
@@ -259,12 +282,13 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("run 状态读不到时不改门禁，继续轮询", async () => {
     const reads = {
-      messages: vi.fn().mockResolvedValue(messages),
+      messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(failedRunState),
     };
     const onRunChanged = vi.fn();
     stops.push(
       createChatLiveRefresh({
+        seed: emptySeed,
         reads,
         onFacts: vi.fn(),
         onRunChanged,
@@ -294,5 +318,129 @@ describe("Chat 活跃 run 的定点刷新", () => {
     expect(latestActivityAt("2026-01-02T11:00:00+08:00", "2026-01-02T03:30:00.000Z")).toBe(
       "2026-01-02T03:30:00.000Z",
     );
+  });
+});
+
+// Risk → evidence: 消息增量读的游标。createdAt 只有秒级精度，同一秒的多条消息靠 rowid 分先后；
+// loader 与 tick 之间有竞态，重叠的消息必须去重而不是重复追加。
+describe("消息增量读的游标", () => {
+  function message(id: string): Message {
+    return {
+      id,
+      chatId: "cnv_00000001",
+      senderKind: "human",
+      senderId: "user_1",
+      body: id,
+      createdAt: "2026-01-02T03:04:05.000Z",
+      mentions: [],
+    };
+  }
+
+  function reply(entries: Message[], cursor: string | null): ChatResult<MessageWindow> {
+    return { ok: true, data: { messages: entries, cursor }, requestId: "req_1" };
+  }
+
+  const ids = (result: ChatResult<Message[]> | undefined) =>
+    result?.ok ? result.data.map((entry) => entry.id) : null;
+
+  it("首个 tick 用 loader 的尾巴，之后用上一 tick 返回的游标", async () => {
+    const asked: (string | null)[] = [];
+    const replies = [reply([message("msg_00000002")], "2026:5"), reply([], "2026:5")];
+    stops.push(
+      createChatLiveRefresh({
+        seed: { messages: [message("msg_00000001")], cursor: "2026:4" },
+        reads: {
+          messages: (after) => {
+            asked.push(after);
+            return Promise.resolve(replies.shift() ?? reply([], "2026:5"));
+          },
+          runState: () => Promise.resolve(state(run("run_a", "running"))),
+        },
+        onFacts: vi.fn(),
+        onRunChanged: vi.fn(),
+        seedSignature: "run_a:running",
+        environment: environment(),
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS * 3);
+    expect(asked).toEqual(["2026:4", "2026:5", "2026:5"]);
+  });
+
+  it("增量按 id 去重后追加到 loader 那批后面", async () => {
+    const facts: ChatLiveFacts[] = [];
+    stops.push(
+      createChatLiveRefresh({
+        seed: { messages: [message("msg_00000001"), message("msg_00000002")], cursor: "2026:2" },
+        reads: {
+          // loader 与 tick 的竞态：第二条两边都有，只追加后面那条。
+          messages: () =>
+            Promise.resolve(reply([message("msg_00000002"), message("msg_00000003")], "2026:3")),
+          runState: () => Promise.resolve(state(run("run_a", "running"))),
+        },
+        onFacts: (next) => facts.push(next),
+        onRunChanged: vi.fn(),
+        seedSignature: "run_a:running",
+        environment: environment(),
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(ids(facts.at(-1)?.messages)).toEqual(["msg_00000001", "msg_00000002", "msg_00000003"]);
+  });
+
+  it("loader 换了：overlay 回到 loader 那批，在途的增量只补差、游标不回退", async () => {
+    const facts: ChatLiveFacts[] = [];
+    const asked: (string | null)[] = [];
+    let settleFirst: ((value: ChatResult<MessageWindow>) => void) | undefined;
+    const refresh = createChatLiveRefresh({
+      seed: { messages: [message("msg_00000001")], cursor: "2026:1" },
+      reads: {
+        messages: (after) => {
+          asked.push(after);
+          if (settleFirst) return Promise.resolve(reply([message("msg_00000005")], "2026:8"));
+          return new Promise((resolve) => {
+            settleFirst = resolve;
+          });
+        },
+        runState: () => Promise.resolve(state(run("run_a", "running"))),
+      },
+      onFacts: (next) => facts.push(next),
+      onRunChanged: vi.fn(),
+      seedSignature: "run_a:running",
+      environment: environment(),
+    });
+    stops.push(refresh);
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(asked).toEqual(["2026:1"]);
+
+    // loader invalidate 之后：overlay 换成新 loader 那批，游标回到它的尾巴。
+    refresh.reseed({
+      messages: [message("msg_00000002"), message("msg_00000003")],
+      cursor: "2026:6",
+    });
+    // 在途那批是按旧游标读的：一条 loader 已有，一条 loader 还没读到。
+    settleFirst?.(reply([message("msg_00000003"), message("msg_00000004")], "2026:4"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ids(facts.at(-1)?.messages)).toEqual(["msg_00000002", "msg_00000003", "msg_00000004"]);
+
+    // 下一 tick 从 loader 的尾巴继续：在途结果里的 "2026:4" 更早，不能把游标拉回去。
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(asked).toEqual(["2026:1", "2026:6"]);
+    expect(ids(facts.at(-1)?.messages)).toEqual([
+      "msg_00000002",
+      "msg_00000003",
+      "msg_00000004",
+      "msg_00000005",
+    ]);
+  });
+
+  it("游标按 (createdAt, rowid) 两个数值比较，取较后者不回退", () => {
+    expect(compareMessageCursor("10:2", "9:11")).toBeGreaterThan(0);
+    expect(compareMessageCursor("10:2", "10:11")).toBeLessThan(0);
+    expect(compareMessageCursor("10:2", "10:2")).toBe(0);
+    expect(laterMessageCursor("10:2", "9:11")).toBe("10:2");
+    expect(laterMessageCursor("9:11", "10:2")).toBe("10:2");
+    expect(laterMessageCursor(null, "10:2")).toBe("10:2");
+    expect(laterMessageCursor("10:2", null)).toBe("10:2");
+    expect(laterMessageCursor(null, null)).toBeNull();
   });
 });

@@ -44,6 +44,16 @@ type Evidence = {
   personaUpdate: { ok: boolean };
   instanceUnchanged: boolean;
   messagesRetained: number;
+  messageCursor: {
+    emptyWindow: { messages: number; cursor: string | null } | { code: string };
+    full: { ids: string[]; cursor: string | null };
+    derivedCursors: string[];
+    steps: { ids: string[]; cursor: string | null }[];
+    increasing: boolean;
+    crossProjectWithCursor: string;
+    invalidCursor: { code: string; fields: string[] }[];
+    invalidCursorDomain: string;
+  };
 };
 
 let evidence: Evidence;
@@ -195,6 +205,87 @@ beforeAll(() => {
       const instancesAfter = domain.listInstancesForChat(chatId, ctx);
       const messagesAfter = domain.listMessages(chatId, ctx);
 
+      // 增量读游标：同一秒插入 3 条，逐条推进不漏不重（createdAt 只到秒）。
+      const { compareMessageCursor } = await import("./src/contracts/chat.ts");
+      // dm1 与 dm2 是同一个 DM（同一 project + profile），另起一个分身才有空 Chat 可读。
+      const cursorProfile = await agents.createAgentProfileBoundary(
+        { name: "游标 Agent", persona: "游标人设" },
+        userA.headers,
+        "req_curp1",
+      );
+      await agents.addProjectMemberBoundary({ projectId, agentProfileId: cursorProfile.data.id }, userA.headers, "req_curp2");
+      const cursorDm = await chats.createDirectChatBoundary(
+        { projectId, agentProfileId: cursorProfile.data.id },
+        userA.headers,
+        "req_curp3",
+      );
+      const cursorChatId = cursorDm.data.chat.id;
+      const emptyRead = await chats.listMessagesBoundary({ chatId: cursorChatId }, userA.headers, "req_cur0");
+      const second = sqlite.prepare("select unixepoch() as now").get().now;
+      const insertMessage = sqlite.prepare(
+        "INSERT INTO message (id, chat_id, sender_kind, sender_id, body, created_at) VALUES (?,?,?,?,?,?)",
+      );
+      ["msg_5a5e0001", "msg_5a5e0002", "msg_5a5e0003"].forEach((id, index) => {
+        insertMessage.run(id, cursorChatId, "human", userA.userId, "同一秒第 " + (index + 1) + " 条", second);
+      });
+      // 游标取自库里实际的 (created_at, rowid)：这是服务端应当回给客户端的位置。
+      const derivedCursors = sqlite
+        .prepare("SELECT created_at || ':' || rowid AS cursor FROM message WHERE chat_id = ? ORDER BY created_at, rowid")
+        .all(cursorChatId)
+        .map((row) => row.cursor);
+      const readWindow = async (after, requestId) => {
+        const result = await chats.listMessagesBoundary(
+          { chatId: cursorChatId, ...(after === undefined ? {} : { after }) },
+          userA.headers,
+          requestId,
+        );
+        return result.ok
+          ? { ids: result.data.messages.map((entry) => entry.id), cursor: result.data.cursor }
+          : { ids: ["<" + code(result) + ">"], cursor: null };
+      };
+      const fullWindow = await readWindow(undefined, "req_cur1");
+      const steps = [
+        await readWindow(derivedCursors[0], "req_cur2"),
+        await readWindow(derivedCursors[1], "req_cur3"),
+        await readWindow(derivedCursors[2], "req_cur4"),
+      ];
+      const invalidCursor = [];
+      for (const after of ["abc", "1:", "-1:2"]) {
+        const result = await chats.listMessagesBoundary({ chatId: cursorChatId, after }, userA.headers, "req_cur5");
+        invalidCursor.push({ code: code(result), fields: fields(result) });
+      }
+      const crossProjectWithCursor = (() => {
+        try {
+          domain.listMessages(chatId, { userId: userB.userId, requestId: "req_cur6" }, derivedCursors[0]);
+          return "ok";
+        } catch (error) {
+          return error.code;
+        }
+      })();
+      const invalidCursorDomain = (() => {
+        try {
+          domain.listMessages(cursorChatId, ctx, "abc");
+          return "ok";
+        } catch (error) {
+          return error.code;
+        }
+      })();
+      const messageCursor = {
+        emptyWindow: emptyRead.ok
+          ? { messages: emptyRead.data.messages.length, cursor: emptyRead.data.cursor }
+          : { code: code(emptyRead) },
+        full: fullWindow,
+        derivedCursors,
+        steps,
+        increasing:
+          compareMessageCursor(derivedCursors[0], derivedCursors[1]) < 0 &&
+          compareMessageCursor(derivedCursors[1], derivedCursors[2]) < 0 &&
+          compareMessageCursor(derivedCursors[0], derivedCursors[2]) < 0,
+        crossProjectWithCursor,
+        invalidCursor,
+        invalidCursorDomain,
+      };
+
       console.log("EVIDENCE " + JSON.stringify({
         chatId,
         instanceId,
@@ -249,6 +340,7 @@ beforeAll(() => {
         personaUpdate: { ok: personaUpdate.ok },
         instanceUnchanged: instancesAfter.length === 1 && instancesAfter[0].id === instanceId,
         messagesRetained: messagesAfter.length,
+        messageCursor,
       }));
       sqlite.close();
     `,
@@ -319,6 +411,38 @@ describe("Chat DM 边界与分身身份", () => {
     expect(evidence.personaUpdate.ok).toBe(true);
     expect(evidence.instanceUnchanged).toBe(true);
     expect(evidence.messagesRetained).toBe(2);
+  });
+
+  it("空 Chat 不带 after 时返回空窗口与 null 游标", () => {
+    expect(evidence.messageCursor.emptyWindow).toEqual({ messages: 0, cursor: null });
+  });
+
+  it("同一秒插入的 3 条消息按 rowid 逐条推进，不漏也不重", () => {
+    const { full, derivedCursors, steps, increasing } = evidence.messageCursor;
+    // 三条消息的 createdAt 相同，游标只靠 rowid 分先后。
+    expect(new Set(derivedCursors.map((cursor) => cursor.split(":")[0])).size).toBe(1);
+    expect(increasing).toBe(true);
+    expect(full.ids).toHaveLength(3);
+    expect(full.cursor).toBe(derivedCursors[2]);
+    // 每次 after 都只回它后面的消息，最后一批为空并回显同一个游标。
+    expect(steps[0].ids).toEqual(full.ids.slice(1));
+    expect(steps[0].cursor).toBe(derivedCursors[2]);
+    expect(steps[1].ids).toEqual(full.ids.slice(2));
+    expect(steps[1].cursor).toBe(derivedCursors[2]);
+    expect(steps[2]).toEqual({ ids: [], cursor: derivedCursors[2] });
+  });
+
+  it("非法游标在边界被契约 schema 拒掉，不到达领域层", () => {
+    for (const result of evidence.messageCursor.invalidCursor) {
+      expect(result.code).toBe("validation_failed");
+      expect(result.fields).toContain("after");
+    }
+    // 领域层自己也拒：内部调用方传错游标时不能让增量读悄悄退化成整段读。
+    expect(evidence.messageCursor.invalidCursorDomain).toBe("conflict");
+  });
+
+  it("跨 Project 读带不带游标都返回 not_found", () => {
+    expect(evidence.messageCursor.crossProjectWithCursor).toBe("not_found");
   });
 });
 

@@ -4,6 +4,7 @@ import { TaskAssociations } from "../../components/tasks/task-associations";
 import { useChatInspector } from "../../components/chat/chat-search";
 import { isActiveRunState, useChatLive } from "../../components/chat/use-chat-live";
 import type { ChatDetailLoaderData } from "../../components/chat/chat-loader";
+import { messageList } from "../../components/chat/chat-loader";
 import { ResultError } from "../../components/project/result-error";
 import { useInfoHubLive } from "../../components/info-hub/info-hub-live";
 import { mergeChatRuns } from "../../components/info-hub/merge-info-hub";
@@ -117,7 +118,7 @@ function ProjectChatDetailPage() {
     ? { ...loader.info, data: mergeChatRuns(loader.info.data, live?.view ?? null) }
     : loader.info;
   // tick 读到的两块盖住 loader 的同名事实；其余字段继续用 loader，两者不拼成一份新事实。
-  const messages = facts?.messages ?? loader.messages;
+  const messages = facts?.messages ?? messageList(loader.messages);
   const runState = facts?.runState ?? loader.runState;
 
   return (

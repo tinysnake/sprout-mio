@@ -1,5 +1,5 @@
 import { signalScheduleChange } from "./chat-schedule";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import {
   CHAT_TITLE_MAX_LENGTH,
   type AgentInstance,
@@ -11,6 +11,8 @@ import {
   type CreateGroupChatInput,
   type MentionSpan,
   type Message,
+  type MessageCursor,
+  type MessageWindow,
   type SendMessageInput,
 } from "../contracts/chat";
 import { ID_PREFIXES, newId } from "../contracts/ids";
@@ -542,21 +544,81 @@ export function getInstance(instanceId: string, ctx: ProjectContext): AgentInsta
   return toInstance(row);
 }
 
-export function listMessages(chatId: string, ctx: ProjectContext): Message[] {
+export function listMessages(
+  chatId: string,
+  ctx: ProjectContext,
+  after?: MessageCursor,
+): Message[] {
+  return readMessages(chatId, ctx, after).messages;
+}
+
+/** 增量读窗口：空批回显请求的游标，客户端可以无脑存下返回值。 */
+export function listMessageWindow(
+  chatId: string,
+  ctx: ProjectContext,
+  after?: MessageCursor,
+): MessageWindow {
+  const { messages, tail } = readMessages(chatId, ctx, after);
+  return { messages, cursor: tail ?? after ?? null };
+}
+
+/**
+ * 游标解析只在这里做一次：`<createdAt 秒>:<rowid>`。格式不合法不静默退回整段读，
+ * 否则调用方拿到全量也不报错，增量读就悄悄退化成旧行为。
+ */
+function parseMessageCursor(cursor: MessageCursor): { createdAt: Date; rowId: number } {
+  const match = /^(\d+):(\d+)$/.exec(cursor);
+  if (!match) throw new ChatError("conflict", "消息游标格式无效");
+  return { createdAt: new Date(Number(match[1]) * 1000), rowId: Number(match[2]) };
+}
+
+/**
+ * 消息只追加不改写，所以增量读只需 `(createdAt, rowid)` 之后的行；排序与游标同键，
+ * 用 `rowid` 是为了分开同一秒里的多条消息。
+ */
+function readMessages(
+  chatId: string,
+  ctx: ProjectContext,
+  after?: MessageCursor,
+): { messages: Message[]; tail: MessageCursor | null } {
   const current = getChat(chatId, ctx);
+  const cursor = after === undefined ? null : parseMessageCursor(after);
   const rows = db
-    .select({ entry: message })
+    .select({ entry: message, rowId: sql<number>`${message}.rowid` })
     .from(message)
     .innerJoin(chat, eq(chat.id, message.chatId))
-    .where(and(eq(message.chatId, chatId), eq(chat.projectId, current.projectId)))
+    .where(
+      and(
+        eq(message.chatId, chatId),
+        eq(chat.projectId, current.projectId),
+        ...(cursor === null
+          ? []
+          : [
+              or(
+                gt(message.createdAt, cursor.createdAt),
+                and(
+                  eq(message.createdAt, cursor.createdAt),
+                  sql`${message}.rowid > ${cursor.rowId}`,
+                ),
+              ),
+            ]),
+      ),
+    )
     .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
-    .all() as { entry: typeof message.$inferSelect }[];
+    .all() as { entry: typeof message.$inferSelect; rowId: number }[];
   // mention 一次读一批再按 messageId 归并，不按消息逐条查。
   const mentions = readMentionsFor(
     chatId,
     rows.map((row) => row.entry.id),
   );
-  return rows.map((row) => toMessage(row.entry, mentions.get(row.entry.id) ?? []));
+  const last = rows.at(-1);
+  return {
+    messages: rows.map((row) => toMessage(row.entry, mentions.get(row.entry.id) ?? [])),
+    tail:
+      last === undefined
+        ? null
+        : `${Math.floor(last.entry.createdAt.getTime() / 1000)}:${last.rowId}`,
+  };
 }
 
 export function sendMessage(

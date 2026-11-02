@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
-import type { ChatResult, Message } from "../../contracts/chat";
+import { laterMessageCursor } from "../../contracts/chat";
+import type { ChatResult, Message, MessageCursor, MessageWindow } from "../../contracts/chat";
 import type { ChatDetailLoaderData } from "./chat-loader";
 import { getChatRunStateFn } from "../../server/functions/agent-run";
 import { listMessagesFn } from "../../server/functions/chat";
@@ -12,6 +13,15 @@ export const CHAT_LIVE_INTERVAL_MS = 1_200;
 export type ChatLiveFacts = {
   messages: ChatResult<Message[]>;
   runState: AgentRunResult<ChatRunState>;
+};
+
+/** 增量读的种子：loader 那批消息与它的尾巴游标。 */
+export type ChatLiveSeed = { messages: Message[]; cursor: MessageCursor | null };
+
+/** 活跃读的句柄：停止轮询，或在 loader 换了之后重置 overlay 与游标。 */
+export type ChatLiveRefresh = {
+  stop: () => void;
+  reseed: (seed: ChatLiveSeed) => void;
 };
 
 type Environment = {
@@ -40,10 +50,11 @@ function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
 
 /**
  * 可见时每 1.2s 读一次这条 Chat 的消息与 run 状态，页面只把结果叠在 loader 事实之上。
- * run 指纹发生变化时回报一次 `onRunChanged`，由页面做一次整树 invalidate；
- * 每次 tick 只发两个读，不再重跑整棵路由的 loader。
+ * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹发生变化时回报一次
+ * `onRunChanged`，由页面做一次整树 invalidate。每次 tick 只发两个读，不再重跑整棵路由的 loader。
  */
 export function createChatLiveRefresh({
+  seed,
   reads,
   onFacts,
   onRunChanged,
@@ -51,8 +62,9 @@ export function createChatLiveRefresh({
   environment,
   intervalMs = CHAT_LIVE_INTERVAL_MS,
 }: {
+  seed: ChatLiveSeed;
   reads: {
-    messages: () => Promise<ChatResult<Message[]>>;
+    messages: (after: MessageCursor | null) => Promise<ChatResult<MessageWindow>>;
     runState: () => Promise<AgentRunResult<ChatRunState>>;
   };
   onFacts: (facts: ChatLiveFacts) => void;
@@ -61,13 +73,23 @@ export function createChatLiveRefresh({
   seedSignature?: string | null;
   environment: Environment;
   intervalMs?: number;
-}): () => void {
+}): ChatLiveRefresh {
   const { document } = environment;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
   // 一次只允许一个 tick 在途：服务端挂起时排队重试只会把队列压得更长。
   let inFlight = false;
   let signature = seedSignature;
+  // overlay = loader 那批 + 之后 tick 追加的增量；`known` 用来去掉两者重叠的部分。
+  let overlay = [...seed.messages];
+  let known = new Set(overlay.map((entry) => entry.id));
+  let cursor = seed.cursor;
+
+  const reseed = (next: ChatLiveSeed) => {
+    overlay = [...next.messages];
+    known = new Set(overlay.map((entry) => entry.id));
+    cursor = next.cursor;
+  };
 
   const schedule = () => {
     if (stopped) return;
@@ -84,8 +106,23 @@ export function createChatLiveRefresh({
     }
     inFlight = true;
     try {
-      const [messages, runState] = await Promise.all([reads.messages(), reads.runState()]);
+      const [window, runState] = await Promise.all([reads.messages(cursor), reads.runState()]);
       if (stopped) return;
+      let messages: ChatResult<Message[]>;
+      if (window.ok) {
+        // loader 与 tick 之间有竞态，同一条消息可能两边都出现；重叠是正常现象。
+        for (const entry of window.data.messages) {
+          if (known.has(entry.id)) continue;
+          known.add(entry.id);
+          overlay.push(entry);
+        }
+        // reseed 可能在本轮在途时把游标推后：取较后者，不回退也不重读。
+        cursor = laterMessageCursor(cursor, window.data.cursor);
+        messages = { ...window, data: overlay };
+      } else {
+        // 增量读失败照旧把错误交给页面，不回退成 loader 那批旧事实。
+        messages = window;
+      }
       onFacts({ messages, runState });
       const next = runSignature(runState);
       const active = isActiveRunState(runState);
@@ -119,25 +156,35 @@ export function createChatLiveRefresh({
   };
   document.addEventListener("visibilitychange", resume);
   schedule();
-  return () => {
-    stopped = true;
-    clearTimeout(timer);
-    document.removeEventListener("visibilitychange", resume);
+  return {
+    stop: () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", resume);
+    },
+    reseed,
   };
 }
 
-/** 生产接法：一次 tick 并发读消息与 run 状态，两个读各自保留自己的错误语义。 */
+/** 生产接法：一次 tick 并发读消息增量与 run 状态，两个读各自保留自己的错误语义。 */
 export function chatLiveReads(chatId: string) {
   return {
-    messages: () => listMessagesFn({ data: { chatId } }),
+    messages: (after: MessageCursor | null) =>
+      listMessagesFn({ data: { chatId, ...(after === null ? {} : { after }) } }),
     runState: () => getChatRunStateFn({ data: { chatId } }),
   };
 }
 
+/** loader 那批是首屏与重置锚点：tick 只读它之后的增量，叠在它上面。 */
+function loaderSeed(loader: ChatDetailLoaderData): ChatLiveSeed {
+  if (!loader.ok || !loader.messages.ok) return { messages: [], cursor: null };
+  return { messages: loader.messages.data.messages, cursor: loader.messages.data.cursor };
+}
+
 /**
  * 页面的活跃读数。`loader` 同时是种子（已读到的 run 指纹）与重置锚点：
- * loader 一换（invalidate 之后）就丢掉旧读数，让更晚的 loader 事实优先，
- * 不让一次早于 loader 的 tick 覆盖它。换 Chat 时旧 tick 的结果按 chatId 丢弃。
+ * loader 一换（invalidate 之后）就丢掉 overlay，游标回到 loader 的尾巴，
+ * 让更晚的 loader 事实优先，不让一次早于 loader 的 tick 覆盖它。换 Chat 时旧 tick 的结果按 chatId 丢弃。
  */
 export function useChatLive({
   chatId,
@@ -153,18 +200,31 @@ export function useChatLive({
   const [state, setState] = useState<{ chatId: string; facts: ChatLiveFacts } | null>(null);
   const changed = useRef(onRunChanged);
   changed.current = onRunChanged;
+  const seed = loaderSeed(loader);
+  const seedRef = useRef(seed);
+  seedRef.current = seed;
+  const refresh = useRef<ChatLiveRefresh | null>(null);
   const seedSignature = loader.ok ? runSignature(loader.runState) : null;
   useEffect(() => {
     if (!active) return;
     const chat = chatId;
-    return createChatLiveRefresh({
+    const instance = createChatLiveRefresh({
+      seed: seedRef.current,
       reads: chatLiveReads(chat),
       onFacts: (facts) => setState({ chatId: chat, facts }),
       onRunChanged: () => changed.current(),
       seedSignature,
       environment: { document },
     });
+    refresh.current = instance;
+    return () => {
+      if (refresh.current === instance) refresh.current = null;
+      instance.stop();
+    };
   }, [active, chatId, seedSignature]);
-  useEffect(() => setState(null), [loader]);
+  useEffect(() => {
+    setState(null);
+    refresh.current?.reseed(seedRef.current);
+  }, [loader]);
   return state && state.chatId === chatId ? state.facts : null;
 }

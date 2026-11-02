@@ -7,6 +7,7 @@ import {
   clearChatTitleInput,
   createDirectChatInput,
   createGroupChatInput,
+  listMessagesInput,
   removeGroupMemberInput,
   sendMessageInput,
   setChatOwnerInput,
@@ -20,6 +21,7 @@ import type {
   ChatDetail,
   ChatSession,
   Message,
+  MessageWindow,
 } from "../../contracts/chat";
 import { fieldErrorsFrom, projectIdInput } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
@@ -161,11 +163,11 @@ export async function listMessagesBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
-): Promise<ChatResult<Message[]>> {
-  return chatBoundary<Message[]>(headers, requestId, (deps, context) => {
-    const parsed = chatIdInput.safeParse(raw);
+): Promise<ChatResult<MessageWindow>> {
+  return chatBoundary<MessageWindow>(headers, requestId, (deps, context) => {
+    const parsed = listMessagesInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.listMessages(parsed.data.chatId, context), requestId);
+    return ok(deps.listMessageWindow(parsed.data.chatId, context, parsed.data.after), requestId);
   });
 }
 
