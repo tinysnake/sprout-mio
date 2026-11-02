@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createInfoHubPolling } from "../src/components/info-hub/use-info-hub-polling";
+import { createRelationReads } from "../src/components/machine/use-machine-relations";
 import type { InfoHubRefreshInput } from "../src/contracts/info-hub-query";
 
 // Risk → evidence: background traffic / stale resume / overlap / retry storms /
@@ -174,5 +175,76 @@ describe("Human Info Hub polling", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("关系事实的读取调度", () => {
+  function startRelations() {
+    const read = vi.fn();
+    const document = Object.assign(new EventTarget(), {
+      visibilityState: "visible" as DocumentVisibilityState,
+    });
+    const reads = createRelationReads({
+      read,
+      intervalMs: 5000,
+      environment: { document, window: { setInterval, clearInterval } },
+    });
+    stops.push(() => reads.stop());
+    return { read, document, reads };
+  }
+
+  it("没有 revision 来源时退回五秒定时读，并且在隐藏时不发请求", async () => {
+    const { read, document, reads } = startRelations();
+    reads.sync(undefined);
+    expect(read).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(read).toHaveBeenCalledTimes(2);
+    document.visibilityState = "hidden";
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(read).toHaveBeenCalledTimes(2);
+    document.visibilityState = "visible";
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+
+  it("给了 revision 就不定时读，只有 revision 变化才重读", async () => {
+    const { read, reads } = startRelations();
+    reads.sync("r1");
+    expect(read).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(read).toHaveBeenCalledTimes(1);
+    reads.sync("r1");
+    expect(read).toHaveBeenCalledTimes(1);
+    reads.sync("r2");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("revision 从 null 变成有值也补读一次", async () => {
+    const { read, reads } = startRelations();
+    reads.sync(null);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(read).toHaveBeenCalledTimes(1);
+    reads.sync("r1");
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("重新可见时补读一次，隐藏期间不读", async () => {
+    const { read, document, reads } = startRelations();
+    reads.sync("r1");
+    document.visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(read).toHaveBeenCalledTimes(1);
+    document.visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("停止后既不定时读也不再响应可见性变化", async () => {
+    const { read, document, reads } = startRelations();
+    reads.sync("r1");
+    reads.stop();
+    await vi.advanceTimersByTimeAsync(30000);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(read).toHaveBeenCalledTimes(1);
   });
 });
