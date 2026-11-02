@@ -21,6 +21,13 @@ type Evidence = {
   dm: { wake: boolean; runs: number };
   debounce: { rows: number; trigger: boolean; capped: boolean };
   taskActive: { claimed: boolean; queued: boolean; postponed: boolean };
+  sources: {
+    blocked: boolean;
+    messageStillClaimed: boolean;
+    messageRound: number;
+    taskRound: number;
+    scheduleRound: number;
+  };
   disabled: { wake: number; runs: number };
   race: { blocked: boolean; trigger: boolean; oldState: string; first: string };
 };
@@ -110,5 +117,13 @@ describe("message-triggered wake", () => {
     expect(evidence.taskActive.claimed).toBe(false);
     expect(evidence.taskActive.queued).toBe(true);
     expect(evidence.taskActive.postponed).toBe(true);
+  });
+
+  it("shares one round counter between message and task evaluations", () => {
+    expect(evidence.sources.blocked).toBe(true);
+    expect(evidence.sources.messageStillClaimed).toBe(true);
+    expect(evidence.sources.messageRound).toBe(1);
+    expect(evidence.sources.taskRound).toBe(2);
+    expect(evidence.sources.scheduleRound).toBe(2);
   });
 });

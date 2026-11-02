@@ -25,6 +25,7 @@ import {
   hash,
   messageEvaluationCurrent,
   messageFingerprint,
+  nextEvaluationRound,
   one,
   signalScheduleChange,
   write,
@@ -480,10 +481,7 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
         }
         return claimMessageEvaluation(active, ctx);
       }
-      const round = one<{ n: number }>(
-        "SELECT coalesce(max(round),0)+1 AS n FROM wake_evaluation WHERE chat_id=?",
-        due.chat_id,
-      )!.n;
+      const round = nextEvaluationRound(due.chat_id);
       const id = newId(ID_PREFIXES.wakeEvaluation);
       write(
         "INSERT INTO wake_evaluation(id,project_id,chat_id,source,trigger_message_id,round,control_epoch,fingerprint,state,attempt,request_id,created_at) VALUES(?,?,?,'message',?,?,?,?,'pending',0,?,?)",
@@ -496,6 +494,12 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
         messageFingerprint(due.chat_id, due.trigger_message_id),
         ctx.requestId,
         ctx.now.getTime(),
+      );
+      write(
+        "UPDATE chat_schedule SET round=? WHERE chat_id=? AND round<?",
+        round,
+        due.chat_id,
+        round,
       );
       return claimMessageEvaluation(
         one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", id)!,

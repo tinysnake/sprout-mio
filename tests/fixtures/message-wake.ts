@@ -262,5 +262,57 @@ evidence.taskActive = {
 schedule.write("DELETE FROM wake_evaluation WHERE chat_id=? AND source='task_periodic'", waiting.id);
 schedule.write("DELETE FROM chat_message_wake WHERE chat_id=?", waiting.id);
 
+// message 与 task 共用 round；message 判定活跃时 task claim 必须让路。
+const sources = group();
+send(sources.id, "消息和任务同时到期");
+const sourceClaim = mw.claimDueMessageWake({
+  now: at,
+  requestId: newId(ID_PREFIXES.request),
+  workerId: "fixture",
+})!;
+const sourceTaskId = newId(ID_PREFIXES.task);
+sqlite
+  .prepare(
+    "INSERT INTO task(id,project_id,status,title,created_by,created_at,updated_at) VALUES(?,?,'proposed',?,?,?,?)",
+  )
+  .run(sourceTaskId, project.id, "来源共存", ctx.userId, at.getTime(), at.getTime());
+sqlite
+  .prepare(
+    "UPDATE task SET status='assigned',chat_id=?,revision=2,assignment_revision=1,updated_at=? WHERE id=?",
+  )
+  .run(sources.id, at.getTime(), sourceTaskId);
+schedule.write("UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?", at.getTime(), sources.id);
+const taskBlocked = schedule.claimDueEvaluation({
+  now: new Date(at.getTime() + 1_000),
+  requestId: newId(ID_PREFIXES.request),
+  workerId: "fixture",
+});
+const messageStillClaimed =
+  schedule.one<{ state: string }>("SELECT state FROM wake_evaluation WHERE id=?", sourceClaim.id)!
+    .state === "claimed";
+const prepared = mw.buildMessageEvaluation(sourceClaim, at);
+if (prepared.kind !== "model") throw new Error(`unexpected ${prepared.kind}`);
+await mw.evaluateMessageClaim(
+  sourceClaim,
+  async () => resultFor(prepared.input, [beta.id]),
+  { now: at, requestId: newId(ID_PREFIXES.request), workerId: "fixture" },
+);
+schedule.write("UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?", at.getTime(), sources.id);
+const sourceTaskEval = schedule.claimDueEvaluation({
+  now: new Date(at.getTime() + 2_000),
+  requestId: newId(ID_PREFIXES.request),
+  workerId: "fixture",
+})!;
+evidence.sources = {
+  blocked: taskBlocked === undefined,
+  messageStillClaimed,
+  messageRound: sourceClaim.round,
+  taskRound: sourceTaskEval.round,
+  scheduleRound: schedule.one<{ round: number }>(
+    "SELECT round FROM chat_schedule WHERE chat_id=?",
+    sources.id,
+  )!.round,
+};
+
 console.log(JSON.stringify(evidence));
 sqlite.close();

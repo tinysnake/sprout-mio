@@ -107,6 +107,19 @@ export function assignedTasks(chatId: string) {
     chatId,
   );
 }
+/** One round counter per chat; message and task_periodic evaluations share it. */
+export function nextEvaluationRound(chatId: string): number {
+  const schedule = one<{ round: number }>(
+    "SELECT round FROM chat_schedule WHERE chat_id=?",
+    chatId,
+  );
+  const latest = one<{ n: number }>(
+    "SELECT coalesce(max(round),0) AS n FROM wake_evaluation WHERE chat_id=?",
+    chatId,
+  )!.n;
+  return Math.max(schedule?.round ?? 0, latest) + 1;
+}
+
 export function responsibleRecipient(
   chatId: string,
 ): { kind: "human" | "agent"; id: string; instanceId: string | null } | null {
@@ -444,8 +457,26 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
       const control = controlFor(due.chat_id);
       if (control.mode !== "enabled") return undefined; // First epoch gate: no provider work when disabled.
       ensureResponsibleInstance(due.chat_id, ctx.now);
+      // A message evaluation owns the active slot. Yield to its scheduler instead of
+      // claiming it as a task evaluation or starving it behind this schedule.
+      const messageEvaluation = one<Evaluation>(
+        "SELECT * FROM wake_evaluation WHERE chat_id=? AND source='message' AND state IN ('pending','claimed','retry_wait')",
+        due.chat_id,
+      );
+      if (messageEvaluation) {
+        write(
+          "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
+          Math.max(
+            ctx.now.getTime() + 1_000,
+            messageEvaluation.lease_until ?? 0,
+            messageEvaluation.next_attempt_at ?? 0,
+          ),
+          due.chat_id,
+        );
+        return undefined;
+      }
       let evaluation = one<Evaluation>(
-        "SELECT * FROM wake_evaluation WHERE chat_id=? AND state IN ('pending','claimed','retry_wait')",
+        "SELECT * FROM wake_evaluation WHERE chat_id=? AND source='task_periodic' AND state IN ('pending','claimed','retry_wait')",
         due.chat_id,
       );
       if (evaluation?.state === "claimed" && evaluation.lease_until! > ctx.now.getTime()) {
@@ -478,12 +509,13 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
           return undefined;
         }
         const id = newId(ID_PREFIXES.wakeEvaluation);
+        const round = nextEvaluationRound(due.chat_id);
         write(
           "INSERT INTO wake_evaluation(id,project_id,chat_id,round,control_epoch,fingerprint,state,request_id,created_at) VALUES(?,?,?,?,?,?,'pending',?,?)",
           id,
           due.project_id,
           due.chat_id,
-          schedule.round + 1,
+          round,
           control.epoch,
           schedule.fingerprint,
           ctx.requestId,
@@ -498,7 +530,7 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
             task.revision,
             task.assignment_revision,
           );
-        write("UPDATE chat_schedule SET round=round+1 WHERE chat_id=?", due.chat_id);
+        write("UPDATE chat_schedule SET round=? WHERE chat_id=?", round, due.chat_id);
         evaluation = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", id)!;
       }
       const token = `${ctx.workerId}:${randomUUID()}`;
