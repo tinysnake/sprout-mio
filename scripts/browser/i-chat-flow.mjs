@@ -90,18 +90,18 @@ async function verifyRestartedSession() {
 
   await check("restart_messages_retained_in_order", async () => {
     await page.waitForSelector('[data-testid="message-item"]', { timeout: 20000 });
-    const bodies = await page.$$eval('[data-testid="message-body"]', (nodes) =>
-      nodes.map((node) => node.textContent),
-    );
-    const kinds = await page.$$eval('[data-testid="message-item"]', (nodes) =>
-      nodes.map((node) => node.getAttribute("data-sender-kind")),
+    // 只比这次发出的两条人类消息：本机开着真实 Agent 时它会在同一窗口里追加回复，
+    // 断言「恰好两条」会变成和 Agent 响应速度赛跑。
+    const humans = await page.$$eval('[data-testid="message-item"]', (nodes) =>
+      nodes
+        .filter((node) => node.getAttribute("data-sender-kind") === "human")
+        .map((node) => node.querySelector('[data-testid="message-body"]')?.textContent),
     );
     await shot(page, "p2-i-chat-after-restart");
     record(
       "restart_messages_retained_in_order",
-      JSON.stringify(bodies) === JSON.stringify(state.messages) &&
-        JSON.stringify(kinds) === JSON.stringify(["human", "human"]),
-      `重启后消息 ${JSON.stringify(bodies)}，sender ${JSON.stringify(kinds)}`,
+      JSON.stringify(humans) === JSON.stringify(state.messages),
+      `重启后人类消息 ${JSON.stringify(humans)}`,
     );
   });
 
