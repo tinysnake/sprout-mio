@@ -31,6 +31,15 @@ export function chatTimeLabel(iso: string): string {
   return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/**
+ * 列表行该显示的时刻。Info Hub 的 run 聚合只带 `latestRunAt`，`chat.updatedAt` 不会随
+ * 活跃 run 往前跑；取较新的一条，列表页不轮询 loader 时时间戳才不会滞在后面。
+ */
+export function latestActivityAt(updatedAt: string, latestRunAt?: string): string {
+  if (!latestRunAt) return updatedAt;
+  return Date.parse(latestRunAt) > Date.parse(updatedAt) ? latestRunAt : updatedAt;
+}
+
 export function chatAgentName(
   chatId: string,
   chatAgents: ChatAgent[],
@@ -215,6 +224,7 @@ export function ChatListPanel({
               const agentName = chatAgentName(chat.id, chatAgents, names);
               const name = chatListName(chat, chatAgents, names, aggregateMap);
               const aggregate = aggregateMap.get(chat.id);
+              const shownAt = latestActivityAt(chat.updatedAt, aggregate?.latestRunAt);
               const kindLabel =
                 chat.kind === "group"
                   ? "Group"
@@ -249,10 +259,10 @@ export function ChatListPanel({
                         {name}
                       </span>
                       <time
-                        dateTime={chat.updatedAt}
+                        dateTime={shownAt}
                         className="shrink-0 text-[9px] text-muted-foreground"
                       >
-                        {chatTimeLabel(chat.updatedAt)}
+                        {chatTimeLabel(shownAt)}
                       </time>
                     </span>
                     <span className="flex items-center gap-1.75 text-[11px] text-muted-foreground">
