@@ -189,6 +189,25 @@ describe("Human Info Hub polling", () => {
     expect(refresh.mock.calls[0]![0]).not.toHaveProperty("knownRevision");
   });
 
+  it("waits out a slow origin instead of aborting and retrying", async () => {
+    let settle!: (value: unknown) => void;
+    const refresh = vi.fn().mockImplementation(
+      async (_input: unknown, signal: AbortSignal) =>
+        new Promise((resolve, reject) => {
+          settle = resolve;
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const { onResult } = start(environment(), refresh);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(refresh.mock.calls[0]![1].aborted).toBe(false);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    settle(changed);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onResult).toHaveBeenCalledTimes(1);
+  });
+
   it("aborts disposed scopes and ignores their late results", async () => {
     let settle!: (value: unknown) => void;
     const refresh = vi.fn().mockImplementation(

@@ -53,7 +53,9 @@ export const INFO_HUB_POLLING = {
   fullRefreshOnResume: true,
   backoffMultiplier: 2,
   jitterRatio: 0.1,
-  requestTimeoutMs: 10_000,
+  // 入口代理抖动时，一次请求实测会挂到 31-33 秒才回；低于这个量级的超时会把
+  // 一次慢轮询变成三次失败请求，并让可见的「读取失败」状态闪一下。
+  requestTimeoutMs: 40_000,
   pauseWhenOffline: true,
   abortOnScopeChange: true,
 } as const;
