@@ -765,7 +765,14 @@ export function getAgentInfo(
 }
 
 const cursorSecret = randomBytes(32);
-const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+/** 心跳只推进 lastSeenAt，不改变可见状态；revision 若跟着变，客户端每次轮询都白拿全量。 */
+const VOLATILE_REVISION_KEYS = new Set(["lastSeenAt"]);
+const revisionOf = (payload: unknown): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(payload, (key, value) => (VOLATILE_REVISION_KEYS.has(key) ? null : value)),
+    )
+    .digest("hex");
 /** 游标过期时间是参与判断的时间：时钟由调用参数注入，不在判断处就地读。 */
 function signCursor(payload: unknown, now: () => number = Date.now): string {
   const body = Buffer.from(JSON.stringify({ expiresAt: now() + 5 * 60_000, payload })).toString(
@@ -796,6 +803,99 @@ function parseCursor(cursor: string, now: () => number = Date.now): unknown {
     throw new InfoHubError("info_hub_cursor_stale");
   }
 }
+function hubSectionKey(section: string, item: Record<string, unknown>): string {
+  return String(
+    section === "agents"
+      ? item.agentProfileId
+      : section === "members"
+        ? `${String(item.memberKind)}:${String(item.memberId)}`
+        : section === "runs"
+          ? item.runId
+          : section === "tasks"
+            ? item.taskId
+            : section === "machines"
+              ? item.machineId
+              : section === "instances"
+                ? item.instanceId
+                : item.chatId,
+  );
+}
+type InfoHubSeal = {
+  projectId: string;
+  asOf: string;
+  actorScope: string;
+  /** 产生这份载荷的查询，已去掉引导到这里的那个游标。 */
+  range: InfoHubQuery;
+  cursor?: string;
+  scope: Record<string, string>;
+  data: unknown;
+};
+/**
+ * revision 只认本次查询会返回的那份 section 载荷：同一个 (projectId, view, section, scope)
+ * 的 data 不变就同 revision，与 asOf、分页窗口及其他 section 无关。
+ */
+function sealInfoHubView(seal: InfoHubSeal): InfoHubView {
+  const { projectId, asOf, actorScope, range, cursor, scope, data } = seal;
+  const envelope = (revision: string) => ({
+    projectId,
+    revision,
+    asOf,
+    view: range.view,
+    ...(range.view === "machine" ? {} : { section: range.section }),
+    ...scope,
+  });
+  if (!Array.isArray(data) || range.view === "machine")
+    return infoHubViewSchema.parse({ ...envelope(revisionOf(data)), data });
+  // 排序后、按游标切片前求 hash：同一 section 翻页拿到的是同一个 revision。
+  const key = (item: Record<string, unknown>) => hubSectionKey(range.section, item);
+  const sorted = [...data].sort((a, b) => key(a).localeCompare(key(b)));
+  const revision = revisionOf(sorted);
+  let offset = 0;
+  if (cursor) {
+    const payload = infoHubCursorPayloadSchema.safeParse(parseCursor(cursor));
+    if (
+      !payload.success ||
+      !infoHubCursorValidationSchema.safeParse({
+        cursor: payload.data,
+        expected: {
+          version: 1,
+          projectId,
+          actorScope,
+          query: range,
+          revision,
+          sort: "stable_id_asc",
+        },
+      }).success
+    )
+      throw new InfoHubError("info_hub_cursor_stale");
+    offset = sorted.findIndex((item) => key(item) === payload.data.after) + 1;
+    if (!offset) throw new InfoHubError("info_hub_cursor_stale");
+  }
+  let items = sorted.slice(offset, offset + range.limit);
+  for (;;) {
+    const nextCursor =
+      offset + items.length < sorted.length
+        ? signCursor({
+            version: 1,
+            projectId,
+            actorScope,
+            query: range,
+            revision,
+            sort: "stable_id_asc",
+            after: key(items.at(-1)!),
+          })
+        : null;
+    const result = {
+      ...envelope(revision),
+      data: items,
+      page: { total: sorted.length, nextCursor },
+    };
+    if (Buffer.byteLength(JSON.stringify(result)) <= INFO_HUB_LIMITS.maxResponseBytes)
+      return infoHubViewSchema.parse(result);
+    if (items.length <= 1) throw new InfoHubError("too_many_requests");
+    items = items.slice(0, -1);
+  }
+}
 /** One short SQLite read transaction owns authorization, revision, and the selected page. */
 export function getInfoHub(
   projectId: string,
@@ -808,16 +908,18 @@ export function getInfoHub(
     const actorScope = ctx.agent
       ? `agent:${ctx.agent.runId}:${ctx.agent.instanceId}`
       : `human:${ctx.userId}`;
-    const base = { projectId, revision: hash(hub), asOf: new Date().toISOString() };
+    const asOf = new Date().toISOString();
     let data: unknown;
     let scope: Record<string, string> = {};
     if (query.view === "machine") {
       data = hub.machines.find((machine) => machine.machineId === query.machineId);
       if (!data) throw new InfoHubError("not_found");
-      return infoHubViewSchema.parse({
-        ...base,
-        view: "machine",
-        machineId: query.machineId,
+      return sealInfoHubView({
+        projectId,
+        asOf,
+        actorScope,
+        range: query,
+        scope: { machineId: query.machineId },
         data,
       });
     }
@@ -898,66 +1000,7 @@ export function getInfoHub(
         }));
       }
     }
-    const envelope = { ...base, view: query.view, section: query.section, ...scope };
-    if (!Array.isArray(data)) return infoHubViewSchema.parse({ ...envelope, data });
-    const key = (item: Record<string, unknown>) =>
-      String(
-        query.section === "agents"
-          ? item.agentProfileId
-          : query.section === "members"
-            ? `${String(item.memberKind)}:${String(item.memberId)}`
-            : query.section === "runs"
-              ? item.runId
-              : query.section === "tasks"
-                ? item.taskId
-                : query.section === "machines"
-                  ? item.machineId
-                  : query.section === "instances"
-                    ? item.instanceId
-                    : item.chatId,
-      );
-    const sorted = (data as Record<string, unknown>[]).sort((a, b) => key(a).localeCompare(key(b)));
-    let offset = 0;
-    if (cursor) {
-      const payload = infoHubCursorPayloadSchema.safeParse(parseCursor(cursor));
-      if (
-        !payload.success ||
-        !infoHubCursorValidationSchema.safeParse({
-          cursor: payload.data,
-          expected: {
-            version: 1,
-            projectId,
-            actorScope,
-            query: range,
-            revision: base.revision,
-            sort: "stable_id_asc",
-          },
-        }).success
-      )
-        throw new InfoHubError("info_hub_cursor_stale");
-      offset = sorted.findIndex((item) => key(item) === payload.data.after) + 1;
-      if (!offset) throw new InfoHubError("info_hub_cursor_stale");
-    }
-    let items = sorted.slice(offset, offset + query.limit);
-    for (;;) {
-      const nextCursor =
-        offset + items.length < sorted.length
-          ? signCursor({
-              version: 1,
-              projectId,
-              actorScope,
-              query: range,
-              revision: base.revision,
-              sort: "stable_id_asc",
-              after: key(items.at(-1)!),
-            })
-          : null;
-      const result = { ...envelope, data: items, page: { total: sorted.length, nextCursor } };
-      if (Buffer.byteLength(JSON.stringify(result)) <= INFO_HUB_LIMITS.maxResponseBytes)
-        return infoHubViewSchema.parse(result);
-      if (items.length <= 1) throw new InfoHubError("too_many_requests");
-      items = items.slice(0, -1);
-    }
+    return sealInfoHubView({ projectId, asOf, actorScope, range, cursor, scope, data });
   });
 }
 export function refreshInfoHub(

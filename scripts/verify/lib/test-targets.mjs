@@ -33,6 +33,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/http-drain.test.ts",
     "tests/id-rekey.test.ts",
     "tests/identity-data.test.ts",
+    "tests/info-hub-revision.test.ts",
     "tests/info-hub-runs.test.ts",
     "tests/info-hub.test.ts",
     "tests/integration-mcp.test.ts",
