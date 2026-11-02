@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
+  CHAT_IDLE_INTERVAL_MS,
   CHAT_LIVE_INTERVAL_MS,
   createChatLiveRefresh,
   isActiveRunState,
@@ -170,6 +171,32 @@ describe("Chat 活跃 run 的定点刷新", () => {
     expect(onFacts).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS * 10);
     expect(runState).toHaveBeenCalledTimes(2);
+  });
+
+  it("空闲时按较慢节奏继续轮询，能发现后来启动的 run", async () => {
+    const runState = vi
+      .fn()
+      .mockResolvedValueOnce(state())
+      .mockResolvedValueOnce(state(run("run_b", "running")));
+    const onRunChanged = vi.fn();
+    stops.push(
+      createChatLiveRefresh({
+        seed: emptySeed,
+        reads: { messages: vi.fn().mockResolvedValue(emptyWindow), runState },
+        onFacts: vi.fn(),
+        onRunChanged,
+        seedSignature: "",
+        stopWhenIdle: false,
+        intervalMs: CHAT_IDLE_INTERVAL_MS,
+        environment: environment(),
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(CHAT_IDLE_INTERVAL_MS);
+    expect(runState).toHaveBeenCalledTimes(1);
+    expect(onRunChanged).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(CHAT_IDLE_INTERVAL_MS);
+    expect(runState).toHaveBeenCalledTimes(2);
+    expect(onRunChanged).toHaveBeenCalledTimes(1);
   });
 
   it("首个 tick 就发现 run 已收尾时仍然回报一次重读", async () => {
