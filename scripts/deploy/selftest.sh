@@ -136,8 +136,6 @@ if bash "$REPO_ROOT/scripts/deploy/rekey-ids.sh" nosuch >/dev/null 2>&1; then
   fail "rekey-ids.sh 接受了未知实例"
 fi
 
-step "drill 必须先演练 id 重写"
-check_rekey_order drill "$REPO_ROOT/scripts/deploy/drill.sh" drill 'start.sh" drill' 
 
 step "文档与脚本必须一一对应"
 documented="$(grep -oE 'scripts/deploy/[a-z-]+\.sh' "$REPO_ROOT/docs/deployment.md" | sort -u)"

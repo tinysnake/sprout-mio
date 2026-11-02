@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 演练实例：从 prod 最新数据起一份副本，装指定 tag，迁移并重写 id 后起在 3221 上。
+# 演练实例：从 prod 最新数据起一份副本，装指定 tag，迁移后起在 3221 上。
 # 演练只证明「这份代码 + 这份数据能起来」，不证明 prod 已经就绪。
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -24,8 +24,6 @@ pnpm --dir "$app" build >/dev/null
 
 load_env drill
 DATABASE_URL="$(db_path drill)" pnpm --dir "$app" db:migrate >"$dir/logs/migrate.log" 2>&1
-# drill 的 repos/ 与 pi/ 是空的，这一段只演练数据库侧；文件系统重命名在演练里没有目标。
-bash "$REPO_ROOT/scripts/deploy/rekey-ids.sh" drill >"$dir/logs/rekey.log" 2>&1
 bash "$REPO_ROOT/scripts/deploy/start.sh" drill >/dev/null
 bash "$REPO_ROOT/scripts/deploy/verify.sh" drill >/dev/null
 say "PASS 演练实例已按 $tag 起在 $(port_for drill) 上（数据来自 prod，自动化已关）"

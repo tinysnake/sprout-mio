@@ -171,9 +171,7 @@ bash scripts/deploy/promote.sh deploy/2026-11-01-1200
 bash scripts/deploy/drill.sh <sha>
 ```
 
-它拷 prod 最新备份、重写机器凭据、跑迁移、重写 id、构建、起在 3221、等健康检查，然后打印地址与迁移前后的表结构差异。验完 `Ctrl-C` 或者按提示停止，数据库留在 `$SPROUT_RUNTIME_ROOT/drill/data/`，下次刷新再覆盖。
-
-演练与 promote 走同一个 `scripts/deploy/rekey-ids.sh`，所以第 6 步的数据库侧在 3221 上就能先看一遍。但 drill 的 `repos/` 与 `pi/` 不从 prod 同步（`refresh-data.sh` 只搬库），文件系统重命名在演练里没有目标，这一段仍只在 promote 上发生。
+它拷 prod 最新备份、重写机器凭据、跑迁移、构建、起在 3221、等健康检查，然后打印地址与迁移前后的表结构差异。验完 `Ctrl-C` 或者按提示停止，数据库留在 `$SPROUT_RUNTIME_ROOT/drill/data/`，下次刷新再覆盖。
 
 ## 迁移纪律
 
