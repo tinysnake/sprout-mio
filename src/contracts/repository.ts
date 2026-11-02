@@ -24,9 +24,7 @@ export const REPO_ERROR_CODES = [
 export type RepoErrorCode = (typeof REPO_ERROR_CODES)[number];
 
 export const repoCheckoutIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.repoCheckout));
-export const repoProvenanceIdSchema = z
-  .string()
-  .regex(appIdPattern(ID_PREFIXES.repoProvenance));
+export const repoProvenanceIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.repoProvenance));
 
 export type RepoCheckout = {
   id: string;

@@ -122,7 +122,7 @@ describe("request log emit", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
-  it.each(["on", "ON", "1", "true"]) ("logs when SPROUT_REQUEST_LOG=%s", (value) => {
+  it.each(["on", "ON", "1", "true"])("logs when SPROUT_REQUEST_LOG=%s", (value) => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     process.env.SPROUT_REQUEST_LOG = value;
     logRequest(record);

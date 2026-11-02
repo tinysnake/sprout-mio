@@ -102,7 +102,6 @@ describe("用户可见文案", () => {
     }
     expect(uncertainResultNote(demoLongExecution)).toBeNull();
   });
-
 });
 
 describe("日志状态不冒充完整", () => {
