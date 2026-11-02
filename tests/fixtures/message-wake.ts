@@ -295,15 +295,32 @@ const prepared = mw.buildMessageEvaluation(sourceClaim, at);
 if (prepared.kind !== "model") throw new Error(`unexpected ${prepared.kind}`);
 await mw.evaluateMessageClaim(
   sourceClaim,
-  async () => resultFor(prepared.input, [beta.id]),
+  async () => resultFor(prepared.input, [alpha.id]),
   { now: at, requestId: newId(ID_PREFIXES.request), workerId: "fixture" },
 );
+const sourceDeliveryBefore = schedule.one<{ id: string; evaluation_id: string; state: string }>(
+  "SELECT id,evaluation_id,state FROM continuation_delivery WHERE chat_id=? AND recipient_id=?",
+  sources.id,
+  alpha.id,
+)!;
 schedule.write("UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?", at.getTime(), sources.id);
 const sourceTaskEval = schedule.claimDueEvaluation({
   now: new Date(at.getTime() + 2_000),
   requestId: newId(ID_PREFIXES.request),
   workerId: "fixture",
 })!;
+const sourceTaskInput = delivery.buildPeriodicInput(sourceTaskEval, new Date(at.getTime() + 2_000));
+delivery.commitEvaluationResult(
+  sourceTaskEval,
+  sourceTaskInput,
+  resultFor(sourceTaskInput, [alpha.id]),
+  new Date(at.getTime() + 2_000),
+);
+const sourceDeliveryAfter = schedule.one<{ id: string; evaluation_id: string; state: string }>(
+  "SELECT id,evaluation_id,state FROM continuation_delivery WHERE chat_id=? AND recipient_id=?",
+  sources.id,
+  alpha.id,
+)!;
 evidence.sources = {
   blocked: taskBlocked === undefined,
   messageStillClaimed,
@@ -313,6 +330,10 @@ evidence.sources = {
     "SELECT round FROM chat_schedule WHERE chat_id=?",
     sources.id,
   )!.round,
+  preserved:
+    sourceDeliveryAfter.id === sourceDeliveryBefore.id &&
+    sourceDeliveryAfter.evaluation_id === sourceClaim.id &&
+    sourceDeliveryAfter.state === sourceDeliveryBefore.state,
 };
 
 // 判定器最终不可用时，第 3 次失败回退 owner，而不是让消息无人处理。
@@ -345,6 +366,14 @@ evidence.failureFallback = {
   state: failDelivery.state,
   reasonCode: failResult.reasonCode,
 };
+const newer = send(failed.id, "更新的消息");
+const retried = mw.retryMessageWake(fail3, new Date(at.getTime() + 200_000));
+const queued = schedule.one<{ trigger_message_id: string }>(
+  "SELECT trigger_message_id FROM chat_message_wake WHERE chat_id=?",
+  failed.id,
+)!;
+evidence.retry = { retried, trigger: queued.trigger_message_id, newer: newer.id };
+schedule.write("DELETE FROM chat_message_wake WHERE chat_id=?", failed.id);
 
 // 旧的 message 投递处于 delivery_unknown 时，不应永久挡住同一成员的新消息。
 const unknown = group();

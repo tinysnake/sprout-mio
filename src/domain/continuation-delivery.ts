@@ -425,10 +425,11 @@ export function createContinuationDelivery(
   const ids: string[] = [];
   for (const target of targets) {
     const existing = one<DeliveryRow>(
-      "SELECT * FROM continuation_delivery WHERE chat_id=? AND recipient_kind=? AND recipient_id=? AND (state IN ('pending','bound') OR (fingerprint=? AND state IN ('admitted','delivered','presented'))) ORDER BY created_at DESC LIMIT 1",
+      "SELECT * FROM continuation_delivery WHERE chat_id=? AND recipient_kind=? AND recipient_id=? AND evaluation_id=? AND (state IN ('pending','bound') OR (fingerprint=? AND state IN ('admitted','delivered','presented'))) ORDER BY created_at DESC LIMIT 1",
       evaluation.chat_id,
       target.recipient.kind,
       target.recipient.id,
+      evaluation.id,
       evaluation.fingerprint,
     );
     if (existing && !supersedes) {
@@ -473,6 +474,16 @@ export function createContinuationDelivery(
       !supersedes &&
       evaluation.source === "task_periodic" &&
       hasUnknownDeliveryBarrier(evaluation.chat_id, target.recipient)
+    )
+      continue;
+    if (
+      !supersedes &&
+      one(
+        "SELECT 1 FROM continuation_delivery WHERE chat_id=? AND recipient_kind=? AND recipient_id=? AND state IN ('pending','bound') LIMIT 1",
+        evaluation.chat_id,
+        target.recipient.kind,
+        target.recipient.id,
+      )
     )
       continue;
     const id = newId(ID_PREFIXES.continuationDelivery);

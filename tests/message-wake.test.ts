@@ -27,8 +27,10 @@ type Evidence = {
     messageRound: number;
     taskRound: number;
     scheduleRound: number;
+    preserved: boolean;
   };
   failureFallback: { attempts: number; recipient: string; state: string; reasonCode: string };
+  retry: { retried: boolean; trigger: string; newer: string };
   unknown: { count: number; first: { state: string; error_code: string | null }; latest: { state: string; error_code: string | null } };
   owner: string;
   disabled: { wake: number; runs: number };
@@ -128,6 +130,12 @@ describe("message-triggered wake", () => {
     expect(evidence.sources.messageRound).toBe(1);
     expect(evidence.sources.taskRound).toBe(2);
     expect(evidence.sources.scheduleRound).toBe(2);
+    expect(evidence.sources.preserved).toBe(true);
+  });
+
+  it("does not let retrying an old evaluation overwrite a newer message", () => {
+    expect(evidence.retry.retried).toBe(false);
+    expect(evidence.retry.trigger).toBe(evidence.retry.newer);
   });
 
   it("does not let an unknown message delivery block a newer message", () => {

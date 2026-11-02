@@ -399,11 +399,12 @@ function claimMessageEvaluation(
     evaluation.id,
   );
   write(
-    "UPDATE chat_message_wake SET evaluation_id=?,due_at=?,updated_at=? WHERE chat_id=?",
+    "UPDATE chat_message_wake SET evaluation_id=?,due_at=?,updated_at=? WHERE chat_id=? AND trigger_message_id=?",
     evaluation.id,
     lease,
     ctx.now.getTime(),
     evaluation.chat_id,
+    evaluation.trigger_message_id,
   );
   return one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", evaluation.id)!;
 }
@@ -686,6 +687,11 @@ export function reconcileMessageWake(chatId: string, _now: Date): void {
 
 export function retryMessageWake(evaluation: Evaluation, now: Date): boolean {
   if (evaluation.source !== "message" || !evaluation.trigger_message_id) return false;
+  const queued = one<{ trigger_message_id: string }>(
+    "SELECT trigger_message_id FROM chat_message_wake WHERE chat_id=?",
+    evaluation.chat_id,
+  );
+  if (queued && queued.trigger_message_id !== evaluation.trigger_message_id) return false;
   const at = now.getTime();
   write(
     `INSERT INTO chat_message_wake(chat_id,project_id,trigger_message_id,first_due_at,due_at,evaluation_id,created_at,updated_at)
