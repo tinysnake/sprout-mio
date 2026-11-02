@@ -82,6 +82,12 @@ const members: ChatMember[] = [
   },
 ];
 
+/** 演示用 @ 候选：成员展示名来自同一批 fixture，多几个名字才看得出过滤。 */
+const mentionMembers = [
+  { memberId: "usr_demo", name: HUMAN },
+  ...profiles.map((profile) => ({ memberId: profile.id, name: profile.name })),
+];
+
 const messages: Message[] = [
   {
     id: "msg_66666666",
@@ -420,6 +426,7 @@ function MessagesScene() {
         <div className="mt-5">
           <MessageComposer
             agentName={profiles[0]!.name}
+            members={mentionMembers}
             draft={draft}
             onDraftChange={setDraft}
             onSubmit={() => {
@@ -548,6 +555,10 @@ function DemoThread({
 
       chat={chat}
       agentName={fixture.profile.name}
+      members={fixture.info.members.map((member) => ({
+        memberId: member.memberId,
+        name: member.displayName,
+      }))}
       profile={{ ok: true, data: fixture.profile, requestId: "req_demo" }}
       humanName={HUMAN}
       messages={{ ok: true, data: fixture.messages, requestId: "req_demo" }}

@@ -13,6 +13,7 @@ import type { AppError } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
+import type { MentionMember } from "./mention-picker";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { useChatDraft } from "./chat-drafts";
 import {
@@ -78,6 +79,14 @@ export function ChatPane({
     return new Set(
       info.data.members.map((member) => senderKey(member.memberKind, member.memberId)),
     );
+  }, [info]);
+  // @ 候选就是成员视图里的展示名；正文只插名字，所以这里不再带 memberKind。
+  const mentionMembers = useMemo<MentionMember[]>(() => {
+    if (!info.ok) return [];
+    return info.data.members.map((member) => ({
+      memberId: member.memberId,
+      name: member.displayName,
+    }));
   }, [info]);
   const runFacts = useMemo(() => {
     const map = new Map<string, import("../../contracts/info-hub").InfoHubRunSummary[]>();
@@ -196,6 +205,7 @@ export function ChatPane({
         }
         chat={chat}
         agentName={agentName}
+        members={mentionMembers}
         profile={session.kind === "dm" ? profile : null}
         humanName={humanName}
         messages={messages}
