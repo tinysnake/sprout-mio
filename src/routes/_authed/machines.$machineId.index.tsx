@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
+import { useMachineActivity } from "../../components/machine/use-machine-activity";
 import { useMachineRefresh } from "../../components/machine/use-machine-refresh";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineDetailPanel } from "../../components/machine/machine-detail";
@@ -55,8 +56,11 @@ export const Route = createFileRoute("/_authed/machines/$machineId/")({
 function MachinePage() {
   const { detail, projects, leases, executions } = Route.useLoaderData();
   const { projectId } = Route.useSearch();
-  const router = useMachineRefresh();
-  const relationState = useMachineRelations({ machineId: Route.useParams().machineId });
+  const { machineId } = Route.useParams();
+  // 页面事实的活性来源是一条很小的 revision 读取；只有它变了才整页重取。
+  const activity = useMachineActivity({ machineId, ...(projectId ? { projectId } : {}) });
+  const router = useMachineRefresh({ revision: activity.revision });
+  const relationState = useMachineRelations({ machineId });
   const { enrollment, setEnrollment } = useMachineEnrollment();
 
   const back = projectId ? (

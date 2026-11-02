@@ -38,6 +38,7 @@ export function MachineLeasePanel({
   cancellations,
   onCancelled,
   onLeaseMutate,
+  revision,
 }: {
   detail: MachineDetail;
   project: { id: string; name: string };
@@ -62,6 +63,8 @@ export function MachineLeasePanel({
   cancellations?: Readonly<Record<string, ExecutionCancellationView>>;
   onCancelled?: (view: ExecutionCancellationView) => void;
   onLeaseMutate?: LeaseMutationHandler;
+  /** Machine 范围的活动 revision；传了就让 fencing 事实跟着 revision 读。 */
+  revision?: string | null;
 }) {
   const leaseSection = (
     onMutate?: LeaseMutationHandler,
@@ -75,6 +78,7 @@ export function MachineLeasePanel({
       holderNames={holderNames}
       runs={runs}
       onMutate={onMutate}
+      revision={revision}
       {...(chatRow ? { chatRow } : {})}
       {...(transferControls ? { transferControls } : {})}
     />
