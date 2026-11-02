@@ -115,7 +115,7 @@ await test("CI continues after a failing gate and reports its real failure withi
   const report = JSON.parse(readFileSync(join(directory, ".verify/targets/ci-docs.json"), "utf8"));
   assert.deepEqual(
     report.outcomes.map(({ code }) => code),
-    [7, 0, 0],
+    CI_GROUPS.docs.map((id) => (id === "f-docs" ? 7 : 0)),
   );
 });
 
