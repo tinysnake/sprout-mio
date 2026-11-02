@@ -32,9 +32,13 @@ const ctx = {
   bootId: "info-gate",
   now: new Date(),
 };
+/** 同一个测试库里每个用例都会调一次 fixture：名字带序号，否则第二个用例撞 owner 内唯一的 agent_profile.name。 */
+let profileSeq = 0;
+const profileOf = (name: string) =>
+  createAgentProfile({ name: `${name} ${profileSeq++}`, persona: "", harness: "pi" }, ctx);
 function fixture() {
   const project = createProject({ name: "Task Info" }, ctx);
-  const profile = createAgentProfile({ name: "Info Agent", persona: "", harness: "pi" }, ctx);
+  const profile = profileOf("Info Agent");
   addProjectMember(project.id, profile.id, ctx);
   const chat = createDirectChat(project.id, profile.id, ctx).chat;
   const instance = ensureInstance(chat.id, profile.id, ctx);
@@ -200,10 +204,7 @@ describe("Task Info Hub real SQLite aggregates", () => {
   it("keeps every run and lease field unchanged when only Task state and records change", () => {
     const f = fixture();
     heldLease(f);
-    const neighborProfile = createAgentProfile(
-      { name: "Neighbor", persona: "", harness: "pi" },
-      ctx,
-    );
+    const neighborProfile = profileOf("Neighbor");
     addProjectMember(f.project.id, neighborProfile.id, ctx);
     const neighbor = createDirectChat(f.project.id, neighborProfile.id, ctx).chat;
     const neighborInstance = ensureInstance(neighbor.id, neighborProfile.id, ctx);
@@ -311,7 +312,7 @@ describe("Task Info Hub real SQLite aggregates", () => {
 
   it("allows a real Project member basic summaries but rejects other Chat bodies, other Projects and revoked membership", () => {
     const f = fixture();
-    const otherProfile = createAgentProfile({ name: "Other", persona: "", harness: "pi" }, ctx);
+    const otherProfile = profileOf("Other");
     addProjectMember(f.project.id, otherProfile.id, ctx);
     const other = createDirectChat(f.project.id, otherProfile.id, ctx).chat;
     const elsewhere = f.assign(f.create(), other.id);

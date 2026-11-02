@@ -70,8 +70,13 @@ function machine(projectId: string, name: string, holderInstanceId?: string) {
       .run(projectId, id, holderInstanceId);
   return id;
 }
+/** 同一个测试库里每个用例都会建一整套 fixture：名字带序号，否则第二个用例撞 owner 内唯一的 agent_profile.name。 */
+let profileSeq = 0;
 function profile(projectId: string, name: string) {
-  const created = createAgentProfile({ name, persona: "", harness: "pi" }, base);
+  const created = createAgentProfile(
+    { name: `${name} ${profileSeq++}`, persona: "", harness: "pi" },
+    base,
+  );
   addProjectMember(projectId, created.id, base);
   return created;
 }
