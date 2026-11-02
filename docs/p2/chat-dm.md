@@ -15,17 +15,17 @@
 
 `src/server/functions/chat.ts`，全部按「会话 → zod → 领域调用」顺序，失败以 HTTP 200 加 `AppResult` 载荷返回：
 
-| server function          | 输入                    | 领域调用               |
-| ------------------------ | ----------------------- | ---------------------- |
-| `createDirectChatFn`     | `createDirectChatInput` | `createDirectChat`     |
-| `listChatsFn`            | `{ projectId }`         | `listChats`            |
-| `getChatFn`              | `chatIdInput`           | `getChat`              |
-| `listChatMembersFn`      | `chatIdInput`           | `listChatMembers`      |
-| `listInstancesForChatFn` | `chatIdInput`           | `listInstancesForChat` |
-| `listMessagesFn`         | `chatIdInput`           | `listMessages`         |
-| `sendMessageFn`          | `{ chatId, body }`      | `sendMessage`          |
+| server function          | 输入                       | 领域调用               |
+| ------------------------ | -------------------------- | ---------------------- |
+| `createDirectChatFn`     | `createDirectChatInput`    | `createDirectChat`     |
+| `listChatsFn`            | `{ projectId }`            | `listChats`            |
+| `getChatFn`              | `chatIdInput`              | `getChat`              |
+| `listChatMembersFn`      | `chatIdInput`              | `listChatMembers`      |
+| `listInstancesForChatFn` | `chatIdInput`              | `listInstancesForChat` |
+| `listMessagesFn`         | `chatIdInput`              | `listMessages`         |
+| `sendMessageFn`          | `{ chatId, body, picks? }` | `sendMessage`          |
 
-`sendMessageFn` 只接受 `chatId` 与 `body`，human sender 从认证会话构造，不信任浏览器传入的身份。未登录返回 `unauthorized`；`ChatError` 与 `ProjectAccessError` 的 `not_found` 按原码透出；边界同时映射 `AgentError`（`not_found` / `conflict`），`createDirectChat` 因引用他人或不存在的 profileId 而拒绝时返回 `not_found`，属于合法业务拒绝，不再记为 `internal` error 诊断。这三类是该边界调用图可达的全部领域错误类；五个边界共用 [domain-errors.ts](../../src/server/functions/domain-errors.ts) 的一张领域错误映射表，回归入口为 `tests/error-mapping.test.ts` 与 `scripts/verify/m-error-mapping.sh`；zod 校验失败返回 `validation_failed` 并带 `fieldErrors`（空 body 的字段错误为 `body`）；其余未知错误映射为脱敏 `internal` 并写 `chat.request_failed` error 诊断。服务端专有模块只在 server function 内 `await import(...)`。
+`sendMessageFn` 只接受 `chatId`、`body` 与可选的 `picks`（客户端选择器插入的点名结果，服务端只按这条对话的有效成员校验，不采信客户端送来的成员表），human sender 从认证会话构造，不信任浏览器传入的身份。点名的落点由写时解析写入 `message_mention`，读模型的每条消息带 `mentions`。未登录返回 `unauthorized`；`ChatError` 与 `ProjectAccessError` 的 `not_found` 按原码透出；边界同时映射 `AgentError`（`not_found` / `conflict`），`createDirectChat` 因引用他人或不存在的 profileId 而拒绝时返回 `not_found`，属于合法业务拒绝，不再记为 `internal` error 诊断。这三类是该边界调用图可达的全部领域错误类；五个边界共用 [domain-errors.ts](../../src/server/functions/domain-errors.ts) 的一张领域错误映射表，回归入口为 `tests/error-mapping.test.ts` 与 `scripts/verify/m-error-mapping.sh`；zod 校验失败返回 `validation_failed` 并带 `fieldErrors`（空 body 的字段错误为 `body`）；其余未知错误映射为脱敏 `internal` 并写 `chat.request_failed` error 诊断。服务端专有模块只在 server function 内 `await import(...)`。
 
 ## 分身身份与唯一性的实现位置
 

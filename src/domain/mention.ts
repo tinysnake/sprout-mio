@@ -1,12 +1,16 @@
-/** 一处点名的落点：`start`/`end` 是 body 的字符下标，`end` 开区间，span 含 `@`。 */
-export type MentionSpan = {
-  memberKind: "agent" | "human";
-  memberId: string;
-  start: number;
-  end: number;
-};
+/**
+ * 一处点名的落点：`start`/`end` 是 body 的字符下标，`end` 开区间，span 含 `@`。
+ * 形状归 `contracts/chat.ts` 的 `mentionSpanSchema`：读模型、输入契约与这里共用一份，
+ * 这个文件只做匹配，不另立一份等价类型。
+ */
+import type { MentionSpan } from "../contracts/chat";
 
-/** 参与匹配的成员名。名字在全局唯一，这是下面不做词边界判断的前提。 */
+export type { MentionSpan };
+
+/**
+ * 参与匹配的成员名。名字不是全局唯一的（Agent 名只按 owner 唯一，Human 名来自认证供应方），
+ * 所以候选只取「这条对话的当前有效成员」，重名由下面的候选表次序收口。
+ */
 export type MentionCandidate = {
   memberKind: "agent" | "human";
   memberId: string;
@@ -25,7 +29,10 @@ export type MentionCandidate = {
  * 带空格或带标点，按字符类划边界反而会漏掉真实点名。名字按字面比较，用 `startsWith`
  * 而不是拼正则，名字里的 `.` 之类的元字符不会改变匹配结果，也不会在运行期炸。
  */
-export function resolveMentions(body: string, candidates: MentionCandidate[]): MentionSpan[] {
+export function resolveMentions(
+  body: string,
+  candidates: readonly MentionCandidate[],
+): MentionSpan[] {
   const spans: MentionSpan[] = [];
   if (body.length === 0) return spans;
   const named = candidates.filter((candidate) => candidate.name.length > 0);

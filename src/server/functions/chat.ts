@@ -32,6 +32,7 @@ import { toDomainAppError } from "./domain-errors";
 const sendMessageRequest = z.object({
   ...chatIdInput.shape,
   body: sendMessageInput.shape.body,
+  picks: sendMessageInput.shape.picks,
 });
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
@@ -180,7 +181,12 @@ export async function listMessagesBoundary(
     return ok(
       deps.sendMessage(
         parsed.data.chatId,
-        { senderKind: "human", senderId: context.userId, body: parsed.data.body },
+        {
+          senderKind: "human",
+          senderId: context.userId,
+          body: parsed.data.body,
+          ...(parsed.data.picks ? { picks: parsed.data.picks } : {}),
+        },
         context,
       ),
       requestId,
