@@ -831,6 +831,10 @@ describe("P6a continuation and Human controls", () => {
         nextDueAt: null,
       }).success,
     ).toBe(true);
+    // A message wake can schedule the next check without any assigned Task.
+    expect(
+      chatAutomationViewSchema.safeParse({ ...view(), assignedTaskIds: [] }).success,
+    ).toBe(true);
     expect(chatAutomationViewSchema.safeParse({ ...view(), epoch: 0 }).success).toBe(false);
     const evaluation = {
       evaluationId: "evaluation-1",

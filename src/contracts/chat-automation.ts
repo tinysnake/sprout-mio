@@ -264,11 +264,8 @@ export const chatAutomationViewSchema = z
   })
   .superRefine((value, ctx) => {
     const reject = (message: string) => ctx.addIssue({ code: "custom", message });
-    if (
-      (value.mode !== "enabled" || value.assignedTaskIds.length === 0) &&
-      value.nextDueAt !== null
-    )
-      reject("Disabled automation or no assigned Tasks has no executable schedule");
+    if (value.mode !== "enabled" && value.nextDueAt !== null)
+      reject("Disabled automation has no executable schedule");
     if (value.remindedHuman && (value.owner.kind !== "human" || value.activeRunIds.length !== 0))
       reject("Human reminder must not claim active Agent runs");
     if (
