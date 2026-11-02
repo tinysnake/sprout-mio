@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { createInfoHubPolling } from "../src/components/info-hub/use-info-hub-polling";
+import { createMachineActivityPolling } from "../src/components/machine/use-machine-activity";
+import { createMachineRefreshSchedule } from "../src/components/machine/use-machine-refresh";
 import { createRelationReads } from "../src/components/machine/use-machine-relations";
 import type { InfoHubRefreshInput } from "../src/contracts/info-hub-query";
 
@@ -246,5 +248,181 @@ describe("关系事实的读取调度", () => {
     await vi.advanceTimersByTimeAsync(30000);
     document.dispatchEvent(new Event("visibilitychange"));
     expect(read).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("机器范围的 revision 读取调度", () => {
+  function startActivity(read = vi.fn().mockResolvedValue("r1")) {
+    const onRevision = vi.fn();
+    const onError = vi.fn();
+    const document = Object.assign(new EventTarget(), {
+      visibilityState: "visible" as DocumentVisibilityState,
+    });
+    stops.push(
+      createMachineActivityPolling({
+        read,
+        intervalMs: 3000,
+        environment: { document, window: { setTimeout, clearTimeout } },
+        onRevision,
+        onError,
+      }),
+    );
+    return { read, onRevision, onError, document };
+  }
+
+  it("可见时每三秒读一次，revision 没变就不上报", async () => {
+    const { read, onRevision } = startActivity();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(onRevision).toHaveBeenCalledWith("r1", null);
+    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(onRevision).toHaveBeenCalledTimes(1);
+  });
+
+  it("隐藏时不发请求，回到可见立刻补读一次", async () => {
+    const { read, document } = startActivity();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read).toHaveBeenCalledTimes(1);
+    document.visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(read).toHaveBeenCalledTimes(1);
+    document.visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("同一时刻只有一个请求在途，可见性抖动不叠请求", async () => {
+    let settle!: (value: string) => void;
+    const read = vi.fn(() => new Promise<string>((done) => (settle = done)));
+    const { document } = startActivity(read);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read).toHaveBeenCalledTimes(1);
+    document.dispatchEvent(new Event("visibilitychange"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(read).toHaveBeenCalledTimes(1);
+    settle("r1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("读失败保留上一次 revision，恢复后变化才上报", async () => {
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce({ code: "internal", message: "boom", requestId: "req_1" })
+      .mockResolvedValueOnce("r1")
+      .mockResolvedValue("r2");
+    const { onRevision, onError } = startActivity(read);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onRevision).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(onRevision).toHaveBeenCalledWith("r1", null);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(onRevision).toHaveBeenLastCalledWith("r2", "r1");
+  });
+
+  it("停止后不再定时读，也不再响应可见性变化", async () => {
+    const { read, document } = startActivity();
+    await vi.advanceTimersByTimeAsync(0);
+    stops.pop()!();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("机器页整页重取的调度", () => {
+  function startRefresh(refresh = vi.fn().mockResolvedValue(undefined)) {
+    const document = Object.assign(new EventTarget(), {
+      visibilityState: "visible" as DocumentVisibilityState,
+    });
+    const schedule = createMachineRefreshSchedule({
+      refresh,
+      intervalMs: 5000,
+      environment: { document, window: { setTimeout, clearTimeout } },
+    });
+    stops.push(() => schedule.stop());
+    return { refresh, document, schedule };
+  }
+
+  it("没有 revision 来源时保持五秒定时重取，隐藏期间不重取", async () => {
+    const { refresh, document, schedule } = startRefresh();
+    schedule.sync(undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    document.visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    document.visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("给了 revision 就不起定时器，只有 revision 真的变化才重取", async () => {
+    const { refresh, schedule } = startRefresh();
+    schedule.sync(null);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(refresh).not.toHaveBeenCalled();
+    schedule.sync("r1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    schedule.sync("r1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    schedule.sync("r2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("重新可见立刻补取一次，隐藏期间不取", async () => {
+    const { refresh, document, schedule } = startRefresh();
+    schedule.sync(null);
+    schedule.sync("r1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    document.visibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    document.visibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("重取还在路上时 revision 再变，只补一次而不是并发跑两次", async () => {
+    let settle!: () => void;
+    const refresh = vi.fn(() => new Promise<void>((done) => (settle = done)));
+    const { schedule } = startRefresh(refresh);
+    schedule.sync(null);
+    schedule.sync("r1");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    schedule.sync("r2");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    settle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("停止后既不定时重取也不再响应可见性变化", async () => {
+    const { refresh, document, schedule } = startRefresh();
+    schedule.sync(undefined);
+    schedule.stop();
+    await vi.advanceTimersByTimeAsync(30000);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(refresh).not.toHaveBeenCalled();
   });
 });

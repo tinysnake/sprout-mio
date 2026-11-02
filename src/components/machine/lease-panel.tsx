@@ -46,6 +46,7 @@ export function LeaseOverview({
   fixedTargetId,
   manageLink,
   chatRow,
+  revision,
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -57,6 +58,8 @@ export function LeaseOverview({
   /** 窄栏（inspector）里只列事实，变更操作留在 Machine 详情。 */
   dense?: boolean;
   fencingSnapshot?: FencingSnapshot;
+  /** 页面已有 Machine 范围的 revision 时传下来：fencing 事实只在 revision 变化时重读。 */
+  revision?: string | null;
   /** 已在单台 Machine 的页面上时，目标即这台；跨机器选择仍由调用方保留。 */
   fixedTargetId?: string;
   /**
@@ -137,6 +140,7 @@ export function LeaseOverview({
                       lease={lease}
                       snapshot={fencingSnapshot}
                       submit={onMutate}
+                      revision={revision}
                       onForced={(receipt) =>
                         setForcedReceipts((current) => ({
                           ...current,
@@ -455,6 +459,7 @@ export function MachineLeaseSection({
   holderNames = {},
   runs,
   onMutate,
+  revision,
   chatRow = null,
   transferControls = null,
   testId = "machine-lease-section",
@@ -465,6 +470,8 @@ export function MachineLeaseSection({
   holderNames?: Readonly<Record<string, string>>;
   runs?: readonly { runId: string; status: string }[];
   onMutate?: LeaseMutationHandler;
+  /** Machine 范围的活动 revision，由页面传入；不传就保持五秒定时读。 */
+  revision?: string | null;
   /** 租约请求的 Chat 选择行；有申请/释放表单时紧贴表单上方。 */
   chatRow?: ReactNode;
   /** 交接与收回卡片；必须落在申请/释放之后、同一个租约小节里。 */
@@ -484,6 +491,7 @@ export function MachineLeaseSection({
         holderNames={holderNames}
         onMutate={onMutate}
         fixedTargetId={detail.machine.id}
+        revision={revision}
         {...(chatRow ? { chatRow } : {})}
         testId={`${testId}-overview`}
       />

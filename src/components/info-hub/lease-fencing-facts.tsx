@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { CircleHelp } from "lucide-react";
 import type { LeaseMutationView, LeaseView } from "../../contracts/lease";
@@ -41,12 +41,18 @@ export function LeaseFencingFacts({
   snapshot,
   submit,
   clock = Date.now,
+  revision,
   onForced,
 }: {
   lease: LeaseView;
   snapshot?: FencingSnapshot;
   submit?: LeaseMutationHandler;
   clock?: () => number;
+  /**
+   * Machine 范围的活动 revision。传了就不再五秒空跑：revision 真的变化才重读这两条事实。
+   * 没传（如 Project 视图里的共享卡片）保持原来的五秒定时读。
+   */
+  revision?: string | null;
   /** 强制收回成功后，收据要在 fencing 子树卸载后仍可读，因此上报给持久存在的行。 */
   onForced?: (receipt: LeaseMutationView) => void;
 }) {
@@ -59,6 +65,9 @@ export function LeaseFencingFacts({
   const [forceConfirmed, setForceConfirmed] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
   const [receipt, setReceipt] = useState<LeaseMutationView | null>(null);
+  const revisionMode = revision !== undefined;
+  const reread = useRef<(() => void) | null>(null);
+  const lastRevision = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     let disposed = false;
@@ -100,10 +109,13 @@ export function LeaseFencingFacts({
       }
     }
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 5000);
+    reread.current = () => void refresh();
+    // 有 revision 来源就不排定时器：同一份事实只由 revision 推进。
+    const timer = revisionMode ? undefined : window.setInterval(() => void refresh(), 5000);
     return () => {
       disposed = true;
-      window.clearInterval(timer);
+      reread.current = null;
+      if (timer !== undefined) window.clearInterval(timer);
     };
   }, [
     lease.projectId,
@@ -112,7 +124,16 @@ export function LeaseFencingFacts({
     lease.generation,
     snapshot,
     clock,
+    revisionMode,
   ]);
+
+  // 首次读到 revision（null → rN）也补读一次：挂载时的首读与这次读取之间可能有新事实。
+  useEffect(() => {
+    if (!revisionMode || lastRevision.current === revision) return;
+    lastRevision.current = revision;
+    if (revision === null) return;
+    reread.current?.();
+  }, [revision, revisionMode]);
 
   const facts = snapshot ?? loaded;
   const mutation = fencingMutation(lease, facts?.mutation ?? null);

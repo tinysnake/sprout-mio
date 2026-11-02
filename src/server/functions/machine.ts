@@ -68,6 +68,8 @@ export const listMachinesBoundary = (raw: unknown, headers: Headers, requestId: 
   boundary(raw, headers, requestId, listMachinesInput, (d, _i, c) => d.listMachines(c));
 export const getMachineBoundary = (raw: unknown, headers: Headers, requestId: string) =>
   boundary(raw, headers, requestId, getMachineInput, (d, i, c) => d.getMachine(i, c));
+export const getMachineActivityBoundary = (raw: unknown, headers: Headers, requestId: string) =>
+  boundary(raw, headers, requestId, getMachineInput, (d, i, c) => d.getMachineActivity(i, c));
 export const listProjectMachinesBoundary = (raw: unknown, headers: Headers, requestId: string) =>
   boundary(raw, headers, requestId, listProjectMachinesInput, (d, i, c) =>
     d.listProjectMachines(i.projectId, c),
@@ -108,6 +110,12 @@ export const getMachineFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     getMachineBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+/** 只回答「这台 Machine 的显示事实变没变」，让页面不必整路由重取。响应体只有 revision。 */
+export const getMachineActivityFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    getMachineActivityBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 export const listProjectMachinesFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)

@@ -59,6 +59,27 @@ async function until(check, label) {
   }
   throw new Error(`Timeout ${label}`);
 }
+/**
+ * 自动重取的确定性来源：机器页只在 revision 变化时整页重取，不再有五秒定时器。
+ * 因此等「一次 revision 读取之后的 getMachineFn」，而不是等某个周期到点。
+ */
+function waitForRevisionRefresh(page, ids) {
+  assert(ids.getMachineActivityFn, "build must expose getMachineActivityFn");
+  let revisionRead = false;
+  return new Promise((done) => {
+    const listener = (response) => {
+      const url = response.url();
+      if (url.endsWith(`/_serverFn/${ids.getMachineActivityFn}`)) {
+        revisionRead = true;
+        return;
+      }
+      if (!revisionRead || !url.endsWith(`/_serverFn/${ids.getMachineFn}`)) return;
+      page.off("response", listener);
+      done();
+    };
+    page.on("response", listener);
+  });
+}
 const passes = [];
 async function assertDetailPresentation(page, status) {
   const facts = await page.evaluate(() => {
@@ -274,6 +295,9 @@ try {
   );
   await page.getByTestId("machine-detail-back").click();
   await page.getByTestId("machine-list").waitFor();
+  // 首次 revision 读取（null → rN）会触发一次自动重取；监听要在进入页面之前挂好，
+  // 否则会像旧代码那样等一个不存在的五秒周期。
+  const pendingAutoRefresh = waitForRevisionRefresh(page, ids);
   await page.getByTestId("machine-item").filter({ hasText: "Production Mac" }).click();
   assert.equal((await page.getByTestId("machine-detail-id").innerText()).trim(), machineId);
   await page.getByTestId("machine-ticket-hidden").waitFor();
@@ -282,9 +306,6 @@ try {
   assert(reopenedTicket !== ticket, "returning to Machine must not resurrect the creation ticket");
   assert.equal(reopenedTicket === enrollmentTicket, true, "returning retains the renewed ticket");
   await page.getByTestId("machine-ticket-toggle").click();
-  const pendingAutoRefresh = page.waitForResponse((response) =>
-    response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
-  );
   await pendingAutoRefresh;
   await page.getByTestId("machine-ticket-toggle").click();
   assert.equal(
@@ -544,7 +565,8 @@ try {
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await refreshRequested;
   const automaticRefreshDelayMs = Date.now() - automaticRefreshStartedAt;
-  assert.ok(automaticRefreshDelayMs >= 5000, "详情页等待五秒后自动重新取数");
+  // 重新可见时立刻补一次 revision 读并在事实变化时整页重取，不再等满旧的五秒周期。
+  assert.ok(automaticRefreshDelayMs < 10_000, "详情页不需要手动刷新就会自己重新取数");
   const firstPaths = await page.getByTestId("machine-binding-path").allTextContents();
   assert.equal(firstPaths.length, 2);
   assert.notEqual(firstPaths[0], firstPaths[1]);
@@ -738,9 +760,21 @@ try {
   let pendingSurvivedRefresh = false;
   await page.route(savePattern, async (route) => {
     blockedSaves++;
-    await page.waitForResponse((response) =>
-      response.url().endsWith(`/_serverFn/${ids.getMachineFn}`),
-    );
+    // 保存还在路上时要观察一次整页重取。旧形态靠五秒定时器制造这次刷新，现在只能由
+    // 事实变化推进：在本页范围（Project B × Machine）里推进一步租约代次，相当于另一个
+    // actor 走完一次转换。只改 changed_at 不行——时间类列刻意不进 revision。
+    // 选租约而不是绑定，是为了不动本页后面要断言的绑定 revision 与目录观察。
+    const autoRefresh = waitForRevisionRefresh(page, ids);
+    const bumped = db
+      .prepare(
+        "UPDATE machine_lease SET generation = generation + 1, changed_at = ? WHERE project_id=? AND machine_id=?",
+      )
+      .run(Date.now(), projectB.id, machineId);
+    if (bumped.changes === 0)
+      db.prepare(
+        "INSERT INTO machine_lease(project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,0,'free',NULL,?)",
+      ).run(projectB.id, machineId, Date.now());
+    await autoRefresh;
     assert.equal(await page.getByTestId("machine-binding-submit").isDisabled(), true);
     assert.equal(await page.getByTestId("machine-binding-form").getAttribute("aria-busy"), "true");
     pendingSurvivedRefresh = true;
@@ -870,7 +904,9 @@ try {
         timers.delete(id);
         callback(...args);
       }, ms);
-      if (ms === 5000) timers.add(id);
+      // 详情页的活性来源是 3 秒一次的 revision 读取；整页重取只在 revision 变化时发生。
+      // 计时器集合因此看的是那条读取的周期，而不是旧的五秒 invalidate。
+      if (ms === 3000) timers.add(id);
       return id;
     };
     window.clearTimeout = (id) => {

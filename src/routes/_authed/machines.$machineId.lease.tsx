@@ -5,6 +5,7 @@ import { PageFrame } from "../../components/layout/page-frame";
 import { MachineLeasePanel } from "../../components/machine/machine-lease";
 import { holderNames } from "../../components/machine/project-lease-actions";
 import { useMachineEnrollment } from "../../components/machine/machine-enrollment-context";
+import { useMachineActivity } from "../../components/machine/use-machine-activity";
 import { useMachineRefresh } from "../../components/machine/use-machine-refresh";
 import { useExecutionWiring } from "../../lib/execution-wiring";
 import { ResultError } from "../../components/project/result-error";
@@ -36,7 +37,9 @@ function MachineLeasePage() {
   const { projectId } = Route.useSearch();
   const navigate = useNavigate();
   const canGoBack = useCanGoBack();
-  const router = useMachineRefresh();
+  // 租约页的事实也走同一条 revision：机器状态、租约、执行、fencing 收据都在里面。
+  const activity = useMachineActivity({ machineId, ...(projectId ? { projectId } : {}) });
+  const router = useMachineRefresh({ revision: activity.revision });
   const { enrollment, setEnrollment } = useMachineEnrollment();
   // 执行列表在 loader 里已经查过；日志读取、取消与连接事实都接到真实服务端入口，
   // 不在页面里另造在线状态或取消结果。
@@ -118,6 +121,7 @@ function MachineLeasePage() {
       canceller={executionWiring.canceller}
       connection={executionWiring.connection}
       cancellations={executionWiring.cancellations}
+      revision={activity.revision}
       onCancelled={executionWiring.onCancelled}
       enrollment={enrollment?.detail.machine.id === machineId ? enrollment : null}
       installOrigin={typeof window === "undefined" ? undefined : window.location.origin}

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import type {
   CreateMachineInput,
@@ -12,17 +12,22 @@ import type {
   SaveProjectMachineBindingInput,
 } from "../contracts/machine";
 import { WORKER_ENROLLMENT_TTL_MS, WORKER_STALE_AFTER_MS } from "../contracts/worker";
+import { machineActivityDigest } from "./machine-activity";
 import { db, sqlite } from "../db";
 import {
   diagnosticEvent,
   directoryObservation,
+  executionCancellation,
+  leaseMutation,
   machine,
   machineConnection,
   machineConnectionCounter,
   machineCredential,
+  machineLease,
   project,
   projectMachine,
   projectMachineMembership,
+  remoteExecution,
 } from "../db/schema";
 import {
   assertMembershipOperable,
@@ -151,7 +156,7 @@ export function getMachine(input: GetMachineInput, ctx: MachineContext): Machine
       current &&
       connection.status === "open" &&
       ctx.now.getTime() - connection.lastSeenAt.getTime() < WORKER_STALE_AFTER_MS;
-    const bindings = db
+    const bindings: (typeof projectMachine.$inferSelect)[] = db
       .select()
       .from(projectMachine)
       .where(
@@ -231,6 +236,131 @@ export function getMachine(input: GetMachineInput, ctx: MachineContext): Machine
     };
   })();
 }
+const ACTIVITY_EXECUTION_WINDOW = 20;
+
+/**
+ * Machine 范围的活动 revision：只读这几张表的窄列，不组装任何页面视图。
+ * 未授权与 not_found 由调用方（`getMachineActivity`）按 `getMachine` 的语义把关。
+ */
+export function machineActivityRevision(machineId: string, projectId?: string): string {
+  return sqlite.transaction(() => {
+    const row = db.select().from(machine).where(eq(machine.id, machineId)).get();
+    const bindings: (typeof projectMachine.$inferSelect)[] = db
+      .select()
+      .from(projectMachine)
+      .where(
+        and(
+          eq(projectMachine.machineId, machineId),
+          ...(projectId ? [eq(projectMachine.projectId, projectId)] : []),
+        ),
+      )
+      .all();
+    const scope = [...new Set(bindings.map((binding) => binding.projectId))].sort();
+    const leases: (typeof machineLease.$inferSelect)[] = scope.length
+      ? db
+          .select()
+          .from(machineLease)
+          .where(and(eq(machineLease.machineId, machineId), inArray(machineLease.projectId, scope)))
+          .all()
+      : [];
+    // 页面显示的是「本租约唯一的 pending 动作收据」，所以按 Project 聚合并排序拼接。
+    const pending = scope.length
+      ? db
+          .select({ projectId: leaseMutation.projectId, id: leaseMutation.id })
+          .from(leaseMutation)
+          .where(
+            and(
+              eq(leaseMutation.machineId, machineId),
+              eq(leaseMutation.state, "pending"),
+              inArray(leaseMutation.projectId, scope),
+            ),
+          )
+          .all()
+      : [];
+    const pendingByProject = new Map<string, string[]>();
+    for (const item of pending) {
+      const ids = pendingByProject.get(item.projectId) ?? [];
+      ids.push(item.id);
+      pendingByProject.set(item.projectId, ids);
+    }
+    const executions = scope.flatMap((id) =>
+      db
+        .select({
+          id: remoteExecution.id,
+          state: remoteExecution.state,
+          terminalAt: remoteExecution.terminalAt,
+        })
+        .from(remoteExecution)
+        .where(and(eq(remoteExecution.projectId, id), eq(remoteExecution.machineId, machineId)))
+        .orderBy(desc(remoteExecution.createdAt))
+        .limit(ACTIVITY_EXECUTION_WINDOW)
+        .all()
+        .map((execution: { id: string; state: string; terminalAt: Date | null }) => ({
+          projectId: id,
+          id: execution.id,
+          state: execution.state,
+          settledAt: execution.terminalAt?.toISOString() ?? null,
+        })),
+    );
+    // 取消是独立于执行状态的显示事实：只请求还没落定的取消也要让页面重读。
+    const cancellations = scope.length
+      ? db
+          .select({
+            executionId: executionCancellation.executionId,
+            projectId: executionCancellation.projectId,
+            state: executionCancellation.state,
+          })
+          .from(executionCancellation)
+          .where(
+            and(
+              eq(executionCancellation.machineId, machineId),
+              inArray(executionCancellation.projectId, scope),
+            ),
+          )
+          .all()
+      : [];
+    const cancellationByExecution = new Map<string, string[]>();
+    for (const item of cancellations) {
+      const states = cancellationByExecution.get(item.executionId) ?? [];
+      states.push(item.state);
+      cancellationByExecution.set(item.executionId, states);
+    }
+    return machineActivityDigest({
+      machine: row
+        ? {
+            name: row.name,
+            rootDirectory: row.rootDirectory,
+            rootRevision: row.rootRevision,
+            updatedAt: row.updatedAt.toISOString(),
+          }
+        : null,
+      bindings: bindings.map((binding) => ({
+        projectId: binding.projectId,
+        description: binding.description,
+        revision: binding.revision,
+      })),
+      leases: leases.map((lease) => ({
+        key: `${lease.projectId}:${lease.machineId}`,
+        generation: lease.generation,
+        state: lease.state,
+        pendingMutationId: (pendingByProject.get(lease.projectId) ?? []).sort().join(",") || null,
+      })),
+      executions: executions.map((execution) => ({
+        ...execution,
+        cancellation: (cancellationByExecution.get(execution.id) ?? []).sort().join(",") || null,
+      })),
+    });
+  })();
+}
+
+export function getMachineActivity(input: GetMachineInput, ctx: MachineContext): string {
+  return sqlite.transaction(() => {
+    owned(input.machineId, ctx);
+    if (input.projectId) ownedProject(input.projectId, ctx);
+    return machineActivityRevision(input.machineId, input.projectId);
+  })();
+}
+
 export function listMachines(ctx: MachineContext): MachineDetail[] {
   return sqlite.transaction(() =>
     db
