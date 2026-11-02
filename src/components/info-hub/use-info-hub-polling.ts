@@ -50,6 +50,7 @@ export function createInfoHubPolling({
   onState?: (state: PollingState) => void;
   environment: Environment;
   random?: () => number;
+  now?: () => number;
 }) {
   const scope = infoHubRefreshInputSchema.parse(input);
   const { cursor: _cursor, ...query } =
