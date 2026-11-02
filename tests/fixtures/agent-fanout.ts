@@ -116,9 +116,10 @@ assert.equal(group.owner.kind, "agent");
 
 // ---------------------------------------------------------------- 1. 群里一条消息扇出到两个 instance
 // 规则链里 owner_led 只补一个候选，两个 run 只能来自点名：这条消息同时点名 owner Alpha 与被点名的 Beta。
+// 点名是写时落库的 mention span，不是正文里的名字，所以正文必须写 `@名字`。
 const firstMessage = sendMessage(
   group.id,
-  { senderKind: "human", senderId: creatorId, body: "Alpha 和 Beta 一起看这条渠道回归" },
+  { senderKind: "human", senderId: creatorId, body: "@Alpha 和 @Beta 一起看这条渠道回归" },
   ctx,
 );
 const groupRuns = runsOf(group.id);
@@ -147,7 +148,7 @@ const runOfB = groupRuns.find((run) => profileOfInstance(run.instanceId) === age
 assert.ok(runOfA && runOfB);
 const secondMessage = sendMessage(
   group.id,
-  { senderKind: "human", senderId: creatorId, body: "Alpha 再看一次现场" },
+  { senderKind: "human", senderId: creatorId, body: "@Alpha 再看一次现场" },
   ctx,
 );
 assert.equal(runsOf(group.id).length, 2, "已有活跃 run 时不得新建第二条 run");
@@ -162,7 +163,7 @@ pass("instance.serial-reuse", { runId: runOfA.id, inputs: inputsOf(runOfA.id).le
 // ---------------------------------------------------------------- 3. 两条 run 的输入互不可见
 const thirdMessage = sendMessage(
   group.id,
-  { senderKind: "human", senderId: creatorId, body: "Beta 对着回放看一遍" },
+  { senderKind: "human", senderId: creatorId, body: "@Beta 对着回放看一遍" },
   ctx,
 );
 assert.deepEqual(inputsOf(runOfB.id), [firstMessage.id, thirdMessage.id].sort());
@@ -184,7 +185,7 @@ assert.equal(getChat(channelId, ctx).title, undefined, "频道没有 title 字�
 assert.equal(PUBLIC_CHANNEL_DISPLAY_TITLE, "公共频道（Project 范围）");
 const channelMessage = sendMessage(
   channelId,
-  { senderKind: "human", senderId: creatorId, body: "Beta 看一下频道这条" },
+  { senderKind: "human", senderId: creatorId, body: "@Beta 看一下频道这条" },
   ctx,
 );
 const channelRuns = runsOf(channelId);

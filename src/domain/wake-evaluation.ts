@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { MentionSpan } from "../contracts/chat";
 import {
   WAKE_CONTEXT_LIMITS as limits,
   wakeEvaluationInputSchema,
@@ -9,7 +10,7 @@ import {
   type WakeRecipientDecision,
   type WakeProvider,
 } from "../contracts/wake-evaluation";
-import { routeWakeCandidates } from "./chat-wake";
+import { nameHints, routeWakeCandidates } from "./chat-wake";
 
 export type WakeCandidateSnapshot = WakeEvaluationInput["candidates"][number];
 type Message = WakeEvaluationInput["recentMessages"][number];
@@ -22,11 +23,14 @@ export type WakeSnapshotFacts = Omit<
   | "recentMessages"
   | "triggerMessage"
   | "candidates"
+  | "mentions"
   | "tasks"
 > & {
   readonly archived: boolean;
   readonly recentMessages: readonly Message[];
   readonly triggerMessage: Message | null;
+  /** 触发消息写时解析落库的点名落点（`message_mention` 那一份）：路由只读它，不读正文。 */
+  readonly mentions: readonly MentionSpan[];
   readonly members: readonly {
     readonly candidate: WakeCandidateSnapshot;
     readonly profileName: string;
@@ -137,6 +141,7 @@ export function prepareWakeEvaluation(facts: WakeSnapshotFacts, now: Date): Prep
     .filter((member) => sender?.kind !== "agent" || sender.id !== member.candidate.recipient.id)
     .map((member) => member.candidate);
   let rule = facts.chat.kind === "dm";
+  let ruleReason = "DM 里只有一名 Agent，直接派发";
   if (facts.source === "task_periodic") {
     if (facts.chat.kind !== "dm") {
       candidates =
@@ -158,8 +163,12 @@ export function prepareWakeEvaluation(facts: WakeSnapshotFacts, now: Date): Prep
     }
     rule = false;
   } else if (facts.chat.kind !== "dm") {
+    const effectiveMembers = members.map((m) => ({
+      memberKind: "agent" as const,
+      memberId: m.candidate.recipient.id,
+    }));
+    const senderAgentProfileId = sender?.kind === "agent" ? sender.id : undefined;
     const routed = routeWakeCandidates({
-      body: facts.triggerMessage?.body ?? "",
       chat: {
         id: facts.chatId,
         kind: facts.chat.kind,
@@ -167,18 +176,14 @@ export function prepareWakeEvaluation(facts: WakeSnapshotFacts, now: Date): Prep
         ownerKind: facts.chat.owner.kind,
         ownerId: facts.chat.owner.id,
       },
-      effectiveMembers: members.map((m) => ({
-        memberKind: "agent",
-        memberId: m.candidate.recipient.id,
-        profileName: m.profileName,
-      })),
-      senderAgentProfileId: sender?.kind === "agent" ? sender.id : undefined,
+      effectiveMembers,
+      mentions: facts.mentions,
+      senderAgentProfileId,
     });
     if (routed.length || facts.chat.wakePolicy !== "contextual") {
       const ids = routed.length
         ? routed
         : routeWakeCandidates({
-            body: facts.triggerMessage?.body ?? "",
             chat: {
               id: facts.chatId,
               kind: facts.chat.kind,
@@ -186,15 +191,16 @@ export function prepareWakeEvaluation(facts: WakeSnapshotFacts, now: Date): Prep
               ownerKind: facts.chat.owner.kind,
               ownerId: facts.chat.owner.id,
             },
-            effectiveMembers: members.map((m) => ({
-              memberKind: "agent",
-              memberId: m.candidate.recipient.id,
-              profileName: m.profileName,
-            })),
-            senderAgentProfileId: sender?.kind === "agent" ? sender.id : undefined,
+            effectiveMembers,
+            mentions: facts.mentions,
+            senderAgentProfileId,
           });
       candidates = candidates.filter((c) => ids.some((id) => id.agentProfileId === c.recipient.id));
       rule = true;
+      // 显式点名是硬规则：判定器无权否决被点名的人，只可能拿到弱证据去判。
+      ruleReason = routed.length
+        ? "显式点名既已记录，判定器无权否决"
+        : "对话唤醒策略回落到当前 owner";
     }
   }
   if (facts.chat.kind === "dm" && candidates.length !== 1)
@@ -231,6 +237,33 @@ export function prepareWakeEvaluation(facts: WakeSnapshotFacts, now: Date): Prep
           size(facts.triggerMessage.body) > limits.messageCharacters,
       }
     : null;
+  // 点名条目只覆盖候选：判定器只能对候选表态，看到不属于候选的点名只会误导它。
+  // 显式点名来自写时落库的 span；剩下的名字提示来自正文，是弱证据（`explicit: false`）。
+  const explicitMentions = new Set(
+    facts.mentions.map((span) => `${span.memberKind}:${span.memberId}`),
+  );
+  const hinted = new Set(
+    triggerMessage
+      ? nameHints({
+          body: triggerMessage.body,
+          mentions: facts.mentions,
+          members: facts.members.map((member) => ({
+            memberKind: member.candidate.recipient.kind,
+            memberId: member.candidate.recipient.id,
+            profileName: member.profileName,
+          })),
+        }).map((member) => `${member.memberKind}:${member.memberId}`)
+      : [],
+  );
+  const mentions = candidates
+    .filter((candidate) => {
+      const key = recipientKey(candidate.recipient);
+      return explicitMentions.has(key) || hinted.has(key);
+    })
+    .map((candidate) => ({
+      recipient: candidate.recipient,
+      explicit: explicitMentions.has(recipientKey(candidate.recipient)),
+    }));
   const snapshot = {
     source: facts.source,
     projectId: facts.projectId,
@@ -254,6 +287,7 @@ export function prepareWakeEvaluation(facts: WakeSnapshotFacts, now: Date): Prep
       responsibility: clip(c.responsibility, 600),
       externalWork: c.externalWork.map((work) => ({ ...work, summary: clip(work.summary, 600) })),
     })),
+    mentions,
     tasks,
     truncation: {
       originalMessageCount: ordered.length,
@@ -316,7 +350,7 @@ export function prepareWakeEvaluation(facts: WakeSnapshotFacts, now: Date): Prep
           input.candidates.map((c) => ({
             recipient: c.recipient,
             decision: "yes",
-            reason: "既有 DM、点名或 owner 规则",
+            reason: ruleReason,
             probability: null,
           })),
           "explicit_rule",

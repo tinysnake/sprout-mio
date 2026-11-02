@@ -276,6 +276,9 @@ export function buildPeriodicInput(evaluation: Evaluation, now: Date): WakeEvalu
         externalWork,
       },
     ],
+    // 周期判定没有触发消息，也就没有点名记录。
+    // 字段位置必须与 `wakeEvaluationInputSchema` 的声明顺序一致：快照 hash 是按键序计的。
+    mentions: [],
     tasks,
     truncation: {
       originalMessageCount,

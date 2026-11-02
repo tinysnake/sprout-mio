@@ -34,6 +34,7 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
+      "mentions": [],
       "latestReadableMessageId": "msg_bf2a8fe9",
       "recentMessages": [
         {
@@ -188,6 +189,7 @@
           "externalWork": []
         }
       ],
+      "mentions": [],
       "tasks": [],
       "truncation": {
         "originalMessageCount": 3,
@@ -198,7 +200,7 @@
         "recentMessageCharacters": 103,
         "characterBudget": 24000
       },
-      "snapshotHash": "15faaaa2679327f1418d35a69b42a69a9e917a654d32798a7bf278c907e0cf42"
+      "snapshotHash": "7fac850eca884e0a1ccc96f939028b60196fc4258b75968eb102c28f23eca638"
     },
     "expected": {
       "preparation": "model",
@@ -247,6 +249,7 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
+      "mentions": [],
       "latestReadableMessageId": "msg_09172f9d",
       "recentMessages": [
         {
@@ -408,6 +411,7 @@
           "externalWork": []
         }
       ],
+      "mentions": [],
       "tasks": [],
       "truncation": {
         "originalMessageCount": 2,
@@ -418,7 +422,7 @@
         "recentMessageCharacters": 69,
         "characterBudget": 24000
       },
-      "snapshotHash": "be9f244860725301fe788e409243c72a59d2280717df987a18bc87e5a6c74f79"
+      "snapshotHash": "c93ad2af1f7383d5180558af858c3da44220f4da983ab3f3f89162d688ac9a56"
     },
     "expected": {
       "preparation": "model",
@@ -467,6 +471,7 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
+      "mentions": [],
       "latestReadableMessageId": "msg_5cb3f53e",
       "recentMessages": [
         {
@@ -668,6 +673,7 @@
           "externalWork": []
         }
       ],
+      "mentions": [],
       "tasks": [
         {
           "id": "tsk_39297a0c",
@@ -696,7 +702,7 @@
         "recentMessageCharacters": 55,
         "characterBudget": 24000
       },
-      "snapshotHash": "a371599d818e5cfdd2e71ab5f914f62a4d0eec10c6146497f430d76e1d848104"
+      "snapshotHash": "a281b42effc30fc8732e9a06093eea2afd3077eb2885a5baa26c4246d6ef7622"
     },
     "expected": {
       "preparation": "model",
@@ -745,6 +751,7 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
+      "mentions": [],
       "latestReadableMessageId": "msg_470e69dd",
       "recentMessages": [
         {
@@ -936,6 +943,7 @@
           "externalWork": []
         }
       ],
+      "mentions": [],
       "tasks": [
         {
           "id": "tsk_593df096",
@@ -964,7 +972,7 @@
         "recentMessageCharacters": 78,
         "characterBudget": 24000
       },
-      "snapshotHash": "2009fde5fcac782c714e3193331a3b962545766265707187fc302354fed299b1"
+      "snapshotHash": "6430149ff1a06205e4abf97e6afe8c6cc908b42164a43a28bfe85317ab92e961"
     },
     "expected": {
       "preparation": "model",
@@ -1013,6 +1021,7 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
+      "mentions": [],
       "latestReadableMessageId": "msg_3cc023b1",
       "recentMessages": [
         {
@@ -1196,6 +1205,7 @@
           "externalWork": []
         }
       ],
+      "mentions": [],
       "tasks": [],
       "truncation": {
         "originalMessageCount": 3,
@@ -1206,7 +1216,7 @@
         "recentMessageCharacters": 113,
         "characterBudget": 24000
       },
-      "snapshotHash": "138bdb35dbf60785420131b9567b33da5c9b48541059e29cc50dd70240e1a2eb"
+      "snapshotHash": "bcdefb232f46dab1a36101e5d2eb06f3f18673406bca8d0122c7577b1464ee86"
     },
     "expected": {
       "preparation": "model",
@@ -1245,6 +1255,7 @@
       },
       "archived": false,
       "triggerMessage": null,
+      "mentions": [],
       "latestReadableMessageId": "msg_35d0cbed",
       "recentMessages": [
         {
@@ -1385,6 +1396,7 @@
           "externalWork": []
         }
       ],
+      "mentions": [],
       "tasks": [
         {
           "id": "tsk_0079f272",
@@ -1413,7 +1425,7 @@
         "recentMessageCharacters": 48,
         "characterBudget": 24000
       },
-      "snapshotHash": "a4b9346507fbf5723ab76899d53b1a0981ac30c047381008f82f89afefe9f3d0"
+      "snapshotHash": "d0e9e8405063b38d2de3d9e3812522bf98a8f26f8544a772e38b067668ba4e1b"
     },
     "expected": {
       "preparation": "model",
@@ -1462,6 +1474,14 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
+      "mentions": [
+        {
+          "memberKind": "agent",
+          "memberId": "agent_2",
+          "start": 0,
+          "end": 3
+        }
+      ],
       "latestReadableMessageId": "msg_956e0bcc",
       "recentMessages": [
         {
@@ -1651,6 +1671,15 @@
           "externalWork": []
         }
       ],
+      "mentions": [
+        {
+          "recipient": {
+            "kind": "agent",
+            "id": "agent_2"
+          },
+          "explicit": true
+        }
+      ],
       "tasks": [],
       "truncation": {
         "originalMessageCount": 3,
@@ -1661,7 +1690,7 @@
         "recentMessageCharacters": 76,
         "characterBudget": 24000
       },
-      "snapshotHash": "d74087a759048d152b78b63e44ae672e9e0b3cc5297d8e97de6d8190dfb356dd"
+      "snapshotHash": "2062eae56427f9dccb564698b985f45e90be54c784fab2ea914fc1fadffaea2f"
     },
     "expected": {
       "preparation": "rule",
@@ -1710,6 +1739,7 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
+      "mentions": [],
       "latestReadableMessageId": "msg_48758a8f",
       "recentMessages": [
         {
@@ -1889,6 +1919,7 @@
           "externalWork": []
         }
       ],
+      "mentions": [],
       "tasks": [],
       "truncation": {
         "originalMessageCount": 2,
@@ -1899,7 +1930,7 @@
         "recentMessageCharacters": 46,
         "characterBudget": 24000
       },
-      "snapshotHash": "bdbc83abdc5096464ef01bb4875d95bc38b47a25e094c207391e163ed801d402"
+      "snapshotHash": "115c22206b1357b13586f9166d6660dcb3e8f0a44f2733e4e0960728156ce7ef"
     },
     "expected": {
       "preparation": "model",
@@ -1938,6 +1969,7 @@
       },
       "archived": false,
       "triggerMessage": null,
+      "mentions": [],
       "latestReadableMessageId": "msg_83d7e9ee",
       "recentMessages": [
         {
@@ -2050,6 +2082,7 @@
       },
       "archived": false,
       "triggerMessage": null,
+      "mentions": [],
       "latestReadableMessageId": "msg_c302d787",
       "recentMessages": [
         {

@@ -192,21 +192,24 @@ export const chatSchema = z.object({
 export type Chat = z.infer<typeof chatSchema>;
 
 /**
- * 人类在 Group / Public Channel 发消息时的唤醒派发契约（裁定 §3.3 / §4.5）。
- *
- * `routeWakeCandidates` 的点名规则按展示名匹配，而 `chat_effective_member` 只给成员 id，
- * 所以派发方必须把「候选 Agent 的 `agent_profile_id` → 展示名」字典与消息内容一起交出去；
- * 字典缺项时点名退化为 `@<agent_profile_id>`。名单顺序即派发顺序，函数自己不再排序。
+ * 一处点名的落点：`start`/`end` 是 `message.body` 的字符下标，`end` 开区间，span 含 `@`。
+ * 形状只在这里定义一次：写时解析器、消息输入与消息输出都引用同一份 schema。
+ */
+export const mentionSpanSchema = z.object({
+  memberKind,
+  memberId: z.string().min(1, "点名成员标识不能为空"),
+  start: z.number().int().nonnegative(),
+  end: z.number().int().positive(),
+});
+export type MentionSpan = z.infer<typeof mentionSpanSchema>;
+
+/**
+ * 一条消息的唤醒派发契约（裁定 §3.3 / §4.5）：唤醒路由只读这条消息写时解析落库的点名
+ * 记录，正文文本不再参与路由。所以派发方交出的就是消息自己的 mention span，不另带名字字典。
  */
 export const chatWakeDispatchSchema = z.object({
   chatId,
-  body: z.string().trim().min(1, "消息不能为空").max(8000, "消息最多 8000 字"),
-  agentProfiles: z.array(
-    z.object({
-      agentProfileId: agentProfileIdSchema,
-      profileName: z.string().trim().min(1).optional(),
-    }),
-  ),
+  mentions: z.array(mentionSpanSchema),
 });
 export type ChatWakeDispatch = z.infer<typeof chatWakeDispatchSchema>;
 
@@ -289,18 +292,6 @@ export type ChatDetail = { chat: Chat; instance: AgentInstance };
  * 别名只保留一个阶段，新代码不要再引用它。
  */
 export type DirectChat = ChatDetail;
-
-/**
- * 一处点名的落点：`start`/`end` 是 `message.body` 的字符下标，`end` 开区间，span 含 `@`。
- * 形状只在这里定义一次：写时解析器、消息输入与消息输出都引用同一份 schema。
- */
-export const mentionSpanSchema = z.object({
-  memberKind,
-  memberId: z.string().min(1, "点名成员标识不能为空"),
-  start: z.number().int().nonnegative(),
-  end: z.number().int().positive(),
-});
-export type MentionSpan = z.infer<typeof mentionSpanSchema>;
 
 export const sendMessageInput = z.object({
   senderKind: memberKind,

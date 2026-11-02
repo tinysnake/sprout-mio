@@ -107,6 +107,7 @@ const input = (recentMessages: ReturnType<typeof message>[] = []) => ({
     governanceRevision: 1,
   },
   candidates: [candidate()],
+  mentions: [],
   tasks: [task()],
   truncation: {
     originalMessageCount: recentMessages.length,
@@ -327,8 +328,33 @@ describe("P6a immutable evaluation snapshot", () => {
         ...input(),
         truncation: { ...input().truncation, candidatesComplete: false },
       },
+      // 点名条目只描述候选：说一个不在候选里的成员被点名，判定器没法对它表态。
+      {
+        ...input(),
+        mentions: [{ recipient: { kind: "agent", id: "agp_0000ffff" }, explicit: true }],
+      },
+      {
+        ...input(),
+        mentions: [
+          { recipient: agent, explicit: true },
+          { recipient: agent, explicit: false },
+        ],
+      },
     ])
       expect(wakeEvaluationInputSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it("carries structured mention facts instead of making the judge read the body", () => {
+    const withMentions = wakeEvaluationInputSchema.parse({
+      ...input(),
+      source: "message",
+      triggerId: message().id,
+      triggerMessage: message("小审 你看下"),
+      tasks: [],
+      mentions: [{ recipient: agent, explicit: true }],
+    });
+    expect(withMentions.mentions).toEqual([{ recipient: agent, explicit: true }]);
+    expect(Object.isFrozen(withMentions.mentions[0])).toBe(true);
   });
 
   it("enforces 20 messages, 2000 Unicode characters each, and 12000 recent-body characters", () => {

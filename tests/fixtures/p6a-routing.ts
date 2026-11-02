@@ -167,11 +167,20 @@ const beforeRules = assertions;
 const clone = (): WakeSnapshotFacts => structuredClone(baseline.facts);
 const mentionFacts = clone();
 const target = mentionFacts.members[1];
+const mentionedBody = `@${target.profileName} 请处理`;
 const mentioned = prepareWakeEvaluation(
   {
     ...mentionFacts,
     chat: { ...mentionFacts.chat, wakePolicy: "owner_led" },
-    triggerMessage: { ...mentionFacts.triggerMessage!, body: `${target.profileName} 请处理` },
+    triggerMessage: { ...mentionFacts.triggerMessage!, body: mentionedBody },
+    mentions: [
+      {
+        memberKind: "agent",
+        memberId: target.candidate.recipient.id,
+        start: 0,
+        end: target.profileName.length + 1,
+      },
+    ],
   },
   new Date(baseline.now),
 );
@@ -180,6 +189,19 @@ if (mentioned.kind === "rule")
   equal(mentioned.result.selectedRecipients.map(recipientKey), [
     recipientKey(target.candidate.recipient),
   ]);
+// 裸名字只是弱证据：同样的正文去掉 `@` 与 mention 记录后不路由，只给判定器留一条提示。
+const bareName = prepareWakeEvaluation(
+  {
+    ...mentionFacts,
+    chat: { ...mentionFacts.chat, wakePolicy: "contextual" },
+    triggerMessage: { ...mentionFacts.triggerMessage!, body: `${target.profileName} 请处理` },
+    mentions: [],
+  },
+  new Date(baseline.now),
+);
+equal(bareName.kind, "model");
+if (bareName.kind === "model")
+  equal(bareName.input.mentions, [{ recipient: target.candidate.recipient, explicit: false }]);
 for (const field of ["projectMember", "effectiveMember"] as const) {
   const facts = clone();
   const prepared = prepareWakeEvaluation(

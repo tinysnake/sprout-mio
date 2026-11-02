@@ -5,7 +5,7 @@ import type {
   AgentRunStatus,
   RunConfigSnapshot,
 } from "../contracts/agent-run";
-import type { AgentInstance, Chat, ChatMember, ChatWakeDispatch, Message } from "../contracts/chat";
+import type { AgentInstance, Chat, ChatWakeDispatch, Message } from "../contracts/chat";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import {
@@ -321,35 +321,16 @@ function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, reques
 }
 
 /**
- * 候选 Agent 的 `agent_profile_id` → 展示名字典（契约 `chatWakeDispatchSchema`）。
- * `routeWakeCandidates` 的点名规则按名字匹配，成员视图只给 id，所以名字必须在这里补；
- * 读不到名字时字典项只有 id，点名退化为 `@<agent_profile_id>`。
- */
-function profileDictionary(members: readonly ChatMember[]): ChatWakeDispatch["agentProfiles"] {
-  const agentIds = members
-    .filter((member) => member.memberKind === "agent")
-    .map((member) => member.memberId);
-  if (agentIds.length === 0) return [];
-  const names = new Map<string, string>();
-  for (const row of db
-    .select({ id: agentProfile.id, name: agentProfile.name })
-    .from(agentProfile)
-    .where(inArray(agentProfile.id, agentIds))
-    .all())
-    names.set(row.id, row.name);
-  return agentIds.map((agentProfileId) => {
-    const profileName = names.get(agentProfileId);
-    return profileName === undefined ? { agentProfileId } : { agentProfileId, profileName };
-  });
-}
-
-/**
  * 群与公共频道的人类消息派发（裁定 §3.3 / §4.5 / d18）：
- * - 候选只由 `routeWakeCandidates` 决定，这里不加 kind 分支，所以频道里只唤醒被点名的 Agent
- *   （owner 恒为人类，`owner_led` 在频道里本就不产生候选），绝不按成员广播；
+ * - 候选只由 `routeWakeCandidates` 决定，输入是这条消息写时落库的 `mentions`，不是正文文本，
+ *   所以频道里只唤醒被点名的 Agent（owner 恒为人类，`owner_led` 在频道里本就不产生候选），
+ *   绝不按成员广播；
  * - 每个候选在**自己的 instance** 上各得一条 run 与一条 `agent_run_input`，这就是扇出的物化
  *   （输入主键是 `(run_id, message_id)`）；
  * - 同一 instance 已有活跃 run 时输入挂到那条 run，不新建第二个（数据库部分唯一索引是底线）。
+ *
+ * Agent owner 发言走同一条路：路由排除发送者自己，所以它不可能把自己再唤一次，也不会把
+ * 没被点名的成员带进来。
  */
 function fanoutHumanMessage(
   saved: Message,
@@ -358,39 +339,9 @@ function fanoutHumanMessage(
   ownerAgent = false,
 ): void {
   const members = readChatEffectiveMembers(current.id, current.projectId);
-  // 派发契约只带 id → 名字的字典与消息内容；规则函数要的其余成员事实仍由视图给全。
-  const dispatch: ChatWakeDispatch = {
-    chatId: current.id,
-    body: saved.body,
-    agentProfiles: profileDictionary(members),
-  };
-  const names = new Map(
-    dispatch.agentProfiles.map((entry) => [entry.agentProfileId, entry.profileName] as const),
-  );
-  const effectiveMembers = members
-    .map((member) => ({
-      memberKind: member.memberKind,
-      memberId: member.memberId,
-      profileName: names.get(member.memberId),
-    }))
-    .filter(
-      (member) =>
-        !ownerAgent ||
-        [member.memberId, member.profileName].some((name) => {
-          if (!name) return false;
-          let from = 0;
-          for (;;) {
-            const at = saved.body.indexOf(`@${name}`, from);
-            if (at < 0) return false;
-            const after = saved.body[at + name.length + 1];
-            if (after === undefined || !/[A-Za-z0-9_-]/.test(after)) return true;
-            from = at + 1;
-          }
-        }),
-    );
+  const dispatch: ChatWakeDispatch = { chatId: current.id, mentions: saved.mentions };
   const candidates = routeWakeCandidates({
     ...(ownerAgent ? { senderAgentProfileId: saved.senderId } : {}),
-    body: dispatch.body,
     chat: {
       id: dispatch.chatId,
       kind: current.kind,
@@ -398,7 +349,11 @@ function fanoutHumanMessage(
       ownerKind: current.owner.kind,
       ownerId: current.owner.id,
     },
-    effectiveMembers,
+    effectiveMembers: members.map((member) => ({
+      memberKind: member.memberKind,
+      memberId: member.memberId,
+    })),
+    mentions: dispatch.mentions,
   });
   // Provisioning is internal dispatch work after the owner gate; the new run gets
   // its own recipient instance identity, never the sender's execution identity.
