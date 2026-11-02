@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,7 +43,12 @@ function scenario(body: string) {
     `,
       ],
       {
-        env: { ...process.env, DATABASE_URL: join(directory, "run.sqlite"), NODE_ENV: "test" },
+        env: {
+          ...process.env,
+          DATABASE_URL: join(directory, "run.sqlite"),
+          BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
+          NODE_ENV: "test",
+        },
         encoding: "utf8",
         timeout: 60000,
       },
@@ -177,6 +183,39 @@ describe("Agent run 持久不变量", () => {
   it("两个窄查询同样按 Project 隔离", () => {
     scenario(`
       for (const action of [()=>runs.listActiveAgentRuns(direct.chat.id,other),()=>runs.latestAgentRun(direct.chat.id,other)]) assert.throws(action,e=>e.code==='not_found');
+    `);
+  });
+
+  it("对话页 run 视角去掉整段配置快照，只把 sessionFile 提到顶层", () => {
+    scenario(`
+      const { auth } = await import('./src/lib/auth.ts');
+      const boundary = await import('./src/server/functions/agent-run.ts');
+      const projects = await import('./src/server/functions/project.ts');
+      const agentFns = await import('./src/server/functions/agent.ts');
+      const chatFns = await import('./src/server/functions/chat.ts');
+      const signed = await auth.api.signUpEmail({ body: { email: 'state-'+Date.now()+'@example.test', password: 'test-pass-p3-d-info-hub', name: 'state-owner' }, returnHeaders: true });
+      const headers = new Headers({ cookie: signed.headers.get('set-cookie').split(';')[0] });
+      const owner = { userId: signed.response.user.id, requestId: 'req_state_owner' };
+      const stateProject = (await projects.createProjectBoundary({ name: 'State Project' }, headers, 'req_st1')).data;
+      const stateProfile = (await agentFns.createAgentProfileBoundary({ name: 'State Agent', persona: 'persona-token', harness: 'pi', model: 'test/model', effort: 'off' }, headers, 'req_st2')).data;
+      await agentFns.addProjectMemberBoundary({ projectId: stateProject.id, agentProfileId: stateProfile.id }, headers, 'req_st3');
+      const chatId = (await chatFns.createDirectChatBoundary({ projectId: stateProject.id, agentProfileId: stateProfile.id }, headers, 'req_st4')).data.chat.id;
+      await chatFns.sendMessageBoundary({ chatId, body: 'first' }, headers, 'req_st5');
+      const read = async () => { const state = await boundary.getChatRunStateBoundary({ chatId }, headers, 'req_st6'); assert.equal(state.ok, true); return state.data; };
+      const bare = await read();
+      assert.equal(bare.latest.status, 'queued');
+      assert.deepEqual(bare.active.map((row) => row.id), [bare.latest.id]);
+      for (const row of [bare.latest, ...bare.active]) assert.equal('configSnapshot' in row, false);
+      assert.equal(bare.latest.sessionFile, undefined);
+      const snapshotFor = (sessionId, sessionFile) => ({ provider: 'test', model: 'model', thinking: 'off', tools: ['read'], extensions: ['sprout-extension'], sessionId, sessionFile, cwd: '/tmp', sdkVersion: 'protocol-stub', profile: { id: stateProfile.id, name: stateProfile.name, persona: 'persona-token', harness: 'pi', updatedAt: stateProfile.updatedAt } });
+      runs.transitionAgentRun(bare.latest.id, 'running', { configSnapshot: snapshotFor(bare.latest.sessionId, '/tmp/state-session.jsonl') }, owner);
+      const withSnapshot = await read();
+      assert.equal(withSnapshot.latest.status, 'running');
+      assert.equal(withSnapshot.latest.sessionFile, '/tmp/state-session.jsonl');
+      assert.deepEqual(withSnapshot.active.map((row) => row.sessionFile), ['/tmp/state-session.jsonl']);
+      assert.equal('configSnapshot' in withSnapshot.latest, false);
+      assert.equal(JSON.stringify(withSnapshot).includes('persona-token'), false);
+      assert.equal(JSON.stringify(withSnapshot).includes('protocol-stub'), false);
     `);
   });
 });

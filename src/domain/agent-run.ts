@@ -3,6 +3,7 @@ import type {
   AgentRun,
   AgentRunInput,
   AgentRunStatus,
+  ChatRunSummary,
   RunConfigSnapshot,
 } from "../contracts/agent-run";
 import type { AgentInstance, Chat, ChatWakeDispatch, Message } from "../contracts/chat";
@@ -96,8 +97,16 @@ export function listAgentRuns(chatId: string, ctx: ProjectContext): AgentRun[] {
     .map(toRun);
 }
 
+function toChatRunSummary(row: typeof agentRun.$inferSelect): ChatRunSummary {
+  const { configSnapshot, ...run } = toRun(row);
+  return {
+    ...run,
+    ...(configSnapshot?.sessionFile ? { sessionFile: configSnapshot.sessionFile } : {}),
+  };
+}
+
 /** 详情页每 tick 只观察活跃 run：已结算的 run 状态不会再变。 */
-export function listActiveAgentRuns(chatId: string, ctx: ProjectContext): AgentRun[] {
+export function listActiveAgentRuns(chatId: string, ctx: ProjectContext): ChatRunSummary[] {
   const current = getChat(chatId, ctx);
   return db
     .select()
@@ -111,11 +120,11 @@ export function listActiveAgentRuns(chatId: string, ctx: ProjectContext): AgentR
     )
     .orderBy(asc(agentRun.queuedAt), asc(sql`rowid`))
     .all()
-    .map(toRun);
+    .map(toChatRunSummary);
 }
 
 /** 状态标签与失败原因看的是最近一条 run，与它是否还在跑无关。 */
-export function latestAgentRun(chatId: string, ctx: ProjectContext): AgentRun | null {
+export function latestAgentRun(chatId: string, ctx: ProjectContext): ChatRunSummary | null {
   const current = getChat(chatId, ctx);
   const row = db
     .select()
@@ -124,7 +133,7 @@ export function latestAgentRun(chatId: string, ctx: ProjectContext): AgentRun | 
     .orderBy(desc(agentRun.queuedAt), desc(sql`rowid`))
     .limit(1)
     .get();
-  return row ? toRun(row) : null;
+  return row ? toChatRunSummary(row) : null;
 }
 
 export function listAgentRunInputs(id: string, ctx: ProjectContext): AgentRunInput[] {
