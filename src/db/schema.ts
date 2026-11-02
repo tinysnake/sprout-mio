@@ -62,26 +62,31 @@ export const project = sqliteTable(
   (table) => [uniqueIndex("project_id_owner_unique").on(table.id, table.createdBy)],
 );
 
-export const agentProfile = sqliteTable("agent_profile", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  jobTitle: text("job_title"),
-  persona: text("persona").notNull().default(""),
-  harness: text("harness", { enum: ["pi"] })
-    .notNull()
-    .default("pi"),
-  model: text("model"),
-  effort: text("effort"),
-  createdBy: text("created_by")
-    .notNull()
-    .references(() => user.id),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export const agentProfile = sqliteTable(
+  "agent_profile",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    jobTitle: text("job_title"),
+    persona: text("persona").notNull().default(""),
+    harness: text("harness", { enum: ["pi"] })
+      .notNull()
+      .default("pi"),
+    model: text("model"),
+    effort: text("effort"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  // Agent profile 名字是 @mention 的解析键，全局唯一。
+  (table) => [uniqueIndex("agent_profile_name_unique").on(table.name)],
+);
 
 export const projectProfile = sqliteTable("project_profile", {
   projectId: text("project_id")
@@ -334,6 +339,39 @@ export const message = sqliteTable(
         or (${table.taskRecordKind} in ('progress','correction') and ${table.taskAssignmentRevision} is null
           and ${table.taskGovernanceRevision} is null and ${table.taskStartRecipientId} is null)))
     )`,
+    ),
+  ],
+);
+
+/**
+ * 消息内的 @mention 片段。偏移是半开区间 [start, end)，单位是 `message.body` 的字符下标；
+ * 只存位置与成员身份，不复制正文，正文改写后由写入方负责重算。
+ */
+export const messageMention = sqliteTable(
+  "message_mention",
+  {
+    chatId: text("chat_id").notNull(),
+    messageId: text("message_id").notNull(),
+    memberKind: text("member_kind", { enum: ["human", "agent"] }).notNull(),
+    memberId: text("member_id").notNull(),
+    start: integer("start").notNull(),
+    end: integer("end").notNull(),
+  },
+  (table) => [
+    // 复合外键让 mention 只能挂在同 chat 的 message 上，目标由 message 的
+    // uniqueIndex("message_id_chat_unique") 提供；写法与 agent_run 的 assistant_message 一致。
+    foreignKey({
+      columns: [table.messageId, table.chatId],
+      foreignColumns: [message.id, message.chatId],
+    }),
+    uniqueIndex("message_mention_position_unique").on(table.chatId, table.messageId, table.start),
+    index("message_mention_message_idx").on(table.chatId, table.messageId),
+    check("message_mention_member_kind_check", sql`${table.memberKind} in ('human', 'agent')`),
+    check("message_mention_member_id_check", sql`length(trim(${table.memberId})) > 0`),
+    check(
+      "message_mention_offsets_check",
+      sql`typeof(${table.start}) = 'integer' and typeof(${table.end}) = 'integer'
+      and ${table.start} >= 0 and ${table.end} > ${table.start}`,
     ),
   ],
 );
