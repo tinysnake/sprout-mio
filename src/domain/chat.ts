@@ -628,7 +628,7 @@ export function sendMessage(
   ctx: ProjectContext,
   hooks: IdentityWriteHooks = {},
 ): Message {
-  return sqlite
+  const saved = sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
       // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
@@ -723,13 +723,15 @@ export function sendMessage(
           const saved = toMessage(row, spans);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
           else appendOwnerAgentRunInput(saved, ctx);
-          signalScheduleChange();
           return saved;
         },
         hooks,
       );
     })
     .immediate();
+  // 通知必须在事务提交之后发出；放在 writeIdentity 回调里时，监听者可能读到未提交的 wake 行。
+  signalScheduleChange();
+  return saved;
 }
 
 /**
