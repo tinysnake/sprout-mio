@@ -135,6 +135,9 @@ async function open(config) {
   const sdkRequire = createRequire(join(root, "package.json"));
   const { createJiti } = await import(pathToFileURL(sdkRequire.resolve("jiti")).href);
   const jiti = createJiti(import.meta.url);
+  const { describeToolCall } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/lib/run-activity.ts"),
+  );
   const { createRemoteClient } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/remote-client.ts"),
   );
@@ -229,7 +232,7 @@ async function open(config) {
                       type: "progress",
                       id: config.id,
                       kind: "mcp_surface_failed",
-                      message: refreshed.error.message,
+                      message: refreshed.error.message.slice(0, 500),
                     });
                 }
               }
@@ -300,11 +303,25 @@ async function open(config) {
         text: event.assistantMessageEvent.delta,
       });
     } else if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
+      const activity = describeToolCall(
+        event.toolName,
+        event.type === "tool_execution_start" ? event.args : undefined,
+        { cwd: config.cwd, nested: Boolean(event.parentToolCallId) },
+      );
       line({
         type: "progress",
         id: config.id,
         kind: event.type === "tool_execution_start" ? "tool_start" : "tool_end",
         toolName: event.toolName,
+        ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+        ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+        activity,
+        ...(event.type === "tool_execution_end"
+          ? {
+              isError: event.isError,
+              ...(typeof event.durationMs === "number" ? { durationMs: event.durationMs } : {}),
+            }
+          : {}),
       });
     }
   });

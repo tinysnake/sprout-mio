@@ -14,6 +14,22 @@ export const AGENT_RUN_STATUSES = [
   "interrupted",
 ] as const;
 export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
+
+/** 运行中活动的类别：只用于展示与图标，不参与 run 状态机。 */
+export const RUN_ACTIVITY_KINDS = [
+  "bash",
+  "file",
+  "mcp",
+  "code_mode",
+  "search",
+  "remote",
+  "task",
+  "web",
+  "tool",
+  "system",
+] as const;
+export type RunActivityKind = (typeof RUN_ACTIVITY_KINDS)[number];
+export type RunActivityStatus = "running" | "done" | "error";
 /** 输入行的投递态；cancelled 记录扇出后被成员变更或人类停止取消的输入。 */
 export type RunInputDisposition = "pending" | "delivered" | "cancelled";
 export type RunInputCancelReason =
@@ -108,10 +124,40 @@ export const chatRunStateInput = chatIdInput;
  */
 export type ChatRunSummary = Omit<AgentRun, "configSnapshot"> & { sessionFile?: string };
 
-/** 活动 run 只回答「有没有在跑、跑到哪个状态」：页面既不用它的配置快照，也不用它的时间线。 */
+/** 一条正在执行或刚结束的工具步骤；`detail` 是给人看的一句话摘要。 */
+export type RunActivityStep = {
+  id: string;
+  kind: RunActivityKind;
+  /** 动作名，例如「Bash 命令」「读取文件」「MCP 调用」。 */
+  label: string;
+  /** 命令首行、文件路径、查询词等摘要；无法摘要时缺省。 */
+  detail?: string;
+  /** 原始工具名，保留用于诊断与去重。 */
+  toolName?: string;
+  startedAt: string;
+  finishedAt?: string;
+  status: RunActivityStatus;
+  durationMs?: number;
+};
+
+/**
+ * 运行中的即时活动。它与 `status` 并列，不改变状态枚举：
+ * status 回答「这个 run 处于哪个生命周期」，activity 只回答「这一秒在做什么」。
+ */
+export type RunActivity = {
+  current: RunActivityStep | null;
+  /** 刚结束的步骤，最新在前，最多 5 条。 */
+  recent: RunActivityStep[];
+  /** 最近生成的文本尾部；工具开始后清空，避免把旧输出当成当前动作。 */
+  text?: string;
+  updatedAt: string;
+};
+
+/** 活动 run 回答「有没有在跑、跑到哪个状态」，并按需带上即时活动。 */
 export type ChatRunActiveRun = {
   id: string;
   status: AgentRunStatus;
+  activity?: RunActivity;
 };
 
 export type ChatRunState = {

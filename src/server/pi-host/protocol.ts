@@ -5,6 +5,7 @@ import {
 } from "../../contracts/turn-context";
 import type { InfoHubHint } from "../../contracts/info-hub-hint";
 import type { RunConfigSnapshot } from "../../contracts/agent-run";
+import { RUN_ACTIVITY_KINDS } from "../../contracts/agent-run";
 import type { RemoteToolGrant } from "../../contracts/remote";
 
 export type OpenSession = {
@@ -81,9 +82,23 @@ export const piHostEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("progress"),
     id: z.string(),
-    kind: z.enum(["text_delta", "tool_start", "tool_end"]),
-    text: z.string().optional(),
-    toolName: z.string().optional(),
+    kind: z.enum(["text_delta", "tool_start", "tool_end", "mcp_surface_failed"]),
+    text: z.string().max(4000).optional(),
+    toolName: z.string().max(200).optional(),
+    toolCallId: z.string().max(200).optional(),
+    parentToolCallId: z.string().max(200).optional(),
+    /** 工具开始时由 runner 生成的一句话活动描述，工具结束时可以缺省。 */
+    activity: z
+      .object({
+        kind: z.enum(RUN_ACTIVITY_KINDS),
+        label: z.string().min(1).max(80),
+        detail: z.string().max(200).optional(),
+        toolName: z.string().min(1).max(200),
+      })
+      .optional(),
+    isError: z.boolean().optional(),
+    durationMs: z.number().nonnegative().optional(),
+    message: z.string().max(500).optional(),
   }),
   z.object({ type: z.literal("ready"), id: z.string(), snapshot: snapshotSchema }),
   z.object({ type: z.literal("input_delivered"), id: z.string(), messageId: z.string() }),
@@ -108,3 +123,4 @@ export const piHostEvent = z.discriminatedUnion("type", [
   }),
 ]);
 export type PiHostEvent = z.infer<typeof piHostEvent>;
+export type PiHostProgress = Extract<PiHostEvent, { type: "progress" }>;

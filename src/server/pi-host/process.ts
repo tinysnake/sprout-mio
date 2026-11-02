@@ -3,7 +3,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { RunConfigSnapshot } from "../../contracts/agent-run";
-import type { OpenSession, PiHostCommand, PiHostEvent } from "./protocol";
+import type { OpenSession, PiHostCommand, PiHostEvent, PiHostProgress } from "./protocol";
 import { config } from "../../lib/config";
 import type {
   TurnContextPromptInput,
@@ -49,6 +49,7 @@ export class PiSessionProcess {
   onTurnContextSubmitted: ((receipt: TurnContextSubmissionReceipt) => void) | undefined;
   onDelivered: ((messageId: string) => void) | undefined;
   onRejected: ((messageId: string, reason: string) => void) | undefined;
+  onProgress: ((event: PiHostProgress) => void) | undefined;
 
   constructor(
     readonly id: string,
@@ -135,6 +136,15 @@ export class PiSessionProcess {
       const parsed = piHostEvent.safeParse(value);
       if (!parsed.success || parsed.data.id !== this.id) continue;
       const event = parsed.data;
+      if (event.type === "progress") {
+        // 活动摘要是展示层附加事实：记录失败不能让 run 失败。
+        try {
+          this.onProgress?.(event);
+        } catch {
+          // 忽略并继续接收后续事件。
+        }
+        continue;
+      }
       if (event.type === "failure") {
         this.fail(new PiHostFailure(event.code, event.message, event.stopReason));
         continue;

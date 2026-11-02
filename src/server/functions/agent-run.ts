@@ -8,6 +8,7 @@ import { fieldErrorsFrom } from "../../contracts/project";
 import type { ProjectContext } from "../../domain/access";
 import type { DiagnosticInput } from "../diagnostics";
 import { getRequestContext } from "../request-context";
+import { readRunActivity } from "../pi-host/run-activity";
 import { toDomainAppError } from "./domain-errors";
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
@@ -83,9 +84,10 @@ export async function getChatRunStateBoundary(
     return ok(
       {
         enabled: piHostSnapshot().enabled,
-        active: deps
-          .listActiveAgentRuns(parsed.data.chatId, context)
-          .map(({ id, status }) => ({ id, status })),
+        active: deps.listActiveAgentRuns(parsed.data.chatId, context).map(({ id, status }) => {
+          const activity = readRunActivity(id);
+          return activity ? { id, status, activity } : { id, status };
+        }),
         latest,
         inputs: latest ? deps.listAgentRunInputs(latest.id, context) : [],
       },

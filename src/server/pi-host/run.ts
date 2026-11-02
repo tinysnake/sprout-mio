@@ -36,6 +36,7 @@ import { issueRemoteToolGrant, revokeRemoteToolGrant } from "../remote-agent-gat
 import { machineRuntimeContext } from "../runtime";
 import { PiHostFailure, piInstancePaths } from "./process";
 import type { PiSessionProcess } from "./process";
+import { clearRunActivity, recordRunActivity } from "./run-activity";
 
 export type Work = ReturnType<typeof queuedRunWork>[number];
 export type PiHostSignals = { readonly isStopping: () => boolean };
@@ -156,6 +157,7 @@ export function executeRun(
               else recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
             }
           };
+          process.onProgress = (event) => recordRunActivity(run.id, event);
         });
         // Session/repository preparation can outlive Task responsibility. Select again at
         // the synchronous send boundary; admit persists the attempt before stdin.write.
@@ -321,6 +323,12 @@ export function executeRun(
                 );
               }
             }
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            process.onProgress = undefined;
+            clearRunActivity(run.id);
           }),
         ),
       ),
