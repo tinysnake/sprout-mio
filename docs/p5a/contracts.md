@@ -16,6 +16,16 @@
 
 `wake_policy` 是对话的公共列而不是按 kind 的隐含行为：P5a 里 `contextual` 与 `owner_led` 同义，保留取值是为了让判定器接入时不用改表。
 
+## 消息：`message` 与 `message_mention`
+
+`message` 只存正文（`body`）与发送者，不存渲染后的富文本。点名是另一张表 `message_mention` 的记录：`member_kind`、`member_id`、`start`、`end`，位置指向 `body` 里那段 `@名字`。
+
+读模型把两者合成 `mentions` 一起返回（`Message` 带 `mentions`）。这样分工的原因是正文同时是 Agent 输入与小脑看到的原文：把 id 写进正文，隐藏的 id 就会被模型读到；在渲染层藏 id，正文就与服务端看到的不一致。id 留在记录里，正文是用户写下的那句话。
+
+消息不可编辑，所以位置在写入时定一次就永久有效，读取侧不需要重新解析正文。`(chat_id, message_id, start)` 唯一，删消息级联删记录。
+
+点名能成立的前提是名字在同一条对话里没有歧义，所以 `agent_profile.name` 在 `created_by` 内唯一（`agent_profile_owner_name_unique`）：同一个用户不能创建两个同名 Agent。
+
 ## 成员：`chat_effective_member` 视图
 
 成员只有一个真值来源，是一张视图而不是第二张表：
@@ -75,11 +85,15 @@ Agent 在所有治理动作上都是 `never`，因此「分身不能治理对话
 
 纯函数，只吃调用点已读出的事实，不查库：
 
-1. 点名：消息体里以全名或 `@id` 提及的当前 Agent 成员，按成员顺序返回；
+1. 点名：`mentions` 里指向当前 Agent 成员的记录，按成员顺序返回；
 2. 所有者优先：无人被点名且策略为 `owner_led` 或 `contextual` 时，Agent 所有者进入候选；
 3. 其余退避为空集。
 
-两条规则都排除发消息的分身自己，并且只接受 `chat_effective_member` 给出的当前成员，所以移出 Project 的分身留在历史里但不会再被唤醒。点名匹配按词边界判定，`Live` 不会命中 `LiveAlpha`。
+路由读 `message_mention` 的记录而不是正文，所以「谁被点名」是写入时的一次判定，不在每次扇出时重新猜。点名在写消息时按这条对话当前有效成员的展示名解析（`src/domain/message-mention.ts`），正文里写的就是 `@名字`，id 不进正文，也不靠渲染层隐藏。
+
+两条规则都排除发消息的分身自己，并且只接受 `chat_effective_member` 给出的当前成员，所以移出 Project 的分身留在历史里但不会再被唤醒。
+
+点名的强度分层：显式点名走规则分支直接派发，判定器无权否决；正文里出现名字但不构成点名时只作 `explicit=false` 的弱证据交给判定器，它可以说否。弱证据只看字面出现，不做词边界判断——多报一次只是让判定器多看一眼。
 
 ## 错误码
 
