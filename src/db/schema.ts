@@ -84,8 +84,9 @@ export const agentProfile = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  // Agent profile 名字是 @mention 的解析键，全局唯一。
-  (table) => [uniqueIndex("agent_profile_name_unique").on(table.name)],
+  // Agent profile 名字是 @mention 的解析键，按 owner 唯一：同一个人的名下不能重名，
+  // 不同用户各自的默认 Agent 都叫 Amenda 才不会互相撞车。
+  (table) => [uniqueIndex("agent_profile_owner_name_unique").on(table.createdBy, table.name)],
 );
 
 export const projectProfile = sqliteTable("project_profile", {
@@ -363,7 +364,7 @@ export const messageMention = sqliteTable(
     foreignKey({
       columns: [table.messageId, table.chatId],
       foreignColumns: [message.id, message.chatId],
-    }),
+    }).onDelete("cascade"),
     uniqueIndex("message_mention_position_unique").on(table.chatId, table.messageId, table.start),
     index("message_mention_message_idx").on(table.chatId, table.messageId),
     check("message_mention_member_kind_check", sql`${table.memberKind} in ('human', 'agent')`),

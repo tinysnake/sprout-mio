@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "35d669c5-b2da-48f5-96fd-c046e8bb2266",
+  "id": "19351e85-e1c1-4c5c-9f18-41dbf492be71",
   "prevId": "7e3134fb-316c-4442-b75e-eaf1686dba92",
   "tables": {
     "agent_instance": {
@@ -194,9 +194,10 @@
         }
       },
       "indexes": {
-        "agent_profile_name_unique": {
-          "name": "agent_profile_name_unique",
+        "agent_profile_owner_name_unique": {
+          "name": "agent_profile_owner_name_unique",
           "columns": [
+            "created_by",
             "name"
           ],
           "isUnique": true
@@ -4650,7 +4651,7 @@
             "id",
             "chat_id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
