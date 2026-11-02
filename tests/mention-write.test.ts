@@ -35,7 +35,7 @@ const ctx = { userId: creatorId, requestId: newId(ID_PREFIXES.request) };
 const project = createProject({ name: "点名落库" }, ctx);
 const amenda = createAgentProfile({ name: "Amenda", persona: "", harness: "pi" }, ctx);
 const bento = createAgentProfile({ name: "Bento", persona: "", harness: "pi" }, ctx);
-// 在 Project 里但不在这个 group：picks 指向它时必须被拒，不能当成「点不出来就丢掉」。
+// 在 Project 里但不在这个 group：名字出现在正文里也只当普通文字，不能被落成 mention。
 const outsider = createAgentProfile({ name: "Outsider", persona: "", harness: "pi" }, ctx);
 for (const profile of [amenda, bento, outsider]) addProjectMember(project.id, profile.id, ctx);
 
@@ -59,12 +59,8 @@ const group = createGroupChat(
 
 type MentionRow = { member_kind: string; member_id: string; start: number; end: number };
 
-function send(body: string, picks?: MentionSpan[]) {
-  return sendMessage(
-    group.id,
-    { senderKind: "human", senderId: creatorId, body, ...(picks ? { picks } : {}) },
-    ctx,
-  );
+function send(body: string) {
+  return sendMessage(group.id, { senderKind: "human", senderId: creatorId, body }, ctx);
 }
 
 function rowsOf(messageId: string): MentionRow[] {
@@ -84,23 +80,6 @@ function spanOf(body: string, text: string, member: { memberKind: "human" | "age
     start,
     end: start + text.length,
   } satisfies MentionSpan;
-}
-
-function codeOf(run: () => unknown): string {
-  try {
-    run();
-    return "ok";
-  } catch (error) {
-    return (error as { code?: string }).code ?? `unknown:${(error as Error).message}`;
-  }
-}
-
-function messageCount(): number {
-  return (
-    sqlite.prepare("SELECT COUNT(*) AS n FROM message WHERE chat_id = ?").get(group.id) as {
-      n: number;
-    }
-  ).n;
 }
 
 describe("人类发消息写时解析 mention", () => {
@@ -140,48 +119,10 @@ describe("人类发消息写时解析 mention", () => {
     ]);
   });
 
-  it("picks 指定的成员即使正文名字与成员名不同也照 picks 落库", () => {
-    const body = "第二个也请 @小帮手 过一下";
-    const pick = spanOf(body, "@小帮手", { memberKind: "agent", id: amenda.id });
-    const saved = send(body, [pick]);
-    expect(rowsOf(saved.id)).toEqual([
-      { member_kind: "agent", member_id: amenda.id, start: pick.start, end: pick.end },
-    ]);
-    expect(saved.mentions).toEqual([pick]);
-    expect(body.slice(pick.start, pick.end)).toBe("@小帮手");
-  });
-
-  it("picks 与手打混用：picks 覆盖的段按 picks，其余段补全手打", () => {
-    const body = "@Amenda 和 @小帮手 一起看";
-    const pick = spanOf(body, "@小帮手", { memberKind: "agent", id: bento.id });
-    const saved = send(body, [pick]);
-    expect(saved.mentions).toEqual([
-      { memberKind: "agent", memberId: amenda.id, start: 0, end: "@Amenda".length },
-      pick,
-    ]);
-  });
-
-  it("picks 里塞了不属于这条对话的成员会被拒绝，且不留下消息", () => {
-    const before = messageCount();
-    const body = "请他 @Outsider 看一下";
-    const pick = spanOf(body, "@Outsider", { memberKind: "agent", id: outsider.id });
-    expect(codeOf(() => send(body, [pick]))).toBe("not_found");
-    expect(messageCount()).toBe(before);
-  });
-
-  it("picks 的位置与正文对不上会被拒绝（超出正文、起点不是 @）", () => {
-    const before = messageCount();
-    expect(
-      codeOf(() =>
-        send("短正文 @Amenda", [{ memberKind: "agent", memberId: amenda.id, start: 0, end: 999 }]),
-      ),
-    ).toBe("conflict");
-    expect(
-      codeOf(() =>
-        send("短正文 @Amenda", [{ memberKind: "agent", memberId: amenda.id, start: 0, end: 3 }]),
-      ),
-    ).toBe("conflict");
-    expect(messageCount()).toBe(before);
+  it("不在成员表里的 Agent 名字只当普通正文，不落 mention", () => {
+    const saved = send("请他 @Outsider 看一下");
+    expect(rowsOf(saved.id)).toEqual([]);
+    expect(saved.mentions).toEqual([]);
   });
 
   it("body 不含 @ 时不写 mention 行", () => {

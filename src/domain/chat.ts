@@ -638,19 +638,16 @@ export function sendMessage(
           ...(instance ? { instanceId: instance.id } : {}),
         },
         () => {
-          // 点名在插入之前解析：picks 不合法（成员不在这条对话、位置与正文对不上）就整次发送失败，
-          // 不落一条无法解释的 message。候选只来自本对话的有效成员视图，不接受客户端送的成员表。
-          const { picks, ...fields } = input;
+          // 点名在插入之前解析，候选只来自本对话的有效成员视图，不接受客户端送来的成员表：
+          // 名字匹配不上就只是普通正文，不会落出一条指向不存在成员的 mention。
           const members = readChatEffectiveMembers(chatId, current.projectId);
           const spans = resolveMessageMentions({
-            body: fields.body,
-            members,
+            body: input.body,
             candidates: mentionCandidatesFor(members),
-            picks,
           });
           const row = db
             .insert(message)
-            .values({ id: newId(ID_PREFIXES.message), chatId, ...fields })
+            .values({ id: newId(ID_PREFIXES.message), chatId, ...input })
             .returning()
             .get();
           // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。

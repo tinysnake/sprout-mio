@@ -306,15 +306,10 @@ export const sendMessageInput = z.object({
   senderKind: memberKind,
   senderId: z.string().min(1),
   body: z.string().trim().min(1, "消息不能为空").max(8000, "消息最多 8000 字"),
-  /**
-   * 选择器插入的点名结果（可选）。客户端知道用户点的是谁、正文里写的是什么，名字与成员对不上时
-   * 只有它能消歧；服务端仍按这条对话的有效成员校验一遍，非法成员直接拒绝而不是静默丢弃。
-   */
-  picks: z.array(mentionSpanSchema).optional(),
 });
 export type SendMessageInput = z.infer<typeof sendMessageInput>;
-/** 消息输出：`mentions` 是写时解析的结果，`picks` 只是输入侧的提示，不出现在读模型里。 */
-export const messageSchema = sendMessageInput.omit({ picks: true }).extend({
+/** 消息输出：`mentions` 是写时按本条对话成员解析出来的结果。 */
+export const messageSchema = sendMessageInput.extend({
   id: z.string().regex(appIdPattern(ID_PREFIXES.message)),
   chatId,
   createdAt: z.iso.datetime(),

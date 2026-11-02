@@ -2,7 +2,6 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import type { ChatMember, MentionSpan } from "../contracts/chat";
 import { db } from "../db";
 import { agentProfile, messageMention, user } from "../db/schema";
-import { ChatError } from "./chat";
 import { resolveMentions } from "./mention";
 import type { MentionCandidate } from "./mention";
 
@@ -42,68 +41,16 @@ export function mentionCandidatesFor(members: readonly ChatMember[]): readonly M
 }
 
 /**
- * 一条消息最终记下谁被点名。规则分两段，顺序不能换：
+ * 一条消息最终记下谁被点名：拿这条对话当前有效成员的展示名逐段匹配正文里的 `@名字`。
  *
- * 1. `picks` 是客户端选择器的结果，先写死：它带来「用户点的是谁」，而正文里可能写着另一个
- *    写法（显示名与成员名不同、重名消歧）。成员必须仍是这条对话的当前有效成员，否则抛错——
- *    这里不接受客户端送来的成员表，也不静默丢弃一个点不出来的结果。
- * 2. 没被 `picks` 覆盖的正文段各自跑一次 `resolveMentions` 补全手打的 `@名字`。按段跑而不是
- *    先跑再过滤：跨过 picks 的 span 会被截断，两段结果不会重叠，`message_mention` 的
- *    `(chat_id, message_id, start)` 唯一键因此不会被自己撞上。
+ * 成员名在同一个 owner 名下唯一，一条对话的成员又都来自同一个 Project，所以同一条正文里
+ * 不会有两个成员可被同一段文字命中匹配，不需要客户端额外送一份「用户点的是谁」。
  */
 export function resolveMessageMentions(input: {
   readonly body: string;
-  readonly members: readonly ChatMember[];
   readonly candidates: readonly MentionCandidate[];
-  readonly picks?: readonly MentionSpan[] | undefined;
 }): readonly MentionSpan[] {
-  const picks = pickSpans(input.body, input.members, input.picks ?? []);
-  const spans: MentionSpan[] = [];
-  let cursor = 0;
-  for (const pick of picks) {
-    spans.push(
-      ...resolveMentions(input.body.slice(cursor, pick.start), input.candidates).map((span) => ({
-        ...span,
-        start: span.start + cursor,
-        end: span.end + cursor,
-      })),
-    );
-    spans.push(pick);
-    cursor = pick.end;
-  }
-  spans.push(
-    ...resolveMentions(input.body.slice(cursor), input.candidates).map((span) => ({
-      ...span,
-      start: span.start + cursor,
-      end: span.end + cursor,
-    })),
-  );
-  return spans;
-}
-
-/**
- * `picks` 的自证：位置要落在正文内、起点是 `@`、彼此不重叠，成员要在这条对话的有效成员里。
- * 位置与正文对不上是客户端算错了偏移（例如按未 trim 的输入算），落库会得到指向别处的 mention，
- * 所以宁可让这次发送失败。
- */
-function pickSpans(
-  body: string,
-  members: readonly ChatMember[],
-  picks: readonly MentionSpan[],
-): readonly MentionSpan[] {
-  if (picks.length === 0) return [];
-  const known = new Set(members.map(memberKey));
-  const ordered = [...picks].sort((left, right) => left.start - right.start);
-  let previousEnd = 0;
-  for (const pick of ordered) {
-    if (!known.has(memberKey(pick))) throw new ChatError("not_found", "点名的成员不在这条对话里");
-    if (pick.start < previousEnd) throw new ChatError("conflict", "点名位置不能重叠");
-    if (pick.end > body.length || pick.start >= pick.end)
-      throw new ChatError("conflict", "点名位置超出消息正文");
-    if (body[pick.start] !== "@") throw new ChatError("conflict", "点名位置不在 @ 上");
-    previousEnd = pick.end;
-  }
-  return ordered;
+  return resolveMentions(input.body, input.candidates);
 }
 
 export function writeMessageMentions(
