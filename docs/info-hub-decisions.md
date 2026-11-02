@@ -112,3 +112,10 @@ Chat 的定义及三种类型见 [core-scope.md](core-scope.md)。Public Channel
 - 一期机器占用由 owner、持有者或 Human 通过对话协调；二期租约与沟通机制再提供申请遇阻自动协调。Info Hub 届时展示请求、结果及保留原因，不自行唤醒或改变租约。
 - 一期直接交接原子变更持有者并保持占用；二期挂靠保留占用但交出原持有者操作权，领取成功后才获得操作权。
 
+
+### revision 标识的是哪一份载荷
+
+- `revision` 标识「这次查询会返回的那一份 section 载荷」：同一个 `(projectId, view, section, scope)` 的 `data` 不变就是同一个 revision，不是整份 Info Hub、更不是整个 Project 的版本号。
+- 因此别的 section 变化、分页窗口不同、查询时刻不同（`asOf`）都不改变 revision；客户端每个 section 各自按 revision 判断是否需要重新取全量。
+- Machine 心跳只推进连接的 `lastSeenAt`，不改变可见状态，不进 revision；可见状态变化才进，例如连接 `kind` 由 online 变 offline、租约 `generation` 或持有者变化。
+- 分页游标绑定它所属 section 的 revision：同一份数据内翻页继续有效，该 section 数据变化后旧游标按 stale 处理。
