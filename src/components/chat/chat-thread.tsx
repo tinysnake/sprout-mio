@@ -11,6 +11,7 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ChatErrorNotice } from "./chat-error-notice";
 import { MessageComposer } from "./message-composer";
+import type { MentionMember } from "./mention-picker";
 import { MessageList } from "./message-list";
 import { chatDisplayName } from "./chat-display";
 import { RunStatusBadge, RunStatusPanel, isRunActive, runStatusLabel } from "./run-status";
@@ -24,6 +25,7 @@ export function ChatThread({
   back,
   chat,
   agentName,
+  members,
   profile,
   humanName,
   messages,
@@ -54,6 +56,8 @@ export function ChatThread({
   back?: ReactNode;
   chat: Chat;
   agentName: string;
+  /** 输入区 @ 成员候选；由容器从成员视图算出名字，不在这里重算。 */
+  members: readonly MentionMember[];
   profile: AgentResult<AgentProfile> | null;
   humanName: string;
   messages: ChatResult<Message[]>;
@@ -219,6 +223,7 @@ export function ChatThread({
       ) : (
         <MessageComposer
           agentName={title}
+          members={members}
           draft={draft}
           onDraftChange={onDraftChange}
           onSubmit={onSend}
