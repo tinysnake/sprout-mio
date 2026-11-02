@@ -56,6 +56,16 @@ stateDiagram-v2
 
 Nitro fetch 边界为每个请求生成 `req_*`，覆盖客户端传入的 `x-sprout-request-id`。该值随 Request headers 进入 TanStack 上下文。response hook 把同一值写入响应头，并在非 draining 期间同步记录一条 `http.response` 诊断。诊断模块在入口顶层加载完成，hook 不异步导入，排空期间不写该诊断。该诊断只包含 method、pathname 和 status，不记录 query、cookie 或 body。
 
+入口在同一位置还向 stdout 写一条请求日志，形如 `console.log("[request]", JSON.stringify(record))`，字段为 `requestId`、`method`、`path`、`fn`、`fnId`、`status`、`ms`、`bytes`、`complete`。`ms` 是 `performance.now()` 从进入边界到 emit 的差值，流式响应因此包含传输时间。`bytes` 优先取响应的 `content-length`；没有该头时在响应体上串一个计数 `TransformStream`，读完记实际传输量并立即 emit，客户端 abort 记已传输量并标 `complete: false`，`response.body` 为空记 0。每个请求只写一行：content-length 分支、流正常结束与流错误可能同时到达，emit 用一次性标记收口。排空期间的 503 短路不写这条日志。
+
+`fn` 与 `fnId` 只对 `/_serverFn/<64 位 hex>` 路径填写。`fnId` 取自路径；`fn` 来自构建产物里 `createServerRpc({ id, name, filename })` 的明文映射，入口按 `import.meta.url` 在 `_ssr/` 与 `_chunks/` 扫描 `*.mjs`，并在进程内 memoize。模块被拆进 `_chunks/` 时 `import.meta.url` 比 `_output/server` 深一层，扫描同时试上一级同名目录；dev 没有构建产物目录，扫描为空，此时只记 `fnId`。扫描失败不抛错。
+
+```
+[request] {"requestId":"req_fa041482","method":"POST","path":"/_serverFn/952eaa7513f1fd2af8bd145ff2c6d88bcab19b60c9e2147bf4282b6a907a7da9","fn":"getProjectInfoHubFn","fnId":"952eaa7513f1fd2af8bd145ff2c6d88bcab19b60c9e2147bf4282b6a907a7da9","status":500,"bytes":132,"complete":true,"ms":45.1}
+```
+
+`SPROUT_REQUEST_LOG` 默认开启，值 `off`、`0`、`false`（大小写不敏感）关闭。这条日志不影响 `http.response` 诊断：诊断仍经 `recordDiagnostic` 同步写 SQLite，仍只在非 draining 期间写，字段与时机都未改。聚合用 `node scripts/diagnostics/request-log.mjs <log-file>`，按 `fn ?? fnId ?? path` 分组输出调用次数、总字节、p50 / p95 / max 毫秒、`status >= 500` 数与 `complete === false` 数，按总字节降序并附合计行。百分位用 nearest-rank 升序取值，非 `[request] ` 前缀或 JSON 解析失败的行跳过。
+
 server function 通过 `getRequestContext().requestId` 获取当前值。直接持有 Request 的路由调用 `getRequestContext(request)`。这些函数要求请求已经通过 Nitro 边界，不会另造一个与响应头不同的 ID。e 的调用方式如下。
 
 ```ts

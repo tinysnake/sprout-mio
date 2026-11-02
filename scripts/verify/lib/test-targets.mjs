@@ -69,6 +69,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/run-status-failure.test.ts",
     "tests/run-facts-summary.test.ts",
     "tests/repository.test.ts",
+    "tests/request-log.test.ts",
     "tests/storage-snapshot.test.ts",
     "tests/status-facts.test.ts",
     "tests/runtime.test.ts",

@@ -3,6 +3,12 @@ import { isMainThread } from "node:worker_threads";
 import { HttpDrain } from "./http-drain";
 import { initializeRequestContext, getRequestContext, REQUEST_ID_HEADER } from "./request-context";
 import {
+  loadServerFnNames,
+  logRequest,
+  serverFunctionId,
+  type RequestLogRecord,
+} from "./request-log";
+import {
   beginRuntimeShutdown,
   failRuntimeShutdown,
   runtimeReady,
@@ -74,6 +80,68 @@ if (!prerender) {
 // Resolve diagnostics at module initialization; Nitro does not await plugin callbacks.
 const recordDiagnostic = prerender ? undefined : (await import("./diagnostics")).recordDiagnostic;
 
+function observeRequest(
+  request: Request,
+  requestId: string,
+  startedAt: number,
+  response: Response,
+): Response {
+  const path = new URL(request.url).pathname;
+  const fnId = serverFunctionId(path);
+  const base: Omit<RequestLogRecord, "bytes" | "complete" | "ms"> = {
+    requestId,
+    method: request.method,
+    path,
+    fn: fnId ? (loadServerFnNames().get(fnId) ?? null) : null,
+    fnId,
+    status: response.status,
+  };
+  // 一个请求只允许一行：content-length、flush、cancel 与流错误可能同时到达。
+  let emitted = false;
+  const emit = (bytes: number, complete: boolean) => {
+    if (emitted) return;
+    emitted = true;
+    logRequest({
+      ...base,
+      bytes,
+      complete,
+      ms: Math.round((performance.now() - startedAt) * 10) / 10,
+    });
+  };
+
+  const declared = response.headers.get("content-length");
+  const declaredBytes = declared === null ? Number.NaN : Number.parseInt(declared, 10);
+  if (Number.isFinite(declaredBytes)) {
+    emit(declaredBytes, true);
+    return response;
+  }
+  if (!response.body) {
+    emit(0, true);
+    return response;
+  }
+
+  let bytes = 0;
+  const counter = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      bytes += chunk.byteLength;
+      controller.enqueue(chunk);
+    },
+    flush() {
+      emit(bytes, true);
+    },
+  });
+  // 客户端 abort 时 counter 的可读端被取消，writable 随之报错，pipeTo 落到第二个回调。
+  void response.body.pipeTo(counter.writable).then(
+    () => emit(bytes, true),
+    () => emit(bytes, false),
+  );
+  return new Response(counter.readable, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 export default definePlugin((app) => {
   if (prerender) return;
   app.hooks.hook("close", () => drainRuntime("nitro.close"));
@@ -94,9 +162,10 @@ export default definePlugin((app) => {
         },
       );
     }
+    const startedAt = performance.now();
     const handled = drain.begin(request);
     try {
-      return await fetch(request);
+      return observeRequest(request, requestId, startedAt, await fetch(request));
     } finally {
       handled();
     }
