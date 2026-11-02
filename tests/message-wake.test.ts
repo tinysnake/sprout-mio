@@ -28,6 +28,8 @@ type Evidence = {
     taskRound: number;
     scheduleRound: number;
   };
+  failureFallback: { attempts: number; recipient: string; state: string; reasonCode: string };
+  owner: string;
   disabled: { wake: number; runs: number };
   race: { blocked: boolean; trigger: boolean; oldState: string; first: string };
 };
@@ -125,5 +127,12 @@ describe("message-triggered wake", () => {
     expect(evidence.sources.messageRound).toBe(1);
     expect(evidence.sources.taskRound).toBe(2);
     expect(evidence.sources.scheduleRound).toBe(2);
+  });
+
+  it("falls back to the owner after the evaluator exhausts its retries", () => {
+    expect(evidence.failureFallback.attempts).toBe(3);
+    expect(evidence.failureFallback.recipient).toBe(evidence.owner);
+    expect(evidence.failureFallback.reasonCode).toBe("owner_fallback");
+    expect(["pending", "bound"]).toContain(evidence.failureFallback.state);
   });
 });

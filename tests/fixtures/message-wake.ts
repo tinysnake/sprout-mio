@@ -115,6 +115,7 @@ async function evaluate(selected: string[], at: Date) {
 
 const at = new Date(Date.now() + 16_000);
 const evidence: Record<string, unknown> = {};
+evidence.owner = alpha.id;
 
 // 普通群消息：入队、判定、只投递被选中的成员。
 const chat = group();
@@ -312,6 +313,37 @@ evidence.sources = {
     "SELECT round FROM chat_schedule WHERE chat_id=?",
     sources.id,
   )!.round,
+};
+
+// 判定器最终不可用时，第 3 次失败回退 owner，而不是让消息无人处理。
+const failed = group();
+send(failed.id, "判定器挂了");
+const failCtx = (now: Date) => ({
+  now,
+  requestId: newId(ID_PREFIXES.request),
+  workerId: "fixture",
+});
+const failing = async () => {
+  throw new Error("provider_unavailable");
+};
+const fail1 = mw.claimDueMessageWake(failCtx(at))!;
+await mw.evaluateMessageClaim(fail1, failing, failCtx(at));
+const fail2 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 31_000)))!;
+await mw.evaluateMessageClaim(fail2, failing, failCtx(new Date(at.getTime() + 31_000)));
+const fail3 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 151_000)))!;
+await mw.evaluateMessageClaim(fail3, failing, failCtx(new Date(at.getTime() + 151_000)));
+const failDelivery = schedule.one<{ recipient_id: string; state: string }>(
+  "SELECT recipient_id,state FROM continuation_delivery WHERE chat_id=?",
+  failed.id,
+)!;
+const failResult = JSON.parse(
+  schedule.one<{ result: string }>("SELECT result FROM wake_evaluation WHERE id=?", fail3.id)!.result,
+);
+evidence.failureFallback = {
+  attempts: fail3.attempt,
+  recipient: failDelivery.recipient_id,
+  state: failDelivery.state,
+  reasonCode: failResult.reasonCode,
 };
 
 console.log(JSON.stringify(evidence));
