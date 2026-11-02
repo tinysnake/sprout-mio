@@ -860,24 +860,24 @@ globalThis.fetch = async (url, options) => {
       existsSync(snapshot.sessionFile) && readFileSync(snapshot.sessionFile, "utf8").length > 0,
       "F9b session artifact exists and is readable",
     );
-    const completedRun = history.runs[1];
+    const completedRun = persisted[1];
     assert.equal(
-      completedRun.configSnapshot.sessionFile,
+      history.latest.sessionFile,
       snapshot.sessionFile,
       "F9b API locates the session artifact",
     );
-    assert(completedRun.assistantMessageId, "F9b a completed run names its reply message");
+    assert(completedRun.assistant_message_id, "F9b a completed run names its reply message");
     assert.equal(
-      rows("SELECT id FROM message WHERE id=?", completedRun.assistantMessageId).length,
+      rows("SELECT id FROM message WHERE id=?", completedRun.assistant_message_id).length,
       1,
       "F9b the named reply really exists",
     );
     assert(
-      existsSync(completedRun.configSnapshot.sessionFile),
+      existsSync(history.latest.sessionFile),
       "F9b the success claim is backed by a readable artifact",
     );
     assert(
-      existsSync(history.runs[0].configSnapshot.sessionFile),
+      existsSync(JSON.parse(persisted[0].config_snapshot).sessionFile),
       "F9b the stopped run keeps the transcript it really produced",
     );
     pass("F9b session artifact and Worker output", {
