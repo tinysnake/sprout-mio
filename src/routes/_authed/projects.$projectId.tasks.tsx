@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { createFileRoute, Outlet, useMatch, useNavigate, useRouter } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { TaskBoard } from "../../components/tasks/task-board";
 import { TaskCreateForm } from "../../components/tasks/task-forms";
+import { PageBackLink } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ResultError } from "../../components/project/result-error";
 import { Button } from "../../components/ui/button";
 import type { CreateTaskInput } from "../../contracts/task";
 import type { AppError } from "../../contracts/result";
+import { Icon } from "../../components/ui/icon";
 import { createTaskFn, getProjectTasksFn } from "../../server/functions/task";
 
 export const Route = createFileRoute("/_authed/projects/$projectId/tasks")({
@@ -55,6 +58,12 @@ function ProjectTasksPage() {
     <PageFrame
       title="Tasks"
       description="目标、承接与施工记录"
+      back={
+        <PageBackLink to="/projects/$projectId/chats" params={{ projectId }}>
+          <Icon as={ArrowLeft} />
+          返回 Chats
+        </PageBackLink>
+      }
       testId="tasks-page"
       actions={
         <Button onClick={() => setCreating((value) => !value)} disabled={pending}>

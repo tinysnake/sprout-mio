@@ -1,11 +1,14 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
 import { useMachineActivity } from "../../components/machine/use-machine-activity";
 import { useMachineRefresh } from "../../components/machine/use-machine-refresh";
+import { PageBackLink } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineDetailPanel } from "../../components/machine/machine-detail";
 import { ResultError } from "../../components/project/result-error";
 import { Button } from "../../components/ui/button";
+import { Icon } from "../../components/ui/icon";
 import {
   getMachineFn,
   renewMachineEnrollmentFn,
@@ -64,17 +67,19 @@ function MachinePage() {
   const { enrollment, setEnrollment } = useMachineEnrollment();
 
   const back = projectId ? (
-    <Link
+    <PageBackLink
       to="/projects/$projectId/settings"
       params={{ projectId }}
       data-testid="machine-detail-back"
     >
+      <Icon as={ArrowLeft} />
       返回 Project settings
-    </Link>
+    </PageBackLink>
   ) : (
-    <Link to="/machines" data-testid="machine-detail-back">
+    <PageBackLink to="/machines" data-testid="machine-detail-back">
+      <Icon as={ArrowLeft} />
       返回 Machines
-    </Link>
+    </PageBackLink>
   );
   if (!detail.ok)
     return (

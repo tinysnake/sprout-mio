@@ -1,12 +1,15 @@
-import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import {
   agentDetailBackTarget,
   agentDetailSearchSchema,
 } from "../../components/agent/agent-detail-search";
 import { AgentEditForm } from "../../components/agent/agent-edit-form";
+import { PageBackLink } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ResultError } from "../../components/project/result-error";
 import { Facts, SettingsSection } from "../../components/project/settings-section";
+import { Icon } from "../../components/ui/icon";
 import { getAgentProfileFn } from "../../server/functions/agent";
 
 export const Route = createFileRoute("/_authed/agents/$agentProfileId")({
@@ -23,19 +26,21 @@ function AgentBackLink(search: Parameters<typeof agentDetailBackTarget>[0]) {
   const target = agentDetailBackTarget(search);
   if (target.kind === "chat")
     return (
-      <Link
+      <PageBackLink
         to="/projects/$projectId/chats/$chatId"
         params={{ projectId: target.projectId, chatId: target.chatId }}
         search={{ info: 1 }}
         data-testid="agent-detail-back-to-chat"
       >
+        <Icon as={ArrowLeft} />
         返回对话
-      </Link>
+      </PageBackLink>
     );
   return (
-    <Link to="/agents" data-testid="agent-detail-back-to-agents">
+    <PageBackLink to="/agents" data-testid="agent-detail-back-to-agents">
+      <Icon as={ArrowLeft} />
       返回 Agents
-    </Link>
+    </PageBackLink>
   );
 }
 

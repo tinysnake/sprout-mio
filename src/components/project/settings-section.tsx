@@ -46,7 +46,7 @@ export function Facts({
       {items.map((item) => (
         <div key={item.label} className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2">
           <dt className="text-muted-foreground">{item.label}</dt>
-          <dd data-testid={item.testId} className="min-w-0 break-words">
+          <dd data-testid={item.testId} className="min-w-0 [overflow-wrap:anywhere]">
             {item.value}
           </dd>
         </div>

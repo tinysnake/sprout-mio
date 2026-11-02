@@ -1,6 +1,8 @@
 import { createFileRoute, useCanGoBack, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { useEffect } from "react";
 import { z } from "zod";
+import { PageBackButton } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineLeasePanel } from "../../components/machine/machine-lease";
 import { holderNames } from "../../components/machine/project-lease-actions";
@@ -10,6 +12,7 @@ import { useMachineRefresh } from "../../components/machine/use-machine-refresh"
 import { useExecutionWiring } from "../../lib/execution-wiring";
 import { ResultError } from "../../components/project/result-error";
 import { Button } from "../../components/ui/button";
+import { Icon } from "../../components/ui/icon";
 import { getMachineFn, renewMachineEnrollmentFn } from "../../server/functions/machine";
 import { getProjectInfoHubFn } from "../../server/functions/info-hub";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
@@ -61,10 +64,8 @@ function MachineLeasePage() {
   // 租约页有多条入口路径（Machines 列表、Machine 详情、Project settings），
   // 返回必须沿真实历史回去，不能硬编码某一个来源；只有直接打开（无历史）才用 fallback。
   const back = (
-    <button
-      type="button"
-      data-testid="machine-detail-back"
-      className="text-sm text-foreground underline-offset-4 hover:underline"
+    <PageBackButton
+      testId="machine-detail-back"
       onClick={() => {
         if (canGoBack) {
           router.history.back();
@@ -76,8 +77,9 @@ function MachineLeasePage() {
         }
       }}
     >
-      返回
-    </button>
+      <Icon as={ArrowLeft} />
+      返回上一页
+    </PageBackButton>
   );
   if (!data || !projectId)
     return (

@@ -105,7 +105,7 @@ export function ProjectMembers({
   }
 
   return (
-    <div className="max-w-[40rem]">
+    <div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <p data-testid="members-count" className="text-xs text-muted-foreground">
           {members.length} 位 Agent · 1 位 Human
@@ -160,7 +160,7 @@ export function ProjectMembers({
               Project 所有者 · 管理项目设置与协作成员
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5 text-xs max-desktop:w-full max-desktop:flex-row max-desktop:justify-end max-desktop:pl-11.5">
+          <div className="flex shrink-0 items-center text-xs max-desktop:w-full max-desktop:justify-end max-desktop:pl-11.5">
             <span className="text-muted-foreground">当前账号 · 只读</span>
           </div>
         </li>
@@ -195,7 +195,7 @@ export function ProjectMembers({
                 </span>
                 <Icon as={ChevronRight} className="mt-1.5 text-muted-foreground" />
               </Link>
-              <div className="flex shrink-0 flex-col items-end gap-2 text-xs max-desktop:w-full max-desktop:flex-row max-desktop:items-center max-desktop:justify-end max-desktop:pl-11.5">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-2 text-xs max-desktop:w-full max-desktop:pl-11.5">
                 {profile?.jobTitle && (
                   <span className="text-muted-foreground">{profile.jobTitle}</span>
                 )}

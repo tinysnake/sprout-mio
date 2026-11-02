@@ -143,9 +143,9 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     assert.equal(documents, 0, "Task 卡片跳转触发整页重新加载");
     assert.equal(await marker(), "kept");
     documents = 0;
-    await page.getByRole("link", { name: "返回四态总览" }).click();
+    await page.getByTestId("task-detail-back").click();
     await page.waitForURL((url) => url.pathname.endsWith("/tasks"));
-    assert.equal(documents, 0, "返回四态总览触发整页重新加载");
+    assert.equal(documents, 0, "返回 Tasks 触发整页重新加载");
     assert.equal(await marker(), "kept");
     pass("task_card_and_back_stay_client_side");
   }

@@ -1,5 +1,6 @@
-import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import { PageBackLink } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ProjectMembers } from "../../components/project/project-members";
 import { ResultError } from "../../components/project/result-error";
@@ -33,10 +34,10 @@ function ProjectMembersPage() {
       title="Members"
       description="查看当前 Project 的 Human 与 Agent 成员，添加或移除 Agent。"
       back={
-        <Link to="/projects/$projectId/chats" params={{ projectId }}>
+        <PageBackLink to="/projects/$projectId/chats" params={{ projectId }}>
           <Icon as={ArrowLeft} />
           返回 Chats
-        </Link>
+        </PageBackLink>
       }
       testId="project-members-page"
     >

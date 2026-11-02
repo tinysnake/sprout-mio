@@ -121,24 +121,15 @@ export function TaskDetailView({
   return (
     <article
       data-testid="task-detail"
-      className="relative mx-auto w-full min-w-0 max-w-4xl text-sm [overflow-wrap:anywhere]"
+      className="relative w-full min-w-0 text-sm [overflow-wrap:anywhere]"
     >
-      <header className="space-y-5 pt-4 pb-6">
-        <div className="pb-1">
-          <AppLink
-            href={`/projects/${task.projectId}/tasks`}
-            className="text-xs text-muted-foreground underline underline-offset-4"
-          >
-            返回四态总览
-          </AppLink>
-        </div>
+      <header className="space-y-4 pb-6">
         <div className="flex flex-wrap items-center gap-3">
           <TaskBadge status={task.status} reopened={Boolean(detail.previousCompletionRecord)} />
           <span className="font-mono text-[10px] text-muted-foreground">
             {task.id} · v{task.revision}
           </span>
         </div>
-        <h1 className="text-xl leading-8 font-semibold break-words">{task.title}</h1>
         <p className="text-xs">
           {responsibilityLabel(detail.responsibility)}
           {detail.chat && (

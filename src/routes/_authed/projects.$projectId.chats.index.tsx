@@ -17,7 +17,7 @@ function ProjectChatsIndex() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-240 flex-col px-10 py-10 max-desktop:px-5 max-desktop:py-6">
+      <div className="mx-auto flex w-full max-w-240 flex-col px-12 py-10 max-desktop:px-5 max-desktop:py-6">
         <header className="mb-6">
           <h1
             data-testid="chats-title"

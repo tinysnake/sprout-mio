@@ -113,6 +113,16 @@ try {
   assert(agent);
   const projectId = projects[0].id;
   const direct = await call(context, "createDirectChatFn", { projectId, agentProfileId: agent.id });
+  const machine = await call(context, "createMachineFn", { name: "布局验收 Mac" });
+  const machineId = machine.detail.machine.id;
+  const task = await call(context, "createTaskFn", {
+    projectId,
+    title: "统一管理页布局",
+    description: "检查所有管理页的标题、返回入口与内容宽度。",
+    constraints: "不改聊天工作区",
+    completionRequirements: "页面标题与内容左边缘对齐",
+  });
+  const taskId = task.detail.task.id;
   const chatPath = `/projects/${projectId}/chats/${direct.chat.id}`;
   const listPath = `/projects/${projectId}/chats`;
   await call(context, "sendMessageFn", {
@@ -140,6 +150,96 @@ try {
         inspector: box("chat-inspector"),
       };
     });
+  await check("canonical_page_shell_alignment", async () => {
+    const pages = [
+      { path: "/agents", title: "Agents", parent: null },
+      { path: "/machines", title: "Machines", parent: null },
+      { path: "/management", title: "Management", parent: null },
+      { path: `/projects/${projectId}/members`, title: "Members", parent: "返回 Chats" },
+      { path: `/projects/${projectId}/settings`, title: "Project settings", parent: "返回 Chats" },
+      { path: `/projects/${projectId}/tasks`, title: "Tasks", parent: "返回 Chats" },
+      {
+        path: `/projects/${projectId}/tasks/${taskId}`,
+        title: "统一管理页布局",
+        parent: "返回 Tasks",
+      },
+      { path: `/agents/${agent.id}`, title: "Amenda", parent: "返回 Agents" },
+      { path: `/machines/${machineId}`, title: "布局验收 Mac", parent: "返回 Machines" },
+      {
+        path: `/machines/${machineId}/lease?projectId=${projectId}`,
+        title: "布局验收 Mac",
+        parent: "返回上一页",
+      },
+    ];
+    const measuredWidths = [];
+    for (const width of [1440, 1200, 900]) {
+      await page.setViewportSize({ width, height: 900 });
+      let left = null;
+      let top = null;
+      for (const spec of pages) {
+        await goto(spec.path);
+        const measured = await page.evaluate(() => {
+          const visible = (element) =>
+            element &&
+            element.getClientRects().length > 0 &&
+            getComputedStyle(element).visibility !== "hidden" &&
+            getComputedStyle(element).display !== "none";
+          const main = document.querySelector("main") ?? document.body;
+          const h1 = [...main.querySelectorAll("h1")].find(visible);
+          if (!h1) return null;
+          const box = h1.getBoundingClientRect();
+          const header = h1.closest("header")?.getBoundingClientRect() ?? box;
+          const back = [...main.querySelectorAll("a,button")].find(
+            (element) =>
+              visible(element) &&
+              /^返回/.test(element.textContent?.trim() ?? "") &&
+              element.getBoundingClientRect().bottom <= box.top,
+          );
+          const memberList = document.querySelector('[data-testid="member-list"]');
+          return {
+            text: h1.textContent?.replace(/\s+/g, " ").trim(),
+            x: Math.round(box.x),
+            y: Math.round(box.y),
+            fontSize: getComputedStyle(h1).fontSize,
+            headerRight: Math.round(header.right),
+            listRight: memberList ? Math.round(memberList.getBoundingClientRect().right) : null,
+            back: back?.textContent?.replace(/\s+/g, " ").trim() ?? null,
+            overflow: document.documentElement.scrollWidth > innerWidth + 1,
+          };
+        });
+        assert(measured, `${spec.path} has no visible page heading at ${width}`);
+        assert.equal(measured.text, spec.title, `${spec.path} page heading`);
+        assert.equal(measured.fontSize, "24px", `${spec.path} page heading size`);
+        assert.equal(measured.overflow, false, `${spec.path} horizontal overflow at ${width}`);
+        if (left === null) {
+          left = measured.x;
+          top = measured.y;
+        }
+        assert.equal(measured.x, left, `${spec.path} left edge at ${width}`);
+        if (spec.parent === null) {
+          assert.equal(
+            measured.back,
+            null,
+            `${spec.path} is a top-level page without a back entry`,
+          );
+          assert.equal(measured.y, top, `${spec.path} top-level heading baseline at ${width}`);
+        } else {
+          assert.equal(measured.back, spec.parent, `${spec.path} back entry`);
+          assert.equal(measured.y, top + 60, `${spec.path} drill-in heading baseline at ${width}`);
+        }
+        if (spec.path.endsWith("/members")) {
+          assert.equal(
+            measured.listRight,
+            measured.headerRight,
+            "member list fills the page column",
+          );
+        }
+      }
+      measuredWidths.push({ width, left, top, drillInTop: top + 60 });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    return measuredWidths;
+  });
   await check("single_project_dispatch_and_root_target", async () => {
     await goto("/projects");
     await page.waitForURL((url) => url.pathname === listPath);
