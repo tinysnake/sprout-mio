@@ -19,7 +19,7 @@ import { demoProfiles as profiles, demoHumanName as HUMAN } from "../management/
 import { demoMachineDetails } from "../machine/fixtures";
 import { demoExecutions, demoHolderNames, demoLeases } from "../machine/lease-fixtures";
 import type { ChatMachineFacts } from "@/components/info-hub/chat-inspector";
-import type { ChatRunState } from "../../../contracts/agent-run";
+import type { AgentRun, ChatRunState } from "../../../contracts/agent-run";
 import type { AgentInstance, Chat, ChatMember, Message } from "../../../contracts/chat";
 import type { ChatInfoView, TurnStartContext } from "../../../contracts/info-hub";
 import type { AppError } from "../../../contracts/result";
@@ -109,52 +109,48 @@ const messages: Message[] = [
   },
 ];
 
+const scenarioRun: AgentRun = {
+  id: "run_99999999",
+  instanceId: "ins_demo",
+  chatId: chats[0]!.id,
+  projectId: PROJECT_ID,
+  requestId: "req_sm_demo",
+  status: "running",
+  queuedAt: "2026-06-18T02:28:00.000Z",
+  startedAt: "2026-06-18T02:28:01.000Z",
+  sessionId: "ses_demo",
+};
+
+const scenarioRunInputs = [
+  {
+    runId: scenarioRun.id,
+    messageId: messages[0]!.id,
+    disposition: "pending" as const,
+  },
+];
+
 const scenarioRunState: Record<string, ChatRunState> = {
-  idle: { enabled: true, runs: [], inputs: [] },
+  idle: { enabled: true, active: [], latest: null, inputs: [] },
   running: {
     enabled: true,
-    runs: [
-      {
-        id: "run_99999999",
-        instanceId: "ins_demo",
-        chatId: chats[0]!.id,
-        projectId: PROJECT_ID,
-        requestId: "req_sm_demo",
-        status: "running",
-        queuedAt: "2026-06-18T02:28:00.000Z",
-        startedAt: "2026-06-18T02:28:01.000Z",
-        sessionId: "ses_demo",
-      },
-    ],
-    inputs: [
-      {
-        runId: "run_99999999",
-        messageId: messages[0]!.id,
-        disposition: "pending",
-      },
-    ],
+    active: [scenarioRun],
+    latest: scenarioRun,
+    inputs: scenarioRunInputs,
   },
   failed: {
     enabled: true,
-    runs: [
-      {
-        id: "run_99999999",
-        instanceId: "ins_demo",
-        chatId: chats[0]!.id,
-        projectId: PROJECT_ID,
-        requestId: "req_sm_demo_failed",
-        status: "failed",
-        queuedAt: "2026-06-18T02:28:00.000Z",
-        startedAt: "2026-06-18T02:28:01.000Z",
-        settledAt: "2026-06-18T02:28:30.000Z",
-        errorCode: "UPSTREAM_TIMEOUT",
-        errorMessage: "上游响应超时，已保留本轮消息与仓库快照。",
-        sessionId: "ses_demo",
-      },
-    ],
+    active: [],
+    latest: {
+      ...scenarioRun,
+      requestId: "req_sm_demo_failed",
+      status: "failed",
+      settledAt: "2026-06-18T02:28:30.000Z",
+      errorCode: "UPSTREAM_TIMEOUT",
+      errorMessage: "上游响应超时，已保留本轮消息与仓库快照。",
+    },
     inputs: [],
   },
-  disabled: { enabled: false, runs: [], inputs: [] },
+  disabled: { enabled: false, active: [], latest: null, inputs: [] },
 };
 
 function demoError(
@@ -291,15 +287,14 @@ function workspaceFixture(chat: Chat, currentMessages: Message[]) {
   const state: ChatRunState = first
     ? {
         enabled: true,
-        runs: [
-          {
-            ...scenarioRunState.running!.runs[0]!,
-            chatId: chat.id,
-            instanceId: instance.id,
-            status: "completed",
-            settledAt: "2026-06-18T02:28:30.000Z",
-          },
-        ],
+        active: [],
+        latest: {
+          ...scenarioRun,
+          chatId: chat.id,
+          instanceId: instance.id,
+          status: "completed",
+          settledAt: "2026-06-18T02:28:30.000Z",
+        },
         inputs: [],
       }
     : scenarioRunState.idle!;
@@ -382,12 +377,10 @@ function MessagesScene() {
   const visibleMessages = [...messages, ...sent];
   const state: ChatRunState = stoppedAt
     ? {
-        ...scenarioRunState.running!,
-        runs: scenarioRunState.running!.runs.map((run) => ({
-          ...run,
-          status: "aborted",
-          settledAt: stoppedAt,
-        })),
+        enabled: true,
+        active: [],
+        latest: { ...scenarioRun, status: "aborted", settledAt: stoppedAt },
+        inputs: scenarioRunState.running!.inputs,
       }
     : scenarioRunState[scene]!;
   return (

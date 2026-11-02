@@ -103,7 +103,11 @@ export const chatRunStateInput = chatIdInput;
 
 export type ChatRunState = {
   enabled: boolean;
-  runs: AgentRun[];
+  /** 仍在排队或运行中的 run：每 tick 唯一需要观察的部分。 */
+  active: AgentRun[];
+  /** 最近一条 run（任意状态）：状态标签、失败原因与输入投递态都读它。 */
+  latest: AgentRun | null;
+  /** `latest` 的输入投递态。 */
   inputs: AgentRunInput[];
 };
 

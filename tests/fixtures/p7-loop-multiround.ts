@@ -799,57 +799,47 @@ globalThis.fetch = async (url, options) => {
     });
 
     // F9d: one Chat's execution history — ordered rounds, status, elapsed time and the failure fact.
+    // 历史 run 从数据库读：对话页的 API 只回活跃 run 与最近一条，历史不再进每 tick 的载荷。
     const history = await call("getChatRunStateFn", { chatId });
+    const persisted = runs();
+    assert.deepEqual(history.active, [], "F9d a settled Chat reports no active run");
+    assert.equal(history.latest.id, persisted.at(-1).id, "F9d latest is the newest round");
     assert.deepEqual(
-      history.runs.map((row: any) => row.id),
-      runs().map((row) => row.id),
-      "F9d API history is ordered",
-    );
-    assert.deepEqual(
-      history.runs.map((row: any) => row.status),
+      persisted.map((row) => row.status),
       ["aborted", "completed"],
     );
-    for (const run of history.runs) {
-      assert(
-        Date.parse(run.startedAt) >= Date.parse(run.queuedAt),
-        "F9d start never precedes the queue",
-      );
-      assert(
-        Date.parse(run.settledAt) >= Date.parse(run.startedAt),
-        "F9d nonnegative elapsed time",
-      );
+    for (const run of persisted) {
+      assert(run.started_at >= run.queued_at, "F9d start never precedes the queue");
+      assert(run.settled_at >= run.started_at, "F9d nonnegative elapsed time");
     }
     assert.equal(
-      history.runs[0].stopReason,
+      persisted[0].stop_reason,
       "aborted",
       "F9d the interrupted round carries its stop reason",
     );
     assert.equal(
-      history.runs[0].assistantMessageId,
-      undefined,
+      persisted[0].assistant_message_id,
+      null,
       "F9d interrupted run has no successful result",
     );
+    assert.equal(persisted[1].error_code, null, "F9d a completed round carries no error code");
     assert.equal(
-      history.runs[1].errorCode,
-      undefined,
-      "F9d a completed round carries no error code",
-    );
-    assert.equal(
-      history.runs.filter((row: any) => row.status === "completed").length,
+      persisted.filter((row) => row.status === "completed").length,
       1,
       "F9d one success out of two rounds",
     );
     assert.equal(history.inputs.length, 1, "F9d inputs are reported for the latest run only");
-    pass(
-      "F9d API run history",
-      history.runs.map((row: any) => ({
+    pass("F9d run history", {
+      latest: history.latest.id,
+      inputs: history.inputs.length,
+      persisted: persisted.map((row) => ({
         id: row.id,
         status: row.status,
-        stopReason: row.stopReason,
-        startedAt: row.startedAt,
-        settledAt: row.settledAt,
+        stopReason: row.stop_reason,
+        startedAt: row.started_at,
+        settledAt: row.settled_at,
       })),
-    );
+    });
 
     // F9b: artifacts are real files reachable from the API, and a success claim is backed by them.
     const executions = rows("SELECT * FROM remote_execution");

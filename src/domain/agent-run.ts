@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type {
   AgentRun,
   AgentRunInput,
@@ -94,6 +94,37 @@ export function listAgentRuns(chatId: string, ctx: ProjectContext): AgentRun[] {
     .orderBy(asc(agentRun.queuedAt), asc(sql`rowid`))
     .all()
     .map(toRun);
+}
+
+/** 详情页每 tick 只观察活跃 run：已结算的 run 状态不会再变。 */
+export function listActiveAgentRuns(chatId: string, ctx: ProjectContext): AgentRun[] {
+  const current = getChat(chatId, ctx);
+  return db
+    .select()
+    .from(agentRun)
+    .where(
+      and(
+        eq(agentRun.chatId, chatId),
+        eq(agentRun.projectId, current.projectId),
+        inArray(agentRun.status, ["queued", "running"]),
+      ),
+    )
+    .orderBy(asc(agentRun.queuedAt), asc(sql`rowid`))
+    .all()
+    .map(toRun);
+}
+
+/** 状态标签与失败原因看的是最近一条 run，与它是否还在跑无关。 */
+export function latestAgentRun(chatId: string, ctx: ProjectContext): AgentRun | null {
+  const current = getChat(chatId, ctx);
+  const row = db
+    .select()
+    .from(agentRun)
+    .where(and(eq(agentRun.chatId, chatId), eq(agentRun.projectId, current.projectId)))
+    .orderBy(desc(agentRun.queuedAt), desc(sql`rowid`))
+    .limit(1)
+    .get();
+  return row ? toRun(row) : null;
 }
 
 export function listAgentRunInputs(id: string, ctx: ProjectContext): AgentRunInput[] {

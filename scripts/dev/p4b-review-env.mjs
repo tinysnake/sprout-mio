@@ -318,7 +318,7 @@ async function prepare() {
   const command = `touch ${quote(markerPath)}; printf '%s\\n' "$$" > ${quote(pidPath)}; exec /bin/sleep 86400`;
   async function agentRun() {
     const state = await call("getChatRunStateFn", { chatId: chat.id });
-    const last = state.runs.at(-1);
+    const last = state.latest;
     if (last && ["failed", "aborted", "interrupted"].includes(last.status)) {
       throw new Error(`Pi setup run ${last.status} (${safeCode(last.errorCode)})`);
     }

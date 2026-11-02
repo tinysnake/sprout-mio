@@ -452,7 +452,7 @@ async function prepare() {
 
   async function agentRun(chatId) {
     const state = await call("getChatRunStateFn", { chatId });
-    const last = state.runs.at(-1);
+    const last = state.latest;
     if (last && ["failed", "aborted", "interrupted"].includes(last.status)) {
       throw new Error(`Pi run ${last.status} (${safeCode(last.errorCode)})`);
     }

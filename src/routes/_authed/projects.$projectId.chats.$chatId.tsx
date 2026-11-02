@@ -33,8 +33,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
     // Human 诊断按明确 runId 读持久化快照：优先活动 run，否则取这条 Chat 最近一条 run。
     // 不查「Chat 的第一个分身」来造快照；没有 run 就传 null，让页面显示「还没有本轮上下文快照」。
     const snapshotRun = runState.ok
-      ? (runState.data.runs.find((run) => run.status === "running" || run.status === "queued") ??
-        runState.data.runs.at(-1))
+      ? (runState.data.active[0] ?? runState.data.latest ?? undefined)
       : undefined;
     const turnContext = snapshotRun
       ? await readTurnContextFn({ data: { projectId: params.projectId, runId: snapshotRun.id } })

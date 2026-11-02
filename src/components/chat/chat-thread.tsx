@@ -87,7 +87,7 @@ export function ChatThread({
   const count = messages.ok ? messages.data.length : 0;
   const jobTitle = profile && profile.ok ? (profile.data.jobTitle ?? "") : "";
   const active = runState.ok ? isRunActive(runState.data) : false;
-  const latestRun = runState.ok ? runState.data.runs.at(-1) : undefined;
+  const latestRun = runState.ok ? (runState.data.latest ?? undefined) : undefined;
   const first = useRef(true);
 
   useEffect(() => {

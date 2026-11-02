@@ -22,15 +22,14 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export function runStatusLabel(state: ChatRunState): string {
-  const run = state.runs.at(-1);
+  const run = state.latest;
   if (!state.enabled) return "宿主未启用";
   if (!run) return "尚未运行";
   return RUN_STATUS_LABELS[run.status] ?? run.status;
 }
 
 export function isRunActive(state: ChatRunState): boolean {
-  const run = state.runs.at(-1);
-  return Boolean(state.enabled && run && (run.status === "queued" || run.status === "running"));
+  return state.enabled && state.active.length > 0;
 }
 
 export function RunStatusBadge({ status }: { status: AgentRunStatus }) {
@@ -63,7 +62,7 @@ export function RunStatusPanel({
   /** 提供时，未投递的输入可以放回输入框重发。 */
   onRestoreDraft?: (body: string) => void;
 }) {
-  const run = state.runs.at(-1);
+  const run = state.latest;
   const pending = state.inputs.filter((input) => input.disposition === "pending");
   const undelivered = pending
     .map((input) => messages.find((message) => message.id === input.messageId)?.body)

@@ -85,7 +85,7 @@ async function browserRpc(page, name, data) {
   assert.equal(result.status, 200); const decoded = result.body.t ? fromCrossJSON(result.body,{refs:new Map()}) : result.body; return decoded.result ?? decoded;
 }
 async function settled(chatId, { allowEmpty = false } = {}) {
-  return until(async()=> { const state=await call('getChatRunStateFn',{chatId}); const run=state.runs.at(-1); return ['queued','running'].includes(run?.status) ? null : (run ?? (allowEmpty ? true : null)); },'real agent settles',180000);
+  return until(async()=> { const state=await call('getChatRunStateFn',{chatId}); const run=state.latest; return ['queued','running'].includes(run?.status) ? null : (run ?? (allowEmpty ? true : null)); },'real agent settles',180000);
 }
 async function deniedTool(page, chatId, authorizationGeneration, expectedCode, marker, role = 'operator') {
   await settled(chatId, { allowEmpty: true });
@@ -95,7 +95,7 @@ async function deniedTool(page, chatId, authorizationGeneration, expectedCode, m
   armTool(role,body,'sprout_remote_shell',parameters);
   const sent=await browserRpc(page,'sendMessageFn',{chatId,body});
   assert.equal(sent.ok,true,'negative command submitted through production browser RPC');
-  const run=await until(async()=> {const state=await call('getChatRunStateFn',{chatId}); const input=state.inputs.find(i=>i.messageId===sent.data.id); const match=state.runs.find(r=>r.id===input?.runId);return match && !['queued','running'].includes(match.status) && match.configSnapshot ? match:null;},'negative run settles',180000);
+  const run=await until(async()=> {const state=await call('getChatRunStateFn',{chatId}); const input=state.inputs.find(i=>i.messageId===sent.data.id); const latest=state.latest; return latest && latest.id===input?.runId && !['queued','running'].includes(latest.status) && latest.configSnapshot ? latest:null;},'negative run settles',180000);
   const entries=readFileSync(run.configSnapshot.sessionFile,'utf8').split('\n').filter(Boolean).map(line=>JSON.parse(line));
   const calls=entries.flatMap(entry=>entry.message?.role==='assistant' ? entry.message.content.filter(c=>c.type==='toolCall' && c.name==='sprout_remote_shell' && c.arguments?.requestId===requestId) : []);
   assert.equal(calls.length,1,'exact requested tool called once');

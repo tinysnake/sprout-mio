@@ -19,10 +19,7 @@ type Environment = {
 };
 
 export function isActiveRunState(runState: AgentRunResult<ChatRunState>): boolean {
-  return (
-    runState.ok &&
-    runState.data.runs.some((run) => run.status === "queued" || run.status === "running")
-  );
+  return runState.ok && runState.data.active.length > 0;
 }
 
 /**
@@ -31,7 +28,14 @@ export function isActiveRunState(runState: AgentRunResult<ChatRunState>): boolea
  * 关联 Task 与 inspector 的轮初快照，而这些东西不在 tick 的读取范围内。
  */
 function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
-  return runState.ok ? runState.data.runs.map((run) => `${run.id}:${run.status}`).join(",") : null;
+  if (!runState.ok) return null;
+  const { active, latest } = runState.data;
+  const observed = active.map((run) => `${run.id}:${run.status}`);
+  // 收尾那一 tick 只剩 latest 在变，它不在活跃集合里时也要算进指纹。
+  if (latest && !active.some((run) => run.id === latest.id)) {
+    observed.push(`${latest.id}:${latest.status}`);
+  }
+  return observed.join(",");
 }
 
 /**
