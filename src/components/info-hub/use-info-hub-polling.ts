@@ -28,6 +28,12 @@ type Environment = {
   navigator: Pick<Navigator, "onLine">;
 };
 
+/**
+ * 同一秒内重复的恢复事件只算一次。恢复的代价是一次全量刷新（丢弃游标与 revision），
+ * 而一次标签页恢复会先后发来 visibilitychange、online，重复付这份代价没有新信息。
+ */
+const RESUME_WINDOW_MS = 1_000;
+
 /** One visible context owns one request. Resume discards both cursor and revision. */
 export function createInfoHubPolling({
   input,
@@ -53,6 +59,7 @@ export function createInfoHubPolling({
   let stopped = false;
   let fullRefresh = true;
   let resumePending = false;
+  let lastResumeAt: number | null = null;
   let failures = 0;
   let terminal = false;
   const { document, window, navigator } = environment;
@@ -142,12 +149,17 @@ export function createInfoHubPolling({
   }
 
   function resume() {
-    clearTimer();
     const pause = paused();
     if (pause) {
+      clearTimer();
       onState?.(pause);
       return;
     }
+    // 被窗口挡掉的恢复不能动定时器：定时器就是还没恢复时的下一次读取。
+    const now = Date.now();
+    if (lastResumeAt !== null && now - lastResumeAt < RESUME_WINDOW_MS) return;
+    lastResumeAt = now;
+    clearTimer();
     terminal = false;
     fullRefresh = true;
     revision = undefined;
