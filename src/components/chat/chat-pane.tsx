@@ -139,7 +139,7 @@ export function ChatPane({
   }
 
   async function stop() {
-    const run = runState.ok ? runState.data.runs.at(-1) : undefined;
+    const run = runState.ok ? (runState.data.latest ?? undefined) : undefined;
     if (!run || stopPending) return;
     if (isOffline()) {
       setStopOutcome("failure");

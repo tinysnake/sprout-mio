@@ -69,7 +69,7 @@ function invalidInput(error: z.ZodError, requestId: string): AgentRunResult<neve
   return { ...fail(toAppError(error, requestId)), fieldErrors: fieldErrorsFrom(error) };
 }
 
-/** 对话页的 run 视角：宿主启用状态、已有 run 与最近一个 run 的输入投递状态。 */
+/** 对话页的 run 视角：宿主启用状态、活跃 run 与最近一个 run 的输入投递状态。 */
 export async function getChatRunStateBoundary(
   raw: unknown,
   headers: Headers,
@@ -78,13 +78,13 @@ export async function getChatRunStateBoundary(
   return agentRunBoundary<ChatRunState>(headers, requestId, (deps, context) => {
     const parsed = chatRunStateInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    const runs = deps.listAgentRuns(parsed.data.chatId, context);
-    const latest = runs.at(-1);
+    const latest = deps.latestAgentRun(parsed.data.chatId, context);
     const { piHostSnapshot } = deps;
     return ok(
       {
         enabled: piHostSnapshot().enabled,
-        runs,
+        active: deps.listActiveAgentRuns(parsed.data.chatId, context),
+        latest,
         inputs: latest ? deps.listAgentRunInputs(latest.id, context) : [],
       },
       requestId,

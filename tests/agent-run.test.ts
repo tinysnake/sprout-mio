@@ -143,4 +143,40 @@ describe("Agent run 持久不变量", () => {
       assert.equal(sqlite.prepare("SELECT count(*) AS n FROM diagnostic_event WHERE event='agent_run.interrupted'").get().n,2);
     `);
   });
+
+  it("活跃查询只回在跑的 run，最近一条回最新 run", () => {
+    scenario(`
+      const settle = (body) => {
+        const current = runs.listActiveAgentRuns(direct.chat.id,ctx)[0];
+        runs.transitionAgentRun(current.id,'running',{configSnapshot:snapshot},ctx);
+        for (const input of runs.listAgentRunInputs(current.id,ctx)) runs.markRunInputDelivered(current.id,input.messageId,ctx);
+        runs.completeAgentRun(current.id,body,'stop',ctx);
+      };
+      settle('one'); send('two');
+      settle('two'); send('three');
+      settle('three'); send('four');
+      const running = runs.listActiveAgentRuns(direct.chat.id,ctx)[0];
+      runs.transitionAgentRun(running.id,'running',{configSnapshot:snapshot},ctx);
+      assert.deepEqual(runs.listAgentRuns(direct.chat.id,ctx).map(x=>x.status),['completed','completed','completed','running']);
+      assert.deepEqual(runs.listActiveAgentRuns(direct.chat.id,ctx).map(x=>x.id),[running.id]);
+      assert.equal(runs.latestAgentRun(direct.chat.id,ctx).id,running.id);
+    `);
+  });
+
+  it("run 收尾后活跃查询变空，最近一条仍是它", () => {
+    scenario(`
+      runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
+      assert.deepEqual(runs.listActiveAgentRuns(direct.chat.id,ctx).map(x=>x.id),[run.id]);
+      for (const input of runs.listAgentRunInputs(run.id,ctx)) runs.markRunInputDelivered(run.id,input.messageId,ctx);
+      runs.completeAgentRun(run.id,'done','stop',ctx);
+      assert.deepEqual(runs.listActiveAgentRuns(direct.chat.id,ctx),[]);
+      assert.equal(runs.latestAgentRun(direct.chat.id,ctx).id,run.id);
+    `);
+  });
+
+  it("两个窄查询同样按 Project 隔离", () => {
+    scenario(`
+      for (const action of [()=>runs.listActiveAgentRuns(direct.chat.id,other),()=>runs.latestAgentRun(direct.chat.id,other)]) assert.throws(action,e=>e.code==='not_found');
+    `);
+  });
 });

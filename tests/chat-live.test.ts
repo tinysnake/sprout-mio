@@ -19,9 +19,10 @@ function run(id: string, status: AgentRun["status"]): AgentRun {
 }
 
 function state(...runs: AgentRun[]): AgentRunResult<ChatRunState> {
+  const active = runs.filter((run) => run.status === "queued" || run.status === "running");
   return {
     ok: true,
-    data: { enabled: true, runs, inputs: [] },
+    data: { enabled: true, active, latest: runs.at(-1) ?? null, inputs: [] },
     requestId: "req_1",
   } as AgentRunResult<ChatRunState>;
 }
@@ -170,6 +171,24 @@ describe("Chat 活跃 run 的定点刷新", () => {
     await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
     expect(onRunChanged).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS * 5);
+    expect(onRunChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("首个 tick 发现新 run 起跑时回报一次重读", async () => {
+    const onRunChanged = vi.fn();
+    stops.push(
+      createChatLiveRefresh({
+        reads: {
+          messages: vi.fn().mockResolvedValue(messages),
+          runState: vi.fn().mockResolvedValue(state(run("run_a", "queued"))),
+        },
+        onFacts: vi.fn(),
+        onRunChanged,
+        seedSignature: "",
+        environment: environment(),
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
     expect(onRunChanged).toHaveBeenCalledTimes(1);
   });
 
