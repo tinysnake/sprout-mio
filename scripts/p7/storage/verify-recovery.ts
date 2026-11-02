@@ -224,8 +224,8 @@ try {
   assert.equal(new Set(journal.entries.map((entry) => entry.tag)).size, journal.entries.length);
   for (const entry of journal.entries)
     assert(existsSync(join(root, "drizzle", `${entry.tag}.sql`)), `缺少迁移 ${entry.tag}`);
-  assert.equal(latestTag, "0028_p6b_turn_context");
-  pass("migration journal contiguous and latest is 0028", {
+  assert.equal(latestTag, "0029_lying_echo");
+  pass("migration journal contiguous and latest is 0029", {
     migrations: journal.entries.length,
     latestTag,
   });
@@ -242,7 +242,7 @@ try {
     migrations: emptyMigrations.length,
   });
 
-  // 2. 0025 历史库：真实生产启动时先应用 0026-0028，再恢复上次未关闭的 run。
+  // 2. 0025 历史库：真实生产启动时先应用 0026 起的迁移，再恢复上次未关闭的 run。
   const historical = join(directory, "historical.sqlite");
   const oldFolder = join(directory, "old-drizzle");
   mkdirSync(join(oldFolder, "meta"), { recursive: true });
@@ -253,7 +253,7 @@ try {
   for (const entry of oldJournal.entries)
     copyFileSync(join(root, "drizzle", `${entry.tag}.sql`), join(oldFolder, `${entry.tag}.sql`));
   writeFileSync(join(oldFolder, "meta", "_journal.json"), JSON.stringify(oldJournal));
-  // 用真实 migrator 停在 0025；生产启动（而非门禁手工）负责应用 0026-0028。
+  // 用真实 migrator 停在 0025；生产启动（而非门禁手工）负责应用 0026 起的迁移。
   const { migrateDatabase } =
     (await import("../../../src/db/migrate")) as typeof import("../../../src/db/migrate");
   migrateDatabase(historical, oldFolder);
