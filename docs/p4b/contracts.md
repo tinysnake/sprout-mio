@@ -169,7 +169,9 @@ RemoteAgentRequest = O({version:1, call:type 判别联合：
   O({type:'execution_get',input:ExecutionReadInput})})
 ```
 
-endpoint 必须无 userinfo/query/hash、路径恰为 `/api/remote/agent`；是否属于 configured APP_ORIGIN 由服务端核对。secret 只通过私有 runner 配置交付，HTTP 放在 Authorization header，不放进业务 body。TTL 为15分钟、不续期、run唯一；本单元不签发、不存 secret、不创建 endpoint。Agent response 使用现有 AppResult 外壳，认证失败401，跨界/业务拒绝是200+AppResult；不能仅按HTTP200判成功。服务端须拒绝任何 Origin header。
+endpoint 必须无 userinfo/query/hash、路径恰为 `/api/remote/agent`，主机是实例本机 `127.0.0.1:$PORT`：runner 是本进程拉起的子进程，经 APP_ORIGIN 回连要绕一趟公网边缘（TLS 终止代理），实测出现数秒抖动。secret 只通过私有 runner 配置交付，HTTP 放在 Authorization header，不放进业务 body。TTL 为15分钟、不续期、run唯一；本单元不签发、不存 secret、不创建 endpoint。Agent response 使用现有 AppResult 外壳，认证失败401，跨界/业务拒绝是200+AppResult；不能仅按HTTP200判成功。
+
+鉴权只有 grant：每个 run 一份 43 字符 secret，绑定 run/instance/chat/user 与本进程存活的 runner。`request.url` 的 origin 不是边界，也不作为边界核对：实例在 TLS 终止代理之后运行（见部署文档的 Caddy / tailscale serve 拓扑），进程看到的是代理转发来的 http URL，与 configured APP_ORIGIN 永不相等，按 origin 判定会把每个请求都拒成 `forbidden`。
 
 `REMOTE_ERROR_CODES` 直接引用 `APP_ERROR_CODES`，是同一个 readonly tuple，共16项：原有 `unauthorized`, `forbidden`, `not_found`, `validation_failed`, `conflict`, `too_many_requests`, `internal`，再加 `lease_conflict`, `lease_not_holder`, `lease_stale_generation`, `lease_fencing`, `machine_unavailable`, `directory_unavailable`, `remote_request_conflict`, `remote_grant_invalid`, `remote_run_inactive`。没有把 Worker 专属错误混入 AppError。本单元按范围不修改 `domain-errors.ts`，下游新增领域错误时必须同步 mapper。
 

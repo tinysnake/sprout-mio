@@ -48,6 +48,8 @@ await once(server, "listening");
 const address = server.address();
 if (!address || typeof address === "string") throw new Error("HTTP address missing");
 process.env.APP_ORIGIN = `http://127.0.0.1:${address.port}`;
+process.env.PORT = String(address.port);
+const { config } = await import("../src/lib/config");
 const { startRuntime, shutdownRuntime, machineRuntimeContext } =
   await import("../src/server/runtime");
 await startRuntime();
@@ -458,5 +460,42 @@ describe("run-scoped Agent Task/Chat tools", () => {
     } finally {
       corrupt = undefined;
     }
+  });
+});
+
+describe("gateway 在 TLS 终止代理之后", () => {
+  // prod 用 Caddy / tailscale serve 终止 TLS 再转发到 127.0.0.1:3220，进程内看到的
+  // request.url 是 http，而 APP_ORIGIN 是对外 https origin，两者永不相等。
+  it("请求 URL 与 APP_ORIGIN 不同源时按凭据鉴权，不返回 forbidden", async () => {
+    const response = await gateway(
+      new Request("http://127.0.0.1:3220/api/remote/agent", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${grants[0]!.secret}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          version: 2,
+          call: { type: "task_list", input: { projectId: project.id } },
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, data: { chatId: target.id } });
+  });
+  it("无凭据时仍然是 401，不因为放开 origin 而变成匿名可用", async () => {
+    const response = await gateway(
+      new Request("http://127.0.0.1:3220/api/remote/agent", {
+        method: "POST",
+        body: JSON.stringify({
+          version: 2,
+          call: { type: "task_list", input: { projectId: project.id } },
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
+  });
+  it("签发的 endpoint 指向本机回环，不穿过公网边缘", async () => {
+    expect(grants[0]!.endpoint).toBe(`http://127.0.0.1:${config.PORT}/api/remote/agent`);
   });
 });

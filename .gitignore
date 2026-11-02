@@ -11,7 +11,7 @@ AGENTS.local.md
 .agents/dev-pipeline
 orchestrate/
 
-node_modules/
+node_modules
 dist/
 .output/
 data/
