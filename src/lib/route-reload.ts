@@ -115,7 +115,7 @@ const reloads = new WeakMap<object, RouteReload>();
 export type RouteReloadTarget = { invalidate: () => Promise<unknown> | void };
 
 const defaultTime: RouteReloadTime = {
-  now: () => Date.now(),
+  now: Date.now,
   setTimeout: (callback, ms) => globalThis.setTimeout(callback, ms),
   clearTimeout: (handle) =>
     globalThis.clearTimeout(handle as Parameters<typeof globalThis.clearTimeout>[0]),

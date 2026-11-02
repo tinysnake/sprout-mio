@@ -42,6 +42,7 @@ export function createInfoHubPolling({
   onState,
   environment,
   random = Math.random,
+  now = Date.now,
 }: {
   input: InfoHubRefreshInput;
   refresh: Refresh;
@@ -156,9 +157,9 @@ export function createInfoHubPolling({
       return;
     }
     // 被窗口挡掉的恢复不能动定时器：定时器就是还没恢复时的下一次读取。
-    const now = Date.now();
-    if (lastResumeAt !== null && now - lastResumeAt < RESUME_WINDOW_MS) return;
-    lastResumeAt = now;
+    const at = now();
+    if (lastResumeAt !== null && at - lastResumeAt < RESUME_WINDOW_MS) return;
+    lastResumeAt = at;
     clearTimer();
     terminal = false;
     fullRefresh = true;
