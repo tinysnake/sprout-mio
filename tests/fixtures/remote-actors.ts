@@ -5,6 +5,8 @@ import { hashCredential } from "../../src/domain/machine";
 import type { AgentRemoteContext } from "../../src/server/lease";
 
 /** Private fixtures only; production grants are created by pi-host, never by callers. */
+let remoteActorSeq = 0;
+
 export function seedRemoteActor(
   sqlite: Database.Database,
   userId: string,
@@ -18,8 +20,8 @@ export function seedRemoteActor(
   const runId = newId(ID_PREFIXES.run);
   const grantId = newId(ID_PREFIXES.remoteToolGrant);
   sqlite
-    .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,'Remote fixture',?)")
-    .run(profileId, userId);
+    .prepare("INSERT INTO agent_profile(id,name,created_by) VALUES (?,?,?)")
+    .run(profileId, `Remote fixture ${remoteActorSeq++}`, userId);
   sqlite
     .prepare(
       "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human',?,?)",
