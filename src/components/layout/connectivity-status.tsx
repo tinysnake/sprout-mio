@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { setConnected, useConnected } from "../../lib/connectivity";
+import { requestRouteReload } from "../../lib/route-reload";
 import { watchThemeColor } from "../../lib/pwa";
 import { safeReturnTarget } from "../../lib/return-target";
 
@@ -50,7 +51,7 @@ export function ConnectivityStatus() {
     const offline = () => setConnected(false);
     const online = () => {
       setConnected(true);
-      void router.invalidate();
+      void requestRouteReload(router);
     };
     setConnected(navigator.onLine);
     window.addEventListener("offline", offline);

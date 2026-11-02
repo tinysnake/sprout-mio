@@ -113,6 +113,44 @@ describe("Human Info Hub polling", () => {
     expect(refresh.mock.calls[1]![0]).not.toHaveProperty("knownRevision");
   });
 
+  it("同一秒内重复的恢复事件只做一次全量刷新", async () => {
+    const { refresh, env } = start();
+    await vi.advanceTimersByTimeAsync(0);
+    const base = refresh.mock.calls.length;
+    for (let index = 0; index < 10; index++) {
+      env.window.dispatchEvent(new Event("online"));
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    expect(refresh).toHaveBeenCalledTimes(base + 1);
+    expect(refresh.mock.calls.at(-1)![0]).not.toHaveProperty("knownRevision");
+  });
+
+  it("窗口过后再次恢复仍然全量刷新", async () => {
+    const { refresh, env } = start();
+    await vi.advanceTimersByTimeAsync(0);
+    const base = refresh.mock.calls.length;
+    env.window.dispatchEvent(new Event("online"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(base + 1);
+    await vi.advanceTimersByTimeAsync(1_200);
+    env.window.dispatchEvent(new Event("online"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(base + 2);
+  });
+
+  it("被窗口挡掉的恢复不会把轮询停摆", async () => {
+    const { refresh, env } = start();
+    await vi.advanceTimersByTimeAsync(0);
+    env.window.dispatchEvent(new Event("online"));
+    await vi.advanceTimersByTimeAsync(0);
+    const base = refresh.mock.calls.length;
+    env.window.dispatchEvent(new Event("online"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(base);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(refresh).toHaveBeenCalledTimes(base + 1);
+  });
+
   it("backs off 3000 → 6000 → 12000 → 24000 → 30000 and resets after success", async () => {
     const times: number[] = [];
     let fail = true;

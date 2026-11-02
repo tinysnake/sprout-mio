@@ -1,5 +1,6 @@
 import { Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { requestRouteReload } from "../../lib/route-reload";
 import { Button } from "../ui/button";
 
 /** No cached target is different from an empty target or a confirmed deletion. */
@@ -20,7 +21,7 @@ export function RouteReadError({ error }: { error: unknown }) {
   useEffect(() => {
     const reconnect = () => {
       setOnline(true);
-      void router.invalidate();
+      void requestRouteReload(router);
     };
     const disconnect = () => setOnline(false);
     window.addEventListener("online", reconnect);

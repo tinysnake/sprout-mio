@@ -13,6 +13,7 @@ import { getChatRunStateFn } from "../../server/functions/agent-run";
 import { getChatInfoFn, readTurnContextFn } from "../../server/functions/info-hub";
 import { getChatSessionFn, listChatMembersFn, listMessagesFn } from "../../server/functions/chat";
 import { getChatAutomationFn } from "../../server/functions/chat-automation";
+import { requestRouteReload } from "../../lib/route-reload";
 
 /** Project 上下文从 URL 推导：chat 不属于 URL 中的 projectId 时按 not_found 呈现。 */
 export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId")({
@@ -97,7 +98,7 @@ function ProjectChatDetailPage() {
     chatId,
     active: watching,
     loader,
-    onRunChanged: () => void router.invalidate(),
+    onRunChanged: () => void requestRouteReload(router),
   });
 
   if (!loader.ok)
