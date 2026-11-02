@@ -56,14 +56,16 @@ function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
 
 /**
  * 可见时每 1.2s 读一次这条 Chat 的消息与 run 状态，页面只把结果叠在 loader 事实之上。
- * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹发生变化时回报一次
- * `onRunChanged`，由页面做一次整树 invalidate。每次 tick 只发两个读，不再重跑整棵路由的 loader。
+ * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹变化时回报一次
+ * `onRunChanged`，新消息到达时回报一次 `onMessagesChanged`，由页面做一次整树 invalidate。
+ * 每次 tick 只发两个读，不再重跑整棵路由的 loader。
  */
 export function createChatLiveRefresh({
   seed,
   reads,
   onFacts,
   onRunChanged,
+  onMessagesChanged,
   seedSignature = null,
   environment,
   intervalMs = CHAT_LIVE_INTERVAL_MS,
@@ -76,6 +78,8 @@ export function createChatLiveRefresh({
   };
   onFacts: (facts: ChatLiveFacts) => void;
   onRunChanged: () => void;
+  /** 新消息到达时回报一次，让 Info Hub 的消息计数与最近消息时间同步。 */
+  onMessagesChanged?: () => void;
   /** loader 已经读到过的那份 run 指纹：tick 结果与它一致就不必重读整树。 */
   seedSignature?: string | null;
   environment: Environment;
@@ -93,11 +97,13 @@ export function createChatLiveRefresh({
   let overlay = [...seed.messages];
   let known = new Set(overlay.map((entry) => entry.id));
   let cursor = seed.cursor;
+  let messageSignature = overlay.at(-1)?.id ?? null;
 
   const reseed = (next: ChatLiveSeed) => {
     overlay = [...next.messages];
     known = new Set(overlay.map((entry) => entry.id));
     cursor = next.cursor;
+    messageSignature = overlay.at(-1)?.id ?? null;
   };
 
   const schedule = () => {
@@ -135,13 +141,18 @@ export function createChatLiveRefresh({
       onFacts({ messages, runState });
       const next = runSignature(runState);
       const active = isActiveRunState(runState);
+      const nextMessage = overlay.at(-1)?.id ?? null;
+      const messageMoved = nextMessage !== messageSignature;
+      messageSignature = nextMessage;
+      let runMoved = false;
       if (next !== null) {
-        const moved = next !== signature;
+        runMoved = next !== signature;
         signature = next;
-        // 只有指纹真的变了才重读：一个 tick 里的新 run、状态推进、本轮结束都算变化，
-        // 而「loader 已经知道它是空闲的」不必再花一次全树重读。
-        if (moved) onRunChanged();
       }
+      // run 变了就整树重读；只有消息变化时也重读一次，让不在 tick 读取范围内的
+      // Info Hub 消息计数与最近消息时间跟上来。两者同 tick 变化时只重读一次。
+      if (runMoved) onRunChanged();
+      else if (messageMoved) onMessagesChanged?.();
       // run 状态读不到时不改门禁：下一 tick 继续读，结束判定只认成功的响应。
       if (runState.ok && !active && stopWhenIdle) {
         stopped = true;
@@ -222,6 +233,7 @@ export function useChatLive({
       reads: chatLiveReads(chat),
       onFacts: (facts) => setState({ chatId: chat, facts }),
       onRunChanged: () => changed.current(),
+      onMessagesChanged: () => changed.current(),
       seedSignature,
       intervalMs: active ? CHAT_LIVE_INTERVAL_MS : CHAT_IDLE_INTERVAL_MS,
       stopWhenIdle: false,

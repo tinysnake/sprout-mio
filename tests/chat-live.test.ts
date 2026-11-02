@@ -199,6 +199,32 @@ describe("Chat 活跃 run 的定点刷新", () => {
     expect(onRunChanged).toHaveBeenCalledTimes(1);
   });
 
+  it("新消息到达时回报一次重读，让 Info Hub 消息计数同步", async () => {
+    const onMessagesChanged = vi.fn();
+    stops.push(
+      createChatLiveRefresh({
+        seed: emptySeed,
+        reads: {
+          messages: vi.fn().mockResolvedValue({
+            ok: true,
+            data: { messages: [{ id: "msg_00000001" } as Message], cursor: null },
+            requestId: "req_1",
+          } as ChatResult<MessageWindow>),
+          runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
+        },
+        onFacts: vi.fn(),
+        onRunChanged: vi.fn(),
+        onMessagesChanged,
+        seedSignature: "run_a:running",
+        environment: environment(),
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(onMessagesChanged).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(onMessagesChanged).toHaveBeenCalledTimes(1);
+  });
+
   it("首个 tick 就发现 run 已收尾时仍然回报一次重读", async () => {
     const onRunChanged = vi.fn();
     stops.push(
