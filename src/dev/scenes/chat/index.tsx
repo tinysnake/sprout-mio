@@ -116,6 +116,34 @@ const messages: Message[] = [
     createdAt: "2026-06-18T02:28:00.000Z",
     mentions: [],
   },
+  {
+    // 点名样例：连续 chip、多个 chip、行尾 chip、行首 chip，以及没被点名的普通 @。
+    id: "msg_99999999",
+    chatId: chats[0]!.id,
+    senderKind: "human",
+    senderId: "usr_demo",
+    body: "评审顺序：@林澈@Amenda 先看首页信息层级，再由 @Repo 分析员 核对证据链。\n@前端审阅 麻烦确认 390 宽下不会挤成两行；邮箱 hi@example.com 只是普通文字。",
+    createdAt: "2026-06-18T02:30:00.000Z",
+    mentions: [
+      { memberKind: "human", memberId: "usr_demo", start: 5, end: 8 },
+      { memberKind: "agent", memberId: profiles[0]!.id, start: 8, end: 15 },
+      { memberKind: "agent", memberId: profiles[1]!.id, start: 28, end: 37 },
+      { memberKind: "agent", memberId: profiles[2]!.id, start: 45, end: 50 },
+    ],
+  },
+  {
+    id: "msg_aaaaaaaa",
+    chatId: chats[0]!.id,
+    senderKind: "agent",
+    senderId: profiles[0]!.id,
+    body: "行尾与换行分开验：先说结论 @Amenda\n@Repo 分析员 接着补证据，最后 @林澈",
+    createdAt: "2026-06-18T02:31:00.000Z",
+    mentions: [
+      { memberKind: "agent", memberId: profiles[0]!.id, start: 14, end: 21 },
+      { memberKind: "agent", memberId: profiles[1]!.id, start: 22, end: 31 },
+      { memberKind: "human", memberId: "usr_demo", start: 41, end: 44 },
+    ],
+  },
 ];
 
 const scenarioRunState: Record<string, ChatRunState> = {

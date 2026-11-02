@@ -1,10 +1,11 @@
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
-import type { Message } from "../../contracts/chat";
+import type { MentionSpan, Message } from "../../contracts/chat";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
 import { ChatAvatar } from "./chat-avatar";
 import { clockLabel } from "./format";
 import { RUN_STATUS_LABELS } from "./run-status";
 import { senderKey } from "./chat-session-display";
+import { splitMentions } from "./mention-segments";
 
 const GROUPING_WINDOW_MS = 5 * 60 * 1000;
 
@@ -118,7 +119,7 @@ export function MessageList({
                     : "text-xs leading-6 break-words whitespace-pre-wrap"
                 }
               >
-                {message.body}
+                <MessageBody body={message.body} mentions={message.mentions} />
               </p>
               {!human && (
                 <p
@@ -140,5 +141,34 @@ export function MessageList({
         );
       })}
     </ol>
+  );
+}
+
+/**
+ * 正文按点名切段后逐段渲染：被点名的片段是行内 chip，其余原样输出。
+ *
+ * chip 只是文字上的背景与字重，不是按钮：无边框无阴影、不拦选中，文字就是
+ * `body` 的原文切片，所以复制、查找与 `textContent` 都还是原句。名字取自消息
+ * 本身而不是成员表，成员改名后历史消息仍显示当时写下的名字。
+ */
+function MessageBody({ body, mentions }: { body: string; mentions: readonly MentionSpan[] }) {
+  return (
+    <>
+      {splitMentions(body, mentions).map((segment, index) =>
+        segment.span ? (
+          <span
+            key={index}
+            data-testid="message-mention"
+            data-member-kind={segment.span.memberKind}
+            data-member-id={segment.span.memberId}
+            className="rounded-[3px] bg-selected px-1 font-medium [box-decoration-break:clone]"
+          >
+            {segment.text}
+          </span>
+        ) : (
+          segment.text
+        ),
+      )}
+    </>
   );
 }
