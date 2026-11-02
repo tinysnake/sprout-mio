@@ -218,6 +218,20 @@ plist 里记着它属于哪个运行根目录，`launchd_installed` 会核对这
 
 drill 不需要常驻，用 `drill.sh` 起、验完停。
 
+## 请求日志与测量窗口
+
+runtime 给每个 HTTP 请求往 stdout 写一行 `[request]`，字段是 requestId、method、path、fn、fnId、status、ms、bytes、complete。`path` 只含 pathname，不含 query 与 cookie。`/_serverFn/<hash>` 会按构建产物里的 `createServerRpc` 聚合表还原成函数名；dev 没有构建产物，只留 hash，这是预期退化。
+
+这些行落在 `$SPROUT_RUNTIME_ROOT/prod/logs/launchd.out.log`（`start.sh` 直接起动时是 `logs/server.log`），没有轮转。按每行 150 到 200 字节估算，一个空闲标签页每 3 秒取一次 section 约 25 MB 每天，所以它是测量窗口工具，不是常开的看板。
+
+```bash
+node scripts/diagnostics/request-log.mjs "$SPROUT_RUNTIME_ROOT/prod/logs/launchd.out.log"
+```
+
+脚本按函数聚合 count、总字节、p50、p95、max 与 5xx 计数。`ms` 对 server function 是处理耗时，对流式 HTML 是产出加写完全文的耗时，两组不要直接比 p95。
+
+看完把开关写进实例 env 文件 `$SPROUT_RUNTIME_ROOT/prod/env`（`SPROUT_REQUEST_LOG=off`），再 `bash scripts/deploy/launchd.sh uninstall prod` 与 `install prod` 让它生效，然后把旧日志清空。
+
 ## Worker 机器（执行环境）
 
 两件事不要混。**Pi 会话**由实例自己托管：`SPROUT_PI_ENABLED` 默认 `true`，会话目录是实例 env 里的 `SPROUT_PI_DATA_DIR`。**Machine** 是一台提供执行环境的机器，分身通过它跑 shell 与文件操作，由一个常驻的 Worker 进程代表。
