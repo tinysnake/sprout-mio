@@ -54,7 +54,12 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function firstLine(value: string): string {
-  return value.split(/\r?\n/).find((line) => line.trim())?.trim() ?? "";
+  return (
+    value
+      .split(/\r?\n/)
+      .find((line) => line.trim())
+      ?.trim() ?? ""
+  );
 }
 
 function clip(value: string, limit = DETAIL_LIMIT): string {
@@ -108,11 +113,26 @@ function describeKnown(
         command ? clip(firstLine(command)) : undefined,
       );
     case "read":
-      return describe(toolName, "file", "读取文件", path ? pathDetail(path, options.cwd) : undefined);
+      return describe(
+        toolName,
+        "file",
+        "读取文件",
+        path ? pathDetail(path, options.cwd) : undefined,
+      );
     case "write":
-      return describe(toolName, "file", "写入文件", path ? pathDetail(path, options.cwd) : undefined);
+      return describe(
+        toolName,
+        "file",
+        "写入文件",
+        path ? pathDetail(path, options.cwd) : undefined,
+      );
     case "edit":
-      return describe(toolName, "file", "编辑文件", path ? pathDetail(path, options.cwd) : undefined);
+      return describe(
+        toolName,
+        "file",
+        "编辑文件",
+        path ? pathDetail(path, options.cwd) : undefined,
+      );
     case "grep":
     case "ffgrep": {
       const pattern = stringValue(args.pattern) ?? stringValue(args.query);
@@ -163,12 +183,7 @@ function describeKnown(
     case "tool_search":
       return describe(toolName, "search", "查找工具", hint(args, ["query"]));
     case "codemode":
-      return describe(
-        toolName,
-        "code_mode",
-        "Code Mode 脚本",
-        hint(args, ["script", "code"]),
-      );
+      return describe(toolName, "code_mode", "Code Mode 脚本", hint(args, ["script", "code"]));
     case "sprout_status":
       return describe(toolName, "tool", "读取宿主状态");
     case "sprout_info_hub_get":
