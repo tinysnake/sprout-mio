@@ -20,6 +20,7 @@ const {
   beginWakeAttempt,
   closeAttemptsForChat,
   finishWakeAttempt,
+  onScheduleChange,
   reconcileChatSchedule,
   wakeAttempts,
 } = await import("../src/domain/chat-schedule");
@@ -306,5 +307,20 @@ describe("自动接续变更推送", () => {
     expect(seen).toEqual([projectTopic(projectId), chatTopic(chatId)]);
     off();
     vi.useRealTimers();
+  });
+});
+
+describe("调度信号", () => {
+  // Risk → evidence: 构建产物里服务入口与 SSR 路由是两套模块图，同一个文件有两份实例。
+  // 监听者表不挂 process 时，发消息那份实例的信号传不到调度器那份，判定只能等 15 秒心跳。
+  it("另一个模块实例的信号也唤醒本实例注册的监听者", async () => {
+    const seen: string[] = [];
+    const off = onScheduleChange(() => seen.push("hit"));
+    vi.resetModules();
+    const second = await import("../src/domain/chat-schedule");
+    second.signalScheduleChange();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual(["hit"]);
+    off();
   });
 });

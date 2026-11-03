@@ -14,7 +14,10 @@ type Evidence = {
     taskIds: string[];
   };
   multi: { selected: number; deliveries: { recipient_id: string; state: string }[] };
-  fallback: { selected: { kind: string; id: string }[]; delivery: { recipient_id: string; state: string } };
+  fallback: {
+    selected: { kind: string; id: string }[];
+    delivery: { recipient_id: string; state: string };
+  };
   public: { policy: string; wake: boolean };
   mention: { wake: boolean; runs: number };
   ownerLed: { wake: boolean; runs: number };
@@ -29,10 +32,19 @@ type Evidence = {
     scheduleRound: number;
     preserved: boolean;
   };
-  failureFallback: { attempts: number; state: string; errorCode: string | null; deliveries: number };
+  failureFallback: {
+    attempts: number;
+    state: string;
+    errorCode: string | null;
+    deliveries: number;
+  };
   orphan: { queued: boolean; requeued: boolean; attempt: number };
   retry: { retried: boolean; trigger: string; newer: string };
-  unknown: { count: number; first: { state: string; error_code: string | null }; latest: { state: string; error_code: string | null } };
+  unknown: {
+    count: number;
+    first: { state: string; error_code: string | null };
+    latest: { state: string; error_code: string | null };
+  };
   recovery: {
     stateAfterRecover: string;
     nextAttemptAt: number | null;
@@ -69,11 +81,9 @@ beforeAll(() => {
   const directory = mkdtempSync(resolve(".verify/message-wake-test-"));
   try {
     evidence = runFixture(directory, "tests/fixtures/message-wake.ts", {});
-    evidence.disabled = runFixture(
-      directory,
-      "tests/fixtures/message-wake-disabled.ts",
-      { SPROUT_AUTOMATION_ENABLED: "false" },
-    );
+    evidence.disabled = runFixture(directory, "tests/fixtures/message-wake-disabled.ts", {
+      SPROUT_AUTOMATION_ENABLED: "false",
+    });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

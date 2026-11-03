@@ -171,7 +171,14 @@ export function wakeAttempts(evaluationIds: readonly string[]): WakeAttemptRow[]
     usage: row.usage ? (JSON.parse(row.usage) as WakeUsage) : null,
   }));
 }
-const listeners = new Set<() => void>();
+/**
+ * 构建产物把服务入口与 SSR 路由拆成两套模块图，同一个文件会有两份实例：写入点的信号
+ * 得让另一份实例里的调度器听见，所以监听者表挂在 process 上。
+ */
+const processScope = globalThis as typeof globalThis & {
+  sproutScheduleListeners?: Set<() => void>;
+};
+const listeners = (processScope.sproutScheduleListeners ??= new Set<() => void>());
 /**
  * 队列到外层同步事务提交之后。写入点知道 chatId 时一并给出：浏览器靠这条推送重读项目与对话，
  * 不然判定早已落库、页面还在等下一次兜底轮询。

@@ -106,6 +106,18 @@ describe("变更推送的合窗与订阅", () => {
     vi.useRealTimers();
   });
 
+  it("另一个模块实例的发布也送到已注册的订阅者", async () => {
+    vi.useFakeTimers();
+    const { seen, off } = record([projectTopic("prj_feed0009")]);
+    vi.resetModules();
+    const second = await import("../src/domain/change-feed");
+    second.publishChange(projectTopic("prj_feed0009"));
+    vi.advanceTimersByTime(CHANGE_STREAM.coalesceMs + 1);
+    expect(seen).toEqual([projectTopic("prj_feed0009")]);
+    off();
+    vi.useRealTimers();
+  });
+
   it("没有订阅者时不排定时器，别人仍订阅的主题照常发出", () => {
     vi.useFakeTimers();
     publishChange(projectTopic("prj_feed0008"));

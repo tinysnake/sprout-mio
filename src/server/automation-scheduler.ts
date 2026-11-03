@@ -99,14 +99,14 @@ export function createAutomationScheduler(
           });
         const claimedGeneration = generation;
         const live = () => started && generation === claimedGeneration;
-        const work =
-          (evaluation.source === "message"
+        const work = (
+          evaluation.source === "message"
             ? evaluateMessageClaim(evaluation, evaluator, ctx, live, time.now)
             : evaluateClaim(evaluation, evaluator, ctx, live, time.now)
-          )
-            .then(() => {
-              if (live()) bindPendingDeliveries(time.now());
-            })
+        )
+          .then(() => {
+            if (live()) bindPendingDeliveries(time.now());
+          })
           .catch(report)
           .finally(() => {
             inflight.delete(work);
