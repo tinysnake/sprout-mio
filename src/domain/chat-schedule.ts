@@ -548,7 +548,7 @@ export function evaluationCurrent(evaluation: Evaluation) {
 }
 /** Claim and epoch snapshot are one writer transaction. A lease never resets the attempt budget. */
 export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefined {
-  return sqlite
+  const claimed = sqlite
     .transaction(() => {
       const due = one<Schedule>(
         "SELECT * FROM chat_schedule WHERE next_due_at IS NOT NULL AND next_due_at<=? ORDER BY next_due_at,chat_id LIMIT 1",
@@ -655,6 +655,10 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
       return one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", evaluation.id);
     })
     .immediate();
+  // The claim is the moment the page has something new to show: publish before the provider
+  // call so "checking" appears at once instead of arriving together with the verdict.
+  if (claimed) signalScheduleChange(claimed.chat_id);
+  return claimed;
 }
 export function retryDelay(attempt: number) {
   return POLICY.retryDelaySeconds[attempt - 1] === undefined

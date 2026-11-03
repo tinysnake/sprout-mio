@@ -3,7 +3,6 @@ import type { AgentRunStatus, ChatRunState } from "../../contracts/agent-run";
 import type { ChatKind, Message } from "../../contracts/chat";
 import type { AppResult } from "../../contracts/result";
 import type { ChatAutomationData } from "../../domain/chat-automation";
-import { ContinuationActivity } from "./continuation-activity";
 import { ContinuationStatus } from "./continuation-status";
 import { RunActivityGroup } from "./run-activity";
 
@@ -94,15 +93,12 @@ export function RunStatusPanel({
   const restoreBody = undelivered[undelivered.length - 1];
   const showRestore = Boolean(onRestoreDraft && restoreBody);
   const failureName = run ? agentNames?.get(run.instanceId) : undefined;
-  // 判定过程与 run 记录同形并列：没有它，页面只剩一行「正在检查」。
-  const rounds = automation?.ok ? automation.data.view.recentRounds : undefined;
 
   if (!showStatus && pending.length === 0 && !showRestore && !automation) return null;
 
   return (
     <section data-testid="run-status" className="mt-6 space-y-2 pl-10.5 max-desktop:pl-9.75">
       <ContinuationStatus automation={automation} />
-      <ContinuationActivity rounds={rounds} />
       <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
         {showStatus && (
           <span className="whitespace-nowrap">
