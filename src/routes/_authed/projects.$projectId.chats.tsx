@@ -171,9 +171,6 @@ function ChatsLayout() {
                   <ResultError error={loader.infoHub.error} testId="chat-activity-error" />
                 </div>
               )}
-              <div className="shrink-0 px-3 pb-2">
-                <InfoHubPollingStatus />
-              </div>
               {loader.chats.ok && (
                 <ChatListLive
                   projectId={projectId}
@@ -185,6 +182,13 @@ function ChatsLayout() {
                   infoHub={loader.infoHub}
                 />
               )}
+              {/* 轮询提示固定在列表底部并常驻一行高度：网络波动时列表内容不抖动。 */}
+              <div
+                data-testid="chat-list-polling-footer"
+                className="flex h-7 shrink-0 items-center overflow-hidden px-4 [&:not(:empty)]:border-t [&:not(:empty)]:border-border"
+              >
+                <InfoHubPollingStatus />
+              </div>
             </>
           }
           chat={<Outlet />}
