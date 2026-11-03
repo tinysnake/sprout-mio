@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { CHANGE_SAFETY_POLL_MS, chatTopic, projectTopic } from "../../contracts/change-stream";
 import { INFO_HUB_POLLING } from "../../contracts/info-hub";
+import { changeSource, onChangeStreamState, type ChangeSource } from "../../lib/change-stream";
 import {
   infoHubRefreshInputSchema,
   infoHubRefreshResultSchema,
@@ -41,6 +43,7 @@ export function createInfoHubPolling({
   onResult,
   onState,
   environment,
+  changes,
   random = Math.random,
   now = Date.now,
 }: {
@@ -49,6 +52,8 @@ export function createInfoHubPolling({
   onResult: (result: InfoHubRefreshResult) => void;
   onState?: (state: PollingState) => void;
   environment: Environment;
+  /** 有推送时用安全间隔读一次 revision，没有推送退回轮询节奏。 */
+  changes?: ChangeSource;
   random?: () => number;
   now?: () => number;
 }) {
@@ -64,6 +69,7 @@ export function createInfoHubPolling({
   let lastResumeAt: number | null = null;
   let failures = 0;
   let terminal = false;
+  let pushPending = false;
   const { document, window, navigator } = environment;
   const paused = () =>
     document.visibilityState !== "visible" ? "hidden" : !navigator.onLine ? "offline" : null;
@@ -78,8 +84,14 @@ export function createInfoHubPolling({
       if (pause) onState?.(pause);
       return;
     }
+    // 推送可用时只保底读一次：漏掉的事件由 revision 比较自己纠回来。
+    const interval = changes?.connected()
+      ? scope.query.view === "project"
+        ? CHANGE_SAFETY_POLL_MS.project
+        : CHANGE_SAFETY_POLL_MS.chat
+      : INFO_HUB_POLLING.intervalMs;
     const base = Math.min(
-      INFO_HUB_POLLING.intervalMs * INFO_HUB_POLLING.backoffMultiplier ** Math.max(0, failures - 1),
+      interval * INFO_HUB_POLLING.backoffMultiplier ** Math.max(0, failures - 1),
       INFO_HUB_POLLING.maxBackoffMs,
     );
     const delay = Math.min(
@@ -94,7 +106,7 @@ export function createInfoHubPolling({
   async function request() {
     clearTimer();
     const pause = paused();
-    if (stopped || pause || inFlight) {
+    if (stopped || terminal || pause || inFlight) {
       if (pause) onState?.(pause);
       return;
     }
@@ -134,6 +146,7 @@ export function createInfoHubPolling({
       if (!stopped) {
         if (cause instanceof InfoHubAccessError) {
           terminal = true;
+          pushPending = false;
           onState?.(cause.code);
         } else {
           failures += 1;
@@ -143,11 +156,26 @@ export function createInfoHubPolling({
     } finally {
       clearTimeout(timeout);
       inFlight = undefined;
-      if (!stopped) {
+      if (!stopped && !terminal) {
         if (resumePending && !paused()) void request();
-        else schedule();
+        else if (pushPending) {
+          pushPending = false;
+          if (paused()) schedule();
+          else void request();
+        } else schedule();
       }
     }
+  }
+
+  /** 推送到达：立刻读一次 revision；正在读就记下，等这一轮结束再读。 */
+  function wake() {
+    if (stopped || terminal || paused()) return;
+    if (inFlight) {
+      pushPending = true;
+      return;
+    }
+    clearTimer();
+    void request();
   }
 
   function resume() {
@@ -171,9 +199,20 @@ export function createInfoHubPolling({
   document.addEventListener("visibilitychange", resume);
   window.addEventListener("online", resume);
   window.addEventListener("offline", resume);
+  const unsubscribe = changes?.subscribe(wake);
+  // 断开后立刻退回轮询节奏，不让已经排上的安全间隔继续生效。
+  const unsubscribeState = changes
+    ? onChangeStreamState(() => {
+        if (stopped || inFlight) return;
+        clearTimer();
+        schedule();
+      })
+    : undefined;
   void request();
   return () => {
     stopped = true;
+    unsubscribe?.();
+    unsubscribeState?.();
     clearTimer();
     inFlight?.abort();
     document.removeEventListener("visibilitychange", resume);
@@ -195,16 +234,23 @@ export function useInfoHubPolling({
   const callbacks = useRef({ refresh, onResult });
   callbacks.current = { refresh, onResult };
   const scope = JSON.stringify(input);
-  useEffect(
-    () =>
-      createInfoHubPolling({
-        input: infoHubRefreshInputSchema.parse(JSON.parse(scope)),
-        refresh: (value, signal) => callbacks.current.refresh(value, signal),
-        onResult: (result) => callbacks.current.onResult(result),
-        onState: setState,
-        environment: { document, window, navigator },
-      }),
-    [scope],
-  );
+  useEffect(() => {
+    const parsed = infoHubRefreshInputSchema.parse(JSON.parse(scope));
+    const topics =
+      parsed.query.view === "project"
+        ? [projectTopic(parsed.projectId)]
+        : [
+            ...(parsed.query.view === "chat" ? [chatTopic(parsed.query.chatId)] : []),
+            projectTopic(parsed.projectId),
+          ];
+    return createInfoHubPolling({
+      input: parsed,
+      refresh: (value, signal) => callbacks.current.refresh(value, signal),
+      onResult: (result) => callbacks.current.onResult(result),
+      onState: setState,
+      changes: changeSource(topics),
+      environment: { document, window, navigator },
+    });
+  }, [scope]);
   return state;
 }

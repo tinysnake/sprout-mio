@@ -12,6 +12,7 @@ import {
 } from "../contracts/worker";
 import type { WorkerExchangeResponse, WORKER_ERROR_CODES } from "../contracts/worker";
 import type { WorkerSession } from "../contracts/worker-session";
+import { publishMachineChange } from "../domain/change-feed";
 import { db, sqlite } from "../db";
 import {
   directoryObservation,
@@ -162,6 +163,7 @@ export function openWorker(input: z.infer<typeof workerOpenInput>, ctx: WorkerCo
             seq: 0,
           })
           .run();
+        publishMachineChange(input.machineId);
         session = {
           machineId: input.machineId,
           generation,
@@ -312,6 +314,8 @@ function normalExchange(input: NormalExchange, ctx: WorkerContext): ExchangeData
       ),
     )
     .run();
+  // 首次 exchange 把连接从 connecting 推进到 online，这是页面上可见的状态变化；纯心跳不发布。
+  if (row.seq === 0 && seq > 0) publishMachineChange(session.machineId);
   const data: ExchangeData = {
     mode: "normal",
     session,
@@ -409,6 +413,7 @@ export function closeWorker(input: z.infer<typeof workerCloseInput>, ctx: Worker
             ),
           )
           .run();
+      publishMachineChange(row.machineId);
       return { closed: true as const };
     })
     .immediate();

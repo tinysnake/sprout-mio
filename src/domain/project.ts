@@ -11,6 +11,7 @@ import type { CreateProjectInput, Project, UpdateProjectInput } from "../contrac
 import { db, sqlite } from "../db";
 import { diagnosticEvent, project } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, readRunScope } from "./access";
+import { publishProjectChange } from "./change-feed";
 import { ensureProjectChannel } from "./channel";
 
 /**
@@ -104,6 +105,7 @@ export function createProject(
         data: JSON.stringify({ name: created.name }),
       })
       .run();
+    publishProjectChange(created.id);
     return created;
   })();
 }
@@ -146,6 +148,7 @@ export function updateProject(
         data: JSON.stringify({ fields: Object.keys(input) }),
       })
       .run();
+    publishProjectChange(id);
     return toProject(row);
   })();
 }
@@ -225,6 +228,7 @@ export function updateProjectWakePolicy(
         JSON.stringify(result),
         now.getTime(),
       );
+      publishProjectChange(input.projectId);
       return result;
     })
     .immediate();
