@@ -372,7 +372,7 @@ function claimMessageEvaluation(evaluation: Evaluation, ctx: SchedulerContext): 
 }
 
 export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefined {
-  return sqlite
+  const claimed = sqlite
     .transaction(() => {
       const now = ctx.now.getTime();
       // A message retry can outlive its wake row after a cancel/reschedule race. Requeue the
@@ -526,6 +526,9 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
       );
     })
     .immediate();
+  // Same reason as the task claim: a human message deserves an immediate "checking" state.
+  if (claimed) signalScheduleChange(claimed.chat_id);
+  return claimed;
 }
 
 export async function evaluateMessageClaim(

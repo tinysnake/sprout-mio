@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Loader2, X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import type { ChatAutomationRoundView } from "../../contracts/chat-automation";
 import { Icon } from "../ui/icon";
 import {
@@ -97,88 +97,59 @@ function LineRow({ line }: { line: Line }) {
       : line.durationMs === null
         ? ""
         : automationDuration(line.durationMs);
+  // 会话详情只有一列窄宽：分两行写，才不会被截成「1.7k tok · 8.4 …」。
   return (
-    <li className="flex min-w-0 items-baseline gap-2 py-0.5 text-[11px] leading-4">
-      <StatusGlyph status={line.status} />
-      <span className="shrink-0 text-foreground/85">{line.label}</span>
-      {line.detail && (
-        <span
-          className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
-          title={line.detail}
-        >
-          {line.detail}
+    <li className="py-1 text-[11px] leading-4">
+      <div className="flex items-baseline gap-2">
+        <StatusGlyph status={line.status} />
+        <span className="min-w-0 flex-1 truncate text-foreground/85">{line.label}</span>
+        <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground/70">
+          {timeOf(line.startedAt)}
         </span>
-      )}
-      <span className="ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground">
-        {line.tokens !== null && `${automationTokens(line.tokens)} tok · `}
-        {duration}
-      </span>
-      <span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground/70">
-        {timeOf(line.startedAt)}
-      </span>
+      </div>
+      <div className="mt-0.5 flex items-baseline gap-2 pl-5 text-[10px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate" title={line.detail ?? undefined}>
+          {line.detail ?? ""}
+        </span>
+        <span className="shrink-0 whitespace-nowrap font-mono">
+          {line.tokens !== null && `${automationTokens(line.tokens)} tok`}
+          {line.tokens !== null && duration !== "" && " · "}
+          {duration}
+        </span>
+      </div>
     </li>
   );
 }
 
 /**
- * 自动接续的检查记录组：与 run 工作记录同形，默认收起只露最后一次检查。
+ * 自动接续的检查记录：每轮几次尝试各一行，新的在前。
  * 判定过程不改消息也不改 run，没有这份记录，页面只能显示「正在检查」四个字。
  */
-export function ContinuationActivity({
+export function ContinuationAttempts({
   rounds,
 }: {
   rounds: readonly ChatAutomationRoundView[] | undefined;
 }) {
   const lines = rounds ? linesOf(rounds) : [];
-  const last = lines[0];
-  if (!last) return null;
+  if (!lines.length) return null;
 
   return (
-    <details
-      data-testid="continuation-activity"
-      className="group rounded-lg border border-border bg-card text-[11px]"
-    >
-      <summary
-        data-testid="continuation-activity-last"
-        className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 [&::-webkit-details-marker]:hidden"
+    <div data-testid="continuation-activity" className="mt-3 border-t border-border pt-2">
+      <p className="text-[11px] text-muted-foreground">
+        最近{" "}
+        <span data-testid="continuation-activity-count" className="font-mono">
+          {rounds?.length ?? 0}
+        </span>{" "}
+        轮检查
+      </p>
+      <ol
+        data-testid="continuation-activity-entries"
+        className="mt-1 max-h-56 list-none space-y-0 overflow-y-auto p-0"
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2 group-open:hidden">
-          <StatusGlyph status={last.status} />
-          <span className="shrink-0 text-muted-foreground">{last.label}</span>
-          {last.detail && (
-            <span
-              className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
-              title={last.detail}
-            >
-              {last.detail}
-            </span>
-          )}
-        </span>
-        <span className="hidden min-w-0 flex-1 items-center gap-2 text-muted-foreground group-open:flex">
-          自动检查记录
-        </span>
-        <span
-          data-testid="continuation-activity-count"
-          className="ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] text-muted-foreground"
-        >
-          {lines.length} 次
-        </span>
-        <Icon
-          as={ChevronDown}
-          size={13}
-          className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
-        />
-      </summary>
-      <div className="border-t border-border px-3 py-2">
-        <ol
-          data-testid="continuation-activity-entries"
-          className="max-h-56 list-none space-y-0 overflow-y-auto p-0"
-        >
-          {lines.map((line) => (
-            <LineRow key={line.id} line={line} />
-          ))}
-        </ol>
-      </div>
-    </details>
+        {lines.map((line) => (
+          <LineRow key={line.id} line={line} />
+        ))}
+      </ol>
+    </div>
   );
 }

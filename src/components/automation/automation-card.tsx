@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ChatAutomationCommand, ChatAutomationView } from "../../contracts/chat-automation";
 import { newId } from "../../contracts/ids";
 import { Button } from "../ui/button";
+import { ContinuationAttempts } from "../chat/continuation-activity";
 import type { AutomationAction, AutomationDenials, AutomationSubmit } from "./automation-page-data";
 import {
   AUTOMATION_DECISIONS as decisions,
@@ -333,6 +334,7 @@ export function AutomationCard({
             </>
           )}
         </dl>
+        <ContinuationAttempts rounds={view.recentRounds} />
       </details>
     </section>
   );
