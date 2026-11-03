@@ -52,7 +52,8 @@ export function MessageComposer({
   runStatusLabel: string;
   stopping: boolean;
   stopError: AppError | null;
-  onStop: () => void;
+  /** 群组里停止下沉到每个 Agent 的行内按钮，输入区不再提供总停止。 */
+  onStop?: () => void;
   /** 未投递输入恢复到输入框后需要把焦点放回这里。 */
   inputRef?: Ref<HTMLTextAreaElement>;
 }) {
@@ -226,7 +227,7 @@ export function MessageComposer({
               : `${agentName} · ${runStatusLabel === "已停止" ? "已停止，可开始新一轮" : runStatusLabel || "运行状态暂不可用"}`}
           </span>
           <div className="flex items-center gap-2">
-            {runActive && (
+            {runActive && onStop && (
               <Button
                 type="button"
                 variant="secondary"

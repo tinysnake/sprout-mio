@@ -30,7 +30,7 @@ runner 的 `deliverSteer` 先检查 `session.isStreaming`，再调用 `session.s
 
 ## UI
 
-对话页发送区上方新增运行状态面板（`src/components/chat/run-status.tsx`），数据来自 `getChatRunStateFn`。宿主已启用且尚无 run 时属于空闲，不渲染状态行；其余情况把状态、未投递条数与恢复入口合并为一行（窄屏自然换行），失败块单独显示：
+对话页发送区上方新增运行状态面板（`src/components/chat/run-status.tsx`），数据来自 `getChatRunStateFn`。宿主已启用且尚无 run 时属于空闲，不渲染状态行；其余情况把状态、未投递条数与恢复入口合并为一行（窄屏自然换行），失败块单独显示。DM 仍是一行总状态；群组与频道按活动 run 的 `instanceId` 分行，每行显示分身名、状态、该 run 的工作记录与独立停止入口，停止只中止对应 run，不再只能停 `latest`：
 
 | 状态         | 文案           | 判定                                       |
 | ------------ | -------------- | ------------------------------------------ |

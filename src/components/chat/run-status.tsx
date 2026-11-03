@@ -1,6 +1,6 @@
 import { cn } from "cn";
 import type { AgentRunStatus, ChatRunState } from "../../contracts/agent-run";
-import type { Message } from "../../contracts/chat";
+import type { ChatKind, Message } from "../../contracts/chat";
 import { RunActivityGroup } from "./run-activity";
 
 export const RUN_STATUS_LABELS: Record<string, string> = {
@@ -57,23 +57,36 @@ export function RunStatusPanel({
   state,
   messages,
   onRestoreDraft,
+  chatKind,
+  agentNames,
+  onStopRun,
+  stoppingRunId,
 }: {
   state: ChatRunState;
   messages: Message[];
   /** 提供时，未投递的输入可以放回输入框重发。 */
   onRestoreDraft?: (body: string) => void;
+  /** 群组与频道按 run 的所属分身分行；DM 保持单行。 */
+  chatKind?: ChatKind;
+  /** instanceId → 分身名，只用于展示，不参与 run 状态判断。 */
+  agentNames?: ReadonlyMap<string, string>;
+  /** 提供时，每个活动 run 可以单独停止。 */
+  onStopRun?: (runId: string) => void;
+  stoppingRunId?: string | null;
 }) {
   const run = state.latest;
+  const group = chatKind !== undefined && chatKind !== "dm";
+  const active = state.active;
   const pending = state.inputs.filter((input) => input.disposition === "pending");
   const undelivered = pending
     .map((input) => messages.find((message) => message.id === input.messageId)?.body)
     .filter((body): body is string => Boolean(body));
   // 宿主已启用且还没有 run 时属于空闲，不占一行；其余状态与未投递事实同排一行。
-  const showStatus = !state.enabled || Boolean(run);
-  const activity =
-    state.active.find((active) => active.id === run?.id)?.activity ?? state.active[0]?.activity;
+  const showStatus = !state.enabled || Boolean(run) || active.length > 0;
+  const activity = active.find((row) => row.id === run?.id)?.activity ?? active[0]?.activity;
   const restoreBody = undelivered[undelivered.length - 1];
   const showRestore = Boolean(onRestoreDraft && restoreBody);
+  const failureName = run ? agentNames?.get(run.instanceId) : undefined;
 
   if (!showStatus && pending.length === 0 && !showRestore) return null;
 
@@ -82,8 +95,14 @@ export function RunStatusPanel({
       <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
         {showStatus && (
           <span className="whitespace-nowrap">
-            <span className="text-muted-foreground">分身运行状态：</span>
-            <span data-testid="pi-host-status">{runStatusLabel(state)}</span>
+            <span className="text-muted-foreground">
+              {group ? "Agent 运行状态：" : "分身运行状态："}
+            </span>
+            <span data-testid="pi-host-status">
+              {group && active.length > 0
+                ? `${active.length} 个 Agent 进行中`
+                : runStatusLabel(state)}
+            </span>
           </span>
         )}
         {pending.length > 0 && (
@@ -100,14 +119,62 @@ export function RunStatusPanel({
           </button>
         )}
       </p>
-      {activity && <RunActivityGroup activity={activity} />}
+      {group && active.length > 0 ? (
+        <ul data-testid="agent-run-list" className="space-y-2">
+          {active.map((row) => {
+            const name = agentNames?.get(row.instanceId) ?? "Agent";
+            const stopping = stoppingRunId === row.id;
+            return (
+              <li
+                key={row.id}
+                data-testid="agent-run-row"
+                className="border-b border-border/60 pb-2 last:border-0 last:pb-0"
+              >
+                <div className="flex items-center gap-2 text-[11px]">
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-secondary text-[10px] text-foreground">
+                    {name.slice(0, 1)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{name}</span>
+                  <span className={cn("shrink-0 text-[10px]", STATUS_TONE[row.status])}>
+                    {RUN_STATUS_LABELS[row.status] ?? row.status}
+                  </span>
+                  {onStopRun && (
+                    <button
+                      type="button"
+                      data-testid="agent-run-stop"
+                      disabled={Boolean(stoppingRunId)}
+                      aria-label={`停止 ${name} 的 run`}
+                      onClick={() => onStopRun(row.id)}
+                      className="shrink-0 rounded-control border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    >
+                      {stopping ? "停止中…" : "停止"}
+                    </button>
+                  )}
+                </div>
+                {row.activity ? (
+                  <div className="mt-1">
+                    <RunActivityGroup activity={row.activity} />
+                  </div>
+                ) : (
+                  <p className="mt-1 pl-7 text-[11px] text-muted-foreground">等待工具调用</p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        activity && <RunActivityGroup activity={activity} />
+      )}
       {run?.status === "failed" && (
         <div
           role="alert"
           data-error-code={run.errorCode ?? "run_failed"}
           className="rounded-lg border border-status-failed/35 bg-destructive-soft px-3.5 py-3 text-[11px] text-status-failed"
         >
-          <p data-testid="run-failure">{run.errorMessage ?? "未知失败原因"}</p>
+          <p data-testid="run-failure">
+            {group && failureName ? `${failureName}：` : ""}
+            {run.errorMessage ?? "未知失败原因"}
+          </p>
           {run.errorCode && (
             <p data-testid="run-failure-code" className="mt-1 font-mono text-[11px] opacity-80">
               {run.errorCode}

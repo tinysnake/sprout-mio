@@ -30,6 +30,7 @@ function stateWith(entries?: RunActivity): ChatRunState {
     active: [
       {
         id: "run_11111111",
+        instanceId: "ins_11111111",
         status: "running",
         ...(entries ? { activity: entries } : {}),
       },
@@ -75,5 +76,68 @@ describe("运行中工作记录组", () => {
       createElement(RunStatusPanel, { state: stateWith(), messages: [] }),
     );
     expect(empty).not.toContain('data-testid="run-activity"');
+  });
+});
+
+describe("群组按 Agent 展示运行状态", () => {
+  const first = stateWith(activity).latest!;
+  const second = { ...first, id: "run_22222222", instanceId: "ins_22222222" };
+  const group: ChatRunState = {
+    enabled: true,
+    active: [
+      { id: first.id, instanceId: first.instanceId, status: "running", activity },
+      { id: second.id, instanceId: second.instanceId, status: "queued" },
+    ],
+    latest: second,
+    inputs: [],
+  };
+  const names = new Map([
+    [first.instanceId, "阿尔法"],
+    [second.instanceId, "贝塔"],
+  ]);
+  const html = renderToStaticMarkup(
+    createElement(RunStatusPanel, {
+      state: group,
+      messages: [],
+      chatKind: "group",
+      agentNames: names,
+      onStopRun: () => undefined,
+    }),
+  );
+
+  it("每个活动 run 一行，带 Agent 名、状态和独立停止按钮", () => {
+    expect(html.match(/data-testid="agent-run-row"/g)).toHaveLength(2);
+    expect(html).toContain("阿尔法");
+    expect(html).toContain("贝塔");
+    expect(html).toContain("运行中");
+    expect(html).toContain("排队中");
+    expect(html.match(/data-testid="agent-run-stop"/g)).toHaveLength(2);
+    expect(html).toContain("2 个 Agent 进行中");
+  });
+
+  it("活动记录挂在所属 Agent 行内，没有活动时明确等待", () => {
+    expect(html).toContain("pnpm test --filter case-5");
+    expect(html).toContain("等待工具调用");
+    expect(html.match(/data-testid="run-activity"/g)).toHaveLength(1);
+  });
+
+  it("没有逐 run 停止回调时不渲染停止按钮", () => {
+    const readonly = renderToStaticMarkup(
+      createElement(RunStatusPanel, {
+        state: group,
+        messages: [],
+        chatKind: "group",
+        agentNames: names,
+      }),
+    );
+    expect(readonly).not.toContain('data-testid="agent-run-stop"');
+  });
+
+  it("DM 仍保持单行状态，不渲染 Agent 行", () => {
+    const dm = renderToStaticMarkup(
+      createElement(RunStatusPanel, { state: stateWith(activity), messages: [], chatKind: "dm" }),
+    );
+    expect(dm).not.toContain('data-testid="agent-run-row"');
+    expect(dm).toContain("分身运行状态");
   });
 });

@@ -10,6 +10,7 @@
 - `persona-next-turn` 修改 Profile 后，后续运行使用新人设。
 - `run-lifecycle` 查看 running、完成、失败和中止的结果，运行中发送消息的处理遵循 Turn 契约。
 - `run-activity` 运行中把一次 run 的非 assistant 工作记录归为一组：默认收起只露出最后一条，展开可看本轮全部工具调用摘要；活动与状态分开，不改写 running/completed/failed 等状态。
+- `group-run-status` 群组与频道里按 Agent 分行展示活动 run：每行是分身名、状态和独立停止按钮，活动记录挂在所属行内；DM 保持单行状态与输入区总停止。页头徽标跟随仍在运行的 run，不因后创建的 run 先结束而误报完成。
 - `repo-entry` 需要仓库的运行使用正确工作目录，失败时显示可追踪错误。
 - `chat-access` 深链、缺失资源和跨用户访问边界。
 

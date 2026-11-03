@@ -156,9 +156,10 @@ export type RunActivity = {
   updatedAt: string;
 };
 
-/** 活动 run 回答「有没有在跑、跑到哪个状态」，并按需带上即时活动。 */
+/** 活动 run 回答「哪个分身在跑、跑到哪个状态」，并按需带上即时活动。 */
 export type ChatRunActiveRun = {
   id: string;
+  instanceId: string;
   status: AgentRunStatus;
   activity?: RunActivity;
 };

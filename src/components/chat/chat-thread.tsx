@@ -41,6 +41,9 @@ export function ChatThread({
   onStop,
   stopPending,
   stopError,
+  onStopRun,
+  stoppingRunId,
+  runAgentNames,
   onRestoreDraft,
   inputRef,
   titleEditor,
@@ -70,9 +73,14 @@ export function ChatThread({
   sendPending: boolean;
   sendError: AppError | null;
   fieldErrors: FieldErrors;
-  onStop: () => void;
+  onStop?: () => void;
   stopPending: boolean;
   stopError: AppError | null;
+  /** 群组里按行停止具体 run；DM 继续用输入区的全局停止。 */
+  onStopRun?: (runId: string) => void;
+  stoppingRunId?: string | null;
+  /** instanceId → 分身名，群组运行状态分行时使用。 */
+  runAgentNames?: ReadonlyMap<string, string>;
   onRestoreDraft: (body: string) => void;
   inputRef?: Ref<HTMLTextAreaElement>;
   /** 重命名入口由容器注入：正式路由接 server function，演示接本地回调。 */
@@ -92,6 +100,17 @@ export function ChatThread({
   const jobTitle = profile && profile.ok ? (profile.data.jobTitle ?? "") : "";
   const active = runState.ok ? isRunActive(runState.data) : false;
   const latestRun = runState.ok ? (runState.data.latest ?? undefined) : undefined;
+  // 多个 Agent 同时活动时，页头徽标跟随仍在跑的那条，而不是最后创建的 run。
+  const activeStatus = runState.ok
+    ? (runState.data.active.find((row) => row.status === "running")?.status ??
+      runState.data.active[0]?.status)
+    : undefined;
+  const effectiveKind = kind ?? chat.kind;
+  const composerStatusLabel = runState.ok
+    ? effectiveKind !== "dm" && runState.data.active.length > 0
+      ? `${runState.data.active.length} 个 Agent 进行中`
+      : runStatusLabel(runState.data)
+    : "";
   const first = useRef(true);
 
   useEffect(() => {
@@ -109,9 +128,9 @@ export function ChatThread({
   const title = displayTitle ?? chatDisplayName(chat, agentName);
   const subline =
     subtitle ??
-    (kind === "public_channel"
+    (effectiveKind === "public_channel"
       ? "Public Channel"
-      : kind === "group"
+      : effectiveKind === "group"
         ? "Group"
         : `DM · 你与${agentName}`);
 
@@ -128,7 +147,7 @@ export function ChatThread({
           </span>
           <p className="mt-1 flex items-center gap-1.5 text-[10px] whitespace-nowrap text-muted-foreground">
             <span>{subline}</span>
-            {kind === "dm" && jobTitle && (
+            {effectiveKind === "dm" && jobTitle && (
               <>
                 <span className="max-desktop:hidden">·</span>
                 <span className="max-desktop:hidden">{jobTitle}</span>
@@ -137,7 +156,7 @@ export function ChatThread({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {latestRun && <RunStatusBadge status={latestRun.status} />}
+          {latestRun && <RunStatusBadge status={activeStatus ?? latestRun.status} />}
           <Button
             type="button"
             variant="ghost"
@@ -194,6 +213,10 @@ export function ChatThread({
               state={runState.data}
               messages={messages.data}
               onRestoreDraft={onRestoreDraft}
+              chatKind={effectiveKind}
+              agentNames={runAgentNames}
+              onStopRun={onStopRun}
+              stoppingRunId={stoppingRunId}
             />
           </>
         )}
@@ -231,7 +254,7 @@ export function ChatThread({
           error={sendError}
           fieldErrors={fieldErrors}
           runActive={active}
-          runStatusLabel={runState.ok ? runStatusLabel(runState.data) : ""}
+          runStatusLabel={composerStatusLabel}
           stopping={stopPending}
           stopError={stopError}
           onStop={onStop}

@@ -57,7 +57,7 @@ export function ChatPane({
   const [sendOutcome, setSendOutcome] = useState<ActionOutcome>(null);
   const [stopOutcome, setStopOutcome] = useState<ActionOutcome>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [stopPending, setStopPending] = useState(false);
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
   const [stopError, setStopError] = useState<AppError | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   // 导航离开这条 Chat 后，旧请求的结果不能再写回任何状态或触发刷新。
@@ -107,6 +107,17 @@ export function ChatPane({
     senderNames.get(
       senderKey("agent", session.kind === "dm" ? session.instance.agentProfileId : ""),
     ) ?? displayTitle;
+  const runAgentNames = useMemo(() => {
+    const names = new Map<string, string>();
+    if (session.kind === "dm") {
+      names.set(session.instance.id, agentName);
+    } else {
+      for (const instance of session.instances) {
+        names.set(instance.instanceId, instance.profileName);
+      }
+    }
+    return names;
+  }, [session, agentName]);
 
   async function send() {
     if (sendPending) return;
@@ -138,18 +149,18 @@ export function ChatPane({
     }
   }
 
-  async function stop() {
-    const run = runState.ok ? (runState.data.latest ?? undefined) : undefined;
-    if (!run || stopPending) return;
+  async function stop(runId?: string) {
+    const targetId = runId ?? (runState.ok ? (runState.data.latest?.id ?? undefined) : undefined);
+    if (!targetId || stoppingRunId) return;
     if (isOffline()) {
       setStopOutcome("failure");
       return;
     }
     setStopOutcome("processing");
-    setStopPending(true);
+    setStoppingRunId(targetId);
     setStopError(null);
     try {
-      const result = await abortAgentRunFn({ data: { runId: run.id } });
+      const result = await abortAgentRunFn({ data: { runId: targetId } });
       if (!alive.current) return;
       if (!result.ok) {
         setStopOutcome("failure");
@@ -162,7 +173,7 @@ export function ChatPane({
       if (!alive.current) return;
       setStopOutcome("unknown");
     } finally {
-      if (alive.current) setStopPending(false);
+      if (alive.current) setStoppingRunId(null);
     }
   }
 
@@ -221,9 +232,12 @@ export function ChatPane({
         sendPending={sendPending}
         sendError={sendError}
         fieldErrors={fieldErrors}
-        onStop={() => void stop()}
-        stopPending={stopPending}
+        onStop={session.kind === "dm" ? () => void stop() : undefined}
+        stopPending={stoppingRunId !== null}
         stopError={stopError}
+        onStopRun={(runId) => void stop(runId)}
+        stoppingRunId={stoppingRunId}
+        runAgentNames={runAgentNames}
         onRestoreDraft={(body) => {
           setDraft(body);
           input.current?.focus();

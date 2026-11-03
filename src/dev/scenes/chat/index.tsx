@@ -223,6 +223,50 @@ const scenarioActivity: RunActivity = {
   updatedAt: "2026-06-18T02:28:20.000Z",
 };
 
+const scenarioSecondRun: AgentRun = {
+  ...scenarioRun,
+  id: "run_88888888",
+  instanceId: "ins_demo_b",
+  queuedAt: "2026-06-18T02:28:05.000Z",
+  startedAt: "2026-06-18T02:28:06.000Z",
+  sessionId: "ses_demo_b",
+};
+
+const scenarioSecondActivity: RunActivity = {
+  current: {
+    id: "call_demo_b1",
+    kind: "search",
+    label: "搜索内容",
+    detail: "runStatusLabel",
+    toolName: "ffgrep",
+    startedAt: "2026-06-18T02:28:24.000Z",
+    status: "running",
+  },
+  entries: [
+    {
+      id: "call_demo_b1",
+      kind: "search",
+      label: "搜索内容",
+      detail: "runStatusLabel",
+      toolName: "ffgrep",
+      startedAt: "2026-06-18T02:28:24.000Z",
+      status: "running",
+    },
+    {
+      id: "call_demo_b2",
+      kind: "file",
+      label: "读取文件",
+      detail: "src/components/chat/chat-thread.tsx",
+      toolName: "read",
+      startedAt: "2026-06-18T02:28:18.000Z",
+      finishedAt: "2026-06-18T02:28:20.000Z",
+      status: "done",
+      durationMs: 2000,
+    },
+  ],
+  updatedAt: "2026-06-18T02:28:24.000Z",
+};
+
 const scenarioRunState: Record<string, ChatRunState> = {
   idle: { enabled: true, active: [], latest: null, inputs: [] },
   running: {
@@ -230,6 +274,15 @@ const scenarioRunState: Record<string, ChatRunState> = {
     active: [{ ...scenarioRun, activity: scenarioActivity }],
     latest: scenarioRun,
     inputs: scenarioRunInputs,
+  },
+  group: {
+    enabled: true,
+    active: [
+      { ...scenarioRun, activity: scenarioActivity },
+      { ...scenarioSecondRun, activity: scenarioSecondActivity },
+    ],
+    latest: scenarioSecondRun,
+    inputs: [],
   },
   failed: {
     enabled: true,
@@ -464,11 +517,15 @@ function Frame({ title, note, children }: { title: string; note: string; childre
 
 /** 消息区与输入区的演示：状态切换只改本地样例，不调用任何服务。 */
 function MessagesScene() {
-  const [scene, setScene] = useState<"idle" | "running" | "failed" | "disabled">("running");
+  const [scene, setScene] = useState<"idle" | "running" | "group" | "failed" | "disabled">(
+    "running",
+  );
   const [draft, setDraft] = useState("");
   const [sent, setSent] = useState<Message[]>([]);
   const [stoppedAt, setStoppedAt] = useState<string | null>(null);
+  const [stoppedRuns, setStoppedRuns] = useState<string[]>([]);
   const visibleMessages = [...messages, ...sent];
+  const base = scenarioRunState[scene]!;
   const state: ChatRunState = stoppedAt
     ? {
         enabled: true,
@@ -476,14 +533,24 @@ function MessagesScene() {
         latest: { ...scenarioRun, status: "aborted", settledAt: stoppedAt },
         inputs: scenarioRunState.running!.inputs,
       }
-    : scenarioRunState[scene]!;
+    : {
+        ...base,
+        active: base.active.filter((row) => !stoppedRuns.includes(row.id)),
+      };
+  const agentNames =
+    scene === "group"
+      ? new Map([
+          [scenarioRun.instanceId, profiles[0]!.name],
+          [scenarioSecondRun.instanceId, profiles[1]!.name],
+        ])
+      : undefined;
   return (
     <Frame
       title="消息与输入"
       note="消息层级、追加语义、运行状态与未投递输入。全部为演示样例，提交只在本地回显。"
     >
       <div className="mb-5 flex flex-wrap gap-2">
-        {(["idle", "running", "failed", "disabled"] as const).map((value) => (
+        {(["idle", "running", "group", "failed", "disabled"] as const).map((value) => (
           <Button
             key={value}
             variant={scene === value ? "default" : "secondary"}
@@ -491,6 +558,7 @@ function MessagesScene() {
             onClick={() => {
               setScene(value);
               setStoppedAt(null);
+              setStoppedRuns([]);
             }}
           >
             {value}
@@ -503,7 +571,14 @@ function MessagesScene() {
           profile={{ ok: true, data: profiles[0]!, requestId: "req_demo" }}
           humanName={HUMAN}
         />
-        <RunStatusPanel state={state} messages={visibleMessages} onRestoreDraft={setDraft} />
+        <RunStatusPanel
+          state={state}
+          messages={visibleMessages}
+          onRestoreDraft={setDraft}
+          chatKind={scene === "group" ? "group" : "dm"}
+          agentNames={agentNames}
+          onStopRun={(runId) => setStoppedRuns((ids) => [...ids, runId])}
+        />
         <div className="mt-5">
           <MessageComposer
             agentName={profiles[0]!.name}
@@ -531,7 +606,7 @@ function MessagesScene() {
             runStatusLabel={runStatusLabel(state)}
             stopping={false}
             stopError={null}
-            onStop={() => setStoppedAt(new Date().toISOString())}
+            onStop={scene === "group" ? undefined : () => setStoppedAt(new Date().toISOString())}
           />
         </div>
         {sent.length > 0 && (
