@@ -5,11 +5,12 @@ import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
 import type { ChatSession, ChatResult, Message } from "../../contracts/chat";
 import type { ChatInfoView } from "../../contracts/info-hub";
+import type { ChatAutomationData } from "../../domain/chat-automation";
 import type { FieldErrors } from "../../contracts/project";
 import { isOffline } from "../../lib/connectivity";
 import { ActionOutcomeNotice } from "../ui/action-outcome";
 import type { ActionOutcome } from "../ui/action-outcome";
-import type { AppError } from "../../contracts/result";
+import type { AppError, AppResult } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
@@ -35,6 +36,7 @@ export function ChatPane({
   messages,
   info,
   runState,
+  automation,
   inspectorOpen,
   onToggleInspector,
   onChanged,
@@ -46,6 +48,7 @@ export function ChatPane({
   messages: ChatResult<Message[]>;
   info: ChatResult<ChatInfoView>;
   runState: AgentRunResult<ChatRunState>;
+  automation: AppResult<ChatAutomationData>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
   onChanged: () => void;
@@ -224,6 +227,7 @@ export function ChatPane({
         humanName={humanName}
         messages={messages}
         runState={runState}
+        automation={automation}
         inspectorOpen={inspectorOpen}
         onToggleInspector={onToggleInspector}
         draft={draft}

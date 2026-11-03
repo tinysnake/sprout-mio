@@ -6,11 +6,21 @@ import { AutomationCard } from "./automation-card";
 export function AutomationPanel({
   data,
   onCommand,
+  showStatus = true,
 }: {
   data?: AutomationPageData;
   onCommand?: AutomationSubmit;
+  showStatus?: boolean;
 }) {
-  if (data) return <AutomationCard view={data.view} denials={data.denials} onCommand={onCommand} />;
+  if (data)
+    return (
+      <AutomationCard
+        view={data.view}
+        denials={data.denials}
+        onCommand={onCommand}
+        showStatus={showStatus}
+      />
+    );
   return (
     <section
       data-testid="automation-unavailable"

@@ -3,49 +3,25 @@ import type { ChatAutomationCommand, ChatAutomationView } from "../../contracts/
 import { newId } from "../../contracts/ids";
 import { Button } from "../ui/button";
 import type { AutomationAction, AutomationDenials, AutomationSubmit } from "./automation-page-data";
-
-const modes = { enabled: "自动接续已启用", off: "自动接续已关闭" };
-const decisions = {
-  continue: "建议接续",
-  do_not_continue: "本轮无需接续",
-  indeterminate: "未能得出可靠结论",
-};
-const states = {
-  pending: "等待检查",
-  claimed: "正在检查",
-  retry_wait: "检查失败 · 等待重试",
-  decided: "已完成检查",
-  attention: "检查失败 · 需要处理",
-  stale: "检查已失效",
-  canceled: "检查已取消",
-};
-const time = (value: string | null) =>
-  value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "暂无记录";
-
-/** 内部失败码只说给人听的话，码本身留在 data-error-code 上给门禁与排查用。 */
-const failures: Record<string, string> = {
-  provider_timeout: "判定服务没有及时回应",
-  provider_unavailable: "判定服务当前不可用",
-  provider_auth_failed: "判定服务的凭据无效",
-  provider_invalid_response: "判定服务返回了无法识别的结果",
-  provider_low_certainty: "判定服务的把握不足",
-  context_budget_exceeded: "本轮上下文超出预算",
-  context_stale: "本轮上下文已过期",
-  delivery_unavailable: "投递通道当前不可用",
-  delivery_unknown: "投递结果未能确认",
-  run_repeated_failure: "本轮运行反复失败",
-  internal_failure: "内部处理失败",
-};
-const failureText = (code: string) => failures[code] ?? "检查未能完成";
+import {
+  AUTOMATION_DECISIONS as decisions,
+  AUTOMATION_MODES as modes,
+  AUTOMATION_STATES as states,
+  automationFailureText as failureText,
+  automationTime as time,
+} from "./automation-labels";
 
 export function AutomationCard({
   view,
   denials = {},
   onCommand,
+  showStatus = true,
 }: {
   view: ChatAutomationView;
   denials?: AutomationDenials;
   onCommand?: AutomationSubmit;
+  /** 关闭时只保留控制与诊断；状态由 Chat 的常显状态条呈现。 */
+  showStatus?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -119,59 +95,65 @@ export function AutomationCard({
           {modes[view.mode]}
         </span>
       </header>
-      <p data-testid="automation-expectation">
-        {view.mode === "off"
-          ? "自动接续不会来：此 Chat 已关闭自动检查。"
-          : view.nextDueAt
-            ? "已安排下次自动检查，是否接续以检查结论为准。"
-            : "当前没有安排下次自动检查。启用不代表马上接续。"}
-      </p>
+      {showStatus && (
+        <p data-testid="automation-expectation">
+          {view.mode === "off"
+            ? "自动接续不会来：此 Chat 已关闭自动检查。"
+            : view.nextDueAt
+              ? "已安排下次自动检查，是否接续以检查结论为准。"
+              : "当前没有安排下次自动检查。启用不代表马上接续。"}
+        </p>
+      )}
       <p data-testid="automation-scope" className="text-muted-foreground">
         范围：仅此 Chat 的自动接续。Task 状态、当前 run 与自动检查各自独立；关闭自动检查不会停止当前
         run。
       </p>
-      <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
-        <dt className="text-muted-foreground">关联 Task</dt>
-        <dd data-testid="automation-assigned">{view.assignedTaskIds.length} 个 assigned Task</dd>
-        {view.owner.kind === "agent" && (
-          <>
-            <dt className="text-muted-foreground">活动 run</dt>
-            <dd data-testid="automation-run-facts">
-              {view.activeRunIds.length
-                ? `${view.activeRunIds.length} 个活动 run`
-                : "当前无活动 run"}
-            </dd>
-          </>
-        )}
-        {view.owner.kind === "human" && (
-          <>
-            <dt className="text-muted-foreground">Human owner</dt>
-            <dd>{view.remindedHuman ? "已展示接续提醒" : "尚无接续提醒"}；由 Human 决定后续操作</dd>
-          </>
-        )}
-        <dt className="text-muted-foreground">最近检查</dt>
-        <dd data-testid="automation-last-check">
-          {evaluation
-            ? `${time(evaluation.evaluatedAt)} · ${states[evaluation.state]}`
-            : "尚未检查"}
-        </dd>
-        <dt className="text-muted-foreground">检查结论</dt>
-        <dd data-testid="automation-decision">
-          {evaluation?.result ? (
+      {showStatus && (
+        <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
+          <dt className="text-muted-foreground">关联 Task</dt>
+          <dd data-testid="automation-assigned">{view.assignedTaskIds.length} 个 assigned Task</dd>
+          {view.owner.kind === "agent" && (
             <>
-              {decisions[evaluation.result.decision]}：{evaluation.result.reason}
+              <dt className="text-muted-foreground">活动 run</dt>
+              <dd data-testid="automation-run-facts">
+                {view.activeRunIds.length
+                  ? `${view.activeRunIds.length} 个活动 run`
+                  : "当前无活动 run"}
+              </dd>
             </>
-          ) : (
-            "暂无结论"
           )}
-        </dd>
-        <dt className="text-muted-foreground">下次检查</dt>
-        <dd data-testid="automation-next-check">
-          {view.nextDueAt ? time(view.nextDueAt) : "未安排"}
-        </dd>
-      </dl>
-      {view.reason && <p>控制原因：{view.reason}</p>}
-      {view.attention && (
+          {view.owner.kind === "human" && (
+            <>
+              <dt className="text-muted-foreground">Human owner</dt>
+              <dd>
+                {view.remindedHuman ? "已展示接续提醒" : "尚无接续提醒"}；由 Human 决定后续操作
+              </dd>
+            </>
+          )}
+          <dt className="text-muted-foreground">最近检查</dt>
+          <dd data-testid="automation-last-check">
+            {evaluation
+              ? `${time(evaluation.evaluatedAt)} · ${states[evaluation.state]}`
+              : "尚未检查"}
+          </dd>
+          <dt className="text-muted-foreground">检查结论</dt>
+          <dd data-testid="automation-decision">
+            {evaluation?.result ? (
+              <>
+                {decisions[evaluation.result.decision]}：{evaluation.result.reason}
+              </>
+            ) : (
+              "暂无结论"
+            )}
+          </dd>
+          <dt className="text-muted-foreground">下次检查</dt>
+          <dd data-testid="automation-next-check">
+            {view.nextDueAt ? time(view.nextDueAt) : "未安排"}
+          </dd>
+        </dl>
+      )}
+      {showStatus && view.reason && <p>控制原因：{view.reason}</p>}
+      {showStatus && view.attention && (
         <div
           role="status"
           data-testid="automation-attention"
@@ -181,7 +163,7 @@ export function AutomationCard({
           <p data-error-code={view.attention.errorCode}>{failureText(view.attention.errorCode)}</p>
         </div>
       )}
-      {evaluation?.errorCode && (
+      {showStatus && evaluation?.errorCode && (
         <p
           data-testid="automation-failure"
           data-error-code={evaluation.errorCode}
@@ -190,7 +172,7 @@ export function AutomationCard({
           检查失败：{failureText(evaluation.errorCode)}。判定失败不代表本轮无需接续。
         </p>
       )}
-      {evaluation?.nextAttemptAt && (
+      {showStatus && evaluation?.nextAttemptAt && (
         <p data-testid="automation-backoff">
           失败退避：下次重试 {time(evaluation.nextAttemptAt)}（已尝试 {evaluation.attempt} 次）
         </p>

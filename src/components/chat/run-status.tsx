@@ -1,6 +1,9 @@
 import { cn } from "cn";
 import type { AgentRunStatus, ChatRunState } from "../../contracts/agent-run";
 import type { ChatKind, Message } from "../../contracts/chat";
+import type { AppResult } from "../../contracts/result";
+import type { ChatAutomationData } from "../../domain/chat-automation";
+import { ContinuationStatus } from "./continuation-status";
 import { RunActivityGroup } from "./run-activity";
 
 export const RUN_STATUS_LABELS: Record<string, string> = {
@@ -61,6 +64,7 @@ export function RunStatusPanel({
   agentNames,
   onStopRun,
   stoppingRunId,
+  automation,
 }: {
   state: ChatRunState;
   messages: Message[];
@@ -73,6 +77,8 @@ export function RunStatusPanel({
   /** 提供时，每个活动 run 可以单独停止。 */
   onStopRun?: (runId: string) => void;
   stoppingRunId?: string | null;
+  /** 自动续接的调度与最近检查；与 run 状态分开呈现。 */
+  automation?: AppResult<ChatAutomationData>;
 }) {
   const run = state.latest;
   const group = chatKind !== undefined && chatKind !== "dm";
@@ -88,10 +94,11 @@ export function RunStatusPanel({
   const showRestore = Boolean(onRestoreDraft && restoreBody);
   const failureName = run ? agentNames?.get(run.instanceId) : undefined;
 
-  if (!showStatus && pending.length === 0 && !showRestore) return null;
+  if (!showStatus && pending.length === 0 && !showRestore && !automation) return null;
 
   return (
     <section data-testid="run-status" className="mt-6 space-y-2 pl-10.5 max-desktop:pl-9.75">
+      <ContinuationStatus automation={automation} />
       <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
         {showStatus && (
           <span className="whitespace-nowrap">

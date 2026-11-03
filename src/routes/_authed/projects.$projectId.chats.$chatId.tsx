@@ -143,6 +143,7 @@ function ProjectChatDetailPage() {
         messages={messages}
         info={liveInfo}
         runState={runState}
+        automation={loader.automation}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}
         onChanged={() => void router.invalidate()}

@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ChatRunState, RunActivity, RunActivityStep } from "../src/contracts/agent-run";
 import { RunStatusPanel } from "../src/components/chat/run-status";
+import { automationFixture } from "./fixtures/p6a-pages";
 
 function step(index: number, overrides: Partial<RunActivityStep> = {}): RunActivityStep {
   return {
@@ -139,5 +140,42 @@ describe("群组按 Agent 展示运行状态", () => {
     );
     expect(dm).not.toContain('data-testid="agent-run-row"');
     expect(dm).toContain("分身运行状态");
+  });
+});
+describe("自动接续状态", () => {
+  const empty: ChatRunState = { enabled: true, active: [], latest: null, inputs: [] };
+  const read = (name: Parameters<typeof automationFixture>[0]) => ({
+    ok: true as const,
+    data: { view: automationFixture(name), allowedActions: [], denials: {} },
+    requestId: "req_11111111",
+  });
+
+  it("没有 run 时也显示自动接续的下一次检查", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("scheduled") }),
+    );
+    expect(html).toContain('data-testid="continuation-status"');
+    expect(html).toContain("自动接续");
+    expect(html).toContain("已安排下次检查");
+    expect(html).toContain("下次检查");
+  });
+
+  it("检查失败显示需要处理，不冒充本轮无需接续", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("failure") }),
+    );
+    expect(html).toContain("需要处理");
+    expect(html).toContain("判定器超时");
+    expect(html).toContain('data-error-code="provider_timeout"');
+    expect(html).not.toContain("本轮无需接续");
+  });
+
+  it("关闭后只陈述关闭，不展示下次检查", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("off") }),
+    );
+    expect(html).toContain("已关闭");
+    expect(html).toContain("不会安排新的自动检查");
+    expect(html).not.toContain("下次检查");
   });
 });

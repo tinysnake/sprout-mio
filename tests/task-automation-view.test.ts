@@ -51,6 +51,19 @@ describe("自动接续页面事实与 Human 控制", () => {
     expect(html).toContain("开启自动接续");
     expect(html).not.toContain("暂停 Task");
   });
+  it("侧栏控制模式不重复最近检查与下次检查", () => {
+    const html = renderToStaticMarkup(
+      createElement(AutomationCard, {
+        view: automationFixture("failure"),
+        showStatus: false,
+      }),
+    );
+    expect(html).toContain("暂停自动接续");
+    expect(html).toContain("检查细节与诊断");
+    expect(html).not.toContain('data-testid="automation-last-check"');
+    expect(html).not.toContain('data-testid="automation-next-check"');
+    expect(html).not.toContain('data-testid="automation-failure"');
+  });
   it("失败与退避可见，不能呈现为正常或本轮无需接续", () => {
     const html = render("failure");
     expect(html).toContain("检查失败");
