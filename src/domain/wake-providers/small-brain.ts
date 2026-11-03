@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { z } from "zod";
+import { APP_VERSION } from "../../contracts/version";
 import {
   decidedWakeResult,
   recipientKey,
@@ -24,6 +25,14 @@ const decisionsSchema = z.strictObject({
     }),
   ),
 });
+export const WAKE_SESSION_PREFIX = "sprout-wake-";
+export const WAKE_USER_AGENT = `sprout-mio/${APP_VERSION}`;
+
+/** 同一群聊的每次唤醒共用一个 session，供网关做亲和路由与缓存观测。 */
+export function wakeSessionId(chatId: string): string {
+  return `${WAKE_SESSION_PREFIX}${chatId}`;
+}
+
 export type SmallBrainRequest = {
   agentDir: string;
   model: string;
@@ -31,6 +40,8 @@ export type SmallBrainRequest = {
   system: string;
   prompt: string;
   timeoutMs: number;
+  sessionId: string;
+  userAgent: string;
 };
 export type SmallBrainCompletion = z.infer<typeof completionSchema>;
 export type SmallBrainOptions = {
@@ -118,6 +129,8 @@ export function createSmallBrainJudge(options: SmallBrainOptions): WakeJudge {
           system: `${wakeInstructions}\n只输出 JSON，结构为 {"decisions":[{"recipient":{"kind":"agent|human","id":"候选 id"},"decision":"yes|no|unknown","certainty":"high|low","reason":"中文理由"}]}。每名候选恰有一项，禁止其他字段。certainty 是自报确定性，不是校准概率。`,
           prompt: JSON.stringify(input),
           timeoutMs: options.timeoutMs ?? 45000,
+          sessionId: wakeSessionId(input.chatId),
+          userAgent: WAKE_USER_AGENT,
         }),
       );
       usage.inputTokens = completion.inputTokens;

@@ -7,6 +7,11 @@ import {
   type WakeMember,
 } from "../src/domain/chat-wake";
 import { prepareWakeEvaluation, type WakeSnapshotFacts } from "../src/domain/wake-evaluation";
+import {
+  createSmallBrainJudge,
+  wakeSessionId,
+  type SmallBrainRequest,
+} from "../src/domain/wake-providers/small-brain";
 
 /** 纯函数用例只构造事实：本文件不 import 任何查库的领域模块。 */
 const REVIEWER: WakeMember = { memberKind: "agent", memberId: "agp_reviewer" };
@@ -337,5 +342,40 @@ describe("prepareWakeEvaluation 的点名与提示", () => {
     expect(prepared.kind).toBe("model");
     if (prepared.kind !== "model") return;
     expect(prepared.input.mentions).toEqual([]);
+  });
+});
+
+describe("small brain 的网关身份", () => {
+  it("同一群聊的每次唤醒沿用同一个 session id", async () => {
+    const prepared = prepareWakeEvaluation(facts(), new Date("2026-01-01T00:00:03.000Z"));
+    if (prepared.kind !== "model") throw new Error("夹具应走模型判定");
+    const input = {
+      ...prepared.input,
+      policy: { ...prepared.input.policy, model: "test/model" },
+    };
+    let seen: SmallBrainRequest | undefined;
+    const judge = createSmallBrainJudge({
+      agentDir: "/tmp/sprout-agent",
+      clock: () => 0,
+      complete: async (request) => {
+        seen = request;
+        return {
+          text: JSON.stringify({
+            decisions: input.candidates.map((candidate) => ({
+              recipient: candidate.recipient,
+              decision: "no",
+              certainty: "high",
+              reason: "测试",
+            })),
+          }),
+          inputTokens: 1,
+          outputTokens: 1,
+        };
+      },
+    });
+    await judge(input);
+    expect(seen?.sessionId).toBe(wakeSessionId("cnv_00000001"));
+    expect(seen?.sessionId).toBe("sprout-wake-cnv_00000001");
+    expect(seen?.userAgent).toMatch(/^sprout-mio\//);
   });
 });
