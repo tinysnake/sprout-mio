@@ -1,4 +1,5 @@
 import { Check, Loader2, X } from "lucide-react";
+import { cn } from "cn";
 import type { ChatAutomationRoundView } from "../../contracts/chat-automation";
 import { Icon } from "../ui/icon";
 import {
@@ -8,7 +9,6 @@ import {
   automationDuration,
   automationTokens,
 } from "../automation/automation-labels";
-import { useElapsedSeconds } from "../automation/use-elapsed";
 
 type Line = {
   id: string;
@@ -87,13 +87,10 @@ function timeOf(value: string): string {
 }
 
 function LineRow({ line }: { line: Line }) {
-  // 只有还在进行的尝试需要每秒重算；结束时用落库的时长，不按客户端时钟推算。
-  const waited = useElapsedSeconds(line.status === "running" ? line.startedAt : null);
+  // 进行中的尝试不报秒数：圆环在转就够说明它在跑，结束时才用落库的时长。
   const duration =
     line.status === "running"
-      ? waited === null
-        ? "进行中"
-        : `已等待 ${waited} 秒`
+      ? "进行中"
       : line.durationMs === null
         ? ""
         : automationDuration(line.durationMs);
@@ -125,6 +122,24 @@ function LineRow({ line }: { line: Line }) {
  * 自动接续的检查记录：每轮几次尝试各一行，新的在前。
  * 判定过程不改消息也不改 run，没有这份记录，页面只能显示「正在检查」四个字。
  */
+export function AttemptLines({
+  rounds,
+  className,
+}: {
+  rounds: readonly ChatAutomationRoundView[] | undefined;
+  className?: string;
+}) {
+  const lines = rounds ? linesOf(rounds) : [];
+  if (!lines.length) return null;
+  return (
+    <ol className={cn("list-none space-y-0 p-0", className)} data-testid="continuation-lines">
+      {lines.map((line) => (
+        <LineRow key={line.id} line={line} />
+      ))}
+    </ol>
+  );
+}
+
 export function ContinuationAttempts({
   rounds,
 }: {
@@ -136,20 +151,19 @@ export function ContinuationAttempts({
   return (
     <div data-testid="continuation-activity" className="mt-3 border-t border-border pt-2">
       <p className="text-[11px] text-muted-foreground">
-        最近{" "}
-        <span data-testid="continuation-activity-count" className="font-mono">
-          {rounds?.length ?? 0}
-        </span>{" "}
-        轮检查
+        {rounds && rounds.length === 1 ? (
+          "本轮检查"
+        ) : (
+          <>
+            最近{" "}
+            <span data-testid="continuation-activity-count" className="font-mono">
+              {rounds?.length ?? 0}
+            </span>{" "}
+            轮检查
+          </>
+        )}
       </p>
-      <ol
-        data-testid="continuation-activity-entries"
-        className="mt-1 max-h-56 list-none space-y-0 overflow-y-auto p-0"
-      >
-        {lines.map((line) => (
-          <LineRow key={line.id} line={line} />
-        ))}
-      </ol>
+      <AttemptLines rounds={rounds} className="mt-1 max-h-56 overflow-y-auto" />
     </div>
   );
 }

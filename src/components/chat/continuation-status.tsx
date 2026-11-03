@@ -1,3 +1,4 @@
+import { Check, Loader2, X } from "lucide-react";
 import { cn } from "cn";
 import type { ChatAutomationView } from "../../contracts/chat-automation";
 import type { AppResult } from "../../contracts/result";
@@ -11,7 +12,7 @@ import {
   automationTime,
   automationTokens,
 } from "../automation/automation-labels";
-import { useElapsedSeconds } from "../automation/use-elapsed";
+import { Icon } from "../ui/icon";
 
 type Tone = "idle" | "active" | "attention" | "off";
 
@@ -21,6 +22,24 @@ const TONE_CLASS: Record<Tone, string> = {
   attention: "text-status-failed",
   off: "text-muted-foreground",
 };
+
+/** 与 run 的活动记录同一套图示：进行中转圆环，结束打勾，失败打叉。 */
+function Glyph({ tone }: { tone: Tone }) {
+  if (tone === "active")
+    return (
+      <Icon
+        as={Loader2}
+        size={12}
+        data-testid="continuation-spinner"
+        className="mt-0.5 shrink-0 animate-spin text-status-running"
+      />
+    );
+  if (tone === "attention")
+    return <Icon as={X} size={12} className="mt-0.5 shrink-0 text-status-failed" />;
+  if (tone === "idle")
+    return <Icon as={Check} size={12} className="mt-0.5 shrink-0 text-status-success" />;
+  return <span className="mt-1.25 size-1.5 shrink-0 rounded-full bg-muted-foreground" />;
+}
 
 function statusOf(view: ChatAutomationView): {
   tone: Tone;
@@ -96,9 +115,6 @@ function usageSummary(usage: WakeUsage | null | undefined): string | null {
  * 也不把「启用」说成「马上会接续」；逐次尝试由紧随其后的 `ContinuationActivity` 展开。
  */
 export function ContinuationStatus({ automation }: { automation?: AppResult<ChatAutomationData> }) {
-  const latest = automation?.ok ? automation.data.view.latestEvaluation : null;
-  // 只在真的在检查时计时：pending 还没发出请求，说「已经等了多久」会骗人。
-  const waited = useElapsedSeconds(latest?.state === "claimed" ? latest.claimedAt : null);
   if (!automation) return null;
   if (!automation.ok)
     return (
@@ -119,55 +135,53 @@ export function ContinuationStatus({ automation }: { automation?: AppResult<Chat
   const attempt = view.latestEvaluation?.attempt ?? 0;
 
   return (
-    <p
+    <div
       data-testid="continuation-status"
       data-mode={view.mode}
       data-state={status.state}
-      className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']"
+      className="flex items-start gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[11px]"
     >
-      <span className="whitespace-nowrap">
-        <span className="text-muted-foreground">自动接续：</span>
-        <span data-testid="continuation-label" className={cn(TONE_CLASS[status.tone])}>
-          {status.label}
+      <Glyph tone={status.tone} />
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
+        <span className="whitespace-nowrap">
+          <span className="text-muted-foreground">自动接续：</span>
+          <span data-testid="continuation-label" className={cn(TONE_CLASS[status.tone])}>
+            {status.label}
+          </span>
         </span>
-      </span>
-      {status.state === "claimed" && waited !== null && (
-        <span data-testid="continuation-wait" className="text-muted-foreground">
-          已等待 {waited} 秒
-        </span>
-      )}
-      {attempt > 1 && (
-        <span data-testid="continuation-attempt" className="text-muted-foreground">
-          第 {attempt} 次检查
-        </span>
-      )}
-      {status.detail && (
-        <span
-          data-testid="continuation-detail"
-          className="text-muted-foreground"
-          title={status.detailTitle}
-        >
-          {status.detail}
-        </span>
-      )}
-      {usage && (
-        <span data-testid="continuation-usage" className="text-muted-foreground">
-          {usage}
-        </span>
-      )}
-      {showNext && (
-        <span data-testid="continuation-next" className="text-muted-foreground">
-          下次检查 {automationTime(nextAt)}
-        </span>
-      )}
-      {view.attention?.errorCode && (
-        <span
-          data-error-code={view.attention.errorCode}
-          className="font-mono text-[10px] opacity-70"
-        >
-          {view.attention.errorCode}
-        </span>
-      )}
-    </p>
+        {attempt > 1 && (
+          <span data-testid="continuation-attempt" className="text-muted-foreground">
+            第 {attempt} 次检查
+          </span>
+        )}
+        {status.detail && (
+          <span
+            data-testid="continuation-detail"
+            className="text-muted-foreground"
+            title={status.detailTitle}
+          >
+            {status.detail}
+          </span>
+        )}
+        {usage && (
+          <span data-testid="continuation-usage" className="text-muted-foreground">
+            {usage}
+          </span>
+        )}
+        {showNext && (
+          <span data-testid="continuation-next" className="text-muted-foreground">
+            下次检查 {automationTime(nextAt)}
+          </span>
+        )}
+        {view.attention?.errorCode && (
+          <span
+            data-error-code={view.attention.errorCode}
+            className="font-mono text-[10px] opacity-70"
+          >
+            {view.attention.errorCode}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
