@@ -2,6 +2,7 @@ import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import { diagnosticEvent } from "../db/schema";
 import type { ProjectContext } from "./access";
+import { publishProjectChange } from "./change-feed";
 
 export type IdentityWriteHooks = { afterWrite?: () => void };
 type IdentityDiagnostic = {
@@ -31,6 +32,8 @@ export function writeIdentity<T>(
           ...diagnostic,
         })
         .run();
+      // 推送由合窗定时器在提交之后补发；事务回滚最多让页面多读一次 revision。
+      publishProjectChange(diagnostic.projectId ?? "", diagnostic.chatId);
       return result;
     })
     .immediate();

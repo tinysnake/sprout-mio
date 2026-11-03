@@ -9,6 +9,7 @@ import type {
 import type { AgentInstance, Chat, ChatWakeDispatch, Message } from "../contracts/chat";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
+import { publishProjectChange } from "./change-feed";
 import {
   agentInstance,
   agentProfile,
@@ -487,7 +488,7 @@ export function transitionAgentRun(
   data: TransitionData,
   ctx: ProjectContext,
 ): AgentRun {
-  return sqlite
+  const run = sqlite
     .transaction(() => {
       const row = runRow(id, ctx);
       if (!NEXT[row.status].includes(status))
@@ -525,6 +526,9 @@ export function transitionAgentRun(
       return toRun(updated);
     })
     .immediate();
+  // Run 状态是页面最在意的那条变化：一次转移同时影响对话与 Project 的运行列表。
+  publishProjectChange(run.projectId, run.chatId);
+  return run;
 }
 
 export function markRunInputDelivered(id: string, messageId: string, ctx: ProjectContext): void {
@@ -752,6 +756,7 @@ export function recoverAgentRuns(): void {
           .where(eq(agentRun.id, row.id))
           .run();
         diagnostic(row, "agent_run.interrupted", "恢复上次未正常关闭的 Agent run", "warn");
+        publishProjectChange(row.projectId, row.chatId);
       }
     })
     .immediate();
@@ -775,6 +780,7 @@ export function interruptActiveAgentRuns(): void {
           .where(eq(agentRun.id, row.id))
           .run();
         diagnostic(row, "agent_run.interrupted", "宿主关闭中断 Agent run", "warn");
+        publishProjectChange(row.projectId, row.chatId);
       }
     })
     .immediate();

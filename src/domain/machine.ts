@@ -12,6 +12,7 @@ import type {
   SaveProjectMachineBindingInput,
 } from "../contracts/machine";
 import { WORKER_ENROLLMENT_TTL_MS, WORKER_STALE_AFTER_MS } from "../contracts/worker";
+import { publishProjectChange } from "./change-feed";
 import { machineActivityDigest } from "./machine-activity";
 import { db, sqlite } from "../db";
 import {
@@ -520,6 +521,7 @@ export function saveProjectMachineBinding(
       }
       if (old) invalidateDirectoryObservations(db, input);
       diagnostic("machine.binding_saved", ctx, hooks, input.projectId);
+      publishProjectChange(input.projectId);
       return toIntent(values);
     })
     .immediate();

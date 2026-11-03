@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { CHANGE_SAFETY_POLL_MS, chatTopic } from "../../contracts/change-stream";
+import { changeSource, onChangeStreamState, type ChangeSource } from "../../lib/change-stream";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
 import { laterMessageCursor } from "../../contracts/chat";
 import type { ChatResult, Message, MessageCursor, MessageWindow } from "../../contracts/chat";
@@ -70,6 +72,7 @@ export function createChatLiveRefresh({
   environment,
   intervalMs = CHAT_LIVE_INTERVAL_MS,
   stopWhenIdle = true,
+  changes,
 }: {
   seed: ChatLiveSeed;
   reads: {
@@ -86,12 +89,15 @@ export function createChatLiveRefresh({
   intervalMs?: number;
   /** 默认在 run 收尾后停止；页面需要持续发现新 run 时传 false。 */
   stopWhenIdle?: boolean;
+  /** 有推送时用安全间隔读一次，没有推送退回轮询节奏。 */
+  changes?: ChangeSource;
 }): ChatLiveRefresh {
   const { document } = environment;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
   // 一次只允许一个 tick 在途：服务端挂起时排队重试只会把队列压得更长。
   let inFlight = false;
+  let pushPending = false;
   let signature = seedSignature;
   // overlay = loader 那批 + 之后 tick 追加的增量；`known` 用来去掉两者重叠的部分。
   let overlay = [...seed.messages];
@@ -108,7 +114,20 @@ export function createChatLiveRefresh({
 
   const schedule = () => {
     if (stopped) return;
-    timer = setTimeout(() => void tick(), intervalMs);
+    const interval = changes?.connected() ? CHANGE_SAFETY_POLL_MS.chat : intervalMs;
+    timer = setTimeout(() => void tick(), interval);
+  };
+
+  /** 推送到达：不必等满轮询间隔；正在读就记一笔，让这一轮结束立刻补读。 */
+  const wake = () => {
+    if (stopped || document.visibilityState !== "visible") return;
+    if (inFlight) {
+      pushPending = true;
+      return;
+    }
+    clearTimeout(timer);
+    timer = undefined;
+    void tick();
   };
 
   async function tick() {
@@ -155,14 +174,19 @@ export function createChatLiveRefresh({
       else if (messageMoved) onMessagesChanged?.();
       // run 状态读不到时不改门禁：下一 tick 继续读，结束判定只认成功的响应。
       if (runState.ok && !active && stopWhenIdle) {
-        stopped = true;
+        stop();
         return;
       }
     } catch {
       // 单次读失败保持门禁不变：下一 tick 重试，不把失败当成本轮结束。
     } finally {
       inFlight = false;
-      if (!stopped) schedule();
+      if (!stopped) {
+        if (pushPending) {
+          pushPending = false;
+          void tick();
+        } else schedule();
+      }
     }
   }
 
@@ -174,14 +198,28 @@ export function createChatLiveRefresh({
     timer = undefined;
     void tick();
   };
+  const unsubscribe = changes?.subscribe(wake);
+  // 连接状态一变就按新节奏重排定时器：断开立刻从 15 秒退回原间隔，不用等这一读到点。
+  const unsubscribeState = changes
+    ? onChangeStreamState(() => {
+        if (stopped || inFlight) return;
+        clearTimeout(timer);
+        timer = undefined;
+        schedule();
+      })
+    : undefined;
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    clearTimeout(timer);
+    document.removeEventListener("visibilitychange", resume);
+    unsubscribe?.();
+    unsubscribeState?.();
+  }
   document.addEventListener("visibilitychange", resume);
   schedule();
   return {
-    stop: () => {
-      stopped = true;
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", resume);
-    },
+    stop,
     reseed,
   };
 }
@@ -237,6 +275,7 @@ export function useChatLive({
       seedSignature,
       intervalMs: active ? CHAT_LIVE_INTERVAL_MS : CHAT_IDLE_INTERVAL_MS,
       stopWhenIdle: false,
+      changes: changeSource([chatTopic(chat)]),
       environment: { document },
     });
     refresh.current = instance;

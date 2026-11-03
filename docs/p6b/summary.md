@@ -1,6 +1,7 @@
 # P6b 章节结论：Info Hub 一期视角、轮初快照与运行中提示
 
 P6b 交付「Human 在页面上看到当前 Project / Chat / Agent / Machine 的基本事实并按 3 秒节拍自动刷新；Agent 在每轮开始时拿到一份不可改写、带提交收据的快照；运行中的 Agent 只会收到合并过、限频、无副作用的变更提示，并且能主动查询」这一条链路。契约、迁移与边界见 [P6b 契约](contracts.md)。
+页面侧的刷新形态在交付之后改为同源 SSE 推送，轮询降级为兜底通路，见[变更推送替代页面节拍](#变更推送替代页面节拍)。本文件其余部分记录的是节拍版本当时的事实。
 
 技术交付基线：**`4d9545c`**（`integration/p6b` 当前头，也是本轮门禁的受验提交）。
 
@@ -253,3 +254,15 @@ FAIL l-docs-probes 8 of 28 probes failed
 - 确认范围：Project、Chat、Agent、Machine 四个视角的信息读取与「事实时间」，以及 Chat 页每轮带给 Agent 的轮初上下文与 `sprout_info_hub_get` 的实际调用结果。
 - 确认方式：Human 在 P7 章节的真实页面评审里一并走完本章页面，据此要求去掉状态行里给人类看的内部元数据（`Info Hub 已是最新 · 事实时间 …`）；评审结束时明确回复「评审完毕，可继续」。评审在 `integration/p7` 上进行，该状态后来以 `fef2612` 合入 main。
 - 复验：`bash scripts/verify/bf-p6b-pages.sh`。
+
+## 变更推送替代页面节拍
+
+Delivery 之后 Human 指出固定节拍的下界不够用，状态变化要等下一个节拍才被看见。页面改为服务端在事实变化时推送一条主题提示，页面仍走 revision 读判定，推送不可用时回退原节拍。
+
+- 传输：同源 SSE，`GET /api/events?topics=...`。拒绝 WebSocket（没有反向流式需求）与无发布者的有界 long poll（等于变慢的轮询）。
+- 主题：`project:<id>` 与 `chat:<id>`，合窗 150 毫秒，心跳 20 秒，推送连通时安全轮询 30 秒（Project）与 15 秒（Chat）。
+- 授权：连接时按主题鉴权，每次提示触发的读仍然鉴权，客户端 6 次退避失败后停连回退轮询。
+- 覆盖：Chat 与 Agent 身份写入、run 迁移、Task 命令、Project 配置、Machine 绑定、成员离开与重新加入、Worker 上下线。缺口与兜底说明见推送文档。
+- 证据：`tests/change-feed.test.ts`、`tests/change-endpoint.test.ts` 与开发服务器上的 curl 连接实测，命令与结果见[变更推送](push.md#验证证据)。未验证项为浏览器内的真实时延与反代缓冲。
+
+决策、契约、覆盖矩阵与验证表见[P6b 变更推送](push.md)。
