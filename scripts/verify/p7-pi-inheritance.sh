@@ -4,8 +4,8 @@ cd "$(dirname "$0")/../.."
 
 # Risk → Test
 # 「继承边界」只写在文档里 → 真实已安装 Pi SDK + 生产 runner 的 open 协议导出实际工具面与
-#   extension/资源清单，默认配置逐条对账（四个基础工具 + Sprout 工具 + 诊断入口，无 codemode /
-#   tool_search / mcp__ / 宿主 extension 工具）。
+#   extension/资源清单，默认配置逐条对账（只读工具 + Sprout 工具 + 诊断入口 + 可选
+#   pi-web-access，无 host bash/edit/write、mcp__ 或宿主 extension 工具）。
 # 扩展声明了工具却永远调不到 → `sprout_status` 必须同时在工具面与 registry，且真实模型
 #   夹具发起一次调用、载荷里的运行时/宿主开关/会话事实与本次 open 逐条对账。
 # 开关打开后偷偷把 extensions/themes/context files 也搬进来 → 打开状态的断言要求只有宿主
@@ -46,16 +46,23 @@ assert(off.length >= 4, "默认关闭至少 4 次（3 次耗时 + 1 次隔离）
 assert(on.length >= 3, "打开开关至少 3 次");
 for (const run of runs) {
   const label = run.label;
-  assert.equal(run.extensions.join(","), "sprout-extension", `${label}: 只加载 Sprout extension`);
-  for (const base of ["bash", "edit", "read", "sprout_status", "write"])
+  assert(run.extensions.includes("sprout-extension"), `${label}: 加载 Sprout extension`);
+  for (const extension of run.extensions)
+    assert(
+      ["sprout-extension", "codemode", "tool-search"].includes(extension) ||
+        extension.includes("pi-web-access"),
+      `${label}: 不加载其他宿主 extension ${extension}`,
+    );
+  const readOnly = ["read", "grep", "find", "ls", "current_time", "git_read", "codemode", "tool_search"];
+  const web = ["web_search", "fetch_content", "source_check", "get_search_content"];
+  for (const base of [...readOnly, "sprout_status"])
     assert(run.tools.includes(base), `${label}: 工具 ${base} 在工具面`);
   for (const name of run.tools)
     assert(
-      ["bash", "edit", "read", "sprout_status", "write"].includes(name) ||
-        name.startsWith("sprout_"),
-      `${label}: 工具面出现非基础、非 Sprout 工具 ${name}`,
+      [...readOnly, ...web, "sprout_status"].includes(name) || name.startsWith("sprout_"),
+      `${label}: 工具面出现非只读、非 Sprout 工具 ${name}`,
     );
-  for (const forbidden of ["codemode", "tool_search", markers.hostExtensionTool])
+  for (const forbidden of ["bash", "edit", "write", markers.hostExtensionTool])
     assert(!run.tools.includes(forbidden), `${label}: 工具面不含 ${forbidden}`);
   assert(run.tools.every((name) => !name.startsWith("mcp__")), `${label}: 工具面不含 mcp__ 工具`);
   assert(run.registeredTools.every((name) => !name.startsWith("mcp__")), `${label}: registry 无 mcp__`);
@@ -73,7 +80,7 @@ for (const run of runs) {
 }
 assert.deepEqual([...off[0].tools], [...on[0].tools], "开关不改变工具面");
 console.log(
-  `PASS 工具面 ${off[0].tools.length} 个（${off[0].tools.join(", ")}），registry 与工具面逐条相等，宿主工具与 mcp__/codemode/tool_search 均未出现`,
+  `PASS 工具面 ${off[0].tools.length} 个（${off[0].tools.join(", ")}），registry 与工具面逐条相等，宿主 bash/edit/write 与 mcp__ 均未出现`,
 );
 
 // ---- B2 默认不继承，且与 Project 隔离
@@ -200,7 +207,7 @@ assert.match(host.runtime.pi, /^\d+\.\d+\.\d+/, "运行时带真实 Pi SDK 版�
 assert.equal(host.host.inheritHostResources, false, "这一轮确实跑在继承关闭态");
 assert.deepEqual(
   host.host.extensions,
-  ["sprout-extension"],
+  off[0].extensions,
   "载荷里的 extension 清单与 ready 快照一致",
 );
 assert.equal(host.session.activeTools, off[0].tools.length, "载荷里的工具面长度与快照一致");

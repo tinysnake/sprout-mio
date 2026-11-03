@@ -68,8 +68,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         provider: 'inheritance-test',
         model: 'none',
         thinking: 'off',
-        tools: ['bash', 'edit', 'read', 'sprout_status', 'write'],
-        registeredTools: ['bash', 'edit', 'read', 'sprout_status', 'write'],
+        tools: ['grep', 'read', 'sprout_status'],
+        registeredTools: ['grep', 'read', 'sprout_status'],
         extensions: ['sprout-extension'],
         sessionId: command.sessionId,
         sessionFile: command.sessionDirectory + '/inheritance.jsonl',
@@ -172,9 +172,9 @@ describe("Pi 资源继承开关的父进程接线", () => {
     const { open, snapshot } = await runWithSwitch(false);
     expect(open.inheritHostResources).toBe(false);
     expect(snapshot?.resources?.inheritHostResources).toBe(false);
-    expect(snapshot?.registeredTools).toEqual(["bash", "edit", "read", "sprout_status", "write"]);
+    expect(snapshot?.registeredTools).toEqual(["grep", "read", "sprout_status"]);
     // 诊断入口现在是工具面的正式成员：registry 与工具面都有它，两张表都随协议完整落库。
-    expect(snapshot?.tools).toEqual(["bash", "edit", "read", "sprout_status", "write"]);
+    expect(snapshot?.tools).toEqual(["grep", "read", "sprout_status"]);
   });
 });
 
