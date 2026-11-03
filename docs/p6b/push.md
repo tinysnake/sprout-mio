@@ -55,6 +55,8 @@
 
 新增发布点的做法：在写入所在的那个单元里，事务返回之后调用 `publishProjectChange(projectId, chatId?)`。合窗定时器在事务提交之后才发出，回滚最多产生一次被 revision 吸收的误报。
 
+推送与调度信号都靠进程内的注册表：`src/domain/change-feed.ts` 的订阅者与合窗定时器、`src/domain/chat-schedule.ts` 的调度监听者。构建产物把服务入口与 SSR 路由分成两套模块图，同一个源文件在进程里会有两份实例，模块级变量因此各存一份。这两张表必须挂在 `globalThis` 上：写入点常在一个实例（发消息的 server function），订阅者与调度器在另一个实例（`/api/events`、scheduler），只用模块级变量时信号发不出去，页面只能等 15 秒兜底轮询。
+
 ## 发布覆盖
 
 | 写入                                                                             | 位置                                                                                       | 主题                            |
