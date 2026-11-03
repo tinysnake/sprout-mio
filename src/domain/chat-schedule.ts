@@ -559,9 +559,10 @@ export function recoverSchedules(now: Date) {
   write(
     "UPDATE continuation_delivery SET state='attention',error_code='delivery_unknown',next_attempt_at=NULL WHERE state='admitted' AND delivered_at IS NULL",
   );
+  // Bound but unadmitted input never crossed the transport boundary, so retry it now.
   write(
     "UPDATE continuation_delivery SET state='pending',run_id=NULL,envelope=NULL,next_attempt_at=? WHERE state='bound' AND run_id IN (SELECT id FROM agent_run WHERE status NOT IN ('queued','running'))",
-    now.getTime() + INTERVAL_MS,
+    now.getTime(),
   );
   scanChatSchedules(now);
   for (const e of all<Evaluation>("SELECT * FROM wake_evaluation WHERE state='claimed'")) {

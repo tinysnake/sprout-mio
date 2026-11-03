@@ -33,6 +33,15 @@ type Evidence = {
   orphan: { queued: boolean; requeued: boolean; attempt: number };
   retry: { retried: boolean; trigger: string; newer: string };
   unknown: { count: number; first: { state: string; error_code: string | null }; latest: { state: string; error_code: string | null } };
+  recovery: {
+    stateAfterRecover: string;
+    nextAttemptAt: number | null;
+    recoveredAt: number;
+    reboundState: string;
+    reboundRun: boolean;
+    liveReboundState: string;
+    liveReboundRun: boolean;
+  };
   owner: string;
   disabled: { wake: number; runs: number };
   race: { blocked: boolean; trigger: boolean; oldState: string; first: string };
@@ -149,6 +158,15 @@ describe("message-triggered wake", () => {
     expect(evidence.unknown.count).toBe(2);
     expect(evidence.unknown.first).toEqual({ state: "attention", error_code: "delivery_unknown" });
     expect(["pending", "bound"]).toContain(evidence.unknown.latest.state);
+  });
+
+  it("requeues an interrupted bound delivery immediately instead of after one interval", () => {
+    expect(evidence.recovery.stateAfterRecover).toBe("pending");
+    expect(evidence.recovery.nextAttemptAt).toBe(evidence.recovery.recoveredAt);
+    expect(evidence.recovery.reboundState).toBe("bound");
+    expect(evidence.recovery.reboundRun).toBe(true);
+    expect(evidence.recovery.liveReboundState).toBe("bound");
+    expect(evidence.recovery.liveReboundRun).toBe(true);
   });
 
   it("falls back to the owner after the evaluator exhausts its retries", () => {

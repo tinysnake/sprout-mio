@@ -761,7 +761,7 @@ export function settleContinuationRun(runId: string, status: string, now: Date) 
     "UPDATE continuation_delivery SET state='attention',error_code='delivery_unknown' WHERE run_id=? AND state='admitted'",
     runId,
   );
-  if (status !== "completed") return;
+  if (status !== "completed" && status !== "failed" && status !== "interrupted") return;
   write(
     "UPDATE continuation_delivery SET state='pending',run_id=NULL,envelope=NULL WHERE run_id=? AND state='bound' AND admitted_at IS NULL",
     runId,

@@ -113,7 +113,7 @@ async function evaluate(selected: string[], at: Date) {
   return { claimed, input };
 }
 
-const at = new Date(Date.now() + 16_000);
+const at = new Date(Date.now() + 120_000);
 const evidence: Record<string, unknown> = {};
 evidence.owner = alpha.id;
 
@@ -405,6 +405,51 @@ evidence.unknown = {
   count: unknownDeliveries.length,
   first: unknownDeliveries[0],
   latest: unknownDeliveries.at(-1),
+};
+
+// 中断恢复：bound 但未 admitted 的投递立即重排，不等待下一个 5 分钟窗口。
+const recovery = group();
+send(recovery.id, "恢复后继续");
+await evaluate([alpha.id], at);
+delivery.bindPendingDeliveries(new Date(at.getTime() + 1_000));
+const recoveryBound = schedule.one<{ id: string; run_id: string | null }>(
+  "SELECT id,run_id FROM continuation_delivery WHERE chat_id=?",
+  recovery.id,
+)!;
+schedule.write(
+  "UPDATE agent_run SET status='interrupted',settled_at=? WHERE id=?",
+  at.getTime() + 2_000,
+  recoveryBound.run_id,
+);
+const recoveryAt = new Date(at.getTime() + 3_000);
+schedule.recoverSchedules(recoveryAt);
+const recoveryPending = schedule.one<{ state: string; next_attempt_at: number | null }>(
+  "SELECT state,next_attempt_at FROM continuation_delivery WHERE id=?",
+  recoveryBound.id,
+)!;
+delivery.bindPendingDeliveries(recoveryAt);
+const recoveryRebound = schedule.one<{ state: string; run_id: string | null }>(
+  "SELECT state,run_id FROM continuation_delivery WHERE id=?",
+  recoveryBound.id,
+)!;
+schedule.write(
+  "UPDATE agent_run SET status='interrupted',settled_at=? WHERE id=?",
+  at.getTime() + 4_000,
+  recoveryRebound.run_id,
+);
+delivery.settleContinuationRun(recoveryRebound.run_id!, "interrupted", new Date(at.getTime() + 4_000));
+const liveRebound = schedule.one<{ state: string; run_id: string | null }>(
+  "SELECT state,run_id FROM continuation_delivery WHERE id=?",
+  recoveryBound.id,
+)!;
+evidence.recovery = {
+  stateAfterRecover: recoveryPending.state,
+  nextAttemptAt: recoveryPending.next_attempt_at,
+  recoveredAt: recoveryAt.getTime(),
+  reboundState: recoveryRebound.state,
+  reboundRun: recoveryRebound.run_id !== recoveryBound.run_id,
+  liveReboundState: liveRebound.state,
+  liveReboundRun: liveRebound.run_id !== recoveryRebound.run_id,
 };
 
 console.log(JSON.stringify(evidence));
