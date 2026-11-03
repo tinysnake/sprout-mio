@@ -138,7 +138,7 @@ export function InfoHubPollingStatus() {
       data-testid="info-hub-polling-state"
       data-state={live.state}
       data-as-of={live.asOf ?? ""}
-      className="text-[10px] text-muted-foreground"
+      className="min-w-0 truncate text-[10px] text-muted-foreground"
     >
       {STATE_LABELS[live.state]}
     </p>
