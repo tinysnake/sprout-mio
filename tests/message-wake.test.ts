@@ -19,8 +19,8 @@ type Evidence = {
   mention: { wake: boolean; runs: number };
   ownerLed: { wake: boolean; runs: number };
   dm: { wake: boolean; runs: number };
-  debounce: { rows: number; trigger: boolean; capped: boolean };
-  taskActive: { claimed: boolean; queued: boolean; postponed: boolean };
+  debounce: { rows: number; trigger: boolean; immediate: boolean; first: string };
+  taskActive: { claimed: boolean; messageTrigger: boolean; taskState: string };
   sources: {
     blocked: boolean;
     messageStillClaimed: boolean;
@@ -44,7 +44,7 @@ type Evidence = {
   };
   owner: string;
   disabled: { wake: number; runs: number };
-  race: { blocked: boolean; trigger: boolean; oldState: string; first: string };
+  race: { claimedNew: boolean; trigger: boolean; oldState: string; first: string };
 };
 
 let evidence: Evidence;
@@ -112,7 +112,7 @@ describe("message-triggered wake", () => {
   });
 
   it("lets a newer message replace a retrying evaluation without losing its trigger", () => {
-    expect(evidence.race.blocked).toBe(true);
+    expect(evidence.race.claimedNew).toBe(true);
     expect(evidence.race.trigger).toBe(true);
     expect(evidence.race.oldState).toBe("stale");
   });
@@ -122,16 +122,16 @@ describe("message-triggered wake", () => {
     expect(evidence.disabled.runs).toBeGreaterThan(0);
   });
 
-  it("debounces consecutive messages into one capped wake", () => {
+  it("coalesces consecutive messages into one immediate wake", () => {
     expect(evidence.debounce.rows).toBe(1);
     expect(evidence.debounce.trigger).toBe(true);
-    expect(evidence.debounce.capped).toBe(true);
+    expect(evidence.debounce.immediate).toBe(true);
   });
 
-  it("queues behind an active task evaluation instead of claiming it", () => {
-    expect(evidence.taskActive.claimed).toBe(false);
-    expect(evidence.taskActive.queued).toBe(true);
-    expect(evidence.taskActive.postponed).toBe(true);
+  it("preempts an active task evaluation and reschedules the task", () => {
+    expect(evidence.taskActive.claimed).toBe(true);
+    expect(evidence.taskActive.messageTrigger).toBe(true);
+    expect(evidence.taskActive.taskState).toBe("stale");
   });
 
   it("shares one round counter between message and task evaluations", () => {

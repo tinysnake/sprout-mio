@@ -40,8 +40,6 @@ import {
   type WakeSnapshotFacts,
 } from "./wake-evaluation";
 
-const TRAILING_DELAY_MS = 15_000;
-const MAX_DELAY_MS = 60_000;
 const clip = (value: string, limit: number) => Array.from(value).slice(0, limit).join("");
 
 type MessageRow = {
@@ -338,16 +336,16 @@ export function enqueueMessageWake(
      ON CONFLICT(chat_id) DO UPDATE SET
        evaluation_id=CASE WHEN chat_message_wake.trigger_message_id=excluded.trigger_message_id THEN chat_message_wake.evaluation_id ELSE NULL END,
        trigger_message_id=excluded.trigger_message_id,
-       due_at=min(excluded.due_at, chat_message_wake.first_due_at + ?),
+       first_due_at=min(chat_message_wake.first_due_at, excluded.first_due_at),
+       due_at=excluded.due_at,
        updated_at=excluded.updated_at`,
     message.chatId,
     chat.project_id,
     message.id,
     at,
-    at + TRAILING_DELAY_MS,
     at,
     at,
-    MAX_DELAY_MS,
+    at,
   );
   signalScheduleChange();
   return true;
@@ -464,16 +462,8 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
         active?.source === "message" &&
         active.trigger_message_id !== due.trigger_message_id
       ) {
-        const now = ctx.now.getTime();
-        if (active.state === "claimed" && (active.lease_until ?? 0) > now) {
-          write(
-            "UPDATE chat_message_wake SET due_at=?,updated_at=? WHERE chat_id=?",
-            active.lease_until ?? now + 1_000,
-            now,
-            due.chat_id,
-          );
-          return undefined;
-        }
+        // A human message preempts the in-flight triage. The old provider call may still
+        // return, but its claim token is gone and its result cannot be committed.
         write(
           "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=?",
           active.id,
@@ -481,13 +471,18 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
         active = undefined;
       }
       if (active?.source === "task_periodic") {
+        // Human input outranks a scheduled task triage; reschedule the task check so it
+        // still runs after this message's triage instead of holding the chat's only slot.
         write(
-          "UPDATE chat_message_wake SET due_at=?,updated_at=? WHERE chat_id=?",
+          "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=?",
+          active.id,
+        );
+        write(
+          "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
           ctx.now.getTime() + 1_000,
-          ctx.now.getTime(),
           due.chat_id,
         );
-        return undefined;
+        active = undefined;
       }
       if (active) {
         if (active.attempt >= POLICY.maxAttempts) {

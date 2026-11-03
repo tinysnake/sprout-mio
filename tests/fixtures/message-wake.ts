@@ -205,23 +205,14 @@ const raceClaim = mw.claimDueMessageWake({
   workerId: "fixture",
 })!;
 const raceSecond = send(raced.id, "新消息");
-const raceBlocked = mw.claimDueMessageWake({
+const racePreempted = mw.claimDueMessageWake({
   now: at,
-  requestId: newId(ID_PREFIXES.request),
-  workerId: "fixture",
-});
-schedule.write(
-  "UPDATE wake_evaluation SET state='retry_wait',attempt=3,next_attempt_at=0,claim_token=NULL,lease_until=NULL WHERE id=?",
-  raceClaim.id,
-);
-const raceNext = mw.claimDueMessageWake({
-  now: new Date(at.getTime() + 121_000),
   requestId: newId(ID_PREFIXES.request),
   workerId: "fixture",
 })!;
 evidence.race = {
-  blocked: raceBlocked === undefined,
-  trigger: raceNext.trigger_message_id === raceSecond.id,
+  claimedNew: racePreempted.trigger_message_id === raceSecond.id,
+  trigger: racePreempted.trigger_message_id === raceSecond.id,
   oldState: schedule.one<{ state: string }>("SELECT state FROM wake_evaluation WHERE id=?", raceClaim.id)!.state,
   first: raceFirst.id,
 };
@@ -234,14 +225,14 @@ const debounceRow = wakeRows(debounce.id);
 evidence.debounce = {
   rows: debounceRow.length,
   trigger: debounceRow[0]?.trigger_message_id === m2.id,
-  capped: debounceRow[0] ? debounceRow[0].due_at - debounceRow[0].first_due_at <= 60_000 : false,
+  immediate: debounceRow[0] ? debounceRow[0].due_at - debounceRow[0].first_due_at < 1_000 : false,
   first: m1.id,
 };
 schedule.write("DELETE FROM chat_message_wake WHERE chat_id=?", debounce.id);
 
-// 已有 task 判定时，message 判定排队而不是抢走 active 槽位。
+// 已有 task 判定时，human message 抢占 active 槽位，task 让路并重新排期。
 const waiting = group();
-send(waiting.id, "先排队");
+const waitingMessage = send(waiting.id, "先排队");
 schedule.write(
   "INSERT INTO wake_evaluation(id,project_id,chat_id,source,trigger_message_id,round,control_epoch,fingerprint,state,attempt,request_id,created_at) VALUES(?,?,?,'task_periodic',NULL,1,1,'task-fixture','pending',0,?,?)",
   newId(ID_PREFIXES.wakeEvaluation),
@@ -250,15 +241,15 @@ schedule.write(
   newId(ID_PREFIXES.request),
   at.getTime(),
 );
-const blocked = mw.claimDueMessageWake({
+const preempted = mw.claimDueMessageWake({
   now: at,
   requestId: newId(ID_PREFIXES.request),
   workerId: "fixture",
-});
+})!;
 evidence.taskActive = {
-  claimed: blocked !== undefined,
-  queued: wakeRows(waiting.id).length === 1,
-  postponed: (wakeRows(waiting.id)[0]?.due_at ?? 0) > at.getTime(),
+  claimed: preempted.trigger_message_id === waitingMessage.id,
+  messageTrigger: preempted.trigger_message_id === waitingMessage.id,
+  taskState: schedule.one<{ state: string }>("SELECT state FROM wake_evaluation WHERE chat_id=? AND source='task_periodic'", waiting.id)!.state,
 };
 schedule.write("DELETE FROM wake_evaluation WHERE chat_id=? AND source='task_periodic'", waiting.id);
 schedule.write("DELETE FROM chat_message_wake WHERE chat_id=?", waiting.id);
@@ -336,7 +327,12 @@ evidence.sources = {
     sourceDeliveryAfter.state === sourceDeliveryBefore.state,
 };
 
-// 判定器最终不可用时，第 6 次失败回退 owner，而不是让消息无人处理。
+// 判定器最终不可用时，第 6 次失败进入 attention。
+// 先清掉前面场景留下的 due wake/active eval，避免全局 claim 抢到别的 chat。
+schedule.write("DELETE FROM chat_message_wake");
+schedule.write(
+  "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE source='message' AND state IN ('pending','claimed','retry_wait')",
+);
 const failed = group();
 send(failed.id, "判定器挂了");
 const failCtx = (now: Date) => ({

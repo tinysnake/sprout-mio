@@ -106,6 +106,12 @@ export const CHAT_AUTOMATION_POLICY = {
 
 依据：`CHAT_AUTOMATION_POLICY` 常量与 `wake_evaluation_attempt_check`、`chatAutomationEvaluationViewSchema.attempt` 的上界引用。理由部分为本轮按取值与相邻约束归纳，**引用**。“300 秒”存在两处来源（TS 常量与 SQL 字面量），现在靠 `p6a-scheduler` 门禁钉住相等，不是物理单一来源，见 [已知限制](summary.md#p3-6-300-秒两处来源)。
 
+### 人类消息接单时机与每 Chat 唯一活跃判定
+
+Human 在 `contextual` Chat 发普通消息时，`chat_message_wake.due_at` 直接写当前时间，不再做 trailing debounce；`sendMessage` 提交后立即 `signalScheduleChange`，调度器重新 rearm 后即可 claim。连续消息只保留最新触发消息，旧触发消息被新消息覆盖，不额外排队。
+
+同一 Chat 只允许一个活跃 `wake_evaluation`。新消息的 trigger 与旧 message evaluation 不同时，旧 evaluation 立刻标 `stale`，清 `claim_token`/`lease_until`，新 evaluation 随后 claim。若旧的是 `task_periodic`，同样标 `stale`，并把 `chat_schedule.next_due_at` 推到 1 秒后，让任务在消息判定之后重新排期。旧 provider 请求可能仍在后台完成，但 claim token 已失效，结果不能提交；provider 自身仍有 45 秒超时兜底。**引用**
+
 ### `CHAT_AUTOMATION_CAPABILITIES`
 
 8 个动作分两级。级别只描述**第一道授权闸**，不是充分授权。依据：`src/contracts/chat-automation-capabilities.ts`。**引用**
