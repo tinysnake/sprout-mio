@@ -34,6 +34,8 @@ if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
 fi
 assert_port_free "$port"
 
+# 以 app 为工作目录，避免 runner 等相对路径命中调用者仓库。
+cd "$app"
 PORT="$port" nohup node "$app/.output/server/index.mjs" >>"$log_file" 2>&1 &
 echo $! > "$pid_file"
 wait_health "$port"
