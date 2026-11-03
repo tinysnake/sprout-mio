@@ -822,7 +822,7 @@ export const wakeEvaluationTask = sqliteTable(
 
 /**
  * 判定的一次尝试：何时发出、何时结束、花了多少。`wake_evaluation` 只存当前状态，
- * 过程留在这里，页面据此显示「正在检查 · 已等待 12 秒」这类事实，而不是猜。
+ * 过程留在这里，页面据此显示「正在检查 · 第 2 次」这类事实，而不是猜。
  */
 export const wakeEvaluationAttempt = sqliteTable(
   "wake_evaluation_attempt",

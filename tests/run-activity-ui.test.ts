@@ -145,6 +145,7 @@ describe("群组按 Agent 展示运行状态", () => {
 });
 describe("自动接续状态", () => {
   const empty: ChatRunState = { enabled: true, active: [], latest: null, inputs: [] };
+  const at = "2026-11-02T12:00:00.000Z";
   const read = (name: Parameters<typeof automationFixture>[0]) => ({
     ok: true as const,
     data: { view: automationFixture(name), allowedActions: [], denials: {} },
@@ -180,12 +181,71 @@ describe("自动接续状态", () => {
     expect(html).not.toContain("下次检查");
   });
 
-  it("消息尾部只留一行状态，不把检查记录堆在那儿", () => {
+  it("消息尾部只有一行状态，检查记录不往那儿堆", () => {
     const html = renderToStaticMarkup(
       createElement(RunStatusPanel, { state: empty, messages: [], automation: read("failure") }),
     );
     expect(html).toContain('data-testid="continuation-status"');
+    expect(html).not.toContain('data-testid="continuation-lines"');
     expect(html).not.toContain('data-testid="continuation-activity"');
+  });
+
+  it("判定进行中显示转圈，不报已经等了多少秒", () => {
+    const base = automationFixture("idle");
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, {
+        state: empty,
+        messages: [],
+        automation: {
+          ok: true as const,
+          data: {
+            view: {
+              ...base,
+              latestEvaluation: {
+                evaluationId: "evaluation-running",
+                source: "message" as const,
+                state: "claimed" as const,
+                round: 4,
+                attempt: 1,
+                claimedAt: at,
+                finishedAt: null,
+                evaluatedAt: null,
+                nextAttemptAt: null,
+                result: null,
+                errorCode: null,
+                usage: null,
+              },
+              recentRounds: [
+                {
+                  round: 4,
+                  source: "message" as const,
+                  state: "claimed" as const,
+                  evaluatedAt: null,
+                  result: null,
+                  errorCode: null,
+                  attempts: [
+                    {
+                      attempt: 1,
+                      startedAt: at,
+                      finishedAt: null,
+                      outcome: null,
+                      errorCode: null,
+                      usage: null,
+                    },
+                  ],
+                },
+              ],
+            },
+            allowedActions: [],
+            denials: {},
+          },
+          requestId: "req_11111111",
+        },
+      }),
+    );
+    expect(html).toContain('data-testid="continuation-spinner"');
+    expect(html).toContain("正在检查");
+    expect(html).not.toContain("已等待");
   });
 
   it("检查记录跟着会话详情走，列在诊断里", () => {
@@ -194,10 +254,9 @@ describe("自动接续状态", () => {
     );
     expect(html).toContain("检查细节与诊断");
     expect(html).toContain('data-testid="continuation-activity"');
-    expect(html).toContain('data-testid="continuation-activity-count"');
-    expect(html).toContain("1 轮");
+    expect(html).toContain("本轮检查");
     expect(html).toContain("第 1 轮检查");
-    expect(html).toContain('data-testid="continuation-activity-entries"');
+    expect(html).toContain('data-testid="continuation-lines"');
   });
 
   it("一次检查花了多久、用了多少 token 都写在记录里", () => {
