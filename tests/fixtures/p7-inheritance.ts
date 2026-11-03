@@ -5,8 +5,8 @@
  * 而是把「谁被加载、谁没被加载」变成可重跑的实测清单：
  *
  *   - 默认关闭：宿主 skills / prompts / themes / AGENTS.md / extensions 与 cwd 的 `.pi/*`
- *     都不进 loader；工具面等于四个基础工具 + Sprout 工具，且不含 codemode / tool_search /
- *     mcp__ 前缀工具。
+ *     都不进 loader；工具面等于只读工具 + Sprout 工具 + 可选的 pi-web-access，且不含
+ *     host bash/edit/write 与 mcp__ 前缀工具。
  *   - 打开 `inheritHostResources`：只有宿主 skills 与 prompt templates 进入 loader，
  *     extensions / themes / context files 仍然关闭，工具面不变。
  *   - 隔离：两个 Project 的分身各自在自己的受控目录里装载，宿主 agentDir 前后逐字节不变。
@@ -33,6 +33,11 @@ import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { APP_VERSION, CONTRACT_VERSION } from "../../src/contracts/version";
 import { infoHubToolInputSchemas } from "../../src/contracts/info-hub-query";
+import {
+  HOST_CORE_TOOLS,
+  HOST_WEB_TOOLS,
+  resolveWebAccessExtension,
+} from "../../src/extension/host-tools";
 import { remoteToolInputSchemas } from "../../src/contracts/remote";
 import { taskToolInputSchemas } from "../../src/contracts/task";
 
@@ -321,24 +326,10 @@ function openSession(options: {
   });
 }
 
-/** 契约里声明的 Sprout 工具名 + 四个基础工具 + 诊断入口 = 默认工具面的完整允许集合。 */
-const expectedTools = [
-  "bash",
-  "edit",
-  "read",
-  "sprout_status",
-  "write",
-  ...Object.keys(remoteToolInputSchemas),
-  ...Object.keys(taskToolInputSchemas),
-  ...Object.keys(infoHubToolInputSchemas),
-].sort();
-
 /**
  * registry 必须与工具面逐条相等：注册了却不在 allowlist 里就是被 Pi 丢掉（对模型不存在）。
- * 这里不再留例外——`sprout_status` 已经从「被丢掉的观察项」变成「工具面的正式成员」。
+ * 这里不再留例外；工具面由只读工具、Sprout 工具和可选的 pi-web-access 组成。
  */
-const allowedAnywhere = new Set(expectedTools);
-
 /**
  * 从真实 session 文件里取出 `sprout_status` 的那条 `toolResult`。
  *
@@ -390,6 +381,15 @@ const median = (values: number[]) => {
 
 const fixture = await startModelFixture({ privateDir: join(directory, "model-fixture") });
 const hostAgentDir = fixture.agentDir;
+const expectedTools = [
+  ...HOST_CORE_TOOLS,
+  ...(resolveWebAccessExtension(hostAgentDir) ? HOST_WEB_TOOLS : []),
+  "sprout_status",
+  ...Object.keys(remoteToolInputSchemas),
+  ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
+  ...Object.keys(infoHubToolInputSchemas),
+].sort();
+const allowedAnywhere = new Set(expectedTools);
 seedHostResources(hostAgentDir);
 const sessionDirectory = join(directory, "sessions");
 mkdirSync(sessionDirectory, { recursive: true });
@@ -588,7 +588,7 @@ for (const entry of runs) {
   assert.deepEqual(
     entry.tools,
     expectedTools,
-    `${entry.label}: 工具面必须正好是四个基础工具 + Sprout 工具`,
+    `${entry.label}: 工具面必须正好是只读工具 + Sprout 工具`,
   );
   assert(
     entry.registeredTools.every((name) => allowedAnywhere.has(name)),
@@ -602,28 +602,36 @@ for (const entry of runs) {
   );
   assert(entry.sproutStatus.declared, `${entry.label}: sprout_status 在工具面`);
   assert(entry.sproutStatus.registered, `${entry.label}: sprout_status 在 registry`);
-  for (const forbidden of ["codemode", "tool_search", markers.hostExtensionTool]) {
+  for (const forbidden of ["bash", "edit", "write", markers.hostExtensionTool]) {
     assert(!entry.tools.includes(forbidden), `${entry.label}: 工具面不含 ${forbidden}`);
     assert(
       !entry.registeredTools.includes(forbidden),
       `${entry.label}: registry 不含 ${forbidden}`,
     );
   }
+  for (const required of ["codemode", "tool_search"]) {
+    assert(entry.tools.includes(required), `${entry.label}: 工具面含 ${required}`);
+    assert(entry.registeredTools.includes(required), `${entry.label}: registry 含 ${required}`);
+  }
   assert(
     entry.tools.every((name) => !name.startsWith("mcp__")) &&
       entry.registeredTools.every((name) => !name.startsWith("mcp__")),
     `${entry.label}: 没有 MCP extension 工具（未持租约时一个也没有）`,
   );
-  assert.deepEqual(
-    entry.extensions,
-    ["sprout-extension"],
-    `${entry.label}: 只加载 Sprout extension`,
+  assert(entry.extensions.includes("sprout-extension"), `${entry.label}: 加载 Sprout extension`);
+  assert(
+    entry.extensions.every(
+      (name: string) =>
+        ["sprout-extension", "codemode", "tool-search"].includes(name) ||
+        name.includes("pi-web-access"),
+    ),
+    `${entry.label}: 只额外加载 pi-web-access，不加载其他宿主 extension`,
   );
   assert(entry.sessionFileUnderSessionDirectory, `${entry.label}: session 文件落在本次会话目录`);
   if (entry.turn) assert(entry.sessionFileExists, `${entry.label}: 跑过一轮后 session 文件已落盘`);
 }
 pass(
-  `工具面 ${runs.length} 次均为 ${expectedTools.length} 个工具（${expectedTools.join(", ")}），且每次 registry 与工具面逐条相等；宿主工具/mcp__/codemode/tool_search 均未出现`,
+  `工具面 ${runs.length} 次均为 ${expectedTools.length} 个工具（${expectedTools.join(", ")}），且每次 registry 与工具面逐条相等；宿主 bash/edit/write 与 mcp__ 均未出现`,
 );
 
 // ---------------------------------------------------------------- 断言：默认不继承

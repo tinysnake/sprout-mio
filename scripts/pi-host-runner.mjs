@@ -138,6 +138,15 @@ async function open(config) {
   const { describeToolCall } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/lib/run-activity.ts"),
   );
+  const { resolveWebAccessExtension, hostToolNames } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/host-tools.ts"),
+  );
+  const { registerCurrentTimeTool } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/time-tools.ts"),
+  );
+  const { registerGitReadTool } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/git-read.ts"),
+  );
   const { createRemoteClient } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/remote-client.ts"),
   );
@@ -184,6 +193,7 @@ async function open(config) {
     : { skills: [], prompts: [] };
   // 受控目录是分身自己的 loader/session 根。证据里报的 agentDir 就是这个对象里的值：
   // 不让「声明的目录」和「喂给 loader 的目录」变成两个可以互相飘的常量。
+  const webAccessEntry = resolveWebAccessExtension(config.agentDir);
   const loaderOptions = {
     cwd: config.cwd,
     agentDir: controlledDir,
@@ -193,11 +203,16 @@ async function open(config) {
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
+    // pi-web-access 是宿主已安装的显式扩展，不走宿主扩展目录发现；缺席时 web_* 工具名也不进 allowlist。
+    additionalExtensionPaths: webAccessEntry ? [webAccessEntry] : [],
     // 开关只搬 skills 与 prompt templates。extensions / themes / context files 仍然关闭：
     // 它们才是 P3 记录的失败与超时来源（context7、UnityMCP），也是跨 Project 内容泄漏的入口。
     additionalSkillPaths: inheritedPaths.skills,
     additionalPromptTemplatePaths: inheritedPaths.prompts,
     extensionFactories: [
+      // `noExtensions: true` 会连内建扩展一起关掉；codemode 与 tool_search 必须显式加回。
+      { name: "codemode", factory: sdk.createCodemodeExtension() },
+      { name: "tool-search", factory: sdk.createToolSearchExtension() },
       {
         name: "sprout-extension",
         factory: async (pi) => {
@@ -247,6 +262,8 @@ async function open(config) {
           registerRemoteTools(pi, remote);
           registerTaskTools(pi, remote);
           registerInfoHubTools(pi, remote);
+          registerCurrentTimeTool(pi);
+          registerGitReadTool(pi);
           registerSproutStatus(pi);
         },
       },
@@ -281,10 +298,7 @@ async function open(config) {
     // `orchestrate/sprout-mio-r1/reports/remediation-extension.md`。
     tools: [
       "sprout_status",
-      "read",
-      "bash",
-      "edit",
-      "write",
+      ...hostToolNames(webAccessEntry),
       "mcp__*",
       ...Object.keys(remoteToolInputSchemas),
       // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
@@ -305,7 +319,10 @@ async function open(config) {
         kind: "text_delta",
         text: event.assistantMessageEvent.delta,
       });
-    } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_end") {
+    } else if (
+      event.type === "message_update" &&
+      event.assistantMessageEvent?.type === "text_end"
+    ) {
       // 一个 text block 只发一条 text_end，宿主据此落一条独立的「中间说明」。
       const text = event.assistantMessageEvent.content;
       if (text) {
