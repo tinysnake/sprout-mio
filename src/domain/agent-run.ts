@@ -377,7 +377,17 @@ function fanoutHumanMessage(
   current: Chat,
   ctx: ProjectContext,
   ownerAgent = false,
+  deferContextual = false,
 ): void {
+  // 只有消息确实进入判定器防抖队列时才跳过即时 owner 唤醒。自动化关闭、控制为 off
+  // 或显式点名 Agent 时仍走原本的即时路由。
+  if (
+    !ownerAgent &&
+    deferContextual &&
+    current.wakePolicy === "contextual" &&
+    !saved.mentions.some((mention) => mention.memberKind === "agent")
+  )
+    return;
   const members = readChatEffectiveMembers(current.id, current.projectId);
   const dispatch: ChatWakeDispatch = { chatId: current.id, mentions: saved.mentions };
   const candidates = routeWakeCandidates({
@@ -428,7 +438,11 @@ function assertDmAgentParticipates(current: Chat, agentProfileId: string): void 
 }
 
 /** 与 human message 共用事务，输入失败就回滚消息。 */
-export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
+export function appendHumanRunInput(
+  saved: Message,
+  ctx: ProjectContext,
+  deferContextual = false,
+): void {
   const current = getChat(saved.chatId, ctx);
   if (saved.senderKind !== "human") return;
   // DM 保持「一条消息一条 run」的既有语义：对话里恰有一个 instance，不看唤醒规则。
@@ -444,7 +458,7 @@ export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
     attachMessageToRun(saved, current, instance, ctx);
     return;
   }
-  fanoutHumanMessage(saved, current, ctx);
+  fanoutHumanMessage(saved, current, ctx, false, deferContextual);
 }
 
 /** Only the current Agent owner may dispatch; member replies cannot cascade. */

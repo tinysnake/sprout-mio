@@ -576,7 +576,7 @@ try {
           losingResult,
           new Date(),
         ),
-        null,
+        [],
         "losing claim token fails CAS before writing receipt or delivery",
       );
       equal(

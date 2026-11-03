@@ -213,7 +213,7 @@ async function landingFence() {
     );
     equal(
       delivery.commitEvaluationResult(claimed, input, result, now),
-      null,
+      [],
       "landing gate rejects a late result whose facts moved after the snapshot",
     );
     equal(
@@ -852,12 +852,12 @@ try {
     );
     equal(
       delivery.commitEvaluationResult(e, input, result, now),
-      null,
+      [],
       "control changed after provider snapshot rejects completed evaluation",
     );
     equal(
       delivery.createContinuationDelivery(e, input, result, now),
-      null,
+      [],
       "control changed after successful decision rejects input creation",
     );
     equal(

@@ -9,6 +9,12 @@ import { listMessagesFn } from "../../server/functions/chat";
 /** 活跃 run 的定点刷新节奏：沿用旧全树 invalidate 的 1.2s，不额外加快。 */
 export const CHAT_LIVE_INTERVAL_MS = 1_200;
 
+/**
+ * 空闲时也要轮询：判定器可能在页面没有任何活动 run 时启动新 run，
+ * 只靠活跃 run 门禁会让 Agent 回帖一直停在旧消息里。放慢到 5 秒，仍随页面隐藏暂停。
+ */
+export const CHAT_IDLE_INTERVAL_MS = 5_000;
+
 /** 一个 tick 读回的活动事实：只有随 run 变化的两块，其余事实继续来自 loader。 */
 export type ChatLiveFacts = {
   messages: ChatResult<Message[]>;
@@ -50,17 +56,20 @@ function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
 
 /**
  * 可见时每 1.2s 读一次这条 Chat 的消息与 run 状态，页面只把结果叠在 loader 事实之上。
- * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹发生变化时回报一次
- * `onRunChanged`，由页面做一次整树 invalidate。每次 tick 只发两个读，不再重跑整棵路由的 loader。
+ * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹变化时回报一次
+ * `onRunChanged`，新消息到达时回报一次 `onMessagesChanged`，由页面做一次整树 invalidate。
+ * 每次 tick 只发两个读，不再重跑整棵路由的 loader。
  */
 export function createChatLiveRefresh({
   seed,
   reads,
   onFacts,
   onRunChanged,
+  onMessagesChanged,
   seedSignature = null,
   environment,
   intervalMs = CHAT_LIVE_INTERVAL_MS,
+  stopWhenIdle = true,
 }: {
   seed: ChatLiveSeed;
   reads: {
@@ -69,10 +78,14 @@ export function createChatLiveRefresh({
   };
   onFacts: (facts: ChatLiveFacts) => void;
   onRunChanged: () => void;
+  /** 新消息到达时回报一次，让 Info Hub 的消息计数与最近消息时间同步。 */
+  onMessagesChanged?: () => void;
   /** loader 已经读到过的那份 run 指纹：tick 结果与它一致就不必重读整树。 */
   seedSignature?: string | null;
   environment: Environment;
   intervalMs?: number;
+  /** 默认在 run 收尾后停止；页面需要持续发现新 run 时传 false。 */
+  stopWhenIdle?: boolean;
 }): ChatLiveRefresh {
   const { document } = environment;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -84,11 +97,13 @@ export function createChatLiveRefresh({
   let overlay = [...seed.messages];
   let known = new Set(overlay.map((entry) => entry.id));
   let cursor = seed.cursor;
+  let messageSignature = overlay.at(-1)?.id ?? null;
 
   const reseed = (next: ChatLiveSeed) => {
     overlay = [...next.messages];
     known = new Set(overlay.map((entry) => entry.id));
     cursor = next.cursor;
+    messageSignature = overlay.at(-1)?.id ?? null;
   };
 
   const schedule = () => {
@@ -126,15 +141,20 @@ export function createChatLiveRefresh({
       onFacts({ messages, runState });
       const next = runSignature(runState);
       const active = isActiveRunState(runState);
+      const nextMessage = overlay.at(-1)?.id ?? null;
+      const messageMoved = nextMessage !== messageSignature;
+      messageSignature = nextMessage;
+      let runMoved = false;
       if (next !== null) {
-        const moved = next !== signature;
+        runMoved = next !== signature;
         signature = next;
-        // 只有指纹真的变了才重读：一个 tick 里的新 run、状态推进、本轮结束都算变化，
-        // 而「loader 已经知道它是空闲的」不必再花一次全树重读。
-        if (moved) onRunChanged();
       }
+      // run 变了就整树重读；只有消息变化时也重读一次，让不在 tick 读取范围内的
+      // Info Hub 消息计数与最近消息时间跟上来。两者同 tick 变化时只重读一次。
+      if (runMoved) onRunChanged();
+      else if (messageMoved) onMessagesChanged?.();
       // run 状态读不到时不改门禁：下一 tick 继续读，结束判定只认成功的响应。
-      if (runState.ok && !active) {
+      if (runState.ok && !active && stopWhenIdle) {
         stopped = true;
         return;
       }
@@ -185,6 +205,7 @@ function loaderSeed(loader: ChatDetailLoaderData): ChatLiveSeed {
  * 页面的活跃读数。`loader` 同时是种子（已读到的 run 指纹）与重置锚点：
  * loader 一换（invalidate 之后）就丢掉 overlay，游标回到 loader 的尾巴，
  * 让更晚的 loader 事实优先，不让一次早于 loader 的 tick 覆盖它。换 Chat 时旧 tick 的结果按 chatId 丢弃。
+ * 可见时始终轮询：有活动 run 用 1.2s，空闲用 5s，确保判定器后来启动的 run 也能被发现。
  */
 export function useChatLive({
   chatId,
@@ -206,14 +227,16 @@ export function useChatLive({
   const refresh = useRef<ChatLiveRefresh | null>(null);
   const seedSignature = loader.ok ? runSignature(loader.runState) : null;
   useEffect(() => {
-    if (!active) return;
     const chat = chatId;
     const instance = createChatLiveRefresh({
       seed: seedRef.current,
       reads: chatLiveReads(chat),
       onFacts: (facts) => setState({ chatId: chat, facts }),
       onRunChanged: () => changed.current(),
+      onMessagesChanged: () => changed.current(),
       seedSignature,
+      intervalMs: active ? CHAT_LIVE_INTERVAL_MS : CHAT_IDLE_INTERVAL_MS,
+      stopWhenIdle: false,
       environment: { document },
     });
     refresh.current = instance;

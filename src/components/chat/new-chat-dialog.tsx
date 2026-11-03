@@ -260,7 +260,7 @@ function GroupCreateForm({
         >
           <option value="owner_led">owner_led（默认）</option>
           <option value="mention_only">mention_only</option>
-          <option value="contextual">contextual（P5a 按 owner_led 回退）</option>
+          <option value="contextual">contextual（由判定器决定唤醒成员）</option>
         </select>
         <p className="mt-1.5 text-[10px] leading-5 text-muted-foreground">
           初始 Owner 是 Human 创建者：没有点名时不会唤醒 Agent；Agent owner 不获得治理权。

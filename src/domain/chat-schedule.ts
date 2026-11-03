@@ -29,7 +29,8 @@ export type Evaluation = {
   id: string;
   project_id: string;
   chat_id: string;
-  source: "task_periodic";
+  source: "message" | "task_periodic";
+  trigger_message_id: string | null;
   round: number;
   control_epoch: number;
   fingerprint: string;
@@ -106,6 +107,19 @@ export function assignedTasks(chatId: string) {
     chatId,
   );
 }
+/** One round counter per chat; message and task_periodic evaluations share it. */
+export function nextEvaluationRound(chatId: string): number {
+  const schedule = one<{ round: number }>(
+    "SELECT round FROM chat_schedule WHERE chat_id=?",
+    chatId,
+  );
+  const latest = one<{ n: number }>(
+    "SELECT coalesce(max(round),0) AS n FROM wake_evaluation WHERE chat_id=?",
+    chatId,
+  )!.n;
+  return Math.max(schedule?.round ?? 0, latest) + 1;
+}
+
 export function responsibleRecipient(
   chatId: string,
 ): { kind: "human" | "agent"; id: string; instanceId: string | null } | null {
@@ -144,6 +158,37 @@ export function responsibleRecipient(
     owner.id,
   );
   return { kind, id: owner.id, instanceId: instance?.id ?? null };
+}
+export function ensureAgentInstance(
+  chatId: string,
+  projectId: string,
+  agentProfileId: string,
+  now: Date,
+): string {
+  const existing = one<{ id: string }>(
+    "SELECT id FROM agent_instance WHERE chat_id=? AND project_id=? AND agent_profile_id=?",
+    chatId,
+    projectId,
+    agentProfileId,
+  );
+  if (existing) return existing.id;
+  const id = newId(ID_PREFIXES.instance);
+  write(
+    "INSERT OR IGNORE INTO agent_instance(id,chat_id,project_id,agent_profile_id,created_at) VALUES(?,?,?,?,?)",
+    id,
+    chatId,
+    projectId,
+    agentProfileId,
+    Math.floor(now.getTime() / 1000),
+  );
+  return (
+    one<{ id: string }>(
+      "SELECT id FROM agent_instance WHERE chat_id=? AND project_id=? AND agent_profile_id=?",
+      chatId,
+      projectId,
+      agentProfileId,
+    )?.id ?? id
+  );
 }
 export function ensureResponsibleInstance(chatId: string, now: Date) {
   const owner = responsibleRecipient(chatId),
@@ -188,6 +233,75 @@ export function currentFingerprint(chatId: string): string {
     ),
   });
 }
+export function messageFingerprint(chatId: string, triggerMessageId: string): string {
+  const chat = chatFacts(chatId);
+  return hash({
+    chat: chat
+      ? {
+          id: chat.id,
+          project_id: chat.project_id,
+          kind: chat.kind,
+          owner_kind: chat.owner_kind,
+          owner_id: chat.owner_id,
+          archived_at: chat.archived_at,
+          governance_revision: chat.governance_revision,
+          wake_policy: chat.wake_policy,
+        }
+      : null,
+    control: controlFor(chatId).epoch,
+    policy: one("SELECT wake_policy FROM project WHERE id=?", chat?.project_id ?? ""),
+    members: all(
+      "SELECT member_kind,member_id FROM chat_effective_member WHERE chat_id=? AND member_kind='agent' ORDER BY member_id",
+      chatId,
+    ),
+    trigger: one(
+      "SELECT id,sender_kind,sender_id,body,created_at FROM message WHERE id=? AND chat_id=?",
+      triggerMessageId,
+      chatId,
+    ),
+    mentions: all(
+      "SELECT member_kind,member_id,start,end FROM message_mention WHERE chat_id=? AND message_id=? ORDER BY start",
+      chatId,
+      triggerMessageId,
+    ),
+  });
+}
+export function messageEvaluationCurrent(evaluation: Evaluation): boolean {
+  if (evaluation.source !== "message" || !evaluation.trigger_message_id) return false;
+  const control = controlFor(evaluation.chat_id);
+  const chat = chatFacts(evaluation.chat_id);
+  return (
+    control.mode === "enabled" &&
+    control.epoch === evaluation.control_epoch &&
+    chat !== undefined &&
+    chat.archived_at === null &&
+    chat.kind !== "dm" &&
+    chat.wake_policy === "contextual" &&
+    messageFingerprint(evaluation.chat_id, evaluation.trigger_message_id) === evaluation.fingerprint
+  );
+}
+export function messageDeliveryContextMatches(
+  row: DeliveryContext,
+  evaluation: Evaluation,
+): boolean {
+  if (!messageEvaluationCurrent(evaluation) || row.recipient_kind !== "agent") return false;
+  if (
+    !one(
+      "SELECT 1 FROM chat_effective_member WHERE chat_id=? AND project_id=? AND member_kind='agent' AND member_id=?",
+      row.chat_id,
+      row.project_id,
+      row.recipient_id,
+    )
+  )
+    return false;
+  return !!one(
+    "SELECT 1 FROM agent_instance WHERE id=? AND chat_id=? AND project_id=? AND agent_profile_id=?",
+    row.instance_id,
+    row.chat_id,
+    row.project_id,
+    row.recipient_id,
+  );
+}
 export type DeliveryContext = {
   chat_id: string;
   project_id: string;
@@ -198,10 +312,11 @@ export type DeliveryContext = {
 };
 /** Material work facts ignore run turnover and control epoch; attempted input remains an audit fact. */
 export function deliveryContextMatches(row: DeliveryContext) {
+  const evaluation = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", row.evaluation_id);
+  if (evaluation?.source === "message") return messageDeliveryContextMatches(row, evaluation);
   const owner = responsibleRecipient(row.chat_id),
     chat = chatFacts(row.chat_id),
     tasks = assignedTasks(row.chat_id);
-  const evaluation = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", row.evaluation_id);
   const input = evaluation?.input ? (JSON.parse(evaluation.input) as WakeEvaluationInput) : null;
   const policy = one<{ wake_policy: string | null }>(
     "SELECT wake_policy FROM project WHERE id=?",
@@ -227,17 +342,31 @@ export function deliveryContextMatches(row: DeliveryContext) {
     hash(policy === null ? DEFAULT_PROJECT_WAKE_POLICY : JSON.parse(policy)) === hash(input.policy)
   );
 }
-export function hasUnknownDeliveryBarrier(chatId: string) {
-  return all<DeliveryContext>(
-    "SELECT * FROM continuation_delivery WHERE chat_id=? AND state='attention' AND error_code='delivery_unknown' AND NOT EXISTS (SELECT 1 FROM continuation_delivery replacement WHERE replacement.supersedes_delivery_id=continuation_delivery.id)",
-    chatId,
-  ).some(deliveryContextMatches);
+export function hasUnknownDeliveryBarrier(
+  chatId: string,
+  recipient?: { kind: "human" | "agent"; id: string },
+) {
+  const rows = recipient
+    ? all<DeliveryContext>(
+        "SELECT * FROM continuation_delivery WHERE chat_id=? AND recipient_kind=? AND recipient_id=? AND state='attention' AND error_code='delivery_unknown' AND NOT EXISTS (SELECT 1 FROM continuation_delivery replacement WHERE replacement.supersedes_delivery_id=continuation_delivery.id)",
+        chatId,
+        recipient.kind,
+        recipient.id,
+      )
+    : all<DeliveryContext>(
+        "SELECT * FROM continuation_delivery WHERE chat_id=? AND state='attention' AND error_code='delivery_unknown' AND NOT EXISTS (SELECT 1 FROM continuation_delivery replacement WHERE replacement.supersedes_delivery_id=continuation_delivery.id)",
+        chatId,
+      );
+  return rows.some(deliveryContextMatches);
 }
-export function cancelUnadmitted(chatId: string, reason: string) {
+export function cancelUnadmitted(
+  chatId: string,
+  reason: string,
+  source?: "message" | "task_periodic",
+) {
   write(
-    "UPDATE continuation_delivery SET state='canceled',cancel_reason=?,next_attempt_at=NULL WHERE chat_id=? AND state IN ('pending','bound') AND admitted_at IS NULL",
-    reason,
-    chatId,
+    `UPDATE continuation_delivery SET state='canceled',cancel_reason=?,next_attempt_at=NULL WHERE chat_id=? AND state IN ('pending','bound') AND admitted_at IS NULL${source ? " AND evaluation_id IN (SELECT id FROM wake_evaluation WHERE source=?)" : ""}`,
+    ...(source ? [reason, chatId, source] : [reason, chatId]),
   );
   write(
     "UPDATE continuation_delivery SET state='stale' WHERE chat_id=? AND state='presented'",
@@ -261,9 +390,12 @@ export function reconcileChatSchedule(chatId: string, now: Date): void {
           : chat.archived_at !== null
             ? "chat_archived"
             : "task_context_changed",
+        tasks.length === 0 && control.mode === "enabled" && chat.archived_at === null
+          ? "task_periodic"
+          : undefined,
       );
     write(
-      "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE chat_id=? AND state IN ('pending','claimed','retry_wait')",
+      `UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE chat_id=?${control.mode !== "enabled" || chat.archived_at !== null ? "" : " AND source='task_periodic'"} AND state IN ('pending','claimed','retry_wait')`,
       chatId,
     );
   }
@@ -299,6 +431,7 @@ export function scanChatSchedules(now: Date) {
     reconcileChatSchedule(id, now);
 }
 export function evaluationCurrent(evaluation: Evaluation) {
+  if (evaluation.source === "message") return messageEvaluationCurrent(evaluation);
   const control = controlFor(evaluation.chat_id);
   return (
     control.mode === "enabled" &&
@@ -324,8 +457,26 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
       const control = controlFor(due.chat_id);
       if (control.mode !== "enabled") return undefined; // First epoch gate: no provider work when disabled.
       ensureResponsibleInstance(due.chat_id, ctx.now);
+      // A message evaluation owns the active slot. Yield to its scheduler instead of
+      // claiming it as a task evaluation or starving it behind this schedule.
+      const messageEvaluation = one<Evaluation>(
+        "SELECT * FROM wake_evaluation WHERE chat_id=? AND source='message' AND state IN ('pending','claimed','retry_wait')",
+        due.chat_id,
+      );
+      if (messageEvaluation) {
+        write(
+          "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
+          Math.max(
+            ctx.now.getTime() + 1_000,
+            messageEvaluation.lease_until ?? 0,
+            messageEvaluation.next_attempt_at ?? 0,
+          ),
+          due.chat_id,
+        );
+        return undefined;
+      }
       let evaluation = one<Evaluation>(
-        "SELECT * FROM wake_evaluation WHERE chat_id=? AND state IN ('pending','claimed','retry_wait')",
+        "SELECT * FROM wake_evaluation WHERE chat_id=? AND source='task_periodic' AND state IN ('pending','claimed','retry_wait')",
         due.chat_id,
       );
       if (evaluation?.state === "claimed" && evaluation.lease_until! > ctx.now.getTime()) {
@@ -358,12 +509,13 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
           return undefined;
         }
         const id = newId(ID_PREFIXES.wakeEvaluation);
+        const round = nextEvaluationRound(due.chat_id);
         write(
           "INSERT INTO wake_evaluation(id,project_id,chat_id,round,control_epoch,fingerprint,state,request_id,created_at) VALUES(?,?,?,?,?,?,'pending',?,?)",
           id,
           due.project_id,
           due.chat_id,
-          schedule.round + 1,
+          round,
           control.epoch,
           schedule.fingerprint,
           ctx.requestId,
@@ -378,7 +530,7 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
             task.revision,
             task.assignment_revision,
           );
-        write("UPDATE chat_schedule SET round=round+1 WHERE chat_id=?", due.chat_id);
+        write("UPDATE chat_schedule SET round=? WHERE chat_id=?", round, due.chat_id);
         evaluation = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", id)!;
       }
       const token = `${ctx.workerId}:${randomUUID()}`;
@@ -413,11 +565,19 @@ export function recoverSchedules(now: Date) {
   );
   scanChatSchedules(now);
   for (const e of all<Evaluation>("SELECT * FROM wake_evaluation WHERE state='claimed'")) {
-    write(
-      "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
-      Math.max(now.getTime(), e.lease_until!),
-      e.chat_id,
-    );
+    if (e.source === "message")
+      write(
+        "UPDATE chat_message_wake SET due_at=? WHERE chat_id=? AND evaluation_id=?",
+        Math.max(now.getTime(), e.lease_until!),
+        e.chat_id,
+        e.id,
+      );
+    else
+      write(
+        "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
+        Math.max(now.getTime(), e.lease_until!),
+        e.chat_id,
+      );
   }
   signalScheduleChange();
 }

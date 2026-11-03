@@ -15,16 +15,25 @@ import {
   type EvaluateWake,
 } from "../domain/continuation-delivery";
 import { drainAutomationAborts } from "../domain/chat-automation";
+import { claimDueMessageWake, evaluateMessageClaim } from "../domain/message-wake";
 
 export type SchedulerClock = {
   now: () => Date;
   setTimeout: (callback: () => void, ms: number) => unknown;
   clearTimeout: (handle: unknown) => void;
+  setInterval?: (callback: () => void, ms: number) => unknown;
+  clearInterval?: (handle: unknown) => void;
 };
 const clock: SchedulerClock = {
   now: () => new Date(),
   setTimeout: (fn, ms) => setTimeout(fn, ms),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  setInterval: (fn, ms) => {
+    const handle = setInterval(fn, ms);
+    handle.unref?.();
+    return handle;
+  },
+  clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
 };
 const globalState = globalThis as typeof globalThis & { sproutWakeEvaluator?: EvaluateWake };
 /** Integration wires judge's result-only adapter here. No fallback to another provider is allowed. */
@@ -43,6 +52,7 @@ export function createAutomationScheduler(
   const time = options.clock ?? clock,
     workerId = options.workerId ?? randomUUID();
   let timer: unknown,
+    heartbeat: unknown,
     started = false,
     busy = false,
     generation = 0,
@@ -57,7 +67,7 @@ export function createAutomationScheduler(
     }
     // No assigned Task and no pending transport retry means no Task timer at all.
     const next = one<{ due: number | null }>(
-      "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL)",
+      "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL UNION ALL SELECT due_at AS due FROM chat_message_wake)",
     )?.due;
     if (next !== null && next !== undefined)
       timer = time.setTimeout(
@@ -79,7 +89,7 @@ export function createAutomationScheduler(
       // Claims are synchronous; provider requests run concurrently without holding the writer lock.
       for (let n = 0; n < 100; n++) {
         const ctx: SchedulerContext = { now, requestId: newId(ID_PREFIXES.request), workerId };
-        const evaluation = claimDueEvaluation(ctx);
+        const evaluation = claimDueEvaluation(ctx) ?? claimDueMessageWake(ctx);
         if (!evaluation) break;
         const evaluator =
           options.evaluateWake ??
@@ -89,10 +99,14 @@ export function createAutomationScheduler(
           });
         const claimedGeneration = generation;
         const live = () => started && generation === claimedGeneration;
-        const work = evaluateClaim(evaluation, evaluator, ctx, live, time.now)
-          .then(() => {
-            if (live()) bindPendingDeliveries(time.now());
-          })
+        const work =
+          (evaluation.source === "message"
+            ? evaluateMessageClaim(evaluation, evaluator, ctx, live, time.now)
+            : evaluateClaim(evaluation, evaluator, ctx, live, time.now)
+          )
+            .then(() => {
+              if (live()) bindPendingDeliveries(time.now());
+            })
           .catch(report)
           .finally(() => {
             inflight.delete(work);
@@ -110,9 +124,10 @@ export function createAutomationScheduler(
     try {
       scanChatSchedules(time.now());
       bindPendingDeliveries(time.now());
-      rearm();
     } catch (error) {
       report(error);
+    } finally {
+      rearm();
     }
   }
   return {
@@ -123,6 +138,10 @@ export function createAutomationScheduler(
       recoverSchedules(time.now());
       unsubscribe = onScheduleChange(changed);
       drainAutomationAborts(time.now(), options.abort ?? (() => false));
+      // 兜底：即使某个 signal 丢失，也要定期检查 due 的 message/Task 判定。
+      heartbeat = time.setInterval?.(() => {
+        void advance().catch(report);
+      }, 15_000);
       void advance().catch(report);
     },
     stop() {
@@ -132,9 +151,11 @@ export function createAutomationScheduler(
       unsubscribe = undefined;
       if (timer !== undefined) time.clearTimeout(timer);
       timer = undefined;
+      if (heartbeat !== undefined) time.clearInterval?.(heartbeat);
+      heartbeat = undefined;
     },
     advance,
-    settled: () => Promise.all([...inflight]),
+    settled: () => Promise.all(inflight),
     snapshot: () => ({ started, timerArmed: timer !== undefined, inflight: inflight.size }),
   };
 }
