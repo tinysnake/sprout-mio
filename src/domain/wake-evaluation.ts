@@ -9,7 +9,9 @@ import {
   type WakeEvaluationErrorCode,
   type WakeRecipientDecision,
   type WakeProvider,
+  type WakeUsage,
 } from "../contracts/wake-evaluation";
+export type { WakeUsage } from "../contracts/wake-evaluation";
 import { nameHints, routeWakeCandidates } from "./chat-wake";
 
 export type WakeCandidateSnapshot = WakeEvaluationInput["candidates"][number];
@@ -47,14 +49,6 @@ export type PreparedWakeEvaluation =
   | { kind: "skipped"; reasonCode: string }
   | { kind: "failed"; result: WakeEvaluationResult };
 
-export type WakeUsage = {
-  inputTokens: number | null;
-  outputTokens: number | null;
-  inputCharacters: number;
-  durationMs: number;
-  /** The version a rolling model tag resolved to, when the provider reports one. */
-  resolvedModel?: string | null;
-};
 export type WakeReceipt = { result: WakeEvaluationResult; usage: WakeUsage };
 export type WakeJudge = (input: WakeEvaluationInput) => Promise<WakeReceipt>;
 

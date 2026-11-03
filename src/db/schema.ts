@@ -14,7 +14,11 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { ProjectWakePolicy } from "../contracts/project-wake-policy";
-import type { WakeEvaluationInput, WakeEvaluationResult } from "../contracts/wake-evaluation";
+import type {
+  WakeEvaluationInput,
+  WakeEvaluationResult,
+  WakeUsage,
+} from "../contracts/wake-evaluation";
 import type { ContinuationInputEnvelope } from "../contracts/chat-automation";
 import { TASK_STATUSES } from "../contracts/task";
 import { TASK_ACTIONS } from "../contracts/task-capabilities";
@@ -812,6 +816,41 @@ export const wakeEvaluationTask = sqliteTable(
     check(
       "wake_evaluation_task_revision_check",
       sql`${t.revision}>0 and ${t.assignmentRevision}>0`,
+    ),
+  ],
+);
+
+/**
+ * 判定的一次尝试：何时发出、何时结束、花了多少。`wake_evaluation` 只存当前状态，
+ * 过程留在这里，页面据此显示「正在检查 · 已等待 12 秒」这类事实，而不是猜。
+ */
+export const wakeEvaluationAttempt = sqliteTable(
+  "wake_evaluation_attempt",
+  {
+    evaluationId: text("evaluation_id")
+      .notNull()
+      .references(() => wakeEvaluation.id),
+    attempt: integer("attempt").notNull(),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+    outcome: text("outcome"),
+    errorCode: text("error_code"),
+    usage: text("usage", { mode: "json" }).$type<WakeUsage>(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.evaluationId, t.attempt] }),
+    check("wake_evaluation_attempt_number_check", sql`${t.attempt} between 1 and 6`),
+    check(
+      "wake_evaluation_attempt_outcome_check",
+      sql`${t.outcome} is null or ${t.outcome} in ('decided','retry_wait','attention','stale','canceled')`,
+    ),
+    check(
+      "wake_evaluation_attempt_finish_check",
+      sql`(${t.outcome} is null) = (${t.finishedAt} is null)`,
+    ),
+    check(
+      "wake_evaluation_attempt_error_check",
+      sql`${t.errorCode} is null or ${t.outcome} is not null`,
     ),
   ],
 );

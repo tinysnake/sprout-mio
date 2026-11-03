@@ -1,13 +1,17 @@
 import { cn } from "cn";
 import type { ChatAutomationView } from "../../contracts/chat-automation";
 import type { AppResult } from "../../contracts/result";
+import type { WakeUsage } from "../../contracts/wake-evaluation";
 import type { ChatAutomationData } from "../../domain/chat-automation";
 import {
   AUTOMATION_DECISIONS,
   AUTOMATION_STATES,
+  automationDuration,
   automationFailureText,
   automationTime,
+  automationTokens,
 } from "../automation/automation-labels";
+import { useElapsedSeconds } from "../automation/use-elapsed";
 
 type Tone = "idle" | "active" | "attention" | "off";
 
@@ -76,11 +80,25 @@ function statusOf(view: ChatAutomationView): {
   };
 }
 
+/** 一次尝试到底花了多少：时长与 token 都来自判定器回执，缺失就不编。 */
+function usageSummary(usage: WakeUsage | null | undefined): string | null {
+  if (!usage) return null;
+  const parts: string[] = [];
+  if (usage.durationMs > 0) parts.push(`耗时 ${automationDuration(usage.durationMs)}`);
+  const tokens = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+  if (tokens > 0) parts.push(`${automationTokens(tokens)} tokens`);
+  if (usage.resolvedModel) parts.push(usage.resolvedModel);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /**
  * 自动接续在消息下方的常显状态。只读 `ChatAutomationView`，不重算调度，
- * 也不把「启用」说成「马上会接续」；完整控制仍在会话详情里。
+ * 也不把「启用」说成「马上会接续」；逐次尝试由紧随其后的 `ContinuationActivity` 展开。
  */
 export function ContinuationStatus({ automation }: { automation?: AppResult<ChatAutomationData> }) {
+  const latest = automation?.ok ? automation.data.view.latestEvaluation : null;
+  // 只在真的在检查时计时：pending 还没发出请求，说「已经等了多久」会骗人。
+  const waited = useElapsedSeconds(latest?.state === "claimed" ? latest.claimedAt : null);
   if (!automation) return null;
   if (!automation.ok)
     return (
@@ -97,6 +115,8 @@ export function ContinuationStatus({ automation }: { automation?: AppResult<Chat
   const status = statusOf(view);
   const nextAt = view.latestEvaluation?.nextAttemptAt ?? view.nextDueAt;
   const showNext = view.mode === "enabled" && Boolean(nextAt);
+  const usage = usageSummary(view.latestEvaluation?.usage);
+  const attempt = view.latestEvaluation?.attempt ?? 0;
 
   return (
     <p
@@ -111,6 +131,16 @@ export function ContinuationStatus({ automation }: { automation?: AppResult<Chat
           {status.label}
         </span>
       </span>
+      {status.state === "claimed" && waited !== null && (
+        <span data-testid="continuation-wait" className="text-muted-foreground">
+          已等待 {waited} 秒
+        </span>
+      )}
+      {attempt > 1 && (
+        <span data-testid="continuation-attempt" className="text-muted-foreground">
+          第 {attempt} 次检查
+        </span>
+      )}
       {status.detail && (
         <span
           data-testid="continuation-detail"
@@ -118,6 +148,11 @@ export function ContinuationStatus({ automation }: { automation?: AppResult<Chat
           title={status.detailTitle}
         >
           {status.detail}
+        </span>
+      )}
+      {usage && (
+        <span data-testid="continuation-usage" className="text-muted-foreground">
+          {usage}
         </span>
       )}
       {showNext && (

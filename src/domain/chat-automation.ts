@@ -7,6 +7,7 @@ import {
 import {
   chatAutomationCommandSchema,
   chatAutomationViewSchema,
+  type ChatAutomationAttemptView,
   type ChatAutomationCommand,
   type ChatAutomationErrorCode,
   type ChatAutomationView,
@@ -25,7 +26,9 @@ import {
   assignedTasks,
   reconcileChatSchedule,
   signalScheduleChange,
+  wakeAttempts,
   type Evaluation,
+  type WakeAttemptRow,
 } from "./chat-schedule";
 import {
   deliveryView,
@@ -74,6 +77,35 @@ function latestEvaluation(chatId: string) {
     chatId,
   );
 }
+/** 时间线只回看有限几轮：更早的历史对「现在在干什么」没有信息量。 */
+const ACTIVITY_ROUNDS = 5;
+
+function recentEvaluations(chatId: string): Evaluation[] {
+  return all<Evaluation>(
+    "SELECT * FROM wake_evaluation WHERE chat_id=? ORDER BY round DESC LIMIT ?",
+    chatId,
+    ACTIVITY_ROUNDS,
+  );
+}
+function attemptsByEvaluation(rows: readonly WakeAttemptRow[]): Map<string, WakeAttemptRow[]> {
+  const grouped = new Map<string, WakeAttemptRow[]>();
+  for (const row of rows) {
+    const list = grouped.get(row.evaluation_id);
+    if (list) list.push(row);
+    else grouped.set(row.evaluation_id, [row]);
+  }
+  return grouped;
+}
+function attemptView(row: WakeAttemptRow): ChatAutomationAttemptView {
+  return {
+    attempt: row.attempt,
+    startedAt: iso(row.started_at)!,
+    finishedAt: iso(row.finished_at),
+    outcome: row.outcome as ChatAutomationAttemptView["outcome"],
+    errorCode: row.error_code,
+    usage: row.usage,
+  };
+}
 export function getChatAutomation(
   projectId: string,
   chatId: string,
@@ -81,7 +113,12 @@ export function getChatAutomation(
 ): ChatAutomationData {
   const chat = access(projectId, chatId, ctx),
     control = controlFor(chatId),
-    evaluation = latestEvaluation(chatId);
+    evaluation = latestEvaluation(chatId),
+    rounds = recentEvaluations(chatId),
+    attempts = attemptsByEvaluation(wakeAttempts(rounds.map((row) => row.id))),
+    latestAttempts = evaluation ? (attempts.get(evaluation.id) ?? []) : [],
+    latestAttempt = latestAttempts[latestAttempts.length - 1],
+    finishedAttempt = [...latestAttempts].reverse().find((row) => row.finished_at !== null);
   const rows = all<DeliveryRow>(
     "SELECT * FROM continuation_delivery WHERE chat_id=? ORDER BY created_at DESC,rowid DESC LIMIT 50",
     chatId,
@@ -134,12 +171,24 @@ export function getChatAutomation(
           state: evaluation.state,
           round: evaluation.round,
           attempt: evaluation.attempt,
+          claimedAt: evaluation.state === "claimed" ? iso(latestAttempt?.started_at ?? null) : null,
+          finishedAt: iso(finishedAttempt?.finished_at ?? null),
           evaluatedAt: iso(evaluation.evaluated_at),
           nextAttemptAt: iso(evaluation.next_attempt_at),
           result: evaluation.result ? JSON.parse(evaluation.result) : null,
           errorCode: evaluation.error_code,
+          usage: latestAttempt?.usage ?? null,
         }
       : null,
+    recentRounds: rounds.map((row) => ({
+      round: row.round,
+      source: row.source,
+      state: row.state,
+      evaluatedAt: iso(row.evaluated_at),
+      result: row.result ? JSON.parse(row.result) : null,
+      errorCode: row.error_code,
+      attempts: (attempts.get(row.id) ?? []).map(attemptView),
+    })),
     deliveries,
     attention: attention
       ? {
@@ -224,7 +273,7 @@ export function persistAutomationRunStop(
       id,
       chatId,
     );
-  signalScheduleChange();
+  signalScheduleChange(chatId);
 }
 export function applyChatAutomationCommand(
   raw: unknown,
@@ -343,10 +392,7 @@ export function applyChatAutomationCommand(
           old.evaluation_id,
         )!;
         if (evaluation.source === "message")
-          throw new ChatAutomationError(
-            "conflict",
-            "这条投递来自群消息，请让成员重新发言触发。",
-          );
+          throw new ChatAutomationError("conflict", "这条投递来自群消息，请让成员重新发言触发。");
         const result = JSON.parse(evaluation.result!) as WakeEvaluationResult;
         if (!deliveryContextMatches(old))
           throw new ChatAutomationError("conflict", "Task 或负责人已变化，请从当前事实重新检查。");
@@ -405,7 +451,7 @@ export function applyChatAutomationCommand(
         JSON.stringify(result),
         now.getTime(),
       );
-      signalScheduleChange();
+      signalScheduleChange(command.chatId);
       return result;
     })
     .immediate();

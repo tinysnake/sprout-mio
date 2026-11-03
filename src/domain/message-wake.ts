@@ -19,9 +19,13 @@ import { readChatEffectiveMembers } from "./channel";
 import {
   CLAIM_LEASE_MS,
   all,
+  beginWakeAttempt,
   chatFacts,
+  closeAttemptsForChat,
+  closeAttemptsForEvaluation,
   controlFor,
   ensureAgentInstance,
+  finishWakeAttempt,
   hash,
   messageEvaluationCurrent,
   messageFingerprint,
@@ -37,6 +41,7 @@ import { readMentionsFor } from "./message-mention";
 import {
   prepareWakeEvaluation,
   type PreparedWakeEvaluation,
+  type WakeReceipt,
   type WakeSnapshotFacts,
 } from "./wake-evaluation";
 
@@ -55,9 +60,7 @@ type RunRow = {
   at: number;
 };
 
-function runView(
-  r: RunRow | undefined,
-): WakeEvaluationInput["candidates"][number]["activeRun"] {
+function runView(r: RunRow | undefined): WakeEvaluationInput["candidates"][number]["activeRun"] {
   if (!r) return null;
   return {
     id: r.id,
@@ -245,10 +248,7 @@ export function buildMessageFacts(evaluation: Evaluation, now: Date): WakeSnapsh
   };
 }
 
-export function buildMessageEvaluation(
-  evaluation: Evaluation,
-  now: Date,
-): PreparedWakeEvaluation {
+export function buildMessageEvaluation(evaluation: Evaluation, now: Date): PreparedWakeEvaluation {
   return prepareWakeEvaluation(buildMessageFacts(evaluation, now), now);
 }
 
@@ -260,8 +260,7 @@ function withOwnerFallback(
   if (input.chat.owner.kind !== "agent") return raw;
   const owner = input.candidates.find(
     (candidate) =>
-      candidate.recipient.kind === "agent" &&
-      candidate.recipient.id === input.chat.owner.id,
+      candidate.recipient.kind === "agent" && candidate.recipient.id === input.chat.owner.id,
   );
   if (!owner) return raw;
   const recipients: WakeRecipientDecision[] = raw.recipients.map((item) =>
@@ -271,8 +270,7 @@ function withOwnerFallback(
   );
   if (
     !recipients.some(
-      (item) =>
-        item.recipient.kind === "agent" && item.recipient.id === owner.recipient.id,
+      (item) => item.recipient.kind === "agent" && item.recipient.id === owner.recipient.id,
     )
   )
     recipients.push({
@@ -293,9 +291,10 @@ function withOwnerFallback(
 }
 
 function skipMessageEvaluation(evaluation: Evaluation, reason: string, now: Date) {
+  // 跳过原因不是失败码：写进 error_code 会让契约视图校验失败，它只属于这次尝试。
+  finishWakeAttempt(evaluation.id, evaluation.attempt, now, "decided", reason);
   write(
-    "UPDATE wake_evaluation SET state='decided',error_code=?,evaluated_at=?,claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=? AND state='claimed' AND claim_token=?",
-    reason,
+    "UPDATE wake_evaluation SET state='decided',error_code=NULL,evaluated_at=?,claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=? AND state='claimed' AND claim_token=?",
     now.getTime(),
     evaluation.id,
     evaluation.claim_token,
@@ -347,14 +346,11 @@ export function enqueueMessageWake(
     at,
     at,
   );
-  signalScheduleChange();
+  signalScheduleChange(message.chatId);
   return true;
 }
 
-function claimMessageEvaluation(
-  evaluation: Evaluation,
-  ctx: SchedulerContext,
-): Evaluation {
+function claimMessageEvaluation(evaluation: Evaluation, ctx: SchedulerContext): Evaluation {
   const token = `${ctx.workerId}:${randomUUID()}`;
   const lease = ctx.now.getTime() + CLAIM_LEASE_MS;
   write(
@@ -363,6 +359,7 @@ function claimMessageEvaluation(
     lease,
     evaluation.id,
   );
+  beginWakeAttempt(evaluation.id, evaluation.attempt + 1, ctx.now);
   write(
     "UPDATE chat_message_wake SET evaluation_id=?,due_at=?,updated_at=? WHERE chat_id=? AND trigger_message_id=?",
     evaluation.id,
@@ -431,11 +428,7 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
         return undefined;
       }
       if (
-        !one(
-          "SELECT 1 FROM message WHERE id=? AND chat_id=?",
-          due.trigger_message_id,
-          due.chat_id,
-        )
+        !one("SELECT 1 FROM message WHERE id=? AND chat_id=?", due.trigger_message_id, due.chat_id)
       ) {
         write("DELETE FROM chat_message_wake WHERE chat_id=?", due.chat_id);
         return undefined;
@@ -458,12 +451,10 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
         "SELECT * FROM wake_evaluation WHERE chat_id=? AND state IN ('pending','claimed','retry_wait')",
         due.chat_id,
       );
-      if (
-        active?.source === "message" &&
-        active.trigger_message_id !== due.trigger_message_id
-      ) {
+      if (active?.source === "message" && active.trigger_message_id !== due.trigger_message_id) {
         // A human message preempts the in-flight triage. The old provider call may still
         // return, but its claim token is gone and its result cannot be committed.
+        closeAttemptsForEvaluation(active.id, ctx.now, "stale");
         write(
           "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=?",
           active.id,
@@ -473,6 +464,7 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
       if (active?.source === "task_periodic") {
         // Human input outranks a scheduled task triage; reschedule the task check so it
         // still runs after this message's triage instead of holding the chat's only slot.
+        closeAttemptsForEvaluation(active.id, ctx.now, "stale");
         write(
           "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=?",
           active.id,
@@ -486,6 +478,7 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
       }
       if (active) {
         if (active.attempt >= POLICY.maxAttempts) {
+          closeAttemptsForEvaluation(active.id, ctx.now, "attention");
           write(
             "UPDATE wake_evaluation SET state='attention',error_code=coalesce(error_code,'provider_unavailable'),claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=?",
             active.id,
@@ -495,8 +488,7 @@ export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefin
         }
         const now = ctx.now.getTime();
         const leaseHeld = active.state === "claimed" && (active.lease_until ?? 0) > now;
-        const retryWaiting =
-          active.state === "retry_wait" && (active.next_attempt_at ?? 0) > now;
+        const retryWaiting = active.state === "retry_wait" && (active.next_attempt_at ?? 0) > now;
         if (leaseHeld || retryWaiting) {
           write(
             "UPDATE chat_message_wake SET due_at=?,updated_at=? WHERE chat_id=?",
@@ -545,6 +537,7 @@ export async function evaluateMessageClaim(
 ): Promise<void> {
   try {
     if (!messageEvaluationCurrent(evaluation)) {
+      finishWakeAttempt(evaluation.id, evaluation.attempt, now(), "stale");
       write(
         "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=? AND state='claimed' AND claim_token=?",
         evaluation.id,
@@ -574,23 +567,33 @@ export async function evaluateMessageClaim(
       evaluation.id,
       evaluation.claim_token,
     );
-    const result =
-      prepared.kind === "rule"
-        ? prepared.result
-        : withOwnerFallback(input, await evaluateWake(input));
+    let result: WakeEvaluationResult;
+    let usage: WakeReceipt["usage"];
+    if (prepared.kind === "rule") {
+      // 规则路径没有外部调用：耗时是真的 0，token 是真的没有，不冒充。
+      result = prepared.result;
+      usage = {
+        inputTokens: null,
+        outputTokens: null,
+        inputCharacters: Array.from(JSON.stringify(input)).length,
+        durationMs: 0,
+      };
+    } else {
+      const receipt = await evaluateWake(input);
+      if (!isActive()) return;
+      result = withOwnerFallback(input, receipt.result);
+      usage = receipt.usage;
+    }
     if (!isActive()) return;
-    commitEvaluationResult(evaluation, input, result, now());
+    commitEvaluationResult(evaluation, input, result, now(), usage);
     finishMessageWake(evaluation);
   } catch (error) {
     if (!isActive()) return;
     const current = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", evaluation.id);
-    if (
-      !current ||
-      current.state !== "claimed" ||
-      current.claim_token !== evaluation.claim_token
-    )
+    if (!current || current.state !== "claimed" || current.claim_token !== evaluation.claim_token)
       return;
     if (!messageEvaluationCurrent(current)) {
+      finishWakeAttempt(current.id, current.attempt, now(), "stale");
       write(
         "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL WHERE id=?",
         current.id,
@@ -627,7 +630,7 @@ export async function evaluateMessageClaim(
         current.id,
       );
   } finally {
-    signalScheduleChange();
+    signalScheduleChange(evaluation.chat_id);
   }
 }
 
@@ -649,6 +652,7 @@ export function reconcileMessageWake(chatId: string, _now: Date): void {
         ? "chat_archived"
         : "policy_changed";
   write("DELETE FROM chat_message_wake WHERE chat_id=?", chatId);
+  closeAttemptsForChat(chatId, _now, "stale", "message");
   write(
     "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE chat_id=? AND source='message' AND state IN ('pending','claimed','retry_wait')",
     chatId,
@@ -659,7 +663,7 @@ export function reconcileMessageWake(chatId: string, _now: Date): void {
     chatId,
     chatId,
   );
-  signalScheduleChange();
+  signalScheduleChange(chatId);
 }
 
 export function retryMessageWake(evaluation: Evaluation, now: Date): boolean {
@@ -687,7 +691,7 @@ export function retryMessageWake(evaluation: Evaluation, now: Date): boolean {
     at,
     at,
   );
-  signalScheduleChange();
+  signalScheduleChange(evaluation.chat_id);
   return true;
 }
 

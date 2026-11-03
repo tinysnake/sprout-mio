@@ -37,6 +37,19 @@ export const WAKE_CONTEXT_LIMITS = {
 const identifier = z.string().trim().min(1).max(200);
 const revision = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+/**
+ * 判定器的成本回执。判不出来就是判不出来，没报的数字留空：未知的价钱不等于零。
+ */
+export const wakeUsageSchema = z.strictObject({
+  inputTokens: count.nullable(),
+  outputTokens: count.nullable(),
+  inputCharacters: count,
+  durationMs: count,
+  /** 滚动模型标签实际解析到的版本，provider 报了就记。 */
+  resolvedModel: z.string().trim().min(1).max(200).nullable().optional(),
+});
+export type WakeUsage = z.infer<typeof wakeUsageSchema>;
+
 const projectId = z.string().regex(appIdPattern(ID_PREFIXES.project));
 const chatId = z.string().regex(appIdPattern(ID_PREFIXES.chat));
 const instanceId = z.string().regex(appIdPattern(ID_PREFIXES.instance));

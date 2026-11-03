@@ -115,7 +115,7 @@ try {
     const internal = { now, workerId: "control-model", requestId: newId(ID_PREFIXES.request) };
     const evaluation = schedule.claimDueEvaluation(internal);
     assert.equal(evaluation.chat_id, chatId);
-    await delivery.evaluateClaim(evaluation, async (input) => ({ decision: "continue", reason: "继续任务", reasonCode: "control_test", recipients: input.candidates.map((c) => ({ recipient: c.recipient, decision: "yes", reason: "负责人", probability: null })), selectedRecipients: input.candidates.map((c) => c.recipient), probability: null, provider: input.policy.provider, model: input.policy.model, version: input.policy.thresholdVersion, snapshotHash: input.snapshotHash, errorCode: null }), internal);
+    await delivery.evaluateClaim(evaluation, async (input) => ({ result: { decision: "continue", reason: "继续任务", reasonCode: "control_test", recipients: input.candidates.map((c) => ({ recipient: c.recipient, decision: "yes", reason: "负责人", probability: null })), selectedRecipients: input.candidates.map((c) => c.recipient), probability: null, provider: input.policy.provider, model: input.policy.model, version: input.policy.thresholdVersion, snapshotHash: input.snapshotHash, errorCode: null }, usage: { inputTokens: 700, outputTokens: 20, inputCharacters: 2800, durationMs: 3100, resolvedModel: null } }), internal);
     return schedule.one("SELECT * FROM continuation_delivery WHERE chat_id=? ORDER BY created_at DESC LIMIT 1", chatId);
   }
   const chat = group();

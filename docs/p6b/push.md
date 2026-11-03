@@ -21,16 +21,16 @@
 
 `src/contracts/change-stream.ts` 是唯一的事实来源：
 
-| 项 | 值 | 说明 |
-| --- | --- | --- |
-| 主题 | `project:<projectId>`、`chat:<chatId>` | id 复用 `appIdPattern(ID_PREFIXES.project/chat)`，形状不符的主题直接丢弃 |
-| 每连接主题数上限 | 8 | 超出部分丢弃，页面订阅数远低于此 |
-| 合并窗口 | 150 毫秒 | 同一主题在窗口内只发一条，时间戳取首次发布时刻 |
-| 心跳 | 20 秒 | `event: ping`，同时让 Caddy 一类反代不掐空闲连接 |
-| 单连接积压上限 | 64 帧 | 慢消费者超过上限即断开，由重连后的一次重读补齐事实 |
-| 推送后安全轮询 | Project 视图 30 秒，Chat 15 秒 | 推送连着时用这个节拍兜底，漏消息能自愈 |
-| 断流回退 | Project 3 秒，Chat 1.2 秒或 5 秒 | 推送不可用时回到原节拍 |
-| 重连退避 | 1 秒起，最长 15 秒，6 次后放弃 | 放弃后停在轮询，不无限重连 |
+| 项               | 值                                     | 说明                                                                     |
+| ---------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| 主题             | `project:<projectId>`、`chat:<chatId>` | id 复用 `appIdPattern(ID_PREFIXES.project/chat)`，形状不符的主题直接丢弃 |
+| 每连接主题数上限 | 8                                      | 超出部分丢弃，页面订阅数远低于此                                         |
+| 合并窗口         | 150 毫秒                               | 同一主题在窗口内只发一条，时间戳取首次发布时刻                           |
+| 心跳             | 20 秒                                  | `event: ping`，同时让 Caddy 一类反代不掐空闲连接                         |
+| 单连接积压上限   | 64 帧                                  | 慢消费者超过上限即断开，由重连后的一次重读补齐事实                       |
+| 推送后安全轮询   | Project 视图 30 秒，Chat 15 秒         | 推送连着时用这个节拍兜底，漏消息能自愈                                   |
+| 断流回退         | Project 3 秒，Chat 1.2 秒或 5 秒       | 推送不可用时回到原节拍                                                   |
+| 重连退避         | 1 秒起，最长 15 秒，6 次后放弃         | 放弃后停在轮询，不无限重连                                               |
 
 推送只携带主题，不带数据。页面收到提示后调用原有的 revision 读，返回 `unchanged` 就什么也不做。这条设计让误报的代价被实测的约 1.1 毫秒读吸收，也不需要为每个主题定义增量载荷。
 
@@ -57,35 +57,37 @@
 
 ## 发布覆盖
 
-| 写入 | 位置 | 主题 |
-| --- | --- | --- |
-| Chat 与 Agent 的身份类写入（发消息、改标题、建群、加成员、建 Agent、加成员关系） | `src/domain/identity-write.ts` 统一出口 | Project 加 Chat |
-| run 状态迁移 | `src/domain/agent-run.ts` 的 `transitionAgentRun` 与两个批量收敛函数 | Project 加 Chat |
-| Task 命令 | `src/domain/task.ts` 的 `mutateTask` | Project 加 Chat |
-| Project 创建、改名、唤醒策略 | `src/domain/project.ts` | Project |
-| Machine 绑定 | `src/domain/machine.ts` | Project |
-| 成员离开与重新加入 | `src/server/membership.ts` | Project |
-| Worker 上下线与首次上线 | `src/server/worker-gateway.ts` | 绑定到该 Machine 的每个 Project |
-| Agent profile 全局更新 | `src/domain/agent.ts` 的 `updateAgentProfile`，按 `project_member` 反查 | 每个已加入该 profile 的 Project |
+| 写入                                                                             | 位置                                                                                       | 主题                            |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------- |
+| Chat 与 Agent 的身份类写入（发消息、改标题、建群、加成员、建 Agent、加成员关系） | `src/domain/identity-write.ts` 统一出口                                                    | Project 加 Chat                 |
+| run 状态迁移                                                                     | `src/domain/agent-run.ts` 的 `transitionAgentRun` 与两个批量收敛函数                       | Project 加 Chat                 |
+| Task 命令                                                                        | `src/domain/task.ts` 的 `mutateTask`                                                       | Project 加 Chat                 |
+| Project 创建、改名、唤醒策略                                                     | `src/domain/project.ts`                                                                    | Project                         |
+| Machine 绑定                                                                     | `src/domain/machine.ts`                                                                    | Project                         |
+| 成员离开与重新加入                                                               | `src/server/membership.ts`                                                                 | Project                         |
+| Worker 上下线与首次上线                                                          | `src/server/worker-gateway.ts`                                                             | 绑定到该 Machine 的每个 Project |
+| Agent profile 全局更新                                                           | `src/domain/agent.ts` 的 `updateAgentProfile`，按 `project_member` 反查                    | 每个已加入该 profile 的 Project |
+| 自动接续的调度、判定与投递状态                                                   | `src/domain/chat-schedule.ts` 的 `signalScheduleChange(chatId)`，按 `chat.project_id` 反查 | Project 加 Chat                 |
 
 已知缺口，靠安全轮询兜底，不影响正确性，只影响时延：
 
 - Lease 续租不发推送，这是设计，续租是高频写且不改页面事实。
+- 自动接续的推送依赖进程内信号 `signalScheduleChange`：拿不到 chatId 的清理路径（例如整个 Project 被删除后的级联）不发推送，由安全轮询收敛。
 - `saveMachineRootDirectory`、`createMachine`、`renewMachineEnrollment` 未接发布。
 - Machine 详情页未单独订阅主题。
 
 ## 验证证据
 
-| 项 | 命令 | 结果 |
-| --- | --- | --- |
-| 类型检查 | `pnpm exec tsc --noEmit`、`tsc -p tsconfig.worker.json`、`tsc -p tsconfig.extension.json` | 通过 |
-| 全量测试 | `pnpm exec vp test run` | 110 个文件、1005 个测试通过 |
-| 总控格式与 lint | `pnpm exec vp lint`、`pnpm exec vp fmt <改动文件>` | 改动文件无告警 |
-| 合并语义 | `tests/change-feed.test.ts` | 3 次发布合并为 1 条，主题过滤、退订、异常订阅者隔离均通过 |
-| 客户端连接生命周期 | `tests/change-stream.test.ts` | 重复回调与幂等退订、主题增减重建连接、自动重连期判定断开、后台首挂不开连接、6 次退避后停手 |
-| 端到端推送 | `tests/change-endpoint.test.ts` | 无 cookie 401，他人 Project 403 且载荷带顶层 requestId，`ready` 后改标题在 Project 与 Chat 两个主题上都收到 `change`，读端取消与提前取消后订阅者归零，积压超 64 帧主动断流，非法主题形状丢弃 |
-| 读端推送唤醒 | `tests/info-hub-polling.test.ts` | 在途推送遇 forbidden 不再补读（去掉终止判断时该用例报 2 次读，属先红后绿）、窗口恢复重新读取、推送连着时用安全间隔而断开后退回 3 秒 |
-| 真实进程 | `vp dev --host 127.0.0.1 --port 3121` 后 `curl -sN /api/events?topics=project:...` | 200、`text/event-stream`、`x-accel-buffering: no`，随即收到 `retry: 3000` 与 `ready` 帧 |
+| 项                 | 命令                                                                                      | 结果                                                                                                                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 类型检查           | `pnpm exec tsc --noEmit`、`tsc -p tsconfig.worker.json`、`tsc -p tsconfig.extension.json` | 通过                                                                                                                                                                                         |
+| 全量测试           | `pnpm exec vp test run`                                                                   | 110 个文件、1005 个测试通过                                                                                                                                                                  |
+| 总控格式与 lint    | `pnpm exec vp lint`、`pnpm exec vp fmt <改动文件>`                                        | 改动文件无告警                                                                                                                                                                               |
+| 合并语义           | `tests/change-feed.test.ts`                                                               | 3 次发布合并为 1 条，主题过滤、退订、异常订阅者隔离均通过                                                                                                                                    |
+| 客户端连接生命周期 | `tests/change-stream.test.ts`                                                             | 重复回调与幂等退订、主题增减重建连接、自动重连期判定断开、后台首挂不开连接、6 次退避后停手                                                                                                   |
+| 端到端推送         | `tests/change-endpoint.test.ts`                                                           | 无 cookie 401，他人 Project 403 且载荷带顶层 requestId，`ready` 后改标题在 Project 与 Chat 两个主题上都收到 `change`，读端取消与提前取消后订阅者归零，积压超 64 帧主动断流，非法主题形状丢弃 |
+| 读端推送唤醒       | `tests/info-hub-polling.test.ts`                                                          | 在途推送遇 forbidden 不再补读（去掉终止判断时该用例报 2 次读，属先红后绿）、窗口恢复重新读取、推送连着时用安全间隔而断开后退回 3 秒                                                          |
+| 真实进程           | `vp dev --host 127.0.0.1 --port 3121` 后 `curl -sN /api/events?topics=project:...`        | 200、`text/event-stream`、`x-accel-buffering: no`，随即收到 `retry: 3000` 与 `ready` 帧                                                                                                      |
 
 未验证：
 

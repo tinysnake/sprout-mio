@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { CHANGE_STREAM, chatTopic, projectTopic } from "../contracts/change-stream";
 import { db } from "../db";
-import { projectMachine, projectMember } from "../db/schema";
+import { chat, projectMachine, projectMember } from "../db/schema";
 
 /** 一条推送事实：主题变了，页面据此重读该主题下的 revision。 */
 export type ChangeEvent = { readonly id: number; readonly topic: string; readonly at: number };
@@ -105,6 +105,19 @@ export function publishAgentProfileChange(agentProfileId: string): void {
     .where(eq(projectMember.agentProfileId, agentProfileId))
     .all())
     publishProjectChange(member.projectId);
+}
+
+/**
+ * 自动接续的写入点只拿着 chatId，而页面按 Project 与 Chat 两个主题看。
+ * 判定本身也会改变对话里的状态提示，所以 Chat 主题同样要发。
+ */
+export function publishChatAutomationChange(chatId: string): void {
+  const scope = db
+    .select({ projectId: chat.projectId })
+    .from(chat)
+    .where(eq(chat.id, chatId))
+    .get();
+  if (scope) publishProjectChange(scope.projectId, chatId);
 }
 
 /** 测试与诊断用：不给业务代码清空全局订阅者。 */

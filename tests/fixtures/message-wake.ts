@@ -20,10 +20,7 @@ sqlite
   .run(ctx.userId, "Message Wake", "message-wake@example.test");
 const project = projectDomain.createProject({ name: "Message wake" }, ctx);
 const agents = ["Alpha", "Beta"].map((name) => {
-  const profile = agentDomain.createAgentProfile(
-    { name, persona: "推进对话", harness: "pi" },
-    ctx,
-  );
+  const profile = agentDomain.createAgentProfile({ name, persona: "推进对话", harness: "pi" }, ctx);
   agentDomain.addProjectMember(project.id, profile.id, ctx);
   return profile;
 });
@@ -47,11 +44,7 @@ function group(policy: "contextual" | "owner_led" = "contextual") {
 }
 
 function send(chatId: string, body: string) {
-  return chatDomain.sendMessage(
-    chatId,
-    { body, senderKind: "human", senderId: ctx.userId },
-    ctx,
-  );
+  return chatDomain.sendMessage(chatId, { body, senderKind: "human", senderId: ctx.userId }, ctx);
 }
 
 function runRows(chatId: string) {
@@ -107,7 +100,16 @@ async function evaluate(selected: string[], at: Date) {
   const input = prepared.input;
   await mw.evaluateMessageClaim(
     claimed,
-    async () => resultFor(input, selected),
+    async () => ({
+      result: resultFor(input, selected),
+      usage: {
+        inputTokens: 1200,
+        outputTokens: 40,
+        inputCharacters: JSON.stringify(input).length,
+        durationMs: 4300,
+        resolvedModel: "fixture/model",
+      },
+    }),
     { now: at, requestId: newId(ID_PREFIXES.request), workerId: "fixture" },
   );
   return { claimed, input };
@@ -128,7 +130,10 @@ const firstDelivery = schedule.one<{
   state: string;
   run_id: string | null;
   envelope: string | null;
-}>("SELECT recipient_id,state,run_id,envelope FROM continuation_delivery WHERE chat_id=?", chat.id)!;
+}>(
+  "SELECT recipient_id,state,run_id,envelope FROM continuation_delivery WHERE chat_id=?",
+  chat.id,
+)!;
 evidence.group = {
   candidates: first.input.candidates.length,
   recipient: firstDelivery.recipient_id,
@@ -144,7 +149,9 @@ send(multi.id, "两位都看看");
 const both = await evaluate([alpha.id, beta.id], at);
 delivery.bindPendingDeliveries(new Date(at.getTime() + 1_000));
 evidence.multi = {
-  selected: both.input.candidates.map((candidate) => candidate.recipient.id).filter((id) => id === alpha.id || id === beta.id).length,
+  selected: both.input.candidates
+    .map((candidate) => candidate.recipient.id)
+    .filter((id) => id === alpha.id || id === beta.id).length,
   deliveries: schedule.all(
     "SELECT recipient_id,state FROM continuation_delivery WHERE chat_id=? ORDER BY recipient_id",
     multi.id,
@@ -161,8 +168,10 @@ const fallbackDelivery = schedule.one<{ recipient_id: string; state: string }>(
 )!;
 evidence.fallback = {
   selected: JSON.parse(
-    schedule.one<{ result: string }>("SELECT result FROM wake_evaluation WHERE id=?", fallbackRun.claimed.id)!
-      .result,
+    schedule.one<{ result: string }>(
+      "SELECT result FROM wake_evaluation WHERE id=?",
+      fallbackRun.claimed.id,
+    )!.result,
   ).selectedRecipients,
   delivery: fallbackDelivery,
 };
@@ -171,8 +180,10 @@ evidence.fallback = {
 const publicChat = channel.ensureProjectChannel(project.id);
 send(publicChat, "频道里也看看");
 evidence.public = {
-  policy: schedule.one<{ wake_policy: string }>("SELECT wake_policy FROM chat WHERE id=?", publicChat)!
-    .wake_policy,
+  policy: schedule.one<{ wake_policy: string }>(
+    "SELECT wake_policy FROM chat WHERE id=?",
+    publicChat,
+  )!.wake_policy,
   wake: wakeRows(publicChat).length === 1,
 };
 schedule.write("DELETE FROM chat_message_wake WHERE chat_id=?", publicChat);
@@ -213,7 +224,10 @@ const racePreempted = mw.claimDueMessageWake({
 evidence.race = {
   claimedNew: racePreempted.trigger_message_id === raceSecond.id,
   trigger: racePreempted.trigger_message_id === raceSecond.id,
-  oldState: schedule.one<{ state: string }>("SELECT state FROM wake_evaluation WHERE id=?", raceClaim.id)!.state,
+  oldState: schedule.one<{ state: string }>(
+    "SELECT state FROM wake_evaluation WHERE id=?",
+    raceClaim.id,
+  )!.state,
   first: raceFirst.id,
 };
 
@@ -249,9 +263,15 @@ const preempted = mw.claimDueMessageWake({
 evidence.taskActive = {
   claimed: preempted.trigger_message_id === waitingMessage.id,
   messageTrigger: preempted.trigger_message_id === waitingMessage.id,
-  taskState: schedule.one<{ state: string }>("SELECT state FROM wake_evaluation WHERE chat_id=? AND source='task_periodic'", waiting.id)!.state,
+  taskState: schedule.one<{ state: string }>(
+    "SELECT state FROM wake_evaluation WHERE chat_id=? AND source='task_periodic'",
+    waiting.id,
+  )!.state,
 };
-schedule.write("DELETE FROM wake_evaluation WHERE chat_id=? AND source='task_periodic'", waiting.id);
+schedule.write(
+  "DELETE FROM wake_evaluation WHERE chat_id=? AND source='task_periodic'",
+  waiting.id,
+);
 schedule.write("DELETE FROM chat_message_wake WHERE chat_id=?", waiting.id);
 
 // message 与 task 共用 round；message 判定活跃时 task claim 必须让路。
@@ -286,7 +306,16 @@ const prepared = mw.buildMessageEvaluation(sourceClaim, at);
 if (prepared.kind !== "model") throw new Error(`unexpected ${prepared.kind}`);
 await mw.evaluateMessageClaim(
   sourceClaim,
-  async () => resultFor(prepared.input, [alpha.id]),
+  async () => ({
+    result: resultFor(prepared.input, [alpha.id]),
+    usage: {
+      inputTokens: 1200,
+      outputTokens: 40,
+      inputCharacters: JSON.stringify(prepared.input).length,
+      durationMs: 4300,
+      resolvedModel: "fixture/model",
+    },
+  }),
   { now: at, requestId: newId(ID_PREFIXES.request), workerId: "fixture" },
 );
 const sourceDeliveryBefore = schedule.one<{ id: string; evaluation_id: string; state: string }>(

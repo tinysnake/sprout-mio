@@ -22,6 +22,18 @@ export const AUTOMATION_STATES = {
 export const automationTime = (value: string | null) =>
   value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "暂无记录";
 
+/** 耗时按人读的尺度取舍：秒以下不留小数，超过一分钟改说分秒。 */
+export const automationDuration = (ms: number) => {
+  if (ms < 1_000) return "不足 1 秒";
+  if (ms < 60_000) return `${(ms / 1_000).toFixed(1)} 秒`;
+  const seconds = Math.round(ms / 1_000);
+  return `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+};
+
+/** token 数只给量级：精确到个位对「这次花了多少」没有帮助。 */
+export const automationTokens = (tokens: number) =>
+  tokens < 1_000 ? `${tokens}` : `${(tokens / 1_000).toFixed(1)}k`;
+
 /** 内部失败码只说给人听的话，码本身留在 data-error-code 上给门禁与排查用。 */
 const AUTOMATION_FAILURES: Record<string, string> = {
   provider_timeout: "判定服务没有及时回应",
@@ -38,3 +50,6 @@ const AUTOMATION_FAILURES: Record<string, string> = {
 };
 
 export const automationFailureText = (code: string) => AUTOMATION_FAILURES[code] ?? "检查未能完成";
+
+/** 尝试记录里两种码混在一起：失败码翻译，跳过原因本身就是人话。 */
+export const automationAttemptText = (code: string) => AUTOMATION_FAILURES[code] ?? code;

@@ -234,7 +234,7 @@ function applyGovernance(
     .returning()
     .get();
   if (!updated) throw new ChatError("conflict", "群组已被并发修改，请刷新后重试");
-  signalScheduleChange();
+  signalScheduleChange(row.id);
   return toChat(updated);
 }
 
@@ -715,7 +715,11 @@ export function sendMessage(
             .get();
           // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
           writeMessageMentions(chatId, row.id, spans);
-          const wakeQueued = enqueueMessageWake({ id: row.id, chatId, senderKind: input.senderKind });
+          const wakeQueued = enqueueMessageWake({
+            id: row.id,
+            chatId,
+            senderKind: input.senderKind,
+          });
           db.update(chat)
             .set({ updatedAt: new Date() })
             .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
@@ -730,7 +734,7 @@ export function sendMessage(
     })
     .immediate();
   // 通知必须在事务提交之后发出；放在 writeIdentity 回调里时，监听者可能读到未提交的 wake 行。
-  signalScheduleChange();
+  signalScheduleChange(saved.chatId);
   return saved;
 }
 

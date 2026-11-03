@@ -271,7 +271,7 @@ try {
       "host agent directory override reaches the isolated judge",
     );
     equal(
-      fallbackResult.model,
+      fallbackResult.result.model,
       "fixture/default-model",
       "defaulted model is preserved in the validated failed receipt",
     );

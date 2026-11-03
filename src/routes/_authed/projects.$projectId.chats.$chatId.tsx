@@ -96,6 +96,7 @@ function ProjectChatDetailPage() {
   // run 一推进或收尾，这里回报一次 invalidate，让会话、自动化、关联 Task 与 inspector 快照跟上。
   const facts = useChatLive({
     chatId,
+    projectId,
     active: watching,
     loader,
     onRunChanged: () => void requestRouteReload(router),
@@ -118,9 +119,11 @@ function ProjectChatDetailPage() {
   const liveInfo = loader.info.ok
     ? { ...loader.info, data: mergeChatRuns(loader.info.data, live?.view ?? null) }
     : loader.info;
-  // tick 读到的两块盖住 loader 的同名事实；其余字段继续用 loader，两者不拼成一份新事实。
+  // tick 读到的那几块盖住 loader 的同名事实；其余字段继续用 loader，两者不拼成一份新事实。
   const messages = facts?.messages ?? messageList(loader.messages);
   const runState = facts?.runState ?? loader.runState;
+  // 判定不改消息也不改 run：不盖住 loader 的 automation，「正在检查」就只在整树重读时闪现。
+  const automation = facts?.automation ?? loader.automation;
 
   return (
     <>
@@ -143,7 +146,7 @@ function ProjectChatDetailPage() {
         messages={messages}
         info={liveInfo}
         runState={runState}
-        automation={loader.automation}
+        automation={automation}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}
         onChanged={() => void router.invalidate()}
