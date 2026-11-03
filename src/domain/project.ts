@@ -216,9 +216,10 @@ export function updateProjectWakePolicy(
       for (const c of all<{ id: string }>(
         "SELECT id FROM chat WHERE project_id=?",
         input.projectId,
-      ))
+      )) {
         reconcileChatSchedule(c.id, now);
-      signalScheduleChange();
+        signalScheduleChange(c.id);
+      }
       const result = getProject(input.projectId, ctx);
       write(
         "INSERT INTO project_wake_policy_command VALUES(?,?,?,?,?)",

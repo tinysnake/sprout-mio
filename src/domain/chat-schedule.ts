@@ -1,7 +1,8 @@
-import type { WakeEvaluationInput } from "../contracts/wake-evaluation";
+import type { WakeEvaluationInput, WakeUsage } from "../contracts/wake-evaluation";
 import { createHash, randomUUID } from "node:crypto";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { sqlite } from "../db";
+import { publishChatAutomationChange } from "./change-feed";
 import { CHAT_AUTOMATION_POLICY as POLICY } from "../contracts/chat-automation";
 import { DEFAULT_PROJECT_WAKE_POLICY } from "../contracts/project-wake-policy";
 
@@ -76,12 +77,110 @@ export const hash = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export const iso = (value: number | null) =>
   value === null ? null : new Date(value).toISOString();
+
+/**
+ * 一次判定的结局。进行中的尝试没有结局，行上 `finished_at` 与 `outcome` 一起为空。
+ */
+export type WakeAttemptOutcome = "decided" | "retry_wait" | "attention" | "stale" | "canceled";
+export type WakeAttemptRow = {
+  evaluation_id: string;
+  attempt: number;
+  started_at: number;
+  finished_at: number | null;
+  outcome: string | null;
+  error_code: string | null;
+  usage: WakeUsage | null;
+};
+
+/**
+ * 发出外部请求这一步就是尝试的开始：事后补记录不了真实的等待时长，页面就会撒谎。
+ * 与 claim 同一个写者事务，所以不存在落了 claim 却没有尝试行的时间窗。
+ */
+export function beginWakeAttempt(evaluationId: string, attempt: number, now: Date): void {
+  // 同一编号重开就是这次 claim 从头计时；已经结束的行保持原样，晚到的重开不能抹掉结局。
+  write(
+    "INSERT INTO wake_evaluation_attempt(evaluation_id,attempt,started_at) VALUES(?,?,?) ON CONFLICT(evaluation_id,attempt) DO UPDATE SET started_at=excluded.started_at WHERE wake_evaluation_attempt.finished_at IS NULL",
+    evaluationId,
+    attempt,
+    now.getTime(),
+  );
+  // 更早的编号若因进程退出没来得及收尾，新的 claim 就是它们的结局：按中断结掉，不留永远进行中的行。
+  write(
+    "UPDATE wake_evaluation_attempt SET finished_at=?,outcome='stale' WHERE evaluation_id=? AND finished_at IS NULL AND attempt<>?",
+    now.getTime(),
+    evaluationId,
+    attempt,
+  );
+}
+/**
+ * 结束一次尝试。已结束的行不再改写：先到的结局才算数，晚到的调用只能确认它。
+ */
+export function finishWakeAttempt(
+  evaluationId: string,
+  attempt: number,
+  now: Date,
+  outcome: WakeAttemptOutcome,
+  errorCode: string | null = null,
+  usage: WakeUsage | null = null,
+): void {
+  write(
+    "UPDATE wake_evaluation_attempt SET finished_at=?,outcome=?,error_code=?,usage=? WHERE evaluation_id=? AND attempt=? AND finished_at IS NULL",
+    now.getTime(),
+    outcome,
+    errorCode,
+    usage === null ? null : JSON.stringify(usage),
+    evaluationId,
+    attempt,
+  );
+}
+/**
+ * 判定被外部收尾（关闭自动接续、上下文变了、消息被后一条取代）时，没结束的尝试一并结束，
+ * 否则界面停在一个永远不会完成的「正在检查」。
+ */
+export function closeAttemptsForEvaluation(
+  evaluationId: string,
+  now: Date,
+  outcome: WakeAttemptOutcome,
+): void {
+  write(
+    "UPDATE wake_evaluation_attempt SET finished_at=?,outcome=? WHERE evaluation_id=? AND finished_at IS NULL",
+    now.getTime(),
+    outcome,
+    evaluationId,
+  );
+}
+/** 调用方先收尾尝试，再把判定改成 stale：改完之后这行已不在活动状态集合里。 */
+export function closeAttemptsForChat(
+  chatId: string,
+  now: Date,
+  outcome: WakeAttemptOutcome,
+  source?: "message" | "task_periodic",
+): void {
+  write(
+    `UPDATE wake_evaluation_attempt SET finished_at=?,outcome=? WHERE finished_at IS NULL AND evaluation_id IN (SELECT id FROM wake_evaluation WHERE chat_id=? AND state IN ('pending','claimed','retry_wait')${source ? " AND source=?" : ""})`,
+    ...(source ? [now.getTime(), outcome, chatId, source] : [now.getTime(), outcome, chatId]),
+  );
+}
+export function wakeAttempts(evaluationIds: readonly string[]): WakeAttemptRow[] {
+  if (!evaluationIds.length) return [];
+  return all<Omit<WakeAttemptRow, "usage"> & { usage: string | null }>(
+    `SELECT * FROM wake_evaluation_attempt WHERE evaluation_id IN (${evaluationIds.map(() => "?").join(",")}) ORDER BY attempt`,
+    ...evaluationIds,
+  ).map((row) => ({
+    ...row,
+    usage: row.usage ? (JSON.parse(row.usage) as WakeUsage) : null,
+  }));
+}
 const listeners = new Set<() => void>();
-/** Queue after the enclosing synchronous transaction commits. */
-export function signalScheduleChange() {
+/**
+ * 队列到外层同步事务提交之后。写入点知道 chatId 时一并给出：浏览器靠这条推送重读项目与对话，
+ * 不然判定早已落库、页面还在等下一次兜底轮询。
+ */
+export function signalScheduleChange(chatId?: string) {
   queueMicrotask(() => {
     for (const listener of listeners) listener();
   });
+  if (chatId) publishChatAutomationChange(chatId);
 }
 export function onScheduleChange(listener: () => void) {
   listeners.add(listener);
@@ -394,6 +493,12 @@ export function reconcileChatSchedule(chatId: string, now: Date): void {
           ? "task_periodic"
           : undefined,
       );
+    closeAttemptsForChat(
+      chatId,
+      now,
+      "stale",
+      control.mode !== "enabled" || chat.archived_at !== null ? undefined : "task_periodic",
+    );
     write(
       `UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE chat_id=?${control.mode !== "enabled" || chat.archived_at !== null ? "" : " AND source='task_periodic'"} AND state IN ('pending','claimed','retry_wait')`,
       chatId,
@@ -488,6 +593,7 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
         return undefined;
       }
       if (evaluation && evaluation.attempt >= POLICY.maxAttempts) {
+        closeAttemptsForEvaluation(evaluation.id, ctx.now, "attention");
         write(
           "UPDATE wake_evaluation SET state='attention',error_code=coalesce(error_code,'provider_unavailable'),claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE id=?",
           evaluation.id,
@@ -540,6 +646,7 @@ export function claimDueEvaluation(ctx: SchedulerContext): Evaluation | undefine
         ctx.now.getTime() + CLAIM_LEASE_MS,
         evaluation.id,
       );
+      beginWakeAttempt(evaluation.id, evaluation.attempt + 1, ctx.now);
       write(
         "UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?",
         ctx.now.getTime() + CLAIM_LEASE_MS,

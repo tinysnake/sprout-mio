@@ -225,6 +225,13 @@
       "when": 1793686589822,
       "tag": "0031_grey_the_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1793708422044,
+      "tag": "0032_grey_santa_claus",
+      "breakpoints": true
     }
   ]
 }

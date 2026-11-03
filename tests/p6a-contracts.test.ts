@@ -190,6 +190,7 @@ const view = () => ({
   activeRunIds: [],
   remindedHuman: false,
   latestEvaluation: null,
+  recentRounds: [],
   deliveries: [],
   attention: null,
 });
@@ -839,9 +840,9 @@ describe("P6a continuation and Human controls", () => {
       }).success,
     ).toBe(true);
     // A message wake can schedule the next check without any assigned Task.
-    expect(
-      chatAutomationViewSchema.safeParse({ ...view(), assignedTaskIds: [] }).success,
-    ).toBe(true);
+    expect(chatAutomationViewSchema.safeParse({ ...view(), assignedTaskIds: [] }).success).toBe(
+      true,
+    );
     expect(chatAutomationViewSchema.safeParse({ ...view(), epoch: 0 }).success).toBe(false);
     const evaluation = {
       evaluationId: "evaluation-1",
@@ -849,12 +850,19 @@ describe("P6a continuation and Human controls", () => {
       state: "decided",
       round: 1,
       attempt: 1,
+      claimedAt: at,
+      finishedAt: at,
       evaluatedAt: at,
       nextAttemptAt: null,
       result: result(),
       errorCode: null,
+      usage: { inputTokens: 900, outputTokens: 32, inputCharacters: 3400, durationMs: 4200 },
     };
     expect(chatAutomationEvaluationViewSchema.safeParse(evaluation).success).toBe(true);
+    expect(
+      chatAutomationEvaluationViewSchema.safeParse({ ...evaluation, usage: { durationMs: -1 } })
+        .success,
+    ).toBe(false);
     expect(
       chatAutomationEvaluationViewSchema.safeParse({
         ...evaluation,

@@ -24,7 +24,7 @@ function hostDefaultModel(agentDir: string): string {
   return `${defaults.defaultProvider}/${defaults.defaultModel}`;
 }
 
-/** Keeps the scheduler result-only while the provider boundary validates the full receipt. */
+/** Provider 边界已经校验过整份回执；调度器要的是 usage，不是再拆一层。 */
 export function createWakeEvaluator(options: WakeRuntimeOptions): EvaluateWake {
   const agentDir = resolve(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"));
   return async (input) => {
@@ -46,6 +46,6 @@ export function createWakeEvaluator(options: WakeRuntimeOptions): EvaluateWake {
       input.policy.provider === "small_brain" && !input.policy.model
         ? { ...input, policy: { ...input.policy, model: hostDefaultModel(agentDir) } }
         : input;
-    return (await evaluateWake(request, judges)).result;
+    return await evaluateWake(request, judges);
   };
 }

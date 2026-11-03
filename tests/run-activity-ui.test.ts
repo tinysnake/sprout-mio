@@ -178,4 +178,108 @@ describe("自动接续状态", () => {
     expect(html).toContain("不会安排新的自动检查");
     expect(html).not.toContain("下次检查");
   });
+
+  it("收起时只露最后一次检查，并给出总次数", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("failure") }),
+    );
+    expect(html).toContain('data-testid="continuation-activity"');
+    expect(html).toContain('data-testid="continuation-activity-count"');
+    expect(html).toContain("1 次");
+    expect(html).toContain("第 1 轮检查");
+    expect(html).toContain('data-testid="continuation-activity-entries"');
+  });
+
+  it("一次检查花了多久、用了多少 token 都写在记录里", () => {
+    const view = automationFixture("failure");
+    const rounds = [
+      {
+        round: 3,
+        source: "task_periodic" as const,
+        state: "decided" as const,
+        evaluatedAt: "2026-11-02T12:00:05.000Z",
+        result: null,
+        errorCode: null,
+        attempts: [
+          {
+            attempt: 1,
+            startedAt: "2026-11-02T12:00:00.000Z",
+            finishedAt: "2026-11-02T12:00:04.200Z",
+            outcome: "decided" as const,
+            errorCode: null,
+            usage: {
+              inputTokens: 900,
+              outputTokens: 32,
+              inputCharacters: 3400,
+              durationMs: 4200,
+              resolvedModel: "fixture/model",
+            },
+          },
+        ],
+      },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, {
+        state: empty,
+        messages: [],
+        automation: {
+          ok: true as const,
+          data: { view: { ...view, recentRounds: rounds }, allowedActions: [], denials: {} },
+          requestId: "req_11111111",
+        },
+      }),
+    );
+    expect(html).toContain("第 3 轮检查");
+    expect(html).toContain("932 tok · 4.2 秒");
+  });
+
+  it("还在进行的尝试写明进行中，不编造时长", () => {
+    const view = automationFixture("failure");
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, {
+        state: empty,
+        messages: [],
+        automation: {
+          ok: true as const,
+          data: {
+            view: {
+              ...view,
+              recentRounds: [
+                {
+                  round: 2,
+                  source: "task_periodic" as const,
+                  state: "claimed" as const,
+                  evaluatedAt: null,
+                  result: null,
+                  errorCode: null,
+                  attempts: [
+                    {
+                      attempt: 1,
+                      startedAt: "2026-11-02T12:00:00.000Z",
+                      finishedAt: null,
+                      outcome: null,
+                      errorCode: null,
+                      usage: null,
+                    },
+                  ],
+                },
+              ],
+            },
+            allowedActions: [],
+            denials: {},
+          },
+          requestId: "req_11111111",
+        },
+      }),
+    );
+    expect(html).toContain("进行中");
+    expect(html).not.toContain("4.2 秒");
+  });
+
+  it("没有任何检查记录时不渲染空卡片", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("scheduled") }),
+    );
+    expect(html).not.toContain('data-testid="continuation-activity"');
+  });
 });

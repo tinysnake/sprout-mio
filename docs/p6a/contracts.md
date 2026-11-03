@@ -96,13 +96,13 @@ export const CHAT_AUTOMATION_POLICY = {
 } as const;
 ```
 
-| 取值                           | 理由                                                                                                                                               |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version: 1`                   | 策略整体版本。改动任一取值的语义时递增，让历史判定能对上是哪一代策略。                                                                             |
-| `intervalSeconds: 300`         | 有 assigned Task 的 Chat 每 5 分钟检查一次。够快让协作不中断，又不至于每次消息都付一次模型钱；也是「每秒检查」和「每分钟检查」之间的成本折中。     |
-| `retryDelaySeconds: [5, 10, 30, 60, 120]` | 失败后按 5、10、30、60、120 秒渐进退避。前两档快速接住瞬时抖动，后三档把连续失败压到分钟级，避免对故障判定器做密集重试。 |
-| `maxAttempts: 6`               | 一份判定最多尝试 6 次（首次 + 五次退避重试），累计等待 225 秒；第 6 次仍失败就落 `attention`，不再自动重试。`wake_evaluation.attempt` 与投递 `attempt` 的 CHECK 上界都是 6。 |
-| `repeatedRunFailureLimit: 3`   | 同一 run 连续失败 3 次判为 `run_repeated_failure` 并停止自动重投。让失败可自愈，但不无限循环。                                                     |
+| 取值                                      | 理由                                                                                                                                                                         |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version: 1`                              | 策略整体版本。改动任一取值的语义时递增，让历史判定能对上是哪一代策略。                                                                                                       |
+| `intervalSeconds: 300`                    | 有 assigned Task 的 Chat 每 5 分钟检查一次。够快让协作不中断，又不至于每次消息都付一次模型钱；也是「每秒检查」和「每分钟检查」之间的成本折中。                               |
+| `retryDelaySeconds: [5, 10, 30, 60, 120]` | 失败后按 5、10、30、60、120 秒渐进退避。前两档快速接住瞬时抖动，后三档把连续失败压到分钟级，避免对故障判定器做密集重试。                                                     |
+| `maxAttempts: 6`                          | 一份判定最多尝试 6 次（首次 + 五次退避重试），累计等待 225 秒；第 6 次仍失败就落 `attention`，不再自动重试。`wake_evaluation.attempt` 与投递 `attempt` 的 CHECK 上界都是 6。 |
+| `repeatedRunFailureLimit: 3`              | 同一 run 连续失败 3 次判为 `run_repeated_failure` 并停止自动重投。让失败可自愈，但不无限循环。                                                                               |
 
 依据：`CHAT_AUTOMATION_POLICY` 常量与 `wake_evaluation_attempt_check`、`chatAutomationEvaluationViewSchema.attempt` 的上界引用。理由部分为本轮按取值与相邻约束归纳，**引用**。“300 秒”存在两处来源（TS 常量与 SQL 字面量），现在靠 `p6a-scheduler` 门禁钉住相等，不是物理单一来源，见 [已知限制](summary.md#p3-6-300-秒两处来源)。
 
@@ -111,6 +111,19 @@ export const CHAT_AUTOMATION_POLICY = {
 Human 在 `contextual` Chat 发普通消息时，`chat_message_wake.due_at` 直接写当前时间，不再做 trailing debounce；`sendMessage` 提交后立即 `signalScheduleChange`，调度器重新 rearm 后即可 claim。连续消息只保留最新触发消息，旧触发消息被新消息覆盖，不额外排队。
 
 同一 Chat 只允许一个活跃 `wake_evaluation`。新消息的 trigger 与旧 message evaluation 不同时，旧 evaluation 立刻标 `stale`，清 `claim_token`/`lease_until`，新 evaluation 随后 claim。若旧的是 `task_periodic`，同样标 `stale`，并把 `chat_schedule.next_due_at` 推到 1 秒后，让任务在消息判定之后重新排期。旧 provider 请求可能仍在后台完成，但 claim token 已失效，结果不能提交；provider 自身仍有 45 秒超时兜底。**引用**
+
+### 判定尝试记录与用量 `wake_evaluation_attempt`
+
+每次 claim 都在 `wake_evaluation_attempt` 留一行，判定结束时补上结局、错误码与用量。记录是**判定过程**的唯一事实来源：判定既不写消息也不迁移 run，没有这张表，页面只能回答「正在检查」，回答不了「检查到哪一步、花了多久、烧了多少 token」。
+
+- 一行一次尝试：`evaluation_id` + `attempt` 是主键，`attempt` 与 `wake_evaluation.attempt` 同一个上界（1–6）。
+- 结局与判定状态对齐：`decided`、`retry_wait`、`attention`、`stale`、`canceled`。`stale` 覆盖三种情况——判定失效、进程退出前没来得及收尾、同一编号重开时被更早的 claim 结掉。
+- 「先到的结局算数」由写入条件保证：`finished_at IS NULL` 时才写结局，晚到的调用只能确认它。同一编号重开时，未结束的行以新 claim 的 `started_at` 重新计时，已结束的行保持原样。
+- `usage` 来自判定器回执 `WakeReceipt.usage`：`inputTokens`/`outputTokens`（可空）、`inputCharacters`、`durationMs`、`resolvedModel`。可空表达「这次没走到真实推理」，不是 0。
+
+读视图据此回答两个问题：`latestEvaluation` 增 `claimedAt`/`finishedAt`/`usage`（进行中的判定用 `claimedAt` 算已等待时长），`recentRounds` 保留最近 5 轮的判定与逐次尝试，供页面按 run 活动记录同样的折叠形状展示。
+
+判定状态变化不再等安全轮询：进入 `claimed`、落 `decided`/`retry_wait`/`attention`、被清扫成 `stale` 的路径都调 `signalScheduleChange(chatId)`，由它发布 `project:` 与 `chat:` 两个主题。依据：`src/db/schema.ts` 的 `wakeEvaluationAttempt`、`src/domain/chat-schedule.ts` 的 `beginWakeAttempt`/`finishWakeAttempt`/`closeAttemptsForChat`、`src/contracts/chat-automation.ts` 的 `chatAutomationEvaluationViewSchema`/`chatAutomationRoundViewSchema`，与 [P6b 变更推送](../p6b/push.md) 的发布覆盖表。**引用**
 
 ### `CHAT_AUTOMATION_CAPABILITIES`
 

@@ -7,6 +7,7 @@ import {
   wakeEvaluationErrorCodeSchema,
   wakeEvaluationResultSchema,
   wakeEvaluationSourceSchema,
+  wakeUsageSchema,
 } from "./wake-evaluation";
 
 const identifier = z.string().trim().min(1).max(200);
@@ -222,16 +223,61 @@ export const chatAutomationCommandSchema = z.discriminatedUnion("action", [
 ]);
 export type ChatAutomationCommand = z.infer<typeof chatAutomationCommandSchema>;
 
+export const chatAutomationEvaluationStateSchema = z.enum([
+  "pending",
+  "claimed",
+  "retry_wait",
+  "decided",
+  "attention",
+  "stale",
+  "canceled",
+]);
+export type ChatAutomationEvaluationState = z.infer<typeof chatAutomationEvaluationStateSchema>;
+
+/**
+ * 一次尝试：什么时候发出、什么时候结束、花了多少。`outcome` 为空表示还在等判定器回答。
+ */
+export const chatAutomationAttemptViewSchema = z
+  .strictObject({
+    attempt: z.number().int().positive().max(CHAT_AUTOMATION_POLICY.maxAttempts),
+    startedAt: z.iso.datetime(),
+    finishedAt: z.iso.datetime().nullable(),
+    outcome: z.enum(["decided", "retry_wait", "attention", "stale", "canceled"]).nullable(),
+    errorCode: identifier.nullable(),
+    usage: wakeUsageSchema.nullable(),
+  })
+  .readonly();
+export type ChatAutomationAttemptView = z.infer<typeof chatAutomationAttemptViewSchema>;
+
+/** 一轮判定的完整过程：页面按轮次列时间线，而不是只有当前那一行状态。 */
+export const chatAutomationRoundViewSchema = z
+  .strictObject({
+    round: revision,
+    source: wakeEvaluationSourceSchema,
+    state: chatAutomationEvaluationStateSchema,
+    evaluatedAt: z.iso.datetime().nullable(),
+    result: wakeEvaluationResultSchema.nullable(),
+    errorCode: wakeEvaluationErrorCodeSchema.nullable(),
+    attempts: z.array(chatAutomationAttemptViewSchema).max(CHAT_AUTOMATION_POLICY.maxAttempts),
+  })
+  .readonly();
+export type ChatAutomationRoundView = z.infer<typeof chatAutomationRoundViewSchema>;
+
 export const chatAutomationEvaluationViewSchema = z.strictObject({
   evaluationId: identifier,
   source: wakeEvaluationSourceSchema,
-  state: z.enum(["pending", "claimed", "retry_wait", "decided", "attention", "stale", "canceled"]),
+  state: chatAutomationEvaluationStateSchema,
   round: revision,
   attempt: count.max(CHAT_AUTOMATION_POLICY.maxAttempts),
+  /** 当前这次尝试开始的时刻；还没开始尝试（pending）时为空。 */
+  claimedAt: z.iso.datetime().nullable(),
+  /** 最近一次尝试结束的时刻；还在检查时为空。 */
+  finishedAt: z.iso.datetime().nullable(),
   evaluatedAt: z.iso.datetime().nullable(),
   nextAttemptAt: z.iso.datetime().nullable(),
   result: wakeEvaluationResultSchema.nullable(),
   errorCode: wakeEvaluationErrorCodeSchema.nullable(),
+  usage: wakeUsageSchema.nullable(),
 });
 export type ChatAutomationEvaluationView = z.infer<typeof chatAutomationEvaluationViewSchema>;
 
@@ -251,6 +297,8 @@ export const chatAutomationViewSchema = z
     activeRunIds: z.array(runIdSchema),
     remindedHuman: z.boolean(),
     latestEvaluation: chatAutomationEvaluationViewSchema.nullable(),
+    /** 最近几轮判定，新的在前；时间线不靠猜历史。 */
+    recentRounds: z.array(chatAutomationRoundViewSchema).max(5),
     deliveries: z.array(continuationDeliverySchema),
     attention: z
       .strictObject({
@@ -268,6 +316,11 @@ export const chatAutomationViewSchema = z
       reject("Disabled automation has no executable schedule");
     if (value.remindedHuman && (value.owner.kind !== "human" || value.activeRunIds.length !== 0))
       reject("Human reminder must not claim active Agent runs");
+    if (
+      value.latestEvaluation !== null &&
+      !value.recentRounds.some((round) => round.round === value.latestEvaluation!.round)
+    )
+      reject("Latest evaluation must appear in the round timeline");
     if (
       value.deliveries.some(
         (item) => item.projectId !== value.projectId || item.chatId !== value.chatId,
