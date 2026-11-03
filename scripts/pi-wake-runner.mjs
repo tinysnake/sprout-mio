@@ -5,6 +5,15 @@ import { pathToFileURL } from "node:url";
 
 const jsonFile = (path, fallback) =>
   existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
+
+function withSproutHeaders(headers, sessionId, userAgent) {
+  const next = { ...headers };
+  for (const key of Object.keys(next))
+    if (["user-agent", "x-session-affinity"].includes(key.toLowerCase())) delete next[key];
+  next["user-agent"] = userAgent;
+  next["x-session-affinity"] = sessionId;
+  return next;
+}
 function sdkRoot(agentDir) {
   const candidates = [];
   try {
@@ -91,6 +100,7 @@ async function main(config) {
   if (!model || model.provider !== provider || model.id !== modelId)
     throw new Error("provider_unavailable");
   if (!runtime.hasConfiguredAuth(provider)) throw new Error("provider_auth_failed");
+  if (!config.sessionId || !config.userAgent) throw new Error("provider_unavailable");
   const response = await runtime.complete(
     model,
     {
@@ -100,7 +110,11 @@ async function main(config) {
       ],
       tools: [],
     },
-    { maxTokens: 3000, signal: AbortSignal.timeout(config.timeoutMs) },
+    {
+      maxTokens: 3000,
+      signal: AbortSignal.timeout(config.timeoutMs),
+      transformHeaders: (headers) => withSproutHeaders(headers, config.sessionId, config.userAgent),
+    },
   );
   if (response.stopReason !== "stop" || response.content.some((item) => item.type === "toolCall"))
     throw new Error("provider_invalid_response");
