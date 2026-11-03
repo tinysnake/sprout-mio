@@ -349,7 +349,17 @@ const failing = async () => {
 };
 const fail1 = mw.claimDueMessageWake(failCtx(at))!;
 await mw.evaluateMessageClaim(fail1, failing, failCtx(at));
+const wakeBefore = schedule.one<{ evaluation_id: string }>(
+  "SELECT evaluation_id FROM chat_message_wake WHERE chat_id=?",
+  failed.id,
+)!;
+schedule.write("DELETE FROM chat_message_wake WHERE chat_id=?", failed.id);
 const fail2 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 31_000)))!;
+evidence.orphan = {
+  queued: Boolean(wakeBefore),
+  requeued: Boolean(fail2) && fail2.attempt === 2,
+  attempt: fail2?.attempt ?? 0,
+};
 await mw.evaluateMessageClaim(fail2, failing, failCtx(new Date(at.getTime() + 31_000)));
 const fail3 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 151_000)))!;
 await mw.evaluateMessageClaim(fail3, failing, failCtx(new Date(at.getTime() + 151_000)));

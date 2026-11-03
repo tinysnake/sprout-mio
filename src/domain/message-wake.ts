@@ -412,6 +412,37 @@ function claimMessageEvaluation(
 export function claimDueMessageWake(ctx: SchedulerContext): Evaluation | undefined {
   return sqlite
     .transaction(() => {
+      const now = ctx.now.getTime();
+      // A message retry can outlive its wake row after a cancel/reschedule race. Requeue the
+      // orphan before claiming so the retry budget still converges instead of waiting forever.
+      const orphan = one<Evaluation>(
+        `SELECT e.* FROM wake_evaluation e
+         WHERE e.source='message' AND e.state='retry_wait' AND e.next_attempt_at IS NOT NULL
+           AND e.next_attempt_at<=? AND e.trigger_message_id IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM chat_message_wake w WHERE w.chat_id=e.chat_id)
+         ORDER BY e.next_attempt_at LIMIT 1`,
+        now,
+      );
+      if (orphan) {
+        write(
+          `INSERT INTO chat_message_wake(chat_id,project_id,trigger_message_id,first_due_at,due_at,evaluation_id,created_at,updated_at)
+           VALUES(?,?,?,?,?,?,?,?)
+           ON CONFLICT(chat_id) DO UPDATE SET
+             trigger_message_id=excluded.trigger_message_id,
+             first_due_at=excluded.first_due_at,
+             due_at=excluded.due_at,
+             evaluation_id=excluded.evaluation_id,
+             updated_at=excluded.updated_at`,
+          orphan.chat_id,
+          orphan.project_id,
+          orphan.trigger_message_id,
+          orphan.next_attempt_at,
+          orphan.next_attempt_at,
+          orphan.id,
+          now,
+          now,
+        );
+      }
       const due = one<{
         chat_id: string;
         project_id: string;

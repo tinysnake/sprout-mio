@@ -30,6 +30,7 @@ type Evidence = {
     preserved: boolean;
   };
   failureFallback: { attempts: number; recipient: string; state: string; reasonCode: string };
+  orphan: { queued: boolean; requeued: boolean; attempt: number };
   retry: { retried: boolean; trigger: string; newer: string };
   unknown: { count: number; first: { state: string; error_code: string | null }; latest: { state: string; error_code: string | null } };
   owner: string;
@@ -131,6 +132,12 @@ describe("message-triggered wake", () => {
     expect(evidence.sources.taskRound).toBe(2);
     expect(evidence.sources.scheduleRound).toBe(2);
     expect(evidence.sources.preserved).toBe(true);
+  });
+
+  it("requeues a message retry whose wake row disappeared", () => {
+    expect(evidence.orphan.queued).toBe(true);
+    expect(evidence.orphan.requeued).toBe(true);
+    expect(evidence.orphan.attempt).toBe(2);
   });
 
   it("does not let retrying an old evaluation overwrite a newer message", () => {

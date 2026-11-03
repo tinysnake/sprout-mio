@@ -67,7 +67,7 @@ export function createAutomationScheduler(
     }
     // No assigned Task and no pending transport retry means no Task timer at all.
     const next = one<{ due: number | null }>(
-      "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL UNION ALL SELECT due_at AS due FROM chat_message_wake)",
+      "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL UNION ALL SELECT due_at AS due FROM chat_message_wake UNION ALL SELECT next_attempt_at AS due FROM wake_evaluation WHERE source='message' AND state='retry_wait' AND next_attempt_at IS NOT NULL)",
     )?.due;
     if (next !== null && next !== undefined)
       timer = time.setTimeout(
