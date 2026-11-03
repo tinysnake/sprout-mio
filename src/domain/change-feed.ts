@@ -1,0 +1,125 @@
+import { eq } from "drizzle-orm";
+import { CHANGE_STREAM, chatTopic, projectTopic } from "../contracts/change-stream";
+import { db } from "../db";
+import { projectMachine, projectMember } from "../db/schema";
+
+/** 一条推送事实：主题变了，页面据此重读该主题下的 revision。 */
+export type ChangeEvent = { readonly id: number; readonly topic: string; readonly at: number };
+
+type Subscriber = {
+  readonly topics: ReadonlySet<string>;
+  readonly send: (event: ChangeEvent) => void;
+};
+
+const subscribers = new Map<number, Subscriber>();
+const pending = new Map<string, { timer: ReturnType<typeof setTimeout>; at: number }>();
+let sequence = 0;
+let nextSubscriberId = 1;
+
+function deliver(subscriber: Subscriber, event: ChangeEvent) {
+  try {
+    subscriber.send(event);
+  } catch {
+    removeSubscriber(subscriber);
+  }
+}
+
+function removeSubscriber(target: Subscriber) {
+  for (const [id, subscriber] of subscribers) if (subscriber === target) subscribers.delete(id);
+  prunePending();
+}
+
+/** 最后一个订阅者走了，还没发出的那一条连同定时器一起取消，不留悬空 timer。 */
+function prunePending() {
+  for (const [topic, entry] of pending) {
+    if ([...subscribers.values()].some((subscriber) => subscriber.topics.has(topic))) continue;
+    clearTimeout(entry.timer);
+    pending.delete(topic);
+  }
+}
+
+/** 连接有一个订阅者就够；主题各自计数由调用方（客户端 store 与页面）负责。 */
+export function subscribeChanges(input: {
+  topics: readonly string[];
+  send: (event: ChangeEvent) => void;
+}): () => void {
+  const id = nextSubscriberId++;
+  const subscriber: Subscriber = { topics: new Set(input.topics), send: input.send };
+  subscribers.set(id, subscriber);
+  return () => {
+    subscribers.delete(id);
+    prunePending();
+  };
+}
+
+/**
+ * 同一主题在合窗内的多次写入只发一条：run 的一次转移会顺手改消息、会话与队列，
+ * 分开发等于让页面连读四次。这里只排定时器，事务回滚时最多产生一次无害的误报。
+ */
+export function publishChange(topic: string, now: () => number = Date.now): void {
+  if (pending.has(topic)) return;
+  if (![...subscribers.values()].some((subscriber) => subscriber.topics.has(topic))) return;
+  const at = now();
+  const timer = setTimeout(() => {
+    pending.delete(topic);
+    flush(topic, at);
+  }, CHANGE_STREAM.coalesceMs);
+  timer.unref?.();
+  pending.set(topic, { timer, at });
+}
+
+function flush(topic: string, at: number) {
+  const event: ChangeEvent = { id: ++sequence, topic, at };
+  for (const subscriber of Array.from(subscribers.values()))
+    if (subscriber.topics.has(topic)) deliver(subscriber, event);
+}
+
+/** 页面按 Project 看列表、按 Chat 看对话：一次写入常常同时属于两者。 */
+export function publishProjectChange(projectId: string, chatId?: string): void {
+  if (!projectId) return;
+  publishChange(projectTopic(projectId));
+  if (chatId) publishChange(chatTopic(chatId));
+}
+
+/**
+ * 机器上线、下线与绑定改变的是 Project 的机器列表，而写入点只拿着 machineId。
+ * 连接开合是低频事件，这里查一次绑定比让每个写入点自己带 projectId 更稳。
+ */
+export function publishMachineChange(machineId: string): void {
+  for (const binding of db
+    .select({ projectId: projectMachine.projectId })
+    .from(projectMachine)
+    .where(eq(projectMachine.machineId, machineId))
+    .all())
+    publishProjectChange(binding.projectId);
+}
+
+/**
+ * Agent profile 是全局对象，改它会同时改变所有已加入该 profile 的 Project 聚合。
+ * 写入点只拿着 profileId，这里查一次成员关系再逐 Project 通知。
+ */
+export function publishAgentProfileChange(agentProfileId: string): void {
+  for (const member of db
+    .select({ projectId: projectMember.projectId })
+    .from(projectMember)
+    .where(eq(projectMember.agentProfileId, agentProfileId))
+    .all())
+    publishProjectChange(member.projectId);
+}
+
+/** 测试与诊断用：不给业务代码清空全局订阅者。 */
+export function changeFeedSnapshot(): {
+  subscribers: number;
+  topics: readonly string[];
+} {
+  return {
+    subscribers: subscribers.size,
+    topics: [...subscribers.values()].flatMap((subscriber) => [...subscriber.topics]),
+  };
+}
+
+export function resetChangeFeed(): void {
+  for (const entry of pending.values()) clearTimeout(entry.timer);
+  pending.clear();
+  subscribers.clear();
+}

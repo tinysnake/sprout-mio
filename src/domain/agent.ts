@@ -7,6 +7,7 @@ import type {
 } from "../contracts/agent";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
+import { publishAgentProfileChange } from "./change-feed";
 import {
   agentInstance,
   agentProfile,
@@ -306,7 +307,7 @@ export function updateAgentProfile(
   ctx: ProjectContext,
   hooks: IdentityWriteHooks = {},
 ): AgentProfile {
-  return writeIdentity(
+  const profile = writeIdentity(
     ctx,
     { event: "agent_profile.updated", message: "Agent profile 已更新" },
     () => {
@@ -322,6 +323,9 @@ export function updateAgentProfile(
     },
     hooks,
   );
+  // profile 没有 projectId，但它影响所有已加入的 Project 聚合。
+  publishAgentProfileChange(profile.id);
+  return profile;
 }
 
 export function addProjectMember(

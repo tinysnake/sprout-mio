@@ -1,6 +1,7 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import type { LeaseKey } from "../contracts/lease";
+import { publishProjectChange } from "../domain/change-feed";
 import {
   detachMachineInputSchema,
   pendingFactInputSchema,
@@ -470,6 +471,7 @@ export function detachMachine(raw: DetachInput, ctx: MachineContext): Membership
           now: ctx.now,
         });
         diagnostic(ctx, key, "machine.detached", "info");
+        publishProjectChange(key.projectId);
         return membershipViewAt(
           db
             .select()
@@ -518,6 +520,7 @@ export function detachMachine(raw: DetachInput, ctx: MachineContext): Membership
         now: ctx.now,
       });
       diagnostic(ctx, key, "machine.detached", pending ? "warn" : "info");
+      publishProjectChange(key.projectId);
       return membershipViewAt(
         db
           .select()
@@ -584,6 +587,7 @@ export function rejoinProjectMachine(raw: RejoinInput, ctx: MachineContext): Mem
         })
         .run();
       diagnostic(ctx, key, "machine.rejoined", "info");
+      publishProjectChange(key.projectId);
       return membershipViewFor(key, ctx.now, { canForceReclaim: true })!;
     })
     .immediate();
