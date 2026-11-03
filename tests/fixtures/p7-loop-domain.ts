@@ -805,22 +805,31 @@ if (mode === "restart" && !phase) {
             row("SELECT next_due_at FROM chat_schedule WHERE chat_id=?", dmAuto.id).next_due_at,
           );
           const wake = async (input: any) => ({
-            decision: "continue" as const,
-            reason: "fixture: the owner has a next step",
-            reasonCode: "fixture_continue" as const,
-            recipients: input.candidates.map((candidate: any) => ({
-              recipient: candidate.recipient,
-              decision: "yes" as const,
-              reason: "current owner",
+            result: {
+              decision: "continue" as const,
+              reason: "fixture: the owner has a next step",
+              reasonCode: "fixture_continue" as const,
+              recipients: input.candidates.map((candidate: any) => ({
+                recipient: candidate.recipient,
+                decision: "yes" as const,
+                reason: "current owner",
+                probability: null,
+              })),
+              selectedRecipients: input.candidates.map((candidate: any) => candidate.recipient),
               probability: null,
-            })),
-            selectedRecipients: input.candidates.map((candidate: any) => candidate.recipient),
-            probability: null,
-            provider: input.policy.provider,
-            model: input.policy.model,
-            version: input.policy.thresholdVersion,
-            snapshotHash: input.snapshotHash,
-            errorCode: null,
+              provider: input.policy.provider,
+              model: input.policy.model,
+              version: input.policy.thresholdVersion,
+              snapshotHash: input.snapshotHash,
+              errorCode: null,
+            },
+            usage: {
+              inputTokens: 800,
+              outputTokens: 24,
+              inputCharacters: 3200,
+              durationMs: 3800,
+              resolvedModel: null,
+            },
           });
           const scheduler = createAutomationScheduler({
             clock: { now: () => clockNow, setTimeout: () => 0, clearTimeout: () => {} },

@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ChatRunState, RunActivity, RunActivityStep } from "../src/contracts/agent-run";
 import { RunStatusPanel } from "../src/components/chat/run-status";
+import { AutomationCard } from "../src/components/automation/automation-card";
 import { automationFixture } from "./fixtures/p6a-pages";
 
 function step(index: number, overrides: Partial<RunActivityStep> = {}): RunActivityStep {
@@ -177,5 +178,100 @@ describe("自动接续状态", () => {
     expect(html).toContain("已关闭");
     expect(html).toContain("不会安排新的自动检查");
     expect(html).not.toContain("下次检查");
+  });
+
+  it("消息尾部只留一行状态，不把检查记录堆在那儿", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("failure") }),
+    );
+    expect(html).toContain('data-testid="continuation-status"');
+    expect(html).not.toContain('data-testid="continuation-activity"');
+  });
+
+  it("检查记录跟着会话详情走，列在诊断里", () => {
+    const html = renderToStaticMarkup(
+      createElement(AutomationCard, { view: automationFixture("failure") }),
+    );
+    expect(html).toContain("检查细节与诊断");
+    expect(html).toContain('data-testid="continuation-activity"');
+    expect(html).toContain('data-testid="continuation-activity-count"');
+    expect(html).toContain("1 轮");
+    expect(html).toContain("第 1 轮检查");
+    expect(html).toContain('data-testid="continuation-activity-entries"');
+  });
+
+  it("一次检查花了多久、用了多少 token 都写在记录里", () => {
+    const view = automationFixture("failure");
+    const rounds = [
+      {
+        round: 3,
+        source: "task_periodic" as const,
+        state: "decided" as const,
+        evaluatedAt: "2026-11-02T12:00:05.000Z",
+        result: null,
+        errorCode: null,
+        attempts: [
+          {
+            attempt: 1,
+            startedAt: "2026-11-02T12:00:00.000Z",
+            finishedAt: "2026-11-02T12:00:04.200Z",
+            outcome: "decided" as const,
+            errorCode: null,
+            usage: {
+              inputTokens: 900,
+              outputTokens: 32,
+              inputCharacters: 3400,
+              durationMs: 4200,
+              resolvedModel: "fixture/model",
+            },
+          },
+        ],
+      },
+    ];
+    const html = renderToStaticMarkup(
+      createElement(AutomationCard, { view: { ...view, recentRounds: rounds } }),
+    );
+    expect(html).toContain("第 3 轮检查");
+    expect(html).toContain("932 tok \u00b7 4.2 \u79d2");
+  });
+
+  it("还在进行的尝试写明进行中，不编造时长", () => {
+    const view = automationFixture("failure");
+    const html = renderToStaticMarkup(
+      createElement(AutomationCard, {
+        view: {
+          ...view,
+          recentRounds: [
+            {
+              round: 2,
+              source: "task_periodic" as const,
+              state: "claimed" as const,
+              evaluatedAt: null,
+              result: null,
+              errorCode: null,
+              attempts: [
+                {
+                  attempt: 1,
+                  startedAt: "2026-11-02T12:00:00.000Z",
+                  finishedAt: null,
+                  outcome: null,
+                  errorCode: null,
+                  usage: null,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    expect(html).toContain("\u8fdb\u884c\u4e2d");
+    expect(html).not.toContain("4.2 \u79d2");
+  });
+
+  it("没有任何检查记录时不渲染空列表", () => {
+    const html = renderToStaticMarkup(
+      createElement(AutomationCard, { view: automationFixture("scheduled") }),
+    );
+    expect(html).not.toContain('data-testid="continuation-activity"');
   });
 });

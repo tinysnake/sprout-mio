@@ -39,6 +39,7 @@ export function automationFixture(name: P6aCase = "idle"): ChatAutomationView {
     activeRunIds: [],
     remindedHuman: false,
     latestEvaluation: null,
+    recentRounds: [],
     deliveries: [],
     attention: null,
   };
@@ -54,11 +55,34 @@ export function automationFixture(name: P6aCase = "idle"): ChatAutomationView {
       state: "retry_wait",
       round: 1,
       attempt: 1,
+      claimedAt: at,
+      finishedAt: at,
       evaluatedAt: at,
       nextAttemptAt: later,
       result: null,
       errorCode: "provider_timeout",
+      usage: null,
     };
+    view.recentRounds = [
+      {
+        round: 1,
+        source: "task_periodic",
+        state: "retry_wait",
+        evaluatedAt: at,
+        result: null,
+        errorCode: "provider_timeout",
+        attempts: [
+          {
+            attempt: 1,
+            startedAt: at,
+            finishedAt: at,
+            outcome: "retry_wait",
+            errorCode: "provider_timeout",
+            usage: null,
+          },
+        ],
+      },
+    ];
     view.attention = {
       errorCode: "provider_timeout",
       reason: "判定器超时，正在退避等待重试。",

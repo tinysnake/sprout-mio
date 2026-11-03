@@ -6,7 +6,10 @@ import { laterMessageCursor } from "../../contracts/chat";
 import type { ChatResult, Message, MessageCursor, MessageWindow } from "../../contracts/chat";
 import type { ChatDetailLoaderData } from "./chat-loader";
 import { getChatRunStateFn } from "../../server/functions/agent-run";
+import { getChatAutomationFn } from "../../server/functions/chat-automation";
 import { listMessagesFn } from "../../server/functions/chat";
+import type { AppResult } from "../../contracts/result";
+import type { ChatAutomationData } from "../../domain/chat-automation";
 
 /** 活跃 run 的定点刷新节奏：沿用旧全树 invalidate 的 1.2s，不额外加快。 */
 export const CHAT_LIVE_INTERVAL_MS = 1_200;
@@ -17,10 +20,14 @@ export const CHAT_LIVE_INTERVAL_MS = 1_200;
  */
 export const CHAT_IDLE_INTERVAL_MS = 5_000;
 
-/** 一个 tick 读回的活动事实：只有随 run 变化的两块，其余事实继续来自 loader。 */
+/**
+ * 一个 tick 读回的活动事实：会随判定与 run 变化的那几块，其余事实继续来自 loader。
+ * 自动接续的判定不改消息也不改 run，只靠 run 指纹重读会让「正在检查」永远显示不出来。
+ */
 export type ChatLiveFacts = {
   messages: ChatResult<Message[]>;
   runState: AgentRunResult<ChatRunState>;
+  automation: AppResult<ChatAutomationData>;
 };
 
 /** 增量读的种子：loader 那批消息与它的尾巴游标。 */
@@ -57,10 +64,10 @@ function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
 }
 
 /**
- * 可见时每 1.2s 读一次这条 Chat 的消息与 run 状态，页面只把结果叠在 loader 事实之上。
+ * 可见时每 1.2s 读一次这条 Chat 的消息、run 状态与自动接续判定，页面只把结果叠在 loader 事实之上。
  * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹变化时回报一次
  * `onRunChanged`，新消息到达时回报一次 `onMessagesChanged`，由页面做一次整树 invalidate。
- * 每次 tick 只发两个读，不再重跑整棵路由的 loader。
+ * 每次 tick 只发三个读，不再重跑整棵路由的 loader。
  */
 export function createChatLiveRefresh({
   seed,
@@ -78,6 +85,7 @@ export function createChatLiveRefresh({
   reads: {
     messages: (after: MessageCursor | null) => Promise<ChatResult<MessageWindow>>;
     runState: () => Promise<AgentRunResult<ChatRunState>>;
+    automation: () => Promise<AppResult<ChatAutomationData>>;
   };
   onFacts: (facts: ChatLiveFacts) => void;
   onRunChanged: () => void;
@@ -140,7 +148,11 @@ export function createChatLiveRefresh({
     }
     inFlight = true;
     try {
-      const [window, runState] = await Promise.all([reads.messages(cursor), reads.runState()]);
+      const [window, runState, automation] = await Promise.all([
+        reads.messages(cursor),
+        reads.runState(),
+        reads.automation(),
+      ]);
       if (stopped) return;
       let messages: ChatResult<Message[]>;
       if (window.ok) {
@@ -157,7 +169,7 @@ export function createChatLiveRefresh({
         // 增量读失败照旧把错误交给页面，不回退成 loader 那批旧事实。
         messages = window;
       }
-      onFacts({ messages, runState });
+      onFacts({ messages, runState, automation });
       const next = runSignature(runState);
       const active = isActiveRunState(runState);
       const nextMessage = overlay.at(-1)?.id ?? null;
@@ -224,12 +236,13 @@ export function createChatLiveRefresh({
   };
 }
 
-/** 生产接法：一次 tick 并发读消息增量与 run 状态，两个读各自保留自己的错误语义。 */
-export function chatLiveReads(chatId: string) {
+/** 生产接法：一次 tick 并发读消息增量、run 状态与自动接续判定，每个读各自保留自己的错误语义。 */
+export function chatLiveReads(chatId: string, projectId: string) {
   return {
     messages: (after: MessageCursor | null) =>
       listMessagesFn({ data: { chatId, ...(after === null ? {} : { after }) } }),
     runState: () => getChatRunStateFn({ data: { chatId } }),
+    automation: () => getChatAutomationFn({ data: { projectId, chatId } }),
   };
 }
 
@@ -247,11 +260,13 @@ function loaderSeed(loader: ChatDetailLoaderData): ChatLiveSeed {
  */
 export function useChatLive({
   chatId,
+  projectId,
   active,
   loader,
   onRunChanged,
 }: {
   chatId: string;
+  projectId: string;
   active: boolean;
   loader: ChatDetailLoaderData;
   onRunChanged: () => void;
@@ -268,7 +283,7 @@ export function useChatLive({
     const chat = chatId;
     const instance = createChatLiveRefresh({
       seed: seedRef.current,
-      reads: chatLiveReads(chat),
+      reads: chatLiveReads(chat, projectId),
       onFacts: (facts) => setState({ chatId: chat, facts }),
       onRunChanged: () => changed.current(),
       onMessagesChanged: () => changed.current(),
@@ -283,7 +298,7 @@ export function useChatLive({
       if (refresh.current === instance) refresh.current = null;
       instance.stop();
     };
-  }, [active, chatId, seedSignature]);
+  }, [active, chatId, projectId, seedSignature]);
   useEffect(() => {
     setState(null);
     refresh.current?.reseed(seedRef.current);

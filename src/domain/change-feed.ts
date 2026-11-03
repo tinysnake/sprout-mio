@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { CHANGE_STREAM, chatTopic, projectTopic } from "../contracts/change-stream";
 import { db } from "../db";
-import { projectMachine, projectMember } from "../db/schema";
+import { chat, projectMachine, projectMember } from "../db/schema";
 
 /** 一条推送事实：主题变了，页面据此重读该主题下的 revision。 */
 export type ChangeEvent = { readonly id: number; readonly topic: string; readonly at: number };
@@ -11,10 +11,23 @@ type Subscriber = {
   readonly send: (event: ChangeEvent) => void;
 };
 
-const subscribers = new Map<number, Subscriber>();
-const pending = new Map<string, { timer: ReturnType<typeof setTimeout>; at: number }>();
-let sequence = 0;
-let nextSubscriberId = 1;
+type Feed = {
+  subscribers: Map<number, Subscriber>;
+  pending: Map<string, { timer: ReturnType<typeof setTimeout>; at: number }>;
+  sequence: number;
+  nextSubscriberId: number;
+};
+/**
+ * 构建产物把服务入口与 SSR 路由拆成两套模块图，同一个文件会有两份实例。
+ * 订阅者与合窗定时器必须挂在 process 上，否则一边的发布永远到不了另一边的连接。
+ */
+const processScope = globalThis as typeof globalThis & { sproutChangeFeed?: Feed };
+const feed = (processScope.sproutChangeFeed ??= {
+  subscribers: new Map(),
+  pending: new Map(),
+  sequence: 0,
+  nextSubscriberId: 1,
+});
 
 function deliver(subscriber: Subscriber, event: ChangeEvent) {
   try {
@@ -25,16 +38,17 @@ function deliver(subscriber: Subscriber, event: ChangeEvent) {
 }
 
 function removeSubscriber(target: Subscriber) {
-  for (const [id, subscriber] of subscribers) if (subscriber === target) subscribers.delete(id);
+  for (const [id, subscriber] of feed.subscribers)
+    if (subscriber === target) feed.subscribers.delete(id);
   prunePending();
 }
 
 /** 最后一个订阅者走了，还没发出的那一条连同定时器一起取消，不留悬空 timer。 */
 function prunePending() {
-  for (const [topic, entry] of pending) {
-    if ([...subscribers.values()].some((subscriber) => subscriber.topics.has(topic))) continue;
+  for (const [topic, entry] of feed.pending) {
+    if ([...feed.subscribers.values()].some((subscriber) => subscriber.topics.has(topic))) continue;
     clearTimeout(entry.timer);
-    pending.delete(topic);
+    feed.pending.delete(topic);
   }
 }
 
@@ -43,11 +57,11 @@ export function subscribeChanges(input: {
   topics: readonly string[];
   send: (event: ChangeEvent) => void;
 }): () => void {
-  const id = nextSubscriberId++;
+  const id = feed.nextSubscriberId++;
   const subscriber: Subscriber = { topics: new Set(input.topics), send: input.send };
-  subscribers.set(id, subscriber);
+  feed.subscribers.set(id, subscriber);
   return () => {
-    subscribers.delete(id);
+    feed.subscribers.delete(id);
     prunePending();
   };
 }
@@ -57,20 +71,20 @@ export function subscribeChanges(input: {
  * 分开发等于让页面连读四次。这里只排定时器，事务回滚时最多产生一次无害的误报。
  */
 export function publishChange(topic: string, now: () => number = Date.now): void {
-  if (pending.has(topic)) return;
-  if (![...subscribers.values()].some((subscriber) => subscriber.topics.has(topic))) return;
+  if (feed.pending.has(topic)) return;
+  if (![...feed.subscribers.values()].some((subscriber) => subscriber.topics.has(topic))) return;
   const at = now();
   const timer = setTimeout(() => {
-    pending.delete(topic);
+    feed.pending.delete(topic);
     flush(topic, at);
   }, CHANGE_STREAM.coalesceMs);
   timer.unref?.();
-  pending.set(topic, { timer, at });
+  feed.pending.set(topic, { timer, at });
 }
 
 function flush(topic: string, at: number) {
-  const event: ChangeEvent = { id: ++sequence, topic, at };
-  for (const subscriber of Array.from(subscribers.values()))
+  const event: ChangeEvent = { id: ++feed.sequence, topic, at };
+  for (const subscriber of Array.from(feed.subscribers.values()))
     if (subscriber.topics.has(topic)) deliver(subscriber, event);
 }
 
@@ -107,19 +121,32 @@ export function publishAgentProfileChange(agentProfileId: string): void {
     publishProjectChange(member.projectId);
 }
 
+/**
+ * 自动接续的写入点只拿着 chatId，而页面按 Project 与 Chat 两个主题看。
+ * 判定本身也会改变对话里的状态提示，所以 Chat 主题同样要发。
+ */
+export function publishChatAutomationChange(chatId: string): void {
+  const scope = db
+    .select({ projectId: chat.projectId })
+    .from(chat)
+    .where(eq(chat.id, chatId))
+    .get();
+  if (scope) publishProjectChange(scope.projectId, chatId);
+}
+
 /** 测试与诊断用：不给业务代码清空全局订阅者。 */
 export function changeFeedSnapshot(): {
   subscribers: number;
   topics: readonly string[];
 } {
   return {
-    subscribers: subscribers.size,
-    topics: [...subscribers.values()].flatMap((subscriber) => [...subscriber.topics]),
+    subscribers: feed.subscribers.size,
+    topics: [...feed.subscribers.values()].flatMap((subscriber) => [...subscriber.topics]),
   };
 }
 
 export function resetChangeFeed(): void {
-  for (const entry of pending.values()) clearTimeout(entry.timer);
-  pending.clear();
-  subscribers.clear();
+  for (const entry of feed.pending.values()) clearTimeout(entry.timer);
+  feed.pending.clear();
+  feed.subscribers.clear();
 }

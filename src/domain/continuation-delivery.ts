@@ -37,13 +37,18 @@ import {
   reconcileChatSchedule,
   retryDelay,
   signalScheduleChange,
+  finishWakeAttempt,
   INTERVAL_MS,
   type Evaluation,
   type SchedulerContext,
 } from "./chat-schedule";
+import type { WakeReceipt } from "./wake-evaluation";
 
-/** Integration supplies judge's evaluator. This layer never chooses or calls a provider itself. */
-export type EvaluateWake = (input: WakeEvaluationInput) => Promise<WakeEvaluationResult>;
+/**
+ * Integration supplies judge's evaluator. This layer never chooses or calls a provider itself.
+ * 判定器连成本回执一起交回：调度只落事实，不重算用量。
+ */
+export type EvaluateWake = (input: WakeEvaluationInput) => Promise<WakeReceipt>;
 export type DeliveryRow = {
   id: string;
   evaluation_id: string;
@@ -345,13 +350,14 @@ export function commitEvaluationResult(
   input: WakeEvaluationInput,
   raw: WakeEvaluationResult,
   now: Date,
+  usage: WakeReceipt["usage"] | null = null,
 ): readonly string[] {
   return sqlite
     .transaction(() => {
       const current = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", evaluation.id)!;
-      if (current.state !== "claimed" || current.claim_token !== evaluation.claim_token)
-        return [];
+      if (current.state !== "claimed" || current.claim_token !== evaluation.claim_token) return [];
       if (!evaluationCurrent(current)) {
+        finishWakeAttempt(current.id, current.attempt, now, "stale", null, usage);
         write(
           "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL WHERE id=?",
           current.id,
@@ -368,9 +374,10 @@ export function commitEvaluationResult(
         current.id,
       );
       if (result.decision === "indeterminate") {
-        failEvaluation(current, result.errorCode ?? "provider_low_certainty", now);
+        failEvaluation(current, result.errorCode ?? "provider_low_certainty", now, usage);
         return [];
       }
+      finishWakeAttempt(current.id, current.attempt, now, "decided", null, usage);
       write(
         "UPDATE wake_evaluation SET state='decided',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL,error_code=NULL WHERE id=?",
         current.id,
@@ -416,10 +423,7 @@ export function createContinuationDelivery(
     }
   } else {
     const owner = responsibleRecipient(evaluation.chat_id);
-    if (
-      owner &&
-      result.selectedRecipients.some((r) => r.kind === owner.kind && r.id === owner.id)
-    )
+    if (owner && result.selectedRecipients.some((r) => r.kind === owner.kind && r.id === owner.id))
       targets.push({ recipient: { kind: owner.kind, id: owner.id }, instanceId: owner.instanceId });
   }
   const ids: string[] = [];
@@ -513,14 +517,27 @@ export function createContinuationDelivery(
       );
     ids.push(id);
   }
-  if (ids.length) signalScheduleChange();
+  if (ids.length) signalScheduleChange(evaluation.chat_id);
   return ids;
 }
-export function failEvaluation(evaluation: Evaluation, error: WakeEvaluationErrorCode, now: Date) {
+export function failEvaluation(
+  evaluation: Evaluation,
+  error: WakeEvaluationErrorCode,
+  now: Date,
+  usage: WakeReceipt["usage"] | null = null,
+) {
   const retryable = ["provider_timeout", "provider_unavailable", "internal_failure"].includes(
     error,
   );
   const delay = retryable ? retryDelay(evaluation.attempt) : null;
+  finishWakeAttempt(
+    evaluation.id,
+    evaluation.attempt,
+    now,
+    delay === null ? "attention" : "retry_wait",
+    error,
+    usage,
+  );
   write(
     "UPDATE wake_evaluation SET state=?,error_code=?,claim_token=NULL,lease_until=NULL,next_attempt_at=?,evaluated_at=? WHERE id=? AND state='claimed' AND claim_token=?",
     delay === null ? "attention" : "retry_wait",
@@ -536,7 +553,7 @@ export function failEvaluation(evaluation: Evaluation, error: WakeEvaluationErro
       delay === null ? null : now.getTime() + delay,
       evaluation.chat_id,
     );
-  signalScheduleChange();
+  signalScheduleChange(evaluation.chat_id);
 }
 export async function evaluateClaim(
   evaluation: Evaluation,
@@ -556,14 +573,15 @@ export async function evaluateClaim(
       evaluation.id,
       evaluation.claim_token,
     );
-    const result = await evaluateWake(input);
+    const receipt = await evaluateWake(input);
     if (!isActive()) return;
-    commitEvaluationResult(evaluation, input, result, now());
+    commitEvaluationResult(evaluation, input, receipt.result, now(), receipt.usage);
   } catch (error) {
     if (!isActive()) return;
     const current = one<Evaluation>("SELECT * FROM wake_evaluation WHERE id=?", evaluation.id)!;
     if (current.state !== "claimed" || current.claim_token !== evaluation.claim_token) return;
     if (!evaluationCurrent(current)) {
+      finishWakeAttempt(current.id, current.attempt, now(), "stale");
       write(
         "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL WHERE id=?",
         current.id,
@@ -585,7 +603,7 @@ export async function evaluateClaim(
       now(),
     );
   } finally {
-    signalScheduleChange();
+    signalScheduleChange(evaluation.chat_id);
   }
 }
 export function bindPendingDeliveries(now: Date) {
@@ -676,7 +694,7 @@ export function bindPendingDeliveries(now: Date) {
             delay === null ? null : now.getTime() + delay,
             current.id,
           );
-          signalScheduleChange();
+          signalScheduleChange(current.chat_id);
         }
       })
       .immediate();
@@ -746,7 +764,7 @@ export function acknowledgeContinuation(deliveryId: string, runId: string, now: 
     deliveryId,
     runId,
   );
-  signalScheduleChange();
+  signalScheduleChange(deliveryChat(deliveryId));
 }
 export function rejectContinuation(deliveryId: string, runId: string) {
   write(
@@ -754,19 +772,33 @@ export function rejectContinuation(deliveryId: string, runId: string) {
     deliveryId,
     runId,
   );
-  signalScheduleChange();
+  signalScheduleChange(deliveryChat(deliveryId));
+}
+/** 投递写入点只拿着 deliveryId；对话主题要发出去，就得把它换成 chatId。 */
+function deliveryChat(deliveryId: string): string | undefined {
+  return one<{ chat_id: string }>(
+    "SELECT chat_id FROM continuation_delivery WHERE id=?",
+    deliveryId,
+  )?.chat_id;
 }
 /** Only normal completion may immediately carry unadmitted continuation inputs. */
 export function settleContinuationRun(runId: string, status: string, now: Date) {
+  // 一次 run 结束同时改变了投递与自动接续的事实；按对话去重后一并告知，不按行发。
+  const chats = all<{ chat_id: string }>(
+    "SELECT DISTINCT chat_id FROM continuation_delivery WHERE run_id=?",
+    runId,
+  );
   write(
     "UPDATE continuation_delivery SET state='attention',error_code='delivery_unknown' WHERE run_id=? AND state='admitted'",
     runId,
   );
-  if (status !== "completed" && status !== "failed" && status !== "interrupted") return;
-  for (const row of all<DeliveryRow>(
-    "SELECT * FROM continuation_delivery WHERE run_id=? AND state='bound' AND admitted_at IS NULL",
-    runId,
-  )) {
+  const settled = status === "completed" || status === "failed" || status === "interrupted";
+  for (const row of settled
+    ? all<DeliveryRow>(
+        "SELECT * FROM continuation_delivery WHERE run_id=? AND state='bound' AND admitted_at IS NULL",
+        runId,
+      )
+    : []) {
     const attempt = row.attempt + 1;
     const delay = retryDelay(attempt);
     write(
@@ -777,6 +809,6 @@ export function settleContinuationRun(runId: string, status: string, now: Date) 
       row.id,
     );
   }
-  signalScheduleChange();
+  for (const chat of chats) signalScheduleChange(chat.chat_id);
   bindPendingDeliveries(now);
 }

@@ -6,10 +6,8 @@ import { join, resolve } from "node:path";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type {
-  WakeEvaluationInput,
-  WakeEvaluationResult,
-} from "../../src/contracts/wake-evaluation";
+import type { WakeEvaluationInput } from "../../src/contracts/wake-evaluation";
+import type { WakeReceipt } from "../../src/domain/wake-evaluation";
 import type { Evaluation, SchedulerContext, Schedule } from "../../src/domain/chat-schedule";
 import type { DeliveryRow } from "../../src/domain/continuation-delivery";
 const suite = process.argv[2] ?? "scheduler";
@@ -158,23 +156,32 @@ const internal = (now: Date): SchedulerContext => ({
   requestId: newId(ID_PREFIXES.request),
   workerId: "gate",
 });
-const yes = async (input: WakeEvaluationInput): Promise<WakeEvaluationResult> => ({
-  decision: "continue",
-  reason: "负责人有明确下一步，需要继续推进。",
-  reasonCode: "fixture_continue",
-  recipients: input.candidates.map((c) => ({
-    recipient: c.recipient,
-    decision: "yes",
-    reason: "当前责任人",
+const yes = async (input: WakeEvaluationInput): Promise<WakeReceipt> => ({
+  result: {
+    decision: "continue",
+    reason: "负责人有明确下一步，需要继续推进。",
+    reasonCode: "fixture_continue",
+    recipients: input.candidates.map((c) => ({
+      recipient: c.recipient,
+      decision: "yes",
+      reason: "当前责任人",
+      probability: null,
+    })),
+    selectedRecipients: input.candidates.map((c) => c.recipient),
     probability: null,
-  })),
-  selectedRecipients: input.candidates.map((c) => c.recipient),
-  probability: null,
-  provider: input.policy.provider,
-  model: input.policy.model,
-  version: input.policy.thresholdVersion,
-  snapshotHash: input.snapshotHash,
-  errorCode: null,
+    provider: input.policy.provider,
+    model: input.policy.model,
+    version: input.policy.thresholdVersion,
+    snapshotHash: input.snapshotHash,
+    errorCode: null,
+  },
+  usage: {
+    inputTokens: 900,
+    outputTokens: 32,
+    inputCharacters: JSON.stringify(input).length,
+    durationMs: 4200,
+    resolvedModel: null,
+  },
 });
 async function check(chatId: string, now = atDue(chatId), evaluate = yes) {
   schedule.reconcileChatSchedule(chatId, now);
@@ -195,7 +202,7 @@ async function landingFence() {
   const now = atDue(fleeting.id);
   const claimed = schedule.claimDueEvaluation(internal(now))!;
   const input = delivery.buildPeriodicInput(claimed, now);
-  const result = await yes(input);
+  const result = (await yes(input)).result;
   const policy = schedule.one<{ wake_policy: string }>(
     "SELECT wake_policy FROM project WHERE id=?",
     project.id,
@@ -767,14 +774,20 @@ try {
     control(ownerChanged.id, "disable", new Date());
     const backoff = group();
     assigned(backoff.id);
-    const unavailable = async (input: WakeEvaluationInput): Promise<WakeEvaluationResult> => ({
-      ...(await yes(input)),
-      decision: "indeterminate",
-      recipients: [],
-      selectedRecipients: [],
-      errorCode: "provider_unavailable",
-      reasonCode: "wake_provider_unavailable",
-    });
+    const unavailable = async (input: WakeEvaluationInput): Promise<WakeReceipt> => {
+      const receipt = await yes(input);
+      return {
+        ...receipt,
+        result: {
+          ...receipt.result,
+          decision: "indeterminate",
+          recipients: [],
+          selectedRecipients: [],
+          errorCode: "provider_unavailable",
+          reasonCode: "wake_provider_unavailable",
+        },
+      };
+    };
     let prior = atDue(backoff.id).getTime();
     await check(backoff.id, new Date(prior), unavailable);
     equal(
@@ -843,7 +856,7 @@ try {
     const now = atDue(chat.id);
     const e = schedule.claimDueEvaluation(internal(now))!;
     const input = delivery.buildPeriodicInput(e, now);
-    const result = await yes(input);
+    const result = (await yes(input)).result;
     const disabled = control(chat.id, "disable", now);
     equal(
       [disabled.view.mode, disabled.view.epoch, count("chat_schedule")],
@@ -1044,7 +1057,7 @@ try {
     assigned(hanging.id);
     const hangingNow = atDue(hanging.id),
       claimed = schedule.claimDueEvaluation(internal(hangingNow))!;
-    let finish!: (value: WakeEvaluationResult) => void;
+    let finish!: (value: WakeReceipt) => void;
     let entered!: () => void;
     const enteredPromise = new Promise<void>((resolve) => {
       entered = resolve;
@@ -1052,17 +1065,17 @@ try {
     const judging = delivery.evaluateClaim(
       claimed,
       async (input) => {
-        const result = await yes(input);
+        const receipt = await yes(input);
         entered();
-        return await new Promise<WakeEvaluationResult>((resolve) => {
-          finish = () => resolve(result);
+        return await new Promise<WakeReceipt>((resolve) => {
+          finish = () => resolve(receipt);
         });
       },
       internal(hangingNow),
     );
     await enteredPromise;
     control(hanging.id, "disable", hangingNow);
-    finish({} as WakeEvaluationResult);
+    finish({} as WakeReceipt);
     await judging;
     equal(
       schedule.one("SELECT 1 FROM continuation_delivery WHERE chat_id=?", hanging.id),
