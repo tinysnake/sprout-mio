@@ -80,7 +80,7 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 - 一份租约只赋予当前持有分身操作权。直接交接原子变更持有者，全程保持 Project × Machine 占用；没有明确接手者时原分身继续持有。二期挂靠保留占用但交出操作权，领取后才授予新持有者权限。一个分身可持有多台 Machine。
 - 租约与进程生命周期独立。Agent 在释放前适当清理；租约动作不自动终止进程或删除文件。
 - 长命令独立于 agent run 和宿主连接持续执行；提供稳定执行标识、日志、状态及退出结果。重连或交接后当前有权分身可继续查询与管理；超时重试避免重复启动，不能确认的状态明确表示未知。
-- 原有 Pi 工具操作宿主，Sprout 远端工具核验当前 Project、Machine 成员关系和持有租约。默认每个 Project × Machine 独立 checkout，目录不构成操作系统隔离。
+- 原有 Pi 工具以只读方式操作宿主；写入文件或执行命令必须经目标 Machine 的租约和 Sprout 远端工具，Sprout 远端工具核验当前 Project、Machine 成员关系和持有租约。默认每个 Project × Machine 独立 checkout，目录不构成操作系统隔离。
 - Task 状态、run 状态、Machine 占用分别表达不同事实；Task 完成或 run 结束不代表释放。分身空闲不等于占用无效，申请者不能自行撤销他人租约。
 - Task 保持 proposed、assigned、finished、canceled 四态。有 assigned Task 的 Chat 定期唤醒小脑，结合任务、对话和运行情况判断是否唤醒负责人；没有 assigned Task 时停止检查。不增加执行状态或启动标志，不强制填写结构化等待记录。分配不等于启动，run 结束不等于 Task 完成；人类暂停与停止控制优先。
 - Info Hub 关联已有事实；基本信息在 Project 内可见，不自动开放聊天正文，也不授予对象操作权。二期能力未实现前不展示为已支持或已成功处置。

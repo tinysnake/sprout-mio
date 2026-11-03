@@ -53,13 +53,13 @@
 
 ### 本地与远端工具
 
-- 原有 Pi 文件、shell 及其他工具保持原有行为，继续操作 harness 所在机器。
+- 宿主本地工具面只保留只读能力：文件读取、内容搜索、目录列举、只读 Git 查询、时间与 web 访问；不向 Agent 提供宿主 shell、文件编辑或写入工具。
 - Sprout extension 另提供明确指定 Machine 的远端操作工具。
 - 两套工具并存，由 Agent 选择使用；不将原有工具自动重定向到 Machine。
 - Agent 可以通过 Project 的宿主侧仓库入口分析分支、源码和历史等，无需 Machine 租约，也无需先创建 Task。宿主副本与 Machine 现场分别识别，回答依据的来源和版本不能混用。
 - 需要读取或操作 Machine 现场时，包括机器相关的环境排查和任务中的只读确认，仍使用远端工具并取得对应租约；DM 中可以直接申请，Task 不是租约申请的前提。
 - 远端 Machine 操作必须核验分身所属 Project、Machine 是否加入该 Project，以及分身在该 Project × Machine 上的持有租约。其他 Project 的租约不授予本项目操作权。
-- Project 硬隔离限定在 Sprout 数据、上下文和授权层。原有宿主本地工具与获租约后的整机操作能力继续保留，不承诺由 Sprout 提供操作系统层面的项目隔离；Machine 内部由 Project organization 负责。
+- Project 硬隔离限定在 Sprout 数据、上下文和授权层。宿主侧始终保持只读；即使持有租约，写入与命令执行也只发生在目标 Machine，不回流到宿主。不承诺由 Sprout 提供操作系统层面的项目隔离；Machine 内部由 Project organization 负责。
 
 ### 远端工作
 
