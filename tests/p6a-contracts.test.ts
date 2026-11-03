@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { retryDelay } from "../src/domain/chat-schedule";
 import {
   APP_ERROR_CODES,
   CHAT_AUTOMATION_ACTIONS,
@@ -652,8 +653,8 @@ describe("P6a continuation and Human controls", () => {
     expect(CHAT_AUTOMATION_POLICY).toEqual({
       version: 1,
       intervalSeconds: 300,
-      retryDelaySeconds: [30, 120],
-      maxAttempts: 3,
+      retryDelaySeconds: [5, 10, 30, 60, 120],
+      maxAttempts: 6,
       repeatedRunFailureLimit: 3,
     });
     expect(continuationCancelReasonSchema.options).toEqual([
@@ -671,6 +672,12 @@ describe("P6a continuation and Human controls", () => {
     expect(continuationCancelReasonSchema.safeParse("system_stop").success).toBe(false);
     expect(continuationDeliveryStateSchema.safeParse("pending").success).toBe(true);
     expect(continuationDeliveryStateSchema.safeParse("success").success).toBe(false);
+  });
+
+  it("spends 225 seconds on transient failures before giving up", () => {
+    const delays = [1, 2, 3, 4, 5, 6].map(retryDelay);
+    expect(delays).toEqual([5_000, 10_000, 30_000, 60_000, 120_000, null]);
+    expect(delays.reduce<number>((total, delay) => total + (delay ?? 0), 0)).toBe(225_000);
   });
 
   it("accepts unadmitted, admitted, ACKed, canceled and Human reminder facts", () => {
@@ -733,7 +740,7 @@ describe("P6a continuation and Human controls", () => {
       { ...delivery(), state: "canceled", errorCode: "human_disabled" },
       { ...delivery(), state: "canceled" },
       { ...delivery(), state: "presented", presentedAt: at },
-      { ...delivery(), attempt: 3, nextAttemptAt: at },
+      { ...delivery(), attempt: 6, nextAttemptAt: at },
     ])
       expect(continuationDeliverySchema.safeParse(invalid).success).toBe(false);
   });

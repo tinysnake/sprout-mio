@@ -90,8 +90,8 @@
 export const CHAT_AUTOMATION_POLICY = {
   version: 1,
   intervalSeconds: 300,
-  retryDelaySeconds: [30, 120],
-  maxAttempts: 3,
+  retryDelaySeconds: [5, 10, 30, 60, 120],
+  maxAttempts: 6,
   repeatedRunFailureLimit: 3,
 } as const;
 ```
@@ -100,8 +100,8 @@ export const CHAT_AUTOMATION_POLICY = {
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `version: 1`                   | 策略整体版本。改动任一取值的语义时递增，让历史判定能对上是哪一代策略。                                                                             |
 | `intervalSeconds: 300`         | 有 assigned Task 的 Chat 每 5 分钟检查一次。够快让协作不中断，又不至于每次消息都付一次模型钱；也是「每秒检查」和「每分钟检查」之间的成本折中。     |
-| `retryDelaySeconds: [30, 120]` | 失败后退避两档：先 30 秒再 120 秒。第一档贴近间隔本身，避免瞬时故障白等一整轮；第二档把连续失败压到 2 分钟内最多一次，避免对故障判定器做密集重试。 |
-| `maxAttempts: 3`               | 一份判定最多尝试 3 次（首次 + 两次退避重试）。`wake_evaluation.attempt` 的 CHECK 与投递视图的 `attempt` 上界都用它，超界即不可能被写入或展示。     |
+| `retryDelaySeconds: [5, 10, 30, 60, 120]` | 失败后按 5、10、30、60、120 秒渐进退避。前两档快速接住瞬时抖动，后三档把连续失败压到分钟级，避免对故障判定器做密集重试。 |
+| `maxAttempts: 6`               | 一份判定最多尝试 6 次（首次 + 五次退避重试），累计等待 225 秒；第 6 次仍失败就落 `attention`，不再自动重试。`wake_evaluation.attempt` 与投递 `attempt` 的 CHECK 上界都是 6。 |
 | `repeatedRunFailureLimit: 3`   | 同一 run 连续失败 3 次判为 `run_repeated_failure` 并停止自动重投。让失败可自愈，但不无限循环。                                                     |
 
 依据：`CHAT_AUTOMATION_POLICY` 常量与 `wake_evaluation_attempt_check`、`chatAutomationEvaluationViewSchema.attempt` 的上界引用。理由部分为本轮按取值与相邻约束归纳，**引用**。“300 秒”存在两处来源（TS 常量与 SQL 字面量），现在靠 `p6a-scheduler` 门禁钉住相等，不是物理单一来源，见 [已知限制](summary.md#p3-6-300-秒两处来源)。

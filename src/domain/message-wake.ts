@@ -254,39 +254,6 @@ export function buildMessageEvaluation(
   return prepareWakeEvaluation(buildMessageFacts(evaluation, now), now);
 }
 
-function ownerFallbackResult(input: WakeEvaluationInput): WakeEvaluationResult | null {
-  if (input.chat.owner.kind !== "agent") return null;
-  const owner = input.candidates.find(
-    (candidate) =>
-      candidate.recipient.kind === "agent" &&
-      candidate.recipient.id === input.chat.owner.id,
-  );
-  if (!owner) return null;
-  const recipients = input.candidates.map((candidate) => ({
-    recipient: candidate.recipient,
-    decision:
-      candidate.recipient.kind === owner.recipient.kind &&
-      candidate.recipient.id === owner.recipient.id
-        ? ("yes" as const)
-        : ("no" as const),
-    reason: "owner_fallback",
-    probability: null,
-  }));
-  return wakeEvaluationResultForInputSchema(input).parse({
-    decision: "continue",
-    reason: "判定器不可用，回退当前 owner。",
-    reasonCode: "owner_fallback",
-    recipients,
-    selectedRecipients: [owner.recipient],
-    probability: null,
-    provider: input.policy.provider,
-    ...(input.policy.model ? { model: input.policy.model } : {}),
-    version: input.policy.thresholdVersion,
-    snapshotHash: input.snapshotHash,
-    errorCode: null,
-  });
-}
-
 function withOwnerFallback(
   input: WakeEvaluationInput,
   raw: WakeEvaluationResult,
@@ -636,22 +603,6 @@ export async function evaluateMessageClaim(
       return;
     }
     const text = error instanceof Error ? error.message : "";
-    const saved = current.input
-      ? wakeEvaluationInputSchema.safeParse(JSON.parse(current.input))
-      : null;
-    const fallback =
-      saved?.success && current.attempt >= POLICY.maxAttempts
-        ? ownerFallbackResult(saved.data)
-        : null;
-    if (fallback && saved?.success) {
-      try {
-        commitEvaluationResult(current, saved.data, fallback, now());
-        finishMessageWake(current);
-        return;
-      } catch {
-        // Fall through to the durable failure state when the fallback cannot be delivered.
-      }
-    }
     failEvaluation(
       current,
       text === "context_budget_exceeded"

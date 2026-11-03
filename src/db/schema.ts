@@ -782,7 +782,7 @@ export const wakeEvaluation = sqliteTable(
     ),
     check(
       "wake_evaluation_attempt_check",
-      sql`${t.attempt} between 0 and 3 and ${t.round}>0 and ${t.controlEpoch}>0`,
+      sql`${t.attempt} between 0 and 6 and ${t.round}>0 and ${t.controlEpoch}>0`,
     ),
     check(
       "wake_evaluation_claim_check",
@@ -894,7 +894,7 @@ export const continuationDelivery = sqliteTable(
       "continuation_state_check",
       sql`${t.state} in ('pending','bound','admitted','delivered','attention','canceled','presented','stale')`,
     ),
-    check("continuation_attempt_check", sql`${t.attempt} between 0 and 3 and ${t.controlEpoch}>0`),
+    check("continuation_attempt_check", sql`${t.attempt} between 0 and 6 and ${t.controlEpoch}>0`),
     check(
       "continuation_recipient_check",
       sql`(${t.recipientKind}='human' and ${t.instanceId} is null and ${t.runId} is null and ${t.admittedAt} is null and ${t.deliveredAt} is null and ${t.state} in ('presented','stale','canceled')) or (${t.recipientKind}='agent' and ${t.instanceId} is not null and ${t.presentedAt} is null and ${t.state}<>'presented')`,
@@ -913,7 +913,7 @@ export const continuationDelivery = sqliteTable(
     ),
     check(
       "continuation_retry_check",
-      sql`${t.nextAttemptAt} is null or (${t.state}='pending' and ${t.admittedAt} is null and ${t.attempt}<3)`,
+      sql`${t.nextAttemptAt} is null or (${t.state}='pending' and ${t.admittedAt} is null and ${t.attempt}<6)`,
     ),
     check(
       "continuation_unknown_check",

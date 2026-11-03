@@ -38,8 +38,8 @@ export type ChatAutomationErrorCode = z.infer<typeof chatAutomationErrorCodeSche
 export const CHAT_AUTOMATION_POLICY = {
   version: 1,
   intervalSeconds: 300,
-  retryDelaySeconds: [30, 120],
-  maxAttempts: 3,
+  retryDelaySeconds: [5, 10, 30, 60, 120],
+  maxAttempts: 6,
   repeatedRunFailureLimit: 3,
 } as const;
 

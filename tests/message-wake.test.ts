@@ -29,7 +29,7 @@ type Evidence = {
     scheduleRound: number;
     preserved: boolean;
   };
-  failureFallback: { attempts: number; recipient: string; state: string; reasonCode: string };
+  failureFallback: { attempts: number; state: string; errorCode: string | null; deliveries: number };
   orphan: { queued: boolean; requeued: boolean; attempt: number };
   retry: { retried: boolean; trigger: string; newer: string };
   unknown: { count: number; first: { state: string; error_code: string | null }; latest: { state: string; error_code: string | null } };
@@ -160,19 +160,19 @@ describe("message-triggered wake", () => {
     expect(["pending", "bound"]).toContain(evidence.unknown.latest.state);
   });
 
-  it("requeues an interrupted bound delivery immediately instead of after one interval", () => {
+  it("requeues an interrupted bound delivery on the first progressive retry", () => {
     expect(evidence.recovery.stateAfterRecover).toBe("pending");
-    expect(evidence.recovery.nextAttemptAt).toBe(evidence.recovery.recoveredAt);
+    expect(evidence.recovery.nextAttemptAt).toBe(evidence.recovery.recoveredAt + 5_000);
     expect(evidence.recovery.reboundState).toBe("bound");
     expect(evidence.recovery.reboundRun).toBe(true);
     expect(evidence.recovery.liveReboundState).toBe("bound");
     expect(evidence.recovery.liveReboundRun).toBe(true);
   });
 
-  it("falls back to the owner after the evaluator exhausts its retries", () => {
-    expect(evidence.failureFallback.attempts).toBe(3);
-    expect(evidence.failureFallback.recipient).toBe(evidence.owner);
-    expect(evidence.failureFallback.reasonCode).toBe("owner_fallback");
-    expect(["pending", "bound"]).toContain(evidence.failureFallback.state);
+  it("stops at attention after the 225 second retry budget", () => {
+    expect(evidence.failureFallback.attempts).toBe(6);
+    expect(evidence.failureFallback.state).toBe("attention");
+    expect(evidence.failureFallback.errorCode).toBe("provider_unavailable");
+    expect(evidence.failureFallback.deliveries).toBe(0);
   });
 });

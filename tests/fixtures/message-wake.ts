@@ -336,7 +336,7 @@ evidence.sources = {
     sourceDeliveryAfter.state === sourceDeliveryBefore.state,
 };
 
-// 判定器最终不可用时，第 3 次失败回退 owner，而不是让消息无人处理。
+// 判定器最终不可用时，第 6 次失败回退 owner，而不是让消息无人处理。
 const failed = group();
 send(failed.id, "判定器挂了");
 const failCtx = (now: Date) => ({
@@ -354,30 +354,36 @@ const wakeBefore = schedule.one<{ evaluation_id: string }>(
   failed.id,
 )!;
 schedule.write("DELETE FROM chat_message_wake WHERE chat_id=?", failed.id);
-const fail2 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 31_000)))!;
+const fail2 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 5_000)))!;
 evidence.orphan = {
   queued: Boolean(wakeBefore),
   requeued: Boolean(fail2) && fail2.attempt === 2,
   attempt: fail2?.attempt ?? 0,
 };
-await mw.evaluateMessageClaim(fail2, failing, failCtx(new Date(at.getTime() + 31_000)));
-const fail3 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 151_000)))!;
-await mw.evaluateMessageClaim(fail3, failing, failCtx(new Date(at.getTime() + 151_000)));
-const failDelivery = schedule.one<{ recipient_id: string; state: string }>(
-  "SELECT recipient_id,state FROM continuation_delivery WHERE chat_id=?",
-  failed.id,
+await mw.evaluateMessageClaim(fail2, failing, failCtx(new Date(at.getTime() + 5_000)));
+const fail3 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 15_000)))!;
+await mw.evaluateMessageClaim(fail3, failing, failCtx(new Date(at.getTime() + 15_000)));
+const fail4 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 45_000)))!;
+await mw.evaluateMessageClaim(fail4, failing, failCtx(new Date(at.getTime() + 45_000)));
+const fail5 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 105_000)))!;
+await mw.evaluateMessageClaim(fail5, failing, failCtx(new Date(at.getTime() + 105_000)));
+const fail6 = mw.claimDueMessageWake(failCtx(new Date(at.getTime() + 225_000)))!;
+await mw.evaluateMessageClaim(fail6, failing, failCtx(new Date(at.getTime() + 225_000)));
+const failState = schedule.one<{ state: string; attempt: number; error_code: string | null }>(
+  "SELECT state,attempt,error_code FROM wake_evaluation WHERE id=?",
+  fail6.id,
 )!;
-const failResult = JSON.parse(
-  schedule.one<{ result: string }>("SELECT result FROM wake_evaluation WHERE id=?", fail3.id)!.result,
-);
 evidence.failureFallback = {
-  attempts: fail3.attempt,
-  recipient: failDelivery.recipient_id,
-  state: failDelivery.state,
-  reasonCode: failResult.reasonCode,
+  attempts: failState.attempt,
+  state: failState.state,
+  errorCode: failState.error_code,
+  deliveries: schedule.one<{ n: number }>(
+    "SELECT count(*) AS n FROM continuation_delivery WHERE chat_id=?",
+    failed.id,
+  )!.n,
 };
 const newer = send(failed.id, "更新的消息");
-const retried = mw.retryMessageWake(fail3, new Date(at.getTime() + 200_000));
+const retried = mw.retryMessageWake(fail6, new Date(at.getTime() + 300_000));
 const queued = schedule.one<{ trigger_message_id: string }>(
   "SELECT trigger_message_id FROM chat_message_wake WHERE chat_id=?",
   failed.id,
@@ -407,7 +413,7 @@ evidence.unknown = {
   latest: unknownDeliveries.at(-1),
 };
 
-// 中断恢复：bound 但未 admitted 的投递立即重排，不等待下一个 5 分钟窗口。
+// 中断恢复：bound 但未 admitted 的投递按渐进重试，首次等待 5 秒。
 const recovery = group();
 send(recovery.id, "恢复后继续");
 await evaluate([alpha.id], at);
@@ -427,7 +433,8 @@ const recoveryPending = schedule.one<{ state: string; next_attempt_at: number | 
   "SELECT state,next_attempt_at FROM continuation_delivery WHERE id=?",
   recoveryBound.id,
 )!;
-delivery.bindPendingDeliveries(recoveryAt);
+const recoveryRetryAt = new Date(recoveryAt.getTime() + 5_000);
+delivery.bindPendingDeliveries(recoveryRetryAt);
 const recoveryRebound = schedule.one<{ state: string; run_id: string | null }>(
   "SELECT state,run_id FROM continuation_delivery WHERE id=?",
   recoveryBound.id,
@@ -437,7 +444,9 @@ schedule.write(
   at.getTime() + 4_000,
   recoveryRebound.run_id,
 );
-delivery.settleContinuationRun(recoveryRebound.run_id!, "interrupted", new Date(at.getTime() + 4_000));
+const liveInterruptedAt = new Date(recoveryRetryAt.getTime() + 2_000);
+delivery.settleContinuationRun(recoveryRebound.run_id!, "interrupted", liveInterruptedAt);
+delivery.bindPendingDeliveries(new Date(liveInterruptedAt.getTime() + 10_000));
 const liveRebound = schedule.one<{ state: string; run_id: string | null }>(
   "SELECT state,run_id FROM continuation_delivery WHERE id=?",
   recoveryBound.id,

@@ -676,6 +676,7 @@ export function bindPendingDeliveries(now: Date) {
             delay === null ? null : now.getTime() + delay,
             current.id,
           );
+          signalScheduleChange();
         }
       })
       .immediate();
@@ -762,9 +763,20 @@ export function settleContinuationRun(runId: string, status: string, now: Date) 
     runId,
   );
   if (status !== "completed" && status !== "failed" && status !== "interrupted") return;
-  write(
-    "UPDATE continuation_delivery SET state='pending',run_id=NULL,envelope=NULL WHERE run_id=? AND state='bound' AND admitted_at IS NULL",
+  for (const row of all<DeliveryRow>(
+    "SELECT * FROM continuation_delivery WHERE run_id=? AND state='bound' AND admitted_at IS NULL",
     runId,
-  );
+  )) {
+    const attempt = row.attempt + 1;
+    const delay = retryDelay(attempt);
+    write(
+      "UPDATE continuation_delivery SET attempt=?,state=?,run_id=NULL,envelope=NULL,next_attempt_at=?,error_code='delivery_unavailable' WHERE id=? AND state='bound'",
+      attempt,
+      delay === null ? "attention" : "pending",
+      delay === null ? null : now.getTime() + delay,
+      row.id,
+    );
+  }
+  signalScheduleChange();
   bindPendingDeliveries(now);
 }
