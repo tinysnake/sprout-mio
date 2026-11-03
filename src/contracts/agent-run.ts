@@ -24,6 +24,7 @@ export const RUN_ACTIVITY_KINDS = [
   "search",
   "remote",
   "task",
+  "assistant",
   "web",
   "tool",
   "system",

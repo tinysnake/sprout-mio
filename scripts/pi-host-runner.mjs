@@ -287,7 +287,10 @@ async function open(config) {
       "write",
       "mcp__*",
       ...Object.keys(remoteToolInputSchemas),
-      ...Object.keys(taskToolInputSchemas),
+      // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
+      // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
+      // 后续跨 Chat 或 Agent 间通信再启用。
+      ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
       ...Object.keys(infoHubToolInputSchemas),
     ],
     resourceLoader,

@@ -9,7 +9,7 @@
 - `chat-title` 修改标题并保持 Chat 身份与历史。
 - `persona-next-turn` 修改 Profile 后，后续运行使用新人设。
 - `run-lifecycle` 查看 running、完成、失败和中止的结果，运行中发送消息的处理遵循 Turn 契约。
-- `run-activity` 运行中把一次 run 的非 assistant 工作记录归为一组：默认收起只露出最后一条，展开可看本轮全部工具调用摘要；活动与状态分开，不改写 running/completed/failed 等状态。
+- `run-activity` 运行中把一次 run 的工具调用与 assistant 中间说明归为一组：连续 `text_delta` 聚合成一条「中间说明」，在下一个工具开始时收尾；默认收起只露出最后一条，展开可看本轮全部摘要；活动与状态分开，不改写 running/completed/failed 等状态。最终回答仍由 run 收尾单独发到 Chat。
 - `group-run-status` 群组与频道里按 Agent 分行展示活动 run：每行是分身名、状态和独立停止按钮，活动记录挂在所属行内；DM 保持单行状态与输入区总停止。页头徽标跟随仍在运行的 run，不因后创建的 run 先结束而误报完成。
 - `repo-entry` 需要仓库的运行使用正确工作目录，失败时显示可追踪错误。
 - `chat-access` 深链、缺失资源和跨用户访问边界。
@@ -46,7 +46,8 @@
 ## Gotchas
 
 - 消息成功持久化不代表模型已运行。协议 stub、真实模型和远程执行分别记录。
-- 运行中活动是展示层事实：来自 runner 的 progress 摘要，只在进程内保存，不写数据库；一次 run 内保留完整工作记录（上限 200 条，默认界面只露最后一条），run 结束、失败或中断后清空，刷新页面不会补造历史步骤。
+- 运行中活动是展示层事实：来自 runner 的 progress 摘要，只在进程内保存，不写数据库；一次 run 内保留完整工作记录（上限 200 条，默认界面只露最后一条），run 结束、失败或中断后清空，刷新页面不会补造历史步骤。assistant 中间说明也走这条进程内通道；最终回答不写 activity，仍由 `settleAgentRun` 发 Chat。
+- `sprout_chat_send` 暂未声明给模型：避免同一 run 既用工具发消息、又把最终文本再发一次。registry 与网关能力保留，后续跨 Chat / Agent 通信再启用；最终文本的 `@` mention 由 `sendMessage` 正常解析。
 - 人设保存、Chat 身份不变与下一轮实际使用新人设是三个断言，按改动分别证明。
 - 重启验证必须使用原数据库与状态文件。重新注册后进入空 Chat 无法证明历史持久性。
 - I 浏览器 driver 主要从 Chats 索引页的内嵌成员列表发起 DM。新建 Chat 弹窗与 Info Hub 链接是额外入口，入口变化时补实际操作验证。

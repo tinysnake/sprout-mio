@@ -152,15 +152,51 @@ describe("活动记录", () => {
     });
   });
 
-  it("assistant 文本不进入工作记录", () => {
-    const previous = reduceRunActivity(undefined, start("call_1", "bash", "Bash 命令"), at);
-    const next = reduceRunActivity(
-      previous,
-      progress({ kind: "text_delta", text: "我正在检查测试文件" }),
+  it("assistant 文本聚合成一条中间说明，并在工具开始时收尾", () => {
+    let snapshot = reduceRunActivity(
+      undefined,
+      progress({ kind: "text_delta", text: "我先读一下" }),
+      at,
+    );
+    snapshot = reduceRunActivity(
+      snapshot,
+      progress({ kind: "text_delta", text: "测试文件" }),
       at + 10,
     );
-    expect(next).toBeUndefined();
-    expect(previous?.entries).toHaveLength(1);
+    expect(snapshot?.current).toMatchObject({
+      kind: "assistant",
+      label: "中间说明",
+      detail: "我先读一下测试文件",
+      status: "running",
+    });
+    expect(snapshot?.entries).toHaveLength(1);
+
+    snapshot = reduceRunActivity(snapshot, start("call_1", "bash", "Bash 命令"), at + 20);
+    expect(snapshot?.current?.id).toBe("call_1");
+    expect(snapshot?.entries[0]?.id).toBe("call_1");
+    expect(snapshot?.entries[1]).toMatchObject({
+      kind: "assistant",
+      detail: "我先读一下测试文件",
+      status: "done",
+    });
+    expect(snapshot?.pendingText).toBeUndefined();
+  });
+
+  it("工具结束后的新 assistant 文本另起一条，不与上一条合并", () => {
+    let snapshot = reduceRunActivity(undefined, start("call_1", "bash", "Bash 命令"), at);
+    snapshot = reduceRunActivity(
+      snapshot,
+      progress({ kind: "tool_end", toolCallId: "call_1", isError: false, durationMs: 100 }),
+      at + 100,
+    );
+    snapshot = reduceRunActivity(
+      snapshot,
+      progress({ kind: "text_delta", text: "测试通过了" }),
+      at + 200,
+    );
+    expect(snapshot?.entries).toHaveLength(2);
+    expect(snapshot?.entries[0]).toMatchObject({ kind: "assistant", detail: "测试通过了" });
+    expect(snapshot?.entries[1]?.id).toBe("call_1");
   });
 
   it("MCP 工具面刷新失败作为独立错误记录", () => {

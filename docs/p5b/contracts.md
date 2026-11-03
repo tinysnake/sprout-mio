@@ -55,7 +55,7 @@ Task 生命周期变化或 Chat owner/成员变化只取消尚未尝试的 pendi
 
 ## 对既有 Chat 唤醒的例外：owner Agent 显式 @
 
-当前 Group owner Agent 通过 `sprout_chat_send` 显式 `@名字` 或 `@id` 点名本 Chat 有效 Agent 成员时，可以唤醒对方；发言仍绑定本 run 身份。这是本章为 owner 组织协作新增的例外。它要求发送者就是当前 Group owner、目标有显式 @ 且不是自己；没有 @ 不走 owner_led 兜底，普通 Agent 成员的回报不派发，模型助手最终输出也不走此发送入口，因此不会从成员回复继续级联唤醒。DM 与公共频道不享有该 owner Agent 例外。依据：`src/domain/agent-run.ts`、`src/domain/chat-wake.ts`、`src/server/remote-agent-gateway.ts`；反向验证见 `tests/task-agent-tools.test.ts`。
+当前 Group owner Agent 通过 `sprout_chat_send` 显式 `@名字` 或 `@id` 点名本 Chat 有效 Agent 成员时，可以唤醒对方；发言仍绑定本 run 身份。该工具当前暂不声明给模型（宿主会把最终回答自动发到 Chat，避免同轮重复消息），能力与网关保留，后续跨 Chat 场景再启用。这是本章为 owner 组织协作新增的例外。它要求发送者就是当前 Group owner、目标有显式 @ 且不是自己；没有 @ 不走 owner_led 兜底，普通 Agent 成员的回报不派发，模型助手最终输出也不走此发送入口，因此不会从成员回复继续级联唤醒。DM 与公共频道不享有该 owner Agent 例外。依据：`src/domain/agent-run.ts`、`src/domain/chat-wake.ts`、`src/server/remote-agent-gateway.ts`；反向验证见 `tests/task-agent-tools.test.ts`。
 
 ## 清单与施工记录：`task_checklist_item`、`message`
 

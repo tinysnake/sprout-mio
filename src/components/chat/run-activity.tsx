@@ -19,6 +19,12 @@ function StatusGlyph({ status }: { status: RunActivityStep["status"] }) {
   return <Icon as={Check} size={12} className="shrink-0 text-status-success" />;
 }
 
+function detailClass(step: RunActivityStep): string {
+  return step.kind === "assistant"
+    ? "min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+    : "min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground";
+}
+
 function StepLine({ step }: { step: RunActivityStep }) {
   const duration = formatDuration(step);
   return (
@@ -26,10 +32,7 @@ function StepLine({ step }: { step: RunActivityStep }) {
       <StatusGlyph status={step.status} />
       <span className="shrink-0 text-foreground/85">{step.label}</span>
       {step.detail && (
-        <span
-          className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground"
-          title={step.detail}
-        >
+        <span className={detailClass(step)} title={step.detail}>
           {step.detail}
         </span>
       )}
@@ -43,7 +46,7 @@ function StepLine({ step }: { step: RunActivityStep }) {
 }
 
 /**
- * 一次 run 的工作记录组：非 assistant 的工具调用按发生顺序归在一起。
+ * 一次 run 的工作记录组：工具调用与 run 内 assistant 中间说明按发生顺序归在一起。
  * 默认收起，只露出最后一条；展开后可以看到本轮全部记录（最新在前）。
  */
 export function RunActivityGroup({ activity }: { activity: RunActivity }) {
@@ -64,10 +67,7 @@ export function RunActivityGroup({ activity }: { activity: RunActivity }) {
           <StatusGlyph status={last.status} />
           <span className="shrink-0 text-muted-foreground">{last.label}</span>
           {last.detail && (
-            <span
-              className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground"
-              title={last.detail}
-            >
+            <span className={detailClass(last)} title={last.detail}>
               {last.detail}
             </span>
           )}

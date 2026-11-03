@@ -6,8 +6,12 @@ import type { PiHostProgress } from "./protocol";
 export type RunActivitySnapshot = {
   current: RunActivityStep | null;
   entries: RunActivityStep[];
+  /** 正在流式接收的 assistant 文本；只在进程内聚合，不进入对外快照。 */
+  pendingText?: string;
   updatedAt: number;
 };
+
+const ASSISTANT_LABEL = "中间说明";
 
 const scope = globalThis as typeof globalThis & {
   sproutRunActivity?: Map<string, RunActivitySnapshot>;
@@ -55,6 +59,18 @@ function replaceEntry(entries: RunActivityStep[], step: RunActivityStep): RunAct
   return next;
 }
 
+function closeCurrent(
+  entries: RunActivityStep[],
+  current: RunActivityStep | null,
+  at: number,
+): RunActivityStep[] {
+  if (!current) return entries;
+  const done = finishedStep(current, at, "done");
+  return entries.some((entry) => entry.id === current.id)
+    ? replaceEntry(entries, done)
+    : prependEntry(entries, done);
+}
+
 function fromEvent(event: PiHostProgress, at: number, id: string): RunActivityStep | undefined {
   if (!event.activity) return undefined;
   return {
@@ -69,15 +85,48 @@ function fromEvent(event: PiHostProgress, at: number, id: string): RunActivitySt
 }
 
 /**
- * 单条 progress 驱动的活动转移。只有工具调用会写工作记录；assistant 文本
- * 不进入这组记录，返回 `undefined` 让调用方保留上一份快照。
+ * 单条 progress 驱动的活动转移。工具调用照旧写工作记录；assistant 文本按连续
+ * delta 聚合成一条「中间说明」，在下一个工具开始时收尾。最终回答由 run 收尾
+ * 单独发到 Chat，不依赖这里。
  */
 export function reduceRunActivity(
   previous: RunActivitySnapshot | undefined,
   event: PiHostProgress,
   at: number,
 ): RunActivitySnapshot | undefined {
-  if (event.kind === "text_delta") return undefined;
+  if (event.kind === "text_delta") {
+    const delta = event.text ?? "";
+    if (!delta) return undefined;
+    const previousEntries = previous?.entries ?? [];
+    const current = previous?.current ?? null;
+    const pendingText = `${previous?.pendingText ?? ""}${delta}`;
+    const detail = clipDetail(pendingText);
+    if (current?.kind === "assistant") {
+      const step = { ...current, detail };
+      return {
+        current: step,
+        entries: replaceEntry(previousEntries, step),
+        pendingText,
+        updatedAt: at,
+      };
+    }
+    const entries = closeCurrent(previousEntries, current, at);
+    const step: RunActivityStep = {
+      id: `assistant:${at}:${entries.length}`,
+      kind: "assistant",
+      label: ASSISTANT_LABEL,
+      detail,
+      toolName: "assistant",
+      startedAt: iso(at),
+      status: "running",
+    };
+    return {
+      current: step,
+      entries: prependEntry(entries, step),
+      pendingText,
+      updatedAt: at,
+    };
+  }
 
   const entries = previous?.entries ?? [];
   const current = previous?.current ?? null;
@@ -109,7 +158,7 @@ export function reduceRunActivity(
       const same = { ...step, startedAt: current.startedAt };
       return { current: same, entries: replaceEntry(entries, same), updatedAt: at };
     }
-    const closed = current ? replaceEntry(entries, finishedStep(current, at, "done")) : entries;
+    const closed = closeCurrent(entries, current, at);
     return {
       current: step,
       entries: prependEntry(closed, step),
