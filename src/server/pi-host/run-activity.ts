@@ -85,9 +85,9 @@ function fromEvent(event: PiHostProgress, at: number, id: string): RunActivitySt
 }
 
 /**
- * 单条 progress 驱动的活动转移。工具调用照旧写工作记录；assistant 文本按连续
- * delta 聚合成一条「中间说明」，在下一个工具开始时收尾。最终回答由 run 收尾
- * 单独发到 Chat，不依赖这里。
+ * 单条 progress 驱动的活动转移。工具调用照旧写工作记录；每个 assistant 文本块
+ * 在 `text_end` 时落一条独立的「中间说明」。最终回答仍由 run 收尾单独发到 Chat，
+ * 不依赖这里。
  */
 export function reduceRunActivity(
   previous: RunActivitySnapshot | undefined,
@@ -122,8 +122,45 @@ export function reduceRunActivity(
     };
     return {
       current: step,
-      entries: prependEntry(entries, step),
+      entries,
       pendingText,
+      updatedAt: at,
+    };
+  }
+
+  if (event.kind === "text_end") {
+    const text = (event.text ?? previous?.pendingText ?? "").trim();
+    const entries = previous?.entries ?? [];
+    const current = previous?.current ?? null;
+    if (!text) {
+      return current?.kind === "assistant"
+        ? { current: null, entries, pendingText: undefined, updatedAt: at }
+        : undefined;
+    }
+    const step: RunActivityStep = {
+      ...finishedStep(
+        current?.kind === "assistant"
+          ? current
+          : {
+              id: `assistant:${at}:${entries.length}`,
+              kind: "assistant",
+              label: ASSISTANT_LABEL,
+              detail: clipDetail(text),
+              toolName: "assistant",
+              startedAt: iso(at),
+              status: "running",
+            },
+        at,
+        "done",
+      ),
+      detail: clipDetail(text),
+    };
+    return {
+      current: null,
+      entries: entries.some((entry) => entry.id === step.id)
+        ? replaceEntry(entries, step)
+        : prependEntry(entries, step),
+      pendingText: undefined,
       updatedAt: at,
     };
   }

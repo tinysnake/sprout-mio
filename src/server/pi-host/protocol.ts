@@ -82,7 +82,7 @@ export const piHostEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("progress"),
     id: z.string(),
-    kind: z.enum(["text_delta", "tool_start", "tool_end", "mcp_surface_failed"]),
+    kind: z.enum(["text_delta", "text_end", "tool_start", "tool_end", "mcp_surface_failed"]),
     text: z.string().max(4000).optional(),
     toolName: z.string().max(200).optional(),
     toolCallId: z.string().max(200).optional(),

@@ -305,6 +305,17 @@ async function open(config) {
         kind: "text_delta",
         text: event.assistantMessageEvent.delta,
       });
+    } else if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_end") {
+      // 一个 text block 只发一条 text_end，宿主据此落一条独立的「中间说明」。
+      const text = event.assistantMessageEvent.content;
+      if (text) {
+        line({
+          type: "progress",
+          id: config.id,
+          kind: "text_end",
+          text: text.slice(0, 4000),
+        });
+      }
     } else if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
       const activity = describeToolCall(
         event.toolName,
