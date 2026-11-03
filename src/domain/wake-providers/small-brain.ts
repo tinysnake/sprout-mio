@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { z } from "zod";
 import {
   decidedWakeResult,
@@ -40,10 +40,22 @@ export type SmallBrainOptions = {
   complete?: (request: SmallBrainRequest) => Promise<SmallBrainCompletion>;
 };
 
+/** Resolve the runner from the built app root, not the caller's working directory. */
+export function wakeRunnerPath(entry = process.argv[1], cwd = process.cwd()): string {
+  if (entry) {
+    const server = dirname(resolve(entry));
+    if (basename(server) === "server" && basename(dirname(server)) === ".output")
+      return resolve(server, "../..", "scripts/pi-wake-runner.mjs");
+  }
+  return resolve(cwd, "scripts/pi-wake-runner.mjs");
+}
+
 /** Isolated no-session SDK completion; stdin carries only the bounded snapshot. */
 function completeOnHost(request: SmallBrainRequest): Promise<SmallBrainCompletion> {
   return new Promise((accept, reject) => {
-    const child = spawn(process.execPath, [resolve("scripts/pi-wake-runner.mjs")], {
+    const runner = wakeRunnerPath();
+    const child = spawn(process.execPath, [runner], {
+      cwd: dirname(dirname(runner)),
       stdio: ["pipe", "pipe", "pipe"],
       env: process.env,
     });
