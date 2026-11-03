@@ -23,6 +23,7 @@ const {
   reconcileChatSchedule,
   wakeAttempts,
 } = await import("../src/domain/chat-schedule");
+const { getChatAutomation } = await import("../src/domain/chat-automation");
 
 afterAll(() => {
   rmSync(directory, { recursive: true, force: true });
@@ -52,6 +53,12 @@ function seedProjectChat() {
       "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'dm','human','owner','owner')",
     )
     .run(chatId, projectId);
+  // 读视图走 chat_effective_member：human 成员来自 chat_member 行，不是 chat.owner 隐含。
+  sqlite
+    .prepare(
+      "INSERT INTO chat_member(chat_id,member_kind,member_id,added_at) VALUES (?,'human','owner',?)",
+    )
+    .run(chatId, now.getTime());
   return { projectId, chatId };
 }
 
@@ -196,6 +203,38 @@ describe("判定尝试的落库", () => {
     expect(row.finished_at).toBe(later(12).getTime());
     expect(sqlite.prepare("SELECT state FROM wake_evaluation WHERE id=?").get(id)).toEqual({
       state: "stale",
+    });
+  });
+});
+
+describe("判定读视图", () => {
+  beforeEach(() => {
+    sqlite.prepare("DELETE FROM wake_evaluation_attempt").run();
+    sqlite.prepare("DELETE FROM wake_evaluation").run();
+  });
+
+  // Risk → evidence: provider 的高精度时钟给出小数毫秒；读视图若只收整数，
+  // 一次真实判定就会让整份 automation 视图解析失败，页面退化成「读出服务尚未接入」。
+  it("小数耗时照样解析出判定与逐次尝试", () => {
+    const { projectId, chatId } = seedProjectChat();
+    const id = seedClaimedEvaluation(chatId, projectId, 1);
+    beginWakeAttempt(id, 1, now);
+    finishWakeAttempt(id, 1, later(4.2), "decided", null, { ...usage, durationMs: 4199.734 });
+    sqlite
+      .prepare(
+        "UPDATE wake_evaluation SET state='decided',evaluated_at=?,claim_token=NULL,lease_until=NULL WHERE id=?",
+      )
+      .run(later(4.2).getTime(), id);
+
+    const data = getChatAutomation(projectId, chatId, {
+      userId: "owner",
+      requestId: "req_attempts",
+    });
+    expect(data.view.latestEvaluation?.usage?.durationMs).toBeCloseTo(4199.734);
+    expect(data.view.recentRounds[0]?.attempts[0]).toMatchObject({
+      attempt: 1,
+      outcome: "decided",
+      usage: { durationMs: 4199.734 },
     });
   });
 });

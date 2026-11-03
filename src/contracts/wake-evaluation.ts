@@ -44,7 +44,8 @@ export const wakeUsageSchema = z.strictObject({
   inputTokens: count.nullable(),
   outputTokens: count.nullable(),
   inputCharacters: count,
-  durationMs: count,
+  /** 实测耗时不是计数：provider 用高精度时钟算出来就是小数，取整只会让页面撒谎。 */
+  durationMs: z.number().min(0).max(86_400_000).finite(),
   /** 滚动模型标签实际解析到的版本，provider 报了就记。 */
   resolvedModel: z.string().trim().min(1).max(200).nullable().optional(),
 });
