@@ -5,7 +5,7 @@ P5b 交付 Project 所有、Chat 承接的 Task：四态分栏总览、详情、
 ## 交付范围
 
 - 契约与数据形状：`docs/p5b/contracts.md`、`src/contracts/task.ts`、`src/contracts/task-capabilities.ts`、`src/db/schema.ts`、`drizzle/0025_p5b_tasks.sql`。
-- 领域：`src/domain/task.ts`（单一命令入口与读模型）、`src/domain/task-capabilities.ts`（能力与当前责任）、`src/domain/task-input.ts`（完整开始快照与发送尝试边界）、`src/domain/agent-run.ts`（输入、ACK 与 owner Agent 点名例外）。
+- 领域：`src/domain/task.ts`（单一命令入口与读模型）、`src/domain/task-capabilities.ts`（能力与当前责任）、`src/domain/task-input.ts`（完整开始快照与发送尝试边界）、`src/domain/agent-run.ts`（输入、ACK 与 Agent 显式 @ 接力例外）。
 - 入口：`src/server/functions/task.ts`、`src/server/remote-agent-gateway.ts`、`src/extension/task-tools.ts`；Agent 新增 11 项 Task/Chat 工具，仍以本 run grant 限定身份与范围。
 - 页面：`src/components/tasks/**`、`src/routes/_authed/projects.$projectId.tasks.tsx`；Chat 与 Info Hub 同时展示 Task 关联，普通编辑、终态 Human 纠正与重开读同一能力事实。
 - 设计依据：`orchestrate/sprout-mio-p5b/reports/design-selection.md`；阶段裁定与理由记录在同目录上级的 `decisions.tsv`，含 AFK 期间协调者代人类裁定。设计选择与技术页面自检不等于 Human 已确认真实应用体验。
@@ -30,7 +30,7 @@ P5b 交付 Project 所有、Chat 承接的 Task：四态分栏总览、详情、
 
 ## 2. 真实开始投递与 owner 协作
 
-DM 投给唯一分身，Agent owner Group 只投 owner；Human owner 的 Group/频道只留 Chat 叙述消息。已有活动 run 走 steer，无活动 run 走 prompt；发送前核对最新责任，owner Agent 显式 @ 成员可组织协作，普通成员回报不会继续级联。
+DM 投给唯一分身，Agent owner Group 只投 owner；Human owner 的 Group/频道只留 Chat 叙述消息。已有活动 run 走 steer，无活动 run 走 prompt；发送前核对最新责任，Agent 显式 @ 成员可组织接力，普通成员回报不会继续级联。
 
 证据提交 `c0e9c74`：重跑 `bash scripts/verify/bc-task-start.sh`、`bash scripts/verify/bb-task-live.sh`、`bash scripts/verify/bs-p5b-lifecycle.sh`；ACK 与撤回的先后以 admitted 同步发送尝试为界，不把 ACK 当作工作完成。
 

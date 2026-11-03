@@ -156,7 +156,7 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 出口条件是 Human 能在 Group 分配一个 Task，由 owner 组织成员回报并完成记录，也能在 DM 完成相同 Task 生命周期。
 
-技术出口已在 `c0e9c74` 由第二轮独立验收确认，契约、门禁与证据边界见 [P5b 章节结论](p5b/summary.md)；Group owner Agent 的显式 @ 协作、DM 生命周期和 Human owner 通知路径均有技术证据。公共频道变更 owner 尚未落地；Human 亲自体验仍待 I-P5b 第四条确认，不随本节勾选。
+技术出口已在 `c0e9c74` 由第二轮独立验收确认，契约、门禁与证据边界见 [P5b 章节结论](p5b/summary.md)；Agent 显式 @ 接力、DM 生命周期和 Human owner 通知路径均有技术证据。公共频道变更 owner 尚未落地；Human 亲自体验仍待 I-P5b 第四条确认，不随本节勾选。
 
 ## P6a 完成自动接续与人类控制
 

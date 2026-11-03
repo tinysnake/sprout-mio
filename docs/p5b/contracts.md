@@ -1,6 +1,6 @@
 # P5b 数据形状：Task 四态、记录与开始投递
 
-本章新增 Project 所有、Chat 承接的 Task，冻结契约见 `src/contracts/task.ts`、`src/contracts/task-capabilities.ts`；迁移为 `drizzle/0025_p5b_tasks.sql`，表定义为 `src/db/schema.ts`。本章同时收紧既有 Chat/run 的输入投递，并为当前 Group owner Agent 的显式点名开放一条例外；自动接续留给 P6。
+本章新增 Project 所有、Chat 承接的 Task，冻结契约见 `src/contracts/task.ts`、`src/contracts/task-capabilities.ts`；迁移为 `drizzle/0025_p5b_tasks.sql`，表定义为 `src/db/schema.ts`。本章同时收紧既有 Chat/run 的输入投递，并为 Agent 的显式点名开放一条接力例外；自动接续留给 P6。
 
 ## Task：`task`
 
@@ -53,9 +53,9 @@
 
 Task 生命周期变化或 Chat owner/成员变化只取消尚未尝试的 pending 开始输入，原因 `task_context_changed`；普通聊天输入不受此专用规则影响。已 admitted 的输入即使 ACK 丢失、同步抛错或随后改派，也不撤回、不盲重发；只有 runner 的投递确认才写 delivered。ACK 不是 Task 完成确认。正常 completed run 只把尚未 admitted 的 pending 输入交给同 instance 下一轮；异常终态不自动重投。依据：`src/domain/agent-run.ts`、`src/domain/task-input.ts`、`src/server/pi-host/run.ts`。
 
-## 对既有 Chat 唤醒的例外：owner Agent 显式 @
+## 对既有 Chat 唤醒的例外：Agent 显式 @ 接力
 
-当前 Group owner Agent 通过 `sprout_chat_send` 显式 `@名字` 或 `@id` 点名本 Chat 有效 Agent 成员时，可以唤醒对方；发言仍绑定本 run 身份。该工具当前暂不声明给模型（宿主会把最终回答自动发到 Chat，避免同轮重复消息），能力与网关保留，后续跨 Chat 场景再启用。这是本章为 owner 组织协作新增的例外。它要求发送者就是当前 Group owner、目标有显式 @ 且不是自己；没有 @ 不走 owner_led 兜底，普通 Agent 成员的回报不派发，模型助手最终输出也不走此发送入口，因此不会从成员回复继续级联唤醒。DM 与公共频道不享有该 owner Agent 例外。依据：`src/domain/agent-run.ts`、`src/domain/chat-wake.ts`、`src/server/remote-agent-gateway.ts`；反向验证见 `tests/task-agent-tools.test.ts`。
+任意 Agent 在本 Chat 发出的消息（包括 run 的最终回答）显式 `@名字` 或 `@id` 点名本 Chat 有效 Agent 成员时，可以唤醒对方；发言仍绑定本 run 身份。点名由 `sendMessage` 写时解析并落库，路由只读 `message_mention`，不认正文里的弱提及。没有显式 Agent 点名时不派发，普通 Agent 汇报不会把 owner 或全群唤醒。`sprout_chat_send` 当前暂不声明给模型（宿主会把最终回答自动发到 Chat，避免同轮重复消息），能力与网关保留，后续跨 Chat 场景再启用；最终回答的 mention 走同一条 `sendMessage` 路径。依据：`src/domain/agent-run.ts`、`src/domain/chat.ts`、`src/domain/chat-wake.ts`；回归测试见 `tests/agent-run.test.ts`。
 
 ## 清单与施工记录：`task_checklist_item`、`message`
 

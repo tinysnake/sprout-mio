@@ -369,20 +369,20 @@ function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, reques
  *   （输入主键是 `(run_id, message_id)`）；
  * - 同一 instance 已有活跃 run 时输入挂到那条 run，不新建第二个（数据库部分唯一索引是底线）。
  *
- * Agent owner 发言走同一条路：路由排除发送者自己，所以它不可能把自己再唤一次，也不会把
- * 没被点名的成员带进来。
+ * Agent 发送者走同一条路：路由排除发送者自己，只派发显式点名的 Agent 成员，所以它不会
+ * 把自己再唤一次，也不会把没被点名的成员带进来。
  */
 function fanoutHumanMessage(
   saved: Message,
   current: Chat,
   ctx: ProjectContext,
-  ownerAgent = false,
+  agentSender = false,
   deferContextual = false,
 ): void {
   // 只有消息确实进入判定器防抖队列时才跳过即时 owner 唤醒。自动化关闭、控制为 off
   // 或显式点名 Agent 时仍走原本的即时路由。
   if (
-    !ownerAgent &&
+    !agentSender &&
     deferContextual &&
     current.wakePolicy === "contextual" &&
     !saved.mentions.some((mention) => mention.memberKind === "agent")
@@ -391,7 +391,7 @@ function fanoutHumanMessage(
   const members = readChatEffectiveMembers(current.id, current.projectId);
   const dispatch: ChatWakeDispatch = { chatId: current.id, mentions: saved.mentions };
   const candidates = routeWakeCandidates({
-    ...(ownerAgent ? { senderAgentProfileId: saved.senderId } : {}),
+    ...(agentSender ? { senderAgentProfileId: saved.senderId } : {}),
     chat: {
       id: dispatch.chatId,
       kind: current.kind,
@@ -405,9 +405,9 @@ function fanoutHumanMessage(
     })),
     mentions: dispatch.mentions,
   });
-  // Provisioning is internal dispatch work after the owner gate; the new run gets
+  // Provisioning is internal dispatch work after the sender gate; the new run gets
   // its own recipient instance identity, never the sender's execution identity.
-  const dispatchContext = ownerAgent ? { userId: ctx.userId, requestId: ctx.requestId } : ctx;
+  const dispatchContext = agentSender ? { userId: ctx.userId, requestId: ctx.requestId } : ctx;
   for (const candidate of candidates) {
     const instance = ensureInstance(current.id, candidate.agentProfileId, dispatchContext);
     attachMessageToRun(saved, current, instance, dispatchContext);
@@ -461,17 +461,15 @@ export function appendHumanRunInput(
   fanoutHumanMessage(saved, current, ctx, false, deferContextual);
 }
 
-/** Only the current Agent owner may dispatch; member replies cannot cascade. */
-export function appendOwnerAgentRunInput(saved: Message, ctx: ProjectContext): void {
+/**
+ * Agent 发送者只派发显式 @ 的 Agent 成员。点名由 `sendMessage` 写时解析并落库，
+ * 不认正文里的弱提及；没有点名就不级联，避免普通汇报把 owner 或全群唤醒。
+ */
+export function appendAgentMentionRunInput(saved: Message, ctx: ProjectContext): void {
   const current = getChat(saved.chatId, ctx);
-  if (
-    !ctx.agent ||
-    saved.senderKind !== "agent" ||
-    saved.senderId !== ctx.agent.agentProfileId ||
-    current.owner.kind !== "agent" ||
-    current.owner.id !== saved.senderId
-  )
+  if (!ctx.agent || saved.senderKind !== "agent" || saved.senderId !== ctx.agent.agentProfileId)
     return;
+  if (!saved.mentions.some((mention) => mention.memberKind === "agent")) return;
   fanoutHumanMessage(saved, current, ctx, true);
 }
 

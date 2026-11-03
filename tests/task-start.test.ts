@@ -206,7 +206,7 @@ describe("explicit Task start and collaboration", () => {
     expect(again.startDelivery?.runId).toBe(s.runId);
     expect(counts().map((n, i) => n - before[i]!)).toEqual([0, 1, 1, 0]);
   });
-  it("requires explicit @ for owner collaboration and never wakes from member replies", () => {
+  it("requires explicit @ for Agent collaboration and never wakes from ordinary member replies", () => {
     const target = group();
     const s = start(target.id);
     const owner = agentContext(s.runId);
@@ -233,17 +233,17 @@ describe("explicit Task start and collaboration", () => {
     });
     const afterWake = count("agent_run_input");
     send(target.id, `@Alpha @${alpha.id}`, member);
-    expect(count("agent_run_input")).toBe(afterWake);
+    expect(count("agent_run_input")).toBe(afterWake + 1);
     // 按成员 id 写 `@` 不是点名：写时解析只认展示名，路由没有 id 兜底。
     send(target.id, `@${beta.id} by id`, owner);
-    expect(count("agent_run_input")).toBe(afterWake);
-    // Nonowner Agent in a Human-owned group cannot wake anyone.
+    expect(count("agent_run_input")).toBe(afterWake + 1);
+    // 非 owner Agent 在 Human-owned group 也能通过显式 @ 唤醒目标。
     const humanOwned = group("human");
     send(humanOwned.id, "@Beta", ctx);
     const nonownerRun = runs.listAgentRuns(humanOwned.id, ctx)[0]!;
     const beforeNonowner = count("agent_run_input");
     send(humanOwned.id, "@Alpha", agentContext(nonownerRun.id));
-    expect(count("agent_run_input")).toBe(beforeNonowner);
+    expect(count("agent_run_input")).toBe(beforeNonowner + 1);
   });
   it.each(["mention_only", "owner_led"] as const)(
     "preserves Human P5a %s routing on explicit mentions",

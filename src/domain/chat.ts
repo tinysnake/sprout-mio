@@ -37,7 +37,7 @@ import {
   getAgentProfile,
   ProjectMemberRemovalBlockedError,
 } from "./agent";
-import { appendHumanRunInput, appendOwnerAgentRunInput } from "./agent-run";
+import { appendAgentMentionRunInput, appendHumanRunInput } from "./agent-run";
 import { assertChannelMemberChangeAllowed, readChatEffectiveMembers } from "./channel";
 import { assertChatCapability } from "./chat-capabilities";
 import type { ChatGovernanceScope } from "./chat-capabilities";
@@ -722,7 +722,7 @@ export function sendMessage(
             .run();
           const saved = toMessage(row, spans);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
-          else appendOwnerAgentRunInput(saved, ctx);
+          else appendAgentMentionRunInput(saved, ctx);
           return saved;
         },
         hooks,

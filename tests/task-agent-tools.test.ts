@@ -283,7 +283,7 @@ describe("run-scoped Agent Task/Chat tools", () => {
     await data("sprout_chat_send", { body: "@Alpha member response via gateway" }, true);
     expect(
       (sqlite.prepare("SELECT count(*) AS n FROM agent_run_input").get() as { n: number }).n,
-    ).toBe(beforeCollaboration + 1);
+    ).toBe(beforeCollaboration + 2);
     const forged: RemoteAgentRequest = {
       version: 2,
       call: { type: "task_list", input: { projectId: newId(ID_PREFIXES.project) } },

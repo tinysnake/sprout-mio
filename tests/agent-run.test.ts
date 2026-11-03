@@ -186,6 +186,39 @@ describe("Agent run 持久不变量", () => {
     `);
   });
 
+  it("非 owner Agent 的显式 @ 唤醒目标，普通汇报不级联", () => {
+    scenario(`
+      const amenda = agents.createAgentProfile({ name: 'Amenda', persona: '', harness: 'pi' }, ctx);
+      agents.addProjectMember(project.id, amenda.id, ctx);
+      const actor = { kind: 'human', userId: ctx.userId, ctx };
+      const group = dm.createGroupChat(project.id, {
+        projectId: project.id,
+        title: 'Relay group',
+        wakePolicy: 'mention_only',
+        members: [
+          { kind: 'human', id: ctx.userId },
+          { kind: 'agent', id: profile.id },
+          { kind: 'agent', id: amenda.id },
+        ],
+        initialOwner: { kind: 'human', id: ctx.userId },
+      }, actor);
+      const sender = dm.ensureInstance(group.id, profile.id, ctx);
+      const target = dm.ensureInstance(group.id, amenda.id, ctx);
+      sqlite.prepare("INSERT INTO agent_run (id,instance_id,chat_id,project_id,request_id,status,started_at,session_id) VALUES ('run_relay_sender',?,?,?,?,'running',unixepoch(),?)").run(sender.id, group.id, project.id, 'req_relay', 'session_relay_sender');
+      const agentCtx = { ...ctx, agent: { agentProfileId: profile.id, instanceId: sender.id, runId: 'run_relay_sender' } };
+      dm.sendMessage(group.id, { senderKind: 'agent', senderId: profile.id, body: '@Amenda 接力一下' }, agentCtx);
+      const targetRuns = sqlite.prepare('SELECT id,status FROM agent_run WHERE instance_id=?').all(target.id);
+      assert.equal(targetRuns.length, 1);
+      assert.equal(targetRuns[0].status, 'queued');
+      const relayMessage = sqlite.prepare("SELECT id FROM message WHERE chat_id=? AND sender_kind='agent' AND body LIKE '@Amenda%'").get(group.id);
+      assert.equal(count('agent_run_input'), 2);
+      assert.equal(sqlite.prepare('SELECT count(*) AS n FROM agent_run_input WHERE message_id=?').get(relayMessage.id).n, 1);
+      dm.sendMessage(group.id, { senderKind: 'agent', senderId: profile.id, body: '普通汇报，不点名' }, agentCtx);
+      assert.equal(sqlite.prepare('SELECT count(*) AS n FROM agent_run WHERE instance_id=?').get(target.id).n, 1);
+      assert.equal(count('agent_run_input'), 2);
+    `);
+  });
+
   it("对话页 run 视角去掉整段配置快照，只把 sessionFile 提到顶层", () => {
     scenario(`
       const { auth } = await import('./src/lib/auth.ts');

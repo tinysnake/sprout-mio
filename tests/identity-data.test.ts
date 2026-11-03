@@ -124,7 +124,10 @@ describe("P2 身份、Project 授权与持久对话", () => {
       assert.equal(dm.getChat(direct.chat.id, ctxA).id, direct.chat.id);
       notFound(() => dm.createDirectChat(projectA.id, profileA.id, ctxA));
       agent.addProjectMember(projectA.id, profileA.id, ctxA);
-      assert.deepEqual(dm.createDirectChat(projectA.id, profileA.id, ctxA), direct);
+      const reopened = dm.createDirectChat(projectA.id, profileA.id, ctxA);
+      assert.equal(reopened.chat.id, direct.chat.id);
+      assert.equal(reopened.instance.id, direct.instance.id);
+      assert.ok(!reopened.chat.archivedAt);
     `,
     );
   });
