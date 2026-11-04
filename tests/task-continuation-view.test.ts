@@ -3,9 +3,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 import { ContinuationCard } from "../src/components/continuation/continuation-card";
 import { ContinuationPanel } from "../src/components/continuation/continuation-panel";
+import { WakeDiagnostic } from "../src/components/continuation/wake-diagnostic";
+import { ContinuationDiagnostic } from "../src/components/continuation/continuation-diagnostic";
 import { WakeProviderSelect } from "../src/components/continuation/wake-provider-select";
 import { TaskBadge } from "../src/components/tasks/task-badge";
-import { continuationFixture, continuationDenials, p6aIds } from "./fixtures/p6a-pages";
+import {
+  continuationFixture,
+  continuationDenials,
+  diagnosticFixture,
+  p6aIds,
+} from "./fixtures/p6a-pages";
 
 const render = (name: Parameters<typeof continuationFixture>[0]) =>
   renderToStaticMarkup(
@@ -48,29 +55,103 @@ describe("对话接续页面事实与 Human 控制", () => {
     const html = renderToStaticMarkup(createElement(ContinuationCard, { view }));
     expect(html).toContain("对话接续不会来");
     expect(html).toContain("不会停止当前 run");
-    expect(html).toContain("开启对话接续");
+    expect(html).toContain("重新启用");
     expect(html).not.toContain("暂停 Task");
   });
-  it("侧栏控制模式不重复最近检查与下次检查", () => {
+  it("Hub 两行不可展开，均定位最新真实轮次，不承载诊断或控制", () => {
+    const view = diagnosticFixture("failure");
     const html = renderToStaticMarkup(
-      createElement(ContinuationCard, {
-        view: continuationFixture("failure"),
-        showStatus: false,
-      }),
+      createElement(ContinuationPanel, { data: { view, denials: {} } }),
     );
-    expect(html).toContain("暂停对话接续");
-    expect(html).toContain("检查细节与诊断");
-    expect(html).not.toContain('data-testid="continuation-last-check"');
-    expect(html).not.toContain('data-testid="continuation-next-check"');
+    expect(html).toContain("对话自动化");
+    expect(html).toContain("摘要与详情");
+    for (const kind of ["wake", "continuation"])
+      expect(html).toContain(`/checks/${view.latestEvaluation!.evaluationId}/${kind}`);
+    expect(html.match(/<a /g)).toHaveLength(2);
+    expect(html).not.toContain("<details");
+    expect(html).not.toContain("<button");
+    expect(html).not.toContain("暂停对话接续");
     expect(html).not.toContain('data-testid="continuation-failure"');
   });
+  it("没有判定时两行禁用，不能编造 evaluationId", () => {
+    const html = renderToStaticMarkup(
+      createElement(ContinuationPanel, { data: { view: continuationFixture(), denials: {} } }),
+    );
+    expect(html.match(/aria-disabled="true"/g)).toHaveLength(2);
+    expect(html).not.toContain("href=");
+    expect(html).toContain("尚无判定");
+  });
   it("失败与退避可见，不能呈现为正常或本轮无需接续", () => {
-    const html = render("failure");
+    const view = diagnosticFixture("failure");
+    const html = renderToStaticMarkup(
+      createElement(WakeDiagnostic, {
+        view,
+        round: view.recentRounds[0],
+        onCommand: async () => ({ ok: true as const, data: { view, denials: {} } }),
+      }),
+    );
     expect(html).toContain("检查失败");
     expect(html).toContain("provider_timeout");
     expect(html).toContain("失败退避");
-    expect(html).toContain("暂无结论");
+    expect(html).toContain("重试检查");
+    expect(html).not.toContain("查看最近五轮");
+    expect(html).toContain("本轮尚未产出逐接收者结论");
     expect(html).not.toContain("本轮无需接续：");
+  });
+  it("正在检查的等待时长来自注入时钟，不伪造完成耗时", () => {
+    const view = diagnosticFixture("idle");
+    const startedAt = "2026-01-02T03:04:05.000Z";
+    view.latestEvaluation = {
+      ...view.latestEvaluation!,
+      state: "claimed",
+      claimedAt: startedAt,
+      finishedAt: null,
+      evaluatedAt: null,
+      result: null,
+    };
+    const round = {
+      ...view.recentRounds[0],
+      state: "claimed" as const,
+      evaluatedAt: null,
+      result: null,
+    };
+    const html = renderToStaticMarkup(
+      createElement(WakeDiagnostic, { view, round, clock: () => Date.parse(startedAt) + 2300 }),
+    );
+    expect(html).toContain("已等待 2.3 秒");
+    expect(html).toContain("尚未结束");
+    expect(html).not.toContain("耗时 2.3 秒");
+  });
+  it.each(["wake", "continuation"] as const)("%s URL 的正文与标题对应，且没有页签", (kind) => {
+    const view = diagnosticFixture("failure");
+    const html = renderToStaticMarkup(
+      createElement(ContinuationDiagnostic, {
+        data: { view, denials: {} },
+        evaluationId: view.latestEvaluation!.evaluationId,
+        kind,
+        chatTitle: "当前对话",
+      }),
+    );
+    expect(html).toContain(`data-kind="${kind}"`);
+    expect(html).toContain("检查轮次 #2");
+    expect(html).toContain("周期检查");
+    expect(html).toContain(kind === "wake" ? "逐接收者结论" : "人类控制");
+    expect(html).not.toContain(kind === "wake" ? "全部停止" : "逐接收者结论");
+    expect(html).not.toContain('role="tab');
+    expect(html).not.toContain("查看最近五轮");
+  });
+  it("无法定位 evaluationId 时给明确恢复路径，不展示错误轮次", () => {
+    const html = renderToStaticMarkup(
+      createElement(ContinuationDiagnostic, {
+        data: { view: diagnosticFixture(), denials: {} },
+        evaluationId: "expired-evaluation",
+        kind: "wake",
+        chatTitle: "当前对话",
+      }),
+    );
+    expect(html).toContain("这一轮不在最近 5 轮里");
+    expect(html).toContain("返回对话");
+    expect(html).not.toContain("逐接收者结论");
   });
   it("Human owner 仅有提醒事实，没有 run 活动条", () => {
     const html = render("human");

@@ -3,7 +3,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ChatRunState, RunActivity, RunActivityStep } from "../src/contracts/agent-run";
 import { RunStatusPanel } from "../src/components/chat/run-status";
-import { ContinuationCard } from "../src/components/continuation/continuation-card";
+import { WakeDiagnostic } from "../src/components/continuation/wake-diagnostic";
+import { ContinuationDiagnostic } from "../src/components/continuation/continuation-diagnostic";
 import { continuationFixture } from "./fixtures/p6a-pages";
 
 function step(index: number, overrides: Partial<RunActivityStep> = {}): RunActivityStep {
@@ -286,13 +287,12 @@ describe("对话接续状态", () => {
     expect(html).not.toContain("对话接续：正在检查");
   });
 
-  it("检查记录跟着会话详情走，列在诊断里", () => {
+  it("选中的检查轮次把逐次尝试列在唤醒诊断正文里", () => {
+    const view = continuationFixture("failure");
     const html = renderToStaticMarkup(
-      createElement(ContinuationCard, { view: continuationFixture("failure") }),
+      createElement(WakeDiagnostic, { view, round: view.recentRounds[0] }),
     );
-    expect(html).toContain("检查细节与诊断");
-    expect(html).toContain('data-testid="continuation-activity"');
-    expect(html).toContain("本轮检查");
+    expect(html).toContain("本轮信息");
     expect(html).toContain("第 1 轮检查");
     expect(html).toContain('data-testid="continuation-lines"');
   });
@@ -326,7 +326,7 @@ describe("对话接续状态", () => {
       },
     ];
     const html = renderToStaticMarkup(
-      createElement(ContinuationCard, { view: { ...view, recentRounds: rounds } }),
+      createElement(WakeDiagnostic, { view: { ...view, recentRounds: rounds }, round: rounds[0] }),
     );
     expect(html).toContain("第 3 轮检查");
     expect(html).toContain("932 tok \u00b7 4.2 \u79d2");
@@ -335,27 +335,23 @@ describe("对话接续状态", () => {
   it("还在进行的尝试写明进行中，不编造时长", () => {
     const view = continuationFixture("failure");
     const html = renderToStaticMarkup(
-      createElement(ContinuationCard, {
-        view: {
-          ...view,
-          recentRounds: [
+      createElement(WakeDiagnostic, {
+        view,
+        round: {
+          round: 2,
+          source: "task_periodic" as const,
+          state: "claimed" as const,
+          evaluatedAt: null,
+          result: null,
+          errorCode: null,
+          attempts: [
             {
-              round: 2,
-              source: "task_periodic" as const,
-              state: "claimed" as const,
-              evaluatedAt: null,
-              result: null,
+              attempt: 1,
+              startedAt: "2026-11-02T12:00:00.000Z",
+              finishedAt: null,
+              outcome: null,
               errorCode: null,
-              attempts: [
-                {
-                  attempt: 1,
-                  startedAt: "2026-11-02T12:00:00.000Z",
-                  finishedAt: null,
-                  outcome: null,
-                  errorCode: null,
-                  usage: null,
-                },
-              ],
+              usage: null,
             },
           ],
         },
@@ -367,8 +363,14 @@ describe("对话接续状态", () => {
 
   it("没有任何检查记录时不渲染空列表", () => {
     const html = renderToStaticMarkup(
-      createElement(ContinuationCard, { view: continuationFixture("scheduled") }),
+      createElement(ContinuationDiagnostic, {
+        data: { view: continuationFixture("scheduled"), denials: {} },
+        evaluationId: "missing",
+        kind: "wake",
+        chatTitle: "对话",
+      }),
     );
-    expect(html).not.toContain('data-testid="continuation-activity"');
+    expect(html).toContain("尚无检查记录");
+    expect(html).not.toContain('data-testid="continuation-lines"');
   });
 });

@@ -23,11 +23,12 @@ const server = await createServer({
       name: "p6a-browser-fixture",
       configureServer(dev) {
         dev.middlewares.use(async (request, response, next) => {
-          if (request.url !== "/") return next();
+          if (!request.url || !(request.url === "/" || request.url.startsWith("/projects/")))
+            return next();
           try {
             const html = await dev.transformIndexHtml(
               "/",
-              '<!doctype html><html lang="zh-CN"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>P6a pages gate</title><link rel="stylesheet" href="/src/styles.css"><link rel="icon" href="data:,"></head><body><div id="root"></div><script type="module" src="/tests/fixtures/p6a-pages-client.tsx"></script></body></html>',
+              '<!doctype html><html lang="zh-CN"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>P6b pages gate</title><link rel="stylesheet" href="/src/styles.css"><link rel="icon" href="data:,"></head><body><div id="root"></div><script type="module" src="/tests/fixtures/p6a-pages-client.tsx"></script></body></html>',
             );
             response.setHeader("Content-Type", "text/html");
             response.end(html);
@@ -46,41 +47,111 @@ const pass = (name: string) => {
 };
 const browser = await chromium.launch();
 const timer = setTimeout(() => {
-  console.error("P6a browser gate exceeded 120s");
+  console.error("P6b browser gate exceeded 120s");
   process.exit(1);
 }, 120_000);
 try {
   await server.listen();
   const address = server.httpServer!.address();
   assert(address && typeof address !== "string");
+  const base = `http://127.0.0.1:${address.port}`;
   const page = await browser.newPage();
-  const pageErrors: string[] = [];
-  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [],
+    consoleErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
   });
-  await page.goto(`http://127.0.0.1:${address.port}`, { waitUntil: "networkidle" });
-  for (const width of [1280, 768, 390]) {
+  const noOverflow = async (label: string) => {
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    pass(`${label}_no_horizontal_scroll`);
+  };
+  for (const width of [1280, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     for (const name of p6aCases) {
+      await page.goto(base);
       await page.getByTestId("fixture-case").selectOption(name);
+      const hub = page.getByTestId("continuation-panel");
+      assert.equal(await hub.locator("a").count(), 2);
+      assert.equal(await hub.locator("details,button").count(), 0);
+      const wakeHref = await hub.getByRole("link", { name: /唤醒判定/ }).getAttribute("href");
+      const continuationHref = await hub
+        .getByRole("link", { name: /对话接续/ })
+        .getAttribute("href");
+      assert(
+        wakeHref &&
+          continuationHref &&
+          wakeHref.replace(/wake$/, "continuation") === continuationHref,
+      );
+      pass(`${width}_${name}_hub_two_latest_links_no_expansion`);
+      await noOverflow(`${width}_${name}_hub`);
+      await hub.getByRole("link", { name: /唤醒判定/ }).click();
+      const wake = page.getByTestId("wake-diagnostic");
+      await wake.waitFor();
+      assert(page.url().endsWith(wakeHref));
+      assert.equal(await page.getByRole("tab").count(), 0);
+      assert.equal(await page.getByTestId("continuation-card").count(), 0);
+      assert(!(await wake.innerText()).includes("查看最近五轮"));
+      assert(
+        (
+          await page.getByRole("heading", { name: "检查轮次 #2", exact: true }).innerText()
+        ).includes("#2"),
+      );
+      pass(`${width}_${name}_wake_url_body_no_tabs_or_bottom_link`);
+      await noOverflow(`${width}_${name}_wake`);
+      if (name === "failure") {
+        const failure = page.getByTestId("continuation-failure");
+        assert.equal(await failure.getAttribute("data-error-code"), "provider_timeout");
+        assert((await failure.innerText()).includes("判定服务没有及时回应"));
+        assert((await page.getByTestId("continuation-backoff").innerText()).includes("失败退避"));
+        await page.getByRole("button", { name: "重试检查", exact: true }).click();
+        const retry = JSON.parse(await page.getByTestId("last-command").innerText());
+        assert.equal(retry.action, "retry");
+        assert.equal(retry.evaluationId, "evaluation-failure");
+        pass(`${width}_failure_backoff_retry_contract`);
+      }
+      if (name === "running") {
+        assert((await page.getByTestId("wake-elapsed").innerText()).includes("已等待"));
+        pass(`${width}_running_has_elapsed`);
+      }
+      await page.screenshot({
+        path: resolve(evidence, `${width}-${name}-wake.png`),
+        fullPage: true,
+      });
+      await page.evaluate(() => document.documentElement.classList.add("dark"));
+      await noOverflow(`${width}_${name}_wake_dark`);
+      await page.screenshot({
+        path: resolve(evidence, `${width}-${name}-wake-dark.png`),
+        fullPage: true,
+      });
+      await page.evaluate(() => document.documentElement.classList.remove("dark"));
+      if (name === "idle") {
+        await page.getByRole("button", { name: /#1/ }).click();
+        assert(await page.getByRole("heading", { name: "检查轮次 #1", exact: true }).isVisible());
+        assert(
+          (await page.getByTestId("continuation-diagnostic").innerText()).includes(
+            "不能作为本轮的独立链接",
+          ),
+        );
+        pass(`${width}_historical_rail_selection_explicit_permalink_gap`);
+      }
+      await page.goto(base + continuationHref);
       const card = page.getByTestId("continuation-card");
       await card.waitFor();
-      assert((await card.innerText()).includes("对话接续"));
-      pass(`${width}_${name}_copy`);
-      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-      pass(`${width}_${name}_no_horizontal_scroll`);
-      const scopeBox = await page.getByTestId("continuation-scope").boundingBox();
-      const cardBox = await card.boundingBox();
-      assert(scopeBox && cardBox && scopeBox.width >= cardBox.width - 40);
+      assert.equal(await page.getByTestId("wake-diagnostic").count(), 0);
+      assert.equal(await page.getByRole("tab").count(), 0);
+      pass(`${width}_${name}_continuation_url_body_no_tabs`);
+      await noOverflow(`${width}_${name}_continuation`);
+      const scopeBox = await page.getByTestId("continuation-scope").boundingBox(),
+        cardBox = await card.boundingBox();
+      assert(scopeBox && cardBox && scopeBox.width >= cardBox.width - 50);
       pass(`${width}_${name}_scope_occupies_own_row`);
       assert.equal(await page.getByRole("button", { name: "保存判定器", exact: true }).count(), 0);
       assert((await page.getByTestId("wake-provider-unwired").innerText()).includes("暂不能更改"));
       pass(`${width}_${name}_provider_unwired_copy`);
       if (name === "off") {
         assert((await card.innerText()).includes("对话接续不会来"));
-        assert(await page.getByRole("button", { name: "开启对话接续", exact: true }).isEnabled());
+        assert(await page.getByRole("button", { name: "重新启用", exact: true }).isEnabled());
         pass(`${width}_${name}_human_can_enable`);
         assert(
           await page
@@ -88,7 +159,7 @@ try {
             .evaluate(
               (element) =>
                 getComputedStyle(element).color ===
-                getComputedStyle(document.querySelector('[data-testid="continuation-scope"]')!)
+                getComputedStyle(document.querySelector('[data-testid="continuation-card"]')!)
                   .color,
             ),
         );
@@ -97,19 +168,11 @@ try {
       if (name === "idle") {
         assert((await card.innerText()).includes("当前无活动 run"));
         assert((await card.innerText()).includes("当前没有安排下次自动检查"));
-        pass(`${width}_three_independent_facts`);
         assert.equal(
-          await page.getByRole("button", { name: "停止这个运行", exact: true }).count(),
+          await page.getByRole("button", { name: "只停止此 run", exact: true }).count(),
           0,
         );
-        pass(`${width}_no_run_stop_without_active_run`);
-      }
-      if (name === "failure") {
-        const failure = page.getByTestId("continuation-failure");
-        assert.equal(await failure.getAttribute("data-error-code"), "provider_timeout");
-        assert((await failure.innerText()).includes("判定服务没有及时回应"));
-        assert((await page.getByTestId("continuation-backoff").innerText()).includes("失败退避"));
-        pass(`${width}_failure_and_backoff`);
+        pass(`${width}_three_independent_facts_no_fake_run_stop`);
       }
       if (name === "human") {
         assert.equal(await page.getByTestId("continuation-run-facts").count(), 0);
@@ -121,23 +184,47 @@ try {
           await page.getByRole("button", { name: "暂停对话接续", exact: true }).count(),
           0,
         );
-        assert.equal(await page.getByTestId("continuation-disable-denial").count(), 0);
         assert(!(await card.innerText()).includes("forbidden"));
         pass(`${width}_denied_action_hidden`);
       }
       if (name === "unknown") {
         assert((await card.innerText()).includes("不会自动重投"));
+        await page.getByRole("button", { name: "只停止此 run", exact: true }).click();
+        const single = JSON.parse(await page.getByTestId("last-command").innerText());
+        assert.equal(single.action, "abort");
+        assert.equal(single.runId, "run_aaaaaaaa");
+        assert((await page.getByTestId("continuation-mode").innerText()).includes("已启用"));
+        pass(`${width}_single_run_abort_preserves_policy`);
         await page.getByRole("button", { name: "人工补发…", exact: true }).click();
-        assert((await card.innerText()).includes("可能造成重复处理"));
-        assert.equal(await page.getByTestId("last-command").innerText(), "");
+        assert((await page.getByRole("dialog").innerText()).includes("可能造成重复处理"));
+        assert.equal(
+          JSON.parse(await page.getByTestId("last-command").innerText()).action,
+          "abort",
+        );
         await page.getByRole("button", { name: "确认补发", exact: true }).click();
-        await page.getByRole("group", { name: "确认对话接续操作" }).waitFor({ state: "hidden" });
+        await page.getByRole("dialog").waitFor({ state: "hidden" });
+        await page.locator('[data-testid="continuation-card"][aria-busy="false"]').waitFor();
+        assert(await page.getByRole("button", { name: "暂停对话接续", exact: true }).isEnabled());
         const command = JSON.parse(await page.getByTestId("last-command").innerText());
         assert.equal(command.action, "reissue");
         assert.equal(command.confirmedUnknown, true);
         pass(`${width}_unknown_requires_explicit_confirmation`);
       }
-      await page.screenshot({ path: resolve(evidence, `${width}-${name}.png`), fullPage: true });
+      await page.screenshot({
+        path: resolve(evidence, `${width}-${name}-continuation.png`),
+        fullPage: true,
+      });
+      await page.evaluate(() => document.documentElement.classList.add("dark"));
+      await noOverflow(`${width}_${name}_dark`);
+      const contrast = await card.evaluate((element) => ({
+        foreground: getComputedStyle(element).color,
+        background: getComputedStyle(document.body).backgroundColor,
+      }));
+      assert.notEqual(contrast.foreground, contrast.background);
+      await page.screenshot({
+        path: resolve(evidence, `${width}-${name}-dark.png`),
+        fullPage: true,
+      });
     }
     await page.getByTestId("fixture-case").selectOption("idle");
     await page.getByRole("button", { name: "暂停对话接续", exact: true }).click();
@@ -147,7 +234,7 @@ try {
     );
     assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "disable");
     pass(`${width}_disable_contract_and_read_response`);
-    await page.getByRole("button", { name: "开启对话接续", exact: true }).click();
+    await page.getByRole("button", { name: "重新启用", exact: true }).click();
     await page.getByText("对话接续已启用", { exact: true }).waitFor();
     assert(
       (await page.getByTestId("continuation-expectation").innerText()).includes(
@@ -172,16 +259,20 @@ try {
     await page.getByLabel("模拟写入冲突").check();
     await page.getByRole("button", { name: "暂停对话接续", exact: true }).click();
     await page.getByRole("alert").waitFor();
-    assert((await page.getByRole("alert").getAttribute("data-error-code"))?.includes("conflict"));
+    assert.equal(await page.getByRole("alert").getAttribute("data-error-code"), "conflict");
     assert.equal(/conflict/.test(await page.getByRole("alert").innerText()), false);
     assert((await page.getByTestId("continuation-mode").innerText()).includes("已启用"));
     pass(`${width}_conflict_does_not_pretend_disabled`);
+    await page.goto(base + "/projects/prj_aaaaaaaa/chats/cnv_aaaaaaaa/checks/expired/wake");
+    await page.getByTestId("diagnostic-round-missing").waitFor();
+    assert.equal(await page.getByTestId("wake-diagnostic").count(), 0);
+    pass(`${width}_unknown_round_has_explicit_state`);
   }
   assert.deepEqual(pageErrors, []);
   pass("pageerror_zero");
   assert.deepEqual(consoleErrors, []);
   pass("console_error_zero");
-  console.log(`P6a pages: ${checks} assertion groups passed. Evidence: ${evidence}`);
+  console.log(`P6b pages: ${checks} assertion groups passed. Evidence: ${evidence}`);
 } finally {
   clearTimeout(timer);
   await browser.close();

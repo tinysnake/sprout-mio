@@ -14,6 +14,7 @@ export const p6aCases = [
   "scheduled",
   "off",
   "failure",
+  "running",
   "unknown",
   "human",
   "denied",
@@ -131,6 +132,91 @@ export function continuationFixture(name: P6aCase = "idle"): ChatContinuationVie
   }
   return view;
 }
+/** Page-level diagnostic scenarios add an actual latest round, unlike the empty Hub fixture. */
+export function diagnosticFixture(name: P6aCase = "idle"): ChatContinuationView {
+  const view = continuationFixture(name);
+  if (!view.latestEvaluation) {
+    view.latestEvaluation = {
+      ...continuationFixture("failure").latestEvaluation!,
+      evaluationId: "evaluation-current",
+      state: "decided",
+      nextAttemptAt: null,
+      errorCode: null,
+      result: {
+        provider: "llm",
+        version: "v1",
+        decision: "do_not_continue",
+        reason: "当前没有需要接续的接收者",
+        reasonCode: "no_recipient",
+        snapshotHash: "a".repeat(64),
+        selectedRecipients: [],
+        probability: null,
+        errorCode: null,
+        recipients: [
+          { recipient: view.owner, decision: "no", reason: "没有待续事项", probability: null },
+        ],
+      },
+    };
+    view.recentRounds = [
+      {
+        ...continuationFixture("failure").recentRounds[0],
+        state: "decided",
+        result: view.latestEvaluation.result,
+        errorCode: null,
+        attempts: [
+          {
+            attempt: 1,
+            startedAt: at,
+            finishedAt: later,
+            outcome: "decided",
+            errorCode: null,
+            usage: null,
+          },
+        ],
+      },
+    ];
+  }
+  if (!view.latestEvaluation) throw new Error("Diagnostic fixture requires a latest evaluation");
+  if (name === "running") {
+    view.latestEvaluation = {
+      ...view.latestEvaluation,
+      state: "claimed",
+      claimedAt: new Date(Date.now() - 2000).toISOString(),
+      finishedAt: null,
+      evaluatedAt: null,
+      result: null,
+    };
+    view.recentRounds[0] = {
+      ...view.recentRounds[0],
+      state: "claimed",
+      evaluatedAt: null,
+      result: null,
+      attempts: [
+        {
+          attempt: 1,
+          startedAt: view.latestEvaluation.claimedAt!,
+          finishedAt: null,
+          outcome: null,
+          errorCode: null,
+          usage: null,
+        },
+      ],
+    };
+  }
+  view.latestEvaluation = { ...view.latestEvaluation, round: 2 };
+  view.recentRounds[0] = { ...view.recentRounds[0], round: 2 };
+  view.recentRounds.push({
+    round: 1,
+    source: "message",
+    state: "canceled",
+    evaluatedAt: at,
+    result: null,
+    errorCode: null,
+    attempts: [],
+  });
+  return view;
+}
+
 export function continuationDenials(name: P6aCase): ContinuationDenials {
   return name === "denied"
     ? {
