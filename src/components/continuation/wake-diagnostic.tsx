@@ -63,15 +63,17 @@ export function WakeDiagnostic({
             </Button>
           )}
         </div>
-        <p>
-          {round.result
-            ? `${decisions[round.result.decision]} · ${round.result.reason}`
-            : running
-              ? "正在等待判定服务回应，尚未形成可靠结论。"
-              : failed
-                ? "判定失败不代表本轮无需接续。"
-                : "本轮尚无判定结论。"}
-        </p>
+        {(round.result || running || (failed && !round.errorCode) || !failed) && (
+          <p>
+            {round.result
+              ? `${decisions[round.result.decision]} · ${round.result.reason}`
+              : running
+                ? "正在等待判定服务回应，尚未形成可靠结论。"
+                : failed
+                  ? "判定失败不代表本轮无需接续。"
+                  : "本轮尚无判定结论。"}
+          </p>
+        )}
         {round.errorCode && (
           <div
             className="diagnostic-error"
