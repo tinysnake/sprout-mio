@@ -486,5 +486,139 @@ evidence.recovery = {
   liveReboundRun: liveRebound.run_id !== recoveryRebound.run_id,
 };
 
+// 人类 owner 的上下文群：owner 提醒与 Agent 接续不得同时成立。
+const automation = await import("../../src/domain/chat-automation");
+const taskDomain = await import("../../src/domain/task");
+function humanGroup() {
+  return chatDomain.createGroupChat(
+    project.id,
+    {
+      projectId: project.id,
+      title: `人类负责-${newId(ID_PREFIXES.chat)}`,
+      wakePolicy: "contextual",
+      members: [
+        { kind: "human", id: ctx.userId },
+        ...agents.map((agent) => ({ kind: "agent" as const, id: agent.id })),
+      ],
+      initialOwner: { kind: "human", id: ctx.userId },
+    },
+    actor,
+  );
+}
+function assignTask(chatId: string) {
+  const created = taskDomain.createTask(
+    { projectId: project.id, title: "人类负责的周期推进" },
+    ctx,
+  ).detail;
+  taskDomain.assignTask(
+    { taskId: created.task.id, expectedRevision: created.task.revision, targetChatId: chatId },
+    ctx,
+  );
+}
+const periodicYes = async (input: any) => ({
+  result: resultFor(
+    input,
+    input.candidates.map((candidate: any) => candidate.recipient.id),
+  ),
+  usage: {
+    inputTokens: 900,
+    outputTokens: 32,
+    inputCharacters: JSON.stringify(input).length,
+    durationMs: 4200,
+    resolvedModel: "fixture/model",
+  },
+});
+function onlyDue(chatId: string, now: Date) {
+  schedule.write("UPDATE chat_schedule SET next_due_at=NULL WHERE chat_id<>?", chatId);
+  schedule.write(
+    "UPDATE wake_evaluation SET state='stale',claim_token=NULL,lease_until=NULL,next_attempt_at=NULL WHERE state IN ('pending','claimed','retry_wait')",
+  );
+  schedule.write("UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?", now.getTime(), chatId);
+}
+async function periodicCheck(chatId: string, now: Date) {
+  onlyDue(chatId, now);
+  schedule.reconcileChatSchedule(chatId, now);
+  schedule.write("UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?", now.getTime(), chatId);
+  const claimed = schedule.claimDueEvaluation({
+    now,
+    requestId: newId(ID_PREFIXES.request),
+    workerId: "fixture",
+  })!;
+  await delivery.evaluateClaim(claimed, periodicYes, {
+    now,
+    requestId: newId(ID_PREFIXES.request),
+    workerId: "fixture",
+  });
+}
+function viewOf(chatId: string) {
+  try {
+    const view = automation.getChatAutomation(project.id, chatId, ctx).view;
+    return { readable: true, remindedHuman: view.remindedHuman, activeRuns: view.activeRunIds };
+  } catch (error) {
+    return {
+      readable: false,
+      remindedHuman: null,
+      activeRuns: [] as never[],
+      error: String(error),
+    };
+  }
+}
+
+// 顺序一：先展示 owner 提醒，随后群消息唤醒 Agent 接续，提醒随接管作废。
+const coexist = humanGroup();
+assignTask(coexist.id);
+await periodicCheck(coexist.id, at);
+const reminder = schedule.one<{ id: string; state: string; recipient_kind: string }>(
+  "SELECT id,state,recipient_kind FROM continuation_delivery WHERE chat_id=?",
+  coexist.id,
+)!;
+const reminderViewBefore = viewOf(coexist.id);
+schedule.write("DELETE FROM chat_message_wake WHERE chat_id<>?", coexist.id);
+send(coexist.id, "这条线需要人接一下");
+await evaluate([alpha.id], at);
+delivery.bindPendingDeliveries(new Date(at.getTime() + 1_000));
+const reminderViewAfter = viewOf(coexist.id);
+evidence.coexistence = {
+  reminderBefore: reminder.state,
+  reminderKind: reminder.recipient_kind,
+  remindedHumanBefore: reminderViewBefore.remindedHuman,
+  viewReadableBefore: reminderViewBefore.readable,
+  reminderAfter: schedule.one<{ state: string }>(
+    "SELECT state FROM continuation_delivery WHERE id=?",
+    reminder.id,
+  )!.state,
+  remindedHumanAfter: reminderViewAfter.remindedHuman,
+  viewReadableAfter: reminderViewAfter.readable,
+  activeRuns: reminderViewAfter.activeRuns.length,
+  boundDeliveries: schedule.one<{ n: number }>(
+    "SELECT count(*) AS n FROM continuation_delivery WHERE chat_id=? AND state='bound'",
+    coexist.id,
+  )!.n,
+};
+
+// 顺序二：Agent 接续已绑定 run 时，周期判定不得再展示 owner 提醒。
+const taken = humanGroup();
+assignTask(taken.id);
+schedule.write("DELETE FROM chat_message_wake WHERE chat_id<>?", taken.id);
+send(taken.id, "先交给 Agent 接续");
+await evaluate([alpha.id], at);
+delivery.bindPendingDeliveries(new Date(at.getTime() + 1_000));
+const takenBound = schedule.one<{ n: number }>(
+  "SELECT count(*) AS n FROM continuation_delivery WHERE chat_id=? AND state='bound' AND run_id IS NOT NULL",
+  taken.id,
+)!.n;
+await periodicCheck(taken.id, new Date(at.getTime() + 2_000));
+const takenView = viewOf(taken.id);
+evidence.takenOver = {
+  boundDeliveries: takenBound,
+  humanDeliveries: schedule.one<{ n: number }>(
+    "SELECT count(*) AS n FROM continuation_delivery WHERE chat_id=? AND recipient_kind='human'",
+    taken.id,
+  )!.n,
+  remindedHuman: takenView.remindedHuman,
+  viewReadable: takenView.readable,
+  activeRuns: takenView.activeRuns.length,
+};
+
 console.log(JSON.stringify(evidence));
 sqlite.close();
