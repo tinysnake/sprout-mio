@@ -779,13 +779,13 @@ if (mode === "restart" && !phase) {
               "no global Agent-count or fan-out cap exists in the product; the measured bound is one in-flight run per instance plus the message body limit enforced at the HTTP boundary (p7-loop-multiround)",
           });
 
-          // F4b: from idle the automation itself opens a run; a human message then fills that run
-          // instead of a second one, and `off` stops new automation runs.
-          const automation = await import("../../src/domain/chat-automation");
+          // F4b: from idle the continuation itself opens a run; a human message then fills that run
+          // instead of a second one, and `off` stops new continuation runs.
+          const continuation = await import("../../src/domain/chat-continuation");
           const schedule = await import("../../src/domain/chat-schedule");
           const delivery = await import("../../src/domain/continuation-delivery");
-          const { createAutomationScheduler } =
-            await import("../../src/server/automation-scheduler");
+          const { createContinuationScheduler } =
+            await import("../../src/server/continuation-scheduler");
           const task = await import("../../src/domain/task");
           const dmAuto = chats.createDirectChat(project.id, profileC.id, ctx).chat;
           schedule.controlFor(dmAuto.id);
@@ -831,7 +831,7 @@ if (mode === "restart" && !phase) {
               resolvedModel: null,
             },
           });
-          const scheduler = createAutomationScheduler({
+          const scheduler = createContinuationScheduler({
             clock: { now: () => clockNow, setTimeout: () => 0, clearTimeout: () => {} },
             evaluateWake: wake,
           });
@@ -872,7 +872,7 @@ if (mode === "restart" && !phase) {
             autoRun.id,
             "F4b the automatic delivery is bound to the run it opened",
           );
-          const humanInAuto = send(dmAuto.id, "P7 human insert while idle automation runs");
+          const humanInAuto = send(dmAuto.id, "P7 human insert while idle continuation runs");
           assert.equal(
             row("SELECT COUNT(*) n FROM agent_run WHERE chat_id=?", dmAuto.id).n,
             runsBeforeAuto + 1,
@@ -911,13 +911,17 @@ if (mode === "restart" && !phase) {
           );
           assert(autoActor.runId === autoRun.id);
           // Human `off` removes the schedule: no further automatic run may appear.
-          const automationView: any = automation.getChatAutomation(project.id, dmAuto.id, ctx);
-          automation.applyChatAutomationCommand(
+          const continuationView: any = continuation.getChatContinuation(
+            project.id,
+            dmAuto.id,
+            ctx,
+          );
+          continuation.applyChatContinuationCommand(
             {
               projectId: project.id,
               chatId: dmAuto.id,
               action: "disable",
-              expectedRevision: automationView.view.revision,
+              expectedRevision: continuationView.view.revision,
               requestId: req(),
               reason: "P7 human pause",
             },
@@ -949,7 +953,7 @@ if (mode === "restart" && !phase) {
           assert.equal(
             row("SELECT COUNT(*) n FROM agent_run WHERE chat_id=?", dmAuto.id).n,
             runsAfterAuto,
-            "F4b automation never races a human pause",
+            "F4b continuation never races a human pause",
           );
           // F4c stop: a settled run cannot be stopped twice; the refusal is an explicit conflict
           // rather than a silent no-op that would look like a successful stop.

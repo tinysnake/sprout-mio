@@ -67,8 +67,8 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 | Machines | Worker 稳定连接；macOS 平台验收；shell、文件、进程操作；长命令持续执行、日志与结果查询、重连接续及请求去重；宿主 MCP 入口与 stdio/streamableHttp MCP server 的工具调用；Project × Machine 内分身独占、跨 run 持有、直接原子交接；人类强制收回 | 挂靠与领取、系统自动资源协调、Windows Worker（二期）；Machine 上安装 harness、自动能力匹配、租约动作自动清理进程、图形桌面工具 |
 | Project profiles | Agent 信息与上下文隔离；Agent 与 Machine 成员名单；受前置清理约束的 Agent 移除；一个主工作目录、最多一个仓库；宿主侧仓库访问；每台 Machine 的目录绑定；Git 配置与约定 | Agent 强制移除与自动善后（二期）；项目级 Agent 权限等级、多仓库配置体系、集中 Git 凭据、专门 Git 操作界面 |
 | Agent profiles | 人设与默认执行配置；profile × Chat 的持续分身；配置下一轮更新；Pi 配置与模型认证继承；简单的运行、待机与出错状态 | 多 harness 同时接入、原有工具自动转向远端、跨分身共享租约、成本统计 |
-| 沟通渠道 | Project 内 DM、Group、Public Channel；小脑/JEV 可选判定；多 Agent 唤醒；群内分工回报；自动接续；运行中接收消息 | 系统自动租约协调（二期）；固定轮数限制、项目外共享对话、Agent 自行变更 Group 治理 |
-| Tasks | Project 所有、Chat 承接；Group owner 或 DM 唯一分身推进；四态；可选立即开始；有 assigned Task 时定期唤醒小脑；checklist、施工记录及末条记录中的完成结果；人类纠正与重开 | 移除成员时自动转移责任或退回任务（二期）；固定 workflow、完整执行状态机、强制 completion claim 和验收阶段 |
+| 沟通渠道 | Project 内 DM、Group、Public Channel；LLM/JEV 可选判定；多 Agent 唤醒；群内分工回报；对话接续；运行中接收消息 | 系统自动租约协调（二期）；固定轮数限制、项目外共享对话、Agent 自行变更 Group 治理 |
+| Tasks | Project 所有、Chat 承接；Group owner 或 DM 唯一分身推进；四态；可选立即开始；有 assigned Task 时定期做 LLM 判定；checklist、施工记录及末条记录中的完成结果；人类纠正与重开 | 移除成员时自动转移责任或退回任务（二期）；固定 workflow、完整执行状态机、强制 completion claim 和验收阶段 |
 | Info Hub | 统一信息聚合与访问模块，供各界面及 Agents 按需获取 Project 内基本信息及关联；Project、Chat、Agent、Machine 多视角；Human 自动刷新；Agent 轮初快照、运行中简短变更提示与主动查询 | 挂靠、自动资源协调及强制移除善后信息（二期）；自动工作摘要、独立发布公告或笔记 |
 
 详细规则见 [Machines](machines-decisions.md)、[Project profiles](project-profiles-decisions.md)、[Agent profiles](agent-profiles-decisions.md)、[沟通渠道](communication-decisions.md)、[Tasks](tasks-decisions.md)、[Info Hub](info-hub-decisions.md)。
@@ -82,7 +82,7 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 - 长命令独立于 agent run 和宿主连接持续执行；提供稳定执行标识、日志、状态及退出结果。重连或交接后当前有权分身可继续查询与管理；超时重试避免重复启动，不能确认的状态明确表示未知。
 - 原有 Pi 工具以只读方式操作宿主；写入文件或执行命令必须经目标 Machine 的租约和 Sprout 远端工具，Sprout 远端工具核验当前 Project、Machine 成员关系和持有租约。默认每个 Project × Machine 独立 checkout，目录不构成操作系统隔离。
 - Task 状态、run 状态、Machine 占用分别表达不同事实；Task 完成或 run 结束不代表释放。分身空闲不等于占用无效，申请者不能自行撤销他人租约。
-- Task 保持 proposed、assigned、finished、canceled 四态。有 assigned Task 的 Chat 定期唤醒小脑，结合任务、对话和运行情况判断是否唤醒负责人；没有 assigned Task 时停止检查。不增加执行状态或启动标志，不强制填写结构化等待记录。分配不等于启动，run 结束不等于 Task 完成；人类暂停与停止控制优先。
+- Task 保持 proposed、assigned、finished、canceled 四态。有 assigned Task 的 Chat 定期做 LLM 判定，结合任务、对话和运行情况判断是否唤醒负责人；没有 assigned Task 时停止检查。不增加执行状态或启动标志，不强制填写结构化等待记录。分配不等于启动，run 结束不等于 Task 完成；人类暂停与停止控制优先。
 - Info Hub 关联已有事实；基本信息在 Project 内可见，不自动开放聊天正文，也不授予对象操作权。二期能力未实现前不展示为已支持或已成功处置。
 
 ## 日常仓库分析与机器现场排查
@@ -96,7 +96,7 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 
 1. 人类准备 profiles、Git 与工作约定，连接 macOS Machine，并加入 Project。
 2. 添加 Agents，建立 Group 并选择 owner；Public Channel 成员跟随 Project。
-3. 分配 Task，可选“立即开始”；owner 通过群聊和 checklist 分工，成员回报，小脑周期检查提供接续。
+3. 分配 Task，可选“立即开始”；owner 通过群聊和 checklist 分工，成员回报，LLM 判定周期提供接续。
 4. 分身自行选择机器并申请租约，根据配置复用目录或 clone；使用 Machine 本地 Git 认证。机器忙时返回占用，由 owner、持有者或 Human 通过对话协调，不启动专门的系统自动资源协调流程。
 5. 通过远端工具执行；长命令可持续并恢复查询，新消息进入当前轮，同一分身串行。
 6. 需要交接时直接将租约原子转给指定、有本项目参与权的分身。尚无接手者则继续持有；文件和进程保持原状，新持有者接续管理。
@@ -146,10 +146,10 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 
 ## 仍需确定的信息
 
-- Jev 中文协作样本效果、阈值与失败处理，以及 Task 周期小脑与普通聊天判定器的关系，见 [Jev 接入建议](jev-wake-routing.md)。
+- Jev 中文协作样本效果、阈值与失败处理，以及 Task 周期 LLM 判定与普通聊天判定器的关系，见 [Jev 接入建议](jev-wake-routing.md)。
 - Worker 请求与分身身份绑定、授权撤销及重连同步；长命令标识、请求去重、日志与结果保留，以及 Worker / Machine 重启恢复范围。
 - 宿主 Pi 接入、仓库数据准备、持久会话、当前轮消息投递，以及 Task、checklist 和施工记录的具体形式。
-- 小脑检查周期、重复唤醒、持续失败与人类控制；Info Hub 快照和相关变更提示的合并与投递。
+- LLM 判定周期、重复唤醒、持续失败与人类控制；Info Hub 快照和相关变更提示的合并与投递。
 - 一期直接交接的授权切换与不确定结果处理；二期挂靠超时、协调尝试与自动善后细节在对应阶段设计。
 
 技术设计服务当前分期；只把影响产品行为的分歧带回讨论，常规实现选择由开发过程解决。

@@ -83,7 +83,7 @@ const expectedToolNames = [
   "sprout_status",
 ].sort();
 // machineId 是 Machine 作用域的标志，不是「属于 remoteToolInputSchemas」的标志：
-// sprout_chat_automation_get 在这张表里，但它按 Project 取，不需要 Machine。
+// sprout_chat_continuation_get 在这张表里，但它按 Project 取，不需要 Machine。
 const requiresMachine = (schema) => {
   const shape =
     schema?.shape ?? Object.assign({}, ...(schema?.options ?? []).map((option) => option.shape));

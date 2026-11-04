@@ -27,14 +27,14 @@ P0 已用最小实验验证技术栈与高风险协议并收敛基础契约，�
 | P3 | 跑通真实 Pi 对话与宿主仓库分析 | P2 | 已完成（第 2 条部分交付，结论见 [p3/summary.md](p3/summary.md)） |
 | P4 | 跑通 macOS Machine 与租约执行闭环 | P2；整体验收依赖 P3 | P4a 技术验收通过、待 Human 体验确认，其余待开始 |
 | P5 | 完成 Group、Public Channel 与 Tasks | P3 | 待开始 |
-| P6a | 自动接续与人类控制 | P4、P5 全部集成单元技术验收通过 | 技术验收通过，待 Human 体验确认 |
+| P6a | 对话接续与人类控制 | P4、P5 全部集成单元技术验收通过 | 技术验收通过，待 Human 体验确认 |
 | P6b | Info Hub 全部一期视角 | P6a 技术验收通过 | 自检门禁通过，待独立技术验收与 Human 体验确认（见 [p6b/summary.md](p6b/summary.md)） |
 | P6c | 成员治理、移除与重新加入 | P6a、P6b 技术验收通过 | 技术项已合入 `integration/p6c`，第二轮独立技术验收判可以合入 main，待 Human 体验确认（见 [p6c/summary.md](p6c/summary.md)） |
 | P7 | 完成手机、PWA、恢复与一期整体验收 | P6a、P6b、P6c 全部技术验收通过 | 待开始 |
 | R1 | 验证项目及软件 MCP 接入 | P4 的协议与授权稳定后 | 已完成：七条独立技术验收第七轮通过，并由 Human 确认纳入一期（结论见 [r1/summary.md](r1/summary.md)） |
 | P8 | 实施二期能力 | P7 | 后续细化 |
 
-默认按 P0 至 P7 顺序推进。P6 按 a 自动接续、b Info Hub、c 成员治理三个单元交付；技术依赖与 Human 确认分别由总计划记录。P4 与 P5 在共同契约稳定后可以由不同实现者并行。Info Hub、响应式 UI 和错误呈现随对象逐步接入，P6a、P6b、P6c 与 P7 负责补齐和整体验收，不是首次开始这些工作。
+默认按 P0 至 P7 顺序推进。P6 按 a 对话接续、b Info Hub、c 成员治理三个单元交付；技术依赖与 Human 确认分别由总计划记录。P4 与 P5 在共同契约稳定后可以由不同实现者并行。Info Hub、响应式 UI 和错误呈现随对象逐步接入，P6a、P6b、P6c 与 P7 负责补齐和整体验收，不是首次开始这些工作。
 
 ## P0 验证关键选择并确定基础契约
 
@@ -158,21 +158,21 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 技术出口已在 `c0e9c74` 由第二轮独立验收确认，契约、门禁与证据边界见 [P5b 章节结论](p5b/summary.md)；Agent 显式 @ 接力、DM 生命周期和 Human owner 通知路径均有技术证据。公共频道变更 owner 尚未落地；Human 亲自体验仍待 I-P5b 第四条确认，不随本节勾选。
 
-## P6a 完成自动接续与人类控制
+## P6a 完成对话接续与人类控制
 
 按总计划 I-P6a 分派；P6 由原暂按整章交付拆为 a/b/c，不减少原范围。契约与中文样本采用结论随本章交付归档，页面形状按项目约定确认。
 
-- [x] 用中文协作样本验证聊天唤醒判定，确定 Jev 的采用方式和失败回退。证据 [判定准确率只报不判](p6a/summary.md#判定准确率只报不判)：小脑 5 次真实回放 8/8 至 7/8、JEV 校准 12/15 与留出 9/15 且概率反序、产品默认小脑不部署 JEV、不自动回退；基线 `bde6383`，重跑 `bash scripts/verify/p6a-live-routing.sh`（人工门禁，需真实凭据与 `SPROUT_VERIFY_PI_MODEL`）。
-- [x] 对有 assigned Task 的 Chat 周期检查小脑；没有 assigned Task 时停止检查。证据 [功能线证据](p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`。
+- [x] 用中文协作样本验证聊天唤醒判定，确定 Jev 的采用方式和失败回退。证据 [判定准确率只报不判](p6a/summary.md#判定准确率只报不判)：LLM 判定 5 次真实回放 8/8 至 7/8、JEV 校准 12/15 与留出 9/15 且概率反序、产品默认 LLM 判定、不部署 JEV、不自动回退；基线 `bde6383`，重跑 `bash scripts/verify/p6a-live-routing.sh`（人工门禁，需真实凭据与 `SPROUT_VERIFY_PI_MODEL`）。
+- [x] 对有 assigned Task 的 Chat 周期做 LLM 判定；没有 assigned Task 时停止检查。证据 [功能线证据](p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`。
 - [x] 实现持久唤醒去重、运行中合并、重启恢复与失败退避。人类暂停和停止优先，自动检查不能立即重新启动已暂停的工作。证据 [功能线证据](p6a/summary.md#功能线证据)与[控制面收敛到三个动作](p6a/summary.md#控制面收敛到三个动作)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`、`bash scripts/verify/bf-p6a-lifecycle.sh`。
 
-上述“小脑”描述按已冻结的 Project 所选小脑/JEV 判定路径实施；同一次判定只走一路，不自动级联回退。Task 保留四态，调度、控制和提醒使用独立事实；Human owner 只提醒，不虚构 Agent run。
+上述“LLM 判定”描述按已冻结的 Project 所选 LLM/JEV 判定路径实施；同一次判定只走一路，不自动级联回退。Task 保留四态，调度、控制和提醒使用独立事实；Human owner 只提醒，不虚构 Agent run。
 
 技术出口已在 `bde6383` 由第二轮独立验收确认，契约、门禁与证据边界见 [P6a 章节结论](p6a/summary.md)；Human 亲自体验仍待 I-P6a 第四条确认，不随本节勾选。
 
 ## P6b 完成 Info Hub 全部一期视角
 
-按总计划 I-P6b 分派，依赖 P6a 技术验收通过，扩展其最小 automation 摘要。
+按总计划 I-P6b 分派，依赖 P6a 技术验收通过，扩展其最小 continuation 摘要。
 
 - [x] 完成 Info Hub 的 Project、Chat、Agent 与 Machine 全部一期视角。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)与`p6b/contracts.md`（P6b 契约），基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-info.sh`；四视角门禁断言见 `p6b/summary.md`（P6b 章节结论）。
 - [x] 完成轮初快照、运行中合并的简短变更提示与 Agent 主动查询。普通变化不单独唤醒空闲分身。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)与[P6b 集成线与技术验收证据](p6b/summary.md#集成线与技术验收证据)：快照按 runId 不可改写、提示合并与 5 秒最小间隔、普通变化零唤醒（invariant 3）；重跑 `bash scripts/verify/bf-p6b-lifecycle.sh`。
@@ -190,7 +190,7 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 技术自检已在 `480a2f0` 由 `p6c-member-removal`、`p6c-participation-revocation`、`bf-p6c-lifecycle` 与 `p6c-member-governance-ui` 实测通过，第二轮独立技术验收判「可以合入 main」；契约、证据边界与已知限制见 [P6c 章节结论](p6c/summary.md)。本节原本只列了前两条交付项，第三条按 I-P6c 的「证据」行（权限与参与矩阵、撤权反证）补齐，不新增产品范围。
 
-P6a 出口是协作可自动接续且人类控制可靠；P6b 出口是 Info Hub 展示与源对象一致，不自行改变生命周期；P6c 出口是移除/重加按当前授权生效。原 P6 整体出口在三节全部交付后核对，不因 a 完成而记作整章完成。
+P6a 出口是协作可对话接续且人类控制可靠；P6b 出口是 Info Hub 展示与源对象一致，不自行改变生命周期；P6c 出口是移除/重加按当前授权生效。原 P6 整体出口在三节全部交付后核对，不因 a 完成而记作整章完成。
 
 ## P7 验收完整一期与客户端体验
 
@@ -253,7 +253,7 @@ Human 于 `2026-10-25T03:44Z` 授权以无需大型软件的 MCP 验证透传能
 | 跨 run 持租、直接交接、强制收回 | P4 | P7 |
 | Machine 移除及资源撤销通知 | P4 | P7 |
 | Task 四态、checklist、施工记录与重开 | P5b | P7 |
-| 小脑周期、自动接续、人类控制 | P6a | P7 |
+| LLM 判定周期、对话接续、人类控制 | P6a | P7 |
 | Info Hub 多视角、快照和变更提示 | P2 起逐步接入 | P6b、P7 |
 | Agent 移除前置检查、DM 归档和重新加入 | P6c | P7 |
 | 手机、在线 PWA、断线与旧数据 | 各阶段随页面接入 | P7 |
@@ -278,7 +278,7 @@ Human 于 `2026-10-25T03:44Z` 授权以无需大型软件的 MCP 验证透传能
 | 计划基线 | 技术栈方向、源码与官方资料调查、P0 至 P8 和 R1 顺序 | 文档范围及链接检查，不是功能或技术兼容性验收 |
 | P0 | 7 个实验 unit 与结论文档：版本与构建、Start SPA 与 Better Auth 与 Drizzle 与 shadcn、常驻 runtime 共进程、真实 Pi 接入、Worker 协议语义、四种故障恢复承诺、身份事务授权契约。实验提交范围 `21063f6..b1ba085`，本记录随 P0 收尾提交写入 | 本机安装、构建与运行验证（macOS arm64，Node v26.11.1，真实 SQLite 文件）；真实 Pi 1.3.0 验证；本地协议实验（真实进程 kill 与重连、真实并发 SQLite 连接）。未覆盖：真实跨机与网络分区、真实 macOS Worker 端到端，留到 P4 |
 | P1 | 工程骨架、Worker 与 Pi extension 入口、检查测试构建与 CI、SQLite 迁移与 Human 登录、runtime 生命周期与基础诊断、Project 创建查询与功能模板。a～e 的实现与合入范围 `7e4f039..c3af8ad`，本记录随 P1 收尾提交写入。逐项证据见 [p1/summary.md](p1/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0 下的干净工作目录安装、生产构建与真实进程启动、真实 SQLite 迁移与事务、真实 Pi 状态工具、真实 Chromium 登录和 Project 创建与重新打开；GitHub Actions ubuntu x64 的检查测试构建迁移与生产 smoke。收尾验证文档证据与链接、`pnpm check`。未覆盖：冷 pnpm store、dev 信号优雅关闭、多进程与恢复中途崩溃、完整 Pi 会话业务；真实跨机与真实 macOS Worker 端到端仍属 P4。完整边界见 summary |
-| P2 | 已完成 Project 配置、全局 Agent profile 与成员、持久 DM 与分身、消息、创建者授权、稳定 URL 和 Info Hub 两个已有对象视角。实现基线 `28d4fb2`，P2 最终实现、验收与合入范围 `28d4fb2..db185f8`。原 a～e 的实现与合入范围 `28d4fb2..d8f4e2b`。PR #10 head `cfa5d4d` merge `6836b06`，PR #11 head `fdad1ca` merge `53c9cb7`，PR #12 head `bf7ffa4` merge `2b814eb`，PR #13 head `dc11b8a` merge `da4aebb`，PR #14 head `872e62d` merge `d8f4e2b`。逐项证据见 [p2/summary.md](p2/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0，真实 SQLite、真实 Chromium 七个 URL 的直接进入、刷新、前进后退，真实生产进程 SIGTERM 与重启后身份、消息、三项配置及人设字面量相等，两用户隔离覆盖六页与 17 个 RPC 且 B 正常对照可用。main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/actions/runs/39062616946) completed、success，覆盖检查测试构建迁移与生产 smoke，不含 Chromium。收尾复跑 `bash scripts/verify/l-docs.sh`、`bash scripts/verify.sh` 与 `pnpm check`。真实 Pi、run、宿主仓库、Machine、租约、Task、Group、Public Channel、自动接续、手机、PWA 与并发等未验证项见 summary |
+| P2 | 已完成 Project 配置、全局 Agent profile 与成员、持久 DM 与分身、消息、创建者授权、稳定 URL 和 Info Hub 两个已有对象视角。实现基线 `28d4fb2`，P2 最终实现、验收与合入范围 `28d4fb2..db185f8`。原 a～e 的实现与合入范围 `28d4fb2..d8f4e2b`。PR #10 head `cfa5d4d` merge `6836b06`，PR #11 head `fdad1ca` merge `53c9cb7`，PR #12 head `bf7ffa4` merge `2b814eb`，PR #13 head `dc11b8a` merge `da4aebb`，PR #14 head `872e62d` merge `d8f4e2b`。逐项证据见 [p2/summary.md](p2/summary.md) | macOS arm64、Node v26.11.1、pnpm 10.33.0，真实 SQLite、真实 Chromium 七个 URL 的直接进入、刷新、前进后退，真实生产进程 SIGTERM 与重启后身份、消息、三项配置及人设字面量相等，两用户隔离覆盖六页与 17 个 RPC 且 B 正常对照可用。main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/actions/runs/39062616946) completed、success，覆盖检查测试构建迁移与生产 smoke，不含 Chromium。收尾复跑 `bash scripts/verify/l-docs.sh`、`bash scripts/verify.sh` 与 `pnpm check`。真实 Pi、run、宿主仓库、Machine、租约、Task、Group、Public Channel、对话接续、手机、PWA 与并发等未验证项见 summary |
 | P3 | 已完成真实 Pi session、轮次投递与停止、每轮快照、宿主仓库入口与 provenance、Info Hub run 事实与轮初上下文查询；第 2 条部分交付。实现基线 `db185f8`，a～d 的实现与合入范围 `db185f8..e5e2b4e`。PR #19 head `dcd1ddd` merge `34b078e`，PR #20 head `32eac6c` merge `a73770c`，PR #21 head `e51fe69` merge `0d51b1f`，PR #22 head `eb4d141` merge `55da85f`。e 为只读验收，无 PR；f 为收尾，PR #23 head `aa41061` merge `e5e2b4e`（文档落地与 `l-docs` 扩展）。逐项证据见 [p3/summary.md](p3/summary.md) | glm 家族在 P3 无既有产出的阶段验收，从 plan 推导命题，独立复跑真实模型、真实 SQLite、真实 Chromium、Git 与直接 SQL 反证。六条成立，第 2 条未完整交付，保持未勾；宿主配置、认证与 Sprout extension 已交付，codemode、tool_search、MCP 与用户 skills 未进分身工具面。验收基线 `55da85f`，完整边界与后续归属见 summary |
 
 当前下一任务是 P4 的 P4c，等 Human 亲自体验后确认。P4b 已收尾：功能、UI 与集成均已合入 main，独立技术验收第五轮在 `809c384` 判定 PASS，Human 已在 `c6653f4` 确认通过，结论见 [p4b/summary.md](p4b/summary.md)。P4c 的功能、UI 与集成同样已合入 main 并在 `d028aa1` 通过第五轮独立技术验收，结论、验证命令与已知限制见 [p4c/summary.md](p4c/summary.md)；Human 体验确认待 Human 给出，P4d 不由本专项计划自行启动。P3 未验证项与第 2 条部分交付的后续决定见 [p3/summary.md](p3/summary.md#未验证项汇总)。P0 未验证的真实跨机与真实 macOS Worker 端到端留到 P4 对应单元记录。

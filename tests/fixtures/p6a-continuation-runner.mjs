@@ -43,7 +43,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       });
     } else if (command.type === "prompt" && command.text === "等待运行中接续") {
       emit({ type: "input_delivered", id: command.id, messageId: command.messageId });
-      await call("chat_automation_get", {});
+      await call("chat_continuation_get", {});
     } else if (command.type === "prompt" || command.type === "steer") {
       const envelope = JSON.parse(command.text);
       if (

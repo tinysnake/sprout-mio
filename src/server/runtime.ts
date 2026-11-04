@@ -1,4 +1,4 @@
-import type { AutomationScheduler } from "./automation-scheduler";
+import type { ContinuationScheduler } from "./continuation-scheduler";
 import type { WakeRuntimeOptions } from "./wake-runtime";
 import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
@@ -40,7 +40,7 @@ type RuntimeState = {
   connection: DatabaseConnection | null;
   managed: ManagedRuntime.ManagedRuntime<RuntimeDatabase | PiHost, never> | null;
   piHost: PiHostShape | null;
-  automation: AutomationScheduler | null;
+  continuation: ContinuationScheduler | null;
   piHostStop: Promise<void> | null;
   ready: Promise<void>;
   resolveReady: () => void;
@@ -69,7 +69,7 @@ function createState(): RuntimeState {
     connection: null,
     managed: null,
     piHost: null,
-    automation: null,
+    continuation: null,
     piHostStop: null,
     ready,
     resolveReady,
@@ -242,16 +242,16 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     sqlite.prepare("UPDATE runtime_boot SET phase = 'ready' WHERE id = ?").run(bootId);
     transition("ready");
     if (config.SPROUT_PI_ENABLED) await state.managed.runPromise(startPiHost);
-    if (config.SPROUT_AUTOMATION_ENABLED) {
-      const { createAutomationScheduler, installWakeEvaluator } =
-        await import("./automation-scheduler");
+    if (config.SPROUT_CONTINUATION_ENABLED) {
+      const { createContinuationScheduler, installWakeEvaluator } =
+        await import("./continuation-scheduler");
       const { createWakeEvaluator } = await import("./wake-runtime");
       const clock = () => performance.now();
       installWakeEvaluator(createWakeEvaluator({ clock, ...wakeOptions }));
-      state.automation = createAutomationScheduler({ abort: signalRunAbort });
-      state.automation.start();
+      state.continuation = createContinuationScheduler({ abort: signalRunAbort });
+      state.continuation.start();
     } else {
-      console.log("[runtime] automation disabled by SPROUT_AUTOMATION_ENABLED=false");
+      console.log("[runtime] continuation disabled by SPROUT_CONTINUATION_ENABLED=false");
     }
     recordDiagnostic({
       level: "info",
@@ -262,7 +262,7 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     });
     state.resolveReady();
   } catch (error) {
-    state.automation?.stop();
+    state.continuation?.stop();
     failPhase(error);
     state.rejectReady(error);
     await state.managed?.dispose();
@@ -291,7 +291,7 @@ export function shutdownRuntime(reason: string): Promise<void> {
 }
 
 function stopPiHostOnce(): Promise<void> {
-  state.automation?.stop();
+  state.continuation?.stop();
   return (state.piHostStop ??= state.managed?.cachedContext
     ? state.managed.runPromise(stopPiHost)
     : Promise.resolve());

@@ -1,6 +1,6 @@
 # P7 契约：客户端体验、恢复与诊断
 
-本章不改动 P1–P6 的领域契约（Task、租约、自动接续、Info Hub、成员治理的返回形状与错误码都在原处）。它新增的是**浏览器侧与运维侧**的边界：哪些目标允许在登录后恢复、哪些读可以离线、动作结果怎么分三态、判定器不可用时页面说什么、Management 读什么、备份恢复的边界、Pi 资源的继承边界。判据与证据见 [P7 章节结论](summary.md)。
+本章不改动 P1–P6 的领域契约（Task、租约、对话接续、Info Hub、成员治理的返回形状与错误码都在原处）。它新增的是**浏览器侧与运维侧**的边界：哪些目标允许在登录后恢复、哪些读可以离线、动作结果怎么分三态、判定器不可用时页面说什么、Management 读什么、备份恢复的边界、Pi 资源的继承边界。判据与证据见 [P7 章节结论](summary.md)。
 
 ## 登录后目标恢复
 
@@ -33,13 +33,13 @@
 - `unknown` 是独立状态，不是 `failure` 的别名：请求发出但结果未确认（超时、断线、连接中断）时显示「未知」，页面不补成成功，也不补成失败。
 - 状态与细节来自服务端结果或网络事实，组件不推断。
 
-## 自动接续在真实页面上的接线
+## 对话接续在真实页面上的接线
 
-P6a 交付的 `ChatAutomationData`（`src/server/functions/chat-automation.ts` 的 `getChatAutomationFn` / `controlChatAutomationFn`）此前没有页面调用点，真实 Chat 页永远渲染占位。P7 把它接进真实页面：
+P6a 交付的 `ChatContinuationData`（`src/server/functions/chat-continuation.ts` 的 `getChatContinuationFn` / `controlChatContinuationFn`）此前没有页面调用点，真实 Chat 页永远渲染占位。P7 把它接进真实页面：
 
-- Chat 详情 loader 把 `getChatAutomationFn({ data: { projectId, chatId } })` 并进 `Promise.all`，结果放进 `ChatDetailLoaderData.ok` 的 `automation` 字段（`src/components/chat/chat-loader.ts`）。
-- `src/routes/_authed/projects.$projectId.chats.tsx` 在 `selected.automation.ok` 时把 `{ view, denials }` 传给面板，并用 `controlChatAutomationFn` 实现 `onAutomationCommand`；失败按 `{ code, reason, requestId }` 回，成功 `router.invalidate()`。
-- 面板不再打印内部错误码。`src/components/automation/automation-card.tsx` 的 `failureText()` 把 `provider_timeout`、`provider_unavailable`、`provider_auth_failed`、`provider_invalid_response`、`provider_low_certainty`、`context_budget_exceeded`、`context_stale`、`delivery_unavailable`、`delivery_unknown`、`run_repeated_failure`、`internal_failure` 映射成人话，兜底「检查未能完成」；码保留在 `data-error-code` 上供门禁断言，不进人类视野。
+- Chat 详情 loader 把 `getChatContinuationFn({ data: { projectId, chatId } })` 并进 `Promise.all`，结果放进 `ChatDetailLoaderData.ok` 的 `continuation` 字段（`src/components/chat/chat-loader.ts`）。
+- `src/routes/_authed/projects.$projectId.chats.tsx` 在 `selected.continuation.ok` 时把 `{ view, denials }` 传给面板，并用 `controlChatContinuationFn` 实现 `onContinuationCommand`；失败按 `{ code, reason, requestId }` 回，成功 `router.invalidate()`。
+- 面板不再打印内部错误码。`src/components/continuation/continuation-card.tsx` 的 `failureText()` 把 `provider_timeout`、`provider_unavailable`、`provider_auth_failed`、`provider_invalid_response`、`provider_low_certainty`、`context_budget_exceeded`、`context_stale`、`delivery_unavailable`、`delivery_unknown`、`run_repeated_failure`、`internal_failure` 映射成人话，兜底「检查未能完成」；码保留在 `data-error-code` 上供门禁断言，不进人类视野。
 - 命令失败的提示只显示 `reason`，不再拼 `(conflict) · req_…`；`data-error-code` 承载码。
 
 ## 判定器可用性
@@ -48,7 +48,7 @@ P6a 交付的 `ChatAutomationData`（`src/server/functions/chat-automation.ts` �
 
 - `src/server/wake-config.ts` 的 `wakeProviderAvailabilityFromEnv(): WakeProviderAvailability[]` 按 env 算出每个 provider 的 `configured` / `available` / `unavailableReason`，取值 `missing_model`（模型或阈值版本缺失）、`missing_credentials`（JEV 有模型无 `JEV_API_KEY`）、`provider_unavailable`（部分配置存在但不完整）。
 - `getProjectBoundary` 与 `updateProjectWakePolicyBoundary` 都返回 `wakeProviderAvailability`；写边界的失败文案是「这台部署没有配置判定模型与阈值版本，判定器未启用。」/「这台部署没有 JEV 凭据，判定器未启用。」，不再是 `wake_provider_unavailable` 内部码。
-- `src/components/automation/wake-provider-select.tsx` 三态：没有配置项时只显示「这台部署没有提供判定器配置，暂不能更改。」（`wake-provider-unwired`）；全部不可用时逐条列人话原因（`wake-provider-unavailable`），不渲染 select 与保存；有可用项才渲染下拉与保存。当前配置行只说「当前：<判定器> · <模型>」或「当前使用部署默认判定器；保存一次即可固定下来。」。
+- `src/components/continuation/wake-provider-select.tsx` 三态：没有配置项时只显示「这台部署没有提供判定器配置，暂不能更改。」（`wake-provider-unwired`）；全部不可用时逐条列人话原因（`wake-provider-unavailable`），不渲染 select 与保存；有可用项才渲染下拉与保存。当前配置行只说「当前：<判定器> · <模型>」或「当前使用部署默认判定器；保存一次即可固定下来。」。
 - 保存带 `expectedConfigRevision`，并发修改按既有 CAS 语义失败。
 
 ## Management 一期
@@ -82,6 +82,6 @@ P6a 交付的 `ChatAutomationData`（`src/server/functions/chat-automation.ts` �
 
 P7 的 Human 评审推翻了三条此前的页面决定，改动落在对应组件上，判据在本章门禁里：
 
-1. **服务端拒绝的动作不渲染。** `src/components/tasks/task-detail.tsx` 的 `TaskActionControl` 在 `detail.capabilities.allowedActions` 不含该动作时返回 `null`，`src/components/automation/automation-card.tsx` 的 `actionButton` 在 `denial(action)` 存在时返回 `null`。被拒动作不再显示为置灰按钮，也不再逐字打印 `denial.reason` / `denial.code`。服务端仍返回完整 denial，能力判断没有放宽。
+1. **服务端拒绝的动作不渲染。** `src/components/tasks/task-detail.tsx` 的 `TaskActionControl` 在 `detail.capabilities.allowedActions` 不含该动作时返回 `null`，`src/components/continuation/continuation-card.tsx` 的 `actionButton` 在 `denial(action)` 存在时返回 `null`。被拒动作不再显示为置灰按钮，也不再逐字打印 `denial.reason` / `denial.code`。服务端仍返回完整 denial，能力判断没有放宽。
 2. **Task 的目标与要求、清单文字都在原地编辑。** 元数据区右上角是铅笔按钮（`data-testid="task-metadata-edit"`，与标题同一行），点开在原位置换成表单；清单行最左是铅笔（`task-checklist-edit-<id>`），移除是 `x`（`task-checklist-remove-<id>`），两者都就地换成「确认」「取消」，不弹窗、不在下方另起一行。
 3. **轮询状态行只在有事说时出现，且固定在 Chat 列表底部。** `src/components/info-hub/info-hub-live.tsx` 的 `InfoHubPollingStatus` 在 `current`/`refreshing`/`hidden` 时返回 `null`，异常态只说一句人话；内部 state 与 `asOf` 只进 `data-state`/`data-as-of`。`src/routes/_authed/projects.$projectId.chats.tsx` 把它放在列表列底部的 `chat-list-polling-footer` 中，该行常驻 `h-7`，只在有提示时显示上边框，网络波动不会推挤列表内容。`not_found`/`unauthorized`/`forbidden` 的提示与页面自己的错误态并列渲染，不替换整页内容。

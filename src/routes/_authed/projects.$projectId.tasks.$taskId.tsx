@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AutomationPanel } from "../../components/automation/automation-panel";
+import { ContinuationPanel } from "../../components/continuation/continuation-panel";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { PageBackLink } from "../../components/layout/page-back";
@@ -165,7 +165,7 @@ function ProjectTaskDetailPage() {
           chatFacts={
             loader.detail.data.chat && (
               <div className="space-y-6">
-                <AutomationPanel />
+                <ContinuationPanel />
                 <div data-testid="task-chat-runs" className="space-y-3">
                   <h3 className="text-xs font-medium">Chat 活动 run</h3>
                   {loader.chatInfo?.ok ? (

@@ -18,7 +18,7 @@
 | 数据库 | `$SPROUT_RUNTIME_ROOT/prod/data/sprout.sqlite` | `drill/data/sprout.sqlite`（每次从 prod 备份刷新） | `dev/data/sprout.sqlite`（按需刷新） |
 | Pi 目录 | `.../prod/pi` | `.../drill/pi` | `.../dev/pi` |
 | 仓库目录 | `.../prod/repos` | `.../drill/repos` | `.../dev/repos` |
-| 自动化 | 开 | 关（`SPROUT_AUTOMATION_ENABLED=false`） | 关 |
+| 对话接续 | 开 | 关（`SPROUT_CONTINUATION_ENABLED=false`） | 关 |
 | 端口 | 3220 | 3221 起 | 3000 |
 
 运行根目录可以在任意位置，默认 `~/sprout-runtime`。脚本按这个顺序解析：
@@ -36,7 +36,7 @@ bash scripts/deploy/init-instance.sh prod
 
 prod 的代码 checkout（`$SPROUT_RUNTIME_ROOT/prod/app`）从远端 clone，默认取开发 checkout 的 `origin`，可用 `SPROUT_DEPLOY_REMOTE` 指定。部署脚本不使用开发 checkout 的路径，所以 prod 可以整体搬走，只要重跑一次 `init-instance.sh` 与 `promote.sh`。
 
-`SPROUT_AUTOMATION_ENABLED` 是实例级开关，默认 `true`，只接受 `true` 或 `false`。关掉后运行时不装判定器、不启动调度器、判定边界直接拒绝，`/api/health` 的 `automationEnabled` 报告实际取值。`deploy-automation-off` 门禁在两种取值下各跑一遍并比对证据：关闭时到期排期不被认领、不产生判定与投递、两个模型边界调用数为 0；打开时同一轮判定与投递各发生一次，付费模型调用数为 0。
+`SPROUT_CONTINUATION_ENABLED` 是实例级开关，默认 `true`，只接受 `true` 或 `false`。关掉后运行时不装判定器、不启动调度器、判定边界直接拒绝，`/api/health` 的 `continuationEnabled` 报告实际取值。`deploy-continuation-off` 门禁在两种取值下各跑一遍并比对证据：关闭时到期排期不被认领、不产生判定与投递、两个模型边界调用数为 0；打开时同一轮判定与投递各发生一次，付费模型调用数为 0。
 
 ```text
 ~/sprout-runtime/
@@ -132,7 +132,7 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/drill.sh <sha>` | 在演练实例上部署某个提交并做健康检查 |
 | `scripts/deploy/promote.sh <tag>` | 把某个 tag 部署到 prod，失败自动回滚 |
 | `scripts/deploy/rollback.sh [备份文件]` | 恢复最近一次（或指定）备份并切回上一个 tag |
-| `scripts/deploy/verify.sh <instance>` | 校验实例后置状态，含 `/api/health` 里的 `automationEnabled` |
+| `scripts/deploy/verify.sh <instance>` | 校验实例后置状态，含 `/api/health` 里的 `continuationEnabled` |
 | `scripts/deploy/selftest.sh` | 在临时运行根目录里把上面整条链路跑一遍 |
 | `scripts/deploy/rehearse.sh` | 用本地裸远端演练首次部署、升级、回滚三条路径 |
 | `scripts/deploy/reset-password.sh <实例> <邮箱>` | 直接改某个账号的密码，不依赖发信服务 |
@@ -269,12 +269,12 @@ PWA 需要安全上下文，所以 prod 前面要有 HTTPS。用 Caddy 或 `tail
 ## 未确认项
 
 - 远端 Worker 的凭据存储形态，见上文。
-- `SPROUT_AUTOMATION_ENABLED=false` 时是否还有未覆盖的自动接续入口。`deploy-automation-off` 门禁覆盖运行时接线、调度器、投递路径与两个判定器边界。
+- `SPROUT_CONTINUATION_ENABLED=false` 时是否还有未覆盖的对话接续入口。`deploy-continuation-off` 门禁覆盖运行时接线、调度器、投递路径与两个判定器边界。
 
 ## 验证
 
 ```bash
-bash scripts/verify/deploy-automation-off.sh  # 实例开关的关闭与打开对照
+bash scripts/verify/deploy-continuation-off.sh  # 实例开关的关闭与打开对照
 bash scripts/verify/deploy-leaks.sh     # 隐私数据不进仓库
 bash scripts/verify/worker-artifact.sh  # 源码安装构建后运行期只要 node
 bash scripts/deploy/selftest.sh         # 脚本链路自检

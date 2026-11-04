@@ -1,6 +1,6 @@
 # P7 章节结论：客户端体验、恢复与诊断
 
-P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要路径走完，并且看得见状态、看不见内部术语」这一层：登录后回到原来的目标、详情深链与刷新、断线与旧数据反馈、只读离线、Management 的服务与数据事实、备份恢复与响应基线、Pi 资源继承的明确边界，以及在真实页面上跑通的自动接续控制。判据、返回形状与边界见 [P7 契约](contracts.md)。
+P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要路径走完，并且看得见状态、看不见内部术语」这一层：登录后回到原来的目标、详情深链与刷新、断线与旧数据反馈、只读离线、Management 的服务与数据事实、备份恢复与响应基线、Pi 资源继承的明确边界，以及在真实页面上跑通的对话接续控制。判据、返回形状与边界见 [P7 契约](contracts.md)。
 
 技术交付基线：**`fef2612`**（合入 main 的提交；`b828755` 之后只有文档、门禁与断言收紧）。
 
@@ -16,7 +16,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 1. **登录后回到原目标。** `safeReturnTarget` 只放行同源应用内路径，`/login` 保持裸路径；`src/routes/_authed.tsx` 根路径不带 `next`，`src/routes/login.tsx` 结果不是 `/` 才写 `next`。深链、刷新、前进后退在 `p7-client-navigation` 里逐条走。
 2. **只读离线。** `public/sw.js` 只接管 `OFFLINE_READ_FUNCTIONS` 白名单里的调用，其余请求（含全部写入）直接放行；缓存键是「URL + 请求体」的 SHA-256；命中缓存带 `x-sprout-offline: 1`，页面据此把事实标成未确认。产品不排队离线写。
 3. **动作结果三态。** `ActionOutcome = processing | success | failure | unknown`，`unknown` 是独立状态，超时或断线不补成成功也不补成失败。
-4. **自动接续真的在 Chat 页上。** Chat 详情 loader 取 `getChatAutomationFn`，页面把 `{ view, denials }` 交给面板，命令走 `controlChatAutomationFn`；面板把 11 个内部错误码映射成人话，码只留在 `data-error-code` 上。
+4. **对话接续真的在 Chat 页上。** Chat 详情 loader 取 `getChatContinuationFn`，页面把 `{ view, denials }` 交给面板，命令走 `controlChatContinuationFn`；面板把 11 个内部错误码映射成人话，码只留在 `data-error-code` 上。
 5. **判定器不可用说现状。** `wakeProviderAvailabilityFromEnv()` 按部署配置算出每个 provider 的 `configured`/`available`/`unavailableReason`；页面三态渲染（无配置、全不可用、可用），保存带 `expectedConfigRevision`。
 6. **Management 一期。** 「服务与数据」读 `/api/diagnostics?summary=1` 的 `queryManagementSummary`（迁移版本、资源事件与续行积压、MCP 帧水位），「账号与外观」给身份、主题与登出；不含用量统计与数据库写入。
 7. **备份、恢复与基线。** `scripts/p7/storage/snapshot.ts` 用 `VACUUM INTO` 做一致备份（含 WAL 已提交事务），`restore` 校验后原子改名并拒绝已有目标；`p7-service-baseline` 量 5 个本地端点 p50/p95、日志 512 帧分页、outbox 4 MiB/1 MiB 水位。
@@ -40,7 +40,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 | `p7-storage-recovery`        | 空库→0028、0025 历史库升级、重跑幂等、备份期间并发写入的分组原子性、`cp` 主库反证、全新目录恢复启动、旧 run/execution 非成功、诊断关联链                                            | `bash scripts/verify/p7-storage-recovery.sh`   |
 | `p7-service-baseline`        | 5 个本地端点 p50/p95、日志 512 帧 × 1 KiB 分页完整性与延迟、outbox 4 MiB 高水位与 1 MiB 低水位回落                                                                                  | `bash scripts/verify/p7-service-baseline.sh`   |
 | `p7-pi-inheritance`          | 默认工具面 30 个逐条、宿主目录 10 个文件哈希前后一致、开关打开只多两个宿主根且系统提示 148→821 字符、`sprout_status` 在工具面上（LOCAL）                                            | `bash scripts/verify/p7-pi-inheritance.sh`     |
-| `bf-p6b-pages`（含接线断言） | 真实页面接线：Chat 页出现 `automation-card` 且没有 `automation-unavailable`、轮询正常态不渲染状态行、not_found 走页面自己的错误态                                                   | `bash scripts/verify/bf-p6b-pages.sh`          |
+| `bf-p6b-pages`（含接线断言） | 真实页面接线：Chat 页出现 `continuation-card` 且没有 `continuation-unavailable`、轮询正常态不渲染状态行、not_found 走页面自己的错误态                                               | `bash scripts/verify/bf-p6b-pages.sh`          |
 | 回归                         | `i-chat`（not_found 深链）、`aq-p4d-pages`（读失败保留旧事实并标未确认）、`ag-execution-wiring-ui`（读日志失败可见）、`as-p5b-task-pages`、`p6a-pages`、`k-acceptance`、`b-tooling` | 各自 `bash scripts/verify/<id>.sh`             |
 
 门禁总数 98（CI 73 + LOCAL 24 + MANUAL 1），与 [验证约定](../verification.md) 的记录一致。
@@ -49,7 +49,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 - **登录后目标恢复**：`p7-client-navigation` 逐条喂 `safeReturnTarget`（`//evil`、`/\evil`、含控制字符、`https://evil.invalid`、`/login`、`/api/x`）都退回 `/`，合法深链保留 `search` 与 `hash`；浏览器里从任务详情深链登录后回到同一地址。
 - **只读离线**：`p7-client-pwa` 装 service worker 后断网，应用壳仍渲染，白名单读返回缓存并带 `x-sprout-offline: 1`；写请求在断网时不被 service worker 接管（浏览器直接失败），页面显示「未知」而不是成功。
-- **自动接续接线**：`bf-p6b-pages` 的 `automation_panel_wired_on_real_chat` 断言真实 Chat 页 `automation-card` 出现且 `automation-unavailable` 为 0；`p6a-pages` 125 组断言三态渲染与失败文案。
+- **对话接续接线**：`bf-p6b-pages` 的 `continuation_panel_wired_on_real_chat` 断言真实 Chat 页 `continuation-card` 出现且 `continuation-unavailable` 为 0；`p6a-pages` 125 组断言三态渲染与失败文案。
 - **判定器可用性**：`tests/p6a-contracts.test.ts` 覆盖无配置、缺凭据、可用三种输入下的 `wakeProviderAvailabilityFromEnv()` 结果；`p6a-pages` 断言 `wake-provider-unwired` 与 `wake-provider-unavailable` 两种形态与保存按钮数量。
 - **闭环**：`p7-loop-*` 四条在真实 SQLite 与真实 Worker 上跑多轮、扇出、交接、崩溃重启；`p7-loop-multiround` 的 `paid-model-calls=0`（模型由 `model-fixture` 在回环上代答）。
 
@@ -62,7 +62,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 - **导航与入口**：`app-shell.tsx` 打开 Projects、Agents、Machines、Management 四个入口，Management 不再是禁用项；主题切换与窄屏折叠在 `p7-client-navigation` 与 `p7-client-states` 里核对。
 - **深链与返回**：详情页 URL 直达、刷新后仍在原处、窄屏列表→详情→返回逐条走通。
 - **PWA**：`manifest.webmanifest` 可安装，独立窗口打开后应用壳可用，主题色随浅暗主题变化（`THEME_COLOR`）。装机与独立窗口的评审由 Human 决定延后到部署与 HTTPS 之后，见下节遗留；离线读与离线写入（只报失败、不排队）的契约由 `p7-client-pwa` 覆盖。
-- **Human 反馈的落地**：Task 详情把「目标与要求」的铅笔放到标题同一行（中心线差 < 8px，`metadata_edit_shares_the_heading_row`）、清单行的铅笔与 `x` 就地换成「确认/取消」、被拒动作完全不渲染、Info Hub 轮询正常态不渲染状态行、判定器不可用说现状、自动接续面板显示真实判定。
+- **Human 反馈的落地**：Task 详情把「目标与要求」的铅笔放到标题同一行（中心线差 < 8px，`metadata_edit_shares_the_heading_row`）、清单行的铅笔与 `x` 就地换成「确认/取消」、被拒动作完全不渲染、Info Hub 轮询正常态不渲染状态行、判定器不可用说现状、对话接续面板显示真实判定。
 - **站内跳转**：Tasks 标签、任务卡片、返回总览与 Chat 关联原先用裸 `a[href]`，点一下整页重载、丢掉滚动位置与草稿。新增 `AppLink` 渲染真链接、有路由时接管点击，`p7-client-navigation` 按标签、卡片与返回链接各拦一次整页请求。
 - **Management**：服务与数据、账号与外观两张卡片，Human 评审时表示「先这么着，后续再优化」，本轮不再调整布局。
 
@@ -80,8 +80,8 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 | `aq-p4d-pages` 的「刷新失败标未确认」      | `sw.js` 把非 GET 一律 `respondWith` 再 `fetch`，浏览器侧的中止打不到真实请求           | 白名单在 `activate` 装进内存，只接管白名单调用，其余放行（`77ccfb8`）                |
 | `ag-execution-wiring-ui` 的读日志失败      | 同上（`readExecutionLogFn` 在白名单里）                                                | 该门禁上下文 `serviceWorkers: "block"`，PWA 行为由 `p7-client-pwa` 证明（`b828755`） |
 
-- **补上的门禁**：`info_hub_polling_line_stays_quiet`（去掉 `QUIET_STATES` 判断立即红）、`metadata_edit_shares_the_heading_row`（用 `boundingBox` 量中心线）、`non_owner_agent_denials_are_real_capabilities`（改成断言 `task-action-*` 数量为 0 且整页无 denial code）、`automation_panel_wired_on_real_chat`（真实 Chat 页不得出现 `automation-unavailable`）。
-- **drizzle 快照**：`0028_snapshot.json` 的 `prevId` 曾指向 0026 且 `chat_automation_control` 是 0027 重建前旧版，导致 `drizzle-kit` collision 与 `c-data-auth` 长期红。修法是只改快照（`prevId` + 表内容），不改 `_journal.json` 的 `when`（改晚会让已应用过 0028 的库重放它，撞 `table turn_context already exists`）。验证：`pnpm exec drizzle-kit generate` 输出 `No schema changes, nothing to migrate`，`c-data-auth` exit 0。
+- **补上的门禁**：`info_hub_polling_line_stays_quiet`（去掉 `QUIET_STATES` 判断立即红）、`metadata_edit_shares_the_heading_row`（用 `boundingBox` 量中心线）、`non_owner_agent_denials_are_real_capabilities`（改成断言 `task-action-*` 数量为 0 且整页无 denial code）、`continuation_panel_wired_on_real_chat`（真实 Chat 页不得出现 `continuation-unavailable`）。
+- **drizzle 快照**：`0028_snapshot.json` 的 `prevId` 曾指向 0026 且 `chat_continuation_control` 是 0027 重建前旧版，导致 `drizzle-kit` collision 与 `c-data-auth` 长期红。修法是只改快照（`prevId` + 表内容），不改 `_journal.json` 的 `when`（改晚会让已应用过 0028 的库重放它，撞 `table turn_context already exists`）。验证：`pnpm exec drizzle-kit generate` 输出 `No schema changes, nothing to migrate`，`c-data-auth` exit 0。
 - **增量验收**（`p7-acceptance2`，受验 `b828755`）判「可以合入」，四问的结论：三条回归各自两次全绿且修法经复核不是掩盖（`i-chat` 的 `chat-error` 真的来自服务端、写入请求确实由页面直接发出 `fromServiceWorker: false`、`item-log-error` 仍被断言）；三处改坏里两处已被新门禁守住（轮询行、编辑按钮同行），**第三处「被拒动作打印 reason」仍绿**——门禁只断言 code 不在页面上，协调者据此补了 reason 断言（`fef2612`），注入 reason 立即红；三条旧红门禁在 `main@8f0ddf3` 的临时工作树里各跑两次同样全红，脚本/fixture/契约在 `main..HEAD` 逐字未变，不是本轮引入也没被条件化跳过；`72c7241` 之后的页面裁定无回归（`bf-p6b-pages` 67.0s、`as-p5b-task-pages` 46.5s、`p6a-pages` 24.5s、`p7-client-navigation` 24.4s、`p7-client-states` 17.3s、`p7-client-pwa` 14.9s 全绿）。
 
 证据提交 `fef2612`：重跑 `bash scripts/verify/i-chat.sh`、`bash scripts/verify/aq-p4d-pages.sh`、`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/c-data-auth.sh`。
@@ -108,7 +108,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 Human 在真实页面上做了两轮评审，共 15 条反馈，逐条落地并回写，最后以「评审完毕，可继续」结束评审：
 
 - 第一轮 8 条：内部元数据行不显示、判定器不可用说人话、Task 详情头部间距、目标与要求就地编辑、被拒动作不渲染、清单能否被 Agent 操作（答：可以）、清单编辑图标位置、Management 先不优化。
-- 第二轮 7 条：清单编辑与移除的按钮位置与就地确认、编辑按钮与「目标与要求」同行、自动接续面板在真实页面上显示真实判定、任务页其余细节。
+- 第二轮 7 条：清单编辑与移除的按钮位置与就地确认、编辑按钮与「目标与要求」同行、对话接续面板在真实页面上显示真实判定、任务页其余细节。
 
 - 确认记录：Human 亲自体验确认通过，版本 `fef2612`
 - 确认记录：Human 亲自体验确认通过，版本 `6a676a9`

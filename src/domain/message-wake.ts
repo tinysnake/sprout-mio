@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { CHAT_AUTOMATION_POLICY as POLICY } from "../contracts/chat-automation";
+import { CHAT_CONTINUATION_POLICY as POLICY } from "../contracts/chat-continuation";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
   DEFAULT_PROJECT_WAKE_POLICY,
@@ -316,7 +316,7 @@ export function enqueueMessageWake(
   now: Date = new Date(),
 ): boolean {
   if (message.senderKind !== "human") return false;
-  if (!config.SPROUT_AUTOMATION_ENABLED) return false;
+  if (!config.SPROUT_CONTINUATION_ENABLED) return false;
   const chat = chatFacts(message.chatId);
   if (
     !chat ||

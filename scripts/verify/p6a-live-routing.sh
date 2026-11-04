@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source scripts/verify/lib/live-model.sh
-# A missing small-brain model still leaves an explicit failed receipt for both providers.
+# A missing llm model still leaves an explicit failed receipt for both providers.
 sprout_live_model || true
 # JEV takes its own credential, so the gate accepts it from the environment or this
 # checkout's .env. Without it every JEV case records an explicit failed receipt.

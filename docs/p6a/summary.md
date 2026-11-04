@@ -1,4 +1,4 @@
-# P6a 章节结论：自动接续与人类控制
+# P6a 章节结论：对话接续与人类控制
 
 P6a 交付「有 assigned Task 的 Chat 会定期检查，判定该谁接话，并把接续投进对应的 run；Human 随时能关掉它、随时能叫停当前轮次」这一条链路，以及它在页面上的最小呈现。契约、迁移与边界见 [P6a 契约](contracts.md)。
 
@@ -8,14 +8,14 @@ Human 体验确认：**尚无确认版本**。
 
 ## 交付范围
 
-| 线     | 交付内容                                                                                                       |
-| ------ | -------------------------------------------------------------------------------------------------------------- |
-| 契约   | 唤醒判定输入/结果与 11 个错误码；自动接续策略、能力表、控制命令与读视图；Project 判定器策略；取消原因枚举      |
-| 数据库 | `0026` 九张表 + `project.wake_policy` + 5 个触发器；`0027` 控制表两态重建 + 取消原因改名 + 3 个触发器重建      |
-| 领域   | 排期与周期检查、判定落地（两道闸：epoch 与触发器）、投递状态机与 ACK、退避与 `attention`、Human 控制、重启恢复 |
-| 适配器 | 小脑（宿主 runner）与 JEV（System One Noul）两条，一次判定只走一路，不自动回退                                 |
-| 页面   | Task 详情、Chat 详情与 Info Hub Chat inspector 的自动接续卡片；Project 设置里的判定器选择与不可用原因          |
-| 门禁   | 9 个 P6a 门禁（8 个 CI/local + 1 个人工 live）                                                                 |
+| 线     | 交付内容                                                                                                                                                                                        |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 契约   | 唤醒判定输入/结果与 11 个错误码；对话接续策略、能力表、控制命令与读视图；Project 判定器策略；取消原因枚举                                                                                       |
+| 数据库 | `0026` 九张表 + `project.wake_policy` + 5 个触发器；`0027` 控制表两态重建 + 取消原因改名 + 3 个触发器重建；`0033` 三张表改名到 `chat_continuation_*`；`0034` 判定器枚举值 `small_brain` → `llm` |
+| 领域   | 排期与周期检查、判定落地（两道闸：epoch 与触发器）、投递状态机与 ACK、退避与 `attention`、Human 控制、重启恢复                                                                                  |
+| 适配器 | LLM 判定（宿主 runner）与 JEV（System One Noul）两条，一次判定只走一路，不自动回退                                                                                                              |
+| 页面   | Task 详情、Chat 详情与 Info Hub Chat inspector 的对话接续卡片；Project 设置里的判定器选择与不可用原因                                                                                           |
+| 门禁   | 9 个 P6a 门禁（8 个 CI/local + 1 个人工 live）                                                                                                                                                  |
 
 明确不在 P6a：Info Hub 全量视角（P6b）、成员治理与重新加入（P6c）、手机与 PWA（P7）。
 
@@ -59,9 +59,9 @@ bash scripts/verify/p6a-pages.sh
 
 | 结论                                               | 级别 | 证据                                                                                                                                                                                                                                                             |
 | -------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 自动接续状态、Human 暂停与停止、失败反馈与恢复控制 | 实测 | `p6a-pages`（125 组断言，exit 0）的 `*_disable_contract_and_read_response`、`*_enable_contract_and_read_response`、`*_abort_can_cancel_without_write`、`*_abort_without_run_id_closes_the_chat`、`*_conflict_does_not_pretend_disabled`、`*_failure_and_backoff` |
-| Task、run 与自动检查语义独立                       | 实测 | 同门禁 `*_disabled_run_stop_readable`、`*_human_without_run_bar`；`tests/task-automation-view.test.ts` 9 项（引用）                                                                                                                                              |
-| 判定器选择与不可用原因                             | 引用 | `wake-provider-select.tsx` 只展示 `small_brain` / `jev`，缺模型或阈值版本时禁用并给原因；不自动 fallback                                                                                                                                                         |
+| 对话接续状态、Human 暂停与停止、失败反馈与恢复控制 | 实测 | `p6a-pages`（125 组断言，exit 0）的 `*_disable_contract_and_read_response`、`*_enable_contract_and_read_response`、`*_abort_can_cancel_without_write`、`*_abort_without_run_id_closes_the_chat`、`*_conflict_does_not_pretend_disabled`、`*_failure_and_backoff` |
+| Task、run 与自动检查语义独立                       | 实测 | 同门禁 `*_disabled_run_stop_readable`、`*_human_without_run_bar`；`tests/task-continuation-view.test.ts` 9 项（引用）                                                                                                                                            |
+| 判定器选择与不可用原因                             | 引用 | `wake-provider-select.tsx` 只展示 `llm` / `jev`，缺模型或阈值版本时禁用并给原因；不自动 fallback                                                                                                                                                                 |
 | 拒绝原因与错误码可见                               | 实测 | `*_denial_reason_and_code`、`*_unknown_requires_explicit_confirmation`                                                                                                                                                                                           |
 | 普通信息可见性与正文/操作权分离                    | 引用 | 第二轮验收判据 8 的 17 条 authz 探针，见 [集成线与技术验收证据](#集成线与技术验收证据)；本轮未重跑                                                                                                                                                               |
 
@@ -114,12 +114,12 @@ P6A_SCENARIO=stale bash scripts/verify/bf-p6a-lifecycle.sh
 证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-control.sh`、`bash scripts/verify/p6a-pages.sh`。
 结论：控制面最终只有 `enabled` / `off` 两态，只有 **enable / disable / abort** 三个改态动作；`retry` 与 `reissue` 是针对单份判定与单份投递的运维动作，不改 `mode`、不改 `epoch`（`retry` 会递增 `revision` 并把 `next_due_at` 提前到当下，`reissue` 另建一份新 delivery identity 并链接原未知投递）。
 
-收敛过程：原型与早期实现里有 `paused` / `stopped` 两个独立状态，Human 在 m02876 指出「暂停自动接续」与「全部停止」在页面上读起来像同一件事。协调者据此裁定收敛为两态三动作，并用一条判据把区别钉住：
+收敛过程：原型与早期实现里有 `paused` / `stopped` 两个独立状态，Human 在 m02876 指出「暂停对话接续」与「全部停止」在页面上读起来像同一件事。协调者据此裁定收敛为两态三动作，并用一条判据把区别钉住：
 
 - **`disable` 不中止当前轮次。** 它只关掉「以后还会不会来」：`mode=off`、`epoch+1`、删除 `chat_schedule`，在途 run 继续跑到自然结束。
-- **`abort` 才中止。** 无 `runId` 时中止本 Chat 全部 `queued`/`running` run 并关闭自动接续；带 `runId` 时只中止那一个 run，且**不改 mode、不改 epoch、不动 schedule**。
+- **`abort` 才中止。** 无 `runId` 时中止本 Chat 全部 `queued`/`running` run 并关闭对话接续；带 `runId` 时只中止那一个 run，且**不改 mode、不改 epoch、不动 schedule**。
 
-这条区别的证据（第二轮验收判据 6，`out/control.log`）：在途判定期间 disable 使 `epoch+1`、`mode=off`、timer 删除，晚到结果落 `stale`、`result` 为 `null`、delivery=0；abort-all 同时中止真实 run 并拒绝晚到结果；run-scoped abort 不改 mode/epoch/timer。实现位置：`src/domain/chat-automation.ts` 的 `applyChatAutomationCommand`。**引用**
+这条区别的证据（第二轮验收判据 6，`out/control.log`）：在途判定期间 disable 使 `epoch+1`、`mode=off`、timer 删除，晚到结果落 `stale`、`result` 为 `null`、delivery=0；abort-all 同时中止真实 run 并拒绝晚到结果；run-scoped abort 不改 mode/epoch/timer。实现位置：`src/domain/chat-continuation.ts` 的 `applyChatContinuationCommand`。**引用**
 
 `0027` 是这次收敛的落地：三态 CHECK 折成两态，`paused`/`stopped` 一律折成 `off`，历史取消原因 `human_paused` → `human_disabled`、`human_stopped` → `human_aborted`。**实测**：本轮 `p6a-control` 的 `0026 populated upgrade maps paused/stopped to off and preserves epoch/revision/audit` 断言通过，`modeDistribution` 记录 before `enabled/paused/stopped` 各 1 行、after `enabled` 1 行 + `off` 2 行；`human_aborted` / `human_disabled` 由同一轮的取消原因断言覆盖
 
@@ -132,7 +132,7 @@ Human 在 m02131 的原话裁决：判定准确率**只报不判**。也就是�
 
 门禁真正判的是结构性错误，与模型概率无关：候选集之外的接收者、任何副作用写入（run/message/input 非零）、快照哈希不一致、同一样本多次调用、以及「已付费响应必须完全合契约」。未取得付费响应时只允许 `provider_unavailable` / `provider_timeout` / `provider_invalid_response`，且每 provider 每轮最多容忍 1 次。**引用**
 
-小脑的真实回放记录（8 条固定 live 输入，未改期望、无重试）：**共 5 次真实回放，8/8、7/8、8/8、8/8、7/8**。前四次记在 `p6a-live-policy.md` 的「两次真实运行」与「协调者修正」两节，第五次是第二轮独立验收自己跑的一次（`small_brain 12,641 tokens`，7/8，exit 0）。**引用**（本轮没有重跑 live 门禁）
+LLM 判定的真实回放记录（8 条固定 live 输入，未改期望、无重试）：**共 5 次真实回放，8/8、7/8、8/8、8/8、7/8**。前四次记在 `p6a-live-policy.md` 的「两次真实运行」与「协调者修正」两节，第五次是第二轮独立验收自己跑的一次（`llm 12,641 tokens`，7/8，exit 0）。**引用**（本轮没有重跑 live 门禁）
 
 一处口径更正：本轮派工单写的是「三轮回放 8/8、7/8、8/8」。按可查记录实际是 **5 次**（多出协调者修正后的第二轮 8/8 与验收轮自己的 7/8）。本文以记录为准，不把次数改小到与派工单一致。
 
@@ -140,9 +140,9 @@ JEV 在这套中文样本上**不可用**，产品不部署它：
 
 - 30 条中文样本，校准集 w01–w15 / 留出集 w16–w30，服务实际解析为 `jev-1.14.0`；扫描 5050 组单阈值后校准仍只有 **12/15** 集合匹配，独立留出 **9/15**。
 - 概率排序与意图反序：w01（人类确认后等结果，不应唤醒）概率 0.69，w12（owner 交接后追问，应唤醒）0.66；要选中 w12 就会选中 w01，要排除 w01 就会漏掉 w12。调 `no` 阈值只能改 no/unknown，修不了排序。
-- 处置：**产品默认小脑**（`DEFAULT_PROJECT_WAKE_POLICY.provider = "small_brain"`），**JEV 适配器与请求/收据契约保留，但当前不作为可部署选择**。live 门禁对 JEV 只记录、不参与 exit（`reported only, not deployed`）。
+- 处置：**产品默认 LLM**（`DEFAULT_PROJECT_WAKE_POLICY.provider = "llm"`），**JEV 适配器与请求/收据契约保留，但当前不作为可部署选择**。live 门禁对 JEV 只记录、不参与 exit（`reported only, not deployed`）。
 
-上列数字为**引用**（并行校准单元交付，见 [Jev 作为唤醒判定器](../jev-wake-routing.md#实测结果)），本轮未重复执行 30 条校准。小脑的 8/8、7/8 均为**引用**（对应报告已在仓库内，本轮未重跑 live 门禁）。两组数字都不外推为生产准确率：样本只有 8 条 live / 30 条离线，且模型是随机的。
+上列数字为**引用**（并行校准单元交付，见 [Jev 作为唤醒判定器](../jev-wake-routing.md#实测结果)），本轮未重复执行 30 条校准。LLM 判定的 8/8、7/8 均为**引用**（对应报告已在仓库内，本轮未重跑 live 门禁）。两组数字都不外推为生产准确率：样本只有 8 条 live / 30 条离线，且模型是随机的。
 
 ## 成本与 usage 边界
 
@@ -153,7 +153,7 @@ JEV 在这套中文样本上**不可用**，产品不部署它：
 - `p6a-live-routing` 的每轮收据（`.verify/p6a-live-routing/<UTC>/`，含每条样本的 usage 与 `summary.json`），不纳入 Git。**引用**
 - 校准报告与 `p6a-live-policy.md` 里的累计数字（两份都在编排目录、不进本仓库）。**引用**
 
-已知的真实花费：live 报告两轮 32 次调用、32 次拿到计费 usage；第二轮验收一次 16 次付费调用、29,657 tokens（small_brain 12,641、JEV 17,016）。**引用**
+已知的真实花费：live 报告两轮 32 次调用、32 次拿到计费 usage；第二轮验收一次 16 次付费调用、29,657 tokens（llm 12,641、JEV 17,016）。**引用**
 
 代价是产品侧无法回答「这个 Project 这周在判定上花了多少」。这是 P6a 有意的边界——判定成本远小于 run 成本，先不引入计费维度；一旦要做预算或计费，第一件事是给 `wake_evaluation` 加 usage 列并补迁移。
 
@@ -208,7 +208,7 @@ node scripts/verify/targets.test.mjs
 | P2-3 | Worker 门禁在 `--only` 下必红                        | 关闭               | `bb-task-live`、`bs-p5b-lifecycle` 的 `preparation` 补 `worker`（`1146372`）；`--only` 在门禁加固轮实测各 exit 0；故意去掉 `worker` 后同一命令 exit 1（本轮未重跑，引用报告）                                                             |
 | P2-4 | 错误码数量约束丢失                                   | 关闭               | `lease-contracts.test.ts` 恢复 `toHaveLength(34)` 并注明来源（`f82779b`）；加一个码后测试红                                                                                                                                               |
 | P3-1 | `policy_changed` 是死值                              | 关闭               | 契约里注明是预留值，代码仍不写它（`d95f37c`）；`grep -rn '"policy_changed"' src` 只命中契约                                                                                                                                               |
-| P3-2 | 页面「暂停自动接续」与 `off`、与「全部停止」混淆     | **未关闭（有意）** | 本轮不改，理由见[已知限制](#p3-2-disable-的页面文案)；待 Human 体验确认时一并裁决文案                                                                                                                                                     |
+| P3-2 | 页面「暂停对话接续」与 `off`、与「全部停止」混淆     | **未关闭（有意）** | 本轮不改，理由见[已知限制](#p3-2-disable-的页面文案)；待 Human 体验确认时一并裁决文案                                                                                                                                                     |
 | P3-3 | `p6a-control` 重复断言标签                           | 关闭               | 两个 terminal 标签加 `(terminal run)` / `(other chat)` 后缀（`40f0c7a`）；`control-model-result.json` 18 条标签 18 个唯一值                                                                                                               |
 | P3-4 | `p6a-pages` 调度预算 125s                            | 关闭               | 改成 40s（`1146372`），门禁加固轮实测 11.254s；仍是约 3.4 倍高估但不影响正确性（本轮未重跑，引用报告）                                                                                                                                    |
 
@@ -216,7 +216,7 @@ node scripts/verify/targets.test.mjs
 
 ## 计划状态与本轮门禁冲突
 
-本轮按派工单更新了三处计划的 P6a checklist，并为每条勾选补了行内证据（指向本文对应小节，被指向的小节都自带基线 commit 与可跑命令）：[总计划 I-P6a](../development-plan.md#i-p6a-集成自动接续与人类控制)、[功能计划 P6a](../development-plan-functional.md#p6a-完成自动接续与人类控制)、[UI 计划 UI-P6a](../development-plan-ui.md#ui-p6a-完成自动接续与人类控制呈现)。
+本轮按派工单更新了三处计划的 P6a checklist，并为每条勾选补了行内证据（指向本文对应小节，被指向的小节都自带基线 commit 与可跑命令）：[总计划 I-P6a](../development-plan.md#i-p6a-集成对话接续与人类控制)、[功能计划 P6a](../development-plan-functional.md#p6a-完成对话接续与人类控制)、[UI 计划 UI-P6a](../development-plan-ui.md#ui-p6a-完成对话接续与人类控制呈现)。
 
 Human 体验确认没有做，因此 I-P6a 第 4 条**不勾**，正文写「尚无确认版本」。
 
@@ -259,7 +259,7 @@ bash /tmp/l-docs-probe-nofdocs.sh
 FAIL I-P6a checkbox must remain unchecked: 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6a 功能线证据](p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`、`bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`；已知限制见 [P6a 已知限制](p6a/summary.md#已知限制)。
 FAIL I-P6a checkbox must remain unchecked: UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P6a UI 线证据](p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；页面形状为 Human 选定的方案 A。
 FAIL I-P6a checkbox must remain unchecked: 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P6a 集成线与技术验收证据](p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/bf-p6a-lifecycle.sh`；第二轮独立验收在 `303fbf5` 判「可以合入 main」，见 [第二轮验收报告](../orchestrate/sprout-mio-p6/reports/p6a-acceptance-round2.md)。
-FAIL UI-P6a checkbox must remain unchecked: 完成自动接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](p6a/summary.md#p3-2-disable-的页面文案)。
+FAIL UI-P6a checkbox must remain unchecked: 完成对话接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](p6a/summary.md#p3-2-disable-的页面文案)。
 FAIL UI-P6a checkbox must remain unchecked: 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [UI 线证据](p6a/summary.md#ui-线证据)与[集成线与技术验收证据](p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`。
 FAIL P6a checkbox must remain unchecked: - [x]
 FAIL P6a checkbox must remain unchecked: - [x]
@@ -310,9 +310,9 @@ PROBE_BASE=integration/p6a bash scripts/verify/l-docs-probes.sh
 ### P3-2 disable 的页面文案
 
 证据提交 `bde6383`：重跑 `bash scripts/verify/p6a-pages.sh`。
-页面用「暂停自动接续」表示 `disable`，而契约与协议里只有 `enabled` / `off`；旁边的「全部停止」是 `abort`。两个词读起来像同一类事情，差别（一个不中止当前轮次、一个中止）只在卡片正文里解释。
+页面用「暂停对话接续」表示 `disable`，而契约与协议里只有 `enabled` / `off`；旁边的「全部停止」是 `abort`。两个词读起来像同一类事情，差别（一个不中止当前轮次、一个中止）只在卡片正文里解释。
 
-协调者裁定：`disable` 不中止当前轮次、`abort` 才中止，这是**语义**结论；这个语义差别由 Human 体验确认时一并裁决是否改文案。本轮不改文案，也不改测试（`tests/fixtures/p6a-pages-browser.ts:124,150,178` 仍按「暂停自动接续」定位按钮）。**实测**（本轮执行 `grep -n "暂停自动接续" tests/fixtures/p6a-pages-browser.ts` 命中 124、150、178 行；第二轮验收 P3-2 亦判未关闭）
+协调者裁定：`disable` 不中止当前轮次、`abort` 才中止，这是**语义**结论；这个语义差别由 Human 体验确认时一并裁决是否改文案。本轮不改文案，也不改测试（`tests/fixtures/p6a-pages-browser.ts:124,150,178` 仍按「暂停对话接续」定位按钮）。**实测**（本轮执行 `grep -n "暂停对话接续" tests/fixtures/p6a-pages-browser.ts` 命中 124、150、178 行；第二轮验收 P3-2 亦判未关闭）
 
 ### P3-5 0027 的迁移残留
 
@@ -322,7 +322,7 @@ PROBE_BASE=integration/p6a bash scripts/verify/l-docs-probes.sh
 
 ### P3-6 300 秒两处来源
 
-「300 秒」有 TS 常量（`CHAT_AUTOMATION_POLICY.intervalSeconds`）与 SQL 字面量（`0026` 触发器里的 `NEW.updated_at+300000`）两处来源。现在靠 `p6a-scheduler` 的门禁钉住相等（读最新迁移的触发器字面量与 `INTERVAL_MS` 比较），**不是物理单一来源**。
+「300 秒」有 TS 常量（`CHAT_CONTINUATION_POLICY.intervalSeconds`）与 SQL 字面量（`0026` 触发器里的 `NEW.updated_at+300000`）两处来源。现在靠 `p6a-scheduler` 的门禁钉住相等（读最新迁移的触发器字面量与 `INTERVAL_MS` 比较），**不是物理单一来源**。
 
 这意味着改间隔必须同时改两处，只改一处会被门禁抓住（P2-2 的破坏实验证实过）。但它仍是双写点：新增迁移如果再写一个触发器字面量，必须同时更新那条比较。**引用**（比较逻辑见 `tests/fixtures/p6a-schedule.ts`；P2-2 的破坏实验由门禁加固轮实测）
 
@@ -341,6 +341,6 @@ PROBE_BASE=integration/p6a bash scripts/verify/l-docs-probes.sh
 ## human-体验确认
 
 - 确认记录：Human 亲自体验确认通过，版本 `fef2612`
-- 确认范围：Project 设置里的自动接续开关（启用/暂停、暂停后不动在途轮次、中止当前轮次）、判定器当前配置与不可用原因、Chat 页自动接续卡片（下次检查时间、最近一次判定结论、事件时间线）。
+- 确认范围：Project 设置里的对话接续开关（启用/暂停、暂停后不动在途轮次、中止当前轮次）、判定器当前配置与不可用原因、Chat 页对话接续卡片（下次检查时间、最近一次判定结论、事件时间线）。
 - 确认方式：Human 在 P7 章节的真实页面评审里一并走完本章页面，并据此要求「被拒动作不渲染、原因不打印」；评审结束时明确回复「评审完毕，可继续」。评审在 `integration/p7` 上进行，该状态后来以 `fef2612` 合入 main。
 - 复验：`bash scripts/verify/p6a-pages.sh`。

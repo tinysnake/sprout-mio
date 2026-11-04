@@ -20,9 +20,9 @@ const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const hash = z.string().regex(/^[0-9a-f]{64}$/);
 const reason = z.string().trim().min(1).max(2000);
 
-export const chatAutomationModeSchema = z.enum(["enabled", "off"]);
-export type ChatAutomationMode = z.infer<typeof chatAutomationModeSchema>;
-export const chatAutomationErrorCodeSchema = z.enum([
+export const chatContinuationModeSchema = z.enum(["enabled", "off"]);
+export type ChatContinuationMode = z.infer<typeof chatContinuationModeSchema>;
+export const chatContinuationErrorCodeSchema = z.enum([
   "unauthorized",
   "not_found",
   "forbidden",
@@ -30,13 +30,13 @@ export const chatAutomationErrorCodeSchema = z.enum([
   "validation_failed",
   "too_many_requests",
   "internal",
-  "automation_disabled",
+  "continuation_disabled",
   "wake_provider_unavailable",
   "continuation_delivery_unknown",
 ]);
-export type ChatAutomationErrorCode = z.infer<typeof chatAutomationErrorCodeSchema>;
+export type ChatContinuationErrorCode = z.infer<typeof chatContinuationErrorCodeSchema>;
 
-export const CHAT_AUTOMATION_POLICY = {
+export const CHAT_CONTINUATION_POLICY = {
   version: 1,
   intervalSeconds: 300,
   retryDelaySeconds: [5, 10, 30, 60, 120],
@@ -84,7 +84,7 @@ export const continuationDeliverySchema = z
     controlEpoch: revision,
     snapshotHash: hash,
     state: continuationDeliveryStateSchema,
-    attempt: count.max(CHAT_AUTOMATION_POLICY.maxAttempts),
+    attempt: count.max(CHAT_CONTINUATION_POLICY.maxAttempts),
     taskIds: z.array(taskIdSchema),
     createdAt: z.iso.datetime(),
     admittedAt: z.iso.datetime().nullable(),
@@ -144,7 +144,7 @@ export const continuationDeliverySchema = z
       value.nextAttemptAt !== null &&
       (value.state !== "pending" ||
         value.admittedAt !== null ||
-        value.attempt >= CHAT_AUTOMATION_POLICY.maxAttempts)
+        value.attempt >= CHAT_CONTINUATION_POLICY.maxAttempts)
     )
       reject("Only unadmitted pending input may retry within budget");
     if (new Set(value.taskIds).size !== value.taskIds.length) reject("Duplicate Task association");
@@ -192,7 +192,7 @@ const commandBase = {
   expectedRevision: revision,
   requestId,
 };
-export const chatAutomationCommandSchema = z.discriminatedUnion("action", [
+export const chatContinuationCommandSchema = z.discriminatedUnion("action", [
   z.strictObject({
     ...commandBase,
     action: z.literal("disable"),
@@ -221,9 +221,9 @@ export const chatAutomationCommandSchema = z.discriminatedUnion("action", [
     confirmedUnknown: z.literal(true),
   }),
 ]);
-export type ChatAutomationCommand = z.infer<typeof chatAutomationCommandSchema>;
+export type ChatContinuationCommand = z.infer<typeof chatContinuationCommandSchema>;
 
-export const chatAutomationEvaluationStateSchema = z.enum([
+export const chatContinuationEvaluationStateSchema = z.enum([
   "pending",
   "claimed",
   "retry_wait",
@@ -232,14 +232,14 @@ export const chatAutomationEvaluationStateSchema = z.enum([
   "stale",
   "canceled",
 ]);
-export type ChatAutomationEvaluationState = z.infer<typeof chatAutomationEvaluationStateSchema>;
+export type ChatContinuationEvaluationState = z.infer<typeof chatContinuationEvaluationStateSchema>;
 
 /**
  * 一次尝试：什么时候发出、什么时候结束、花了多少。`outcome` 为空表示还在等判定器回答。
  */
-export const chatAutomationAttemptViewSchema = z
+export const chatContinuationAttemptViewSchema = z
   .strictObject({
-    attempt: z.number().int().positive().max(CHAT_AUTOMATION_POLICY.maxAttempts),
+    attempt: z.number().int().positive().max(CHAT_CONTINUATION_POLICY.maxAttempts),
     startedAt: z.iso.datetime(),
     finishedAt: z.iso.datetime().nullable(),
     outcome: z.enum(["decided", "retry_wait", "attention", "stale", "canceled"]).nullable(),
@@ -247,28 +247,28 @@ export const chatAutomationAttemptViewSchema = z
     usage: wakeUsageSchema.nullable(),
   })
   .readonly();
-export type ChatAutomationAttemptView = z.infer<typeof chatAutomationAttemptViewSchema>;
+export type ChatContinuationAttemptView = z.infer<typeof chatContinuationAttemptViewSchema>;
 
 /** 一轮判定的完整过程：页面按轮次列时间线，而不是只有当前那一行状态。 */
-export const chatAutomationRoundViewSchema = z
+export const chatContinuationRoundViewSchema = z
   .strictObject({
     round: revision,
     source: wakeEvaluationSourceSchema,
-    state: chatAutomationEvaluationStateSchema,
+    state: chatContinuationEvaluationStateSchema,
     evaluatedAt: z.iso.datetime().nullable(),
     result: wakeEvaluationResultSchema.nullable(),
     errorCode: wakeEvaluationErrorCodeSchema.nullable(),
-    attempts: z.array(chatAutomationAttemptViewSchema).max(CHAT_AUTOMATION_POLICY.maxAttempts),
+    attempts: z.array(chatContinuationAttemptViewSchema).max(CHAT_CONTINUATION_POLICY.maxAttempts),
   })
   .readonly();
-export type ChatAutomationRoundView = z.infer<typeof chatAutomationRoundViewSchema>;
+export type ChatContinuationRoundView = z.infer<typeof chatContinuationRoundViewSchema>;
 
-export const chatAutomationEvaluationViewSchema = z.strictObject({
+export const chatContinuationEvaluationViewSchema = z.strictObject({
   evaluationId: identifier,
   source: wakeEvaluationSourceSchema,
-  state: chatAutomationEvaluationStateSchema,
+  state: chatContinuationEvaluationStateSchema,
   round: revision,
-  attempt: count.max(CHAT_AUTOMATION_POLICY.maxAttempts),
+  attempt: count.max(CHAT_CONTINUATION_POLICY.maxAttempts),
   /** 当前这次尝试开始的时刻；还没开始尝试（pending）时为空。 */
   claimedAt: z.iso.datetime().nullable(),
   /** 最近一次尝试结束的时刻；还在检查时为空。 */
@@ -279,13 +279,13 @@ export const chatAutomationEvaluationViewSchema = z.strictObject({
   errorCode: wakeEvaluationErrorCodeSchema.nullable(),
   usage: wakeUsageSchema.nullable(),
 });
-export type ChatAutomationEvaluationView = z.infer<typeof chatAutomationEvaluationViewSchema>;
+export type ChatContinuationEvaluationView = z.infer<typeof chatContinuationEvaluationViewSchema>;
 
-export const chatAutomationViewSchema = z
+export const chatContinuationViewSchema = z
   .strictObject({
     projectId,
     chatId,
-    mode: chatAutomationModeSchema,
+    mode: chatContinuationModeSchema,
     epoch: revision,
     revision,
     owner: chatOwnerSchema,
@@ -296,9 +296,9 @@ export const chatAutomationViewSchema = z
     nextDueAt: z.iso.datetime().nullable(),
     activeRunIds: z.array(runIdSchema),
     remindedHuman: z.boolean(),
-    latestEvaluation: chatAutomationEvaluationViewSchema.nullable(),
+    latestEvaluation: chatContinuationEvaluationViewSchema.nullable(),
     /** 最近几轮判定，新的在前；时间线不靠猜历史。 */
-    recentRounds: z.array(chatAutomationRoundViewSchema).max(5),
+    recentRounds: z.array(chatContinuationRoundViewSchema).max(5),
     deliveries: z.array(continuationDeliverySchema),
     attention: z
       .strictObject({
@@ -313,7 +313,7 @@ export const chatAutomationViewSchema = z
   .superRefine((value, ctx) => {
     const reject = (message: string) => ctx.addIssue({ code: "custom", message });
     if (value.mode !== "enabled" && value.nextDueAt !== null)
-      reject("Disabled automation has no executable schedule");
+      reject("Disabled continuation has no executable schedule");
     if (value.remindedHuman && (value.owner.kind !== "human" || value.activeRunIds.length !== 0))
       reject("Human reminder must not claim active Agent runs");
     if (
@@ -340,4 +340,4 @@ export const chatAutomationViewSchema = z
     if ((value.changedBy === null) !== (value.changedAt === null))
       reject("Control audit identity and timestamp must appear together");
   });
-export type ChatAutomationView = z.infer<typeof chatAutomationViewSchema>;
+export type ChatContinuationView = z.infer<typeof chatContinuationViewSchema>;

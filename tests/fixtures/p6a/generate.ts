@@ -77,7 +77,7 @@ const cases = definitions.map((definition) => {
     round: 1,
     controlEpoch: 1,
     policy: {
-      provider: "small_brain",
+      provider: "llm",
       configRevision: 1,
       model: "fixture/model",
       thresholdVersion: "fixture-v1",

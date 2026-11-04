@@ -6,10 +6,10 @@ import { laterMessageCursor } from "../../contracts/chat";
 import type { ChatResult, Message, MessageCursor, MessageWindow } from "../../contracts/chat";
 import type { ChatDetailLoaderData } from "./chat-loader";
 import { getChatRunStateFn } from "../../server/functions/agent-run";
-import { getChatAutomationFn } from "../../server/functions/chat-automation";
+import { getChatContinuationFn } from "../../server/functions/chat-continuation";
 import { listMessagesFn } from "../../server/functions/chat";
 import type { AppResult } from "../../contracts/result";
-import type { ChatAutomationData } from "../../domain/chat-automation";
+import type { ChatContinuationData } from "../../domain/chat-continuation";
 
 /** 活跃 run 的定点刷新节奏：沿用旧全树 invalidate 的 1.2s，不额外加快。 */
 export const CHAT_LIVE_INTERVAL_MS = 1_200;
@@ -22,12 +22,12 @@ export const CHAT_IDLE_INTERVAL_MS = 5_000;
 
 /**
  * 一个 tick 读回的活动事实：会随判定与 run 变化的那几块，其余事实继续来自 loader。
- * 自动接续的判定不改消息也不改 run，只靠 run 指纹重读会让「正在检查」永远显示不出来。
+ * 对话接续的判定不改消息也不改 run，只靠 run 指纹重读会让「正在检查」永远显示不出来。
  */
 export type ChatLiveFacts = {
   messages: ChatResult<Message[]>;
   runState: AgentRunResult<ChatRunState>;
-  automation: AppResult<ChatAutomationData>;
+  continuation: AppResult<ChatContinuationData>;
 };
 
 /** 增量读的种子：loader 那批消息与它的尾巴游标。 */
@@ -49,7 +49,7 @@ export function isActiveRunState(runState: AgentRunResult<ChatRunState>): boolea
 
 /**
  * run 集合与状态的指纹：只要它变了，就有一次值得整树重读的转移
- * （新 run 出现、状态推进、本轮结束）。停止或起跑都要重读会话、自动化、
+ * （新 run 出现、状态推进、本轮结束）。停止或起跑都要重读会话、对话接续、
  * 关联 Task 与 inspector 的轮初快照，而这些东西不在 tick 的读取范围内。
  */
 function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
@@ -64,7 +64,7 @@ function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
 }
 
 /**
- * 可见时每 1.2s 读一次这条 Chat 的消息、run 状态与自动接续判定，页面只把结果叠在 loader 事实之上。
+ * 可见时每 1.2s 读一次这条 Chat 的消息、run 状态与对话接续判定，页面只把结果叠在 loader 事实之上。
  * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹变化时回报一次
  * `onRunChanged`，新消息到达时回报一次 `onMessagesChanged`，由页面做一次整树 invalidate。
  * 每次 tick 只发三个读，不再重跑整棵路由的 loader。
@@ -85,7 +85,7 @@ export function createChatLiveRefresh({
   reads: {
     messages: (after: MessageCursor | null) => Promise<ChatResult<MessageWindow>>;
     runState: () => Promise<AgentRunResult<ChatRunState>>;
-    automation: () => Promise<AppResult<ChatAutomationData>>;
+    continuation: () => Promise<AppResult<ChatContinuationData>>;
   };
   onFacts: (facts: ChatLiveFacts) => void;
   onRunChanged: () => void;
@@ -148,10 +148,10 @@ export function createChatLiveRefresh({
     }
     inFlight = true;
     try {
-      const [window, runState, automation] = await Promise.all([
+      const [window, runState, continuation] = await Promise.all([
         reads.messages(cursor),
         reads.runState(),
-        reads.automation(),
+        reads.continuation(),
       ]);
       if (stopped) return;
       let messages: ChatResult<Message[]>;
@@ -169,7 +169,7 @@ export function createChatLiveRefresh({
         // 增量读失败照旧把错误交给页面，不回退成 loader 那批旧事实。
         messages = window;
       }
-      onFacts({ messages, runState, automation });
+      onFacts({ messages, runState, continuation });
       const next = runSignature(runState);
       const active = isActiveRunState(runState);
       const nextMessage = overlay.at(-1)?.id ?? null;
@@ -236,13 +236,13 @@ export function createChatLiveRefresh({
   };
 }
 
-/** 生产接法：一次 tick 并发读消息增量、run 状态与自动接续判定，每个读各自保留自己的错误语义。 */
+/** 生产接法：一次 tick 并发读消息增量、run 状态与对话接续判定，每个读各自保留自己的错误语义。 */
 export function chatLiveReads(chatId: string, projectId: string) {
   return {
     messages: (after: MessageCursor | null) =>
       listMessagesFn({ data: { chatId, ...(after === null ? {} : { after }) } }),
     runState: () => getChatRunStateFn({ data: { chatId } }),
-    automation: () => getChatAutomationFn({ data: { projectId, chatId } }),
+    continuation: () => getChatContinuationFn({ data: { projectId, chatId } }),
   };
 }
 

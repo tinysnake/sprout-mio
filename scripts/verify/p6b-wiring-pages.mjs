@@ -345,19 +345,19 @@ try {
       "还没有 run 的 Chat 必须显示轮初空态，而不是伪造快照",
     );
     // run 事实与轮初块同时在场：新事实不许挤掉旧的宿主/活动 run 行。
-    // 自动接续面板必须接在真实 Chat 页上：夹具能渲染卡片，不代表页面接了服务。
+    // 对话接续面板必须接在真实 Chat 页上：夹具能渲染卡片，不代表页面接了服务。
     assert.equal(
-      await page.locator('[data-testid="automation-unavailable"]').count(),
+      await page.locator('[data-testid="continuation-unavailable"]').count(),
       0,
       "真实 Chat 页仍在渲染「服务尚未接入」占位",
     );
     assert.equal(
-      await page.locator('[data-testid="automation-card"]').count(),
+      await page.locator('[data-testid="continuation-card"]').count(),
       1,
-      "真实 Chat 页没有渲染自动接续卡片",
+      "真实 Chat 页没有渲染对话接续卡片",
     );
-    pass("automation_panel_wired_on_real_chat", {
-      note: "真实路由取到 getChatAutomationFn 的视图，不是未接入占位",
+    pass("continuation_panel_wired_on_real_chat", {
+      note: "真实路由取到 getChatContinuationFn 的视图，不是未接入占位",
     });
     // 轮询正常态不许进视野：内部 state 与 asOf 只留在 data-* 上。
     const liveState = await page

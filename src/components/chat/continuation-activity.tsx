@@ -1,14 +1,14 @@
 import { Check, Loader2, X } from "lucide-react";
 import { cn } from "cn";
-import type { ChatAutomationRoundView } from "../../contracts/chat-automation";
+import type { ChatContinuationRoundView } from "../../contracts/chat-continuation";
 import { Icon } from "../ui/icon";
 import {
-  AUTOMATION_DECISIONS,
-  AUTOMATION_STATES,
-  automationAttemptText,
-  automationDuration,
-  automationTokens,
-} from "../automation/automation-labels";
+  CONTINUATION_DECISIONS,
+  CONTINUATION_STATES,
+  continuationAttemptText,
+  continuationDuration,
+  continuationTokens,
+} from "../continuation/continuation-labels";
 
 type Line = {
   id: string;
@@ -21,17 +21,17 @@ type Line = {
 };
 
 /** 把轮次铺成时间线：每轮几次尝试各占一行，新的在前。 */
-function linesOf(rounds: readonly ChatAutomationRoundView[]): Line[] {
+function linesOf(rounds: readonly ChatContinuationRoundView[]): Line[] {
   const lines: Line[] = [];
   for (const round of rounds) {
-    const decision = round.result ? AUTOMATION_DECISIONS[round.result.decision] : null;
+    const decision = round.result ? CONTINUATION_DECISIONS[round.result.decision] : null;
     if (!round.attempts.length) {
       lines.push({
         id: `round-${round.round}`,
         status:
           round.state === "claimed" ? "running" : round.state === "attention" ? "error" : "done",
         label: `第 ${round.round} 轮检查`,
-        detail: AUTOMATION_STATES[round.state],
+        detail: CONTINUATION_STATES[round.state],
         startedAt: round.evaluatedAt ?? "",
         durationMs: null,
         tokens: null,
@@ -57,7 +57,7 @@ function linesOf(rounds: readonly ChatAutomationRoundView[]): Line[] {
             ? `第 ${round.round} 轮 · 第 ${attempt.attempt} 次`
             : `第 ${round.round} 轮检查`,
         detail: attempt.errorCode
-          ? automationAttemptText(attempt.errorCode)
+          ? continuationAttemptText(attempt.errorCode)
           : attempt.outcome === null
             ? "正在等待判定服务回应"
             : (decision ?? undefined),
@@ -93,7 +93,7 @@ function LineRow({ line }: { line: Line }) {
       ? "进行中"
       : line.durationMs === null
         ? ""
-        : automationDuration(line.durationMs);
+        : continuationDuration(line.durationMs);
   // 会话详情只有一列窄宽：分两行写，才不会被截成「1.7k tok · 8.4 …」。
   return (
     <li className="py-1 text-[11px] leading-4">
@@ -109,7 +109,7 @@ function LineRow({ line }: { line: Line }) {
           {line.detail ?? ""}
         </span>
         <span className="shrink-0 whitespace-nowrap font-mono">
-          {line.tokens !== null && `${automationTokens(line.tokens)} tok`}
+          {line.tokens !== null && `${continuationTokens(line.tokens)} tok`}
           {line.tokens !== null && duration !== "" && " · "}
           {duration}
         </span>
@@ -119,14 +119,14 @@ function LineRow({ line }: { line: Line }) {
 }
 
 /**
- * 自动接续的检查记录：每轮几次尝试各一行，新的在前。
+ * 对话接续的检查记录：每轮几次尝试各一行，新的在前。
  * 判定过程不改消息也不改 run，没有这份记录，页面只能显示「正在检查」四个字。
  */
 export function AttemptLines({
   rounds,
   className,
 }: {
-  rounds: readonly ChatAutomationRoundView[] | undefined;
+  rounds: readonly ChatContinuationRoundView[] | undefined;
   className?: string;
 }) {
   const lines = rounds ? linesOf(rounds) : [];
@@ -143,7 +143,7 @@ export function AttemptLines({
 export function ContinuationAttempts({
   rounds,
 }: {
-  rounds: readonly ChatAutomationRoundView[] | undefined;
+  rounds: readonly ChatContinuationRoundView[] | undefined;
 }) {
   const lines = rounds ? linesOf(rounds) : [];
   if (!lines.length) return null;

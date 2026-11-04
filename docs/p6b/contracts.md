@@ -13,7 +13,7 @@
 | 视角    | Schema                                                     | 位置                              | 关键字段                                                                                       | 跨对象约束（`refine`）                                                                 |
 | ------- | ---------------------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | Project | `projectInfoHubSchema`                                     | `src/contracts/info-hub.ts`       | `tasks`（计数 + 条目）、`agents`（`agents` + `runs`）、`chats`、`machines`、`leases.available` | machines 与 leases 必须属于同一 Project                                                |
-| Chat    | `chatInfoViewSchema`                                       | `src/contracts/info-hub.ts`       | `automation?`、`members`、`owner`、`instances`、`messages`、`runs`、`tasks`                    | 分身租约属于本 Project 且 holder 指向本 Chat；活动与最近 run 的 `chatId` 必须是本 Chat |
+| Chat    | `chatInfoViewSchema`                                       | `src/contracts/info-hub.ts`       | `continuation?`、`members`、`owner`、`instances`、`messages`、`runs`、`tasks`                  | 分身租约属于本 Project 且 holder 指向本 Chat；活动与最近 run 的 `chatId` 必须是本 Chat |
 | Agent   | `agentInfoViewSchema`                                      | `src/contracts/info-hub-query.ts` | `agent`、`runs`（active/recent）、`instances`                                                  | run 的 `agentProfileId`、分身的 profile 与租约 Project 必须一致                        |
 | Machine | `machineInfoViewSchema`（= `infoHubMachineSummarySchema`） | `src/contracts/info-hub-query.ts` | 连接状态、能力、最近探测、`lease`                                                              | 由 `infoHubViewSchema` 的 `superRefine` 校验 `projectId`/`machineId` 同一              |
 
@@ -21,7 +21,7 @@
 
 - **唯一数组**：`chats`、`machines`、`members`、`instances`、`runs`、`tasks`、`leases` 全部用 `infoHubUniqueArray` 加去重键（`chatId`、`machineId`、`memberKind:memberId`、`instanceId`、`runId`、`taskId`），重复项直接判 schema 失败，读视图不会出现两条同 id 事实。
 - **`unavailableFeatureSchema`**：能力缺失用「明确不可用」表达，不用空对象或省略字段冒充。
-- **`chatRunAggregateSchema`**：Chat 的 run 摘要按 `agentCount`（按 profile 去重）、`statusCounts`（只列真实出现过的状态）、`activeRunIds` 聚合；P6a 的 `automation` 摘要（`mode`/`epoch`/`nextDueAt`/`lastDecision`/`attentionCode`/`remindedHuman`）以 `chatAutomationSummarySchema` 扩展进来，`mode` 不是 `enabled` 时 `nextDueAt` 必须为 null。
+- **`chatRunAggregateSchema`**：Chat 的 run 摘要按 `agentCount`（按 profile 去重）、`statusCounts`（只列真实出现过的状态）、`activeRunIds` 聚合；P6a 的 `continuation` 摘要（`mode`/`epoch`/`nextDueAt`/`lastDecision`/`attentionCode`/`remindedHuman`）以 `chatContinuationSummarySchema` 扩展进来，`mode` 不是 `enabled` 时 `nextDueAt` 必须为 null。
 - **身份只从授权来**：`machineInfoViewSchema` 与 `agentInfoViewSchema` 的 `projectId` 字段是响应事实，不是入参；入参身份永远来自 live grant（见 [Agent 工具](#agent-工具-sprout_info_hub_get)）。
 
 ## 查询、游标与分页

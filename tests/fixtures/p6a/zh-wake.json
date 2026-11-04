@@ -17,7 +17,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -111,7 +111,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -200,7 +200,7 @@
         "recentMessageCharacters": 103,
         "characterBudget": 24000
       },
-      "snapshotHash": "7fac850eca884e0a1ccc96f939028b60196fc4258b75968eb102c28f23eca638"
+      "snapshotHash": "b4a588cbcb86c13e8a732a5f23fed693eeff1094fc1b2d23150fae8a98ae7655"
     },
     "expected": {
       "preparation": "model",
@@ -232,7 +232,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -332,7 +332,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -422,7 +422,7 @@
         "recentMessageCharacters": 69,
         "characterBudget": 24000
       },
-      "snapshotHash": "c93ad2af1f7383d5180558af858c3da44220f4da983ab3f3f89162d688ac9a56"
+      "snapshotHash": "6f9e7449ba87c3ba9e8739cb0fe2931301feca69394d356d9e9c816706e11c15"
     },
     "expected": {
       "preparation": "model",
@@ -454,7 +454,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -583,7 +583,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -702,7 +702,7 @@
         "recentMessageCharacters": 55,
         "characterBudget": 24000
       },
-      "snapshotHash": "a281b42effc30fc8732e9a06093eea2afd3077eb2885a5baa26c4246d6ef7622"
+      "snapshotHash": "4454bd2b7da375f4b86f36f8e36bf640dabf751712cd2cc838dad967543df5ec"
     },
     "expected": {
       "preparation": "model",
@@ -734,7 +734,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -858,7 +858,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -972,7 +972,7 @@
         "recentMessageCharacters": 78,
         "characterBudget": 24000
       },
-      "snapshotHash": "6430149ff1a06205e4abf97e6afe8c6cc908b42164a43a28bfe85317ab92e961"
+      "snapshotHash": "20d874525be21b3d5c694bd874aa40460d0222939b1deecc86c194152a7bb0bf"
     },
     "expected": {
       "preparation": "model",
@@ -1004,7 +1004,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -1115,7 +1115,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -1216,7 +1216,7 @@
         "recentMessageCharacters": 113,
         "characterBudget": 24000
       },
-      "snapshotHash": "bcdefb232f46dab1a36101e5d2eb06f3f18673406bca8d0122c7577b1464ee86"
+      "snapshotHash": "edfc15e531a12a087007ca249cbc6f68816710bf29887823ff7898e13f9231ba"
     },
     "expected": {
       "preparation": "model",
@@ -1248,7 +1248,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -1339,7 +1339,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -1425,7 +1425,7 @@
         "recentMessageCharacters": 48,
         "characterBudget": 24000
       },
-      "snapshotHash": "d0e9e8405063b38d2de3d9e3812522bf98a8f26f8544a772e38b067668ba4e1b"
+      "snapshotHash": "69343eefd87d50cf9654221483771cada6b4765c09d767d2adc993d2bf83c5ec"
     },
     "expected": {
       "preparation": "model",
@@ -1457,7 +1457,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -1593,7 +1593,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -1690,7 +1690,7 @@
         "recentMessageCharacters": 76,
         "characterBudget": 24000
       },
-      "snapshotHash": "2062eae56427f9dccb564698b985f45e90be54c784fab2ea914fc1fadffaea2f"
+      "snapshotHash": "2f1cfe1bc533ac7d4ea003a76d4b3b4aa98cf0b27a5fc9eef925aee1fb945005"
     },
     "expected": {
       "preparation": "rule",
@@ -1722,7 +1722,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -1840,7 +1840,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -1930,7 +1930,7 @@
         "recentMessageCharacters": 46,
         "characterBudget": 24000
       },
-      "snapshotHash": "115c22206b1357b13586f9166d6660dcb3e8f0a44f2733e4e0960728156ce7ef"
+      "snapshotHash": "9744b73004773256fd1fcbe4cbdf058adf1c49d71ad96e936c5ee4ad097becbb"
     },
     "expected": {
       "preparation": "model",
@@ -1962,7 +1962,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"
@@ -2075,7 +2075,7 @@
       "round": 1,
       "controlEpoch": 1,
       "policy": {
-        "provider": "small_brain",
+        "provider": "llm",
         "configRevision": 1,
         "model": "fixture/model",
         "thresholdVersion": "fixture-v1"

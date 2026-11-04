@@ -12,7 +12,7 @@ import { getAgentProfileFn } from "../../server/functions/agent";
 import { getChatRunStateFn } from "../../server/functions/agent-run";
 import { getChatInfoFn, readTurnContextFn } from "../../server/functions/info-hub";
 import { getChatSessionFn, listChatMembersFn, listMessagesFn } from "../../server/functions/chat";
-import { getChatAutomationFn } from "../../server/functions/chat-automation";
+import { getChatContinuationFn } from "../../server/functions/chat-continuation";
 import { requestRouteReload } from "../../lib/route-reload";
 
 /** Project 上下文从 URL 推导：chat 不属于 URL 中的 projectId 时按 not_found 呈现。 */
@@ -25,12 +25,12 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
         ok: false,
         error: { code: "not_found", message: "对象不存在", requestId: session.requestId },
       };
-    const [members, messages, info, runState, automation] = await Promise.all([
+    const [members, messages, info, runState, continuation] = await Promise.all([
       listChatMembersFn({ data: { chatId: params.chatId } }),
       listMessagesFn({ data: { chatId: params.chatId } }),
       getChatInfoFn({ data: { chatId: params.chatId } }),
       getChatRunStateFn({ data: { chatId: params.chatId } }),
-      getChatAutomationFn({ data: { projectId: params.projectId, chatId: params.chatId } }),
+      getChatContinuationFn({ data: { projectId: params.projectId, chatId: params.chatId } }),
     ]);
     // Human 诊断按明确 runId 读持久化快照：优先活动 run，否则取这条 Chat 最近一条 run。
     // 不查「Chat 的第一个分身」来造快照；没有 run 就传 null，让页面显示「还没有本轮上下文快照」。
@@ -54,7 +54,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
       info,
       turnContext,
       runState,
-      automation,
+      continuation,
     };
   },
   pendingComponent: ChatDetailPending,
@@ -93,7 +93,7 @@ function ProjectChatDetailPage() {
   const live = useInfoHubLive();
   const watching = hasActiveRun(loader);
   // 活跃 run 期间只重读消息与 run 状态，不再重跑整棵路由的 loader；
-  // run 一推进或收尾，这里回报一次 invalidate，让会话、自动化、关联 Task 与 inspector 快照跟上。
+  // run 一推进或收尾，这里回报一次 invalidate，让会话、对话接续、关联 Task 与 inspector 快照跟上。
   const facts = useChatLive({
     chatId,
     projectId,
@@ -122,8 +122,8 @@ function ProjectChatDetailPage() {
   // tick 读到的那几块盖住 loader 的同名事实；其余字段继续用 loader，两者不拼成一份新事实。
   const messages = facts?.messages ?? messageList(loader.messages);
   const runState = facts?.runState ?? loader.runState;
-  // 判定不改消息也不改 run：不盖住 loader 的 automation，「正在检查」就只在整树重读时闪现。
-  const automation = facts?.automation ?? loader.automation;
+  // 判定不改消息也不改 run：不盖住 loader 的 continuation，「正在检查」就只在整树重读时闪现。
+  const continuation = facts?.continuation ?? loader.continuation;
 
   return (
     <>
@@ -146,7 +146,7 @@ function ProjectChatDetailPage() {
         messages={messages}
         info={liveInfo}
         runState={runState}
-        automation={automation}
+        continuation={continuation}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}
         onChanged={() => void router.invalidate()}

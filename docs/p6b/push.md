@@ -69,9 +69,9 @@
 | 成员离开与重新加入                                                               | `src/server/membership.ts`                                                                 | Project                         |
 | Worker 上下线与首次上线                                                          | `src/server/worker-gateway.ts`                                                             | 绑定到该 Machine 的每个 Project |
 | Agent profile 全局更新                                                           | `src/domain/agent.ts` 的 `updateAgentProfile`，按 `project_member` 反查                    | 每个已加入该 profile 的 Project |
-| 自动接续的调度、判定与投递状态                                                   | `src/domain/chat-schedule.ts` 的 `signalScheduleChange(chatId)`，按 `chat.project_id` 反查 | Project 加 Chat                 |
+| 对话接续的调度、判定与投递状态                                                   | `src/domain/chat-schedule.ts` 的 `signalScheduleChange(chatId)`，按 `chat.project_id` 反查 | Project 加 Chat                 |
 
-自动接续有两类写入不改变消息也不改变 run，只改判定：
+对话接续有两类写入不改变消息也不改变 run，只改判定：
 
 - **claim**：`src/domain/chat-schedule.ts` 的 `claimDueEvaluation` 与 `src/domain/message-wake.ts` 的 `claimDueMessageWake` 在事务提交后立刻推送。判定从这里开始占用 provider，页面必须马上从「等待检查」变成「正在检查」，否则一次几秒的判定在页面上就是没有回应。
 - **结算**：`commitEvaluationResult`、`failEvaluation`、`skipMessageEvaluation`、`reconcileChatSchedule`、`reconcileMessageWake` 与投递状态迁移各推一次，页面用最新的尝试与用量换掉「正在检查」。
@@ -79,7 +79,7 @@
 已知缺口，靠安全轮询兜底，不影响正确性，只影响时延：
 
 - Lease 续租不发推送，这是设计，续租是高频写且不改页面事实。
-- 自动接续的推送依赖进程内信号 `signalScheduleChange`：拿不到 chatId 的清理路径（例如整个 Project 被删除后的级联）不发推送，由安全轮询收敛。
+- 对话接续的推送依赖进程内信号 `signalScheduleChange`：拿不到 chatId 的清理路径（例如整个 Project 被删除后的级联）不发推送，由安全轮询收敛。
 - `saveMachineRootDirectory`、`createMachine`、`renewMachineEnrollment` 未接发布。
 - Machine 详情页未单独订阅主题。
 

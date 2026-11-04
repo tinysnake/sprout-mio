@@ -157,7 +157,7 @@ describe("配置边界", () => {
   it("缺省环境返回冻结的独立配置且不要求数据库或认证连接", () => {
     const config = parseConfig({});
     expect(config).toEqual({
-      SPROUT_AUTOMATION_ENABLED: true,
+      SPROUT_CONTINUATION_ENABLED: true,
       SPROUT_PI_ENABLED: true,
       SPROUT_PI_DATA_DIR: join(homedir(), ".local", "share", "sprout-mio", "pi"),
       SPROUT_REPO_DIR: join(homedir(), ".local", "share", "sprout-mio", "repos"),

@@ -50,6 +50,6 @@
 
 固定 shell 探测使用 /bin/zsh、/bin/bash 与 /bin/sh。$SHELL 为其他绝对路径时保留 unknown 与 unsupported 事实，不执行该程序。探测不载入用户 profile，执行版本查询和固定自检，单次子进程限时三秒、输出上限 4 KiB。目录探测只使用 stat、realpath 与访问权限检查，不创建目录或试写文件。
 
-工作目录是 Machine 的默认操作位置。它不表示 host 分析目录，也不是 OS 安全边界。P4a 只交付连接与观察。远端 shell 工具、租约、任务与自动接续尚未交付。
+工作目录是 Machine 的默认操作位置。它不表示 host 分析目录，也不是 OS 安全边界。P4a 只交付连接与观察。远端 shell 工具、租约、任务与对话接续尚未交付。
 
 运行可复跑验收前先执行 `pnpm worker:build` 和 `pnpm build`，再执行 `bash scripts/verify/t-machine-worker.sh`。脚本分配独立端口、SQLite 与 state-dir，默认同时验证 production 与 dev，证据写入新的 `.verify/t-machine-worker-*`。它把产物复制到系统临时目录后启动，不依赖项目 node_modules 的查找链。`SPROUT_VERIFY_DEV=0` 只用于明确跳过 dev 的针对性复跑。

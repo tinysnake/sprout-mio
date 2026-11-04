@@ -4,7 +4,7 @@ import type { WakeProviderAvailability } from "../../contracts/project";
 import { Button } from "../ui/button";
 
 export type WakeProviderOption = WakeProviderAvailability;
-const labels: Record<WakeProvider, string> = { small_brain: "Small Brain", jev: "JEV" };
+const labels: Record<WakeProvider, string> = { llm: "LLM", jev: "JEV" };
 const reasons = {
   missing_model: "这台部署没有配置模型与阈值版本",
   missing_credentials: "这台部署没有配置凭据",
@@ -45,7 +45,7 @@ export function WakeProviderSelect({
       data-testid="wake-provider-select"
       className="min-w-0 space-y-3 border-b border-border py-5 text-xs break-words"
     >
-      <h3 className="text-sm font-medium">自动接续判定器</h3>
+      <h3 className="text-sm font-medium">对话接续判定器</h3>
       <p>当前 Project 只使用一个判定器；不可用时显示失败，不会自动切换到另一个判定器。</p>
       <p data-testid="wake-provider-current">
         {policy
@@ -58,7 +58,7 @@ export function WakeProviderSelect({
         </p>
       ) : available.length === 0 ? (
         <div data-testid="wake-provider-unavailable" className="space-y-1 text-muted-foreground">
-          <p>这台部署没有可用的判定器，自动接续不会做出接续判定。</p>
+          <p>这台部署没有可用的判定器，对话接续不会做出接续判定。</p>
           {options.map((option) => (
             <p key={option.provider}>
               {labels[option.provider]}：

@@ -1,4 +1,4 @@
-process.env.SPROUT_AUTOMATION_ENABLED = "false";
+process.env.SPROUT_CONTINUATION_ENABLED = "false";
 
 const { migrateDatabase } = await import("../../src/db/migrate");
 migrateDatabase();
@@ -26,7 +26,7 @@ const chat = chatDomain.createGroupChat(
   project.id,
   {
     projectId: project.id,
-    title: "自动化关闭",
+    title: "对话接续关闭",
     wakePolicy: "contextual",
     members: [
       { kind: "human", id: ctx.userId },
@@ -38,7 +38,7 @@ const chat = chatDomain.createGroupChat(
 );
 chatDomain.sendMessage(
   chat.id,
-  { body: "自动化关闭时仍然叫 owner", senderKind: "human", senderId: ctx.userId },
+  { body: "对话接续关闭时仍然叫 owner", senderKind: "human", senderId: ctx.userId },
   ctx,
 );
 

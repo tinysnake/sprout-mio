@@ -14,7 +14,7 @@ migrateDatabase();
 const { sqlite } = await import("../src/db/index");
 const { ID_PREFIXES, newId } = await import("../src/contracts/ids");
 const { chatTopic, projectTopic } = await import("../src/contracts/change-stream");
-const { publishChatAutomationChange, resetChangeFeed, subscribeChanges } =
+const { publishChatContinuationChange, resetChangeFeed, subscribeChanges } =
   await import("../src/domain/change-feed");
 const {
   beginWakeAttempt,
@@ -25,7 +25,7 @@ const {
   wakeAttempts,
 } = await import("../src/domain/chat-schedule");
 const { claimDueMessageWake } = await import("../src/domain/message-wake");
-const { getChatAutomation } = await import("../src/domain/chat-automation");
+const { getChatContinuation } = await import("../src/domain/chat-continuation");
 
 afterAll(() => {
   rmSync(directory, { recursive: true, force: true });
@@ -64,7 +64,7 @@ function seedProjectChat() {
   return { projectId, chatId };
 }
 
-/** 群组 + 会触发小脑的消息，is the minimum a message claim needs. */
+/** 群组 + 会触发 LLM 判定的消息，is the minimum a message claim needs. */
 function seedGroupMessage() {
   seedOwner();
   const projectId = newId(ID_PREFIXES.project);
@@ -248,7 +248,7 @@ describe("判定读视图", () => {
   });
 
   // Risk → evidence: provider 的高精度时钟给出小数毫秒；读视图若只收整数，
-  // 一次真实判定就会让整份 automation 视图解析失败，页面退化成「读出服务尚未接入」。
+  // 一次真实判定就会让整份 continuation 视图解析失败，页面退化成「读出服务尚未接入」。
   it("小数耗时照样解析出判定与逐次尝试", () => {
     const { projectId, chatId } = seedProjectChat();
     const id = seedClaimedEvaluation(chatId, projectId, 1);
@@ -260,7 +260,7 @@ describe("判定读视图", () => {
       )
       .run(later(4.2).getTime(), id);
 
-    const data = getChatAutomation(projectId, chatId, {
+    const data = getChatContinuation(projectId, chatId, {
       userId: "owner",
       requestId: "req_attempts",
     });
@@ -273,7 +273,7 @@ describe("判定读视图", () => {
   });
 });
 
-describe("自动接续变更推送", () => {
+describe("对话接续变更推送", () => {
   beforeEach(() => resetChangeFeed());
 
   it("判定变化按 chat 反查项目，两个主题都发", () => {
@@ -285,7 +285,7 @@ describe("自动接续变更推送", () => {
       send: (event) => seen.push(event.topic),
     });
 
-    publishChatAutomationChange(chatId);
+    publishChatContinuationChange(chatId);
     vi.advanceTimersByTime(200);
     expect(seen).toEqual([projectTopic(projectId), chatTopic(chatId)]);
     off();

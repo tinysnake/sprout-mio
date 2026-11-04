@@ -19,7 +19,7 @@ process.env.BETTER_AUTH_SECRET ??= randomBytes(32).toString("hex");
 process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
 process.env.SPROUT_REPO_DIR = join(directory, "repos");
 let http: ReturnType<typeof createServer> | undefined;
-let observedAutomationRead: (() => void) | undefined;
+let observedContinuationRead: (() => void) | undefined;
 let gateway: ((request: Request) => Promise<Response>) | undefined;
 if (suite === "integration") {
   http = createServer(async (req, res) => {
@@ -34,10 +34,10 @@ if (suite === "integration") {
       (await import("../../src/server/request-context")).initializeRequestContext(request);
       const response = await gateway!(request);
       if (
-        JSON.parse(Buffer.concat(chunks).toString()).call.type === "chat_automation_get" &&
+        JSON.parse(Buffer.concat(chunks).toString()).call.type === "chat_continuation_get" &&
         response.ok
       )
-        observedAutomationRead?.();
+        observedContinuationRead?.();
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(await response.text());
     } catch (error) {
@@ -55,14 +55,14 @@ migrateDatabase();
 const { sqlite } = await import("../../src/db");
 const schedule = await import("../../src/domain/chat-schedule");
 const delivery = await import("../../src/domain/continuation-delivery");
-const automation = await import("../../src/domain/chat-automation");
-const { createAutomationScheduler } = await import("../../src/server/automation-scheduler");
+const continuation = await import("../../src/domain/chat-continuation");
+const { createContinuationScheduler } = await import("../../src/server/continuation-scheduler");
 const runs = await import("../../src/domain/agent-run");
 if (suite === "recover") {
   runs.recoverAgentRuns();
   schedule.recoverSchedules(new Date(process.env.P6A_NOW!));
   const result = {
-    controls: schedule.all("SELECT * FROM chat_automation_control"),
+    controls: schedule.all("SELECT * FROM chat_continuation_control"),
     schedules: schedule.all("SELECT * FROM chat_schedule"),
     deliveries: schedule.all("SELECT id,state,run_id,error_code FROM continuation_delivery"),
     claim:
@@ -97,12 +97,12 @@ const profiles = ["Alpha", "Beta"].map((name) => {
 updateProjectWakePolicy(
   {
     projectId: project.id,
-    provider: "small_brain",
+    provider: "llm",
     expectedConfigRevision: 1,
     requestId: newId(ID_PREFIXES.request),
   },
   ctx,
-  { model: "fixture-small-brain", thresholdVersion: "fixture-v1" },
+  { model: "fixture-llm", thresholdVersion: "fixture-v1" },
   new Date(),
 );
 let assertions = 0;
@@ -266,7 +266,7 @@ function control(
   now: Date,
   runId?: string,
 ) {
-  return automation.applyChatAutomationCommand(
+  return continuation.applyChatContinuationCommand(
     {
       projectId: project.id,
       chatId,
@@ -280,8 +280,8 @@ function control(
   );
 }
 try {
-  if (suite === "deploy-automation-off") {
-    const enabled = process.env.SPROUT_AUTOMATION_ENABLED === "true";
+  if (suite === "deploy-continuation-off") {
+    const enabled = process.env.SPROUT_CONTINUATION_ENABLED === "true";
     let modelBoundaryCalls = 0;
     let fetchBoundaryCalls = 0;
     const complete: import("../../src/server/wake-runtime").WakeRuntimeOptions["complete"] = async (
@@ -310,13 +310,13 @@ try {
     const { healthResponse } = await import("../../src/routes/api/health");
     const { initializeRequestContext } = await import("../../src/server/request-context");
     await startRuntime({ complete, fetch });
-    let scheduler: ReturnType<typeof createAutomationScheduler> | undefined;
+    let scheduler: ReturnType<typeof createContinuationScheduler> | undefined;
     try {
       const request = new Request("http://localhost/api/health");
       initializeRequestContext(request);
       const health = healthResponse(request);
       equal(health.status, 200, "instance is healthy in both modes");
-      equal((await health.json()).automationEnabled, enabled, "health exposes instance switch");
+      equal((await health.json()).continuationEnabled, enabled, "health exposes instance switch");
       const installed = (
         globalThis as typeof globalThis & {
           sproutWakeEvaluator?: unknown;
@@ -330,7 +330,7 @@ try {
       const beforeMessages = count("message");
       const callbacks = new Map<number, () => void>();
       let timerCalls = 0;
-      scheduler = createAutomationScheduler({
+      scheduler = createContinuationScheduler({
         clock: {
           now: () => now,
           setTimeout: (callback) => {
@@ -401,7 +401,7 @@ try {
           .find((item: ReturnType<typeof prepareWakeEvaluation>) => item.kind === "model");
         assert(prepared?.kind === "model", "manual probe has a real model evaluation input");
         const evaluate = createWakeEvaluator({ clock: () => 0, complete, fetch });
-        for (const provider of ["small_brain", "jev"] as const) {
+        for (const provider of ["llm", "jev"] as const) {
           await assert.rejects(
             evaluate({ ...prepared.input, policy: { ...prepared.input.policy, provider } }),
             { message: "provider_unavailable" },
@@ -429,20 +429,20 @@ try {
           "Pi host disabled; completion and fetch boundaries replaced with counting fixtures",
       };
       writeFileSync(
-        join(directory, "automation-evidence.json"),
+        join(directory, "continuation-evidence.json"),
         JSON.stringify(evidence, null, 2) + "\n",
       );
-      console.log("AUTOMATION " + JSON.stringify(evidence));
+      console.log("CONTINUATION " + JSON.stringify(evidence));
     } finally {
       scheduler?.stop();
-      await shutdownRuntime("deploy-automation-off-gate");
+      await shutdownRuntime("deploy-continuation-off-gate");
     }
   }
   if (suite === "scheduler") {
     let now = new Date();
     const callbacks = new Map<number, () => void>();
     let nextTimer = 0;
-    const scheduler = createAutomationScheduler({
+    const scheduler = createContinuationScheduler({
       clock: {
         now: () => now,
         setTimeout: (fn) => {
@@ -534,7 +534,7 @@ try {
     scheduler.stop();
     equal(
       getProject(project.id, ctx).wakePolicy?.provider,
-      "small_brain",
+      "llm",
       "Project policy is persisted and read",
     );
     equal(
@@ -663,7 +663,7 @@ try {
       schedule.hasUnknownDeliveryBarrier(chat.id),
       "enable does not automatically resend an unknown input",
     );
-    const reissued = automation.applyChatAutomationCommand(
+    const reissued = continuation.applyChatContinuationCommand(
       {
         action: "reissue",
         projectId: project.id,
@@ -701,7 +701,7 @@ try {
       "Human owner only gets reminder",
     );
     ok(
-      automation.getChatAutomation(project.id, reminder.id, ctx).view.remindedHuman,
+      continuation.getChatContinuation(project.id, reminder.id, ctx).view.remindedHuman,
       "Human reminder is visible in read view",
     );
     sendMessage(
@@ -710,7 +710,7 @@ try {
       ctx,
     );
     equal(
-      automation.getChatAutomation(project.id, reminder.id, ctx).view.activeRunIds,
+      continuation.getChatContinuation(project.id, reminder.id, ctx).view.activeRunIds,
       [],
       "Human responsibility view never claims an Agent run for its reminder",
     );
@@ -876,7 +876,7 @@ try {
     equal(
       schedule.claimDueEvaluation(internal(new Date(now.getTime() + 3600000))),
       undefined,
-      "first epoch gate prevents checks while automation is off",
+      "first epoch gate prevents checks while continuation is off",
     );
     control(chat.id, "enable", now);
     equal(
@@ -918,12 +918,12 @@ try {
       },
     };
     ok(
-      automation.getChatAutomation(project.id, chat.id, agentCtx).denials.enable,
+      continuation.getChatContinuation(project.id, chat.id, agentCtx).denials.enable,
       "Agent read explains denied controls",
     );
     let agentCode = "";
     try {
-      automation.applyChatAutomationCommand(
+      continuation.applyChatContinuationCommand(
         {
           projectId: project.id,
           chatId: chat.id,
@@ -952,7 +952,7 @@ try {
     equal(
       [closed.view.mode, closed.view.epoch],
       ["off", beforeAbort.epoch + 1],
-      "chat-wide abort closes automation and advances the epoch again",
+      "chat-wide abort closes continuation and advances the epoch again",
     );
     equal(
       schedule.one<{ status: string }>("SELECT status FROM agent_run WHERE id=?", bound.run_id)!
@@ -965,7 +965,7 @@ try {
       ["canceled", "human_aborted"],
       "chat-wide abort cancels the unadmitted continuation with the Human abort reason",
     );
-    equal(count("chat_automation_abort"), 1, "host abort intent persists");
+    equal(count("chat_continuation_abort"), 1, "host abort intent persists");
     const recovered = await restart(new Date(now.getTime() + 3600000));
     equal(
       [
@@ -977,7 +977,7 @@ try {
       "fresh process cannot bypass abort",
     );
     const another = assigned(chat.id);
-    equal(count("chat_schedule"), 0, "new assignment cannot restore automation");
+    equal(count("chat_schedule"), 0, "new assignment cannot restore continuation");
     task.cancelTask({ taskId: another.task.id, expectedRevision: another.task.revision }, ctx);
     const command = {
       action: "enable" as const,
@@ -986,22 +986,22 @@ try {
       expectedRevision: schedule.controlFor(chat.id).revision,
       requestId: newId(ID_PREFIXES.request),
     };
-    const first = automation.applyChatAutomationCommand(command, ctx, now);
+    const first = continuation.applyChatContinuationCommand(command, ctx, now);
     equal(
-      automation.applyChatAutomationCommand(command, ctx, now),
+      continuation.applyChatContinuationCommand(command, ctx, now),
       first,
       "same request/payload returns persisted result",
     );
     let code = "";
     try {
-      automation.applyChatAutomationCommand({ ...command, action: "disable" }, ctx, now);
+      continuation.applyChatContinuationCommand({ ...command, action: "disable" }, ctx, now);
     } catch (error) {
       code = (error as { code: string }).code;
     }
     equal(code, "conflict", "same request with different payload conflicts");
-    const view = automation.getChatAutomation(project.id, chat.id, ctx);
+    const view = continuation.getChatContinuation(project.id, chat.id, ctx);
     ok(
-      view.allowedActions.includes("chat.automation.disable") && !view.denials.disable,
+      view.allowedActions.includes("chat.continuation.disable") && !view.denials.disable,
       "read data includes permitted controls",
     );
     equal(count("message"), 0, "control and automatic checks never forge Human messages");
@@ -1036,7 +1036,7 @@ try {
       "run-scoped abort stops only the named run",
     );
     equal(
-      count("chat_automation_abort"),
+      count("chat_continuation_abort"),
       2,
       "each run-scoped abort persists its own host abort intent",
     );
@@ -1044,7 +1044,7 @@ try {
     schedule.write("DELETE FROM chat_member WHERE chat_id=? AND member_kind='human'", revoked.id);
     let revokedCode = "";
     try {
-      automation.getChatAutomation(project.id, revoked.id, ctx);
+      continuation.getChatContinuation(project.id, revoked.id, ctx);
     } catch (error) {
       revokedCode = (error as { code: string }).code;
     }
@@ -1128,7 +1128,7 @@ try {
       schedule.one<{ n: number }>("SELECT count(*) AS n FROM agent_run WHERE chat_id=?", carry.id)!
         .n,
       1,
-      "normal completion cannot carry pending work into a new run while automation is off",
+      "normal completion cannot carry pending work into a new run while continuation is off",
     );
     equal(
       schedule.one<{ disposition: string }>(
@@ -1211,9 +1211,9 @@ try {
       ready = resolve;
       rejectReady = reject;
     });
-    observedAutomationRead = ready;
+    observedContinuationRead = ready;
     const deadline = setTimeout(
-      () => rejectReady(new Error("running fixture never reached authorized automation read")),
+      () => rejectReady(new Error("running fixture never reached authorized continuation read")),
       10000,
     );
     const runningProcess = new PiSessionProcess(

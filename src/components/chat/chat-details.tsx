@@ -1,6 +1,9 @@
 import { useState } from "react";
-import { AutomationPanel } from "../automation/automation-panel";
-import type { AutomationPageData, AutomationSubmit } from "../automation/automation-page-data";
+import { ContinuationPanel } from "../continuation/continuation-panel";
+import type {
+  ContinuationPageData,
+  ContinuationSubmit,
+} from "../continuation/continuation-page-data";
 import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-react";
@@ -69,8 +72,8 @@ export function ChatDetails({
   projectProfiles,
   machineFacts = null,
   machineFactsError,
-  automation,
-  onAutomationCommand,
+  continuation,
+  onContinuationCommand,
   onClose,
   onChanged,
 }: {
@@ -87,8 +90,8 @@ export function ChatDetails({
   projectProfiles: AgentProfile[];
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
-  automation?: AutomationPageData;
-  onAutomationCommand?: AutomationSubmit;
+  continuation?: ContinuationPageData;
+  onContinuationCommand?: ContinuationSubmit;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -190,7 +193,11 @@ export function ChatDetails({
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6">
         <div className="py-5">
-          <AutomationPanel data={automation} onCommand={onAutomationCommand} showStatus={false} />
+          <ContinuationPanel
+            data={continuation}
+            onCommand={onContinuationCommand}
+            showStatus={false}
+          />
         </div>
         <section data-testid="inspector-tasks" className="space-y-3 border-b border-border py-5">
           <h3 className="text-[10px] font-medium text-muted-foreground">Task 摘要</h3>

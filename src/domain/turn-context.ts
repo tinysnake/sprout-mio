@@ -154,7 +154,7 @@ export function captureTurnContext(
       chatKind: chat.kind,
       chatArchived: chat.archived,
       owner: chat.owner,
-      ...(summary.automation ? { automation: summary.automation } : {}),
+      ...(summary.continuation ? { continuation: summary.continuation } : {}),
       members: chat.members.sort((a, b) => a.memberId.localeCompare(b.memberId)),
       status: agent.status,
       heldMachines: hub.machines.filter(

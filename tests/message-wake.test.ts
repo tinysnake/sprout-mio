@@ -82,7 +82,7 @@ beforeAll(() => {
   try {
     evidence = runFixture(directory, "tests/fixtures/message-wake.ts", {});
     evidence.disabled = runFixture(directory, "tests/fixtures/message-wake-disabled.ts", {
-      SPROUT_AUTOMATION_ENABLED: "false",
+      SPROUT_CONTINUATION_ENABLED: "false",
     });
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -127,7 +127,7 @@ describe("message-triggered wake", () => {
     expect(evidence.race.oldState).toBe("stale");
   });
 
-  it("keeps direct owner wake when automation is disabled", () => {
+  it("keeps direct owner wake when continuation is disabled", () => {
     expect(evidence.disabled.wake).toBe(0);
     expect(evidence.disabled.runs).toBeGreaterThan(0);
   });

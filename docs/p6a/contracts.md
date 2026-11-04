@@ -1,4 +1,4 @@
-# P6a 契约：自动接续、唤醒判定与人类控制
+# P6a 契约：对话接续、唤醒判定与人类控制
 
 本文记录 I-P6a 在 `integration/p6a` 上冻结的共享契约与数据库形态，供 P6b/P6c 及后续章节引用。基线代码头 `bde6383`（`bde6383` 为第二轮独立技术验收的受验提交 `303fbf5` 之后唯一新增的文档提交）。
 
@@ -6,14 +6,16 @@
 
 ## 冻结了什么
 
-| 契约文件                                        | 冻结内容                                                                   |
-| ----------------------------------------------- | -------------------------------------------------------------------------- |
-| `src/contracts/wake-evaluation.ts`              | 判定输入快照、判定结果、11 个错误码、输入绑定的结果校验                    |
-| `src/contracts/chat-automation.ts`              | 自动接续策略常量、能力表、控制命令、投递与读视图、取消原因                 |
-| `src/contracts/chat-automation-capabilities.ts` | 8 个 `chat.automation.*` / `project.wake_policy.*` 动作的 Human/Agent 级别 |
-| `src/contracts/project-wake-policy.ts`          | Project 判定器配置，与未配置时的读时默认                                   |
-| `drizzle/0026_p6a_continuation.sql`             | 9 张新表、`project.wake_policy` 列、5 个触发器                             |
-| `drizzle/0027_p6a_automation_off.sql`           | 控制表两态重建、取消原因改名、3 个触发器重建                               |
+| 契约文件                                          | 冻结内容                                                                     |
+| ------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `src/contracts/wake-evaluation.ts`                | 判定输入快照、判定结果、11 个错误码、输入绑定的结果校验                      |
+| `src/contracts/chat-continuation.ts`              | 对话接续策略常量、能力表、控制命令、投递与读视图、取消原因                   |
+| `src/contracts/chat-continuation-capabilities.ts` | 8 个 `chat.continuation.*` / `project.wake_policy.*` 动作的 Human/Agent 级别 |
+| `src/contracts/project-wake-policy.ts`            | Project 判定器配置，与未配置时的读时默认                                     |
+| `drizzle/0026_p6a_continuation.sql`               | 9 张新表、`project.wake_policy` 列、5 个触发器                               |
+| `drizzle/0027_p6a_continuation_off.sql`           | 控制表两态重建、取消原因改名、3 个触发器重建                                 |
+| `drizzle/0033_chat_continuation_rename.sql`       | 三张 `chat_continuation_*` 表改名、CHECK 名统一、3 个触发器重建              |
+| `drizzle/0034_wake_provider_llm.sql`              | 判定器 provider 旧值 `small_brain` → `llm`（只改数据，schema 不变）          |
 
 没有冻结：页面形状（由 Human 选定的方案 A 与后续评审决定）、模型提示词文本（可改，改后需重跑 `p6a-live-routing`）、阈值数值（`thresholdVersion` 只标识版本，不承诺版本内的数值）。
 
@@ -77,17 +79,17 @@
 
 先纠正一处常见误读：在这份契约里 **`thresholdVersion` 不是可空字段**，`model` 也不是可空（`null`）字段，二者分别有各自的缺省方式。
 
-- `model: z.string().trim().min(1).max(200).optional()`：字段**可以整个缺省**，缺省的含义在注释里写明「Omitted model uses the host default model」。原因：新 Project 首次自动接续发生在 Human 配置判定器之前，此时没有可信的模型 id，而 P6a 不允许凭空写一个。缺省不是「不知道」，是「交给宿主默认」。**引用**
+- `model: z.string().trim().min(1).max(200).optional()`：字段**可以整个缺省**，缺省的含义在注释里写明「Omitted model uses the host default model」。原因：新 Project 首次对话接续发生在 Human 配置判定器之前，此时没有可信的模型 id，而 P6a 不允许凭空写一个。缺省不是「不知道」，是「交给宿主默认」。**引用**
 - 判定结果里的 `model: identifier.optional()` 同理，注释为「Provider resolution can fail before a host default model is known」：失败收据可能根本走不到解析模型那一步，此时不得伪造模型 id。**引用**
 - `thresholdVersion: z.string().trim().min(1).max(80)` 是**必填**：它标识判定所用阈值集合的版本，`version` 字段就是它的值（`decidedWakeResult` 写 `version: input.policy.thresholdVersion`），JEV 适配器还要求调用侧阈值版本与策略版本严格相等。必填的原因是可追溯：任何一条判定都必须能回答「用哪版本阈值算的」，所以不给默认、不给 null。**引用**
 - 真正「可空」的是**存储层**：`project.wake_policy` 列允许 `NULL`，`NULL` 在读时合成默认策略（见下节），不是契约字段可空。**引用**
 
-## Chat 自动接续契约 `src/contracts/chat-automation.ts`
+## Chat 对话接续契约 `src/contracts/chat-continuation.ts`
 
-### `CHAT_AUTOMATION_POLICY` 每个取值与理由
+### `CHAT_CONTINUATION_POLICY` 每个取值与理由
 
 ```ts
-export const CHAT_AUTOMATION_POLICY = {
+export const CHAT_CONTINUATION_POLICY = {
   version: 1,
   intervalSeconds: 300,
   retryDelaySeconds: [5, 10, 30, 60, 120],
@@ -104,7 +106,7 @@ export const CHAT_AUTOMATION_POLICY = {
 | `maxAttempts: 6`                          | 一份判定最多尝试 6 次（首次 + 五次退避重试），累计等待 225 秒；第 6 次仍失败就落 `attention`，不再自动重试。`wake_evaluation.attempt` 与投递 `attempt` 的 CHECK 上界都是 6。 |
 | `repeatedRunFailureLimit: 3`              | 同一 run 连续失败 3 次判为 `run_repeated_failure` 并停止自动重投。让失败可自愈，但不无限循环。                                                                               |
 
-依据：`CHAT_AUTOMATION_POLICY` 常量与 `wake_evaluation_attempt_check`、`chatAutomationEvaluationViewSchema.attempt` 的上界引用。理由部分为本轮按取值与相邻约束归纳，**引用**。“300 秒”存在两处来源（TS 常量与 SQL 字面量），现在靠 `p6a-scheduler` 门禁钉住相等，不是物理单一来源，见 [已知限制](summary.md#p3-6-300-秒两处来源)。
+依据：`CHAT_CONTINUATION_POLICY` 常量与 `wake_evaluation_attempt_check`、`chatContinuationEvaluationViewSchema.attempt` 的上界引用。理由部分为本轮按取值与相邻约束归纳，**引用**。“300 秒”存在两处来源（TS 常量与 SQL 字面量），现在靠 `p6a-scheduler` 门禁钉住相等，不是物理单一来源，见 [已知限制](summary.md#p3-6-300-秒两处来源)。
 
 ### 人类消息接单时机与每 Chat 唯一活跃判定
 
@@ -123,30 +125,30 @@ Human 在 `contextual` Chat 发普通消息时，`chat_message_wake.due_at` 直�
 
 读视图据此回答两个问题：`latestEvaluation` 增 `claimedAt`/`finishedAt`/`usage`（进行中的判定用 `claimedAt` 算已等待时长），`recentRounds` 保留最近 5 轮的判定与逐次尝试，供页面按 run 活动记录同样的折叠形状展示。
 
-判定状态变化不再等安全轮询：进入 `claimed`、落 `decided`/`retry_wait`/`attention`、被清扫成 `stale` 的路径都调 `signalScheduleChange(chatId)`，由它发布 `project:` 与 `chat:` 两个主题。依据：`src/db/schema.ts` 的 `wakeEvaluationAttempt`、`src/domain/chat-schedule.ts` 的 `beginWakeAttempt`/`finishWakeAttempt`/`closeAttemptsForChat`、`src/contracts/chat-automation.ts` 的 `chatAutomationEvaluationViewSchema`/`chatAutomationRoundViewSchema`，与 [P6b 变更推送](../p6b/push.md) 的发布覆盖表。**引用**
+判定状态变化不再等安全轮询：进入 `claimed`、落 `decided`/`retry_wait`/`attention`、被清扫成 `stale` 的路径都调 `signalScheduleChange(chatId)`，由它发布 `project:` 与 `chat:` 两个主题。依据：`src/db/schema.ts` 的 `wakeEvaluationAttempt`、`src/domain/chat-schedule.ts` 的 `beginWakeAttempt`/`finishWakeAttempt`/`closeAttemptsForChat`、`src/contracts/chat-continuation.ts` 的 `chatContinuationEvaluationViewSchema`/`chatContinuationRoundViewSchema`，与 [P6b 变更推送](../p6b/push.md) 的发布覆盖表。**引用**
 
-### `CHAT_AUTOMATION_CAPABILITIES`
+### `CHAT_CONTINUATION_CAPABILITIES`
 
-8 个动作分两级。级别只描述**第一道授权闸**，不是充分授权。依据：`src/contracts/chat-automation-capabilities.ts`。**引用**
+8 个动作分两级。级别只描述**第一道授权闸**，不是充分授权。依据：`src/contracts/chat-continuation-capabilities.ts`。**引用**
 
 | 动作                         | Human 级别 | Agent 级别 | 补充约束                                       |
 | ---------------------------- | ---------- | ---------- | ---------------------------------------------- |
 | `project.wake_policy.read`   | `project`  | `project`  | 读到的是 Project 可见范围内的当前策略          |
 | `project.wake_policy.update` | `human`    | `never`    | 还要求 Project 创建者                          |
-| `chat.automation.read`       | `member`   | `member`   | 需当前 Human Chat 资格                         |
-| `chat.automation.disable`    | `member`   | `never`    | `applyChatAutomationCommand` 直接拒绝 Agent    |
-| `chat.automation.enable`     | `member`   | `never`    | 同上                                           |
-| `chat.automation.abort`      | `member`   | `never`    | 同上                                           |
-| `chat.automation.retry`      | `member`   | `never`    | 还校验同一 Chat subject 与当前仍有可重试的判定 |
-| `chat.automation.reissue`    | `member`   | `never`    | 还要求存在可核对的 `delivery_unknown`          |
+| `chat.continuation.read`     | `member`   | `member`   | 需当前 Human Chat 资格                         |
+| `chat.continuation.disable`  | `member`   | `never`    | `applyChatContinuationCommand` 直接拒绝 Agent  |
+| `chat.continuation.enable`   | `member`   | `never`    | 同上                                           |
+| `chat.continuation.abort`    | `member`   | `never`    | 同上                                           |
+| `chat.continuation.retry`    | `member`   | `never`    | 还校验同一 Chat subject 与当前仍有可重试的判定 |
+| `chat.continuation.reissue`  | `member`   | `never`    | 还要求存在可核对的 `delivery_unknown`          |
 
 Scheduler 的 evaluate / enqueue / admit 是内部入口，**不是**公开能力，不出现在这张表里。
 
 ### 控制命令、`mode`、`epoch` 与 `revision`
 
-`chatAutomationCommandSchema` 是 `action` 上的判别联合，5 个动作共享 `projectId`、`chatId`、`expectedRevision`、`requestId`；`disable`/`enable`/`abort` 可带 `reason`，`abort` 可带 `runId`，`retry` 带 `evaluationId`，`reissue` 带 `deliveryId` 且 `confirmedUnknown` 必须是 `true`。**引用**
+`chatContinuationCommandSchema` 是 `action` 上的判别联合，5 个动作共享 `projectId`、`chatId`、`expectedRevision`、`requestId`；`disable`/`enable`/`abort` 可带 `reason`，`abort` 可带 `runId`，`retry` 带 `evaluationId`，`reissue` 带 `deliveryId` 且 `confirmedUnknown` 必须是 `true`。**引用**
 
-`mode` 只有两态：`enabled` / `off`。**引用**（`chatAutomationModeSchema`，以及 `automation_mode_check`）
+`mode` 只有两态：`enabled` / `off`。**引用**（`chatContinuationModeSchema`，以及 `continuation_mode_check`）
 
 三个**改 mode** 的动作，语义差异是这份契约最容易误读的地方：
 
@@ -157,14 +159,14 @@ Scheduler 的 evaluate / enqueue / admit 是内部入口，**不是**公开能�
 | `abort`（无 `runId`） | `off`     | 是           | **是**：中止本 Chat 全部 `queued`/`running` run | 是             |
 | `abort`（带 `runId`） | 不变      | **否**       | 是：只中止该 run                                | 否             |
 
-`disable` 只关掉「以后还会不会来」：留在途 run 继续跑完，但不再安排新的自动接续。`abort` 才叫停当前工作。依据：`applyChatAutomationCommand` 中只有 `abort` 会调用 `persistAutomationRunStop` 与 `transitionAgentRun(id, "aborted")`；`abort` 带 `runId` 时走 `revision=revision+1` 分支，明确注释「Stopping one run must leave the Chat's continuation switch and epoch intact」。**引用**
+`disable` 只关掉「以后还会不会来」：留在途 run 继续跑完，但不再安排新的对话接续。`abort` 才叫停当前工作。依据：`applyChatContinuationCommand` 中只有 `abort` 会调用 `persistContinuationRunStop` 与 `transitionAgentRun(id, "aborted")`；`abort` 带 `runId` 时走 `revision=revision+1` 分支，明确注释「Stopping one run must leave the Chat's continuation switch and epoch intact」。**引用**
 
 `epoch` 是**控制代际**，不是版本号：
 
 - 每次 mode 变更 `epoch+1`（`abort` 带 `runId` 除外），`revision` 也 `+1`。
 - 判定快照带 `controlEpoch`，落地时（`landingFence()`）比对 epoch：不一致的在途结果一律落 `stale`、`result` 保持 `NULL`。这是第二道闸，第一道是触发器。
-- `revision` 是乐观并发令牌：命令带 `expectedRevision`，与当前不符即 `conflict`（“自动接续版本已变化，请刷新后重试”）。
-- 审计：`changed_by` 与 `changed_at` 必须同时为空或同时非空（`automation_audit_check`）。
+- `revision` 是乐观并发令牌：命令带 `expectedRevision`，与当前不符即 `conflict`（“对话接续版本已变化，请刷新后重试”）。
+- 审计：`changed_by` 与 `changed_at` 必须同时为空或同时非空（`continuation_audit_check`）。
 
 ### 取消原因枚举
 
@@ -179,16 +181,16 @@ Scheduler 的 evaluate / enqueue / admit 是内部入口，**不是**公开能�
 | `chat_archived`        | Chat 归档                               |
 | `policy_changed`       | **预留值，当前代码不写它**              |
 
-`policy_changed` 的预留是明确决定，注释写在枚举里：改 Project 判定器策略时，未 admit 的投递实际由 `task_context_changed` 与数据库触发器处理；将来真要接上必须同时补门禁。来源：`src/contracts/chat-automation.ts` 枚举注释，与 `docs(contracts): mark policy_changed as a reserved cancel reason`（`d95f37c`）。**引用**
+`policy_changed` 的预留是明确决定，注释写在枚举里：改 Project 判定器策略时，未 admit 的投递实际由 `task_context_changed` 与数据库触发器处理；将来真要接上必须同时补门禁。来源：`src/contracts/chat-continuation.ts` 枚举注释，与 `docs(contracts): mark policy_changed as a reserved cancel reason`（`d95f37c`）。**引用**
 
 ## Project 判定器配置 `src/contracts/project-wake-policy.ts`
 
-`projectWakePolicySchema` 是**独立**的严格对象，不依赖 Chat、Task 或 run 的 schema：`provider`（`small_brain` | `jev`）、`configRevision`（正整数）、`model?`、`thresholdVersion`。**引用**
+`projectWakePolicySchema` 是**独立**的严格对象，不依赖 Chat、Task 或 run 的 schema：`provider`（`llm` | `jev`）、`configRevision`（正整数）、`model?`、`thresholdVersion`。**引用**
 
 `DEFAULT_PROJECT_WAKE_POLICY` 是冻结字面量：
 
 ```ts
-{ provider: "small_brain", configRevision: 1, thresholdVersion: "p6a-design-default-v1" }
+{ provider: "llm", configRevision: 1, thresholdVersion: "p6a-design-default-v1" }
 ```
 
 关键点是它**读时合成、不写库**：
@@ -205,33 +207,33 @@ Scheduler 的 evaluate / enqueue / admit 是内部入口，**不是**公开能�
 
 | 表                            | 作用                                                                                                                |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `chat_automation_control`     | 每 Chat 的控制态：`mode`、`epoch`、`revision`、审计字段                                                             |
+| `chat_continuation_control`   | 每 Chat 的控制态：`mode`、`epoch`、`revision`、审计字段                                                             |
 | `chat_schedule`               | 每 Chat 一条排期：`next_due_at`、`round`、`fingerprint`                                                             |
 | `wake_evaluation`             | 一次周期性判定的全部事实：来源、轮次、`control_epoch`、状态、claim、`input`、`result`、`error_code`                 |
 | `wake_evaluation_task`        | 判定时的 assigned Task 快照（`evaluation_id` + `task_id` + 两个 revision）                                          |
-| `continuation_delivery`       | 一份自动接续投递：接收者、状态、尝试次数、admit/deliver/present 时间、取消原因、未知投递的 `supersedes_delivery_id` |
+| `continuation_delivery`       | 一份对话接续投递：接收者、状态、尝试次数、admit/deliver/present 时间、取消原因、未知投递的 `supersedes_delivery_id` |
 | `continuation_delivery_task`  | 投递与 Task 的关联                                                                                                  |
-| `chat_automation_command`     | 控制命令幂等表：`request_id` → `payload` + `result`                                                                 |
-| `chat_automation_abort`       | 停止意图（在宿主 abort 之前提交）：`run_id`、`requested_at`、`signaled_at`                                          |
+| `chat_continuation_command`   | 控制命令幂等表：`request_id` → `payload` + `result`                                                                 |
+| `chat_continuation_abort`     | 停止意图（在宿主 abort 之前提交）：`run_id`、`requested_at`、`signaled_at`                                          |
 | `project_wake_policy_command` | 策略写入幂等表                                                                                                      |
 
 同一迁移还给 `project` 加 `wake_policy text` 列，并建 5 个触发器：`p6a_task_insert`、`p6a_task_update`、`p6a_task_delete`、`p6a_control_disabled`、`p6a_chat_changed`。**引用**
 
-`0026` 的 `chat_automation_control` 是**三态** `('enabled','paused','stopped')`，`p6a_control_disabled` 用 `CASE NEW.mode WHEN 'paused' THEN 'human_paused' ELSE 'human_stopped' END` 写取消原因。**引用**
+`0026` 的 `chat_continuation_control` 是**三态** `('enabled','paused','stopped')`，`p6a_control_disabled` 用 `CASE NEW.mode WHEN 'paused' THEN 'human_paused' ELSE 'human_stopped' END` 写取消原因。**引用**
 
-## 迁移 `0027_p6a_automation_off.sql`：两态控制表
+## 迁移 `0027_p6a_continuation_off.sql`：两态控制表
 
 `0027` 做三件事，顺序不可调换。**引用**
 
 1. `PRAGMA foreign_keys=OFF`，显式 `DROP TRIGGER p6a_task_insert` / `p6a_task_update` / `p6a_control_disabled`。
-2. 重建控制表：`CREATE TABLE __new_chat_automation_control`（`CHECK mode in ('enabled','off')`）→ `INSERT ... SELECT` 把 `paused`/`stopped` 折成 `off`（`CASE WHEN mode='enabled' THEN 'enabled' ELSE 'off' END`），`epoch`/`revision`/审计字段原样保留 → `DROP TABLE` → `ALTER TABLE ... RENAME TO`。
+2. 重建控制表：`CREATE TABLE __new_chat_continuation_control`（`CHECK mode in ('enabled','off')`）→ `INSERT ... SELECT` 把 `paused`/`stopped` 折成 `off`（`CASE WHEN mode='enabled' THEN 'enabled' ELSE 'off' END`），`epoch`/`revision`/审计字段原样保留 → `DROP TABLE` → `ALTER TABLE ... RENAME TO`。
 3. 改写历史取消原因（`human_paused` → `human_disabled`、`human_stopped` → `human_aborted`），再重建三个触发器，恢复 `PRAGMA foreign_keys=ON`。
 
 `p6a_task_delete` 与 `p6a_chat_changed` 不 drop、不重建，因为它们的 body 不涉及三态取值。
 
 ### 为什么先 drop 再重建触发器
 
-- `p6a_control_disabled` 定义在 `chat_automation_control` 上，`DROP TABLE` 会连带删除它，所以**必须**重建；这一点没有选择余地。
+- `p6a_control_disabled` 定义在 `chat_continuation_control` 上，`DROP TABLE` 会连带删除它，所以**必须**重建；这一点没有选择余地。
 - SQLite 的 `ALTER TABLE ... RENAME TO`（3.25 起默认 `legacy_alter_table=OFF`）会改写其他 schema 对象里对被改名表的引用，因此定义在**别的表**上的触发器（`p6a_task_insert` / `p6a_task_update`）即使不被 drop，body 也能继续指向重建后的控制表。**实测**：本机 `sqlite3` 3.54.0 复现「建表 + 三个触发器 → `__new_` 重建 → `DROP` → `RENAME`」，不加任何 `DROP TRIGGER` 时，定义在 `task` 上的两个触发器 body 原样保留（仍指向 `c`）且继续可用，定义在控制表上的那个随表消失，新表 CHECK 生效（写入 `mode='paused'` 被 `CHECK constraint failed` 拒绝）。复现脚本（不改仓库，只在 `/tmp` 下跑）：
 
 ```bash
@@ -274,25 +276,46 @@ true
 
 这条区分的直接后果由 `landingFence()` 承担：晚到结果落地时若 epoch 不符，`state` 已经是 `stale`，`result` 保持 `NULL`。第二轮验收独立复证过这一点，见 [summary 的 stale 小节](summary.md#暂停时在途判定落-stale-的独立复证)。
 
+## 迁移 `0033_chat_continuation_rename.sql`：命名统一
+
+`0033` 把「自动接续」时期的旧名改到目标形态，不保留双名。**引用**
+
+1. `chat_automation_control` 重建为 `chat_continuation_control`：CHECK 约束随表名改为 `continuation_mode_check`、`continuation_revision_check`、`continuation_audit_check`，行数据原样搬迁。重建而非 `ALTER TABLE ... RENAME TO`，是因为 SQLite 改表名不会连带改 CHECK 约束名。
+2. `chat_automation_command` 与 `chat_automation_abort` 直接 `ALTER TABLE ... RENAME TO chat_continuation_command` / `chat_continuation_abort`。
+3. 重建 3 个引用控制表的触发器（`p6a_task_insert`、`p6a_task_update`、`p6a_control_disabled`），body 与 `0031` 一致，只把表名换新；`p6a_task_delete` 与 `p6a_chat_changed` 不动。
+
+`0026`、`0027`、`0030`、`0031` 的 DDL 与 `0026` 至 `0032` 的快照保留旧名，属于已合并迁移的历史，不再原地编辑；当前形态一律以 `0033` 之后为准。同一轮改名还覆盖 `CHAT_CONTINUATION_*` 常量、`chat.continuation.*` 能力串、`SPROUT_CONTINUATION_ENABLED` 与 `/api/health` 的 `continuationEnabled`，冻结内容不变。
+
+## 迁移 `0034_wake_provider_llm.sql`：判定器枚举值改名
+
+`wakeProviderSchema` 从 `["small_brain", "jev"]` 改成 `["llm", "jev"]`（见[术语表](../glossary.md)），库内已存的值必须一起迁移，否则 `projectWakePolicySchema.parse` 会在读取时抛错。**引用**
+
+- `project.wake_policy` 是 `text(..., { mode: "json" })`，比较时按整串 `projectWakePolicySchema.parse`（[`src/domain/project.ts`](../../src/domain/project.ts) 的 `getProject`），所以旧值不是「显示不一致」而是「读不出来」。
+- 迁移只替换 JSON 里带引号的枚举值：`replace(wake_policy, '"small_brain"', '"llm"')`，并对 `project_wake_policy_command` 的 `payload`（命令请求体的 `input.provider`）与 `result`（回放用 Project 快照）做同样替换。
+- `model` 等自由文本不参与替换：部署里的模型名可能恰好包含旧词，按子串替换会改坏配置。
+- schema 没变，所以 `0034_snapshot.json` 与 `0033` 同内容，只换 `id` / `prevId`；`pnpm db:generate` 报 `No schema changes, nothing to migrate` 可作一致性证明。
+
+验证方式是两段迁移：先只迁到 `0033` 写入一行 `provider: "small_brain"` 的 Project 与一条命令记录，再应用 `0034`，读回 `provider: "llm"`、`controlEpoch`/`configRevision` 与 `model` 原样保留。
+
 ## 两条适配器与「不自动回退」
 
-| 适配器 | 入口                                                                  | 协议                                                                                                                 |
-| ------ | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| 小脑   | `createSmallBrainJudge`（`src/domain/wake-providers/small-brain.ts`） | 冒泡宿主 runner，返回一份 `{ decisions: [...] }` 文本 JSON，逐候选给 `yes`/`no`/`unknown` 与 `certainty: high        | low` |
-| JEV    | `createJevJudge`（`src/domain/wake-providers/jev.ts`）                | `POST https://api.typesafe.ai/v1/systemone`，每个候选一个独立 `Noul` 问题，返回各候选的 yes 概率，由本地阈值切成三值 |
+| 适配器   | 入口                                                   | 协议                                                                                                                 |
+| -------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| LLM 判定 | `createLlmJudge`（`src/domain/wake-providers/llm.ts`） | 冒泡宿主 runner，返回一份 `{ decisions: [...] }` 文本 JSON，逐候选给 `yes`/`no`/`unknown` 与 `certainty: high        | low` |
+| JEV      | `createJevJudge`（`src/domain/wake-providers/jev.ts`） | `POST https://api.typesafe.ai/v1/systemone`，每个候选一个独立 `Noul` 问题，返回各候选的 yes 概率，由本地阈值切成三值 |
 
 两条适配器都实现同一个 `WakeJudge` 形状，失败统一经 `providerFailure()` 归到上表的 11 个错误码之一。**引用**
 
 边界（三条都是契约，不是偏好）：
 
 1. **一次判定只走一路**：`evaluateWake` 按 `input.policy.provider` 选适配器，不做级联、不做二次征求。JEV 适配器源码注释直接写「never a Choice contest or a provider fallback」。**引用**
-2. **判定失败不自动切换 provider**：失败落 `error_code` 与 `attention`，由退避重试同一判定器；换判定器只能由 Human 改 Project 策略。这也是 [总计划](../development-plan.md#i-p6a-集成自动接续与人类控制) 异常条目「判定失败不自动切换 provider」的实现位置。**引用**
-3. **产品默认小脑；JEV 适配器保留但不作为可部署选择**：JEV 在这批中文样本上校准 12/15、留出 9/15，且概率排序与意图反序，因此 `DEFAULT_PROJECT_WAKE_POLICY.provider` 是 `small_brain`，JEV 的请求/收据契约保持冻结但不承诺可用。依据：[Jev 作为唤醒判定器](../jev-wake-routing.md#实测结果)。**引用**，测量细节属并行单元，本轮未重复执行。
+2. **判定失败不自动切换 provider**：失败落 `error_code` 与 `attention`，由退避重试同一判定器；换判定器只能由 Human 改 Project 策略。这也是 [总计划](../development-plan.md#i-p6a-集成对话接续与人类控制) 异常条目「判定失败不自动切换 provider」的实现位置。**引用**
+3. **产品默认 LLM 判定；JEV 适配器保留但不作为可部署选择**：JEV 在这批中文样本上校准 12/15、留出 9/15，且概率排序与意图反序，因此 `DEFAULT_PROJECT_WAKE_POLICY.provider` 是 `llm`（本轮由 `small_brain` 改名，见[术语表](../glossary.md)），JEV 的请求/收据契约保持冻结但不承诺可用。依据：[Jev 作为唤醒判定器](../jev-wake-routing.md#实测结果)。**引用**，测量细节属并行单元，本轮未重复执行。
 
-「不自动回退」的代价要写清：判定器坏掉时，自动接续会停在重试与 `attention`，不会静默降级成「没人被唤醒」或「全都唤醒」。这是有意的选择——静默降级会让「自动接续到底有没有在工作」不可观测。
+「不自动回退」的代价要写清：判定器坏掉时，对话接续会停在重试与 `attention`，不会静默降级成「没人被唤醒」或「全都唤醒」。这是有意的选择——静默降级会让「对话接续到底有没有在工作」不可观测。
 
 ## 这些契约没覆盖的
 
-- **页面文案**：`disable` 在页面上叫「暂停自动接续」，与模型里的 `off` 不同名，见 [已知限制](summary.md#p3-2-disable-的页面文案)。
+- **页面文案**：`disable` 在页面上叫「暂停对话接续」，与模型里的 `off` 不同名，见 [已知限制](summary.md#p3-2-disable-的页面文案)。
 - **升级瞬间的残留**：`0027` 只重建表与映射原因，不主动清理旧态行，见 [已知限制](summary.md#p3-5-0027-的迁移残留)。
 - **`thresholdVersion` 的具体数值**：版本号是契约，数值不是。当前数值来源是 live fixture 里的 `yes=0.8 / no=0.2`（`tests/fixtures/p6a-live-routing.ts`），未作为产品常量冻进契约。

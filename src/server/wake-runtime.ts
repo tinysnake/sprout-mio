@@ -6,14 +6,11 @@ import { config } from "../lib/config";
 import type { EvaluateWake } from "../domain/continuation-delivery";
 import { evaluateWake } from "../domain/wake-evaluation";
 import { createJevJudge, type JevOptions } from "../domain/wake-providers/jev";
-import {
-  createSmallBrainJudge,
-  type SmallBrainOptions,
-} from "../domain/wake-providers/small-brain";
+import { createLlmJudge, type LlmOptions } from "../domain/wake-providers/llm";
 
 export type WakeRuntimeOptions = {
   clock: () => number;
-  complete?: SmallBrainOptions["complete"];
+  complete?: LlmOptions["complete"];
   fetch?: JevOptions["fetch"];
 };
 
@@ -28,9 +25,9 @@ function hostDefaultModel(agentDir: string): string {
 export function createWakeEvaluator(options: WakeRuntimeOptions): EvaluateWake {
   const agentDir = resolve(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"));
   return async (input) => {
-    if (!config.SPROUT_AUTOMATION_ENABLED) throw new Error("provider_unavailable");
+    if (!config.SPROUT_CONTINUATION_ENABLED) throw new Error("provider_unavailable");
     const judges = {
-      small_brain: createSmallBrainJudge({
+      llm: createLlmJudge({
         agentDir,
         clock: options.clock,
         complete: options.complete,
@@ -43,7 +40,7 @@ export function createWakeEvaluator(options: WakeRuntimeOptions): EvaluateWake {
       }),
     };
     const request =
-      input.policy.provider === "small_brain" && !input.policy.model
+      input.policy.provider === "llm" && !input.policy.model
         ? { ...input, policy: { ...input.policy, model: hostDefaultModel(agentDir) } }
         : input;
     return await evaluateWake(request, judges);

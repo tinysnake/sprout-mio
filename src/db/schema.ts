@@ -19,7 +19,7 @@ import type {
   WakeEvaluationResult,
   WakeUsage,
 } from "../contracts/wake-evaluation";
-import type { ContinuationInputEnvelope } from "../contracts/chat-automation";
+import type { ContinuationInputEnvelope } from "../contracts/chat-continuation";
 import { TASK_STATUSES } from "../contracts/task";
 import { TASK_ACTIONS } from "../contracts/task-capabilities";
 import { user } from "./auth-schema";
@@ -703,8 +703,8 @@ export const projectWakePolicyCommand = sqliteTable("project_wake_policy_command
   createdAt: integer("created_at").notNull(),
 });
 
-export const chatAutomationControl = sqliteTable(
-  "chat_automation_control",
+export const chatContinuationControl = sqliteTable(
+  "chat_continuation_control",
   {
     chatId: text("chat_id")
       .primaryKey()
@@ -719,12 +719,12 @@ export const chatAutomationControl = sqliteTable(
     reason: text("reason"),
   },
   (t) => [
-    check("automation_mode_check", sql`${t.mode} in ('enabled','off')`),
+    check("continuation_mode_check", sql`${t.mode} in ('enabled','off')`),
     check(
-      "automation_revision_check",
+      "continuation_revision_check",
       sql`${t.epoch} between 1 and 9007199254740991 and ${t.revision} between 1 and 9007199254740991`,
     ),
-    check("automation_audit_check", sql`(${t.changedBy} is null) = (${t.changedAt} is null)`),
+    check("continuation_audit_check", sql`(${t.changedBy} is null) = (${t.changedAt} is null)`),
   ],
 );
 
@@ -984,7 +984,7 @@ export const continuationDeliveryTask = sqliteTable(
   ],
 );
 
-export const chatAutomationCommand = sqliteTable("chat_automation_command", {
+export const chatContinuationCommand = sqliteTable("chat_continuation_command", {
   requestId: text("request_id").primaryKey(),
   chatId: text("chat_id")
     .notNull()
@@ -994,7 +994,7 @@ export const chatAutomationCommand = sqliteTable("chat_automation_command", {
   createdAt: integer("created_at").notNull(),
 });
 
-export const chatAutomationAbort = sqliteTable("chat_automation_abort", {
+export const chatContinuationAbort = sqliteTable("chat_continuation_abort", {
   runId: text("run_id")
     .primaryKey()
     .references(() => agentRun.id),

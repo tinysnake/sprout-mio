@@ -33,7 +33,7 @@ export function wakeSessionId(chatId: string): string {
   return `${WAKE_SESSION_PREFIX}${chatId}`;
 }
 
-export type SmallBrainRequest = {
+export type LlmRequest = {
   agentDir: string;
   model: string;
   evaluatedAt: string;
@@ -43,12 +43,12 @@ export type SmallBrainRequest = {
   sessionId: string;
   userAgent: string;
 };
-export type SmallBrainCompletion = z.infer<typeof completionSchema>;
-export type SmallBrainOptions = {
+export type LlmCompletion = z.infer<typeof completionSchema>;
+export type LlmOptions = {
   agentDir: string;
   clock: () => number;
   timeoutMs?: number;
-  complete?: (request: SmallBrainRequest) => Promise<SmallBrainCompletion>;
+  complete?: (request: LlmRequest) => Promise<LlmCompletion>;
 };
 
 /** Resolve the runner from the built app root, not the caller's working directory. */
@@ -62,7 +62,7 @@ export function wakeRunnerPath(entry = process.argv[1], cwd = process.cwd()): st
 }
 
 /** Isolated no-session SDK completion; stdin carries only the bounded snapshot. */
-function completeOnHost(request: SmallBrainRequest): Promise<SmallBrainCompletion> {
+function completeOnHost(request: LlmRequest): Promise<LlmCompletion> {
   return new Promise((accept, reject) => {
     const runner = wakeRunnerPath();
     const child = spawn(process.execPath, [runner], {
@@ -74,7 +74,7 @@ function completeOnHost(request: SmallBrainRequest): Promise<SmallBrainCompletio
     let overflow = false;
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new WakeProviderError("provider_timeout", "Pi 小脑判定超时"));
+      reject(new WakeProviderError("provider_timeout", "Pi LLM 判定超时"));
     }, request.timeoutMs);
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -119,7 +119,7 @@ function completeOnHost(request: SmallBrainRequest): Promise<SmallBrainCompletio
   });
 }
 
-export function createSmallBrainJudge(options: SmallBrainOptions): WakeJudge {
+export function createLlmJudge(options: LlmOptions): WakeJudge {
   return async (input) => {
     const start = options.clock();
     const usage: WakeUsage = {
@@ -129,10 +129,10 @@ export function createSmallBrainJudge(options: SmallBrainOptions): WakeJudge {
       durationMs: 0,
     };
     try {
-      if (input.policy.provider !== "small_brain")
-        throw new WakeProviderError("provider_unavailable", "小脑不能处理其他 provider 的请求");
+      if (input.policy.provider !== "llm")
+        throw new WakeProviderError("provider_unavailable", "LLM 不能处理其他 provider 的请求");
       if (!input.policy.model)
-        throw new WakeProviderError("provider_unavailable", "小脑模型尚未由宿主解析");
+        throw new WakeProviderError("provider_unavailable", "LLM 模型尚未由宿主解析");
       const completion = completionSchema.parse(
         await (options.complete ?? completeOnHost)({
           agentDir: options.agentDir,
@@ -167,7 +167,7 @@ export function createSmallBrainJudge(options: SmallBrainOptions): WakeJudge {
             reason: item.reason,
             probability: null,
           })),
-          "small_brain_certainty",
+          "llm_certainty",
         ),
         usage,
       };

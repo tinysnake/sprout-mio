@@ -7,9 +7,9 @@ import type {
   WakeEvaluationResult,
 } from "../../src/contracts/wake-evaluation";
 import type { Evaluation } from "../../src/domain/chat-schedule";
-import type { AutomationScheduler } from "../../src/server/automation-scheduler";
+import type { ContinuationScheduler } from "../../src/server/continuation-scheduler";
 import type { EvaluateWake } from "../../src/domain/continuation-delivery";
-import type { SmallBrainRequest } from "../../src/domain/wake-providers/small-brain";
+import type { LlmRequest } from "../../src/domain/wake-providers/llm";
 
 const directory = resolve(process.env.P6A_EVIDENCE_DIR ?? ".verify/p6a-wiring");
 mkdirSync(directory, { recursive: true });
@@ -38,14 +38,14 @@ function ok(value: unknown, label: string) {
   assertions++;
   assert.ok(value, label);
 }
-const calls = { small_brain: 0, jev: 0 };
+const calls = { llm: 0, jev: 0 };
 let failure: "none" | "throw" | "invalid" = "none";
-let observedRequest: SmallBrainRequest | undefined;
+let observedRequest: LlmRequest | undefined;
 const runtime = await import("../../src/server/runtime");
 try {
   await runtime.startRuntime({
     complete: async (request) => {
-      calls.small_brain++;
+      calls.llm++;
       observedRequest = request;
       await new Promise<void>((done) => setImmediate(done));
       if (failure === "throw") throw new Error("fixture transport failure");
@@ -84,10 +84,10 @@ try {
   });
   const globals = globalThis as typeof globalThis & {
     sproutWakeEvaluator?: EvaluateWake;
-    sproutRuntime?: { automation: AutomationScheduler };
+    sproutRuntime?: { continuation: ContinuationScheduler };
   };
   ok(globals.sproutWakeEvaluator, "runtime installs its evaluator");
-  const scheduler = globals.sproutRuntime!.automation;
+  const scheduler = globals.sproutRuntime!.continuation;
   equal(scheduler.snapshot().started, true, "runtime starts the production scheduler");
   const { sqlite } = await import("../../src/db");
   const schedule = await import("../../src/domain/chat-schedule");
@@ -97,7 +97,7 @@ try {
   const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
   const { createGroupChat } = await import("../../src/domain/chat");
   const { createTask, assignTask } = await import("../../src/domain/task");
-  const automation = await import("../../src/domain/chat-automation");
+  const continuation = await import("../../src/domain/chat-continuation");
   const ctx = { userId: "usr_p6a_wiring", requestId: newId(ID_PREFIXES.request) };
   sqlite
     .prepare(
@@ -110,7 +110,7 @@ try {
     ctx,
   );
   addProjectMember(project.id, profile.id, ctx);
-  function policy(provider: "small_brain" | "jev") {
+  function policy(provider: "llm" | "jev") {
     return updateProjectWakePolicy(
       {
         projectId: project.id,
@@ -170,7 +170,7 @@ try {
     return latest(chatId);
   }
   function disable(chatId: string, projectId = project.id) {
-    automation.applyChatAutomationCommand(
+    continuation.applyChatContinuationCommand(
       {
         projectId,
         chatId,
@@ -218,14 +218,14 @@ try {
     }
   }
 
-  policy("small_brain");
+  policy("llm");
   const chat = group();
   const first = await due(chat.id);
   equal(first.state, "decided", "due runtime check commits a validated receipt");
   equal(result(first).decision, "continue", "installed evaluator reaches the real judge adapter");
-  equal(result(first).provider, "small_brain", "policy chooses small brain");
+  equal(result(first).provider, "llm", "policy chooses LLM");
   equal(count("continuation_delivery"), 1, "runtime scheduler creates a continuation delivery");
-  equal(calls, { small_brain: 1, jev: 0 }, "one selected provider only");
+  equal(calls, { llm: 1, jev: 0 }, "one selected provider only");
   equal(
     observedRequest!.model,
     "fixture/host-model",
@@ -247,7 +247,7 @@ try {
   try {
     process.env.PI_CODING_AGENT_DIR = fallbackAgentDir;
     const { createWakeEvaluator } = await import("../../src/server/wake-runtime");
-    let defaultRequest: SmallBrainRequest | undefined;
+    let defaultRequest: LlmRequest | undefined;
     const fallbackEvaluator = createWakeEvaluator({
       clock: () => performance.now(),
       complete: async (request) => {
@@ -294,11 +294,7 @@ try {
     "missing JEV key is a durable failed receipt",
   );
   equal(missing.error_code, "provider_unavailable", "evaluation retains failure fact");
-  equal(
-    calls,
-    { small_brain: 1, jev: 0 },
-    "missing JEV credentials never invoke small brain or transport",
-  );
+  equal(calls, { llm: 1, jev: 0 }, "missing JEV credentials never invoke LLM or transport");
   equal(
     {
       messages: count("message"),
@@ -323,10 +319,10 @@ try {
   const jev = await due(jevChat.id);
   equal(result(jev).provider, "jev", "next configured check reaches JEV");
   equal(result(jev).decision, "do_not_continue", "JEV probability uses frozen thresholds");
-  equal(calls, { small_brain: 1, jev: 1 }, "JEV check does not invoke small brain");
-  policy("small_brain");
+  equal(calls, { llm: 1, jev: 1 }, "JEV check does not invoke LLM");
+  policy("llm");
   const switched = await due(jevChat.id);
-  equal(result(switched).provider, "small_brain", "next round uses changed provider");
+  equal(result(switched).provider, "llm", "next round uses changed provider");
   ok(
     JSON.parse(switched.input!).policy.configRevision >
       JSON.parse(jev.input!).policy.configRevision,
@@ -366,7 +362,7 @@ try {
   disable(jevChat.id);
   await assertPure(JSON.parse(first.input!));
   await assertPure(JSON.parse(jev.input!));
-  for (const provider of ["small_brain", "jev"] as const) {
+  for (const provider of ["llm", "jev"] as const) {
     policy(provider);
     for (const mode of ["throw", "invalid"] as const) {
       failure = mode;
@@ -379,7 +375,7 @@ try {
         `${provider} ${mode} persists a failed result`,
       );
       ok(result(failed).errorCode, `${provider} ${mode} has an error code`);
-      const other = provider === "jev" ? "small_brain" : "jev";
+      const other = provider === "jev" ? "llm" : "jev";
       equal(calls[other], before[other], `${provider} ${mode} never falls back`);
       disable(failingChat.id);
     }
@@ -396,8 +392,8 @@ try {
   const defaultEvaluation = await due(defaultChat.id);
   equal(
     defaultEvaluation.result && result(defaultEvaluation).provider,
-    "small_brain",
-    "NULL policy reaches the real small-brain runtime and persists its receipt",
+    "llm",
+    "NULL policy reaches the real llm runtime and persists its receipt",
   );
   equal(
     schedule.one<{ n: number }>(
@@ -414,8 +410,8 @@ try {
   );
   equal(
     calls,
-    { small_brain: beforeDefault.calls.small_brain + 1, jev: beforeDefault.calls.jev },
-    "default policy invokes only the existing small-brain completion substitute",
+    { llm: beforeDefault.calls.llm + 1, jev: beforeDefault.calls.jev },
+    "default policy invokes only the existing llm completion substitute",
   );
   equal(count("default_project_updates"), 0, "default evaluation never UPDATEs project");
   equal(
@@ -429,7 +425,7 @@ try {
   const defaultInput = JSON.parse(defaultEvaluation.input!) as WakeEvaluationInput;
   equal(
     defaultInput.policy,
-    { provider: "small_brain", configRevision: 1, thresholdVersion: "p6a-design-default-v1" },
+    { provider: "llm", configRevision: 1, thresholdVersion: "p6a-design-default-v1" },
     "immutable snapshot contains the design default without a model",
   );
   equal(
@@ -459,7 +455,7 @@ try {
   sqlite.exec("DROP TRIGGER record_default_project_updates; DROP TABLE default_project_updates");
   disable(defaultChat.id, defaultProject.id);
 
-  function configureDefaultProject(provider: "small_brain" | "jev", model?: string) {
+  function configureDefaultProject(provider: "llm" | "jev", model?: string) {
     return updateProjectWakePolicy(
       {
         projectId: defaultProject.id,
@@ -494,12 +490,12 @@ try {
   equal(result(explicitJev).provider, "jev", "next configured check uses JEV");
   equal(
     calls,
-    { small_brain: beforeExplicitJev.small_brain, jev: beforeExplicitJev.jev + 1 },
+    { llm: beforeExplicitJev.llm, jev: beforeExplicitJev.jev + 1 },
     "explicit JEV remains the sole selected provider",
   );
   disable(explicitJevChat.id, defaultProject.id);
 
-  configureDefaultProject("small_brain", "fixture/explicit-model");
+  configureDefaultProject("llm", "fixture/explicit-model");
   const explicitModelChat = group(defaultProject.id);
   const explicitModel = await due(explicitModelChat.id);
   equal(
@@ -519,14 +515,14 @@ try {
   );
   disable(explicitModelChat.id, defaultProject.id);
 
-  const explicitDefaultPolicy = configureDefaultProject("small_brain");
+  const explicitDefaultPolicy = configureDefaultProject("llm");
   equal(
     explicitDefaultPolicy.wakePolicy?.model,
     undefined,
     "human configuration accepts an omitted model",
   );
   const explicitDefaultChat = group(defaultProject.id);
-  const beforeExplicitDefault = calls.small_brain;
+  const beforeExplicitDefault = calls.llm;
   const explicitDefault = await due(explicitDefaultChat.id);
   equal(
     JSON.parse(explicitDefault.input!).policy.model,
@@ -538,11 +534,7 @@ try {
     4,
     "omitted model preserves configuration revision semantics",
   );
-  equal(
-    calls.small_brain,
-    beforeExplicitDefault + 1,
-    "explicit omitted-model policy invokes small brain",
-  );
+  equal(calls.llm, beforeExplicitDefault + 1, "explicit omitted-model policy invokes LLM");
   equal(
     observedRequest!.model,
     "fixture/runtime-default-model",

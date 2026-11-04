@@ -2,8 +2,8 @@ import type { WakeEvaluationInput, WakeUsage } from "../contracts/wake-evaluatio
 import { createHash, randomUUID } from "node:crypto";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { sqlite } from "../db";
-import { publishChatAutomationChange } from "./change-feed";
-import { CHAT_AUTOMATION_POLICY as POLICY } from "../contracts/chat-automation";
+import { publishChatContinuationChange } from "./change-feed";
+import { CHAT_CONTINUATION_POLICY as POLICY } from "../contracts/chat-continuation";
 import { DEFAULT_PROJECT_WAKE_POLICY } from "../contracts/project-wake-policy";
 
 export const INTERVAL_MS = POLICY.intervalSeconds * 1000;
@@ -134,7 +134,7 @@ export function finishWakeAttempt(
   );
 }
 /**
- * 判定被外部收尾（关闭自动接续、上下文变了、消息被后一条取代）时，没结束的尝试一并结束，
+ * 判定被外部收尾（关闭对话接续、上下文变了、消息被后一条取代）时，没结束的尝试一并结束，
  * 否则界面停在一个永远不会完成的「正在检查」。
  */
 export function closeAttemptsForEvaluation(
@@ -187,7 +187,7 @@ export function signalScheduleChange(chatId?: string) {
   queueMicrotask(() => {
     for (const listener of listeners) listener();
   });
-  if (chatId) publishChatAutomationChange(chatId);
+  if (chatId) publishChatContinuationChange(chatId);
 }
 export function onScheduleChange(listener: () => void) {
   listeners.add(listener);
@@ -197,10 +197,10 @@ export function onScheduleChange(listener: () => void) {
 }
 export function controlFor(chatId: string): Control {
   write(
-    "INSERT OR IGNORE INTO chat_automation_control(chat_id) SELECT id FROM chat WHERE id=?",
+    "INSERT OR IGNORE INTO chat_continuation_control(chat_id) SELECT id FROM chat WHERE id=?",
     chatId,
   );
-  const control = one<Control>("SELECT * FROM chat_automation_control WHERE chat_id=?", chatId);
+  const control = one<Control>("SELECT * FROM chat_continuation_control WHERE chat_id=?", chatId);
   if (!control) throw new Error("Chat not found");
   return control;
 }

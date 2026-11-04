@@ -250,7 +250,7 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 - 接入范围包括四态分栏总览、Task 详情、创建与分配、可选立即开始、checklist、施工记录、完成、取消、Human 纠正与重开，以及 Chat 和 Info Hub 关联。
 - 主要路径是创建 proposed Task，分配给 DM 或 Group，分别验证勾选与不勾选立即开始；负责人推进并记录工作，以末条施工记录保存完成结果，Human 查看并重开。补充 Public Channel 承接 Task 的验证，沿用 Group 责任规则。
-- 关键异常与回归覆盖非法迁移、无权修改、分配目标与责任归属变化，以及实际功能契约中的保存失败。验证 proposed、assigned、finished、canceled 四态，分配不等于启动、run 结束不等于 Task 完成、Task 完成不等于释放租约。不把 P6 自动接续当作本章已经支持的能力。
+- 关键异常与回归覆盖非法迁移、无权修改、分配目标与责任归属变化，以及实际功能契约中的保存失败。验证 proposed、assigned、finished、canceled 四态，分配不等于启动、run 结束不等于 Task 完成、Task 完成不等于释放租约。不把 P6 对话接续当作本章已经支持的能力。
 - 章节证据补充持久 Task 状态、Chat 与负责人关联、真实立即开始投递、checklist 与施工记录、完成和重开记录。核对没有额外运行中状态、独立结果字段或产品强制验收流程。
 
 - [x] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。
@@ -260,15 +260,15 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 本章技术交付基线为 `c0e9c74`，契约与总结见 [P5b 契约](p5b/contracts.md)和[P5b 章节结论](p5b/summary.md)。功能与 UI 自检、第二轮独立验收支持合入 main；设计依据含 AFK 期间协调者裁定，不冒充 Human 真实体验确认。待办：启动真实页面评审，取得 Human 明确通过并记录版本；本章尚未完整收口；P6 已拆为 a/b/c，其中 I-P6a 技术项已按证据勾选、Human 体验确认待办；P6b 功能、UI 与集成自检已在 `4d9545c` 落地，独立技术验收与 Human 体验确认待办。
 
-### I-P6a 集成自动接续与人类控制
+### I-P6a 集成对话接续与人类控制
 
 P6 原先“暂按整章集成”是契约未冻结时的暂定安排；现按已裁定的 P6a/P6b/P6c 拆成三个完整集成单元。拆章不减少一期范围，不把未交付条目记作完成。
 
-对应 [P6a](development-plan-functional.md#p6a-完成自动接续与人类控制) 与 [UI-P6a](development-plan-ui.md#ui-p6a-完成自动接续与人类控制呈现)。依赖 P4、P5 全部集成单元技术验收通过及 P6a 契约就绪；先核对 P5b 的 Human 确认状态并独立保留。集成分支 `integration/p6a`，数据库迁移从 0026 申请。
+对应 [P6a](development-plan-functional.md#p6a-完成对话接续与人类控制) 与 [UI-P6a](development-plan-ui.md#ui-p6a-完成对话接续与人类控制呈现)。依赖 P4、P5 全部集成单元技术验收通过及 P6a 契约就绪；先核对 P5b 的 Human 确认状态并独立保留。集成分支 `integration/p6a`，数据库迁移从 0026 申请。
 
-- 范围：中文协作样本与 Project 可选小脑/JEV 的采用和失败处理；assigned Task 的周期检查、持久去重、运行中合并、重启恢复、失败退避；Human 暂停/停止/恢复；页面最小接续状态和控制。
+- 范围：中文协作样本与 Project 可选 LLM/JEV 的采用和失败处理；assigned Task 的周期检查、持久去重、运行中合并、重启恢复、失败退避；Human 暂停/停止/恢复；页面最小接续状态和控制。
 - 主路径：多个 assigned Tasks 合并检查，按当前 owner/DM 唯一分身接续；Human owner 只提醒；Task、run、自动检查分别表达。
-- 异常与回归：无 assigned 不触发；判定失败不自动切换 provider；重复/撤权/改派/运行中补充；admitted 未确认不重投；暂停/停止后跨重启仍阻断自动接续。
+- 异常与回归：无 assigned 不触发；判定失败不自动切换 provider；重复/撤权/改派/运行中补充；admitted 未确认不重投；暂停/停止后跨重启仍阻断对话接续。
 - 证据：固定中文 fixtures 与真实模型采用结论、调度/投递/退避恢复记录、Human 控制前后对照、页面证据；P3/P5 遗留输入处置按已冻结契约核对，不自行加产品状态。
 
 - [x] 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6a 功能线证据](p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`、`bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`；已知限制见 [P6a 已知限制](p6a/summary.md#已知限制)。
@@ -282,12 +282,12 @@ P6 原先“暂按整章集成”是契约未冻结时的暂定安排；现按�
 
 对应 [P6b](development-plan-functional.md#p6b-完成-info-hub-全部一期视角) 与 [UI-P6b](development-plan-ui.md#ui-p6b-完成-info-hub-全部一期视角呈现)。依赖 I-P6a 技术验收通过、P6b 契约与 UI 设计就绪；集成分支 `integration/p6b`，迁移号由协调者接续分配。
 
-- 范围：Project、Chat、Agent、Machine 全部一期视角；Human 自动刷新、Agent 轮初快照、运行中简短变更提示与主动查询。扩展 P6a 的最小 automation 摘要，不重新实现调度控制。
+- 范围：Project、Chat、Agent、Machine 全部一期视角；Human 自动刷新、Agent 轮初快照、运行中简短变更提示与主动查询。扩展 P6a 的最小 continuation 摘要，不重新实现调度控制。
 - 主路径：页面与 Agent 查询核对源对象、关联事实、当前状态和轮初快照，变化按需展开。
-- 异常与回归：基本信息可见不授予正文/操作权；普通变化不唤醒空闲分身；Agent status 只汇总当前 Project；自动接续仍遵守 P6a 控制锁。
+- 异常与回归：基本信息可见不授予正文/操作权；普通变化不唤醒空闲分身；Agent status 只汇总当前 Project；对话接续仍遵守 P6a 控制锁。
 - 证据：页面、源对象和 Agent 上下文比较，刷新/变更提示时序及权限隔离矩阵。
 - 后续变更：页面刷新形态在交付之后改为同源 SSE 推送，轮询降级为兜底通路，不改变本单元已勾选的交付基线。决策、契约、发布覆盖矩阵与验证证据见 [P6b 变更推送](p6b/push.md)。
-- 后续变更：自动接续的判定状态也接入了同一条推送，并把逐次尝试（含耗时与 token 用量）落进 `wake_evaluation_attempt`，在消息下方按 run 活动记录的同形折叠组展示。判定不改消息、不改 run，缺这两块时页面只能停在「正在检查」；契约见 [P6a 判定尝试记录与用量](p6a/contracts.md#判定尝试记录与用量-wake_evaluation_attempt)。
+- 后续变更：对话接续的判定状态也接入了同一条推送，并把逐次尝试（含耗时与 token 用量）落进 `wake_evaluation_attempt`，在消息下方按 run 活动记录的同形折叠组展示。判定不改消息、不改 run，缺这两块时页面只能停在「正在检查」；契约见 [P6a 判定尝试记录与用量](p6a/contracts.md#判定尝试记录与用量-wake_evaluation_attempt)。
 
 - [x] 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6b 功能线证据](p6b/summary.md#功能线证据)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-info.sh`；契约见 `p6b/contracts.md`（P6b 契约）。
 - [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P6b UI 线证据](p6b/summary.md#ui-线证据)，基线 `6667601`，重跑 `bash scripts/verify/bf-p6b-pages.sh`。本章没有新增页面形状：`docs/info-hub-decisions.md:13` 已否定一级 Info Hub 页面，新增元素都是既有页面上的信息增补，因此不需要 Human 设计裁定，理由见 [P6b 章节结论](p6b/summary.md#页面形状不需要-human-裁定)。

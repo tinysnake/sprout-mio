@@ -10,7 +10,7 @@ import {
   type WakeReceipt,
   type WakeJudge,
 } from "../../src/domain/wake-evaluation";
-import { createSmallBrainJudge } from "../../src/domain/wake-providers/small-brain";
+import { createLlmJudge } from "../../src/domain/wake-providers/llm";
 import { createJevJudge, JEV_MODEL } from "../../src/domain/wake-providers/jev";
 import { loadWakeCases } from "./p6a/cases";
 
@@ -20,10 +20,10 @@ const model = process.env.SPROUT_VERIFY_PI_MODEL?.trim() || undefined;
 const now = new Date();
 const threshold = { version: "p6a-design-default-v1", yes: 0.8, no: 0.2 };
 const clock = () => performance.now();
-const calls = { small_brain: 0, jev: 0 };
+const calls = { llm: 0, jev: 0 };
 let jevPaidResponseReceived = false;
 const judges = {
-  small_brain: createSmallBrainJudge({
+  llm: createLlmJudge({
     agentDir: process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
     clock,
   }),
@@ -73,7 +73,7 @@ const summaries: {
   requestCount: number;
   paidResponseReceived: boolean;
 }[] = [];
-for (const provider of ["small_brain", "jev"] as const) {
+for (const provider of ["llm", "jev"] as const) {
   for (const fixture of loadWakeCases().filter((item) => item.input)) {
     const policy = {
       provider,
@@ -92,7 +92,7 @@ for (const provider of ["small_brain", "jev"] as const) {
     jevPaidResponseReceived = false;
     const callsBefore = calls[provider];
     let receipt: WakeReceipt;
-    if (provider === "small_brain" && !model) {
+    if (provider === "llm" && !model) {
       attempted = false;
       receipt = {
         result: failedWakeResult(
@@ -113,7 +113,7 @@ for (const provider of ["small_brain", "jev"] as const) {
         throw new Error("provider fallback forbidden");
       };
       const selectedJudge: WakeJudge = async (value) => {
-        if (provider === "small_brain") calls.small_brain++;
+        if (provider === "llm") calls.llm++;
         const raw = await judges[provider](value);
         // Pi completion usage is the host runner's evidence of a paid response;
         // JEV additionally has the independently observed HTTP usage above.
@@ -122,7 +122,7 @@ for (const provider of ["small_brain", "jev"] as const) {
         return raw;
       };
       receipt = await evaluateWake(input, {
-        small_brain: provider === "small_brain" ? selectedJudge : unselected,
+        llm: provider === "llm" ? selectedJudge : unselected,
         jev: provider === "jev" ? selectedJudge : unselected,
       });
     }
@@ -235,7 +235,7 @@ for (const provider of ["small_brain", "jev"] as const) {
 // and accepts its over- and under-wakes for now (coordinator decision d31). What
 // the gate refuses is a broken contract, a recipient outside the candidate set,
 // or more than one host hiccup per provider per run.
-const accuracy = (["small_brain", "jev"] as const).map((provider) => {
+const accuracy = (["llm", "jev"] as const).map((provider) => {
   const rows = summaries.filter((row) => row.provider === provider);
   const flag = (key: "matched" | "multi" | "under") => rows.filter((row) => row[key]).length;
   const outside = rows.filter((row) => row.outsideCandidates.length > 0).length;
@@ -252,9 +252,9 @@ const accuracy = (["small_brain", "jev"] as const).map((provider) => {
     calls: calls[provider],
     paidResponses: rows.filter((row) => row.paidResponseReceived).length,
   };
-  // JEV cannot gate a release it does not ship: the product deploys the small
-  // brain, and the JEV contract is proven by the deterministic routing fixture.
-  const gated = provider === "small_brain";
+  // JEV cannot gate a release it does not ship: the product deploys the LLM
+  // judge, and the JEV contract is proven by the deterministic routing fixture.
+  const gated = provider === "llm";
   const tolerated = !gated || result.infraFailures <= 1;
   console.log(
     `${tolerated && (!gated || (result.contractFailures === 0 && result.outsideCandidates === 0)) ? "PASS" : "FAIL"} live run: ${result.matched}/${result.total} matched (multi=${result.multi}, under=${result.under}, outside=${result.outsideCandidates}), contractFailures=${result.contractFailures}, infraFailures=${result.infraFailures} (1 tolerated); provider=${provider}, model=${result.models.join(",")}, calls=${result.calls}, paid=${result.paidResponses}; ${gated ? "gated" : "reported only, not deployed"}`,

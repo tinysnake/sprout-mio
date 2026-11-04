@@ -14,7 +14,7 @@ import type { AgentRun, AgentRunResult, ChatRunState } from "../src/contracts/ag
 import { compareMessageCursor, laterMessageCursor } from "../src/contracts/chat";
 import type { ChatResult, Message, MessageWindow } from "../src/contracts/chat";
 import type { AppResult } from "../src/contracts/result";
-import type { ChatAutomationData } from "../src/domain/chat-automation";
+import type { ChatContinuationData } from "../src/domain/chat-continuation";
 import { latestActivityAt } from "../src/components/chat/chat-list";
 
 // Risk → evidence: 活跃 run 期间的请求数与后台流量、隐藏页面、轮询重叠、
@@ -49,7 +49,7 @@ const failedRunState = {
 } as unknown as AgentRunResult<ChatRunState>;
 
 /** 判定读也是 tick 的一部分：判定不改消息也不改 run，缺这块页面就永远停在旧状态。 */
-const automationFacts = {
+const continuationFacts = {
   ok: true,
   data: {
     view: {
@@ -75,8 +75,8 @@ const automationFacts = {
     denials: {},
   },
   requestId: "req_1",
-} as unknown as AppResult<ChatAutomationData>;
-const automationRead = async () => automationFacts;
+} as unknown as AppResult<ChatContinuationData>;
+const continuationRead = async () => continuationFacts;
 
 function environment(visible = true) {
   const document = Object.assign(new EventTarget(), {
@@ -110,9 +110,9 @@ describe("Chat 活跃 run 的定点刷新", () => {
               settle.push(() => resolve(state(run("run_a", "running")))),
             );
           },
-          automation: () => {
-            started.push("automation");
-            return new Promise((resolve) => settle.push(() => resolve(automationFacts)));
+          continuation: () => {
+            started.push("continuation");
+            return new Promise((resolve) => settle.push(() => resolve(continuationFacts)));
           },
         },
         onFacts: vi.fn(),
@@ -123,7 +123,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
     );
     await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
     // 三个读都已在途：串行等待会让数组只剩一个元素。
-    expect(started).toEqual(["messages", "runState", "automation"]);
+    expect(started).toEqual(["messages", "runState", "continuation"]);
     settle.forEach((resolve) => resolve());
     await vi.advanceTimersByTimeAsync(0);
     expect(started).toHaveLength(3);
@@ -138,7 +138,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
         reads: {
           messages: async () => emptyWindow,
           runState: async () => state(run("run_a", "running")),
-          automation: async () => automationFacts,
+          continuation: async () => continuationFacts,
         },
         onFacts: (next) => facts.push(next),
         onRunChanged,
@@ -148,15 +148,15 @@ describe("Chat 活跃 run 的定点刷新", () => {
     );
     await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
     await vi.advanceTimersByTimeAsync(0);
-    // 判定从 pending 走到 claimed 时 run 没有任何变化；页面仍拿到新的 automation。
-    expect(facts.at(-1)?.automation).toBe(automationFacts);
+    // 判定从 pending 走到 claimed 时 run 没有任何变化；页面仍拿到新的 continuation。
+    expect(facts.at(-1)?.continuation).toBe(continuationFacts);
     expect(onRunChanged).not.toHaveBeenCalled();
   });
 
   it("页面隐藏时不发请求，切回可见立刻补一次", async () => {
     const env = environment(false);
     const refresh = {
-      automation: vi.fn().mockResolvedValue(automationFacts),
+      continuation: vi.fn().mockResolvedValue(continuationFacts),
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
     };
@@ -181,7 +181,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
   it("上一次读数还没回来就跳过这一轮，不叠请求", async () => {
     let pending: (() => void) | undefined;
     const reads = {
-      automation: automationRead,
+      continuation: continuationRead,
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi
         .fn()
@@ -220,7 +220,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          automation: automationRead,
+          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue(emptyWindow),
           runState,
         },
@@ -249,7 +249,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          automation: automationRead,
+          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue(emptyWindow),
           runState,
         },
@@ -275,7 +275,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          automation: automationRead,
+          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue({
             ok: true,
             data: { messages: [{ id: "msg_00000001" } as Message], cursor: null },
@@ -302,7 +302,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          automation: automationRead,
+          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue(emptyWindow),
           runState: vi.fn().mockResolvedValue(state(run("run_a", "completed"))),
         },
@@ -324,7 +324,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          automation: automationRead,
+          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue(emptyWindow),
           runState: vi.fn().mockResolvedValue(state(run("run_a", "queued"))),
         },
@@ -340,7 +340,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("loader 已知的空闲指纹不触发重读，也不继续轮询", async () => {
     const reads = {
-      automation: automationRead,
+      continuation: continuationRead,
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "completed"))),
     };
@@ -362,7 +362,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("一次读失败不回报、不停止，下一轮继续读", async () => {
     const reads = {
-      automation: automationRead,
+      continuation: continuationRead,
       messages: vi.fn().mockRejectedValueOnce(new Error("network")).mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
     };
@@ -388,7 +388,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("停止后不再发请求，也不再报重读", async () => {
     const reads = {
-      automation: automationRead,
+      continuation: continuationRead,
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"), run("run_b", "queued"))),
     };
@@ -411,7 +411,7 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("run 状态读不到时不改门禁，继续轮询", async () => {
     const reads = {
-      automation: automationRead,
+      continuation: continuationRead,
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(failedRunState),
     };
@@ -480,7 +480,7 @@ describe("消息增量读的游标", () => {
       createChatLiveRefresh({
         seed: { messages: [message("msg_00000001")], cursor: "2026:4" },
         reads: {
-          automation: automationRead,
+          continuation: continuationRead,
           messages: (after) => {
             asked.push(after);
             return Promise.resolve(replies.shift() ?? reply([], "2026:5"));
@@ -503,7 +503,7 @@ describe("消息增量读的游标", () => {
       createChatLiveRefresh({
         seed: { messages: [message("msg_00000001"), message("msg_00000002")], cursor: "2026:2" },
         reads: {
-          automation: automationRead,
+          continuation: continuationRead,
           // loader 与 tick 的竞态：第二条两边都有，只追加后面那条。
           messages: () =>
             Promise.resolve(reply([message("msg_00000002"), message("msg_00000003")], "2026:3")),
@@ -526,7 +526,7 @@ describe("消息增量读的游标", () => {
     const refresh = createChatLiveRefresh({
       seed: { messages: [message("msg_00000001")], cursor: "2026:1" },
       reads: {
-        automation: automationRead,
+        continuation: continuationRead,
         messages: (after) => {
           asked.push(after);
           if (settleFirst) return Promise.resolve(reply([message("msg_00000005")], "2026:8"));

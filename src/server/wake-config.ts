@@ -7,20 +7,20 @@ import type { WakeProviderAvailability } from "../contracts/project";
  */
 export function wakeProviderAvailabilityFromEnv(): WakeProviderAvailability[] {
   const thresholdVersion = process.env.SPROUT_WAKE_THRESHOLD_VERSION;
-  const smallBrainModel = process.env.SPROUT_WAKE_SMALL_BRAIN_MODEL;
+  const llmModel = process.env.SPROUT_WAKE_LLM_MODEL;
   const jevModel = process.env.SPROUT_WAKE_JEV_MODEL;
   const jevKey = process.env.JEV_API_KEY;
-  const smallBrainReady = Boolean(smallBrainModel && thresholdVersion);
+  const llmReady = Boolean(llmModel && thresholdVersion);
   const jevConfigured = Boolean(jevModel && thresholdVersion);
   const jevReady = jevConfigured && Boolean(jevKey);
   return [
     {
-      provider: "small_brain",
-      configured: smallBrainReady,
-      available: smallBrainReady,
-      unavailableReason: smallBrainReady
+      provider: "llm",
+      configured: llmReady,
+      available: llmReady,
+      unavailableReason: llmReady
         ? null
-        : smallBrainModel || thresholdVersion
+        : llmModel || thresholdVersion
           ? "provider_unavailable"
           : "missing_model",
     },

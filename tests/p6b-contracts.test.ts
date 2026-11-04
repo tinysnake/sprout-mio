@@ -650,8 +650,8 @@ describe("P6b active query and Human refresh", () => {
     ).toBe(false);
   });
 
-  it("keeps P6a's minimal automation summary in Chat queries", () => {
-    const automation = {
+  it("keeps P6a's minimal continuation summary in Chat queries", () => {
+    const continuation = {
       mode: "enabled",
       epoch: 1,
       nextDueAt: null,
@@ -667,13 +667,13 @@ describe("P6b active query and Human refresh", () => {
         chatId,
         revision: "rev-a",
         asOf: at,
-        data: { ...chat, automation },
+        data: { ...chat, continuation },
       }).success,
     ).toBe(true);
     expect(
       infoHubChatSummarySchema.safeParse({
         ...chat,
-        automation: { ...automation, providerSecret: "secret" },
+        continuation: { ...continuation, providerSecret: "secret" },
       }).success,
     ).toBe(false);
   });

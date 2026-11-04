@@ -132,7 +132,7 @@ B 的 `listProjectsFn` 必须只返回 B 的 Project ID，`listAgentProfilesFn` 
 
 - P3 的真实 Pi session、Agent 回复、run、运行时配置快照与宿主仓库入口。本次没有用模拟 Agent 回复充当接入证据。这是 P2 当时的未验证面；P3-a/b/c/d 已接入真实数据并由 p3-e 验收，剩余限制见 [P3 未验证项](../p3/summary.md#未验证项汇总)。
 - P4 的 Machine、租约与宿主执行恢复。
-- P5 的 Task、Group 与 Public Channel，P6 的自动接续，P7 的手机与 PWA。
+- P5 的 Task、Group 与 Public Channel，P6 的对话接续，P7 的手机与 PWA。
 - 并发写入、多进程 SQLite 竞争、大数据分页、性能、长时间会话过期及备份恢复。
 - 运行时快照的隔离。P2 没有这项业务对象；已验证的是现有查询和错误载荷。
 

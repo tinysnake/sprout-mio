@@ -56,13 +56,13 @@ try {
   migrateDatabase(file);
   const after = openDatabase(file);
   try {
-    prove("0026 populated upgrade maps paused/stopped to off and preserves epoch/revision/audit", after.sqlite.prepare("SELECT * FROM chat_automation_control ORDER BY chat_id").all(), original.map((row) => ({ ...row, mode: row.mode === "enabled" ? "enabled" : "off" })));
+    prove("0026 populated upgrade maps paused/stopped to off and preserves epoch/revision/audit", after.sqlite.prepare("SELECT * FROM chat_continuation_control ORDER BY chat_id").all(), original.map((row) => ({ ...row, mode: row.mode === "enabled" ? "enabled" : "off" })));
     for (const mode of ["paused", "stopped"])
-      assert.throws(() => after.sqlite.prepare("UPDATE chat_automation_control SET mode=? WHERE chat_id='cht_enabled'").run(mode), /CHECK/);
+      assert.throws(() => after.sqlite.prepare("UPDATE chat_continuation_control SET mode=? WHERE chat_id='cht_enabled'").run(mode), /CHECK/);
     prove("upgraded database retains foreign keys", after.sqlite.pragma("foreign_keys", { simple: true }), 1);
     prove("upgrade has no FK violations", after.sqlite.pragma("foreign_key_check"), []);
     prove("upgrade integrity", after.sqlite.pragma("integrity_check", { simple: true }), "ok");
-    modeDistribution = { before: distributionBefore, after: after.sqlite.prepare("SELECT mode,count(*) AS n FROM chat_automation_control GROUP BY mode ORDER BY mode").all() };
+    modeDistribution = { before: distributionBefore, after: after.sqlite.prepare("SELECT mode,count(*) AS n FROM chat_continuation_control GROUP BY mode ORDER BY mode").all() };
   } finally {
     after.sqlite.close();
   }
@@ -80,7 +80,7 @@ try {
   const task = await import("./src/domain/task.ts");
   const schedule = await import("./src/domain/chat-schedule.ts");
   const delivery = await import("./src/domain/continuation-delivery.ts");
-  const automation = await import("./src/domain/chat-automation.ts");
+  const continuation = await import("./src/domain/chat-continuation.ts");
   const ctx = { userId: "usr_control_model", requestId: newId(ID_PREFIXES.request) };
   sqlite.prepare("INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES(?,?,?,0,1,1)").run(ctx.userId, "Control Model", "control-model@p6a.test");
   const project = createProject({ name: "Control model regression" }, ctx);
@@ -89,8 +89,8 @@ try {
     addProjectMember(project.id, profile.id, ctx);
     return profile;
   });
-  updateProjectWakePolicy({ projectId: project.id, provider: "small_brain", expectedConfigRevision: 1, requestId: newId(ID_PREFIXES.request) }, ctx, { model: "fixture", thresholdVersion: "fixture-v1" }, new Date());
-  const command = (chatId, action, runId) => automation.applyChatAutomationCommand({ projectId: project.id, chatId, action, ...(runId === undefined ? {} : { runId }), expectedRevision: schedule.controlFor(chatId).revision, requestId: newId(ID_PREFIXES.request) }, ctx, new Date());
+  updateProjectWakePolicy({ projectId: project.id, provider: "llm", expectedConfigRevision: 1, requestId: newId(ID_PREFIXES.request) }, ctx, { model: "fixture", thresholdVersion: "fixture-v1" }, new Date());
+  const command = (chatId, action, runId) => continuation.applyChatContinuationCommand({ projectId: project.id, chatId, action, ...(runId === undefined ? {} : { runId }), expectedRevision: schedule.controlFor(chatId).revision, requestId: newId(ID_PREFIXES.request) }, ctx, new Date());
   const state = (runId) => schedule.one("SELECT status FROM agent_run WHERE id=?", runId).status;
   function group() {
     return createGroupChat(project.id, { projectId: project.id, title: "Control test", wakePolicy: "owner_led", members: [{ kind: "human", id: ctx.userId }, ...profiles.map((p) => ({ kind: "agent", id: p.id }))], initialOwner: { kind: "agent", id: profiles[0].id } }, { kind: "human", userId: ctx.userId, ctx });
@@ -146,10 +146,10 @@ try {
   const retained = schedule.one("SELECT id,status FROM agent_run WHERE chat_id<>?", chat.id);
   prove("abort all does not abort another Chat", retained.status, "queued");
   // P2-1: the database trigger is the second, independent gate. Nothing below calls the domain
-  // layer to stop automation: one plain UPDATE must move the same rows a Human command moves.
+  // layer to stop continuation: one plain UPDATE must move the same rows a Human command moves.
   function rawOff(chatId) {
     const before = schedule.controlFor(chatId);
-    schedule.write("UPDATE chat_automation_control SET mode='off',epoch=epoch+1 WHERE chat_id=?", chatId);
+    schedule.write("UPDATE chat_continuation_control SET mode='off',epoch=epoch+1 WHERE chat_id=?", chatId);
     return before.epoch;
   }
   function claimFor(chatId) {

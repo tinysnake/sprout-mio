@@ -1,26 +1,33 @@
 import { useState } from "react";
-import type { ChatAutomationCommand, ChatAutomationView } from "../../contracts/chat-automation";
+import type {
+  ChatContinuationCommand,
+  ChatContinuationView,
+} from "../../contracts/chat-continuation";
 import { newId } from "../../contracts/ids";
 import { Button } from "../ui/button";
 import { ContinuationAttempts } from "../chat/continuation-activity";
-import type { AutomationAction, AutomationDenials, AutomationSubmit } from "./automation-page-data";
+import type {
+  ContinuationAction,
+  ContinuationDenials,
+  ContinuationSubmit,
+} from "./continuation-page-data";
 import {
-  AUTOMATION_DECISIONS as decisions,
-  AUTOMATION_MODES as modes,
-  AUTOMATION_STATES as states,
-  automationFailureText as failureText,
-  automationTime as time,
-} from "./automation-labels";
+  CONTINUATION_DECISIONS as decisions,
+  CONTINUATION_MODES as modes,
+  CONTINUATION_STATES as states,
+  continuationFailureText as failureText,
+  continuationTime as time,
+} from "./continuation-labels";
 
-export function AutomationCard({
+export function ContinuationCard({
   view,
   denials = {},
   onCommand,
   showStatus = true,
 }: {
-  view: ChatAutomationView;
-  denials?: AutomationDenials;
-  onCommand?: AutomationSubmit;
+  view: ChatContinuationView;
+  denials?: ContinuationDenials;
+  onCommand?: ContinuationSubmit;
   /** 关闭时只保留控制与诊断；状态由 Chat 的常显状态条呈现。 */
   showStatus?: boolean;
 }) {
@@ -29,7 +36,7 @@ export function AutomationCard({
   const [error, setError] = useState<{ reason: string; code: string } | null>(null);
   const evaluation = view.latestEvaluation;
   // 页面只隐藏服务端明确拒绝的动作；没接控制器（静态渲染、夹具）时控件保留但不可点。
-  const denial = (action: AutomationAction) => denials[action];
+  const denial = (action: ContinuationAction) => denials[action];
   async function submit(
     action: "disable" | "enable" | "abort" | "retry" | "reissue",
     targetId?: string,
@@ -41,7 +48,7 @@ export function AutomationCard({
       expectedRevision: view.revision,
       requestId: newId("req"),
     };
-    let command: ChatAutomationCommand;
+    let command: ChatContinuationCommand;
     if (action === "abort")
       command = targetId ? { ...base, action, runId: targetId } : { ...base, action };
     else if (action === "retry") {
@@ -85,38 +92,40 @@ export function AutomationCard({
   }
   return (
     <section
-      data-testid="automation-card"
-      aria-label="自动接续"
+      data-testid="continuation-card"
+      aria-label="对话接续"
       aria-busy={pending}
       className="min-w-0 space-y-4 rounded-container border border-border p-4 text-xs break-words"
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">自动接续</h3>
-        <span data-testid="automation-mode" className="text-muted-foreground">
+        <h3 className="text-sm font-medium">对话接续</h3>
+        <span data-testid="continuation-mode" className="text-muted-foreground">
           {modes[view.mode]}
         </span>
       </header>
       {showStatus && (
-        <p data-testid="automation-expectation">
+        <p data-testid="continuation-expectation">
           {view.mode === "off"
-            ? "自动接续不会来：此 Chat 已关闭自动检查。"
+            ? "对话接续不会来：此 Chat 已关闭自动检查。"
             : view.nextDueAt
               ? "已安排下次自动检查，是否接续以检查结论为准。"
               : "当前没有安排下次自动检查。启用不代表马上接续。"}
         </p>
       )}
-      <p data-testid="automation-scope" className="text-muted-foreground">
-        范围：仅此 Chat 的自动接续。Task 状态、当前 run 与自动检查各自独立；关闭自动检查不会停止当前
+      <p data-testid="continuation-scope" className="text-muted-foreground">
+        范围：仅此 Chat 的对话接续。Task 状态、当前 run 与自动检查各自独立；关闭自动检查不会停止当前
         run。
       </p>
       {showStatus && (
         <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
           <dt className="text-muted-foreground">关联 Task</dt>
-          <dd data-testid="automation-assigned">{view.assignedTaskIds.length} 个 assigned Task</dd>
+          <dd data-testid="continuation-assigned">
+            {view.assignedTaskIds.length} 个 assigned Task
+          </dd>
           {view.owner.kind === "agent" && (
             <>
               <dt className="text-muted-foreground">活动 run</dt>
-              <dd data-testid="automation-run-facts">
+              <dd data-testid="continuation-run-facts">
                 {view.activeRunIds.length
                   ? `${view.activeRunIds.length} 个活动 run`
                   : "当前无活动 run"}
@@ -132,13 +141,13 @@ export function AutomationCard({
             </>
           )}
           <dt className="text-muted-foreground">最近检查</dt>
-          <dd data-testid="automation-last-check">
+          <dd data-testid="continuation-last-check">
             {evaluation
               ? `${time(evaluation.evaluatedAt)} · ${states[evaluation.state]}`
               : "尚未检查"}
           </dd>
           <dt className="text-muted-foreground">检查结论</dt>
-          <dd data-testid="automation-decision">
+          <dd data-testid="continuation-decision">
             {evaluation?.result ? (
               <>
                 {decisions[evaluation.result.decision]}：{evaluation.result.reason}
@@ -148,7 +157,7 @@ export function AutomationCard({
             )}
           </dd>
           <dt className="text-muted-foreground">下次检查</dt>
-          <dd data-testid="automation-next-check">
+          <dd data-testid="continuation-next-check">
             {view.nextDueAt ? time(view.nextDueAt) : "未安排"}
           </dd>
         </dl>
@@ -157,7 +166,7 @@ export function AutomationCard({
       {showStatus && view.attention && (
         <div
           role="status"
-          data-testid="automation-attention"
+          data-testid="continuation-attention"
           className="space-y-1 border-l-2 border-destructive pl-3"
         >
           <p>需要处理：{view.attention.reason}</p>
@@ -166,7 +175,7 @@ export function AutomationCard({
       )}
       {showStatus && evaluation?.errorCode && (
         <p
-          data-testid="automation-failure"
+          data-testid="continuation-failure"
           data-error-code={evaluation.errorCode}
           className="text-destructive"
         >
@@ -174,14 +183,14 @@ export function AutomationCard({
         </p>
       )}
       {showStatus && evaluation?.nextAttemptAt && (
-        <p data-testid="automation-backoff">
+        <p data-testid="continuation-backoff">
           失败退避：下次重试 {time(evaluation.nextAttemptAt)}（已尝试 {evaluation.attempt} 次）
         </p>
       )}
       {view.deliveries.map((delivery) => (
         <div
           key={delivery.deliveryId}
-          data-testid="automation-delivery"
+          data-testid="continuation-delivery"
           className="space-y-2 border-t border-border pt-3"
         >
           <p>
@@ -218,16 +227,19 @@ export function AutomationCard({
       ))}
       <div className="flex flex-wrap items-start gap-3">
         {view.mode === "enabled"
-          ? actionButton("disable", "暂停自动接续", () => void submit("disable"))
-          : actionButton("enable", "开启自动接续", () => void submit("enable"))}
+          ? actionButton("disable", "暂停对话接续", () => void submit("disable"))
+          : actionButton("enable", "开启对话接续", () => void submit("enable"))}
         {actionButton("abort", "全部停止", () => setConfirmation("abort"))}
         {evaluation &&
           (evaluation.state === "attention" || evaluation.state === "retry_wait") &&
           actionButton("retry", "重试检查", () => void submit("retry"))}
       </div>
       {view.owner.kind === "agent" && view.activeRunIds.length > 0 && !denial("abort") && (
-        <div className="space-y-2 border-t border-border pt-3" data-testid="automation-run-control">
-          <p>停止这个运行只中止选定的 run，不改自动接续开关与 epoch；全部停止会关闭自动接续。</p>
+        <div
+          className="space-y-2 border-t border-border pt-3"
+          data-testid="continuation-run-control"
+        >
+          <p>停止这个运行只中止选定的 run，不改对话接续开关与 epoch；全部停止会关闭对话接续。</p>
           {view.activeRunIds.map((runId) => (
             <div key={runId} className="space-y-1">
               <Button
@@ -247,12 +259,12 @@ export function AutomationCard({
       {confirmation !== null && (
         <div
           role="group"
-          aria-label="确认自动接续操作"
+          aria-label="确认对话接续操作"
           className="space-y-3 border-t border-border pt-3"
         >
           <p>
             {confirmation === "abort"
-              ? "确认全部停止？此 Chat 所有 queued/running 的 run 会被中止，自动接续随之关闭；Task 不受影响。"
+              ? "确认全部停止？此 Chat 所有 queued/running 的 run 会被中止，对话接续随之关闭；Task 不受影响。"
               : "投递结果未知，人工补发可能造成重复处理。确认后将创建新的接续输入。"}
           </p>
           <div className="flex flex-wrap gap-2">
