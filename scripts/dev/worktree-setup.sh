@@ -6,8 +6,11 @@ set -uo pipefail
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 
-root="$(git rev-parse --show-toplevel 2>/dev/null)" || fail "当前目录不在 git 工作区里"
-main_checkout="$(git worktree list --porcelain | sed -n 's/^worktree //p' | head -1)"
+root="${T3CODE_WORKTREE_PATH:-}"
+if [ -z "$root" ]; then
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || fail "当前目录不在 git 工作区里，也没有 T3CODE_WORKTREE_PATH"
+fi
+main_checkout="$(git -C "$root" worktree list --porcelain | sed -n 's/^worktree //p' | head -1)"
 
 [ -n "$main_checkout" ] || fail "找不到主 checkout"
 [ "$root" = "$main_checkout" ] && fail "$root 是主 checkout，只用于 main 的集成与评审，不在这里准备开发环境"
