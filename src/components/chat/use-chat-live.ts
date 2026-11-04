@@ -214,8 +214,7 @@ export function createChatLiveRefresh({
         signature = next;
       }
       const nextContinuation = continuationSignature(continuation);
-      const continuationMoved =
-        continuationSeen !== null && nextContinuation !== continuationSeen;
+      const continuationMoved = continuationSeen !== null && nextContinuation !== continuationSeen;
       continuationSeen = nextContinuation;
       // run 或判定变了就整树重读；只有消息变化时也重读一次，让不在 tick 读取范围内的
       // Info Hub 消息计数、最近消息时间与对话接续读视图跟上来。同一 tick 变化时只重读一次。
