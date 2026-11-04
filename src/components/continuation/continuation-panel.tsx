@@ -1,15 +1,19 @@
+import { Link, type LinkProps } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import type { ContinuationPageData } from "./continuation-page-data";
 import { CONTINUATION_UNAVAILABLE } from "./continuation-page-data";
 import { CONTINUATION_MODES } from "./continuation-labels";
 
-export function continuationCheckHref(
+export function continuationCheckLink(
   projectId: string,
   chatId: string,
   evaluationId: string,
   kind: "wake" | "continuation",
-) {
-  return `/projects/${encodeURIComponent(projectId)}/chats/${encodeURIComponent(chatId)}/checks/${encodeURIComponent(evaluationId)}/${kind}`;
+): LinkProps {
+  const params = { projectId, chatId, evaluationId };
+  return kind === "wake"
+    ? { to: "/projects/$projectId/chats/$chatId/checks/$evaluationId/wake", params }
+    : { to: "/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation", params };
 }
 
 export function ContinuationPanel({ data }: { data?: ContinuationPageData }) {
@@ -50,13 +54,13 @@ export function ContinuationPanel({ data }: { data?: ContinuationPageData }) {
           const className =
             "flex min-h-11 min-w-0 items-center gap-2 border-border px-3 py-2 not-first:border-t";
           return evaluationId && view ? (
-            <a
+            <Link
               key={kind}
+              {...continuationCheckLink(view.projectId, view.chatId, evaluationId, kind)}
               className={`${className} hover:bg-hover focus-visible:outline-ring`}
-              href={continuationCheckHref(view.projectId, view.chatId, evaluationId, kind)}
             >
               {content}
-            </a>
+            </Link>
           ) : (
             <div
               key={kind}

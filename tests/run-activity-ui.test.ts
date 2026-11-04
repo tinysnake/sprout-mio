@@ -6,6 +6,7 @@ import { RunStatusPanel } from "../src/components/chat/run-status";
 import { WakeDiagnostic } from "../src/components/continuation/wake-diagnostic";
 import { ContinuationDiagnostic } from "../src/components/continuation/continuation-diagnostic";
 import { continuationFixture } from "./fixtures/p6a-pages";
+import { renderWithRouter } from "./fixtures/router-ssr";
 
 function step(index: number, overrides: Partial<RunActivityStep> = {}): RunActivityStep {
   return {
@@ -364,8 +365,8 @@ describe("对话接续状态", () => {
     expect(html).not.toContain("4.2 \u79d2");
   });
 
-  it("没有任何检查记录时不渲染空列表", () => {
-    const html = renderToStaticMarkup(
+  it("没有任何检查记录时不渲染空列表", async () => {
+    const html = await renderWithRouter(
       createElement(ContinuationDiagnostic, {
         data: { view: continuationFixture("scheduled"), denials: {} },
         evaluationId: "missing",

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import "./continuation-diagnostic.css";
 import type { ChatContinuationView } from "../../contracts/chat-continuation";
@@ -18,7 +19,7 @@ import {
   continuationTime as time,
 } from "./continuation-labels";
 import { useContinuationCommand } from "./use-continuation-command";
-import { continuationCheckHref } from "./continuation-panel";
+import { continuationCheckLink } from "./continuation-panel";
 
 export function DiagnosticSection({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -97,9 +98,9 @@ export function ContinuationCard({
           </dd>
         </DiagnosticFacts>
         {view.latestEvaluation && (
-          <a
+          <Link
             className="mt-4 block border-t border-border pt-4 text-xs"
-            href={continuationCheckHref(
+            {...continuationCheckLink(
               view.projectId,
               view.chatId,
               view.latestEvaluation.evaluationId,
@@ -107,7 +108,7 @@ export function ContinuationCard({
             )}
           >
             查看最近一轮唤醒判定 →
-          </a>
+          </Link>
         )}
       </DiagnosticSection>
       <DiagnosticSection title="人类控制">

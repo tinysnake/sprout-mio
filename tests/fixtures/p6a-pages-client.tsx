@@ -1,5 +1,12 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+  useRouterState,
+} from "@tanstack/react-router";
 import { chatContinuationViewSchema } from "../../src/contracts/chat-continuation";
 import { ContinuationPanel } from "../../src/components/continuation/continuation-panel";
 import { ContinuationDiagnostic } from "../../src/components/continuation/continuation-diagnostic";
@@ -44,13 +51,13 @@ function Scenario({ name }: { name: P6aCase }) {
     setView(next);
     return { ok: true, data: { view: next, denials: continuationDenials(name) } };
   };
-  const path = window.location.pathname;
-  const kind = path.endsWith("/wake")
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const kind = pathname.endsWith("/wake")
     ? "wake"
-    : path.endsWith("/continuation")
+    : pathname.endsWith("/continuation")
       ? "continuation"
       : null;
-  const evaluationId = path.split("/").at(-2) ?? "";
+  const evaluationId = pathname.split("/").at(-2) ?? "";
   return (
     <>
       <p className="mb-4 text-xs">Task 状态：已分配</p>
@@ -117,4 +124,31 @@ function FixturePage() {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<FixturePage />);
+// 页面内的入口与轮次链接走 TanStack Router 客户端导航，fixture 也要有真实路由表，
+// 否则 Link 没有 router 上下文，点击也无法在 fixture 内换页。
+const rootRoute = createRootRoute();
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: FixturePage,
+});
+const chatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects/$projectId/chats/$chatId",
+  component: FixturePage,
+});
+const wakeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects/$projectId/chats/$chatId/checks/$evaluationId/wake",
+  component: FixturePage,
+});
+const continuationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation",
+  component: FixturePage,
+});
+const router = createRouter({
+  routeTree: rootRoute.addChildren([indexRoute, chatRoute, wakeRoute, continuationRoute]),
+});
+await router.load();
+createRoot(document.getElementById("root")!).render(<RouterProvider router={router} />);

@@ -73,17 +73,19 @@ try {
     includeHidden: true,
   });
   const checkRoundLinks = async (label: string, latestHref: string, reload: boolean) => {
+    // 当前轮次的标记由 TanStack Router 的 Link 活动态给出（aria-current="page"，
+    // 样式按 [aria-current] 选择），不再由组件手写 aria-current。
     const rail = page.getByRole("navigation", { name: "最近 5 轮" });
     const historyHref = latestHref.replace(/evaluation-(current|failure)/, "evaluation-history");
     assert.equal(await rail.getByRole("link").count(), 2);
     assert.equal(await rail.getByRole("link", { name: /#2/ }).getAttribute("href"), latestHref);
     assert.equal(await rail.getByRole("link", { name: /#1/ }).getAttribute("href"), historyHref);
-    assert.equal(await rail.locator('[aria-current="step"]').getAttribute("href"), latestHref);
+    assert.equal(await rail.locator('[aria-current="page"]').getAttribute("href"), latestHref);
     pass(`${label}_rail_each_round_has_own_evaluation_link`);
     await rail.getByRole("link", { name: /#1/ }).click();
     await page.getByRole("heading", { name: "检查轮次 #1", exact: true }).waitFor();
     assert.equal(page.url(), base + historyHref);
-    assert.equal(await rail.locator('[aria-current="step"]').getAttribute("href"), historyHref);
+    assert.equal(await rail.locator('[aria-current="page"]').getAttribute("href"), historyHref);
     assert((await rail.getByRole("link", { name: /#1/ }).innerText()).includes("当前查看 ↓"));
     assert(await copyLinkButton.isEnabled());
     assert(

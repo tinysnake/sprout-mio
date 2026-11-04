@@ -1,8 +1,9 @@
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import type { ContinuationPageData, ContinuationSubmit } from "./continuation-page-data";
 import { Button } from "../ui/button";
 import { ContinuationCard } from "./continuation-card";
-import { continuationCheckHref } from "./continuation-panel";
+import { continuationCheckLink } from "./continuation-panel";
 import { WakeDiagnostic } from "./wake-diagnostic";
 import {
   CONTINUATION_SOURCES as sources,
@@ -26,7 +27,12 @@ export function ContinuationDiagnostic({
   const { view, denials } = data;
   const [copyStatus, setCopyStatus] = useState("");
   const round = view.recentRounds.find((item) => item.evaluationId === evaluationId);
-  const backHref = `/projects/${encodeURIComponent(view.projectId)}/chats/${encodeURIComponent(view.chatId)}`;
+  const back = {
+    to: "/projects/$projectId/chats/$chatId" as const,
+    params: { projectId: view.projectId, chatId: view.chatId },
+    // 返回入口的目标是上层的对话页，不是本页的“当前位置”，不参与活动态匹配。
+    activeOptions: { exact: true, includeSearch: false, includeHash: false },
+  };
   return (
     <section
       className="continuation-diagnostic"
@@ -35,11 +41,11 @@ export function ContinuationDiagnostic({
     >
       <header className="diagnostic-context">
         <span>{chatTitle}</span>
-        <a href={backHref}>返回对话 ↗</a>
+        <Link {...back}>返回对话 ↗</Link>
       </header>
       <div className="diagnostic-page-head">
         <div>
-          <a href={backHref}>← 返回{chatTitle}</a>
+          <Link {...back}>← 返回{chatTitle}</Link>
           <h1>{kind === "wake" ? "唤醒判定详情" : "对话接续详情"}</h1>
           <p>
             {kind === "wake"
@@ -69,10 +75,9 @@ export function ContinuationDiagnostic({
         <nav className="diagnostic-rail" aria-label="最近 5 轮">
           <h2>最近 5 轮</h2>
           {view.recentRounds.map((item) => (
-            <a
+            <Link
               key={item.evaluationId}
-              href={continuationCheckHref(view.projectId, view.chatId, item.evaluationId, kind)}
-              aria-current={round?.evaluationId === item.evaluationId ? "step" : undefined}
+              {...continuationCheckLink(view.projectId, view.chatId, item.evaluationId, kind)}
             >
               <span className="flex items-center justify-between gap-3">
                 <time>{time(item.evaluatedAt ?? item.attempts.at(-1)?.startedAt ?? null)}</time>
@@ -82,7 +87,7 @@ export function ContinuationDiagnostic({
               <span>
                 {round?.evaluationId === item.evaluationId ? "当前查看 ↓" : states[item.state]}
               </span>
-            </a>
+            </Link>
           ))}
           {!view.recentRounds.length && <p>尚无检查记录</p>}
           <p className="diagnostic-rail-foot">

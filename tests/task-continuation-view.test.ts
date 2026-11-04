@@ -14,6 +14,7 @@ import {
   diagnosticFixture,
   p6aIds,
 } from "./fixtures/p6a-pages";
+import { renderWithRouter } from "./fixtures/router-ssr";
 
 const render = (name: Parameters<typeof continuationFixture>[0]) =>
   renderToStaticMarkup(
@@ -59,9 +60,9 @@ describe("对话接续页面事实与 Human 控制", () => {
     expect(html).toContain("重新启用");
     expect(html).not.toContain("暂停 Task");
   });
-  it("Hub 两行不可展开，均定位最新真实轮次，不承载诊断或控制", () => {
+  it("Hub 两行不可展开，均定位最新真实轮次，不承载诊断或控制", async () => {
     const view = diagnosticFixture("failure");
-    const html = renderToStaticMarkup(
+    const html = await renderWithRouter(
       createElement(ContinuationPanel, { data: { view, denials: {} } }),
     );
     expect(html).toContain("对话自动化");
@@ -123,35 +124,42 @@ describe("对话接续页面事实与 Human 控制", () => {
     expect(html).toContain("尚未结束");
     expect(html).not.toContain("耗时 2.3 秒");
   });
-  it.each(["wake", "continuation"] as const)("%s URL 的正文与标题对应，且没有页签", (kind) => {
-    const view = diagnosticFixture("failure");
-    const html = renderToStaticMarkup(
-      createElement(ContinuationDiagnostic, {
-        data: { view, denials: {} },
-        evaluationId: view.latestEvaluation!.evaluationId,
-        kind,
-        chatTitle: "当前对话",
-      }),
-    );
-    expect(html).toContain(`data-kind="${kind}"`);
-    expect(html).toContain("检查轮次 #2");
-    expect(html).toContain("周期检查");
-    expect(html).toContain(kind === "wake" ? "逐接收者结论" : "人类控制");
-    expect(html).not.toContain(kind === "wake" ? "全部停止" : "逐接收者结论");
-    expect(html).not.toContain('role="tab');
-    expect(html).not.toContain("查看最近五轮");
-  });
+  it.each(["wake", "continuation"] as const)(
+    "%s URL 的正文与标题对应，且没有页签",
+    async (kind) => {
+      const view = diagnosticFixture("failure");
+      const html = await renderWithRouter(
+        createElement(ContinuationDiagnostic, {
+          data: { view, denials: {} },
+          evaluationId: view.latestEvaluation!.evaluationId,
+          kind,
+          chatTitle: "当前对话",
+        }),
+      );
+      expect(html).toContain(`data-kind="${kind}"`);
+      expect(html).toContain("检查轮次 #2");
+      expect(html).toContain("周期检查");
+      expect(html).toContain(kind === "wake" ? "逐接收者结论" : "人类控制");
+      expect(html).not.toContain(kind === "wake" ? "全部停止" : "逐接收者结论");
+      expect(html).not.toContain('role="tab');
+      expect(html).not.toContain("查看最近五轮");
+    },
+  );
   it.each(["wake", "continuation"] as const)(
     "%s 历史轮次可独立寻址，rail 保留每轮链接与当前标记",
-    (kind) => {
+    async (kind) => {
       const view = diagnosticFixture("failure");
-      const html = renderToStaticMarkup(
+      const html = await renderWithRouter(
         createElement(ContinuationDiagnostic, {
           data: { view, denials: {} },
           evaluationId: "evaluation-history",
           kind,
           chatTitle: "当前对话",
         }),
+        {
+          path: `/projects/$projectId/chats/$chatId/checks/$evaluationId/${kind}`,
+          url: `/projects/${view.projectId}/chats/${view.chatId}/checks/evaluation-history/${kind}`,
+        },
       );
       expect(html).toContain("检查轮次 #1");
       expect(html).not.toContain("检查轮次 #2");
@@ -159,7 +167,7 @@ describe("对话接续页面事实与 Human 控制", () => {
         expect(html).toContain(
           `href="/projects/${view.projectId}/chats/${view.chatId}/checks/${id}/${kind}"`,
         );
-      expect(html.match(/aria-current="step"/g)).toHaveLength(1);
+      expect(html.match(/aria-current="page"/g)).toHaveLength(1);
       expect(html).toContain("当前查看 ↓");
       const copyButton = html.match(/<button\b[^>]*>复制此页链接<\/button>/)?.[0];
       expect(copyButton).toBeDefined();
@@ -187,8 +195,8 @@ describe("对话接续页面事实与 Human 控制", () => {
       }).success,
     ).toBe(false);
   });
-  it("无法定位 evaluationId 时给明确恢复路径，不展示错误轮次", () => {
-    const html = renderToStaticMarkup(
+  it("无法定位 evaluationId 时给明确恢复路径，不展示错误轮次", async () => {
+    const html = await renderWithRouter(
       createElement(ContinuationDiagnostic, {
         data: { view: diagnosticFixture(), denials: {} },
         evaluationId: "expired-evaluation",
