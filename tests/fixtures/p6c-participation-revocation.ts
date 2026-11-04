@@ -411,7 +411,7 @@ assert.equal(
   "claimed",
   "barrier: revocation must leave the evaluation claimed so the landing gate fences it",
 );
-assert.equal(
+assert.deepEqual(
   commitEvaluationResult(claimed!, barrierInput, barrierResult, barrierNow),
   [],
   "barrier: a result landing after participation revocation must be fenced",

@@ -11,6 +11,7 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
@@ -26,6 +27,13 @@ const journal = JSON.parse(readFileSync(join(root, "drizzle/meta/_journal.json")
   entries: { idx: number; tag: string; when: number }[];
 };
 const latestTag = journal.entries.at(-1)!.tag;
+// 期望值从真实的迁移文件推导，而不是钉死某个 tag：每次新迁移都不必手改门禁，
+// 同时仍然断言 journal 的尾部确实是最新的一份迁移。
+const expectedLatestTag = readdirSync(join(root, "drizzle"))
+  .filter((name) => /^\d{4}_.*\.sql$/.test(name))
+  .map((name) => name.slice(0, -4))
+  .sort()
+  .at(-1)!;
 const password = "snapshot-password-9f4c";
 const authSecret = randomBytes(32).toString("base64url");
 const checks: string[] = [];
@@ -224,8 +232,8 @@ try {
   assert.equal(new Set(journal.entries.map((entry) => entry.tag)).size, journal.entries.length);
   for (const entry of journal.entries)
     assert(existsSync(join(root, "drizzle", `${entry.tag}.sql`)), `缺少迁移 ${entry.tag}`);
-  assert.equal(latestTag, "0029_lying_echo");
-  pass("migration journal contiguous and latest is 0029", {
+  assert.equal(latestTag, expectedLatestTag);
+  pass(`migration journal contiguous and latest is ${latestTag}`, {
     migrations: journal.entries.length,
     latestTag,
   });

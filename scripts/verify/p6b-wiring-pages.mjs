@@ -1,7 +1,8 @@
 // P6b 生产接线门禁：真实生产包 + 私有 SQLite + 真实 Chromium。
 //
 // 风险 → 证据
-// - 轮询控制器只在 fixture 里跑过 → 真实 Chat 页真的每 3 秒发一次 refreshInfoHubFn，隐藏时零请求。
+// - 轮询控制器只在 fixture 里跑过 → 真实 Chat 页在推送连着时按提示的 revision 重读，隐藏时零请求；
+//   3 秒节拍只在推送断开时兜底，安全间隔内不轮询。
 // - 每个组件各自起一份轮询 → 一个页面的请求节奏是「一份 owner」的节奏，不是 N 份。
 // - 轮初块把「没有快照」说成「已注入」 → prepared/无快照时页面上没有「已注入」，只有「尚无提交收据」。
 // - 既有事实被新事实挤掉 → 同一页上 run 事实（宿主/活动 run）与轮初块同时在场。
@@ -264,22 +265,33 @@ try {
     await delay(1600);
     refreshRequests.length = 0;
     console.log(`DIAG initial sequence ${JSON.stringify(requestsSeen.slice(0, 4))}`);
-
-    // (2) 3 秒节奏：稳态下每个间隔落在 3 秒 ±10% 抖动内，第二次起带 knownRevision。
-    const secondDeadline = Date.now() + 6000;
-    while (refreshRequests.length < 2 && Date.now() < secondDeadline) await delay(50);
-    assert.equal(refreshRequests.length >= 2, true, "3 秒后应再发一次刷新请求");
-    const gap = refreshRequests[1].at - refreshRequests[0].at;
-    assert.equal(gap >= 2400 && gap <= 4800, true, `轮询间隔 ${gap}ms 不在 3 秒 ±10% 抖动内`);
+    await delay(9600);
     assert.equal(
-      refreshRequests[0].body.includes("knownRevision"),
-      true,
-      "稳态的第一次刷新必须带 knownRevision（增量）",
+      refreshRequests.length,
+      0,
+      `推送连着时不应每 3 秒轮询，实际 ${refreshRequests.length} 次`,
     );
-    pass("polling_interval_respects_3s_with_revision", {
-      gapMs: gap,
-      firstBody: refreshRequests[0].body.slice(0, 240),
-      secondBody: refreshRequests[1].body.slice(0, 240),
+    pass("no_interval_poll_while_push_connected", { windowMs: 9600 });
+
+    // (3) 推送契约：真实写入（改对话标题）提交后，页面在 3 秒内按 revision 重读。
+    const writeStarted = Date.now();
+    const beforePush = refreshRequests.length;
+    await page.locator('[data-testid="chat-title-edit"]').first().click();
+    await page.locator('[data-testid="chat-title-input"]').fill(`P6b wiring ${writeStarted}`);
+    await page.locator('[data-testid="chat-title-save"]').click();
+    const pushDeadline = writeStarted + 3000;
+    while (refreshRequests.length === beforePush && Date.now() < pushDeadline) await delay(25);
+    assert.equal(refreshRequests.length > beforePush, true, "推送到达后 3 秒内必须重读一次");
+    const pushed = refreshRequests.slice(beforePush);
+    assert.equal(
+      pushed.some((item) => item.body.includes("knownRevision")),
+      true,
+      "推送触发的重读必须带 knownRevision",
+    );
+    assert.equal(pushed.length <= 3, true, `一次提示的重读次数 ${pushed.length} 次过多`);
+    pass("push_triggers_revision_read", {
+      latencyMs: pushed[0].at - writeStarted,
+      bodies: pushed.map((item) => item.body.slice(0, 240)),
     });
 
     // (3) 隐藏零请求 + 恢复立即全量。CDP 改 visibilityState，与既有件做法一致。
@@ -296,34 +308,30 @@ try {
     while (refreshRequests.length === beforeResume && Date.now() - resumedAt < 2000)
       await delay(25);
     assert.equal(refreshRequests.length > beforeResume, true, "恢复可见必须立即发一次请求");
-    const resumeAt = refreshRequests.at(-1).at - resumedAt;
+    const firstResume = refreshRequests[beforeResume];
+    const resumeAt = firstResume.at - resumedAt;
+    // 重连后的 ready 会再补一次提醒（change-stream 的 notifyAll），第二次带 knownRevision 是设计；
+    // 这里断言的是恢复后的**首个**读是全量。
     assert.equal(
-      refreshRequests.at(-1).body.includes("knownRevision"),
+      firstResume.body.includes("knownRevision"),
       false,
       "恢复可见必须是全量刷新（不带 knownRevision）",
     );
     pass("visible_resume_single_full_refresh", { resumedAfterMs: resumeAt });
 
-    // (4) 一个页面一路轮询：连续 9.6 秒里只有一份 3 秒节奏。
+    // (5) 一个页面一路轮询：恢复后的 9.6 秒里没有第二份定时读。
     const windowStart = Date.now();
     const baseline = refreshRequests.length;
     await delay(9600);
     const windowRequests = refreshRequests.slice(baseline);
-    const gaps = windowRequests.slice(1).map((item, index) => item.at - windowRequests[index].at);
     assert.equal(
-      windowRequests.length >= 2 && windowRequests.length <= 5,
+      windowRequests.length <= 1,
       true,
-      `9.6 秒窗口内应只有一份 owner 的 2-5 次请求，实际 ${windowRequests.length}`,
-    );
-    assert.equal(
-      gaps.every((value) => value >= 2400),
-      true,
-      `同一 owner 的请求不应叠发，间隔 ${JSON.stringify(gaps)}`,
+      `恢复后的 9.6 秒内至多一次由提示触发的重读，实际 ${windowRequests.length}`,
     );
     pass("one_polling_stream_per_page", {
       windowMs: Date.now() - windowStart,
       requests: windowRequests.length,
-      gaps,
     });
 
     // (5) 轮初块：prepared / 没有快照时不许出现「已注入」。
@@ -402,36 +410,28 @@ try {
       submittedCase: "bf-p6b-pages:submitted_has_receipt + p6b-turn-context:confirm",
     });
 
-    // (6) Project settings 也只挂一个 owner：这里的刷新区是 Machines。
+    // (6) Project settings 也只挂一个 owner：首读之后，推送连着的安全间隔内不再轮询。
+    // reset 放在 goto 之前：挂载时的首个全量读可能抢在 waitForSelector 之前到达。
+    refreshRequests.length = 0;
+    const settingsNavigatedAt = Date.now();
     await page.goto(`${base}/projects/${projectId}/settings`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("[data-info-hub-live-state]", { timeout: 30000 });
-    refreshRequests.length = 0;
-    const settingsAt = Date.now();
-    while (refreshRequests.length === 0 && Date.now() - settingsAt < 3500) await delay(50);
-    assert.equal(refreshRequests.length >= 1, true, "Project settings 也要在 3 秒内发一次刷新");
-    const settingsFirst = refreshRequests[0].at - settingsAt;
-    // 数到三次请求为止（最多 12 秒）：节奏来自 owner 的定时器，不受本进程调度抖动影响。
-    const settingsDeadline = Date.now() + 12_000;
-    while (refreshRequests.length < 3 && Date.now() < settingsDeadline) await delay(50);
-    const settingsGaps = refreshRequests
-      .slice(1)
-      .map((item, index) => item.at - refreshRequests[index].at);
-    assert.equal(refreshRequests.length >= 2, true, "settings 的 owner 必须持续轮询");
+    while (refreshRequests.length === 0 && Date.now() - settingsNavigatedAt < 3500) await delay(25);
+    assert.equal(refreshRequests.length >= 1, true, "Project settings 首读必须在 3.5 秒内发生");
+    const settingsFirst = refreshRequests[0].at - settingsNavigatedAt;
+    // 首屏结算后再数 9.6 秒：project 的安全间隔是 30 秒，窗口内不应有定时读。
+    await delay(1600);
+    const settingsBaseline = refreshRequests.length;
+    await delay(9600);
     assert.equal(
-      settingsGaps.every((value) => value >= 2400 && value <= 4800),
-      true,
-      `settings 只有一个 3 秒节奏的 owner，实际间隔 ${JSON.stringify(settingsGaps)}`,
+      refreshRequests.length,
+      settingsBaseline,
+      `settings 推送连着时不应每 3 秒轮询，新增 ${refreshRequests.length - settingsBaseline} 次`,
     );
-    assert.equal(
-      refreshRequests.every((item) => item.body.includes("knownRevision")),
-      true,
-      "settings 的稳态刷新都必须带 knownRevision",
-    );
-    pass("settings_page_single_owner_polls", {
+    pass("settings_page_single_owner_no_interval_poll", {
       firstRequestAfterMs: settingsFirst,
       requests: refreshRequests.length,
-      offsetsMs: refreshRequests.map((request) => request.at - settingsAt),
-      gapsMs: settingsGaps,
+      offsetsMs: refreshRequests.map((request) => request.at - settingsNavigatedAt),
     });
 
     assert.deepEqual(consoleErrors, [], `页面不得有 console.error：${consoleErrors.join(" | ")}`);

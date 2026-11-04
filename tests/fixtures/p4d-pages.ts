@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
+import { CHANGE_SAFETY_POLL_MS } from "../../src/contracts/change-stream";
 import type { LeaseKey } from "../../src/contracts/lease";
 import type { ExecutionView } from "../../src/contracts/remote";
 import { db, sqlite } from "../../src/db";
@@ -47,6 +48,37 @@ async function until(check: () => Promise<boolean> | boolean, label: string, att
     await delay(200);
   }
   throw new Error(`timeout ${label}`);
+}
+
+/**
+ * Settings 页的关系读取按 Hub revision 驱动（8c3c8c2），没有 5 秒定时器；重新可见是
+ * `createRelationReads` 保留的补读入口。要验证「刷新失败 → 未确认 → 恢复」，必须显式
+ * 触发一次读取，否则页面在 revision 不变时本来就不该发请求。
+ */
+async function revisit(page: Page) {
+  await page.evaluate(`(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  })()`);
+}
+
+/**
+ * 触发一次可见补读并等它的响应落地，确保此刻没有在途的关系读取。在途读取存在时
+ * `createRelationReads` 的重入保护会忽略触发，所以反复触发必然收敛到「已读完」。
+ */
+async function settleRelations(page: Page) {
+  const before = relationSnapshots.get(page);
+  await until(
+    async () => {
+      await revisit(page);
+      await delay(200);
+      return relationSnapshots.get(page) !== before;
+    },
+    "relations read settled",
+    30,
+  );
 }
 
 const results: Record<string, unknown> = {};
@@ -1035,18 +1067,16 @@ try {
     relationSnapshots.delete(page);
     await page.reload();
     await page.getByTestId("info-hub-project-machines-removed-item").waitFor();
-    await until(() => {
-      const snapshot = relationSnapshots.get(page);
-      return Boolean(snapshot && snapshot.text.includes("removed"));
-    }, "relations snapshot with removed state");
+    // 页面按 Hub revision 读关系事实（8c3c8c2）。reload 后的第一轮同步会补一次读取；如果
+    // 它落在下面两次写库之后，页面就会看到新的 epoch，这个场景（旧页面持过期 epoch）不再
+    // 成立。先把这轮读取等回来：此刻没有在途读取，页面事实停在 epoch 1。
+    await settleRelations(page);
     const snapshot = relationSnapshots.get(page)!;
-    await page.route(snapshot.url, (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: snapshot.contentType,
-        body: snapshot.body,
-      }),
-    );
+    // 之后不让页面再看到服务端事实：读取挂住不返回，页面一直持有 epoch 1，直到点击。
+    await page.route(snapshot.url, async () => {
+      await new Promise(() => {});
+    });
+    await page.getByTestId("info-hub-project-machines-removed-item").waitFor();
     // 服务端事实前进两代：rejoin 产生 epoch 2，再移出产生 epoch 2 的 removed。
     const rejoined = rejoinProjectMachine(
       {
@@ -1125,8 +1155,10 @@ try {
     results.rejoinEpoch = 3;
   });
 
-  // ═══ 7. 五秒刷新：事实更新 / 失败保留上次事实并标未确认 ═══════════════════
-  await check("五秒刷新：服务端事实变化后不刷新页面也能更新", async () => {
+  // ═══ 7. 安全间隔刷新：事实更新 / 失败保留上次事实并标未确认 ═══════════════════
+  // 这里的写入是领域调用直写同一个 SQLite 文件，不经过服务端进程，因此推送不会发；
+  // 页面只能靠推送连上时的安全间隔（project 30 秒）自己读回来。
+  await check("安全间隔刷新：服务端事实变化后不刷新页面也能更新", async () => {
     await page.goto(settings(p1));
     await section.waitFor();
     await currentRow(m1.machineId).waitFor();
@@ -1153,10 +1185,15 @@ try {
       async () =>
         (await currentRow(m4.machineId).count()) === 1 &&
         (await page.getByTestId("info-hub-project-machines-removed-item").count()) === 0,
-      "page auto refresh picks up rejoin",
+      "page safety poll picks up rejoin",
+      Math.ceil((CHANGE_SAFETY_POLL_MS.project + 5_000) / 200) + 5,
     );
     const elapsed = Date.now() - started;
-    assert.ok(elapsed < 12000, `五秒刷新必须在一轮内把服务端事实带到页面；实际等待 ${elapsed}ms`);
+    const budget = CHANGE_SAFETY_POLL_MS.project + 2_000;
+    assert.ok(
+      elapsed <= budget,
+      `推送到不了进程外写入，页面必须在安全间隔内自己读回；实际等待 ${elapsed}ms（预算 ${budget}ms）`,
+    );
     results.refreshUpdatedMs = elapsed;
   });
 
@@ -1164,6 +1201,8 @@ try {
     const snapshot = relationSnapshots.get(page)!;
     const before = await currentIds();
     await page.route(snapshot.url, (route) => route.abort());
+    await delay(100);
+    await revisit(page);
     const stale = page.getByTestId("info-hub-project-machines-stale");
     await stale.waitFor({ timeout: 15000 });
     const staleText = await stale.innerText();
@@ -1188,6 +1227,8 @@ try {
       "刷新失败后必须暂停依赖新鲜事实的移出入口",
     );
     await page.unroute(snapshot.url);
+    await delay(100);
+    await revisit(page);
     await stale.waitFor({ state: "hidden", timeout: 15000 });
     assert.deepEqual(await currentIds(), before, "恢复成功后仍应保留同一批事实");
     results.staleBanner = true;
@@ -1206,6 +1247,8 @@ try {
     );
     const leaseBefore = leaseRow({ projectId: p1, machineId: m2.machineId })!.generation;
     await page.route(snapshot.url, (route) => route.abort());
+    await delay(100);
+    await revisit(page);
     await page.getByTestId("info-hub-project-machines-stale").waitFor({ timeout: 15000 });
     assert.equal(
       await page.getByTestId("membership-force-submit").isDisabled(),
@@ -1224,6 +1267,8 @@ try {
     );
     await page.keyboard.press("Escape");
     await page.unroute(snapshot.url);
+    await delay(100);
+    await revisit(page);
     await page
       .getByTestId("info-hub-project-machines-stale")
       .waitFor({ state: "hidden", timeout: 15000 });

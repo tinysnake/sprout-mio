@@ -61,6 +61,19 @@ const server = await createServer({
               );
               return;
             }
+            // P6b 只验证轮询兜底，推送由 tests/change-*.test.ts 覆盖：给 EventSource
+            // 一个 200 的长连接，避免夹具缺路由被浏览器记成产品控制台错误。不发 ready，
+            // 页面保持 connected=false，轮询时序与真实端点未连上时一致。
+            if (request.url?.startsWith("/api/events?")) {
+              response.writeHead(200, {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-store",
+                Connection: "keep-alive",
+                "X-Accel-Buffering": "no",
+              });
+              response.write("retry: 3000\n\n");
+              return;
+            }
             if (request.url !== "/") return next();
             const html = await dev.transformIndexHtml(
               "/",

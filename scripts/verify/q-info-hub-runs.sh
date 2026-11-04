@@ -346,27 +346,42 @@ try {
   assert.equal(settledTurn.workspace.basis, 'run_provenance')
   assert.equal(settledTurn.workspace.commit, bareHead)
   assert.equal(settledTurn.injectedIntoPrompt, false, 'fixture runner emits no SDK receipt')
-  // 承载新一轮发生在 turn 落定之后，慢机器上这里和状态轮询之间有一段窗口。
+  // 承载新一轮发生在 turn 落定之后。宿主是无上限并发（pi-host/host.ts 的 dispatch 一拍就准入），
+  // queued 只存在一拍的宽度，靠轮询视图去抓必然竞态；这里核对持久事实：同一条 pending 输入
+  // 被改挂到一条新 run（不复制、不丢失），并在该 run 准入后进入它自己的 captured 快照。
+  // 「queued 的视图文案与准入前不捕获」由 tests/info-hub-runs.test.ts 的领域级用例确定性覆盖。
+  const pendingMessageId = inputs[1].message_id
   let carryWatch = null
   const carried = await until(
-    async () => {
-      const info = await callOk('getChatInfoFn', { chatId: main.chatId })
-      carryWatch = {
-        active: info.runs.active.map(row => ({ status: row.status, pendingInputs: row.pendingInputs })),
-        recent: info.runs.recent.length,
-      }
-      return info.runs.active.length === 1 ? info.runs.active[0] : null
+    () => {
+      const rows = runsOf(main.chatId)
+      const next = rows.at(-1)
+      if (rows.length < 3 || next.id === slowRun.id) return
+      const moved = db.prepare('SELECT run_id, disposition FROM agent_run_input WHERE message_id=?').get(pendingMessageId)
+      carryWatch = { runIds: rows.map(row => row.id), moved }
+      return moved.run_id === next.id ? next : undefined
     },
-    'the settled turn carries its pending input into the next queued run',
-    90000,
+    'the settled turn carries its pending input into the next run',
+    30000,
   ).catch(error => {
     throw new Error(`${error.message}; last seen ${JSON.stringify(carryWatch)}`)
   })
-  assert.notEqual(carried.runId, slowRun.id, 'carry opens a new run, not the settled one')
-  assert.equal(carried.status, 'queued', `carried run status is ${carried.status}`)
-  assert.equal(carried.pendingInputs, 1, 'the settled turn handed its pending input to the next run')
-  const carriedRead = await callOk('readTurnContextFn', {projectId: main.projectId, runId: carried.runId})
-  assert.equal(carriedRead.kind, 'not_captured', 'queued carry is captured only on host admission')
+  assert.notEqual(carried.id, slowRun.id, 'carry opens a new run, not the settled one')
+  await until(() => runsOf(main.chatId).find(row => row.id === carried.id)?.status === 'completed', 'carried run completed', 30000)
+  const carriedInput = db.prepare('SELECT run_id, disposition FROM agent_run_input WHERE message_id=?').get(pendingMessageId)
+  assert.equal(carriedInput.run_id, carried.id, 'the pending input moved to the carried run, not duplicated')
+  assert.equal(carriedInput.disposition, 'delivered', 'the carried input is delivered into the new turn')
+  assert.equal(inputsOf(slowRun.id).length, 1, 'the settled run keeps only the input it delivered')
+  assert.equal(inputsOf(carried.id).length, 1, 'the carried input lands once in the new run')
+  assert.equal(
+    db.prepare("SELECT count(*) AS n FROM diagnostic_event WHERE event='agent_run.inputs_carried' AND run_id=?").get(carried.id).n,
+    1,
+    'the carry leaves one durable handover diagnostic on the new run',
+  )
+  const carriedRead = await callOk('readTurnContextFn', {projectId: main.projectId, runId: carried.id})
+  assert.equal(carriedRead.kind, 'captured', 'the admitted carry captured its own snapshot')
+  assert.equal(carriedRead.record.runId, carried.id)
+  assert.notDeepEqual(carriedRead.record, heldTurn, 'the carry snapshot belongs to the new run, not the settled one')
   const checkout = db.prepare('SELECT * FROM repo_checkout WHERE project_id=?').get(main.projectId)
   assert.equal(checkout.commit, bareHead, 'ready checkout retains the real remote HEAD')
   assert.equal(settledInfo.runs.recent.length, 2, 'both completed runs appear in the chat view')

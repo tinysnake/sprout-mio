@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { infoHubToolInputSchemas } from "../contracts/info-hub-query";
 import { remoteAgentRequestSchema } from "../contracts/remote";
 import {
@@ -7,6 +6,7 @@ import {
   type RemoteToolResponse,
 } from "./remote-client";
 import { INFO_HUB_TOOL_DESCRIPTION } from "./remote-tools";
+import { objectToolParameters } from "./tool-parameters";
 import type { SproutExtensionAPI, SproutToolResult } from "./types";
 function result(response: RemoteToolResponse): SproutToolResult {
   const details = response.outcome === "response" ? response.result : response;
@@ -25,7 +25,7 @@ export function registerInfoHubTools(
     name: "sprout_info_hub_get",
     label: "sprout_info_hub_get",
     description: INFO_HUB_TOOL_DESCRIPTION,
-    parameters: z.toJSONSchema(schema, { target: "draft-7", io: "input" }),
+    parameters: objectToolParameters(schema),
     async execute(_id, parameters, signal) {
       const parsed = schema.safeParse(parameters);
       if (!parsed.success)
