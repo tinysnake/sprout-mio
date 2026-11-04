@@ -31,7 +31,9 @@ try {
   page.setDefaultTimeout(15000);
   for (const [action, button, outcome] of [
     ["send", "message-send", "send-outcome"],
-    ["stop", "run-stop", "stop-outcome"],
+    // 257a222 起群组的停止入口在 RunStatus 的每个 Agent 行上（`agent-run-stop`），
+    // composer 的 `run-stop` 只留给 DM；夹具是 group，所以按群组入口验证动作边界。
+    ["stop", "agent-run-stop", "stop-outcome"],
     ["lease", "p7-lease-submit", "p7-lease-outcome"],
   ]) {
     for (const state of ["failure", "unknown", "success"]) {
