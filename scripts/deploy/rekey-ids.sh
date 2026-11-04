@@ -13,7 +13,7 @@ require_cmd node
 dir="$(instance_dir "$name")"
 app="$dir/app"
 script="$app/scripts/maintenance/rekey-short-ids.ts"
-[[ -f "$script" ]] || fail "实例 $name 的部署目录里没有重写脚本：$script（先部署含它的 tag）"
+[[ -f "$script" ]] || fail "实例 $name 的部署目录里没有重写脚本：${script}（先部署含它的 tag）"
 load_env "$name"
 
 run() {

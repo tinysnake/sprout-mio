@@ -91,7 +91,7 @@ PLIST
     launchctl bootstrap "gui/$(id -u)" "$plist" || fail "launchctl bootstrap 失败：$plist"
     sleep 3
     launchctl print "$target" >/dev/null 2>&1 || fail "作业没有常驻，看 $dir/logs/worker.err.log"
-    say "PASS ${instance} 的 Worker 已交给 launchd（$label）"
+    say "PASS ${instance} 的 Worker 已交给 launchd（${label}）"
     ;;
   uninstall)
     launchctl bootout "$target" >/dev/null 2>&1 || true

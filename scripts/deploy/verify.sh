@@ -118,9 +118,11 @@ fi
 port="$(port_for "$instance")"
 health="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" 2>/dev/null || true)"
 if [[ -n "$health" ]]; then
-  actual="$(printf '%s' "$health" | node -e 'let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }).on("end", () => { process.stdout.write(String(JSON.parse(body).continuationEnabled)); });')"
+  # 改名过渡：还没升级的实例只报旧的 automationEnabled，用 ?? 兜住；实例全部升到
+  # 含 continuationEnabled 的构建后，这个回退可以删掉。
+  actual="$(printf '%s' "$health" | node -e 'let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }).on("end", () => { const health = JSON.parse(body); process.stdout.write(String(health.continuationEnabled ?? health.automationEnabled)); });')"
   if [[ -n "$expected_continuation" ]]; then
-    [[ "$actual" == "$expected_continuation" ]] || fail "实例 $instance 的对话接续开关是 $actual，期望 $expected_continuation"
+    [[ "$actual" == "$expected_continuation" ]] || fail "实例 $instance 的对话接续开关是 ${actual}，期望 $expected_continuation"
   fi
   say "PASS 实例 $instance 在 ${port} 上健康，continuationEnabled=$actual"
 else
