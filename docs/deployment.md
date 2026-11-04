@@ -18,7 +18,7 @@
 | 数据库 | `$SPROUT_RUNTIME_ROOT/prod/data/sprout.sqlite` | `drill/data/sprout.sqlite`（每次从 prod 备份刷新） | `dev/data/sprout.sqlite`（按需刷新） |
 | Pi 目录 | `.../prod/pi` | `.../drill/pi` | `.../dev/pi` |
 | 仓库目录 | `.../prod/repos` | `.../drill/repos` | `.../dev/repos` |
-| 对话接续 | 开 | 关（`SPROUT_CONTINUATION_ENABLED=false`） | 关 |
+| 对话接续 | 开 | 开（`drill/env` 设 `true`） | 关 |
 | 端口 | 3220 | 3221 起 | 3000 |
 
 运行根目录可以在任意位置，默认 `~/sprout-runtime`。脚本按这个顺序解析：
@@ -36,7 +36,7 @@ bash scripts/deploy/init-instance.sh prod
 
 prod 的代码 checkout（`$SPROUT_RUNTIME_ROOT/prod/app`）从远端 clone，默认取开发 checkout 的 `origin`，可用 `SPROUT_DEPLOY_REMOTE` 指定。部署脚本不使用开发 checkout 的路径，所以 prod 可以整体搬走，只要重跑一次 `init-instance.sh` 与 `promote.sh`。
 
-`SPROUT_CONTINUATION_ENABLED` 是实例级开关，默认 `true`，只接受 `true` 或 `false`。关掉后运行时不装判定器、不启动调度器、判定边界直接拒绝，`/api/health` 的 `continuationEnabled` 报告实际取值。`deploy-continuation-off` 门禁在两种取值下各跑一遍并比对证据：关闭时到期排期不被认领、不产生判定与投递、两个模型边界调用数为 0；打开时同一轮判定与投递各发生一次，付费模型调用数为 0。
+`SPROUT_CONTINUATION_ENABLED` 是实例级开关，默认 `true`，只接受 `true` 或 `false`。关掉后运行时不装判定器、不启动调度器、判定边界直接拒绝，`/api/health` 的 `continuationEnabled` 报告实际取值。`init-instance.sh` 建实例时写入 prod `true`、drill 与 dev `false`；`verify.sh` 按该实例 env 里声明的值校验 `/api/health` 是否一致，改这一项要重启实例才生效（旧名 `SPROUT_AUTOMATION_ENABLED` 会被忽略，等于没设）。`deploy-continuation-off` 门禁在两种取值下各跑一遍并比对证据：关闭时到期排期不被认领、不产生判定与投递、两个模型边界调用数为 0；打开时同一轮判定与投递各发生一次，付费模型调用数为 0。
 
 `SPROUT_WAKE_THRESHOLD_VERSION`、`SPROUT_WAKE_LLM_MODEL`、`SPROUT_WAKE_JEV_MODEL` 与 `JEV_API_KEY` 是唤醒判定的部署配置，都是可选项：不配时实例照常运行，只是 Project 设置页里的判定器选项按可用性置灰，保存配置会返回 `wake_provider_unavailable`。
 
