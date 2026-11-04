@@ -195,7 +195,7 @@
       "idx": 27,
       "version": "6",
       "when": 1793427423860,
-      "tag": "0027_p6a_automation_off",
+      "tag": "0027_p6a_continuation_off",
       "breakpoints": true
     },
     {
@@ -231,6 +231,20 @@
       "version": "6",
       "when": 1793708422044,
       "tag": "0032_grey_santa_claus",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1793759560868,
+      "tag": "0033_chat_continuation_rename",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1793759620868,
+      "tag": "0034_wake_provider_llm",
       "breakpoints": true
     }
   ]

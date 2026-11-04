@@ -380,7 +380,7 @@ function fanoutHumanMessage(
   agentSender = false,
   deferContextual = false,
 ): void {
-  // 只有消息确实进入判定器防抖队列时才跳过即时 owner 唤醒。自动化关闭、控制为 off
+  // 只有消息确实进入判定器防抖队列时才跳过即时 owner 唤醒。对话接续关闭、控制为 off
   // 或显式点名 Agent 时仍走原本的即时路由。
   if (
     !agentSender &&

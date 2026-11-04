@@ -6,7 +6,7 @@ import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
 import type { Chat, ChatKind, ChatResult, Message } from "../../contracts/chat";
 import type { FieldErrors } from "../../contracts/project";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
-import type { ChatAutomationData } from "../../domain/chat-automation";
+import type { ChatContinuationData } from "../../domain/chat-continuation";
 import type { AppError, AppResult } from "../../contracts/result";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
@@ -54,7 +54,7 @@ export function ChatThread({
   senderNames,
   knownSenders,
   runFacts,
-  automation,
+  continuation,
   archived = false,
 }: {
   /** 返回列表入口：正式路由传 Link，演示传按钮。 */
@@ -93,7 +93,7 @@ export function ChatThread({
   senderNames?: ReadonlyMap<string, string>;
   knownSenders?: ReadonlySet<string>;
   runFacts?: Map<string, readonly InfoHubRunSummary[]>;
-  automation?: AppResult<ChatAutomationData>;
+  continuation?: AppResult<ChatContinuationData>;
   archived?: boolean;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
@@ -220,7 +220,7 @@ export function ChatThread({
               agentNames={runAgentNames}
               onStopRun={onStopRun}
               stoppingRunId={stoppingRunId}
-              automation={automation}
+              continuation={continuation}
             />
           </>
         )}

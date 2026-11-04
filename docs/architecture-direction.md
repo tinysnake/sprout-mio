@@ -209,7 +209,7 @@ FastMCP proxy 可作为备选，但需要处理新建 session 与共享 session 
 | Pi 接入与配置继承 | P0、P3 | 真实 session、下一轮配置、当前轮投递、停止与恢复 |
 | Worker 重启后执行恢复范围 | P0、P4 | 中断位置与日志、结果、未知状态的对应关系 |
 | 直接交接与撤权协议 | P0、P4 | 丢包、旧请求、重连、并发交接的可重复实验 |
-| Jev 与 Task 小脑关系 | P6 | 中文样本、失败回退、重复唤醒、人类控制 |
+| Jev 与 Task LLM 判定关系 | P6 | 中文样本、失败回退、重复唤醒、人类控制 |
 | 软件 MCP 接入分期与能力 | R1 | Unity 多实例、Blender 图片、重连与撤权实验 |
 
 P0 已收敛上表前五项的本机结论。Start 与常驻 runtime 共进程成立。SQLite driver 为 `better-sqlite3`。Pi 接入用 SDK 并跑在宿主管理的子进程里，前提是显式 `ModelRuntime` 与显式 `model`，裸 factory 会解析到错误的 provider 且失败不抛异常，只写 `stopReason`（[pi-integration.md](p0/pi-integration.md)）。Worker 重启恢复范围与直接交接协议的语义用原型验证（[recovery-promises.md](p0/recovery-promises.md)、[contracts.md](p0/contracts.md)），真实 macOS Worker 端到端与真实撤权留到 P4 验收。

@@ -1,17 +1,17 @@
 import { Check, Loader2, X } from "lucide-react";
 import { cn } from "cn";
-import type { ChatAutomationView } from "../../contracts/chat-automation";
+import type { ChatContinuationView } from "../../contracts/chat-continuation";
 import type { AppResult } from "../../contracts/result";
 import type { WakeUsage } from "../../contracts/wake-evaluation";
-import type { ChatAutomationData } from "../../domain/chat-automation";
+import type { ChatContinuationData } from "../../domain/chat-continuation";
 import {
-  AUTOMATION_DECISIONS,
-  AUTOMATION_STATES,
-  automationDuration,
-  automationFailureText,
-  automationTime,
-  automationTokens,
-} from "../automation/automation-labels";
+  CONTINUATION_DECISIONS,
+  CONTINUATION_STATES,
+  continuationDuration,
+  continuationFailureText,
+  continuationTime,
+  continuationTokens,
+} from "../continuation/continuation-labels";
 import { Icon } from "../ui/icon";
 
 type Tone = "idle" | "active" | "attention" | "off";
@@ -41,7 +41,7 @@ function Glyph({ tone }: { tone: Tone }) {
   return <span className="mt-1.25 size-1.5 shrink-0 rounded-full bg-muted-foreground" />;
 }
 
-function statusOf(view: ChatAutomationView): {
+function statusOf(view: ChatContinuationView): {
   tone: Tone;
   state: string;
   label: string;
@@ -64,33 +64,33 @@ function statusOf(view: ChatAutomationView): {
       label: "需要处理",
       detail:
         view.attention?.reason ??
-        (errorCode ? automationFailureText(errorCode) : "自动接续需要人工确认"),
+        (errorCode ? continuationFailureText(errorCode) : "对话接续需要人工确认"),
       detailTitle: errorCode ?? undefined,
     };
   if (evaluation?.state === "pending")
-    return { tone: "active", state: "pending", label: AUTOMATION_STATES.pending };
+    return { tone: "active", state: "pending", label: CONTINUATION_STATES.pending };
   if (evaluation?.state === "claimed")
-    return { tone: "active", state: "claimed", label: AUTOMATION_STATES.claimed };
+    return { tone: "active", state: "claimed", label: CONTINUATION_STATES.claimed };
   if (evaluation?.state === "retry_wait")
     return {
       tone: "attention",
       state: "retry_wait",
-      label: AUTOMATION_STATES.retry_wait,
-      detail: evaluation.errorCode ? automationFailureText(evaluation.errorCode) : undefined,
+      label: CONTINUATION_STATES.retry_wait,
+      detail: evaluation.errorCode ? continuationFailureText(evaluation.errorCode) : undefined,
     };
   if (evaluation?.state === "decided")
     return {
       tone: "idle",
       state: "decided",
-      label: AUTOMATION_STATES.decided,
-      detail: evaluation.result ? AUTOMATION_DECISIONS[evaluation.result.decision] : "暂无结论",
+      label: CONTINUATION_STATES.decided,
+      detail: evaluation.result ? CONTINUATION_DECISIONS[evaluation.result.decision] : "暂无结论",
       detailTitle: evaluation.result?.reason,
     };
   if (evaluation?.state === "stale" || evaluation?.state === "canceled")
     return {
       tone: "off",
       state: evaluation.state,
-      label: AUTOMATION_STATES[evaluation.state],
+      label: CONTINUATION_STATES[evaluation.state],
     };
   return {
     tone: "idle",
@@ -103,31 +103,35 @@ function statusOf(view: ChatAutomationView): {
 function usageSummary(usage: WakeUsage | null | undefined): string | null {
   if (!usage) return null;
   const parts: string[] = [];
-  if (usage.durationMs > 0) parts.push(`耗时 ${automationDuration(usage.durationMs)}`);
+  if (usage.durationMs > 0) parts.push(`耗时 ${continuationDuration(usage.durationMs)}`);
   const tokens = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
-  if (tokens > 0) parts.push(`${automationTokens(tokens)} tokens`);
+  if (tokens > 0) parts.push(`${continuationTokens(tokens)} tokens`);
   if (usage.resolvedModel) parts.push(usage.resolvedModel);
   return parts.length ? parts.join(" · ") : null;
 }
 
 /**
- * 自动接续在消息下方的常显状态。只读 `ChatAutomationView`，不重算调度，
+ * 对话接续在消息下方的常显状态。只读 `ChatContinuationView`，不重算调度，
  * 也不把「启用」说成「马上会接续」；逐次尝试由紧随其后的 `ContinuationActivity` 展开。
  */
-export function ContinuationStatus({ automation }: { automation?: AppResult<ChatAutomationData> }) {
-  if (!automation) return null;
-  if (!automation.ok)
+export function ContinuationStatus({
+  continuation,
+}: {
+  continuation?: AppResult<ChatContinuationData>;
+}) {
+  if (!continuation) return null;
+  if (!continuation.ok)
     return (
       <p
         data-testid="continuation-status"
         data-state="unavailable"
         className="text-[11px] text-muted-foreground"
       >
-        自动接续：状态不可用
+        对话接续：状态不可用
       </p>
     );
 
-  const view = automation.data.view;
+  const view = continuation.data.view;
   const status = statusOf(view);
   const nextAt = view.latestEvaluation?.nextAttemptAt ?? view.nextDueAt;
   const showNext = view.mode === "enabled" && Boolean(nextAt);
@@ -144,7 +148,7 @@ export function ContinuationStatus({ automation }: { automation?: AppResult<Chat
       <Glyph tone={status.tone} />
       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
         <span className="whitespace-nowrap">
-          <span className="text-muted-foreground">自动接续：</span>
+          <span className="text-muted-foreground">对话接续：</span>
           <span data-testid="continuation-label" className={cn(TONE_CLASS[status.tone])}>
             {status.label}
           </span>
@@ -170,7 +174,7 @@ export function ContinuationStatus({ automation }: { automation?: AppResult<Chat
         )}
         {showNext && (
           <span data-testid="continuation-next" className="text-muted-foreground">
-            下次检查 {automationTime(nextAt)}
+            下次检查 {continuationTime(nextAt)}
           </span>
         )}
         {view.attention?.errorCode && (

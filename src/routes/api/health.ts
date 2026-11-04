@@ -17,7 +17,7 @@ export function healthResponse(request: Request): Response {
       requestId,
       version: snapshot.version,
       activeBackgroundTasks: snapshot.activeBackgroundTasks,
-      automationEnabled: config.SPROUT_AUTOMATION_ENABLED,
+      continuationEnabled: config.SPROUT_CONTINUATION_ENABLED,
       database,
     },
     {

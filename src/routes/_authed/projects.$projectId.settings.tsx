@@ -34,7 +34,7 @@ import {
 } from "../../server/functions/info-hub";
 import { getProjectRepoStateFn, prepareProjectRepoFn } from "../../server/functions/repository";
 import { useExecutionWiring } from "../../lib/execution-wiring";
-import { WakeProviderSelect } from "../../components/automation/wake-provider-select";
+import { WakeProviderSelect } from "../../components/continuation/wake-provider-select";
 import {
   InfoHubLiveProvider,
   InfoHubPollingStatus,

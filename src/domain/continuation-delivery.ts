@@ -1,12 +1,12 @@
 import { sqlite } from "../db";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
-  CHAT_AUTOMATION_POLICY as POLICY,
+  CHAT_CONTINUATION_POLICY as POLICY,
   continuationDeliverySchema,
   continuationInputEnvelopeSchema,
   type ContinuationDelivery,
   type ContinuationInputEnvelope,
-} from "../contracts/chat-automation";
+} from "../contracts/chat-continuation";
 import {
   DEFAULT_PROJECT_WAKE_POLICY,
   projectWakePolicySchema,
@@ -694,8 +694,8 @@ export function bindPendingDeliveries(now: Date) {
                     : [],
                 ),
             body: messageSource
-              ? `这是群消息触发的自动接续。触发消息 ${input.triggerMessage?.id ?? ""}：${input.triggerMessage?.body ?? ""}\n判定理由：${result.reason}\n请结合最近对话上下文决定是否回应；需要回应时直接在该对话发消息。`
-              : `这是自动接续工作指令。请结合当前进展继续负责的 Task；按实际工作追加施工记录，达到完成要求后完成 Task。\n${input.tasks.map((t) => `${t.id}: ${t.title}`).join("\n")}\n判定理由：${result.reason}`,
+              ? `这是群消息触发的对话接续。触发消息 ${input.triggerMessage?.id ?? ""}：${input.triggerMessage?.body ?? ""}\n判定理由：${result.reason}\n请结合最近对话上下文决定是否回应；需要回应时直接在该对话发消息。`
+              : `这是对话接续工作指令。请结合当前进展继续负责的 Task；按实际工作追加施工记录，达到完成要求后完成 Task。\n${input.tasks.map((t) => `${t.id}: ${t.title}`).join("\n")}\n判定理由：${result.reason}`,
             supersedesDeliveryId: current.supersedes_delivery_id,
           });
           write(
@@ -761,7 +761,7 @@ export function admitContinuation<T>(
         return;
       }
       const changed = write(
-        "UPDATE continuation_delivery SET state='admitted',admitted_at=?,attempt=attempt+1,error_code=NULL WHERE id=? AND state='bound' AND admitted_at IS NULL AND control_epoch=(SELECT epoch FROM chat_automation_control WHERE chat_id=? AND mode='enabled')",
+        "UPDATE continuation_delivery SET state='admitted',admitted_at=?,attempt=attempt+1,error_code=NULL WHERE id=? AND state='bound' AND admitted_at IS NULL AND control_epoch=(SELECT epoch FROM chat_continuation_control WHERE chat_id=? AND mode='enabled')",
         now.getTime(),
         deliveryId,
         row.chat_id,
@@ -808,7 +808,7 @@ function deliveryChat(deliveryId: string): string | undefined {
 }
 /** Only normal completion may immediately carry unadmitted continuation inputs. */
 export function settleContinuationRun(runId: string, status: string, now: Date) {
-  // 一次 run 结束同时改变了投递与自动接续的事实；按对话去重后一并告知，不按行发。
+  // 一次 run 结束同时改变了投递与对话接续的事实；按对话去重后一并告知，不按行发。
   const chats = all<{ chat_id: string }>(
     "SELECT DISTINCT chat_id FROM continuation_delivery WHERE run_id=?",
     runId,

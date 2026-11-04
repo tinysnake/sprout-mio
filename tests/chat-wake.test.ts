@@ -7,11 +7,7 @@ import {
   type WakeMember,
 } from "../src/domain/chat-wake";
 import { prepareWakeEvaluation, type WakeSnapshotFacts } from "../src/domain/wake-evaluation";
-import {
-  createSmallBrainJudge,
-  wakeSessionId,
-  type SmallBrainRequest,
-} from "../src/domain/wake-providers/small-brain";
+import { createLlmJudge, wakeSessionId, type LlmRequest } from "../src/domain/wake-providers/llm";
 
 /** 纯函数用例只构造事实：本文件不 import 任何查库的领域模块。 */
 const REVIEWER: WakeMember = { memberKind: "agent", memberId: "agp_reviewer" };
@@ -239,7 +235,7 @@ function facts(
     triggerId: "msg_00000002",
     round: 1,
     controlEpoch: 1,
-    policy: { provider: "small_brain", configRevision: 1, thresholdVersion: "unit-v1" },
+    policy: { provider: "llm", configRevision: 1, thresholdVersion: "unit-v1" },
     archived: false,
     triggerMessage: {
       id: "msg_00000002",
@@ -345,7 +341,7 @@ describe("prepareWakeEvaluation 的点名与提示", () => {
   });
 });
 
-describe("small brain 的网关身份", () => {
+describe("LLM 的网关身份", () => {
   it("同一群聊的每次唤醒沿用同一个 session id", async () => {
     const prepared = prepareWakeEvaluation(facts(), new Date("2026-01-01T00:00:03.000Z"));
     if (prepared.kind !== "model") throw new Error("夹具应走模型判定");
@@ -353,8 +349,8 @@ describe("small brain 的网关身份", () => {
       ...prepared.input,
       policy: { ...prepared.input.policy, model: "test/model" },
     };
-    let seen: SmallBrainRequest | undefined;
-    const judge = createSmallBrainJudge({
+    let seen: LlmRequest | undefined;
+    const judge = createLlmJudge({
       agentDir: "/tmp/sprout-agent",
       clock: () => 0,
       complete: async (request) => {

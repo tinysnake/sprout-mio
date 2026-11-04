@@ -2,20 +2,20 @@ import { describe, expect, it } from "vite-plus/test";
 import { retryDelay } from "../src/domain/chat-schedule";
 import {
   APP_ERROR_CODES,
-  CHAT_AUTOMATION_ACTIONS,
-  CHAT_AUTOMATION_CAPABILITIES,
-  CHAT_AUTOMATION_POLICY,
+  CHAT_CONTINUATION_ACTIONS,
+  CHAT_CONTINUATION_CAPABILITIES,
+  CHAT_CONTINUATION_POLICY,
   ID_PREFIXES,
   WAKE_CONTEXT_LIMITS,
-  chatAutomationCommandSchema,
-  chatAutomationErrorCodeSchema,
-  chatAutomationEvaluationViewSchema,
-  chatAutomationGetCall,
-  chatAutomationGetInputSchema,
-  chatAutomationGetResponseSchema,
-  chatAutomationModeSchema,
-  chatAutomationSummarySchema,
-  chatAutomationViewSchema,
+  chatContinuationCommandSchema,
+  chatContinuationErrorCodeSchema,
+  chatContinuationEvaluationViewSchema,
+  chatContinuationGetCall,
+  chatContinuationGetInputSchema,
+  chatContinuationGetResponseSchema,
+  chatContinuationModeSchema,
+  chatContinuationSummarySchema,
+  chatContinuationViewSchema,
   chatInfoViewSchema,
   chatRunAggregateSchema,
   continuationCancelReasonSchema,
@@ -51,7 +51,7 @@ const human = { kind: "human", id: "human-owner" };
 const at = "2026-11-01T00:00:00.000Z";
 const snapshotHash = "a".repeat(64);
 const policy = {
-  provider: "small_brain",
+  provider: "llm",
   configRevision: 1,
   model: "fixed-model",
   thresholdVersion: "v1",
@@ -131,7 +131,7 @@ const result = () => ({
   recipients: [{ recipient: agent, decision: "yes", reason: "尚有工作", probability: 0.9 }],
   selectedRecipients: [agent],
   probability: null,
-  provider: "small_brain",
+  provider: "llm",
   model: "fixed-model",
   version: "v1",
   snapshotHash,
@@ -224,22 +224,22 @@ const commandCodes = [
   "validation_failed",
   "too_many_requests",
   "internal",
-  "automation_disabled",
+  "continuation_disabled",
   "wake_provider_unavailable",
   "continuation_delivery_unknown",
 ];
 
 describe("P6a providers and closed error vocabularies", () => {
   it("selects exactly one supported provider with versioned configuration", () => {
-    for (const provider of ["small_brain", "jev"]) {
+    for (const provider of ["llm", "jev"]) {
       expect(wakeProviderSchema.parse(provider)).toBe(provider);
       expect(projectWakePolicySchema.safeParse({ ...policy, provider }).success).toBe(true);
     }
     expect(wakeProviderSchema.safeParse("other").success).toBe(false);
     for (const invalid of [
       { ...policy, provider: "other" },
-      { ...policy, provider: ["jev", "small_brain"] },
-      { ...policy, fallback: "small_brain" },
+      { ...policy, provider: ["jev", "llm"] },
+      { ...policy, fallback: "llm" },
       { ...policy, apiKey: "secret" },
       { ...policy, configRevision: 0 },
       { ...policy, model: " " },
@@ -249,18 +249,18 @@ describe("P6a providers and closed error vocabularies", () => {
 
   it("keeps command errors distinct from persisted diagnostics and preserves registered AppErrors", () => {
     expect(wakeEvaluationErrorCodeSchema.options).toEqual(diagnosticCodes);
-    expect(chatAutomationErrorCodeSchema.options).toEqual(commandCodes);
+    expect(chatContinuationErrorCodeSchema.options).toEqual(commandCodes);
     for (const code of diagnosticCodes) {
       expect(wakeEvaluationErrorCodeSchema.safeParse(code).success).toBe(true);
-      expect(chatAutomationErrorCodeSchema.safeParse(code).success).toBe(false);
+      expect(chatContinuationErrorCodeSchema.safeParse(code).success).toBe(false);
     }
     for (const code of commandCodes) {
-      expect(chatAutomationErrorCodeSchema.safeParse(code).success).toBe(true);
+      expect(chatContinuationErrorCodeSchema.safeParse(code).success).toBe(true);
       expect(wakeEvaluationErrorCodeSchema.safeParse(code).success).toBe(false);
       expect(APP_ERROR_CODES).toContain(code);
     }
     for (const code of [
-      "automation_disabled",
+      "continuation_disabled",
       "wake_provider_unavailable",
       "continuation_delivery_unknown",
     ]) {
@@ -271,7 +271,7 @@ describe("P6a providers and closed error vocabularies", () => {
       });
     }
     expect(wakeEvaluationErrorCodeSchema.safeParse("new_error").success).toBe(false);
-    expect(chatAutomationErrorCodeSchema.safeParse("new_error").success).toBe(false);
+    expect(chatContinuationErrorCodeSchema.safeParse("new_error").success).toBe(false);
     expect(toAppError({ code: "provider_timeout", message: "private" }, requestId)).toEqual({
       code: "internal",
       message: "内部错误",
@@ -648,10 +648,11 @@ describe("P6a evaluation output", () => {
 
 describe("P6a continuation and Human controls", () => {
   it("freezes modes, timing policy and cancellation reasons separately from failures", () => {
-    for (const mode of ["enabled", "off"]) expect(chatAutomationModeSchema.parse(mode)).toBe(mode);
+    for (const mode of ["enabled", "off"])
+      expect(chatContinuationModeSchema.parse(mode)).toBe(mode);
     for (const mode of ["disabled", "paused", "stopped"])
-      expect(chatAutomationModeSchema.safeParse(mode).success).toBe(false);
-    expect(CHAT_AUTOMATION_POLICY).toEqual({
+      expect(chatContinuationModeSchema.safeParse(mode).success).toBe(false);
+    expect(CHAT_CONTINUATION_POLICY).toEqual({
       version: 1,
       intervalSeconds: 300,
       retryDelaySeconds: [5, 10, 30, 60, 120],
@@ -778,7 +779,7 @@ describe("P6a continuation and Human controls", () => {
         confirmedUnknown: true,
       },
     ])
-      expect(chatAutomationCommandSchema.safeParse(command).success).toBe(true);
+      expect(chatContinuationCommandSchema.safeParse(command).success).toBe(true);
     for (const command of [
       { ...base, action: "disable", expectedRevision: 0 },
       { ...base, action: "pause" },
@@ -800,7 +801,7 @@ describe("P6a continuation and Human controls", () => {
       },
       { ...base, action: "enable", actor: { kind: "system" } },
     ])
-      expect(chatAutomationCommandSchema.safeParse(command).success).toBe(false);
+      expect(chatContinuationCommandSchema.safeParse(command).success).toBe(false);
   });
 
   it("shows Human owner reminder without fabricated active runs", () => {
@@ -817,33 +818,33 @@ describe("P6a continuation and Human controls", () => {
       remindedHuman: true,
       deliveries: [reminder],
     };
-    const parsed = chatAutomationViewSchema.parse(humanView);
+    const parsed = chatContinuationViewSchema.parse(humanView);
     expect(parsed.activeRunIds).toEqual([]);
     expect(parsed.remindedHuman).toBe(true);
     expect(
-      chatAutomationViewSchema.safeParse({
+      chatContinuationViewSchema.safeParse({
         ...humanView,
         activeRunIds: [runId],
       }).success,
     ).toBe(false);
-    expect(chatAutomationViewSchema.safeParse({ ...humanView, remindedHuman: false }).success).toBe(
-      false,
-    );
-    // No reminder is invented merely because the owner is Human, before evaluation.
-    expect(chatAutomationViewSchema.safeParse({ ...view(), owner: human }).success).toBe(true);
-    expect(chatAutomationViewSchema.safeParse({ ...view(), mode: "off" }).success).toBe(false);
     expect(
-      chatAutomationViewSchema.safeParse({
+      chatContinuationViewSchema.safeParse({ ...humanView, remindedHuman: false }).success,
+    ).toBe(false);
+    // No reminder is invented merely because the owner is Human, before evaluation.
+    expect(chatContinuationViewSchema.safeParse({ ...view(), owner: human }).success).toBe(true);
+    expect(chatContinuationViewSchema.safeParse({ ...view(), mode: "off" }).success).toBe(false);
+    expect(
+      chatContinuationViewSchema.safeParse({
         ...view(),
         mode: "off",
         nextDueAt: null,
       }).success,
     ).toBe(true);
     // A message wake can schedule the next check without any assigned Task.
-    expect(chatAutomationViewSchema.safeParse({ ...view(), assignedTaskIds: [] }).success).toBe(
+    expect(chatContinuationViewSchema.safeParse({ ...view(), assignedTaskIds: [] }).success).toBe(
       true,
     );
-    expect(chatAutomationViewSchema.safeParse({ ...view(), epoch: 0 }).success).toBe(false);
+    expect(chatContinuationViewSchema.safeParse({ ...view(), epoch: 0 }).success).toBe(false);
     const evaluation = {
       evaluationId: "evaluation-1",
       source: "task_periodic",
@@ -858,13 +859,13 @@ describe("P6a continuation and Human controls", () => {
       errorCode: null,
       usage: { inputTokens: 900, outputTokens: 32, inputCharacters: 3400, durationMs: 4200 },
     };
-    expect(chatAutomationEvaluationViewSchema.safeParse(evaluation).success).toBe(true);
+    expect(chatContinuationEvaluationViewSchema.safeParse(evaluation).success).toBe(true);
     expect(
-      chatAutomationEvaluationViewSchema.safeParse({ ...evaluation, usage: { durationMs: -1 } })
+      chatContinuationEvaluationViewSchema.safeParse({ ...evaluation, usage: { durationMs: -1 } })
         .success,
     ).toBe(false);
     expect(
-      chatAutomationEvaluationViewSchema.safeParse({
+      chatContinuationEvaluationViewSchema.safeParse({
         ...evaluation,
         state: "succeeded",
       }).success,
@@ -875,15 +876,15 @@ describe("P6a continuation and Human controls", () => {
     const expected = {
       "project.wake_policy.read": { human: "project", agent: "project" },
       "project.wake_policy.update": { human: "human", agent: "never" },
-      "chat.automation.read": { human: "member", agent: "member" },
-      "chat.automation.disable": { human: "member", agent: "never" },
-      "chat.automation.enable": { human: "member", agent: "never" },
-      "chat.automation.abort": { human: "member", agent: "never" },
-      "chat.automation.retry": { human: "member", agent: "never" },
-      "chat.automation.reissue": { human: "member", agent: "never" },
+      "chat.continuation.read": { human: "member", agent: "member" },
+      "chat.continuation.disable": { human: "member", agent: "never" },
+      "chat.continuation.enable": { human: "member", agent: "never" },
+      "chat.continuation.abort": { human: "member", agent: "never" },
+      "chat.continuation.retry": { human: "member", agent: "never" },
+      "chat.continuation.reissue": { human: "member", agent: "never" },
     };
-    expect(CHAT_AUTOMATION_CAPABILITIES).toEqual(expected);
-    expect(CHAT_AUTOMATION_ACTIONS).toEqual(Object.keys(expected));
+    expect(CHAT_CONTINUATION_CAPABILITIES).toEqual(expected);
+    expect(CHAT_CONTINUATION_ACTIONS).toEqual(Object.keys(expected));
   });
 });
 
@@ -940,10 +941,10 @@ describe("P6a additive Project, Info Hub and remote boundaries", () => {
     ).toBe(true);
   });
 
-  it("adds optional minimal automation summaries without making old payloads invalid", () => {
-    expect(chatAutomationSummarySchema.safeParse(summary()).success).toBe(true);
+  it("adds optional minimal continuation summaries without making old payloads invalid", () => {
+    expect(chatContinuationSummarySchema.safeParse(summary()).success).toBe(true);
     expect(
-      chatAutomationSummarySchema.safeParse({
+      chatContinuationSummarySchema.safeParse({
         ...summary(),
         mode: "off",
         nextDueAt: at,
@@ -960,9 +961,9 @@ describe("P6a additive Project, Info Hub and remote boundaries", () => {
       activeRunIds: [],
     };
     expect(chatRunAggregateSchema.safeParse(aggregate).success).toBe(true);
-    expect(chatRunAggregateSchema.safeParse({ ...aggregate, automation: summary() }).success).toBe(
-      true,
-    );
+    expect(
+      chatRunAggregateSchema.safeParse({ ...aggregate, continuation: summary() }).success,
+    ).toBe(true);
     const info = {
       chatId,
       projectId,
@@ -976,35 +977,35 @@ describe("P6a additive Project, Info Hub and remote boundaries", () => {
       tasks: { available: true, items: [] },
     };
     expect(chatInfoViewSchema.safeParse(info).success).toBe(true);
-    expect(chatInfoViewSchema.safeParse({ ...info, automation: summary() }).success).toBe(true);
+    expect(chatInfoViewSchema.safeParse({ ...info, continuation: summary() }).success).toBe(true);
   });
 
-  it("adds only read automation tool/call shapes, bound to the active run Chat", () => {
-    expect(remoteToolInputSchemas.sprout_chat_automation_get.parse({})).toEqual({});
+  it("adds only read continuation tool/call shapes, bound to the active run Chat", () => {
+    expect(remoteToolInputSchemas.sprout_chat_continuation_get.parse({})).toEqual({});
     expect(
-      remoteToolInputSchemas.sprout_chat_automation_get.safeParse({
+      remoteToolInputSchemas.sprout_chat_continuation_get.safeParse({
         action: "disable",
       }).success,
     ).toBe(false);
-    const call = { type: "chat_automation_get", input: { projectId } };
-    expect(chatAutomationGetInputSchema.parse({ projectId })).toEqual({
+    const call = { type: "chat_continuation_get", input: { projectId } };
+    expect(chatContinuationGetInputSchema.parse({ projectId })).toEqual({
       projectId,
     });
-    expect(chatAutomationGetInputSchema.safeParse({ projectId, chatId }).success).toBe(false);
-    expect(chatAutomationGetCall.parse(call)).toEqual(call);
+    expect(chatContinuationGetInputSchema.safeParse({ projectId, chatId }).success).toBe(false);
+    expect(chatContinuationGetCall.parse(call)).toEqual(call);
     expect(
-      chatAutomationGetCall.safeParse({
+      chatContinuationGetCall.safeParse({
         ...call,
-        type: "chat_automation_disable",
+        type: "chat_continuation_disable",
       }).success,
     ).toBe(false);
     expect(remoteAgentRequestSchema.safeParse({ version: 2, call }).success).toBe(true);
     expect(
       remoteAgentRequestSchema.safeParse({
         version: 2,
-        call: { type: "chat_automation_disable", input: { projectId } },
+        call: { type: "chat_continuation_disable", input: { projectId } },
       }).success,
     ).toBe(false);
-    expect(chatAutomationGetResponseSchema.parse(view())).toEqual(view());
+    expect(chatContinuationGetResponseSchema.parse(view())).toEqual(view());
   });
 });

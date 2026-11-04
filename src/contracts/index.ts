@@ -10,8 +10,8 @@ export * from "./chat";
 export * from "./task";
 export * from "./task-capabilities";
 export * from "./wake-evaluation";
-export * from "./chat-automation";
-export * from "./chat-automation-capabilities";
+export * from "./chat-continuation";
+export * from "./chat-continuation-capabilities";
 export * from "./info-hub";
 export * from "./info-hub-query";
 export * from "./info-hub-hint";
@@ -28,9 +28,9 @@ export type {
   McpFrame,
 } from "./mcp";
 export {
-  chatAutomationGetCall,
-  chatAutomationGetInputSchema,
-  chatAutomationGetResponseSchema,
+  chatContinuationGetCall,
+  chatContinuationGetInputSchema,
+  chatContinuationGetResponseSchema,
   executionSubmitInputSchema,
   executionReadInputSchema,
   executionViewSchema,
@@ -40,8 +40,8 @@ export {
   REMOTE_ERROR_CODES,
 } from "./remote";
 export type {
-  ChatAutomationGetInput,
-  ChatAutomationGetResponse,
+  ChatContinuationGetInput,
+  ChatContinuationGetResponse,
   ExecutionSubmitInput,
   ExecutionReadInput,
   ExecutionView,

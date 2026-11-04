@@ -487,7 +487,7 @@ evidence.recovery = {
 };
 
 // 人类 owner 的上下文群：owner 提醒与 Agent 接续不得同时成立。
-const automation = await import("../../src/domain/chat-automation");
+const continuation = await import("../../src/domain/chat-continuation");
 const taskDomain = await import("../../src/domain/task");
 function humanGroup() {
   return chatDomain.createGroupChat(
@@ -552,7 +552,7 @@ async function periodicCheck(chatId: string, now: Date) {
 }
 function viewOf(chatId: string) {
   try {
-    const view = automation.getChatAutomation(project.id, chatId, ctx).view;
+    const view = continuation.getChatContinuation(project.id, chatId, ctx).view;
     return { readable: true, remindedHuman: view.remindedHuman, activeRuns: view.activeRunIds };
   } catch (error) {
     return {

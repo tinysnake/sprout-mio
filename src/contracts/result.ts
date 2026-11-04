@@ -37,7 +37,7 @@ export const APP_ERROR_CODES = [
   "cancellation_delivery_unconfirmed",
   // I-P5a：公共频道成员是派生事实，独立增删它的请求用这个码回绝，其他治理越权仍用 forbidden。
   "channel_membership_managed",
-  "automation_disabled",
+  "continuation_disabled",
   "wake_provider_unavailable",
   "project_member_removal_blocked",
   "continuation_delivery_unknown",

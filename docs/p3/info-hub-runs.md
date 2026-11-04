@@ -46,7 +46,7 @@
 
 1. runner 的每轮配置真值在 `open`/`ready` 快照（`configSnapshot`，含 `cwd` 与 `repo`）里，宿主准备仓库、选择 session、恢复历史都发生在 prompt 之前；把同一事实再拼成文本送进 prompt 会制造第二份真值，快照与 prompt 可能分叉。
 2. 注入会改变模型可见输入，属于 a/b 已定事件语义之外的 runner 行为变化，必须配真实模型断言（如复述本轮 commit）才能声称生效；本 unit 的价值在查询与呈现，注入对它没有增益。
-3. 当前消费者是 Human 页面与后续 P6（Agent 主动查询、自动接续的上下文来源）。届时若决定注入，需改 `turnStartContextSchema`（该字段不是 literal false）并在 live 脚本加真实模型断言。
+3. 当前消费者是 Human 页面与后续 P6（Agent 主动查询、对话接续的上下文来源）。届时若决定注入，需改 `turnStartContextSchema`（该字段不是 literal false）并在 live 脚本加真实模型断言。
 
 ## 页面
 
@@ -62,7 +62,7 @@
 | ----------------------------- | ---------------------------------------------- | ----------- |
 | Machine 连接状态与租约        | `machines: { available: false, reason }`       | P4          |
 | Task / Group / Public Channel | 未接入本契约，P6 前不出现                      | P5/P6       |
-| 自动接续、运行期变更提示      | 未实现（P6）                                   | P6          |
+| 对话接续、运行期变更提示      | 未实现（P6）                                   | P6          |
 | Agent 主动查询 Info Hub       | 未实现；轮初上下文目前只供 Human 页面与后续 P6 | P6          |
 
 ## 验证记录

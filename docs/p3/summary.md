@@ -66,7 +66,7 @@ F1 已路由给 P4 的远端工具面或 P6。决定是在出现第一个确实�
 - 单独运行固定路径的验证脚本仍可能复用旧迁移账本；`verify.sh` 会清理自己的 `verification.sqlite`，脚本各自重置库的进一步改造归 P4 或触发问题时处理。
 - e 最可能漏掉的面是规模、长运行与外部环境交互，包括多分身并发、背压、进程树、公网认证代理、大仓库、magpie 推理与缺省回退。完整边界见 [验收未覆盖面](acceptance.md#本验收没有覆盖的面)。
 - F5 为既有事项复核。coordinator 的路由还保留 P2 的 CSRF 中间件、索引缺口与 `getInstance` 死代码。与 e 的 F5 原文所列验证库、Info Hub 性能及 P2 过期文案分别记录，不能把两份枚举当成同一组新发现。P2 文案由本收尾更正，其余不在本 unit 范围。
-- Machine、租约、真实 macOS Worker 与远端执行仍属 P4。Task、Group、Public Channel 属 P5；自动接续与完整 Info Hub 属 P6；手机、PWA 与一期整体验收属 P7。P0 的跨机与网络故障未验证项没有因本阶段通过而关闭。
+- Machine、租约、真实 macOS Worker 与远端执行仍属 P4。Task、Group、Public Channel 属 P5；对话接续与完整 Info Hub 属 P6；手机、PWA 与一期整体验收属 P7。P0 的跨机与网络故障未验证项没有因本阶段通过而关闭。
 
 ## 收尾验证
 

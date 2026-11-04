@@ -13,7 +13,7 @@ import {
   type WakeSnapshotFacts,
   type WakeJudge,
 } from "../../src/domain/wake-evaluation";
-import { createSmallBrainJudge } from "../../src/domain/wake-providers/small-brain";
+import { createLlmJudge } from "../../src/domain/wake-providers/llm";
 import { createJevJudge, JEV_MODEL } from "../../src/domain/wake-providers/jev";
 import { loadWakeCases } from "./p6a/cases";
 
@@ -43,7 +43,7 @@ const cases = loadWakeCases();
 const unused: WakeJudge = async () => {
   throw new Error("unselected provider called");
 };
-function forProvider(input: WakeEvaluationInput, provider: "small_brain" | "jev") {
+function forProvider(input: WakeEvaluationInput, provider: "llm" | "jev") {
   const snapshot = {
     ...input,
     policy: {
@@ -58,7 +58,7 @@ function forProvider(input: WakeEvaluationInput, provider: "small_brain" | "jev"
 }
 function judgesFor(input: WakeEvaluationInput, selected: string[]) {
   return {
-    small_brain: createSmallBrainJudge({
+    llm: createLlmJudge({
       agentDir: "/unused",
       clock,
       complete: async (request) => {
@@ -124,7 +124,7 @@ for (const fixture of cases) {
     fixture.expected.candidates,
   );
   if (fixture.input && prepared.kind === "model") {
-    for (const provider of ["small_brain", "jev"] as const) {
+    for (const provider of ["llm", "jev"] as const) {
       const input = forProvider(fixture.input, provider);
       let selectedCalls = 0;
       let otherCalls = 0;
@@ -138,7 +138,7 @@ for (const fixture of cases) {
         return unused(input);
       };
       const receipt = await evaluateWake(input, {
-        small_brain: provider === "small_brain" ? selected : other,
+        llm: provider === "llm" ? selected : other,
         jev: provider === "jev" ? selected : other,
       });
       equal(receipt.result.selectedRecipients.map(recipientKey), fixture.expected.selected);
@@ -360,7 +360,7 @@ if (pressure.kind === "model") {
 equal(effects(), { runs: 0, messages: 0, inputs: 0 });
 console.log(`PASS candidate rules and Unicode budgets: ${assertions - beforeRules} assertions`);
 
-for (const provider of ["small_brain", "jev"] as const) {
+for (const provider of ["llm", "jev"] as const) {
   const before = assertions;
   const request = forProvider(input, provider);
   const errors =
@@ -412,7 +412,7 @@ for (const provider of ["small_brain", "jev"] as const) {
               });
             },
           })
-        : createSmallBrainJudge({
+        : createLlmJudge({
             agentDir: "/unused",
             clock,
             complete: async () => {
@@ -443,8 +443,8 @@ for (const provider of ["small_brain", "jev"] as const) {
           });
     let fallbacks = 0;
     const receipt = await evaluateWake(request, {
-      small_brain:
-        provider === "small_brain"
+      llm:
+        provider === "llm"
           ? judge
           : async () => {
               fallbacks++;
@@ -486,7 +486,7 @@ for (const provider of ["small_brain", "jev"] as const) {
 // The dependency boundary must not acquire Chat, Task, run, Machine, or database capabilities.
 for (const path of [
   "src/domain/wake-evaluation.ts",
-  "src/domain/wake-providers/small-brain.ts",
+  "src/domain/wake-providers/llm.ts",
   "src/domain/wake-providers/jev.ts",
   "src/domain/wake-providers/shared.ts",
   "scripts/pi-wake-runner.mjs",

@@ -94,12 +94,12 @@ describe("P4b shared contracts", () => {
         call: { type: "lease_mutate", input: reclaim },
       }).success,
     ).toBe(false);
-    // I-P6a 的 sprout_chat_automation_get 是唯一无必填项的工具：它按 run 自己的
+    // I-P6a 的 sprout_chat_continuation_get 是唯一无必填项的工具：它按 run 自己的
     // Project/Chat 身份读取，不接收任何参数。其余工具都必须拒绝空输入。
     for (const [name, schema] of Object.entries(remoteToolInputSchemas))
-      expect(schema.safeParse({}).success).toBe(name === "sprout_chat_automation_get");
+      expect(schema.safeParse({}).success).toBe(name === "sprout_chat_continuation_get");
     // 码表数量写死：新增码必须同步改这里，并写明属于哪个阶段（I-P5a channel_membership_managed、
-    // I-P5b 五个 Task 码、I-P6a automation_disabled / wake_provider_unavailable /
+    // I-P5b 五个 Task 码、I-P6a continuation_disabled / wake_provider_unavailable /
     // continuation_delivery_unknown、I-P6b info_hub_cursor_stale / turn_context_unavailable、
     // I-P6c project_member_removal_blocked）。同时守「无重复」与「与 APP_ERROR_CODES 逐项一致」。
     expect(humanContracts.APP_ERROR_CODES).toHaveLength(37);

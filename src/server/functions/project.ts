@@ -151,7 +151,7 @@ export async function updateProjectWakePolicyBoundary(
     const model =
       parsed.data.provider === "jev"
         ? process.env.SPROUT_WAKE_JEV_MODEL
-        : process.env.SPROUT_WAKE_SMALL_BRAIN_MODEL;
+        : process.env.SPROUT_WAKE_LLM_MODEL;
     const thresholdVersion = process.env.SPROUT_WAKE_THRESHOLD_VERSION;
     if (!model || !thresholdVersion || !availability?.available)
       return fail({

@@ -52,7 +52,7 @@ const machine = createMachine({ name: "本机 Mac" }, { ...ctx, bootId: "review"
 const humanTurn = (chatId: string, body: string) =>
   sendMessage(chatId, { senderKind: "human", senderId: human.id, body }, ctx);
 
-humanTurn(group.id, "这周先把自动接续的关闭语义理清楚，别再出现程序性 abort 冻住整个 Chat。");
+humanTurn(group.id, "这周先把对话接续的关闭语义理清楚，别再出现程序性 abort 冻住整个 Chat。");
 humanTurn(group.id, "另外 Info Hub 的轮初上下文要给 Agent 看到当前任务清单，不要只给聊天记录。");
 humanTurn(dm.id, "你先把成员移除的四种阻塞整理成一份清单，我今天要看。");
 

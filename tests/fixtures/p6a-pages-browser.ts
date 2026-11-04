@@ -65,13 +65,13 @@ try {
     await page.setViewportSize({ width, height: 900 });
     for (const name of p6aCases) {
       await page.getByTestId("fixture-case").selectOption(name);
-      const card = page.getByTestId("automation-card");
+      const card = page.getByTestId("continuation-card");
       await card.waitFor();
-      assert((await card.innerText()).includes("自动接续"));
+      assert((await card.innerText()).includes("对话接续"));
       pass(`${width}_${name}_copy`);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       pass(`${width}_${name}_no_horizontal_scroll`);
-      const scopeBox = await page.getByTestId("automation-scope").boundingBox();
+      const scopeBox = await page.getByTestId("continuation-scope").boundingBox();
       const cardBox = await card.boundingBox();
       assert(scopeBox && cardBox && scopeBox.width >= cardBox.width - 40);
       pass(`${width}_${name}_scope_occupies_own_row`);
@@ -79,16 +79,17 @@ try {
       assert((await page.getByTestId("wake-provider-unwired").innerText()).includes("暂不能更改"));
       pass(`${width}_${name}_provider_unwired_copy`);
       if (name === "off") {
-        assert((await card.innerText()).includes("自动接续不会来"));
-        assert(await page.getByRole("button", { name: "开启自动接续", exact: true }).isEnabled());
+        assert((await card.innerText()).includes("对话接续不会来"));
+        assert(await page.getByRole("button", { name: "开启对话接续", exact: true }).isEnabled());
         pass(`${width}_${name}_human_can_enable`);
         assert(
           await page
-            .getByTestId("automation-mode")
+            .getByTestId("continuation-mode")
             .evaluate(
               (element) =>
                 getComputedStyle(element).color ===
-                getComputedStyle(document.querySelector('[data-testid="automation-scope"]')!).color,
+                getComputedStyle(document.querySelector('[data-testid="continuation-scope"]')!)
+                  .color,
             ),
         );
         pass(`${width}_${name}_human_control_uses_neutral_color`);
@@ -104,23 +105,23 @@ try {
         pass(`${width}_no_run_stop_without_active_run`);
       }
       if (name === "failure") {
-        const failure = page.getByTestId("automation-failure");
+        const failure = page.getByTestId("continuation-failure");
         assert.equal(await failure.getAttribute("data-error-code"), "provider_timeout");
         assert((await failure.innerText()).includes("判定服务没有及时回应"));
-        assert((await page.getByTestId("automation-backoff").innerText()).includes("失败退避"));
+        assert((await page.getByTestId("continuation-backoff").innerText()).includes("失败退避"));
         pass(`${width}_failure_and_backoff`);
       }
       if (name === "human") {
-        assert.equal(await page.getByTestId("automation-run-facts").count(), 0);
+        assert.equal(await page.getByTestId("continuation-run-facts").count(), 0);
         assert((await card.innerText()).includes("已展示接续提醒"));
         pass(`${width}_human_without_run_bar`);
       }
       if (name === "denied") {
         assert.equal(
-          await page.getByRole("button", { name: "暂停自动接续", exact: true }).count(),
+          await page.getByRole("button", { name: "暂停对话接续", exact: true }).count(),
           0,
         );
-        assert.equal(await page.getByTestId("automation-disable-denial").count(), 0);
+        assert.equal(await page.getByTestId("continuation-disable-denial").count(), 0);
         assert(!(await card.innerText()).includes("forbidden"));
         pass(`${width}_denied_action_hidden`);
       }
@@ -130,7 +131,7 @@ try {
         assert((await card.innerText()).includes("可能造成重复处理"));
         assert.equal(await page.getByTestId("last-command").innerText(), "");
         await page.getByRole("button", { name: "确认补发", exact: true }).click();
-        await page.getByRole("group", { name: "确认自动接续操作" }).waitFor({ state: "hidden" });
+        await page.getByRole("group", { name: "确认对话接续操作" }).waitFor({ state: "hidden" });
         const command = JSON.parse(await page.getByTestId("last-command").innerText());
         assert.equal(command.action, "reissue");
         assert.equal(command.confirmedUnknown, true);
@@ -139,39 +140,41 @@ try {
       await page.screenshot({ path: resolve(evidence, `${width}-${name}.png`), fullPage: true });
     }
     await page.getByTestId("fixture-case").selectOption("idle");
-    await page.getByRole("button", { name: "暂停自动接续", exact: true }).click();
-    await page.getByText("自动接续已关闭", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "暂停对话接续", exact: true }).click();
+    await page.getByText("对话接续已关闭", { exact: true }).waitFor();
     assert(
-      (await page.getByTestId("automation-expectation").innerText()).includes("自动接续不会来"),
+      (await page.getByTestId("continuation-expectation").innerText()).includes("对话接续不会来"),
     );
     assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "disable");
     pass(`${width}_disable_contract_and_read_response`);
-    await page.getByRole("button", { name: "开启自动接续", exact: true }).click();
-    await page.getByText("自动接续已启用", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "开启对话接续", exact: true }).click();
+    await page.getByText("对话接续已启用", { exact: true }).waitFor();
     assert(
-      (await page.getByTestId("automation-expectation").innerText()).includes("已安排下次自动检查"),
+      (await page.getByTestId("continuation-expectation").innerText()).includes(
+        "已安排下次自动检查",
+      ),
     );
     assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "enable");
     pass(`${width}_enable_contract_and_read_response`);
     await page.getByRole("button", { name: "全部停止", exact: true }).click();
     assert.equal(JSON.parse(await page.getByTestId("last-command").innerText()).action, "enable");
     await page.getByRole("button", { name: "取消", exact: true }).click();
-    assert((await page.getByTestId("automation-mode").innerText()).includes("已启用"));
+    assert((await page.getByTestId("continuation-mode").innerText()).includes("已启用"));
     pass(`${width}_abort_can_cancel_without_write`);
     await page.getByRole("button", { name: "全部停止", exact: true }).click();
     await page.getByRole("button", { name: "确认全部停止", exact: true }).click();
-    await page.getByText("自动接续已关闭", { exact: true }).waitFor();
+    await page.getByText("对话接续已关闭", { exact: true }).waitFor();
     const abort = JSON.parse(await page.getByTestId("last-command").innerText());
     assert.equal(abort.action, "abort");
     assert.equal("runId" in abort, false);
     pass(`${width}_abort_without_run_id_closes_the_chat`);
     await page.getByTestId("fixture-case").selectOption("scheduled");
     await page.getByLabel("模拟写入冲突").check();
-    await page.getByRole("button", { name: "暂停自动接续", exact: true }).click();
+    await page.getByRole("button", { name: "暂停对话接续", exact: true }).click();
     await page.getByRole("alert").waitFor();
     assert((await page.getByRole("alert").getAttribute("data-error-code"))?.includes("conflict"));
     assert.equal(/conflict/.test(await page.getByRole("alert").innerText()), false);
-    assert((await page.getByTestId("automation-mode").innerText()).includes("已启用"));
+    assert((await page.getByTestId("continuation-mode").innerText()).includes("已启用"));
     pass(`${width}_conflict_does_not_pretend_disabled`);
   }
   assert.deepEqual(pageErrors, []);

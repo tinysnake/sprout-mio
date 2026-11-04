@@ -10,7 +10,7 @@ import type {
 } from "../../src/contracts/wake-evaluation";
 import type { Evaluation, Schedule } from "../../src/domain/chat-schedule";
 import type { DeliveryRow } from "../../src/domain/continuation-delivery";
-import type { AutomationScheduler } from "../../src/server/automation-scheduler";
+import type { ContinuationScheduler } from "../../src/server/continuation-scheduler";
 
 const root = resolve(process.env.P6A_EVIDENCE_DIR ?? ".verify/p6a-lifecycle");
 const mode = process.argv[2] ?? "main";
@@ -36,7 +36,7 @@ writeFileSync(
 delete process.env.JEV_API_KEY;
 let assertions = 0;
 let childAssertions = 0;
-let actor: "automation" | "human" | "owner" = "automation";
+let actor: "continuation" | "human" | "owner" = "continuation";
 function human<T>(command: () => T): T {
   const previous = actor;
   actor = "human";
@@ -106,7 +106,7 @@ const { migrateDatabase } = await import("../../src/db/migrate");
 migrateDatabase();
 const { sqlite } = await import("../../src/db");
 const schedule = await import("../../src/domain/chat-schedule");
-const automation = await import("../../src/domain/chat-automation");
+const continuation = await import("../../src/domain/chat-continuation");
 const task = await import("../../src/domain/task");
 const runs = await import("../../src/domain/agent-run");
 const delivery = await import("../../src/domain/continuation-delivery");
@@ -114,7 +114,7 @@ const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
 const { createProject } = await import("../../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
 const { createGroupChat } = await import("../../src/domain/chat");
-const { createAutomationScheduler } = await import("../../src/server/automation-scheduler");
+const { createContinuationScheduler } = await import("../../src/server/continuation-scheduler");
 const ctx = { userId: "usr_p6a_lifecycle", requestId: newId(ID_PREFIXES.request) };
 const count = (table: string, chatId?: string) =>
   schedule.one<{ n: number }>(
@@ -140,7 +140,7 @@ const deliveries = (chatId: string) =>
   );
 const control = (projectId: string, chatId: string, action: "disable" | "enable" | "abort") =>
   human(() =>
-    automation.applyChatAutomationCommand(
+    continuation.applyChatContinuationCommand(
       {
         projectId,
         chatId,
@@ -190,8 +190,8 @@ function assigned(projectId: string, chatId: string, title = "推进真实生命
     ).detail;
   });
 }
-let scheduler: AutomationScheduler;
-let competitor: AutomationScheduler | undefined;
+let scheduler: ContinuationScheduler;
+let competitor: ContinuationScheduler | undefined;
 const makeDue = (chatId: string) => {
   ok(row(chatId), "assigned Task has a durable schedule");
   schedule.write("UPDATE chat_schedule SET next_due_at=? WHERE chat_id=?", Date.now() - 1, chatId);
@@ -317,7 +317,7 @@ function assertWriteAudit(expectEvaluation = true) {
     "agent_run_input",
     "agent_run_task",
     "chat_schedule",
-    "chat_automation_control",
+    "chat_continuation_control",
     "wake_evaluation",
     "wake_evaluation_task",
     // d249ca6 起 attempt 明细独立成表（迁移 0032），与 wake_evaluation 同为调度回执。
@@ -326,7 +326,7 @@ function assertWriteAudit(expectEvaluation = true) {
     "continuation_delivery_task",
     "diagnostic_event",
   ]);
-  const automated = writes.filter((item) => item.actor === "automation");
+  const automated = writes.filter((item) => item.actor === "continuation");
   if (expectEvaluation)
     ok(
       automated.some((item) => item.table_name === "wake_evaluation"),
@@ -335,7 +335,7 @@ function assertWriteAudit(expectEvaluation = true) {
   equal(
     automated.filter((item) => !allowed.has(item.table_name)),
     [],
-    "whole lifecycle TEMP audit detects no forbidden automation business writes",
+    "whole lifecycle TEMP audit detects no forbidden continuation business writes",
   );
   equal(
     automated.filter((item) => ["task", "task_event", "message"].includes(item.table_name)),
@@ -410,12 +410,12 @@ try {
       };
     },
     fetch: async () => {
-      throw new Error("No JEV call is permitted for default small_brain");
+      throw new Error("No JEV call is permitted for default llm");
     },
   });
   scheduler = (
-    globalThis as typeof globalThis & { sproutRuntime: { automation: AutomationScheduler } }
-  ).sproutRuntime.automation;
+    globalThis as typeof globalThis & { sproutRuntime: { continuation: ContinuationScheduler } }
+  ).sproutRuntime.continuation;
   gateway = (await import("../../src/server/remote-agent-gateway")).remoteAgentResponse;
   equal(scheduler.snapshot().started, true, "real runtime starts its production scheduler");
   if (mode === "recover" || mode === "recover-again") {
@@ -489,7 +489,7 @@ try {
       );
       const first = await due(chat.id);
       equal(first.state, "decided", "first due check persists validated receipt");
-      equal(JSON.parse(first.result!).provider, "small_brain", "default evaluator is small_brain");
+      equal(JSON.parse(first.result!).provider, "llm", "default evaluator is llm");
       equal(deliveries(chat.id).length, 1, "first check creates one delivery");
       equal(
         deliveries(chat.id)[0].recipient_id,
@@ -537,7 +537,7 @@ try {
       assigned(owner.project.id, chat.id);
       const before = requests.length;
       held = barrier();
-      competitor = createAutomationScheduler({ workerId: "competing-real-scheduler" });
+      competitor = createContinuationScheduler({ workerId: "competing-real-scheduler" });
       competitor.start();
       makeDue(chat.id);
       await Promise.all([scheduler.advance(), competitor.advance()]);

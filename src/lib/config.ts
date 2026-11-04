@@ -47,7 +47,7 @@ const originPatternSchema = z
   }, "必须是回环或内网 origin，主机段可用 * 通配");
 
 const environmentSchema = z.object({
-  SPROUT_AUTOMATION_ENABLED: z
+  SPROUT_CONTINUATION_ENABLED: z
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),

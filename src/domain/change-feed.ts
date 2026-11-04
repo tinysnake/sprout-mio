@@ -122,10 +122,10 @@ export function publishAgentProfileChange(agentProfileId: string): void {
 }
 
 /**
- * 自动接续的写入点只拿着 chatId，而页面按 Project 与 Chat 两个主题看。
+ * 对话接续的写入点只拿着 chatId，而页面按 Project 与 Chat 两个主题看。
  * 判定本身也会改变对话里的状态提示，所以 Chat 主题同样要发。
  */
-export function publishChatAutomationChange(chatId: string): void {
+export function publishChatContinuationChange(chatId: string): void {
   const scope = db
     .select({ projectId: chat.projectId })
     .from(chat)

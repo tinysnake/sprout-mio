@@ -39,8 +39,8 @@ const runState: any = ok({
   inputs: [],
 });
 const info: any = ok({ members: [], runs: { active: [], recent: [] } });
-// p7 只验证客户端动作与表单状态；自动接续给一份已关闭的完整视图，不影响本夹具的断言。
-const automation: any = ok({
+// p7 只验证客户端动作与表单状态；对话接续给一份已关闭的完整视图，不影响本夹具的断言。
+const continuation: any = ok({
   view: {
     projectId,
     chatId,
@@ -76,7 +76,7 @@ function Scene() {
           messages={ok([])}
           info={info}
           runState={runState}
-          automation={automation}
+          continuation={continuation}
           inspectorOpen={false}
           onToggleInspector={() => {}}
           onChanged={() => {}}

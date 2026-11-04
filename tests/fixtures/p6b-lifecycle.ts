@@ -1,7 +1,7 @@
 // Production HTTP + private SQLite + the installed Pi SDK/runner + a real Worker.
 // The only stand-in is the model endpoint: a loopback fixture that answers the armed
 // tool steps. Everything else is the production path — the built server (server
-// functions over HTTP, the Pi host, the automation scheduler), the real runner child,
+// functions over HTTP, the Pi host, the continuation scheduler), the real runner child,
 // the real Worker child, and one private SQLite file. The observer wrapper only records
 // and (for one request) delays original bytes; it never synthesizes runner events,
 // domain results or tool payloads.
@@ -1421,7 +1421,7 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     A.equal(
       rows("SELECT count(*) AS n FROM chat_schedule")[0].n > 0,
       true,
-      "an assigned Task elsewhere keeps the automation scheduler armed",
+      "an assigned Task elsewhere keeps the continuation scheduler armed",
     );
     const revisionBefore = (
       await call("getInfoHubFn", { projectId, view: "project", section: "chats" })

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
-  chatAutomationGetResponseSchema,
+  chatContinuationGetResponseSchema,
   remoteAgentRequestSchema,
   taskGetResponseSchema,
   taskListResponseSchema,
@@ -23,7 +23,7 @@ import {
 } from "../db/schema";
 import type { ProjectContext } from "../domain/access";
 import { getInfoHub } from "../domain/info-hub";
-import { getChatAutomation } from "../domain/chat-automation";
+import { getChatContinuation } from "../domain/chat-continuation";
 import { getTaskDetail, getTasksForChat, mutateTask } from "../domain/task";
 import { listMessages, sendMessage } from "../domain/chat";
 import { getChatSession } from "../domain/chat-session";
@@ -234,7 +234,7 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
           throw new RemoteError("not_found");
         switch (parsed.call.type) {
           case "info_hub_get":
-          case "chat_automation_get":
+          case "chat_continuation_get":
           case "task_get":
           case "task_list":
           case "task_mutate":
@@ -258,9 +258,9 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                 const { projectId: _projectId, ...query } = call.input;
                 return getInfoHub(projectId, query, { ...projectContext, ...current });
               }
-              case "chat_automation_get":
-                return chatAutomationGetResponseSchema.parse(
-                  getChatAutomation(projectId, chatId, projectContext).view,
+              case "chat_continuation_get":
+                return chatContinuationGetResponseSchema.parse(
+                  getChatContinuation(projectId, chatId, projectContext).view,
                 );
               case "task_get":
                 return taskGetResponseSchema.parse(

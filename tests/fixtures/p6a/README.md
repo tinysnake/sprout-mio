@@ -38,8 +38,8 @@ pnpm exec vp fmt tests/fixtures/p6a/zh-wake.json
 SPROUT_VERIFY_PI_MODEL=provider/model bash scripts/verify/p6a-live-routing.sh
 ```
 
-模型选择由 `scripts/verify/lib/live-model.sh` 读取。小脑使用 `PI_CODING_AGENT_DIR`（默认宿主 `~/.pi/agent`）中的模型目录和只读认证，直接发无工具 completion，不创建 Agent session/run。JEV 仅使用独立的 `JEV_API_KEY`，模型固定为 `jev-latest`；缺少凭据时写失败收据并退出非零，不调用 fixture transport。
+模型选择由 `scripts/verify/lib/live-model.sh` 读取。LLM 判定使用 `PI_CODING_AGENT_DIR`（默认宿主 `~/.pi/agent`）中的模型目录和只读认证，直接发无工具 completion，不创建 Agent session/run。JEV 仅使用独立的 `JEV_API_KEY`，模型固定为 `jev-latest`；缺少凭据时写失败收据并退出非零，不调用 fixture transport。
 
 live 门禁对 8 条具有合法判定输入的样本分别直接测量两个适配器，包括 w22 的点名输入；这是适配器效果观察，生产装配仍将 w22 交给规则路径。每条收据包含 provider/model、输入快照、输入/输出用量、适配器耗时、runner 耗时、中文结论、期望对比、零副作用和退出码。证据默认写到 `.verify/p6a-live-routing/<UTC timestamp>/`，可用 `SPROUT_VERIFY_DIR` 指定。
 
-小脑的 `probability:null`，`certainty:low` 或 `decision:unknown` 转为 unknown，不制造概率。JEV 用 Noul 的 yes 概率，设计默认 `p>=0.8` 为 yes、`p<=0.2` 为 no，中间为 unknown；版本和阈值必须显式注入。这些阈值尚未经本批真实中文数据校准。unknown 不进入 selected；同批其他明确 yes 可保留，结果带 `provider_low_certainty`。
+LLM 判定的 `probability:null`，`certainty:low` 或 `decision:unknown` 转为 unknown，不制造概率。JEV 用 Noul 的 yes 概率，设计默认 `p>=0.8` 为 yes、`p<=0.2` 为 no，中间为 unknown；版本和阈值必须显式注入。这些阈值尚未经本批真实中文数据校准。unknown 不进入 selected；同批其他明确 yes 可保留，结果带 `provider_low_certainty`。

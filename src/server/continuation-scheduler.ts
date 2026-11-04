@@ -14,7 +14,7 @@ import {
   evaluateClaim,
   type EvaluateWake,
 } from "../domain/continuation-delivery";
-import { drainAutomationAborts } from "../domain/chat-automation";
+import { drainContinuationAborts } from "../domain/chat-continuation";
 import { claimDueMessageWake, evaluateMessageClaim } from "../domain/message-wake";
 
 export type SchedulerClock = {
@@ -40,7 +40,7 @@ const globalState = globalThis as typeof globalThis & { sproutWakeEvaluator?: Ev
 export function installWakeEvaluator(evaluateWake: EvaluateWake) {
   globalState.sproutWakeEvaluator = evaluateWake;
 }
-export function createAutomationScheduler(
+export function createContinuationScheduler(
   options: {
     clock?: SchedulerClock;
     evaluateWake?: EvaluateWake;
@@ -58,7 +58,7 @@ export function createAutomationScheduler(
     generation = 0,
     unsubscribe: (() => void) | undefined;
   const inflight = new Set<Promise<void>>();
-  const report = options.onError ?? ((error) => console.error("[automation-scheduler]", error));
+  const report = options.onError ?? ((error) => console.error("[continuation-scheduler]", error));
   function rearm() {
     if (!started) return;
     if (timer !== undefined) {
@@ -84,7 +84,7 @@ export function createAutomationScheduler(
     try {
       const now = time.now();
       scanChatSchedules(now);
-      drainAutomationAborts(now, options.abort ?? (() => false));
+      drainContinuationAborts(now, options.abort ?? (() => false));
       bindPendingDeliveries(now);
       // Claims are synchronous; provider requests run concurrently without holding the writer lock.
       for (let n = 0; n < 100; n++) {
@@ -132,12 +132,12 @@ export function createAutomationScheduler(
   }
   return {
     start() {
-      if (!config.SPROUT_AUTOMATION_ENABLED || started) return;
+      if (!config.SPROUT_CONTINUATION_ENABLED || started) return;
       started = true;
       generation += 1;
       recoverSchedules(time.now());
       unsubscribe = onScheduleChange(changed);
-      drainAutomationAborts(time.now(), options.abort ?? (() => false));
+      drainContinuationAborts(time.now(), options.abort ?? (() => false));
       // 兜底：即使某个 signal 丢失，也要定期检查 due 的 message/Task 判定。
       heartbeat = time.setInterval?.(() => {
         void advance().catch(report);
@@ -159,4 +159,4 @@ export function createAutomationScheduler(
     snapshot: () => ({ started, timerArmed: timer !== undefined, inflight: inflight.size }),
   };
 }
-export type AutomationScheduler = ReturnType<typeof createAutomationScheduler>;
+export type ContinuationScheduler = ReturnType<typeof createContinuationScheduler>;

@@ -20,7 +20,7 @@
 
 `message` 只存正文（`body`）与发送者，不存渲染后的富文本。点名是另一张表 `message_mention` 的记录：`member_kind`、`member_id`、`start`、`end`，位置指向 `body` 里那段 `@名字`。
 
-读模型把两者合成 `mentions` 一起返回（`Message` 带 `mentions`）。这样分工的原因是正文同时是 Agent 输入与小脑看到的原文：把 id 写进正文，隐藏的 id 就会被模型读到；在渲染层藏 id，正文就与服务端看到的不一致。id 留在记录里，正文是用户写下的那句话。
+读模型把两者合成 `mentions` 一起返回（`Message` 带 `mentions`）。这样分工的原因是正文同时是 Agent 输入与 LLM 判定看到的原文：把 id 写进正文，隐藏的 id 就会被模型读到；在渲染层藏 id，正文就与服务端看到的不一致。id 留在记录里，正文是用户写下的那句话。
 
 消息不可编辑，所以位置在写入时定一次就永久有效，读取侧不需要重新解析正文。`(chat_id, message_id, start)` 唯一，删消息级联删记录。
 

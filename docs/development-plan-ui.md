@@ -8,7 +8,7 @@
 
 ## 沿用功能章节安排交付
 
-按功能计划的大章节设置 UI 交付与集成里程碑。P4 沿用已有的 a 至 d 小节，P5 对应多人 Chat 与 Task 协作两个小节。P6 对应自动接续、Info Hub 与成员治理三个小节，分别对齐 I-P6a/I-P6b/I-P6c。章节内可以拆设计任务、组件任务和代码提交，不因每个小任务完成而新增一次集成。
+按功能计划的大章节设置 UI 交付与集成里程碑。P4 沿用已有的 a 至 d 小节，P5 对应多人 Chat 与 Task 协作两个小节。P6 对应对话接续、Info Hub 与成员治理三个小节，分别对齐 I-P6a/I-P6b/I-P6c。章节内可以拆设计任务、组件任务和代码提交，不因每个小任务完成而新增一次集成。
 
 | UI 阶段 | 对应功能范围 | 前置条件 | 交给集成线的时点 |
 | --- | --- | --- | --- |
@@ -21,7 +21,7 @@
 | UI-P4d | 交接、收回与 Machine 移除 | P4c 集成通过，P4d 契约就绪 | 按 P4d 集成 |
 | UI-P5a | Group、Public Channel 与多人协作 | 已有 Chat 设计，P5a 契约就绪 | 按 P5a 集成 |
 | UI-P5b | Task 协作 | P5a 集成通过，P5b 契约就绪 | 按 P5b 集成 |
-| UI-P6a | 自动接续、人类控制与最小失败/恢复呈现 | P4、P5 集成技术验收通过，P6a 契约就绪 | 按 P6a 集成 |
+| UI-P6a | 对话接续、人类控制与最小失败/恢复呈现 | P4、P5 集成技术验收通过，P6a 契约就绪 | 按 P6a 集成 |
 | UI-P6b | Info Hub 全部一期视角与 Agent 上下文 | P6a 技术验收通过，P6b 契约就绪 | 按 P6b 集成 |
 | UI-P6c | Agent 移除、归档与重新加入 | P6a、P6b 技术验收通过，P6c 契约就绪 | 呈现已随 P6c 集成自检通过（`480a2f0`），待 Human 体验确认 |
 | UI-P7 | 手机、PWA、恢复与一期完整体验 | P6a、P6b、P6c 集成技术验收通过，P7 范围明确 | 完成一期整体验收 |
@@ -221,11 +221,11 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 设计、演示与真实 Chromium 自检已交付，`c0e9c74` 第二轮独立技术验收支持合入 main；证据见 [P5b 章节结论](p5b/summary.md)。设计依据含 AFK 期间协调者代人类裁定；浏览器自检采用 fixture config，Human 真实体验尚未确认，I-P5b 第四条仍为待办。
 
-## UI-P6a 完成自动接续与人类控制呈现
+## UI-P6a 完成对话接续与人类控制呈现
 
-范围对应[P6a](development-plan-functional.md#p6a-完成自动接续与人类控制)、[I-P6a](development-plan.md#i-p6a-集成自动接续与人类控制)。P6 原暂按整章交付，现按 a/b/c 三节交付。先比较 2–3 套 Lavish 原型并记录 Human 选定结论，再实现页面。
+范围对应[P6a](development-plan-functional.md#p6a-完成对话接续与人类控制)、[I-P6a](development-plan.md#i-p6a-集成对话接续与人类控制)。P6 原暂按整章交付，现按 a/b/c 三节交付。先比较 2–3 套 Lavish 原型并记录 Human 选定结论，再实现页面。
 
-- [x] 完成自动接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](p6a/summary.md#p3-2-disable-的页面文案)。
+- [x] 完成对话接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](p6a/summary.md#p3-2-disable-的页面文案)。
 - [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [UI 线证据](p6a/summary.md#ui-线证据)与[集成线与技术验收证据](p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`。
 
 包含 Project 判定器选择与不可用原因、Human owner 提醒、判定不确定/退避/投递未知、无 assigned 不检查的表达；Info Hub 仅接入 P6a 必要摘要，P6b 会扩展。

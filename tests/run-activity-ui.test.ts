@@ -3,8 +3,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ChatRunState, RunActivity, RunActivityStep } from "../src/contracts/agent-run";
 import { RunStatusPanel } from "../src/components/chat/run-status";
-import { AutomationCard } from "../src/components/automation/automation-card";
-import { automationFixture } from "./fixtures/p6a-pages";
+import { ContinuationCard } from "../src/components/continuation/continuation-card";
+import { continuationFixture } from "./fixtures/p6a-pages";
 
 function step(index: number, overrides: Partial<RunActivityStep> = {}): RunActivityStep {
   return {
@@ -143,28 +143,32 @@ describe("群组按 Agent 展示运行状态", () => {
     expect(dm).toContain("分身运行状态");
   });
 });
-describe("自动接续状态", () => {
+describe("对话接续状态", () => {
   const empty: ChatRunState = { enabled: true, active: [], latest: null, inputs: [] };
   const at = "2026-11-02T12:00:00.000Z";
-  const read = (name: Parameters<typeof automationFixture>[0]) => ({
+  const read = (name: Parameters<typeof continuationFixture>[0]) => ({
     ok: true as const,
-    data: { view: automationFixture(name), allowedActions: [], denials: {} },
+    data: { view: continuationFixture(name), allowedActions: [], denials: {} },
     requestId: "req_11111111",
   });
 
-  it("没有 run 时也显示自动接续的下一次检查", () => {
+  it("没有 run 时也显示对话接续的下一次检查", () => {
     const html = renderToStaticMarkup(
-      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("scheduled") }),
+      createElement(RunStatusPanel, {
+        state: empty,
+        messages: [],
+        continuation: read("scheduled"),
+      }),
     );
     expect(html).toContain('data-testid="continuation-status"');
-    expect(html).toContain("自动接续");
+    expect(html).toContain("对话接续");
     expect(html).toContain("已安排下次检查");
     expect(html).toContain("下次检查");
   });
 
   it("检查失败显示需要处理，不冒充本轮无需接续", () => {
     const html = renderToStaticMarkup(
-      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("failure") }),
+      createElement(RunStatusPanel, { state: empty, messages: [], continuation: read("failure") }),
     );
     expect(html).toContain("需要处理");
     expect(html).toContain("判定器超时");
@@ -174,7 +178,7 @@ describe("自动接续状态", () => {
 
   it("关闭后只陈述关闭，不展示下次检查", () => {
     const html = renderToStaticMarkup(
-      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("off") }),
+      createElement(RunStatusPanel, { state: empty, messages: [], continuation: read("off") }),
     );
     expect(html).toContain("已关闭");
     expect(html).toContain("不会安排新的自动检查");
@@ -183,7 +187,7 @@ describe("自动接续状态", () => {
 
   it("消息尾部只有一行状态，检查记录不往那儿堆", () => {
     const html = renderToStaticMarkup(
-      createElement(RunStatusPanel, { state: empty, messages: [], automation: read("failure") }),
+      createElement(RunStatusPanel, { state: empty, messages: [], continuation: read("failure") }),
     );
     expect(html).toContain('data-testid="continuation-status"');
     expect(html).not.toContain('data-testid="continuation-lines"');
@@ -191,12 +195,12 @@ describe("自动接续状态", () => {
   });
 
   it("判定进行中显示转圈，不报已经等了多少秒", () => {
-    const base = automationFixture("idle");
+    const base = continuationFixture("idle");
     const html = renderToStaticMarkup(
       createElement(RunStatusPanel, {
         state: empty,
         messages: [],
-        automation: {
+        continuation: {
           ok: true as const,
           data: {
             view: {
@@ -250,7 +254,7 @@ describe("自动接续状态", () => {
 
   it("检查记录跟着会话详情走，列在诊断里", () => {
     const html = renderToStaticMarkup(
-      createElement(AutomationCard, { view: automationFixture("failure") }),
+      createElement(ContinuationCard, { view: continuationFixture("failure") }),
     );
     expect(html).toContain("检查细节与诊断");
     expect(html).toContain('data-testid="continuation-activity"');
@@ -260,7 +264,7 @@ describe("自动接续状态", () => {
   });
 
   it("一次检查花了多久、用了多少 token 都写在记录里", () => {
-    const view = automationFixture("failure");
+    const view = continuationFixture("failure");
     const rounds = [
       {
         round: 3,
@@ -288,16 +292,16 @@ describe("自动接续状态", () => {
       },
     ];
     const html = renderToStaticMarkup(
-      createElement(AutomationCard, { view: { ...view, recentRounds: rounds } }),
+      createElement(ContinuationCard, { view: { ...view, recentRounds: rounds } }),
     );
     expect(html).toContain("第 3 轮检查");
     expect(html).toContain("932 tok \u00b7 4.2 \u79d2");
   });
 
   it("还在进行的尝试写明进行中，不编造时长", () => {
-    const view = automationFixture("failure");
+    const view = continuationFixture("failure");
     const html = renderToStaticMarkup(
-      createElement(AutomationCard, {
+      createElement(ContinuationCard, {
         view: {
           ...view,
           recentRounds: [
@@ -329,7 +333,7 @@ describe("自动接续状态", () => {
 
   it("没有任何检查记录时不渲染空列表", () => {
     const html = renderToStaticMarkup(
-      createElement(AutomationCard, { view: automationFixture("scheduled") }),
+      createElement(ContinuationCard, { view: continuationFixture("scheduled") }),
     );
     expect(html).not.toContain('data-testid="continuation-activity"');
   });

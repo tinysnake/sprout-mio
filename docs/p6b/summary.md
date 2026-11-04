@@ -163,7 +163,7 @@ Chats 页的 1200ms 全 route invalidate 与设置页的 5 秒 invalidate 仍在
 
 ### 第一轮独立验收记录的 P3
 
-- **P6a 的 `automation` 摘要只有契约没有投影**：`src/contracts/info-hub.ts` 的三处 `automation` 都是 optional，契约测试通过，但 `src/domain/info-hub.ts` 从不填充；唯一渲染 `AutomationPanel` 的 Info Hub 组件（`ChatInspector`）只挂在 dev scene。后果：Chat 视角目前拿不到自动化状态，要看它得去 Chat 页或 Task 页。重跑：`bash scripts/verify/bf-p6b-info.sh`。
+- **P6a 的 `continuation` 摘要只有契约没有投影**：`src/contracts/info-hub.ts` 的三处 `continuation` 都是 optional，契约测试通过，但 `src/domain/info-hub.ts` 从不填充；唯一渲染 `ContinuationPanel` 的 Info Hub 组件（`ChatInspector`）只挂在 dev scene。后果：Chat 视角目前拿不到对话接续状态，要看它得去 Chat 页或 Task 页。重跑：`bash scripts/verify/bf-p6b-info.sh`。
 - **`seen` 去重层没有门禁**：关掉后 `bf-p6b-turn-context.sh` 仍绿，因为合并窗口与最小间隔先合并了同一批变化。后果：这一层只有单测保护。重跑：`bash scripts/verify/bf-p6b-turn-context.sh`。
 - **超大单行返回 `too_many_requests`**：语义错配（应表达「响应过大」），事实本身没有被改写。重跑：`bash scripts/verify/bf-p6b-info.sh`。
 - **`deliveryState: 'failed'` 没有 producer**：迁移与契约允许，领域层只写 `prepared`/`submitted`。后果：契约里有一条走不通的分支，读契约的人需要知道。

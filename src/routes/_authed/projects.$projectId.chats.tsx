@@ -27,11 +27,11 @@ import {
 import { mergeChatRuns, mergeProjectChats } from "../../components/info-hub/merge-info-hub";
 import { listAgentProfilesFn, listProjectMembersFn } from "../../server/functions/agent";
 import { listChatsFn } from "../../server/functions/chat";
-import { controlChatAutomationFn } from "../../server/functions/chat-automation";
+import { controlChatContinuationFn } from "../../server/functions/chat-continuation";
 import type {
-  AutomationDenial,
-  AutomationSubmit,
-} from "../../components/automation/automation-page-data";
+  ContinuationDenial,
+  ContinuationSubmit,
+} from "../../components/continuation/continuation-page-data";
 
 const DETAIL_ROUTE_ID = "/_authed/projects/$projectId/chats/$chatId";
 
@@ -84,14 +84,14 @@ function ChatsLayout() {
   const members = loader.members.ok ? loader.members.data : [];
   const chat = detail?.loaderData as ChatDetailLoaderData | undefined;
   const selected = chat?.ok ? chat : undefined;
-  const submitAutomation = useCallback<AutomationSubmit>(
+  const submitContinuation = useCallback<ContinuationSubmit>(
     async (command) => {
-      const result = await controlChatAutomationFn({ data: command });
+      const result = await controlChatContinuationFn({ data: command });
       if (!result.ok)
         return {
           ok: false,
           error: {
-            code: result.error.code as AutomationDenial["code"],
+            code: result.error.code as ContinuationDenial["code"],
             reason: result.error.message,
             requestId: result.requestId,
           },
@@ -208,15 +208,15 @@ function ChatsLayout() {
                 projectProfiles={profiles}
                 machineFacts={machineFacts}
                 machineFactsError={machineFactsError}
-                automation={
-                  selected.automation.ok
+                continuation={
+                  selected.continuation.ok
                     ? {
-                        view: selected.automation.data.view,
-                        denials: selected.automation.data.denials,
+                        view: selected.continuation.data.view,
+                        denials: selected.continuation.data.denials,
                       }
                     : undefined
                 }
-                onAutomationCommand={submitAutomation}
+                onContinuationCommand={submitContinuation}
                 onClose={() => setOpen(false)}
                 onChanged={() => void router.invalidate()}
               />

@@ -20,8 +20,8 @@ const logReadToolInputSchema = remoteToolInputSchemas.sprout_remote_execution_lo
 type ToolName = keyof typeof remoteToolInputSchemas;
 
 const descriptions: Record<ToolName, string> = {
-  sprout_chat_automation_get:
-    "读取当前 Chat 的自动接续模式、周期检查、提醒和投递状态；不能暂停、停止、恢复或重发。",
+  sprout_chat_continuation_get:
+    "读取当前 Chat 的对话接续模式、周期检查、提醒和投递状态；不能暂停、停止、恢复或重发。",
   sprout_lease_acquire:
     "申请当前 Project 中显式指定的远端 Machine 租约。machineId 必填，expectedGeneration 来自 lease_get；requestId 标识同一次请求。空闲分身也可持有租约。",
   sprout_lease_release:
@@ -52,10 +52,13 @@ const descriptions: Record<ToolName, string> = {
 
 function buildRequest(name: ToolName, parameters: unknown, projectId: string): RemoteAgentRequest {
   let call: unknown;
-  if (name === "sprout_chat_automation_get") {
+  if (name === "sprout_chat_continuation_get") {
     call = {
-      type: "chat_automation_get",
-      input: { ...remoteToolInputSchemas.sprout_chat_automation_get.parse(parameters), projectId },
+      type: "chat_continuation_get",
+      input: {
+        ...remoteToolInputSchemas.sprout_chat_continuation_get.parse(parameters),
+        projectId,
+      },
     };
   } else if (name === "sprout_remote_execution_cancel") {
     call = {

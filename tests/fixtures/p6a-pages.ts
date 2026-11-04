@@ -1,5 +1,5 @@
-import type { ChatAutomationView } from "../../src/contracts/chat-automation";
-import type { AutomationDenials } from "../../src/components/automation/automation-page-data";
+import type { ChatContinuationView } from "../../src/contracts/chat-continuation";
+import type { ContinuationDenials } from "../../src/components/continuation/continuation-page-data";
 
 export const p6aIds = {
   project: "prj_aaaaaaaa",
@@ -23,8 +23,8 @@ const at = "2026-01-02T03:04:05.000Z";
 const later = "2026-01-02T03:09:05.000Z";
 
 /** Explicit typed service read fixtures; no scheduler behavior is implemented here. */
-export function automationFixture(name: P6aCase = "idle"): ChatAutomationView {
-  const view: ChatAutomationView = {
+export function continuationFixture(name: P6aCase = "idle"): ChatContinuationView {
+  const view: ChatContinuationView = {
     projectId: p6aIds.project,
     chatId: p6aIds.chat,
     mode: "enabled",
@@ -131,10 +131,10 @@ export function automationFixture(name: P6aCase = "idle"): ChatAutomationView {
   }
   return view;
 }
-export function automationDenials(name: P6aCase): AutomationDenials {
+export function continuationDenials(name: P6aCase): ContinuationDenials {
   return name === "denied"
     ? {
-        disable: { code: "forbidden", reason: "当前身份无权关闭此 Chat 的自动接续" },
+        disable: { code: "forbidden", reason: "当前身份无权关闭此 Chat 的对话接续" },
         abort: { code: "forbidden", reason: "当前身份无权中止此 Chat 的 run" },
       }
     : {};

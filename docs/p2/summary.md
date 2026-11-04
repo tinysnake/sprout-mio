@@ -61,7 +61,7 @@ main `d8f4e2b` 的 [CI run 39062616946](https://github.com/tinysnake/sprout-mio/
 - P3 的真实 Pi 会话、Agent 自动回复、run、同分身串行、运行中投递和停止、每轮配置快照、Agent 主动查询与宿主仓库入口未实现。P2 保存配置，不证明下一轮已消费配置。这是 P2 当时的边界；P3-a/b/c/d 已交付会话、轮次、仓库与 run 视图，Agent 主动查询仍属 P6，完整宿主工具面仍部分交付，当前限制见 [P3 未验证项](../p3/summary.md#未验证项汇总)。
 - P4 的 Machine、租约、真实 macOS Worker、远端执行与跨机恢复未实现。P0 原型不等于产品支持。
 - P5 的 Task、Group 与 Public Channel 未实现。Chat kind 只有 `dm`，归档入口未实现。
-- P6 的自动接续、完整 Info Hub 视角、快照与运行期变更提示、成员治理未实现。
+- P6 的对话接续、完整 Info Hub 视角、快照与运行期变更提示、成员治理未实现。
 - P7 的手机响应式验收、在线 PWA 与完整一期端到端验收未完成。Windows Worker 与 MCP 接入没有新增产品验收证据。
 - 多进程 SQLite 并发、写锁竞争、并发编辑、并发消息发送、异常断电、备份恢复与高负载未验证。IMMEDIATE 事务与唯一索引不等于已证明这些能力。
 - 消息、成员与 Info Hub 无分页，聚合性能与大数据界面表现未验证。

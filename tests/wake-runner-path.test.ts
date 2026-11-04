@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { resolve } from "node:path";
-import { wakeRunnerPath } from "../src/domain/wake-providers/small-brain";
+import { wakeRunnerPath } from "../src/domain/wake-providers/llm";
 
 describe("wake runner path", () => {
   it("uses the built app root instead of the caller cwd", () => {

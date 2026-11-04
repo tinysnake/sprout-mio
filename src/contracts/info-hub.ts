@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { chatAutomationModeSchema } from "./chat-automation";
+import { chatContinuationModeSchema } from "./chat-continuation";
 import { wakeEvaluationErrorCodeSchema } from "./wake-evaluation";
 import { leaseViewSchema } from "./lease";
 import { machineConnectionViewSchema, machineIdSchema } from "./machine";
@@ -253,10 +253,10 @@ export const projectTasksInfoHubViewSchema = chatTasksViewSchema.extend({
 });
 export type ProjectTasksInfoHubView = z.infer<typeof projectTasksInfoHubViewSchema>;
 
-/** P6a summary only; the full automation read view is a separate authorized query. */
-export const chatAutomationSummarySchema = z
+/** P6a summary only; the full continuation read view is a separate authorized query. */
+export const chatContinuationSummarySchema = z
   .strictObject({
-    mode: chatAutomationModeSchema,
+    mode: chatContinuationModeSchema,
     epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     nextDueAt: z.iso.datetime().nullable(),
     lastDecision: z.enum(["continue", "do_not_continue", "indeterminate"]).nullable(),
@@ -265,9 +265,9 @@ export const chatAutomationSummarySchema = z
   })
   .refine(
     (value) => value.mode === "enabled" || value.nextDueAt === null,
-    "Disabled automation has no executable schedule",
+    "Disabled continuation has no executable schedule",
   );
-export type ChatAutomationSummary = z.infer<typeof chatAutomationSummarySchema>;
+export type ChatContinuationSummary = z.infer<typeof chatContinuationSummarySchema>;
 
 /**
  * 会话聚合读模型：Info Hub 的 run 列表按会话聚合。
@@ -278,7 +278,7 @@ export type ChatAutomationSummary = z.infer<typeof chatAutomationSummarySchema>;
  * - 不做分页与缓存，也不在一次读里按会话二次查库（N+1 收敛与分页归 P6，followups 已记）。
  */
 export const chatRunAggregateSchema = z.object({
-  automation: chatAutomationSummarySchema.optional(),
+  continuation: chatContinuationSummarySchema.optional(),
   taskCounts: taskCountsSchema,
   assignedTaskIds: infoHubUniqueArray(taskIdSchema, (id) => id),
   chatId,
@@ -333,7 +333,7 @@ export const chatInstanceViewSchema = z
 /** Chat → 自身与成员视角：归属、成员、分身、消息统计与真实 run 视角。 */
 export const chatInfoViewSchema = z
   .strictObject({
-    automation: chatAutomationSummarySchema.optional(),
+    continuation: chatContinuationSummarySchema.optional(),
     chatId,
     projectId,
     kind: chatKindSchema,
@@ -441,7 +441,7 @@ export const turnStartContextSchema = z
     chatTitle: z.string(),
     chatKind: chatKindSchema,
     chatArchived: z.boolean(),
-    automation: chatAutomationSummarySchema.optional(),
+    continuation: chatContinuationSummarySchema.optional(),
     owner: chatOwnerSchema.strict(),
     members: infoHubUniqueArray(
       chatMemberEntrySchema,

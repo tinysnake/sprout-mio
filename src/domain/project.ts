@@ -3,7 +3,7 @@ import {
   type UpdateProjectWakePolicyInput,
 } from "../contracts/project";
 import { projectWakePolicySchema, type ProjectWakePolicy } from "../contracts/project-wake-policy";
-import { ChatAutomationError } from "./chat-automation";
+import { ChatContinuationError } from "./chat-continuation";
 import { reconcileChatSchedule, signalScheduleChange, all, one, write } from "./chat-schedule";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
@@ -189,7 +189,7 @@ export function updateProjectWakePolicy(
     .transaction(() => {
       getProject(input.projectId, ctx);
       if (ctx.agent)
-        throw new ChatAutomationError("forbidden", "只有 Project Human 可以修改判定器。");
+        throw new ChatContinuationError("forbidden", "只有 Project Human 可以修改判定器。");
       const payload = JSON.stringify({ actor: ctx.userId, input });
       const previous = one<{ payload: string; result: string }>(
         "SELECT payload,result FROM project_wake_policy_command WHERE request_id=?",
@@ -197,13 +197,13 @@ export function updateProjectWakePolicy(
       );
       if (previous) {
         if (previous.payload !== payload)
-          throw new ChatAutomationError("conflict", "请求标识已用于其他配置操作。");
+          throw new ChatContinuationError("conflict", "请求标识已用于其他配置操作。");
         return JSON.parse(previous.result) as Project;
       }
       const row = db.select().from(project).where(eq(project.id, input.projectId)).get()!;
       const revision = row.wakePolicy?.configRevision ?? 1;
       if (revision !== input.expectedConfigRevision)
-        throw new ChatAutomationError("conflict", "判定器配置版本已变化。");
+        throw new ChatContinuationError("conflict", "判定器配置版本已变化。");
       const policy = projectWakePolicySchema.parse({
         ...configured,
         provider: input.provider,
