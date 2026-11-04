@@ -5,6 +5,9 @@ import type { ContinuationPageData } from "./continuation-page-data";
 import { CONTINUATION_UNAVAILABLE } from "./continuation-page-data";
 import { CONTINUATION_MODES } from "./continuation-labels";
 
+/** 还没有任何判定时，入口指向「最新一轮」这条路，由页面解析并给出空态。 */
+export const LATEST_CHECK_LINK = "latest";
+
 export function continuationCheckLink(
   projectId: string,
   chatId: string,
@@ -19,14 +22,18 @@ export function continuationCheckLink(
 
 export function ContinuationPanel({ data }: { data?: ContinuationPageData }) {
   const view = data?.view;
-  const evaluationId = view?.latestEvaluation?.evaluationId;
+  const latest = view?.latestEvaluation?.evaluationId;
+  // 没有判定记录时不再把入口做成不可点：指向 latest，页面给出空态与依赖条件。
+  const target = latest ?? (view ? LATEST_CHECK_LINK : undefined);
   const rows = [
     {
       kind: "wake" as const,
       label: "唤醒判定",
-      value: evaluationId
-        ? `最近 ${view?.recentRounds.length} 轮 · 查看诊断`
-        : "尚无判定，暂不能查看",
+      value: !view
+        ? CONTINUATION_UNAVAILABLE.reason
+        : latest
+          ? `最近 ${view.recentRounds.length} 轮 · 查看诊断`
+          : "尚无判定 · 查看诊断",
     },
     {
       kind: "continuation" as const,
@@ -59,9 +66,9 @@ export function ContinuationPanel({ data }: { data?: ContinuationPageData }) {
               {index > 0 && (
                 <div aria-hidden="true" className="mx-3 h-px shrink-0 bg-border-soft" />
               )}
-              {evaluationId && view ? (
+              {view && target ? (
                 <Link
-                  {...continuationCheckLink(view.projectId, view.chatId, evaluationId, kind)}
+                  {...continuationCheckLink(view.projectId, view.chatId, target, kind)}
                   className={`${className} hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring`}
                 >
                   {content}
@@ -75,7 +82,7 @@ export function ContinuationPanel({ data }: { data?: ContinuationPageData }) {
           );
         })}
       </div>
-      {evaluationId && (
+      {view && (
         <p className="mt-2 text-[11px] text-muted-foreground">点开任一行进入完整诊断与逐轮记录。</p>
       )}
       {!view && (

@@ -2,12 +2,18 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 import { ContinuationCard } from "../src/components/continuation/continuation-card";
-import { ContinuationPanel } from "../src/components/continuation/continuation-panel";
+import {
+  ContinuationPanel,
+  LATEST_CHECK_LINK,
+} from "../src/components/continuation/continuation-panel";
 import { WakeDiagnostic } from "../src/components/continuation/wake-diagnostic";
 import { ContinuationDiagnostic } from "../src/components/continuation/continuation-diagnostic";
 import { WakeProviderSelect } from "../src/components/continuation/wake-provider-select";
 import { TaskBadge } from "../src/components/tasks/task-badge";
-import { chatContinuationViewSchema } from "../src/contracts/chat-continuation";
+import {
+  chatContinuationViewSchema,
+  type ChatContinuationView,
+} from "../src/contracts/chat-continuation";
 import {
   continuationFixture,
   continuationDenials,
@@ -75,13 +81,41 @@ describe("对话接续页面事实与 Human 控制", () => {
     expect(html).not.toContain("暂停对话接续");
     expect(html).not.toContain('data-testid="continuation-failure"');
   });
-  it("没有判定时两行禁用，不能编造 evaluationId", () => {
-    const html = renderToStaticMarkup(
+  it("没有判定时两行照常可点，指向 latest 而不编造 evaluationId", async () => {
+    const html = await renderWithRouter(
       createElement(ContinuationPanel, { data: { view: continuationFixture(), denials: {} } }),
     );
-    expect(html.match(/aria-disabled="true"/g)).toHaveLength(2);
-    expect(html).not.toContain("href=");
-    expect(html).toContain("尚无判定");
+    expect(html).not.toContain('aria-disabled="true"');
+    for (const kind of ["wake", "continuation"])
+      expect(html).toContain(`/checks/latest/${kind}`);
+    expect(html).not.toContain("/checks/evl_");
+    expect(html).not.toContain("/checks/evaluation-");
+    expect(html).toContain("尚无判定 · 查看诊断");
+  });
+  it("没有判定记录时诊断页给空态，接续页仍保留策略与投递", async () => {
+    const view: ChatContinuationView = {
+      ...continuationFixture(),
+      latestEvaluation: null,
+      recentRounds: [],
+      attention: null,
+      deliveries: [],
+    };
+    expect(chatContinuationViewSchema.safeParse(view).success).toBe(true);
+    for (const kind of ["wake", "continuation"] as const) {
+      const html = await renderWithRouter(
+        createElement(ContinuationDiagnostic, {
+          data: { view, denials: {} },
+          evaluationId: LATEST_CHECK_LINK,
+          kind,
+          chatTitle: "当前对话",
+        }),
+      );
+      expect(html).toContain('data-empty="true"');
+      expect(html).toContain("本会话还没有检查轮次");
+      expect(html).not.toContain("这一轮不在最近 5 轮里");
+      // 接续页没有轮次时仍要能管策略；判定页不出现接续卡。
+      expect(html.includes('data-testid="continuation-card"')).toBe(kind === "continuation");
+    }
   });
   it("失败与退避可见，不能呈现为正常或本轮无需接续", () => {
     const view = diagnosticFixture("failure");

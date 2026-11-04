@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { ContinuationPageData, ContinuationSubmit } from "./continuation-page-data";
 import { Button } from "../ui/button";
 import { ContinuationCard } from "./continuation-card";
-import { continuationCheckLink } from "./continuation-panel";
+import { continuationCheckLink, LATEST_CHECK_LINK } from "./continuation-panel";
 import { WakeDiagnostic } from "./wake-diagnostic";
 import {
   CONTINUATION_SOURCES as sources,
@@ -26,7 +26,10 @@ export function ContinuationDiagnostic({
 }) {
   const { view, denials } = data;
   const [copyStatus, setCopyStatus] = useState("");
-  const round = view.recentRounds.find((item) => item.evaluationId === evaluationId);
+  // 入口在没有判定时用 latest 占位，这里解析成当前最新一轮。
+  const target =
+    evaluationId === LATEST_CHECK_LINK ? (view.latestEvaluation?.evaluationId ?? "") : evaluationId;
+  const round = view.recentRounds.find((item) => item.evaluationId === target);
   const back = {
     to: "/projects/$projectId/chats/$chatId" as const,
     params: { projectId: view.projectId, chatId: view.chatId },
@@ -115,6 +118,20 @@ export function ContinuationDiagnostic({
                   onCommand={onCommand}
                 />
               ) : (
+                <ContinuationCard view={view} denials={denials} onCommand={onCommand} />
+              )}
+            </>
+          ) : view.recentRounds.length === 0 ? (
+            <>
+              <div role="status" data-testid="diagnostic-round-missing" data-empty="true">
+                <h2>本会话还没有检查轮次</h2>
+                <p>
+                  {kind === "wake"
+                    ? "消息命中唤醒条件、或周期检查到点时会产出第一轮判定；这一轮还没有发生，所以没有可展示的评审记录。"
+                    : "启用对话接续后，到期检查会产出第一轮判定。在生成之前，这里仍可管理策略与投递。"}
+                </p>
+              </div>
+              {kind === "continuation" && (
                 <ContinuationCard view={view} denials={denials} onCommand={onCommand} />
               )}
             </>
