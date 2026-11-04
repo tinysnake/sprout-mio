@@ -1,8 +1,8 @@
-import { z } from "zod";
 import { remoteAgentRequestSchema } from "../contracts/remote";
 import type { RemoteAgentRequest } from "../contracts/remote";
 import { taskToolInputSchemas } from "../contracts/task";
 import { readTaskChatResponse } from "./remote-client";
+import { objectToolParameters } from "./tool-parameters";
 import type { RemoteToolClient, RemoteToolResponse } from "./remote-client";
 import type { SproutExtensionAPI, SproutToolResult } from "./types";
 
@@ -68,7 +68,7 @@ export function registerTaskTools(
       name,
       label: name,
       description: descriptions[name],
-      parameters: z.toJSONSchema(taskToolInputSchemas[name], { target: "draft-7", io: "input" }),
+      parameters: objectToolParameters(taskToolInputSchemas[name]),
       async execute(_toolCallId, parameters, signal) {
         let request: RemoteAgentRequest;
         try {

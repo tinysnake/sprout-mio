@@ -8,6 +8,7 @@ import {
 } from "../contracts/remote";
 import type { RemoteAgentRequest } from "../contracts/remote";
 import type { RemoteToolClient, RemoteToolResponse } from "./remote-client";
+import { objectToolParameters } from "./tool-parameters";
 import type { SproutExtensionAPI, SproutToolResult } from "./types";
 
 export const INFO_HUB_TOOL_DESCRIPTION =
@@ -260,9 +261,7 @@ export function registerRemoteTools(
       name,
       label: name,
       description: descriptions[name],
-      parameters: z.toJSONSchema(remoteToolInputSchemas[name], {
-        target: "draft-7",
-        io: "input",
+      parameters: objectToolParameters(remoteToolInputSchemas[name], {
         unrepresentable: "any",
       }),
       async execute(_toolCallId, parameters, signal) {
