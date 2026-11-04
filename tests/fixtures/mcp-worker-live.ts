@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -23,6 +24,33 @@ import { probeNativePiVersion } from "./mcp-native-version";
 import { seedRemoteActor } from "./remote-actors";
 import { registration, sessionFor, waitFor } from "./mcp-runtime";
 import { mcpBound, mcpHash, mcpPayloadHash } from "../../src/domain/mcp/protocol";
+
+/** 已安装的 native Pi MCP 模块按实际 release 解析，不写死版本目录；PI_MCP_MODULE 可覆盖。 */
+function nativeMcpModulePath() {
+  if (process.env.PI_MCP_MODULE) return process.env.PI_MCP_MODULE;
+  const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+  const releasesDir = join(agentDir, "install", "releases");
+  const versions = existsSync(releasesDir)
+    ? readdirSync(releasesDir)
+        .filter((value) => /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(value))
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+    : [];
+  for (const version of versions) {
+    const path = join(
+      releasesDir,
+      version,
+      "node_modules",
+      "@earendil-works",
+      "pi-mcp",
+      "dist",
+      "index.js",
+    );
+    if (existsSync(path)) return path;
+  }
+  throw new Error(
+    `找不到已安装的 native Pi MCP 模块；请设置 PI_MCP_MODULE 或在 ${releasesDir} 安装`,
+  );
+}
 
 migrateDatabase();
 const bootId = newId(ID_PREFIXES.boot),
@@ -289,12 +317,7 @@ try {
     }
   };
   if (useEverything) {
-    const nativePath =
-      process.env.PI_MCP_MODULE ??
-      join(
-        homedir(),
-        ".pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-mcp/dist/index.js",
-      );
+    const nativePath = nativeMcpModulePath();
     const { McpClient } = await import(pathToFileURL(nativePath).href);
     const nativePiVersionEvidence = await probeNativePiVersion(nativePath);
     const client = new McpClient({
