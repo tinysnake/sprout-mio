@@ -222,6 +222,7 @@ describe("对话接续状态", () => {
               },
               recentRounds: [
                 {
+                  evaluationId: "evaluation-running",
                   round: 4,
                   source: "message" as const,
                   state: "claimed" as const,
@@ -301,6 +302,7 @@ describe("对话接续状态", () => {
     const view = continuationFixture("failure");
     const rounds = [
       {
+        evaluationId: "evaluation-usage",
         round: 3,
         source: "task_periodic" as const,
         state: "decided" as const,
@@ -338,6 +340,7 @@ describe("对话接续状态", () => {
       createElement(WakeDiagnostic, {
         view,
         round: {
+          evaluationId: "evaluation-claimed",
           round: 2,
           source: "task_periodic" as const,
           state: "claimed" as const,

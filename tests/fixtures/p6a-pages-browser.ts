@@ -56,6 +56,7 @@ try {
   assert(address && typeof address !== "string");
   const base = `http://127.0.0.1:${address.port}`;
   const page = await browser.newPage();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: base });
   const pageErrors: string[] = [],
     consoleErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -65,6 +66,67 @@ try {
   const noOverflow = async (label: string) => {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     pass(`${label}_no_horizontal_scroll`);
+  };
+  const copyLinkButton = page.getByRole("button", {
+    name: "复制此页链接",
+    exact: true,
+    includeHidden: true,
+  });
+  const checkRoundLinks = async (label: string, latestHref: string, reload: boolean) => {
+    const rail = page.getByRole("navigation", { name: "最近 5 轮" });
+    const historyHref = latestHref.replace(/evaluation-(current|failure)/, "evaluation-history");
+    assert.equal(await rail.getByRole("link").count(), 2);
+    assert.equal(await rail.getByRole("link", { name: /#2/ }).getAttribute("href"), latestHref);
+    assert.equal(await rail.getByRole("link", { name: /#1/ }).getAttribute("href"), historyHref);
+    assert.equal(await rail.locator('[aria-current="step"]').getAttribute("href"), latestHref);
+    pass(`${label}_rail_each_round_has_own_evaluation_link`);
+    await rail.getByRole("link", { name: /#1/ }).click();
+    await page.getByRole("heading", { name: "检查轮次 #1", exact: true }).waitFor();
+    assert.equal(page.url(), base + historyHref);
+    assert.equal(await rail.locator('[aria-current="step"]').getAttribute("href"), historyHref);
+    assert((await rail.getByRole("link", { name: /#1/ }).innerText()).includes("当前查看 ↓"));
+    assert(await copyLinkButton.isEnabled());
+    assert(
+      !(await page.getByTestId("continuation-diagnostic").innerText()).includes(
+        "不能作为本轮的独立链接",
+      ),
+    );
+    pass(`${label}_historical_link_changes_url_body_current_step_and_copy`);
+    await noOverflow(`${label}_history`);
+    if (reload) {
+      await page.reload();
+      await page.getByRole("heading", { name: "检查轮次 #1", exact: true }).waitFor();
+      assert.equal(page.url(), base + historyHref);
+      pass(`${label}_historical_deep_link_survives_reload`);
+      if (await copyLinkButton.isVisible()) {
+        await copyLinkButton.click();
+        await page.getByRole("status").filter({ hasText: "链接已复制" }).waitFor();
+        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), base + historyHref);
+        pass(`${label}_copy_writes_historical_deep_link`);
+      }
+      await rail.getByRole("link", { name: /#2/ }).focus();
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Shift+Tab");
+      assert(
+        await rail.getByRole("link", { name: /#2/ }).evaluate((element) => {
+          const style = getComputedStyle(element);
+          return (
+            element.matches(":focus-visible") &&
+            style.outlineStyle === "solid" &&
+            parseFloat(style.outlineWidth) >= 2
+          );
+        }),
+      );
+      await page.keyboard.press("Enter");
+      await page.getByRole("heading", { name: "检查轮次 #2", exact: true }).waitFor();
+      assert.equal(page.url(), base + latestHref);
+      pass(`${label}_rail_keyboard_focus_and_navigation`);
+    }
+    await rail.getByRole("link", { name: /#2/ }).click();
+    await page.getByRole("heading", { name: "检查轮次 #2", exact: true }).waitFor();
+    assert.equal(page.url(), base + latestHref);
+    assert(await copyLinkButton.isEnabled());
+    pass(`${label}_latest_round_return_link_and_copy`);
   };
   for (const width of [1280, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -125,22 +187,14 @@ try {
         fullPage: true,
       });
       await page.evaluate(() => document.documentElement.classList.remove("dark"));
-      if (name === "idle") {
-        await page.getByRole("button", { name: /#1/ }).click();
-        assert(await page.getByRole("heading", { name: "检查轮次 #1", exact: true }).isVisible());
-        assert(
-          (await page.getByTestId("continuation-diagnostic").innerText()).includes(
-            "不能作为本轮的独立链接",
-          ),
-        );
-        pass(`${width}_historical_rail_selection_explicit_permalink_gap`);
-      }
+      await checkRoundLinks(`${width}_${name}_wake`, wakeHref, name === "idle");
       await page.goto(base + continuationHref);
       const card = page.getByTestId("continuation-card");
       await card.waitFor();
       assert.equal(await page.getByTestId("wake-diagnostic").count(), 0);
       assert.equal(await page.getByRole("tab").count(), 0);
       pass(`${width}_${name}_continuation_url_body_no_tabs`);
+      await checkRoundLinks(`${width}_${name}_continuation`, continuationHref, name === "idle");
       await noOverflow(`${width}_${name}_continuation`);
       const scopeBox = await page.getByTestId("continuation-scope").boundingBox(),
         cardBox = await card.boundingBox();
@@ -265,6 +319,16 @@ try {
     pass(`${width}_conflict_does_not_pretend_disabled`);
     await page.goto(base + "/projects/prj_aaaaaaaa/chats/cnv_aaaaaaaa/checks/expired/wake");
     await page.getByTestId("diagnostic-round-missing").waitFor();
+    assert(
+      (await page.getByTestId("diagnostic-round-missing").innerText()).includes(
+        "这一轮不在最近 5 轮里",
+      ),
+    );
+    assert(await copyLinkButton.isDisabled());
+    assert.equal(
+      await page.getByRole("navigation", { name: "最近 5 轮" }).getByRole("link").count(),
+      2,
+    );
     assert.equal(await page.getByTestId("wake-diagnostic").count(), 0);
     pass(`${width}_unknown_round_has_explicit_state`);
   }

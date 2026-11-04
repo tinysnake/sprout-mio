@@ -7,6 +7,7 @@ import { WakeDiagnostic } from "../src/components/continuation/wake-diagnostic";
 import { ContinuationDiagnostic } from "../src/components/continuation/continuation-diagnostic";
 import { WakeProviderSelect } from "../src/components/continuation/wake-provider-select";
 import { TaskBadge } from "../src/components/tasks/task-badge";
+import { chatContinuationViewSchema } from "../src/contracts/chat-continuation";
 import {
   continuationFixture,
   continuationDenials,
@@ -140,6 +141,52 @@ describe("对话接续页面事实与 Human 控制", () => {
     expect(html).not.toContain('role="tab');
     expect(html).not.toContain("查看最近五轮");
   });
+  it.each(["wake", "continuation"] as const)(
+    "%s 历史轮次可独立寻址，rail 保留每轮链接与当前标记",
+    (kind) => {
+      const view = diagnosticFixture("failure");
+      const html = renderToStaticMarkup(
+        createElement(ContinuationDiagnostic, {
+          data: { view, denials: {} },
+          evaluationId: "evaluation-history",
+          kind,
+          chatTitle: "当前对话",
+        }),
+      );
+      expect(html).toContain("检查轮次 #1");
+      expect(html).not.toContain("检查轮次 #2");
+      for (const id of ["evaluation-failure", "evaluation-history"])
+        expect(html).toContain(
+          `href="/projects/${view.projectId}/chats/${view.chatId}/checks/${id}/${kind}"`,
+        );
+      expect(html.match(/aria-current="step"/g)).toHaveLength(1);
+      expect(html).toContain("当前查看 ↓");
+      const copyButton = html.match(/<button\b[^>]*>复制此页链接<\/button>/)?.[0];
+      expect(copyButton).toBeDefined();
+      expect(copyButton).not.toContain("disabled=");
+      expect(html).not.toContain("不能作为本轮的独立链接");
+    },
+  );
+  it("读契约要求每轮有标识，并拒绝最新轮次标识不一致", () => {
+    const view = diagnosticFixture("failure");
+    expect(chatContinuationViewSchema.safeParse(view).success).toBe(true);
+    expect(
+      chatContinuationViewSchema.safeParse({
+        ...view,
+        recentRounds: view.recentRounds.map((round, index) => ({
+          ...round,
+          evaluationId: index === 0 ? "wrong-evaluation" : round.evaluationId,
+        })),
+      }).success,
+    ).toBe(false);
+    const { evaluationId: _id, ...roundWithoutId } = view.recentRounds[1];
+    expect(
+      chatContinuationViewSchema.safeParse({
+        ...view,
+        recentRounds: [view.recentRounds[0], roundWithoutId],
+      }).success,
+    ).toBe(false);
+  });
   it("无法定位 evaluationId 时给明确恢复路径，不展示错误轮次", () => {
     const html = renderToStaticMarkup(
       createElement(ContinuationDiagnostic, {
@@ -151,6 +198,8 @@ describe("对话接续页面事实与 Human 控制", () => {
     );
     expect(html).toContain("这一轮不在最近 5 轮里");
     expect(html).toContain("返回对话");
+    expect(html).toContain('disabled=""');
+    expect(html).not.toContain("当前契约仅提供最新轮次");
     expect(html).not.toContain("逐接收者结论");
   });
   it("Human owner 仅有提醒事实，没有 run 活动条", () => {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
+import { chatContinuationViewSchema } from "../../src/contracts/chat-continuation";
 import { ContinuationPanel } from "../../src/components/continuation/continuation-panel";
 import { ContinuationDiagnostic } from "../../src/components/continuation/continuation-diagnostic";
 import { WakeProviderSelect } from "../../src/components/continuation/wake-provider-select";
@@ -8,7 +9,7 @@ import type { P6aCase } from "./p6a-pages";
 import type { ContinuationSubmit } from "../../src/components/continuation/continuation-page-data";
 
 function Scenario({ name }: { name: P6aCase }) {
-  const [view, setView] = useState(() => diagnosticFixture(name));
+  const [view, setView] = useState(() => chatContinuationViewSchema.parse(diagnosticFixture(name)));
   const [lastCommand, setLastCommand] = useState("");
   const [failWrite, setFailWrite] = useState(false);
   const onCommand: ContinuationSubmit = async (command) => {

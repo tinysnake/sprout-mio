@@ -252,6 +252,7 @@ export type ChatContinuationAttemptView = z.infer<typeof chatContinuationAttempt
 /** 一轮判定的完整过程：页面按轮次列时间线，而不是只有当前那一行状态。 */
 export const chatContinuationRoundViewSchema = z
   .strictObject({
+    evaluationId: identifier,
     round: revision,
     source: wakeEvaluationSourceSchema,
     state: chatContinuationEvaluationStateSchema,
@@ -318,7 +319,11 @@ export const chatContinuationViewSchema = z
       reject("Human reminder must not claim active Agent runs");
     if (
       value.latestEvaluation !== null &&
-      !value.recentRounds.some((round) => round.round === value.latestEvaluation!.round)
+      !value.recentRounds.some(
+        (round) =>
+          round.round === value.latestEvaluation!.round &&
+          round.evaluationId === value.latestEvaluation!.evaluationId,
+      )
     )
       reject("Latest evaluation must appear in the round timeline");
     if (

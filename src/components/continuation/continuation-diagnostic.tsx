@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ContinuationPageData, ContinuationSubmit } from "./continuation-page-data";
 import { Button } from "../ui/button";
 import { ContinuationCard } from "./continuation-card";
+import { continuationCheckHref } from "./continuation-panel";
 import { WakeDiagnostic } from "./wake-diagnostic";
 import {
   CONTINUATION_SOURCES as sources,
@@ -23,15 +24,8 @@ export function ContinuationDiagnostic({
   onCommand?: ContinuationSubmit;
 }) {
   const { view, denials } = data;
-  const routeRound =
-    view.latestEvaluation?.evaluationId === evaluationId ? view.latestEvaluation.round : null;
-  const [selectedRound, setSelectedRound] = useState<number | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
-  const round =
-    routeRound === null
-      ? undefined
-      : view.recentRounds.find((item) => item.round === (selectedRound ?? routeRound));
-  const historical = selectedRound !== null && selectedRound !== routeRound;
+  const round = view.recentRounds.find((item) => item.evaluationId === evaluationId);
   const backHref = `/projects/${encodeURIComponent(view.projectId)}/chats/${encodeURIComponent(view.chatId)}`;
   return (
     <section
@@ -56,7 +50,7 @@ export function ContinuationDiagnostic({
         <div>
           <Button
             variant="secondary"
-            disabled={historical || !round}
+            disabled={!round}
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(window.location.href);
@@ -75,23 +69,20 @@ export function ContinuationDiagnostic({
         <nav className="diagnostic-rail" aria-label="最近 5 轮">
           <h2>最近 5 轮</h2>
           {view.recentRounds.map((item) => (
-            <button
-              type="button"
-              key={item.round}
-              aria-current={round?.round === item.round ? "step" : undefined}
-              disabled={routeRound === null}
-              onClick={() => {
-                setSelectedRound(item.round);
-                setCopyStatus("");
-              }}
+            <a
+              key={item.evaluationId}
+              href={continuationCheckHref(view.projectId, view.chatId, item.evaluationId, kind)}
+              aria-current={round?.evaluationId === item.evaluationId ? "step" : undefined}
             >
               <span className="flex items-center justify-between gap-3">
                 <time>{time(item.evaluatedAt ?? item.attempts.at(-1)?.startedAt ?? null)}</time>
                 <small>#{item.round}</small>
               </span>
               <strong>{sources[item.source]}</strong>
-              <span>{round?.round === item.round ? "当前查看 ↓" : states[item.state]}</span>
-            </button>
+              <span>
+                {round?.evaluationId === item.evaluationId ? "当前查看 ↓" : states[item.state]}
+              </span>
+            </a>
           ))}
           {!view.recentRounds.length && <p>尚无检查记录</p>}
           <p className="diagnostic-rail-foot">
@@ -110,12 +101,6 @@ export function ContinuationDiagnostic({
                 </div>
                 <time>{time(round.evaluatedAt)}</time>
               </header>
-              {historical && (
-                <p className="diagnostic-note mb-5">
-                  当前查看历史轮次。读取契约未提供其
-                  evaluationId，地址仍为入口轮次，不能作为本轮的独立链接。
-                </p>
-              )}
               {kind === "wake" ? (
                 <WakeDiagnostic
                   key={round.round}
@@ -131,10 +116,7 @@ export function ContinuationDiagnostic({
           ) : (
             <div role="status" data-testid="diagnostic-round-missing">
               <h2>这一轮不在最近 5 轮里</h2>
-              <p>
-                当前契约仅提供最新轮次的
-                evaluationId，无法定位该地址。请返回对话，从最新轮次重新进入。
-              </p>
+              <p>请从左侧选择最近轮次，或返回对话重新进入。</p>
             </div>
           )}
         </main>

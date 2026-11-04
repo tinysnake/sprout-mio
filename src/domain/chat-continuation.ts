@@ -185,6 +185,7 @@ export function getChatContinuation(
         }
       : null,
     recentRounds: rounds.map((row) => ({
+      evaluationId: row.id,
       round: row.round,
       source: row.source,
       state: row.state,

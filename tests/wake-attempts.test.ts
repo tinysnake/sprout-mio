@@ -97,13 +97,13 @@ function seedGroupMessage() {
 }
 
 /** 一条已 claim 的判定：attempt 是已经发生的次数，claim_token 与租约一起出现。 */
-function seedClaimedEvaluation(chatId: string, projectId: string, attempt = 1) {
+function seedClaimedEvaluation(chatId: string, projectId: string, attempt = 1, round = 1) {
   const id = newId(ID_PREFIXES.wakeEvaluation);
   sqlite
     .prepare(
-      "INSERT INTO wake_evaluation(id,project_id,chat_id,source,round,control_epoch,fingerprint,state,attempt,request_id,created_at) VALUES (?,?,?,'task_periodic',1,1,'fp','pending',0,'req_attempts',?)",
+      "INSERT INTO wake_evaluation(id,project_id,chat_id,source,round,control_epoch,fingerprint,state,attempt,request_id,created_at) VALUES (?,?,?,'task_periodic',?,1,'fp','pending',0,'req_attempts',?)",
     )
-    .run(id, projectId, chatId, now.getTime());
+    .run(id, projectId, chatId, round, now.getTime());
   sqlite
     .prepare(
       "UPDATE wake_evaluation SET state='claimed',attempt=?,claim_token=?,lease_until=? WHERE id=?",
@@ -245,6 +245,32 @@ describe("判定读视图", () => {
   beforeEach(() => {
     sqlite.prepare("DELETE FROM wake_evaluation_attempt").run();
     sqlite.prepare("DELETE FROM wake_evaluation").run();
+  });
+
+  it("最近五轮保留各自的 evaluationId，与最新判定一致且排除第六轮", () => {
+    const { projectId, chatId } = seedProjectChat();
+    const ids: string[] = [];
+    for (let round = 1; round <= 6; round++) {
+      const id = seedClaimedEvaluation(chatId, projectId, 1, round);
+      sqlite
+        .prepare(
+          "UPDATE wake_evaluation SET created_at=?,state='canceled',claim_token=NULL,lease_until=NULL WHERE id=?",
+        )
+        .run(later(round).getTime(), id);
+      ids.push(id);
+    }
+    const { view } = getChatContinuation(projectId, chatId, {
+      userId: "owner",
+      requestId: "req_attempts",
+    });
+    expect(view.recentRounds.map(({ evaluationId, round }) => ({ evaluationId, round }))).toEqual([
+      { evaluationId: ids[5], round: 6 },
+      { evaluationId: ids[4], round: 5 },
+      { evaluationId: ids[3], round: 4 },
+      { evaluationId: ids[2], round: 3 },
+      { evaluationId: ids[1], round: 2 },
+    ]);
+    expect(view.latestEvaluation?.evaluationId).toBe(ids[5]);
   });
 
   // Risk → evidence: provider 的高精度时钟给出小数毫秒；读视图若只收整数，

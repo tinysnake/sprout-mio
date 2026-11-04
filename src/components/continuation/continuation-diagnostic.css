@@ -60,23 +60,28 @@
   color: var(--muted-foreground);
   margin: 0 10px 14px;
 }
-.diagnostic-rail button {
+.diagnostic-rail a {
   display: flex;
   flex-direction: column;
   gap: 7px;
   width: 100%;
   text-align: left;
+  text-decoration: none;
   padding: 14px 12px;
   border: 1px solid transparent;
   border-radius: var(--container-radius);
   margin-bottom: 7px;
 }
-.diagnostic-rail button[aria-current] {
+.diagnostic-rail a[aria-current] {
   background: var(--secondary);
   border-color: var(--border);
 }
-.diagnostic-rail button:hover {
+.diagnostic-rail a:hover {
   background: var(--hover);
+}
+.diagnostic-rail a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .diagnostic-rail strong {
   font-size: 12px;
@@ -88,7 +93,7 @@
   color: var(--muted-foreground);
   overflow-wrap: anywhere;
 }
-.diagnostic-rail button > span:first-child {
+.diagnostic-rail a > span:first-child {
   width: 100%;
 }
 .diagnostic-rail-foot {
@@ -339,7 +344,7 @@
     flex-shrink: 0;
     margin: 10px 4px;
   }
-  .diagnostic-rail button {
+  .diagnostic-rail a {
     min-width: 166px;
     width: 166px;
     flex-shrink: 0;

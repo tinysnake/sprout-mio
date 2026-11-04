@@ -66,6 +66,7 @@ export function continuationFixture(name: P6aCase = "idle"): ChatContinuationVie
     };
     view.recentRounds = [
       {
+        evaluationId: "evaluation-failure",
         round: 1,
         source: "task_periodic",
         state: "retry_wait",
@@ -160,6 +161,7 @@ export function diagnosticFixture(name: P6aCase = "idle"): ChatContinuationView 
     view.recentRounds = [
       {
         ...continuationFixture("failure").recentRounds[0],
+        evaluationId: view.latestEvaluation.evaluationId,
         state: "decided",
         result: view.latestEvaluation.result,
         errorCode: null,
@@ -206,6 +208,7 @@ export function diagnosticFixture(name: P6aCase = "idle"): ChatContinuationView 
   view.latestEvaluation = { ...view.latestEvaluation, round: 2 };
   view.recentRounds[0] = { ...view.recentRounds[0], round: 2 };
   view.recentRounds.push({
+    evaluationId: "evaluation-history",
     round: 1,
     source: "message",
     state: "canceled",
