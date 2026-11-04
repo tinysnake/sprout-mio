@@ -126,12 +126,16 @@ const probePath = join(directory, "probe.mjs");
 const resultPath = join(directory, "probe.json");
 const actualEntry = pathToFileURL(join(root, "pi/sprout-extension.ts")).href;
 // 会话的工具面是 remote + task + info-hub 三张契约表加上内联声明参数的 sprout_status；
-// 只按 remote 表比会随任何一个新工具变成过期断言。
+// 只按 remote 表比会随任何一个新工具变成过期断言。current_time 与 git_read 由
+// scripts/pi-host-runner.mjs 的 registerCurrentTimeTool/registerGitReadTool 注册，
+// 没有契约表，只能点名列出（与 tests/fixtures/remote-tools-runner.mjs 保持一致）。
 const expectedToolNames = [
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas),
   ...Object.keys(infoHubToolInputSchemas),
   "sprout_status",
+  "current_time",
+  "git_read",
 ].sort();
 writeFileSync(
   probePath,
@@ -299,7 +303,20 @@ try {
   // 真实 Pi 的活动工具名就是模型看到的 tools/list。
   assert.ok(ready.tools.includes("sprout_remote_execution_cancel"), "tools/list 缺少取消工具");
   assert.ok(ready.tools.includes("sprout_remote_execution_log"), "tools/list 缺少日志工具");
-  assert.ok(probe.toolNames.every((name) => ready.tools.includes(name)));
+  // sprout_chat_send 只留在 registry：宿主要自动发本轮最终回答，不能再让模型重复发送。
+  const registryOnly = new Set(["sprout_chat_send"]);
+  assert.deepEqual(
+    probe.toolNames.filter((name) => !ready.tools.includes(name)),
+    ["sprout_chat_send"],
+    "未声明的工具只能是被契约有意留在 registry 的 sprout_chat_send",
+  );
+  assert.equal(ready.tools.includes("sprout_chat_send"), false, "sprout_chat_send 不声明给模型");
+  assert.ok(
+    probe.toolNames
+      .filter((name) => !registryOnly.has(name))
+      .every((name) => ready.tools.includes(name)),
+    "其余 registry 工具（含 current_time/git_read）都必须进入 tools/list",
+  );
   // 6 次参数拒绝不应产生任何 HTTP 调用；到达服务端的是 2 次取消 + 4 次日志读取。
   assert.equal(calls, 6, "只有 2 次取消 + 4 次日志读取到达服务端，6 次参数拒绝未发请求");
   assert.deepEqual(
