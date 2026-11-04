@@ -75,12 +75,16 @@ const { infoHubToolInputSchemas } = await import(
   pathToFileURL(join(root, "src/contracts/info-hub-query.ts")).href
 );
 // 工具面从契约推导：remote、task、info-hub 各有一份输入 schema 表；sprout_status
-// 的参数在 src/extension/status.ts 里内联声明，没有契约表，只能点名列出。
+// 的参数在 src/extension/status.ts 里内联声明，current_time 与 git_read 由
+// scripts/pi-host-runner.mjs 的 registerCurrentTimeTool/registerGitReadTool 注册，
+// 两者都没有契约表，只能点名列出。
 const expectedToolNames = [
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas),
   ...Object.keys(infoHubToolInputSchemas),
   "sprout_status",
+  "current_time",
+  "git_read",
 ].sort();
 // machineId 是 Machine 作用域的标志，不是「属于 remoteToolInputSchemas」的标志：
 // sprout_chat_continuation_get 在这张表里，但它按 Project 取，不需要 Machine。
@@ -121,6 +125,7 @@ export default function probe(pi) {
     };
     // Machine 作用域只属于 remote 工具；Task/Chat 工具从 run 的授权里取 Project 与 Chat。
     for (const tool of tools) {
+      assert.equal(tool.parameters.type, 'object', tool.name + ' parameters root must be object');
       assert.ok(rejectsUnknown(tool.parameters), tool.name + ' parameters must reject unknown fields');
       assert.equal(
         (tool.parameters.required ?? []).includes('machineId'),
@@ -250,7 +255,13 @@ try {
   assert.equal(identityInjected, true);
   assert.ok(!JSON.stringify(ready).includes(secret));
   assert.ok(!Object.hasOwn(ready, "remote"));
-  assert.ok(probe.toolNames.every((name) => ready.tools.includes(name)));
+  // sprout_chat_send 只留在 registry：宿主要自动发本轮最终回答，不能再让模型重复发送。
+  const registryOnly = new Set(["sprout_chat_send"]);
+  const inactive = probe.toolNames.filter((name) => !ready.tools.includes(name));
+  assert.deepEqual(
+    inactive.filter((name) => !registryOnly.has(name)),
+    [],
+  );
   const evidence = {
     ...probe,
     sdkVersion: ready.sdkVersion,
