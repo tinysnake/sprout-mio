@@ -802,7 +802,6 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
             title: "Hijacked title",
           },
         },
-        { name: "sprout_chat_send", arguments: { body: "Hijacked chat body" } },
       ],
       reply: "RUN1_DONE",
     });
@@ -893,10 +892,9 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       (row) => row.body?.call?.type === "info_hub_get" && row.body.call.input.view === "agent",
     );
     const taskUpdate = remote.find((row) => row.body?.call?.type === "task_mutate");
-    const chatSend = remote.find((row) => row.body?.call?.type === "chat_send");
     A(agentView && projectTasks && crossChatFacts && ownMachine, "info hub reads must be real");
     A(foreignMachine && foreignAgent, "cross-Project probes must reach the server");
-    A(taskUpdate && chatSend, "operation attempts must reach the server");
+    A(taskUpdate, "operation attempts must reach the server");
     A.equal(agentView.status, 200);
     A.equal(agentView.result.ok, true);
     A(
@@ -935,14 +933,25 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     );
     // A Chat write has no target argument at all: the transport only ever speaks as this
     // run's own instance in its own Chat, so seeing another Chat grants no way to write it.
-    A.equal(chatSend.status, 200);
-    A.equal(chatSend.result.ok, true);
+    // 模型工具面不再声明 sprout_chat_send：宿主把本轮最终回答自动发到 Chat，模型无法同轮再发一条。
+    const run1Model = modelRequests().find((row) => JSON.stringify(row.input).includes(run1Text));
+    A(run1Model, "the run reached the real model request");
+    const run1ToolNames = (run1Model.input.tools as any[]).map((tool) => tool.function?.name);
     A.equal(
-      chatSend.result.data.chatId,
-      dm.chat.id,
-      "a Chat write can only land in the run's own Chat",
+      run1ToolNames.includes("sprout_chat_send"),
+      false,
+      "the model surface must not declare sprout_chat_send",
     );
-    A.equal(chatSend.result.data.message.senderKind, "agent");
+    const ownChatMessages = rows(
+      "SELECT * FROM message WHERE chat_id=? ORDER BY rowid",
+      dm.chat.id,
+    );
+    const finalAnswer = ownChatMessages.find(
+      (row) => row.sender_kind === "agent" && row.body === "RUN1_DONE",
+    );
+    A(finalAnswer, "the run's final answer must land in its own Chat");
+    A.equal(finalAnswer.sender_id, alpha.id, "the final answer speaks as the run's Agent");
+    A.equal(finalAnswer.sender_kind, "agent");
     A.deepEqual(
       Object.keys(infoHubToolInputSchemas),
       ["sprout_info_hub_get"],
@@ -996,7 +1005,10 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       },
       operations: {
         task_update: taskUpdate.result.error.code,
-        chat_send_scope: chatSend.result.data.chatId === dm.chat.id ? "own_chat_only" : "leaked",
+        chat_write_scope: finalAnswer.chat_id === dm.chat.id ? "own_chat_only" : "leaked",
+        chat_send_surface: run1ToolNames.includes("sprout_chat_send")
+          ? "declared"
+          : "registry_only",
         info_hub_tools: Object.keys(infoHubToolInputSchemas),
       },
     };
@@ -1167,18 +1179,27 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       "facts changed in another Chat never enter this run's hint",
     );
     A(Buffer.byteLength(JSON.stringify(firstHint.hint)) <= 1024, "hint stays inside budget");
-    for (const table of [
-      "message",
-      "agent_run",
-      "agent_run_input",
-      "machine_lease",
-      "chat_schedule",
-    ])
+    for (const table of ["message", "agent_run", "agent_run_input", "machine_lease"])
       A.deepEqual(
         firstHintDiff[table],
         { added: [], removed: [], changed: [] },
         `hint delivery must not write ${table}`,
       );
+    // chat_schedule 是派发缓存，不是 hint 的副作用：本轮故意改标题后，调度器按 fingerprint
+    // 重建了该 Chat 的缓存。只允许这一个被故意改动的 Chat，并要求重建早于 hint 到达。
+    A.deepEqual(
+      firstHintDiff.chat_schedule,
+      { added: [], removed: [], changed: [crossChat.id] },
+      "only the deliberately retitled Chat's schedule reconciles",
+    );
+    const reconciledSchedule = rows(
+      "SELECT updated_at FROM chat_schedule WHERE chat_id=?",
+      crossChat.id,
+    )[0];
+    A(
+      reconciledSchedule && reconciledSchedule.updated_at < firstHint.at,
+      "schedule reconciliation happened before hint delivery, not because of it",
+    );
     A.deepEqual(
       [...firstHintDiff.task.added].sort(byText),
       [...created].sort(byText),
@@ -1424,7 +1445,7 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       "an assigned Task elsewhere keeps the continuation scheduler armed",
     );
     const revisionBefore = (
-      await call("getInfoHubFn", { projectId, view: "project", section: "chats" })
+      await call("getInfoHubFn", { projectId, view: "project", section: "tasks" })
     ).revision;
     // Ordinary visible facts: a Task write, a membership edit, and the schedule row.
     await call("updateTaskFn", {
@@ -1435,12 +1456,14 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     });
     await call("addProjectMemberFn", { projectId, agentProfileId: sideOnly.id });
     await call("removeProjectMemberFn", { projectId, agentProfileId: sideOnly.id });
-    // The page keeps polling; polling is a read.
+    // The page keeps polling; polling is a read. Poll the section that actually carries the
+    // visible change: the deliberate Task title write does not belong to the chats section, and
+    // the add+remove membership pair returns to its starting state.
     let polledChanges = 0;
     for (let i = 0; i < 3; i++) {
       const refreshed = await call("refreshInfoHubFn", {
         projectId,
-        query: { view: "project", section: "chats" },
+        query: { view: "project", section: "tasks" },
         knownRevision: revisionBefore,
       });
       if (refreshed.kind === "changed") polledChanges++;
