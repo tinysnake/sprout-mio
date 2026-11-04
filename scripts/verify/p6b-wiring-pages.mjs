@@ -359,13 +359,32 @@ try {
       0,
       "真实 Chat 页仍在渲染「服务尚未接入」占位",
     );
+    // 诊断内容已按定稿形状移到独立诊断页，Chat 右栏只留两个入口：
+    // 夹具能渲染入口不代表页面接了服务，所以这里核对真实路由的 href。
+    assert.equal(
+      await page.locator('[data-testid="continuation-panel"]').count(),
+      1,
+      "真实 Chat 页没有渲染对话自动化入口",
+    );
+    const chatId = chatPath.split("/").pop();
+    const entryHrefs = await page
+      .locator('[data-testid="continuation-panel"] a')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("href") ?? ""));
+    assert.deepEqual(
+      [`/chats/${chatId}/checks/latest/wake`, `/chats/${chatId}/checks/latest/continuation`].map(
+        (suffix) => entryHrefs.some((href) => href.endsWith(suffix)),
+      ),
+      [true, true],
+      `两个入口必须指向 latest 诊断页，实际 ${entryHrefs.join(", ")}`,
+    );
     assert.equal(
       await page.locator('[data-testid="continuation-card"]').count(),
-      1,
-      "真实 Chat 页没有渲染对话接续卡片",
+      0,
+      "诊断内容不应再渲染在 Chat 右栏",
     );
     pass("continuation_panel_wired_on_real_chat", {
-      note: "真实路由取到 getChatContinuationFn 的视图，不是未接入占位",
+      note: "真实路由取到 getChatContinuationFn 的视图，右栏只留指向 latest 诊断页的两个入口",
+      entryHrefs,
     });
     // 轮询正常态不许进视野：内部 state 与 asOf 只留在 data-* 上。
     const liveState = await page
