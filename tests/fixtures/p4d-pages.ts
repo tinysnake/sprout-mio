@@ -64,6 +64,23 @@ async function revisit(page: Page) {
   })()`);
 }
 
+/**
+ * 触发一次可见补读并等它的响应落地，确保此刻没有在途的关系读取。在途读取存在时
+ * `createRelationReads` 的重入保护会忽略触发，所以反复触发必然收敛到「已读完」。
+ */
+async function settleRelations(page: Page) {
+  const before = relationSnapshots.get(page);
+  await until(
+    async () => {
+      await revisit(page);
+      await delay(200);
+      return relationSnapshots.get(page) !== before;
+    },
+    "relations read settled",
+    30,
+  );
+}
+
 const results: Record<string, unknown> = {};
 const passes: string[] = [];
 const screenshots: Record<string, string> = {};
@@ -1050,18 +1067,16 @@ try {
     relationSnapshots.delete(page);
     await page.reload();
     await page.getByTestId("info-hub-project-machines-removed-item").waitFor();
-    await until(() => {
-      const snapshot = relationSnapshots.get(page);
-      return Boolean(snapshot && snapshot.text.includes("removed"));
-    }, "relations snapshot with removed state");
+    // 页面按 Hub revision 读关系事实（8c3c8c2）。reload 后的第一轮同步会补一次读取；如果
+    // 它落在下面两次写库之后，页面就会看到新的 epoch，这个场景（旧页面持过期 epoch）不再
+    // 成立。先把这轮读取等回来：此刻没有在途读取，页面事实停在 epoch 1。
+    await settleRelations(page);
     const snapshot = relationSnapshots.get(page)!;
-    await page.route(snapshot.url, (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: snapshot.contentType,
-        body: snapshot.body,
-      }),
-    );
+    // 之后不让页面再看到服务端事实：读取挂住不返回，页面一直持有 epoch 1，直到点击。
+    await page.route(snapshot.url, async () => {
+      await new Promise(() => {});
+    });
+    await page.getByTestId("info-hub-project-machines-removed-item").waitFor();
     // 服务端事实前进两代：rejoin 产生 epoch 2，再移出产生 epoch 2 的 removed。
     const rejoined = rejoinProjectMachine(
       {
