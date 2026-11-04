@@ -35,6 +35,17 @@ P3 C 的代价就是这个顺序被跳过：brief 只写了「设置页能绑定
 
 P3 C 与 R1 并行时互相覆盖的正是这些串行资源，`drizzle/meta/_journal.json`、`src/db/schema.ts` 里同一张表的 CHECK 重建、`src/routeTree.gen.ts`，不是普通代码重叠。只加集成分支而不给串行资源定归属，只是把冲突推迟到最后一次合并。
 
+## 工作区隔离
+
+每个写代码的线程从创建起就待在自己的 worktree 里，不在主 checkout 上写。主 checkout 固定停在 `main`，只做集成、评审与 Human review。判断“这个小改动不值得开 worktree”这一步本身就会出错，所以它不作为默认，也不交给执行者临时决定。
+
+- T3 的 sprout-mio 项目把 `defaultThreadEnvMode` 设为 `worktree`，新线程自动拿到独立 worktree，分支从 `origin/main` 起。想临时看代码的只读线程同样开在 worktree 里，省掉这次判断。
+- 新 worktree 第一条命令是 `bash scripts/dev/worktree-setup.sh`。它装依赖，把 gitignore 掉的 `.env.local`、`AGENTS.local.md` 链接进来，复制 `.pi/`，为这个 worktree 建独立 `data/` 并跑迁移。macOS arm64 实测 3 秒左右、约 50 MB。缺了这些本地文件，执行者会因为环境不全退回主 checkout，隔离就只剩形式。
+- git 挡住重复分支。同一分支不能在两个 worktree 同时 checkout；`main` 被主 checkout 占着时，任何 worktree 切 `main` 都失败（`fatal: 'main' is already used by worktree at ...`）。写代码的分支因此天然互斥。
+- worktree 之间共享一份 `.git`。`git stash`、`git branch -D`、删 tag 会波及所有 worktree，不在 worktree 里做这些操作；分支的收尾与删除在主 checkout 上做。
+- 子代理写文件用 `delegate_task(isolation: 'worktree')`。同一个 worktree 里同时跑多个写者，等于回到共享 checkout。
+- worktree 在其分支合入或明确放弃、且没有未提交改动之后才删除，之后 `git worktree prune`。
+
 ## 维护项目规范
 
 - `AGENTS.md` 只维护任务触发条件与文档入口。新增规则先确定所属领域，写入对应规范；仅在出现新的任务类别时增加入口。
