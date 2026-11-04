@@ -49,6 +49,9 @@ if (suite === "integration") {
   const address = http.address();
   assert(address && typeof address !== "string");
   process.env.APP_ORIGIN = `http://127.0.0.1:${address.port}`;
+  // grant 签发的 endpoint 走回环直连本实例（remote-agent-gateway 用 config.PORT 拼），
+  // 夹具监听的是临时端口，必须同步给 config.PORT，否则 runner 连到默认 3000。
+  process.env.PORT = String(address.port);
 }
 const { migrateDatabase } = await import("../../src/db/migrate");
 migrateDatabase();
@@ -789,19 +792,20 @@ try {
       };
     };
     let prior = atDue(backoff.id).getTime();
+    // efeaeff 起退避改为渐进五档（5/10/30/60/120 秒），累计 225 秒后落 attention。
+    for (const [index, delay] of [5000, 10000, 30000, 60000, 120000].entries()) {
+      await check(backoff.id, new Date(prior), unavailable);
+      equal(
+        row(backoff.id)!.next_due_at,
+        prior + delay,
+        `failure ${index + 1} backs off ${delay / 1000} seconds`,
+      );
+      prior = row(backoff.id)!.next_due_at!;
+    }
     await check(backoff.id, new Date(prior), unavailable);
-    equal(
-      row(backoff.id)!.next_due_at,
-      prior + 30000,
-      "first provider failure backs off 30 seconds",
-    );
-    prior = row(backoff.id)!.next_due_at!;
-    await check(backoff.id, new Date(prior), unavailable);
-    equal(row(backoff.id)!.next_due_at, prior + 120000, "second failure backs off 120 seconds");
-    await check(backoff.id, atDue(backoff.id), unavailable);
     equal(
       [latest(backoff.id).attempt, latest(backoff.id).state, row(backoff.id)!.next_due_at],
-      [3, "attention", null],
+      [6, "attention", null],
       "bounded retries persist attention barrier",
     );
     const failing = group();
