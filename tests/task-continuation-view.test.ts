@@ -86,8 +86,7 @@ describe("对话接续页面事实与 Human 控制", () => {
       createElement(ContinuationPanel, { data: { view: continuationFixture(), denials: {} } }),
     );
     expect(html).not.toContain('aria-disabled="true"');
-    for (const kind of ["wake", "continuation"])
-      expect(html).toContain(`/checks/latest/${kind}`);
+    for (const kind of ["wake", "continuation"]) expect(html).toContain(`/checks/latest/${kind}`);
     expect(html).not.toContain("/checks/evl_");
     expect(html).not.toContain("/checks/evaluation-");
     expect(html).toContain("尚无判定 · 查看诊断");
