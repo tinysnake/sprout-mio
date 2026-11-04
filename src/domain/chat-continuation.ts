@@ -124,8 +124,12 @@ export function getChatContinuation(
     chatId,
   );
   const deliveries = rows.map(deliveryView);
+  // 「活动 run」是对话接续自己派出去的 run：只认 `continuation_delivery` 上绑定的 run。
+  // 群里显式点名（`fanoutHumanMessage`）直接创建的 run 不属于对话接续；Human owner 的
+  // 提醒视图因此不会把别人的 run 算成自己的。db16480 起判定器可唤醒任意成员，回调到
+  // owner 的 instance 会漏掉这些投递，所以按投递绑定而不是按 owner instance 过滤。
   const activeRunIds = all<{ id: string }>(
-    "SELECT r.id FROM agent_run r JOIN agent_instance ai ON ai.id=r.instance_id WHERE r.chat_id=? AND r.status IN ('queued','running') ORDER BY r.id",
+    "SELECT DISTINCT r.id FROM agent_run r JOIN continuation_delivery d ON d.run_id=r.id WHERE d.chat_id=? AND r.status IN ('queued','running') ORDER BY r.id",
     chatId,
   ).map((r) => r.id);
   const attention = rows.find(

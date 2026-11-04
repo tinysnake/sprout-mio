@@ -98,6 +98,9 @@ await new Promise<void>((done) => http.listen(0, "127.0.0.1", done));
 const address = http.address();
 assert(address && typeof address !== "string");
 process.env.APP_ORIGIN = `http://127.0.0.1:${address.port}`;
+// grant 签发的 endpoint 走回环直连本实例（remote-agent-gateway 用 config.PORT 拼），
+// 夹具监听的是临时端口，必须同步给 config.PORT，否则 runner 连到默认 3000。
+process.env.PORT = String(address.port);
 const runtime = await import("../../src/server/runtime");
 const { migrateDatabase } = await import("../../src/db/migrate");
 migrateDatabase();
@@ -317,6 +320,8 @@ function assertWriteAudit(expectEvaluation = true) {
     "chat_continuation_control",
     "wake_evaluation",
     "wake_evaluation_task",
+    // d249ca6 起 attempt 明细独立成表（迁移 0032），与 wake_evaluation 同为调度回执。
+    "wake_evaluation_attempt",
     "continuation_delivery",
     "continuation_delivery_task",
     "diagnostic_event",

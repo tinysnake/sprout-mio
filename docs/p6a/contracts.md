@@ -274,6 +274,8 @@ true
 
 区别的实质是**有没有已经付出去的判定在途**。`canceled` 表示「从未发生，也不会发生」，`stale` 表示「发生过但已作废」。投递侧同构：未 admit 的 `pending`/`bound` 落 `canceled` 并带原因，已 `presented` 的落 `stale`。
 
+`presented` 落 `stale` 的触发点有三处：Chat 失效（`cancelUnadmitted`）、**新提醒取代同一 Chat 上仍在展示的旧提醒**、以及**某个 `bound` run 接管这次接续**（`bindPendingDeliveries` 绑定成功后即作废）。反向同样成立：Chat 上已有仍在 `queued`/`running` 的绑定 run 时，周期判定不再为目标为 Human 的 owner 建提醒。两条合起来保证读视图里 `remindedHuman` 与 `activeRunIds` 不会同时成立。
+
 这条区分的直接后果由 `landingFence()` 承担：晚到结果落地时若 epoch 不符，`state` 已经是 `stale`，`result` 保持 `NULL`。第二轮验收独立复证过这一点，见 [summary 的 stale 小节](summary.md#暂停时在途判定落-stale-的独立复证)。
 
 ## 迁移 `0033_chat_continuation_rename.sql`：命名统一

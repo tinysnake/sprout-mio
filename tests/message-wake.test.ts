@@ -54,6 +54,24 @@ type Evidence = {
     liveReboundState: string;
     liveReboundRun: boolean;
   };
+  coexistence: {
+    reminderBefore: string;
+    reminderKind: string;
+    remindedHumanBefore: boolean | null;
+    viewReadableBefore: boolean;
+    reminderAfter: string;
+    remindedHumanAfter: boolean | null;
+    viewReadableAfter: boolean;
+    activeRuns: number;
+    boundDeliveries: number;
+  };
+  takenOver: {
+    boundDeliveries: number;
+    humanDeliveries: number;
+    remindedHuman: boolean | null;
+    viewReadable: boolean;
+    activeRuns: number;
+  };
   owner: string;
   disabled: { wake: number; runs: number };
   race: { claimedNew: boolean; trigger: boolean; oldState: string; first: string };
@@ -184,5 +202,25 @@ describe("message-triggered wake", () => {
     expect(evidence.failureFallback.state).toBe("attention");
     expect(evidence.failureFallback.errorCode).toBe("provider_unavailable");
     expect(evidence.failureFallback.deliveries).toBe(0);
+  });
+
+  it("retires a presented Human reminder when an Agent run takes over the continuation", () => {
+    expect(evidence.coexistence.viewReadableBefore).toBe(true);
+    expect(evidence.coexistence.reminderKind).toBe("human");
+    expect(evidence.coexistence.reminderBefore).toBe("presented");
+    expect(evidence.coexistence.remindedHumanBefore).toBe(true);
+    expect(evidence.coexistence.viewReadableAfter).toBe(true);
+    expect(evidence.coexistence.reminderAfter).toBe("stale");
+    expect(evidence.coexistence.remindedHumanAfter).toBe(false);
+    expect(evidence.coexistence.boundDeliveries).toBe(1);
+    expect(evidence.coexistence.activeRuns).toBe(1);
+  });
+
+  it("never presents a Human reminder while a bound Agent run owns the continuation", () => {
+    expect(evidence.takenOver.boundDeliveries).toBe(1);
+    expect(evidence.takenOver.viewReadable).toBe(true);
+    expect(evidence.takenOver.humanDeliveries).toBe(0);
+    expect(evidence.takenOver.remindedHuman).toBe(false);
+    expect(evidence.takenOver.activeRuns).toBe(1);
   });
 });

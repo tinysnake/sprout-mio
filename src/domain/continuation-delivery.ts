@@ -423,7 +423,20 @@ export function createContinuationDelivery(
     }
   } else {
     const owner = responsibleRecipient(evaluation.chat_id);
-    if (owner && result.selectedRecipients.some((r) => r.kind === owner.kind && r.id === owner.id))
+    // 已有 Agent 接续的 run 在跑时不再展示 owner 提醒：提醒与活动 run 不得同时成立。
+    const ownerTakenOver =
+      owner?.kind === "human" &&
+      Boolean(
+        one(
+          "SELECT 1 FROM continuation_delivery d JOIN agent_run r ON r.id=d.run_id WHERE d.chat_id=? AND r.status IN ('queued','running') LIMIT 1",
+          evaluation.chat_id,
+        ),
+      );
+    if (
+      owner &&
+      !ownerTakenOver &&
+      result.selectedRecipients.some((r) => r.kind === owner.kind && r.id === owner.id)
+    )
       targets.push({ recipient: { kind: owner.kind, id: owner.id }, instanceId: owner.instanceId });
   }
   const ids: string[] = [];
@@ -514,6 +527,13 @@ export function createContinuationDelivery(
         id,
         t.id,
         evaluation.project_id,
+      );
+    // 新的 owner 提醒取代同一 Chat 上仍在展示的旧提醒。
+    if (target.recipient.kind === "human")
+      write(
+        "UPDATE continuation_delivery SET state='stale' WHERE chat_id=? AND state='presented' AND id<>?",
+        evaluation.chat_id,
+        id,
       );
     ids.push(id);
   }
@@ -683,6 +703,11 @@ export function bindPendingDeliveries(now: Date) {
             run.id,
             JSON.stringify(envelope),
             current.id,
+          );
+          // run 已接管这次接续，本 Chat 上仍在展示的 owner 提醒随之作废。
+          write(
+            "UPDATE continuation_delivery SET state='stale' WHERE chat_id=? AND state='presented'",
+            current.chat_id,
           );
         } catch {
           const attempt = current.attempt + 1,

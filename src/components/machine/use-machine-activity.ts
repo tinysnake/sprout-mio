@@ -67,12 +67,13 @@ export function createMachineActivityPolling({
       if (!stopped) onError?.(asAppError(error));
     } finally {
       inFlight = false;
-      if (stopped) return;
-      if (resumePending) {
-        resumePending = false;
-        void request();
-      } else schedule();
     }
+    // finally 里 return 会吞掉 catch 抛出的异常，调度放到 finally 之后。
+    if (stopped) return;
+    if (resumePending) {
+      resumePending = false;
+      void request();
+    } else schedule();
   }
 
   function resume() {
