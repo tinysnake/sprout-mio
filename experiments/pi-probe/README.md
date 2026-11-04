@@ -1,6 +1,9 @@
 # pi-probe
 
-P0-d 最小实验：用本机真实 Pi 1.3.0 验证 Sprout 宿主直接管理 Pi 的接入面。结论文档在 `docs/p0/pi-integration.md`。
+P0-d 最小实验：用本机真实 Pi 验证 Sprout 宿主直接管理 Pi 的接入面。结论文档在 `docs/p0/pi-integration.md`。
+脚本不再写死 release 版本，而是从 `~/.pi/agent/install/releases` 按版本号降序解析最新有效安装。
+
+> 历史记录：下表的结果最初在 Pi 1.3.0 上采集；之后的 release 可直接重放同一脚本。
 
 实验不改 `~/.pi` 任何文件。所有会话写到 `results/` 下的临时目录，不动 `~/.pi/agent/sessions`。
 
@@ -8,7 +11,7 @@ P0-d 最小实验：用本机真实 Pi 1.3.0 验证 Sprout 宿主直接管理 Pi
 
 | 组件 | 值 |
 | --- | --- |
-| Pi | 1.3.0（`/Users/snake/.pi/agent/bin/pi`，托管安装在 `~/.pi/agent/install/releases/1.3.0`） |
+| Pi | 自动解析 `~/.pi/agent/install/releases` 下最新的有效 release（记录时为 1.3.0） |
 | Node | v26.11.1（`/opt/homebrew/bin/node`） |
 | 默认 provider / model | `magpie` / `group/auto-deepseek-v4-1-flash`（自定义 gateway provider，由 `pi-magpie` extension 注册） |
 | 参考的原 Sprout commit | `5b48a53b385ee8a4c0fff219954c6244506b0b9f`（`src/engine/pi-host.ts`、`src/engine/pi-host-runner.mjs`） |
@@ -45,4 +48,4 @@ bash verify.sh
 
 ## 依赖
 
-无。脚本只用 Node 内置模块，SDK 用绝对路径从托管 release 导入（`~/.pi/agent/install/releases/1.3.0/node_modules/@earendil-works/pi-coding-agent/dist/index.js`），和原 Sprout `pi-host-runner.mjs` 的加载方式一致。
+无。脚本只用 Node 内置模块；SDK 通过 `experiments/lib/pi-release.mjs` 解析托管 release，再按绝对路径导入（`<release>/node_modules/@earendil-works/pi-coding-agent/dist/index.js`），和原 Sprout `pi-host-runner.mjs` 的加载方式一致。
