@@ -49,34 +49,66 @@ const failedRunState = {
 } as unknown as AgentRunResult<ChatRunState>;
 
 /** 判定读也是 tick 的一部分：判定不改消息也不改 run，缺这块页面就永远停在旧状态。 */
+const continuationView = {
+  projectId: "prj_00000001",
+  chatId: "cnv_00000001",
+  mode: "enabled",
+  epoch: 1,
+  revision: 1,
+  owner: { kind: "agent", id: "agp_00000001" },
+  changedBy: null,
+  changedAt: null,
+  reason: null,
+  assignedTaskIds: [],
+  nextDueAt: null,
+  activeRunIds: [],
+  remindedHuman: false,
+  latestEvaluation: null,
+  recentRounds: [],
+  deliveries: [],
+  attention: null,
+} as ChatContinuationData["view"];
+
 const continuationFacts = {
   ok: true,
   data: {
-    view: {
-      projectId: "prj_00000001",
-      chatId: "cnv_00000001",
-      mode: "enabled",
-      epoch: 1,
-      revision: 1,
-      owner: { kind: "agent", id: "agp_00000001" },
-      changedBy: null,
-      changedAt: null,
-      reason: null,
-      assignedTaskIds: [],
-      nextDueAt: null,
-      activeRunIds: [],
-      remindedHuman: false,
-      latestEvaluation: null,
-      recentRounds: [],
-      deliveries: [],
-      attention: null,
-    },
+    view: continuationView,
     allowedActions: [],
     denials: {},
   },
   requestId: "req_1",
 } as unknown as AppResult<ChatContinuationData>;
 const continuationRead = async () => continuationFacts;
+
+/** 只换判定状态，其余字段不动：用来验证「判定变了要不要重读整树」。 */
+function continuationWith(state: "claimed" | "attention"): AppResult<ChatContinuationData> {
+  const failed = state === "attention";
+  return {
+    ok: true,
+    data: {
+      view: {
+        ...continuationView,
+        latestEvaluation: {
+          evaluationId: "evaluation_0001",
+          source: "task_periodic",
+          state,
+          round: 1,
+          attempt: 1,
+          claimedAt: "2026-01-02T03:04:05.000Z",
+          finishedAt: failed ? "2026-01-02T03:09:05.000Z" : null,
+          evaluatedAt: failed ? "2026-01-02T03:09:05.000Z" : null,
+          nextAttemptAt: null,
+          result: null,
+          errorCode: failed ? "provider_timeout" : null,
+          usage: null,
+        },
+      },
+      allowedActions: [],
+      denials: {},
+    },
+    requestId: "req_1",
+  } as unknown as AppResult<ChatContinuationData>;
+}
 
 function environment(visible = true) {
   const document = Object.assign(new EventTarget(), {
@@ -151,6 +183,34 @@ describe("Chat 活跃 run 的定点刷新", () => {
     // 判定从 pending 走到 claimed 时 run 没有任何变化；页面仍拿到新的 continuation。
     expect(facts.at(-1)?.continuation).toBe(continuationFacts);
     expect(onRunChanged).not.toHaveBeenCalled();
+  });
+
+  it("判定从正在检查落到失败时回报一次整树重读", async () => {
+    const readings = [continuationWith("claimed"), continuationWith("attention")];
+    const onRunChanged = vi.fn();
+    stops.push(
+      createChatLiveRefresh({
+        seed: emptySeed,
+        reads: {
+          continuation: () => Promise.resolve(readings.shift() ?? continuationWith("attention")),
+          messages: vi.fn().mockResolvedValue(emptyWindow),
+          runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
+        },
+        onFacts: vi.fn(),
+        onRunChanged,
+        seedSignature: "run_a:running",
+        environment: environment(),
+      }),
+    );
+    // 首个 tick 只立基准：判定已经处于 claimed，也不为对齐它重读整树。
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(onRunChanged).not.toHaveBeenCalled();
+    // 判定落到失败：run 没动、消息没动，只由 loader 读来的 Info Hub 读视图也必须跟上。
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(onRunChanged).toHaveBeenCalledTimes(1);
+    // 同一份判定再读到时不重复重读，不制造来回 invalidate。
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(onRunChanged).toHaveBeenCalledTimes(1);
   });
 
   it("页面隐藏时不发请求，切回可见立刻补一次", async () => {

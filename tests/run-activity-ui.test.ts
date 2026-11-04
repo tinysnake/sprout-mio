@@ -252,6 +252,40 @@ describe("对话接续状态", () => {
     expect(html).not.toContain("已等待");
   });
 
+  it("判定不借用对话接续的名字", () => {
+    const view = continuationFixture("idle");
+    view.latestEvaluation = {
+      evaluationId: "evaluation-claimed",
+      source: "message",
+      state: "claimed",
+      round: 2,
+      attempt: 1,
+      claimedAt: at,
+      finishedAt: null,
+      evaluatedAt: null,
+      nextAttemptAt: null,
+      result: null,
+      errorCode: null,
+      usage: null,
+    };
+    const html = renderToStaticMarkup(
+      createElement(RunStatusPanel, {
+        state: empty,
+        messages: [],
+        continuation: {
+          ok: true as const,
+          data: { view, allowedActions: [], denials: {} },
+          requestId: "req_11111111",
+        },
+      }),
+    );
+    expect(html).toContain('data-subject="唤醒判定"');
+    expect(html).toContain("唤醒判定：");
+    expect(html).toContain("正在检查");
+    // 判定正在检查时，页面不许把这行说成对话接续。
+    expect(html).not.toContain("对话接续：正在检查");
+  });
+
   it("检查记录跟着会话详情走，列在诊断里", () => {
     const html = renderToStaticMarkup(
       createElement(ContinuationCard, { view: continuationFixture("failure") }),

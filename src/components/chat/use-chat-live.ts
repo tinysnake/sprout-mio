@@ -64,6 +64,36 @@ function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
 }
 
 /**
+ * 一次判定的读视图指纹：状态、轮次、结论、投递与提醒。判定既不写消息也不改 run，
+ * 只要它变了，只由 loader 读来的那份对话接续（Info Hub 用的就是它）就已经过时，
+ * 值得整树重读一次——否则判定在中栏失败之后，Info Hub 还会停在旧的「正在检查」。
+ */
+function continuationSignature(continuation: AppResult<ChatContinuationData>): string {
+  if (!continuation.ok) return `unavailable:${continuation.error.code}`;
+  const view = continuation.data.view;
+  const evaluation = view.latestEvaluation;
+  const attention = view.attention;
+  return [
+    view.mode,
+    view.epoch,
+    view.nextDueAt ?? "",
+    view.remindedHuman ? "reminded" : "",
+    evaluation?.evaluationId ?? "",
+    evaluation?.state ?? "",
+    evaluation?.attempt ?? 0,
+    evaluation?.claimedAt ?? "",
+    evaluation?.finishedAt ?? "",
+    evaluation?.nextAttemptAt ?? "",
+    evaluation?.errorCode ?? "",
+    evaluation?.result?.decision ?? "",
+    attention
+      ? `${attention.errorCode}:${attention.deliveryId ?? attention.evaluationId ?? ""}`
+      : "",
+    view.deliveries.map((item) => `${item.deliveryId}:${item.state}:${item.runId ?? ""}`).join(","),
+  ].join("|");
+}
+
+/**
  * 可见时每 1.2s 读一次这条 Chat 的消息、run 状态与对话接续判定，页面只把结果叠在 loader 事实之上。
  * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹变化时回报一次
  * `onRunChanged`，新消息到达时回报一次 `onMessagesChanged`，由页面做一次整树 invalidate。
@@ -107,6 +137,8 @@ export function createChatLiveRefresh({
   let inFlight = false;
   let pushPending = false;
   let signature = seedSignature;
+  // 判定指纹只在 tick 之间比较：第一次读到的那份就是基准，不为了对齐它再重读一次整树。
+  let continuationSeen: string | null = null;
   // overlay = loader 那批 + 之后 tick 追加的增量；`known` 用来去掉两者重叠的部分。
   let overlay = [...seed.messages];
   let known = new Set(overlay.map((entry) => entry.id));
@@ -118,6 +150,7 @@ export function createChatLiveRefresh({
     known = new Set(overlay.map((entry) => entry.id));
     cursor = next.cursor;
     messageSignature = overlay.at(-1)?.id ?? null;
+    continuationSeen = null;
   };
 
   const schedule = () => {
@@ -180,9 +213,13 @@ export function createChatLiveRefresh({
         runMoved = next !== signature;
         signature = next;
       }
-      // run 变了就整树重读；只有消息变化时也重读一次，让不在 tick 读取范围内的
-      // Info Hub 消息计数与最近消息时间跟上来。两者同 tick 变化时只重读一次。
-      if (runMoved) onRunChanged();
+      const nextContinuation = continuationSignature(continuation);
+      const continuationMoved =
+        continuationSeen !== null && nextContinuation !== continuationSeen;
+      continuationSeen = nextContinuation;
+      // run 或判定变了就整树重读；只有消息变化时也重读一次，让不在 tick 读取范围内的
+      // Info Hub 消息计数、最近消息时间与对话接续读视图跟上来。同一 tick 变化时只重读一次。
+      if (runMoved || continuationMoved) onRunChanged();
       else if (messageMoved) onMessagesChanged?.();
       // run 状态读不到时不改门禁：下一 tick 继续读，结束判定只认成功的响应。
       if (runState.ok && !active && stopWhenIdle) {

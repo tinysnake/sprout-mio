@@ -16,6 +16,9 @@ import { Icon } from "../ui/icon";
 
 type Tone = "idle" | "active" | "attention" | "off";
 
+/** 这行文字在说哪件事：判定在跑，还是接续策略本身。两者不借用对方的名字。 */
+type Subject = "唤醒判定" | "对话接续";
+
 const TONE_CLASS: Record<Tone, string> = {
   idle: "text-foreground",
   active: "text-status-running",
@@ -43,6 +46,7 @@ function Glyph({ tone }: { tone: Tone }) {
 
 function statusOf(view: ChatContinuationView): {
   tone: Tone;
+  subject: Subject;
   state: string;
   label: string;
   detail?: string;
@@ -53,13 +57,16 @@ function statusOf(view: ChatContinuationView): {
   if (view.mode === "off")
     return {
       tone: "off",
+      subject: "对话接续",
       state: "off",
       label: "已关闭",
       detail: "不会安排新的自动检查",
     };
   if (view.attention || evaluation?.state === "attention")
+    // 需要处理可能指向这一轮判定，也可能指向某一笔投递：按 attention 实际指向的对象命名。
     return {
       tone: "attention",
+      subject: view.attention?.deliveryId ? "对话接续" : "唤醒判定",
       state: "attention",
       label: "需要处理",
       detail:
@@ -68,12 +75,23 @@ function statusOf(view: ChatContinuationView): {
       detailTitle: errorCode ?? undefined,
     };
   if (evaluation?.state === "pending")
-    return { tone: "active", state: "pending", label: CONTINUATION_STATES.pending };
+    return {
+      tone: "active",
+      subject: "唤醒判定",
+      state: "pending",
+      label: CONTINUATION_STATES.pending,
+    };
   if (evaluation?.state === "claimed")
-    return { tone: "active", state: "claimed", label: CONTINUATION_STATES.claimed };
+    return {
+      tone: "active",
+      subject: "唤醒判定",
+      state: "claimed",
+      label: CONTINUATION_STATES.claimed,
+    };
   if (evaluation?.state === "retry_wait")
     return {
       tone: "attention",
+      subject: "唤醒判定",
       state: "retry_wait",
       label: CONTINUATION_STATES.retry_wait,
       detail: evaluation.errorCode ? continuationFailureText(evaluation.errorCode) : undefined,
@@ -81,6 +99,7 @@ function statusOf(view: ChatContinuationView): {
   if (evaluation?.state === "decided")
     return {
       tone: "idle",
+      subject: "唤醒判定",
       state: "decided",
       label: CONTINUATION_STATES.decided,
       detail: evaluation.result ? CONTINUATION_DECISIONS[evaluation.result.decision] : "暂无结论",
@@ -89,11 +108,13 @@ function statusOf(view: ChatContinuationView): {
   if (evaluation?.state === "stale" || evaluation?.state === "canceled")
     return {
       tone: "off",
+      subject: "唤醒判定",
       state: evaluation.state,
       label: CONTINUATION_STATES[evaluation.state],
     };
   return {
     tone: "idle",
+    subject: "对话接续",
     state: "scheduled",
     label: view.nextDueAt ? "已安排下次检查" : "尚未安排检查",
   };
@@ -111,8 +132,9 @@ function usageSummary(usage: WakeUsage | null | undefined): string | null {
 }
 
 /**
- * 对话接续在消息下方的常显状态。只读 `ChatContinuationView`，不重算调度，
- * 也不把「启用」说成「马上会接续」；逐次尝试由紧随其后的 `ContinuationActivity` 展开。
+ * 消息下方的常显状态：判定在跑、失败了、下一步何时，以及接续策略本身是否开着。
+ * 只读 `ChatContinuationView`，不重算调度，也不把「启用」说成「马上会接续」；
+ * 一行里说哪件事由 `subject` 决定——判定不借用接续的名字。
  */
 export function ContinuationStatus({
   continuation,
@@ -127,7 +149,7 @@ export function ContinuationStatus({
         data-state="unavailable"
         className="text-[11px] text-muted-foreground"
       >
-        对话接续：状态不可用
+        状态不可用
       </p>
     );
 
@@ -143,12 +165,13 @@ export function ContinuationStatus({
       data-testid="continuation-status"
       data-mode={view.mode}
       data-state={status.state}
+      data-subject={status.subject}
       className="flex items-start gap-2 rounded-lg border border-border bg-card px-3 py-2 text-[11px]"
     >
       <Glyph tone={status.tone} />
       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
         <span className="whitespace-nowrap">
-          <span className="text-muted-foreground">对话接续：</span>
+          <span className="text-muted-foreground">{status.subject}：</span>
           <span data-testid="continuation-label" className={cn(TONE_CLASS[status.tone])}>
             {status.label}
           </span>
