@@ -273,12 +273,22 @@ try {
   check("场景①：大输出后冻结 Worker，API 读取不是 full 且 durable outbox 仍在");
 
   // 真实 Chromium：同一现场，页面必须显示不完整，不得写「日志完整」。
+  // 1.9 MB 输出在冻结前就可能已经触发 1 MiB 裁剪，所以此刻的合法状态可能是
+  // partial（尚未裁剪）、gap 或 truncated；三者都属于不完整，页面必须点名其中一种。
   await openCardLog(burst.executionId);
   await page.getByTestId(/item-log-incomplete$/).waitFor();
+  const pausedIncompleteText = await card(burst.executionId)
+    .getByTestId(/item-log-incomplete$/)
+    .innerText();
+  assert.match(pausedIncompleteText, /不完整/, "页面必须明确说明当前日志不完整");
   const pausedStateText = await card(burst.executionId)
     .getByTestId(/item-log-state$/)
     .innerText();
-  assert.match(pausedStateText, /不完整/);
+  assert.match(
+    pausedStateText,
+    /日志不完整|日志存在缺口|日志已裁剪/,
+    "不完整状态必须点名，不能只显示成功或空",
+  );
   assert.equal(/日志完整/.test(pausedStateText), false);
   await page.screenshot({ path: join(evidence, "paused-incomplete.png"), fullPage: true });
   check("场景①：真实 Chromium 页面显示不完整，不显示日志完整");
