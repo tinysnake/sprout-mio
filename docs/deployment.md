@@ -38,6 +38,23 @@ prod 的代码 checkout（`$SPROUT_RUNTIME_ROOT/prod/app`）从远端 clone，�
 
 `SPROUT_CONTINUATION_ENABLED` 是实例级开关，默认 `true`，只接受 `true` 或 `false`。关掉后运行时不装判定器、不启动调度器、判定边界直接拒绝，`/api/health` 的 `continuationEnabled` 报告实际取值。`deploy-continuation-off` 门禁在两种取值下各跑一遍并比对证据：关闭时到期排期不被认领、不产生判定与投递、两个模型边界调用数为 0；打开时同一轮判定与投递各发生一次，付费模型调用数为 0。
 
+`SPROUT_WAKE_THRESHOLD_VERSION`、`SPROUT_WAKE_LLM_MODEL`、`SPROUT_WAKE_JEV_MODEL` 与 `JEV_API_KEY` 是唤醒判定的部署配置，都是可选项：不配时实例照常运行，只是 Project 设置页里的判定器选项按可用性置灰，保存配置会返回 `wake_provider_unavailable`。
+
+| 变量 | 作用 | 缺失时 |
+| --- | --- | --- |
+| `SPROUT_WAKE_THRESHOLD_VERSION` | 判定口径版本，两个 provider 共用 | 两个判定器都不可选 |
+| `SPROUT_WAKE_LLM_MODEL` | LLM 判定器的模型，写作 `provider/model` | LLM 判定器不可选 |
+| `SPROUT_WAKE_JEV_MODEL` | JEV 判定服务的模型 | JEV 判定器不可选 |
+| `JEV_API_KEY` | JEV 判定服务的凭据 | JEV 判定器不可选（`missing_credentials`） |
+
+浏览器只选 provider：模型与阈值版本由服务端在保存时从 env 取，写进 Project 的 `wake_policy`（`configRevision` 每次递增，写入经审计路径 `project_wake_policy_command`）。由此带来三条口径：
+
+- 判定记录上的 `version` 就是保存时的 `SPROUT_WAKE_THRESHOLD_VERSION`；改这个值等于换口径，历史记录保留旧版本。
+- JEV 服务返回的阈值版本与 policy 不一致时按失效处理（`src/domain/wake-providers/jev.ts:47`）。
+- policy 省略 `model` 时运行时用宿主 pi 的默认模型补齐（读 `PI_CODING_AGENT_DIR`，默认 `~/.pi/agent` 的 `settings.json`）；实例自己的 `SPROUT_PI_DATA_DIR` 与判定器模型无关。
+
+prod 当前取值（2026-11-04，`prod/env`）：`SPROUT_WAKE_THRESHOLD_VERSION=p6a-design-default-v1`、`SPROUT_WAKE_LLM_MODEL=magpie/auto/deepseek-v4.1-flash`，未配 JEV。`init-instance.sh` 不写这些变量——判定器是可选的实例能力，需要哪个就手工加进 `$SPROUT_RUNTIME_ROOT/<实例>/env`，再用 `launchd.sh` 重启。样例见仓库根目录的 `.env.example`。
+
 ```text
 ~/sprout-runtime/
   prod/
