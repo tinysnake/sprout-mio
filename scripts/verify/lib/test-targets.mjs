@@ -38,6 +38,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/execution-recovery.test.ts",
     "tests/execution-summary.test.ts",
     "tests/execution-wiring.test.ts",
+    "tests/extension-tool-parameters.test.ts",
     "tests/frontend-boundaries.test.ts",
     "tests/http-drain.test.ts",
     "tests/id-rekey.test.ts",
