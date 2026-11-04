@@ -17,13 +17,25 @@ const sqlite = new Database(process.env.DATABASE_URL);
 try {
   const tables = sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%'").all();
   // 表数从迁移文件推导，不写死常量：新增迁移时这里不该再改。
+  // 重建与改名的写法是 `CREATE TABLE __new_x` / `DROP TABLE old` / `ALTER TABLE ...
+  // RENAME TO x`，所以三条语句要按文件内的先后顺序一起吃，否则改名迁移会被算成
+  // 「凭空留下一张旧表」。
+  const normalize = (name) => (name.startsWith('__new_') ? name.slice(6) : name);
   const created = new Set();
-  for (const file of readdirSync('drizzle').filter((name) => name.endsWith('.sql'))) {
+  const statements =
+    /(CREATE TABLE|DROP TABLE)(?: IF NOT EXISTS| IF EXISTS)? `([a-z_0-9]+)`|ALTER TABLE `([a-z_0-9]+)` RENAME TO `([a-z_0-9]+)`/g;
+  for (const file of readdirSync('drizzle').filter((name) => name.endsWith('.sql')).sort()) {
     const sql = readFileSync(`drizzle/${file}`, 'utf8');
-    for (const match of sql.matchAll(/CREATE TABLE `([a-z_0-9]+)`/g)) {
-      const name = match[1];
-      if (name.startsWith('__new_')) created.add(name.slice(6));
-      else if (!name.startsWith('__')) created.add(name);
+    for (const match of sql.matchAll(statements)) {
+      if (match[1] === undefined) {
+        created.delete(normalize(match[3]));
+        created.add(match[4]);
+      } else if (match[1] === "DROP TABLE") {
+        created.delete(normalize(match[2]));
+      } else {
+        const name = normalize(match[2]);
+        if (!name.startsWith('__')) created.add(name);
+      }
     }
   }
   assert.deepEqual(tables.map((table) => table.name).sort(), [...created].sort());
