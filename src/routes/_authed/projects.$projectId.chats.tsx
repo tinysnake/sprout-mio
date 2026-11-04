@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import { getProjectInfoHubFn, refreshInfoHubFn } from "../../server/functions/info-hub";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { listMachinesFn } from "../../server/functions/machine";
@@ -9,6 +8,7 @@ import {
   useMatch,
   useRouteContext,
   useRouter,
+  useRouterState,
 } from "@tanstack/react-router";
 import { ChatListPanel } from "../../components/chat/chat-list";
 import { NewChatDialog } from "../../components/chat/new-chat-dialog";
@@ -27,11 +27,6 @@ import {
 import { mergeChatRuns, mergeProjectChats } from "../../components/info-hub/merge-info-hub";
 import { listAgentProfilesFn, listProjectMembersFn } from "../../server/functions/agent";
 import { listChatsFn } from "../../server/functions/chat";
-import { controlChatContinuationFn } from "../../server/functions/chat-continuation";
-import type {
-  ContinuationDenial,
-  ContinuationSubmit,
-} from "../../components/continuation/continuation-page-data";
 
 const DETAIL_ROUTE_ID = "/_authed/projects/$projectId/chats/$chatId";
 
@@ -78,29 +73,16 @@ function ChatsLayout() {
   const router = useRouter();
   const { human } = useRouteContext({ from: "/_authed" });
   const detail = useMatch({ from: DETAIL_ROUTE_ID, shouldThrow: false });
+  const diagnostic = useRouterState({
+    select: (state) =>
+      state.matches.some((match) => match.routeId.includes("/checks/$evaluationId/")),
+  });
   const chatId = detail?.params.chatId;
   const { open, setOpen } = useChatInspector(projectId, chatId);
   const profiles = loader.profiles.ok ? loader.profiles.data : [];
   const members = loader.members.ok ? loader.members.data : [];
   const chat = detail?.loaderData as ChatDetailLoaderData | undefined;
   const selected = chat?.ok ? chat : undefined;
-  const submitContinuation = useCallback<ContinuationSubmit>(
-    async (command) => {
-      const result = await controlChatContinuationFn({ data: command });
-      if (!result.ok)
-        return {
-          ok: false,
-          error: {
-            code: result.error.code as ContinuationDenial["code"],
-            reason: result.error.message,
-            requestId: result.requestId,
-          },
-        };
-      void router.invalidate();
-      return { ok: true, data: { view: result.data.view, denials: result.data.denials } };
-    },
-    [router],
-  );
   const activity =
     selected && loader.infoHub.ok
       ? loader.infoHub.data.chats.find((entry) => entry.chatId === selected.session.chat.id)
@@ -147,7 +129,7 @@ function ChatsLayout() {
       <ChatDraftProvider>
         <ChatWorkspace
           selected={Boolean(chatId)}
-          inspectorOpen={open}
+          inspectorOpen={!diagnostic && open}
           inspectorPersistent
           list={
             <>
@@ -193,7 +175,7 @@ function ChatsLayout() {
           }
           chat={<Outlet />}
           inspector={
-            selected ? (
+            selected && !diagnostic ? (
               <ChatDetailsLive
                 projectId={projectId}
                 session={selected.session}
@@ -216,7 +198,6 @@ function ChatsLayout() {
                       }
                     : undefined
                 }
-                onContinuationCommand={submitContinuation}
                 onClose={() => setOpen(false)}
                 onChanged={() => void router.invalidate()}
               />

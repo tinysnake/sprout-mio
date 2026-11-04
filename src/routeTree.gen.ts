@@ -41,6 +41,9 @@ import { Route as AuthedProjectsProjectIdTasksRouteImport } from './routes/_auth
 import { Route as AuthedProjectsProjectIdChatsIndexRouteImport } from './routes/_authed/projects.$projectId.chats.index'
 import { Route as AuthedProjectsProjectIdChatsChatIdRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId'
 import { Route as AuthedProjectsProjectIdTasksTaskIdRouteImport } from './routes/_authed/projects.$projectId.tasks.$taskId'
+import { Route as AuthedProjectsProjectIdChatsChatIdIndexRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.index'
+import { Route as AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.checks.$evaluationId.continuation'
+import { Route as AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.checks.$evaluationId.wake'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -212,6 +215,26 @@ const AuthedProjectsProjectIdTasksTaskIdRoute =
     path: '/$taskId',
     getParentRoute: () => AuthedProjectsProjectIdTasksRoute,
   } as any)
+const AuthedProjectsProjectIdChatsChatIdIndexRoute =
+  AuthedProjectsProjectIdChatsChatIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthedProjectsProjectIdChatsChatIdRoute,
+  } as any)
+const AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute =
+  AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRouteImport.update(
+    {
+      id: '/checks/$evaluationId/continuation',
+      path: '/checks/$evaluationId/continuation',
+      getParentRoute: () => AuthedProjectsProjectIdChatsChatIdRoute,
+    } as any,
+  )
+const AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute =
+  AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRouteImport.update({
+    id: '/checks/$evaluationId/wake',
+    path: '/checks/$evaluationId/wake',
+    getParentRoute: () => AuthedProjectsProjectIdChatsChatIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -242,9 +265,12 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/machines/$machineId/': typeof AuthedMachinesMachineIdIndexRoute
   '/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
-  '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
+  '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRouteWithChildren
   '/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
+  '/projects/$projectId/chats/$chatId/': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
+  '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
+  '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -270,9 +296,11 @@ export interface FileRoutesByTo {
   '/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/machines/$machineId': typeof AuthedMachinesMachineIdIndexRoute
   '/projects/$projectId': typeof AuthedProjectsProjectIdIndexRoute
-  '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
   '/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsIndexRoute
+  '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
+  '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
+  '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -305,9 +333,12 @@ export interface FileRoutesById {
   '/_authed/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/_authed/machines/$machineId/': typeof AuthedMachinesMachineIdIndexRoute
   '/_authed/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
-  '/_authed/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRoute
+  '/_authed/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRouteWithChildren
   '/_authed/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/_authed/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
+  '/_authed/projects/$projectId/chats/$chatId/': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
+  '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
+  '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -343,6 +374,9 @@ export interface FileRouteTypes {
     | '/projects/$projectId/chats/$chatId'
     | '/projects/$projectId/tasks/$taskId'
     | '/projects/$projectId/chats/'
+    | '/projects/$projectId/chats/$chatId/'
+    | '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
+    | '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -368,9 +402,11 @@ export interface FileRouteTypes {
     | '/projects/$projectId/tasks'
     | '/machines/$machineId'
     | '/projects/$projectId'
-    | '/projects/$projectId/chats/$chatId'
     | '/projects/$projectId/tasks/$taskId'
     | '/projects/$projectId/chats'
+    | '/projects/$projectId/chats/$chatId'
+    | '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
+    | '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
   id:
     | '__root__'
     | '/'
@@ -405,6 +441,9 @@ export interface FileRouteTypes {
     | '/_authed/projects/$projectId/chats/$chatId'
     | '/_authed/projects/$projectId/tasks/$taskId'
     | '/_authed/projects/$projectId/chats/'
+    | '/_authed/projects/$projectId/chats/$chatId/'
+    | '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
+    | '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -649,6 +688,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedProjectsProjectIdTasksTaskIdRouteImport
       parentRoute: typeof AuthedProjectsProjectIdTasksRoute
     }
+    '/_authed/projects/$projectId/chats/$chatId/': {
+      id: '/_authed/projects/$projectId/chats/$chatId/'
+      path: '/'
+      fullPath: '/projects/$projectId/chats/$chatId/'
+      preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdIndexRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
+    }
+    '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': {
+      id: '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
+      path: '/checks/$evaluationId/continuation'
+      fullPath: '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
+      preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
+    }
+    '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': {
+      id: '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
+      path: '/checks/$evaluationId/wake'
+      fullPath: '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
+      preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
+    }
   }
 }
 
@@ -682,15 +742,36 @@ const AuthedMachinesRouteWithChildren = AuthedMachinesRoute._addFileChildren(
   AuthedMachinesRouteChildren,
 )
 
+interface AuthedProjectsProjectIdChatsChatIdRouteChildren {
+  AuthedProjectsProjectIdChatsChatIdIndexRoute: typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
+  AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute: typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
+  AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute: typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
+}
+
+const AuthedProjectsProjectIdChatsChatIdRouteChildren: AuthedProjectsProjectIdChatsChatIdRouteChildren =
+  {
+    AuthedProjectsProjectIdChatsChatIdIndexRoute:
+      AuthedProjectsProjectIdChatsChatIdIndexRoute,
+    AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute:
+      AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute,
+    AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute:
+      AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute,
+  }
+
+const AuthedProjectsProjectIdChatsChatIdRouteWithChildren =
+  AuthedProjectsProjectIdChatsChatIdRoute._addFileChildren(
+    AuthedProjectsProjectIdChatsChatIdRouteChildren,
+  )
+
 interface AuthedProjectsProjectIdChatsRouteChildren {
-  AuthedProjectsProjectIdChatsChatIdRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
+  AuthedProjectsProjectIdChatsChatIdRoute: typeof AuthedProjectsProjectIdChatsChatIdRouteWithChildren
   AuthedProjectsProjectIdChatsIndexRoute: typeof AuthedProjectsProjectIdChatsIndexRoute
 }
 
 const AuthedProjectsProjectIdChatsRouteChildren: AuthedProjectsProjectIdChatsRouteChildren =
   {
     AuthedProjectsProjectIdChatsChatIdRoute:
-      AuthedProjectsProjectIdChatsChatIdRoute,
+      AuthedProjectsProjectIdChatsChatIdRouteWithChildren,
     AuthedProjectsProjectIdChatsIndexRoute:
       AuthedProjectsProjectIdChatsIndexRoute,
   }
@@ -790,13 +871,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.tsx'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

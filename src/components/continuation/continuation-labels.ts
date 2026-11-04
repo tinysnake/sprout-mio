@@ -1,3 +1,25 @@
+export const CONTINUATION_SOURCES = {
+  message: "消息触发",
+  task_periodic: "周期检查",
+};
+
+export const CONTINUATION_RECIPIENT_DECISIONS = {
+  yes: "建议接续",
+  no: "无需接续",
+  unknown: "无法判定",
+};
+
+export const CONTINUATION_DELIVERY_STATES = {
+  pending: "等待投递",
+  bound: "已绑定运行",
+  admitted: "已准入",
+  delivered: "已确认送达",
+  attention: "需要处理",
+  canceled: "已取消",
+  presented: "已展示提醒",
+  stale: "投递已失效",
+};
+
 export const CONTINUATION_MODES = {
   enabled: "对话接续已启用",
   off: "对话接续已关闭",
@@ -35,7 +57,7 @@ export const continuationTokens = (tokens: number) =>
   tokens < 1_000 ? `${tokens}` : `${(tokens / 1_000).toFixed(1)}k`;
 
 /** 内部失败码只说给人听的话，码本身留在 data-error-code 上给门禁与排查用。 */
-const CONTINUATION_FAILURES: Record<string, string> = {
+export const CONTINUATION_FAILURES: Record<string, string> = {
   provider_timeout: "判定服务没有及时回应",
   provider_unavailable: "判定服务当前不可用",
   provider_auth_failed: "判定服务的凭据无效",
