@@ -14,7 +14,7 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 #   除「无法确认远端执行已停止」外不得出现「执行已停止」这类肯定文案。
 # 重新加入覆盖新关系 → 旧页面用过期 epoch 重新加入显示 conflict 且不写库；最新 removed 才成功。
 # 历史区出现替 Agent 操作 → 只读历史能读到执行与租约收据，且没有标记已读／替 Agent 读日志／取消。
-# 五秒刷新与断线被伪装成当前事实 → 服务端事实变化后页面自行更新；读取失败保留上次事实并标未确认。
+# 安全间隔刷新与断线被伪装成当前事实 → 进程外写入在安全间隔内自己读回；读取失败保留上次事实并标未确认。
 # 反证：直接请求移出接口缺 confirm / confirm:false 一律 validation_failed 且无写；跨 Project／跨用户
 #   读取、历史与移出都返回 not_found，页面不泄露他人 Machine。
 mkdir -p .verify
@@ -42,5 +42,5 @@ node --import tsx src/db/migrate.ts
 
 node --import tsx tests/fixtures/p4d-pages.ts
 printf 'PASS P4d pages: current/pending split, collapsed pending summary, detach dialog,\n'
-printf '     force reclaim wording, rejoin epoch conflict, read-only history, 5s refresh,\n'
+printf '     force reclaim wording, rejoin epoch conflict, read-only history, safety-interval refresh,\n'
 printf '     confirm-less detach refusal and cross-user isolation (evidence %s)\n' "$SPROUT_PAGES_EVIDENCE"

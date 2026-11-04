@@ -280,7 +280,10 @@ if (mode === "restart" && !phase) {
       } else {
         // Naming both Agents is the only way `owner_led` fans out to both: the policy wakes the
         // owner by default and every named Agent when the body names one.
-        const first = send(group.id, `P7 fanout handoff request ${profileA.name} ${profileB.name}`);
+        const first = send(
+          group.id,
+          `P7 fanout handoff request @${profileA.name} @${profileB.name}`,
+        );
         const groupA = running(group.id, profileA);
         const groupB = running(group.id, profileB);
         const links = all(
@@ -745,7 +748,7 @@ if (mode === "restart" && !phase) {
             group.id,
           ).n;
           for (let index = 0; index < 8; index++)
-            send(group.id, `P7 fanout repeat ${index} ${profileA.name} ${profileB.name}`);
+            send(group.id, `P7 fanout repeat ${index} @${profileA.name} @${profileB.name}`);
           assert.equal(
             row("SELECT COUNT(*) n FROM agent_run WHERE chat_id=?", group.id).n,
             groupRunsBefore,

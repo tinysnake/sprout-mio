@@ -299,10 +299,12 @@ async function unavailable(page, target, expectedHumanMessages) {
         RUN_STATUS_LABELS,
         "pi-host-status",
       );
-      assert.match(flat(await test(page, "run-status").innerText()), /^分身运行状态：/);
+      // 对话接续状态现在也渲染在 run-status 里、且排在运行状态之前；只要求状态行存在，
+      // 不再假设它是首行。
+      assert.match(flat(await test(page, "run-status").innerText()), /分身运行状态：/);
     } else {
       await sameText(page, "pi-host-status", HOST_DISABLED);
-      assert.match(flat(await test(page, "run-status").innerText()), /^分身运行状态：宿主未启用/);
+      assert.match(flat(await test(page, "run-status").innerText()), /分身运行状态：宿主未启用/);
     }
     summary = await assertHumanMessages(page, expectedHumanMessages);
   }
@@ -725,7 +727,7 @@ async function hostDisabled() {
   await check("host_disabled_chat_says_host_off", page, async () => {
     await goto(page, chatInspectorPath(state.chatPath));
     await sameText(page, "pi-host-status", HOST_DISABLED);
-    assert.match(flat(await test(page, "run-status").innerText()), /^分身运行状态：宿主未启用/);
+    assert.match(flat(await test(page, "run-status").innerText()), /分身运行状态：宿主未启用/);
     const facts = await assertHostState(page, "info-chat-runs", HOST_DISABLED);
     await assertHumanMessages(page, before.messages);
     await shot(page, "host-disabled-chat");

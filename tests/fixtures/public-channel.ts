@@ -156,7 +156,7 @@ assert.deepEqual(
     title: undefined,
     owner: { kind: "human", id: creatorA },
     createdBy: creatorA,
-    wakePolicy: "owner_led",
+    wakePolicy: "contextual",
     governanceRevision: 0,
     archivedAt: undefined,
   },

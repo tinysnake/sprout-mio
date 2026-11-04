@@ -12,7 +12,7 @@ const memberKind = z.enum(["human", "agent"]);
 export const chatKindSchema = z.enum(["dm", "group", "public_channel"]);
 export type ChatKind = z.infer<typeof chatKindSchema>;
 
-/** 唤醒策略：contextual 在 I-P5a 按裁定回退为 owner_led 语义。 */
+/** 唤醒策略：`contextual` 由判定器从有效 Agent 候选里选收件人；`owner_led` / `mention_only` 不走判定器。 */
 export const chatWakePolicySchema = z.enum(["mention_only", "owner_led", "contextual"]);
 export type ChatWakePolicy = z.infer<typeof chatWakePolicySchema>;
 
@@ -173,8 +173,8 @@ export function chatDisplayTitle(
  * - `public_channel`：没有 `title`，页面显示 `PUBLIC_CHANNEL_DISPLAY_TITLE`；
  *   `createdBy` 就是 `project.created_by`（自动创建，没有命名者），
  *   `owner` 恒为 `{ kind: 'human', id: project.created_by }`；
- *   `wakePolicy` 是 §4.1 的冻结值 `owner_led`，但频道 owner 一定是人类，
- *   所以频道里的有效唤醒只有点名规则：一条消息只唤醒被点名的 Agent，绝不广播给全体成员。
+ *   `wakePolicy` 是 `contextual`（Public Channel 默认走判定器），但频道 owner 一定是人类，
+ *   所以点名仍即时硬路由：一条消息只唤醒被点名的 Agent，绝不广播给全体成员。
  */
 export const chatSchema = z.object({
   id: chatId,

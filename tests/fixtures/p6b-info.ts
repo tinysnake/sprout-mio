@@ -98,7 +98,10 @@ try {
     () => query({ view: "project", section: "agents", limit: 1, cursor: "forged" }),
     "info_hub_cursor_stale",
   );
-  f.sqlite.prepare("UPDATE task SET revision=revision+1 WHERE project_id=?").run(f.p.id);
+  // revision 只覆盖本次查询的 section：要让 agents 游标过期，必须改 agents 的载荷。
+  f.sqlite
+    .prepare("UPDATE agent_profile SET persona = persona || ? WHERE id = ?")
+    .run(" cursor", f.a.id);
   f.throws(
     () => query({ view: "project", section: "agents", limit: 1, cursor }),
     "info_hub_cursor_stale",
