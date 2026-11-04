@@ -46,9 +46,9 @@ else
   fi
 fi
 
-expected_continuation=""
-[[ "$instance" == "prod" ]] && expected_continuation="true"
-[[ "$instance" == "dev" ]] && expected_continuation="false"
+# 对话接续开关按实例 env 的声明值校验：env 里没有这一项时，运行时的默认值是 true。
+# 不再按实例名写死——drill 这类演练实例可以自己决定开关，写死就漏掉了它。
+expected_continuation="${SPROUT_CONTINUATION_ENABLED:-true}"
 
 # 探针会把 git-remote-https 这类子进程留在后面，按进程组收，不只杀直接子进程。
 run_bounded() {
@@ -118,12 +118,8 @@ fi
 port="$(port_for "$instance")"
 health="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" 2>/dev/null || true)"
 if [[ -n "$health" ]]; then
-  # 改名过渡：还没升级的实例只报旧的 automationEnabled，用 ?? 兜住；实例全部升到
-  # 含 continuationEnabled 的构建后，这个回退可以删掉。
-  actual="$(printf '%s' "$health" | node -e 'let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }).on("end", () => { const health = JSON.parse(body); process.stdout.write(String(health.continuationEnabled ?? health.automationEnabled)); });')"
-  if [[ -n "$expected_continuation" ]]; then
-    [[ "$actual" == "$expected_continuation" ]] || fail "实例 $instance 的对话接续开关是 ${actual}，期望 $expected_continuation"
-  fi
+  actual="$(printf '%s' "$health" | node -e 'let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }).on("end", () => { process.stdout.write(String(JSON.parse(body).continuationEnabled)); });')"
+  [[ "$actual" == "$expected_continuation" ]] || fail "实例 $instance 的对话接续开关是 ${actual}，期望 $expected_continuation"
   say "PASS 实例 $instance 在 ${port} 上健康，continuationEnabled=$actual"
 else
   say "PASS 实例 $instance 静态检查通过（端口 ${port} 上没有服务在跑）"
