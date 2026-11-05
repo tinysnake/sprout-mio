@@ -96,7 +96,7 @@ export function ChatInspector({
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6">
         <div className="py-5">
-          <ContinuationPanel data={continuation} />
+          <ContinuationPanel data={continuation} chatKind={chat.kind} />
         </div>
         <section className="border-b border-border py-5" data-testid="inspector-tasks">
           <h3 className="mb-3.75 text-[10px] font-medium text-muted-foreground">Task 摘要</h3>
