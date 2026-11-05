@@ -26,7 +26,7 @@ const catalog: SkillCatalog = {
         option: { name: "one", description: "first" },
         filePath: "/skills/one/SKILL.md",
         contentHash: "one",
-        block: '<skill name="one">nested 【技能:two】</skill>',
+        block: '<skill name="one">nested 📖two</skill>',
       },
     ],
     [
@@ -47,17 +47,17 @@ const manifest = {
   promptPaths: [],
 };
 it("expands only frozen UTF-16 spans, preserving mentions, repeated skills and unknown tokens without rescanning blocks", () => {
-  const body = "😀 【技能:one】 @Human 【技能:two】 【技能:one】 【技能:unknown】";
+  const body = "😀 📖one @Human 📖two 📖one 📖unknown";
   const result = expandSkillSpans("msg", body, scanSkillTokens(body), catalog, manifest);
   expect(result.text).toBe(
-    '😀 <skill name="one">nested 【技能:two】</skill> @Human <skill name="two">second body</skill> <skill name="one">nested 【技能:two】</skill> 【技能:unknown】',
+    '😀 <skill name="one">nested 📖two</skill> @Human <skill name="two">second body</skill> <skill name="one">nested 📖two</skill> 📖unknown',
   );
   expect(result.warnings).toEqual([{ messageId: "msg", name: "unknown", reason: "unknown_skill" }]);
   expect(expandSkillSpans("msg", body, scanSkillTokens(body), catalog, manifest)).toEqual(result);
   expect(expandSkillSpans("msg", body, [], catalog, manifest).text).toBe(body);
 });
 it("keeps disabled or session-missing skills literal and reports structured warnings", () => {
-  const body = "【技能:one】";
+  const body = "📖one";
   expect(
     expandSkillSpans("msg", body, scanSkillTokens(body), catalog, { kind: "disabled" }),
   ).toEqual({
@@ -72,7 +72,7 @@ it("keeps disabled or session-missing skills literal and reports structured warn
   });
 });
 it("rejects corrupt persisted offsets rather than constructing a partial prompt", () => {
-  const body = "😀 【技能:one】";
+  const body = "😀 📖one";
   for (const spans of [
     [{ name: "one", start: 2, end: 11 }],
     [{ name: "one", start: 3, end: 100 }],
@@ -89,9 +89,9 @@ it("seals literal synthetic inputs, rejects forged transport payloads and never 
   const prepared = prepareSyntheticPiMessage({
     kind: "resource_notice",
     messageId: "notice:1",
-    text: "【技能:one】",
+    text: "📖one",
   });
-  expect(prepared.text).toBe("【技能:one】");
+  expect(prepared.text).toBe("📖one");
   expect(() => assertPreparedPiMessage(prepared)).not.toThrow();
   expect(() =>
     assertPreparedPiMessage({

@@ -1,6 +1,6 @@
 import type { InheritedResources, MessageSkillSpan } from "../contracts/skill";
 import type { ProjectContext } from "../domain/access";
-import { isSkillName } from "../lib/skill-token";
+import { isSkillName, skillToken } from "../lib/skill-token";
 import type { SkillCatalog } from "./pi-host/skills";
 
 const brand: unique symbol = Symbol("PreparedPiMessage");
@@ -66,7 +66,7 @@ export function expandSkillSpans(
       span.end <= span.start ||
       span.end > body.length ||
       !isSkillName(span.name) ||
-      body.slice(span.start, span.end) !== `【技能:${span.name}】`
+      body.slice(span.start, span.end) !== skillToken(span.name)
     ) {
       throw new MessageSkillError("message_skill_corrupt");
     }

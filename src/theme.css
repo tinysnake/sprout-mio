@@ -59,6 +59,10 @@
 
   --sidebar: var(--bg);
   --selected: var(--surface);
+  /* 技能标记：行内 pill 的橙调底与描边，文字用达 AA 的加深橙。 */
+  --skill-mark: color-mix(in oklab, var(--accent) 16%, var(--background));
+  --skill-mark-ring: color-mix(in oklab, var(--accent) 62%, var(--background));
+  --skill-mark-foreground: var(--primary);
   --hover: var(--surface-warm);
   --overlay: oklch(0.15 0.005 90 / 0.38);
 
@@ -125,6 +129,9 @@
 
   --sidebar: oklch(0.17 0.004 90);
   --selected: oklch(0.29 0.005 90);
+  --skill-mark: color-mix(in oklab, var(--accent) 26%, var(--background));
+  --skill-mark-ring: color-mix(in oklab, var(--accent) 72%, var(--background));
+  --skill-mark-foreground: oklch(0.78 0.14 45);
   --hover: oklch(0.27 0.005 90);
   --overlay: oklch(0.08 0.005 90 / 0.7);
 
@@ -169,6 +176,9 @@
   --color-ring: var(--ring);
   --color-hover: var(--hover);
   --color-selected: var(--selected);
+  --color-skill-mark: var(--skill-mark);
+  --color-skill-mark-ring: var(--skill-mark-ring);
+  --color-skill-mark-foreground: var(--skill-mark-foreground);
   --color-overlay: var(--overlay);
   --color-status-success: var(--status-success);
   --color-status-warning: var(--status-warning);

@@ -6,7 +6,7 @@
 
 - `dm-entry` 首次发起 DM，重复入口回到同一 Chat 与 AgentInstance。
 - `message-history` 消息顺序、刷新及服务重启后的持久性；消息按页加载，首屏只读最新一页（默认 50 条），顶部自动加载更早的页，DOM 只留视口附近五页（每页 50 条），正在收消息的活尾巴页不切页、可以长过一页，尾巴被丢掉后能按 `after` 补回或一键回到最新。
-- `chat-skills` 输入 `#` 选择一个或多个技能，正文保存 `【技能:<name>】`，消息列表按冻结的 UTF-16 span 显示行内 chip；首次运行前也可选择，Pi 投递时读取当前技能正文展开。人类与 Agent 回复都解析语法 token，未知名字同样保存 span。
+- `chat-skills` 输入 `$` 开候选（触发键只用于开候选，不进入正文），正文保存 `📖<name>`，消息列表按冻结的 UTF-16 span 显示行内橙色 pill；首次运行前也可选择，Pi 投递时读取当前技能正文展开。人类与 Agent 回复都解析语法 token，未知名字同样保存 span。
 - `chat-title` 修改标题并保持 Chat 身份与历史。
 - `persona-next-turn` 修改 Profile 后，后续运行使用新人设。
 - `run-lifecycle` 查看 running、完成、失败和中止的结果，运行中发送消息的处理遵循 Turn 契约。
@@ -33,7 +33,7 @@
 4. 直接打开 Chat 深链，检查同一历史；用不存在的 Chat 与另一用户会话检查失败和隔离结果。
 5. 若涉及运行行为，实际发送一次触发运行的消息，观察状态变化和最终结果。对失败、中止、运行中追加输入及 Repo 错误，按对应脚本覆盖具体分支。
 
-技能专项：`bash scripts/verify/chat-skills.sh`（local，需要已安装 Pi SDK）覆盖 scope/package 开关、无 run 候选、token 插入、事务/span、chip 原文、prompt/steer 与故障边界；原始输出在 `.verify/chat-skills/gate.log`。投递 fixture 不调用付费模型，真实 SDK resource loader 另由 `p7-pi-inheritance.sh` 验证。页面评审在真实 dev server 的 Chat 中输入 `#`，鼠标与键盘各选择一个技能，发送后核对 `[data-testid=message-skill]` 的 `textContent` 与原 token 完全相同；保留首次运行前候选及发送后截图，最终观感交 Human Review。
+技能专项：`bash scripts/verify/chat-skills.sh`（local，需要已安装 Pi SDK）覆盖 scope/package 开关、无 run 候选、token 插入、事务/span、chip 原文、prompt/steer 与故障边界；原始输出在 `.verify/chat-skills/gate.log`。投递 fixture 不调用付费模型，真实 SDK resource loader 另由 `p7-pi-inheritance.sh` 验证。页面评审在真实 dev server 的 Chat 中输入 `$`，鼠标与键盘各选择一个技能，发送后核对 `[data-testid=message-skill]` 的 `textContent` 与原 token 完全相同；保留首次运行前候选及发送后截图，最终观感交 Human Review。
 
 按改动选择入口。
 
@@ -49,7 +49,7 @@
 
 ## Gotchas
 
-- 技能在保存时只做纯语法解析，不扫描 catalog；未知/已删除/关闭继承的技能投递保留原 token，并记结构化 warning。技能正文不落进消息；历史 span 与 chip 不因宿主文件变化而改变。输入框 `#` 与 `@` 共享触发状态，但完整技能 token 内的 `@` 不会成为 mention。
+- 技能在保存时只做纯语法解析，不扫描 catalog；未知/已删除/关闭继承的技能投递保留原 token，并记结构化 warning。技能正文不落进消息；历史 span 与 chip 不因宿主文件变化而改变。输入框 `$` 与 `@` 共享触发状态，但完整技能 token 内的 `@` 不会成为 mention。
 - 消息成功持久化不代表模型已运行。协议 stub、真实模型和远程执行分别记录。
 - 工作记录先来自 runner 的 progress 摘要（进程内保存，上限 200 条，默认界面只露最后一条），在 `transitionAgentRun` 进入终态那一刻整组落到 `agent_run.activity` 并清空内存；因此完成、失败、中止、中断的 run 都能在刷新后回看，未产出回复的中止 run 只有数据库记录、不挂消息。归属只认 `assistantMessageId` 外键，不按时间或相邻消息推断；最终回答不写 activity，仍由 `settleAgentRun` 发 Chat。
 - `sprout_chat_send` 暂未声明给模型：避免同一 run 既用工具发消息、又把最终文本再发一次。registry 与网关能力保留，后续跨 Chat / Agent 通信再启用；最终文本的 `@` mention 由 `sendMessage` 正常解析。

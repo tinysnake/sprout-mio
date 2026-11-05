@@ -54,11 +54,11 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
   const skillFile = join(skillDir, "SKILL.md");
   writeFileSync(skillFile, "---\nname: missing\ndescription: frozen fixture\n---\nold body");
   expect((await readSkillCatalog(scope, "fresh")).byName.has("missing")).toBe(true);
-  const body = "😀 【技能:missing】 【技能:@Alpha】 @Alpha";
+  const body = "😀 📖missing 📖@Alpha @Alpha";
   const saved = send(body);
   expect(saved.skills.map((span) => body.slice(span.start, span.end))).toEqual([
-    "【技能:missing】",
-    "【技能:@Alpha】",
+    "📖missing",
+    "📖@Alpha",
   ]);
   expect(saved.mentions.map((span) => body.slice(span.start, span.end))).toEqual(["@Alpha"]);
   expect(
@@ -74,7 +74,7 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
     );
   const before = html();
   expect(before.match(/data-testid="message-skill"/g)).toHaveLength(2);
-  expect(before).toContain("【技能:missing】");
+  expect(before).toContain("📖missing");
   writeFileSync(skillFile, "---\nname: renamed\ndescription: changed\n---\nnew body");
   expect((await readSkillCatalog(scope, "fresh")).byName.has("missing")).toBe(false);
   expect(html()).toBe(before);
@@ -94,7 +94,7 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
   expect(() =>
     chats.sendMessage(
       direct.chat.id,
-      { senderKind: "human", senderId: ctx.userId, body: "【技能:rollback】" },
+      { senderKind: "human", senderId: ctx.userId, body: "📖rollback" },
       ctx,
       {
         afterWrite() {
@@ -151,7 +151,7 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
       version: 2,
       call: {
         type: "chat_send",
-        input: { projectId: project.id, body: "remote 【技能:remote-unknown】" },
+        input: { projectId: project.id, body: "remote 📖remote-unknown" },
       },
     }),
   });
@@ -159,20 +159,20 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
   const response = await remoteAgentResponse(request);
   const result = await response.json();
   expect(result.ok, JSON.stringify(result)).toBe(true);
-  expect(result.data.message.skills).toEqual([{ name: "remote-unknown", start: 7, end: 26 }]);
+  expect(result.data.message.skills).toEqual([{ name: "remote-unknown", start: 7, end: 23 }]);
   expect(
     chats.listMessages(direct.chat.id, ctx).find((message) => message.id === result.data.message.id)
       ?.skills,
   ).toEqual(result.data.message.skills);
   revokeRemoteToolGrant(run.id, runtime);
 
-  const final = runs.completeAgentRun(run.id, "reply 【技能:reply-unknown】", "stop", ctx);
+  const final = runs.completeAgentRun(run.id, "reply 📖reply-unknown", "stop", ctx);
   const reply = chats
     .listMessages(direct.chat.id, ctx)
     .find((message) => message.id === final.assistantMessageId)!;
   expect(reply.senderKind).toBe("agent");
   expect(reply.skills.map((span) => reply.body.slice(span.start, span.end))).toEqual([
-    "【技能:reply-unknown】",
+    "📖reply-unknown",
   ]);
   const { writeMessageSkills } = await import("../src/domain/message-skill");
   sqlite

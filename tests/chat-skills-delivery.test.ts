@@ -65,20 +65,19 @@ afterAll(async () => {
 it("real process prompt and steer expand fresh skill blocks without changing stored text or turn-context hash/receipt", async () => {
   skill("skill-proof-one", "ORIGINAL_BODY");
   skill("skill-proof-two", "SECOND_BODY");
-  const body =
-    "😀 【技能:skill-proof-one】 @Alpha 【技能:skill-proof-two】 【技能:skill-proof-one】 【技能:unknown-proof】";
+  const body = "😀 📖skill-proof-one @Alpha 📖skill-proof-two 📖skill-proof-one 📖unknown-proof";
   const first = send(body);
   let secondId = "";
   class CaptureProcess extends PiSessionProcess {
     override async open(config: Parameters<InstanceType<typeof PiSessionProcess>["open"]>[0]) {
       const snapshot = await super.open(config);
-      skill("skill-proof-one", "PROMPT_LATEST_BODY with nested 【技能:skill-proof-two】");
+      skill("skill-proof-one", "PROMPT_LATEST_BODY with nested 📖skill-proof-two");
       return snapshot;
     }
     override prompt(prepared: Parameters<InstanceType<typeof PiSessionProcess>["prompt"]>[0]) {
       const promise = super.prompt(prepared);
       secondId = send(body).id;
-      skill("skill-proof-one", "STEER_LATEST_BODY with nested 【技能:skill-proof-two】");
+      skill("skill-proof-one", "STEER_LATEST_BODY with nested 📖skill-proof-two");
       return promise;
     }
   }
@@ -97,8 +96,8 @@ it("real process prompt and steer expand fresh skill blocks without changing sto
     expect(command.text.match(/<skill name="skill-proof-two"/g)).toHaveLength(1);
     expect(command.text).toContain("References are relative to");
     expect(command.text).toContain("@Alpha");
-    expect(command.text).toContain("nested 【技能:skill-proof-two】");
-    expect(command.text).toContain("【技能:unknown-proof】");
+    expect(command.text).toContain("nested 📖skill-proof-two");
+    expect(command.text).toContain("📖unknown-proof");
     expect(command.text.startsWith("/skill:")).toBe(false);
   }
   expect(wire.find((c) => c.type === "sdk_prompt")?.text).toBe(
@@ -130,7 +129,7 @@ it("real process prompt and steer expand fresh skill blocks without changing sto
 });
 
 it("disabled, missing, unavailable and over-limit preparation never forge delivery or rewrite persisted spans", async () => {
-  const saved = send("【技能:skill-proof-one】 【技能:unknown-proof】");
+  const saved = send("📖skill-proof-one 📖unknown-proof");
   const opened = await prepareInheritedResources(project.id, ctx);
   process.env.SPROUT_PI_INHERIT_HOST_RESOURCES = "0";
   const disabled = await preparePiMessage(
@@ -184,7 +183,7 @@ it("disabled, missing, unavailable and over-limit preparation never forge delive
     ctx,
   );
   skill("huge-proof", "你".repeat(100000));
-  const huge = send("【技能:huge-proof】");
+  const huge = send("📖huge-proof");
   const work = runs.queuedRunWork().find((work) => work.run.chatId === direct.chat.id)!;
   await Effect.runPromise(
     executeRun(work, new PiSessionProcess(work.run.id, runner), { isStopping: () => false }),
