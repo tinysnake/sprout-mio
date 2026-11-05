@@ -1,7 +1,7 @@
 import { afterAll, expect, it } from "vite-plus/test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 const directory = mkdtempSync(join(tmpdir(), "chat-skills-"));
 process.env.DATABASE_URL = join(directory, "test.sqlite");
 process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
@@ -66,4 +66,71 @@ it("fresh catalogs separate Project scopes before any run; display scans coalesc
   expect(await prepareInheritedResources(a.id, ctx)).toEqual({ kind: "disabled" });
   delete process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
   console.log("PASS foundation: zero-run Project isolation, display coalescing, disabled manifest");
+});
+
+it("SDK selection includes global/project/enabled package skills, excludes disabled packages, and fresh reads replace display cache", async () => {
+  const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const agentDir = join(directory, "fixture-agent");
+  mkdirSync(agentDir, { recursive: true });
+  symlinkSync(
+    join(originalAgentDir ?? join(homedir(), ".pi/agent"), "install"),
+    join(agentDir, "install"),
+    "dir",
+  );
+  const writeSkill = (base: string, name: string, body: string) => {
+    const folder = join(base, "skills", name);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+      join(folder, "SKILL.md"),
+      `---\nname: ${name}\ndescription: selected fixture\n---\n${body}\n`,
+    );
+  };
+  const enabledPackage = join(directory, "enabled-package");
+  const disabledPackage = join(directory, "disabled-package");
+  for (const [folder, name] of [
+    [enabledPackage, "enabled-proof"],
+    [disabledPackage, "disabled-proof"],
+  ]) {
+    writeSkill(folder!, name!, "package body");
+    writeFileSync(
+      join(folder!, "package.json"),
+      JSON.stringify({ name, pi: { skills: ["./skills"] } }),
+    );
+  }
+  writeSkill(agentDir, "global-proof", "global body");
+  writeFileSync(
+    join(agentDir, "settings.json"),
+    JSON.stringify({
+      packages: [{ source: enabledPackage }, { source: disabledPackage, skills: [] }],
+    }),
+  );
+  const project = createProject({ name: "Package selection" }, ctx);
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+  try {
+    const scope = resolveSkillScope(project.id, ctx);
+    mkdirSync(join(scope.resourceCwd, ".git"), { recursive: true });
+    writeSkill(join(scope.resourceCwd, ".pi"), "project-proof", "old body");
+    const first = await readSkillCatalog(scope, "fresh");
+    expect([...first.byName.keys()]).toEqual(
+      expect.arrayContaining(["enabled-proof", "global-proof", "project-proof"]),
+    );
+    expect(first.byName.has("disabled-proof")).toBe(false);
+    writeSkill(join(scope.resourceCwd, ".pi"), "project-proof", "new body");
+    expect(await readSkillCatalog(scope, "display")).toBe(first);
+    const fresh = await readSkillCatalog(scope, "fresh");
+    expect(fresh.byName.get("project-proof")?.block).toContain("new body");
+    expect(fresh.revision).not.toBe(first.revision);
+    expect(await readSkillCatalog(scope, "display")).toBe(fresh);
+    expect(fresh.skillPaths).toContain(fresh.byName.get("enabled-proof")?.filePath);
+    process.env.SPROUT_PI_INHERIT_HOST_RESOURCES = "0";
+    expect(resolveSkillScope(project.id, ctx).sourceKey).not.toBe(scope.sourceKey);
+    expect(await prepareInheritedResources(project.id, ctx)).toEqual({ kind: "disabled" });
+    console.log(
+      "PASS foundation: global/project/enabled-package, disabled-package excluded, display versus fresh, 0 switch invalidation",
+    );
+  } finally {
+    delete process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
+    if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+  }
 });
