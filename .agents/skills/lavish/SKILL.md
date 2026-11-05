@@ -1,6 +1,6 @@
 ---
 name: lavish
-description: 生成并展示便于人类查看的 HTML artifact，用于计划、对比、图解、报告或原型。需要对 artifact 收取反馈时使用 Lavish 原生评审流程；真实 Sprout 应用的评审使用 human-review。
+description: 生成并展示便于人类查看的 HTML artifact，用于计划、对比、图解、报告或原型。对 artifact 收取反馈时使用 Lavish 原生评审流程；真实 Sprout 应用评审在 GUI 宿主用环境自带的 browser / preview 工具，在 TUI 宿主用 human-review。
 license: MIT
 metadata:
   author: Kun Chen (kunchenguid)
@@ -20,7 +20,7 @@ metadata:
 
 ## 真实应用
 
-Sprout 的路由、登录态与交互页面使用 [human-review](../human-review/SKILL.md)。它补充真实应用嵌入，poll / reply 仍由 Lavish 提供。
+Sprout 的路由、登录态与交互页面评审按[宿主环境](../../../docs/project-conventions.md#宿主环境)选择路径。GUI 宿主优先用环境自带的 browser / preview 工具，Lavish 为回退；TUI 宿主使用 [human-review](../human-review/SKILL.md)。它补充真实应用嵌入，poll / reply 仍由 Lavish 提供。
 
 真实应用适配器使用其描述符记录的 `lavishBin` 与 `env`；原生 artifact 可以按当前 CLI 指南使用 npx。两种会话各自使用对应的文件、环境与监听，避免重复 poll。
 

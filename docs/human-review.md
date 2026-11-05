@@ -1,6 +1,8 @@
 # Human review
 
-真实 Sprout 应用由仓库适配器嵌入 Lavish；反馈与回写使用 Lavish 原生 CLI。入口是 [human-review skill](../.agents/skills/human-review/SKILL.md)，运行时不注册 Pi tool、slash command 或消息投递扩展。
+真实 Sprout 应用的评审按[宿主环境](project-conventions.md#宿主环境)选择路径。GUI 宿主（t3 code）优先用环境自带的 browser / preview 工具展示页面并收取反馈，Lavish 作为回退；TUI 宿主（herdr）使用下面的 Lavish 路径。
+
+Lavish 路径下，真实 Sprout 应用由仓库适配器嵌入 Lavish；反馈与回写使用 Lavish 原生 CLI。入口是 [human-review skill](../.agents/skills/human-review/SKILL.md)，运行时不注册 Pi tool、slash command 或消息投递扩展。
 
 章节收尾时的最终评审也走这条路径：集成完成后由 Human 看真实页面再给结论，顺序与方案选择的分工见[页面设计与实现的分工](project-conventions.md#页面设计与实现的分工)。
 

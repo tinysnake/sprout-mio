@@ -12,6 +12,7 @@
 | 修改前端设计、组件、页面、样式或交互                      | [前端设计基线](docs/frontend-design.md)和[前端开发约定](docs/frontend-conventions.md) |
 | 选择验证范围、编写 worker brief、执行验证或准备合并与交付 | [验证约定](docs/verification.md)                                                      |
 | 启动真实页面评审、处理 Human 页面反馈或记录体验确认       | [Human Review](docs/human-review.md)及仓库的 `human-review` skill                     |
+| 判断宿主环境、派发子代理或选择页面预览路径                | [宿主环境](docs/project-conventions.md#宿主环境)                                      |
 | 定位功能入口、选择操作路径或核对验收覆盖                  | [Feature map](docs/feature-map/README.md)，再读受影响的功能页                         |
 | 调整项目规范或沉淀编排经验                                | [项目开发约定](docs/project-conventions.md#维护项目规范)，再读受影响领域的规范        |
 
