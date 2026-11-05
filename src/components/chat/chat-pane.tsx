@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
-import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
+import type { AgentRunResult, ChatRunActivity, ChatRunState } from "../../contracts/agent-run";
 import type { ChatSession, ChatResult, Message, MessageWindow } from "../../contracts/chat";
 import type { ChatInfoView } from "../../contracts/info-hub";
 import type { ChatContinuationData } from "../../domain/chat-continuation";
@@ -40,6 +40,7 @@ export function ChatPane({
   live,
   info,
   runState,
+  runActivities,
   continuation,
   inspectorOpen,
   onToggleInspector,
@@ -55,6 +56,8 @@ export function ChatPane({
   live: ChatLiveFacts | null;
   info: ChatResult<ChatInfoView>;
   runState: AgentRunResult<ChatRunState>;
+  /** 已结束 run 的工作记录：按产出消息归属，在消息底部回看。 */
+  runActivities: AgentRunResult<ChatRunActivity[]>;
   continuation: AppResult<ChatContinuationData>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
@@ -127,6 +130,15 @@ export function ChatPane({
     }
     return map;
   }, [info]);
+  // 只按 assistantMessageId 精确挂载：记录属于哪条回复由数据库的外键决定，不按时间推断。
+  const runActivityByMessage = useMemo(() => {
+    const map = new Map<string, ChatRunActivity>();
+    if (!runActivities.ok) return map;
+    for (const record of runActivities.data) map.set(record.assistantMessageId, record);
+    return map;
+  }, [runActivities]);
+  // 读取失败不能折叠成“没有记录”：消息照常展示，但明确告知历史记录未加载。
+  const runActivitiesError = runActivities.ok ? undefined : runActivities.error.message;
 
   const agentName =
     senderNames.get(
@@ -276,6 +288,8 @@ export function ChatPane({
         senderNames={senderNames}
         knownSenders={knownSenders}
         runFacts={runFacts}
+        runActivityByMessage={runActivityByMessage}
+        runActivitiesError={runActivitiesError}
         archived={Boolean(chat.archivedAt)}
         titleEditor={
           // DM 保留消息头部的铅笔（P4b 形状，窄屏也能直接改名）；能不能改由治理事实决定，不按 kind 判。

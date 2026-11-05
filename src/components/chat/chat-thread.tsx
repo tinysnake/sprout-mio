@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
-import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
+import type { AgentRunResult, ChatRunActivity, ChatRunState } from "../../contracts/agent-run";
 import type { Chat, ChatKind, ChatResult, Message } from "../../contracts/chat";
 import type { FieldErrors } from "../../contracts/project";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
@@ -108,6 +108,8 @@ export function ChatThread({
   senderNames,
   knownSenders,
   runFacts,
+  runActivityByMessage,
+  runActivitiesError,
   continuation,
   archived = false,
   history,
@@ -148,6 +150,9 @@ export function ChatThread({
   senderNames?: ReadonlyMap<string, string>;
   knownSenders?: ReadonlySet<string>;
   runFacts?: Map<string, readonly InfoHubRunSummary[]>;
+  /** 已结束 run 的完整工作记录：键是产出该记录的 assistant 消息。 */
+  runActivityByMessage?: ReadonlyMap<string, ChatRunActivity>;
+  runActivitiesError?: string;
   continuation?: AppResult<ChatContinuationData>;
   archived?: boolean;
   /** 消息分页窗口；缺省时按单页全量渲染，演示场景不需要它。 */
@@ -340,6 +345,15 @@ export function ChatThread({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-7 pt-5.75 pb-4.5 max-desktop:px-3.75 max-desktop:py-5 [overflow-anchor:none]"
       >
+        {runActivitiesError && (
+          <p
+            role="status"
+            data-testid="run-activities-error"
+            className="mb-3 rounded-control border border-border bg-muted px-3 py-2 text-[11px] text-muted-foreground"
+          >
+            历史 run 工作记录暂时无法读取：{runActivitiesError}
+          </p>
+        )}
         {history !== undefined && history.hasOlder && (
           <div className="mb-3 flex justify-center">
             <button
@@ -365,6 +379,7 @@ export function ChatThread({
               senderNames={senderNames}
               knownSenders={knownSenders}
               runFacts={runFacts}
+              runActivityByMessage={runActivityByMessage}
             />
             <ChatErrorNotice error={runState.error} testId="run-state-load-error" />
           </>
@@ -378,6 +393,7 @@ export function ChatThread({
               senderNames={senderNames}
               knownSenders={knownSenders}
               runFacts={runFacts}
+              runActivityByMessage={runActivityByMessage}
             />
             <RunStatusPanel
               state={runState.data}

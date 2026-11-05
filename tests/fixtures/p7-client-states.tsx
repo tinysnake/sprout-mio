@@ -83,6 +83,7 @@ function Scene() {
           live={null}
           info={info}
           runState={runState}
+          runActivities={ok([])}
           continuation={continuation}
           inspectorOpen={false}
           onToggleInspector={() => {}}

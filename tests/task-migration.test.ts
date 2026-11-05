@@ -112,7 +112,10 @@ describe("0025 Task migration from zero and populated 0024", () => {
       string,
       unknown
     >[];
-    const oldRuns = before.sqlite.prepare("SELECT * FROM agent_run ORDER BY id").all();
+    const oldRuns = before.sqlite.prepare("SELECT * FROM agent_run ORDER BY id").all() as Record<
+      string,
+      unknown
+    >[];
     const oldInputs = before.sqlite
       .prepare("SELECT * FROM agent_run_input ORDER BY run_id,message_id")
       .all() as Record<string, unknown>[];
@@ -132,7 +135,9 @@ describe("0025 Task migration from zero and populated 0024", () => {
             .map(([, value]) => value),
         ).toEqual(Array(9).fill(null));
       }
-      expect(after.sqlite.prepare("SELECT * FROM agent_run ORDER BY id").all()).toEqual(oldRuns);
+      expect(after.sqlite.prepare("SELECT * FROM agent_run ORDER BY id").all()).toEqual(
+        oldRuns.map((row) => ({ ...row, activity: null })),
+      );
       expect(
         after.sqlite.prepare("SELECT * FROM agent_run_input ORDER BY run_id,message_id").all(),
       ).toEqual(oldInputs.map((row) => ({ ...row, admitted_at: null })));

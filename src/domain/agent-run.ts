@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type {
   AgentRun,
   AgentRunInput,
   AgentRunStatus,
+  ChatRunActivity,
   ChatRunSummary,
   RunConfigSnapshot,
 } from "../contracts/agent-run";
@@ -30,6 +31,7 @@ import { routeWakeCandidates } from "./chat-wake";
 import { controlFor } from "./chat-schedule";
 import { settleContinuationRun } from "./continuation-delivery";
 import { taskResponsibilityFacts, TaskError } from "./task-capabilities";
+import { clearRunActivity, settleRunActivity } from "../server/pi-host/run-activity";
 
 export class AgentRunError extends Error {
   constructor(
@@ -66,6 +68,7 @@ function toRun(row: typeof agentRun.$inferSelect): AgentRun {
     ...(row.errorCode ? { errorCode: row.errorCode } : {}),
     ...(row.errorMessage ? { errorMessage: row.errorMessage } : {}),
     ...(row.configSnapshot ? { configSnapshot: row.configSnapshot } : {}),
+    ...(row.activity ? { activity: row.activity } : {}),
     ...(row.assistantMessageId ? { assistantMessageId: row.assistantMessageId } : {}),
   };
 }
@@ -99,10 +102,13 @@ export function listAgentRuns(chatId: string, ctx: ProjectContext): AgentRun[] {
 }
 
 function toChatRunSummary(row: typeof agentRun.$inferSelect): ChatRunSummary {
-  const { configSnapshot, ...run } = toRun(row);
+  const { configSnapshot, activity, ...run } = toRun(row);
   return {
     ...run,
     ...(configSnapshot?.sessionFile ? { sessionFile: configSnapshot.sessionFile } : {}),
+    // 有产出消息的记录已在消息底部呈现，轮询不再重复搬运；
+    // 失败/中止 run 没有消息，只能从 latest 摘要里读到自己的记录。
+    ...(activity && !run.assistantMessageId ? { activity } : {}),
   };
 }
 
@@ -135,6 +141,40 @@ export function latestAgentRun(chatId: string, ctx: ProjectContext): ChatRunSumm
     .limit(1)
     .get();
   return row ? toChatRunSummary(row) : null;
+}
+
+/**
+ * 已结束 run 的工作记录：按产出消息归属，供消息底部回看。
+ * 只返回有 assistantMessageId 的记录；没有产出消息的失败/中止 run 由 latest 摘要带出。
+ */
+export function listChatRunActivities(chatId: string, ctx: ProjectContext): ChatRunActivity[] {
+  const current = getChat(chatId, ctx);
+  return db
+    .select()
+    .from(agentRun)
+    .where(
+      and(
+        eq(agentRun.chatId, chatId),
+        eq(agentRun.projectId, current.projectId),
+        isNotNull(agentRun.activity),
+        isNotNull(agentRun.assistantMessageId),
+      ),
+    )
+    .orderBy(asc(agentRun.queuedAt), asc(sql`rowid`))
+    .all()
+    .flatMap((row: typeof agentRun.$inferSelect) =>
+      row.activity && row.assistantMessageId
+        ? [
+            {
+              runId: row.id,
+              instanceId: row.instanceId,
+              assistantMessageId: row.assistantMessageId,
+              status: row.status,
+              activity: row.activity,
+            },
+          ]
+        : [],
+    );
 }
 
 export function listAgentRunInputs(id: string, ctx: ProjectContext): AgentRunInput[] {
@@ -488,6 +528,8 @@ export function transitionAgentRun(
   data: TransitionData,
   ctx: ProjectContext,
 ): AgentRun {
+  let settledActivity: ChatRunActivity["activity"] | undefined;
+  let endedAt: Date | undefined;
   const run = sqlite
     .transaction(() => {
       const row = runRow(id, ctx);
@@ -505,12 +547,21 @@ export function transitionAgentRun(
       if (status === "failed" && (!data.errorCode || !data.errorMessage?.trim())) {
         throw new AgentRunError("conflict", "Run 缺少失败原因");
       }
+      // 收尾时把进程内的工作记录一并落库；终态之后的记录不再变化，
+      // 因此由状态机自己取快照，调用方不需要记得传。收口时间与 settledAt 用同一个值。
+      if (status !== "queued" && status !== "running") {
+        endedAt = new Date();
+        settledActivity = settleRunActivity(id, status, endedAt.getTime());
+      }
       const updated = db
         .update(agentRun)
         .set({
           ...data,
+          ...(settledActivity ? { activity: settledActivity } : {}),
           status,
-          ...(status === "running" ? { startedAt: new Date() } : { settledAt: new Date() }),
+          ...(status === "running"
+            ? { startedAt: new Date() }
+            : { settledAt: endedAt ?? new Date() }),
         })
         .where(and(eq(agentRun.id, id), eq(agentRun.status, row.status)))
         .returning()
@@ -526,6 +577,9 @@ export function transitionAgentRun(
       return toRun(updated);
     })
     .immediate();
+  // 只有在最外层事务里才能确认已经提交。嵌在外层事务时先保留内存快照，
+  // 由外层提交后的调用方清理；外层回滚时下一次收尾仍能取到历史。
+  if (settledActivity && !sqlite.inTransaction) clearRunActivity(id);
   // Run 状态是页面最在意的那条变化：一次转移同时影响对话与 Project 的运行列表。
   publishProjectChange(run.projectId, run.chatId);
   return run;
@@ -595,7 +649,9 @@ export function recordRunInputDeliveryFailure(
 }
 
 export function abortAgentRun(id: string, ctx: ProjectContext): AgentRun {
-  return transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
+  const run = transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
+  if (!sqlite.inTransaction) clearRunActivity(id);
+  return run;
 }
 
 export function completeAgentRun(
@@ -604,7 +660,7 @@ export function completeAgentRun(
   stopReason: string,
   ctx: ProjectContext,
 ): AgentRun {
-  return sqlite
+  const settled = sqlite
     .transaction(() => {
       const row = runRow(id, ctx);
       if (row.status !== "running" || stopReason !== "stop" || !body.trim() || body.length > 8000) {
@@ -670,6 +726,9 @@ export function completeAgentRun(
       return settled;
     })
     .immediate();
+  // carry 与终态属于同一个事务；只有最外层才确认提交，嵌套时留给外层调用方。
+  if (!sqlite.inTransaction) clearRunActivity(id);
+  return settled;
 }
 
 /** 只供受管宿主调用。actor 与 project 归属从 chat 推导；执行身份另取 run 自己的记录。 */
@@ -763,25 +822,32 @@ export function recoverAgentRuns(): void {
 }
 
 export function interruptActiveAgentRuns(): void {
-  sqlite
+  const interrupted = sqlite
     .transaction(() => {
+      const ids: string[] = [];
       for (const row of db
         .select()
         .from(agentRun)
         .where(inArray(agentRun.status, ["queued", "running"]))
         .all()) {
+        const endedAt = new Date();
+        const activity = settleRunActivity(row.id, "interrupted", endedAt.getTime());
         db.update(agentRun)
           .set({
             status: "interrupted",
-            settledAt: new Date(),
+            settledAt: endedAt,
             errorCode: "host_stopping",
             errorMessage: "宿主正在关闭",
+            ...(activity ? { activity } : {}),
           })
           .where(eq(agentRun.id, row.id))
           .run();
         diagnostic(row, "agent_run.interrupted", "宿主关闭中断 Agent run", "warn");
         publishProjectChange(row.projectId, row.chatId);
+        ids.push(row.id);
       }
+      return ids;
     })
     .immediate();
+  for (const id of interrupted) clearRunActivity(id);
 }

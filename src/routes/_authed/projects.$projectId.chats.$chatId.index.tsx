@@ -86,6 +86,7 @@ function ProjectChatDetailPage() {
         live={facts}
         info={liveInfo}
         runState={runState}
+        runActivities={loader.runActivities}
         continuation={continuation}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}

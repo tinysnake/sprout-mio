@@ -6,6 +6,7 @@ import {
   readRunActivity,
   recordRunActivity,
   reduceRunActivity,
+  settleRunActivity,
 } from "../src/server/pi-host/run-activity";
 import { piHostEvent } from "../src/server/pi-host/protocol";
 import type { PiHostProgress } from "../src/server/pi-host/protocol";
@@ -59,6 +60,19 @@ describe("工具调用摘要", () => {
     expect(described.kind).toBe("code_mode");
     expect(described.label).toBe("Code Mode · Bash 命令");
     expect(described.detail).toBe("rg --files");
+  });
+
+  it("Chat 工具按读/发语义分别命名，共享前缀不一律标成发送消息", () => {
+    const read = describeToolCall("sprout_chat_get", {});
+    expect(read).toMatchObject({ kind: "task", label: "读取对话", toolName: "sprout_chat_get" });
+    expect(read.detail).toBeUndefined();
+
+    expect(describeToolCall("sprout_chat_continuation_get", {}).label).toBe("读取对话接续");
+    expect(describeToolCall("sprout_chat_log", {}).label).toBe("对话协作");
+
+    const send = describeToolCall("sprout_chat_send", { body: "排查结论" });
+    expect(send).toMatchObject({ kind: "task", label: "发送消息" });
+    expect(send.detail).toBe("排查结论");
   });
 
   it("未知工具不丢事件，回落到工具名或第一个字符串参数", () => {
@@ -299,6 +313,27 @@ describe("进程内活动存储", () => {
     recordRunActivity(runId, start("call_1", "bash", "Bash 命令"), at);
     clearRunActivity(runId);
     expect(readRunActivity(runId)).toBeUndefined();
+  });
+
+  it("收尾把仍在运行的步骤收口，并保留已有结果", () => {
+    recordRunActivity(runId, start("call_1", "bash", "Bash 命令", "pnpm test"), at);
+    recordRunActivity(runId, start("call_2", "read", "读取文件"), at + 500);
+    expect(readRunActivity(runId)?.current?.id).toBe("call_2");
+
+    const settled = settleRunActivity(runId, "failed", at + 1000);
+    expect(settled?.current).toBeNull();
+    expect(settled?.entries.map((entry) => entry.status)).toEqual(["error", "done"]);
+    expect(settled?.entries[0]?.finishedAt).toBe(new Date(at + 1000).toISOString());
+    // 快照本身不动内存：落库方写入成功后再清，失败时还能重取。
+    expect(readRunActivity(runId)?.entries.find((entry) => entry.id === "call_2")?.status).toBe(
+      "running",
+    );
+    clearRunActivity(runId);
+    expect(readRunActivity(runId)).toBeUndefined();
+  });
+
+  it("没有记录时收尾返回 undefined", () => {
+    expect(settleRunActivity("run_missing", "aborted", at)).toBeUndefined();
   });
 });
 
