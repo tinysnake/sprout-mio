@@ -38,6 +38,16 @@ function messageItem(element: HTMLElement, id: string): HTMLElement | null {
   return element.querySelector<HTMLElement>(`${MESSAGE_ITEM}[data-message-id="${CSS.escape(id)}"]`);
 }
 
+/** 视口顶端落在第几页：页就是渲染与卸载的单位，报页号就够了。 */
+function visiblePage(element: HTMLElement): number | null {
+  const top = element.getBoundingClientRect().top;
+  for (const block of element.querySelectorAll<HTMLElement>("[data-message-page]")) {
+    if (block.getBoundingClientRect().bottom <= top) continue;
+    return Number(block.dataset.messagePage ?? 0);
+  }
+  return null;
+}
+
 /** 量当前视口：delta 用于插页后第一次还原，锚点消息用于随后几帧的重排纠正。 */
 function measureViewport(element: HTMLElement): ViewportAnchor {
   const top = element.getBoundingClientRect().top;
@@ -68,6 +78,10 @@ export type ChatHistory = {
   onLoadNewer: () => void;
   /** 整体换回最新一页：丢过尾巴之后靠它回到真尾巴。 */
   onResetToLatest: () => void;
+  /** 回到最新这次的失败：窗口没换、尾巴仍是卸载过的状态。 */
+  resetError: AppError | null;
+  /** 窗口里出现过的消息正文，卸载后仍能给运行状态还原未投递的输入。 */
+  bodies: ReadonlyMap<string, string>;
   reportAnchor: (pageIndex: number) => void;
 };
 
@@ -181,14 +195,19 @@ export function ChatThread({
     : "";
   const first = useRef(true);
   const oldestId = messages.ok ? (messages.data[0]?.id ?? null) : null;
+  const newestId = messages.ok ? (messages.data.at(-1)?.id ?? null) : null;
   // 头部那条消息换了，说明变的是上方（往前插页、卸载上方页），不是尾巴来了新消息。
   const seenOldest = useRef(oldestId);
+  // 尾部没换、只是中间少了页，不该亮"有新消息"。
+  const seenNewest = useRef(newestId);
 
   useEffect(() => {
     const element = scroll.current;
     if (!element) return;
     const shiftedAbove = oldestId !== seenOldest.current;
+    const appendedBelow = newestId !== seenNewest.current;
     seenOldest.current = oldestId;
+    seenNewest.current = newestId;
     if (first.current || atBottom) {
       element.scrollTop = element.scrollHeight;
       first.current = false;
@@ -196,15 +215,25 @@ export function ChatThread({
       return;
     }
     // 往上翻出来的历史不该亮"回到底部"的提示。
-    if (shiftedAbove) {
+    if (shiftedAbove || !appendedBelow) {
       setNewSinceScroll(false);
       return;
     }
     setNewSinceScroll(true);
-  }, [count, atBottom, oldestId]);
+  }, [count, atBottom, oldestId, newestId]);
 
   const aboveShift = history?.aboveShift ?? 0;
   const pinning = useRef(false);
+  // 钉位置期间要能被用户的真实手势打断：手势由输入事件表达，不靠算 scrollTop 差值。
+  const cancelPin = useRef<() => void>(() => {});
+  const historyRef = useRef(history);
+  historyRef.current = history;
+  const releasePin = () => {
+    if (!pinning.current) return;
+    cancelPin.current();
+    const element = scroll.current;
+    if (element !== null) viewport.current = measureViewport(element);
+  };
 
   // 上方内容变了：按锚点消息的实际位置把视口钉回去，而不是靠"高度差"。
   // 同一个提交里也可能丢掉视口下方的页，高度差就不再等于上方的变化量；
@@ -219,6 +248,8 @@ export function ChatThread({
     let timer: ReturnType<typeof setTimeout> | null = null;
     let frames = 0;
     pinning.current = true;
+    // 上方内容变了，页号也跟着平移：这里记的旧页号对新数组不再成立，落定后必须重报。
+    anchorPage.current = -1;
 
     // 锚点还在就按它的位置纠偏；被卸载了就退回高度不变量（那时变化的都在视口上方）。
     const drift = () => {
@@ -231,6 +262,7 @@ export function ChatThread({
     // 拿它当基准会让下一次还原原地不动。
     const cleanup = () => {
       pinning.current = false;
+      cancelAnimationFrame(frame);
       if (timer !== null) clearTimeout(timer);
     };
     // 钉稳之后要主动收手：`pinning` 一直为真会吞掉后续的滚动手势与翻页检查。
@@ -238,10 +270,16 @@ export function ChatThread({
       cleanup();
       // 记下落定后的视口：下一次（用户没再滚动就再来一次）还原才有真值。
       viewport.current = measureViewport(element);
+      // 落定之后视口停在哪一页就报哪一页。不报的话，程序化还原的滚动不会更新锚点，
+      // 锚点就会一直停在插页前的位置，最后把刚插进来的那页当成"离得太远"丢掉。
+      const page = visiblePage(element);
+      if (page === null) return;
+      anchorPage.current = page;
+      historyRef.current?.reportAnchor(page);
     };
     const pin = () => {
-      // 用户自己滚动了就放手，不跟人抢。
-      if (element.scrollTop !== expected) return finish();
+      // 用户自己滚动了就放手，不跟人抢（scrollTop 会被取整，差不超过半像素算没动）。
+      if (Math.abs(element.scrollTop - expected) > 0.5) return finish();
       const gap = drift();
       if (Math.abs(gap) >= 1) {
         element.scrollTop += gap;
@@ -254,9 +292,10 @@ export function ChatThread({
     // 此刻布局已刷新，量到的就是真值；之后几帧只是等既有行重排落定。
     pin();
     frame = requestAnimationFrame(pin);
+    cancelPin.current = cleanup;
     return () => {
-      cancelAnimationFrame(frame);
       cleanup();
+      cancelPin.current = () => {};
     };
   }, [aboveShift]);
 
@@ -312,15 +351,19 @@ export function ChatThread({
         role="log"
         aria-label="Chat 消息记录"
         data-testid="message-history"
+        onWheel={releasePin}
+        onTouchStart={releasePin}
+        onPointerDown={releasePin}
+        onKeyDown={releasePin}
         onScroll={(event) => {
           const element = event.currentTarget;
           const bottom = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
           setAtBottom(bottom);
           if (bottom) setNewSinceScroll(false);
-          // 还原滚动位置时的程序化滚动不算用户的视口变化，别据此重新卸载。
-          if (history === undefined || pinning.current) return;
+          if (history === undefined) return;
+          // 还原滚动位置的那几帧里别重量视口：量到的可能是还没落定的中间态。
+          if (!pinning.current) viewport.current = measureViewport(element);
           // 接近顶部就再往前要一页；滚到真顶部反而不如提前一屏，滚动手感更连续。
-          viewport.current = measureViewport(element);
           if (element.scrollTop < LOAD_OLDER_PX && history.hasOlder && !history.loadingOlder) {
             history.onLoadOlder();
           }
@@ -332,16 +375,12 @@ export function ChatThread({
           ) {
             history.onLoadNewer();
           }
-          // 离卸载按"视口所在页"算，不按消息条数：页是渲染与内存的单位，报页号就够了。
-          const top = element.getBoundingClientRect().top;
-          for (const block of element.querySelectorAll<HTMLElement>("[data-message-page]")) {
-            if (block.getBoundingClientRect().bottom <= top) continue;
-            const page = Number(block.dataset.messagePage ?? 0);
-            if (page === anchorPage.current) break;
-            anchorPage.current = page;
-            history.reportAnchor(page);
-            break;
-          }
+          // 还原中的位置不算用户的选择，不然半路丢掉页会让还原基准失效。
+          if (pinning.current) return;
+          const page = visiblePage(element);
+          if (page === null || page === anchorPage.current) return;
+          anchorPage.current = page;
+          history.reportAnchor(page);
         }}
         className="min-h-0 flex-1 overflow-y-auto px-7 pt-5.75 pb-4.5 max-desktop:px-3.75 max-desktop:py-5 [overflow-anchor:none]"
       >
@@ -398,6 +437,7 @@ export function ChatThread({
             <RunStatusPanel
               state={runState.data}
               messages={messages.data}
+              bodies={history?.bodies}
               onRestoreDraft={onRestoreDraft}
               chatKind={effectiveKind}
               agentNames={runAgentNames}
@@ -434,6 +474,15 @@ export function ChatThread({
           >
             {newSinceScroll ? "有新消息 · 回到最新" : "回到最新"}
           </button>
+        )}
+        {history?.resetError != null && (
+          <p
+            role="status"
+            data-testid="reset-latest-error"
+            className="mt-2 text-center text-[11px] text-muted-foreground"
+          >
+            回到最新失败，稍后再试。
+          </p>
         )}
       </div>
       {archived ? (

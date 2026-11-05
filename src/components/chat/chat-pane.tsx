@@ -77,6 +77,8 @@ export function ChatPane({
     onLoadOlder: room.loadOlder,
     onLoadNewer: room.loadNewer,
     onResetToLatest: room.resetToLatest,
+    resetError: room.resetError,
+    bodies: room.bodies,
     reportAnchor: room.reportAnchor,
   };
   const [draft, setDraft] = useChatDraft(chat.id);

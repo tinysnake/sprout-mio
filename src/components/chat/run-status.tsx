@@ -59,6 +59,7 @@ export function RunStatusBadge({ status }: { status: AgentRunStatus }) {
 export function RunStatusPanel({
   state,
   messages,
+  bodies,
   onRestoreDraft,
   chatKind,
   agentNames,
@@ -68,6 +69,8 @@ export function RunStatusPanel({
 }: {
   state: ChatRunState;
   messages: Message[];
+  /** 窗口里出现过的正文；未投递的输入被卸载后仍能还原它的内容。 */
+  bodies?: ReadonlyMap<string, string>;
   /** 提供时，未投递的输入可以放回输入框重发。 */
   onRestoreDraft?: (body: string) => void;
   /** 群组与频道按 run 的所属分身分行；DM 保持单行。 */
@@ -85,7 +88,11 @@ export function RunStatusPanel({
   const active = state.active;
   const pending = state.inputs.filter((input) => input.disposition === "pending");
   const undelivered = pending
-    .map((input) => messages.find((message) => message.id === input.messageId)?.body)
+    .map(
+      (input) =>
+        messages.find((message) => message.id === input.messageId)?.body ??
+        bodies?.get(input.messageId),
+    )
     .filter((body): body is string => Boolean(body));
   // 宿主已启用且还没有 run 时属于空闲，不占一行；其余状态与未投递事实同排一行。
   const showStatus = !state.enabled || Boolean(run) || active.length > 0;
