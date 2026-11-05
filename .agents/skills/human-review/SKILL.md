@@ -5,7 +5,9 @@ description: 人类评审 Sprout 真实页面：启动可操作的应用预览�
 
 # Human review
 
-通过 CLI 预览真实应用，使用 Lavish 原生 poll / reply 完成反馈闭环。应用适配器与 Pi 工具无关。
+按[宿主环境](../../../docs/project-conventions.md#宿主环境)选择路径。GUI 宿主（t3 code）优先用环境自带的 browser / preview 工具展示真实页面并收取反馈，Lavish 作为回退；TUI 宿主（herdr）走下面的 Lavish CLI 路径。
+
+下面的启动、反馈闭环与结束步骤描述 Lavish CLI 路径。
 
 ## 启动
 

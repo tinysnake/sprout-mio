@@ -46,16 +46,18 @@ UI 计划确定后，按开发总计划暂停开启新的功能章节，在途�
 
 1. 助手从开发总计划领取章节任务，读取实际契约、前端设计基线和开发约定，明确用户路径、复用组件、状态与响应式要求。
 2. 优先组合已确认的共享组件，在仓库开发场景中实现设计草案；新增视觉或交互方向记录具体差异，供 Human 在本地演示中确定。常规实现沿用已有决定直接推进。
-3. Human 通过 Lavish 中的仓库可运行页面体验，使用 DOM Capture 复制元素定位，并提交文字、截图反馈；具体流程见下文。助手在同一组件实现中修正并保留版本与证据，不再维护工具原型与正式页面两份持续变化的 UI。
+3. Human 在预览中体验仓库可运行页面（GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 Lavish），使用 DOM Capture 复制元素定位，并提交文字、截图反馈；具体流程见下文。助手在同一组件实现中修正并保留版本与证据，不再维护工具原型与正式页面两份持续变化的 UI。
 4. 完成章节内各页面与组件设计，检查主题、状态、信息层级、键盘行为和共享布局的一致性。现有规则覆盖的新场景先扩展组件变体，确有需要再新增组件。
 5. 演示以固定数据和模拟回调驱动正式呈现组件，补齐导航、表单反馈和必要异常；真实服务调用仍由集成线接入，不把整章技术栈转换留给集成线。
 6. 保存可版本管理的组件、场景、token、运行说明、截图或录像及已知限制，向集成线交付整个章节。集成反馈回到同一组件和场景修正。
 
 设计方向确定、演示可用、真实接入通过和 Human 体验确认分别记录。工具试作或某张截图不能替代对应结论。
 
-### 使用 Lavish 与 DOM Capture 体验和反馈
+### 页面预览与 DOM Capture 体验和反馈
 
-后续 UI 开发统一采用“仓库实现 → Lavish 体验 → DOM Capture 定位与截图说明 → 助手修正 → Human 复查”的流程。[Lavish](https://github.com/kunchenguid/lavish-axi) 承载页面预览、反馈记录和 agent 收取反馈，[DOM Capture](https://github.com/schappim/dom-capture) 负责元素选取与定位。两者是开发协作工具，设计规范、组件和业务实现仍由仓库维护。
+后续 UI 开发统一采用“仓库实现 → 页面预览 → DOM Capture 定位与截图说明 → 助手修正 → Human 复查”的流程。预览与反馈按[宿主环境](project-conventions.md#宿主环境)选择，GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 [Lavish](https://github.com/kunchenguid/lavish-axi)；[DOM Capture](https://github.com/schappim/dom-capture) 负责元素选取与定位。Lavish 当前采用多行纯文本加图片附件，Markdown 可原样粘贴，不宣称它是所见即所得的富文本编辑器。两者是开发协作工具，设计规范、组件和业务实现仍由仓库维护。
+
+以下步骤描述 TUI 宿主的 Lavish 路径；GUI 宿主用环境自带的 browser / preview 工具完成同样的预览、定位与反馈收取，DOM Capture 的用法不变。
 
 1. 助手启动当前仓库的演示场景或真实应用，在 Lavish 中提供同页预览和 Conversation 面板，注明场景、URL、代码版本、主题及 Sprout 预览区域的实际视口尺寸。演示与真实接入使用同一份呈现组件，场景数据性质明确。
 2. Human 在预览中体验；需要定位时，用 DOM Capture 悬停高亮、点击选中，并通过父子层级切换找到目标。使用本项目协作中已扩展的 **Copy ID** 或 **Copy DOM path**，把结果贴入 Lavish 的 Conversation，再说明当前表现与期望行为。Copy ID 只复制原始 ID，元素没有 ID 时不可用；Copy DOM path 包含元素名称、ID、所在文档 URL 与 DOM 路径。无需复制带样式的整段 HTML。
@@ -67,7 +69,7 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 预览应直接加载可信本地 Sprout URL，保持应用所需的 origin、资源加载、登录与存储行为；不能把运行中的应用简单套进 Lavish 原有的 sandboxed HTML iframe 并宣称可用。原有 HTML artifact 的隔离与可信应用预览分别处理。DOM Capture 需要取得目标 frame 的站点权限；响应式验收使用 Sprout frame 的实际尺寸，不能拿包含反馈面板的整个浏览器窗口尺寸代替。
 
-当前入口统一为 human-review skill 与 CLI，真实应用适配保留，Pi 专用工具和自动消息桥已移除。已用实际 DOM Capture 扩展、Lavish 与独立 Chromium 验证原生 poll / reply、登录保持、元素定位、完整文字与截图收取，以及 SIGTERM 清理。启动方式、证据与未验证项见 [Human review 工具记录](human-review.md)。此前 UI review 与 Pi SDK 的验收保留为历史证据；工具随该轮使用过，11 张截图经实际读图，8 条界面反馈按线程分派修复并合入。用户常用浏览器中的扩展重载仍未完成，工具本身的这一项不影响 UI 章节验收。
+TUI 宿主的当前入口是 human-review skill 与 CLI，GUI 宿主用环境自带的 browser / preview 工具；真实应用适配保留，Pi 专用工具和自动消息桥已移除。已用实际 DOM Capture 扩展、Lavish 与独立 Chromium 验证原生 poll / reply、登录保持、元素定位、完整文字与截图收取，以及 SIGTERM 清理。启动方式、证据与未验证项见 [Human review 工具记录](human-review.md)。此前 UI review 与 Pi SDK 的验收保留为历史证据；工具随该轮使用过，11 张截图经实际读图，8 条界面反馈按线程分派修复并合入。用户常用浏览器中的扩展重载仍未完成，工具本身的这一项不影响 UI 章节验收。
 
 ### 当前原型迁入仓库的顺序
 
@@ -223,7 +225,7 @@ iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe �
 
 ## UI-P6a 完成对话接续与人类控制呈现
 
-范围对应[P6a](development-plan-functional.md#p6a-完成对话接续与人类控制)、[I-P6a](development-plan.md#i-p6a-集成对话接续与人类控制)。P6 原暂按整章交付，现按 a/b/c 三节交付。先比较 2–3 套 Lavish 原型并记录 Human 选定结论，再实现页面。
+范围对应[P6a](development-plan-functional.md#p6a-完成对话接续与人类控制)、[I-P6a](development-plan.md#i-p6a-集成对话接续与人类控制)。P6 原暂按整章交付，现按 a/b/c 三节交付。先比较 2–3 套原型并记录 Human 选定结论，原型按[宿主环境](project-conventions.md#宿主环境)呈现，GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 Lavish，再实现页面。
 
 - [x] 完成对话接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](p6a/summary.md#p3-2-disable-的页面文案)。
 - [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [UI 线证据](p6a/summary.md#ui-线证据)与[集成线与技术验收证据](p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`。

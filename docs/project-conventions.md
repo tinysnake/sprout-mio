@@ -14,7 +14,7 @@
 
 页面的形状由 Human 决定，不由实现方代为决定。
 
-- 任务涉及新增页面、调整既有页面的信息层级或改变交互时，先给 2 到 3 个可比较的设计方案供 Human 选择，选定之前不进入实现。方案用 Lavish artifact 呈现，形状差异要能被一眼比较，同一批数据、同一套语义色与措辞。
+- 任务涉及新增页面、调整既有页面的信息层级或改变交互时，先给 2 到 3 个可比较的设计方案供 Human 选择，选定之前不进入实现。方案用 HTML artifact 呈现，展示路径按[宿主环境](#宿主环境)选择，GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 Lavish；形状差异要能被一眼比较，同一批数据、同一套语义色与措辞。
 - 选定之后，实现方只负责按选定方案写功能、写测试与做验证。实现中若发现方案本身有事实错误（例如某个状态在方案的数据形状下不可能出现），先报告再改，不擅自改形状。
 - 集成结束时由 Human 走一次 [Human review](human-review.md)，看真实页面再给结论。这一步不是可选的收尾动作，是章节完成的判据之一。
 - 编排单元里写页面任务的 brief 必须带上选定方案的 artifact 路径与选定结论，不写界面形状的 brief 视为未就绪。
@@ -35,11 +35,25 @@ P3 C 的代价就是这个顺序被跳过：brief 只写了「设置页能绑定
 
 P3 C 与 R1 并行时互相覆盖的正是这些串行资源，`drizzle/meta/_journal.json`、`src/db/schema.ts` 里同一张表的 CHECK 重建、`src/routeTree.gen.ts`，不是普通代码重叠。只加集成分支而不给串行资源定归属，只是把冲突推迟到最后一次合并。
 
+## 宿主环境
+
+开发在两种宿主里进行，同一件事用不同工具做。先判断宿主，再按对应分支执行；优先用当前宿主自带的工具，不可用时回退另一种。
+
+- **GUI 宿主（t3 code）**：能用到 `delegate_task` / `t3_*` 与 `preview_*` 等自带 tool，或运行环境明确是 T3 code 线程。
+- **TUI 宿主（herdr）**：通过 pi-herdr-enhanced 的 `job` / `job_watch` 操作 worker。
+
+| 事项             | GUI 宿主（t3 code）                                  | TUI 宿主（herdr）                                  |
+| ---------------- | ---------------------------------------------------- | -------------------------------------------------- |
+| 派发子代理       | `delegate_task`，写文件用 `isolation: 'worktree'`    | `job open`，写文件用 `worktree: true`，`job_watch` 等待 |
+| 真实页面预览与反馈 | 环境自带的 browser / preview 工具优先，Lavish 回退   | 仓库 human-review 适配器与 Lavish                  |
+
+派发子代理的本机操作细节见 `AGENTS.local.md`，真实页面评审的流程见 [Human review](human-review.md)。
+
 ## 工作区隔离
 
 每个写代码的线程从创建起就待在自己的 worktree 里，不在主 checkout 上写。主 checkout 固定停在 `main`，只做集成、评审与 Human review。判断“这个小改动不值得开 worktree”这一步本身就会出错，所以它不交给执行者临时决定。
 
-- 新线程要独立 worktree。环境与 sprout-mio 项目的 `defaultThreadEnvMode` 都已设为 `worktree`，但通过 tool 建线程或委派子代理时它不生效（tool 默认落在项目根目录），必须显式传 `workspaceStrategy: { type: 'worktree' }` 与 `delegate_task(isolation: 'worktree')`。
+- 新线程要独立 worktree。环境与 sprout-mio 项目的 `defaultThreadEnvMode` 都已设为 `worktree`，但通过 tool 建线程或委派子代理时它不生效（tool 默认落在项目根目录），必须显式指定，GUI 宿主传 `workspaceStrategy: { type: 'worktree' }` 与 `delegate_task(isolation: 'worktree')`，TUI 宿主用 `job open(worktree: true, repo: <主 checkout>, branch, base)`。
 - 新 worktree 的第一条命令是 `bash scripts/dev/worktree-setup.sh`；它已登记为 T3 项目的 `runOnWorktreeCreate` 脚本，新建 worktree 时自动执行，手动重建环境时也跑它。它装依赖，把 gitignore 掉的本地文件与目录软链到主 checkout（`.env.local`、`AGENTS.local.md`、`.agents/dev-pipeline`、`.pi/`、`orchestrate/`、`.obelisk/memories`、`.sprout-pi-sessions/`、`.sprout-pi-workspaces/`），为这个 worktree 建独立 `data/` 并跑迁移。
   - 软链而不是复制：这些路径只有一份真值，各 worktree 读到的就是主 checkout 的那份。`orchestrate/` 是 200 MB 以上的设计原型与评审证据，复制会拖慢准备并制造两处真值。
   - `.pi/settings.json` 里 `./`、`../` 开头的包源会被改写成绝对路径：pi 解析 project 包时以 `<cwd>/.pi` 为基准、不跟随软链，相对路径在 `.t3/` 下的 worktree 里指向不存在的目录，包内 extension 与 skills 会静默不加载（`pi list` 里该包没有解析出的路径行）。
