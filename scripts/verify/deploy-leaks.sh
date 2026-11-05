@@ -11,6 +11,12 @@ trap cleanup EXIT
 
 probe_ignored() {
   local dir="$1"
+  # 运行产物目录可能是符号链接（例如把 orchestrate 指到仓库外）。对符号链接不能
+  # 在目标里探针，否则 git 会把路径判为“beyond a symbolic link”；直接检查链接本身。
+  if [[ -L "$dir" ]]; then
+    git check-ignore -q "$dir" || fail "$dir 没有被 .gitignore 忽略"
+    return
+  fi
   mkdir -p "$dir"
   local file="$dir/.deploy-leak-probe"
   : > "$file"
