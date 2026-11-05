@@ -286,4 +286,43 @@ describe("Agent run 持久不变量", () => {
       assert.equal(runs.listChatRunActivities(direct.chat.id,ctx).length, 0);
     `);
   });
+
+  it("外层事务回滚后内存快照仍在，重试收尾能落库", () => {
+    scenario(`
+      runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
+      const activityStore = await import('./src/server/pi-host/run-activity.ts');
+      activityStore.recordRunActivity(run.id,{type:'progress',id:run.id,kind:'tool_start',toolCallId:'call_1',toolName:'bash',activity:{kind:'bash',label:'Bash 命令',detail:'pnpm test',toolName:'bash'}},Date.now());
+      assert.throws(
+        () =>
+          sqlite
+            .transaction(() => {
+              runs.completeAgentRun(run.id,'done','stop',ctx);
+              throw new Error('outer rollback');
+            })
+            .immediate(),
+        /outer rollback/,
+      );
+      assert.ok(activityStore.readRunActivity(run.id), '回滚后内存快照必须还在');
+      assert.equal(runs.listAgentRuns(direct.chat.id,ctx)[0].status, 'running');
+      assert.equal(runs.listAgentRuns(direct.chat.id,ctx)[0].activity, undefined);
+      runs.completeAgentRun(run.id,'done','stop',ctx);
+      assert.ok(runs.listAgentRuns(direct.chat.id,ctx)[0].activity, '重试收尾应重新落库');
+      assert.equal(activityStore.readRunActivity(run.id), undefined);
+    `);
+  });
+
+  it("宿主关闭时中断的 run 也落库工作记录", () => {
+    scenario(`
+      runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
+      const activityStore = await import('./src/server/pi-host/run-activity.ts');
+      activityStore.recordRunActivity(run.id,{type:'progress',id:run.id,kind:'tool_start',toolCallId:'call_1',toolName:'bash',activity:{kind:'bash',label:'Bash 命令',detail:'pnpm test',toolName:'bash'}},Date.now());
+      runs.interruptActiveAgentRuns();
+      const interrupted = runs.listAgentRuns(direct.chat.id,ctx)[0];
+      assert.equal(interrupted.status, 'interrupted');
+      assert.equal(interrupted.errorCode, 'host_stopping');
+      assert.ok(interrupted.activity, '中断的 run 也要留下已经发生的步骤');
+      assert.equal(interrupted.activity.entries[0].status, 'error');
+      assert.equal(activityStore.readRunActivity(run.id), undefined);
+    `);
+  });
 });

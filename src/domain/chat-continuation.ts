@@ -15,6 +15,7 @@ import {
 import { getChat } from "./chat";
 import type { ProjectContext } from "./access";
 import { transitionAgentRun } from "./agent-run";
+import { clearRunActivity } from "../server/pi-host/run-activity";
 import {
   all,
   one,
@@ -286,7 +287,9 @@ export function applyChatContinuationCommand(
   now: Date,
 ): ChatContinuationData {
   const command = chatContinuationCommandSchema.parse(raw);
-  return sqlite
+  // abort 路径在事务内走状态机；记录下已收尾的 run，提交后再丢内存快照。
+  const settled: string[] = [];
+  const result = sqlite
     .transaction(() => {
       access(command.projectId, command.chatId, ctx);
       if (ctx.agent) throw new ChatContinuationError("forbidden", "对话接续控制仅供 Human 操作。");
@@ -352,7 +355,10 @@ export function applyChatContinuationCommand(
                   command.chatId,
                 ).map((run) => run.id);
           persistContinuationRunStop(command.chatId, ids, ctx, now);
-          for (const id of ids) transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
+          for (const id of ids) {
+            transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
+            settled.push(id);
+          }
         }
         reconcileChatSchedule(command.chatId, now);
         reconcileMessageWake(command.chatId, now);
@@ -466,6 +472,9 @@ export function applyChatContinuationCommand(
       return result;
     })
     .immediate();
+  // 事务提交后才确认这些 run 的终态活动已经落库。
+  for (const id of settled) clearRunActivity(id);
+  return result;
 }
 export function drainContinuationAborts(now: Date, abort: (runId: string) => boolean) {
   for (const row of all<{ run_id: string }>(

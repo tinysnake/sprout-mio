@@ -6,7 +6,6 @@ import type {
   AgentRunResult,
   ChatRunActivity,
   ChatRunState,
-  RunActivity,
 } from "../../contracts/agent-run";
 import type { ChatSession, ChatResult, Message } from "../../contracts/chat";
 import type { ChatInfoView } from "../../contracts/info-hub";
@@ -115,11 +114,13 @@ export function ChatPane({
   }, [info]);
   // 只按 assistantMessageId 精确挂载：记录属于哪条回复由数据库的外键决定，不按时间推断。
   const runActivityByMessage = useMemo(() => {
-    const map = new Map<string, RunActivity>();
+    const map = new Map<string, ChatRunActivity>();
     if (!runActivities.ok) return map;
-    for (const record of runActivities.data) map.set(record.assistantMessageId, record.activity);
+    for (const record of runActivities.data) map.set(record.assistantMessageId, record);
     return map;
   }, [runActivities]);
+  // 读取失败不能折叠成“没有记录”：消息照常展示，但明确告知历史记录未加载。
+  const runActivitiesError = runActivities.ok ? undefined : runActivities.error.message;
 
   const agentName =
     senderNames.get(
@@ -269,6 +270,7 @@ export function ChatPane({
         knownSenders={knownSenders}
         runFacts={runFacts}
         runActivityByMessage={runActivityByMessage}
+        runActivitiesError={runActivitiesError}
         archived={Boolean(chat.archivedAt)}
         titleEditor={
           // DM 保留消息头部的铅笔（P4b 形状，窄屏也能直接改名）；能不能改由治理事实决定，不按 kind 判。

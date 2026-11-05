@@ -1,5 +1,5 @@
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
-import type { RunActivity } from "../../contracts/agent-run";
+import type { ChatRunActivity } from "../../contracts/agent-run";
 import type { MentionSpan, Message } from "../../contracts/chat";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
 import { ChatAvatar } from "./chat-avatar";
@@ -37,7 +37,7 @@ export function MessageList({
   /** 由 assistantMessageId 精确匹配的 run，不按时间或发送者猜测归属。 */
   runFacts?: MessageRunFacts;
   /** 已结束 run 的完整工作记录：键是产出它的 assistant 消息 id。 */
-  runActivityByMessage?: ReadonlyMap<string, RunActivity>;
+  runActivityByMessage?: ReadonlyMap<string, ChatRunActivity>;
 }) {
   if (messages.length === 0)
     return (
@@ -68,7 +68,8 @@ export function MessageList({
             GROUPING_WINDOW_MS;
         const historical = knownSenders ? !knownSenders.has(key) : false;
         const links = runFacts?.get(message.id) ?? [];
-        const activity = runActivityByMessage?.get(message.id);
+        const activityRecord = runActivityByMessage?.get(message.id);
+        const activity = activityRecord?.activity;
         return (
           <li
             key={message.id}
@@ -132,14 +133,28 @@ export function MessageList({
                   data-testid="message-run-links"
                   className="mt-1 text-[10px] text-muted-foreground"
                 >
-                  {links.length === 0
-                    ? "未关联 run · 不推断归属"
-                    : links.map((run) => (
-                        <span key={run.runId} className="mr-2 inline-flex items-center gap-1">
-                          <span className="font-mono">{run.runId}</span>
-                          <span>{RUN_STATUS_LABELS[run.status] ?? run.status}</span>
+                  {links.length === 0 ? (
+                    activityRecord ? (
+                      <span
+                        key={activityRecord.runId}
+                        className="mr-2 inline-flex items-center gap-1"
+                      >
+                        <span className="font-mono">{activityRecord.runId}</span>
+                        <span>
+                          {RUN_STATUS_LABELS[activityRecord.status] ?? activityRecord.status}
                         </span>
-                      ))}
+                      </span>
+                    ) : (
+                      "未关联 run · 不推断归属"
+                    )
+                  ) : (
+                    links.map((run) => (
+                      <span key={run.runId} className="mr-2 inline-flex items-center gap-1">
+                        <span className="font-mono">{run.runId}</span>
+                        <span>{RUN_STATUS_LABELS[run.status] ?? run.status}</span>
+                      </span>
+                    ))
+                  )}
                 </p>
               )}
               {!human && activity && (

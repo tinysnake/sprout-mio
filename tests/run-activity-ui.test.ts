@@ -10,6 +10,16 @@ import { ContinuationDiagnostic } from "../src/components/continuation/continuat
 import { continuationFixture } from "./fixtures/p6a-pages";
 import { renderWithRouter } from "./fixtures/router-ssr";
 
+function record(assistantMessageId: string, activity: RunActivity) {
+  return {
+    runId: "run_e4d46820",
+    instanceId: "ain_test",
+    assistantMessageId,
+    status: "completed" as const,
+    activity,
+  };
+}
+
 function step(index: number, overrides: Partial<RunActivityStep> = {}): RunActivityStep {
   return {
     id: `call_${index}`,
@@ -410,8 +420,8 @@ describe("已结束 run 的工作记录", () => {
       profile: null,
       humanName: "Human",
       runActivityByMessage: new Map([
-        [assistant.id, settled],
-        [human.id, settled],
+        [assistant.id, record(assistant.id, settled)],
+        [human.id, record(human.id, settled)],
       ]),
     }),
   );
@@ -431,10 +441,24 @@ describe("已结束 run 的工作记录", () => {
         messages: [human],
         profile: null,
         humanName: "Human",
-        runActivityByMessage: new Map([[human.id, settled]]),
+        runActivityByMessage: new Map([[human.id, record(human.id, settled)]]),
       }),
     );
     expect(humanOnly).not.toContain('data-testid="message-run-activity"');
+  });
+
+  it("持久化记录提供归属时不再声称“未关联 run”", () => {
+    const html = renderToStaticMarkup(
+      createElement(MessageList, {
+        messages: [assistant],
+        profile: null,
+        humanName: "Human",
+        runFacts: new Map(),
+        runActivityByMessage: new Map([[assistant.id, record(assistant.id, settled)]]),
+      }),
+    );
+    expect(html).toContain("run_e4d46820");
+    expect(html).not.toContain("未关联 run");
   });
 
   it("已结束的失败 run 也保留可回看的记录", () => {

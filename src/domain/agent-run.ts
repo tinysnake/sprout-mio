@@ -169,6 +169,7 @@ export function listChatRunActivities(chatId: string, ctx: ProjectContext): Chat
               runId: row.id,
               instanceId: row.instanceId,
               assistantMessageId: row.assistantMessageId,
+              status: row.status,
               activity: row.activity,
             },
           ]
@@ -576,8 +577,9 @@ export function transitionAgentRun(
       return toRun(updated);
     })
     .immediate();
-  // 落库成功后才丢内存：失败回滚时历史还在，下一次收尾仍能重取。
-  if (settledActivity) clearRunActivity(id);
+  // 只有在最外层事务里才能确认已经提交。嵌在外层事务时先保留内存快照，
+  // 由外层提交后的调用方清理；外层回滚时下一次收尾仍能取到历史。
+  if (settledActivity && !sqlite.inTransaction) clearRunActivity(id);
   // Run 状态是页面最在意的那条变化：一次转移同时影响对话与 Project 的运行列表。
   publishProjectChange(run.projectId, run.chatId);
   return run;
@@ -647,7 +649,9 @@ export function recordRunInputDeliveryFailure(
 }
 
 export function abortAgentRun(id: string, ctx: ProjectContext): AgentRun {
-  return transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
+  const run = transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
+  if (!sqlite.inTransaction) clearRunActivity(id);
+  return run;
 }
 
 export function completeAgentRun(
@@ -656,7 +660,7 @@ export function completeAgentRun(
   stopReason: string,
   ctx: ProjectContext,
 ): AgentRun {
-  return sqlite
+  const settled = sqlite
     .transaction(() => {
       const row = runRow(id, ctx);
       if (row.status !== "running" || stopReason !== "stop" || !body.trim() || body.length > 8000) {
@@ -722,6 +726,9 @@ export function completeAgentRun(
       return settled;
     })
     .immediate();
+  // carry 与终态属于同一个事务；只有最外层才确认提交，嵌套时留给外层调用方。
+  if (!sqlite.inTransaction) clearRunActivity(id);
+  return settled;
 }
 
 /** 只供受管宿主调用。actor 与 project 归属从 chat 推导；执行身份另取 run 自己的记录。 */
@@ -815,25 +822,32 @@ export function recoverAgentRuns(): void {
 }
 
 export function interruptActiveAgentRuns(): void {
-  sqlite
+  const interrupted = sqlite
     .transaction(() => {
+      const ids: string[] = [];
       for (const row of db
         .select()
         .from(agentRun)
         .where(inArray(agentRun.status, ["queued", "running"]))
         .all()) {
+        const endedAt = new Date();
+        const activity = settleRunActivity(row.id, "interrupted", endedAt.getTime());
         db.update(agentRun)
           .set({
             status: "interrupted",
-            settledAt: new Date(),
+            settledAt: endedAt,
             errorCode: "host_stopping",
             errorMessage: "宿主正在关闭",
+            ...(activity ? { activity } : {}),
           })
           .where(eq(agentRun.id, row.id))
           .run();
         diagnostic(row, "agent_run.interrupted", "宿主关闭中断 Agent run", "warn");
         publishProjectChange(row.projectId, row.chatId);
+        ids.push(row.id);
       }
+      return ids;
     })
     .immediate();
+  for (const id of interrupted) clearRunActivity(id);
 }

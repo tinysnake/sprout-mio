@@ -97,6 +97,7 @@ export type ChatRunActivity = {
   runId: string;
   instanceId: string;
   assistantMessageId: string;
+  status: AgentRunStatus;
   activity: RunActivity;
 };
 
