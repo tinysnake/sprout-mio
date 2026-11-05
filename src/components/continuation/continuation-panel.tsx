@@ -1,6 +1,7 @@
 import { Link, type LinkProps } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { Fragment } from "react";
+import type { ChatKind } from "../../contracts/chat";
 import type { ContinuationPageData } from "./continuation-page-data";
 import { CONTINUATION_UNAVAILABLE } from "./continuation-page-data";
 import { CONTINUATION_MODES } from "./continuation-labels";
@@ -20,21 +21,33 @@ export function continuationCheckLink(
     : { to: "/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation", params };
 }
 
-export function ContinuationPanel({ data }: { data?: ContinuationPageData }) {
+export function ContinuationPanel({
+  data,
+  chatKind,
+}: {
+  data?: ContinuationPageData;
+  chatKind?: ChatKind;
+}) {
   const view = data?.view;
   const latest = view?.latestEvaluation?.evaluationId;
   // 没有判定记录时不再把入口做成不可点：指向 latest，页面给出空态与依赖条件。
   const target = latest ?? (view ? LATEST_CHECK_LINK : undefined);
+  // DM 的判定由规则分支直接派发给唯一 Agent，没有候选选择的诊断可看。
+  const showWakeEntry = chatKind !== "dm";
   const rows = [
-    {
-      kind: "wake" as const,
-      label: "唤醒判定",
-      value: !view
-        ? CONTINUATION_UNAVAILABLE.reason
-        : latest
-          ? `最近 ${view.recentRounds.length} 轮 · 查看诊断`
-          : "尚无判定 · 查看诊断",
-    },
+    ...(showWakeEntry
+      ? [
+          {
+            kind: "wake" as const,
+            label: "唤醒判定",
+            value: !view
+              ? CONTINUATION_UNAVAILABLE.reason
+              : latest
+                ? `最近 ${view.recentRounds.length} 轮 · 查看诊断`
+                : "尚无判定 · 查看诊断",
+          },
+        ]
+      : []),
     {
       kind: "continuation" as const,
       label: "对话接续",
@@ -83,7 +96,9 @@ export function ContinuationPanel({ data }: { data?: ContinuationPageData }) {
         })}
       </div>
       {view && (
-        <p className="mt-2 text-[11px] text-muted-foreground">点开任一行进入完整诊断与逐轮记录。</p>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {rows.length > 1 ? "点开任一行进入完整诊断与逐轮记录。" : "点开进入完整诊断与逐轮记录。"}
+        </p>
       )}
       {!view && (
         <p data-testid="continuation-unavailable" className="mt-2 text-muted-foreground">
