@@ -112,7 +112,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
 }
 
 /** 在 DM 中新建一轮，执行后返回配置快照与消息计数。 */
-async function runWithSwitch(inherit: boolean | undefined, reply?: ReplyEvent) {
+async function runWithSwitch(inherit: boolean | "0" | undefined, reply?: ReplyEvent) {
   const { runnerPath, opened } = writeRunner(reply);
   const direct = chats.createDirectChat(project.id, profile.id, ctx);
   chats.sendMessage(
@@ -127,7 +127,8 @@ async function runWithSwitch(inherit: boolean | undefined, reply?: ReplyEvent) {
   const work = runs.queuedRunWork().find((entry) => entry.run.id === run.id)!;
   const previous = process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
   if (inherit === undefined) delete process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
-  else process.env.SPROUT_PI_INHERIT_HOST_RESOURCES = inherit ? "1" : "false";
+  else
+    process.env.SPROUT_PI_INHERIT_HOST_RESOURCES = inherit === "0" ? "0" : inherit ? "1" : "false";
   const transport = new PiSessionProcess(run.id, runnerPath);
   try {
     await Effect.runPromise(
@@ -170,8 +171,8 @@ describe("Pi 资源继承开关的父进程接线", () => {
     });
   }
 
-  it("缺省关闭：open 不要求继承，快照记录关闭且资源为空", async () => {
-    const { open, snapshot } = await runWithSwitch(undefined);
+  it("显式 false：open 关闭继承，快照记录关闭且资源为空", async () => {
+    const { open, snapshot } = await runWithSwitch(false);
     expect(open.inheritHostResources).toBe(false);
     expect(snapshot?.resources?.inheritHostResources).toBe(false);
     expect(snapshot?.resources?.skills).toEqual([]);
@@ -182,19 +183,22 @@ describe("Pi 资源继承开关的父进程接线", () => {
     expect(snapshot?.resources?.hostAgentDir).toBe(open.agentDir);
   });
 
-  it("显式打开：open 传 true，快照保留宿主 skills 与 prompt templates", async () => {
-    const { open, snapshot } = await runWithSwitch(true);
-    expect(open.inheritHostResources).toBe(true);
-    expect(snapshot?.resources?.inheritHostResources).toBe(true);
-    expect(snapshot?.resources?.skills).toEqual(["host-skill"]);
-    expect(snapshot?.resources?.prompts).toEqual(["host-prompt"]);
-    // 打开开关不搬 themes 与 context files。
-    expect(snapshot?.resources?.themes).toEqual([]);
-    expect(snapshot?.resources?.contextFiles).toEqual([]);
-  });
+  it.each([undefined, true])(
+    "缺省或显式打开（%s）：快照保留宿主 skills 与 prompt templates",
+    async (value) => {
+      const { open, snapshot } = await runWithSwitch(value);
+      expect(open.inheritHostResources).toBe(true);
+      expect(snapshot?.resources?.inheritHostResources).toBe(true);
+      expect(snapshot?.resources?.skills).toEqual(["host-skill"]);
+      expect(snapshot?.resources?.prompts).toEqual(["host-prompt"]);
+      // 打开开关不搬 themes 与 context files。
+      expect(snapshot?.resources?.themes).toEqual([]);
+      expect(snapshot?.resources?.contextFiles).toEqual([]);
+    },
+  );
 
-  it("显式关闭的值不会被当成 true，协议保留 registry 与资源段", async () => {
-    const { open, snapshot } = await runWithSwitch(false);
+  it.each([false, "0"] as const)("显式关闭（%s），协议保留 registry 与资源段", async (value) => {
+    const { open, snapshot } = await runWithSwitch(value);
     expect(open.inheritHostResources).toBe(false);
     expect(snapshot?.resources?.inheritHostResources).toBe(false);
     expect(snapshot?.registeredTools).toEqual(["grep", "read", "sprout_status"]);
