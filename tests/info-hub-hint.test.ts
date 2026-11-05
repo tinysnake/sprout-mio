@@ -110,7 +110,7 @@ const closeConnection = (generation: number, at: number) =>
     .run(at, at, machineId, generation);
 openConnection(1, base);
 
-/** 提示的最小间隔与合并窗口都从契约读，不把 2s / 5s 写死在断言里。 */
+/** 合并窗口从契约读，不把 2s 写死在断言里；最小间隔另有一条断言钉住 60 秒。 */
 const sendAfterMergeWindow = async (
   channel: InstanceType<typeof InfoHubHintChannel>,
   detectAt: number,

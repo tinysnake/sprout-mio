@@ -416,10 +416,12 @@ function revokeNotice(
   now: Date,
 ) {
   if (mutation.action === "acquire") return;
-  // Agent 自己发起、且没有任何在途执行被撤销时，这条通知只是把它刚做的事复述给它
-  // （prod run_16d68a18 收到的「租约已释放。…受影响的执行：无」就是这种），
-  // 对模型没有新信息，因此不落库也不投递。执行真被撤销时照常通知。
-  if (mutation.actorKind === "agent" && executions.length === 0) return;
+  // 只有「自己释放、什么都没撤」才不落库：prod run_16d68a18 收到的
+  // 「租约已释放。…受影响的执行：无」是自我通知，对模型没有新信息。
+  // 交接（handoff）即使没有在途执行也要告诉旧 holder 它已失权，不能一并吞掉。
+  if (mutation.action === "release" && mutation.actorKind === "agent" && executions.length === 0) {
+    return;
+  }
   const key = { projectId: mutation.projectId, machineId: mutation.machineId };
   const member = latestMembership(key);
   if (
