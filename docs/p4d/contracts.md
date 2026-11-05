@@ -21,9 +21,9 @@
 | ---------------------------- | ----------------------------------------------------- |
 | `kind`、`cause_id`、`run_id` | 与原因绑定的唯一键，保证同一原因对同一 run 只投递一次 |
 | `body`                       | 投递给 run 的文本                                     |
-| `delivered_at`               | 被 run 输入轮询取走时写入                             |
+| `delivered_at`               | runner 确认 `input_delivered` 时写入                  |
 
-投递走既有输入通道：`src/server/pi-host/run.ts` 以 `notice:<id>` 作为输入标识取走通知，不新开推送给 Agent 的旁路，也不因为通知存在而改变 run 的状态。
+投递走既有输入通道：`src/server/pi-host/run.ts` 以 `notice:<id>` 作为输入标识取走通知，不新开推送给 Agent 的旁路，也不因为通知存在而改变 run 的状态。`delivered_at` 只在 runner 回 `input_delivered` 时写入：写出 steer 后先记成待确认，runner 回 `input_rejected`（会话不在运行，消息没进入本轮）时通知留在 outbox，按 1 秒退避重试，直到确认送达或 run 结束。写入即记已送达会让一条没有进入模型的「撤销通知」再也投不出去。
 
 通知必须有可告知的新事实：Agent 自己 `release`、且没有任何在途执行被撤销时不落通知——收件人只有发起者本人，正文只能把它刚做的事复述一遍（prod `run_16d68a18` 收到的「租约已释放。…受影响的执行：无」即此类）。交接（`handoff`）仍通知旧 holder 它已失权，即使没有在途执行；有执行被撤销、由 Human 收回或移出关系时照常通知。
 
