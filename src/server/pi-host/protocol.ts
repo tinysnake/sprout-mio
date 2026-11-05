@@ -83,7 +83,7 @@ export const piHostEvent = z.discriminatedUnion("type", [
     type: z.literal("progress"),
     id: z.string(),
     kind: z.enum(["text_delta", "text_end", "tool_start", "tool_end", "mcp_surface_failed"]),
-    text: z.string().max(4000).optional(),
+    text: z.string().optional(),
     toolName: z.string().max(200).optional(),
     toolCallId: z.string().max(200).optional(),
     parentToolCallId: z.string().max(200).optional(),
@@ -111,7 +111,7 @@ export const piHostEvent = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("settled"),
     id: z.string(),
-    text: z.string().max(8000),
+    text: z.string(),
     stopReason: z.string(),
   }),
   z.object({
@@ -120,6 +120,7 @@ export const piHostEvent = z.discriminatedUnion("type", [
     code: z.string().max(100),
     message: z.string().max(500),
     stopReason: z.string().optional(),
+    text: z.string().optional(),
   }),
 ]);
 export type PiHostEvent = z.infer<typeof piHostEvent>;

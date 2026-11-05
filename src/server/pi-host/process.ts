@@ -21,6 +21,7 @@ export class PiHostFailure extends Error {
     readonly code: string,
     message: string,
     readonly stopReason?: string,
+    readonly text?: string,
   ) {
     super(message);
     this.name = "PiHostFailure";
@@ -60,7 +61,8 @@ export class PiSessionProcess {
       detached: true,
       env: { ...process.env, PI_TELEMETRY: "0" },
     });
-    this.child.stdout.on("data", (chunk: Buffer) => this.receive(chunk.toString()));
+    this.child.stdout.setEncoding("utf8");
+    this.child.stdout.on("data", (chunk: string) => this.receive(chunk));
     // 子进程退出码说明不了原因，把它的最后几行留下来。
     this.child.stderr.on("data", (chunk: Buffer) => {
       this.stderrTail = `${this.stderrTail}${chunk.toString()}`.slice(-2000);
@@ -116,10 +118,6 @@ export class PiSessionProcess {
 
   private receive(chunk: string): void {
     this.buffer += chunk;
-    if (this.buffer.length > 1024 * 1024) {
-      this.fail(new PiHostFailure("runner_protocol_limit", "Pi runner 输出超过协议限制"));
-      return;
-    }
     for (
       let newline = this.buffer.indexOf("\n");
       newline >= 0;
@@ -146,7 +144,7 @@ export class PiSessionProcess {
         continue;
       }
       if (event.type === "failure") {
-        this.fail(new PiHostFailure(event.code, event.message, event.stopReason));
+        this.fail(new PiHostFailure(event.code, event.message, event.stopReason, event.text));
         continue;
       }
       if (event.type === "turn_context_submitted") {
