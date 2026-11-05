@@ -183,6 +183,10 @@ try {
   assert.equal(browser.code, 0, `浏览器流程失败；见 browser.log:\n${readFileSync(join(directory, 'browser.log'), 'utf8')}`)
   pass('真实 Chromium 流程', { log: 'browser.log', screenshots: `${process.env.SPROUT_UI_EVIDENCE_DIR ?? '.verify/j-info-hub/evidence'}/p2-j-*.png` })
 
+  const resumeBrowser = await bounded(launch(process.execPath, ['scripts/browser/info-hub-resume-flow.mjs'], 'resume-browser.log', { ...environment, BASE_URL: base }), 60000)
+  assert.equal(resumeBrowser.code, 0, `恢复事件浏览器流程失败；见 resume-browser.log:\n${readFileSync(join(directory, 'resume-browser.log'), 'utf8')}`)
+  pass('Info Hub resume 去重后继续轮询', { log: 'resume-browser.log' })
+
   const state = JSON.parse(readFileSync(stateFile, 'utf8'))
   assert.match(state.projectId, /^prj_/, '状态文件必须记录 projectId')
   assert.match(state.chatId, /^cnv_/, '状态文件必须记录 chatId')

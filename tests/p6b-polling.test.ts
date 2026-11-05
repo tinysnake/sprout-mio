@@ -125,6 +125,31 @@ describe("Human Info Hub polling", () => {
     expect(refresh.mock.calls.at(-1)![0]).not.toHaveProperty("knownRevision");
   });
 
+  it.each(["hidden", "offline"] as const)(
+    "continues polling after a deduplicated %s resume",
+    async (pause) => {
+      const { refresh, env } = start();
+      await vi.advanceTimersByTimeAsync(0);
+      env.window.dispatchEvent(new Event("online"));
+      await vi.advanceTimersByTimeAsync(100);
+      if (pause === "hidden") {
+        env.document.visibilityState = "hidden";
+        env.document.dispatchEvent(new Event("visibilitychange"));
+        env.document.visibilityState = "visible";
+        env.document.dispatchEvent(new Event("visibilitychange"));
+      } else {
+        env.navigator.onLine = false;
+        env.window.dispatchEvent(new Event("offline"));
+        env.navigator.onLine = true;
+        env.window.dispatchEvent(new Event("online"));
+      }
+      expect(refresh).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(refresh).toHaveBeenCalledTimes(3);
+      expect(refresh.mock.calls.at(-1)![0].knownRevision).toBe("r1");
+    },
+  );
+
   it("窗口过后再次恢复仍然全量刷新", async () => {
     const { refresh, env } = start();
     await vi.advanceTimersByTimeAsync(0);
