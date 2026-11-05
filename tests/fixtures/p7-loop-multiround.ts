@@ -817,10 +817,29 @@ globalThis.fetch = async (url, options) => {
       "aborted",
       "F9d the interrupted round carries its stop reason",
     );
-    assert.equal(
+    assert(
       persisted[0].assistant_message_id,
-      null,
-      "F9d interrupted run has no successful result",
+      "F9d interrupted run names its preserved output message",
+    );
+    const stoppedMessages = rows(
+      "SELECT * FROM message WHERE id=?",
+      persisted[0].assistant_message_id,
+    );
+    assert.equal(stoppedMessages.length, 1, "F9d the preserved output message exists");
+    const stoppedMessage = stoppedMessages[0];
+    assert.equal(stoppedMessage.chat_id, chatId, "F9d preserved output belongs to this Chat");
+    assert.equal(stoppedMessage.sender_kind, "agent", "F9d preserved output is from an agent");
+    assert.equal(stoppedMessage.sender_id, agent.id, "F9d preserved output is from this agent");
+    assert.equal(
+      stoppedMessage.body,
+      ["P7_FIRST_REPLY", "P7_APPEND_REPLY", "P7_REDIRECT_REPLY", "P7_CORRECTION_REPLY"].join(
+        "\n\n",
+      ),
+      "F9d interrupted run preserves all four completed replies",
+    );
+    assert(
+      !stoppedMessage.body.includes("P7_QUESTION_REPLY"),
+      "F9d interrupted run excludes the withheld question reply",
     );
     assert.equal(persisted[1].error_code, null, "F9d a completed round carries no error code");
     assert.equal(
