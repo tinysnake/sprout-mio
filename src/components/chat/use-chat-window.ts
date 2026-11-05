@@ -42,7 +42,6 @@ export function useChatWindow({
   loadingOlder: boolean;
   hasNewer: boolean;
   loadingNewer: boolean;
-  revision: number;
   aboveShift: number;
   /** 窗口里出现过的消息正文，卸载后仍能给运行状态面板还原未投递的输入。 */
   bodies: ReadonlyMap<string, string>;
@@ -54,6 +53,8 @@ export function useChatWindow({
   resetToLatest: () => void;
   /** 回到最新失败时的错误；成功或再次尝试时清空。 */
   resetError: AppError | null;
+  /** 往前或往后读一页失败时的错误；下一次尝试时清空。 */
+  loadError: AppError | null;
   /** 视口所在页变了就报上来，窗口据此丢掉离锚点太远的页。 */
   reportAnchor: (pageIndex: number) => void;
 } {
@@ -65,6 +66,7 @@ export function useChatWindow({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [resetError, setResetError] = useState<AppError | null>(null);
+  const [loadError, setLoadError] = useState<AppError | null>(null);
   const loadingOlderRef = useRef(false);
   const loadingNewerRef = useRef(false);
   const loadingLatestRef = useRef(false);
@@ -82,14 +84,12 @@ export function useChatWindow({
   useEffect(() => {
     if (live === null || !live.messages.ok) return;
     const fresh = live.messages.data;
-    setState((prev) =>
-      prev === null ? prev : settle(appendNew(prev, fresh, CHAT_MESSAGE_PAGE_SIZE)),
-    );
+    setState((prev) => (prev === null ? prev : settle(appendNew(prev, fresh))));
   }, [live]);
 
   // 正文按 id 攒着：正文很短，攒住它比"运行状态面板恰好需要一条已卸载的消息"更便宜。
   useEffect(() => {
-    const seen = windowMessages(state ?? { pages: [], anchor: 0, revision: 0, aboveShift: 0 });
+    const seen = windowMessages(state ?? { pages: [], anchor: 0, aboveShift: 0 });
     if (seen.length === 0) return;
     setBodies((prev) => {
       let next: Map<string, string> | null = null;
@@ -111,9 +111,13 @@ export function useChatWindow({
     if (loadingOlderRef.current || before === null) return;
     loadingOlderRef.current = true;
     setLoadingOlder(true);
+    setLoadError(null);
     void listMessagesFn({ data: { chatId, before, limit: CHAT_MESSAGE_PAGE_SIZE } })
       .then((result) => {
-        if (!result.ok) return;
+        if (!result.ok) {
+          setLoadError(result.error);
+          return;
+        }
         setState((prev) => {
           if (prev === null || !stillAtEdge(prev, { before })) return prev;
           return settle(prependOlder(prev, result.data));
@@ -130,9 +134,13 @@ export function useChatWindow({
     if (loadingNewerRef.current || after === null) return;
     loadingNewerRef.current = true;
     setLoadingNewer(true);
+    setLoadError(null);
     void listMessagesFn({ data: { chatId, after, limit: CHAT_MESSAGE_PAGE_SIZE } })
       .then((result) => {
-        if (!result.ok) return;
+        if (!result.ok) {
+          setLoadError(result.error);
+          return;
+        }
         setState((prev) => {
           if (prev === null || !stillAtEdge(prev, { after })) return prev;
           return settle(appendNewer(prev, result.data));
@@ -160,7 +168,6 @@ export function useChatWindow({
           return {
             pages: fresh.pages,
             anchor: 0,
-            revision: (prev?.revision ?? 0) + 1,
             aboveShift: prev?.aboveShift ?? 0,
           };
         });
@@ -184,13 +191,13 @@ export function useChatWindow({
     loadingOlder,
     hasNewer: canLoadNewer,
     loadingNewer,
-    revision: state?.revision ?? 0,
     aboveShift: state?.aboveShift ?? 0,
     bodies,
     loadOlder,
     loadNewer,
     resetToLatest,
     resetError,
+    loadError,
     reportAnchor,
   };
 }

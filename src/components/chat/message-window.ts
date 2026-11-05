@@ -2,14 +2,17 @@ import type { Message, MessageCursor, MessageWindow } from "../../contracts/chat
 import { laterMessageCursor } from "../../contracts/chat";
 
 /**
- * 一页消息与它自己的边界：`before`/`after` 是这首末条各自的位置，来自把它读回来的那次
- * 请求。页从不重切，客户端也不重算游标，所以"翻回去读的到底是哪一段"永远可回答。
+ * 一页消息与它自己的边界。游标一律照抄"把这页读回来的那次请求"，客户端不重算，
+ * 因此"翻回去读的到底是哪一段"永远可回答。
  */
 export type MessagePage = {
   messages: Message[];
-  /** 首条自身的位置，作为更早一页的 `before`；空窗或本地新消息时为 null。 */
+  /**
+   * 这页首条在服务端的位置，读更早一页时原样作为 `before` 传回：服务端按"严格早于
+   * 它"取，正好接在这页前面。本地接出来的页拿不到位置，留空就表示读不动更早的。
+   */
   before: MessageCursor | null;
-  /** 末条自身的位置，作为更新一页的 `after`；接在活尾巴上时为 null。 */
+  /** 这页末条的位置，读更新一页时作为 `after` 传回。本地接了新消息之后它就失效，重新变空。 */
   after: MessageCursor | null;
   /** 首条之前还有消息。 */
   hasOlder: boolean;
@@ -19,9 +22,9 @@ export type MessagePage = {
 
 export type ChatWindowState = {
   pages: MessagePage[];
-  /** 视口所在页。随插页与卸载一起平移，外部只报"现在看的是第几页"。 */
+  /** 视口所在页。插页与卸载都带着它平移，外部只报"现在看的是第几页"。 */
   anchor: number;
-  revision: number;
+  /** 视口上方内容变化的次数，滚动位置靠它触发还原。 */
   aboveShift: number;
 };
 
@@ -42,7 +45,6 @@ export function fromWindow(window: MessageWindow): ChatWindowState {
   return {
     pages: window.messages.length === 0 ? [] : [pageOf(window)],
     anchor: 0,
-    revision: 0,
     aboveShift: 0,
   };
 }
@@ -87,7 +89,6 @@ function patchPage(
   return {
     ...state,
     pages: state.pages.map((page, at) => (at === index ? { ...page, ...changes } : page)),
-    revision: state.revision + 1,
   };
 }
 
@@ -101,7 +102,7 @@ function ids(state: ChatWindowState): Set<string> {
 export function prependOlder(state: ChatWindowState, window: MessageWindow): ChatWindowState {
   const fresh = pageOf(window);
   const head = state.pages[0];
-  if (head === undefined) return { ...fromWindow(window), revision: state.revision + 1 };
+  if (head === undefined) return fromWindow(window);
   if (fresh.messages.length === 0) return patchPage(state, 0, { hasOlder: false });
   const known = ids(state);
   if (fresh.messages.every((message) => known.has(message.id))) {
@@ -111,7 +112,6 @@ export function prependOlder(state: ChatWindowState, window: MessageWindow): Cha
   return {
     pages: [{ ...fresh, hasNewer: true }, ...state.pages],
     anchor: state.anchor + 1,
-    revision: state.revision + 1,
     aboveShift: state.aboveShift + 1,
   };
 }
@@ -120,29 +120,21 @@ export function prependOlder(state: ChatWindowState, window: MessageWindow): Cha
 export function appendNewer(state: ChatWindowState, window: MessageWindow): ChatWindowState {
   const fresh = pageOf(window);
   const tail = state.pages.at(-1);
-  if (tail === undefined) return { ...fromWindow(window), revision: state.revision + 1 };
+  if (tail === undefined) return fromWindow(window);
   if (fresh.messages.length === 0)
     return patchPage(state, state.pages.length - 1, { hasNewer: false });
   // 这页之前一定还有东西，同理 hasOlder 是事实。
   return {
     ...state,
     pages: [...state.pages, { ...fresh, hasOlder: true }],
-    revision: state.revision + 1,
   };
 }
 
 /**
- * 接本地新消息。尾巴不挨着真尾巴时不接，否则会在窗口中间接出一段没人能翻回来的缺口。
- *
- * 撑页时只把"这页读回来时还没有的那些消息"切成新页，新页 `before` 用旧页 `after`
- * （那正是它的前一条），所以新页边界依然由服务端游标描述；旧页的 `after` 也仍然指着
- * 自己的末条，不动。接在活尾巴上的页 `after` 为空，它再长也不会被切。
+ * 接本地新消息。只往活尾巴上加，不切页：切出来的页没有首条位置，`before` 就指向别处，
+ * 往回翻会读到错位的一段。页因此能长过一页大小，下一次整树重读把边界拉回服务端。
  */
-export function appendNew(
-  state: ChatWindowState,
-  messages: Message[],
-  pageSize: number,
-): ChatWindowState {
+export function appendNew(state: ChatWindowState, messages: Message[]): ChatWindowState {
   if (hasNewer(state)) return state;
   const known = ids(state);
   const fresh = messages.filter((message) => !known.has(message.id));
@@ -153,21 +145,6 @@ export function appendNew(
     return {
       pages: [{ messages: fresh, before: null, after: null, hasOlder: false, hasNewer: false }],
       anchor: 0,
-      revision: state.revision + 1,
-      aboveShift: state.aboveShift,
-    };
-  }
-
-  const grown = [...tail.messages, ...fresh];
-  if (grown.length > pageSize && tail.after !== null) {
-    return {
-      pages: [
-        ...state.pages.slice(0, -1),
-        { ...tail, hasNewer: true },
-        { messages: fresh, before: tail.after, after: null, hasOlder: true, hasNewer: false },
-      ],
-      anchor: state.anchor,
-      revision: state.revision + 1,
       aboveShift: state.aboveShift,
     };
   }
@@ -175,47 +152,67 @@ export function appendNew(
     ...state,
     pages: [
       ...state.pages.slice(0, -1),
-      { ...tail, messages: grown, after: null, hasNewer: false },
+      { ...tail, messages: [...tail.messages, ...fresh], after: null, hasNewer: false },
     ],
-    revision: state.revision + 1,
   };
 }
 
 /**
- * 整树重读只有一页（最新 50 条）时，把它并回窗口。
+ * 整树重读只有一页（最新 50 条）时并回窗口。
  *
- * - 本地尾巴整段落在这页里：换成这页，边界跟服务端对齐（本地接出来的消息本来也在其中）。
  * - 这页整段已在窗口里：尾巴是更新的本地消息，不动。
- * - 两边断开：留着本地窗口，把尾巴标成"还有更新的"，缺口交给「回到最新」按 `after` 补。
- * - 尾巴是活的本地新消息（`after` 为空）而两边又没有交集：这页比窗口旧，等下一次增量读补上。
- * - 剩下的是真交叉（页比窗口旧或两头都断）：整窗换新。
+ * - 这页首条落在末页里：保住末页在它之前的那段，再接上这页（重读页读到真尾巴，覆盖到
+ *   哪里就是哪里），两个边界仍然各由一次请求给出。
+ * - 两边断开且这页更新：留着窗口，把末页标成"还有更新的"，缺口交给「回到最新」按
+ *   `after` 逐页补。
+ * - 其余（这页比窗口旧，或活尾巴之后没有任何交集）：不动，等下一次增量读。
  */
 export function mergeNewest(state: ChatWindowState, window: MessageWindow): ChatWindowState {
-  const fresh = pageOf(window);
   if (state.pages.length === 0) return fromWindow(window);
+  const fresh = pageOf(window);
   if (fresh.messages.length === 0) return state;
-
-  const tail = state.pages.at(-1)!;
-  const freshIds = new Set(fresh.messages.map((message) => message.id));
-  if (tail.messages.every((message) => freshIds.has(message.id))) {
-    return { ...state, pages: [...state.pages.slice(0, -1), fresh], revision: state.revision + 1 };
-  }
 
   const known = ids(state);
   if (fresh.messages.every((message) => known.has(message.id))) return state;
 
-  if (tail.after === null) return state;
+  const tail = state.pages.at(-1)!;
+  const at = tail.messages.findIndex((message) => message.id === fresh.messages[0]!.id);
+  if (at >= 0) {
+    // 重读页可能落在末页中间，尾巴上还挂着它之后才到的本地消息，那部分不能跟着重读一起丢。
+    const kept = tail.messages.slice(0, at);
+    const freshIds = new Set(fresh.messages.map((message) => message.id));
+    let lastOverlap = tail.messages.length - 1;
+    while (lastOverlap >= 0 && !freshIds.has(tail.messages[lastOverlap]!.id)) lastOverlap -= 1;
+    const newer = tail.messages.slice(lastOverlap + 1);
+    const seen = new Set(kept.map((message) => message.id));
+    const grown = [...fresh.messages, ...newer].filter((message) => {
+      if (seen.has(message.id)) return false;
+      seen.add(message.id);
+      return true;
+    });
+    return {
+      ...state,
+      pages: [
+        ...state.pages.slice(0, -1),
+        {
+          ...tail,
+          messages: [...kept, ...grown],
+          after: newer.length > 0 ? null : fresh.after,
+          hasNewer: newer.length > 0 ? false : fresh.hasNewer,
+        },
+      ],
+    };
+  }
 
-  if (fresh.before !== null && laterMessageCursor(fresh.before, tail.after) === fresh.before) {
+  if (
+    tail.after !== null &&
+    fresh.before !== null &&
+    laterMessageCursor(fresh.before, tail.after) === fresh.before
+  ) {
     return patchPage(state, state.pages.length - 1, { hasNewer: true });
   }
 
-  return {
-    ...fromWindow(window),
-    revision: state.revision + 1,
-    aboveShift: state.aboveShift + 1,
-    anchor: 0,
-  };
+  return state;
 }
 
 /**
@@ -243,7 +240,6 @@ export function evictFar(
       ? [...kept.slice(0, -1), { ...kept[kept.length - 1]!, hasNewer: true }]
       : kept,
     anchor: anchor - first,
-    revision: state.revision + 1,
     aboveShift: state.aboveShift + (first > 0 ? 1 : 0),
   };
 }

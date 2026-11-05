@@ -80,6 +80,8 @@ export type ChatHistory = {
   onResetToLatest: () => void;
   /** 回到最新这次的失败：窗口没换、尾巴仍是卸载过的状态。 */
   resetError: AppError | null;
+  /** 往前或往后读一页失败：窗口不动，按原游标再试一次就行。 */
+  loadError: AppError | null;
   /** 窗口里出现过的消息正文，卸载后仍能给运行状态还原未投递的输入。 */
   bodies: ReadonlyMap<string, string>;
   reportAnchor: (pageIndex: number) => void;
@@ -460,7 +462,16 @@ export function ChatThread({
             </button>
           </div>
         )}
-        {(newSinceScroll || (history !== undefined && history.hasNewer && !atBottom)) && (
+        {history?.loadError != null && (
+          <p
+            role="status"
+            data-testid="paging-error"
+            className="mt-2 text-center text-[11px] text-muted-foreground"
+          >
+            加载失败，稍后再试。
+          </p>
+        )}
+        {(newSinceScroll || (history !== undefined && history.hasNewer)) && (
           <button
             type="button"
             data-testid="new-messages-jump"

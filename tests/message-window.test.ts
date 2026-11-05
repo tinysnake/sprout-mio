@@ -18,7 +18,6 @@ import {
 } from "../src/components/chat/message-window";
 
 const T0 = Date.UTC(2026, 0, 2, 3, 0, 0);
-const PAGE = 50;
 
 /** 造从 nth 起的一段消息，时间按分钟递增。 */
 function chunk(start: number, count: number): Message[] {
@@ -171,7 +170,7 @@ describe("消息窗口：页边界来自服务端，客户端不重切", () => {
     const state = fromWindow(
       windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
     );
-    const grown = appendNew(state, chunk(301, 3), PAGE);
+    const grown = appendNew(state, chunk(301, 3));
     expect(ids(windowMessages(grown)).at(-1)).toBe(mid(303));
     expect(grown.pages.at(-1)?.after).toBeNull();
     expect(grown.pages.at(-1)?.hasNewer).toBe(false);
@@ -179,34 +178,27 @@ describe("消息窗口：页边界来自服务端，客户端不重切", () => {
     expect(hasNewer(grown)).toBe(false);
   });
 
-  it("本地新消息撑页：只把「读回来时还没有的那些」切成新页，新页 before 用旧页 after", () => {
+  it("本地新消息只往活尾巴上加：不切页，边界留在原处，after 变空", () => {
     const state = fromWindow(
       windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
     );
-    const grown = appendNew(state, chunk(301, 60), PAGE);
-    expect(pageSummary(grown)).toEqual([
-      {
-        ids: [mid(251), mid(300)],
-        before: "c:250",
-        after: "c:300",
-        hasOlder: true,
-        hasNewer: true,
-      },
-      { ids: [mid(301), mid(360)], before: "c:300", after: null, hasOlder: true, hasNewer: false },
-    ]);
-    // 新页的 before 正是它前一条的位置：拿它往上读会读到 300，不会读到 250。
-    expect(grown.pages[1]?.before).toBe("c:300");
-    // 再撑一次不会在活尾巴页里编游标：这一页 after 已经空着，就一直往上接。
-    const again = appendNew(grown, chunk(361, 60), PAGE);
-    expect(again.pages).toHaveLength(2);
-    expect(ids(windowMessages(again)).at(-1)).toBe(mid(420));
+    const grown = appendNew(state, chunk(301, 60));
+    expect(grown.pages).toHaveLength(1);
+    const all = ids(windowMessages(grown));
+    expect(all).toHaveLength(110);
+    expect(all[0]).toBe(mid(251));
+    expect(all.at(-1)).toBe(mid(360));
+    expect(olderCursor(grown)).toBe("c:250");
+    // 接了本地消息之后，末条位置不再有服务端给过，所以游标清空。
+    expect(newerCursor(grown)).toBeNull();
+    expect(hasNewer(grown)).toBe(false);
   });
 
   it("尾巴不挨着真尾巴时不接本地新消息，否则会在窗口中间接出缺口", () => {
     let state = fromWindow(
       windowOf(chunk(1, 50), { before: null, after: "c:50" }, { hasNewer: true }),
     );
-    state = appendNew(state, chunk(51, 5), PAGE);
+    state = appendNew(state, chunk(51, 5));
     expect(state.pages).toHaveLength(1);
     expect(hasNewer(state)).toBe(true);
   });
@@ -215,24 +207,29 @@ describe("消息窗口：页边界来自服务端，客户端不重切", () => {
     const state = fromWindow(
       windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
     );
-    const same = appendNew(state, chunk(251, 50), PAGE);
+    const same = appendNew(state, chunk(251, 50));
     expect(windowMessages(same)).toHaveLength(50);
     expect(same).toBe(state);
   });
 });
 
 describe("整树重读并回窗口", () => {
-  it("本地尾巴整段落在 loader 页里：换成 loader 页，边界跟服务器对齐", () => {
+  it("本地尾巴整段落在 loader 页里：保住末页在它之前的那段，再接上重读页", () => {
     let state = fromWindow(
       windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
     );
-    state = appendNew(state, chunk(301, 10), PAGE);
+    state = appendNew(state, chunk(301, 10));
     const merged = mergeNewest(
       state,
       windowOf(chunk(291, 50), { before: "c:290", after: "c:340" }, { hasOlder: true }),
     );
-    expect(merged.pages.at(-1)?.after).toBe("c:340");
-    expect(ids(windowMessages(merged)).at(-1)).toBe(mid(340));
+    expect(merged.pages).toHaveLength(1);
+    const all = ids(windowMessages(merged));
+    expect(all).toHaveLength(90);
+    expect(new Set(all).size).toBe(90);
+    expect(all[0]).toBe(mid(251));
+    expect(all.at(-1)).toBe(mid(340));
+    expect(olderCursor(merged)).toBe("c:250");
     expect(newerCursor(merged)).toBe("c:340");
   });
 
@@ -240,7 +237,7 @@ describe("整树重读并回窗口", () => {
     let state = fromWindow(
       windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
     );
-    state = appendNew(state, chunk(301, 5), PAGE);
+    state = appendNew(state, chunk(301, 5));
     const merged = mergeNewest(
       state,
       windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
@@ -270,7 +267,7 @@ describe("整树重读并回窗口", () => {
 
   it("尾巴是活的本地新消息而两边没有交集：这一页比窗口旧，等下一次增量读", () => {
     let state = fromWindow(windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, {}));
-    state = appendNew(state, chunk(301, 3), PAGE);
+    state = appendNew(state, chunk(301, 3));
     const merged = mergeNewest(
       state,
       windowOf(chunk(101, 50), { before: "c:100", after: "c:150" }, { hasOlder: true }),
@@ -278,16 +275,47 @@ describe("整树重读并回窗口", () => {
     expect(merged).toBe(state);
   });
 
-  it("loader 页比窗口旧又对不上：整窗换新，视口按上方变化重算", () => {
-    const state = fromWindow(windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, {}));
+  it("loader 页比窗口旧又对不上：窗口不动", () => {
+    const state = fromWindow(
+      windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
+    );
     const merged = mergeNewest(
       state,
       windowOf(chunk(51, 50), { before: "c:50", after: "c:100" }, { hasOlder: true }),
     );
-    expect(ids(windowMessages(merged))[0]).toBe(mid(51));
-    expect(merged.pages).toHaveLength(1);
-    expect(merged.anchor).toBe(0);
-    expect(merged.aboveShift).toBe(1);
+    expect(merged).toBe(state);
+  });
+
+  it("重读页落在末页中间时，尾巴上比它更新的本地消息不能丢", () => {
+    let state = fromWindow(
+      windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
+    );
+    state = appendNew(state, chunk(301, 5));
+    const merged = mergeNewest(
+      state,
+      windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
+    );
+    const all = ids(windowMessages(merged));
+    expect(all.at(-1)).toBe(mid(305));
+    expect(all).toHaveLength(55);
+    // 末条是本地消息，位置仍然没有服务端给过，所以游标继续空着。
+    expect(newerCursor(merged)).toBeNull();
+    expect(hasNewer(merged)).toBe(false);
+  });
+
+  it("重读页与本地接出来的尾巴重叠：不重复，也不丢前面那段", () => {
+    let state = fromWindow(windowOf(chunk(1, 50), { before: null, after: "c:50" }, {}));
+    state = appendNew(state, chunk(51, 50));
+    expect(ids(windowMessages(state))).toHaveLength(100);
+    const merged = mergeNewest(
+      state,
+      windowOf(chunk(60, 50), { before: "c:59", after: "c:109" }, { hasOlder: true }),
+    );
+    const all = ids(windowMessages(merged));
+    expect(all).toHaveLength(109);
+    expect(new Set(all).size).toBe(109);
+    expect(all[0]).toBe(mid(1));
+    expect(all.at(-1)).toBe(mid(109));
   });
 });
 

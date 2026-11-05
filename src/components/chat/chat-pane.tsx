@@ -78,6 +78,7 @@ export function ChatPane({
     onLoadNewer: room.loadNewer,
     onResetToLatest: room.resetToLatest,
     resetError: room.resetError,
+    loadError: room.loadError,
     bodies: room.bodies,
     reportAnchor: room.reportAnchor,
   };
