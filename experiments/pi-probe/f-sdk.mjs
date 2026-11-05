@@ -1,6 +1,7 @@
 /**
- * P0-d experiment f: the SDK path, run in-process under the managed Pi 1.3.0
- * release. It covers the same surfaces as the CLI experiments so the
+ * P0-d experiment f: the SDK path, run in-process under a managed Pi release
+ * (resolved at runtime from the installed releases). It covers the same
+ * surfaces as the CLI experiments so the
  * recommendation in docs/p0/pi-integration.md compares like with like.
  *
  * There is no npm install here. The SDK and the model runtime are imported by
@@ -11,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { piPackageDirectory } from "../lib/pi-release.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const resultsDir = join(here, "results");
@@ -21,8 +23,7 @@ rmSync(cwd, { recursive: true, force: true });
 mkdirSync(sessionDir, { recursive: true });
 mkdirSync(cwd, { recursive: true });
 
-const NODE_MODULES = "/Users/snake/.pi/agent/install/releases/1.3.0/node_modules";
-const RELEASE = join(NODE_MODULES, "@earendil-works/pi-coding-agent");
+const RELEASE = piPackageDirectory("pi-coding-agent");
 const sdk = await import(pathToFileURL(join(RELEASE, "dist/index.js")).href);
 const { createAgentSession, SessionManager, ModelRuntime, getAgentDir, DefaultResourceLoader } = sdk;
 const { ReadOnlyAuthStorage } = await import(

@@ -21,7 +21,27 @@ const evidence = JSON.parse(readFileSync(process.argv[2], "utf8"));
 assert.equal(evidence.endToEndToolsList, "pass");
 // 工具数从实际 listTools 结果推导，不写死常量：pinned server 升级或多出来的工具不会变成过期断言。
 assert.equal(evidence.toolCount, evidence.rawToolNames.length);
-assert.equal(evidence.nativePiVersion, "1.4.0", "locked Pi version, probed from package.json");
+// Pi 版本只要求存在且不低于 1.0.0：宿主安装的 release 会升级，写死字面量会在新版本上假红。
+// 这里仍然验证「跑在真实安装的 Pi SDK 上」，不是放弃版本维度。
+function atLeastSemver(actual, minimum) {
+  const parse = (value, label) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(value);
+    assert.ok(match, `${label} must be semver, got ${JSON.stringify(value)}`);
+    return { numbers: match.slice(1, 4).map(Number), pre: match[4] ?? null };
+  };
+  const a = parse(actual, "probed Pi version");
+  const b = parse(minimum, "minimum Pi version");
+  for (let i = 0; i < 3; i++)
+    if (a.numbers[i] !== b.numbers[i]) return a.numbers[i] > b.numbers[i];
+  // 同一数字三元组下，预发布版本低于正式版本；两者都正式时相等即满足。
+  if (a.pre !== b.pre) return a.pre === null;
+  return true;
+}
+assert.equal(typeof evidence.nativePiVersion, "string", "Pi version probed from package.json");
+assert.ok(
+  atLeastSemver(evidence.nativePiVersion, "1.0.0"),
+  `Pi ${evidence.nativePiVersion} must be >= 1.0.0`,
+);
 // Expected names are assertions; evidence.rawToolNames is the actual native listTools result.
 const expectedEverythingTools = [
   "echo", "get-annotated-message", "get-env", "get-header-params", "get-resource-links",
@@ -40,6 +60,6 @@ assert(evidence.wakeControls.trials.find(t => t.mode === "with_remote_wake").ela
 assert(evidence.wakeControls.trials.find(t => t.mode === "without_remote_wake").elapsedMs >= 1800);
 assert(evidence.wakeControls.trials.find(t => t.mode === "outer_rollback").frames === 0);
 assert(!readFileSync("tests/fixtures/mcp-extension-live.ts", "utf8").includes("INSERT INTO mcp_frame"));
-console.log(`PASS integration: ${evidence.toolCount} tools through real Worker dispatcher; wake controls and rollback passed`);
+console.log(`PASS integration: Pi ${evidence.nativePiVersion} (>= 1.0.0), ${evidence.toolCount} tools through real Worker dispatcher; wake controls and rollback passed`);
 NODE
 printf 'PASS MCP integration evidence %s\n' "$X2_EVIDENCE"

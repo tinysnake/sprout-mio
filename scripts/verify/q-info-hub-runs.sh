@@ -384,18 +384,23 @@ try {
   assert.notDeepEqual(carriedRead.record, heldTurn, 'the carry snapshot belongs to the new run, not the settled one')
   const checkout = db.prepare('SELECT * FROM repo_checkout WHERE project_id=?').get(main.projectId)
   assert.equal(checkout.commit, bareHead, 'ready checkout retains the real remote HEAD')
-  assert.equal(settledInfo.runs.recent.length, 2, 'both completed runs appear in the chat view')
-  for (const run of settledInfo.runs.recent) {
+  // settledInfo 是落定后立刻读的视图；同一条 pending 输入的 carry 也可能在这一刻起新 run。
+  // 精确断言「最近恰好 2 个」会和 carry 抢时序（CI Linux 上已经这样假红过），
+  // 所以只按 runId 认这两条已知的已落定 run：它们必须都在视图里且事实完整。
+  // carry 本身另有上面的持久事实断言，不靠这个列表的条数。
+  const settledRuns = settledInfo.runs.recent.filter(run => run.runId === firstRun.id || run.runId === slowRun.id)
+  assert.equal(settledRuns.length, 2, 'both completed runs appear in the chat view')
+  for (const run of settledRuns) {
     assert.equal(run.status, 'completed')
     assert.equal(run.repo.commit, bareHead, 'view commit equals git rev-parse of the real remote HEAD')
     assert.equal(run.repo.fresh, true)
     assert.equal(run.repo.sourceKind, 'managed_clone')
     assert.equal(run.repo.ref, 'main')
   }
-  const provenance = db.prepare('SELECT * FROM repo_provenance WHERE run_id=?').get(settledInfo.runs.recent[0].runId)
-  assert.equal(provenance.commit, settledInfo.runs.recent[0].repo.commit, 'view repo matches the provenance row')
+  const provenance = db.prepare('SELECT * FROM repo_provenance WHERE run_id=?').get(settledRuns[0].runId)
+  assert.equal(provenance.commit, settledRuns[0].repo.commit, 'view repo matches the provenance row')
   pass('settled runs: recent facts, checkout-based turn workspace, provenance equals view', {
-    recent: settledInfo.runs.recent.map(run => ({ runId: run.runId, status: run.status, commit: run.repo.commit, fresh: run.repo.fresh })),
+    recent: settledRuns.map(run => ({ runId: run.runId, status: run.status, commit: run.repo.commit, fresh: run.repo.fresh })),
   })
 
   const ghost = await project('P3D ghost')

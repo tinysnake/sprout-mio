@@ -311,8 +311,14 @@ function arm(
   text: string,
   steps: any[],
   reply = "LIFECYCLE_DONE",
+  queued = false,
 ) {
-  modelFixture?.arm(role, { expectedUserPrefix: text, steps, reply });
+  modelFixture?.arm(role, {
+    expectedUserPrefix: text,
+    steps,
+    reply,
+    ...(queued ? { queued } : {}),
+  });
 }
 const taskPrefix = (id: string) => `已分配并请求立即开始\nTask：${id}\n`;
 async function modelHeld(tag: string) {
@@ -584,12 +590,12 @@ try {
   );
 
   let revision = current.task.revision + 2; // metadata update, then reassign/start
+  const returnMention = `@LifecycleOwner depth-one return ${taskId}`;
   const memberSteps = [
     {
       name: "sprout_task_record_append",
       arguments: { taskId, expectedRevision: revision++, body: "member progress" },
     },
-    { name: "sprout_chat_send", arguments: { body: `@LifecycleOwner depth-one return ${taskId}` } },
     ...current.checklist.map((item: any) => ({
       name: "sprout_task_checklist_update",
       arguments: { taskId, expectedRevision: revision++, itemId: item.id, checked: true },
@@ -599,17 +605,19 @@ try {
       arguments: { taskId, expectedRevision: revision++, body: "member final result" },
     },
   ];
-  const instructions = (steps: any[]) =>
-    `Call these tools once each, in this order, with exactly these arguments: ${steps.map((step) => `${step.name} ${JSON.stringify(step.arguments)}`).join("; ")}. Then reply LIFECYCLE_DONE. Do not call other tools or change Task status.`;
-  const memberMessage = `@LifecycleMember collaborate on ${taskId}. ${instructions(memberSteps)}`;
+  const instructions = (steps: any[], reply: string) =>
+    `Call these tools once each, in this order, with exactly these arguments: ${steps.map((step) => `${step.name} ${JSON.stringify(step.arguments)}`).join("; ")}. Then reply exactly ${JSON.stringify(reply)}. Do not call other tools or change Task status.`;
+  // sprout_chat_send 不声明给模型：点名与汇报走 run 的最终回答（同一条 sendMessage 路径）。
+  const memberMessage = `@LifecycleMember collaborate on ${taskId}. ${instructions(memberSteps, returnMention)}`;
   const ownerSteps = [
     {
       name: "sprout_lease_acquire",
       arguments: { machineId, expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
     },
-    { name: "sprout_chat_send", arguments: { body: memberMessage } },
   ];
-  current = await change("updateTaskFn", current, { description: instructions(ownerSteps) });
+  current = await change("updateTaskFn", current, {
+    description: instructions(ownerSteps, memberMessage),
+  });
   configure({ modelGate: { text: taskId, tag: "lifecycle-owner" } });
   const started = await mutate("reassignTaskFn", current, {
     targetChatId: chat.id,
@@ -664,16 +672,26 @@ try {
   };
   assert.equal(current.task.revision, memberSteps[0].arguments.expectedRevision);
   // Both modes receive identical instructions; only model responses differ.
-  arm("chatOwner", taskPrefix(taskId), ownerSteps);
-  arm("chatMentioned", memberMessage, memberSteps);
+  arm("chatOwner", taskPrefix(taskId), ownerSteps, memberMessage);
+  // 显式 @ 的接力是契约允许的：member 的最终回答 @owner 会再起一轮 owner。
+  // 这一轮不再点名，因此接力到此为止，不会形成 ping-pong。
+  arm("chatOwner", returnMention, [], "LIFECYCLE_DONE", true);
+  arm("chatMentioned", memberMessage, memberSteps, returnMention);
   configure({ modelGate: null });
   release("lifecycle-owner");
-  await until(() => runs(chat.id).length === 2, "explicit owner mention starts member");
+  await until(
+    () => runs(chat.id).length === 3,
+    "explicit owner mention starts member, member return reaches owner",
+  );
   await settled(chat.id);
   modelFixture?.assertHealthy();
   current = await detail(taskId);
   assert.equal(current.task.status, "assigned", "normal run settlement does not finish Task");
-  assert.equal(runs(chat.id).length, 2, "member @owner cannot recurse beyond depth one");
+  assert.equal(
+    runs(chat.id).length,
+    3,
+    "member return starts one owner run and the unmentioned reply stops recursion",
+  );
   assert(runs(chat.id).every((run) => run.status === "completed"));
   assert.equal(current.lastRecord.body, "member final result");
   assert.equal(current.lastRecord.senderId, member.id);
@@ -688,6 +706,7 @@ try {
     {
       ownerRun: ownerRun.id,
       memberRun: runs(chat.id)[1].id,
+      returnRun: runs(chat.id)[2].id,
       messageId: delivery.messageId,
       taskStatus: current.task.status,
     },

@@ -188,6 +188,12 @@ function describeKnown(
       return describe(toolName, "tool", "读取宿主状态");
     case "sprout_info_hub_get":
       return describe(toolName, "task", "读取 Info Hub", hint(args));
+    case "sprout_chat_get":
+      return describe(toolName, "task", "读取对话", hint(args));
+    case "sprout_chat_send":
+      return describe(toolName, "task", "发送消息", hint(args));
+    case "sprout_chat_continuation_get":
+      return describe(toolName, "task", "读取对话接续", hint(args));
     case "sprout_remote_shell":
       return describe(
         toolName,
@@ -217,13 +223,11 @@ function describeKnown(
     return describe(toolName, "remote", "远程操作", hint(args));
   if (toolName.startsWith("sprout_lease_"))
     return describe(toolName, "remote", "Machine 租约", hint(args, ["machineId", "action"]));
-  if (toolName.startsWith("sprout_task_") || toolName.startsWith("sprout_chat_"))
-    return describe(
-      toolName,
-      "task",
-      toolName.startsWith("sprout_chat_") ? "发送消息" : "Task 协作",
-      hint(args),
-    );
+  if (toolName.startsWith("sprout_task_"))
+    return describe(toolName, "task", "Task 协作", hint(args));
+  // Chat 工具按各自语义命名；新增的 Chat 工具不能默认继承「发送消息」。
+  if (toolName.startsWith("sprout_chat_"))
+    return describe(toolName, "task", "对话协作", hint(args));
   if (toolName.startsWith("sprout_"))
     return describe(toolName, "tool", "Sprout 工具", hint(args) ?? toolName.slice(7));
   return undefined;

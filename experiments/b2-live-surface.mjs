@@ -13,10 +13,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { piPackageDirectory } from "./lib/pi-release.mjs";
 
-const SDK_ROOT =
-  "/Users/snake/.pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent";
-const MCP_ROOT = "/Users/snake/.pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-mcp";
+const PACKAGES = ["pi-coding-agent", "pi-mcp"];
+const SDK_ROOT = piPackageDirectory("pi-coding-agent", PACKAGES);
+const MCP_ROOT = piPackageDirectory("pi-mcp", PACKAGES);
 const sdk = await import(pathToFileURL(join(SDK_ROOT, "dist/index.js")).href);
 const piMcp = await import(pathToFileURL(join(MCP_ROOT, "dist/index.js")).href);
 const { createAgentSession, DefaultResourceLoader, SettingsManager, SessionManager } = sdk;

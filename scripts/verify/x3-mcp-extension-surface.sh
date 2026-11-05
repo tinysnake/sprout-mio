@@ -80,7 +80,7 @@ for (const label of ["allowlist naming mcp__*", "no tools option"]) {
   );
 }
 console.log(
-  `PASS Pi 1.4.0 ${evidence.sdkVersion} 运行期 registerTool 会进 registry；是否声明给模型取决于 tools allowlist：${evidence.surface.map((e) => `${e.scenario}→${e.lateToolDeclared ? "进入" : "未进入"}`).join("；")}`,
+  `PASS Pi ${evidence.sdkVersion} 运行期 registerTool 会进 registry；是否声明给模型取决于 tools allowlist：${evidence.surface.map((e) => `${e.scenario}→${e.lateToolDeclared ? "进入" : "未进入"}`).join("；")}`,
 );
 
 // ---- 生产 runner 的 allowlist 带上修复

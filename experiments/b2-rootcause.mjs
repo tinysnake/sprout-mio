@@ -18,9 +18,9 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { piPackageDirectory } from "./lib/pi-release.mjs";
 
-const SDK_ROOT =
-  "/Users/snake/.pi/agent/install/releases/1.4.0/node_modules/@earendil-works/pi-coding-agent";
+const SDK_ROOT = piPackageDirectory("pi-coding-agent");
 const sdk = await import(pathToFileURL(join(SDK_ROOT, "dist/index.js")).href);
 const { createAgentSession, DefaultResourceLoader, SettingsManager, SessionManager } = sdk;
 
