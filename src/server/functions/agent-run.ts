@@ -1,8 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { abortAgentRunInput, chatRunStateInput } from "../../contracts/agent-run";
-import type { AgentRun, AgentRunResult, ChatRunState } from "../../contracts/agent-run";
+import {
+  abortAgentRunInput,
+  chatRunActivitiesInput,
+  chatRunStateInput,
+} from "../../contracts/agent-run";
+import type {
+  AgentRun,
+  AgentRunResult,
+  ChatRunActivity,
+  ChatRunState,
+} from "../../contracts/agent-run";
 import { fail, ok, toAppError } from "../../contracts/result";
 import { fieldErrorsFrom } from "../../contracts/project";
 import type { ProjectContext } from "../../domain/access";
@@ -98,6 +107,22 @@ export async function getChatRunStateBoundary(
   });
 }
 
+/**
+ * 对话页的消息底部记录：已结束 run 的完整工作记录，按产出消息归属。
+ * 不是状态轮询的一部分：run 收尾后 run 指纹变化会触发一次整树重读。
+ */
+export async function listChatRunActivitiesBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<AgentRunResult<ChatRunActivity[]>> {
+  return agentRunBoundary<ChatRunActivity[]>(headers, requestId, (deps, context) => {
+    const parsed = chatRunActivitiesInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(deps.listChatRunActivities(parsed.data.chatId, context), requestId);
+  });
+}
+
 /** 停止的真值在 run 状态机，投递给子进程的 abort 只是停止的传导。 */
 export async function abortAgentRunBoundary(
   raw: unknown,
@@ -122,6 +147,12 @@ export const getChatRunStateFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     getChatRunStateBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const listChatRunActivitiesFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    listChatRunActivitiesBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
 export const abortAgentRunFn = createServerFn({ method: "POST" })

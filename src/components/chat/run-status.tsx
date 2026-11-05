@@ -89,7 +89,8 @@ export function RunStatusPanel({
     .filter((body): body is string => Boolean(body));
   // 宿主已启用且还没有 run 时属于空闲，不占一行；其余状态与未投递事实同排一行。
   const showStatus = !state.enabled || Boolean(run) || active.length > 0;
-  const activity = active.find((row) => row.id === run?.id)?.activity ?? active[0]?.activity;
+  const activity =
+    active.find((row) => row.id === run?.id)?.activity ?? active[0]?.activity ?? run?.activity;
   const restoreBody = undelivered[undelivered.length - 1];
   const showRestore = Boolean(onRestoreDraft && restoreBody);
   const failureName = run ? agentNames?.get(run.instanceId) : undefined;

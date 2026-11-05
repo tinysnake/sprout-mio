@@ -24,7 +24,7 @@ import { TASK_STATUSES } from "../contracts/task";
 import { TASK_ACTIONS } from "../contracts/task-capabilities";
 import { user } from "./auth-schema";
 import { AGENT_RUN_STATUSES } from "../contracts/agent-run";
-import type { RunConfigSnapshot } from "../contracts/agent-run";
+import type { RunActivity, RunConfigSnapshot } from "../contracts/agent-run";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 import type { CapabilitySnapshot } from "../contracts/machine";
 import {
@@ -406,6 +406,8 @@ export const agentRun = sqliteTable(
     errorMessage: text("error_message"),
     sessionId: text("session_id").notNull(),
     configSnapshot: text("config_snapshot", { mode: "json" }).$type<RunConfigSnapshot>(),
+    // 收尾时的工作记录：写入后不再变化，供消息底部回看这一轮做过什么。
+    activity: text("activity", { mode: "json" }).$type<RunActivity>(),
     // 回复消息必须与 run 同属一个 chat（裁定 d9）。单列 message(id) 外键被这条复合外键覆盖，
     // 不再重复声明；目标由 message 上的 uniqueIndex("message_id_chat_unique") 提供。
     assistantMessageId: text("assistant_message_id"),

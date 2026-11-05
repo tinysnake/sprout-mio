@@ -248,3 +248,22 @@ export function readRunActivity(runId: string): RunActivity | undefined {
 export function clearRunActivity(runId: string): void {
   activityStore().delete(runId);
 }
+
+/**
+ * 收尾快照：把仍在执行的步骤收口成终态，并清掉 current。
+ * 这里只取快照、不删内存；写入 run 行成功后由调用方 clearRunActivity，
+ * 避免落库失败时把仅存的历史一起丢掉。
+ */
+export function settleRunActivity(
+  runId: string,
+  status: "completed" | "failed" | "aborted" | "interrupted",
+  at: number,
+): RunActivity | undefined {
+  const snapshot = activityStore().get(runId);
+  if (!snapshot || snapshot.entries.length === 0) return undefined;
+  const stepStatus: RunActivityStatus = status === "completed" ? "done" : "error";
+  const entries = snapshot.entries.map((entry) =>
+    entry.status === "running" ? finishedStep(entry, at, stepStatus) : entry,
+  );
+  return { current: null, entries, updatedAt: iso(at) };
+}
