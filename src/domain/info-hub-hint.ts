@@ -12,8 +12,8 @@ type Change = InfoHubHint["changes"][number];
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 /**
  * 连接指纹只取会改变可见状态的字段。`lastSeenAt` 是纯心跳：worker 每次心跳都推进它，
- * 算进指纹会让每个 tick 都被判成一次「变更」，run 里约每 5 秒收到一条
- * `machine_connection` 提示（prod run_16d68a18 的根因）。
+ * 算进指纹会让每个 tick 都被判成一次「变更」，run 里按最小间隔收到
+ * `machine_connection` 提示（prod run_16d68a18 的根因之一）。
  *
  * online↔offline、connecting→online 与连接代次变化都体现在 kind/generation/reason 里，
  * 所以忽略 `lastSeenAt` 不会吞掉任何真实状态变化。
@@ -33,7 +33,11 @@ function connectionSignal(connection: InfoHubMachineSummary["connection"]): unkn
       };
   }
 }
-/** Host-owned and run-local. Settlement destroys the entire object; there is no retry queue. */
+/**
+ * Host-owned and run-local. Settlement destroys the entire object; there is no retry queue.
+ * 提示只属于当前 run：run 结算后不再读取 Facts，已发现的待发变化随之丢弃，
+ * 不会在下一轮或空闲时补发（`tick` 发现 run 不再 active 时会自行销毁）。
+ */
 export class InfoHubHintChannel {
   private basis = new Map<string, { change: Change; fingerprint: string }>();
   private pending = new Map<string, { change: Change; revision: string }>();

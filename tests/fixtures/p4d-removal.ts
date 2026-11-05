@@ -708,6 +708,27 @@ if (scenario === "notices") {
     fails("conflict"),
   );
   assert.equal(noticeRows(quotaKey).length, 0);
+  // 自己释放且没有受影响执行：不落撤销通知。这条通知没有可撤销的工作，只会把
+  // Agent 刚做的动作复述给它自己（prod run_16d68a18 收到「受影响的执行：无」即此类）。
+  const releaser = actor();
+  const released = machineWithMembership({ leaseHolder: releaser });
+  releaseLease(
+    { ...released.key, action: "release", requestId: req(), expectedGeneration: 1 },
+    releaser,
+  );
+  assert.equal(noticeRows(released.key).length, 0, "自己释放且没有受影响执行时不落撤销通知");
+  // 有在途执行时释放仍要通知：那是真的被撤销的工作。
+  const busyReleaser = actor();
+  const busyReleased = machineWithMembership({ leaseHolder: busyReleaser });
+  dispatchExecution(busyReleaser, busyReleased.key, busyReleased.ticket);
+  releaseLease(
+    { ...busyReleased.key, action: "release", requestId: req(), expectedGeneration: 1 },
+    busyReleaser,
+  );
+  const busyNotices = noticeRows(busyReleased.key);
+  assert.equal(busyNotices.length, 1, "有受影响执行时释放仍通知旧 holder 的 run");
+  assert.equal(busyNotices[0]!.kind, "lease_released");
+  assert.equal(busyNotices[0]!.runId, busyReleaser.runId);
   console.log("PASS notices: single cause, at-least-once window, rollback and quota");
 }
 

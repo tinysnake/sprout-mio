@@ -166,3 +166,49 @@ describe("运行中 Info Hub 提示的变化指纹", () => {
     expect(delivered[0]!.changes).toEqual([{ kind: "machine_connection", machineId }]);
   });
 });
+
+describe("提示的投递节拍与 run 边界", () => {
+  it("两次提示至少相隔一个最小间隔（60s），中间的真实变化合并到后一条", async () => {
+    // 60 秒是产品决定（用户要求「一般 60s 发送 agent 一次」），不是实现自由参数。
+    expect(INFO_HUB_LIMITS.hintMinimumIntervalMs).toBe(60_000);
+    const { delivered, channel } = track();
+    openConnection(3, base + 60_000);
+    await sendAfterMergeWindow(channel, base + 60_000);
+    expect(delivered).toHaveLength(1);
+    const sentAt = base + 60_000 + INFO_HUB_LIMITS.hintMergeWindowMs;
+    // 投递后 1 秒又出现真实变化：它得等到最小间隔，而不是立刻再发一条。
+    closeConnection(3, sentAt + 1_000);
+    await channel.tick(sentAt + 1_000);
+    await channel.tick(sentAt + 1_000 + INFO_HUB_LIMITS.hintMergeWindowMs);
+    expect(delivered).toHaveLength(1);
+    await channel.tick(sentAt + INFO_HUB_LIMITS.hintMinimumIntervalMs - 1);
+    expect(delivered).toHaveLength(1);
+    await channel.tick(sentAt + INFO_HUB_LIMITS.hintMinimumIntervalMs);
+    expect(delivered).toHaveLength(2);
+    expect(delivered[1]!.changes).toEqual([{ kind: "machine_connection", machineId }]);
+  });
+
+  it("run 结算后已发现的待发变化不再投递", async () => {
+    const { delivered, channel } = track();
+    openConnection(4, base + 180_000);
+    await channel.tick(base + 180_000);
+    expect(delivered).toEqual([]);
+    channel.dispose();
+    await channel.tick(base + 180_000 + INFO_HUB_LIMITS.hintMergeWindowMs);
+    await channel.tick(base + 180_000 + INFO_HUB_LIMITS.hintMinimumIntervalMs);
+    expect(delivered).toEqual([]);
+  });
+
+  it("run 不再是 running 时提示停止，不在工作结束后补发", async () => {
+    const { delivered, channel } = track();
+    openConnection(5, base + 300_000);
+    await channel.tick(base + 300_000);
+    expect(delivered).toEqual([]);
+    sqlite
+      .prepare("UPDATE agent_run SET status='interrupted', settled_at=? WHERE id=?")
+      .run(base + 300_000, run.id);
+    await channel.tick(base + 300_000 + INFO_HUB_LIMITS.hintMergeWindowMs);
+    await channel.tick(base + 300_000 + INFO_HUB_LIMITS.hintMinimumIntervalMs);
+    expect(delivered).toEqual([]);
+  });
+});
