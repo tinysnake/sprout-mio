@@ -18,6 +18,7 @@ import { assertProjectAccess } from "./access";
 import type { ProjectContext } from "./access";
 import { ProjectAccessError } from "./access";
 import { getProjectProfile } from "./project-config";
+import { projectRepositoryPath } from "../lib/repository-path";
 
 export class RepositoryError extends Error {
   constructor(
@@ -131,9 +132,7 @@ async function prepareWorkingCopy(
 ): Promise<PreparedRepo> {
   const managedRoot = config.SPROUT_REPO_DIR;
   const sourceKind: RepoSourceKind = profile.workDirectory ? "bound_copy" : "managed_clone";
-  const path = profile.workDirectory
-    ? join(managedRoot, profile.workDirectory)
-    : join(managedRoot, projectId);
+  const path = projectRepositoryPath(managedRoot, projectId, profile.workDirectory);
   const source = profile.gitRemote ?? path;
   markPreparing(projectId);
 

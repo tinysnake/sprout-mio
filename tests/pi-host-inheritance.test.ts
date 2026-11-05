@@ -78,17 +78,17 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         cwd: command.cwd,
         sdkVersion: 'inheritance-test',
         resources: {
-          inheritHostResources: command.inheritHostResources === true,
+          inheritHostResources: command.resources.kind === 'enabled',
           agentDir: command.cwd + '/.sprout-pi',
           hostAgentDir: command.agentDir,
-          skillPaths: command.inheritHostResources === true ? [command.agentDir + '/skills'] : [],
+          skillPaths: command.resources.kind === 'enabled' ? [command.agentDir + '/skills'] : [],
           promptPaths:
-            command.inheritHostResources === true ? [command.agentDir + '/prompts'] : [],
-          skills: command.inheritHostResources === true ? ['host-skill'] : [],
-          prompts: command.inheritHostResources === true ? ['host-prompt'] : [],
+            command.resources.kind === 'enabled' ? [command.agentDir + '/prompts'] : [],
+          skills: command.resources.kind === 'enabled' ? ['host-skill'] : [],
+          prompts: command.resources.kind === 'enabled' ? ['host-prompt'] : [],
           themes: [],
           contextFiles: [],
-          systemPromptChars: command.inheritHostResources === true ? 512 : 128,
+          systemPromptChars: command.resources.kind === 'enabled' ? 512 : 128,
         },
         profile: command.profile,
       },
@@ -173,7 +173,7 @@ describe("Pi 资源继承开关的父进程接线", () => {
 
   it("显式 false：open 关闭继承，快照记录关闭且资源为空", async () => {
     const { open, snapshot } = await runWithSwitch(false);
-    expect(open.inheritHostResources).toBe(false);
+    expect(open.resources.kind).toBe("disabled");
     expect(snapshot?.resources?.inheritHostResources).toBe(false);
     expect(snapshot?.resources?.skills).toEqual([]);
     expect(snapshot?.resources?.prompts).toEqual([]);
@@ -187,7 +187,7 @@ describe("Pi 资源继承开关的父进程接线", () => {
     "缺省或显式打开（%s）：快照保留宿主 skills 与 prompt templates",
     async (value) => {
       const { open, snapshot } = await runWithSwitch(value);
-      expect(open.inheritHostResources).toBe(true);
+      expect(open.resources.kind).toBe("enabled");
       expect(snapshot?.resources?.inheritHostResources).toBe(true);
       expect(snapshot?.resources?.skills).toEqual(["host-skill"]);
       expect(snapshot?.resources?.prompts).toEqual(["host-prompt"]);
@@ -199,7 +199,7 @@ describe("Pi 资源继承开关的父进程接线", () => {
 
   it.each([false, "0"] as const)("显式关闭（%s），协议保留 registry 与资源段", async (value) => {
     const { open, snapshot } = await runWithSwitch(value);
-    expect(open.inheritHostResources).toBe(false);
+    expect(open.resources.kind).toBe("disabled");
     expect(snapshot?.resources?.inheritHostResources).toBe(false);
     expect(snapshot?.registeredTools).toEqual(["grep", "read", "sprout_status"]);
     // 诊断入口现在是工具面的正式成员：registry 与工具面都有它，两张表都随协议完整落库。

@@ -38,6 +38,7 @@ import { machineRuntimeContext } from "../runtime";
 import { PiHostFailure, piInstancePaths } from "./process";
 import type { PiSessionProcess } from "./process";
 import { clearRunActivity, recordRunActivity } from "./run-activity";
+import { prepareInheritedResources } from "./skills";
 
 export type Work = ReturnType<typeof queuedRunWork>[number];
 export type PiHostSignals = { readonly isStopping: () => boolean };
@@ -51,18 +52,6 @@ const DELIVERY_ID_PREFIX = `${ID_PREFIXES.continuationDelivery}_`;
  */
 const NOTICE_ID_PREFIX = "notice:";
 const NOTICE_RETRY_MS = 1_000;
-
-/**
- * `SPROUT_PI_INHERIT_HOST_RESOURCES=false` 或 `0` 关闭继承，缺省继承宿主 Pi 解析出的 skills 与宿主 prompt templates。
- *
- * 不用 profile 字段承载：profile 存 DB，本单元不改 schema；这是宿主侧运行边界，
- * 与 `SPROUT_PI_PROVIDER_ROOT` 同类，由父进程在这里解析后随 open 显式传给 runner，
- * 开关状态再随 ready 快照落库（`configSnapshot.resources.inheritHostResources`）。
- */
-function inheritHostResources(): boolean {
-  const value = globalThis.process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
-  return value !== "false" && value !== "0";
-}
 
 export function executeRun(
   work: Work,
@@ -114,6 +103,10 @@ export function executeRun(
           );
           return grant;
         });
+        const resources = yield* Effect.tryPromise({
+          try: () => prepareInheritedResources(run.projectId, ctx),
+          catch: (error) => error,
+        });
         const snapshot = yield* Effect.tryPromise({
           try: () =>
             process.open({
@@ -128,7 +121,7 @@ export function executeRun(
                 globalThis.process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
               ),
               extensionPath: resolve("pi/sprout-extension.ts"),
-              inheritHostResources: inheritHostResources(),
+              resources,
               remote,
               profile: {
                 id: profile.id,

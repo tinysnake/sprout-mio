@@ -1,0 +1,40 @@
+import { afterAll, expect, it } from "vite-plus/test";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+const directory = mkdtempSync(join(tmpdir(), "chat-skills-"));
+process.env.DATABASE_URL = join(directory, "test.sqlite");
+process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
+process.env.SPROUT_REPO_DIR = join(directory, "repos");
+process.env.SPROUT_PI_ENABLED = "false";
+const { migrateDatabase } = await import("../src/db/migrate");
+migrateDatabase();
+const { sqlite } = await import("../src/db");
+const { createProject } = await import("../src/domain/project");
+const { updateProjectProfile } = await import("../src/domain/project-config");
+const { readSkillCatalog, resolveSkillScope, prepareInheritedResources } = await import("../src/server/pi-host/skills");
+const ctx = { userId: "skill-human", requestId: "req_skills" };
+sqlite.prepare("INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES (?,?,?,0,1,1)").run(ctx.userId, "skills", "skills@test.example");
+afterAll(() => { sqlite.close(); rmSync(directory, { recursive: true, force: true }); });
+it("fresh catalogs separate Project scopes before any run; display scans coalesce; disabled never discovers", async () => {
+  const a = createProject({ name: "skills A" }, ctx);
+  const b = createProject({ name: "skills B" }, ctx);
+  for (const [project, name] of [[a, "only-a"], [b, "only-b"]] as const) {
+    updateProjectProfile(project.id, { workDirectory: project.id, defaultBranch: "main" }, ctx);
+    const folder = join(directory, "repos", project.id, ".pi/skills", name);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, "SKILL.md"), `---\nname: ${name}\ndescription: isolated fixture\n---\nbody`);
+  }
+  const scope = resolveSkillScope(a.id, ctx);
+  const [first, second] = await Promise.all([readSkillCatalog(scope, "display"), readSkillCatalog(scope, "display")]);
+  expect(first).toBe(second);
+  expect(first.byName.has("only-a")).toBe(true);
+  expect(first.byName.has("only-b")).toBe(false);
+  const other = await readSkillCatalog(resolveSkillScope(b.id, ctx), "fresh");
+  expect(other.byName.has("only-b")).toBe(true);
+  expect(other.byName.has("only-a")).toBe(false);
+  process.env.SPROUT_PI_INHERIT_HOST_RESOURCES = "false";
+  expect(await prepareInheritedResources(a.id, ctx)).toEqual({ kind: "disabled" });
+  delete process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
+  console.log("PASS foundation: zero-run Project isolation, display coalescing, disabled manifest");
+});

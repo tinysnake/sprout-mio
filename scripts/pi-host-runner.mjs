@@ -1,5 +1,6 @@
 import { promptWithTurnContext } from "./pi-host-turn-context.mjs";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { sdkRoot, jsonFile } from "./pi-host-skills.mjs";
 import { createRequire, registerHooks } from "node:module";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -25,51 +26,6 @@ function failure(id, code, message, stopReason, text) {
     ...(stopReason ? { stopReason } : {}),
     ...(text ? { text } : {}),
   });
-}
-
-function sdkRoot(agentDir) {
-  const releases = join(agentDir, "install", "releases");
-  const candidates = [];
-  try {
-    const executable = realpathSync(join(agentDir, "bin", "pi"));
-    let current = dirname(executable);
-    while (current !== dirname(current)) {
-      if (existsSync(join(current, "package.json"))) {
-        const pkg = JSON.parse(readFileSync(join(current, "package.json"), "utf8"));
-        if (pkg.name === "@earendil-works/pi-coding-agent") candidates.push(current);
-      }
-      current = dirname(current);
-    }
-  } catch {}
-  if (existsSync(releases)) {
-    const versions = readdirSync(releases).filter((value) =>
-      /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(value),
-    );
-    versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-    for (const version of versions)
-      candidates.push(
-        join(releases, version, "node_modules", "@earendil-works", "pi-coding-agent"),
-      );
-  }
-  const root = candidates.find((path) => existsSync(join(path, "dist", "index.js")));
-  if (!root) throw new Error("找不到 Pi SDK，请在 PI_CODING_AGENT_DIR 对应目录安装托管 Pi");
-  return root;
-}
-
-function jsonFile(path, fallback) {
-  return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
-}
-
-async function resolveHostSkillPaths(sdk, config) {
-  // Project 配置按分身的实际 cwd 生效。
-  const settingsManager = sdk.SettingsManager.create(config.cwd, config.agentDir);
-  const packageManager = new sdk.DefaultPackageManager({
-    cwd: config.cwd,
-    agentDir: config.agentDir,
-    settingsManager,
-  });
-  const resolved = await packageManager.resolve(async () => "skip");
-  return resolved.skills.filter((skill) => skill.enabled).map((skill) => skill.path);
 }
 
 async function open(config) {
@@ -202,12 +158,9 @@ async function open(config) {
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/status.ts"),
   );
   const remoteClient = createRemoteClient(config.remote);
-  const inheritHostResources = config.inheritHostResources === true;
+  const inheritHostResources = config.resources.kind === "enabled";
   const inheritedPaths = inheritHostResources
-    ? {
-        skills: await resolveHostSkillPaths(sdk, config),
-        prompts: [join(config.agentDir, "prompts")].filter((path) => existsSync(path)),
-      }
+    ? { skills: config.resources.skillPaths, prompts: config.resources.promptPaths }
     : { skills: [], prompts: [] };
   // 受控目录是分身自己的 loader/session 根。证据里报的 agentDir 就是这个对象里的值：
   // 不让「声明的目录」和「喂给 loader 的目录」变成两个可以互相飘的常量。
