@@ -20,6 +20,7 @@ import type { MachineContext } from "../../src/domain/machine";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
 import {
   acquireLease,
+  handoffLease,
   reclaimLease,
   releaseLease,
   type AgentRemoteContext,
@@ -520,7 +521,9 @@ try {
     human(),
   );
   assert.equal(m4Detach.state, "removed", "无任务在途的移出必须落到 removed");
-  // M6：acquire → release → 通知未投递，且没有 Worker 连接（canForceReclaim=false、Worker 离线）。
+  // M6：acquire → handoff → 通知未投递，且没有 Worker 连接（canForceReclaim=false、Worker 离线）。
+  // 自己 release 且什么都没撤时不落撤销通知（src/server/lease.ts 的 revokeNotice），
+  // 所以这里用 handoff：旧 holder 确实失权，这条通知必须产生，且没有 Worker 可以投递它。
   const m6Actor = createActor(p1);
   acquireLease(
     {
@@ -532,13 +535,15 @@ try {
     },
     m6Actor,
   );
-  releaseLease(
+  const m6Target = createActor(p1);
+  handoffLease(
     {
       projectId: p1,
       machineId: m6.machineId,
-      action: "release",
+      action: "handoff",
       requestId: req(),
       expectedGeneration: 1,
+      targetInstanceId: m6Target.instanceId,
     },
     m6Actor,
   );
