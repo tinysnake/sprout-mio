@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
-import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
+import type { AgentRunResult, ChatRunState, RunActivity } from "../../contracts/agent-run";
 import type { Chat, ChatKind, ChatResult, Message } from "../../contracts/chat";
 import type { FieldErrors } from "../../contracts/project";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
@@ -54,6 +54,7 @@ export function ChatThread({
   senderNames,
   knownSenders,
   runFacts,
+  runActivityByMessage,
   continuation,
   archived = false,
 }: {
@@ -93,6 +94,8 @@ export function ChatThread({
   senderNames?: ReadonlyMap<string, string>;
   knownSenders?: ReadonlySet<string>;
   runFacts?: Map<string, readonly InfoHubRunSummary[]>;
+  /** 已结束 run 的完整工作记录：键是产出该记录的 assistant 消息。 */
+  runActivityByMessage?: ReadonlyMap<string, RunActivity>;
   continuation?: AppResult<ChatContinuationData>;
   archived?: boolean;
 }) {
@@ -199,6 +202,7 @@ export function ChatThread({
               senderNames={senderNames}
               knownSenders={knownSenders}
               runFacts={runFacts}
+              runActivityByMessage={runActivityByMessage}
             />
             <ChatErrorNotice error={runState.error} testId="run-state-load-error" />
           </>
@@ -211,6 +215,7 @@ export function ChatThread({
               senderNames={senderNames}
               knownSenders={knownSenders}
               runFacts={runFacts}
+              runActivityByMessage={runActivityByMessage}
             />
             <RunStatusPanel
               state={runState.data}

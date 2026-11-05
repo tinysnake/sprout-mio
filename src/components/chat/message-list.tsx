@@ -1,8 +1,10 @@
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
+import type { RunActivity } from "../../contracts/agent-run";
 import type { MentionSpan, Message } from "../../contracts/chat";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
 import { ChatAvatar } from "./chat-avatar";
 import { clockLabel } from "./format";
+import { RunActivityGroup } from "./run-activity";
 import { RUN_STATUS_LABELS } from "./run-status";
 import { senderKey } from "./chat-session-display";
 import { splitMentions } from "./mention-segments";
@@ -22,6 +24,7 @@ export function MessageList({
   senderNames,
   knownSenders,
   runFacts,
+  runActivityByMessage,
 }: {
   messages: Message[];
   /** DM 的既有身份快照；群聊逐条按 senderId 查 senderNames。 */
@@ -33,6 +36,8 @@ export function MessageList({
   knownSenders?: ReadonlySet<string>;
   /** 由 assistantMessageId 精确匹配的 run，不按时间或发送者猜测归属。 */
   runFacts?: MessageRunFacts;
+  /** 已结束 run 的完整工作记录：键是产出它的 assistant 消息 id。 */
+  runActivityByMessage?: ReadonlyMap<string, RunActivity>;
 }) {
   if (messages.length === 0)
     return (
@@ -63,6 +68,7 @@ export function MessageList({
             GROUPING_WINDOW_MS;
         const historical = knownSenders ? !knownSenders.has(key) : false;
         const links = runFacts?.get(message.id) ?? [];
+        const activity = runActivityByMessage?.get(message.id);
         return (
           <li
             key={message.id}
@@ -135,6 +141,11 @@ export function MessageList({
                         </span>
                       ))}
                 </p>
+              )}
+              {!human && activity && (
+                <div data-testid="message-run-activity" className="mt-2">
+                  <RunActivityGroup activity={activity} />
+                </div>
               )}
             </div>
           </li>

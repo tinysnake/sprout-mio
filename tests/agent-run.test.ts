@@ -251,4 +251,39 @@ describe("Agent run 持久不变量", () => {
       assert.equal(JSON.stringify(withSnapshot).includes('protocol-stub'), false);
     `);
   });
+
+  it("完成的 run 把工作记录落到数据库，并按 assistant 消息归属", () => {
+    scenario(`
+      runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
+      const activityStore = await import('./src/server/pi-host/run-activity.ts');
+      activityStore.recordRunActivity(run.id,{type:'progress',id:run.id,kind:'tool_start',toolCallId:'call_1',toolName:'bash',activity:{kind:'bash',label:'Bash 命令',detail:'pnpm test',toolName:'bash'}},Date.now());
+      const finished = runs.completeAgentRun(run.id,'done','stop',ctx);
+      assert.ok(finished.activity, '完成的 run 必须留下工作记录');
+      assert.equal(finished.activity.current, null);
+      assert.equal(finished.activity.entries.length, 1);
+      assert.equal(finished.activity.entries[0].status, 'done');
+      const persisted = runs.listAgentRuns(direct.chat.id,ctx)[0];
+      assert.deepEqual(persisted.activity, finished.activity);
+      const records = runs.listChatRunActivities(direct.chat.id,ctx);
+      assert.equal(records.length, 1);
+      assert.equal(records[0].runId, finished.id);
+      assert.equal(records[0].assistantMessageId, finished.assistantMessageId);
+      assert.equal(records[0].activity.entries[0].detail, 'pnpm test');
+      assert.equal(activityStore.readRunActivity(run.id), undefined);
+    `);
+  });
+
+  it("中止的 run 留下记录，但不按消息归属", () => {
+    scenario(`
+      runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
+      const activityStore = await import('./src/server/pi-host/run-activity.ts');
+      activityStore.recordRunActivity(run.id,{type:'progress',id:run.id,kind:'tool_start',toolCallId:'call_1',toolName:'bash',activity:{kind:'bash',label:'Bash 命令',detail:'pnpm test',toolName:'bash'}},Date.now());
+      runs.abortAgentRun(run.id,ctx);
+      const aborted = runs.listAgentRuns(direct.chat.id,ctx)[0];
+      assert.ok(aborted.activity, '中止的 run 也要留下已经发生的步骤');
+      assert.equal(aborted.activity.entries[0].status, 'error');
+      assert.equal(aborted.activity.entries[0].finishedAt !== undefined, true);
+      assert.equal(runs.listChatRunActivities(direct.chat.id,ctx).length, 0);
+    `);
+  });
 });

@@ -76,6 +76,7 @@ function Scene() {
           messages={ok([])}
           info={info}
           runState={runState}
+          runActivities={ok([])}
           continuation={continuation}
           inspectorOpen={false}
           onToggleInspector={() => {}}

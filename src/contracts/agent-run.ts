@@ -88,6 +88,18 @@ export type RunConfigSnapshot = {
   };
 };
 
+/**
+ * 已结束 run 的完整工作记录。它只在收尾时随 run 行一起落库，之后不再变化；
+ * 有产出消息的 run 由消息底部按 assistantMessageId 读取，没有产出消息的
+ * 失败/中止 run 由状态面板的 latest 摘要带出。
+ */
+export type ChatRunActivity = {
+  runId: string;
+  instanceId: string;
+  assistantMessageId: string;
+  activity: RunActivity;
+};
+
 export type AgentRun = {
   id: string;
   instanceId: string;
@@ -103,6 +115,8 @@ export type AgentRun = {
   errorMessage?: string;
   sessionId: string;
   configSnapshot?: RunConfigSnapshot;
+  /** 收尾时的完整工作记录：与 status 一起写入，用于回看这一轮做过什么。 */
+  activity?: RunActivity;
   assistantMessageId?: string;
 };
 
@@ -120,6 +134,7 @@ export const runIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.run));
 
 export const abortAgentRunInput = z.object({ runId: runIdSchema });
 export const chatRunStateInput = chatIdInput;
+export const chatRunActivitiesInput = chatIdInput;
 
 /**
  * 状态轮询需要的 run 字段：整行去掉 `configSnapshot`。

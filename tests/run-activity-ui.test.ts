@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ChatRunState, RunActivity, RunActivityStep } from "../src/contracts/agent-run";
+import type { Message } from "../src/contracts/chat";
+import { MessageList } from "../src/components/chat/message-list";
 import { RunStatusPanel } from "../src/components/chat/run-status";
 import { WakeDiagnostic } from "../src/components/continuation/wake-diagnostic";
 import { ContinuationDiagnostic } from "../src/components/continuation/continuation-diagnostic";
@@ -376,5 +378,82 @@ describe("对话接续状态", () => {
     );
     expect(html).toContain("尚无检查记录");
     expect(html).not.toContain('data-testid="continuation-lines"');
+  });
+});
+
+describe("已结束 run 的工作记录", () => {
+  const message = (overrides: Partial<Message> = {}): Message => ({
+    id: "msg_11111111",
+    chatId: "cnv_11111111",
+    senderKind: "agent",
+    senderId: "ins_11111111",
+    body: "第一轮完成",
+    createdAt: "2026-11-02T12:00:06.000Z",
+    mentions: [],
+    ...overrides,
+  });
+  const assistant = message();
+  const human = message({
+    id: "msg_22222222",
+    senderKind: "human",
+    senderId: "usr_11111111",
+    body: "继续",
+  });
+  const settled: RunActivity = {
+    current: null,
+    entries: [2, 1, 0].map((index) => step(index)),
+    updatedAt: "2026-11-02T12:00:05.000Z",
+  };
+  const html = renderToStaticMarkup(
+    createElement(MessageList, {
+      messages: [human, assistant],
+      profile: null,
+      humanName: "Human",
+      runActivityByMessage: new Map([
+        [assistant.id, settled],
+        [human.id, settled],
+      ]),
+    }),
+  );
+
+  it("记录挂在产出它的 assistant 消息底部，不随 run 结束消失", () => {
+    expect(html).toContain('data-testid="message-run-activity"');
+    expect(html).toContain('data-testid="run-activity"');
+    expect(html.indexOf("第一轮完成")).toBeLessThan(
+      html.indexOf('data-testid="message-run-activity"'),
+    );
+    expect(html).toContain("3 条");
+  });
+
+  it("human 消息不承接 run 记录", () => {
+    const humanOnly = renderToStaticMarkup(
+      createElement(MessageList, {
+        messages: [human],
+        profile: null,
+        humanName: "Human",
+        runActivityByMessage: new Map([[human.id, settled]]),
+      }),
+    );
+    expect(humanOnly).not.toContain('data-testid="message-run-activity"');
+  });
+
+  it("已结束的失败 run 也保留可回看的记录", () => {
+    const failed: ChatRunState = {
+      enabled: true,
+      active: [],
+      latest: {
+        ...stateWith().latest!,
+        status: "failed",
+        errorCode: "tool_failed",
+        errorMessage: "boom",
+        activity,
+      },
+      inputs: [],
+    };
+    const panel = renderToStaticMarkup(
+      createElement(RunStatusPanel, { state: failed, messages: [] }),
+    );
+    expect(panel).toContain('data-testid="run-failure"');
+    expect(panel).toContain("pnpm test --filter case-5");
   });
 });
