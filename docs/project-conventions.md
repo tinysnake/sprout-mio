@@ -42,6 +42,7 @@ P3 C 与 R1 并行时互相覆盖的正是这些串行资源，`drizzle/meta/_jo
 - 新线程要独立 worktree。环境与 sprout-mio 项目的 `defaultThreadEnvMode` 都已设为 `worktree`，但通过 tool 建线程或委派子代理时它不生效（tool 默认落在项目根目录），必须显式传 `workspaceStrategy: { type: 'worktree' }` 与 `delegate_task(isolation: 'worktree')`。
 - 新 worktree 的第一条命令是 `bash scripts/dev/worktree-setup.sh`；它已登记为 T3 项目的 `runOnWorktreeCreate` 脚本，新建 worktree 时自动执行，手动重建环境时也跑它。它装依赖，把 gitignore 掉的本地文件与目录软链到主 checkout（`.env.local`、`AGENTS.local.md`、`.agents/dev-pipeline`、`.pi/`、`orchestrate/`、`.obelisk/memories`、`.sprout-pi-sessions/`、`.sprout-pi-workspaces/`），为这个 worktree 建独立 `data/` 并跑迁移。
   - 软链而不是复制：这些路径只有一份真值，各 worktree 读到的就是主 checkout 的那份。`orchestrate/` 是 200 MB 以上的设计原型与评审证据，复制会拖慢准备并制造两处真值。
+  - `.pi/settings.json` 里 `./`、`../` 开头的包源会被改写成绝对路径：pi 解析 project 包时以 `<cwd>/.pi` 为基准、不跟随软链，相对路径在 `.t3/` 下的 worktree 里指向不存在的目录，包内 extension 与 skills 会静默不加载（`pi list` 里该包没有解析出的路径行）。
   - `data/` 是唯一 worktree 独占的路径：只跑迁移、不含主 checkout 的种子数据（种子库尚未纳入流程，页面数据要自己造）。
   - 每一步打印 `linked` / `keep` / `skip`。`skip` 表示主 checkout 里根本没有这个路径，不是脚本漏拷；排查环境问题先看这段输出。
   - 实测：`node_modules` 约 590 MB，已有 pnpm store 时整个准备数秒完成；缺了这些本地文件，执行者会因为环境不全退回主 checkout，隔离就只剩形式。

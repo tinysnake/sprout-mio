@@ -62,6 +62,19 @@ describe("工具调用摘要", () => {
     expect(described.detail).toBe("rg --files");
   });
 
+  it("Chat 工具按读/发语义分别命名，共享前缀不一律标成发送消息", () => {
+    const read = describeToolCall("sprout_chat_get", {});
+    expect(read).toMatchObject({ kind: "task", label: "读取对话", toolName: "sprout_chat_get" });
+    expect(read.detail).toBeUndefined();
+
+    expect(describeToolCall("sprout_chat_continuation_get", {}).label).toBe("读取对话接续");
+    expect(describeToolCall("sprout_chat_log", {}).label).toBe("对话协作");
+
+    const send = describeToolCall("sprout_chat_send", { body: "排查结论" });
+    expect(send).toMatchObject({ kind: "task", label: "发送消息" });
+    expect(send.detail).toBe("排查结论");
+  });
+
   it("未知工具不丢事件，回落到工具名或第一个字符串参数", () => {
     expect(describeToolCall("some_new_tool", {}).detail).toBe("some_new_tool");
     expect(describeToolCall("some_new_tool", { description: "整理报告" }).detail).toBe("整理报告");
