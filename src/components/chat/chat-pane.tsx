@@ -2,11 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
-import type {
-  AgentRunResult,
-  ChatRunActivity,
-  ChatRunState,
-} from "../../contracts/agent-run";
+import type { AgentRunResult, ChatRunActivity, ChatRunState } from "../../contracts/agent-run";
 import type { ChatSession, ChatResult, Message } from "../../contracts/chat";
 import type { ChatInfoView } from "../../contracts/info-hub";
 import type { ChatContinuationData } from "../../domain/chat-continuation";
