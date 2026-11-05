@@ -192,7 +192,6 @@ export function useMachineRelations({
     } finally {
       // 这次读取已经被放弃：定时器和读取状态都归新的那次。
       if (generation.current !== gen) return;
-      dropDeadline();
       reading.current = false;
       if (!disposed.current) setLoading(false);
       if (pending.current && !disposed.current) {

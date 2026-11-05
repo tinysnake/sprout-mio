@@ -1370,6 +1370,19 @@ try {
     await page.unroute(snapshot.url);
   });
 
+  await check("读取快速失败后自动重试，不依赖再次回到页面", async () => {
+    const snapshot = relationSnapshots.get(page)!;
+    let failing = true;
+    await page.route(snapshot.url, (route) => (failing ? route.abort() : route.continue()));
+    await revisit(page);
+    const stale = page.getByTestId("info-hub-project-machines-stale");
+    await stale.waitFor({ timeout: 15_000 });
+    await delay(1_000);
+    failing = false;
+    await stale.waitFor({ state: "hidden", timeout: 12_000 });
+    await page.unroute(snapshot.url);
+  });
+
   // ═══ 8. 反证：缺 confirm 无写；跨 Project 不泄露 ══════════════════════════
   await check("反证：直接请求移出接口缺 confirm / confirm:false 一律无写", async () => {
     const key = { projectId: p1, machineId: m1.machineId };
