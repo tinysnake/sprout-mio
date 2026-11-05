@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
-import type { ChatSession, ChatResult, Message } from "../../contracts/chat";
+import type { ChatSession, ChatResult, Message, MessageWindow } from "../../contracts/chat";
 import type { ChatInfoView } from "../../contracts/info-hub";
 import type { ChatContinuationData } from "../../domain/chat-continuation";
 import type { FieldErrors } from "../../contracts/project";
@@ -14,6 +14,9 @@ import type { AppError, AppResult } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
+import type { ChatHistory } from "./chat-thread";
+import { useChatWindow } from "./use-chat-window";
+import type { ChatLiveFacts } from "./use-chat-live";
 import type { MentionMember } from "./mention-picker";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { useChatDraft } from "./chat-drafts";
@@ -33,7 +36,8 @@ export function ChatPane({
   session,
   profile,
   humanName,
-  messages,
+  page,
+  live,
   info,
   runState,
   continuation,
@@ -45,7 +49,10 @@ export function ChatPane({
   session: ChatSession;
   profile: AgentResult<AgentProfile> | null;
   humanName: string;
-  messages: ChatResult<Message[]>;
+  /** 首屏那一页消息；窗口在这里起手，翻页与卸载都在这个容器里。 */
+  page: ChatResult<MessageWindow>;
+  /** tick 读到的最新事实；消息用它先接上，不必等整树重读。 */
+  live: ChatLiveFacts | null;
   info: ChatResult<ChatInfoView>;
   runState: AgentRunResult<ChatRunState>;
   continuation: AppResult<ChatContinuationData>;
@@ -54,6 +61,21 @@ export function ChatPane({
   onChanged: () => void;
 }) {
   const chat = session.chat;
+  const room = useChatWindow({ chatId: chat.id, page, live });
+  // 分页窗口只改"渲染哪些消息"，错误仍按 loader 的结果原样呈现。
+  const messages: ChatResult<Message[]> = page.ok ? { ...page, data: room.messages } : page;
+  const history: ChatHistory = {
+    breaks: room.breaks,
+    hasOlder: room.hasOlder,
+    loadingOlder: room.loadingOlder,
+    hasNewer: room.hasNewer,
+    loadingNewer: room.loadingNewer,
+    aboveShift: room.aboveShift,
+    onLoadOlder: room.loadOlder,
+    onLoadNewer: room.loadNewer,
+    onResetToLatest: room.resetToLatest,
+    reportAnchor: room.reportAnchor,
+  };
   const [draft, setDraft] = useChatDraft(chat.id);
   const [sendPending, setSendPending] = useState(false);
   const [sendError, setSendError] = useState<AppError | null>(null);
@@ -226,6 +248,7 @@ export function ChatPane({
         profile={session.kind === "dm" ? profile : null}
         humanName={humanName}
         messages={messages}
+        history={history}
         runState={runState}
         continuation={continuation}
         inspectorOpen={inspectorOpen}

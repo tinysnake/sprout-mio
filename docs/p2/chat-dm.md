@@ -59,6 +59,16 @@
 
 行为测试 `tests/chat.test.ts` 用子进程（`tsx` 加独立 `DATABASE_URL`）直接调 boundary 与领域函数，覆盖：同一 (project, profile) 重复发起 DM 返回同一 chat 与 instance 且 `agent_instance` 只有一行；7 个新 boundary 未登录均 `unauthorized`；用户 B 对 A 的 project 与 chat 在列表、详情、成员、实例、发消息上均 `not_found`；空 body 返回 `validation_failed` 且 `fieldErrors` 含 `body`；agent 先发消息后顺序稳定，human 第二条后仍按时间与 rowid 升序；修改人设后 instance id 不变且消息保留。
 
+## 消息分页与渲染上限
+
+`listMessagesFn({ chatId })` 现在按页读：默认 `limit` 50（上限 100），用 `before` 或 `after` 各取一个方向，两个游标不能同时出现（`validation_failed`，`fieldErrors` 含 `before`）。响应是 `{ messages, tailCursor, olderCursor, hasOlder, hasNewer }`：`olderCursor` 是这一页首条、`tailCursor` 是末条，`hasOlder`/`hasNewer` 由服务端多读一条判定，客户端不自己猜。这个入口不再返回整段历史；只有领域层的 `listMessages`（远端 Agent 组装提示用）仍整段读。
+
+界面由 `src/components/chat/use-chat-window.ts` 维护一个按页的窗口：首屏只渲染最新一页；视口离顶 900px 以内自动再要一页，「加载更早的消息」按钮兜底键盘与鼠标操作；DOM 只保留锚点页上下各两页（最多 250 条，硬上限 300），更远的页丢掉、滚回去时再读。尾巴页被丢掉后底部出现「加载更新的消息」，「回到最新」则整体换回尾巴页。滚动位置按「锚点消息 id + 它相对视口的偏移」还原（容器 `overflow-anchor: none`），不靠 `scrollHeight` 差值，因为同一次提交可能同时丢掉视口下方的页。
+
+loader 每次整树重读只替换尾巴页（`mergeNewest`），用户已经翻上去的页不会被重读清空；live 轮询的增量消息接到尾巴页，尾巴被丢过则暂不接，等「回到最新」整体换新，避免在中间接出缺口。
+
+证据：`tests/message-window.test.ts` 覆盖插页、合并、卸载与游标推进；`tests/chat.test.ts` 的 `paging` 证据覆盖默认 50 条、`before`/`after` 两个方向与 `hasOlder`/`hasNewer` 翻转。界面用真实 320 条消息在生产进程上手工验收（Chromium）：首屏 50 条、6 轮往上翻页锚点偏移误差 ≤1px 且窗口始终连续、DOM 条数不超过 150、下界可按 `after` 补回、回到最新后仍是 320 条。
+
 ## 重启持久性验收
 
 P2 出口条件「重启后同一对话仍对应同一分身，消息与配置保留」由 `bash scripts/verify/i-chat.sh` 真实验证：Chromium 首次会话结束后脚本 SIGTERM 停掉生产进程（退出 0），对同一个 SQLite 文件重新启动 `pnpm start`，健康检查返回新 bootId（`boot_3be07db5-…` → `boot_1adbc97a-…`），再用第二次 Chromium 会话（恢复首次会话的 storage state）断言：
@@ -88,5 +98,5 @@ Info Hub 需要的查询入口全部在 `src/server/functions/chat.ts` 与 p2-b 
 
 - 真实 Pi 会话、run、agent 自动回复与分身运行状态属于 P3，本 unit 未实现；`agent` sender 的消息接口只保存调用方提供的文本，仅供领域测试与后续运行时写入。
 - Group 与 Public Channel（P5）、Info Hub 聚合（p2-d）不在本 unit 范围；chat 的 kind 仍只有 `dm`。
-- 归档（`archived_at`）与消息分页未实现；成员与消息数量很大时的界面表现未验证。
+- 归档（`archived_at`）未实现。消息分页已验证到 320 条；数千条消息与成员很多的界面表现仍未验证。
 - 多用户并发写同一对话的竞争行为未验收；写入经过 p2-a 的 IMMEDIATE 事务，但没有并发测试。

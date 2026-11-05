@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
@@ -16,6 +16,60 @@ import type { MentionMember } from "./mention-picker";
 import { MessageList } from "./message-list";
 import { chatDisplayName } from "./chat-display";
 import { RunStatusBadge, RunStatusPanel, isRunActive, runStatusLabel } from "./run-status";
+
+/** 顶部自动加载更早消息的触发距离（像素）。 */
+const LOAD_OLDER_PX = 900;
+/** 视口顶端那条消息与它的偏移，用来把插页后的位置钉回去。 */
+const MESSAGE_ITEM = '[data-testid="message-item"]';
+/** 插页后既有行的高度可能重排（表头归并、字体落定）；钉位置最多盯这么久。 */
+const PIN_FRAMES = 16;
+const PIN_RETRY_MS = 250;
+
+type ViewportAnchor = {
+  /** scrollHeight - scrollTop：视口顶端到内容底边的距离，插入内容时保持不变。 */
+  delta: number;
+  /** 视口顶端那条消息；消息被卸载或为空时为 null。 */
+  id: string | null;
+  /** 那条消息相对容器内容起点的偏移。 */
+  offset: number | null;
+};
+
+function messageItem(element: HTMLElement, id: string): HTMLElement | null {
+  return element.querySelector<HTMLElement>(`${MESSAGE_ITEM}[data-message-id="${CSS.escape(id)}"]`);
+}
+
+/** 量当前视口：delta 用于插页后第一次还原，锚点消息用于随后几帧的重排纠正。 */
+function measureViewport(element: HTMLElement): ViewportAnchor {
+  const top = element.getBoundingClientRect().top;
+  const item = [...element.querySelectorAll<HTMLElement>(MESSAGE_ITEM)].find(
+    (candidate) => candidate.getBoundingClientRect().bottom > top,
+  );
+  return {
+    delta: element.scrollHeight - element.scrollTop,
+    id: item?.dataset.messageId ?? null,
+    offset: item === undefined ? null : item.getBoundingClientRect().top - top,
+  };
+}
+
+/**
+ * 分页窗口交给呈现层的部分：页切分点、还能不能往前翻、以及视口所在页。
+ * 消息本身仍走 `messages`，这里只管"翻页、卸载、滚动位置"这三件事。
+ */
+export type ChatHistory = {
+  breaks: readonly number[];
+  hasOlder: boolean;
+  loadingOlder: boolean;
+  /** 窗口的下界不挨着真尾巴时为 true：往下翻要重新取页，不能就地追加。 */
+  hasNewer: boolean;
+  loadingNewer: boolean;
+  /** 视口上方内容变化的次数：变了就得把滚动位置按不变量还原。 */
+  aboveShift: number;
+  onLoadOlder: () => void;
+  onLoadNewer: () => void;
+  /** 整体换回最新一页：丢过尾巴之后靠它回到真尾巴。 */
+  onResetToLatest: () => void;
+  reportAnchor: (pageIndex: number) => void;
+};
 
 /**
  * Chat 中栏的呈现层：头部上下文、消息记录与输入区。所有数据与操作都由
@@ -56,6 +110,7 @@ export function ChatThread({
   runFacts,
   continuation,
   archived = false,
+  history,
 }: {
   /** 返回列表入口：正式路由传 Link，演示传按钮。 */
   back?: ReactNode;
@@ -95,8 +150,13 @@ export function ChatThread({
   runFacts?: Map<string, readonly InfoHubRunSummary[]>;
   continuation?: AppResult<ChatContinuationData>;
   archived?: boolean;
+  /** 消息分页窗口；缺省时按单页全量渲染，演示场景不需要它。 */
+  history?: ChatHistory;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
+  /** 上一次落定后的视口：上方内容变化时据此把位置还原回去。 */
+  const viewport = useRef<ViewportAnchor | null>(null);
+  const anchorPage = useRef(-1);
   const [atBottom, setAtBottom] = useState(true);
   const [newSinceScroll, setNewSinceScroll] = useState(false);
   const count = messages.ok ? messages.data.length : 0;
@@ -115,18 +175,85 @@ export function ChatThread({
       : runStatusLabel(runState.data)
     : "";
   const first = useRef(true);
+  const oldestId = messages.ok ? (messages.data[0]?.id ?? null) : null;
+  // 头部那条消息换了，说明变的是上方（往前插页、卸载上方页），不是尾巴来了新消息。
+  const seenOldest = useRef(oldestId);
 
   useEffect(() => {
     const element = scroll.current;
     if (!element) return;
+    const shiftedAbove = oldestId !== seenOldest.current;
+    seenOldest.current = oldestId;
     if (first.current || atBottom) {
       element.scrollTop = element.scrollHeight;
       first.current = false;
       setNewSinceScroll(false);
       return;
     }
+    // 往上翻出来的历史不该亮"回到底部"的提示。
+    if (shiftedAbove) {
+      setNewSinceScroll(false);
+      return;
+    }
     setNewSinceScroll(true);
-  }, [count, atBottom]);
+  }, [count, atBottom, oldestId]);
+
+  const aboveShift = history?.aboveShift ?? 0;
+  const pinning = useRef(false);
+
+  // 上方内容变了：按锚点消息的实际位置把视口钉回去，而不是靠"高度差"。
+  // 同一个提交里也可能丢掉视口下方的页，高度差就不再等于上方的变化量；
+  // 按元素位置纠正只依赖"这条消息在屏幕上待过哪儿"，两头怎么变都对。
+  useLayoutEffect(() => {
+    const element = scroll.current;
+    const anchor = viewport.current;
+    if (element === null || anchor === null) return;
+    const { id, offset, delta } = anchor;
+    let expected = element.scrollTop;
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let frames = 0;
+    pinning.current = true;
+
+    // 锚点还在就按它的位置纠偏；被卸载了就退回高度不变量（那时变化的都在视口上方）。
+    const drift = () => {
+      const item = id === null ? null : messageItem(element, id);
+      if (item !== null && offset !== null)
+        return item.getBoundingClientRect().top - element.getBoundingClientRect().top - offset;
+      return element.scrollHeight - delta - element.scrollTop;
+    };
+    // 收手只解自己的锁：cleanup 里不能重新量视口，那一刻测到的是"变完之后"的样子，
+    // 拿它当基准会让下一次还原原地不动。
+    const cleanup = () => {
+      pinning.current = false;
+      if (timer !== null) clearTimeout(timer);
+    };
+    // 钉稳之后要主动收手：`pinning` 一直为真会吞掉后续的滚动手势与翻页检查。
+    const finish = () => {
+      cleanup();
+      // 记下落定后的视口：下一次（用户没再滚动就再来一次）还原才有真值。
+      viewport.current = measureViewport(element);
+    };
+    const pin = () => {
+      // 用户自己滚动了就放手，不跟人抢。
+      if (element.scrollTop !== expected) return finish();
+      const gap = drift();
+      if (Math.abs(gap) >= 1) {
+        element.scrollTop += gap;
+        expected = element.scrollTop;
+      }
+      if (++frames < PIN_FRAMES) frame = requestAnimationFrame(pin);
+      else if (timer === null) timer = setTimeout(pin, PIN_RETRY_MS);
+      else finish();
+    };
+    // 此刻布局已刷新，量到的就是真值；之后几帧只是等既有行重排落定。
+    pin();
+    frame = requestAnimationFrame(pin);
+    return () => {
+      cancelAnimationFrame(frame);
+      cleanup();
+    };
+  }, [aboveShift]);
 
   const title = displayTitle ?? chatDisplayName(chat, agentName);
   const subline =
@@ -185,15 +312,54 @@ export function ChatThread({
           const bottom = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
           setAtBottom(bottom);
           if (bottom) setNewSinceScroll(false);
+          // 还原滚动位置时的程序化滚动不算用户的视口变化，别据此重新卸载。
+          if (history === undefined || pinning.current) return;
+          // 接近顶部就再往前要一页；滚到真顶部反而不如提前一屏，滚动手感更连续。
+          viewport.current = measureViewport(element);
+          if (element.scrollTop < LOAD_OLDER_PX && history.hasOlder && !history.loadingOlder) {
+            history.onLoadOlder();
+          }
+          // 接近底部同理往后再要一页：只在尾巴被卸载后才可能，挨着真尾巴时按增量读走。
+          if (
+            element.scrollHeight - element.scrollTop - element.clientHeight < LOAD_OLDER_PX &&
+            history.hasNewer &&
+            !history.loadingNewer
+          ) {
+            history.onLoadNewer();
+          }
+          // 离卸载按"视口所在页"算，不按消息条数：页是渲染与内存的单位，报页号就够了。
+          const top = element.getBoundingClientRect().top;
+          for (const block of element.querySelectorAll<HTMLElement>("[data-message-page]")) {
+            if (block.getBoundingClientRect().bottom <= top) continue;
+            const page = Number(block.dataset.messagePage ?? 0);
+            if (page === anchorPage.current) break;
+            anchorPage.current = page;
+            history.reportAnchor(page);
+            break;
+          }
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-7 pt-5.75 pb-4.5 max-desktop:px-3.75 max-desktop:py-5"
+        className="min-h-0 flex-1 overflow-y-auto px-7 pt-5.75 pb-4.5 max-desktop:px-3.75 max-desktop:py-5 [overflow-anchor:none]"
       >
+        {history !== undefined && history.hasOlder && (
+          <div className="mb-3 flex justify-center">
+            <button
+              type="button"
+              data-testid="load-older-messages"
+              disabled={history.loadingOlder}
+              onClick={() => history.onLoadOlder()}
+              className="rounded-control border border-border bg-background px-3 py-1.5 text-[11px] text-foreground disabled:opacity-60"
+            >
+              {history.loadingOlder ? "正在加载更早的消息…" : "加载更早的消息"}
+            </button>
+          </div>
+        )}
         {!messages.ok ? (
           <ChatErrorNotice error={messages.error} testId="messages-load-error" />
         ) : !runState.ok ? (
           <>
             <MessageList
               messages={messages.data}
+              breaks={history?.breaks}
               profile={profile}
               humanName={humanName}
               senderNames={senderNames}
@@ -206,6 +372,7 @@ export function ChatThread({
           <>
             <MessageList
               messages={messages.data}
+              breaks={history?.breaks}
               profile={profile}
               humanName={humanName}
               senderNames={senderNames}
@@ -224,19 +391,32 @@ export function ChatThread({
             />
           </>
         )}
-        {newSinceScroll && (
+        {history !== undefined && history.hasNewer && (
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              data-testid="load-newer-messages"
+              disabled={history.loadingNewer}
+              onClick={() => history.onLoadNewer()}
+              className="rounded-control border border-border bg-background px-3 py-1.5 text-[11px] text-foreground disabled:opacity-60"
+            >
+              {history.loadingNewer ? "正在加载更新的消息…" : "加载更新的消息"}
+            </button>
+          </div>
+        )}
+        {(newSinceScroll || (history !== undefined && history.hasNewer && !atBottom)) && (
           <button
             type="button"
             data-testid="new-messages-jump"
             onClick={() => {
-              const element = scroll.current;
-              if (element) element.scrollTop = element.scrollHeight;
+              // 尾巴被卸载过就先整体换回最新一页，否则只是把当前窗口滚到底。
+              if (history !== undefined && history.hasNewer) history.onResetToLatest();
               setAtBottom(true);
               setNewSinceScroll(false);
             }}
             className="sticky bottom-2 mx-auto mt-3 block rounded-control border border-border bg-background px-3 py-2 text-[11px] text-foreground shadow-sm"
           >
-            有新消息 · 回到最新
+            {newSinceScroll ? "有新消息 · 回到最新" : "回到最新"}
           </button>
         )}
       </div>

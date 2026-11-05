@@ -167,7 +167,14 @@ export async function listMessagesBoundary(
   return chatBoundary<MessageWindow>(headers, requestId, (deps, context) => {
     const parsed = listMessagesInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(deps.listMessageWindow(parsed.data.chatId, context, parsed.data.after), requestId);
+    return ok(
+      deps.listMessageWindow(parsed.data.chatId, context, {
+        before: parsed.data.before,
+        after: parsed.data.after,
+        limit: parsed.data.limit,
+      }),
+      requestId,
+    );
   });
 }
 

@@ -4,7 +4,6 @@ import { TaskAssociations } from "../../components/tasks/task-associations";
 import { useChatInspector } from "../../components/chat/chat-search";
 import { isActiveRunState, useChatLive } from "../../components/chat/use-chat-live";
 import type { ChatDetailLoaderData } from "../../components/chat/chat-loader";
-import { messageList } from "../../components/chat/chat-loader";
 import { ResultError } from "../../components/project/result-error";
 import { useInfoHubLive } from "../../components/info-hub/info-hub-live";
 import { mergeChatRuns } from "../../components/info-hub/merge-info-hub";
@@ -61,8 +60,6 @@ function ProjectChatDetailPage() {
   const liveInfo = loader.info.ok
     ? { ...loader.info, data: mergeChatRuns(loader.info.data, live?.view ?? null) }
     : loader.info;
-  // tick 读到的那几块盖住 loader 的同名事实；其余字段继续用 loader，两者不拼成一份新事实。
-  const messages = facts?.messages ?? messageList(loader.messages);
   const runState = facts?.runState ?? loader.runState;
   // 判定不改消息也不改 run：不盖住 loader 的 continuation，「正在检查」就只在整树重读时闪现。
   const continuation = facts?.continuation ?? loader.continuation;
@@ -85,7 +82,8 @@ function ProjectChatDetailPage() {
         session={loader.session}
         profile={loader.profile}
         humanName={human?.name ?? ""}
-        messages={messages}
+        page={loader.messages}
+        live={facts}
         info={liveInfo}
         runState={runState}
         continuation={continuation}

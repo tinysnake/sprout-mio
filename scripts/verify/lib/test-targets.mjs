@@ -70,6 +70,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/mention-write.test.ts",
     "tests/mention.test.ts",
     "tests/message-wake.test.ts",
+    "tests/message-window.test.ts",
     "tests/migration-rebuild.test.ts",
     "tests/pi-host-clock.test.ts",
     "tests/pi-host-dispose.test.ts",
