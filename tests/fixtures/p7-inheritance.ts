@@ -4,11 +4,10 @@
  * 目的不是再证明一次「Sprout extension + 四个基础工具可用」（P3/n-pi-session/x3 已有），
  * 而是把「谁被加载、谁没被加载」变成可重跑的实测清单：
  *
- *   - 默认关闭：宿主 skills / prompts / themes / AGENTS.md / extensions 与 cwd 的 `.pi/*`
- *     都不进 loader；工具面等于只读工具 + Sprout 工具 + 可选的 pi-web-access，且不含
+ *   - 默认继承：宿主目录、HOME、packages 与 Project checkout 的技能进入 loader，
+ *     prompt templates 只来自宿主 prompts；extensions / themes / context files 仍关闭。
+ *   - 显式关闭：skills 与 prompts 为空；两种模式的工具面均不含
  *     host bash/edit/write 与 mcp__ 前缀工具。
- *   - 打开 `inheritHostResources`：只有宿主 skills 与 prompt templates 进入 loader，
- *     extensions / themes / context files 仍然关闭，工具面不变。
  *   - 隔离：两个 Project 的分身各自在自己的受控目录里装载，宿主 agentDir 前后逐字节不变。
  *
  * 全部用真实已安装 Pi SDK（托管 `bin/pi` / `install/releases`）的 model-fixture 目录，
@@ -48,9 +47,11 @@ mkdirSync(directory, { recursive: true });
 
 const pass = (name: string) => console.log(`PASS ${name}`);
 
-/** 标记名：写进宿主/cwd，用来证明它们没有被 loader 读到。 */
+/** 每个资源来源使用独立标记，避免同名技能去重掩盖泄漏。 */
 const markers = {
   hostSkill: "p7-host-skill",
+  homeSkill: "p7-home-skill",
+  packageSkill: "p7-package-skill",
   hostPrompt: "p7-host-prompt",
   hostTheme: "p7-host-theme",
   hostContextFile: "AGENTS.md",
@@ -65,7 +66,7 @@ function writeSkill(root: string, name: string) {
   mkdirSync(skillDir, { recursive: true });
   writeFileSync(
     join(skillDir, "SKILL.md"),
-    `---\nname: ${name}\ndescription: p7 继承边界标记，只用于证明未被加载。\n---\n\n标记正文。\n`,
+    `---\nname: ${name}\ndescription: p7 继承边界标记。\n---\n\n标记正文。\n`,
   );
 }
 
@@ -75,6 +76,15 @@ function writeSkill(root: string, name: string) {
  */
 function seedHostResources(hostAgentDir: string) {
   writeSkill(hostAgentDir, markers.hostSkill);
+  const packageDir = join(directory, "skill-package");
+  writeSkill(packageDir, markers.packageSkill);
+  writeFileSync(
+    join(packageDir, "package.json"),
+    JSON.stringify({ name: "p7-skills-package", version: "0.0.0", pi: { skills: ["./skills"] } }),
+  );
+  const settingsPath = join(hostAgentDir, "settings.json");
+  const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+  writeFileSync(settingsPath, JSON.stringify({ ...settings, packages: [packageDir] }));
   mkdirSync(join(hostAgentDir, "prompts"), { recursive: true });
   writeFileSync(
     join(hostAgentDir, "prompts", `${markers.hostPrompt}.md`),
@@ -100,6 +110,8 @@ function seedHostResources(hostAgentDir: string) {
 
 /** cwd 自己的 project 资源：`.pi/skills` 与 `AGENTS.md` 是 loader 默认会扫的两处。 */
 function seedProjectResources(cwd: string, skill: string) {
+  // SDK 的 .agents/skills 会向上找到 git 根；私有根防止读到夹具外的真实仓库配置。
+  mkdirSync(join(cwd, ".git"), { recursive: true });
   writeSkill(join(cwd, ".pi"), skill);
   writeFileSync(join(cwd, "AGENTS.md"), `# ${skill} project context 标记\n`);
 }
@@ -173,7 +185,13 @@ function openSession(options: {
   turn?: { text: string; readPath: string; reply: string };
 }): Promise<OpenResult> {
   return new Promise((done, reject) => {
-    const env: NodeJS.ProcessEnv = { ...process.env, PI_TELEMETRY: "0" };
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      HOME: homeDir,
+      PI_CODING_AGENT_DIR: options.hostAgentDir,
+      SPROUT_PI_WEB_ACCESS_PATH: webAccessEntry ?? join(directory, "no-web-access"),
+      PI_TELEMETRY: "0",
+    };
     // runner 只认 open 命令里的开关；外层环境里残留的同名变量不能影响本次场景。
     delete env.SPROUT_PI_INHERIT_HOST_RESOURCES;
     const child = spawn(process.execPath, [join(repoRoot, "scripts/pi-host-runner.mjs")], {
@@ -381,9 +399,10 @@ const median = (values: number[]) => {
 
 const fixture = await startModelFixture({ privateDir: join(directory, "model-fixture") });
 const hostAgentDir = fixture.agentDir;
+const webAccessEntry = resolveWebAccessExtension(hostAgentDir);
 const expectedTools = [
   ...HOST_CORE_TOOLS,
-  ...(resolveWebAccessExtension(hostAgentDir) ? HOST_WEB_TOOLS : []),
+  ...(webAccessEntry ? HOST_WEB_TOOLS : []),
   "sprout_status",
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
@@ -391,6 +410,8 @@ const expectedTools = [
 ].sort();
 const allowedAnywhere = new Set(expectedTools);
 seedHostResources(hostAgentDir);
+const homeDir = join(directory, "home");
+writeSkill(join(homeDir, ".agents"), markers.homeSkill);
 const sessionDirectory = join(directory, "sessions");
 mkdirSync(sessionDirectory, { recursive: true });
 
@@ -559,7 +580,7 @@ async function run(options: {
   });
   return { snapshot, runId, resources, readyMs, turn: turnResult };
 }
-// ---------------------------------------------------------------- 默认关闭：a 三次（第一次带一轮真实对话）
+// 父进程的缺省开关由 pi-host-inheritance.test.ts 验证；runner 协议始终显式传布尔值。
 for (const repeat of [1, 2, 3])
   await run({
     label: `off-a-${repeat}`,
@@ -567,11 +588,13 @@ for (const repeat of [1, 2, 3])
     inheritHostResources: false,
     ...(repeat === 1 ? { withTurn: true } : {}),
   });
-// ---------------------------------------------------------------- 默认关闭：b 一次（隔离）
+
 await run({ label: "off-b-1", project: "b", inheritHostResources: false });
-// ---------------------------------------------------------------- 打开开关：a 三次
+
 for (const repeat of [1, 2, 3])
   await run({ label: `on-a-${repeat}`, project: "a", inheritHostResources: true });
+
+await run({ label: "on-b-1", project: "b", inheritHostResources: true });
 
 const hostAfter = treeDigest(hostAgentDir);
 const offRuns = runs.filter((entry) => !entry.inheritHostResources);
@@ -634,7 +657,7 @@ pass(
   `工具面 ${runs.length} 次均为 ${expectedTools.length} 个工具（${expectedTools.join(", ")}），且每次 registry 与工具面逐条相等；宿主 bash/edit/write 与 mcp__ 均未出现`,
 );
 
-// ---------------------------------------------------------------- 断言：默认不继承
+// ---------------------------------------------------------------- 断言：显式关闭继承
 for (const entry of offRuns) {
   assert.equal(entry.resources.inheritHostResources, false, `${entry.label}: 开关记录为关闭`);
   assert.deepEqual(entry.resources.skills, [], `${entry.label}: 不加载任何技能`);
@@ -648,9 +671,7 @@ for (const entry of offRuns) {
   assert(!entry.resources.agentDirEqualsHostAgentDir, `${entry.label}: 受控目录不是宿主目录`);
   assert(!entry.resources.agentDirUnderHostAgentDir, `${entry.label}: 受控目录不在宿主目录下`);
 }
-pass(
-  `默认关闭：宿主 ${markers.hostSkill}/${markers.hostPrompt}/${markers.hostTheme}/${markers.hostContextFile}/${markers.hostExtension} 与 cwd .pi/${markers.projectA} 全部未加载`,
-);
+pass(`显式关闭：宿主、HOME、package 与 Project skills/prompts 全部未加载`);
 
 // ---------------------------------------------------------------- 断言：隔离
 const [offA, offB] = [
@@ -672,14 +693,25 @@ assert.deepEqual(offA.resources.contextFiles, [], "Project A 的 AGENTS.md 未�
 assert.deepEqual(offB.resources.contextFiles, [], "Project B 的 AGENTS.md 未进入 loader");
 assert.deepEqual(offA.resources.skills, [], "Project A 的 .pi/skills 未进入 loader");
 assert.deepEqual(offB.resources.skills, [], "Project B 的 .pi/skills 未进入 loader");
-// 同一个人设、不同的 cwd：模型实际看到的系统提示必须一样长，否则说明 cwd 内容进了提示。
 assert.equal(
   offA.systemPromptChars,
   offB.systemPromptChars,
-  "两个 Project 的系统提示长度相同，cwd 内容没有进提示",
+  "关闭继承时两个 Project 的系统提示等长，cwd 内容没有越过 loader 边界",
 );
+const onA = onRuns.find((entry) => entry.project === "a")!;
+const onB = onRuns.find((entry) => entry.project === "b")!;
+assert(
+  onA.resources.skills.includes(markers.projectA),
+  "Project A checkout 的 Pi 配置进入 A 系统提示",
+);
+assert(!onA.resources.skills.includes(markers.projectB), "Project A 看不到 Project B 的技能");
+assert(
+  onB.resources.skills.includes(markers.projectB),
+  "Project B checkout 的 Pi 配置进入 B 系统提示",
+);
+assert(!onB.resources.skills.includes(markers.projectA), "Project B 看不到 Project A 的技能");
 pass(
-  `隔离：A/B 受控目录 ${offA.resources.agentDirRelative} 与 ${offB.resources.agentDirRelative}，两个 AGENTS.md 与 .pi/skills 均未加载`,
+  `隔离：A/B 各用自己的受控目录；关闭时 cwd 技能不进 loader，打开时只看得到自己 checkout 的 Pi 配置`,
 );
 
 // ---------------------------------------------------------------- 断言：真实一轮
@@ -807,9 +839,16 @@ pass(
 // ---------------------------------------------------------------- 断言：开关打开只搬 skills/prompts
 for (const entry of onRuns) {
   assert.equal(entry.resources.inheritHostResources, true, `${entry.label}: 开关记录为打开`);
-  // 先做「不包含 cwd 技能」：`assert.deepEqual` 会把 skills 窄化成字面量元组，之后的 includes 会报类型错。
-  assert(!entry.resources.skills.includes(markers.projectA), `${entry.label}: cwd 技能不进入`);
-  assert.deepEqual(entry.resources.skills, [markers.hostSkill], `${entry.label}: 宿主技能进入`);
+  const projectSkill = markers[entry.project === "a" ? "projectA" : "projectB"];
+  assert(
+    entry.resources.skills.includes(projectSkill),
+    `${entry.label}: Project checkout 的 Pi 配置现在生效，cwd 技能进入`,
+  );
+  assert.deepEqual(
+    [...entry.resources.skills].sort(),
+    [markers.hostSkill, markers.homeSkill, markers.packageSkill, projectSkill].sort(),
+    `${entry.label}: 缺省打开只加载私有宿主、HOME、pi.skills 包与当前 Project 技能，真实 HOME 被隔离`,
+  );
   assert.deepEqual(
     entry.resources.prompts,
     [markers.hostPrompt],
@@ -818,13 +857,17 @@ for (const entry of onRuns) {
   assert.deepEqual(entry.resources.themes, [], `${entry.label}: 主题仍不加载`);
   assert.deepEqual(entry.resources.contextFiles, [], `${entry.label}: context file 仍不加载`);
   assert.equal(entry.resources.agentDirName, ".sprout-pi", `${entry.label}: 仍用受控目录`);
-  // 开关只多接两个宿主目录，不把 cwd 的 `.pi/*`、settings/packages 声明的技能包或别的根拉进来。
   const relativeToHost = (suffix: string) =>
     relative(directory, join(hostAgentDir, suffix)).split("\\").join("/");
   assert.deepEqual(
-    entry.resources.skillPaths,
-    [relativeToHost("skills")],
-    `${entry.label}: 技能只来自宿主 skills 目录`,
+    [...entry.resources.skillPaths].sort(),
+    [
+      relativeToHost(`skills/${markers.hostSkill}/SKILL.md`),
+      `home/.agents/skills/${markers.homeSkill}/SKILL.md`,
+      `skill-package/skills/${markers.packageSkill}/SKILL.md`,
+      `${projects[entry.project].name}/.pi/skills/${projectSkill}/SKILL.md`,
+    ].sort(),
+    `${entry.label}: skillPaths 包含宿主、HOME、package.json 的 pi.skills 与当前 Project 的 SKILL.md`,
   );
   assert.deepEqual(
     entry.resources.promptPaths,
@@ -840,7 +883,7 @@ for (const entry of onRuns) {
   );
 }
 pass(
-  `开关打开：skills=[${markers.hostSkill}]、prompts=[${markers.hostPrompt}]，themes/contextFiles 仍为空，系统提示 ${offRuns[0]!.systemPromptChars}→${onRuns[0]!.systemPromptChars} 字符，工具面不变`,
+  `缺省打开：宿主、HOME、pi.skills 包与各自 Project 技能进入，prompts=[${markers.hostPrompt}]，themes/contextFiles 仍为空，系统提示 ${offRuns[0]!.systemPromptChars}→${onRuns[0]!.systemPromptChars} 字符，工具面不变`,
 );
 
 // ---------------------------------------------------------------- 断言：宿主目录不被写入

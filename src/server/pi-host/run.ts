@@ -53,7 +53,7 @@ const NOTICE_ID_PREFIX = "notice:";
 const NOTICE_RETRY_MS = 1_000;
 
 /**
- * 是否把宿主 skills 与 prompt templates 装进分身的 resource loader。默认关闭。
+ * `SPROUT_PI_INHERIT_HOST_RESOURCES=false` 或 `0` 关闭继承，缺省继承宿主 Pi 解析出的 skills 与宿主 prompt templates。
  *
  * 不用 profile 字段承载：profile 存 DB，本单元不改 schema；这是宿主侧运行边界，
  * 与 `SPROUT_PI_PROVIDER_ROOT` 同类，由父进程在这里解析后随 open 显式传给 runner，
@@ -61,7 +61,7 @@ const NOTICE_RETRY_MS = 1_000;
  */
 function inheritHostResources(): boolean {
   const value = globalThis.process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
-  return value === "true" || value === "1";
+  return value !== "false" && value !== "0";
 }
 
 export function executeRun(

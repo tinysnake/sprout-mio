@@ -8,10 +8,10 @@ cd "$(dirname "$0")/../.."
 #   pi-web-access，无 host bash/edit/write、mcp__ 或宿主 extension 工具）。
 # 扩展声明了工具却永远调不到 → `sprout_status` 必须同时在工具面与 registry，且真实模型
 #   夹具发起一次调用、载荷里的运行时/宿主开关/会话事实与本次 open 逐条对账。
-# 开关打开后偷偷把 extensions/themes/context files 也搬进来 → 打开状态的断言要求只有宿主
-#   skills 与 prompt templates 进入，themes/contextFiles 仍为空。
-# 隔离只在代码里成立 → 两个 Project 的受控目录各自在 cwd 内、项目自己的 AGENTS.md 与
-#   .pi/skills 都不进 loader，宿主 agentDir 前后哈希一致。
+# 缺省继承漏掉 HOME/package/Project 技能，或混入其他资源 → 私有 HOME 与 pi.skills 包
+#   标记进入，themes/contextFiles 仍为空，工具面不变。
+# 隔离只在代码里成立 → A/B 各看各的 Project 技能，AGENTS.md 不进 loader，
+#   受控目录各自在 cwd 内，宿主 agentDir 前后哈希一致。
 # 代价靠嘴说 → 关闭/打开各 ≥3 次首轮 open→ready 实测，中位数进证据。
 # 不花钱 → model-fixture 本机回环目录，证据里 paidModelCalls 必须为 0。
 if [[ -n "${P7_DIR:-}" ]]; then
@@ -27,6 +27,7 @@ export PI_TELEMETRY=0
 unset SPROUT_PI_INHERIT_HOST_RESOURCES || true
 
 trap 'printf "FAIL Pi inheritance boundary (p7)\n" >&2' ERR
+pnpm test tests/pi-host-inheritance.test.ts
 pnpm exec tsx tests/fixtures/p7-inheritance.ts
 node --input-type=module - "$P7_EVIDENCE" <<'NODE'
 import assert from "node:assert/strict";
@@ -37,13 +38,13 @@ assert(existsSync(evidencePath), "证据文件必须存在");
 const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
 const markers = evidence.markers;
 const runs = evidence.runs;
-assert(Array.isArray(runs) && runs.length >= 7, "至少 7 次真实 open");
+assert(Array.isArray(runs) && runs.length >= 8, "至少 8 次真实 open");
 
 // ---- B1 默认工具面：逐条对账，不是只数数量
 const off = runs.filter((run) => run.inheritHostResources === false);
 const on = runs.filter((run) => run.inheritHostResources === true);
-assert(off.length >= 4, "默认关闭至少 4 次（3 次耗时 + 1 次隔离）");
-assert(on.length >= 3, "打开开关至少 3 次");
+assert(off.length >= 4, "显式关闭至少 4 次（3 次耗时 + 1 次隔离）");
+assert(on.length >= 4, "缺省打开至少 4 次（3 次耗时 + 1 次隔离）");
 for (const run of runs) {
   const label = run.label;
   assert(run.extensions.includes("sprout-extension"), `${label}: 加载 Sprout extension`);
@@ -83,7 +84,7 @@ console.log(
   `PASS 工具面 ${off[0].tools.length} 个（${off[0].tools.join(", ")}），registry 与工具面逐条相等，宿主 bash/edit/write 与 mcp__ 均未出现`,
 );
 
-// ---- B2 默认不继承，且与 Project 隔离
+// ---- B2 显式关闭，且与 Project 隔离
 for (const run of off) {
   assert.equal(run.resources.inheritHostResources, false, `${run.label}: 开关记录为关闭`);
   for (const field of ["skills", "prompts", "themes", "contextFiles", "skillPaths", "promptPaths"])
@@ -105,7 +106,7 @@ for (const run of off) {
 }
 const projectA = off.find((run) => run.project === "a");
 const projectB = off.find((run) => run.project === "b");
-assert(projectA && projectB, "A/B 两个 Project 都有默认关闭的会话");
+assert(projectA && projectB, "A/B 两个 Project 都有显式关闭的会话");
 assert.notEqual(
   projectA.resources.agentDirRelative,
   projectB.resources.agentDirRelative,
@@ -114,38 +115,46 @@ assert.notEqual(
 assert(projectA.resources.agentDirRelative.startsWith("project-a/"), "A 的受控目录在 A 的 cwd");
 assert(projectB.resources.agentDirRelative.startsWith("project-b/"), "B 的受控目录在 B 的 cwd");
 assert.deepEqual(projectA.tools, projectB.tools, "两个 Project 的工具面相同");
-assert.equal(
-  projectA.systemPromptChars,
-  projectB.systemPromptChars,
-  "两个 Project 的系统提示长度相同（cwd 内容未进提示）",
-);
+const inheritedA = on.find((run) => run.project === "a");
+const inheritedB = on.find((run) => run.project === "b");
+assert(inheritedA && inheritedB, "A/B 都有缺省打开的会话");
+assert(inheritedA.resources.skills.includes(markers.projectA), "A 的 Project checkout 配置进入 A 系统提示");
+assert(!inheritedA.resources.skills.includes(markers.projectB), "A 看不到 B 的技能");
+assert(inheritedB.resources.skills.includes(markers.projectB), "B 的 Project checkout 配置进入 B 系统提示");
+assert(!inheritedB.resources.skills.includes(markers.projectA), "B 看不到 A 的技能");
 console.log(
-  `PASS 默认不继承：${["skills", "prompts", "themes", "contextFiles"].join("/")} 为空，A/B 受控目录 ${projectA.resources.agentDirRelative} 与 ${projectB.resources.agentDirRelative}`,
+  `PASS 隔离：显式关闭时 skills/prompts/themes/contextFiles 为空，缺省打开时 A/B 只看得到自己 checkout 的 Pi 配置，受控目录独立`,
 );
 
-// ---- B3 打开开关只搬 skills + prompt templates
+// ---- B3 缺省继承宿主 Pi 解析出的 skills + 宿主 prompt templates
 for (const run of on) {
   assert.equal(run.resources.inheritHostResources, true, `${run.label}: 开关记录为打开`);
-  assert.deepEqual(run.resources.skills, [markers.hostSkill], `${run.label}: 宿主技能进入`);
+  const projectSkill = markers[run.project === "a" ? "projectA" : "projectB"];
+  assert.deepEqual(
+    [...run.resources.skills].sort(),
+    [markers.hostSkill, markers.homeSkill, markers.packageSkill, projectSkill].sort(),
+    `${run.label}: 缺省打开加载宿主、HOME、pi.skills 包与当前 Project 的完整私有集`,
+  );
   assert.deepEqual(run.resources.prompts, [markers.hostPrompt], `${run.label}: 宿主 prompt 进入`);
   assert.deepEqual(run.resources.themes, [], `${run.label}: 主题仍不加载`);
   assert.deepEqual(run.resources.contextFiles, [], `${run.label}: context file 仍不加载`);
-  assert(!run.resources.skills.includes(markers.projectA), `${run.label}: cwd 技能不进入`);
-  assert.equal(run.resources.skillPaths.length, 1, `${run.label}: 只多一个技能根`);
-  assert(run.resources.skillPaths[0].endsWith("/skills"), `${run.label}: 技能根是宿主 skills`);
+  assert(run.resources.skills.includes(projectSkill), `${run.label}: Project checkout 的 Pi 配置生效，cwd 技能进入`);
+  assert.equal(run.resources.skillPaths.length, 4, `${run.label}: 只有四个私有技能路径，真实 HOME 被隔离`);
+  assert(run.resources.skillPaths.includes(`skill-package/skills/${markers.packageSkill}/SKILL.md`), `${run.label}: package.json 的 pi.skills 技能路径进入`);
   assert.equal(run.resources.promptPaths.length, 1, `${run.label}: 只多一个 prompt 根`);
   assert(
     run.resources.promptPaths[0].endsWith("/prompts"),
     `${run.label}: prompt 根是宿主 prompts`,
   );
   assert.equal(run.resources.agentDirName, ".sprout-pi", `${run.label}: 仍用受控目录`);
+  assert(run.resources.agentDirUnderRunCwd, `${run.label}: 受控目录仍在各自 cwd 内`);
   assert(
     run.systemPromptChars > off[0].systemPromptChars,
     `${run.label}: 技能文本进入模型看到的系统提示`,
   );
 }
 console.log(
-  `PASS 开关打开：skills=[${markers.hostSkill}]、prompts=[${markers.hostPrompt}]，themes/contextFiles 仍为空，系统提示 ${off[0].systemPromptChars}→${on[0].systemPromptChars} 字符，工具面不变`,
+  `PASS 缺省打开：宿主、HOME、pi.skills 包与当前 Project 技能进入，prompts=[${markers.hostPrompt}]，themes/contextFiles 仍为空，系统提示 ${off[0].systemPromptChars}→${on[0].systemPromptChars} 字符，工具面不变`,
 );
 
 // ---- B4 宿主目录不被写入

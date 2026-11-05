@@ -69,9 +69,11 @@ P6a 交付的 `ChatContinuationData`（`src/server/functions/chat-continuation.t
 
 ## Pi 资源继承边界
 
-- 默认**不继承**宿主 `agentDir` 下的 extensions、themes、context files，也不继承 skills 与 prompt templates：`scripts/pi-host-runner.mjs` 只有在 `inheritHostResources === true` 时才把 `<宿主 agentDir>/skills`、`<宿主 agentDir>/prompts` 作为 `additionalSkillPaths` / `additionalPromptTemplatePaths` 接进去，其余类别恒关。
-- 开关是 `SPROUT_PI_INHERIT_HOST_RESOURCES`（`src/server/pi-host/run.ts` 解析）。关闭时工具面与 P3 完全一致（30 个工具：`bash`/`edit`/`read`/`write` + 26 个 Sprout 工具，没有 codemode、tool_search 或 `mcp__*`）。
-- 打开后**真正生效的只有 skills**：产品路径用 `session.prompt(..., { expandPromptTemplates: false })`，prompt templates 只被装载进命令面板，不进模型路径。
+- 默认**打开** skills 与 prompt templates 继承。`scripts/pi-host-runner.mjs` 用 SDK 的 `SettingsManager.create(config.cwd, config.agentDir)` 与 `DefaultPackageManager.resolve` 复现宿主自己的 Pi 在同一份配置下的解析结果，只把 enabled 技能路径作为 `additionalSkillPaths` 接进受控 loader。缺失包选择 `skip`，不触发安装。
+- 技能来源包括宿主 `agentDir` 的用户级来源（`skills`、settings 声明的路径与 packages）、`~/.agents/skills`，以及运行 cwd 的 Project 级来源：`.pi/skills`、`.agents/skills` 和 settings packages 的 `pi.skills`。Project 配置按 SDK 的默认信任规则生效；因此不同 Project checkout 会得到各自的技能集与系统提示，不再要求 A/B 系统提示等长。
+- prompt templates 仍只来自 `<宿主 agentDir>/prompts`。宿主 extensions、themes、context files 仍不继承，受控 loader 的 `noSkills: true` 保持不变；解析技能包的 `pi.skills` 不需要加载包内 extension。工具面不随资源继承开关改变：保留既有只读工具、Sprout 工具与可选 web 工具，不引入宿主 `bash`/`edit`/`write` 或 `mcp__*`。
+- 运维关闭缝是 `SPROUT_PI_INHERIT_HOST_RESOURCES=false` 或 `0`（`src/server/pi-host/run.ts` 解析，其他值与缺省均打开）。关闭时不解析宿主技能，skills 与 prompts 为空，工具面和受控目录边界不变。
+- 继承后**进入模型路径的只有 skills**：产品路径仍用 `session.prompt(..., { expandPromptTemplates: false })`，prompt templates 只被装载，不在模型输入中展开。
 - ready 快照里的 `registeredTools` 与 `resources`（`skillPaths`/`skills`/`themes`/`contextFiles`/`systemPromptChars`）是可选字段，只为让证据可核对，不改变运行语义。
 
 ## sprout_status 的事实

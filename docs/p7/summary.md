@@ -20,7 +20,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 5. **判定器不可用说现状。** `wakeProviderAvailabilityFromEnv()` 按部署配置算出每个 provider 的 `configured`/`available`/`unavailableReason`；页面三态渲染（无配置、全不可用、可用），保存带 `expectedConfigRevision`。
 6. **Management 一期。** 「服务与数据」读 `/api/diagnostics?summary=1` 的 `queryManagementSummary`（迁移版本、资源事件与续行积压、MCP 帧水位），「账号与外观」给身份、主题与登出；不含用量统计与数据库写入。
 7. **备份、恢复与基线。** `scripts/p7/storage/snapshot.ts` 用 `VACUUM INTO` 做一致备份（含 WAL 已提交事务），`restore` 校验后原子改名并拒绝已有目标；`p7-service-baseline` 量 5 个本地端点 p50/p95、日志 512 帧分页、outbox 4 MiB/1 MiB 水位。
-8. **Pi 资源继承有明确边界。** 默认不继承宿主 extensions/themes/context files/skills/prompt templates；`SPROUT_PI_INHERIT_HOST_RESOURCES` 打开后只多两个宿主根，且真正生效的只有 skills（产品路径 `expandPromptTemplates: false`）。
+8. **Pi 资源继承默认打开，边界按资源类别划分。** skills 使用 SDK 在宿主 `agentDir` 与分身 cwd 下解析出的 enabled 路径，包含用户级、HOME、Project checkout 与 settings packages 的 `pi.skills`；缺失包跳过、不安装。prompts 仍只来自宿主 `<agentDir>/prompts`，产品路径 `expandPromptTemplates: false` 不变。宿主 extensions/themes/context files 仍不继承，工具面不变；`SPROUT_PI_INHERIT_HOST_RESOURCES=false` 或 `0` 关闭 skills/prompts 继承。代价是 Project 的 `.pi` / `.agents` 配置会影响分身技能集，各 Project 系统提示不再承诺等长。
 9. **`sprout_status` 可达且说真话。** 真实 Pi 会话里可调用，报真实 `worker.pid`、`worker.loader`、`piSession.id`、`toolCount`；P1 的 `"unimplemented"` 假事实已替换为逐事实对账。
 10. **三条跨章页面裁定。** 被服务端拒绝的动作不渲染（不置灰、不打印 reason/code）、Task 目标与要求与清单文字都在原地编辑、Info Hub 轮询状态行只在异常时出现一句人话。
 
@@ -39,7 +39,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 | `p7-loop-restart`            | 真实 SIGKILL 崩溃 + 重启：在途 run 一律 `interrupted`，第二次重启不重复推进                                                                                                         | `bash scripts/verify/p7-loop-restart.sh`       |
 | `p7-storage-recovery`        | 空库→0028、0025 历史库升级、重跑幂等、备份期间并发写入的分组原子性、`cp` 主库反证、全新目录恢复启动、旧 run/execution 非成功、诊断关联链                                            | `bash scripts/verify/p7-storage-recovery.sh`   |
 | `p7-service-baseline`        | 5 个本地端点 p50/p95、日志 512 帧 × 1 KiB 分页完整性与延迟、outbox 4 MiB 高水位与 1 MiB 低水位回落                                                                                  | `bash scripts/verify/p7-service-baseline.sh`   |
-| `p7-pi-inheritance`          | 默认工具面 30 个逐条、宿主目录 10 个文件哈希前后一致、开关打开只多两个宿主根且系统提示 148→821 字符、`sprout_status` 在工具面上（LOCAL）                                            | `bash scripts/verify/p7-pi-inheritance.sh`     |
+| `p7-pi-inheritance`          | 缺省打开/显式关闭接线、私有 HOME 与 pi.skills 包、A/B 各自技能、38 个工具不变、宿主目录哈希一致、系统提示 142→1500 字符、真实 `sprout_status` 调用（LOCAL）                         | `bash scripts/verify/p7-pi-inheritance.sh`     |
 | `bf-p6b-pages`（含接线断言） | 真实页面接线：Chat 页出现 `continuation-card` 且没有 `continuation-unavailable`、轮询正常态不渲染状态行、not_found 走页面自己的错误态                                               | `bash scripts/verify/bf-p6b-pages.sh`          |
 | 回归                         | `i-chat`（not_found 深链）、`aq-p4d-pages`（读失败保留旧事实并标未确认）、`ag-execution-wiring-ui`（读日志失败可见）、`as-p5b-task-pages`、`p6a-pages`、`k-acceptance`、`b-tooling` | 各自 `bash scripts/verify/<id>.sh`             |
 
@@ -96,7 +96,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 2. **跨机与现场恢复未验证。** 只在本机全新目录恢复并启动；没有第二台机器、不同文件系统、网络挂载，也没有 ENOSPC、`fsync` 失败、VACUUM 过程中断电。Worker 的 journal/结果文件、Git checkout、模型 session 文件都在库外，不在备份范围。
 3. **性能基线是单机单请求。** 5 个端点、并发 1、keep-alive、单机 M4；没有并发吞吐、冷缓存、跨网络、鉴权失败、写请求。数字写进 `.verify/p7-service-baseline.json`，不设产品 SLA。空载复跑（load average 4）的实测：`health` p95 0.393ms、`auth-session` 1.018ms、`diagnostics-project-page-200` 1.576ms；日志读取 `pageP95` 2.618ms、`fullP95` 16.987ms。早前 1.39→10.71ms 与 16.82→60.70ms 的抖动是三个 worker 同时占 CPU 造成的，不能当基线。
 4. **付费模型路由未验。** `p7-loop-multiround` 只跑 `model-fixture`（`paid-model-calls=0`）；真实 provider 表现属 MANUAL `p6a-live-routing`。
-5. **Pi 继承只测了合成宿主目录。** 真实 `~/.pi/agent` 里的技能可能有非法 frontmatter、重名、超大正文；prompt templates 在产品路径上实际不可用（`expandPromptTemplates: false`）；只在 macOS + Pi 1.4.0 上验证。
+5. **Pi 继承已覆盖私有目录装载与真实配置解析，未验证所有真实技能正文。** macOS + Pi 1.5.0 下，`p7-pi-inheritance` 用私有 HOME、宿主目录、本地 `pi.skills` 包与 A/B Project 跑过 8 次真实 runner open：各自完整技能集进入，themes/contextFiles 为空，38 个工具不变，付费调用为 0。独立 SDK 实测：本仓库 worktree cwd 解析出 75 个 enabled 资源路径（61 个来自 pi-pstack，20.06ms），临时空 cwd 得到 40 个（pi-pstack 为 0，9.48ms），两侧 `installFailures` 均为空；这些是解析路径数，不是展开目录并去重后的技能名总数。真实技能的非法 frontmatter、重名与超大正文尚未逐项验证，也未让付费模型实际读取或调用这些技能；prompt templates 仍不在产品模型输入中展开（`expandPromptTemplates: false`）。
 6. **并发上限只有可测口径。** 产品没有「同时运行 Agent 数」的封顶，只声明并实测每 instance 在途 run = 1、消息 8000 字、扇出 = 点名 Agent 数；「超过 N 个明确拒绝」不存在，这是缺口不是通过。
 7. **重启语义是「都不继续」。** `queued` 与 `running` 一律 `interrupted`；Worker 失联后的租约自动回收与冻结契约冲突，未实现也未改契约。
 8. **离线只有读。** 没有离线写队列，断线时的执行动作不可用；缓存命中的读标为未确认，不代表服务端现状。

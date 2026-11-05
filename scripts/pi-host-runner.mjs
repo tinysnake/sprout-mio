@@ -60,6 +60,18 @@ function jsonFile(path, fallback) {
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : fallback;
 }
 
+async function resolveHostSkillPaths(sdk, config) {
+  // Project 配置按分身的实际 cwd 生效。
+  const settingsManager = sdk.SettingsManager.create(config.cwd, config.agentDir);
+  const packageManager = new sdk.DefaultPackageManager({
+    cwd: config.cwd,
+    agentDir: config.agentDir,
+    settingsManager,
+  });
+  const resolved = await packageManager.resolve(async () => "skip");
+  return resolved.skills.filter((skill) => skill.enabled).map((skill) => skill.path);
+}
+
 async function open(config) {
   const root = sdkRoot(config.agentDir);
   const sdk = await import(pathToFileURL(join(root, "dist", "index.js")).href);
@@ -190,11 +202,10 @@ async function open(config) {
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/status.ts"),
   );
   const remoteClient = createRemoteClient(config.remote);
-  // 继承边界：默认不读宿主资源。纯布尔判断（不用真值强制），关闭时与 P3 行为逐字节相同。
   const inheritHostResources = config.inheritHostResources === true;
   const inheritedPaths = inheritHostResources
     ? {
-        skills: [join(config.agentDir, "skills")].filter((path) => existsSync(path)),
+        skills: await resolveHostSkillPaths(sdk, config),
         prompts: [join(config.agentDir, "prompts")].filter((path) => existsSync(path)),
       }
     : { skills: [], prompts: [] };
