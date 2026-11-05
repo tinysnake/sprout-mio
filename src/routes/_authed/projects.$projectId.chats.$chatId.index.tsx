@@ -87,6 +87,7 @@ function ProjectChatDetailPage() {
         info={liveInfo}
         runState={runState}
         runActivities={loader.runActivities}
+        skills={loader.skills.ok ? loader.skills.data : { state: "unavailable", items: [] }}
         continuation={continuation}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}

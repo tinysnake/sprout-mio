@@ -7,6 +7,9 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { FieldError } from "../project/result-error";
 import { ChatErrorNotice } from "./chat-error-notice";
+import type { ChatSkillChoices, SkillOption } from "../../contracts/skill";
+import { insertSkill, skillQueryAt } from "../../lib/skill-token";
+import { SkillPicker } from "./skill-picker";
 import {
   MentionPicker,
   insertMention,
@@ -25,6 +28,8 @@ export const MESSAGE_MAX_LENGTH = 8000;
 export function MessageComposer({
   agentName,
   members,
+  skills = { state: "unavailable", items: [] },
+  onSkillsRefresh,
   draft,
   onDraftChange,
   onSubmit,
@@ -41,6 +46,8 @@ export function MessageComposer({
   agentName: string;
   /** 可以 @ 的成员：只有名字会进正文，id 只用来区分同一批候选项。 */
   members: readonly MentionMember[];
+  skills?: ChatSkillChoices;
+  onSkillsRefresh?: () => void;
   draft: string;
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
@@ -62,18 +69,28 @@ export function MessageComposer({
   const composing = useRef(false);
   const pendingCaret = useRef<number | null>(null);
   const listId = useId();
-  const [query, setQuery] = useState<MentionQuery | null>(null);
+  const [query, setQuery] = useState<(MentionQuery & { kind: "mention" | "skill" }) | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
   // 草稿被外部改写（发送后清空、恢复未投递输入）时区间不再成立，浮层跟着关掉。
   const activeQuery =
-    query && draft.slice(query.start, query.end) === `@${query.query}` ? query : null;
+    query &&
+    draft.slice(query.start, query.end) === `${query.kind === "skill" ? "#" : "@"}${query.query}`
+      ? query
+      : null;
   const matches = useMemo(
-    () => (activeQuery ? matchMembers(members, activeQuery.query) : []),
+    () => (activeQuery?.kind === "mention" ? matchMembers(members, activeQuery.query) : []),
     [members, activeQuery],
   );
+  const skillMatches =
+    activeQuery?.kind === "skill"
+      ? skills.items.filter((skill) =>
+          skill.name.toLowerCase().includes(activeQuery.query.toLowerCase()),
+        )
+      : [];
+  const count = activeQuery?.kind === "skill" ? skillMatches.length : matches.length;
   const open = activeQuery !== null;
-  const active = matches.length > 0 ? Math.min(activeIndex, matches.length - 1) : -1;
+  const active = count > 0 ? Math.min(activeIndex, count - 1) : -1;
 
   const attachInput = useCallback(
     (node: HTMLTextAreaElement | null) => {
@@ -95,13 +112,22 @@ export function MessageComposer({
 
   /** 按光标前的正文同步候选区间；同一区间不产生多余渲染。 */
   function sync(element: HTMLTextAreaElement) {
-    const next = mentionQueryAt(element.value, element.selectionStart ?? element.value.length);
+    const caret = element.selectionStart ?? element.value.length;
+    const skill = skillQueryAt(element.value, caret);
+    const mention = skill ? null : mentionQueryAt(element.value, caret);
+    const next = skill
+      ? { ...skill, kind: "skill" as const }
+      : mention
+        ? { ...mention, kind: "mention" as const }
+        : null;
+    if (next?.kind === "skill" && query?.kind !== "skill") onSkillsRefresh?.();
     setQuery((previous) =>
       previous &&
       next &&
       previous.start === next.start &&
       previous.end === next.end &&
-      previous.query === next.query
+      previous.query === next.query &&
+      previous.kind === next.kind
         ? previous
         : next,
     );
@@ -127,6 +153,17 @@ export function MessageComposer({
     element.focus();
   }
 
+  function pickSkill(skill: SkillOption) {
+    const element = textarea.current;
+    if (!element || !activeQuery) return;
+    const next = insertSkill(element.value, activeQuery, skill.name);
+    pendingCaret.current = next.caret;
+    setQuery(null);
+    setActiveIndex(0);
+    onDraftChange(next.text);
+    element.focus();
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSend || pending) return;
@@ -142,21 +179,26 @@ export function MessageComposer({
         setQuery(null);
         return;
       }
-      if (matches.length > 0) {
+      if (count > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
-          setActiveIndex((current) => (current + 1) % matches.length);
+          setActiveIndex((current) => (current + 1) % count);
           return;
         }
         if (event.key === "ArrowUp") {
           event.preventDefault();
-          setActiveIndex((current) => (current - 1 + matches.length) % matches.length);
+          setActiveIndex((current) => (current - 1 + count) % count);
           return;
         }
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
-          const member = matches[active];
-          if (member) pick(member);
+          if (activeQuery?.kind === "skill") {
+            const skill = skillMatches[active];
+            if (skill) pickSkill(skill);
+          } else {
+            const member = matches[active];
+            if (member) pick(member);
+          }
           return;
         }
       }
@@ -176,7 +218,17 @@ export function MessageComposer({
         aria-busy={pending || undefined}
         className="relative rounded-container border border-input bg-background p-3 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring max-desktop:p-2.5"
       >
-        {open && (
+        {open && activeQuery?.kind === "skill" && (
+          <SkillPicker
+            listId={listId}
+            matches={skillMatches}
+            state={skills.state}
+            activeIndex={active}
+            onPick={pickSkill}
+            onActive={setActiveIndex}
+          />
+        )}
+        {open && activeQuery?.kind === "mention" && (
           <MentionPicker
             listId={listId}
             label="可以 @ 的成员"

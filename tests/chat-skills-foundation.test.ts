@@ -12,21 +12,50 @@ migrateDatabase();
 const { sqlite } = await import("../src/db");
 const { createProject } = await import("../src/domain/project");
 const { updateProjectProfile } = await import("../src/domain/project-config");
-const { readSkillCatalog, resolveSkillScope, prepareInheritedResources } = await import("../src/server/pi-host/skills");
+const { readSkillCatalog, resolveSkillScope, prepareInheritedResources, listChatSkillChoices } =
+  await import("../src/server/pi-host/skills");
 const ctx = { userId: "skill-human", requestId: "req_skills" };
-sqlite.prepare("INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES (?,?,?,0,1,1)").run(ctx.userId, "skills", "skills@test.example");
-afterAll(() => { sqlite.close(); rmSync(directory, { recursive: true, force: true }); });
+sqlite
+  .prepare(
+    "INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES (?,?,?,0,1,1)",
+  )
+  .run(ctx.userId, "skills", "skills@test.example");
+afterAll(() => {
+  sqlite.close();
+  rmSync(directory, { recursive: true, force: true });
+});
 it("fresh catalogs separate Project scopes before any run; display scans coalesce; disabled never discovers", async () => {
   const a = createProject({ name: "skills A" }, ctx);
   const b = createProject({ name: "skills B" }, ctx);
-  for (const [project, name] of [[a, "only-a"], [b, "only-b"]] as const) {
+  for (const [project, name] of [
+    [a, "only-a"],
+    [b, "only-b"],
+  ] as const) {
     updateProjectProfile(project.id, { workDirectory: project.id, defaultBranch: "main" }, ctx);
     const folder = join(directory, "repos", project.id, ".pi/skills", name);
     mkdirSync(folder, { recursive: true });
-    writeFileSync(join(folder, "SKILL.md"), `---\nname: ${name}\ndescription: isolated fixture\n---\nbody`);
+    writeFileSync(
+      join(folder, "SKILL.md"),
+      `---\nname: ${name}\ndescription: isolated fixture\n---\nbody`,
+    );
   }
+  const { createAgentProfile, addProjectMember } = await import("../src/domain/agent");
+  const { createDirectChat } = await import("../src/domain/chat");
+  const agent = createAgentProfile({ name: "Skills", persona: "", harness: "pi" }, ctx);
+  addProjectMember(a.id, agent.id, ctx);
+  const direct = createDirectChat(a.id, agent.id, ctx);
+  expect(
+    sqlite.prepare("SELECT count(*) AS n FROM agent_run WHERE chat_id=?").get(direct.chat.id),
+  ).toEqual({ n: 0 });
+  expect(
+    (await listChatSkillChoices(direct.chat.id, ctx)).items.some((item) => item.name === "only-a"),
+  ).toBe(true);
+  console.log("PASS candidate: catalog available before Chat first run");
   const scope = resolveSkillScope(a.id, ctx);
-  const [first, second] = await Promise.all([readSkillCatalog(scope, "display"), readSkillCatalog(scope, "display")]);
+  const [first, second] = await Promise.all([
+    readSkillCatalog(scope, "display"),
+    readSkillCatalog(scope, "display"),
+  ]);
   expect(first).toBe(second);
   expect(first.byName.has("only-a")).toBe(true);
   expect(first.byName.has("only-b")).toBe(false);

@@ -323,10 +323,29 @@ function openSession(options: {
         cwd: options.cwd,
         agentDir: options.hostAgentDir,
         extensionPath: resolve(repoRoot, "pi/sprout-extension.ts"),
-        resources: options.inheritHostResources ? (() => {
-          const catalog = JSON.parse(execFileSync(process.execPath, [join(repoRoot, "scripts/pi-host-skill-catalog.mjs")], { input: JSON.stringify({ cwd: options.cwd, agentDir: options.hostAgentDir }) + "\n", env, timeout: 10_000, encoding: "utf8" }));
-          return { kind: "enabled", skillRevision: catalog.revision, skillPaths: catalog.skillPaths, promptPaths: [join(options.hostAgentDir, "prompts")] };
-        })() : { kind: "disabled" },
+        resources: options.inheritHostResources
+          ? (() => {
+              const catalog = JSON.parse(
+                execFileSync(
+                  process.execPath,
+                  [join(repoRoot, "scripts/pi-host-skill-catalog.mjs")],
+                  {
+                    input:
+                      JSON.stringify({ cwd: options.cwd, agentDir: options.hostAgentDir }) + "\n",
+                    env,
+                    timeout: 10_000,
+                    encoding: "utf8",
+                  },
+                ),
+              );
+              return {
+                kind: "enabled",
+                skillRevision: catalog.revision,
+                skillPaths: catalog.skillPaths,
+                promptPaths: [join(options.hostAgentDir, "prompts")],
+              };
+            })()
+          : { kind: "disabled" },
         profile: {
           id: newId(ID_PREFIXES.agentProfile),
           name: options.label,

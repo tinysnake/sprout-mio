@@ -1,7 +1,12 @@
 export type SkillToken = Readonly<{ name: string; start: number; end: number }>;
 
 export function isSkillName(name: string): boolean {
-  return name.length > 0 && name.length <= 200 && !/[\s【】\u0000-\u001f\u007f]/u.test(name);
+  return (
+    name.length > 0 &&
+    name.length <= 200 &&
+    !/[\s【】]/u.test(name) &&
+    ![...name].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+  );
 }
 
 export function scanSkillTokens(body: string): readonly SkillToken[] {
@@ -19,5 +24,8 @@ export function skillQueryAt(body: string, caret: number) {
 export function insertSkill(body: string, range: { start: number; end: number }, name: string) {
   if (!isSkillName(name)) throw new Error("无法表示的技能名称");
   const token = `【技能:${name}】 `;
-  return { text: body.slice(0, range.start) + token + body.slice(range.end), caret: range.start + token.length };
+  return {
+    text: body.slice(0, range.start) + token + body.slice(range.end),
+    caret: range.start + token.length,
+  };
 }

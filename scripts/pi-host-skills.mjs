@@ -44,4 +44,3 @@ export async function resolveHostSkillPaths(sdk, config) {
   const resolved = await packageManager.resolve(async () => "skip");
   return resolved.skills.filter((skill) => skill.enabled).map((skill) => skill.path);
 }
-
