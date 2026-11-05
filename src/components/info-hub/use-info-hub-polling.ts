@@ -185,9 +185,11 @@ export function createInfoHubPolling({
       onState?.(pause);
       return;
     }
-    // 被窗口挡掉的恢复不能动定时器：定时器就是还没恢复时的下一次读取。
     const at = now();
-    if (lastResumeAt !== null && at - lastResumeAt < RESUME_WINDOW_MS) return;
+    if (lastResumeAt !== null && at - lastResumeAt < RESUME_WINDOW_MS) {
+      if (timer === undefined && !inFlight) schedule();
+      return;
+    }
     lastResumeAt = at;
     clearTimer();
     terminal = false;
