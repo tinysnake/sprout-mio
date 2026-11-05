@@ -25,6 +25,7 @@ export function MessageList({
   knownSenders,
   runFacts,
   runActivityByMessage,
+  breaks = [],
 }: {
   messages: Message[];
   /** DM 的既有身份快照；群聊逐条按 senderId 查 senderNames。 */
@@ -38,6 +39,8 @@ export function MessageList({
   runFacts?: MessageRunFacts;
   /** 已结束 run 的完整工作记录：键是产出它的 assistant 消息 id。 */
   runActivityByMessage?: ReadonlyMap<string, ChatRunActivity>;
+  /** 每页首条消息在全量列表里的下标；缺省时整段当成一页。 */
+  breaks?: readonly number[];
 }) {
   if (messages.length === 0)
     return (
@@ -50,123 +53,130 @@ export function MessageList({
   const dmAgentName = agent?.name ?? "Agent";
   const persona = [agent?.jobTitle, agent?.persona?.split("。")[0]].filter(Boolean).join(" · ");
 
-  return (
-    <ol data-testid="message-list" className="space-y-1">
-      {messages.map((message, index) => {
-        const human = message.senderKind === "human";
-        const key = senderKey(message.senderKind, message.senderId);
-        const name =
-          senderNames?.get(key) ??
-          (human ? humanName || "你" : dmAgentName) ??
-          (human ? "Human" : "Agent");
-        const previous = messages[index - 1];
-        const grouped =
-          previous &&
-          previous.senderKind === message.senderKind &&
-          previous.senderId === message.senderId &&
-          new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() <=
-            GROUPING_WINDOW_MS;
-        const historical = knownSenders ? !knownSenders.has(key) : false;
-        const links = runFacts?.get(message.id) ?? [];
-        const activityRecord = runActivityByMessage?.get(message.id);
-        const activity = activityRecord?.activity;
-        return (
-          <li
-            key={message.id}
-            data-testid="message-item"
-            data-message-id={message.id}
-            data-sender-kind={message.senderKind}
-            data-sender-id={message.senderId}
+  const renderItem = (message: Message, index: number) => {
+    const human = message.senderKind === "human";
+    const key = senderKey(message.senderKind, message.senderId);
+    const name =
+      senderNames?.get(key) ??
+      (human ? humanName || "你" : dmAgentName) ??
+      (human ? "Human" : "Agent");
+    const previous = messages[index - 1];
+    const grouped =
+      previous &&
+      previous.senderKind === message.senderKind &&
+      previous.senderId === message.senderId &&
+      new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() <=
+        GROUPING_WINDOW_MS;
+    const historical = knownSenders ? !knownSenders.has(key) : false;
+    const links = runFacts?.get(message.id) ?? [];
+    const activityRecord = runActivityByMessage?.get(message.id);
+    const activity = activityRecord?.activity;
+    return (
+      <li
+        key={message.id}
+        data-testid="message-item"
+        data-message-id={message.id}
+        data-sender-kind={message.senderKind}
+        data-sender-id={message.senderId}
+        className={
+          grouped
+            ? "grid grid-cols-[30px_minmax(0,1fr)] gap-x-3 pt-1"
+            : "grid grid-cols-[30px_minmax(0,1fr)] gap-x-3 pt-5"
+        }
+      >
+        {grouped ? <span aria-hidden="true" /> : <ChatAvatar name={name} human={human} />}
+        <div className="min-w-0">
+          {!grouped && (
+            <p className="mb-1.75 flex flex-wrap items-center gap-2">
+              <strong data-testid="message-sender" className="text-xs font-semibold">
+                {name}
+              </strong>
+              <span
+                data-testid="message-kind"
+                className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
+              >
+                {human ? "Human" : "Agent"}
+              </span>
+              {historical && (
+                <span
+                  data-testid="message-history-badge"
+                  className="rounded-[3px] border border-dashed border-input px-1 text-[9px] text-muted-foreground"
+                >
+                  已移出 · 历史发送者
+                </span>
+              )}
+              <time
+                data-testid="message-created-at"
+                dateTime={message.createdAt}
+                className="text-[10px] text-muted-foreground"
+              >
+                {clockLabel(message.createdAt)}
+              </time>
+            </p>
+          )}
+          {!human && !grouped && persona && (
+            <p data-testid="message-persona" className="mb-2 text-[10px] text-muted-foreground">
+              {persona}
+            </p>
+          )}
+          <p
+            data-testid="message-body"
             className={
-              grouped
-                ? "grid grid-cols-[30px_minmax(0,1fr)] gap-x-3 pt-1"
-                : "grid grid-cols-[30px_minmax(0,1fr)] gap-x-3 pt-5"
+              human
+                ? "rounded-b-lg rounded-tr-lg bg-muted px-3.5 py-2.75 text-xs leading-6 break-words whitespace-pre-wrap"
+                : "text-xs leading-6 break-words whitespace-pre-wrap"
             }
           >
-            {grouped ? <span aria-hidden="true" /> : <ChatAvatar name={name} human={human} />}
-            <div className="min-w-0">
-              {!grouped && (
-                <p className="mb-1.75 flex flex-wrap items-center gap-2">
-                  <strong data-testid="message-sender" className="text-xs font-semibold">
-                    {name}
-                  </strong>
-                  <span
-                    data-testid="message-kind"
-                    className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
-                  >
-                    {human ? "Human" : "Agent"}
+            <MessageBody body={message.body} mentions={message.mentions} />
+          </p>
+          {!human && (
+            <p data-testid="message-run-links" className="mt-1 text-[10px] text-muted-foreground">
+              {links.length === 0 ? (
+                activityRecord ? (
+                  <span key={activityRecord.runId} className="mr-2 inline-flex items-center gap-1">
+                    <span className="font-mono">{activityRecord.runId}</span>
+                    <span>{RUN_STATUS_LABELS[activityRecord.status] ?? activityRecord.status}</span>
                   </span>
-                  {historical && (
-                    <span
-                      data-testid="message-history-badge"
-                      className="rounded-[3px] border border-dashed border-input px-1 text-[9px] text-muted-foreground"
-                    >
-                      已移出 · 历史发送者
-                    </span>
-                  )}
-                  <time
-                    data-testid="message-created-at"
-                    dateTime={message.createdAt}
-                    className="text-[10px] text-muted-foreground"
-                  >
-                    {clockLabel(message.createdAt)}
-                  </time>
-                </p>
+                ) : (
+                  "未关联 run · 不推断归属"
+                )
+              ) : (
+                links.map((run) => (
+                  <span key={run.runId} className="mr-2 inline-flex items-center gap-1">
+                    <span className="font-mono">{run.runId}</span>
+                    <span>{RUN_STATUS_LABELS[run.status] ?? run.status}</span>
+                  </span>
+                ))
               )}
-              {!human && !grouped && persona && (
-                <p data-testid="message-persona" className="mb-2 text-[10px] text-muted-foreground">
-                  {persona}
-                </p>
-              )}
-              <p
-                data-testid="message-body"
-                className={
-                  human
-                    ? "rounded-b-lg rounded-tr-lg bg-muted px-3.5 py-2.75 text-xs leading-6 break-words whitespace-pre-wrap"
-                    : "text-xs leading-6 break-words whitespace-pre-wrap"
-                }
-              >
-                <MessageBody body={message.body} mentions={message.mentions} />
-              </p>
-              {!human && (
-                <p
-                  data-testid="message-run-links"
-                  className="mt-1 text-[10px] text-muted-foreground"
-                >
-                  {links.length === 0 ? (
-                    activityRecord ? (
-                      <span
-                        key={activityRecord.runId}
-                        className="mr-2 inline-flex items-center gap-1"
-                      >
-                        <span className="font-mono">{activityRecord.runId}</span>
-                        <span>
-                          {RUN_STATUS_LABELS[activityRecord.status] ?? activityRecord.status}
-                        </span>
-                      </span>
-                    ) : (
-                      "未关联 run · 不推断归属"
-                    )
-                  ) : (
-                    links.map((run) => (
-                      <span key={run.runId} className="mr-2 inline-flex items-center gap-1">
-                        <span className="font-mono">{run.runId}</span>
-                        <span>{RUN_STATUS_LABELS[run.status] ?? run.status}</span>
-                      </span>
-                    ))
-                  )}
-                </p>
-              )}
-              {!human && activity && (
-                <div data-testid="message-run-activity" className="mt-2">
-                  <RunActivityGroup activity={activity} />
-                </div>
-              )}
+            </p>
+          )}
+          {!human && activity && (
+            <div data-testid="message-run-activity" className="mt-2">
+              <RunActivityGroup activity={activity} />
             </div>
-          </li>
-        );
-      })}
-    </ol>
+          )}
+        </div>
+      </li>
+    );
+  };
+
+  // 页是渲染、锚点与卸载的单位；窗口只留离视口几页以内的内容，条目数因此有上限。
+  // 分组判定用全量列表的 index，所以跨页边界也不会把同一个人的连续发言拆成两段表头。
+  const spans = (breaks.length > 0 ? breaks : [0]).map(
+    (start, index, all) => [start, all[index + 1] ?? messages.length] as const,
+  );
+  return (
+    <div data-testid="message-list">
+      {spans.map(([start, end], pageIndex) => (
+        <div key={messages[start]?.id ?? pageIndex} data-message-page={pageIndex}>
+          <ol className="space-y-1">
+            {messages
+              .slice(start, end)
+              .map((message, offset) => renderItem(message, start + offset))}
+          </ol>
+        </div>
+      ))}
+    </div>
   );
 }
 

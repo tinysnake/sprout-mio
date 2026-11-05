@@ -351,14 +351,47 @@ export function laterMessageCursor(
   return compareMessageCursor(left, right) >= 0 ? left : right;
 }
 
-/** 一次消息读的结果：`cursor` 是这批消息之后的位置，下次增量读从它继续。 */
+/**
+ * 一页消息的条数：首屏、向更早翻页与增量读的默认上限。
+ * 客户端不能要求比它更大的页，否则一次读就能把整段历史拉回浏览器。
+ */
+export const CHAT_MESSAGE_PAGE_SIZE = 50;
+
+/** 单次消息读允许的最大条数，与 `CHAT_MESSAGE_PAGE_SIZE` 分开是为了给翻页留调整空间。 */
+export const CHAT_MESSAGE_PAGE_LIMIT_MAX = 100;
+
+/**
+ * 一次消息读的结果：按 `(createdAt, rowid)` 升序的一页，加上两个方向的位置。
+ * 客户端不自己推断边界：`hasOlder` 由服务端多读一条判定，`olderCursor` 用库里真实的 rowid。
+ */
 export type MessageWindow = {
-  /** 本次新增的消息；首屏是无游标时的整段历史。 */
+  /** 本页消息，按时间升序；最多 `limit` 条（服务端上限 `CHAT_MESSAGE_PAGE_LIMIT_MAX`）。 */
   messages: Message[];
-  /** 空 Chat 且无游标时为 null；非空时恒为最后一条的游标，客户端直接存下即可。 */
-  cursor: MessageCursor | null;
+  /** 这批消息之后的位置；空窗口回显请求的 `before`/`after`，都没有且 Chat 为空时为 null。 */
+  tailCursor: MessageCursor | null;
+  /** 这批消息之前的位置，向更早翻页时传给 `before`；空窗口为 null。 */
+  olderCursor: MessageCursor | null;
+  /** `olderCursor` 之前是否还有消息；`after` 增量读只看更晚，读一页再看更早没有意义，恒为 false。 */
+  hasOlder: boolean;
+  /**
+   * `tailCursor` 之后是否还有消息。首屏尾巴读恒为 false，由服务端多读一条判定：
+   * 只有指定了 `after` 时它才可能是 true，客户端据此决定"回到最新"是否还要再读。
+   */
+  hasNewer: boolean;
 };
 
-/** 消息读：不带 `after` 读整段历史，带 `after` 只读它之后的增量。 */
-export const listMessagesInput = chatIdInput.extend({ after: messageCursorSchema.optional() });
+/**
+ * 消息读：都不带时读最新一页；`before` 向更早翻页，`after` 读该位置之后的增量。
+ * 两个方向同时给没有意义，边界直接拒绝，不猜客户端想要哪一个。
+ */
+export const listMessagesInput = chatIdInput
+  .extend({
+    before: messageCursorSchema.optional(),
+    after: messageCursorSchema.optional(),
+    limit: z.number().int().min(1).max(CHAT_MESSAGE_PAGE_LIMIT_MAX).optional(),
+  })
+  .refine((input) => input.before === undefined || input.after === undefined, {
+    message: "before 与 after 不能同时给出",
+    path: ["before"],
+  });
 export type ListMessagesInput = z.infer<typeof listMessagesInput>;

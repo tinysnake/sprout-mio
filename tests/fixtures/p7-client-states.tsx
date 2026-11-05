@@ -73,7 +73,14 @@ function Scene() {
           session={session}
           profile={null}
           humanName="Human"
-          messages={ok([])}
+          page={ok({
+            messages: [],
+            tailCursor: null,
+            olderCursor: null,
+            hasOlder: false,
+            hasNewer: false,
+          })}
+          live={null}
           info={info}
           runState={runState}
           runActivities={ok([])}

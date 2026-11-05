@@ -25,7 +25,13 @@ const emptySeed: ChatLiveSeed = { messages: [], cursor: null };
 
 const emptyWindow = {
   ok: true,
-  data: { messages: [] as Message[], cursor: null },
+  data: {
+    messages: [] as Message[],
+    tailCursor: null,
+    olderCursor: null,
+    hasOlder: false,
+    hasNewer: false,
+  },
   requestId: "req_1",
 } as ChatResult<MessageWindow>;
 
@@ -338,7 +344,13 @@ describe("Chat 活跃 run 的定点刷新", () => {
           continuation: continuationRead,
           messages: vi.fn().mockResolvedValue({
             ok: true,
-            data: { messages: [{ id: "msg_00000001" } as Message], cursor: null },
+            data: {
+              messages: [{ id: "msg_00000001" } as Message],
+              tailCursor: null,
+              olderCursor: null,
+              hasOlder: false,
+              hasNewer: false,
+            },
             requestId: "req_1",
           } as ChatResult<MessageWindow>),
           runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
@@ -527,7 +539,17 @@ describe("消息增量读的游标", () => {
   }
 
   function reply(entries: Message[], cursor: string | null): ChatResult<MessageWindow> {
-    return { ok: true, data: { messages: entries, cursor }, requestId: "req_1" };
+    return {
+      ok: true,
+      data: {
+        messages: entries,
+        tailCursor: cursor,
+        olderCursor: null,
+        hasOlder: false,
+        hasNewer: false,
+      },
+      requestId: "req_1",
+    };
   }
 
   const ids = (result: ChatResult<Message[]> | undefined) =>

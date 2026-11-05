@@ -24,6 +24,7 @@ import Database from "better-sqlite3";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
 import { infoHubQuerySchema, infoHubToolInputSchemas } from "../../src/contracts/info-hub-query";
 import { INFO_HUB_CAPABILITIES } from "../../src/contracts/info-hub-capabilities";
+import { INFO_HUB_LIMITS } from "../../src/contracts/info-hub";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 
 // The runner prepends the turn snapshot, so every production model request starts with it.
@@ -1244,13 +1245,19 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       startNow: false,
     });
     const beforeSecondHint = sideEffectDump();
-    await until(() => hints().length >= 2, "second hint after the minimum interval", 30000);
+    // 最小间隔是从契约读的（现在 60 秒）：门禁不把旧常量写死成 5 秒。
+    const minInterval = INFO_HUB_LIMITS.hintMinimumIntervalMs;
+    await until(
+      () => hints().length >= 2,
+      "second hint after the minimum interval",
+      minInterval + 30_000,
+    );
     const secondHint = hints()[1]!;
     A(
-      secondHint.at - firstHint.at >= 4800,
+      secondHint.at - firstHint.at >= minInterval - 200,
       `the minimum interval must space hints (${secondHint.at - firstHint.at}ms)`,
     );
-    A(secondHint.at - beforeInterval <= 12000, "the interval must not be unbounded");
+    A(secondHint.at - beforeInterval <= minInterval + 12_000, "the interval must not be unbounded");
     const secondHintDiff = sideEffectDiff(beforeSecondHint, sideEffectDump());
     for (const table of [
       "message",

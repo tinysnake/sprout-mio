@@ -43,6 +43,14 @@ export type Work = ReturnType<typeof queuedRunWork>[number];
 export type PiHostSignals = { readonly isStopping: () => boolean };
 /** 投递确认与 run 输入确认共用同一个回调，靠前缀区分 continuation 投递 id。 */
 const DELIVERY_ID_PREFIX = `${ID_PREFIXES.continuationDelivery}_`;
+/**
+ * 通知按 `notice:<id>` 记账，与消息、continuation 的两个前缀都不冲突。只有 runner 回
+ * `input_delivered` 才算送达：它回 `input_rejected` 时通知还在 outbox 里，保持
+ * `delivered_at=NULL` 并按 `NOTICE_RETRY_MS` 退避重试（否则通知会被标成「已送达」，
+ * 却从没进入这一轮的模型上下文）。
+ */
+const NOTICE_ID_PREFIX = "notice:";
+const NOTICE_RETRY_MS = 1_000;
 
 /**
  * 是否把宿主 skills 与 prompt templates 装进分身的 resource loader。默认关闭。
@@ -73,8 +81,10 @@ export function executeRun(
       agent: { agentProfileId: work.agentProfileId, instanceId: run.instanceId, runId: run.id },
     };
     const sent = new Set<string>();
-    /** 与 messageId 共用 sent 而不冲突：通知按 `notice:<id>` 记账，只有成功交付才加入。 */
+    /** 已由 runner 确认送达的通知；`delivered_at` 与它同一时刻落库。 */
     const noticesSent = new Set<string>();
+    /** 已写出但未确认的通知：等确认时存 Infinity，被拒后改回下一次允许重试的时刻。 */
+    const noticesRetry = new Map<string, number>();
     const close = Effect.tryPromise({ try: () => process.close(), catch: (error) => error });
     const outcome = yield* Effect.exit(
       Effect.gen(function* () {
@@ -146,17 +156,21 @@ export function executeRun(
             try {
               if (messageId.startsWith(DELIVERY_ID_PREFIX))
                 acknowledgeContinuation(messageId, run.id, new Date(now()));
-              else markRunInputDelivered(run.id, messageId, ctx);
+              else if (messageId.startsWith(NOTICE_ID_PREFIX)) {
+                noticesSent.add(messageId);
+                markRunNoticeDelivered(messageId.slice(NOTICE_ID_PREFIX.length), new Date(now()));
+              } else markRunInputDelivered(run.id, messageId, ctx);
             } catch (error) {
               // 用户停止后迟到的投递确认保持 pending，不升级成进程故障。
               if (!(error instanceof AgentRunError && error.code === "conflict")) throw error;
             }
           };
           process.onRejected = (messageId, reason) => {
-            if (!signals.isStopping()) {
-              if (messageId.startsWith(DELIVERY_ID_PREFIX)) rejectContinuation(messageId, run.id);
-              else recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
-            }
+            if (signals.isStopping()) return;
+            if (messageId.startsWith(DELIVERY_ID_PREFIX)) rejectContinuation(messageId, run.id);
+            else if (messageId.startsWith(NOTICE_ID_PREFIX))
+              noticesRetry.set(messageId, now() + NOTICE_RETRY_MS);
+            else recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
           };
           process.onProgress = (event) => recordRunActivity(run.id, event, now());
         });
@@ -249,11 +263,13 @@ export function executeRun(
                     }
                     try {
                       for (const notice of pendingRunNotices({ runId: run.id }, ctx)) {
-                        const key = `notice:${notice.id}`;
+                        const key = `${NOTICE_ID_PREFIX}${notice.id}`;
                         if (noticesSent.has(key)) continue;
+                        const retryAt = noticesRetry.get(key);
+                        if (retryAt !== undefined && now() < retryAt) continue;
+                        // 先记成待确认再写：确认前不重复投递，被拒后按退避重试。
                         process.steer(key, noticeDeliveryText(notice));
-                        noticesSent.add(key);
-                        markRunNoticeDelivered(notice.id, new Date(now()));
+                        noticesRetry.set(key, Number.POSITIVE_INFINITY);
                       }
                     } catch {
                       // 通知投递失败保留 delivered_at=NULL 等待下一轮；不拉倒 run 也不重复记已发。

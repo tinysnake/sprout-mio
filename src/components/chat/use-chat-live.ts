@@ -196,7 +196,7 @@ export function createChatLiveRefresh({
           overlay.push(entry);
         }
         // reseed 可能在本轮在途时把游标推后：取较后者，不回退也不重读。
-        cursor = laterMessageCursor(cursor, window.data.cursor);
+        cursor = laterMessageCursor(cursor, window.data.tailCursor);
         messages = { ...window, data: overlay };
       } else {
         // 增量读失败照旧把错误交给页面，不回退成 loader 那批旧事实。
@@ -285,7 +285,7 @@ export function chatLiveReads(chatId: string, projectId: string) {
 /** loader 那批是首屏与重置锚点：tick 只读它之后的增量，叠在它上面。 */
 function loaderSeed(loader: ChatDetailLoaderData): ChatLiveSeed {
   if (!loader.ok || !loader.messages.ok) return { messages: [], cursor: null };
-  return { messages: loader.messages.data.messages, cursor: loader.messages.data.cursor };
+  return { messages: loader.messages.data.messages, cursor: loader.messages.data.tailCursor };
 }
 
 /**

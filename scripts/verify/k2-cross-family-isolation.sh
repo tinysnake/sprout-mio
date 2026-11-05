@@ -247,7 +247,7 @@ try {
   ]) {
     const { value } = await call(A, name, input, `A-snapshot-${label}`)
     assert.equal(value.ok, true, `A snapshot ${label} readable`)
-    // 消息读回的是增量窗口 `{ messages, cursor }`；快照只要消息列表，游标不是被保护的数据。
+    // 消息读回的是分页窗口 `{ messages, tailCursor, olderCursor, hasOlder, hasNewer }`；快照只要消息列表，游标不是被保护的数据。
     aSnapshot[label] = label === 'messages' ? value.data.messages : value.data
   }
   writeFileSync(join(directory, 'a-snapshot.json'), JSON.stringify(aSnapshot, null, 2) + '\n')
@@ -394,6 +394,7 @@ try {
     const sent = (await call(B, 'sendMessageFn', { chatId: bDm.data.chat.id, senderKind: 'human', senderId: B.user.id, body: 'K2-B 正对照消息。' }, 'B-own-sendMessage')).value
     assert.equal(sent.ok, true)
     const after = (await call(B, 'listMessagesFn', { chatId: bDm.data.chat.id }, 'B-own-messages-after')).value
+    // K2 的 chat 只有几条消息，默认一页 50 条会全部读回，所以条数正好加一。
     assert.equal(after.data.messages.length, before.data.messages.length + 1)
     assert.equal(after.data.messages.at(-1).body, 'K2-B 正对照消息。')
     return { before: before.data.messages.length, after: after.data.messages.length }

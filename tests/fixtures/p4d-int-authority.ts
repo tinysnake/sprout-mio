@@ -1464,6 +1464,9 @@ if (scenario === "steer") {
         if (!id.startsWith("notice:")) return;
         noticeCalls += 1;
         if (noticeCalls <= steerFailures) throw new Error("steer boom");
+        // 真实 runner 在写入 steer 之后才回 `input_delivered`；宿主只认这个确认。
+        const self = fake as { onDelivered?: (messageId: string) => void };
+        setTimeout(() => self.onDelivered?.(id), 20);
       },
     };
     // eslint-disable-next-line no-unreachable
@@ -1477,7 +1480,7 @@ if (scenario === "steer") {
     }),
   );
   const notice = pendingRunNotices({ runId }, { userId: ownerId, requestId: req() });
-  assert.equal(notice.length, 0, "成功 steer 后通知被标记已投递");
+  assert.equal(notice.length, 0, "runner 确认后通知才被标记已投递");
   const noticeRow = db
     .select()
     .from(runResourceNotice)

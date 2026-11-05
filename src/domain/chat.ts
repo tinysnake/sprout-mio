@@ -1,7 +1,9 @@
 import { signalScheduleChange } from "./chat-schedule";
 import { enqueueMessageWake } from "./message-wake";
-import { and, asc, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import {
+  CHAT_MESSAGE_PAGE_LIMIT_MAX,
+  CHAT_MESSAGE_PAGE_SIZE,
   CHAT_TITLE_MAX_LENGTH,
   type AgentInstance,
   type Chat,
@@ -550,17 +552,35 @@ export function listMessages(
   ctx: ProjectContext,
   after?: MessageCursor,
 ): Message[] {
-  return readMessages(chatId, ctx, after).messages;
+  return readMessages(chatId, ctx, { after }).messages;
 }
 
-/** 增量读窗口：空批回显请求的游标，客户端可以无脑存下返回值。 */
+/** 一次消息读的三种方向；`before` 与 `after` 不同时出现由契约边界拒绝。 */
+export type MessageWindowQuery = {
+  before?: MessageCursor;
+  after?: MessageCursor;
+  limit?: number;
+};
+
+/**
+ * 一次消息读：不传方向时读最新一页；`before` 向更早翻页；`after` 读增量。
+ * 页大小只在这里收口：边界给的 `limit` 与默认值都受同一个上限约束。
+ * 空窗口回显请求的游标，客户端可以无脑存下返回值。
+ */
 export function listMessageWindow(
   chatId: string,
   ctx: ProjectContext,
-  after?: MessageCursor,
+  query: MessageWindowQuery = {},
 ): MessageWindow {
-  const { messages, tail } = readMessages(chatId, ctx, after);
-  return { messages, cursor: tail ?? after ?? null };
+  const limit = Math.min(query.limit ?? CHAT_MESSAGE_PAGE_SIZE, CHAT_MESSAGE_PAGE_LIMIT_MAX);
+  const page = readMessages(chatId, ctx, { after: query.after, before: query.before, limit });
+  return {
+    messages: page.messages,
+    tailCursor: page.tail ?? query.after ?? query.before ?? null,
+    olderCursor: page.head,
+    hasOlder: page.hasOlder,
+    hasNewer: page.hasNewer,
+  };
 }
 
 /**
@@ -573,18 +593,39 @@ function parseMessageCursor(cursor: MessageCursor): { createdAt: Date; rowId: nu
   return { createdAt: new Date(Number(match[1]) * 1000), rowId: Number(match[2]) };
 }
 
+type MessageRow = { entry: typeof message.$inferSelect; rowId: number };
+
+/** 游标就是领域查询的排序键，单用时间戳会漏掉同一秒里后面的消息。 */
+function rowCursor(row: MessageRow): MessageCursor {
+  return `${Math.floor(row.entry.createdAt.getTime() / 1000)}:${row.rowId}`;
+}
+
 /**
- * 消息只追加不改写，所以增量读只需 `(createdAt, rowid)` 之后的行；排序与游标同键，
- * 用 `rowid` 是为了分开同一秒里的多条消息。
+ * 消息只追加不改写，所以读窗口只需要一个边界；排序与游标同键 `(createdAt, rowid)`。
+ * 不带 `after` 时从新往旧读一页（多读一条判定 `hasOlder`），带 `after` 时往后读一页
+ * （同样多读一条判定 `hasNewer`，客户端据此知道还要不要"回到最新"再读一次）。
  */
 function readMessages(
   chatId: string,
   ctx: ProjectContext,
-  after?: MessageCursor,
-): { messages: Message[]; tail: MessageCursor | null } {
+  query: { after?: MessageCursor; before?: MessageCursor; limit?: number | null },
+): {
+  messages: Message[];
+  head: MessageCursor | null;
+  tail: MessageCursor | null;
+  hasOlder: boolean;
+  hasNewer: boolean;
+} {
   const current = getChat(chatId, ctx);
-  const cursor = after === undefined ? null : parseMessageCursor(after);
-  const rows = db
+  const newer = query.after !== undefined;
+  const limit = query.limit ?? null;
+  const cursor =
+    query.after !== undefined
+      ? parseMessageCursor(query.after)
+      : query.before !== undefined
+        ? parseMessageCursor(query.before)
+        : null;
+  const select = db
     .select({ entry: message, rowId: sql<number>`${message}.rowid` })
     .from(message)
     .innerJoin(chat, eq(chat.id, message.chatId))
@@ -594,31 +635,55 @@ function readMessages(
         eq(chat.projectId, current.projectId),
         ...(cursor === null
           ? []
-          : [
-              or(
-                gt(message.createdAt, cursor.createdAt),
-                and(
-                  eq(message.createdAt, cursor.createdAt),
-                  sql`${message}.rowid > ${cursor.rowId}`,
+          : newer
+            ? [
+                or(
+                  gt(message.createdAt, cursor.createdAt),
+                  and(
+                    eq(message.createdAt, cursor.createdAt),
+                    sql`${message}.rowid > ${cursor.rowId}`,
+                  ),
                 ),
-              ),
-            ]),
+              ]
+            : [
+                or(
+                  lt(message.createdAt, cursor.createdAt),
+                  and(
+                    eq(message.createdAt, cursor.createdAt),
+                    sql`${message}.rowid < ${cursor.rowId}`,
+                  ),
+                ),
+              ]),
       ),
     )
-    .orderBy(asc(message.createdAt), asc(sql`${message}.rowid`))
-    .all() as { entry: typeof message.$inferSelect; rowId: number }[];
+    .orderBy(
+      ...(newer
+        ? [asc(message.createdAt), asc(sql`${message}.rowid`)]
+        : [desc(message.createdAt), desc(sql`${message}.rowid`)]),
+    );
+  // 两个方向都多读一条才知道边界之外还有没有消息：往旧读用来判 `hasOlder`，
+  // 往后读用来判 `hasNewer`。不传 limit 的整段读（远端 Agent 组装提示）保持原样，不加隐式上限。
+  const bounded = limit === null ? select : select.limit(limit + 1);
+  const rows = bounded.all() as MessageRow[];
+  const overflows = limit !== null && rows.length > limit;
+  const hasOlder = overflows && !newer;
+  const hasNewer = overflows && newer;
+  const kept = overflows && limit !== null ? rows.slice(0, limit) : rows;
+  // 从新往旧读到的顺序是倒的，按时间升序交给上层。
+  const ordered = newer ? kept : kept.reverse();
+  const first = ordered.at(0);
+  const last = ordered.at(-1);
   // mention 一次读一批再按 messageId 归并，不按消息逐条查。
   const mentions = readMentionsFor(
     chatId,
-    rows.map((row) => row.entry.id),
+    ordered.map((row) => row.entry.id),
   );
-  const last = rows.at(-1);
   return {
-    messages: rows.map((row) => toMessage(row.entry, mentions.get(row.entry.id) ?? [])),
-    tail:
-      last === undefined
-        ? null
-        : `${Math.floor(last.entry.createdAt.getTime() / 1000)}:${last.rowId}`,
+    messages: ordered.map((row) => toMessage(row.entry, mentions.get(row.entry.id) ?? [])),
+    head: first === undefined ? null : rowCursor(first),
+    tail: last === undefined ? null : rowCursor(last),
+    hasOlder,
+    hasNewer,
   };
 }
 

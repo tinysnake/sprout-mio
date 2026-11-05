@@ -45,15 +45,51 @@ type Evidence = {
   instanceUnchanged: boolean;
   messagesRetained: number;
   messageCursor: {
-    emptyWindow: { messages: number; cursor: string | null } | { code: string };
+    emptyWindow:
+      | {
+          messages: number;
+          tailCursor: string | null;
+          olderCursor: string | null;
+          hasOlder: boolean;
+          hasNewer: boolean;
+        }
+      | { code: string };
     full: { ids: string[]; cursor: string | null };
     derivedCursors: string[];
     steps: { ids: string[]; cursor: string | null }[];
+    paging: {
+      latestPage: PageRead;
+      olderPage: PageRead;
+      emptyOlderPage: PageRead;
+      afterPage: PageRead;
+      tailAfterPage: PageRead;
+      bothDirections: PageRead;
+      overLimit: PageRead;
+    };
+    pageSize: {
+      allIds: string[];
+      firstIds: string[];
+      secondIds: string[];
+      firstHasOlder: boolean;
+      firstHasNewer: boolean;
+      secondHasOlder: boolean;
+    };
     increasing: boolean;
     crossProjectWithCursor: string;
     invalidCursor: { code: string; fields: string[] }[];
     invalidCursorDomain: string;
   };
+};
+
+/** 一次分页读的证据：成功时带窗口三元组，被 schema 拒掉时只有错误码与字段。 */
+type PageRead = {
+  ids: string[];
+  tailCursor: string | null;
+  olderCursor: string | null;
+  hasOlder: boolean;
+  hasNewer: boolean;
+  code?: string;
+  fields?: string[];
 };
 
 let evidence: Evidence;
@@ -240,8 +276,32 @@ beforeAll(() => {
           requestId,
         );
         return result.ok
-          ? { ids: result.data.messages.map((entry) => entry.id), cursor: result.data.cursor }
+          ? { ids: result.data.messages.map((entry) => entry.id), cursor: result.data.tailCursor }
           : { ids: ["<" + code(result) + ">"], cursor: null };
+      };
+      const readPage = async (input, requestId) => {
+        const result = await chats.listMessagesBoundary(
+          { chatId: cursorChatId, ...input },
+          userA.headers,
+          requestId,
+        );
+        return result.ok
+          ? {
+              ids: result.data.messages.map((entry) => entry.id),
+              tailCursor: result.data.tailCursor,
+              olderCursor: result.data.olderCursor,
+              hasOlder: result.data.hasOlder,
+              hasNewer: result.data.hasNewer,
+            }
+          : {
+              ids: ["<" + code(result) + ">"],
+              tailCursor: null,
+              olderCursor: null,
+              hasOlder: false,
+              hasNewer: false,
+              code: code(result),
+              fields: fields(result),
+            };
       };
       const fullWindow = await readWindow(undefined, "req_cur1");
       const steps = [
@@ -249,6 +309,62 @@ beforeAll(() => {
         await readWindow(derivedCursors[1], "req_cur3"),
         await readWindow(derivedCursors[2], "req_cur4"),
       ];
+      // 分页：最新一页 limit=2 → 再向更早翻一页，两页拼起来正好是全部且不重不漏。
+      const latestPage = await readPage({ limit: 2 }, "req_page1");
+      const olderPage = await readPage(
+        { before: latestPage.olderCursor, limit: 2 },
+        "req_page2",
+      );
+      const emptyOlderPage = await readPage(
+        { before: olderPage.olderCursor, limit: 2 },
+        "req_page3",
+      );
+      // 往后翻：after 之后的页多读一条判 hasNewer，到真尾巴时它变 false。
+      const afterPage = await readPage({ after: derivedCursors[0], limit: 1 }, "req_page6");
+      const tailAfterPage = await readPage({ after: derivedCursors[2], limit: 2 }, "req_page7");
+      const bothDirections = await readPage(
+        { before: derivedCursors[0], after: derivedCursors[1], limit: 2 },
+        "req_page4",
+      );
+      const overLimit = await readPage({ limit: 101 }, "req_page5");
+      // 默认页大小：60 条的对话一次只读最新 50 条，再往更早一页正好读完剩下的 10 条。
+      const bulkProfile = await agents.createAgentProfileBoundary(
+        { name: "分页 Agent", persona: "分页人设" },
+        userA.headers,
+        "req_bulkp1",
+      );
+      await agents.addProjectMemberBoundary({ projectId, agentProfileId: bulkProfile.data.id }, userA.headers, "req_bulkp2");
+      const bulkDm = await chats.createDirectChatBoundary(
+        { projectId, agentProfileId: bulkProfile.data.id },
+        userA.headers,
+        "req_bulkp3",
+      );
+      const bulkChatId = bulkDm.data.chat.id;
+      const bulkNow = sqlite.prepare("select unixepoch() as now").get().now;
+      const bulkIds = Array.from(
+        { length: 60 },
+        (_, index) => "msg_bulk" + String(index + 1).padStart(4, "0"),
+      );
+      bulkIds.forEach((id, index) => {
+        insertMessage.run(id, bulkChatId, "human", userA.userId, "第 " + (index + 1) + " 条", bulkNow + index);
+      });
+      const readBulk = async (input, requestId) => {
+        const result = await chats.listMessagesBoundary(
+          { chatId: bulkChatId, ...input },
+          userA.headers,
+          requestId,
+        );
+        return result.ok
+          ? {
+              ids: result.data.messages.map((entry) => entry.id),
+              olderCursor: result.data.olderCursor,
+              hasOlder: result.data.hasOlder,
+              hasNewer: result.data.hasNewer,
+            }
+          : { ids: ["<" + code(result) + ">"], olderCursor: null, hasOlder: false, hasNewer: false };
+      };
+      const bulkFirst = await readBulk({}, "req_bulk1");
+      const bulkSecond = await readBulk({ before: bulkFirst.olderCursor }, "req_bulk2");
       const invalidCursor = [];
       for (const after of ["abc", "1:", "-1:2"]) {
         const result = await chats.listMessagesBoundary({ chatId: cursorChatId, after }, userA.headers, "req_cur5");
@@ -272,11 +388,34 @@ beforeAll(() => {
       })();
       const messageCursor = {
         emptyWindow: emptyRead.ok
-          ? { messages: emptyRead.data.messages.length, cursor: emptyRead.data.cursor }
+          ? {
+              messages: emptyRead.data.messages.length,
+              tailCursor: emptyRead.data.tailCursor,
+              olderCursor: emptyRead.data.olderCursor,
+              hasOlder: emptyRead.data.hasOlder,
+              hasNewer: emptyRead.data.hasNewer,
+            }
           : { code: code(emptyRead) },
         full: fullWindow,
         derivedCursors,
         steps,
+        paging: {
+          latestPage,
+          olderPage,
+          emptyOlderPage,
+          afterPage,
+          tailAfterPage,
+          bothDirections,
+          overLimit,
+        },
+        pageSize: {
+          allIds: bulkIds,
+          firstIds: bulkFirst.ids,
+          secondIds: bulkSecond.ids,
+          firstHasOlder: bulkFirst.hasOlder,
+          firstHasNewer: bulkFirst.hasNewer,
+          secondHasOlder: bulkSecond.hasOlder,
+        },
         increasing:
           compareMessageCursor(derivedCursors[0], derivedCursors[1]) < 0 &&
           compareMessageCursor(derivedCursors[1], derivedCursors[2]) < 0 &&
@@ -414,7 +553,13 @@ describe("Chat DM 边界与分身身份", () => {
   });
 
   it("空 Chat 不带 after 时返回空窗口与 null 游标", () => {
-    expect(evidence.messageCursor.emptyWindow).toEqual({ messages: 0, cursor: null });
+    expect(evidence.messageCursor.emptyWindow).toEqual({
+      messages: 0,
+      tailCursor: null,
+      olderCursor: null,
+      hasOlder: false,
+      hasNewer: false,
+    });
   });
 
   it("同一秒插入的 3 条消息按 rowid 逐条推进，不漏也不重", () => {
@@ -430,6 +575,67 @@ describe("Chat DM 边界与分身身份", () => {
     expect(steps[1].ids).toEqual(full.ids.slice(2));
     expect(steps[1].cursor).toBe(derivedCursors[2]);
     expect(steps[2]).toEqual({ ids: [], cursor: derivedCursors[2] });
+  });
+
+  it("按 limit 从新往旧翻页：两页拼起来是全部消息，翻到底 hasOlder 变 false", () => {
+    const { full, derivedCursors, paging } = evidence.messageCursor;
+    const { latestPage, olderPage, emptyOlderPage } = paging;
+    // 最新一页只给最近 2 条，比真实总数少，所以 hasOlder 为 true。
+    expect(latestPage.ids).toEqual(full.ids.slice(-2));
+    expect(latestPage.hasOlder).toBe(true);
+    expect(latestPage.tailCursor).toBe(derivedCursors[2]);
+    // 这一页的 head 就是上一页的 before，客户端据此只知道"还能往前"。
+    expect(latestPage.olderCursor).toBe(derivedCursors[1]);
+    expect(olderPage.ids).toEqual(full.ids.slice(0, 1));
+    expect(olderPage.hasOlder).toBe(false);
+    expect(olderPage.tailCursor).toBe(derivedCursors[0]);
+    // 拼接顺序：更早的页在前，最新一页在后，正好等于整段历史。
+    expect([...olderPage.ids, ...latestPage.ids]).toEqual(full.ids);
+    // 再往前翻是空窗口：回显请求的 before，仍然没有更早的。
+    expect(emptyOlderPage.ids).toEqual([]);
+    expect(emptyOlderPage.hasOlder).toBe(false);
+    // 空窗口回显请求的游标，客户端可以无脑存，但 olderCursor 为 null 表示到头了。
+    expect(emptyOlderPage.tailCursor).toBe(derivedCursors[0]);
+    expect(emptyOlderPage.olderCursor).toBeNull();
+  });
+
+  it("往新翻一页：hasNewer 只在后面确实还有消息时为 true", () => {
+    const { full, derivedCursors, paging } = evidence.messageCursor;
+    const { afterPage, tailAfterPage } = paging;
+    // after 第一条之后还有两条，只要一条也算没到底。
+    expect(afterPage.ids).toEqual(full.ids.slice(1, 2));
+    expect(afterPage.hasNewer).toBe(true);
+    expect(afterPage.tailCursor).toBe(derivedCursors[1]);
+    // 往后翻不看更早，所以 hasOlder 恒为 false，由调用方按 before 另读。
+    expect(afterPage.hasOlder).toBe(false);
+    // 从最后一条之后读是空窗口，回显请求的游标，并且没有更新的了。
+    expect(tailAfterPage.ids).toEqual([]);
+    expect(tailAfterPage.hasNewer).toBe(false);
+    expect(tailAfterPage.tailCursor).toBe(derivedCursors[2]);
+  });
+
+  it("默认页大小：60 条只读最新 50 条，再往前一页读完剩下的 10 条", () => {
+    const { allIds, firstIds, secondIds, firstHasOlder, firstHasNewer, secondHasOlder } =
+      evidence.messageCursor.pageSize;
+    expect(allIds.length).toBe(60);
+    // 不传 limit 就读最新 50 条：第 11 到第 60 条。
+    expect(firstIds).toEqual(allIds.slice(-50));
+    expect(firstHasOlder).toBe(true);
+    // 尾巴读不看更新的一侧，hasNewer 恒为 false。
+    expect(firstHasNewer).toBe(false);
+    // 再往前一页只剩 10 条，到最早了。
+    expect(secondIds).toEqual(allIds.slice(0, 10));
+    expect(secondHasOlder).toBe(false);
+    // 两页拼起来不重不漏。
+    expect([...secondIds, ...firstIds]).toEqual(allIds);
+  });
+
+  it("before 与 after 不能同时给，limit 超过服务端上限被 schema 拒掉", () => {
+    const { paging } = evidence.messageCursor;
+    expect(paging.bothDirections.code).toBe("validation_failed");
+    expect(paging.bothDirections.fields).toContain("before");
+    expect(paging.overLimit.code).toBe("validation_failed");
+    expect(paging.overLimit.fields).toContain("limit");
   });
 
   it("非法游标在边界被契约 schema 拒掉，不到达领域层", () => {

@@ -6,7 +6,6 @@ import type {
   ChatMember,
   ChatResult,
   ChatSession,
-  Message,
   MessageWindow,
 } from "../../contracts/chat";
 import type { ChatInfoView, InfoHubResult, ProjectInfoHub } from "../../contracts/info-hub";
@@ -44,7 +43,7 @@ export type ChatDetailLoaderData =
       ok: true;
       session: ChatSession;
       members: ChatResult<ChatMember[]>;
-      /** 首屏读整段历史，同时带回下次增量读的游标。 */
+      /** 首屏读最新一页，同时带回增量读与向更早翻页的游标。 */
       messages: ChatResult<MessageWindow>;
       profile: AgentResult<AgentProfile> | null;
       info: ChatResult<ChatInfoView>;
@@ -59,11 +58,6 @@ export type ChatDetailLoaderData =
       /** 对话接续的读模型与可用动作：页面按结果原样呈现，失败时不伪造状态。 */
       continuation: AppResult<ChatContinuationData>;
     };
-
-/** 渲染只吃列表；游标只服务增量读，不进入渲染契约。 */
-export function messageList(messages: ChatResult<MessageWindow>): ChatResult<Message[]> {
-  return messages.ok ? { ...messages, data: messages.data.messages } : messages;
-}
 
 /** 分身身份优先取 instance 的 profile，其次取成员表里的 agent 成员。 */
 export function resolveAgentProfileId(
