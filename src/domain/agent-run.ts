@@ -648,10 +648,8 @@ export function recordRunInputDeliveryFailure(
   );
 }
 
-export function abortAgentRun(id: string, ctx: ProjectContext): AgentRun {
-  const run = transitionAgentRun(id, "aborted", { stopReason: "aborted" }, ctx);
-  if (!sqlite.inTransaction) clearRunActivity(id);
-  return run;
+export function abortAgentRun(id: string, ctx: ProjectContext, reply?: string): AgentRun {
+  return settleAgentRun(id, { status: "aborted", stopReason: "aborted", reply }, ctx);
 }
 
 export function completeAgentRun(
@@ -660,69 +658,92 @@ export function completeAgentRun(
   stopReason: string,
   ctx: ProjectContext,
 ): AgentRun {
+  if (stopReason !== "stop") throw new AgentRunError("conflict", "Run 未返回有效的正常回复");
+  return settleAgentRun(id, { status: "completed", stopReason, reply: body }, ctx);
+}
+
+export function settleAgentRun(
+  id: string,
+  outcome:
+    | { status: "completed"; stopReason: "stop"; reply: string }
+    | {
+        status: "failed";
+        errorCode: string;
+        errorMessage: string;
+        stopReason?: string;
+        reply?: string;
+      }
+    | { status: "aborted"; reply?: string; stopReason?: "aborted" }
+    | { status: "interrupted"; errorCode: string; errorMessage: string; reply?: string },
+  ctx: ProjectContext,
+): AgentRun {
   const settled = sqlite
     .transaction(() => {
       const row = runRow(id, ctx);
-      if (row.status !== "running" || stopReason !== "stop" || !body.trim() || body.length > 8000) {
+      if (row.status !== "running" && !(row.status === "queued" && outcome.status === "aborted"))
+        throw new AgentRunError("conflict", `Run 不能从 ${row.status} 变为 ${outcome.status}`);
+      const { reply, status, ...data } = outcome;
+      const body = reply?.trim();
+      if (status === "completed" && (outcome.stopReason !== "stop" || !body))
         throw new AgentRunError("conflict", "Run 未返回有效的正常回复");
-      }
-      const instance = db
-        .select()
-        .from(agentInstance)
-        .where(
-          and(
-            eq(agentInstance.id, row.instanceId),
-            eq(agentInstance.chatId, row.chatId),
-            eq(agentInstance.projectId, row.projectId),
-          ),
-        )
-        .get();
-      if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
-      // 回复由 run 自己的 instance 分身发出；带上 run 身份，让发送资格判定与宿主执行同一套。
-      const reply = sendMessage(
-        row.chatId,
-        {
-          senderKind: "agent",
-          senderId: instance.agentProfileId,
-          body: body.trim(),
-        },
-        {
-          ...ctx,
-          agent: {
-            agentProfileId: instance.agentProfileId,
-            instanceId: row.instanceId,
-            runId: id,
+      let assistantMessageId = row.assistantMessageId ?? undefined;
+      if (row.status === "running" && body && !assistantMessageId) {
+        const instance = db
+          .select()
+          .from(agentInstance)
+          .where(
+            and(
+              eq(agentInstance.id, row.instanceId),
+              eq(agentInstance.chatId, row.chatId),
+              eq(agentInstance.projectId, row.projectId),
+            ),
+          )
+          .get();
+        if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
+        // 回复由 run 自己的 instance 分身发出；带上 run 身份，让发送资格判定与宿主执行同一套。
+        const message = sendMessage(
+          row.chatId,
+          {
+            senderKind: "agent",
+            senderId: instance.agentProfileId,
+            body,
           },
-        },
-      );
-      cancelInvalidTaskStartInputs(id);
-      const uncertain = db
-        .select()
-        .from(agentRunInput)
-        .where(
-          and(
-            eq(agentRunInput.runId, id),
-            eq(agentRunInput.disposition, "pending"),
-            sql`${agentRunInput.admittedAt} is not null`,
-          ),
-        )
-        .all();
-      if (uncertain.length)
-        diagnostic(
-          row,
-          "agent_run.task_delivery_unconfirmed",
-          `${uncertain.length} 条 Task 输入已尝试发送但未收到 ACK，保留原 run 且不重投`,
-          "warn",
+          {
+            ...ctx,
+            agent: {
+              agentProfileId: instance.agentProfileId,
+              instanceId: row.instanceId,
+              runId: id,
+            },
+          },
         );
-      const settled = transitionAgentRun(
-        id,
-        "completed",
-        { stopReason, assistantMessageId: reply.id },
-        ctx,
-      );
+        assistantMessageId = message.id;
+      }
+      if (status === "completed") {
+        cancelInvalidTaskStartInputs(id);
+        const uncertain = db
+          .select()
+          .from(agentRunInput)
+          .where(
+            and(
+              eq(agentRunInput.runId, id),
+              eq(agentRunInput.disposition, "pending"),
+              sql`${agentRunInput.admittedAt} is not null`,
+            ),
+          )
+          .all();
+        if (uncertain.length)
+          diagnostic(
+            row,
+            "agent_run.task_delivery_unconfirmed",
+            `${uncertain.length} 条 Task 输入已尝试发送但未收到 ACK，保留原 run 且不重投`,
+            "warn",
+          );
+      }
+      const settled = transitionAgentRun(id, status, { ...data, assistantMessageId }, ctx);
       // 正常结束时仍未投递的输入交给下一轮（A01）。先落终态再交接：交接要找「同 instance
       // 的活跃 run」，自己刚变成 completed 才算离开活跃集合，否则会把输入改挂回自己。
-      carryPendingInputsToNextRound(row, ctx.requestId);
+      if (status === "completed") carryPendingInputsToNextRound(row, ctx.requestId);
       return settled;
     })
     .immediate();
@@ -821,29 +842,29 @@ export function recoverAgentRuns(): void {
     .immediate();
 }
 
-export function interruptActiveAgentRuns(): void {
+export function interruptActiveAgentRuns(replyOf?: (runId: string) => string | undefined): void {
   const interrupted = sqlite
     .transaction(() => {
       const ids: string[] = [];
-      for (const row of db
-        .select()
+      for (const { row, ownerId } of db
+        .select({ row: agentRun, ownerId: chat.createdBy })
         .from(agentRun)
+        .innerJoin(chat, and(eq(chat.id, agentRun.chatId), eq(chat.projectId, agentRun.projectId)))
         .where(inArray(agentRun.status, ["queued", "running"]))
         .all()) {
-        const endedAt = new Date();
-        const activity = settleRunActivity(row.id, "interrupted", endedAt.getTime());
-        db.update(agentRun)
-          .set({
-            status: "interrupted",
-            settledAt: endedAt,
-            errorCode: "host_stopping",
-            errorMessage: "宿主正在关闭",
-            ...(activity ? { activity } : {}),
-          })
-          .where(eq(agentRun.id, row.id))
-          .run();
-        diagnostic(row, "agent_run.interrupted", "宿主关闭中断 Agent run", "warn");
-        publishProjectChange(row.projectId, row.chatId);
+        const ctx = { userId: ownerId, requestId: row.requestId };
+        settleAgentRun(
+          row.id,
+          row.status === "queued"
+            ? { status: "aborted", stopReason: "aborted" }
+            : {
+                status: "interrupted",
+                errorCode: "host_stopping",
+                errorMessage: "宿主正在关闭",
+                reply: replyOf?.(row.id),
+              },
+          ctx,
+        );
         ids.push(row.id);
       }
       return ids;

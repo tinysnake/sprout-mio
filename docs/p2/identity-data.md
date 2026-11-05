@@ -83,7 +83,9 @@ type SendMessageInput = { senderKind: "human" | "agent"; senderId: string; body:
 
 创建 DM 使用 IMMEDIATE 事务。事务先确认 Project 所有权、profile 所有权与 Project 成员关系，再按 Project 与 profile 查找既有 DM。已有 DM 直接返回原 chat 与 instance，不重复写 `chat.created`。新 DM 在同一事务创建 chat、human 与 agent 两条成员行、instance 和诊断。不同 Project 中的相同 profile 有不同 DM 和 instance。
 
-消息输入的 `body` trim 后长度为 1 到 8000。领域服务验证 sender 是该对话成员，human sender 必须等于 `ctx.userId`，agent sender 必须有该对话的实际 instance。非法 sender 返回 `ChatError` 的 `not_found`。普通页面发送入口应从已认证会话构造 human sender，不能信任浏览器传入的身份。agent 消息接口只保存调用方提供的文本，不生成回复或运行 Pi。
+人类输入的 `body` trim 后长度为 1 到 8000，`sendMessageInput` 与人类输入框保持该上限。run 进入 completed、failed、aborted 或 interrupted 时，本轮 assistant 全文按顺序以两个换行连接并 trim；非空正文合并为恰好一条 agent 消息，不设长度上限。消息读取契约只要求 trim 后非空，不继承人类输入的 8000 字上限。领域服务验证 sender 是该对话成员，human sender 必须等于 `ctx.userId`，agent sender 必须有该对话的实际 instance。非法 sender 返回 `ChatError` 的 `not_found`。普通页面发送入口应从已认证会话构造 human sender，不能信任浏览器传入的身份。agent 消息接口只保存调用方提供的文本，不生成回复或运行 Pi。
+
+`settleAgentRun` 在同一事务内保存合并的 agent 消息和 run 终态，以 `assistantMessageId` 关联；重复收尾仍返回 conflict，不产生第二条消息。completed 必须有正常 stopReason 与非空回复；其余终态没有正文时不写空消息。未开始执行的 queued run 被取消或随宿主关闭时直接 aborted，不写消息。completed / failed 的全文来自 runner，aborted / interrupted 的全文来自进程内 activity 文本聚合，包含尚未 text_end 的残留；全文不写进 `agent_run.activity` JSON，activity 展示摘要仍最多 200 字。硬崩溃丢失的进程内正文不补写。
 
 消息排序固定为 `created_at ASC, rowid ASC`，同秒消息保留写入顺序。Chat 列表按 `updated_at DESC, rowid DESC`。保存消息同时更新 chat 的 `updated_at`。
 

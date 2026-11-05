@@ -46,8 +46,10 @@ const project = createProject({ name: "Inheritance" }, ctx);
 const profile = createAgentProfile({ name: "Inheritance Agent", persona: "", harness: "pi" }, ctx);
 addProjectMember(project.id, profile.id, ctx);
 
-/** 只走线上协议的 runner：记录 open，回一个带 resources 的 ready，再正常答完一轮。 */
-function writeRunner() {
+type ReplyEvent = { type: "settled" | "failure"; text: string };
+
+/** 协议 stub：记录 open，返回带 resources 的 ready 与指定终态。 */
+function writeRunner(reply?: ReplyEvent) {
   const trace = join(directory, "open.jsonl");
   const runnerPath = join(directory, "inheritance-runner.mjs");
   writeFileSync(
@@ -94,7 +96,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (command.type === 'prompt') {
     out({ type: 'input_delivered', id: command.id, messageId: command.messageId });
-    out({ type: 'settled', id: command.id, text: 'inheritance transport reply', stopReason: 'stop' });
+    out({ id: command.id, stopReason: 'stop', code: 'model_error', message: '模型失败', ...${JSON.stringify(reply ?? { type: "settled", text: "inheritance transport reply" })} });
   }
 });
 `,
@@ -109,15 +111,18 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   };
 }
 
-/** 一个全新的 DM run，跑完一轮后返回落库的配置快照。 */
-async function runWithSwitch(inherit: boolean | undefined) {
-  const { runnerPath, opened } = writeRunner();
+/** 在 DM 中新建一轮，执行后返回配置快照与消息计数。 */
+async function runWithSwitch(inherit: boolean | undefined, reply?: ReplyEvent) {
+  const { runnerPath, opened } = writeRunner(reply);
   const direct = chats.createDirectChat(project.id, profile.id, ctx);
   chats.sendMessage(
     direct.chat.id,
     { senderKind: "human", senderId: ctx.userId, body: "inheritance input" },
     ctx,
   );
+  const agentMessagesBefore = chats
+    .listMessages(direct.chat.id, ctx)
+    .filter((message) => message.senderKind === "agent").length;
   const run = runs.listAgentRuns(direct.chat.id, ctx).find((entry) => entry.status === "queued")!;
   const work = runs.queuedRunWork().find((entry) => entry.run.id === run.id)!;
   const previous = process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
@@ -134,7 +139,13 @@ async function runWithSwitch(inherit: boolean | undefined) {
     else process.env.SPROUT_PI_INHERIT_HOST_RESOURCES = previous;
   }
   const open = opened().find((command) => command.id === run.id);
-  return { runId: run.id, open, snapshot: runs.getAgentRun(run.id, ctx).configSnapshot };
+  return {
+    runId: run.id,
+    chatId: direct.chat.id,
+    agentMessagesBefore,
+    open,
+    snapshot: runs.getAgentRun(run.id, ctx).configSnapshot,
+  };
 }
 
 await startRuntime();
@@ -145,6 +156,20 @@ afterAll(async () => {
 });
 
 describe("Pi 资源继承开关的父进程接线", () => {
+  for (const type of ["settled", "failure"] as const) {
+    it(`${type} 的超长全文经 runner 协议落成一条消息`, async () => {
+      const text = "先说明\n\n" + "正文".repeat(600_000);
+      const { runId, chatId, agentMessagesBefore } = await runWithSwitch(false, { type, text });
+      expect(runs.getAgentRun(runId, ctx).status).toBe(type === "settled" ? "completed" : "failed");
+      const messages = chats
+        .listMessages(chatId, ctx)
+        .filter((message) => message.senderKind === "agent");
+      expect(messages).toHaveLength(agentMessagesBefore + 1);
+      expect(messages.at(-1)?.body).toBe(text);
+      expect(runs.getAgentRun(runId, ctx).assistantMessageId).toBe(messages.at(-1)?.id);
+    });
+  }
+
   it("缺省关闭：open 不要求继承，快照记录关闭且资源为空", async () => {
     const { open, snapshot } = await runWithSwitch(undefined);
     expect(open.inheritHostResources).toBe(false);

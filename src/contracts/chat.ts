@@ -300,7 +300,10 @@ export const sendMessageInput = z.object({
 });
 export type SendMessageInput = z.infer<typeof sendMessageInput>;
 /** 消息输出：`mentions` 是写时按本条对话成员解析出来的结果。 */
-export const messageSchema = sendMessageInput.extend({
+export const messageSchema = z.object({
+  senderKind: memberKind,
+  senderId: z.string().min(1),
+  body: z.string().trim().min(1, "消息不能为空"),
   id: z.string().regex(appIdPattern(ID_PREFIXES.message)),
   chatId,
   createdAt: z.iso.datetime(),

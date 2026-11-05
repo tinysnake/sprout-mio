@@ -5,6 +5,7 @@ import { recordDiagnostic } from "../diagnostics";
 import { makePiHostLayer } from "./host";
 import { PiSessionProcess } from "./process";
 import { executeRun } from "./run";
+import { readRunReplyText } from "./run-activity";
 import type { PiHostDeps } from "./host";
 import type { Work } from "./run";
 
@@ -24,7 +25,7 @@ const reportFailure: PiHostDeps<HostWork>["reportFailure"] = (failure) => {
 
 export const piHostLayer = makePiHostLayer<HostWork>({
   loadWork: () => queuedRunWork().map((work) => ({ ...work, instanceId: work.run.instanceId })),
-  interruptActiveRuns: () => interruptActiveAgentRuns(),
+  interruptActiveRuns: () => interruptActiveAgentRuns(readRunReplyText),
   reportFailure,
   prepareRun: (work, signals) => {
     const process = new PiSessionProcess(work.run.id);
