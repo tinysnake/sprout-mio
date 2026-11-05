@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { createInfoHubPolling } from "../src/components/info-hub/use-info-hub-polling";
+import {
+  createInfoHubPolling,
+  InfoHubAccessError,
+} from "../src/components/info-hub/use-info-hub-polling";
 import { createMachineActivityPolling } from "../src/components/machine/use-machine-activity";
 import { createMachineRefreshSchedule } from "../src/components/machine/use-machine-refresh";
 import { createRelationReads } from "../src/components/machine/use-machine-relations";
@@ -125,13 +128,41 @@ describe("Human Info Hub polling", () => {
     expect(refresh.mock.calls.at(-1)![0]).not.toHaveProperty("knownRevision");
   });
 
-  it.each(["hidden", "offline"] as const)(
-    "continues polling after a deduplicated %s resume",
-    async (pause) => {
-      const { refresh, env } = start();
+  it.each(
+    (["hidden", "offline"] as const).flatMap((pause) =>
+      [false, true].flatMap((connected) =>
+        [false, true].map((held) => ({ pause, connected, held })),
+      ),
+    ),
+  )(
+    "keeps the next poll after $pause resume (SSE=$connected, in-flight=$held)",
+    async ({ pause, connected, held }) => {
+      const env = environment();
+      const refresh = vi.fn().mockResolvedValue(changed);
+      stops.push(
+        createInfoHubPolling({
+          input,
+          environment: env,
+          refresh,
+          onResult: vi.fn(),
+          changes: { connected: () => connected, subscribe: () => () => {} },
+          random: () => 0.5,
+        }),
+      );
       await vi.advanceTimersByTimeAsync(0);
+      let settle!: (value: unknown) => void;
+      if (held) {
+        refresh.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              settle = resolve;
+            }),
+        );
+      }
       env.window.dispatchEvent(new Event("online"));
       await vi.advanceTimersByTimeAsync(100);
+      expect(refresh.mock.calls[1]![0]).not.toHaveProperty("knownRevision");
+      expect(refresh.mock.calls[1]![0].query).not.toHaveProperty("cursor");
       if (pause === "hidden") {
         env.document.visibilityState = "hidden";
         env.document.dispatchEvent(new Event("visibilitychange"));
@@ -144,11 +175,39 @@ describe("Human Info Hub polling", () => {
         env.window.dispatchEvent(new Event("online"));
       }
       expect(refresh).toHaveBeenCalledTimes(2);
-      await vi.advanceTimersByTimeAsync(3000);
+      for (const event of ["online", "visibilitychange"]) {
+        await vi.advanceTimersByTimeAsync(100);
+        (event === "online" ? env.window : env.document).dispatchEvent(new Event(event));
+        expect(refresh).toHaveBeenCalledTimes(2);
+      }
+      if (held) {
+        settle(changed);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(refresh).toHaveBeenCalledTimes(2);
+      }
+      const interval = connected ? 30_000 : 3_000;
+      await vi.advanceTimersByTimeAsync(interval - (held ? 0 : 200) - 1);
+      expect(refresh).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
       expect(refresh).toHaveBeenCalledTimes(3);
       expect(refresh.mock.calls.at(-1)![0].knownRevision).toBe("r1");
+      expect(refresh.mock.calls.at(-1)![0].query).not.toHaveProperty("cursor");
     },
   );
+
+  it("does not restart terminal polling on a deduplicated resume", async () => {
+    const { refresh, env } = start();
+    await vi.advanceTimersByTimeAsync(0);
+    refresh.mockRejectedValueOnce(new InfoHubAccessError("forbidden"));
+    env.window.dispatchEvent(new Event("online"));
+    await vi.advanceTimersByTimeAsync(100);
+    env.document.visibilityState = "hidden";
+    env.document.dispatchEvent(new Event("visibilitychange"));
+    env.document.visibilityState = "visible";
+    env.document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
 
   it("窗口过后再次恢复仍然全量刷新", async () => {
     const { refresh, env } = start();
