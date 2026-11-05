@@ -21,6 +21,7 @@ export class PiHostFailure extends Error {
     readonly code: string,
     message: string,
     readonly stopReason?: string,
+    readonly text?: string,
   ) {
     super(message);
     this.name = "PiHostFailure";
@@ -146,7 +147,7 @@ export class PiSessionProcess {
         continue;
       }
       if (event.type === "failure") {
-        this.fail(new PiHostFailure(event.code, event.message, event.stopReason));
+        this.fail(new PiHostFailure(event.code, event.message, event.stopReason, event.text));
         continue;
       }
       if (event.type === "turn_context_submitted") {

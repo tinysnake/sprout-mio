@@ -18,6 +18,7 @@ import {
   previousSessionFile,
   recordRunInputDeliveryFailure,
   transitionAgentRun,
+  settleAgentRun,
 } from "../../domain/agent-run";
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
@@ -311,16 +312,14 @@ export function executeRun(
                 };
                 console.error("[pi-host] Run 执行失败", diagnostic);
                 recordDiagnostic(diagnostic);
-                transitionAgentRun(
-                  run.id,
-                  "failed",
-                  {
-                    errorCode: failure.code,
-                    errorMessage: failure.message,
-                    stopReason: failure.stopReason,
-                  },
-                  ctx,
-                );
+                const data = {
+                  errorCode: failure.code,
+                  errorMessage: failure.message,
+                  stopReason: failure.stopReason,
+                };
+                if (current.status === "queued") transitionAgentRun(run.id, "failed", data, ctx);
+                else
+                  settleAgentRun(run.id, { status: "failed", ...data, reply: failure.text }, ctx);
               }
             }
           }),

@@ -16,8 +16,15 @@ let turnContextPromptInputSchema;
 let infoHubHintSchema;
 const submittedContexts = new Set();
 
-function failure(id, code, message, stopReason) {
-  line({ type: "failure", id, code, message, ...(stopReason ? { stopReason } : {}) });
+function failure(id, code, message, stopReason, text) {
+  line({
+    type: "failure",
+    id,
+    code,
+    message,
+    ...(stopReason ? { stopReason } : {}),
+    ...(text ? { text } : {}),
+  });
 }
 
 function sdkRoot(agentDir) {
@@ -463,6 +470,18 @@ async function open(config) {
 async function prompt(command) {
   prompting = true;
   const start = session.messages.length;
+  const assistantMessages = () =>
+    session.messages.slice(start).filter((entry) => entry.role === "assistant");
+  const replyText = () =>
+    assistantMessages()
+      .map((entry) =>
+        entry.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join(""),
+      )
+      .join("\n\n")
+      .trim();
   line({ type: "input_delivered", id: command.id, messageId: command.messageId });
   try {
     await promptWithTurnContext(
@@ -472,7 +491,8 @@ async function prompt(command) {
       submittedContexts,
       line,
     );
-    const assistants = session.messages.slice(start).filter((entry) => entry.role === "assistant");
+    const assistants = assistantMessages();
+    const text = replyText();
     const failed = assistants.find(
       (entry) => entry.stopReason === "error" || entry.stopReason === "aborted",
     );
@@ -482,6 +502,7 @@ async function prompt(command) {
         failed.stopReason === "error" ? "model_error" : "model_aborted",
         "Pi 模型未正常完成本轮",
         failed.stopReason,
+        text,
       );
       return;
     }
@@ -492,21 +513,17 @@ async function prompt(command) {
         "invalid_stop_reason",
         "Pi 没有返回正常停止原因",
         last?.stopReason ?? "missing",
+        text,
       );
       return;
     }
-    const text = last.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("")
-      .trim();
-    if (!text || text.length > 8000) {
-      failure(command.id, "invalid_reply", "Pi 回复为空或超过消息长度限制", last.stopReason);
+    if (!text) {
+      failure(command.id, "invalid_reply", "Pi 回复为空", last.stopReason);
       return;
     }
     line({ type: "settled", id: command.id, text, stopReason: last.stopReason });
   } catch {
-    failure(command.id, "prompt_failed", "Pi prompt 调用失败");
+    failure(command.id, "prompt_failed", "Pi prompt 调用失败", undefined, replyText());
   } finally {
     prompting = false;
   }

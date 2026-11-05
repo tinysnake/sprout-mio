@@ -106,6 +106,49 @@ describe("Agent run 持久不变量", () => {
     `);
   });
 
+  for (const status of ["failed", "aborted", "interrupted", "completed"]) {
+    it(`${status} 把本轮全文保存为一条消息，重复收尾不再发消息`, () => {
+      scenario(`
+        runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
+        const body = '先说明\\n\\n工具失败后的汇报';
+        const outcome = { status: '${status}', reply: body, ...('${status}' === 'completed' ? { stopReason: 'stop' } : { errorCode: 'test_error', errorMessage: '工具失败' }) };
+        const settle = () => '${status}' === 'aborted'
+          ? runs.abortAgentRun(run.id,ctx,body)
+          : '${status}' === 'completed'
+            ? runs.completeAgentRun(run.id,body,'stop',ctx)
+            : runs.settleAgentRun(run.id,outcome,ctx);
+        const settled = settle();
+        const messages = dm.listMessages(run.chatId,ctx);
+        assert.equal(settled.status,'${status}');
+        assert.equal(messages.length,2);
+        assert.equal(messages[1].body,body);
+        assert.equal(messages[1].senderKind,'agent');
+        assert.equal(messages[1].senderId,profile.id);
+        assert.equal(settled.assistantMessageId,messages[1].id);
+        assert.throws(settle,e=>e.code==='conflict');
+        assert.equal(dm.listMessages(run.chatId,ctx).length,2);
+      `);
+    });
+  }
+
+  it("queued 取消忽略正文，失败收尾诊断错误会回滚消息与状态", () => {
+    scenario(`
+      assert.throws(()=>runs.settleAgentRun(run.id,{status:'failed',errorCode:'test',errorMessage:'失败',reply:'不该发出'},ctx),e=>e.code==='conflict');
+      assert.equal(count('message'),1);
+      runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
+      sqlite.exec("CREATE TRIGGER reject_settle BEFORE INSERT ON diagnostic_event WHEN NEW.event='agent_run.failed' BEGIN SELECT RAISE(ABORT,'settle unavailable'); END");
+      assert.throws(()=>runs.settleAgentRun(run.id,{status:'failed',errorCode:'test',errorMessage:'失败',reply:'不能部分保存'},ctx),/settle unavailable/);
+      assert.equal(runs.getAgentRun(run.id,ctx).status,'running');
+      assert.equal(count('message'),1);
+      sqlite.exec('DROP TRIGGER reject_settle');
+      runs.abortAgentRun(run.id,ctx);
+      send('next input');
+      const queued = runs.listAgentRuns(run.chatId,ctx)[1];
+      assert.equal(runs.abortAgentRun(queued.id,ctx,'从未运行不该发出').status,'aborted');
+      assert.equal(count('message'),2);
+    `);
+  });
+
   it("回复仍经过 sendMessage 成员与 instance 校验，失败不会留下部分完成状态", () => {
     scenario(`
       runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
@@ -316,7 +359,11 @@ describe("Agent run 持久不变量", () => {
       runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
       const activityStore = await import('./src/server/pi-host/run-activity.ts');
       activityStore.recordRunActivity(run.id,{type:'progress',id:run.id,kind:'tool_start',toolCallId:'call_1',toolName:'bash',activity:{kind:'bash',label:'Bash 命令',detail:'pnpm test',toolName:'bash'}},Date.now());
-      runs.interruptActiveAgentRuns();
+      activityStore.recordRunActivity(run.id,{type:'progress',id:run.id,kind:'text_delta',text:'停机前的说明'},Date.now());
+      runs.interruptActiveAgentRuns(activityStore.readRunReplyText);
+      const messages = dm.listMessages(run.chatId,ctx);
+      assert.equal(messages.length,2);
+      assert.equal(messages[1].body,'停机前的说明');
       const interrupted = runs.listAgentRuns(direct.chat.id,ctx)[0];
       assert.equal(interrupted.status, 'interrupted');
       assert.equal(interrupted.errorCode, 'host_stopping');

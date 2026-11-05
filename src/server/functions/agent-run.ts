@@ -17,7 +17,7 @@ import { fieldErrorsFrom } from "../../contracts/project";
 import type { ProjectContext } from "../../domain/access";
 import type { DiagnosticInput } from "../diagnostics";
 import { getRequestContext } from "../request-context";
-import { readRunActivity } from "../pi-host/run-activity";
+import { readRunActivity, readRunReplyText } from "../pi-host/run-activity";
 import { toDomainAppError } from "./domain-errors";
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
@@ -132,7 +132,7 @@ export async function abortAgentRunBoundary(
   return agentRunBoundary<AgentRun>(headers, requestId, async (deps, context) => {
     const parsed = abortAgentRunInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    const run = deps.abortAgentRun(parsed.data.runId, context);
+    const run = deps.abortAgentRun(parsed.data.runId, context, readRunReplyText(parsed.data.runId));
     try {
       const { signalRunAbort } = await import("../runtime");
       signalRunAbort(run.id);

@@ -8,6 +8,7 @@ export type RunActivitySnapshot = {
   entries: RunActivityStep[];
   /** 正在流式接收的 assistant 文本；只在进程内聚合，不进入对外快照。 */
   pendingText?: string;
+  replyText?: string;
   updatedAt: number;
 };
 
@@ -86,8 +87,7 @@ function fromEvent(event: PiHostProgress, at: number, id: string): RunActivitySt
 
 /**
  * 单条 progress 驱动的活动转移。工具调用照旧写工作记录；每个 assistant 文本块
- * 在 `text_end` 时落一条独立的「中间说明」。最终回答仍由 run 收尾单独发到 Chat，
- * 不依赖这里。
+ * 在 `text_end` 时落一条独立的「中间说明」，全文留在内存供服务器停止时收尾。
  */
 export function reduceRunActivity(
   previous: RunActivitySnapshot | undefined,
@@ -104,6 +104,7 @@ export function reduceRunActivity(
     if (current?.kind === "assistant") {
       const step = { ...current, detail };
       return {
+        ...previous,
         current: step,
         entries: replaceEntry(previousEntries, step),
         pendingText,
@@ -121,6 +122,7 @@ export function reduceRunActivity(
       status: "running",
     };
     return {
+      ...previous,
       current: step,
       entries,
       pendingText,
@@ -134,7 +136,7 @@ export function reduceRunActivity(
     const current = previous?.current ?? null;
     if (!text) {
       return current?.kind === "assistant"
-        ? { current: null, entries, pendingText: undefined, updatedAt: at }
+        ? { ...previous, current: null, entries, pendingText: undefined, updatedAt: at }
         : undefined;
     }
     const step: RunActivityStep = {
@@ -156,6 +158,8 @@ export function reduceRunActivity(
       detail: clipDetail(text),
     };
     return {
+      ...previous,
+      replyText: [previous?.replyText, text].filter(Boolean).join("\n\n"),
       current: null,
       entries: entries.some((entry) => entry.id === step.id)
         ? replaceEntry(entries, step)
@@ -181,6 +185,7 @@ export function reduceRunActivity(
       durationMs: 0,
     };
     return {
+      ...previous,
       current,
       entries: prependEntry(entries, step),
       updatedAt: at,
@@ -193,10 +198,11 @@ export function reduceRunActivity(
     if (!step) return undefined;
     if (current?.id === step.id) {
       const same = { ...step, startedAt: current.startedAt };
-      return { current: same, entries: replaceEntry(entries, same), updatedAt: at };
+      return { ...previous, current: same, entries: replaceEntry(entries, same), updatedAt: at };
     }
     const closed = closeCurrent(entries, current, at);
     return {
+      ...previous,
       current: step,
       entries: prependEntry(closed, step),
       updatedAt: at,
@@ -211,6 +217,7 @@ export function reduceRunActivity(
   if (target) {
     const step = finishedStep(target, at, status, event.durationMs);
     return {
+      ...previous,
       current: current?.id === step.id ? null : current,
       entries: replaceEntry(entries, step),
       updatedAt: at,
@@ -222,6 +229,7 @@ export function reduceRunActivity(
   const step = fromEvent(event, at, event.toolCallId ?? `${event.activity.toolName}:${at}`);
   if (!step) return undefined;
   return {
+    ...previous,
     current,
     entries: prependEntry(entries, finishedStep(step, at, status, event.durationMs)),
     updatedAt: at,
@@ -245,6 +253,12 @@ export function readRunActivity(runId: string): RunActivity | undefined {
   };
 }
 
+export function readRunReplyText(runId: string): string | undefined {
+  const snapshot = activityStore().get(runId);
+  const text = [snapshot?.replyText, snapshot?.pendingText?.trim()].filter(Boolean).join("\n\n");
+  return text || undefined;
+}
+
 export function clearRunActivity(runId: string): void {
   activityStore().delete(runId);
 }
@@ -260,9 +274,16 @@ export function settleRunActivity(
   at: number,
 ): RunActivity | undefined {
   const snapshot = activityStore().get(runId);
-  if (!snapshot || snapshot.entries.length === 0) return undefined;
+  if (!snapshot) return undefined;
+  snapshot.replyText = readRunReplyText(runId);
+  snapshot.pendingText = undefined;
+  const history =
+    snapshot.current && !snapshot.entries.some((entry) => entry.id === snapshot.current?.id)
+      ? prependEntry(snapshot.entries, snapshot.current)
+      : snapshot.entries;
+  if (history.length === 0) return undefined;
   const stepStatus: RunActivityStatus = status === "completed" ? "done" : "error";
-  const entries = snapshot.entries.map((entry) =>
+  const entries = history.map((entry) =>
     entry.status === "running" ? finishedStep(entry, at, stepStatus) : entry,
   );
   return { current: null, entries, updatedAt: iso(at) };
