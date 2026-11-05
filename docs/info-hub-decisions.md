@@ -117,5 +117,5 @@ Chat 的定义及三种类型见 [core-scope.md](core-scope.md)。Public Channel
 
 - `revision` 标识「这次查询会返回的那一份 section 载荷」：同一个 `(projectId, view, section, scope)` 的 `data` 不变就是同一个 revision，不是整份 Info Hub、更不是整个 Project 的版本号。
 - 因此别的 section 变化、分页窗口不同、查询时刻不同（`asOf`）都不改变 revision；客户端每个 section 各自按 revision 判断是否需要重新取全量。
-- Machine 心跳只推进连接的 `lastSeenAt`，不改变可见状态，不进 revision；可见状态变化才进，例如连接 `kind` 由 online 变 offline、租约 `generation` 或持有者变化。
+- Machine 心跳只推进连接的 `lastSeenAt`，不改变可见状态，不进 revision；可见状态变化才进，例如连接 `kind` 由 online 变 offline、租约 `generation` 或持有者变化。运行中提示的变化指纹遵循同一条规则：心跳不产生提示。
 - 分页游标绑定它所属 section 的 revision：同一份数据内翻页继续有效，该 section 数据变化后旧游标按 stale 处理。

@@ -88,6 +88,7 @@ export const infoHubQuerySchema = z.discriminatedUnion("view", [
 - **七种变化种类**：`chat_members`、`chat_owner`、`chat_archived`、`task_summary`、`agent_status`、`machine_connection`、`machine_lease`。前五种带 `chatId`，后两种带 `machineId`（`infoHubHintChangeSchema` 按 `kind` 判别）。
 - **作用域约束**：所有 `chatId` 变化必须等于提示自己的 `chatId`；所有 `machineId` 变化必须在该 run 的 `heldMachineIds` 里（这条间接要求：带 machine 变化的提示里 `heldMachineIds` 不可为空）。`changes` 至少 1 条，`heldMachineIds` 去重。
 - **合并窗口与最小间隔**：`tick(at)` 收集变化 → 首次变化起满 `hintMergeWindowMs`（2s）且距上次投递满 `hintMinimumIntervalMs`（5s）才发一条；未发出的变化留在本 run 内存里继续等下一个窗口。
+- **变化指纹只取可见状态**：判断「有没有变化」的指纹与 revision 同一条原则——心跳时间不参与。连接只取 `kind`、`generation` 与 `offline.reason`，`lastSeenAt` 每次心跳都变但不产生提示；租约等其它投影只在动作发生时写 `changedAt`，整份可参与指纹。
 - **去重键**：`{ runId, kind, targetId, revision }`（`infoHubHintDedupeKeySchema`），只存在当前 run 的内存里，settle 时整体丢弃；同一 key 不重复投递。
 - **字节预算**：整条提示 JSON 超过 `maxHintBytes`（1024）就按变化逐条试加，装不下就发已装下的部分，装不下的一条留到下次；一条都装不下则丢弃（`dispose()`）。
 - **失败即丢弃**：`deliver` 抛错只吞掉，不重试、不排队、不写消息、不写 run/input/lease 行。

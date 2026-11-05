@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { INFO_HUB_LIMITS } from "../contracts/info-hub";
+import { INFO_HUB_LIMITS, type InfoHubMachineSummary } from "../contracts/info-hub";
 import {
   infoHubHintSchema,
   infoHubHintDedupeKeySchema,
@@ -10,6 +10,29 @@ import { getChatInfo, getProjectInfoHub, InfoHubError } from "./info-hub";
 
 type Change = InfoHubHint["changes"][number];
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+/**
+ * 连接指纹只取会改变可见状态的字段。`lastSeenAt` 是纯心跳：worker 每次心跳都推进它，
+ * 算进指纹会让每个 tick 都被判成一次「变更」，run 里约每 5 秒收到一条
+ * `machine_connection` 提示（prod run_16d68a18 的根因）。
+ *
+ * online↔offline、connecting→online 与连接代次变化都体现在 kind/generation/reason 里，
+ * 所以忽略 `lastSeenAt` 不会吞掉任何真实状态变化。
+ */
+function connectionSignal(connection: InfoHubMachineSummary["connection"]): unknown {
+  switch (connection.kind) {
+    case "unknown":
+      return { kind: connection.kind };
+    case "online":
+    case "connecting":
+      return { kind: connection.kind, generation: connection.generation };
+    case "offline":
+      return {
+        kind: connection.kind,
+        generation: connection.generation,
+        reason: connection.reason,
+      };
+  }
+}
 /** Host-owned and run-local. Settlement destroys the entire object; there is no retry queue. */
 export class InfoHubHintChannel {
   private basis = new Map<string, { change: Change; fingerprint: string }>();
@@ -55,7 +78,11 @@ export class InfoHubHintChannel {
     for (const machine of hub.machines.filter(
       (machine) => machine.lease.holderInstanceId === scope.instanceId,
     )) {
-      put({ kind: "machine_connection", machineId: machine.machineId }, machine.connection);
+      put(
+        { kind: "machine_connection", machineId: machine.machineId },
+        connectionSignal(machine.connection),
+      );
+      // 租约视图只在租约动作完成时写 `changedAt`；它没有心跳时间字段，整份投影可参与指纹。
       put({ kind: "machine_lease", machineId: machine.machineId }, machine.lease);
     }
     return { scope, facts };
