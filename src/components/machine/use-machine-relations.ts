@@ -7,6 +7,15 @@ import {
 } from "../../server/functions/membership";
 
 const REFRESH_MS = 5000;
+// 一次读取的上限。revision 模式没有定时器，读取失败或一直不落地时页面就停在
+// 「未确认」了；所以每次读取都挂上限，超时就放弃这次读取并重读。
+const READ_DEADLINE_MS = 5000;
+
+const UNCONFIRMED: AppError = {
+  code: "internal",
+  message: "关系事实读取失败，当前状态未确认。",
+  requestId: "unavailable",
+};
 
 type ScheduleEnvironment = {
   document: Pick<Document, "visibilityState" | "addEventListener" | "removeEventListener">;
@@ -102,6 +111,7 @@ export type MachineRelationsState = {
  * 关系统一读取：Project 范围与 Machine 范围各走一个 Human 边界。
  * 失败时保留上次成功事实并留下错误，不把旧快照当当前状态。
  * 传 `revision` 的页面按 revision 变化读；不传的页面（Machine 详情）沿用五秒刷新。
+ * 两种模式下读取都不许跨过五秒没结果：超时放弃并重读，页面最多落后一次读取窗口。
  */
 export function useMachineRelations({
   projectId,
@@ -117,50 +127,86 @@ export function useMachineRelations({
   const [lastSuccessAt, setLastSuccessAt] = useState<string | null>(null);
   const [error, setError] = useState<AppError | null>(null);
   const reading = useRef(false);
+  const pending = useRef(false);
+  const generation = useRef(0);
+  const deadline = useRef<number | undefined>(undefined);
   const disposed = useRef(false);
   const schedule = useRef<ReturnType<typeof createRelationReads> | null>(null);
   const latestRevision = useRef(revision);
   latestRevision.current = revision;
 
   const load = useCallback(async () => {
-    if (reading.current) return;
+    if (reading.current) {
+      // 在途读取期间来的触发不能丢：读完之后补一次，否则页面会停在「未确认」。
+      pending.current = true;
+      return;
+    }
     reading.current = true;
+    const gen = (generation.current += 1);
+    const dropDeadline = () => {
+      window.clearTimeout(deadline.current);
+      deadline.current = undefined;
+    };
+    const expire = () => {
+      deadline.current = undefined;
+      if (disposed.current) return;
+      if (reading.current && generation.current === gen) {
+        reading.current = false;
+        setError(UNCONFIRMED);
+        setLoading(false);
+      }
+      if (document.visibilityState === "visible") void load();
+    };
+    const armDeadline = () => {
+      dropDeadline();
+      deadline.current = window.setTimeout(expire, READ_DEADLINE_MS);
+    };
+    armDeadline();
     try {
       const result = projectId
         ? await projectMachineRelationsFn({ data: { projectId } })
         : machineId
           ? await machineRelationsFn({ data: { machineId } })
           : null;
-      if (disposed.current) return;
+      if (disposed.current || generation.current !== gen) return;
       if (!result) {
         setRelations([]);
         setLastSuccessAt(new Date().toISOString());
         setError(null);
+        dropDeadline();
         return;
       }
       if (!result.ok) {
         setError(result.error);
+        if (document.visibilityState === "visible") armDeadline();
         return;
       }
       setRelations(result.data);
       setLastSuccessAt(new Date().toISOString());
       setError(null);
+      dropDeadline();
     } catch {
-      if (disposed.current) return;
-      setError({
-        code: "internal",
-        message: "关系事实读取失败，当前状态未确认。",
-        requestId: "unavailable",
-      });
+      if (disposed.current || generation.current !== gen) return;
+      setError(UNCONFIRMED);
+      if (document.visibilityState === "visible") armDeadline();
     } finally {
+      // 这次读取已经被放弃：定时器和读取状态都归新的那次。
+      if (generation.current !== gen) return;
       reading.current = false;
       if (!disposed.current) setLoading(false);
+      if (pending.current && !disposed.current) {
+        pending.current = false;
+        void load();
+      }
     }
   }, [projectId, machineId]);
 
   useEffect(() => {
     disposed.current = false;
     reading.current = false;
+    pending.current = false;
+    window.clearTimeout(deadline.current);
+    deadline.current = undefined;
     setLoading(true);
     setError(null);
     const reads = createRelationReads({
@@ -174,6 +220,8 @@ export function useMachineRelations({
       disposed.current = true;
       reads.stop();
       schedule.current = null;
+      window.clearTimeout(deadline.current);
+      deadline.current = undefined;
     };
   }, [load]);
 
