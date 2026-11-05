@@ -9,7 +9,14 @@ import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSyn
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page,
+  type Request,
+} from "playwright";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { CHANGE_SAFETY_POLL_MS } from "../../src/contracts/change-stream";
 import type { LeaseKey } from "../../src/contracts/lease";
@@ -66,8 +73,8 @@ async function revisit(page: Page) {
 }
 
 /**
- * 触发一次可见补读并等它的响应落地，确保此刻没有在途的关系读取。在途读取存在时
- * `createRelationReads` 的重入保护会忽略触发，所以反复触发必然收敛到「已读完」。
+ * 触发一次可见补读并等它的响应落地，确保此刻没有在途的关系读取。在途读取期间来的
+ * 触发会排队到读完之后，所以反复触发必然收敛到「已读完」。
  */
 async function settleRelations(page: Page) {
   const before = relationSnapshots.get(page);
@@ -1278,6 +1285,89 @@ try {
       .getByTestId("info-hub-project-machines-stale")
       .waitFor({ state: "hidden", timeout: 15000 });
     results.staleForceDialog = true;
+  });
+
+  await check("读取在途时回到页面仍要补读，不能停在「未确认」", async () => {
+    const snapshot = relationSnapshots.get(page)!;
+    const id = /\/_serverFn\/([0-9a-f]{64})$/.exec(snapshot.url)![1]!;
+    const hits: number[] = [];
+    let start = 0;
+    let quietAt = Date.now();
+    let fail = true;
+    const onRequest = (request: Request) => {
+      if (!request.url().endsWith(`/_serverFn/${id}`) || request.method() !== "POST") return;
+      hits.push(Date.now() - start);
+      quietAt = Date.now();
+    };
+    page.on("request", onRequest);
+    // revision 不变时页面不会自己再读；先等到完全安静，后面的请求就只能来自补读。
+    await until(() => Date.now() - quietAt >= 4_000, "relations reads quiet", 60);
+    // 一次慢且失败的在途读取：负载下「回到页面」正好撞上它的窗口。
+    await page.route(snapshot.url, async (route) => {
+      if (!fail) return route.continue();
+      await delay(1_500);
+      await route.abort();
+    });
+    start = Date.now();
+    quietAt = start;
+    await revisit(page);
+    await delay(300);
+    fail = false;
+    await revisit(page);
+    try {
+      await until(() => hits.length >= 2, "in-flight revive issues a read", 25);
+    } catch (error) {
+      throw new Error(
+        `${(error as Error).message}（实际发出 ${hits.length} 次：${hits.join(",")}ms）`,
+      );
+    }
+    assert(
+      hits[hits.length - 1]! - 1_500 <= 1_000,
+      `补读要跟着在途读取落地，不等下一个节拍：实际 ${hits.join(",")}ms`,
+    );
+    await page
+      .getByTestId("info-hub-project-machines-stale")
+      .waitFor({ state: "hidden", timeout: 8_000 });
+    page.off("request", onRequest);
+    await page.unroute(snapshot.url);
+  });
+
+  await check("读取一直不落地时放弃并重读，不能停在「未确认」", async () => {
+    const snapshot = relationSnapshots.get(page)!;
+    const stale = page.getByTestId("info-hub-project-machines-stale");
+    await page.route(snapshot.url, (route) => route.abort());
+    await delay(100);
+    await revisit(page);
+    await stale.waitFor({ timeout: 15000 });
+    await page.unroute(snapshot.url);
+    // 恢复时的那次读取一直不落地：只扣住第一条请求，之后的请求照常放行。
+    const id = /\/_serverFn\/([0-9a-f]{64})$/.exec(snapshot.url)![1]!;
+    let reads = 0;
+    const onRequest = (request: Request) => {
+      if (request.url().endsWith(`/_serverFn/${id}`) && request.method() === "POST") reads += 1;
+    };
+    page.on("request", onRequest);
+    let hold = true;
+    await page.route(snapshot.url, async (route) => {
+      if (!hold) return route.continue();
+      hold = false;
+      await delay(9_000);
+      try {
+        await route.abort();
+      } catch {
+        // 页面已经放弃这次读取，请求可能早已释放。
+      }
+    });
+    await delay(100);
+    await revisit(page);
+    try {
+      await until(() => reads >= 2, "stalled read is retried", 40);
+    } catch (error) {
+      throw new Error(`${(error as Error).message}（实际发出 ${reads} 次读取）`);
+    }
+    await stale.waitFor({ state: "hidden", timeout: 8_000 });
+    page.off("request", onRequest);
+    await page.unroute(snapshot.url);
   });
 
   // ═══ 8. 反证：缺 confirm 无写；跨 Project 不泄露 ══════════════════════════
