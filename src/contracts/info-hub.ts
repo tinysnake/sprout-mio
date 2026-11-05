@@ -40,7 +40,9 @@ export const INFO_HUB_LIMITS = {
   maxTurnContextBytes: 8_192,
   maxHintBytes: 1_024,
   hintMergeWindowMs: 2_000,
-  hintMinimumIntervalMs: 5_000,
+  // 提示是提醒，不是节拍：同一 run 最多每 60 秒收到一条，变化合并进那一条。
+  // 心跳类变化不再算变更（见 domain/info-hub-hint.ts 的 connectionSignal）。
+  hintMinimumIntervalMs: 60_000,
 } as const;
 
 /** A visible page owns one request; visibility restoration discards its cursor. */

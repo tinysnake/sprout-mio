@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { p6bFixture } from "./p6b-support";
 import { turnContextPromptInputSchema } from "../../src/contracts/turn-context";
+import { INFO_HUB_LIMITS } from "../../src/contracts/info-hub";
 import type { InfoHubHint } from "../../src/contracts/info-hub-hint";
 const { promptWithTurnContext } = await import(
   new URL("../../scripts/pi-host-turn-context.mjs", import.meta.url).href
@@ -193,6 +194,9 @@ try {
     notices: f.sqlite.prepare("SELECT count(*) n FROM run_resource_notice").get(),
   };
   const clock = Date.now();
+  // 合并窗口与最小间隔从契约读（现在 2s / 60s），门禁不把旧常量写死。
+  const windowMs = INFO_HUB_LIMITS.hintMergeWindowMs;
+  const minInterval = INFO_HUB_LIMITS.hintMinimumIntervalMs;
   f.sqlite.prepare("UPDATE task SET revision=revision+1 WHERE project_id=?").run(f.p.id);
   await channel.tick(clock);
   await channel.tick(clock + 1999);
@@ -203,9 +207,9 @@ try {
   f.equal(hints.length, 1, "unchanged facts dedupe");
   f.sqlite.prepare("UPDATE task SET revision=revision+1 WHERE project_id=?").run(f.p.id);
   await channel.tick(clock + 3001);
-  await channel.tick(clock + 6000);
+  await channel.tick(clock + 2000 + minInterval - 1);
   f.equal(hints.length, 1, "minimum interval prevents a second early hint");
-  await channel.tick(clock + 7000);
+  await channel.tick(clock + 2000 + minInterval);
   f.equal(hints.length, 2);
   // A → B → A on a fresh channel: adding a member delivers once, removing it delivers the reverse
   // once, and adding again returns to the revision already reported. The `seen` layer must suppress
@@ -224,29 +228,34 @@ try {
   const removeThird = () =>
     f.chats.removeGroupMember(f.chat.id, { kind: "agent", id: third.id }, governance(), actor);
   addThird();
-  await repeatChannel.tick(clock + 30_000);
-  await repeatChannel.tick(clock + 32_000);
+  const firstDetectAt = clock + 30_000;
+  await repeatChannel.tick(firstDetectAt);
+  const firstSentAt = firstDetectAt + windowMs;
+  await repeatChannel.tick(firstSentAt);
   f.equal(repeated.length, 1, "a member change is delivered after the merge window");
   const firstRevision = repeated[0]!.revision;
   removeThird();
-  await repeatChannel.tick(clock + 33_000);
-  await repeatChannel.tick(clock + 40_000);
+  await repeatChannel.tick(firstDetectAt + 1_000);
+  await repeatChannel.tick(firstSentAt + minInterval - 1);
+  f.equal(repeated.length, 1, "the minimum interval still holds for the reverse change");
+  await repeatChannel.tick(firstSentAt + minInterval);
   f.equal(repeated.length, 2, "the reverse change is delivered after the minimum interval");
   f.check(
     repeated[1]!.revision !== firstRevision,
     "the reverse change carries a different revision",
   );
+  const secondSentAt = firstSentAt + minInterval;
   addThird();
-  await repeatChannel.tick(clock + 41_000);
-  await repeatChannel.tick(clock + 50_000);
+  await repeatChannel.tick(secondSentAt + 1_000);
+  await repeatChannel.tick(secondSentAt + minInterval);
   f.equal(
     repeated.length,
     2,
     "returning to an already-reported revision delivers no second hint for it",
   );
   f.sqlite.prepare("UPDATE task SET revision=revision+1 WHERE project_id=?").run(f.p.id);
-  await repeatChannel.tick(clock + 51_000);
-  await repeatChannel.tick(clock + 56_000);
+  await repeatChannel.tick(secondSentAt + minInterval + 1_000);
+  await repeatChannel.tick(secondSentAt + 2 * minInterval);
   f.equal(repeated.length, 3, "the channel still delivers a revision it has never reported");
   repeatChannel.dispose();
   f.check(

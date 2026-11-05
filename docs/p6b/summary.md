@@ -85,6 +85,8 @@ Human 确定的设计记录：**本仓库没有**。页面形状由接线单元�
 | 5 Agent status 与 Machine 视角不越 Project | 主/侧 Project 的 chats 与 leases 互不可见，跨 Project profile = `not_found`                                                                                                          |
 | 6 四视角与源行在同一事务内一致             | 同一事务里 5 tasks、1 lease、2 members、`httpMatchesPinned: true`                                                                                                                    |
 
+2026-11-05 提示最小间隔从 5 秒改为 60 秒（见[契约表](contracts.md#运行中提示)）：上表 2b 的 5159ms 是基线 `4d9545c` 的旧值。同一天在修复分支重跑本门禁 exit 0，2b 实测 `gapMs: 60709`、`totalHints: 2`；其余不变量全部 PASS，快照字节等数值随夹具内容变化，未与上表逐项对齐。
+
 **独立技术验收**：本轮没有验收报告，也没有独立验收者判定的 PASS 版本。上表只能证明「门禁在 `4d9545c` 上自检通过」，**不等于**独立验收结论；[I-P6b](../development-plan.md#i-p6b-集成-info-hub-全部一期视角) 第 3 条因此只写自检、不勾。
 
 ## 本轮执行记录
