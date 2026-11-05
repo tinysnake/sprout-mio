@@ -178,7 +178,7 @@ describe("消息窗口：页边界来自服务端，客户端不重切", () => {
     expect(hasNewer(grown)).toBe(false);
   });
 
-  it("本地新消息只往活尾巴上加：不切页，边界留在原处，after 变空", () => {
+  it("本地新消息只往活尾巴上加：不切页，那一页能长过一页大小，after 变空", () => {
     const state = fromWindow(
       windowOf(chunk(251, 50), { before: "c:250", after: "c:300" }, { hasOlder: true }),
     );

@@ -5,7 +5,7 @@
 ## Sub-features
 
 - `dm-entry` 首次发起 DM，重复入口回到同一 Chat 与 AgentInstance。
-- `message-history` 消息顺序、刷新及服务重启后的持久性；消息按页加载，首屏只读最新一页（默认 50 条），顶部自动加载更早的页，DOM 只留视口附近五页（≤250 条），尾巴被丢掉后能按 `after` 补回或一键回到最新。
+- `message-history` 消息顺序、刷新及服务重启后的持久性；消息按页加载，首屏只读最新一页（默认 50 条），顶部自动加载更早的页，DOM 只留视口附近五页（每页 50 条），正在收消息的活尾巴页不切页、可以长过一页，尾巴被丢掉后能按 `after` 补回或一键回到最新。
 - `chat-title` 修改标题并保持 Chat 身份与历史。
 - `persona-next-turn` 修改 Profile 后，后续运行使用新人设。
 - `run-lifecycle` 查看 running、完成、失败和中止的结果，运行中发送消息的处理遵循 Turn 契约。

@@ -28,7 +28,10 @@ export type ChatWindowState = {
   aboveShift: number;
 };
 
-/** 视口上下各留几页：5 页 × 50 条 = 250 条，远低于 300 的内存预算。 */
+/**
+ * 视口上下各留几页：5 页 × 50 条 = 250 条，远低于 300 的内存预算。
+ * 正在收消息的活尾巴页不切页，所以停在底部又一直有新消息时它会超过一页。
+ */
 export const MESSAGE_WINDOW_RADIUS = 2;
 
 function pageOf(window: MessageWindow): MessagePage {
