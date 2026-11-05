@@ -335,8 +335,10 @@ describe("进程内活动存储", () => {
 
   it("停止时保留全文和流式残留，展示与持久快照不泄露聚合字段", () => {
     const runId = "run_full_reply";
-    const full = "说明".repeat(150);
-    recordRunActivity(runId, progress({ kind: "text_end", text: full }), at);
+    const full = "说明".repeat(5000);
+    const event = progress({ kind: "text_end", text: full });
+    expect(piHostEvent.safeParse(event).success).toBe(true);
+    recordRunActivity(runId, event, at);
     recordRunActivity(runId, start("call", "bash", "执行命令"), at + 1);
     recordRunActivity(runId, progress({ kind: "text_delta", text: "最后未完成的说明" }), at + 2);
     expect(readRunReplyText(runId)).toBe(`${full}\n\n最后未完成的说明`);

@@ -149,6 +149,19 @@ describe("Agent run 持久不变量", () => {
     `);
   });
 
+  it("agent 合并消息超过 8000 字可完整读回，人类输入仍拒绝超限", () => {
+    scenario(`
+      const { sendMessageInput, messageSchema } = await import('./src/contracts/chat.ts');
+      const body = '全文'.repeat(5000);
+      assert.equal(sendMessageInput.safeParse({senderKind:'human',senderId:ctx.userId,body}).success,false);
+      runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);
+      runs.completeAgentRun(run.id,body,'stop',ctx);
+      const messages = dm.listMessages(run.chatId,ctx);
+      assert.equal(messages.length,2);
+      assert.equal(messageSchema.parse(messages[1]).body,body);
+    `);
+  });
+
   it("回复仍经过 sendMessage 成员与 instance 校验，失败不会留下部分完成状态", () => {
     scenario(`
       runs.transitionAgentRun(run.id,'running',{configSnapshot:snapshot},ctx);

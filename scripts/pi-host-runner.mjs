@@ -337,7 +337,7 @@ async function open(config) {
           type: "progress",
           id: config.id,
           kind: "text_end",
-          text: text.slice(0, 4000),
+          text,
         });
       }
     } else if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
