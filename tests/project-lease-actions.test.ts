@@ -66,6 +66,7 @@ describe("Project 租约收据等待", () => {
           senderId: "user",
           body: "租约请求",
           createdAt: "2026-01-01T00:00:00.000Z",
+          skills: [],
           mentions: [],
         },
         "req_message-send",

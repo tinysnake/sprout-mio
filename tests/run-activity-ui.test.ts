@@ -399,6 +399,7 @@ describe("已结束 run 的工作记录", () => {
     senderId: "ins_11111111",
     body: "第一轮完成",
     createdAt: "2026-11-02T12:00:06.000Z",
+    skills: [],
     mentions: [],
     ...overrides,
   });

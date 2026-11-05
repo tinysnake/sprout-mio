@@ -381,6 +381,29 @@ export const messageMention = sqliteTable(
   ],
 );
 
+export const messageSkill = sqliteTable(
+  "message_skill",
+  {
+    chatId: text("chat_id").notNull(),
+    messageId: text("message_id").notNull(),
+    name: text("name").notNull(),
+    start: integer("start").notNull(),
+    end: integer("end").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.messageId, table.chatId],
+      foreignColumns: [message.id, message.chatId],
+    }).onDelete("cascade"),
+    uniqueIndex("message_skill_position_unique").on(table.chatId, table.messageId, table.start),
+    check("message_skill_name_check", sql`length(trim(${table.name})) > 0`),
+    check(
+      "message_skill_offsets_check",
+      sql`typeof(${table.start}) = 'integer' and typeof(${table.end}) = 'integer' and ${table.start} >= 0 and ${table.end} > ${table.start}`,
+    ),
+  ],
+);
+
 export const agentRun = sqliteTable(
   "agent_run",
   {

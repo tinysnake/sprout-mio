@@ -7,7 +7,8 @@ import { clockLabel } from "./format";
 import { RunActivityGroup } from "./run-activity";
 import { RUN_STATUS_LABELS } from "./run-status";
 import { senderKey } from "./chat-session-display";
-import { splitMentions } from "./mention-segments";
+import { splitMessageSegments } from "./message-segments";
+import type { MessageSkillSpan } from "../../contracts/skill";
 
 const GROUPING_WINDOW_MS = 5 * 60 * 1000;
 
@@ -127,7 +128,7 @@ export function MessageList({
                 : "text-xs leading-6 break-words whitespace-pre-wrap"
             }
           >
-            <MessageBody body={message.body} mentions={message.mentions} />
+            <MessageBody body={message.body} mentions={message.mentions} skills={message.skills} />
           </p>
           {!human && (
             <p data-testid="message-run-links" className="mt-1 text-[10px] text-muted-foreground">
@@ -187,11 +188,28 @@ export function MessageList({
  * `body` 的原文切片，所以复制、查找与 `textContent` 都还是原句。名字取自消息
  * 本身而不是成员表，成员改名后历史消息仍显示当时写下的名字。
  */
-function MessageBody({ body, mentions }: { body: string; mentions: readonly MentionSpan[] }) {
+function MessageBody({
+  body,
+  mentions,
+  skills,
+}: {
+  body: string;
+  mentions: readonly MentionSpan[];
+  skills: readonly MessageSkillSpan[];
+}) {
   return (
     <>
-      {splitMentions(body, mentions).map((segment, index) =>
-        segment.span ? (
+      {splitMessageSegments(body, mentions, skills).map((segment, index) =>
+        segment.skill ? (
+          <span
+            key={index}
+            data-testid="message-skill"
+            data-skill-name={segment.skill.name}
+            className="rounded-[3px] bg-selected px-1 font-medium [box-decoration-break:clone]"
+          >
+            {segment.text}
+          </span>
+        ) : segment.span ? (
           <span
             key={index}
             data-testid="message-mention"
