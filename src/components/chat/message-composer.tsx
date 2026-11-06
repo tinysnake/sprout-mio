@@ -10,6 +10,7 @@ import { ChatErrorNotice } from "./chat-error-notice";
 import type { ChatSkillChoices, SkillOption } from "../../contracts/skill";
 import { insertSkill, scanSkillTokens, SKILL_TRIGGER, skillQueryAt } from "../../lib/skill-token";
 import { splitMessageSegments } from "./message-segments";
+import { SkillMark } from "./skill-mark";
 import { SkillPicker } from "./skill-picker";
 import {
   MentionPicker,
@@ -243,23 +244,19 @@ export function MessageComposer({
         <label className="sr-only" htmlFor="message-draft">
           发给{agentName}的消息
         </label>
-        <div className="relative">
+        {/* 负外边距与下方 7px 内边距等值：技能标记的负外边距落在输入区内，不被 overflow 裁掉。 */}
+        <div className="relative -mx-[7px]">
           <div
             ref={highlight}
             aria-hidden="true"
             data-testid="message-input-highlight"
-            className={`pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words text-xs leading-6 max-desktop:text-[13px] ${
+            className={`pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words px-[7px] text-xs leading-6 max-desktop:text-[13px] ${
               composingVisual ? "invisible" : ""
             }`}
           >
             {segments.map((segment, index) =>
               segment.skill ? (
-                <span
-                  key={index}
-                  className="-mx-1 rounded-full bg-skill-mark px-1 py-[1px] font-medium text-skill-mark-foreground ring-1 ring-skill-mark-ring ring-inset [box-decoration-break:clone] [font-variant-emoji:text]"
-                >
-                  {segment.text}
-                </span>
+                <SkillMark key={index} name={segment.skill.name} text={segment.text} />
               ) : (
                 <span key={index}>{segment.text}</span>
               ),
@@ -301,7 +298,7 @@ export function MessageComposer({
             maxLength={MESSAGE_MAX_LENGTH}
             rows={2}
             placeholder={runActive ? "继续补充上下文，追加到当前轮…" : `向${agentName}发送消息…`}
-            className={`relative block h-12.5 w-full resize-none border-0 bg-transparent p-0 text-xs leading-6 outline-none placeholder:text-muted-foreground max-desktop:h-12 max-desktop:text-[13px] ${
+            className={`relative block h-12.5 w-full resize-none border-0 bg-transparent px-[7px] py-0 text-xs leading-6 outline-none placeholder:text-muted-foreground max-desktop:h-12 max-desktop:text-[13px] ${
               composingVisual ? "text-foreground" : "text-transparent caret-foreground"
             }`}
           />

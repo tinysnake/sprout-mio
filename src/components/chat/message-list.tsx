@@ -8,6 +8,7 @@ import { RunActivityGroup } from "./run-activity";
 import { RUN_STATUS_LABELS } from "./run-status";
 import { senderKey } from "./chat-session-display";
 import { splitMessageSegments } from "./message-segments";
+import { SkillMark } from "./skill-mark";
 import type { MessageSkillSpan } from "../../contracts/skill";
 
 const GROUPING_WINDOW_MS = 5 * 60 * 1000;
@@ -201,14 +202,12 @@ function MessageBody({
     <>
       {splitMessageSegments(body, mentions, skills).map((segment, index) =>
         segment.skill ? (
-          <span
+          <SkillMark
             key={index}
             data-testid="message-skill"
-            data-skill-name={segment.skill.name}
-            className="rounded-full bg-skill-mark px-1.5 py-[1px] font-medium text-skill-mark-foreground ring-1 ring-skill-mark-ring ring-inset [box-decoration-break:clone] [font-variant-emoji:text]"
-          >
-            {segment.text}
-          </span>
+            name={segment.skill.name}
+            text={segment.text}
+          />
         ) : segment.span ? (
           <span
             key={index}

@@ -72,9 +72,11 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
     renderToStaticMarkup(
       createElement(MessageList, { messages: [read()], profile: null, humanName: "Human" }),
     );
+  // 技能标记的图标是独立元素，正文文本按 textContent 核对，不直接匹配 HTML 片段。
+  const renderedText = (markup: string) => markup.replace(/<[^>]*>/g, "");
   const before = html();
   expect(before.match(/data-testid="message-skill"/g)).toHaveLength(2);
-  expect(before).toContain("📖missing");
+  expect(renderedText(before)).toContain("📖missing");
   writeFileSync(skillFile, "---\nname: renamed\ndescription: changed\n---\nnew body");
   expect((await readSkillCatalog(scope, "fresh")).byName.has("missing")).toBe(false);
   expect(html()).toBe(before);

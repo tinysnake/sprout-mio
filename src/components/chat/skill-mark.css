@@ -1,0 +1,32 @@
+/*
+ * 内联技能引用：装饰不参与布局。`📖` 占位撑出宽度，图标与底色、描边都不进文档流，
+ * 所以镜像层的前进宽度与 textarea 里的原文完全相同。
+ */
+.skill-mark {
+  --skill-mark-pad-x: 6px;
+  --skill-mark-edge: 1px;
+  position: relative;
+  padding: 0 var(--skill-mark-pad-x);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  margin-inline: calc(-1 * var(--skill-mark-pad-x));
+  border-radius: var(--control-radius);
+  background: var(--skill-mark);
+  box-shadow: 0 0 0 var(--skill-mark-edge) var(--skill-mark-ring);
+  color: var(--skill-mark-foreground);
+}
+
+.skill-mark-glyph {
+  opacity: 0;
+}
+
+.skill-mark-icon {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--skill-mark-pad-x) + 0.5px);
+  width: 1em;
+  height: 1em;
+  translate: 0 -50%;
+  color: var(--skill-mark-icon);
+  stroke-width: 2.2;
+}
