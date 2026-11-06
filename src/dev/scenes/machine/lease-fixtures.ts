@@ -1,5 +1,6 @@
 import type { LeaseView } from "../../../contracts/lease";
 import type { LeaseMutationInput, LeaseMutationView } from "../../../contracts/lease";
+import type { LeaseEscrowCommandInput, LeaseEscrowView } from "../../../contracts/lease";
 import type {
   ExecutionCancellationView,
   ExecutionLogReadView,
@@ -82,6 +83,174 @@ export const demoFreeLease: LeaseView = {
   pendingMutationId: null,
   escrow: null,
 };
+
+/**
+ * 挂靠演示：目标是本 Project 的 Group 或 Public Channel（DM 不被支持），
+ * 可选指定 Group 内的一个 Agent profile。这些 Chat 与 Agent 只服务演示。
+ */
+export const demoEscrowTargets = {
+  group: { chatId: "cnv_55555555", title: "发布协作组", kind: "group" as const },
+  channel: { chatId: "cnv_66666666", title: "Public Channel", kind: "public_channel" as const },
+  dm: { chatId: "cnv_77777777", title: "Human 私聊", kind: "dm" as const },
+};
+
+export const demoEscrowProfiles = {
+  reviewer: "agp_aaaaaaaa",
+  writer: "agp_bbbbbbbb",
+} as const;
+
+export const demoEscrowAgentNames: Record<string, string> = {
+  [demoEscrowProfiles.reviewer]: "验收 Agent",
+  [demoEscrowProfiles.writer]: "文档 Agent",
+};
+
+/** 每个演示 Chat 里的分身：领取范围按这里的 agentProfileId 判定。 */
+export const demoEscrowInstances: Record<string, { instanceId: string; agentProfileId: string }[]> = {
+  [demoEscrowTargets.group.chatId]: [
+    { instanceId: demoInstanceIds.primary, agentProfileId: demoEscrowProfiles.reviewer },
+    { instanceId: demoInstanceIds.sibling, agentProfileId: demoEscrowProfiles.writer },
+  ],
+  [demoEscrowTargets.channel.chatId]: [
+    { instanceId: demoInstanceIds.sibling, agentProfileId: demoEscrowProfiles.writer },
+  ],
+  [demoEscrowTargets.dm.chatId]: [],
+};
+
+const demoEscrowBase = {
+  state: "escrowed" as const,
+  claimedByInstanceId: null,
+  claimedAt: null,
+  claimedGeneration: null,
+};
+
+export const demoGroupEscrow: LeaseEscrowView = {
+  ...demoEscrowBase,
+  projectId: demoProject.id,
+  machineId: demoMachineDetails[4].machine.id,
+  escrowId: "les_11111111",
+  chatId: demoEscrowTargets.group.chatId,
+  targetAgentProfileId: null,
+  escrowedByInstanceId: demoInstanceIds.primary,
+  escrowedAt: "2026-10-18T09:00:00.000Z",
+  escrowGeneration: 5,
+};
+
+export const demoChannelEscrow: LeaseEscrowView = {
+  ...demoEscrowBase,
+  projectId: demoProject.id,
+  machineId: demoMachineDetails[0].machine.id,
+  escrowId: "les_22222222",
+  chatId: demoEscrowTargets.channel.chatId,
+  targetAgentProfileId: demoEscrowProfiles.writer,
+  escrowedByInstanceId: demoInstanceIds.primary,
+  escrowedAt: "2026-10-18T09:05:00.000Z",
+  escrowGeneration: 4,
+};
+
+/**
+ * 挂靠中的租约：Machine 仍被原持有者占用，操作权已经交给目标 Group。
+ * 终端状态（已领取 / 已撤销 / 已被取代）不出现在 `LeaseView` 里，只在挂靠行的读取结果里。
+ */
+export const demoEscrowLeases: LeaseView[] = [
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[4].machine.id,
+    generation: 5,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoGroupEscrow,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[0].machine.id,
+    generation: 4,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:05:00.000Z",
+    pendingMutationId: null,
+    escrow: demoChannelEscrow,
+  },
+];
+
+/** 已有挂靠行时的演示读取结果：终端状态只在这里出现。 */
+export const demoEscrowResult: Record<string, LeaseEscrowView> = {
+  [demoGroupEscrow.escrowId]: demoGroupEscrow,
+  [demoChannelEscrow.escrowId]: demoChannelEscrow,
+  les_33333333: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[2].machine.id,
+    escrowId: "les_33333333",
+    state: "claimed",
+    chatId: demoEscrowTargets.group.chatId,
+    targetAgentProfileId: null,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T08:00:00.000Z",
+    escrowGeneration: 7,
+    claimedByInstanceId: demoInstanceIds.sibling,
+    claimedAt: "2026-10-18T08:06:00.000Z",
+    claimedGeneration: 8,
+  },
+};
+
+/**
+ * 演示用的挂靠命令：只覆盖演示需要的分支，代次推进与服务端一致
+ * （挂靠 / 领取 / 撤销各推进一代）。终端状态的挂靠不再留在 `LeaseView` 上。
+ */
+export function applyEscrowCommand(
+  leases: readonly LeaseView[],
+  input: LeaseEscrowCommandInput,
+  actor: { instanceId: string; now?: string },
+): { leases: LeaseView[]; receipt: LeaseEscrowView } | { error: string } {
+  const now = actor.now ?? "2026-10-18T09:30:00.000Z";
+  const index = leases.findIndex(
+    (lease) => lease.projectId === input.projectId && lease.machineId === input.machineId,
+  );
+  const lease = leases[index];
+  if (!lease) return { error: "not_found" };
+  const escrow = lease.escrow;
+  if (input.action === "escrow") {
+    if (lease.state !== "held" || lease.holderInstanceId !== actor.instanceId)
+      return { error: "lease_not_holder" };
+    if (escrow) return { error: "lease_conflict" };
+    const generation = lease.generation + 1;
+    const receipt: LeaseEscrowView = {
+      ...demoEscrowBase,
+      projectId: lease.projectId,
+      machineId: lease.machineId,
+      escrowId: newId(ID_PREFIXES.leaseEscrow),
+      chatId: input.chatId,
+      targetAgentProfileId: input.targetAgentProfileId ?? null,
+      escrowedByInstanceId: actor.instanceId,
+      escrowedAt: now,
+      escrowGeneration: generation,
+    };
+    const next = [...leases];
+    next[index] = { ...lease, generation, changedAt: now, escrow: receipt };
+    return { leases: next, receipt };
+  }
+  if (!escrow || escrow.escrowId !== input.escrowId) return { error: "not_found" };
+  if (input.action === "claim") {
+    const generation = lease.generation + 1;
+    const receipt: LeaseEscrowView = {
+      ...escrow,
+      state: "claimed",
+      claimedByInstanceId: actor.instanceId,
+      claimedAt: now,
+      claimedGeneration: generation,
+    };
+    const next = [...leases];
+    next[index] = { ...lease, generation, holderInstanceId: actor.instanceId, changedAt: now, escrow: null };
+    return { leases: next, receipt };
+  }
+  const generation = lease.generation + 1;
+  const receipt: LeaseEscrowView = { ...escrow, state: "cancelled" };
+  const next = [...leases];
+  next[index] = { ...lease, generation, changedAt: now, escrow: null };
+  return { leases: next, receipt };
+}
 
 /**
  * 演示里的时间点与位点都是冻结值，不做时间推进。
