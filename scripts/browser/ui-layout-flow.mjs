@@ -413,6 +413,83 @@ try {
     assert.equal(await test("message-input").inputValue(), "调整栏宽后仍保留的草稿");
     return { before, after };
   });
+  await check("skill_mark_mirror_matches_textarea_metrics", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await goto(`${chatPath}?info=1`);
+    const input = test("message-input");
+    await input.fill("看📖how 帮我");
+    await page.waitForSelector('[data-testid="message-input-highlight"] .skill-mark');
+    const tight = await page.evaluate(() => {
+      const textarea = document.querySelector('[data-testid="message-input"]');
+      const chip = document.querySelector('[data-testid="message-input-highlight"] .skill-mark');
+      const source = getComputedStyle(textarea);
+      const reference = document.createElement("span");
+      reference.style.position = "absolute";
+      reference.style.visibility = "hidden";
+      reference.style.whiteSpace = "pre";
+      reference.style.fontFamily = source.fontFamily;
+      reference.style.fontSize = source.fontSize;
+      reference.style.fontWeight = source.fontWeight;
+      reference.style.fontStyle = source.fontStyle;
+      reference.style.lineHeight = source.lineHeight;
+      reference.style.letterSpacing = source.letterSpacing;
+      reference.textContent = chip.textContent;
+      chip.parentElement.appendChild(reference);
+      const textAdvance = reference.getBoundingClientRect().width;
+      reference.remove();
+      const style = getComputedStyle(chip);
+      const box = chip.getBoundingClientRect();
+      const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      const margin = parseFloat(style.marginLeft) + parseFloat(style.marginRight);
+      const before = chip.previousSibling;
+      let node = before;
+      while (node && node.nodeType !== 3) node = node.lastChild;
+      const range = document.createRange();
+      range.setStart(node, node.length - 1);
+      range.setEnd(node, node.length);
+      return {
+        textAdvance,
+        chipContent: box.width - padding,
+        padding,
+        margin,
+        overhang: box.left - range.getBoundingClientRect().right,
+        edgeStart: chip.getAttribute("data-edge-start"),
+      };
+    });
+    assert.equal(tight.edgeStart, "flush", `贴着前一字形的一侧不留外悬 ${JSON.stringify(tight)}`);
+    assert(
+      Math.abs(tight.chipContent - tight.textAdvance) <= 0.5,
+      `镜像层与 textarea 的文字前进宽度一致 ${JSON.stringify(tight)}`,
+    );
+    assert(
+      Math.abs(tight.padding + tight.margin) <= 0.5,
+      `padding 与 margin 抵消后文字列不动 ${JSON.stringify(tight)}`,
+    );
+    assert(Math.abs(tight.overhang) <= 0.5, `标记左缘不侵入前一字形 ${JSON.stringify(tight)}`);
+    await input.fill("📖how 📖plan-only");
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll('[data-testid="message-input-highlight"] .skill-mark').length ===
+        2,
+    );
+    const pair = await page.evaluate(() => {
+      const [first, second] = document.querySelectorAll(
+        '[data-testid="message-input-highlight"] .skill-mark',
+      );
+      return {
+        gap: second.getBoundingClientRect().left - first.getBoundingClientRect().right,
+        edges: [first.getAttribute("data-edge-end"), second.getAttribute("data-edge-start")],
+      };
+    });
+    assert.equal(
+      pair.edges.join("/"),
+      "flush/flush",
+      `只隔一格时两侧让出全部内部间距 ${JSON.stringify(pair)}`,
+    );
+    assert(pair.gap >= 2.5, `相邻两枚标记不粘连 ${JSON.stringify(pair)}`);
+    await input.fill("");
+    return { tight, pair };
+  });
   await check("zero_project_onboarding_creates_and_enters_chats", async () => {
     const zeroContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     try {
