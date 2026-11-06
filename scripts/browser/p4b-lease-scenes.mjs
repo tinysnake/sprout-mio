@@ -378,10 +378,10 @@ await check("Chat inspector 与 Project settings 呈现同一租约事实", asyn
       .locator('[data-testid="chat-leases"] [data-lease-state="held"]')
       .count();
     assert.ok(chatHeld >= 2, `chat inspector held leases ${chatHeld}`);
-    assert.ok((await page.getByTestId("chat-executions").count()) === 1);
-    assert.ok((await page.getByTestId("chat-execution-targets").count()) === 1);
+    // v2：Info Hub 的 Chat inspector 只呈现既有租约状态，不再重复 Machine 的远端操作表格与柱状汇总。
+    assert.equal(await page.getByTestId("chat-executions").count(), 0);
+    assert.equal(await page.getByTestId("chat-execution-targets").count(), 0);
     await shootAt(page, "chat-leases", "chat-inspector-leases");
-    await shootAt(page, "chat-executions", "chat-inspector-executions");
   } finally {
     await context.close();
   }

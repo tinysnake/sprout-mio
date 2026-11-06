@@ -3,7 +3,8 @@ import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 
-// 挂靠与领取的演示场景核对：只连本机 dev server，用演示数据，不连业务服务。
+// 挂靠事实的演示场景核对：只连本机 dev server，用演示数据，不连业务服务。
+// v2 起挂靠没有人类入口：界面只把挂靠投影成租约行上的一条事实，因此这里断言的是事实与缺席。
 const base = process.env.SPROUT_P8A_ESCROW_URL ?? "http://127.0.0.1:3099/__dev/ui/";
 const evidence = resolve(process.env.SPROUT_P8A_ESCROW_EVIDENCE ?? ".verify/p8a-ui/evidence");
 mkdirSync(evidence, { recursive: true });
@@ -62,12 +63,11 @@ async function shootAt(page, testId, name) {
   await shoot(page, name);
 }
 
-/** 演示控制收在 details 里：先展开，再开挂靠场景，最后收回，避免遮挡截图。 */
-async function enableEscrowScene(page, outcome = "success") {
+/** 演示控制收在 details 里：先展开，打开「两台已挂靠的 Machine」，再收回，避免遮挡截图。 */
+async function enableEscrowScene(page) {
   const controls = page.getByTestId("machine-scene-controls");
   await controls.locator("summary").click();
   await page.getByTestId("machine-demo-escrow-scene").check();
-  if (outcome !== "success") await page.getByTestId("machine-demo-escrow").selectOption(outcome);
   await controls.locator("summary").click();
 }
 
@@ -83,7 +83,30 @@ async function overflow(page) {
   return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 }
 
-await check("挂靠中的租约在 Machine 租约页可见并可撤销（light 1440px）", async () => {
+/** Chat 侧（真实 inspector 与演示 Info Hub 快照）的共同断言：只剩既有租约状态。 */
+async function assertOnlyLeaseFacts(page, name) {
+  const facts = page.getByTestId("chat-machine-facts").first();
+  await facts.waitFor();
+  const leases = page.getByTestId("chat-leases").first();
+  await leases.waitFor();
+  const text = await facts.innerText();
+  // 挂靠只投影成租约行上的一条事实：状态位「挂靠中」+ 目标 + 发起者。
+  assert.match(text, /挂靠中/);
+  assert.match(text, /发布公告频道/);
+  assert.match(text, /指定 Agent 文档 Agent/);
+  assert.match(text, /由 重构搭档 发起/);
+  // 代次不呈现，说明文案、远端操作表格与柱状汇总都不在 inspector 里。
+  assert.doesNotMatch(text, /代次/);
+  assert.doesNotMatch(text, /远端操作/);
+  assert.equal(await page.getByTestId("chat-leases-dense-note").count(), 0);
+  assert.equal(await page.getByTestId("chat-execution-targets").count(), 0);
+  assert.equal(await page.getByTestId("chat-executions").count(), 0);
+  // 挂靠没有人类入口：没有待领取、领取、撤销或收据。
+  assert.equal(await page.locator('[data-testid^="chat-lease-escrow"]').count(), 0);
+  await shootAt(page, "chat-machine-facts", name);
+}
+
+await check("挂靠中的租约在 Machine 租约页只呈现一行事实（light 1440px）", async () => {
   const { context, page, errors } = await open({
     width: 1440,
     height: 1000,
@@ -94,119 +117,36 @@ await check("挂靠中的租约在 Machine 租约页可见并可撤销（light 1
     await enableEscrowScene(page);
     await openLease(page, "工作室 Mac mini");
 
-    const entry = page.getByTestId("dev-lease-escrow");
-    await entry.waitFor();
-    assert.equal(await entry.getAttribute("data-escrow-state"), "escrowed");
-    const entryText = await entry.innerText();
-    assert.match(entryText, /挂靠中/);
-    assert.match(entryText, /Public Channel/);
-    assert.match(entryText, /文档 Agent/);
-    assert.match(entryText, /撤销挂靠/);
+    const row = page.locator('[data-testid^="lease-row-"]').filter({ hasText: "工作室 Mac mini" });
+    await row.waitFor();
+    // 状态位互斥：挂靠中替代持有中，不再并列「持有中 · 代次 N」。
+    assert.equal((await row.getByTestId("lease-state").innerText()).trim(), "挂靠中");
 
-    // 同一份挂靠事实也出现在只读的租约总览里。
-    const overviewRow = page.locator('[data-testid^="lease-escrow-"]');
-    assert.equal(await overviewRow.count(), 1);
-    assert.equal(await overviewRow.first().getAttribute("data-escrow-state"), "escrowed");
-    assert.match(await overviewRow.first().innerText(), /挂靠中/);
-    await shootAt(page, "dev-lease-escrow", "lease-escrow-live-light-1440");
+    const fact = row.locator('[data-testid^="lease-escrow-"]');
+    assert.equal(await fact.count(), 1);
+    assert.equal(await fact.getAttribute("data-escrow-state"), "escrowed");
+    const factText = await fact.innerText();
+    assert.match(factText, /挂靠中/);
+    assert.match(factText, /Public Channel/);
+    assert.match(factText, /指定 Agent 文档 Agent/);
+    assert.match(factText, /由 重构搭档 发起/);
 
-    await page.getByTestId("dev-lease-escrow-cancel").click();
-    await page.waitForSelector(
-      '[data-testid="dev-lease-escrow-receipt"][data-receipt-state="cancelled"]',
-    );
-    assert.equal(await entry.getAttribute("data-escrow-state"), "none");
-    await page.getByTestId("dev-lease-escrow-form").waitFor();
-    assert.equal(await page.locator('[data-testid^="lease-escrow-"]').count(), 0);
-    await shootAt(page, "dev-lease-escrow", "lease-escrow-cancelled-light-1440");
+    // 整页租约小节：不出现「代次」，也没有挂靠表单、按钮与收据。
+    const section = await page.getByTestId("machine-lease-detail").innerText();
+    assert.doesNotMatch(section, /代次/);
+    assert.doesNotMatch(section, /挂靠租约|撤销挂靠|挂靠代次|挂靠收据/);
+    assert.equal(await page.locator('[data-testid^="dev-lease-escrow"]').count(), 0);
+    assert.equal(await page.getByRole("button", { name: "挂靠租约" }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "撤销挂靠" }).count(), 0);
 
+    await shootAt(page, "machine-lease-detail", "lease-escrow-fact-light-1440");
     assert.deepEqual(errors, []);
   } finally {
     await context.close();
   }
 });
 
-await check("持有者可以把租约挂靠给 Group（light 1440px）", async () => {
-  const { context, page, errors } = await open({
-    width: 1440,
-    height: 1000,
-    colorScheme: "light",
-    scene: "machines",
-  });
-  try {
-    await enableEscrowScene(page);
-    await openLease(page, "刚唤醒的 Mac Studio");
-
-    await page.getByTestId("dev-lease-escrow-form").waitFor();
-    const chat = page.getByTestId("dev-lease-escrow-chat");
-    // fixture：demoEscrowTargets.group（cnv_55555555 / 发布协作组）
-    await chat.selectOption("cnv_55555555");
-    assert.match(await page.getByTestId("dev-lease-escrow-holder-chat").innerText(), /发布协作组/);
-    await page.getByTestId("dev-lease-escrow-submit").click();
-    await page.waitForSelector(
-      '[data-testid="dev-lease-escrow-receipt"][data-receipt-state="escrowed"]',
-    );
-    const entry = page.getByTestId("dev-lease-escrow");
-    assert.equal(await entry.getAttribute("data-escrow-state"), "escrowed");
-    assert.match(await entry.innerText(), /挂靠中/);
-    await shootAt(page, "dev-lease-escrow", "lease-escrow-created-light-1440");
-
-    assert.deepEqual(errors, []);
-  } finally {
-    await context.close();
-  }
-});
-
-await check("挂靠被服务端拒绝时保留用户选定的目标（dark 1440px）", async () => {
-  const { context, page, errors } = await open({
-    width: 1440,
-    height: 1000,
-    colorScheme: "dark",
-    scene: "machines",
-  });
-  try {
-    await enableEscrowScene(page, "conflict");
-    await openLease(page, "刚唤醒的 Mac Studio");
-
-    const chat = page.getByTestId("dev-lease-escrow-chat");
-    // fixture：demoEscrowTargets.group（cnv_55555555 / 发布协作组）
-    await chat.selectOption("cnv_55555555");
-    await page.getByTestId("dev-lease-escrow-submit").click();
-    await page.getByTestId("dev-lease-escrow-error").waitFor();
-    assert.equal(await chat.inputValue(), "cnv_55555555");
-    assert.equal(
-      await page.getByTestId("dev-lease-escrow").getAttribute("data-escrow-state"),
-      "none",
-    );
-    await shootAt(page, "dev-lease-escrow", "lease-escrow-conflict-dark-1440");
-
-    assert.deepEqual(errors, []);
-  } finally {
-    await context.close();
-  }
-});
-
-await check("窄屏下挂靠区块没有横向溢出（light 390px）", async () => {
-  const { context, page, errors } = await open({
-    width: 390,
-    height: 900,
-    colorScheme: "light",
-    scene: "machines",
-  });
-  try {
-    await enableEscrowScene(page);
-    await openLease(page, "工作室 Mac mini");
-    await page.getByTestId("dev-lease-escrow").waitFor();
-    await page.getByTestId("dev-lease-escrow-live").waitFor();
-    assert.ok((await overflow(page)) <= 1, `横向溢出 ${await overflow(page)}px`);
-    await shootAt(page, "dev-lease-escrow", "lease-escrow-live-light-390");
-
-    assert.deepEqual(errors, []);
-  } finally {
-    await context.close();
-  }
-});
-
-await check("Chat 里领取挂靠：DM 说明、待领取、领取收据（light 1440px）", async () => {
+await check("Chat inspector 只呈现既有租约状态（light 1440px）", async () => {
   const { context, page, errors } = await open({
     width: 1440,
     height: 1000,
@@ -216,25 +156,42 @@ await check("Chat 里领取挂靠：DM 说明、待领取、领取收据（light
   try {
     // 演示场景的初始地址就带 ?info=1，inspector 默认打开。
     assert.equal(await page.getByTestId("toggle-inspector").getAttribute("aria-expanded"), "true");
-    await page.getByTestId("chat-lease-escrow-dm-note").waitFor();
-    assert.equal(await page.getByTestId("chat-lease-escrow").getAttribute("data-inbound"), "0");
-    await shootAt(page, "chat-lease-escrow", "chat-claim-dm-note-light-1440");
+    await assertOnlyLeaseFacts(page, "chat-inspector-leases-light-1440");
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
 
-    await page.locator('[data-chat-id="cnv_55555555"]').click();
-    const inbound = page.locator('[data-testid^="chat-lease-escrow-inbound-"]');
-    await inbound.first().waitFor();
-    assert.equal(await page.getByTestId("chat-lease-escrow").getAttribute("data-inbound"), "1");
-    assert.match(await inbound.first().innerText(), /待领取/);
-    assert.match(await inbound.first().innerText(), /发布协作组/);
-    await shootAt(page, "chat-lease-escrow", "chat-claim-inbound-light-1440");
+await check("演示 Info Hub 快照同样只剩租约状态（dark 1200px）", async () => {
+  const { context, page, errors } = await open({
+    width: 1200,
+    height: 1000,
+    colorScheme: "dark",
+    scene: "chat-inspector",
+  });
+  try {
+    await assertOnlyLeaseFacts(page, "info-hub-lease-facts-dark-1200");
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
 
-    await page.locator('[data-testid^="chat-lease-escrow-claim-"]').first().click();
-    const settled = page.locator('[data-testid^="chat-lease-escrow-settled-"]');
-    await settled.first().waitFor();
-    assert.equal(await settled.first().getAttribute("data-receipt-state"), "claimed");
-    assert.match(await settled.first().innerText(), /挂靠收据/);
-    assert.equal(await page.getByTestId("chat-lease-escrow").getAttribute("data-inbound"), "0");
-    await shootAt(page, "chat-lease-escrow", "chat-claim-settled-light-1440");
+await check("窄屏下租约事实没有横向溢出（light 390px）", async () => {
+  const { context, page, errors } = await open({
+    width: 390,
+    height: 900,
+    colorScheme: "light",
+    scene: "machines",
+  });
+  try {
+    await enableEscrowScene(page);
+    await openLease(page, "工作室 Mac mini");
+    const fact = page.locator('[data-testid^="lease-escrow-"]').first();
+    await fact.waitFor();
+    assert.ok((await overflow(page)) <= 1, `横向溢出 ${await overflow(page)}px`);
+    await shootAt(page, "machine-lease-detail", "lease-escrow-fact-light-390");
 
     assert.deepEqual(errors, []);
   } finally {
