@@ -95,9 +95,12 @@ async function assertOnlyLeaseFacts(page, name) {
   assert.match(text, /发布公告频道/);
   assert.match(text, /指定 Agent 文档 Agent/);
   assert.match(text, /由 重构搭档 发起/);
-  // 代次不呈现，说明文案、远端操作表格与柱状汇总都不在 inspector 里。
-  assert.doesNotMatch(text, /代次/);
-  assert.doesNotMatch(text, /远端操作/);
+  // 代次只作为提交时的匹配条件，界面不再显示租约代次。
+  assert.doesNotMatch(text, /(挂靠|租约|授权)代次/);
+  assert.doesNotMatch(text, /代次 ?\d/);
+  // 远端操作表格与柱状汇总都不在 inspector 里：它们自带的导语、只读说明与宿主工具脚注也一并不在
+  // （租约行自己的 fencing 说明会提到「远端操作」，那是租约状态，不是这张表）。
+  assert.doesNotMatch(text, /每条操作都指定 Machine|此面板只读|宿主工具（如 sprout_status/);
   assert.equal(await page.getByTestId("chat-leases-dense-note").count(), 0);
   assert.equal(await page.getByTestId("chat-execution-targets").count(), 0);
   assert.equal(await page.getByTestId("chat-executions").count(), 0);
@@ -125,11 +128,13 @@ await check("挂靠中的租约在 Machine 租约页只呈现一行事实（ligh
     const fact = row.locator('[data-testid^="lease-escrow-"]');
     assert.equal(await fact.count(), 1);
     assert.equal(await fact.getAttribute("data-escrow-state"), "escrowed");
+    // 挂靠行只剩目标与发起者：「挂靠中」已经在状态位上，不在这一行重复。
     const factText = await fact.innerText();
-    assert.match(factText, /挂靠中/);
     assert.match(factText, /Public Channel/);
     assert.match(factText, /指定 Agent 文档 Agent/);
     assert.match(factText, /由 重构搭档 发起/);
+    // 挂靠已经把操作权交出去了，所以不再并列「持有者可以对该 Machine 发起远端操作」。
+    assert.doesNotMatch(await row.innerText(), /发起远端操作/);
 
     // 整页租约小节：不出现「代次」，也没有挂靠表单、按钮与收据。
     const section = await page.getByTestId("machine-lease-detail").innerText();

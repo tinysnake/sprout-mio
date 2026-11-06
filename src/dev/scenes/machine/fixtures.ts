@@ -150,7 +150,7 @@ export const demoMachineDetails: MachineDetail[] = [
       rootDirectory:
         "/Users/linche/workspace/experiments/very-long-directory-name-for-narrow-layout-check/nested",
       rootRevision: 5,
-      name: "断线的旧代次 MacBook Pro",
+      name: "已断线的旧款 MacBook Pro",
       createdBy: "demo-human",
       createdAt: "2026-09-01T02:00:00.000Z",
       updatedAt: "2026-10-17T23:20:00.000Z",

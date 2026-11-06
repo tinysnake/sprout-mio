@@ -179,6 +179,15 @@ export function liveEscrowOf(lease: LeaseView): LeaseEscrowView | null {
   return lease.escrow && lease.escrow.state === "escrowed" ? lease.escrow : null;
 }
 
+/**
+ * 状态位：挂靠中替代持有中。租约仍由原持有者占着，但对外的状态只有一条，
+ * 不并列「持有中 · 代次 N」，也不再解释持有者能做什么（挂靠已交出操作权）。
+ */
+export function leaseStatusLabel(lease: LeaseView): LeaseLabel {
+  const escrow = liveEscrowOf(lease);
+  return escrow ? escrowStateLabel(escrow.state) : leaseStateLabel(lease.state);
+}
+
 /** 本 Project 里处于挂靠中的租约。 */
 export function liveEscrows(leases: readonly LeaseView[], projectId: string): LeaseView[] {
   return visibleLeases(leases, projectId).filter((lease) => liveEscrowOf(lease) !== null);

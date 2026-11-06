@@ -14,6 +14,7 @@ import {
   holderLabel,
   holderMachineCount,
   leaseStateLabel,
+  leaseStatusLabel,
   liveEscrowOf,
   mutationStateLabel,
   pendingMutationLabel,
@@ -110,7 +111,7 @@ export function LeaseOverview({
             // 持有台数取同一份租约投影，不为这一行新增查询。
             const heldCount = holderMachineCount(visible, lease.holderInstanceId);
             // 状态位互斥：挂靠中替代持有中。代次只在提交时匹配，界面不呈现。
-            const status = escrow ? escrowStateLabel(escrow.state) : state;
+            const status = leaseStatusLabel(lease);
             return (
               <div
                 key={`${lease.projectId}:${lease.machineId}`}
@@ -152,8 +153,9 @@ export function LeaseOverview({
                   </dd>
                 )}
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
-                {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。 */}
-                {lease.state !== "fencing" && !dense && (
+                {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。
+                    挂靠中也不再解释持有者能做什么：挂靠已经把操作权交出去了。 */}
+                {lease.state !== "fencing" && !dense && !escrow && (
                   <dd className="text-muted-foreground">{state.detail}</dd>
                 )}
                 {lease.state === "fencing" && (
@@ -433,7 +435,7 @@ export function LeaseMutationForm({
       </p>
       <p data-testid={`${testId}-context`} className="text-[0.6875rem] text-muted-foreground">
         {lease
-          ? `当前：${leaseStateLabel(lease.state).label} · ${
+          ? `当前：${leaseStatusLabel(lease).label} · ${
               draft.lastAction === "release" ? "再次提交将释放" : "申请与释放都按当前租约状态核对"
             }`
           : "当前：该 Machine 在本 Project 还没有租约，提交将创建第一条。"}

@@ -110,7 +110,7 @@ const summaryFixtures = [
   },
   {
     machineId: machines.old,
-    name: "断线的旧代次 MacBook Pro",
+    name: "已断线的旧款 MacBook Pro",
     total: 1,
     segments: [{ state: "running", label: "运行中", count: 1 }],
   },

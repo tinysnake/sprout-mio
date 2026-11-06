@@ -579,7 +579,7 @@ try {
     assert.equal(await page.getByTestId("chat-executions").count(), 0);
     assert.equal(await page.getByTestId("chat-execution-targets").count(), 0);
     assert.equal(await page.getByTestId("chat-leases-dense-note").count(), 0);
-    assert.doesNotMatch(await facts.innerText(), /远端操作/);
+    assert.doesNotMatch(await facts.innerText(), /每条操作都指定 Machine|此面板只读/);
     assert.equal(await page.locator('[data-testid^="chat-lease-escrow"]').count(), 0);
     await page.screenshot({ path: join(evidence, "inspector-read-only.png"), fullPage: true });
   });
