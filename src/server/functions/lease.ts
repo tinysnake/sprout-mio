@@ -21,6 +21,9 @@ const requestInput = leaseKeySchema.extend({
   requestId: z.string().regex(appIdPattern(ID_PREFIXES.request)),
   chatId: z.string().regex(appIdPattern(ID_PREFIXES.chat)),
 });
+const escrowInput = leaseKeySchema.extend({
+  escrowId: z.string().regex(appIdPattern(ID_PREFIXES.leaseEscrow)),
+});
 async function boundary<I, O>(
   raw: unknown,
   headers: Headers,
@@ -99,6 +102,36 @@ export async function getLeaseRequestBoundary(raw: unknown, headers: Headers, re
     );
   });
 }
+/**
+ * 读一次挂靠行：`LeaseView.escrow` 只投影挂靠中的那一次，已领取 / 已撤销 / 已被取代
+ * 的收据只在挂靠行上，所以领取与撤销的收据需要单独读一行。
+ */
+export async function getLeaseEscrowBoundary(raw: unknown, headers: Headers, requestId: string) {
+  return boundary(raw, headers, requestId, escrowInput, async (d, input, context) => {
+    // 先按租约读一次：只有能看到这台 Machine 租约的会话才能读它的挂靠行。
+    const current = d.getLease({ projectId: input.projectId, machineId: input.machineId }, context);
+    const [{ db }, { leaseEscrow }, { and, eq }] = await Promise.all([
+      import("../../db"),
+      import("../../db/schema"),
+      import("drizzle-orm"),
+    ]);
+    const row = db
+      .select()
+      .from(leaseEscrow)
+      .where(
+        and(
+          eq(leaseEscrow.id, input.escrowId),
+          eq(leaseEscrow.projectId, input.projectId),
+          eq(leaseEscrow.machineId, input.machineId),
+        ),
+      )
+      .get();
+    return {
+      lease: current.lease,
+      escrow: row ? d.leaseEscrowView(row) : null,
+    };
+  });
+}
 export const getLeaseRequestFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
@@ -108,6 +141,11 @@ export const getLeaseFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     getLeaseBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+export const getLeaseEscrowFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    getLeaseEscrowBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 export const listProjectLeasesFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)

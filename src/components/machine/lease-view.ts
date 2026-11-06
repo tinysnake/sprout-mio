@@ -1,4 +1,9 @@
-import type { LeaseEscrowView, LeaseMutationView, LeaseView } from "../../contracts/lease";
+import type {
+  LeaseEscrowCommandInput,
+  LeaseEscrowView,
+  LeaseMutationView,
+  LeaseView,
+} from "../../contracts/lease";
 import type {
   ExecutionCancellationView,
   ExecutionRecoveryReason,
@@ -236,6 +241,33 @@ export function escrowClaimerLabel(
 ): string | null {
   if (escrow.state !== "claimed" || !escrow.claimedByInstanceId) return null;
   return instanceNames[escrow.claimedByInstanceId] ?? escrow.claimedByInstanceId;
+}
+
+/** 命令收据是否落在预期终态：领取要已领取，撤销要已撤销，挂靠要正挂着。 */
+export function escrowCommandSucceeded(
+  action: LeaseEscrowCommandInput["action"],
+  escrow: LeaseEscrowView | null,
+): boolean {
+  if (!escrow) return false;
+  if (action === "claim") return escrow.state === "claimed";
+  if (action === "escrow_cancel") return escrow.state === "cancelled";
+  return escrow.state === "escrowed";
+}
+
+/** 收据的一句话结果。挂靠失败时也要说清楚挂靠行到底落在哪个状态。 */
+export function escrowReceiptNote(
+  action: LeaseEscrowCommandInput["action"],
+  escrow: LeaseEscrowView | null,
+  names: EscrowNames = {},
+): string {
+  if (!escrow) return "服务端还没有这条挂靠记录";
+  const label = escrowStateLabel(escrow.state).label;
+  if (action === "claim") return escrow.state === "claimed" ? "已领取" : `挂靠${label}，没有领取成功`;
+  if (action === "escrow_cancel")
+    return escrow.state === "cancelled" ? "已撤销" : `挂靠${label}，没有撤销成功`;
+  return escrow.state === "escrowed"
+    ? `已挂靠到 ${escrowTargetLabel(escrow, names)}`
+    : `挂靠${label}`;
 }
 
 export function mutationStateLabel(mutation: LeaseMutationView): LeaseLabel {
