@@ -45,7 +45,7 @@ type RunState = {
 const idleRun: RunState = { pending: false, outcome: null, detail: null, error: null };
 
 /** 一个页面里可能同时有多个 Machine 的挂靠命令，按 key（machineId / escrowId）分开记状态。 */
-function useEscrowRuns(handler: LeaseEscrowHandler) {
+function useEscrowRuns(handler: LeaseEscrowHandler, names: EscrowNames = {}) {
   const [runs, setRuns] = useState<Record<string, RunState>>({});
   const [receipts, setReceipts] = useState<Record<string, LeaseEscrowView | null>>({});
   const run = async (key: string, input: LeaseEscrowCommandInput) => {
@@ -62,7 +62,7 @@ function useEscrowRuns(handler: LeaseEscrowHandler) {
         [key]: {
           pending: false,
           outcome: escrowCommandSucceeded(input.action, escrow) ? "success" : "failure",
-          detail: escrowReceiptNote(input.action, escrow),
+          detail: escrowReceiptNote(input.action, escrow, names),
           error: null,
         },
       }));
@@ -150,13 +150,13 @@ export function LeaseEscrowEntry({
   handler: LeaseEscrowHandler;
   testId?: string;
 }) {
-  const { runs, receipts, run } = useEscrowRuns(handler);
   const [targetChatId, setTargetChatId] = useState("");
   const [targetProfileId, setTargetProfileId] = useState("");
   const live = liveEscrowOf(lease);
+  const names = escrowNamesOf(chats, agents, chatNames);
+  const { runs, receipts, run } = useEscrowRuns(handler, names);
   const state = runs[lease.machineId] ?? idleRun;
   const receipt = receipts[lease.machineId] ?? null;
-  const names = escrowNamesOf(chats, agents, chatNames);
   const targets = chats.filter((chat) => chat.kind !== "dm");
   const targetAgents = agents.filter((agent) => agent.chatId === targetChatId);
 
@@ -364,8 +364,8 @@ export function ChatLeaseEscrowPanel({
   error = null,
   testId = "chat-lease-escrow",
 }: ChatLeaseEscrowPanelProps) {
-  const { runs, receipts, run } = useEscrowRuns(handler);
   const names: EscrowNames = { chats: chatNames, chatKinds, agents: agentNames };
+  const { runs, receipts, run } = useEscrowRuns(handler, names);
   const inbound = chatKind === "dm" ? [] : claimableEscrows(leases, projectId, chatId);
   const outbound =
     chatKind === "dm"
