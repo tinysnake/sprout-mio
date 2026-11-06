@@ -83,7 +83,14 @@ function toInstance(row: typeof agentInstance.$inferSelect): AgentInstance {
   return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
-function toMessage(row: typeof message.$inferSelect, mentions: readonly MentionSpan[]): Message {
+import type { MessageSkillSpan } from "../contracts/skill";
+import { readSkillsFor, resolveMessageSkills, writeMessageSkills } from "./message-skill";
+
+function toMessage(
+  row: typeof message.$inferSelect,
+  mentions: readonly MentionSpan[],
+  skills: readonly MessageSkillSpan[],
+): Message {
   return {
     id: row.id,
     chatId: row.chatId,
@@ -92,6 +99,7 @@ function toMessage(row: typeof message.$inferSelect, mentions: readonly MentionS
     body: row.body,
     createdAt: row.createdAt.toISOString(),
     mentions: mentions.map((span) => ({ ...span })),
+    skills: skills.map((span) => ({ ...span })),
     ...(row.taskId !== null && row.taskRecordSeq !== null && row.taskRecordKind !== null
       ? {
           taskRecord: {
@@ -678,8 +686,14 @@ function readMessages(
     chatId,
     ordered.map((row) => row.entry.id),
   );
+  const skills = readSkillsFor(
+    chatId,
+    ordered.map((row) => row.entry.id),
+  );
   return {
-    messages: ordered.map((row) => toMessage(row.entry, mentions.get(row.entry.id) ?? [])),
+    messages: ordered.map((row) =>
+      toMessage(row.entry, mentions.get(row.entry.id) ?? [], skills.get(row.entry.id) ?? []),
+    ),
     head: first === undefined ? null : rowCursor(first),
     tail: last === undefined ? null : rowCursor(last),
     hasOlder,
@@ -780,6 +794,8 @@ export function sendMessage(
             .get();
           // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
           writeMessageMentions(chatId, row.id, spans);
+          const skills = resolveMessageSkills(input.body);
+          writeMessageSkills(chatId, row.id, skills);
           const wakeQueued = enqueueMessageWake({
             id: row.id,
             chatId,
@@ -789,7 +805,7 @@ export function sendMessage(
             .set({ updatedAt: new Date() })
             .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
             .run();
-          const saved = toMessage(row, spans);
+          const saved = toMessage(row, spans, skills);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
           else appendAgentMentionRunInput(saved, ctx);
           return saved;

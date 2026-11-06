@@ -126,6 +126,8 @@ export function ChatThread({
   runFacts,
   runActivityByMessage,
   runActivitiesError,
+  skills = { state: "unavailable", items: [] },
+  onSkillsRefresh,
   continuation,
   archived = false,
   history,
@@ -169,6 +171,8 @@ export function ChatThread({
   /** 已结束 run 的完整工作记录：键是产出该记录的 assistant 消息。 */
   runActivityByMessage?: ReadonlyMap<string, ChatRunActivity>;
   runActivitiesError?: string;
+  skills?: import("../../contracts/skill").ChatSkillChoices;
+  onSkillsRefresh?: () => void;
   continuation?: AppResult<ChatContinuationData>;
   archived?: boolean;
   /** 消息分页窗口；缺省时按单页全量渲染，演示场景不需要它。 */
@@ -505,6 +509,8 @@ export function ChatThread({
         </p>
       ) : (
         <MessageComposer
+          skills={skills}
+          onSkillsRefresh={onSkillsRefresh}
           agentName={title}
           members={members}
           draft={draft}

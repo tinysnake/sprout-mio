@@ -30,6 +30,7 @@ function chunk(start: number, count: number): Message[] {
       senderId: "user_1",
       body: `第 ${n} 条`,
       createdAt: new Date(T0 + n * 60_000).toISOString(),
+      skills: [],
       mentions: [],
     };
   });

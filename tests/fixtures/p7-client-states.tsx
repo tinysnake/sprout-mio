@@ -69,6 +69,7 @@ function Scene() {
       <ConnectivityStatus />
       <div className="flex min-h-0 flex-1 flex-col">
         <ChatPane
+          skills={{ state: "unavailable", items: [] }}
           projectId={projectId}
           session={session}
           profile={null}

@@ -7,6 +7,11 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { FieldError } from "../project/result-error";
 import { ChatErrorNotice } from "./chat-error-notice";
+import type { ChatSkillChoices, SkillOption } from "../../contracts/skill";
+import { insertSkill, scanSkillTokens, SKILL_TRIGGER, skillQueryAt } from "../../lib/skill-token";
+import { splitMessageSegments } from "./message-segments";
+import { SkillMark } from "./skill-mark";
+import { SkillPicker } from "./skill-picker";
 import {
   MentionPicker,
   insertMention,
@@ -25,6 +30,8 @@ export const MESSAGE_MAX_LENGTH = 8000;
 export function MessageComposer({
   agentName,
   members,
+  skills = { state: "unavailable", items: [] },
+  onSkillsRefresh,
   draft,
   onDraftChange,
   onSubmit,
@@ -41,6 +48,8 @@ export function MessageComposer({
   agentName: string;
   /** 可以 @ 的成员：只有名字会进正文，id 只用来区分同一批候选项。 */
   members: readonly MentionMember[];
+  skills?: ChatSkillChoices;
+  onSkillsRefresh?: () => void;
   draft: string;
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
@@ -62,18 +71,29 @@ export function MessageComposer({
   const composing = useRef(false);
   const pendingCaret = useRef<number | null>(null);
   const listId = useId();
-  const [query, setQuery] = useState<MentionQuery | null>(null);
+  const [query, setQuery] = useState<(MentionQuery & { kind: "mention" | "skill" }) | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [composingVisual, setComposingVisual] = useState(false);
+  const highlight = useRef<HTMLDivElement | null>(null);
+  const segments = useMemo(() => splitMessageSegments(draft, [], scanSkillTokens(draft)), [draft]);
 
   // 草稿被外部改写（发送后清空、恢复未投递输入）时区间不再成立，浮层跟着关掉。
+  const trigger = query?.kind === "skill" ? SKILL_TRIGGER : "@";
   const activeQuery =
-    query && draft.slice(query.start, query.end) === `@${query.query}` ? query : null;
+    query && draft.slice(query.start, query.end) === `${trigger}${query.query}` ? query : null;
   const matches = useMemo(
-    () => (activeQuery ? matchMembers(members, activeQuery.query) : []),
+    () => (activeQuery?.kind === "mention" ? matchMembers(members, activeQuery.query) : []),
     [members, activeQuery],
   );
+  const skillMatches =
+    activeQuery?.kind === "skill"
+      ? skills.items.filter((skill) =>
+          skill.name.toLowerCase().includes(activeQuery.query.toLowerCase()),
+        )
+      : [];
+  const count = activeQuery?.kind === "skill" ? skillMatches.length : matches.length;
   const open = activeQuery !== null;
-  const active = matches.length > 0 ? Math.min(activeIndex, matches.length - 1) : -1;
+  const active = count > 0 ? Math.min(activeIndex, count - 1) : -1;
 
   const attachInput = useCallback(
     (node: HTMLTextAreaElement | null) => {
@@ -95,13 +115,22 @@ export function MessageComposer({
 
   /** 按光标前的正文同步候选区间；同一区间不产生多余渲染。 */
   function sync(element: HTMLTextAreaElement) {
-    const next = mentionQueryAt(element.value, element.selectionStart ?? element.value.length);
+    const caret = element.selectionStart ?? element.value.length;
+    const skill = skillQueryAt(element.value, caret);
+    const mention = skill ? null : mentionQueryAt(element.value, caret);
+    const next = skill
+      ? { ...skill, kind: "skill" as const }
+      : mention
+        ? { ...mention, kind: "mention" as const }
+        : null;
+    if (next?.kind === "skill" && query?.kind !== "skill") onSkillsRefresh?.();
     setQuery((previous) =>
       previous &&
       next &&
       previous.start === next.start &&
       previous.end === next.end &&
-      previous.query === next.query
+      previous.query === next.query &&
+      previous.kind === next.kind
         ? previous
         : next,
     );
@@ -127,6 +156,17 @@ export function MessageComposer({
     element.focus();
   }
 
+  function pickSkill(skill: SkillOption) {
+    const element = textarea.current;
+    if (!element || !activeQuery) return;
+    const next = insertSkill(element.value, activeQuery, skill.name);
+    pendingCaret.current = next.caret;
+    setQuery(null);
+    setActiveIndex(0);
+    onDraftChange(next.text);
+    element.focus();
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSend || pending) return;
@@ -142,21 +182,26 @@ export function MessageComposer({
         setQuery(null);
         return;
       }
-      if (matches.length > 0) {
+      if (count > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
-          setActiveIndex((current) => (current + 1) % matches.length);
+          setActiveIndex((current) => (current + 1) % count);
           return;
         }
         if (event.key === "ArrowUp") {
           event.preventDefault();
-          setActiveIndex((current) => (current - 1 + matches.length) % matches.length);
+          setActiveIndex((current) => (current - 1 + count) % count);
           return;
         }
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
-          const member = matches[active];
-          if (member) pick(member);
+          if (activeQuery?.kind === "skill") {
+            const skill = skillMatches[active];
+            if (skill) pickSkill(skill);
+          } else {
+            const member = matches[active];
+            if (member) pick(member);
+          }
           return;
         }
       }
@@ -176,7 +221,17 @@ export function MessageComposer({
         aria-busy={pending || undefined}
         className="relative rounded-container border border-input bg-background p-3 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring max-desktop:p-2.5"
       >
-        {open && (
+        {open && activeQuery?.kind === "skill" && (
+          <SkillPicker
+            listId={listId}
+            matches={skillMatches}
+            state={skills.state}
+            activeIndex={active}
+            onPick={pickSkill}
+            onActive={setActiveIndex}
+          />
+        )}
+        {open && activeQuery?.kind === "mention" && (
           <MentionPicker
             listId={listId}
             label="可以 @ 的成员"
@@ -189,36 +244,70 @@ export function MessageComposer({
         <label className="sr-only" htmlFor="message-draft">
           发给{agentName}的消息
         </label>
-        <textarea
-          ref={attachInput}
-          id="message-draft"
-          name="body"
-          data-testid="message-input"
-          value={draft}
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          aria-activedescendant={open && active >= 0 ? mentionOptionId(listId, active) : undefined}
-          aria-haspopup="listbox"
-          onChange={change}
-          onKeyDown={keydown}
-          onSelect={() => {
-            const element = textarea.current;
-            if (!element || composing.current) return;
-            sync(element);
-          }}
-          onBlur={() => setQuery(null)}
-          onCompositionStart={() => {
-            composing.current = true;
-          }}
-          onCompositionEnd={(event) => {
-            composing.current = false;
-            sync(event.currentTarget);
-          }}
-          maxLength={MESSAGE_MAX_LENGTH}
-          rows={2}
-          placeholder={runActive ? "继续补充上下文，追加到当前轮…" : `向${agentName}发送消息…`}
-          className="block h-12.5 w-full resize-none border-0 bg-transparent p-0 text-xs leading-6 text-foreground outline-none placeholder:text-muted-foreground max-desktop:h-12 max-desktop:text-[13px]"
-        />
+        {/* 技能标记的负外边距落在输入区内，不被 overflow 裁掉。 */}
+        <div className="relative -mx-[7px]">
+          <div
+            ref={highlight}
+            aria-hidden="true"
+            data-testid="message-input-highlight"
+            className={`pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words px-[7px] text-xs leading-6 max-desktop:text-[13px] ${
+              composingVisual ? "invisible" : ""
+            }`}
+          >
+            {segments.map((segment, index) =>
+              segment.skill ? (
+                <SkillMark
+                  key={index}
+                  name={segment.skill.name}
+                  text={segment.text}
+                  edge={segment.skillEdge}
+                />
+              ) : (
+                <span key={index}>{segment.text}</span>
+              ),
+            )}
+          </div>
+          <textarea
+            ref={attachInput}
+            id="message-draft"
+            name="body"
+            data-testid="message-input"
+            value={draft}
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            aria-activedescendant={
+              open && active >= 0 ? mentionOptionId(listId, active) : undefined
+            }
+            aria-haspopup="listbox"
+            onChange={change}
+            onKeyDown={keydown}
+            onScroll={(event) => {
+              const element = highlight.current;
+              if (element) element.scrollTop = event.currentTarget.scrollTop;
+            }}
+            onSelect={() => {
+              const element = textarea.current;
+              if (!element || composing.current) return;
+              sync(element);
+            }}
+            onBlur={() => setQuery(null)}
+            onCompositionStart={() => {
+              composing.current = true;
+              setComposingVisual(true);
+            }}
+            onCompositionEnd={(event) => {
+              composing.current = false;
+              setComposingVisual(false);
+              sync(event.currentTarget);
+            }}
+            maxLength={MESSAGE_MAX_LENGTH}
+            rows={2}
+            placeholder={runActive ? "继续补充上下文，追加到当前轮…" : `向${agentName}发送消息…`}
+            className={`relative block h-12.5 w-full resize-none border-0 bg-transparent px-[7px] py-0 text-xs leading-6 outline-none placeholder:text-muted-foreground max-desktop:h-12 max-desktop:text-[13px] ${
+              composingVisual ? "text-foreground" : "text-transparent caret-foreground"
+            }`}
+          />
+        </div>
         <div className="mt-2.25 flex items-center justify-between gap-1.5 max-desktop:flex-wrap">
           <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <Icon as={runActive ? CornerDownLeft : MessageSquare} size={12} />

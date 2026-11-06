@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { InheritedResources } from "../../contracts/skill";
 import {
   turnContextSubmittedEventSchema,
   type TurnContextPromptInput,
@@ -22,7 +23,7 @@ export type OpenSession = {
    * 是否让宿主 skills 与 prompt templates 进入分身的 resource loader。
    * 默认（缺省或 false）与 P3 相同：只加载 Sprout extension 与四个基础工具。
    */
-  inheritHostResources?: boolean;
+  resources: InheritedResources;
   profile: RunConfigSnapshot["profile"];
   remote: RemoteToolGrant;
 };

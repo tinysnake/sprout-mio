@@ -499,20 +499,21 @@ it("reselects after session preparation, aborts empty queued work, and admits th
             extraMessageId = send(s.detail.chat!.id, "fresh ordinary input").id;
           return snapshot;
         }
-        override prompt(messageId: string, text: string) {
+        override prompt(prepared: Parameters<InstanceType<typeof PiSessionProcess>["prompt"]>[0]) {
+          const { messageId } = prepared;
           expect(messageId).toBe(mode === "ordinary_fallback" ? extraMessageId : s.messageId);
           if (mode === "task_prompt_and_steer")
             expect(row(s.runId, messageId).admittedAt).toBeInstanceOf(Date);
-          const task = super.prompt(messageId, text);
+          const task = super.prompt(prepared);
           if (mode === "task_prompt_and_steer") {
             const extra = tasks.startTask(command(s.detail), ctx);
             extraMessageId = extra.startDelivery!.messageId;
           }
           return task;
         }
-        override steer(messageId: string, text: string) {
-          expect(row(s.runId, messageId).admittedAt).toBeInstanceOf(Date);
-          super.steer(messageId, text);
+        override steer(prepared: Parameters<InstanceType<typeof PiSessionProcess>["steer"]>[0]) {
+          expect(row(s.runId, prepared.messageId).admittedAt).toBeInstanceOf(Date);
+          super.steer(prepared);
         }
       }
       const work = runs.queuedRunWork().find((entry) => entry.run.id === s.runId)!;

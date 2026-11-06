@@ -88,6 +88,8 @@ export const CI_GROUPS = Object.freeze({
 });
 
 export const LOCAL_GATES = Object.freeze({
+  "chat-skills":
+    "真实已安装 Pi SDK 的 scoped skills catalog、SQLite span、prompt/steer 投递与故障边界",
   "p7-loop-multiround": "真实 macOS Worker、真实 Pi SDK，同 run 多轮停止与产物历史",
   "a-base": "真实已安装 Pi CLI；其他 A 检查由 CI 执行",
   "b-tooling": "macOS/Pi 专属测试文件；其他 B 检查由 CI 执行",

@@ -3,7 +3,12 @@ import type { ChatDetailLoaderData } from "../../components/chat/chat-loader";
 import { getAgentProfileFn } from "../../server/functions/agent";
 import { getChatRunStateFn, listChatRunActivitiesFn } from "../../server/functions/agent-run";
 import { getChatInfoFn, readTurnContextFn } from "../../server/functions/info-hub";
-import { getChatSessionFn, listChatMembersFn, listMessagesFn } from "../../server/functions/chat";
+import {
+  getChatSessionFn,
+  listChatMembersFn,
+  listMessagesFn,
+  listChatSkillsFn,
+} from "../../server/functions/chat";
 import { getChatContinuationFn } from "../../server/functions/chat-continuation";
 
 /** Project 上下文从 URL 推导：chat 不属于 URL 中的 projectId 时按 not_found 呈现。 */
@@ -16,14 +21,16 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
         ok: false,
         error: { code: "not_found", message: "对象不存在", requestId: session.requestId },
       };
-    const [members, messages, info, runState, runActivities, continuation] = await Promise.all([
-      listChatMembersFn({ data: { chatId: params.chatId } }),
-      listMessagesFn({ data: { chatId: params.chatId } }),
-      getChatInfoFn({ data: { chatId: params.chatId } }),
-      getChatRunStateFn({ data: { chatId: params.chatId } }),
-      listChatRunActivitiesFn({ data: { chatId: params.chatId } }),
-      getChatContinuationFn({ data: { projectId: params.projectId, chatId: params.chatId } }),
-    ]);
+    const [members, messages, info, runState, runActivities, continuation, skills] =
+      await Promise.all([
+        listChatMembersFn({ data: { chatId: params.chatId } }),
+        listMessagesFn({ data: { chatId: params.chatId } }),
+        getChatInfoFn({ data: { chatId: params.chatId } }),
+        getChatRunStateFn({ data: { chatId: params.chatId } }),
+        listChatRunActivitiesFn({ data: { chatId: params.chatId } }),
+        getChatContinuationFn({ data: { projectId: params.projectId, chatId: params.chatId } }),
+        listChatSkillsFn({ data: { chatId: params.chatId } }),
+      ]);
     // Human 诊断按明确 runId 读持久化快照：优先活动 run，否则取这条 Chat 最近一条 run。
     // 不查「Chat 的第一个分身」来造快照；没有 run 就传 null，让页面显示「还没有本轮上下文快照」。
     const snapshotRun = runState.ok
@@ -47,6 +54,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
       turnContext,
       runState,
       runActivities,
+      skills,
       continuation,
     };
   },

@@ -96,6 +96,7 @@ const messages: Message[] = [
     senderId: "usr_demo",
     body: "仓库首页的分析入口应该怎么记录分析依据？我希望以后能知道结论来自哪个 commit。",
     createdAt: "2026-06-18T02:24:00.000Z",
+    skills: [],
     mentions: [],
   },
   {
@@ -105,6 +106,7 @@ const messages: Message[] = [
     senderId: profiles[0]!.id,
     body: "建议把分析依据绑定到每次 run，而不是只写进首页文案。首页可以展示最新结论，但不应该成为证据的唯一存放位置。",
     createdAt: "2026-06-18T02:26:00.000Z",
+    skills: [],
     mentions: [],
   },
   {
@@ -114,6 +116,7 @@ const messages: Message[] = [
     senderId: profiles[0]!.id,
     body: "取舍是：保存快照引用，不复制整个仓库。",
     createdAt: "2026-06-18T02:28:00.000Z",
+    skills: [],
     mentions: [],
   },
   {
@@ -124,6 +127,7 @@ const messages: Message[] = [
     senderId: "usr_demo",
     body: "评审顺序：@林澈@Amenda 先看首页信息层级，再由 @Repo 分析员 核对证据链。\n@前端审阅 麻烦确认 390 宽下不会挤成两行；邮箱 hi@example.com 只是普通文字。",
     createdAt: "2026-06-18T02:30:00.000Z",
+    skills: [],
     mentions: [
       { memberKind: "human", memberId: "usr_demo", start: 5, end: 8 },
       { memberKind: "agent", memberId: profiles[0]!.id, start: 8, end: 15 },
@@ -138,6 +142,7 @@ const messages: Message[] = [
     senderId: profiles[0]!.id,
     body: "行尾与换行分开验：先说结论 @Amenda\n@Repo 分析员 接着补证据，最后 @林澈",
     createdAt: "2026-06-18T02:31:00.000Z",
+    skills: [],
     mentions: [
       { memberKind: "agent", memberId: profiles[0]!.id, start: 14, end: 21 },
       { memberKind: "agent", memberId: profiles[1]!.id, start: 22, end: 31 },
@@ -594,6 +599,7 @@ function MessagesScene() {
                 senderId: "usr_demo",
                 body: draft,
                 createdAt: new Date().toISOString(),
+                skills: [],
                 mentions: [],
               };
               setSent((all) => [...all, message]);
@@ -828,6 +834,7 @@ function WorkspaceScene() {
                   senderId: "usr_demo",
                   body,
                   createdAt: new Date().toISOString(),
+                  skills: [],
                   mentions: [],
                 };
                 setLocalMessages((previous) => ({

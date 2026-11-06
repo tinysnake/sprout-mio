@@ -14,7 +14,7 @@
  * 走生产 runner `scripts/pi-host-runner.mjs` 的 open 协议，不调用任何付费模型。
  */
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -323,7 +323,29 @@ function openSession(options: {
         cwd: options.cwd,
         agentDir: options.hostAgentDir,
         extensionPath: resolve(repoRoot, "pi/sprout-extension.ts"),
-        inheritHostResources: options.inheritHostResources,
+        resources: options.inheritHostResources
+          ? (() => {
+              const catalog = JSON.parse(
+                execFileSync(
+                  process.execPath,
+                  [join(repoRoot, "scripts/pi-host-skill-catalog.mjs")],
+                  {
+                    input:
+                      JSON.stringify({ cwd: options.cwd, agentDir: options.hostAgentDir }) + "\n",
+                    env,
+                    timeout: 10_000,
+                    encoding: "utf8",
+                  },
+                ),
+              );
+              return {
+                kind: "enabled",
+                skillRevision: catalog.revision,
+                skillPaths: catalog.skillPaths,
+                promptPaths: [join(options.hostAgentDir, "prompts")],
+              };
+            })()
+          : { kind: "disabled" },
         profile: {
           id: newId(ID_PREFIXES.agentProfile),
           name: options.label,

@@ -371,6 +371,7 @@ it("makes Task metadata optional on message output without adding it to send inp
   const message = {
     id: messageId,
     chatId,
+    skills: [],
     senderKind: "human",
     senderId: "user",
     body: "消息",
@@ -401,6 +402,7 @@ it("validates remote list and Chat outputs against their response schemas", () =
   const message = {
     id: messageId,
     chatId,
+    skills: [],
     senderKind: "human",
     senderId: "user",
     body: "消息",

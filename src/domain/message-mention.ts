@@ -3,6 +3,7 @@ import type { ChatMember, MentionSpan } from "../contracts/chat";
 import { db } from "../db";
 import { agentProfile, messageMention, user } from "../db/schema";
 import { resolveMentions } from "./mention";
+import { scanSkillTokens } from "../lib/skill-token";
 import type { MentionCandidate } from "./mention";
 
 const memberKey = (member: { memberKind: "human" | "agent"; memberId: string }): string =>
@@ -50,7 +51,10 @@ export function resolveMessageMentions(input: {
   readonly body: string;
   readonly candidates: readonly MentionCandidate[];
 }): readonly MentionSpan[] {
-  return resolveMentions(input.body, input.candidates);
+  const reserved = scanSkillTokens(input.body);
+  return resolveMentions(input.body, input.candidates).filter(
+    (mention) => !reserved.some((token) => mention.start < token.end && mention.end > token.start),
+  );
 }
 
 export function writeMessageMentions(

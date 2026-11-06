@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vite-plus/test";
+import { prepareSyntheticPiMessage } from "../src/server/message-skills";
 import { PiSessionProcess } from "../src/server/pi-host/process";
 
 it("宿主 abort/close/自然退出均立即且只触发一次 grant 清理，迟到注册也会清理", async () => {
@@ -37,7 +38,14 @@ it("宿主 abort/close/自然退出均立即且只触发一次 grant 清理，�
       try {
         if (action === "abort") process.abortSession();
         if (action === "close") await process.close();
-        if (action === "exit") process.steer("probe", "exit");
+        if (action === "exit")
+          process.steer(
+            prepareSyntheticPiMessage({
+              kind: "resource_notice",
+              messageId: "probe",
+              text: "exit",
+            }),
+          );
         await disposal;
         expect(count).toBe(1);
         await process.close();

@@ -5,6 +5,12 @@ import {
   rejectContinuation,
 } from "../../domain/continuation-delivery";
 import { Effect } from "effect";
+import {
+  MessageSkillError,
+  preparePiMessage,
+  prepareSyntheticPiMessage,
+  type PreparedPiMessage,
+} from "../message-skills";
 import { ID_PREFIXES } from "../../contracts/ids";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -38,6 +44,7 @@ import { machineRuntimeContext } from "../runtime";
 import { PiHostFailure, piInstancePaths } from "./process";
 import type { PiSessionProcess } from "./process";
 import { clearRunActivity, recordRunActivity } from "./run-activity";
+import { prepareInheritedResources } from "./skills";
 
 export type Work = ReturnType<typeof queuedRunWork>[number];
 export type PiHostSignals = { readonly isStopping: () => boolean };
@@ -51,18 +58,6 @@ const DELIVERY_ID_PREFIX = `${ID_PREFIXES.continuationDelivery}_`;
  */
 const NOTICE_ID_PREFIX = "notice:";
 const NOTICE_RETRY_MS = 1_000;
-
-/**
- * `SPROUT_PI_INHERIT_HOST_RESOURCES=false` 或 `0` 关闭继承，缺省继承宿主 Pi 解析出的 skills 与宿主 prompt templates。
- *
- * 不用 profile 字段承载：profile 存 DB，本单元不改 schema；这是宿主侧运行边界，
- * 与 `SPROUT_PI_PROVIDER_ROOT` 同类，由父进程在这里解析后随 open 显式传给 runner，
- * 开关状态再随 ready 快照落库（`configSnapshot.resources.inheritHostResources`）。
- */
-function inheritHostResources(): boolean {
-  const value = globalThis.process.env.SPROUT_PI_INHERIT_HOST_RESOURCES;
-  return value !== "false" && value !== "0";
-}
 
 export function executeRun(
   work: Work,
@@ -114,6 +109,10 @@ export function executeRun(
           );
           return grant;
         });
+        const resources = yield* Effect.tryPromise({
+          try: () => prepareInheritedResources(run.projectId, ctx),
+          catch: (error) => error,
+        });
         const snapshot = yield* Effect.tryPromise({
           try: () =>
             process.open({
@@ -128,7 +127,7 @@ export function executeRun(
                 globalThis.process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
               ),
               extensionPath: resolve("pi/sprout-extension.ts"),
-              inheritHostResources: inheritHostResources(),
+              resources,
               remote,
               profile: {
                 id: profile.id,
@@ -176,43 +175,86 @@ export function executeRun(
         });
         // Session/repository preparation can outlive Task responsibility. Select again at
         // the synchronous send boundary; admit persists the attempt before stdin.write.
-        const promptTask = yield* Effect.sync(() => {
-          captureTurnContext({ projectId: run.projectId, runId: run.id }, hostContext);
-          process.turnContext = prepareTurnContext(
-            { projectId: run.projectId, runId: run.id },
-            hostContext,
-          );
-          process.onTurnContextSubmitted = (receipt) => {
-            confirmTurnContext(receipt, hostContext);
-          };
-          for (;;) {
-            const selected = firstPendingRunInput(run.id, ctx);
-            if (!selected) {
-              const continuation = pendingContinuations(run.id)[0];
-              if (continuation) {
-                const attempted = admitContinuation(
-                  continuation.deliveryId,
-                  run.id,
-                  new Date(now()),
-                  (envelope) => process.prompt(envelope.deliveryId, JSON.stringify(envelope)),
-                );
-                if (attempted) return attempted;
-                continue;
-              }
-              transitionAgentRun(run.id, "aborted", { stopReason: "input_invalid" }, ctx);
-              return undefined;
-            }
-            const send = () => {
-              sent.add(selected.message.id);
-              return process.prompt(selected.message.id, selected.message.body);
+        const warnSkills = (prepared: PreparedPiMessage) => {
+          for (const warning of prepared.warnings)
+            recordDiagnostic({
+              level: "warn",
+              event: "pi.skill_unavailable",
+              requestId: run.requestId,
+              projectId: run.projectId,
+              chatId: run.chatId,
+              runId: run.id,
+              message: "技能未展开，保留原始 token",
+              data: { ...warning },
+            });
+        };
+        const preparedPrompt = yield* Effect.tryPromise({
+          try: async () => {
+            captureTurnContext({ projectId: run.projectId, runId: run.id }, hostContext);
+            process.turnContext = prepareTurnContext(
+              { projectId: run.projectId, runId: run.id },
+              hostContext,
+            );
+            process.onTurnContextSubmitted = (receipt) => {
+              confirmTurnContext(receipt, hostContext);
             };
-            if (selected.message.taskRecordKind !== "start") return send();
-            const attempted = admitTaskStartInput(run.id, selected.message.id, send);
-            if (attempted) return attempted;
-            // Another writer can invalidate responsibility between selection and admit.
-            // The rejected row has been cancelled: select the next input before returning.
-          }
+            for (;;) {
+              const selected = firstPendingRunInput(run.id, ctx);
+              if (!selected) {
+                const continuation = pendingContinuations(run.id)[0];
+                if (continuation) {
+                  const attempted = admitContinuation(
+                    continuation.deliveryId,
+                    run.id,
+                    new Date(now()),
+                    (envelope) =>
+                      process.prompt(
+                        prepareSyntheticPiMessage({
+                          kind: "continuation",
+                          messageId: envelope.deliveryId,
+                          text: JSON.stringify(envelope),
+                        }),
+                      ),
+                  );
+                  if (attempted) return { task: attempted };
+                  continue;
+                }
+                transitionAgentRun(run.id, "aborted", { stopReason: "input_invalid" }, ctx);
+                return undefined;
+              }
+              const prepared =
+                selected.message.taskRecordKind === "start"
+                  ? prepareSyntheticPiMessage({
+                      kind: "task_start",
+                      messageId: selected.message.id,
+                      text: selected.message.body,
+                    })
+                  : await preparePiMessage(
+                      {
+                        projectId: run.projectId,
+                        chatId: run.chatId,
+                        messageId: selected.message.id,
+                      },
+                      resources,
+                      ctx,
+                    );
+              if (signals.isStopping()) return undefined;
+              if (firstPendingRunInput(run.id, ctx)?.message.id !== selected.message.id) continue;
+              const send = () => {
+                warnSkills(prepared);
+                sent.add(selected.message.id);
+                return process.prompt(prepared);
+              };
+              if (selected.message.taskRecordKind !== "start") return { task: send() };
+              const attempted = admitTaskStartInput(run.id, selected.message.id, send);
+              if (attempted) return { task: attempted };
+              // Another writer can invalidate responsibility between selection and admit.
+              // The rejected row has been cancelled: select the next input before returning.
+            }
+          },
+          catch: (error) => error,
         });
+        const promptTask = preparedPrompt?.task;
         if (!promptTask) return;
         const hints = new InfoHubHintChannel(run.id, hostContext, (hint) =>
           process.infoHubHint?.(hint),
@@ -224,61 +266,104 @@ export function executeRun(
             yield* Effect.gen(function* () {
               while (true) {
                 yield* Effect.sleep("100 millis");
-                const keepPolling = yield* Effect.sync(() => {
-                  try {
-                    if (signals.isStopping()) return true;
-                    if (now() - hintSampleAt >= 1000) {
-                      hintSampleAt = now();
-                      void hints.tick(now()).catch(() => {});
-                    }
-                    for (const pending of pendingRunInputs(run.id, ctx)) {
-                      if (sent.has(pending.messageId)) continue;
-                      sent.add(pending.messageId);
-                      try {
-                        if (pending.taskRecordKind === "start") {
-                          admitTaskStartInput(run.id, pending.messageId, () =>
-                            process.steer(pending.messageId, pending.text),
-                          );
-                        } else process.steer(pending.messageId, pending.text);
-                      } catch {
-                        recordRunInputDeliveryFailure(
-                          run.id,
-                          pending.messageId,
-                          "Pi runner 通信失败，消息未投递",
-                          ctx,
-                        );
-                        return false;
-                      }
-                    }
-                    for (const continuation of pendingContinuations(run.id)) {
-                      admitContinuation(
-                        continuation.deliveryId,
-                        run.id,
-                        new Date(now()),
-                        (envelope) => {
-                          process.steer(envelope.deliveryId, JSON.stringify(envelope));
-                          return true;
-                        },
-                      );
-                    }
+                const keepPolling = yield* Effect.tryPromise({
+                  try: async () => {
                     try {
-                      for (const notice of pendingRunNotices({ runId: run.id }, ctx)) {
-                        const key = `${NOTICE_ID_PREFIX}${notice.id}`;
-                        if (noticesSent.has(key)) continue;
-                        const retryAt = noticesRetry.get(key);
-                        if (retryAt !== undefined && now() < retryAt) continue;
-                        // 先记成待确认再写：确认前不重复投递，被拒后按退避重试。
-                        process.steer(key, noticeDeliveryText(notice));
-                        noticesRetry.set(key, Number.POSITIVE_INFINITY);
+                      if (signals.isStopping()) return true;
+                      if (now() - hintSampleAt >= 1000) {
+                        hintSampleAt = now();
+                        void hints.tick(now()).catch(() => {});
                       }
+                      for (const pending of pendingRunInputs(run.id, ctx)) {
+                        if (sent.has(pending.messageId)) continue;
+                        try {
+                          const prepared =
+                            pending.taskRecordKind === "start"
+                              ? prepareSyntheticPiMessage({
+                                  kind: "task_start",
+                                  messageId: pending.messageId,
+                                  text: pending.text,
+                                })
+                              : await preparePiMessage(
+                                  {
+                                    projectId: run.projectId,
+                                    chatId: run.chatId,
+                                    messageId: pending.messageId,
+                                  },
+                                  resources,
+                                  ctx,
+                                );
+                          if (signals.isStopping()) return true;
+                          if (
+                            !pendingRunInputs(run.id, ctx).some(
+                              (input) => input.messageId === pending.messageId,
+                            )
+                          )
+                            continue;
+                          sent.add(pending.messageId);
+                          if (pending.taskRecordKind === "start") {
+                            admitTaskStartInput(run.id, pending.messageId, () =>
+                              process.steer(prepared),
+                            );
+                          } else {
+                            warnSkills(prepared);
+                            process.steer(prepared);
+                          }
+                        } catch (error) {
+                          recordRunInputDeliveryFailure(
+                            run.id,
+                            pending.messageId,
+                            error instanceof MessageSkillError
+                              ? error.code
+                              : "Pi runner 通信失败，消息未投递",
+                            ctx,
+                          );
+                          return false;
+                        }
+                      }
+                      for (const continuation of pendingContinuations(run.id)) {
+                        admitContinuation(
+                          continuation.deliveryId,
+                          run.id,
+                          new Date(now()),
+                          (envelope) => {
+                            process.steer(
+                              prepareSyntheticPiMessage({
+                                kind: "continuation",
+                                messageId: envelope.deliveryId,
+                                text: JSON.stringify(envelope),
+                              }),
+                            );
+                            return true;
+                          },
+                        );
+                      }
+                      try {
+                        for (const notice of pendingRunNotices({ runId: run.id }, ctx)) {
+                          const key = `${NOTICE_ID_PREFIX}${notice.id}`;
+                          if (noticesSent.has(key)) continue;
+                          const retryAt = noticesRetry.get(key);
+                          if (retryAt !== undefined && now() < retryAt) continue;
+                          // 先记成待确认再写：确认前不重复投递，被拒后按退避重试。
+                          process.steer(
+                            prepareSyntheticPiMessage({
+                              kind: "resource_notice",
+                              messageId: key,
+                              text: noticeDeliveryText(notice),
+                            }),
+                          );
+                          noticesRetry.set(key, Number.POSITIVE_INFINITY);
+                        }
+                      } catch {
+                        // 通知投递失败保留 delivered_at=NULL 等待下一轮；不拉倒 run 也不重复记已发。
+                      }
+                      return true;
                     } catch {
-                      // 通知投递失败保留 delivered_at=NULL 等待下一轮；不拉倒 run 也不重复记已发。
+                      // 投递轮询失败不拉倒宿主；run 级故障由 prompt 路径报告。
+                      return false;
                     }
-                    return true;
-                  } catch {
-                    // 投递轮询失败不拉倒宿主；run 级故障由 prompt 路径报告。
-                    return false;
-                  }
+                  },
+                  catch: (error) => error,
                 });
                 if (!keepPolling) return;
               }
@@ -300,7 +385,9 @@ export function executeRun(
                 const failure =
                   error instanceof PiHostFailure
                     ? error
-                    : error instanceof RepositoryError || error instanceof InfoHubError
+                    : error instanceof RepositoryError ||
+                        error instanceof InfoHubError ||
+                        error instanceof MessageSkillError
                       ? new PiHostFailure(error.code, error.message)
                       : new PiHostFailure("run_failed", "Agent run 执行失败");
                 // 与宿主级诊断一样保留原因；只取错误分类和消息，不序列化异常附带的凭据等字段。

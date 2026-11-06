@@ -38,12 +38,13 @@ const sendMessageRequest = z.object({
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
-  const [session, chat, chatSession] = await Promise.all([
+  const [session, chat, chatSession, skills] = await Promise.all([
     import("../session"),
     import("../../domain/chat"),
     import("../../domain/chat-session"),
+    import("../pi-host/skills"),
   ]);
-  return { requireSession: session.requireSession, ...chat, ...chatSession };
+  return { requireSession: session.requireSession, ...chat, ...chatSession, ...skills };
 }
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
 type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
@@ -69,7 +70,7 @@ async function failure(
 async function chatBoundary<T>(
   headers: Headers,
   requestId: string,
-  operation: (deps: ServerDeps, context: ProjectContext) => ChatResult<T>,
+  operation: (deps: ServerDeps, context: ProjectContext) => ChatResult<T> | Promise<ChatResult<T>>,
 ): Promise<ChatResult<T>> {
   let deps: ServerDeps | undefined;
   let recordDiagnostic: DiagnosticRecorder | undefined;
@@ -78,7 +79,7 @@ async function chatBoundary<T>(
     deps = await serverDeps();
     const session = await deps.requireSession(headers, requestId);
     if (!session.ok) return session;
-    return operation(deps, { userId: session.data.userId, requestId });
+    return await operation(deps, { userId: session.data.userId, requestId });
   } catch (error) {
     return failure(error, requestId, recordDiagnostic);
   }
@@ -286,6 +287,19 @@ export const listMessagesFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     listMessagesBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const listChatSkillsFn = createServerFn({ method: "GET" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    chatBoundary<import("../../contracts/skill").ChatSkillChoices>(
+      getRequestHeaders(),
+      getRequestContext().requestId,
+      async (deps, ctx) => {
+        const input = chatIdInput.parse(data);
+        return ok(await deps.listChatSkillChoices(input.chatId, ctx), ctx.requestId);
+      },
+    ),
   );
 
 export const sendMessageFn = createServerFn({ method: "POST" })

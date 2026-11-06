@@ -41,6 +41,7 @@ export function ChatPane({
   info,
   runState,
   runActivities,
+  skills,
   continuation,
   inspectorOpen,
   onToggleInspector,
@@ -58,6 +59,7 @@ export function ChatPane({
   runState: AgentRunResult<ChatRunState>;
   /** 已结束 run 的工作记录：按产出消息归属，在消息底部回看。 */
   runActivities: AgentRunResult<ChatRunActivity[]>;
+  skills: import("../../contracts/skill").ChatSkillChoices;
   continuation: AppResult<ChatContinuationData>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
@@ -246,6 +248,8 @@ export function ChatPane({
         }
       />
       <ChatThread
+        skills={skills}
+        onSkillsRefresh={onChanged}
         back={
           <Link
             to="/projects/$projectId/chats"

@@ -534,6 +534,7 @@ describe("消息增量读的游标", () => {
       senderId: "user_1",
       body: id,
       createdAt: "2026-01-02T03:04:05.000Z",
+      skills: [],
       mentions: [],
     };
   }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { assertPreparedPiMessage, type PreparedPiMessage } from "../message-skills";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -214,7 +215,9 @@ export class PiSessionProcess {
     return event.snapshot;
   }
 
-  async prompt(messageId: string, text: string): Promise<{ text: string; stopReason: string }> {
+  async prompt(prepared: PreparedPiMessage): Promise<{ text: string; stopReason: string }> {
+    assertPreparedPiMessage(prepared);
+    const { messageId, text } = prepared;
     const turnContext = this.turnContext;
     if (!turnContext || turnContext.runId !== this.id)
       throw new PiHostFailure("turn_context_unavailable", "轮初上下文尚未准备");
@@ -240,7 +243,9 @@ export class PiSessionProcess {
     this.send({ type: "info_hub_hint", id: this.id, hint });
   }
 
-  steer(messageId: string, text: string): void {
+  steer(prepared: PreparedPiMessage): void {
+    assertPreparedPiMessage(prepared);
+    const { messageId, text } = prepared;
     this.send({ type: "steer", id: this.id, messageId, text });
   }
 
