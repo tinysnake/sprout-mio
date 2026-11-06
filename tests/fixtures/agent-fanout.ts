@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { Effect, ManagedRuntime } from "effect";
 import { eq } from "drizzle-orm";
 import type { RunConfigSnapshot } from "../../src/contracts/agent-run";
+import type { PreparedPiMessage } from "../../src/server/message-skills";
 import { PUBLIC_CHANNEL_DISPLAY_TITLE } from "../../src/contracts/chat";
 import type { Message } from "../../src/contracts/chat";
 import type { ProjectContext } from "../../src/domain/project";
@@ -450,8 +451,8 @@ type ControlledProcess = {
   onRejected?: (messageId: string, reason: string) => void;
   onDispose: (callback: () => void) => void;
   open: () => Promise<RunConfigSnapshot>;
-  prompt: (messageId: string, text: string) => Promise<{ text: string; stopReason: string }>;
-  steer: (messageId: string, text: string) => void;
+  prompt: (prepared: PreparedPiMessage) => Promise<{ text: string; stopReason: string }>;
+  steer: (prepared: PreparedPiMessage) => void;
   close: () => Promise<void>;
 };
 function controlledProcess(options: {
@@ -486,14 +487,14 @@ function controlledProcess(options: {
         updatedAt: new Date().toISOString(),
       },
     }),
-    prompt: (messageId, _text) => {
-      fake.onDelivered?.(messageId);
-      delivered.push(messageId);
+    prompt: (prepared) => {
+      fake.onDelivered?.(prepared.messageId);
+      delivered.push(prepared.messageId);
       options.beforePromptSettles?.();
       return Promise.resolve({ text: options.reply, stopReason: "stop" });
     },
-    steer: (messageId, _text) => {
-      steered.push(messageId);
+    steer: (prepared) => {
+      steered.push(prepared.messageId);
     },
     close: async () => {
       for (const callback of disposers.splice(0)) callback();

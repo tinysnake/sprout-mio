@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { and, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import type { RemoteCommand, RemoteReport } from "../../src/contracts/remote";
+import type { PreparedPiMessage } from "../../src/server/message-skills";
 import { WORKER_STALE_AFTER_MS } from "../../src/contracts/worker";
 import { db, sqlite } from "../../src/db";
 import { migrateDatabase } from "../../src/db/migrate";
@@ -1452,7 +1453,8 @@ if (scenario === "steer") {
         cwd: "/tmp",
         runnerPath: "/tmp",
       }),
-      prompt: async (id: string) => {
+      prompt: async (prepared: PreparedPiMessage) => {
+        const id = prepared.messageId;
         setTimeout(() => {
           const self = fake as { onDelivered?: (messageId: string) => void };
           self.onDelivered?.(id);
@@ -1460,7 +1462,8 @@ if (scenario === "steer") {
         await new Promise((resolve) => setTimeout(resolve, 500));
         return { text: "完成", stopReason: "stop" };
       },
-      steer: (id: string) => {
+      steer: (prepared: PreparedPiMessage) => {
+        const id = prepared.messageId;
         if (!id.startsWith("notice:")) return;
         noticeCalls += 1;
         if (noticeCalls <= steerFailures) throw new Error("steer boom");
