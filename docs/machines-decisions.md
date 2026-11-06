@@ -97,6 +97,7 @@
 - 交接期间不会把 Machine 释放给无关工作。
 - 挂靠不改变 Machine 上的进程状态。领取者获得 Machine 操作权后，可以查看和控制原有进程。
 - 原分身挂靠后不能继续向 Machine 下命令。远端进程可以持续运行，agent harness 本身不在 Machine 上，不属于交接对象。
+- 挂靠、领取与撤销挂靠没有人类入口：它们只由分身通过 Agent 工具（`sprout_lease_escrow`、`sprout_lease_claim`、`sprout_lease_escrow_cancel`）发起。人类只有可见性，以及下一节的就地强制收回。
 
 ### 租约与进程独立
 

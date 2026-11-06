@@ -29,7 +29,15 @@ import { listMessages, sendMessage } from "../domain/chat";
 import { getChatSession } from "../domain/chat-session";
 import { hashCredential } from "../domain/machine";
 import { config } from "../lib/config";
-import { acquireLease, getLease, handoffLease, releaseLease } from "./lease";
+import {
+  acquireLease,
+  cancelLeaseEscrow,
+  claimLease,
+  escrowLease,
+  getLease,
+  handoffLease,
+  releaseLease,
+} from "./lease";
 import type { AgentRemoteContext } from "./lease";
 import {
   mcpCatalogGet,
@@ -331,6 +339,12 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                 return releaseLease(input, actorContext);
               case "handoff":
                 return handoffLease(input, actorContext);
+              case "escrow":
+                return escrowLease(input, actorContext);
+              case "claim":
+                return claimLease(input, actorContext);
+              case "escrow_cancel":
+                return cancelLeaseEscrow(input, actorContext);
             }
           }
         }

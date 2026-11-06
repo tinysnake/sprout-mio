@@ -58,6 +58,24 @@ const cases = {
     targetInstanceId: instanceId,
   },
   sprout_lease_get: { machineId },
+  sprout_lease_escrow: {
+    machineId,
+    requestId,
+    expectedGeneration: 1,
+    chatId: "cnv_00000000",
+  },
+  sprout_lease_claim: {
+    machineId,
+    requestId,
+    expectedGeneration: 2,
+    escrowId: "les_00000000",
+  },
+  sprout_lease_escrow_cancel: {
+    machineId,
+    requestId,
+    expectedGeneration: 2,
+    escrowId: "les_00000000",
+  },
   sprout_remote_shell: { ...base, command: "true" },
   sprout_remote_file_read: { ...base, path: "/tmp/file" },
   sprout_remote_file_write: { ...base, path: "/tmp/file", content: "fixture" },
@@ -109,12 +127,25 @@ describe("远端 Pi 工具边界", () => {
       "lease_mutate",
       "lease_mutate",
       "lease_get",
+      "lease_mutate",
+      "lease_mutate",
+      "lease_mutate",
       ...Array(5).fill("execution_submit"),
       "execution_get",
       "execution_cancel",
       "execution_log_read",
     ]);
-    const shell = requests[4]!.call;
+    // 挂靠 / 领取 / 撤销挂靠走同一个 lease_mutate 通道，action 由工具名推导。
+    expect(
+      requests
+        .slice(4, 7)
+        .map(({ call }) => (call.type === "lease_mutate" ? call.input.action : null)),
+    ).toEqual(["escrow", "claim", "escrow_cancel"]);
+    expect(requests[4]!.call.input).toMatchObject({
+      chatId: "cnv_00000000",
+      expectedGeneration: 1,
+    });
+    const shell = requests[7]!.call;
     expect(shell).toMatchObject({
       type: "execution_submit",
       input: {
@@ -216,6 +247,52 @@ describe("远端 Pi 工具边界", () => {
       isError: false,
       details: { outcome: "pending", data: { state: "pending" } },
     });
+  });
+
+  it("挂靠、领取、撤销挂靠按挂靠契约解码，不冒充 mutation 收据", async () => {
+    const escrow = {
+      projectId,
+      machineId,
+      escrowId: "les_00000000",
+      state: "escrowed" as const,
+      chatId: "cnv_00000000",
+      targetAgentProfileId: null,
+      escrowedByInstanceId: instanceId,
+      escrowedAt: time,
+      escrowGeneration: 2,
+      claimedByInstanceId: null,
+      claimedAt: null,
+      claimedGeneration: null,
+    };
+    const lease = {
+      ...free,
+      generation: 2,
+      state: "held" as const,
+      holderInstanceId: instanceId,
+      escrow,
+    };
+    let reply: { lease: typeof lease; escrow: typeof escrow } = { lease, escrow };
+    const http = await service((_req, res) => {
+      res.end(JSON.stringify({ ok: true, requestId, data: reply }));
+    });
+    try {
+      const tool = tools(createRemoteClient(grant(http.endpoint))).get("sprout_lease_escrow")!;
+      expect(await tool.execute("probe", cases.sprout_lease_escrow)).toMatchObject({
+        isError: false,
+        details: {
+          outcome: "succeeded",
+          data: { lease: { generation: 2 }, escrow: { state: "escrowed" } },
+        },
+      });
+      // 跨 Machine 的挂靠收据不可冒充本次结果。
+      reply = { lease, escrow: { ...escrow, machineId: "mch_11111111" } };
+      expect(await tool.execute("probe", cases.sprout_lease_escrow)).toMatchObject({
+        isError: true,
+        details: { outcome: "unknown" },
+      });
+    } finally {
+      http.close();
+    }
   });
 
   it("取消与日志：送达不等于已停止，不完整日志不当空，跨执行响应不可冒充", async () => {

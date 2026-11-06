@@ -113,6 +113,7 @@ export const LOCAL_GATES = Object.freeze({
   "bf-p6b-lifecycle": "真实 macOS Worker、已安装 Pi SDK 与生产 HTTP Info Hub 生命周期",
   "y-mcp-worker": "真实 Pi 版本探测",
   "z-lease-integration": "真实 Pi runner/model/tool 链路",
+  "p8a-lease-integration": "真实 macOS Worker、已安装 Pi SDK 与生产 HTTP 的挂靠/领取/撤销链路",
   "z2-mcp-integration": "真实 Pi MCP extension",
   "z3-mcp-acceptance": "内嵌真实 Pi MCP 验收及历史证据校验",
   "deploy-rehearse": "本机端口与 pnpm 构建：首次部署、升级、回滚演练",

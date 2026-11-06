@@ -1,7 +1,11 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { z } from "zod";
-import { leaseMutationViewSchema, leaseViewSchema } from "../contracts/lease";
+import {
+  leaseEscrowResultSchema,
+  leaseMutationViewSchema,
+  leaseViewSchema,
+} from "../contracts/lease";
 import { infoHubViewSchema } from "../contracts/info-hub-query";
 import { appErrorSchema } from "../contracts/result";
 import type { AppResult } from "../contracts/result";
@@ -52,6 +56,7 @@ type RemoteData =
   | z.infer<typeof executionCancellationViewSchema>
   | z.infer<typeof executionLogReadViewSchema>
   | z.infer<typeof leaseMutationViewSchema>
+  | z.infer<typeof leaseEscrowResultSchema>
   | z.infer<typeof leaseReadSchema>
   | z.infer<typeof mcpCatalogViewSchema>
   | z.infer<typeof mcpSessionOpenOutputSchema>
@@ -118,6 +123,14 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
     return ok(parsed.data);
   }
   if (call.type === "lease_mutate") {
+    // 挂靠 / 领取 / 撤销挂靠回的是「动作之后的新事实」，不是 mutation 收据。
+    if (["escrow", "claim", "escrow_cancel"].includes(call.input.action)) {
+      const parsed = leaseEscrowResultSchema.safeParse(raw);
+      if (!parsed.success) return bad;
+      const { lease, escrow } = parsed.data;
+      if (!sameBinding(lease) || !sameBinding(escrow)) return bad;
+      return ok(parsed.data);
+    }
     const parsed = leaseMutationViewSchema.safeParse(raw);
     if (!parsed.success || !sameBinding(parsed.data)) return bad;
     return ok(parsed.data);

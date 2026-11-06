@@ -24,7 +24,12 @@ import {
 } from "./mcp";
 import { runIdSchema } from "./agent-run";
 import { appIdPattern, ID_PREFIXES } from "./ids";
-import { leaseKeySchema, leaseMutationInputSchema, leaseReadInputSchema } from "./lease";
+import {
+  leaseEscrowCommandInputSchema,
+  leaseKeySchema,
+  leaseMutationInputSchema,
+  leaseReadInputSchema,
+} from "./lease";
 import {
   macosAbsolutePathSchema,
   positiveSafeIntegerSchema,
@@ -494,10 +499,12 @@ export const remoteExchangeOutputSchema = z.strictObject({
   /** 下行取消意图：送达只说明收到，不说明进程已停。 */
   cancellations: z.array(executionCancelSchema).max(4).optional(),
 });
+// 挂靠 / 领取 / 撤销挂靠只由分身发起：它们是 Agent 工具，不进入人类边界。
 const agentMutationInputSchema = z.discriminatedUnion("action", [
   leaseMutationInputSchema.options[0],
   leaseMutationInputSchema.options[1],
   leaseMutationInputSchema.options[2],
+  ...leaseEscrowCommandInputSchema.options,
 ]);
 /** 游标绑定执行：用执行 A 的游标读执行 B 必须被拒，不静默跳过 B 的前缀。 */
 export const executionLogCursorSchema = z.strictObject({
@@ -704,6 +711,24 @@ export const remoteToolInputSchemas = {
   sprout_lease_get: z.strictObject({
     machineId: leaseKeySchema.shape.machineId,
     mutationId: mutationIdSchema.optional(),
+  }),
+  /** 挂靠到本 Project 的 Group（或 Public Channel），可指定该 Group 内的 Agent profile。 */
+  sprout_lease_escrow: z.strictObject({
+    ...toolMutationBase,
+    expectedGeneration: positiveSafeIntegerSchema,
+    chatId: id(ID_PREFIXES.chat),
+    targetAgentProfileId: id(ID_PREFIXES.agentProfile).optional(),
+  }),
+  /** 领取：身份由 grant 注入，这里只给目标挂靠行与当前代次。 */
+  sprout_lease_claim: z.strictObject({
+    ...toolMutationBase,
+    expectedGeneration: positiveSafeIntegerSchema,
+    escrowId: id(ID_PREFIXES.leaseEscrow),
+  }),
+  sprout_lease_escrow_cancel: z.strictObject({
+    ...toolMutationBase,
+    expectedGeneration: positiveSafeIntegerSchema,
+    escrowId: id(ID_PREFIXES.leaseEscrow),
   }),
   sprout_remote_shell: z.strictObject({ ...toolExecutionBase, ...shellFields }),
   sprout_remote_file_read: z.strictObject({ ...toolExecutionBase, ...fileReadFields }),

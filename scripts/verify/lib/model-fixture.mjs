@@ -81,7 +81,10 @@ export function statusTurn() {
 }
 
 export function leaseTurn(action, parameters) {
-  assert(["acquire", "release", "handoff"].includes(action), "known lease action");
+  assert(
+    ["acquire", "release", "handoff", "escrow", "claim", "escrow_cancel"].includes(action),
+    "known lease action",
+  );
   return {
     lease: { action, parameters: structuredClone(parameters) },
     reply: "Local model fixture completed the requested tools; inspect the server receipt.",
