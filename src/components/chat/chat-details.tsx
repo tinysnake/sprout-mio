@@ -30,6 +30,7 @@ import {
   DialogTrigger,
 } from "../ui/dialog";
 import { ChatErrorNotice } from "./chat-error-notice";
+import { ChatLeaseEscrowLive } from "./chat-lease-escrow";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { ChatFactsBlock } from "../info-hub/chat-info-panel";
@@ -114,6 +115,20 @@ export function ChatDetails({
   // 治理事实只读领域层算好的那一份（裁定 d45）：页面不抄能力表、不比 owner。
   // Agent 当 owner 时，`canChangeOwner` 已经包含 d6 的 Project 创建者兜底。
   const governance = session.governance;
+  // 挂靠面板只认 Chat 里的分身身份；DM 不会是挂靠目标，也不在这里发起。
+  const escrowInstances =
+    session.kind === "dm"
+      ? []
+      : session.instances.map((instance) => ({
+          instanceId: instance.instanceId,
+          agentProfileId: instance.agentProfileId,
+        }));
+  const escrowInstanceNames =
+    session.kind === "dm"
+      ? {}
+      : Object.fromEntries(
+          session.instances.map((instance) => [instance.instanceId, instance.profileName]),
+        );
   const currentMembers: ChatMember[] = members.ok ? members.data : [];
   const ownerCandidates =
     chat.kind === "public_channel"
@@ -549,11 +564,28 @@ export function ChatDetails({
               )}
               {machineFacts && (
                 <div data-testid="chat-machine-facts" className="space-y-4">
+                  <ChatLeaseEscrowLive
+                    projectId={machineFacts.projectId}
+                    chatId={chat.id}
+                    chatKind={chat.kind}
+                    leases={machineFacts.leases}
+                    machines={machineFacts.machines}
+                    instances={escrowInstances}
+                    chatNames={machineFacts.chatNames ?? {}}
+                    chatKinds={machineFacts.chatKinds ?? {}}
+                    agentNames={machineFacts.agentNames ?? {}}
+                    instanceNames={escrowInstanceNames}
+                  />
                   <LeaseOverview
                     projectId={machineFacts.projectId}
                     machines={machineFacts.machines}
                     leases={machineFacts.leases}
                     holderNames={machineFacts.holderNames}
+                    escrowNames={{
+                      chats: machineFacts.chatNames ?? {},
+                      chatKinds: machineFacts.chatKinds ?? {},
+                      agents: machineFacts.agentNames ?? {},
+                    }}
                     dense
                     testId="chat-leases"
                   />

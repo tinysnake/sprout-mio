@@ -113,14 +113,18 @@ describe("挂靠命令的演示实现", () => {
   const target = demoLeases[0];
 
   it("挂靠推进一代，操作权交给目标 Group，持有者不变", () => {
-    const result = applyEscrowCommand(demoLeases, {
-      action: "escrow",
-      projectId: target.projectId,
-      machineId: target.machineId,
-      requestId: "req_12345678",
-      expectedGeneration: target.generation,
-      chatId: demoEscrowTargets.group.chatId,
-    }, { instanceId: demoInstanceIds.primary });
+    const result = applyEscrowCommand(
+      demoLeases,
+      {
+        action: "escrow",
+        projectId: target.projectId,
+        machineId: target.machineId,
+        requestId: "req_12345678",
+        expectedGeneration: target.generation,
+        chatId: demoEscrowTargets.group.chatId,
+      },
+      { instanceId: demoInstanceIds.primary },
+    );
     if ("error" in result) throw new Error(result.error);
     const lease = result.leases.find((item) => item.machineId === target.machineId);
     expect(lease?.generation).toBe(target.generation + 1);
@@ -131,14 +135,18 @@ describe("挂靠命令的演示实现", () => {
 
   it("领取后租约换持有者，挂靠行收进收据", () => {
     const subject = demoEscrowLeases[0];
-    const result = applyEscrowCommand(demoEscrowLeases, {
-      action: "claim",
-      projectId: subject.projectId,
-      machineId: subject.machineId,
-      requestId: "req_12345678",
-      expectedGeneration: subject.generation,
-      escrowId: demoGroupEscrow.escrowId,
-    }, { instanceId: demoInstanceIds.sibling });
+    const result = applyEscrowCommand(
+      demoEscrowLeases,
+      {
+        action: "claim",
+        projectId: subject.projectId,
+        machineId: subject.machineId,
+        requestId: "req_12345678",
+        expectedGeneration: subject.generation,
+        escrowId: demoGroupEscrow.escrowId,
+      },
+      { instanceId: demoInstanceIds.sibling },
+    );
     if ("error" in result) throw new Error(result.error);
     const lease = result.leases.find((item) => item.machineId === subject.machineId);
     expect(lease?.holderInstanceId).toBe(demoInstanceIds.sibling);
@@ -149,14 +157,18 @@ describe("挂靠命令的演示实现", () => {
 
   it("撤销把租约还给发起者，Machine 没有被释放", () => {
     const subject = demoEscrowLeases[0];
-    const result = applyEscrowCommand(demoEscrowLeases, {
-      action: "escrow_cancel",
-      projectId: subject.projectId,
-      machineId: subject.machineId,
-      requestId: "req_12345678",
-      expectedGeneration: subject.generation,
-      escrowId: demoGroupEscrow.escrowId,
-    }, { instanceId: demoInstanceIds.primary });
+    const result = applyEscrowCommand(
+      demoEscrowLeases,
+      {
+        action: "escrow_cancel",
+        projectId: subject.projectId,
+        machineId: subject.machineId,
+        requestId: "req_12345678",
+        expectedGeneration: subject.generation,
+        escrowId: demoGroupEscrow.escrowId,
+      },
+      { instanceId: demoInstanceIds.primary },
+    );
     if ("error" in result) throw new Error(result.error);
     const lease = result.leases.find((item) => item.machineId === subject.machineId);
     expect(lease?.state).toBe("held");
@@ -166,23 +178,31 @@ describe("挂靠命令的演示实现", () => {
   });
 
   it("非持有者不能挂靠，挂靠中的租约不能重复挂靠", () => {
-    const stolen = applyEscrowCommand(demoLeases, {
-      action: "escrow",
-      projectId: demoProject.id,
-      machineId: demoLeases[0].machineId,
-      requestId: "req_12345678",
-      expectedGeneration: demoLeases[0].generation,
-      chatId: demoEscrowTargets.group.chatId,
-    }, { instanceId: demoInstanceIds.sibling });
+    const stolen = applyEscrowCommand(
+      demoLeases,
+      {
+        action: "escrow",
+        projectId: demoProject.id,
+        machineId: demoLeases[0].machineId,
+        requestId: "req_12345678",
+        expectedGeneration: demoLeases[0].generation,
+        chatId: demoEscrowTargets.group.chatId,
+      },
+      { instanceId: demoInstanceIds.sibling },
+    );
     expect("error" in stolen && stolen.error).toBe("lease_not_holder");
-    const again = applyEscrowCommand(demoEscrowLeases, {
-      action: "escrow",
-      projectId: target.projectId,
-      machineId: demoEscrowLeases[0].machineId,
-      requestId: "req_12345678",
-      expectedGeneration: demoEscrowLeases[0].generation,
-      chatId: demoEscrowTargets.group.chatId,
-    }, { instanceId: demoInstanceIds.primary });
+    const again = applyEscrowCommand(
+      demoEscrowLeases,
+      {
+        action: "escrow",
+        projectId: target.projectId,
+        machineId: demoEscrowLeases[0].machineId,
+        requestId: "req_12345678",
+        expectedGeneration: demoEscrowLeases[0].generation,
+        chatId: demoEscrowTargets.group.chatId,
+      },
+      { instanceId: demoInstanceIds.primary },
+    );
     expect("error" in again && again.error).toBe("lease_conflict");
   });
 

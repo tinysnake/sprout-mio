@@ -262,7 +262,8 @@ export function escrowReceiptNote(
 ): string {
   if (!escrow) return "服务端还没有这条挂靠记录";
   const label = escrowStateLabel(escrow.state).label;
-  if (action === "claim") return escrow.state === "claimed" ? "已领取" : `挂靠${label}，没有领取成功`;
+  if (action === "claim")
+    return escrow.state === "claimed" ? "已领取" : `挂靠${label}，没有领取成功`;
   if (action === "escrow_cancel")
     return escrow.state === "cancelled" ? "已撤销" : `挂靠${label}，没有撤销成功`;
   return escrow.state === "escrowed"

@@ -105,16 +105,17 @@ export const demoEscrowAgentNames: Record<string, string> = {
 };
 
 /** 每个演示 Chat 里的分身：领取范围按这里的 agentProfileId 判定。 */
-export const demoEscrowInstances: Record<string, { instanceId: string; agentProfileId: string }[]> = {
-  [demoEscrowTargets.group.chatId]: [
-    { instanceId: demoInstanceIds.primary, agentProfileId: demoEscrowProfiles.reviewer },
-    { instanceId: demoInstanceIds.sibling, agentProfileId: demoEscrowProfiles.writer },
-  ],
-  [demoEscrowTargets.channel.chatId]: [
-    { instanceId: demoInstanceIds.sibling, agentProfileId: demoEscrowProfiles.writer },
-  ],
-  [demoEscrowTargets.dm.chatId]: [],
-};
+export const demoEscrowInstances: Record<string, { instanceId: string; agentProfileId: string }[]> =
+  {
+    [demoEscrowTargets.group.chatId]: [
+      { instanceId: demoInstanceIds.primary, agentProfileId: demoEscrowProfiles.reviewer },
+      { instanceId: demoInstanceIds.sibling, agentProfileId: demoEscrowProfiles.writer },
+    ],
+    [demoEscrowTargets.channel.chatId]: [
+      { instanceId: demoInstanceIds.sibling, agentProfileId: demoEscrowProfiles.writer },
+    ],
+    [demoEscrowTargets.dm.chatId]: [],
+  };
 
 const demoEscrowBase = {
   state: "escrowed" as const,
@@ -242,7 +243,13 @@ export function applyEscrowCommand(
       claimedGeneration: generation,
     };
     const next = [...leases];
-    next[index] = { ...lease, generation, holderInstanceId: actor.instanceId, changedAt: now, escrow: null };
+    next[index] = {
+      ...lease,
+      generation,
+      holderInstanceId: actor.instanceId,
+      changedAt: now,
+      escrow: null,
+    };
     return { leases: next, receipt };
   }
   const generation = lease.generation + 1;

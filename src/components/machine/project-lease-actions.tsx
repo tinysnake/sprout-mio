@@ -104,6 +104,20 @@ export function holderNames(info: ProjectInfoHub): Record<string, string> {
   );
 }
 
+/** Chat 的权威显示名来自 Info Hub 摘要（挂靠目标展示与 lease holder 的 chatDisplayTitle 同源）。 */
+export function chatNames(info: ProjectInfoHub): Record<string, string> {
+  return Object.fromEntries(info.chats.map((chat) => [chat.chatId, chat.displayTitle]));
+}
+
+/** Chat 类型只影响挂靠目标是否合法：DM 不是合法的挂靠目标。 */
+export function chatKinds(info: ProjectInfoHub): Record<string, "dm" | "group" | "public_channel"> {
+  return Object.fromEntries(info.chats.map((chat) => [chat.chatId, chat.kind]));
+}
+
+export function agentNames(info: ProjectInfoHub): Record<string, string> {
+  return Object.fromEntries(info.agents.agents.map((entry) => [entry.agentProfileId, entry.name]));
+}
+
 /**
  * Chat 选项的显示依赖：Chat 的 title 目前没有写入方（contracts 只做 null 透传），
  * 所以显示层与 Chat 列表一致地退回分身名，而不是裸露的 chat id。

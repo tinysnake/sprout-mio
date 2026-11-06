@@ -9,7 +9,7 @@ import type { AppError } from "../../contracts/result";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import { forceReclaimLeaseFn } from "../../server/functions/lease";
-import { holderLabel, leaseStateLabel } from "./lease-view";
+import { holderLabel, leaseStateLabel, type EscrowNames } from "./lease-view";
 import { bindingDirectory, observationLabel, formatMoment, type StatusTone } from "./machine-view";
 import {
   historyMembershipSummary,
@@ -115,6 +115,7 @@ export function MembershipSections({
   machines,
   leases,
   holderNames = {},
+  escrowNames = {},
   executions = null,
   loading,
   error,
@@ -130,6 +131,8 @@ export function MembershipSections({
   machines: readonly MachineDetail[];
   leases: readonly LeaseView[];
   holderNames?: Readonly<Record<string, string>>;
+  /** 挂靠目标与指定 Agent 的权威显示名；缺省时只显示 id。 */
+  escrowNames?: EscrowNames;
   executions?: readonly ExecutionView[] | null;
   loading: boolean;
   error: AppError | null;
@@ -313,6 +316,7 @@ export function MembershipSections({
             ),
           )}
           holderNames={holderNames}
+          escrowNames={escrowNames}
           dense
           manageLink={(lease) => (
             <LeaseManageLink projectId={lease.projectId} machineId={lease.machineId} />

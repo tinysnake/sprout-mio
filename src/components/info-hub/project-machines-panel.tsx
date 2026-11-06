@@ -5,6 +5,7 @@ import type { LeaseView } from "../../contracts/lease";
 import { MachineList, StatusLine } from "../machine/machine-list";
 import { bindingDirectory, observationLabel } from "../machine/machine-view";
 import { LeaseOverview } from "../machine/lease-panel";
+import type { EscrowNames } from "../machine/lease-view";
 
 /**
  * Project 侧的 Machine 归属：这个 Project 关联了哪些 Machine、各自的租约摘要。
@@ -18,12 +19,15 @@ export function ProjectMachinesPanel({
   machines,
   leases,
   holderNames = {},
+  escrowNames = {},
   onLeaseMutate,
 }: {
   projectId: string;
   machines: MachineDetail[];
   leases: readonly LeaseView[];
   holderNames?: Readonly<Record<string, string>>;
+  /** 挂靠目标与指定 Agent 的权威显示名；缺省时只显示 id。 */
+  escrowNames?: EscrowNames;
   onLeaseMutate?: unknown;
 }) {
   void onLeaseMutate;
@@ -85,6 +89,7 @@ export function ProjectMachinesPanel({
         machines={machines}
         leases={leases}
         holderNames={holderNames}
+        escrowNames={escrowNames}
         dense
         manageLink={(lease) => (
           <LeaseManageLink

@@ -8,9 +8,6 @@ import type { AgentInstance, Chat, ChatMember, ChatResult } from "../../contract
 import type { ChatInfoView, InfoHubResult } from "../../contracts/info-hub";
 import type { TurnContextReadResult } from "../../contracts/turn-context";
 import type { AppError } from "../../contracts/result";
-import type { MachineDetail } from "../../contracts/machine";
-import type { LeaseView } from "../../contracts/lease";
-import type { ExecutionView } from "../../contracts/remote";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ResultError } from "../project/result-error";
@@ -19,19 +16,12 @@ import { ChatAvatar } from "../chat/chat-avatar";
 import { ChatFactsBlock } from "./chat-info-panel";
 import { ChatActivityFacts } from "./chat-activity";
 import { LeaseOverview } from "../machine/lease-panel";
-import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
+import { ChatLeaseEscrowLive } from "../chat/chat-lease-escrow";
+import type { ChatMachineFacts } from "../chat/chat-loader";
 
-/**
- * Chat 侧的 Machine 事实：与 Project settings、Machine 详情读同一份租约与执行视图，
- * 不在这里重新推导持有者或状态。
- */
-export type ChatMachineFacts = {
-  projectId: string;
-  machines: MachineDetail[];
-  leases: readonly LeaseView[];
-  executions: readonly ExecutionView[];
-  holderNames?: Readonly<Record<string, string>>;
-};
+/** Machine 事实的读模型类型与 Chat 详情共用一份，避免两处定义漂移。 */
+export type { ChatMachineFacts };
+import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
 
 /**
  * Chat 的 Info Hub：摘要常显，运行事实与 Chat 事实按需展开。原有诊断字段
@@ -65,8 +55,16 @@ export function ChatInspector({
   continuation?: ContinuationPageData;
   onClose: () => void;
 }) {
+  // 领取范围只看 Chat 里的分身身份；实例与显示名都复用已有的读模型，不新造事实。
+  const chatInstances = instances.ok
+    ? instances.data.map((instance) => ({
+        instanceId: instance.id,
+        agentProfileId: instance.agentProfileId,
+      }))
+    : [];
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {" "}
       <header className="flex min-h-15.25 items-center gap-2 border-b border-border px-5 max-desktop:min-h-19 max-desktop:px-3 max-desktop:py-3.5">
         <Button
           type="button"
@@ -240,11 +238,28 @@ export function ChatInspector({
             {machineFactsError && <ResultError error={machineFactsError} />}
             {machineFacts && (
               <div data-testid="chat-machine-facts" className="space-y-4">
+                <ChatLeaseEscrowLive
+                  projectId={machineFacts.projectId}
+                  chatId={chat.id}
+                  chatKind={chat.kind}
+                  leases={machineFacts.leases}
+                  machines={machineFacts.machines}
+                  instances={chatInstances}
+                  chatNames={machineFacts.chatNames ?? {}}
+                  chatKinds={machineFacts.chatKinds ?? {}}
+                  agentNames={machineFacts.agentNames ?? {}}
+                  instanceNames={machineFacts.holderNames ?? {}}
+                />
                 <LeaseOverview
                   projectId={machineFacts.projectId}
                   machines={machineFacts.machines}
                   leases={machineFacts.leases}
                   holderNames={machineFacts.holderNames}
+                  escrowNames={{
+                    chats: machineFacts.chatNames ?? {},
+                    chatKinds: machineFacts.chatKinds ?? {},
+                    agents: machineFacts.agentNames ?? {},
+                  }}
                   dense
                   testId="chat-leases"
                 />

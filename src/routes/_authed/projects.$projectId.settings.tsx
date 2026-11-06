@@ -4,7 +4,12 @@ import { PageBackLink } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { ProjectAgentsPanel } from "../../components/info-hub/project-agents-panel";
 import { TaskAssociations } from "../../components/tasks/task-associations";
-import { holderNames } from "../../components/machine/project-lease-actions";
+import {
+  agentNames,
+  chatKinds,
+  chatNames,
+  holderNames,
+} from "../../components/machine/project-lease-actions";
 import { RemoteExecutionList } from "../../components/machine/remote-execution-panel";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import type { ExecutionView } from "../../contracts/remote";
@@ -280,6 +285,12 @@ function ProjectSettingsView() {
                 machines={machines.ok ? machines.data : []}
                 leases={liveHub.data.leases.items}
                 holderNames={holderNames(liveHub.data)}
+                // 挂靠目标与指定 Agent 显示用 Info Hub 的权威名称。
+                escrowNames={{
+                  chats: chatNames(liveHub.data),
+                  chatKinds: chatKinds(liveHub.data),
+                  agents: agentNames(liveHub.data),
+                }}
                 executions={knownExecutions}
                 loading={relationState.loading}
                 error={relationState.error}

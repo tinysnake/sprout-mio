@@ -9,13 +9,17 @@ import type { ActionOutcome } from "../ui/action-outcome";
 import type { LeaseMutationHandler, StatusTone } from "./machine-view";
 import { formatMoment } from "./machine-view";
 import {
+  escrowStateLabel,
+  escrowTargetLabel,
   holderLabel,
   holderMachineCount,
   leaseStateLabel,
+  liveEscrowOf,
   mutationStateLabel,
   pendingMutationLabel,
   runLeaseRelation,
   visibleLeases,
+  type EscrowNames,
 } from "./lease-view";
 import { LeaseFencingFacts, type FencingSnapshot } from "../info-hub/lease-fencing-facts";
 import { StatusLine } from "./machine-list";
@@ -47,6 +51,7 @@ export function LeaseOverview({
   manageLink,
   chatRow,
   revision,
+  escrowNames = {},
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -69,6 +74,8 @@ export function LeaseOverview({
   manageLink?: (lease: LeaseView) => ReactNode;
   /** 租约请求的 Chat 选择行；与申请/释放表单同处一张卡片，所以紧贴表单上方。 */
   chatRow?: ReactNode;
+  /** 挂靠目标与指定 Agent 的显示名；缺省时退回 id，不猜名字。 */
+  escrowNames?: EscrowNames;
   testId?: string;
 }) {
   const [forcedReceipts, setForcedReceipts] = useState<Record<string, LeaseMutationView>>({});
@@ -92,6 +99,8 @@ export function LeaseOverview({
             const state = leaseStateLabel(lease.state);
             const holder = holderLabel(lease, holderNames);
             const pending = pendingMutationLabel(lease);
+            // 挂靠行只投影 live 挂靠：LeaseView.escrow 只会是挂靠中的那一次。
+            const escrow = liveEscrowOf(lease);
             // 持有台数取同一份租约投影，不为这一行新增查询。
             const heldCount = holderMachineCount(visible, lease.holderInstanceId);
             return (
@@ -129,6 +138,16 @@ export function LeaseOverview({
                     </span>
                   )}
                 </dd>
+                {escrow && (
+                  <dd
+                    data-testid={`lease-escrow-${lease.machineId}`}
+                    data-escrow-state={escrow.state}
+                    className={toneText[escrowStateLabel(escrow.state).tone]}
+                  >
+                    {escrowStateLabel(escrow.state).label} ·{" "}
+                    {escrowTargetLabel(escrow, escrowNames)} · 挂靠代次 {escrow.escrowGeneration}
+                  </dd>
+                )}
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
                 {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。 */}
                 {lease.state !== "fencing" && !dense && (

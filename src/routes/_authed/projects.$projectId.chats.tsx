@@ -1,7 +1,12 @@
 import { getProjectInfoHubFn, refreshInfoHubFn } from "../../server/functions/info-hub";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { listMachinesFn } from "../../server/functions/machine";
-import { holderNames } from "../../components/machine/project-lease-actions";
+import {
+  agentNames,
+  chatKinds,
+  chatNames,
+  holderNames,
+} from "../../components/machine/project-lease-actions";
 import {
   Outlet,
   createFileRoute,
@@ -110,6 +115,10 @@ function ChatsLayout() {
           machines: loader.machines.ok ? loader.machines.data : [],
           leases: loader.infoHub.data.leases.items,
           holderNames: holderNames(loader.infoHub.data),
+          // 挂靠目标与领取者显示用 Info Hub 的权威名称，不在页面里重新推导。
+          chatNames: chatNames(loader.infoHub.data),
+          chatKinds: chatKinds(loader.infoHub.data),
+          agentNames: agentNames(loader.infoHub.data),
           executions: loader.executions.data,
         }
       : null;

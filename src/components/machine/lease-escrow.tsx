@@ -8,6 +8,8 @@ import { ActionOutcomeNotice, type ActionOutcome } from "../ui/action-outcome";
 import { Button } from "../ui/button";
 import { Field } from "../ui/field";
 import { Select } from "../ui/select";
+import { chatDisplayName } from "../chat/chat-display";
+import { chatAgentName, type ChatAgent } from "../chat/chat-list";
 import { ResultError } from "../project/result-error";
 import { runLeaseEscrowCommand, type LeaseEscrowHandler } from "./lease-escrow-command";
 import {
@@ -68,15 +70,30 @@ function useEscrowRuns(handler: LeaseEscrowHandler) {
     }
     setRuns((prev) => ({
       ...prev,
-      [key]: { pending: false, outcome: result.state, detail: result.error.message, error: result.error },
+      [key]: {
+        pending: false,
+        outcome: result.state,
+        detail: result.error.message,
+        error: result.error,
+      },
     }));
   };
   return { runs, receipts, run };
 }
 
-/** Chat 列表里没有显示名时只退回 chat id，不猜名字。 */
-function chatLabel(chat: Chat): string {
-  return chat.title ?? chat.id;
+/**
+ * 目标 Chat 的显示名沿用列表页的规则：人工 title 优先，其次参与分身名；
+ * 裸 chat id 不作为人类可读文案（它只出现在 `title` 属性里）。
+ */
+function chatLabel(
+  chat: Chat,
+  chatAgents: readonly ChatAgent[],
+  agentNames: Readonly<Record<string, string>>,
+): string {
+  return chatDisplayName(
+    chat,
+    chatAgentName(chat.id, [...chatAgents], new Map(Object.entries(agentNames))),
+  );
 }
 
 function machineName(machines: readonly MachineDetail[], machineId: string): string {
@@ -85,12 +102,22 @@ function machineName(machines: readonly MachineDetail[], machineId: string): str
 
 function escrowNamesOf(
   chats: readonly Chat[],
-  agents: readonly { agentProfileId: string; name: string }[],
+  agents: readonly { agentProfileId: string; name: string; chatId?: string | null }[],
+  provided: Readonly<Record<string, string>> = {},
 ): EscrowNames {
+  const agentNames = Object.fromEntries(agents.map((agent) => [agent.agentProfileId, agent.name]));
+  const chatAgents: ChatAgent[] = agents.flatMap((agent) =>
+    agent.chatId ? [{ chatId: agent.chatId, agentProfileId: agent.agentProfileId }] : [],
+  );
   return {
-    chats: Object.fromEntries(chats.map((chat) => [chat.id, chatLabel(chat)])),
+    chats: Object.fromEntries(
+      chats.map((chat) => [
+        chat.id,
+        provided[chat.id]?.trim() || chatLabel(chat, chatAgents, agentNames),
+      ]),
+    ),
     chatKinds: Object.fromEntries(chats.map((chat) => [chat.id, chat.kind])),
-    agents: Object.fromEntries(agents.map((agent) => [agent.agentProfileId, agent.name])),
+    agents: agentNames,
   };
 }
 
@@ -103,6 +130,7 @@ export function LeaseEscrowEntry({
   lease,
   chats,
   agents = [],
+  chatNames = {},
   holderChatId,
   holderChatName = null,
   handler,
@@ -111,7 +139,9 @@ export function LeaseEscrowEntry({
   projectId: string;
   lease: LeaseView;
   chats: readonly Chat[];
-  agents?: readonly { agentProfileId: string; name: string; chatId: string | null }[];
+  agents?: readonly { agentProfileId: string; name: string; chatId?: string | null }[];
+  /** 权威显示名（如 Info Hub 的 chat displayTitle）；缺省时按列表页规则推导。 */
+  chatNames?: Readonly<Record<string, string>>;
   holderChatId: string | null;
   holderChatName?: string | null;
   handler: LeaseEscrowHandler;
@@ -123,7 +153,7 @@ export function LeaseEscrowEntry({
   const live = liveEscrowOf(lease);
   const state = runs[lease.machineId] ?? idleRun;
   const receipt = receipts[lease.machineId] ?? null;
-  const names = escrowNamesOf(chats, agents);
+  const names = escrowNamesOf(chats, agents, chatNames);
   const targets = chats.filter((chat) => chat.kind !== "dm");
   const targetAgents = agents.filter((agent) => agent.chatId === targetChatId);
 
@@ -194,12 +224,25 @@ export function LeaseEscrowEntry({
               </Button>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground" data-testid={`${testId}-cancel-unavailable`}>
+            <p
+              className="text-xs text-muted-foreground"
+              data-testid={`${testId}-cancel-unavailable`}
+            >
               撤销入口只在发起挂靠的分身所在的 Chat 出现。
             </p>
           )}
         </div>
-      ) : lease.state === "held" ? (
+      ) : lease.state !== "held" ? (
+        <p className="text-xs text-muted-foreground" data-testid={`${testId}-not-held`}>
+          只有持有中的租约可以挂靠；当前租约
+          {leaseStateLabel(lease.state).label}。
+        </p>
+      ) : !holderChatId ? (
+        <p className="text-xs text-muted-foreground" data-testid={`${testId}-no-holder-chat`}>
+          挂靠要由持有这台 Machine 的分身在自己的 Chat 里执行；当前持有者没有可用的 Chat
+          分身，请先让 Agent 接管这台 Machine 的租约。
+        </p>
+      ) : (
         <form className="space-y-3" onSubmit={submit} data-testid={`${testId}-form`}>
           <Field
             label="挂靠目标（Group / Public Channel）"
@@ -218,7 +261,7 @@ export function LeaseEscrowEntry({
               <option value="">选择目标 Group / Public Channel</option>
               {targets.map((chat) => (
                 <option key={chat.id} value={chat.id}>
-                  {chatLabel(chat)}（{chatKindLabel(chat.kind)}）
+                  {names.chats?.[chat.id] ?? chat.id}（{chatKindLabel(chat.kind)}）
                 </option>
               ))}
             </Select>
@@ -244,6 +287,9 @@ export function LeaseEscrowEntry({
               </Select>
             </Field>
           )}
+          <p className="text-xs text-muted-foreground" data-testid={`${testId}-holder-chat`}>
+            命令会送进持有者所在的 {holderChatName ?? holderChatId}，由该分身用 run 授权执行。
+          </p>
           <Button
             type="submit"
             size="sm"
@@ -253,11 +299,6 @@ export function LeaseEscrowEntry({
             {state.pending ? "请求中…" : "挂靠租约"}
           </Button>
         </form>
-      ) : (
-        <p className="text-xs text-muted-foreground" data-testid={`${testId}-not-held`}>
-          只有持有中的租约可以挂靠；当前租约
-          {leaseStateLabel(lease.state).label}。
-        </p>
       )}
       <ActionOutcomeNotice
         action="租约挂靠"
@@ -272,7 +313,9 @@ export function LeaseEscrowEntry({
           data-receipt-state={receipt.state}
         >
           收据：挂靠 {receipt.escrowId} · {escrowStateLabel(receipt.state).label}
-          {escrowClaimerLabel(receipt, names.agents ?? {}) ? ` · 领取者 ${escrowClaimerLabel(receipt, names.agents ?? {})}` : ""}
+          {escrowClaimerLabel(receipt, names.agents ?? {})
+            ? ` · 领取者 ${escrowClaimerLabel(receipt, names.agents ?? {})}`
+            : ""}
         </p>
       )}
       {state.error && <ResultError error={state.error} testId={`${testId}-error`} />}
@@ -284,6 +327,24 @@ export function LeaseEscrowEntry({
  * Chat 里的挂靠面板：本 Chat 是挂靠目标时给出领取入口，本 Chat 的分身发起过挂靠时给出撤销入口。
  * 领取范围只看分身身份，不判断分身是否正在跑。
  */
+/** Chat 面板的展示与命令入口；Chat 内的实例事实由调用方按自己的读模型传入。 */
+export type ChatLeaseEscrowPanelProps = {
+  projectId: string;
+  chatId: string;
+  chatKind: "dm" | "group" | "public_channel";
+  leases: readonly LeaseView[];
+  machines?: readonly MachineDetail[];
+  instances?: readonly { instanceId: string; agentProfileId: string }[];
+  chatNames?: Readonly<Record<string, string>>;
+  chatKinds?: Readonly<Record<string, "dm" | "group" | "public_channel">>;
+  agentNames?: Readonly<Record<string, string>>;
+  instanceNames?: Readonly<Record<string, string>>;
+  handler: LeaseEscrowHandler;
+  loading?: boolean;
+  error?: AppError | null;
+  testId?: string;
+};
+
 export function ChatLeaseEscrowPanel({
   projectId,
   chatId,
@@ -299,27 +360,18 @@ export function ChatLeaseEscrowPanel({
   loading = false,
   error = null,
   testId = "chat-lease-escrow",
-}: {
-  projectId: string;
-  chatId: string;
-  chatKind: "dm" | "group" | "public_channel";
-  leases: readonly LeaseView[];
-  machines?: readonly MachineDetail[];
-  instances?: readonly { instanceId: string; agentProfileId: string }[];
-  chatNames?: Readonly<Record<string, string>>;
-  chatKinds?: Readonly<Record<string, "dm" | "group" | "public_channel">>;
-  agentNames?: Readonly<Record<string, string>>;
-  instanceNames?: Readonly<Record<string, string>>;
-  handler: LeaseEscrowHandler;
-  loading?: boolean;
-  error?: AppError | null;
-  testId?: string;
-}) {
+}: ChatLeaseEscrowPanelProps) {
   const { runs, receipts, run } = useEscrowRuns(handler);
   const names: EscrowNames = { chats: chatNames, chatKinds, agents: agentNames };
   const inbound = chatKind === "dm" ? [] : claimableEscrows(leases, projectId, chatId);
   const outbound =
-    chatKind === "dm" ? [] : outboundEscrows(leases, projectId, instances.map((item) => item.instanceId));
+    chatKind === "dm"
+      ? []
+      : outboundEscrows(
+          leases,
+          projectId,
+          instances.map((item) => item.instanceId),
+        );
 
   const claim = (lease: LeaseView, escrowId: string) =>
     void run(escrowId, {
@@ -383,11 +435,17 @@ export function ChatLeaseEscrowPanel({
                 <p className="text-xs text-foreground">
                   待领取：{machineName(machines, lease.machineId)} · 代次 {lease.generation}
                 </p>
-                <p className="text-xs text-muted-foreground" data-testid={`${testId}-inbound-target-${lease.machineId}`}>
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid={`${testId}-inbound-target-${lease.machineId}`}
+                >
                   {escrowTargetLabel(escrow, names)} · 发起 {formatMoment(escrow.escrowedAt)}
                 </p>
                 {scope.note && (
-                  <p className="text-xs text-status-warning" data-testid={`${testId}-scope-${lease.machineId}`}>
+                  <p
+                    className="text-xs text-status-warning"
+                    data-testid={`${testId}-scope-${lease.machineId}`}
+                  >
                     {scope.note}
                   </p>
                 )}
@@ -407,7 +465,10 @@ export function ChatLeaseEscrowPanel({
                   testId={`${testId}-claim-outcome-${lease.machineId}`}
                 />
                 {state.error && (
-                  <ResultError error={state.error} testId={`${testId}-claim-error-${lease.machineId}`} />
+                  <ResultError
+                    error={state.error}
+                    testId={`${testId}-claim-error-${lease.machineId}`}
+                  />
                 )}
                 {receipt && (
                   <p
@@ -439,7 +500,10 @@ export function ChatLeaseEscrowPanel({
                 <p className="text-xs text-foreground">
                   本 Chat 挂靠中：{machineName(machines, lease.machineId)} · 代次 {lease.generation}
                 </p>
-                <p className="text-xs text-muted-foreground" data-testid={`${testId}-outbound-target-${lease.machineId}`}>
+                <p
+                  className="text-xs text-muted-foreground"
+                  data-testid={`${testId}-outbound-target-${lease.machineId}`}
+                >
                   {escrowTargetLabel(escrow, names)} · 由{" "}
                   {instanceNames[escrow.escrowedByInstanceId] ?? escrow.escrowedByInstanceId} 发起
                 </p>
@@ -460,7 +524,10 @@ export function ChatLeaseEscrowPanel({
                   testId={`${testId}-cancel-outcome-${lease.machineId}`}
                 />
                 {state.error && (
-                  <ResultError error={state.error} testId={`${testId}-cancel-error-${lease.machineId}`} />
+                  <ResultError
+                    error={state.error}
+                    testId={`${testId}-cancel-error-${lease.machineId}`}
+                  />
                 )}
                 {receipt && (
                   <p

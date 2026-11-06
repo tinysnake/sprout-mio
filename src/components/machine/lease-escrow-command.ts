@@ -1,8 +1,4 @@
-import type {
-  LeaseEscrowCommandInput,
-  LeaseEscrowView,
-  LeaseView,
-} from "../../contracts/lease";
+import type { LeaseEscrowCommandInput, LeaseEscrowView, LeaseView } from "../../contracts/lease";
 import type { AppError, AppResult } from "../../contracts/result";
 import { fail, toAppError } from "../../contracts/result";
 import { sendMessageFn } from "../../server/functions/chat";
@@ -61,10 +57,7 @@ export async function runLeaseEscrowCommand(
 }
 
 /** 轮询到的收据是否已经落在终态；未落定时继续等。 */
-function settleOf(
-  input: LeaseEscrowCommandInput,
-  receipt: LeaseEscrowCommandReceipt,
-): boolean {
+function settleOf(input: LeaseEscrowCommandInput, receipt: LeaseEscrowCommandReceipt): boolean {
   if (input.action === "escrow")
     return receipt.escrow !== null && receipt.escrow.chatId === input.chatId;
   return receipt.escrow === null || receipt.escrow.state !== "escrowed";

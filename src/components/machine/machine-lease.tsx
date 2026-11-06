@@ -39,6 +39,7 @@ export function MachineLeasePanel({
   onCancelled,
   onLeaseMutate,
   revision,
+  escrow,
 }: {
   detail: MachineDetail;
   project: { id: string; name: string };
@@ -65,6 +66,8 @@ export function MachineLeasePanel({
   onLeaseMutate?: LeaseMutationHandler;
   /** Machine 范围的活动 revision；传了就让 fencing 事实跟着 revision 读。 */
   revision?: string | null;
+  /** 挂靠入口（挂靠 / 撤销）；由页面接线传入真实数据，未传就不显示。 */
+  escrow?: ReactNode;
 }) {
   const leaseSection = (
     onMutate?: LeaseMutationHandler,
@@ -123,6 +126,7 @@ export function MachineLeasePanel({
         ) : (
           leaseSection(onLeaseMutate)
         )}
+        {escrow}
       </SettingsSection>
       <SettingsSection
         title="远端操作"
