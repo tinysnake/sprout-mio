@@ -1,9 +1,4 @@
-import type {
-  LeaseEscrowCommandInput,
-  LeaseEscrowView,
-  LeaseMutationView,
-  LeaseView,
-} from "../../contracts/lease";
+import type { LeaseEscrowView, LeaseMutationView, LeaseView } from "../../contracts/lease";
 import type {
   ExecutionCancellationView,
   ExecutionRecoveryReason,
@@ -149,10 +144,6 @@ export function escrowStateLabel(state: LeaseEscrowView["state"]): LeaseLabel {
   return LEASE_ESCROW_STATE_LABELS[state];
 }
 
-/** 挂靠目标的范围说明：DM 与跨 Project 不被支持，这是裁定而不是本页的限制。 */
-export const ESCROW_TARGET_NOTE =
-  "挂靠目标是本 Project 的 Group 或 Public Channel；DM 与跨 Project 的目标不被支持。挂靠不改变 Machine 上正在跑的进程。";
-
 const CHAT_KIND_LABELS: Record<"dm" | "group" | "public_channel", string> = {
   dm: "DM",
   group: "Group",
@@ -234,55 +225,18 @@ export function escrowClaimScope(
   };
 }
 
-/** 领取者在租约视图里只会以 instanceId 出现，名称按需解析。 */
-export function escrowClaimerLabel(
-  escrow: LeaseEscrowView,
-  instanceNames: Readonly<Record<string, string>> = {},
-): string | null {
-  if (escrow.state !== "claimed" || !escrow.claimedByInstanceId) return null;
-  return instanceNames[escrow.claimedByInstanceId] ?? escrow.claimedByInstanceId;
-}
-
-/** 命令收据是否落在预期终态：领取要已领取，撤销要已撤销，挂靠要正挂着。 */
-export function escrowCommandSucceeded(
-  action: LeaseEscrowCommandInput["action"],
-  escrow: LeaseEscrowView | null,
-): boolean {
-  if (!escrow) return false;
-  if (action === "claim") return escrow.state === "claimed";
-  if (action === "escrow_cancel") return escrow.state === "cancelled";
-  return escrow.state === "escrowed";
-}
-
-/** 收据的一句话结果。挂靠失败时也要说清楚挂靠行到底落在哪个状态。 */
-export function escrowReceiptNote(
-  action: LeaseEscrowCommandInput["action"],
-  escrow: LeaseEscrowView | null,
-  names: EscrowNames = {},
-): string {
-  if (!escrow) return "服务端还没有这条挂靠记录";
-  const label = escrowStateLabel(escrow.state).label;
-  if (action === "claim")
-    return escrow.state === "claimed" ? "已领取" : `挂靠${label}，没有领取成功`;
-  if (action === "escrow_cancel")
-    return escrow.state === "cancelled" ? "已撤销" : `挂靠${label}，没有撤销成功`;
-  return escrow.state === "escrowed"
-    ? `已挂靠到 ${escrowTargetLabel(escrow, names)}`
-    : `挂靠${label}`;
-}
-
 export function mutationStateLabel(mutation: LeaseMutationView): LeaseLabel {
   if (mutation.forcedReclaim) {
     return {
       label: "Human 已强制收回",
-      detail: `代次 ${mutation.completedGeneration}；原动作已由强制收回覆盖，未确认 Worker 排空。`,
+      detail: `原动作已由强制收回覆盖，未确认 Worker 排空。`,
       tone: "warning",
     };
   }
   const completed = mutation.state === "completed";
   return {
     label: `${LEASE_MUTATION_LABELS[mutation.action]}${completed ? "已确认" : "等待 Worker 确认"}`,
-    detail: `代次 ${mutation.completedGeneration ?? mutation.expectedGeneration}`,
+    detail: completed ? "服务端已确认" : "结果未确认，请刷新核对租约状态",
     tone: completed ? "success" : "warning",
   };
 }

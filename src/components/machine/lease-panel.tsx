@@ -52,6 +52,7 @@ export function LeaseOverview({
   chatRow,
   revision,
   escrowNames = {},
+  showDenseNote = true,
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -76,6 +77,11 @@ export function LeaseOverview({
   chatRow?: ReactNode;
   /** 挂靠目标与指定 Agent 的显示名；缺省时退回 id，不猜名字。 */
   escrowNames?: EscrowNames;
+  /**
+   * 窄栏里的补充说明：只在需要指路到 Machine 详情页时报这句。
+   * Chat inspector 只呈现既有租约状态，关掉它。
+   */
+  showDenseNote?: boolean;
   testId?: string;
 }) {
   const [forcedReceipts, setForcedReceipts] = useState<Record<string, LeaseMutationView>>({});
@@ -103,6 +109,8 @@ export function LeaseOverview({
             const escrow = liveEscrowOf(lease);
             // 持有台数取同一份租约投影，不为这一行新增查询。
             const heldCount = holderMachineCount(visible, lease.holderInstanceId);
+            // 状态位互斥：挂靠中替代持有中。代次只在提交时匹配，界面不呈现。
+            const status = escrow ? escrowStateLabel(escrow.state) : state;
             return (
               <div
                 key={`${lease.projectId}:${lease.machineId}`}
@@ -113,12 +121,7 @@ export function LeaseOverview({
               >
                 <dt className="font-medium">{machineName(lease.machineId)}</dt>
                 <dd>
-                  <StatusLine
-                    label={state.label}
-                    detail={`代次 ${lease.generation}`}
-                    tone={state.tone}
-                    testId="lease-state"
-                  />
+                  <StatusLine label={status.label} tone={status.tone} testId="lease-state" />
                 </dd>
                 <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 break-all">
                   <span data-testid="lease-holder-name">
@@ -144,8 +147,8 @@ export function LeaseOverview({
                     data-escrow-state={escrow.state}
                     className={toneText[escrowStateLabel(escrow.state).tone]}
                   >
-                    {escrowStateLabel(escrow.state).label} ·{" "}
-                    {escrowTargetLabel(escrow, escrowNames)} · 挂靠代次 {escrow.escrowGeneration}
+                    {/* 发起挂靠的分身恒等于当时的持有者（leaseViewSchema 的 superRefine），所以名称直接用 holder。 */}
+                    {escrowTargetLabel(escrow, escrowNames)} · 由 {holder.name} 发起
                   </dd>
                 )}
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
@@ -183,8 +186,7 @@ export function LeaseOverview({
                       testId={`${testId}-forced-receipt-state`}
                     />
                     <p className="text-muted-foreground break-all">
-                      强制收据 {forcedReceipts[lease.machineId].mutationId} · 代次{" "}
-                      {forcedReceipts[lease.machineId].completedGeneration}
+                      强制收据 {forcedReceipts[lease.machineId].mutationId}
                       {forcedReceipts[lease.machineId].forcedReclaim
                         ? ` · 覆盖了原动作 ${forcedReceipts[lease.machineId].forcedReclaim!.supersededMutationId}`
                         : ""}
@@ -217,13 +219,15 @@ export function LeaseOverview({
           testId={`${testId}-mutation`}
         />
       ) : dense ? (
-        <p
-          data-testid={`${testId}-dense-note`}
-          className="text-[0.6875rem] leading-5 text-muted-foreground"
-        >
-          租约的申请、释放、交接与收回在对应 Machine
-          详情的租约区块进行；本处与它们读同一份租约事实。
-        </p>
+        showDenseNote && (
+          <p
+            data-testid={`${testId}-dense-note`}
+            className="text-[0.6875rem] leading-5 text-muted-foreground"
+          >
+            租约的申请、释放、交接与收回在对应 Machine
+            详情的租约区块进行；本处与它们读同一份租约事实。
+          </p>
+        )
       ) : (
         <Notice
           testId={`${testId}-notice`}
@@ -354,7 +358,7 @@ export function LeaseMutationForm({
     >
       <h5 className="text-xs font-medium">申请与释放</h5>
       <p className="text-[0.6875rem] leading-5 text-muted-foreground">
-        动作与期望代次一起提交；代次失效时服务端拒绝，界面不把拒绝显示为成功。租约变更不会终止进程或删除文件。
+        动作提交后按当前租约状态核对；状态已变时服务端拒绝，界面不把拒绝显示为成功。租约变更不会终止进程或删除文件。
       </p>
       {chatRow}
       {/*
@@ -429,8 +433,8 @@ export function LeaseMutationForm({
       </p>
       <p data-testid={`${testId}-context`} className="text-[0.6875rem] text-muted-foreground">
         {lease
-          ? `当前：${leaseStateLabel(lease.state).label} · 代次 ${lease.generation} · ${
-              draft.lastAction === "release" ? "再次提交将释放" : "申请/释放都会要求代次匹配"
+          ? `当前：${leaseStateLabel(lease.state).label} · ${
+              draft.lastAction === "release" ? "再次提交将释放" : "申请与释放都按当前租约状态核对"
             }`
           : "当前：该 Machine 在本 Project 还没有租约，提交将创建第一条。"}
       </p>
@@ -445,7 +449,7 @@ export function LeaseMutationForm({
         testId={`${testId}-outcome`}
         detail={
           outcome === "unknown"
-            ? "未收到确认，请刷新核对租约与代次后再操作"
+            ? "未收到确认，请刷新核对租约状态后再操作"
             : isOffline() && outcome === "failure"
               ? "离线，未提交"
               : outcome === "processing" && receipt
@@ -482,7 +486,6 @@ export function MachineLeaseSection({
   revision,
   chatRow = null,
   transferControls = null,
-  escrow = null,
   testId = "machine-lease-section",
 }: {
   projectId: string;
@@ -498,8 +501,6 @@ export function MachineLeaseSection({
   chatRow?: ReactNode;
   /** 交接与收回卡片；必须落在申请/释放之后、同一个租约小节里。 */
   transferControls?: ReactNode;
-  /** 挂靠入口（挂靠 / 撤销）：紧贴租约事实，由页面接线传入真实数据。 */
-  escrow?: ReactNode;
   testId?: string;
 }) {
   // 详情页只投影这一台 Machine 的租约；同 Project 其他 Machine 的租约留在列表与 Project 视图。
@@ -520,7 +521,6 @@ export function MachineLeaseSection({
         {...(chatRow ? { chatRow } : {})}
         testId={`${testId}-overview`}
       />
-      {escrow}
       <RunHoldingNote leases={scoped} machines={[detail]} runs={runs} />
       {transferControls}
     </div>

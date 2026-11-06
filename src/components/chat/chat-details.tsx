@@ -30,8 +30,6 @@ import {
   DialogTrigger,
 } from "../ui/dialog";
 import { ChatErrorNotice } from "./chat-error-notice";
-import { ChatLeaseEscrowLive, ChatLeaseEscrowPanel } from "./chat-lease-escrow";
-import type { LeaseEscrowHandler } from "../machine/lease-escrow-command";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { ChatFactsBlock } from "../info-hub/chat-info-panel";
@@ -40,7 +38,6 @@ import { TaskAssociations } from "../tasks/task-associations";
 import { governanceNote } from "./chat-governance";
 import type { ChatMachineFacts } from "./chat-loader";
 import { LeaseOverview } from "../machine/lease-panel";
-import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
 
 const WAKE_POLICY_LABELS: Record<ChatWakePolicy, string> = {
   owner_led: "owner_led · 未点名时回退 Owner",
@@ -71,7 +68,6 @@ export function ChatDetails({
   projectProfiles,
   machineFacts = null,
   machineFactsError,
-  escrowHandler,
   continuation,
   onClose,
   onChanged,
@@ -89,8 +85,6 @@ export function ChatDetails({
   projectProfiles: AgentProfile[];
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
-  /** 演示与测试可以注入本地 handler；缺省时挂靠命令走服务端与 Chat。 */
-  escrowHandler?: LeaseEscrowHandler;
   continuation?: ContinuationPageData;
   onClose: () => void;
   onChanged: () => void;
@@ -119,20 +113,6 @@ export function ChatDetails({
   // 治理事实只读领域层算好的那一份（裁定 d45）：页面不抄能力表、不比 owner。
   // Agent 当 owner 时，`canChangeOwner` 已经包含 d6 的 Project 创建者兜底。
   const governance = session.governance;
-  // 挂靠面板只认 Chat 里的分身身份；DM 不会是挂靠目标，也不在这里发起。
-  const escrowInstances =
-    session.kind === "dm"
-      ? []
-      : session.instances.map((instance) => ({
-          instanceId: instance.instanceId,
-          agentProfileId: instance.agentProfileId,
-        }));
-  const escrowInstanceNames =
-    session.kind === "dm"
-      ? {}
-      : Object.fromEntries(
-          session.instances.map((instance) => [instance.instanceId, instance.profileName]),
-        );
   const currentMembers: ChatMember[] = members.ok ? members.data : [];
   const ownerCandidates =
     chat.kind === "public_channel"
@@ -568,34 +548,7 @@ export function ChatDetails({
               )}
               {machineFacts && (
                 <div data-testid="chat-machine-facts" className="space-y-4">
-                  {escrowHandler ? (
-                    <ChatLeaseEscrowPanel
-                      projectId={machineFacts.projectId}
-                      chatId={chat.id}
-                      chatKind={chat.kind}
-                      leases={machineFacts.leases}
-                      machines={machineFacts.machines}
-                      instances={escrowInstances}
-                      chatNames={machineFacts.chatNames ?? {}}
-                      chatKinds={machineFacts.chatKinds ?? {}}
-                      agentNames={machineFacts.agentNames ?? {}}
-                      instanceNames={machineFacts.holderNames ?? {}}
-                      handler={escrowHandler}
-                    />
-                  ) : (
-                    <ChatLeaseEscrowLive
-                      projectId={machineFacts.projectId}
-                      chatId={chat.id}
-                      chatKind={chat.kind}
-                      leases={machineFacts.leases}
-                      machines={machineFacts.machines}
-                      instances={escrowInstances}
-                      chatNames={machineFacts.chatNames ?? {}}
-                      chatKinds={machineFacts.chatKinds ?? {}}
-                      agentNames={machineFacts.agentNames ?? {}}
-                      instanceNames={escrowInstanceNames}
-                    />
-                  )}
+                  {/* 只呈现既有租约状态；远端操作的表格、柱状汇总与说明留在 Machine 详情页。 */}
                   <LeaseOverview
                     projectId={machineFacts.projectId}
                     machines={machineFacts.machines}
@@ -607,22 +560,8 @@ export function ChatDetails({
                       agents: machineFacts.agentNames ?? {},
                     }}
                     dense
+                    showDenseNote={false}
                     testId="chat-leases"
-                  />
-                  {machineFacts.executions.length > 0 && (
-                    <ExecutionTargetTable
-                      executions={machineFacts.executions}
-                      machines={machineFacts.machines}
-                      testId="chat-execution-targets"
-                    />
-                  )}
-                  <RemoteExecutionList
-                    executions={machineFacts.executions}
-                    machines={machineFacts.machines}
-                    holderNames={machineFacts.holderNames ?? {}}
-                    dense
-                    readOnlyNote="此面板只读：只展示已知的执行事实与日志位点。读取日志与取消这次执行请在 Machine 详情页操作。"
-                    testId="chat-executions"
                   />
                 </div>
               )}
@@ -630,12 +569,12 @@ export function ChatDetails({
           </div>
         </details>
 
-        <p className="flex gap-2 pt-5 text-[10px] leading-5 text-muted-foreground">
-          <Icon as={ShieldCheck} size={14} className="mt-0.5" />
-          {machineFacts
-            ? "远端操作以 Worker 运行用户权限执行在工作目录之外；租约不随 run 结束释放。"
-            : "分析基于固定快照。分身可以读取仓库；远端操作的日志读取与取消在 Machine 详情页进行。"}
-        </p>
+        {!machineFacts && (
+          <p className="flex gap-2 pt-5 text-[10px] leading-5 text-muted-foreground">
+            <Icon as={ShieldCheck} size={14} className="mt-0.5" />
+            分析基于固定快照。分身可以读取仓库；远端操作的日志读取与取消在 Machine 详情页进行。
+          </p>
+        )}
       </div>
       <div className="border-t border-border px-5 py-3.5 text-[10px] text-muted-foreground max-desktop:pb-[max(14px,env(safe-area-inset-bottom))]">
         仅 Project 成员可见

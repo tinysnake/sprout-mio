@@ -16,26 +16,19 @@ import { ChatInspector } from "@/components/info-hub/chat-inspector";
 import { ChatWorkspace } from "@/components/layout/chat-workspace";
 import type { ChatAgent } from "@/components/chat/chat-loader";
 import { demoProfiles as profiles, demoHumanName as HUMAN } from "../management/fixtures";
-import { demoMachineDetails, DEMO_REQUEST_ID } from "../machine/fixtures";
+import { demoMachineDetails } from "../machine/fixtures";
 import {
-  applyEscrowCommand,
   demoEscrowAgentNames,
   demoEscrowSceneLeases,
   demoEscrowTargets,
   demoExecutions,
   demoHolderNames,
-  demoInstanceIds,
 } from "../machine/lease-fixtures";
-import type {
-  LeaseEscrowHandler,
-  LeaseEscrowCommandReceipt,
-} from "@/components/machine/lease-escrow-command";
-import type { LeaseEscrowCommandInput, LeaseView } from "../../../contracts/lease";
 import type { ChatMachineFacts } from "@/components/info-hub/chat-inspector";
 import type { AgentRun, ChatRunState, RunActivity } from "../../../contracts/agent-run";
 import type { AgentInstance, Chat, ChatMember, Message } from "../../../contracts/chat";
 import type { ChatInfoView, TurnStartContext } from "../../../contracts/info-hub";
-import type { AppError, AppResult } from "../../../contracts/result";
+import type { AppError } from "../../../contracts/result";
 import { ArrowLeftIcon, MessageSquareIcon } from "lucide-react";
 import { ID_PREFIXES, newId } from "@/contracts/ids";
 
@@ -351,45 +344,6 @@ const demoMachineFacts: ChatMachineFacts = {
   },
   agentNames: demoEscrowAgentNames,
 };
-
-const demoDelay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * 演示：挂靠命令在本地应用，不改服务端事实。领取由目标 Group 的分身执行，
- * 撤销与挂靠由发起挂靠的分身执行；两者在演示数据里分别是 sibling 与 primary。
- */
-function useDemoEscrow(): { leases: LeaseView[]; handler: LeaseEscrowHandler } {
-  const [leases, setLeases] = useState<LeaseView[]>(demoEscrowSceneLeases);
-  const handler: LeaseEscrowHandler = async (
-    input: LeaseEscrowCommandInput,
-  ): Promise<AppResult<LeaseEscrowCommandReceipt>> => {
-    await demoDelay(150);
-    const actor = input.action === "claim" ? demoInstanceIds.sibling : demoInstanceIds.primary;
-    const applied = applyEscrowCommand(leases, input, { instanceId: actor });
-    if ("error" in applied)
-      return {
-        ok: false,
-        error: {
-          code: applied.error === "lease_not_holder" ? "lease_not_holder" : "conflict",
-          message: `演示：服务端拒绝挂靠命令（${applied.error}）。`,
-          requestId: DEMO_REQUEST_ID,
-        },
-        requestId: DEMO_REQUEST_ID,
-      };
-    setLeases(applied.leases);
-    const lease = applied.leases.find(
-      (item) => item.projectId === input.projectId && item.machineId === input.machineId,
-    );
-    if (!lease)
-      return {
-        ok: false,
-        error: { code: "not_found", message: "演示：租约不存在。", requestId: DEMO_REQUEST_ID },
-        requestId: DEMO_REQUEST_ID,
-      };
-    return { ok: true, data: { lease, escrow: applied.receipt }, requestId: DEMO_REQUEST_ID };
-  };
-  return { leases, handler };
-}
 
 const infoView: ChatInfoView = {
   tasks: { available: true, items: [] },
@@ -849,7 +803,6 @@ function WorkspaceScene() {
     [chats[0]!.id]: messages,
   });
   const [localTitles, setLocalTitles] = useState<Record<string, string | undefined>>({});
-  const escrow = useDemoEscrow();
   const selectedChat = chats.find((item) => item.id === chatId);
   const fixture = selectedChat
     ? workspaceFixture(selectedChat, localMessages[selectedChat.id] ?? [])
@@ -953,8 +906,7 @@ function WorkspaceScene() {
                 data: { kind: "captured", record: fixture.context },
                 requestId: "req_demo",
               }}
-              machineFacts={{ ...demoMachineFacts, leases: escrow.leases }}
-              escrowHandler={escrow.handler}
+              machineFacts={demoMachineFacts}
               onClose={() => openInspector(false)}
             />
           ) : undefined
@@ -966,7 +918,6 @@ function WorkspaceScene() {
 
 /** Info Hub 的独立场景：正常数据一份，失败数据一份。 */
 function InspectorScene() {
-  const escrow = useDemoEscrow();
   return (
     <Frame title="Info Hub" note="摘要常显，运行事实与 Chat 事实按需展开；诊断字段只折叠不删除。">
       <div className="h-[36rem] overflow-hidden rounded-container border border-border">
@@ -983,8 +934,7 @@ function InspectorScene() {
             data: { kind: "captured", record: turnStart },
             requestId: "req_demo",
           }}
-          machineFacts={{ ...demoMachineFacts, leases: escrow.leases }}
-          escrowHandler={escrow.handler}
+          machineFacts={demoMachineFacts}
           onClose={() => undefined}
         />
       </div>

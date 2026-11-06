@@ -5,7 +5,6 @@ import { z } from "zod";
 import { PageBackButton } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineLeasePanel } from "../../components/machine/machine-lease";
-import { ProjectLeaseEscrow } from "../../components/machine/project-lease-escrow";
 import {
   agentNames,
   chatKinds,
@@ -112,18 +111,6 @@ function MachineLeasePage() {
       </PageFrame>
     );
   const detail = data.detail.data;
-  // 挂靠入口需要持有者分身所在的 Chat；holder 解析不出来时只读展示，不给挂靠表单。
-  const leaseSummary =
-    data.info.data.leases.items.find((item) => item.machineId === machineId) ?? null;
-  const escrowNode = leaseSummary ? (
-    <ProjectLeaseEscrow
-      projectId={projectId}
-      lease={leaseSummary}
-      agents={data.info.data.agents.agents}
-      holderChatId={leaseSummary.holder?.chatId ?? null}
-      holderChatName={leaseSummary.holder?.chatDisplayTitle ?? null}
-    />
-  ) : null;
   const project = data.projects.ok
     ? data.projects.data.find((item) => item.id === projectId)
     : undefined;
@@ -147,7 +134,6 @@ function MachineLeasePage() {
       connection={executionWiring.connection}
       cancellations={executionWiring.cancellations}
       revision={activity.revision}
-      escrow={escrowNode}
       onCancelled={executionWiring.onCancelled}
       enrollment={enrollment?.detail.machine.id === machineId ? enrollment : null}
       installOrigin={typeof window === "undefined" ? undefined : window.location.origin}

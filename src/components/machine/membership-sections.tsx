@@ -86,7 +86,7 @@ const ERROR_NOTES: Record<string, string> = {
   lease_fencing: "租约交接中，当前不能发起移出。显示当前收据与允许的下一步。",
   conflict: "事实已变化或请求冲突。已保留本地确认范围，刷新事实后请重新确认。",
   remote_request_conflict: "同一请求对应不同事实，未自动覆盖。刷新后请重新确认。",
-  lease_stale_generation: "代次已变化。刷新事实后请重新确认。",
+  lease_stale_generation: "租约状态已变化。刷新事实后请重新确认。",
   validation_failed: "确认输入有误或缺失，请重新确认移出范围。",
   lease_result_unconfirmed: "操作结果未确认，请刷新事实；不能改成失败或已完成。",
   remote_request_unconfirmed: "操作结果未确认，请刷新事实；不能改成失败或已完成。",
@@ -827,8 +827,7 @@ function ForceReclaimControl({
           role="status"
           className="mt-1 text-xs leading-6 text-status-warning"
         >
-          强制收据 {receipt.mutationId} · 代次 {receipt.completedGeneration}；
-          撤权未确认，无法确认远端执行已停止。
+          强制收据 {receipt.mutationId}；撤权未确认，无法确认远端执行已停止。
         </p>
       )}
     </div>

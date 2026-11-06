@@ -44,10 +44,7 @@ export function LeaseSummaryFact({ lease }: { lease: InfoHubLeaseSummary }) {
       data-state={lease.state}
       className="min-w-0 space-y-1 text-[11px] break-words"
     >
-      <p>
-        本 Project 租约：
-        {leaseStateLabel(lease.state).label} · 代次 {lease.generation}
-      </p>
+      <p>本 Project 租约：{leaseStateLabel(lease.state).label}</p>
       {lease.holder ? (
         <p>
           持有者 Agent：{lease.holder.displayName} · 分身{" "}

@@ -22,7 +22,6 @@ import type {
 } from "../../../contracts/machine";
 import type { AppErrorCode } from "../../../contracts/result";
 import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../../contracts/lease";
-import type { LeaseEscrowCommandInput } from "../../../contracts/lease";
 import type { AppResult } from "../../../contracts/result";
 import { PageFrame } from "../../../components/layout/page-frame";
 import { ResultError } from "../../../components/project/result-error";
@@ -45,16 +44,10 @@ import {
   demoInstanceIds,
   demoLeases,
   applyLeaseMutation,
-  applyEscrowCommand,
   completedReceipt,
-  demoEscrowAgents,
-  demoEscrowChats,
   demoEscrowNames,
   demoEscrowSceneLeases,
-  demoHolderChats,
 } from "./lease-fixtures";
-import { LeaseEscrowEntry } from "../../../components/machine/lease-escrow";
-import type { LeaseEscrowCommandReceipt } from "../../../components/machine/lease-escrow-command";
 import { ID_PREFIXES, newId } from "@/contracts/ids";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,7 +80,6 @@ type DemoState = {
   projectId: string;
   /** 租约变更的演示结果：成功写回，失败保留目标并显示原因。 */
   leaseOutcome: "success" | "stale_generation" | "not_holder";
-  escrowOutcome: "success" | "conflict" | "unconfirmed";
   escrowScene: boolean;
 };
 
@@ -370,22 +362,6 @@ function DemoControls({
         <option value="stale_generation">拒绝：旧授权代次失效</option>
         <option value="not_holder">拒绝：不是持有者</option>
       </Select>
-      <label className="mt-3 block" htmlFor="machine-demo-escrow">
-        挂靠命令的演示结果
-      </label>
-      <Select
-        id="machine-demo-escrow"
-        data-testid="machine-demo-escrow"
-        className="mt-1"
-        defaultValue="success"
-        onChange={(event) =>
-          update({ escrowOutcome: event.target.value as DemoState["escrowOutcome"] })
-        }
-      >
-        <option value="success">成功（写回挂靠事实）</option>
-        <option value="conflict">拒绝：租约事实冲突</option>
-        <option value="unconfirmed">未确认：请求已发送</option>
-      </Select>
       <label className="mt-3 flex items-start gap-2 leading-5" htmlFor="machine-demo-escrow-scene">
         <input
           id="machine-demo-escrow-scene"
@@ -590,7 +566,6 @@ export function MachineScenes() {
     throwRenew: false,
     projectId: machineProject.id,
     leaseOutcome: "success",
-    escrowOutcome: "success",
     escrowScene: false,
   });
   const [createOpen, setCreateOpen] = useState(false);
@@ -723,57 +698,6 @@ export function MachineScenes() {
     const receipt = completedReceipt(input, "2026-10-18T07:30:00.000Z", "2026-10-18T07:31:00.000Z");
     update({ leases: applyLeaseMutation(draft.leases, receipt, demoInstanceIds.primary) });
     return { ok: true, data: receipt, requestId: DEMO_REQUEST_ID };
-  }
-
-  /** 演示：挂靠命令由当前持有者的分身发起，结果由演示控件选择。 */
-  async function escrowCommand(
-    input: LeaseEscrowCommandInput,
-  ): Promise<AppResult<LeaseEscrowCommandReceipt>> {
-    await delay(200);
-    if (draft.escrowOutcome === "conflict")
-      return {
-        ok: false,
-        error: {
-          code: "lease_conflict",
-          message: "挂靠请求与当前租约事实冲突：这台 Machine 已有挂靠中的租约，或代次已经变化。",
-          requestId: DEMO_REQUEST_ID,
-        },
-        requestId: DEMO_REQUEST_ID,
-      };
-    if (draft.escrowOutcome === "unconfirmed")
-      return {
-        ok: false,
-        error: {
-          code: "lease_result_unconfirmed",
-          message: `请求已发送，结果未确认。请在命令发送的 Chat 里核对服务端挂靠收据；requestId：${input.requestId}。`,
-          requestId: DEMO_REQUEST_ID,
-        },
-        requestId: DEMO_REQUEST_ID,
-      };
-    const applied = applyEscrowCommand(draft.leases, input, {
-      instanceId: demoInstanceIds.primary,
-    });
-    if ("error" in applied)
-      return {
-        ok: false,
-        error: {
-          code: applied.error === "lease_not_holder" ? "lease_not_holder" : "conflict",
-          message: `演示：服务端拒绝挂靠（${applied.error}）。`,
-          requestId: DEMO_REQUEST_ID,
-        },
-        requestId: DEMO_REQUEST_ID,
-      };
-    update({ leases: applied.leases });
-    const lease = applied.leases.find(
-      (item) => item.projectId === input.projectId && item.machineId === input.machineId,
-    );
-    if (!lease)
-      return {
-        ok: false,
-        error: { code: "not_found", message: "演示：租约不存在。", requestId: DEMO_REQUEST_ID },
-        requestId: DEMO_REQUEST_ID,
-      };
-    return { ok: true, data: { lease, escrow: applied.receipt }, requestId: DEMO_REQUEST_ID };
   }
 
   async function saveRoot(
@@ -932,10 +856,6 @@ export function MachineScenes() {
     );
   }
 
-  const leaseFor = (target: string): LeaseView | undefined =>
-    draft.leases.find((item) => item.projectId === project.id && item.machineId === target);
-  const holderChat = demoHolderChats[leaseFor(detail.machine.id)?.holderInstanceId ?? ""];
-
   return (
     <>
       {isLease ? (
@@ -951,20 +871,6 @@ export function MachineScenes() {
           runs={[{ runId: "run_12345678", status: "completed" }]}
           executions={demoExecutions}
           onLeaseMutate={leaseMutation}
-          escrow={
-            leaseFor(detail.machine.id) ? (
-              <LeaseEscrowEntry
-                projectId={project.id}
-                lease={leaseFor(detail.machine.id)!}
-                chats={demoEscrowChats}
-                agents={demoEscrowAgents}
-                holderChatId={holderChat?.chatId ?? null}
-                holderChatName={holderChat?.name ?? null}
-                handler={escrowCommand}
-                testId="dev-lease-escrow"
-              />
-            ) : null
-          }
           onRenewEnrollment={renew}
           onEnrollmentCreated={(enrollment) => {
             update({ tickets: { ...draft.tickets, [machineId]: enrollment } });
