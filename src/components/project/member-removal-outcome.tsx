@@ -84,7 +84,8 @@ function RetainedLease({
         testId="member-removal-lease-state"
       />
       <p className="text-muted-foreground">
-        该 Machine 仍由旧操作权占用，不等于空闲；请在租约页确认后再判断它是否可用。
+        该 Machine 仍由旧操作权占用，等待 Worker
+        确认后才会释放，不等于空闲；请在租约页确认后再判断它是否可用。
       </p>
     </li>
   );
@@ -182,9 +183,13 @@ export function MemberRemovalOutcome({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-sm font-medium">「{agentName}」已强制移除</h2>
+          <h2 className="text-sm font-medium">
+            {outcome.removed ? `「${agentName}」已强制移除` : `「${agentName}」已不在当前 Project`}
+          </h2>
           <p className="mt-1 text-muted-foreground">
-            以下是本次自动善后的结果；成员行已从 Project 移除，全局 profile 仍保留。
+            {outcome.removed
+              ? "以下是本次自动善后的结果；成员行已从 Project 移除，全局 profile 仍保留。"
+              : "本次调用是幂等空操作：成员行已不存在，没有产生新的变更。"}
           </p>
         </div>
         <Button
@@ -202,7 +207,9 @@ export function MemberRemovalOutcome({
         <div data-testid="member-removal-retained-leases" className="mt-4">
           <h3 className="font-medium text-status-warning">占用待处理</h3>
           <p className="mt-1 text-muted-foreground">
-            下列 Machine 的旧操作权无法确认已撤销，仍是占用状态，不会显示为空闲。
+            {retainedLeases.length > 0
+              ? "下列 Machine 的旧操作权无法确认已撤销，仍是占用状态，不会显示为空闲。"
+              : "下列 Machine 仍被旧操作权占用；本次没有处理它们，它们不会显示为空闲。"}
           </p>
           <ul className="mt-2">
             {retainedLeases.map((lease) => (
@@ -218,7 +225,9 @@ export function MemberRemovalOutcome({
       <div className="mt-4 space-y-3">
         {handled === 0 && heldBack.length === 0 && (
           <p data-testid="member-removal-no-side-effects" className="text-muted-foreground">
-            本次没有需要中止的运行、转接的负责人、退回的 Task 或待处理的租约。
+            {outcome.removed
+              ? "本次没有需要中止的运行、转接的负责人、退回的 Task 或待处理的租约。"
+              : "本次没有成员变更，也没有新的运行中止、负责人转接、Task 退回或租约处置。"}
           </p>
         )}
 
@@ -233,7 +242,7 @@ export function MemberRemovalOutcome({
                     {ref && <ChatLink projectId={projectId} chat={ref.chat} />}
                     <p className="break-all text-muted-foreground">
                       Run {runId}
-                      {ref ? ` · ${ref.status} · 分身 ${ref.instanceId}` : ""}
+                      {ref ? ` · 快照时 ${ref.status} · 分身 ${ref.instanceId}` : ""}
                     </p>
                   </li>
                 );
@@ -290,6 +299,12 @@ export function MemberRemovalOutcome({
                       <span className="break-all">{taskId}</span>
                     )}
                     <p className="break-all text-muted-foreground">{taskId} · proposed</p>
+                    {ref && (
+                      <p className="text-muted-foreground">
+                        仍留在原 DM：
+                        <ChatLink projectId={projectId} chat={ref.chat} />
+                      </p>
+                    )}
                   </li>
                 );
               })}

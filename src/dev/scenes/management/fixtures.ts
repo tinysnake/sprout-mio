@@ -249,3 +249,16 @@ export function demoMemberRemovalOutcome(agentProfileId: string): ProjectMemberR
     ],
   });
 }
+
+/** 重复调用（成员行已不在）的幂等空操作：没有变更，也没有可展示的善后对象。 */
+export function demoMemberRemovalNoopOutcome(agentProfileId: string): ProjectMemberRemovalOutcome {
+  return projectMemberRemovalOutcomeSchema.parse({
+    projectId: DEMO_PROJECT_ID,
+    agentProfileId,
+    removed: false,
+    abortedRunIds: [],
+    ownerTransferredChatIds: [],
+    unassignedTaskIds: [],
+    leases: [],
+  });
+}

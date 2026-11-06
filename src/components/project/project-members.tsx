@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus } from "lucide-react";
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
 import type {
+  ProjectMemberRemovalBlockedError,
   ProjectMemberRemovalBlockers,
   ProjectMemberRemovalOutcome,
 } from "../../contracts/project-member-removal";
@@ -66,6 +67,8 @@ export function ProjectMembers({
     result: ProjectMemberRemovalOutcome;
     blockers: ProjectMemberRemovalBlockers | null;
   } | null>(null);
+  // 阻塞快照独立于当前 error 存活：强制移除再次失败时，前置说明与一次确认入口不能消失。
+  const [blockedError, setBlockedError] = useState<ProjectMemberRemovalBlockedError | null>(null);
 
   const byId = new Map(profiles.map((profile) => [profile.id, profile]));
   const memberIds = new Set(members.map((member) => member.agentProfileId));
@@ -105,6 +108,9 @@ export function ProjectMembers({
       const result = await remove(removing.id);
       if (!result.ok) {
         setError(result.error);
+        setBlockedError(
+          result.error.code === "project_member_removal_blocked" ? result.error : null,
+        );
         return;
       }
       setRemoving(null);
@@ -123,20 +129,22 @@ export function ProjectMembers({
    */
   async function handleForceRemove() {
     if (pending || !removing) return;
-    // 阻塞快照先留住：结果面板要用它解释「未处理的租约」，
-    // 因此整个请求期间不移除 error，避免确认框在提交中退回普通态。
-    const blocked = error && error.code === "project_member_removal_blocked" ? error.details : null;
+    // 阻塞快照已经在本地；请求期间保留它，确认框不会在提交中退回普通态。
+    const blocked = blockedError;
     setPending(true);
+    setError(null);
     setFeedback("");
     try {
       const result = await forceRemove(removing.id);
       if (!result.ok) {
         setError(result.error);
+        if (result.error.code === "project_member_removal_blocked") setBlockedError(result.error);
         return;
       }
       setRemoving(null);
       setError(null);
-      setOutcome({ result: result.data, blockers: blocked });
+      setBlockedError(null);
+      setOutcome({ result: result.data, blockers: blocked?.details ?? null });
       setFeedback("Agent 已强制移除，善后结果见上方。");
       onChanged();
     } catch (cause) {
@@ -146,7 +154,7 @@ export function ProjectMembers({
     }
   }
 
-  const blocked = error && error.code === "project_member_removal_blocked" ? error : null;
+  const blocked = blockedError;
 
   return (
     <div>
@@ -268,6 +276,7 @@ export function ProjectMembers({
                     setError(null);
                     setFeedback("");
                     setOutcome(null);
+                    setBlockedError(null);
                     setRemoving({
                       id: member.agentProfileId,
                       name: profile?.name ?? member.agentProfileId,
@@ -336,7 +345,10 @@ export function ProjectMembers({
       <Dialog
         open={removing !== null}
         onOpenChange={(next) => {
-          if (!next && !pending) setRemoving(null);
+          if (!next && !pending) {
+            setRemoving(null);
+            setBlockedError(null);
+          }
         }}
       >
         <DialogContent className="max-h-[85dvh] overflow-y-auto">
@@ -359,7 +371,19 @@ export function ProjectMembers({
               )}
             </DialogDescription>
           </DialogHeader>
-          {error && <ResultError error={error} testId="members-error" />}
+          {error && error.code !== "project_member_removal_blocked" && (
+            <ResultError error={error} testId="members-error" />
+          )}
+          {/* 阻塞不是意外失败：用安静的事实说明代替红色告警，避免与标题、阻止清单重复。 */}
+          {blockedError && (
+            <p
+              data-testid="members-blocked-note"
+              className="rounded-lg border border-border-soft bg-secondary px-4 py-3 text-xs text-muted-foreground"
+            >
+              {blockedError.message}
+              <span className="ml-2 font-mono opacity-80">{blockedError.code}</span>
+            </p>
+          )}
           {blocked && <MemberRemovalBlockers details={blocked.details} mode="force" />}
           <DialogFooter>
             <Button
@@ -367,7 +391,10 @@ export function ProjectMembers({
               variant="secondary"
               disabled={pending}
               data-testid="cancel-member-mutation"
-              onClick={() => setRemoving(null)}
+              onClick={() => {
+                setRemoving(null);
+                setBlockedError(null);
+              }}
             >
               取消
             </Button>
@@ -384,7 +411,7 @@ export function ProjectMembers({
             {blocked && (
               <Button
                 type="button"
-                variant="destructive"
+                variant="secondary"
                 loading={pending}
                 data-testid="force-remove-member"
                 onClick={() => void handleForceRemove()}

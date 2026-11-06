@@ -146,6 +146,14 @@ for (const colorScheme of ["dark", "light"]) {
       assert.equal(await page.getByTestId("member-removal-aborted-runs").count(), 1);
       assert.equal(await page.getByTestId("member-removal-transferred-chats").count(), 1);
       assert.equal(await page.getByTestId("member-removal-unassigned-tasks").count(), 1);
+      assert.equal(
+        await page
+          .getByTestId("member-removal-unassigned-tasks")
+          .locator('a[href="/projects/prj_11111111/chats/cnv_44444444"]')
+          .count(),
+        1,
+        "退回的 Task 仍链接回原 DM",
+      );
       assert.equal(await page.getByTestId("member-removal-released-leases").count(), 1);
       const retained = page.locator(
         '[data-testid="member-removal-lease"][data-lease-outcome="retained"]',
@@ -184,6 +192,67 @@ await check("窄屏（390px）阻塞确认框与善后结果不横向溢出", as
     await page.getByTestId("member-removal-outcome").waitFor();
     await assertNoHorizontalOverflow(page, "窄屏善后结果");
     await shoot(page, "p8c-outcome-mobile");
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+await check("重复移除（成员行已不存在）显示幂等空操作，不伪造善后结果", async () => {
+  const { context, page, errors } = await open({ width: 1280, height: 800, colorScheme: "dark" });
+  try {
+    await page.getByTestId("scene-noop").check();
+    await openBlocked(page);
+    await page.getByTestId("force-remove-member").click();
+    await page.getByTestId("member-removal-outcome").waitFor();
+    const outcome = page.getByTestId("member-removal-outcome");
+    const text = (await outcome.innerText()).replace(/\s+/g, "");
+    assert.ok(text.includes("已不在当前Project"), `空操作标题：${text.slice(0, 60)}`);
+    assert.ok(text.includes("幂等空操作"), "说明本次没有产生变更");
+    assert.equal(await page.getByTestId("member-removal-no-side-effects").count(), 0);
+    for (const absent of [
+      "member-removal-aborted-runs",
+      "member-removal-transferred-chats",
+      "member-removal-unassigned-tasks",
+    ])
+      assert.equal(await page.getByTestId(absent).count(), 0, absent);
+    // 空操作不伪造善后：阻塞快照里的租约只能以「本次未处理」出现，不能算作已释放或已保留。
+    assert.equal(
+      await page
+        .locator('[data-testid="member-removal-lease"][data-lease-outcome="retained"]')
+        .count(),
+      0,
+    );
+    assert.equal(
+      await page
+        .locator('[data-testid="member-removal-lease"][data-lease-outcome="untouched"]')
+        .count(),
+      2,
+    );
+    await shoot(page, "p8c-outcome-noop");
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+await check("强制移除失败时保留成员与阻塞说明，不展示善后结果", async () => {
+  const { context, page, errors } = await open({ width: 1280, height: 800, colorScheme: "dark" });
+  try {
+    await openBlocked(page);
+    // 对话框是模态的，场景开关用 DOM click 直接改状态，不改业务按钮行为。
+    await page.getByTestId("scene-fail").evaluate((element) => element.click());
+    await page.getByTestId("force-remove-member").click();
+    await page.getByTestId("members-error").waitFor();
+    assert.ok((await page.getByTestId("members-error").innerText()).includes("强制移除失败"));
+    assert.equal(await page.getByTestId("member-removal-outcome").count(), 0);
+    assert.equal(await page.locator(memberRow).count(), 1, "失败后成员仍在");
+    // 失败不能让前置说明与一次确认入口消失：成员仍然被同样的事项阻塞。
+    assert.equal(await page.getByTestId("member-removal-blockers").count(), 1);
+    assert.equal(await page.getByTestId("force-remove-member").count(), 1);
+    await assertActionVisible(page, "force-remove-member", "失败后的强制重试按钮");
+    await assertActionVisible(page, "confirm-member-mutation", "失败后的确认移除按钮");
+    await shoot(page, "p8c-force-failed", false);
     assert.deepEqual(errors, []);
   } finally {
     await context.close();

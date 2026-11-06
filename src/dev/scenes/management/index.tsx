@@ -33,6 +33,7 @@ import {
   demoHumanName,
   demoInfoHub,
   demoMemberRemovalBlockedError,
+  demoMemberRemovalNoopOutcome,
   demoMemberRemovalOutcome,
   demoMembers,
   demoProfiles,
@@ -367,6 +368,8 @@ function MembersScene({ embedded }: { embedded: boolean }) {
   const [profilesMissing, setProfilesMissing] = useState(false);
   // 常规移除被阻塞：必须在确认框里给出阻塞说明与一次确认的强制入口。
   const [blocked, setBlocked] = useState(false);
+  // 重复调用（成员行已不在）：结果面板必须如实说明本次没有产生变更。
+  const [noop, setNoop] = useState(false);
   const [status, setStatus] = useState("");
 
   async function add(agentProfileId: string): Promise<AppResult<ProjectMember>> {
@@ -401,6 +404,10 @@ function MembersScene({ embedded }: { embedded: boolean }) {
     await delay(600);
     if (fail) return demoFailure("internal", "强制移除失败，未做任何变更，请重试。");
     setMembers((current) => current.filter((member) => member.agentProfileId !== agentProfileId));
+    if (noop) {
+      setStatus("演示：成员行已不存在，本次为幂等空操作。");
+      return demoSuccess(demoMemberRemovalNoopOutcome(agentProfileId));
+    }
     setStatus("演示：已强制移除 Agent，善后结果见成员列表上方。");
     return demoSuccess(demoMemberRemovalOutcome(agentProfileId));
   }
@@ -433,6 +440,15 @@ function MembersScene({ embedded }: { embedded: boolean }) {
             onChange={(event) => setBlocked(event.target.checked)}
           />
           模拟移除被阻塞
+        </label>
+        <label className="mt-2 flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={noop}
+            data-testid="scene-noop"
+            onChange={(event) => setNoop(event.target.checked)}
+          />
+          模拟重复移除（无善后）
         </label>
         <label className="mt-2 flex items-center gap-2">
           <input
