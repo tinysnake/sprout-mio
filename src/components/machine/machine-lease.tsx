@@ -11,6 +11,7 @@ import { SettingsSection } from "../project/settings-section";
 import { ResultError } from "../project/result-error";
 import { MachineEnrollmentPanel } from "./machine-enrollment-panel";
 import { MachineLeaseSection } from "./lease-panel";
+import type { EscrowNames } from "./lease-view";
 import { RemoteExecutionList } from "./remote-execution-panel";
 import { ProjectLeaseActions } from "./project-lease-actions";
 import type { LeaseMutationHandler } from "./machine-view";
@@ -27,6 +28,7 @@ export function MachineLeasePanel({
   onEnrollmentRevoked,
   leases = [],
   holderNames = {},
+  escrowNames = {},
   runs = [],
   executions = [],
   leaseInfo,
@@ -52,6 +54,8 @@ export function MachineLeasePanel({
   onEnrollmentRevoked?: (machineId: string) => void;
   leases?: readonly LeaseView[];
   holderNames?: Readonly<Record<string, string>>;
+  /** 挂靠目标与指定 Agent 的显示名；由页面从 Info Hub 事实推导。 */
+  escrowNames?: EscrowNames;
   runs?: readonly { runId: string; status: string }[];
   executions?: readonly ExecutionView[];
   leaseInfo?: ProjectInfoHub;
@@ -79,11 +83,13 @@ export function MachineLeasePanel({
       detail={detail}
       leases={leases}
       holderNames={holderNames}
+      escrowNames={escrowNames}
       runs={runs}
       onMutate={onMutate}
       revision={revision}
       {...(chatRow ? { chatRow } : {})}
       {...(transferControls ? { transferControls } : {})}
+      escrow={escrow}
     />
   );
 
@@ -126,7 +132,6 @@ export function MachineLeasePanel({
         ) : (
           leaseSection(onLeaseMutate)
         )}
-        {escrow}
       </SettingsSection>
       <SettingsSection
         title="远端操作"

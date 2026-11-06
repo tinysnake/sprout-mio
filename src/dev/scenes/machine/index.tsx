@@ -49,6 +49,7 @@ import {
   completedReceipt,
   demoEscrowAgents,
   demoEscrowChats,
+  demoEscrowNames,
   demoEscrowSceneLeases,
   demoHolderChats,
 } from "./lease-fixtures";
@@ -946,6 +947,7 @@ export function MachineScenes() {
           installOrigin="http://192.168.1.10:3210"
           leases={draft.leases}
           holderNames={demoHolderNames}
+          escrowNames={demoEscrowNames}
           runs={[{ runId: "run_12345678", status: "completed" }]}
           executions={demoExecutions}
           onLeaseMutate={leaseMutation}

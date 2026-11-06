@@ -13,12 +13,16 @@ import {
   applyEscrowCommand,
   demoChannelEscrow,
   demoEscrowAgentNames,
+  demoEscrowAgents,
+  demoEscrowChats,
   demoEscrowInstances,
   demoEscrowLeases,
   demoEscrowProfiles,
   demoEscrowResult,
+  demoEscrowSceneLeases,
   demoEscrowTargets,
   demoGroupEscrow,
+  demoHolderChats,
   demoInstanceIds,
   demoLeases,
 } from "../src/dev/scenes/machine/lease-fixtures";
@@ -93,7 +97,7 @@ describe("挂靠的只读投影", () => {
 
   it("目标文案只投影挂靠事实，名称取不到时退回 id", () => {
     expect(escrowTargetLabel(demoChannelEscrow, names)).toBe(
-      "Public Channel（Public Channel） · 指定 Agent 文档 Agent",
+      "发布公告频道（Public Channel） · 指定 Agent 文档 Agent",
     );
     expect(escrowTargetLabel(demoGroupEscrow, names)).toBe(
       "发布协作组（Group） · 该 Group 内任意分身可领取",
@@ -214,5 +218,31 @@ describe("挂靠命令的演示实现", () => {
     );
     expect(scope.claimable).toBe(false);
     expect(demoEscrowProfiles.writer).toBe("agp_bbbbbbbb");
+  });
+});
+
+describe("演示场景的挂靠数据", () => {
+  it("切换到已挂靠场景后每个 Machine 仍然只有一行租约", () => {
+    const keys = demoEscrowSceneLeases.map((lease) => `${lease.projectId}:${lease.machineId}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const lease of demoEscrowSceneLeases)
+      expect(() => leaseViewSchema.parse(lease)).not.toThrow();
+    expect(demoEscrowSceneLeases.filter((lease) => liveEscrowOf(lease) !== null)).toHaveLength(2);
+  });
+
+  it("挂靠目标选项把 DM 也列出来，指定 Agent 归属到它的 Chat", () => {
+    expect(demoEscrowChats.map((chat) => chat.kind)).toEqual(["group", "public_channel", "dm"]);
+    expect(demoEscrowChats.map((chat) => chat.id)).toEqual([
+      demoEscrowTargets.group.chatId,
+      demoEscrowTargets.channel.chatId,
+      demoEscrowTargets.dm.chatId,
+    ]);
+    for (const agent of demoEscrowAgents) expect(agent.name).not.toBe(agent.agentProfileId);
+    expect(demoEscrowAgents.map((agent) => agent.chatId)).toContain(demoEscrowTargets.group.chatId);
+  });
+
+  it("每个演示分身都能在自己的 Chat 里找到租约命令入口", () => {
+    for (const id of [demoInstanceIds.primary, demoInstanceIds.sibling, demoInstanceIds.foreign])
+      expect(demoHolderChats[id]?.chatId).toBeTruthy();
   });
 });

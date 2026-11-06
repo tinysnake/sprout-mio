@@ -476,17 +476,20 @@ export function MachineLeaseSection({
   detail,
   leases,
   holderNames = {},
+  escrowNames = {},
   runs,
   onMutate,
   revision,
   chatRow = null,
   transferControls = null,
+  escrow = null,
   testId = "machine-lease-section",
 }: {
   projectId: string;
   detail: MachineDetail;
   leases: readonly LeaseView[];
   holderNames?: Readonly<Record<string, string>>;
+  escrowNames?: EscrowNames;
   runs?: readonly { runId: string; status: string }[];
   onMutate?: LeaseMutationHandler;
   /** Machine 范围的活动 revision，由页面传入；不传就保持五秒定时读。 */
@@ -495,6 +498,8 @@ export function MachineLeaseSection({
   chatRow?: ReactNode;
   /** 交接与收回卡片；必须落在申请/释放之后、同一个租约小节里。 */
   transferControls?: ReactNode;
+  /** 挂靠入口（挂靠 / 撤销）：紧贴租约事实，由页面接线传入真实数据。 */
+  escrow?: ReactNode;
   testId?: string;
 }) {
   // 详情页只投影这一台 Machine 的租约；同 Project 其他 Machine 的租约留在列表与 Project 视图。
@@ -508,12 +513,14 @@ export function MachineLeaseSection({
         machines={[detail]}
         leases={scoped}
         holderNames={holderNames}
+        escrowNames={escrowNames}
         onMutate={onMutate}
         fixedTargetId={detail.machine.id}
         revision={revision}
         {...(chatRow ? { chatRow } : {})}
         testId={`${testId}-overview`}
       />
+      {escrow}
       <RunHoldingNote leases={scoped} machines={[detail]} runs={runs} />
       {transferControls}
     </div>

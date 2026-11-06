@@ -42,3 +42,8 @@ fi
 SPROUT_LEASE_SCENES_URL="http://127.0.0.1:$port/__dev/ui/" \
 SPROUT_LEASE_SCENES_EVIDENCE="${SPROUT_LEASE_SCENES_EVIDENCE:-$log_dir/evidence}" \
   node scripts/browser/p4b-lease-scenes.mjs
+
+# I-P8a：挂靠与领取的演示场景核对（同一个 dev server，独立的证据目录）。
+SPROUT_P8A_ESCROW_URL="http://127.0.0.1:$port/__dev/ui/" \
+SPROUT_P8A_ESCROW_EVIDENCE="${SPROUT_P8A_ESCROW_EVIDENCE:-.verify/p8a-ui/evidence}" \
+  node scripts/browser/p8a-escrow-scenes.mjs

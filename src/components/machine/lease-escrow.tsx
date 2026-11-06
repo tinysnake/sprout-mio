@@ -376,6 +376,14 @@ export function ChatLeaseEscrowPanel({
           instances.map((item) => item.instanceId),
         );
 
+  const settled = Object.entries(receipts).flatMap(([escrowId, receipt]) =>
+    receipt &&
+    !inbound.some((lease) => lease.escrow?.escrowId === escrowId) &&
+    !outbound.some((lease) => lease.escrow?.escrowId === escrowId)
+      ? [{ escrowId, receipt }]
+      : [],
+  );
+
   const claim = (lease: LeaseView, escrowId: string) =>
     void run(escrowId, {
       action: "claim",
@@ -416,7 +424,7 @@ export function ChatLeaseEscrowPanel({
         <p className="text-xs text-muted-foreground" data-testid={`${testId}-dm-note`}>
           DM 不能作为挂靠目标，也不会收到挂靠；领取只发生在 Group 或 Public Channel。
         </p>
-      ) : inbound.length === 0 && outbound.length === 0 ? (
+      ) : inbound.length === 0 && outbound.length === 0 && settled.length === 0 ? (
         <p className="text-xs text-muted-foreground" data-testid={`${testId}-empty`}>
           本 Chat 没有待领取的挂靠，也没有挂靠出去的租约。
         </p>
@@ -544,6 +552,21 @@ export function ChatLeaseEscrowPanel({
               </div>
             );
           })}
+          {settled.length > 0 && (
+            <div className="space-y-1" data-testid={`${testId}-settled`}>
+              {settled.map(({ escrowId, receipt }) => (
+                <p
+                  key={escrowId}
+                  className="text-xs text-muted-foreground"
+                  data-testid={`${testId}-settled-${receipt.machineId}`}
+                  data-receipt-state={receipt.state}
+                >
+                  挂靠收据：{machineName(machines, receipt.machineId)} ·{" "}
+                  {escrowStateLabel(receipt.state).label}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

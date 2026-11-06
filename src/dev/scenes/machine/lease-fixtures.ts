@@ -90,7 +90,7 @@ export const demoFreeLease: LeaseView = {
  */
 export const demoEscrowTargets = {
   group: { chatId: "cnv_55555555", title: "发布协作组", kind: "group" as const },
-  channel: { chatId: "cnv_66666666", title: "Public Channel", kind: "public_channel" as const },
+  channel: { chatId: "cnv_66666666", title: "发布公告频道", kind: "public_channel" as const },
   dm: { chatId: "cnv_77777777", title: "Human 私聊", kind: "dm" as const },
 };
 
@@ -127,6 +127,16 @@ export const demoEscrowChats: {
   kind: target.kind,
   title: target.title,
 }));
+
+/**
+ * 挂靠目标与指定 Agent 的显示名。真实页面从 Info Hub 事实推导，演示场景直接用这份名单，
+ * 免得只读投影在截图里退回裸 id。
+ */
+export const demoEscrowNames = {
+  chats: Object.fromEntries(demoEscrowChats.map((chat) => [chat.id, chat.title])),
+  chatKinds: Object.fromEntries(demoEscrowChats.map((chat) => [chat.id, chat.kind])),
+  agents: demoEscrowAgentNames,
+};
 
 /** 指定 Agent 选择框的选项：每个分身属于哪个 Chat 就是它的候选范围。 */
 export const demoEscrowAgents = Object.entries(demoEscrowInstances).flatMap(([chatId, items]) =>

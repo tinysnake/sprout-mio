@@ -6,7 +6,12 @@ import { PageBackButton } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineLeasePanel } from "../../components/machine/machine-lease";
 import { ProjectLeaseEscrow } from "../../components/machine/project-lease-escrow";
-import { holderNames } from "../../components/machine/project-lease-actions";
+import {
+  agentNames,
+  chatKinds,
+  chatNames,
+  holderNames,
+} from "../../components/machine/project-lease-actions";
 import { useMachineEnrollment } from "../../components/machine/machine-enrollment-context";
 import { useMachineActivity } from "../../components/machine/use-machine-activity";
 import { useMachineRefresh } from "../../components/machine/use-machine-refresh";
@@ -130,6 +135,11 @@ function MachineLeasePage() {
       leaseInfo={data.info.data}
       leases={data.info.data.leases.items}
       holderNames={holderNames(data.info.data)}
+      escrowNames={{
+        chats: chatNames(data.info.data),
+        chatKinds: chatKinds(data.info.data),
+        agents: agentNames(data.info.data),
+      }}
       executions={executions}
       executionError={executionsError ?? undefined}
       logReader={executionWiring.logReader}
