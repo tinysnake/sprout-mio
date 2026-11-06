@@ -17,6 +17,7 @@ import { ProjectBasicInfoForm } from "../../../components/project/project-basic-
 import type { ProjectBasicInfoDraft } from "../../../components/project/project-basic-info-form";
 import { ProjectFacts } from "../../../components/project/project-facts";
 import { ProjectMembers } from "../../../components/project/project-members";
+import { ResultError } from "../../../components/project/result-error";
 import { Facts, SettingsSection } from "../../../components/project/settings-section";
 import { ProjectConfigForm } from "../../../components/project-config/project-config-form";
 import type { ProjectConfigDraft } from "../../../components/project-config/project-config-form";
@@ -55,6 +56,13 @@ import { SceneRouter } from "./scene-router";
 import { ID_PREFIXES, newId } from "@/contracts/ids";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 演示的 profile 查询失败：走与生产路由相同的 ResultError 呈现，而不是喂一个空数组。 */
+const demoProfilesFailure: AppError = {
+  code: "internal",
+  message: "演示：读取 Agent profile 失败，请重试。",
+  requestId: DEMO_REQUEST_ID,
+};
 
 /** 固定的演示结果，标为 demo：不制造假 requestId 混入正式页面。 */
 function demoSuccess<T>(data: T): AppResult<T> {
@@ -408,7 +416,7 @@ function MembersScene({ embedded }: { embedded: boolean }) {
       setStatus("演示：成员行已不存在，本次为幂等空操作。");
       return demoSuccess(demoMemberRemovalNoopOutcome(agentProfileId));
     }
-    setStatus("演示：已强制移除 Agent，善后结果见成员列表上方。");
+    setStatus("演示：已强制移除 Agent，善后结果以弹窗呈现。");
     return demoSuccess(demoMemberRemovalOutcome(agentProfileId));
   }
 
@@ -421,6 +429,7 @@ function MembersScene({ embedded }: { embedded: boolean }) {
         actions={<ThemeToggle />}
         testId="project-members-page"
       >
+        {profilesMissing && <ResultError error={demoProfilesFailure} testId="profiles-error" />}
         <ProjectMembers
           members={members}
           profiles={profilesMissing ? [] : demoProfiles}

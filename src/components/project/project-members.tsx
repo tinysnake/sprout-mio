@@ -145,7 +145,6 @@ export function ProjectMembers({
       setError(null);
       setBlockedError(null);
       setOutcome({ result: result.data, blockers: blocked?.details ?? null });
-      setFeedback("Agent 已强制移除，善后结果见上方。");
       onChanged();
     } catch (cause) {
       setError(toAppError(cause, newId(ID_PREFIXES.request)));
