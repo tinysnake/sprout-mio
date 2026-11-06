@@ -8,6 +8,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/aj-recovery-matrix-runner.test.ts",
     "tests/chat-title-display.test.ts",
     "tests/chat-skills-candidate.test.ts",
+    "tests/chat-skills-edges.test.ts",
     "tests/chat-skills-expansion.test.ts",
     "tests/chat-capabilities.test.ts",
     "tests/chat-workspace.test.ts",
