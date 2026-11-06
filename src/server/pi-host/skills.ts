@@ -66,19 +66,20 @@ export function resolveSkillScope(projectId: string, ctx: ProjectContext): Skill
 export async function readSkillCatalog(
   scope: SkillScope,
   mode: "display" | "fresh",
+  now: () => number = Date.now,
 ): Promise<SkillCatalog> {
   if (!scope.enabled)
     return Object.freeze({
       scope,
       revision: "disabled",
-      loadedAt: Date.now(),
+      loadedAt: now(),
       byName: new Map(),
       skillPaths: [],
       diagnostics: [],
     });
   const prior = cache.get(scope.sourceKey);
   if (mode === "display") {
-    if (prior?.value && Date.now() - prior.value.loadedAt < 5_000) return prior.value;
+    if (prior?.value && now() - prior.value.loadedAt < 5_000) return prior.value;
     if (prior?.pending) return prior.pending;
   }
   const entry = {
@@ -102,7 +103,7 @@ export async function readSkillCatalog(
             Object.freeze({
               scope,
               revision: wire.revision,
-              loadedAt: Date.now(),
+              loadedAt: now(),
               byName: new Map(wire.skills.map((item) => [item.option.name, Object.freeze(item)])),
               skillPaths: Object.freeze(wire.skillPaths),
               diagnostics: Object.freeze(wire.diagnostics),
