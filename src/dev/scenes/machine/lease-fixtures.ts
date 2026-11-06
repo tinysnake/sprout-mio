@@ -37,6 +37,7 @@ export const demoLeases: LeaseView[] = [
     holderInstanceId: demoInstanceIds.primary,
     changedAt: "2026-10-18T07:02:00.000Z",
     pendingMutationId: null,
+    escrow: null,
   },
   {
     projectId: demoProject.id,
@@ -46,6 +47,7 @@ export const demoLeases: LeaseView[] = [
     holderInstanceId: demoInstanceIds.primary,
     changedAt: "2026-10-18T07:05:00.000Z",
     pendingMutationId: null,
+    escrow: null,
   },
   {
     projectId: demoProject.id,
@@ -55,6 +57,7 @@ export const demoLeases: LeaseView[] = [
     holderInstanceId: demoInstanceIds.sibling,
     changedAt: "2026-10-18T07:10:00.000Z",
     pendingMutationId: "lmu_12345678",
+    escrow: null,
   },
   {
     projectId: secondProject.id,
@@ -64,6 +67,7 @@ export const demoLeases: LeaseView[] = [
     holderInstanceId: demoInstanceIds.foreign,
     changedAt: "2026-10-18T07:08:00.000Z",
     pendingMutationId: null,
+    escrow: null,
   },
 ];
 
@@ -76,6 +80,7 @@ export const demoFreeLease: LeaseView = {
   holderInstanceId: null,
   changedAt: "2026-10-18T06:59:00.000Z",
   pendingMutationId: null,
+  escrow: null,
 };
 
 /**
@@ -209,6 +214,7 @@ export function applyLeaseMutation(
           holderInstanceId: null,
           changedAt: mutation.createdAt,
           pendingMutationId: null,
+          escrow: null,
         };
   const next: LeaseView =
     mutation.action === "acquire"
@@ -219,6 +225,7 @@ export function applyLeaseMutation(
           holderInstanceId,
           changedAt: mutation.completedAt ?? mutation.createdAt,
           pendingMutationId: null,
+          escrow: null,
         }
       : {
           ...base,
@@ -227,6 +234,7 @@ export function applyLeaseMutation(
           holderInstanceId: null,
           changedAt: mutation.completedAt ?? mutation.createdAt,
           pendingMutationId: null,
+          escrow: null,
         };
   const copy = [...leases];
   if (index >= 0) copy[index] = next;

@@ -25,6 +25,7 @@ const free = {
   holderInstanceId: null,
   changedAt: time,
   pendingMutationId: null,
+  escrow: null,
 };
 const denied: RemoteToolResponse = {
   outcome: "response",

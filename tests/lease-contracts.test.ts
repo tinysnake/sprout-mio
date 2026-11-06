@@ -5,6 +5,11 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 import { newId, ID_PREFIXES } from "../src/contracts/ids";
 import {
+  leaseClaimInputSchema,
+  leaseEscrowCancelInputSchema,
+  leaseEscrowCommandInputSchema,
+  leaseEscrowInputSchema,
+  leaseEscrowViewSchema,
   leaseMutationInputSchema,
   leaseMutationViewSchema,
   leaseViewSchema,
@@ -102,7 +107,7 @@ describe("P4b shared contracts", () => {
     // I-P5b 五个 Task 码、I-P6a continuation_disabled / wake_provider_unavailable /
     // continuation_delivery_unknown、I-P6b info_hub_cursor_stale / turn_context_unavailable、
     // I-P6c project_member_removal_blocked）。同时守「无重复」与「与 APP_ERROR_CODES 逐项一致」。
-    expect(humanContracts.APP_ERROR_CODES).toHaveLength(37);
+    expect(humanContracts.APP_ERROR_CODES).toHaveLength(41);
     expect(new Set(REMOTE_ERROR_CODES).size).toBe(REMOTE_ERROR_CODES.length);
     expect(REMOTE_ERROR_CODES).toContain("project_member_removal_blocked");
     expect([...REMOTE_ERROR_CODES]).toEqual([...humanContracts.APP_ERROR_CODES]);
@@ -116,6 +121,7 @@ describe("P4b shared contracts", () => {
       holderInstanceId: null,
       changedAt: at,
       pendingMutationId: null,
+      escrow: null,
     };
     expect(leaseViewSchema.safeParse(lease).success).toBe(true);
     expect(
@@ -150,6 +156,99 @@ describe("P4b shared contracts", () => {
       { completedAt: at },
     ])
       expect(leaseMutationViewSchema.safeParse({ ...receipt, ...changes }).success).toBe(false);
+    // I-P8a：挂靠嵌在租约视图里，且必须属于当前持有者。
+    const escrowId = newId(ID_PREFIXES.leaseEscrow);
+    const chatId = newId(ID_PREFIXES.chat);
+    const escrow = {
+      ...key,
+      escrowId,
+      state: "escrowed",
+      chatId,
+      targetAgentProfileId: null,
+      escrowedByInstanceId: instanceId,
+      escrowedAt: at,
+      escrowGeneration: 1,
+      claimedByInstanceId: null,
+      claimedAt: null,
+      claimedGeneration: null,
+    };
+    expect(leaseEscrowViewSchema.safeParse(escrow).success).toBe(true);
+    const escrowedLease = {
+      ...lease,
+      generation: 1,
+      state: "held",
+      holderInstanceId: instanceId,
+      escrow,
+    };
+    expect(leaseViewSchema.safeParse(escrowedLease).success).toBe(true);
+    for (const broken of [
+      { ...escrowedLease, holderInstanceId: newId(ID_PREFIXES.instance) },
+      { ...escrowedLease, state: "free", holderInstanceId: null },
+      {
+        ...escrowedLease,
+        escrow: { ...escrow, escrowedByInstanceId: newId(ID_PREFIXES.instance) },
+      },
+    ])
+      expect(leaseViewSchema.safeParse(broken).success).toBe(false);
+    // 领取收据必须落在挂靠代次之后，且 claimedAt / claimedByInstanceId / claimedGeneration 同生同灭。
+    const claimedEscrow = {
+      ...escrow,
+      state: "claimed",
+      claimedByInstanceId: newId(ID_PREFIXES.instance),
+      claimedAt: at,
+      claimedGeneration: 2,
+    };
+    expect(leaseEscrowViewSchema.safeParse(claimedEscrow).success).toBe(true);
+    for (const broken of [
+      { ...claimedEscrow, claimedGeneration: 1 },
+      { ...claimedEscrow, claimedAt: null },
+      { ...claimedEscrow, claimedByInstanceId: null },
+      { ...escrow, state: "claimed" },
+      { ...escrow, state: "invented" },
+    ])
+      expect(leaseEscrowViewSchema.safeParse(broken).success).toBe(false);
+    // 三个命令的输入形状：挂靠目标 / 领取目标 / 撤销目标。
+    expect(
+      leaseEscrowInputSchema.safeParse({
+        ...key,
+        action: "escrow",
+        requestId,
+        expectedGeneration: 1,
+        chatId,
+      }).success,
+    ).toBe(true);
+    expect(
+      leaseClaimInputSchema.safeParse({
+        ...key,
+        action: "claim",
+        requestId,
+        expectedGeneration: 1,
+        escrowId,
+      }).success,
+    ).toBe(true);
+    expect(
+      leaseEscrowCancelInputSchema.safeParse({
+        ...key,
+        action: "escrow_cancel",
+        requestId,
+        expectedGeneration: 1,
+        escrowId,
+      }).success,
+    ).toBe(true);
+    for (const broken of [
+      { ...key, action: "escrow", requestId, expectedGeneration: 0, chatId },
+      { ...key, action: "escrow", requestId, expectedGeneration: 1 },
+      {
+        ...key,
+        action: "escrow",
+        requestId,
+        expectedGeneration: 1,
+        chatId,
+        targetAgentProfileId: null,
+      },
+      { ...key, action: "claim", requestId, expectedGeneration: 1, escrowId: chatId },
+    ])
+      expect(leaseEscrowCommandInputSchema.safeParse(broken).success).toBe(false);
   });
 
   it("normalizes operation defaults and bounds UTF-8 bytes rather than code units", () => {

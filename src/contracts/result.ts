@@ -20,6 +20,12 @@ export const APP_ERROR_CODES = [
   "lease_result_unconfirmed",
   "lease_not_holder",
   "lease_stale_generation",
+  // I-P8a：挂靠目标与领取范围是分开的事实。「不支持 DM」/「跨 Project」在挂靠时就回绝；
+  // 领取者不在范围内用 claim_out_of_scope；租约不处于挂靠中（包括已领取、已撤销）用 not_escrowed。
+  "lease_escrow_dm_unsupported",
+  "lease_escrow_cross_project",
+  "lease_claim_out_of_scope",
+  "lease_not_escrowed",
   // 按冻结决定 10 的先后登记：最新 removed 的其他操作先判，detaching 的操作再判。
   "membership_removed",
   "detach_pending",

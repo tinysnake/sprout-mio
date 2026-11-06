@@ -443,7 +443,9 @@ export const remoteExchangeInputSchema = z.strictObject({
 const authorizationSchema = leaseKeySchema
   .extend({
     generation: nonnegativeSafeIntegerSchema,
-    state: z.enum(["free", "active", "draining"]),
+    // escrowed：挂靠中。对 Worker 而言它不是 active，因此旧持有者的命令与 MCP 绑定照旧被拒；
+    // 它与 draining 不同，不代表在排空，挂靠本身不改进程状态。
+    state: z.enum(["free", "active", "draining", "escrowed"]),
     holderInstanceId: instanceIdSchema.nullable(),
   })
   .refine(

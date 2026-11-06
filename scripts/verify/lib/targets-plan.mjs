@@ -9,6 +9,7 @@ export const CI_GROUPS = Object.freeze({
   contracts: [
     "s-machine-contracts",
     "v-lease-contracts",
+    "p8a-lease-escrow",
     "v-mcp-contracts",
     "aa-execution-log-contracts",
     "ac-execution-recovery-log",

@@ -86,6 +86,7 @@ test("active + fencing 仍在当前区但标暂不可用", () => {
     holderInstanceId: "ins_00000001",
     changedAt: "2026-01-01T00:00:00.000Z",
     pendingMutationId: null,
+    escrow: null,
   });
   expect(view.label).toBe("项目资源 · 暂不可用");
   expect(view.unusable).toBe(true);

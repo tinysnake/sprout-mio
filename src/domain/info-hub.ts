@@ -8,6 +8,7 @@ import {
   agentRunInput,
   chatEffectiveMember,
   leaseMutation,
+  leaseEscrow,
   machine,
   machineConnection,
   machineLease,
@@ -47,6 +48,7 @@ import {
   type InfoHubRefreshResult,
 } from "../contracts/info-hub-query";
 import type { LeaseView } from "../contracts/lease";
+import { leaseEscrowView } from "../server/lease";
 import { chatDisplayTitle, type Chat } from "../contracts/chat";
 import { WORKER_STALE_AFTER_MS } from "../contracts/worker";
 import { config } from "../lib/config";
@@ -530,21 +532,41 @@ function leaseViews(projectId: string): LeaseView[] {
   const pendingByMachine = new Map(
     pending.map((row: { machineId: string; id: string }) => [row.machineId, row.id]),
   );
+  // 挂靠信息与租约同批读出，避免每台机器一次查询。
+  const escrows = db
+    .select()
+    .from(leaseEscrow)
+    .where(and(eq(leaseEscrow.projectId, projectId), eq(leaseEscrow.state, "escrowed")))
+    .all();
+  const escrowByMachine = new Map<string, typeof leaseEscrow.$inferSelect>();
+  for (const row of escrows) escrowByMachine.set(row.machineId, row);
   return db
     .select()
     .from(machineLease)
     .where(eq(machineLease.projectId, projectId))
     .orderBy(machineLease.machineId)
     .all()
-    .map((row: typeof machineLease.$inferSelect) => ({
-      projectId: row.projectId,
-      machineId: row.machineId,
-      generation: row.generation,
-      state: row.state,
-      holderInstanceId: row.holderInstanceId,
-      changedAt: row.changedAt.toISOString(),
-      pendingMutationId: pendingByMachine.get(row.machineId) ?? null,
-    }));
+    .map((row: typeof machineLease.$inferSelect) => {
+      // 只有当当前授权确实是这次挂靠（代次与存放者都对得上）时才投影，
+      // 避免残留行在界面上表现成「仍在挂靠中」。
+      const escrow = escrowByMachine.get(row.machineId);
+      return {
+        projectId: row.projectId,
+        machineId: row.machineId,
+        generation: row.generation,
+        state: row.state,
+        holderInstanceId: row.holderInstanceId,
+        changedAt: row.changedAt.toISOString(),
+        pendingMutationId: pendingByMachine.get(row.machineId) ?? null,
+        escrow:
+          escrow &&
+          row.state === "held" &&
+          escrow.escrowedByInstanceId === row.holderInstanceId &&
+          escrow.escrowGeneration === row.generation
+            ? leaseEscrowView(escrow)
+            : null,
+      };
+    });
 }
 
 function leaseSummaries(
@@ -619,6 +641,7 @@ function machineSummaries(
       holderInstanceId: null,
       changedAt: binding!.binding.createdAt.toISOString(),
       pendingMutationId: null,
+      escrow: null,
       holderResolution: "none",
       holder: null,
     };

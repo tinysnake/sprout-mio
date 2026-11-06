@@ -120,6 +120,7 @@ export const SUITE_PLAN = Object.freeze({
   "t-machine-worker": plan(67.424, { native: 1, browser: 1, development: 1 }, worker, true),
   "u-machine-ui": plan(75.372, { native: 1, browser: 1 }, worker),
   "v-lease-contracts": plan(2.619, { unit: 1 }),
+  "p8a-lease-escrow": plan(3.4, { unit: 1 }),
   "v-mcp-contracts": plan(11.609, { unit: 1 }),
   "w-worker-remote": plan(66.076, { native: 1, browser: 1 }, worker),
   "ap-p4d-handoff-worker": plan(74, { native: 1, browser: 1 }, worker),

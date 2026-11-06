@@ -33,6 +33,7 @@ const snapshot: { lease: LeaseView; mutation: null } = {
     holderInstanceId: null,
     changedAt: "2026-01-01T00:00:00.000Z",
     pendingMutationId: null,
+    escrow: null,
   },
   mutation: null,
 };

@@ -131,7 +131,7 @@ export type MembershipView = z.infer<typeof membershipViewSchema>;
 export interface AuthorityNow {
   generation: number;
   holderInstanceId: string | null;
-  state: "free" | "active" | "draining";
+  state: "free" | "active" | "draining" | "escrowed";
 }
 
 /** 执行出处的最小事实；不能复制一个可变 owner。 */
