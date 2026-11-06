@@ -146,11 +146,12 @@ export async function prepareInheritedResources(
 ): Promise<InheritedResources> {
   const scope = resolveSkillScope(projectId, ctx);
   if (!scope.enabled) return { kind: "disabled" };
-  const catalog = await readSkillCatalog(scope, "fresh");
+  // 宿主没装托管 Pi 时技能目录读不出来，继承为空仍要能开会话。
+  const catalog = await readSkillCatalog(scope, "fresh").catch(() => undefined);
   return {
     kind: "enabled",
-    skillRevision: catalog.revision,
-    skillPaths: catalog.skillPaths,
+    skillRevision: catalog?.revision ?? "unavailable",
+    skillPaths: catalog?.skillPaths ?? [],
     promptPaths: [join(scope.agentDir, "prompts")].filter(existsSync),
   };
 }

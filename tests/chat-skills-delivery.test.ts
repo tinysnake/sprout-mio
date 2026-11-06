@@ -155,6 +155,12 @@ it("disabled, missing, unavailable and over-limit preparation never forge delive
   const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = join(directory, "missing-sdk");
   try {
+    expect(await prepareInheritedResources(project.id, ctx)).toEqual({
+      kind: "enabled",
+      skillRevision: "unavailable",
+      skillPaths: [],
+      promptPaths: [],
+    });
     expect(
       (
         await preparePiMessage(
