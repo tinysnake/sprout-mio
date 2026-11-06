@@ -21,7 +21,7 @@ export function SkillMark({
   return (
     <span className="skill-mark" data-skill-name={name} {...props}>
       <span className="skill-mark-glyph" aria-hidden="true">
-        {SKILL_MARK}
+        <span className="skill-mark-raw">{SKILL_MARK}</span>
         <Icon as={BookOpen} className="skill-mark-icon" />
       </span>
       {text.slice(SKILL_MARK.length)}
