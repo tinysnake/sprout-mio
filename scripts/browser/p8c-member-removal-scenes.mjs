@@ -143,6 +143,9 @@ for (const colorScheme of ["dark", "light"]) {
       await page.getByTestId("force-remove-member").click();
       await page.getByTestId("member-removal-outcome").waitFor();
       assert.equal(await page.locator(memberRow).count(), 0, "成员行已移除");
+      // 善后结果以弹窗呈现：页面不残留结果区块，也不残留孤儿状态行。
+      assert.equal(await page.getByTestId("member-removal-outcome").getAttribute("role"), "dialog");
+      assert.equal(await page.getByTestId("members-feedback").count(), 0, "无孤儿状态行");
       assert.equal(await page.getByTestId("member-removal-aborted-runs").count(), 1);
       assert.equal(await page.getByTestId("member-removal-transferred-chats").count(), 1);
       assert.equal(await page.getByTestId("member-removal-unassigned-tasks").count(), 1);
@@ -170,6 +173,11 @@ for (const colorScheme of ["dark", "light"]) {
       assert.ok(untouchedText.includes("本次未处理"), `untouched 文案：${untouchedText}`);
       await assertNoHorizontalOverflow(page, "善后结果");
       await shoot(page, `p8c-outcome-${colorScheme}`);
+      // 关闭弹窗：回到成员页原状，页面上不得再有任何结果区块或状态行。
+      await page.getByTestId("dismiss-member-outcome").click();
+      await page.getByTestId("member-removal-outcome").waitFor({ state: "detached" });
+      assert.equal(await page.getByTestId("member-removal-outcome").count(), 0, "关闭后无残留结果");
+      assert.equal(await page.getByText("善后结果见").count(), 0, "无残留状态行");
       assert.deepEqual(errors, []);
     } finally {
       await context.close();
@@ -206,6 +214,9 @@ await check("重复移除（成员行已不存在）显示幂等空操作，不�
     await page.getByTestId("force-remove-member").click();
     await page.getByTestId("member-removal-outcome").waitFor();
     const outcome = page.getByTestId("member-removal-outcome");
+    // 幂等空操作没有善后结果可看：保持内联提示，不为它弹对话框（Human 明确接受无提示）。
+    assert.equal(await page.getByRole("dialog").count(), 0, "空操作不得弹对话框");
+    assert.equal(await outcome.getAttribute("role"), null, "空操作保持内联提示");
     const text = (await outcome.innerText()).replace(/\s+/g, "");
     assert.ok(text.includes("已不在当前Project"), `空操作标题：${text.slice(0, 60)}`);
     assert.ok(text.includes("幂等空操作"), "说明本次没有产生变更");
@@ -253,6 +264,26 @@ await check("强制移除失败时保留成员与阻塞说明，不展示善后�
     await assertActionVisible(page, "force-remove-member", "失败后的强制重试按钮");
     await assertActionVisible(page, "confirm-member-mutation", "失败后的确认移除按钮");
     await shoot(page, "p8c-force-failed", false);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+await check("演示开关真的模拟 profile 查询失败，页面给出失败提示", async () => {
+  const { context, page, errors } = await open({ width: 1280, height: 800, colorScheme: "dark" });
+  try {
+    assert.equal(await page.getByTestId("profiles-error").count(), 0, "默认没有失败提示");
+    await page.getByTestId("scene-profiles-missing").check();
+    await page.getByTestId("profiles-error").waitFor();
+    assert.ok(
+      (await page.getByTestId("profiles-error").innerText()).includes("profile"),
+      "提示说明是 profile 读取失败",
+    );
+    // 失败不隐去成员事实与移除入口：列表仍在，只是没有可添加的候选。
+    assert.equal(await page.getByTestId("member-list").count(), 1, "成员列表仍在");
+    assert.equal(await page.getByTestId("add-member-trigger").count(), 0, "无候选时不显示添加入口");
+    await shoot(page, "p8c-profiles-error");
     assert.deepEqual(errors, []);
   } finally {
     await context.close();

@@ -185,6 +185,171 @@ export function MemberRemovalOutcome({
     outcome.ownerTransferredChatIds.length +
     outcome.unassignedTaskIds.length;
 
+  const title = outcome.removed
+    ? `「${agentName}」已强制移除`
+    : `「${agentName}」已不在当前 Project`;
+  const description = outcome.removed
+    ? "以下是本次自动善后的结果；成员行已从 Project 移除，全局 profile 仍保留。"
+    : "本次调用是幂等空操作：成员行已不存在，没有产生新的变更。";
+
+  const body = (
+    <>
+      {heldBack.length > 0 && (
+        <div data-testid="member-removal-retained-leases" className="mt-4">
+          <h3 className="font-medium text-status-warning">占用待处理</h3>
+          <p className="mt-1 text-muted-foreground">
+            {retainedLeases.length > 0
+              ? "下列 Machine 的旧操作权无法确认已撤销，仍是占用状态，不会显示为空闲。"
+              : "下列 Machine 仍被旧操作权占用；本次没有处理它们，它们不会显示为空闲。"}
+          </p>
+          <ul className="mt-2">
+            {retainedLeases.map((lease) => (
+              <RetainedLease key={lease.machineId} lease={lease} projectId={projectId} />
+            ))}
+            {untouchedLeases.map((lease) => (
+              <UntouchedLease key={lease.key.machineId} lease={lease} projectId={projectId} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-4 space-y-3">
+        {handled === 0 && heldBack.length === 0 && (
+          <p data-testid="member-removal-no-side-effects" className="text-muted-foreground">
+            {outcome.removed
+              ? "本次没有需要中止的运行、转接的负责人、退回的 Task 或待处理的租约。"
+              : "本次没有成员变更，也没有新的运行中止、负责人转接、Task 退回或租约处置。"}
+          </p>
+        )}
+
+        {outcome.abortedRunIds.length > 0 && (
+          <div data-testid="member-removal-aborted-runs">
+            <h3 className="font-medium">已中止的运行（{outcome.abortedRunIds.length}）</h3>
+            <ul className="mt-1 space-y-2">
+              {outcome.abortedRunIds.map((runId) => {
+                const ref = runRefs.get(runId);
+                return (
+                  <li key={runId}>
+                    {ref && <ChatLink projectId={projectId} chat={ref.chat} />}
+                    <p className="break-all text-muted-foreground">
+                      Run {runId}
+                      {ref ? ` · 快照时 ${ref.status} · 分身 ${ref.instanceId}` : ""}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {outcome.ownerTransferredChatIds.length > 0 && (
+          <div data-testid="member-removal-transferred-chats">
+            <h3 className="font-medium">
+              已转接负责人的 Chat（{outcome.ownerTransferredChatIds.length}）
+            </h3>
+            <p className="mt-1 text-muted-foreground">负责人已转接给执行本次操作的人。</p>
+            <ul className="mt-1 space-y-2">
+              {outcome.ownerTransferredChatIds.map((chatId) => {
+                const ref = chatRefs.get(chatId);
+                return (
+                  <li key={chatId}>
+                    {ref ? (
+                      <ChatLink projectId={projectId} chat={ref} />
+                    ) : (
+                      <span className="break-all">{chatId}</span>
+                    )}
+                    <p className="break-all text-muted-foreground">
+                      {ref ? `${ref.chatKind} · ${chatId}` : chatId}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {outcome.unassignedTaskIds.length > 0 && (
+          <div data-testid="member-removal-unassigned-tasks">
+            <h3 className="font-medium">
+              已退回 proposed 的 Task（{outcome.unassignedTaskIds.length}）
+            </h3>
+            <ul className="mt-1 space-y-2">
+              {outcome.unassignedTaskIds.map((taskId) => {
+                const ref = taskRefs.get(taskId);
+                return (
+                  <li key={taskId}>
+                    {ref ? (
+                      <Link
+                        to="/projects/$projectId/tasks/$taskId"
+                        params={{ projectId, taskId }}
+                        className="underline underline-offset-3"
+                      >
+                        {ref.title}
+                      </Link>
+                    ) : (
+                      <span className="break-all">{taskId}</span>
+                    )}
+                    <p className="break-all text-muted-foreground">{taskId} · proposed</p>
+                    {ref && (
+                      <p className="text-muted-foreground">
+                        仍留在原 DM：
+                        <ChatLink projectId={projectId} chat={ref.chat} />
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        {releasedLeases.length > 0 && (
+          <div data-testid="member-removal-released-leases">
+            <h3 className="font-medium">已确认撤销的租约（{releasedLeases.length}）</h3>
+            <ul className="mt-1 space-y-2">
+              {releasedLeases.map((lease) => (
+                <li key={lease.machineId}>
+                  <MachineLeaseLink
+                    projectId={projectId}
+                    machineId={lease.machineId}
+                    machineName={lease.machineName}
+                  />
+                  <StatusLine label="已确认旧操作权撤销并释放" tone="success" />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  // 幂等空操作（removed=false）没有善后结果可看：保持内联提示，不为它弹对话框。
+  if (!outcome.removed)
+    return (
+      <section
+        data-testid="member-removal-outcome"
+        className="mt-5 rounded-container border border-border bg-secondary p-4 text-xs leading-6"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-sm font-medium">{title}</h2>
+            <p className="mt-1 text-muted-foreground">{description}</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid="dismiss-member-outcome"
+            onClick={onDismiss}
+          >
+            关闭
+          </Button>
+        </div>
+        {body}
+      </section>
+    );
+
   return (
     <Dialog
       open
@@ -194,143 +359,10 @@ export function MemberRemovalOutcome({
     >
       <DialogContent data-testid="member-removal-outcome" className="text-xs leading-6">
         <DialogHeader>
-          <DialogTitle className="text-sm font-medium">
-            {outcome.removed ? `「${agentName}」已强制移除` : `「${agentName}」已不在当前 Project`}
-          </DialogTitle>
-          <DialogDescription>
-            {outcome.removed
-              ? "以下是本次自动善后的结果；成员行已从 Project 移除，全局 profile 仍保留。"
-              : "本次调用是幂等空操作：成员行已不存在，没有产生新的变更。"}
-          </DialogDescription>
+          <DialogTitle className="text-sm font-medium">{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-
-        {heldBack.length > 0 && (
-          <div data-testid="member-removal-retained-leases" className="mt-4">
-            <h3 className="font-medium text-status-warning">占用待处理</h3>
-            <p className="mt-1 text-muted-foreground">
-              {retainedLeases.length > 0
-                ? "下列 Machine 的旧操作权无法确认已撤销，仍是占用状态，不会显示为空闲。"
-                : "下列 Machine 仍被旧操作权占用；本次没有处理它们，它们不会显示为空闲。"}
-            </p>
-            <ul className="mt-2">
-              {retainedLeases.map((lease) => (
-                <RetainedLease key={lease.machineId} lease={lease} projectId={projectId} />
-              ))}
-              {untouchedLeases.map((lease) => (
-                <UntouchedLease key={lease.key.machineId} lease={lease} projectId={projectId} />
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="mt-4 space-y-3">
-          {handled === 0 && heldBack.length === 0 && (
-            <p data-testid="member-removal-no-side-effects" className="text-muted-foreground">
-              {outcome.removed
-                ? "本次没有需要中止的运行、转接的负责人、退回的 Task 或待处理的租约。"
-                : "本次没有成员变更，也没有新的运行中止、负责人转接、Task 退回或租约处置。"}
-            </p>
-          )}
-
-          {outcome.abortedRunIds.length > 0 && (
-            <div data-testid="member-removal-aborted-runs">
-              <h3 className="font-medium">已中止的运行（{outcome.abortedRunIds.length}）</h3>
-              <ul className="mt-1 space-y-2">
-                {outcome.abortedRunIds.map((runId) => {
-                  const ref = runRefs.get(runId);
-                  return (
-                    <li key={runId}>
-                      {ref && <ChatLink projectId={projectId} chat={ref.chat} />}
-                      <p className="break-all text-muted-foreground">
-                        Run {runId}
-                        {ref ? ` · 快照时 ${ref.status} · 分身 ${ref.instanceId}` : ""}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {outcome.ownerTransferredChatIds.length > 0 && (
-            <div data-testid="member-removal-transferred-chats">
-              <h3 className="font-medium">
-                已转接负责人的 Chat（{outcome.ownerTransferredChatIds.length}）
-              </h3>
-              <p className="mt-1 text-muted-foreground">负责人已转接给执行本次操作的人。</p>
-              <ul className="mt-1 space-y-2">
-                {outcome.ownerTransferredChatIds.map((chatId) => {
-                  const ref = chatRefs.get(chatId);
-                  return (
-                    <li key={chatId}>
-                      {ref ? (
-                        <ChatLink projectId={projectId} chat={ref} />
-                      ) : (
-                        <span className="break-all">{chatId}</span>
-                      )}
-                      <p className="break-all text-muted-foreground">
-                        {ref ? `${ref.chatKind} · ${chatId}` : chatId}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {outcome.unassignedTaskIds.length > 0 && (
-            <div data-testid="member-removal-unassigned-tasks">
-              <h3 className="font-medium">
-                已退回 proposed 的 Task（{outcome.unassignedTaskIds.length}）
-              </h3>
-              <ul className="mt-1 space-y-2">
-                {outcome.unassignedTaskIds.map((taskId) => {
-                  const ref = taskRefs.get(taskId);
-                  return (
-                    <li key={taskId}>
-                      {ref ? (
-                        <Link
-                          to="/projects/$projectId/tasks/$taskId"
-                          params={{ projectId, taskId }}
-                          className="underline underline-offset-3"
-                        >
-                          {ref.title}
-                        </Link>
-                      ) : (
-                        <span className="break-all">{taskId}</span>
-                      )}
-                      <p className="break-all text-muted-foreground">{taskId} · proposed</p>
-                      {ref && (
-                        <p className="text-muted-foreground">
-                          仍留在原 DM：
-                          <ChatLink projectId={projectId} chat={ref.chat} />
-                        </p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {releasedLeases.length > 0 && (
-            <div data-testid="member-removal-released-leases">
-              <h3 className="font-medium">已确认撤销的租约（{releasedLeases.length}）</h3>
-              <ul className="mt-1 space-y-2">
-                {releasedLeases.map((lease) => (
-                  <li key={lease.machineId}>
-                    <MachineLeaseLink
-                      projectId={projectId}
-                      machineId={lease.machineId}
-                      machineName={lease.machineName}
-                    />
-                    <StatusLine label="已确认旧操作权撤销并释放" tone="success" />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+        {body}
         <DialogFooter>
           <Button
             type="button"
