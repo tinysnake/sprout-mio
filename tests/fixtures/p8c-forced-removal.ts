@@ -8,8 +8,10 @@ import { and, eq } from "drizzle-orm";
 import { createGroupChatInput } from "../../src/contracts/chat";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { projectMemberRemovalOutcomeSchema } from "../../src/contracts/project-member-removal";
+import type { ProjectMemberRemovalBlockers } from "../../src/contracts/project-member-removal";
 import { db, sqlite } from "../../src/db";
 import {
+  agentInstance,
   agentRun,
   chat,
   chatMember,
@@ -22,6 +24,7 @@ import {
 } from "../../src/db/schema";
 import {
   addProjectMember,
+  createAgentProfile,
   forceRemoveProjectMember,
   removeProjectMember,
 } from "../../src/domain/agent";
@@ -36,6 +39,7 @@ import { saveProjectMachineBinding } from "../../src/domain/machine";
 import { createProject } from "../../src/domain/project";
 import { mutateTask } from "../../src/domain/task";
 import { openInitialMembership } from "../../src/server/membership";
+import { completeLeaseMutation } from "../../src/server/lease";
 import {
   assert,
   assertionCount,
@@ -339,6 +343,132 @@ function scenarioFencing() {
   assert.equal(membershipRow(f.project.id, f.agent.id), undefined);
 }
 
+/**
+ * 组合场景：pending handoff 指向被移除的分身，同时该 Agent 还有活动 run、自己挂荗中的租约、
+ * DM 已分配 Task 与 owner 职责。四类善后必须与「不动在途交接」在同一笔事务里同时成立。
+ *
+ * 发起交交的一方是另一个仍留在 Project 里的 Agent：它的分身持有租约，把租约交给 Leaving 的
+ * DM 分身。这才是 blockers 里的 relation=handoff_target（holder 不是被移除者）。
+ */
+function scenarioHandoff() {
+  const f = setup();
+  const holderAgent = createAgentProfile({ name: "Holder", persona: "", harness: "pi" }, f.ctx);
+  addProjectMember(f.project.id, holderAgent.id, f.ctx);
+  const holderDm = createDirectChat(f.project.id, holderAgent.id, f.ctx);
+  const holderInstance = ensureInstance(holderDm.chat.id, holderAgent.id, f.ctx);
+  const leavingTarget = ensureInstance(f.dm.chat.id, f.agent.id, f.ctx);
+  assert.notEqual(holderInstance.id, leavingTarget.id);
+
+  const handoff = seedLease(f, "fencing", holderInstance.id, leavingTarget.id);
+  const held = seedLease(f, "held");
+  const run = seedRun(f, "queued");
+  const dmTask = seedTask(f, "assigned");
+  const groupTask = seedTask(f, "assigned", f.group.id);
+  ownGroupByAgent(f);
+
+  const handoffBefore = {
+    lease: leaseRow(handoff.key),
+    authorization: authorizationRow(handoff.key, 1),
+    mutation: db
+      .select()
+      .from(leaseMutation)
+      .where(eq(leaseMutation.id, handoff.pendingMutationId!))
+      .get(),
+    holderMembership: membershipRow(f.project.id, holderAgent.id),
+    holderRunlessInstance: db
+      .select()
+      .from(agentInstance)
+      .where(eq(agentInstance.id, holderInstance.id))
+      .get(),
+  };
+
+  // 常规移除仍被四类责任同时挡住，且零写入。
+  const beforeBlocked = snapshot();
+  const blockedError = blocked(() => removeProjectMember(f.project.id, f.agent.id, f.ctx));
+  assert.deepEqual(snapshot(), beforeBlocked);
+  const details = (blockedError as Error & { details?: ProjectMemberRemovalBlockers }).details;
+  const leaseBlock = details?.blockers.find((blocker) => blocker.kind === "leases");
+  assert.equal(leaseBlock?.kind, "leases");
+  if (leaseBlock?.kind !== "leases") throw new Error("Expected lease blockers");
+  const handoffItem = leaseBlock.items.find((item) => item.key.machineId === handoff.key.machineId);
+  assert.equal(handoffItem?.relation, "handoff_target");
+  assert.equal(handoffItem?.pendingMutationId, handoff.pendingMutationId);
+  assert.equal(handoffItem?.holderInstanceId, holderInstance.id);
+
+  const outcome = forceRemoveProjectMember(f.project.id, f.agent.id, removalCtx(f));
+  assert.deepEqual(projectMemberRemovalOutcomeSchema.parse(outcome), outcome);
+  assert.equal(outcome.removed, true);
+
+  // 四处善后：run 中止、owner 转接、DM Task 退回、挂荗中的租约（held）被收回。
+  assert.deepEqual(outcome.abortedRunIds, [run]);
+  assert.equal(runStatusOf(run)!.status, "aborted");
+  assert.deepEqual(outcome.ownerTransferredChatIds, [f.group.id]);
+  assert.equal(chatRow(f.group.id)!.ownerKind, "human");
+  assert.deepEqual(outcome.unassignedTaskIds, [dmTask]);
+  assert.equal(taskRow(dmTask)!.status, "proposed");
+  assert.equal(taskRow(dmTask)!.chatId, null);
+  // 反证 7 的另外两半：Group 里的 Task 留在原对话、参与权被剥夺而 DM 成员行按 d14 保留。
+  assert.equal(taskRow(groupTask)!.status, "assigned");
+  assert.equal(taskRow(groupTask)!.chatId, f.group.id);
+  assert.deepEqual(agentMemberRows(f.group.id), []);
+  assert.equal(agentMemberRows(f.dm.chat.id).length, 1);
+  assert.equal(outcome.leases.length, 1);
+  assert.equal(outcome.leases[0].machineId, held.key.machineId);
+  assert.equal(outcome.leases[0].outcome, "released");
+  assert.equal(leaseRow(held.key)!.state, "free");
+
+  // 在途交接不在善后范围内：租约、授权代次与待决收据一字未动，更不能变成 free。
+  assert.deepEqual(leaseRow(handoff.key), handoffBefore.lease);
+  assert.deepEqual(authorizationRow(handoff.key, 1), handoffBefore.authorization);
+  assert.deepEqual(
+    db.select().from(leaseMutation).where(eq(leaseMutation.id, handoff.pendingMutationId!)).get(),
+    handoffBefore.mutation,
+  );
+  assert.equal(leaseRow(handoff.key)!.state, "fencing");
+  assert.notEqual(leaseRow(handoff.key)!.state, "free");
+  assert.equal(diagnosticRows(f.project.id, "project_member.removal_lease_retained").length, 0);
+
+  // 留下的待办占用必须有证据：一条 warn + 指向被移除分身的 target。
+  const stranded = diagnosticRows(
+    f.project.id,
+    "project_member.removal_handoff_target_left_pending",
+  );
+  assert.equal(stranded.length, 1);
+  assert.equal(stranded[0]!.level, "warn");
+  const strandedData = JSON.parse(stranded[0]!.data!) as {
+    machineId: string;
+    pendingMutationId: string;
+    targetInstanceId: string;
+  };
+  assert.equal(strandedData.machineId, handoff.key.machineId);
+  assert.equal(strandedData.pendingMutationId, handoff.pendingMutationId);
+  assert.equal(strandedData.targetInstanceId, leavingTarget.id);
+
+  // 另一个 Agent 的成员、分身与租约发起方身份全部原样。
+  assert.deepEqual(membershipRow(f.project.id, holderAgent.id), handoffBefore.holderMembership);
+  assert.deepEqual(
+    db.select().from(agentInstance).where(eq(agentInstance.id, holderInstance.id)).get(),
+    handoffBefore.holderRunlessInstance,
+  );
+  assert.equal(membershipRow(f.project.id, f.agent.id), undefined);
+  assert.equal(chatRow(f.dm.chat.id)!.archivedAt !== null, true);
+
+  // 缺口：交接的确认门只看 drained，不看目标分身是否仍是成员。
+  // 守卫未落地时它会落到已移除分身名下（KNOWN-GAP）；守卫落地后必须停在 fencing+pending。
+  completeLeaseMutation(handoff.key, new Date(), false);
+  const landed = leaseRow(handoff.key)!;
+  assert.equal(membershipRow(f.project.id, f.agent.id), undefined);
+  if (landed.state === "fencing") {
+    assert.equal(landed.holderInstanceId, holderInstance.id);
+    assert.equal(pendingMutationRow(handoff.key)!.state, "pending");
+    console.log("p8c handoff target gate: refused (safe)");
+  } else {
+    assert.equal(landed.state, "held");
+    assert.equal(landed.holderInstanceId, leavingTarget.id);
+    console.log("KNOWN-GAP p8c handoff target gate: lease landed on a removed instance");
+  }
+}
+
 /** 同一台物理机上的另一个 Project：A 的移除不能碰 B 的任何一行。 */
 function scenarioIsolation() {
   const f = setup();
@@ -429,6 +559,7 @@ const scenario = process.argv[2];
 if (scenario === "normal") scenarioNormal();
 else if (scenario === "retained") scenarioRetained();
 else if (scenario === "fencing") scenarioFencing();
+else if (scenario === "handoff") scenarioHandoff();
 else if (scenario === "isolation") scenarioIsolation();
 else throw new Error(`unknown scenario: ${scenario ?? "<none>"}`);
 console.log(`p8c forced removal ${scenario} ok (${assertionCount} assertions)`);

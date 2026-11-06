@@ -434,13 +434,15 @@ function emptyRemovalOutcome(
 
 /**
  * 强制移除的计划：直接取自常规路径的四类责任聚合函数，避免「什么算责任」有两套定义。
- * 只取能自动善后的子集：租约仅收回本项目内该 Agent 分身正在持有的（handoff_target 留给
- * 挂靠契约，见 I-P8a）。
+ * 只取能自动善后的子集：租约仅收回本项目内该 Agent 分身正在持有的。handoff_target（pending
+ * handoff 的目标是被移除分身）不在自动善后范围内：没有取消原语，也不允许把占用写成 free，
+ * 所以单列出来只记诊断，留给 Human 与 `completeLeaseMutation` 的确认门处理。
  */
 function projectAgentRemovalPlan(projectId: string, agentProfileId: string) {
   const plan = {
     activeRunIds: [] as string[],
     heldLeases: [] as ProjectMemberRemovalLeaseRef[],
+    handoffLeases: [] as ProjectMemberRemovalLeaseRef[],
     ownerChatIds: [] as string[],
     dmTaskIds: [] as string[],
   };
@@ -448,8 +450,11 @@ function projectAgentRemovalPlan(projectId: string, agentProfileId: string) {
     if (blocker.kind === "active_runs") {
       for (const item of blocker.items) plan.activeRunIds.push(item.runId);
     } else if (blocker.kind === "leases") {
-      for (const item of blocker.items)
+      for (const item of blocker.items) {
         if (item.state === "held" && item.relation === "holder") plan.heldLeases.push(item);
+        if (item.state === "fencing" && item.relation === "handoff_target")
+          plan.handoffLeases.push(item);
+      }
     } else if (blocker.kind === "owner_duties") {
       for (const item of blocker.items) plan.ownerChatIds.push(item.chat.chatId);
     } else {
@@ -510,6 +515,43 @@ function reclaimOneLease(
   if (row?.state === "fencing")
     return { ...identity, outcome: "retained", reason: "pending_dispatched_executions" };
   return { ...identity, outcome: "released", reason: null };
+}
+
+/**
+ * pending handoff 的目标就是被移除的分身时，强制移除既不落地也不释放它：租约连同待决收据原样
+ * 停在 fencing，等 Human 在租约页处置。这里只负责把「留下了一笔待办占用」记成 warn，让诊断与
+ * 租约页看到同一件事。真正的落地拒绝在 `completeLeaseMutation` 的确认门（见 p8c-int 报告）。
+ */
+function recordStrandedHandoffs(
+  handoffs: readonly ProjectMemberRemovalLeaseRef[],
+  projectId: string,
+  ctx: MachineContext,
+): void {
+  for (const handoff of handoffs) {
+    const target = handoff.pendingMutationId
+      ? db
+          .select({ targetInstanceId: leaseMutation.targetInstanceId })
+          .from(leaseMutation)
+          .where(eq(leaseMutation.id, handoff.pendingMutationId))
+          .get()
+      : undefined;
+    db.insert(diagnosticEvent)
+      .values({
+        id: newId(ID_PREFIXES.diagnostic),
+        at: ctx.now,
+        level: "warn",
+        event: "project_member.removal_handoff_target_left_pending",
+        requestId: ctx.requestId,
+        projectId,
+        message: `强制移除留下了指向被移除分身的待决交接（Machine「${handoff.machineName}」），租约保留为占用待处理`,
+        data: JSON.stringify({
+          machineId: handoff.key.machineId,
+          pendingMutationId: handoff.pendingMutationId,
+          targetInstanceId: target?.targetInstanceId ?? null,
+        }),
+      })
+      .run();
+  }
 }
 
 function settleProjectAgentLeases(
@@ -617,6 +659,7 @@ export function forceRemoveProjectMember(
             abortedRunIds.push(runId);
           }
           const leases = settleProjectAgentLeases(plan.heldLeases, projectId, ctx);
+          recordStrandedHandoffs(plan.handoffLeases, projectId, ctx);
           const ownerTransferredChatIds = transferProjectAgentOwnership(plan.ownerChatIds, ctx);
           const unassignedTaskIds = unassignProjectAgentDirectTasks(plan.dmTaskIds, projectId, ctx);
           // 不能复用 `revokeProjectAgentEnrollment`：无法确认撤权的租约必须留在这里，

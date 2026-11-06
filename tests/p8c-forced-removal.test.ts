@@ -5,10 +5,10 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vite-plus/test";
 
 /**
- * 强制移除的四个场景各需要一个干净的库（fixture 的 setup() 固定插入同一个 user 行），
+ * 强制移除的每个场景各需要一个干净的库（fixture 的 setup() 固定插入同一个 user 行），
  * 所以逐个 scenario 起一个子进程。
  */
-const scenarios = ["normal", "retained", "fencing", "isolation"] as const;
+const scenarios = ["normal", "retained", "fencing", "handoff", "isolation"] as const;
 
 describe("p8c forced project member removal", () => {
   for (const scenario of scenarios) {
