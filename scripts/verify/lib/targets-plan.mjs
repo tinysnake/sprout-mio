@@ -32,6 +32,7 @@ export const CI_GROUPS = Object.freeze({
     "i4-agent-fanout",
     "i5-project-removal",
     "p6c-member-removal",
+    "p8c-removal",
     "p6c-participation-revocation",
     "bf-p6c-lifecycle",
     "i6-chat-info",
