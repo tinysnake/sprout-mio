@@ -3,7 +3,8 @@
  * 所以镜像层的前进宽度与 textarea 里的原文完全相同。
  */
 .skill-mark {
-  --skill-mark-pad-x: 6px;
+  /* 外悬必须 ≤ insertSkill 补的半角空格（12px Geist 下 3.109px），否则环压到后一个字形。 */
+  --skill-mark-pad-x: 3px;
   --skill-mark-edge: 1px;
   position: relative;
   padding: 0 var(--skill-mark-pad-x);
@@ -12,21 +13,26 @@
   margin-inline: calc(-1 * var(--skill-mark-pad-x));
   border-radius: var(--control-radius);
   background: var(--skill-mark);
-  box-shadow: 0 0 0 var(--skill-mark-edge) var(--skill-mark-ring);
+  /* 环画在盒内，视觉外悬就等于 padding，不会越过 insertSkill 补的半角空格压到邻字。 */
+  box-shadow: inset 0 0 0 var(--skill-mark-edge) var(--skill-mark-ring);
   color: var(--skill-mark-foreground);
 }
 
 .skill-mark-glyph {
-  opacity: 0;
+  /* 图标放在字形槽位内，containing block 才是这一行的 fragment，多行标记不会把图标送到中间行。 */
+  position: relative;
+  visibility: hidden;
 }
 
 .skill-mark-icon {
   position: absolute;
   top: 50%;
-  left: calc(var(--skill-mark-pad-x) + 0.5px);
+  left: 0.5px;
   width: 1em;
   height: 1em;
   translate: 0 -50%;
+  visibility: visible;
   color: var(--skill-mark-icon);
+  /* icon.tsx 的 1.5 是按 16px 图标定的，12px 下只有 0.75px 会发灰；这里按视觉粗细补回 1.1px。 */
   stroke-width: 2.2;
 }

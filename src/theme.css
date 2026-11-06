@@ -61,7 +61,7 @@
   --selected: var(--surface);
   /* 技能标记：行内标记的橙调底，文字用达 AA 的加深橙，图标用品牌原色。 */
   --skill-mark: color-mix(in oklab, var(--accent) 10%, var(--background));
-  --skill-mark-ring: color-mix(in oklab, var(--accent) 70%, var(--background));
+  --skill-mark-ring: var(--accent);
   --skill-mark-foreground: oklch(0.5 0.168 38);
   --skill-mark-icon: var(--accent);
   --hover: var(--surface-warm);
@@ -131,7 +131,7 @@
   --sidebar: oklch(0.17 0.004 90);
   --selected: oklch(0.29 0.005 90);
   --skill-mark: color-mix(in oklab, var(--accent) 16%, var(--background));
-  --skill-mark-ring: color-mix(in oklab, var(--accent) 70%, var(--background));
+  --skill-mark-ring: var(--accent);
   --skill-mark-foreground: oklch(0.8 0.13 45);
   --skill-mark-icon: oklch(0.72 0.17 42);
   --hover: oklch(0.27 0.005 90);
