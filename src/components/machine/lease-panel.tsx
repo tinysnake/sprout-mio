@@ -17,7 +17,6 @@ import {
   leaseStatusLabel,
   liveEscrowOf,
   mutationStateLabel,
-  pendingMutationLabel,
   runLeaseRelation,
   visibleLeases,
   type EscrowNames,
@@ -105,7 +104,6 @@ export function LeaseOverview({
           {visible.map((lease) => {
             const state = leaseStateLabel(lease.state);
             const holder = holderLabel(lease, holderNames);
-            const pending = pendingMutationLabel(lease);
             // 挂靠行只投影 live 挂靠：LeaseView.escrow 只会是挂靠中的那一次。
             const escrow = liveEscrowOf(lease);
             // 持有台数取同一份租约投影，不为这一行新增查询。
@@ -193,11 +191,6 @@ export function LeaseOverview({
                         ? ` · 覆盖了原动作 ${forcedReceipts[lease.machineId].forcedReclaim!.supersededMutationId}`
                         : ""}
                     </p>
-                  </dd>
-                )}
-                {pending && (
-                  <dd data-testid="lease-pending" className="text-status-warning">
-                    {pending}
                   </dd>
                 )}
                 {manageLink && (
