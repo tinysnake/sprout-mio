@@ -244,7 +244,7 @@ export function MessageComposer({
         <label className="sr-only" htmlFor="message-draft">
           发给{agentName}的消息
         </label>
-        {/* 负外边距与下方 7px 内边距等值：技能标记的负外边距落在输入区内，不被 overflow 裁掉。 */}
+        {/* 技能标记的负外边距落在输入区内，不被 overflow 裁掉。 */}
         <div className="relative -mx-[7px]">
           <div
             ref={highlight}

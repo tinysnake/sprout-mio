@@ -182,13 +182,6 @@ export function MessageList({
   );
 }
 
-/**
- * 正文按点名与技能切段后逐段渲染：技能是橙色 pill，点名是灰色 chip，其余原样输出。
- *
- * 两者都只是文字上的背景与字重，不是按钮，也不拦选中；文字就是 `body` 的原文切片，
- * 所以复制、查找与 `textContent` 都还是原句。名字取自消息本身而不是成员表，成员改名
- * 后历史消息仍显示当时写下的名字。
- */
 function MessageBody({
   body,
   mentions,

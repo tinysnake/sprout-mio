@@ -20,7 +20,7 @@ it("$ and @ queries are exclusive; insertions preserve suffix and UTF-16 caret",
   expect(scanSkillTokens(second.text).map((span) => span.name)).toEqual(["how", "why"]);
   console.log("PASS candidate: two tokens, suffix/caret, mutually exclusive $/@");
 });
-it("相邻两个标记之间补到两个半角空格，标记与普通文字之间不动", () => {
+it("相邻两个标记之间补到两个半角空格：只隔一格时两枚各让一半，剩不下看得见的空档", () => {
   const body = "📖how $pl";
   const next = insertSkill(body, skillQueryAt(body, body.length)!, "plan-only");
   expect(next.text).toBe("📖how  📖plan-only ");

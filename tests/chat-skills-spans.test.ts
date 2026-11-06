@@ -72,13 +72,10 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
     renderToStaticMarkup(
       createElement(MessageList, { messages: [read()], profile: null, humanName: "Human" }),
     );
-  // 技能标记的图标是独立元素，正文文本按 textContent 核对，不直接匹配 HTML 片段。
   const renderedText = (markup: string) => markup.replace(/<[^>]*>/g, "");
   const before = html();
   expect(before.match(/data-testid="message-skill"/g)).toHaveLength(2);
   expect(renderedText(before)).toContain("📖missing");
-  // 两个标记只隔一个空格，各自面向对方的一侧让出整格（见 tests/chat-skills-edges.test.ts）。
-  // 第二个标记的尾侧隔同样的一个空格跟着点名标记，也让出整格。
   expect(before.match(/data-edge-start="flush"/g)).toHaveLength(1);
   expect(before.match(/data-edge-end="flush"/g)).toHaveLength(2);
   expect(before.match(/data-edge-/g)).toHaveLength(3);
