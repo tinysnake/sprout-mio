@@ -3,6 +3,10 @@ import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus } from "lucide-react";
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
+import type {
+  ProjectMemberRemovalBlockers,
+  ProjectMemberRemovalOutcome,
+} from "../../contracts/project-member-removal";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
@@ -20,6 +24,7 @@ import { Icon } from "../ui/icon";
 import { Select } from "../ui/select";
 import { ResultError } from "./result-error";
 import { MemberRemovalBlockers } from "./member-removal-blockers";
+import { MemberRemovalOutcome } from "./member-removal-outcome";
 
 function initial(name: string) {
   return name.slice(0, 1);
@@ -38,6 +43,7 @@ export function ProjectMembers({
   humanName,
   add,
   remove,
+  forceRemove,
   onChanged,
 }: {
   members: ProjectMember[];
@@ -45,6 +51,8 @@ export function ProjectMembers({
   humanName: string;
   add: (agentProfileId: string) => Promise<AgentResult<ProjectMember>>;
   remove: (agentProfileId: string) => Promise<AgentResult<null>>;
+  /** 常规移除被阻塞后的强制通道：一次确认，善后结果由服务端返回，页面不推断。 */
+  forceRemove: (agentProfileId: string) => Promise<AgentResult<ProjectMemberRemovalOutcome>>;
   onChanged: () => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -53,6 +61,11 @@ export function ProjectMembers({
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState<AppError | null>(null);
+  // 善后结果连同产生它的阻塞快照一起留住：结果面板需要它们解释「未处理的租约」。
+  const [outcome, setOutcome] = useState<{
+    result: ProjectMemberRemovalOutcome;
+    blockers: ProjectMemberRemovalBlockers | null;
+  } | null>(null);
 
   const byId = new Map(profiles.map((profile) => [profile.id, profile]));
   const memberIds = new Set(members.map((member) => member.agentProfileId));
@@ -104,6 +117,37 @@ export function ProjectMembers({
     }
   }
 
+  /**
+   * 强制移除：只把已拿到的服务端阻塞事实当作展示快照，不做任何可用性判断；
+   * 结果、租约去向与未处理占用全部以服务端返回为准。
+   */
+  async function handleForceRemove() {
+    if (pending || !removing) return;
+    // 阻塞快照先留住：结果面板要用它解释「未处理的租约」，
+    // 因此整个请求期间不移除 error，避免确认框在提交中退回普通态。
+    const blocked = error && error.code === "project_member_removal_blocked" ? error.details : null;
+    setPending(true);
+    setFeedback("");
+    try {
+      const result = await forceRemove(removing.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setRemoving(null);
+      setError(null);
+      setOutcome({ result: result.data, blockers: blocked });
+      setFeedback("Agent 已强制移除，善后结果见上方。");
+      onChanged();
+    } catch (cause) {
+      setError(toAppError(cause, newId(ID_PREFIXES.request)));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const blocked = error && error.code === "project_member_removal_blocked" ? error : null;
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
@@ -142,6 +186,15 @@ export function ProjectMembers({
         <div className="mt-4">
           <ResultError error={error} testId="members-error" />
         </div>
+      )}
+
+      {outcome && (
+        <MemberRemovalOutcome
+          outcome={outcome.result}
+          blockers={outcome.blockers}
+          agentName={byId.get(outcome.result.agentProfileId)?.name ?? outcome.result.agentProfileId}
+          onDismiss={() => setOutcome(null)}
+        />
       )}
 
       <ul data-testid="member-list" className="mt-5">
@@ -214,6 +267,7 @@ export function ProjectMembers({
                   onClick={() => {
                     setError(null);
                     setFeedback("");
+                    setOutcome(null);
                     setRemoving({
                       id: member.agentProfileId,
                       name: profile?.name ?? member.agentProfileId,
@@ -287,16 +341,26 @@ export function ProjectMembers({
       >
         <DialogContent className="max-h-[85dvh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>确认移除 Agent？</DialogTitle>
+            <DialogTitle>{blocked ? "无法直接移除 Agent" : "确认移除 Agent？"}</DialogTitle>
             <DialogDescription>
-              确认把「{removing?.name ?? ""}」移出这个 Project？移除后，该 Agent 不再是当前 Project
-              成员；其全局 profile 仍保留。
+              {blocked ? (
+                <>
+                  「{removing?.name ?? ""}
+                  」仍有未结责任，常规移除被下列事项阻塞。你可以先逐项处理，也可以
+                  一次确认强制移除：强制移除会自动中止运行、尝试收回租约、把 Chat
+                  负责人转接给你，并把 Task 退回
+                  proposed；无法确认撤销的租约保留为占用待处理，不会显示为空闲。
+                </>
+              ) : (
+                <>
+                  确认把「{removing?.name ?? ""}」移出这个 Project？移除后，该 Agent 不再是当前
+                  Project 成员；其全局 profile 仍保留。
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           {error && <ResultError error={error} testId="members-error" />}
-          {error?.code === "project_member_removal_blocked" && (
-            <MemberRemovalBlockers details={error.details} />
-          )}
+          {blocked && <MemberRemovalBlockers details={blocked.details} mode="force" />}
           <DialogFooter>
             <Button
               type="button"
@@ -310,12 +374,24 @@ export function ProjectMembers({
             <Button
               type="button"
               variant="destructive"
-              loading={pending}
+              disabled={pending}
+              loading={pending && !blocked}
               data-testid="confirm-member-mutation"
               onClick={() => void handleRemove()}
             >
-              {pending ? "正在提交…" : "确认移除"}
+              {pending && !blocked ? "正在提交…" : "确认移除"}
             </Button>
+            {blocked && (
+              <Button
+                type="button"
+                variant="destructive"
+                loading={pending}
+                data-testid="force-remove-member"
+                onClick={() => void handleForceRemove()}
+              >
+                {pending ? "正在强制移除…" : "强制移除并自动善后"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

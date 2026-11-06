@@ -20,7 +20,8 @@ export function MemberRemovalBlockers({ details }: { details: ProjectMemberRemov
   return (
     <div
       data-testid="member-removal-blockers"
-      className="min-w-0 space-y-4 text-xs leading-6 break-words"
+      // 清单有界滚动：页脚的动作按钮必须始终可见（长清单不能把「强制移除」推到屏幕外）。
+      className="min-w-0 max-h-[32dvh] space-y-4 overflow-y-auto overscroll-contain pr-1 text-xs leading-6 break-words"
     >
       <p>先处理以下事项，再重试移除。</p>
       {details.blockers.map((blocker) => (

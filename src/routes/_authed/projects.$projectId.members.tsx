@@ -7,6 +7,7 @@ import { ResultError } from "../../components/project/result-error";
 import { Icon } from "../../components/ui/icon";
 import {
   addProjectMemberFn,
+  forceRemoveProjectMemberFn,
   listAgentProfilesFn,
   listProjectMembersFn,
   removeProjectMemberFn,
@@ -56,6 +57,9 @@ function ProjectMembersPage() {
           add={(agentProfileId) => addProjectMemberFn({ data: { projectId, agentProfileId } })}
           remove={(agentProfileId) =>
             removeProjectMemberFn({ data: { projectId, agentProfileId } })
+          }
+          forceRemove={(agentProfileId) =>
+            forceRemoveProjectMemberFn({ data: { projectId, agentProfileId } })
           }
           onChanged={() => void router.invalidate()}
         />

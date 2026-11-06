@@ -25,12 +25,15 @@ import { Button } from "../../../components/ui/button";
 import { Icon } from "../../../components/ui/icon";
 import type { AgentProfile, ProjectMember } from "../../../contracts/agent";
 import type { Project } from "../../../contracts/project";
+import type { ProjectMemberRemovalOutcome } from "../../../contracts/project-member-removal";
 import type { ProjectProfile } from "../../../contracts/project-config";
 import type { AppError, AppResult, AppErrorCode } from "../../../contracts/result";
 import {
   DEMO_REQUEST_ID,
   demoHumanName,
   demoInfoHub,
+  demoMemberRemovalBlockedError,
+  demoMemberRemovalOutcome,
   demoMembers,
   demoProfiles,
   demoProject,
@@ -362,6 +365,8 @@ function MembersScene({ embedded }: { embedded: boolean }) {
   const [fail, setFail] = useState(false);
   // profile 查询独立失败：成员与移除入口必须仍然可用。
   const [profilesMissing, setProfilesMissing] = useState(false);
+  // 常规移除被阻塞：必须在确认框里给出阻塞说明与一次确认的强制入口。
+  const [blocked, setBlocked] = useState(false);
   const [status, setStatus] = useState("");
 
   async function add(agentProfileId: string): Promise<AppResult<ProjectMember>> {
@@ -381,9 +386,23 @@ function MembersScene({ embedded }: { embedded: boolean }) {
   async function remove(agentProfileId: string): Promise<AppResult<null>> {
     await delay(600);
     if (fail) return demoFailure("internal", "移除失败，成员仍在 Project 中，请重试。");
+    if (blocked) {
+      const details = demoMemberRemovalBlockedError(agentProfileId);
+      return { ok: false, error: details, requestId: details.requestId };
+    }
     setMembers((current) => current.filter((member) => member.agentProfileId !== agentProfileId));
     setStatus("演示：已移除 Agent 成员，全局 profile 仍保留。");
     return demoSuccess(null);
+  }
+
+  async function forceRemove(
+    agentProfileId: string,
+  ): Promise<AppResult<ProjectMemberRemovalOutcome>> {
+    await delay(600);
+    if (fail) return demoFailure("internal", "强制移除失败，未做任何变更，请重试。");
+    setMembers((current) => current.filter((member) => member.agentProfileId !== agentProfileId));
+    setStatus("演示：已强制移除 Agent，善后结果见成员列表上方。");
+    return demoSuccess(demoMemberRemovalOutcome(agentProfileId));
   }
 
   return (
@@ -401,10 +420,20 @@ function MembersScene({ embedded }: { embedded: boolean }) {
           humanName={demoHumanName}
           add={add}
           remove={remove}
+          forceRemove={forceRemove}
           onChanged={() => undefined}
         />
       </PageFrame>
       <SceneControls title="Members" fail={fail} onFailChange={setFail} status={status}>
+        <label className="mt-2 flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={blocked}
+            data-testid="scene-blocked"
+            onChange={(event) => setBlocked(event.target.checked)}
+          />
+          模拟移除被阻塞
+        </label>
         <label className="mt-2 flex items-center gap-2">
           <input
             type="checkbox"

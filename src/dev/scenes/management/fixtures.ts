@@ -1,4 +1,12 @@
 import type { AgentProfile, ProjectMember } from "../../../contracts/agent";
+import type {
+  ProjectMemberRemovalBlockedError,
+  ProjectMemberRemovalOutcome,
+} from "../../../contracts/project-member-removal";
+import {
+  projectMemberRemovalBlockedErrorSchema,
+  projectMemberRemovalOutcomeSchema,
+} from "../../../contracts/project-member-removal";
 import type { Project } from "../../../contracts/project";
 import type { ProjectProfile } from "../../../contracts/project-config";
 import type { ProjectRepoState } from "../../../contracts/repository";
@@ -140,3 +148,104 @@ export const demoInfoHub: ProjectInfoHub = {
 };
 
 export const demoHumanName = "林澈";
+
+/**
+ * 强制移除演示场景的固定事实。全部经契约 schema 解析，保证演示数据与
+ * 服务端响应同形；这里只造事实，不造状态转换。
+ */
+const demoBlockedRunIds = { runId: "run_aaaa1111", instanceId: "ins_aaaa1111" };
+const demoBlockedChat = {
+  chatId: "cnv_44444444",
+  chatKind: "dm" as const,
+  title: "与 Amenda 的私聊",
+};
+export const demoOwnerChat = {
+  chatId: "cnv_55555555",
+  chatKind: "group" as const,
+  title: "发布协调组",
+};
+
+/** 「一次确认」入口的阻塞快照：四类责任各一组，含一个 holder 租约与一个 handoff_target 租约。 */
+export function demoMemberRemovalBlockedError(
+  agentProfileId: string,
+): ProjectMemberRemovalBlockedError {
+  return projectMemberRemovalBlockedErrorSchema.parse({
+    code: "project_member_removal_blocked",
+    message: "该 Agent 仍有未结责任，请先处理全部阻塞；fencing 租约请等待确认或前往租约页处理",
+    requestId: DEMO_REQUEST_ID,
+    details: {
+      projectId: DEMO_PROJECT_ID,
+      agentProfileId,
+      blockers: [
+        {
+          kind: "active_runs",
+          items: [{ ...demoBlockedRunIds, status: "running", chat: demoBlockedChat }],
+        },
+        {
+          kind: "leases",
+          items: [
+            {
+              key: { projectId: DEMO_PROJECT_ID, machineId: "mch_aaaa1111" },
+              machineName: "Studio Mac",
+              generation: 4,
+              state: "held",
+              holderInstanceId: demoBlockedRunIds.instanceId,
+              pendingMutationId: null,
+              relation: "holder",
+            },
+            {
+              key: { projectId: DEMO_PROJECT_ID, machineId: "mch_bbbb2222" },
+              machineName: "Build Box",
+              generation: 2,
+              state: "fencing",
+              holderInstanceId: "ins_bbbb2222",
+              pendingMutationId: "lmu_bbbb2222",
+              relation: "handoff_target",
+            },
+          ],
+        },
+        { kind: "owner_duties", items: [{ chat: demoOwnerChat }] },
+        {
+          kind: "dm_assigned_tasks",
+          items: [
+            {
+              taskId: "tsk_aaaa1111",
+              title: "整理 P8 验收清单",
+              status: "assigned",
+              chat: demoBlockedChat,
+            },
+          ],
+        },
+      ],
+    },
+  });
+}
+
+/**
+ * 对应的善后结果：Studio Mac 已确认撤销，Runner VM 保留为占用待处理，
+ * Build Box 因不在处理范围内而保持原样（由阻塞快照推出，见结果面板）。
+ */
+export function demoMemberRemovalOutcome(agentProfileId: string): ProjectMemberRemovalOutcome {
+  return projectMemberRemovalOutcomeSchema.parse({
+    projectId: DEMO_PROJECT_ID,
+    agentProfileId,
+    removed: true,
+    abortedRunIds: [demoBlockedRunIds.runId],
+    ownerTransferredChatIds: [demoOwnerChat.chatId],
+    unassignedTaskIds: ["tsk_aaaa1111"],
+    leases: [
+      {
+        machineId: "mch_aaaa1111",
+        machineName: "Studio Mac",
+        outcome: "released",
+        reason: null,
+      },
+      {
+        machineId: "mch_cccc3333",
+        machineName: "Runner VM",
+        outcome: "retained",
+        reason: "pending_dispatched_executions",
+      },
+    ],
+  });
+}
