@@ -16,7 +16,7 @@ Sprout Mio 是 Sprout 的简化重制版，大量代码和设计可以直接参�
 
 | 本轮分期事项 | 一期 | 二期 |
 | --- | --- | --- |
-| 租约交接与资源协调 | 申请、跨 run 持有、释放、直接原子交接、人类强制收回；遇到占用由 Agent owner 或 Human 通过对话协调 | Group / Group + Agent 挂靠与领取、挂靠超时提醒、申请遇阻自动协调、挂靠超时后的 owner 协调与 Human 升级 |
+| 租约交接与资源协调 | 申请、跨 run 持有、释放、直接原子交接、人类强制收回；遇到占用由 Agent owner 或 Human 通过对话协调 | Group / Group + Agent 挂靠与领取、挂靠超时提醒、申请遇阻等待与 Agent 自决、挂靠超时后的 owner 协调与 Human 升级 |
 | Agent 成员移除 | 有活动 runs、持有租约、承担 owner 职责或其 DM 尚有 assigned Tasks 时，先手动停止、释放或交接、变更 owner、重新分配任务，再移除 | 强制移除及自动善后：中止 runs、撤权、默认责任接续、DM 任务退回与租约释放 |
 | Worker 操作系统 | 支持并验收 macOS Worker | 补齐 Windows Worker，最终支持 macOS 与 Windows |
 
@@ -53,7 +53,7 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 - Project 是 Sprout 管理的 Agent 信息、上下文与操作授权的硬边界。Sprout 只向 Agent 提供当前 Project 的对话、Tasks、运行、租约及协调信息。Agent status 只汇总当前 Project 内的 runs。
 - Machine 加入 Project 后才供其分身查看和申请；同一物理 Machine 可以加入多个 Projects。
 - 租约互斥单位为 Project × Machine。一期同一 Project 内一台 Machine 只能由一个分身持有；二期挂靠期间也保持占用。不同 Projects 可以同时在同一物理 Machine 上持有独立租约。
-- 申请、直接交接、释放和收回均限于当前 Project；二期挂靠、领取和自动协调也遵守此边界。其他 Project 的租约不影响本项目申请或占用显示，也不暴露其工作信息。
+- 申请、直接交接、释放和收回均限于当前 Project；二期挂靠、领取和遇阻等待也遵守此边界。其他 Project 的租约不影响本项目申请或占用显示，也不暴露其工作信息。
 - 跨 Project 使用同一物理 Machine 的取舍由 Human 负责。文件、进程、端口和资源竞争由 Project organization 负责，Sprout 不做跨 Project 占用仲裁。
 - 硬隔离限定在 Sprout 层。有效租约允许分身以 worker 用户权限操作整台 Machine；工作目录不是访问边界，Sprout 不增加操作系统层面的项目隔离。
 - 一期从 Project 移除 Agent 前，须手动处理其活动 runs、持有租约、owner 职责及 DM 中的 assigned Tasks。仍有关联工作时阻止移除，不提供一键强制移除和自动善后。
@@ -107,7 +107,7 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 ## 二期：明确要做
 
 - **租约挂靠与领取**：支持 Group 或 Group + Agent；只对 Group / Public Channel 挂靠，不支持 DM。期间保持占用，原持有者交出操作权，由符合条件的分身领取。
-- **资源自动协调**：申请遇阻时在项目内有限尝试、合并重复请求，持有者释放、交接或说明保留原因；失败或状态不确定时交 Human，不自动抢占。
+- **申请遇阻等待与自决**：申请遇阻时不做自动协调、不向持有者发任何请求，只做一次阻塞式等待——等多久由申请方 Agent 自己指定（建议 5 分钟，上限 1 小时），期间不抢占也不释放；到点仍拿不到就以“失败 + 原因”直接返回，由它自己决定下一步。不提供按 Project 配置的等待参数。
 - **挂靠超时处理**：提醒 Human；通知或唤醒 owner 协调，无法处理时升级给 Human。超时不自动释放。
 - **Agent 强制移除及自动善后**：中止本项目 runs、撤权，owner 默认转 Human、Tasks 留在原对话，DM 未完成 Tasks 退回 proposed；确认旧操作权撤销后释放租约，无法确认时保留待处理占用。历史、施工记录、文件和进程不随之删除，其他 Projects 不受影响。
 - **Windows Worker**：一期支持 macOS，二期补齐 Windows，并验证 Windows 路径、shell、进程和长命令能力。
@@ -126,15 +126,15 @@ Chat 是 Project 内持久的沟通与协作单元，统一涵盖 DM、Group 和
 优先复用 Worker 连接、认证、重连与平台适配经验，以及持久消息、运行、租约、重复请求和恢复机制；具体 API、schema 和模块以分期后的边界为准。
 
 - Worker 提供远端操作，不在 Machine 部署 harness；Pi 沿用宿主现有工具、配置与认证，再加载 Sprout extension。
-- Lease holder 改为持续分身，不沿用 run 结束自动释放。一期直接交接，二期扩展挂靠及自动协调。
+- Lease holder 改为持续分身，不沿用 run 结束自动释放。一期直接交接，二期扩展挂靠、领取与挂靠超时提醒。
 - Task 不承载环境 begin/end、pause、blocked、recovery 或强制验收状态机。
 - Agent 回复可以进入上下文唤醒；Git clone、pull、commit、push 仍交 Agent 的 shell 工作流程。
 
 | Issues | 分期后的建议 |
 | --- | --- |
 | #260–#264：Tasks | 按 Project → Chat、四态、checklist 与施工记录重写；成员强制移除自动善后二期做 |
-| #265：Lease escrow | 一期持续分身持有与直接交接；挂靠、领取、申请遇阻自动协调及超时处理二期做 |
-| #266：Working group glance | Info Hub 多视角与必要上下文仍属一期；二期再接入挂靠、自动协调与自动善后信息 |
+| #265：Lease escrow | 一期持续分身持有与直接交接；挂靠、领取、申请遇阻等待及挂靠超时处理二期做 |
+| #266：Working group glance | Info Hub 多视角与必要上下文仍属一期；二期再接入挂靠、超时待处理与自动善后信息 |
 | #226、#272：OAR 与多 engine | 一期仅 Pi；其他 harness 属时间未定的未来方向，OAR 复用是技术选择 |
 | #274、#277、#280、#281：工具路径与策略 | 在本地与远端工具并存的边界下重判，不先完成旧隔离路线 |
 | #282：Windows OAR 验收 | macOS Worker 一期验收，Windows Worker 二期验收；Windows harness/OAR 执行不属于这两期 Worker 目标 |
