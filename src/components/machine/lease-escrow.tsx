@@ -86,7 +86,7 @@ function useEscrowRuns(handler: LeaseEscrowHandler) {
  * 裸 chat id 不作为人类可读文案（它只出现在 `title` 属性里）。
  */
 function chatLabel(
-  chat: Chat,
+  chat: EscrowChatChoice,
   chatAgents: readonly ChatAgent[],
   agentNames: Readonly<Record<string, string>>,
 ): string {
@@ -101,7 +101,7 @@ function machineName(machines: readonly MachineDetail[], machineId: string): str
 }
 
 function escrowNamesOf(
-  chats: readonly Chat[],
+  chats: readonly EscrowChatChoice[],
   agents: readonly { agentProfileId: string; name: string; chatId?: string | null }[],
   provided: Readonly<Record<string, string>> = {},
 ): EscrowNames {
@@ -121,6 +121,9 @@ function escrowNamesOf(
   };
 }
 
+/** 挂靠面板只需要 Chat 的身份与类型，不需要完整 Chat 行；演示与页面都能复用同一份形状。 */
+export type EscrowChatChoice = Pick<Chat, "id" | "kind" | "title">;
+
 /**
  * Machine 详情里的挂靠入口：把租约挂到本 Project 的 Group / Public Channel，
  * 或从发起挂靠的分身所在的 Chat 撤销。目标 Chat 列表由调用方按已有读模型传入。
@@ -138,7 +141,7 @@ export function LeaseEscrowEntry({
 }: {
   projectId: string;
   lease: LeaseView;
-  chats: readonly Chat[];
+  chats: readonly EscrowChatChoice[];
   agents?: readonly { agentProfileId: string; name: string; chatId?: string | null }[];
   /** 权威显示名（如 Info Hub 的 chat displayTitle）；缺省时按列表页规则推导。 */
   chatNames?: Readonly<Record<string, string>>;

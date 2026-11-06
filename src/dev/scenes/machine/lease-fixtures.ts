@@ -117,6 +117,42 @@ export const demoEscrowInstances: Record<string, { instanceId: string; agentProf
     [demoEscrowTargets.dm.chatId]: [],
   };
 
+/** 挂靠目标选择框的选项。DM 也列出来，用来看见它被排除在挂靠目标之外。 */
+export const demoEscrowChats: {
+  id: string;
+  kind: "dm" | "group" | "public_channel";
+  title: string;
+}[] = [demoEscrowTargets.group, demoEscrowTargets.channel, demoEscrowTargets.dm].map((target) => ({
+  id: target.chatId,
+  kind: target.kind,
+  title: target.title,
+}));
+
+/** 指定 Agent 选择框的选项：每个分身属于哪个 Chat 就是它的候选范围。 */
+export const demoEscrowAgents = Object.entries(demoEscrowInstances).flatMap(([chatId, items]) =>
+  items.map((item) => ({
+    agentProfileId: item.agentProfileId,
+    name: demoEscrowAgentNames[item.agentProfileId] ?? item.agentProfileId,
+    chatId,
+  })),
+);
+
+/** 演示里每个分身所在的 Chat：挂靠与撤销的命令都送进这个 Chat。 */
+export const demoHolderChats: Record<string, { chatId: string; name: string }> = {
+  [demoInstanceIds.primary]: {
+    chatId: demoEscrowTargets.group.chatId,
+    name: demoEscrowTargets.group.title,
+  },
+  [demoInstanceIds.sibling]: {
+    chatId: demoEscrowTargets.channel.chatId,
+    name: demoEscrowTargets.channel.title,
+  },
+  [demoInstanceIds.foreign]: {
+    chatId: demoEscrowTargets.dm.chatId,
+    name: demoEscrowTargets.dm.title,
+  },
+};
+
 const demoEscrowBase = {
   state: "escrowed" as const,
   claimedByInstanceId: null,
@@ -151,8 +187,7 @@ export const demoChannelEscrow: LeaseEscrowView = {
 /**
  * 挂靠中的租约：Machine 仍被原持有者占用，操作权已经交给目标 Group。
  * 终端状态（已领取 / 已撤销 / 已被取代）不出现在 `LeaseView` 里，只在挂靠行的读取结果里。
- */
-export const demoEscrowLeases: LeaseView[] = [
+ */ export const demoEscrowLeases: LeaseView[] = [
   {
     projectId: demoProject.id,
     machineId: demoMachineDetails[4].machine.id,
@@ -173,6 +208,21 @@ export const demoEscrowLeases: LeaseView[] = [
     pendingMutationId: null,
     escrow: demoChannelEscrow,
   },
+];
+
+/**
+ * 切到「已有挂靠」演示场景时的租约事实：把 demoEscrowLeases 的同机行替掉，
+ * 不带 escrow 的演示行其余不动，保证租约列表仍然每个 machineId 只有一行。
+ */
+export const demoEscrowSceneLeases: LeaseView[] = [
+  ...demoLeases.filter(
+    (lease) =>
+      !demoEscrowLeases.some(
+        (escrowed) =>
+          escrowed.projectId === lease.projectId && escrowed.machineId === lease.machineId,
+      ),
+  ),
+  ...demoEscrowLeases,
 ];
 
 /** 已有挂靠行时的演示读取结果：终端状态只在这里出现。 */

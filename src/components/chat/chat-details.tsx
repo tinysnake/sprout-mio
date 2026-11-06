@@ -30,7 +30,8 @@ import {
   DialogTrigger,
 } from "../ui/dialog";
 import { ChatErrorNotice } from "./chat-error-notice";
-import { ChatLeaseEscrowLive } from "./chat-lease-escrow";
+import { ChatLeaseEscrowLive, ChatLeaseEscrowPanel } from "./chat-lease-escrow";
+import type { LeaseEscrowHandler } from "../machine/lease-escrow-command";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { ChatFactsBlock } from "../info-hub/chat-info-panel";
@@ -70,6 +71,7 @@ export function ChatDetails({
   projectProfiles,
   machineFacts = null,
   machineFactsError,
+  escrowHandler,
   continuation,
   onClose,
   onChanged,
@@ -87,6 +89,8 @@ export function ChatDetails({
   projectProfiles: AgentProfile[];
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
+  /** 演示与测试可以注入本地 handler；缺省时挂靠命令走服务端与 Chat。 */
+  escrowHandler?: LeaseEscrowHandler;
   continuation?: ContinuationPageData;
   onClose: () => void;
   onChanged: () => void;
@@ -564,18 +568,34 @@ export function ChatDetails({
               )}
               {machineFacts && (
                 <div data-testid="chat-machine-facts" className="space-y-4">
-                  <ChatLeaseEscrowLive
-                    projectId={machineFacts.projectId}
-                    chatId={chat.id}
-                    chatKind={chat.kind}
-                    leases={machineFacts.leases}
-                    machines={machineFacts.machines}
-                    instances={escrowInstances}
-                    chatNames={machineFacts.chatNames ?? {}}
-                    chatKinds={machineFacts.chatKinds ?? {}}
-                    agentNames={machineFacts.agentNames ?? {}}
-                    instanceNames={escrowInstanceNames}
-                  />
+                  {escrowHandler ? (
+                    <ChatLeaseEscrowPanel
+                      projectId={machineFacts.projectId}
+                      chatId={chat.id}
+                      chatKind={chat.kind}
+                      leases={machineFacts.leases}
+                      machines={machineFacts.machines}
+                      instances={escrowInstances}
+                      chatNames={machineFacts.chatNames ?? {}}
+                      chatKinds={machineFacts.chatKinds ?? {}}
+                      agentNames={machineFacts.agentNames ?? {}}
+                      instanceNames={machineFacts.holderNames ?? {}}
+                      handler={escrowHandler}
+                    />
+                  ) : (
+                    <ChatLeaseEscrowLive
+                      projectId={machineFacts.projectId}
+                      chatId={chat.id}
+                      chatKind={chat.kind}
+                      leases={machineFacts.leases}
+                      machines={machineFacts.machines}
+                      instances={escrowInstances}
+                      chatNames={machineFacts.chatNames ?? {}}
+                      chatKinds={machineFacts.chatKinds ?? {}}
+                      agentNames={machineFacts.agentNames ?? {}}
+                      instanceNames={escrowInstanceNames}
+                    />
+                  )}
                   <LeaseOverview
                     projectId={machineFacts.projectId}
                     machines={machineFacts.machines}
