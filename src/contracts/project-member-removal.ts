@@ -84,6 +84,25 @@ export const projectMemberRemovalBlockersSchema = z
             });
     }
   });
+export const projectMemberRemovalLeaseOutcomeSchema = z.object({
+  machineId: id(ID_PREFIXES.machine),
+  machineName: z.string(),
+  /** released = 已确认旧操作权撤销并释放；retained = 未能确认，保留待处理占用。 */
+  outcome: z.enum(["released", "retained"]),
+  /** retained 的原因码，例如 pending_dispatched_executions / detach_pending。 */
+  reason: z.string().nullable(),
+});
+/** 一次强制移除的完整结果，供调用方核对「中止了什么、转接了谁、留了什么」。 */
+export const projectMemberRemovalOutcomeSchema = z.object({
+  projectId: id(ID_PREFIXES.project),
+  agentProfileId: id(ID_PREFIXES.agentProfile),
+  /** false = 成员行已不存在，本次调用是幂等空操作。 */
+  removed: z.boolean(),
+  abortedRunIds: z.array(id(ID_PREFIXES.run)),
+  ownerTransferredChatIds: z.array(id(ID_PREFIXES.chat)),
+  unassignedTaskIds: z.array(id(ID_PREFIXES.task)),
+  leases: z.array(projectMemberRemovalLeaseOutcomeSchema),
+});
 export const projectMemberRemovalBlockedErrorSchema = z.object({
   code: z.literal("project_member_removal_blocked"),
   message: z.string(),
@@ -97,6 +116,10 @@ export type ProjectMemberRemovalLeaseRef = z.infer<typeof projectMemberRemovalLe
 export type ProjectMemberRemovalOwnerRef = z.infer<typeof projectMemberRemovalOwnerRefSchema>;
 export type ProjectMemberRemovalTaskRef = z.infer<typeof projectMemberRemovalTaskRefSchema>;
 export type ProjectMemberRemovalBlocker = z.infer<typeof projectMemberRemovalBlockerSchema>;
+export type ProjectMemberRemovalLeaseOutcome = z.infer<
+  typeof projectMemberRemovalLeaseOutcomeSchema
+>;
+export type ProjectMemberRemovalOutcome = z.infer<typeof projectMemberRemovalOutcomeSchema>;
 export type ProjectMemberRemovalBlockers = z.infer<typeof projectMemberRemovalBlockersSchema>;
 export type ProjectMemberRemovalBlockedError = z.infer<
   typeof projectMemberRemovalBlockedErrorSchema

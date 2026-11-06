@@ -14,26 +14,43 @@ import {
   agentRun,
   chat,
   chatMember,
+  diagnosticEvent,
   leaseMutation,
   machine,
   machineLease,
   projectMember,
   task,
 } from "../db/schema";
-import { projectMemberRemovalBlockersSchema } from "../contracts/project-member-removal";
+import {
+  projectMemberRemovalBlockersSchema,
+  projectMemberRemovalOutcomeSchema,
+} from "../contracts/project-member-removal";
 import type {
   ProjectMemberRemovalBlocker,
   ProjectMemberRemovalBlockers,
+  ProjectMemberRemovalLeaseOutcome,
   ProjectMemberRemovalLeaseRef,
+  ProjectMemberRemovalOutcome,
   ProjectMemberRemovalRunRef,
   ProjectMemberRemovalOwnerRef,
   ProjectMemberRemovalTaskRef,
 } from "../contracts/project-member-removal";
 import { assertProjectAccess } from "./access";
 import type { ProjectContext } from "./access";
-import { revokeProjectAgentEnrollment } from "./chat";
+import { abortAgentRun } from "./agent-run";
+import {
+  getChat,
+  revokeProjectAgentEnrollment,
+  revokeProjectAgentEnrollmentUnchecked,
+  setChatOwner,
+} from "./chat";
+import { actorFromContext } from "./chat-actor";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
+import type { MachineContext } from "./machine";
+import { mutateTask } from "./task";
+import { clearRunActivity } from "../server/pi-host/run-activity";
+import { LeaseError, reclaimLeaseInTransaction } from "../server/lease";
 
 export class AgentError extends Error {
   constructor(
@@ -398,6 +415,239 @@ export function removeProjectMember(
       );
     })
     .immediate();
+}
+
+function emptyRemovalOutcome(
+  projectId: string,
+  agentProfileId: string,
+): ProjectMemberRemovalOutcome {
+  return {
+    projectId,
+    agentProfileId,
+    removed: false,
+    abortedRunIds: [],
+    ownerTransferredChatIds: [],
+    unassignedTaskIds: [],
+    leases: [],
+  };
+}
+
+/**
+ * 强制移除的计划：直接取自常规路径的四类责任聚合函数，避免「什么算责任」有两套定义。
+ * 只取能自动善后的子集：租约仅收回本项目内该 Agent 分身正在持有的（handoff_target 留给
+ * 挂靠契约，见 I-P8a）。
+ */
+function projectAgentRemovalPlan(projectId: string, agentProfileId: string) {
+  const plan = {
+    activeRunIds: [] as string[],
+    heldLeases: [] as ProjectMemberRemovalLeaseRef[],
+    ownerChatIds: [] as string[],
+    dmTaskIds: [] as string[],
+  };
+  for (const blocker of collectProjectMemberRemovalBlockers(projectId, agentProfileId)) {
+    if (blocker.kind === "active_runs") {
+      for (const item of blocker.items) plan.activeRunIds.push(item.runId);
+    } else if (blocker.kind === "leases") {
+      for (const item of blocker.items)
+        if (item.state === "held" && item.relation === "holder") plan.heldLeases.push(item);
+    } else if (blocker.kind === "owner_duties") {
+      for (const item of blocker.items) plan.ownerChatIds.push(item.chat.chatId);
+    } else {
+      for (const item of blocker.items) plan.dmTaskIds.push(item.taskId);
+    }
+  }
+  return plan;
+}
+
+/**
+ * 确认旧操作权已撤销才释放：reclaim 的确认门是 `completeLeaseMutation`，只要有已下发未 drain
+ * 的执行就停在 fencing+pending。任何失败都回滚成调用前的状态，这里绝不把租约写成 free。
+ */
+function reclaimOneLease(
+  lease: ProjectMemberRemovalLeaseRef,
+  ctx: MachineContext,
+): ProjectMemberRemovalLeaseOutcome {
+  const identity = {
+    machineId: lease.key.machineId,
+    machineName: lease.machineName,
+  };
+  // 现有入口只做「守门读 + 写」：守卫在写之前，但部分写发生在后续校对之前，
+  // 所以外面再包一层 savepoint，失败时整段当没发生过。
+  const savepoint = `p8c_force_reclaim_${lease.key.machineId}`;
+  sqlite.exec(`SAVEPOINT ${savepoint}`);
+  try {
+    reclaimLeaseInTransaction(
+      {
+        projectId: lease.key.projectId,
+        machineId: lease.key.machineId,
+        // 幂等键是 (actorKind, actorId, requestId)，不含 machineId：一次移除多台机器必须各自换号。
+        requestId: newId(ID_PREFIXES.request),
+        action: "reclaim",
+        expectedGeneration: lease.generation,
+        confirm: true,
+      },
+      ctx,
+    );
+    sqlite.exec(`RELEASE SAVEPOINT ${savepoint}`);
+  } catch (error) {
+    sqlite.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+    sqlite.exec(`RELEASE SAVEPOINT ${savepoint}`);
+    // 非 LeaseError 是代码缺陷，不能当作「无法确认」吞掉，让它中断整个移除事务。
+    if (!(error instanceof LeaseError)) throw error;
+    return { ...identity, outcome: "retained", reason: error.code };
+  }
+  const row = db
+    .select({ state: machineLease.state })
+    .from(machineLease)
+    .where(
+      and(
+        eq(machineLease.projectId, lease.key.projectId),
+        eq(machineLease.machineId, lease.key.machineId),
+      ),
+    )
+    .get();
+  // 停在 fencing = 仍有在途执行，旧代次授权还没确认作废，按「保留待处理占用」处理。
+  if (row?.state === "fencing")
+    return { ...identity, outcome: "retained", reason: "pending_dispatched_executions" };
+  return { ...identity, outcome: "released", reason: null };
+}
+
+function settleProjectAgentLeases(
+  leases: readonly ProjectMemberRemovalLeaseRef[],
+  projectId: string,
+  ctx: MachineContext,
+): ProjectMemberRemovalLeaseOutcome[] {
+  const outcomes: ProjectMemberRemovalLeaseOutcome[] = [];
+  for (const lease of leases) {
+    const outcome = reclaimOneLease(lease, ctx);
+    if (outcome.outcome === "retained") {
+      db.insert(diagnosticEvent)
+        .values({
+          id: newId(ID_PREFIXES.diagnostic),
+          at: ctx.now,
+          level: "warn",
+          event: "project_member.removal_lease_retained",
+          requestId: ctx.requestId,
+          projectId,
+          message: `强制移除未能确认撤销 Machine「${outcome.machineName}」上的旧操作权（${outcome.reason}），保留待处理占用`,
+          data: JSON.stringify({ machineId: outcome.machineId, reason: outcome.reason }),
+        })
+        .run();
+    }
+    outcomes.push(outcome);
+  }
+  return outcomes;
+}
+
+/**
+ * owner 是 Agent 时，owner 档能力的兜底是 projectCreatedBy，而它正是 ctx.userId
+ * （`assertProjectAccess` 已确认）。因此转接必须在剥夺参与权之前，让「owner 是 Agent」这一状态
+ * 走各自的设计分支。
+ */
+function transferProjectAgentOwnership(chatIds: readonly string[], ctx: MachineContext): string[] {
+  const transferred: string[] = [];
+  const actor = actorFromContext(ctx);
+  for (const chatId of chatIds) {
+    const current = getChat(chatId, ctx);
+    setChatOwner(chatId, { kind: "human", id: ctx.userId }, current.governanceRevision, actor);
+    transferred.push(chatId);
+  }
+  return transferred;
+}
+
+function unassignProjectAgentDirectTasks(
+  taskIds: readonly string[],
+  projectId: string,
+  ctx: MachineContext,
+): string[] {
+  const unassigned: string[] = [];
+  for (const taskId of taskIds) {
+    const row = db
+      .select({ revision: task.revision })
+      .from(task)
+      .where(and(eq(task.id, taskId), eq(task.projectId, projectId)))
+      .get();
+    // 计划读与写入在同一个 immediate 事务内，中间没有并发窗口，直接用刚读到的 revision。
+    if (!row) continue;
+    mutateTask("unassign", { taskId, expectedRevision: row.revision }, ctx);
+    unassigned.push(taskId);
+  }
+  return unassigned;
+}
+
+/**
+ * 强制移除：Human 一次确认后自动完成中止与责任转接，不再要求先逐项清理。
+ *
+ * 顺序是硬约束：先中止本 Project 所有活动 run（`abortAgentRun` 没有批量入口），再处理租约、
+ * owner 与 DM Task，最后才剥夺参与权并删成员行——否则被中止的 run 仍可能在租约释放之后写入。
+ * 全部步骤在同一个 immediate 事务内，`writeIdentity` 提供与常规移除同形的诊断事件。
+ *
+ * 常规移除（`removeProjectMember`）保留四类阻塞语义：两条路径必须一眼可分。
+ */
+export function forceRemoveProjectMember(
+  projectId: string,
+  agentProfileId: string,
+  ctx: MachineContext,
+  hooks: IdentityWriteHooks = {},
+): ProjectMemberRemovalOutcome {
+  const abortedRunIds: string[] = [];
+  const outcome = sqlite
+    .transaction(() => {
+      assertProjectAccess(ctx, projectId);
+      getAgentProfile(agentProfileId, ctx);
+      const membership = db
+        .select({ agentProfileId: projectMember.agentProfileId })
+        .from(projectMember)
+        .where(
+          and(
+            eq(projectMember.projectId, projectId),
+            eq(projectMember.agentProfileId, agentProfileId),
+          ),
+        )
+        .get();
+      // 幂等空操作：成员行已不在时不再中止、不再记诊断，也不会重复动租约与 Task。
+      if (!membership) return emptyRemovalOutcome(projectId, agentProfileId);
+      return writeIdentity(
+        ctx,
+        { event: "project_member.removed", message: "Project 成员已强制移除", projectId },
+        () => {
+          const plan = projectAgentRemovalPlan(projectId, agentProfileId);
+          for (const runId of plan.activeRunIds) {
+            abortAgentRun(runId, ctx);
+            abortedRunIds.push(runId);
+          }
+          const leases = settleProjectAgentLeases(plan.heldLeases, projectId, ctx);
+          const ownerTransferredChatIds = transferProjectAgentOwnership(plan.ownerChatIds, ctx);
+          const unassignedTaskIds = unassignProjectAgentDirectTasks(plan.dmTaskIds, projectId, ctx);
+          // 不能复用 `revokeProjectAgentEnrollment`：无法确认撤权的租约必须留在这里，
+          // 而它会因为那个 fencing 租约再次抛错，令「保留占用」与「移除完成」互相矛盾。
+          revokeProjectAgentEnrollmentUnchecked(projectId, agentProfileId);
+          setProjectAgentDirectChatsArchived(projectId, agentProfileId, new Date());
+          db.delete(projectMember)
+            .where(
+              and(
+                eq(projectMember.projectId, projectId),
+                eq(projectMember.agentProfileId, agentProfileId),
+              ),
+            )
+            .run();
+          return {
+            projectId,
+            agentProfileId,
+            removed: true,
+            abortedRunIds: [...abortedRunIds],
+            ownerTransferredChatIds,
+            unassignedTaskIds,
+            leases,
+          };
+        },
+        hooks,
+      );
+    })
+    .immediate();
+  // 与 transitionAgentRun 一致：只有最外层提交后才清内存里的活动快照。
+  if (!sqlite.inTransaction) for (const runId of abortedRunIds) clearRunActivity(runId);
+  return projectMemberRemovalOutcomeSchema.parse(outcome);
 }
 
 export function listProjectMembers(projectId: string, ctx: ProjectContext): ProjectMember[] {

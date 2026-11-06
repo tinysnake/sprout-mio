@@ -1047,14 +1047,27 @@ export function removeGroupMember(
 }
 
 /**
- * 调用方的移除事务先聚合四类责任，任一命中都抛结构化错误，清理前零写入。
- * 全部解除后沿用 P5a：取消 pending 输入、删除普通 Group 成员并推进 governance_revision。
- * Public Channel 参与权随 Project 成员派生；DM 成员行保留，归档由 Agent 域在同事务内处理。
+ * 常规移除路径：调用方的移除事务先聚合四类责任，任一命中都抛结构化错误，清理前零写入。
  */
 export function revokeProjectAgentEnrollment(projectId: string, agentProfileId: string): void {
   const blockers = collectProjectMemberRemovalBlockers(projectId, agentProfileId);
   if (blockers.length)
     throw new ProjectMemberRemovalBlockedError({ projectId, agentProfileId, blockers });
+  revokeProjectAgentEnrollmentUnchecked(projectId, agentProfileId);
+}
+
+/**
+ * 参与权剥夺本体：沿用 P5a 取消 pending 输入、删除普通 Group 成员并推进 governance_revision。
+ * Public Channel 参与权随 Project 成员派生；DM 成员行保留，归档由 Agent 域在同事务内处理。
+ *
+ * 只由两种调用方使用：常规移除（刚复查过零阻塞）与强制移除（已逐项善后）。强制移除在无法
+ * 确认撤权时会刻意留下 fencing 租约，所以这里不能复查四类责任，否则「保留待处理占用」与
+ * 「移除必须完成」互相矛盾。
+ */
+export function revokeProjectAgentEnrollmentUnchecked(
+  projectId: string,
+  agentProfileId: string,
+): void {
   const instanceIds = projectInstanceIdsOf(projectId, agentProfileId);
   // 两个帮手的空集合行为一致（无 instance 就没有 run、也没有 run 输入），
   // 不能在这里提前返回：从未建过 instance 的 Agent 仍然可能有普通群的成员行要删。
