@@ -357,13 +357,19 @@ export function MemberRemovalOutcome({
         if (!open) onDismiss();
       }}
     >
-      <DialogContent data-testid="member-removal-outcome" className="text-xs leading-6">
-        <DialogHeader>
+      {/* 长内容在正文区自己滚，页脚固定不跟着走。 */}
+      <DialogContent
+        data-testid="member-removal-outcome"
+        className="flex max-h-[90dvh] flex-col overflow-hidden text-xs leading-6"
+      >
+        <DialogHeader className="shrink-0">
           <DialogTitle className="text-sm font-medium">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {body}
-        <DialogFooter>
+        <div data-testid="member-removal-outcome-body" className="min-h-0 shrink overflow-y-auto">
+          {body}
+        </div>
+        <DialogFooter className="shrink-0">
           <Button
             type="button"
             variant="secondary"

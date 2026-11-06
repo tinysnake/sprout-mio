@@ -206,6 +206,34 @@ await check("窄屏（390px）阻塞确认框与善后结果不横向溢出", as
   }
 });
 
+await check("善后弹窗内容超长时关闭页脚固定在视口内", async () => {
+  const { context, page, errors } = await open({ width: 420, height: 420, colorScheme: "dark" });
+  try {
+    await openBlocked(page);
+    await page.getByTestId("force-remove-member").click();
+    await page.getByTestId("member-removal-outcome").waitFor();
+    const body = page.getByTestId("member-removal-outcome-body");
+    const metrics = await body.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    assert.ok(
+      metrics.scrollHeight > metrics.clientHeight,
+      `正文应当自己滚动（scrollHeight=${metrics.scrollHeight} clientHeight=${metrics.clientHeight}）`,
+    );
+    await body.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await page.waitForTimeout(150);
+    // 页面滚到底部后，关闭页脚仍在视口内：页脚不跟着正文一起滚走。
+    await assertActionVisible(page, "dismiss-member-outcome", "弹窗关闭页脚");
+    await shoot(page, "p8c-outcome-sticky-footer");
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
 await check("重复移除（成员行已不存在）显示幂等空操作，不伪造善后结果", async () => {
   const { context, page, errors } = await open({ width: 1280, height: 800, colorScheme: "dark" });
   try {
