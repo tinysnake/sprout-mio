@@ -20,3 +20,23 @@ it("$ and @ queries are exclusive; insertions preserve suffix and UTF-16 caret",
   expect(scanSkillTokens(second.text).map((span) => span.name)).toEqual(["how", "why"]);
   console.log("PASS candidate: two tokens, suffix/caret, mutually exclusive $/@");
 });
+it("相邻两个标记之间补到两个半角空格，标记与普通文字之间不动", () => {
+  const body = "📖how $pl";
+  const next = insertSkill(body, skillQueryAt(body, body.length)!, "plan-only");
+  expect(next.text).toBe("📖how  📖plan-only ");
+  expect(next.caret).toBe(next.text.length);
+  expect(scanSkillTokens(next.text).map((span) => span.name)).toEqual(["how", "plan-only"]);
+
+  const prepended = insertSkill("$pl📖how", { start: 0, end: 3 }, "plan-only");
+  expect(prepended.text).toBe("📖plan-only  📖how");
+  expect(prepended.caret).toBe("📖plan-only ".length);
+
+  const wideBody = "📖how  $pl";
+  const wide = insertSkill(
+    wideBody,
+    { start: wideBody.length - 3, end: wideBody.length },
+    "plan-only",
+  );
+  expect(wide.text).toBe("📖how  📖plan-only ");
+  console.log("PASS candidate: token gap is at least two half-width spaces");
+});

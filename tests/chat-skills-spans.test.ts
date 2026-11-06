@@ -77,6 +77,11 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
   const before = html();
   expect(before.match(/data-testid="message-skill"/g)).toHaveLength(2);
   expect(renderedText(before)).toContain("📖missing");
+  // 两个标记只隔一个空格，各自面向对方的一侧让出整格（见 tests/chat-skills-edges.test.ts）。
+  // 第二个标记的尾侧隔同样的一个空格跟着点名标记，也让出整格。
+  expect(before.match(/data-edge-start="flush"/g)).toHaveLength(1);
+  expect(before.match(/data-edge-end="flush"/g)).toHaveLength(2);
+  expect(before.match(/data-edge-/g)).toHaveLength(3);
   writeFileSync(skillFile, "---\nname: renamed\ndescription: changed\n---\nnew body");
   expect((await readSkillCatalog(scope, "fresh")).byName.has("missing")).toBe(false);
   expect(html()).toBe(before);

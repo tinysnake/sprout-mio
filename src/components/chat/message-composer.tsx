@@ -256,7 +256,12 @@ export function MessageComposer({
           >
             {segments.map((segment, index) =>
               segment.skill ? (
-                <SkillMark key={index} name={segment.skill.name} text={segment.text} />
+                <SkillMark
+                  key={index}
+                  name={segment.skill.name}
+                  text={segment.text}
+                  edge={segment.skillEdge}
+                />
               ) : (
                 <span key={index}>{segment.text}</span>
               ),

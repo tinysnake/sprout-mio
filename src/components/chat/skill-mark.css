@@ -3,9 +3,12 @@
  * 所以镜像层的前进宽度与 textarea 里的原文完全相同。
  */
 .skill-mark {
-  /* 外悬等于 padding。半角空格在 12px Geist 下只有 3.109px，所以左右各自最多让出 2px，
-     再多就会压住后随字形。 */
+  /* 外悬等于 padding，所以留白只能花在邻字让出的空隙上。半角空格在 12px Geist 下 3.109px，
+     一侧 2px 恰好不碰空格后的字形；空隙不够时这一侧就退让（data-edge-start/end）：贴着字形
+     退到零（"flush"），与另一个标记共用空隙时各只占 1px（"half"），让整段空隙露出来。
+     术语：“edge” 指这一侧可以外悬到哪里，不是标记自己的宽度。 */
   --skill-mark-pad-x: 2px;
+  --skill-mark-pad-x-half: 1px;
   /* 纵向留白不进文档流：行高由正文的 24px 决定，加高只让框更松，不撑行。 */
   --skill-mark-pad-y: 2.5px;
   --skill-mark-edge: 1px;
@@ -20,6 +23,28 @@
      纵向留白同样画在盒内，不参与行高计算。 */
   box-shadow: inset 0 0 0 var(--skill-mark-edge) var(--skill-mark-ring);
   color: var(--skill-mark-foreground);
+}
+
+/* 贴着字形：不留白也不外悬，框线停在字形边界，不盖住邻字墨迹。 */
+.skill-mark[data-edge-start="flush"] {
+  padding-left: 0;
+  margin-left: 0;
+}
+
+.skill-mark[data-edge-end="flush"] {
+  padding-right: 0;
+  margin-right: 0;
+}
+
+/* 与另一个标记共用空隙：各只占 1px，两个框之间留出看得见的缝。 */
+.skill-mark[data-edge-start="half"] {
+  padding-left: var(--skill-mark-pad-x-half);
+  margin-left: calc(-1 * var(--skill-mark-pad-x-half));
+}
+
+.skill-mark[data-edge-end="half"] {
+  padding-right: var(--skill-mark-pad-x-half);
+  margin-right: calc(-1 * var(--skill-mark-pad-x-half));
 }
 
 .skill-mark-glyph {

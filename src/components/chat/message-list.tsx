@@ -207,6 +207,7 @@ function MessageBody({
             data-testid="message-skill"
             name={segment.skill.name}
             text={segment.text}
+            edge={segment.skillEdge}
           />
         ) : segment.span ? (
           <span
