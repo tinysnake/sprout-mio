@@ -11,6 +11,8 @@
 - `lease-generation` 旧代次操作被拒绝，远端执行遵守当前租约。
 - `lease-entry` Machine 管理页与 Info Hub 事实及管理链接一致。
 - `lease-escrow` 分身把租约原地挂靠到 Group、由 Group 内分身领取、发起者撤销；人类只有可见性与强制收回。
+- `lease-wait` 分身申请租约遇阻时在工具里阻塞等待（`sprout_lease_wait`），到点拿到失败与原因自行决定是否结束当前 run。等待对持有者完全不可见，既不抢占也不释放。
+- `lease-timeout` 挂靠长时间没人处理时只提醒不释放：Agent owner 被直接唤醒去处理，人类 owner 只在 chat 里收到一条提醒且不产生自动接续；再过升级时限才升级 Human 并暂停该 owner 在这个挂靠上的自动尝试。
 
 ## How to get to it (user POV)
 
@@ -31,8 +33,10 @@
 | Lease 界面与交互          | `bash scripts/verify/y-lease-ui.sh`；开发场景 driver 是 [p4b-lease-scenes.mjs](../../scripts/browser/p4b-lease-scenes.mjs) | 操作入口、持有者、移交及错误展示；该路径使用 fixture，无远端执行                       |
 | Lease 真实链路            | `bash scripts/verify/z-lease-integration.sh`                                                                               | 实际 worker / Agent 运行、租约代次、持有者与移交结果对应；不能以场景截图替代           |
 | Lease 挂靠与领取真实链路  | `bash scripts/verify/p8a-lease-integration.sh`                                                                             | 分身挂靠、旧持有者被拒、Group 成员领取、撤销回发起者；三者都经真实 Agent 工具与 worker |
+| 挂靠超时与等待的契约域层  | `bash scripts/verify/p8b-timeout.sh`                                                                                       | 计时起点是挂靠被接受时刻、只提醒一次、agent / human owner 分流、升级后暂停 owner 自动尝试、默认 30 分钟 / 2 小时与 5 分钟等待上界（1 小时封顶） |
+| 挂靠超时与等待的真实链路  | `bash scripts/verify/p8b-timeout-integration.sh`                                                                           | 分身经真实 `sprout_lease_wait` 阻塞等待（全程只发 `lease_get`）、到点返回失败与原因、持有者侧无任何消息或 run；提醒与升级由生产 scheduler 的 `advance()` 驱动，关闭自动接续的 chat 也照发 |
 
-契约层改动先选 [s-machine-contracts.sh](../../scripts/verify/s-machine-contracts.sh) 或 [v-lease-contracts.sh](../../scripts/verify/v-lease-contracts.sh)。worker 协议变化再查 [t-machine-worker.sh](../../scripts/verify/t-machine-worker.sh) 与 [w-worker-remote.sh](../../scripts/verify/w-worker-remote.sh)。这些是按风险组合的入口，不需要因为同属 Machine 而全部运行。
+契约层改动先选 [s-machine-contracts.sh](../../scripts/verify/s-machine-contracts.sh) 或 [v-lease-contracts.sh](../../scripts/verify/v-lease-contracts.sh)；挂靠超时或申请等待改动先跑 [p8b-timeout.sh](../../scripts/verify/p8b-timeout.sh)，改到工具接线或提醒 / 升级驱动再加 [p8b-timeout-integration.sh](../../scripts/verify/p8b-timeout-integration.sh)。worker 协议变化再查 [t-machine-worker.sh](../../scripts/verify/t-machine-worker.sh) 与 [w-worker-remote.sh](../../scripts/verify/w-worker-remote.sh)。这些是按风险组合的入口，不需要因为同属 Machine 而全部运行。
 
 U 脚本依赖当前代码的 `.output` 与 worker 构建产物，准备方式见 [worker artifact helper](../../scripts/verify/lib/ensure-worker-artifact.sh) 和项目 build 命令。driver 自己启动 production server，默认 `BASE_URL` 是 `http://127.0.0.1:3120`。证据在每次新建的 `.verify/p4a-machine-flow-*`，包含 `results.json`、日志和截图，最终输出打印实际路径。
 
@@ -45,4 +49,8 @@ Y 脚本自己启动 dev server，默认端口 3099，可用 `SPROUT_LEASE_SCENE
 - `lease-chat-select`、`lease-transfer-target` 等控件可能依赖可用 Chat。缺少前置记录时保留失败原因，不能删掉移交断言。
 - 仅截图持有者文本不能证明旧 generation 被拒绝。涉及代次、强制移交和执行中止时，要核对真实链路响应与副作用。
 - 挂靠、领取、撤销挂靠没有人类入口。三条命令只由分身通过 `sprout_lease_escrow`、`sprout_lease_claim`、`sprout_lease_escrow_cancel` 发起，人类只有可见性与强制收回；界面不需要为它们增加按钮。
+- 超时提醒、升级与等待都不改变占用事实：它们只加只读的超时标记，绝不释放租约，也绝不向持有者发送任何资源请求；系统里不存在「协调请求」这个实体或通道。
+- 验证挂靠超时不要直接调 `sweepLeaseEscrowTimeouts`：真实驱动路径是 `createContinuationScheduler` 的 `advance()`。时限用 Project 级 `wake_policy.leaseTimeouts` 压缩（默认 30 分钟 / 2 小时，最小 1 秒），产品代码读的是同一个配置，不是测试替身。
+- 挂靠超时的提醒与升级不受 chat 自动接续开关影响；推送只做 chat 消息加（Agent owner 的）直接唤醒，唤醒失败沿用既有 agent-run 重试规则，不新增退避参数。
+- 等待期间在现场只应看到 `lease_get`：一旦出现写入类远端调用，说明等待路径被接错了。
 - 截图与日志里保留必要状态，配对票据和 worker 凭据按脚本的脱敏规则处理。
