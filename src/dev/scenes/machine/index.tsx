@@ -759,39 +759,44 @@ export function MachineScenes() {
             href={(machineId) => `/machines/${machineId}`}
             renderLink={renderLink}
           />
-          <a
-            href="/machines/lifecycle"
-            data-testid="machine-lifecycle-link"
-            onClick={(event) => {
-              event.preventDefault();
-              go("/machines/lifecycle");
-            }}
+          <nav
+            aria-label="演示场景"
+            className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"
           >
-            续签请求生命周期探针
-          </a>
-          <a
-            href="/machines/leases"
-            data-testid="machine-leases-link"
-            onClick={(event) => {
-              event.preventDefault();
-              go("/machines/leases");
-            }}
-          >
-            租约与远端操作
-          </a>
-          <a
-            href="/machines/executions"
-            data-testid="machine-executions-link"
-            onClick={(event) => {
-              event.preventDefault();
-              go("/machines/executions");
-            }}
-          >
-            长命令与不确定结果
-          </a>
-          <p className="mt-4 text-xs leading-6 text-muted-foreground">
-            Machines 展示连接与 Project 绑定；租约与远端操作在专用演示场景和 Machine 详情里查看。
-          </p>
+            <a
+              href="/machines/lifecycle"
+              data-testid="machine-lifecycle-link"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                go("/machines/lifecycle");
+              }}
+            >
+              续签请求生命周期探针
+            </a>
+            <a
+              href="/machines/leases"
+              data-testid="machine-leases-link"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                go("/machines/leases");
+              }}
+            >
+              租约与远端操作
+            </a>
+            <a
+              href="/machines/executions"
+              data-testid="machine-executions-link"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                go("/machines/executions");
+              }}
+            >
+              长命令与不确定结果
+            </a>
+          </nav>
         </PageFrame>
         <MachineCreateDialog
           open={createOpen}
