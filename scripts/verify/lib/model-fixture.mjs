@@ -70,6 +70,11 @@ const leasePrefix = (action) =>
   `请使用 sprout_lease_${action} 工具执行以下租约请求，参数必须保持一致。先读取当前租约，若代次已变化请报告冲突，不要自动重试。只操作这台明确指定的 Machine；不要运行 shell 或修改文件。参数：`;
 const leaseSuffix = "。完成后报告服务端收据。";
 
+/** 租约请求的正文：界面已不再代人类发这条消息，集成脚本按同一格式直接发给 Chat 里的分身。 */
+export function leaseBody(action, parameters) {
+  return `${leasePrefix(action)}${JSON.stringify(parameters)}${leaseSuffix}`;
+}
+
 export function statusTurn() {
   return {
     expectedUserText:

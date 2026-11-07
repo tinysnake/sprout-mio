@@ -7,7 +7,7 @@
 - `machine-enroll` 创建、显示与更新配对票据、首次配对和重连。
 - `machine-status` 查看连接状态、能力、shell 信息与诊断。
 - `machine-bindings` 设置根目录和项目绑定，刷新后保持，项目间相互隔离。
-- `lease-lifecycle` 获取、释放、移交租约，并查看持有者与待处理状态。
+- `lease-lifecycle` 分身经 Agent 工具获取、释放、移交租约；界面呈现持有者与待处理状态，人类只有可见性与强制收回。
 - `lease-generation` 旧代次操作被拒绝，远端执行遵守当前租约。
 - `lease-entry` Machine 管理页与 Info Hub 事实及管理链接一致。
 - `lease-escrow` 分身把租约原地挂靠到 Group、由 Group 内分身领取、发起者撤销；人类只有可见性与强制收回。
@@ -18,7 +18,7 @@
 
 - 从全局 Machines 导航进入 `/machines`，创建 Machine，打开 `/machines/$machineId`。
 - 按详情页安装和配对说明启动 worker；配对后查看状态、根目录和项目绑定。
-- 从 Machine 详情的租约入口进入 `/machines/$machineId/lease`，选择相关项目与持有者，操作租约。
+- 从 Machine 详情的租约入口进入 `/machines/$machineId/lease`，查看租约事实；需要时勾选确认后强制收回。申请、释放与交接不在界面上，由分身在自己的 Chat 里用 `sprout_lease_*` 工具发起。
 - 从项目或 Chat 的 [Info Hub](info-hub.md) 查看租约事实，沿管理链接进入同一租约页。
 
 ## Driving it with Playwright and verify scripts
@@ -30,7 +30,7 @@
 | 真实 Machine UI 与 worker | `bash scripts/verify/u-machine-ui.sh`，driver 是 [p4a-machine-flow.mjs](../../scripts/browser/p4a-machine-flow.mjs)        | 待配对到已配对的过程、连接和能力事实、配置保存、绑定隔离、票据和访问边界                                                                                                                  |
 | Machine 操作定位          | `machine-name-input`、`machine-create-submit`、`machine-ticket-toggle`、`machine-renew`、`machine-refresh`                 | 新 Machine 身份保持；票据显隐与更新正确；实际 worker 连接后状态更新                                                                                                                       |
 | 根目录与绑定              | `machine-root-directory`，其余表单沿 driver 操作                                                                           | 保存及刷新后值保持，切换项目没有串用绑定                                                                                                                                                  |
-| Lease 界面与交互          | `bash scripts/verify/y-lease-ui.sh`；开发场景 driver 是 [p4b-lease-scenes.mjs](../../scripts/browser/p4b-lease-scenes.mjs) | 操作入口、持有者、移交及错误展示；该路径使用 fixture，无远端执行                                                                                                                          |
+| Lease 界面与交互          | `bash scripts/verify/y-lease-ui.sh`；开发场景 driver 是 [p4b-lease-scenes.mjs](../../scripts/browser/p4b-lease-scenes.mjs) | 只读事实与强制收回；申请/释放/交接入口不存在；该路径使用 fixture，无远端执行                                                                                                              |
 | Lease 真实链路            | `bash scripts/verify/z-lease-integration.sh`                                                                               | 实际 worker / Agent 运行、租约代次、持有者与移交结果对应；不能以场景截图替代                                                                                                              |
 | Lease 挂靠与领取真实链路  | `bash scripts/verify/p8a-lease-integration.sh`                                                                             | 分身挂靠、旧持有者被拒、Group 成员领取、撤销回发起者；三者都经真实 Agent 工具与 worker                                                                                                    |
 | 挂靠超时与等待的契约域层  | `bash scripts/verify/p8b-timeout.sh`                                                                                       | 计时起点是挂靠被接受时刻、只提醒一次、agent / human owner 分流、升级后暂停 owner 自动尝试、默认 30 分钟 / 2 小时与 5 分钟等待上界（1 小时封顶）                                           |
@@ -46,7 +46,8 @@ Y 脚本自己启动 dev server，默认端口 3099，可用 `SPROUT_LEASE_SCENE
 
 - U 脚本使用专用数据库和真实 worker，但关闭 Pi。它不证明模型已正确使用租约或远程工具。
 - `y-lease-ui.sh` 访问 `/__dev/ui/`。fixture 中点击后的状态变化只能证明呈现组件和场景交互。
-- `lease-chat-select`、`lease-transfer-target` 等控件可能依赖可用 Chat。缺少前置记录时保留失败原因，不能删掉移交断言。
+- **人类没有申请、释放或交接入口，只有强制收回**；这三件事只由分身经 `sprout_lease_acquire` 等 Agent 工具做。界面若出现 `lease-chat-select`、`lease-transfer-target`、申请/释放按钮，就是绕道回来了。
+- 强制收回前有确认复选框（`lease-reclaim-confirm`），收回结果在 `lease-reclaim-receipt`；租约变更不走界面时，真实验收用 Chat 消息驱动分身。
 - 仅截图持有者文本不能证明旧 generation 被拒绝。涉及代次、强制移交和执行中止时，要核对真实链路响应与副作用。
 - 挂靠、领取、撤销挂靠没有人类入口。三条命令只由分身通过 `sprout_lease_escrow`、`sprout_lease_claim`、`sprout_lease_escrow_cancel` 发起，人类只有可见性与强制收回；界面不需要为它们增加按钮。
 - 超时提醒、升级与等待都不改变占用事实：它们只加只读的超时标记，绝不释放租约，也绝不向持有者发送任何资源请求；系统里不存在「协调请求」这个实体或通道。
