@@ -292,7 +292,7 @@ function runIdOfMessage(messageId: string, instanceId: string): string | undefin
  * 返回既有结果，既不抛 `SQLITE_CONSTRAINT_PRIMARYKEY`，也不为每个 Agent 再开第二条 run。
  */
 function attachMessageToRun(
-  saved: Message,
+  saved: Pick<Message, "id">,
   current: Chat,
   instance: Pick<AgentInstance, "id">,
   ctx: ProjectContext,
@@ -338,21 +338,34 @@ export function appendTaskStartRunInput(messageId: string, ctx: ProjectContext):
       )
         throw new TaskError("conflict", "开始消息的负责人已变化");
       const instance = ensureInstance(current.id, responsibility.agentProfileId, ctx);
-      attachMessageToRun(
-        {
-          id: saved.id,
-          chatId: saved.chatId,
-          senderKind: saved.senderKind,
-          senderId: saved.senderId,
-          body: saved.body,
-          createdAt: saved.createdAt.toISOString(),
-          skills: [],
-          mentions: [],
-        },
-        current,
-        instance,
-        ctx,
-      );
+      attachMessageToRun({ id: saved.id }, current, instance, ctx);
+      return runIdOfMessage(saved.id, instance.id)!;
+    })
+    .immediate();
+}
+
+/**
+ * I-P8b T3/T7：挂靠超时提醒唤醒 Group 的 Agent owner。
+ *
+ * 这是「直接唤醒」：不经 LLM/JEV 判定，直接把提醒消息挂到 owner 在本对话的 instance 上
+ * （与人工消息共用一个原语，因此幂等与「同一 instance 串行」的语义完全一致）。
+ * 排队出来的 run 由 `queuedRunWork` 交给执行面，唤醒内容就是那条提醒消息本身。
+ *
+ * 失败（owner 已不在本对话的成员表里、或对话不可达）会抛出，由调用方按 T8 复用既有
+ * 重试规则重试；这里不新造退避与次数。
+ */
+export function appendEscrowTimeoutOwnerRunInput(
+  messageId: string,
+  agentProfileId: string,
+  ctx: ProjectContext,
+): string {
+  return sqlite
+    .transaction(() => {
+      const saved = db.select().from(message).where(eq(message.id, messageId)).get();
+      if (!saved) throw new AgentRunError("not_found", "超时提醒消息不存在");
+      const current = getChat(saved.chatId, ctx);
+      const instance = ensureInstance(current.id, agentProfileId, ctx);
+      attachMessageToRun({ id: saved.id }, current, instance, ctx);
       return runIdOfMessage(saved.id, instance.id)!;
     })
     .immediate();

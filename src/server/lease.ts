@@ -46,6 +46,7 @@ import {
   remoteToolGrant,
 } from "../db/schema";
 import { readChatEffectiveMembers } from "../domain/channel";
+import { leaseTimeoutFacts, projectLeaseTimeouts } from "../domain/lease-timeout";
 import type { MachineContext } from "../domain/machine";
 import { assertMembershipOperable, latestMembership, onLeaseMutationCompleted } from "./membership";
 import { hasNoticeCause, insertRevokeNotice } from "./notices";
@@ -402,7 +403,10 @@ function leaseView(row: typeof machineLease.$inferSelect): LeaseView {
     escrow: liveLeaseEscrow(row),
   };
 }
-export function leaseEscrowView(row: typeof leaseEscrow.$inferSelect): LeaseEscrowView {
+export function leaseEscrowView(
+  row: typeof leaseEscrow.$inferSelect,
+  now: Date = new Date(),
+): LeaseEscrowView {
   return {
     projectId: row.projectId,
     machineId: row.machineId,
@@ -416,6 +420,8 @@ export function leaseEscrowView(row: typeof leaseEscrow.$inferSelect): LeaseEscr
     claimedByInstanceId: row.claimedByInstanceId,
     claimedAt: row.claimedAt?.toISOString() ?? null,
     claimedGeneration: row.claimedGeneration,
+    // I-P8b：超时只作为只读事实随挂靠给出，不参与任何占用/权限判定（T6）。
+    timeout: leaseTimeoutFacts(row, projectLeaseTimeouts(row.projectId), now),
   };
 }
 function liveEscrowRow(key: LeaseKey) {

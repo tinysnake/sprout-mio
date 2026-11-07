@@ -1706,6 +1706,14 @@ export const leaseEscrow = sqliteTable(
     claimRequestId: text("claim_request_id"),
     claimPayloadHash: text("claim_payload_hash"),
     closedAt: integer("closed_at", { mode: "timestamp_ms" }),
+    /**
+     * I-P8b 挂靠超时：只记事实，不参与占用与权限判定。超时绝不释放租约（T6），
+     * 这里四列的意义仅是「提醒过一次没有」「唤醒投递要不要重试」「升级过没有」。
+     */
+    timeoutNotifiedAt: integer("timeout_notified_at", { mode: "timestamp_ms" }),
+    timeoutNoticeAttempt: integer("timeout_notice_attempt"),
+    timeoutNoticeNextAt: integer("timeout_notice_next_at", { mode: "timestamp_ms" }),
+    timeoutEscalatedAt: integer("timeout_escalated_at", { mode: "timestamp_ms" }),
   },
   (t) => [
     check("lease_escrow_check_1", sql`state IN ('escrowed','claimed','cancelled','superseded')`),
@@ -1734,6 +1742,16 @@ export const leaseEscrow = sqliteTable(
       "lease_escrow_check_7",
       sql`(claimed_at IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL) OR
         (claimed_at IS NOT NULL AND typeof(claimed_at)='integer' AND claimed_at>=escrowed_at AND claim_request_id IS NOT NULL AND length(claim_payload_hash)=64 AND claim_payload_hash NOT GLOB '*[^0-9a-f]*')`,
+    ),
+    // 超时事实只能发生在挂靠被接受之后；提醒才可能有唤醒重试；提醒才可能升级。
+    check(
+      "lease_escrow_check_8",
+      sql`(timeout_notified_at IS NULL OR (typeof(timeout_notified_at)='integer' AND timeout_notified_at>=escrowed_at)) AND
+        (timeout_escalated_at IS NULL OR (typeof(timeout_escalated_at)='integer' AND timeout_escalated_at>=escrowed_at AND timeout_notified_at IS NOT NULL)) AND
+        ((timeout_notice_attempt IS NULL AND timeout_notice_next_at IS NULL) OR
+          (timeout_notice_attempt IS NOT NULL AND typeof(timeout_notice_attempt)='integer' AND timeout_notice_attempt>=1 AND
+           timeout_notice_next_at IS NOT NULL AND typeof(timeout_notice_next_at)='integer' AND timeout_notice_next_at>=escrowed_at)) AND
+        (timeout_notice_attempt IS NULL OR timeout_notified_at IS NOT NULL)`,
     ),
     foreignKey({
       columns: [t.projectId, t.machineId],

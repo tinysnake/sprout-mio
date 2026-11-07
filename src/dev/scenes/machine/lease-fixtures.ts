@@ -168,6 +168,14 @@ const demoEscrowBase = {
   claimedByInstanceId: null,
   claimedAt: null,
   claimedGeneration: null,
+  // I-P8b：超时只作为只读事实出现在挂靠视图上，演示数据不展示超时。
+  timeout: {
+    deadlineAt: "2026-10-18T09:30:00.000Z",
+    notifiedAt: null,
+    escalatedAt: null,
+    awaitingHandling: false,
+    ownerAutoAttemptsPaused: false,
+  },
 };
 
 export const demoGroupEscrow: LeaseEscrowView = {

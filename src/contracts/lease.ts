@@ -2,6 +2,7 @@ import { z } from "zod";
 import { agentProfileIdSchema } from "./agent";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import { machineIdSchema, positiveSafeIntegerSchema } from "./machine";
+import { leaseEscrowTimeoutSchema } from "./lease-timeout";
 
 const projectIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.project));
 const instanceIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.instance));
@@ -33,6 +34,8 @@ export const leaseEscrowViewSchema = leaseKeySchema
     claimedByInstanceId: instanceIdSchema.nullable(),
     claimedAt: timestampSchema.nullable(),
     claimedGeneration: positiveSafeIntegerSchema.nullable(),
+    /** I-P8b 超时事实：只读标记，不参与占用与权限判定（T6）。 */
+    timeout: leaseEscrowTimeoutSchema,
   })
   .superRefine((value, ctx) => {
     const claimed = value.state === "claimed";
@@ -46,6 +49,18 @@ export const leaseEscrowViewSchema = leaseKeySchema
       (value.claimedAt !== null && Date.parse(value.claimedAt) < Date.parse(value.escrowedAt))
     ) {
       ctx.addIssue({ code: "custom", message: "挂靠事实与领取者、领取时间或代次不一致" });
+    }
+    const escrowedAt = Date.parse(value.escrowedAt);
+    const notifiedAt =
+      value.timeout.notifiedAt === null ? null : Date.parse(value.timeout.notifiedAt);
+    const escalatedAt =
+      value.timeout.escalatedAt === null ? null : Date.parse(value.timeout.escalatedAt);
+    if (
+      (notifiedAt !== null && notifiedAt < escrowedAt) ||
+      (escalatedAt !== null && escalatedAt < escrowedAt) ||
+      (value.timeout.ownerAutoAttemptsPaused && escalatedAt === null)
+    ) {
+      ctx.addIssue({ code: "custom", message: "挂靠超时事实与挂靠时间或升级时间不一致" });
     }
   });
 export const leaseViewSchema = leaseKeySchema

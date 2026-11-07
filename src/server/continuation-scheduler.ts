@@ -16,6 +16,7 @@ import {
 } from "../domain/continuation-delivery";
 import { drainContinuationAborts } from "../domain/chat-continuation";
 import { claimDueMessageWake, evaluateMessageClaim } from "../domain/message-wake";
+import { nextLeaseTimeoutDueAt, sweepLeaseEscrowTimeouts } from "../domain/lease-timeout";
 
 export type SchedulerClock = {
   now: () => Date;
@@ -66,10 +67,19 @@ export function createContinuationScheduler(
       timer = undefined;
     }
     // No assigned Task and no pending transport retry means no Task timer at all.
-    const next = one<{ due: number | null }>(
-      "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL UNION ALL SELECT due_at AS due FROM chat_message_wake UNION ALL SELECT next_attempt_at AS due FROM wake_evaluation WHERE source='message' AND state='retry_wait' AND next_attempt_at IS NOT NULL)",
-    )?.due;
-    if (next !== null && next !== undefined)
+    const scheduleDue =
+      one<{ due: number | null }>(
+        "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL UNION ALL SELECT due_at AS due FROM chat_message_wake UNION ALL SELECT next_attempt_at AS due FROM wake_evaluation WHERE source='message' AND state='retry_wait' AND next_attempt_at IS NOT NULL)",
+      )?.due ?? null;
+    // 挂靠超时的截止时刻也参与 rearm：提醒按截止时刻触发，不等 15 秒兜底心跳。
+    const leaseDue = nextLeaseTimeoutDueAt();
+    const next =
+      leaseDue === null
+        ? scheduleDue
+        : scheduleDue === null
+          ? leaseDue
+          : Math.min(scheduleDue, leaseDue);
+    if (next !== null)
       timer = time.setTimeout(
         () => {
           timer = undefined;
@@ -86,6 +96,7 @@ export function createContinuationScheduler(
       scanChatSchedules(now);
       drainContinuationAborts(now, options.abort ?? (() => false));
       bindPendingDeliveries(now);
+      sweepLeaseEscrowTimeouts(now);
       // Claims are synchronous; provider requests run concurrently without holding the writer lock.
       for (let n = 0; n < 100; n++) {
         const ctx: SchedulerContext = { now, requestId: newId(ID_PREFIXES.request), workerId };
