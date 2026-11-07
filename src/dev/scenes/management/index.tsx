@@ -42,16 +42,8 @@ import {
   demoProjectProfile,
   demoRepoState,
 } from "./fixtures";
-import {
-  applyLeaseMutation,
-  completedReceipt,
-  demoFreeLease,
-  demoHolderNames,
-  demoInstanceIds,
-  demoLeases,
-} from "../machine/lease-fixtures";
+import { demoFreeLease, demoHolderNames, demoLeases } from "../machine/lease-fixtures";
 import { demoMachineDetails } from "../machine/fixtures";
-import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../../contracts/lease";
 import { SceneRouter } from "./scene-router";
 import { ID_PREFIXES, newId } from "@/contracts/ids";
 
@@ -478,21 +470,7 @@ function SettingsScene({ embedded }: { embedded: boolean }) {
   const [profile, setProfile] = useState<ProjectProfile>(demoProjectProfile);
   const [fail, setFail] = useState(false);
   const [status, setStatus] = useState("");
-  const [leases, setLeases] = useState<LeaseView[]>([...demoLeases, demoFreeLease]);
-
-  /** 演示：租约变更结果由 "模拟保存失败" 开关决定；失败保留目标并显示原因。 */
-  async function leaseMutation(input: LeaseMutationInput): Promise<AppResult<LeaseMutationView>> {
-    await delay(250);
-    if (fail)
-      return demoFailure(
-        "lease_stale_generation",
-        "租约代次已变化，请读取当前租约后重试。目标与动作已保留。",
-      );
-    const receipt = completedReceipt(input);
-    setLeases((current) => applyLeaseMutation(current, receipt, demoInstanceIds.primary));
-    setStatus(`演示：租约${input.action === "acquire" ? "申请" : "释放"}已确认。`);
-    return demoSuccess(receipt);
-  }
+  const leases = [...demoLeases, demoFreeLease];
 
   async function submitBasicInfo(draft: ProjectBasicInfoDraft): Promise<AppResult<Project>> {
     await delay(600);
@@ -577,7 +555,6 @@ function SettingsScene({ embedded }: { embedded: boolean }) {
                 machines={demoMachineDetails}
                 leases={leases}
                 holderNames={demoHolderNames}
-                onLeaseMutate={leaseMutation}
               />
             </div>
           </details>

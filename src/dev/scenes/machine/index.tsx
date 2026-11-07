@@ -22,6 +22,7 @@ import type {
 } from "../../../contracts/machine";
 import type { AppErrorCode } from "../../../contracts/result";
 import type { LeaseView } from "../../../contracts/lease";
+import type { ProjectInfoHub } from "../../../contracts/info-hub";
 import { PageFrame } from "../../../components/layout/page-frame";
 import { ResultError } from "../../../components/project/result-error";
 import { Select } from "../../../components/ui/select";
@@ -35,6 +36,8 @@ import {
   machineProject,
   secondProject,
 } from "./fixtures";
+import { demoInfoHub } from "../management/fixtures";
+import { demoFreeLease } from "./lease-fixtures";
 import { LeasesScene } from "./leases";
 import { ExecutionsScene } from "./executions";
 import {
@@ -550,6 +553,40 @@ function BackToMachines({ go }: { go: (to: string) => void }) {
   );
 }
 
+/** 场景里的 Info Hub 事实：只为让强制收回卡片显示在真实位置，不连接业务服务。 */
+function demoLeaseInfo(
+  project: { id: string; name: string },
+  leases: readonly LeaseView[],
+): ProjectInfoHub {
+  const scoped = leases.filter((lease) => lease.projectId === project.id);
+  const leaseSummaries = scoped.map((lease) => ({
+    ...lease,
+    holderResolution: lease.holderInstanceId ? ("unknown" as const) : ("none" as const),
+    holder: null,
+  }));
+  return {
+    ...demoInfoHub,
+    projectId: project.id,
+    projectName: project.name,
+    machines: demoMachineDetails.map((detail) => ({
+      projectId: project.id,
+      machineId: detail.machine.id,
+      name: detail.machine.name,
+      description: "",
+      projectMembership: "current" as const,
+      connection: detail.connection,
+      lease: leaseSummaries.find((lease) => lease.machineId === detail.machine.id) ?? {
+        ...demoFreeLease,
+        projectId: project.id,
+        machineId: detail.machine.id,
+        holderResolution: "none" as const,
+        holder: null,
+      },
+    })),
+    leases: { available: true, items: leaseSummaries },
+  };
+}
+
 export function MachineScenes() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -847,6 +884,7 @@ export function MachineScenes() {
           leases={draft.leases}
           holderNames={demoHolderNames}
           escrowNames={demoEscrowNames}
+          leaseInfo={demoLeaseInfo(project, draft.leases)}
           runs={[{ runId: "run_12345678", status: "completed" }]}
           executions={demoExecutions}
           onRenewEnrollment={renew}

@@ -39,7 +39,6 @@ export function MachineLeasePanel({
   connection,
   cancellations,
   onCancelled,
-  onLeaseMutate,
   revision,
 }: {
   detail: MachineDetail;
@@ -66,15 +65,10 @@ export function MachineLeasePanel({
   connection?: LogConnection;
   cancellations?: Readonly<Record<string, ExecutionCancellationView>>;
   onCancelled?: (view: ExecutionCancellationView) => void;
-  onLeaseMutate?: LeaseMutationHandler;
   /** Machine 范围的活动 revision；传了就让 fencing 事实跟着 revision 读。 */
   revision?: string | null;
 }) {
-  const leaseSection = (
-    onMutate?: LeaseMutationHandler,
-    chatRow?: ReactNode,
-    transferControls?: ReactNode,
-  ) => (
+  const leaseSection = (onMutate?: LeaseMutationHandler) => (
     <MachineLeaseSection
       projectId={project.id}
       detail={detail}
@@ -84,8 +78,6 @@ export function MachineLeasePanel({
       runs={runs}
       onMutate={onMutate}
       revision={revision}
-      {...(chatRow ? { chatRow } : {})}
-      {...(transferControls ? { transferControls } : {})}
     />
   );
 
@@ -121,12 +113,12 @@ export function MachineLeasePanel({
           <ProjectLeaseActions
             key={leaseInfo.projectId}
             info={leaseInfo}
-            fixedMachineId={detail.machine.id}
+            machineId={detail.machine.id}
           >
-            {(mutate, chrome) => leaseSection(mutate, chrome.chatRow, chrome.transferControls)}
+            {(mutate) => leaseSection(mutate)}
           </ProjectLeaseActions>
         ) : (
-          leaseSection(onLeaseMutate)
+          leaseSection()
         )}
       </SettingsSection>
       <SettingsSection
