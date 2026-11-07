@@ -48,9 +48,11 @@ export function ProjectLeaseActions({
   const confirmId = useId();
   const mutate: LeaseMutationHandler = (input) =>
     requestProjectLease(input, () => router.invalidate());
+  /** 只在本 Project 确实持有这台 Machine 的租约时可收回；没有租约就没有可收回的对象。 */
+  const lease = info.leases.items.find((item) => item.machineId === machineId);
+  const reclaimable = lease?.state === "held";
 
   async function reclaim() {
-    const lease = info.leases.items.find((item) => item.machineId === machineId);
     if (!lease || lease.state !== "held" || pending) return;
     setPending(true);
     setError(null);
@@ -107,7 +109,7 @@ export function ProjectLeaseActions({
     <div className="min-w-0 space-y-4" data-testid="project-lease-actions">
       <ProjectContextFacts info={info} machineId={machineId} />
       {children(mutate)}
-      {reclaimControls}
+      {reclaimable && reclaimControls}
       {receipt && (
         <div data-testid="lease-reclaim-receipt" className="space-y-1 text-xs leading-6">
           <StatusLine {...mutationStateLabel(receipt)} testId="lease-reclaim-receipt-state" />

@@ -107,6 +107,25 @@ function attemptView(row: WakeAttemptRow): ChatContinuationAttemptView {
     usage: row.usage,
   };
 }
+/**
+ * 判定结果按存储快照原样回给页面。历史行里可能还留着改名前的 provider 值：
+ * 0034 只迁了 `project.wake_policy` 与命令表，漏了 `wake_evaluation`（0039 补上数据修复），
+ * 所以读取时再按同一映射归一一次，避免一行旧数据让整页报 validation_failed。
+ * 解析不出来的快照也不拖垮页面，本轮次仍保留状态与错误码。
+ */
+function evaluationResult(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === "object" && "provider" in parsed) {
+      const record = parsed as Record<string, unknown>;
+      return record.provider === "small_brain" ? { ...record, provider: "llm" } : parsed;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 export function getChatContinuation(
   projectId: string,
   chatId: string,
@@ -180,7 +199,7 @@ export function getChatContinuation(
           finishedAt: iso(finishedAttempt?.finished_at ?? null),
           evaluatedAt: iso(evaluation.evaluated_at),
           nextAttemptAt: iso(evaluation.next_attempt_at),
-          result: evaluation.result ? JSON.parse(evaluation.result) : null,
+          result: evaluationResult(evaluation.result),
           errorCode: evaluation.error_code,
           usage: latestAttempt?.usage ?? null,
         }
@@ -191,7 +210,7 @@ export function getChatContinuation(
       source: row.source,
       state: row.state,
       evaluatedAt: iso(row.evaluated_at),
-      result: row.result ? JSON.parse(row.result) : null,
+      result: evaluationResult(row.result),
       errorCode: row.error_code,
       attempts: (attempts.get(row.id) ?? []).map(attemptView),
     })),

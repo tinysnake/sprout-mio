@@ -297,6 +297,40 @@ describe("判定读视图", () => {
       usage: { durationMs: 4199.734 },
     });
   });
+
+  // Risk → evidence: 0034 只把 project.wake_policy 的旧枚举迁到 llm，漏了 wake_evaluation；
+  // 一行旧快照会让整页报 validation_failed。读取必须按同一映射归一，页面才不靠数据齐全。
+  it("历史行里的 small_brain 结果按 llm 读出，不抛校验错误", () => {
+    const { projectId, chatId } = seedProjectChat();
+    const id = seedClaimedEvaluation(chatId, projectId, 1, 1);
+    sqlite
+      .prepare(
+        "UPDATE wake_evaluation SET state='decided',evaluated_at=?,claim_token=NULL,lease_until=NULL,result=? WHERE id=?",
+      )
+      .run(
+        later(1).getTime(),
+        JSON.stringify({
+          decision: "do_not_continue",
+          reason: "旧行",
+          reasonCode: "legacy",
+          recipients: [],
+          selectedRecipients: [],
+          probability: 0.5,
+          provider: "small_brain",
+          version: "v1",
+          snapshotHash: "a".repeat(64),
+          errorCode: null,
+        }),
+        id,
+      );
+
+    const data = getChatContinuation(projectId, chatId, {
+      userId: "owner",
+      requestId: "req_attempts",
+    });
+    expect(data.view.recentRounds[0]?.result?.provider).toBe("llm");
+    expect(data.view.latestEvaluation?.result?.provider).toBe("llm");
+  });
 });
 
 describe("对话接续变更推送", () => {
