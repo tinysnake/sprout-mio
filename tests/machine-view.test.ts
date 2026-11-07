@@ -4,6 +4,7 @@ import { machineActivityDigest, type MachineActivityFacts } from "../src/domain/
 import {
   connectionLabel,
   enrollmentLabel,
+  executionEnvironmentLabel,
   installCommands,
   observationLabel,
 } from "../src/components/machine/machine-view";
@@ -189,5 +190,24 @@ describe("Machine 活动 revision", () => {
     for (const lease of withHeartbeat.leases)
       Object.assign(lease, { lastSeenAt: "2026-06-01T00:00:03.000Z" });
     expect(machineActivityDigest(withHeartbeat)).toBe(base);
+  });
+});
+
+describe("执行环境呈现", () => {
+  it("旧 Worker 未上报时不假设桌面环境", () => {
+    expect(executionEnvironmentLabel(undefined)).toBe("执行环境未上报");
+  });
+
+  it("区分服务会话与交互桌面，并带上真实 SessionId", () => {
+    expect(executionEnvironmentLabel({ sessionId: 0, sessionKind: "service_session_0" })).toBe(
+      "服务会话（Session 0）",
+    );
+    expect(executionEnvironmentLabel({ sessionId: 3, sessionKind: "interactive_desktop" })).toBe(
+      "交互桌面 · Session 3",
+    );
+    expect(executionEnvironmentLabel({ sessionId: null, sessionKind: "unknown" })).toBe("会话未知");
+    expect(executionEnvironmentLabel({ sessionId: null, sessionKind: "not_applicable" })).toBe(
+      "不适用（非 Windows）",
+    );
   });
 });

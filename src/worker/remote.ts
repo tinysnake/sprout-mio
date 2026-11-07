@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import type { CapabilitySnapshot, DirectoryObservation } from "../contracts/machine";
+import type { CapabilitySnapshot, DirectoryObservation, ShellFact } from "../contracts/machine";
 import { EXECUTION_LOG_FRAMES_PER_EXCHANGE, remoteReportSchema } from "../contracts/remote";
 import type {
   ExecutionLogFact,
@@ -16,6 +16,15 @@ import type {
   RemoteResultPayload,
 } from "../contracts/remote";
 import { McpRuntime } from "./mcp";
+import {
+  killProcessTree,
+  parsePsOutput,
+  parseTasklistCsv,
+  processTreeKillIsForced,
+  shellInvocation,
+  signalProcessTree,
+  spawnProcessList,
+} from "./platform";
 import { ExecutionRegistry, ExecutionStore, type Run } from "./executions";
 import type { WorkerSession } from "../contracts/worker-session";
 import type { WorkerExchangeRemoteInput, WorkerExchangeResponse } from "../contracts/worker";
@@ -171,6 +180,7 @@ function terminateCommandGroup(
   graceMs: number,
 ) {
   const send = (target: { pid: number }, signal: NodeJS.Signals) => {
+    if (processTreeKillIsForced()) return killProcessTree(target.pid);
     try {
       process.kill(-target.pid, signal);
       return true;
@@ -179,6 +189,8 @@ function terminateCommandGroup(
     }
   };
   const target = resolveTarget();
+  // Windows 没有可送达的 SIGTERM：taskkill /T /F 一发出就是强制终止，不能报 term_delivered。
+  if (processTreeKillIsForced()) return send(target, "SIGKILL") ? "kill_delivered" : "none";
   if (policy === "kill") return send(target, "SIGKILL") ? "kill_delivered" : "none";
   if (!send(target, "SIGTERM")) return "none";
   setTimeout(() => {
@@ -222,16 +234,23 @@ export class RemoteDispatcher {
    * 没有 state-dir 或找不到 runner 时退回直接 spawn：行为与以前一致，但少了第三层，
    * 此时重启后的归约只能报 unknown。
    */
-  private shellCommand(command: RemoteCommand, shellPath: string, text: string) {
+  private shellCommand(command: RemoteCommand, shell: ShellFact, text: string) {
     const entry = runnerEntry();
     const stateDirectory = this.registry.store.stateDirectory;
     // `runner: false` 是降级模式：没有 state-dir 或找不到 runner 时没有第三层，
     // 退出证据只能来自本进程直接观测（见 docs/p0/recovery-promises.md 的三层权威）。
     if (!entry || !stateDirectory)
-      return { file: shellPath, args: ["-lc", text], env: undefined, runner: false };
+      return { ...shellInvocation(shell.path, shell.kind, text), env: undefined, runner: false };
     return {
       file: process.execPath,
-      args: [entry, command.executionId, command.runnerToken ?? "", stateDirectory, shellPath],
+      args: [
+        entry,
+        command.executionId,
+        command.runnerToken ?? "",
+        stateDirectory,
+        shell.path,
+        shell.kind,
+      ],
       // 命令正文不进 argv：runner 自己的命令行不该出现第二条同名命令。
       env: { ...process.env, SPROUT_RUNNER_COMMAND: text },
       runner: true,
@@ -617,7 +636,7 @@ export class RemoteDispatcher {
         const shell = this.capability.shells.find((shell) => shell.probe.kind === "success");
         if (!shell) throw new AdmissionError("capability_unavailable");
         this.gate(entry);
-        const launched = this.shellCommand(entry.command, shell.path, operation.command);
+        const launched = this.shellCommand(entry.command, shell, operation.command);
         const runnerBacked = launched.runner;
         const child = spawn(launched.file, launched.args, {
           cwd: operation.cwd,
@@ -857,19 +876,17 @@ export class RemoteDispatcher {
         }
       } else if (operation.kind === "process_signal") {
         this.gate(entry);
-        process.kill(operation.pid, `SIG${operation.signal}`);
+        if (!signalProcessTree(operation.pid, operation.signal)) throw new Error("executor_error");
         entry.started = true;
         clearTimeout(admission);
         payload = { ...operation, delivered: true };
       } else {
         this.gate(entry);
-        const child = spawn("/bin/ps", ["-axo", "pid=,comm="], {
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-        entry.started = true;
-        clearTimeout(admission);
         let buffer = Buffer.alloc(0),
           truncated = false;
+        const child = spawnProcessList();
+        entry.started = true;
+        clearTimeout(admission);
         child.stdout.on("data", (chunk: Buffer) => {
           if (buffer.length + chunk.length > 262144) truncated = true;
           buffer = Buffer.concat([buffer, chunk.subarray(0, Math.max(0, 262144 - buffer.length))]);
@@ -881,16 +898,15 @@ export class RemoteDispatcher {
             code === 0 ? resolve() : reject(new Error("executor_error")),
           );
         });
-        const items = buffer
-          .toString("utf8")
-          .split("\n")
-          .flatMap((line) => {
-            const match = /^\s*(\d+)\s+(.+)$/.exec(line);
-            if (!match) return [];
-            const command = boundedText(Buffer.from(match[2]), 1024);
-            truncated ||= command.truncated;
-            return [{ pid: Number(match[1]), command: command.text }];
-          });
+        const parsed =
+          process.platform === "win32"
+            ? parseTasklistCsv(buffer.toString("utf8"))
+            : parsePsOutput(buffer.toString("utf8"));
+        const items = parsed.flatMap((item) => {
+          const command = boundedText(Buffer.from(item.command), 1024);
+          truncated ||= command.truncated;
+          return [{ pid: item.pid, command: command.text }];
+        });
         payload = {
           kind: "process_list",
           items: items.slice(0, operation.limit),

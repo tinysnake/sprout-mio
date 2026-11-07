@@ -1,5 +1,7 @@
 import type {
   DirectoryObservation,
+  ExecutionEnvironment,
+  ExecutionSessionKind,
   MachineConnectionView,
   MachineDetail,
 } from "../../contracts/machine";
@@ -97,6 +99,21 @@ export function machineListSummary(detail: MachineDetail): string {
       : `旧能力 ${detail.capability.snapshot.workerVersion}`
     : "无能力快照";
   return `${capability} · 最后收到 ${formatMoment(detail.connection.lastSeenAt)}`;
+}
+
+const EXECUTION_SESSION_LABELS: Record<ExecutionSessionKind, string> = {
+  interactive_desktop: "交互桌面",
+  service_session_0: "服务会话（Session 0）",
+  not_applicable: "不适用（非 Windows）",
+  unknown: "会话未知",
+};
+/** 只展示 Worker 报上来的事实；没有上报就是「未上报」，不拿平台猜一个会话。 */
+export function executionEnvironmentLabel(environment: ExecutionEnvironment | undefined): string {
+  if (!environment) return "执行环境未上报";
+  const base = EXECUTION_SESSION_LABELS[environment.sessionKind];
+  if (environment.sessionId === null) return base;
+  if (environment.sessionKind === "service_session_0" && environment.sessionId === 0) return base;
+  return `${base} · Session ${environment.sessionId}`;
 }
 
 export const WORKER_ORIGIN_PLACEHOLDER = "<server-origin>";

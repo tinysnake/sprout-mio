@@ -30,11 +30,7 @@ import {
   leaseMutationInputSchema,
   leaseReadInputSchema,
 } from "./lease";
-import {
-  macosAbsolutePathSchema,
-  positiveSafeIntegerSchema,
-  REMOTE_OPERATION_KINDS,
-} from "./machine";
+import { absolutePathSchema, positiveSafeIntegerSchema, REMOTE_OPERATION_KINDS } from "./machine";
 import { APP_ERROR_CODES } from "./result";
 import { workerSecretSchema, workerSessionSchema } from "./worker-session";
 
@@ -58,15 +54,15 @@ const bytes = (max: number) =>
     );
 const shellFields = {
   command: bytes(65536),
-  cwd: macosAbsolutePathSchema.optional(),
+  cwd: absolutePathSchema.optional(),
   waitMs: nonnegativeSafeIntegerSchema.max(10000).default(1000),
 };
 const fileReadFields = {
-  path: macosAbsolutePathSchema,
+  path: absolutePathSchema,
   maxBytes: positiveSafeIntegerSchema.max(262144).default(65536),
 };
 const fileWriteFields = {
-  path: macosAbsolutePathSchema,
+  path: absolutePathSchema,
   content: bytes(262144),
   mode: z.enum(["overwrite", "append"]).default("overwrite"),
 };
@@ -87,7 +83,7 @@ export const remoteOperationSchema = z.discriminatedUnion("kind", [
   ...otherOperations,
 ]);
 const dispatchedOperationSchema = z.discriminatedUnion("kind", [
-  shellOperationSchema.extend({ cwd: macosAbsolutePathSchema }),
+  shellOperationSchema.extend({ cwd: absolutePathSchema }),
   ...otherOperations,
 ]);
 export const REMOTE_EXECUTION_STATES = [
