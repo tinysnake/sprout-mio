@@ -8,7 +8,6 @@ import {
   EXECUTION_STATE_LABELS,
   executionDetailLabel,
   OPERATION_KIND_LABELS,
-  REMOTE_TARGET_NOTE,
   deadlineFacts,
   executionTarget,
   failureReasonLabel,
@@ -120,12 +119,6 @@ export function RemoteExecutionList({
   });
   return (
     <section data-testid={testId} className="space-y-3">
-      <p
-        data-testid={`${testId}-target-note`}
-        className="text-[0.6875rem] leading-5 text-muted-foreground"
-      >
-        {REMOTE_TARGET_NOTE}
-      </p>
       {readOnlyNote && (
         <p
           data-testid={`${testId}-read-only`}

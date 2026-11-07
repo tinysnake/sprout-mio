@@ -19,12 +19,12 @@ export type LeaseLabel = { label: string; detail: string; tone: StatusTone };
 export const LEASE_STATE_LABELS: Record<LeaseView["state"], LeaseLabel> = {
   free: {
     label: "空闲",
-    detail: "没有分身持有该 Machine。空闲不等于已释放记录，也不代表 Machine 可用。",
+    detail: "没有分身持有该 Machine。空闲不等于已释放记录。",
     tone: "muted",
   },
   held: {
     label: "持有中",
-    detail: "持有者可以对该 Machine 发起远端操作；租约不会随 run 结束自动释放。",
+    detail: "该分身持有并操作这台 Machine。",
     tone: "success",
   },
   fencing: {
@@ -312,7 +312,7 @@ export function runLeaseRelation(
   if (!held) {
     return {
       held,
-      note: "当前没有持有者；这是租约自身的状态，不由 run 状态推出。",
+      note: "当前没有持有者。",
     };
   }
   if (lease.state === "fencing") {
@@ -641,6 +641,3 @@ export function cancellationSignalFacts(cancellation: ExecutionCancellationView)
     facts.push("进程已不再运行，但退出没有被记录");
   return facts;
 }
-
-export const REMOTE_TARGET_NOTE =
-  "每条远端操作都显式指定 Machine；不存在默认目标，也不会猜测目标。结果状态来自 Worker 报告，未确认时显示未知。";
