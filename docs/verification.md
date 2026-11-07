@@ -33,9 +33,9 @@
 
 日常使用 `pnpm verify:local` 运行必须依赖真实 macOS 或已安装 Pi 的部分；GitHub Actions 的 Ubuntu job 执行其余部分。`pnpm verify` 仍是单机全量入口，包含全部原始断言与全量单测，便于完整复现；它不因分工而静默缩减范围。分工入口先校验完整门禁与测试文件清单，新文件未分类时立即失败。归属清单见 `scripts/verify/lib/targets-plan.mjs` 与 `scripts/verify/lib/test-targets.mjs`。
 
-CI 分为 base、tooling、docs、contracts、api、turns、browser 七个独立 checkout 的 job，最多六个同时执行，每个 job 内串行运行自己的门禁，避免在 hosted runner 内再次过量并发。共接管 77 个门禁，本机保留 25 个（`a-base` 与 `b-tooling` 两边都跑），另有 1 个 MANUAL 门禁只在真实付费模型下手工运行；去重后合计 101 个。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
+CI 分为 base、tooling、docs、contracts、api、turns、browser 七个独立 checkout 的 job，最多六个同时执行，每个 job 内串行运行自己的门禁，避免在 hosted runner 内再次过量并发。共接管 77 个门禁，本机保留 26 个（`a-base` 与 `b-tooling` 两边都跑），另有 2 个 MANUAL 门禁只在真实环境手工运行（`p6a-live-routing` 需要真实付费模型，`p8d-windows-worker` 需要真实 Windows 主机）；去重后合计 103 个。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
 
-90 个测试文件中，CI 执行 87 个，本机执行 `tests/machine-worker.test.ts`（Darwin/sandbox-exec 分支）、`tests/extension-mcp.test.ts`（真实 Pi McpClient）和 `tests/worker-report-budget.test.ts`（真实 runWorker 环境探测）。`pnpm test:ci` 与 `pnpm test:local` 可单独运行各自测试集合；两边都保留文件隔离。CI 测试最多两个 file worker，使用空的临时 Pi agent 目录、清除 inherited Pi runner/module 设置并关闭 MCP_EVERYTHING，避免借用个人安装掩盖依赖。N/Q 等使用生成 protocol stub 的验证属于 CI，不因名称含 Pi 就保留本机；真实 Pi SDK、MCP extension、真实 Worker 初始化/环境探测仍留本机。
+125 个测试文件中，CI 执行 119 个，本机执行 6 个：`tests/machine-worker.test.ts`（Darwin/sandbox-exec 分支）、`tests/extension-mcp.test.ts`（真实 Pi McpClient）、`tests/worker-report-budget.test.ts`（真实 runWorker 环境探测）和 `tests/chat-skills-*.test.ts`（真实已安装 Pi SDK 的 scoped skills）。`pnpm test:ci` 与 `pnpm test:local` 可单独运行各自测试集合；两边都保留文件隔离。CI 测试最多两个 file worker，使用空的临时 Pi agent 目录、清除 inherited Pi runner/module 设置并关闭 MCP_EVERYTHING，避免借用个人安装掩盖依赖。N/Q 等使用生成 protocol stub 的验证属于 CI，不因名称含 Pi 就保留本机；真实 Pi SDK、MCP extension、真实 Worker 初始化/环境探测仍留本机。
 
 `pnpm verify:ci --group docs` 可复现一个 CI job；省略 `--group` 顺序运行全部 CI 门禁。选择清单可通过 `pnpm verify:local --list`、`pnpm verify:ci --list`、`pnpm test:ci --list` 查看。范围由入口设置 `SPROUT_VERIFY_TARGET`，逐门禁报告和 `.verify/targets/<target>-<group>.json` 记录实际范围与退出结果；一个 CI 门禁失败仍继续执行该组其余门禁，最终保留失败退出码。原有 `--only` 继续用于单机全量入口。
 
@@ -78,13 +78,13 @@ server 准备固定使用 `NODE_ENV=production` 并删除 `BETTER_AUTH_SECRET`�
 
 worker 按验证计划执行，不因“保险起见”自行追加全量验证。发现计划外风险时，记录具体风险和调整依据，再更新验证计划。报告区分计划执行、实际执行、通过、失败与跳过。
 
-coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范围。worker 自报通过是证据，不代替 coordinator 验证。文档单元复跑文档检查，代码单元复跑受影响领域检查；独立复跑不等于全量复跑。复跑前核对脚本内含的检查，去掉本轮执行计划中的重复项；保留重复项时写明新增风险或独立取证的理由。交付前的整段复核用 `pnpm verify:local`：它只跑 `scripts/verify/lib/targets-plan.mjs` 里 `LOCAL_GATES` 的 25 个门禁，即必须在本机 macOS 与真实 Pi 环境下跑的部分（真实 Worker、真实 Pi CLI/SDK/MCP、真实页面）；101 个门禁里 77 个由 CI 的 Linux 分组覆盖，只有 `a-base` 与 `b-tooling` 两边都跑（同名的两份检查只在 macOS 侧含本机专属用例）。同一 HEAD 已有一轮 0 失败就复用那份结果并记下来源，不因为「顺手再跑一遍」重跑第二遍。
+coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范围。worker 自报通过是证据，不代替 coordinator 验证。文档单元复跑文档检查，代码单元复跑受影响领域检查；独立复跑不等于全量复跑。复跑前核对脚本内含的检查，去掉本轮执行计划中的重复项；保留重复项时写明新增风险或独立取证的理由。交付前的整段复核用 `pnpm verify:local`：它只跑 `scripts/verify/lib/targets-plan.mjs` 里 `LOCAL_GATES` 的 26 个门禁，即必须在本机 macOS 与真实 Pi 环境下跑的部分（真实 Worker、真实 Pi CLI/SDK/MCP、真实页面）；103 个门禁里 77 个由 CI 的 Linux 分组覆盖，只有 `a-base` 与 `b-tooling` 两边都跑（同名的两份检查只在 macOS 侧含本机专属用例）。同一 HEAD 已有一轮 0 失败就复用那份结果并记下来源，不因为「顺手再跑一遍」重跑第二遍。
 
 完整验证安排在明确的集成批次或交付节点，不在每个中间单元重复执行。独立验收的范围覆盖该节点的交付要求，不能因为单元定向验证通过而省略。在集成分支上，先把它与 `main` 同步、解决冲突，再在同步后的头部跑完整验证与独立验收，并把该 commit 记成受验对象；之后 `main` 只接收这个受验形态。
 
 ## 完整验证与去重
 
-`pnpm verify` 调用 `scripts/verify.sh`，跑全部 101 个门禁并包含全量 `pnpm test`；它属于与 CI 对等的整段复核，在没有 CI 结果时才需要，日常交付用上面的 `pnpm verify:local`。本机 `scripts/verify.sh` 的并发上限（6 个进程、6 条 native 车道、3 个浏览器）按空闲机器估算，机器同时在跑索引或别的 agent 时，时间预算型的门禁会假红；判红前先看 `uptime`，再单独复跑该门禁。`scripts/verify/b-tooling.sh` 是完整验证中全量测试的唯一执行入口，其他验收脚本保留领域定向测试。
+`pnpm verify` 调用 `scripts/verify.sh`，跑全部 103 个门禁并包含全量 `pnpm test`；它属于与 CI 对等的整段复核，在没有 CI 结果时才需要，日常交付用上面的 `pnpm verify:local`。本机 `scripts/verify.sh` 的并发上限（6 个进程、6 条 native 车道、3 个浏览器）按空闲机器估算，机器同时在跑索引或别的 agent 时，时间预算型的门禁会假红；判红前先看 `uptime`，再单独复跑该门禁。`scripts/verify/b-tooling.sh` 是完整验证中全量测试的唯一执行入口，其他验收脚本保留领域定向测试。
 
 同一轮完整验证不再另外追加全量测试。领域验证同样去重。例如 `scripts/verify/g-identity-data.sh` 已包含 `pnpm check` 和 `tests/identity-data.test.ts` 的定向测试，未发生相关改动时，不在同一执行者的同一轮计划中另加相同检查。修复前后对照、快速定位失败或独立验收需要重复执行时，保留并说明目的。
 

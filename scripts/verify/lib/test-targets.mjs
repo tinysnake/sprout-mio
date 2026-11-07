@@ -124,6 +124,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/wake-attempts.test.ts",
     "tests/wake-runner-path.test.ts",
     "tests/worker-execution.test.ts",
+    "tests/worker-platform.test.ts",
     "tests/worker-remote-domain.test.ts",
     "tests/worker-remote.test.ts",
   ],
