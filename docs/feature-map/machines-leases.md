@@ -35,8 +35,10 @@
 | Lease 挂靠与领取真实链路  | `bash scripts/verify/p8a-lease-integration.sh`                                                                             | 分身挂靠、旧持有者被拒、Group 成员领取、撤销回发起者；三者都经真实 Agent 工具与 worker                                                                                                    |
 | 挂靠超时与等待的契约域层  | `bash scripts/verify/p8b-timeout.sh`                                                                                       | 计时起点是挂靠被接受时刻、只提醒一次、agent / human owner 分流、升级后暂停 owner 自动尝试、默认 30 分钟 / 2 小时与 5 分钟等待上界（1 小时封顶）                                           |
 | 挂靠超时与等待的真实链路  | `bash scripts/verify/p8b-timeout-integration.sh`                                                                           | 分身经真实 `sprout_lease_wait` 阻塞等待（全程只发 `lease_get`）、到点返回失败与原因、持有者侧无任何消息或 run；提醒与升级由生产 scheduler 的 `advance()` 驱动，关闭自动接续的 chat 也照发 |
+| Windows 平台适配          | `bash scripts/verify/p8d-windows-worker.sh`（需 `P8D_WINDOWS_HOST`，默认 `e8`）                                            | 三种 shell 的路径、版本与自检；经 runner 执行的退出码透传；进程树 `taskkill /T /F`；runner 被杀后不伪造结果                                                                               |
+| Windows 集成端到端        | `bash scripts/verify/p8d-windows-integration.sh`（同一环境变量，`P8D_EXPECT_WINDOWS_SESSION` 默认 `0`）                    | 生产路径 `RemoteDispatcher` 下的能力诚实性、跨平台文件操作、进程枚举与树终止、Session 0 与桌面会话区分、取消只报 kill_delivered、重连去重、未观测退出不重跑                               |
 
-契约层改动先选 [s-machine-contracts.sh](../../scripts/verify/s-machine-contracts.sh) 或 [v-lease-contracts.sh](../../scripts/verify/v-lease-contracts.sh)；挂靠超时或申请等待改动先跑 [p8b-timeout.sh](../../scripts/verify/p8b-timeout.sh)，改到工具接线或提醒 / 升级驱动再加 [p8b-timeout-integration.sh](../../scripts/verify/p8b-timeout-integration.sh)。worker 协议变化再查 [t-machine-worker.sh](../../scripts/verify/t-machine-worker.sh) 与 [w-worker-remote.sh](../../scripts/verify/w-worker-remote.sh)。这些是按风险组合的入口，不需要因为同属 Machine 而全部运行。
+契约层改动先选 [s-machine-contracts.sh](../../scripts/verify/s-machine-contracts.sh) 或 [v-lease-contracts.sh](../../scripts/verify/v-lease-contracts.sh)；挂靠超时或申请等待改动先跑 [p8b-timeout.sh](../../scripts/verify/p8b-timeout.sh)，改到工具接线或提醒 / 升级驱动再加 [p8b-timeout-integration.sh](../../scripts/verify/p8b-timeout-integration.sh)。worker 协议变化再查 [t-machine-worker.sh](../../scripts/verify/t-machine-worker.sh) 与 [w-worker-remote.sh](../../scripts/verify/w-worker-remote.sh)。这些是按风险组合的入口，不需要因为同属 Machine 而全部运行。 Windows 侧的平台适配与集成验收固定用 [p8d-windows-worker.sh](../../scripts/verify/p8d-windows-worker.sh) 与 [p8d-windows-integration.sh](../../scripts/verify/p8d-windows-integration.sh)：两者都是 MANUAL 门禁，没有真实 Windows 主机时明确失败，不静默跳过。
 
 U 脚本依赖当前代码的 `.output` 与 worker 构建产物，准备方式见 [worker artifact helper](../../scripts/verify/lib/ensure-worker-artifact.sh) 和项目 build 命令。driver 自己启动 production server，默认 `BASE_URL` 是 `http://127.0.0.1:3120`。证据在每次新建的 `.verify/p4a-machine-flow-*`，包含 `results.json`、日志和截图，最终输出打印实际路径。
 
@@ -55,3 +57,6 @@ Y 脚本自己启动 dev server，默认端口 3099，可用 `SPROUT_LEASE_SCENE
 - 挂靠超时的提醒与升级不受 chat 自动接续开关影响；推送只做 chat 消息加（Agent owner 的）直接唤醒，唤醒失败沿用既有 agent-run 重试规则，不新增退避参数。
 - 等待期间在现场只应看到 `lease_get`：一旦出现写入类远端调用，说明等待路径被接错了。
 - 截图与日志里保留必要状态，配对票据和 worker 凭据按脚本的脱敏规则处理。
+- `p8d-windows-*` 通过 ssh 进入的机器落在 Session 0：`interactive_desktop` 的实机判定、桌面用户环境与两种会话的差异行为在这类机器上不可验。要按实际 Session 写明，并把桌面项记为未验证，不能用 Session 0 的结果冒充桌面结果。
+- Windows 上 runner 被杀会让命令随之结束（实测 `commandAliveAfterRunnerKill=false`）：磁盘上没有 `result.json`，恢复只能是 `child-exited-without-result`，重启后不得重跑。macOS 上命令会活下来（同项为 `true`），两边行为不同，不能互相外推。
+- 产品按能力快照里第一个探测成功的 shell 执行 shell 操作，命令本身不带 shell 字段。要单独验某一种 shell，必须给它一份只含该 shell 的能力快照，否则「三种 shell 都验过」是假证据。

@@ -56,4 +56,6 @@ runner：Windows 上命令不使用 `detached`。实测 PowerShell 7 在 `detach
 
 `scripts/verify/p8d-windows-worker.sh` 在真实 Windows 主机上验证：平台与架构、三种 shell 的路径/版本/自检、执行环境与 SessionId 自洽、目录探测、三种 shell 经 runner 执行、退出码透传、进程树终止、runner 被杀后不伪造结果。它属于 MANUAL 门禁：没有 Windows 主机时明确失败，不静默通过。
 
+`scripts/verify/p8d-windows-integration.sh` 在同一台机器上走生产路径（`RemoteDispatcher`）做端到端验收：能力探测的诚实性反证（候选 shell 全缺失时报 `missing` 不报成功、不声明 shell 能力）、跨平台文件操作、进程枚举与 `taskkill /T /F`、Session 0 与桌面会话的区分、取消只报 `kill_delivered`、重连去重（同序号原帧幂等、同 executionId 换序号报 `stale_generation`）、runner 被杀后的未观测退出与重启不重跑。同样是 MANUAL 门禁：没有 Windows 主机时明确失败。它用的 harness 是 `tests/fixtures/p8d-windows-integration.ts`。
+
 在这台以 sshd 进入的机器上，SessionId 固定为 0，因此**不能**验证：登录桌面会话下的 `interactive_desktop` 判定、桌面用户环境（托盘、交互式凭据、图形程序）、服务会话与桌面会话的差异行为。这些只能在有桌面登录的 Windows 机器上复验，报告里必须按实际所在 Session 写明，不能把 Session 0 的结论外推成「Windows 桌面亦然」。
