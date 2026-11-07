@@ -123,6 +123,7 @@ export const SUITE_PLAN = Object.freeze({
   "u-machine-ui": plan(75.372, { native: 1, browser: 1 }, worker),
   "v-lease-contracts": plan(2.619, { unit: 1 }),
   "p8a-lease-escrow": plan(3.4, { unit: 1 }),
+  "p8b-timeout": plan(2.4, { unit: 1 }),
   "p8a-lease-integration": plan(70, { native: 1, sdk: 1, timing: 1 }, worker),
   "v-mcp-contracts": plan(11.609, { unit: 1 }),
   "w-worker-remote": plan(66.076, { native: 1, browser: 1 }, worker),

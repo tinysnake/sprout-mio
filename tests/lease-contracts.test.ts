@@ -171,6 +171,14 @@ describe("P4b shared contracts", () => {
       claimedByInstanceId: null,
       claimedAt: null,
       claimedGeneration: null,
+      // I-P8b：超时事实是挂靠视图的必填部分，具体数值不是本用例的关注点。
+      timeout: {
+        deadlineAt: at,
+        notifiedAt: null,
+        escalatedAt: null,
+        awaitingHandling: false,
+        ownerAutoAttemptsPaused: false,
+      },
     };
     expect(leaseEscrowViewSchema.safeParse(escrow).success).toBe(true);
     const escrowedLease = {

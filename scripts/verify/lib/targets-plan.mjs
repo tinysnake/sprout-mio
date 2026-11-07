@@ -10,6 +10,7 @@ export const CI_GROUPS = Object.freeze({
     "s-machine-contracts",
     "v-lease-contracts",
     "p8a-lease-escrow",
+    "p8b-timeout",
     "v-mcp-contracts",
     "aa-execution-log-contracts",
     "ac-execution-recovery-log",

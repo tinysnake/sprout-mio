@@ -263,6 +263,14 @@ describe("远端 Pi 工具边界", () => {
       claimedByInstanceId: null,
       claimedAt: null,
       claimedGeneration: null,
+      // I-P8b：超时事实是挂靠视图的必填部分，具体数值不是本用例的关注点。
+      timeout: {
+        deadlineAt: time,
+        notifiedAt: null,
+        escalatedAt: null,
+        awaitingHandling: false,
+        ownerAutoAttemptsPaused: false,
+      },
     };
     const lease = {
       ...free,
