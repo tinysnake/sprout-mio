@@ -21,8 +21,7 @@ import type {
   SaveProjectMachineBindingInput,
 } from "../../../contracts/machine";
 import type { AppErrorCode } from "../../../contracts/result";
-import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../../contracts/lease";
-import type { AppResult } from "../../../contracts/result";
+import type { LeaseView } from "../../../contracts/lease";
 import { PageFrame } from "../../../components/layout/page-frame";
 import { ResultError } from "../../../components/project/result-error";
 import { Select } from "../../../components/ui/select";
@@ -41,10 +40,7 @@ import { ExecutionsScene } from "./executions";
 import {
   demoExecutions,
   demoHolderNames,
-  demoInstanceIds,
   demoLeases,
-  applyLeaseMutation,
-  completedReceipt,
   demoEscrowNames,
   demoEscrowSceneLeases,
   demoTimeoutSceneLeases,
@@ -79,8 +75,7 @@ type DemoState = {
   conflictRoot: boolean;
   throwRenew: boolean;
   projectId: string;
-  /** 租约变更的演示结果：成功写回，失败保留目标并显示原因。 */
-  leaseOutcome: "success" | "stale_generation" | "not_holder";
+  /** I-P8a：挂靠中的既有挂靠（不含超时写死的事实）。 */
   escrowScene: boolean;
   /** I-P8b：挂靠超时的五种形态（含已升级与领取后不再超时）。 */
   timeoutScene: boolean;
@@ -349,22 +344,6 @@ function DemoControls({
           把当前 Machine 标为已配对
         </button>
       )}
-      <label className="mt-3 block" htmlFor="machine-demo-lease">
-        租约变更的演示结果
-      </label>
-      <Select
-        id="machine-demo-lease"
-        data-testid="machine-demo-lease"
-        className="mt-1"
-        defaultValue="success"
-        onChange={(event) =>
-          update({ leaseOutcome: event.target.value as DemoState["leaseOutcome"] })
-        }
-      >
-        <option value="success">成功（写回租约事实）</option>
-        <option value="stale_generation">拒绝：旧授权代次失效</option>
-        <option value="not_holder">拒绝：不是持有者</option>
-      </Select>
       <label className="mt-3 flex items-start gap-2 leading-5" htmlFor="machine-demo-escrow-scene">
         <input
           id="machine-demo-escrow-scene"
@@ -588,7 +567,6 @@ export function MachineScenes() {
     conflictRoot: false,
     throwRenew: false,
     projectId: machineProject.id,
-    leaseOutcome: "success",
     escrowScene: false,
     timeoutScene: false,
   });
@@ -694,34 +672,6 @@ export function MachineScenes() {
       ),
     });
     return success(intent);
-  }
-
-  /** 演示：租约变更不自动成功，结果由演示控件选择；失败保留目标与动作。 */
-  async function leaseMutation(input: LeaseMutationInput): Promise<AppResult<LeaseMutationView>> {
-    await delay(200);
-    if (draft.leaseOutcome === "stale_generation")
-      return {
-        ok: false,
-        error: {
-          code: "lease_stale_generation",
-          message: "租约代次已变化，请读取当前租约后重试。目标与动作已保留。",
-          requestId: DEMO_REQUEST_ID,
-        },
-        requestId: DEMO_REQUEST_ID,
-      };
-    if (draft.leaseOutcome === "not_holder")
-      return {
-        ok: false,
-        error: {
-          code: "lease_not_holder",
-          message: "当前分身不是该租约的持有者，不能释放。",
-          requestId: DEMO_REQUEST_ID,
-        },
-        requestId: DEMO_REQUEST_ID,
-      };
-    const receipt = completedReceipt(input, "2026-10-18T07:30:00.000Z", "2026-10-18T07:31:00.000Z");
-    update({ leases: applyLeaseMutation(draft.leases, receipt, demoInstanceIds.primary) });
-    return { ok: true, data: receipt, requestId: DEMO_REQUEST_ID };
   }
 
   async function saveRoot(
@@ -894,7 +844,6 @@ export function MachineScenes() {
           escrowNames={demoEscrowNames}
           runs={[{ runId: "run_12345678", status: "completed" }]}
           executions={demoExecutions}
-          onLeaseMutate={leaseMutation}
           onRenewEnrollment={renew}
           onEnrollmentCreated={(enrollment) => {
             update({ tickets: { ...draft.tickets, [machineId]: enrollment } });
