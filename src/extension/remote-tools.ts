@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { leaseViewSchema } from "../contracts/lease";
+import type { LeaseView } from "../contracts/lease";
+import { clampLeaseWaitMs } from "../contracts/lease-timeout";
+import type { LeaseWaitFailure } from "../contracts/lease-timeout";
 import {
   executionCancellationViewSchema,
   executionLogReadViewSchema,
@@ -7,6 +11,7 @@ import {
   remoteToolInputSchemas,
 } from "../contracts/remote";
 import type { RemoteAgentRequest } from "../contracts/remote";
+import { waitForLease } from "../domain/lease-wait";
 import type { RemoteToolClient, RemoteToolResponse } from "./remote-client";
 import { objectToolParameters } from "./tool-parameters";
 import type { SproutExtensionAPI, SproutToolResult } from "./types";
@@ -37,6 +42,8 @@ const descriptions: Record<ToolName, string> = {
     "撤销自己发起、尚未被领取的挂靠，需要 machineId、当前 expectedGeneration 与 escrowId。操作权回到发起者，代次 +1；已被领取或已被收回的挂靠不能再撤销。对已被自己撤销的同一条挂靠再次撤销，会原样返回原收据、不推进代次，便于响应丢失后重试。不会终止进程或删除文件。",
   sprout_lease_get:
     "查询当前 Project 中显式指定的远端 Machine 租约及可选 mutationId 的交接/释放进度。machineId 必填。此工具不选择默认 Machine。",
+  sprout_lease_wait:
+    "阻塞等待显式指定的远端 Machine 租约变得可用：machineId 必填，waitMs 是自己愿意忍多久（建议 300000，超过 3600000 一律钳到 3600000）。等待只反复读租约：不抢占、不释放、不向持有者发送任何请求，对持有者完全不可见。ok 表示已经可以继续（拿到、空闲或本来就在自己手里）；到点返回 failed + reason=timed_out，同一身份再次并发等待返回 reason=identity_busy。是否结束当前 run 由自己决定。",
   sprout_remote_shell:
     "在显式指定的远端 Machine 执行 shell，绝非宿主 shell。machineId 与当前租约 authorizationGeneration 必填。以 Worker 用户权限执行，cwd 不是安全边界；省略 cwd 使用该 Machine 已确认的项目目录。waitMs 最多 10000；非终态用 execution_get 查询，切勿为查询而重复执行。",
   sprout_remote_file_read:
@@ -258,11 +265,121 @@ function result(request: RemoteAgentRequest, response: RemoteToolResponse): Spro
   return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError };
 }
 
+/** 等待工具只比别的工具多声明一个 waitMs；身份与 Project 一样由宿主注入。 */
+const leaseWaitToolInputSchema = remoteToolInputSchemas.sprout_lease_wait;
+
+function validationFailure(message: string): SproutToolResult {
+  const details = {
+    outcome: "failed",
+    error: { code: "validation_failed", message },
+  };
+  return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: true };
+}
+
+/** 读租约失败要把原始远端响应原样带回 `result()`，不能伪装成等待结果。 */
+class LeaseWaitReadFailed extends Error {
+  readonly response: RemoteToolResponse;
+  constructor(response: RemoteToolResponse) {
+    super("lease wait read failed");
+    this.response = response;
+  }
+}
+
+function leaseWaitRequest(machineId: string, projectId: string): RemoteAgentRequest {
+  return remoteAgentRequestSchema.parse({
+    version: 2,
+    call: { type: "lease_get", input: { projectId, machineId } },
+  });
+}
+
+function readLeaseView(response: RemoteToolResponse): LeaseView {
+  if (response.outcome !== "response" || !response.result.ok)
+    throw new LeaseWaitReadFailed(response);
+  const data = response.result.data as { lease?: unknown };
+  const parsed = leaseViewSchema.safeParse(data.lease);
+  if (!parsed.success)
+    throw new LeaseWaitReadFailed({ outcome: "unknown", reason: "invalid_response" });
+  return parsed.data;
+}
+
+/** 等待可被取消：signal 中断时立即结束本次 sleep，由下一轮请求带回 cancelled。 */
+function sleepUntilAborted(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    timer = setTimeout(done, ms);
+    if (signal?.aborted) done();
+    else signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
+function leaseWaitResult(
+  reason: LeaseWaitFailure,
+  requestedMs: number,
+  lease: LeaseView | undefined,
+): SproutToolResult {
+  const details = {
+    outcome: reason,
+    reason,
+    requestedMs,
+    waitedLease: lease ?? null,
+    message:
+      reason === "timed_out"
+        ? `等待 ${requestedMs}ms 后租约仍不可用；本工具不抢占、不释放、也不通知持有者。是否结束当前 run 由你自行决定。`
+        : "本分身已有一处等待在进行；同一身份同时只允许一次等待。",
+  };
+  return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: true };
+}
+
+/**
+ * N1–N8：反复读 `lease_get`，直到拿到、不再有对象或到点（N5：阻塞当前 run）。
+ * 全程只读轮询：不抢占、不释放、不向持有者发任何请求（N3），对持有者完全不可见。
+ */
+async function runLeaseWait(
+  client: RemoteToolClient,
+  machineId: string,
+  requestedMs: number | undefined,
+  signal?: AbortSignal,
+): Promise<SproutToolResult> {
+  let lastRequest = leaseWaitRequest(machineId, client.projectId);
+  let lastResponse: RemoteToolResponse = { outcome: "unknown", reason: "transport_error" };
+  let lastLease: LeaseView | undefined;
+  try {
+    const outcome = await waitForLease({
+      // instanceId 由宿主注入；缺失时只退化成「不判断已持有」，不会冒充身份。
+      requesterInstanceId: client.instanceId ?? "",
+      requestedMs,
+      deps: {
+        readLease: async () => {
+          lastRequest = leaseWaitRequest(machineId, client.projectId);
+          lastResponse = await client.request(lastRequest, signal);
+          const lease = readLeaseView(lastResponse);
+          lastLease = lease;
+          return lease;
+        },
+        sleep: (ms) => sleepUntilAborted(ms, signal),
+        now: () => new Date(),
+      },
+    });
+    if (outcome.ok) return result(lastRequest, lastResponse);
+    return leaseWaitResult(outcome.reason, clampLeaseWaitMs(requestedMs), lastLease);
+  } catch (error) {
+    if (error instanceof LeaseWaitReadFailed) return result(lastRequest, error.response);
+    return result(lastRequest, { outcome: "unknown", reason: "transport_error" });
+  }
+}
+
 export function registerRemoteTools(
   pi: Pick<SproutExtensionAPI, "registerTool">,
   client: RemoteToolClient,
 ): void {
   for (const name of Object.keys(remoteToolInputSchemas) as ToolName[]) {
+    // 等待不是一次请求-响应：它在客户端循环轮询 lease_get，因此单独注册（见下）。
+    if (name === "sprout_lease_wait") continue;
     pi.registerTool({
       name,
       label: name,
@@ -275,18 +392,9 @@ export function registerRemoteTools(
         try {
           request = buildRequest(name, parameters, client.projectId);
         } catch {
-          const details = {
-            outcome: "failed",
-            error: {
-              code: "validation_failed",
-              message: "远端工具参数无效；必须显式提供合法 machineId，且不得声明调用者身份。",
-            },
-          };
-          return {
-            content: [{ type: "text", text: JSON.stringify(details) }],
-            details,
-            isError: true,
-          };
+          return validationFailure(
+            "远端工具参数无效；必须显式提供合法 machineId，且不得声明调用者身份。",
+          );
         }
         try {
           return result(request, await client.request(request, signal));
@@ -296,4 +404,21 @@ export function registerRemoteTools(
       },
     });
   }
+  pi.registerTool({
+    name: "sprout_lease_wait",
+    label: "sprout_lease_wait",
+    description: descriptions.sprout_lease_wait,
+    parameters: objectToolParameters(leaseWaitToolInputSchema, { unrepresentable: "any" }),
+    async execute(_toolCallId, parameters, signal) {
+      let input: z.infer<typeof leaseWaitToolInputSchema>;
+      try {
+        input = leaseWaitToolInputSchema.parse(parameters);
+      } catch {
+        return validationFailure(
+          "等待工具参数无效；必须显式提供合法 machineId（waitMs 可选，正整数），且不得声明调用者身份。",
+        );
+      }
+      return runLeaseWait(client, input.machineId, input.waitMs, signal);
+    },
+  });
 }

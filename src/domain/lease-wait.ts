@@ -53,8 +53,8 @@ export type LeaseWaitResult<View extends LeaseWaitView> =
   | { readonly ok: false; readonly reason: LeaseWaitFailure };
 
 export type LeaseWaitDeps<View extends LeaseWaitView> = {
-  /** 只读租约视图。实现里不做任何写入。 */
-  readonly readLease: () => View;
+  /** 只读租约视图。实现里不做任何写入。允许异步实现（工具链上是 `lease_get` 请求）。 */
+  readonly readLease: () => View | Promise<View>;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => Date;
 };
@@ -92,7 +92,7 @@ export async function waitForLease<View extends LeaseWaitView>(input: {
     const pollMs = Math.max(1, input.pollMs ?? DEFAULT_LEASE_WAIT_POLL_MS);
     const deadline = deps.now().getTime() + budgetMs;
     for (;;) {
-      const lease = deps.readLease();
+      const lease = await deps.readLease();
       const target = leaseWaitTarget(lease, input.requesterInstanceId);
       if (target.kind === "no_target") return { ok: true, lease };
       const remaining = deadline - deps.now().getTime();

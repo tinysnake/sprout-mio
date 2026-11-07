@@ -69,6 +69,12 @@ export type RemoteToolResponse =
     };
 export interface RemoteToolClient {
   readonly projectId: string;
+  /**
+   * 本 worker 的实例身份，由宿主（Pi host runner 的 `open` 配置）注入。
+   * 只用于本地判定「这台 Machine 是不是已经握在自己手里」；绝不进请求体，
+   * 所以不能由工具参数冒充。
+   */
+  readonly instanceId?: string;
   request(request: RemoteAgentRequest, signal?: AbortSignal): Promise<RemoteToolResponse>;
 }
 
@@ -328,12 +334,13 @@ function readMcpResponse(
 /** Direct HTTP deliberately bypasses environment/global fetch proxies and never follows redirects. */
 export function createRemoteClient(
   config: RemoteToolGrant,
-  { timeoutMs = 15000 }: { timeoutMs?: number } = {},
+  { timeoutMs = 15000, instanceId }: { timeoutMs?: number; instanceId?: string } = {},
 ): RemoteToolClient {
   const { endpoint, secret, projectId } = remoteToolGrantSchema.parse(config);
   const url = new URL(endpoint);
   return {
     projectId,
+    instanceId,
     async request(input, signal) {
       const parsed = remoteAgentRequestSchema.safeParse(input);
       if (!parsed.success) return { outcome: "unknown", reason: "invalid_response" };

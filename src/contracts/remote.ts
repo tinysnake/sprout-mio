@@ -743,6 +743,15 @@ export const remoteToolInputSchemas = {
   /** 取消只暴露意图与当前代次；Project 由宿主注入，`cancelId` 由服务端生成。 */
   sprout_remote_execution_cancel: executionCancelInputSchema.omit({ projectId: true }),
   sprout_remote_execution_log: executionLogReadInputSchema.omit({ projectId: true }),
+  /**
+   * I-P8b 阻塞式等待（N1–N8）：只声明「目标 Machine」与「自己愿意忍多久」（N2）。
+   * 等待是**阻塞当前 run 的只读轮询**（N5），不新增 remote call type；身份（instanceId）
+   * 与 Project 由宿主注入，不能作为参数声明。
+   */
+  sprout_lease_wait: z.strictObject({
+    machineId: leaseKeySchema.shape.machineId,
+    waitMs: positiveSafeIntegerSchema.optional(),
+  }),
 } as const;
 export type RemoteOperation = z.infer<typeof remoteOperationSchema>;
 export type RemoteResultPayload = z.infer<typeof remoteResultPayloadSchema>;

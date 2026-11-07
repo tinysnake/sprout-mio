@@ -157,7 +157,7 @@ async function open(config) {
   const { registerSproutStatus, setSproutHostFacts } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/status.ts"),
   );
-  const remoteClient = createRemoteClient(config.remote);
+  const remoteClient = createRemoteClient(config.remote, { instanceId: config.instanceId });
   const inheritHostResources = config.resources.kind === "enabled";
   const inheritedPaths = inheritHostResources
     ? { skills: config.resources.skillPaths, prompts: config.resources.promptPaths }
