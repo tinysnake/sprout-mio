@@ -30,11 +30,11 @@ const descriptions: Record<ToolName, string> = {
   sprout_lease_handoff:
     "将显式指定的远端 Machine 租约交接给同 Project/Chat 的 targetInstanceId。必须提供 machineId 与 expectedGeneration；pending 尚未完成。不会终止进程或删除文件。",
   sprout_lease_escrow:
-    "把自己持有的显式 Machine 租约挂靠到当前 Project 的一个 Group 或 Public Channel（chatId），可加 targetAgentProfileId 限定该 Group 内的某个 Agent。必须提供 machineId 与当前 expectedGeneration。挂靠后 Machine 仍被占用、持有者仍是自己，但自己随即失去操作权（后续远端操作会得到 lease_not_holder）；只有目标 Group 内的分身领取才改变持有者。不能挂靠到 DM。不会终止进程或删除文件。",
+    "把自己持有的显式 Machine 租约挂靠到当前 Project 的一个 Group 或 Public Channel（chatId），可加 targetAgentProfileId 限定该 Group 内的某个 Agent。必须提供 machineId 与当前 expectedGeneration。挂靠后 Machine 仍被占用、持有者仍是自己，但自己随即失去操作权：挂靠会把代次 +1，沿用旧代次的远端操作会得到 lease_stale_generation，用 lease_get 刷新后仍会被拒 lease_not_holder。只有目标 Group 内的分身领取才改变持有者。不能挂靠到 DM。不会终止进程或删除文件。",
   sprout_lease_claim:
     "以本分身身份领取一条处于挂靠中的显式 Machine 租约，需要 machineId、当前 expectedGeneration 与挂靠行 escrowId。只对挂靠目标 Group 内的分身有效（限定 Agent 时必须就是它），先到先得。成功后本分身成为新持有者、代次 +1；不能领取已领取或已撤销的挂靠。",
   sprout_lease_escrow_cancel:
-    "撤销自己发起、尚未被领取的挂靠，需要 machineId、当前 expectedGeneration 与 escrowId。操作权回到发起者，代次 +1；已被领取或已被收回的挂靠不能再撤销。不会终止进程或删除文件。",
+    "撤销自己发起、尚未被领取的挂靠，需要 machineId、当前 expectedGeneration 与 escrowId。操作权回到发起者，代次 +1；已被领取或已被收回的挂靠不能再撤销。对已被自己撤销的同一条挂靠再次撤销，会原样返回原收据、不推进代次，便于响应丢失后重试。不会终止进程或删除文件。",
   sprout_lease_get:
     "查询当前 Project 中显式指定的远端 Machine 租约及可选 mutationId 的交接/释放进度。machineId 必填。此工具不选择默认 Machine。",
   sprout_remote_shell:
