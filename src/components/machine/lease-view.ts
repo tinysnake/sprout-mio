@@ -330,10 +330,7 @@ export function runLeaseRelation(
   if (runStatus === "running") {
     return { held, note: "租约持有中，与所在 run 并行存在。" };
   }
-  return {
-    held,
-    note: `最近一次 run 已结束（${runStatus}），租约仍由该分身持有，直到显式释放。`,
-  };
+  return { held, note: `最近一次 run 已结束（${runStatus}）。` };
 }
 
 export const OPERATION_KIND_LABELS: Record<RemoteOperation["kind"], string> = {
@@ -644,9 +641,6 @@ export function cancellationSignalFacts(cancellation: ExecutionCancellationView)
     facts.push("进程已不再运行，但退出没有被记录");
   return facts;
 }
-
-export const HOST_TOOL_NOTE =
-  "宿主工具（如 sprout_status、本机文件读写）运行在 Pi 宿主进程所在机器上，与远端操作分开记录。";
 
 export const REMOTE_TARGET_NOTE =
   "每条远端操作都显式指定 Machine；不存在默认目标，也不会猜测目标。结果状态来自 Worker 报告，未确认时显示未知。";

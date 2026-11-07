@@ -102,11 +102,7 @@ export function MachineLeasePanel({
           />
         </SettingsSection>
       )}
-      <SettingsSection
-        title="租约与持有者"
-        description="租约单位是 Project × Machine；变更不会终止进程或删除文件。"
-        testId="machine-lease-detail"
-      >
+      <SettingsSection title="租约与持有者" testId="machine-lease-detail">
         {leaseError ? (
           <ResultError error={leaseError} />
         ) : leaseInfo ? (
@@ -121,11 +117,7 @@ export function MachineLeasePanel({
           leaseSection()
         )}
       </SettingsSection>
-      <SettingsSection
-        title="远端操作"
-        description="操作目标由请求自身指定；宿主工具与远端操作分开记录，结果未经确认时显示未知。"
-        testId="machine-remote-executions"
-      >
+      <SettingsSection title="远端操作" testId="machine-remote-executions">
         {executionError ? (
           <ResultError error={executionError} />
         ) : (

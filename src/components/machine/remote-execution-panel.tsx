@@ -7,7 +7,6 @@ import {
   cancellationDisplay,
   EXECUTION_STATE_LABELS,
   executionDetailLabel,
-  HOST_TOOL_NOTE,
   OPERATION_KIND_LABELS,
   REMOTE_TARGET_NOTE,
   deadlineFacts,
@@ -121,34 +120,19 @@ export function RemoteExecutionList({
   });
   return (
     <section data-testid={testId} className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h4 className="text-sm font-medium">远端操作</h4>
-        <span className="text-[0.6875rem] text-muted-foreground">
-          每条操作都指定 Machine，与宿主工具分开
-        </span>
-      </div>
       <p
         data-testid={`${testId}-target-note`}
         className="text-[0.6875rem] leading-5 text-muted-foreground"
       >
         {REMOTE_TARGET_NOTE}
       </p>
-      {readOnlyNote ? (
+      {readOnlyNote && (
         <p
           data-testid={`${testId}-read-only`}
           className="text-[0.6875rem] leading-5 text-muted-foreground"
         >
           {readOnlyNote}
         </p>
-      ) : (
-        !wired && (
-          <p
-            data-testid={`${testId}-not-wired`}
-            className="text-[0.6875rem] leading-5 text-muted-foreground"
-          >
-            日志续读与取消入口尚未接入服务端：此处只显示已知的执行事实与日志位点，未接入前不提供读取与取消操作。
-          </p>
-        )
       )}
       {connectionCompletenessNote(connection) && (
         <p data-testid={`${testId}-offline`} className="text-xs text-status-warning">
@@ -198,12 +182,6 @@ export function RemoteExecutionList({
           </div>
         </div>
       )}
-      <p
-        data-testid={`${testId}-host-note`}
-        className="text-[0.6875rem] leading-5 text-muted-foreground"
-      >
-        {HOST_TOOL_NOTE}
-      </p>
     </section>
   );
 }

@@ -181,11 +181,11 @@ describe("run 结束不改变租约", () => {
     },
   );
 
-  it("run 已结束时仍显示持有，并说明直到显式释放", () => {
+  it("run 已结束时仍显示持有，只陈述 run 已结束", () => {
     const relation = runLeaseRelation(held, "completed");
     expect(relation.held).toBe(true);
-    expect(relation.note).toContain("仍由该分身持有");
-    expect(relation.note).toContain("显式释放");
+    expect(relation.note).toContain("最近一次 run 已结束（completed）");
+    expect(relation.note).not.toContain("释放");
   });
 
   it("没有 run 事实时不推断释放", () => {
