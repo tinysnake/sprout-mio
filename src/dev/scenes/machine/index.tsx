@@ -130,7 +130,7 @@ function DemoControls({
         ))}
       </Select>
       <p className="mt-1 text-[0.6875rem] leading-4 text-muted-foreground">
-        只替换能力快照（平台、shell、执行环境）；Machine 名称与 root 路径提示仍来自 macOS 夹具。
+        只替换能力快照；名称与 root 提示仍来自 macOS 夹具。
       </p>
       <label className="mt-2 block" htmlFor="machine-demo-shells">
         第一台 Machine 的 Shell 探测

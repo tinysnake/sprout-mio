@@ -881,6 +881,8 @@ try {
     await test("machine-list").waitFor();
     await openControls(page);
     await test("machine-fail-create").check();
+    // 演示控制浮层固定在右下角，可能盖住页面顶部的按钮；点按钮前先收起，点完再展开。
+    await closeControls(page);
     await test("new-machine-trigger").click();
     await test("machine-name-input").fill("演示建不出来的机器");
     await test("machine-create-submit").click();
@@ -889,6 +891,7 @@ try {
     await shoots(page, "machine-create-error-1440-light");
     await page.getByRole("button", { name: "取消" }).click();
     await test("machine-name-input").waitFor({ state: "detached" });
+    await openControls(page);
     await test("machine-fail-create").uncheck();
     await closeControls(page);
     await test("machine-list").waitFor();
