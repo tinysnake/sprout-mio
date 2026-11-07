@@ -221,21 +221,36 @@ try {
         const details = test("machine-shell-details");
         assert.equal(await summary.getAttribute("aria-expanded"), "false");
         assert.equal(await details.isVisible(), false);
-        assert.match(await summary.innerText(), /✓ zsh.*·.*✓ bash.*·.*✓ sh/s);
-        assert.ok(!(await summary.innerText()).includes("/bin/"));
+        assert.equal((await summary.innerText()).trim(), "查看完整探测详情");
+        assert.equal(await test("machine-execution-environment-unverified").count(), 0);
+        const environment = await test("machine-execution-environment").innerText();
+        assert.match(environment, /执行环境/);
+        assert.match(environment, /不适用（非 Windows）/);
+        assert.match(environment, /非 Windows 平台没有服务会话与交互桌面之分/);
+        assert.equal(await test("machine-shell-degradation").count(), 0, "macOS 不出现降级提示");
         await summary.scrollIntoViewIfNeeded();
-        const lines = await summary.evaluate((element) => {
-          const items = [...element.querySelectorAll('[data-testid="machine-shell-summary-item"]')];
-          return items.map((item) => item.getBoundingClientRect().top);
-        });
-        assert.equal(new Set(lines).size, 1, "三个 shell 在一行");
-        const platform = await test("machine-shell-platform").boundingBox();
-        const firstShell = await test("machine-shell-summary-item").first().boundingBox();
-        assert.ok(
-          platform.y < firstShell.y + firstShell.height &&
-            platform.y + platform.height > firstShell.y,
-          "平台与 Shell 摘要同行",
-        );
+        assert.equal(await test("machine-shell-fact").count(), 3);
+        const factsText = await test("machine-shell-facts").innerText();
+        for (const value of [
+          "zsh",
+          "bash",
+          "sh",
+          "/bin/zsh",
+          "/bin/bash",
+          "/bin/sh",
+          "zsh 5.9",
+          "自检通过",
+        ])
+          assert.ok(factsText.includes(value), `Shell 事实缺少 ${value}`);
+        assert.match(factsText, /✓\s*zsh[\s\S]*✓\s*bash[\s\S]*✓\s*sh/);
+        const factsFont = await test("machine-shell-fact")
+          .first()
+          .evaluate((element) => ({
+            path: getComputedStyle(element.querySelector('[data-testid="machine-shell-fact-path"]'))
+              .fontFamily,
+          }));
+        assert.match(factsFont.path, /mono/i, "路径使用等宽字体");
+        assert.match(await test("machine-shell-platform").innerText(), /darwin arm64/);
         await p.screenshot({ path: join(evidence, `shell-summary-${width}-${colorScheme}.png`) });
         assert.equal(await summary.getAttribute("aria-haspopup"), "dialog");
         const buttonStyle = await summary.evaluate((element) => {
@@ -343,32 +358,184 @@ try {
               shellEvidence.push({ scenario, summaryAbsent: true, status: "当前能力尚未上报" });
               return;
             }
-            const text = await summary.innerText();
-            if (scenario === "partial") {
-              assert.match(text, /✓ zsh.*✓ bash.*✗ sh/s);
-            } else if (scenario === "failed") {
-              assert.match(text, /✗ zsh.*✗ bash.*✗ sh/s);
-              assert.ok(!text.includes("✓"));
-            } else if (scenario === "unknown") {
-              assert.match(text, /\? unknown/);
-              assert.ok(!text.includes("✓"));
+            let factsText = "";
+            if (scenario === "empty") {
+              assert.equal(await test("machine-shell-fact").count(), 0);
+              assert.equal(await test("machine-shell-facts-empty").count(), 1);
+              assert.match(await test("machine-shell-facts-empty").innerText(), /未报告可用 shell/);
             } else {
-              assert.match(text, /未报告 shell/);
-              assert.ok(!text.includes("✓"));
+              assert.equal(await test("machine-shell-fact").count(), 3);
+              factsText = await test("machine-shell-facts").innerText();
+            }
+            if (scenario === "partial") {
+              assert.match(factsText, /✓\s*zsh[\s\S]*✓\s*bash[\s\S]*✗\s*sh/);
+              assert.match(factsText, /自检失败：执行失败/);
+            } else if (scenario === "failed") {
+              assert.match(factsText, /✗\s*zsh[\s\S]*✗\s*bash[\s\S]*✗\s*sh/);
+              assert.ok(!factsText.includes("✓"));
+            } else if (scenario === "unknown") {
+              assert.match(factsText, /\?\s*unknown/);
+              assert.match(factsText, /未知 shell，未判定/);
+              assert.ok(!factsText.includes("✓"));
             }
             await summary.click();
             const details = test("machine-shell-details");
             await details.waitFor({ state: "visible" });
             const detailText = await details.innerText();
             if (["partial", "failed"].includes(scenario))
-              assert.match(detailText, /自检失败：failed/);
+              assert.match(detailText, /自检失败：执行失败/);
             if (scenario === "unknown") assert.match(detailText, /未知 shell，不猜调用语法/);
             await p.screenshot({ path: join(evidence, `shell-state-${scenario}.png`) });
-            shellEvidence.push({ scenario, summary: text, details: detailText });
+            shellEvidence.push({ scenario, facts: factsText, details: detailText });
             await p.keyboard.press("Escape");
             await details.waitFor({ state: "hidden" });
           });
         }
+        const platformScenes = [
+          {
+            scene: "macos-full",
+            environment: "不适用（非 Windows）",
+            unverified: 0,
+            degradation: null,
+            facts: ["✓ zsh", "✓ bash", "✓ sh"],
+          },
+          {
+            scene: "windows-pwsh7",
+            environment: "服务会话（Session 0）",
+            unverified: 1,
+            degradation: null,
+            facts: ["✓ pwsh", "✓ powershell", "✓ cmd"],
+          },
+          {
+            scene: "windows-powershell51",
+            environment: "服务会话（Session 0）",
+            unverified: 1,
+            degradation: "未找到 PowerShell 7（pwsh）",
+            degradationDetail:
+              /Windows PowerShell 5\.1（powershell\.exe）.*为 PowerShell 7 写的脚本可能失败/s,
+            facts: ["✗ pwsh", "✓ powershell", "✓ cmd"],
+          },
+          {
+            scene: "windows-cmd-only",
+            environment: "服务会话（Session 0）",
+            unverified: 1,
+            degradation: "未找到 PowerShell 7（pwsh）",
+            degradationDetail: /只有 cmd/,
+            facts: ["✗ pwsh", "✗ powershell", "✓ cmd"],
+          },
+          {
+            scene: "windows-desktop",
+            environment: "交互桌面 · Session 3",
+            unverified: 0,
+            degradation: null,
+            facts: ["✓ pwsh", "✓ powershell", "✓ cmd"],
+          },
+          {
+            scene: "windows-unknown",
+            environment: "会话未知",
+            unverified: 1,
+            degradation: null,
+            facts: ["✓ pwsh", "✓ powershell", "✓ cmd"],
+          },
+          {
+            scene: "windows-unreported",
+            environment: "未上报",
+            unverified: 1,
+            degradation: null,
+            facts: ["✓ pwsh", "✓ powershell", "✓ cmd"],
+          },
+        ];
+        const environmentLabels = [];
+        for (const expectation of platformScenes) {
+          await check(`shell_platform_scene_${expectation.scene}`, async () => {
+            await openControls(p);
+            await test("machine-demo-platform").selectOption(expectation.scene);
+            await closeControls(p);
+            const environment = test("machine-execution-environment");
+            await environment.waitFor();
+            const line = (await environment.innerText()).replace(/\s+/g, " ");
+            const label = (await test("machine-execution-environment-label").innerText()).trim();
+            assert.equal(label, expectation.environment, `${expectation.scene} 执行环境标签`);
+            assert.ok(line.includes("执行环境"), `${expectation.scene} 执行环境前缀`);
+            assert.ok(!line.includes("执行环境 执行环境"), "未上报态不重复「执行环境」");
+            assert.equal(
+              await test("machine-execution-environment-unverified").count(),
+              expectation.unverified,
+              `${expectation.scene} 桌面相关能力未验证徽标`,
+            );
+            const degradation = test("machine-shell-degradation");
+            if (expectation.degradation === null) {
+              assert.equal(await degradation.count(), 0, `${expectation.scene} 不出现降级提示`);
+            } else {
+              assert.equal(
+                (await test("machine-shell-degradation-title").innerText()).trim(),
+                expectation.degradation,
+                `${expectation.scene} 降级提示标题`,
+              );
+              const detail = (await degradation.innerText()).replace(/\s+/g, " ");
+              assert.match(detail, expectation.degradationDetail);
+            }
+            const facts = await test("machine-shell-fact").evaluateAll((rows) =>
+              rows.map((row) => row.innerText.replace(/\s+/g, " ")),
+            );
+            assert.equal(
+              facts.length,
+              expectation.facts.length,
+              `${expectation.scene} Shell 事实条数`,
+            );
+            expectation.facts.forEach((needle, index) => {
+              assert.ok(
+                facts[index].startsWith(needle),
+                `${expectation.scene} 第 ${index + 1} 条：${facts[index]}`,
+              );
+            });
+            if (expectation.scene === "windows-powershell51") {
+              const tones = await test("machine-shell-fact").evaluateAll((rows) => {
+                const reference = document.createElement("span");
+                document.body.append(reference);
+                const tone = (className) => {
+                  reference.className = className;
+                  return getComputedStyle(reference).color;
+                };
+                const palette = {
+                  success: tone("text-status-success"),
+                  danger: tone("text-status-failed"),
+                  muted: tone("text-muted-foreground"),
+                };
+                reference.remove();
+                return rows.map((row) => ({
+                  glyph: getComputedStyle(
+                    row.querySelector('[data-testid="machine-shell-fact-kind"] span'),
+                  ).color,
+                  probe: getComputedStyle(
+                    row.querySelector('[data-testid="machine-shell-fact-probe"]'),
+                  ).color,
+                  palette,
+                }));
+              });
+              assert.deepEqual(
+                tones.map(({ glyph, probe }) => ({ glyph, probe })),
+                [
+                  { glyph: tones[0].palette.danger, probe: tones[0].palette.danger },
+                  { glyph: tones[1].palette.success, probe: tones[1].palette.muted },
+                  { glyph: tones[2].palette.success, probe: tones[2].palette.muted },
+                ],
+                "失败与通过不只靠颜色区分，但颜色仍跟随结论",
+              );
+            }
+            await shoots(p, `platform-${expectation.scene}`);
+            environmentLabels.push({ scene: expectation.scene, label, line, facts });
+          });
+        }
+        assert.equal(
+          new Set(environmentLabels.map((item) => item.label)).size,
+          5,
+          "未上报 / 会话未知 / 不适用 / 服务会话 / 交互桌面 五种说法互不相同",
+        );
+        shellEvidence.push(...environmentLabels);
+        await openControls(p);
+        await test("machine-demo-platform").selectOption("macos-full");
+        await closeControls(p);
         await test("machine-detail-back").click();
         await p.locator('[data-machine-id="mch_44444444"]').click();
         await check("shell_summary_stale_snapshot_has_no_entry", async () => {
@@ -429,8 +596,8 @@ try {
         assert.match(await test("machine-detail-page").innerText(), /Worker 已断连/);
         await test("machine-shells").scrollIntoViewIfNeeded();
         assert.equal(
-          (await test("machine-shells").innerText()).replace(/\s+/g, " "),
-          "Shell 能力 Worker 已断连",
+          (await test("machine-shell-capability-missing").innerText()).trim(),
+          "Worker 已断连",
         );
         await shoots(p, `offline-no-shell-${width}-${colorScheme}`);
         await setControl("machine-demo-connection", "connecting");
@@ -442,30 +609,14 @@ try {
         await setControl("machine-demo-connection", "online_waiting");
         assert.equal(await test("machine-shell-summary").count(), 0);
         assert.equal(
-          (await test("machine-shells").innerText()).replace(/\s+/g, " "),
-          "Shell 能力 当前能力尚未上报",
+          (await test("machine-shell-capability-missing").innerText()).trim(),
+          "当前能力尚未上报",
         );
         await setControl("machine-demo-connection", "online");
         await test("machine-shell-summary").waitFor();
-        const colors = await test("machine-shell-summary-item").evaluateAll((items) =>
-          items.map((item) => {
-            const reference = document.createElement("span");
-            reference.className = "text-status-success";
-            item.parentElement.append(reference);
-            const actual = getComputedStyle(item).color;
-            const success = getComputedStyle(reference).color;
-            reference.className = "text-muted-foreground";
-            const muted = getComputedStyle(reference).color;
-            reference.remove();
-            return { actual, success, muted };
-          }),
-        );
-        assert.equal(colors.length, 3);
-        for (const color of colors) {
-          assert.equal(color.actual, color.success);
-          assert.notEqual(color.actual, color.muted);
-        }
-        shellEvidence.push({ width, colorScheme, restoredColors: colors });
+        assert.equal(await test("machine-shell-fact").count(), 3, "恢复在线后回到完整 Shell 事实");
+        assert.match(await test("machine-shell-facts").innerText(), /\/bin\/zsh/);
+        shellEvidence.push({ width, colorScheme, restored: "macos-full" });
         assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       });
       assert.deepEqual(sample.errors, []);

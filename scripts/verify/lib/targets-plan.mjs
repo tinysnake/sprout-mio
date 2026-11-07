@@ -79,6 +79,7 @@ export const CI_GROUPS = Object.freeze({
     "am-execution-log-honesty",
     "k-acceptance",
     "r-ui-layout",
+    "p4a-machine-scenes",
     "y-lease-ui",
     "aq-p4d-pages",
     "as-p5a-chat-ui",
