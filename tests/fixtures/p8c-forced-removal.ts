@@ -453,20 +453,16 @@ function scenarioHandoff() {
   assert.equal(membershipRow(f.project.id, f.agent.id), undefined);
   assert.equal(chatRow(f.dm.chat.id)!.archivedAt !== null, true);
 
-  // 缺口：交接的确认门只看 drained，不看目标分身是否仍是成员。
-  // 守卫未落地时它会落到已移除分身名下（KNOWN-GAP）；守卫落地后必须停在 fencing+pending。
+  // 交接的确认门必须重查目标：目标分身可能在这段时间里被强制移除。
+  // 目标不可操作时拒绝落地，租约停在 fencing + pending，整行对不上「空闲」。
   completeLeaseMutation(handoff.key, new Date(), false);
   const landed = leaseRow(handoff.key)!;
   assert.equal(membershipRow(f.project.id, f.agent.id), undefined);
-  if (landed.state === "fencing") {
-    assert.equal(landed.holderInstanceId, holderInstance.id);
-    assert.equal(pendingMutationRow(handoff.key)!.state, "pending");
-    console.log("p8c handoff target gate: refused (safe)");
-  } else {
-    assert.equal(landed.state, "held");
-    assert.equal(landed.holderInstanceId, leavingTarget.id);
-    console.log("KNOWN-GAP p8c handoff target gate: lease landed on a removed instance");
-  }
+  assert.equal(landed.state, "fencing");
+  assert.notEqual(landed.state, "free");
+  assert.equal(landed.holderInstanceId, holderInstance.id);
+  assert.equal(pendingMutationRow(handoff.key)!.state, "pending");
+  console.log("p8c handoff target gate: refused (safe)");
 }
 
 /** 同一台物理机上的另一个 Project：A 的移除不能碰 B 的任何一行。 */

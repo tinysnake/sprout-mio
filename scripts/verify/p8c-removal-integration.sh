@@ -23,11 +23,16 @@ export DATABASE_URL="$verification_dir/handoff.sqlite"
 export NODE_ENV=test SPROUT_PI_ENABLED=false
 node --import tsx tests/fixtures/p8c-forced-removal.ts handoff | tee "$verification_dir/handoff.log"
 
-# 缺口还在时 fixture 打印 KNOWN-GAP（它断言的是当前行为，不阻断退出码）；守卫落地后会变成
-# `refused (safe)`。两种情形都要在这里点名，免得到时候没人回头看这条线。
+# 确认门必须真的拒绝：目标被移除后交接不得落地。日志里必须出现 refused (safe)，
+# 任何形如 KNOWN-GAP 的提示都是同退，直接失败。
+if ! grep -q '^p8c handoff target gate: refused (safe)' "$verification_dir/handoff.log"; then
+  echo "FAIL p8c pending-handoff gate: 交接确认门没有拒绝已被移除的目标" >&2
+  grep -n 'KNOWN-GAP' "$verification_dir/handoff.log" >&2 || true
+  exit 1
+fi
 if grep -q '^KNOWN-GAP' "$verification_dir/handoff.log"; then
-  echo "KNOWN-GAP p8c pending-handoff gate: 交接确认门仍会把租约落到已移除实例名下" >&2
-  echo "          守卫补丁与裁决请见 orchestrate/sprout-mio-p8/reports/p8c-int-report.md" >&2
+  echo "FAIL p8c pending-handoff gate: 租约落到了已移除的实例名下" >&2
+  exit 1
 fi
 
 echo "PASS p8c forced removal integration"

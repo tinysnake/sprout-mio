@@ -524,6 +524,93 @@ function revokeNotice(
     now,
   });
 }
+/**
+ * pending handoff 的目标必须在确认时仍然可接管：目标分身还在本 Project、它的 Chat 没归档，
+ * 它背后仍是当前 Project 成员与 Chat 有效成员。强制移除会同时抹掉后两项，所以确认门必须重查。
+ */
+function handoffTargetOperable(key: LeaseKey, targetInstanceId: string | null): boolean {
+  if (!targetInstanceId) return false;
+  const target = db
+    .select()
+    .from(agentInstance)
+    .where(eq(agentInstance.id, targetInstanceId))
+    .get();
+  if (!target || target.projectId !== key.projectId) return false;
+  if (
+    !db
+      .select()
+      .from(chat)
+      .where(
+        and(eq(chat.id, target.chatId), eq(chat.projectId, key.projectId), isNull(chat.archivedAt)),
+      )
+      .get()
+  )
+    return false;
+  if (
+    !db
+      .select()
+      .from(projectMember)
+      .where(
+        and(
+          eq(projectMember.projectId, key.projectId),
+          eq(projectMember.agentProfileId, target.agentProfileId),
+        ),
+      )
+      .get()
+  )
+    return false;
+  return Boolean(
+    db
+      .select()
+      .from(chatEffectiveMember)
+      .where(
+        and(
+          eq(chatEffectiveMember.projectId, key.projectId),
+          eq(chatEffectiveMember.chatId, target.chatId),
+          eq(chatEffectiveMember.memberKind, "agent"),
+          eq(chatEffectiveMember.memberId, target.agentProfileId),
+        ),
+      )
+      .get(),
+  );
+}
+
+/** 同一个待决收据只记一次：worker 心跳会反复重试，诊断不能跟着刷屏。 */
+function recordStrandedHandoff(
+  key: LeaseKey,
+  pending: typeof leaseMutation.$inferSelect,
+  now: Date,
+): void {
+  const data = JSON.stringify({
+    machineId: key.machineId,
+    pendingMutationId: pending.id,
+    targetInstanceId: pending.targetInstanceId,
+  });
+  const seen = db
+    .select({ id: diagnosticEvent.id })
+    .from(diagnosticEvent)
+    .where(
+      and(
+        eq(diagnosticEvent.projectId, key.projectId),
+        eq(diagnosticEvent.event, "lease.handoff_target_removed"),
+        eq(diagnosticEvent.data, data),
+      ),
+    )
+    .get();
+  if (seen) return;
+  db.insert(diagnosticEvent)
+    .values({
+      id: newId(ID_PREFIXES.diagnostic),
+      at: now,
+      level: "warn",
+      event: "lease.handoff_target_removed",
+      requestId: pending.requestId,
+      projectId: key.projectId,
+      message: "待决交接的目标分身已不是本 Project 成员，拒绝落地；租约保持占用待处理",
+      data,
+    })
+    .run();
+}
 export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = true) {
   const pending = db
     .select()
@@ -537,6 +624,12 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
     )
     .get();
   if (!pending) return;
+  // 交接的确认门必须重查目标：它可能在 fencing 期间被移出 Project，此时落地就是把租约交给
+  // 一个已移除的实例。拒绝落地、保留 fencing + pending，交给 Human 在租约页释放。
+  if (pending.action === "handoff" && !handoffTargetOperable(key, pending.targetInstanceId)) {
+    recordStrandedHandoff(key, pending, now);
+    return;
+  }
   if (
     db
       .select()
