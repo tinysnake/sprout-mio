@@ -1,6 +1,7 @@
 import { projectWorkingPath } from "../../../contracts/machine";
 import type { MachineDetail, MachineEnrollment } from "../../../contracts/machine";
 import { DEMO_REQUEST_ID, demoProject } from "../management/fixtures";
+import { MACOS_PLATFORM_SHELLS } from "./platform-fixtures";
 
 export const machineProject = { id: demoProject.id, name: demoProject.name };
 export const secondProject = {
@@ -40,31 +41,8 @@ export const demoMachineDetails: MachineDetail[] = [
         platform: "darwin",
         arch: "arm64",
         workerVersion: "0.4.2",
-        shells: [
-          {
-            path: "/bin/zsh",
-            kind: "zsh",
-            version: "zsh 5.9",
-            checkedAt: "2026-10-18T07:10:00.000Z",
-            probe: { kind: "success" },
-          },
-          {
-            path: "/bin/bash",
-            kind: "bash",
-            version:
-              "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin26) Copyright (C) 2007 Free Software Foundation, Inc.",
-            checkedAt: "2026-10-18T07:10:00.000Z",
-            probe: { kind: "success" },
-          },
-          {
-            path: "/bin/sh",
-            kind: "sh",
-            version:
-              "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin26) Copyright (C) 2007 Free Software Foundation, Inc.",
-            checkedAt: "2026-10-18T07:10:00.000Z",
-            probe: { kind: "success" },
-          },
-        ],
+        executionEnvironment: { sessionId: null, sessionKind: "not_applicable" },
+        shells: MACOS_PLATFORM_SHELLS,
         remoteOperations: ["shell", "file_read", "file_write", "process_list", "process_signal"],
       },
     },

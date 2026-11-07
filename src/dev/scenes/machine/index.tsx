@@ -38,6 +38,8 @@ import {
 } from "./fixtures";
 import { demoInfoHub } from "../management/fixtures";
 import { demoFreeLease } from "./lease-fixtures";
+import { PLATFORM_SCENES, PLATFORM_SCENE_LABELS, platformCapability } from "./platform-fixtures";
+import type { PlatformScene } from "./platform-fixtures";
 import { LeasesScene } from "./leases";
 import { ExecutionsScene } from "./executions";
 import {
@@ -82,6 +84,8 @@ type DemoState = {
   escrowScene: boolean;
   /** I-P8b：挂靠超时的五种形态（含已升级与领取后不再超时）。 */
   timeoutScene: boolean;
+  /** 第一台 Machine 的平台与执行环境场景，决定能力快照的基线。 */
+  platformScene: PlatformScene;
 };
 
 function DemoControls({
@@ -101,7 +105,34 @@ function DemoControls({
       className="mt-6 rounded-container border border-border bg-popover p-3 text-xs shadow-lg desktop:fixed desktop:right-4 desktop:bottom-4 desktop:z-50 desktop:mt-0 desktop:w-64"
     >
       <summary className="cursor-pointer font-medium">演示控制 · Machines</summary>
-      <label className="mt-3 block" htmlFor="machine-demo-shells">
+      <label className="mt-3 block" htmlFor="machine-demo-platform">
+        第一台 Machine 的平台与执行环境
+      </label>
+      <Select
+        id="machine-demo-platform"
+        data-testid="machine-demo-platform"
+        className="mt-1"
+        value={state.platformScene}
+        onChange={(event) => {
+          const scenario = event.target.value as PlatformScene;
+          update({
+            platformScene: scenario,
+            machines: state.machines.map((machine, index) =>
+              index === 0 ? { ...machine, capability: platformCapability(scenario) } : machine,
+            ),
+          });
+        }}
+      >
+        {PLATFORM_SCENES.map((scene) => (
+          <option key={scene} value={scene}>
+            {PLATFORM_SCENE_LABELS[scene]}
+          </option>
+        ))}
+      </Select>
+      <p className="mt-1 text-[0.6875rem] leading-4 text-muted-foreground">
+        只替换能力快照（平台、shell、执行环境）；Machine 名称与 root 路径提示仍来自 macOS 夹具。
+      </p>
+      <label className="mt-2 block" htmlFor="machine-demo-shells">
         第一台 Machine 的 Shell 探测
       </label>
       <Select
@@ -111,7 +142,7 @@ function DemoControls({
         defaultValue="all"
         onChange={(event) => {
           const scenario = event.target.value;
-          const baseline = demoMachineDetails[0].capability!;
+          const baseline = platformCapability(state.platformScene);
           update({
             machines: state.machines.map((machine, index) =>
               index !== 0
@@ -172,6 +203,7 @@ function DemoControls({
               ? "online"
               : (scenario as "online" | "offline" | "connecting");
           const baseline = demoMachineDetails[0];
+          const capable = platformCapability(state.platformScene);
           update({
             machines: state.machines.map((machine, index) =>
               index !== 0
@@ -189,7 +221,7 @@ function DemoControls({
                               lastSeenAt: "2026-10-18T07:11:30.000Z",
                               reason: "stale",
                             },
-                    capability: { ...baseline.capability!, current: scenario === "online" },
+                    capability: { ...capable, current: scenario === "online" },
                   },
             ),
           });
@@ -606,6 +638,7 @@ export function MachineScenes() {
     projectId: machineProject.id,
     escrowScene: false,
     timeoutScene: false,
+    platformScene: "macos-full",
   });
   const [createOpen, setCreateOpen] = useState(false);
   const update = (patch: Partial<DemoState>) => setDraft((current) => ({ ...current, ...patch }));
