@@ -4,8 +4,8 @@ import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 
 // 挂靠超时的演示场景核对：只连本机 dev server，用演示数据，不连业务服务。
-// 这里断言四件事：超时只加只读标记（绝不显示成空闲）、升级与暂停自动尝试说得清、
-// 没有活跃挂靠就没有超时事实、提醒在 Chat 里是一条消息（不触发唤醒）。
+// 这里断言四件事：超时只加只读标记（绝不显示成空闲）、租约行只留状态事实不被说明文字铺满、
+// 没有活跃挂靠就没有超时标记、提醒在 Chat 里是一条消息（不触发唤醒）。
 const base = process.env.SPROUT_P8B_TIMEOUT_URL ?? "http://127.0.0.1:3099/__dev/ui/";
 const evidence = resolve(process.env.SPROUT_P8B_TIMEOUT_EVIDENCE ?? ".verify/p8b-ui/evidence");
 mkdirSync(evidence, { recursive: true });
@@ -97,54 +97,57 @@ async function overflow(page) {
 }
 
 /**
- * 内容列溢出的两个量：页面滚动区的横向滚动量，和超时事实自身的墨迹有没有超过内容列右缘。
+ * 内容列溢出的两个量：页面滚动区的横向滚动量，和租约行内最右元素有没有超过行右缘。
  * 只量 `documentElement` 会漏掉内层滚动容器里的溢出——视觉核查就是这样量到 131px 溢出的。
  */
 async function contentColumnOverflow(page) {
   return page.evaluate(() => {
     const scroller = document.querySelector('[data-testid="machine-lease-page"]');
-    const fact = document.querySelector("[data-timeout-phase]");
-    const factRight = fact.getBoundingClientRect().right;
-    const widest = [...fact.querySelectorAll("*")].reduce(
-      (max, node) => Math.max(max, node.getBoundingClientRect().right),
-      factRight,
-    );
+    const row = document.querySelector('[data-testid^="lease-row-"]');
+    const rowRight = row.getBoundingClientRect().right;
+    const widest = [...row.querySelectorAll("*")].reduce((max, node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.width === 0 ? max : Math.max(max, rect.right);
+    }, rowRight);
     return {
       scroll: scroller.scrollWidth - scroller.clientWidth,
-      ink: Math.round(widest - factRight),
+      ink: Math.round(widest - rowRight),
     };
   });
 }
 
 /**
- * 超时事实的排版量：状态标签有没有被拆词、有没有超出事实块、左右留白是否对称。
+ * 状态位的排版量：标签有没有被拆词、有没有超出内容列、左右留白是否对称。
  * 视觉核查在 390px 下量到过「标签拆成两行 + 右留白 2px」，这两条现在都用数字守住。
- * 留白的参照系用行本身：`lease-row-*` 的左缘对 `[data-timeout-phase]` 的右缘。
+ * 说明文字删掉之后，状态位所在的租约行就是内容列的参照。
  */
-async function timeoutFactLayout(page) {
+async function leaseStatusLayout(page) {
   return page.evaluate(() => {
     const row = document.querySelector('[data-testid^="lease-row-"]');
-    const fact = document.querySelector("[data-timeout-phase]");
-    const state = document.querySelector('[data-testid^="lease-timeout-"][data-testid$="-state"]');
+    const state = row.querySelector('[data-testid="lease-state"]');
     // StatusLine 里第一个带 aria-hidden 的是状态点，紧随其后的那个 span 才是标签本体。
     const label = state.querySelector("span[aria-hidden]")?.nextElementSibling ?? state;
     // selectNodeContents 是 void 方法，不能链式调用。
     const range = document.createRange();
     range.selectNodeContents(label);
+    const rowRect = row.getBoundingClientRect();
     const stateRect = state.getBoundingClientRect();
-    const factRect = fact.getBoundingClientRect();
     return {
       text: state.innerText.trim(),
       labelLines: range.getClientRects().length,
       stateScroll: state.scrollWidth - state.clientWidth,
-      stateOverflow: Math.round(stateRect.right - factRect.right),
-      leftGutter: Math.round(row.getBoundingClientRect().left),
-      rightGutter: Math.round(window.innerWidth - factRect.right),
+      stateOverflow: Math.round(stateRect.right - rowRect.right),
+      leftGutter: Math.round(rowRect.left),
+      rightGutter: Math.round(window.innerWidth - rowRect.right),
     };
   });
 }
 
-await check("超时未处理的挂靠绝不显示成空闲（light 1440px）", async () => {
+/** 被删掉的解释性文案：任何一条回到租约行都算回退。 */
+const REMOVED_COPY =
+  /挂靠时限|升级时限|提醒尚未发出|提醒已发送|自动尝试已暂停|不是同一个倒计时|拿不到 Machine|该 Group 内任意分身可领取|处理沿用既有的租约动作/;
+
+await check("超时未处理的挂靠只显示状态事实，绝不显示成空闲（light 1440px）", async () => {
   const { context, page, errors } = await open({
     width: 1440,
     height: 1000,
@@ -166,18 +169,14 @@ await check("超时未处理的挂靠绝不显示成空闲（light 1440px）", a
     const fact = row.locator("[data-timeout-phase]");
     assert.equal(await fact.count(), 1);
     assert.equal(await fact.getAttribute("data-timeout-phase"), "awaiting");
+    // 超时事实只并入状态位：行里剩下的只有目标、发起者与取得/更新时间。
     const factText = await fact.innerText();
-    assert.match(factText, /超时未处理/);
-    assert.match(factText, /挂靠时限 30 分钟/);
-    assert.match(factText, /提醒已发送/);
-    // T11：等待中的申请方拿到的是「保留原因」，不是「空闲」。
-    assert.match(factText, /挂靠超时未处理，租约仍被占用/);
-    // 两种时限必须在同一屏里说清不是同一个倒计时。
-    assert.match(factText, /建议 5 分钟、上限 1 小时/);
-    assert.match(factText, /不是同一个倒计时/);
-
-    // 反证清单第 6/8 条在界面上的对应：整行都不许出现「空闲」这种读法。
-    assert.doesNotMatch(await row.innerText(), /空闲/);
+    assert.match(factText, /发布协作组/);
+    assert.match(factText, /由 .+ 发起/);
+    const rowText = await row.innerText();
+    assert.doesNotMatch(rowText, REMOVED_COPY);
+    assert.doesNotMatch(rowText, /空闲/);
+    assert.doesNotMatch(rowText, /分钟|小时/);
 
     const overflowed = await contentColumnOverflow(page);
     assert.ok(overflowed.scroll <= 1, `租约页横向滚动 ${overflowed.scroll}px`);
@@ -195,7 +194,7 @@ await check("超时未处理的挂靠绝不显示成空闲（light 1440px）", a
   }
 });
 
-await check("已升级的挂靠说清升级事实与暂停自动尝试（light 1440px）", async () => {
+await check("已升级的挂靠只在状态位标注升级（light 1440px）", async () => {
   const { context, page, errors } = await open({
     width: 1440,
     height: 1000,
@@ -214,20 +213,18 @@ await check("已升级的挂靠说清升级事实与暂停自动尝试（light 1
     const fact = row.locator("[data-timeout-phase]");
     assert.equal(await fact.getAttribute("data-timeout-phase"), "escalated");
     const factText = await fact.innerText();
-    assert.match(factText, /已升级给人类/);
-    assert.match(factText, /升级时限 2 小时/);
-    assert.match(factText, /自动尝试已暂停/);
-    // 人类入口只有既有的两个：这条路径上不出现新的可执行按钮。
-    assert.match(factText, /强制收回/);
-    assert.match(factText, /撤销挂靠/);
-    assert.equal(await fact.locator("button").count(), 0);
+    assert.match(factText, /发布协作组/);
+    assert.match(factText, /由 .+ 发起/);
+    const rowText = await row.innerText();
+    assert.doesNotMatch(rowText, REMOVED_COPY);
+    // 说明行删掉后，人类入口仍只有既有动作：这条路径上不出现新的可执行按钮。
+    assert.equal(await row.locator("button").count(), 0);
 
     const section = await page.getByTestId("machine-lease-detail").innerText();
-    for (const forbidden of ["挂靠租约", "领取挂靠", "认领挂靠", "新增挂靠"]) {
+    for (const forbidden of ["挂靠租约", "领取挂靠", "认领挂靠", "新增挂靠", "撤销挂靠"]) {
       assert.equal(await page.getByRole("button", { name: forbidden }).count(), 0);
       assert.doesNotMatch(section, new RegExp(forbidden));
     }
-    assert.equal(await page.locator('[data-testid^="lease-timeout-"] button').count(), 0);
 
     await shootAt(page, "machine-lease-detail", "lease-timeout-escalated-light-1440");
     assert.deepEqual(errors, []);
@@ -236,7 +233,7 @@ await check("已升级的挂靠说清升级事实与暂停自动尝试（light 1
   }
 });
 
-await check("未到时限的挂靠不带超时标记，只给保留原因（light 1440px）", async () => {
+await check("未到时限的挂靠不带超时标记（light 1440px）", async () => {
   const { context, page, errors } = await open({
     width: 1440,
     height: 1000,
@@ -253,7 +250,10 @@ await check("未到时限的挂靠不带超时标记，只给保留原因（ligh
       await pending.locator("[data-timeout-phase]").getAttribute("data-timeout-phase"),
       "none",
     );
-    assert.match(await pending.innerText(), /挂靠待处理，租约仍被占用/);
+    const pendingText = await pending.innerText();
+    assert.match(pendingText, /发布公告频道（Public Channel） · 指定 Agent 文档 Agent/);
+    assert.doesNotMatch(pendingText, REMOVED_COPY);
+    assert.doesNotMatch(pendingText, /超时|等待|空闲/);
     assert.deepEqual(errors, []);
   } finally {
     await context.close();
@@ -320,7 +320,7 @@ await check("挂靠超时提醒在 Chat 里是一条消息，不像按钮（ligh
   }
 });
 
-await check("窄屏下超时事实不溢出、状态标签不拆词（light 390px）", async () => {
+await check("窄屏下租约行不溢出、状态标签不拆词（light 390px）", async () => {
   const { context, page, errors } = await open({
     width: 390,
     height: 900,
@@ -330,19 +330,19 @@ await check("窄屏下超时事实不溢出、状态标签不拆词（light 390p
   try {
     await enableTimeoutScene(page);
     await openLease(page, "工作室 Mac mini");
-    await page.locator('[data-testid^="lease-timeout-"]').first().waitFor();
+    await page.getByTestId("lease-state").first().waitFor();
     const over = await overflow(page);
     assert.ok(over <= 1, `横向溢出 ${over}px`);
-    // 窄屏下超时事实要能换行，不能撑破内容列（视觉核查在这里量到过 131px）。
+    // 窄屏下租约行要能换行，不能撑破内容列（视觉核查在这里量到过 131px）。
     const overflowed = await contentColumnOverflow(page);
     assert.ok(overflowed.scroll <= 1, `租约页横向滚动 ${overflowed.scroll}px`);
-    assert.ok(overflowed.ink <= 1, `超时事实溢出内容列 ${overflowed.ink}px`);
+    assert.ok(overflowed.ink <= 1, `租约行溢出内容列 ${overflowed.ink}px`);
     // 截图里必须是对应的那个相位：上一版视觉核查在这两张图上看到的是「已升级」。
-    const layout = await timeoutFactLayout(page);
-    assert.ok(layout.text.startsWith("超时未处理"), `相位行是「${layout.text.split("\n")[0]}」`);
+    const layout = await leaseStatusLayout(page);
+    assert.match(layout.text, /超时未处理/, `状态位是「${layout.text}」`);
     assert.equal(layout.labelLines, 1, `状态标签被折成 ${layout.labelLines} 行`);
     assert.ok(layout.stateScroll <= 1, `状态位横向溢出 ${layout.stateScroll}px`);
-    assert.ok(layout.stateOverflow <= 1, `状态位超出事实块 ${layout.stateOverflow}px`);
+    assert.ok(layout.stateOverflow <= 1, `状态位超出内容列 ${layout.stateOverflow}px`);
     assert.ok(
       Math.abs(layout.leftGutter - layout.rightGutter) <= 2,
       `左右留白不对称（左 ${layout.leftGutter}px，右 ${layout.rightGutter}px）`,
@@ -363,14 +363,14 @@ await check("窄屏下超时事实不溢出、状态标签不拆词（light 390p
   try {
     await enableTimeoutScene(escalated.page);
     await openLease(escalated.page, "刚唤醒的 Mac Studio");
-    await escalated.page.locator('[data-testid^="lease-timeout-"]').first().waitFor();
-    const layout = await timeoutFactLayout(escalated.page);
-    assert.ok(layout.text.startsWith("已升级给人类"), `相位行是「${layout.text.split("\n")[0]}」`);
+    await escalated.page.getByTestId("lease-state").first().waitFor();
+    const layout = await leaseStatusLayout(escalated.page);
+    assert.match(layout.text, /已升级给人类/, `状态位是「${layout.text}」`);
     assert.equal(layout.labelLines, 1, `状态标签被折成 ${layout.labelLines} 行`);
     assert.ok(layout.stateScroll <= 1, `状态位横向溢出 ${layout.stateScroll}px`);
     const overflowed = await contentColumnOverflow(escalated.page);
     assert.ok(overflowed.scroll <= 1, `租约页横向滚动 ${overflowed.scroll}px`);
-    assert.ok(overflowed.ink <= 1, `超时事实溢出内容列 ${overflowed.ink}px`);
+    assert.ok(overflowed.ink <= 1, `租约行溢出内容列 ${overflowed.ink}px`);
     await shootAt(escalated.page, "machine-lease-detail", "lease-timeout-escalated-light-390");
     assert.deepEqual(escalated.errors, []);
   } finally {
@@ -389,11 +389,8 @@ await check("深色主题下超时事实与提醒都可读（dark 1200px）", as
     await enableTimeoutScene(machine.page);
     await openLease(machine.page, "工作室 Mac mini");
     // 深色图也必须是「超时未处理」那个相位：上一版就是这张图悄悄渲染成了「已升级」。
-    const darkLayout = await timeoutFactLayout(machine.page);
-    assert.ok(
-      darkLayout.text.startsWith("超时未处理"),
-      `深色图的相位行是「${darkLayout.text.split("\n")[0]}」`,
-    );
+    const darkLayout = await leaseStatusLayout(machine.page);
+    assert.match(darkLayout.text, /超时未处理/, `深色图的状态位是「${darkLayout.text}」`);
     await shootAt(machine.page, "machine-lease-detail", "lease-timeout-facts-dark-1200");
     assert.deepEqual(machine.errors, []);
   } finally {

@@ -512,47 +512,19 @@ await check("独立租约路由隔离设置并显示租约与远端操作目标"
     for (const target of targets) assert.match(target ?? "", /远端 Worker/);
     await page.keyboard.press("Escape");
     await executions.waitFor({ state: "detached" });
-    // 第 6 条：Machine 详情页不再要求重选目标，目标就是当前这台；表单仍要求代次匹配。
-    const form = page.getByTestId("machine-lease-section-overview-mutation");
-    await form.waitFor();
+    // 第 6 条：演示的 Machine 租约页不再提供直接提交租约动作的表单——生产里人类不在这里
+    // 申请或释放租约，只能让分身去做或用强制收回；真实路径由 z-lease-integration.sh 覆盖。
     assert.equal(
-      await form.getByTestId("machine-lease-section-overview-mutation-machine").count(),
+      await page.getByTestId("machine-lease-section-overview-mutation").count(),
       0,
-      "no target picker when the page is already a single Machine",
+      "租约页不虚构人类申请/释放表单",
     );
-    assert.match(
-      await form.getByTestId("machine-lease-section-overview-mutation-target").innerText(),
-      /工作室 Mac mini/,
-    );
-    assert.doesNotMatch(await form.innerText(), /必须显式选择；没有默认目标/);
-    assert.match(
-      await form.getByTestId("machine-lease-section-overview-mutation-target-hint").innerText(),
-      /目标就是你当前所在的这台 Machine/,
-    );
-    // 下拉框与按钮同一行基线；窄屏换行但不塌。
-    const aligned = await form.evaluate((node) => {
-      const target = node.querySelector(
-        '[data-testid="machine-lease-section-overview-mutation-target"]',
-      );
-      const submit = node.querySelector(
-        '[data-testid="machine-lease-section-overview-mutation-submit"]',
-      );
-      const a = target.getBoundingClientRect();
-      const b = submit.getBoundingClientRect();
-      return {
-        sameRow: Math.abs(a.bottom - b.bottom) <= 8,
-        targetRight: a.right,
-        submitLeft: b.left,
-      };
-    });
-    assert.ok(aligned.sameRow, `表单控件与按钮同一基线: ${JSON.stringify(aligned)}`);
-    assert.ok(aligned.submitLeft >= aligned.targetRight - 1, "按钮在目标之后，不重叠");
     assert.match(
       await page.getByTestId("machine-lease-detail").innerText(),
       /租约单位是 Project × Machine/,
     );
-    // 第 6 条：交接与收回同样不要求重选 Machine。演示场景直接注入变更回调，
-    // 因此只在真实页面的 ProjectLeaseActions 出现时才断言（真实路径由 z-lease-integration.sh 覆盖）。
+    // 交接与收回同样不要求重选 Machine；演示场景没有这些回调，因此只在真实页面的
+    // ProjectLeaseActions 出现时才断言（真实路径由 z-lease-integration.sh 覆盖）。
     if ((await page.getByTestId("lease-transfer-controls").count()) > 0) {
       assert.equal(
         await page.getByLabel("交接或收回的 Machine").count(),
