@@ -22,7 +22,7 @@ import {
   type EscrowNames,
 } from "./lease-view";
 import { LeaseFencingFacts, type FencingSnapshot } from "../info-hub/lease-fencing-facts";
-import { LeaseTimeoutFacts } from "./lease-timeout-facts";
+import { leaseTimeoutPhase } from "./lease-timeout-view";
 import { StatusLine } from "./machine-list";
 import { ResultError } from "../project/result-error";
 import { Button } from "../ui/button";
@@ -145,19 +145,12 @@ export function LeaseOverview({
                   <dd
                     data-testid={`lease-escrow-${lease.machineId}`}
                     data-escrow-state={escrow.state}
+                    data-timeout-phase={leaseTimeoutPhase(escrow.timeout)}
                     className={toneText[escrowStateLabel(escrow.state).tone]}
                   >
                     {/* 发起挂靠的分身恒等于当时的持有者（leaseViewSchema 的 superRefine），所以名称直接用 holder。 */}
                     {escrowTargetLabel(escrow, escrowNames)} · 由 {holder.name} 发起
                   </dd>
-                )}
-                {escrow && (
-                  <LeaseTimeoutFacts
-                    escrow={escrow}
-                    machineName={machineName(lease.machineId)}
-                    initiatorName={holder.name}
-                    testId={`lease-timeout-${lease.machineId}`}
-                  />
                 )}
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
                 {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。
@@ -232,29 +225,7 @@ export function LeaseOverview({
             详情的租约区块进行；本处与它们读同一份租约事实。
           </p>
         )
-      ) : (
-        <Notice
-          testId={`${testId}-notice`}
-          title="租约申请与释放"
-          reason="租约变更尚未接入服务端入口，P4b 集成单元接入后可操作。此处只显示只读事实。"
-        />
-      )}
-    </section>
-  );
-}
-
-function Notice({ testId, title, reason }: { testId: string; title: string; reason: string }) {
-  return (
-    <section data-testid={testId} className="space-y-1 rounded-lg border border-dashed px-4 py-3">
-      <p className="text-sm font-medium">
-        {title}
-        <span data-testid={`${testId}-badge`} className="ml-2 text-xs text-muted-foreground">
-          未实现
-        </span>
-      </p>
-      <p data-testid={`${testId}-reason`} className="text-sm text-muted-foreground">
-        {reason}
-      </p>
+      ) : null}
     </section>
   );
 }

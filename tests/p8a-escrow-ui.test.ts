@@ -99,9 +99,9 @@ describe("挂靠的只读投影", () => {
     expect(escrowTargetLabel(demoChannelEscrow, names)).toBe(
       "发布公告频道（Public Channel） · 指定 Agent 文档 Agent",
     );
-    expect(escrowTargetLabel(demoGroupEscrow, names)).toBe(
-      "发布协作组（Group） · 该 Group 内任意分身可领取",
-    );
+    expect(escrowTargetLabel(demoGroupEscrow, names)).toBe("发布协作组（Group）");
+    // 领取范围不是租约行要铺陈的事实：目标只留 Group 与可选的指定 Agent。
+    expect(escrowTargetLabel(demoGroupEscrow, names)).not.toContain("该 Group 内任意分身可领取");
     expect(escrowTargetLabel(demoGroupEscrow)).toContain(demoEscrowTargets.group.chatId);
   });
 

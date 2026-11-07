@@ -4,13 +4,7 @@ import { leaseEscrowViewSchema, leaseViewSchema } from "../src/contracts/lease";
 import { leaseStatusLabel } from "../src/components/machine/lease-view";
 import {
   LEASE_TIMEOUT_LABELS,
-  LEASE_WAIT_FAILURE_LABELS,
-  durationText,
-  leaseEscalationMs,
-  leaseTimingNotes,
-  leaseTimeoutMs,
   leaseTimeoutPhase,
-  leaseWaitReason,
 } from "../src/components/machine/lease-timeout-view";
 import {
   LEASE_TIMEOUT_SENDER_ID,
@@ -25,7 +19,7 @@ import { demoProject } from "../src/dev/scenes/machine/fixtures";
 
 /**
  * I-P8b 的呈现契约：超时只加只读标记、绝不显示成空闲；提醒消息如实呈现为一条消息；
- * 挂靠时限与申请遇阻等待的时长不能读成同一个倒计时。
+ * 租约行只留状态事实，不铺陈时限、提醒与处理说明。
  */
 
 const timeoutOf = (name: keyof typeof demoTimeoutEscrows) => demoTimeoutEscrows[name].timeout;
@@ -88,7 +82,9 @@ describe("超时未处理的租约不会显示成空闲", () => {
     expect(escalated.label).toBe(`挂靠中 · ${LEASE_TIMEOUT_LABELS.escalated.label}`);
     expect(escalated.label).not.toContain("空闲");
 
-    // 状态位保持「挂靠中」的既有语气，升级的严重程度由那条专门的事实行表达。
+    // 说明行删掉之后，严重程度由状态位自己承担，不能再退回「挂靠中」的平和语气。
+    expect(awaiting.tone).toBe("warning");
+    expect(escalated.tone).toBe("danger");
     expect(LEASE_TIMEOUT_LABELS.awaiting.tone).toBe("warning");
     expect(LEASE_TIMEOUT_LABELS.escalated.tone).toBe("danger");
   });
@@ -131,67 +127,47 @@ describe("挂靠超时提醒在界面上是一条消息", () => {
   });
 });
 
-describe("两种时限在界面上不是同一个倒计时", () => {
-  it("挂靠时限与升级时限都从契约时刻反推", () => {
-    expect(leaseTimeoutMs(demoTimeoutEscrows.humanOwner)).toBe(30 * 60_000);
-    expect(leaseEscalationMs(demoTimeoutEscrows.humanOwner)).toBeNull();
-    expect(leaseEscalationMs(demoTimeoutEscrows.escalated)).toBe(2 * 3_600_000);
+describe("租约行只留状态事实，不再铺陈时限与处理说明", () => {
+  it("被删掉的解释性文案不会回到租约界面", () => {
+    const read = (path: string) =>
+      readFileSync(new URL(`../src/components/machine/${path}`, import.meta.url), "utf8");
+    // 只扫真正渲染文案的两个文件；映射模块顶部的注释解释了 why，本身不是界面文案。
+    const sources = [read("lease-panel.tsx"), read("lease-view.ts")].join("\n");
+    for (const phrase of [
+      "挂靠时限",
+      "升级时限",
+      "提醒尚未发出",
+      "自动尝试已暂停",
+      "处理沿用既有的租约动作",
+      "不是同一个倒计时",
+      "拿不到 Machine",
+      "该 Group 内任意分身可领取",
+    ]) {
+      expect(sources).not.toContain(phrase);
+    }
   });
 
-  it("Project 覆盖过的挂靠时限如实显示，不写死 30 分钟", () => {
-    const override = {
-      ...demoTimeoutEscrows.humanOwner,
-      escrowedAt: "2026-10-18T09:00:00.000Z",
-      timeout: { ...demoTimeoutEscrows.humanOwner.timeout, deadlineAt: "2026-10-18T09:00:10.000Z" },
-    };
-    const { timeout, wait } = leaseTimingNotes(override);
-    expect(timeout).toContain("挂靠时限 10 秒");
-    expect(timeout).not.toContain("30 分钟");
-    expect(wait).toContain("建议 5 分钟、上限 1 小时");
-    expect(wait).toContain("不是同一个倒计时");
-  });
-
-  it("等待到点的两种结果都有说清楚的文案", () => {
-    expect(LEASE_WAIT_FAILURE_LABELS.timed_out.label).toBe("等到时限仍被占用");
-    expect(LEASE_WAIT_FAILURE_LABELS.identity_busy.label).toBe("该身份已在等待中");
-  });
-
-  it("时长说法与域层一致", () => {
-    expect(durationText(30 * 60_000)).toBe("30 分钟");
-    expect(durationText(2 * 3_600_000)).toBe("2 小时");
-    expect(durationText(90_000)).toBe("90 秒");
-  });
-});
-
-describe("等待中的保留原因跟着挂靠相位走", () => {
-  it("挂靠还活着时给出保留原因，不是「空闲」", () => {
-    expect(leaseWaitReason(demoTimeoutEscrows.waiting)?.label).toBe("挂靠待处理，租约仍被占用");
-    expect(leaseWaitReason(demoTimeoutEscrows.humanOwner)?.label).toBe(
-      "挂靠超时未处理，租约仍被占用",
+  it("超时事实组件与只给说明行用的映射一起删除，不留死代码", () => {
+    expect(() =>
+      readFileSync(
+        new URL("../src/components/machine/lease-timeout-facts.tsx", import.meta.url),
+        "utf8",
+      ),
+    ).toThrow();
+    const view = readFileSync(
+      new URL("../src/components/machine/lease-timeout-view.ts", import.meta.url),
+      "utf8",
     );
-    expect(leaseWaitReason(demoTimeoutEscrows.escalated)?.label).toBe("挂靠已升级，等人类决定");
-    for (const key of ["waiting", "humanOwner", "escalated"] as const) {
-      expect(leaseWaitReason(demoTimeoutEscrows[key])?.tone).not.toBe("success");
-      expect(leaseWaitReason(demoTimeoutEscrows[key])?.label).not.toContain("空闲");
+    for (const gone of ["detail", "leaseWaitReason", "LEASE_WAIT_FAILURE_LABELS", "durationText"]) {
+      expect(view).not.toContain(gone);
     }
   });
 
-  it("挂靠已经不是活跃状态时没有保留原因", () => {
-    expect(leaseWaitReason({ state: "claimed", timeout: timeoutOf("humanOwner") })).toBeNull();
-    expect(leaseWaitReason({ state: "cancelled", timeout: timeoutOf("escalated") })).toBeNull();
-  });
-
-  it("每一段超时与保留原因的文案里都不出现「空闲」", () => {
-    // 反证清单第 6/8 条：超时的挂靠是「还被占着、等 owner 处理」，不能读成没人用。
-    for (const label of Object.values(LEASE_TIMEOUT_LABELS)) {
-      expect(`${label.label}${label.detail}`).not.toContain("空闲");
-    }
-    for (const label of Object.values(LEASE_WAIT_FAILURE_LABELS)) {
-      expect(`${label.label}${label.detail}`).not.toContain("空闲");
-    }
-    for (const key of ["waiting", "humanOwner", "escalated"] as const) {
-      const reason = leaseWaitReason(demoTimeoutEscrows[key])!;
-      expect(`${reason.label}${reason.detail}`).not.toContain("空闲");
+  it("状态位文案里不出现「空闲」或时限数字", () => {
+    for (const lease of demoTimeoutSceneLeases.filter((item) => item.escrow)) {
+      const label = leaseStatusLabel(lease).label;
+      expect(label).not.toContain("空闲");
+      expect(label).not.toMatch(/分钟|小时|秒/);
     }
   });
 });

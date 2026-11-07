@@ -6,7 +6,7 @@ import type {
   RemoteOperation,
 } from "../../contracts/remote";
 import type { StatusTone } from "./machine-view";
-import { leaseTimeoutSuffix } from "./lease-timeout-view";
+import { LEASE_TIMEOUT_LABELS, leaseTimeoutPhase, leaseTimeoutSuffix } from "./lease-timeout-view";
 
 /**
  * 租约与远端操作的呈现映射。这里的函数只做投影：输入是
@@ -171,8 +171,8 @@ export function escrowTargetLabel(escrow: LeaseEscrowView, names: EscrowNames = 
   const kind = names.chatKinds?.[escrow.chatId];
   const scope = escrow.targetAgentProfileId
     ? `指定 Agent ${names.agents?.[escrow.targetAgentProfileId] ?? escrow.targetAgentProfileId}`
-    : "该 Group 内任意分身可领取";
-  return `${name}${kind ? `（${chatKindLabel(kind)}）` : ""} · ${scope}`;
+    : null;
+  return `${name}${kind ? `（${chatKindLabel(kind)}）` : ""}${scope ? ` · ${scope}` : ""}`;
 }
 
 /** 活跃挂靠：还没有被领取、也没有被撤销的那一次。 */
@@ -191,8 +191,14 @@ export function leaseStatusLabel(lease: LeaseView): LeaseLabel {
   const escrow = liveEscrowOf(lease);
   if (!escrow) return leaseStateLabel(lease.state);
   const base = escrowStateLabel(escrow.state);
-  const suffix = leaseTimeoutSuffix(escrow.timeout);
-  return suffix === "" ? base : { ...base, label: `${base.label}${suffix}` };
+  const phase = leaseTimeoutPhase(escrow.timeout);
+  if (phase === "none") return base;
+  // 严重度跟着相位走：升级在状态位上就该读作 danger，而不是只靠已删掉的说明行。
+  return {
+    ...base,
+    label: `${base.label}${leaseTimeoutSuffix(escrow.timeout)}`,
+    tone: LEASE_TIMEOUT_LABELS[phase].tone,
+  };
 }
 
 /** 本 Project 里处于挂靠中的租约。 */
