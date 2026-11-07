@@ -27,7 +27,11 @@ function plan(seconds, resources, preparation = [], sandbox = false) {
   });
 }
 
-export const MANUAL_GATES = Object.freeze(["p6a-live-routing", "p8d-windows-worker"]);
+export const MANUAL_GATES = Object.freeze([
+  "p6a-live-routing",
+  "p8d-windows-worker",
+  "p8d-windows-integration",
+]);
 
 export const SUITE_PLAN = Object.freeze({
   "chat-skills": plan(8, { unit: 1, sdk: 1 }),
@@ -130,6 +134,7 @@ export const SUITE_PLAN = Object.freeze({
   "v-mcp-contracts": plan(11.609, { unit: 1 }),
   "w-worker-remote": plan(66.076, { native: 1, browser: 1 }, worker),
   "p8d-windows-worker": plan(240, { light: 1 }, ["install"]),
+  "p8d-windows-integration": plan(300, { light: 1 }, ["install"]),
   "ap-p4d-handoff-worker": plan(74, { native: 1, browser: 1 }, worker),
   "az-p5a-live-worker": plan(42, { native: 1, sdk: 1, timing: 1 }, worker),
   "as-p5a-chat-ui": plan(45, { browser: 1 }, server),
