@@ -50,7 +50,7 @@ runner：Windows 上命令不使用 `detached`。实测 PowerShell 7 在 `detach
 
 ## 呈现
 
-`machine-shell-summary` 继续显示每个 shell 的路径、版本与自检结果，并新增一行「执行环境」：服务会话 / 交互桌面 / 会话未知 / 不适用（非 Windows），带实测 SessionId。正式视觉由 UI 线补齐。
+`machine-shell-summary` 在 Shell 能力小节里直接列出每个 shell 的 `✓/✗/?`、自检结论（失败原因用中文，如「找不到可执行文件」）、等宽字体路径与版本；完整版本串与检查时间仍在「查看完整探测详情」弹层里。执行环境单独一行，五种说法互不相同：未上报 / 会话未知 / 不适用（非 Windows）/ 服务会话（Session 0）/ 交互桌面 · Session N，带实测 SessionId。除「不适用」外都标「桌面相关能力未验证」，只有实测在交互桌面会话里才不标。Windows 上 pwsh 不可用时给降级提示，写清当前可用的是 Windows PowerShell 5.1 还是只有 cmd。设计判断与截图见 `orchestrate/sprout-mio-p8/reports/p8d-ui-design.md`。
 
 ## 验证边界（真实 Windows，Session 0）
 
