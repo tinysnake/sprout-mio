@@ -107,12 +107,12 @@ const checkEvidence = (text, source, label) => {
   return commands;
 };
 
-const plan = fs.readFileSync('docs/development-plan-functional.md', 'utf8');
+const plan = fs.readFileSync('docs/archive/phase-one/development-plan-functional.md', 'utf8');
 const stageTable = plan.match(/^## 按依赖安排开发\n([\s\S]*?)(?=^## )/m)?.[1] ?? '';
-const p2Status = stageTable.split('\n').find((line) => /^\| P2 \|/.test(line))?.split('|')[4]?.trim() ?? '';
-check(p2Status.includes('已完成') && linksIn(p2Status).includes('p2/summary.md'), 'P2 stage status must be completed and link to p2/summary.md');
+const p2Status = stageTable.split('\n').find((line) => /^\| P2 +\|/.test(line))?.split('|')[4]?.trim() ?? '';
+check(p2Status.includes('已完成') && linksIn(p2Status).includes('../../p2/summary.md'), 'P2 stage status must be completed and link to p2/summary.md');
 const nextTask = plan.trim().split(/\n\s*\n/).at(-1) ?? '';
-check(nextTask.startsWith('当前下一任务是 P4') && /P4[abc]/.test(nextTask) && !/下一任务是\s*P2/.test(plan) && linksIn(nextTask).includes('p3/summary.md#未验证项汇总'), 'final next task must point to P4a or P4b progress with P3 limits and never to P2');
+check(nextTask.startsWith('当前下一任务是 P4') && /P4[abc]/.test(nextTask) && !/下一任务是\s*P2/.test(plan) && linksIn(nextTask).includes('../../p3/summary.md#未验证项汇总'), 'final next task must point to P4a or P4b progress with P3 limits and never to P2');
 const p2 = plan.match(/^## P2 [^\n]*\n([\s\S]*?)(?=^## )/m)?.[1] ?? '';
 const boxes = [...p2.matchAll(/^- \[([^\]])\] (.+)$/gm)];
 check(boxes.length === 6, `P2 must contain six checkboxes, found ${boxes.length}`);
@@ -125,7 +125,7 @@ for (let i = 0; i < boxes.length; i++) {
   check(boxes[i][1] === 'x', `P2 checkbox ${i + 1} must be checked`);
   const row = rows.find((line) => line.startsWith(`| ${i + 1}，`)) ?? '';
   check(row.includes('| 已勾选 |'), `summary checkbox ${i + 1} must be checked`);
-  const commands = checkEvidence(boxes[i][2], 'docs/development-plan-functional.md', `P2 checkbox ${i + 1}`);
+  const commands = checkEvidence(boxes[i][2], 'docs/archive/phase-one/development-plan-functional.md', `P2 checkbox ${i + 1}`);
   checkEvidence(row, 'docs/p2/summary.md', `summary checkbox ${i + 1}`);
   for (const command of commands) check(row.includes(`\`${command}\``), `summary checkbox ${i + 1} lacks ${command}`);
 }
@@ -148,13 +148,13 @@ for (const unit of units) {
 check(summary?.sections.has('未验证项汇总'), 'summary lacks unverified limits');
 
 const records = plan.match(/^## 分派任务并管理完成记录\n([\s\S]*)/m)?.[1] ?? '';
-const completionRows = records.split('\n').filter((line) => /^\| P2 \|/.test(line));
+const completionRows = records.split('\n').filter((line) => /^\| P2 +\|/.test(line));
 check(completionRows.length === 1, `completion table must contain one P2 row, found ${completionRows.length}`);
 const completion = completionRows[0] ?? '';
 check(completion.includes('已完成') && completion.includes('`28d4fb2..d8f4e2b`'), 'P2 completion lacks status or commit range');
 check(completion.includes('真实 Chromium') && completion.includes('重启') && completion.includes('两用户隔离'), 'P2 completion lacks verification scope');
 check(/https:\/\/github\.com\/tinysnake\/sprout-mio\/actions\/runs\/\d+/.test(completion) && completion.includes('success'), 'P2 completion lacks CI URL or conclusion');
-check(linksIn(completion).includes('p2/summary.md'), 'P2 completion lacks summary link');
+check(linksIn(completion).includes('../../p2/summary.md'), 'P2 completion lacks summary link');
 for (const match of completion.matchAll(/`([0-9a-f]{7,40})(?:\.\.([0-9a-f]{7,40}))?`/g)) {
   for (const sha of match.slice(1).filter(Boolean)) {
     requireHistorical(sha, 'P2 completion');
@@ -187,18 +187,18 @@ for (let i = 0; i < p3States.length; i++) {
   check(box?.[1] === p3States[i], `P3 checkbox ${i + 1} must ${i === 1 ? 'remain unchecked' : 'be checked'}`);
   const status = row.split('|')[2]?.trim();
   check(status === (i === 1 ? '未勾选，部分交付' : '已勾选'), `P3 summary checkbox ${i + 1} status differs`);
-  check(linksIn(box?.[2] ?? '').some((link) => link.startsWith('p3/')), `P3 checkbox ${i + 1} lacks P3 evidence`);
+  check(linksIn(box?.[2] ?? '').some((link) => link.startsWith('../../p3/')), `P3 checkbox ${i + 1} lacks P3 evidence`);
   check(linksIn(row).some((link) => link.startsWith('acceptance.md#')), `P3 summary checkbox ${i + 1} lacks acceptance evidence`);
 }
-check(/。部分交付[：:]/.test(p3Boxes[1]?.[2] ?? '') && linksIn(p3Boxes[1]?.[2] ?? '').includes('p3/summary.md#第-2-条部分交付的理由与决定'), 'P3 checkbox 2 must explain partial delivery and link to the decision');
+check(/。部分交付[：:]/.test(p3Boxes[1]?.[2] ?? '') && linksIn(p3Boxes[1]?.[2] ?? '').includes('../../p3/summary.md#第-2-条部分交付的理由与决定'), 'P3 checkbox 2 must explain partial delivery and link to the decision');
 check(p3Summary?.sections.has('第-2-条部分交付的理由与决定') && p3Summary?.sections.has('未验证项汇总') && p3Summary?.sections.has('验收家族与方法'), 'P3 summary lacks decision, limits or acceptance independence');
 check(p3Acceptance?.text.includes('未完整交付（部分交付）') && p3Acceptance?.text.includes('store 未损坏'), 'P3 acceptance must retain partial delivery and corrected F2 verdict');
-const p3Status = stageTable.split('\n').find((line) => /^\| P3 \|/.test(line))?.split('|')[4]?.trim() ?? '';
-check(p3Status.includes('已完成') && p3Status.includes('第 2 条部分交付') && linksIn(p3Status).includes('p3/summary.md'), 'P3 stage status must be completed with partial delivery and summary link');
-const p3Completions = records.split('\n').filter((line) => /^\| P3 \|/.test(line));
+const p3Status = stageTable.split('\n').find((line) => /^\| P3 +\|/.test(line))?.split('|')[4]?.trim() ?? '';
+check(p3Status.includes('已完成') && p3Status.includes('第 2 条部分交付') && linksIn(p3Status).includes('../../p3/summary.md'), 'P3 stage status must be completed with partial delivery and summary link');
+const p3Completions = records.split('\n').filter((line) => /^\| P3 +\|/.test(line));
 check(p3Completions.length === 1, `completion table must contain one P3 row, found ${p3Completions.length}`);
 const p3Completion = p3Completions[0] ?? '';
-check(p3Completion.includes('已完成') && p3Completion.includes('第 2 条部分交付') && linksIn(p3Completion).includes('p3/summary.md'), 'P3 completion lacks status, partial delivery or summary');
+check(p3Completion.includes('已完成') && p3Completion.includes('第 2 条部分交付') && linksIn(p3Completion).includes('../../p3/summary.md'), 'P3 completion lacks status, partial delivery or summary');
 const p3Prs = [...p3Completion.matchAll(/PR #(\d+)/g)].map((match) => Number(match[1]));
 check(p3Prs.length === p3Units.length && p3Units.every((unit) => p3Prs.includes(unit.pr)), 'P3 completion PR numbers differ from merged units');
 const p3UnitTable = p3Summary?.sections.get('各-unit-结论与复跑入口') ?? '';
@@ -342,7 +342,7 @@ const checkP7Line = (line, label, source) => {
   check(targets.some(({ document }) => document && path.resolve(document.file) === p7EvidenceFile), `${label}: missing docs/p7/summary.md evidence`);
   for (const { body } of targets) evidenceIn(body, label);
 };
-const functional = 'docs/development-plan-functional.md';
+const functional = 'docs/archive/phase-one/development-plan-functional.md';
 const p4 = sectionOf(plan, 'P4', 2);
 const p4a = sectionOf(p4, 'P4a', 3);
 const p4aBoxes = boxesIn(p4a);
@@ -370,7 +370,7 @@ check(p5aBoxes.length === 3, `P5a must contain three checkboxes, found ${p5aBoxe
 for (let i = 0; i < p5aBoxes.length; i++) {
   if (p5aBoxes[i].state === 'x') checkP5aLine(p5aBoxes[i].text, `P5a checkbox ${i + 1}`, functional);
 }
-const packagePlan = fs.readFileSync('docs/development-plan.md', 'utf8');
+const packagePlan = fs.readFileSync('docs/archive/phase-one/development-plan.md', 'utf8');
 const integration = sectionOf(packagePlan, 'I-P4a', 3);
 const integrationBoxes = boxesIn(integration);
 check(integrationBoxes.length === 4, `I-P4a must contain four checkboxes, found ${integrationBoxes.length}`);
@@ -495,7 +495,7 @@ if (p5bHumanBox?.state === 'x') {
   check(Boolean(record) && commitExists(record), `I-P5b human acceptance version ${record || '(none)'} does not resolve`);
   check(!/^[-*]\s*待确认/m.test(body), 'I-P5b human acceptance must not treat pending confirmation as confirmed');
 }
-const packagePlanPath = 'docs/development-plan.md';
+const packagePlanPath = 'docs/archive/phase-one/development-plan.md';
 const integrationP6aBoxes = boxesIn(sectionOf(packagePlan, 'I-P6a', 3));
 check(integrationP6aBoxes.length === 4, `I-P6a must contain four checkboxes, found ${integrationP6aBoxes.length}`);
 for (const [index, box] of integrationP6aBoxes.entries()) {
@@ -565,51 +565,52 @@ for (const stage of ['I-P8']) {
   const boxes = boxesIn(sectionOf(packagePlan, stage, 3));
   for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
 }
-const uiPlan = fs.readFileSync('docs/development-plan-ui.md', 'utf8');
+const uiPlan = fs.readFileSync('docs/archive/phase-one/development-plan-ui.md', 'utf8');
 const uiP4bBoxes = boxesIn(sectionOf(uiPlan, 'UI-P4b', 2));
 check(uiP4bBoxes.length === 3, `UI-P4b must contain three checkboxes, found ${uiP4bBoxes.length}`);
 for (let i = 0; i < uiP4bBoxes.length; i++) {
-  if (uiP4bBoxes[i].state === 'x') checkP4bLine(uiP4bBoxes[i].text, `UI-P4b checkbox ${i + 1}`, 'docs/development-plan-ui.md');
+  if (uiP4bBoxes[i].state === 'x') checkP4bLine(uiP4bBoxes[i].text, `UI-P4b checkbox ${i + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const uiP4cBoxes = boxesIn(sectionOf(uiPlan, 'UI-P4c', 2));
 check(uiP4cBoxes.length === 3, `UI-P4c must contain three checkboxes, found ${uiP4cBoxes.length}`);
 for (let i = 0; i < uiP4cBoxes.length; i++) {
-  if (uiP4cBoxes[i].state === 'x') checkP4cLine(uiP4cBoxes[i].text, `UI-P4c checkbox ${i + 1}`, 'docs/development-plan-ui.md');
+  if (uiP4cBoxes[i].state === 'x') checkP4cLine(uiP4cBoxes[i].text, `UI-P4c checkbox ${i + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const uiP4dBoxes = boxesIn(sectionOf(uiPlan, 'UI-P4d', 2));
 check(uiP4dBoxes.length === 3, `UI-P4d must contain three checkboxes, found ${uiP4dBoxes.length}`);
 for (let i = 0; i < uiP4dBoxes.length; i++) {
-  if (uiP4dBoxes[i].state === 'x') checkP4dLine(uiP4dBoxes[i].text, `UI-P4d checkbox ${i + 1}`, 'docs/development-plan-ui.md');
+  if (uiP4dBoxes[i].state === 'x') checkP4dLine(uiP4dBoxes[i].text, `UI-P4d checkbox ${i + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const uiP5aBoxes = boxesIn(sectionOf(uiPlan, 'UI-P5a', 2));
 check(uiP5aBoxes.length === 3, `UI-P5a must contain three checkboxes, found ${uiP5aBoxes.length}`);
 for (let i = 0; i < uiP5aBoxes.length; i++) {
-  if (uiP5aBoxes[i].state === 'x') checkP5aLine(uiP5aBoxes[i].text, `UI-P5a checkbox ${i + 1}`, 'docs/development-plan-ui.md');
+  if (uiP5aBoxes[i].state === 'x') checkP5aLine(uiP5aBoxes[i].text, `UI-P5a checkbox ${i + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const uiP5bBoxes = boxesIn(sectionOf(uiPlan, 'UI-P5b', 2));
 check(uiP5bBoxes.length === 4, `UI-P5b must contain four checkboxes, found ${uiP5bBoxes.length}`);
 for (const [index, box] of uiP5bBoxes.entries()) {
-  if (box.state === 'x') checkP5bLine(box.text, `UI-P5b checkbox ${index + 1}`, 'docs/development-plan-ui.md');
+  if (box.state === 'x') checkP5bLine(box.text, `UI-P5b checkbox ${index + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const uiP6aBoxes = boxesIn(sectionOf(uiPlan, 'UI-P6a', 2));
 check(uiP6aBoxes.length === 2, `UI-P6a must contain two checkboxes, found ${uiP6aBoxes.length}`);
 for (const [index, box] of uiP6aBoxes.entries()) {
-  if (box.state === 'x') checkP6aLine(box.text, `UI-P6a checkbox ${index + 1}`, 'docs/development-plan-ui.md');
+  if (box.state === 'x') checkP6aLine(box.text, `UI-P6a checkbox ${index + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const uiP6bBoxes = boxesIn(sectionOf(uiPlan, 'UI-P6b', 2));
 check(uiP6bBoxes.length === 2, `UI-P6b must contain two checkboxes, found ${uiP6bBoxes.length}`);
 for (const [index, box] of uiP6bBoxes.entries()) {
-  if (box.state === 'x') checkP6bLine(box.text, `UI-P6b checkbox ${index + 1}`, 'docs/development-plan-ui.md');
+  if (box.state === 'x') checkP6bLine(box.text, `UI-P6b checkbox ${index + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const uiP6cBoxes = boxesIn(sectionOf(uiPlan, 'UI-P6c', 2));
 check(uiP6cBoxes.length === 2, `UI-P6c must contain two checkboxes, found ${uiP6cBoxes.length}`);
 for (const [index, box] of uiP6cBoxes.entries()) {
-  if (box.state === 'x') checkP6cLine(box.text, `UI-P6c checkbox ${index + 1}`, 'docs/development-plan-ui.md');
+  if (box.state === 'x') checkP6cLine(box.text, `UI-P6c checkbox ${index + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const uiP7Boxes = boxesIn(sectionOf(uiPlan, 'UI-P7', 2));
 check(uiP7Boxes.length === 5, `UI-P7 must contain five checkboxes, found ${uiP7Boxes.length}`);
+check(uiP7Boxes[2]?.state === ' ', 'archived UI-P7 PWA installation must remain unchecked');
 for (const [index, box] of uiP7Boxes.entries()) {
-  if (box.state === 'x') checkP7Line(box.text, `UI-P7 checkbox ${index + 1}`, 'docs/development-plan-ui.md');
+  if (box.state === 'x') checkP7Line(box.text, `UI-P7 checkbox ${index + 1}`, 'docs/archive/phase-one/development-plan-ui.md');
 }
 const r1Section = plan.match(/^## R1 [^\n]*\n([\s\S]*?)(?=^## |$(?![\s\S]))/m)?.[1] ?? '';
 const r1Boxes = boxesIn(r1Section);
@@ -664,7 +665,7 @@ console.log(`PASS six P2 checklist entries checked with document sections and co
 console.log(`PASS three P2 exit conditions and five unit mappings; evidence=${totals.evidence} commands=${totals.commands}`);
 console.log(`PASS P2 source paths=${totals.paths}; docs internal links and anchors verified by f-docs`);
 console.log(`PASS P2 completion PR #10 to #14 match Git merge titles and head parents; commit references=${totals.commits}`);
-console.log('PASS P2 stage status is completed with summary link; final next task points to P4 with P3 limits');
+console.log('PASS archived P2 stage status and historical next-task entry retain their P4/P3 evidence');
 console.log('PASS P3 seven checkboxes and summary states match: six checked, checkbox 2 unchecked with partial delivery');
 console.log('PASS P3 summary, acceptance, stage status and completion record; PR #19 to #22 match Git titles and second parents');
 console.log('PASS P2 final range 28d4fb2..db185f8 and P3 range db185f8..e5e2b4e match Git baselines and merges');
@@ -672,8 +673,8 @@ console.log(`PASS P4a accepts evidence-linked commits and commands; unchecked=${
 console.log(`PASS P4b and UI-P4b accept checked rows with resolvable evidence; functional checked=${p4bBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4bBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4bBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4c and UI-P4c accept checked rows with resolvable evidence; functional checked=${p4cBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4cBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4cBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4d and UI-P4d accept checked rows with resolvable evidence; functional checked=${p4dBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4dBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4dBoxes.filter((box) => box.state === 'x').length}`);
-console.log(`PASS I-P6a/I-P6b/I-P6c accept evidence-linked rows while their human confirmations stay unchecked=${integrationP6aBoxes.filter((box) => box.state !== 'x').length}/${integrationP6bBoxes.filter((box) => box.state !== 'x').length}/${integrationP6cBoxes.filter((box) => box.state !== 'x').length}; I-P7/UI-P7 accept evidence-linked rows while their human confirmations stay unchecked`);
-console.log(`PASS P6a accepts evidence-linked rows; P6b/P6c to P8 checkboxes remain unchecked=${futureCount} (P5a, P5b and P6a validated above)`);
+console.log('PASS archived I-P6a/I-P6b/I-P6c/I-P7 evidence and checked Human confirmation records; UI-P7 PWA installation remains unchecked');
+console.log(`PASS archived P5/P7/P8 overview checkboxes retain their historical states; checked detail evidence is validated separately; overview rows=${futureCount}`);
 console.log(`PASS R1 checked rows carry docs/r1 evidence with commits and rerun commands; checked=${r1Boxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);
 console.log('PASS l-docs all checks passed');

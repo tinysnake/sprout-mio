@@ -1,6 +1,6 @@
 # Sprout Mio
 
-开发编排统一从 [开发总计划](docs/development-plan.md)开始。功能与 UI 专项计划由总计划分派，不单独编排。
+当前交付状态、遗留项与后续讨论统一从[开发总计划](docs/development-plan.md)开始。一期执行记录见[一期归档索引](docs/archive/phase-one/README.md)；功能与 UI 专项入口不单独编排。
 
 ## 本机运行
 

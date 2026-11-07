@@ -22,15 +22,17 @@ import { execFileSync, spawnSync } from 'node:child_process';
 
 const tree = process.env.PROBE_TREE;
 const head = execFileSync('git', ['-C', tree, 'rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 10000 }).trim();
-const functional = 'docs/development-plan-functional.md';
-const packagePlan = 'docs/development-plan.md';
-const uiPlan = 'docs/development-plan-ui.md';
+const functional = 'docs/archive/phase-one/development-plan-functional.md';
+const packagePlan = 'docs/archive/phase-one/development-plan.md';
+const uiPlan = 'docs/archive/phase-one/development-plan-ui.md';
 const summary = 'docs/p4a/summary.md';
 const probe = 'docs/p4a/probe.md';
 const p4bSummary = 'docs/p4b/summary.md';
 const p4cSummary = 'docs/p4c/summary.md';
 const r1Summary = 'docs/r1/summary.md';
-const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary, p4cSummary, r1Summary];
+const currentPlan = 'docs/development-plan.md';
+const archiveIndex = 'docs/archive/phase-one/README.md';
+const files = [functional, packagePlan, uiPlan, summary, probe, p4bSummary, p4cSummary, r1Summary, currentPlan, archiveIndex];
 const originals = new Map(files.map((file) => [file, fs.existsSync(path.join(tree, file)) ? fs.readFileSync(path.join(tree, file), 'utf8') : null]));
 const restore = () => {
   for (const [file, text] of originals) {
@@ -60,7 +62,7 @@ const setBox = (file, prefix, text, heading, state = 'x') => {
   write(file, lines.join('\n'));
 };
 const stripP4cLinks = (file) => {
-  write(file, read(file).replace(/\[([^\]]*)\]\(p4c\/summary\.md[^)]*\)/g, '$1'));
+  write(file, read(file).replace(/\[([^\]]*)\]\((?:\.\.\/\.\.\/)?p4c\/summary\.md[^)]*\)/g, '$1'));
 };
 
 const uncheck = (file, heading) => {
@@ -104,9 +106,9 @@ const p4cHumanBox = () =>
   setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4c');
 const humanBox = () =>
   setBox(packagePlan, 'Human 亲自体验并明确确认通过', 'Human 亲自体验并明确确认通过，编排者已记录确认版本。', '### I-P4b');
-const link = '证据见 [P4a 证据](p4a/probe.md#p4a-证据)。';
-const p4bLink = '证据见 [申请释放与互斥](p4b/summary.md#1-申请释放与互斥)。';
-const p4bLink5 = '证据见 [Project 独立](p4b/summary.md#5-跨-project-独立与不可见)。';
+const link = '证据见 [P4a 证据](../../p4a/probe.md#p4a-证据)。';
+const p4bLink = '证据见 [申请释放与互斥](../../p4b/summary.md#1-申请释放与互斥)。';
+const p4bLink5 = '证据见 [Project 独立](../../p4b/summary.md#5-跨-project-独立与不可见)。';
 const gate = () => {
   const run = spawnSync('bash', ['scripts/verify/l-docs.sh'], { cwd: tree, encoding: 'utf8', timeout: 180000 });
   return { code: run.status, output: `${run.stdout ?? ''}${run.stderr ?? ''}` };
@@ -124,11 +126,20 @@ const probeCase = (name, mutate, expectation) => {
 };
 
 probeCase('current docs pass', () => {}, { code: 0 });
+probeCase('broken archive entry link fails', () => {
+  write(currentPlan, read(currentPlan).replace('archive/phase-one/README.md', 'archive/phase-one/missing.md'));
+}, { code: 1, includes: 'missing link archive/phase-one/missing.md' });
+probeCase('archived P3 partial delivery cannot be marked complete', () => {
+  write(functional, read(functional).replace('- [ ] 保留宿主 Pi 工具、配置与认证', '- [x] 保留宿主 Pi 工具、配置与认证'));
+}, { code: 1, includes: 'P3 checkbox 2 must remain unchecked' });
+probeCase('archived PWA installation cannot be marked complete', () => {
+  setBox(uiPlan, '补齐 PWA 安装与独立窗口体验', 'PWA 安装体验已通过。', '## UI-P7');
+}, { code: 1, includes: 'archived UI-P7 PWA installation must remain unchecked' });
 probeCase('checked P4a without evidence fails', () => {
   setBox(functional, '实现 macOS Worker 安装与启动', '临时探针勾选，没有章节证据。');
 }, { code: 1, includes: 'P4a checkbox 1: missing docs/p4a evidence' });
 probeCase('broken evidence link fails', () => {
-  setBox(functional, '实现 macOS Worker 安装与启动', '证据见 [P4a 契约](p4a/contracts.md#不存在的章节)。');
+  setBox(functional, '实现 macOS Worker 安装与启动', '证据见 [P4a 契约](../../p4a/contracts.md#不存在的章节)。');
 }, { code: 1, includes: '不存在的章节' });
 probeCase('unresolved commit fails', () => {
   write(probe, evidence('P4a 证据', 'deadbeef', 'bash scripts/verify/s-machine-contracts.sh'));
@@ -168,13 +179,13 @@ probeCase('checked R1 evidence without a rerun command fails', () => {
   write(file, read(file).replace(/`bash scripts\/verify\/z3-mcp-acceptance\.sh`/g, '`bash scripts/verify/nope.sh`'));
 }, { code: 1, includes: 'R1 checkbox 1: missing command bash scripts/verify/nope.sh' });
 probeCase('checked R1 evidence from another chapter fails', () => {
-  setBox(functional, '在 P4 的身份与授权契约稳定后', '证据见 [P4a 验收](p4a/summary.md#技术验收证据)，重跑 `bash scripts/verify/z3-mcp-acceptance.sh`。', '## R1');
+  setBox(functional, '在 P4 的身份与授权契约稳定后', '证据见 [P4a 验收](../../p4a/summary.md#技术验收证据)，重跑 `bash scripts/verify/z3-mcp-acceptance.sh`。', '## R1');
 }, { code: 1, includes: 'R1 checkbox 1: missing docs/r1 evidence' });
 probeCase('checked P4b without evidence fails', () => {
   setBox(functional, '实现申请与释放', '临时探针勾选 P4b，没有章节证据。');
 }, { code: 1, includes: 'P4b checkbox 1: missing docs/p4b evidence' });
 probeCase('P4b evidence from another chapter fails', () => {
-  setBox(functional, '实现申请与释放', '证据见 [P4a 验收](p4a/summary.md#技术验收证据)。');
+  setBox(functional, '实现申请与释放', '证据见 [P4a 验收](../../p4a/summary.md#技术验收证据)。');
 }, { code: 1, includes: 'P4b checkbox 1: missing docs/p4b/summary.md evidence' });
 probeCase('complete P4b evidence passes', () => {
   setBox(functional, '实现申请与释放', p4bLink);
@@ -229,9 +240,9 @@ probeCase('checked P4c without evidence fails', () => {
   setBox(functional, '实现稳定请求 ID', '临时探针勾选 P4c，没有章节证据。', '### P4c');
 }, { code: 1, includes: 'P4c checkbox 1: missing docs/p4c evidence' });
 probeCase('P4c evidence from another chapter fails', () => {
-  setBox(functional, '实现稳定请求 ID', '证据见 [P4b 验收](p4b/summary.md#技术验收证据)。', '### P4c');
+  setBox(functional, '实现稳定请求 ID', '证据见 [P4b 验收](../../p4b/summary.md#技术验收证据)。', '### P4c');
 }, { code: 1, includes: 'P4c checkbox 1: missing docs/p4c/summary.md evidence' });
-const p4cLink = '证据见 [稳定标识与取消](p4c/summary.md#1-稳定请求-id执行-id日志游标状态退出结果和显式取消)。';
+const p4cLink = '证据见 [稳定标识与取消](../../p4c/summary.md#1-稳定请求-id执行-id日志游标状态退出结果和显式取消)。';
 probeCase('complete P4c evidence passes', () => {
   setBox(functional, '实现稳定请求 ID', p4cLink, '### P4c');
 }, { code: 0 });
@@ -252,7 +263,7 @@ probeCase('I-P4c technical acceptance without a summary fails', () => {
   uncheck(functional, '### P4c');
   uncheck(uiPlan, '## UI-P4c');
   uncheck(packagePlan, '### I-P4c');
-  for (const file of [functional, uiPlan, packagePlan]) stripP4cLinks(file);
+  for (const file of [functional, uiPlan, packagePlan, currentPlan, archiveIndex]) stripP4cLinks(file);
   fs.rmSync(path.join(tree, p4cSummary), { force: true });
   setBox(packagePlan, '集成线完成接入与自检', '集成线完成接入与自检，独立技术验收通过。', '### I-P4c');
 }, { code: 1, includes: 'I-P4c technical acceptance requires docs/p4c/summary.md' });

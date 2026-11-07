@@ -77,7 +77,7 @@ for (const [source, doc] of documents) {
   }
 }
 
-const plan = fs.readFileSync('docs/development-plan-functional.md', 'utf8');
+const plan = fs.readFileSync('docs/archive/phase-one/development-plan-functional.md', 'utf8');
 const p1 = plan.match(/^## P1 [^\n]*\n([\s\S]*?)(?=^## )/m)?.[1] ?? '';
 const boxes = [...p1.matchAll(/^- \[([ x])\] (.+)$/gm)];
 check(boxes.length === 7, `P1 must contain seven checkboxes, found ${boxes.length}`);
@@ -92,7 +92,7 @@ for (let i = 0; i < boxes.length; i++) {
   const row = rows.find((candidate) => candidate.startsWith(`| ${i + 1}，`)) ?? '';
   check(row.includes(checked ? '已勾选' : '未勾选'), `summary status differs for checkbox ${i + 1}`);
   if (!checked) continue;
-  const evidence = linksIn(line).map((link) => resolveLink(path.resolve('docs/development-plan-functional.md'), link)).filter((target) => target && target.file.startsWith(path.resolve('docs/p1') + path.sep) && target.fragment);
+  const evidence = linksIn(line).map((link) => resolveLink(path.resolve('docs/archive/phase-one/development-plan-functional.md'), link)).filter((target) => target && target.file.startsWith(path.resolve('docs/p1') + path.sep) && target.fragment);
   check(evidence.length > 0, `checkbox ${i + 1} lacks a P1 document section`);
   const commands = [...line.matchAll(/`(bash scripts\/verify\/(?:[\w-]+\.sh)|bash scripts\/verify\.sh)`/g)].map((match) => match[1]);
   check(commands.length > 0, `checkbox ${i + 1} lacks a rerun command`);
@@ -103,8 +103,8 @@ for (let i = 0; i < boxes.length; i++) {
   }
 }
 
-check(/^\| P1 \|.*已完成/m.test(plan) === (boxes.length === 7 && boxes.every((box) => box[1] === 'x')), 'P1 stage status differs from checklist');
-check(/^\| P1 \|.*7e4f039\.\.c3af8ad.*真实跨机.*真实 macOS Worker.*P4/m.test(plan), 'P1 completion row lacks commit range or P4 limits');
+check(/^\| P1 +\|.*已完成/m.test(plan) === (boxes.length === 7 && boxes.every((box) => box[1] === 'x')), 'P1 stage status differs from checklist');
+check(/^\| P1 +\|.*7e4f039\.\.c3af8ad.*真实跨机.*真实 macOS Worker.*P4/m.test(plan), 'P1 completion row lacks commit range or P4 limits');
 for (const file of ['docs/p1/skeleton.md', 'docs/p1/conventions.md']) {
   const text = fs.readFileSync(file, 'utf8');
   check(text.includes('BETTER_AUTH_SECRET') && text.includes('p1-d-runtime') && text.includes('监听前') && text.includes('至少 32 字符'), `${file}: final auth secret requirement missing`);
