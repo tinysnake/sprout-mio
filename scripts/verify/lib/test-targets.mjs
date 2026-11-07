@@ -74,6 +74,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/p8b-lease-wait.test.ts",
     "tests/p8b-timeout-domain.test.ts",
     "tests/p8a-escrow-ui.test.ts",
+    "tests/p8b-timeout-ui.test.ts",
     "tests/mcp-worker.test.ts",
     "tests/mention-segments.test.ts",
     "tests/mention-write.test.ts",

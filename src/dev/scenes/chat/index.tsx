@@ -11,6 +11,7 @@ import { ChatTitleEditor } from "@/components/chat/chat-title-editor";
 import { ChatDraftProvider, useChatDraft } from "@/components/chat/chat-drafts";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { MessageList } from "@/components/chat/message-list";
+import { LEASE_TIMEOUT_SENDER_ID } from "@/components/chat/lease-timeout-message";
 import { isRunActive, runStatusLabel, RunStatusPanel } from "@/components/chat/run-status";
 import { ChatInspector } from "@/components/info-hub/chat-inspector";
 import { ChatWorkspace } from "@/components/layout/chat-workspace";
@@ -161,6 +162,17 @@ const messages: Message[] = [
       { memberKind: "agent", memberId: profiles[1]!.id, start: 22, end: 31 },
       { memberKind: "human", memberId: "usr_demo", start: 41, end: 44 },
     ],
+  },
+  {
+    // I-P8b 挂靠超时提醒：直接写库（不触发唤醒、不触发自动接续），落在挂靠所在的 Group chat。
+    id: "msg_bbbbbbbb",
+    chatId: chats[1]!.id,
+    senderKind: "agent",
+    senderId: LEASE_TIMEOUT_SENDER_ID,
+    body: "【挂靠超时】重构搭档 要用 Machine「工作室 Mac mini」，它的租约挂在对话《发布协作组》（les_44444444）的挂靠里已经超过 30 分钟。\n请处理：是让 重构搭档 归还（撤销挂靠或强制收回），还是继续占用（领取这个挂靠）。在你处理之前，租约占用与权限保持不变。\n（这是提醒消息，不触发唤醒、也不触发自动接续；这条挂靠不会再升级，请自行决定是否处理。）",
+    createdAt: "2026-06-18T02:32:00.000Z",
+    skills: [],
+    mentions: [],
   },
 ];
 

@@ -47,6 +47,7 @@ import {
   completedReceipt,
   demoEscrowNames,
   demoEscrowSceneLeases,
+  demoTimeoutSceneLeases,
 } from "./lease-fixtures";
 import { ID_PREFIXES, newId } from "@/contracts/ids";
 
@@ -81,6 +82,8 @@ type DemoState = {
   /** 租约变更的演示结果：成功写回，失败保留目标并显示原因。 */
   leaseOutcome: "success" | "stale_generation" | "not_holder";
   escrowScene: boolean;
+  /** I-P8b：挂靠超时的五种形态（含已升级与领取后不再超时）。 */
+  timeoutScene: boolean;
 };
 
 function DemoControls({
@@ -372,6 +375,7 @@ function DemoControls({
           onChange={(event) =>
             update({
               escrowScene: event.target.checked,
+              timeoutScene: false,
               leases: event.target.checked ? [...demoEscrowSceneLeases] : [...demoLeases],
             })
           }
@@ -379,6 +383,25 @@ function DemoControls({
         <span>
           演示数据里先放两台已挂靠的 Machine（{demoMachineDetails[0].machine.name} /{" "}
           {demoMachineDetails[4].machine.name}）
+        </span>
+      </label>
+      <label className="mt-3 flex items-start gap-2 leading-5" htmlFor="machine-demo-timeout-scene">
+        <input
+          id="machine-demo-timeout-scene"
+          data-testid="machine-demo-timeout-scene"
+          type="checkbox"
+          className="mt-0.5"
+          checked={state.timeoutScene}
+          onChange={(event) =>
+            update({
+              timeoutScene: event.target.checked,
+              escrowScene: false,
+              leases: event.target.checked ? [...demoTimeoutSceneLeases] : [...demoLeases],
+            })
+          }
+        />
+        <span>
+          演示数据换成「挂靠超时」的五种形态（超时未处理 · 已升级 · 等待中 · 领取后不再超时）
         </span>
       </label>
       <p className="mt-2 leading-5 text-muted-foreground">
@@ -567,6 +590,7 @@ export function MachineScenes() {
     projectId: machineProject.id,
     leaseOutcome: "success",
     escrowScene: false,
+    timeoutScene: false,
   });
   const [createOpen, setCreateOpen] = useState(false);
   const update = (patch: Partial<DemoState>) => setDraft((current) => ({ ...current, ...patch }));

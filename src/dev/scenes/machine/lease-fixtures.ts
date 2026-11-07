@@ -265,6 +265,155 @@ export const demoEscrowResult: Record<string, LeaseEscrowView> = {
 };
 
 /**
+ * I-P8b 演示：挂靠超时的五种形态。时限按 30 分钟、升级时限按 2 小时写死，与
+ * `LEASE_TIMEOUT_DEFAULT_MS` / `LEASE_ESCALATION_DEFAULT_MS` 一致。
+ *
+ * 「超时待处理」用的是契约里的 `awaitingHandling`，不由客户端时钟现算——
+ * 只有 sweep 能把挂靠变成超时，客户端不许自己造一个倒计时。
+ */
+export const demoTimeoutEscrows: Record<
+  "humanOwner" | "agentOwner" | "escalated" | "waiting",
+  LeaseEscrowView
+> = {
+  /** owner 是人类：提醒只落在 Group chat 里，T9 规定这种挂靠不再升级。 */
+  humanOwner: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[0].machine.id,
+    escrowId: "les_44444444",
+    chatId: demoEscrowTargets.group.chatId,
+    targetAgentProfileId: null,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T09:00:00.000Z",
+    escrowGeneration: 6,
+    timeout: {
+      deadlineAt: "2026-10-18T09:30:00.000Z",
+      notifiedAt: "2026-10-18T09:30:00.000Z",
+      escalatedAt: null,
+      awaitingHandling: true,
+      ownerAutoAttemptsPaused: false,
+    },
+  },
+  /**
+   * owner 是 Agent、还在等唤醒重投，尚未升级。与上一条的可见相位完全相同：
+   * `leaseEscrowViewSchema` 里没有 owner，所以界面上区分不出这两条——这是待评审的选择。
+   */
+  agentOwner: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[1].machine.id,
+    escrowId: "les_55555555",
+    chatId: demoEscrowTargets.group.chatId,
+    targetAgentProfileId: demoEscrowProfiles.writer,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T09:00:00.000Z",
+    escrowGeneration: 6,
+    timeout: {
+      deadlineAt: "2026-10-18T09:30:00.000Z",
+      notifiedAt: "2026-10-18T09:30:00.000Z",
+      escalatedAt: null,
+      awaitingHandling: true,
+      ownerAutoAttemptsPaused: false,
+    },
+  },
+  /** 已升级：owner 过了升级时限仍未处理，自动尝试已暂停（`escalatedAt !== null` 等价）。 */
+  escalated: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[2].machine.id,
+    escrowId: "les_66666666",
+    chatId: demoEscrowTargets.group.chatId,
+    targetAgentProfileId: null,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T09:00:00.000Z",
+    escrowGeneration: 6,
+    timeout: {
+      deadlineAt: "2026-10-18T09:30:00.000Z",
+      notifiedAt: "2026-10-18T09:30:00.000Z",
+      escalatedAt: "2026-10-18T11:30:00.000Z",
+      awaitingHandling: true,
+      ownerAutoAttemptsPaused: true,
+    },
+  },
+  /** 等待中：还没到挂靠时限，申请方拿不到的原因只是「挂靠待处理」。 */
+  waiting: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[3].machine.id,
+    escrowId: "les_77777777",
+    chatId: demoEscrowTargets.channel.chatId,
+    targetAgentProfileId: demoEscrowProfiles.writer,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T09:00:00.000Z",
+    escrowGeneration: 6,
+    timeout: {
+      deadlineAt: "2026-10-18T09:30:00.000Z",
+      notifiedAt: null,
+      escalatedAt: null,
+      awaitingHandling: false,
+      ownerAutoAttemptsPaused: false,
+    },
+  },
+};
+
+/**
+ * 「挂靠超时」演示场景的五条事实。前四条各带一个活跃挂靠；第五条是领取之后的样子：
+ * 挂靠关闭、代次推进到领取代次、`escrow` 为 null，超时事实随之消失。
+ */
+export const demoTimeoutSceneLeases: LeaseView[] = [
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[0].machine.id,
+    generation: 6,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoTimeoutEscrows.humanOwner,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[1].machine.id,
+    generation: 6,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoTimeoutEscrows.agentOwner,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[2].machine.id,
+    generation: 6,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoTimeoutEscrows.escalated,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[3].machine.id,
+    generation: 6,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoTimeoutEscrows.waiting,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[4].machine.id,
+    generation: 8,
+    state: "held",
+    holderInstanceId: demoInstanceIds.sibling,
+    changedAt: "2026-10-18T09:12:00.000Z",
+    pendingMutationId: null,
+    escrow: null,
+  },
+];
+
+/**
  * 演示用的挂靠命令：只覆盖演示需要的分支，代次推进与服务端一致
  * （挂靠 / 领取 / 撤销各推进一代）。终端状态的挂靠不再留在 `LeaseView` 上。
  */

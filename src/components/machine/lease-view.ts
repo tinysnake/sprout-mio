@@ -6,6 +6,7 @@ import type {
   RemoteOperation,
 } from "../../contracts/remote";
 import type { StatusTone } from "./machine-view";
+import { leaseTimeoutSuffix } from "./lease-timeout-view";
 
 /**
  * 租约与远端操作的呈现映射。这里的函数只做投影：输入是
@@ -182,10 +183,16 @@ export function liveEscrowOf(lease: LeaseView): LeaseEscrowView | null {
 /**
  * 状态位：挂靠中替代持有中。租约仍由原持有者占着，但对外的状态只有一条，
  * 不并列「持有中 · 代次 N」，也不再解释持有者能做什么（挂靠已交出操作权）。
+ *
+ * 超时事实并入状态位本身：超时的挂靠必须一眼看出「它超时了、还没人处理」，
+ * 不能在任何页面上读成空闲。相位取自契约的 `timeout`，不用客户端时钟推算。
  */
 export function leaseStatusLabel(lease: LeaseView): LeaseLabel {
   const escrow = liveEscrowOf(lease);
-  return escrow ? escrowStateLabel(escrow.state) : leaseStateLabel(lease.state);
+  if (!escrow) return leaseStateLabel(lease.state);
+  const base = escrowStateLabel(escrow.state);
+  const suffix = leaseTimeoutSuffix(escrow.timeout);
+  return suffix === "" ? base : { ...base, label: `${base.label}${suffix}` };
 }
 
 /** 本 Project 里处于挂靠中的租约。 */

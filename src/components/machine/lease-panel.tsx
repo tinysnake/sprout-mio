@@ -22,6 +22,7 @@ import {
   type EscrowNames,
 } from "./lease-view";
 import { LeaseFencingFacts, type FencingSnapshot } from "../info-hub/lease-fencing-facts";
+import { LeaseTimeoutFacts } from "./lease-timeout-facts";
 import { StatusLine } from "./machine-list";
 import { ResultError } from "../project/result-error";
 import { Button } from "../ui/button";
@@ -149,6 +150,14 @@ export function LeaseOverview({
                     {/* 发起挂靠的分身恒等于当时的持有者（leaseViewSchema 的 superRefine），所以名称直接用 holder。 */}
                     {escrowTargetLabel(escrow, escrowNames)} · 由 {holder.name} 发起
                   </dd>
+                )}
+                {escrow && (
+                  <LeaseTimeoutFacts
+                    escrow={escrow}
+                    machineName={machineName(lease.machineId)}
+                    initiatorName={holder.name}
+                    testId={`lease-timeout-${lease.machineId}`}
+                  />
                 )}
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
                 {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。

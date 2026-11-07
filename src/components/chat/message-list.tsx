@@ -7,6 +7,7 @@ import { clockLabel } from "./format";
 import { RunActivityGroup } from "./run-activity";
 import { RUN_STATUS_LABELS } from "./run-status";
 import { senderKey } from "./chat-session-display";
+import { LEASE_TIMEOUT_SENDER_NAME, isLeaseTimeoutSender } from "./lease-timeout-message";
 import { splitMessageSegments } from "./message-segments";
 import { SkillMark } from "./skill-mark";
 import type { MessageSkillSpan } from "../../contracts/skill";
@@ -58,10 +59,13 @@ export function MessageList({
   const renderItem = (message: Message, index: number) => {
     const human = message.senderKind === "human";
     const key = senderKey(message.senderKind, message.senderId);
-    const name =
-      senderNames?.get(key) ??
-      (human ? humanName || "你" : dmAgentName) ??
-      (human ? "Human" : "Agent");
+    // 挂靠超时提醒不是成员，所以既不是「历史发送者」，也不该被当成某个 Profile 的发言。
+    const systemNotice = isLeaseTimeoutSender(message.senderKind, message.senderId);
+    const name = systemNotice
+      ? LEASE_TIMEOUT_SENDER_NAME
+      : (senderNames?.get(key) ??
+        (human ? humanName || "你" : dmAgentName) ??
+        (human ? "Human" : "Agent"));
     const previous = messages[index - 1];
     const grouped =
       previous &&
@@ -69,7 +73,7 @@ export function MessageList({
       previous.senderId === message.senderId &&
       new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() <=
         GROUPING_WINDOW_MS;
-    const historical = knownSenders ? !knownSenders.has(key) : false;
+    const historical = knownSenders && !systemNotice ? !knownSenders.has(key) : false;
     const links = runFacts?.get(message.id) ?? [];
     const activityRecord = runActivityByMessage?.get(message.id);
     const activity = activityRecord?.activity;
@@ -116,7 +120,7 @@ export function MessageList({
               </time>
             </p>
           )}
-          {!human && !grouped && persona && (
+          {!human && !grouped && !systemNotice && persona && (
             <p data-testid="message-persona" className="mb-2 text-[10px] text-muted-foreground">
               {persona}
             </p>
@@ -131,7 +135,7 @@ export function MessageList({
           >
             <MessageBody body={message.body} mentions={message.mentions} skills={message.skills} />
           </p>
-          {!human && (
+          {!human && !systemNotice && (
             <p data-testid="message-run-links" className="mt-1 text-[10px] text-muted-foreground">
               {links.length === 0 ? (
                 activityRecord ? (
