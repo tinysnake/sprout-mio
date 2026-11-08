@@ -86,7 +86,7 @@ function ProjectSettingsPage() {
     );
   return (
     <InfoHubLiveProvider
-      projectId={Route.useParams().projectId}
+      projectId={projectId}
       query={SETTINGS_LIVE_QUERY}
       refresh={(input, signal) => unwrapRefreshResult(refreshInfoHubFn({ data: input, signal }))}
     >
