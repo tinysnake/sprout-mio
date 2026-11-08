@@ -160,7 +160,7 @@ function ProjectSettingsView() {
             }
             onSaved={invalidate}
           />
-          <WebhookSettings projectId={projectId} />
+          <WebhookSettings key={projectId} projectId={projectId} />
           <WakeProviderSelect
             policy={project.data.wakePolicy}
             options={project.data.wakeProviderAvailability ?? []}

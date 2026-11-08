@@ -27,6 +27,7 @@ Human 在 Project settings 的 Webhook 自动化区域创建、编辑、启停�
 | 同时间戳漏掉最新历史、旧收据跟随规则换目标 | HTTP 历史排序测试与 core 快照、关联测试 |
 | SQLite NULL、外键或旧数据迁移回归 | `tests/automation-migration.test.ts` 的负例与有数据的 0036 升级测试 |
 | 权限撤销后仍发 prompt / steer、owner 自动换人、失败重发 | core 的实际 `executeRun` 协议 fixture 与最终权限边界测试 |
+| 保存响应跨规则覆盖配置 | 浏览器门禁延迟真实保存响应，检查期间禁止切换 / 新建 / 重复保存，恢复后分别核对两条规则的持久配置 |
 | 系统来源误显示 Agent 身份或人设 | `tests/run-activity-ui.test.ts` 与 source Chat 截图 |
 | 无 session / 外部账号管理规则、页面目标候选越界 | `tests/fixtures/webhook-live.mjs` 的真实 session server functions 与页面候选断言 |
 | UI 与真实 HTTP / runner 脱节 | 同一浏览器门禁从页面建规则，经 POST、源消息、真实 Pi runner 到 Chat 结果，并覆盖 Trial、重复事件、Group 指定 Agent 与无效 owner |

@@ -23,7 +23,7 @@ pnpm build
 bash scripts/verify/webhook-browser.sh
 ```
 
-`webhook-core` 覆盖 domain、HTTP 流、迁移和相关 Chat / Task 回归。浏览器门禁从页面创建规则，经真实 HTTP 到系统来源消息、run 和结果，并检查重复事件、Trial、停用、无 session / 外部账号管理拒绝、有效成员候选和 Group 目标。
+`webhook-core` 覆盖 domain、HTTP 流、迁移和相关 Chat / Task 回归。浏览器门禁从页面创建规则，经真实 HTTP 到系统来源消息、run 和结果，并检查重复事件、Trial、停用、无 session / 外部账号管理拒绝、有效成员候选和 Group 目标。延迟保存响应的场景还检查编辑锁与两条规则的持久目标，防止跨规则覆盖。
 
 产物在脚本输出的 `.verify/webhook-<timestamp>` 目录，包含 `result.json`、服务日志与桌面 / 手机截图。核对结果标记、HTTP 状态、消息及输入数量、页面错误、来源标记和目标候选。模型模式为 `model-fixture`，记录 `paid-model-calls=0`。
 

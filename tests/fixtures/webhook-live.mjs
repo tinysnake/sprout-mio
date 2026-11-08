@@ -345,6 +345,62 @@ try {
   });
   assert.equal(skipped.decision, "skipped");
   pass("group-explicit-agent-and-invalid-owner-skip");
+  const alternate = await call("createWebhookRuleFn", {
+    projectId: project.id,
+    name: "Race B",
+    instruction: "B instruction",
+    enabled: false,
+    action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
+  });
+  await page.reload({ waitUntil: "networkidle" });
+  await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).click();
+  await ui.getByLabel("Instruction").fill("Saved A instruction");
+  const saveGate = Promise.withResolvers();
+  const saveReceived = Promise.withResolvers();
+  const updateUrl = `**/_serverFn/${ids.updateWebhookRuleFn}`;
+  await page.route(updateUrl, async (route) => {
+    const response = await route.fetch();
+    saveReceived.resolve(undefined);
+    await saveGate.promise;
+    await route.fulfill({ response });
+  });
+  await ui.getByRole("button", { name: "保存", exact: true }).click();
+  await saveReceived.promise;
+  try {
+    assert(
+      await ui.getByRole("button", { name: "Race B · 停用", exact: true }).isDisabled(),
+      "cannot switch rules while save response is pending",
+    );
+    assert(
+      await ui.getByRole("button", { name: "新建", exact: true }).isDisabled(),
+      "cannot start another draft while save response is pending",
+    );
+    assert(
+      await ui.getByRole("button", { name: "保存", exact: true }).isDisabled(),
+      "cannot submit a second save while response is pending",
+    );
+  } finally {
+    saveGate.resolve(undefined);
+  }
+  await until(
+    () => ui.getByRole("button", { name: "保存", exact: true }).isEnabled(),
+    "saved editor unlocked",
+  );
+  await page.unroute(updateUrl);
+  await ui.getByRole("button", { name: "Race B · 停用", exact: true }).click();
+  await ui.getByLabel("名称", { exact: true }).fill("Race B edited");
+  await ui.getByRole("button", { name: "保存", exact: true }).click();
+  await ui.getByRole("button", { name: "Race B edited · 停用", exact: true }).waitFor();
+  const afterRace = await call("listWebhookRulesFn", { projectId: project.id });
+  const savedA = afterRace.find((item) => item.id === rule.id);
+  const savedB = afterRace.find((item) => item.id === alternate.rule.id);
+  assert.equal(savedA.name, "Browser hook");
+  assert.equal(savedA.instruction, "Saved A instruction");
+  assert.deepEqual(savedA.action, rule.action);
+  assert.equal(savedB.name, "Race B edited");
+  assert.equal(savedB.instruction, "B instruction");
+  assert.deepEqual(savedB.action, alternate.rule.action);
+  pass("browser-delayed-save-keeps-rule-identity");
   await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).click();
   await ui.getByText("disabled", { exact: false }).first().waitFor();
   await page.screenshot({ path: join(directory, "settings-desktop.png"), fullPage: true });

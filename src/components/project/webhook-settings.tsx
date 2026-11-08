@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import type { WebhookRule, WebhookAction, WebhookRuleDraft } from "../../contracts/automation";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
@@ -36,6 +36,8 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [payload, setPayload] = useState('{"message":"hello"}');
   const [notice, setNotice] = useState("");
+  const [pending, setPending] = useState(false);
+  const selectionVersion = useRef(0);
   const refresh = async () => {
     const result = await listWebhookRulesFn({ data: { projectId } });
     if (result.ok) setRules(result.data);
@@ -81,33 +83,47 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
           }
         : null;
   const save = async () => {
-    if (!action) return;
-    const data: WebhookRuleDraft = {
-      projectId,
-      name: draft.name,
-      instruction: draft.instruction,
-      enabled: draft.enabled,
-      action,
-    };
-    const result = current
-      ? await updateWebhookRuleFn({
-          data: { ...data, ruleId: current.id, expectedRevision: current.revision },
-        })
-      : await createWebhookRuleFn({ data });
-    if (!result.ok) {
-      setNotice(result.error.message);
-      return;
+    if (!action || pending) return;
+    setPending(true);
+    try {
+      const data: WebhookRuleDraft = {
+        projectId,
+        name: draft.name,
+        instruction: draft.instruction,
+        enabled: draft.enabled,
+        action,
+      };
+      const result = current
+        ? await updateWebhookRuleFn({
+            data: { ...data, ruleId: current.id, expectedRevision: current.revision },
+          })
+        : await createWebhookRuleFn({ data });
+      if (!result.ok) {
+        setNotice(result.error.message);
+        return;
+      }
+      if ("secret" in result.data) {
+        setSecret(result.data.secret);
+        setSecretRule(result.data.rule);
+      }
+      const savedRule = "rule" in result.data ? result.data.rule : result.data;
+      setSelected(savedRule.id);
+      setNotice("已保存");
+      await refresh();
+    } catch {
+      setNotice("请求未完成，请刷新规则确认状态后重试");
+    } finally {
+      setPending(false);
     }
-    if ("secret" in result.data) {
-      setSecret(result.data.secret);
-      setSecretRule(result.data.rule);
-    }
-    const savedRule = "rule" in result.data ? result.data.rule : result.data;
-    setSelected(savedRule.id);
-    setNotice("已保存");
-    await refresh();
+  };
+  const loadHistory = (ruleId: string) => {
+    const version = selectionVersion.current;
+    void webhookHistoryFn({ data: { ruleId } }).then((r) => {
+      if (r.ok && version === selectionVersion.current) setHistory(r.data);
+    });
   };
   const load = (rule: WebhookRule) => {
+    selectionVersion.current += 1;
     setNotice("");
     setHistory([]);
     setSelected(rule.id);
@@ -120,12 +136,11 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
       agentProfileId: "agentProfileId" in rule.action ? rule.action.agentProfileId : "",
     });
     setSecret("");
-    void webhookHistoryFn({ data: { ruleId: rule.id } }).then((r) => {
-      if (r.ok) setHistory(r.data);
-    });
+    loadHistory(rule.id);
   };
   const trial = async () => {
-    if (!current) return;
+    if (!current || pending) return;
+    setPending(true);
     try {
       const data: unknown = JSON.parse(payload);
       if (!data || typeof data !== "object" || Array.isArray(data))
@@ -138,11 +153,11 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
         },
       });
       setNotice(result.ok ? `Trial 已提交：${result.data.decision}` : result.error.message);
-      void webhookHistoryFn({ data: { ruleId: current.id } }).then((r) => {
-        if (r.ok) setHistory(r.data);
-      });
+      loadHistory(current.id);
     } catch {
-      setNotice("JSON 格式无效");
+      setNotice("Trial 未完成，请检查 JSON 并确认触发记录");
+    } finally {
+      setPending(false);
     }
   };
   return (
@@ -150,7 +165,12 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
       title="Webhook 自动化"
       description="可信来源 POST JSON object；每个事件由 Event ID 幂等接收。Trial 会真实提交到所选 Chat。"
     >
-      <div className="space-y-4" data-testid="webhook-settings">
+      <fieldset
+        disabled={pending}
+        className="space-y-4"
+        data-testid="webhook-settings"
+        aria-label="Webhook 规则"
+      >
         <div className="flex flex-wrap gap-2">
           {rules.map((rule) => (
             <button
@@ -166,6 +186,9 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
             type="button"
             className="underline"
             onClick={() => {
+              selectionVersion.current += 1;
+              setHistory([]);
+              setNotice("");
               setSelected("");
               setSecret("");
               setDraft({
@@ -314,7 +337,7 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
             </ol>
           </>
         )}
-      </div>
+      </fieldset>
     </SettingsSection>
   );
 }
