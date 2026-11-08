@@ -1,14 +1,14 @@
 import { and, eq } from "drizzle-orm";
-import type { WebhookAction } from "../contracts/automation";
+import type { AutomationAction } from "../contracts/automation";
 import { db } from "../db";
 import { chatEffectiveMember, projectMember } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { getChat, ChatError } from "./chat";
 import { controlFor } from "./chat-schedule";
 
-export function resolveWebhookTarget(
+export function resolveAutomationTarget(
   projectId: string,
-  action: WebhookAction,
+  action: AutomationAction,
   ctx: ProjectContext,
 ): { chatId: string; agentProfileId: string } | { reason: string } {
   try {

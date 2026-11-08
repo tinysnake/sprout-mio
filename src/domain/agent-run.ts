@@ -1,3 +1,4 @@
+import { automationSourceFor } from "./automation-source";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type {
   AgentRun,
@@ -522,7 +523,7 @@ export function appendAutomationRunInput(
     {
       ...saved,
       senderKind: "automation",
-      automationSource: { kind: "project_webhook", triggerId: saved.automationTriggerId },
+      automationSource: automationSourceFor(saved.automationTriggerId),
       taskRecord: undefined,
       createdAt: saved.createdAt.toISOString(),
       mentions: [],

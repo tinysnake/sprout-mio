@@ -1,3 +1,4 @@
+import { automationSourceFor } from "./automation-source";
 import { signalScheduleChange } from "./chat-schedule";
 import { enqueueMessageWake } from "./message-wake";
 import { and, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
@@ -103,7 +104,7 @@ function toMessage(
     return {
       ...identity,
       senderKind: "automation",
-      automationSource: { kind: "project_webhook", triggerId: row.automationTriggerId },
+      automationSource: automationSourceFor(row.automationTriggerId),
       mentions: [],
       skills: [],
     };

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect } from "effect";
 import { eq } from "drizzle-orm";
-import type { WebhookAction, WebhookRule } from "../src/contracts/automation";
+import type { AutomationAction, WebhookRule } from "../src/contracts/automation";
 import type { ProjectContext } from "../src/domain/access";
 
 const directory = mkdtempSync(join(tmpdir(), "webhook-core-"));
@@ -54,7 +54,7 @@ function group(owner: "human" | "agent" = "agent") {
     human,
   );
 }
-function rule(action: WebhookAction) {
+function rule(action: AutomationAction) {
   return automation.createWebhookRule(
     {
       projectId: project.id,
@@ -251,7 +251,7 @@ describe("Project webhook admission and single Chat input path", () => {
     (kind) => {
       const current =
         kind === "dm_agent" ? chats.createDirectChat(project.id, beta.id, ctx).chat : group();
-      const action: WebhookAction =
+      const action: AutomationAction =
         kind === "group_owner"
           ? { kind, chatId: current.id }
           : { kind, chatId: current.id, agentProfileId: beta.id };

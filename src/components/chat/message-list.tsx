@@ -64,7 +64,11 @@ export function MessageList({
         ? `automation:${message.senderId}`
         : senderKey(message.senderKind, message.senderId);
     const name =
-      (source ? "Project webhook" : senderNames?.get(key)) ??
+      (message.senderKind === "automation"
+        ? message.automationSource.kind === "project_cron"
+          ? "Project cron"
+          : "Project webhook"
+        : senderNames?.get(key)) ??
       (human ? humanName || "你" : dmAgentName) ??
       (human ? "Human" : "Agent");
     const previous = messages[index - 1];

@@ -1,4 +1,4 @@
-import type { WebhookAction } from "../contracts/automation";
+import type { AutomationAction } from "../contracts/automation";
 import type { TurnContextRecord } from "../contracts/turn-context";
 import { sql } from "drizzle-orm";
 import {
@@ -297,8 +297,14 @@ export const webhookRule = sqliteTable(
     enabled: integer("enabled", { mode: "boolean" }).notNull(),
     revision: integer("revision").notNull(),
     instruction: text("instruction").notNull(),
-    action: text("action", { mode: "json" }).$type<WebhookAction>().notNull(),
-    secretDigest: text("secret_digest").notNull(),
+    action: text("action", { mode: "json" }).$type<AutomationAction>().notNull(),
+    source: text("source", { enum: ["webhook", "cron"] })
+      .notNull()
+      .default("webhook"),
+    secretDigest: text("secret_digest"),
+    expression: text("expression"),
+    timezone: text("timezone"),
+    nextAt: integer("next_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -307,8 +313,9 @@ export const webhookRule = sqliteTable(
     check("webhook_rule_revision_check", sql`typeof(${t.revision})='integer' and ${t.revision}>=0`),
     check(
       "webhook_rule_secret_check",
-      sql`length(${t.secretDigest})=64 and ${t.secretDigest} not glob '*[^0-9a-f]*'`,
+      sql`coalesce((${t.source}='webhook' and length(${t.secretDigest})=64 and ${t.secretDigest} not glob '*[^0-9a-f]*' and ${t.expression} is null and ${t.timezone} is null and ${t.nextAt} is null) or (${t.source}='cron' and ${t.secretDigest} is null and length(trim(${t.expression}))>0 and length(trim(${t.timezone}))>0 and ((${t.enabled}=1 and typeof(${t.nextAt})='integer') or (${t.enabled}=0 and ${t.nextAt} is null))),0)`,
     ),
+    check("automation_source_check", sql`${t.source} in ('webhook','cron')`),
     check(
       "webhook_rule_action_check",
       sql`json_valid(${t.action}) and coalesce(json_extract(${t.action}, '$.kind') in ('dm_agent','group_agent','group_owner') and json_type(${t.action}, '$.chatId')='text' and (json_extract(${t.action}, '$.kind')='group_owner' or json_type(${t.action}, '$.agentProfileId')='text'),0)`,
@@ -325,13 +332,17 @@ export const webhookTrigger = sqliteTable(
     mode: text("mode", { enum: ["live", "trial"] }).notNull(),
     eventId: text("event_id").notNull(),
     fingerprint: text("fingerprint").notNull(),
+    source: text("source", { enum: ["webhook", "cron"] })
+      .notNull()
+      .default("webhook"),
     snapshot: text("snapshot", { mode: "json" })
       .$type<{
         revision: number;
         instruction: string;
-        action: WebhookAction;
+        action: AutomationAction;
         enabled: boolean;
         createdBy: string;
+        cron?: { expression: string; timezone: string; scheduledAt: string | null };
       }>()
       .notNull(),
     decision: text("decision", { enum: ["accepted", "skipped"] }).notNull(),

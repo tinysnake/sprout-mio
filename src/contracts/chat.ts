@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { automationSourceSchema } from "./automation";
 import { agentProfileIdSchema } from "./agent";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
@@ -331,10 +332,7 @@ export const messageSchema = z
     }),
     messageBaseSchema.extend({
       senderKind: z.literal("automation"),
-      automationSource: z.strictObject({
-        kind: z.literal("project_webhook"),
-        triggerId: z.string().regex(appIdPattern(ID_PREFIXES.webhookTrigger)),
-      }),
+      automationSource: automationSourceSchema,
       taskRecord: z.never().optional(),
       mentions: z.tuple([]),
       skills: z.tuple([]),

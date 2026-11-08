@@ -113,7 +113,7 @@ export async function preparePiMessage(
     return seal(
       row.id,
       JSON.stringify({
-        origin: "project_webhook",
+        origin: trigger.source === "cron" ? "project_cron" : "project_webhook",
         ruleId: trigger.ruleId,
         triggerId: trigger.id,
         projectId: trigger.projectId,

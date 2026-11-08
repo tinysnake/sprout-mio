@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import type { WebhookRule, WebhookAction, WebhookRuleDraft } from "../../contracts/automation";
+import type { WebhookRule, AutomationAction, WebhookRuleDraft } from "../../contracts/automation";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { listChatMembersFn, listChatsFn } from "../../server/functions/chat";
 import { listAgentProfilesFn } from "../../server/functions/agent";
@@ -72,7 +72,7 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
   }, [draft.chatId]);
   const eligibleAgents = agents.filter((agent) => memberIds.includes(agent.id));
   const current = rules.find((r) => r.id === selected);
-  const action: WebhookAction | null =
+  const action: AutomationAction | null =
     draft.kind === "group_owner"
       ? { kind: "group_owner", chatId: draft.chatId }
       : draft.chatId && draft.agentProfileId

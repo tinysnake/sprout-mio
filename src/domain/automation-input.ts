@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db, sqlite } from "../db";
 import { agentInstance, agentRun, agentRunInput, message, webhookTrigger } from "../db/schema";
-import { resolveWebhookTarget } from "./automation-target";
+import { resolveAutomationTarget } from "./automation-target";
 
 function valid(runId: string, messageId: string): boolean {
   const run = db.select().from(agentRun).where(eq(agentRun.id, runId)).get();
@@ -34,7 +34,7 @@ function valid(runId: string, messageId: string): boolean {
     instance.projectId !== run.projectId
   )
     return false;
-  const target = resolveWebhookTarget(trigger.projectId, trigger.snapshot.action, {
+  const target = resolveAutomationTarget(trigger.projectId, trigger.snapshot.action, {
     userId: trigger.snapshot.createdBy,
     requestId: run.requestId,
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
-  webhookActionSchema,
+  automationActionSchema,
   webhookRuleDraftSchema,
   webhookTriggerSchema,
 } from "../src/contracts/automation";
@@ -15,17 +15,21 @@ const base = {
 
 describe("webhook action contracts", () => {
   it("requires an explicit recipient policy rather than accepting arbitrary sender or target data", () => {
-    expect(webhookActionSchema.parse({ kind: "dm_agent", chatId, agentProfileId })).toEqual({
+    expect(automationActionSchema.parse({ kind: "dm_agent", chatId, agentProfileId })).toEqual({
       kind: "dm_agent",
       chatId,
       agentProfileId,
     });
     expect(
-      webhookActionSchema.safeParse({ kind: "dm_agent", chatId, agentProfileId, senderId: "user" })
-        .success,
+      automationActionSchema.safeParse({
+        kind: "dm_agent",
+        chatId,
+        agentProfileId,
+        senderId: "user",
+      }).success,
     ).toBe(false);
     expect(
-      webhookActionSchema.safeParse({ kind: "group_owner", chatId, agentProfileId }).success,
+      automationActionSchema.safeParse({ kind: "group_owner", chatId, agentProfileId }).success,
     ).toBe(false);
   });
 
