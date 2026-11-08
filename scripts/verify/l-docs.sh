@@ -342,6 +342,15 @@ const checkP7Line = (line, label, source) => {
   check(targets.some(({ document }) => document && path.resolve(document.file) === p7EvidenceFile), `${label}: missing docs/p7/summary.md evidence`);
   for (const { body } of targets) evidenceIn(body, label);
 };
+// P8 与 P7 同一处置：行内证据必须指向 docs/p8/summary.md 的真实小节，那一节自己带可解析提交与
+// 存在的重跑命令；缺席的交付不能靠别的提交充数。Human 确认只有落在
+// docs/p8/summary.md#human-体验确认 里的确认记录才算数，计划里的勾选只是结果。
+const p8EvidenceFile = path.resolve('docs/p8/summary.md');
+const checkP8Line = (line, label, source) => {
+  const targets = resolveEvidence(line, label, source, 'docs/p8');
+  check(targets.some(({ document }) => document && path.resolve(document.file) === p8EvidenceFile), `${label}: missing docs/p8/summary.md evidence`);
+  for (const { body } of targets) evidenceIn(body, label);
+};
 const functional = 'docs/development-plan-functional.md';
 const p4 = sectionOf(plan, 'P4', 2);
 const p4a = sectionOf(p4, 'P4a', 3);
@@ -560,10 +569,21 @@ if (p7HumanBox?.state === 'x') {
   check(Boolean(record) && commitExists(record), `I-P7 human acceptance version ${record || '(none)'} does not resolve`);
   check(!/^[-*]\s*待确认/m.test(body), 'I-P7 human acceptance must not treat pending confirmation as confirmed');
 }
-// P8 及以后仍未开工：任何勾选都说明计划与证据脱节。
-for (const stage of ['I-P8']) {
-  const boxes = boxesIn(sectionOf(packagePlan, stage, 3));
-  for (const box of boxes) check(box.state === ' ', `${stage} checkbox must remain unchecked: ${box.text}`);
+const integrationP8Boxes = boxesIn(sectionOf(packagePlan, 'I-P8', 3));
+check(integrationP8Boxes.length === 4, `I-P8 must contain four checkboxes, found ${integrationP8Boxes.length}`);
+for (const [index, box] of integrationP8Boxes.entries()) {
+  if (index < 3 && box.state === 'x') checkP8Line(box.text, `I-P8 checkbox ${index + 1}`, packagePlanPath);
+}
+const p8SummaryDoc = documents.get(path.resolve('docs/p8/summary.md'));
+const p8HumanBox = integrationP8Boxes[3];
+if (p8HumanBox?.state === 'x') {
+  const body = p8SummaryDoc?.sections.get('human-体验确认') ?? '';
+  check(Boolean(p8SummaryDoc), 'I-P8 human acceptance requires docs/p8/summary.md');
+  check(Boolean(body), 'I-P8 human acceptance requires docs/p8/summary.md#human-体验确认');
+  const record = body.match(/^- 确认记录：Human 亲自体验确认通过，版本 `([0-9a-f]{7,40})`$/m)?.[1] ?? '';
+  check(Boolean(record), 'I-P8 human acceptance requires an explicit confirmation record');
+  check(Boolean(record) && commitExists(record), `I-P8 human acceptance version ${record || '(none)'} does not resolve`);
+  check(!/^[-*]\s*待确认/m.test(body), 'I-P8 human acceptance must not treat pending confirmation as confirmed');
 }
 const uiPlan = fs.readFileSync('docs/development-plan-ui.md', 'utf8');
 const uiP4bBoxes = boxesIn(sectionOf(uiPlan, 'UI-P4b', 2));
@@ -624,7 +644,6 @@ for (const [index, box] of r1Boxes.entries()) {
   }
 }
 let futureCount = 0;
-const undelivered = ['P7', 'P8'];
 for (const stage of ['P5', 'P7', 'P8']) {
   const section = plan.match(new RegExp(`^## ${stage} [^\\n]*\\n([\\s\\S]*?)(?=^## |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
   const futureBoxes = [...section.matchAll(/^- \[([^\]])\] /gm)];
@@ -672,8 +691,8 @@ console.log(`PASS P4a accepts evidence-linked commits and commands; unchecked=${
 console.log(`PASS P4b and UI-P4b accept checked rows with resolvable evidence; functional checked=${p4bBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4bBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4bBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4c and UI-P4c accept checked rows with resolvable evidence; functional checked=${p4cBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4cBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4cBoxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS P4d and UI-P4d accept checked rows with resolvable evidence; functional checked=${p4dBoxes.filter((box) => box.state === 'x').length} ui checked=${uiP4dBoxes.filter((box) => box.state === 'x').length} integration checked=${integrationP4dBoxes.filter((box) => box.state === 'x').length}`);
-console.log(`PASS I-P6a/I-P6b/I-P6c accept evidence-linked rows while their human confirmations stay unchecked=${integrationP6aBoxes.filter((box) => box.state !== 'x').length}/${integrationP6bBoxes.filter((box) => box.state !== 'x').length}/${integrationP6cBoxes.filter((box) => box.state !== 'x').length}; I-P7/UI-P7 accept evidence-linked rows while their human confirmations stay unchecked`);
-console.log(`PASS P6a accepts evidence-linked rows; P6b/P6c to P8 checkboxes remain unchecked=${futureCount} (P5a, P5b and P6a validated above)`);
+console.log(`PASS I-P6a/I-P6b/I-P6c accept evidence-linked rows while their human confirmations stay unchecked=${integrationP6aBoxes.filter((box) => box.state !== 'x').length}/${integrationP6bBoxes.filter((box) => box.state !== 'x').length}/${integrationP6cBoxes.filter((box) => box.state !== 'x').length}; I-P7/UI-P7/I-P8 accept evidence-linked rows with resolvable human confirmations`);
+console.log(`PASS P6a accepts evidence-linked rows; functional P5/P7/P8 rows stay unchecked=${futureCount} (delivery is recorded in the package plan: P5a, P5b and P6a validated above)`);
 console.log(`PASS R1 checked rows carry docs/r1 evidence with commits and rerun commands; checked=${r1Boxes.filter((box) => box.state === 'x').length}`);
 console.log(`PASS external HTTP links declared only, no network requests; P2 links=${totals.external}`);
 console.log('PASS l-docs all checks passed');
