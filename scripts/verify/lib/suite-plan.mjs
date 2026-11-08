@@ -30,6 +30,8 @@ function plan(seconds, resources, preparation = [], sandbox = false) {
 export const MANUAL_GATES = Object.freeze(["p6a-live-routing"]);
 
 export const SUITE_PLAN = Object.freeze({
+  "assistant-core": plan(8, { unit: 1 }),
+  "assistant-browser": plan(40, { browser: 1, sdk: 1 }, server),
   "cron-core": plan(8, { unit: 1 }),
   "cron-browser": plan(100, { browser: 1, sdk: 1 }, server),
   "webhook-core": plan(6, { unit: 1 }),

@@ -2,6 +2,8 @@ import { globSync } from "node:fs";
 
 export const UNIT_TARGETS = Object.freeze({
   ci: [
+    "tests/assistant-core.test.ts",
+    "tests/assistant-gateway.test.ts",
     "tests/cron-core.test.ts",
     "tests/cron-migration.test.ts",
     "tests/cron-schedule.test.ts",

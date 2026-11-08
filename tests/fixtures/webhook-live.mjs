@@ -10,11 +10,17 @@ import Database from "better-sqlite3";
 import { chromium } from "playwright";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
 import { verifyCronBrowser } from "./cron-browser.mjs";
+import { verifyAssistantBrowser } from "./assistant-browser.mjs";
+const assistantMode = process.argv.includes("--assistant");
 const cronMode = process.argv.includes("--cron");
 
 const directory = resolve(
-  (cronMode ? process.env.SPROUT_CRON_EVIDENCE_DIR : process.env.SPROUT_WEBHOOK_EVIDENCE_DIR) ??
-    `.verify/${cronMode ? "cron" : "webhook"}-${Date.now()}`,
+  (assistantMode
+    ? process.env.SPROUT_ASSISTANT_EVIDENCE_DIR
+    : cronMode
+      ? process.env.SPROUT_CRON_EVIDENCE_DIR
+      : process.env.SPROUT_WEBHOOK_EVIDENCE_DIR) ??
+    `.verify/${assistantMode ? "assistant" : cronMode ? "cron" : "webhook"}-${Date.now()}`,
 );
 mkdirSync(directory, { recursive: true, mode: 0o700 });
 console.log(`EVIDENCE ${directory}`);
@@ -183,7 +189,25 @@ try {
     console.error("PAGE ERROR", error.message);
   });
   await page.goto(`${base}/projects/${project.id}/settings`, { waitUntil: "networkidle" });
-  if (cronMode) {
+  if (assistantMode) {
+    await verifyAssistantBrowser({
+      page,
+      db,
+      fixture,
+      project,
+      alpha,
+      beta,
+      dm: dm.chat,
+      group,
+      humanId,
+      base,
+      directory,
+      call,
+      callResult,
+      until,
+      pass,
+    });
+  } else if (cronMode) {
     await verifyCronBrowser({
       page,
       db,

@@ -1,6 +1,6 @@
 # UI 开发专项计划
 
-> **当前编排从[开发总计划](development-plan.md)开始。** 一期 UI 执行记录已归档。首版界面随自动化与助理功能单元交付，webhook / cron 配置与来源展示已实现并完成浏览器技术验证，Human 体验尚未确认。
+> **当前编排从[开发总计划](development-plan.md)开始。** 一期 UI 执行记录已归档。首版界面随自动化与助理功能单元交付，webhook / cron 配置与来源展示、原生助理 DM 的提案和关注操作已实现并完成浏览器技术验证，Human 体验尚未确认。
 
 P4–P7 的带版本 Human 确认保留在各章 summary。P7 已确认除 PWA 装机外的一期客户端体验；安装、独立窗口与离线体验延后到部署及 HTTPS 就绪后评审，原 UI-P7 第 3 条保持未勾。当前状态及其证据见[总计划](development-plan.md#一期交付状态)。
 
@@ -12,8 +12,8 @@ P4–P7 的带版本 Human 确认保留在各章 summary。P7 已确认除 PWA �
 
 - [x] Project 内的自动化入口，提供 webhook / cron 列表、配置、启停、试运行、触发记录及工作 Chat 跳转。首期每条规则只配置一个消息动作。Webhook 与 cron 技术交付完成；cron 显式展示时区与下一时点，历史提供原 Chat / run 链接。已做桌面 / 手机生产页面技术验证，Human UI 体验未确认。
 - [ ] 消息中明确展示系统来源与关联规则，Human 手动消息保持可区分。Project webhook / Project cron 来源标记与 Group 指定 Agent / owner 配置已实现；消息内直接展示关联规则的入口尚未实现。触发历史提供原 Chat 跳转。
-- [ ] 助理 profile 的模型、effort 与能力配置，以及 Project 内的普通助理 DM。
-- [ ] 具体目标和操作的提案展示、明确确认、已提交与失效状态，以及 watch 的查看和取消。
+- [x] 助理 profile 的独立模型、effort 与不可变 purpose，以及 Project 内的普通助理 DM。复用 Agent 表单和 Chat；能力由实际注册工具与服务端 policy 限制。技术验证见[原生助理](feature-map/assistant.md)，Human 体验未确认。
+- [x] 具体 Chat / Agent 与操作的提案展示、明确确认、已提交 / 过期 / 撤销状态，以及 watch 的激活、查看、取消和间隔调整。生产页面 fixture 已验证 Human 操作、原生通知、实际 run 链接及桌面 / 手机截图，Human 体验未确认。
 - [ ] 飞书身份与助理 DM 绑定的选择、切换、解绑和异常状态。绑定失效不自动切换目标，重连不自动补发历史。
 
 新页面形状遵循[页面设计约定](project-conventions.md#页面设计与实现的分工)，具体组件与样式在实施前读取前端基线和开发约定。页面交付按[Human Review](human-review.md)在真实应用中验证，技术检查与 Human 确认分别记录。

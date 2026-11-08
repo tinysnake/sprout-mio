@@ -118,6 +118,7 @@ export function ChatThread({
   onRestoreDraft,
   inputRef,
   titleEditor,
+  assistantPanel,
   displayTitle,
   subtitle,
   kind,
@@ -162,6 +163,7 @@ export function ChatThread({
   inputRef?: Ref<HTMLTextAreaElement>;
   /** 重命名入口由容器注入：正式路由接 server function，演示接本地回调。 */
   titleEditor?: ReactNode;
+  assistantPanel?: ReactNode;
   displayTitle?: string;
   subtitle?: string;
   kind?: ChatKind;
@@ -390,6 +392,7 @@ export function ChatThread({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-7 pt-5.75 pb-4.5 max-desktop:px-3.75 max-desktop:py-5 [overflow-anchor:none]"
       >
+        {assistantPanel}
         {runActivitiesError && (
           <p
             role="status"

@@ -1,6 +1,6 @@
 # 开发总计划
 
-> **当前工作入口。** 一期已交付，历史计划已归档。Project webhook 与 cron 单元已实现并完成专项技术验证，Human UI 体验尚未确认。个人助理与飞书按[首版推进顺序](#首版推进顺序)继续。
+> **当前工作入口。** 一期已交付，历史计划已归档。Project webhook、cron 与原生个人助理单元已实现并完成专项技术验证，Human UI 体验尚未确认。飞书等后续单元按[首版推进顺序](#首版推进顺序)继续。
 
 ## 一期交付状态
 
@@ -29,7 +29,7 @@ P3 之后又合入了宿主 skills 默认继承（`7416b1b`）及正文内联技
 
 ## 后续阶段尚待设计
 
-webhook、cron、个人助理与 Feishu 的产品方向已形成，进入首版范围和共享契约整理。语音保留共用边界，具体实现留到后续。常规选择按[早期版本的决策方式](project-conventions.md#早期版本的决策方式)由执行者直接落实，不以逐项询问 Human 为开工前提。
+webhook、cron 与原生个人助理已有契约、实现和专项技术验证；Feishu 的产品方向已形成，具体 adapter 仍待设计与实现。语音保留共用边界，具体实现留到后续。常规选择按[早期版本的决策方式](project-conventions.md#早期版本的决策方式)由执行者直接落实，不以逐项询问 Human 为开工前提。
 
 - [自动化决策草案](automation-decisions.md)记录 webhook、cron、工作提交与结果投递的边界。
 - [个人助理与 channel 决策草案](personal-assistant-decisions.md)记录助理、会话、入口、观察、委派和通知的关系。
@@ -65,7 +65,7 @@ webhook、cron、个人助理与 Feishu 的产品方向已形成，进入首版�
 | --- | --- | --- |
 | Project 内 webhook 消息动作 | 先确定规则、系统来源、目标路由与触发记录契约，再贯通配置、认证、基本去重、DM / Group 唤醒及记录查看 | 有效事件只提交一次；未授权事件不提交；Agent 能识别系统来源；DM、显式 @ 与 owner 路由正确，现有人类消息不回归。已完成 domain/schema、HTTP ingress、Project 设置 UI 和生产服务浏览器链路验证。实际 Pi runner 使用零付费模型 fixture；Human UI 体验未确认。契约与证据入口见 [Webhook](webhook-core.md) |
 | Cron 接入相同消息动作 | 复用上一单元的规则与提交路径，增加时区、下一时点、重叠跳过和离线不补做 | 已实现并完成 schema / domain / runtime / UI 专项技术验证：实际墙钟定时触发经生产服务与真实 Pi runner 的回环模型 fixture；同规则重叠跳过、停用不撤回、重启不补跑由边界测试覆盖。Human UI 体验未确认，见 [Cron 契约](cron-core.md) |
-| Sprout 原生个人助理 | 复用现有 Agent profile 与 Project DM，补受限工具、跨 Project 观察、watch、提案确认、受控委派及通知 | 查询不越权；未确认不提交；重复确认只提交一次；watch 不依赖 Pi 常驻；完成后停止单个 run 的周期汇报 |
+| Sprout 原生个人助理 | 复用现有 Agent profile 与 Project DM，补受限工具、跨 Project 观察、watch、提案确认、受控委派及通知 | 已实现并完成专项技术验证：当前 Human 权限、目的隔离、单次确认、持久 watch、合并通知和实际下一轮 Pi context；生产 fixture 包含初始与运行中 steer 输入，零付费调用。Human UI 体验未确认，广泛集成复核由父线程完成。见[契约](assistant-core.md)与[功能证据](feature-map/assistant.md)。 |
 | 飞书 DM adapter | 依赖原生助理闭环，接身份核验、DM 绑定、接收去重、两端确认及统一投递 | 外部输入与 Sprout 共用同一 DM 历史；解绑立即停收停发；多端不重复执行；投递失败不重跑工作 |
 
 每个单元带上最小可用页面与实际验收，不先集中构建一套未来才使用的基础框架。新页面形状按[页面设计约定](project-conventions.md#页面设计与实现的分工)处理。功能细化见[功能计划](development-plan-functional.md#首版功能单元)，界面细化见[UI 计划](development-plan-ui.md#首版界面单元)。

@@ -11,6 +11,7 @@
 | 在当前上下文查看成员、Chat、Run 和租约事实 | [Info Hub](info-hub.md) | 项目和 Chat 的信息面板 |
 | 接入 Machine、查看健康状态、管理项目租约 | [Machine 与 Lease](machines-leases.md) | `/machines`、Machine 详情与租约页、Info Hub |
 | 发起远程命令、取消执行、查看执行日志与恢复结果 | [远程执行与日志](remote-execution.md) | Agent 远程工具、Run 的执行记录 |
+| 在 Project DM 使用原生助理观察、确认工作与关注通知 | [原生助理](assistant.md) | Agents 创建助理、Project DM 提案与 watch |
 | 在 Project 配置 webhook，通过外部事件唤醒 Agent 并查看结果 | [自动化](automation.md) | Project settings、外部 webhook POST、触发历史与 Chat |
 | 配置 MCP server，通过原生 extension 使用远程工具 | [MCP](mcp.md) | Machine 配置、Pi extension 的工具发现与调用 |
 

@@ -241,6 +241,18 @@ export async function startModelFixture({
           state.lastUserCount
         } latestUser=${JSON.stringify(userText.slice(0, 160))})`,
       );
+      if (plan.expectedTools)
+        assert.deepEqual(
+          input.tools.map((tool) => tool.function.name).sort(),
+          [...plan.expectedTools].sort(),
+          "actual model-exposed tool registry",
+        );
+      if (plan.expectedContextIds) {
+        const context = JSON.parse(userText.split("\n\n")[0]);
+        const encoded = JSON.stringify(context);
+        for (const id of plan.expectedContextIds)
+          assert(encoded.includes(id), `actual next model context includes native source ${id}`);
+      }
       if (!plan.started) {
         assert(users.length > state.lastUserCount, "armed turn requires a NEW user message");
         assert.equal(

@@ -19,7 +19,12 @@ import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { ResultError } from "../project/result-error";
 
-export type AgentFormValues = { name: string; jobTitle: string; persona: string };
+export type AgentFormValues = {
+  name: string;
+  jobTitle: string;
+  persona: string;
+  purpose: "worker" | "assistant";
+};
 
 function read(form: FormData, name: string): string {
   const value = form.get(name);
@@ -64,6 +69,7 @@ export function AgentFormDialog({
     try {
       const result = await submit({
         name: read(form, "name"),
+        purpose: read(form, "purpose") === "assistant" ? "assistant" : "worker",
         jobTitle: read(form, "jobTitle"),
         persona: read(form, "persona"),
       });
@@ -89,6 +95,18 @@ export function AgentFormDialog({
           <DialogDescription>名称必填；职位和人设可留空，创建后随时可编辑。</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} aria-busy={pending} className="flex flex-col gap-4">
+          <Field label="用途（创建后不可更改）" htmlFor="agent-purpose">
+            <select
+              id="agent-purpose"
+              name="purpose"
+              className="rounded-md border p-2"
+              disabled={pending}
+              defaultValue="worker"
+            >
+              <option value="worker">工作 Agent</option>
+              <option value="assistant">个人 Assistant（仅 Human DM）</option>
+            </select>
+          </Field>
           <Field label="名称" htmlFor="agent-name" error={fieldErrors.name}>
             <Input
               id="agent-name"

@@ -20,6 +20,7 @@ export function CreateAgentDialog({ onCreated }: { onCreated: (profile: AgentPro
           createAgentProfileFn({
             data: {
               name: values.name,
+              purpose: values.purpose,
               ...(values.jobTitle.trim() ? { jobTitle: values.jobTitle.trim() } : {}),
               persona: values.persona,
             },

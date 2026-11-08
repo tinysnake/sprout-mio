@@ -41,4 +41,4 @@ Cron 门禁还种入较早、没有回复关联的 failed run，并在已有较�
 - 门禁使用当前 checkout 的 production build。先构建，且不要在同一 checkout 并行执行会覆盖 `.output` 的脚本。数据库和服务端口由本次门禁隔离。
 - 系统来源不是 Chat member，也不获得 Agent 的权限。event 内的目标、mention 或 skill 文本不能改写配置的动作。
 - 技术链路使用真实 SDK / runner，但模型是 fixture。它不代表真实付费模型、公网提供方或 Human UI 体验已验收。
-- Webhook 与 cron 单元已实现并完成技术验证；Cron 门禁在 `.verify/cron-<timestamp>` 保存真实墙钟触发、Trial、实际 Pi runner 回环模型、桌面 / 手机设置与 Source Chat 证据。Human UI 体验未确认。助理、飞书、语音与一次性调度仍待后续单元。状态见[总计划](../development-plan.md#首版推进顺序)，细节见 [Webhook 契约](../webhook-core.md)与 [Cron 契约](../cron-core.md)。
+- Webhook 与 cron 单元已实现并完成技术验证；Cron 门禁在 `.verify/cron-<timestamp>` 保存真实墙钟触发、Trial、实际 Pi runner 回环模型、桌面 / 手机设置与 Source Chat 证据。Human UI 体验未确认。原生助理见[助理功能页](assistant.md)；飞书、语音与一次性调度仍待后续单元。状态见[总计划](../development-plan.md#首版推进顺序)，细节见 [Webhook 契约](../webhook-core.md)与 [Cron 契约](../cron-core.md)。

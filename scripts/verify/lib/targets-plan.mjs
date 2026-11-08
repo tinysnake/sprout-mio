@@ -18,6 +18,7 @@ export const CI_GROUPS = Object.freeze({
     "al-execution-exit-custody",
   ],
   api: [
+    "assistant-core",
     "cron-core",
     "webhook-core",
     "c-auth-rate-limit",
@@ -90,6 +91,8 @@ export const CI_GROUPS = Object.freeze({
 });
 
 export const LOCAL_GATES = Object.freeze({
+  "assistant-browser":
+    "真实已安装 Pi、生产原生助理确认与通知、下一轮 context receipt、桌面与手机；loopback fixture 零付费调用",
   "cron-browser":
     "真实已安装 Pi SDK、生产 wall-clock cron 与浏览器；loopback 模型 fixture，零付费调用",
   "webhook-browser": "真实已安装 Pi SDK、隔离生产 HTTP 与浏览器链路；本地模型 fixture，零付费调用",

@@ -14,6 +14,7 @@ import type { AppError, AppResult } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
+import { AssistantPanel } from "./assistant-panel";
 import type { ChatHistory } from "./chat-thread";
 import { useChatWindow } from "./use-chat-window";
 import type { ChatLiveFacts } from "./use-chat-live";
@@ -262,6 +263,11 @@ export function ChatPane({
           </Link>
         }
         chat={chat}
+        assistantPanel={
+          profile?.ok && profile.data.purpose === "assistant" ? (
+            <AssistantPanel chatId={chat.id} />
+          ) : undefined
+        }
         agentName={agentName}
         members={mentionMembers}
         profile={session.kind === "dm" ? profile : null}
