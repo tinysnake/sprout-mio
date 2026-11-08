@@ -24,6 +24,7 @@ export type OpenSession = {
    * 默认（缺省或 false）与 P3 相同：只加载 Sprout extension 与四个基础工具。
    */
   resources: InheritedResources;
+  purpose: "worker" | "assistant";
   profile: RunConfigSnapshot["profile"];
   remote: RemoteToolGrant;
 };
@@ -41,6 +42,7 @@ export type PiHostCommand =
   | { type: "abort" | "close"; id: string };
 
 const snapshotSchema = z.object({
+  purpose: z.enum(["worker", "assistant"]).optional(),
   model: z.string().min(1),
   provider: z.string().min(1),
   thinking: z.string().min(1),
@@ -68,6 +70,7 @@ const snapshotSchema = z.object({
   cwd: z.string().min(1),
   sdkVersion: z.string().min(1),
   profile: z.object({
+    purpose: z.enum(["worker", "assistant"]).optional(),
     id: z.string(),
     name: z.string(),
     persona: z.string(),

@@ -274,6 +274,27 @@
       "when": 1794132582199,
       "tag": "0038_project_cron",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1794141961256,
+      "tag": "0039_curvy_expediter",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1794142511331,
+      "tag": "0040_lively_swordsman",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1794144018689,
+      "tag": "0041_yummy_dagger",
+      "breakpoints": true
     }
   ]
 }

@@ -27,6 +27,7 @@ export const demoProfiles: AgentProfile[] = [
     persona:
       "负责整理上下文、拆解任务并盯住收口。回答先给结论，再给依据；不确定的事实必须标注来源。",
     harness: "pi",
+    purpose: "worker",
     createdBy: "demo-human",
     createdAt: "2026-09-28T01:00:00.000Z",
     updatedAt: "2026-10-16T03:20:00.000Z",
@@ -36,6 +37,7 @@ export const demoProfiles: AgentProfile[] = [
     name: "Repo 分析员",
     persona: "只读仓库事实，按 commit 与文件路径说明结论，不猜测未读取的代码。",
     harness: "pi",
+    purpose: "worker",
     createdBy: "demo-human",
     createdAt: "2026-10-02T05:10:00.000Z",
     updatedAt: "2026-10-02T05:10:00.000Z",
@@ -46,6 +48,7 @@ export const demoProfiles: AgentProfile[] = [
     jobTitle: "视觉与可访问性",
     persona: "核对浅暗主题、宽窄屏与键盘操作，发现问题先说明影响再给改法。",
     harness: "pi",
+    purpose: "worker",
     model: "claude-sonnet",
     effort: "high",
     createdBy: "demo-human",

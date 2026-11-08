@@ -41,7 +41,8 @@ export type RunInputCancelReason =
   | "human_stop"
   | "group_dissolved"
   | "task_context_changed"
-  | "automation_context_changed";
+  | "automation_context_changed"
+  | "assistant_context_changed";
 
 export type RunResourceSnapshot = {
   /** 宿主 skills 与 prompt templates 是否进入本轮 loader。 */
@@ -78,7 +79,9 @@ export type RunConfigSnapshot = {
   resources?: RunResourceSnapshot;
   /** 本轮实际使用的仓库工作副本与 commit；Project 未配置仓库时缺省。 */
   repo?: RunRepoSnapshot;
+  purpose?: "worker" | "assistant";
   profile: {
+    purpose?: "worker" | "assistant";
     id: string;
     name: string;
     persona: string;

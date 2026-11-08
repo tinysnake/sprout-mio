@@ -48,7 +48,15 @@ it("0038 preserves populated webhook rows/identities and enforces source/config/
     const { sqlite } = openDatabase(file);
     try {
       for (const table of ["message", "agent_run_input", "agent_run", "task"])
-        expect(rows(sqlite, table)).toEqual(old[table]);
+        expect(rows(sqlite, table)).toEqual(
+          table === "message"
+            ? old[table].map((row) => ({
+                ...(row as object),
+                assistant_event_id: null,
+                assistant_proposal_id: null,
+              }))
+            : old[table],
+        );
       expect(rows(sqlite, "webhook_rule")).toEqual(
         old.webhook_rule.map((row) => ({
           ...(row as object),

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { AutomationAction } from "../contracts/automation";
 import { db } from "../db";
-import { chatEffectiveMember, projectMember } from "../db/schema";
+import { agentProfile, chatEffectiveMember, projectMember } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { getChat, ChatError } from "./chat";
 import { controlFor } from "./chat-schedule";
@@ -48,6 +48,11 @@ export function resolveAutomationTarget(
       )
       .get();
     if (!participant || !member) return { reason: "agent_not_participating" };
+    if (
+      db.select().from(agentProfile).where(eq(agentProfile.id, agentProfileId)).get()?.purpose !==
+      "worker"
+    )
+      return { reason: "agent_not_worker" };
     return { chatId: current.id, agentProfileId };
   } catch (error) {
     if (error instanceof ProjectAccessError || error instanceof ChatError)

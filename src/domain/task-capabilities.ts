@@ -60,9 +60,16 @@ export function taskResponsibilityFacts(chatId: string, ctx: ProjectContext): Ta
     .select({ name: agentProfile.name })
     .from(agentProfile)
     .innerJoin(projectMember, eq(projectMember.agentProfileId, agentProfile.id))
-    .where(and(eq(agentProfile.id, recipient), eq(projectMember.projectId, row.projectId)))
+    .where(
+      and(
+        eq(agentProfile.id, recipient),
+        eq(projectMember.projectId, row.projectId),
+        eq(agentProfile.purpose, "worker"),
+      ),
+    )
     .get();
-  if (!profile) throw new TaskError("task_assignment_invalid", "分身已移出 Project");
+  if (!profile)
+    throw new TaskError("task_assignment_invalid", "承接分身必须是 Project 内的工作 Agent");
   const instance = db
     .select()
     .from(agentInstance)

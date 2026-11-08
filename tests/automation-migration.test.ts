@@ -78,10 +78,18 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
       const after = openDatabase(file);
       try {
         expect(rows(after, "message")).toEqual(
-          messages.map((row) => ({ ...(row as object), automation_trigger_id: null })),
+          messages.map((row) => ({
+            ...(row as object),
+            automation_trigger_id: null,
+            assistant_event_id: null,
+            assistant_proposal_id: null,
+          })),
         );
         expect(rows(after, "agent_run_input")).toEqual(inputs);
         expect(rows(after, "agent_run")).toEqual(runs);
+        expect(
+          after.sqlite.prepare("SELECT purpose FROM agent_profile WHERE id='agent'").get(),
+        ).toEqual({ purpose: "worker" });
         expect(rows(after, "task")).toEqual(tasks);
         expect(
           after.sqlite

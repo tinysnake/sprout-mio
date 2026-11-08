@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { agentRun, leaseMutation, turnContext } from "../db/schema";
+import { agentRun, agentProfile, leaseMutation, message, turnContext } from "../db/schema";
 import { INFO_HUB_LIMITS } from "../contracts/info-hub";
 import {
   turnContextReadInputSchema,
@@ -84,8 +84,12 @@ export function captureTurnContext(
     const agent = hub.agents.agents.find((agent) => agent.agentProfileId === scope.agentProfileId);
     const run = hub.agents.runs.active.find((run) => run.runId === input.runId);
     if (!agent || !run) throw new InfoHubError("turn_context_unavailable");
-    const basis = getRunRepoBasis(input.runId, ctx);
-    const checkout = basis ? null : getProjectRepoState(input.projectId, ctx).checkout;
+    const isAssistant =
+      db.select().from(agentProfile).where(eq(agentProfile.id, scope.agentProfileId)).get()
+        ?.purpose === "assistant";
+    const basis = isAssistant ? undefined : getRunRepoBasis(input.runId, ctx);
+    const checkout =
+      isAssistant || basis ? null : getProjectRepoState(input.projectId, ctx).checkout;
     const workspace = basis
       ? {
           basis: "run_provenance" as const,
@@ -130,6 +134,30 @@ export function captureTurnContext(
       );
     const record: TurnContextRecord = {
       schemaVersion: 1,
+      ...(isAssistant
+        ? {
+            assistantNativeContext: db
+              .select()
+              .from(message)
+              .where(
+                and(
+                  eq(message.chatId, scope.chatId),
+                  inArray(message.senderKind, ["assistant_event", "assistant_work"]),
+                ),
+              )
+              .orderBy(desc(message.createdAt), desc(message.id))
+              .limit(50)
+              .all()
+              .reverse()
+              .map((row: typeof message.$inferSelect) => ({
+                messageId: row.id,
+                kind: row.senderKind as "assistant_event" | "assistant_work",
+                sourceId: row.senderId,
+                body: row.body.slice(0, 1000),
+                createdAt: row.createdAt.toISOString(),
+              })),
+          }
+        : {}),
       ...input,
       capturedAt: new Date().toISOString(),
       basisRevision: getInfoHub(
@@ -261,7 +289,15 @@ export function captureTurnContext(
     let text = serialize();
     while (Buffer.byteLength(text) > INFO_HUB_LIMITS.maxTurnContextBytes) {
       const group = groups.find((group) => group.items.length > (group.kind === "runs" ? 1 : 0));
-      if (!group) throw new InfoHubError("turn_context_unavailable");
+      if (!group) {
+        if (record.assistantNativeContext?.length) {
+          record.assistantNativeContext.shift();
+          record.truncated = true;
+          text = serialize();
+          continue;
+        }
+        throw new InfoHubError("turn_context_unavailable");
+      }
       group.items.pop();
       record.omittedCounts[group.kind]++;
       record.truncated = true;

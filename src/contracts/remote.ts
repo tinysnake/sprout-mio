@@ -1,5 +1,6 @@
 import { infoHubGetInputSchema, infoHubViewSchema } from "./info-hub-query";
 import { z } from "zod";
+import { assistantCallSchema } from "./assistant";
 import { chatSessionSchema, messageSchema } from "./chat";
 import { chatContinuationViewSchema } from "./chat-continuation";
 import {
@@ -642,6 +643,7 @@ export type InfoHubGetResponse = z.infer<typeof infoHubGetResponseSchema>;
 export const remoteAgentRequestSchema = z.strictObject({
   version: z.literal(2),
   call: z.discriminatedUnion("type", [
+    ...assistantCallSchema.options,
     z.strictObject({ type: z.literal("lease_mutate"), input: agentMutationInputSchema }),
     z.strictObject({ type: z.literal("lease_get"), input: leaseReadInputSchema }),
     z.strictObject({ type: z.literal("execution_submit"), input: executionSubmitInputSchema }),

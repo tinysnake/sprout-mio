@@ -147,7 +147,7 @@ export async function preparePiMessage(
 
 export function prepareSyntheticPiMessage(
   input: Readonly<{
-    kind: "task_start" | "continuation" | "resource_notice";
+    kind: "task_start" | "continuation" | "resource_notice" | "assistant_work" | "assistant_human";
     messageId: string;
     text: string;
   }>,

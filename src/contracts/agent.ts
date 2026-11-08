@@ -14,13 +14,14 @@ const option = z.string().trim().min(1).max(200);
 
 export const createAgentProfileInput = z.object({
   name,
+  purpose: z.enum(["worker", "assistant"]).default("worker"),
   jobTitle: jobTitle.optional(),
   persona: persona.default(""),
   harness: harness.default("pi"),
   model: option.optional(),
   effort: option.optional(),
 });
-export type CreateAgentProfileInput = z.infer<typeof createAgentProfileInput>;
+export type CreateAgentProfileInput = z.input<typeof createAgentProfileInput>;
 
 export const updateAgentProfileInput = z.object({
   name: name.optional(),

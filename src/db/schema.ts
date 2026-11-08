@@ -67,11 +67,139 @@ export const project = sqliteTable(
   (table) => [uniqueIndex("project_id_owner_unique").on(table.id, table.createdBy)],
 );
 
+export const assistantProposal = sqliteTable("assistant_proposal", {
+  id: text("id").primaryKey(),
+  assistantChatId: text("assistant_chat_id")
+    .notNull()
+    .references((): AnySQLiteColumn => chat.id),
+  sourceRunId: text("source_run_id")
+    .notNull()
+    .references((): AnySQLiteColumn => agentRun.id),
+  humanId: text("human_id")
+    .notNull()
+    .references(() => user.id),
+  target: text("target", { mode: "json" })
+    .$type<import("../contracts/assistant").AssistantTarget>()
+    .notNull(),
+  targetProjectId: text("target_project_id")
+    .notNull()
+    .references((): AnySQLiteColumn => project.id),
+  targetChatId: text("target_chat_id")
+    .notNull()
+    .references((): AnySQLiteColumn => chat.id),
+  agentProfileId: text("agent_profile_id").notNull(),
+  instanceId: text("instance_id")
+    .notNull()
+    .references((): AnySQLiteColumn => agentInstance.id),
+  body: text("body").notNull(),
+  operationHash: text("operation_hash").notNull(),
+  version: integer("version").notNull().default(1),
+  status: text("status", { enum: ["pending", "submitted", "rejected", "revoked"] })
+    .notNull()
+    .default("pending"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  confirmedBy: text("confirmed_by"),
+  confirmedAt: integer("confirmed_at", { mode: "timestamp_ms" }),
+  workMessageId: text("work_message_id").unique(),
+});
+export const assistantWatch = sqliteTable(
+  "assistant_watch",
+  {
+    id: text("id").primaryKey(),
+    assistantChatId: text("assistant_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    targetProjectId: text("target_project_id")
+      .notNull()
+      .references((): AnySQLiteColumn => project.id),
+    targetChatId: text("target_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    consentedBy: text("consented_by")
+      .notNull()
+      .references(() => user.id),
+    consentedAt: integer("consented_at", { mode: "timestamp_ms" }).notNull(),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    uniqueIndex("assistant_watch_active_unique")
+      .on(t.assistantChatId, t.targetChatId)
+      .where(sql`${t.revokedAt} is null`),
+    index("assistant_watch_target_idx").on(t.targetChatId, t.revokedAt),
+  ],
+);
+export const assistantPreferences = sqliteTable(
+  "assistant_preferences",
+  {
+    assistantChatId: text("assistant_chat_id")
+      .primaryKey()
+      .references((): AnySQLiteColumn => chat.id),
+    intervalSeconds: integer("interval_seconds").notNull().default(300),
+  },
+  (t) => [check("assistant_interval_check", sql`${t.intervalSeconds} between 60 and 86400`)],
+);
+export const assistantInterest = sqliteTable(
+  "assistant_interest",
+  {
+    assistantChatId: text("assistant_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    runId: text("run_id")
+      .notNull()
+      .references((): AnySQLiteColumn => agentRun.id),
+    originKind: text("origin_kind", { enum: ["watch", "proposal"] }).notNull(),
+    originId: text("origin_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.assistantChatId, t.runId, t.originKind, t.originId] })],
+);
+export const assistantRunCursor = sqliteTable(
+  "assistant_run_cursor",
+  {
+    assistantChatId: text("assistant_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    runId: text("run_id")
+      .notNull()
+      .references((): AnySQLiteColumn => agentRun.id),
+    nextDueAt: integer("next_due_at", { mode: "timestamp_ms" }).notNull(),
+    terminalCapturedAt: integer("terminal_captured_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.assistantChatId, t.runId] }),
+    index("assistant_cursor_due_idx").on(t.terminalCapturedAt, t.nextDueAt),
+  ],
+);
+export const assistantEvent = sqliteTable(
+  "assistant_event",
+  {
+    id: text("id").primaryKey(),
+    assistantChatId: text("assistant_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    eventKey: text("event_key").notNull(),
+    fact: text("fact", { mode: "json" })
+      .$type<import("../contracts/assistant").AssistantFact>()
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    messageId: text("message_id").unique(),
+    suppressedAt: integer("suppressed_at", { mode: "timestamp_ms" }),
+    attempts: integer("attempts").notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("assistant_event_key_unique").on(t.assistantChatId, t.eventKey),
+    index("assistant_event_pending_idx").on(t.messageId, t.suppressedAt),
+  ],
+);
+
 export const agentProfile = sqliteTable(
   "agent_profile",
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    purpose: text("purpose", { enum: ["worker", "assistant"] })
+      .notNull()
+      .default("worker"),
     jobTitle: text("job_title"),
     persona: text("persona").notNull().default(""),
     harness: text("harness", { enum: ["pi"] })
@@ -243,6 +371,7 @@ export const chatEffectiveMember = sqliteView("chat_effective_member", {
     'project_member' AS source
   FROM chat c
   JOIN project_member pm ON pm.project_id = c.project_id
+  JOIN agent_profile ap ON ap.id = pm.agent_profile_id AND ap.purpose = 'worker'
   WHERE c.kind = 'public_channel'
   UNION ALL
   SELECT
@@ -377,9 +506,17 @@ export const message = sqliteTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => chat.id),
-    senderKind: text("sender_kind", { enum: ["human", "agent", "automation"] }).notNull(),
+    senderKind: text("sender_kind", {
+      enum: ["human", "agent", "automation", "assistant_event", "assistant_work"],
+    }).notNull(),
     senderId: text("sender_id").notNull(),
     body: text("body").notNull(),
+    assistantEventId: text("assistant_event_id").references(
+      (): AnySQLiteColumn => assistantEvent.id,
+    ),
+    assistantProposalId: text("assistant_proposal_id").references(
+      (): AnySQLiteColumn => assistantProposal.id,
+    ),
     automationTriggerId: text("automation_trigger_id").references(
       (): AnySQLiteColumn => webhookTrigger.id,
     ),
@@ -403,12 +540,18 @@ export const message = sqliteTable(
     }),
     check(
       "message_sender_kind_check",
-      sql`${table.senderKind} in ('human', 'agent', 'automation')`,
+      sql`${table.senderKind} in ('human', 'agent', 'automation', 'assistant_event', 'assistant_work')`,
     ),
     check(
       "message_automation_shape_check",
       sql`(${table.senderKind}='automation' and ${table.automationTriggerId} is not null and ${table.senderId}=${table.automationTriggerId} and ${table.taskId} is null) or (${table.senderKind}<>'automation' and ${table.automationTriggerId} is null)`,
     ),
+    check(
+      "message_assistant_source_check",
+      sql`(${table.senderKind}='assistant_event' and ${table.assistantEventId}=${table.senderId} and ${table.assistantEventId} is not null and ${table.assistantProposalId} is null and ${table.taskId} is null) or (${table.senderKind}='assistant_work' and ${table.assistantProposalId}=${table.senderId} and ${table.assistantProposalId} is not null and ${table.assistantEventId} is null and ${table.taskId} is null) or (${table.senderKind} not in ('assistant_event','assistant_work') and ${table.assistantEventId} is null and ${table.assistantProposalId} is null)`,
+    ),
+    uniqueIndex("message_assistant_event_unique").on(table.assistantEventId),
+    uniqueIndex("message_assistant_proposal_unique").on(table.assistantProposalId),
     index("message_chat_created_at_idx").on(table.chatId, table.createdAt),
     uniqueIndex("message_id_chat_unique").on(table.id, table.chatId),
     foreignKey({
@@ -647,6 +790,7 @@ export const agentRunInput = sqliteTable(
         "group_dissolved",
         "task_context_changed",
         "automation_context_changed",
+        "assistant_context_changed",
       ],
     }),
   },
@@ -665,7 +809,7 @@ export const agentRunInput = sqliteTable(
     ),
     check(
       "agent_run_input_cancel_reason_check",
-      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed', 'automation_context_changed')`,
+      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed', 'automation_context_changed', 'assistant_context_changed')`,
     ),
     check(
       "agent_run_input_admitted_at_check",
@@ -2144,6 +2288,9 @@ export const remoteToolGrant = sqliteTable(
   {
     id: text("id").primaryKey().notNull(),
     secretHash: text("secret_hash").notNull(),
+    purpose: text("purpose", { enum: ["worker", "assistant"] })
+      .notNull()
+      .default("worker"),
     userId: text("user_id").notNull(),
     projectId: text("project_id").notNull(),
     chatId: text("chat_id").notNull(),

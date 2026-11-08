@@ -1,3 +1,5 @@
+import { cancelInvalidAssistantInputs } from "./assistant";
+import { enrollChatWatches } from "./assistant-interest";
 import { automationSourceFor } from "./automation-source";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type {
@@ -231,6 +233,20 @@ function activeRunFor(
   requestId: string,
   now?: Date,
 ): typeof agentRun.$inferSelect {
+  const instance = db
+    .select()
+    .from(agentInstance)
+    .where(eq(agentInstance.id, scope.instanceId))
+    .get();
+  const profile =
+    instance &&
+    db.select().from(agentProfile).where(eq(agentProfile.id, instance.agentProfileId)).get();
+  const currentChat = db.select().from(chat).where(eq(chat.id, scope.chatId)).get();
+  if (
+    profile?.purpose === "assistant" &&
+    (currentChat?.kind !== "dm" || currentChat.ownerKind !== "human")
+  )
+    throw new AgentRunError("conflict", "Assistant 只能在 Human DM 中运行");
   const active = db
     .select()
     .from(agentRun)
@@ -261,6 +277,7 @@ function activeRunFor(
     })
     .returning()
     .get();
+  enrollChatWatches(created.id, created.chatId, created.instanceId, now ?? new Date());
   diagnostic(created, "agent_run.queued", "Agent run 已排队", "info", now);
   return created;
 }
@@ -639,16 +656,19 @@ export function pendingRunInputs(
   text: string;
   taskRecordKind: typeof message.$inferSelect.taskRecordKind;
   automationTriggerId: string | null;
+  assistantProposalId: string | null;
 }[] {
   const row = runRow(id, ctx);
   cancelInvalidTaskStartInputs(id);
   cancelInvalidAutomationInputs(id);
+  cancelInvalidAssistantInputs(id);
   return db
     .select({
       messageId: agentRunInput.messageId,
       text: message.body,
       taskRecordKind: message.taskRecordKind,
       automationTriggerId: message.automationTriggerId,
+      assistantProposalId: message.assistantProposalId,
     })
     .from(agentRunInput)
     .innerJoin(
@@ -754,6 +774,7 @@ export function settleAgentRun(
       if (status === "completed") {
         cancelInvalidTaskStartInputs(id);
         cancelInvalidAutomationInputs(id);
+        cancelInvalidAssistantInputs(id);
         const uncertain = db
           .select()
           .from(agentRunInput)
@@ -815,6 +836,7 @@ export function firstPendingRunInput(id: string, ctx: ProjectContext) {
   const row = runRow(id, ctx);
   cancelInvalidTaskStartInputs(id);
   cancelInvalidAutomationInputs(id);
+  cancelInvalidAssistantInputs(id);
   return db
     .select({ input: agentRunInput, message })
     .from(agentRunInput)
@@ -847,7 +869,15 @@ export function previousSessionFile(runId: string, ctx: ProjectContext): string 
     )
     .orderBy(sql`${agentRun}.rowid desc`)
     .all();
-  return snapshots.find(({ snapshot }) => snapshot !== null)?.snapshot?.sessionFile;
+  const profile = db
+    .select({ purpose: agentProfile.purpose })
+    .from(agentInstance)
+    .innerJoin(agentProfile, eq(agentProfile.id, agentInstance.agentProfileId))
+    .where(eq(agentInstance.id, current.instanceId))
+    .get();
+  return snapshots.find(
+    ({ snapshot }) => snapshot !== null && (snapshot.purpose ?? "worker") === profile?.purpose,
+  )?.snapshot?.sessionFile;
 }
 
 /** 在 runtime 的恢复事务里执行，诊断失败必须回滚恢复。 */

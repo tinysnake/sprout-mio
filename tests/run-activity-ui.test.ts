@@ -393,7 +393,7 @@ describe("对话接续状态", () => {
 
 describe("已结束 run 的工作记录", () => {
   const message = (
-    overrides: Partial<Exclude<Message, { senderKind: "automation" }>> = {},
+    overrides: Partial<Extract<Message, { senderKind: "agent" | "human" }>> = {},
   ): Message => ({
     id: "msg_11111111",
     chatId: "cnv_11111111",
@@ -472,6 +472,7 @@ describe("已结束 run 的工作记录", () => {
             name: "Worker",
             persona: "Worker persona",
             harness: "pi",
+            purpose: "worker",
             createdBy: "user",
             createdAt: source.createdAt,
             updatedAt: source.createdAt,

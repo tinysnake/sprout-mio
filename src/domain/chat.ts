@@ -25,6 +25,7 @@ import {
   agentInstance,
   agentRun,
   agentRunInput,
+  assistantEvent,
   chat,
   chatEffectiveMember,
   chatMember,
@@ -99,6 +100,34 @@ function toMessage(
     body: row.body,
     createdAt: row.createdAt.toISOString(),
   };
+  if (row.senderKind === "assistant_event") {
+    const fact = db
+      .select()
+      .from(assistantEvent)
+      .where(eq(assistantEvent.id, row.assistantEventId!))
+      .get()!.fact;
+    return {
+      ...identity,
+      senderKind: row.senderKind,
+      nativeSource: {
+        kind: "assistant_event",
+        eventId: row.assistantEventId!,
+        projectId: fact.targetProjectId,
+        chatId: fact.targetChatId,
+        ...(fact.runId ? { runId: fact.runId } : {}),
+      },
+      mentions: [],
+      skills: [],
+    };
+  }
+  if (row.senderKind === "assistant_work")
+    return {
+      ...identity,
+      senderKind: row.senderKind,
+      nativeSource: { kind: "assistant_work", proposalId: row.assistantProposalId! },
+      mentions: [],
+      skills: [],
+    };
   if (row.senderKind === "automation") {
     if (!row.automationTriggerId) throw new Error("automation_message_corrupt");
     return {
@@ -266,7 +295,8 @@ function applyGovernance(
 
 /** Agent 成员与 Agent 所有者共用这条前置：必须先属于本项目，否则群组引用一个项目外分身。 */
 function requireProjectAgent(projectId: string, agentProfileId: string, ctx: ProjectContext): void {
-  getAgentProfile(agentProfileId, ctx);
+  if (getAgentProfile(agentProfileId, ctx).purpose !== "worker")
+    throw new ChatError("forbidden", "Assistant 只能加入 Human DM");
   const member = db
     .select({ agentProfileId: projectMember.agentProfileId })
     .from(projectMember)
@@ -360,7 +390,8 @@ export function createDirectChat(
   return sqlite
     .transaction(() => {
       assertProjectAccess(ctx, projectId);
-      getAgentProfile(agentProfileId, ctx);
+      if (getAgentProfile(agentProfileId, ctx).purpose === "assistant" && ctx.agent)
+        throw new ChatError("forbidden", "Assistant DM 只能由 Human 创建");
       const member = db
         .select()
         .from(projectMember)

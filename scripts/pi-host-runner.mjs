@@ -158,13 +158,20 @@ async function open(config) {
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/status.ts"),
   );
   const remoteClient = createRemoteClient(config.remote);
-  const inheritHostResources = config.resources.kind === "enabled";
+  const assistant = config.purpose === "assistant";
+  const { registerAssistantTools } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/assistant-tools.ts"),
+  );
+  const { ASSISTANT_TOOL_SPEC } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/assistant.ts"),
+  );
+  const inheritHostResources = !assistant && config.resources.kind === "enabled";
   const inheritedPaths = inheritHostResources
     ? { skills: config.resources.skillPaths, prompts: config.resources.promptPaths }
     : { skills: [], prompts: [] };
   // 受控目录是分身自己的 loader/session 根。证据里报的 agentDir 就是这个对象里的值：
   // 不让「声明的目录」和「喂给 loader 的目录」变成两个可以互相飘的常量。
-  const webAccessEntry = resolveWebAccessExtension(config.agentDir);
+  const webAccessEntry = assistant ? undefined : resolveWebAccessExtension(config.agentDir);
   const loaderOptions = {
     cwd: config.cwd,
     agentDir: controlledDir,
@@ -180,65 +187,78 @@ async function open(config) {
     // 它们才是 P3 记录的失败与超时来源（context7、UnityMCP），也是跨 Project 内容泄漏的入口。
     additionalSkillPaths: inheritedPaths.skills,
     additionalPromptTemplatePaths: inheritedPaths.prompts,
-    extensionFactories: [
-      // `noExtensions: true` 会连内建扩展一起关掉；codemode 与 tool_search 必须显式加回。
-      { name: "codemode", factory: sdk.createCodemodeExtension() },
-      { name: "tool-search", factory: sdk.createToolSearchExtension() },
-      {
-        name: "sprout-extension",
-        factory: async (pi) => {
-          sproutExtension(pi);
-          let target = null;
-          let mcp;
-          const remote = {
-            projectId: remoteClient.projectId,
-            async request(request, signal) {
-              const response = await remoteClient.request(request, signal);
-              if (response.outcome === "response" && response.result.ok) {
-                const { call } = request;
-                const data = response.result.data;
-                let next;
-                if (call.type === "lease_get")
-                  next =
-                    data.lease.state === "held"
-                      ? { machineId: call.input.machineId, generation: data.lease.generation }
-                      : null;
-                if (call.type === "lease_mutate")
-                  next =
-                    call.input.action === "acquire" && data.state === "completed"
-                      ? { machineId: call.input.machineId, generation: data.completedGeneration }
-                      : null;
-                if (next !== undefined && JSON.stringify(next) !== JSON.stringify(target)) {
-                  target = next;
-                  const refreshed = await mcp.refresh();
-                  // 不假装成功：目录已变但工具面没跟进时，把失败推到 stderr 的 runner 协议行外，
-                  // 由 `sprout_status` 的诊断槽与验收脚本读取。
-                  if (refreshed.outcome === "failed")
-                    line({
-                      type: "progress",
-                      id: config.id,
-                      kind: "mcp_surface_failed",
-                      message: refreshed.error.message.slice(0, 500),
-                    });
-                }
-              }
-              return response;
+    extensionFactories: assistant
+      ? [
+          {
+            name: "sprout-assistant",
+            factory: async (pi) => {
+              registerAssistantTools(pi, remoteClient);
+              registerSproutStatus(pi);
             },
-          };
-          mcp = await registerSproutMcp(pi, {
-            remote,
-            machineId: () => target?.machineId ?? null,
-            authorizationGeneration: () => target?.generation ?? null,
-          });
-          registerRemoteTools(pi, remote);
-          registerTaskTools(pi, remote);
-          registerInfoHubTools(pi, remote);
-          registerCurrentTimeTool(pi);
-          registerGitReadTool(pi);
-          registerSproutStatus(pi);
-        },
-      },
-    ],
+          },
+        ]
+      : [
+          // `noExtensions: true` 会连内建扩展一起关掉；codemode 与 tool_search 必须显式加回。
+          { name: "codemode", factory: sdk.createCodemodeExtension() },
+          { name: "tool-search", factory: sdk.createToolSearchExtension() },
+          {
+            name: "sprout-extension",
+            factory: async (pi) => {
+              sproutExtension(pi);
+              let target = null;
+              let mcp;
+              const remote = {
+                projectId: remoteClient.projectId,
+                async request(request, signal) {
+                  const response = await remoteClient.request(request, signal);
+                  if (response.outcome === "response" && response.result.ok) {
+                    const { call } = request;
+                    const data = response.result.data;
+                    let next;
+                    if (call.type === "lease_get")
+                      next =
+                        data.lease.state === "held"
+                          ? { machineId: call.input.machineId, generation: data.lease.generation }
+                          : null;
+                    if (call.type === "lease_mutate")
+                      next =
+                        call.input.action === "acquire" && data.state === "completed"
+                          ? {
+                              machineId: call.input.machineId,
+                              generation: data.completedGeneration,
+                            }
+                          : null;
+                    if (next !== undefined && JSON.stringify(next) !== JSON.stringify(target)) {
+                      target = next;
+                      const refreshed = await mcp.refresh();
+                      // 不假装成功：目录已变但工具面没跟进时，把失败推到 stderr 的 runner 协议行外，
+                      // 由 `sprout_status` 的诊断槽与验收脚本读取。
+                      if (refreshed.outcome === "failed")
+                        line({
+                          type: "progress",
+                          id: config.id,
+                          kind: "mcp_surface_failed",
+                          message: refreshed.error.message.slice(0, 500),
+                        });
+                    }
+                  }
+                  return response;
+                },
+              };
+              mcp = await registerSproutMcp(pi, {
+                remote,
+                machineId: () => target?.machineId ?? null,
+                authorizationGeneration: () => target?.generation ?? null,
+              });
+              registerRemoteTools(pi, remote);
+              registerTaskTools(pi, remote);
+              registerInfoHubTools(pi, remote);
+              registerCurrentTimeTool(pi);
+              registerGitReadTool(pi);
+              registerSproutStatus(pi);
+            },
+          },
+        ],
     systemPrompt: config.profile.persona,
   };
   const resourceLoader = new sdk.DefaultResourceLoader(loaderOptions);
@@ -267,17 +287,19 @@ async function open(config) {
     // 不声明给模型（`_isActivatable` 对 `direct` exposure 恒为 false，`setActiveTools` 也救不回来）。
     // 这是 `list_changed` 后新工具到不了模型工具面的根因，详见
     // `orchestrate/sprout-mio-r1/reports/remediation-extension.md`。
-    tools: [
-      "sprout_status",
-      ...hostToolNames(webAccessEntry),
-      "mcp__*",
-      ...Object.keys(remoteToolInputSchemas),
-      // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
-      // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
-      // 后续跨 Chat 或 Agent 间通信再启用。
-      ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
-      ...Object.keys(infoHubToolInputSchemas),
-    ],
+    tools: assistant
+      ? ["sprout_status", ...Object.keys(ASSISTANT_TOOL_SPEC)]
+      : [
+          "sprout_status",
+          ...hostToolNames(webAccessEntry),
+          "mcp__*",
+          ...Object.keys(remoteToolInputSchemas),
+          // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
+          // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
+          // 后续跨 Chat 或 Agent 间通信再启用。
+          ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
+          ...Object.keys(infoHubToolInputSchemas),
+        ],
     resourceLoader,
     settingsManager,
     sessionManager: manager,
@@ -377,6 +399,15 @@ async function open(config) {
       throw new Error("sprout_status 未进入 Pi 工具面，拒绝把诊断入口缺失的会话交给模型");
     setSproutHostFacts(facts);
   }
+  if (assistant) {
+    const allowed = ["sprout_status", ...Object.keys(ASSISTANT_TOOL_SPEC)].sort();
+    const registered = session
+      .getAllTools()
+      .map((tool) => tool.name)
+      .sort();
+    if (JSON.stringify(registered) !== JSON.stringify(allowed))
+      throw new Error("Assistant tool registry violates purpose boundary");
+  }
   // 边界证据随 ready 快照返回：谁被加载、谁没被加载由 loader 自己的读取结果回答，
   // 不靠读代码推断。只写名字与计数，不写 skill/prompt 正文。
   line({
@@ -426,6 +457,7 @@ async function open(config) {
       sessionFile: session.sessionFile,
       cwd: config.cwd,
       sdkVersion: pkg.version,
+      purpose: config.purpose ?? "worker",
       profile: config.profile,
     },
   });

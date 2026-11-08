@@ -323,6 +323,28 @@ const messageBaseSchema = z.object({
 export const messageSchema = z
   .discriminatedUnion("senderKind", [
     messageBaseSchema.extend({
+      senderKind: z.literal("assistant_event"),
+      nativeSource: z.strictObject({
+        kind: z.literal("assistant_event"),
+        eventId: z.string(),
+        projectId: z.string(),
+        chatId: z.string(),
+        runId: z.string().optional(),
+      }),
+      automationSource: z.never().optional(),
+      taskRecord: z.never().optional(),
+      mentions: z.tuple([]),
+      skills: z.tuple([]),
+    }),
+    messageBaseSchema.extend({
+      senderKind: z.literal("assistant_work"),
+      nativeSource: z.strictObject({ kind: z.literal("assistant_work"), proposalId: z.string() }),
+      automationSource: z.never().optional(),
+      taskRecord: z.never().optional(),
+      mentions: z.tuple([]),
+      skills: z.tuple([]),
+    }),
+    messageBaseSchema.extend({
       senderKind: z.literal("human"),
       automationSource: z.never().optional(),
     }),

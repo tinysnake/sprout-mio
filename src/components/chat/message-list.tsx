@@ -57,18 +57,27 @@ export function MessageList({
 
   const renderItem = (message: Message, index: number) => {
     const human = message.senderKind === "human";
-    const source = message.senderKind === "automation";
+    const source =
+      message.senderKind === "automation" ||
+      message.senderKind === "assistant_event" ||
+      message.senderKind === "assistant_work";
     const agentMessage = message.senderKind === "agent";
     const key =
       message.senderKind === "automation"
         ? `automation:${message.senderId}`
-        : senderKey(message.senderKind, message.senderId);
+        : message.senderKind === "assistant_event" || message.senderKind === "assistant_work"
+          ? `${message.senderKind}:${message.senderId}`
+          : senderKey(message.senderKind, message.senderId);
     const name =
       (message.senderKind === "automation"
         ? message.automationSource.kind === "project_cron"
           ? "Project cron"
           : "Project webhook"
-        : senderNames?.get(key)) ??
+        : message.senderKind === "assistant_event"
+          ? "Assistant 通知"
+          : message.senderKind === "assistant_work"
+            ? "Human 已确认的工作提案"
+            : senderNames?.get(key)) ??
       (human ? humanName || "你" : dmAgentName) ??
       (human ? "Human" : "Agent");
     const previous = messages[index - 1];
@@ -124,6 +133,17 @@ export function MessageList({
                 {clockLabel(message.createdAt)}
               </time>
             </p>
+          )}
+          {message.senderKind === "assistant_event" && (
+            <a
+              className="mb-2 block text-xs underline"
+              data-testid="assistant-run-link"
+              href={`/projects/${message.nativeSource.projectId}/chats/${message.nativeSource.chatId}${message.nativeSource.runId ? `?run=${message.nativeSource.runId}#selected-run-${message.nativeSource.runId}` : "?info=1"}`}
+            >
+              {message.nativeSource.runId
+                ? `查看 Run ${message.nativeSource.runId}`
+                : "查看来源 Chat"}
+            </a>
           )}
           {agentMessage && !grouped && persona && (
             <p data-testid="message-persona" className="mb-2 text-[10px] text-muted-foreground">
