@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
@@ -284,19 +284,29 @@ export function trialWebhook(
 export function webhookHistory(
   ruleId: string,
   ctx: ProjectContext,
-): (WebhookTrigger & { chatId: string | null; runId: string | null; runStatus: string | null })[] {
+): (WebhookTrigger & {
+  chatId: string | null;
+  runId: string | null;
+  runStatus: string | null;
+  inputDisposition: string | null;
+  cancelReason: string | null;
+})[] {
   ruleFor(ruleId, ctx);
   return db
     .select()
     .from(webhookTrigger)
     .where(eq(webhookTrigger.ruleId, ruleId))
-    .orderBy(desc(webhookTrigger.createdAt))
+    .orderBy(desc(webhookTrigger.createdAt), desc(sql`${webhookTrigger}.rowid`))
     .limit(50)
     .all()
     .map((row: Trigger) => {
       const run = row.messageId
         ? db
-            .select({ id: agentRunInput.runId })
+            .select({
+              id: agentRunInput.runId,
+              disposition: agentRunInput.disposition,
+              cancelReason: agentRunInput.cancelReason,
+            })
             .from(agentRunInput)
             .where(eq(agentRunInput.messageId, row.messageId))
             .get()
@@ -309,6 +319,8 @@ export function webhookHistory(
         chatId: row.chatId,
         runId: run?.id ?? null,
         runStatus: status?.status ?? null,
+        inputDisposition: run?.disposition ?? null,
+        cancelReason: run?.cancelReason ?? null,
       };
     });
 }

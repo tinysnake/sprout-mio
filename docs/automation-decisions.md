@@ -13,7 +13,7 @@
 - **建议**表示草案提出的候选方案，仍可调整。
 - **待定**表示通过技术调查或业务契约需要补齐的决定；不意味着每一项都需要 Human 再次确认。
 
-已确认的是产品方向。字段、API、并发细节和验收脚本尚未定稿。个人助理、身份及 channel 的共同边界见[个人助理与 channel 决策草案](personal-assistant-decisions.md)。
+已确认的是产品方向。Webhook 首版字段、API、并发边界及专项验证已落实，见[Webhook 契约](webhook-core.md)与[功能地图](feature-map/automation.md)。Cron 和其余扩展仍按本文区分讨论状态。个人助理、身份及 channel 的共同边界见[个人助理与 channel 决策草案](personal-assistant-decisions.md)。
 
 ## 已确认的目标与范围
 

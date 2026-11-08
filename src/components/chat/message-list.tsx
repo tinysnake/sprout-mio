@@ -58,6 +58,7 @@ export function MessageList({
   const renderItem = (message: Message, index: number) => {
     const human = message.senderKind === "human";
     const source = message.senderKind === "automation";
+    const agentMessage = message.senderKind === "agent";
     const key =
       message.senderKind === "automation"
         ? `automation:${message.senderId}`
@@ -120,7 +121,7 @@ export function MessageList({
               </time>
             </p>
           )}
-          {!human && !grouped && persona && (
+          {agentMessage && !grouped && persona && (
             <p data-testid="message-persona" className="mb-2 text-[10px] text-muted-foreground">
               {persona}
             </p>
@@ -135,7 +136,7 @@ export function MessageList({
           >
             <MessageBody body={message.body} mentions={message.mentions} skills={message.skills} />
           </p>
-          {!human && (
+          {agentMessage && (
             <p data-testid="message-run-links" className="mt-1 text-[10px] text-muted-foreground">
               {links.length === 0 ? (
                 activityRecord ? (
@@ -156,7 +157,7 @@ export function MessageList({
               )}
             </p>
           )}
-          {!human && activity && (
+          {agentMessage && activity && (
             <div data-testid="message-run-activity" className="mt-2">
               <RunActivityGroup activity={activity} />
             </div>

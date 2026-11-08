@@ -18,6 +18,7 @@ export const CI_GROUPS = Object.freeze({
     "al-execution-exit-custody",
   ],
   api: [
+    "webhook-core",
     "c-auth-rate-limit",
     "d-runtime",
     "drain-http",
@@ -88,6 +89,7 @@ export const CI_GROUPS = Object.freeze({
 });
 
 export const LOCAL_GATES = Object.freeze({
+  "webhook-browser": "真实已安装 Pi SDK、隔离生产 HTTP 与浏览器链路；本地模型 fixture，零付费调用",
   "chat-skills":
     "真实已安装 Pi SDK 的 scoped skills catalog、SQLite span、prompt/steer 投递与故障边界",
   "p7-loop-multiround": "真实 macOS Worker、真实 Pi SDK，同 run 多轮停止与产物历史",

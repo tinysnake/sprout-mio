@@ -1,6 +1,6 @@
 # 开发总计划
 
-> **当前工作入口。** 一期已交付，历史计划已归档。当前整理自动化、个人助理与飞书的首版范围和共享契约，实施顺序见[首版推进顺序](#首版推进顺序)，尚未交付新功能。
+> **当前工作入口。** 一期已交付，历史计划已归档。Project webhook 单元已实现并完成专项技术验证，Human UI 体验尚未确认。Cron、个人助理与飞书按[首版推进顺序](#首版推进顺序)继续。
 
 ## 一期交付状态
 
@@ -63,7 +63,7 @@ webhook、cron、个人助理与 Feishu 的产品方向已形成，进入首版�
 
 | 单元 | 依赖与范围 | 单元结束时必须证明 |
 | --- | --- | --- |
-| Project 内 webhook 消息动作 | 先确定规则、系统来源、目标路由与触发记录契约，再贯通配置、认证、基本去重、DM / Group 唤醒及记录查看 | 有效事件只提交一次；未授权事件不提交；Agent 能识别系统来源；DM、显式 @ 与 owner 路由正确，现有人类消息不回归。当前仅完成 domain/schema/普通 Chat 与 Pi 输入链路核心；HTTP ingress、Project 设置 UI 与浏览器验收仍待后续集成，详见 [Webhook core](webhook-core.md) |
+| Project 内 webhook 消息动作 | 先确定规则、系统来源、目标路由与触发记录契约，再贯通配置、认证、基本去重、DM / Group 唤醒及记录查看 | 有效事件只提交一次；未授权事件不提交；Agent 能识别系统来源；DM、显式 @ 与 owner 路由正确，现有人类消息不回归。已完成 domain/schema、HTTP ingress、Project 设置 UI 和生产服务浏览器链路验证。实际 Pi runner 使用零付费模型 fixture；Human UI 体验未确认。契约与证据入口见 [Webhook](webhook-core.md) |
 | Cron 接入相同消息动作 | 复用上一单元的规则与提交路径，增加时区、下一时点、重叠跳过和离线不补做 | 实际定时触发可追踪；上次未结束时跳过；停用不取消已有工作；重启不补跑离线时点 |
 | Sprout 原生个人助理 | 复用现有 Agent profile 与 Project DM，补受限工具、跨 Project 观察、watch、提案确认、受控委派及通知 | 查询不越权；未确认不提交；重复确认只提交一次；watch 不依赖 Pi 常驻；完成后停止单个 run 的周期汇报 |
 | 飞书 DM adapter | 依赖原生助理闭环，接身份核验、DM 绑定、接收去重、两端确认及统一投递 | 外部输入与 Sprout 共用同一 DM 历史；解绑立即停收停发；多端不重复执行；投递失败不重跑工作 |
@@ -78,7 +78,7 @@ webhook、cron、个人助理与 Feishu 的产品方向已形成，进入首版�
 
 - [一期归档索引](archive/phase-one/README.md)：原总计划、功能与 UI 执行记录，以及阶段证据入口。
 - [功能计划入口](development-plan-functional.md)与 [UI 计划入口](development-plan-ui.md)：当前状态及旧章节跳转。
-- 验证与证据复用遵循[验证约定](verification.md)。本次只执行文档与门禁探针检查，历史技术验收与 Human 确认保持来源区分。
+- 验证与证据复用遵循[验证约定](verification.md)。归档检查与各实现单元的技术验证、Human 确认保持来源区分。
 
 ## 旧章节链接
 

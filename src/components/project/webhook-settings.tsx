@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import type { WebhookRule, WebhookAction, WebhookRuleDraft } from "../../contracts/automation";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
-import { listChatsFn } from "../../server/functions/chat";
+import { listChatMembersFn, listChatsFn } from "../../server/functions/chat";
 import { listAgentProfilesFn } from "../../server/functions/agent";
 import {
   createWebhookRuleFn,
@@ -30,8 +31,9 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
   const [secret, setSecret] = useState("");
   const [secretRule, setSecretRule] = useState<WebhookRule | null>(null);
   const [history, setHistory] = useState<
-    Awaited<ReturnType<typeof webhookHistoryFn>> extends { ok: true; data: infer T } ? T : never
-  >([] as never);
+    Extract<Awaited<ReturnType<typeof webhookHistoryFn>>, { ok: true }>["data"]
+  >([]);
+  const [memberIds, setMemberIds] = useState<string[]>([]);
   const [payload, setPayload] = useState('{"message":"hello"}');
   const [notice, setNotice] = useState("");
   const refresh = async () => {
@@ -52,6 +54,21 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
       if (r.ok) setAgents(r.data.map((a) => ({ id: a.id, name: a.name })));
     });
   }, [projectId]);
+  useEffect(() => {
+    let current = true;
+    setMemberIds([]);
+    if (draft.chatId)
+      void listChatMembersFn({ data: { chatId: draft.chatId } }).then((result) => {
+        if (!current) return;
+        if (result.ok)
+          setMemberIds(result.data.filter((m) => m.memberKind === "agent").map((m) => m.memberId));
+        else setNotice(result.error.message);
+      });
+    return () => {
+      current = false;
+    };
+  }, [draft.chatId]);
+  const eligibleAgents = agents.filter((agent) => memberIds.includes(agent.id));
   const current = rules.find((r) => r.id === selected);
   const action: WebhookAction | null =
     draft.kind === "group_owner"
@@ -91,6 +108,8 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
     await refresh();
   };
   const load = (rule: WebhookRule) => {
+    setNotice("");
+    setHistory([]);
     setSelected(rule.id);
     setDraft({
       name: rule.name,
@@ -102,7 +121,7 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
     });
     setSecret("");
     void webhookHistoryFn({ data: { ruleId: rule.id } }).then((r) => {
-      if (r.ok) setHistory(r.data as never);
+      if (r.ok) setHistory(r.data);
     });
   };
   const trial = async () => {
@@ -120,7 +139,7 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
       });
       setNotice(result.ok ? `Trial 已提交：${result.data.decision}` : result.error.message);
       void webhookHistoryFn({ data: { ruleId: current.id } }).then((r) => {
-        if (r.ok) setHistory(r.data as never);
+        if (r.ok) setHistory(r.data);
       });
     } catch {
       setNotice("JSON 格式无效");
@@ -131,7 +150,7 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
       title="Webhook 自动化"
       description="可信来源 POST JSON object；每个事件由 Event ID 幂等接收。Trial 会真实提交到所选 Chat。"
     >
-      <div className="space-y-4">
+      <div className="space-y-4" data-testid="webhook-settings">
         <div className="flex flex-wrap gap-2">
           {rules.map((rule) => (
             <button
@@ -176,7 +195,9 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
             <select
               className="h-9 rounded-control border border-input bg-background px-3"
               value={draft.kind}
-              onChange={(e) => setDraft({ ...draft, kind: e.target.value })}
+              onChange={(e) =>
+                setDraft({ ...draft, kind: e.target.value, chatId: "", agentProfileId: "" })
+              }
             >
               <option value="dm_agent">DM → Agent</option>
               <option value="group_agent">Group → Agent</option>
@@ -188,7 +209,7 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
             <select
               className="h-9 rounded-control border border-input bg-background px-3"
               value={draft.chatId}
-              onChange={(e) => setDraft({ ...draft, chatId: e.target.value })}
+              onChange={(e) => setDraft({ ...draft, chatId: e.target.value, agentProfileId: "" })}
             >
               <option value="">选择 Chat</option>
               {chats
@@ -209,7 +230,7 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
                 onChange={(e) => setDraft({ ...draft, agentProfileId: e.target.value })}
               >
                 <option value="">选择 Agent</option>
-                {agents.map((a) => (
+                {eligibleAgents.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
                   </option>
@@ -267,23 +288,21 @@ export function WebhookSettings({ projectId }: { projectId: string }) {
             </button>
             <h3 className="font-medium">最近触发记录</h3>
             <ol className="space-y-2">
-              {(
-                history as Array<{
-                  id: string;
-                  decision: string;
-                  mode: string;
-                  eventId: string;
-                  createdAt: string;
-                  chatId: string | null;
-                  runId: string | null;
-                  runStatus: string | null;
-                  reason?: string;
-                }>
-              ).map((item) => (
+              {history.map((item) => (
                 <li key={item.id} className="border-b border-border py-2">
                   {item.mode} · {item.decision === "accepted" ? "已提交" : `跳过：${item.reason}`} ·{" "}
                   {item.eventId} · {item.createdAt}
-                  {item.chatId && <span> · Chat {item.chatId}</span>}
+                  {item.chatId && (
+                    <Link
+                      className="ml-2 underline"
+                      to="/projects/$projectId/chats/$chatId"
+                      params={{ projectId, chatId: item.chatId }}
+                    >
+                      查看 Chat
+                    </Link>
+                  )}
+                  {item.inputDisposition && <span> · 输入 {item.inputDisposition}</span>}
+                  {item.cancelReason && <span> · 取消原因 {item.cancelReason}</span>}
                   {item.runId && (
                     <span>
                       {" "}

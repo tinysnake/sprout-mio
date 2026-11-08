@@ -1,6 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
+import {
+  webhookRuleDraftSchema,
+  webhookRuleIdInput,
+  webhookTrialInput,
+  webhookUpdateInput,
+} from "../../contracts/automation";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
 import { getRequestContext } from "../request-context";
@@ -34,14 +40,22 @@ export const createWebhookRuleFn = createServerFn({ method: "POST" })
   .validator((x: unknown) => x)
   .handler(({ data }) =>
     call(async (ctx, origin) =>
-      (await import("../../domain/automation")).createWebhookRule(data as never, ctx, origin),
+      (await import("../../domain/automation")).createWebhookRule(
+        webhookRuleDraftSchema.parse(data),
+        ctx,
+        origin,
+      ),
     ),
   );
 export const updateWebhookRuleFn = createServerFn({ method: "POST" })
   .validator((x: unknown) => x)
   .handler(({ data }) =>
     call(async (ctx, origin) =>
-      (await import("../../domain/automation")).updateWebhookRule(data as never, ctx, origin),
+      (await import("../../domain/automation")).updateWebhookRule(
+        webhookUpdateInput.parse(data),
+        ctx,
+        origin,
+      ),
     ),
   );
 export const webhookHistoryFn = createServerFn({ method: "POST" })
@@ -49,7 +63,7 @@ export const webhookHistoryFn = createServerFn({ method: "POST" })
   .handler(({ data }) =>
     call(async (ctx) =>
       (await import("../../domain/automation")).webhookHistory(
-        (data as { ruleId: string }).ruleId,
+        webhookRuleIdInput.parse(data).ruleId,
         ctx,
       ),
     ),
@@ -57,5 +71,7 @@ export const webhookHistoryFn = createServerFn({ method: "POST" })
 export const trialWebhookFn = createServerFn({ method: "POST" })
   .validator((x: unknown) => x)
   .handler(({ data }) =>
-    call(async (ctx) => (await import("../../domain/automation")).trialWebhook(data as never, ctx)),
+    call(async (ctx) =>
+      (await import("../../domain/automation")).trialWebhook(webhookTrialInput.parse(data), ctx),
+    ),
   );

@@ -73,7 +73,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
         agent_instance: ['id','agent_profile_id','chat_id','project_id','created_at','updated_at'],
         // I-P5b 在 body 之后追加 9 个可空的 Task 归属列；其余列序与 P2 一致。
         message: [
-          'id','chat_id','sender_kind','sender_id','body',
+          'id','chat_id','sender_kind','sender_id','body','automation_trigger_id',
           'task_id','task_project_id','task_record_seq','task_record_kind',
           'task_reference_message_id','task_author_run_id','task_assignment_revision',
           'task_governance_revision','task_start_recipient_id','created_at',
