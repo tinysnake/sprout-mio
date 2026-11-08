@@ -12,7 +12,7 @@ export const assistantTargetSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("dm_agent"),
     projectId: z.string(),
-    chatId: z.string(),
+    chatId: z.string().optional(),
     agentProfileId: z.string(),
   }),
   z.strictObject({
@@ -41,24 +41,25 @@ const watch = z.strictObject({
   projectId: z.string(),
   targetProjectId: z.string(),
   chatId: z.string(),
+  intervalSeconds: z.number().int().min(60).max(86400).optional(),
 });
 export const ASSISTANT_TOOL_SPEC = {
   sprout_assistant_observe: {
     call: "assistant_observe",
     description:
-      "Read bounded factual Projects, Chats, messages and run activity currently visible to the Human. Does not execute work.",
+      "Read bounded factual Projects, effective worker Agents (with agentProfileId even without a DM), Chats, messages and run activity currently visible to the Human. Omit targetProjectId to list Projects, provide it to list workers/Chats. Does not execute work.",
     input: observe,
   },
   sprout_assistant_propose: {
     call: "assistant_propose",
     description:
-      "Create an immutable concrete work proposal in this DM. Only the Human can confirm it. No work starts here.",
+      "Create an immutable concrete work proposal in this DM. For dm_agent, provide projectId and agentProfileId; chatId is optional and resolves to the Human's canonical DM. Only the Human can confirm it. No work starts here.",
     input: propose,
   },
   sprout_assistant_watch: {
     call: "assistant_watch",
     description:
-      "Create a Chat watch decision card. Only a native Human action activates the durable watch.",
+      "Create or update a Chat watch interval intent (intervalSeconds: integer 60..86400, default 300). Only a native Human action activates a new durable watch; updating an active watch preserves its Human consent and target.",
     input: watch,
   },
 } as const;
@@ -78,6 +79,7 @@ export type AssistantFact = {
   runId?: string;
   proposalId?: string;
   watchIntent?: boolean;
+  intervalSeconds?: number;
   body: string;
   sampledAt: string;
 };

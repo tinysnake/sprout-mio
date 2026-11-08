@@ -3,8 +3,30 @@ import type { AutomationAction } from "../contracts/automation";
 import { db } from "../db";
 import { agentProfile, chatEffectiveMember, projectMember } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
-import { getChat, ChatError } from "./chat";
+import { getChat, createDirectChat, ChatError } from "./chat";
 import { controlFor } from "./chat-schedule";
+
+export function validateAutomationDmAgent(
+  projectId: string,
+  agentProfileId: string,
+  ctx: ProjectContext,
+): string | null {
+  assertProjectAccess(ctx, projectId);
+  const member = db
+    .select()
+    .from(projectMember)
+    .where(
+      and(eq(projectMember.projectId, projectId), eq(projectMember.agentProfileId, agentProfileId)),
+    )
+    .get();
+  if (!member) return "agent_not_participating";
+  if (
+    db.select().from(agentProfile).where(eq(agentProfile.id, agentProfileId)).get()?.purpose !==
+    "worker"
+  )
+    return "agent_not_worker";
+  return null;
+}
 
 export function resolveAutomationTarget(
   projectId: string,
@@ -13,13 +35,18 @@ export function resolveAutomationTarget(
 ): { chatId: string; agentProfileId: string } | { reason: string } {
   try {
     assertProjectAccess(ctx, projectId);
-    const current = getChat(action.chatId, ctx);
+    if (action.kind === "dm_agent" && !action.chatId) {
+      const reason = validateAutomationDmAgent(projectId, action.agentProfileId, ctx);
+      if (reason) return { reason };
+    }
+    const targetChatId =
+      action.kind === "dm_agent" && !action.chatId
+        ? createDirectChat(projectId, action.agentProfileId, ctx).chat.id
+        : action.chatId!;
+    const current = getChat(targetChatId, ctx);
     if (current.projectId !== projectId) return { reason: "target_project_mismatch" };
     if (current.archivedAt) return { reason: "chat_archived" };
-    if (
-      (action.kind === "dm_agent") !== (current.kind === "dm") ||
-      current.kind === "public_channel"
-    )
+    if ((action.kind === "dm_agent") !== (current.kind === "dm"))
       return { reason: "target_kind_mismatch" };
     if (controlFor(current.id).mode !== "enabled") return { reason: "chat_stopped" };
     if (action.kind === "group_owner" && current.owner.kind !== "agent")

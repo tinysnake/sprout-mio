@@ -109,7 +109,110 @@ afterAll(() => {
 });
 
 describe("Project webhook admission and single Chat input path", () => {
-  it("persists only digest, rejects foreign Project/Agent contexts and cannot forge public source", () => {
+  it("resolves Agent-only DM lazily, freezes the receipt and supports effective public-channel workers", () => {
+    const fresh = createAgentProfile({ name: "Lazy worker", persona: "", harness: "pi" }, ctx);
+    addProjectMember(project.id, fresh.id, ctx);
+    const count = () =>
+      (
+        sqlite
+          .prepare("SELECT count(*) n FROM chat WHERE project_id=? AND kind='dm'")
+          .get(project.id) as { n: number }
+      ).n;
+    const before = count();
+    const configured = rule({ kind: "dm_agent", agentProfileId: fresh.id });
+    automation.listWebhookRules(project.id, ctx, baseUrl);
+    expect(count()).toBe(before);
+    const first = deliver(configured, "lazy-first");
+    expect(count()).toBe(before + 1);
+    expect(first.run.chatId).toBe(chats.createDirectChat(project.id, fresh.id, ctx).chat.id);
+    const frozen = sqlite
+      .prepare("SELECT snapshot,chat_id FROM webhook_trigger WHERE id=?")
+      .get(first.receipt.id) as { snapshot: string; chat_id: string };
+    expect(JSON.parse(frozen.snapshot).action.chatId).toBe(frozen.chat_id);
+    expect(
+      automation.webhookHistory(configured.rule.id, ctx).find((row) => row.id === first.receipt.id),
+    ).toMatchObject({
+      chatId: frozen.chat_id,
+      runId: first.run.id,
+      runStatus: "queued",
+      source: "webhook",
+      inputDisposition: "pending",
+    });
+    deliver(configured, "lazy-second");
+    expect(count()).toBe(before + 1);
+    const channel = chats.listChats(project.id, ctx).find((c) => c.kind === "public_channel")!;
+    expect(
+      deliver(
+        rule({ kind: "group_agent", chatId: channel.id, agentProfileId: fresh.id }),
+        "public-event",
+      ).run.chatId,
+    ).toBe(channel.id);
+    const outsider = createAgentProfile({ name: "Outside", persona: "", harness: "pi" }, ctx);
+    expect(() => rule({ kind: "dm_agent", agentProfileId: outsider.id })).toThrow(
+      /agent_not_participating/,
+    );
+    expect(count()).toBe(before + 1);
+  });
+
+  it("reloads and revision-rotates Human-managed secrets while rejecting old values and Agent/foreign reads", () => {
+    const configured = rule({ kind: "group_agent", chatId: group().id, agentProfileId: alpha.id });
+    expect(automation.webhookSecret(configured.rule.id, ctx)).toEqual({
+      secret: configured.secret,
+    });
+    const rotated = automation.rotateWebhookSecret(
+      { ruleId: configured.rule.id, expectedRevision: 0 },
+      ctx,
+      baseUrl,
+    );
+    expect(rotated.secret).not.toBe(configured.secret);
+    expect(rotated.rule.revision).toBe(1);
+    expect(automation.webhookSecret(configured.rule.id, ctx)).toEqual({ secret: rotated.secret });
+    expect(() =>
+      automation.assertWebhookCredential(configured.rule.id, configured.secret),
+    ).toThrow();
+    expect(() =>
+      automation.assertWebhookCredential(configured.rule.id, rotated.secret),
+    ).not.toThrow();
+    expect(() =>
+      automation.rotateWebhookSecret(
+        { ruleId: configured.rule.id, expectedRevision: 0 },
+        ctx,
+        baseUrl,
+      ),
+    ).toThrow(/已变化/);
+    expect(() =>
+      automation.webhookSecret(configured.rule.id, { ...ctx, userId: "foreign" }),
+    ).toThrow();
+    const admitted = deliver(rotated, "secret-authorization");
+    const agentCtx = {
+      ...ctx,
+      agent: {
+        agentProfileId: alpha.id,
+        instanceId: admitted.run.instanceId,
+        runId: admitted.run.id,
+      },
+    };
+    expect(() => automation.webhookSecret(configured.rule.id, agentCtx)).toThrow();
+    expect(() =>
+      automation.rotateWebhookSecret(
+        { ruleId: configured.rule.id, expectedRevision: 1 },
+        agentCtx,
+        baseUrl,
+      ),
+    ).toThrow();
+    sqlite
+      .prepare("UPDATE webhook_rule SET recoverable_secret=NULL WHERE id=?")
+      .run(configured.rule.id);
+    expect(automation.webhookSecret(configured.rule.id, ctx)).toEqual({ secret: null });
+    expect(
+      automation.rotateWebhookSecret(
+        { ruleId: configured.rule.id, expectedRevision: 1 },
+        ctx,
+        baseUrl,
+      ).secret,
+    ).toBeTruthy();
+  });
+  it("keeps secrets out of public views, rejects foreign Project/Agent contexts and cannot forge public source", () => {
     const current = group();
     expect(() =>
       automation.createWebhookRule(
@@ -131,7 +234,10 @@ describe("Project webhook admission and single Chat input path", () => {
       .where(eq(schema.webhookRule.id, configured.rule.id))
       .get()!;
     expect(stored.secretDigest).toMatch(/^[a-f0-9]{64}$/);
-    expect(JSON.stringify(stored)).not.toContain(configured.secret);
+    expect(stored.recoverableSecret).toBe(configured.secret);
+    expect(JSON.stringify(automation.listWebhookRules(project.id, ctx, baseUrl))).not.toContain(
+      configured.secret,
+    );
     expect(configured.rule.endpoint).not.toContain(configured.secret);
     expect(
       automation

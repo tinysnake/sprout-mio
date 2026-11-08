@@ -5,10 +5,54 @@ import {
   agentProfile,
   agentRun,
   assistantInterest,
-  assistantPreferences,
   assistantRunCursor,
   assistantWatch,
 } from "../db/schema";
+
+export function assistantRunInterval(assistantChatId: string, runId: string): number {
+  const watch = db
+    .select({ intervalSeconds: assistantWatch.intervalSeconds })
+    .from(assistantInterest)
+    .innerJoin(assistantWatch, eq(assistantWatch.id, assistantInterest.originId))
+    .where(
+      and(
+        eq(assistantInterest.assistantChatId, assistantChatId),
+        eq(assistantInterest.runId, runId),
+        eq(assistantInterest.originKind, "watch"),
+        isNull(assistantWatch.revokedAt),
+      ),
+    )
+    .get();
+  return watch?.intervalSeconds ?? 300;
+}
+
+export function rescheduleWatch(watch: typeof assistantWatch.$inferSelect, now: Date) {
+  const runs = db
+    .select({ runId: assistantInterest.runId })
+    .from(assistantInterest)
+    .where(
+      and(
+        eq(assistantInterest.assistantChatId, watch.assistantChatId),
+        eq(assistantInterest.originKind, "watch"),
+        eq(assistantInterest.originId, watch.id),
+      ),
+    )
+    .all();
+  if (!runs.length) return;
+  db.update(assistantRunCursor)
+    .set({ nextDueAt: new Date(now.getTime() + watch.intervalSeconds * 1000) })
+    .where(
+      and(
+        eq(assistantRunCursor.assistantChatId, watch.assistantChatId),
+        inArray(
+          assistantRunCursor.runId,
+          runs.map((r: { runId: string }) => r.runId),
+        ),
+        isNull(assistantRunCursor.terminalCapturedAt),
+      ),
+    )
+    .run();
+}
 
 export function enrollAssistantInterest(
   assistantChatId: string,
@@ -21,12 +65,7 @@ export function enrollAssistantInterest(
     .values({ assistantChatId, runId, originKind, originId })
     .onConflictDoNothing()
     .run();
-  const seconds =
-    db
-      .select()
-      .from(assistantPreferences)
-      .where(eq(assistantPreferences.assistantChatId, assistantChatId))
-      .get()?.intervalSeconds ?? 300;
+  const seconds = assistantRunInterval(assistantChatId, runId);
   db.insert(assistantRunCursor)
     .values({ assistantChatId, runId, nextDueAt: new Date(now.getTime() + seconds * 1000) })
     .onConflictDoNothing()

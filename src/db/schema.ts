@@ -120,10 +120,15 @@ export const assistantWatch = sqliteTable(
     consentedBy: text("consented_by")
       .notNull()
       .references(() => user.id),
+    intervalSeconds: integer("interval_seconds").notNull().default(300),
     consentedAt: integer("consented_at", { mode: "timestamp_ms" }).notNull(),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
   },
   (t) => [
+    check(
+      "assistant_watch_interval_check",
+      sql`typeof(${t.intervalSeconds})='integer' and ${t.intervalSeconds} between 60 and 86400`,
+    ),
     uniqueIndex("assistant_watch_active_unique")
       .on(t.assistantChatId, t.targetChatId)
       .where(sql`${t.revokedAt} is null`),
@@ -432,6 +437,7 @@ export const webhookRule = sqliteTable(
       .notNull()
       .default("webhook"),
     secretDigest: text("secret_digest"),
+    recoverableSecret: text("recoverable_secret"),
     expression: text("expression"),
     timezone: text("timezone"),
     nextAt: integer("next_at", { mode: "timestamp_ms" }),
@@ -448,7 +454,7 @@ export const webhookRule = sqliteTable(
     check("automation_source_check", sql`${t.source} in ('webhook','cron')`),
     check(
       "webhook_rule_action_check",
-      sql`json_valid(${t.action}) and coalesce(json_extract(${t.action}, '$.kind') in ('dm_agent','group_agent','group_owner') and json_type(${t.action}, '$.chatId')='text' and (json_extract(${t.action}, '$.kind')='group_owner' or json_type(${t.action}, '$.agentProfileId')='text'),0)`,
+      sql`json_valid(${t.action}) and coalesce(json_extract(${t.action}, '$.kind') in ('dm_agent','group_agent','group_owner') and (json_type(${t.action}, '$.chatId')='text' or (json_extract(${t.action}, '$.kind')='dm_agent' and json_type(${t.action}, '$.chatId') is null)) and (json_extract(${t.action}, '$.kind')='group_owner' or json_type(${t.action}, '$.agentProfileId')='text'),0)`,
     ),
   ],
 );

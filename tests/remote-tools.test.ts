@@ -420,6 +420,31 @@ describe("真实 HTTP transport", () => {
     }
   });
 
+  it("assistant observe validates its own successful envelope instead of execution/lease shapes", async () => {
+    let data: unknown = { projects: [{ id: projectId, name: "Visible Project" }] };
+    const http = await service((_req, res) =>
+      res.end(JSON.stringify({ ok: true, data, requestId })),
+    );
+    try {
+      const client = createRemoteClient(grant(http.endpoint));
+      const call = {
+        type: "assistant_observe" as const,
+        input: { projectId, offset: 0, limit: 20 },
+      };
+      expect(await client.request({ version: 2, call })).toMatchObject({
+        outcome: "response",
+        result: { ok: true, data },
+      });
+      data = { projects: "corrupt" };
+      expect(await client.request({ version: 2, call })).toMatchObject({
+        outcome: "unknown",
+        reason: "invalid_response",
+      });
+    } finally {
+      http.close();
+    }
+  });
+
   it("HTTP 200 的领域失败与 HTTP 401 的撤销都不会包装成成功", async () => {
     let status = 200;
     const http = await service((_req, res) => {

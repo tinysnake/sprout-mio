@@ -67,6 +67,7 @@ it("0038 preserves populated webhook rows/identities and enforces source/config/
         old.webhook_rule.map((row) => ({
           ...(row as object),
           source: "webhook",
+          recoverable_secret: null,
           expression: null,
           timezone: null,
           next_at: null,

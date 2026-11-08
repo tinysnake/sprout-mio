@@ -22,7 +22,7 @@ import { db, sqlite } from "../db";
 import { agentRun, agentRunInput, chat, message, webhookRule, webhookTrigger } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { appendAutomationRunInput } from "./agent-run";
-import { resolveAutomationTarget } from "./automation-target";
+import { resolveAutomationTarget, validateAutomationDmAgent } from "./automation-target";
 import { signalScheduleChange } from "./chat-schedule";
 import { publishProjectChange } from "./change-feed";
 
@@ -76,6 +76,11 @@ function receipt(row: Trigger): WebhookTrigger {
     : { ...base, decision: "skipped", reason: row.reason! };
 }
 function validateTarget(draft: WebhookRuleDraft, ctx: ProjectContext) {
+  if (draft.action.kind === "dm_agent" && !draft.action.chatId) {
+    const reason = validateAutomationDmAgent(draft.projectId, draft.action.agentProfileId, ctx);
+    if (reason) throw new AutomationError("invalid_target", reason);
+    return;
+  }
   const result = resolveAutomationTarget(draft.projectId, draft.action, ctx);
   if ("reason" in result) throw new AutomationError("invalid_target", result.reason);
 }
@@ -99,6 +104,7 @@ export function createWebhookRule(
           createdBy: ctx.userId,
           revision: 0,
           secretDigest: digest(secret),
+          recoverableSecret: secret,
           createdAt: now,
           updatedAt: now,
         })
@@ -108,6 +114,37 @@ export function createWebhookRule(
     .immediate();
   return { rule: view(row, baseUrl), secret };
 }
+export function webhookSecret(ruleId: string, ctx: ProjectContext): { secret: string | null } {
+  return { secret: ruleFor(ruleId, ctx).recoverableSecret };
+}
+
+export function rotateWebhookSecret(
+  input: { ruleId: string; expectedRevision: number },
+  ctx: ProjectContext,
+  baseUrl: string,
+): { rule: WebhookRule; secret: string } {
+  return sqlite
+    .transaction(() => {
+      const current = ruleFor(input.ruleId, ctx);
+      if (current.revision !== input.expectedRevision)
+        throw new AutomationError("conflict", "Webhook rule 已变化");
+      const secret = randomBytes(32).toString("base64url");
+      const row = db
+        .update(webhookRule)
+        .set({
+          secretDigest: digest(secret),
+          recoverableSecret: secret,
+          revision: current.revision + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(webhookRule.id, current.id))
+        .returning()
+        .get()!;
+      return { rule: view(row, baseUrl), secret };
+    })
+    .immediate();
+}
+
 export function listWebhookRules(
   projectId: string,
   ctx: ProjectContext,
@@ -209,7 +246,7 @@ function admit(
   const snapshot = {
     revision: rule.revision,
     instruction: rule.instruction,
-    action: rule.action,
+    action: "reason" in target ? rule.action : { ...rule.action, chatId: target.chatId },
     enabled: rule.enabled,
     createdBy: rule.createdBy,
     ...(rule.source === "cron"
@@ -529,6 +566,7 @@ function ruleHistory(ruleId: string): AutomationHistory[] {
         : undefined;
       return {
         ...receipt(row),
+        source: row.source,
         chatId: row.chatId,
         runId: run?.id ?? null,
         runStatus: status?.status ?? null,

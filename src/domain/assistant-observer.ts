@@ -20,7 +20,7 @@ import {
   deliverAssistantEvents,
   hasCurrentAssistantInterest,
 } from "./assistant";
-import { enrollExistingWatch } from "./assistant-interest";
+import { enrollExistingWatch, assistantRunInterval, rescheduleWatch } from "./assistant-interest";
 import { getChat, ChatError } from "./chat";
 import { ProjectAccessError, type ProjectContext } from "./access";
 import { readRunActivity } from "../server/pi-host/run-activity";
@@ -32,7 +32,13 @@ export function setAssistantWatch(
   active: boolean,
   ctx: ProjectContext,
   now = new Date(),
+  intervalSeconds?: number,
 ) {
+  if (
+    intervalSeconds !== undefined &&
+    (!Number.isInteger(intervalSeconds) || intervalSeconds < 60 || intervalSeconds > 86400)
+  )
+    throw new AssistantError("conflict");
   return sqlite
     .transaction(() => {
       assistantSource(assistantChatId, ctx);
@@ -60,7 +66,16 @@ export function setAssistantWatch(
       const target = getChat(targetChatId, ctx);
       if (target.projectId !== targetProjectId || target.archivedAt)
         throw new AssistantError("not_found");
-      if (current) return { active: true, watchId: current.id };
+      if (current) {
+        if (intervalSeconds !== undefined) {
+          db.update(assistantWatch)
+            .set({ intervalSeconds })
+            .where(eq(assistantWatch.id, current.id))
+            .run();
+          rescheduleWatch({ ...current, intervalSeconds }, now);
+        }
+        return { active: true, watchId: current.id };
+      }
       const watch = {
         id: newId(ID_PREFIXES.message),
         assistantChatId,
@@ -68,9 +83,11 @@ export function setAssistantWatch(
         targetChatId,
         consentedBy: ctx.userId,
         consentedAt: now,
+        intervalSeconds: intervalSeconds ?? 300,
       };
       db.insert(assistantWatch).values(watch).run();
       enrollExistingWatch({ ...watch, revokedAt: null }, now);
+      rescheduleWatch({ ...watch, revokedAt: null }, now);
       return { active: true, watchId: watch.id };
     })
     .immediate();
@@ -79,7 +96,6 @@ export function setAssistantInterval(
   assistantChatId: string,
   intervalSeconds: number,
   ctx: ProjectContext,
-  now = new Date(),
 ) {
   assistantSource(assistantChatId, ctx);
   if (!Number.isInteger(intervalSeconds) || intervalSeconds < 60 || intervalSeconds > 86400)
@@ -92,15 +108,6 @@ export function setAssistantInterval(
           target: assistantPreferences.assistantChatId,
           set: { intervalSeconds },
         })
-        .run();
-      db.update(assistantRunCursor)
-        .set({ nextDueAt: new Date(now.getTime() + intervalSeconds * 1000) })
-        .where(
-          and(
-            eq(assistantRunCursor.assistantChatId, assistantChatId),
-            isNull(assistantRunCursor.terminalCapturedAt),
-          ),
-        )
         .run();
     })
     .immediate();
@@ -267,12 +274,7 @@ export function sampleAssistantRuns(now: Date, activity = readRunActivity) {
           )
             throw error;
         } finally {
-          const seconds =
-            db
-              .select()
-              .from(assistantPreferences)
-              .where(eq(assistantPreferences.assistantChatId, cursor.assistantChatId))
-              .get()?.intervalSeconds ?? 300;
+          const seconds = assistantRunInterval(cursor.assistantChatId, cursor.runId);
           db.update(assistantRunCursor)
             .set({
               nextDueAt: new Date(now.getTime() + seconds * 1000),

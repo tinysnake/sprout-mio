@@ -31,6 +31,26 @@ async function call<T>(operation: (ctx: ProjectContext, baseUrl: string) => T | 
     return fail(toAppError(error, requestId));
   }
 }
+export const webhookSecretFn = createServerFn({ method: "POST" })
+  .validator((x: unknown) => automationRuleIdInput.parse(x))
+  .handler(({ data }) =>
+    call(async (ctx) => (await import("../../domain/automation")).webhookSecret(data.ruleId, ctx)),
+  );
+export const rotateWebhookSecretFn = createServerFn({ method: "POST" })
+  .validator((x: unknown) =>
+    z
+      .strictObject({
+        ruleId: automationRuleIdInput.shape.ruleId,
+        expectedRevision: z.number().int().nonnegative(),
+      })
+      .parse(x),
+  )
+  .handler(({ data }) =>
+    call(async (ctx, origin) =>
+      (await import("../../domain/automation")).rotateWebhookSecret(data, ctx, origin),
+    ),
+  );
+
 const projectInput = z.object({ projectId: z.string() });
 export const listCronRulesFn = createServerFn({ method: "POST" })
   .validator((x: unknown) => x)

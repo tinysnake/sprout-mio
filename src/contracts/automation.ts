@@ -8,7 +8,11 @@ const ruleId = z.string().regex(appIdPattern(ID_PREFIXES.webhookRule));
 const triggerId = z.string().regex(appIdPattern(ID_PREFIXES.webhookTrigger));
 
 export const automationActionSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("dm_agent"), chatId, agentProfileId: agentProfileIdSchema }),
+  z.strictObject({
+    kind: z.literal("dm_agent"),
+    chatId: chatId.optional(),
+    agentProfileId: agentProfileIdSchema,
+  }),
   z.strictObject({ kind: z.literal("group_agent"), chatId, agentProfileId: agentProfileIdSchema }),
   z.strictObject({ kind: z.literal("group_owner"), chatId }),
 ]);
@@ -103,6 +107,7 @@ export const automationSourceSchema = z.discriminatedUnion("kind", [
 ]);
 export type AutomationSource = z.infer<typeof automationSourceSchema>;
 export type AutomationHistory<T = WebhookTrigger> = T & {
+  source: "webhook" | "cron";
   chatId: string | null;
   runId: string | null;
   runStatus: string | null;

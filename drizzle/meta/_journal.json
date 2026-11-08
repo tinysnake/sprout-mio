@@ -302,6 +302,13 @@
       "when": 1794150477651,
       "tag": "0042_unusual_boomerang",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1794157489747,
+      "tag": "0043_perpetual_jimmy_woo",
+      "breakpoints": true
     }
   ]
 }

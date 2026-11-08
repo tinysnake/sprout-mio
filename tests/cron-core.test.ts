@@ -93,6 +93,63 @@ afterAll(() => {
 });
 
 describe("Project cron shared admission and durable cursor", () => {
+  it("keeps Agent-only cron configuration read-only until trial then freezes canonical Chat history", () => {
+    const profile = createAgentProfile({ name: "Lazy cron worker" }, ctx);
+    addProjectMember(project.id, profile.id, ctx);
+    const count = () =>
+      (
+        sqlite
+          .prepare("SELECT count(*) n FROM chat WHERE project_id=? AND kind='dm'")
+          .get(project.id) as { n: number }
+      ).n;
+    const before = count();
+    const current = automation.createCronRule(
+      {
+        projectId: project.id,
+        name: "DM cron",
+        enabled: false,
+        instruction: "hi",
+        action: { kind: "dm_agent", agentProfileId: profile.id },
+        expression: "* * * * *",
+        timezone: "UTC",
+      },
+      ctx,
+      at("12:00:00"),
+    );
+    automation.listCronRules(project.id, ctx);
+    expect(count()).toBe(before);
+    expect(trial(current, "disabled-lazy")).toMatchObject({
+      decision: "skipped",
+      reason: "rule_disabled",
+    });
+    expect(count()).toBe(before);
+    const enabled = update(current, { enabled: true });
+    const receipt = trial(enabled, "lazy-cron");
+    expect(receipt.decision).toBe("accepted");
+    if (receipt.decision !== "accepted") throw new Error("accepted");
+    expect(count()).toBe(before + 1);
+    const history = automation.cronHistory(current.id, ctx);
+    expect(history.find((item) => item.id === receipt.id)).toMatchObject({
+      source: "cron",
+      chatId: chats.createDirectChat(project.id, profile.id, ctx).chat.id,
+      messageId: receipt.messageId,
+      runId: inputFor(receipt.messageId).run_id,
+      runStatus: "queued",
+      inputDisposition: "pending",
+    });
+    expect(history.find((item) => item.decision === "skipped")).toMatchObject({
+      chatId: null,
+      runId: null,
+      runStatus: null,
+    });
+    const snapshot = sqlite
+      .prepare("SELECT snapshot FROM webhook_trigger WHERE id=?")
+      .get(receipt.id) as { snapshot: string };
+    expect(JSON.parse(snapshot.snapshot).action.chatId).toBe(
+      history.find((item) => item.id === receipt.id)!.chatId,
+    );
+    update(enabled, { enabled: false });
+  });
   it("owns one rearming timer, skips event-loop gaps, rebases restart and ignores stale callbacks", async () => {
     const { createCronScheduler } = await import("../src/server/cron-scheduler");
     const current = rule();
@@ -179,7 +236,7 @@ describe("Project cron shared admission and durable cursor", () => {
       instruction: current.instruction,
     });
     const saved = chats
-      .listMessages(current.action.chatId, ctx)
+      .listMessages(current.action.chatId!, ctx)
       .find((m) => m.id === result.messageId)!;
     expect(saved).toMatchObject({
       senderKind: "automation",
@@ -349,7 +406,7 @@ it("gates cron initial prompt and cross-rule active steer at the real transport 
           ...data,
           ruleId: id,
           expectedRevision: revision,
-          action: { kind: "group_owner", chatId: seed.action.chatId },
+          action: { kind: "group_owner", chatId: seed.action.chatId! },
         },
         ctx,
       );
@@ -371,7 +428,7 @@ it("gates cron initial prompt and cross-rule active steer at the real transport 
       const runId = inputFor(first.messageId).run_id;
       let second: ReturnType<typeof trial> | undefined;
       const revoke = () =>
-        chats.setChatOwner(current.action.chatId, { kind: "human", id: ctx.userId }, 0, {
+        chats.setChatOwner(current.action.chatId!, { kind: "human", id: ctx.userId }, 0, {
           kind: "human",
           userId: ctx.userId,
           ctx,

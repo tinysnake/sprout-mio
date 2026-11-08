@@ -62,6 +62,106 @@ afterAll(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 describe("native assistant authority and durable work", () => {
+  it("observes visible workers without DM and freezes an Agent-only proposal to its canonical DM", () => {
+    const source = activeHelper();
+    const fresh = createAgentProfile({ name: "No existing DM" }, ctx);
+    addProjectMember(project.id, fresh.id, ctx);
+    const before = (
+      sqlite
+        .prepare("SELECT count(*) n FROM chat WHERE project_id=? AND kind='dm'")
+        .get(project.id) as { n: number }
+    ).n;
+    const observed = assistant.dispatchAssistantCall(
+      source.run.id,
+      ctx.userId,
+      ctx.requestId,
+      {
+        type: "assistant_observe",
+        input: { projectId: project.id, targetProjectId: project.id, limit: 50, offset: 0 },
+      },
+      () => null,
+    );
+    expect(observed).toMatchObject({
+      agents: expect.arrayContaining([
+        { id: fresh.id, agentProfileId: fresh.id, name: fresh.name, purpose: "worker" },
+      ]),
+    });
+    expect(
+      (
+        sqlite
+          .prepare("SELECT count(*) n FROM chat WHERE project_id=? AND kind='dm'")
+          .get(project.id) as { n: number }
+      ).n,
+    ).toBe(before);
+    const proposed = assistant.createAssistantProposal(
+      source,
+      { kind: "dm_agent", projectId: project.id, agentProfileId: fresh.id },
+      "hi",
+      instant,
+    );
+    expect(proposed.target.chatId).toBe(chats.createDirectChat(project.id, fresh.id, ctx).chat.id);
+    expect(runs.listAgentRuns(proposed.target.chatId, ctx)).toEqual([]);
+    expect(
+      assistant.confirmAssistantProposal(proposed.proposalId, dm.id, ctx, instant),
+    ).toMatchObject({ status: "submitted" });
+  });
+
+  it("keeps watch intervals and clocks independent and never activates tool intent without Human consent", () => {
+    const profile = createAgentProfile({ name: "Interval helper", purpose: "assistant" }, ctx);
+    addProjectMember(project.id, profile.id, ctx);
+    const sourceChat = chats.createDirectChat(project.id, profile.id, ctx).chat;
+    const source = activeHelper(sourceChat.id);
+    const other = createAgentProfile({ name: "Other watched worker" }, ctx);
+    addProjectMember(project.id, other.id, ctx);
+    const otherChat = chats.createDirectChat(project.id, other.id, ctx).chat;
+    const tool = (chatId: string, intervalSeconds: number) =>
+      assistant.dispatchAssistantCall(
+        source.run.id,
+        ctx.userId,
+        ctx.requestId,
+        {
+          type: "assistant_watch",
+          input: { projectId: project.id, targetProjectId: project.id, chatId, intervalSeconds },
+        },
+        () => null,
+      );
+    expect(tool(work.id, 60)).toMatchObject({ active: false, intervalSeconds: 60 });
+    expect(assistant.assistantPanel(sourceChat.id, ctx).watches).toHaveLength(0);
+    observer.setAssistantWatch(sourceChat.id, project.id, work.id, true, ctx, instant, 60);
+    observer.setAssistantWatch(sourceChat.id, project.id, otherChat.id, true, ctx, instant, 900);
+    const consent = assistant
+      .assistantPanel(sourceChat.id, ctx)
+      .watches.find((w) => w.targetChatId === work.id)!;
+    expect(tool(work.id, 120)).toMatchObject({ active: true, intervalSeconds: 120 });
+    const updated = assistant.assistantPanel(sourceChat.id, ctx).watches;
+    expect(updated.find((w) => w.targetChatId === work.id)).toMatchObject({
+      consentedAt: consent.consentedAt,
+      consentedBy: consent.consentedBy,
+      intervalSeconds: 120,
+    });
+    expect(updated.find((w) => w.targetChatId === otherChat.id)).toMatchObject({
+      intervalSeconds: 900,
+    });
+    for (const target of [work.id, otherChat.id])
+      chats.sendMessage(target, { senderKind: "human", senderId: ctx.userId, body: "clock" }, ctx);
+    const cursors = sqlite
+      .prepare(
+        "SELECT c.next_due_at,r.chat_id FROM assistant_run_cursor c JOIN agent_run r ON r.id=c.run_id WHERE c.assistant_chat_id=?",
+      )
+      .all(sourceChat.id) as { next_due_at: number; chat_id: string }[];
+    const first = cursors.find((c) => c.chat_id === work.id)!;
+    const second = cursors.find((c) => c.chat_id === otherChat.id)!;
+    expect(second.next_due_at - first.next_due_at).toBeGreaterThanOrEqual(779000);
+    expect(() =>
+      observer.setAssistantWatch(sourceChat.id, project.id, work.id, true, ctx, instant, 59),
+    ).toThrow();
+    expect(() =>
+      sqlite.prepare("UPDATE assistant_watch SET interval_seconds=0 WHERE id=?").run(consent.id),
+    ).toThrow();
+    observer.setAssistantWatch(sourceChat.id, project.id, work.id, false, ctx);
+    observer.setAssistantWatch(sourceChat.id, project.id, otherChat.id, false, ctx);
+    sqlite.prepare("DELETE FROM assistant_interest WHERE assistant_chat_id=?").run(sourceChat.id);
+  });
   it("defaults purpose and freezes it at the database boundary", () => {
     expect(worker.purpose).toBe("worker");
     expect(helper.purpose).toBe("assistant");
@@ -266,8 +366,6 @@ describe("native assistant authority and durable work", () => {
   });
   it("samples unchanged activity on the elapsed clock, merges proposal/watch and keeps a watch for new short runs", () => {
     const now = new Date();
-    observer.setAssistantInterval(dm.id, 60, ctx, now);
-    observer.setAssistantWatch(dm.id, project.id, work.id, true, ctx, now);
     const source = activeHelper();
     const proposal = assistant.createAssistantProposal(
       source,
@@ -276,6 +374,7 @@ describe("native assistant authority and durable work", () => {
       now,
     );
     const receipt = assistant.confirmAssistantProposal(proposal.proposalId, dm.id, ctx, now);
+    observer.setAssistantWatch(dm.id, project.id, work.id, true, ctx, now, 60);
     const input = sqlite
       .prepare("SELECT run_id FROM agent_run_input WHERE message_id=? AND disposition='pending'")
       .get(receipt.messageId) as { run_id: string };
@@ -286,6 +385,13 @@ describe("native assistant authority and durable work", () => {
     expect(
       sqlite.prepare("SELECT * FROM assistant_interest WHERE run_id=?").all(input.run_id),
     ).toHaveLength(2);
+    expect(
+      sqlite
+        .prepare(
+          "SELECT next_due_at FROM assistant_run_cursor WHERE run_id=? AND assistant_chat_id=?",
+        )
+        .get(input.run_id, dm.id),
+    ).toEqual({ next_due_at: now.getTime() + 60000 });
     const live = {
       current: {
         id: "live-step",
@@ -552,8 +658,7 @@ describe("native assistant authority and durable work", () => {
     addProjectMember(project.id, isolated.id, ctx);
     const target = chats.createDirectChat(project.id, isolated.id, ctx).chat;
     for (const sourceId of [dm.id, second.id]) {
-      observer.setAssistantInterval(sourceId, 60, ctx, instant);
-      observer.setAssistantWatch(sourceId, project.id, target.id, true, ctx, instant);
+      observer.setAssistantWatch(sourceId, project.id, target.id, true, ctx, instant, 60);
     }
     chats.sendMessage(
       target.id,

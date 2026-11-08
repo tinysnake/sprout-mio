@@ -25,7 +25,7 @@ import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./
 import { getChat, ensureInstance, ChatError } from "./chat";
 import { allocateContinuationRun } from "./agent-run";
 import { resolveAutomationTarget } from "./automation-target";
-import { enrollAssistantInterest } from "./assistant-interest";
+import { enrollAssistantInterest, rescheduleWatch } from "./assistant-interest";
 
 export class AssistantError extends Error {
   constructor(
@@ -97,7 +97,7 @@ function resolvedTarget(target: AssistantTarget, ctx: ProjectContext) {
   const resolved = resolveAutomationTarget(target.projectId, target, ctx);
   if ("reason" in resolved)
     throw new AssistantError("conflict", `工作目标不可用：${resolved.reason}`);
-  return { ...resolved, instance: ensureInstance(target.chatId, resolved.agentProfileId, ctx) };
+  return { ...resolved, instance: ensureInstance(resolved.chatId, resolved.agentProfileId, ctx) };
 }
 function operationHash(
   target: AssistantTarget,
@@ -192,14 +192,15 @@ export function prepareAssistantSteerContext(
 
 export function createAssistantProposal(
   source: ReturnType<typeof assistantPrincipal>,
-  target: AssistantTarget,
+  requestedTarget: AssistantTarget,
   body: string,
   now = new Date(),
 ) {
   return sqlite
     .transaction(() => {
       assistantPrincipal(source.run.id, source.ctx.userId, source.ctx.requestId);
-      const resolved = resolvedTarget(target, source.ctx);
+      const resolved = resolvedTarget(requestedTarget, source.ctx);
+      const target = { ...requestedTarget, chatId: resolved.chatId };
       const proposalId = id();
       db.insert(assistantProposal)
         .values({
@@ -490,21 +491,44 @@ export function dispatchAssistantCall(
     case "assistant_watch": {
       visibleTarget(call.input.targetProjectId, call.input.chatId, source.ctx);
       const now = new Date();
+      const current = db
+        .select()
+        .from(assistantWatch)
+        .where(
+          and(
+            eq(assistantWatch.assistantChatId, source.current.id),
+            eq(assistantWatch.targetProjectId, call.input.targetProjectId),
+            eq(assistantWatch.targetChatId, call.input.chatId),
+            isNull(assistantWatch.revokedAt),
+          ),
+        )
+        .get();
+      const intervalSeconds = call.input.intervalSeconds ?? current?.intervalSeconds ?? 300;
+      if (current) {
+        db.update(assistantWatch)
+          .set({ intervalSeconds })
+          .where(eq(assistantWatch.id, current.id))
+          .run();
+        rescheduleWatch({ ...current, intervalSeconds }, now);
+      }
       const event = captureAssistantFact(
         source.current.id,
         `watch-intent:${id()}`,
         {
           kind: "decision",
-          watchIntent: true,
+          watchIntent: !current,
+          intervalSeconds,
           targetProjectId: call.input.targetProjectId,
           targetChatId: call.input.chatId,
-          body: "是否持续关注此 Chat 的工作？仅确认后生效。",
+          body: current
+            ? `已更新关注间隔为 ${intervalSeconds}s；沿用原 Human 授权。`
+            : `是否每 ${intervalSeconds}s 持续关注此 Chat 的工作？仅确认后生效。`,
           sampledAt: now.toISOString(),
         },
         now,
       );
       deliverAssistantEvents(now);
-      return { eventId: event.id, active: false };
+      return { eventId: event.id, active: !!current, intervalSeconds };
     }
     case "assistant_observe": {
       const { targetProjectId, chatId, runId: targetRunId, limit, offset } = call.input;
@@ -582,6 +606,22 @@ export function dispatchAssistantCall(
         };
       }
       return {
+        agents: db
+          .select({
+            id: agentProfile.id,
+            agentProfileId: agentProfile.id,
+            name: agentProfile.name,
+            purpose: agentProfile.purpose,
+          })
+          .from(projectMember)
+          .innerJoin(agentProfile, eq(agentProfile.id, projectMember.agentProfileId))
+          .where(
+            and(eq(projectMember.projectId, targetProjectId), eq(agentProfile.purpose, "worker")),
+          )
+          .orderBy(asc(agentProfile.id))
+          .limit(limit)
+          .offset(offset)
+          .all(),
         chats: db
           .select({
             id: chat.id,

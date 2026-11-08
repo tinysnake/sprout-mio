@@ -4,6 +4,12 @@ import { z } from "zod";
 import { leaseMutationViewSchema, leaseViewSchema } from "../contracts/lease";
 import { infoHubViewSchema } from "../contracts/info-hub-query";
 import { appErrorSchema } from "../contracts/result";
+import {
+  assistantObserveResponseSchema,
+  assistantProposeResponseSchema,
+  assistantWatchResponseSchema,
+  type AssistantResponse,
+} from "../contracts/assistant-response";
 import type { AppResult } from "../contracts/result";
 import {
   mcpCatalogViewSchema,
@@ -40,6 +46,7 @@ const leaseReadSchema = z.strictObject({
   mutation: leaseMutationViewSchema.nullable(),
 });
 type RemoteData =
+  | AssistantResponse
   | z.infer<typeof infoHubViewSchema>
   | z.infer<typeof chatContinuationGetResponseSchema>
   | z.infer<typeof taskGetResponseSchema>
@@ -98,6 +105,25 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
     call.type === "chat_send"
   )
     return { outcome: "unknown", reason: "invalid_response" };
+  if (
+    call.type === "assistant_observe" ||
+    call.type === "assistant_propose" ||
+    call.type === "assistant_watch"
+  ) {
+    const schema =
+      call.type === "assistant_observe"
+        ? assistantObserveResponseSchema
+        : call.type === "assistant_propose"
+          ? assistantProposeResponseSchema
+          : assistantWatchResponseSchema;
+    const parsed = schema.safeParse(envelope.data.data);
+    return parsed.success
+      ? {
+          outcome: "response",
+          result: { ok: true, data: parsed.data, requestId: envelope.data.requestId },
+        }
+      : { outcome: "unknown", reason: "invalid_response" };
+  }
   if (call.type.startsWith("mcp_")) return readMcpResponse(envelope.data, request);
   const input = call.input;
   const sameBinding = (data: { projectId: string; machineId: string }) =>
