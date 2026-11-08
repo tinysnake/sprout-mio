@@ -36,6 +36,7 @@ webhook、cron、个人助理、Feishu 与语音 channel 正在进行产品决�
 
 草案明确区分已确认方向、建议与待定项。目前已确认的首期决定如下。
 
+- Webhook 与 cron 规则归属 Project，触发动作可配置。首期主要向所属 Project 的 DM 或 Group 发送系统来源消息，支持唤醒 DM Agent、Group 中 @ 的 Agent 或当前 Agent owner；内置系统动作留到后续。
 - 同一 cron 规则的上一次工作尚未结束时，跳过本次触发并记录原因，不排队、不并行启动该规则的另一份工作，被跳过的时点不补跑。
 - 每个 Human 最多绑定一个飞书账号，采用已确认的绑定、解绑和换绑流程。
 - 助理默认查询 Human 当前有权访问的全部 Projects。
