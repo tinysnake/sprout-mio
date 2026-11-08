@@ -19,10 +19,10 @@ export function PageFrame({ title, description, back, actions, children, testId 
   return (
     <section
       data-testid={testId}
-      className="flex min-h-0 flex-1 flex-col overflow-auto bg-background text-foreground"
+      className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-auto bg-background text-foreground"
     >
-      <div className="flex flex-1 flex-col px-12 py-10 max-desktop:px-5 max-desktop:py-6">
-        <div className="mx-auto w-full max-w-240">
+      <div className="flex min-w-0 flex-1 flex-col px-12 py-10 max-desktop:px-5 max-desktop:py-6">
+        <div className="mx-auto w-full min-w-0 max-w-240">
           {/* back 是 link 节点，44px 触控高度由这个插槽统一给出，调用方不必各写一份。 */}
           {back && (
             <div className="mb-4 flex min-h-11 items-center text-xs leading-normal [&>*]:inline-flex [&>*]:min-h-11 [&>*]:items-center [&>*]:gap-2">

@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { assistantActionFn } from "../../server/functions/assistant";
 import type { assistantPanel } from "../../domain/assistant";
+import { Button } from "../ui/button";
 type Panel = ReturnType<typeof assistantPanel>;
 export function AssistantPanel({ chatId }: { chatId: string }) {
+  return <ChatAssistantPanel key={chatId} chatId={chatId} />;
+}
+function ChatAssistantPanel({ chatId }: { chatId: string }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -68,22 +72,26 @@ export function AssistantPanel({ chatId }: { chatId: string }) {
                 ]}
           </span>
           {proposal.status === "pending" && !proposal.expired && (
-            <button
-              className="ml-2 rounded border px-2 py-1"
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-2"
               disabled={pending}
               onClick={() => void act({ action: "confirm", chatId, proposalId: proposal.id })}
             >
               确认并提交工作
-            </button>
+            </Button>
           )}
           {["pending", "submitted"].includes(proposal.status) && (
-            <button
-              className="ml-2 rounded border px-2 py-1"
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-2"
               disabled={pending}
               onClick={() => void act({ action: "revoke", chatId, proposalId: proposal.id })}
             >
               {proposal.status === "pending" ? "拒绝" : "撤销未投递输入"}
-            </button>
+            </Button>
           )}
         </article>
       ))}
@@ -95,8 +103,9 @@ export function AssistantPanel({ chatId }: { chatId: string }) {
         )
         .map((event) => (
           <p key={event.id}>
-            <button
-              className="rounded border px-2 py-1"
+            <Button
+              variant="outline"
+              size="sm"
               disabled={pending}
               onClick={() =>
                 void act({
@@ -105,11 +114,12 @@ export function AssistantPanel({ chatId }: { chatId: string }) {
                   targetProjectId: event.fact.targetProjectId,
                   targetChatId: event.fact.targetChatId,
                   active: true,
+                  intervalSeconds: event.fact.intervalSeconds,
                 })
               }
             >
-              确认持续关注 {event.targetLabel}
-            </button>
+              确认持续关注 {event.targetLabel}（每 {event.fact.intervalSeconds ?? 300} 秒）
+            </Button>
           </p>
         ))}
       {panel?.watches.map((watch) => (
@@ -121,8 +131,11 @@ export function AssistantPanel({ chatId }: { chatId: string }) {
           >
             {watch.targetLabel}
           </a>
-          <button
-            className="ml-2 rounded border px-2 py-1"
+          <span className="ml-2 text-muted-foreground">每 {watch.intervalSeconds} 秒检查一次</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-2"
             disabled={pending}
             onClick={() =>
               void act({
@@ -135,28 +148,9 @@ export function AssistantPanel({ chatId }: { chatId: string }) {
             }
           >
             取消关注
-          </button>
+          </Button>
         </p>
       ))}
-      {panel && (
-        <label className="flex items-center gap-2">
-          通知间隔
-          <select
-            className="rounded border p-1"
-            value={panel.intervalSeconds}
-            disabled={pending}
-            onChange={(event) =>
-              void act({ action: "interval", chatId, intervalSeconds: Number(event.target.value) })
-            }
-          >
-            {[60, 300, 900, 3600, 86400].map((seconds) => (
-              <option key={seconds} value={seconds}>
-                {seconds / 60} 分钟
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
     </section>
   );
 }

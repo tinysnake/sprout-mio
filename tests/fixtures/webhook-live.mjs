@@ -11,6 +11,10 @@ import { chromium } from "playwright";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
 import { verifyCronBrowser } from "./cron-browser.mjs";
 import { verifyAssistantBrowser } from "./assistant-browser.mjs";
+import {
+  verifyAutomationTargetPicker,
+  verifyAutomationUnknownRoute,
+} from "./automation-browser.mjs";
 const assistantMode = process.argv.includes("--assistant");
 const cronMode = process.argv.includes("--cron");
 
@@ -228,26 +232,46 @@ try {
       pass,
     });
   } else {
-    const ui = page.getByTestId("webhook-settings");
-    const agentSelect = ui.getByRole("combobox", { name: /^Agent/ });
+    await page
+      .getByRole("navigation", { name: "Project 设置分类" })
+      .getByRole("link", { name: "Webhooks", exact: true })
+      .click();
+    assert(new URL(page.url()).searchParams.get("tab") === "webhooks");
+    assert.equal(await page.getByLabel("规则名称", { exact: true }).count(), 0);
+    await page.getByRole("link", { name: "新建Webhook", exact: true }).click();
+    const ui = page.getByTestId("webhooks-editor-page");
+    const agentSelect = ui.getByRole("combobox", { name: "目标 Agent", exact: true });
     await ui.waitFor();
-    await ui.getByLabel("名称", { exact: true }).fill("Browser hook");
-    await ui.getByLabel("目标类型").selectOption("dm_agent");
-    await ui.getByLabel("Project Chat").selectOption(dm.chat.id);
     await until(
-      async () => (await agentSelect.locator("option").count()) === 2,
-      "DM selector filters effective members",
+      () => ui.getByLabel("规则名称", { exact: true }).isEnabled(),
+      "webhook editor ready",
+    );
+    await verifyAutomationTargetPicker({ ui, page, project, beta, call, until });
+    await ui.getByLabel("规则名称", { exact: true }).fill("Browser hook");
+    await ui.getByLabel("动作").selectOption("dm_agent");
+    assert.equal(await ui.getByLabel("目标 Chat", { exact: true }).count(), 0);
+    await until(
+      async () => (await agentSelect.locator("option").count()) === 3,
+      "DM selector includes all Project workers",
       10000,
     );
-    assert(!(await agentSelect.textContent()).includes(beta.name));
+    assert((await agentSelect.textContent()).includes(beta.name));
     assert(!(await agentSelect.textContent()).includes(foreign.name));
     await agentSelect.selectOption(alpha.id);
     await ui
-      .getByLabel("Instruction")
+      .getByLabel("指令", { exact: true })
       .fill("WEBHOOK_BROWSER_LIVE: process the external payload, use no tools.");
-    await ui.getByRole("button", { name: "保存", exact: true }).click();
-    await ui.getByText("Secret 仅显示一次，请立即复制。", { exact: true }).waitFor();
-    const secret = await ui.locator("code").first().textContent();
+    await ui.getByLabel("启用 Webhook", { exact: true }).check();
+    await ui.getByRole("button", { name: "保存Webhook", exact: true }).click();
+    const secretInput = ui.getByLabel("Webhook Secret", { exact: true });
+    await secretInput.waitFor();
+    assert.equal(await secretInput.getAttribute("type"), "password");
+    const secret = await secretInput.inputValue();
+    assert(secret);
+    await ui.getByRole("button", { name: "显示 Secret", exact: true }).click();
+    assert.equal(await secretInput.getAttribute("type"), "text");
+    await ui.getByRole("button", { name: "隐藏 Secret", exact: true }).click();
+    assert(!(await ui.getByTestId("webhook-curl").innerText()).includes(secret));
     const rules = await call("listWebhookRulesFn", { projectId: project.id });
     const rule = rules.find((item) => item.name === "Browser hook");
     assert(rule);
@@ -289,11 +313,17 @@ try {
     assert.deepEqual(await replay.json(), receipt);
     assert.equal((await post("browser-live", { build: 2 })).status, 409);
     pass("browser-create-authenticated-http-source-message-real-run-result-dedup");
-    await ui.getByRole("button", { name: "Browser hook · 启用", exact: true }).click();
+    await page.reload({ waitUntil: "networkidle" });
+    await secretInput.waitFor();
+    assert.equal(await secretInput.inputValue(), secret);
+    assert.equal(await secretInput.getAttribute("type"), "password");
     await ui.getByText("browser-live", { exact: false }).first().waitFor();
-    assert.equal(await ui.getByText("Secret 仅显示一次，请立即复制。", { exact: true }).count(), 0);
+    assert(await ui.getByRole("region", { name: "触发历史", exact: true }).isVisible());
+    pass(
+      "standalone webhook editor reloads masked secret, reveal/hide works, history loads independently",
+    );
     fixture.arm("chatOwner", { expectedUserPrefix: "{", steps: [], reply: "WEBHOOK_TRIAL_RESULT" });
-    await ui.getByRole("button", { name: "提交真实 Trial", exact: true }).click();
+    await ui.getByRole("button", { name: "Trial Webhook", exact: true }).click();
     await until(
       () =>
         db
@@ -304,15 +334,22 @@ try {
       "UI trial completed",
     );
     pass("browser-trial-separate-from-live");
-    await ui.getByLabel("启用", { exact: true }).uncheck();
-    await ui.getByRole("button", { name: "保存", exact: true }).click();
-    await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).waitFor();
+    await ui.getByLabel("启用 Webhook", { exact: true }).uncheck();
+    await ui.getByRole("button", { name: "保存Webhook", exact: true }).click();
+    await until(
+      async () =>
+        !(await call("listWebhookRulesFn", { projectId: project.id })).find((r) => r.id === rule.id)
+          .enabled,
+      "webhook disabled",
+    );
     assert.deepEqual((await (await post("disabled", {})).json()).decision, "skipped");
     const foreignCookie = await signup();
     /** @type {Array<[string, Record<string, unknown>]>} */
     const invalidTargets = [
       ["listWebhookRulesFn", { projectId: project.id }],
       ["webhookHistoryFn", { ruleId: rule.id }],
+      ["webhookSecretFn", { ruleId: rule.id }],
+      ["rotateWebhookSecretFn", { ruleId: rule.id, expectedRevision: rule.revision }],
       ["trialWebhookFn", { ruleId: rule.id, eventId: "forbidden", payload: {} }],
       [
         "createWebhookRuleFn",
@@ -346,6 +383,20 @@ try {
       assert.equal((await callResult(fn, input, "")).ok, false, `${fn} must require session`);
     }
     pass("real-human-session-management-boundaries");
+    const rotated = await call("rotateWebhookSecretFn", {
+      ruleId: rule.id,
+      expectedRevision: (await call("listWebhookRulesFn", { projectId: project.id })).find(
+        (r) => r.id === rule.id,
+      ).revision,
+    });
+    assert.notEqual(rotated.secret, secret);
+    assert.equal((await post("after-rotation-old", {})).status, 401);
+    assert.equal((await call("webhookSecretFn", { ruleId: rule.id })).secret, rotated.secret);
+    await page.reload({ waitUntil: "networkidle" });
+    await secretInput.waitFor();
+    assert.equal(await secretInput.inputValue(), rotated.secret);
+    assert.equal(await secretInput.getAttribute("type"), "password");
+    pass("rotated secret reloads masked and invalidates old credential");
     const groupRule = await call("createWebhookRuleFn", {
       projectId: project.id,
       name: "Group explicit",
@@ -404,45 +455,57 @@ try {
       enabled: false,
       action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
     });
-    await page.reload({ waitUntil: "networkidle" });
-    await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).click();
-    await ui.getByLabel("Instruction").fill("Saved A instruction");
+    await page.goto(`${base}/projects/${project.id}/settings?tab=webhooks`, {
+      waitUntil: "networkidle",
+    });
+    const hookRow = page.getByTestId("webhooks-list").locator(`[data-rule-id="${rule.id}"]`);
+    assert((await hookRow.innerText()).includes("停用"));
+    assert((await hookRow.innerText()).includes(alpha.name));
+    await hookRow.getByRole("link").click();
+    await ui.getByLabel("指令", { exact: true }).fill("Saved A instruction");
     const saveGate = Promise.withResolvers();
     const saveReceived = Promise.withResolvers();
+    const saveDelivered = Promise.withResolvers();
     const updateUrl = `**/_serverFn/${ids.updateWebhookRuleFn}`;
     await page.route(updateUrl, async (route) => {
       const response = await route.fetch();
       saveReceived.resolve(undefined);
       await saveGate.promise;
       await route.fulfill({ response });
+      saveDelivered.resolve(undefined);
     });
-    await ui.getByRole("button", { name: "保存", exact: true }).click();
+    await ui.getByRole("button", { name: "保存Webhook", exact: true }).click();
     await saveReceived.promise;
     try {
       assert(
-        await ui.getByRole("button", { name: "Race B · 停用", exact: true }).isDisabled(),
-        "cannot switch rules while save response is pending",
-      );
-      assert(
-        await ui.getByRole("button", { name: "新建", exact: true }).isDisabled(),
-        "cannot start another draft while save response is pending",
-      );
-      assert(
-        await ui.getByRole("button", { name: "保存", exact: true }).isDisabled(),
+        await ui.getByRole("button", { name: "保存Webhook", exact: true }).isDisabled(),
         "cannot submit a second save while response is pending",
+      );
+      await ui.getByRole("link", { name: "返回Webhooks", exact: true }).click();
+      await page
+        .getByTestId("webhooks-list")
+        .locator(`[data-rule-id="${alternate.rule.id}"]`)
+        .getByRole("link")
+        .click();
+      await until(
+        async () => (await ui.getByLabel("规则名称", { exact: true }).inputValue()) === "Race B",
+        "direct URL loads B while A save pending",
       );
     } finally {
       saveGate.resolve(undefined);
     }
-    await until(
-      () => ui.getByRole("button", { name: "保存", exact: true }).isEnabled(),
-      "saved editor unlocked",
-    );
+    await saveDelivered.promise;
     await page.unroute(updateUrl);
-    await ui.getByRole("button", { name: "Race B · 停用", exact: true }).click();
-    await ui.getByLabel("名称", { exact: true }).fill("Race B edited");
-    await ui.getByRole("button", { name: "保存", exact: true }).click();
-    await ui.getByRole("button", { name: "Race B edited · 停用", exact: true }).waitFor();
+    assert.equal(await ui.getByLabel("指令", { exact: true }).inputValue(), "B instruction");
+    await ui.getByLabel("规则名称", { exact: true }).fill("Race B edited");
+    await ui.getByRole("button", { name: "保存Webhook", exact: true }).click();
+    await until(
+      async () =>
+        (await call("listWebhookRulesFn", { projectId: project.id })).some(
+          (r) => r.id === alternate.rule.id && r.name === "Race B edited",
+        ),
+      "B save settled",
+    );
     const afterRace = await call("listWebhookRulesFn", { projectId: project.id });
     const savedA = afterRace.find((item) => item.id === rule.id);
     const savedB = afterRace.find((item) => item.id === alternate.rule.id);
@@ -453,13 +516,26 @@ try {
     assert.equal(savedB.instruction, "B instruction");
     assert.deepEqual(savedB.action, alternate.rule.action);
     pass("browser-delayed-save-keeps-rule-identity");
-    await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).click();
+    await verifyAutomationUnknownRoute({ page, base, project, kind: "webhooks" });
+    await page.goto(`${base}/projects/${project.id}/settings/webhooks/${rule.id}`, {
+      waitUntil: "networkidle",
+    });
     await ui.getByText("disabled", { exact: false }).first().waitFor();
     await page.screenshot({ path: join(directory, "settings-desktop.png"), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     assert(
       await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
       "mobile page must not overflow horizontally",
+    );
+    assert(
+      await ui.evaluate((element) => element.scrollWidth <= element.clientWidth),
+      "webhook PageFrame has no horizontal overflow including curl",
+    );
+    assert(
+      await ui
+        .getByTestId("webhook-curl")
+        .evaluate((element) => element.clientWidth <= element.parentElement.clientWidth),
+      "curl scrolls within its own container",
     );
     await page.screenshot({ path: join(directory, "settings-mobile.png"), fullPage: true });
     await page.goto(`${base}/projects/${project.id}/chats/${dm.chat.id}`, {

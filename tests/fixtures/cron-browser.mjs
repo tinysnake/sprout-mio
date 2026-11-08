@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { writeFileSync } from "node:fs";
 import Database from "better-sqlite3";
+import {
+  verifyAutomationTargetPicker,
+  verifyAutomationUnknownRoute,
+} from "./automation-browser.mjs";
 
 export async function verifyCronBrowser({
   page,
@@ -22,17 +26,31 @@ export async function verifyCronBrowser({
   until,
   pass,
 }) {
-  const ui = page.getByTestId("cron-settings");
+  await page
+    .getByRole("navigation", { name: "Project 设置分类" })
+    .getByRole("link", { name: "定时任务", exact: true })
+    .click();
+  assert(new URL(page.url()).searchParams.get("tab") === "cron");
+  assert.equal(await page.getByLabel("规则名称", { exact: true }).count(), 0);
+  await page.getByRole("link", { name: "新建定时规则", exact: true }).click();
+  const ui = page.getByTestId("cron-editor-page");
   await ui.waitFor();
+  assert(new URL(page.url()).pathname.endsWith("/settings/cron/new"));
   await until(() => ui.getByLabel("规则名称", { exact: true }).isEnabled(), "cron editor ready");
+  await verifyAutomationTargetPicker({ ui, page, project, beta, call, until });
   await ui.getByLabel("规则名称", { exact: true }).fill("Browser cron");
   await ui.getByLabel("Cron 表达式").fill("0 0 29 2 *");
-  await ui.getByLabel("时区（IANA）").fill("Asia/Shanghai");
+  const zone = ui.getByLabel("时区（IANA）");
+  assert.equal(await zone.locator('option[value="Etc/GMT-14"]').count(), 1);
+  assert.equal(await zone.locator('option[value="Etc/GMT+12"]').count(), 1);
+  await zone.selectOption("Asia/Shanghai");
+  await ui.getByLabel("Cron 语法帮助").click();
+  assert((await ui.getByTestId("cron-help").innerText()).includes("OR"));
   await ui
     .getByLabel("指令", { exact: true })
     .fill("CRON_BROWSER @HookAlpha /skill:danger. Reply briefly.");
   await ui.getByLabel("动作", { exact: true }).selectOption("dm_agent");
-  await ui.getByLabel("目标 Chat", { exact: true }).selectOption(dm.id);
+  assert.equal(await ui.getByLabel("目标 Chat", { exact: true }).count(), 0);
   await until(
     async () =>
       (
@@ -44,7 +62,7 @@ export async function verifyCronBrowser({
     .getByLabel("目标 Agent", { exact: true })
     .locator("option")
     .allTextContents();
-  assert(!options.includes(beta.name) && !options.includes(foreign.name));
+  assert(options.includes(beta.name) && !options.includes(foreign.name));
   await ui.getByLabel("目标 Agent", { exact: true }).selectOption(alpha.id);
   await ui.getByLabel("启用定时规则", { exact: true }).check();
   await ui.getByRole("button", { name: "保存定时规则", exact: true }).click();
@@ -61,7 +79,7 @@ export async function verifyCronBrowser({
   assert(rule.nextAt && !Object.hasOwn(rule, "endpoint") && !Object.hasOwn(rule, "secret"));
   assert((await page.getByTestId("cron-next").innerText()).includes("Asia/Shanghai"));
   pass(
-    "browser native editor: explicit timezone/nextAt, effective Project+Chat Agent filter, no webhook credentials",
+    "browser standalone editor: tabs, fixed-offset timezone select, cron help, DM Project workers without Chat picker, nextAt and no webhook credentials",
   );
 
   const apiDraft = {
@@ -127,9 +145,9 @@ export async function verifyCronBrowser({
   try {
     await ui.getByRole("button", { name: "Trial 定时规则", exact: true }).click();
     await responsePending;
-    assert.equal(await ui.getAttribute("disabled"), "");
+    assert.equal(await page.getByTestId("cron-settings").getAttribute("disabled"), "");
     assert(await ui.getByLabel("规则名称", { exact: true }).isDisabled());
-    assert(await ui.getByRole("button", { name: "新建定时规则", exact: true }).isDisabled());
+    assert(await ui.getByRole("button", { name: "Trial 定时规则", exact: true }).isDisabled());
   } finally {
     release();
     await routeHandled;
@@ -337,8 +355,12 @@ export async function verifyCronBrowser({
   } finally {
     seed.close();
   }
-  await page.goto(`${base}/projects/${project.id}/settings`);
-  await ui.getByRole("button", { name: `${rule.name} · 停用`, exact: true }).click();
+  await verifyAutomationUnknownRoute({ page, base, project, kind: "cron" });
+  await page.goto(`${base}/projects/${project.id}/settings?tab=cron`);
+  const row = page.getByTestId("cron-list").locator(`[data-rule-id="${rule.id}"]`);
+  assert((await row.innerText()).includes("停用"));
+  assert((await row.innerText()).includes("Asia/Shanghai"));
+  await row.getByRole("link").click();
   const historicalLink = ui.getByRole("link", { name: `Run ${historicalRunId}`, exact: true });
   await historicalLink.waitFor();
   await historicalLink.click();

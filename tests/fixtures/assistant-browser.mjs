@@ -53,7 +53,10 @@ export async function verifyAssistantBrowser({
           body: "Native confirmed fixture work",
         },
       },
-      { name: "sprout_assistant_watch", arguments: { targetProjectId: project.id, chatId: dm.id } },
+      {
+        name: "sprout_assistant_watch",
+        arguments: { targetProjectId: project.id, chatId: dm.id, intervalSeconds: 120 },
+      },
     ],
     reply: "A concrete proposal and watch request are ready for Human confirmation.",
   });
@@ -103,6 +106,23 @@ export async function verifyAssistantBrowser({
         .prepare("SELECT * FROM assistant_watch WHERE assistant_chat_id=? AND revoked_at IS NULL")
         .get(source.id),
     "Human activates persistent watch",
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT interval_seconds FROM assistant_watch WHERE assistant_chat_id=? AND revoked_at IS NULL",
+      )
+      .get(source.id).interval_seconds,
+    120,
+  );
+  await page
+    .getByTestId("assistant-panel")
+    .getByText("每 120 秒检查一次", { exact: true })
+    .waitFor();
+  assert.equal(await page.getByLabel("通知间隔", { exact: true }).count(), 0);
+  assert.equal(await page.getByTestId("assistant-panel").getByRole("combobox").count(), 0);
+  pass(
+    "tool-requested per-watch interval survives Human activation and global interval editor is absent",
   );
   fixture.arm("chatOwner", {
     expectedUserPrefix: "[Human-confirmed assistant proposal",
