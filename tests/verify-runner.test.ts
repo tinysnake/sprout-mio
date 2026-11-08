@@ -22,7 +22,7 @@ function makeFixture() {
   const root = mkdtempSync(join(tmpdir(), "verify-runner-"));
   temporaryRoots.push(root);
   mkdirSync(join(root, "scripts", "verify", "lib"), { recursive: true });
-  for (const name of ["native-lanes.mjs", "spend.mjs", "suite-plan.mjs"])
+  for (const name of ["host-pi-sdk.mjs", "native-lanes.mjs", "spend.mjs", "suite-plan.mjs"])
     copyFileSync(
       join(repositoryRoot, "scripts/verify/lib", name),
       join(root, "scripts/verify/lib", name),
@@ -226,6 +226,34 @@ process.exit(result.status ?? 1);
     expect(Date.parse(report.outcomes[2].startedAt)).toBeGreaterThanOrEqual(
       Date.parse(report.outcomes[1].startedAt),
     );
+  });
+
+  it("退出 77 的门禁记为 skipped：既不算失败，也不产生通过结论", () => {
+    const fixture = makeFixture();
+    fixture.writeScript("a-skip", 'echo "SKIP a-skip 缺少宿主托管 Pi SDK"\nexit 77\n');
+    fixture.writeScript("b-pass", 'echo "ok"\n');
+
+    const result = fixture.run([]);
+    const output = String(result.stdout);
+
+    expect(result.status).toBe(0);
+    expect(output).toContain("SKIP a-skip");
+    expect(output).toContain("SKIP a-skip 缺少宿主托管 Pi SDK");
+    expect(output).toContain("PASS b-pass");
+    expect(output).toMatch(/Verification scripts=2 failed=0 skipped=1/);
+
+    const report = JSON.parse(
+      readFileSync(join(fixture.singleRunDirectory(), "report.json"), "utf8"),
+    );
+    expect(report.count).toBe(2);
+    expect(report.failed).toBe(0);
+    expect(report.skipped).toBe(1);
+    expect(report.passed).toBe(1);
+    expect(report.outcomes.map((outcome: { status: string }) => outcome.status)).toEqual([
+      "skipped",
+      "passed",
+    ]);
+    expect(report.outcomes[0].exitCode).toBe(77);
   });
 
   it("--only 只运行精确选中的脚本，只清理选中目录的数据库", () => {

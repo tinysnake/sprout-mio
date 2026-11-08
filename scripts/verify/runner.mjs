@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { NATIVE_GATE_WEIGHTS } from "./lib/native-lanes.mjs";
+import { HOST_PI_SDK_EXIT } from "./lib/host-pi-sdk.mjs";
 import { greenFullRunOn, spendEntry } from "./lib/spend.mjs";
 import {
   MANUAL_GATES,
@@ -275,13 +276,27 @@ function runScript(script, runDirectory, environment = {}) {
       outcome.durationMs = Math.round(performance.now() - started);
       outcome.exitCode = code;
       outcome.signal = signal;
-      outcome.status =
-        code === 0 && signal === null && !spawnError && interrupted.signal === null
-          ? "passed"
-          : "failed";
+      const clean = code !== null && signal === null && !spawnError && interrupted.signal === null;
+      outcome.status = !clean
+        ? "failed"
+        : code === HOST_PI_SDK_EXIT
+          ? "skipped"
+          : code === 0
+            ? "passed"
+            : "failed";
       activeChildren.delete(child);
       if (outcome.status === "passed") {
         console.log(`PASS ${script.id} ${relativePath} ${formatDuration(outcome.durationMs)}`);
+      } else if (outcome.status === "skipped") {
+        // 门禁自己声明了「本机缺先决条件」（见 lib/host-pi-sdk.mjs）：跳过不是通过，所以照样
+        // 打出它的理由，并把理由留在日志里供 report.json 与人工翻阅。
+        console.log(`SKIP ${script.id} ${relativePath} ${formatDuration(outcome.durationMs)}`);
+        const tail = readLogTail(logPath);
+        if (tail !== "") {
+          console.log(`--- tail ${relative(root, logPath)} ---`);
+          console.log(tail);
+          console.log(`--- end tail ---`);
+        }
       } else {
         const reasons = [];
         if (spawnError !== undefined) reasons.push(`error=${spawnError.message}`);
@@ -471,9 +486,9 @@ function headCommit() {
 function printSummary(outcomes, totalDurationMs, reportPath) {
   console.log("Slowest first");
   for (const outcome of [...outcomes].sort((left, right) => right.durationMs - left.durationMs)) {
-    console.log(
-      `  ${formatDuration(outcome.durationMs)} ${outcome.status === "passed" ? "PASS" : "FAIL"} ${outcome.id}`,
-    );
+    const label =
+      outcome.status === "passed" ? "PASS" : outcome.status === "skipped" ? "SKIP" : "FAIL";
+    console.log(`  ${formatDuration(outcome.durationMs)} ${label} ${outcome.id}`);
   }
   console.log(`Verification total=${formatDuration(totalDurationMs)}`);
   console.log(`Verification report=${relative(root, reportPath).split("\\").join("/")}`);
@@ -556,7 +571,10 @@ async function main() {
   );
 
   const totalDurationMs = Math.round(performance.now() - runStarted);
-  const failed = outcomes.filter((outcome) => outcome.status !== "passed").length;
+  const statusCount = (status) => outcomes.filter((outcome) => outcome.status === status).length;
+  const failed = statusCount("failed");
+  const skipped = statusCount("skipped");
+  const passed = statusCount("passed");
   const report = {
     runId: run.id,
     startedAt,
@@ -573,8 +591,9 @@ async function main() {
     resourceTimeOrigin: performance.timeOrigin,
     resourceEvents,
     count: outcomes.length,
-    passed: outcomes.length - failed,
+    passed,
     failed,
+    skipped,
     outcomes,
   };
   const reportPath = writeReport(run.directory, report);
@@ -587,7 +606,15 @@ async function main() {
     return 1;
   }
 
-  console.log(`Verification scripts=${report.count} failed=${failed}`);
+  console.log(`Verification scripts=${report.count} failed=${failed} skipped=${skipped}`);
+  if (skipped > 0) {
+    const ids = outcomes
+      .filter((outcome) => outcome.status === "skipped")
+      .map((outcome) => outcome.id);
+    console.log(
+      `Verification skipped do not count as passed: ${ids.join(",")} — see each gate log for the missing prerequisite`,
+    );
+  }
 
   if (interrupted.signal !== null) return interrupted.exitCode;
   return failed === 0 ? 0 : 1;

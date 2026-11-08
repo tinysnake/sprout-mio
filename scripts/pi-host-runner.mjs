@@ -29,6 +29,24 @@ function failure(id, code, message, stopReason, text) {
 }
 
 async function open(config) {
+  // 契约是 src/server/pi-host/protocol.ts 的 OpenSession。缺字段时在这里说清楚缺了什么，
+  // 否则第一次读到它只是个 TypeError，还会被下面 safe 列表外的通用文案折叠掉。
+  const required = [
+    "id",
+    "instanceId",
+    "sessionId",
+    "sessionDirectory",
+    "cwd",
+    "agentDir",
+    "extensionPath",
+    "resources",
+    "profile",
+    "remote",
+  ];
+  const missing = required.filter((key) => config[key] === undefined);
+  if (missing.length > 0) throw new Error(`open 命令缺少字段：${missing.join(", ")}`);
+  if (config.resources?.kind !== "enabled" && config.resources?.kind !== "disabled")
+    throw new Error(`open 命令的 resources.kind 非法：${JSON.stringify(config.resources)}`);
   const root = sdkRoot(config.agentDir);
   const sdk = await import(pathToFileURL(join(root, "dist", "index.js")).href);
   const { ReadOnlyAuthStorage } = await import(
@@ -540,6 +558,7 @@ input.on("line", (raw) => {
     openId = command.id;
     void open(command).catch((error) => {
       const safe = [
+        "open 命令",
         "找不到 Pi SDK",
         "Agent profile 或 Pi",
         "magpie 需要",
@@ -555,9 +574,11 @@ input.on("line", (raw) => {
         "Pi 工具面为空",
         "sprout_status 未进入",
       ];
-      const message = safe.some((prefix) => error.message?.startsWith(prefix))
-        ? error.message
-        : "Pi session 初始化失败，请检查宿主 SDK 与配置";
+      const known = safe.some((prefix) => error.message?.startsWith(prefix));
+      const message = known ? error.message : "Pi session 初始化失败，请检查宿主 SDK 与配置";
+      // 帧里给宿主的是可读原因，真实原因与栈留在 stderr：门禁日志（与 _tail 输出）能收到它，
+      // 而宿主 UI 不必看一坨 TypeError。
+      if (!known) console.error(`pi-host-runner open failed: ${error?.stack ?? error}`);
       failure(command.id, "session_open_failed", message);
       session?.dispose();
       input.close();

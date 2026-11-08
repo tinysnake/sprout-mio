@@ -24,6 +24,7 @@ describe("verify spend ledger", () => {
       durationMs: 1234,
       count: 2,
       failed: 0,
+      skipped: 0,
       gates: [
         { id: "a-base", status: "passed", durationMs: 12 },
         { id: "b-tooling", status: "passed", durationMs: 57 },
@@ -40,6 +41,13 @@ describe("verify spend ledger", () => {
     expect(greenFullRunOn(ledger, "c")).toBeNull();
     expect(greenFullRunOn(ledger, null)).toBeNull();
     expect(greenFullRunOn("", "a")).toBeNull();
+  });
+
+  it("有跳过的轮次不算全绿，不会被复用", () => {
+    const line = (head: string, skipped: number) =>
+      `${JSON.stringify({ head, target: "all", failed: 0, skipped, count: 61, durationMs: 1, at: "t" })}\n`;
+    expect(greenFullRunOn(line("a", 1), "a")).toBeNull();
+    expect(greenFullRunOn(line("b", 0), "b")?.head).toBe("b");
   });
 
   it("ignores a corrupt ledger line instead of losing the whole history", () => {

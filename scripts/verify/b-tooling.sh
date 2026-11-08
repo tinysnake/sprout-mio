@@ -6,6 +6,12 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root"
 log_dir="$root/.verify/b-tooling"
 mkdir -p "$log_dir"
+
+# 本机分支会跑真实 Pi CLI/SDK 与 installed-Pi 测试，缺托管 Pi SDK 时给 SKIP 而不是假红；
+# CI 的 tooling job 只跑 ci 文件集（不需要本机 SDK），所以跳过这次检查。
+if [ "${SPROUT_VERIFY_TARGET-all}" != ci ]; then
+  node scripts/verify/lib/host-pi-sdk.mjs b-tooling || exit $?
+fi
 prod_port="${SPROUT_VERIFY_TOOLING_PORT:-3121}"
 export no_proxy="localhost,127.0.0.1,::1"
 export NO_PROXY="$no_proxy"
