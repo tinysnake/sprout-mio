@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs x2-mcp-extension || exit $?
 
 # Risk → Test
 # 依赖运行时的扩展入口（Pi MCP 深导入、handler 安装顺序、帧编码）写错 → 真实 Pi 加载真实代码。

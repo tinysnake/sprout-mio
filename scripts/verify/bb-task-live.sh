@@ -7,6 +7,10 @@
 # assert Task allowlist/scoping, and a real Worker shell proves the execution chain.
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs bb-task-live || exit $?
+
 export SPROUT_VERIFY_CHAT_MODE="${SPROUT_VERIFY_CHAT_MODE:-model-fixture}"
 case "$SPROUT_VERIFY_CHAT_MODE" in
   model-fixture|live) ;;

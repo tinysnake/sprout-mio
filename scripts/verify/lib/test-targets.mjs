@@ -114,6 +114,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/task-view.test.ts",
     "tests/tooling.test.ts",
     "tests/verify-ah-groups.test.ts",
+    "tests/verify-host-pi-sdk.test.ts",
     "tests/verify-model-fixture.test.ts",
     "tests/verify-spend.test.ts",
     "tests/verify-p7-client.test.ts",
