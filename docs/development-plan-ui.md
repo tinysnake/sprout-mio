@@ -1,10 +1,22 @@
 # UI 开发专项计划
 
-> **当前编排从[开发总计划](development-plan.md)开始。** 一期 UI 执行记录已归档；当前没有后续 UI 的已批准执行任务。
+> **当前编排从[开发总计划](development-plan.md)开始。** 一期 UI 执行记录已归档。首版界面随自动化与助理功能单元交付，当前尚未实现或完成 Human 体验确认。
 
 P4–P7 的带版本 Human 确认保留在各章 summary。P7 已确认除 PWA 装机外的一期客户端体验；安装、独立窗口与离线体验延后到部署及 HTTPS 就绪后评审，原 UI-P7 第 3 条保持未勾。当前状态及其证据见[总计划](development-plan.md#一期交付状态)。
 
 [一期 UI 计划快照](archive/phase-one/development-plan-ui.md)保留设计、演示前端与交付清单。快照内的等待与暂停安排属于历史执行记录，不触发新一轮设计或页面评审。设计稿、验收与 Human 反馈证据保持原位，见[一期归档索引](archive/phase-one/README.md)。
+
+## 首版界面单元
+
+界面服务于[首版推进顺序](development-plan.md#首版推进顺序)，复用已有 Project、Agent 配置及 DM 页面，不新增独立助理聊天系统。
+
+- [ ] Project 内的自动化入口，提供 webhook / cron 列表、配置、启停、试运行、触发记录及工作 Chat 跳转。首期每条规则只配置一个消息动作。
+- [ ] 消息中明确展示系统来源与关联规则，Human 手动消息保持可区分。Group 的 @Agent 和 owner 接手目标在配置时表达清楚。
+- [ ] 助理 profile 的模型、effort 与能力配置，以及 Project 内的普通助理 DM。
+- [ ] 具体目标和操作的提案展示、明确确认、已提交与失效状态，以及 watch 的查看和取消。
+- [ ] 飞书身份与助理 DM 绑定的选择、切换、解绑和异常状态。绑定失效不自动切换目标，重连不自动补发历史。
+
+新页面形状遵循[页面设计约定](project-conventions.md#页面设计与实现的分工)，具体组件与样式在实施前读取前端基线和开发约定。页面交付按[Human Review](human-review.md)在真实应用中验证，技术检查与 Human 确认分别记录。
 
 ## 旧章节链接
 
