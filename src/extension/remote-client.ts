@@ -110,18 +110,56 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
     call.type === "assistant_propose" ||
     call.type === "assistant_watch"
   ) {
-    const schema =
-      call.type === "assistant_observe"
-        ? assistantObserveResponseSchema
-        : call.type === "assistant_propose"
-          ? assistantProposeResponseSchema
-          : assistantWatchResponseSchema;
-    const parsed = schema.safeParse(envelope.data.data);
-    return parsed.success
-      ? {
-          outcome: "response",
-          result: { ok: true, data: parsed.data, requestId: envelope.data.requestId },
-        }
+    let data: AssistantResponse | undefined;
+    if (call.type === "assistant_observe") {
+      const parsed = assistantObserveResponseSchema.safeParse(envelope.data.data);
+      if (parsed.success) {
+        const value = parsed.data;
+        const input = call.input;
+        const matches = !input.targetProjectId
+          ? !input.chatId &&
+            !input.runId &&
+            "projects" in value &&
+            value.projects.length <= input.limit
+          : input.runId
+            ? !!input.chatId && "run" in value && value.run.id === input.runId
+            : input.chatId
+              ? "messages" in value &&
+                value.messages.length <= input.limit &&
+                value.runs.length <= input.limit
+              : "agents" in value &&
+                value.agents.length <= input.limit &&
+                value.chats.length <= input.limit;
+        if (matches) data = value;
+      }
+    } else if (call.type === "assistant_propose") {
+      const parsed = assistantProposeResponseSchema.safeParse(envelope.data.data);
+      if (parsed.success) {
+        const value = parsed.data;
+        const target = call.input.target;
+        if (
+          value.body === call.input.body &&
+          value.target.projectId === target.projectId &&
+          value.target.kind === target.kind &&
+          (!target.chatId || value.target.chatId === target.chatId) &&
+          (target.kind === "group_owner" ||
+            ("agentProfileId" in value.target &&
+              value.target.agentProfileId === target.agentProfileId &&
+              value.agentProfileId === target.agentProfileId))
+        )
+          data = value;
+      }
+    } else {
+      const parsed = assistantWatchResponseSchema.safeParse(envelope.data.data);
+      if (
+        parsed.success &&
+        (call.input.intervalSeconds === undefined ||
+          parsed.data.intervalSeconds === call.input.intervalSeconds)
+      )
+        data = parsed.data;
+    }
+    return data
+      ? { outcome: "response", result: { ok: true, data, requestId: envelope.data.requestId } }
       : { outcome: "unknown", reason: "invalid_response" };
   }
   if (call.type.startsWith("mcp_")) return readMcpResponse(envelope.data, request);

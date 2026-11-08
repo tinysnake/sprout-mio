@@ -435,8 +435,79 @@ describe("真实 HTTP transport", () => {
         outcome: "response",
         result: { ok: true, data },
       });
-      data = { projects: "corrupt" };
-      expect(await client.request({ version: 2, call })).toMatchObject({
+      for (data of [
+        { projects: "corrupt" },
+        { agents: [], chats: [] },
+        { projects: Array.from({ length: 21 }, () => ({ id: projectId, name: "Visible" })) },
+      ]) {
+        expect(await client.request({ version: 2, call })).toMatchObject({
+          outcome: "unknown",
+          reason: "invalid_response",
+        });
+      }
+      data = {
+        run: {
+          id: "run_11111111",
+          status: "completed",
+          queuedAt: time,
+          startedAt: time,
+          settledAt: time,
+          errorCode: null,
+          errorMessage: null,
+          assistantMessageId: null,
+        },
+        activity: null,
+        basis: "settled",
+      };
+      expect(
+        await client.request({
+          version: 2,
+          call: {
+            ...call,
+            input: {
+              ...call.input,
+              targetProjectId: projectId,
+              chatId: "cnv_00000000",
+              runId: "run_00000000",
+            },
+          },
+        }),
+      ).toMatchObject({ outcome: "unknown", reason: "invalid_response" });
+    } finally {
+      http.close();
+    }
+  });
+
+  it("assistant proposal success must describe the requested operation", async () => {
+    const target = { projectId, kind: "dm_agent" as const, agentProfileId: "agp_00000000" };
+    const data = {
+      proposalId: "proposal_1",
+      status: "pending",
+      target: { ...target, chatId: "cnv_00000000" },
+      agentProfileId: target.agentProfileId,
+      body: "Say hi",
+    };
+    const http = await service((_req, res) =>
+      res.end(JSON.stringify({ ok: true, data, requestId })),
+    );
+    try {
+      const client = createRemoteClient(grant(http.endpoint));
+      const request = {
+        version: 2 as const,
+        call: { type: "assistant_propose" as const, input: { projectId, target, body: "Say hi" } },
+      };
+      expect(await client.request(request)).toMatchObject({
+        outcome: "response",
+        result: { ok: true },
+      });
+      data.body = "Different work";
+      expect(await client.request(request)).toMatchObject({
+        outcome: "unknown",
+        reason: "invalid_response",
+      });
+      data.body = "Say hi";
+      data.target.agentProfileId = "agp_11111111";
+      expect(await client.request(request)).toMatchObject({
         outcome: "unknown",
         reason: "invalid_response",
       });
