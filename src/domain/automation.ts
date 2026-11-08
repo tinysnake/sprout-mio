@@ -447,7 +447,6 @@ export function cronHistory(ruleId: string, ctx: ProjectContext): AutomationHist
   ruleFor(ruleId, ctx, "cron");
   return ruleHistory(ruleId).map((row) => ({ ...row, ...cronReceipt(row) }));
 }
-/** Reset after run recovery: downtime is not a backlog. */
 export function rebaseCronCursors(bootNow: Date): void {
   sqlite
     .transaction(() => {
@@ -464,7 +463,6 @@ export function rebaseCronCursors(bootNow: Date): void {
     })
     .immediate();
 }
-/** Reread config/cursor and commit advance plus admission under the same write lock. */
 export function tickCronRules(now: Date, clockGap = false): CronTrigger[] {
   const admitted: { result: WebhookTrigger; projectId: string }[] = sqlite
     .transaction(() => {

@@ -14,7 +14,7 @@
 
 外部系统向显示的 endpoint 发送 JSON object，同时携带 bearer secret 与稳定的 `X-Sprout-Event-Id`。页面的 Trial 会真实向所选 Chat 提交。最近触发记录可以跳到接收消息的 Chat；编辑规则后旧记录仍指向原来的 Chat。
 
-Cron 在同页的定时规则区域。先选消息动作与有效目标，再填写五段表达式和显式 IANA 时区；启用保存后显示下一时点。Trial 真实开工但不推进计划 cursor；历史区分 Trial / Schedule 并提供 Chat / run 链接。停用不撤回已接纳工作。
+Cron 在同页的定时规则区域。先选消息动作与有效目标，再填写五段表达式和显式 IANA 时区；启用保存后显示下一时点。Trial 真实开工但不推进计划 cursor；历史区分 Trial / Schedule 并提供 Chat / run 链接。Run 链接按明确 runId 打开其状态与失败原因，不依赖该 run 是否最新或是否有回复消息。停用不撤回已接纳工作。
 
 ## Driving it with …
 
@@ -29,6 +29,8 @@ bash scripts/verify/cron-browser.sh
 ```
 
 `webhook-core` 覆盖 domain、HTTP 流、迁移和相关 Chat / Task 回归。浏览器门禁从页面创建规则，经真实 HTTP 到系统来源消息、run 和结果，并检查重复事件、Trial、停用、无 session / 外部账号管理拒绝、有效成员候选和 Group 目标。延迟保存响应的场景还检查编辑锁与两条规则的持久目标，防止跨规则覆盖。
+
+Cron 门禁还种入较早、没有回复关联的 failed run，并在已有较新 run 的情况下点击历史链接，检查目标状态和错误信息；无 session 或 Chat 不匹配的 run 查询会被拒绝。
 
 产物在脚本输出的 `.verify/webhook-<timestamp>` 目录，包含 `result.json`、服务日志与桌面 / 手机截图。核对结果标记、HTTP 状态、消息及输入数量、页面错误、来源标记和目标候选。模型模式为 `model-fixture`，记录 `paid-model-calls=0`。
 

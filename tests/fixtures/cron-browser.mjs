@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { writeFileSync } from "node:fs";
+import Database from "better-sqlite3";
 
 export async function verifyCronBrowser({
   page,
@@ -308,6 +309,67 @@ export async function verifyCronBrowser({
     "explicit group Agent Pi reply under Human owner",
   );
   pass("owner Human skips only owner action; explicit Group Agent still uses actual Pi runner");
+  const original = db.prepare("SELECT * FROM agent_run WHERE id=?").get(trial.runId);
+  assert(original && typeof original.id === "string");
+  const historicalRunId = `${original.id.slice(0, -1)}${original.id.endsWith("0") ? "1" : "0"}`;
+  const historical = {
+    ...original,
+    id: historicalRunId,
+    status: "failed",
+    assistant_message_id: null,
+    error_code: "fixture_historical_failure",
+    error_message: "Historical run failed before producing a reply",
+    stop_reason: null,
+  };
+  const columns = Object.keys(historical);
+  const seed = new Database(db.name, { fileMustExist: true });
+  try {
+    seed.transaction(() => {
+      seed
+        .prepare(
+          `INSERT INTO agent_run (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`,
+        )
+        .run(...Object.values(historical));
+      seed
+        .prepare("UPDATE agent_run_input SET run_id=? WHERE message_id=?")
+        .run(historicalRunId, trial.messageId);
+    })();
+  } finally {
+    seed.close();
+  }
+  await page.goto(`${base}/projects/${project.id}/settings`);
+  await ui.getByRole("button", { name: `${rule.name} · 停用`, exact: true }).click();
+  const historicalLink = ui.getByRole("link", { name: `Run ${historicalRunId}`, exact: true });
+  await historicalLink.waitFor();
+  await historicalLink.click();
+  const targetId = decodeURIComponent(new URL(page.url()).hash.slice(1));
+  assert(targetId, "historical Run link has an explicit destination");
+  await until(
+    () => page.locator(`[id="${targetId}"]`).count(),
+    "historical terminal Run link resolves even without an assistant message",
+    10000,
+  );
+  const selected = page.locator(`[id="${targetId}"]`);
+  assert((await selected.innerText()).includes(historicalRunId));
+  assert((await selected.innerText()).includes("Historical run failed before producing a reply"));
+  const historicalRead = await call("getChatRunFn", { chatId: dm.id, runId: historicalRunId });
+  assert.equal(historicalRead.id, historicalRunId);
+  assert.equal(historicalRead.status, "failed");
+  assert.equal(Object.hasOwn(historicalRead, "configSnapshot"), false);
+  assert.equal(
+    (await call("getChatRunStateFn", { chatId: dm.id })).latest.id === historicalRunId,
+    false,
+  );
+  assert.equal(
+    (await callResult("getChatRunFn", { chatId: group.id, runId: historicalRunId })).ok,
+    false,
+  );
+  assert.equal(
+    (await callResult("getChatRunFn", { chatId: dm.id, runId: historicalRunId }, "")).ok,
+    false,
+  );
+  await page.screenshot({ path: join(directory, "historical-run.png"), fullPage: true });
+  pass("historical failed Run without reply has a working link to its own status and error");
   fixture.assertHealthy();
   assert(fixture.metadata().requestCount >= 3);
   writeFileSync(

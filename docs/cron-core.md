@@ -22,6 +22,10 @@ Project settings 的定时规则区域提供五段 cron、显式时区、下一�
 
 历史按 createdAt、rowid 倒序取最新 50 条，返回当前 input disposition、cancelReason、run 状态及原 Chat / run 链接。UI 明确标识 Project cron，不回退到 Agent persona 或 run-activity。编辑器在保存 / Trial pending 时锁定；请求 generation 与 Project key 隔离跨规则 / 路由响应。网络结果不确定时提示可能已经提交并要求刷新，不显示伪重试。
 
+## 历史 Run 导航
+
+Cron 历史的 Run 链接使用明确的 `?run=<runId>`，由 Chat loader 经 Human session 查询对应 run，并核对实际 Chat。页面展示该 run 的状态、时间与失败原因；较早且没有回复的 terminal run 也有独立目标。查询不回传配置快照，未经认证或 Chat 不匹配时拒绝。
+
 ## 验证入口
 
 ```sh
@@ -42,6 +46,7 @@ bash scripts/verify/f-docs.sh
 | timer 泄漏、启动补跑、10 秒边界、长间隔与回拨 | `tests/cron-core.test.ts` 的 fake-clock 生命周期及事务断言 |
 | live / Trial 重叠、取消、terminal 与独立规则 | cron core 的真实 DB / input / run 测试 |
 | initial / steer 权限撤销与来源提升 | cron core 的 executeRun 协议 fixture；共享 webhook 回归 |
+| 较早且无回复的 terminal run 历史链接失效 | Cron browser 种入失败历史记录，点击链接核对指定 run 的状态与错误，并拒绝未认证及 Chat 不匹配的查询 |
 | UI、管理权限和生产调度脱节 | `tests/fixtures/cron-browser.mjs`：真实 session、保存、Trial pending 锁、实际墙钟到期、生产 runtime、实际 Pi runner 与回环模型 |
 
 生产门禁保存 `.verify/cron-*` 内的日志、收据 JSON、桌面 / 手机设置页及 Source Chat 截图，结束时关闭自己的服务、浏览器与模型 fixture。模型为本地隔离 fixture（`paid-model-calls=0`），不证明真实付费模型、公网部署、跨机器时钟或断电。技术验证与 Human UI 体验确认分开；本单元不包含助理、飞书、语音、一次性调度或通用工作流。

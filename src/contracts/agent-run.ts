@@ -136,6 +136,7 @@ export const runIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.run));
 
 export const abortAgentRunInput = z.object({ runId: runIdSchema });
 export const chatRunStateInput = chatIdInput;
+export const chatRunSelectionInput = chatIdInput.extend({ runId: runIdSchema });
 export const chatRunActivitiesInput = chatIdInput;
 
 /**

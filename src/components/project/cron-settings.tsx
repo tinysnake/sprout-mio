@@ -417,7 +417,7 @@ export function CronSettings({ projectId }: { projectId: string }) {
                         ·{" "}
                         <a
                           className="underline"
-                          href={`/projects/${projectId}/chats/${item.chatId}#run-${item.runId}`}
+                          href={`/projects/${projectId}/chats/${item.chatId}?run=${item.runId}#selected-run-${item.runId}`}
                         >
                           Run {item.runId}
                         </a>

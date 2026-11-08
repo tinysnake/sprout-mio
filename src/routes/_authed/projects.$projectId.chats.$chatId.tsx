@@ -1,7 +1,13 @@
 import { Outlet, createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
+import { runIdSchema } from "../../contracts/agent-run";
 import type { ChatDetailLoaderData } from "../../components/chat/chat-loader";
 import { getAgentProfileFn } from "../../server/functions/agent";
-import { getChatRunStateFn, listChatRunActivitiesFn } from "../../server/functions/agent-run";
+import {
+  getChatRunFn,
+  getChatRunStateFn,
+  listChatRunActivitiesFn,
+} from "../../server/functions/agent-run";
 import { getChatInfoFn, readTurnContextFn } from "../../server/functions/info-hub";
 import {
   getChatSessionFn,
@@ -13,7 +19,9 @@ import { getChatContinuationFn } from "../../server/functions/chat-continuation"
 
 /** Project 上下文从 URL 推导：chat 不属于 URL 中的 projectId 时按 not_found 呈现。 */
 export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId")({
-  loader: async ({ params }): Promise<ChatDetailLoaderData> => {
+  validateSearch: z.object({ run: runIdSchema.optional().catch(undefined) }),
+  loaderDeps: ({ search }) => ({ run: search.run }),
+  loader: async ({ params, deps }): Promise<ChatDetailLoaderData> => {
     const session = await getChatSessionFn({ data: { chatId: params.chatId } });
     if (!session.ok) return { ok: false, error: session.error };
     if (session.data.chat.projectId !== params.projectId)
@@ -21,7 +29,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
         ok: false,
         error: { code: "not_found", message: "对象不存在", requestId: session.requestId },
       };
-    const [members, messages, info, runState, runActivities, continuation, skills] =
+    const [members, messages, info, runState, runActivities, continuation, skills, selectedRun] =
       await Promise.all([
         listChatMembersFn({ data: { chatId: params.chatId } }),
         listMessagesFn({ data: { chatId: params.chatId } }),
@@ -30,6 +38,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
         listChatRunActivitiesFn({ data: { chatId: params.chatId } }),
         getChatContinuationFn({ data: { projectId: params.projectId, chatId: params.chatId } }),
         listChatSkillsFn({ data: { chatId: params.chatId } }),
+        deps.run ? getChatRunFn({ data: { chatId: params.chatId, runId: deps.run } }) : null,
       ]);
     // Human 诊断按明确 runId 读持久化快照：优先活动 run，否则取这条 Chat 最近一条 run。
     // 不查「Chat 的第一个分身」来造快照；没有 run 就传 null，让页面显示「还没有本轮上下文快照」。
@@ -53,6 +62,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
       info,
       turnContext,
       runState,
+      selectedRun,
       runActivities,
       skills,
       continuation,

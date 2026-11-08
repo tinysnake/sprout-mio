@@ -1,5 +1,6 @@
 import { Link, createFileRoute, useRouteContext, useRouter } from "@tanstack/react-router";
 import { ChatPane } from "../../components/chat/chat-pane";
+import { SelectedRunPanel } from "../../components/chat/run-status";
 import { TaskAssociations } from "../../components/tasks/task-associations";
 import { useChatInspector } from "../../components/chat/chat-search";
 import { isActiveRunState, useChatLive } from "../../components/chat/use-chat-live";
@@ -74,6 +75,7 @@ function ProjectChatDetailPage() {
           <TaskAssociations projectId={projectId} items={liveInfo.data.tasks.items} compact />
         </div>
       )}
+      {loader.selectedRun && <SelectedRunPanel result={loader.selectedRun} />}
       <ChatPane
         // 换一条对话就换一个实例：草稿、发送错误与停止 pending 都按 Chat 隔离，
         // 旧对话的异步结果也不会写进新对话。

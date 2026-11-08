@@ -5,6 +5,8 @@ import {
   abortAgentRunInput,
   chatRunActivitiesInput,
   chatRunStateInput,
+  chatRunSelectionInput,
+  type ChatRunSummary,
 } from "../../contracts/agent-run";
 import type {
   AgentRun,
@@ -142,6 +144,34 @@ export async function abortAgentRunBoundary(
     return ok(run, requestId);
   });
 }
+
+export async function getChatRunBoundary(
+  input: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<AgentRunResult<ChatRunSummary>> {
+  return agentRunBoundary<ChatRunSummary>(headers, requestId, (deps, context) => {
+    const parsed = chatRunSelectionInput.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    const { configSnapshot, ...run } = deps.getAgentRun(parsed.data.runId, context);
+    if (run.chatId !== parsed.data.chatId) {
+      return fail({ code: "not_found", message: "对象不存在", requestId });
+    }
+    return ok(
+      {
+        ...run,
+        ...(configSnapshot?.sessionFile ? { sessionFile: configSnapshot.sessionFile } : {}),
+      },
+      requestId,
+    );
+  });
+}
+
+export const getChatRunFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    getChatRunBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
 
 export const getChatRunStateFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)

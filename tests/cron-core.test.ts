@@ -123,7 +123,7 @@ describe("Project cron shared admission and durable cursor", () => {
     scheduler.start();
     scheduler.start();
     expect(callbacks.size).toBe(1);
-    fire("12:01:00"); // Exactly 10 seconds is admissible.
+    fire("12:01:00");
     expect(automation.cronHistory(current.id, ctx)).toHaveLength(1);
     expect(automation.cronHistory(current.id, ctx)[0]?.decision).toBe("accepted");
     fire("12:05:00");
@@ -195,7 +195,6 @@ describe("Project cron shared admission and durable cursor", () => {
     });
     expect(trial(current, "first")).toEqual(result);
     expect(() => automation.listCronRules(project.id, { ...ctx, userId: "stranger" })).toThrow();
-    // Disable does not revoke accepted authority, but current Chat participation does.
     const input = inputFor(result.messageId);
     sqlite
       .prepare("DELETE FROM chat_member WHERE chat_id=? AND member_kind='agent' AND member_id=?")
@@ -229,7 +228,6 @@ describe("Project cron shared admission and durable cursor", () => {
     expect(released.decision).toBe("accepted");
     if (released.decision !== "accepted") throw new Error("expected accepted");
     const next = inputFor(released.messageId);
-    // Model a carry: the immutable receipt stays on the original message, not its old terminal run.
     sqlite
       .prepare("UPDATE agent_run_input SET run_id=? WHERE message_id=?")
       .run(next.run_id, first.messageId);
