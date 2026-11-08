@@ -199,7 +199,7 @@ describe("native assistant authority and durable work", () => {
         kind: "tool" as const,
         label: "Unchanged real action",
         detail: "Same action",
-        startedAt: now.toISOString(),
+        startedAt: new Date(now.getTime() + 30000).toISOString(),
         status: "running" as const,
       },
       entries: [],
@@ -213,6 +213,8 @@ describe("native assistant authority and durable work", () => {
     expect(periodic).toHaveLength(2);
     expect(periodic[0].fact).toContain("60s");
     expect(periodic[1].fact).toContain("120s");
+    expect(periodic[0].fact).toContain("动作已进行 30s");
+    expect(periodic[1].fact).toContain("动作已进行 90s");
     expect(periodic.every((event) => event.fact.includes("Unchanged real action"))).toBe(true);
     runs.transitionAgentRun(
       input.run_id,

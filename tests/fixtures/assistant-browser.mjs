@@ -325,6 +325,65 @@ export async function verifyAssistantBrowser({
         ?.revoked_at,
     "stop watch control",
   );
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const otherHelper = await call("createAgentProfileFn", {
+    name: "OtherNativeAssistant",
+    purpose: "assistant",
+    model: fixture.model("status"),
+    effort: "off",
+  });
+  await call("addProjectMemberFn", { projectId: project.id, agentProfileId: otherHelper.id });
+  const otherSource = (
+    await call("createDirectChatFn", { projectId: project.id, agentProfileId: otherHelper.id })
+  ).chat;
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByTestId("assistant-panel").getByText(proposal.body, { exact: true }).waitFor();
+  const held = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const delivered = Promise.withResolvers();
+  let intercepted = false;
+  const delayPanel = async (route) => {
+    const body = route.request().postData() ?? "";
+    if (intercepted || !body.includes(source.id) || !body.includes("panel")) {
+      await route.continue();
+      return;
+    }
+    intercepted = true;
+    const response = await route.fetch();
+    held.resolve();
+    await release.promise;
+    await route.fulfill({ response });
+    delivered.resolve();
+  };
+  await page.route("**/_serverFn/**", delayPanel);
+  try {
+    await held.promise;
+    await page.locator(`a[href$="/chats/${otherSource.id}"]`).first().click();
+    await page.waitForURL(`**/chats/${otherSource.id}`);
+    await page.getByTestId("chat-title").filter({ hasText: otherHelper.name }).waitFor();
+    await page.waitForFunction(
+      (text) =>
+        !document.querySelector('[data-testid="assistant-panel"]')?.textContent?.includes(text),
+      proposal.body,
+    );
+    release.resolve();
+    await delivered.promise;
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    assert(
+      !(await page.getByTestId("assistant-panel").innerText()).includes(proposal.body),
+      "late panel response from another DM must not expose its proposal in the current DM",
+    );
+  } finally {
+    release.resolve();
+    if (intercepted) await delivered.promise;
+    await page.unroute("**/_serverFn/**", delayPanel);
+  }
+  await page.locator(`a[href$="/chats/${source.id}"]`).first().click();
+  await page.waitForURL(`**/chats/${source.id}`);
+  await page.getByTestId("assistant-run-link").filter({ hasText: run.id }).waitFor();
+  pass("delayed assistant panel responses remain scoped to their original DM");
   const link = page.getByTestId("assistant-run-link").filter({ hasText: run.id });
   await link.click();
   await page.waitForURL(`**/chats/${dm.id}?run=${run.id}#selected-run-${run.id}`);

@@ -510,7 +510,7 @@ try {
       );
       const database = new DatabaseSync(process.env.DATABASE_URL);
       try {
-        database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN");
+        database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE");
         // Project 出生即带唯一的公共频道（I-P5a 频道单元）：删 Project 之前先删它的频道行，
         // 否则 chat.project_id 的外键会挡住 teardown。
         assert.deepEqual(

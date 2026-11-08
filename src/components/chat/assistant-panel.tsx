@@ -61,13 +61,13 @@ export function AssistantPanel({ chatId }: { chatId: string }) {
             <span className="ml-2">执行者：{proposal.agentName}</span>
           )}
           <span className="ml-2">
-            {proposal.status === "pending" && new Date(proposal.expiresAt).getTime() <= Date.now()
+            {proposal.status === "pending" && proposal.expired
               ? "已过期"
               : { pending: "待确认", submitted: "已提交", rejected: "已拒绝", revoked: "已撤销" }[
                   proposal.status
                 ]}
           </span>
-          {proposal.status === "pending" && new Date(proposal.expiresAt).getTime() > Date.now() && (
+          {proposal.status === "pending" && !proposal.expired && (
             <button
               className="ml-2 rounded border px-2 py-1"
               disabled={pending}

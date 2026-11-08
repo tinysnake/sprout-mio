@@ -26,7 +26,7 @@ Gateway grant 冻结 purpose。身份只能沿 grant → running run → instanc
 
 模型只能提出 watch intent，由 Human 激活。watch 持久关注 Chat，覆盖已有和随后新建的工作 run，包括多 Agent 与短 run。run 分配事务同步建立 watch interest，终态只停止该 run 的 clock，保留 Chat watch。取消后再次激活创建新 watch id。
 
-默认周期 300 秒，Human 可配置 60–86400 秒。Runtime 每秒进行有界扫描，按注入的时钟采样当前动作与经过时间；动作未变化仍发周期事实。运行时读取 live activity；终态读取 persisted activity，缺失时明确说明。`completed`、`intervention`、`periodic`、`decision` 分开记录，aborted 不伪装 failed，无最终回复不推断业务成功。
+默认周期 300 秒，Human 可配置 60–86400 秒。Runtime 每秒进行有界扫描，按注入的时钟采样当前动作与经过时间；动作未变化仍发周期事实。Run 已经过时间与当前动作持续时间分别呈现；动作时间缺失时明确说明。运行时读取 live activity；终态读取 persisted activity，缺失时明确说明。`completed`、`intervention`、`periodic`、`decision` 分开记录，aborted 不伪装 failed，无最终回复不推断业务成功。
 
 watch 与 proposal 重合时，同一 DM 的同一 run 事件只生成一条消息；不同 DM 分别收到自己的事件。capture 与 clock 原子推进，数据库错误回滚，重试不会重跑工作。capture 和 delivery 均重新校验当前可见性及有效来源；撤销后的 pending event 被永久 suppress。Observer 不唤醒工作 Agent，也不自动启动助理模型。
 
@@ -45,4 +45,4 @@ bash scripts/verify/assistant-browser.sh
 
 Core 使用真实迁移的 SQLite、runtime grant 与生命周期，覆盖 purpose、权限矩阵、确认重放、final admission、Group owner、carry、uncertain send、持久 watch、周期时钟、重复通知、多个 DM、撤销 suppression 和事务失败回滚；同时回归 webhook、cron、chat 与 runtime。
 
-Browser 门禁使用 production app、已安装 Pi 和 loopback model fixture，零付费调用。它核对实际 registered/exposed tools、status、observation、提案、Human UI 确认、独立 worker、通知去重、真实下一次模型 context 及 receipt，并保存 desktop/mobile/watch controls/run-link 截图。证据目录为 `.verify/assistant-<timestamp>`。此技术验证不等于 Human UI 体验批准。
+Browser 门禁使用 production app、已安装 Pi 和 loopback model fixture，零付费调用。它核对实际 registered/exposed tools、status、observation、提案、Human UI 确认、独立 worker、通知去重、真实下一次模型 context 及 receipt。延迟 panel 响应在另一条助理 DM 完成加载后释放，核对当前面板不显示旧 DM 的提案，覆盖既有 Chat 路由的实例隔离。它保存 desktop/mobile/watch controls/run-link 截图。证据目录为 `.verify/assistant-<timestamp>`。此技术验证不等于 Human UI 体验批准。

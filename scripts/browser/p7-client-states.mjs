@@ -13,7 +13,7 @@ const server = await createServer({
       name: "p7-test-action-boundary",
       enforce: "pre",
       resolveId(id) {
-        if (/server\/functions\/(?:chat|agent-run|lease|remote)$/.test(id))
+        if (/server\/functions\/(?:chat|agent-run|lease|remote|assistant)$/.test(id))
           return resolve("tests/fixtures/p7-client-actions.ts");
       },
     },

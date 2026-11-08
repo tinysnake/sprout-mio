@@ -171,15 +171,25 @@ function captureUndeliveredProposals(now: Date) {
     }
   }
 }
-function activityFact(snapshot: RunActivity | undefined | null, terminal: boolean) {
+function activityFact(snapshot: RunActivity | undefined | null, terminal: boolean, now: Date) {
   if (!snapshot) return terminal ? "无已保存活动记录" : "实时活动暂不可用";
   const steps = snapshot.current ? [snapshot.current] : snapshot.entries.slice(0, 3);
   return steps.length
     ? steps
-        .map(
-          (step) =>
-            `${step.label} · ${step.status}${step.detail ? ` · ${step.detail.slice(0, 500)}` : ""}`,
-        )
+        .map((step) => {
+          const duration =
+            step.durationMs ??
+            (step.finishedAt
+              ? new Date(step.finishedAt).getTime() - new Date(step.startedAt).getTime()
+              : step.status === "running"
+                ? now.getTime() - new Date(step.startedAt).getTime()
+                : undefined);
+          const timing =
+            duration === undefined
+              ? "动作耗时暂不可用"
+              : `动作${step.status === "running" ? "已进行" : "耗时"} ${Math.max(0, Math.floor(duration / 1000))}s`;
+          return `${step.label} · ${step.status} · ${timing}${step.detail ? ` · ${step.detail.slice(0, 500)}` : ""}`;
+        })
         .join("\n")
     : "暂无活动记录";
 }
@@ -234,7 +244,7 @@ export function sampleAssistantRuns(now: Date, activity = readRunActivity) {
               targetProjectId: run.projectId,
               targetChatId: run.chatId,
               sampledAt: now.toISOString(),
-              body: `Run ${run.id} · ${run.status} · 已经过 ${elapsed}s\n${activityFact(snapshot, terminal)}${run.errorMessage ? `\n${run.errorMessage}` : ""}${terminal && !run.assistantMessageId ? "\n无最终回复；不推断为业务成功" : ""}`,
+              body: `Run ${run.id} · ${run.status} · 已经过 ${elapsed}s\n${activityFact(snapshot, terminal, now)}${run.errorMessage ? `\n${run.errorMessage}` : ""}${terminal && !run.assistantMessageId ? "\n无最终回复；不推断为业务成功" : ""}`,
             },
             now,
           );

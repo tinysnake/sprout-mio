@@ -644,8 +644,13 @@ function targetLabel(chatId: string) {
 export function assistantPanel(
   assistantChatId: string,
   ctx: ProjectContext,
+  now = new Date(),
 ): {
-  proposals: (typeof assistantProposal.$inferSelect & { targetLabel: string; agentName: string })[];
+  proposals: (typeof assistantProposal.$inferSelect & {
+    targetLabel: string;
+    agentName: string;
+    expired: boolean;
+  })[];
   decisions: (typeof assistantEvent.$inferSelect & { targetLabel: string })[];
   watches: (typeof assistantWatch.$inferSelect & { targetLabel: string })[];
   intervalSeconds: number;
@@ -676,6 +681,7 @@ export function assistantPanel(
       .filter(visible)
       .map((row: typeof assistantProposal.$inferSelect) => ({
         ...row,
+        expired: row.expiresAt.getTime() <= now.getTime(),
         targetLabel: targetLabel(row.targetChatId),
         agentName: db
           .select({ name: agentProfile.name })
