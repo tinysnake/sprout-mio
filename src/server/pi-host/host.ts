@@ -1,7 +1,11 @@
 import { Cause, Context, Effect, Exit, Fiber, Layer, Scope } from "effect";
 
 export const POLL_INTERVAL = "100 millis";
-export const STOP_DEADLINE = "2500 millis";
+// 关闭流程先给每个 Pi 子进程 1.5s 优雅窗口再杀进程组（见 process.ts 的 RUNNER_CLOSE_GRACE_MS），
+// 这里的截止必须覆盖「宽限 + 杀进程与回收」。旧值 2500ms 只给回收留 1s，机器被占满时回收变慢，
+// 就会把负载误报成「Pi 关闭超时」；给到 5000ms 仍在外层 9 秒总关闭截止之内。
+export const STOP_DEADLINE_MS = 5_000;
+export const STOP_DEADLINE = `${STOP_DEADLINE_MS} millis`;
 
 export type PiHostWorkItem = { readonly instanceId: string };
 export type PiHostRun = {
@@ -129,7 +133,7 @@ export const makePiHostLayer = <W extends PiHostWorkItem>(
         }).pipe(
           Effect.timeoutOrElse({
             duration: STOP_DEADLINE,
-            orElse: () => Effect.fail(new Error("Pi 关闭超时 (2500ms)")),
+            orElse: () => Effect.fail(new Error(`Pi 关闭超时 (${STOP_DEADLINE_MS}ms)`)),
           }),
         ),
       );

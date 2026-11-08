@@ -84,7 +84,7 @@ P3 的 Pi 会话管理是第一个常驻服务。调度器在 `src/server/pi-hos
 
 只有调度决策走 Effect 的 Clock。轮询间隔、超时、截止与重试间隔用 `Effect.sleep` 和 `Effect.timeout*`。真实子进程与真实网络的守护超时留在边界类里。
 
-这条边界有实测依据。`TestClock` 把同一个 2500ms 截止从 2501ms 压到 11ms，但压不动真实子进程，也不重定向 `Date.now()`。保留真实计时器只注入 `now()` 压不动调度，同一形状仍是 2536ms。测量脚本与断言在 `experiments/effect-clock-spike/`。
+这条边界有实测依据。`TestClock` 把同一个宿主关闭截止从 2501ms 压到 11ms（当时该截止写作 2500ms，现为 5000ms），但压不动真实子进程，也不重定向 `Date.now()`。保留真实计时器只注入 `now()` 压不动调度，同一形状仍是 2536ms。测量脚本与断言在 `experiments/effect-clock-spike/`。
 
 dispatch 另有一条取消安全约束。`prepareRun` 会起真实子进程，中断点若落在起进程与登记之间，这个子进程无人认领，停止时也不会被关闭。prepare 与登记必须在 `Effect.uninterruptible` 区里完成。
 

@@ -42,7 +42,7 @@ SDK 的 `session.prompt()` 可能正常返回，但 assistant message 的 `stopR
 
 P1 的 recovering 事务内调用 `recoverAgentRuns()`。遗留 queued 与 running 都变为 interrupted，并写 `agent_run.interrupted` 诊断。诊断失败回滚整个恢复事务。已 completed 的 run 不改写。重复恢复不会重复诊断。
 
-宿主在 ready 后启动扫描器，只有 queued run 才创建 Pi 子进程。stopping 先阻止新调度，事务标记活跃 run 为 interrupted，再关闭所有 Pi 子进程。单个子进程关闭给 1500ms，随后杀进程组；Pi 宿主关闭还有 2500ms 独立截止。关闭失败会进入 P1 既有失败退出路径，不释放 DB 后再保存 run。P1 的 8 秒 HTTP 排空与 9 秒总关闭截止保持不变。
+宿主在 ready 后启动扫描器，只有 queued run 才创建 Pi 子进程。stopping 先阻止新调度，事务标记活跃 run 为 interrupted，再关闭所有 Pi 子进程。单个子进程关闭给 1500ms，随后杀进程组；Pi 宿主关闭还有 5000ms 独立截止（覆盖宽限与杀进程回收，见 `src/server/pi-host/host.ts` 的 `STOP_DEADLINE_MS`）。关闭失败会进入 P1 既有失败退出路径，不释放 DB 后再保存 run。P1 的 8 秒 HTTP 排空与 9 秒总关闭截止保持不变。
 
 本 unit 只投递新 run 的第一条输入。活跃 run 期间的新消息仍附加在该 run 上并保持 pending。当前轮投递、轮次串行和用户停止由 p3-b 接入，pending 不能被 UI 显示为已经处理。本 unit 不自动重试或自动续跑 interrupted run。
 

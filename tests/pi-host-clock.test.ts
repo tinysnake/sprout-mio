@@ -1,9 +1,15 @@
 import { Cause, Clock, Deferred, Effect, Exit, Fiber, ManagedRuntime, Option, Ref } from "effect";
 import { TestClock } from "effect/testing";
 import { expect, it } from "vite-plus/test";
-import { makePiHostLayer, PiHost, startPiHost, stopPiHost } from "../src/server/pi-host/host";
+import {
+  STOP_DEADLINE_MS,
+  makePiHostLayer,
+  PiHost,
+  startPiHost,
+  stopPiHost,
+} from "../src/server/pi-host/host";
 
-it("100ms 轮询与 2500ms 停止截止都在 TestClock 上", async () => {
+it(`100ms 轮询与 ${STOP_DEADLINE_MS}ms 停止截止都在 TestClock 上`, async () => {
   const startedAt = performance.now();
   const trace = { dispatches: 0, starts: 0, interrupts: 0, closes: 0, aborts: 0 };
   const runtime = ManagedRuntime.make(
@@ -68,23 +74,23 @@ it("100ms 轮询与 2500ms 停止截止都在 TestClock 上", async () => {
             Effect.flatMap((exit) => Ref.set(outcome, Option.some(exit))),
           ),
         );
-        yield* TestClock.adjust(2499);
+        yield* TestClock.adjust(STOP_DEADLINE_MS - 1);
         expect(Option.isNone(yield* Ref.get(outcome))).toBe(true);
         expect(trace.closes).toBe(1);
         yield* TestClock.adjust(1);
         yield* Fiber.await(stopping);
-        expect((yield* Clock.currentTimeMillis) - stopStartedAt).toBe(2500);
+        expect((yield* Clock.currentTimeMillis) - stopStartedAt).toBe(STOP_DEADLINE_MS);
         const settled = Option.getOrThrow(yield* Ref.get(outcome));
         expect(Exit.isFailure(settled)).toBe(true);
         if (!Exit.isFailure(settled)) throw new Error("stop unexpectedly succeeded");
         const failure = Option.getOrThrow(Cause.findErrorOption(settled.cause));
-        expect(failure.message).toBe("Pi 关闭超时 (2500ms)");
+        expect(failure.message).toBe(`Pi 关闭超时 (${STOP_DEADLINE_MS}ms)`);
 
         const second = yield* Effect.exit(stopPiHost);
         expect(Exit.isFailure(second)).toBe(true);
         if (!Exit.isFailure(second)) throw new Error("cached stop unexpectedly succeeded");
         expect(Option.getOrThrow(Cause.findErrorOption(second.cause))).toBe(failure);
-        expect((yield* Clock.currentTimeMillis) - stopStartedAt).toBe(2500);
+        expect((yield* Clock.currentTimeMillis) - stopStartedAt).toBe(STOP_DEADLINE_MS);
         expect(trace.interrupts).toBe(1);
         expect(trace.closes).toBe(1);
         yield* startPiHost;
@@ -97,11 +103,12 @@ it("100ms 轮询与 2500ms 停止截止都在 TestClock 上", async () => {
   }
   const wallMs = performance.now() - startedAt;
   // The exact timing invariant is carried by the Clock.currentTimeMillis asserts above.
-  // This only separates the virtual-clock regime from the real-timer one, which costs 2500ms,
-  // so the threshold stays loose enough that CI scheduling jitter cannot fake a regression.
+  // This only separates the virtual-clock regime from the real-timer one, which costs the stop
+  // deadline in wall time, so the threshold stays loose enough that CI scheduling jitter cannot
+  // fake a regression (the value is the virtual-time assert above, not this threshold).
   expect(wallMs).toBeLessThan(1000);
   console.log(
-    `pi-host clock test body including setup and dispose, excluding module import: ${wallMs.toFixed(2)}ms; the real-timer alternative is measured by experiments/effect-clock-spike/verify.sh at about 2500ms`,
+    `pi-host clock test body including setup and dispose, excluding module import: ${wallMs.toFixed(2)}ms; the real-timer alternative is measured by experiments/effect-clock-spike/verify.sh (about the stop deadline; 2500ms when that spike ran)`,
   );
 });
 
@@ -219,6 +226,55 @@ it("run 完成后释放实例，停止成功可重复调用", async () => {
         yield* TestClock.adjust(100);
         expect(starts).toBe(2);
         expect(interrupts).toBe(1);
+      }).pipe(Effect.provide(TestClock.layer())),
+    );
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+it(`关闭慢于 1500ms 宽限时仍留在 ${STOP_DEADLINE_MS}ms 停止截止内`, async () => {
+  // 关闭流程先给每个 Pi 子进程 1500ms 优雅窗口再杀进程组（`process.ts` 的 `RUNNER_CLOSE_GRACE_MS`），
+  // 截止必须覆盖「宽限 + 杀进程与回收」。旧值 2500ms 只给回收留 1s，机器被占满时回收变慢，就会把负载
+  // 误报成「Pi 关闭超时」；这条用 3000ms 的关闭把那份余量钉住。
+  const slowCloseMs = 3_000;
+  const released = Effect.runSync(Deferred.make<void>());
+  const finishedBody = Effect.runSync(Deferred.make<void>());
+  const closed: string[] = [];
+  const runtime = ManagedRuntime.make(
+    makePiHostLayer({
+      loadWork: () => [{ instanceId: "inst_slow_close" }],
+      prepareRun: () => ({
+        runId: "run_slow_close",
+        pid: 4242,
+        abort: () => {},
+        close: async () => {
+          await Effect.runPromise(Deferred.await(released));
+          closed.push("run_slow_close");
+        },
+        body: Deferred.await(finishedBody),
+      }),
+      interruptActiveRuns: () => {},
+      reportFailure: () => {},
+    }),
+  );
+
+  try {
+    await runtime.runPromise(
+      Effect.gen(function* () {
+        yield* startPiHost;
+        yield* TestClock.adjust(100);
+        const stopping = yield* Effect.forkChild(stopPiHost.pipe(Effect.exit));
+        yield* TestClock.adjust(0);
+        expect(closed).toEqual([]);
+
+        yield* TestClock.adjust(slowCloseMs);
+        Effect.runSync(Deferred.succeed(released, undefined));
+        Effect.runSync(Deferred.succeed(finishedBody, undefined));
+        const exit = yield* Fiber.join(stopping);
+
+        expect(closed).toEqual(["run_slow_close"]);
+        expect(Exit.isSuccess(exit)).toBe(true);
       }).pipe(Effect.provide(TestClock.layer())),
     );
   } finally {
