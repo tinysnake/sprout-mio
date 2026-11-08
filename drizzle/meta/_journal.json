@@ -260,6 +260,13 @@
       "when": 1793889110360,
       "tag": "0036_confused_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1794120454242,
+      "tag": "0037_dark_jubilee",
+      "breakpoints": true
     }
   ]
 }

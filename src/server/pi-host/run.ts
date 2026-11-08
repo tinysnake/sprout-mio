@@ -29,6 +29,7 @@ import {
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
+import { admitAutomationInput } from "../../domain/automation-input";
 import { admitTaskStartInput } from "../../domain/task-input";
 import { recordDiagnostic } from "../diagnostics";
 import {
@@ -245,6 +246,11 @@ export function executeRun(
                 sent.add(selected.message.id);
                 return process.prompt(prepared);
               };
+              if (selected.message.automationTriggerId) {
+                const attempted = admitAutomationInput(run.id, selected.message.id, send);
+                if (attempted) return { task: attempted };
+                continue;
+              }
               if (selected.message.taskRecordKind !== "start") return { task: send() };
               const attempted = admitTaskStartInput(run.id, selected.message.id, send);
               if (attempted) return { task: attempted };
@@ -301,7 +307,11 @@ export function executeRun(
                           )
                             continue;
                           sent.add(pending.messageId);
-                          if (pending.taskRecordKind === "start") {
+                          if (pending.automationTriggerId) {
+                            admitAutomationInput(run.id, pending.messageId, () =>
+                              process.steer(prepared),
+                            );
+                          } else if (pending.taskRecordKind === "start") {
                             admitTaskStartInput(run.id, pending.messageId, () =>
                               process.steer(prepared),
                             );

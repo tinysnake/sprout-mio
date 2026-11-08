@@ -91,11 +91,26 @@ function toMessage(
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
 ): Message {
-  return {
+  const identity = {
     id: row.id,
     chatId: row.chatId,
-    senderKind: row.senderKind,
     senderId: row.senderId,
+    body: row.body,
+    createdAt: row.createdAt.toISOString(),
+  };
+  if (row.senderKind === "automation") {
+    if (!row.automationTriggerId) throw new Error("automation_message_corrupt");
+    return {
+      ...identity,
+      senderKind: "automation",
+      automationSource: { kind: "project_webhook", triggerId: row.automationTriggerId },
+      mentions: [],
+      skills: [],
+    };
+  }
+  return {
+    ...identity,
+    senderKind: row.senderKind,
     body: row.body,
     createdAt: row.createdAt.toISOString(),
     mentions: mentions.map((span) => ({ ...span })),
@@ -710,7 +725,9 @@ export function sendMessage(
   const saved = sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
-      // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
+      if (input.senderKind !== "human" && input.senderKind !== "agent")
+        throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
+      // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回,
       // 后面的成员与 instance 检查也证明不了「这次写入属于哪次运行」，所以在入口就拒绝。
       if (input.senderKind === "agent" && !ctx.agent)
         throw new ChatError("forbidden", "Agent 发言必须带本次 run 的身份");

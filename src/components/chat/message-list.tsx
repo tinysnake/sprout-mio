@@ -57,9 +57,13 @@ export function MessageList({
 
   const renderItem = (message: Message, index: number) => {
     const human = message.senderKind === "human";
-    const key = senderKey(message.senderKind, message.senderId);
+    const source = message.senderKind === "automation";
+    const key =
+      message.senderKind === "automation"
+        ? `automation:${message.senderId}`
+        : senderKey(message.senderKind, message.senderId);
     const name =
-      senderNames?.get(key) ??
+      (source ? "Project webhook" : senderNames?.get(key)) ??
       (human ? humanName || "你" : dmAgentName) ??
       (human ? "Human" : "Agent");
     const previous = messages[index - 1];
@@ -69,7 +73,7 @@ export function MessageList({
       previous.senderId === message.senderId &&
       new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() <=
         GROUPING_WINDOW_MS;
-    const historical = knownSenders ? !knownSenders.has(key) : false;
+    const historical = !source && knownSenders ? !knownSenders.has(key) : false;
     const links = runFacts?.get(message.id) ?? [];
     const activityRecord = runActivityByMessage?.get(message.id);
     const activity = activityRecord?.activity;
@@ -97,7 +101,7 @@ export function MessageList({
                 data-testid="message-kind"
                 className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
               >
-                {human ? "Human" : "Agent"}
+                {source ? "Source" : human ? "Human" : "Agent"}
               </span>
               {historical && (
                 <span

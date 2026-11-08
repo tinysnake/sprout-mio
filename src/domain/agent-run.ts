@@ -26,6 +26,7 @@ import { ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
 import { readChatEffectiveMembers } from "./channel";
 import { getChat, ensureInstance, sendMessage } from "./chat";
+import { cancelInvalidAutomationInputs } from "./automation-input";
 import { cancelInvalidTaskStartInputs } from "./task-input";
 import { routeWakeCandidates } from "./chat-wake";
 import { controlFor } from "./chat-schedule";
@@ -507,6 +508,32 @@ export function appendHumanRunInput(
  * Agent 发送者只派发显式 @ 的 Agent 成员。点名由 `sendMessage` 写时解析并落库，
  * 不认正文里的弱提及；没有点名就不级联，避免普通汇报把 owner 或全群唤醒。
  */
+export function appendAutomationRunInput(
+  messageId: string,
+  agentProfileId: string,
+  ctx: ProjectContext,
+): void {
+  const saved = db.select().from(message).where(eq(message.id, messageId)).get();
+  if (!saved || saved.senderKind !== "automation" || !saved.automationTriggerId)
+    throw new AgentRunError("conflict", "来源消息不存在");
+  const current = getChat(saved.chatId, ctx);
+  const instance = ensureInstance(current.id, agentProfileId, ctx);
+  attachMessageToRun(
+    {
+      ...saved,
+      senderKind: "automation",
+      automationSource: { kind: "project_webhook", triggerId: saved.automationTriggerId },
+      taskRecord: undefined,
+      createdAt: saved.createdAt.toISOString(),
+      mentions: [],
+      skills: [],
+    },
+    current,
+    instance,
+    ctx,
+  );
+}
+
 export function appendAgentMentionRunInput(saved: Message, ctx: ProjectContext): void {
   const current = getChat(saved.chatId, ctx);
   if (!ctx.agent || saved.senderKind !== "agent" || saved.senderId !== ctx.agent.agentProfileId)
@@ -610,14 +637,17 @@ export function pendingRunInputs(
   messageId: string;
   text: string;
   taskRecordKind: typeof message.$inferSelect.taskRecordKind;
+  automationTriggerId: string | null;
 }[] {
   const row = runRow(id, ctx);
   cancelInvalidTaskStartInputs(id);
+  cancelInvalidAutomationInputs(id);
   return db
     .select({
       messageId: agentRunInput.messageId,
       text: message.body,
       taskRecordKind: message.taskRecordKind,
+      automationTriggerId: message.automationTriggerId,
     })
     .from(agentRunInput)
     .innerJoin(
@@ -722,6 +752,7 @@ export function settleAgentRun(
       }
       if (status === "completed") {
         cancelInvalidTaskStartInputs(id);
+        cancelInvalidAutomationInputs(id);
         const uncertain = db
           .select()
           .from(agentRunInput)
@@ -782,6 +813,7 @@ export function queuedRunWork(): {
 export function firstPendingRunInput(id: string, ctx: ProjectContext) {
   const row = runRow(id, ctx);
   cancelInvalidTaskStartInputs(id);
+  cancelInvalidAutomationInputs(id);
   return db
     .select({ input: agentRunInput, message })
     .from(agentRunInput)

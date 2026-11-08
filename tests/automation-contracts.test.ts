@@ -56,6 +56,15 @@ describe("webhook action contracts", () => {
     expect(
       webhookTriggerSchema.safeParse({ ...trigger, decision: "accepted", reason: undefined })
         .success,
-    ).toBe(true);
+    ).toBe(false);
+    expect(webhookTriggerSchema.safeParse({ ...trigger, messageId: "msg_12345678" }).success).toBe(
+      false,
+    );
+    const { reason: _reason, ...accepted } = {
+      ...trigger,
+      decision: "accepted",
+      messageId: "msg_12345678",
+    };
+    expect(webhookTriggerSchema.safeParse(accepted).success).toBe(true);
   });
 });

@@ -40,7 +40,8 @@ export type RunInputCancelReason =
   | "membership_revoked"
   | "human_stop"
   | "group_dissolved"
-  | "task_context_changed";
+  | "task_context_changed"
+  | "automation_context_changed";
 
 export type RunResourceSnapshot = {
   /** 宿主 skills 与 prompt templates 是否进入本轮 loader。 */

@@ -94,7 +94,7 @@ export async function preparePiMessage(
 ): Promise<PreparedPiMessage> {
   const { getChat } = await import("../domain/chat");
   const { db } = await import("../db");
-  const { message } = await import("../db/schema");
+  const { message, webhookTrigger } = await import("../db/schema");
   const { and, eq } = await import("drizzle-orm");
   const { readSkillsFor } = await import("../domain/message-skill");
   const chat = getChat(input.chatId, ctx);
@@ -105,6 +105,27 @@ export async function preparePiMessage(
     .where(and(eq(message.id, input.messageId), eq(message.chatId, chat.id)))
     .get();
   if (!row) throw new Error("skill_message_not_found");
+  if (row.senderKind === "automation") {
+    const trigger = row.automationTriggerId
+      ? db.select().from(webhookTrigger).where(eq(webhookTrigger.id, row.automationTriggerId)).get()
+      : undefined;
+    if (!trigger || trigger.messageId !== row.id) throw new Error("automation_message_corrupt");
+    return seal(
+      row.id,
+      JSON.stringify({
+        origin: "project_webhook",
+        ruleId: trigger.ruleId,
+        triggerId: trigger.id,
+        projectId: trigger.projectId,
+        mode: trigger.mode,
+        eventId: trigger.eventId,
+        ruleRevision: trigger.snapshot.revision,
+        recipientAgentProfileId: trigger.agentProfileId,
+        content: JSON.parse(row.body),
+      }),
+      [],
+    );
+  }
   const spans = readSkillsFor(chat.id, [row.id]).get(row.id) ?? [];
   if (!spans.length) return seal(row.id, row.body, []);
   const { resolveSkillScope, readSkillCatalog } = await import("./pi-host/skills");

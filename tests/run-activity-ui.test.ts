@@ -392,7 +392,9 @@ describe("对话接续状态", () => {
 });
 
 describe("已结束 run 的工作记录", () => {
-  const message = (overrides: Partial<Message> = {}): Message => ({
+  const message = (
+    overrides: Partial<Exclude<Message, { senderKind: "automation" }>> = {},
+  ): Message => ({
     id: "msg_11111111",
     chatId: "cnv_11111111",
     senderKind: "agent",

@@ -1,3 +1,4 @@
+import type { WebhookAction } from "../contracts/automation";
 import type { TurnContextRecord } from "../contracts/turn-context";
 import { sql } from "drizzle-orm";
 import {
@@ -282,6 +283,82 @@ export const agentInstance = sqliteTable(
   ],
 );
 
+export const webhookRule = sqliteTable(
+  "webhook_rule",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    name: text("name").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    revision: integer("revision").notNull(),
+    instruction: text("instruction").notNull(),
+    action: text("action", { mode: "json" }).$type<WebhookAction>().notNull(),
+    secretDigest: text("secret_digest").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("webhook_rule_id_project_unique").on(t.id, t.projectId),
+    check("webhook_rule_revision_check", sql`typeof(${t.revision})='integer' and ${t.revision}>=0`),
+    check(
+      "webhook_rule_secret_check",
+      sql`length(${t.secretDigest})=64 and ${t.secretDigest} not glob '*[^0-9a-f]*'`,
+    ),
+    check(
+      "webhook_rule_action_check",
+      sql`json_valid(${t.action}) and coalesce(json_extract(${t.action}, '$.kind') in ('dm_agent','group_agent','group_owner') and json_type(${t.action}, '$.chatId')='text' and (json_extract(${t.action}, '$.kind')='group_owner' or json_type(${t.action}, '$.agentProfileId')='text'),0)`,
+    ),
+  ],
+);
+
+export const webhookTrigger = sqliteTable(
+  "webhook_trigger",
+  {
+    id: text("id").primaryKey(),
+    ruleId: text("rule_id").notNull(),
+    projectId: text("project_id").notNull(),
+    mode: text("mode", { enum: ["live", "trial"] }).notNull(),
+    eventId: text("event_id").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    snapshot: text("snapshot", { mode: "json" })
+      .$type<{
+        revision: number;
+        instruction: string;
+        action: WebhookAction;
+        enabled: boolean;
+        createdBy: string;
+      }>()
+      .notNull(),
+    decision: text("decision", { enum: ["accepted", "skipped"] }).notNull(),
+    reason: text("reason"),
+    chatId: text("chat_id"),
+    agentProfileId: text("agent_profile_id").references(() => agentProfile.id),
+    messageId: text("message_id").references((): AnySQLiteColumn => message.id),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.ruleId, t.projectId],
+      foreignColumns: [webhookRule.id, webhookRule.projectId],
+    }),
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    uniqueIndex("webhook_trigger_event_unique").on(t.ruleId, t.mode, t.eventId),
+    uniqueIndex("webhook_trigger_message_unique").on(t.messageId),
+    uniqueIndex("webhook_trigger_source_unique").on(t.id, t.messageId, t.chatId),
+    check("webhook_trigger_mode_check", sql`${t.mode} in ('live','trial')`),
+    check(
+      "webhook_trigger_decision_check",
+      sql`(${t.decision}='accepted' and ${t.reason} is null and ${t.chatId} is not null and ${t.agentProfileId} is not null and ${t.messageId} is not null) or (${t.decision}='skipped' and ${t.reason} is not null and length(trim(${t.reason}))>0 and ${t.messageId} is null and ${t.chatId} is null and ${t.agentProfileId} is null)`,
+    ),
+    check("webhook_trigger_snapshot_check", sql`json_valid(${t.snapshot})`),
+  ],
+);
+
 export const message = sqliteTable(
   "message",
   {
@@ -289,9 +366,12 @@ export const message = sqliteTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => chat.id),
-    senderKind: text("sender_kind", { enum: ["human", "agent"] }).notNull(),
+    senderKind: text("sender_kind", { enum: ["human", "agent", "automation"] }).notNull(),
     senderId: text("sender_id").notNull(),
     body: text("body").notNull(),
+    automationTriggerId: text("automation_trigger_id").references(
+      (): AnySQLiteColumn => webhookTrigger.id,
+    ),
     taskId: text("task_id"),
     taskProjectId: text("task_project_id"),
     taskRecordSeq: integer("task_record_seq"),
@@ -306,7 +386,18 @@ export const message = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    check("message_sender_kind_check", sql`${table.senderKind} in ('human', 'agent')`),
+    foreignKey({
+      columns: [table.automationTriggerId, table.id, table.chatId],
+      foreignColumns: [webhookTrigger.id, webhookTrigger.messageId, webhookTrigger.chatId],
+    }),
+    check(
+      "message_sender_kind_check",
+      sql`${table.senderKind} in ('human', 'agent', 'automation')`,
+    ),
+    check(
+      "message_automation_shape_check",
+      sql`(${table.senderKind}='automation' and ${table.automationTriggerId} is not null and ${table.senderId}=${table.automationTriggerId} and ${table.taskId} is null) or (${table.senderKind}<>'automation' and ${table.automationTriggerId} is null)`,
+    ),
     index("message_chat_created_at_idx").on(table.chatId, table.createdAt),
     uniqueIndex("message_id_chat_unique").on(table.id, table.chatId),
     foreignKey({
@@ -539,7 +630,13 @@ export const agentRunInput = sqliteTable(
     cancelledAt: integer("cancelled_at", { mode: "timestamp" }),
     admittedAt: integer("admitted_at", { mode: "timestamp_ms" }),
     cancelReason: text("cancel_reason", {
-      enum: ["membership_revoked", "human_stop", "group_dissolved", "task_context_changed"],
+      enum: [
+        "membership_revoked",
+        "human_stop",
+        "group_dissolved",
+        "task_context_changed",
+        "automation_context_changed",
+      ],
     }),
   },
   (table) => [
@@ -557,7 +654,7 @@ export const agentRunInput = sqliteTable(
     ),
     check(
       "agent_run_input_cancel_reason_check",
-      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed')`,
+      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed', 'automation_context_changed')`,
     ),
     check(
       "agent_run_input_admitted_at_check",
