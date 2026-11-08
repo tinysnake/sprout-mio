@@ -438,7 +438,18 @@ describe("已结束 run 的工作记录", () => {
     expect(html).toContain("3 条");
   });
 
-  it("系统来源消息不冒用 Agent 人设或回复运行记录", () => {
+  it.each([
+    { kind: "project_webhook", triggerId: "wht_11111111" } as const,
+    {
+      kind: "project_cron",
+      triggerId: "wht_11111111",
+      expression: "0 9 * * *",
+      timezone: "UTC",
+      instruction: "Check @Agent /skill:danger",
+      scheduledAt: null,
+      mode: "trial",
+    } as const,
+  ])("系统来源 $kind 不冒用 Agent 人设或回复运行记录", (automationSource) => {
     const source: Message = {
       id: "msg_33333333",
       chatId: human.chatId,
@@ -448,7 +459,7 @@ describe("已结束 run 的工作记录", () => {
       skills: [],
       senderKind: "automation",
       senderId: "wht_11111111",
-      automationSource: { kind: "project_webhook", triggerId: "wht_11111111" },
+      automationSource,
     };
     const html = renderToStaticMarkup(
       createElement(MessageList, {
@@ -470,7 +481,10 @@ describe("已结束 run 的工作记录", () => {
         runActivityByMessage: new Map([[source.id, record(source.id, settled)]]),
       }),
     );
-    expect(html).toContain("Project webhook");
+    expect(html).toContain(
+      automationSource.kind === "project_cron" ? "Project cron" : "Project webhook",
+    );
+    expect(html).toContain("Source");
     expect(html).not.toContain("Worker persona");
     expect(html).not.toContain('data-testid="message-run-links"');
     expect(html).not.toContain('data-testid="message-run-activity"');

@@ -9,9 +9,12 @@ import { once } from "node:events";
 import Database from "better-sqlite3";
 import { chromium } from "playwright";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
+import { verifyCronBrowser } from "./cron-browser.mjs";
+const cronMode = process.argv.includes("--cron");
 
 const directory = resolve(
-  process.env.SPROUT_WEBHOOK_EVIDENCE_DIR ?? `.verify/webhook-${Date.now()}`,
+  (cronMode ? process.env.SPROUT_CRON_EVIDENCE_DIR : process.env.SPROUT_WEBHOOK_EVIDENCE_DIR) ??
+    `.verify/${cronMode ? "cron" : "webhook"}-${Date.now()}`,
 );
 mkdirSync(directory, { recursive: true, mode: 0o700 });
 console.log(`EVIDENCE ${directory}`);
@@ -180,242 +183,268 @@ try {
     console.error("PAGE ERROR", error.message);
   });
   await page.goto(`${base}/projects/${project.id}/settings`, { waitUntil: "networkidle" });
-  const ui = page.getByTestId("webhook-settings");
-  const agentSelect = ui.getByRole("combobox", { name: /^Agent/ });
-  await ui.waitFor();
-  await ui.getByLabel("名称", { exact: true }).fill("Browser hook");
-  await ui.getByLabel("目标类型").selectOption("dm_agent");
-  await ui.getByLabel("Project Chat").selectOption(dm.chat.id);
-  await until(
-    async () => (await agentSelect.locator("option").count()) === 2,
-    "DM selector filters effective members",
-    10000,
-  );
-  assert(!(await agentSelect.textContent()).includes(beta.name));
-  assert(!(await agentSelect.textContent()).includes(foreign.name));
-  await agentSelect.selectOption(alpha.id);
-  await ui
-    .getByLabel("Instruction")
-    .fill("WEBHOOK_BROWSER_LIVE: process the external payload, use no tools.");
-  await ui.getByRole("button", { name: "保存", exact: true }).click();
-  await ui.getByText("Secret 仅显示一次，请立即复制。", { exact: true }).waitFor();
-  const secret = await ui.locator("code").first().textContent();
-  const rules = await call("listWebhookRulesFn", { projectId: project.id });
-  const rule = rules.find((item) => item.name === "Browser hook");
-  assert(rule);
-  const post = (eventId, payload, token = secret) =>
-    fetch(rule.endpoint, {
+  if (cronMode) {
+    await verifyCronBrowser({
+      page,
+      db,
+      fixture,
+      project,
+      alpha,
+      beta,
+      foreign,
+      dm: dm.chat,
+      group,
+      humanId,
+      base,
+      directory,
+      ids,
+      call,
+      callResult,
+      until,
+      pass,
+    });
+  } else {
+    const ui = page.getByTestId("webhook-settings");
+    const agentSelect = ui.getByRole("combobox", { name: /^Agent/ });
+    await ui.waitFor();
+    await ui.getByLabel("名称", { exact: true }).fill("Browser hook");
+    await ui.getByLabel("目标类型").selectOption("dm_agent");
+    await ui.getByLabel("Project Chat").selectOption(dm.chat.id);
+    await until(
+      async () => (await agentSelect.locator("option").count()) === 2,
+      "DM selector filters effective members",
+      10000,
+    );
+    assert(!(await agentSelect.textContent()).includes(beta.name));
+    assert(!(await agentSelect.textContent()).includes(foreign.name));
+    await agentSelect.selectOption(alpha.id);
+    await ui
+      .getByLabel("Instruction")
+      .fill("WEBHOOK_BROWSER_LIVE: process the external payload, use no tools.");
+    await ui.getByRole("button", { name: "保存", exact: true }).click();
+    await ui.getByText("Secret 仅显示一次，请立即复制。", { exact: true }).waitFor();
+    const secret = await ui.locator("code").first().textContent();
+    const rules = await call("listWebhookRulesFn", { projectId: project.id });
+    const rule = rules.find((item) => item.name === "Browser hook");
+    assert(rule);
+    const post = (eventId, payload, token = secret) =>
+      fetch(rule.endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "x-sprout-event-id": eventId,
+        },
+        body: JSON.stringify(payload),
+      });
+    assert.equal((await post("bad", {}, "bad")).status, 401);
+    fixture.arm("chatOwner", {
+      expectedUserPrefix: "{",
+      steps: [],
+      reply: "WEBHOOK_BROWSER_RESULT",
+    });
+    const received = await post("browser-live", { build: 1, targetChatId: "cannot-retarget" });
+    assert.equal(received.status, 200);
+    const receipt = await received.json();
+    assert.equal(receipt.decision, "accepted");
+    await until(
+      () =>
+        db
+          .prepare(
+            "SELECT 1 FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE x.message_id=? AND r.status='completed'",
+          )
+          .get(receipt.messageId),
+      "real Pi runner completes webhook turn",
+    );
+    const message = db.prepare("SELECT * FROM message WHERE id=?").get(receipt.messageId);
+    assert.equal(message.sender_kind, "automation");
+    assert.equal(message.chat_id, dm.chat.id);
+    assert(message.body.includes("WEBHOOK_BROWSER_LIVE"));
+    assert(message.body.includes("cannot-retarget"));
+    const replay = await post("browser-live", { targetChatId: "cannot-retarget", build: 1 });
+    assert.deepEqual(await replay.json(), receipt);
+    assert.equal((await post("browser-live", { build: 2 })).status, 409);
+    pass("browser-create-authenticated-http-source-message-real-run-result-dedup");
+    await ui.getByRole("button", { name: "Browser hook · 启用", exact: true }).click();
+    await ui.getByText("browser-live", { exact: false }).first().waitFor();
+    assert.equal(await ui.getByText("Secret 仅显示一次，请立即复制。", { exact: true }).count(), 0);
+    fixture.arm("chatOwner", { expectedUserPrefix: "{", steps: [], reply: "WEBHOOK_TRIAL_RESULT" });
+    await ui.getByRole("button", { name: "提交真实 Trial", exact: true }).click();
+    await until(
+      () =>
+        db
+          .prepare(
+            "SELECT 1 FROM webhook_trigger t JOIN agent_run_input x ON x.message_id=t.message_id JOIN agent_run r ON r.id=x.run_id WHERE t.rule_id=? AND t.mode='trial' AND r.status='completed'",
+          )
+          .get(rule.id),
+      "UI trial completed",
+    );
+    pass("browser-trial-separate-from-live");
+    await ui.getByLabel("启用", { exact: true }).uncheck();
+    await ui.getByRole("button", { name: "保存", exact: true }).click();
+    await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).waitFor();
+    assert.deepEqual((await (await post("disabled", {})).json()).decision, "skipped");
+    const foreignCookie = await signup();
+    /** @type {Array<[string, Record<string, unknown>]>} */
+    const invalidTargets = [
+      ["listWebhookRulesFn", { projectId: project.id }],
+      ["webhookHistoryFn", { ruleId: rule.id }],
+      ["trialWebhookFn", { ruleId: rule.id, eventId: "forbidden", payload: {} }],
+      [
+        "createWebhookRuleFn",
+        {
+          projectId: project.id,
+          name: "Foreign",
+          instruction: "no",
+          enabled: true,
+          action: rule.action,
+        },
+      ],
+      [
+        "updateWebhookRuleFn",
+        {
+          projectId: project.id,
+          name: rule.name,
+          instruction: rule.instruction,
+          enabled: true,
+          action: rule.action,
+          ruleId: rule.id,
+          expectedRevision: rule.revision,
+        },
+      ],
+    ];
+    for (const [fn, input] of invalidTargets) {
+      assert.equal(
+        (await callResult(fn, input, foreignCookie)).ok,
+        false,
+        `${fn} must reject foreign Human`,
+      );
+      assert.equal((await callResult(fn, input, "")).ok, false, `${fn} must require session`);
+    }
+    pass("real-human-session-management-boundaries");
+    const groupRule = await call("createWebhookRuleFn", {
+      projectId: project.id,
+      name: "Group explicit",
+      instruction: "Group event",
+      enabled: true,
+      action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
+    });
+    fixture.arm("chatMentioned", {
+      expectedUserPrefix: "{",
+      steps: [],
+      reply: "WEBHOOK_GROUP_RESULT",
+    });
+    const groupResponse = await fetch(groupRule.rule.endpoint, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${token}`,
+        authorization: `Bearer ${groupRule.secret}`,
         "content-type": "application/json",
-        "x-sprout-event-id": eventId,
+        "x-sprout-event-id": "group-explicit",
       },
-      body: JSON.stringify(payload),
+      body: "{}",
     });
-  assert.equal((await post("bad", {}, "bad")).status, 401);
-  fixture.arm("chatOwner", { expectedUserPrefix: "{", steps: [], reply: "WEBHOOK_BROWSER_RESULT" });
-  const received = await post("browser-live", { build: 1, targetChatId: "cannot-retarget" });
-  assert.equal(received.status, 200);
-  const receipt = await received.json();
-  assert.equal(receipt.decision, "accepted");
-  await until(
-    () =>
-      db
-        .prepare(
-          "SELECT 1 FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE x.message_id=? AND r.status='completed'",
-        )
-        .get(receipt.messageId),
-    "real Pi runner completes webhook turn",
-  );
-  const message = db.prepare("SELECT * FROM message WHERE id=?").get(receipt.messageId);
-  assert.equal(message.sender_kind, "automation");
-  assert.equal(message.chat_id, dm.chat.id);
-  assert(message.body.includes("WEBHOOK_BROWSER_LIVE"));
-  assert(message.body.includes("cannot-retarget"));
-  const replay = await post("browser-live", { targetChatId: "cannot-retarget", build: 1 });
-  assert.deepEqual(await replay.json(), receipt);
-  assert.equal((await post("browser-live", { build: 2 })).status, 409);
-  pass("browser-create-authenticated-http-source-message-real-run-result-dedup");
-  await ui.getByRole("button", { name: "Browser hook · 启用", exact: true }).click();
-  await ui.getByText("browser-live", { exact: false }).first().waitFor();
-  assert.equal(await ui.getByText("Secret 仅显示一次，请立即复制。", { exact: true }).count(), 0);
-  fixture.arm("chatOwner", { expectedUserPrefix: "{", steps: [], reply: "WEBHOOK_TRIAL_RESULT" });
-  await ui.getByRole("button", { name: "提交真实 Trial", exact: true }).click();
-  await until(
-    () =>
-      db
-        .prepare(
-          "SELECT 1 FROM webhook_trigger t JOIN agent_run_input x ON x.message_id=t.message_id JOIN agent_run r ON r.id=x.run_id WHERE t.rule_id=? AND t.mode='trial' AND r.status='completed'",
-        )
-        .get(rule.id),
-    "UI trial completed",
-  );
-  pass("browser-trial-separate-from-live");
-  await ui.getByLabel("启用", { exact: true }).uncheck();
-  await ui.getByRole("button", { name: "保存", exact: true }).click();
-  await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).waitFor();
-  assert.deepEqual((await (await post("disabled", {})).json()).decision, "skipped");
-  const foreignCookie = await signup();
-  /** @type {Array<[string, Record<string, unknown>]>} */
-  const invalidTargets = [
-    ["listWebhookRulesFn", { projectId: project.id }],
-    ["webhookHistoryFn", { ruleId: rule.id }],
-    ["trialWebhookFn", { ruleId: rule.id, eventId: "forbidden", payload: {} }],
-    [
-      "createWebhookRuleFn",
-      {
-        projectId: project.id,
-        name: "Foreign",
-        instruction: "no",
-        enabled: true,
-        action: rule.action,
-      },
-    ],
-    [
-      "updateWebhookRuleFn",
-      {
-        projectId: project.id,
-        name: rule.name,
-        instruction: rule.instruction,
-        enabled: true,
-        action: rule.action,
-        ruleId: rule.id,
-        expectedRevision: rule.revision,
-      },
-    ],
-  ];
-  for (const [fn, input] of invalidTargets) {
-    assert.equal(
-      (await callResult(fn, input, foreignCookie)).ok,
-      false,
-      `${fn} must reject foreign Human`,
+    const groupReceipt = await groupResponse.json();
+    assert.equal(groupReceipt.decision, "accepted");
+    await until(
+      () =>
+        db
+          .prepare(
+            "SELECT 1 FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE x.message_id=? AND r.status='completed'",
+          )
+          .get(groupReceipt.messageId),
+      "explicit Group Agent completed",
     );
-    assert.equal((await callResult(fn, input, "")).ok, false, `${fn} must require session`);
+    const ownerRule = await call("createWebhookRuleFn", {
+      projectId: project.id,
+      name: "Owner",
+      instruction: "Owner event",
+      enabled: true,
+      action: { kind: "group_owner", chatId: group.id },
+    });
+    await call("setChatOwnerFn", {
+      chatId: group.id,
+      owner: { kind: "human", id: humanId },
+      expectedRevision: group.governanceRevision,
+    });
+    const skipped = await call("trialWebhookFn", {
+      ruleId: ownerRule.rule.id,
+      eventId: "invalid-owner",
+      payload: {},
+    });
+    assert.equal(skipped.decision, "skipped");
+    pass("group-explicit-agent-and-invalid-owner-skip");
+    const alternate = await call("createWebhookRuleFn", {
+      projectId: project.id,
+      name: "Race B",
+      instruction: "B instruction",
+      enabled: false,
+      action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).click();
+    await ui.getByLabel("Instruction").fill("Saved A instruction");
+    const saveGate = Promise.withResolvers();
+    const saveReceived = Promise.withResolvers();
+    const updateUrl = `**/_serverFn/${ids.updateWebhookRuleFn}`;
+    await page.route(updateUrl, async (route) => {
+      const response = await route.fetch();
+      saveReceived.resolve(undefined);
+      await saveGate.promise;
+      await route.fulfill({ response });
+    });
+    await ui.getByRole("button", { name: "保存", exact: true }).click();
+    await saveReceived.promise;
+    try {
+      assert(
+        await ui.getByRole("button", { name: "Race B · 停用", exact: true }).isDisabled(),
+        "cannot switch rules while save response is pending",
+      );
+      assert(
+        await ui.getByRole("button", { name: "新建", exact: true }).isDisabled(),
+        "cannot start another draft while save response is pending",
+      );
+      assert(
+        await ui.getByRole("button", { name: "保存", exact: true }).isDisabled(),
+        "cannot submit a second save while response is pending",
+      );
+    } finally {
+      saveGate.resolve(undefined);
+    }
+    await until(
+      () => ui.getByRole("button", { name: "保存", exact: true }).isEnabled(),
+      "saved editor unlocked",
+    );
+    await page.unroute(updateUrl);
+    await ui.getByRole("button", { name: "Race B · 停用", exact: true }).click();
+    await ui.getByLabel("名称", { exact: true }).fill("Race B edited");
+    await ui.getByRole("button", { name: "保存", exact: true }).click();
+    await ui.getByRole("button", { name: "Race B edited · 停用", exact: true }).waitFor();
+    const afterRace = await call("listWebhookRulesFn", { projectId: project.id });
+    const savedA = afterRace.find((item) => item.id === rule.id);
+    const savedB = afterRace.find((item) => item.id === alternate.rule.id);
+    assert.equal(savedA.name, "Browser hook");
+    assert.equal(savedA.instruction, "Saved A instruction");
+    assert.deepEqual(savedA.action, rule.action);
+    assert.equal(savedB.name, "Race B edited");
+    assert.equal(savedB.instruction, "B instruction");
+    assert.deepEqual(savedB.action, alternate.rule.action);
+    pass("browser-delayed-save-keeps-rule-identity");
+    await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).click();
+    await ui.getByText("disabled", { exact: false }).first().waitFor();
+    await page.screenshot({ path: join(directory, "settings-desktop.png"), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert(
+      await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      "mobile page must not overflow horizontally",
+    );
+    await page.screenshot({ path: join(directory, "settings-mobile.png"), fullPage: true });
+    await page.goto(`${base}/projects/${project.id}/chats/${dm.chat.id}`, {
+      waitUntil: "networkidle",
+    });
+    await page.getByText("WEBHOOK_BROWSER_RESULT", { exact: false }).first().waitFor();
+    await page.getByText("WEBHOOK_TRIAL_RESULT", { exact: false }).first().waitFor();
+    await page.screenshot({ path: join(directory, "source-chat.png"), fullPage: true });
   }
-  pass("real-human-session-management-boundaries");
-  const groupRule = await call("createWebhookRuleFn", {
-    projectId: project.id,
-    name: "Group explicit",
-    instruction: "Group event",
-    enabled: true,
-    action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
-  });
-  fixture.arm("chatMentioned", {
-    expectedUserPrefix: "{",
-    steps: [],
-    reply: "WEBHOOK_GROUP_RESULT",
-  });
-  const groupResponse = await fetch(groupRule.rule.endpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${groupRule.secret}`,
-      "content-type": "application/json",
-      "x-sprout-event-id": "group-explicit",
-    },
-    body: "{}",
-  });
-  const groupReceipt = await groupResponse.json();
-  assert.equal(groupReceipt.decision, "accepted");
-  await until(
-    () =>
-      db
-        .prepare(
-          "SELECT 1 FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE x.message_id=? AND r.status='completed'",
-        )
-        .get(groupReceipt.messageId),
-    "explicit Group Agent completed",
-  );
-  const ownerRule = await call("createWebhookRuleFn", {
-    projectId: project.id,
-    name: "Owner",
-    instruction: "Owner event",
-    enabled: true,
-    action: { kind: "group_owner", chatId: group.id },
-  });
-  await call("setChatOwnerFn", {
-    chatId: group.id,
-    owner: { kind: "human", id: humanId },
-    expectedRevision: group.governanceRevision,
-  });
-  const skipped = await call("trialWebhookFn", {
-    ruleId: ownerRule.rule.id,
-    eventId: "invalid-owner",
-    payload: {},
-  });
-  assert.equal(skipped.decision, "skipped");
-  pass("group-explicit-agent-and-invalid-owner-skip");
-  const alternate = await call("createWebhookRuleFn", {
-    projectId: project.id,
-    name: "Race B",
-    instruction: "B instruction",
-    enabled: false,
-    action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
-  });
-  await page.reload({ waitUntil: "networkidle" });
-  await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).click();
-  await ui.getByLabel("Instruction").fill("Saved A instruction");
-  const saveGate = Promise.withResolvers();
-  const saveReceived = Promise.withResolvers();
-  const updateUrl = `**/_serverFn/${ids.updateWebhookRuleFn}`;
-  await page.route(updateUrl, async (route) => {
-    const response = await route.fetch();
-    saveReceived.resolve(undefined);
-    await saveGate.promise;
-    await route.fulfill({ response });
-  });
-  await ui.getByRole("button", { name: "保存", exact: true }).click();
-  await saveReceived.promise;
-  try {
-    assert(
-      await ui.getByRole("button", { name: "Race B · 停用", exact: true }).isDisabled(),
-      "cannot switch rules while save response is pending",
-    );
-    assert(
-      await ui.getByRole("button", { name: "新建", exact: true }).isDisabled(),
-      "cannot start another draft while save response is pending",
-    );
-    assert(
-      await ui.getByRole("button", { name: "保存", exact: true }).isDisabled(),
-      "cannot submit a second save while response is pending",
-    );
-  } finally {
-    saveGate.resolve(undefined);
-  }
-  await until(
-    () => ui.getByRole("button", { name: "保存", exact: true }).isEnabled(),
-    "saved editor unlocked",
-  );
-  await page.unroute(updateUrl);
-  await ui.getByRole("button", { name: "Race B · 停用", exact: true }).click();
-  await ui.getByLabel("名称", { exact: true }).fill("Race B edited");
-  await ui.getByRole("button", { name: "保存", exact: true }).click();
-  await ui.getByRole("button", { name: "Race B edited · 停用", exact: true }).waitFor();
-  const afterRace = await call("listWebhookRulesFn", { projectId: project.id });
-  const savedA = afterRace.find((item) => item.id === rule.id);
-  const savedB = afterRace.find((item) => item.id === alternate.rule.id);
-  assert.equal(savedA.name, "Browser hook");
-  assert.equal(savedA.instruction, "Saved A instruction");
-  assert.deepEqual(savedA.action, rule.action);
-  assert.equal(savedB.name, "Race B edited");
-  assert.equal(savedB.instruction, "B instruction");
-  assert.deepEqual(savedB.action, alternate.rule.action);
-  pass("browser-delayed-save-keeps-rule-identity");
-  await ui.getByRole("button", { name: "Browser hook · 停用", exact: true }).click();
-  await ui.getByText("disabled", { exact: false }).first().waitFor();
-  await page.screenshot({ path: join(directory, "settings-desktop.png"), fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  assert(
-    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-    "mobile page must not overflow horizontally",
-  );
-  await page.screenshot({ path: join(directory, "settings-mobile.png"), fullPage: true });
-  await page.goto(`${base}/projects/${project.id}/chats/${dm.chat.id}`, {
-    waitUntil: "networkidle",
-  });
-  await page.getByText("WEBHOOK_BROWSER_RESULT", { exact: false }).first().waitFor();
-  await page.getByText("WEBHOOK_TRIAL_RESULT", { exact: false }).first().waitFor();
-  await page.screenshot({ path: join(directory, "source-chat.png"), fullPage: true });
   assert.deepEqual(errors, []);
   fixture.assertHealthy();
   fixture.assertDrained();
@@ -427,7 +456,9 @@ try {
       2,
     ),
   );
-  console.log("PASS webhook production HTTP/browser/real Pi runner; paid-model-calls=0");
+  console.log(
+    `PASS ${cronMode ? "cron" : "webhook"} production HTTP/browser/real Pi runner; paid-model-calls=0`,
+  );
 } catch (error) {
   if (page) {
     writeFileSync(

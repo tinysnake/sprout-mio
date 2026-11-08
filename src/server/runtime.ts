@@ -1,4 +1,5 @@
 import type { ContinuationScheduler } from "./continuation-scheduler";
+import type { CronScheduler } from "./cron-scheduler";
 import type { WakeRuntimeOptions } from "./wake-runtime";
 import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
@@ -41,6 +42,7 @@ type RuntimeState = {
   managed: ManagedRuntime.ManagedRuntime<RuntimeDatabase | PiHost, never> | null;
   piHost: PiHostShape | null;
   continuation: ContinuationScheduler | null;
+  cron: CronScheduler | null;
   piHostStop: Promise<void> | null;
   ready: Promise<void>;
   resolveReady: () => void;
@@ -70,6 +72,7 @@ function createState(): RuntimeState {
     managed: null,
     piHost: null,
     continuation: null,
+    cron: null,
     piHostStop: null,
     ready,
     resolveReady,
@@ -253,6 +256,9 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     } else {
       console.log("[runtime] continuation disabled by SPROUT_CONTINUATION_ENABLED=false");
     }
+    const { createCronScheduler } = await import("./cron-scheduler");
+    state.cron = createCronScheduler();
+    state.cron.start();
     recordDiagnostic({
       level: "info",
       event: "runtime.ready",
@@ -262,6 +268,7 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     });
     state.resolveReady();
   } catch (error) {
+    state.cron?.stop();
     state.continuation?.stop();
     failPhase(error);
     state.rejectReady(error);
@@ -291,6 +298,7 @@ export function shutdownRuntime(reason: string): Promise<void> {
 }
 
 function stopPiHostOnce(): Promise<void> {
+  state.cron?.stop();
   state.continuation?.stop();
   return (state.piHostStop ??= state.managed?.cachedContext
     ? state.managed.runPromise(stopPiHost)

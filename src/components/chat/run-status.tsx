@@ -105,7 +105,17 @@ export function RunStatusPanel({
   if (!showStatus && pending.length === 0 && !showRestore && !continuation) return null;
 
   return (
-    <section data-testid="run-status" className="mt-6 space-y-2 pl-10.5 max-desktop:pl-9.75">
+    <section
+      id={
+        run &&
+        !messages.some((message) => message.id === run.assistantMessageId) &&
+        !(group && active.some((row) => row.id === run.id))
+          ? `run-${run.id}`
+          : undefined
+      }
+      data-testid="run-status"
+      className="mt-6 space-y-2 pl-10.5 max-desktop:pl-9.75"
+    >
       <ContinuationStatus continuation={continuation} />
       <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
         {showStatus && (
@@ -142,6 +152,7 @@ export function RunStatusPanel({
             return (
               <li
                 key={row.id}
+                id={`run-${row.id}`}
                 data-testid="agent-run-row"
                 className="border-b border-border/60 pb-2 last:border-0 last:pb-0"
               >

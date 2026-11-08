@@ -44,4 +44,4 @@ pnpm check
 
 `webhook-core` 已登记在 CI API 组。`webhook-browser` 已登记为 local gate，使用当前 production build、独立数据库、回环模型 fixture、实际安装的 Pi SDK / runner 与 Chromium。它输出日志、JSON、桌面 / 手机设置页及 source Chat 截图，报告 `paid-model-calls=0`。门禁结束关闭自己启动的服务和 fixture。
 
-已实际跑通上述生产服务链路，并检查桌面与手机截图。模型响应来自 fixture，未证明真实付费模型、真实外部 webhook 提供方或公网部署。技术验证不等于 Human UI 体验确认。Cron、个人助理、飞书和语音仍在后续单元，状态见[开发总计划](development-plan.md#首版推进顺序)。操作入口见[自动化功能地图](feature-map/automation.md)。
+已实际跑通上述生产服务链路，并检查桌面与手机截图。模型响应来自 fixture，未证明真实付费模型、真实外部 webhook 提供方或公网部署。技术验证不等于 Human UI 体验确认。Cron 已复用同一路径实现，见 [Cron 契约](cron-core.md)。个人助理、飞书和语音仍在后续单元，状态见[开发总计划](development-plan.md#首版推进顺序)。操作入口见[自动化功能地图](feature-map/automation.md)。

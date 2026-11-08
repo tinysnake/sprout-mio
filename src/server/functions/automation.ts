@@ -2,8 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import {
+  cronRuleDraftSchema,
+  cronTrialInput,
+  cronUpdateInput,
   webhookRuleDraftSchema,
-  webhookRuleIdInput,
+  automationRuleIdInput,
   webhookTrialInput,
   webhookUpdateInput,
 } from "../../contracts/automation";
@@ -29,6 +32,50 @@ async function call<T>(operation: (ctx: ProjectContext, baseUrl: string) => T | 
   }
 }
 const projectInput = z.object({ projectId: z.string() });
+export const listCronRulesFn = createServerFn({ method: "POST" })
+  .validator((x: unknown) => x)
+  .handler(({ data }) =>
+    call(async (ctx) =>
+      (await import("../../domain/automation")).listCronRules(
+        projectInput.parse(data).projectId,
+        ctx,
+      ),
+    ),
+  );
+export const createCronRuleFn = createServerFn({ method: "POST" })
+  .validator((x: unknown) => x)
+  .handler(({ data }) =>
+    call(async (ctx) =>
+      (await import("../../domain/automation")).createCronRule(
+        cronRuleDraftSchema.parse(data),
+        ctx,
+      ),
+    ),
+  );
+export const updateCronRuleFn = createServerFn({ method: "POST" })
+  .validator((x: unknown) => x)
+  .handler(({ data }) =>
+    call(async (ctx) =>
+      (await import("../../domain/automation")).updateCronRule(cronUpdateInput.parse(data), ctx),
+    ),
+  );
+export const cronHistoryFn = createServerFn({ method: "POST" })
+  .validator((x: unknown) => x)
+  .handler(({ data }) =>
+    call(async (ctx) =>
+      (await import("../../domain/automation")).cronHistory(
+        automationRuleIdInput.parse(data).ruleId,
+        ctx,
+      ),
+    ),
+  );
+export const trialCronFn = createServerFn({ method: "POST" })
+  .validator((x: unknown) => x)
+  .handler(({ data }) =>
+    call(async (ctx) =>
+      (await import("../../domain/automation")).trialCron(cronTrialInput.parse(data), ctx),
+    ),
+  );
 export const listWebhookRulesFn = createServerFn({ method: "POST" })
   .validator((x: unknown) => projectInput.parse(x))
   .handler(({ data }) =>
@@ -63,7 +110,7 @@ export const webhookHistoryFn = createServerFn({ method: "POST" })
   .handler(({ data }) =>
     call(async (ctx) =>
       (await import("../../domain/automation")).webhookHistory(
-        webhookRuleIdInput.parse(data).ruleId,
+        automationRuleIdInput.parse(data).ruleId,
         ctx,
       ),
     ),

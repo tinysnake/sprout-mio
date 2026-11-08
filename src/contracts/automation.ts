@@ -51,7 +51,7 @@ export type WebhookTrigger = z.infer<typeof webhookTriggerSchema>;
 export const webhookEventSchema = z.record(z.string(), z.unknown());
 export type WebhookEvent = z.infer<typeof webhookEventSchema>;
 
-export const webhookRuleIdInput = z.object({ ruleId });
+export const automationRuleIdInput = z.object({ ruleId });
 export const webhookUpdateInput = webhookRuleDraftSchema.extend({
   ruleId,
   expectedRevision: z.number().int().nonnegative(),

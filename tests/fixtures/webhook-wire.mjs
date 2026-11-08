@@ -26,7 +26,9 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (command.type === "prompt" || command.type === "steer") {
     appendFileSync(process.env.WEBHOOK_TRACE, `${JSON.stringify(command)}\n`);
     out({ type: "input_delivered", id: command.id, messageId: command.messageId });
-    if (command.type === "steer" || !JSON.parse(command.text).content.event.awaitSteer)
+    const content = JSON.parse(command.text).content;
+    const awaitSteer = content.event?.awaitSteer || content.instruction.includes("AWAIT_STEER");
+    if (command.type === "steer" || !awaitSteer)
       out({ type: "settled", id: command.id, text: "Wire lifecycle result", stopReason: "stop" });
   }
 });
