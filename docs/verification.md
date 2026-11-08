@@ -35,7 +35,7 @@
 
 CI 分为 base、tooling、docs、contracts、api、turns、browser 七个独立 checkout 的 job，最多六个同时执行，每个 job 内串行运行自己的门禁，避免在 hosted runner 内再次过量并发。共接管 83 个门禁，本机保留 27 个（`a-base` 与 `b-tooling` 两边都跑），另有 3 个 MANUAL 门禁只在真实环境手工运行（`p6a-live-routing` 需要真实付费模型，`p8d-windows-worker` 与 `p8d-windows-integration` 需要真实 Windows 主机）；去重后合计 111 个。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
 
-133 个测试文件中，CI 执行 127 个，本机执行 6 个：`tests/machine-worker.test.ts`（Darwin/sandbox-exec 分支）、`tests/extension-mcp.test.ts`（真实 Pi McpClient）、`tests/worker-report-budget.test.ts`（真实 runWorker 环境探测）和 `tests/chat-skills-*.test.ts`（真实已安装 Pi SDK 的 scoped skills）。`pnpm test:ci` 与 `pnpm test:local` 可单独运行各自测试集合；两边都保留文件隔离。CI 测试最多两个 file worker，使用空的临时 Pi agent 目录、清除 inherited Pi runner/module 设置并关闭 MCP_EVERYTHING，避免借用个人安装掩盖依赖。N/Q 等使用生成 protocol stub 的验证属于 CI，不因名称含 Pi 就保留本机；真实 Pi SDK、MCP extension、真实 Worker 初始化/环境探测仍留本机。
+134 个测试文件中，CI 执行 128 个，本机执行 6 个：`tests/machine-worker.test.ts`（Darwin/sandbox-exec 分支）、`tests/extension-mcp.test.ts`（真实 Pi McpClient）、`tests/worker-report-budget.test.ts`（真实 runWorker 环境探测）和 `tests/chat-skills-*.test.ts`（真实已安装 Pi SDK 的 scoped skills）。`pnpm test:ci` 与 `pnpm test:local` 可单独运行各自测试集合；两边都保留文件隔离。CI 测试最多两个 file worker，使用空的临时 Pi agent 目录、清除 inherited Pi runner/module 设置并关闭 MCP_EVERYTHING，避免借用个人安装掩盖依赖。N/Q 等使用生成 protocol stub 的验证属于 CI，不因名称含 Pi 就保留本机；真实 Pi SDK、MCP extension、真实 Worker 初始化/环境探测仍留本机。
 
 `pnpm verify:ci --group docs` 可复现一个 CI job；省略 `--group` 顺序运行全部 CI 门禁。选择清单可通过 `pnpm verify:local --list`、`pnpm verify:ci --list`、`pnpm test:ci --list` 查看。范围由入口设置 `SPROUT_VERIFY_TARGET`，逐门禁报告和 `.verify/targets/<target>-<group>.json` 记录实际范围与退出结果；一个 CI 门禁失败仍继续执行该组其余门禁，最终保留失败退出码。原有 `--only` 继续用于单机全量入口。
 
