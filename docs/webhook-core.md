@@ -1,6 +1,10 @@
-# Project webhook core (partial unit)
+# Project webhook automation
 
-This page records the implemented domain/protocol boundary, not the pending HTTP ingress or Project settings UI.
+## Implemented boundary
+
+The core domain accepts a rule, raw bearer secret, stable event ID, and JSON object. The HTTP route `POST /api/webhooks/$ruleId` pre-authenticates credentials before it reads the body, enforces a 64 KiB streamed request limit, requires `X-Sprout-Event-Id` and `application/json`, and then rechecks authorization inside atomic admission. HTTP errors are bounded and do not expose secrets or framework errors. Management uses Human-session server functions; the domain denies Agent contexts and checks Project ownership/access. Endpoints are generated from configured `APP_ORIGIN`.
+
+The Project settings section offers rule create/list/edit/enable state, action and target selection, a create-only secret disclosure with curl example, a JSON-object Trial control, and recent receipt details. Trial invokes real admission and is not a dry run. The secret is not persisted in browser storage. History is capped at 50 and resolves Chat/run associations from the accepted message input rather than the rule's current action. No browser end-to-end acceptance or Human UI approval is claimed yet.
 
 ## Contract
 

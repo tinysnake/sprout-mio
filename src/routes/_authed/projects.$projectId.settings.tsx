@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { MembershipSections } from "../../components/machine/membership-sections";
 import { useMachineRelations } from "../../components/machine/use-machine-relations";
 import { ProjectBasicInfoForm } from "../../components/project/project-basic-info-form";
+import { WebhookSettings } from "../../components/project/webhook-settings";
 import { ProjectFacts } from "../../components/project/project-facts";
 import { SettingsSection } from "../../components/project/settings-section";
 import { ProjectConfigForm } from "../../components/project-config/project-config-form";
@@ -159,6 +160,7 @@ function ProjectSettingsView() {
             }
             onSaved={invalidate}
           />
+          <WebhookSettings projectId={projectId} />
           <WakeProviderSelect
             policy={project.data.wakePolicy}
             options={project.data.wakeProviderAvailability ?? []}

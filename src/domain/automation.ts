@@ -11,7 +11,7 @@ import {
   type WebhookTrigger,
 } from "../contracts/automation";
 import { db, sqlite } from "../db";
-import { chat, message, webhookRule, webhookTrigger } from "../db/schema";
+import { agentRun, agentRunInput, chat, message, webhookRule, webhookTrigger } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { appendAutomationRunInput } from "./agent-run";
 import { resolveWebhookTarget } from "./automation-target";
@@ -154,6 +154,14 @@ export function canonicalWebhookPayload(payload: unknown): string {
   if (Buffer.byteLength(canonical) > 128 * 1024) throw new AutomationError("conflict", "事件过大");
   return canonical;
 }
+export function assertWebhookCredential(ruleId: string, secret: string): void {
+  const rule = db.select().from(webhookRule).where(eq(webhookRule.id, ruleId)).get();
+  const supplied = Buffer.from(digest(secret));
+  const expected = Buffer.from(rule?.secretDigest ?? digest("missing-webhook-rule"));
+  if (!rule || !timingSafeEqual(supplied, expected))
+    throw new AutomationError("unauthorized", "Webhook credentials 无效");
+}
+
 function admit(
   rule: Rule,
   mode: "live" | "trial",
@@ -273,13 +281,34 @@ export function trialWebhook(
   afterAdmission(result, projectId);
   return result;
 }
-export function webhookHistory(ruleId: string, ctx: ProjectContext): WebhookTrigger[] {
+export function webhookHistory(
+  ruleId: string,
+  ctx: ProjectContext,
+): (WebhookTrigger & { chatId: string | null; runId: string | null; runStatus: string | null })[] {
   ruleFor(ruleId, ctx);
   return db
     .select()
     .from(webhookTrigger)
     .where(eq(webhookTrigger.ruleId, ruleId))
     .orderBy(desc(webhookTrigger.createdAt))
+    .limit(50)
     .all()
-    .map(receipt);
+    .map((row: Trigger) => {
+      const run = row.messageId
+        ? db
+            .select({ id: agentRunInput.runId })
+            .from(agentRunInput)
+            .where(eq(agentRunInput.messageId, row.messageId))
+            .get()
+        : undefined;
+      const status = run
+        ? db.select({ status: agentRun.status }).from(agentRun).where(eq(agentRun.id, run.id)).get()
+        : undefined;
+      return {
+        ...receipt(row),
+        chatId: row.chatId,
+        runId: run?.id ?? null,
+        runStatus: status?.status ?? null,
+      };
+    });
 }
