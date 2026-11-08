@@ -20,13 +20,15 @@
 
 以下文档按任务领域读取；当前章节的具体契约从开发计划进入。
 
-| 领域               | 文档                                                        |
-| ------------------ | ----------------------------------------------------------- |
-| 整体架构与运行边界 | [架构方向](docs/architecture-direction.md)                  |
-| Web UI 与导航      | [Web UI 决策](docs/web-ui-decisions.md)                     |
-| Agent 配置         | [Agent Profiles 决策](docs/agent-profiles-decisions.md)     |
-| Project 配置       | [Project Profiles 决策](docs/project-profiles-decisions.md) |
-| Machine 与执行环境 | [Machines 决策](docs/machines-decisions.md)                 |
-| 通信               | [Communication 决策](docs/communication-decisions.md)       |
-| Info Hub           | [Info Hub 决策](docs/info-hub-decisions.md)                 |
-| Task               | [Tasks 决策](docs/tasks-decisions.md)                       |
+| 领域               | 文档                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| 整体架构与运行边界 | [架构方向](docs/architecture-direction.md)                                            |
+| Web UI 与导航      | [Web UI 决策](docs/web-ui-decisions.md)                                               |
+| Agent 配置         | [Agent Profiles 决策](docs/agent-profiles-decisions.md)                               |
+| Project 配置       | [Project Profiles 决策](docs/project-profiles-decisions.md)                           |
+| Machine 与执行环境 | [Machines 决策](docs/machines-decisions.md)                                           |
+| 通信               | [Communication 决策](docs/communication-decisions.md)                                 |
+| Info Hub           | [Info Hub 决策](docs/info-hub-decisions.md)                                           |
+| Task               | [Tasks 决策](docs/tasks-decisions.md)                                                 |
+| Webhook 与 cron    | [自动化决策草案](docs/automation-decisions.md)；范围与契约尚未冻结                    |
+| 个人助理与 channel | [个人助理与 channel 决策草案](docs/personal-assistant-decisions.md)；身份与授权待讨论 |
