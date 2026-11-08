@@ -89,4 +89,4 @@ Drizzle SQLite migrator 按 journal 的 `when`，即 `folderMillis`，决定是�
 12. 浏览器验收用 Playwright 加真实 Chromium，每步打印 PASS/FAIL，截图默认写入 `.verify/<unit>/evidence/`。已提交的章节证据目录只放交付版本：章节交付或记录更新时由人手动复制过去，并同时更新该目录的索引。验收脚本不直接写 `docs/`，否则重跑一次就会静默改写历史章节的证据图。
 13. 按[验证约定](../verification.md)选择本次改动所需的检查与验收。集成或交付节点的完整验证使用 `pnpm verify`，全量测试的执行入口与去重规则由验证约定统一维护。生成文件不手动改格式。
 
-`src/routeTree.gen.ts`、`src/db/auth-schema.ts` 与 `drizzle/meta/**` 在根格式配置中排除。现存实验和根 `docs/` 文档不由应用格式命令改写。CI 使用 `pnpm check`，不加 `--fix`。验证脚本使用 PASS 和 FAIL 断言字符串说明步骤，不添加描述执行阶段的注释。分 unit 的验收脚本由 `scripts/verify.sh` 按文件名顺序执行，脚本之间不共享进程、cookie 或数据库文件。
+`src/routeTree.gen.ts`、`src/db/auth-schema.ts` 与 `drizzle/meta/**` 在根格式配置中排除。现存实验和根 `docs/` 文档不由应用格式命令改写。CI 使用 `pnpm check`，不加 `--fix`。验证脚本使用 PASS 和 FAIL 断言字符串说明步骤，不添加描述执行阶段的注释；宿主先决条件缺失时用 `SKIP` 加退出码 77 声明未执行（见[验证约定](../verification.md)），不把跳过当成通过。分 unit 的验收脚本由 `scripts/verify.sh` 按文件名顺序执行，脚本之间不共享进程、cookie 或数据库文件。
