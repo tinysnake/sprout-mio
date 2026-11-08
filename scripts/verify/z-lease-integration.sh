@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
-# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
-node scripts/verify/lib/host-pi-sdk.mjs z-lease-integration || exit $?
 
 case "${SPROUT_VERIFY_CHAT_MODE-model-fixture}" in
   model-fixture|live) export SPROUT_VERIFY_CHAT_MODE="${SPROUT_VERIFY_CHAT_MODE-model-fixture}" ;;
@@ -13,6 +10,9 @@ if [[ "$SPROUT_VERIFY_CHAT_MODE" == model-fixture && -n "${SPROUT_PI_RUNNER-}" ]
   echo 'model-fixture requires the real Pi runner; remove SPROUT_PI_RUNNER' >&2
   exit 2
 fi
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs z-lease-integration || exit $?
 # Production page -> authenticated Chat turn -> real Pi remote tool -> macOS Worker.
 # Private SQLite, credentials, session transcripts and operation output stay in mktemp.
 source "$(dirname "$0")/lib/ensure-worker-artifact.sh"

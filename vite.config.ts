@@ -1,3 +1,4 @@
+import { availableParallelism } from "node:os";
 import { readFile, writeFile } from "node:fs/promises";
 import { OFFLINE_READ_FUNCTIONS } from "./src/lib/offline-read-functions";
 import { join } from "node:path";
@@ -72,6 +73,15 @@ function pwaAssets(): Plugin {
   };
 }
 
+// 单元套件的 test-file worker 上限。完整套件此前沿用 Vitest 默认（= 逻辑核数，开发机 10 个）：内存被其他
+// 进程占住的机器上，那会以 SIGKILL 137 或成片超时收场，而那是机器负载不是产品事实。实测（132 文件 /
+// 1215 用例，空闲机器，峰值取 vp 进程树的 RSS 之和）：默认并发 ≈35s / 2570MB；4 个 worker 59s / 1471MB；
+// 2 个 worker 101s / 1040MB。固定 4 个与验证上下文里小范围 Vitest 调用一致（见 docs/verification.md），
+// 也留在门禁的单命令预算内。
+function unitWorkers() {
+  return Math.max(1, Math.min(4, availableParallelism() - 1));
+}
+
 export default defineConfig({
   fmt: {
     ignorePatterns: [
@@ -117,10 +127,7 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",
-    maxWorkers:
-      process.env.SPROUT_VERIFY_RUN_DIR && process.env.SPROUT_VERIFY_FULL_SUITE !== "1"
-        ? 4
-        : undefined,
+    maxWorkers: unitWorkers(),
     // 默认 5s 会把「spawn 子进程 + 并行争用」的用例打成假红；上限必须高于套件内最大内部 spawn 超时 (60s)，
     // 让真卡死报真实的 spawn 错误而不是脚手架超时。实测最慢单测（争用下）28.1s，取 3 倍以上。
     testTimeout: 90_000,

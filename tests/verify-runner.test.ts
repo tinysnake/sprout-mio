@@ -14,6 +14,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SUITE_PLAN, fitsResources } from "../scripts/verify/lib/suite-plan.mjs";
+import {
+  LOADED_BYPASS_ENV,
+  MACHINE_STATE_ENV,
+  loadedMachine,
+  machineState,
+  unfitMachine,
+  unfitReason,
+} from "../scripts/verify/lib/machine.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const temporaryRoots: string[] = [];
@@ -22,7 +30,14 @@ function makeFixture() {
   const root = mkdtempSync(join(tmpdir(), "verify-runner-"));
   temporaryRoots.push(root);
   mkdirSync(join(root, "scripts", "verify", "lib"), { recursive: true });
-  for (const name of ["host-pi-sdk.mjs", "native-lanes.mjs", "spend.mjs", "suite-plan.mjs"])
+  for (const name of [
+    "host-pi-sdk.mjs",
+    "machine.mjs",
+    "native-lanes.mjs",
+    "process-signals.mjs",
+    "spend.mjs",
+    "suite-plan.mjs",
+  ])
     copyFileSync(
       join(repositoryRoot, "scripts/verify/lib", name),
       join(root, "scripts/verify/lib", name),
@@ -54,18 +69,20 @@ if (existsSync('fail-preparation') && readFileSync('fail-preparation', 'utf8') =
       mkdirSync(directory, { recursive: true });
       writeFileSync(join(directory, "verification.sqlite"), `database ${unit}`);
     },
-    run(args: string[]) {
+    run(args: string[], environment: Record<string, string> = {}) {
       return spawnSync("bash", ["scripts/verify.sh", ...args], {
         cwd: root,
         encoding: "utf8",
         timeout: 30_000,
+        env: machineGuardEnvironment(environment),
       });
     },
-    runDirect(args: string[]) {
+    runDirect(args: string[], environment: Record<string, string> = {}) {
       return spawnSync("node", ["scripts/verify/runner.mjs", ...args], {
         cwd: root,
         encoding: "utf8",
         timeout: 30_000,
+        env: machineGuardEnvironment(environment),
       });
     },
     singleRunDirectory() {
@@ -77,6 +94,11 @@ if (existsSync('fail-preparation') && readFileSync('fail-preparation', 'utf8') =
       return existsSync(join(root, ".verify", "runs"));
     },
   };
+}
+
+// 夹具里的 runner 行为不该随本机负载变成 BLOCKED：默认绕过负载判定，要验证该判定时显式覆盖。
+function machineGuardEnvironment(environment: Record<string, string>) {
+  return { ...process.env, [LOADED_BYPASS_ENV]: "1", ...environment };
 }
 
 function markerLines(root: string) {
@@ -124,7 +146,10 @@ process.exit(result.status ?? 1);
     );
     fixture.writeScript("ah-execution-live-e2e", "echo ah >> marker.log");
     fixture.writeScript("e-project", "echo e >> marker.log");
-    const child = spawn("node", ["scripts/verify/runner.mjs"], { cwd: fixture.root });
+    const child = spawn("node", ["scripts/verify/runner.mjs"], {
+      cwd: fixture.root,
+      env: machineGuardEnvironment({}),
+    });
     let stderr = "";
     child.stderr.on("data", (chunk) => (stderr += String(chunk)));
     const completed = new Promise<number | null>((resolve) => child.on("close", resolve));
@@ -256,6 +281,24 @@ process.exit(result.status ?? 1);
     expect(report.outcomes[0].exitCode).toBe(77);
   });
 
+  it("报告记录运行机器的核数、内存与负载，供判红时区分假红", () => {
+    const fixture = makeFixture();
+    fixture.writeScript("a-pass", 'echo "ok"\n');
+
+    fixture.run([]);
+    const report = JSON.parse(
+      readFileSync(join(fixture.singleRunDirectory(), "report.json"), "utf8"),
+    );
+
+    for (const state of [report.machine.start, report.machine.end]) {
+      expect(state.cpus).toBeGreaterThan(0);
+      expect(state.totalMemMB).toBeGreaterThan(0);
+      expect(state.freeMemMB).toBeGreaterThanOrEqual(0);
+      expect(state.load).toHaveLength(3);
+      expect(state.load.every((value: number) => typeof value === "number")).toBe(true);
+    }
+  });
+
   it("--only 只运行精确选中的脚本，只清理选中目录的数据库", () => {
     const fixture = makeFixture();
     fixture.writeScript("a-first", "echo a-first >> marker.log\n");
@@ -324,7 +367,10 @@ wait "$child"
     );
     fixture.writeScript("b-next", "echo b-next > next.marker\n");
 
-    const child = spawn("bash", ["scripts/verify.sh"], { cwd: fixture.root });
+    const child = spawn("bash", ["scripts/verify.sh"], {
+      cwd: fixture.root,
+      env: machineGuardEnvironment({}),
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
@@ -370,7 +416,10 @@ while :; do sleep 1; done
     );
     fixture.writeScript("b-next", "echo b-next > next.marker\n");
 
-    const child = spawn("bash", ["scripts/verify.sh"], { cwd: fixture.root });
+    const child = spawn("bash", ["scripts/verify.sh"], {
+      cwd: fixture.root,
+      env: machineGuardEnvironment({}),
+    });
     let stdout = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
 
@@ -424,6 +473,7 @@ process.exit(id === 'u' ? 7 : 0);
     const child = spawn(process.execPath, ["scripts/verify/runner.mjs"], {
       cwd: fixture.root,
       stdio: "ignore",
+      env: machineGuardEnvironment({}),
     });
     const completed = new Promise((resolve) => child.once("exit", (code) => resolve(code)));
     const started = (id: string) => existsSync(join(fixture.root, `${id}.started`));
@@ -534,6 +584,7 @@ process.exit(id === 'u' ? 7 : 0);
     const child = spawn(process.execPath, ["scripts/verify/runner.mjs"], {
       cwd: fixture.root,
       stdio: "ignore",
+      env: machineGuardEnvironment({}),
     });
     const completed = new Promise((resolve) => child.once("exit", (code) => resolve(code)));
     try {
@@ -583,6 +634,7 @@ process.exit(id === 'u' ? 7 : 0);
     const child = spawn(process.execPath, ["scripts/verify/runner.mjs"], {
       cwd: fixture.root,
       stdio: "ignore",
+      env: machineGuardEnvironment({}),
     });
     const completed = new Promise((resolve) => child.once("exit", (code) => resolve(code)));
     try {
@@ -656,6 +708,7 @@ nested.on('exit', () => process.exit(0));
     const child = spawn(process.execPath, ["scripts/verify/runner.mjs"], {
       cwd: fixture.root,
       stdio: ["ignore", "ignore", "pipe"],
+      env: machineGuardEnvironment({}),
     });
     let errors = "";
     child.stderr?.on("data", (chunk) => {
@@ -712,5 +765,95 @@ nested.on('exit', () => process.exit(0));
 
     expect(result.status).toBe(0);
     expect(markerLines(fixture.root)).toEqual(["a-first"]);
+  });
+});
+
+describe("verify runner machine guard", () => {
+  it("负载判定按核数与可用内存区分「偏高」与「不适合开跑」", () => {
+    const healthy = { cpus: 8, totalMemMB: 16_384, freeMemMB: 4_096, load: [1, 1, 1] };
+    expect(unfitMachine(healthy)).toBe(false);
+    expect(loadedMachine(healthy)).toBe(false);
+
+    const busy = { cpus: 8, totalMemMB: 16_384, freeMemMB: 2_048, load: [7, 4, 2] };
+    expect(unfitMachine(busy)).toBe(false);
+    expect(loadedMachine(busy)).toBe(true);
+
+    const saturated = { cpus: 8, totalMemMB: 16_384, freeMemMB: 2_048, load: [12, 8, 6] };
+    expect(unfitMachine(saturated)).toBe(true);
+    expect(unfitReason(saturated)).toContain("loadavg 12");
+
+    const idle = { cpus: 8, totalMemMB: 16_384, freeMemMB: 84, load: [1, 1, 1] };
+    expect(loadedMachine(idle)).toBe(false);
+    // macOS 的 freemem() 在健康机器上也只有几百 MB，所以判定不看可用内存（数字只进报告）。
+    expect(unfitMachine(idle)).toBe(false);
+
+    expect(machineState({ [MACHINE_STATE_ENV]: JSON.stringify(saturated) })).toEqual(saturated);
+    expect(machineState({}).cpus).toBeGreaterThan(0);
+  });
+
+  it("机器负载过高时拒绝开跑：不建运行目录，退出码 2", () => {
+    const fixture = makeFixture();
+    fixture.writeScript("a-pass", "echo a-pass >> marker.log\n");
+
+    const result = fixture.run(["--only", "a-pass"], {
+      [LOADED_BYPASS_ENV]: "0",
+      [MACHINE_STATE_ENV]: JSON.stringify({
+        cpus: 8,
+        totalMemMB: 16_384,
+        freeMemMB: 84,
+        load: [13, 9, 5],
+      }),
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("BLOCKED");
+    expect(result.stderr).toContain(`${LOADED_BYPASS_ENV}=1`);
+    expect(markerLines(fixture.root)).toEqual([]);
+    expect(fixture.runsDirectoryExists()).toBe(false);
+  });
+
+  it("负载偏高且有门禁失败时，终端提示先看 uptime 再单独复跑", () => {
+    const fixture = makeFixture();
+    fixture.writeScript("a-fail", "echo a-fail >> marker.log\nexit 1\n");
+
+    const result = fixture.run(["--only", "a-fail"], {
+      [MACHINE_STATE_ENV]: JSON.stringify({
+        cpus: 8,
+        totalMemMB: 16_384,
+        freeMemMB: 2_048,
+        load: [7, 4, 2],
+      }),
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("Verification note=机器负载偏高");
+    expect(result.stdout).toContain("uptime");
+  });
+
+  it("显式放行时，满载机器上仍然开跑并把负载写进报告", () => {
+    const fixture = makeFixture();
+    fixture.writeScript("a-pass", "echo a-pass >> marker.log\n");
+
+    const result = fixture.run(["--only", "a-pass"], {
+      [LOADED_BYPASS_ENV]: "1",
+      [MACHINE_STATE_ENV]: JSON.stringify({
+        cpus: 8,
+        totalMemMB: 16_384,
+        freeMemMB: 84,
+        load: [13, 9, 5],
+      }),
+    });
+
+    expect(result.status).toBe(0);
+    expect(markerLines(fixture.root)).toEqual(["a-pass"]);
+    const report = JSON.parse(
+      readFileSync(join(fixture.singleRunDirectory(), "report.json"), "utf8"),
+    );
+    expect(report.machine.start).toEqual({
+      cpus: 8,
+      totalMemMB: 16_384,
+      freeMemMB: 84,
+      load: [13, 9, 5],
+    });
   });
 });

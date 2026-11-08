@@ -546,6 +546,9 @@ it.each([undefined, "", "unknown", "live"] as const)(
       join(dirname(script), "lib", "ensure-worker-artifact.sh"),
       'ensure_worker_artifact() { printf "PREP:%s" "$SPROUT_VERIFY_CHAT_MODE"; exit 73; }\n',
     );
+    // 宿主 SDK 先决条件由 tests/verify-host-pi-sdk.test.ts 与 verify 门禁覆盖：这里只验模式校验先于
+    // 任何产物准备，替身让被复制到临时根的门禁跳过先决条件探测。
+    writeFileSync(join(dirname(script), "lib", "host-pi-sdk.mjs"), "process.exit(0)\n");
     const env = { ...process.env, SPROUT_VERIFY_CHAT_MODE: mode, SPROUT_PI_RUNNER: "" };
     if (mode === undefined) delete env.SPROUT_VERIFY_CHAT_MODE;
     const child = spawnSync("bash", [script], { env, encoding: "utf8", timeout: 10000 });

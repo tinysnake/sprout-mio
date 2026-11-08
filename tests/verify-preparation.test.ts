@@ -79,6 +79,8 @@ if (process.env.FAKE_BLOCK) {
   const environment: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: `${join(root, "bin")}:${process.env.PATH}`,
+    // 这些用例验证准备动作的调度，不该随本机负载变成 BLOCKED。
+    SPROUT_VERIFY_ALLOW_LOADED: "1",
   };
   delete environment.SPROUT_VERIFY_RUN_DIR;
   const run = (id: string) => {

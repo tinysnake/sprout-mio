@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
-# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
-node scripts/verify/lib/host-pi-sdk.mjs p8a-lease-integration || exit $?
 
 case "${SPROUT_VERIFY_CHAT_MODE-model-fixture}" in
   model-fixture|live) export SPROUT_VERIFY_CHAT_MODE="${SPROUT_VERIFY_CHAT_MODE-model-fixture}" ;;
@@ -13,6 +10,9 @@ if [[ "$SPROUT_VERIFY_CHAT_MODE" == model-fixture && -n "${SPROUT_PI_RUNNER-}" ]
   echo 'model-fixture requires the real Pi runner; remove SPROUT_PI_RUNNER' >&2
   exit 2
 fi
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs p8a-lease-integration || exit $?
 # I-P8a 集成线：挂靠 / 领取 / 撤销挂靠的真实 Agent 工具链路。
 # 生产 HTTP 服务 -> 真人消息 -> 真实 Pi runner -> sprout_lease_* 工具 -> 真实 macOS Worker。
 # 没有人类入口：三条命令都只由分身发起，人类只有可见性与强制收回。

@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
-# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
-node scripts/verify/lib/host-pi-sdk.mjs az-p5a-live-worker || exit $?
 
 case "${SPROUT_VERIFY_CHAT_MODE-model-fixture}" in
   model-fixture|live) export SPROUT_VERIFY_CHAT_MODE="${SPROUT_VERIFY_CHAT_MODE-model-fixture}" ;;
@@ -17,6 +14,9 @@ if [ "$#" -ne 0 ] && { [ "$#" -ne 2 ] || [ "$1" != --only ] || [ "$2" != az-p5a-
   printf "Usage: bash %s [--only az-p5a-live-worker]\n" "$0" >&2
   exit 2
 fi
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs az-p5a-live-worker || exit $?
 # 默认 fixture 模式：两个场景都走真实 Chat、Pi SDK、Worker 和 remote tools，但模型由 loopback
 # fixture 提供，routine verify 不产生付费调用。只有显式 live 才使用真实 provider。
 # live 模式下提供方偶发失败时 run 以 model_error 结束，重跑一次；只有这次尝试自己新建的证据
