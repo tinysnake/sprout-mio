@@ -85,7 +85,13 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
             assistant_proposal_id: null,
           })),
         );
-        expect(rows(after, "agent_run_input")).toEqual(inputs);
+        expect(rows(after, "agent_run_input")).toEqual(
+          inputs.map((row) => ({
+            ...(row as object),
+            assistant_context: null,
+            assistant_context_submitted_at: null,
+          })),
+        );
         expect(rows(after, "agent_run")).toEqual(runs);
         expect(
           after.sqlite.prepare("SELECT purpose FROM agent_profile WHERE id='agent'").get(),

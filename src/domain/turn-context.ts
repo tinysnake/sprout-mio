@@ -1,7 +1,8 @@
+import { readAssistantNativeFacts } from "./assistant-native-facts";
 import { createHash } from "node:crypto";
-import { and, eq, desc, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { agentRun, agentProfile, leaseMutation, message, turnContext } from "../db/schema";
+import { agentRun, agentProfile, leaseMutation, turnContext } from "../db/schema";
 import { INFO_HUB_LIMITS } from "../contracts/info-hub";
 import {
   turnContextReadInputSchema,
@@ -136,26 +137,7 @@ export function captureTurnContext(
       schemaVersion: 1,
       ...(isAssistant
         ? {
-            assistantNativeContext: db
-              .select()
-              .from(message)
-              .where(
-                and(
-                  eq(message.chatId, scope.chatId),
-                  inArray(message.senderKind, ["assistant_event", "assistant_work"]),
-                ),
-              )
-              .orderBy(desc(message.createdAt), desc(message.id))
-              .limit(50)
-              .all()
-              .reverse()
-              .map((row: typeof message.$inferSelect) => ({
-                messageId: row.id,
-                kind: row.senderKind as "assistant_event" | "assistant_work",
-                sourceId: row.senderId,
-                body: row.body.slice(0, 1000),
-                createdAt: row.createdAt.toISOString(),
-              })),
+            assistantNativeContext: readAssistantNativeFacts(scope.chatId, ctx),
           }
         : {}),
       ...input,

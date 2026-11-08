@@ -18,6 +18,8 @@ import {
   projectMember,
 } from "../db/schema";
 import { ID_PREFIXES, newId } from "../contracts/ids";
+import { assistantInputContextSchema } from "../contracts/assistant";
+import { readAssistantNativeFacts } from "./assistant-native-facts";
 import type { AssistantCall, AssistantFact, AssistantTarget } from "../contracts/assistant";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { getChat, ensureInstance, ChatError } from "./chat";
@@ -128,6 +130,66 @@ export function captureAssistantFact(
     )
     .get()!;
 }
+export function prepareAssistantSteerContext(
+  runId: string,
+  messageId: string,
+  ctx: ProjectContext,
+  now = new Date(),
+) {
+  return sqlite
+    .transaction(() => {
+      const source = assistantPrincipal(runId, ctx.userId, ctx.requestId);
+      const input = db
+        .select({ input: agentRunInput, message })
+        .from(agentRunInput)
+        .innerJoin(message, eq(message.id, agentRunInput.messageId))
+        .where(
+          and(
+            eq(agentRunInput.runId, runId),
+            eq(agentRunInput.messageId, messageId),
+            eq(agentRunInput.disposition, "pending"),
+          ),
+        )
+        .get();
+      if (
+        !input ||
+        input.message.chatId !== source.current.id ||
+        input.message.senderKind !== "human" ||
+        input.message.senderId !== ctx.userId
+      )
+        throw new AssistantError("forbidden");
+      if (input.input.assistantContext)
+        return assistantInputContextSchema.parse(input.input.assistantContext);
+      const facts = readAssistantNativeFacts(source.current.id, source.ctx);
+      const envelope = {
+        channel: "sprout_assistant_native",
+        runId,
+        messageId,
+        capturedAt: now.toISOString(),
+        facts,
+        truncated: false,
+      };
+      let serializedText = JSON.stringify(envelope);
+      while (Buffer.byteLength(serializedText, "utf8") > 8192 && facts.length) {
+        facts.shift();
+        envelope.truncated = true;
+        serializedText = JSON.stringify(envelope);
+      }
+      const context = assistantInputContextSchema.parse({
+        runId,
+        messageId,
+        serializedText,
+        contentHash: createHash("sha256").update(serializedText).digest("hex"),
+      });
+      db.update(agentRunInput)
+        .set({ assistantContext: context })
+        .where(and(eq(agentRunInput.runId, runId), eq(agentRunInput.messageId, messageId)))
+        .run();
+      return context;
+    })
+    .immediate();
+}
+
 export function createAssistantProposal(
   source: ReturnType<typeof assistantPrincipal>,
   target: AssistantTarget,

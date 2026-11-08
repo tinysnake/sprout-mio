@@ -1,4 +1,5 @@
 import type { InheritedResources, MessageSkillSpan } from "../contracts/skill";
+import type { AssistantInputContext } from "../contracts/assistant";
 import type { ProjectContext } from "../domain/access";
 import { isSkillName, skillToken } from "../lib/skill-token";
 import type { SkillCatalog } from "./pi-host/skills";
@@ -15,6 +16,7 @@ export type PreparedPiMessage = Readonly<{
   messageId: string;
   text: string;
   warnings: readonly SkillWarning[];
+  assistantContext?: AssistantInputContext;
 }>;
 export class MessageSkillError extends Error {
   constructor(
@@ -29,6 +31,7 @@ function seal(
   messageId: string,
   text: string,
   warnings: readonly SkillWarning[],
+  assistantContext?: AssistantInputContext,
 ): PreparedPiMessage {
   if (Buffer.byteLength(text, "utf8") > MAX_DELIVERY_BYTES)
     throw new MessageSkillError("skill_prompt_too_large");
@@ -37,6 +40,7 @@ function seal(
     messageId,
     text,
     warnings: Object.freeze([...warnings]),
+    ...(assistantContext ? { assistantContext: Object.freeze(assistantContext) } : {}),
   });
   preparedMessages.add(prepared);
   return prepared;
@@ -150,7 +154,8 @@ export function prepareSyntheticPiMessage(
     kind: "task_start" | "continuation" | "resource_notice" | "assistant_work" | "assistant_human";
     messageId: string;
     text: string;
+    assistantContext?: AssistantInputContext;
   }>,
 ): PreparedPiMessage {
-  return seal(input.messageId, input.text, []);
+  return seal(input.messageId, input.text, [], input.assistantContext);
 }

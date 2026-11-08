@@ -3,6 +3,7 @@ import { db, sqlite } from "../db";
 import {
   agentRun,
   agentRunInput,
+  assistantEvent,
   assistantPreferences,
   assistantProposal,
   assistantRunCursor,
@@ -35,9 +36,6 @@ export function setAssistantWatch(
   return sqlite
     .transaction(() => {
       assistantSource(assistantChatId, ctx);
-      const target = getChat(targetChatId, ctx);
-      if (target.projectId !== targetProjectId || target.archivedAt)
-        throw new AssistantError("not_found");
       const current = db
         .select()
         .from(assistantWatch)
@@ -45,6 +43,7 @@ export function setAssistantWatch(
           and(
             eq(assistantWatch.assistantChatId, assistantChatId),
             eq(assistantWatch.targetChatId, targetChatId),
+            eq(assistantWatch.targetProjectId, targetProjectId),
             isNull(assistantWatch.revokedAt),
           ),
         )
@@ -58,6 +57,9 @@ export function setAssistantWatch(
         deliverAssistantEvents(now);
         return { active: false };
       }
+      const target = getChat(targetChatId, ctx);
+      if (target.projectId !== targetProjectId || target.archivedAt)
+        throw new AssistantError("not_found");
       if (current) return { active: true, watchId: current.id };
       const watch = {
         id: newId(ID_PREFIXES.message),
@@ -143,22 +145,10 @@ function captureUndeliveredProposals(now: Date) {
     )
       continue;
     const ctx = { userId: proposal.humanId, requestId: "assistant-observer" };
+    let permitted = true;
     try {
       assistantSource(proposal.assistantChatId, ctx);
       getChat(proposal.targetChatId, ctx);
-      captureAssistantFact(
-        proposal.assistantChatId,
-        `proposal:${proposal.id}:undelivered`,
-        {
-          kind: "intervention",
-          proposalId: proposal.id,
-          targetProjectId: proposal.targetProjectId,
-          targetChatId: proposal.targetChatId,
-          sampledAt: now.toISOString(),
-          body: `已确认工作未送达 Agent。${inputs.map(({ input, run }: { input: typeof agentRunInput.$inferSelect; run: typeof agentRun.$inferSelect }) => `${run.id}: ${input.disposition}, ${input.cancelReason ?? run.status}`).join("; ")}。未重试工作。`,
-        },
-        now,
-      );
     } catch (error) {
       if (
         !(
@@ -168,7 +158,26 @@ function captureUndeliveredProposals(now: Date) {
         )
       )
         throw error;
+      permitted = false;
     }
+    const event = captureAssistantFact(
+      proposal.assistantChatId,
+      `proposal:${proposal.id}:undelivered`,
+      {
+        kind: "intervention",
+        proposalId: proposal.id,
+        targetProjectId: proposal.targetProjectId,
+        targetChatId: proposal.targetChatId,
+        sampledAt: now.toISOString(),
+        body: `已确认工作未送达 Agent。${inputs.map(({ input, run }: { input: typeof agentRunInput.$inferSelect; run: typeof agentRun.$inferSelect }) => `${run.id}: ${input.disposition}, ${input.cancelReason ?? run.status}`).join("; ")}。未重试工作。`,
+      },
+      now,
+    );
+    if (!permitted)
+      db.update(assistantEvent)
+        .set({ suppressedAt: now })
+        .where(eq(assistantEvent.id, event.id))
+        .run();
   }
 }
 function activityFact(snapshot: RunActivity | undefined | null, terminal: boolean, now: Date) {

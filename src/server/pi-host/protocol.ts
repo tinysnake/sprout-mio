@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AssistantInputContext } from "../../contracts/assistant";
 import type { InheritedResources } from "../../contracts/skill";
 import {
   turnContextSubmittedEventSchema,
@@ -38,7 +39,13 @@ export type PiHostCommand =
       turnContext: TurnContextPromptInput;
     }
   | { type: "info_hub_hint"; id: string; hint: InfoHubHint }
-  | { type: "steer"; id: string; messageId: string; text: string }
+  | {
+      type: "steer";
+      id: string;
+      messageId: string;
+      text: string;
+      assistantContext?: AssistantInputContext;
+    }
   | { type: "abort" | "close"; id: string };
 
 const snapshotSchema = z.object({
@@ -105,7 +112,15 @@ export const piHostEvent = z.discriminatedUnion("type", [
     message: z.string().max(500).optional(),
   }),
   z.object({ type: z.literal("ready"), id: z.string(), snapshot: snapshotSchema }),
-  z.object({ type: z.literal("input_delivered"), id: z.string(), messageId: z.string() }),
+  z.object({
+    type: z.literal("input_delivered"),
+    id: z.string(),
+    messageId: z.string(),
+    assistantContextHash: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+  }),
   z.object({
     type: z.literal("input_rejected"),
     id: z.string(),

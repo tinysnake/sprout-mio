@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { promptWithTurnContext } from "./pi-host-turn-context.mjs";
 import { existsSync, mkdirSync } from "node:fs";
 import { sdkRoot, jsonFile } from "./pi-host-skills.mjs";
@@ -14,6 +15,8 @@ let prompting = false;
 let closing = false;
 let openId = "unknown";
 let turnContextPromptInputSchema;
+let assistantInputContextSchema;
+let assistantMode = false;
 let infoHubHintSchema;
 const submittedContexts = new Set();
 
@@ -159,12 +162,16 @@ async function open(config) {
   );
   const remoteClient = createRemoteClient(config.remote);
   const assistant = config.purpose === "assistant";
+  assistantMode = assistant;
   const { registerAssistantTools } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/assistant-tools.ts"),
   );
   const { ASSISTANT_TOOL_SPEC } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/assistant.ts"),
   );
+  ({ assistantInputContextSchema } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/assistant.ts"),
+  ));
   const inheritHostResources = !assistant && config.resources.kind === "enabled";
   const inheritedPaths = inheritHostResources
     ? { skills: config.resources.skillPaths, prompts: config.resources.promptPaths }
@@ -536,8 +543,27 @@ async function deliverSteer(command) {
     return;
   }
   try {
-    await session.steer(command.text, undefined, { source: "rpc" });
-    line({ type: "input_delivered", id: command.id, messageId: command.messageId });
+    const context =
+      command.assistantContext === undefined
+        ? undefined
+        : assistantInputContextSchema.parse(command.assistantContext);
+    if (
+      context &&
+      (!assistantMode ||
+        context.runId !== command.id ||
+        context.messageId !== command.messageId ||
+        Buffer.byteLength(context.serializedText, "utf8") > 8192 ||
+        createHash("sha256").update(context.serializedText).digest("hex") !== context.contentHash)
+    )
+      throw new Error("assistant_context_identity_mismatch");
+    const text = context ? `${context.serializedText}\n\n${command.text}` : command.text;
+    await session.steer(text, undefined, { source: "rpc" });
+    line({
+      type: "input_delivered",
+      id: command.id,
+      messageId: command.messageId,
+      ...(context ? { assistantContextHash: context.contentHash } : {}),
+    });
   } catch {
     line({
       type: "input_rejected",

@@ -1,4 +1,4 @@
-import { admitAssistantInput } from "../../domain/assistant";
+import { admitAssistantInput, prepareAssistantSteerContext } from "../../domain/assistant";
 import {
   admitContinuation,
   pendingContinuations,
@@ -160,7 +160,7 @@ export function executeRun(
             { configSnapshot: basis ? { ...snapshot, repo: basis } : snapshot },
             ctx,
           );
-          process.onDelivered = (messageId) => {
+          process.onDelivered = (messageId, assistantContextHash) => {
             if (signals.isStopping()) return;
             try {
               if (messageId.startsWith(DELIVERY_ID_PREFIX))
@@ -168,7 +168,7 @@ export function executeRun(
               else if (messageId.startsWith(NOTICE_ID_PREFIX)) {
                 noticesSent.add(messageId);
                 markRunNoticeDelivered(messageId.slice(NOTICE_ID_PREFIX.length), new Date(now()));
-              } else markRunInputDelivered(run.id, messageId, ctx);
+              } else markRunInputDelivered(run.id, messageId, ctx, assistantContextHash);
             } catch (error) {
               // 用户停止后迟到的投递确认保持 pending，不升级成进程故障。
               if (!(error instanceof AgentRunError && error.code === "conflict")) throw error;
@@ -317,6 +317,16 @@ export function executeRun(
                                   text: pending.assistantProposalId
                                     ? `[Human-confirmed assistant proposal ${pending.assistantProposalId}; source is program-generated work input]\n${pending.text}`
                                     : pending.text,
+                                  ...(profile.purpose === "assistant"
+                                    ? {
+                                        assistantContext: prepareAssistantSteerContext(
+                                          run.id,
+                                          pending.messageId,
+                                          ctx,
+                                          new Date(now()),
+                                        ),
+                                      }
+                                    : {}),
                                 })
                               : pending.taskRecordKind === "start"
                                 ? prepareSyntheticPiMessage({

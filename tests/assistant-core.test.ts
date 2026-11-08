@@ -12,7 +12,8 @@ const { migrateDatabase } = await import("../src/db/migrate");
 migrateDatabase();
 const { sqlite } = await import("../src/db");
 const { createProject } = await import("../src/domain/project");
-const { createAgentProfile, addProjectMember } = await import("../src/domain/agent");
+const { createAgentProfile, addProjectMember, removeProjectMember } =
+  await import("../src/domain/agent");
 const chats = await import("../src/domain/chat");
 const runs = await import("../src/domain/agent-run");
 const assistant = await import("../src/domain/assistant");
@@ -36,9 +37,9 @@ addProjectMember(project.id, helper.id, ctx);
 const dm = chats.createDirectChat(project.id, helper.id, ctx).chat;
 const work = chats.createDirectChat(project.id, worker.id, ctx).chat;
 const instant = new Date("2026-11-08T12:00:00Z");
-function activeHelper() {
-  chats.sendMessage(dm.id, { senderKind: "human", senderId: ctx.userId, body: "Observe" }, ctx);
-  const run = runs.listAgentRuns(dm.id, ctx)[0];
+function activeHelper(chatId = dm.id) {
+  chats.sendMessage(chatId, { senderKind: "human", senderId: ctx.userId, body: "Observe" }, ctx);
+  const run = runs.listAgentRuns(chatId, ctx)[0];
   sqlite
     .prepare("UPDATE agent_run SET status='running',started_at=? WHERE id=?")
     .run(instant.getTime() / 1000, run.id);
@@ -68,6 +69,98 @@ describe("native assistant authority and durable work", () => {
       sqlite.prepare("UPDATE agent_profile SET purpose='assistant' WHERE id=?").run(worker.id),
     ).toThrow("immutable");
     expect(sqlite.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+  it("captures immutable bounded native facts per assistant Human input and requires its matching receipt", () => {
+    const profile = createAgentProfile({ name: "Steer helper", purpose: "assistant" }, ctx);
+    addProjectMember(project.id, profile.id, ctx);
+    const sourceChat = chats.createDirectChat(project.id, profile.id, ctx).chat;
+    const source = activeHelper(sourceChat.id);
+    const target = {
+      kind: "dm_agent" as const,
+      projectId: project.id,
+      chatId: work.id,
+      agentProfileId: worker.id,
+    };
+    assistant.createAssistantProposal(source, target, "First fresh native decision", instant);
+    const first = chats.sendMessage(
+      sourceChat.id,
+      { senderKind: "human", senderId: ctx.userId, body: "First steer" },
+      ctx,
+    );
+    const captured = assistant.prepareAssistantSteerContext(source.run.id, first.id, ctx, instant);
+    expect(captured.serializedText).toContain("First fresh native decision");
+    assistant.createAssistantProposal(
+      source,
+      target,
+      "Later native decision",
+      new Date(instant.getTime() + 1),
+    );
+    expect(assistant.prepareAssistantSteerContext(source.run.id, first.id, ctx)).toEqual(captured);
+    expect(captured.serializedText).not.toContain("Later native decision");
+    const next = chats.sendMessage(
+      sourceChat.id,
+      { senderKind: "human", senderId: ctx.userId, body: "Next steer" },
+      ctx,
+    );
+    const fresh = assistant.prepareAssistantSteerContext(source.run.id, next.id, ctx, instant);
+    expect(fresh.serializedText).toContain("Later native decision");
+    expect(Buffer.byteLength(fresh.serializedText)).toBeLessThanOrEqual(8192);
+    expect(() => runs.markRunInputDelivered(source.run.id, first.id, ctx)).toThrow(
+      "assistant_context_receipt_mismatch",
+    );
+    expect(() => runs.markRunInputDelivered(source.run.id, first.id, ctx, "0".repeat(64))).toThrow(
+      "assistant_context_receipt_mismatch",
+    );
+    runs.markRunInputDelivered(source.run.id, first.id, ctx, captured.contentHash);
+    const receipt = sqlite
+      .prepare(
+        "SELECT disposition,assistant_context_submitted_at FROM agent_run_input WHERE run_id=? AND message_id=?",
+      )
+      .get(source.run.id, first.id);
+    expect(receipt).toMatchObject({
+      disposition: "delivered",
+      assistant_context_submitted_at: expect.any(Number),
+    });
+    expect(() =>
+      sqlite
+        .prepare("UPDATE agent_run_input SET assistant_context=? WHERE run_id=? AND message_id=?")
+        .run(JSON.stringify({ ...captured, serializedText: "changed" }), source.run.id, first.id),
+    ).toThrow("assistant_input_context_immutable");
+    const otherProject = createProject({ name: "Revocable native target" }, ctx);
+    addProjectMember(otherProject.id, worker.id, ctx);
+    const otherChat = chats.createDirectChat(otherProject.id, worker.id, ctx).chat;
+    assistant.createAssistantProposal(
+      source,
+      { ...target, projectId: otherProject.id, chatId: otherChat.id },
+      "Private target decision",
+      instant,
+    );
+    sqlite.prepare("UPDATE project SET created_by='revoked' WHERE id=?").run(otherProject.id);
+    const last = chats.sendMessage(
+      sourceChat.id,
+      { senderKind: "human", senderId: ctx.userId, body: "After access revocation" },
+      ctx,
+    );
+    expect(
+      assistant.prepareAssistantSteerContext(source.run.id, last.id, ctx).serializedText,
+    ).not.toContain("Private target decision");
+    expect(() =>
+      assistant.prepareAssistantSteerContext(source.run.id, last.id, { ...ctx, userId: "revoked" }),
+    ).toThrow();
+    sqlite.prepare("UPDATE agent_run SET config_snapshot='{}' WHERE id=?").run(source.run.id);
+    runs.completeAgentRun(source.run.id, "Done", "stop", ctx);
+    const carried = sqlite
+      .prepare(
+        "SELECT run_id,assistant_context,assistant_context_submitted_at FROM agent_run_input WHERE message_id=?",
+      )
+      .get(last.id) as {
+      run_id: string;
+      assistant_context: string | null;
+      assistant_context_submitted_at: number | null;
+    };
+    expect(carried.run_id).not.toBe(source.run.id);
+    expect(carried.assistant_context).toBeNull();
+    expect(carried.assistant_context_submitted_at).toBeNull();
   });
   it("confirms once, admits exact input once, observes failure once per DM", () => {
     const source = activeHelper();
@@ -578,6 +671,87 @@ describe("native assistant authority and durable work", () => {
     expect(
       sqlite.prepare("SELECT revoked_at FROM assistant_watch WHERE id=?").get(watch.watchId),
     ).toEqual({ revoked_at: null });
+  });
+  it("allows Human watch revocation after the target DM is archived", () => {
+    const lane = createProject({ name: "Archived watch target" }, ctx);
+    const targetWorker = createAgentProfile({ name: "Archived watched worker" }, ctx);
+    addProjectMember(lane.id, helper.id, ctx);
+    addProjectMember(lane.id, targetWorker.id, ctx);
+    const source = chats.createDirectChat(lane.id, helper.id, ctx).chat;
+    const target = chats.createDirectChat(lane.id, targetWorker.id, ctx).chat;
+    const watch = observer.setAssistantWatch(source.id, lane.id, target.id, true, ctx, instant);
+    removeProjectMember(lane.id, targetWorker.id, ctx);
+    expect(chats.getChat(target.id, ctx).archivedAt).not.toBeNull();
+    expect(observer.setAssistantWatch(source.id, lane.id, target.id, false, ctx, instant)).toEqual({
+      active: false,
+    });
+    expect(observer.setAssistantWatch(source.id, lane.id, target.id, false, ctx, instant)).toEqual({
+      active: false,
+    });
+    expect(
+      sqlite.prepare("SELECT revoked_at FROM assistant_watch WHERE id=?").get(watch.watchId),
+    ).toMatchObject({ revoked_at: expect.any(Number) });
+    addProjectMember(lane.id, targetWorker.id, ctx);
+    chats.sendMessage(
+      target.id,
+      { senderKind: "human", senderId: ctx.userId, body: "Later work" },
+      ctx,
+    );
+    expect(
+      sqlite
+        .prepare("SELECT count(*) AS n FROM assistant_interest WHERE origin_id=?")
+        .get(watch.watchId),
+    ).toEqual({ n: 0 });
+  });
+  it("advances the bounded undelivered scan past revoked sources without blocking another DM", () => {
+    const lane = createProject({ name: "Observer scan progress" }, ctx);
+    const staleHelper = createAgentProfile({ name: "Revoked source", purpose: "assistant" }, ctx);
+    const freshHelper = createAgentProfile({ name: "Valid source", purpose: "assistant" }, ctx);
+    const targetWorker = createAgentProfile({ name: "Queued scan worker" }, ctx);
+    for (const profile of [staleHelper, freshHelper, targetWorker])
+      addProjectMember(lane.id, profile.id, ctx);
+    const stale = chats.createDirectChat(lane.id, staleHelper.id, ctx).chat;
+    const fresh = chats.createDirectChat(lane.id, freshHelper.id, ctx).chat;
+    const target = chats.createDirectChat(lane.id, targetWorker.id, ctx).chat;
+    const stalePrincipal = activeHelper(stale.id);
+    const freshPrincipal = activeHelper(fresh.id);
+    const action = {
+      kind: "dm_agent" as const,
+      projectId: lane.id,
+      chatId: target.id,
+      agentProfileId: targetWorker.id,
+    };
+    for (let index = 0; index < 100; index++) {
+      const proposal = proposalRecord(
+        stalePrincipal,
+        action,
+        `Queued stale work ${index}`,
+        instant,
+      );
+      assistant.confirmAssistantProposal(proposal.id, stale.id, ctx, instant);
+    }
+    const proposal = proposalRecord(freshPrincipal, action, "Queued valid work", instant);
+    assistant.confirmAssistantProposal(proposal.id, fresh.id, ctx, instant);
+    for (const run of runs.listAgentRuns(target.id, ctx))
+      if (["queued", "running"].includes(run.status))
+        runs.settleAgentRun(run.id, { status: "aborted" }, ctx);
+    runs.settleAgentRun(stalePrincipal.run.id, { status: "aborted" }, ctx);
+    removeProjectMember(lane.id, staleHelper.id, ctx);
+    observer.sampleAssistantRuns(new Date(instant.getTime() + 1000));
+    observer.sampleAssistantRuns(new Date(instant.getTime() + 2000));
+    const outcome = sqlite
+      .prepare(
+        "SELECT message_id,suppressed_at FROM assistant_event WHERE assistant_chat_id=? AND event_key=?",
+      )
+      .get(fresh.id, `proposal:${proposal.id}:undelivered`);
+    expect(outcome).toMatchObject({ message_id: expect.any(String), suppressed_at: null });
+    expect(
+      sqlite
+        .prepare(
+          "SELECT count(*) AS n FROM assistant_event WHERE assistant_chat_id=? AND event_key LIKE '%:undelivered' AND suppressed_at IS NOT NULL AND message_id IS NULL",
+        )
+        .get(stale.id),
+    ).toEqual({ n: 100 });
   });
   it("keeps assistants out of inherited Public Channels, Group membership, and Task responsibility", async () => {
     const { taskResponsibilityFacts } = await import("../src/domain/task-capabilities");

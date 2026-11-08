@@ -1,3 +1,4 @@
+import type { AssistantInputContext } from "../contracts/assistant";
 import type { AutomationAction } from "../contracts/automation";
 import type { TurnContextRecord } from "../contracts/turn-context";
 import { sql } from "drizzle-orm";
@@ -783,6 +784,10 @@ export const agentRunInput = sqliteTable(
     deliveredAt: integer("delivered_at", { mode: "timestamp" }),
     cancelledAt: integer("cancelled_at", { mode: "timestamp" }),
     admittedAt: integer("admitted_at", { mode: "timestamp_ms" }),
+    assistantContext: text("assistant_context", { mode: "json" }).$type<AssistantInputContext>(),
+    assistantContextSubmittedAt: integer("assistant_context_submitted_at", {
+      mode: "timestamp_ms",
+    }),
     cancelReason: text("cancel_reason", {
       enum: [
         "membership_revoked",

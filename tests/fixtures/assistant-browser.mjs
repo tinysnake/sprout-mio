@@ -305,6 +305,110 @@ export async function verifyAssistantBrowser({
   pass(
     "actual installed Pi handles Human-confirmed input as steer in the already running worker, with exact lineage and one admission",
   );
+  fixture.arm("status", {
+    expectedUserPrefix: "Keep the assistant talking while watched work finishes",
+    expectedTools: assistantTools,
+    steps: [],
+    reply: "The assistant stayed available while the worker finished.",
+    delayMs: 5000,
+  });
+  await call("sendMessageFn", {
+    projectId: project.id,
+    chatId: source.id,
+    body: "Keep the assistant talking while watched work finishes",
+  });
+  const liveAssistant = await until(
+    () =>
+      db
+        .prepare(
+          "SELECT r.* FROM agent_run r JOIN turn_context c ON c.run_id=r.id WHERE r.chat_id=? AND r.status='running' AND c.submitted_at IS NOT NULL",
+        )
+        .get(source.id),
+    "assistant initial context submitted while streaming",
+  );
+  const frozenContext = db
+    .prepare("SELECT serialized_text,content_hash FROM turn_context WHERE run_id=?")
+    .get(liveAssistant.id);
+  fixture.arm("chatOwner", {
+    expectedUserPrefix: "Finish watched work during the assistant turn",
+    steps: [],
+    reply: "Fresh watched work finished during the assistant turn.",
+  });
+  await call("sendMessageFn", {
+    projectId: project.id,
+    chatId: dm.id,
+    body: "Finish watched work during the assistant turn",
+  });
+  const freshFact = await until(
+    () =>
+      db
+        .prepare(
+          "SELECT e.* FROM assistant_event e JOIN agent_run r ON r.id=json_extract(e.fact,'$.runId') JOIN message m ON m.id=r.assistant_message_id WHERE e.assistant_chat_id=? AND json_extract(e.fact,'$.kind')='completed' AND m.body LIKE '%Fresh watched work finished%' AND e.message_id IS NOT NULL",
+        )
+        .get(source.id),
+    "fresh native completion during active assistant run",
+  );
+  assert(
+    !frozenContext.serialized_text.includes(freshFact.id),
+    "new fact was absent from the immutable initial context",
+  );
+  fixture.arm("status", {
+    expectedUserPrefix: '{"channel":"sprout_assistant_native"',
+    expectedContextIds: [freshFact.id, freshFact.message_id],
+    expectedTools: assistantTools,
+    steps: [],
+    reply: "The new native fact was included in this assistant steer.",
+    queued: true,
+  });
+  const liveHumanInput = await call("sendMessageFn", {
+    projectId: project.id,
+    chatId: source.id,
+    body: "Read the newly completed watched work now",
+  });
+  const liveSteerInput = await until(
+    () =>
+      db
+        .prepare("SELECT * FROM agent_run_input WHERE message_id=? AND disposition='delivered'")
+        .get(liveHumanInput.id),
+    "assistant Human steer acknowledged",
+  );
+  assert.equal(
+    liveSteerInput.run_id,
+    liveAssistant.id,
+    "Human steer stays in the active assistant run",
+  );
+  assert(
+    liveSteerInput.assistant_context,
+    "assistant Human steer must persist its fresh native context",
+  );
+  const steerContext = JSON.parse(liveSteerInput.assistant_context);
+  assert(steerContext.serializedText.includes(freshFact.id));
+  assert(steerContext.serializedText.includes(freshFact.message_id));
+  assert(
+    liveSteerInput.assistant_context_submitted_at,
+    "fresh context has its own matching runner acknowledgement",
+  );
+  assert.deepEqual(
+    db
+      .prepare("SELECT serialized_text,content_hash FROM turn_context WHERE run_id=?")
+      .get(liveAssistant.id),
+    frozenContext,
+    "initial context stays immutable",
+  );
+  const liveSteered = await until(
+    () =>
+      db.prepare("SELECT * FROM agent_run WHERE id=? AND status='completed'").get(liveAssistant.id),
+    "actual model consumes fresh assistant steer context",
+  );
+  assert(
+    db
+      .prepare("SELECT body FROM message WHERE id=?")
+      .get(liveSteered.assistant_message_id)
+      .body.includes("new native fact"),
+  );
+  pass(
+    "active assistant Human steer carries newly arrived native facts into actual model context with a per-input receipt and immutable initial snapshot",
+  );
   await page.reload({ waitUntil: "networkidle" });
   await page.getByText("Assistant 工作与关注", { exact: true }).waitFor();
   await page.getByTestId("assistant-run-link").filter({ hasText: run.id }).waitFor();

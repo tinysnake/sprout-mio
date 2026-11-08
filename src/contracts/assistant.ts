@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+export const assistantInputContextSchema = z.strictObject({
+  runId: z.string(),
+  messageId: z.string(),
+  serializedText: z.string().max(8192),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+});
+export type AssistantInputContext = z.infer<typeof assistantInputContextSchema>;
+
 export const assistantTargetSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("dm_agent"),

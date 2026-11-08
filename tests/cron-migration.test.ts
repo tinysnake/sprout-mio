@@ -55,7 +55,13 @@ it("0038 preserves populated webhook rows/identities and enforces source/config/
                 assistant_event_id: null,
                 assistant_proposal_id: null,
               }))
-            : old[table],
+            : table === "agent_run_input"
+              ? old[table].map((row) => ({
+                  ...(row as object),
+                  assistant_context: null,
+                  assistant_context_submitted_at: null,
+                }))
+              : old[table],
         );
       expect(rows(sqlite, "webhook_rule")).toEqual(
         old.webhook_rule.map((row) => ({

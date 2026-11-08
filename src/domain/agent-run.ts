@@ -410,7 +410,7 @@ function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, reques
   );
   for (const entry of pending) {
     db.update(agentRunInput)
-      .set({ runId: next.id })
+      .set({ runId: next.id, assistantContext: null, assistantContextSubmittedAt: null })
       .where(and(eq(agentRunInput.runId, run.id), eq(agentRunInput.messageId, entry.messageId)))
       .run();
   }
@@ -631,21 +631,41 @@ export function transitionAgentRun(
   return run;
 }
 
-export function markRunInputDelivered(id: string, messageId: string, ctx: ProjectContext): void {
-  const run = runRow(id, ctx);
-  if (run.status !== "running") throw new AgentRunError("conflict", "Run 未运行");
-  const changed = db
-    .update(agentRunInput)
-    .set({ disposition: "delivered", deliveredAt: new Date() })
-    .where(
-      and(
-        eq(agentRunInput.runId, id),
-        eq(agentRunInput.messageId, messageId),
-        eq(agentRunInput.disposition, "pending"),
-      ),
-    )
-    .run();
-  if (!changed.changes) throw new AgentRunError("conflict", "Run 输入不存在或已投递");
+export function markRunInputDelivered(
+  id: string,
+  messageId: string,
+  ctx: ProjectContext,
+  assistantContextHash?: string,
+): void {
+  sqlite
+    .transaction(() => {
+      const run = runRow(id, ctx);
+      if (run.status !== "running") throw new AgentRunError("conflict", "Run 未运行");
+      const input = db
+        .select()
+        .from(agentRunInput)
+        .where(and(eq(agentRunInput.runId, id), eq(agentRunInput.messageId, messageId)))
+        .get();
+      if (input?.assistantContext?.contentHash !== assistantContextHash)
+        throw new Error("assistant_context_receipt_mismatch");
+      const changed = db
+        .update(agentRunInput)
+        .set({
+          disposition: "delivered",
+          deliveredAt: new Date(),
+          ...(assistantContextHash ? { assistantContextSubmittedAt: new Date() } : {}),
+        })
+        .where(
+          and(
+            eq(agentRunInput.runId, id),
+            eq(agentRunInput.messageId, messageId),
+            eq(agentRunInput.disposition, "pending"),
+          ),
+        )
+        .run();
+      if (!changed.changes) throw new AgentRunError("conflict", "Run 输入不存在或已投递");
+    })
+    .immediate();
 }
 
 export function pendingRunInputs(
