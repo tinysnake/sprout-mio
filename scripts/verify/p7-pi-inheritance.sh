@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs p7-pi-inheritance || exit $?
 
 # Risk → Test
 # 「继承边界」只写在文档里 → 真实已安装 Pi SDK + 生产 runner 的 open 协议导出实际工具面与
