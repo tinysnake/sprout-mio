@@ -334,7 +334,6 @@ describe("Project webhook admission and single Chat input path", () => {
     expect(() =>
       chats.removeGroupMember(current.id, { kind: "agent", id: beta.id }, 0, human),
     ).toThrow(/活跃运行/);
-    // Public governance vetoes active removal; simulate an out-of-band grant change at the persistence boundary.
     sqlite
       .prepare("DELETE FROM chat_member WHERE chat_id=? AND member_kind='agent' AND member_id=?")
       .run(current.id, beta.id);
@@ -441,7 +440,6 @@ it("uses actual Pi prompt and active steer with provenance, no paid model, and l
           expect(second.run.id).toBe(initial.run.id);
           if (mode === "revoke_before_steer") {
             chats.setChatOwner(current.id, { kind: "human", id: ctx.userId }, 0, human);
-            // Keep the transport alive until ordinary initial work settles, without fabricating an input ACK.
             queueMicrotask(() => this.abortSession());
           }
           return task;

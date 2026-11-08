@@ -124,7 +124,6 @@ export function updateWebhookRule(
       const previous = ruleFor(ruleId, ctx);
       if (previous.projectId !== draft.projectId || previous.revision !== expectedRevision)
         throw new AutomationError("conflict", "Webhook rule 已变化");
-      // Disabling an obsolete target must remain possible after participation is revoked.
       if (draft.enabled) validateTarget(draft, ctx);
       const row = db
         .update(webhookRule)

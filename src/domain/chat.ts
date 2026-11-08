@@ -727,7 +727,7 @@ export function sendMessage(
       const current = getChat(chatId, ctx);
       if (input.senderKind !== "human" && input.senderKind !== "agent")
         throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
-      // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回,
+      // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
       // 后面的成员与 instance 检查也证明不了「这次写入属于哪次运行」，所以在入口就拒绝。
       if (input.senderKind === "agent" && !ctx.agent)
         throw new ChatError("forbidden", "Agent 发言必须带本次 run 的身份");
