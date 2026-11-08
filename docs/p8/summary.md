@@ -27,7 +27,7 @@ P8 交付二期的四块能力：租约挂靠与领取、挂靠超时提醒与�
 - **门禁**：`bash scripts/verify/p8a-lease-escrow.sh`、`p8a-lease-integration.sh`（12 项通过，真实走一遍挂靠→原持有者写被拒→领取→新持有者读写的链路）、`p8b-timeout.sh`、`p8b-timeout-integration.sh`（真 SQLite + 真 `PiSessionProcess` + 真 HTTP + 生产调度器，时限压到秒级）、`p8c-removal.sh`（四个场景 80 条断言）、`p8c-removal-integration.sh`（含交接确认门硬断言）、`y-lease-ui.sh`（p4b 18 + p8a 5 + p8b 8）。
 - **Windows**：`p8d-windows-worker.sh`（10 项）与 `p8d-windows-integration.sh`（14 项通过 + 1 项按设计 UNVERIFIED）在真实 Windows 11 机器上跑，覆盖三条 shell 的真实版本、诚实性反证（没有 shell 就报缺失）、文件操作字节等价、进程树整体终止、session 映射、长命令恢复不重跑、重连去重。
 - **独立验收**：I-P8a 与 I-P8c 各由一个只读验收 agent 复核（不复用实现者），结论均为可合入；I-P8c 的交接缺口由验收证据复现、修复后由反向打补丁实验证明承重。
-- **全量**：`pnpm verify` 在 `03e8f87` 上 124 项通过、5 项失败，5 项全部与 P8 无关——`b-tooling`、`x-remote-tools`、`ae-remote-tools-cancel-log` 是宿主缺托管 Pi SDK（在 P8 合并前的 `b40bf65` 上可复现同样失败），`d-runtime` 与 `aq-p4d-pages` 是机器负载导致的超时，单独重跑均通过。
+- **全量**：`pnpm verify` 在 `03e8f87` 上 124 项通过、5 项失败，5 项当时都记为与 P8 无关。其中 3 条的定性在 2026-11-08 复核后更正：`b-tooling`、`x-remote-tools`、`ae-remote-tools-cancel-log` **不是**宿主缺托管 Pi SDK，而是沙箱与夹具的缺陷——两条 remote-tools 门禁的夹具停在更早的协议（缺 `open` 必填的 `resources`，以及 `leaseViewSchema` 必填的 `escrow`；两处契约都早于 `b40bf65`，所以 P8 之前同样红），`b-tooling` 是沙箱私有 agent 目录只借 `bin/pi` 形态而 `tests/chat-skills-foundation.test.ts` 需要 `install/`（修复见 `47bffb1`，三条现均通过，缺宿主 Pi SDK 的机器上改记 `skipped` 而不是失败）。`d-runtime` 与 `aq-p4d-pages` 是机器负载导致的超时、单独重跑均通过，这一条不变。
 - **未验证**：真实 30 分钟与 2 小时墙钟（只用压到秒级的覆盖值验过）、进程重启后的超时恢复、跨进程 `identity_busy`、等待被 signal 中断、Windows 桌面会话（sshd 固定 Session 0，`interactive_desktop` 判定与桌面用户环境不可验）、Windows 断网与重启恢复矩阵、`tasklist` 200 行截断分支。
 
 ## 功能线证据
