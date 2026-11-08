@@ -2,7 +2,7 @@
 
 ## 实现范围
 
-Project settings 的定时规则区域提供五段 cron、显式时区、下一时点、启停、真实 Trial 和最近 50 条历史。消息动作与 [Project webhook](webhook-core.md)共用目标校验、事务接纳、系统来源消息、普通 run input 和发送前权限检查，不增加独立执行器。规则只能由有 Project 权限的 Human 管理，不开放外部 bearer 入口。
+Project settings 的定时任务 tab 提供规则列表，独立新建/编辑页面提供五段 cron、表达式帮助、时区下拉、下一时点、启停、真实 Trial 和最近 50 条历史。表单与 Webhook 共用组件；DM 直接选择工作 Agent，首次有效触发时创建或复用规范 DM；Group 动作支持 Public Channel。消息动作与 [Project webhook](webhook-core.md)共用目标校验、事务接纳、系统来源消息、普通 run input 和发送前权限检查，不增加独立执行器。规则只能由有 Project 权限的 Human 管理，不开放外部 bearer 入口。
 
 ## 调度契约
 

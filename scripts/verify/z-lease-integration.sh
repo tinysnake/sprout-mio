@@ -201,19 +201,19 @@ try {
   }
   assert.equal(await page.getByTestId('machine-lease-jump').count(),0,'lease page has no self-navigation action');
   await page.goBack();
-  await page.waitForURL(`**/projects/${projectId}/settings`);
+  await page.waitForURL(`**/projects/${projectId}/settings?tab=general`);
   await page.goForward();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   await page.reload();
   await page.getByTestId('machine-lease-detail').waitFor();
   await page.getByTestId('machine-detail-back').click();
-  await page.waitForURL(`**/projects/${projectId}/settings`);
+  await page.waitForURL(`**/projects/${projectId}/settings?tab=general`);
   pass('Project settings entry preserves browser back/forward and lease refresh route');
   await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
   await page.reload();
   await page.getByTestId('machine-detail-back').click();
-  await page.waitForURL(`**/projects/${projectId}/settings`);
+  await page.waitForURL(`**/projects/${projectId}/settings?tab=general`);
   pass('direct lease route refresh uses Project settings fallback');
   // F-15：从已滚动的设置页进入租约路由时，租约页从顶部开始，不继承来源页滚动量。
   await page.goto(`${base}/projects/${projectId}/settings`);
@@ -228,7 +228,7 @@ try {
   await page.getByTestId('machine-lease-detail').waitFor();
   assert.equal(await page.getByTestId('machine-lease-page').evaluate((node) => node.scrollTop), 0, 'lease route starts at the top instead of inheriting the source scroll');
   await page.getByTestId('machine-detail-back').click();
-  await page.waitForURL(`**/projects/${projectId}/settings`);
+  await page.waitForURL(`**/projects/${projectId}/settings?tab=general`);
   pass('lease entry does not carry over the settings scroll position');
   await page.getByTestId('lease-manage-link').first().click();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
@@ -466,11 +466,11 @@ try {
     }
   }
   await page.setViewportSize({width:390,height:1000});
-  await page.getByTestId('machine-detail-back').click(); await page.waitForURL(`**/projects/${projectId}/settings`);
+  await page.getByTestId('machine-detail-back').click(); await page.waitForURL(`**/projects/${projectId}/settings?tab=general`);
   // 真实入口是关系行内的「管理租约与执行」链接；machine-item 现在是 li，不再可点。
   await page.getByTestId('machine-item').filter({hasText:'Integration Mac'}).getByTestId('lease-manage-link').click();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
-  await page.goBack(); await page.waitForURL(`**/projects/${projectId}/settings`);
+  await page.goBack(); await page.waitForURL(`**/projects/${projectId}/settings?tab=general`);
   await page.goForward(); await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`); await page.reload();
   pass('production stable URL refresh back/forward and 390/900/1200 light/dark');
   { const group=processGroupOf(pid); if(group) process.kill(-group,'SIGTERM'); } cleanupPid=undefined;

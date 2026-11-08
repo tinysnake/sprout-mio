@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Button } from "../ui/button";
+import { buttonVariants } from "../ui/button";
 
 export function SettingsTabs({
   projectId,
@@ -20,22 +20,19 @@ export function SettingsTabs({
           { value: "cron", label: "定时任务" },
         ] as const
       ).map((item) => (
-        <Button
+        <Link
           key={item.value}
-          nativeButton={false}
-          render={
-            <Link
-              to="/projects/$projectId/settings"
-              params={{ projectId }}
-              search={{ tab: item.value }}
-              aria-current={tab === item.value ? "page" : undefined}
-            />
-          }
-          variant={tab === item.value ? "secondary" : "ghost"}
-          size="sm"
+          to="/projects/$projectId/settings"
+          params={{ projectId }}
+          search={{ tab: item.value }}
+          aria-current={tab === item.value ? "page" : undefined}
+          className={buttonVariants({
+            variant: tab === item.value ? "secondary" : "ghost",
+            size: "sm",
+          })}
         >
           {item.label}
-        </Button>
+        </Link>
       ))}
     </nav>
   );

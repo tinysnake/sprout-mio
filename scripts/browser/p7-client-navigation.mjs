@@ -10,17 +10,18 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     [`/projects/${s.projectId}/chats/${s.channelId}?info=1`, "公共频道"],
   ];
   for (const [path, text] of targets) {
+    const expectedPath = path.endsWith("/settings") ? `${path}?tab=general` : path;
     await page.goto(base + path, { waitUntil: "domcontentloaded" });
     await page.getByText(text, { exact: false }).first().waitFor();
-    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, path);
+    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, expectedPath);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByText(text, { exact: false }).first().waitFor();
-    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, path);
+    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, expectedPath);
     await page.goto(base + "/management", { waitUntil: "domcontentloaded" });
     await page.getByTestId("management-page").waitFor();
     await page.goBack({ waitUntil: "domcontentloaded" });
     await page.getByText(text, { exact: false }).first().waitFor();
-    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, path);
+    assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, expectedPath);
     await page.goForward({ waitUntil: "domcontentloaded" });
     await page.getByTestId("management-page").waitFor();
     pass("detail_direct_refresh_back_forward", { path });

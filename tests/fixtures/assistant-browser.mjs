@@ -47,7 +47,6 @@ export async function verifyAssistantBrowser({
           target: {
             kind: "dm_agent",
             projectId: project.id,
-            chatId: dm.id,
             agentProfileId: alpha.id,
           },
           body: "Native confirmed fixture work",
@@ -94,6 +93,7 @@ export async function verifyAssistantBrowser({
     .prepare("SELECT * FROM assistant_proposal WHERE assistant_chat_id=?")
     .get(source.id);
   assert(proposal);
+  assert.equal(proposal.target_chat_id, dm.id, "Agent-only proposal resolves the canonical DM");
   assert.equal(
     db.prepare("SELECT count(*) AS n FROM agent_run WHERE chat_id=?").get(dm.id).n,
     0,

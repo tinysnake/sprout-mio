@@ -10,7 +10,7 @@
 
 ## How to get to it (user POV)
 
-登录后选择 Project，打开 Project settings，进入 Webhook 自动化区域。创建规则时选择目标 Chat 与 Agent 或 owner 动作，填写 Instruction。创建成功只展示一次 secret 和 curl 示例。再次读取规则不会取回 secret。
+登录后选择 Project，打开 Project settings 的 Webhooks 或定时任务 tab。列表显示状态与目标，新建/编辑进入独立 URL。DM 动作直接选工作 Agent，无需预建 Chat；Group 动作可以选择 Public Channel。Webhook secret 默认遮蔽，授权 Human 可再次查看或轮换；旧的仅哈希值须轮换后使用。编辑页提供 curl、Trial 和触发历史。
 
 外部系统向显示的 endpoint 发送 JSON object，同时携带 bearer secret 与稳定的 `X-Sprout-Event-Id`。页面的 Trial 会真实向所选 Chat 提交。最近触发记录可以跳到接收消息的 Chat；编辑规则后旧记录仍指向原来的 Chat。
 
@@ -18,7 +18,7 @@ Cron 在同页的定时规则区域。先选消息动作与有效目标，再填
 
 ## Driving it with …
 
-前置条件为可用的 Human 账号、Project、有效 Agent 成员及 DM / Group。Group owner 动作要求当前 owner 是有效 Agent。专项浏览器门禁自动创建独立数据，使用实际 Pi runner 和回环模型 fixture，无需付费模型凭据。
+前置条件为可用的 Human 账号、Project 和有效工作 Agent 成员；DM 动作在首次有效触发时创建或复用 Chat，Group 动作需要已有 Group / Public Channel。Group owner 动作要求当前 owner 是有效 Agent。专项浏览器门禁自动创建独立数据，使用实际 Pi runner 和回环模型 fixture，无需付费模型凭据。
 
 ```sh
 bash scripts/verify/webhook-core.sh

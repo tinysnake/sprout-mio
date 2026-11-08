@@ -28,7 +28,7 @@ import {
 } from "../../server/functions/automation";
 import { PageFrame } from "../layout/page-frame";
 import { PageBackLink } from "../layout/page-back";
-import { Button } from "../ui/button";
+import { Button, buttonVariants } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { SettingsSection } from "./settings-section";
 
@@ -129,12 +129,14 @@ export function AutomationSettings({ projectId, kind }: { projectId: string; kin
         <p className="text-sm text-muted-foreground">
           {loading ? "读取中…" : `${rules.length} 条规则`}
         </p>
-        <Button
-          nativeButton={false}
-          render={<Link to={newRoute} params={{ projectId }} search={{ tab: kind }} />}
+        <Link
+          to={newRoute}
+          params={{ projectId }}
+          search={{ tab: kind }}
+          className={buttonVariants()}
         >
           新建{titles[kind]}
-        </Button>
+        </Link>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -709,7 +711,7 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
                 />
                 {kind === "cron" ? "启用定时规则" : "启用 Webhook"}
               </label>
-              <Button type="submit">{pending ? "处理中…" : `保存${titles[kind]}`}</Button>
+              <Button type="submit" loading={pending}>{`保存${titles[kind]}`}</Button>
             </form>
           )}
         </fieldset>

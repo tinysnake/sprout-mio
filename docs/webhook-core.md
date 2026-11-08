@@ -2,13 +2,13 @@
 
 ## 实现范围
 
-Human 在 Project settings 的 Webhook 自动化区域创建、编辑、启停规则，配置一个 DM Agent、Group 指定 Agent 或 Group 当前 owner 动作。页面提供一次性 secret、curl 示例、真实 Trial、最近 50 条触发记录及 Chat 跳转。Agent 候选来自所选 Chat 的当前有效成员。系统来源消息复用普通 Chat 历史与 Agent run 输入，不增加 Chat kind 或独立执行器。
+Human 从 Project settings 的 Webhooks tab 进入规则列表，在独立页面新建、编辑和启停规则。DM 动作直接选择工作 Agent，真实触发时创建或复用规范 DM；Group 指定 Agent 与 owner 动作也支持 Public Channel，候选仍受有效成员约束。页面提供默认遮蔽且可再次查看的 secret、轮换、curl 示例、真实 Trial、最近 50 条触发记录及 Chat 跳转。Webhook 与 cron 复用编辑器、动作和历史组件。系统来源消息复用普通 Chat 历史与 Agent run 输入，不增加 Chat kind 或独立执行器。
 
 外部入口为 `POST /api/webhooks/$ruleId`。认证使用 `Authorization: Bearer <secret>`，事件使用 `X-Sprout-Event-Id`，正文为 `application/json` 的 object。服务在读取正文前认证，限制实际流入的正文为 64 KiB，并在原子接纳时重新检查当前规则。响应不等待模型完成，不回显 secret 或框架错误。管理入口使用 Human session 和 Project 权限；外部 POST 使用 HTTP 状态表达错误，属于内部 `AppResult` 约定的外部协议例外。
 
 ## 业务契约
 
-- 每条规则归属一个 Project，只有一个消息动作。目标必须属于该 Project。创建返回 32 字节随机 secret，数据库只保存 SHA-256 digest。页面不把 secret 写入浏览器存储。
+- 每条规则归属一个 Project，只有一个消息动作。目标必须属于该 Project。创建返回 32 字节随机 secret，外部认证用 SHA-256 digest 校验；私有数据库另存恢复值，只有通过 session 与 Project 权限检查的 Human 管理 API 可读取。旧的仅哈希记录不能恢复，需显式轮换；轮换使旧值失效。页面默认遮蔽，不把 secret 写入浏览器存储。这不构成静态加密保证。
 - 去重键为 `(ruleId, live|trial, eventId)`。同一键与等价 JSON 返回原收据，内容不同返回冲突。Trial 有独立去重空间，但会真实投递，遵守启用、权限和目标检查。
 - 接纳事务保存规则快照、固定接收 Agent，并原子写入收据、系统来源消息及普通 run input。停用或目标失效产生跳过记录，不产生消息。编辑只影响后续新事件，停用不取消已接纳的工作。
 - `automation` 是消息来源，不是 Human、Agent、Chat member 或 owner。消息来源关联真实 trigger。公开发消息 API 仍只接受 Human / Agent。外部 event 保持数据身份，不解析为 recipient、mention 或 skill，也不提升为 system prompt。

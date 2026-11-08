@@ -8,11 +8,11 @@
 
 助理不准备 repo checkout、lease、remote execution 或 inherited resources。实际安装的 Pi 在注册和声明两个层面只接受 `sprout_status` 与 `sprout_assistant_observe`、`sprout_assistant_propose`、`sprout_assistant_watch`；runner 会核对完整 registry。普通工作 session 不会作为助理的 previous session 重新打开。工具定义与 gateway admission 共享 `ASSISTANT_TOOL_SPEC`。
 
-Gateway grant 冻结 purpose。身份只能沿 grant → running run → instance → DM → Human 当前权限取得，调用者不能指定 principal。助理 call 不能用于 worker grant，worker call 不能用于助理 grant。普通 Agent 的 Project equality 与 Chat/instance 隔离继续执行。观察接口分页有界，只返回当前 Human 可见的 factual Project、Chat、run 和活动信息；不替目标 Agent 推断业务成功。
+Gateway grant 冻结 purpose。身份只能沿 grant → running run → instance → DM → Human 当前权限取得，调用者不能指定 principal。助理 call 不能用于 worker grant，worker call 不能用于助理 grant。普通 Agent 的 Project equality 与 Chat/instance 隔离继续执行。观察接口分页有界，只返回当前 Human 可见的 factual Project、Chat、run 和活动信息；不替目标 Agent 推断业务成功。Remote client 先按严格的助理响应契约解析 observe/propose/watch，避免落入普通执行或租约分支造成 `invalid_response`。
 
 ## 提案与确认
 
-提案目标为 `dm_agent`、`group_agent`、`group_owner`。提案时解析并固定目标 Project、Chat、profile、instance、body、version 与 operation hash。提案有效期 24 小时；仅 Human 可确认。确认事务重新检查来源 DM、目标可见性、成员、purpose 和精确目标。Group owner 变化要求重新提案；Human owner 的 Group 可以指定某个工作 Agent。
+提案目标为 `dm_agent`、`group_agent`、`group_owner`。DM 提案允许只给 Project 与 Agent，由入口解析或创建规范 DM；观察结果提供名称和标识供模型选择，不要求 Human 手工填写 Chat ID。提案时解析并固定目标 Project、Chat、profile、instance、body、version 与 operation hash。提案有效期 24 小时；仅 Human 可确认。确认事务重新检查来源 DM、目标可见性、成员、purpose 和精确目标。Group owner 变化要求重新提案；Human owner 的 Group 可以指定某个工作 Agent。
 
 确认在 IMMEDIATE 事务内创建一个原生 `assistant_work` message，直接给所选 instance 分配 input，不经过 Human 消息 fanout。重复确认先校验当前权限与目标，再返回同一 message receipt。消息来源明确是 Human 已确认的程序提案，不伪装为 Human 或工作 Agent 发言。
 
@@ -26,7 +26,7 @@ Gateway grant 冻结 purpose。身份只能沿 grant → running run → instanc
 
 模型只能提出 watch intent，由 Human 激活。watch 持久关注 Chat，覆盖已有和随后新建的工作 run，包括多 Agent 与短 run。run 分配事务同步建立 watch interest，终态只停止该 run 的 clock，保留 Chat watch。取消后再次激活创建新 watch id。即使工作 DM 已归档，Human 仍可在自己的助理 DM 取消原有关注；目标访问检查只限制新增关注。
 
-默认周期 300 秒，Human 可配置 60–86400 秒。Runtime 每秒进行有界扫描，按注入的时钟采样当前动作与经过时间；动作未变化仍发周期事实。Run 已经过时间与当前动作持续时间分别呈现；动作时间缺失时明确说明。运行时读取 live activity；终态读取 persisted activity，缺失时明确说明。`completed`、`intervention`、`periodic`、`decision` 分开记录，aborted 不伪装 failed，无最终回复不推断业务成功。
+每条 watch 独立保存周期，默认 300 秒，范围 60–86400 秒。工具可设置或调整已有 watch 的周期，首次关注仍需 Human 确认，改周期不能改变关注目标或授权。同一 DM/run 多个有效 watch 取最短周期，只有 proposal interest 时使用 300 秒；旧 DM 周期迁移到其已有 watch，移除全局周期编辑器。Runtime 每秒进行有界扫描，按注入的时钟采样当前动作与经过时间；动作未变化仍发周期事实。Run 已经过时间与当前动作持续时间分别呈现；动作时间缺失时明确说明。运行时读取 live activity；终态读取 persisted activity，缺失时明确说明。`completed`、`intervention`、`periodic`、`decision` 分开记录，aborted 不伪装 failed，无最终回复不推断业务成功。
 
 watch 与 proposal 重合时，同一 DM 的同一 run 事件只生成一条消息；不同 DM 分别收到自己的事件。capture 与 clock 原子推进，数据库错误回滚，重试不会重跑工作。capture 和 delivery 均重新校验当前可见性及有效来源；撤销后的 pending event 被永久 suppress。无法继续读取的旧提案也写入 suppressed outcome，让有界扫描继续推进，避免堵住其他 DM。Observer 不唤醒工作 Agent，也不自动启动助理模型。
 
