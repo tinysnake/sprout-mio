@@ -78,4 +78,8 @@ Model the Domain 原则促使本轮将周期汇总建模为独立 watch window c
 
 `pnpm typecheck`、`pnpm check` 通过，check 保留 17 条既有 warnings。真实 Pi 的观察、Agent-only 提案、Human 确认、Amenda 回复、watch 确认及工具直接停止均通过，付费模型调用为 0。Browser 通过注入 watch 截止时间验证新汇总进入活跃助理的 steer context；59/60/120 秒与重启窗口由 core 注入时钟验证，未声称浏览器真实等待了 60 秒。
 
-专项报告在集成 worktree 的 `.verify/runs/2026-11-09T08-30-14-273Z-62826-0/report.json`；浏览器证据在 `.verify/assistant-1794213068762`、`.verify/cron-1794213023930`、`.verify/webhook-1794213096277`。最终 CI 记录为 `/tmp/sprout-round3-ci-final.result.json`。原预览迁移和页面复核结果在集成后补记，Human 体验确认仍待反馈。
+专项报告在集成 worktree 的 `.verify/runs/2026-11-09T08-30-14-273Z-62826-0/report.json`；浏览器证据在 `.verify/assistant-1794213068762`、`.verify/cron-1794213023930`、`.verify/webhook-1794213096277`。最终 CI 记录为 `/tmp/sprout-round3-ci-final.result.json`。
+
+本轮修订已集成为 `ffa2d61`。原 `http://127.0.0.1:3300` 预览已使用原数据库重启并完成 migration 0044；迁移前备份为 `.verify/human-review/run.JtVeWy/app.pre-round3-ffa2d61.sqlite`。59 条消息、3 个 Chat、2 个 Agent、2 条自动化规则、4 条历史关注以及 Project 行均逐行比对保持一致，外键检查通过。收据位于 `.verify/human-review/run.JtVeWy/round3-update.json`。
+
+原预览 DOM 复核确认无待确认内容时不渲染面板，Cron 帮助按钮在输入框之后，点击外部和 Escape 均关闭。实时 `preview_snapshot` 两次超时，因此未取得本次原预览截图；已实际查看通过门禁生成的桌面和 390px 手机截图。自用检查 tab 已关闭，原预览服务保留。Human 体验确认仍待反馈。
