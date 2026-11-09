@@ -22,13 +22,17 @@ Gateway grant 冻结 purpose。身份只能沿 grant → running run → instanc
 
 ## Watch、时钟与通知
 
-六张表分别为 `assistant_proposal`、`assistant_watch`、`assistant_preferences`、`assistant_interest`、`assistant_run_cursor`、`assistant_event`。interest 保留 watch/proposal 两种来源，clock 按 DM/run 合并，event key 在 DM 内唯一。
+七张表分别为 `assistant_proposal`、`assistant_watch`、`assistant_watch_cursor`、`assistant_preferences`、`assistant_interest`、`assistant_run_cursor`、`assistant_event`。interest 保留 watch/proposal 两种来源，proposal clock 按 DM/run 合并，watch cursor 按关注关系保存窗口与消息游标，event key 在 DM 内唯一。
 
-模型只能提出 watch intent，由 Human 激活。watch 持久关注 Chat，覆盖已有和随后新建的工作 run，包括多 Agent 与短 run。run 分配事务同步建立 watch interest，终态只停止该 run 的 clock，保留 Chat watch。取消后再次激活创建新 watch id。即使工作 DM 已归档，Human 仍可在自己的助理 DM 取消原有关注；目标访问检查只限制新增关注。
+模型通过 `sprout_assistant_watch` 提出 watch intent，由 Human 激活。watch 持久关注 Chat，覆盖已有和随后新建的工作 run，包括多 Agent 与短 run。`active: false` 可直接停止当前助理 DM 的相应关注，重复调用保持停止状态，不要求 Human 再点击界面，也不取消目标工作。Human 仍可从标题栏管理关注。即使目标 DM 已归档，也可以取消原有关注；目标访问检查只限制新增关注。
 
-每条 watch 独立保存周期，默认 300 秒，范围 60–86400 秒。工具可设置或调整已有 watch 的周期，首次关注仍需 Human 确认，改周期不能改变关注目标或授权。同一 DM/run 多个有效 watch 取最短周期，只有 proposal interest 时使用 300 秒；旧 DM 周期迁移到其已有 watch，移除全局周期编辑器。Runtime 每秒进行有界扫描，按注入的时钟采样当前动作与经过时间；动作未变化仍发周期事实。Run 已经过时间与当前动作持续时间分别呈现；动作时间缺失时明确说明。运行时读取 live activity；终态读取 persisted activity，缺失时明确说明。`completed`、`intervention`、`periodic`、`decision` 分开记录，aborted 不伪装 failed，无最终回复不推断业务成功。
+每条 watch 独立保存周期，默认 300 秒，范围 60–86400 秒。工具可设置或调整已有 watch 的周期，首次关注仍需 Human 确认，改周期不能改变关注目标或授权。确认携带对应 intent 的 `eventId`，确认与取消会消费旧 intent，刷新页面不会重新弹出旧确认。取消后新的明确关注请求仍可产生新 intent；重新激活创建新 watch id。
 
-watch 与 proposal 重合时，同一 DM 的同一 run 事件只生成一条消息；不同 DM 分别收到自己的事件。capture 与 clock 原子推进，数据库错误回滚，重试不会重跑工作。capture 和 delivery 均重新校验当前可见性及有效来源；撤销后的 pending event 被永久 suppress。无法继续读取的旧提案也写入 suppressed outcome，让有界扫描继续推进，避免堵住其他 DM。Observer 不唤醒工作 Agent，也不自动启动助理模型。
+Runtime 按每条 watch 的持久窗口汇总普通 Human、Agent、自动化消息和工作活动。只因 watch 关注的 run 不再逐个即时发送终态通知。窗口无消息、无活动时不发空通知；有内容时各保留最多 50 条消息与 50 个 run 的来源标识，正文摘录最多 4 条消息与 3 条 run 活动，并在来源超限时明确标记。分批读取候选 run，先检查窗口内变化再计入限额，避免无变化的旧 run 挤掉后续活动。当前动作和持续时间来自程序事实，不调用助理模型生成摘要，不推断业务成功。
+
+proposal interest 继续使用既有即时完成/介入通知及默认 300 秒的工作进展时钟。已由 proposal 通知覆盖的输入与回复从 watch 摘要排除，避免重复转发。同一 DM 内按 event key 去重，不同 DM 分别保存事件。Run 终态只停止该 run 的 clock，保留 Chat watch。
+
+窗口、消息游标与 event 原子推进，数据库错误回滚，重试不会重跑工作。capture 和 delivery 均重新校验当前可见性及有效来源；失权窗口关闭且不补发，撤销后的 pending event 被永久 suppress。无法继续读取的旧提案也写入 suppressed outcome，让扫描继续推进。Observer 不唤醒工作 Agent，也不自动启动助理模型。迁移从当前边界初始化已有有效 watch，保留 consent，不回放旧历史。
 
 ## 原生历史与下一轮上下文
 
@@ -47,6 +51,6 @@ bash scripts/verify/assistant-browser.sh
 
 Core 使用真实迁移的 SQLite、runtime grant 与生命周期，覆盖 purpose、权限矩阵、确认重放、final admission、Group owner、carry、uncertain send、持久 watch、周期时钟、重复通知、多个 DM、撤销 suppression 和事务失败回滚；同时回归 webhook、cron、chat 与 runtime。新增回归覆盖归档后取消关注、100 条失权旧提案后的其他 DM 投递，以及每条 Human steer 的快照、错误 hash 拒收和未提交 carry。
 
-Browser 还让助理在工作完成事件到达时保持 streaming，再投递 Human steer。它核对原始 turn 未变化、每条输入的快照与 ACK，并由 loopback 模型请求中的实际 JSON context 核对新 event/message id。
+Browser 还让助理在工作汇总事件到达时保持 streaming，再投递 Human steer。该 fixture 注入 watch 截止时间，核对 watch 不即时发送完成通知，以及原始 turn 未变化、每条输入的快照与 ACK，并由 loopback 模型请求中的实际 JSON context 核对新 event/message id。59/60/120 秒窗口与重启边界由注入时钟的 core 用例验证，不把浏览器截止时间注入当作真实 60 秒墙钟证明。
 
 Browser 门禁使用 production app、已安装 Pi 和 loopback model fixture，零付费调用。它核对实际 registered/exposed tools、status、observation、提案、Human UI 确认、独立 worker、通知去重、真实下一次模型 context 及 receipt。延迟 panel 响应在另一条助理 DM 完成加载后释放，核对当前面板不显示旧 DM 的提案，覆盖既有 Chat 路由的实例隔离。它保存 desktop/mobile/watch controls/run-link 截图。证据目录为 `.verify/assistant-<timestamp>`。此技术验证不等于 Human UI 体验批准。

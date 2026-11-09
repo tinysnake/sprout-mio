@@ -60,3 +60,22 @@ Human 反馈了重复分隔线、列表按钮贴边、cron 帮助位置、提案
 第二轮实际执行 `assistant-core` 门禁，14 个文件、83 个测试通过；`pnpm typecheck`、`pnpm check` 与 build 通过，check 保留 17 条既有 warnings。助理、Webhook、cron 的完整浏览器门禁均通过；最后补充排队状态快照后，再次执行完整助理浏览器门禁通过，使用真实 Pi runner 与回环模型，付费模型调用为 0。本轮没有重跑全部 CI 或完整 `pnpm verify`。
 
 桌面与 390px 手机截图已实际查看，验证待确认提案停留在输入框上方，滚动消息不会带走提案。原评审预览 `http://127.0.0.1:3300` 已通过热更新显示本轮修改，保留原数据。浏览器证据位于 `.verify/assistant-1794192092228`、`.verify/webhook-1794192117101`、`.verify/cron-1794192126864`，最终助理复验记录为 `/tmp/sprout-four-feedback-final-assistant.result.json`。排队通知保留采样时的状态与等待时长，不会因工作后来开始而改写旧通知。Human 体验确认仍待反馈。
+
+## 第三轮页面、频道汇总与停止关注反馈
+
+本轮由两个独立 worktree 分别实现 UI 和领域行为，父代理集成后实际复验。以下行为取代前两轮相应显示与 watch 通知节奏。
+
+- Cron 帮助移至表达式输入框之后，使用现有 Popover，支持点击外部和 Escape 关闭。
+- 输入框上方只显示仍需确认的工作提案或关注请求。已提交、过期、已处理的记录不占位；没有待确认内容时整个容器不渲染。关注管理移到标题栏菜单。
+- Public Channel 使用固定公开频道名称，不再回退为参与 Agent 的名字。
+- 每条 watch 按自己的时间窗口汇总 Chat 消息和工作活动，无内容不发通知。只被 watch 覆盖的 run 不再逐个即时报告结束；提案委派工作的即时结果仍保留。摘要由程序事实生成，不唤醒助理模型，也不推断业务成功。
+- watch cursor 持久保存窗口和消息位置；迁移保留 consent，从当前边界开始，不重放历史。来源消息与 run 各最多记录 50 个标识，正文摘录最多 4 条消息和 3 条 run 活动，超限注明截断。
+- 确认与取消消费对应 intent。刷新不会恢复旧确认，新请求可以重新申请。`sprout_assistant_watch` 的 `active: false` 经真实 Pi 工具链直接停止当前 DM 的关注，重复停止幂等，不取消工作。
+
+Model the Domain 原则促使本轮将周期汇总建模为独立 watch window cursor，而不继续在逐 run 通知上叠加条件。独立技术审查发现候选 run 先截取 50 条再检查变化会漏掉第 51 条活动；新增回归先失败再通过，现按页扫描变化后计入限额。扫描内存按页有界，读取量随候选 run 数量增加。Comment audit 的 7 处冗余注释已删除。
+
+父代理实际执行完整 `pnpm verify`，107 项中 102 项通过、5 项失败。4 项是已确认的 SDK、remote tools 和 deploy 基线问题；新增的助理浏览器失败来自仍期待 watch 即时完成通知的旧断言。修正后专项复验 `assistant-core,assistant-browser,cron-browser,webhook-browser` 全部通过，耗时 91.51 秒。最终 CI 独立重跑通过，130 个文件、1162 个测试，runner 94.22 秒。首次 CI 在与依赖准备并发时未能加载 `oxc-parser`，没有执行测试；不计为测试失败或通过。
+
+`pnpm typecheck`、`pnpm check` 通过，check 保留 17 条既有 warnings。真实 Pi 的观察、Agent-only 提案、Human 确认、Amenda 回复、watch 确认及工具直接停止均通过，付费模型调用为 0。Browser 通过注入 watch 截止时间验证新汇总进入活跃助理的 steer context；59/60/120 秒与重启窗口由 core 注入时钟验证，未声称浏览器真实等待了 60 秒。
+
+专项报告在集成 worktree 的 `.verify/runs/2026-11-09T08-30-14-273Z-62826-0/report.json`；浏览器证据在 `.verify/assistant-1794213068762`、`.verify/cron-1794213023930`、`.verify/webhook-1794213096277`。最终 CI 记录为 `/tmp/sprout-round3-ci-final.result.json`。原预览迁移和页面复核结果在集成后补记，Human 体验确认仍待反馈。

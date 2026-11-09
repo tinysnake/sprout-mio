@@ -589,7 +589,12 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
                           <CircleHelp size={18} aria-hidden="true" />
                         </Popover.Trigger>
                         <Popover.Portal>
-                          <Popover.Positioner side="bottom" align="end" sideOffset={6} className="z-50">
+                          <Popover.Positioner
+                            side="bottom"
+                            align="end"
+                            sideOffset={6}
+                            className="z-50"
+                          >
                             <Popover.Popup
                               className="w-72 max-w-[calc(100vw-3rem)] space-y-2 rounded-container border border-border bg-popover p-4 leading-6 text-popover-foreground shadow-md outline-none"
                               data-testid="cron-help"

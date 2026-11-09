@@ -9,7 +9,6 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 
 type Panel = ReturnType<typeof assistantPanel>;
-/** 与 assistantActionFn 的 validator 同形；只列本面板会发起的动作。 */
 type ActionData =
   | { action: "panel"; chatId: string }
   | { action: "confirm" | "revoke"; chatId: string; proposalId: string }
@@ -39,10 +38,6 @@ const AssistantContext = createContext<AssistantController | null>(null);
 const watchPopupClass =
   "w-72 max-w-[calc(100vw-3rem)] rounded-container border border-border bg-popover p-2 text-popover-foreground shadow-lg outline-none";
 
-/**
- * Assistant 会话的共享状态。头部关注菜单与输入区上方的待处理条渲染在同一棵
- * 子树里，各自只声明自己关心的那部分；轮询、提交与错误只在这里维护一份。
- */
 export function AssistantPanelProvider({
   chatId,
   active,
@@ -117,10 +112,6 @@ export function AssistantPanelProvider({
   return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
 }
 
-/**
- * 聊天顶部的关注入口：只在存在活跃关注时出现，按钮展开当前关注对象、间隔与取消操作。
- * 关注名沿用面板返回的 `targetLabel`（频道名、DM 名由读模型裁定），前端不再自己拼。
- */
 export function AssistantWatchMenu() {
   const controller = useContext(AssistantContext);
   const [open, setOpen] = useState(false);
@@ -186,11 +177,6 @@ export function AssistantWatchMenu() {
   );
 }
 
-/**
- * 输入区上方的待处理条：只渲染未过期的待确认 proposal 与尚未处理的 watch 确认请求；
- * 两者都没有（也没有错误）时整块不渲染，不留下边框与内边距占位。已提交/被拒/
- * 已撤销/已过期的历史不在这里折叠，只留在消息流里可追溯。
- */
 export function AssistantPendingBar() {
   const controller = useContext(AssistantContext);
   if (controller === null) return null;

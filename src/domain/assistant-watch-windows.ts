@@ -87,44 +87,58 @@ export function sampleAssistantWatchWindows(
           watch.assistantChatId,
           READ_LIMIT + 1,
         ) as WindowMessage[];
-      const watchedRuns = sqlite
-        .prepare(`
+      const runFacts: { id: string; body: string }[] = [];
+      let runTruncated = false;
+      let offset = 0;
+      for (;;) {
+        const watchedRuns = sqlite
+          .prepare(`
         SELECT r.id FROM agent_run r JOIN assistant_interest i ON i.run_id=r.id
         JOIN assistant_run_cursor c ON c.assistant_chat_id=i.assistant_chat_id AND c.run_id=r.id
         WHERE i.origin_kind='watch' AND i.origin_id=? AND i.assistant_chat_id=?
           AND c.terminal_captured_at IS NULL AND r.queued_at*1000<=?
           AND NOT EXISTS (SELECT 1 FROM assistant_interest pi JOIN assistant_proposal p ON p.id=pi.origin_id
             WHERE pi.assistant_chat_id=? AND pi.run_id=r.id AND pi.origin_kind='proposal' AND p.status='submitted')
-        ORDER BY (r.status IN ('queued','running')),coalesce(r.settled_at,r.started_at,r.queued_at),r.id LIMIT ?
+        ORDER BY (r.status IN ('queued','running')),coalesce(r.settled_at,r.started_at,r.queued_at),r.id LIMIT ? OFFSET ?
       `)
-        .all(
-          watch.id,
-          watch.assistantChatId,
-          now.getTime(),
-          watch.assistantChatId,
-          READ_LIMIT + 1,
-        ) as { id: string }[];
-      const runFacts: { id: string; body: string }[] = [];
-      for (const row of watchedRuns.slice(0, READ_LIMIT)) {
-        const run = db.select().from(agentRun).where(eq(agentRun.id, row.id)).get()!;
-        const snapshot =
-          run.status === "running" || run.status === "queued" ? activity(run.id) : run.activity;
-        const terminal = run.status !== "queued" && run.status !== "running";
-        const changed =
-          terminal ||
-          [run.queuedAt, run.startedAt, run.settledAt].some(
-            (time) => time && time > cursor.windowStartedAt && time <= now,
-          ) ||
-          [...(snapshot?.entries ?? []), ...(snapshot?.current ? [snapshot.current] : [])].some(
-            (step) =>
-              [step.startedAt, step.finishedAt].some(
-                (time) => time && new Date(time) > cursor.windowStartedAt && new Date(time) <= now,
-              ),
-          );
-        if (changed) runFacts.push({ id: run.id, body: runDescription(run, snapshot) });
+          .all(
+            watch.id,
+            watch.assistantChatId,
+            now.getTime(),
+            watch.assistantChatId,
+            READ_LIMIT + 1,
+            offset,
+          ) as { id: string }[];
+        for (const row of watchedRuns) {
+          const run = db.select().from(agentRun).where(eq(agentRun.id, row.id)).get()!;
+          const snapshot =
+            run.status === "running" || run.status === "queued" ? activity(run.id) : run.activity;
+          const terminal = run.status !== "queued" && run.status !== "running";
+          const changed =
+            terminal ||
+            [run.queuedAt, run.startedAt, run.settledAt].some(
+              (time) => time && time > cursor.windowStartedAt && time <= now,
+            ) ||
+            [...(snapshot?.entries ?? []), ...(snapshot?.current ? [snapshot.current] : [])].some(
+              (step) =>
+                [step.startedAt, step.finishedAt].some(
+                  (time) =>
+                    time && new Date(time) > cursor.windowStartedAt && new Date(time) <= now,
+                ),
+            );
+          if (changed) {
+            if (runFacts.length === READ_LIMIT) {
+              runTruncated = true;
+              break;
+            }
+            runFacts.push({ id: run.id, body: runDescription(run, snapshot) });
+          }
+        }
+        if (runTruncated || watchedRuns.length < READ_LIMIT + 1) break;
+        offset += watchedRuns.length;
       }
       const sampledMessages = messages.slice(0, READ_LIMIT);
-      const truncated = messages.length > READ_LIMIT || watchedRuns.length > READ_LIMIT;
+      const truncated = messages.length > READ_LIMIT || runTruncated;
       if (sampledMessages.length || runFacts.length) {
         const messageLines = sampledMessages
           .slice(-4)

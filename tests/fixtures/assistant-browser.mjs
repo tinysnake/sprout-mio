@@ -425,14 +425,40 @@ export async function verifyAssistantBrowser({
     chatId: dm.id,
     body: "Finish watched work during the assistant turn",
   });
+  const lateRun = await until(
+    () =>
+      db
+        .prepare(
+          "SELECT r.* FROM agent_run r JOIN message m ON m.id=r.assistant_message_id WHERE r.chat_id=? AND r.status='completed' AND m.body LIKE '%Fresh watched work finished%'",
+        )
+        .get(dm.id),
+    "watched work completes inside the pending digest window",
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) n FROM assistant_event WHERE assistant_chat_id=? AND json_extract(fact,'$.runId')=? AND json_extract(fact,'$.kind')='completed'",
+      )
+      .get(source.id, lateRun.id).n,
+    0,
+    "watched completion does not emit a per-run notification before the digest is due",
+  );
+  const windowDb = new Database(join(directory, "private.sqlite"));
+  windowDb.pragma("busy_timeout = 5000");
+  windowDb
+    .prepare(
+      "UPDATE assistant_watch_cursor SET next_due_at=? WHERE watch_id IN (SELECT id FROM assistant_watch WHERE assistant_chat_id=? AND target_chat_id=? AND revoked_at IS NULL)",
+    )
+    .run(Date.now() - 1, source.id, dm.id);
+  windowDb.close();
   const freshFact = await until(
     () =>
       db
         .prepare(
-          "SELECT e.* FROM assistant_event e JOIN agent_run r ON r.id=json_extract(e.fact,'$.runId') JOIN message m ON m.id=r.assistant_message_id WHERE e.assistant_chat_id=? AND json_extract(e.fact,'$.kind')='completed' AND m.body LIKE '%Fresh watched work finished%' AND e.message_id IS NOT NULL",
+          "SELECT e.* FROM assistant_event e WHERE e.assistant_chat_id=? AND json_extract(e.fact,'$.kind')='periodic' AND EXISTS (SELECT 1 FROM json_each(e.fact,'$.digest.runIds') WHERE value=?) AND e.message_id IS NOT NULL",
         )
-        .get(source.id),
-    "fresh native completion during active assistant run",
+        .get(source.id, lateRun.id),
+    "due native digest during active assistant run",
   );
   assert(
     !frozenContext.serialized_text.includes(freshFact.id),
@@ -612,11 +638,8 @@ export async function verifyAssistantBrowser({
   await page.waitForURL(`**/chats/${source.id}`);
   await page.locator(`[data-testid="assistant-run-link"][href*="${run.id}"]`).waitFor();
   pass("delayed assistant panel responses remain scoped to their original DM");
-  // 传进来的 db 是只读句柄；下面两个断言需要直接落库，另开一个可写连接指向同一个 fixture 私有库。
   const writable = new Database(join(directory, "private.sqlite"));
   writable.pragma("busy_timeout = 5000");
-  // 关注对象名必须来自频道的展示名。公共频道没有 title，也不能回落到成员名。
-  // 期望值等于 contracts 里的 PUBLIC_CHANNEL_DISPLAY_TITLE；此处不导入 TS 以保持纯 .mjs。
   const publicChannel = db
     .prepare("SELECT id FROM chat WHERE project_id=? AND kind='public_channel'")
     .get(project.id);
@@ -624,15 +647,16 @@ export async function verifyAssistantBrowser({
   writable
     .prepare(
       "INSERT INTO assistant_watch (id,assistant_chat_id,target_project_id,target_chat_id,consented_by,interval_seconds,consented_at) VALUES (?,?,?,?,?,?,?)",
-    ).run(
-    "watch-public-fixture",
-    source.id,
-    project.id,
-    publicChannel.id,
-    proposal.human_id,
-    60,
-    Date.now(),
-  );
+    )
+    .run(
+      "watch-public-fixture",
+      source.id,
+      project.id,
+      publicChannel.id,
+      proposal.human_id,
+      60,
+      Date.now(),
+    );
   await page.reload({ waitUntil: "networkidle" });
   await page.getByTestId("assistant-watch-menu").click();
   await page
@@ -646,25 +670,25 @@ export async function verifyAssistantBrowser({
   );
   await page.keyboard.press("Escape");
   pass("public channel watch shows the channel display name, not a member name");
-  // 取消后重新发起：新的 watch 请求（新的决策 id）必须仍可确认，说明 UI 没有把请求永久压住。
   writable
     .prepare(
       "INSERT INTO assistant_event (id,assistant_chat_id,event_key,fact,created_at,attempts) VALUES (?,?,?,?,?,0)",
-    ).run(
-    "event-watch-reissue-fixture",
-    source.id,
-    "watch-reissue-fixture",
-    JSON.stringify({
-      kind: "decision",
-      targetProjectId: project.id,
-      targetChatId: dm.id,
-      body: "重新请求关注这个对话。",
-      sampledAt: new Date().toISOString(),
-      watchIntent: true,
-      intervalSeconds: 300,
-    }),
-    Date.now(),
-  );
+    )
+    .run(
+      "event-watch-reissue-fixture",
+      source.id,
+      "watch-reissue-fixture",
+      JSON.stringify({
+        kind: "decision",
+        targetProjectId: project.id,
+        targetChatId: dm.id,
+        body: "重新请求关注这个对话。",
+        sampledAt: new Date().toISOString(),
+        watchIntent: true,
+        intervalSeconds: 300,
+      }),
+      Date.now(),
+    );
   await page.reload({ waitUntil: "networkidle" });
   await page.getByRole("button", { name: /确认持续关注/ }).click();
   await until(

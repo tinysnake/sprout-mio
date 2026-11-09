@@ -176,6 +176,46 @@ describe("Chat watch digest windows", () => {
     observer.sampleAssistantRuns(at(120));
     expect(f.events()).toHaveLength(1);
   });
+  it("finds new activity beyond a page of unchanged active runs", () => {
+    const f = fixture();
+    const target = chats.listChats(project.id, ctx).find((chat) => chat.kind === "public_channel")!;
+    const watch = observer.setAssistantWatch(
+      f.dm.id,
+      project.id,
+      target.id,
+      true,
+      ctx,
+      instant,
+      60,
+    );
+    const profiles = [f.worker];
+    for (let i = 0; i < 50; i++) {
+      const profile = createAgentProfile({ name: `Page worker ${sequence}-${i}` }, ctx);
+      addProjectMember(project.id, profile.id, ctx);
+      profiles.push(profile);
+    }
+    const observedRuns = profiles.map((profile, index) => {
+      const instance = chats.ensureInstance(target.id, profile.id, ctx);
+      const run = runs.allocateContinuationRun(
+        { projectId: project.id, chatId: target.id, instanceId: instance.id },
+        ctx.requestId,
+        at(2),
+      );
+      sqlite
+        .prepare("UPDATE agent_run SET status='running',started_at=? WHERE id=?")
+        .run(Math.floor(at(index === 50 ? 40 : 1).getTime() / 1000), run.id);
+      return run;
+    });
+    sqlite
+      .prepare("UPDATE assistant_watch_cursor SET window_started_at=? WHERE watch_id=?")
+      .run(at(30).getTime(), watch.watchId);
+    observer.sampleAssistantRuns(at(60));
+    const events = f.events();
+    expect(events).toHaveLength(1);
+    const fact = JSON.parse(events[0].fact);
+    expect(fact.digest.runIds).toEqual([observedRuns[50].id]);
+    expect(fact.digest.truncated).toBe(false);
+  });
   it("includes ordinary Agent content and reschedules the same consent without replaying history", () => {
     const f = fixture();
     const watch = observer.setAssistantWatch(
