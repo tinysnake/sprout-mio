@@ -80,6 +80,7 @@ export function setAssistantWatch(
           !intent ||
           intent.assistantChatId !== assistantChatId ||
           !intent.fact.watchIntent ||
+          intent.decisionRejectedAt ||
           intent.fact.targetProjectId !== targetProjectId ||
           intent.fact.targetChatId !== targetChatId ||
           (intent.decisionResolvedAt &&
@@ -116,6 +117,31 @@ export function setAssistantWatch(
       enrollExistingWatch({ ...watch, revokedAt: null }, now);
       rescheduleWatch({ ...watch, revokedAt: null }, now);
       return { active: true, watchId: watch.id };
+    })
+    .immediate();
+}
+export function rejectAssistantWatchIntent(
+  assistantChatId: string,
+  eventId: string,
+  ctx: ProjectContext,
+  now = new Date(),
+) {
+  return sqlite
+    .transaction(() => {
+      assistantSource(assistantChatId, ctx);
+      const intent = db.select().from(assistantEvent).where(eq(assistantEvent.id, eventId)).get();
+      if (!intent || intent.assistantChatId !== assistantChatId || !intent.fact.watchIntent)
+        throw new AssistantError("not_found");
+      const target = getChat(intent.fact.targetChatId, ctx);
+      if (target.projectId !== intent.fact.targetProjectId || target.archivedAt)
+        throw new AssistantError("not_found");
+      if (intent.decisionRejectedAt) return { rejected: true as const };
+      if (intent.decisionResolvedAt) throw new AssistantError("conflict", "关注意图已处理");
+      db.update(assistantEvent)
+        .set({ decisionResolvedAt: now, decisionRejectedAt: now })
+        .where(eq(assistantEvent.id, eventId))
+        .run();
+      return { rejected: true as const };
     })
     .immediate();
 }

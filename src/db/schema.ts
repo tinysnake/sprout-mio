@@ -203,12 +203,34 @@ export const assistantEvent = sqliteTable(
     messageId: text("message_id").unique(),
     suppressedAt: integer("suppressed_at", { mode: "timestamp_ms" }),
     decisionResolvedAt: integer("decision_resolved_at", { mode: "timestamp_ms" }),
+    decisionRejectedAt: integer("decision_rejected_at", { mode: "timestamp_ms" }),
     attempts: integer("attempts").notNull().default(0),
   },
   (t) => [
     uniqueIndex("assistant_event_key_unique").on(t.assistantChatId, t.eventKey),
     index("assistant_event_pending_idx").on(t.messageId, t.suppressedAt),
   ],
+);
+
+export const assistantWatchSummary = sqliteTable(
+  "assistant_watch_summary",
+  {
+    eventId: text("event_id")
+      .primaryKey()
+      .references(() => assistantEvent.id),
+    status: text("status", { enum: ["pending", "running", "completed", "failed", "suppressed"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: integer("lease_expires_at", { mode: "timestamp_ms" }),
+    nextAttemptAt: integer("next_attempt_at", { mode: "timestamp_ms" }).notNull(),
+    summary: text("summary"),
+    error: text("error"),
+    model: text("model"),
+    effort: text("effort"),
+  },
+  (t) => [index("assistant_watch_summary_due_idx").on(t.status, t.nextAttemptAt)],
 );
 
 export const agentProfile = sqliteTable(

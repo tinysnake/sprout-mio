@@ -99,6 +99,12 @@ it("0044 preserves old consent, baselines existing content and resolves only pro
       expect(suppressed.message_id).toBeNull();
       expect(suppressed.suppressed_at).toBeGreaterThanOrEqual(cursor.window_started_at - 1000);
       expect(suppressed.suppressed_at).toBeLessThanOrEqual(cursor.window_started_at);
+      expect(sqlite.prepare("SELECT * FROM assistant_watch_summary").all()).toEqual([]);
+      expect(
+        sqlite
+          .prepare("SELECT count(*) n FROM assistant_event WHERE decision_rejected_at IS NOT NULL")
+          .get(),
+      ).toEqual({ n: 0 });
       expect(sqlite.pragma("foreign_key_check")).toEqual([]);
       expect(sqlite.pragma("integrity_check", { simple: true })).toBe("ok");
     } finally {

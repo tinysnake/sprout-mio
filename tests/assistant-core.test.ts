@@ -18,6 +18,7 @@ const chats = await import("../src/domain/chat");
 const runs = await import("../src/domain/agent-run");
 const assistant = await import("../src/domain/assistant");
 const observer = await import("../src/domain/assistant-observer");
+const { settleWatchSummaries } = await import("./fixtures/assistant-summary");
 const ctx = { userId: "assistant-human", requestId: "req_11111111" };
 sqlite
   .prepare(
@@ -728,6 +729,7 @@ describe("native assistant authority and durable work", () => {
     ).toEqual(due);
     const sampledAt = new Date(time.getTime() + 1000);
     observer.sampleAssistantRuns(sampledAt, () => undefined);
+    settleWatchSummaries(sampledAt);
     for (const sourceId of [dm.id, second.id])
       expect(
         sqlite
@@ -820,6 +822,8 @@ describe("native assistant authority and durable work", () => {
     expect(digests()).toEqual([]);
     observer.sampleAssistantRuns(new Date(now.getTime() + 60000));
     expect(digests()).toHaveLength(1);
+    expect(digests()[0].message_id).toBeNull();
+    settleWatchSummaries(new Date(now.getTime() + 60000));
     expect(digests()[0].message_id).toEqual(expect.any(String));
     for (const run of [existing, short])
       expect(JSON.parse(digests()[0].fact).digest.runIds).toContain(run.id);
@@ -925,6 +929,7 @@ describe("native assistant authority and durable work", () => {
     );
     const run = runs.listAgentRuns(target.id, ctx)[0];
     observer.sampleAssistantRuns(new Date(now.getTime() + 61000), () => undefined);
+    settleWatchSummaries(new Date(now.getTime() + 61000), "工作尚在排队，尚未开始处理。");
     const notice = () =>
       chats
         .listMessages(dm.id, ctx)

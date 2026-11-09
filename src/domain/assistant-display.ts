@@ -3,8 +3,14 @@ import type { AssistantFact } from "../contracts/assistant";
 import { db } from "../db";
 import { agentInstance, agentProfile, agentRun, assistantProposal, chat } from "../db/schema";
 import { assistantDuration, assistantTextPreview } from "../lib/assistant-display";
+import { assistantWatchSummaryText, SUMMARY_LEGACY } from "./assistant-watch-summary";
 
-export function assistantEventSummary(fact: AssistantFact, eventKey: string): string {
+export function assistantEventSummary(
+  fact: AssistantFact,
+  eventKey: string,
+  eventId?: string,
+): string {
+  if (fact.digest) return eventId ? assistantWatchSummaryText(eventId) : SUMMARY_LEGACY;
   if (fact.watchIntent) {
     const target = db.select().from(chat).where(eq(chat.id, fact.targetChatId)).get();
     return `是否持续关注${target?.title ? `「${target.title}」` : "这个对话"}？确认后每 ${assistantDuration(fact.intervalSeconds ?? 300)}汇报进展。`;

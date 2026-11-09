@@ -6,6 +6,7 @@ import type { ProjectContext } from "../../domain/access";
 import { getRequestContext } from "../request-context";
 const action = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("panel"), chatId: z.string() }),
+  z.strictObject({ action: z.literal("reject_watch"), chatId: z.string(), eventId: z.string() }),
   z.strictObject({
     action: z.enum(["confirm", "revoke"]),
     chatId: z.string(),
@@ -58,6 +59,8 @@ export const assistantActionFn = createServerFn({ method: "POST" })
             ),
             requestId,
           );
+        case "reject_watch":
+          return ok(observer.rejectAssistantWatchIntent(data.chatId, data.eventId, ctx), requestId);
         case "interval":
           return ok(
             observer.setAssistantInterval(data.chatId, data.intervalSeconds, ctx),

@@ -74,6 +74,15 @@ export type AssistantCall = z.infer<typeof assistantCallSchema>;
 export type AssistantNativeSource =
   | { kind: "assistant_event"; eventId: string }
   | { kind: "assistant_work"; proposalId: string };
+export type AssistantWatchWindow = {
+  messages: { id: string; senderKind: string; body: string }[];
+  runs: {
+    id: string;
+    status: AgentRunStatus;
+    error: string | null;
+    activity: import("./agent-run").RunActivity | null;
+  }[];
+};
 export type AssistantFact = {
   kind: "decision" | "periodic" | "completed" | "intervention";
   targetProjectId: string;
@@ -82,6 +91,7 @@ export type AssistantFact = {
   proposalId?: string;
   watchIntent?: boolean;
   watchId?: string;
+  watchWindow?: AssistantWatchWindow;
   digest?: {
     windowStartedAt: string;
     windowEndedAt: string;

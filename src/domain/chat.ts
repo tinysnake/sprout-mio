@@ -93,6 +93,7 @@ function toMessage(
   row: typeof message.$inferSelect,
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
+  ctx: ProjectContext,
 ): Message {
   const identity = {
     id: row.id,
@@ -108,13 +109,46 @@ function toMessage(
       .where(eq(assistantEvent.id, row.assistantEventId!))
       .get()!;
     const fact = event.fact;
+    if (fact.watchId) {
+      let accessible = false;
+      try {
+        const watch = sqlite
+          .prepare(
+            "SELECT id FROM assistant_watch WHERE id=? AND assistant_chat_id=? AND consented_by=? AND revoked_at IS NULL",
+          )
+          .get(fact.watchId, row.chatId, ctx.userId);
+        const target = getChat(fact.targetChatId, ctx);
+        accessible =
+          !!watch &&
+          !event.suppressedAt &&
+          !target.archivedAt &&
+          target.projectId === fact.targetProjectId;
+      } catch (error) {
+        if (!(error instanceof ChatError || error instanceof ProjectAccessError)) throw error;
+      }
+      if (!accessible)
+        return {
+          ...identity,
+          body: "关注已停止或来源已不可访问，原始记录不再展示。",
+          senderKind: row.senderKind,
+          nativeSource: {
+            kind: "assistant_event",
+            eventId: event.id,
+            summary: "关注已停止或来源已不可访问。",
+            projectId: fact.targetProjectId,
+            chatId: fact.targetChatId,
+          },
+          mentions: [],
+          skills: [],
+        };
+    }
     return {
       ...identity,
       senderKind: row.senderKind,
       nativeSource: {
         kind: "assistant_event",
         eventId: row.assistantEventId!,
-        summary: assistantEventSummary(fact, event.eventKey),
+        summary: assistantEventSummary(fact, event.eventKey, event.id),
         projectId: fact.targetProjectId,
         chatId: fact.targetChatId,
         ...(fact.runId ? { runId: fact.runId } : {}),
@@ -742,7 +776,7 @@ function readMessages(
   );
   return {
     messages: ordered.map((row) =>
-      toMessage(row.entry, mentions.get(row.entry.id) ?? [], skills.get(row.entry.id) ?? []),
+      toMessage(row.entry, mentions.get(row.entry.id) ?? [], skills.get(row.entry.id) ?? [], ctx),
     ),
     head: first === undefined ? null : rowCursor(first),
     tail: last === undefined ? null : rowCursor(last),
@@ -857,7 +891,7 @@ export function sendMessage(
             .set({ updatedAt: new Date() })
             .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
             .run();
-          const saved = toMessage(row, spans, skills);
+          const saved = toMessage(row, spans, skills, ctx);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
           else appendAgentMentionRunInput(saved, ctx);
           return saved;

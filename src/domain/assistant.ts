@@ -8,6 +8,7 @@ import {
   agentRunInput,
   assistantInterest,
   assistantEvent,
+  assistantWatchSummary,
   assistantProposal,
   assistantWatch,
   assistantPreferences,
@@ -121,20 +122,33 @@ export function captureAssistantFact(
   fact: AssistantFact,
   now: Date,
 ) {
-  db.insert(assistantEvent)
-    .values({ id: id(), assistantChatId, eventKey, fact, createdAt: now })
-    .onConflictDoNothing()
-    .run();
-  return db
-    .select()
-    .from(assistantEvent)
-    .where(
-      and(
-        eq(assistantEvent.assistantChatId, assistantChatId),
-        eq(assistantEvent.eventKey, eventKey),
-      ),
-    )
-    .get()!;
+  return sqlite
+    .transaction(() => {
+      db.insert(assistantEvent)
+        .values({ id: id(), assistantChatId, eventKey, fact, createdAt: now })
+        .onConflictDoNothing()
+        .run();
+      const event = db
+        .select()
+        .from(assistantEvent)
+        .where(
+          and(
+            eq(assistantEvent.assistantChatId, assistantChatId),
+            eq(assistantEvent.eventKey, eventKey),
+          ),
+        )
+        .get()!;
+      if (event.fact.watchWindow)
+        db.insert(assistantWatchSummary)
+          .values({
+            eventId: event.id,
+            nextAttemptAt: now,
+          })
+          .onConflictDoNothing()
+          .run();
+      return event;
+    })
+    .immediate();
 }
 export function prepareAssistantSteerContext(
   runId: string,
@@ -700,6 +714,15 @@ export function deliverAssistantEvents(now: Date) {
               .get()
           )
             throw new AssistantError("not_found");
+          if (event.fact.watchWindow) {
+            const summary = db
+              .select()
+              .from(assistantWatchSummary)
+              .where(eq(assistantWatchSummary.eventId, event.id))
+              .get();
+            if (!summary || (summary.status !== "completed" && summary.status !== "failed"))
+              continue;
+          }
           const messageId = id();
           db.insert(message)
             .values({
@@ -788,7 +811,11 @@ export function assistantPanel(
     expired: boolean;
   })[];
   decisions: (typeof assistantEvent.$inferSelect & { targetLabel: string })[];
-  watches: (typeof assistantWatch.$inferSelect & { targetLabel: string })[];
+  watches: (typeof assistantWatch.$inferSelect & {
+    targetLabel: string;
+    targetKind: "dm" | "group" | "public_channel";
+    targetProjectName: string;
+  })[];
   intervalSeconds: number;
 } {
   assistantSource(assistantChatId, ctx);
@@ -853,6 +880,12 @@ export function assistantPanel(
       .map((row: typeof assistantWatch.$inferSelect) => ({
         ...row,
         targetLabel: targetLabel(row.targetChatId),
+        targetKind: db.select().from(chat).where(eq(chat.id, row.targetChatId)).get()!.kind,
+        targetProjectName: db
+          .select()
+          .from(project)
+          .where(eq(project.id, row.targetProjectId))
+          .get()!.name,
       })),
     intervalSeconds:
       db

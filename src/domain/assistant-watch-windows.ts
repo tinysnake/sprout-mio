@@ -7,31 +7,7 @@ import { getChat, ChatError } from "./chat";
 import { ProjectAccessError } from "./access";
 
 const READ_LIMIT = 50;
-const excerpt = (body: string, limit = 180) => {
-  const text = body.replace(/\s+/g, " ").trim();
-  return text.length > limit ? `${text.slice(0, limit)}…` : text;
-};
-
 type WindowMessage = { id: string; sender_kind: string; body: string };
-
-function runDescription(
-  run: typeof agentRun.$inferSelect,
-  snapshot: RunActivity | null | undefined,
-) {
-  const steps = snapshot?.current ? [snapshot.current] : (snapshot?.entries.slice(0, 2) ?? []);
-  const content = steps
-    .map((step) => excerpt(`${step.label}${step.detail ? `：${step.detail}` : ""}`))
-    .join("；");
-  const status = {
-    queued: "等待处理",
-    running: "正在处理",
-    completed: "运行已结束（业务结果未经验证）",
-    failed: "运行失败",
-    aborted: "运行已停止",
-    interrupted: "运行中断",
-  }[run.status];
-  return `${status}${content ? `：${content}` : "；暂无已记录的动作内容"}${run.errorMessage ? `；${excerpt(run.errorMessage)}` : ""}`;
-}
 
 function acknowledgeTerminals(watch: typeof assistantWatch.$inferSelect, now: Date) {
   sqlite
@@ -49,26 +25,30 @@ export function sampleAssistantWatchWindows(
   now: Date,
   activity: (runId: string) => RunActivity | null | undefined,
 ) {
-  const due = db
-    .select({ watch: assistantWatch, cursor: assistantWatchCursor })
-    .from(assistantWatchCursor)
-    .innerJoin(assistantWatch, eq(assistantWatch.id, assistantWatchCursor.watchId))
-    .where(and(isNull(assistantWatch.revokedAt), lte(assistantWatchCursor.nextDueAt, now)))
-    .orderBy(assistantWatchCursor.nextDueAt)
-    .limit(100)
-    .all();
-  for (const { watch, cursor } of due) {
-    const ctx = { userId: watch.consentedBy, requestId: "assistant-watch-digest" };
-    try {
-      assistantSource(watch.assistantChatId, ctx);
-      const target = getChat(watch.targetChatId, ctx);
-      if (target.projectId !== watch.targetProjectId || target.archivedAt)
-        throw new AssistantError("forbidden");
-      const boundary = sqlite
-        .prepare("SELECT coalesce(max(rowid),0) n FROM message WHERE chat_id=? AND created_at<=?")
-        .get(watch.targetChatId, Math.floor(now.getTime() / 1000)) as { n: number };
-      const messages = sqlite
-        .prepare(`
+  return sqlite
+    .transaction(() => {
+      const due = db
+        .select({ watch: assistantWatch, cursor: assistantWatchCursor })
+        .from(assistantWatchCursor)
+        .innerJoin(assistantWatch, eq(assistantWatch.id, assistantWatchCursor.watchId))
+        .where(and(isNull(assistantWatch.revokedAt), lte(assistantWatchCursor.nextDueAt, now)))
+        .orderBy(assistantWatchCursor.nextDueAt)
+        .limit(100)
+        .all();
+      for (const { watch, cursor } of due) {
+        const ctx = { userId: watch.consentedBy, requestId: "assistant-watch-digest" };
+        try {
+          assistantSource(watch.assistantChatId, ctx);
+          const target = getChat(watch.targetChatId, ctx);
+          if (target.projectId !== watch.targetProjectId || target.archivedAt)
+            throw new AssistantError("forbidden");
+          const boundary = sqlite
+            .prepare(
+              "SELECT coalesce(max(rowid),0) n FROM message WHERE chat_id=? AND created_at<=?",
+            )
+            .get(watch.targetChatId, Math.floor(now.getTime() / 1000)) as { n: number };
+          const messages = sqlite
+            .prepare(`
         SELECT m.id, m.sender_kind, m.body FROM message m
         WHERE m.chat_id=? AND m.rowid>? AND m.rowid<=?
           AND m.sender_kind IN ('human','agent','automation')
@@ -80,19 +60,19 @@ export function sampleAssistantWatchWindows(
           )
         ORDER BY m.rowid LIMIT ?
       `)
-        .all(
-          watch.targetChatId,
-          cursor.messageRowid,
-          boundary.n,
-          watch.assistantChatId,
-          READ_LIMIT + 1,
-        ) as WindowMessage[];
-      const runFacts: { id: string; body: string }[] = [];
-      let runTruncated = false;
-      let offset = 0;
-      for (;;) {
-        const watchedRuns = sqlite
-          .prepare(`
+            .all(
+              watch.targetChatId,
+              cursor.messageRowid,
+              boundary.n,
+              watch.assistantChatId,
+              READ_LIMIT + 1,
+            ) as WindowMessage[];
+          const runFacts: import("../contracts/assistant").AssistantWatchWindow["runs"] = [];
+          let runTruncated = false;
+          let offset = 0;
+          for (;;) {
+            const watchedRuns = sqlite
+              .prepare(`
         SELECT r.id FROM agent_run r JOIN assistant_interest i ON i.run_id=r.id
         JOIN assistant_run_cursor c ON c.assistant_chat_id=i.assistant_chat_id AND c.run_id=r.id
         WHERE i.origin_kind='watch' AND i.origin_id=? AND i.assistant_chat_id=?
@@ -101,105 +81,117 @@ export function sampleAssistantWatchWindows(
             WHERE pi.assistant_chat_id=? AND pi.run_id=r.id AND pi.origin_kind='proposal' AND p.status='submitted')
         ORDER BY (r.status IN ('queued','running')),coalesce(r.settled_at,r.started_at,r.queued_at),r.id LIMIT ? OFFSET ?
       `)
-          .all(
-            watch.id,
-            watch.assistantChatId,
-            now.getTime(),
-            watch.assistantChatId,
-            READ_LIMIT + 1,
-            offset,
-          ) as { id: string }[];
-        for (const row of watchedRuns) {
-          const run = db.select().from(agentRun).where(eq(agentRun.id, row.id)).get()!;
-          const snapshot =
-            run.status === "running" || run.status === "queued" ? activity(run.id) : run.activity;
-          const terminal = run.status !== "queued" && run.status !== "running";
-          const changed =
-            terminal ||
-            [run.queuedAt, run.startedAt, run.settledAt].some(
-              (time) => time && time > cursor.windowStartedAt && time <= now,
-            ) ||
-            [...(snapshot?.entries ?? []), ...(snapshot?.current ? [snapshot.current] : [])].some(
-              (step) =>
-                [step.startedAt, step.finishedAt].some(
-                  (time) =>
-                    time && new Date(time) > cursor.windowStartedAt && new Date(time) <= now,
-                ),
-            );
-          if (changed) {
-            if (runFacts.length === READ_LIMIT) {
-              runTruncated = true;
-              break;
+              .all(
+                watch.id,
+                watch.assistantChatId,
+                now.getTime(),
+                watch.assistantChatId,
+                READ_LIMIT + 1,
+                offset,
+              ) as { id: string }[];
+            for (const row of watchedRuns) {
+              const run = db.select().from(agentRun).where(eq(agentRun.id, row.id)).get()!;
+              const snapshot =
+                run.status === "running" || run.status === "queued"
+                  ? activity(run.id)
+                  : run.activity;
+              const terminal = run.status !== "queued" && run.status !== "running";
+              const changed =
+                terminal ||
+                [run.queuedAt, run.startedAt, run.settledAt].some(
+                  (time) => time && time > cursor.windowStartedAt && time <= now,
+                ) ||
+                [
+                  ...(snapshot?.entries ?? []),
+                  ...(snapshot?.current ? [snapshot.current] : []),
+                ].some((step) =>
+                  [step.startedAt, step.finishedAt].some(
+                    (time) =>
+                      time && new Date(time) > cursor.windowStartedAt && new Date(time) <= now,
+                  ),
+                );
+              if (changed) {
+                if (runFacts.length === READ_LIMIT) {
+                  runTruncated = true;
+                  break;
+                }
+                runFacts.push({
+                  id: run.id,
+                  status: run.status,
+                  error: run.errorMessage,
+                  activity: snapshot ?? null,
+                });
+              }
             }
-            runFacts.push({ id: run.id, body: runDescription(run, snapshot) });
+            if (runTruncated || watchedRuns.length < READ_LIMIT + 1) break;
+            offset += watchedRuns.length;
           }
+          const sampledMessages = messages.slice(0, READ_LIMIT);
+          const truncated = messages.length > READ_LIMIT || runTruncated;
+          if (sampledMessages.length || runFacts.length) {
+            captureAssistantFact(
+              watch.assistantChatId,
+              `watch:${watch.id}:${cursor.nextDueAt.getTime()}`,
+              {
+                kind: "periodic",
+                watchId: watch.id,
+                targetProjectId: watch.targetProjectId,
+                targetChatId: watch.targetChatId,
+                sampledAt: now.toISOString(),
+                watchWindow: {
+                  messages: sampledMessages.map((m) => ({
+                    id: m.id,
+                    senderKind: m.sender_kind,
+                    body: m.body,
+                  })),
+                  runs: runFacts,
+                },
+                digest: {
+                  windowStartedAt: cursor.windowStartedAt.toISOString(),
+                  windowEndedAt: now.toISOString(),
+                  messageIds: sampledMessages.map((m) => m.id),
+                  runIds: runFacts.map((r) => r.id),
+                  truncated,
+                },
+                body: `原始关注窗口（非摘要）\n${sampledMessages.map((m) => `${m.sender_kind} · ${m.id}\n${m.body}`).join("\n\n")}\n${runFacts.map((r) => `Run · ${r.id} · ${r.status}\n${JSON.stringify(r.activity)}${r.error ? `\n${r.error}` : ""}`).join("\n\n")}${truncated ? "\n窗口活动较多，仅记录前 50 条消息和运行；请查看原对话。" : ""}`,
+              },
+              now,
+            );
+          }
+          acknowledgeTerminals(watch, now);
+          db.update(assistantWatchCursor)
+            .set({
+              windowStartedAt: now,
+              nextDueAt: new Date(now.getTime() + watch.intervalSeconds * 1000),
+              messageRowid: Math.max(cursor.messageRowid, boundary.n),
+            })
+            .where(eq(assistantWatchCursor.watchId, watch.id))
+            .run();
+        } catch (error) {
+          if (
+            !(
+              error instanceof AssistantError ||
+              error instanceof ChatError ||
+              error instanceof ProjectAccessError
+            )
+          )
+            throw error;
+          // Permission loss closes the window instead of accumulating a later historical digest.
+          const boundary = sqlite
+            .prepare("SELECT coalesce(max(rowid),0) n FROM message WHERE chat_id=?")
+            .get(watch.targetChatId) as { n: number };
+          acknowledgeTerminals(watch, now);
+          db.update(assistantWatchCursor)
+            .set({
+              windowStartedAt: now,
+              nextDueAt: new Date(now.getTime() + watch.intervalSeconds * 1000),
+              messageRowid: boundary.n,
+            })
+            .where(eq(assistantWatchCursor.watchId, watch.id))
+            .run();
         }
-        if (runTruncated || watchedRuns.length < READ_LIMIT + 1) break;
-        offset += watchedRuns.length;
       }
-      const sampledMessages = messages.slice(0, READ_LIMIT);
-      const truncated = messages.length > READ_LIMIT || runTruncated;
-      if (sampledMessages.length || runFacts.length) {
-        const messageLines = sampledMessages
-          .slice(-4)
-          .map(
-            (m) =>
-              `${m.sender_kind === "human" ? "Human" : m.sender_kind === "agent" ? "Agent" : "自动化"}：${excerpt(m.body)}`,
-          );
-        const runLines = runFacts.slice(-3).map((r) => r.body);
-        captureAssistantFact(
-          watch.assistantChatId,
-          `watch:${watch.id}:${cursor.nextDueAt.getTime()}`,
-          {
-            kind: "periodic",
-            watchId: watch.id,
-            targetProjectId: watch.targetProjectId,
-            targetChatId: watch.targetChatId,
-            sampledAt: now.toISOString(),
-            digest: {
-              windowStartedAt: cursor.windowStartedAt.toISOString(),
-              windowEndedAt: now.toISOString(),
-              messageIds: sampledMessages.map((m) => m.id),
-              runIds: runFacts.map((r) => r.id),
-              truncated,
-            },
-            body: `关注汇总 · 本窗口的消息与工作进展\n${[...messageLines, ...runLines].join("\n")}${sampledMessages.length > 4 || runFacts.length > 3 || truncated ? "\n仅摘述部分活动；完整内容与来源请查看原对话。" : ""}`,
-          },
-          now,
-        );
-      }
-      acknowledgeTerminals(watch, now);
-      db.update(assistantWatchCursor)
-        .set({
-          windowStartedAt: now,
-          nextDueAt: new Date(now.getTime() + watch.intervalSeconds * 1000),
-          messageRowid: Math.max(cursor.messageRowid, boundary.n),
-        })
-        .where(eq(assistantWatchCursor.watchId, watch.id))
-        .run();
-    } catch (error) {
-      if (
-        !(
-          error instanceof AssistantError ||
-          error instanceof ChatError ||
-          error instanceof ProjectAccessError
-        )
-      )
-        throw error;
-      // Permission loss closes the window instead of accumulating a later historical digest.
-      const boundary = sqlite
-        .prepare("SELECT coalesce(max(rowid),0) n FROM message WHERE chat_id=?")
-        .get(watch.targetChatId) as { n: number };
-      acknowledgeTerminals(watch, now);
-      db.update(assistantWatchCursor)
-        .set({
-          windowStartedAt: now,
-          nextDueAt: new Date(now.getTime() + watch.intervalSeconds * 1000),
-          messageRowid: boundary.n,
-        })
-        .where(eq(assistantWatchCursor.watchId, watch.id))
-        .run();
-    }
-  }
-  return due.length;
+      return due.length;
+    })
+    .immediate();
 }
