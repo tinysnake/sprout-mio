@@ -1,6 +1,6 @@
 # 飞书 DM adapter 推进记录
 
-状态：2026-11-10 F0 风险探针已通过，F1 身份/入站候选通过 CI，独立功能审查与集成待完成。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
+状态：2026-11-10 F0 风险探针、F1 身份/入站 CI 与独立功能审查已通过，进入 F2 投递、卡片及 SDK 装配。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
 
 ## 工作流
 
@@ -70,4 +70,8 @@ F0 真实临时 SQLite 和 loopback HTTP 探针通过。F1 包含 identity slot�
 
 候选实际通过 21 项 F1/F0/迁移测试、typecheck、check、diff check。CI 经修正启动器参数后实际执行，133 文件、1192 项通过，runner 96.57 秒，工作流记录 97.9 秒，证据 `/tmp/sprout-feishu-f1-parent-ci.result.json`。首次错误参数的调用未执行任何 CI 测试，不计失败测试或通过证据。三项新测试已加入 CI inventory 及 assistant-core 门禁。
 
-注释审计无删除建议。独立功能审查正在进行，尚未将候选集成或迁移现有 LAN 评审库；真实平台与 F2/F3 仍未验证。F2 必须证明 armed attempt 在 begin 前已持久提交，避免网络请求逃逸后失去恢复记录；当前 F0 证明同步请求与 writer 边界，不替代该崩溃恢复验证。
+注释审计无删除建议。独立功能审查 `/tmp/sprout-feishu-f1-review.md` 未发现当前 F0/F1 范围内成立的 P1/P2。审查确认 route activation 覆盖延迟旧输入，原生表没有被迁移改变。现有 LAN 评审库尚未应用这些 migration，真实平台与 F2/F3 仍未验证。
+
+F2 分为两个依赖单元。F2a 实现可被后续 adapter 复用的投递端口、持久 outbox/attempt、受控投影和 action grant，复用原生提案及 watch 确认。F2b 依赖 F2a，接入真实 SDK、单一 runtime owner/generation、受信解析、配置和 Web 管理边界。只有 F2a 写共享 schema 与契约，F2b 在前者稳定后开始。SDK loopback 调查可与 F2a 并行，但不能修改产品代码或共享数据。
+
+F2 必须证明 armed attempt 在 begin 前已持久提交，避免网络请求逃逸后失去恢复记录；当前 F0 证明同步请求与 writer 边界，不替代该崩溃恢复验证。旧 lifecycle 的 ready/reconnected 也能关闭较新实例的 epoch，因此实际装配必须只保留单一 owner，并使已停止或已替换 generation 的 callback 不得 reopen、close 或接纳输入。该项在没有 SDK 装配路径的 F1 中未被视为已暴露漏洞，F2b 必须提供实际反证测试。

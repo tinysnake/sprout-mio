@@ -1,6 +1,6 @@
 # 飞书 DM adapter 实施契约
 
-状态：2026-11-10 F0 探针已通过，F1 候选已通过 CI，等待独立审查及集成。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
+状态：2026-11-10 F0 探针、F1 候选 CI 和独立功能审查已通过，准备集成并继续 F2。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
 
 ## 架构选择
 
@@ -64,6 +64,6 @@ F0 与 F1 可由同一个隔离写者先后完成，风险探针失败时不得�
 
 ## 当前证据与限制
 
-已执行真实 SDK 1.76.0 与 loopback WebSocket 的 ready / reconnecting / reconnected 探针。候选 A 的发布包静态检查及 standalone types 编译、两模型架构对比、独立交叉审查均已完成。F0 的真实 SQLite/loopback HTTP 探针也已执行通过，包括外层事务撤销原生消息与 receipt、同步 begin、响应未完成时另一 writer 可解绑。F1 父线程发现并修复 pre-route 延迟输入，绑定和切换两项用例先失败后通过。候选 CI 为 133 文件、1192 项测试通过；独立功能审查及最终集成仍未完成。
+已执行真实 SDK 1.76.0 与 loopback WebSocket 的 ready / reconnecting / reconnected 探针。候选 A 的发布包静态检查及 standalone types 编译、两模型架构对比、独立交叉审查均已完成。F0 的真实 SQLite/loopback HTTP 探针也已执行通过，包括外层事务撤销原生消息与 receipt、同步 begin、响应未完成时另一 writer 可解绑。F1 父线程发现并修复 pre-route 延迟输入，绑定和切换两项用例先失败后通过。候选 CI 为 133 文件、1192 项测试通过；独立功能审查未发现 F0/F1 范围内成立的 P1/P2。旧 lifecycle 的 ready/reconnected 所有权由 F2 runtime generation 约束，尚未验证实际 SDK 装配。
 
 真实飞书凭据、平台身份确认、卡片回调、权限配置及实际设备体验均为 NOT VERIFIED。界面两方案已在当前线程展示，Human 尚未选型。未选型前不实施新的绑定页面。
