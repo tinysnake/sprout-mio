@@ -116,6 +116,19 @@ it("challenge stores only a digest, expires at ten minutes, and reissue/replay c
   );
 });
 
+it("challenge code stays hand-typeable in the Feishu DM and accepts case or separator variants", () => {
+  const s = scenario();
+  const first = feishu.startFeishuChallenge(s.target, s.ctx, at);
+  expect(first.challenge).toMatch(/^[0-9A-HJKMNPQRSTVWXYZ]{4}-[0-9A-HJKMNPQRSTVWXYZ]{4}$/);
+  expect(feishu.isFeishuChallengeCode(first.challenge)).toBe(true);
+  expect(feishu.isFeishuChallengeCode(first.challenge.toLowerCase().replace("-", " "))).toBe(true);
+  expect(feishu.isFeishuChallengeCode("帮我看一下这个问题")).toBe(false);
+  expect(feishu.isFeishuChallengeCode("1234-567")).toBe(false);
+  expect(feishu.isFeishuChallengeCode("IIII-LLLL")).toBe(false);
+  const typed = ` ${first.challenge.replace("-", "").toLowerCase()} `;
+  expect(feishu.finishFeishuChallenge(typed, s.identity, s.ctx.requestId, at).bound).toBe(true);
+});
+
 it("failed binding audit hook rolls back identity, route and consumed challenge; retry remains authorized", () => {
   const s = scenario();
   const { challenge } = feishu.startFeishuChallenge(s.target, s.ctx, at);

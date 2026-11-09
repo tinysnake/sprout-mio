@@ -80,6 +80,30 @@ function audit(
 }
 
 const digest = (opaque: string) => createHash("sha256").update(opaque).digest("hex");
+
+/** 绑定码要在飞书私聊里手打，所以只用无歧义字符：8 位 = 40 bit。 */
+const CHALLENGE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+function compactChallengeCode(value: string): string | null {
+  const compact = value.replace(/[^0-9A-Za-z]/g, "").toUpperCase();
+  if (compact.length !== 8) return null;
+  for (const character of compact) {
+    if (!CHALLENGE_ALPHABET.includes(character)) return null;
+  }
+  return compact;
+}
+
+/** 入站文本只有这种形状才当绑定码处理，其余一律是普通消息。 */
+export function isFeishuChallengeCode(text: string): boolean {
+  return compactChallengeCode(text) !== null;
+}
+
+function newChallengeCode(): string {
+  const bytes = randomBytes(8);
+  let code = "";
+  for (const byte of bytes) code += CHALLENGE_ALPHABET[byte & 31];
+  return code;
+}
 const slotFor = (humanId: string) =>
   db.select().from(feishuIdentitySlot).where(eq(feishuIdentitySlot.humanId, humanId)).get();
 const activeRoute = (humanId: string) =>
@@ -141,11 +165,12 @@ export function startFeishuChallenge(
         .values({ humanId: ctx.userId, revision })
         .onConflictDoUpdate({ target: feishuIdentitySlot.humanId, set: { revision } })
         .run();
-      const challenge = randomBytes(32).toString("base64url");
+      const code = newChallengeCode();
+      const challenge = `${code.slice(0, 4)}-${code.slice(4)}`;
       const expiresAtMs = now.getTime() + 10 * 60 * 1000;
       db.insert(feishuChallenge)
         .values({
-          hash: digest(challenge),
+          hash: digest(code),
           humanId: ctx.userId,
           revision,
           projectId: target.projectId,
@@ -190,11 +215,14 @@ export function finishFeishuChallenge(
 ): FeishuBinding {
   return sqlite
     .transaction(() => {
-      const challenge = db
-        .select()
-        .from(feishuChallenge)
-        .where(eq(feishuChallenge.hash, digest(opaque)))
-        .get();
+      const code = compactChallengeCode(opaque);
+      const challenge =
+        code &&
+        db
+          .select()
+          .from(feishuChallenge)
+          .where(eq(feishuChallenge.hash, digest(code)))
+          .get();
       const slot = challenge && slotFor(challenge.humanId);
       if (
         !challenge ||

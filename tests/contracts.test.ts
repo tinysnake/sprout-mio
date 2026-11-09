@@ -163,6 +163,10 @@ describe("配置边界", () => {
       SPROUT_REPO_DIR: join(homedir(), ".local", "share", "sprout-mio", "repos"),
       SPROUT_REPO_MAX_BYTES: 2 * 1024 * 1024 * 1024,
       DATABASE_URL: "./data/sprout.sqlite",
+      FEISHU_CHANNEL_ENABLED: false,
+      FEISHU_APP_ID: "",
+      FEISHU_APP_SECRET: "",
+      FEISHU_ORIGIN: "https://open.feishu.cn",
       APP_ORIGIN: "http://localhost:3000",
       APP_TRUSTED_ORIGINS: [],
       DEV_LOGIN_ENABLED: true,
@@ -178,6 +182,27 @@ describe("配置边界", () => {
       LOG_LEVEL: "info",
     });
     expect(Object.isFrozen(config)).toBe(true);
+  });
+
+  it("开启飞书渠道必须同时给出 appId 与 secret", () => {
+    expect(() => parseConfig({ FEISHU_CHANNEL_ENABLED: "true" })).toThrow();
+    expect(() =>
+      parseConfig({ FEISHU_CHANNEL_ENABLED: "true", FEISHU_APP_ID: "cli_0123456789abcdef" }),
+    ).toThrow();
+    expect(() => parseConfig({ FEISHU_APP_ID: "not-an-app-id" })).toThrow();
+    expect(() => parseConfig({ FEISHU_ORIGIN: "http://platform.example.com" })).toThrow();
+    expect(
+      parseConfig({
+        FEISHU_CHANNEL_ENABLED: "true",
+        FEISHU_APP_ID: "cli_0123456789abcdef",
+        FEISHU_APP_SECRET: "s".repeat(16),
+        FEISHU_ORIGIN: "http://127.0.0.1:8080",
+      }),
+    ).toMatchObject({
+      FEISHU_CHANNEL_ENABLED: true,
+      FEISHU_APP_ID: "cli_0123456789abcdef",
+      FEISHU_ORIGIN: "http://127.0.0.1:8080",
+    });
   });
 
   it("解析环境覆盖值，错误只报告字段和校验约束", () => {

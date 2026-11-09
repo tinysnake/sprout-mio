@@ -210,6 +210,7 @@ export type FeishuIngressDependencies = Readonly<{
     requestId: string,
   ) => FeishuAdmission;
   finishChallenge: (opaque: string, identity: VerifiedFeishuIdentity, requestId: string) => unknown;
+  isChallengeCode: (text: string) => boolean;
   consumeAction: (
     identity: VerifiedFeishuIdentity,
     scope: FeishuAdmissionScope,
@@ -251,14 +252,16 @@ export function createFeishuIngressHandlers(
         return {};
       }
       // 挑战码优先：绑定成功不再造原生消息，失败也不把码当正文发出去。
-      try {
-        deps.finishChallenge(message.text, message.identity, deps.requestId());
-        diagnostic("feishu.identity_bound", "bound");
-        return {};
-      } catch (error) {
-        if (!isInvalidChallenge(error)) {
-          diagnostic("feishu.binding_rejected", "binding_error");
+      if (deps.isChallengeCode(message.text)) {
+        try {
+          deps.finishChallenge(message.text, message.identity, deps.requestId());
+          diagnostic("feishu.identity_bound", "bound");
           return {};
+        } catch (error) {
+          if (!isInvalidChallenge(error)) {
+            diagnostic("feishu.binding_rejected", "binding_error");
+            return {};
+          }
         }
       }
       const scope = deps.captureScope(message.identity, epoch);

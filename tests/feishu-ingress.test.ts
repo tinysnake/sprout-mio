@@ -85,6 +85,7 @@ function harness(s: Scenario) {
         admitText: (event, scope, requestId) => f.feishu.admitFeishuText(event, scope, requestId),
         finishChallenge: (opaque, identity, requestId) =>
           f.feishu.finishFeishuChallenge(opaque, identity, requestId),
+        isChallengeCode: (text) => f.feishu.isFeishuChallengeCode(text),
         consumeAction: (identity, scope, token, at) =>
           f.delivery.consumeFeishuAction(identity, scope, token, at),
         now: () => clock,

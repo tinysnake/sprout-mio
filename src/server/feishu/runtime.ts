@@ -9,6 +9,7 @@ import {
   admitFeishuText,
   createFeishuConnectionLifecycle,
   finishFeishuChallenge,
+  isFeishuChallengeCode,
 } from "../../domain/feishu";
 import { recoverChannelDeliveries } from "../../domain/channel-delivery";
 import {
@@ -181,6 +182,7 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
               admitText: (event, scope, id) => admitFeishuText(event, scope, id),
               finishChallenge: (opaque, identity, id) =>
                 finishFeishuChallenge(opaque, identity, id),
+              isChallengeCode: isFeishuChallengeCode,
               consumeAction: (identity, scope, token, at) =>
                 consumeFeishuAction(identity, scope, token, at),
               now,
