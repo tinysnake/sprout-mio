@@ -9,6 +9,7 @@ export async function verifyAssistantBrowser({
   project,
   alpha,
   dm,
+  group,
   base,
   directory,
   call,
@@ -100,6 +101,30 @@ export async function verifyAssistantBrowser({
     0,
     "proposing cannot wake worker",
   );
+  const watchEntry = page.getByTestId("assistant-watch-menu");
+  await watchEntry.waitFor();
+  await until(
+    async () => (await watchEntry.innerText()).includes("正在关注"),
+    "header watch entry is always discoverable",
+  );
+  assert.match(
+    await watchEntry.innerText(),
+    /正在关注 0/,
+    "header watch entry shows a zero count before any activation",
+  );
+  await watchEntry.click();
+  const emptyWatch = page.getByTestId("assistant-watch-empty");
+  await emptyWatch.waitFor();
+  assert.equal(
+    await emptyWatch.innerText(),
+    "暂无关注",
+    "empty state names the absence of watches",
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="assistant-watch-empty"]') === null,
+  );
+  pass("always-visible header watch entry exposes an explicit empty state before activation");
   await page.getByRole("button", { name: /确认持续关注/ }).click();
   await until(
     () =>
@@ -121,6 +146,16 @@ export async function verifyAssistantBrowser({
     .getByTestId("assistant-watch-list")
     .getByText("每 2 分钟汇报一次", { exact: true })
     .waitFor();
+  await until(
+    async () => (await page.getByTestId("assistant-watch-menu").innerText()).includes("正在关注 1"),
+    "header count reflects the active watch",
+  );
+  {
+    const listText = await page.getByTestId("assistant-watch-list").innerText();
+    assert(listText.includes(alpha.name), "watch list links the target by its name");
+    assert(listText.includes("私聊"), "watch list shows the DM target type");
+    assert(listText.includes(project.name), "watch list shows the target project name");
+  }
   assert.equal(await page.getByLabel("通知间隔", { exact: true }).count(), 0);
   assert.equal(await page.getByTestId("assistant-watch-list").getByRole("combobox").count(), 0);
   await page.getByTestId("assistant-watch-menu").click();
@@ -552,6 +587,23 @@ export async function verifyAssistantBrowser({
     () => document.querySelector('[data-testid="assistant-watch-list"]') === null,
   );
   await page.setViewportSize({ width: 390, height: 844 });
+  const mobileWatchLabel = await page.evaluate(() => {
+    const trigger = document.querySelector('[data-testid="assistant-watch-menu"]');
+    const span = trigger?.querySelector("span");
+    if (!trigger || !span) return null;
+    return {
+      text: span.textContent ?? "",
+      display: getComputedStyle(span).display,
+      width: span.getBoundingClientRect().width,
+    };
+  });
+  assert(mobileWatchLabel, "header watch entry renders at 390px");
+  assert(
+    mobileWatchLabel.text.includes("正在关注"),
+    "mobile header shows the watch label text instead of an icon-only control",
+  );
+  assert.notEqual(mobileWatchLabel.display, "none", "mobile watch label is not hidden");
+  assert(mobileWatchLabel.width > 0, "mobile watch label keeps a non-zero width");
   await page.getByTestId("assistant-watch-menu").click();
   await page.getByTestId("assistant-watch-list").waitFor();
   await page.screenshot({ path: join(directory, "assistant-mobile.png"), fullPage: true });
@@ -575,10 +627,22 @@ export async function verifyAssistantBrowser({
     await call("createDirectChatFn", { projectId: project.id, agentProfileId: otherHelper.id })
   ).chat;
   await page.reload({ waitUntil: "networkidle" });
+  await page.getByTestId("assistant-watch-menu").waitFor();
+  await until(
+    async () => (await page.getByTestId("assistant-watch-menu").innerText()).includes("正在关注 0"),
+    "cancelled watch returns the header count to zero",
+  );
+  await page.getByTestId("assistant-watch-menu").click();
+  const cancelledEmpty = page.getByTestId("assistant-watch-empty");
+  await cancelledEmpty.waitFor();
   assert.equal(
-    await page.getByTestId("assistant-watch-menu").count(),
-    0,
-    "cancelled watch leaves no header entry",
+    await cancelledEmpty.innerText(),
+    "暂无关注",
+    "cancelled watch leaves the always-visible entry in its explicit empty state",
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="assistant-watch-empty"]') === null,
   );
   assert.equal(
     await page.getByRole("button", { name: /确认持续关注/ }).count(),
@@ -640,28 +704,129 @@ export async function verifyAssistantBrowser({
   pass("delayed assistant panel responses remain scoped to their original DM");
   const writable = new Database(join(directory, "private.sqlite"));
   writable.pragma("busy_timeout = 5000");
+  writable
+    .prepare(
+      "INSERT INTO assistant_event (id,assistant_chat_id,event_key,fact,created_at,attempts) VALUES (?,?,?,?,?,0)",
+    )
+    .run(
+      "event-watch-reject-fixture",
+      source.id,
+      "watch-reject-fixture",
+      JSON.stringify({
+        kind: "decision",
+        targetProjectId: project.id,
+        targetChatId: group.id,
+        body: "请求关注这个群组。",
+        sampledAt: new Date().toISOString(),
+        watchIntent: true,
+        intervalSeconds: 180,
+      }),
+      Date.now(),
+    );
+  await page.reload({ waitUntil: "networkidle" });
+  const rejectButton = page.getByTestId("assistant-watch-reject");
+  await rejectButton.waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: /确认持续关注/ }).count(),
+    1,
+    "pending watch intent shows confirm beside reject",
+  );
+  const rejectGate = Promise.withResolvers();
+  const rejectSeen = Promise.withResolvers();
+  let heldReject = false;
+  const holdReject = async (route) => {
+    const body = route.request().postData() ?? "";
+    if (heldReject || !body.includes("reject_watch")) {
+      await route.continue();
+      return;
+    }
+    heldReject = true;
+    rejectSeen.resolve();
+    await rejectGate.promise;
+    await route.continue();
+  };
+  await page.route("**/_serverFn/**", holdReject);
+  try {
+    await rejectButton.click();
+    await rejectSeen.promise;
+    await until(() => rejectButton.isDisabled(), "reject disables while its request is pending");
+  } finally {
+    rejectGate.resolve();
+    await page.unroute("**/_serverFn/**", holdReject);
+  }
+  await until(
+    () =>
+      db
+        .prepare("SELECT decision_resolved_at FROM assistant_event WHERE id=?")
+        .get("event-watch-reject-fixture")?.decision_resolved_at,
+    "reject persists on the server",
+  );
+  assert.equal(
+    await page.getByTestId("assistant-composer-panel").count(),
+    0,
+    "successful reject immediately removes the pending card",
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM assistant_watch WHERE assistant_chat_id=? AND target_chat_id=? AND revoked_at IS NULL",
+      )
+      .get(source.id, group.id).n,
+    0,
+    "rejecting a watch request never starts a watch",
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  assert.equal(
+    await page.getByTestId("assistant-composer-panel").count(),
+    0,
+    "rejected watch intent leaves no card after a reload",
+  );
+  assert.equal(
+    await page.getByRole("button", { name: /确认持续关注/ }).count(),
+    0,
+    "rejected watch intent does not resurrect after a reload",
+  );
+  pass(
+    "Human rejects a pending watch request: card disappears, no watch starts, and it stays gone",
+  );
   const publicChannel = db
     .prepare("SELECT id FROM chat WHERE project_id=? AND kind='public_channel'")
     .get(project.id);
   assert(publicChannel, "project has a public channel");
-  writable
-    .prepare(
-      "INSERT INTO assistant_watch (id,assistant_chat_id,target_project_id,target_chat_id,consented_by,interval_seconds,consented_at) VALUES (?,?,?,?,?,?,?)",
-    )
-    .run(
-      "watch-public-fixture",
-      source.id,
-      project.id,
-      publicChannel.id,
-      proposal.human_id,
-      60,
-      Date.now(),
-    );
+  for (const [watchId, targetChatId, intervalSeconds] of [
+    ["watch-public-fixture", publicChannel.id, 60],
+    ["watch-group-fixture", group.id, 90],
+  ])
+    writable
+      .prepare(
+        "INSERT INTO assistant_watch (id,assistant_chat_id,target_project_id,target_chat_id,consented_by,interval_seconds,consented_at) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run(
+        watchId,
+        source.id,
+        project.id,
+        targetChatId,
+        proposal.human_id,
+        intervalSeconds,
+        Date.now(),
+      );
   await page.reload({ waitUntil: "networkidle" });
   await page.getByTestId("assistant-watch-menu").click();
   await page
     .getByTestId("assistant-watch-list")
     .getByText("公共频道（Project 范围）", { exact: true })
+    .waitFor();
+  await page
+    .getByTestId("assistant-watch-list")
+    .getByText("Webhook group", { exact: true })
+    .waitFor();
+  await page
+    .getByTestId("assistant-watch-list")
+    .getByText(`群组 · ${project.name}`, { exact: true })
+    .waitFor();
+  await page
+    .getByTestId("assistant-watch-list")
+    .getByText(`公共频道 · ${project.name}`, { exact: true })
     .waitFor();
   assert.equal(
     await page.getByTestId("assistant-watch-list").getByText("Amenda", { exact: true }).count(),
@@ -669,7 +834,7 @@ export async function verifyAssistantBrowser({
     "a titleless public channel watch must not fall back to a member name",
   );
   await page.keyboard.press("Escape");
-  pass("public channel watch shows the channel display name, not a member name");
+  pass("public channel and group watches show display name, type, and project in the header menu");
   writable
     .prepare(
       "INSERT INTO assistant_event (id,assistant_chat_id,event_key,fact,created_at,attempts) VALUES (?,?,?,?,?,0)",

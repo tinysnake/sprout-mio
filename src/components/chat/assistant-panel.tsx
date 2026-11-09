@@ -9,6 +9,14 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 
 type Panel = ReturnType<typeof assistantPanel>;
+/**
+ * 目标类型与 Project 名称由后端在 watch/决策 DTO 上补齐（targetKind / targetProjectName）。
+ * 这里按可选字段消费：后端未提供时列表只少一行元信息，不影响关注与取消。
+ */
+type WatchTargetMeta = {
+  targetKind?: "dm" | "group" | "public_channel";
+  targetProjectName?: string;
+};
 type ActionData =
   | { action: "panel"; chatId: string }
   | { action: "confirm" | "revoke"; chatId: string; proposalId: string }
@@ -21,7 +29,22 @@ type ActionData =
       intervalSeconds?: number;
       /** 确认某条 watch 请求时回传该决策 id，避免旧意图被重新激活。 */
       eventId?: string;
-    };
+    }
+  | { action: "reject_watch"; chatId: string; eventId: string };
+
+function watchTargetMeta(meta: WatchTargetMeta): string {
+  const kind =
+    meta.targetKind === "public_channel"
+      ? "公共频道"
+      : meta.targetKind === "group"
+        ? "群组"
+        : meta.targetKind === "dm"
+          ? "私聊"
+          : null;
+  return [kind, meta.targetProjectName]
+    .filter((value): value is string => Boolean(value))
+    .join(" · ");
+}
 
 type AssistantController = {
   chatId: string;
@@ -117,8 +140,7 @@ export function AssistantWatchMenu() {
   const [open, setOpen] = useState(false);
   if (controller === null) return null;
   const { chatId, panel, pending, act } = controller;
-  const watches = panel?.watches ?? [];
-  if (watches.length === 0) return null;
+  const watches: (Panel["watches"][number] & WatchTargetMeta)[] = panel?.watches ?? [];
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
@@ -128,7 +150,7 @@ export function AssistantWatchMenu() {
         className="inline-flex min-h-7 shrink-0 items-center justify-center gap-1.75 rounded-control border border-transparent bg-transparent px-2 text-[0.6875rem] font-medium text-muted-foreground select-none hover:border-input focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:min-h-11"
       >
         <Icon as={Eye} />
-        <span className="max-desktop:hidden">关注 {watches.length}</span>
+        <span className="whitespace-nowrap">正在关注 {watches.length}</span>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="end" sideOffset={6} className="z-50">
@@ -136,40 +158,62 @@ export function AssistantWatchMenu() {
             <Popover.Title className="px-2 py-1 text-[11px] text-muted-foreground">
               正在关注
             </Popover.Title>
-            <ul data-testid="assistant-watch-list" className="space-y-0.5">
-              {watches.map((watch) => (
-                <li key={watch.id} className="flex items-center gap-2 rounded-control px-2 py-1.5">
-                  <a
-                    href={`/projects/${watch.targetProjectId}/chats/${watch.targetChatId}`}
-                    title={watch.targetLabel}
-                    className="min-w-0 flex-1 truncate text-xs underline decoration-input underline-offset-3 hover:decoration-foreground"
-                  >
-                    {watch.targetLabel}
-                  </a>
-                  <span className="shrink-0 text-[10px] whitespace-nowrap text-muted-foreground">
-                    每 {assistantDuration(watch.intervalSeconds)}汇报一次
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    data-testid="assistant-watch-cancel"
-                    disabled={pending}
-                    onClick={() =>
-                      void act({
-                        action: "watch",
-                        chatId,
-                        targetProjectId: watch.targetProjectId,
-                        targetChatId: watch.targetChatId,
-                        active: false,
-                      })
-                    }
-                  >
-                    取消关注
-                  </Button>
-                </li>
-              ))}
-            </ul>
+            {watches.length === 0 ? (
+              <p
+                data-testid="assistant-watch-empty"
+                className="px-2 py-1.5 text-xs text-muted-foreground"
+              >
+                暂无关注
+              </p>
+            ) : (
+              <ul data-testid="assistant-watch-list" className="space-y-0.5">
+                {watches.map((watch) => {
+                  const meta = watchTargetMeta(watch);
+                  return (
+                    <li
+                      key={watch.id}
+                      className="flex items-start gap-2 rounded-control px-2 py-1.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <a
+                          href={`/projects/${watch.targetProjectId}/chats/${watch.targetChatId}`}
+                          title={watch.targetLabel}
+                          className="block truncate text-xs underline decoration-input underline-offset-3 hover:decoration-foreground"
+                        >
+                          {watch.targetLabel}
+                        </a>
+                        {meta.length > 0 && (
+                          <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                            {meta}
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-[10px] whitespace-nowrap text-muted-foreground">
+                        每 {assistantDuration(watch.intervalSeconds)}汇报一次
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-testid="assistant-watch-cancel"
+                        disabled={pending}
+                        onClick={() =>
+                          void act({
+                            action: "watch",
+                            chatId,
+                            targetProjectId: watch.targetProjectId,
+                            targetChatId: watch.targetChatId,
+                            active: false,
+                          })
+                        }
+                      >
+                        取消关注
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
@@ -254,7 +298,7 @@ export function AssistantPendingBar() {
           </details>
         ))}
         {watchRequests.map((event) => (
-          <p key={event.id}>
+          <div key={event.id} className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -277,7 +321,18 @@ export function AssistantPendingBar() {
               确认持续关注 {event.targetLabel}（每{" "}
               {assistantDuration(event.fact.intervalSeconds ?? 300)}）
             </Button>
-          </p>
+            <Button
+              variant="outline"
+              size="sm"
+              data-testid="assistant-watch-reject"
+              disabled={pending}
+              onClick={() =>
+                void act({ action: "reject_watch", chatId, eventId: event.id }, event.id)
+              }
+            >
+              拒绝
+            </Button>
+          </div>
         ))}
       </section>
     </div>
