@@ -103,6 +103,7 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
   const now = deps.now ?? (() => new Date());
   const requestId = deps.requestId ?? (() => newId(ID_PREFIXES.request));
   let started = false;
+  let failed = false;
   let owner: FeishuConnectionOwner | null = null;
   let loop: FeishuDeliveryLoop | null = null;
 
@@ -120,17 +121,28 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
     });
   };
 
+  const teardown = () => {
+    started = false;
+    failed = false;
+    setFeishuDeliveryWake(null);
+    loop?.stop();
+    loop = null;
+    owner?.stop();
+    owner = null;
+  };
+
   return {
     isRunning: () => started && owner !== null,
     // 装配在 owner 之前就失败时，不能对外声称「未启用」。
     snapshot: () =>
       owner?.snapshot() ??
-      (started && config.enabled
+      ((started || failed) && config.enabled
         ? failedSnapshot(config.appId, now().getTime())
         : disabledSnapshot()),
     start() {
       if (started) return;
       started = true;
+      failed = false;
       if (!config.enabled) return;
       try {
         // 启动时只做一次恢复：armed 说明请求可能已经到达平台，标成 uncertain 不重发。
@@ -198,15 +210,17 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
         owner.start();
       } catch (error) {
         report(error);
+        // 拆掉装配到一半的残留，让下一次 start() 能真正重来，而不是带着半个运行时。
+        try {
+          teardown();
+        } catch (cleanup) {
+          report(cleanup);
+        }
+        failed = true;
       }
     },
     stop() {
-      started = false;
-      setFeishuDeliveryWake(null);
-      loop?.stop();
-      loop = null;
-      owner?.stop();
-      owner = null;
+      teardown();
     },
     wake() {
       loop?.wake();

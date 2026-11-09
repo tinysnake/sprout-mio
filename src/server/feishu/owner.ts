@@ -1,5 +1,13 @@
 import type { FeishuConnectionSnapshot } from "../../contracts/feishu-channel";
 import type { FeishuEpoch } from "../../contracts/feishu";
+import { CARD_ACK } from "./ingress";
+
+const CARD_EVENT = "card.action.trigger";
+
+/** 旧代号收到的点击：不落库，但也不能让点按钮的人以为点空了。 */
+function staleReply(key: string) {
+  return key === CARD_EVENT ? CARD_ACK.expired : {};
+}
 
 /** SDK WS 回调的精简形状：只声明本模块用到的部分。 */
 export type FeishuConnectionCallbacks = Readonly<{
@@ -175,7 +183,7 @@ export function createFeishuConnectionOwner(deps: FeishuOwnerDependencies): Feis
         Object.entries(handlers).map(([key, handle]) => [
           key,
           (payload: unknown) => {
-            if (!live()) return {};
+            if (!live()) return staleReply(key);
             try {
               return handle(payload);
             } catch (cause) {

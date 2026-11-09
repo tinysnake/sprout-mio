@@ -64,11 +64,14 @@ const environmentSchema = z
       .string()
       .default("")
       .refine(
-        (value) => value === "" || /^cli_[0-9a-fA-F]{16}$/.test(value),
+        (value) => value === "" || /^cli_[0-9A-Za-z]{16}$/.test(value),
         "必须是 cli_ 开头的 appId",
       ),
     FEISHU_APP_SECRET: z.string().default(""),
-    /** 平台 origin。默认飞书；测试与内网代理可以用回环 http。 */
+    /**
+     * 平台 origin。承载 app secret，因此只认飞书 / Lark 官方域名；
+     * 测试与内网代理只能用回环地址上的 http。
+     */
     FEISHU_ORIGIN: z
       .string()
       .default("https://open.feishu.cn")
@@ -76,14 +79,17 @@ const environmentSchema = z
         try {
           const url = new URL(value);
           if (url.origin !== value) return false;
-          if (url.protocol === "https:") return true;
-          return (
-            url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+          if (url.protocol === "http:") {
+            return ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+          }
+          if (url.protocol !== "https:") return false;
+          return ["feishu.cn", "larksuite.com"].some(
+            (domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`),
           );
         } catch {
           return false;
         }
-      }, "必须是 https origin，或回环地址上的 http origin"),
+      }, "必须是飞书 / Lark 官方域名，或回环地址上的 http origin"),
     SPROUT_PI_ENABLED: z
       .enum(["true", "false"])
       .default("true")

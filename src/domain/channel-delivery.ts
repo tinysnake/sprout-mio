@@ -29,6 +29,7 @@ import {
 } from "./channel-native";
 
 const RETRY_WINDOW_MS = 10 * 60_000;
+const channelPrepareRetryMs = 30_000;
 const GRANT_LIFETIME_MS = 10 * 60_000;
 export function isChannelIneligible(error: unknown) {
   return (
@@ -299,9 +300,20 @@ export async function emitNextChannelDelivery<Prepared>(
   try {
     prepared = await port.prepare(request);
   } catch {
-    // Preparation cannot create a platform request. Bound failures instead of spinning.
+    // Preparation never reaches the platform, so the delivery may be retried: a
+    // transient token failure must not silently drop the reply. Attempts still
+    // bound it, and the deadline above stops it for good.
+    const attempts = row.attempts + 1;
+    const exhausted = attempts >= 3 || clock().getTime() >= row.deadlineMs;
     db.update(channelDelivery)
-      .set({ state: "failed", error: "prepare_failed" })
+      .set(
+        exhausted
+          ? { state: "failed", error: "prepare_failed", attempts }
+          : {
+              attempts,
+              dueAtMs: Math.min(clock().getTime() + channelPrepareRetryMs, row.deadlineMs),
+            },
+      )
       .where(and(eq(channelDelivery.id, row.id), eq(channelDelivery.state, "ready")))
       .run();
     return row.id;

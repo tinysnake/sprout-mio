@@ -192,7 +192,7 @@ function isInvalidChallenge(error: unknown): boolean {
   );
 }
 
-const CARD_ACK = {
+export const CARD_ACK = {
   handled: { toast: { type: "success", content: "已处理，结果见 Web 对话" } },
   expired: { toast: { type: "error", content: "这个操作已失效，请到 Web 查看" } },
 } as const satisfies Record<string, FeishuCardAck>;

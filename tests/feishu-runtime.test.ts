@@ -4,6 +4,7 @@ import type {
   FeishuClientFactory,
   FeishuConnectionCallbacks,
   FeishuDispatcherFactory,
+  FeishuEpochLifecycle,
   FeishuWsClientLike,
 } from "../src/server/feishu/owner";
 import type { FeishuHttpTransport } from "../src/server/feishu/emission";
@@ -222,6 +223,40 @@ it("reports a start failure without leaking the client or an unhandled rejection
   expect(runtime.snapshot().error).toBe("start_failed");
   runtime.stop();
   expect(runtime.snapshot().phase).toBe("disabled");
+});
+
+it("starts again after a failed assembly instead of staying half-initialized", () => {
+  const errors: unknown[] = [];
+  const callbacks: FeishuConnectionCallbacks[] = [];
+  const log = { closed: false };
+  let attempts = 0;
+  const runtime = createFeishuRuntime({
+    config,
+    transport: fakeTransport(),
+    createClient: fakeClientFactory(log, callbacks),
+    createDispatcher: dispatcher,
+    lifecycle: () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("lifecycle bootstrap failed");
+      return {
+        ready: () => "ep_retry",
+        reconnected: () => "ep_retry",
+        disconnected: () => {},
+      } as unknown as FeishuEpochLifecycle;
+    },
+    onError: (error) => errors.push(error),
+  });
+  runtime.start();
+  expect(runtime.isRunning()).toBe(false);
+  expect(runtime.snapshot().phase).toBe("failed");
+  expect(runtime.snapshot().error).toBe("start_failed");
+
+  runtime.start();
+  expect(errors.length).toBe(1);
+  expect(runtime.isRunning()).toBe(true);
+  expect(runtime.snapshot().error).toBeNull();
+  expect(runtime.snapshot().phase).toBe("connected");
+  runtime.stop();
 });
 
 it("does not pretend to be disabled when assembly fails before the owner exists", () => {

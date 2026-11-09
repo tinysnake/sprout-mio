@@ -124,6 +124,7 @@ type DeliveryRow = {
   envelope: string;
   state: string;
   attempts: number;
+  due_at_ms: number;
   error: string | null;
   platform_message_id: string | null;
 };
@@ -257,25 +258,50 @@ it("keeps a text body oversized-labelled instead of sending the full text", asyn
   expect(content.text).toContain("未在此发送完整内容");
 });
 
-it("leaves no armed attempt when prepare cannot obtain a tenant token", async () => {
+it("retries a delivery whose prepare never reached the platform", async () => {
   platform.tokenMode = "error";
   platform.tokenRequests = 0;
   const s = f.scenario();
   s.bind();
   s.reply("token 失败时不 arm");
   const row = queued(s);
-  const outcome = await f.delivery.emitNextFeishuDelivery(makePort());
+  const sent = platform.messages.length;
+  await f.delivery.emitNextFeishuDelivery(makePort());
   platform.tokenMode = "ok";
-  expect(outcome).toBe(row.id);
   const after = deliveryById(row.id);
-  expect(after.state).toBe("failed");
-  expect(after.error).toBe("prepare_failed");
-  expect(after.attempts).toBe(0);
+  // 换取 token 失败时请求根本没发出去，丢掉这条回复才是真正的缺陷。
+  expect(after.state).toBe("ready");
+  expect(after.attempts).toBe(1);
+  expect(after.due_at_ms).toBeGreaterThan(Date.now());
   expect(
     f.sqlite.prepare("SELECT count(*) n FROM channel_attempt WHERE delivery_id=?").get(row.id),
   ).toEqual({ n: 0 });
-  // 换 token 有硬超时/失败上限，不会把 prepare 挂住：第二次仍会重新尝试换取。
   expect(platform.tokenRequests).toBeGreaterThan(0);
+  expect(platform.messages).toHaveLength(sent);
+
+  const later = () => new Date(Date.now() + 31_000);
+  await f.delivery.emitNextFeishuDelivery(makePort(), { now: later });
+  expect(deliveryById(row.id).state).toBe("accepted");
+  expect(platform.messages).toHaveLength(sent + 1);
+});
+
+it("gives up after three preparations that never reach the platform", async () => {
+  platform.tokenMode = "error";
+  const s = f.scenario();
+  s.bind();
+  s.reply("token 一直失败");
+  const row = queued(s);
+  const sent = platform.messages.length;
+  for (const offset of [0, 31_000, 62_000]) {
+    const at = () => new Date(Date.now() + offset);
+    await f.delivery.emitNextFeishuDelivery(makePort(), { now: at });
+  }
+  platform.tokenMode = "ok";
+  const after = deliveryById(row.id);
+  expect(after.state).toBe("failed");
+  expect(after.error).toBe("prepare_failed");
+  expect(after.attempts).toBe(3);
+  expect(platform.messages).toHaveLength(sent);
 });
 
 it("retries a proven rate limit with the same uuid and never resends an uncertain result", async () => {

@@ -191,6 +191,15 @@ describe("配置边界", () => {
     ).toThrow();
     expect(() => parseConfig({ FEISHU_APP_ID: "not-an-app-id" })).toThrow();
     expect(() => parseConfig({ FEISHU_ORIGIN: "http://platform.example.com" })).toThrow();
+    expect(() => parseConfig({ FEISHU_ORIGIN: "https://platform.example.com" })).toThrow();
+    expect(() => parseConfig({ FEISHU_ORIGIN: "https://open.feishu.cn.evil.test" })).toThrow();
+    // appId 只校验形状；真实格式以 SDK 为准，形状存疑不该拦住宿主进程启动。
+    expect(parseConfig({ FEISHU_APP_ID: "cli_Zz9Xy8Wv7Ut6Sr5Q" }).FEISHU_APP_ID).toBe(
+      "cli_Zz9Xy8Wv7Ut6Sr5Q",
+    );
+    expect(parseConfig({ FEISHU_ORIGIN: "https://open.larksuite.com" }).FEISHU_ORIGIN).toBe(
+      "https://open.larksuite.com",
+    );
     expect(
       parseConfig({
         FEISHU_CHANNEL_ENABLED: "true",

@@ -286,6 +286,42 @@ it("fences a replaced owner: stale callbacks cannot admit or change the current 
   second.owner.stop();
 });
 
+it("tells a late card tap it expired instead of answering nothing", () => {
+  const s = f.scenario();
+  s.bind();
+  const h = harness(s);
+  h.owner.start();
+  const client = h.clients[0]!;
+  client.callbacks.onReady();
+  const token = proposalCardToken(s);
+  h.owner.stop();
+  const reply = client.handlers[FEISHU_CARD_EVENT]!(cardEvent(s, token)) as FeishuCardAck;
+  expect(reply.toast?.type).toBe("error");
+  expect(reply.toast?.content).toContain("失效");
+});
+
+it("ignores a stale reconnect instead of closing the current epoch", () => {
+  const s = f.scenario();
+  s.bind();
+  const first = harness(s);
+  first.owner.start();
+  const stale = first.clients[0]!;
+  stale.callbacks.onReady();
+  const second = harness(s);
+  second.owner.start();
+  second.clients[0]!.callbacks.onReady();
+  const live = second.owner.snapshot();
+  stale.callbacks.onReconnecting();
+  stale.callbacks.onReconnected();
+  expect(second.owner.snapshot().epochId).toBe(live.epochId);
+  expect(second.owner.snapshot().phase).toBe(live.phase);
+  // 当前连接仍能收输入，说明旧代号没有把它关掉。
+  const before = nativeMessages(s.dm.id);
+  second.clients[0]!.handlers[FEISHU_MESSAGE_EVENT]!(messageEvent(s, "om_live", "还活着"));
+  expect(nativeMessages(s.dm.id)).toBe(before + 1);
+  second.owner.stop();
+});
+
 it("stops the client and rejects callbacks after shutdown", () => {
   const s = f.scenario();
   s.bind();
