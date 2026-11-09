@@ -1,6 +1,6 @@
 # 飞书 DM adapter 推进记录
 
-状态：2026-11-10 F0 风险探针、F1 身份/入站 CI 与独立功能审查已通过，进入 F2 投递、卡片及 SDK 装配。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
+状态：2026-11-10 F0、F1 已集成；F2a 投递与卡片授权已集成，F2b 真实 SDK 装配进行中。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
 
 ## 工作流
 
@@ -72,6 +72,22 @@ F0 真实临时 SQLite 和 loopback HTTP 探针通过。F1 包含 identity slot�
 
 注释审计无删除建议。独立功能审查 `/tmp/sprout-feishu-f1-review.md` 未发现当前 F0/F1 范围内成立的 P1/P2。审查确认 route activation 覆盖延迟旧输入，原生表没有被迁移改变。现有 LAN 评审库尚未应用这些 migration，真实平台与 F2/F3 仍未验证。
 
-F2 分为两个依赖单元。F2a 实现可被后续 adapter 复用的投递端口、持久 outbox/attempt、受控投影和 action grant，复用原生提案及 watch 确认。F2b 依赖 F2a，接入真实 SDK、单一 runtime owner/generation、受信解析、配置和 Web 管理边界。只有 F2a 写共享 schema 与契约，F2b 在前者稳定后开始。SDK loopback 调查可与 F2a 并行，但不能修改产品代码或共享数据。
+F2 分为两个依赖单元。F2a 实现可被后续 adapter 复用的投递端口、持久 outbox/attempt、受控投影和 action grant，复用原生提案及 watch 确认。F2b 依赖 F2a，接入真实 SDK、单一 runtime owner/generation、受信解析、配置和 Web 管理边界。只有 F2a 写共享 schema 与契约，F2b 在前者稳定后开始。
+
+### F2a 投递与授权（已集成）
+
+F2a 实现 commit 为 `5c67e66`，父线程在 `8d241ee` 补登 CI inventory，审查修正为 `ce2781e`，三者已 fast-forward 到根工作区。0048 仅新增四张 channel 表，既有表、行和 FK 不变。
+
+捕获点位于原生消息提交事务内：`sendMessage` 与 `deliverAssistantEvents` 在写消息后调用 `captureFeishuMessage`，后者要求当前处于事务中，只按当时有效的 route 与 epoch 建行，不扫描历史、不补发离线输出。投影只接受已持久化的助理文本、严格形状的助理事件事实和 watch 摘要；未知或损坏事实、raw watch 内容、Web 的 `assistantEventSummary` 兜底都返回不可投递。周期性事件只用持久化的模型摘要正文。
+
+发送顺序为：异步 prepare → 独立 immediate 事务提交 armed attempt → 短同步事务复查 route、epoch、权限与投影，并调用无 await 的 `begin()` → 事务外等待回执。begin 返回 Promise 会被视为契约违反。begin 抛错或提交失败一律记为 uncertain；超时、ack 丢失、进程重启后的 armed attempt 同样 uncertain，不自动重发。只有可证明未接纳的失败在 10 分钟、3 次、同一 uuid 内重试。
+
+飞书 UUID 只保证一小时内至多成功发送一条，因此不能把同一 uuid 当作跨崩溃 exactly-once。迟到的 accepted 回执记在原 frozen route 上，不改投新目标。
+
+卡片确认复用原生 `confirmAssistantProposal`/`revokeAssistantProposal` 与 watch 意图确认，Web 与卡片竞争同一原生记录，重复确认只产生一个 work message；grant 只存 token 摘要，消费、原生副作用和 receipt 在同一个 immediate 事务内，并在消费时复查当前权限。
+
+独立审查 `/tmp/sprout-feishu-f2a-review.md` 发现的 P1 是卡片授权错误地要求发送时 epoch 仍开放：真实重连或进程重启后，用户点击已送达卡片会全部失败。父线程将边界拆成 `assertCurrent`（出站，要求 epoch 当前）与 `assertActionCurrent`（卡片，只要求当前 route 与身份），并补了“重连后卡片仍恰好确认一次”的用例；移除旧用例时发现原 `epoch` 拒绝用例实际因 fixture 展开导致 `scope` 为 undefined 而抛错，属于通过原因错误，现由新用例取代。另一个 P3 修正为只有 `ready` 状态的投递会在运行异常结束时改写为不完整，已 armed 或已发出的记录保持原正文。
+
+实际验证：定向 3 文件、30 项测试；assistant-core 22 文件、155 项；全量 CI 136 文件、1222 项通过（`/tmp/sprout-feishu-f2a-parent-ci3.result.json`）；typecheck、check、fmt、diff check 通过。真实飞书平台、运行时装配和 UI 均未验证。
 
 F2 必须证明 armed attempt 在 begin 前已持久提交，避免网络请求逃逸后失去恢复记录；当前 F0 证明同步请求与 writer 边界，不替代该崩溃恢复验证。旧 lifecycle 的 ready/reconnected 也能关闭较新实例的 epoch，因此实际装配必须只保留单一 owner，并使已停止或已替换 generation 的 callback 不得 reopen、close 或接纳输入。该项在没有 SDK 装配路径的 F1 中未被视为已暴露漏洞，F2b 必须提供实际反证测试。

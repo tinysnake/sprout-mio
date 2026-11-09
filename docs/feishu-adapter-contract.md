@@ -1,6 +1,6 @@
 # 飞书 DM adapter 实施契约
 
-状态：2026-11-10 F0 探针、F1 候选 CI 和独立功能审查已通过，准备集成并继续 F2。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
+状态：2026-11-10 F0、F1 与 F2a 投递/授权已集成，F2a 通过全量 CI 和独立审查修正；F2b 真实 SDK 装配进行中。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
 
 ## 架构选择
 
@@ -33,6 +33,8 @@
 
 新绑定或重连不扫描聊天历史来补发。出站候选只在新的原生消息提交时捕获，当时无有效连接或路由则不创建待补发记录。已捕获但未交付 transport 的旧 epoch 候选在重连后抑制。已经开始的请求允许完成记录，但不得改送新身份或新目标。
 
+已送达卡片的授权与出站投递不同。卡片发出后仍可能被点击，因此只要求当前 route、revision、Human 与 app 身份，不要求发送时的 epoch 仍然开放；重连不能让已发出的卡片失效。解绑、换路或失去权限必须让旧卡片立即失效，重复点击只复用同一原生确认结果。
+
 ## 入站与原生操作
 
 平台 message_id 在应用作用域内去重。receipt 与原生 `sendMessage` 写入处在同一个 immediate transaction 内，成功结果引用同一 messageId。外层回滚必须同时撤销 receipt、消息及相关 run/input；不能将 requestId 视作去重键，也不能先提交接纳再异步 drain 一次原生发送。
@@ -57,7 +59,8 @@ transport 准备凭据和平台 payload 可以异步进行。最终发送前先�
 | --- | --- | --- |
 | F0 风险探针 | 可重复事务与 HTTP harness，先于依赖它的实现 | 嵌套 rollback、receipt 与 native 原子性、同步 begin 与解绑先后、网络等待不持锁；不通过则修订契约 |
 | F1 身份与入站 | 最小 schema、绑定/换路/epoch、文本接纳领域入口 | 唯一身份冲突、challenge 重放/过期、旧 epoch 与旧消息、解绑及失权、重复输入只有一个 message/run input、迁移保留原生数据 |
-| F2 平台与出站 | 飞书 WS adapter、投影/outbox、确认 grant、运行装配 | SDK 断线边沿、Web/卡片确认竞态、默认拒绝投影、发送前失权、ack 丢失与崩溃 uncertain、无离线回放 |
+| F2a 投递与授权 | 可复用投递端口、持久 outbox/attempt、受控投影、action grant | 捕获与源消息同事务、默认拒绝投影、armed 先于 begin、ack 丢失与崩溃 uncertain、Web/卡片同一原生确认 |
+| F2b 平台装配 | 飞书 WS 入站、同步 begin 出站、单 owner 生命周期、运行时与服务器边界 | 旧 generation 不能改 epoch、ACK 不等于接纳、准备失败不产生请求、断线不回放 |
 | F3 UI 与平台评审 | Human 选定的绑定入口、配置说明与可操作预览 | 桌面/手机流程、异常与撤销、原数据保留；真实平台收发另列证据 |
 
 F0 与 F1 可由同一个隔离写者先后完成，风险探针失败时不得继续堆积 schema。共享契约及迁移保持一个写者。F1 不暴露未经平台核验的公共 HTTP 入口，不改现有评审库，不等 UI 选型，也不预建 F2 的空表。首次接纳复用原生领域，运行时装配在 F2 完成。
