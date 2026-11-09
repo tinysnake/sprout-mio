@@ -1,6 +1,6 @@
 # 飞书 DM adapter 推进记录
 
-状态：2026-11-10 F0、F1 已集成；F2a 投递与卡片授权已集成，F2b 真实 SDK 装配进行中。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
+状态：2026-11-10 F0、F1、F2a、F2b、F3 已集成；真实飞书平台联调与真实凭证下的绑定尚未进行。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
 
 ## 工作流
 
@@ -106,3 +106,23 @@ F2b 实现 commit 为 `6808f49`，父线程补 CI inventory 与配置契约用�
 实际验证：定向 8 文件、104 项测试；`pnpm typecheck`、`check`、`fmt`、`diff` 通过；全量 CI 141 文件、1272 项通过（`/tmp/sprout-feishu-f2b-parent-ci4.result.json`）。SDK 运行证据是既有回环探针（`/tmp/sprout-feishu-sdk-parent-probe.log`）。真实飞书平台、真实 appId 形态、卡片回调响应形状仍未验证，属于 F3 门槛。
 
 F3 之前必须解决的两项：绑定入口的 UI 形态需要人选定（管理页选项 A 与助理 DM 头部选项 B，两者业务状态一致），以及真实凭证下的端到端验证。仍未做的运行时约束：双实例互相顶掉 epoch 依赖“只跑一个实例”，代码层面没有租约；owner 在启动失败后需要显式 `start()` 重试，没有自愈定时器。
+
+### F3 绑定界面（已集成）
+
+F3 实现为 `d0029f0`，父线程门禁修正为 `f602517`，已 fast-forward 到根工作区。绑定入口落在 Project 设置页新增的「飞书」标签（`src/routes/_authed/projects.$projectId.settings.tsx` 的 `validateSearch` 接受 `tab=feishu`），面板在 `src/components/project/feishu-binding-panel.tsx`，文案集中在 `src/components/project/feishu-binding-copy.ts`。
+
+选管理页而不是助理 DM 头部，是因为 Human 尚未在两份 artifact 里选定形态，而此前交付的推荐项就是管理页，两者业务状态与调用完全相同，只差挂载点。这项决定由执行者在 Human 离线期间按 “做到飞书接入完成” 的授权先落实，改回 DM 头部只需换挂载点，不必改状态机或边界函数。
+
+面板只覆盖 Human 自己的绑定。目标列表来自新增的 `listFeishuTargetsFn`，`buildFeishuTargetsView` 在 `ctx.agent` 上直接抛 `forbidden`，因此助理身份与 worker 身份都拿不到候选。候选只列本 Project 内该 Human 拥有的助理私聊（`kind === 'dm'`、未归档），助理名来自会话的 assistant source，取不到就跳过该行。绑定的全部写入仍走 F1/F2 的边界函数，面板不新增权限路径。
+
+状态机有六个分支：已绑定、未绑定、等待飞书确认（本地持有确认码）、等待飞书确认（刷新后只剩剩余时间与重新发起）、已过期、未配置。确认码只出现在发起它的那个页面，服务端视图只给 `expiresAtMs`，刷新后客户端没有明文码可显示，文案如实说明“只在发起时显示一次”。换绑与解绑都要 Human 二次确认，解绑只是解除绑定，会话与历史保留。
+
+门禁在集成时拦下一处违规：`tests/tooling.test.ts` 禁止 `src/` 内直接调用 `Date.now()`，面板有 4 处。改为 `FeishuBindingPanel` 接受 `clock` prop（默认 `Date.now`），30 秒刷新一次倒计时，与既有 `src/components/continuation/wake-diagnostic.tsx` 的写法一致。
+
+父线程审查修掉一个会影响判断的缺陷：过期分支原本用 `selectedChatId || targets[0]?.chatId` 兜底，等于替 Human 默认选中第一个目标，而界面上并没有显示这次默认选择；现在只认 Human 显式选中的目标，并且本地挑战过期时也显示重新选择目标的控件，否则按钮会永久禁用。
+
+实际验证：`npx tsc --noEmit`、`npx vp check`（0 error，17 条既有 warning）、fmt、diff check 通过；全量 CI 143 文件、1280 项通过（`/tmp/feishu-f3-ci/run2.log`）。功能走查在隔离实例（`/tmp/feishu-f3-ui/app.sqlite`，端口 3311，假 appId 与假 secret）用真实浏览器完成：未绑定只列出 Jovi 的助理私聊且排除 worker 身份、发起绑定得到 4-4 分组码、刷新后不给码、重新发起生成新码、未在飞书确认时点击“我已在飞书确认”得到 conflict 提示、播种 slot 后显示已绑定与连接状态、换绑不出现与当前目标重复的选项、解绑确认后回到未绑定。1440 与 390 两档均无横向溢出，截图在 `.verify/feishu-ui/`（该目录已 gitignore）。
+
+真实评审实例（LAN `http://10.0.0.13:3300`，Project `prj_ad9fd1a5`）在合入后先报 `internal`，原因是该库只应用到 `0045`，缺 `0046`、`0047`、`0048` 三份迁移，飞书五张表不存在。补跑 `pnpm db:migrate`（迁移前备份到 `.verify/human-review/run.JtVeWy/backups/app-before-feishu-migrate.sqlite`）后，页面正确渲染「未配置」并说明需要 `FEISHU_CHANNEL_ENABLED`、`FEISHU_APP_ID`、`FEISHU_APP_SECRET` 三项环境变量，标签间跳转保持 `tab` 参数。
+
+未验证项：真实飞书侧的确认回合（需要真实应用与真人扫码/发码）、确认码过期分支的实际渲染（要等 10 分钟，逻辑由文案测试与注入时钟覆盖）、飞书昵称展示（视图没有该字段）。仍待 Human 决定的三点：换绑是否必须再走一次飞书确认、是否显示已绑定账号的飞书昵称、待确认的确认码是否应跨刷新保留。

@@ -1,6 +1,6 @@
 # 飞书 DM adapter 实施契约
 
-状态：2026-11-10 F0、F1、F2a 投递/授权与 F2b 真实 SDK 装配均已集成，F2a 与 F2b 各自通过全量 CI 和独立审查修正；F3 绑定 UI 与真实平台联调未开始。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
+状态：2026-11-10 F0、F1、F2a 投递/授权、F2b 真实 SDK 装配与 F3 绑定界面均已集成，各自通过全量 CI 与独立审查修正；真实平台联调未开始。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
 
 ## 架构选择
 
