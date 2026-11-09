@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { assistantActionFn } from "../../server/functions/assistant";
 import type { assistantPanel } from "../../domain/assistant";
+import { assistantDuration, assistantTextPreview } from "../../lib/assistant-display";
 import { Button } from "../ui/button";
 type Panel = ReturnType<typeof assistantPanel>;
 export function AssistantPanel({ chatId }: { chatId: string }) {
@@ -41,59 +42,76 @@ function ChatAssistantPanel({ chatId }: { chatId: string }) {
       setPending(false);
     }
   }
+  const proposals = [...(panel?.proposals ?? [])].sort(
+    (a, b) =>
+      Number(b.status === "pending" && !b.expired) - Number(a.status === "pending" && !a.expired),
+  );
   return (
     <section
       aria-label="Assistant 工作与关注"
-      className="mb-4 space-y-3 rounded-md border border-border p-3 text-xs"
+      className="max-h-64 space-y-3 overflow-y-auto overscroll-contain text-xs"
       data-testid="assistant-panel"
     >
       <h3 className="font-medium">Assistant 工作与关注</h3>
-      <p className="text-muted-foreground">
-        提案仅在你确认后提交。通知来自程序事实，不会唤醒工作 Agent。
-      </p>
       {error && <p role="alert">{error}</p>}
-      {panel?.proposals.map((proposal) => (
-        <article key={proposal.id} className="space-y-2 border-t border-border pt-2">
-          <p className="whitespace-pre-wrap">{proposal.body}</p>
-          <a
-            className="underline"
-            href={`/projects/${proposal.targetProjectId}/chats/${proposal.targetChatId}`}
-          >
-            {proposal.targetLabel}
-          </a>
-          {proposal.agentName !== proposal.targetLabel && (
-            <span className="ml-2">执行者：{proposal.agentName}</span>
-          )}
-          <span className="ml-2">
-            {proposal.status === "pending" && proposal.expired
-              ? "已过期"
-              : { pending: "待确认", submitted: "已提交", rejected: "已拒绝", revoked: "已撤销" }[
-                  proposal.status
-                ]}
-          </span>
-          {proposal.status === "pending" && !proposal.expired && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-2"
-              disabled={pending}
-              onClick={() => void act({ action: "confirm", chatId, proposalId: proposal.id })}
+      {proposals.map((proposal) => (
+        <details
+          key={proposal.id}
+          data-proposal-id={proposal.id}
+          open={proposal.status === "pending" && !proposal.expired ? true : undefined}
+          className="rounded-control border border-border p-3"
+        >
+          <summary className="flex cursor-pointer flex-wrap items-center gap-2">
+            <span className="font-medium">交给</span>
+            <a
+              className="text-muted-foreground underline"
+              href={`/projects/${proposal.targetProjectId}/chats/${proposal.targetChatId}`}
             >
-              确认并提交工作
-            </Button>
-          )}
-          {["pending", "submitted"].includes(proposal.status) && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-2"
-              disabled={pending}
-              onClick={() => void act({ action: "revoke", chatId, proposalId: proposal.id })}
-            >
-              {proposal.status === "pending" ? "拒绝" : "撤销未投递输入"}
-            </Button>
-          )}
-        </article>
+              {proposal.agentName}
+              {proposal.targetLabel !== proposal.agentName ? ` · ${proposal.targetLabel}` : ""}
+            </a>
+            <span className="text-muted-foreground">
+              {proposal.status === "pending" && proposal.expired
+                ? "已过期"
+                : { pending: "待确认", submitted: "已提交", rejected: "已拒绝", revoked: "已撤销" }[
+                    proposal.status
+                  ]}
+            </span>
+          </summary>
+          <div className="mt-2 space-y-2">
+            <p data-testid="assistant-proposal-summary" className="leading-relaxed">
+              {assistantTextPreview(proposal.body)}
+            </p>
+            <details className="text-muted-foreground">
+              <summary className="w-fit cursor-pointer">查看完整工作指令</summary>
+              <p className="mt-2 whitespace-pre-wrap break-words">{proposal.body}</p>
+            </details>
+            <div className="flex flex-wrap gap-2">
+              {proposal.status === "pending" && !proposal.expired && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-2"
+                  disabled={pending}
+                  onClick={() => void act({ action: "confirm", chatId, proposalId: proposal.id })}
+                >
+                  确认并提交工作
+                </Button>
+              )}
+              {["pending", "submitted"].includes(proposal.status) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-2"
+                  disabled={pending}
+                  onClick={() => void act({ action: "revoke", chatId, proposalId: proposal.id })}
+                >
+                  {proposal.status === "pending" ? "拒绝" : "撤销未投递输入"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </details>
       ))}
       {panel?.decisions
         .filter(
@@ -118,7 +136,8 @@ function ChatAssistantPanel({ chatId }: { chatId: string }) {
                 })
               }
             >
-              确认持续关注 {event.targetLabel}（每 {event.fact.intervalSeconds ?? 300} 秒）
+              确认持续关注 {event.targetLabel}（每{" "}
+              {assistantDuration(event.fact.intervalSeconds ?? 300)}）
             </Button>
           </p>
         ))}
@@ -131,7 +150,9 @@ function ChatAssistantPanel({ chatId }: { chatId: string }) {
           >
             {watch.targetLabel}
           </a>
-          <span className="ml-2 text-muted-foreground">每 {watch.intervalSeconds} 秒检查一次</span>
+          <span className="ml-2 text-muted-foreground">
+            每 {assistantDuration(watch.intervalSeconds)}汇报一次
+          </span>
           <Button
             variant="outline"
             size="sm"

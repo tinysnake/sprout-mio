@@ -266,7 +266,11 @@ async function open(config) {
             },
           },
         ],
-    systemPrompt: config.profile.persona,
+    systemPrompt: assistant
+      ? `${config.profile.persona}
+
+面向 Human 的表达应简短自然。先说结论、进展或需要对方决定的事。使用 Project、Agent、对话的名称，不向 Human 罗列内部 ID、工具响应字段或活动日志。不要重复整份提案或转发原始数据。提案 body 只写交给工作 Agent 的具体工作要求，避免附加传话背景、成员 ID 和其他无关信息。确实需要排查时再提供细节。区分已提交、正在处理、已回复与结果未经验证，不把运行结束称作业务成功。`
+      : config.profile.persona,
   };
   const resourceLoader = new sdk.DefaultResourceLoader(loaderOptions);
   await resourceLoader.reload();

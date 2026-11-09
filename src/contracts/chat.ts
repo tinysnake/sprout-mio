@@ -327,6 +327,7 @@ export const messageSchema = z
       nativeSource: z.strictObject({
         kind: z.literal("assistant_event"),
         eventId: z.string(),
+        summary: z.string().optional(),
         projectId: z.string(),
         chatId: z.string(),
         runId: z.string().optional(),

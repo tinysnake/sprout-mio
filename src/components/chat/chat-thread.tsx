@@ -392,7 +392,6 @@ export function ChatThread({
         }}
         className="min-h-0 flex-1 overflow-y-auto px-7 pt-5.75 pb-4.5 max-desktop:px-3.75 max-desktop:py-5 [overflow-anchor:none]"
       >
-        {assistantPanel}
         {runActivitiesError && (
           <p
             role="status"
@@ -503,6 +502,14 @@ export function ChatThread({
           </p>
         )}
       </div>
+      {assistantPanel && (
+        <div
+          className="shrink-0 border-t border-border bg-background px-6 py-3 max-desktop:px-3"
+          data-testid="assistant-composer-panel"
+        >
+          {assistantPanel}
+        </div>
+      )}
       {archived ? (
         <p
           data-testid="archived-notice"

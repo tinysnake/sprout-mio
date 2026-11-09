@@ -257,9 +257,23 @@ export function sampleAssistantRuns(now: Date, activity = readRunActivity) {
             {
               kind,
               runId: run.id,
+              runState: { status: run.status, elapsedSeconds: elapsed },
               targetProjectId: run.projectId,
               targetChatId: run.chatId,
               sampledAt: now.toISOString(),
+              ...(!terminal && snapshot?.current
+                ? {
+                    action: {
+                      label: snapshot.current.label,
+                      elapsedSeconds: Math.max(
+                        0,
+                        Math.floor(
+                          (now.getTime() - new Date(snapshot.current.startedAt).getTime()) / 1000,
+                        ),
+                      ),
+                    },
+                  }
+                : {}),
               body: `Run ${run.id} · ${run.status} · 已经过 ${elapsed}s\n${activityFact(snapshot, terminal, now)}${run.errorMessage ? `\n${run.errorMessage}` : ""}${terminal && !run.assistantMessageId ? "\n无最终回复；不推断为业务成功" : ""}`,
             },
             now,

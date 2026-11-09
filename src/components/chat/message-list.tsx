@@ -140,9 +140,7 @@ export function MessageList({
               data-testid="assistant-run-link"
               href={`/projects/${message.nativeSource.projectId}/chats/${message.nativeSource.chatId}${message.nativeSource.runId ? `?run=${message.nativeSource.runId}#selected-run-${message.nativeSource.runId}` : "?info=1"}`}
             >
-              {message.nativeSource.runId
-                ? `查看 Run ${message.nativeSource.runId}`
-                : "查看来源 Chat"}
+              {message.nativeSource.runId ? "查看工作结果" : "查看工作对话"}
             </a>
           )}
           {agentMessage && !grouped && persona && (
@@ -158,8 +156,22 @@ export function MessageList({
                 : "text-xs leading-6 break-words whitespace-pre-wrap"
             }
           >
-            <MessageBody body={message.body} mentions={message.mentions} skills={message.skills} />
+            <MessageBody
+              body={
+                message.senderKind === "assistant_event"
+                  ? (message.nativeSource.summary ?? message.body)
+                  : message.body
+              }
+              mentions={message.mentions}
+              skills={message.skills}
+            />
           </p>
+          {message.senderKind === "assistant_event" && message.nativeSource.summary && (
+            <details className="mt-2 text-xs text-muted-foreground">
+              <summary className="w-fit cursor-pointer">查看通知详情</summary>
+              <p className="mt-2 whitespace-pre-wrap break-words">{message.body}</p>
+            </details>
+          )}
           {agentMessage && (
             <p data-testid="message-run-links" className="mt-1 text-[10px] text-muted-foreground">
               {links.length === 0 ? (

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AgentRunStatus } from "./agent-run";
 
 export const assistantInputContextSchema = z.strictObject({
   runId: z.string(),
@@ -53,7 +54,7 @@ export const ASSISTANT_TOOL_SPEC = {
   sprout_assistant_propose: {
     call: "assistant_propose",
     description:
-      "Create an immutable concrete work proposal in this DM. For dm_agent, provide projectId and agentProfileId; chatId is optional and resolves to the Human's canonical DM. Only the Human can confirm it. No work starts here.",
+      "Create an immutable concrete work proposal in this DM. For dm_agent, provide projectId and agentProfileId; chatId is optional and resolves to the Human's canonical DM. Write body as a concise, concrete work instruction, without internal IDs, routing metadata or forwarding commentary. Only the Human can confirm it. No work starts here.",
     input: propose,
   },
   sprout_assistant_watch: {
@@ -80,6 +81,8 @@ export type AssistantFact = {
   proposalId?: string;
   watchIntent?: boolean;
   intervalSeconds?: number;
+  runState?: { status: AgentRunStatus; elapsedSeconds: number };
+  action?: { label: string; elapsedSeconds?: number };
   body: string;
   sampledAt: string;
 };

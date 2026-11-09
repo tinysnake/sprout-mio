@@ -44,6 +44,19 @@ export async function verifyCronBrowser({
   assert.equal(await zone.locator('option[value="Etc/GMT-14"]').count(), 1);
   assert.equal(await zone.locator('option[value="Etc/GMT+12"]').count(), 1);
   await zone.selectOption("Asia/Shanghai");
+  const helpBounds = await ui.getByLabel("Cron 语法帮助").boundingBox();
+  const expressionBounds = await ui.getByLabel("Cron 表达式").boundingBox();
+  assert(helpBounds && expressionBounds);
+  assert(
+    helpBounds.x >= expressionBounds.x &&
+      helpBounds.x + helpBounds.width <= expressionBounds.x + expressionBounds.width,
+    "cron help fits inside the expression field",
+  );
+  assert(
+    Math.abs(helpBounds.y - expressionBounds.y) < expressionBounds.height,
+    "cron help sits beside expression",
+  );
+  assert.equal((await ui.getByLabel("Cron 语法帮助").innerText()).trim(), "");
   await ui.getByLabel("Cron 语法帮助").click();
   assert((await ui.getByTestId("cron-help").innerText()).includes("OR"));
   await ui

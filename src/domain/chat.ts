@@ -1,4 +1,5 @@
 import { automationSourceFor } from "./automation-source";
+import { assistantEventSummary } from "./assistant-display";
 import { signalScheduleChange } from "./chat-schedule";
 import { enqueueMessageWake } from "./message-wake";
 import { and, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
@@ -101,17 +102,19 @@ function toMessage(
     createdAt: row.createdAt.toISOString(),
   };
   if (row.senderKind === "assistant_event") {
-    const fact = db
+    const event = db
       .select()
       .from(assistantEvent)
       .where(eq(assistantEvent.id, row.assistantEventId!))
-      .get()!.fact;
+      .get()!;
+    const fact = event.fact;
     return {
       ...identity,
       senderKind: row.senderKind,
       nativeSource: {
         kind: "assistant_event",
         eventId: row.assistantEventId!,
+        summary: assistantEventSummary(fact, event.eventKey),
         projectId: fact.targetProjectId,
         chatId: fact.targetChatId,
         ...(fact.runId ? { runId: fact.runId } : {}),

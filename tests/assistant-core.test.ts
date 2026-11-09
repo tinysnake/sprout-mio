@@ -104,6 +104,24 @@ describe("native assistant authority and durable work", () => {
     expect(
       assistant.confirmAssistantProposal(proposed.proposalId, dm.id, ctx, instant),
     ).toMatchObject({ status: "submitted" });
+    const notice = chats
+      .listMessages(dm.id, ctx)
+      .find((row) => row.senderKind === "assistant_event");
+    expect(notice?.senderKind).toBe("assistant_event");
+    if (notice?.senderKind === "assistant_event") {
+      expect(notice.nativeSource.summary).toContain(fresh.name);
+      expect(notice.nativeSource.summary).not.toMatch(/(?:msg|cnv|run|prj)_[a-z0-9]+/);
+      expect(notice.nativeSource.summary).toContain("等待你确认");
+      expect(notice.body).toContain("待确认工作");
+      const confirmed = chats
+        .listMessages(dm.id, ctx)
+        .find(
+          (row) => row.senderKind === "assistant_event" && row.body.includes("Human 已确认提案"),
+        );
+      expect(
+        confirmed?.senderKind === "assistant_event" && confirmed.nativeSource.summary,
+      ).toContain("已确认");
+    }
   });
 
   it("keeps watch intervals and clocks independent and never activates tool intent without Human consent", () => {
@@ -414,6 +432,21 @@ describe("native assistant authority and durable work", () => {
     expect(periodic[1].fact).toContain("120s");
     expect(periodic[0].fact).toContain("动作已进行 30s");
     expect(periodic[1].fact).toContain("动作已进行 90s");
+    const notices = chats
+      .listMessages(dm.id, ctx)
+      .filter(
+        (row) =>
+          row.senderKind === "assistant_event" &&
+          row.nativeSource.summary?.includes("当前Unchanged real action"),
+      );
+    expect(
+      notices.map((row) => row.senderKind === "assistant_event" && row.nativeSource.summary),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("已进行 30 秒"),
+        expect.stringContaining("已进行 1 分钟"),
+      ]),
+    );
     expect(periodic.every((event) => event.fact.includes("Unchanged real action"))).toBe(true);
     runs.transitionAgentRun(
       input.run_id,
@@ -857,6 +890,32 @@ describe("native assistant authority and durable work", () => {
         )
         .get(stale.id),
     ).toEqual({ n: 100 });
+  });
+  it("keeps a queued notice factual after the worker later starts", () => {
+    const now = new Date();
+    const profile = createAgentProfile({ name: "Queued worker" }, ctx);
+    addProjectMember(project.id, profile.id, ctx);
+    const target = chats.createDirectChat(project.id, profile.id, ctx).chat;
+    observer.setAssistantWatch(dm.id, project.id, target.id, true, ctx, now, 60);
+    chats.sendMessage(
+      target.id,
+      { senderKind: "human", senderId: ctx.userId, body: "Queued work" },
+      ctx,
+    );
+    const run = runs.listAgentRuns(target.id, ctx)[0];
+    observer.sampleAssistantRuns(new Date(now.getTime() + 61000), () => undefined);
+    const notice = () =>
+      chats
+        .listMessages(dm.id, ctx)
+        .find((row) => row.senderKind === "assistant_event" && row.nativeSource.runId === run.id);
+    const before = notice();
+    expect(before?.senderKind === "assistant_event" && before.nativeSource.summary).toContain(
+      "尚未开始处理",
+    );
+    sqlite
+      .prepare("UPDATE agent_run SET status='running',started_at=? WHERE id=?")
+      .run(Math.floor(now.getTime() / 1000) + 90, run.id);
+    expect(notice()).toEqual(before);
   });
   it("keeps assistants out of inherited Public Channels, Group membership, and Task responsibility", async () => {
     const { taskResponsibilityFacts } = await import("../src/domain/task-capabilities");

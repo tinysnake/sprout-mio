@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, CircleHelp } from "lucide-react";
 import type { AgentProfile, ProjectMember } from "../../contracts/agent";
 import type {
   AutomationAction,
@@ -118,6 +118,7 @@ export function AutomationSettings({ projectId, kind }: { projectId: string; kin
       : "/projects/$projectId/settings/webhooks/new";
   return (
     <SettingsSection
+      divided={false}
       title={kind === "cron" ? "定时任务" : "Webhooks"}
       description={
         kind === "cron"
@@ -125,7 +126,10 @@ export function AutomationSettings({ projectId, kind }: { projectId: string; kin
           : "由可信来源的 HTTP 请求触发 Project 中的工作。"
       }
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div
+        className="mb-4 flex flex-wrap items-center justify-between gap-3"
+        data-testid="automation-list-toolbar"
+      >
         <p className="text-sm text-muted-foreground">
           {loading ? "读取中…" : `${rules.length} 条规则`}
         </p>
@@ -563,38 +567,44 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
               </label>
               {kind === "cron" && (
                 <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-                  <div className="min-w-0 space-y-2">
-                    <label className="block space-y-1 text-sm">
+                  <div className="min-w-0 space-y-1">
+                    <label htmlFor="cron-expression" className="block text-sm">
                       Cron 表达式
+                    </label>
+                    <div className="relative">
                       <input
+                        id="cron-expression"
                         required
-                        className={`${field} font-mono`}
+                        className={`${field} pr-12 font-mono`}
                         value={draft.expression}
                         onChange={(e) => setDraft({ ...draft, expression: e.target.value })}
                       />
-                    </label>
-                    <details className="text-xs text-muted-foreground">
-                      <summary
-                        aria-label="Cron 语法帮助"
-                        className="w-fit cursor-pointer rounded-control border border-input px-2 py-1"
-                      >
-                        ? Cron 语法
-                      </summary>
-                      <div className="mt-2 space-y-2 leading-6" data-testid="cron-help">
-                        <p>
-                          五段依次为：分钟（0–59）、小时（0–23）、日（1–31）、月（1–12）、星期（0–7，0
-                          / 7 为周日）。
-                        </p>
-                        <p>
-                          * 表示任意；逗号列举，连字符表示范围，/ 表示步长。例如 0 9 * * 1-5
-                          表示工作日 09:00，*/15 * * * * 表示每 15 分钟。
-                        </p>
-                        <p>
-                          日和星期都指定时，任一匹配即执行（OR）。所有时间按所选时区计算；命名时区遵循夏令时，UTC
-                          偏移保持固定。不补跑离线时段，已有活跃输入时跳过。
-                        </p>
-                      </div>
-                    </details>
+                      <details className="absolute right-1 top-1 text-xs text-muted-foreground">
+                        <summary
+                          aria-label="Cron 语法帮助"
+                          className="grid size-9 cursor-pointer list-none place-items-center rounded-control hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden"
+                        >
+                          <CircleHelp size={18} aria-hidden="true" />
+                        </summary>
+                        <div
+                          className="absolute right-0 top-10 z-20 w-72 max-w-[calc(100vw-3rem)] space-y-2 rounded-container border border-border bg-background p-4 leading-6 shadow-md"
+                          data-testid="cron-help"
+                        >
+                          <p>
+                            五段依次为：分钟（0–59）、小时（0–23）、日（1–31）、月（1–12）、星期（0–7，0
+                            / 7 为周日）。
+                          </p>
+                          <p>
+                            * 表示任意；逗号列举，连字符表示范围，/ 表示步长。例如 0 9 * * 1-5
+                            表示工作日 09:00，*/15 * * * * 表示每 15 分钟。
+                          </p>
+                          <p>
+                            日和星期都指定时，任一匹配即执行（OR）。所有时间按所选时区计算；命名时区遵循夏令时，UTC
+                            偏移保持固定。不补跑离线时段，已有活跃输入时跳过。
+                          </p>
+                        </div>
+                      </details>
+                    </div>
                   </div>
                   <label className="block min-w-0 space-y-1 text-sm">
                     时区（IANA）

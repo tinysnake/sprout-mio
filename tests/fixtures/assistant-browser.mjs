@@ -49,7 +49,7 @@ export async function verifyAssistantBrowser({
             projectId: project.id,
             agentProfileId: alpha.id,
           },
-          body: "Native confirmed fixture work",
+          body: `Hi ${alpha.name}，这是 Human 的请求。\n\n请回复一句 hi。\n\n补充信息：Chat ID ${dm.id}，Project ID ${project.id}。`,
         },
       },
       {
@@ -117,13 +117,46 @@ export async function verifyAssistantBrowser({
   );
   await page
     .getByTestId("assistant-panel")
-    .getByText("每 120 秒检查一次", { exact: true })
+    .getByText("每 2 分钟汇报一次", { exact: true })
     .waitFor();
   assert.equal(await page.getByLabel("通知间隔", { exact: true }).count(), 0);
   assert.equal(await page.getByTestId("assistant-panel").getByRole("combobox").count(), 0);
   pass(
     "tool-requested per-watch interval survives Human activation and global interval editor is absent",
   );
+  assert.equal(
+    await page.getByTestId("assistant-proposal-summary").first().innerText(),
+    "请回复一句 hi。",
+  );
+  const placement = await page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="assistant-composer-panel"]');
+    const history = document.querySelector('[data-testid="message-history"]');
+    const composer = document.querySelector("textarea")?.closest("form");
+    const top = panel?.getBoundingClientRect().top;
+    if (history) history.scrollTop = 0;
+    return {
+      separate: !history?.contains(panel),
+      top,
+      after: panel?.getBoundingClientRect().top,
+      bottom: panel?.getBoundingClientRect().bottom,
+      composerTop: composer?.getBoundingClientRect().top,
+    };
+  });
+  assert(placement.separate, "proposal controls are outside message scrolling");
+  assert.equal(placement.top, placement.after, "scrolling history leaves controls in place");
+  assert(placement.bottom <= placement.composerTop, "proposal controls sit above composer");
+  await page.screenshot({ path: join(directory, "assistant-pending-desktop.png"), fullPage: true });
+  const desktopViewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobilePanel = await page.getByTestId("assistant-composer-panel").boundingBox();
+  const mobileComposer = await page.locator("textarea").boundingBox();
+  assert(mobilePanel && mobileComposer && mobilePanel.y + mobilePanel.height <= mobileComposer.y);
+  assert(
+    mobileComposer.y + mobileComposer.height < 844,
+    "pending proposal leaves mobile composer visible",
+  );
+  await page.screenshot({ path: join(directory, "assistant-pending-mobile.png"), fullPage: true });
+  await page.setViewportSize(desktopViewport);
   fixture.arm("chatOwner", {
     expectedUserPrefix: "[Human-confirmed assistant proposal",
     steps: [],
@@ -431,7 +464,7 @@ export async function verifyAssistantBrowser({
   );
   await page.reload({ waitUntil: "networkidle" });
   await page.getByText("Assistant 工作与关注", { exact: true }).waitFor();
-  await page.getByTestId("assistant-run-link").filter({ hasText: run.id }).waitFor();
+  await page.locator(`[data-testid="assistant-run-link"][href*="${run.id}"]`).waitFor();
   await page.screenshot({ path: join(directory, "assistant-desktop.png"), fullPage: true });
   await page.getByText("Assistant 工作与关注", { exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({
@@ -461,7 +494,12 @@ export async function verifyAssistantBrowser({
     await call("createDirectChatFn", { projectId: project.id, agentProfileId: otherHelper.id })
   ).chat;
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByTestId("assistant-panel").getByText(proposal.body, { exact: true }).waitFor();
+  await page.locator(`[data-proposal-id="${proposal.id}"] > summary`).click();
+  await page
+    .getByTestId("assistant-proposal-summary")
+    .filter({ hasText: "请回复一句 hi。" })
+    .first()
+    .waitFor();
   const held = Promise.withResolvers();
   const release = Promise.withResolvers();
   const delivered = Promise.withResolvers();
@@ -496,7 +534,7 @@ export async function verifyAssistantBrowser({
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
     assert(
-      !(await page.getByTestId("assistant-panel").innerText()).includes(proposal.body),
+      !(await page.getByTestId("assistant-panel").textContent()).includes(proposal.body),
       "late panel response from another DM must not expose its proposal in the current DM",
     );
   } finally {
@@ -506,9 +544,9 @@ export async function verifyAssistantBrowser({
   }
   await page.locator(`a[href$="/chats/${source.id}"]`).first().click();
   await page.waitForURL(`**/chats/${source.id}`);
-  await page.getByTestId("assistant-run-link").filter({ hasText: run.id }).waitFor();
+  await page.locator(`[data-testid="assistant-run-link"][href*="${run.id}"]`).waitFor();
   pass("delayed assistant panel responses remain scoped to their original DM");
-  const link = page.getByTestId("assistant-run-link").filter({ hasText: run.id });
+  const link = page.locator(`[data-testid="assistant-run-link"][href*="${run.id}"]`);
   await link.click();
   await page.waitForURL(`**/chats/${dm.id}?run=${run.id}#selected-run-${run.id}`);
   await page.getByTestId("chat-title").filter({ hasText: "HookAlpha" }).waitFor();
