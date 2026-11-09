@@ -25,7 +25,7 @@
 - Web 登录后发起，平台稳定身份确认后生效；切换显式指向 Project 和助理 DM，冲突不得静默覆盖。
 - 同一 DM 的助理输出发给该 DM 当前可发送的全部已绑定 channel，输入来源不决定回复去向；同一 Human 的不同 DM 不混合。
 - 平台认证不能替代 Human 当前权限。入站、具体确认和出站均查当前权限与绑定代次。
-- 首期优先评估长连接及新版卡片回调。调查报告确认公开文档支持二者；是否具备可观测 reconnect 生命周期仍需结合 SDK 实际 public surface 核实。
+- 首期优先评估长连接及新版卡片回调。调查报告确认公开文档支持二者。父线程另行核对 npm 官方 registry 的 `@larksuiteoapi/node-sdk@1.76.0` 发布包，并用真实 SDK 与 loopback WebSocket 完成断线探针。两次握手的回调顺序为 `ready → reconnecting → reconnected`，最终状态 `connected`。`onReconnected` 回调内的状态快照仍为 `reconnecting`，应用不能直接照抄该快照。这仍不表示真实飞书平台联调已通过。
 - 平台 message_id 是入站去重依据；发送 UUID 的平台去重仅保证一小时，不能宣称跨任意崩溃永久 exactly-once。
 
 ## Ground 的因果链
@@ -51,3 +51,11 @@
 调查报告 `/tmp/sprout-feishu-discovery.md` 包含实际源码路径和官方 URL。原生闭环已完成技术验证和本轮 Human UI 评审，不能据此把飞书联调记为完成。
 
 待设计收口：具体稳定身份键与约束；平台证明和换绑的事务边界；消息来源与输出范围；重连 epoch 与持久投递的相互作用；一小时平台去重窗口外的 uncertain 处置；绑定页的入口与信息层级。
+
+### 当前设计进展
+
+界面对比保存在 `.verify/feishu-ui/options.html`，已通过 728px 与 390px HTML preview 并在当前线程展示。方案 A 集中放在 Management，方案 B 从助理 DM 进入。Human 尚未选型，页面实现未开始。原型中的飞书账号、助理和目标 DM 已分开标注，连接不可用也与绑定确认超时分开表达。
+
+两份架构候选仍处于收集与核查阶段。已返回的候选位于 `/Users/snake/.t3/worktrees/sprout-mio/t3-fd5399e1/.verify/feishu-design/candidate.md`。父线程的核查记录位于 `.verify/feishu-design/parent-review-notes.md`。
+
+必须在架构收口前解决两项已发现的问题。第一，`sendMessage` 每次产生新消息，`ctx.requestId` 不会提供业务去重，需要证明 receipt applied 与消息提交的原子关系。第二，平台 `message_id` 去重不能排除本机从未见过的离线旧消息；绑定时初始化出站水位也不能单独证明重连后不补发离线输出。最终方案必须明确离线边界及其测试。
