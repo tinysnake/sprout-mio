@@ -1,6 +1,8 @@
 import type { ContinuationScheduler } from "./continuation-scheduler";
 import type { AssistantScheduler } from "./assistant-scheduler";
 import type { CronScheduler } from "./cron-scheduler";
+import type { FeishuRuntime } from "./feishu/runtime";
+import { registerFeishuRuntime } from "./feishu/registry";
 import type { WakeRuntimeOptions } from "./wake-runtime";
 import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
@@ -45,6 +47,7 @@ type RuntimeState = {
   continuation: ContinuationScheduler | null;
   cron: CronScheduler | null;
   assistant: AssistantScheduler | null;
+  feishu: FeishuRuntime | null;
   piHostStop: Promise<void> | null;
   ready: Promise<void>;
   resolveReady: () => void;
@@ -76,6 +79,7 @@ function createState(): RuntimeState {
     continuation: null,
     cron: null,
     assistant: null,
+    feishu: null,
     piHostStop: null,
     ready,
     resolveReady,
@@ -265,6 +269,15 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     const { createAssistantScheduler } = await import("./assistant-scheduler");
     state.assistant = createAssistantScheduler();
     state.assistant.start();
+    if (config.FEISHU_CHANNEL_ENABLED) {
+      const { createFeishuRuntime, feishuTransportConfig } = await import("./feishu/runtime");
+      state.feishu = createFeishuRuntime({ config: feishuTransportConfig(config) });
+      registerFeishuRuntime(state.feishu);
+      state.feishu.start();
+      console.log("[runtime] feishu", JSON.stringify(state.feishu.snapshot()));
+    } else {
+      console.log("[runtime] feishu disabled by FEISHU_CHANNEL_ENABLED=false");
+    }
     recordDiagnostic({
       level: "info",
       event: "runtime.ready",
@@ -274,6 +287,7 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     });
     state.resolveReady();
   } catch (error) {
+    stopFeishu();
     state.cron?.stop();
     state.assistant?.stop();
     state.continuation?.stop();
@@ -304,7 +318,14 @@ export function shutdownRuntime(reason: string): Promise<void> {
   return state.shutdown;
 }
 
+function stopFeishu(): void {
+  state.feishu?.stop();
+  state.feishu = null;
+  registerFeishuRuntime(null);
+}
+
 function stopPiHostOnce(): Promise<void> {
+  stopFeishu();
   state.cron?.stop();
   state.assistant?.stop();
   state.continuation?.stop();

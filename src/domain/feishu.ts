@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import type {
   FeishuAdmission,
   FeishuAdmissionScope,
@@ -98,6 +98,31 @@ export function getFeishuBinding(ctx: ProjectContext): FeishuBinding {
     bound: !!slot?.appId,
     ...(route ? { route: { id: route.id, projectId: route.projectId, chatId: route.chatId } } : {}),
   };
+}
+
+/**
+ * 绑定页只读：当前 Human 未消费且未过期的挑战码还剩多久。
+ * 只回过期时间，不回摘要——挑战码本身只在发起时出现一次。
+ */
+export function readFeishuChallenge(
+  ctx: ProjectContext,
+  now = new Date(),
+): { expiresAtMs: number } | null {
+  humanOnly(ctx);
+  if (!slotFor(ctx.userId)) return null;
+  const row = db
+    .select()
+    .from(feishuChallenge)
+    .where(
+      and(
+        eq(feishuChallenge.humanId, ctx.userId),
+        isNull(feishuChallenge.consumedAtMs),
+        gt(feishuChallenge.expiresAtMs, now.getTime()),
+      ),
+    )
+    .orderBy(desc(feishuChallenge.expiresAtMs))
+    .get();
+  return row ? { expiresAtMs: row.expiresAtMs } : null;
 }
 
 export function startFeishuChallenge(

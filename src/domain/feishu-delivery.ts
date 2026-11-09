@@ -57,6 +57,24 @@ export const feishuDeliveryBoundary: ChannelRouteBoundary = {
   },
 };
 
+let deliveryWake: (() => void) | null = null;
+
+/**
+ * 服务端装配时注册的「有新投递」唤醒。领域层不能 import server，
+ * 所以用这个单向钩子；没有装配时（例如纯领域测试）就退化为空闲轮询。
+ */
+export function setFeishuDeliveryWake(wake: (() => void) | null) {
+  deliveryWake = wake;
+}
+
+function wakeDelivery(): void {
+  try {
+    deliveryWake?.();
+  } catch {
+    // 唤醒失败不影响已经提交的投递，空闲轮询会兜住。
+  }
+}
+
 export function captureFeishuMessage(messageId: string, now: Date) {
   const source = db.select().from(message).where(eq(message.id, messageId)).get();
   if (!source || !["agent", "assistant_event"].includes(source.senderKind)) return;
@@ -96,6 +114,7 @@ export function captureFeishuMessage(messageId: string, now: Date) {
       now,
     );
   }
+  if (routes.length > 0) wakeDelivery();
 }
 
 export function emitNextFeishuDelivery<Prepared>(
