@@ -91,7 +91,13 @@ function TargetSelect({
   );
 }
 
-export function FeishuBindingPanel({ projectId }: { projectId: string }) {
+export function FeishuBindingPanel({
+  projectId,
+  clock = Date.now,
+}: {
+  projectId: string;
+  clock?: () => number;
+}) {
   const [view, setView] = useState<FeishuBindingView | null>(null);
   const [targets, setTargets] = useState<FeishuTargetOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,22 +143,30 @@ export function FeishuBindingPanel({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   const expiresAtMs = (challenge ?? view?.challenge)?.expiresAtMs ?? null;
+  const [now, setNow] = useState(clock);
 
   useEffect(() => {
     if (expiresAtMs === null) {
       setExpired(false);
       return;
     }
-    setExpired(Date.now() >= expiresAtMs);
+    setNow(clock());
+    setExpired(clock() >= expiresAtMs);
+    const timer = setInterval(() => setNow(clock()), 30_000);
+    return () => clearInterval(timer);
+  }, [expiresAtMs, clock]);
+
+  useEffect(() => {
+    if (expiresAtMs === null) return;
     const timer = setTimeout(
       () => {
         setExpired(true);
         void refreshBinding();
       },
-      Math.max(0, expiresAtMs - Date.now()),
+      Math.max(0, expiresAtMs - now),
     );
     return () => clearTimeout(timer);
-  }, [expiresAtMs]);
+  }, [expiresAtMs, now]);
 
   async function refreshBinding() {
     try {
@@ -475,7 +489,7 @@ export function FeishuBindingPanel({ projectId }: { projectId: string }) {
   if (active) {
     const code = challenge?.code ?? null;
     const target = targets.find((option) => option.chatId === selectedChatId);
-    const restartChatId = selectedChatId || targets[0]?.chatId || "";
+    const restartChatId = selectedChatId;
     return (
       <SettingsSection
         title="飞书接入"
@@ -500,7 +514,7 @@ export function FeishuBindingPanel({ projectId }: { projectId: string }) {
               {code}
             </p>
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
-              {challengeRemainingLabel(active.expiresAtMs, Date.now())}
+              {challengeRemainingLabel(active.expiresAtMs, now)}
               {target && ` · 目标：${targetOptionLabel(target)}`}
             </p>
           </>
@@ -511,11 +525,11 @@ export function FeishuBindingPanel({ projectId }: { projectId: string }) {
               确认码只在发起时显示一次，如果没有记下，请重新发起。
             </p>
             <p className="mt-2 text-xs leading-6 text-muted-foreground">
-              {challengeRemainingLabel(active.expiresAtMs, Date.now())}
+              {challengeRemainingLabel(active.expiresAtMs, now)}
             </p>
           </>
         )}
-        {challenge === null && targets.length > 0 && (
+        {(expired || challenge === null) && targets.length > 0 && (
           <div className="mt-4">
             <TargetSelect
               label="重新发起的对象"
