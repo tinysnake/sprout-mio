@@ -11,6 +11,12 @@ import type {
   WebhookRule,
 } from "../../contracts/automation";
 import type { Chat } from "../../contracts/chat";
+import {
+  formatUtcOffset,
+  MAX_UTC_OFFSET,
+  MIN_UTC_OFFSET,
+  parseUtcOffset,
+} from "../../domain/timezone";
 import { listAgentProfilesFn, listProjectMembersFn } from "../../server/functions/agent";
 import { listChatMembersFn, listChatsFn } from "../../server/functions/chat";
 import {
@@ -44,7 +50,7 @@ const initial = {
   instruction: "",
   enabled: false,
   expression: "0 9 * * *",
-  timezone: "UTC",
+  timezone: "current",
   kind: "dm_agent",
   chatId: "",
   agentProfileId: "",
@@ -78,7 +84,9 @@ function actionLabel(action: AutomationAction, agents: AgentProfile[], chats: Ch
 }
 function nextTime(rule: CronRule) {
   if (!rule.nextAt) return "停用，无下次时间";
-  return `${new Date(rule.nextAt).toLocaleString("zh-CN", { timeZone: rule.timezone })}（${rule.timezone}）`;
+  const offset = parseUtcOffset(rule.timezone);
+  const date = new Date(new Date(rule.nextAt).getTime() + (offset ?? 0) * 60_000);
+  return `${date.toLocaleString("zh-CN", { timeZone: offset === null ? rule.timezone : "UTC" })}（${offset === null ? rule.timezone : `UTC${rule.timezone}`}）`;
 }
 export function AutomationSettings({ projectId, kind }: { projectId: string; kind: Kind }) {
   const [rules, setRules] = useState<Rule[]>([]);
@@ -196,27 +204,9 @@ export function AutomationSettings({ projectId, kind }: { projectId: string; kin
   );
 }
 
-const namedZones = [
-  "Asia/Shanghai",
-  "Asia/Tokyo",
-  "Asia/Kolkata",
-  "Asia/Singapore",
-  "Asia/Dubai",
-  "Europe/London",
-  "Europe/Paris",
-  "Europe/Berlin",
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "America/Sao_Paulo",
-  "Australia/Sydney",
-  "Pacific/Auckland",
-];
-const offsetZones = Array.from({ length: 27 }, (_, i) => i - 12).map((offset) => ({
-  value: offset === 0 ? "UTC" : `Etc/GMT${offset > 0 ? "-" : "+"}${Math.abs(offset)}`,
-  label: offset === 0 ? "UTC" : `UTC${offset > 0 ? "+" : "−"}${Math.abs(offset)}`,
-}));
+const offsetZones = Array.from({ length: (MAX_UTC_OFFSET - MIN_UTC_OFFSET) / 15 + 1 }, (_, i) =>
+  formatUtcOffset(MIN_UTC_OFFSET + i * 15),
+);
 export function AutomationEditor({
   projectId,
   kind,
@@ -240,6 +230,10 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
   const [selected, setSelected] = useState<Rule | null>(null);
   const [bootSucceeded, setBootSucceeded] = useState(false);
   const [draft, setDraft] = useState<Draft>(initial);
+  const [currentTimezone, setCurrentTimezone] = useState<string | null>(null);
+  useEffect(() => {
+    setCurrentTimezone(formatUtcOffset(-new Date().getTimezoneOffset()));
+  }, []);
   const [chats, setChats] = useState<Chat[]>([]);
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -375,7 +369,8 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
       (draft.kind === "dm_agent" || chatAgentIds.includes(a.id)),
   );
   const dirty = JSON.stringify(draft) !== JSON.stringify(selected ? edit(selected) : initial);
-  const ready = bootSucceeded && !loading && (!ruleId || selected !== null);
+  const ready =
+    bootSucceeded && !loading && currentTimezone !== null && (!ruleId || selected !== null);
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!ready || pending || uncertain) return;
@@ -388,6 +383,10 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
         : draft.kind === "group_owner"
           ? { kind: "group_owner", chatId: draft.chatId }
           : { kind: "group_agent", chatId: draft.chatId, agentProfileId: draft.agentProfileId };
+    const timezone =
+      draft.timezone === "current"
+        ? formatUtcOffset(-new Date().getTimezoneOffset())
+        : draft.timezone;
     const data = {
       projectId,
       name: draft.name,
@@ -403,13 +402,13 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
                 data: {
                   ...data,
                   expression: draft.expression,
-                  timezone: draft.timezone,
+                  timezone,
                   ruleId: selected.id,
                   expectedRevision: selected.revision,
                 },
               })
             : await createCronRuleFn({
-                data: { ...data, expression: draft.expression, timezone: draft.timezone },
+                data: { ...data, expression: draft.expression, timezone },
               })
           : selected
             ? await updateWebhookRuleFn({
@@ -608,8 +607,9 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
                                 表示工作日 09:00，*/15 * * * * 表示每 15 分钟。
                               </p>
                               <p>
-                                日和星期都指定时，任一匹配即执行（OR）。所有时间按所选时区计算；命名时区遵循夏令时，UTC
-                                偏移保持固定。不补跑离线时段，已有活跃输入时跳过。
+                                日和星期都指定时，任一匹配即执行（OR）。当前时区在保存时冻结为浏览器的
+                                UTC
+                                偏移，之后不随夏令时变化；已保存的命名时区仍遵循夏令时。不补跑离线时段，已有活跃输入时跳过。
                               </p>
                             </Popover.Popup>
                           </Popover.Positioner>
@@ -618,30 +618,29 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
                     </div>
                   </div>
                   <label className="block min-w-0 space-y-1 text-sm">
-                    时区（IANA）
+                    时区
                     <select
-                      aria-label="时区（IANA）"
+                      aria-label="时区"
                       className={field}
                       value={draft.timezone}
                       onChange={(e) => setDraft({ ...draft, timezone: e.target.value })}
                     >
+                      <option value="current" disabled={currentTimezone === null}>
+                        {currentTimezone === null
+                          ? "当前时区（读取中…）"
+                          : `当前时区（UTC${currentTimezone}）`}
+                      </option>
                       <optgroup label="固定 UTC 偏移">
-                        {offsetZones.map((z) => (
-                          <option key={z.value} value={z.value}>
-                            {z.label}
+                        {offsetZones.map((zone) => (
+                          <option key={zone} value={zone}>
+                            UTC{zone}
                           </option>
                         ))}
                       </optgroup>
-                      <optgroup label="常用地区（遵循当地夏令时）">
-                        {namedZones.map((z) => (
-                          <option key={z} value={z}>
-                            {z}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {!offsetZones.some((z) => z.value === draft.timezone) &&
-                        !namedZones.includes(draft.timezone) && (
-                          <option value={draft.timezone}>{draft.timezone}（已保存）</option>
+                      {selected &&
+                        "timezone" in selected &&
+                        !offsetZones.includes(selected.timezone) && (
+                          <option value={selected.timezone}>{selected.timezone}（已保存）</option>
                         )}
                     </select>
                   </label>
