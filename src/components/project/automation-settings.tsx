@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { Popover } from "@base-ui/react/popover";
 import { ChevronRight, CircleHelp } from "lucide-react";
 import type { AgentProfile, ProjectMember } from "../../contracts/agent";
 import type {
@@ -571,39 +572,44 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
                     <label htmlFor="cron-expression" className="block text-sm">
                       Cron 表达式
                     </label>
-                    <div className="relative">
+                    <div className="flex items-center gap-1">
                       <input
                         id="cron-expression"
                         required
-                        className={`${field} pr-12 font-mono`}
+                        className={`${field} flex-1 font-mono`}
                         value={draft.expression}
                         onChange={(e) => setDraft({ ...draft, expression: e.target.value })}
                       />
-                      <details className="absolute right-1 top-1 text-xs text-muted-foreground">
-                        <summary
+                      <Popover.Root>
+                        <Popover.Trigger
+                          type="button"
                           aria-label="Cron 语法帮助"
-                          className="grid size-9 cursor-pointer list-none place-items-center rounded-control hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden"
+                          className="grid size-9 shrink-0 cursor-pointer list-none place-items-center rounded-control border border-transparent text-muted-foreground hover:border-input focus-visible:outline-2 focus-visible:outline-ring max-desktop:size-11"
                         >
                           <CircleHelp size={18} aria-hidden="true" />
-                        </summary>
-                        <div
-                          className="absolute right-0 top-10 z-20 w-72 max-w-[calc(100vw-3rem)] space-y-2 rounded-container border border-border bg-background p-4 leading-6 shadow-md"
-                          data-testid="cron-help"
-                        >
-                          <p>
-                            五段依次为：分钟（0–59）、小时（0–23）、日（1–31）、月（1–12）、星期（0–7，0
-                            / 7 为周日）。
-                          </p>
-                          <p>
-                            * 表示任意；逗号列举，连字符表示范围，/ 表示步长。例如 0 9 * * 1-5
-                            表示工作日 09:00，*/15 * * * * 表示每 15 分钟。
-                          </p>
-                          <p>
-                            日和星期都指定时，任一匹配即执行（OR）。所有时间按所选时区计算；命名时区遵循夏令时，UTC
-                            偏移保持固定。不补跑离线时段，已有活跃输入时跳过。
-                          </p>
-                        </div>
-                      </details>
+                        </Popover.Trigger>
+                        <Popover.Portal>
+                          <Popover.Positioner side="bottom" align="end" sideOffset={6} className="z-50">
+                            <Popover.Popup
+                              className="w-72 max-w-[calc(100vw-3rem)] space-y-2 rounded-container border border-border bg-popover p-4 leading-6 text-popover-foreground shadow-md outline-none"
+                              data-testid="cron-help"
+                            >
+                              <p>
+                                五段依次为：分钟（0–59）、小时（0–23）、日（1–31）、月（1–12）、星期（0–7，0
+                                / 7 为周日）。
+                              </p>
+                              <p>
+                                * 表示任意；逗号列举，连字符表示范围，/ 表示步长。例如 0 9 * * 1-5
+                                表示工作日 09:00，*/15 * * * * 表示每 15 分钟。
+                              </p>
+                              <p>
+                                日和星期都指定时，任一匹配即执行（OR）。所有时间按所选时区计算；命名时区遵循夏令时，UTC
+                                偏移保持固定。不补跑离线时段，已有活跃输入时跳过。
+                              </p>
+                            </Popover.Popup>
+                          </Popover.Positioner>
+                        </Popover.Portal>
+                      </Popover.Root>
                     </div>
                   </div>
                   <label className="block min-w-0 space-y-1 text-sm">

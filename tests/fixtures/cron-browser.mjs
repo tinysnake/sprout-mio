@@ -48,17 +48,25 @@ export async function verifyCronBrowser({
   const expressionBounds = await ui.getByLabel("Cron 表达式").boundingBox();
   assert(helpBounds && expressionBounds);
   assert(
-    helpBounds.x >= expressionBounds.x &&
-      helpBounds.x + helpBounds.width <= expressionBounds.x + expressionBounds.width,
-    "cron help fits inside the expression field",
+    Math.abs(
+      helpBounds.y + helpBounds.height / 2 - (expressionBounds.y + expressionBounds.height / 2),
+    ) <= 2,
+    "cron help button is vertically centred with the expression field",
   );
   assert(
-    Math.abs(helpBounds.y - expressionBounds.y) < expressionBounds.height,
-    "cron help sits beside expression",
+    helpBounds.x >= expressionBounds.x + expressionBounds.width,
+    "cron help button sits after the expression field, not inside it",
   );
   assert.equal((await ui.getByLabel("Cron 语法帮助").innerText()).trim(), "");
   await ui.getByLabel("Cron 语法帮助").click();
-  assert((await ui.getByTestId("cron-help").innerText()).includes("OR"));
+  await page.getByTestId("cron-help").waitFor();
+  assert((await page.getByTestId("cron-help").innerText()).includes("OR"));
+  await ui.getByLabel("规则名称", { exact: true }).click();
+  await page.getByTestId("cron-help").waitFor({ state: "hidden" });
+  await ui.getByLabel("Cron 语法帮助").click();
+  await page.getByTestId("cron-help").waitFor();
+  await page.keyboard.press("Escape");
+  await page.getByTestId("cron-help").waitFor({ state: "hidden" });
   await ui
     .getByLabel("指令", { exact: true })
     .fill("CRON_BROWSER @HookAlpha /skill:danger. Reply briefly.");

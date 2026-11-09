@@ -14,7 +14,7 @@ import type { AppError, AppResult } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
-import { AssistantPanel } from "./assistant-panel";
+import { AssistantPanelProvider, AssistantPendingBar, AssistantWatchMenu } from "./assistant-panel";
 import type { ChatHistory } from "./chat-thread";
 import { useChatWindow } from "./use-chat-window";
 import type { ChatLiveFacts } from "./use-chat-live";
@@ -220,7 +220,10 @@ export function ChatPane({
     }
   }
 
+  const assistantActive = Boolean(profile?.ok && profile.data.purpose === "assistant");
+
   return (
+    <AssistantPanelProvider key={chat.id} chatId={chat.id} active={assistantActive}>
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <ActionOutcomeNotice
         action="发送消息"
@@ -263,11 +266,8 @@ export function ChatPane({
           </Link>
         }
         chat={chat}
-        assistantPanel={
-          profile?.ok && profile.data.purpose === "assistant" ? (
-            <AssistantPanel chatId={chat.id} />
-          ) : undefined
-        }
+        assistantWatch={<AssistantWatchMenu />}
+        assistantPending={<AssistantPendingBar />}
         agentName={agentName}
         members={mentionMembers}
         profile={session.kind === "dm" ? profile : null}
@@ -318,5 +318,6 @@ export function ChatPane({
         }
       />
     </div>
+    </AssistantPanelProvider>
   );
 }

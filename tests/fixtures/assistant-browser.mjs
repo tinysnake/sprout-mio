@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { writeFileSync } from "node:fs";
+import Database from "better-sqlite3";
 export async function verifyAssistantBrowser({
   page,
   db,
@@ -115,14 +116,19 @@ export async function verifyAssistantBrowser({
       .get(source.id).interval_seconds,
     120,
   );
+  await page.getByTestId("assistant-watch-menu").click();
   await page
-    .getByTestId("assistant-panel")
+    .getByTestId("assistant-watch-list")
     .getByText("每 2 分钟汇报一次", { exact: true })
     .waitFor();
   assert.equal(await page.getByLabel("通知间隔", { exact: true }).count(), 0);
-  assert.equal(await page.getByTestId("assistant-panel").getByRole("combobox").count(), 0);
+  assert.equal(await page.getByTestId("assistant-watch-list").getByRole("combobox").count(), 0);
+  await page.getByTestId("assistant-watch-menu").click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="assistant-watch-list"]') === null,
+  );
   pass(
-    "tool-requested per-watch interval survives Human activation and global interval editor is absent",
+    "tool-requested per-watch interval survives Human activation, lives in the header watch menu, and global interval editor is absent",
   );
   assert.equal(
     await page.getByTestId("assistant-proposal-summary").first().innerText(),
@@ -148,11 +154,30 @@ export async function verifyAssistantBrowser({
   await page.screenshot({ path: join(directory, "assistant-pending-desktop.png"), fullPage: true });
   const desktopViewport = page.viewportSize();
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobilePanel = await page.getByTestId("assistant-composer-panel").boundingBox();
-  const mobileComposer = await page.locator("textarea").boundingBox();
-  assert(mobilePanel && mobileComposer && mobilePanel.y + mobilePanel.height <= mobileComposer.y);
+  await page.waitForFunction(
+    () =>
+      document.querySelector('[data-testid="assistant-composer-panel"]') !== null &&
+      document.querySelector("textarea") !== null,
+  );
+  const mobilePlacement = await page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="assistant-composer-panel"]');
+    const composer = document.querySelector("textarea");
+    return {
+      panelBottom: panel ? panel.getBoundingClientRect().bottom : null,
+      composerTop: composer ? composer.getBoundingClientRect().top : null,
+      composerBottom: composer ? composer.getBoundingClientRect().bottom : null,
+    };
+  });
   assert(
-    mobileComposer.y + mobileComposer.height < 844,
+    mobilePlacement.panelBottom !== null && mobilePlacement.composerTop !== null,
+    "mobile pending panel and composer are both present",
+  );
+  assert(
+    mobilePlacement.panelBottom <= mobilePlacement.composerTop,
+    "proposal controls sit above composer on mobile",
+  );
+  assert(
+    mobilePlacement.composerBottom !== null && mobilePlacement.composerBottom < 844,
     "pending proposal leaves mobile composer visible",
   );
   await page.screenshot({ path: join(directory, "assistant-pending-mobile.png"), fullPage: true });
@@ -164,6 +189,14 @@ export async function verifyAssistantBrowser({
     delayMs: 1200,
   });
   await page.getByRole("button", { name: "确认并提交工作" }).click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="assistant-composer-panel"]') === null,
+  );
+  assert.equal(
+    await page.getByTestId("assistant-composer-panel").count(),
+    0,
+    "confirming the only pending proposal removes the composer-adjacent panel entirely",
+  );
   const receipt = await call("assistantActionFn", {
     action: "confirm",
     chatId: source.id,
@@ -463,19 +496,41 @@ export async function verifyAssistantBrowser({
     "active assistant Human steer carries newly arrived native facts into actual model context with a per-input receipt and immutable initial snapshot",
   );
   await page.reload({ waitUntil: "networkidle" });
-  await page.getByText("Assistant 工作与关注", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByTestId("assistant-composer-panel").count(),
+    0,
+    "resolved proposal and handled watch decision leave no placeholder above the composer",
+  );
+  assert.equal(
+    await page.getByText("Assistant 工作与关注", { exact: true }).count(),
+    0,
+    "history cards are removed from the composer area instead of collapsed",
+  );
   await page.locator(`[data-testid="assistant-run-link"][href*="${run.id}"]`).waitFor();
+  await page.getByTestId("assistant-watch-menu").waitFor();
   await page.screenshot({ path: join(directory, "assistant-desktop.png"), fullPage: true });
-  await page.getByText("Assistant 工作与关注", { exact: true }).scrollIntoViewIfNeeded();
+  await page.getByTestId("assistant-watch-menu").click();
+  await page.getByTestId("assistant-watch-list").waitFor();
   await page.screenshot({
     path: join(directory, "assistant-desktop-controls.png"),
     fullPage: true,
   });
+  await page.getByTestId("chat-title").click();
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="assistant-watch-list"]') === null,
+  );
+  await page.getByTestId("assistant-watch-menu").click();
+  await page.getByTestId("assistant-watch-list").waitFor();
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="assistant-watch-list"]') === null,
+  );
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByText("Assistant 工作与关注", { exact: true }).scrollIntoViewIfNeeded();
+  await page.getByTestId("assistant-watch-menu").click();
+  await page.getByTestId("assistant-watch-list").waitFor();
   await page.screenshot({ path: join(directory, "assistant-mobile.png"), fullPage: true });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
-  await page.getByRole("button", { name: "取消关注" }).click();
+  await page.getByTestId("assistant-watch-cancel").first().click();
   await until(
     () =>
       db.prepare("SELECT revoked_at FROM assistant_watch WHERE assistant_chat_id=?").get(source.id)
@@ -494,12 +549,22 @@ export async function verifyAssistantBrowser({
     await call("createDirectChatFn", { projectId: project.id, agentProfileId: otherHelper.id })
   ).chat;
   await page.reload({ waitUntil: "networkidle" });
-  await page.locator(`[data-proposal-id="${proposal.id}"] > summary`).click();
-  await page
-    .getByTestId("assistant-proposal-summary")
-    .filter({ hasText: "请回复一句 hi。" })
-    .first()
-    .waitFor();
+  assert.equal(
+    await page.getByTestId("assistant-watch-menu").count(),
+    0,
+    "cancelled watch leaves no header entry",
+  );
+  assert.equal(
+    await page.getByRole("button", { name: /确认持续关注/ }).count(),
+    0,
+    "cancelled watch must not revive its old confirmation request",
+  );
+  assert.equal(
+    await page.getByTestId("assistant-composer-panel").count(),
+    0,
+    "resolved proposals stay out of the composer area after a reload",
+  );
+  await page.locator(`[data-testid="assistant-run-link"][href*="${run.id}"]`).waitFor();
   const held = Promise.withResolvers();
   const release = Promise.withResolvers();
   const delivered = Promise.withResolvers();
@@ -524,18 +589,19 @@ export async function verifyAssistantBrowser({
     await page.waitForURL(`**/chats/${otherSource.id}`);
     await page.getByTestId("chat-title").filter({ hasText: otherHelper.name }).waitFor();
     await page.waitForFunction(
-      (text) =>
-        !document.querySelector('[data-testid="assistant-panel"]')?.textContent?.includes(text),
-      proposal.body,
+      () => document.querySelector('[data-testid="assistant-composer-panel"]') === null,
+      undefined,
+      { timeout: 5000 },
     );
     release.resolve();
     await delivered.promise;
     await page.evaluate(
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
-    assert(
-      !(await page.getByTestId("assistant-panel").textContent()).includes(proposal.body),
-      "late panel response from another DM must not expose its proposal in the current DM",
+    assert.equal(
+      await page.getByTestId("assistant-composer-panel").count(),
+      0,
+      "late panel response from another DM must not expose its pending items in the current DM",
     );
   } finally {
     release.resolve();
@@ -546,6 +612,72 @@ export async function verifyAssistantBrowser({
   await page.waitForURL(`**/chats/${source.id}`);
   await page.locator(`[data-testid="assistant-run-link"][href*="${run.id}"]`).waitFor();
   pass("delayed assistant panel responses remain scoped to their original DM");
+  // 传进来的 db 是只读句柄；下面两个断言需要直接落库，另开一个可写连接指向同一个 fixture 私有库。
+  const writable = new Database(join(directory, "private.sqlite"));
+  writable.pragma("busy_timeout = 5000");
+  // 关注对象名必须来自频道的展示名。公共频道没有 title，也不能回落到成员名。
+  // 期望值等于 contracts 里的 PUBLIC_CHANNEL_DISPLAY_TITLE；此处不导入 TS 以保持纯 .mjs。
+  const publicChannel = db
+    .prepare("SELECT id FROM chat WHERE project_id=? AND kind='public_channel'")
+    .get(project.id);
+  assert(publicChannel, "project has a public channel");
+  writable
+    .prepare(
+      "INSERT INTO assistant_watch (id,assistant_chat_id,target_project_id,target_chat_id,consented_by,interval_seconds,consented_at) VALUES (?,?,?,?,?,?,?)",
+    ).run(
+    "watch-public-fixture",
+    source.id,
+    project.id,
+    publicChannel.id,
+    proposal.human_id,
+    60,
+    Date.now(),
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByTestId("assistant-watch-menu").click();
+  await page
+    .getByTestId("assistant-watch-list")
+    .getByText("公共频道（Project 范围）", { exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByTestId("assistant-watch-list").getByText("Amenda", { exact: true }).count(),
+    0,
+    "a titleless public channel watch must not fall back to a member name",
+  );
+  await page.keyboard.press("Escape");
+  pass("public channel watch shows the channel display name, not a member name");
+  // 取消后重新发起：新的 watch 请求（新的决策 id）必须仍可确认，说明 UI 没有把请求永久压住。
+  writable
+    .prepare(
+      "INSERT INTO assistant_event (id,assistant_chat_id,event_key,fact,created_at,attempts) VALUES (?,?,?,?,?,0)",
+    ).run(
+    "event-watch-reissue-fixture",
+    source.id,
+    "watch-reissue-fixture",
+    JSON.stringify({
+      kind: "decision",
+      targetProjectId: project.id,
+      targetChatId: dm.id,
+      body: "重新请求关注这个对话。",
+      sampledAt: new Date().toISOString(),
+      watchIntent: true,
+      intervalSeconds: 300,
+    }),
+    Date.now(),
+  );
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /确认持续关注/ }).click();
+  await until(
+    () =>
+      db
+        .prepare(
+          "SELECT * FROM assistant_watch WHERE assistant_chat_id=? AND target_chat_id=? AND revoked_at IS NULL",
+        )
+        .get(source.id, dm.id),
+    "re-issued watch request can be confirmed",
+  );
+  pass("a freshly issued watch request still confirms after an earlier cancellation");
+  writable.close();
   const link = page.locator(`[data-testid="assistant-run-link"][href*="${run.id}"]`);
   await link.click();
   await page.waitForURL(`**/chats/${dm.id}?run=${run.id}#selected-run-${run.id}`);

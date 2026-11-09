@@ -1,40 +1,108 @@
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { Popover } from "@base-ui/react/popover";
+import { Eye } from "lucide-react";
 import { assistantActionFn } from "../../server/functions/assistant";
 import type { assistantPanel } from "../../domain/assistant";
 import { assistantDuration, assistantTextPreview } from "../../lib/assistant-display";
 import { Button } from "../ui/button";
+import { Icon } from "../ui/icon";
+
 type Panel = ReturnType<typeof assistantPanel>;
-export function AssistantPanel({ chatId }: { chatId: string }) {
-  return <ChatAssistantPanel key={chatId} chatId={chatId} />;
-}
-function ChatAssistantPanel({ chatId }: { chatId: string }) {
+/** 与 assistantActionFn 的 validator 同形；只列本面板会发起的动作。 */
+type ActionData =
+  | { action: "panel"; chatId: string }
+  | { action: "confirm" | "revoke"; chatId: string; proposalId: string }
+  | {
+      action: "watch";
+      chatId: string;
+      targetProjectId: string;
+      targetChatId: string;
+      active: boolean;
+      intervalSeconds?: number;
+      /** 确认某条 watch 请求时回传该决策 id，避免旧意图被重新激活。 */
+      eventId?: string;
+    };
+
+type AssistantController = {
+  chatId: string;
+  panel: Panel | null;
+  error: string;
+  pending: boolean;
+  /** 本页刚确认过的 watch 决策 id：确认后立即收起按钮，不等下一次轮询。 */
+  handledDecisions: ReadonlySet<string>;
+  act: (data: ActionData, decisionId?: string) => Promise<void>;
+};
+
+const AssistantContext = createContext<AssistantController | null>(null);
+
+const watchPopupClass =
+  "w-72 max-w-[calc(100vw-3rem)] rounded-container border border-border bg-popover p-2 text-popover-foreground shadow-lg outline-none";
+
+/**
+ * Assistant 会话的共享状态。头部关注菜单与输入区上方的待处理条渲染在同一棵
+ * 子树里，各自只声明自己关心的那部分；轮询、提交与错误只在这里维护一份。
+ */
+export function AssistantPanelProvider({
+  chatId,
+  active,
+  children,
+}: {
+  chatId: string;
+  active: boolean;
+  children: ReactNode;
+}) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [handledDecisions, setHandledDecisions] = useState<ReadonlySet<string>>(() => new Set());
+
   async function refresh() {
     const result = await assistantActionFn({ data: { action: "panel", chatId } });
     if (result.ok && "proposals" in result.data) setPanel(result.data);
     else if (!result.ok) setError(result.error.message);
   }
+
   useEffect(() => {
-    let active = true;
+    if (!active) return;
+    let live = true;
     const tick = async () => {
-      if (active) await refresh();
+      if (live) await refresh();
     };
     void tick();
     const timer = setInterval(() => void tick(), 2000);
     return () => {
-      active = false;
+      live = false;
       clearInterval(timer);
     };
-  }, [chatId]);
-  async function act(data: NonNullable<Parameters<typeof assistantActionFn>[0]>["data"]) {
+  }, [active, chatId]);
+
+  async function act(data: ActionData, decisionId?: string) {
     if (pending) return;
     setPending(true);
     setError("");
     try {
       const result = await assistantActionFn({ data });
       if (!result.ok) setError(result.error.message);
+      else {
+        const extra = new Set<string>();
+        if (decisionId !== undefined) extra.add(decisionId);
+        // 取消关注后，同一目标的旧确认请求立即收起；重新发起会带上新的决策 id，仍会显示。
+        if (data.action === "watch" && data.active === false) {
+          for (const event of panel?.decisions ?? []) {
+            if (event.fact.watchIntent && event.fact.targetChatId === data.targetChatId) {
+              extra.add(event.id);
+            }
+          }
+        }
+        if (extra.size > 0) {
+          setHandledDecisions((prev) => {
+            const next = new Set(prev);
+            for (const id of extra) next.add(id);
+            return next;
+          });
+        }
+      }
       await refresh();
     } catch {
       setError("请求失败，请重试；重试不会重复开始工作。");
@@ -42,52 +110,141 @@ function ChatAssistantPanel({ chatId }: { chatId: string }) {
       setPending(false);
     }
   }
-  const proposals = [...(panel?.proposals ?? [])].sort(
-    (a, b) =>
-      Number(b.status === "pending" && !b.expired) - Number(a.status === "pending" && !a.expired),
-  );
+
+  const value: AssistantController | null = active
+    ? { chatId, panel, error, pending, handledDecisions, act }
+    : null;
+  return <AssistantContext.Provider value={value}>{children}</AssistantContext.Provider>;
+}
+
+/**
+ * 聊天顶部的关注入口：只在存在活跃关注时出现，按钮展开当前关注对象、间隔与取消操作。
+ * 关注名沿用面板返回的 `targetLabel`（频道名、DM 名由读模型裁定），前端不再自己拼。
+ */
+export function AssistantWatchMenu() {
+  const controller = useContext(AssistantContext);
+  const [open, setOpen] = useState(false);
+  if (controller === null) return null;
+  const { chatId, panel, pending, act } = controller;
+  const watches = panel?.watches ?? [];
+  if (watches.length === 0) return null;
   return (
-    <section
-      aria-label="Assistant 工作与关注"
-      className="max-h-64 space-y-3 overflow-y-auto overscroll-contain text-xs"
-      data-testid="assistant-panel"
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger
+        type="button"
+        data-testid="assistant-watch-menu"
+        aria-label={`正在关注 ${watches.length} 个对象`}
+        className="inline-flex min-h-7 shrink-0 items-center justify-center gap-1.75 rounded-control border border-transparent bg-transparent px-2 text-[0.6875rem] font-medium text-muted-foreground select-none hover:border-input focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-desktop:min-h-11"
+      >
+        <Icon as={Eye} />
+        <span className="max-desktop:hidden">关注 {watches.length}</span>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner side="bottom" align="end" sideOffset={6} className="z-50">
+          <Popover.Popup className={watchPopupClass}>
+            <Popover.Title className="px-2 py-1 text-[11px] text-muted-foreground">
+              正在关注
+            </Popover.Title>
+            <ul data-testid="assistant-watch-list" className="space-y-0.5">
+              {watches.map((watch) => (
+                <li key={watch.id} className="flex items-center gap-2 rounded-control px-2 py-1.5">
+                  <a
+                    href={`/projects/${watch.targetProjectId}/chats/${watch.targetChatId}`}
+                    title={watch.targetLabel}
+                    className="min-w-0 flex-1 truncate text-xs underline decoration-input underline-offset-3 hover:decoration-foreground"
+                  >
+                    {watch.targetLabel}
+                  </a>
+                  <span className="shrink-0 text-[10px] whitespace-nowrap text-muted-foreground">
+                    每 {assistantDuration(watch.intervalSeconds)}汇报一次
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="assistant-watch-cancel"
+                    disabled={pending}
+                    onClick={() =>
+                      void act({
+                        action: "watch",
+                        chatId,
+                        targetProjectId: watch.targetProjectId,
+                        targetChatId: watch.targetChatId,
+                        active: false,
+                      })
+                    }
+                  >
+                    取消关注
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+/**
+ * 输入区上方的待处理条：只渲染未过期的待确认 proposal 与尚未处理的 watch 确认请求；
+ * 两者都没有（也没有错误）时整块不渲染，不留下边框与内边距占位。已提交/被拒/
+ * 已撤销/已过期的历史不在这里折叠，只留在消息流里可追溯。
+ */
+export function AssistantPendingBar() {
+  const controller = useContext(AssistantContext);
+  if (controller === null) return null;
+  const { panel, error, pending, handledDecisions, act } = controller;
+  const chatId = controller.chatId;
+  const proposals = (panel?.proposals ?? []).filter(
+    (proposal) => proposal.status === "pending" && !proposal.expired,
+  );
+  const activeTargets = new Set((panel?.watches ?? []).map((watch) => watch.targetChatId));
+  const watchRequests = (panel?.decisions ?? []).filter(
+    (event) =>
+      event.fact.watchIntent &&
+      !handledDecisions.has(event.id) &&
+      !activeTargets.has(event.fact.targetChatId),
+  );
+  if (proposals.length === 0 && watchRequests.length === 0 && error.length === 0) return null;
+  return (
+    <div
+      data-testid="assistant-composer-panel"
+      className="shrink-0 border-t border-border bg-background px-6 py-3 max-desktop:px-3"
     >
-      <h3 className="font-medium">Assistant 工作与关注</h3>
-      {error && <p role="alert">{error}</p>}
-      {proposals.map((proposal) => (
-        <details
-          key={proposal.id}
-          data-proposal-id={proposal.id}
-          open={proposal.status === "pending" && !proposal.expired ? true : undefined}
-          className="rounded-control border border-border p-3"
-        >
-          <summary className="flex cursor-pointer flex-wrap items-center gap-2">
-            <span className="font-medium">交给</span>
-            <a
-              className="text-muted-foreground underline"
-              href={`/projects/${proposal.targetProjectId}/chats/${proposal.targetChatId}`}
-            >
-              {proposal.agentName}
-              {proposal.targetLabel !== proposal.agentName ? ` · ${proposal.targetLabel}` : ""}
-            </a>
-            <span className="text-muted-foreground">
-              {proposal.status === "pending" && proposal.expired
-                ? "已过期"
-                : { pending: "待确认", submitted: "已提交", rejected: "已拒绝", revoked: "已撤销" }[
-                    proposal.status
-                  ]}
-            </span>
-          </summary>
-          <div className="mt-2 space-y-2">
-            <p data-testid="assistant-proposal-summary" className="leading-relaxed">
-              {assistantTextPreview(proposal.body)}
-            </p>
-            <details className="text-muted-foreground">
-              <summary className="w-fit cursor-pointer">查看完整工作指令</summary>
-              <p className="mt-2 whitespace-pre-wrap break-words">{proposal.body}</p>
-            </details>
-            <div className="flex flex-wrap gap-2">
-              {proposal.status === "pending" && !proposal.expired && (
+      <section
+        aria-label="Assistant 工作与关注"
+        data-testid="assistant-panel"
+        className="max-h-64 space-y-3 overflow-y-auto overscroll-contain text-xs"
+      >
+        {error && <p role="alert">{error}</p>}
+        {proposals.map((proposal) => (
+          <details
+            key={proposal.id}
+            data-proposal-id={proposal.id}
+            open
+            className="rounded-control border border-border p-3"
+          >
+            <summary className="flex cursor-pointer flex-wrap items-center gap-2">
+              <span className="font-medium">交给</span>
+              <a
+                className="text-muted-foreground underline"
+                href={`/projects/${proposal.targetProjectId}/chats/${proposal.targetChatId}`}
+              >
+                {proposal.agentName}
+                {proposal.targetLabel !== proposal.agentName ? ` · ${proposal.targetLabel}` : ""}
+              </a>
+              <span className="text-muted-foreground">待确认</span>
+            </summary>
+            <div className="mt-2 space-y-2">
+              <p data-testid="assistant-proposal-summary" className="leading-relaxed">
+                {assistantTextPreview(proposal.body)}
+              </p>
+              <details className="text-muted-foreground">
+                <summary className="w-fit cursor-pointer">查看完整工作指令</summary>
+                <p className="mt-2 whitespace-pre-wrap break-words">{proposal.body}</p>
+              </details>
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -97,8 +254,6 @@ function ChatAssistantPanel({ chatId }: { chatId: string }) {
                 >
                   确认并提交工作
                 </Button>
-              )}
-              {["pending", "submitted"].includes(proposal.status) && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -106,34 +261,31 @@ function ChatAssistantPanel({ chatId }: { chatId: string }) {
                   disabled={pending}
                   onClick={() => void act({ action: "revoke", chatId, proposalId: proposal.id })}
                 >
-                  {proposal.status === "pending" ? "拒绝" : "撤销未投递输入"}
+                  拒绝
                 </Button>
-              )}
+              </div>
             </div>
-          </div>
-        </details>
-      ))}
-      {panel?.decisions
-        .filter(
-          (event) =>
-            event.fact.watchIntent &&
-            !panel.watches.some((watch) => watch.targetChatId === event.fact.targetChatId),
-        )
-        .map((event) => (
+          </details>
+        ))}
+        {watchRequests.map((event) => (
           <p key={event.id}>
             <Button
               variant="outline"
               size="sm"
               disabled={pending}
               onClick={() =>
-                void act({
-                  action: "watch",
-                  chatId,
-                  targetProjectId: event.fact.targetProjectId,
-                  targetChatId: event.fact.targetChatId,
-                  active: true,
-                  intervalSeconds: event.fact.intervalSeconds,
-                })
+                void act(
+                  {
+                    action: "watch",
+                    chatId,
+                    targetProjectId: event.fact.targetProjectId,
+                    targetChatId: event.fact.targetChatId,
+                    active: true,
+                    intervalSeconds: event.fact.intervalSeconds,
+                    eventId: event.id,
+                  },
+                  event.id,
+                )
               }
             >
               确认持续关注 {event.targetLabel}（每{" "}
@@ -141,37 +293,7 @@ function ChatAssistantPanel({ chatId }: { chatId: string }) {
             </Button>
           </p>
         ))}
-      {panel?.watches.map((watch) => (
-        <p key={watch.id}>
-          正在关注{" "}
-          <a
-            className="underline"
-            href={`/projects/${watch.targetProjectId}/chats/${watch.targetChatId}`}
-          >
-            {watch.targetLabel}
-          </a>
-          <span className="ml-2 text-muted-foreground">
-            每 {assistantDuration(watch.intervalSeconds)}汇报一次
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="ml-2"
-            disabled={pending}
-            onClick={() =>
-              void act({
-                action: "watch",
-                chatId,
-                targetProjectId: watch.targetProjectId,
-                targetChatId: watch.targetChatId,
-                active: false,
-              })
-            }
-          >
-            取消关注
-          </Button>
-        </p>
-      ))}
-    </section>
+      </section>
+    </div>
   );
 }

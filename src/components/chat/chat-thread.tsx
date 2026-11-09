@@ -118,7 +118,8 @@ export function ChatThread({
   onRestoreDraft,
   inputRef,
   titleEditor,
-  assistantPanel,
+  assistantWatch,
+  assistantPending,
   displayTitle,
   subtitle,
   kind,
@@ -163,7 +164,10 @@ export function ChatThread({
   inputRef?: Ref<HTMLTextAreaElement>;
   /** 重命名入口由容器注入：正式路由接 server function，演示接本地回调。 */
   titleEditor?: ReactNode;
-  assistantPanel?: ReactNode;
+  /** 会话头部的关注入口；无活跃关注时由组件自己返回 null。 */
+  assistantWatch?: ReactNode;
+  /** 输入区上方的待处理条；组件自身负责边框与内边距，无内容时不渲染。 */
+  assistantPending?: ReactNode;
   displayTitle?: string;
   subtitle?: string;
   kind?: ChatKind;
@@ -338,6 +342,7 @@ export function ChatThread({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {assistantWatch}
           {latestRun && <RunStatusBadge status={activeStatus ?? latestRun.status} />}
           <Button
             type="button"
@@ -502,14 +507,7 @@ export function ChatThread({
           </p>
         )}
       </div>
-      {assistantPanel && (
-        <div
-          className="shrink-0 border-t border-border bg-background px-6 py-3 max-desktop:px-3"
-          data-testid="assistant-composer-panel"
-        >
-          {assistantPanel}
-        </div>
-      )}
+      {assistantPending}
       {archived ? (
         <p
           data-testid="archived-notice"
