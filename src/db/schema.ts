@@ -2790,3 +2790,109 @@ export const mcpFrame = sqliteTable(
     check("mcp_frame_sent", sql`state NOT IN ('sent','acked') OR sent_at IS NOT NULL`),
   ],
 );
+
+export const feishuIdentitySlot = sqliteTable(
+  "feishu_identity_slot",
+  {
+    humanId: text("human_id")
+      .primaryKey()
+      .references(() => user.id),
+    revision: integer("revision").notNull().default(0),
+    appId: text("app_id"),
+    tenantKey: text("tenant_key"),
+    openId: text("open_id"),
+  },
+  (t) => [
+    uniqueIndex("feishu_identity_active_unique").on(t.appId, t.tenantKey, t.openId),
+    check("feishu_slot_revision", sql`${t.revision} >= 0`),
+    check(
+      "feishu_slot_identity",
+      sql`(${t.appId} IS NULL AND ${t.tenantKey} IS NULL AND ${t.openId} IS NULL) OR (${t.appId} IS NOT NULL AND ${t.tenantKey} IS NOT NULL AND ${t.openId} IS NOT NULL AND length(${t.appId}) > 0 AND length(${t.tenantKey}) > 0 AND length(${t.openId}) > 0)`,
+    ),
+  ],
+);
+
+export const feishuChallenge = sqliteTable(
+  "feishu_challenge",
+  {
+    hash: text("hash").primaryKey(),
+    humanId: text("human_id")
+      .notNull()
+      .references(() => feishuIdentitySlot.humanId),
+    revision: integer("revision").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    chatId: text("chat_id").notNull(),
+    expiresAtMs: integer("expires_at_ms").notNull(),
+    consumedAtMs: integer("consumed_at_ms"),
+  },
+  (t) => [
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+  ],
+);
+
+export const feishuRoute = sqliteTable(
+  "feishu_route",
+  {
+    id: text("id").primaryKey(),
+    humanId: text("human_id")
+      .notNull()
+      .references(() => feishuIdentitySlot.humanId),
+    revision: integer("revision").notNull(),
+    appId: text("app_id").notNull(),
+    tenantKey: text("tenant_key").notNull(),
+    openId: text("open_id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    chatId: text("chat_id").notNull(),
+    closedAtMs: integer("closed_at_ms"),
+  },
+  (t) => [
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    uniqueIndex("feishu_route_generation_unique").on(t.humanId, t.revision),
+    uniqueIndex("feishu_route_active_unique")
+      .on(t.humanId)
+      .where(sql`${t.closedAtMs} IS NULL`),
+  ],
+);
+
+export const feishuConnectionEpoch = sqliteTable(
+  "feishu_connection_epoch",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id").notNull(),
+    openedAtMs: integer("opened_at_ms").notNull(),
+    openedBy: text("opened_by", { enum: ["ready", "reconnected"] }).notNull(),
+    closedAtMs: integer("closed_at_ms"),
+  },
+  (t) => [
+    uniqueIndex("feishu_epoch_active_unique")
+      .on(t.appId)
+      .where(sql`${t.closedAtMs} IS NULL`),
+    check("feishu_epoch_reason", sql`${t.openedBy} IN ('ready','reconnected')`),
+  ],
+);
+
+export const feishuInboundReceipt = sqliteTable(
+  "feishu_inbound_receipt",
+  {
+    appId: text("app_id").notNull(),
+    platformMessageId: text("platform_message_id").notNull(),
+    routeId: text("route_id")
+      .notNull()
+      .references(() => feishuRoute.id),
+    epochId: text("epoch_id")
+      .notNull()
+      .references(() => feishuConnectionEpoch.id),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => message.id),
+    createdAtMs: integer("created_at_ms").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.appId, t.platformMessageId] }),
+    uniqueIndex("feishu_receipt_message_unique").on(t.messageId),
+  ],
+);
