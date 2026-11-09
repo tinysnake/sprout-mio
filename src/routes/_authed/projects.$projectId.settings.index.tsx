@@ -14,6 +14,7 @@ import { useMachineRelations } from "../../components/machine/use-machine-relati
 import { ProjectBasicInfoForm } from "../../components/project/project-basic-info-form";
 import { WebhookSettings } from "../../components/project/webhook-settings";
 import { CronSettings } from "../../components/project/cron-settings";
+import { FeishuBindingPanel } from "../../components/project/feishu-binding-panel";
 import { ProjectFacts } from "../../components/project/project-facts";
 import { SettingsSection } from "../../components/project/settings-section";
 import { ProjectConfigForm } from "../../components/project-config/project-config-form";
@@ -73,14 +74,16 @@ function ProjectSettingsPage() {
     return (
       <PageFrame
         title="Project settings"
-        description="管理当前 Project 的自动化规则。"
+        description="管理当前 Project 的自动化规则与飞书接入。"
         testId="project-settings-page"
       >
         <SettingsTabs projectId={projectId} tab={tab} />
         {tab === "webhooks" ? (
           <WebhookSettings key={projectId} projectId={projectId} />
-        ) : (
+        ) : tab === "cron" ? (
           <CronSettings key={projectId} projectId={projectId} />
+        ) : (
+          <FeishuBindingPanel key={projectId} projectId={projectId} />
         )}
       </PageFrame>
     );

@@ -16,6 +16,8 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/feishu-ingress.test.ts",
     "tests/feishu-runtime.test.ts",
     "tests/feishu-binding-view.test.ts",
+    "tests/feishu-targets.test.ts",
+    "tests/feishu-binding-copy.test.ts",
     "tests/feishu-server-boundary.test.ts",
     "tests/assistant-gateway.test.ts",
     "tests/cron-core.test.ts",

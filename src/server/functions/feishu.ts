@@ -7,6 +7,7 @@ import {
   feishuSwitchTargetInput,
   type FeishuBindingView,
   type FeishuChallengeView,
+  type FeishuTargetsView,
 } from "../../contracts/feishu-channel";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { AppResult, AppErrorCode } from "../../contracts/result";
@@ -208,6 +209,21 @@ export async function unbindFeishuBindingBoundary(
   });
 }
 
+export async function listFeishuTargetsBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<AppResult<FeishuTargetsView>> {
+  return feishuBoundary(headers, requestId, (deps, context) => {
+    const parsed = feishuBindingInput.safeParse(raw);
+    if (!parsed.success) return fail(toAppError(parsed.error, requestId));
+    return ok(
+      deps.view.buildFeishuTargetsView({ ctx: context, projectId: parsed.data.projectId }),
+      requestId,
+    );
+  });
+}
+
 export const getFeishuBindingFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
@@ -236,4 +252,10 @@ export const unbindFeishuBindingFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     unbindFeishuBindingBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const listFeishuTargetsFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    listFeishuTargetsBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );

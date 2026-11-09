@@ -111,6 +111,17 @@ export type FeishuBindingView = Readonly<{
   humanNeedsConfirmation: boolean;
 }>;
 
+/** 绑定页可选目标：当前 Human 在该 Project 拥有的助理私聊。 */
+export type FeishuTargetOption = Readonly<{
+  chatId: string;
+  chatTitle: string | null;
+  agentName: string;
+}>;
+
+export type FeishuTargetsView = Readonly<{
+  targets: FeishuTargetOption[];
+}>;
+
 /** 绑定页 RPC 的输入：Project 来自会话上下文，Human 身份永远由会话决定，不由调用方提交。 */
 export const feishuBindingInput = projectIdInput;
 

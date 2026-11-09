@@ -6,7 +6,7 @@ export function SettingsTabs({
   tab,
 }: {
   projectId: string;
-  tab: "general" | "webhooks" | "cron";
+  tab: "general" | "webhooks" | "cron" | "feishu";
 }) {
   return (
     <nav
@@ -18,6 +18,7 @@ export function SettingsTabs({
           { value: "general", label: "基础信息" },
           { value: "webhooks", label: "Webhooks" },
           { value: "cron", label: "定时任务" },
+          { value: "feishu", label: "飞书" },
         ] as const
       ).map((item) => (
         <Link
