@@ -83,3 +83,20 @@ Model the Domain 原则促使本轮将周期汇总建模为独立 watch window c
 本轮修订已集成为 `ffa2d61`。原 `http://127.0.0.1:3300` 预览已使用原数据库重启并完成 migration 0044；迁移前备份为 `.verify/human-review/run.JtVeWy/app.pre-round3-ffa2d61.sqlite`。59 条消息、3 个 Chat、2 个 Agent、2 条自动化规则、4 条历史关注以及 Project 行均逐行比对保持一致，外键检查通过。收据位于 `.verify/human-review/run.JtVeWy/round3-update.json`。
 
 原预览 DOM 复核确认无待确认内容时不渲染面板，Cron 帮助按钮在输入框之后，点击外部和 Escape 均关闭。实时 `preview_snapshot` 两次超时，因此未取得本次原预览截图；已实际查看通过门禁生成的桌面和 390px 手机截图。自用检查 tab 已关闭，原预览服务保留。Human 体验确认仍待反馈。
+
+## 第四轮反馈修订
+
+本轮处理语义总结、有效关注列表和拒绝关注请求。两个独立 worktree 分别实现 UI 和领域行为，父代理集成、修复独立审查发现并实际复验。以下约定取代第三轮“不调用助理模型生成摘要”的行为。
+
+- 有内容的 watch 窗口通过独立 Pi 模型调用归纳发生的事情、变化与待 Human 决策事项。沿用助理的模型与 effort，没有 session history、extensions 或 tools。原始窗口不可变保留在事件事实中，摘要单独持久化。模型失败明确提示失败；旧版通知明确标记旧记录，不自动补算或重发。
+- 总结 job 持久保存尝试、lease、fencing token 与结果，全局并发最多 2，子进程超时 90 秒、lease 120 秒、最多尝试 3 次。claim、生成结束与投递均重新核对有效关注和当前权限。投递前筛选已就绪事件，避免 100 条未完成总结挡住其他 DM 的 decision 或已完成摘要。
+- 标题栏始终显示“正在关注”的数量，手机也保留文字。完整列表显示目标名、私聊 / 群组 / 公共频道类型、Project、周期和取消操作；空列表显示“暂无关注”。长列表有独立滚动区域。
+- 待确认关注同时提供确认和拒绝。拒绝以 Human、助理 DM、准确 intent event 为范围持久保存，重复调用幂等，不会误停现有关注。失败保留重试，成功立即收起，刷新不复活；新的明确请求仍能确认。
+
+Model the Domain 原则促使原始窗口和异步模型结果分开建模。Boundary Discipline 原则促使权限在 claim、finish、delivery 三处重查。独立审查指出全局投递队列被未就绪总结阻塞，跨 DM 回归完成 RED→GREEN。Comment audit 的两行新增冗余注释已删除。
+
+父代理首次专项验证暴露共享测试遗留任务以及旧浏览器 fixture 未配置独立总结响应。已修复隔离和模型 fixture。手机即时测宽连续失败后按 Attack the Premise 原则记录 DOM 探针，确认 viewport 切换时控件短暂零宽，随后恢复为 92.14px；改为等待控件可见，不修改真实样式。Reject fixture 的请求释放等待 handler 完成后再 unroute，消除重复处理同一 route。
+
+最终实际 CI 通过，130 个文件、1170 个测试，runner 93.26 秒。assistant-core 与 p7-pi-inheritance 专项均通过；完整 assistant-browser 门禁通过，包含真实已安装 Pi、独立总结进入活跃助理 context、工具直接停止、Reject 刷新不复活、Group / Public Channel 元信息、新请求再次确认，以及独立 Pi 总结测试 3/3。付费模型调用为 0。Typecheck、check、build、文档检查和 diff check 通过，check 保留既有 warnings。
+
+最终浏览器证据位于集成 worktree 的 `.verify/assistant-1794230462872`，父代理实际查看桌面和 390px 手机截图。CI 记录为 `/tmp/sprout-round4-ci-final.result.json`，浏览器记录为 `/tmp/sprout-round4-browser-green.result.json`，队列回归为 `/tmp/sprout-round4-queue-red.log` 与 `/tmp/sprout-round4-queue-green.log`。Loopback 固定输出证明模型配置、隔离、摘要持久化及投递链路，不证明真实付费模型对闲聊、注入文本和复杂任务的语义质量。未重跑完整 107 项验证，不将四项已知 SDK / remote / deploy 基线问题标为修复。原预览更新与 Human 体验确认待后续记录。

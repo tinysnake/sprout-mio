@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db, sqlite } from "../db";
 import {
   agentInstance,
@@ -675,7 +675,17 @@ export function deliverAssistantEvents(now: Date) {
       const pending = db
         .select()
         .from(assistantEvent)
-        .where(and(isNull(assistantEvent.messageId), isNull(assistantEvent.suppressedAt)))
+        .where(
+          and(
+            isNull(assistantEvent.messageId),
+            isNull(assistantEvent.suppressedAt),
+            sql`(json_extract(${assistantEvent.fact}, '$.watchWindow') IS NULL OR EXISTS (
+              SELECT 1 FROM ${assistantWatchSummary}
+              WHERE ${assistantWatchSummary.eventId} = ${assistantEvent.id}
+                AND ${assistantWatchSummary.status} IN ('completed', 'failed')
+            ))`,
+          ),
+        )
         .orderBy(asc(assistantEvent.createdAt))
         .limit(100)
         .all();

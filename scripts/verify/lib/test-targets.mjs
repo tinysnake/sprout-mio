@@ -134,6 +134,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/worker-remote.test.ts",
   ],
   local: [
+    "tests/assistant-watch-summary-pi.test.ts",
     "tests/chat-skills-foundation.test.ts",
     "tests/chat-skills-delivery.test.ts",
     "tests/chat-skills-spans.test.ts",

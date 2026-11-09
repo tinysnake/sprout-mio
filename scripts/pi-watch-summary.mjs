@@ -25,13 +25,11 @@ export function watchSummaryInput(fact) {
                 detail: clip(r.activity.current.detail, 1000),
               }
             : null,
-          entries: r.activity.entries
-            .slice(-8)
-            .map((e) => ({
-              label: clip(e.label, 500),
-              detail: clip(e.detail, 1000),
-              status: e.status,
-            })),
+          entries: r.activity.entries.slice(-8).map((e) => ({
+            label: clip(e.label, 500),
+            detail: clip(e.detail, 1000),
+            status: e.status,
+          })),
         }
       : null,
   }));

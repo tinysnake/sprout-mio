@@ -196,6 +196,7 @@ export async function startModelFixture({
         assert(Buffer.byteLength(body) <= 4 * 1024 * 1024, "fixture request size");
       }
       const input = JSON.parse(body);
+      input.tools ??= [];
       const state = states.get(input.model);
       assert(state, "unexpected fixture model");
       requests++;
@@ -254,7 +255,8 @@ export async function startModelFixture({
           assert(encoded.includes(id), `actual next model context includes native source ${id}`);
       }
       if (!plan.started) {
-        assert(users.length > state.lastUserCount, "armed turn requires a NEW user message");
+        if (!plan.isolated)
+          assert(users.length > state.lastUserCount, "armed turn requires a NEW user message");
         assert.equal(
           latestUser,
           input.messages.length - 1,
@@ -327,7 +329,7 @@ export async function startModelFixture({
         };
       } else {
         delta = { role: "assistant", content: plan.reply };
-        state.lastUserCount = users.length;
+        if (!plan.isolated) state.lastUserCount = users.length;
         state.completed++;
         if (plan.repeat) {
           plan.started = false;

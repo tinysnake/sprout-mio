@@ -480,6 +480,14 @@ export async function verifyAssistantBrowser({
   );
   const windowDb = new Database(join(directory, "private.sqlite"));
   windowDb.pragma("busy_timeout = 5000");
+  fixture.arm("status", {
+    expectedUserPrefix: '{"window":',
+    expectedTools: [],
+    isolated: true,
+    queued: true,
+    steps: [],
+    reply: `${alpha.name} 已回复这次请求，目前没有需要 Human 决策的事项。`,
+  });
   windowDb
     .prepare(
       "UPDATE assistant_watch_cursor SET next_due_at=? WHERE watch_id IN (SELECT id FROM assistant_watch WHERE assistant_chat_id=? AND target_chat_id=? AND revoked_at IS NULL)",
@@ -587,9 +595,12 @@ export async function verifyAssistantBrowser({
     () => document.querySelector('[data-testid="assistant-watch-list"]') === null,
   );
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByTestId("assistant-watch-menu").waitFor({ state: "visible" });
   const mobileWatchLabel = await page.evaluate(() => {
     const trigger = document.querySelector('[data-testid="assistant-watch-menu"]');
-    const span = trigger?.querySelector("span");
+    const span = [...(trigger?.querySelectorAll("span") ?? [])].find(
+      (element) => element.childElementCount === 0 && element.textContent?.includes("正在关注"),
+    );
     if (!trigger || !span) return null;
     return {
       text: span.textContent ?? "",
@@ -733,6 +744,7 @@ export async function verifyAssistantBrowser({
   );
   const rejectGate = Promise.withResolvers();
   const rejectSeen = Promise.withResolvers();
+  const rejectContinued = Promise.withResolvers();
   let heldReject = false;
   const holdReject = async (route) => {
     const body = route.request().postData() ?? "";
@@ -744,6 +756,7 @@ export async function verifyAssistantBrowser({
     rejectSeen.resolve();
     await rejectGate.promise;
     await route.continue();
+    rejectContinued.resolve();
   };
   await page.route("**/_serverFn/**", holdReject);
   try {
@@ -752,6 +765,7 @@ export async function verifyAssistantBrowser({
     await until(() => rejectButton.isDisabled(), "reject disables while its request is pending");
   } finally {
     rejectGate.resolve();
+    if (heldReject) await rejectContinued.promise;
     await page.unroute("**/_serverFn/**", holdReject);
   }
   await until(

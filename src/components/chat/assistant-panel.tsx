@@ -9,14 +9,7 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 
 type Panel = ReturnType<typeof assistantPanel>;
-/**
- * 目标类型与 Project 名称由后端在 watch/决策 DTO 上补齐（targetKind / targetProjectName）。
- * 这里按可选字段消费：后端未提供时列表只少一行元信息，不影响关注与取消。
- */
-type WatchTargetMeta = {
-  targetKind?: "dm" | "group" | "public_channel";
-  targetProjectName?: string;
-};
+type WatchTargetMeta = Pick<Panel["watches"][number], "targetKind" | "targetProjectName">;
 type ActionData =
   | { action: "panel"; chatId: string }
   | { action: "confirm" | "revoke"; chatId: string; proposalId: string }
@@ -33,17 +26,8 @@ type ActionData =
   | { action: "reject_watch"; chatId: string; eventId: string };
 
 function watchTargetMeta(meta: WatchTargetMeta): string {
-  const kind =
-    meta.targetKind === "public_channel"
-      ? "公共频道"
-      : meta.targetKind === "group"
-        ? "群组"
-        : meta.targetKind === "dm"
-          ? "私聊"
-          : null;
-  return [kind, meta.targetProjectName]
-    .filter((value): value is string => Boolean(value))
-    .join(" · ");
+  const kinds = { dm: "私聊", group: "群组", public_channel: "公共频道" };
+  return `${kinds[meta.targetKind]} · ${meta.targetProjectName}`;
 }
 
 type AssistantController = {
@@ -59,7 +43,7 @@ type AssistantController = {
 const AssistantContext = createContext<AssistantController | null>(null);
 
 const watchPopupClass =
-  "w-72 max-w-[calc(100vw-3rem)] rounded-container border border-border bg-popover p-2 text-popover-foreground shadow-lg outline-none";
+  "max-h-[min(28rem,70dvh)] w-72 max-w-[calc(100vw-3rem)] overflow-y-auto rounded-container border border-border bg-popover p-2 text-popover-foreground shadow-lg outline-none";
 
 export function AssistantPanelProvider({
   chatId,
@@ -140,7 +124,7 @@ export function AssistantWatchMenu() {
   const [open, setOpen] = useState(false);
   if (controller === null) return null;
   const { chatId, panel, pending, act } = controller;
-  const watches: (Panel["watches"][number] & WatchTargetMeta)[] = panel?.watches ?? [];
+  const watches = panel?.watches ?? [];
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger

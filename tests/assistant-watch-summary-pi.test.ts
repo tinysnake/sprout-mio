@@ -100,7 +100,6 @@ writeFileSync(
   }),
 );
 writeFileSync(join(agentDir, "auth.json"), "{}");
-// A host extension must never be evaluated by the summary path.
 mkdirSync(join(agentDir, "extensions"));
 writeFileSync(
   join(agentDir, "extensions", "forbidden.ts"),

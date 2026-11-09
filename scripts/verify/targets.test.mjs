@@ -64,6 +64,7 @@ await test("every gate and unit file has an explicit target; only split A/B over
   assert(!inventory.ci.includes("p6a-live-routing"));
   assert(!inventory.local.includes("p6a-live-routing"));
   assert.deepEqual(validateUnitTargets(root).local, [
+    "tests/assistant-watch-summary-pi.test.ts",
     "tests/chat-skills-foundation.test.ts",
     "tests/chat-skills-delivery.test.ts",
     "tests/chat-skills-spans.test.ts",

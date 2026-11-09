@@ -22,17 +22,17 @@ Gateway grant 冻结 purpose。身份只能沿 grant → running run → instanc
 
 ## Watch、时钟与通知
 
-七张表分别为 `assistant_proposal`、`assistant_watch`、`assistant_watch_cursor`、`assistant_preferences`、`assistant_interest`、`assistant_run_cursor`、`assistant_event`。interest 保留 watch/proposal 两种来源，proposal clock 按 DM/run 合并，watch cursor 按关注关系保存窗口与消息游标，event key 在 DM 内唯一。
+八张表分别为 `assistant_proposal`、`assistant_watch`、`assistant_watch_cursor`、`assistant_preferences`、`assistant_interest`、`assistant_run_cursor`、`assistant_event`、`assistant_watch_summary`。interest 保留 watch/proposal 两种来源，proposal clock 按 DM/run 合并，watch cursor 按关注关系保存窗口与消息游标，event key 在 DM 内唯一。
 
-模型通过 `sprout_assistant_watch` 提出 watch intent，由 Human 激活。watch 持久关注 Chat，覆盖已有和随后新建的工作 run，包括多 Agent 与短 run。`active: false` 可直接停止当前助理 DM 的相应关注，重复调用保持停止状态，不要求 Human 再点击界面，也不取消目标工作。Human 仍可从标题栏管理关注。即使目标 DM 已归档，也可以取消原有关注；目标访问检查只限制新增关注。
+模型通过 `sprout_assistant_watch` 提出 watch intent，由 Human 激活。watch 持久关注 Chat，覆盖已有和随后新建的工作 run，包括多 Agent 与短 run。`active: false` 可直接停止当前助理 DM 的相应关注，重复调用保持停止状态，不要求 Human 再点击界面，也不取消目标工作。Human 可从标题栏始终可见的“正在关注”入口查看全部有效关注，包含 DM / Group /公共频道类型、目标名、Project 和周期；没有关注时显示“暂无关注”。即使目标 DM 已归档，也可以取消原有关注；目标访问检查只限制新增关注。
 
-每条 watch 独立保存周期，默认 300 秒，范围 60–86400 秒。工具可设置或调整已有 watch 的周期，首次关注仍需 Human 确认，改周期不能改变关注目标或授权。确认携带对应 intent 的 `eventId`，确认与取消会消费旧 intent，刷新页面不会重新弹出旧确认。取消后新的明确关注请求仍可产生新 intent；重新激活创建新 watch id。
+每条 watch 独立保存周期，默认 300 秒，范围 60–86400 秒。工具可设置或调整已有 watch 的周期，首次关注仍需 Human 确认，改周期不能改变关注目标或授权。确认携带对应 intent 的 `eventId`。Human 可拒绝准确的待确认 intent，拒绝持久化且可重放，不会停止已经有效的关注。确认、拒绝与取消会消费对应旧 intent，刷新页面不会重新弹出旧确认。取消后新的明确关注请求仍可产生新 intent；重新激活创建新 watch id。
 
-Runtime 按每条 watch 的持久窗口汇总普通 Human、Agent、自动化消息和工作活动。只因 watch 关注的 run 不再逐个即时发送终态通知。窗口无消息、无活动时不发空通知；有内容时各保留最多 50 条消息与 50 个 run 的来源标识，正文摘录最多 4 条消息与 3 条 run 活动，并在来源超限时明确标记。分批读取候选 run，先检查窗口内变化再计入限额，避免无变化的旧 run 挤掉后续活动。当前动作和持续时间来自程序事实，不调用助理模型生成摘要，不推断业务成功。
+Runtime 按每条 watch 的持久窗口汇总普通 Human、Agent、自动化消息和工作活动。只因 watch 关注的 run 不再逐个即时发送终态通知。窗口无消息、无活动时不发空通知；有内容时各保留最多 50 条消息与 50 个 run 的来源标识，正文摘录最多 4 条消息与 3 条 run 活动，并在来源超限时明确标记。分批读取候选 run，先检查窗口内变化再计入限额，避免无变化的旧 run 挤掉后续活动。当前动作和持续时间来自程序事实。窗口原始消息与 run 事实不可变保存，独立总结进程使用助理配置的模型与 effort，归纳发生了什么、变化和待 Human 决策事项。总结进程没有 tools、session history 或 extensions，不启动目标工作 Agent；输入作为不可信资料处理，不推断未证实的业务成功。
 
 proposal interest 继续使用既有即时完成/介入通知及默认 300 秒的工作进展时钟。已由 proposal 通知覆盖的输入与回复从 watch 摘要排除，避免重复转发。同一 DM 内按 event key 去重，不同 DM 分别保存事件。Run 终态只停止该 run 的 clock，保留 Chat watch。
 
-窗口、消息游标与 event 原子推进，数据库错误回滚，重试不会重跑工作。capture 和 delivery 均重新校验当前可见性及有效来源；失权窗口关闭且不补发，撤销后的 pending event 被永久 suppress。无法继续读取的旧提案也写入 suppressed outcome，让扫描继续推进。Observer 不唤醒工作 Agent，也不自动启动助理模型。迁移从当前边界初始化已有有效 watch，保留 consent，不回放旧历史。
+窗口、消息游标与 event 原子推进，数据库错误回滚，重试不会重跑工作。capture 和 delivery 均重新校验当前可见性及有效来源；失权窗口关闭且不补发，撤销后的 pending event 被永久 suppress。无法继续读取的旧提案也写入 suppressed outcome，让扫描继续推进。Observer 不唤醒工作 Agent，模型总结通过独立 durable job 执行，不进入助理对话 session。job 全局并发最多 2，lease 为 120 秒，子进程硬超时 90 秒，最多尝试 3 次；失效 lease 重领使用 token fencing，重试等待按 30 秒指数递增。claim、生成结束和投递前重新检查权限及有效关注。原始事实与最多 800 字摘要分开保存；仅完成或明确失败的总结进入投递限额，100 条未完成任务不会挡住其他 DM 的就绪通知。失败显示生成失败，不把原文当摘要。旧版 digest 明确标注旧记录，不自动补算或重发。窗口迁移从当前边界初始化已有有效 watch，保留 consent，不回放旧历史。
 
 ## 原生历史与下一轮上下文
 
@@ -53,4 +53,4 @@ Core 使用真实迁移的 SQLite、runtime grant 与生命周期，覆盖 purpo
 
 Browser 还让助理在工作汇总事件到达时保持 streaming，再投递 Human steer。该 fixture 注入 watch 截止时间，核对 watch 不即时发送完成通知，以及原始 turn 未变化、每条输入的快照与 ACK，并由 loopback 模型请求中的实际 JSON context 核对新 event/message id。59/60/120 秒窗口与重启边界由注入时钟的 core 用例验证，不把浏览器截止时间注入当作真实 60 秒墙钟证明。
 
-Browser 门禁使用 production app、已安装 Pi 和 loopback model fixture，零付费调用。它核对实际 registered/exposed tools、status、observation、提案、Human UI 确认、独立 worker、通知去重、真实下一次模型 context 及 receipt。延迟 panel 响应在另一条助理 DM 完成加载后释放，核对当前面板不显示旧 DM 的提案，覆盖既有 Chat 路由的实例隔离。它保存 desktop/mobile/watch controls/run-link 截图。证据目录为 `.verify/assistant-<timestamp>`。此技术验证不等于 Human UI 体验批准。
+Browser 门禁使用 production app、已安装 Pi 和 loopback model fixture，零付费调用。它也验证独立总结与保持 streaming 的助理 session 并行、空 tools、模型摘要投递及 Reject 刷新后不复活。独立 Pi 测试覆盖配置继承、tool-call 拒绝与挂起 child abort；回环输出证明链路，不证明真实付费模型的语义质量。它核对实际 registered/exposed tools、status、observation、提案、Human UI 确认、独立 worker、通知去重、真实下一次模型 context 及 receipt。延迟 panel 响应在另一条助理 DM 完成加载后释放，核对当前面板不显示旧 DM 的提案，覆盖既有 Chat 路由的实例隔离。它保存 desktop/mobile/watch controls/run-link 截图。证据目录为 `.verify/assistant-<timestamp>`。此技术验证不等于 Human UI 体验批准。
