@@ -337,6 +337,13 @@
       "when": 1794240992142,
       "tag": "0047_feishu_route_activation",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794242919288,
+      "tag": "0048_channel_delivery",
+      "breakpoints": true
     }
   ]
 }

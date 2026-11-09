@@ -1,3 +1,4 @@
+import { captureFeishuMessage } from "./feishu-delivery";
 import { automationSourceFor } from "./automation-source";
 import { assistantEventSummary } from "./assistant-display";
 import { signalScheduleChange } from "./chat-schedule";
@@ -894,6 +895,7 @@ export function sendMessage(
           const saved = toMessage(row, spans, skills, ctx);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
           else appendAgentMentionRunInput(saved, ctx);
+          captureFeishuMessage(row.id, row.createdAt);
           return saved;
         },
         hooks,

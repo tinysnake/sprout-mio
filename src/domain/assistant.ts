@@ -1,3 +1,4 @@
+import { captureFeishuMessage } from "./feishu-delivery";
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db, sqlite } from "../db";
@@ -289,6 +290,15 @@ function currentProposalTarget(row: typeof assistantProposal.$inferSelect, ctx: 
   )
     throw new AssistantError("conflict", "目标已改变，请重新提案");
   return current;
+}
+export function assertAssistantProposalCurrent(
+  proposalId: string,
+  assistantChatId: string,
+  ctx: ProjectContext,
+) {
+  const row = proposalAccess(proposalId, assistantChatId, ctx);
+  currentProposalTarget(row, ctx);
+  return row;
 }
 export function confirmAssistantProposal(
   proposalId: string,
@@ -749,6 +759,7 @@ export function deliverAssistantEvents(now: Date) {
             .set({ messageId, attempts: event.attempts + 1 })
             .where(eq(assistantEvent.id, event.id))
             .run();
+          captureFeishuMessage(messageId, now);
         } catch (error) {
           if (
             error instanceof AssistantError ||

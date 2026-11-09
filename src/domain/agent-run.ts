@@ -1,3 +1,4 @@
+import { markChannelReplyIncomplete } from "./channel-delivery";
 import { cancelInvalidAssistantInputs } from "./assistant";
 import { enrollChatWatches } from "./assistant-interest";
 import { automationSourceFor } from "./automation-source";
@@ -790,6 +791,7 @@ export function settleAgentRun(
           },
         );
         assistantMessageId = message.id;
+        if (status !== "completed") markChannelReplyIncomplete(message.id);
       }
       if (status === "completed") {
         cancelInvalidTaskStartInputs(id);

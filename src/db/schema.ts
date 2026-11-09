@@ -2897,3 +2897,84 @@ export const feishuInboundReceipt = sqliteTable(
     uniqueIndex("feishu_receipt_message_unique").on(t.messageId),
   ],
 );
+
+export const channelDelivery = sqliteTable(
+  "channel_delivery",
+  {
+    id: text("id").primaryKey(),
+    adapter: text("adapter").notNull(),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => message.id),
+    route: text("route", { mode: "json" })
+      .$type<import("../contracts/channel").ChannelRoute>()
+      .notNull(),
+    envelope: text("envelope", { mode: "json" })
+      .$type<import("../contracts/channel").ChannelEnvelope>()
+      .notNull(),
+    state: text("state", {
+      enum: ["ready", "armed", "accepted", "suppressed", "failed", "uncertain"],
+    }).notNull(),
+    uuid: text("uuid").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    createdAtMs: integer("created_at_ms").notNull(),
+    dueAtMs: integer("due_at_ms").notNull(),
+    deadlineMs: integer("deadline_ms").notNull(),
+    platformMessageId: text("platform_message_id"),
+    error: text("error"),
+  },
+  (t) => [
+    uniqueIndex("channel_delivery_source_unique").on(t.adapter, t.messageId),
+    index("channel_delivery_due_idx").on(t.adapter, t.state, t.dueAtMs),
+    check(
+      "channel_delivery_state",
+      sql`${t.state} IN ('ready','armed','accepted','suppressed','failed','uncertain')`,
+    ),
+    check("channel_delivery_attempts", sql`${t.attempts} >= 0 AND ${t.attempts} <= 3`),
+  ],
+);
+
+export const channelAttempt = sqliteTable(
+  "channel_attempt",
+  {
+    id: text("id").primaryKey(),
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => channelDelivery.id),
+    number: integer("number").notNull(),
+    armedAtMs: integer("armed_at_ms").notNull(),
+    outcome: text("outcome", {
+      enum: ["armed", "accepted", "not_accepted", "suppressed", "uncertain"],
+    }).notNull(),
+    code: text("code"),
+    platformMessageId: text("platform_message_id"),
+  },
+  (t) => [
+    uniqueIndex("channel_attempt_number_unique").on(t.deliveryId, t.number),
+    check(
+      "channel_attempt_outcome",
+      sql`${t.outcome} IN ('armed','accepted','not_accepted','suppressed','uncertain')`,
+    ),
+  ],
+);
+
+export const channelActionGrant = sqliteTable("channel_action_grant", {
+  tokenHash: text("token_hash").primaryKey(),
+  deliveryId: text("delivery_id")
+    .notNull()
+    .references(() => channelDelivery.id),
+  action: text("action", { mode: "json" })
+    .$type<import("../contracts/channel").ChannelNativeAction>()
+    .notNull(),
+  expiresAtMs: integer("expires_at_ms").notNull(),
+});
+
+export const channelActionReceipt = sqliteTable("channel_action_receipt", {
+  tokenHash: text("token_hash")
+    .primaryKey()
+    .references(() => channelActionGrant.tokenHash),
+  result: text("result", { mode: "json" })
+    .$type<import("../contracts/channel").ChannelActionResult>()
+    .notNull(),
+  consumedAtMs: integer("consumed_at_ms").notNull(),
+});
