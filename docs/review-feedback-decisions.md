@@ -104,3 +104,11 @@ Model the Domain 原则促使原始窗口和异步模型结果分开建模。Bou
 第四轮实现已集成为 `4d12c9b`，原 `http://127.0.0.1:3300` 服务使用原数据库完成 migration 0045 后恢复。迁移前备份为 `.verify/human-review/run.JtVeWy/app.pre-round4-6b2aedb.sqlite`；85 条消息、3 个 Chat、2 个 Agent、2 条规则、5 条历史关注、26 条事件及 Project 行按原列比对全部一致，外键检查通过。收据为 `.verify/human-review/run.JtVeWy/round4-update.json`。
 
 原页面 DOM 复核显示“正在关注 0”，打开后为“暂无关注”，无待确认面板和桌面横向溢出。原库没有有效关注，更新过程未调用付费模型。实时 snapshot 一次超时；resize 设置未实际改变 live viewport，因此不声称本次原预览已做手机视觉检查。父代理已查看门禁中的桌面与 390px 手机截图，手机功能与布局由实际 browser fixture 验证。自用 tab 已关闭，原预览服务保留。四个子任务均已收尾。Human 体验确认仍待反馈。
+
+## 固定时区偏移与当前默认项
+
+按 Human 最后反馈移除常用地区目录。新建默认“当前时区”，浏览器挂载后显示本地 UTC 偏移，保存时重新读取并冻结为分钟精度 `±HH:MM`。列表提供 -12:00 至 +14:00、每 15 分钟一个的固定偏移。已保存 IANA / Etc / UTC 原值保持不变，只显示单个“已保存”项，直到用户明确选择替换。此处按 Model the Domain 原则共享偏移解析与格式化，避免调度和界面各自解释偏移。
+
+实现 commit 为 `c3d95d9`。父代理实际复跑 cron-core（14 个文件、148 个测试）及 cron-browser 均通过，runner 总计 43.834 秒，收据 `/tmp/sprout-cron-zone-parent.result.json`；另复跑 typecheck、check、build 通过。浏览器覆盖当前默认、半小时 / 45 分钟偏移、保存时跨 DST、不同浏览器时区 reload / 编辑保留、旧值保留和明确替换。付费调用为 0，未重跑全套 CI。
+
+已通过 Vite HMR 更新原局域网预览，无数据库 migration。父代理在 `http://10.0.0.13:3300` 的真实新建页读取 DOM，确认默认值为 `current`、文案“当前时区（UTC+08:00）”，与该浏览器 480 分钟偏移一致，选项无地区目录。检查未保存规则或改写原数据，自用 tab 已关闭，子任务已收尾。Human 体验确认仍待反馈。
