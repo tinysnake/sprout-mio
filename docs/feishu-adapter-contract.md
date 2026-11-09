@@ -1,6 +1,6 @@
 # 飞书 DM adapter 实施契约
 
-状态：2026-11-09 架构选定，实现待分单元验证。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
+状态：2026-11-10 F0 探针已通过，F1 候选已通过 CI，等待独立审查及集成。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
 
 ## 架构选择
 
@@ -29,7 +29,7 @@
 
 每次进程启动或连接中断关闭原 epoch。首次 ready 和 reconnected 回调分别打开新 epoch；不能仅依赖回调中的连接状态快照。真实 SDK loopback 探针已证明 `onReconnected` 内快照仍可能是 reconnecting。
 
-普通入站消息必须同时满足当前 epoch、当前路由代次、身份和 Human 权限。平台可信的消息创建时间不早于该 epoch 的开放边界；本机从未见过的旧消息也不能靠重连进入新会话。平台时间的解析、精度和本机时钟偏差需在 adapter 验证中明确记录，未知时间格式拒绝接纳，不假定消息 ID 自带新鲜度证明。
+普通入站消息必须同时满足当前 epoch、当前路由代次、身份和 Human 权限。平台可信的消息创建时间不得早于当前 epoch 或当前路由生效时间；本机从未见过的旧消息也不能靠重连进入新会话。平台时间的解析、精度和本机时钟偏差需在 adapter 验证中明确记录，未知时间格式拒绝接纳，不假定消息 ID 自带新鲜度证明。
 
 新绑定或重连不扫描聊天历史来补发。出站候选只在新的原生消息提交时捕获，当时无有效连接或路由则不创建待补发记录。已捕获但未交付 transport 的旧 epoch 候选在重连后抑制。已经开始的请求允许完成记录，但不得改送新身份或新目标。
 
@@ -47,7 +47,7 @@
 
 外部投影默认拒绝未知事件形状。当前 Web 的 `assistantEventSummary` 末尾仍可能从 fact.body 生成预览，不能直接将该兜底作为外发许可。发送阶段还要复查 source、target 的当前访问权、route 代次和 epoch，不能仅信捕获时的快照。
 
-transport 准备凭据和平台 payload 可以异步进行。最终发送前在短同步 writer 临界区重查资格、持久化 attempt，并调用无 await 的 `begin()` 创建请求；等待网络响应在事务外进行。这里的 begin 表示本机已把请求交给 transport，不表示平台已接受。必须用真实 loopback HTTP 和 writer 竞态探针证明这一边界，不能只用返回 Promise 的假函数代替。禁止持锁等待网络。
+transport 准备凭据和平台 payload 可以异步进行。最终发送前先持久化 armed attempt，再在短同步 writer 临界区重查资格，并调用无 await 的 `begin()` 创建请求；等待网络响应在事务外进行。armed 必须先于 begin 单独提交，避免交付请求后事务回滚或崩溃造成 attempt 消失。恢复时无法排除已交付的 armed attempt 也标记 uncertain。这里的 begin 表示本机已把请求交给 transport，不表示平台已接受。必须用真实 loopback HTTP 和 writer 竞态探针证明这一边界，不能只用返回 Promise 的假函数代替。禁止持锁等待网络。
 
 成功保存平台 message_id。明确未被平台接纳的失败可以受限重试；连接、身份、路由和权限仍需复查。ack 丢失、进程在交付后崩溃或平台是否接纳无法判断时标记 uncertain，停止自动重发。飞书 UUID 仅保证一小时去重，不能据此重发任意年代的请求或宣称跨崩溃 exactly-once。投递重试始终不重跑工作。
 
@@ -64,6 +64,6 @@ F0 与 F1 可由同一个隔离写者先后完成，风险探针失败时不得�
 
 ## 当前证据与限制
 
-已执行真实 SDK 1.76.0 与 loopback WebSocket 的 ready / reconnecting / reconnected 探针。候选 A 的发布包静态检查及 standalone types 编译、两模型架构对比、独立交叉审查均已完成。它们不能替代上述事务和 HTTP 风险探针。
+已执行真实 SDK 1.76.0 与 loopback WebSocket 的 ready / reconnecting / reconnected 探针。候选 A 的发布包静态检查及 standalone types 编译、两模型架构对比、独立交叉审查均已完成。F0 的真实 SQLite/loopback HTTP 探针也已执行通过，包括外层事务撤销原生消息与 receipt、同步 begin、响应未完成时另一 writer 可解绑。F1 父线程发现并修复 pre-route 延迟输入，绑定和切换两项用例先失败后通过。候选 CI 为 133 文件、1192 项测试通过；独立功能审查及最终集成仍未完成。
 
 真实飞书凭据、平台身份确认、卡片回调、权限配置及实际设备体验均为 NOT VERIFIED。界面两方案已在当前线程展示，Human 尚未选型。未选型前不实施新的绑定页面。

@@ -139,6 +139,7 @@ function insertRoute(
   revision: number,
   identity: Pick<VerifiedFeishuIdentity, "appId" | "tenantKey" | "openId">,
   target: FeishuTarget,
+  openedAt: Date,
 ) {
   db.insert(feishuRoute)
     .values({
@@ -148,6 +149,7 @@ function insertRoute(
       appId: identity.appId,
       tenantKey: identity.tenantKey,
       openId: identity.openId,
+      openedAtMs: openedAt.getTime(),
       projectId: target.projectId,
       chatId: target.chatId,
     })
@@ -209,7 +211,7 @@ export function finishFeishuChallenge(
         .set({ consumedAtMs: now.getTime() })
         .where(eq(feishuChallenge.hash, challenge.hash))
         .run();
-      insertRoute(slot.humanId, revision, identity, challenge);
+      insertRoute(slot.humanId, revision, identity, challenge, now);
       audit(
         "identity_bound",
         requestId,
@@ -259,6 +261,7 @@ export function switchFeishuTarget(
         revision,
         { appId: slot.appId, tenantKey: slot.tenantKey, openId: slot.openId },
         target,
+        now,
       );
       audit("target_switched", ctx.requestId, target, hooks);
       return getFeishuBinding(ctx);
@@ -434,6 +437,7 @@ export function admitFeishuText(
         route.openId !== event.identity.openId
       )
         return reject("identity_mismatch");
+      if (event.createdAtMs! < route.openedAtMs) return reject("pre_route_message");
       const ctx = { userId: slot.humanId, requestId };
       try {
         eligible(route, ctx);

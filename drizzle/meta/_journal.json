@@ -330,6 +330,13 @@
       "when": 1794240015894,
       "tag": "0046_feishu_identity_inbound",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1794240992142,
+      "tag": "0047_feishu_route_activation",
+      "breakpoints": true
     }
   ]
 }

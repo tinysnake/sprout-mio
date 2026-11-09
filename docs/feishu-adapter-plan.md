@@ -1,6 +1,6 @@
 # 飞书 DM adapter 推进记录
 
-状态：2026-11-09 架构已收敛，开始 F0 风险探针与 F1 身份/入站单元。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
+状态：2026-11-10 F0 风险探针已通过，F1 身份/入站候选通过 CI，独立功能审查与集成待完成。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
 
 ## 工作流
 
@@ -60,4 +60,14 @@
 
 架构必须闭合的两项问题已进入实施契约和 F0/F1 验证门槛。第一，receipt 与原生消息在同一 immediate transaction 内提交，并实测嵌套回滚。第二，以 epoch 边沿和平台创建时间拒绝离线旧输入，出站只捕获新提交，不通过水位扫描补发历史。另以真实 loopback HTTP 验证同步 begin 与解绑竞态；外部投影未知形状默认拒绝。上述门槛未执行前，不记为运行验证通过。
 
-当前吞吐安排为一个隔离后端写者依次完成 F0 和 F1。F0 失败先修订设计，不继续 schema；F1 只实现身份与文本接纳，F2 的投递和卡片表不预建。父线程负责审查、门禁清单和集成，UI 选择不阻塞该单元。新绑定页仍须等待 Human 选型。
+F0 与 F1 已由一个隔离后端写者顺序完成，实现 commit 为 `6db49802b02c6f3a47bfa5fc220d953e36d8d743`，当前由父线程接管候选 checkout。F1 只实现身份与文本接纳，F2 的投递和卡片表未预建。父线程负责补测、门禁清单、审查和集成，UI 选择不阻塞该单元。新绑定页仍须等待 Human 选型。
+
+### F0/F1 候选验证
+
+F0 真实临时 SQLite 和 loopback HTTP 探针通过。F1 包含 identity slot、challenge、不可变 route、connection epoch、入站 receipt，直接复用原生 Human 消息与 run/input。0046 migration 新增五表，不修改原生历史；0047 为 route 补充不可变的生效时间，并使已有 route 从迁移边界起接纳新消息。迁移测试覆盖原生数据和 FK 保持、已有 route 初始化、旧 tuple 保持。
+
+父线程独立复核发现 epoch 早于路由生效时，未见过的旧消息可能进入新绑定或新 DM。两个定向用例实际复现 accepted，再加入 pre_route_message 检查后通过。该结果与 worker 移除外层事务的 atomicity RED 分开记录。证据分别为 `/tmp/sprout-feishu-route-red.log`、`/tmp/sprout-feishu-route-migration-green.log` 与 `/tmp/sprout-feishu-atomicity-red.log`。
+
+候选实际通过 21 项 F1/F0/迁移测试、typecheck、check、diff check。CI 经修正启动器参数后实际执行，133 文件、1192 项通过，runner 96.57 秒，工作流记录 97.9 秒，证据 `/tmp/sprout-feishu-f1-parent-ci.result.json`。首次错误参数的调用未执行任何 CI 测试，不计失败测试或通过证据。三项新测试已加入 CI inventory 及 assistant-core 门禁。
+
+注释审计无删除建议。独立功能审查正在进行，尚未将候选集成或迁移现有 LAN 评审库；真实平台与 F2/F3 仍未验证。F2 必须证明 armed attempt 在 begin 前已持久提交，避免网络请求逃逸后失去恢复记录；当前 F0 证明同步请求与 writer 边界，不替代该崩溃恢复验证。

@@ -47,6 +47,7 @@ export type FeishuAdmission =
         | "unsupported_input"
         | "untrusted_timestamp"
         | "pre_epoch_message"
+        | "pre_route_message"
         | "inactive_epoch"
         | "inactive_route"
         | "identity_mismatch"

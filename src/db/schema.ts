@@ -2847,6 +2847,7 @@ export const feishuRoute = sqliteTable(
       .notNull()
       .references(() => project.id),
     chatId: text("chat_id").notNull(),
+    openedAtMs: integer("opened_at_ms").notNull().default(0),
     closedAtMs: integer("closed_at_ms"),
   },
   (t) => [

@@ -157,6 +157,46 @@ it("binding rejects worker, archived, unauthorized and cross-Project targets; fi
   expect(feishu.getFeishuBinding(s.ctx).bound).toBe(false);
 });
 
+for (const change of ["binding", "switch"] as const) {
+  it(`rejects unseen text from before the current ${change}, even within the live epoch`, () => {
+    const s = scenario();
+    const activation = new Date(at.getTime() + 20_000);
+    if (change === "binding") {
+      const { challenge } = feishu.startFeishuChallenge(s.target, s.ctx, at);
+      feishu.finishFeishuChallenge(challenge, s.identity, s.ctx.requestId, activation);
+    } else {
+      const { binding } = s.bind();
+      const helper = agents.createAgentProfile({ name: "Next", purpose: "assistant" }, s.ctx);
+      agents.addProjectMember(s.project.id, helper.id, s.ctx);
+      const dm = chats.createDirectChat(s.project.id, helper.id, s.ctx).chat;
+      feishu.switchFeishuTarget(
+        { projectId: s.project.id, chatId: dm.id },
+        binding.revision,
+        s.ctx,
+        activation,
+      );
+    }
+    const scope = feishu.captureFeishuAdmissionScope(s.identity, s.epoch)!;
+    const before = counts();
+    expect(
+      feishu.admitFeishuText(
+        text(s.identity, "unseen-delayed", { createdAtMs: at.getTime() + 10_000 }),
+        scope,
+        s.ctx.requestId,
+      ),
+    ).toMatchObject({ status: "rejected", reason: "pre_route_message" });
+    expect(counts()).toEqual(before);
+    expect(
+      feishu.admitFeishuText(
+        text(s.identity, "fresh", { createdAtMs: activation.getTime() + 1 }),
+        scope,
+        s.ctx.requestId,
+      ),
+    ).toMatchObject({ status: "accepted", duplicate: false });
+    expect(counts()).toEqual(before.map((n) => n + 1));
+  });
+}
+
 it("text stays in the existing DM with Human sender, and duplicate app+message yields one native input/run lineage", () => {
   const s = scenario();
   const { scope } = s.bind();

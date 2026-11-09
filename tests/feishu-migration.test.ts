@@ -5,17 +5,20 @@ import { join } from "node:path";
 import { migrateDatabase } from "../src/db/migrate";
 import { openDatabase } from "../src/db/connection";
 
-it("0046 is additive over existing native DM/history/run/input/watch rows and retains FK/integrity guarantees", () => {
+it("0046/0047 preserve native data and initialize existing routes without admitting their old history", () => {
   const directory = mkdtempSync(join(tmpdir(), "feishu-upgrade-"));
   const file = join(directory, "upgrade.sqlite");
-  const oldFolder = join(directory, "before");
-  mkdirSync(join(oldFolder, "meta"), { recursive: true });
-  const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8"));
-  journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 46);
-  for (const entry of journal.entries)
-    copyFileSync(join("drizzle", `${entry.tag}.sql`), join(oldFolder, `${entry.tag}.sql`));
-  writeFileSync(join(oldFolder, "meta", "_journal.json"), JSON.stringify(journal));
-  migrateDatabase(file, oldFolder);
+  function migrationsBefore(index: number, name: string) {
+    const folder = join(directory, name);
+    mkdirSync(join(folder, "meta"), { recursive: true });
+    const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8"));
+    journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < index);
+    for (const entry of journal.entries)
+      copyFileSync(join("drizzle", `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
+    writeFileSync(join(folder, "meta", "_journal.json"), JSON.stringify(journal));
+    return folder;
+  }
+  migrateDatabase(file, migrationsBefore(46, "before"));
   const before = openDatabase(file);
   try {
     before.sqlite.exec(`
@@ -45,6 +48,17 @@ it("0046 is additive over existing native DM/history/run/input/watch rows and re
       before.sqlite.pragma(`foreign_key_list("${name}")`),
     );
     before.sqlite.close();
+    migrateDatabase(file, migrationsBefore(47, "f1"));
+    const established = openDatabase(file);
+    try {
+      established.sqlite.exec(`
+        INSERT INTO feishu_identity_slot(human_id,revision,app_id,tenant_key,open_id) VALUES ('human',2,'app','tenant','account');
+        INSERT INTO feishu_route(id,human_id,revision,app_id,tenant_key,open_id,project_id,chat_id) VALUES ('route-existing','human',2,'app','tenant','account','project','dm');
+      `);
+    } finally {
+      established.sqlite.close();
+    }
+    const activationBoundary = Date.now();
     migrateDatabase(file);
     migrateDatabase(file);
     const after = openDatabase(file);
@@ -68,7 +82,35 @@ it("0046 is additive over existing native DM/history/run/input/watch rows and re
         "feishu_route",
       ]);
       for (const { name } of added)
-        expect(after.sqlite.prepare(`SELECT count(*) n FROM ${name}`).get()).toEqual({ n: 0 });
+        expect(after.sqlite.prepare(`SELECT count(*) n FROM ${name}`).get()).toEqual({
+          n: name === "feishu_identity_slot" || name === "feishu_route" ? 1 : 0,
+        });
+      const route = after.sqlite.prepare("SELECT * FROM feishu_route").get() as {
+        opened_at_ms: number;
+      };
+      expect(route).toMatchObject({
+        id: "route-existing",
+        human_id: "human",
+        revision: 2,
+        app_id: "app",
+        tenant_key: "tenant",
+        open_id: "account",
+        project_id: "project",
+        chat_id: "dm",
+        closed_at_ms: null,
+      });
+      expect(route.opened_at_ms).toBeGreaterThanOrEqual(activationBoundary);
+      expect(route.opened_at_ms).toBeLessThanOrEqual(Date.now());
+      expect(() => after.sqlite.prepare("UPDATE feishu_route SET opened_at_ms=1").run()).toThrow(
+        "feishu route is immutable",
+      );
+      expect(() =>
+        after.sqlite
+          .prepare(
+            "INSERT INTO feishu_route(id,human_id,revision,app_id,tenant_key,open_id,project_id,chat_id) VALUES ('missing-time','human',3,'app','tenant','account','project','dm')",
+          )
+          .run(),
+      ).toThrow("feishu route activation required");
       expect(() =>
         after.sqlite
           .prepare(
