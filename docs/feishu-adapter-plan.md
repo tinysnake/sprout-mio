@@ -1,12 +1,12 @@
 # 飞书 DM adapter 推进记录
 
-状态：2026-11-09 进入设计。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。
+状态：2026-11-09 架构已收敛，开始 F0 风险探针与 F1 身份/入站单元。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
 
 ## 工作流
 
 - [x] Read the Principles section of the poteto-mode skill.
 - [x] Phase A: Frame.
-- [ ] Phase B: Design the workflow.
+- [x] Phase B: Design the workflow.
 - [ ] Phase C: Run the loop.
 - [ ] Phase D: Keep the audit trail.
 - [ ] Phase E: Verify and hand back.
@@ -50,12 +50,14 @@
 
 调查报告 `/tmp/sprout-feishu-discovery.md` 包含实际源码路径和官方 URL。原生闭环已完成技术验证和本轮 Human UI 评审，不能据此把飞书联调记为完成。
 
-待设计收口：具体稳定身份键与约束；平台证明和换绑的事务边界；消息来源与输出范围；重连 epoch 与持久投递的相互作用；一小时平台去重窗口外的 uncertain 处置；绑定页的入口与信息层级。
+已在实施契约确定首版稳定身份键、绑定与换路事务、消息来源和输出范围、epoch 与 uncertain 的处置。绑定页入口及信息层级仍待 Human 从已展示的两案中选择。真实平台行为须在联调时另行确认。
 
 ### 当前设计进展
 
 界面对比保存在 `.verify/feishu-ui/options.html`，已通过 728px 与 390px HTML preview 并在当前线程展示。方案 A 集中放在 Management，方案 B 从助理 DM 进入。Human 尚未选型，页面实现未开始。原型中的飞书账号、助理和目标 DM 已分开标注，连接不可用也与绑定确认超时分开表达。
 
-两份架构候选仍处于收集与核查阶段。已返回的候选位于 `/Users/snake/.t3/worktrees/sprout-mio/t3-fd5399e1/.verify/feishu-design/candidate.md`。父线程的核查记录位于 `.verify/feishu-design/parent-review-notes.md`。
+两份架构候选均已完成并由父线程完整复核。A 位于 `/Users/snake/.t3/worktrees/sprout-mio/t3-d120f55d/.verify/feishu-design`，B 位于 `/Users/snake/.t3/worktrees/sprout-mio/t3-fd5399e1/.verify/feishu-design`。独立交叉审查 `/tmp/sprout-feishu-cross-judge.md` 推荐 A，设计评分为 27 对 17。采用 A 的原子接纳、不可变路由与 epoch，嫁接 B 的小型 transport 端口，不复制任一候选的整套接口。父线程核查记录位于 `.verify/feishu-design/parent-review-notes.md`。
 
-必须在架构收口前解决两项已发现的问题。第一，`sendMessage` 每次产生新消息，`ctx.requestId` 不会提供业务去重，需要证明 receipt applied 与消息提交的原子关系。第二，平台 `message_id` 去重不能排除本机从未见过的离线旧消息；绑定时初始化出站水位也不能单独证明重连后不补发离线输出。最终方案必须明确离线边界及其测试。
+架构必须闭合的两项问题已进入实施契约和 F0/F1 验证门槛。第一，receipt 与原生消息在同一 immediate transaction 内提交，并实测嵌套回滚。第二，以 epoch 边沿和平台创建时间拒绝离线旧输入，出站只捕获新提交，不通过水位扫描补发历史。另以真实 loopback HTTP 验证同步 begin 与解绑竞态；外部投影未知形状默认拒绝。上述门槛未执行前，不记为运行验证通过。
+
+当前吞吐安排为一个隔离后端写者依次完成 F0 和 F1。F0 失败先修订设计，不继续 schema；F1 只实现身份与文本接纳，F2 的投递和卡片表不预建。父线程负责审查、门禁清单和集成，UI 选择不阻塞该单元。新绑定页仍须等待 Human 选型。
