@@ -1,6 +1,6 @@
 # 飞书 DM adapter 实施契约
 
-状态：2026-11-10 F0、F1 与 F2a 投递/授权已集成，F2a 通过全量 CI 和独立审查修正；F2b 真实 SDK 装配进行中。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
+状态：2026-11-10 F0、F1、F2a 投递/授权与 F2b 真实 SDK 装配均已集成，F2a 与 F2b 各自通过全量 CI 和独立审查修正；F3 绑定 UI 与真实平台联调未开始。本文约束首个飞书 adapter，不表示真实平台联调通过。产品边界沿用[个人助理与 channel 决策](personal-assistant-decisions.md)，实施状态见[推进记录](feishu-adapter-plan.md)。
 
 ## 架构选择
 
@@ -21,7 +21,7 @@
 
 平台身份使用经 adapter 核验的应用、tenant 与 open_id 组合，不以昵称、邮箱或外部传入的 Sprout userId 识别 Human。open_id 的应用作用域必须保留。首期一个 Human 只有一个有效飞书身份，一个平台身份也只能关联一个 Human。
 
-已登录 Human 从 Web 发起有期限的一次性 challenge，显式选择有权访问的 Project 与普通助理 DM。challenge 使用不可猜测随机值，仅保存摘要；飞书私聊中由稳定身份完成确认。默认有效期十分钟，重发产生新 challenge 并使旧 challenge 失效。冲突返回可理解的错误，不覆盖另一 Human 或已有平台身份。账号换绑必须先解绑。
+已登录 Human 从 Web 发起有期限的一次性 challenge，显式选择有权访问的 Project 与普通助理 DM。challenge 是 8 位字符的可手输码，熵来自密码学随机源（40 bit），仅保存摘要；长度或字符集不合法的输入在任何数据库读取前就被拒绝，普通聊天文本因此不会被当作绑定尝试，输入接受大小写、空格与短横线变体；飞书私聊中由稳定身份完成确认。默认有效期十分钟，重发产生新 challenge 并使旧 challenge 失效。冲突返回可理解的错误，不覆盖另一 Human 或已有平台身份。账号换绑必须先解绑。
 
 目标只能是该 Human 可使用、Agent purpose 为 assistant 的普通 DM。路由保存明确的 Project 和 Chat，不以最近使用会话自动选路。切换目标创建新路由，旧路由终结；代次变化使旧 challenge、旧接纳资格和未发出的投递失效。解绑不删除消息、提案或已接纳工作，也不隐式停止工作 Agent。
 
@@ -51,6 +51,8 @@
 
 transport 准备凭据和平台 payload 可以异步进行。最终发送前先持久化 armed attempt，再在短同步 writer 临界区重查资格，并调用无 await 的 `begin()` 创建请求；等待网络响应在事务外进行。armed 必须先于 begin 单独提交，避免交付请求后事务回滚或崩溃造成 attempt 消失。恢复时无法排除已交付的 armed attempt 也标记 uncertain。这里的 begin 表示本机已把请求交给 transport，不表示平台已接受。必须用真实 loopback HTTP 和 writer 竞态探针证明这一边界，不能只用返回 Promise 的假函数代替。禁止持锁等待网络。
 
+准备阶段（换取 token、组装 payload）失败没有向平台发起任何请求，属于可证明未接纳，必须计入 attempt 并退避重试，不能直接丢弃回复；重试耗尽或超过截止时间才终结。
+
 成功保存平台 message_id。明确未被平台接纳的失败可以受限重试；连接、身份、路由和权限仍需复查。ack 丢失、进程在交付后崩溃或平台是否接纳无法判断时标记 uncertain，停止自动重发。飞书 UUID 仅保证一小时去重，不能据此重发任意年代的请求或宣称跨崩溃 exactly-once。投递重试始终不重跑工作。
 
 ## 单元与验证门槛
@@ -68,5 +70,7 @@ F0 与 F1 可由同一个隔离写者先后完成，风险探针失败时不得�
 ## 当前证据与限制
 
 已执行真实 SDK 1.76.0 与 loopback WebSocket 的 ready / reconnecting / reconnected 探针。候选 A 的发布包静态检查及 standalone types 编译、两模型架构对比、独立交叉审查均已完成。F0 的真实 SQLite/loopback HTTP 探针也已执行通过，包括外层事务撤销原生消息与 receipt、同步 begin、响应未完成时另一 writer 可解绑。F1 父线程发现并修复 pre-route 延迟输入，绑定和切换两项用例先失败后通过。候选 CI 为 133 文件、1192 项测试通过；独立功能审查未发现 F0/F1 范围内成立的 P1/P2。旧 lifecycle 的 ready/reconnected 所有权由 F2 runtime generation 约束，尚未验证实际 SDK 装配。
+
+F2a 与 F2b 的实际验证：F2a 定向 3 文件 30 项、assistant-core 22 文件 155 项、全量 CI 136 文件 1222 项通过；F2b 定向 8 文件 104 项、全量 CI 141 文件 1272 项通过。F2b 的 TLS/WS 装配只有回环证据，没有真实平台会话。
 
 真实飞书凭据、平台身份确认、卡片回调、权限配置及实际设备体验均为 NOT VERIFIED。界面两方案已在当前线程展示，Human 尚未选型。未选型前不实施新的绑定页面。
