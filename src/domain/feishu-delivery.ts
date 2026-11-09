@@ -10,19 +10,39 @@ import {
 } from "./channel-delivery";
 import { channelSourceAccess, ChannelIneligible } from "./channel-native";
 
+function routeFence(route: ChannelRoute) {
+  const slot = db
+    .select()
+    .from(feishuIdentitySlot)
+    .where(eq(feishuIdentitySlot.humanId, route.humanId))
+    .get();
+  const current = db
+    .select()
+    .from(feishuRoute)
+    .where(and(eq(feishuRoute.id, route.routeId), isNull(feishuRoute.closedAtMs)))
+    .get();
+  if (
+    !slot ||
+    !current ||
+    route.adapter !== "feishu" ||
+    slot.revision !== route.revision ||
+    current.revision !== route.revision ||
+    current.humanId !== route.humanId ||
+    current.projectId !== route.projectId ||
+    current.chatId !== route.chatId ||
+    slot.appId !== route.destination.appId ||
+    slot.tenantKey !== route.destination.tenantKey ||
+    slot.openId !== route.destination.openId
+  )
+    throw new ChannelIneligible("inactive_route");
+  channelSourceAccess(route);
+  return slot;
+}
+
 export const feishuDeliveryBoundary: ChannelRouteBoundary = {
   adapter: "feishu",
   assertCurrent(route) {
-    const slot = db
-      .select()
-      .from(feishuIdentitySlot)
-      .where(eq(feishuIdentitySlot.humanId, route.humanId))
-      .get();
-    const current = db
-      .select()
-      .from(feishuRoute)
-      .where(and(eq(feishuRoute.id, route.routeId), isNull(feishuRoute.closedAtMs)))
-      .get();
+    const slot = routeFence(route);
     const epoch = db
       .select()
       .from(feishuConnectionEpoch)
@@ -30,23 +50,10 @@ export const feishuDeliveryBoundary: ChannelRouteBoundary = {
         and(eq(feishuConnectionEpoch.id, route.epochId), isNull(feishuConnectionEpoch.closedAtMs)),
       )
       .get();
-    if (
-      !slot ||
-      !current ||
-      !epoch ||
-      route.adapter !== "feishu" ||
-      slot.revision !== route.revision ||
-      current.revision !== route.revision ||
-      current.humanId !== route.humanId ||
-      current.projectId !== route.projectId ||
-      current.chatId !== route.chatId ||
-      slot.appId !== route.destination.appId ||
-      slot.tenantKey !== route.destination.tenantKey ||
-      slot.openId !== route.destination.openId ||
-      epoch.appId !== slot.appId
-    )
-      throw new ChannelIneligible("inactive_route");
-    channelSourceAccess(route);
+    if (!epoch || epoch.appId !== slot.appId) throw new ChannelIneligible("inactive_epoch");
+  },
+  assertActionCurrent(route) {
+    routeFence(route);
   },
 };
 
@@ -115,7 +122,6 @@ export function consumeFeishuAction(
         identity.openId !== route.destination.openId ||
         scope.routeId !== route.routeId ||
         scope.revision !== route.revision ||
-        scope.epoch.id !== route.epochId ||
         scope.epoch.appId !== identity.appId
       )
         throw new ChannelIneligible("identity_mismatch");

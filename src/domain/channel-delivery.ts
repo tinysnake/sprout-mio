@@ -105,7 +105,7 @@ export function markChannelReplyIncomplete(messageId: string) {
   for (const row of db
     .select()
     .from(channelDelivery)
-    .where(eq(channelDelivery.messageId, messageId))
+    .where(and(eq(channelDelivery.messageId, messageId), eq(channelDelivery.state, "ready")))
     .all()) {
     if (row.envelope.kind === "text" && row.envelope.completeness === "complete")
       db.update(channelDelivery)
@@ -407,7 +407,7 @@ export function consumeChannelAction(
         .get()!;
       if (delivery.adapter !== boundary.adapter) throw new ChannelIneligible("wrong_adapter");
       authorizeIdentity(delivery.route);
-      boundary.assertCurrent(delivery.route);
+      boundary.assertActionCurrent(delivery.route);
       const receipt = db
         .select()
         .from(channelActionReceipt)

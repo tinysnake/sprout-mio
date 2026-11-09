@@ -40,7 +40,10 @@ export interface ChannelEmissionPort<Prepared> {
 
 export interface ChannelRouteBoundary {
   adapter: string;
+  // Outbound delivery must also prove the connection that produced it is still current.
   assertCurrent(route: ChannelRoute): void;
+  // An already delivered card outlives its connection: it needs the current route, not its epoch.
+  assertActionCurrent(route: ChannelRoute): void;
 }
 
 export type ChannelActionResult =

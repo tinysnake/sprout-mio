@@ -117,55 +117,58 @@ it("native action/receipt failure rolls back work creation and grant consumption
   });
 });
 
-it.each([
-  "identity",
-  "epoch",
-  "switch",
-  "expiry",
-  "altered",
-  "unknown",
-  "permission",
-  "content",
-] as const)("rejects %s grant misuse without native work", (change) => {
-  const s = proposal();
-  let identity = s.identity;
-  let scope = s.scope;
-  let token = s.card.confirm;
-  let now = s.now;
-  if (change === "identity")
-    identity = { ...identity, openId: "wrong-human" } as VerifiedFeishuIdentity;
-  if (change === "epoch") {
-    s.reconnect();
-    scope = f.feishu.captureFeishuAdmissionScope(s.identity, s.epoch)!;
-  }
-  if (change === "switch")
-    f.feishu.switchFeishuTarget(
-      { projectId: s.project.id, chatId: s.dm.id },
-      f.feishu.getFeishuBinding(s.ctx).revision,
-      s.ctx,
-    );
-  if (change === "expiry") now = new Date(s.now.getTime() + 10 * 60_000);
-  if (change === "altered") token += "x";
-  if (change === "unknown") token = "opaque-not-real";
-  if (change === "permission") f.agents.removeProjectMember(s.project.id, s.worker.id, s.ctx);
-  if (change === "content") {
-    expect(() =>
+it.each(["identity", "switch", "expiry", "altered", "unknown", "permission", "content"] as const)(
+  "rejects %s grant misuse without native work",
+  (change) => {
+    const s = proposal();
+    let identity = s.identity;
+    let scope = s.scope;
+    let token = s.card.confirm;
+    let now = s.now;
+    if (change === "identity")
+      identity = { ...identity, openId: "wrong-human" } as VerifiedFeishuIdentity;
+    if (change === "switch")
+      f.feishu.switchFeishuTarget(
+        { projectId: s.project.id, chatId: s.dm.id },
+        f.feishu.getFeishuBinding(s.ctx).revision,
+        s.ctx,
+      );
+    if (change === "expiry") now = new Date(s.now.getTime() + 10 * 60_000);
+    if (change === "altered") token += "x";
+    if (change === "unknown") token = "opaque-not-real";
+    if (change === "permission") f.agents.removeProjectMember(s.project.id, s.worker.id, s.ctx);
+    if (change === "content") {
+      expect(() =>
+        sqlite
+          .prepare("UPDATE assistant_proposal SET body='changed job' WHERE id=?")
+          .run(s.p.proposalId),
+      ).toThrow("assistant operation is immutable");
       sqlite
-        .prepare("UPDATE assistant_proposal SET body='changed job' WHERE id=?")
-        .run(s.p.proposalId),
-    ).toThrow("assistant operation is immutable");
-    sqlite
-      .prepare(
-        "UPDATE channel_action_grant SET action=json_set(action,'$.operationHash','altered') WHERE delivery_id=?",
-      )
-      .run(s.card.id);
-  }
-  expect(() => f.delivery.consumeFeishuAction(identity, scope, token, now)).toThrow();
+        .prepare(
+          "UPDATE channel_action_grant SET action=json_set(action,'$.operationHash','altered') WHERE delivery_id=?",
+        )
+        .run(s.card.id);
+    }
+    expect(() => f.delivery.consumeFeishuAction(identity, scope, token, now)).toThrow();
+    expect(
+      sqlite
+        .prepare("SELECT count(*) n FROM message WHERE assistant_proposal_id=?")
+        .get(s.p.proposalId),
+    ).toEqual({ n: 0 });
+  },
+);
+
+it("confirms a card issued before a reconnect exactly once through the current epoch", () => {
+  const s = proposal();
+  const scope = f.feishu.captureFeishuAdmissionScope(s.identity, s.reconnect())!;
+  expect(f.delivery.consumeFeishuAction(s.identity, scope, s.card.confirm, s.now)).toMatchObject({
+    status: "submitted",
+  });
   expect(
     sqlite
       .prepare("SELECT count(*) n FROM message WHERE assistant_proposal_id=?")
       .get(s.p.proposalId),
-  ).toEqual({ n: 0 });
+  ).toEqual({ n: 1 });
 });
 
 it("does not disclose consumed results after identity/route/permission loss", () => {
