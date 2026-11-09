@@ -236,14 +236,69 @@ try {
   assert.equal(watchResult.result.data.active, false);
   assert.equal(watchResult.result.data.intervalSeconds, 60);
   assert.equal(assistant.assistantPanel(source.id, ctx).watches.length, 0);
-  setAssistantWatch(source.id, project.id, target, true, ctx, new Date(), 60);
+  const intent = assistant
+    .assistantPanel(source.id, ctx)
+    .decisions.find((event) => event.fact.watchIntent)!;
+  setAssistantWatch(source.id, project.id, target, true, ctx, new Date(), 60, intent.id);
   assert.equal(assistant.assistantPanel(source.id, ctx).watches[0].intervalSeconds, 60);
+  assert.equal(
+    assistant.assistantPanel(source.id, ctx).decisions.filter((event) => event.fact.watchIntent)
+      .length,
+    0,
+  );
+  const stopPrompt = "Stop watching Amenda in this DM";
+  fixture.arm("status", {
+    expectedUserText: stopPrompt,
+    steps: [
+      {
+        name: "sprout_assistant_watch",
+        arguments: { targetProjectId: project.id, chatId: target, active: false },
+      },
+    ],
+    reply: "已停止关注 Amenda；不会取消正在执行的工作。",
+  });
+  chats.sendMessage(
+    source.id,
+    { senderKind: "human", senderId: ctx.userId, body: stopPrompt },
+    ctx,
+  );
+  const stopped = await until(
+    () =>
+      sqlite
+        .prepare(
+          "SELECT * FROM agent_run WHERE chat_id=? AND id NOT IN (?,?) AND status IN ('completed','failed')",
+        )
+        .get(source.id, first.id, second.id) as FinishedRun | undefined,
+    "actual installed Pi stop watch roundtrip",
+  );
+  const stopTools = toolResults(stopped).tools.slice(actual.tools.length + secondTools.length);
+  assert.equal(stopTools.length, 1);
+  assert.equal(stopTools[0].toolName, "sprout_assistant_watch");
+  assert.equal(stopTools[0].isError, false, JSON.stringify(stopTools));
+  const stopResult = JSON.parse(
+    stopTools[0].content.find((content: { type: string }) => content.type === "text").text,
+  );
+  assert.equal(stopResult.result.data.action, "stopped");
+  assert.equal(stopResult.result.data.active, false);
+  assert.equal(stopResult.result.data.chatId, target);
+  assert.equal(assistant.assistantPanel(source.id, ctx).watches.length, 0);
+  assert.equal(
+    assistant.assistantPanel(source.id, ctx).decisions.filter((event) => event.fact.watchIntent)
+      .length,
+    0,
+  );
+  assert.throws(
+    () => setAssistantWatch(source.id, project.id, target, true, ctx, new Date(), 60, intent.id),
+    /关注意图已处理/,
+  );
   fixture.assertDrained();
   const evidence = {
     directory,
     assistantRunId: first.id,
     workerRunId: work.id,
     watchRunId: second.id,
+    stopRunId: stopped.id,
+    stopResult,
     sdkVersion: actual.snapshot.sdkVersion,
     declaredTools: actual.snapshot.tools,
     observe: observed,
@@ -254,7 +309,7 @@ try {
   };
   writeFileSync(join(directory, "evidence.json"), JSON.stringify(evidence, null, 2));
   console.log(
-    `PASS installed Pi observe→Agent-only propose→Human confirm→Amenda hi; watch interval intent/consent; evidence=${join(directory, "evidence.json")}`,
+    `PASS installed Pi observe→Agent-only propose→Human confirm→Amenda hi; watch interval intent/consent→actual Pi stop tool; evidence=${join(directory, "evidence.json")}`,
   );
 } finally {
   await shutdownRuntime("assistant-feedback-done");

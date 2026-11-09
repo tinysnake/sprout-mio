@@ -382,7 +382,7 @@ describe("native assistant authority and durable work", () => {
     ).toEqual({ cancel_reason: "assistant_context_changed" });
     sqlite.prepare("UPDATE project SET created_by=? WHERE id=?").run(ctx.userId, project.id);
   });
-  it("samples unchanged activity on the elapsed clock, merges proposal/watch and keeps a watch for new short runs", () => {
+  it("keeps proposal clock/results immediate without duplicate watch reports, and watches later short runs by window", () => {
     const now = new Date();
     const source = activeHelper();
     const proposal = assistant.createAssistantProposal(
@@ -492,7 +492,15 @@ describe("native assistant authority and durable work", () => {
     observer.sampleAssistantRuns(new Date(now.getTime() + 181000));
     expect(
       sqlite.prepare("SELECT * FROM assistant_event WHERE event_key=?").all(`${next.id}:terminal`),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
+    observer.sampleAssistantRuns(new Date(now.getTime() + 240000));
+    const digest = sqlite
+      .prepare(
+        "SELECT fact FROM assistant_event WHERE assistant_chat_id=? AND json_extract(fact,'$.watchId') IS NOT NULL",
+      )
+      .all(dm.id) as { fact: string }[];
+    expect(digest).toHaveLength(1);
+    expect(digest[0].fact).toContain("New short run");
     expect(
       sqlite.prepare("SELECT * FROM assistant_watch WHERE revoked_at IS NULL").all(),
     ).toHaveLength(1);
@@ -690,8 +698,9 @@ describe("native assistant authority and durable work", () => {
     const isolated = createAgentProfile({ name: "Watched worker" }, ctx);
     addProjectMember(project.id, isolated.id, ctx);
     const target = chats.createDirectChat(project.id, isolated.id, ctx).chat;
+    const now = new Date();
     for (const sourceId of [dm.id, second.id]) {
-      observer.setAssistantWatch(sourceId, project.id, target.id, true, ctx, instant, 60);
+      observer.setAssistantWatch(sourceId, project.id, target.id, true, ctx, now, 60);
     }
     chats.sendMessage(
       target.id,
@@ -701,9 +710,9 @@ describe("native assistant authority and durable work", () => {
     const run = runs.listAgentRuns(target.id, ctx)[0];
     const due = sqlite
       .prepare(
-        "SELECT next_due_at FROM assistant_run_cursor WHERE assistant_chat_id=? AND run_id=?",
+        "SELECT c.next_due_at FROM assistant_watch_cursor c JOIN assistant_watch w ON w.id=c.watch_id WHERE w.assistant_chat_id=? AND w.target_chat_id=? AND w.revoked_at IS NULL",
       )
-      .get(dm.id, run.id) as { next_due_at: number };
+      .get(dm.id, target.id) as { next_due_at: number };
     const time = new Date(due.next_due_at);
     expect(() =>
       observer.sampleAssistantRuns(time, () => {
@@ -713,9 +722,9 @@ describe("native assistant authority and durable work", () => {
     expect(
       sqlite
         .prepare(
-          "SELECT next_due_at FROM assistant_run_cursor WHERE assistant_chat_id=? AND run_id=?",
+          "SELECT c.next_due_at FROM assistant_watch_cursor c JOIN assistant_watch w ON w.id=c.watch_id WHERE w.assistant_chat_id=? AND w.target_chat_id=? AND w.revoked_at IS NULL",
         )
-        .get(dm.id, run.id),
+        .get(dm.id, target.id),
     ).toEqual(due);
     const sampledAt = new Date(time.getTime() + 1000);
     observer.sampleAssistantRuns(sampledAt, () => undefined);
@@ -723,9 +732,9 @@ describe("native assistant authority and durable work", () => {
       expect(
         sqlite
           .prepare(
-            "SELECT count(*) AS n FROM assistant_event WHERE assistant_chat_id=? AND json_extract(fact,'$.runId')=? AND json_extract(fact,'$.kind')='periodic' AND message_id IS NOT NULL",
+            "SELECT count(*) AS n FROM assistant_event WHERE assistant_chat_id=? AND json_extract(fact,'$.targetChatId')=? AND json_extract(fact,'$.watchId') IS NOT NULL AND message_id IS NOT NULL",
           )
-          .get(sourceId, run.id),
+          .get(sourceId, target.id),
       ).toEqual({ n: 1 });
     const event = assistant.captureAssistantFact(
       second.id,
@@ -758,7 +767,8 @@ describe("native assistant authority and durable work", () => {
     ).toEqual({ message_id: null });
     expect(event).toBeDefined();
   });
-  it("enrolls existing and newly allocated Group runs for every worker, including immediate terminal runs", () => {
+  it("enrolls existing and newly allocated Group runs for every worker and coalesces terminal results at the window deadline", () => {
+    const now = new Date();
     const secondWorker = createAgentProfile({ name: "Second watched worker" }, ctx);
     addProjectMember(project.id, secondWorker.id, ctx);
     const group = chats.createGroupChat(
@@ -780,13 +790,13 @@ describe("native assistant authority and durable work", () => {
     const existing = runs.allocateContinuationRun(
       { projectId: project.id, chatId: group.id, instanceId: firstInstance.id },
       ctx.requestId,
-      instant,
+      now,
     );
-    const watch = observer.setAssistantWatch(dm.id, project.id, group.id, true, ctx, instant);
+    const watch = observer.setAssistantWatch(dm.id, project.id, group.id, true, ctx, now, 60);
     const short = runs.allocateContinuationRun(
       { projectId: project.id, chatId: group.id, instanceId: secondInstance.id },
       ctx.requestId,
-      instant,
+      new Date(now.getTime() + 1000),
     );
     expect(
       sqlite
@@ -797,15 +807,22 @@ describe("native assistant authority and durable work", () => {
     ).toEqual([existing.id, short.id].sort().map((run_id) => ({ run_id })));
     runs.abortAgentRun(existing.id, ctx);
     runs.abortAgentRun(short.id, ctx);
-    observer.sampleAssistantRuns(new Date(instant.getTime() + 1));
+    sqlite
+      .prepare("UPDATE agent_run SET settled_at=? WHERE id IN (?,?)")
+      .run(Math.floor(now.getTime() / 1000) + 2, existing.id, short.id);
+    observer.sampleAssistantRuns(new Date(now.getTime() + 1000));
+    const digests = () =>
+      sqlite
+        .prepare(
+          "SELECT fact,message_id FROM assistant_event WHERE assistant_chat_id=? AND json_extract(fact,'$.watchId')=?",
+        )
+        .all(dm.id, watch.watchId) as { fact: string; message_id: string }[];
+    expect(digests()).toEqual([]);
+    observer.sampleAssistantRuns(new Date(now.getTime() + 60000));
+    expect(digests()).toHaveLength(1);
+    expect(digests()[0].message_id).toEqual(expect.any(String));
     for (const run of [existing, short])
-      expect(
-        sqlite
-          .prepare(
-            "SELECT message_id FROM assistant_event WHERE assistant_chat_id=? AND event_key=?",
-          )
-          .get(dm.id, `${run.id}:terminal`),
-      ).toMatchObject({ message_id: expect.any(String) });
+      expect(JSON.parse(digests()[0].fact).digest.runIds).toContain(run.id);
     expect(
       sqlite.prepare("SELECT revoked_at FROM assistant_watch WHERE id=?").get(watch.watchId),
     ).toEqual({ revoked_at: null });
@@ -820,10 +837,14 @@ describe("native assistant authority and durable work", () => {
     const watch = observer.setAssistantWatch(source.id, lane.id, target.id, true, ctx, instant);
     removeProjectMember(lane.id, targetWorker.id, ctx);
     expect(chats.getChat(target.id, ctx).archivedAt).not.toBeNull();
-    expect(observer.setAssistantWatch(source.id, lane.id, target.id, false, ctx, instant)).toEqual({
+    expect(
+      observer.setAssistantWatch(source.id, lane.id, target.id, false, ctx, instant),
+    ).toMatchObject({
       active: false,
     });
-    expect(observer.setAssistantWatch(source.id, lane.id, target.id, false, ctx, instant)).toEqual({
+    expect(
+      observer.setAssistantWatch(source.id, lane.id, target.id, false, ctx, instant),
+    ).toMatchObject({
       active: false,
     });
     expect(
@@ -907,11 +928,9 @@ describe("native assistant authority and durable work", () => {
     const notice = () =>
       chats
         .listMessages(dm.id, ctx)
-        .find((row) => row.senderKind === "assistant_event" && row.nativeSource.runId === run.id);
+        .find((row) => row.senderKind === "assistant_event" && row.body.includes("Queued work"));
     const before = notice();
-    expect(before?.senderKind === "assistant_event" && before.nativeSource.summary).toContain(
-      "尚未开始处理",
-    );
+    expect(before?.body).toContain("Queued work");
     sqlite
       .prepare("UPDATE agent_run SET status='running',started_at=? WHERE id=?")
       .run(Math.floor(now.getTime() / 1000) + 90, run.id);

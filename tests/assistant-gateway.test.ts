@@ -1,4 +1,9 @@
 import { afterAll, describe, expect, it } from "vite-plus/test";
+import { createServer } from "node:http";
+import { once } from "node:events";
+import { createRemoteClient } from "../src/extension/remote-client";
+import { registerAssistantTools } from "../src/extension/assistant-tools";
+import type { SproutExtensionAPI } from "../src/extension/types";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -99,6 +104,84 @@ afterAll(async () => {
   rmSync(directory, { recursive: true, force: true });
 });
 describe("assistant/worker gateway purpose and Human authority matrix", () => {
+  it("stops via the registered tool, real HTTP grant and gateway without creating a confirmation or cancelling work", async () => {
+    const observer = await import("../src/domain/assistant-observer");
+    const assistant = await import("../src/domain/assistant");
+    const dm = active[0].chatId;
+    const target = active[1].chatId;
+    observer.setAssistantWatch(dm, project.id, target, true, ctx, new Date(), 60);
+    const before = sqlite
+      .prepare("SELECT count(*) n FROM assistant_event WHERE assistant_chat_id=?")
+      .get(dm);
+    const server = createServer((incoming, outgoing) => {
+      let body = "";
+      incoming.on("data", (chunk) => {
+        body += chunk;
+      });
+      incoming.on("end", async () => {
+        const request = new Request("http://127.0.0.1/api/remote/agent", {
+          method: "POST",
+          headers: {
+            authorization: incoming.headers.authorization ?? "",
+            "content-type": "application/json",
+          },
+          body,
+        });
+        initializeRequestContext(request);
+        const response = await remoteAgentResponse(request);
+        outgoing.statusCode = response.status;
+        outgoing.end(await response.text());
+      });
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const port = (server.address() as { port: number }).port;
+    try {
+      const registered = new Map<string, Parameters<SproutExtensionAPI["registerTool"]>[0]>();
+      registerAssistantTools(
+        {
+          registerTool: (tool) => {
+            registered.set(tool.name, tool);
+          },
+        },
+        createRemoteClient({ ...grants[0], endpoint: `http://127.0.0.1:${port}/api/remote/agent` }),
+      );
+      const tool = registered.get("sprout_assistant_watch")!;
+      expect(tool.description).toContain("active:false");
+      for (let attempt = 0; attempt < 2; attempt++)
+        expect(
+          await tool.execute("stop", {
+            targetProjectId: project.id,
+            chatId: target,
+            active: false,
+          }),
+        ).toMatchObject({
+          isError: false,
+          details: {
+            outcome: "response",
+            result: { ok: true, data: { active: false, action: "stopped", chatId: target } },
+          },
+        });
+      expect(assistant.assistantPanel(dm, ctx).watches).toEqual([]);
+      expect(
+        sqlite.prepare("SELECT count(*) n FROM assistant_event WHERE assistant_chat_id=?").get(dm),
+      ).toEqual(before);
+      expect(runs.getAgentRun(active[1].id, ctx).status).toBe("running");
+      expect(
+        (
+          await invoke(1, "assistant_watch", {
+            projectId: project.id,
+            targetProjectId: project.id,
+            chatId: target,
+            active: false,
+          })
+        ).body.ok,
+      ).toBe(false);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  });
   it("admits assistant factual reads across authorized Projects but not foreign Human or forged identity", async () => {
     expect(
       (

@@ -17,6 +17,7 @@ const action = z.discriminatedUnion("action", [
     targetProjectId: z.string(),
     targetChatId: z.string(),
     active: z.boolean(),
+    eventId: z.string().optional(),
     intervalSeconds: z.number().int().min(60).max(86400).optional(),
   }),
   z.strictObject({
@@ -53,6 +54,7 @@ export const assistantActionFn = createServerFn({ method: "POST" })
               ctx,
               new Date(),
               data.intervalSeconds,
+              data.eventId,
             ),
             requestId,
           );

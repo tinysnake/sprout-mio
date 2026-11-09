@@ -420,6 +420,63 @@ describe("真实 HTTP transport", () => {
     }
   });
 
+  it("assistant watch stop accepts only an inactive response bound to this target and rejects stop/start shape confusion", async () => {
+    const stopped = {
+      action: "stopped",
+      active: false,
+      targetProjectId: projectId,
+      chatId: "cnv_11111111",
+    };
+    let data: unknown = stopped;
+    const http = await service((_req, res) =>
+      res.end(JSON.stringify({ ok: true, data, requestId })),
+    );
+    try {
+      const client = createRemoteClient(grant(http.endpoint));
+      const input = {
+        projectId,
+        targetProjectId: projectId,
+        chatId: stopped.chatId,
+        active: false,
+      };
+      const request: RemoteAgentRequest = { version: 2, call: { type: "assistant_watch", input } };
+      expect(await client.request(request)).toMatchObject({
+        outcome: "response",
+        result: { ok: true, data: stopped },
+      });
+      for (data of [
+        { ...stopped, active: true },
+        { ...stopped, chatId: "cnv_22222222" },
+        { ...stopped, targetProjectId: "prj_22222222" },
+        { active: false, eventId: "msg_11111111", intervalSeconds: 60 },
+        { ...stopped, eventId: "unexpected" },
+      ])
+        expect(await client.request(request)).toEqual({
+          outcome: "unknown",
+          reason: "invalid_response",
+        });
+      data = stopped;
+      expect(
+        await client.request({
+          version: 2,
+          call: { type: "assistant_watch", input: { ...input, active: true } },
+        }),
+      ).toEqual({ outcome: "unknown", reason: "invalid_response" });
+      data = { active: false, eventId: "msg_11111111", intervalSeconds: 60 };
+      expect(
+        await client.request({
+          version: 2,
+          call: {
+            type: "assistant_watch",
+            input: { ...input, active: undefined, intervalSeconds: 60 },
+          },
+        }),
+      ).toMatchObject({ outcome: "response", result: { ok: true, data } });
+    } finally {
+      http.close();
+    }
+  });
+
   it("assistant observe validates its own successful envelope instead of execution/lease shapes", async () => {
     let data: unknown = { projects: [{ id: projectId, name: "Visible Project" }] };
     const http = await service((_req, res) =>

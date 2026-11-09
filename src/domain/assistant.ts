@@ -19,13 +19,19 @@ import {
 } from "../db/schema";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { assistantInputContextSchema } from "../contracts/assistant";
+import { PUBLIC_CHANNEL_DISPLAY_TITLE } from "../contracts/chat";
 import { readAssistantNativeFacts } from "./assistant-native-facts";
 import type { AssistantCall, AssistantFact, AssistantTarget } from "../contracts/assistant";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { getChat, ensureInstance, ChatError } from "./chat";
 import { allocateContinuationRun } from "./agent-run";
 import { resolveAutomationTarget } from "./automation-target";
-import { enrollAssistantInterest, rescheduleWatch } from "./assistant-interest";
+import {
+  enrollAssistantInterest,
+  rescheduleWatch,
+  stopAssistantWatch,
+  resolveWatchIntents,
+} from "./assistant-interest";
 
 export class AssistantError extends Error {
   constructor(
@@ -489,8 +495,16 @@ export function dispatchAssistantCall(
     case "assistant_propose":
       return createAssistantProposal(source, call.input.target, call.input.body);
     case "assistant_watch": {
-      visibleTarget(call.input.targetProjectId, call.input.chatId, source.ctx);
       const now = new Date();
+      if (call.input.active === false)
+        return stopAssistantWatch(
+          source.current.id,
+          call.input.targetProjectId,
+          call.input.chatId,
+          source.ctx.userId,
+          now,
+        );
+      visibleTarget(call.input.targetProjectId, call.input.chatId, source.ctx);
       const current = db
         .select()
         .from(assistantWatch)
@@ -511,6 +525,7 @@ export function dispatchAssistantCall(
           .run();
         rescheduleWatch({ ...current, intervalSeconds }, now);
       }
+      resolveWatchIntents(source.current.id, call.input.targetProjectId, call.input.chatId, now);
       const event = captureAssistantFact(
         source.current.id,
         `watch-intent:${id()}`,
@@ -661,10 +676,28 @@ export function deliverAssistantEvents(now: Date) {
           if (!owner) throw new AssistantError("not_found");
           const ctx = { userId: owner.userId, requestId: "assistant-delivery" };
           assistantSource(event.assistantChatId, ctx);
+          if (event.fact.watchIntent && event.decisionResolvedAt)
+            throw new AssistantError("not_found");
           visibleTarget(event.fact.targetProjectId, event.fact.targetChatId, ctx);
           if (
             event.fact.runId &&
             !hasCurrentAssistantInterest(event.assistantChatId, event.fact.runId)
+          )
+            throw new AssistantError("not_found");
+          if (
+            event.fact.watchId &&
+            !db
+              .select()
+              .from(assistantWatch)
+              .where(
+                and(
+                  eq(assistantWatch.id, event.fact.watchId),
+                  eq(assistantWatch.assistantChatId, event.assistantChatId),
+                  eq(assistantWatch.consentedBy, ctx.userId),
+                  isNull(assistantWatch.revokedAt),
+                ),
+              )
+              .get()
           )
             throw new AssistantError("not_found");
           const messageId = id();
@@ -731,6 +764,7 @@ export function hasCurrentAssistantInterest(assistantChatId: string, runId: stri
 }
 function targetLabel(chatId: string) {
   const target = db.select().from(chat).where(eq(chat.id, chatId)).get()!;
+  if (target.kind === "public_channel") return PUBLIC_CHANNEL_DISPLAY_TITLE;
   if (target.title) return target.title;
   return (
     db
@@ -799,7 +833,10 @@ export function assistantPanel(
       .limit(50)
       .all()
       .filter(
-        (e: typeof assistantEvent.$inferSelect) => e.fact.kind === "decision" && visible(e.fact),
+        (e: typeof assistantEvent.$inferSelect) =>
+          e.fact.kind === "decision" &&
+          (!e.fact.watchIntent || !e.decisionResolvedAt) &&
+          visible(e.fact),
       )
       .map((row: typeof assistantEvent.$inferSelect) => ({
         ...row,

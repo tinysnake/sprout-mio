@@ -1,5 +1,5 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
-import { db } from "../db";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { db, sqlite } from "../db";
 import {
   agentInstance,
   agentProfile,
@@ -7,7 +7,76 @@ import {
   assistantInterest,
   assistantRunCursor,
   assistantWatch,
+  assistantWatchCursor,
+  assistantEvent,
 } from "../db/schema";
+
+export function resolveWatchIntents(
+  assistantChatId: string,
+  targetProjectId: string,
+  targetChatId: string,
+  now: Date,
+) {
+  db.update(assistantEvent)
+    .set({ decisionResolvedAt: now })
+    .where(
+      and(
+        eq(assistantEvent.assistantChatId, assistantChatId),
+        isNull(assistantEvent.decisionResolvedAt),
+        sql`json_extract(${assistantEvent.fact}, '$.watchIntent') = 1`,
+        sql`json_extract(${assistantEvent.fact}, '$.targetProjectId') = ${targetProjectId}`,
+        sql`json_extract(${assistantEvent.fact}, '$.targetChatId') = ${targetChatId}`,
+      ),
+    )
+    .run();
+}
+
+export function stopAssistantWatch(
+  assistantChatId: string,
+  targetProjectId: string,
+  targetChatId: string,
+  humanId: string,
+  now: Date,
+) {
+  return sqlite
+    .transaction(() => {
+      db.update(assistantWatch)
+        .set({ revokedAt: now })
+        .where(
+          and(
+            eq(assistantWatch.assistantChatId, assistantChatId),
+            eq(assistantWatch.targetProjectId, targetProjectId),
+            eq(assistantWatch.targetChatId, targetChatId),
+            eq(assistantWatch.consentedBy, humanId),
+            isNull(assistantWatch.revokedAt),
+          ),
+        )
+        .run();
+      resolveWatchIntents(assistantChatId, targetProjectId, targetChatId, now);
+      return {
+        action: "stopped" as const,
+        active: false as const,
+        targetProjectId,
+        chatId: targetChatId,
+      };
+    })
+    .immediate();
+}
+
+export function initializeWatchCursor(watch: typeof assistantWatch.$inferSelect, now: Date) {
+  const boundary = sqlite
+    .prepare("SELECT coalesce(max(rowid), 0) AS n FROM message WHERE chat_id=?")
+    .get(watch.targetChatId) as { n: number };
+  db.insert(assistantWatchCursor)
+    .values({
+      watchId: watch.id,
+      windowStartedAt: now,
+      nextDueAt: new Date(now.getTime() + watch.intervalSeconds * 1000),
+      messageRowid: boundary.n,
+    })
+    .onConflictDoNothing()
+    .run();
+}
 
 export function assistantRunInterval(assistantChatId: string, runId: string): number {
   const watch = db
@@ -27,6 +96,11 @@ export function assistantRunInterval(assistantChatId: string, runId: string): nu
 }
 
 export function rescheduleWatch(watch: typeof assistantWatch.$inferSelect, now: Date) {
+  initializeWatchCursor(watch, now);
+  db.update(assistantWatchCursor)
+    .set({ nextDueAt: new Date(now.getTime() + watch.intervalSeconds * 1000) })
+    .where(eq(assistantWatchCursor.watchId, watch.id))
+    .run();
   const runs = db
     .select({ runId: assistantInterest.runId })
     .from(assistantInterest)

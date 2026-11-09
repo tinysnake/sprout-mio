@@ -151,12 +151,23 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
       }
     } else {
       const parsed = assistantWatchResponseSchema.safeParse(envelope.data.data);
-      if (
-        parsed.success &&
-        (call.input.intervalSeconds === undefined ||
-          parsed.data.intervalSeconds === call.input.intervalSeconds)
-      )
-        data = parsed.data;
+      if (parsed.success) {
+        const value = parsed.data;
+        if (call.input.active === false) {
+          if (
+            "action" in value &&
+            value.action === "stopped" &&
+            value.targetProjectId === call.input.targetProjectId &&
+            value.chatId === call.input.chatId
+          )
+            data = value;
+        } else if (
+          !("action" in value) &&
+          (call.input.intervalSeconds === undefined ||
+            value.intervalSeconds === call.input.intervalSeconds)
+        )
+          data = value;
+      }
     }
     return data
       ? { outcome: "response", result: { ok: true, data, requestId: envelope.data.requestId } }

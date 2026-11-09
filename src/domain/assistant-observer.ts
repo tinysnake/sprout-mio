@@ -6,6 +6,7 @@ import {
   assistantEvent,
   assistantPreferences,
   assistantProposal,
+  assistantInterest,
   assistantRunCursor,
   assistantWatch,
   chat,
@@ -20,7 +21,14 @@ import {
   deliverAssistantEvents,
   hasCurrentAssistantInterest,
 } from "./assistant";
-import { enrollExistingWatch, assistantRunInterval, rescheduleWatch } from "./assistant-interest";
+import {
+  enrollExistingWatch,
+  assistantRunInterval,
+  rescheduleWatch,
+  stopAssistantWatch,
+  resolveWatchIntents,
+} from "./assistant-interest";
+import { sampleAssistantWatchWindows } from "./assistant-watch-windows";
 import { getChat, ChatError } from "./chat";
 import { ProjectAccessError, type ProjectContext } from "./access";
 import { readRunActivity } from "../server/pi-host/run-activity";
@@ -33,6 +41,7 @@ export function setAssistantWatch(
   ctx: ProjectContext,
   now = new Date(),
   intervalSeconds?: number,
+  eventId?: string,
 ) {
   if (
     intervalSeconds !== undefined &&
@@ -55,17 +64,35 @@ export function setAssistantWatch(
         )
         .get();
       if (!active) {
-        if (current)
-          db.update(assistantWatch)
-            .set({ revokedAt: now })
-            .where(eq(assistantWatch.id, current.id))
-            .run();
+        const stopped = stopAssistantWatch(
+          assistantChatId,
+          targetProjectId,
+          targetChatId,
+          ctx.userId,
+          now,
+        );
         deliverAssistantEvents(now);
-        return { active: false };
+        return stopped;
+      }
+      if (eventId) {
+        const intent = db.select().from(assistantEvent).where(eq(assistantEvent.id, eventId)).get();
+        if (
+          !intent ||
+          intent.assistantChatId !== assistantChatId ||
+          !intent.fact.watchIntent ||
+          intent.fact.targetProjectId !== targetProjectId ||
+          intent.fact.targetChatId !== targetChatId ||
+          (intent.decisionResolvedAt &&
+            (!current || intent.decisionResolvedAt.getTime() !== current.consentedAt.getTime())) ||
+          (intervalSeconds !== undefined && intent.fact.intervalSeconds !== intervalSeconds)
+        )
+          throw new AssistantError("conflict", "关注意图已处理，请提出新的关注请求");
+        intervalSeconds = intent.fact.intervalSeconds;
       }
       const target = getChat(targetChatId, ctx);
       if (target.projectId !== targetProjectId || target.archivedAt)
         throw new AssistantError("not_found");
+      resolveWatchIntents(assistantChatId, targetProjectId, targetChatId, now);
       if (current) {
         if (intervalSeconds !== undefined) {
           db.update(assistantWatch)
@@ -219,6 +246,7 @@ export function sampleAssistantRuns(now: Date, activity = readRunActivity) {
         .where(
           and(
             isNull(assistantRunCursor.terminalCapturedAt),
+            sql`exists (select 1 from ${assistantInterest} i join ${assistantProposal} p on p.id=i.origin_id where i.assistant_chat_id=${assistantRunCursor.assistantChatId} and i.run_id=${assistantRunCursor.runId} and i.origin_kind='proposal' and p.status='submitted')`,
             or(
               lte(assistantRunCursor.nextDueAt, now),
               and(ne(agentRun.status, "queued"), ne(agentRun.status, "running")),
@@ -303,6 +331,7 @@ export function sampleAssistantRuns(now: Date, activity = readRunActivity) {
             .run();
         }
       }
+      sampleAssistantWatchWindows(now, activity);
       captureUndeliveredProposals(now);
       deliverAssistantEvents(now);
       return rows.length;

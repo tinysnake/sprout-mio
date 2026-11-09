@@ -135,6 +135,18 @@ export const assistantWatch = sqliteTable(
     index("assistant_watch_target_idx").on(t.targetChatId, t.revokedAt),
   ],
 );
+export const assistantWatchCursor = sqliteTable(
+  "assistant_watch_cursor",
+  {
+    watchId: text("watch_id")
+      .primaryKey()
+      .references(() => assistantWatch.id),
+    windowStartedAt: integer("window_started_at", { mode: "timestamp_ms" }).notNull(),
+    nextDueAt: integer("next_due_at", { mode: "timestamp_ms" }).notNull(),
+    messageRowid: integer("message_rowid").notNull(),
+  },
+  (t) => [index("assistant_watch_cursor_due_idx").on(t.nextDueAt)],
+);
 export const assistantPreferences = sqliteTable(
   "assistant_preferences",
   {
@@ -190,6 +202,7 @@ export const assistantEvent = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     messageId: text("message_id").unique(),
     suppressedAt: integer("suppressed_at", { mode: "timestamp_ms" }),
+    decisionResolvedAt: integer("decision_resolved_at", { mode: "timestamp_ms" }),
     attempts: integer("attempts").notNull().default(0),
   },
   (t) => [

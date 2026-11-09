@@ -51,11 +51,19 @@ export const assistantProposeResponseSchema = z.strictObject({
   agentProfileId: z.string(),
   body: z.string(),
 });
-export const assistantWatchResponseSchema = z.strictObject({
-  eventId: z.string(),
-  active: z.boolean(),
-  intervalSeconds: z.number().int().min(60).max(86400),
-});
+export const assistantWatchResponseSchema = z.union([
+  z.strictObject({
+    eventId: z.string(),
+    active: z.boolean(),
+    intervalSeconds: z.number().int().min(60).max(86400),
+  }),
+  z.strictObject({
+    action: z.literal("stopped"),
+    active: z.literal(false),
+    targetProjectId: z.string(),
+    chatId: z.string(),
+  }),
+]);
 export type AssistantResponse =
   | z.infer<typeof assistantObserveResponseSchema>
   | z.infer<typeof assistantProposeResponseSchema>

@@ -42,6 +42,7 @@ const watch = z.strictObject({
   projectId: z.string(),
   targetProjectId: z.string(),
   chatId: z.string(),
+  active: z.boolean().optional(),
   intervalSeconds: z.number().int().min(60).max(86400).optional(),
 });
 export const ASSISTANT_TOOL_SPEC = {
@@ -60,7 +61,7 @@ export const ASSISTANT_TOOL_SPEC = {
   sprout_assistant_watch: {
     call: "assistant_watch",
     description:
-      "Create or update a Chat watch interval intent (intervalSeconds: integer 60..86400, default 300). Only a native Human action activates a new durable watch; updating an active watch preserves its Human consent and target.",
+      "Watch a Chat in this assistant DM: omit active (or use true) to request Human consent, or update an already authorized interval (integer 60..86400, default 300). Reports combine the window's messages and work activity, never notify per run. Use active:false to STOP the current Human's watch of that target in this DM immediately, including pending intents; stopping needs no new consent, is idempotent, and does not cancel work. Only a fresh native Human confirmation can re-enable a stopped watch.",
     input: watch,
   },
 } as const;
@@ -80,6 +81,14 @@ export type AssistantFact = {
   runId?: string;
   proposalId?: string;
   watchIntent?: boolean;
+  watchId?: string;
+  digest?: {
+    windowStartedAt: string;
+    windowEndedAt: string;
+    messageIds: string[];
+    runIds: string[];
+    truncated: boolean;
+  };
   intervalSeconds?: number;
   runState?: { status: AgentRunStatus; elapsedSeconds: number };
   action?: { label: string; elapsedSeconds?: number };
