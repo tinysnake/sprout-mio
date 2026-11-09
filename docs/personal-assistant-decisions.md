@@ -1,6 +1,6 @@
 # 个人助理与 channel 决策草案
 
-> 原生 Sprout 助理单元的实现契约见 [原生助理契约](assistant-core.md)。本文继续记录助理、会话和 channel 的共同产品边界；外部 channel、飞书与语音部分仍为讨论草案。Human UI 体验确认保持 pending。
+> 原生 Sprout 助理单元的实现契约见 [原生助理契约](assistant-core.md)。本文继续记录助理、会话和 channel 的共同产品边界；外部 channel、飞书与语音部分仍为讨论草案。原生助理 Human UI 体验已于 2026-11-09 确认，最后基础信息分隔线修复按授权由执行者截图复核。外部 channel 的确认尚未开始。
 
 ## 讨论状态与来源
 

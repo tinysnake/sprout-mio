@@ -89,6 +89,7 @@ export function ProjectBasicInfoForm({
 
   return (
     <SettingsSection
+      divided={false}
       title="基本信息"
       description="名称会同步到 Project 选择器；描述用于说明这个 Project 的协作范围。"
     >

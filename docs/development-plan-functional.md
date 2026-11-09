@@ -12,8 +12,8 @@
 
 - [x] 补 webhook 所需的最小契约，覆盖 Project 规则、消息动作、系统来源、权限、触发与运行关联及去重。已核对现有调度和续跑生命周期；cron 复用同一事务接纳和执行路径。
 - [x] 跑通 webhook 到 DM / Group 的消息动作，包含认证、基本去重、目标失效、规则停用及触发记录。已通过专项 domain / HTTP / 迁移测试与生产服务浏览器链路，见[Webhook 契约](webhook-core.md)。
-- [x] 将 cron 接到同一提交路径，覆盖时区、下一时点、重叠跳过、试运行及离线不补做。专项 parser / domain / 迁移 / timer 与生产服务浏览器技术验证已完成，包含实际墙钟触发和零付费模型的真实 Pi runner；见 [Cron 契约](cron-core.md)。Human UI 体验未确认。
-- [x] 跑通 Sprout 原生助理的受限工具、观察、watch、提案确认、委派与通知。未确认或权限失效时不执行，重复确认只提交一次。已通过实际 DB / gateway / timer 专项测试与生产服务 + 安装版 Pi + 回环模型 fixture；覆盖初始、steer、carry 和 uncertain admission，以及真实下一轮 context receipt。见[原生助理契约](assistant-core.md)。Human UI 体验未确认；广泛集成复核由父线程完成。
+- [x] 将 cron 接到同一提交路径，覆盖时区、下一时点、重叠跳过、试运行及离线不补做。专项 parser / domain / 迁移 / timer 与生产服务浏览器技术验证已完成，包含实际墙钟触发和零付费模型的真实 Pi runner；见 [Cron 契约](cron-core.md)。Human UI 体验已确认，最后分隔线修复按授权经执行者截图复核。
+- [x] 跑通 Sprout 原生助理的受限工具、观察、watch、提案确认、委派与通知。未确认或权限失效时不执行，重复确认只提交一次。已通过实际 DB / gateway / timer 专项测试与生产服务 + 安装版 Pi + 回环模型 fixture；覆盖初始、steer、carry 和 uncertain admission，以及真实下一轮 context receipt。见[原生助理契约](assistant-core.md)。Human UI 体验已确认，最后分隔线修复按授权经执行者截图复核；广泛集成复核由父线程完成。
 - [ ] 接飞书 DM adapter，覆盖身份核验、绑定切换、接收去重、两端确认、消息统一投递和解绑。
 
 每个实现单元补可重复的行为验证及必要反例，按[验证约定](verification.md)选择范围。真实付费模型、飞书凭据或外网连接未实际验证时明确记录，不以 fixture 代替相应结论。

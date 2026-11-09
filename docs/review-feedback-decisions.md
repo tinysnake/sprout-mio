@@ -112,3 +112,11 @@ Model the Domain 原则促使原始窗口和异步模型结果分开建模。Bou
 实现 commit 为 `c3d95d9`。父代理实际复跑 cron-core（14 个文件、148 个测试）及 cron-browser 均通过，runner 总计 43.834 秒，收据 `/tmp/sprout-cron-zone-parent.result.json`；另复跑 typecheck、check、build 通过。浏览器覆盖当前默认、半小时 / 45 分钟偏移、保存时跨 DST、不同浏览器时区 reload / 编辑保留、旧值保留和明确替换。付费调用为 0，未重跑全套 CI。
 
 已通过 Vite HMR 更新原局域网预览，无数据库 migration。父代理在 `http://10.0.0.13:3300` 的真实新建页读取 DOM，确认默认值为 `current`、文案“当前时区（UTC+08:00）”，与该浏览器 480 分钟偏移一致，选项无地区目录。检查未保存规则或改写原数据，自用 tab 已关闭，子任务已收尾。Human 体验确认仍待反馈。
+
+## 最后分隔线修复与评审收尾
+
+2026-11-09 Human 表示其他部分无问题，要求基础信息重复分隔线修复后由执行者截图确认并进入下一环节。根因是 SettingsTabs 的底边与 ProjectBasicInfoForm 的 SettingsSection 顶边叠加。复用现有 `divided={false}` 去掉表单顶边，保留 tab 底边，不增加样式特例。
+
+父代理先在原局域网服务重现 1px 表单顶边，再用真实 Chromium 复验桌面 1280×900 与手机 390×844。两者均为 section 顶边 0px、tab 底边 1px、无横向溢出，已实际读取并查看两张截图。证据为 `.verify/human-review/run.JtVeWy/general-border-desktop.png`、`general-border-mobile.png` 和 `general-border-check.json`。首次脚本使用不存在的 test id 导致等待超时，改用真实 `project-edit-name` 后成功；未将超时计为验证通过。typecheck、check 和 diff check 通过。本次是可逆的一行展示修复，未新增测试或重复整套门禁。原数据没有写入，Chromium 自用实例已关闭。
+
+Human 的有条件确认已满足截图条件，本轮 webhook、cron、原生助理与设置 UI 评审收尾。按照开发总计划进入飞书 DM adapter 的原项目实现与官方接入契约调查。后续新页面仍遵循现有设计确认流程，PWA / 语音及已记录的技术未验证项继续保留。
