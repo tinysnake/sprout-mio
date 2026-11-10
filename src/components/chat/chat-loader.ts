@@ -1,5 +1,10 @@
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
-import type { AgentRunResult, ChatRunActivity, ChatRunState } from "../../contracts/agent-run";
+import type {
+  AgentRunResult,
+  ChatRunActivity,
+  ChatRunState,
+  ChatRunSummary,
+} from "../../contracts/agent-run";
 import type {
   AgentInstance,
   Chat,
@@ -57,6 +62,7 @@ export type ChatDetailLoaderData =
        */
       turnContext: InfoHubResult<TurnContextReadResult> | null;
       runState: AgentRunResult<ChatRunState>;
+      selectedRun?: AgentRunResult<ChatRunSummary> | null;
       /** 已结束 run 的工作记录，按 assistantMessageId 归属到消息底部。 */
       runActivities: AgentRunResult<ChatRunActivity[]>;
       skills: ChatResult<import("../../contracts/skill").ChatSkillChoices>;

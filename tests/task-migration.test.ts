@@ -140,7 +140,14 @@ describe("0025 Task migration from zero and populated 0024", () => {
       );
       expect(
         after.sqlite.prepare("SELECT * FROM agent_run_input ORDER BY run_id,message_id").all(),
-      ).toEqual(oldInputs.map((row) => ({ ...row, admitted_at: null })));
+      ).toEqual(
+        oldInputs.map((row) => ({
+          ...row,
+          admitted_at: null,
+          assistant_context: null,
+          assistant_context_submitted_at: null,
+        })),
+      );
       expect(() =>
         after.sqlite
           .prepare("UPDATE agent_run SET assistant_message_id='msg_other' WHERE id='run_seed'")

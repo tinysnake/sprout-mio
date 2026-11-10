@@ -163,6 +163,7 @@ describe("配置边界", () => {
       SPROUT_REPO_DIR: join(homedir(), ".local", "share", "sprout-mio", "repos"),
       SPROUT_REPO_MAX_BYTES: 2 * 1024 * 1024 * 1024,
       DATABASE_URL: "./data/sprout.sqlite",
+
       APP_ORIGIN: "http://localhost:3000",
       APP_TRUSTED_ORIGINS: [],
       DEV_LOGIN_ENABLED: true,

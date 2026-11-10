@@ -509,6 +509,159 @@ describe("真实 HTTP transport", () => {
     }
   });
 
+  it("assistant watch stop accepts only an inactive response bound to this target and rejects stop/start shape confusion", async () => {
+    const stopped = {
+      action: "stopped",
+      active: false,
+      targetProjectId: projectId,
+      chatId: "cnv_11111111",
+    };
+    let data: unknown = stopped;
+    const http = await service((_req, res) =>
+      res.end(JSON.stringify({ ok: true, data, requestId })),
+    );
+    try {
+      const client = createRemoteClient(grant(http.endpoint));
+      const input = {
+        projectId,
+        targetProjectId: projectId,
+        chatId: stopped.chatId,
+        active: false,
+      };
+      const request: RemoteAgentRequest = { version: 2, call: { type: "assistant_watch", input } };
+      expect(await client.request(request)).toMatchObject({
+        outcome: "response",
+        result: { ok: true, data: stopped },
+      });
+      for (data of [
+        { ...stopped, active: true },
+        { ...stopped, chatId: "cnv_22222222" },
+        { ...stopped, targetProjectId: "prj_22222222" },
+        { active: false, eventId: "msg_11111111", intervalSeconds: 60 },
+        { ...stopped, eventId: "unexpected" },
+      ])
+        expect(await client.request(request)).toEqual({
+          outcome: "unknown",
+          reason: "invalid_response",
+        });
+      data = stopped;
+      expect(
+        await client.request({
+          version: 2,
+          call: { type: "assistant_watch", input: { ...input, active: true } },
+        }),
+      ).toEqual({ outcome: "unknown", reason: "invalid_response" });
+      data = { active: false, eventId: "msg_11111111", intervalSeconds: 60 };
+      expect(
+        await client.request({
+          version: 2,
+          call: {
+            type: "assistant_watch",
+            input: { ...input, active: undefined, intervalSeconds: 60 },
+          },
+        }),
+      ).toMatchObject({ outcome: "response", result: { ok: true, data } });
+    } finally {
+      http.close();
+    }
+  });
+
+  it("assistant observe validates its own successful envelope instead of execution/lease shapes", async () => {
+    let data: unknown = { projects: [{ id: projectId, name: "Visible Project" }] };
+    const http = await service((_req, res) =>
+      res.end(JSON.stringify({ ok: true, data, requestId })),
+    );
+    try {
+      const client = createRemoteClient(grant(http.endpoint));
+      const call = {
+        type: "assistant_observe" as const,
+        input: { projectId, offset: 0, limit: 20 },
+      };
+      expect(await client.request({ version: 2, call })).toMatchObject({
+        outcome: "response",
+        result: { ok: true, data },
+      });
+      for (data of [
+        { projects: "corrupt" },
+        { agents: [], chats: [] },
+        { projects: Array.from({ length: 21 }, () => ({ id: projectId, name: "Visible" })) },
+      ]) {
+        expect(await client.request({ version: 2, call })).toMatchObject({
+          outcome: "unknown",
+          reason: "invalid_response",
+        });
+      }
+      data = {
+        run: {
+          id: "run_11111111",
+          status: "completed",
+          queuedAt: time,
+          startedAt: time,
+          settledAt: time,
+          errorCode: null,
+          errorMessage: null,
+          assistantMessageId: null,
+        },
+        activity: null,
+        basis: "settled",
+      };
+      expect(
+        await client.request({
+          version: 2,
+          call: {
+            ...call,
+            input: {
+              ...call.input,
+              targetProjectId: projectId,
+              chatId: "cnv_00000000",
+              runId: "run_00000000",
+            },
+          },
+        }),
+      ).toMatchObject({ outcome: "unknown", reason: "invalid_response" });
+    } finally {
+      http.close();
+    }
+  });
+
+  it("assistant proposal success must describe the requested operation", async () => {
+    const target = { projectId, kind: "dm_agent" as const, agentProfileId: "agp_00000000" };
+    const data = {
+      proposalId: "proposal_1",
+      status: "pending",
+      target: { ...target, chatId: "cnv_00000000" },
+      agentProfileId: target.agentProfileId,
+      body: "Say hi",
+    };
+    const http = await service((_req, res) =>
+      res.end(JSON.stringify({ ok: true, data, requestId })),
+    );
+    try {
+      const client = createRemoteClient(grant(http.endpoint));
+      const request = {
+        version: 2 as const,
+        call: { type: "assistant_propose" as const, input: { projectId, target, body: "Say hi" } },
+      };
+      expect(await client.request(request)).toMatchObject({
+        outcome: "response",
+        result: { ok: true },
+      });
+      data.body = "Different work";
+      expect(await client.request(request)).toMatchObject({
+        outcome: "unknown",
+        reason: "invalid_response",
+      });
+      data.body = "Say hi";
+      data.target.agentProfileId = "agp_11111111";
+      expect(await client.request(request)).toMatchObject({
+        outcome: "unknown",
+        reason: "invalid_response",
+      });
+    } finally {
+      http.close();
+    }
+  });
+
   it("HTTP 200 的领域失败与 HTTP 401 的撤销都不会包装成成功", async () => {
     let status = 200;
     const http = await service((_req, res) => {

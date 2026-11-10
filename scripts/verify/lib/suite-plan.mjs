@@ -34,6 +34,12 @@ export const MANUAL_GATES = Object.freeze([
 ]);
 
 export const SUITE_PLAN = Object.freeze({
+  "assistant-core": plan(8, { unit: 1 }),
+  "assistant-browser": plan(40, { browser: 1, sdk: 1 }, server),
+  "cron-core": plan(8, { unit: 1 }),
+  "cron-browser": plan(100, { browser: 1, sdk: 1 }, server),
+  "webhook-core": plan(6, { unit: 1 }),
+  "webhook-browser": plan(40, { browser: 1, sdk: 1 }, server),
   "chat-skills": plan(8, { unit: 1, sdk: 1 }),
   "p6a-routing": plan(3, { unit: 1 }),
   "p6a-live-routing": plan(400, { sdk: 1 }),
@@ -58,7 +64,7 @@ export const SUITE_PLAN = Object.freeze({
   "bf-p6b-info": plan(0.5, { unit: 1 }),
   "bf-p6b-turn-context": plan(1.4, { unit: 1 }),
   "bf-p6b-agent-tool": plan(0.8, { unit: 1 }),
-  "bf-p6b-lifecycle": plan(24, { native: 1, sdk: 1, timing: 1 }),
+  "bf-p6b-lifecycle": plan(24, { native: 1, sdk: 1, timing: 1 }, worker),
   "a-base": plan(54.969, { development: 1, unit: 1 }, privateTree, true),
   "aa-execution-log-contracts": plan(1.648, { unit: 1 }),
   "ab-worker-long-command": plan(34.493, { native: 1 }, worker),

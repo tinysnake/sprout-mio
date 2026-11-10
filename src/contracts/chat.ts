@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { automationSourceSchema } from "./automation";
 import { agentProfileIdSchema } from "./agent";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
@@ -301,9 +302,8 @@ export const sendMessageInput = z.object({
 });
 export type SendMessageInput = z.infer<typeof sendMessageInput>;
 /** 消息输出：`mentions` 是写时按本条对话成员解析出来的结果。 */
-export const messageSchema = z.object({
+const messageBaseSchema = z.object({
   skills: z.array(messageSkillSpanSchema),
-  senderKind: memberKind,
   senderId: z.string().min(1),
   body: z.string().trim().min(1, "消息不能为空"),
   id: z.string().regex(appIdPattern(ID_PREFIXES.message)),
@@ -320,6 +320,51 @@ export const messageSchema = z.object({
     })
     .optional(),
 });
+export const messageSchema = z
+  .discriminatedUnion("senderKind", [
+    messageBaseSchema.extend({
+      senderKind: z.literal("assistant_event"),
+      nativeSource: z.strictObject({
+        kind: z.literal("assistant_event"),
+        eventId: z.string(),
+        summary: z.string().optional(),
+        projectId: z.string(),
+        chatId: z.string(),
+        runId: z.string().optional(),
+      }),
+      automationSource: z.never().optional(),
+      taskRecord: z.never().optional(),
+      mentions: z.tuple([]),
+      skills: z.tuple([]),
+    }),
+    messageBaseSchema.extend({
+      senderKind: z.literal("assistant_work"),
+      nativeSource: z.strictObject({ kind: z.literal("assistant_work"), proposalId: z.string() }),
+      automationSource: z.never().optional(),
+      taskRecord: z.never().optional(),
+      mentions: z.tuple([]),
+      skills: z.tuple([]),
+    }),
+    messageBaseSchema.extend({
+      senderKind: z.literal("human"),
+      automationSource: z.never().optional(),
+    }),
+    messageBaseSchema.extend({
+      senderKind: z.literal("agent"),
+      automationSource: z.never().optional(),
+    }),
+    messageBaseSchema.extend({
+      senderKind: z.literal("automation"),
+      automationSource: automationSourceSchema,
+      taskRecord: z.never().optional(),
+      mentions: z.tuple([]),
+      skills: z.tuple([]),
+    }),
+  ])
+  .superRefine((value, ctx) => {
+    if (value.senderKind === "automation" && value.senderId !== value.automationSource.triggerId)
+      ctx.addIssue({ code: "custom", path: ["senderId"], message: "来源身份必须指向触发回执" });
+  });
 export type Message = z.infer<typeof messageSchema>;
 export type ChatResult<T> = AppResult<T> & { fieldErrors?: FieldErrors };
 

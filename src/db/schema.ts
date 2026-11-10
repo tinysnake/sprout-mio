@@ -1,3 +1,5 @@
+import type { AssistantInputContext } from "../contracts/assistant";
+import type { AutomationAction } from "../contracts/automation";
 import type { TurnContextRecord } from "../contracts/turn-context";
 import { sql } from "drizzle-orm";
 import {
@@ -66,11 +68,179 @@ export const project = sqliteTable(
   (table) => [uniqueIndex("project_id_owner_unique").on(table.id, table.createdBy)],
 );
 
+export const assistantProposal = sqliteTable("assistant_proposal", {
+  id: text("id").primaryKey(),
+  assistantChatId: text("assistant_chat_id")
+    .notNull()
+    .references((): AnySQLiteColumn => chat.id),
+  sourceRunId: text("source_run_id")
+    .notNull()
+    .references((): AnySQLiteColumn => agentRun.id),
+  humanId: text("human_id")
+    .notNull()
+    .references(() => user.id),
+  target: text("target", { mode: "json" })
+    .$type<import("../contracts/assistant").AssistantTarget>()
+    .notNull(),
+  targetProjectId: text("target_project_id")
+    .notNull()
+    .references((): AnySQLiteColumn => project.id),
+  targetChatId: text("target_chat_id")
+    .notNull()
+    .references((): AnySQLiteColumn => chat.id),
+  agentProfileId: text("agent_profile_id").notNull(),
+  instanceId: text("instance_id")
+    .notNull()
+    .references((): AnySQLiteColumn => agentInstance.id),
+  body: text("body").notNull(),
+  operationHash: text("operation_hash").notNull(),
+  version: integer("version").notNull().default(1),
+  status: text("status", { enum: ["pending", "submitted", "rejected", "revoked"] })
+    .notNull()
+    .default("pending"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  confirmedBy: text("confirmed_by"),
+  confirmedAt: integer("confirmed_at", { mode: "timestamp_ms" }),
+  workMessageId: text("work_message_id").unique(),
+});
+export const assistantWatch = sqliteTable(
+  "assistant_watch",
+  {
+    id: text("id").primaryKey(),
+    assistantChatId: text("assistant_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    targetProjectId: text("target_project_id")
+      .notNull()
+      .references((): AnySQLiteColumn => project.id),
+    targetChatId: text("target_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    consentedBy: text("consented_by")
+      .notNull()
+      .references(() => user.id),
+    intervalSeconds: integer("interval_seconds").notNull().default(300),
+    consentedAt: integer("consented_at", { mode: "timestamp_ms" }).notNull(),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    check(
+      "assistant_watch_interval_check",
+      sql`typeof(${t.intervalSeconds})='integer' and ${t.intervalSeconds} between 60 and 86400`,
+    ),
+    uniqueIndex("assistant_watch_active_unique")
+      .on(t.assistantChatId, t.targetChatId)
+      .where(sql`${t.revokedAt} is null`),
+    index("assistant_watch_target_idx").on(t.targetChatId, t.revokedAt),
+  ],
+);
+export const assistantWatchCursor = sqliteTable(
+  "assistant_watch_cursor",
+  {
+    watchId: text("watch_id")
+      .primaryKey()
+      .references(() => assistantWatch.id),
+    windowStartedAt: integer("window_started_at", { mode: "timestamp_ms" }).notNull(),
+    nextDueAt: integer("next_due_at", { mode: "timestamp_ms" }).notNull(),
+    messageRowid: integer("message_rowid").notNull(),
+  },
+  (t) => [index("assistant_watch_cursor_due_idx").on(t.nextDueAt)],
+);
+export const assistantPreferences = sqliteTable(
+  "assistant_preferences",
+  {
+    assistantChatId: text("assistant_chat_id")
+      .primaryKey()
+      .references((): AnySQLiteColumn => chat.id),
+    intervalSeconds: integer("interval_seconds").notNull().default(300),
+  },
+  (t) => [check("assistant_interval_check", sql`${t.intervalSeconds} between 60 and 86400`)],
+);
+export const assistantInterest = sqliteTable(
+  "assistant_interest",
+  {
+    assistantChatId: text("assistant_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    runId: text("run_id")
+      .notNull()
+      .references((): AnySQLiteColumn => agentRun.id),
+    originKind: text("origin_kind", { enum: ["watch", "proposal"] }).notNull(),
+    originId: text("origin_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.assistantChatId, t.runId, t.originKind, t.originId] })],
+);
+export const assistantRunCursor = sqliteTable(
+  "assistant_run_cursor",
+  {
+    assistantChatId: text("assistant_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    runId: text("run_id")
+      .notNull()
+      .references((): AnySQLiteColumn => agentRun.id),
+    nextDueAt: integer("next_due_at", { mode: "timestamp_ms" }).notNull(),
+    terminalCapturedAt: integer("terminal_captured_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.assistantChatId, t.runId] }),
+    index("assistant_cursor_due_idx").on(t.terminalCapturedAt, t.nextDueAt),
+  ],
+);
+export const assistantEvent = sqliteTable(
+  "assistant_event",
+  {
+    id: text("id").primaryKey(),
+    assistantChatId: text("assistant_chat_id")
+      .notNull()
+      .references((): AnySQLiteColumn => chat.id),
+    eventKey: text("event_key").notNull(),
+    fact: text("fact", { mode: "json" })
+      .$type<import("../contracts/assistant").AssistantFact>()
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    messageId: text("message_id").unique(),
+    suppressedAt: integer("suppressed_at", { mode: "timestamp_ms" }),
+    decisionResolvedAt: integer("decision_resolved_at", { mode: "timestamp_ms" }),
+    decisionRejectedAt: integer("decision_rejected_at", { mode: "timestamp_ms" }),
+    attempts: integer("attempts").notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex("assistant_event_key_unique").on(t.assistantChatId, t.eventKey),
+    index("assistant_event_pending_idx").on(t.messageId, t.suppressedAt),
+  ],
+);
+
+export const assistantWatchSummary = sqliteTable(
+  "assistant_watch_summary",
+  {
+    eventId: text("event_id")
+      .primaryKey()
+      .references(() => assistantEvent.id),
+    status: text("status", { enum: ["pending", "running", "completed", "failed", "suppressed"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: integer("lease_expires_at", { mode: "timestamp_ms" }),
+    nextAttemptAt: integer("next_attempt_at", { mode: "timestamp_ms" }).notNull(),
+    summary: text("summary"),
+    error: text("error"),
+    model: text("model"),
+    effort: text("effort"),
+  },
+  (t) => [index("assistant_watch_summary_due_idx").on(t.status, t.nextAttemptAt)],
+);
+
 export const agentProfile = sqliteTable(
   "agent_profile",
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    purpose: text("purpose", { enum: ["worker", "assistant"] })
+      .notNull()
+      .default("worker"),
     jobTitle: text("job_title"),
     persona: text("persona").notNull().default(""),
     harness: text("harness", { enum: ["pi"] })
@@ -242,6 +412,7 @@ export const chatEffectiveMember = sqliteView("chat_effective_member", {
     'project_member' AS source
   FROM chat c
   JOIN project_member pm ON pm.project_id = c.project_id
+  JOIN agent_profile ap ON ap.id = pm.agent_profile_id AND ap.purpose = 'worker'
   WHERE c.kind = 'public_channel'
   UNION ALL
   SELECT
@@ -282,6 +453,94 @@ export const agentInstance = sqliteTable(
   ],
 );
 
+export const webhookRule = sqliteTable(
+  "webhook_rule",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => user.id),
+    name: text("name").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    revision: integer("revision").notNull(),
+    instruction: text("instruction").notNull(),
+    action: text("action", { mode: "json" }).$type<AutomationAction>().notNull(),
+    source: text("source", { enum: ["webhook", "cron"] })
+      .notNull()
+      .default("webhook"),
+    secretDigest: text("secret_digest"),
+    recoverableSecret: text("recoverable_secret"),
+    expression: text("expression"),
+    timezone: text("timezone"),
+    nextAt: integer("next_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("webhook_rule_id_project_unique").on(t.id, t.projectId),
+    check("webhook_rule_revision_check", sql`typeof(${t.revision})='integer' and ${t.revision}>=0`),
+    check(
+      "webhook_rule_secret_check",
+      sql`coalesce((${t.source}='webhook' and length(${t.secretDigest})=64 and ${t.secretDigest} not glob '*[^0-9a-f]*' and ${t.expression} is null and ${t.timezone} is null and ${t.nextAt} is null) or (${t.source}='cron' and ${t.secretDigest} is null and length(trim(${t.expression}))>0 and length(trim(${t.timezone}))>0 and ((${t.enabled}=1 and typeof(${t.nextAt})='integer') or (${t.enabled}=0 and ${t.nextAt} is null))),0)`,
+    ),
+    check("automation_source_check", sql`${t.source} in ('webhook','cron')`),
+    check(
+      "webhook_rule_action_check",
+      sql`json_valid(${t.action}) and coalesce(json_extract(${t.action}, '$.kind') in ('dm_agent','group_agent','group_owner') and (json_type(${t.action}, '$.chatId')='text' or (json_extract(${t.action}, '$.kind')='dm_agent' and json_type(${t.action}, '$.chatId') is null)) and (json_extract(${t.action}, '$.kind')='group_owner' or json_type(${t.action}, '$.agentProfileId')='text'),0)`,
+    ),
+  ],
+);
+
+export const webhookTrigger = sqliteTable(
+  "webhook_trigger",
+  {
+    id: text("id").primaryKey(),
+    ruleId: text("rule_id").notNull(),
+    projectId: text("project_id").notNull(),
+    mode: text("mode", { enum: ["live", "trial"] }).notNull(),
+    eventId: text("event_id").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    source: text("source", { enum: ["webhook", "cron"] })
+      .notNull()
+      .default("webhook"),
+    snapshot: text("snapshot", { mode: "json" })
+      .$type<{
+        revision: number;
+        instruction: string;
+        action: AutomationAction;
+        enabled: boolean;
+        createdBy: string;
+        cron?: { expression: string; timezone: string; scheduledAt: string | null };
+      }>()
+      .notNull(),
+    decision: text("decision", { enum: ["accepted", "skipped"] }).notNull(),
+    reason: text("reason"),
+    chatId: text("chat_id"),
+    agentProfileId: text("agent_profile_id").references(() => agentProfile.id),
+    messageId: text("message_id").references((): AnySQLiteColumn => message.id),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.ruleId, t.projectId],
+      foreignColumns: [webhookRule.id, webhookRule.projectId],
+    }),
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    uniqueIndex("webhook_trigger_event_unique").on(t.ruleId, t.mode, t.eventId),
+    uniqueIndex("webhook_trigger_message_unique").on(t.messageId),
+    uniqueIndex("webhook_trigger_source_unique").on(t.id, t.messageId, t.chatId),
+    check("webhook_trigger_mode_check", sql`${t.mode} in ('live','trial')`),
+    check(
+      "webhook_trigger_decision_check",
+      sql`(${t.decision}='accepted' and ${t.reason} is null and ${t.chatId} is not null and ${t.agentProfileId} is not null and ${t.messageId} is not null) or (${t.decision}='skipped' and ${t.reason} is not null and length(trim(${t.reason}))>0 and ${t.messageId} is null and ${t.chatId} is null and ${t.agentProfileId} is null)`,
+    ),
+    check("webhook_trigger_snapshot_check", sql`json_valid(${t.snapshot})`),
+  ],
+);
+
 export const message = sqliteTable(
   "message",
   {
@@ -289,9 +548,20 @@ export const message = sqliteTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => chat.id),
-    senderKind: text("sender_kind", { enum: ["human", "agent"] }).notNull(),
+    senderKind: text("sender_kind", {
+      enum: ["human", "agent", "automation", "assistant_event", "assistant_work"],
+    }).notNull(),
     senderId: text("sender_id").notNull(),
     body: text("body").notNull(),
+    assistantEventId: text("assistant_event_id").references(
+      (): AnySQLiteColumn => assistantEvent.id,
+    ),
+    assistantProposalId: text("assistant_proposal_id").references(
+      (): AnySQLiteColumn => assistantProposal.id,
+    ),
+    automationTriggerId: text("automation_trigger_id").references(
+      (): AnySQLiteColumn => webhookTrigger.id,
+    ),
     taskId: text("task_id"),
     taskProjectId: text("task_project_id"),
     taskRecordSeq: integer("task_record_seq"),
@@ -306,7 +576,24 @@ export const message = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    check("message_sender_kind_check", sql`${table.senderKind} in ('human', 'agent')`),
+    foreignKey({
+      columns: [table.automationTriggerId, table.id, table.chatId],
+      foreignColumns: [webhookTrigger.id, webhookTrigger.messageId, webhookTrigger.chatId],
+    }),
+    check(
+      "message_sender_kind_check",
+      sql`${table.senderKind} in ('human', 'agent', 'automation', 'assistant_event', 'assistant_work')`,
+    ),
+    check(
+      "message_automation_shape_check",
+      sql`(${table.senderKind}='automation' and ${table.automationTriggerId} is not null and ${table.senderId}=${table.automationTriggerId} and ${table.taskId} is null) or (${table.senderKind}<>'automation' and ${table.automationTriggerId} is null)`,
+    ),
+    check(
+      "message_assistant_source_check",
+      sql`(${table.senderKind}='assistant_event' and ${table.assistantEventId}=${table.senderId} and ${table.assistantEventId} is not null and ${table.assistantProposalId} is null and ${table.taskId} is null) or (${table.senderKind}='assistant_work' and ${table.assistantProposalId}=${table.senderId} and ${table.assistantProposalId} is not null and ${table.assistantEventId} is null and ${table.taskId} is null) or (${table.senderKind} not in ('assistant_event','assistant_work') and ${table.assistantEventId} is null and ${table.assistantProposalId} is null)`,
+    ),
+    uniqueIndex("message_assistant_event_unique").on(table.assistantEventId),
+    uniqueIndex("message_assistant_proposal_unique").on(table.assistantProposalId),
     index("message_chat_created_at_idx").on(table.chatId, table.createdAt),
     uniqueIndex("message_id_chat_unique").on(table.id, table.chatId),
     foreignKey({
@@ -538,8 +825,19 @@ export const agentRunInput = sqliteTable(
     deliveredAt: integer("delivered_at", { mode: "timestamp" }),
     cancelledAt: integer("cancelled_at", { mode: "timestamp" }),
     admittedAt: integer("admitted_at", { mode: "timestamp_ms" }),
+    assistantContext: text("assistant_context", { mode: "json" }).$type<AssistantInputContext>(),
+    assistantContextSubmittedAt: integer("assistant_context_submitted_at", {
+      mode: "timestamp_ms",
+    }),
     cancelReason: text("cancel_reason", {
-      enum: ["membership_revoked", "human_stop", "group_dissolved", "task_context_changed"],
+      enum: [
+        "membership_revoked",
+        "human_stop",
+        "group_dissolved",
+        "task_context_changed",
+        "automation_context_changed",
+        "assistant_context_changed",
+      ],
     }),
   },
   (table) => [
@@ -557,7 +855,7 @@ export const agentRunInput = sqliteTable(
     ),
     check(
       "agent_run_input_cancel_reason_check",
-      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed')`,
+      sql`${table.cancelReason} is null or ${table.cancelReason} in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed', 'automation_context_changed', 'assistant_context_changed')`,
     ),
     check(
       "agent_run_input_admitted_at_check",
@@ -2153,6 +2451,9 @@ export const remoteToolGrant = sqliteTable(
   {
     id: text("id").primaryKey().notNull(),
     secretHash: text("secret_hash").notNull(),
+    purpose: text("purpose", { enum: ["worker", "assistant"] })
+      .notNull()
+      .default("worker"),
     userId: text("user_id").notNull(),
     projectId: text("project_id").notNull(),
     chatId: text("chat_id").notNull(),
@@ -2606,3 +2907,237 @@ export const mcpFrame = sqliteTable(
     check("mcp_frame_sent", sql`state NOT IN ('sent','acked') OR sent_at IS NOT NULL`),
   ],
 );
+
+export const channelConfig = sqliteTable(
+  "channel_config",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    kind: text("kind").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    settings: text("settings", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    secrets: text("secrets", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    revision: integer("revision").notNull().default(0),
+    updatedAtMs: integer("updated_at_ms").notNull(),
+    updatedByHumanId: text("updated_by_human_id").references(() => user.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.kind] }),
+    check("channel_config_enabled_check", sql`${table.enabled} in (0,1)`),
+    check("channel_config_revision_check", sql`${table.revision} >= 0`),
+    check("channel_config_settings_json_check", sql`json_valid(${table.settings})`),
+    check("channel_config_secrets_json_check", sql`json_valid(${table.secrets})`),
+  ],
+);
+
+export const feishuIdentitySlot = sqliteTable(
+  "feishu_identity_slot",
+  {
+    humanId: text("human_id")
+      .notNull()
+      .references(() => user.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    revision: integer("revision").notNull().default(0),
+    appId: text("app_id"),
+    tenantKey: text("tenant_key"),
+    openId: text("open_id"),
+    nickname: text("nickname"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.humanId, t.projectId] }),
+    uniqueIndex("feishu_identity_active_unique").on(t.appId, t.tenantKey, t.openId),
+    check("feishu_slot_revision", sql`${t.revision} >= 0`),
+    check(
+      "feishu_slot_identity",
+      sql`(${t.appId} IS NULL AND ${t.tenantKey} IS NULL AND ${t.openId} IS NULL) OR (${t.appId} IS NOT NULL AND ${t.tenantKey} IS NOT NULL AND ${t.openId} IS NOT NULL AND length(${t.appId}) > 0 AND length(${t.tenantKey}) > 0 AND length(${t.openId}) > 0)`,
+    ),
+  ],
+);
+
+export const feishuChallenge = sqliteTable(
+  "feishu_challenge",
+  {
+    hash: text("hash").primaryKey(),
+    /** 绑定页要能跨刷新回读，所以存明文；生存期 10 分钟，成功即作废。 */
+    code: text("code").notNull(),
+    humanId: text("human_id").notNull(),
+    revision: integer("revision").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    chatId: text("chat_id").notNull(),
+    expiresAtMs: integer("expires_at_ms").notNull(),
+    consumedAtMs: integer("consumed_at_ms"),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.humanId, t.projectId],
+      foreignColumns: [feishuIdentitySlot.humanId, feishuIdentitySlot.projectId],
+    }),
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+  ],
+);
+
+export const feishuRoute = sqliteTable(
+  "feishu_route",
+  {
+    id: text("id").primaryKey(),
+    humanId: text("human_id").notNull(),
+    revision: integer("revision").notNull(),
+    appId: text("app_id").notNull(),
+    tenantKey: text("tenant_key").notNull(),
+    openId: text("open_id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    chatId: text("chat_id").notNull(),
+    openedAtMs: integer("opened_at_ms").notNull().default(0),
+    closedAtMs: integer("closed_at_ms"),
+  },
+  (t) => [
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    foreignKey({
+      columns: [t.humanId, t.projectId],
+      foreignColumns: [feishuIdentitySlot.humanId, feishuIdentitySlot.projectId],
+    }),
+    uniqueIndex("feishu_route_generation_unique").on(t.humanId, t.projectId, t.revision),
+    uniqueIndex("feishu_route_active_unique")
+      .on(t.humanId, t.projectId)
+      .where(sql`${t.closedAtMs} IS NULL`),
+  ],
+);
+
+export const feishuConnectionEpoch = sqliteTable(
+  "feishu_connection_epoch",
+  {
+    id: text("id").primaryKey(),
+    appId: text("app_id").notNull(),
+    openedAtMs: integer("opened_at_ms").notNull(),
+    openedBy: text("opened_by", { enum: ["ready", "reconnected"] }).notNull(),
+    closedAtMs: integer("closed_at_ms"),
+  },
+  (t) => [
+    uniqueIndex("feishu_epoch_active_unique")
+      .on(t.appId)
+      .where(sql`${t.closedAtMs} IS NULL`),
+    check("feishu_epoch_reason", sql`${t.openedBy} IN ('ready','reconnected')`),
+  ],
+);
+
+export const feishuInboundReceipt = sqliteTable(
+  "feishu_inbound_receipt",
+  {
+    appId: text("app_id").notNull(),
+    platformMessageId: text("platform_message_id").notNull(),
+    routeId: text("route_id")
+      .notNull()
+      .references(() => feishuRoute.id),
+    epochId: text("epoch_id")
+      .notNull()
+      .references(() => feishuConnectionEpoch.id),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => message.id),
+    createdAtMs: integer("created_at_ms").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.appId, t.platformMessageId] }),
+    uniqueIndex("feishu_receipt_message_unique").on(t.messageId),
+  ],
+);
+
+export const channelDelivery = sqliteTable(
+  "channel_delivery",
+  {
+    id: text("id").primaryKey(),
+    adapter: text("adapter").notNull(),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => message.id),
+    route: text("route", { mode: "json" })
+      .$type<import("../contracts/channel").ChannelRoute>()
+      .notNull(),
+    envelope: text("envelope", { mode: "json" })
+      .$type<import("../contracts/channel").ChannelEnvelope>()
+      .notNull(),
+    state: text("state", {
+      enum: ["ready", "armed", "accepted", "suppressed", "failed", "uncertain"],
+    }).notNull(),
+    uuid: text("uuid").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    createdAtMs: integer("created_at_ms").notNull(),
+    dueAtMs: integer("due_at_ms").notNull(),
+    deadlineMs: integer("deadline_ms").notNull(),
+    platformMessageId: text("platform_message_id"),
+    error: text("error"),
+  },
+  (t) => [
+    uniqueIndex("channel_delivery_source_unique").on(t.adapter, t.messageId),
+    index("channel_delivery_due_idx").on(t.adapter, t.state, t.dueAtMs),
+    check(
+      "channel_delivery_state",
+      sql`${t.state} IN ('ready','armed','accepted','suppressed','failed','uncertain')`,
+    ),
+    check("channel_delivery_attempts", sql`${t.attempts} >= 0 AND ${t.attempts} <= 3`),
+  ],
+);
+
+export const channelAttempt = sqliteTable(
+  "channel_attempt",
+  {
+    id: text("id").primaryKey(),
+    deliveryId: text("delivery_id")
+      .notNull()
+      .references(() => channelDelivery.id),
+    number: integer("number").notNull(),
+    armedAtMs: integer("armed_at_ms").notNull(),
+    outcome: text("outcome", {
+      enum: ["armed", "accepted", "not_accepted", "suppressed", "uncertain"],
+    }).notNull(),
+    code: text("code"),
+    platformMessageId: text("platform_message_id"),
+  },
+  (t) => [
+    uniqueIndex("channel_attempt_number_unique").on(t.deliveryId, t.number),
+    check(
+      "channel_attempt_outcome",
+      sql`${t.outcome} IN ('armed','accepted','not_accepted','suppressed','uncertain')`,
+    ),
+  ],
+);
+
+export const channelActionGrant = sqliteTable("channel_action_grant", {
+  tokenHash: text("token_hash").primaryKey(),
+  deliveryId: text("delivery_id")
+    .notNull()
+    .references(() => channelDelivery.id),
+  action: text("action", { mode: "json" })
+    .$type<import("../contracts/channel").ChannelNativeAction>()
+    .notNull(),
+  expiresAtMs: integer("expires_at_ms").notNull(),
+});
+
+export const channelActionReceipt = sqliteTable("channel_action_receipt", {
+  tokenHash: text("token_hash")
+    .primaryKey()
+    .references(() => channelActionGrant.tokenHash),
+  result: text("result", { mode: "json" })
+    .$type<import("../contracts/channel").ChannelActionResult>()
+    .notNull(),
+  consumedAtMs: integer("consumed_at_ms").notNull(),
+});
+
+export const feishuConnectionLease = sqliteTable("feishu_connection_lease", {
+  appId: text("app_id").primaryKey(),
+  holder: text("holder").notNull(),
+  expiresAtMs: integer("expires_at_ms").notNull(),
+});

@@ -68,6 +68,10 @@
 - 第一版只接入 Pi，通过 Pi extension 打通对话、分身和远端 Machine 操作。
 - 其他 harness 及其 MCP tools 接入属于未来方向，实施时间未定，不承诺二期。
 
+## 原生助理 purpose
+
+Profile 创建时选择不可变的 `purpose`，默认 `worker`；`assistant` 使用独立 model、effort 与 persona，只在 Human 所有的 Project DM 运行。它的实际工具注册、授权、工作提案与通知边界见[原生助理契约](assistant-core.md)。`jobTitle` 和 persona 不授予能力。已有 profile 与缺少 purpose 的历史 snapshot 继续按 worker 解释。
+
 ## 未来方向：模型用量与成本
 
 - 保留按 run 和 Chat 的 token 用量与费用记录、查询能力的建设意图；实施时间未定，不纳入一期，也不承诺二期。

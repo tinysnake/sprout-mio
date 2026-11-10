@@ -1,3 +1,4 @@
+import { admitAssistantInput, prepareAssistantSteerContext } from "../../domain/assistant";
 import {
   admitContinuation,
   pendingContinuations,
@@ -29,6 +30,7 @@ import {
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
+import { admitAutomationInput } from "../../domain/automation-input";
 import { admitTaskStartInput } from "../../domain/task-input";
 import { recordDiagnostic } from "../diagnostics";
 import {
@@ -91,7 +93,10 @@ export function executeRun(
           return;
         }
         const prepared = yield* Effect.tryPromise({
-          try: () => prepareRunRepo(run.id, ctx),
+          try: () =>
+            profile.purpose === "assistant"
+              ? Promise.resolve(undefined)
+              : prepareRunRepo(run.id, ctx),
           catch: (error) => error,
         });
         const paths = yield* Effect.sync(() => piInstancePaths(run.instanceId));
@@ -110,13 +115,17 @@ export function executeRun(
           return grant;
         });
         const resources = yield* Effect.tryPromise({
-          try: () => prepareInheritedResources(run.projectId, ctx),
+          try: () =>
+            profile.purpose === "assistant"
+              ? Promise.resolve({ kind: "disabled" as const })
+              : prepareInheritedResources(run.projectId, ctx),
           catch: (error) => error,
         });
         const snapshot = yield* Effect.tryPromise({
           try: () =>
             process.open({
               type: "open",
+              purpose: profile.purpose,
               id: run.id,
               instanceId: run.instanceId,
               sessionId: run.sessionId,
@@ -131,6 +140,7 @@ export function executeRun(
               remote,
               profile: {
                 id: profile.id,
+                purpose: profile.purpose,
                 name: profile.name,
                 persona: profile.persona,
                 harness: profile.harness,
@@ -150,7 +160,7 @@ export function executeRun(
             { configSnapshot: basis ? { ...snapshot, repo: basis } : snapshot },
             ctx,
           );
-          process.onDelivered = (messageId) => {
+          process.onDelivered = (messageId, assistantContextHash) => {
             if (signals.isStopping()) return;
             try {
               if (messageId.startsWith(DELIVERY_ID_PREFIX))
@@ -158,7 +168,7 @@ export function executeRun(
               else if (messageId.startsWith(NOTICE_ID_PREFIX)) {
                 noticesSent.add(messageId);
                 markRunNoticeDelivered(messageId.slice(NOTICE_ID_PREFIX.length), new Date(now()));
-              } else markRunInputDelivered(run.id, messageId, ctx);
+              } else markRunInputDelivered(run.id, messageId, ctx, assistantContextHash);
             } catch (error) {
               // 用户停止后迟到的投递确认保持 pending，不升级成进程故障。
               if (!(error instanceof AgentRunError && error.code === "conflict")) throw error;
@@ -223,21 +233,31 @@ export function executeRun(
                 return undefined;
               }
               const prepared =
-                selected.message.taskRecordKind === "start"
+                selected.message.assistantProposalId || profile.purpose === "assistant"
                   ? prepareSyntheticPiMessage({
-                      kind: "task_start",
+                      kind: selected.message.assistantProposalId
+                        ? "assistant_work"
+                        : "assistant_human",
                       messageId: selected.message.id,
-                      text: selected.message.body,
+                      text: selected.message.assistantProposalId
+                        ? `[Human-confirmed assistant proposal ${selected.message.assistantProposalId}; source is program-generated work input]\n${selected.message.body}`
+                        : selected.message.body,
                     })
-                  : await preparePiMessage(
-                      {
-                        projectId: run.projectId,
-                        chatId: run.chatId,
+                  : selected.message.taskRecordKind === "start"
+                    ? prepareSyntheticPiMessage({
+                        kind: "task_start",
                         messageId: selected.message.id,
-                      },
-                      resources,
-                      ctx,
-                    );
+                        text: selected.message.body,
+                      })
+                    : await preparePiMessage(
+                        {
+                          projectId: run.projectId,
+                          chatId: run.chatId,
+                          messageId: selected.message.id,
+                        },
+                        resources,
+                        ctx,
+                      );
               if (signals.isStopping()) return undefined;
               if (firstPendingRunInput(run.id, ctx)?.message.id !== selected.message.id) continue;
               const send = () => {
@@ -245,6 +265,16 @@ export function executeRun(
                 sent.add(selected.message.id);
                 return process.prompt(prepared);
               };
+              if (selected.message.assistantProposalId) {
+                const attempted = admitAssistantInput(run.id, selected.message.id, send);
+                if (attempted) return { task: attempted };
+                continue;
+              }
+              if (selected.message.automationTriggerId) {
+                const attempted = admitAutomationInput(run.id, selected.message.id, send);
+                if (attempted) return { task: attempted };
+                continue;
+              }
               if (selected.message.taskRecordKind !== "start") return { task: send() };
               const attempted = admitTaskStartInput(run.id, selected.message.id, send);
               if (attempted) return { task: attempted };
@@ -270,7 +300,7 @@ export function executeRun(
                   try: async () => {
                     try {
                       if (signals.isStopping()) return true;
-                      if (now() - hintSampleAt >= 1000) {
+                      if (profile.purpose !== "assistant" && now() - hintSampleAt >= 1000) {
                         hintSampleAt = now();
                         void hints.tick(now()).catch(() => {});
                       }
@@ -278,21 +308,41 @@ export function executeRun(
                         if (sent.has(pending.messageId)) continue;
                         try {
                           const prepared =
-                            pending.taskRecordKind === "start"
+                            pending.assistantProposalId || profile.purpose === "assistant"
                               ? prepareSyntheticPiMessage({
-                                  kind: "task_start",
+                                  kind: pending.assistantProposalId
+                                    ? "assistant_work"
+                                    : "assistant_human",
                                   messageId: pending.messageId,
-                                  text: pending.text,
+                                  text: pending.assistantProposalId
+                                    ? `[Human-confirmed assistant proposal ${pending.assistantProposalId}; source is program-generated work input]\n${pending.text}`
+                                    : pending.text,
+                                  ...(profile.purpose === "assistant"
+                                    ? {
+                                        assistantContext: prepareAssistantSteerContext(
+                                          run.id,
+                                          pending.messageId,
+                                          ctx,
+                                          new Date(now()),
+                                        ),
+                                      }
+                                    : {}),
                                 })
-                              : await preparePiMessage(
-                                  {
-                                    projectId: run.projectId,
-                                    chatId: run.chatId,
+                              : pending.taskRecordKind === "start"
+                                ? prepareSyntheticPiMessage({
+                                    kind: "task_start",
                                     messageId: pending.messageId,
-                                  },
-                                  resources,
-                                  ctx,
-                                );
+                                    text: pending.text,
+                                  })
+                                : await preparePiMessage(
+                                    {
+                                      projectId: run.projectId,
+                                      chatId: run.chatId,
+                                      messageId: pending.messageId,
+                                    },
+                                    resources,
+                                    ctx,
+                                  );
                           if (signals.isStopping()) return true;
                           if (
                             !pendingRunInputs(run.id, ctx).some(
@@ -301,7 +351,15 @@ export function executeRun(
                           )
                             continue;
                           sent.add(pending.messageId);
-                          if (pending.taskRecordKind === "start") {
+                          if (pending.assistantProposalId) {
+                            admitAssistantInput(run.id, pending.messageId, () =>
+                              process.steer(prepared),
+                            );
+                          } else if (pending.automationTriggerId) {
+                            admitAutomationInput(run.id, pending.messageId, () =>
+                              process.steer(prepared),
+                            );
+                          } else if (pending.taskRecordKind === "start") {
                             admitTaskStartInput(run.id, pending.messageId, () =>
                               process.steer(prepared),
                             );

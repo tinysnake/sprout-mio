@@ -13,9 +13,13 @@ export SPROUT_PORT_PROD=3322
 export SPROUT_DEPLOY_REMOTE="$work/remote.git"
 
 assert_port_free "$(port_for prod)"
-git clone --quiet --bare . "$SPROUT_DEPLOY_REMOTE"
-git clone --quiet "$SPROUT_DEPLOY_REMOTE" "$work/src"
+# 演练远端从空裸库开始：直接克隆工作仓库会把它的 main 和标签带进来，
+# 之后推送自造的 main/tag 会因与仓库历史分叉或标签重名而失败。
+git init --quiet --bare --initial-branch=main "$SPROUT_DEPLOY_REMOTE"
+git clone --quiet --shared . "$work/src"
+git -C "$work/src" remote set-url origin "$SPROUT_DEPLOY_REMOTE"
 git -C "$work/src" checkout --quiet -B main
+git -C "$work/src" tag -l | while read -r tag; do git -C "$work/src" tag -d "$tag" >/dev/null; done
 printf 'rehearsal\n' > "$work/src/REHEARSAL.md"
 git -C "$work/src" add REHEARSAL.md
 git -C "$work/src" -c user.name=rehearse -c user.email=rehearse@example.test commit --quiet -m "rehearsal a"

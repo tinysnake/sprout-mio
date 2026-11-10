@@ -49,7 +49,7 @@ export class PiSessionProcess {
   private disposeCallbacks = new Set<() => void>();
   turnContext: TurnContextPromptInput | undefined;
   onTurnContextSubmitted: ((receipt: TurnContextSubmissionReceipt) => void) | undefined;
-  onDelivered: ((messageId: string) => void) | undefined;
+  onDelivered: ((messageId: string, assistantContextHash?: string) => void) | undefined;
   onRejected: ((messageId: string, reason: string) => void) | undefined;
   onProgress: ((event: PiHostProgress) => void) | undefined;
 
@@ -159,7 +159,7 @@ export class PiSessionProcess {
       }
       if (event.type === "input_delivered") {
         try {
-          this.onDelivered?.(event.messageId);
+          this.onDelivered?.(event.messageId, event.assistantContextHash);
         } catch (error) {
           this.fail(error instanceof Error ? error : new Error("Pi 输入投递状态保存失败"));
         }
@@ -246,7 +246,13 @@ export class PiSessionProcess {
   steer(prepared: PreparedPiMessage): void {
     assertPreparedPiMessage(prepared);
     const { messageId, text } = prepared;
-    this.send({ type: "steer", id: this.id, messageId, text });
+    this.send({
+      type: "steer",
+      id: this.id,
+      messageId,
+      text,
+      ...(prepared.assistantContext ? { assistantContext: prepared.assistantContext } : {}),
+    });
   }
 
   abortSession(): void {

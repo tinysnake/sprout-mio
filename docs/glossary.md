@@ -4,6 +4,12 @@
 
 规则：中文名是唯一正式名，英文名对应代码与数据；两者是同一个词的两个写法，不做意译扩展。改名按 [项目开发约定](project-conventions.md:9) 直接改到目标形态，不留双名。
 
+## 原生助理
+
+- 助理（assistant）：`agent_profile.purpose = 'assistant'` 的独立 Agent，使用自己的 model / effort，在 Human 所有的 Project DM 中观察、提出工作与关注建议。权限由程序限定，详见[原生助理契约](assistant-core.md)。
+- 关注（watch）：Human 在某个助理 DM 激活的持续 Chat 观察关系，代码为 `assistant_watch`；不等于工作 Agent 的运行生命周期。
+- 工作提案（proposal）：固定目标与正文、经 Human 单次确认后产生原生 `assistant_work` input 的记录，代码为 `assistant_proposal`。
+
 ## 判定与接续
 
 | 中文     | 英文             | 代码与数据                                                    | 定义                                                                                                     | 不是什么                                                       |

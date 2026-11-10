@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { promptWithTurnContext } from "./pi-host-turn-context.mjs";
 import { existsSync, mkdirSync } from "node:fs";
-import { sdkRoot, jsonFile } from "./pi-host-skills.mjs";
-import { createRequire, registerHooks } from "node:module";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { createPiModelRuntime } from "./pi-model-runtime.mjs";
+import { jsonFile } from "./pi-host-skills.mjs";
+import { createRequire } from "node:module";
+import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -14,6 +16,8 @@ let prompting = false;
 let closing = false;
 let openId = "unknown";
 let turnContextPromptInputSchema;
+let assistantInputContextSchema;
+let assistantMode = false;
 let infoHubHintSchema;
 const submittedContexts = new Set();
 
@@ -47,74 +51,7 @@ async function open(config) {
   if (missing.length > 0) throw new Error(`open 命令缺少字段：${missing.join(", ")}`);
   if (config.resources?.kind !== "enabled" && config.resources?.kind !== "disabled")
     throw new Error(`open 命令的 resources.kind 非法：${JSON.stringify(config.resources)}`);
-  const root = sdkRoot(config.agentDir);
-  const sdk = await import(pathToFileURL(join(root, "dist", "index.js")).href);
-  const { ReadOnlyAuthStorage } = await import(
-    pathToFileURL(join(root, "dist", "core", "auth-storage.js")).href
-  );
-  const runtime = await sdk.ModelRuntime.create({
-    credentials: new ReadOnlyAuthStorage(join(config.agentDir, "auth.json")),
-    modelsPath: existsSync(join(config.agentDir, "models.json"))
-      ? join(config.agentDir, "models.json")
-      : null,
-    modelsStore: {
-      read: async (provider) => jsonFile(join(config.agentDir, "models-store.json"), {})[provider],
-      write: async () => {
-        throw new Error("只读模型目录");
-      },
-      delete: async () => {
-        throw new Error("只读模型目录");
-      },
-    },
-    allowModelNetwork: false,
-  });
-  const defaults = jsonFile(join(config.agentDir, "settings.json"), {});
-  const selected = config.profile.model;
-  const slash = selected?.indexOf("/") ?? -1;
-  const provider = slash > 0 ? selected.slice(0, slash) : defaults.defaultProvider;
-  const modelId = slash > 0 ? selected.slice(slash + 1) : (selected ?? defaults.defaultModel);
-  if (!provider || !modelId)
-    throw new Error("Agent profile 或 Pi settings.json 必须指定 provider 与 model");
-  if (provider === "magpie") {
-    const configuredPackages = (defaults.packages ?? []).flatMap((entry) => {
-      const source = typeof entry === "string" ? entry : entry.source;
-      return typeof source === "string" && (source.startsWith(".") || isAbsolute(source))
-        ? [resolve(config.agentDir, source)]
-        : [];
-    });
-    const providerRoot =
-      process.env.SPROUT_PI_PROVIDER_ROOT ??
-      configuredPackages.find(
-        (path) => jsonFile(join(path, "package.json"), {}).name === "pi-magpie",
-      );
-    if (!providerRoot || !existsSync(join(providerRoot, "provider.ts"))) {
-      throw new Error(
-        "magpie 需要配置本地 pi-magpie package，或用 SPROUT_PI_PROVIDER_ROOT 指向 provider.ts 所在目录",
-      );
-    }
-    registerHooks({
-      resolve(specifier, context, nextResolve) {
-        if (specifier === "@earendil-works/pi-ai/compat")
-          return {
-            url: pathToFileURL(join(dirname(root), "pi-ai", "dist", "compat.js")).href,
-            shortCircuit: true,
-          };
-        return nextResolve(specifier, context);
-      },
-    });
-    const { createMagpieProvider } = await import(
-      pathToFileURL(join(providerRoot, "provider.ts")).href
-    );
-    runtime.registerNativeProvider(createMagpieProvider().provider);
-  }
-  await runtime.refresh({ allowNetwork: false });
-  const model = runtime.getModel(provider, modelId);
-  if (!model || model.provider !== provider || model.id !== modelId)
-    throw new Error("指定的 Pi model 不存在，检查 Agent profile 的 provider/model");
-  if (!runtime.hasConfiguredAuth(provider)) throw new Error("Pi provider 尚未配置凭据");
-  const thinking = config.profile.effort ?? defaults.defaultThinkingLevel ?? "medium";
-  if (!["off", "minimal", "low", "medium", "high", "xhigh"].includes(thinking))
-    throw new Error("Pi 不支持该 thinking 配置");
+  const { root, sdk, runtime, model, thinking } = await createPiModelRuntime(config);
   mkdirSync(config.cwd, { recursive: true, mode: 0o700 });
   mkdirSync(config.sessionDirectory, { recursive: true, mode: 0o700 });
   const settingsManager = sdk.SettingsManager.inMemory({
@@ -175,14 +112,25 @@ async function open(config) {
   const { registerSproutStatus, setSproutHostFacts } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/status.ts"),
   );
+  const assistant = config.purpose === "assistant";
+  assistantMode = assistant;
   const remoteClient = createRemoteClient(config.remote, { instanceId: config.instanceId });
-  const inheritHostResources = config.resources.kind === "enabled";
+  const { registerAssistantTools } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/assistant-tools.ts"),
+  );
+  const { ASSISTANT_TOOL_SPEC } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/assistant.ts"),
+  );
+  ({ assistantInputContextSchema } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/assistant.ts"),
+  ));
+  const inheritHostResources = !assistant && config.resources.kind === "enabled";
   const inheritedPaths = inheritHostResources
     ? { skills: config.resources.skillPaths, prompts: config.resources.promptPaths }
     : { skills: [], prompts: [] };
   // 受控目录是分身自己的 loader/session 根。证据里报的 agentDir 就是这个对象里的值：
   // 不让「声明的目录」和「喂给 loader 的目录」变成两个可以互相飘的常量。
-  const webAccessEntry = resolveWebAccessExtension(config.agentDir);
+  const webAccessEntry = assistant ? undefined : resolveWebAccessExtension(config.agentDir);
   const loaderOptions = {
     cwd: config.cwd,
     agentDir: controlledDir,
@@ -198,66 +146,85 @@ async function open(config) {
     // 它们才是 P3 记录的失败与超时来源（context7、UnityMCP），也是跨 Project 内容泄漏的入口。
     additionalSkillPaths: inheritedPaths.skills,
     additionalPromptTemplatePaths: inheritedPaths.prompts,
-    extensionFactories: [
-      // `noExtensions: true` 会连内建扩展一起关掉；codemode 与 tool_search 必须显式加回。
-      { name: "codemode", factory: sdk.createCodemodeExtension() },
-      { name: "tool-search", factory: sdk.createToolSearchExtension() },
-      {
-        name: "sprout-extension",
-        factory: async (pi) => {
-          sproutExtension(pi);
-          let target = null;
-          let mcp;
-          const remote = {
-            projectId: remoteClient.projectId,
-            async request(request, signal) {
-              const response = await remoteClient.request(request, signal);
-              if (response.outcome === "response" && response.result.ok) {
-                const { call } = request;
-                const data = response.result.data;
-                let next;
-                if (call.type === "lease_get")
-                  next =
-                    data.lease.state === "held"
-                      ? { machineId: call.input.machineId, generation: data.lease.generation }
-                      : null;
-                if (call.type === "lease_mutate")
-                  next =
-                    call.input.action === "acquire" && data.state === "completed"
-                      ? { machineId: call.input.machineId, generation: data.completedGeneration }
-                      : null;
-                if (next !== undefined && JSON.stringify(next) !== JSON.stringify(target)) {
-                  target = next;
-                  const refreshed = await mcp.refresh();
-                  // 不假装成功：目录已变但工具面没跟进时，把失败推到 stderr 的 runner 协议行外，
-                  // 由 `sprout_status` 的诊断槽与验收脚本读取。
-                  if (refreshed.outcome === "failed")
-                    line({
-                      type: "progress",
-                      id: config.id,
-                      kind: "mcp_surface_failed",
-                      message: refreshed.error.message.slice(0, 500),
-                    });
-                }
-              }
-              return response;
+    extensionFactories: assistant
+      ? [
+          {
+            name: "sprout-assistant",
+            factory: async (pi) => {
+              registerAssistantTools(pi, remoteClient);
+              registerSproutStatus(pi);
             },
-          };
-          mcp = await registerSproutMcp(pi, {
-            remote,
-            machineId: () => target?.machineId ?? null,
-            authorizationGeneration: () => target?.generation ?? null,
-          });
-          registerRemoteTools(pi, remote);
-          registerTaskTools(pi, remote);
-          registerInfoHubTools(pi, remote);
-          registerCurrentTimeTool(pi);
-          registerGitReadTool(pi);
-          registerSproutStatus(pi);
-        },
-      },
-    ],
-    systemPrompt: config.profile.persona,
+          },
+        ]
+      : [
+          // `noExtensions: true` 会连内建扩展一起关掉；codemode 与 tool_search 必须显式加回。
+          { name: "codemode", factory: sdk.createCodemodeExtension() },
+          { name: "tool-search", factory: sdk.createToolSearchExtension() },
+          {
+            name: "sprout-extension",
+            factory: async (pi) => {
+              sproutExtension(pi);
+              let target = null;
+              let mcp;
+              const remote = {
+                projectId: remoteClient.projectId,
+                async request(request, signal) {
+                  const response = await remoteClient.request(request, signal);
+                  if (response.outcome === "response" && response.result.ok) {
+                    const { call } = request;
+                    const data = response.result.data;
+                    let next;
+                    if (call.type === "lease_get")
+                      next =
+                        data.lease.state === "held"
+                          ? { machineId: call.input.machineId, generation: data.lease.generation }
+                          : null;
+                    if (call.type === "lease_mutate")
+                      next =
+                        call.input.action === "acquire" && data.state === "completed"
+                          ? {
+                              machineId: call.input.machineId,
+                              generation: data.completedGeneration,
+                            }
+                          : null;
+                    if (next !== undefined && JSON.stringify(next) !== JSON.stringify(target)) {
+                      target = next;
+                      const refreshed = await mcp.refresh();
+                      // 不假装成功：目录已变但工具面没跟进时，把失败推到 stderr 的 runner 协议行外，
+                      // 由 `sprout_status` 的诊断槽与验收脚本读取。
+                      if (refreshed.outcome === "failed")
+                        line({
+                          type: "progress",
+                          id: config.id,
+                          kind: "mcp_surface_failed",
+                          message: refreshed.error.message.slice(0, 500),
+                        });
+                    }
+                  }
+                  return response;
+                },
+              };
+              mcp = await registerSproutMcp(pi, {
+                remote,
+                machineId: () => target?.machineId ?? null,
+                authorizationGeneration: () => target?.generation ?? null,
+              });
+              registerRemoteTools(pi, remote);
+              registerTaskTools(pi, remote);
+              registerInfoHubTools(pi, remote);
+              registerCurrentTimeTool(pi);
+              registerGitReadTool(pi);
+              registerSproutStatus(pi);
+            },
+          },
+        ],
+    systemPrompt: assistant
+      ? `${config.profile.persona}
+
+面向 Human 的表达应简短自然。先说结论、进展或需要对方决定的事。使用 Project、Agent、对话的名称，不向 Human 罗列内部 ID、工具响应字段或活动日志。不要重复整份提案或转发原始数据。提案 body 只写交给工作 Agent 的具体工作要求，避免附加传话背景、成员 ID 和其他无关信息。确实需要排查时再提供细节。区分已提交、正在处理、已回复与结果未经验证，不把运行结束称作业务成功。
+
+频道关注由程序按 Human 授权的 interval 时间窗口合并消息和工作活动，不是每次 run 结束立即转发。Human 要求停止关注时，调用 sprout_assistant_watch，传当前目标的 targetProjectId、chatId 和 active:false；你能停止本 DM 的关注，无需再次确认。看到 action:stopped、active:false 后明确告知已停止汇报；这不会取消正在执行的工作。不要声称工具不能取消，不要用 intervalSeconds:0。重新关注必须提出新请求并由 Human 确认。`
+      : config.profile.persona,
   };
   const resourceLoader = new sdk.DefaultResourceLoader(loaderOptions);
   await resourceLoader.reload();
@@ -285,17 +252,19 @@ async function open(config) {
     // 不声明给模型（`_isActivatable` 对 `direct` exposure 恒为 false，`setActiveTools` 也救不回来）。
     // 这是 `list_changed` 后新工具到不了模型工具面的根因，详见
     // `orchestrate/sprout-mio-r1/reports/remediation-extension.md`。
-    tools: [
-      "sprout_status",
-      ...hostToolNames(webAccessEntry),
-      "mcp__*",
-      ...Object.keys(remoteToolInputSchemas),
-      // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
-      // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
-      // 后续跨 Chat 或 Agent 间通信再启用。
-      ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
-      ...Object.keys(infoHubToolInputSchemas),
-    ],
+    tools: assistant
+      ? ["sprout_status", ...Object.keys(ASSISTANT_TOOL_SPEC)]
+      : [
+          "sprout_status",
+          ...hostToolNames(webAccessEntry),
+          "mcp__*",
+          ...Object.keys(remoteToolInputSchemas),
+          // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
+          // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
+          // 后续跨 Chat 或 Agent 间通信再启用。
+          ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
+          ...Object.keys(infoHubToolInputSchemas),
+        ],
     resourceLoader,
     settingsManager,
     sessionManager: manager,
@@ -357,7 +326,7 @@ async function open(config) {
         )
         .join("; ")}`,
     );
-  if (session.model?.provider !== provider || session.model?.id !== modelId)
+  if (session.model?.provider !== model.provider || session.model?.id !== model.id)
     throw new Error("Pi 实际模型与显式配置不匹配");
   const pkg = jsonFile(join(root, "package.json"), {});
   // 宿主实况在 ready 之前写进 `sprout_status` 的槽：模型调它的时候读到的是这一轮会话的
@@ -394,6 +363,15 @@ async function open(config) {
     if (!session.getActiveToolNames().includes("sprout_status"))
       throw new Error("sprout_status 未进入 Pi 工具面，拒绝把诊断入口缺失的会话交给模型");
     setSproutHostFacts(facts);
+  }
+  if (assistant) {
+    const allowed = ["sprout_status", ...Object.keys(ASSISTANT_TOOL_SPEC)].sort();
+    const registered = session
+      .getAllTools()
+      .map((tool) => tool.name)
+      .sort();
+    if (JSON.stringify(registered) !== JSON.stringify(allowed))
+      throw new Error("Assistant tool registry violates purpose boundary");
   }
   // 边界证据随 ready 快照返回：谁被加载、谁没被加载由 loader 自己的读取结果回答，
   // 不靠读代码推断。只写名字与计数，不写 skill/prompt 正文。
@@ -444,6 +422,7 @@ async function open(config) {
       sessionFile: session.sessionFile,
       cwd: config.cwd,
       sdkVersion: pkg.version,
+      purpose: config.purpose ?? "worker",
       profile: config.profile,
     },
   });
@@ -522,8 +501,27 @@ async function deliverSteer(command) {
     return;
   }
   try {
-    await session.steer(command.text, undefined, { source: "rpc" });
-    line({ type: "input_delivered", id: command.id, messageId: command.messageId });
+    const context =
+      command.assistantContext === undefined
+        ? undefined
+        : assistantInputContextSchema.parse(command.assistantContext);
+    if (
+      context &&
+      (!assistantMode ||
+        context.runId !== command.id ||
+        context.messageId !== command.messageId ||
+        Buffer.byteLength(context.serializedText, "utf8") > 8192 ||
+        createHash("sha256").update(context.serializedText).digest("hex") !== context.contentHash)
+    )
+      throw new Error("assistant_context_identity_mismatch");
+    const text = context ? `${context.serializedText}\n\n${command.text}` : command.text;
+    await session.steer(text, undefined, { source: "rpc" });
+    line({
+      type: "input_delivered",
+      id: command.id,
+      messageId: command.messageId,
+      ...(context ? { assistantContextHash: context.contentHash } : {}),
+    });
   } catch {
     line({
       type: "input_rejected",

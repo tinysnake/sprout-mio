@@ -202,6 +202,7 @@ function AgentsScene({ embedded }: { embedded: boolean }) {
       ...(jobTitle ? { jobTitle } : {}),
       persona: values.persona,
       harness: "pi",
+      purpose: "worker",
       createdBy: "demo-human",
       createdAt: now,
       updatedAt: now,

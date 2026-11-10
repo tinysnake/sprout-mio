@@ -27,6 +27,10 @@ export const ID_PREFIXES = {
   repoProvenance: "rpn",
   continuationDelivery: "dlv",
   wakeEvaluation: "evl",
+  webhookRule: "whr",
+  webhookTrigger: "wht",
+  feishuRoute: "fsr",
+  feishuEpoch: "fse",
 } as const;
 /** 前缀只允许已登记的对象类别。 */
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];

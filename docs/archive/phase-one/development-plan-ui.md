@@ -1,0 +1,277 @@
+> **一期历史快照（归档基线 `1cfa15f`）。** 当前交付状态与遗留项见[开发总计划](../../development-plan.md)，归档说明见[一期归档索引](README.md)。以下编排要求、阶段概览和“下一任务”保留归档前原文，可能早于后续完成记录，不作为当前工作指令；复选框、证据与 Human 确认记录保持原状。
+
+> **禁止单独编排此文档。必须从[开发总计划](development-plan.md)开始编排。** 本文仅供总计划分派的 UI 设计与演示前端任务执行、自检使用，不得据此自行开启章节、绕过设计确认或决定整体完成。
+
+# UI 开发专项计划
+
+按本文交付与 [功能开发计划](development-plan-functional.md) 对齐的 UI 设计和演示前端。先建立设计基础，追赶 P1、P2 和 P3，再随功能章节交付。跨线调度、真实服务接入、反馈修复与整体验收由 [开发总计划](development-plan.md) 协调。
+
+本文已记录讨论确定的范围与顺序。UI 基础、UI-P1/P2 与 UI-P3 追赶已完成并在 `869bf22` 记录（含 Human 体验确认）。UI-P4a 已由总计划于 2026-10-23 分派，共享契约基线为 `0a33103`，共用组件与可操作演示 `5f5e49b` 在 `2a56c81` 合入。真实接入经三轮票据生命周期修复后在 `e10a5b4` 合入并通过独立技术验收，演示与真实页面复用同一套呈现组件，演示脚本 27 项、接入页面脚本 13 组均通过。UI-P4a 的三项交付已勾选，Human 体验确认待记录。UI-P4b 及其后未开工。后续设计、演示与开发直接在仓库推进，以 [前端设计基线](../../frontend-design.md) 和 [前端开发约定](../../frontend-conventions.md) 约束，不再依赖 OpenDesign。
+
+## 沿用功能章节安排交付
+
+按功能计划的大章节设置 UI 交付与集成里程碑。P4 沿用已有的 a 至 d 小节，P5 对应多人 Chat 与 Task 协作两个小节。P6 对应对话接续、Info Hub 与成员治理三个小节，分别对齐 I-P6a/I-P6b/I-P6c。章节内可以拆设计任务、组件任务和代码提交，不因每个小任务完成而新增一次集成。
+
+| UI 阶段       | 对应功能范围                          | 前置条件                                    | 交给集成线的时点                                          |
+| ------------- | ------------------------------------- | ------------------------------------------- | --------------------------------------------------------- |
+| UI 基础       | 跨页面设计语言、token、布局和基础组件 | 已确认的目标与参考图                        | 经样板验证后随基础追赶包交付，不单设产品集成              |
+| UI-P1/P2 追赶 | P1、P2 的已有页面与操作               | UI 基础                                     | 整个基础追赶包就绪后集中集成                              |
+| UI-P3 追赶    | P3 真实对话与宿主仓库入口             | 基础追赶包集成通过，P3 契约可供核对         | 按完整 P3 集成                                            |
+| UI-P4a        | Worker 连接与 Project 绑定            | UI-P3 集成通过，P4a 契约就绪                | 按 P4a 集成                                               |
+| UI-P4b        | 分身持租与远端操作                    | P4a 集成通过，P4b 契约就绪                  | 按 P4b 集成                                               |
+| UI-P4c        | 长命令、日志、结果与恢复              | P4b 集成通过，P4c 契约就绪                  | 按 P4c 集成                                               |
+| UI-P4d        | 交接、收回与 Machine 移除             | P4c 集成通过，P4d 契约就绪                  | 按 P4d 集成                                               |
+| UI-P5a        | Group、Public Channel 与多人协作      | 已有 Chat 设计，P5a 契约就绪                | 按 P5a 集成                                               |
+| UI-P5b        | Task 协作                             | P5a 集成通过，P5b 契约就绪                  | 按 P5b 集成                                               |
+| UI-P6a        | 对话接续、人类控制与最小失败/恢复呈现 | P4、P5 集成技术验收通过，P6a 契约就绪       | 按 P6a 集成                                               |
+| UI-P6b        | Info Hub 全部一期视角与 Agent 上下文  | P6a 技术验收通过，P6b 契约就绪              | 按 P6b 集成                                               |
+| UI-P6c        | Agent 移除、归档与重新加入            | P6a、P6b 技术验收通过，P6c 契约就绪         | 呈现已随 P6c 集成自检通过（`480a2f0`），待 Human 体验确认 |
+| UI-P7         | 手机、PWA、恢复与一期完整体验         | P6a、P6b、P6c 集成技术验收通过，P7 范围明确 | 完成一期整体验收                                          |
+
+表中“集成通过”指章节已通过技术验收。章节只有经 Human 亲自体验并明确确认后才算完成；人类体验确认不作为后续章节开工的必要条件，Human 明确 AFK 时可推迟体验验收。设计尚未经 Human 确定时，可以继续草案与功能开发，但不满足正式集成的 UI 交付条件。具体规则见 [开发总计划](development-plan.md)。
+
+默认按功能计划顺序推进，功能计划允许的跨章并行由开发总计划明确安排。当前章节交付并通过技术验收后，再推进依赖它的章节。设计与功能问题在开发中及时反馈，正式接入和验收集中在章节里程碑。一轮章节集成可以包含多次修正与复验，仍计为同一个里程碑。
+
+## 先追赶已有功能
+
+将 P3 作为需要完整追赶的阶段安排。执行前核对功能阶段记录、已合入代码和实际契约，记录所用的 commit、未完成项与已知限制。P3 尚在开发时采用已稳定部分，等待本章范围就绪后整章集成；P3 已收尾时沿用其实际交付范围与部分交付限制，不将限制自动扩大为 UI 追赶中的补做任务。
+
+先交付 UI 基础与 P1/P2 基础追赶包，再完成 UI-P3 追赶。P1/P2 合成一次集成，P3 单独进行一次整章集成。P3 内部的 session、轮次、仓库和 Info Hub 开发任务不分别设置集成里程碑。
+
+UI 计划确定后，按开发总计划暂停开启新的功能章节，在途任务收口到可验证、可交接的位置，记录实际停点。功能线继续处理集成反馈、已有缺陷与必要适配。P1/P2 基础包集成保留已有 P3 能力，P3 追赶通过技术验收后恢复新增功能开发，人类体验确认独立记录。本文件不直接停止其他执行者的任务。若功能线已经继续推进，先记录差异，再由开发总计划安排，不把新范围自动并入 P3 追赶包。
+
+## 在仓库中设计、演示与迭代
+
+后续以前端代码及其可操作场景承载设计，沿用 React + TypeScript、Tailwind 与 shadcn + Base UI。OpenDesign 不再是开发、预览或确认的必要环节；当前原型作为 [冻结参考](../../../design/archive/opendesign-p1p2/README.md) 保存。外部设计工具可作为输入，但产物必须整理成符合仓库约束的组件。
+
+每个章节按同一流程交付。
+
+1. 助手从开发总计划领取章节任务，读取实际契约、前端设计基线和开发约定，明确用户路径、复用组件、状态与响应式要求。
+2. 优先组合已确认的共享组件，在仓库开发场景中实现设计草案；新增视觉或交互方向记录具体差异，供 Human 在本地演示中确定。常规实现沿用已有决定直接推进。
+3. Human 在预览中体验仓库可运行页面（GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 Lavish），使用 DOM Capture 复制元素定位，并提交文字、截图反馈；具体流程见下文。助手在同一组件实现中修正并保留版本与证据，不再维护工具原型与正式页面两份持续变化的 UI。
+4. 完成章节内各页面与组件设计，检查主题、状态、信息层级、键盘行为和共享布局的一致性。现有规则覆盖的新场景先扩展组件变体，确有需要再新增组件。
+5. 演示以固定数据和模拟回调驱动正式呈现组件，补齐导航、表单反馈和必要异常；真实服务调用仍由集成线接入，不把整章技术栈转换留给集成线。
+6. 保存可版本管理的组件、场景、token、运行说明、截图或录像及已知限制，向集成线交付整个章节。集成反馈回到同一组件和场景修正。
+
+设计方向确定、演示可用、真实接入通过和 Human 体验确认分别记录。工具试作或某张截图不能替代对应结论。
+
+### 页面预览与 DOM Capture 体验和反馈
+
+后续 UI 开发统一采用“仓库实现 → 页面预览 → DOM Capture 定位与截图说明 → 助手修正 → Human 复查”的流程。预览与反馈按[宿主环境](../../project-conventions.md#宿主环境)选择，GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 [Lavish](https://github.com/kunchenguid/lavish-axi)；[DOM Capture](https://github.com/schappim/dom-capture) 负责元素选取与定位。Lavish 当前采用多行纯文本加图片附件，Markdown 可原样粘贴，不宣称它是所见即所得的富文本编辑器。两者是开发协作工具，设计规范、组件和业务实现仍由仓库维护。
+
+以下步骤描述 TUI 宿主的 Lavish 路径；GUI 宿主用环境自带的 browser / preview 工具完成同样的预览、定位与反馈收取，DOM Capture 的用法不变。
+
+1. 助手启动当前仓库的演示场景或真实应用，在 Lavish 中提供同页预览和 Conversation 面板，注明场景、URL、代码版本、主题及 Sprout 预览区域的实际视口尺寸。演示与真实接入使用同一份呈现组件，场景数据性质明确。
+2. Human 在预览中体验；需要定位时，用 DOM Capture 悬停高亮、点击选中，并通过父子层级切换找到目标。使用本项目协作中已扩展的 **Copy ID** 或 **Copy DOM path**，把结果贴入 Lavish 的 Conversation，再说明当前表现与期望行为。Copy ID 只复制原始 ID，元素没有 ID 时不可用；Copy DOM path 包含元素名称、ID、所在文档 URL 与 DOM 路径。无需复制带样式的整段 HTML。
+3. Human 可以直接粘贴自行截取、标注好的图片，或拖入、选择图片文件，再补充文字说明；不要求先选元素。元素定位与截图可在同条反馈中提交。Lavish 当前采用多行纯文本加图片附件，Markdown 可原样粘贴，不宣称它是所见即所得的富文本编辑器。
+4. 助手通过 Lavish CLI 收取反馈及附件，读取图片并结合定位、页面状态与代码复现问题，在仓库组件中修正，完成相应浏览器验证后回复修复结果与待复查项。真实应用评审使用 human-review skill，按该实例描述符调用 Lavish CLI；HTML artifact 使用 lavish skill 获取当前指南。持续等待反馈使用当前工作回合前台运行的原生 poll，返回后处理完整收据；只有预览进程运行时，不宣称 agent 正在监听。
+5. Human 在更新后的同一页面复查。记录反馈、修复版本、验证证据和仍未解决的问题；修复自检通过与 Human 明确确认分别记录，不因某条反馈已处理而自动宣布章节完成。
+
+iframe 内的元素路径以目标文档为作用域。跨域或嵌套 iframe 的反馈保留内层 URL 与外层 Page 信息；shadow root 路径中的 `>>>` 表示分段边界，不能把整串当作普通 CSS selector。复制结果描述当前 DOM，页面改版后需重新选取；它不等于 React 组件名。必要时同时提供截图和复现步骤。
+
+预览应直接加载可信本地 Sprout URL，保持应用所需的 origin、资源加载、登录与存储行为；不能把运行中的应用简单套进 Lavish 原有的 sandboxed HTML iframe 并宣称可用。原有 HTML artifact 的隔离与可信应用预览分别处理。DOM Capture 需要取得目标 frame 的站点权限；响应式验收使用 Sprout frame 的实际尺寸，不能拿包含反馈面板的整个浏览器窗口尺寸代替。
+
+TUI 宿主的当前入口是 human-review skill 与 CLI，GUI 宿主用环境自带的 browser / preview 工具；真实应用适配保留，Pi 专用工具和自动消息桥已移除。已用实际 DOM Capture 扩展、Lavish 与独立 Chromium 验证原生 poll / reply、登录保持、元素定位、完整文字与截图收取，以及 SIGTERM 清理。启动方式、证据与未验证项见 [Human review 工具记录](../../human-review.md)。此前 UI review 与 Pi SDK 的验收保留为历史证据；工具随该轮使用过，11 张截图经实际读图，8 条界面反馈按线程分派修复并合入。用户常用浏览器中的扩展重载仍未完成，工具本身的这一项不影响 UI 章节验收。
+
+### 当前原型迁入仓库的顺序
+
+以下是 I-P1/P2 基础追赶包内部任务，不新增集成里程碑，也不启动 UI-P3 新范围。
+
+1. 冻结当前原型源码及依赖，记录基线、摘要和复现方法；提炼设计与开发约束并接入 AGENTS.md。归档仅供追溯，不继续开发。
+2. 在项目技术栈内落共享组件与布局，优先完成 token 对应、Button / Field / Dialog / 菜单、页面标题区、侧栏、Project 选择器及 Chat 分栏；修正默认组件与设计的差异，禁止复制整份原型 app.css。
+3. 在 `src/dev/` 建立共用组件的演示场景，覆盖登录、Project、Agent、Members、Settings、DM 与已有 Info Hub 的基础追赶范围；保存浅暗与宽窄屏证据，不要求独立建设另一套应用。
+4. 由总计划安排 I-P1/P2 真实接入，替换现有路由的呈现并同步导航模型，保留原有 loader、授权、持久性及 P3 已有能力。已有行为测试可调整定位和已批准变化的路由期望，不能删减行为断言。
+5. 完成章节材料、自检和独立技术验收，提供仓库运行版本供 Human 体验。UI-P3 的新设计与整章集成仍遵守原有依赖。
+
+第 1–5 步均已落地，记录见 [I-P1/P2 UI 迁移记录](../../ui/p1p2-migration.md)。组件演示及可机械检查的代码约束随第 2–3 步进入 `scripts/browser/` 与 `scripts/verify/`，由 `r-ui-layout.sh`、`ui-gallery.mjs` 与 `tests/frontend-boundaries.test.ts` 执行；文档规则本身不是门禁，门禁是这些脚本。
+
+## 保持已确认的体验方向
+
+- 将 Chat 作为主要工作区，Task overview 作为第二个高频界面。配置与管理页面采用一致布局，按需展示详细信息。
+- 宽屏 Chat 工作区采用左侧列表、中间详情和右侧 inspector。Inspector 展示当前上下文的 Info Hub 信息，聊天内容获得主要空间。
+- 窄屏先显示 Chat 列表，进入详情后通过返回回到列表。Inspector 通过明确入口打开，URL、当前对象和返回语义保持一致。
+- 一级导航沿用 Projects、Agents、Machines、Management，不新增 Feed 或独立 Info Hub 一级入口。导航与三栏工作区的具体组合在共享布局阶段确定。
+- 使用清晰克制的视觉语言。以中性色为底，少量强调色用于操作、选中和必要状态，通过字号、字重、对比与间距区分主次。
+- 同时设计浅色、暗色主题。两者沿用相同组件结构和语义，分别检查文字、边界、选中、聚焦及错误状态的可辨识程度。
+- 页面标题区、导航、工具栏、列表项、表单和信息分组采用共享组件与明确变体；不设置全局 header。各页面填充内容，避免分别实现高度、间距和对齐规则。
+- Task overview 按 proposed、assigned、finished、canceled 分栏，卡片只展示少量一级信息，详情按需打开。卡片具体字段在 UI-P5b 确定，不增加 Task 执行状态。
+
+视觉输入保存在以下参考图中。
+
+- [Grok 桌面与手机](<../../ui-ref/grok bot desktop mobile.jpg>) 提供列表、聊天和 inspector 的区域划分参考。
+- [Cumora 桌面](<../../ui-ref/cumora desktop.jpeg>) 提供导航、列表、多人消息和浅色层级参考。
+- [Cumora 手机](<../../ui-ref/cumora mobile.webp>) 提供窄屏列表和一级信息取舍参考。
+- [Rakazo](../../ui-ref/rakazo.png) 提供暗色背景、选中项、消息和输入区参考。
+
+原 Sprout 用于提取认可的布局与交互经验。查阅实际页面或源码后记录参考位置和 commit，按 Mio 的产品规则重新设计。参考图作为输入；已经确定的配色、字体、圆角、栏宽与响应式行为以 [前端设计基线](../../frontend-design.md) 为准，不能回退到尚未定稿状态或照搬旧项目。
+
+## 交付演示前端与章节材料
+
+每个业务章节交付设计与基本功能演示。演示与正式页面共用仓库组件，使用开发场景内的固定示例数据和临时状态，重新载入场景可恢复样例，无需数据库、真实 Pi、Worker 或业务 API。不得将旧原型的整套样例状态复制进产品页面。示例演示只证明 UI 行为，真实授权、持久性、执行和恢复由集成验收证明。
+
+演示支持章节主要路径、必要的导航、表单反馈与状态切换。加载、空数据、处理中、成功、失败、断线、旧数据、未实现和未知按该章节契约选用，不为所有页面机械添加全部状态。用独立示例场景演示失败与恢复，避免将模拟状态显示为真实执行结果。
+
+每章交付时记录以下内容。
+
+- 对应功能章节、基线 commit、依赖契约及未完成或有分歧的字段。
+- Human 确定的设计规则与场景版本、token 与共享组件的维护位置；使用外部工具时补充源文件版本。
+- 页面、URL、用户操作和状态清单，以及各状态的真实数据来源或待接入点。
+- 可启动的演示代码、实际运行命令、示例数据与场景切换方式。
+- 浅色、暗色、宽屏、窄屏截图，以及主要操作录像或可复跑的浏览器步骤。
+- UI 自检结果、已知限制、待集成事项和反馈修复记录；使用 Lavish 时记录对应 review、预览 URL / 场景、实际视口与附件证据，不能只保留工具里的临时对话。
+
+设计文件和演示代码支持版本记录，资源与依赖在交付说明中列明。代码进入项目时沿用 [P1 开发约定](../../p1/conventions.md)，目录、允许修改的文件与负责人在执行任务中明确。设计线负责呈现与演示交互，真实业务逻辑和协议仍由功能线维护，正式服务接入由集成线负责。
+
+## UI 基础 建立设计语言与共享布局
+
+本阶段先确定第一版规则，用 Chat 样板验证后交付基础追赶包。仅构建当前页面需要的基础，后续随功能章节扩展。
+
+- [x] 整理 design brief，记录主工作区、参考图、信息密度、布局偏好和一期边界。
+- [x] 在仓库组件与演示场景中迭代第一版设计语言，通过 Lavish 体验与反馈流程确认颜色、文字层级、间距、圆角、分隔、图标和状态表达。
+- [x] 建立基础 token 和语义 token，包含浅暗主题、别名与使用规则，保存可版本管理的 token 文件及代码可用的样式表示。
+- [x] 设计应用导航、各页自己的页面标题区（返回上一级链接、`<h1>` 标题与一句说明）、列表与详情、三栏工作区、inspector、表单与操作反馈，明确组件变体、内容插入位置和窄屏行为。
+- [x] 用 Chat 样板检查文字阅读、长内容、消息输入、信息展开、主题和屏幕变化，修订不适用的规则。
+
+出口条件是 Human 确定第一版设计方向，共享布局与组件可以供 P1/P2 使用，token 有明确维护位置与浅暗对应关系。完成本阶段不代表 P3 真实对话或其他业务已经接入。
+
+## UI-P1/P2 追赶基础页面与持久对话
+
+范围对应 [P1](development-plan-functional.md#p1-建立可重复的工程骨架) 和 [P2](development-plan-functional.md#p2-建立身份成员与持久对话)。先实现共享布局和 DM 样板，再补低频页面，整个章节完成后交付一次基础集成。
+
+- [x] 完成登录、最小初始化、已登录入口、Project 创建与 `/projects` 分发设计及演示：账号注册时创建默认 Project「我的项目」；`/projects` 在只有一个 Project 时直接进入其 Chats，零个时显示新建入口，多个时才显示列表，Project 列表页不作为导航目标；Project 详情页已删除，Project ID、创建时间等基本事实并入 Project settings；侧栏 Projects 仅作为二级菜单折叠开关，不作为导航项，侧栏和移动端二级菜单均只有 Chats、Members、Project settings 三项，Project 选择器不提供「查看全部 Projects」入口。
+- [x] 完成 Project 配置、Agent profile 列表与详情、成员添加与移除的设计及演示，包含职位（`jobTitle`）字段编辑：可留空、最多 40 字，仅展示分工，不承载任何权限语义，空值不显示徽标；`role` 保留给二期项目级权限层级，不用于指代职位；Agent 详情页的 model 与 effort 均为含「使用默认」选项的下拉字段，留空即沿用宿主默认。
+- [x] 完成 Chat 列表、持久 DM、分身与人设信息、消息阅读与发送演示。
+- [x] 完成已有 Info Hub 信息在页面及 inspector 中的展示与关联入口，后续阶段能力明确保留未实现语义。
+- [x] 检查稳定 URL、刷新、前进后退、窄屏列表进入详情与返回，以及字段校验、请求失败和无权查看场景的 UI 表达。
+- [x] 检查各页自己的页面标题区、布局与组件使用一致，保存浅暗主题和宽窄屏证据，交付章节材料。
+
+出口条件是已有 P1/P2 能力都有对应设计和可操作演示。集成时验证真实登录、保存、分身与消息持久性、URL 和两用户隔离，沿用既有行为断言。上述真实行为通过技术验收后，进入依赖它的 UI-P3 追赶；基础包完成仍须 Human 体验确认。
+
+## UI-P3 追赶真实对话与宿主仓库入口
+
+范围对应 [完整 P3](development-plan-functional.md#p3-跑通真实-pi-对话和仓库入口)。采用实际交付的 run、输入和仓库契约，整章交付后集成。
+
+- [x] 补齐 Human 与 Agent 消息、运行状态、当前轮追加消息和停止的设计及演示。区分未投递、已投递和运行结果，不以发送成功替代处理完成。
+- [x] 补齐宿主未启用、未开始、排队、运行中、停止、失败及重启中断等实际状态，提供错误详情与 requestId 的适当入口。
+- [x] 补齐 profile 修改从下一轮生效的提示，保持同一 Chat、分身和历史的连续性。
+- [x] 补齐宿主仓库配置、复用副本、按需获取、获取中与失败反馈，以及来源、ref、commit 和获取时点的概要与详情。
+- [x] 在 inspector 与相关页面呈现 Agent status、活动 runs、错误和仓库依据，区分当前事实与轮初快照，低频细节按需展开。
+- [x] 完成跨页面演示与章节交付材料，核对 P3 全部 UI 范围，不按内部开发任务拆集成。
+
+出口条件是用户可演示从仓库配置进入 DM 分析、查看回复、追加消息、停止和错误处理的路径。集成线用真实 Pi 验证同一条路径及重启行为，确认页面状态与实际运行、投递和仓库来源一致。
+
+核对记录：内容随 I-P1/P2 迁移交付，版本 `869bf22`。交付内容、验证脚本与边界见 [I-P3 UI 追赶记录](../../ui/p3-catchup.md)；Human 体验确认记录版本 `869bf22`。
+
+## UI-P4a 展示 Machine 连接与绑定
+
+范围对应 [P4a](development-plan-functional.md#p4a-建立-worker-连接和-project-绑定)。
+
+- [x] 完成 Machine 列表与详情、加入 Project、说明与派生工作目录的呈现及演示。root 工作目录区、绑定就地完成、配对与安装优先级、安装文案与 Shell 能力呈现按 Human 四轮体验反馈调整，重跑 `bash scripts/verify/u-machine-ui.sh`；设计与决定理由见 [P4a 结论](../../p4a/summary.md#体验后变更)。
+- [x] 组织 Worker 安装与启动所需的说明和连接反馈，具体步骤沿用实际功能交付。见 [Worker 安装](../../p4a/worker.md)，重跑 `bash scripts/verify/t-machine-worker.sh`。
+- [x] 呈现在线、断线、重连和能力信息，不能以断线推断空闲或释放，Project 上下文始终明确。见 [真实接入](../../ui/p4a-integration.md)，重跑 `bash scripts/verify/u-machine-ui.sh`。
+
+出口条件是连接与绑定路径可操作演示，界面能区分连接状态与资源占用。以真实 macOS Worker 完成 P4a 章节集成。
+
+## UI-P4b 展示分身持租与远端操作
+
+范围对应 [P4b](development-plan-functional.md#p4b-实现分身持有与远端操作)。共享呈现、真实接入及两轮技术验收记录见 [P4b UI 交付证据](../../p4b/summary.md#ui-交付证据)。y 覆盖浅暗主题与五宽度，z 使用真实 Chat、服务、macOS Worker、新账号与 Chromium；fencing 返工另有三页面 30 组真实检查。Human 体验仍待明确确认：Human 亲自体验真实页面后提出的九条反馈已由 `5ade997`（merge `e28a149`）与 `c42bae1` 落地，但提出反馈不等于确认通过。跨机网络与真机软键盘未验证。`p4b-fence-liveness` 已由 Human 裁决为 B 并在 `c42bae1` 实现。docs 门禁已更新为 per-section 证据门禁，`l-docs.sh` 与 `l-docs-probes.sh` 均退出 0；两轮技术 PASS 仍不替代 Human 确认。
+
+- [x] 完成租约与 holder 的概要、详情、申请和释放反馈，以及分身持有多台 Machine 的展示。证据 [租约与反馈](../../p4b/summary.md#1-租约holder申请释放与多机概要)，多机组合限投影与演示；重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
+- [x] 展示远端 shell、文件和进程操作的目标与结果，区分宿主与指定 Machine，不新增完整终端或文件管理产品。证据 [目标与结果](../../p4b/summary.md#2-远端目标与真实结果)，重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`，保留拒绝请求不入队、哨兵不存在的反证。
+- [x] 在 Chat、Machine 详情与 inspector 中一致呈现持租事实，run 结束后不自动显示租约已释放。证据 [同源事实与跨 run](../../p4b/summary.md#3-chatmachine-与-inspector-一致run-结束保留占用)，重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/z-lease-integration.sh`。
+
+出口条件是租约、分身、run 与操作目标可清楚区分，申请和释放有结果反馈。技术证据已覆盖互斥、跨 run 持有、授权失败和 Project 边界；fencing 如实显示等待 Worker 确认且不保证结束，Human 可在风险确认后强制收回（裁决 B，`c42bae1`），强制后仍不声称旧副作用已排空。章节体验确认仍待 Human 明确记录，P4c 及以后未启动。
+
+## UI-P4c 展示长命令与不确定结果
+
+范围对应 [P4c](development-plan-functional.md#p4c-实现长命令与不确定结果)。
+
+- [x] 完成执行详情、运行状态、日志读取、退出结果和取消反馈的设计及演示。证据 [执行详情与取消反馈](../../p4c/summary.md#6-执行详情运行状态日志读取退出结果和取消反馈的设计及演示)，重跑 `bash scripts/verify/ad-execution-log-ui.sh`。
+- [x] 完成日志续读、达到保留限制、断线、重连与结果未知的呈现，明确当前信息是否完整。证据 [续读与完整性呈现](../../p4c/summary.md#7-日志续读保留限制断线重连与结果未知的呈现明确信息是否完整)，重跑 `bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/am-execution-log-honesty.sh`。
+- [x] 保留稳定 execution 定位，页面恢复后可以继续查看既有执行，未知结果不提供会隐式重跑原命令的操作。证据 [稳定定位与不隐式重跑](../../p4c/summary.md#8-保留稳定-execution-定位页面恢复后可继续查看既有执行)，重跑 `bash scripts/verify/ag-execution-wiring-ui.sh`。
+
+出口条件是长命令的当前事实、日志完整性和未知结果可辨识。集成时验证真实命令跨 run、断线与重启后的查询和取消行为。技术证据已覆盖执行详情、续读、裁剪与完整性、断线重连、取消双路径与未知不重跑；两项页面可用性限制（读到头后续读按钮仍启用、裁剪后缺少从可读起点重读的控件）记录在 [P4c 已知限制](../../p4c/summary.md#已知限制)。章节体验确认仍待 Human 明确记录，P4d 未启动。
+
+## UI-P4d 完成交接收回与移除交互
+
+范围对应 [P4d](development-plan-functional.md#p4d-实现交接收回与-machine-移除)。
+
+- [x] 完成向指定分身交接、Human 强制收回和 Machine 移除的交互、警告与确认。证据 [交接与移除交互](../../p4d/summary.md#7-完成向指定分身交接human-强制收回和-machine-移除的交互警告与确认)，重跑 `bash scripts/verify/aq-p4d-pages.sh`。
+- [x] 呈现授权变化、离线待处理和无法确认撤权的状态，相关页面与 inspector 更新为同一事实。证据 [待处理与未确认撤权](../../p4d/summary.md#8-呈现授权变化离线待处理和无法确认撤权的状态相关页面与-inspector-更新为同一事实)，重跑 `bash scripts/verify/aq-p4d-pages.sh`。
+- [x] 说明交接、释放与收回对既有执行的实际影响，避免让用户误以为租约操作会清理进程或文件。证据 [影响说明与只读历史](../../p4d/summary.md#9-说明交接释放与收回对既有执行的实际影响避免让用户误以为租约操作会清理进程或文件)，重跑 `bash scripts/verify/aq-p4d-pages.sh`。
+
+出口条件是操作前后 holder 与权限变化明确，待处理不会显示为成功。集成时验证旧 holder 失权、新 holder 接续查询与带租约移除的真实结果。
+
+## UI-P5a 完成多人 Chat
+
+范围对应 [P5a](development-plan-functional.md#p5a-完成多人-chat)。本节交付完整的多人协作 UI，Task 总览与生命周期留到 UI-P5b。
+
+- [x] 完成 Group 创建、成员管理、owner 指定与变更，以及 Public Channel 成员自动同步的设计及演示，操作范围遵循产品决定。证据 [UI 交付证据](../../p5a/summary.md#ui-交付证据)，重跑 `bash scripts/verify/i-chat.sh`。
+- [x] 扩展消息列表、发送者识别、多 Agent 活动与成员回报，保持主要聊天内容清楚，避免堆叠所有运行细节。证据 [UI 交付证据](../../p5a/summary.md#ui-交付证据)，重跑 `bash scripts/verify/i-chat.sh`。
+- [x] 在 header 和 inspector 中呈现成员、owner 与活动 runs 的关联，支持查看相关对象。证据 [UI 交付证据](../../p5a/summary.md#ui-交付证据)，重跑 `bash scripts/verify/i-chat.sh`。
+
+出口条件是用户可演示建立 Group、设置 owner、多人消息与回报，以及 Public Channel 的成员关系。以完整 P5a 进行集成，不按成员和消息分别集成。
+
+## UI-P5b 完成 Task 总览与生命周期
+
+范围对应 [P5b](development-plan-functional.md#p5b-完成-task-协作)。
+
+- [x] 设计按 proposed、assigned、finished、canceled 分栏的 Task overview，确定卡片一级信息、空列、长标题和窄屏浏览方式。证据 [功能与 UI 交付证据](../../p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/as-p5b-task-pages.sh`。
+- [x] 完成 Task 详情、创建、分配给 Chat、可选立即开始、完成、取消、人类纠正与重开的设计及演示，具体迁移规则沿用功能契约。证据 [功能与 UI 交付证据](../../p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/as-p5b-task-pages.sh`。
+- [x] 完成 checklist、施工记录及末条记录中的完成结果，提供回到承接 Chat 和相关对象的入口。证据 [功能与 UI 交付证据](../../p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/as-p5b-task-pages.sh`。
+- [x] 在 Chat 与 inspector 中呈现 Task 关联，分别表达 Task 状态、run 活动与租约事实。证据 [功能与 UI 交付证据](../../p5b/summary.md#功能与-ui-交付证据)，重跑 `bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/i6-chat-info.sh`。
+
+出口条件是用户可在演示中从分栏总览进入 Task，分配给 DM 或 Group，并完成记录、完成与重开路径。整节集成验证真实 Task 生命周期，不新增运行中 Task 状态或独立强制验收流程。
+
+设计、演示与真实 Chromium 自检已交付，`c0e9c74` 第二轮独立技术验收支持合入 main；证据见 [P5b 章节结论](../../p5b/summary.md)。设计依据含 AFK 期间协调者代人类裁定；浏览器自检采用 fixture config，Human 真实体验尚未确认，I-P5b 第四条仍为待办。
+
+## UI-P6a 完成对话接续与人类控制呈现
+
+范围对应[P6a](development-plan-functional.md#p6a-完成对话接续与人类控制)、[I-P6a](development-plan.md#i-p6a-集成对话接续与人类控制)。P6 原暂按整章交付，现按 a/b/c 三节交付。先比较 2–3 套原型并记录 Human 选定结论，原型按[宿主环境](../../project-conventions.md#宿主环境)呈现，GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 Lavish，再实现页面。
+
+- [x] 完成对话接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](../../p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](../../p6a/summary.md#p3-2-disable-的页面文案)。
+- [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [UI 线证据](../../p6a/summary.md#ui-线证据)与[集成线与技术验收证据](../../p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`。
+
+包含 Project 判定器选择与不可用原因、Human owner 提醒、判定不确定/退避/投递未知、无 assigned 不检查的表达；Info Hub 仅接入 P6a 必要摘要，P6b 会扩展。
+
+设计、演示与真实 Chromium 自检已交付，`bde6383` 的第二轮独立技术验收支持合入 main；Human 真实体验尚未确认，本节不冒充确认。
+
+## UI-P6b 完成 Info Hub 全部一期视角呈现
+
+范围对应[P6b](development-plan-functional.md#p6b-完成-info-hub-全部一期视角)、[I-P6b](development-plan.md#i-p6b-集成-info-hub-全部一期视角)，依赖 P6a 技术验收通过。
+
+- [x] 补齐 Info Hub 的 Project、Chat、Agent、Machine 一期视角，设计当前事实、轮初快照和更新提示的层级，不把全部字段默认展开。证据 [P6b UI 线证据](../../p6b/summary.md#ui-线证据)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-pages.sh`；三宽度断言的 `*_independent_status_run_lease` 与 `*_prepared_has_no_injection_claim` 同时钉住分层与收据文案。
+- [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [P6b UI 线证据](../../p6b/summary.md#ui-线证据)与[P6b 集成线与技术验收证据](../../p6b/summary.md#集成线与技术验收证据)，基线 `4d9545c`，重跑 `bash scripts/verify/bf-p6b-pages.sh`；接线与组件清单见 `orchestrate/sprout-mio-p6/reports/p6b-wiring-report.md`。
+
+本节只交付呈现与自检证据：本仓库没有 P6b 设计的 Human 确定记录（I-P6b 第 2 条因此不勾），Human 真实体验确认也尚未进行，本节不冒充确认。
+
+## UI-P6c 完成成员治理与重新加入呈现
+
+范围对应[P6c](development-plan-functional.md#p6c-完成成员治理与重新加入)、[I-P6c](development-plan.md#i-p6c-集成成员治理与重新加入)，默认依赖 P6a、P6b 技术验收通过。
+
+- [x] 完成 Agent 移除前置检查、阻塞原因与关联处理入口，以及正常移除后的 Group 退出、DM 归档和重新加入的恢复呈现。证据 [P6c UI 线证据](../../p6c/summary.md#ui-线证据)，基线 `480a2f0`，重跑 `bash scripts/verify/p6c-member-governance-ui.sh`；阻塞分组与对象链接形状见 [P6c 契约](../../p6c/contracts.md#阻塞检查的契约形状)。
+- [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [P6c 集成线与技术验收证据](../../p6c/summary.md#集成线与技术验收证据)与[P6c 契约](../../p6c/contracts.md#public-channel-换-owner-的边界)：频道只有 Project 创建者那个 Human 能成为新 owner、DM 无入口、移除后该 Agent 的对话读写按当前授权被拒；重跑 `bash scripts/verify/bf-p6c-lifecycle.sh`。
+
+本节只交付呈现与自检证据：本仓库没有 P6c 设计的 Human 确定记录，Human 真实体验确认也尚未进行（I-P6c 第 4 条未勾），本节不冒充确认。
+
+各节均需验证自动行为不抵消人类控制；P6a 的 Task/run/检查语义清楚，P6b 信息视角与源对象一致，P6c 成员治理有明确阻塞/恢复反馈且移除后授权真实生效。原“暂按整章交付”改为三节独立技术验收及 Human 确认。
+
+## UI-P7 完成客户端与一期体验验收
+
+范围对应 [P7](development-plan-functional.md#p7-验收完整一期与客户端体验)。此前各章均需提供浅暗主题和宽窄屏交付，本节补齐设备差异与完整使用路径。
+
+- [x] 检查 Projects、Agents、Machines、Management 的导航、共享布局、主题切换和各入口的实际可用性。证据 [P7 UI 线证据](../../p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-navigation.sh`。
+- [x] 检查详情深链、刷新、前进后退、登录后目标恢复，以及窄屏列表、详情、inspector 的进入与返回。证据 [P7 UI 线证据](../../p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-navigation.sh`。
+- [ ] 补齐 PWA 安装与独立窗口体验、断线、旧数据和重新进入后的同步反馈，不默认离线排队操作。装机与独立窗口的评审由 Human 决定延后到部署与 HTTPS 就绪之后（见 [P7 human-体验确认](../../p7/summary.md#human-体验确认)）；离线读、离线写入只报失败不排队、重连刷新与登出清缓存的契约已由 `p7-client-pwa` 覆盖。
+- [x] 在真实手机检查输入区、软键盘、滚动与主要操作，明确浏览器视口模拟与真机证据的区别。证据 [P7 human-体验确认](../../p7/summary.md#human-体验确认)，基线 `6a676a9`，重跑 `bash scripts/verify/p7-client-navigation.sh`；Human 在局域网预览上用手机逐项走过，未保留设备截图。
+- [x] 配合集成线完成一期七步开发闭环和故障场景，检查页面不将未知、失联或未支持能力显示为成功。证据 [P7 UI 线证据](../../p7/summary.md#ui-线证据)，基线 `b828755`，重跑 `bash scripts/verify/p7-client-states.sh`。
+
+出口条件是一期主要使用路径和必要异常路径有真实浏览器及设备证据，已知限制可定位。模型、Worker、恢复与授权的行为结论以对应集成证据为准。
+
+## 按章节检查完成证据
+
+设计确定、UI 演示通过、真实集成技术验收通过与 Human 体验确认分别记录。只有本节要求的材料存在后才勾选 UI 任务；集成技术验收通过后记录技术结论，只有 Human 亲自体验并明确确认后，才由集成线记录章节完成。
+
+每章检查共享组件与 token 的使用、信息主次、浅暗主题、宽窄屏、键盘焦点、表单反馈、主要导航和必要异常状态。视觉变更保留截图，交互保留录像或可复跑的浏览器步骤。更新已有验收定位时保留身份、持久性、授权和状态含义的行为断言。
+
+本文件只安排一期。P8 二期与 R1 研究涉及的 UI，在功能范围确定后追加对应章节。后续任务若需要新增页面或改变已确认的布局与业务语义，先记录影响，再同步相应计划和产品决定。

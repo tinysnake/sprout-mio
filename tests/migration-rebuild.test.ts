@@ -579,7 +579,7 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
     try {
       applyRange(sqlite, 0, multichatIndex);
       seedLegacyRows(sqlite);
-      applyRange(sqlite, multichatIndex, migrations.length);
+      applyRange(sqlite, multichatIndex, agentRunFkIndex + 1);
       sqlite.pragma("foreign_keys = ON");
 
       // 重建不能丢行：排队中的 run 与它的输入都还在。

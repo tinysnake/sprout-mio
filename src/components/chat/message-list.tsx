@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { ChatRunActivity } from "../../contracts/agent-run";
+import type { AutomationSource } from "../../contracts/automation";
 import type { MentionSpan, Message } from "../../contracts/chat";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
 import { ChatAvatar } from "./chat-avatar";
@@ -29,6 +31,7 @@ export function MessageList({
   runFacts,
   runActivityByMessage,
   breaks = [],
+  automationRuleLink,
 }: {
   messages: Message[];
   /** DM 的既有身份快照；群聊逐条按 senderId 查 senderNames。 */
@@ -44,6 +47,8 @@ export function MessageList({
   runActivityByMessage?: ReadonlyMap<string, ChatRunActivity>;
   /** 每页首条消息在全量列表里的下标；缺省时整段当成一页。 */
   breaks?: readonly number[];
+  /** 自动化消息指向其来源规则的入口；容器提供可导航元素，缺省时不渲染。 */
+  automationRuleLink?: (source: AutomationSource) => ReactNode;
 }) {
   if (messages.length === 0)
     return (
@@ -58,14 +63,33 @@ export function MessageList({
 
   const renderItem = (message: Message, index: number) => {
     const human = message.senderKind === "human";
-    const key = senderKey(message.senderKind, message.senderId);
+    const source =
+      message.senderKind === "automation" ||
+      message.senderKind === "assistant_event" ||
+      message.senderKind === "assistant_work";
     // 挂靠超时提醒不是成员，所以既不是「历史发送者」，也不该被当成某个 Profile 的发言。
     const systemNotice = isLeaseTimeoutSender(message.senderKind, message.senderId);
-    const name = systemNotice
-      ? LEASE_TIMEOUT_SENDER_NAME
-      : (senderNames?.get(key) ??
-        (human ? humanName || "你" : dmAgentName) ??
-        (human ? "Human" : "Agent"));
+    const agentMessage = message.senderKind === "agent";
+    const key =
+      message.senderKind === "automation"
+        ? `automation:${message.senderId}`
+        : message.senderKind === "assistant_event" || message.senderKind === "assistant_work"
+          ? `${message.senderKind}:${message.senderId}`
+          : senderKey(message.senderKind, message.senderId);
+    const name =
+      (systemNotice
+        ? LEASE_TIMEOUT_SENDER_NAME
+        : message.senderKind === "automation"
+          ? message.automationSource.kind === "project_cron"
+            ? "Project cron"
+            : "Project webhook"
+          : message.senderKind === "assistant_event"
+            ? "Assistant 通知"
+            : message.senderKind === "assistant_work"
+              ? "Human 已确认的工作提案"
+              : senderNames?.get(key)) ??
+      (human ? humanName || "你" : dmAgentName) ??
+      (human ? "Human" : "Agent");
     const previous = messages[index - 1];
     const grouped =
       previous &&
@@ -73,7 +97,7 @@ export function MessageList({
       previous.senderId === message.senderId &&
       new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() <=
         GROUPING_WINDOW_MS;
-    const historical = knownSenders && !systemNotice ? !knownSenders.has(key) : false;
+    const historical = !source && !systemNotice && knownSenders ? !knownSenders.has(key) : false;
     const links = runFacts?.get(message.id) ?? [];
     const activityRecord = runActivityByMessage?.get(message.id);
     const activity = activityRecord?.activity;
@@ -101,8 +125,10 @@ export function MessageList({
                 data-testid="message-kind"
                 className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
               >
-                {human ? "Human" : "Agent"}
+                {source ? "Source" : human ? "Human" : "Agent"}
               </span>
+              {message.senderKind === "automation" &&
+                automationRuleLink?.(message.automationSource)}
               {historical && (
                 <span
                   data-testid="message-history-badge"
@@ -120,7 +146,16 @@ export function MessageList({
               </time>
             </p>
           )}
-          {!human && !grouped && !systemNotice && persona && (
+          {message.senderKind === "assistant_event" && (
+            <a
+              className="mb-2 block text-xs underline"
+              data-testid="assistant-run-link"
+              href={`/projects/${message.nativeSource.projectId}/chats/${message.nativeSource.chatId}${message.nativeSource.runId ? `?run=${message.nativeSource.runId}#selected-run-${message.nativeSource.runId}` : "?info=1"}`}
+            >
+              {message.nativeSource.runId ? "查看工作结果" : "查看工作对话"}
+            </a>
+          )}
+          {!human && !grouped && !systemNotice && !source && persona && (
             <p data-testid="message-persona" className="mb-2 text-[10px] text-muted-foreground">
               {persona}
             </p>
@@ -133,9 +168,23 @@ export function MessageList({
                 : "text-xs leading-6 break-words whitespace-pre-wrap"
             }
           >
-            <MessageBody body={message.body} mentions={message.mentions} skills={message.skills} />
+            <MessageBody
+              body={
+                message.senderKind === "assistant_event"
+                  ? (message.nativeSource.summary ?? message.body)
+                  : message.body
+              }
+              mentions={message.mentions}
+              skills={message.skills}
+            />
           </p>
-          {!human && !systemNotice && (
+          {message.senderKind === "assistant_event" && message.nativeSource.summary && (
+            <details className="mt-2 text-xs text-muted-foreground">
+              <summary className="w-fit cursor-pointer">查看通知详情</summary>
+              <p className="mt-2 whitespace-pre-wrap break-words">{message.body}</p>
+            </details>
+          )}
+          {!human && !systemNotice && !source && (
             <p data-testid="message-run-links" className="mt-1 text-[10px] text-muted-foreground">
               {links.length === 0 ? (
                 activityRecord ? (
@@ -148,7 +197,11 @@ export function MessageList({
                 )
               ) : (
                 links.map((run) => (
-                  <span key={run.runId} className="mr-2 inline-flex items-center gap-1">
+                  <span
+                    id={`run-${run.runId}`}
+                    key={run.runId}
+                    className="mr-2 inline-flex items-center gap-1"
+                  >
                     <span className="font-mono">{run.runId}</span>
                     <span>{RUN_STATUS_LABELS[run.status] ?? run.status}</span>
                   </span>
@@ -156,7 +209,7 @@ export function MessageList({
               )}
             </p>
           )}
-          {!human && activity && (
+          {agentMessage && activity && (
             <div data-testid="message-run-activity" className="mt-2">
               <RunActivityGroup activity={activity} />
             </div>

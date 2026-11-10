@@ -1,7 +1,8 @@
+import { readAssistantNativeFacts } from "./assistant-native-facts";
 import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { agentRun, leaseMutation, turnContext } from "../db/schema";
+import { agentRun, agentProfile, leaseMutation, turnContext } from "../db/schema";
 import { INFO_HUB_LIMITS } from "../contracts/info-hub";
 import {
   turnContextReadInputSchema,
@@ -88,8 +89,12 @@ export function captureTurnContext(
     const agent = hub.agents.agents.find((agent) => agent.agentProfileId === scope.agentProfileId);
     const run = hub.agents.runs.active.find((run) => run.runId === input.runId);
     if (!agent || !run) throw new InfoHubError("turn_context_unavailable");
-    const basis = getRunRepoBasis(input.runId, ctx);
-    const checkout = basis ? null : getProjectRepoState(input.projectId, ctx).checkout;
+    const isAssistant =
+      db.select().from(agentProfile).where(eq(agentProfile.id, scope.agentProfileId)).get()
+        ?.purpose === "assistant";
+    const basis = isAssistant ? undefined : getRunRepoBasis(input.runId, ctx);
+    const checkout =
+      isAssistant || basis ? null : getProjectRepoState(input.projectId, ctx).checkout;
     const workspace = basis
       ? {
           basis: "run_provenance" as const,
@@ -134,6 +139,11 @@ export function captureTurnContext(
       );
     const record: TurnContextRecord = {
       schemaVersion: 1,
+      ...(isAssistant
+        ? {
+            assistantNativeContext: readAssistantNativeFacts(scope.chatId, ctx),
+          }
+        : {}),
       ...input,
       capturedAt: new Date().toISOString(),
       basisRevision: getInfoHub(
@@ -265,7 +275,15 @@ export function captureTurnContext(
     let text = serialize();
     while (Buffer.byteLength(text) > INFO_HUB_LIMITS.maxTurnContextBytes) {
       const group = groups.find((group) => group.items.length > (group.kind === "runs" ? 1 : 0));
-      if (!group) throw new InfoHubError("turn_context_unavailable");
+      if (!group) {
+        if (record.assistantNativeContext?.length) {
+          record.assistantNativeContext.shift();
+          record.truncated = true;
+          text = serialize();
+          continue;
+        }
+        throw new InfoHubError("turn_context_unavailable");
+      }
       group.items.pop();
       record.omittedCounts[group.kind]++;
       record.truncated = true;

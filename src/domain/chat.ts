@@ -1,3 +1,6 @@
+import { captureFeishuMessage } from "./feishu-delivery";
+import { automationSourceFor } from "./automation-source";
+import { assistantEventSummary } from "./assistant-display";
 import { signalScheduleChange } from "./chat-schedule";
 import { enqueueMessageWake } from "./message-wake";
 import { and, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
@@ -24,6 +27,7 @@ import {
   agentInstance,
   agentRun,
   agentRunInput,
+  assistantEvent,
   chat,
   chatEffectiveMember,
   chatMember,
@@ -90,12 +94,91 @@ function toMessage(
   row: typeof message.$inferSelect,
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
+  ctx: ProjectContext,
 ): Message {
-  return {
+  const identity = {
     id: row.id,
     chatId: row.chatId,
-    senderKind: row.senderKind,
     senderId: row.senderId,
+    body: row.body,
+    createdAt: row.createdAt.toISOString(),
+  };
+  if (row.senderKind === "assistant_event") {
+    const event = db
+      .select()
+      .from(assistantEvent)
+      .where(eq(assistantEvent.id, row.assistantEventId!))
+      .get()!;
+    const fact = event.fact;
+    if (fact.watchId) {
+      let accessible = false;
+      try {
+        const watch = sqlite
+          .prepare(
+            "SELECT id FROM assistant_watch WHERE id=? AND assistant_chat_id=? AND consented_by=? AND revoked_at IS NULL",
+          )
+          .get(fact.watchId, row.chatId, ctx.userId);
+        const target = getChat(fact.targetChatId, ctx);
+        accessible =
+          !!watch &&
+          !event.suppressedAt &&
+          !target.archivedAt &&
+          target.projectId === fact.targetProjectId;
+      } catch (error) {
+        if (!(error instanceof ChatError || error instanceof ProjectAccessError)) throw error;
+      }
+      if (!accessible)
+        return {
+          ...identity,
+          body: "关注已停止或来源已不可访问，原始记录不再展示。",
+          senderKind: row.senderKind,
+          nativeSource: {
+            kind: "assistant_event",
+            eventId: event.id,
+            summary: "关注已停止或来源已不可访问。",
+            projectId: fact.targetProjectId,
+            chatId: fact.targetChatId,
+          },
+          mentions: [],
+          skills: [],
+        };
+    }
+    return {
+      ...identity,
+      senderKind: row.senderKind,
+      nativeSource: {
+        kind: "assistant_event",
+        eventId: row.assistantEventId!,
+        summary: assistantEventSummary(fact, event.eventKey, event.id),
+        projectId: fact.targetProjectId,
+        chatId: fact.targetChatId,
+        ...(fact.runId ? { runId: fact.runId } : {}),
+      },
+      mentions: [],
+      skills: [],
+    };
+  }
+  if (row.senderKind === "assistant_work")
+    return {
+      ...identity,
+      senderKind: row.senderKind,
+      nativeSource: { kind: "assistant_work", proposalId: row.assistantProposalId! },
+      mentions: [],
+      skills: [],
+    };
+  if (row.senderKind === "automation") {
+    if (!row.automationTriggerId) throw new Error("automation_message_corrupt");
+    return {
+      ...identity,
+      senderKind: "automation",
+      automationSource: automationSourceFor(row.automationTriggerId),
+      mentions: [],
+      skills: [],
+    };
+  }
+  return {
+    ...identity,
+    senderKind: row.senderKind,
     body: row.body,
     createdAt: row.createdAt.toISOString(),
     mentions: mentions.map((span) => ({ ...span })),
@@ -250,7 +333,8 @@ function applyGovernance(
 
 /** Agent 成员与 Agent 所有者共用这条前置：必须先属于本项目，否则群组引用一个项目外分身。 */
 function requireProjectAgent(projectId: string, agentProfileId: string, ctx: ProjectContext): void {
-  getAgentProfile(agentProfileId, ctx);
+  if (getAgentProfile(agentProfileId, ctx).purpose !== "worker")
+    throw new ChatError("forbidden", "Assistant 只能加入 Human DM");
   const member = db
     .select({ agentProfileId: projectMember.agentProfileId })
     .from(projectMember)
@@ -344,7 +428,8 @@ export function createDirectChat(
   return sqlite
     .transaction(() => {
       assertProjectAccess(ctx, projectId);
-      getAgentProfile(agentProfileId, ctx);
+      if (getAgentProfile(agentProfileId, ctx).purpose === "assistant" && ctx.agent)
+        throw new ChatError("forbidden", "Assistant DM 只能由 Human 创建");
       const member = db
         .select()
         .from(projectMember)
@@ -692,7 +777,7 @@ function readMessages(
   );
   return {
     messages: ordered.map((row) =>
-      toMessage(row.entry, mentions.get(row.entry.id) ?? [], skills.get(row.entry.id) ?? []),
+      toMessage(row.entry, mentions.get(row.entry.id) ?? [], skills.get(row.entry.id) ?? [], ctx),
     ),
     head: first === undefined ? null : rowCursor(first),
     tail: last === undefined ? null : rowCursor(last),
@@ -710,6 +795,8 @@ export function sendMessage(
   const saved = sqlite
     .transaction(() => {
       const current = getChat(chatId, ctx);
+      if (input.senderKind !== "human" && input.senderKind !== "agent")
+        throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
       // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
       // 后面的成员与 instance 检查也证明不了「这次写入属于哪次运行」，所以在入口就拒绝。
       if (input.senderKind === "agent" && !ctx.agent)
@@ -805,9 +892,10 @@ export function sendMessage(
             .set({ updatedAt: new Date() })
             .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
             .run();
-          const saved = toMessage(row, spans, skills);
+          const saved = toMessage(row, spans, skills, ctx);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
           else appendAgentMentionRunInput(saved, ctx);
+          captureFeishuMessage(row.id, row.createdAt);
           return saved;
         },
         hooks,

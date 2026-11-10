@@ -1,4 +1,5 @@
 import type { InheritedResources, MessageSkillSpan } from "../contracts/skill";
+import type { AssistantInputContext } from "../contracts/assistant";
 import type { ProjectContext } from "../domain/access";
 import { isSkillName, skillToken } from "../lib/skill-token";
 import type { SkillCatalog } from "./pi-host/skills";
@@ -15,6 +16,7 @@ export type PreparedPiMessage = Readonly<{
   messageId: string;
   text: string;
   warnings: readonly SkillWarning[];
+  assistantContext?: AssistantInputContext;
 }>;
 export class MessageSkillError extends Error {
   constructor(
@@ -29,6 +31,7 @@ function seal(
   messageId: string,
   text: string,
   warnings: readonly SkillWarning[],
+  assistantContext?: AssistantInputContext,
 ): PreparedPiMessage {
   if (Buffer.byteLength(text, "utf8") > MAX_DELIVERY_BYTES)
     throw new MessageSkillError("skill_prompt_too_large");
@@ -37,6 +40,7 @@ function seal(
     messageId,
     text,
     warnings: Object.freeze([...warnings]),
+    ...(assistantContext ? { assistantContext: Object.freeze(assistantContext) } : {}),
   });
   preparedMessages.add(prepared);
   return prepared;
@@ -94,7 +98,7 @@ export async function preparePiMessage(
 ): Promise<PreparedPiMessage> {
   const { getChat } = await import("../domain/chat");
   const { db } = await import("../db");
-  const { message } = await import("../db/schema");
+  const { message, webhookTrigger } = await import("../db/schema");
   const { and, eq } = await import("drizzle-orm");
   const { readSkillsFor } = await import("../domain/message-skill");
   const chat = getChat(input.chatId, ctx);
@@ -105,6 +109,27 @@ export async function preparePiMessage(
     .where(and(eq(message.id, input.messageId), eq(message.chatId, chat.id)))
     .get();
   if (!row) throw new Error("skill_message_not_found");
+  if (row.senderKind === "automation") {
+    const trigger = row.automationTriggerId
+      ? db.select().from(webhookTrigger).where(eq(webhookTrigger.id, row.automationTriggerId)).get()
+      : undefined;
+    if (!trigger || trigger.messageId !== row.id) throw new Error("automation_message_corrupt");
+    return seal(
+      row.id,
+      JSON.stringify({
+        origin: trigger.source === "cron" ? "project_cron" : "project_webhook",
+        ruleId: trigger.ruleId,
+        triggerId: trigger.id,
+        projectId: trigger.projectId,
+        mode: trigger.mode,
+        eventId: trigger.eventId,
+        ruleRevision: trigger.snapshot.revision,
+        recipientAgentProfileId: trigger.agentProfileId,
+        content: JSON.parse(row.body),
+      }),
+      [],
+    );
+  }
   const spans = readSkillsFor(chat.id, [row.id]).get(row.id) ?? [];
   if (!spans.length) return seal(row.id, row.body, []);
   const { resolveSkillScope, readSkillCatalog } = await import("./pi-host/skills");
@@ -126,10 +151,11 @@ export async function preparePiMessage(
 
 export function prepareSyntheticPiMessage(
   input: Readonly<{
-    kind: "task_start" | "continuation" | "resource_notice";
+    kind: "task_start" | "continuation" | "resource_notice" | "assistant_work" | "assistant_human";
     messageId: string;
     text: string;
+    assistantContext?: AssistantInputContext;
   }>,
 ): PreparedPiMessage {
-  return seal(input.messageId, input.text, []);
+  return seal(input.messageId, input.text, [], input.assistantContext);
 }

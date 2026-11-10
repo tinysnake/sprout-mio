@@ -204,6 +204,7 @@ export async function startModelFixture({
         assert(Buffer.byteLength(body) <= 4 * 1024 * 1024, "fixture request size");
       }
       const input = JSON.parse(body);
+      input.tools ??= [];
       const state = states.get(input.model);
       assert(state, "unexpected fixture model");
       requests++;
@@ -249,8 +250,21 @@ export async function startModelFixture({
           state.lastUserCount
         } latestUser=${JSON.stringify(userText.slice(0, 160))})`,
       );
+      if (plan.expectedTools)
+        assert.deepEqual(
+          input.tools.map((tool) => tool.function.name).sort(),
+          [...plan.expectedTools].sort(),
+          "actual model-exposed tool registry",
+        );
+      if (plan.expectedContextIds) {
+        const context = JSON.parse(userText.split("\n\n")[0]);
+        const encoded = JSON.stringify(context);
+        for (const id of plan.expectedContextIds)
+          assert(encoded.includes(id), `actual next model context includes native source ${id}`);
+      }
       if (!plan.started) {
-        assert(users.length > state.lastUserCount, "armed turn requires a NEW user message");
+        if (!plan.isolated)
+          assert(users.length > state.lastUserCount, "armed turn requires a NEW user message");
         assert.equal(
           latestUser,
           input.messages.length - 1,
@@ -323,7 +337,7 @@ export async function startModelFixture({
         };
       } else {
         delta = { role: "assistant", content: plan.reply };
-        state.lastUserCount = users.length;
+        if (!plan.isolated) state.lastUserCount = users.length;
         state.completed++;
         if (plan.repeat) {
           plan.started = false;

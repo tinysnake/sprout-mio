@@ -240,6 +240,92 @@ try {
     await page.setViewportSize({ width: 1440, height: 900 });
     return measuredWidths;
   });
+  await check("settings_tabs_do_not_stack_rules", async () => {
+    const measured = [];
+    for (const width of [1440, 900]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const tab of ["general", "webhooks", "cron", "feishu"]) {
+        await goto(`/projects/${projectId}/settings?tab=${tab}`);
+        measured.push(
+          await page.evaluate(() => {
+            const describe = (element) => {
+              const testId = element.getAttribute("data-testid");
+              return `${element.tagName.toLowerCase()}${testId ? `[${testId}]` : ""}`;
+            };
+            const strip = document.querySelector('nav[aria-label="Project 设置分类"]');
+            if (!strip) return { stripBottom: null, stripLines: 0, nearby: ["tab strip missing"] };
+            const main = document.querySelector("main") ?? document.body;
+            const stripBottom = Math.round(strip.getBoundingClientRect().bottom);
+            const rules = [];
+            for (const element of main.querySelectorAll("*")) {
+              if (!element.getClientRects().length) continue;
+              const style = getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) continue;
+              const top = parseFloat(style.borderTopWidth);
+              const bottom = parseFloat(style.borderBottomWidth);
+              if (top > 0 && style.borderTopStyle !== "none")
+                rules.push({ y: Math.round(rect.top), owner: describe(element) });
+              if (bottom > 0 && style.borderBottomStyle !== "none")
+                rules.push({ y: Math.round(rect.bottom - bottom), owner: describe(element) });
+            }
+            const isStrip = (rule) => Math.abs(rule.y - (stripBottom - 1)) <= 2;
+            return {
+              stripBottom,
+              stripLines: rules.filter(isStrip).length,
+              nearby: rules.filter(
+                (rule) => !isStrip(rule) && rule.y >= stripBottom - 2 && rule.y <= stripBottom + 40,
+              ),
+            };
+          }),
+        );
+        const last = measured.at(-1);
+        last.width = width;
+        last.tab = tab;
+      }
+    }
+    try {
+      for (const item of measured) {
+        assert.equal(item.stripLines, 1, `tab strip draws one rule (${item.tab} @ ${item.width})`);
+        assert.deepEqual(
+          item.nearby,
+          [],
+          `no second rule within 40px below the tab strip (${item.tab} @ ${item.width})`,
+        );
+      }
+    } finally {
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    return measured;
+  });
+  await check("feishu_settings_configure_in_page", async () => {
+    const settingsPath = `/projects/${projectId}/settings?tab=feishu`;
+    await goto(settingsPath);
+    await test("feishu-config-app-id").waitFor();
+    const unconfigured = await page.locator("main").innerText();
+    assert.match(await test("feishu-config-status").innerText(), /未配置/);
+    assert.equal(await test("feishu-config-enabled").isChecked(), false);
+    assert.ok(
+      unconfigured.includes("先在上面填写 App ID"),
+      "binding section points at the form above",
+    );
+    assert.ok(!unconfigured.includes("FEISHU_APP_ID"), "page no longer asks for server env vars");
+
+    await test("feishu-config-app-id").fill("cli_0123456789abcdef");
+    await test("feishu-config-app-secret").fill("verify-secret-0123456789");
+    await test("feishu-config-save").click();
+    await test("feishu-config-saved").waitFor();
+    assert.match(await test("feishu-config-status").innerText(), /已停用/);
+
+    await goto(settingsPath);
+    await test("feishu-config-app-id").waitFor();
+    assert.equal(await test("feishu-config-app-id").inputValue(), "cli_0123456789abcdef");
+    assert.equal(await test("feishu-config-app-secret").inputValue(), "");
+    assert.equal(await test("feishu-config-enabled").isChecked(), false);
+    const persisted = await page.locator("main").innerText();
+    assert.ok(persisted.includes("留空表示保持不变。"), "secret hint reports a stored secret");
+    return { path: new URL(page.url()).pathname, revisionKept: true };
+  });
   await check("single_project_dispatch_and_root_target", async () => {
     await goto("/projects");
     await page.waitForURL((url) => url.pathname === listPath);
@@ -510,7 +596,7 @@ try {
       );
       const database = new DatabaseSync(process.env.DATABASE_URL);
       try {
-        database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN");
+        database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE");
         // Project 出生即带唯一的公共频道（I-P5a 频道单元）：删 Project 之前先删它的频道行，
         // 否则 chat.project_id 的外键会挡住 teardown。
         assert.deepEqual(

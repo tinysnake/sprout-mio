@@ -1,5 +1,5 @@
 import { cn } from "cn";
-import type { AgentRunStatus, ChatRunState } from "../../contracts/agent-run";
+import type { AgentRunStatus, ChatRunState, ChatRunSummary } from "../../contracts/agent-run";
 import type { ChatKind, Message } from "../../contracts/chat";
 import type { AppResult } from "../../contracts/result";
 import type { ChatContinuationData } from "../../domain/chat-continuation";
@@ -48,6 +48,43 @@ export function RunStatusBadge({ status }: { status: AgentRunStatus }) {
       <span className="size-1.25 shrink-0 rounded-full bg-current" />
       {RUN_STATUS_LABELS[status] ?? status}
     </span>
+  );
+}
+
+export function SelectedRunPanel({ result }: { result: AppResult<ChatRunSummary> }) {
+  if (!result.ok) {
+    return (
+      <p
+        role="alert"
+        className="shrink-0 border-b border-border px-5 py-3 text-xs text-status-failed"
+      >
+        {result.error.message}
+      </p>
+    );
+  }
+  const run = result.data;
+  return (
+    <section
+      id={`selected-run-${run.id}`}
+      data-testid="selected-run"
+      className="shrink-0 border-b border-border px-5 py-3 text-xs"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="break-all">Run {run.id}</p>
+        <RunStatusBadge status={run.status} />
+      </div>
+      <p className="mt-1 text-muted-foreground">
+        排队时间 <time dateTime={run.queuedAt}>{run.queuedAt}</time>
+      </p>
+      {run.settledAt && (
+        <p className="text-muted-foreground">
+          结束时间 <time dateTime={run.settledAt}>{run.settledAt}</time>
+        </p>
+      )}
+      {(run.errorMessage || run.stopReason) && (
+        <p className="mt-1 break-words">{run.errorMessage ?? run.stopReason}</p>
+      )}
+    </section>
   );
 }
 
@@ -105,7 +142,17 @@ export function RunStatusPanel({
   if (!showStatus && pending.length === 0 && !showRestore && !continuation) return null;
 
   return (
-    <section data-testid="run-status" className="mt-6 space-y-2 pl-10.5 max-desktop:pl-9.75">
+    <section
+      id={
+        run &&
+        !messages.some((message) => message.id === run.assistantMessageId) &&
+        !(group && active.some((row) => row.id === run.id))
+          ? `run-${run.id}`
+          : undefined
+      }
+      data-testid="run-status"
+      className="mt-6 space-y-2 pl-10.5 max-desktop:pl-9.75"
+    >
       <ContinuationStatus continuation={continuation} />
       <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px] [&>*:not(:first-child)]:before:mr-2 [&>*:not(:first-child)]:before:text-muted-foreground [&>*:not(:first-child)]:before:content-['·']">
         {showStatus && (
@@ -142,6 +189,7 @@ export function RunStatusPanel({
             return (
               <li
                 key={row.id}
+                id={`run-${row.id}`}
                 data-testid="agent-run-row"
                 className="border-b border-border/60 pb-2 last:border-0 last:pb-0"
               >

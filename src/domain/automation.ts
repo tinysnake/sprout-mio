@@ -1,0 +1,577 @@
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { nextCronOccurrence } from "./cron-schedule";
+import { z } from "zod";
+import { ID_PREFIXES, newId } from "../contracts/ids";
+import {
+  cronRuleDraftSchema,
+  cronTrialInput,
+  cronUpdateInput,
+  type CronRule,
+  type CronRuleDraft,
+  type CronTrigger,
+  type AutomationHistory,
+  webhookRuleDraftSchema,
+  webhookTrialInput,
+  webhookUpdateInput,
+  type WebhookRule,
+  type WebhookRuleDraft,
+  type WebhookTrigger,
+} from "../contracts/automation";
+import { db, sqlite } from "../db";
+import { agentRun, agentRunInput, chat, message, webhookRule, webhookTrigger } from "../db/schema";
+import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
+import { appendAutomationRunInput } from "./agent-run";
+import { resolveAutomationTarget, validateAutomationDmAgent } from "./automation-target";
+import { signalScheduleChange } from "./chat-schedule";
+import { publishProjectChange } from "./change-feed";
+
+export class AutomationError extends Error {
+  constructor(
+    readonly code: "not_found" | "forbidden" | "conflict" | "invalid_target" | "unauthorized",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+type Rule = typeof webhookRule.$inferSelect;
+type Trigger = typeof webhookTrigger.$inferSelect;
+const digest = (text: string) => createHash("sha256").update(text).digest("hex");
+
+function humanProject(projectId: string, ctx: ProjectContext) {
+  if (ctx.agent) throw new ProjectAccessError();
+  return assertProjectAccess(ctx, projectId);
+}
+function ruleFor(id: string, ctx: ProjectContext, source: Rule["source"] = "webhook"): Rule {
+  const row = db.select().from(webhookRule).where(eq(webhookRule.id, id)).get();
+  if (!row || row.source !== source)
+    throw new AutomationError("not_found", "Automation rule 不存在");
+  humanProject(row.projectId, ctx);
+  return row;
+}
+function view(row: Rule, baseUrl: string): WebhookRule {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    name: row.name,
+    enabled: row.enabled,
+    revision: row.revision,
+    instruction: row.instruction,
+    action: row.action,
+    endpoint: new URL(`/api/webhooks/${row.id}`, baseUrl).href,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+function receipt(row: Trigger): WebhookTrigger {
+  const base = {
+    id: row.id,
+    ruleId: row.ruleId,
+    mode: row.mode,
+    eventId: row.eventId,
+    createdAt: row.createdAt.toISOString(),
+  };
+  return row.decision === "accepted"
+    ? { ...base, decision: "accepted", messageId: row.messageId! }
+    : { ...base, decision: "skipped", reason: row.reason! };
+}
+function validateTarget(draft: WebhookRuleDraft, ctx: ProjectContext) {
+  if (draft.action.kind === "dm_agent" && !draft.action.chatId) {
+    const reason = validateAutomationDmAgent(draft.projectId, draft.action.agentProfileId, ctx);
+    if (reason) throw new AutomationError("invalid_target", reason);
+    return;
+  }
+  const result = resolveAutomationTarget(draft.projectId, draft.action, ctx);
+  if ("reason" in result) throw new AutomationError("invalid_target", result.reason);
+}
+export function createWebhookRule(
+  input: WebhookRuleDraft,
+  ctx: ProjectContext,
+  baseUrl: string,
+): { rule: WebhookRule; secret: string } {
+  const draft = webhookRuleDraftSchema.parse(input);
+  const secret = randomBytes(32).toString("base64url");
+  const row = sqlite
+    .transaction(() => {
+      humanProject(draft.projectId, ctx);
+      validateTarget(draft, ctx);
+      const now = new Date();
+      return db
+        .insert(webhookRule)
+        .values({
+          ...draft,
+          id: newId(ID_PREFIXES.webhookRule),
+          createdBy: ctx.userId,
+          revision: 0,
+          secretDigest: digest(secret),
+          recoverableSecret: secret,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+    })
+    .immediate();
+  return { rule: view(row, baseUrl), secret };
+}
+export function webhookSecret(ruleId: string, ctx: ProjectContext): { secret: string | null } {
+  return { secret: ruleFor(ruleId, ctx).recoverableSecret };
+}
+
+export function rotateWebhookSecret(
+  input: { ruleId: string; expectedRevision: number },
+  ctx: ProjectContext,
+  baseUrl: string,
+): { rule: WebhookRule; secret: string } {
+  return sqlite
+    .transaction(() => {
+      const current = ruleFor(input.ruleId, ctx);
+      if (current.revision !== input.expectedRevision)
+        throw new AutomationError("conflict", "Webhook rule 已变化");
+      const secret = randomBytes(32).toString("base64url");
+      const row = db
+        .update(webhookRule)
+        .set({
+          secretDigest: digest(secret),
+          recoverableSecret: secret,
+          revision: current.revision + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(webhookRule.id, current.id))
+        .returning()
+        .get()!;
+      return { rule: view(row, baseUrl), secret };
+    })
+    .immediate();
+}
+
+export function listWebhookRules(
+  projectId: string,
+  ctx: ProjectContext,
+  baseUrl: string,
+): WebhookRule[] {
+  humanProject(projectId, ctx);
+  return db
+    .select()
+    .from(webhookRule)
+    .where(and(eq(webhookRule.projectId, projectId), eq(webhookRule.source, "webhook")))
+    .orderBy(desc(webhookRule.createdAt))
+    .all()
+    .map((row: Rule) => view(row, baseUrl));
+}
+export function updateWebhookRule(
+  input: z.input<typeof webhookUpdateInput>,
+  ctx: ProjectContext,
+  baseUrl: string,
+): WebhookRule {
+  const { ruleId, expectedRevision, ...draft } = webhookUpdateInput.parse(input);
+  return sqlite
+    .transaction(() => {
+      const previous = ruleFor(ruleId, ctx);
+      if (previous.projectId !== draft.projectId || previous.revision !== expectedRevision)
+        throw new AutomationError("conflict", "Webhook rule 已变化");
+      if (draft.enabled) validateTarget(draft, ctx);
+      const row = db
+        .update(webhookRule)
+        .set({ ...draft, revision: expectedRevision + 1, updatedAt: new Date() })
+        .where(eq(webhookRule.id, ruleId))
+        .returning()
+        .get()!;
+      return view(row, baseUrl);
+    })
+    .immediate();
+}
+
+// JSON.stringify's object order is not event identity. Normalize JSON only, rejecting lossy JS values.
+export function canonicalWebhookPayload(payload: unknown): string {
+  function normalize(value: unknown): unknown {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (Array.isArray(value)) return value.map(normalize);
+    if (typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype)
+      return Object.fromEntries(
+        Object.entries(value)
+          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+          .map(([key, item]) => [key, normalize(item)]),
+      );
+    throw new AutomationError("conflict", "事件必须是 JSON");
+  }
+  const canonical = JSON.stringify(normalize(payload));
+  if (Buffer.byteLength(canonical) > 128 * 1024) throw new AutomationError("conflict", "事件过大");
+  return canonical;
+}
+export function assertWebhookCredential(ruleId: string, secret: string): void {
+  const rule = db.select().from(webhookRule).where(eq(webhookRule.id, ruleId)).get();
+  const supplied = Buffer.from(digest(secret));
+  const expected = Buffer.from(rule?.secretDigest ?? digest("missing-webhook-rule"));
+  if (!rule || rule.source !== "webhook" || !timingSafeEqual(supplied, expected))
+    throw new AutomationError("unauthorized", "Webhook credentials 无效");
+}
+
+function admit(
+  rule: Rule,
+  mode: "live" | "trial",
+  eventId: string,
+  payload: unknown,
+  options?: { scheduledAt: string | null; now: Date; skipReason?: string },
+): WebhookTrigger {
+  const canonical = canonicalWebhookPayload(payload);
+  const fingerprint = digest(canonical);
+  const prior = db
+    .select()
+    .from(webhookTrigger)
+    .where(
+      and(
+        eq(webhookTrigger.ruleId, rule.id),
+        eq(webhookTrigger.mode, mode),
+        eq(webhookTrigger.eventId, eventId),
+      ),
+    )
+    .get();
+  if (prior) {
+    if (prior.fingerprint !== fingerprint)
+      throw new AutomationError("conflict", "eventId 已用于不同事件");
+    return receipt(prior);
+  }
+  const ctx: ProjectContext = { userId: rule.createdBy, requestId: newId(ID_PREFIXES.request) };
+  const skipReason = !rule.enabled
+    ? "rule_disabled"
+    : (options?.skipReason ??
+      (rule.source === "cron" && hasUnfinishedCronWork(rule.id) ? "rule_overlap" : undefined));
+  const target = skipReason
+    ? { reason: skipReason }
+    : resolveAutomationTarget(rule.projectId, rule.action, ctx);
+  const id = newId(ID_PREFIXES.webhookTrigger);
+  const messageId = "reason" in target ? null : newId(ID_PREFIXES.message);
+  const snapshot = {
+    revision: rule.revision,
+    instruction: rule.instruction,
+    action: "reason" in target ? rule.action : { ...rule.action, chatId: target.chatId },
+    enabled: rule.enabled,
+    createdBy: rule.createdBy,
+    ...(rule.source === "cron"
+      ? {
+          cron: {
+            expression: rule.expression!,
+            timezone: rule.timezone!,
+            scheduledAt: options!.scheduledAt,
+          },
+        }
+      : {}),
+  };
+  const now = options?.now ?? new Date();
+  // Both sides of the source/receipt FK are written in this immediate transaction.
+  sqlite.pragma("defer_foreign_keys = ON");
+  const row = db
+    .insert(webhookTrigger)
+    .values({
+      id,
+      ruleId: rule.id,
+      projectId: rule.projectId,
+      mode,
+      eventId,
+      fingerprint,
+      source: rule.source,
+      snapshot,
+      decision: "reason" in target ? "skipped" : "accepted",
+      reason: "reason" in target ? target.reason : null,
+      chatId: "reason" in target ? null : target.chatId,
+      agentProfileId: "reason" in target ? null : target.agentProfileId,
+      messageId,
+      createdAt: now,
+    })
+    .returning()
+    .get();
+  if (!("reason" in target) && messageId) {
+    db.insert(message)
+      .values({
+        id: messageId,
+        chatId: target.chatId,
+        senderKind: "automation",
+        senderId: id,
+        automationTriggerId: id,
+        body: JSON.stringify(
+          rule.source === "cron"
+            ? { instruction: rule.instruction, schedule: snapshot.cron, mode }
+            : { instruction: rule.instruction, event: JSON.parse(canonical) },
+        ),
+        createdAt: now,
+      })
+      .run();
+    appendAutomationRunInput(messageId, target.agentProfileId, ctx);
+    db.update(chat).set({ updatedAt: now }).where(eq(chat.id, target.chatId)).run();
+  }
+  return receipt(row);
+}
+function afterAdmission(result: WebhookTrigger, projectId: string) {
+  if (result.decision === "accepted") {
+    const saved = db.select().from(message).where(eq(message.id, result.messageId)).get()!;
+    signalScheduleChange(saved.chatId);
+    publishProjectChange(projectId, saved.chatId);
+  }
+}
+export function receiveWebhook(
+  ruleId: string,
+  secret: string,
+  eventId: string,
+  payload: unknown,
+): WebhookTrigger {
+  z.string().min(1).max(200).parse(eventId);
+  let projectId = "";
+  const result = sqlite
+    .transaction(() => {
+      const rule = db.select().from(webhookRule).where(eq(webhookRule.id, ruleId)).get();
+      if (
+        !rule ||
+        rule.source !== "webhook" ||
+        !rule.secretDigest ||
+        !timingSafeEqual(Buffer.from(digest(secret)), Buffer.from(rule.secretDigest))
+      )
+        throw new AutomationError("unauthorized", "Webhook credentials 无效");
+      projectId = rule.projectId;
+      return admit(rule, "live", eventId, payload);
+    })
+    .immediate();
+  afterAdmission(result, projectId);
+  return result;
+}
+export function trialWebhook(
+  input: z.input<typeof webhookTrialInput>,
+  ctx: ProjectContext,
+): WebhookTrigger {
+  const data = webhookTrialInput.parse(input);
+  let projectId = "";
+  const result = sqlite
+    .transaction(() => {
+      const rule = ruleFor(data.ruleId, ctx);
+      projectId = rule.projectId;
+      return admit(rule, "trial", data.eventId, data.payload);
+    })
+    .immediate();
+  afterAdmission(result, projectId);
+  return result;
+}
+export function webhookHistory(ruleId: string, ctx: ProjectContext): AutomationHistory[] {
+  ruleFor(ruleId, ctx);
+  return ruleHistory(ruleId);
+}
+function hasUnfinishedCronWork(ruleId: string): boolean {
+  return !!sqlite
+    .prepare(`SELECT 1 FROM webhook_trigger t
+    JOIN agent_run_input i ON i.message_id=t.message_id
+    JOIN agent_run r ON r.id=i.run_id
+    WHERE t.rule_id=? AND i.disposition!='cancelled' AND r.status IN ('queued','running') LIMIT 1`)
+    .get(ruleId);
+}
+function cronSchedule(row: Rule) {
+  if (row.source !== "cron" || !row.expression || !row.timezone)
+    throw new Error("cron_rule_corrupt");
+  return { expression: row.expression, timezone: row.timezone };
+}
+function cronView(row: Rule): CronRule {
+  return {
+    ...cronSchedule(row),
+    id: row.id,
+    projectId: row.projectId,
+    name: row.name,
+    enabled: row.enabled,
+    revision: row.revision,
+    instruction: row.instruction,
+    action: row.action,
+    nextAt: row.nextAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+function cronReceipt(result: WebhookTrigger): CronTrigger {
+  const row = db.select().from(webhookTrigger).where(eq(webhookTrigger.id, result.id)).get()!;
+  if (row.source !== "cron" || !row.snapshot.cron) throw new Error("cron_receipt_corrupt");
+  return { ...result, source: "cron", ...row.snapshot.cron };
+}
+export function createCronRule(
+  input: CronRuleDraft,
+  ctx: ProjectContext,
+  now = new Date(),
+): CronRule {
+  const draft = cronRuleDraftSchema.parse(input);
+  const next = nextCronOccurrence(draft, now);
+  return sqlite
+    .transaction(() => {
+      humanProject(draft.projectId, ctx);
+      validateTarget(draft, ctx);
+      return cronView(
+        db
+          .insert(webhookRule)
+          .values({
+            ...draft,
+            id: newId(ID_PREFIXES.webhookRule),
+            createdBy: ctx.userId,
+            source: "cron",
+            revision: 0,
+            nextAt: draft.enabled ? next : null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning()
+          .get(),
+      );
+    })
+    .immediate();
+}
+export function updateCronRule(
+  input: z.input<typeof cronUpdateInput>,
+  ctx: ProjectContext,
+  now = new Date(),
+): CronRule {
+  const { ruleId, expectedRevision, ...draft } = cronUpdateInput.parse(input);
+  const next = nextCronOccurrence(draft, now);
+  return sqlite
+    .transaction(() => {
+      const previous = ruleFor(ruleId, ctx, "cron");
+      if (previous.projectId !== draft.projectId || previous.revision !== expectedRevision)
+        throw new AutomationError("conflict", "Cron rule 已变化");
+      if (draft.enabled) validateTarget(draft, ctx);
+      return cronView(
+        db
+          .update(webhookRule)
+          .set({
+            ...draft,
+            revision: expectedRevision + 1,
+            nextAt: draft.enabled ? next : null,
+            updatedAt: now,
+          })
+          .where(eq(webhookRule.id, ruleId))
+          .returning()
+          .get()!,
+      );
+    })
+    .immediate();
+}
+export function listCronRules(projectId: string, ctx: ProjectContext): CronRule[] {
+  humanProject(projectId, ctx);
+  return db
+    .select()
+    .from(webhookRule)
+    .where(and(eq(webhookRule.projectId, projectId), eq(webhookRule.source, "cron")))
+    .orderBy(desc(webhookRule.createdAt), desc(sql`${webhookRule}.rowid`))
+    .all()
+    .map(cronView);
+}
+export function trialCron(
+  input: z.input<typeof cronTrialInput>,
+  ctx: ProjectContext,
+  now = new Date(),
+): CronTrigger {
+  const data = cronTrialInput.parse(input);
+  let projectId = "";
+  const result = sqlite
+    .transaction(() => {
+      const rule = ruleFor(data.ruleId, ctx, "cron");
+      projectId = rule.projectId;
+      return admit(
+        rule,
+        "trial",
+        data.eventId,
+        { trial: data.eventId },
+        { scheduledAt: null, now },
+      );
+    })
+    .immediate();
+  afterAdmission(result, projectId);
+  return cronReceipt(result);
+}
+export function cronHistory(ruleId: string, ctx: ProjectContext): AutomationHistory<CronTrigger>[] {
+  ruleFor(ruleId, ctx, "cron");
+  return ruleHistory(ruleId).map((row) => ({ ...row, ...cronReceipt(row) }));
+}
+export function rebaseCronCursors(bootNow: Date): void {
+  sqlite
+    .transaction(() => {
+      const rules = db
+        .select()
+        .from(webhookRule)
+        .where(and(eq(webhookRule.source, "cron"), eq(webhookRule.enabled, true)))
+        .all();
+      for (const rule of rules)
+        db.update(webhookRule)
+          .set({ nextAt: nextCronOccurrence(cronSchedule(rule), bootNow) })
+          .where(eq(webhookRule.id, rule.id))
+          .run();
+    })
+    .immediate();
+}
+export function tickCronRules(now: Date, clockGap = false): CronTrigger[] {
+  const admitted: { result: WebhookTrigger; projectId: string }[] = sqlite
+    .transaction(() => {
+      const due = db
+        .select()
+        .from(webhookRule)
+        .where(
+          and(
+            eq(webhookRule.source, "cron"),
+            eq(webhookRule.enabled, true),
+            lte(webhookRule.nextAt, now),
+          ),
+        )
+        .all();
+      return due.map((rule: Rule) => {
+        const scheduledAt = rule.nextAt!.toISOString();
+        db.update(webhookRule)
+          .set({ nextAt: nextCronOccurrence(cronSchedule(rule), now) })
+          .where(eq(webhookRule.id, rule.id))
+          .run();
+        const result = admit(
+          rule,
+          "live",
+          scheduledAt,
+          { scheduledAt },
+          {
+            scheduledAt,
+            now,
+            skipReason:
+              clockGap || now.getTime() - rule.nextAt!.getTime() > 10_000
+                ? "schedule_missed"
+                : undefined,
+          },
+        );
+        return { result, projectId: rule.projectId };
+      });
+    })
+    .immediate();
+  for (const { result, projectId } of admitted) afterAdmission(result, projectId);
+  return admitted.map(({ result }) => cronReceipt(result));
+}
+function ruleHistory(ruleId: string): AutomationHistory[] {
+  return db
+    .select()
+    .from(webhookTrigger)
+    .where(eq(webhookTrigger.ruleId, ruleId))
+    .orderBy(desc(webhookTrigger.createdAt), desc(sql`${webhookTrigger}.rowid`))
+    .limit(50)
+    .all()
+    .map((row: Trigger) => {
+      const run = row.messageId
+        ? db
+            .select({
+              id: agentRunInput.runId,
+              disposition: agentRunInput.disposition,
+              cancelReason: agentRunInput.cancelReason,
+            })
+            .from(agentRunInput)
+            .where(eq(agentRunInput.messageId, row.messageId))
+            .get()
+        : undefined;
+      const status = run
+        ? db.select({ status: agentRun.status }).from(agentRun).where(eq(agentRun.id, run.id)).get()
+        : undefined;
+      return {
+        ...receipt(row),
+        source: row.source,
+        chatId: row.chatId,
+        runId: run?.id ?? null,
+        runStatus: status?.status ?? null,
+        inputDisposition: run?.disposition ?? null,
+        cancelReason: run?.cancelReason ?? null,
+      };
+    });
+}

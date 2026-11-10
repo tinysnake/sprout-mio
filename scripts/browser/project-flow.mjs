@@ -206,7 +206,7 @@ await check("history_back_and_forward_keep_target", async () => {
   await page.waitForSelector('[data-testid="project-settings-id"]', { timeout: 20000 });
   record(
     "history_back_and_forward_keep_target",
-    listPath === "/projects" && page.url() === `${BASE}${project.path}/settings`,
+    listPath === "/projects" && page.url() === settingsUrl,
     `后退到 ${listPath}，前进回 ${detailPath()}`,
   );
 });

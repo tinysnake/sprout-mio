@@ -392,7 +392,9 @@ describe("对话接续状态", () => {
 });
 
 describe("已结束 run 的工作记录", () => {
-  const message = (overrides: Partial<Message> = {}): Message => ({
+  const message = (
+    overrides: Partial<Extract<Message, { senderKind: "agent" | "human" }>> = {},
+  ): Message => ({
     id: "msg_11111111",
     chatId: "cnv_11111111",
     senderKind: "agent",
@@ -434,6 +436,80 @@ describe("已结束 run 的工作记录", () => {
       html.indexOf('data-testid="message-run-activity"'),
     );
     expect(html).toContain("3 条");
+  });
+
+  it.each([
+    { kind: "project_webhook", triggerId: "wht_11111111", ruleId: "whr_11111111" } as const,
+    {
+      kind: "project_cron",
+      triggerId: "wht_11111111",
+      ruleId: "whr_11111111",
+      expression: "0 9 * * *",
+      timezone: "UTC",
+      instruction: "Check @Agent /skill:danger",
+      scheduledAt: null,
+      mode: "trial",
+    } as const,
+  ])("系统来源 $kind 不冒用 Agent 人设或回复运行记录", (automationSource) => {
+    const source: Message = {
+      id: "msg_33333333",
+      chatId: human.chatId,
+      body: "Webhook event",
+      createdAt: human.createdAt,
+      mentions: [],
+      skills: [],
+      senderKind: "automation",
+      senderId: "wht_11111111",
+      automationSource,
+    };
+    const html = renderToStaticMarkup(
+      createElement(MessageList, {
+        messages: [source],
+        profile: {
+          ok: true,
+          requestId: "req_11111111",
+          data: {
+            id: "agt_11111111",
+            name: "Worker",
+            persona: "Worker persona",
+            harness: "pi",
+            purpose: "worker",
+            createdBy: "user",
+            createdAt: source.createdAt,
+            updatedAt: source.createdAt,
+          },
+        },
+        humanName: "Human",
+        runActivityByMessage: new Map([[source.id, record(source.id, settled)]]),
+        automationRuleLink: (entry) =>
+          createElement("a", { "data-testid": "message-rule-link" }, entry.ruleId),
+      }),
+    );
+    expect(html).toContain(
+      automationSource.kind === "project_cron" ? "Project cron" : "Project webhook",
+    );
+    expect(html).toContain('data-testid="message-rule-link"');
+    expect(html).toContain("whr_11111111");
+    expect(html).toContain("Source");
+    expect(html).not.toContain("Worker persona");
+    expect(html).not.toContain('data-testid="message-run-links"');
+    expect(html).not.toContain('data-testid="message-run-activity"');
+  });
+
+  it("只有自动化消息挂着来源规则入口", () => {
+    const link = (entry: { ruleId: string }) =>
+      createElement("a", { "data-testid": "message-rule-link" }, entry.ruleId);
+    const render = (message: Message) =>
+      renderToStaticMarkup(
+        createElement(MessageList, {
+          messages: [message],
+          profile: null,
+          humanName: "Human",
+          automationRuleLink: link,
+        }),
+      );
+    expect(render(human)).not.toContain('data-testid="message-rule-link"');
+    expect(render(assistant)).not.toContain('data-testid="message-rule-link"');
   });
 
   it("human 消息不承接 run 记录", () => {

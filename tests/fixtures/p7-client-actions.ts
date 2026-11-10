@@ -25,6 +25,7 @@ export async function request() {
     };
   });
 }
+export const assistantActionFn = request;
 export const sendMessageFn = request;
 export const abortAgentRunFn = request;
 export const clearChatTitleFn = request;

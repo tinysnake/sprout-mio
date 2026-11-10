@@ -27,6 +27,7 @@ import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projec
 import { Route as AuthedProjectsProjectIdRouteImport } from './routes/_authed/projects.$projectId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiRemoteAgentRouteImport } from './routes/api/remote/agent'
+import { Route as ApiWebhooksRuleIdRouteImport } from './routes/api.webhooks.$ruleId'
 import { Route as ApiWorkerCloseRouteImport } from './routes/api/worker/close'
 import { Route as ApiWorkerEnrollRouteImport } from './routes/api/worker/enroll'
 import { Route as ApiWorkerExchangeRouteImport } from './routes/api/worker/exchange'
@@ -40,8 +41,13 @@ import { Route as AuthedProjectsProjectIdSettingsRouteImport } from './routes/_a
 import { Route as AuthedProjectsProjectIdTasksRouteImport } from './routes/_authed/projects.$projectId.tasks'
 import { Route as AuthedProjectsProjectIdChatsIndexRouteImport } from './routes/_authed/projects.$projectId.chats.index'
 import { Route as AuthedProjectsProjectIdChatsChatIdRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId'
+import { Route as AuthedProjectsProjectIdSettingsIndexRouteImport } from './routes/_authed/projects.$projectId.settings.index'
 import { Route as AuthedProjectsProjectIdTasksTaskIdRouteImport } from './routes/_authed/projects.$projectId.tasks.$taskId'
 import { Route as AuthedProjectsProjectIdChatsChatIdIndexRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.index'
+import { Route as AuthedProjectsProjectIdSettingsCronRuleIdRouteImport } from './routes/_authed/projects.$projectId.settings.cron.$ruleId'
+import { Route as AuthedProjectsProjectIdSettingsCronNewRouteImport } from './routes/_authed/projects.$projectId.settings.cron.new'
+import { Route as AuthedProjectsProjectIdSettingsWebhooksRuleIdRouteImport } from './routes/_authed/projects.$projectId.settings.webhooks.$ruleId'
+import { Route as AuthedProjectsProjectIdSettingsWebhooksNewRouteImport } from './routes/_authed/projects.$projectId.settings.webhooks.new'
 import { Route as AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.checks.$evaluationId.continuation'
 import { Route as AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.checks.$evaluationId.wake'
 
@@ -135,6 +141,11 @@ const ApiRemoteAgentRoute = ApiRemoteAgentRouteImport.update({
   path: '/api/remote/agent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWebhooksRuleIdRoute = ApiWebhooksRuleIdRouteImport.update({
+  id: '/api/webhooks/$ruleId',
+  path: '/api/webhooks/$ruleId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWorkerCloseRoute = ApiWorkerCloseRouteImport.update({
   id: '/api/worker/close',
   path: '/api/worker/close',
@@ -209,6 +220,12 @@ const AuthedProjectsProjectIdChatsChatIdRoute =
     path: '/$chatId',
     getParentRoute: () => AuthedProjectsProjectIdChatsRoute,
   } as any)
+const AuthedProjectsProjectIdSettingsIndexRoute =
+  AuthedProjectsProjectIdSettingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthedProjectsProjectIdSettingsRoute,
+  } as any)
 const AuthedProjectsProjectIdTasksTaskIdRoute =
   AuthedProjectsProjectIdTasksTaskIdRouteImport.update({
     id: '/$taskId',
@@ -220,6 +237,30 @@ const AuthedProjectsProjectIdChatsChatIdIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthedProjectsProjectIdChatsChatIdRoute,
+  } as any)
+const AuthedProjectsProjectIdSettingsCronRuleIdRoute =
+  AuthedProjectsProjectIdSettingsCronRuleIdRouteImport.update({
+    id: '/cron/$ruleId',
+    path: '/cron/$ruleId',
+    getParentRoute: () => AuthedProjectsProjectIdSettingsRoute,
+  } as any)
+const AuthedProjectsProjectIdSettingsCronNewRoute =
+  AuthedProjectsProjectIdSettingsCronNewRouteImport.update({
+    id: '/cron/new',
+    path: '/cron/new',
+    getParentRoute: () => AuthedProjectsProjectIdSettingsRoute,
+  } as any)
+const AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute =
+  AuthedProjectsProjectIdSettingsWebhooksRuleIdRouteImport.update({
+    id: '/webhooks/$ruleId',
+    path: '/webhooks/$ruleId',
+    getParentRoute: () => AuthedProjectsProjectIdSettingsRoute,
+  } as any)
+const AuthedProjectsProjectIdSettingsWebhooksNewRoute =
+  AuthedProjectsProjectIdSettingsWebhooksNewRouteImport.update({
+    id: '/webhooks/new',
+    path: '/webhooks/new',
+    getParentRoute: () => AuthedProjectsProjectIdSettingsRoute,
   } as any)
 const AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute =
   AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRouteImport.update(
@@ -251,6 +292,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
+  '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
@@ -261,13 +303,18 @@ export interface FileRoutesByFullPath {
   '/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
-  '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRouteWithChildren
   '/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/machines/$machineId/': typeof AuthedMachinesMachineIdIndexRoute
   '/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRouteWithChildren
   '/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
+  '/projects/$projectId/settings/': typeof AuthedProjectsProjectIdSettingsIndexRoute
+  '/projects/$projectId/settings/cron/$ruleId': typeof AuthedProjectsProjectIdSettingsCronRuleIdRoute
+  '/projects/$projectId/settings/cron/new': typeof AuthedProjectsProjectIdSettingsCronNewRoute
+  '/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
+  '/projects/$projectId/settings/webhooks/new': typeof AuthedProjectsProjectIdSettingsWebhooksNewRoute
   '/projects/$projectId/chats/$chatId/': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
   '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
   '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
@@ -283,6 +330,7 @@ export interface FileRoutesByTo {
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
+  '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
@@ -292,12 +340,16 @@ export interface FileRoutesByTo {
   '/projects': typeof AuthedProjectsIndexRoute
   '/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
-  '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
   '/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/machines/$machineId': typeof AuthedMachinesMachineIdIndexRoute
   '/projects/$projectId': typeof AuthedProjectsProjectIdIndexRoute
   '/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsIndexRoute
+  '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsIndexRoute
+  '/projects/$projectId/settings/cron/$ruleId': typeof AuthedProjectsProjectIdSettingsCronRuleIdRoute
+  '/projects/$projectId/settings/cron/new': typeof AuthedProjectsProjectIdSettingsCronNewRoute
+  '/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
+  '/projects/$projectId/settings/webhooks/new': typeof AuthedProjectsProjectIdSettingsWebhooksNewRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
   '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
   '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
@@ -319,6 +371,7 @@ export interface FileRoutesById {
   '/_authed/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
+  '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
@@ -329,13 +382,18 @@ export interface FileRoutesById {
   '/_authed/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/_authed/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
   '/_authed/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
-  '/_authed/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRoute
+  '/_authed/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRouteWithChildren
   '/_authed/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/_authed/machines/$machineId/': typeof AuthedMachinesMachineIdIndexRoute
   '/_authed/projects/$projectId/': typeof AuthedProjectsProjectIdIndexRoute
   '/_authed/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdRouteWithChildren
   '/_authed/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/_authed/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
+  '/_authed/projects/$projectId/settings/': typeof AuthedProjectsProjectIdSettingsIndexRoute
+  '/_authed/projects/$projectId/settings/cron/$ruleId': typeof AuthedProjectsProjectIdSettingsCronRuleIdRoute
+  '/_authed/projects/$projectId/settings/cron/new': typeof AuthedProjectsProjectIdSettingsCronNewRoute
+  '/_authed/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
+  '/_authed/projects/$projectId/settings/webhooks/new': typeof AuthedProjectsProjectIdSettingsWebhooksNewRoute
   '/_authed/projects/$projectId/chats/$chatId/': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
   '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
   '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
@@ -357,6 +415,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/api/auth/$'
     | '/api/remote/agent'
+    | '/api/webhooks/$ruleId'
     | '/api/worker/close'
     | '/api/worker/enroll'
     | '/api/worker/exchange'
@@ -374,6 +433,11 @@ export interface FileRouteTypes {
     | '/projects/$projectId/chats/$chatId'
     | '/projects/$projectId/tasks/$taskId'
     | '/projects/$projectId/chats/'
+    | '/projects/$projectId/settings/'
+    | '/projects/$projectId/settings/cron/$ruleId'
+    | '/projects/$projectId/settings/cron/new'
+    | '/projects/$projectId/settings/webhooks/$ruleId'
+    | '/projects/$projectId/settings/webhooks/new'
     | '/projects/$projectId/chats/$chatId/'
     | '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
     | '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
@@ -389,6 +453,7 @@ export interface FileRouteTypes {
     | '/agents/$agentProfileId'
     | '/api/auth/$'
     | '/api/remote/agent'
+    | '/api/webhooks/$ruleId'
     | '/api/worker/close'
     | '/api/worker/enroll'
     | '/api/worker/exchange'
@@ -398,12 +463,16 @@ export interface FileRouteTypes {
     | '/projects'
     | '/machines/$machineId/lease'
     | '/projects/$projectId/members'
-    | '/projects/$projectId/settings'
     | '/projects/$projectId/tasks'
     | '/machines/$machineId'
     | '/projects/$projectId'
     | '/projects/$projectId/tasks/$taskId'
     | '/projects/$projectId/chats'
+    | '/projects/$projectId/settings'
+    | '/projects/$projectId/settings/cron/$ruleId'
+    | '/projects/$projectId/settings/cron/new'
+    | '/projects/$projectId/settings/webhooks/$ruleId'
+    | '/projects/$projectId/settings/webhooks/new'
     | '/projects/$projectId/chats/$chatId'
     | '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
     | '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
@@ -424,6 +493,7 @@ export interface FileRouteTypes {
     | '/_authed/projects/$projectId'
     | '/api/auth/$'
     | '/api/remote/agent'
+    | '/api/webhooks/$ruleId'
     | '/api/worker/close'
     | '/api/worker/enroll'
     | '/api/worker/exchange'
@@ -441,6 +511,11 @@ export interface FileRouteTypes {
     | '/_authed/projects/$projectId/chats/$chatId'
     | '/_authed/projects/$projectId/tasks/$taskId'
     | '/_authed/projects/$projectId/chats/'
+    | '/_authed/projects/$projectId/settings/'
+    | '/_authed/projects/$projectId/settings/cron/$ruleId'
+    | '/_authed/projects/$projectId/settings/cron/new'
+    | '/_authed/projects/$projectId/settings/webhooks/$ruleId'
+    | '/_authed/projects/$projectId/settings/webhooks/new'
     | '/_authed/projects/$projectId/chats/$chatId/'
     | '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
     | '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
@@ -456,6 +531,7 @@ export interface RootRouteChildren {
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiRemoteAgentRoute: typeof ApiRemoteAgentRoute
+  ApiWebhooksRuleIdRoute: typeof ApiWebhooksRuleIdRoute
   ApiWorkerCloseRoute: typeof ApiWorkerCloseRoute
   ApiWorkerEnrollRoute: typeof ApiWorkerEnrollRoute
   ApiWorkerExchangeRoute: typeof ApiWorkerExchangeRoute
@@ -590,6 +666,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiRemoteAgentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/webhooks/$ruleId': {
+      id: '/api/webhooks/$ruleId'
+      path: '/api/webhooks/$ruleId'
+      fullPath: '/api/webhooks/$ruleId'
+      preLoaderRoute: typeof ApiWebhooksRuleIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/worker/close': {
       id: '/api/worker/close'
       path: '/api/worker/close'
@@ -681,6 +764,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdRouteImport
       parentRoute: typeof AuthedProjectsProjectIdChatsRoute
     }
+    '/_authed/projects/$projectId/settings/': {
+      id: '/_authed/projects/$projectId/settings/'
+      path: '/'
+      fullPath: '/projects/$projectId/settings/'
+      preLoaderRoute: typeof AuthedProjectsProjectIdSettingsIndexRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdSettingsRoute
+    }
     '/_authed/projects/$projectId/tasks/$taskId': {
       id: '/_authed/projects/$projectId/tasks/$taskId'
       path: '/$taskId'
@@ -694,6 +784,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId/chats/$chatId/'
       preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdIndexRouteImport
       parentRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
+    }
+    '/_authed/projects/$projectId/settings/cron/$ruleId': {
+      id: '/_authed/projects/$projectId/settings/cron/$ruleId'
+      path: '/cron/$ruleId'
+      fullPath: '/projects/$projectId/settings/cron/$ruleId'
+      preLoaderRoute: typeof AuthedProjectsProjectIdSettingsCronRuleIdRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdSettingsRoute
+    }
+    '/_authed/projects/$projectId/settings/cron/new': {
+      id: '/_authed/projects/$projectId/settings/cron/new'
+      path: '/cron/new'
+      fullPath: '/projects/$projectId/settings/cron/new'
+      preLoaderRoute: typeof AuthedProjectsProjectIdSettingsCronNewRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdSettingsRoute
+    }
+    '/_authed/projects/$projectId/settings/webhooks/$ruleId': {
+      id: '/_authed/projects/$projectId/settings/webhooks/$ruleId'
+      path: '/webhooks/$ruleId'
+      fullPath: '/projects/$projectId/settings/webhooks/$ruleId'
+      preLoaderRoute: typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdSettingsRoute
+    }
+    '/_authed/projects/$projectId/settings/webhooks/new': {
+      id: '/_authed/projects/$projectId/settings/webhooks/new'
+      path: '/webhooks/new'
+      fullPath: '/projects/$projectId/settings/webhooks/new'
+      preLoaderRoute: typeof AuthedProjectsProjectIdSettingsWebhooksNewRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdSettingsRoute
     }
     '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': {
       id: '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
@@ -781,6 +899,33 @@ const AuthedProjectsProjectIdChatsRouteWithChildren =
     AuthedProjectsProjectIdChatsRouteChildren,
   )
 
+interface AuthedProjectsProjectIdSettingsRouteChildren {
+  AuthedProjectsProjectIdSettingsIndexRoute: typeof AuthedProjectsProjectIdSettingsIndexRoute
+  AuthedProjectsProjectIdSettingsCronRuleIdRoute: typeof AuthedProjectsProjectIdSettingsCronRuleIdRoute
+  AuthedProjectsProjectIdSettingsCronNewRoute: typeof AuthedProjectsProjectIdSettingsCronNewRoute
+  AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute: typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
+  AuthedProjectsProjectIdSettingsWebhooksNewRoute: typeof AuthedProjectsProjectIdSettingsWebhooksNewRoute
+}
+
+const AuthedProjectsProjectIdSettingsRouteChildren: AuthedProjectsProjectIdSettingsRouteChildren =
+  {
+    AuthedProjectsProjectIdSettingsIndexRoute:
+      AuthedProjectsProjectIdSettingsIndexRoute,
+    AuthedProjectsProjectIdSettingsCronRuleIdRoute:
+      AuthedProjectsProjectIdSettingsCronRuleIdRoute,
+    AuthedProjectsProjectIdSettingsCronNewRoute:
+      AuthedProjectsProjectIdSettingsCronNewRoute,
+    AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute:
+      AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute,
+    AuthedProjectsProjectIdSettingsWebhooksNewRoute:
+      AuthedProjectsProjectIdSettingsWebhooksNewRoute,
+  }
+
+const AuthedProjectsProjectIdSettingsRouteWithChildren =
+  AuthedProjectsProjectIdSettingsRoute._addFileChildren(
+    AuthedProjectsProjectIdSettingsRouteChildren,
+  )
+
 interface AuthedProjectsProjectIdTasksRouteChildren {
   AuthedProjectsProjectIdTasksTaskIdRoute: typeof AuthedProjectsProjectIdTasksTaskIdRoute
 }
@@ -799,7 +944,7 @@ const AuthedProjectsProjectIdTasksRouteWithChildren =
 interface AuthedProjectsProjectIdRouteChildren {
   AuthedProjectsProjectIdChatsRoute: typeof AuthedProjectsProjectIdChatsRouteWithChildren
   AuthedProjectsProjectIdMembersRoute: typeof AuthedProjectsProjectIdMembersRoute
-  AuthedProjectsProjectIdSettingsRoute: typeof AuthedProjectsProjectIdSettingsRoute
+  AuthedProjectsProjectIdSettingsRoute: typeof AuthedProjectsProjectIdSettingsRouteWithChildren
   AuthedProjectsProjectIdTasksRoute: typeof AuthedProjectsProjectIdTasksRouteWithChildren
   AuthedProjectsProjectIdIndexRoute: typeof AuthedProjectsProjectIdIndexRoute
 }
@@ -809,7 +954,8 @@ const AuthedProjectsProjectIdRouteChildren: AuthedProjectsProjectIdRouteChildren
     AuthedProjectsProjectIdChatsRoute:
       AuthedProjectsProjectIdChatsRouteWithChildren,
     AuthedProjectsProjectIdMembersRoute: AuthedProjectsProjectIdMembersRoute,
-    AuthedProjectsProjectIdSettingsRoute: AuthedProjectsProjectIdSettingsRoute,
+    AuthedProjectsProjectIdSettingsRoute:
+      AuthedProjectsProjectIdSettingsRouteWithChildren,
     AuthedProjectsProjectIdTasksRoute:
       AuthedProjectsProjectIdTasksRouteWithChildren,
     AuthedProjectsProjectIdIndexRoute: AuthedProjectsProjectIdIndexRoute,
@@ -863,6 +1009,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiRemoteAgentRoute: ApiRemoteAgentRoute,
+  ApiWebhooksRuleIdRoute: ApiWebhooksRuleIdRoute,
   ApiWorkerCloseRoute: ApiWorkerCloseRoute,
   ApiWorkerEnrollRoute: ApiWorkerEnrollRoute,
   ApiWorkerExchangeRoute: ApiWorkerExchangeRoute,

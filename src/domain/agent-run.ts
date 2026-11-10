@@ -1,3 +1,7 @@
+import { markChannelReplyIncomplete } from "./channel-delivery";
+import { cancelInvalidAssistantInputs } from "./assistant";
+import { enrollChatWatches } from "./assistant-interest";
+import { automationSourceFor } from "./automation-source";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type {
   AgentRun,
@@ -26,6 +30,7 @@ import { ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
 import { readChatEffectiveMembers } from "./channel";
 import { getChat, ensureInstance, sendMessage } from "./chat";
+import { cancelInvalidAutomationInputs } from "./automation-input";
 import { cancelInvalidTaskStartInputs } from "./task-input";
 import { routeWakeCandidates } from "./chat-wake";
 import { controlFor } from "./chat-schedule";
@@ -229,6 +234,20 @@ function activeRunFor(
   requestId: string,
   now?: Date,
 ): typeof agentRun.$inferSelect {
+  const instance = db
+    .select()
+    .from(agentInstance)
+    .where(eq(agentInstance.id, scope.instanceId))
+    .get();
+  const profile =
+    instance &&
+    db.select().from(agentProfile).where(eq(agentProfile.id, instance.agentProfileId)).get();
+  const currentChat = db.select().from(chat).where(eq(chat.id, scope.chatId)).get();
+  if (
+    profile?.purpose === "assistant" &&
+    (currentChat?.kind !== "dm" || currentChat.ownerKind !== "human")
+  )
+    throw new AgentRunError("conflict", "Assistant 只能在 Human DM 中运行");
   const active = db
     .select()
     .from(agentRun)
@@ -259,6 +278,7 @@ function activeRunFor(
     })
     .returning()
     .get();
+  enrollChatWatches(created.id, created.chatId, created.instanceId, now ?? new Date());
   diagnostic(created, "agent_run.queued", "Agent run 已排队", "info", now);
   return created;
 }
@@ -404,7 +424,7 @@ function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, reques
   );
   for (const entry of pending) {
     db.update(agentRunInput)
-      .set({ runId: next.id })
+      .set({ runId: next.id, assistantContext: null, assistantContextSubmittedAt: null })
       .where(and(eq(agentRunInput.runId, run.id), eq(agentRunInput.messageId, entry.messageId)))
       .run();
   }
@@ -520,6 +540,32 @@ export function appendHumanRunInput(
  * Agent 发送者只派发显式 @ 的 Agent 成员。点名由 `sendMessage` 写时解析并落库，
  * 不认正文里的弱提及；没有点名就不级联，避免普通汇报把 owner 或全群唤醒。
  */
+export function appendAutomationRunInput(
+  messageId: string,
+  agentProfileId: string,
+  ctx: ProjectContext,
+): void {
+  const saved = db.select().from(message).where(eq(message.id, messageId)).get();
+  if (!saved || saved.senderKind !== "automation" || !saved.automationTriggerId)
+    throw new AgentRunError("conflict", "来源消息不存在");
+  const current = getChat(saved.chatId, ctx);
+  const instance = ensureInstance(current.id, agentProfileId, ctx);
+  attachMessageToRun(
+    {
+      ...saved,
+      senderKind: "automation",
+      automationSource: automationSourceFor(saved.automationTriggerId),
+      taskRecord: undefined,
+      createdAt: saved.createdAt.toISOString(),
+      mentions: [],
+      skills: [],
+    },
+    current,
+    instance,
+    ctx,
+  );
+}
+
 export function appendAgentMentionRunInput(saved: Message, ctx: ProjectContext): void {
   const current = getChat(saved.chatId, ctx);
   if (!ctx.agent || saved.senderKind !== "agent" || saved.senderId !== ctx.agent.agentProfileId)
@@ -599,21 +645,41 @@ export function transitionAgentRun(
   return run;
 }
 
-export function markRunInputDelivered(id: string, messageId: string, ctx: ProjectContext): void {
-  const run = runRow(id, ctx);
-  if (run.status !== "running") throw new AgentRunError("conflict", "Run 未运行");
-  const changed = db
-    .update(agentRunInput)
-    .set({ disposition: "delivered", deliveredAt: new Date() })
-    .where(
-      and(
-        eq(agentRunInput.runId, id),
-        eq(agentRunInput.messageId, messageId),
-        eq(agentRunInput.disposition, "pending"),
-      ),
-    )
-    .run();
-  if (!changed.changes) throw new AgentRunError("conflict", "Run 输入不存在或已投递");
+export function markRunInputDelivered(
+  id: string,
+  messageId: string,
+  ctx: ProjectContext,
+  assistantContextHash?: string,
+): void {
+  sqlite
+    .transaction(() => {
+      const run = runRow(id, ctx);
+      if (run.status !== "running") throw new AgentRunError("conflict", "Run 未运行");
+      const input = db
+        .select()
+        .from(agentRunInput)
+        .where(and(eq(agentRunInput.runId, id), eq(agentRunInput.messageId, messageId)))
+        .get();
+      if (input?.assistantContext?.contentHash !== assistantContextHash)
+        throw new Error("assistant_context_receipt_mismatch");
+      const changed = db
+        .update(agentRunInput)
+        .set({
+          disposition: "delivered",
+          deliveredAt: new Date(),
+          ...(assistantContextHash ? { assistantContextSubmittedAt: new Date() } : {}),
+        })
+        .where(
+          and(
+            eq(agentRunInput.runId, id),
+            eq(agentRunInput.messageId, messageId),
+            eq(agentRunInput.disposition, "pending"),
+          ),
+        )
+        .run();
+      if (!changed.changes) throw new AgentRunError("conflict", "Run 输入不存在或已投递");
+    })
+    .immediate();
 }
 
 export function pendingRunInputs(
@@ -623,14 +689,20 @@ export function pendingRunInputs(
   messageId: string;
   text: string;
   taskRecordKind: typeof message.$inferSelect.taskRecordKind;
+  automationTriggerId: string | null;
+  assistantProposalId: string | null;
 }[] {
   const row = runRow(id, ctx);
   cancelInvalidTaskStartInputs(id);
+  cancelInvalidAutomationInputs(id);
+  cancelInvalidAssistantInputs(id);
   return db
     .select({
       messageId: agentRunInput.messageId,
       text: message.body,
       taskRecordKind: message.taskRecordKind,
+      automationTriggerId: message.automationTriggerId,
+      assistantProposalId: message.assistantProposalId,
     })
     .from(agentRunInput)
     .innerJoin(
@@ -732,9 +804,12 @@ export function settleAgentRun(
           },
         );
         assistantMessageId = message.id;
+        if (status !== "completed") markChannelReplyIncomplete(message.id);
       }
       if (status === "completed") {
         cancelInvalidTaskStartInputs(id);
+        cancelInvalidAutomationInputs(id);
+        cancelInvalidAssistantInputs(id);
         const uncertain = db
           .select()
           .from(agentRunInput)
@@ -795,6 +870,8 @@ export function queuedRunWork(): {
 export function firstPendingRunInput(id: string, ctx: ProjectContext) {
   const row = runRow(id, ctx);
   cancelInvalidTaskStartInputs(id);
+  cancelInvalidAutomationInputs(id);
+  cancelInvalidAssistantInputs(id);
   return db
     .select({ input: agentRunInput, message })
     .from(agentRunInput)
@@ -827,7 +904,15 @@ export function previousSessionFile(runId: string, ctx: ProjectContext): string 
     )
     .orderBy(sql`${agentRun}.rowid desc`)
     .all();
-  return snapshots.find(({ snapshot }) => snapshot !== null)?.snapshot?.sessionFile;
+  const profile = db
+    .select({ purpose: agentProfile.purpose })
+    .from(agentInstance)
+    .innerJoin(agentProfile, eq(agentProfile.id, agentInstance.agentProfileId))
+    .where(eq(agentInstance.id, current.instanceId))
+    .get();
+  return snapshots.find(
+    ({ snapshot }) => snapshot !== null && (snapshot.purpose ?? "worker") === profile?.purpose,
+  )?.snapshot?.sessionFile;
 }
 
 /** 在 runtime 的恢复事务里执行，诊断失败必须回滚恢复。 */

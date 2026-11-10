@@ -360,8 +360,22 @@ const runnerTools = runnerOptions.properties.filter(
     property.name.text === "tools",
 );
 assert.equal(runnerTools.length, 1, "runner session 必须有且仅有一个 tools 属性");
-const runnerAllowlist = runnerTools[0]!.initializer;
-assert(ts.isArrayLiteralExpression(runnerAllowlist), "runner tools 必须为数组字面量");
+const purposeAllowlist = runnerTools[0]!.initializer;
+assert(ts.isConditionalExpression(purposeAllowlist), "runner tools 必须按 purpose 选择工具集合");
+assert(
+  ts.isIdentifier(purposeAllowlist.condition) && purposeAllowlist.condition.text === "assistant",
+  "runner tools 必须使用已核验的 assistant purpose",
+);
+const assistantAllowlist = purposeAllowlist.whenTrue;
+assert(ts.isArrayLiteralExpression(assistantAllowlist), "assistant tools 必须为数组字面量");
+assert(
+  !assistantAllowlist.elements.some(
+    (element) => ts.isStringLiteral(element) && element.text === "mcp__*",
+  ),
+  "assistant 不得继承工作 Agent 的 MCP wildcard",
+);
+const runnerAllowlist = purposeAllowlist.whenFalse;
+assert(ts.isArrayLiteralExpression(runnerAllowlist), "worker tools 必须为数组字面量");
 const runnerAllowlistHasMcpStar = runnerAllowlist.elements.some(
   (element) => ts.isStringLiteral(element) && element.text === "mcp__*",
 );

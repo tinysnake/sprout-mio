@@ -11,6 +11,7 @@ export function SettingsSection({
   children,
   testId,
   className,
+  divided = true,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -18,9 +19,13 @@ export function SettingsSection({
   children: ReactNode;
   testId?: string;
   className?: string;
+  divided?: boolean;
 }) {
   return (
-    <section data-testid={testId} className={`border-t border-border py-6 ${className ?? ""}`}>
+    <section
+      data-testid={testId}
+      className={`${divided ? "border-t border-border " : ""}py-6 ${className ?? ""}`}
+    >
       <div className="mb-5 flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-sm font-medium">{title}</h2>

@@ -1,3 +1,6 @@
+import { assistantCallSchema } from "../contracts/assistant";
+import { assistantPrincipal, dispatchAssistantCall } from "../domain/assistant";
+import { readRunActivity } from "./pi-host/run-activity";
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
@@ -15,6 +18,7 @@ import { toAppError } from "../contracts/result";
 import { db, sqlite } from "../db";
 import {
   agentInstance,
+  agentProfile,
   agentRun,
   chatEffectiveMember,
   project,
@@ -109,7 +113,14 @@ export function issueRemoteToolGrant(
   const secret = randomBytes(32).toString("base64url");
   const grant = sqlite
     .transaction(() => {
-      const { run, owner } = actor(runId);
+      const { run, instance, owner } = actor(runId);
+      const purpose =
+        db.select().from(agentProfile).where(eq(agentProfile.id, instance.agentProfileId)).get()
+          ?.purpose ?? "worker";
+      if (purpose === "assistant") {
+        const was = run.status;
+        if (was === "running") assistantPrincipal(run.id, owner.createdBy, ctx.requestId);
+      }
       if (run.status !== "queued" && run.status !== "running")
         throw new RemoteError("remote_run_inactive");
       if (db.select().from(remoteToolGrant).where(eq(remoteToolGrant.runId, runId)).get())
@@ -119,6 +130,7 @@ export function issueRemoteToolGrant(
       db.insert(remoteToolGrant)
         .values({
           id,
+          purpose,
           secretHash: hashCredential(secret),
           userId: owner.createdBy,
           projectId: run.projectId,
@@ -159,7 +171,10 @@ export function revokeRemoteToolGrant(runId: string, ctx: RuntimeContext): void 
     })
     .immediate();
 }
-function authenticate(request: Request, ctx: RuntimeContext): AgentRemoteContext {
+function authenticate(
+  request: Request,
+  ctx: RuntimeContext,
+): AgentRemoteContext & { purpose: "worker" | "assistant" } {
   const bearer = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(request.headers.get("authorization") ?? "");
   const grant =
     bearer &&
@@ -173,7 +188,13 @@ function authenticate(request: Request, ctx: RuntimeContext): AgentRemoteContext
   const live = registry.get(grant.id);
   if (!live || live.runId !== grant.runId || live.bootId !== ctx.bootId || !live.process.pid)
     throw new RemoteError("remote_run_inactive");
-  const { run, owner } = actor(grant.runId);
+  const { run, instance, owner } = actor(grant.runId);
+  const purpose =
+    db.select().from(agentProfile).where(eq(agentProfile.id, instance.agentProfileId)).get()
+      ?.purpose ?? "worker";
+  if (purpose !== grant.purpose || (run.configSnapshot?.purpose ?? "worker") !== grant.purpose)
+    throw new RemoteError("remote_run_inactive");
+  if (purpose === "assistant") assistantPrincipal(run.id, owner.createdBy, ctx.requestId);
   if (
     run.status !== "running" ||
     run.instanceId !== grant.instanceId ||
@@ -190,6 +211,7 @@ function authenticate(request: Request, ctx: RuntimeContext): AgentRemoteContext
     instanceId: grant.instanceId,
     runId: grant.runId,
     grantId: grant.id,
+    purpose,
   };
 }
 async function body(request: Request) {
@@ -240,6 +262,18 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
         const parsed = remoteAgentRequestSchema.parse(raw);
         if (parsed.call.input.projectId !== actorContext.projectId)
           throw new RemoteError("not_found");
+        const assistant = assistantCallSchema.safeParse(parsed.call);
+        if (actorContext.purpose === "assistant") {
+          if (!assistant.success) throw new RemoteError("not_found");
+          return dispatchAssistantCall(
+            actorContext.runId,
+            actorContext.userId,
+            requestId,
+            assistant.data,
+            readRunActivity,
+          );
+        }
+        if (assistant.success) throw new RemoteError("not_found");
         switch (parsed.call.type) {
           case "info_hub_get":
           case "chat_continuation_get":

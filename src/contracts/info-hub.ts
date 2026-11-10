@@ -470,6 +470,18 @@ export const turnStartContextSchema = z
     tasks: infoHubUniqueArray(infoHubTurnTaskSummarySchema, (task) => task.taskId),
     hostEnabled: z.boolean(),
     workspace: turnWorkspaceSchema.nullable(),
+    assistantNativeContext: z
+      .array(
+        z.strictObject({
+          messageId: z.string(),
+          kind: z.enum(["assistant_event", "assistant_work"]),
+          sourceId: z.string(),
+          body: z.string(),
+          createdAt: z.iso.datetime(),
+        }),
+      )
+      .max(50)
+      .optional(),
     activeRun: z.strictObject({
       runId,
       status: z.enum(["queued", "running"]),

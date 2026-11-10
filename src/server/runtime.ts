@@ -1,4 +1,7 @@
 import type { ContinuationScheduler } from "./continuation-scheduler";
+import type { AssistantScheduler } from "./assistant-scheduler";
+import type { CronScheduler } from "./cron-scheduler";
+import { stopFeishuRuntimes } from "./feishu/registry";
 import type { WakeRuntimeOptions } from "./wake-runtime";
 import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
@@ -8,6 +11,10 @@ import type { DatabaseConnection } from "../db/connection";
 import { config } from "../lib/config";
 import { PiHost, startPiHost, stopPiHost } from "./pi-host/host";
 import type { PiHostShape, PiHostSnapshot as HostSnapshot } from "./pi-host/host";
+
+export async function reloadChannelRuntime(projectId: string): Promise<void> {
+  await (await import("./channel-runtime")).reloadChannelRuntime(projectId);
+}
 
 export type PiHostSnapshot = HostSnapshot & { readonly enabled: boolean };
 
@@ -41,6 +48,8 @@ type RuntimeState = {
   managed: ManagedRuntime.ManagedRuntime<RuntimeDatabase | PiHost, never> | null;
   piHost: PiHostShape | null;
   continuation: ContinuationScheduler | null;
+  cron: CronScheduler | null;
+  assistant: AssistantScheduler | null;
   piHostStop: Promise<void> | null;
   ready: Promise<void>;
   resolveReady: () => void;
@@ -70,6 +79,8 @@ function createState(): RuntimeState {
     managed: null,
     piHost: null,
     continuation: null,
+    cron: null,
+    assistant: null,
     piHostStop: null,
     ready,
     resolveReady,
@@ -253,6 +264,14 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     } else {
       console.log("[runtime] continuation disabled by SPROUT_CONTINUATION_ENABLED=false");
     }
+    const { createCronScheduler } = await import("./cron-scheduler");
+    state.cron = createCronScheduler();
+    state.cron.start();
+    const { createAssistantScheduler } = await import("./assistant-scheduler");
+    state.assistant = createAssistantScheduler();
+    state.assistant.start();
+    const { startChannelRuntimes } = await import("./channel-runtime");
+    await startChannelRuntimes();
     recordDiagnostic({
       level: "info",
       event: "runtime.ready",
@@ -262,6 +281,9 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     });
     state.resolveReady();
   } catch (error) {
+    stopFeishu();
+    state.cron?.stop();
+    state.assistant?.stop();
     state.continuation?.stop();
     failPhase(error);
     state.rejectReady(error);
@@ -290,7 +312,14 @@ export function shutdownRuntime(reason: string): Promise<void> {
   return state.shutdown;
 }
 
+function stopFeishu(): void {
+  stopFeishuRuntimes();
+}
+
 function stopPiHostOnce(): Promise<void> {
+  stopFeishu();
+  state.cron?.stop();
+  state.assistant?.stop();
   state.continuation?.stop();
   return (state.piHostStop ??= state.managed?.cachedContext
     ? state.managed.runPromise(stopPiHost)

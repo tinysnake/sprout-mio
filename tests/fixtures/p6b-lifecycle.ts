@@ -314,6 +314,15 @@ if (process.argv[2] === "--service") {
   /** Task commands answer `{detail, startDelivery?}`; task reads answer the detail itself. */
   const unwrap = <T = any>(value: any): T => (value?.detail ?? value) as T;
   const byText = (left: string, right: string) => left.localeCompare(right);
+  /** A live Worker advances `lastSeenAt` between two reads, so only the rest can match. */
+  function withoutHeartbeat<T extends { connection: { kind: string } & Record<string, any> }>(
+    machine: T,
+  ): T {
+    const { lastSeenAt: _lastSeenAt, ...connection } = machine.connection;
+    return { ...machine, connection };
+  }
+  const connectionOrder = (machine: any) =>
+    machine.connection.kind === "online" ? Date.parse(machine.connection.lastSeenAt) : 0;
   const rows = (sql: string, ...params: unknown[]): any[] =>
     db!.prepare(sql).all(...params) as any[];
   function rowMap(table: string, key = "id", where = "") {
@@ -1648,7 +1657,15 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     A.deepEqual(httpProjectChats.revision, pinned.projectChats.revision);
     A.deepEqual(httpChat, pinned.chat, "the Chat view served over HTTP equals the pinned view");
     A.deepEqual(httpAgent, pinned.agent, "the Agent view served over HTTP equals the pinned view");
-    A.deepEqual(httpMachine.data, pinned.machine.data);
+    A.deepEqual(
+      withoutHeartbeat(httpMachine.data),
+      withoutHeartbeat(pinned.machine.data),
+      "the Machine view served over HTTP equals the pinned view apart from its heartbeat",
+    );
+    A(
+      connectionOrder(httpMachine.data) >= connectionOrder(pinned.machine.data),
+      "the HTTP read never reports an older Machine heartbeat than the pinned read",
+    );
     A.deepEqual(httpMachine.revision, pinned.machine.revision);
     facts.invariant6 = {
       pinnedAt: new Date().toISOString(),

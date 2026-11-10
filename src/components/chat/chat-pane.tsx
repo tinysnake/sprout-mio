@@ -14,6 +14,7 @@ import type { AppError, AppResult } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
+import { AssistantPanelProvider, AssistantPendingBar, AssistantWatchMenu } from "./assistant-panel";
 import type { ChatHistory } from "./chat-thread";
 import { useChatWindow } from "./use-chat-window";
 import type { ChatLiveFacts } from "./use-chat-live";
@@ -31,6 +32,8 @@ import {
  * Chat 中栏的容器：只负责服务调用与请求状态，呈现全部交给 ChatThread。
  * 成功后交给路由重新取数，不在本地插入消息或伪造运行状态。
  */
+const RULE_LINK_CLASS =
+  "text-[10px] text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground";
 export function ChatPane({
   projectId,
   session,
@@ -219,98 +222,127 @@ export function ChatPane({
     }
   }
 
+  const assistantActive = Boolean(profile?.ok && profile.data.purpose === "assistant");
+
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <ActionOutcomeNotice
-        action="发送消息"
-        state={sendOutcome}
-        testId="send-outcome"
-        detail={
-          sendOutcome === "unknown"
-            ? "未收到确认，草稿已保留。请先刷新核对消息，避免重复发送"
-            : isOffline() && sendOutcome === "failure"
-              ? "离线，未提交；草稿已保留"
-              : undefined
-        }
-      />
-      <ActionOutcomeNotice
-        action="停止 run 请求"
-        state={stopOutcome}
-        testId="stop-outcome"
-        detail={
-          stopOutcome === "unknown"
-            ? "未收到确认，请刷新核对 run 状态"
-            : isOffline() && stopOutcome === "failure"
-              ? "离线，未提交"
-              : stopOutcome === "success"
-                ? "服务已确认请求，以最新 run 状态为准"
+    <AssistantPanelProvider key={chat.id} chatId={chat.id} active={assistantActive}>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <ActionOutcomeNotice
+          action="发送消息"
+          state={sendOutcome}
+          testId="send-outcome"
+          detail={
+            sendOutcome === "unknown"
+              ? "未收到确认，草稿已保留。请先刷新核对消息，避免重复发送"
+              : isOffline() && sendOutcome === "failure"
+                ? "离线，未提交；草稿已保留"
                 : undefined
-        }
-      />
-      <ChatThread
-        skills={skills}
-        onSkillsRefresh={onChanged}
-        back={
-          <Link
-            to="/projects/$projectId/chats"
-            params={{ projectId }}
-            aria-label="返回 Chat 列表"
-            data-testid="back-to-chats"
-            className="hidden size-8.5 shrink-0 place-items-center rounded-control border border-transparent text-foreground hover:border-input max-desktop:grid max-desktop:size-11"
-          >
-            <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
-          </Link>
-        }
-        chat={chat}
-        agentName={agentName}
-        members={mentionMembers}
-        profile={session.kind === "dm" ? profile : null}
-        humanName={humanName}
-        messages={messages}
-        history={history}
-        runState={runState}
-        continuation={continuation}
-        inspectorOpen={inspectorOpen}
-        onToggleInspector={onToggleInspector}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSend={() => void send()}
-        sendPending={sendPending}
-        sendError={sendError}
-        fieldErrors={fieldErrors}
-        onStop={session.kind === "dm" ? () => void stop() : undefined}
-        stopPending={stoppingRunId !== null}
-        stopError={stopError}
-        onStopRun={(runId) => void stop(runId)}
-        stoppingRunId={stoppingRunId}
-        runAgentNames={runAgentNames}
-        onRestoreDraft={(body) => {
-          setDraft(body);
-          input.current?.focus();
-        }}
-        inputRef={input}
-        displayTitle={displayTitle}
-        subtitle={sessionSubtitle(session)}
-        kind={session.kind}
-        senderNames={senderNames}
-        knownSenders={knownSenders}
-        runFacts={runFacts}
-        runActivityByMessage={runActivityByMessage}
-        runActivitiesError={runActivitiesError}
-        archived={Boolean(chat.archivedAt)}
-        titleEditor={
-          // DM 保留消息头部的铅笔（P4b 形状，窄屏也能直接改名）；能不能改由治理事实决定，不按 kind 判。
-          session.kind === "dm" && session.governance.canRenameTitle ? (
-            <ChatTitleEditor
-              chat={chat}
-              currentName={displayTitle}
-              submit={(title) => updateChatTitleFn({ data: { chatId: chat.id, title } })}
-              restore={() => clearChatTitleFn({ data: { chatId: chat.id } })}
-              onChanged={onChanged}
-            />
-          ) : undefined
-        }
-      />
-    </div>
+          }
+        />
+        <ActionOutcomeNotice
+          action="停止 run 请求"
+          state={stopOutcome}
+          testId="stop-outcome"
+          detail={
+            stopOutcome === "unknown"
+              ? "未收到确认，请刷新核对 run 状态"
+              : isOffline() && stopOutcome === "failure"
+                ? "离线，未提交"
+                : stopOutcome === "success"
+                  ? "服务已确认请求，以最新 run 状态为准"
+                  : undefined
+          }
+        />
+        <ChatThread
+          skills={skills}
+          onSkillsRefresh={onChanged}
+          automationRuleLink={(source) =>
+            source.kind === "project_cron" ? (
+              <Link
+                to="/projects/$projectId/settings/cron/$ruleId"
+                params={{ projectId, ruleId: source.ruleId }}
+                search={{ chat: chat.id }}
+                data-testid="message-rule-link"
+                className={RULE_LINK_CLASS}
+              >
+                查看规则
+              </Link>
+            ) : (
+              <Link
+                to="/projects/$projectId/settings/webhooks/$ruleId"
+                params={{ projectId, ruleId: source.ruleId }}
+                search={{ chat: chat.id }}
+                data-testid="message-rule-link"
+                className={RULE_LINK_CLASS}
+              >
+                查看规则
+              </Link>
+            )
+          }
+          back={
+            <Link
+              to="/projects/$projectId/chats"
+              params={{ projectId }}
+              aria-label="返回 Chat 列表"
+              data-testid="back-to-chats"
+              className="hidden size-8.5 shrink-0 place-items-center rounded-control border border-transparent text-foreground hover:border-input max-desktop:grid max-desktop:size-11"
+            >
+              <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
+            </Link>
+          }
+          chat={chat}
+          assistantWatch={<AssistantWatchMenu />}
+          assistantPending={<AssistantPendingBar />}
+          agentName={agentName}
+          members={mentionMembers}
+          profile={session.kind === "dm" ? profile : null}
+          humanName={humanName}
+          messages={messages}
+          history={history}
+          runState={runState}
+          continuation={continuation}
+          inspectorOpen={inspectorOpen}
+          onToggleInspector={onToggleInspector}
+          draft={draft}
+          onDraftChange={setDraft}
+          onSend={() => void send()}
+          sendPending={sendPending}
+          sendError={sendError}
+          fieldErrors={fieldErrors}
+          onStop={session.kind === "dm" ? () => void stop() : undefined}
+          stopPending={stoppingRunId !== null}
+          stopError={stopError}
+          onStopRun={(runId) => void stop(runId)}
+          stoppingRunId={stoppingRunId}
+          runAgentNames={runAgentNames}
+          onRestoreDraft={(body) => {
+            setDraft(body);
+            input.current?.focus();
+          }}
+          inputRef={input}
+          displayTitle={displayTitle}
+          subtitle={sessionSubtitle(session)}
+          kind={session.kind}
+          senderNames={senderNames}
+          knownSenders={knownSenders}
+          runFacts={runFacts}
+          runActivityByMessage={runActivityByMessage}
+          runActivitiesError={runActivitiesError}
+          archived={Boolean(chat.archivedAt)}
+          titleEditor={
+            // DM 保留消息头部的铅笔（P4b 形状，窄屏也能直接改名）；能不能改由治理事实决定，不按 kind 判。
+            session.kind === "dm" && session.governance.canRenameTitle ? (
+              <ChatTitleEditor
+                chat={chat}
+                currentName={displayTitle}
+                submit={(title) => updateChatTitleFn({ data: { chatId: chat.id, title } })}
+                restore={() => clearChatTitleFn({ data: { chatId: chat.id } })}
+                onChanged={onChanged}
+              />
+            ) : undefined
+          }
+        />
+      </div>
+    </AssistantPanelProvider>
   );
 }

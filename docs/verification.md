@@ -2,6 +2,8 @@
 
 本文规定验证范围、编排分工与证据复用。开始验证、编写 worker brief、准备合并或交付前读取本文。领域验收要求仍由对应章节和[前端开发约定](frontend-conventions.md)维护。
 
+原生助理专项门禁为 `bash scripts/verify/assistant-core.sh` 和 `bash scripts/verify/assistant-browser.sh`：前者纳入 CI API 与实际 unit registry，后者使用已安装 Pi、production app 与 loopback model，保存 `.verify/assistant-<timestamp>` 的 desktop/mobile 与 actual-next-context 证据。契约与边界见[原生助理契约](assistant-core.md)。Human UI 体验确认单独保留 pending。
+
 ## 按改动选择验证范围
 
 先检查实际 diff，再选择能覆盖本次风险的验证。涉及产品行为时，从 [Feature map](feature-map/README.md) 进入受影响功能，核对入口、前置条件、可观察结果与现有脚本的证据边界。不能只按文件扩展名分类，也不能因为要合并就自动扩大到完整验证。

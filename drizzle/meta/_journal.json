@@ -1,5 +1,5 @@
 {
-  "version": "7",
+  "version": "6",
   "dialect": "sqlite",
   "entries": [
     {
@@ -280,6 +280,118 @@
       "version": "6",
       "when": 1794069814008,
       "tag": "0039_wake_evaluation_provider_repair",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1794120454242,
+      "tag": "0040_dark_jubilee",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1794132582199,
+      "tag": "0041_project_cron",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1794141961256,
+      "tag": "0042_curvy_expediter",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1794142511331,
+      "tag": "0043_lively_swordsman",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1794144018689,
+      "tag": "0044_yummy_dagger",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1794150477651,
+      "tag": "0045_unusual_boomerang",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1794157489747,
+      "tag": "0046_perpetual_jimmy_woo",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1794209896065,
+      "tag": "0047_assistant_watch_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794227640239,
+      "tag": "0048_chief_raza",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1794240015894,
+      "tag": "0049_feishu_identity_inbound",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1794240992142,
+      "tag": "0050_feishu_route_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1794242919288,
+      "tag": "0051_channel_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1794275391170,
+      "tag": "0052_channel_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1794301016088,
+      "tag": "0053_feishu_connection_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1794301372141,
+      "tag": "0054_married_robbie_robertson",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1794310000000,
+      "tag": "0055_feishu_slot_nickname",
       "breakpoints": true
     }
   ]

@@ -360,13 +360,10 @@ export async function runSandbox(args) {
       }
     }
     if (existsSync(pi)) symlinkSync(realpathSync(pi), join(agent, "bin/pi"));
-    // 私有 agent 目录只借 SDK 本体，不带宿主的 skills/prompts：bin/pi 之外还要借 install/，因为
-    // 被测代码允许两种发现形态（scripts/pi-host-skills.mjs 的 sdkRoot 先跟 bin/pi 向上找，再退回
-    // install/releases；tests/verify-model-fixture.test.ts 对两种形态各测一遍）。少掉 install/ 形态时
-    // tests/chat-skills-foundation.test.ts 会链出悬空目录，报 skill_catalog_unavailable。
-    const installTree = join(originalAgent, "install");
-    if (existsSync(installTree))
-      symlinkSync(realpathSync(installTree), join(agent, "install"), "dir");
+    // 托管安装目录要跟过去：宿主 SDK 解析既认 bin/pi 也认 install/releases，
+    // 只带 bin/pi 会让沙箱里的 install 布局消失，测试里按真实布局找 SDK 的路径全部落空。
+    const install = join(originalAgent, "install");
+    if (existsSync(install)) symlinkSync(realpathSync(install), join(agent, "install"), "dir");
     for (const name of ["auth.json", "models.json", "settings.json"]) {
       if (existsSync(join(originalAgent, name))) copy(join(originalAgent, name), join(agent, name));
     }
