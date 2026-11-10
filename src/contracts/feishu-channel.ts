@@ -131,13 +131,11 @@ export const feishuStartChallengeInput = projectIdInput.merge(chatIdInput).exten
   expectedRevision: feishuExpectedRevision,
 });
 
-export const feishuSwitchTargetInput = feishuStartChallengeInput;
-
 export const feishuRevisionInput = projectIdInput.extend({
   expectedRevision: feishuExpectedRevision,
 });
 
-/** 发起/换绑后一次性展示的挑战码；服务端只存摘要。 */
+/** 发起绑定或换绑后展示的挑战码；刷新页面仍能读到，直到确认、过期或被新码顶替。 */
 export type FeishuChallengeView = Readonly<{
   challenge: string;
   expiresAtMs: number;

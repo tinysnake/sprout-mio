@@ -127,18 +127,18 @@ it("never scans historical outputs at bind/reconnect/switch and excludes Human/w
   );
   f.agents.addProjectMember(s.project.id, other.id, s.ctx);
   const otherDm = f.chats.createDirectChat(s.project.id, other.id, s.ctx).chat;
-  f.feishu.switchFeishuTarget(
+  const switched = f.feishu.startFeishuChallenge(
     { projectId: s.project.id, chatId: otherDm.id },
-    f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
     s.ctx,
   );
+  f.feishu.finishFeishuChallenge(s.project.id, switched.challenge, s.identity, s.ctx.requestId);
   s.reply("old DM");
   expect(rows()).toHaveLength(before + 1);
-  f.feishu.switchFeishuTarget(
+  const restored = f.feishu.startFeishuChallenge(
     { projectId: s.project.id, chatId: s.dm.id },
-    f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
     s.ctx,
   );
+  f.feishu.finishFeishuChallenge(s.project.id, restored.challenge, s.identity, s.ctx.requestId);
   expect(rows()).toHaveLength(before + 1);
 });
 

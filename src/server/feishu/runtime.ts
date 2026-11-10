@@ -247,8 +247,12 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
               captureScope: (identity, epoch) =>
                 captureFeishuAdmissionScope(deps.projectId, identity, epoch),
               admitText: (event, scope, id) => admitFeishuText(event, scope, id),
-              finishChallenge: (opaque, identity, id) =>
-                finishFeishuChallenge(deps.projectId, opaque, identity, id),
+              finishChallenge: (opaque, identity, id) => {
+                const binding = finishFeishuChallenge(deps.projectId, opaque, identity, id);
+                // 换绑确认后目标对话变了，立刻按新路由重算投递。
+                loop?.wake();
+                return binding;
+              },
               isChallengeCode: isFeishuChallengeCode,
               consumeAction: (identity, scope, token, at) =>
                 consumeFeishuAction(identity, scope, token, at),

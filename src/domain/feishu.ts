@@ -29,7 +29,6 @@ export class FeishuBindingError extends Error {
     readonly code:
       | "forbidden"
       | "target_unavailable"
-      | "already_bound"
       | "identity_conflict"
       | "invalid_challenge"
       | "revision_conflict"
@@ -174,8 +173,19 @@ export function startFeishuChallenge(
       eligible(target, ctx);
       const projectId = target.projectId;
       const old = slotFor(ctx.userId, projectId);
-      if (old?.appId) throw new FeishuBindingError("already_bound");
-      const revision = (old?.revision ?? 0) + 1;
+      if (old?.appId)
+        db.update(feishuChallenge)
+          .set({ consumedAtMs: now.getTime() })
+          .where(
+            and(
+              eq(feishuChallenge.humanId, old.humanId),
+              eq(feishuChallenge.projectId, projectId),
+              isNull(feishuChallenge.consumedAtMs),
+            ),
+          )
+          .run();
+      // 换绑要等新码确认，旧路由在这之前必须继续收消息，所以已绑定时不提前推进 revision。
+      const revision = old?.appId ? old.revision : (old?.revision ?? 0) + 1;
       db.insert(feishuIdentitySlot)
         .values({ humanId: ctx.userId, projectId: target.projectId, revision })
         .onConflictDoUpdate({
@@ -256,18 +266,27 @@ export function finishFeishuChallenge(
         !identity.openId
       )
         throw new FeishuBindingError("invalid_challenge");
-      if (slot.appId) throw new FeishuBindingError("already_bound");
-      const conflict = db
-        .select()
-        .from(feishuIdentitySlot)
-        .where(
-          and(
-            eq(feishuIdentitySlot.appId, identity.appId),
-            eq(feishuIdentitySlot.tenantKey, identity.tenantKey),
-            eq(feishuIdentitySlot.openId, identity.openId),
-          ),
-        )
-        .get();
+      const rebinding = slot.appId !== null;
+      if (
+        rebinding &&
+        (slot.appId !== identity.appId ||
+          slot.tenantKey !== identity.tenantKey ||
+          slot.openId !== identity.openId)
+      )
+        throw new FeishuBindingError("identity_conflict");
+      const conflict = rebinding
+        ? undefined
+        : db
+            .select()
+            .from(feishuIdentitySlot)
+            .where(
+              and(
+                eq(feishuIdentitySlot.appId, identity.appId),
+                eq(feishuIdentitySlot.tenantKey, identity.tenantKey),
+                eq(feishuIdentitySlot.openId, identity.openId),
+              ),
+            )
+            .get();
       if (conflict) throw new FeishuBindingError("identity_conflict");
       const ctx = { userId: slot.humanId, requestId };
       eligible(challenge, ctx);
@@ -290,9 +309,10 @@ export function finishFeishuChallenge(
         .set({ consumedAtMs: now.getTime() })
         .where(eq(feishuChallenge.hash, challenge.hash))
         .run();
+      closeRoutes(slot.humanId, projectId, now);
       insertRoute(slot.humanId, revision, identity, challenge, now);
       audit(
-        "identity_bound",
+        rebinding ? "target_switched" : "identity_bound",
         requestId,
         { projectId: challenge.projectId, chatId: challenge.chatId },
         hooks,
@@ -321,43 +341,6 @@ function closeRoutes(humanId: string, projectId: string, now: Date) {
       ),
     )
     .run();
-}
-
-export function switchFeishuTarget(
-  target: FeishuTarget,
-  expectedRevision: number,
-  ctx: ProjectContext,
-  now = new Date(),
-  hooks: IdentityWriteHooks = {},
-): FeishuBinding {
-  return sqlite
-    .transaction(() => {
-      const projectId = target.projectId;
-      eligible(target, ctx);
-      const slot = expectedSlot(projectId, ctx, expectedRevision);
-      if (!slot.appId || !slot.tenantKey || !slot.openId) throw new FeishuBindingError("not_bound");
-      closeRoutes(ctx.userId, projectId, now);
-      const revision = slot.revision + 1;
-      db.update(feishuIdentitySlot)
-        .set({ revision })
-        .where(
-          and(
-            eq(feishuIdentitySlot.humanId, ctx.userId),
-            eq(feishuIdentitySlot.projectId, projectId),
-          ),
-        )
-        .run();
-      insertRoute(
-        ctx.userId,
-        revision,
-        { appId: slot.appId, tenantKey: slot.tenantKey, openId: slot.openId },
-        target,
-        now,
-      );
-      audit("target_switched", ctx.requestId, target, hooks);
-      return getFeishuBinding(projectId, ctx);
-    })
-    .immediate();
 }
 
 export function unbindFeishuIdentity(

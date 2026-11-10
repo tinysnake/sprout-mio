@@ -87,7 +87,11 @@ it("one platform identity cannot race two Humans; one Human cannot replace a bou
     "identity_conflict",
   );
   expect(feishu.getFeishuBinding(second.project.id, second.ctx).bound).toBe(false);
-  bindingError(() => feishu.startFeishuChallenge(first.target, first.ctx, at), "already_bound");
+  const stable = feishu.getFeishuBinding(first.project.id, first.ctx);
+  feishu.startFeishuChallenge(first.target, first.ctx, at);
+  const pendingSwitch = feishu.getFeishuBinding(first.project.id, first.ctx);
+  expect(pendingSwitch.revision).toBe(stable.revision);
+  expect(pendingSwitch.route?.id).toBe(stable.route?.id);
   expect(
     sqlite
       .prepare(
@@ -282,12 +286,20 @@ for (const change of ["binding", "switch"] as const) {
       const helper = agents.createAgentProfile({ name: "Next", purpose: "assistant" }, s.ctx);
       agents.addProjectMember(s.project.id, helper.id, s.ctx);
       const dm = chats.createDirectChat(s.project.id, helper.id, s.ctx).chat;
-      feishu.switchFeishuTarget(
+      const { challenge } = feishu.startFeishuChallenge(
         { projectId: s.project.id, chatId: dm.id },
-        binding.revision,
         s.ctx,
+        at,
+      );
+      const switched = feishu.finishFeishuChallenge(
+        s.project.id,
+        challenge,
+        s.identity,
+        s.ctx.requestId,
         activation,
       );
+      expect(switched.revision).toBe(binding.revision + 1);
+      expect(switched.route?.chatId).toBe(dm.id);
     }
     const scope = feishu.captureFeishuAdmissionScope(s.project.id, s.identity, s.epoch)!;
     const before = counts();
@@ -385,7 +397,7 @@ for (const failure of ["native", "hook", "receipt"] as const) {
   });
 }
 
-it("switch requires current revision and access, freezes the previous route, and rejects callbacks captured before switch", () => {
+it("switching takes a fresh challenge, freezes the previous route, and rejects callbacks captured before switch", () => {
   const s = scenario();
   const { scope, binding } = s.bind();
   const event = text(s.identity);
@@ -398,14 +410,30 @@ it("switch requires current revision and access, freezes the previous route, and
   const next = chats.createDirectChat(s.project.id, otherHelper.id, s.ctx).chat;
   const target = { projectId: s.project.id, chatId: next.id };
   bindingError(
-    () => feishu.switchFeishuTarget(target, binding.revision - 1, s.ctx, at),
-    "revision_conflict",
-  );
-  bindingError(
-    () => feishu.switchFeishuTarget(scenario().target, binding.revision, s.ctx, at),
+    () => feishu.startFeishuChallenge(scenario().target, s.ctx, at),
     "target_unavailable",
   );
-  const current = feishu.switchFeishuTarget(target, binding.revision, s.ctx, at);
+  const superseded = feishu.startFeishuChallenge(target, s.ctx, at);
+  const pending = feishu.startFeishuChallenge(target, s.ctx, at);
+  bindingError(
+    () =>
+      feishu.finishFeishuChallenge(
+        s.project.id,
+        superseded.challenge,
+        s.identity,
+        s.ctx.requestId,
+        at,
+      ),
+    "invalid_challenge",
+  );
+  const current = feishu.finishFeishuChallenge(
+    s.project.id,
+    pending.challenge,
+    s.identity,
+    s.ctx.requestId,
+    at,
+  );
+  expect(current.revision).toBe(binding.revision + 1);
   expect(current.route?.id).not.toBe(binding.route?.id);
   expect(() =>
     sqlite.prepare("UPDATE feishu_route SET chat_id=? WHERE id=?").run(next.id, scope.routeId),
@@ -514,10 +542,12 @@ it("a newly bound identity cannot retrieve an old accepted receipt or choose its
     appId: "forged",
     id: "forged",
   };
-  const changed = feishu.switchFeishuTarget(
-    injected,
-    feishu.getFeishuBinding(s.project.id, s.ctx).revision,
-    s.ctx,
+  const renewal = feishu.startFeishuChallenge(injected, s.ctx, at);
+  const changed = feishu.finishFeishuChallenge(
+    s.project.id,
+    renewal.challenge,
+    nextIdentity,
+    s.ctx.requestId,
     at,
   );
   expect(

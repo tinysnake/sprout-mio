@@ -127,12 +127,13 @@ it.each(["identity", "switch", "expiry", "altered", "unknown", "permission", "co
     let now = s.now;
     if (change === "identity")
       identity = { ...identity, openId: "wrong-human" } as VerifiedFeishuIdentity;
-    if (change === "switch")
-      f.feishu.switchFeishuTarget(
+    if (change === "switch") {
+      const rebound = f.feishu.startFeishuChallenge(
         { projectId: s.project.id, chatId: s.dm.id },
-        f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
         s.ctx,
       );
+      f.feishu.finishFeishuChallenge(s.project.id, rebound.challenge, s.identity, s.ctx.requestId);
+    }
     if (change === "expiry") now = new Date(s.now.getTime() + 10 * 60_000);
     if (change === "altered") token += "x";
     if (change === "unknown") token = "opaque-not-real";

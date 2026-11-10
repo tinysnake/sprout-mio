@@ -4,7 +4,6 @@ import {
   feishuBindingInput,
   feishuRevisionInput,
   feishuStartChallengeInput,
-  feishuSwitchTargetInput,
   type FeishuBindingView,
   type FeishuChallengeView,
   type FeishuTargetsView,
@@ -23,7 +22,6 @@ import { toDomainAppError } from "./domain-errors";
 type BindingCode =
   | "forbidden"
   | "target_unavailable"
-  | "already_bound"
   | "identity_conflict"
   | "invalid_challenge"
   | "revision_conflict"
@@ -34,7 +32,6 @@ type PlainAppCode = Exclude<AppErrorCode, "project_member_removal_blocked">;
 const BINDING_MESSAGES: Readonly<Record<BindingCode, { code: PlainAppCode; message: string }>> = {
   forbidden: { code: "forbidden", message: "只有 Human 可以绑定 Feishu 私聊" },
   target_unavailable: { code: "conflict", message: "目标对话不可用" },
-  already_bound: { code: "conflict", message: "这个账号已绑定 Feishu 私聊，请先解绑或换绑" },
   identity_conflict: { code: "conflict", message: "这个 Feishu 身份已绑定到其他账号" },
   invalid_challenge: { code: "conflict", message: "确认码已失效，请重新发起绑定" },
   revision_conflict: { code: "conflict", message: "绑定状态已变化，请刷新后重试" },
@@ -168,22 +165,6 @@ export async function finishFeishuBindingBoundary(
   });
 }
 
-export async function switchFeishuTargetBoundary(
-  raw: unknown,
-  headers: Headers,
-  requestId: string,
-): Promise<AppResult<FeishuBindingView>> {
-  return feishuBoundary(headers, requestId, (deps, context) => {
-    const parsed = feishuSwitchTargetInput.safeParse(raw);
-    if (!parsed.success) return fail(toAppError(parsed.error, requestId));
-    const { projectId, chatId, expectedRevision } = parsed.data;
-    deps.domain.switchFeishuTarget({ projectId, chatId }, expectedRevision, context);
-    // 换绑后目标对话变了，投递循环立刻按新路由重算，不等下一轮轮询。
-    deps.registry.wakeFeishuDelivery();
-    return ok(currentView(deps, context, projectId), requestId);
-  });
-}
-
 export async function unbindFeishuBindingBoundary(
   raw: unknown,
   headers: Headers,
@@ -229,12 +210,6 @@ export const finishFeishuBindingFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     finishFeishuBindingBoundary(data, getRequestHeaders(), getRequestContext().requestId),
-  );
-
-export const switchFeishuTargetFn = createServerFn({ method: "POST" })
-  .validator((input: unknown) => input)
-  .handler(async ({ data }) =>
-    switchFeishuTargetBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
 export const unbindFeishuBindingFn = createServerFn({ method: "POST" })

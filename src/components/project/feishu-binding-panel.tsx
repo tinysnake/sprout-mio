@@ -12,7 +12,6 @@ import {
   getFeishuBindingFn,
   listFeishuTargetsFn,
   startFeishuChallengeFn,
-  switchFeishuTargetFn,
   unbindFeishuBindingFn,
 } from "../../server/functions/feishu";
 import { Button } from "../ui/button";
@@ -218,6 +217,7 @@ export function FeishuBindingPanel({
       (data: FeishuChallengeView) => {
         setChallenge({ code: data.challenge, expiresAtMs: data.expiresAtMs });
         setView(data.binding);
+        setMode("idle");
       },
     );
   }
@@ -253,21 +253,6 @@ export function FeishuBindingPanel({
     } finally {
       setPending(null);
     }
-  }
-
-  function switchTarget(chatId: string) {
-    if (!view) return;
-    void runAction(
-      "switch",
-      () =>
-        switchFeishuTargetFn({
-          data: { projectId, chatId, expectedRevision: view.binding.revision },
-        }),
-      (data: FeishuBindingView) => {
-        setView(data);
-        setMode("idle");
-      },
-    );
   }
 
   function unbind() {
@@ -326,7 +311,7 @@ export function FeishuBindingPanel({
     return (
       <SettingsSection
         title="飞书接入"
-        description="换绑只改动你自己的绑定，不影响其他 Human 的绑定。"
+        description="换绑要先在飞书私聊里确认新的确认码，只改动你自己的绑定。"
         testId="feishu-binding-panel"
       >
         <Facts
@@ -364,10 +349,10 @@ export function FeishuBindingPanel({
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
             data-testid="feishu-switch-submit"
-            onClick={() => switchTarget(selectedChatId)}
+            onClick={() => startBinding(selectedChatId)}
             disabled={pending !== null || selectedChatId === "" || selectedChatId === currentChatId}
           >
-            {pending === "switch" ? "换绑中…" : "确认换绑"}
+            {pending === "start" ? "生成确认码…" : "发起换绑确认"}
           </Button>
           <Button
             variant="secondary"
