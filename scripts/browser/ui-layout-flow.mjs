@@ -240,6 +240,64 @@ try {
     await page.setViewportSize({ width: 1440, height: 900 });
     return measuredWidths;
   });
+  await check("settings_tabs_do_not_stack_rules", async () => {
+    const measured = [];
+    for (const width of [1440, 900]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const tab of ["general", "webhooks", "cron", "feishu"]) {
+        await goto(`/projects/${projectId}/settings?tab=${tab}`);
+        measured.push(
+          await page.evaluate(() => {
+            const describe = (element) => {
+              const testId = element.getAttribute("data-testid");
+              return `${element.tagName.toLowerCase()}${testId ? `[${testId}]` : ""}`;
+            };
+            const strip = document.querySelector('nav[aria-label="Project 设置分类"]');
+            if (!strip) return { stripBottom: null, stripLines: 0, nearby: ["tab strip missing"] };
+            const main = document.querySelector("main") ?? document.body;
+            const stripBottom = Math.round(strip.getBoundingClientRect().bottom);
+            const rules = [];
+            for (const element of main.querySelectorAll("*")) {
+              if (!element.getClientRects().length) continue;
+              const style = getComputedStyle(element);
+              const rect = element.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) continue;
+              const top = parseFloat(style.borderTopWidth);
+              const bottom = parseFloat(style.borderBottomWidth);
+              if (top > 0 && style.borderTopStyle !== "none")
+                rules.push({ y: Math.round(rect.top), owner: describe(element) });
+              if (bottom > 0 && style.borderBottomStyle !== "none")
+                rules.push({ y: Math.round(rect.bottom - bottom), owner: describe(element) });
+            }
+            const isStrip = (rule) => Math.abs(rule.y - (stripBottom - 1)) <= 2;
+            return {
+              stripBottom,
+              stripLines: rules.filter(isStrip).length,
+              nearby: rules.filter(
+                (rule) => !isStrip(rule) && rule.y >= stripBottom - 2 && rule.y <= stripBottom + 40,
+              ),
+            };
+          }),
+        );
+        const last = measured.at(-1);
+        last.width = width;
+        last.tab = tab;
+      }
+    }
+    try {
+      for (const item of measured) {
+        assert.equal(item.stripLines, 1, `tab strip draws one rule (${item.tab} @ ${item.width})`);
+        assert.deepEqual(
+          item.nearby,
+          [],
+          `no second rule within 40px below the tab strip (${item.tab} @ ${item.width})`,
+        );
+      }
+    } finally {
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    return measured;
+  });
   await check("feishu_settings_configure_in_page", async () => {
     const settingsPath = `/projects/${projectId}/settings?tab=feishu`;
     await goto(settingsPath);

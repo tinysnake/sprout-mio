@@ -41,6 +41,7 @@
 5. arbitrary value 可表达有依据的几何值或布局计算，不能用于偷塞新色板、另一套圆角或绕开共享变体。动态 inline style 限于拖拽宽度、测量视口等运行时数值；静态外观通过组件类和 token 表达。
 6. 跨主题的颜色变化优先由 token 处理；`dark:` 可表达主题确实不同的呈现细节，不能让每个页面重写整套颜色。禁止把 `bg-accent` 当作中性 hover，使用 `bg-hover` 或相应组件变体。
 7. 调整公共组件从该组件自身及演示入手，不能在页面用 `!important`、任意后代选择器或连续 class 覆盖把它改成另一种按钮。迁移中的临时差异记录到章节材料，完成后移除。
+8. 相邻区域只画一条分隔线。tab 行本身已有下边框时，紧随其后的第一块不再画上边框（如 `[&>section:first-child]:border-t-0`），否则两条线相隔几十像素，页面看起来出现「双下巴」。`scripts/browser/ui-layout-flow.mjs` 的 `settings_tabs_do_not_stack_rules` 在 1440 与 900 两档、四个设置 tab 上检查 tab 行下方 40px 内没有第二条横线。
 
 ## 组件与状态的归属
 
