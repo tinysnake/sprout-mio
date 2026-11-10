@@ -241,6 +241,7 @@ try {
         harness: "pi",
         updatedAt: "2026-10-24T00:00:00.000Z",
       },
+      resources: { kind: "disabled" },
       remote: {
         endpoint: `http://127.0.0.1:${port}/api/remote/agent`,
         secret,

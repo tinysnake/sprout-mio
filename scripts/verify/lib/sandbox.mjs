@@ -359,6 +359,10 @@ export async function runSandbox(args) {
       }
     }
     if (existsSync(pi)) symlinkSync(realpathSync(pi), join(agent, "bin/pi"));
+    // 托管安装目录要跟过去：宿主 SDK 解析既认 bin/pi 也认 install/releases，
+    // 只带 bin/pi 会让沙箱里的 install 布局消失，测试里按真实布局找 SDK 的路径全部落空。
+    const install = join(originalAgent, "install");
+    if (existsSync(install)) symlinkSync(realpathSync(install), join(agent, "install"), "dir");
     for (const name of ["auth.json", "models.json", "settings.json"]) {
       if (existsSync(join(originalAgent, name))) copy(join(originalAgent, name), join(agent, name));
     }
