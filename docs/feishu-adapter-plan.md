@@ -1,6 +1,6 @@
 # 飞书 DM adapter 推进记录
 
-状态：2026-11-10 F0、F1、F2a、F2b、F3 已集成；真实飞书平台联调与真实凭证下的绑定尚未进行。上一轮 Human UI 评审在 `ed92e92` 收尾；本文件不表示飞书实现或平台联调已完成。具体边界见[实施契约](feishu-adapter-contract.md)。
+状态：2026-11-11 F0、F1、F2a、F2b、F3、F4 已集成；F5 单实例租约与 F6 真实平台实况已落地，真实凭证下的绑定、入站、出站与卡片动作在评审实例上跑通。具体边界见[实施契约](feishu-adapter-contract.md)。
 
 ## 工作流
 
@@ -105,7 +105,7 @@ F2b 实现 commit 为 `6808f49`，父线程补 CI inventory 与配置契约用�
 
 实际验证：定向 8 文件、104 项测试；`pnpm typecheck`、`check`、`fmt`、`diff` 通过；全量 CI 141 文件、1272 项通过（`/tmp/sprout-feishu-f2b-parent-ci4.result.json`）。SDK 运行证据是既有回环探针（`/tmp/sprout-feishu-sdk-parent-probe.log`）。真实飞书平台、真实 appId 形态、卡片回调响应形状仍未验证，属于 F3 门槛。
 
-F3 之前必须解决的两项：绑定入口的 UI 形态需要人选定（管理页选项 A 与助理 DM 头部选项 B，两者业务状态一致），以及真实凭证下的端到端验证。仍未做的运行时约束：双实例互相顶掉 epoch 依赖“只跑一个实例”，代码层面没有租约；owner 在启动失败后需要显式 `start()` 重试，没有自愈定时器。
+F3 之前必须解决的两项：绑定入口的 UI 形态需要人选定（管理页选项 A 与助理 DM 头部选项 B，两者业务状态一致），以及真实凭证下的端到端验证。两项目前都有结论：入口选了管理页，真实性由 F6 的实况证据覆盖。运行时约束由 F5 的数据库租约解决，不再依赖“只跑一个实例”的运维约定；owner 在启动失败后仍需显式 `start()` 重试，没有自愈定时器。
 
 ### F3 绑定界面（已集成）
 
@@ -125,4 +125,24 @@ F3 实现为 `d0029f0`，父线程门禁修正为 `f602517`，已 fast-forward �
 
 真实评审实例（LAN `http://10.0.0.13:3300`，Project `prj_ad9fd1a5`）在合入后先报 `internal`，原因是该库只应用到 `0045`，缺 `0046`、`0047`、`0048` 三份迁移，飞书五张表不存在。补跑 `pnpm db:migrate`（迁移前备份到 `.verify/human-review/run.JtVeWy/backups/app-before-feishu-migrate.sqlite`）后，页面正确渲染「未配置」，标签间跳转保持 `tab` 参数。当时的环境变量配置说明已在 F4 删除；渠道配置现存于 Project 级 `channel_config`，本单元不提供配置表单。
 
-未验证项：真实飞书侧的确认回合（需要真实应用与真人扫码/发码）、确认码过期分支的实际渲染（要等 10 分钟，逻辑由文案测试与注入时钟覆盖）、飞书昵称展示（视图没有该字段）。仍待 Human 决定的三点：换绑是否必须再走一次飞书确认、是否显示已绑定账号的飞书昵称、待确认的确认码是否应跨刷新保留。
+已由 Human 答复的三点：换绑必须再走一次飞书确认；显示已绑定账号的飞书昵称；待确认的确认码要跨刷新保留。后两条尚未实现，分别是昵称字段与持久化剩余时间的独立单元。仍未验证：确认码过期分支的实际渲染（要等 10 分钟，逻辑由文案测试与注入时钟覆盖）。
+
+### F5 单实例租约（已集成）
+
+租约表 `feishu_connection_lease`（迁移 `drizzle/0050_feishu_connection_lease.sql`）按 `app_id` 一行，持有者用一条语句同时承担抢占与续约：
+
+```sql
+INSERT INTO feishu_connection_lease(app_id, holder, expires_at_ms) VALUES(?, ?, ?)
+ON CONFLICT(app_id) DO UPDATE SET holder = excluded.holder, expires_at_ms = excluded.expires_at_ms
+WHERE feishu_connection_lease.holder = excluded.holder OR feishu_connection_lease.expires_at_ms <= ?
+```
+
+SQLite 保证单条语句原子，所以两个进程不会同时成功。启动时抢不到就不建长连接，快照报 `failed` + `error: lease_held`，并且不留下 `started`，对方退出后显式 `start()` 仍能接回。租约默认 20 秒，每 5 秒续约；续约返回 false（行已被别人接管）就记 `feishu.lease_lost` 诊断事件，拆掉连接与投递循环，快照报 `lease_lost`。正常退出释放。跨机器共享同一个 app 不在支持范围，两台机器的 SQLite 不共享。
+
+覆盖在 `tests/feishu-lease.test.ts`：活着时挡住第二个实例、持有者停续约后允许接管、同持有者重复抢占幂等、运行时层报 `lease_held` 且释放后能起、两次 `close` 各计一次。
+
+### F6 真实平台实况（已跑通）
+
+2026-11-10 在评审实例（Project `prj_ad9fd1a5`，appId `cli_aa13ca76bdf89cc4`）用真实应用完成：Human 私聊发送确认码完成绑定，本地卡片推送至飞书并取得真实 `platform_message_id`，在飞书卡片上点「拒绝」经回调写入 `channel_action_receipt`（`{"kind":"watch","rejected":true}`），助理对话收到拒绝回执。
+
+同一轮修掉一个真实平台边界缺陷：飞书把用户没有的 id 写成空串或 `null`（例如 `sender.sender_id.user_id`），而 schema 用 `z.string().min(1).optional()`，空串判败会丢掉整条消息。现改为 `z.preprocess` 把空串与 `null` 折成 `undefined` 再 `.optional()`，并把解析结果改成带原因的接纳判定，丢弃时记 `unsupported_message:<reason>`。顺带一个与 zod 4 有关的坑：`z.unknown().transform(fn)` 的输出会被推断为 nonoptional，字段缺失时报 `expected: "nonoptional"`，可选字段必须走 `z.preprocess`。

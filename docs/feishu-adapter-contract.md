@@ -35,6 +35,8 @@
 
 已送达卡片的授权与出站投递不同。卡片发出后仍可能被点击，因此只要求当前 route、revision、Human 与 app 身份，不要求发送时的 epoch 仍然开放；重连不能让已发出的卡片失效。解绑、换路或失去权限必须让旧卡片立即失效，重复点击只复用同一原生确认结果。
 
+同一个 app 在任一时刻只允许一个进程收事件，由 `feishu_connection_lease` 按 `app_id` 保证。抢占与续约共用一条 `ON CONFLICT(app_id) DO UPDATE ... WHERE holder = excluded.holder OR expires_at_ms <= ?` 语句，靠 SQLite 的单语句原子性避免两个进程同时成功。抢不到就不建立长连接，连接快照报 `failed` 且 `error` 为 `lease_held`，并保持可被再次 `start()` 的未启动状态；续约发现行已被别的持有者接管时报 `lease_lost` 并立即拆掉连接与投递循环。租约默认 20 秒，每 5 秒续约，正常退出释放。跨机器共享同一个 app 不在支持范围，因为两台机器的数据库不共享。
+
 ## 入站与原生操作
 
 平台 message_id 在应用作用域内去重。receipt 与原生 `sendMessage` 写入处在同一个 immediate transaction 内，成功结果引用同一 messageId。外层回滚必须同时撤销 receipt、消息及相关 run/input；不能将 requestId 视作去重键，也不能先提交接纳再异步 drain 一次原生发送。
