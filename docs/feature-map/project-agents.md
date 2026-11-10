@@ -9,6 +9,7 @@
 - `project-config` 保存 Git remote、默认分支和工作目录，刷新后保持。
 - `agent-profile` 新建与编辑人设，保持同一 Profile 标识。
 - `project-members` 添加和移除成员，刷新后关系保持一致。
+- `project-member-removal` 常规移除被四类责任阻塞（活动运行、Machine 租约、Chat 负责人、DM 已分配 Task）；一次确认的强制移除自动中止运行、收回能确认撤销的租约、转接负责人、把 Task 退回 `proposed`。
 - `ownership-boundary` 其他用户不能读取或修改本人的项目和 Profile。
 
 ## How to get to it (user POV)
@@ -33,6 +34,7 @@
 按改动选择入口。
 
 - `bash scripts/verify/h-project-agents.sh` 覆盖 Project / Agent 的领域 API 与真实 Chromium 路径。默认端口 3142，可用 `SPROUT_VERIFY_PROJECT_AGENTS_PORT` 调整。
+- `bash scripts/verify/p8c-removal-integration.sh` 覆盖强制移除的接线约束与组合场景（活动 run、挂靠中的租约、DM Task、owner 职责同时存在，另加一笔指向被移除分身的 pending handoff）。单场景细节看 [p8c-removal.sh](../../scripts/verify/p8c-removal.sh) 的四个 scenario。
 - `bash scripts/verify/g-identity-data.sh` 用于身份、用户数据与隔离变化。认证基础变化再查 [c-data-auth.sh](../../scripts/verify/c-data-auth.sh) 和 [c-auth-rate-limit.sh](../../scripts/verify/c-auth-rate-limit.sh)。
 - 已有专用实例时，可用 `BASE_URL=http://localhost:3142 node scripts/browser/h-project-agents-flow.mjs` 驱动同一 UI 路径。先确认实例、账号与数据隔离；driver 不负责 production build 或服务端越权断言。
 
@@ -43,4 +45,5 @@
 - 注册会播种默认 Agent。不能把成员列表当作空列表，也不能按第一行选择本次新建的 Agent。
 - 人设修改对下一轮运行生效。Profile 保存成功不能证明正在运行的 Agent 已切换人设，运行行为另走 [Chat 与 Run](chat-runs.md)。
 - `SPROUT_SKIP_BROWSER=1` 会跳过 H 脚本的浏览器路径。使用该模式时不能报告页面已验证。
+- 强制移除不会处置 pending handoff：交接的目标若是被移除的分身，确认门重查目标（仍是本 Project 成员、Chat 未归档、仍是 Chat 有效成员）后拒绝落地，租约保留为 `fencing` + pending 占用并记 warn 诊断，绝不显示为空闲；这笔占用交 Human 在租约页释放。
 - H 脚本会 build 并重建自己的验收数据库。固定目录与共享构建产物的限制见[地图首页](README.md#运行成本与隔离)。

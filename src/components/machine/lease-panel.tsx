@@ -1,28 +1,24 @@
-import { useState, type FormEvent, type ReactNode } from "react";
-import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../contracts/lease";
+import { useState, type ReactNode } from "react";
+import type { LeaseMutationView, LeaseView } from "../../contracts/lease";
 import type { MachineDetail } from "../../contracts/machine";
-import { ID_PREFIXES, newId } from "../../contracts/ids";
-import type { AppError, AppResult } from "../../contracts/result";
-import { isOffline } from "../../lib/connectivity";
-import { ActionOutcomeNotice } from "../ui/action-outcome";
-import type { ActionOutcome } from "../ui/action-outcome";
 import type { LeaseMutationHandler, StatusTone } from "./machine-view";
 import { formatMoment } from "./machine-view";
 import {
+  escrowStateLabel,
+  escrowTargetLabel,
   holderLabel,
   holderMachineCount,
   leaseStateLabel,
+  leaseStatusLabel,
+  liveEscrowOf,
   mutationStateLabel,
-  pendingMutationLabel,
   runLeaseRelation,
   visibleLeases,
+  type EscrowNames,
 } from "./lease-view";
 import { LeaseFencingFacts, type FencingSnapshot } from "../info-hub/lease-fencing-facts";
+import { leaseTimeoutPhase } from "./lease-timeout-view";
 import { StatusLine } from "./machine-list";
-import { ResultError } from "../project/result-error";
-import { Button } from "../ui/button";
-import { Field } from "../ui/field";
-import { Select } from "../ui/select";
 
 const toneText: Record<StatusTone, string> = {
   success: "text-status-success",
@@ -43,10 +39,10 @@ export function LeaseOverview({
   onMutate,
   dense = false,
   fencingSnapshot,
-  fixedTargetId,
   manageLink,
-  chatRow,
   revision,
+  escrowNames = {},
+  showDenseNote = true,
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -60,15 +56,18 @@ export function LeaseOverview({
   fencingSnapshot?: FencingSnapshot;
   /** 页面已有 Machine 范围的 revision 时传下来：fencing 事实只在 revision 变化时重读。 */
   revision?: string | null;
-  /** 已在单台 Machine 的页面上时，目标即这台；跨机器选择仍由调用方保留。 */
-  fixedTargetId?: string;
   /**
    * 本页不放管理表单时的入口：逐条租约给出到 Machine 详情租约区块的深链。
    * 租约数据仍属于 Project × Machine，这里只换入口位置。
    */
   manageLink?: (lease: LeaseView) => ReactNode;
-  /** 租约请求的 Chat 选择行；与申请/释放表单同处一张卡片，所以紧贴表单上方。 */
-  chatRow?: ReactNode;
+  /** 挂靠目标与指定 Agent 的显示名；缺省时退回 id，不猜名字。 */
+  escrowNames?: EscrowNames;
+  /**
+   * 窄栏里的补充说明：只在需要指路到 Machine 详情页时报这句。
+   * Chat inspector 只呈现既有租约状态，关掉它。
+   */
+  showDenseNote?: boolean;
   testId?: string;
 }) {
   const [forcedReceipts, setForcedReceipts] = useState<Record<string, LeaseMutationView>>({});
@@ -91,9 +90,12 @@ export function LeaseOverview({
           {visible.map((lease) => {
             const state = leaseStateLabel(lease.state);
             const holder = holderLabel(lease, holderNames);
-            const pending = pendingMutationLabel(lease);
+            // 挂靠行只投影 live 挂靠：LeaseView.escrow 只会是挂靠中的那一次。
+            const escrow = liveEscrowOf(lease);
             // 持有台数取同一份租约投影，不为这一行新增查询。
             const heldCount = holderMachineCount(visible, lease.holderInstanceId);
+            // 状态位互斥：挂靠中替代持有中。代次只在提交时匹配，界面不呈现。
+            const status = leaseStatusLabel(lease);
             return (
               <div
                 key={`${lease.projectId}:${lease.machineId}`}
@@ -104,12 +106,7 @@ export function LeaseOverview({
               >
                 <dt className="font-medium">{machineName(lease.machineId)}</dt>
                 <dd>
-                  <StatusLine
-                    label={state.label}
-                    detail={`代次 ${lease.generation}`}
-                    tone={state.tone}
-                    testId="lease-state"
-                  />
+                  <StatusLine label={status.label} tone={status.tone} testId="lease-state" />
                 </dd>
                 <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 break-all">
                   <span data-testid="lease-holder-name">
@@ -129,9 +126,21 @@ export function LeaseOverview({
                     </span>
                   )}
                 </dd>
+                {escrow && (
+                  <dd
+                    data-testid={`lease-escrow-${lease.machineId}`}
+                    data-escrow-state={escrow.state}
+                    data-timeout-phase={leaseTimeoutPhase(escrow.timeout)}
+                    className={toneText[escrowStateLabel(escrow.state).tone]}
+                  >
+                    {/* 发起挂靠的分身恒等于当时的持有者（leaseViewSchema 的 superRefine），所以名称直接用 holder。 */}
+                    {escrowTargetLabel(escrow, escrowNames)} · 由 {holder.name} 发起
+                  </dd>
+                )}
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
-                {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。 */}
-                {lease.state !== "fencing" && !dense && (
+                {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。
+                    挂靠中也不再解释持有者能做什么：挂靠已经把操作权交出去了。 */}
+                {lease.state !== "fencing" && !dense && !escrow && (
                   <dd className="text-muted-foreground">{state.detail}</dd>
                 )}
                 {lease.state === "fencing" && (
@@ -164,17 +173,11 @@ export function LeaseOverview({
                       testId={`${testId}-forced-receipt-state`}
                     />
                     <p className="text-muted-foreground break-all">
-                      强制收据 {forcedReceipts[lease.machineId].mutationId} · 代次{" "}
-                      {forcedReceipts[lease.machineId].completedGeneration}
+                      强制收据 {forcedReceipts[lease.machineId].mutationId}
                       {forcedReceipts[lease.machineId].forcedReclaim
                         ? ` · 覆盖了原动作 ${forcedReceipts[lease.machineId].forcedReclaim!.supersededMutationId}`
                         : ""}
                     </p>
-                  </dd>
-                )}
-                {pending && (
-                  <dd data-testid="lease-pending" className="text-status-warning">
-                    {pending}
                   </dd>
                 )}
                 {manageLink && (
@@ -187,267 +190,15 @@ export function LeaseOverview({
           })}
         </dl>
       )}
-      {onMutate ? (
-        <LeaseMutationForm
-          projectId={projectId}
-          machines={machines}
-          leases={visible}
-          submit={onMutate}
-          {...(fixedTargetId ? { fixedTargetId } : {})}
-          {...(chatRow ? { chatRow } : {})}
-          testId={`${testId}-mutation`}
-        />
-      ) : dense ? (
+      {dense && showDenseNote && (
         <p
           data-testid={`${testId}-dense-note`}
           className="text-[0.6875rem] leading-5 text-muted-foreground"
         >
-          租约的申请、释放、交接与收回在对应 Machine
-          详情的租约区块进行；本处与它们读同一份租约事实。
-        </p>
-      ) : (
-        <Notice
-          testId={`${testId}-notice`}
-          title="租约申请与释放"
-          reason="租约变更尚未接入服务端入口，P4b 集成单元接入后可操作。此处只显示只读事实。"
-        />
-      )}
-    </section>
-  );
-}
-
-function Notice({ testId, title, reason }: { testId: string; title: string; reason: string }) {
-  return (
-    <section data-testid={testId} className="space-y-1 rounded-lg border border-dashed px-4 py-3">
-      <p className="text-sm font-medium">
-        {title}
-        <span data-testid={`${testId}-badge`} className="ml-2 text-xs text-muted-foreground">
-          未实现
-        </span>
-      </p>
-      <p data-testid={`${testId}-reason`} className="text-sm text-muted-foreground">
-        {reason}
-      </p>
-    </section>
-  );
-}
-
-type MutationDraft = {
-  machineId: string;
-  lastAction: LeaseMutationInput["action"] | null;
-};
-
-/**
- * 申请与释放：pending 由等待真实结果产生，成功只来自返回的收据；
- * 失败保留选择的 Machine 与动作，并显示服务端错误码与 requestId。
- */
-export function LeaseMutationForm({
-  projectId,
-  machines,
-  leases,
-  submit,
-  fixedTargetId,
-  chatRow,
-  testId = "lease-mutation-form",
-}: {
-  projectId: string;
-  machines: MachineDetail[];
-  leases: readonly LeaseView[];
-  submit: LeaseMutationHandler;
-  /**
-   * 调用方已经定位到单台 Machine（如 Machine 详情页）时传入：目标就是它，
-   * 不再要求人从下拉框里重选一台。跨机器选择（Project settings）不传。
-   */
-  fixedTargetId?: string;
-  /** 租约请求要发到某个 Chat；选择行放在本表单标题与控件之间，而不是另起一张卡片。 */
-  chatRow?: ReactNode;
-  testId?: string;
-}) {
-  const firstMachine = fixedTargetId ?? machines.at(0)?.machine.id ?? "";
-  const fixedTarget = fixedTargetId
-    ? (machines.find((item) => item.machine.id === fixedTargetId)?.machine.name ?? fixedTargetId)
-    : null;
-  const [draft, setDraft] = useState<MutationDraft>({ machineId: firstMachine, lastAction: null });
-  const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState<ActionOutcome>(null);
-  const [error, setError] = useState<AppError | null>(null);
-  const [receipt, setReceipt] = useState<LeaseMutationView | null>(null);
-
-  const targetId = fixedTargetId ?? draft.machineId;
-  const lease = leases.find((item) => item.machineId === targetId) ?? null;
-  const action: "acquire" | "release" | null =
-    lease === null || lease.state === "free"
-      ? "acquire"
-      : lease.state === "held"
-        ? "release"
-        : null;
-
-  async function run(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending || !action || !targetId) return;
-    if (isOffline()) {
-      setOutcome("failure");
-      return;
-    }
-    setOutcome("processing");
-    setError(null);
-    setReceipt(null);
-    const input: LeaseMutationInput =
-      action === "acquire"
-        ? {
-            action,
-            projectId,
-            machineId: targetId,
-            requestId: newId(ID_PREFIXES.request),
-            expectedGeneration: lease?.generation ?? 0,
-          }
-        : {
-            action: "release",
-            projectId,
-            machineId: targetId,
-            requestId: newId(ID_PREFIXES.request),
-            expectedGeneration: lease!.generation,
-          };
-    setPending(true);
-    setDraft((current) => ({ ...current, lastAction: action }));
-    try {
-      const result: AppResult<LeaseMutationView> = await submit(input);
-      if (!result.ok) {
-        setOutcome(result.error.code === "lease_result_unconfirmed" ? "unknown" : "failure");
-        setError(result.error);
-        return;
-      }
-      setOutcome(result.data.state === "completed" ? "success" : "processing");
-      setReceipt(result.data);
-    } catch {
-      setOutcome("unknown");
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <form
-      data-testid={testId}
-      aria-busy={pending}
-      onSubmit={run}
-      className="space-y-3 border-t border-border pt-4"
-    >
-      <h5 className="text-xs font-medium">申请与释放</h5>
-      <p className="text-[0.6875rem] leading-5 text-muted-foreground">
-        动作与期望代次一起提交；代次失效时服务端拒绝，界面不把拒绝显示为成功。租约变更不会终止进程或删除文件。
-      </p>
-      {chatRow}
-      {/*
-        目标控件与提交按钮同排、同一基线：说明文字移出这一行，否则 items-end 会把按钮
-        对齐到说明底部而不是控件底部。窄屏（<1200px）纵向堆叠，不把按钮挤到下一行右侧。
-      */}
-      <div className="flex flex-col gap-3 desktop:flex-row desktop:items-end">
-        <div className="min-w-0 desktop:flex-1">
-          {fixedTargetId ? (
-            <div data-testid={`${testId}-target`} className="flex flex-col gap-1.75">
-              <span className="text-xs font-medium">目标 Machine</span>
-              <p className="min-h-9.5 rounded-control border border-input bg-muted px-2.75 py-2 text-[13px] break-all">
-                {fixedTarget}
-              </p>
-            </div>
-          ) : (
-            <Field label="目标 Machine">
-              <Select
-                data-testid={`${testId}-machine`}
-                value={draft.machineId}
-                disabled={pending}
-                aria-describedby={`${testId}-target-hint`}
-                onChange={(event) => {
-                  setDraft({ machineId: event.target.value, lastAction: null });
-                  setError(null);
-                  setReceipt(null);
-                }}
-              >
-                {machines.length === 0 && <option value="">没有可操作的 Machine</option>}
-                {machines.map((item) => (
-                  <option key={item.machine.id} value={item.machine.id}>
-                    {item.machine.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            type="submit"
-            loading={pending}
-            disabled={!action}
-            data-testid={`${testId}-submit`}
-          >
-            {pending
-              ? action === "release"
-                ? "正在释放…"
-                : "正在申请…"
-              : action === "release"
-                ? "释放租约"
-                : "申请租约"}
-          </Button>
-          {!action && (
-            <span
-              data-testid={`${testId}-fencing`}
-              className="text-[0.6875rem] text-muted-foreground"
-            >
-              租约回收中，等待 Worker 确认后再操作。
-            </span>
-          )}
-        </div>
-      </div>
-      <p
-        id={`${testId}-target-hint`}
-        data-testid={`${testId}-target-hint`}
-        className="text-xs leading-6 text-muted-foreground"
-      >
-        {fixedTargetId
-          ? "目标就是你当前所在的这台 Machine；租约单位是 Project × Machine。"
-          : "必须显式选择；没有默认目标。"}
-      </p>
-      <p data-testid={`${testId}-context`} className="text-[0.6875rem] text-muted-foreground">
-        {lease
-          ? `当前：${leaseStateLabel(lease.state).label} · 代次 ${lease.generation} · ${
-              draft.lastAction === "release" ? "再次提交将释放" : "申请/释放都会要求代次匹配"
-            }`
-          : "当前：该 Machine 在本 Project 还没有租约，提交将创建第一条。"}
-      </p>
-      {pending && (
-        <p data-testid={`${testId}-pending`} className={`text-xs ${toneText.warning}`}>
-          请求已提交，等待服务端返回结果。结果未知前不显示成功。
+          租约的强制收回在对应 Machine 详情的租约区块进行。
         </p>
       )}
-      <ActionOutcomeNotice
-        action="租约动作"
-        state={outcome}
-        testId={`${testId}-outcome`}
-        detail={
-          outcome === "unknown"
-            ? "未收到确认，请刷新核对租约与代次后再操作"
-            : isOffline() && outcome === "failure"
-              ? "离线，未提交"
-              : outcome === "processing" && receipt
-                ? "等待 Worker 确认"
-                : undefined
-        }
-      />
-      {error && <ResultError error={error} testId={`${testId}-error`} />}
-      {receipt && (
-        <div data-testid={`${testId}-receipt`} className="space-y-1 text-xs leading-6">
-          <StatusLine
-            {...mutationStateLabel(receipt)}
-            testId={`${testId}-${receipt.state === "completed" ? "success" : "waiting"}`}
-          />
-          <p className="text-muted-foreground">
-            动作收据 {receipt.mutationId} ·{" "}
-            {receipt.state === "pending" ? "等待 Worker 确认" : "已由 Worker 确认"}
-          </p>
-        </div>
-      )}
-    </form>
+    </section>
   );
 }
 
@@ -457,25 +208,21 @@ export function MachineLeaseSection({
   detail,
   leases,
   holderNames = {},
+  escrowNames = {},
   runs,
   onMutate,
   revision,
-  chatRow = null,
-  transferControls = null,
   testId = "machine-lease-section",
 }: {
   projectId: string;
   detail: MachineDetail;
   leases: readonly LeaseView[];
   holderNames?: Readonly<Record<string, string>>;
+  escrowNames?: EscrowNames;
   runs?: readonly { runId: string; status: string }[];
   onMutate?: LeaseMutationHandler;
   /** Machine 范围的活动 revision，由页面传入；不传就保持五秒定时读。 */
   revision?: string | null;
-  /** 租约请求的 Chat 选择行；有申请/释放表单时紧贴表单上方。 */
-  chatRow?: ReactNode;
-  /** 交接与收回卡片；必须落在申请/释放之后、同一个租约小节里。 */
-  transferControls?: ReactNode;
   testId?: string;
 }) {
   // 详情页只投影这一台 Machine 的租约；同 Project 其他 Machine 的租约留在列表与 Project 视图。
@@ -489,14 +236,12 @@ export function MachineLeaseSection({
         machines={[detail]}
         leases={scoped}
         holderNames={holderNames}
+        escrowNames={escrowNames}
         onMutate={onMutate}
-        fixedTargetId={detail.machine.id}
         revision={revision}
-        {...(chatRow ? { chatRow } : {})}
         testId={`${testId}-overview`}
       />
       <RunHoldingNote leases={scoped} machines={[detail]} runs={runs} />
-      {transferControls}
     </div>
   );
 }

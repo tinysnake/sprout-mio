@@ -216,22 +216,15 @@ for (const colorScheme of ["light", "dark"]) {
         assert.equal(await fencing.getAttribute("data-holder-instance"), "ins_bbbbbbbb");
         const state = await fencing.getByTestId("lease-state").innerText();
         assert.doesNotMatch(state, /空闲|已释放|已收回|成功/);
+        // 只读场景没有 submit 通道，因此也没有普通收回控件：收回只在真实租约页出现。
         assert.equal(
           await details.getByTestId("lease-fencing-reclaim").count(),
-          1,
-          "完整事实 Dialog 保留普通收回请求",
+          0,
+          "只读场景不提供收回入口",
         );
+        assert.equal(await details.getByTestId("lease-fencing-reclaim-confirm").count(), 0);
         assert.doesNotMatch(await fencing.innerText(), /永远无法结束|没有强制推进入口/);
-        const reclaim = details.getByTestId("lease-fencing-reclaim");
-        assert.equal(await reclaim.isDisabled(), true);
-        await details.getByTestId("lease-fencing-reclaim-confirm").check();
-        await reclaim.click();
-        const error = details.getByTestId("lease-fencing-reclaim-error");
-        await error.waitFor();
-        assert.match(await error.innerText(), /lease_fencing/);
-        assert.match(await error.innerText(), /等待 Worker 确认后才能完成收回/);
         assert.equal(await fencing.getAttribute("data-lease-state"), "fencing");
-        assert.equal(await details.getByTestId("lease-fencing-reclaim-receipt").count(), 0);
         await page.keyboard.press("Escape");
         await details.waitFor({ state: "detached" });
         await shootAt(page, "lease-fencing-facts", `fencing-${colorScheme}-${width}`);
@@ -273,8 +266,8 @@ await check("Project 隔离：当前 Project 看不到另一个 Project 的租�
   }
 });
 
-// 申请成功：pending 在等待期间可见，写回后状态变为持有中，并带上新的代次。
-await check("申请租约：pending 与成功反馈", async () => {
+// 人类在演示页没有申请 / 释放 / 交接入口：只剩租约事实与远端操作记录。
+await check("租约场景不提供申请、释放与交接入口", async () => {
   const { context, page } = await open({
     width: 1200,
     height: 1000,
@@ -283,51 +276,37 @@ await check("申请租约：pending 与成功反馈", async () => {
   });
   try {
     await gotoLeases(page);
-    await page.getByTestId("lease-demo-outcome").selectOption("hold");
-    const form = page.getByTestId("lease-scene-overview-mutation");
-    await form.getByTestId("lease-scene-overview-mutation-machine").selectOption({ index: 1 });
-    await form.getByTestId("lease-scene-overview-mutation-submit").click();
-    await form.getByTestId("lease-scene-overview-mutation-pending").waitFor();
-    // 未结算前不出现成功收据。
-    assert.equal(await form.getByTestId("lease-scene-overview-mutation-receipt").count(), 0);
-    await shootAt(page, "lease-scene-overview-mutation", "mutation-pending");
-    await page.getByTestId("lease-demo-settle-success-0").click();
-    await form.getByTestId("lease-scene-overview-mutation-success").waitFor();
-    await form.getByTestId("lease-scene-overview-mutation-receipt").waitFor();
-    // 写回后该 Machine 变为持有中。
-    const row = page.locator('[data-testid^="lease-row-"]').filter({ hasText: "待配对的 MacBook" });
-    assert.equal(await row.getAttribute("data-lease-state"), "held");
-    await shootAt(page, "lease-scene-overview-mutation", "mutation-success");
-  } finally {
-    await context.close();
-  }
-});
-
-// 失败：保留目标选择与动作，显示错误码与 requestId，不写回租约。
-await check("申请失败：保留目标并显示原因（旧授权代次）", async () => {
-  const { context, page } = await open({
-    width: 1200,
-    height: 1000,
-    colorScheme: "dark",
-    scene: "machines",
-  });
-  try {
-    await gotoLeases(page);
-    await page.getByTestId("lease-demo-outcome").selectOption("stale");
-    const form = page.getByTestId("lease-scene-overview-mutation");
-    await form.getByTestId("lease-scene-overview-mutation-machine").selectOption({ index: 1 });
-    await form.getByTestId("lease-scene-overview-mutation-submit").click();
-    const error = form.getByTestId("lease-scene-overview-mutation-error");
-    await error.waitFor();
-    assert.match((await error.textContent()) ?? "", /lease_stale_generation/);
-    assert.equal(
-      await form.getByTestId("lease-scene-overview-mutation-receipt").count(),
-      0,
-      "失败不得显示成功收据",
-    );
-    const row = page.locator('[data-testid^="lease-row-"]').filter({ hasText: "待配对的 MacBook" });
-    assert.notEqual(await row.getAttribute("data-lease-state"), "held");
-    await shootAt(page, "lease-scene-overview-mutation", "mutation-failure-stale-generation");
+    for (const id of [
+      "lease-scene-controls",
+      "lease-demo-outcome",
+      "lease-demo-attempts",
+      "lease-scene-overview-mutation",
+      "lease-chat-select",
+      "lease-chat-picked",
+      "lease-transfer-controls",
+      "lease-handoff-chat-required",
+    ])
+      assert.equal(await page.getByTestId(id).count(), 0, `演示页不得包含 ${id}`);
+    for (const label of ["申请租约", "释放租约", "请求分身交接"]) {
+      assert.equal(
+        await page.getByRole("button", { name: label }).count(),
+        0,
+        `不得有「${label}」按钮`,
+      );
+      assert.equal(
+        await page.getByRole("option", { name: label }).count(),
+        0,
+        `不得有「${label}」选项`,
+      );
+    }
+    const text = await page.getByTestId("lease-scene").innerText();
+    assert.doesNotMatch(text, /提交后的结果|演示控制|结算成功|旧授权代次|已被其他分身持有/);
+    // 事实仍在：租约行、状态位、远端操作结果都还在。
+    assert.ok((await page.getByTestId("lease-row-").count()) === 0);
+    assert.ok((await page.locator('[data-testid^="lease-row-"]').count()) >= 3, "租约行仍在");
+    assert.ok((await page.getByTestId("lease-state").count()) >= 3, "状态位仍在");
+    assert.ok((await page.getByTestId("lease-scene-executions").count()) === 1);
+    await shoot(page, "lease-scene-read-only");
   } finally {
     await context.close();
   }
@@ -348,7 +327,12 @@ await check("run 结束后租约仍显示持有", async () => {
       .locator('[data-held="true"]')
       .evaluateAll((nodes) => nodes.map((node) => node.textContent));
     assert.ok(held.length >= 2, `expected held leases, got ${held.length}`);
-    for (const note of held) assert.match(note ?? "", /仍由该分身持有|与所在 run 并行存在/);
+    for (const note of held)
+      assert.match(
+        note ?? "",
+        // 结束的 run 只陈述已结束；fencing 行说的是旧授权在等 Worker，不再解释「直到释放」。
+        /最近一次 run 已结束（completed）|租约记录仍由该分身持有|与所在 run 并行存在/,
+      );
     const free = await relation.locator('[data-held="false"]').count();
     assert.equal(free, 1, "只有 free 的租约不算持有");
     // 页面上没有把 run 结束写成已释放。
@@ -378,10 +362,10 @@ await check("Chat inspector 与 Project settings 呈现同一租约事实", asyn
       .locator('[data-testid="chat-leases"] [data-lease-state="held"]')
       .count();
     assert.ok(chatHeld >= 2, `chat inspector held leases ${chatHeld}`);
-    assert.ok((await page.getByTestId("chat-executions").count()) === 1);
-    assert.ok((await page.getByTestId("chat-execution-targets").count()) === 1);
+    // v2：Info Hub 的 Chat inspector 只呈现既有租约状态，不再重复 Machine 的远端操作表格与柱状汇总。
+    assert.equal(await page.getByTestId("chat-executions").count(), 0);
+    assert.equal(await page.getByTestId("chat-execution-targets").count(), 0);
     await shootAt(page, "chat-leases", "chat-inspector-leases");
-    await shootAt(page, "chat-executions", "chat-inspector-executions");
   } finally {
     await context.close();
   }
@@ -512,55 +496,45 @@ await check("独立租约路由隔离设置并显示租约与远端操作目标"
     for (const target of targets) assert.match(target ?? "", /远端 Worker/);
     await page.keyboard.press("Escape");
     await executions.waitFor({ state: "detached" });
-    // 第 6 条：Machine 详情页不再要求重选目标，目标就是当前这台；表单仍要求代次匹配。
-    const form = page.getByTestId("machine-lease-section-overview-mutation");
-    await form.waitFor();
-    assert.equal(
-      await form.getByTestId("machine-lease-section-overview-mutation-machine").count(),
-      0,
-      "no target picker when the page is already a single Machine",
-    );
-    assert.match(
-      await form.getByTestId("machine-lease-section-overview-mutation-target").innerText(),
-      /工作室 Mac mini/,
-    );
-    assert.doesNotMatch(await form.innerText(), /必须显式选择；没有默认目标/);
-    assert.match(
-      await form.getByTestId("machine-lease-section-overview-mutation-target-hint").innerText(),
-      /目标就是你当前所在的这台 Machine/,
-    );
-    // 下拉框与按钮同一行基线；窄屏换行但不塌。
-    const aligned = await form.evaluate((node) => {
-      const target = node.querySelector(
-        '[data-testid="machine-lease-section-overview-mutation-target"]',
-      );
-      const submit = node.querySelector(
-        '[data-testid="machine-lease-section-overview-mutation-submit"]',
-      );
-      const a = target.getBoundingClientRect();
-      const b = submit.getBoundingClientRect();
-      return {
-        sameRow: Math.abs(a.bottom - b.bottom) <= 8,
-        targetRight: a.right,
-        submitLeft: b.left,
-      };
-    });
-    assert.ok(aligned.sameRow, `表单控件与按钮同一基线: ${JSON.stringify(aligned)}`);
-    assert.ok(aligned.submitLeft >= aligned.targetRight - 1, "按钮在目标之后，不重叠");
-    assert.match(
-      await page.getByTestId("machine-lease-detail").innerText(),
-      /租约单位是 Project × Machine/,
-    );
-    // 第 6 条：交接与收回同样不要求重选 Machine。演示场景直接注入变更回调，
-    // 因此只在真实页面的 ProjectLeaseActions 出现时才断言（真实路径由 z-lease-integration.sh 覆盖）。
-    if ((await page.getByTestId("lease-transfer-controls").count()) > 0) {
+    // 人类在这页只剩强制收回：目标就是当前这台，不再有申请/释放表单或交接入口。
+    const reclaim = page.getByTestId("lease-reclaim-controls");
+    await reclaim.waitFor();
+    // 目标就是本页这台 Machine：页面标题已经指定了它，收回卡不再重复名字。
+    assert.equal(await page.getByTestId("lease-reclaim-machine").count(), 0);
+    assert.equal(await page.getByTestId("lease-reclaim-confirm").count(), 1, "强制收回仍有确认");
+    assert.equal(await page.getByTestId("lease-reclaim").isDisabled(), true, "未确认时不可提交");
+    await page.getByTestId("lease-reclaim-confirm").check();
+    assert.equal(await page.getByTestId("lease-reclaim").isDisabled(), false);
+    await page.getByTestId("lease-reclaim-confirm").uncheck();
+    for (const id of [
+      "machine-lease-section-overview-mutation",
+      "lease-chat-select",
+      "lease-chat-picked",
+      "lease-transfer-controls",
+      "lease-handoff-chat-required",
+    ])
+      assert.equal(await page.getByTestId(id).count(), 0, `租约页不得包含 ${id}`);
+    for (const label of ["申请租约", "释放租约", "请求分身交接"])
       assert.equal(
-        await page.getByLabel("交接或收回的 Machine").count(),
+        await page.getByRole("button", { name: label }).count(),
         0,
-        "no machine picker for handoff and reclaim",
+        `不得有「${label}」按钮`,
       );
-      assert.match(await page.getByTestId("lease-transfer-machine").innerText(), /工作室 Mac mini/);
-    }
+    assert.doesNotMatch(
+      await page.getByTestId("machine-lease-detail").innerText(),
+      /租约单位是 Project × Machine|变更不会终止进程或删除文件|目标就是你当前所在的这台 Machine/,
+      "说明文字已删除",
+    );
+    // 「远端操作」在同一页只出现一次标题；说明文字不再是重复的一段。
+    assert.equal(
+      await page.getByTestId("machine-lease-page").getByText("远端操作", { exact: true }).count(),
+      1,
+      "远端操作标题只保留一个",
+    );
+    assert.doesNotMatch(
+      await page.getByTestId("machine-remote-executions").innerText(),
+      /操作目标由请求自身指定|每条操作都指定 Machine|日志续读与取消入口尚未接入服务端|宿主工具（如 sprout_status/,
+    );
     assert.equal(await page.getByTestId("machine-lease-jump").count(), 0, "租约页没有自跳按钮");
     await shootAt(page, "machine-lease-detail", "machine-detail-lease");
     await shootAt(page, "machine-executions", "machine-detail-executions");

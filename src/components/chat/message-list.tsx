@@ -9,6 +9,7 @@ import { clockLabel } from "./format";
 import { RunActivityGroup } from "./run-activity";
 import { RUN_STATUS_LABELS } from "./run-status";
 import { senderKey } from "./chat-session-display";
+import { LEASE_TIMEOUT_SENDER_NAME, isLeaseTimeoutSender } from "./lease-timeout-message";
 import { splitMessageSegments } from "./message-segments";
 import { SkillMark } from "./skill-mark";
 import type { MessageSkillSpan } from "../../contracts/skill";
@@ -66,6 +67,8 @@ export function MessageList({
       message.senderKind === "automation" ||
       message.senderKind === "assistant_event" ||
       message.senderKind === "assistant_work";
+    // 挂靠超时提醒不是成员，所以既不是「历史发送者」，也不该被当成某个 Profile 的发言。
+    const systemNotice = isLeaseTimeoutSender(message.senderKind, message.senderId);
     const agentMessage = message.senderKind === "agent";
     const key =
       message.senderKind === "automation"
@@ -74,15 +77,17 @@ export function MessageList({
           ? `${message.senderKind}:${message.senderId}`
           : senderKey(message.senderKind, message.senderId);
     const name =
-      (message.senderKind === "automation"
-        ? message.automationSource.kind === "project_cron"
-          ? "Project cron"
-          : "Project webhook"
-        : message.senderKind === "assistant_event"
-          ? "Assistant 通知"
-          : message.senderKind === "assistant_work"
-            ? "Human 已确认的工作提案"
-            : senderNames?.get(key)) ??
+      (systemNotice
+        ? LEASE_TIMEOUT_SENDER_NAME
+        : message.senderKind === "automation"
+          ? message.automationSource.kind === "project_cron"
+            ? "Project cron"
+            : "Project webhook"
+          : message.senderKind === "assistant_event"
+            ? "Assistant 通知"
+            : message.senderKind === "assistant_work"
+              ? "Human 已确认的工作提案"
+              : senderNames?.get(key)) ??
       (human ? humanName || "你" : dmAgentName) ??
       (human ? "Human" : "Agent");
     const previous = messages[index - 1];
@@ -92,7 +97,7 @@ export function MessageList({
       previous.senderId === message.senderId &&
       new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() <=
         GROUPING_WINDOW_MS;
-    const historical = !source && knownSenders ? !knownSenders.has(key) : false;
+    const historical = !source && !systemNotice && knownSenders ? !knownSenders.has(key) : false;
     const links = runFacts?.get(message.id) ?? [];
     const activityRecord = runActivityByMessage?.get(message.id);
     const activity = activityRecord?.activity;
@@ -150,7 +155,7 @@ export function MessageList({
               {message.nativeSource.runId ? "查看工作结果" : "查看工作对话"}
             </a>
           )}
-          {agentMessage && !grouped && persona && (
+          {!human && !grouped && !systemNotice && !source && persona && (
             <p data-testid="message-persona" className="mb-2 text-[10px] text-muted-foreground">
               {persona}
             </p>
@@ -179,7 +184,7 @@ export function MessageList({
               <p className="mt-2 whitespace-pre-wrap break-words">{message.body}</p>
             </details>
           )}
-          {agentMessage && (
+          {!human && !systemNotice && !source && (
             <p data-testid="message-run-links" className="mt-1 text-[10px] text-muted-foreground">
               {links.length === 0 ? (
                 activityRecord ? (

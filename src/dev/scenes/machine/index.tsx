@@ -21,8 +21,8 @@ import type {
   SaveProjectMachineBindingInput,
 } from "../../../contracts/machine";
 import type { AppErrorCode } from "../../../contracts/result";
-import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../../contracts/lease";
-import type { AppResult } from "../../../contracts/result";
+import type { LeaseView } from "../../../contracts/lease";
+import type { ProjectInfoHub } from "../../../contracts/info-hub";
 import { PageFrame } from "../../../components/layout/page-frame";
 import { ResultError } from "../../../components/project/result-error";
 import { Select } from "../../../components/ui/select";
@@ -36,15 +36,19 @@ import {
   machineProject,
   secondProject,
 } from "./fixtures";
+import { demoInfoHub } from "../management/fixtures";
+import { demoFreeLease } from "./lease-fixtures";
+import { PLATFORM_SCENES, PLATFORM_SCENE_LABELS, platformCapability } from "./platform-fixtures";
+import type { PlatformScene } from "./platform-fixtures";
 import { LeasesScene } from "./leases";
 import { ExecutionsScene } from "./executions";
 import {
   demoExecutions,
   demoHolderNames,
-  demoInstanceIds,
   demoLeases,
-  applyLeaseMutation,
-  completedReceipt,
+  demoEscrowNames,
+  demoEscrowSceneLeases,
+  demoTimeoutSceneLeases,
 } from "./lease-fixtures";
 import { ID_PREFIXES, newId } from "@/contracts/ids";
 
@@ -76,8 +80,12 @@ type DemoState = {
   conflictRoot: boolean;
   throwRenew: boolean;
   projectId: string;
-  /** 租约变更的演示结果：成功写回，失败保留目标并显示原因。 */
-  leaseOutcome: "success" | "stale_generation" | "not_holder";
+  /** I-P8a：挂靠中的既有挂靠（不含超时写死的事实）。 */
+  escrowScene: boolean;
+  /** I-P8b：挂靠超时的五种形态（含已升级与领取后不再超时）。 */
+  timeoutScene: boolean;
+  /** 第一台 Machine 的平台与执行环境场景，决定能力快照的基线。 */
+  platformScene: PlatformScene;
 };
 
 function DemoControls({
@@ -97,7 +105,34 @@ function DemoControls({
       className="mt-6 rounded-container border border-border bg-popover p-3 text-xs shadow-lg desktop:fixed desktop:right-4 desktop:bottom-4 desktop:z-50 desktop:mt-0 desktop:w-64"
     >
       <summary className="cursor-pointer font-medium">演示控制 · Machines</summary>
-      <label className="mt-3 block" htmlFor="machine-demo-shells">
+      <label className="mt-3 block" htmlFor="machine-demo-platform">
+        第一台 Machine 的平台与执行环境
+      </label>
+      <Select
+        id="machine-demo-platform"
+        data-testid="machine-demo-platform"
+        className="mt-1"
+        value={state.platformScene}
+        onChange={(event) => {
+          const scenario = event.target.value as PlatformScene;
+          update({
+            platformScene: scenario,
+            machines: state.machines.map((machine, index) =>
+              index === 0 ? { ...machine, capability: platformCapability(scenario) } : machine,
+            ),
+          });
+        }}
+      >
+        {PLATFORM_SCENES.map((scene) => (
+          <option key={scene} value={scene}>
+            {PLATFORM_SCENE_LABELS[scene]}
+          </option>
+        ))}
+      </Select>
+      <p className="mt-1 text-[0.6875rem] leading-4 text-muted-foreground">
+        只替换能力快照；名称与 root 提示仍来自 macOS 夹具。
+      </p>
+      <label className="mt-2 block" htmlFor="machine-demo-shells">
         第一台 Machine 的 Shell 探测
       </label>
       <Select
@@ -107,7 +142,7 @@ function DemoControls({
         defaultValue="all"
         onChange={(event) => {
           const scenario = event.target.value;
-          const baseline = demoMachineDetails[0].capability!;
+          const baseline = platformCapability(state.platformScene);
           update({
             machines: state.machines.map((machine, index) =>
               index !== 0
@@ -168,6 +203,7 @@ function DemoControls({
               ? "online"
               : (scenario as "online" | "offline" | "connecting");
           const baseline = demoMachineDetails[0];
+          const capable = platformCapability(state.platformScene);
           update({
             machines: state.machines.map((machine, index) =>
               index !== 0
@@ -185,7 +221,7 @@ function DemoControls({
                               lastSeenAt: "2026-10-18T07:11:30.000Z",
                               reason: "stale",
                             },
-                    capability: { ...baseline.capability!, current: scenario === "online" },
+                    capability: { ...capable, current: scenario === "online" },
                   },
             ),
           });
@@ -343,22 +379,45 @@ function DemoControls({
           把当前 Machine 标为已配对
         </button>
       )}
-      <label className="mt-3 block" htmlFor="machine-demo-lease">
-        租约变更的演示结果
+      <label className="mt-3 flex items-start gap-2 leading-5" htmlFor="machine-demo-escrow-scene">
+        <input
+          id="machine-demo-escrow-scene"
+          data-testid="machine-demo-escrow-scene"
+          type="checkbox"
+          className="mt-0.5"
+          checked={state.escrowScene}
+          onChange={(event) =>
+            update({
+              escrowScene: event.target.checked,
+              timeoutScene: false,
+              leases: event.target.checked ? [...demoEscrowSceneLeases] : [...demoLeases],
+            })
+          }
+        />
+        <span>
+          演示数据里先放两台已挂靠的 Machine（{demoMachineDetails[0].machine.name} /{" "}
+          {demoMachineDetails[4].machine.name}）
+        </span>
       </label>
-      <Select
-        id="machine-demo-lease"
-        data-testid="machine-demo-lease"
-        className="mt-1"
-        defaultValue="success"
-        onChange={(event) =>
-          update({ leaseOutcome: event.target.value as DemoState["leaseOutcome"] })
-        }
-      >
-        <option value="success">成功（写回租约事实）</option>
-        <option value="stale_generation">拒绝：旧授权代次失效</option>
-        <option value="not_holder">拒绝：不是持有者</option>
-      </Select>
+      <label className="mt-3 flex items-start gap-2 leading-5" htmlFor="machine-demo-timeout-scene">
+        <input
+          id="machine-demo-timeout-scene"
+          data-testid="machine-demo-timeout-scene"
+          type="checkbox"
+          className="mt-0.5"
+          checked={state.timeoutScene}
+          onChange={(event) =>
+            update({
+              timeoutScene: event.target.checked,
+              escrowScene: false,
+              leases: event.target.checked ? [...demoTimeoutSceneLeases] : [...demoLeases],
+            })
+          }
+        />
+        <span>
+          演示数据换成「挂靠超时」的五种形态（超时未处理 · 已升级 · 等待中 · 领取后不再超时）
+        </span>
+      </label>
       <p className="mt-2 leading-5 text-muted-foreground">
         演示数据与本地模拟操作。刷新会回到固定 fixtures；不连接业务服务。 选择「待配对的
         MacBook」查看配对置顶，选择「工作室 Mac mini」查看已配对后的次栏； 安装区问号可查看 HTTP /
@@ -526,6 +585,40 @@ function BackToMachines({ go }: { go: (to: string) => void }) {
   );
 }
 
+/** 场景里的 Info Hub 事实：只为让强制收回卡片显示在真实位置，不连接业务服务。 */
+function demoLeaseInfo(
+  project: { id: string; name: string },
+  leases: readonly LeaseView[],
+): ProjectInfoHub {
+  const scoped = leases.filter((lease) => lease.projectId === project.id);
+  const leaseSummaries = scoped.map((lease) => ({
+    ...lease,
+    holderResolution: lease.holderInstanceId ? ("unknown" as const) : ("none" as const),
+    holder: null,
+  }));
+  return {
+    ...demoInfoHub,
+    projectId: project.id,
+    projectName: project.name,
+    machines: demoMachineDetails.map((detail) => ({
+      projectId: project.id,
+      machineId: detail.machine.id,
+      name: detail.machine.name,
+      description: "",
+      projectMembership: "current" as const,
+      connection: detail.connection,
+      lease: leaseSummaries.find((lease) => lease.machineId === detail.machine.id) ?? {
+        ...demoFreeLease,
+        projectId: project.id,
+        machineId: detail.machine.id,
+        holderResolution: "none" as const,
+        holder: null,
+      },
+    })),
+    leases: { available: true, items: leaseSummaries },
+  };
+}
+
 export function MachineScenes() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -543,7 +636,9 @@ export function MachineScenes() {
     conflictRoot: false,
     throwRenew: false,
     projectId: machineProject.id,
-    leaseOutcome: "success",
+    escrowScene: false,
+    timeoutScene: false,
+    platformScene: "macos-full",
   });
   const [createOpen, setCreateOpen] = useState(false);
   const update = (patch: Partial<DemoState>) => setDraft((current) => ({ ...current, ...patch }));
@@ -649,34 +744,6 @@ export function MachineScenes() {
     return success(intent);
   }
 
-  /** 演示：租约变更不自动成功，结果由演示控件选择；失败保留目标与动作。 */
-  async function leaseMutation(input: LeaseMutationInput): Promise<AppResult<LeaseMutationView>> {
-    await delay(200);
-    if (draft.leaseOutcome === "stale_generation")
-      return {
-        ok: false,
-        error: {
-          code: "lease_stale_generation",
-          message: "租约代次已变化，请读取当前租约后重试。目标与动作已保留。",
-          requestId: DEMO_REQUEST_ID,
-        },
-        requestId: DEMO_REQUEST_ID,
-      };
-    if (draft.leaseOutcome === "not_holder")
-      return {
-        ok: false,
-        error: {
-          code: "lease_not_holder",
-          message: "当前分身不是该租约的持有者，不能释放。",
-          requestId: DEMO_REQUEST_ID,
-        },
-        requestId: DEMO_REQUEST_ID,
-      };
-    const receipt = completedReceipt(input, "2026-10-18T07:30:00.000Z", "2026-10-18T07:31:00.000Z");
-    update({ leases: applyLeaseMutation(draft.leases, receipt, demoInstanceIds.primary) });
-    return { ok: true, data: receipt, requestId: DEMO_REQUEST_ID };
-  }
-
   async function saveRoot(
     input: SaveMachineRootDirectoryInput,
   ): Promise<MachineResult<MachineRootDirectory>> {
@@ -762,39 +829,44 @@ export function MachineScenes() {
             href={(machineId) => `/machines/${machineId}`}
             renderLink={renderLink}
           />
-          <a
-            href="/machines/lifecycle"
-            data-testid="machine-lifecycle-link"
-            onClick={(event) => {
-              event.preventDefault();
-              go("/machines/lifecycle");
-            }}
+          <nav
+            aria-label="演示场景"
+            className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm"
           >
-            续签请求生命周期探针
-          </a>
-          <a
-            href="/machines/leases"
-            data-testid="machine-leases-link"
-            onClick={(event) => {
-              event.preventDefault();
-              go("/machines/leases");
-            }}
-          >
-            租约与远端操作
-          </a>
-          <a
-            href="/machines/executions"
-            data-testid="machine-executions-link"
-            onClick={(event) => {
-              event.preventDefault();
-              go("/machines/executions");
-            }}
-          >
-            长命令与不确定结果
-          </a>
-          <p className="mt-4 text-xs leading-6 text-muted-foreground">
-            Machines 展示连接与 Project 绑定；租约与远端操作在专用演示场景和 Machine 详情里查看。
-          </p>
+            <a
+              href="/machines/lifecycle"
+              data-testid="machine-lifecycle-link"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                go("/machines/lifecycle");
+              }}
+            >
+              续签请求生命周期探针
+            </a>
+            <a
+              href="/machines/leases"
+              data-testid="machine-leases-link"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                go("/machines/leases");
+              }}
+            >
+              租约与远端操作
+            </a>
+            <a
+              href="/machines/executions"
+              data-testid="machine-executions-link"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                go("/machines/executions");
+              }}
+            >
+              长命令与不确定结果
+            </a>
+          </nav>
         </PageFrame>
         <MachineCreateDialog
           open={createOpen}
@@ -844,9 +916,10 @@ export function MachineScenes() {
           installOrigin="http://192.168.1.10:3210"
           leases={draft.leases}
           holderNames={demoHolderNames}
+          escrowNames={demoEscrowNames}
+          leaseInfo={demoLeaseInfo(project, draft.leases)}
           runs={[{ runId: "run_12345678", status: "completed" }]}
           executions={demoExecutions}
-          onLeaseMutate={leaseMutation}
           onRenewEnrollment={renew}
           onEnrollmentCreated={(enrollment) => {
             update({ tickets: { ...draft.tickets, [machineId]: enrollment } });

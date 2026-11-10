@@ -277,7 +277,11 @@ export function MachineDetailPanel({
               )}
             </SettingsSection>
 
-            <SettingsSection title="Shell 能力" testId="machine-shells">
+            <SettingsSection
+              title="Shell 能力"
+              description="Worker 在所在机器上实际探测到的 shell 与执行环境。执行环境未上报、会话未知、不适用于该平台是三种不同状态；未上报不等于不支持。"
+              testId="machine-shells"
+            >
               <MachineShellSummary
                 key={detail.machine.id}
                 capability={capability}

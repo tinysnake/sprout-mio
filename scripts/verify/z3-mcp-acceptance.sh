@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs z3-mcp-acceptance || exit $?
 mkdir -p .verify
 run_dir="$(mktemp -d "$PWD/.verify/z3-mcp-acceptance-XXXXXX")"
 export Z3_DIR="$run_dir"
@@ -484,13 +487,39 @@ try {
 const y2RawPath=join(dir,'y2-child.json');
 let configuredServiceExited=false;
 try { const y2Raw=read(y2RawPath); try { process.kill(y2Raw.managedPid,0); } catch (error) { configuredServiceExited=error.code==='ESRCH'; } } catch {}
+// 两份调用记录是 C 探针的产物：缺文件说明探针没走到那一步，不是这三项被证伪。所以这里自己
+// 判定状态并把探针的失败原因带进消息——直接让 ENOENT 抛出去，读者只会看到缺文件，看不到
+// 探针为什么没写到那里。
+const firstProbeFailure=evidence=>{
+  for(const [name,entry] of Object.entries(evidence??{})) {
+    if(entry&&typeof entry==='object'&&entry.status==='FAIL') return `${name} ${entry.errorType??'Error'}${entry.failureSite?` ${entry.failureSite.trim()}`:''}`;
+  }
+  return null;
+};
+const callLogState={status:'computed',error:null};
+const callLog=file=>{
+  const path=join(dir,file);
+  if(existsSync(path)) return readFileSync(path,'utf8').split('\n');
+  const execution=executions.c, probeFailure=firstProbeFailure(sources.c);
+  const reason=probeFailure?`C 探针失败于 ${probeFailure}`:execution?.timedOut?'C 探针没有在时限内结束':execution?.launchError?'C 探针没有启动':`C 探针以退出码 ${execution?.exitCode??'未知'} 结束`;
+  if(probeFailure||!execution||execution.timedOut||execution.launchError||execution.exitCode!==0) throw new EvidenceUnavailable(`${file} 缺失：${reason}`);
+  throw new ObservationContract(`${file} 缺失：${reason}，但探针没有报告任何失败`);
+};
+let callLogs=null;
+try { callLogs={a:callLog('calls-root-a.log'),b:callLog('calls-root-b.log')}; }
+catch(error) { callLogState.status=error instanceof EvidenceUnavailable?'unavailable':'failed'; callLogState.error=error.message; }
+const sawCall=(calls,tool,outcome)=>calls.some(line=>{try{const call=JSON.parse(line);return call.tool===tool&&call.outcome===outcome;}catch{return false;}});
 const observed={
   toolsListMatchesExpected:toolsMatch,
   configuredServiceExited,
-  crossRootReadRejected:readFileSync(join(dir,'calls-root-a.log'),'utf8').split('\n').some(line=>{try{const call=JSON.parse(line);return call.tool==='read'&&call.outcome==='rejected';}catch{return false;}}),
-  crossRootWriteRejected:readFileSync(join(dir,'calls-root-b.log'),'utf8').split('\n').some(line=>{try{const call=JSON.parse(line);return call.tool==='write'&&call.outcome==='rejected';}catch{return false;}}),
-  timeoutRequestReachedServer:readFileSync(join(dir,'calls-root-b.log'),'utf8').split('\n').some(line=>{try{const call=JSON.parse(line);return call.tool==='never_reply'&&call.outcome==='no_reply';}catch{return false;}}),
 };
+if(callLogs) {
+  observed.crossRootReadRejected=sawCall(callLogs.a,'read','rejected');
+  observed.crossRootWriteRejected=sawCall(callLogs.b,'write','rejected');
+  observed.timeoutRequestReachedServer=sawCall(callLogs.b,'never_reply','no_reply');
+}
+// 由调用记录重算的三个值不跟随 observationState：它们有自己的来源与自己的状态。
+const CALL_LOG_PATHS=new Set(['observed.crossRootReadRejected','observed.crossRootWriteRejected','observed.timeoutRequestReachedServer']);
 if(observationState.status==='computed') observed.x3={imageBytesEqual:observationState.imageBytesEqual,structuredContentEqual:observationState.structuredContentEqual};
 let oldGenerationRejected=false;
 try {
@@ -603,7 +632,12 @@ const evidenceAt = (field,path) => {
   if (value === undefined) {
     // A gate-computed value is missing for exactly one reason, and that reason decides the verdict:
     // the probe never captured observations (unproven) versus captured then broke its contract.
-    if(path.startsWith('observed.')&&observationState.status!=='computed') {
+    if(CALL_LOG_PATHS.has(path)&&callLogState.status!=='computed') {
+      if(callLogState.status==='unavailable') throw new EvidenceUnavailable(callLogState.error);
+      throw new ObservationContract(callLogState.error);
+    }
+    // 调用记录算出的值不跟随 x3 观察状态：它们来自 C 探针的产物，缺了由上一段自己的理由解释。
+    if(path.startsWith('observed.')&&!CALL_LOG_PATHS.has(path)&&observationState.status!=='computed') {
       if(observationState.status==='unavailable') throw new EvidenceUnavailable(observationState.error);
       throw new ObservationContract(observationState.error);
     }

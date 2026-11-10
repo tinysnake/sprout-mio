@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ccd778a4-f78b-4ba9-bb8c-a33faf9946a1",
-  "prevId": "da164885-a5f3-4b14-96d8-158aa8d17364",
+  "id": "9b5b4816-aaa0-4697-a193-f0fcfc64b6d2",
+  "prevId": "dc2a7cc4-2a56-4694-a80c-9a17fd26e3cf",
   "tables": {
     "agent_instance": {
       "name": "agent_instance",
@@ -506,20 +506,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "assistant_context": {
-          "name": "assistant_context",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "assistant_context_submitted_at": {
-          "name": "assistant_context_submitted_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "cancel_reason": {
           "name": "cancel_reason",
           "type": "text",
@@ -645,13 +631,6 @@
         },
         "suppressed_at": {
           "name": "suppressed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "decision_resolved_at": {
-          "name": "decision_resolved_at",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -1174,14 +1153,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "interval_seconds": {
-          "name": "interval_seconds",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 300
-        },
         "consented_at": {
           "name": "consented_at",
           "type": "integer",
@@ -1262,71 +1233,6 @@
           "tableTo": "user",
           "columnsFrom": [
             "consented_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "assistant_watch_interval_check": {
-          "name": "assistant_watch_interval_check",
-          "value": "typeof(\"assistant_watch\".\"interval_seconds\")='integer' and \"assistant_watch\".\"interval_seconds\" between 60 and 86400"
-        }
-      }
-    },
-    "assistant_watch_cursor": {
-      "name": "assistant_watch_cursor",
-      "columns": {
-        "watch_id": {
-          "name": "watch_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "window_started_at": {
-          "name": "window_started_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "next_due_at": {
-          "name": "next_due_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "message_rowid": {
-          "name": "message_rowid",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "assistant_watch_cursor_due_idx": {
-          "name": "assistant_watch_cursor_due_idx",
-          "columns": [
-            "next_due_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "assistant_watch_cursor_watch_id_assistant_watch_id_fk": {
-          "name": "assistant_watch_cursor_watch_id_assistant_watch_id_fk",
-          "tableFrom": "assistant_watch_cursor",
-          "tableTo": "assistant_watch",
-          "columnsFrom": [
-            "watch_id"
           ],
           "columnsTo": [
             "id"
@@ -3286,7 +3192,7 @@
             "machine_id"
           ],
           "isUnique": true,
-          "where": "state IN ('free','active','draining')"
+          "where": "state IN ('free','active','draining','escrowed')"
         }
       },
       "foreignKeys": {
@@ -3339,7 +3245,7 @@
         },
         "lease_authorization_check_2": {
           "name": "lease_authorization_check_2",
-          "value": "state IN ('free','active','draining','revoked')"
+          "value": "state IN ('free','active','draining','escrowed','revoked')"
         },
         "lease_authorization_check_3": {
           "name": "lease_authorization_check_3",
@@ -3347,11 +3253,11 @@
         },
         "lease_authorization_check_4": {
           "name": "lease_authorization_check_4",
-          "value": "reason IN ('initial','acquire','release','handoff','reclaim')"
+          "value": "reason IN ('initial','acquire','release','handoff','reclaim','escrow','claim','escrow_cancel')"
         },
         "lease_authorization_check_9": {
           "name": "lease_authorization_check_9",
-          "value": "(state='free' AND holder_instance_id IS NULL AND revoked_at IS NULL) OR\n        (state IN ('active','draining') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR\n        (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)"
+          "value": "(state='free' AND holder_instance_id IS NULL AND revoked_at IS NULL) OR\n        (state IN ('active','draining','escrowed') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR\n        (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)"
         },
         "lease_authorization_check_10": {
           "name": "lease_authorization_check_10",
@@ -8640,13 +8546,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "recoverable_secret": {
-          "name": "recoverable_secret",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "expression": {
           "name": "expression",
           "type": "text",
@@ -8738,7 +8637,7 @@
         },
         "webhook_rule_action_check": {
           "name": "webhook_rule_action_check",
-          "value": "json_valid(\"webhook_rule\".\"action\") and coalesce(json_extract(\"webhook_rule\".\"action\", '$.kind') in ('dm_agent','group_agent','group_owner') and (json_type(\"webhook_rule\".\"action\", '$.chatId')='text' or (json_extract(\"webhook_rule\".\"action\", '$.kind')='dm_agent' and json_type(\"webhook_rule\".\"action\", '$.chatId') is null)) and (json_extract(\"webhook_rule\".\"action\", '$.kind')='group_owner' or json_type(\"webhook_rule\".\"action\", '$.agentProfileId')='text'),0)"
+          "value": "json_valid(\"webhook_rule\".\"action\") and coalesce(json_extract(\"webhook_rule\".\"action\", '$.kind') in ('dm_agent','group_agent','group_owner') and json_type(\"webhook_rule\".\"action\", '$.chatId')='text' and (json_extract(\"webhook_rule\".\"action\", '$.kind')='group_owner' or json_type(\"webhook_rule\".\"action\", '$.agentProfileId')='text'),0)"
         }
       }
     },
@@ -9396,6 +9295,304 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "lease_escrow": {
+      "name": "lease_escrow",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "machine_id": {
+          "name": "machine_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "chat_id": {
+          "name": "chat_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_agent_profile_id": {
+          "name": "target_agent_profile_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "escrowed_by_instance_id": {
+          "name": "escrowed_by_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrowed_at": {
+          "name": "escrowed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_request_id": {
+          "name": "escrow_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_payload_hash": {
+          "name": "escrow_payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_generation": {
+          "name": "escrow_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claimed_by_instance_id": {
+          "name": "claimed_by_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claimed_generation": {
+          "name": "claimed_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_request_id": {
+          "name": "claim_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_payload_hash": {
+          "name": "claim_payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "timeout_notified_at": {
+          "name": "timeout_notified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "timeout_notice_attempt": {
+          "name": "timeout_notice_attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "timeout_notice_next_at": {
+          "name": "timeout_notice_next_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "timeout_escalated_at": {
+          "name": "timeout_escalated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lease_escrow_id_project_unique": {
+          "name": "lease_escrow_id_project_unique",
+          "columns": [
+            "id",
+            "project_id"
+          ],
+          "isUnique": true
+        },
+        "lease_one_live_escrow": {
+          "name": "lease_one_live_escrow",
+          "columns": [
+            "project_id",
+            "machine_id"
+          ],
+          "isUnique": true,
+          "where": "state='escrowed'"
+        },
+        "lease_escrow_escrow_request_unique": {
+          "name": "lease_escrow_escrow_request_unique",
+          "columns": [
+            "escrowed_by_instance_id",
+            "escrow_request_id"
+          ],
+          "isUnique": true
+        },
+        "lease_escrow_claim_request_unique": {
+          "name": "lease_escrow_claim_request_unique",
+          "columns": [
+            "claimed_by_instance_id",
+            "claim_request_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "lease_escrow_project_id_machine_id_machine_lease_project_id_machine_id_fk": {
+          "name": "lease_escrow_project_id_machine_id_machine_lease_project_id_machine_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "machine_lease",
+          "columnsFrom": [
+            "project_id",
+            "machine_id"
+          ],
+          "columnsTo": [
+            "project_id",
+            "machine_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_chat_id_project_id_chat_id_project_id_fk": {
+          "name": "lease_escrow_chat_id_project_id_chat_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "chat",
+          "columnsFrom": [
+            "chat_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_target_agent_profile_id_agent_profile_id_fk": {
+          "name": "lease_escrow_target_agent_profile_id_agent_profile_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_profile",
+          "columnsFrom": [
+            "target_agent_profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_escrowed_by_instance_id_project_id_agent_instance_id_project_id_fk": {
+          "name": "lease_escrow_escrowed_by_instance_id_project_id_agent_instance_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_instance",
+          "columnsFrom": [
+            "escrowed_by_instance_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_claimed_by_instance_id_project_id_agent_instance_id_project_id_fk": {
+          "name": "lease_escrow_claimed_by_instance_id_project_id_agent_instance_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_instance",
+          "columnsFrom": [
+            "claimed_by_instance_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lease_escrow_check_1": {
+          "name": "lease_escrow_check_1",
+          "value": "state IN ('escrowed','claimed','cancelled','superseded')"
+        },
+        "lease_escrow_check_2": {
+          "name": "lease_escrow_check_2",
+          "value": "typeof(escrowed_at)='integer' AND escrowed_at>=0"
+        },
+        "lease_escrow_check_3": {
+          "name": "lease_escrow_check_3",
+          "value": "typeof(escrow_generation)='integer' AND escrow_generation BETWEEN 1 AND 9007199254740991"
+        },
+        "lease_escrow_check_4": {
+          "name": "lease_escrow_check_4",
+          "value": "length(escrow_payload_hash)=64 AND escrow_payload_hash NOT GLOB '*[^0-9a-f]*'"
+        },
+        "lease_escrow_check_5": {
+          "name": "lease_escrow_check_5",
+          "value": "(state='escrowed' AND claimed_by_instance_id IS NULL AND claimed_at IS NULL AND claimed_generation IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL AND closed_at IS NULL) OR\n        (state<>'escrowed' AND closed_at IS NOT NULL AND typeof(closed_at)='integer' AND closed_at>=escrowed_at)"
+        },
+        "lease_escrow_check_6": {
+          "name": "lease_escrow_check_6",
+          "value": "(state='claimed' AND claimed_by_instance_id IS NOT NULL AND typeof(claimed_generation)='integer' AND claimed_generation>escrow_generation) OR\n        (state<>'claimed' AND claimed_by_instance_id IS NULL AND claimed_generation IS NULL)"
+        },
+        "lease_escrow_check_7": {
+          "name": "lease_escrow_check_7",
+          "value": "(claimed_at IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL) OR\n        (claimed_at IS NOT NULL AND typeof(claimed_at)='integer' AND claimed_at>=escrowed_at AND claim_request_id IS NOT NULL AND length(claim_payload_hash)=64 AND claim_payload_hash NOT GLOB '*[^0-9a-f]*')"
+        },
+        "lease_escrow_check_8": {
+          "name": "lease_escrow_check_8",
+          "value": "(timeout_notified_at IS NULL OR (typeof(timeout_notified_at)='integer' AND timeout_notified_at>=escrowed_at)) AND\n        (timeout_escalated_at IS NULL OR (typeof(timeout_escalated_at)='integer' AND timeout_escalated_at>=escrowed_at AND timeout_notified_at IS NOT NULL)) AND\n        ((timeout_notice_attempt IS NULL AND timeout_notice_next_at IS NULL) OR\n          (timeout_notice_attempt IS NOT NULL AND typeof(timeout_notice_attempt)='integer' AND timeout_notice_attempt>=1 AND\n           timeout_notice_next_at IS NOT NULL AND typeof(timeout_notice_next_at)='integer' AND timeout_notice_next_at>=escrowed_at)) AND\n        (timeout_notice_attempt IS NULL OR timeout_notified_at IS NOT NULL)"
+        }
+      }
     }
   },
   "views": {

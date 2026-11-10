@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+
 case "${SPROUT_VERIFY_CHAT_MODE-model-fixture}" in
   model-fixture|live) export SPROUT_VERIFY_CHAT_MODE="${SPROUT_VERIFY_CHAT_MODE-model-fixture}" ;;
   *) echo 'SPROUT_VERIFY_CHAT_MODE must be model-fixture or live' >&2; exit 2 ;;
@@ -9,6 +10,9 @@ if [[ "$SPROUT_VERIFY_CHAT_MODE" == model-fixture && -n "${SPROUT_PI_RUNNER-}" ]
   echo 'model-fixture requires the real Pi runner; remove SPROUT_PI_RUNNER' >&2
   exit 2
 fi
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs z-lease-integration || exit $?
 # Production page -> authenticated Chat turn -> real Pi remote tool -> macOS Worker.
 # Private SQLite, credentials, session transcripts and operation output stay in mktemp.
 source "$(dirname "$0")/lib/ensure-worker-artifact.sh"
@@ -27,7 +31,7 @@ import { createRequire } from 'node:module';
 import { chromium } from 'playwright';
 import Sqlite from 'better-sqlite3';
 import { assertForcedReceiptPersists } from './scripts/browser/p4b-forced-receipt-scene.mjs';
-import { startModelFixture, leaseTurn } from './scripts/verify/lib/model-fixture.mjs';
+import { startModelFixture, leaseTurn, leaseBody } from './scripts/verify/lib/model-fixture.mjs';
 const chatMode = process.env.SPROUT_VERIFY_CHAT_MODE;
 console.log(`CHAT mode=${chatMode} runner=scripts/pi-host-runner.mjs`);
 let modelFixture;
@@ -66,6 +70,14 @@ async function armLease(action, parameters) {
   modelFixture.arm('operator', leaseTurn(action, parameters));
 }
 let chatIdForOperator;
+/** 人类的租约动作不走界面：按 Agent 工具的正文请 Chat 里的分身执行，界面只读事实。 */
+async function requestLease(chat, action, parameters) {
+  await settled(chat, { allowEmpty: true });
+  // 收据的 requestId 由发起方带上；界面过去代人类生成，现在由脚本按同一格式给。
+  const requestId=`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
+  await armLease(action, parameters);
+  await call('sendMessageFn', { chatId: chat, body: leaseBody(action, { ...parameters, requestId }) });
+}
 async function until(fn, label, timeout = 60000) { const start = Date.now(); while (Date.now() - start < timeout) { modelFixture?.assertHealthy(); const value = await fn(); if (value) return value; await new Promise(r => setTimeout(r, 350)); } throw new Error(`timeout: ${label}`); }
 async function rpc(name, data, actor = cookie) {
   assert(ids[name], `registered ${name}`);
@@ -232,103 +244,39 @@ try {
   pass('lease entry does not carry over the settings scroll position');
   await page.getByTestId('lease-manage-link').first().click();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
-  // Machine 详情页不要求重选目标：目标就是当前这台。
-  assert.equal(await page.getByTestId('machine-lease-section-overview-mutation-machine').count(),0,'no machine picker on the machine page');
-  assert((await page.getByTestId('machine-lease-section-overview-mutation-target').innerText()).includes('Integration Mac'),'fixed target names the current Machine');
-  await page.getByTestId('lease-transfer-target').waitFor();
-  await page.getByTestId('lease-transfer-target').selectOption({ index: 1 });
-  const handoffWithoutChat=page.getByRole('button',{name:'请求分身交接'});
-  assert((await page.getByTestId('lease-transfer-machine').innerText()).includes('Integration Mac'));
-  assert.notEqual(await page.getByTestId('lease-transfer-target').inputValue(),'');
-  assert.equal(await handoffWithoutChat.isDisabled(),true,'handoff waits for explicit Chat selection');
-  assert.equal(await page.getByTestId('lease-handoff-chat-required').innerText(),'请先在上方选择执行请求的 Chat，再请求分身交接。');
-  // F-15：等待前置条件的提示用 warning 语义色，与其它前置等待态一致。
-  const requiredWarning = page.getByTestId('lease-handoff-chat-required');
-  const warningColor = await requiredWarning.evaluate((node) => getComputedStyle(node).color);
-  const warningToken = await page.evaluate(() => {
-    const probe = document.createElement('span');
-    probe.className = 'text-status-warning';
-    probe.style.position = 'absolute';
-    probe.style.visibility = 'hidden';
-    document.body.appendChild(probe);
-    const color = getComputedStyle(probe).color;
-    probe.remove();
-    return color;
-  });
-  assert.equal(warningColor, warningToken, 'precondition hint uses the shared warning semantic color');
-  assert.notEqual(warningColor, await page.evaluate(() => getComputedStyle(document.body).color), 'precondition hint is not the default text color');
-  await page.screenshot({path:join(evidence,'handoff-needs-chat.png'),fullPage:true});
-  // F-15：选择器与动作同表单，页面上只有一个 Chat 选择器。
-  assert.equal(await page.getByTestId('lease-chat-select').count(),1,'exactly one Chat selector is rendered');
-  await page.getByTestId('lease-chat-select').selectOption(chatId);
-  assert((await page.getByTestId('lease-chat-picked').innerText()).startsWith('执行请求的 Chat：'),'transfer card confirms the chosen Chat');
-  assert.equal(await handoffWithoutChat.isEnabled(),true,'handoff is enabled after selecting a Chat');
-  assert.equal(await page.getByTestId('lease-handoff-chat-required').count(),0);
-  await page.screenshot({path:join(evidence,'handoff-chat-selected.png'),fullPage:true});
-  const uiRequestIds=new Set();
-  page.on('request',request=>{
-    if(request.method()==='POST' && request.url().includes(ids.getLeaseRequestFn)) {
-      const requestId=request.postData()?.match(/req_[0-9a-f]{8,16}/)?.[0];
-      if(requestId) uiRequestIds.add(requestId);
-    }
-  });
-  const beforeAcquire=await call('getLeaseFn',{projectId,machineId});
-  assert.equal(beforeAcquire.lease.state,'free','UI is the only acquire path');
-  await armLease('acquire',{machineId,expectedGeneration:beforeAcquire.lease.generation});
-  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
-  let acquired;
-  try {
-    await until(async()=>{
-      const error=page.getByTestId('machine-lease-section-overview-mutation-error');
-      assert.equal(await error.count(),0,'UI acquire must not return a mutation error');
-      return await page.getByTestId('machine-lease-section-overview-mutation-receipt').count();
-    },'receipt from this UI acquire',180000);
-    assert.equal(uiRequestIds.size,1,'one UI requestId');
-    const requestId=[...uiRequestIds][0];
-    const facts=await call('getLeaseRequestFn',{projectId,machineId,chatId,requestId});
-    assert(facts.mutation,'receipt belongs to the UI request');
-    const receiptDatabase=new Sqlite(env.DATABASE_URL,{readonly:true});
-    try {
-      const row=receiptDatabase.prepare('SELECT request_id AS requestId FROM lease_mutation WHERE id=?').get(facts.mutation.mutationId);
-      assert.equal(row?.requestId,requestId,'mutationId is persisted for this UI requestId');
-    } finally {receiptDatabase.close();}
-    assert.equal(facts.mutation.action,'acquire');
-    assert.equal(facts.mutation.expectedGeneration,beforeAcquire.lease.generation);
-    assert(['pending','completed'].includes(facts.mutation.state));
-    assert((await page.getByTestId('machine-lease-section-overview-mutation-receipt').innerText()).includes(facts.mutation.mutationId),'UI receipt matches this mutationId');
-    assert.equal(await page.getByTestId('machine-lease-section-overview-mutation-error').count(),0);
-    acquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'page acquire via real agent',180000);
-  } catch (cause) {
-    console.error('FAIL receipt assertion '+cause.message);
-    // Preserve the error while observing whether this same request executes late.
-    await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='held','late lease fact after receipt error',125000).catch(()=>null);
-    const database=new Sqlite(env.DATABASE_URL,{readonly:true});
-    try {
-      const leases=database.prepare('SELECT state,generation,holder_instance_id AS holderInstanceId FROM machine_lease WHERE project_id=? AND machine_id=?').all(projectId,machineId);
-      const mutations=database.prepare('SELECT id AS mutationId,request_id AS requestId,action,expected_generation AS expectedGeneration,state FROM lease_mutation WHERE project_id=? AND machine_id=?').all(projectId,machineId);
-      const pendingMutationId=mutations.find(item=>item.state==='pending')?.mutationId??null;
-      const runs=database.prepare('SELECT id,status,error_code AS errorCode,queued_at AS queuedAt,settled_at AS settledAt FROM agent_run WHERE project_id=?').all(projectId);
-      const toolCalls=[];
-      for(const row of database.prepare('SELECT config_snapshot AS snapshot FROM agent_run WHERE project_id=?').all(projectId)) {
-        const sessionFile=row.snapshot && JSON.parse(row.snapshot).sessionFile;
-        if(!sessionFile || !existsSync(sessionFile)) continue;
-        for(const line of readFileSync(sessionFile,'utf8').split('\n').filter(Boolean)) {
-          let entry; try {entry=JSON.parse(line);} catch {continue;}
-          if(entry.message?.role!=='assistant') continue;
-          for(const part of entry.message.content??[]) if(part.type==='toolCall') {
-            const input=part.arguments??{};
-            toolCalls.push({name:part.name,action:input.action,expectedGeneration:input.expectedGeneration,requestId:input.requestId});
-          }
-        }
-      }
-      console.error('FAIL receipt metadata '+JSON.stringify({submitted:{action:'acquire',expectedGeneration:beforeAcquire.lease.generation},uiRequestIds:[...uiRequestIds],leases,pendingMutationId,mutations,runs,toolCalls}));
-      const uiError=await page.getByTestId('machine-lease-section-overview-mutation-error').innerText().catch(()=>null);
-      console.error('FAIL receipt UI '+JSON.stringify({error:uiError}));
-      await page.screenshot({path:join(evidence,'receipt-conflict-overview.png'),fullPage:true});
-    } finally {database.close();}
-    throw cause;
+  // 人类在这页只有强制收回：目标就是本页这台，没有申请/释放表单，也没有交接入口。
+  const reclaim=page.getByTestId('lease-reclaim-controls');
+  await reclaim.waitFor();
+  assert.equal(await page.getByTestId('lease-reclaim-machine').count(),0,'reclaim target is the page itself, no picker');
+  assert.equal(await page.getByTestId('lease-reclaim-confirm').count(),1,'forced reclaim keeps an explicit confirmation');
+  assert.equal(await page.getByTestId('lease-reclaim').isDisabled(),true,'reclaim waits for the confirmation');
+  await page.getByTestId('lease-reclaim-confirm').check();
+  assert.equal(await page.getByTestId('lease-reclaim').isEnabled(),true,'confirmed reclaim is actionable');
+  await page.getByTestId('lease-reclaim-confirm').uncheck();
+  assert.equal(await page.locator('[data-testid$="-mutation"]').count(),0,'no lease mutation form on the lease route');
+  for (const id of ['lease-chat-select','lease-chat-picked','lease-transfer-controls','lease-handoff-chat-required']) {
+    assert.equal(await page.getByTestId(id).count(),0,`lease route must not render ${id}`);
   }
-  pass('page acquire -> authenticated Chat -> real Pi lease tool -> held lease');
+  for (const label of ['申请租约','释放租约','请求分身交接','收回租约']) {
+    assert.equal(await page.getByRole('button',{name:label}).count(),0,`Human has no 「${label}」 entry`);
+  }
+  assert.doesNotMatch(await page.getByTestId('machine-lease-detail').innerText(),/租约单位是 Project × Machine|变更不会终止进程或删除文件|目标就是你当前所在的这台 Machine/,'lease explanations are gone');
+  assert.doesNotMatch(await page.getByTestId('machine-remote-executions').innerText(),/操作目标由请求自身指定|每条操作都指定 Machine|日志续读与取消入口尚未接入服务端|宿主工具（如 sprout_status/,'remote execution explanations are gone');
+  assert.equal(await page.getByTestId('machine-lease-page').getByText('远端操作',{exact:true}).count(),1,'one 远端操作 heading per page');
+  await page.screenshot({path:join(evidence,'lease-page-read-only.png'),fullPage:true});
+  const beforeAcquire=await call('getLeaseFn',{projectId,machineId});
+  assert.equal(beforeAcquire.lease.state,'free','the Chat holder starts without a lease');
+  await requestLease(chatId,'acquire',{machineId,expectedGeneration:beforeAcquire.lease.generation});
+  const acquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'lease acquire through the holder tool',180000);
+  assert(acquired.generation>beforeAcquire.lease.generation,'acquire advances the generation');
+  const receiptDatabase=new Sqlite(env.DATABASE_URL,{readonly:true});
+  try {
+    const row=receiptDatabase.prepare('SELECT action,state,expected_generation AS expectedGeneration FROM lease_mutation WHERE project_id=? AND machine_id=? ORDER BY created_at DESC LIMIT 1').get(projectId,machineId);
+    assert.equal(row?.action,'acquire','the acquire mutation is persisted');
+    assert.equal(row?.expectedGeneration,beforeAcquire.lease.generation,'mutation records the generation it replaced');
+    assert(['pending','completed'].includes(row?.state),'mutation state is a server fact');
+  } finally {receiptDatabase.close();}
+  pass('Chat lease request -> authenticated Chat -> real Pi lease tool -> held lease');
   await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await until(async()=> (await page.getByTestId('machine-lease-detail').innerText()).includes(acquired.holderInstanceId),'Machine lease fact');
   await page.getByTestId('machine-lease-detail').scrollIntoViewIfNeeded();
@@ -360,9 +308,10 @@ try {
   assert(authorization.includes('由该分身的一次运行发起'),'run is described, not printed as a bare id');
   await page.getByTestId('machine-remote-executions').scrollIntoViewIfNeeded();
   await page.screenshot({path:join(evidence,'machine-result-light.png'),fullPage:true});
-  // 第 6 条：交接与收回也不用重选 Machine，目标就是本页这台。
-  assert.equal(await page.getByLabel('交接或收回的 Machine').count(),0,'no machine picker for handoff/reclaim');
-  assert((await page.getByTestId('lease-transfer-machine').innerText()).includes('Integration Mac'),'handoff target is the current Machine');
+  // 强制收回也不用重选 Machine，目标就是本页这台；交接已不归 Human。
+  assert.equal(await page.getByLabel('收回的 Machine').count(),0,'no machine picker on a single-Machine page');
+  assert.equal(await page.getByTestId('lease-transfer-controls').count(),0,'no handoff entry for Human');
+  assert.equal(await page.getByTestId('lease-reclaim-machine').count(),0,'reclaim target is the page itself, no picker');
   pass('real remote shell and process result visible on production Machine page');
   await settled(chatId);
   const nonHolderProfile=await call('createAgentProfileFn',{name:'Non holder',persona:'Use the requested remote tool once, report its returned error, never acquire a lease.',...profileModel('nonHolder'),effort:'off'});
@@ -390,40 +339,33 @@ try {
   await page.screenshot({path:join(evidence,'chat-inspector-light.png'),fullPage:true,mask:[page.getByTestId('message-list')]});
   await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
-  await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await armLease('release',{machineId,expectedGeneration:acquired.generation});
-  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
-  await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','page release through real agent',180000);
+  await requestLease(chatId,'release',{machineId,expectedGeneration:acquired.generation});
+  await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','release through real holder tool',180000);
   process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','release preserves private sentinel');
-  pass('page release preserves real process and file');
+  pass('holder release preserves real process and file');
   await settled(chatId);
   await deniedTool(page,chatId,acquired.generation,'lease_stale_generation',join(root,projectId,'stale-must-not-exist'));
   process.kill(pid,0);
   pass('browser Chat request -> real old-generation HTTP rejection and absent sentinel');
   await page.goto(`${base}/machines/${machineId}/lease?projectId=${projectId}`);
   await page.getByTestId('machine-lease-detail').waitFor();
-  await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await armLease('acquire',{machineId,expectedGeneration:(await call('getLeaseFn',{projectId,machineId})).lease.generation});
-  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
-  const reacquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'reacquire from page',180000);
-  await page.locator('[data-testid="machine-lease-section-overview-mutation-success"], [data-testid="machine-lease-section-overview-mutation-waiting"]').first().waitFor({timeout:65000});
+  await requestLease(chatId,'acquire',{machineId,expectedGeneration:(await call('getLeaseFn',{projectId,machineId})).lease.generation});
+  const reacquired=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'reacquire through the holder tool',180000);
   await settled(chatId);
-  await page.getByLabel('交接目标分身').selectOption(nonHolder.instance.id);
-  await armLease('handoff',{machineId,expectedGeneration:reacquired.generation,targetInstanceId:nonHolder.instance.id});
-  await page.getByRole('button',{name:'请求分身交接'}).click();
-  const transferred=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held' && lease.holderInstanceId===nonHolder.instance.id ? lease:null;},'handoff through page and real holder tool',180000);
+  // 交接是分身之间的动作：持有者用 tool 把租约交给另一个分身，Human 只读结果。
+  await requestLease(chatId,'handoff',{machineId,expectedGeneration:reacquired.generation,targetInstanceId:nonHolder.instance.id});
+  const transferred=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held' && lease.holderInstanceId===nonHolder.instance.id ? lease:null;},'handoff through real holder tool',180000);
   assert(transferred.generation>reacquired.generation); process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','handoff preserves sentinel');
   await page.reload();
   await page.getByTestId('machine-lease-detail').waitFor();
-  await page.getByRole('button',{name:'收回租约',exact:true}).click();
+  await page.getByTestId('lease-reclaim-confirm').check();
+  await page.getByTestId('lease-reclaim').click();
   await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='free','authenticated Human reclaim');
   process.kill(pid,0); assert(readFileSync(marker,'utf8')==='integration-proof','reclaim preserves sentinel');
-  pass('production handoff and Human reclaim preserve process and file');
+  pass('production handoff (agent tool) and Human reclaim preserve process and file');
   await page.reload();
   await page.getByTestId('machine-lease-detail').waitFor();
-  await page.getByTestId('lease-chat-select').selectOption(chatId);
-  await armLease('acquire',{machineId,expectedGeneration:(await call('getLeaseFn',{projectId,machineId})).lease.generation});
-  await page.getByTestId('machine-lease-section-overview-mutation-submit').click();
+  await requestLease(chatId,'acquire',{machineId,expectedGeneration:(await call('getLeaseFn',{projectId,machineId})).lease.generation});
   const forcedHolder=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'acquire for forced receipt',180000);
   await settled(chatId);
   const forceRequestId=`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
@@ -435,7 +377,8 @@ try {
   try {
     await page.reload();
     await page.getByTestId('machine-lease-detail').waitFor();
-    await page.getByRole('button',{name:'收回租约',exact:true}).click();
+    await page.getByTestId('lease-reclaim-confirm').check();
+    await page.getByTestId('lease-reclaim').click();
     await until(async()=> (await call('getLeaseFn',{projectId,machineId})).lease.state==='fencing','reclaim waits for paused Worker');
     await page.reload();
     await page.getByTestId('machine-lease-detail').waitFor();

@@ -43,7 +43,7 @@ function stored(input: TurnContextReadInput): TurnContextRecord | undefined {
     .where(and(eq(turnContext.runId, input.runId), eq(turnContext.projectId, input.projectId)))
     .get();
   if (!row) return;
-  const record = turnContextRecordSchema.parse({
+  const parsed = turnContextRecordSchema.safeParse({
     ...row.record,
     serializedText: row.serializedText,
     contentHash: row.contentHash,
@@ -54,6 +54,10 @@ function stored(input: TurnContextReadInput): TurnContextRecord | undefined {
     failureCode: row.failureCode,
     injectedIntoPrompt: row.deliveryState === "submitted",
   });
+  // 快照是历史事实，旧格式（例如 id 重写前的完整 UUID）读不出来时只能说它不可用，
+  // 不能让校验错误冒成整页的 validation_failed。
+  if (!parsed.success) throw new InfoHubError("turn_context_unavailable");
+  const record = parsed.data;
   if (digest(record.serializedText) !== record.contentHash)
     throw new InfoHubError("turn_context_unavailable");
   return record;

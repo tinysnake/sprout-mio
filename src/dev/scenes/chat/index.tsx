@@ -11,13 +11,20 @@ import { ChatTitleEditor } from "@/components/chat/chat-title-editor";
 import { ChatDraftProvider, useChatDraft } from "@/components/chat/chat-drafts";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { MessageList } from "@/components/chat/message-list";
+import { LEASE_TIMEOUT_SENDER_ID } from "@/components/chat/lease-timeout-message";
 import { isRunActive, runStatusLabel, RunStatusPanel } from "@/components/chat/run-status";
 import { ChatInspector } from "@/components/info-hub/chat-inspector";
 import { ChatWorkspace } from "@/components/layout/chat-workspace";
 import type { ChatAgent } from "@/components/chat/chat-loader";
 import { demoProfiles as profiles, demoHumanName as HUMAN } from "../management/fixtures";
 import { demoMachineDetails } from "../machine/fixtures";
-import { demoExecutions, demoHolderNames, demoLeases } from "../machine/lease-fixtures";
+import {
+  demoEscrowAgentNames,
+  demoEscrowSceneLeases,
+  demoEscrowTargets,
+  demoExecutions,
+  demoHolderNames,
+} from "../machine/lease-fixtures";
 import type { ChatMachineFacts } from "@/components/info-hub/chat-inspector";
 import type { AgentRun, ChatRunState, RunActivity } from "../../../contracts/agent-run";
 import type { AgentInstance, Chat, ChatMember, Message } from "../../../contracts/chat";
@@ -48,7 +55,14 @@ const CANONICAL_CHAT_ID = "cnv_44444444";
 
 const chats: Chat[] = [
   chat(CANONICAL_CHAT_ID, "仓库首页架构评审", "2026-06-18T02:28:00.000Z"),
-  chat("cnv_55555555", "迁移顺序拆解", "2026-06-17T10:12:00.000Z"),
+  {
+    ...chat(
+      demoEscrowTargets.group.chatId,
+      demoEscrowTargets.group.title,
+      "2026-06-17T10:12:00.000Z",
+    ),
+    kind: "group",
+  },
 ];
 
 const chatAgents: ChatAgent[] = chats.map((item, index) => ({
@@ -148,6 +162,17 @@ const messages: Message[] = [
       { memberKind: "agent", memberId: profiles[1]!.id, start: 22, end: 31 },
       { memberKind: "human", memberId: "usr_demo", start: 41, end: 44 },
     ],
+  },
+  {
+    // I-P8b 挂靠超时提醒：直接写库（不触发唤醒、不触发自动接续），落在挂靠所在的 Group chat。
+    id: "msg_bbbbbbbb",
+    chatId: chats[1]!.id,
+    senderKind: "agent",
+    senderId: LEASE_TIMEOUT_SENDER_ID,
+    body: "【挂靠超时】重构搭档 要用 Machine「工作室 Mac mini」，它的租约挂在对话《发布协作组》（les_44444444）的挂靠里已经超过 30 分钟。\n请处理：是让 重构搭档 归还（撤销挂靠或强制收回），还是继续占用（领取这个挂靠）。在你处理之前，租约占用与权限保持不变。\n（这是提醒消息，不触发唤醒、也不触发自动接续；这条挂靠不会再升级，请自行决定是否处理。）",
+    createdAt: "2026-06-18T02:32:00.000Z",
+    skills: [],
+    mentions: [],
   },
 ];
 
@@ -312,13 +337,24 @@ function demoError(
   return { code, message, requestId: "req_demo_0000" };
 }
 
-/** Chat 与 Machine 详情共用同一份租约与执行样例。 */
+/** Chat 与 Machine 详情共用同一份租约与执行样例；挂靠目标与指定 Agent 名称也复用同一份演示数据。 */
 const demoMachineFacts: ChatMachineFacts = {
   projectId: PROJECT_ID,
   machines: demoMachineDetails,
-  leases: demoLeases,
+  leases: demoEscrowSceneLeases,
   executions: demoExecutions,
   holderNames: demoHolderNames,
+  chatNames: {
+    [demoEscrowTargets.group.chatId]: demoEscrowTargets.group.title,
+    [demoEscrowTargets.channel.chatId]: demoEscrowTargets.channel.title,
+    [demoEscrowTargets.dm.chatId]: demoEscrowTargets.dm.title,
+  },
+  chatKinds: {
+    [demoEscrowTargets.group.chatId]: demoEscrowTargets.group.kind,
+    [demoEscrowTargets.channel.chatId]: demoEscrowTargets.channel.kind,
+    [demoEscrowTargets.dm.chatId]: demoEscrowTargets.dm.kind,
+  },
+  agentNames: demoEscrowAgentNames,
 };
 
 const infoView: ChatInfoView = {

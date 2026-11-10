@@ -1,4 +1,4 @@
-import type { LeaseMutationView, LeaseView } from "../../contracts/lease";
+import type { LeaseEscrowView, LeaseMutationView, LeaseView } from "../../contracts/lease";
 import type {
   ExecutionCancellationView,
   ExecutionRecoveryReason,
@@ -6,6 +6,7 @@ import type {
   RemoteOperation,
 } from "../../contracts/remote";
 import type { StatusTone } from "./machine-view";
+import { LEASE_TIMEOUT_LABELS, leaseTimeoutPhase, leaseTimeoutSuffix } from "./lease-timeout-view";
 
 /**
  * 租约与远端操作的呈现映射。这里的函数只做投影：输入是
@@ -18,12 +19,12 @@ export type LeaseLabel = { label: string; detail: string; tone: StatusTone };
 export const LEASE_STATE_LABELS: Record<LeaseView["state"], LeaseLabel> = {
   free: {
     label: "空闲",
-    detail: "没有分身持有该 Machine。空闲不等于已释放记录，也不代表 Machine 可用。",
+    detail: "没有分身持有该 Machine。空闲不等于已释放记录。",
     tone: "muted",
   },
   held: {
     label: "持有中",
-    detail: "持有者可以对该 Machine 发起远端操作；租约不会随 run 结束自动释放。",
+    detail: "该分身持有并操作这台 Machine。",
     tone: "success",
   },
   fencing: {
@@ -116,18 +117,148 @@ export function pendingMutationLabel(lease: LeaseView): string | null {
   return `有一个租约动作处理中（${lease.pendingMutationId}），结果尚未确认。`;
 }
 
+/** 挂靠事实的呈现标签。挂靠不释放 Machine，也不改变持有者，只交出操作权。 */
+export const LEASE_ESCROW_STATE_LABELS: Record<LeaseEscrowView["state"], LeaseLabel> = {
+  escrowed: {
+    label: "挂靠中",
+    detail: "发起挂靠的分身已交出操作权，Machine 仍被原持有者占用；挂靠目标范围内的分身可以领取。",
+    tone: "warning",
+  },
+  claimed: {
+    label: "已领取",
+    detail: "领取者凭自己的身份成为新持有者；原有进程仍在原样运行。",
+    tone: "success",
+  },
+  cancelled: {
+    label: "已撤销",
+    detail: "发起挂靠的分身撤销了这次挂靠，租约回到它手里；Machine 没有被释放。",
+    tone: "muted",
+  },
+  superseded: {
+    label: "已被取代",
+    detail: "这次挂靠在没有被领取前就被新的租约变更取代。",
+    tone: "muted",
+  },
+};
+
+export function escrowStateLabel(state: LeaseEscrowView["state"]): LeaseLabel {
+  return LEASE_ESCROW_STATE_LABELS[state];
+}
+
+const CHAT_KIND_LABELS: Record<"dm" | "group" | "public_channel", string> = {
+  dm: "DM",
+  group: "Group",
+  public_channel: "Public Channel",
+};
+
+export function chatKindLabel(kind: "dm" | "group" | "public_channel"): string {
+  return CHAT_KIND_LABELS[kind];
+}
+
+/**
+ * 名称解析表由调用方按已有读模型传入；取不到就退回 id，不猜名字。
+ * `chatKinds` 来自 Chat 列表：挂靠事实本身只有 chatId，没有 kind。
+ */
+export type EscrowNames = {
+  chats?: Readonly<Record<string, string>>;
+  chatKinds?: Readonly<Record<string, "dm" | "group" | "public_channel">>;
+  agents?: Readonly<Record<string, string>>;
+};
+
+/** 目标只投影挂靠事实：目标 Group、可选指定 Agent profile。 */
+export function escrowTargetLabel(escrow: LeaseEscrowView, names: EscrowNames = {}): string {
+  const name = names.chats?.[escrow.chatId] ?? escrow.chatId;
+  const kind = names.chatKinds?.[escrow.chatId];
+  const scope = escrow.targetAgentProfileId
+    ? `指定 Agent ${names.agents?.[escrow.targetAgentProfileId] ?? escrow.targetAgentProfileId}`
+    : null;
+  return `${name}${kind ? `（${chatKindLabel(kind)}）` : ""}${scope ? ` · ${scope}` : ""}`;
+}
+
+/** 活跃挂靠：还没有被领取、也没有被撤销的那一次。 */
+export function liveEscrowOf(lease: LeaseView): LeaseEscrowView | null {
+  return lease.escrow && lease.escrow.state === "escrowed" ? lease.escrow : null;
+}
+
+/**
+ * 状态位：挂靠中替代持有中。租约仍由原持有者占着，但对外的状态只有一条，
+ * 不并列「持有中 · 代次 N」，也不再解释持有者能做什么（挂靠已交出操作权）。
+ *
+ * 超时事实并入状态位本身：超时的挂靠必须一眼看出「它超时了、还没人处理」，
+ * 不能在任何页面上读成空闲。相位取自契约的 `timeout`，不用客户端时钟推算。
+ */
+export function leaseStatusLabel(lease: LeaseView): LeaseLabel {
+  const escrow = liveEscrowOf(lease);
+  if (!escrow) return leaseStateLabel(lease.state);
+  const base = escrowStateLabel(escrow.state);
+  const phase = leaseTimeoutPhase(escrow.timeout);
+  if (phase === "none") return base;
+  // 严重度跟着相位走：升级在状态位上就该读作 danger，而不是只靠已删掉的说明行。
+  return {
+    ...base,
+    label: `${base.label}${leaseTimeoutSuffix(escrow.timeout)}`,
+    tone: LEASE_TIMEOUT_LABELS[phase].tone,
+  };
+}
+
+/** 本 Project 里处于挂靠中的租约。 */
+export function liveEscrows(leases: readonly LeaseView[], projectId: string): LeaseView[] {
+  return visibleLeases(leases, projectId).filter((lease) => liveEscrowOf(lease) !== null);
+}
+
+/** 挂靠目标就是本 Chat 的活跃挂靠：本页出现的领取候选。 */
+export function claimableEscrows(
+  leases: readonly LeaseView[],
+  projectId: string,
+  chatId: string,
+): LeaseView[] {
+  return liveEscrows(leases, projectId).filter((lease) => liveEscrowOf(lease)?.chatId === chatId);
+}
+
+/** 由本 Chat 的分身发起的活跃挂靠：撤销入口跟着发起挂靠的分身所在的 Chat。 */
+export function outboundEscrows(
+  leases: readonly LeaseView[],
+  projectId: string,
+  instanceIds: readonly string[],
+): LeaseView[] {
+  const ids = new Set(instanceIds);
+  return liveEscrows(leases, projectId).filter((lease) => {
+    const escrow = liveEscrowOf(lease);
+    return escrow !== null && ids.has(escrow.escrowedByInstanceId);
+  });
+}
+
+/**
+ * 领取范围：指定了 Agent profile 的挂靠只有该 profile 在本 Chat 的分身能领取；
+ * 未指定时本 Chat 的任何分身都能领取。这里只判定范围，不判断分身是否正在跑。
+ */
+export function escrowClaimScope(
+  escrow: LeaseEscrowView,
+  instances: readonly { agentProfileId: string }[],
+  names: EscrowNames = {},
+): { claimable: boolean; note: string | null } {
+  if (!escrow.targetAgentProfileId) return { claimable: true, note: null };
+  if (instances.some((item) => item.agentProfileId === escrow.targetAgentProfileId))
+    return { claimable: true, note: null };
+  const named = names.agents?.[escrow.targetAgentProfileId] ?? escrow.targetAgentProfileId;
+  return {
+    claimable: false,
+    note: `这次挂靠指定给 Agent ${named}；本 Chat 的分身不在领取范围，领取会被服务端拒绝。`,
+  };
+}
+
 export function mutationStateLabel(mutation: LeaseMutationView): LeaseLabel {
   if (mutation.forcedReclaim) {
     return {
       label: "Human 已强制收回",
-      detail: `代次 ${mutation.completedGeneration}；原动作已由强制收回覆盖，未确认 Worker 排空。`,
+      detail: `原动作已由强制收回覆盖，未确认 Worker 排空。`,
       tone: "warning",
     };
   }
   const completed = mutation.state === "completed";
   return {
     label: `${LEASE_MUTATION_LABELS[mutation.action]}${completed ? "已确认" : "等待 Worker 确认"}`,
-    detail: `代次 ${mutation.completedGeneration ?? mutation.expectedGeneration}`,
+    detail: completed ? "服务端已确认" : "结果未确认，请刷新核对租约状态",
     tone: completed ? "success" : "warning",
   };
 }
@@ -181,7 +312,7 @@ export function runLeaseRelation(
   if (!held) {
     return {
       held,
-      note: "当前没有持有者；这是租约自身的状态，不由 run 状态推出。",
+      note: "当前没有持有者。",
     };
   }
   if (lease.state === "fencing") {
@@ -199,10 +330,7 @@ export function runLeaseRelation(
   if (runStatus === "running") {
     return { held, note: "租约持有中，与所在 run 并行存在。" };
   }
-  return {
-    held,
-    note: `最近一次 run 已结束（${runStatus}），租约仍由该分身持有，直到显式释放。`,
-  };
+  return { held, note: `最近一次 run 已结束（${runStatus}）。` };
 }
 
 export const OPERATION_KIND_LABELS: Record<RemoteOperation["kind"], string> = {
@@ -513,9 +641,3 @@ export function cancellationSignalFacts(cancellation: ExecutionCancellationView)
     facts.push("进程已不再运行，但退出没有被记录");
   return facts;
 }
-
-export const HOST_TOOL_NOTE =
-  "宿主工具（如 sprout_status、本机文件读写）运行在 Pi 宿主进程所在机器上，与远端操作分开记录。";
-
-export const REMOTE_TARGET_NOTE =
-  "每条远端操作都显式指定 Machine；不存在默认目标，也不会猜测目标。结果状态来自 Worker 报告，未确认时显示未知。";

@@ -27,7 +27,11 @@ function plan(seconds, resources, preparation = [], sandbox = false) {
   });
 }
 
-export const MANUAL_GATES = Object.freeze(["p6a-live-routing"]);
+export const MANUAL_GATES = Object.freeze([
+  "p6a-live-routing",
+  "p8d-windows-worker",
+  "p8d-windows-integration",
+]);
 
 export const SUITE_PLAN = Object.freeze({
   "assistant-core": plan(8, { unit: 1 }),
@@ -101,6 +105,8 @@ export const SUITE_PLAN = Object.freeze({
   "i4-agent-fanout": plan(12, { light: 1 }, server),
   "i5-project-removal": plan(4, { light: 1 }),
   "p6c-member-removal": plan(4, { light: 1 }),
+  "p8c-removal": plan(3, { light: 1 }),
+  "p8c-removal-integration": plan(3, { light: 1 }),
   "p6c-participation-revocation": plan(4, { light: 1 }),
   "bf-p6c-lifecycle": plan(3, { light: 1 }),
   "p6c-member-governance-ui": plan(8, { browser: 1 }, server),
@@ -125,9 +131,16 @@ export const SUITE_PLAN = Object.freeze({
   "s-machine-contracts": plan(3.11, { unit: 1 }),
   "t-machine-worker": plan(67.424, { native: 1, browser: 1, development: 1 }, worker, true),
   "u-machine-ui": plan(75.372, { native: 1, browser: 1 }, worker),
+  "p4a-machine-scenes": plan(90, { development: 1, browser: 1 }, privateTree, true),
   "v-lease-contracts": plan(2.619, { unit: 1 }),
+  "p8a-lease-escrow": plan(3.4, { unit: 1 }),
+  "p8b-timeout": plan(2.4, { unit: 1 }),
+  "p8b-timeout-integration": plan(4.5, { unit: 1 }),
+  "p8a-lease-integration": plan(70, { native: 1, sdk: 1, timing: 1 }, worker),
   "v-mcp-contracts": plan(11.609, { unit: 1 }),
   "w-worker-remote": plan(66.076, { native: 1, browser: 1 }, worker),
+  "p8d-windows-worker": plan(240, { light: 1 }, ["install"]),
+  "p8d-windows-integration": plan(300, { light: 1 }, ["install"]),
   "ap-p4d-handoff-worker": plan(74, { native: 1, browser: 1 }, worker),
   "az-p5a-live-worker": plan(42, { native: 1, sdk: 1, timing: 1 }, worker),
   "as-p5a-chat-ui": plan(45, { browser: 1 }, server),

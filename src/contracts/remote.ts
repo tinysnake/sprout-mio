@@ -25,12 +25,13 @@ import {
 } from "./mcp";
 import { runIdSchema } from "./agent-run";
 import { appIdPattern, ID_PREFIXES } from "./ids";
-import { leaseKeySchema, leaseMutationInputSchema, leaseReadInputSchema } from "./lease";
 import {
-  macosAbsolutePathSchema,
-  positiveSafeIntegerSchema,
-  REMOTE_OPERATION_KINDS,
-} from "./machine";
+  leaseEscrowCommandInputSchema,
+  leaseKeySchema,
+  leaseMutationInputSchema,
+  leaseReadInputSchema,
+} from "./lease";
+import { absolutePathSchema, positiveSafeIntegerSchema, REMOTE_OPERATION_KINDS } from "./machine";
 import { APP_ERROR_CODES } from "./result";
 import { workerSecretSchema, workerSessionSchema } from "./worker-session";
 
@@ -54,15 +55,15 @@ const bytes = (max: number) =>
     );
 const shellFields = {
   command: bytes(65536),
-  cwd: macosAbsolutePathSchema.optional(),
+  cwd: absolutePathSchema.optional(),
   waitMs: nonnegativeSafeIntegerSchema.max(10000).default(1000),
 };
 const fileReadFields = {
-  path: macosAbsolutePathSchema,
+  path: absolutePathSchema,
   maxBytes: positiveSafeIntegerSchema.max(262144).default(65536),
 };
 const fileWriteFields = {
-  path: macosAbsolutePathSchema,
+  path: absolutePathSchema,
   content: bytes(262144),
   mode: z.enum(["overwrite", "append"]).default("overwrite"),
 };
@@ -83,7 +84,7 @@ export const remoteOperationSchema = z.discriminatedUnion("kind", [
   ...otherOperations,
 ]);
 const dispatchedOperationSchema = z.discriminatedUnion("kind", [
-  shellOperationSchema.extend({ cwd: macosAbsolutePathSchema }),
+  shellOperationSchema.extend({ cwd: absolutePathSchema }),
   ...otherOperations,
 ]);
 export const REMOTE_EXECUTION_STATES = [
@@ -444,7 +445,9 @@ export const remoteExchangeInputSchema = z.strictObject({
 const authorizationSchema = leaseKeySchema
   .extend({
     generation: nonnegativeSafeIntegerSchema,
-    state: z.enum(["free", "active", "draining"]),
+    // escrowed：挂靠中。对 Worker 而言它不是 active，因此旧持有者的命令与 MCP 绑定照旧被拒；
+    // 它与 draining 不同，不代表在排空，挂靠本身不改进程状态。
+    state: z.enum(["free", "active", "draining", "escrowed"]),
     holderInstanceId: instanceIdSchema.nullable(),
   })
   .refine(
@@ -493,10 +496,12 @@ export const remoteExchangeOutputSchema = z.strictObject({
   /** 下行取消意图：送达只说明收到，不说明进程已停。 */
   cancellations: z.array(executionCancelSchema).max(4).optional(),
 });
+// 挂靠 / 领取 / 撤销挂靠只由分身发起：它们是 Agent 工具，不进入人类边界。
 const agentMutationInputSchema = z.discriminatedUnion("action", [
   leaseMutationInputSchema.options[0],
   leaseMutationInputSchema.options[1],
   leaseMutationInputSchema.options[2],
+  ...leaseEscrowCommandInputSchema.options,
 ]);
 /** 游标绑定执行：用执行 A 的游标读执行 B 必须被拒，不静默跳过 B 的前缀。 */
 export const executionLogCursorSchema = z.strictObject({
@@ -705,6 +710,24 @@ export const remoteToolInputSchemas = {
     machineId: leaseKeySchema.shape.machineId,
     mutationId: mutationIdSchema.optional(),
   }),
+  /** 挂靠到本 Project 的 Group（或 Public Channel），可指定该 Group 内的 Agent profile。 */
+  sprout_lease_escrow: z.strictObject({
+    ...toolMutationBase,
+    expectedGeneration: positiveSafeIntegerSchema,
+    chatId: id(ID_PREFIXES.chat),
+    targetAgentProfileId: id(ID_PREFIXES.agentProfile).optional(),
+  }),
+  /** 领取：身份由 grant 注入，这里只给目标挂靠行与当前代次。 */
+  sprout_lease_claim: z.strictObject({
+    ...toolMutationBase,
+    expectedGeneration: positiveSafeIntegerSchema,
+    escrowId: id(ID_PREFIXES.leaseEscrow),
+  }),
+  sprout_lease_escrow_cancel: z.strictObject({
+    ...toolMutationBase,
+    expectedGeneration: positiveSafeIntegerSchema,
+    escrowId: id(ID_PREFIXES.leaseEscrow),
+  }),
   sprout_remote_shell: z.strictObject({ ...toolExecutionBase, ...shellFields }),
   sprout_remote_file_read: z.strictObject({ ...toolExecutionBase, ...fileReadFields }),
   sprout_remote_file_write: z.strictObject({ ...toolExecutionBase, ...fileWriteFields }),
@@ -718,6 +741,15 @@ export const remoteToolInputSchemas = {
   /** 取消只暴露意图与当前代次；Project 由宿主注入，`cancelId` 由服务端生成。 */
   sprout_remote_execution_cancel: executionCancelInputSchema.omit({ projectId: true }),
   sprout_remote_execution_log: executionLogReadInputSchema.omit({ projectId: true }),
+  /**
+   * I-P8b 阻塞式等待（N1–N8）：只声明「目标 Machine」与「自己愿意忍多久」（N2）。
+   * 等待是**阻塞当前 run 的只读轮询**（N5），不新增 remote call type；身份（instanceId）
+   * 与 Project 由宿主注入，不能作为参数声明。
+   */
+  sprout_lease_wait: z.strictObject({
+    machineId: leaseKeySchema.shape.machineId,
+    waitMs: positiveSafeIntegerSchema.optional(),
+  }),
 } as const;
 export type RemoteOperation = z.infer<typeof remoteOperationSchema>;
 export type RemoteResultPayload = z.infer<typeof remoteResultPayloadSchema>;

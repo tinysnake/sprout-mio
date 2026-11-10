@@ -11,6 +11,7 @@ import {
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
 import { projectIdInput } from "../../contracts/project";
 import { projectMemberRemovalBlockedErrorSchema } from "../../contracts/project-member-removal";
+import type { ProjectMemberRemovalOutcome } from "../../contracts/project-member-removal";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
 import type { DiagnosticInput } from "../diagnostics";
@@ -147,6 +148,41 @@ export async function removeProjectMemberBoundary(
   });
 }
 
+/**
+ * 强制移除的接线层：只做鉴权、输入校验与 `MachineContext` 组装，
+ * 全部业务步骤都在已冻结的 `forceRemoveProjectMember` 事务里，这里不自建事务、不加规则。
+ */
+export async function forceRemoveProjectMemberBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<AgentResult<ProjectMemberRemovalOutcome>> {
+  let recordDiagnostic: DiagnosticRecorder | undefined;
+  try {
+    ({ recordDiagnostic } = await import("../diagnostics"));
+    const [{ requireSession }, domain, { machineRuntimeContext }] = await Promise.all([
+      import("../session"),
+      import("../../domain/agent"),
+      import("../runtime"),
+    ]);
+    const session = await requireSession(headers, requestId);
+    if (!session.ok) return session;
+    const parsed = addProjectMemberInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    const runtime = await machineRuntimeContext();
+    return ok(
+      domain.forceRemoveProjectMember(parsed.data.projectId, parsed.data.agentProfileId, {
+        userId: session.data.userId,
+        requestId,
+        ...runtime,
+      }),
+      requestId,
+    );
+  } catch (error) {
+    return failure(error, requestId, recordDiagnostic);
+  }
+}
+
 export async function listProjectMembersBoundary(
   raw: unknown,
   headers: Headers,
@@ -191,6 +227,12 @@ export const removeProjectMemberFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     removeProjectMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const forceRemoveProjectMemberFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    forceRemoveProjectMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
 export const listProjectMembersFn = createServerFn({ method: "POST" })

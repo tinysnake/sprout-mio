@@ -1,9 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { createRootRoute, createRouter, RouterProvider } from "@tanstack/react-router";
 import { ChatPane } from "../../src/components/chat/chat-pane";
-import { LeaseMutationForm } from "../../src/components/machine/lease-panel";
 import { ConnectivityStatus } from "../../src/components/layout/connectivity-status";
-import { request } from "./p7-client-actions";
 const projectId = "prj_00000001";
 const chatId = "cnv_00000002";
 const ok = (data: any) => ({ ok: true as const, data, requestId: "req_p7" });
@@ -89,16 +87,6 @@ function Scene() {
           inspectorOpen={false}
           onToggleInspector={() => {}}
           onChanged={() => {}}
-        />
-      </div>
-      <div className="shrink-0 p-4">
-        <LeaseMutationForm
-          projectId={projectId}
-          machines={[]}
-          leases={[]}
-          fixedTargetId="mch_p7"
-          submit={request}
-          testId="p7-lease"
         />
       </div>
     </div>

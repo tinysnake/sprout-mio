@@ -1,7 +1,11 @@
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { z } from "zod";
-import { leaseMutationViewSchema, leaseViewSchema } from "../contracts/lease";
+import {
+  leaseEscrowResultSchema,
+  leaseMutationViewSchema,
+  leaseViewSchema,
+} from "../contracts/lease";
 import { infoHubViewSchema } from "../contracts/info-hub-query";
 import { appErrorSchema } from "../contracts/result";
 import {
@@ -59,6 +63,7 @@ type RemoteData =
   | z.infer<typeof executionCancellationViewSchema>
   | z.infer<typeof executionLogReadViewSchema>
   | z.infer<typeof leaseMutationViewSchema>
+  | z.infer<typeof leaseEscrowResultSchema>
   | z.infer<typeof leaseReadSchema>
   | z.infer<typeof mcpCatalogViewSchema>
   | z.infer<typeof mcpSessionOpenOutputSchema>
@@ -71,6 +76,12 @@ export type RemoteToolResponse =
     };
 export interface RemoteToolClient {
   readonly projectId: string;
+  /**
+   * 本 worker 的实例身份，由宿主（Pi host runner 的 `open` 配置）注入。
+   * 只用于本地判定「这台 Machine 是不是已经握在自己手里」；绝不进请求体，
+   * 所以不能由工具参数冒充。
+   */
+  readonly instanceId?: string;
   request(request: RemoteAgentRequest, signal?: AbortSignal): Promise<RemoteToolResponse>;
 }
 
@@ -193,6 +204,14 @@ function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolRe
     return ok(parsed.data);
   }
   if (call.type === "lease_mutate") {
+    // 挂靠 / 领取 / 撤销挂靠回的是「动作之后的新事实」，不是 mutation 收据。
+    if (["escrow", "claim", "escrow_cancel"].includes(call.input.action)) {
+      const parsed = leaseEscrowResultSchema.safeParse(raw);
+      if (!parsed.success) return bad;
+      const { lease, escrow } = parsed.data;
+      if (!sameBinding(lease) || !sameBinding(escrow)) return bad;
+      return ok(parsed.data);
+    }
     const parsed = leaseMutationViewSchema.safeParse(raw);
     if (!parsed.success || !sameBinding(parsed.data)) return bad;
     return ok(parsed.data);
@@ -390,12 +409,13 @@ function readMcpResponse(
 /** Direct HTTP deliberately bypasses environment/global fetch proxies and never follows redirects. */
 export function createRemoteClient(
   config: RemoteToolGrant,
-  { timeoutMs = 15000 }: { timeoutMs?: number } = {},
+  { timeoutMs = 15000, instanceId }: { timeoutMs?: number; instanceId?: string } = {},
 ): RemoteToolClient {
   const { endpoint, secret, projectId } = remoteToolGrantSchema.parse(config);
   const url = new URL(endpoint);
   return {
     projectId,
+    instanceId,
     async request(input, signal) {
       const parsed = remoteAgentRequestSchema.safeParse(input);
       if (!parsed.success) return { outcome: "unknown", reason: "invalid_response" };

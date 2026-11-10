@@ -1679,11 +1679,25 @@ export const leaseAuthorization = sqliteTable(
     machineId: text("machine_id").notNull(),
     generation: integer("generation").notNull(),
     holderInstanceId: text("holder_instance_id"),
-    state: text("state", { enum: ["free", "active", "draining", "revoked"] }).notNull(),
+    // `escrowed` 是「挂靠中」的授权态：租约仍被占用，但发起者已交出操作权。它不是 revoked
+    // （记录未终结，仍占着 lease_one_live_authorization 的活跃位），也不是 active（没有操作权）。
+    state: text("state", {
+      enum: ["free", "active", "draining", "escrowed", "revoked"],
+    }).notNull(),
     issuedAt: integer("issued_at", { mode: "timestamp_ms" }).notNull(),
     revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    /** 授权因何而建立：`escrow` 建立挂靠态，`claim` 是领取者取得的新授权，`escrow_cancel` 是撤销挂靠后回到发起者。 */
     reason: text("reason", {
-      enum: ["initial", "acquire", "release", "handoff", "reclaim"],
+      enum: [
+        "initial",
+        "acquire",
+        "release",
+        "handoff",
+        "reclaim",
+        "escrow",
+        "claim",
+        "escrow_cancel",
+      ],
     }).notNull(),
   },
   (t) => [
@@ -1691,11 +1705,14 @@ export const leaseAuthorization = sqliteTable(
       "lease_authorization_check_1",
       sql`typeof(generation)='integer' AND generation BETWEEN 0 AND 9007199254740991`,
     ),
-    check("lease_authorization_check_2", sql`state IN ('free','active','draining','revoked')`),
+    check(
+      "lease_authorization_check_2",
+      sql`state IN ('free','active','draining','escrowed','revoked')`,
+    ),
     check("lease_authorization_check_3", sql`typeof(issued_at)='integer' AND issued_at>=0`),
     check(
       "lease_authorization_check_4",
-      sql`reason IN ('initial','acquire','release','handoff','reclaim')`,
+      sql`reason IN ('initial','acquire','release','handoff','reclaim','escrow','claim','escrow_cancel')`,
     ),
     primaryKey({ columns: [t.projectId, t.machineId, t.generation] }),
     uniqueIndex(
@@ -1712,13 +1729,14 @@ export const leaseAuthorization = sqliteTable(
     check(
       "lease_authorization_check_9",
       sql`(state='free' AND holder_instance_id IS NULL AND revoked_at IS NULL) OR
-        (state IN ('active','draining') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR
+        (state IN ('active','draining','escrowed') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR
         (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)`,
     ),
     check("lease_authorization_check_10", sql`generation>0 OR holder_instance_id IS NULL`),
+    // 挂靠中仍是「这一代唯一的活跃授权」：唯一约束的语义不变，只是多了一个活跃授权态。
     uniqueIndex("lease_one_live_authorization")
       .on(t.projectId, t.machineId)
-      .where(sql`state IN ('free','active','draining')`),
+      .where(sql`state IN ('free','active','draining','escrowed')`),
   ],
 );
 
@@ -1959,6 +1977,105 @@ export const workerExchangeFrame = sqliteTable(
       columns: [t.machineId, t.connectionGeneration],
       foreignColumns: [machineConnection.machineId, machineConnection.generation],
     }),
+  ],
+);
+
+export const leaseEscrow = sqliteTable(
+  "lease_escrow",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    state: text("state", {
+      enum: ["escrowed", "claimed", "cancelled", "superseded"],
+    }).notNull(),
+    /** 挂靠目标：当前 Project 内的一个 Group，或 Group 内的一个 Agent profile（Public Channel 也算 Group）。 */
+    chatId: text("chat_id").notNull(),
+    targetAgentProfileId: text("target_agent_profile_id"),
+    escrowedByInstanceId: text("escrowed_by_instance_id").notNull(),
+    escrowedAt: integer("escrowed_at", { mode: "timestamp_ms" }).notNull(),
+    escrowRequestId: text("escrow_request_id").notNull(),
+    escrowPayloadHash: text("escrow_payload_hash").notNull(),
+    /** 挂靠是在哪一代上生效的（= 旧的 active 授权被置为 escrowed 的那一代）。 */
+    escrowGeneration: integer("escrow_generation").notNull(),
+    claimedByInstanceId: text("claimed_by_instance_id"),
+    claimedAt: integer("claimed_at", { mode: "timestamp_ms" }),
+    claimedGeneration: integer("claimed_generation"),
+    claimRequestId: text("claim_request_id"),
+    claimPayloadHash: text("claim_payload_hash"),
+    closedAt: integer("closed_at", { mode: "timestamp_ms" }),
+    /**
+     * I-P8b 挂靠超时：只记事实，不参与占用与权限判定。超时绝不释放租约（T6），
+     * 这里四列的意义仅是「提醒过一次没有」「唤醒投递要不要重试」「升级过没有」。
+     */
+    timeoutNotifiedAt: integer("timeout_notified_at", { mode: "timestamp_ms" }),
+    timeoutNoticeAttempt: integer("timeout_notice_attempt"),
+    timeoutNoticeNextAt: integer("timeout_notice_next_at", { mode: "timestamp_ms" }),
+    timeoutEscalatedAt: integer("timeout_escalated_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    check("lease_escrow_check_1", sql`state IN ('escrowed','claimed','cancelled','superseded')`),
+    check("lease_escrow_check_2", sql`typeof(escrowed_at)='integer' AND escrowed_at>=0`),
+    check(
+      "lease_escrow_check_3",
+      sql`typeof(escrow_generation)='integer' AND escrow_generation BETWEEN 1 AND 9007199254740991`,
+    ),
+    check(
+      "lease_escrow_check_4",
+      sql`length(escrow_payload_hash)=64 AND escrow_payload_hash NOT GLOB '*[^0-9a-f]*'`,
+    ),
+    // 活跃挂靠没有任何领取痕迹、也没有结束时间；结束的挂靠必须带结束时间。
+    check(
+      "lease_escrow_check_5",
+      sql`(state='escrowed' AND claimed_by_instance_id IS NULL AND claimed_at IS NULL AND claimed_generation IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL AND closed_at IS NULL) OR
+        (state<>'escrowed' AND closed_at IS NOT NULL AND typeof(closed_at)='integer' AND closed_at>=escrowed_at)`,
+    ),
+    // 只有领取会留下领取者和新一代授权；撤销/被取代不留。
+    check(
+      "lease_escrow_check_6",
+      sql`(state='claimed' AND claimed_by_instance_id IS NOT NULL AND typeof(claimed_generation)='integer' AND claimed_generation>escrow_generation) OR
+        (state<>'claimed' AND claimed_by_instance_id IS NULL AND claimed_generation IS NULL)`,
+    ),
+    check(
+      "lease_escrow_check_7",
+      sql`(claimed_at IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL) OR
+        (claimed_at IS NOT NULL AND typeof(claimed_at)='integer' AND claimed_at>=escrowed_at AND claim_request_id IS NOT NULL AND length(claim_payload_hash)=64 AND claim_payload_hash NOT GLOB '*[^0-9a-f]*')`,
+    ),
+    // 超时事实只能发生在挂靠被接受之后；提醒才可能有唤醒重试；提醒才可能升级。
+    check(
+      "lease_escrow_check_8",
+      sql`(timeout_notified_at IS NULL OR (typeof(timeout_notified_at)='integer' AND timeout_notified_at>=escrowed_at)) AND
+        (timeout_escalated_at IS NULL OR (typeof(timeout_escalated_at)='integer' AND timeout_escalated_at>=escrowed_at AND timeout_notified_at IS NOT NULL)) AND
+        ((timeout_notice_attempt IS NULL AND timeout_notice_next_at IS NULL) OR
+          (timeout_notice_attempt IS NOT NULL AND typeof(timeout_notice_attempt)='integer' AND timeout_notice_attempt>=1 AND
+           timeout_notice_next_at IS NOT NULL AND typeof(timeout_notice_next_at)='integer' AND timeout_notice_next_at>=escrowed_at)) AND
+        (timeout_notice_attempt IS NULL OR timeout_notified_at IS NOT NULL)`,
+    ),
+    foreignKey({
+      columns: [t.projectId, t.machineId],
+      foreignColumns: [machineLease.projectId, machineLease.machineId],
+    }),
+    foreignKey({
+      columns: [t.chatId, t.projectId],
+      foreignColumns: [chat.id, chat.projectId],
+    }),
+    foreignKey({ columns: [t.targetAgentProfileId], foreignColumns: [agentProfile.id] }),
+    foreignKey({
+      columns: [t.escrowedByInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
+    }),
+    foreignKey({
+      columns: [t.claimedByInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
+    }),
+    uniqueIndex("lease_escrow_id_project_unique").on(t.id, t.projectId),
+    // 同一个租约同一时刻只有一个活跃挂靠；结束的行保留为历史，不被覆盖。
+    uniqueIndex("lease_one_live_escrow")
+      .on(t.projectId, t.machineId)
+      .where(sql`state='escrowed'`),
+    // 幂等键：同一发起者的同一 requestId 只对应一次挂靠 / 领取。
+    uniqueIndex("lease_escrow_escrow_request_unique").on(t.escrowedByInstanceId, t.escrowRequestId),
+    uniqueIndex("lease_escrow_claim_request_unique").on(t.claimedByInstanceId, t.claimRequestId),
   ],
 );
 

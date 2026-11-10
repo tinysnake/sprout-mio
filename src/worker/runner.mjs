@@ -4,7 +4,7 @@
 // **自己的**进程组起（`detached: true`）。Worker 的中止信号只打命令组，runner 不陪葬，
 // 于是 KILL 之后 result.json 仍然会落盘——退出是被观测到的，不是「不知道它怎么结束」。
 //
-// 命令行参数是 <executionId> <runnerToken> <stateDirectory> <shellPath>；
+// 命令行参数是 <executionId> <runnerToken> <stateDirectory> <shellPath> [shellKind]；
 // 命令正文走环境变量，不进 argv：同一台机器上按命令行匹配进程的工具只该看到一个命令进程。
 //
 // 顺序很重要：先把 runner claim（pid 与 token）落盘，再起真正的命令；命令起来后立刻把
@@ -17,8 +17,19 @@ import { spawn } from "node:child_process";
 import { closeSync, fsyncSync, mkdirSync, openSync, renameSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
-const [executionId, runnerToken, stateDirectory, shellPath] = process.argv.slice(2);
+const [executionId, runnerToken, stateDirectory, shellPath, shellKind = "sh"] =
+  process.argv.slice(2);
 const command = process.env.SPROUT_RUNNER_COMMAND ?? "";
+/**
+ * 调用语法跟着探测到的 shell 种类走，不假设 POSIX：PowerShell 7 与 Windows PowerShell
+ * 共用 `-Command`，cmd 用 `/d /s /c`，其余 shell 保持 `-lc`。
+ */
+function invocation(path, kind, text) {
+  if (kind === "pwsh" || kind === "powershell")
+    return [path, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", text]];
+  if (kind === "cmd") return [path, ["/d", "/s", "/c", text]];
+  return [path, ["-lc", text]];
+}
 
 /** tmp + rename：读到的一半文件永远不会被当成事实。 */
 function writeJson(directory, name, value) {
@@ -50,7 +61,12 @@ writeJson(directory, "runner.json", claim);
 
 // detached：命令自成进程组，组号就是 child.pid。Worker 的取消/超时信号打 -childPid，
 // runner 留在自己的组里继续当观察者。stdio 继承，日志帧仍然直达 Worker 的管道。
-const child = spawn(shellPath, ["-lc", command], { stdio: "inherit", detached: true });
+// Windows 不走 detached：它会让 PowerShell 丢弃继承的 stdout（输出不再回传），
+// 而那里的取消本来就用 taskkill /T 打 childPid，不依赖进程组。
+const child = spawn(...invocation(shellPath, shellKind, command), {
+  stdio: "inherit",
+  detached: process.platform !== "win32",
+});
 // 命令的 pid 单独记：工具面、页面与信号目标看到的是「命令」，不是这个包装进程。
 writeJson(directory, "runner.json", { ...claim, childPid: child.pid ?? null });
 const [code, signal] = await new Promise((resolve) => {

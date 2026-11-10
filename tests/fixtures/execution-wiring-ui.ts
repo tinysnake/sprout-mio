@@ -570,17 +570,17 @@ try {
     await page.screenshot({ path: join(evidence, "settings-log.png"), fullPage: true });
   });
 
-  await check("Chat inspector 只读掠影，并写明读取与取消在 Machine 详情页", async () => {
+  await check("Chat inspector 只呈现既有租约状态，读取与取消在 Machine 详情页", async () => {
     await page.goto(`${base}/projects/${projectId}/chats/${actor.chatId}?info=1`);
-    await page.getByTestId("chat-executions").waitFor();
-    const note = page.getByTestId("chat-executions-read-only");
-    await note.waitFor();
-    const text = (await note.innerText()).trim();
-    assert.match(text, /只读/);
-    assert.match(text, /Machine 详情页/);
-    assert.equal(await page.getByTestId("chat-executions-item-log-load").count(), 0);
-    assert.equal(await page.getByTestId("chat-executions-item-cancel-request").count(), 0);
-    assert.equal(await page.getByTestId("chat-executions-not-wired").count(), 0);
+    const facts = page.getByTestId("chat-machine-facts");
+    await facts.waitFor();
+    assert(await page.getByTestId("chat-leases").isVisible());
+    // v2：远端操作的表格与柱状汇总不再挂在 Info Hub 上；它与读日志、取消一起留在 Machine 详情页。
+    assert.equal(await page.getByTestId("chat-executions").count(), 0);
+    assert.equal(await page.getByTestId("chat-execution-targets").count(), 0);
+    assert.equal(await page.getByTestId("chat-leases-dense-note").count(), 0);
+    assert.doesNotMatch(await facts.innerText(), /每条操作都指定 Machine|此面板只读/);
+    assert.equal(await page.locator('[data-testid^="chat-lease-escrow"]').count(), 0);
     await page.screenshot({ path: join(evidence, "inspector-read-only.png"), fullPage: true });
   });
 

@@ -2,6 +2,20 @@
 
 状态：本文保留共用呈现组件与演示交付记录。正式路由、真实 server functions、安装指令和 Info Hub 的当前接入见 [p4a-integration.md](p4a-integration.md)。历史记录不是章节技术验收或 Human 体验确认。
 
+## P8d：Shell 能力与执行环境的正式呈现
+
+I-P8d UI 线把「Worker 跑在什么 shell 上、能力如何、有没有降级」做成正式呈现，取代方案 B 的一行摘要与「路径进弹层」的取舍。本节是当前设计，下方「Shell 能力：方案 B」是 P4a 当时的历史记录。
+
+小节内直接列出每个 shell 的事实（`machine-shell-fact`）：`✓/✗/?` 加自检结论、等宽字体路径、等宽字体版本。版本串是 Worker 原样上报的内容，窄屏用截断省略，完整串与 `检查时间` 仍在「查看完整探测详情」弹层里。列表为空显示「Worker 未报告可用 shell。」，这是「未报告」不是「全部失败」。
+
+执行环境单独一行（`machine-execution-environment`），左侧规则线按结论着色，五种说法互不相同：`未上报`（旧 Worker 没有这项探测，不等于不支持）、`会话未知`（读不到 SessionId，不判定会话类型）、`不适用（非 Windows）`、`服务会话（Session 0）`、`交互桌面 · Session N`。除 `不适用` 外都带「桌面相关能力未验证」徽标，只有 Worker 实测在交互桌面会话里才不标。
+
+Windows 上 pwsh 不可用时给降级提示（`machine-shell-degradation`），标题写明是未探测到、未找到还是自检失败，正文写清当前可用的是 Windows PowerShell 5.1 还是只有 cmd，以及这会让为 PowerShell 7 写的脚本失败。降级不只靠颜色：图标、标题、整句说明与失败行的中文原因同时在。
+
+触发元素不再是摘要本体，只写「查看完整探测详情」；演示控制新增 `machine-demo-platform` 平台与执行环境选择器（macOS 全能力、Windows + pwsh 7、Windows 只有 5.1、Windows 只有 cmd、Windows 交互桌面、Windows 会话未知、Windows 未上报），与既有 Shell 状态选择器可组合：两者都从当前平台场景重建能力快照，不再互相覆盖。
+
+判定口径与探测顺序见 [p8d/contracts.md](../p8d/contracts.md)。设计判断与截图见 `orchestrate/sprout-mio-p8/reports/p8d-ui-design.md` 与 `p8d-ui-evidence/`。
+
 ## Round-4：断联、自动刷新与目录原因
 
 仅当前能力可用时显示下述一行摘要与宽弹窗。能力不可用时不渲染摘要按钮、勾叉或历史详情入口：offline 显示「Worker 已断连」；connecting 显示「Worker 正在连接，当前能力尚未上报」；online 但尚无当前能力显示「当前能力尚未上报」。Human 明确指出「看上次的快照没有意义」，因此 Shell 区不以灰勾引导读取旧数据。左栏连接历史事实与旧能力说明继续保留。
@@ -19,7 +33,7 @@
 
 第四轮证据见 `orchestrate/sprout-mio-p4a/reports/worker-reports/sprout-p4a-review-round4-report.md`。截图为 `.verify/p4a-machine-scenes/{shell-summary,offline-no-shell,missing-directory}-{1440,390}-{light,dark}.png`；真实验收命令使用 `SPROUT_PI_ENABLED=false BASE_URL=http://127.0.0.1:3360 bash scripts/verify/u-machine-ui.sh`，连续两次。技术结果以报告退出码为准。Human 已在 `5d49e80` 上确认体验通过，见 [P4a 结论](../p4a/summary.md#human-体验确认)。
 
-## Shell 能力：方案 B「一行摘要」
+## Shell 能力：方案 B「一行摘要」（历史，已被 P8d 取代）
 
 本轮按 Human 已选定的 B 实现：默认显示 `✓ zsh · ✓ bash · ✓ sh`，同行显示 `平台 darwin arm64`。路径、版本、自检结果和检查时间进入详情弹层。`machine-shell-summary.tsx` 直接读取 `MachineDetail["capability"]`，真实详情与演示通过 `MachineDetailPanel` 共用该组件，不改能力快照契约。
 

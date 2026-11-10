@@ -11,6 +11,7 @@ import { SettingsSection } from "../project/settings-section";
 import { ResultError } from "../project/result-error";
 import { MachineEnrollmentPanel } from "./machine-enrollment-panel";
 import { MachineLeaseSection } from "./lease-panel";
+import type { EscrowNames } from "./lease-view";
 import { RemoteExecutionList } from "./remote-execution-panel";
 import { ProjectLeaseActions } from "./project-lease-actions";
 import type { LeaseMutationHandler } from "./machine-view";
@@ -27,6 +28,7 @@ export function MachineLeasePanel({
   onEnrollmentRevoked,
   leases = [],
   holderNames = {},
+  escrowNames = {},
   runs = [],
   executions = [],
   leaseInfo,
@@ -37,7 +39,6 @@ export function MachineLeasePanel({
   connection,
   cancellations,
   onCancelled,
-  onLeaseMutate,
   revision,
 }: {
   detail: MachineDetail;
@@ -51,6 +52,8 @@ export function MachineLeasePanel({
   onEnrollmentRevoked?: (machineId: string) => void;
   leases?: readonly LeaseView[];
   holderNames?: Readonly<Record<string, string>>;
+  /** 挂靠目标与指定 Agent 的显示名；由页面从 Info Hub 事实推导。 */
+  escrowNames?: EscrowNames;
   runs?: readonly { runId: string; status: string }[];
   executions?: readonly ExecutionView[];
   leaseInfo?: ProjectInfoHub;
@@ -62,25 +65,19 @@ export function MachineLeasePanel({
   connection?: LogConnection;
   cancellations?: Readonly<Record<string, ExecutionCancellationView>>;
   onCancelled?: (view: ExecutionCancellationView) => void;
-  onLeaseMutate?: LeaseMutationHandler;
   /** Machine 范围的活动 revision；传了就让 fencing 事实跟着 revision 读。 */
   revision?: string | null;
 }) {
-  const leaseSection = (
-    onMutate?: LeaseMutationHandler,
-    chatRow?: ReactNode,
-    transferControls?: ReactNode,
-  ) => (
+  const leaseSection = (onMutate?: LeaseMutationHandler) => (
     <MachineLeaseSection
       projectId={project.id}
       detail={detail}
       leases={leases}
       holderNames={holderNames}
+      escrowNames={escrowNames}
       runs={runs}
       onMutate={onMutate}
       revision={revision}
-      {...(chatRow ? { chatRow } : {})}
-      {...(transferControls ? { transferControls } : {})}
     />
   );
 
@@ -105,30 +102,22 @@ export function MachineLeasePanel({
           />
         </SettingsSection>
       )}
-      <SettingsSection
-        title="租约与持有者"
-        description="租约单位是 Project × Machine；变更不会终止进程或删除文件。"
-        testId="machine-lease-detail"
-      >
+      <SettingsSection title="租约与持有者" testId="machine-lease-detail">
         {leaseError ? (
           <ResultError error={leaseError} />
         ) : leaseInfo ? (
           <ProjectLeaseActions
             key={leaseInfo.projectId}
             info={leaseInfo}
-            fixedMachineId={detail.machine.id}
+            machineId={detail.machine.id}
           >
-            {(mutate, chrome) => leaseSection(mutate, chrome.chatRow, chrome.transferControls)}
+            {(mutate) => leaseSection(mutate)}
           </ProjectLeaseActions>
         ) : (
-          leaseSection(onLeaseMutate)
+          leaseSection()
         )}
       </SettingsSection>
-      <SettingsSection
-        title="远端操作"
-        description="操作目标由请求自身指定；宿主工具与远端操作分开记录，结果未经确认时显示未知。"
-        testId="machine-remote-executions"
-      >
+      <SettingsSection title="远端操作" testId="machine-remote-executions">
         {executionError ? (
           <ResultError error={executionError} />
         ) : (

@@ -110,6 +110,8 @@ const server = createServer((req, res) => {
           holderInstanceId: null,
           changedAt: time,
           pendingMutationId: null,
+          // 租约视图的必填字段（src/contracts/lease.ts 的 leaseViewSchema）：free 租约没有挂靠。
+          escrow: null,
         },
         mutation: null,
       });
@@ -283,6 +285,8 @@ try {
       cwd: join(directory, "workspace"),
       agentDir: process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
       extensionPath: probePath,
+      // 协议必填字段（src/server/pi-host/protocol.ts 的 OpenSession）：缺省等同 disabled，但必须显式写出。
+      resources: { kind: "disabled" },
       profile: {
         id: "cfg_00000000-0000-4000-8000-000000000000",
         name: "Cancellation and log tools verification",

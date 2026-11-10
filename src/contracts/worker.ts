@@ -12,7 +12,7 @@ import {
   capabilitySnapshotSchema,
   directoryObservationSchema,
   machineIdSchema,
-  macosAbsolutePathSchema,
+  absolutePathSchema,
   positiveSafeIntegerSchema,
 } from "./machine";
 
@@ -229,7 +229,7 @@ export const workerExchangeResponseSchema = z.union([
         seq: positiveSafeIntegerSchema,
         configuration: z
           .strictObject({
-            root: macosAbsolutePathSchema.nullable(),
+            root: absolutePathSchema.nullable(),
             rootRevision: positiveSafeIntegerSchema,
             bindings: z
               .array(

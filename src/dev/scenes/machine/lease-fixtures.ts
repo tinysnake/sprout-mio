@@ -1,5 +1,6 @@
 import type { LeaseView } from "../../../contracts/lease";
 import type { LeaseMutationInput, LeaseMutationView } from "../../../contracts/lease";
+import type { LeaseEscrowCommandInput, LeaseEscrowView } from "../../../contracts/lease";
 import type {
   ExecutionCancellationView,
   ExecutionLogReadView,
@@ -37,6 +38,7 @@ export const demoLeases: LeaseView[] = [
     holderInstanceId: demoInstanceIds.primary,
     changedAt: "2026-10-18T07:02:00.000Z",
     pendingMutationId: null,
+    escrow: null,
   },
   {
     projectId: demoProject.id,
@@ -46,6 +48,7 @@ export const demoLeases: LeaseView[] = [
     holderInstanceId: demoInstanceIds.primary,
     changedAt: "2026-10-18T07:05:00.000Z",
     pendingMutationId: null,
+    escrow: null,
   },
   {
     projectId: demoProject.id,
@@ -55,6 +58,7 @@ export const demoLeases: LeaseView[] = [
     holderInstanceId: demoInstanceIds.sibling,
     changedAt: "2026-10-18T07:10:00.000Z",
     pendingMutationId: "lmu_12345678",
+    escrow: null,
   },
   {
     projectId: secondProject.id,
@@ -64,6 +68,7 @@ export const demoLeases: LeaseView[] = [
     holderInstanceId: demoInstanceIds.foreign,
     changedAt: "2026-10-18T07:08:00.000Z",
     pendingMutationId: null,
+    escrow: null,
   },
 ];
 
@@ -76,7 +81,400 @@ export const demoFreeLease: LeaseView = {
   holderInstanceId: null,
   changedAt: "2026-10-18T06:59:00.000Z",
   pendingMutationId: null,
+  escrow: null,
 };
+
+/**
+ * 挂靠演示：目标是本 Project 的 Group 或 Public Channel（DM 不被支持），
+ * 可选指定 Group 内的一个 Agent profile。这些 Chat 与 Agent 只服务演示。
+ */
+export const demoEscrowTargets = {
+  group: { chatId: "cnv_55555555", title: "发布协作组", kind: "group" as const },
+  channel: { chatId: "cnv_66666666", title: "发布公告频道", kind: "public_channel" as const },
+  dm: { chatId: "cnv_77777777", title: "Human 私聊", kind: "dm" as const },
+};
+
+export const demoEscrowProfiles = {
+  reviewer: "agp_aaaaaaaa",
+  writer: "agp_bbbbbbbb",
+} as const;
+
+export const demoEscrowAgentNames: Record<string, string> = {
+  [demoEscrowProfiles.reviewer]: "验收 Agent",
+  [demoEscrowProfiles.writer]: "文档 Agent",
+};
+
+/** 每个演示 Chat 里的分身：领取范围按这里的 agentProfileId 判定。 */
+export const demoEscrowInstances: Record<string, { instanceId: string; agentProfileId: string }[]> =
+  {
+    [demoEscrowTargets.group.chatId]: [
+      { instanceId: demoInstanceIds.primary, agentProfileId: demoEscrowProfiles.reviewer },
+      { instanceId: demoInstanceIds.sibling, agentProfileId: demoEscrowProfiles.writer },
+    ],
+    [demoEscrowTargets.channel.chatId]: [
+      { instanceId: demoInstanceIds.sibling, agentProfileId: demoEscrowProfiles.writer },
+    ],
+    [demoEscrowTargets.dm.chatId]: [],
+  };
+
+/** 挂靠目标选择框的选项。DM 也列出来，用来看见它被排除在挂靠目标之外。 */
+export const demoEscrowChats: {
+  id: string;
+  kind: "dm" | "group" | "public_channel";
+  title: string;
+}[] = [demoEscrowTargets.group, demoEscrowTargets.channel, demoEscrowTargets.dm].map((target) => ({
+  id: target.chatId,
+  kind: target.kind,
+  title: target.title,
+}));
+
+/**
+ * 挂靠目标与指定 Agent 的显示名。真实页面从 Info Hub 事实推导，演示场景直接用这份名单，
+ * 免得只读投影在截图里退回裸 id。
+ */
+export const demoEscrowNames = {
+  chats: Object.fromEntries(demoEscrowChats.map((chat) => [chat.id, chat.title])),
+  chatKinds: Object.fromEntries(demoEscrowChats.map((chat) => [chat.id, chat.kind])),
+  agents: demoEscrowAgentNames,
+};
+
+/** 指定 Agent 选择框的选项：每个分身属于哪个 Chat 就是它的候选范围。 */
+export const demoEscrowAgents = Object.entries(demoEscrowInstances).flatMap(([chatId, items]) =>
+  items.map((item) => ({
+    agentProfileId: item.agentProfileId,
+    name: demoEscrowAgentNames[item.agentProfileId] ?? item.agentProfileId,
+    chatId,
+  })),
+);
+
+/** 演示里每个分身所在的 Chat：挂靠与撤销的命令都送进这个 Chat。 */
+export const demoHolderChats: Record<string, { chatId: string; name: string }> = {
+  [demoInstanceIds.primary]: {
+    chatId: demoEscrowTargets.group.chatId,
+    name: demoEscrowTargets.group.title,
+  },
+  [demoInstanceIds.sibling]: {
+    chatId: demoEscrowTargets.channel.chatId,
+    name: demoEscrowTargets.channel.title,
+  },
+  [demoInstanceIds.foreign]: {
+    chatId: demoEscrowTargets.dm.chatId,
+    name: demoEscrowTargets.dm.title,
+  },
+};
+
+const demoEscrowBase = {
+  state: "escrowed" as const,
+  claimedByInstanceId: null,
+  claimedAt: null,
+  claimedGeneration: null,
+  // I-P8b：超时只作为只读事实出现在挂靠视图上，演示数据不展示超时。
+  timeout: {
+    deadlineAt: "2026-10-18T09:30:00.000Z",
+    notifiedAt: null,
+    escalatedAt: null,
+    awaitingHandling: false,
+    ownerAutoAttemptsPaused: false,
+  },
+};
+
+export const demoGroupEscrow: LeaseEscrowView = {
+  ...demoEscrowBase,
+  projectId: demoProject.id,
+  machineId: demoMachineDetails[4].machine.id,
+  escrowId: "les_11111111",
+  chatId: demoEscrowTargets.group.chatId,
+  targetAgentProfileId: null,
+  escrowedByInstanceId: demoInstanceIds.primary,
+  escrowedAt: "2026-10-18T09:00:00.000Z",
+  escrowGeneration: 5,
+};
+
+export const demoChannelEscrow: LeaseEscrowView = {
+  ...demoEscrowBase,
+  projectId: demoProject.id,
+  machineId: demoMachineDetails[0].machine.id,
+  escrowId: "les_22222222",
+  chatId: demoEscrowTargets.channel.chatId,
+  targetAgentProfileId: demoEscrowProfiles.writer,
+  escrowedByInstanceId: demoInstanceIds.primary,
+  escrowedAt: "2026-10-18T09:05:00.000Z",
+  escrowGeneration: 4,
+};
+
+/**
+ * 挂靠中的租约：Machine 仍被原持有者占用，操作权已经交给目标 Group。
+ * 终端状态（已领取 / 已撤销 / 已被取代）不出现在 `LeaseView` 里，只在挂靠行的读取结果里。
+ */ export const demoEscrowLeases: LeaseView[] = [
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[4].machine.id,
+    generation: 5,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoGroupEscrow,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[0].machine.id,
+    generation: 4,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:05:00.000Z",
+    pendingMutationId: null,
+    escrow: demoChannelEscrow,
+  },
+];
+
+/**
+ * 切到「已有挂靠」演示场景时的租约事实：把 demoEscrowLeases 的同机行替掉，
+ * 不带 escrow 的演示行其余不动，保证租约列表仍然每个 machineId 只有一行。
+ */
+export const demoEscrowSceneLeases: LeaseView[] = [
+  ...demoLeases.filter(
+    (lease) =>
+      !demoEscrowLeases.some(
+        (escrowed) =>
+          escrowed.projectId === lease.projectId && escrowed.machineId === lease.machineId,
+      ),
+  ),
+  ...demoEscrowLeases,
+];
+
+/** 已有挂靠行时的演示读取结果：终端状态只在这里出现。 */
+export const demoEscrowResult: Record<string, LeaseEscrowView> = {
+  [demoGroupEscrow.escrowId]: demoGroupEscrow,
+  [demoChannelEscrow.escrowId]: demoChannelEscrow,
+  les_33333333: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[2].machine.id,
+    escrowId: "les_33333333",
+    state: "claimed",
+    chatId: demoEscrowTargets.group.chatId,
+    targetAgentProfileId: null,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T08:00:00.000Z",
+    escrowGeneration: 7,
+    claimedByInstanceId: demoInstanceIds.sibling,
+    claimedAt: "2026-10-18T08:06:00.000Z",
+    claimedGeneration: 8,
+  },
+};
+
+/**
+ * I-P8b 演示：挂靠超时的五种形态。时限按 30 分钟、升级时限按 2 小时写死，与
+ * `LEASE_TIMEOUT_DEFAULT_MS` / `LEASE_ESCALATION_DEFAULT_MS` 一致。
+ *
+ * 「超时待处理」用的是契约里的 `awaitingHandling`，不由客户端时钟现算——
+ * 只有 sweep 能把挂靠变成超时，客户端不许自己造一个倒计时。
+ */
+export const demoTimeoutEscrows: Record<
+  "humanOwner" | "agentOwner" | "escalated" | "waiting",
+  LeaseEscrowView
+> = {
+  /** owner 是人类：提醒只落在 Group chat 里，T9 规定这种挂靠不再升级。 */
+  humanOwner: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[0].machine.id,
+    escrowId: "les_44444444",
+    chatId: demoEscrowTargets.group.chatId,
+    targetAgentProfileId: null,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T09:00:00.000Z",
+    escrowGeneration: 6,
+    timeout: {
+      deadlineAt: "2026-10-18T09:30:00.000Z",
+      notifiedAt: "2026-10-18T09:30:00.000Z",
+      escalatedAt: null,
+      awaitingHandling: true,
+      ownerAutoAttemptsPaused: false,
+    },
+  },
+  /**
+   * owner 是 Agent、还在等唤醒重投，尚未升级。与上一条的可见相位完全相同：
+   * `leaseEscrowViewSchema` 里没有 owner，所以界面上区分不出这两条——这是待评审的选择。
+   */
+  agentOwner: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[1].machine.id,
+    escrowId: "les_55555555",
+    chatId: demoEscrowTargets.group.chatId,
+    targetAgentProfileId: demoEscrowProfiles.writer,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T09:00:00.000Z",
+    escrowGeneration: 6,
+    timeout: {
+      deadlineAt: "2026-10-18T09:30:00.000Z",
+      notifiedAt: "2026-10-18T09:30:00.000Z",
+      escalatedAt: null,
+      awaitingHandling: true,
+      ownerAutoAttemptsPaused: false,
+    },
+  },
+  /** 已升级：owner 过了升级时限仍未处理，自动尝试已暂停（`escalatedAt !== null` 等价）。 */
+  escalated: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[2].machine.id,
+    escrowId: "les_66666666",
+    chatId: demoEscrowTargets.group.chatId,
+    targetAgentProfileId: null,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T09:00:00.000Z",
+    escrowGeneration: 6,
+    timeout: {
+      deadlineAt: "2026-10-18T09:30:00.000Z",
+      notifiedAt: "2026-10-18T09:30:00.000Z",
+      escalatedAt: "2026-10-18T11:30:00.000Z",
+      awaitingHandling: true,
+      ownerAutoAttemptsPaused: true,
+    },
+  },
+  /** 等待中：还没到挂靠时限，申请方拿不到的原因只是「挂靠待处理」。 */
+  waiting: {
+    ...demoEscrowBase,
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[3].machine.id,
+    escrowId: "les_77777777",
+    chatId: demoEscrowTargets.channel.chatId,
+    targetAgentProfileId: demoEscrowProfiles.writer,
+    escrowedByInstanceId: demoInstanceIds.primary,
+    escrowedAt: "2026-10-18T09:00:00.000Z",
+    escrowGeneration: 6,
+    timeout: {
+      deadlineAt: "2026-10-18T09:30:00.000Z",
+      notifiedAt: null,
+      escalatedAt: null,
+      awaitingHandling: false,
+      ownerAutoAttemptsPaused: false,
+    },
+  },
+};
+
+/**
+ * 「挂靠超时」演示场景的五条事实。前四条各带一个活跃挂靠；第五条是领取之后的样子：
+ * 挂靠关闭、代次推进到领取代次、`escrow` 为 null，超时事实随之消失。
+ */
+export const demoTimeoutSceneLeases: LeaseView[] = [
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[0].machine.id,
+    generation: 6,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoTimeoutEscrows.humanOwner,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[1].machine.id,
+    generation: 6,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoTimeoutEscrows.agentOwner,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[2].machine.id,
+    generation: 6,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoTimeoutEscrows.escalated,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[3].machine.id,
+    generation: 6,
+    state: "held",
+    holderInstanceId: demoInstanceIds.primary,
+    changedAt: "2026-10-18T09:00:00.000Z",
+    pendingMutationId: null,
+    escrow: demoTimeoutEscrows.waiting,
+  },
+  {
+    projectId: demoProject.id,
+    machineId: demoMachineDetails[4].machine.id,
+    generation: 8,
+    state: "held",
+    holderInstanceId: demoInstanceIds.sibling,
+    changedAt: "2026-10-18T09:12:00.000Z",
+    pendingMutationId: null,
+    escrow: null,
+  },
+];
+
+/**
+ * 演示用的挂靠命令：只覆盖演示需要的分支，代次推进与服务端一致
+ * （挂靠 / 领取 / 撤销各推进一代）。终端状态的挂靠不再留在 `LeaseView` 上。
+ */
+export function applyEscrowCommand(
+  leases: readonly LeaseView[],
+  input: LeaseEscrowCommandInput,
+  actor: { instanceId: string; now?: string },
+): { leases: LeaseView[]; receipt: LeaseEscrowView } | { error: string } {
+  const now = actor.now ?? "2026-10-18T09:30:00.000Z";
+  const index = leases.findIndex(
+    (lease) => lease.projectId === input.projectId && lease.machineId === input.machineId,
+  );
+  const lease = leases[index];
+  if (!lease) return { error: "not_found" };
+  const escrow = lease.escrow;
+  if (input.action === "escrow") {
+    if (lease.state !== "held" || lease.holderInstanceId !== actor.instanceId)
+      return { error: "lease_not_holder" };
+    if (escrow) return { error: "lease_conflict" };
+    const generation = lease.generation + 1;
+    const receipt: LeaseEscrowView = {
+      ...demoEscrowBase,
+      projectId: lease.projectId,
+      machineId: lease.machineId,
+      escrowId: newId(ID_PREFIXES.leaseEscrow),
+      chatId: input.chatId,
+      targetAgentProfileId: input.targetAgentProfileId ?? null,
+      escrowedByInstanceId: actor.instanceId,
+      escrowedAt: now,
+      escrowGeneration: generation,
+    };
+    const next = [...leases];
+    next[index] = { ...lease, generation, changedAt: now, escrow: receipt };
+    return { leases: next, receipt };
+  }
+  if (!escrow || escrow.escrowId !== input.escrowId) return { error: "not_found" };
+  if (input.action === "claim") {
+    const generation = lease.generation + 1;
+    const receipt: LeaseEscrowView = {
+      ...escrow,
+      state: "claimed",
+      claimedByInstanceId: actor.instanceId,
+      claimedAt: now,
+      claimedGeneration: generation,
+    };
+    const next = [...leases];
+    next[index] = {
+      ...lease,
+      generation,
+      holderInstanceId: actor.instanceId,
+      changedAt: now,
+      escrow: null,
+    };
+    return { leases: next, receipt };
+  }
+  const generation = lease.generation + 1;
+  const receipt: LeaseEscrowView = { ...escrow, state: "cancelled" };
+  const next = [...leases];
+  next[index] = { ...lease, generation, changedAt: now, escrow: null };
+  return { leases: next, receipt };
+}
 
 /**
  * 演示里的时间点与位点都是冻结值，不做时间推进。
@@ -209,6 +607,7 @@ export function applyLeaseMutation(
           holderInstanceId: null,
           changedAt: mutation.createdAt,
           pendingMutationId: null,
+          escrow: null,
         };
   const next: LeaseView =
     mutation.action === "acquire"
@@ -219,6 +618,7 @@ export function applyLeaseMutation(
           holderInstanceId,
           changedAt: mutation.completedAt ?? mutation.createdAt,
           pendingMutationId: null,
+          escrow: null,
         }
       : {
           ...base,
@@ -227,6 +627,7 @@ export function applyLeaseMutation(
           holderInstanceId: null,
           changedAt: mutation.completedAt ?? mutation.createdAt,
           pendingMutationId: null,
+          escrow: null,
         };
   const copy = [...leases];
   if (index >= 0) copy[index] = next;

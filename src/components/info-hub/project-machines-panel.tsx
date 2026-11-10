@@ -5,28 +5,28 @@ import type { LeaseView } from "../../contracts/lease";
 import { MachineList, StatusLine } from "../machine/machine-list";
 import { bindingDirectory, observationLabel } from "../machine/machine-view";
 import { LeaseOverview } from "../machine/lease-panel";
+import type { EscrowNames } from "../machine/lease-view";
 
 /**
  * Project 侧的 Machine 归属：这个 Project 关联了哪些 Machine、各自的租约摘要。
  *
  * 租约的数据归属仍是 Project × Machine（`machine_lease` 唯一键）；这里只给摘要与入口，
- * 申请、释放、交接、收回的界面在对应 Machine 详情的租约区块。
- * `onLeaseMutate` 仍被接受，供已有演示接线继续编译；正式页面不再在这一页渲染管理表单。
+ * 强制收回在对应 Machine 详情的租约区块。
  */
 export function ProjectMachinesPanel({
   projectId,
   machines,
   leases,
   holderNames = {},
-  onLeaseMutate,
+  escrowNames = {},
 }: {
   projectId: string;
   machines: MachineDetail[];
   leases: readonly LeaseView[];
   holderNames?: Readonly<Record<string, string>>;
-  onLeaseMutate?: unknown;
+  /** 挂靠目标与指定 Agent 的权威显示名；缺省时只显示 id。 */
+  escrowNames?: EscrowNames;
 }) {
-  void onLeaseMutate;
   const bound = machines.filter((detail) =>
     detail.bindings.some(({ intent }) => intent.projectId === projectId),
   );
@@ -85,6 +85,7 @@ export function ProjectMachinesPanel({
         machines={machines}
         leases={leases}
         holderNames={holderNames}
+        escrowNames={escrowNames}
         dense
         manageLink={(lease) => (
           <LeaseManageLink

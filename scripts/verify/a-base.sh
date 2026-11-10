@@ -187,7 +187,9 @@ fi
 
 run 'ensure extension artifact' extension-build node scripts/verify/prepare.mjs extension
 [ -f dist/extension/main.js ] || fail 'missing dist/extension/main.js'
-if [ "${SPROUT_VERIFY_TARGET-all}" != ci ]; then
+# 这一段（真实 Pi CLI 调用与随后的载荷/会话事实断言）整段依赖宿主托管 Pi SDK；缺先决条件时
+# 按步骤级跳过并留下 SKIP 行，门禁里与 SDK 无关的部分照跑。
+if [ "${SPROUT_VERIFY_TARGET-all}" != ci ] && node scripts/verify/lib/host-pi-sdk.mjs a-base >"$log_dir/host-pi-sdk.log" 2>&1; then
 if [ "$SPROUT_VERIFY_CHAT_MODE" = model-fixture ]; then
   run 'real Pi sprout_status invocation (model-fixture)' pi node scripts/verify/lib/status-model-fixture.mjs dist/extension/main.js "$log_dir/model-mode.json"
 else
@@ -269,6 +271,11 @@ console.log('CHAT metadata', readFileSync(metadataPath,'utf8'))
 JS
 
 else
-  printf 'INFO real Pi CLI invocation belongs to the local target\n'
+  if [ "${SPROUT_VERIFY_TARGET-all}" = ci ]; then
+    printf 'INFO real Pi CLI invocation belongs to the local target\n'
+  else
+    cat "$log_dir/host-pi-sdk.log"
+    printf 'SKIP real Pi CLI invocation 与随后的 Pi 事实断言：本机没有托管 Pi SDK，装上后重跑本段\n'
+  fi
 fi
 pass "a-base checks passed for target=${SPROUT_VERIFY_TARGET-all}"

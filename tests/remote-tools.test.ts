@@ -8,6 +8,7 @@ import { createRemoteClient } from "../src/extension/remote-client";
 import { registerRemoteTools } from "../src/extension/remote-tools";
 import sproutExtension from "../src/extension/main";
 import type { RemoteAgentRequest, RemoteToolGrant } from "../src/contracts/remote";
+import type { LeaseView } from "../src/contracts/lease";
 import type { RemoteToolClient, RemoteToolResponse } from "../src/extension/remote-client";
 import type { SproutExtensionAPI } from "../src/extension/types";
 
@@ -25,6 +26,7 @@ const free = {
   holderInstanceId: null,
   changedAt: time,
   pendingMutationId: null,
+  escrow: null,
 };
 const denied: RemoteToolResponse = {
   outcome: "response",
@@ -57,6 +59,24 @@ const cases = {
     targetInstanceId: instanceId,
   },
   sprout_lease_get: { machineId },
+  sprout_lease_escrow: {
+    machineId,
+    requestId,
+    expectedGeneration: 1,
+    chatId: "cnv_00000000",
+  },
+  sprout_lease_claim: {
+    machineId,
+    requestId,
+    expectedGeneration: 2,
+    escrowId: "les_00000000",
+  },
+  sprout_lease_escrow_cancel: {
+    machineId,
+    requestId,
+    expectedGeneration: 2,
+    escrowId: "les_00000000",
+  },
   sprout_remote_shell: { ...base, command: "true" },
   sprout_remote_file_read: { ...base, path: "/tmp/file" },
   sprout_remote_file_write: { ...base, path: "/tmp/file", content: "fixture" },
@@ -65,6 +85,7 @@ const cases = {
   sprout_remote_execution_get: { machineId, executionId },
   sprout_remote_execution_cancel: { ...base, executionId },
   sprout_remote_execution_log: { machineId, executionId, cursor: null },
+  sprout_lease_wait: { machineId },
 };
 
 describe("远端 Pi 工具边界", () => {
@@ -108,12 +129,26 @@ describe("远端 Pi 工具边界", () => {
       "lease_mutate",
       "lease_mutate",
       "lease_get",
+      "lease_mutate",
+      "lease_mutate",
+      "lease_mutate",
       ...Array(5).fill("execution_submit"),
       "execution_get",
       "execution_cancel",
       "execution_log_read",
+      "lease_get",
     ]);
-    const shell = requests[4]!.call;
+    // 挂靠 / 领取 / 撤销挂靠走同一个 lease_mutate 通道，action 由工具名推导。
+    expect(
+      requests
+        .slice(4, 7)
+        .map(({ call }) => (call.type === "lease_mutate" ? call.input.action : null)),
+    ).toEqual(["escrow", "claim", "escrow_cancel"]);
+    expect(requests[4]!.call.input).toMatchObject({
+      chatId: "cnv_00000000",
+      expectedGeneration: 1,
+    });
+    const shell = requests[7]!.call;
     expect(shell).toMatchObject({
       type: "execution_submit",
       input: {
@@ -215,6 +250,60 @@ describe("远端 Pi 工具边界", () => {
       isError: false,
       details: { outcome: "pending", data: { state: "pending" } },
     });
+  });
+
+  it("挂靠、领取、撤销挂靠按挂靠契约解码，不冒充 mutation 收据", async () => {
+    const escrow = {
+      projectId,
+      machineId,
+      escrowId: "les_00000000",
+      state: "escrowed" as const,
+      chatId: "cnv_00000000",
+      targetAgentProfileId: null,
+      escrowedByInstanceId: instanceId,
+      escrowedAt: time,
+      escrowGeneration: 2,
+      claimedByInstanceId: null,
+      claimedAt: null,
+      claimedGeneration: null,
+      // I-P8b：超时事实是挂靠视图的必填部分，具体数值不是本用例的关注点。
+      timeout: {
+        deadlineAt: time,
+        notifiedAt: null,
+        escalatedAt: null,
+        awaitingHandling: false,
+        ownerAutoAttemptsPaused: false,
+      },
+    };
+    const lease = {
+      ...free,
+      generation: 2,
+      state: "held" as const,
+      holderInstanceId: instanceId,
+      escrow,
+    };
+    let reply: { lease: typeof lease; escrow: typeof escrow } = { lease, escrow };
+    const http = await service((_req, res) => {
+      res.end(JSON.stringify({ ok: true, requestId, data: reply }));
+    });
+    try {
+      const tool = tools(createRemoteClient(grant(http.endpoint))).get("sprout_lease_escrow")!;
+      expect(await tool.execute("probe", cases.sprout_lease_escrow)).toMatchObject({
+        isError: false,
+        details: {
+          outcome: "succeeded",
+          data: { lease: { generation: 2 }, escrow: { state: "escrowed" } },
+        },
+      });
+      // 跨 Machine 的挂靠收据不可冒充本次结果。
+      reply = { lease, escrow: { ...escrow, machineId: "mch_11111111" } };
+      expect(await tool.execute("probe", cases.sprout_lease_escrow)).toMatchObject({
+        isError: true,
+        details: { outcome: "unknown" },
+      });
+    } finally {
+      http.close();
+    }
   });
 
   it("取消与日志：送达不等于已停止，不完整日志不当空，跨执行响应不可冒充", async () => {
@@ -712,5 +801,123 @@ describe("真实 HTTP transport", () => {
       http.close();
       target.close();
     }
+  });
+});
+
+// I-P8b：真正走工具调用路径的阻塞式等待（不是只跑域层单测）。
+const holderInstanceId = "ins_11111111";
+const freeLease: LeaseView = {
+  projectId,
+  machineId,
+  generation: 0,
+  state: "free",
+  holderInstanceId: null,
+  changedAt: time,
+  pendingMutationId: null,
+  escrow: null,
+};
+const escrowedLease: LeaseView = {
+  projectId,
+  machineId,
+  generation: 1,
+  state: "held",
+  holderInstanceId,
+  changedAt: time,
+  pendingMutationId: null,
+  escrow: {
+    projectId,
+    machineId,
+    escrowId: "les_00000000",
+    state: "escrowed",
+    chatId: "cnv_00000000",
+    targetAgentProfileId: null,
+    escrowedByInstanceId: holderInstanceId,
+    escrowedAt: time,
+    escrowGeneration: 1,
+    claimedByInstanceId: null,
+    claimedAt: null,
+    claimedGeneration: null,
+    timeout: {
+      deadlineAt: time,
+      notifiedAt: null,
+      escalatedAt: null,
+      awaitingHandling: false,
+      ownerAutoAttemptsPaused: false,
+    },
+  },
+};
+const leaseResponse = (lease: LeaseView): RemoteToolResponse => ({
+  outcome: "response",
+  result: { ok: true, data: { lease, mutation: null }, requestId },
+});
+
+describe("阻塞式等待工具（sprout_lease_wait）", () => {
+  const waitTool = (client: RemoteToolClient) => tools(client).get("sprout_lease_wait")!;
+
+  it("空闲时立即成功，且只发 lease_get", async () => {
+    const requests: RemoteAgentRequest[] = [];
+    const tool = waitTool({
+      projectId,
+      instanceId,
+      request: async (request) => {
+        requests.push(request);
+        return leaseResponse(freeLease);
+      },
+    });
+    const result = await tool.execute("probe", { machineId });
+    expect(result.isError).toBe(false);
+    expect(result.details).toMatchObject({ outcome: "succeeded" });
+    expect(requests.map(({ call }) => call.type)).toEqual(["lease_get"]);
+  });
+
+  it("被其他分身持有：到点返回失败加原因，全程只读、绝不抢占或释放", async () => {
+    const requests: RemoteAgentRequest[] = [];
+    const tool = waitTool({
+      projectId,
+      instanceId,
+      request: async (request) => {
+        requests.push(request);
+        return leaseResponse(escrowedLease);
+      },
+    });
+    const started = Date.now();
+    const result = await tool.execute("probe", { machineId, waitMs: 1_000 });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(1_000);
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({
+      outcome: "timed_out",
+      reason: "timed_out",
+      requestedMs: 1_000,
+    });
+    expect(JSON.stringify(result.details)).toContain("自行决定");
+    // 等待期间只读：永远不会出现会改变归属或向持有者发请求的调用。
+    expect(requests.length).toBeGreaterThan(1);
+    expect(requests.every(({ call }) => call.type === "lease_get")).toBe(true);
+  });
+
+  it("同一身份并发等待得到 identity_busy，结束后锁会释放", async () => {
+    let view: LeaseView = escrowedLease;
+    const tool = waitTool({ projectId, instanceId, request: async () => leaseResponse(view) });
+    const first = tool.execute("probe", { machineId, waitMs: 1_000 });
+    // 第一处等待的下一轮会读到空闲，避免测试再多等一秒。
+    view = freeLease;
+    const second = await tool.execute("probe", { machineId });
+    expect(second.isError).toBe(true);
+    expect(second.details).toMatchObject({ outcome: "identity_busy", reason: "identity_busy" });
+    expect(await first).toMatchObject({ isError: false });
+    const third = await tool.execute("probe", { machineId });
+    expect(third.isError).toBe(false);
+    expect(third.details).toMatchObject({ outcome: "succeeded" });
+  });
+
+  it("读租约失败原样映射，不伪装成等待结果", async () => {
+    const tool = waitTool({
+      projectId,
+      instanceId,
+      request: async () => ({ outcome: "unknown", reason: "transport_error" }),
+    });
+    const result = await tool.execute("probe", { machineId, waitMs: 30_000 });
+    expect(result.isError).toBe(true);
+    expect(result.details).toMatchObject({ outcome: "unknown", reason: "transport_error" });
   });
 });

@@ -38,7 +38,6 @@ import { TaskAssociations } from "../tasks/task-associations";
 import { governanceNote } from "./chat-governance";
 import type { ChatMachineFacts } from "./chat-loader";
 import { LeaseOverview } from "../machine/lease-panel";
-import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
 
 const WAKE_POLICY_LABELS: Record<ChatWakePolicy, string> = {
   owner_led: "owner_led · 未点名时回退 Owner",
@@ -549,28 +548,20 @@ export function ChatDetails({
               )}
               {machineFacts && (
                 <div data-testid="chat-machine-facts" className="space-y-4">
+                  {/* 只呈现既有租约状态；远端操作的表格、柱状汇总与说明留在 Machine 详情页。 */}
                   <LeaseOverview
                     projectId={machineFacts.projectId}
                     machines={machineFacts.machines}
                     leases={machineFacts.leases}
                     holderNames={machineFacts.holderNames}
+                    escrowNames={{
+                      chats: machineFacts.chatNames ?? {},
+                      chatKinds: machineFacts.chatKinds ?? {},
+                      agents: machineFacts.agentNames ?? {},
+                    }}
                     dense
+                    showDenseNote={false}
                     testId="chat-leases"
-                  />
-                  {machineFacts.executions.length > 0 && (
-                    <ExecutionTargetTable
-                      executions={machineFacts.executions}
-                      machines={machineFacts.machines}
-                      testId="chat-execution-targets"
-                    />
-                  )}
-                  <RemoteExecutionList
-                    executions={machineFacts.executions}
-                    machines={machineFacts.machines}
-                    holderNames={machineFacts.holderNames ?? {}}
-                    dense
-                    readOnlyNote="此面板只读：只展示已知的执行事实与日志位点。读取日志与取消这次执行请在 Machine 详情页操作。"
-                    testId="chat-executions"
                   />
                 </div>
               )}
@@ -578,12 +569,12 @@ export function ChatDetails({
           </div>
         </details>
 
-        <p className="flex gap-2 pt-5 text-[10px] leading-5 text-muted-foreground">
-          <Icon as={ShieldCheck} size={14} className="mt-0.5" />
-          {machineFacts
-            ? "远端操作以 Worker 运行用户权限执行在工作目录之外；租约不随 run 结束释放。"
-            : "分析基于固定快照。分身可以读取仓库；远端操作的日志读取与取消在 Machine 详情页进行。"}
-        </p>
+        {!machineFacts && (
+          <p className="flex gap-2 pt-5 text-[10px] leading-5 text-muted-foreground">
+            <Icon as={ShieldCheck} size={14} className="mt-0.5" />
+            分析基于固定快照。分身可以读取仓库；远端操作的日志读取与取消在 Machine 详情页进行。
+          </p>
+        )}
       </div>
       <div className="border-t border-border px-5 py-3.5 text-[10px] text-muted-foreground max-desktop:pb-[max(14px,env(safe-area-inset-bottom))]">
         仅 Project 成员可见

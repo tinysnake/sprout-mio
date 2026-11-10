@@ -51,6 +51,8 @@ const server = createServer((req, res) => {
             holderInstanceId: null,
             changedAt: "2026-10-24T00:00:00.000Z",
             pendingMutationId: null,
+            // 租约视图的必填字段（src/contracts/lease.ts 的 leaseViewSchema）：free 租约没有挂靠。
+            escrow: null,
           },
           mutation: null,
         },
@@ -152,7 +154,7 @@ export default function probe(pi) {
       assert.equal(denied.details.error.code, 'validation_failed');
     }
     const valid = await get.execute('valid', {machineId:${JSON.stringify(machineId)}});
-    assert.equal(valid.isError, false);
+    assert.equal(valid.isError, false, JSON.stringify(valid.details));
     assert.equal(valid.details.data.lease.projectId, ${JSON.stringify(projectId)});
     const cancel = registered.get('sprout_remote_execution_cancel');
     const cancelled = await cancel.execute('cancel', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},requestId:${JSON.stringify(requestId)},authorizationGeneration:1,policy:'kill',termWaitMs:10001});
@@ -234,6 +236,8 @@ try {
       cwd: join(directory, "workspace"),
       agentDir: process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
       extensionPath: probePath,
+      // 协议必填字段（src/server/pi-host/protocol.ts 的 OpenSession）：缺省等同 disabled，但必须显式写出。
+      resources: { kind: "disabled" },
       profile: {
         id: "cfg_00000000-0000-4000-8000-000000000000",
         name: "Remote tools verification",

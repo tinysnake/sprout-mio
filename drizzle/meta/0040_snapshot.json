@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "dc2a7cc4-2a56-4694-a80c-9a17fd26e3cf",
-  "prevId": "cf4da706-bad6-411c-a2e8-77c6a959846e",
+  "id": "2b108c63-766e-4ca0-a812-d42671b2f6db",
+  "prevId": "87bf5764-dd5e-4c5c-b42e-bea803315559",
   "tables": {
     "agent_instance": {
       "name": "agent_instance",
@@ -131,14 +131,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'worker'"
         },
         "job_title": {
           "name": "job_title",
@@ -576,674 +568,13 @@
         },
         "agent_run_input_cancel_reason_check": {
           "name": "agent_run_input_cancel_reason_check",
-          "value": "\"agent_run_input\".\"cancel_reason\" is null or \"agent_run_input\".\"cancel_reason\" in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed', 'automation_context_changed', 'assistant_context_changed')"
+          "value": "\"agent_run_input\".\"cancel_reason\" is null or \"agent_run_input\".\"cancel_reason\" in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed', 'automation_context_changed')"
         },
         "agent_run_input_admitted_at_check": {
           "name": "agent_run_input_admitted_at_check",
           "value": "\"agent_run_input\".\"admitted_at\" is null or (typeof(\"agent_run_input\".\"admitted_at\")='integer' and \"agent_run_input\".\"admitted_at\">=0)"
         }
       }
-    },
-    "assistant_event": {
-      "name": "assistant_event",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "assistant_chat_id": {
-          "name": "assistant_chat_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "event_key": {
-          "name": "event_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "fact": {
-          "name": "fact",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "message_id": {
-          "name": "message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "suppressed_at": {
-          "name": "suppressed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        }
-      },
-      "indexes": {
-        "assistant_event_message_id_unique": {
-          "name": "assistant_event_message_id_unique",
-          "columns": [
-            "message_id"
-          ],
-          "isUnique": true
-        },
-        "assistant_event_key_unique": {
-          "name": "assistant_event_key_unique",
-          "columns": [
-            "assistant_chat_id",
-            "event_key"
-          ],
-          "isUnique": true
-        },
-        "assistant_event_pending_idx": {
-          "name": "assistant_event_pending_idx",
-          "columns": [
-            "message_id",
-            "suppressed_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "assistant_event_assistant_chat_id_chat_id_fk": {
-          "name": "assistant_event_assistant_chat_id_chat_id_fk",
-          "tableFrom": "assistant_event",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "assistant_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "assistant_interest": {
-      "name": "assistant_interest",
-      "columns": {
-        "assistant_chat_id": {
-          "name": "assistant_chat_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "origin_kind": {
-          "name": "origin_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "origin_id": {
-          "name": "origin_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "assistant_interest_assistant_chat_id_chat_id_fk": {
-          "name": "assistant_interest_assistant_chat_id_chat_id_fk",
-          "tableFrom": "assistant_interest",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "assistant_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_interest_run_id_agent_run_id_fk": {
-          "name": "assistant_interest_run_id_agent_run_id_fk",
-          "tableFrom": "assistant_interest",
-          "tableTo": "agent_run",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "assistant_interest_assistant_chat_id_run_id_origin_kind_origin_id_pk": {
-          "columns": [
-            "assistant_chat_id",
-            "run_id",
-            "origin_kind",
-            "origin_id"
-          ],
-          "name": "assistant_interest_assistant_chat_id_run_id_origin_kind_origin_id_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "assistant_preferences": {
-      "name": "assistant_preferences",
-      "columns": {
-        "assistant_chat_id": {
-          "name": "assistant_chat_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "interval_seconds": {
-          "name": "interval_seconds",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 300
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "assistant_preferences_assistant_chat_id_chat_id_fk": {
-          "name": "assistant_preferences_assistant_chat_id_chat_id_fk",
-          "tableFrom": "assistant_preferences",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "assistant_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "assistant_interval_check": {
-          "name": "assistant_interval_check",
-          "value": "\"assistant_preferences\".\"interval_seconds\" between 60 and 86400"
-        }
-      }
-    },
-    "assistant_proposal": {
-      "name": "assistant_proposal",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "assistant_chat_id": {
-          "name": "assistant_chat_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "source_run_id": {
-          "name": "source_run_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "human_id": {
-          "name": "human_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "target": {
-          "name": "target",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "target_project_id": {
-          "name": "target_project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "target_chat_id": {
-          "name": "target_chat_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "agent_profile_id": {
-          "name": "agent_profile_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "instance_id": {
-          "name": "instance_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "body": {
-          "name": "body",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "operation_hash": {
-          "name": "operation_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 1
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'pending'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "confirmed_by": {
-          "name": "confirmed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "confirmed_at": {
-          "name": "confirmed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "work_message_id": {
-          "name": "work_message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "assistant_proposal_work_message_id_unique": {
-          "name": "assistant_proposal_work_message_id_unique",
-          "columns": [
-            "work_message_id"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "assistant_proposal_assistant_chat_id_chat_id_fk": {
-          "name": "assistant_proposal_assistant_chat_id_chat_id_fk",
-          "tableFrom": "assistant_proposal",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "assistant_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_proposal_source_run_id_agent_run_id_fk": {
-          "name": "assistant_proposal_source_run_id_agent_run_id_fk",
-          "tableFrom": "assistant_proposal",
-          "tableTo": "agent_run",
-          "columnsFrom": [
-            "source_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_proposal_human_id_user_id_fk": {
-          "name": "assistant_proposal_human_id_user_id_fk",
-          "tableFrom": "assistant_proposal",
-          "tableTo": "user",
-          "columnsFrom": [
-            "human_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_proposal_target_project_id_project_id_fk": {
-          "name": "assistant_proposal_target_project_id_project_id_fk",
-          "tableFrom": "assistant_proposal",
-          "tableTo": "project",
-          "columnsFrom": [
-            "target_project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_proposal_target_chat_id_chat_id_fk": {
-          "name": "assistant_proposal_target_chat_id_chat_id_fk",
-          "tableFrom": "assistant_proposal",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "target_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_proposal_instance_id_agent_instance_id_fk": {
-          "name": "assistant_proposal_instance_id_agent_instance_id_fk",
-          "tableFrom": "assistant_proposal",
-          "tableTo": "agent_instance",
-          "columnsFrom": [
-            "instance_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "assistant_run_cursor": {
-      "name": "assistant_run_cursor",
-      "columns": {
-        "assistant_chat_id": {
-          "name": "assistant_chat_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "next_due_at": {
-          "name": "next_due_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "terminal_captured_at": {
-          "name": "terminal_captured_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "assistant_cursor_due_idx": {
-          "name": "assistant_cursor_due_idx",
-          "columns": [
-            "terminal_captured_at",
-            "next_due_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "assistant_run_cursor_assistant_chat_id_chat_id_fk": {
-          "name": "assistant_run_cursor_assistant_chat_id_chat_id_fk",
-          "tableFrom": "assistant_run_cursor",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "assistant_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_run_cursor_run_id_agent_run_id_fk": {
-          "name": "assistant_run_cursor_run_id_agent_run_id_fk",
-          "tableFrom": "assistant_run_cursor",
-          "tableTo": "agent_run",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "assistant_run_cursor_assistant_chat_id_run_id_pk": {
-          "columns": [
-            "assistant_chat_id",
-            "run_id"
-          ],
-          "name": "assistant_run_cursor_assistant_chat_id_run_id_pk"
-        }
-      },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "assistant_watch": {
-      "name": "assistant_watch",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "assistant_chat_id": {
-          "name": "assistant_chat_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "target_project_id": {
-          "name": "target_project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "target_chat_id": {
-          "name": "target_chat_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "consented_by": {
-          "name": "consented_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "consented_at": {
-          "name": "consented_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "revoked_at": {
-          "name": "revoked_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "assistant_watch_active_unique": {
-          "name": "assistant_watch_active_unique",
-          "columns": [
-            "assistant_chat_id",
-            "target_chat_id"
-          ],
-          "isUnique": true,
-          "where": "\"assistant_watch\".\"revoked_at\" is null"
-        },
-        "assistant_watch_target_idx": {
-          "name": "assistant_watch_target_idx",
-          "columns": [
-            "target_chat_id",
-            "revoked_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "assistant_watch_assistant_chat_id_chat_id_fk": {
-          "name": "assistant_watch_assistant_chat_id_chat_id_fk",
-          "tableFrom": "assistant_watch",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "assistant_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_watch_target_project_id_project_id_fk": {
-          "name": "assistant_watch_target_project_id_project_id_fk",
-          "tableFrom": "assistant_watch",
-          "tableTo": "project",
-          "columnsFrom": [
-            "target_project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_watch_target_chat_id_chat_id_fk": {
-          "name": "assistant_watch_target_chat_id_chat_id_fk",
-          "tableFrom": "assistant_watch",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "target_chat_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "assistant_watch_consented_by_user_id_fk": {
-          "name": "assistant_watch_consented_by_user_id_fk",
-          "tableFrom": "assistant_watch",
-          "tableTo": "user",
-          "columnsFrom": [
-            "consented_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
     },
     "chat": {
       "name": "chat",
@@ -3192,7 +2523,7 @@
             "machine_id"
           ],
           "isUnique": true,
-          "where": "state IN ('free','active','draining')"
+          "where": "state IN ('free','active','draining','escrowed')"
         }
       },
       "foreignKeys": {
@@ -3245,7 +2576,7 @@
         },
         "lease_authorization_check_2": {
           "name": "lease_authorization_check_2",
-          "value": "state IN ('free','active','draining','revoked')"
+          "value": "state IN ('free','active','draining','escrowed','revoked')"
         },
         "lease_authorization_check_3": {
           "name": "lease_authorization_check_3",
@@ -3253,11 +2584,11 @@
         },
         "lease_authorization_check_4": {
           "name": "lease_authorization_check_4",
-          "value": "reason IN ('initial','acquire','release','handoff','reclaim')"
+          "value": "reason IN ('initial','acquire','release','handoff','reclaim','escrow','claim','escrow_cancel')"
         },
         "lease_authorization_check_9": {
           "name": "lease_authorization_check_9",
-          "value": "(state='free' AND holder_instance_id IS NULL AND revoked_at IS NULL) OR\n        (state IN ('active','draining') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR\n        (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)"
+          "value": "(state='free' AND holder_instance_id IS NULL AND revoked_at IS NULL) OR\n        (state IN ('active','draining','escrowed') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR\n        (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)"
         },
         "lease_authorization_check_10": {
           "name": "lease_authorization_check_10",
@@ -5203,20 +4534,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "assistant_event_id": {
-          "name": "assistant_event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "assistant_proposal_id": {
-          "name": "assistant_proposal_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "automation_trigger_id": {
           "name": "automation_trigger_id",
           "type": "text",
@@ -5297,20 +4614,6 @@
         }
       },
       "indexes": {
-        "message_assistant_event_unique": {
-          "name": "message_assistant_event_unique",
-          "columns": [
-            "assistant_event_id"
-          ],
-          "isUnique": true
-        },
-        "message_assistant_proposal_unique": {
-          "name": "message_assistant_proposal_unique",
-          "columns": [
-            "assistant_proposal_id"
-          ],
-          "isUnique": true
-        },
         "message_chat_created_at_idx": {
           "name": "message_chat_created_at_idx",
           "columns": [
@@ -5350,51 +4653,12 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "message_assistant_event_id_assistant_event_id_fk": {
-          "name": "message_assistant_event_id_assistant_event_id_fk",
-          "tableFrom": "message",
-          "tableTo": "assistant_event",
-          "columnsFrom": [
-            "assistant_event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "message_assistant_proposal_id_assistant_proposal_id_fk": {
-          "name": "message_assistant_proposal_id_assistant_proposal_id_fk",
-          "tableFrom": "message",
-          "tableTo": "assistant_proposal",
-          "columnsFrom": [
-            "assistant_proposal_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "message_automation_trigger_id_webhook_trigger_id_fk": {
           "name": "message_automation_trigger_id_webhook_trigger_id_fk",
           "tableFrom": "message",
           "tableTo": "webhook_trigger",
           "columnsFrom": [
             "automation_trigger_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "message_task_author_run_id_agent_run_id_fk": {
-          "name": "message_task_author_run_id_agent_run_id_fk",
-          "tableFrom": "message",
-          "tableTo": "agent_run",
-          "columnsFrom": [
-            "task_author_run_id"
           ],
           "columnsTo": [
             "id"
@@ -5415,6 +4679,19 @@
             "id",
             "message_id",
             "chat_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "message_task_author_run_id_agent_run_id_fk": {
+          "name": "message_task_author_run_id_agent_run_id_fk",
+          "tableFrom": "message",
+          "tableTo": "agent_run",
+          "columnsFrom": [
+            "task_author_run_id"
+          ],
+          "columnsTo": [
+            "id"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -5470,15 +4747,11 @@
       "checkConstraints": {
         "message_sender_kind_check": {
           "name": "message_sender_kind_check",
-          "value": "\"message\".\"sender_kind\" in ('human', 'agent', 'automation', 'assistant_event', 'assistant_work')"
+          "value": "\"message\".\"sender_kind\" in ('human', 'agent', 'automation')"
         },
         "message_automation_shape_check": {
           "name": "message_automation_shape_check",
           "value": "(\"message\".\"sender_kind\"='automation' and \"message\".\"automation_trigger_id\" is not null and \"message\".\"sender_id\"=\"message\".\"automation_trigger_id\" and \"message\".\"task_id\" is null) or (\"message\".\"sender_kind\"<>'automation' and \"message\".\"automation_trigger_id\" is null)"
-        },
-        "message_assistant_source_check": {
-          "name": "message_assistant_source_check",
-          "value": "(\"message\".\"sender_kind\"='assistant_event' and \"message\".\"assistant_event_id\"=\"message\".\"sender_id\" and \"message\".\"assistant_event_id\" is not null and \"message\".\"assistant_proposal_id\" is null and \"message\".\"task_id\" is null) or (\"message\".\"sender_kind\"='assistant_work' and \"message\".\"assistant_proposal_id\"=\"message\".\"sender_id\" and \"message\".\"assistant_proposal_id\" is not null and \"message\".\"assistant_event_id\" is null and \"message\".\"task_id\" is null) or (\"message\".\"sender_kind\" not in ('assistant_event','assistant_work') and \"message\".\"assistant_event_id\" is null and \"message\".\"assistant_proposal_id\" is null)"
         },
         "message_task_shape_check": {
           "name": "message_task_shape_check",
@@ -6653,14 +5926,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'worker'"
         },
         "user_id": {
           "name": "user_id",
@@ -8531,40 +7796,11 @@
           "notNull": true,
           "autoincrement": false
         },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'webhook'"
-        },
         "secret_digest": {
           "name": "secret_digest",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "expression": {
-          "name": "expression",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "timezone": {
-          "name": "timezone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "next_at": {
-          "name": "next_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "created_at": {
@@ -8629,11 +7865,7 @@
         },
         "webhook_rule_secret_check": {
           "name": "webhook_rule_secret_check",
-          "value": "coalesce((\"webhook_rule\".\"source\"='webhook' and length(\"webhook_rule\".\"secret_digest\")=64 and \"webhook_rule\".\"secret_digest\" not glob '*[^0-9a-f]*' and \"webhook_rule\".\"expression\" is null and \"webhook_rule\".\"timezone\" is null and \"webhook_rule\".\"next_at\" is null) or (\"webhook_rule\".\"source\"='cron' and \"webhook_rule\".\"secret_digest\" is null and length(trim(\"webhook_rule\".\"expression\"))>0 and length(trim(\"webhook_rule\".\"timezone\"))>0 and ((\"webhook_rule\".\"enabled\"=1 and typeof(\"webhook_rule\".\"next_at\")='integer') or (\"webhook_rule\".\"enabled\"=0 and \"webhook_rule\".\"next_at\" is null))),0)"
-        },
-        "automation_source_check": {
-          "name": "automation_source_check",
-          "value": "\"webhook_rule\".\"source\" in ('webhook','cron')"
+          "value": "length(\"webhook_rule\".\"secret_digest\")=64 and \"webhook_rule\".\"secret_digest\" not glob '*[^0-9a-f]*'"
         },
         "webhook_rule_action_check": {
           "name": "webhook_rule_action_check",
@@ -8685,14 +7917,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'webhook'"
         },
         "snapshot": {
           "name": "snapshot",
@@ -8754,19 +7978,19 @@
           ],
           "isUnique": true
         },
-        "webhook_trigger_message_unique": {
-          "name": "webhook_trigger_message_unique",
-          "columns": [
-            "message_id"
-          ],
-          "isUnique": true
-        },
         "webhook_trigger_source_unique": {
           "name": "webhook_trigger_source_unique",
           "columns": [
             "id",
             "message_id",
             "chat_id"
+          ],
+          "isUnique": true
+        },
+        "webhook_trigger_message_unique": {
+          "name": "webhook_trigger_message_unique",
+          "columns": [
+            "message_id"
           ],
           "isUnique": true
         }
@@ -9295,6 +8519,304 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "lease_escrow": {
+      "name": "lease_escrow",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "machine_id": {
+          "name": "machine_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "chat_id": {
+          "name": "chat_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_agent_profile_id": {
+          "name": "target_agent_profile_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "escrowed_by_instance_id": {
+          "name": "escrowed_by_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrowed_at": {
+          "name": "escrowed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_request_id": {
+          "name": "escrow_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_payload_hash": {
+          "name": "escrow_payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_generation": {
+          "name": "escrow_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claimed_by_instance_id": {
+          "name": "claimed_by_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claimed_generation": {
+          "name": "claimed_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_request_id": {
+          "name": "claim_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_payload_hash": {
+          "name": "claim_payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "timeout_notified_at": {
+          "name": "timeout_notified_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "timeout_notice_attempt": {
+          "name": "timeout_notice_attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "timeout_notice_next_at": {
+          "name": "timeout_notice_next_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "timeout_escalated_at": {
+          "name": "timeout_escalated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lease_escrow_id_project_unique": {
+          "name": "lease_escrow_id_project_unique",
+          "columns": [
+            "id",
+            "project_id"
+          ],
+          "isUnique": true
+        },
+        "lease_one_live_escrow": {
+          "name": "lease_one_live_escrow",
+          "columns": [
+            "project_id",
+            "machine_id"
+          ],
+          "isUnique": true,
+          "where": "state='escrowed'"
+        },
+        "lease_escrow_escrow_request_unique": {
+          "name": "lease_escrow_escrow_request_unique",
+          "columns": [
+            "escrowed_by_instance_id",
+            "escrow_request_id"
+          ],
+          "isUnique": true
+        },
+        "lease_escrow_claim_request_unique": {
+          "name": "lease_escrow_claim_request_unique",
+          "columns": [
+            "claimed_by_instance_id",
+            "claim_request_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "lease_escrow_project_id_machine_id_machine_lease_project_id_machine_id_fk": {
+          "name": "lease_escrow_project_id_machine_id_machine_lease_project_id_machine_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "machine_lease",
+          "columnsFrom": [
+            "project_id",
+            "machine_id"
+          ],
+          "columnsTo": [
+            "project_id",
+            "machine_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_chat_id_project_id_chat_id_project_id_fk": {
+          "name": "lease_escrow_chat_id_project_id_chat_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "chat",
+          "columnsFrom": [
+            "chat_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_target_agent_profile_id_agent_profile_id_fk": {
+          "name": "lease_escrow_target_agent_profile_id_agent_profile_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_profile",
+          "columnsFrom": [
+            "target_agent_profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_escrowed_by_instance_id_project_id_agent_instance_id_project_id_fk": {
+          "name": "lease_escrow_escrowed_by_instance_id_project_id_agent_instance_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_instance",
+          "columnsFrom": [
+            "escrowed_by_instance_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_claimed_by_instance_id_project_id_agent_instance_id_project_id_fk": {
+          "name": "lease_escrow_claimed_by_instance_id_project_id_agent_instance_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_instance",
+          "columnsFrom": [
+            "claimed_by_instance_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lease_escrow_check_1": {
+          "name": "lease_escrow_check_1",
+          "value": "state IN ('escrowed','claimed','cancelled','superseded')"
+        },
+        "lease_escrow_check_2": {
+          "name": "lease_escrow_check_2",
+          "value": "typeof(escrowed_at)='integer' AND escrowed_at>=0"
+        },
+        "lease_escrow_check_3": {
+          "name": "lease_escrow_check_3",
+          "value": "typeof(escrow_generation)='integer' AND escrow_generation BETWEEN 1 AND 9007199254740991"
+        },
+        "lease_escrow_check_4": {
+          "name": "lease_escrow_check_4",
+          "value": "length(escrow_payload_hash)=64 AND escrow_payload_hash NOT GLOB '*[^0-9a-f]*'"
+        },
+        "lease_escrow_check_5": {
+          "name": "lease_escrow_check_5",
+          "value": "(state='escrowed' AND claimed_by_instance_id IS NULL AND claimed_at IS NULL AND claimed_generation IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL AND closed_at IS NULL) OR\n        (state<>'escrowed' AND closed_at IS NOT NULL AND typeof(closed_at)='integer' AND closed_at>=escrowed_at)"
+        },
+        "lease_escrow_check_6": {
+          "name": "lease_escrow_check_6",
+          "value": "(state='claimed' AND claimed_by_instance_id IS NOT NULL AND typeof(claimed_generation)='integer' AND claimed_generation>escrow_generation) OR\n        (state<>'claimed' AND claimed_by_instance_id IS NULL AND claimed_generation IS NULL)"
+        },
+        "lease_escrow_check_7": {
+          "name": "lease_escrow_check_7",
+          "value": "(claimed_at IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL) OR\n        (claimed_at IS NOT NULL AND typeof(claimed_at)='integer' AND claimed_at>=escrowed_at AND claim_request_id IS NOT NULL AND length(claim_payload_hash)=64 AND claim_payload_hash NOT GLOB '*[^0-9a-f]*')"
+        },
+        "lease_escrow_check_8": {
+          "name": "lease_escrow_check_8",
+          "value": "(timeout_notified_at IS NULL OR (typeof(timeout_notified_at)='integer' AND timeout_notified_at>=escrowed_at)) AND\n        (timeout_escalated_at IS NULL OR (typeof(timeout_escalated_at)='integer' AND timeout_escalated_at>=escrowed_at AND timeout_notified_at IS NOT NULL)) AND\n        ((timeout_notice_attempt IS NULL AND timeout_notice_next_at IS NULL) OR\n          (timeout_notice_attempt IS NOT NULL AND typeof(timeout_notice_attempt)='integer' AND timeout_notice_attempt>=1 AND\n           timeout_notice_next_at IS NOT NULL AND typeof(timeout_notice_next_at)='integer' AND timeout_notice_next_at>=escrowed_at)) AND\n        (timeout_notice_attempt IS NULL OR timeout_notified_at IS NOT NULL)"
+        }
+      }
     }
   },
   "views": {

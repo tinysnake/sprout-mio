@@ -29,6 +29,7 @@ const gates = new Set([
   "bf-p6b-pages",
   "y-lease-ui",
   "t-machine-worker",
+  "p4a-machine-scenes",
 ]);
 // orchestrate/ 是本地编排目录（gitignored），里面的证据目录可能带指向已删除 worktree 的
 // node_modules 软链；私有树只复制源码与依赖，不复制它。

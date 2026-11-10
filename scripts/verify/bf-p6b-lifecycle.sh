@@ -11,6 +11,10 @@
 # agree field by field, and the HTTP path serves the same bytes.
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs bf-p6b-lifecycle || exit $?
+
 if [ "$#" -ne 0 ]; then
   echo 'Usage: bash scripts/verify/bf-p6b-lifecycle.sh' >&2
   exit 2

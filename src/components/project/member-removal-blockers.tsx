@@ -16,107 +16,146 @@ function ChatLink({ projectId, chat }: { projectId: string; chat: ProjectMemberR
   );
 }
 
-export function MemberRemovalBlockers({ details }: { details: ProjectMemberRemovalBlockers }) {
+export function MemberRemovalBlockers({
+  details,
+  mode = "blocked",
+}: {
+  details: ProjectMemberRemovalBlockers;
+  /**
+   * blocked = 常规移除被拒，只能先逐项处理；force = 确认框同时提供强制入口。
+   * 两种模式都保留「先处理」的可执行步骤，force 再追加「确认后会自动做什么」。
+   */
+  mode?: "blocked" | "force";
+}) {
+  const force = mode === "force";
+  const forceNote = (text: string) => (force ? text : null);
   return (
-    <div
-      data-testid="member-removal-blockers"
-      className="min-w-0 space-y-4 text-xs leading-6 break-words"
-    >
-      <p>先处理以下事项，再重试移除。</p>
-      {details.blockers.map((blocker) => (
-        <section key={blocker.kind} data-testid={`member-blocker-${blocker.kind}`}>
-          {blocker.kind === "active_runs" && (
-            <>
-              <h3 className="font-medium">活动运行</h3>
-              <ul className="space-y-3">
-                {blocker.items.map((item) => (
-                  <li key={item.runId}>
-                    <ChatLink projectId={details.projectId} chat={item.chat} />
-                    <p className="break-all">
-                      Run {item.runId} · {item.status} · 分身 {item.instanceId}
-                    </p>
-                    <p className="text-muted-foreground">先在该 Chat 停掉运行。</p>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {blocker.kind === "leases" && (
-            <>
-              <h3 className="font-medium">Machine 租约</h3>
-              <ul className="space-y-3">
-                {blocker.items.map((item) => (
-                  <li key={item.key.machineId}>
-                    <Link
-                      to="/machines/$machineId/lease"
-                      params={{ machineId: item.key.machineId }}
-                      search={{ projectId: item.key.projectId }}
-                      className="underline underline-offset-3"
-                    >
-                      {item.machineName}
-                    </Link>
-                    <p className="break-all">
-                      {item.key.machineId} · generation {item.generation} · {item.state} · relation=
-                      {item.relation}
-                    </p>
-                    <p className="break-all">
-                      持有分身 {item.holderInstanceId}
-                      {item.pendingMutationId ? ` · 待决变更 ${item.pendingMutationId}` : ""}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {item.relation === "handoff_target"
-                        ? "先在该 Machine 处理指向此 Agent 的待决交接，再释放其租约。"
-                        : "先在该 Machine 释放租约，并等待待决变更完成。"}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {blocker.kind === "owner_duties" && (
-            <>
-              <h3 className="font-medium">Chat 负责人职责</h3>
-              <ul className="space-y-3">
-                {blocker.items.map((item) => (
-                  <li key={item.chat.chatId}>
-                    <ChatLink projectId={details.projectId} chat={item.chat} />
-                    <p className="break-all">
-                      {item.chat.chatKind} · {item.chat.chatId}
-                    </p>
-                    <p className="text-muted-foreground">先在该 Chat 变更负责人。</p>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {blocker.kind === "dm_assigned_tasks" && (
-            <>
-              <h3 className="font-medium">DM 已分配 Task</h3>
-              <ul className="space-y-3">
-                {blocker.items.map((item) => (
-                  <li key={item.taskId}>
-                    <Link
-                      to="/projects/$projectId/tasks/$taskId"
-                      params={{ projectId: details.projectId, taskId: item.taskId }}
-                      className="underline underline-offset-3"
-                    >
-                      {item.title}
-                    </Link>
-                    <p className="break-all">
-                      {item.taskId} · {item.status}
-                    </p>
-                    <p>
-                      DM：
+    <div className="min-w-0 space-y-2">
+      <div
+        data-testid="member-removal-blockers"
+        data-mode={mode}
+        // 清单有界滚动：页脚的动作按钮必须始终可见（长清单不能把「强制移除」推到屏幕外）。
+        className="max-h-[32dvh] space-y-4 overflow-y-auto overscroll-contain pr-1 text-xs leading-6 break-words"
+      >
+        <p>
+          {force
+            ? "以下事项可以逐项处理后再重试常规移除；确认强制移除时，它们会被自动处理或保留为占用待处理。"
+            : "先处理以下事项，再重试移除。"}
+        </p>
+        {details.blockers.map((blocker) => (
+          <section key={blocker.kind} data-testid={`member-blocker-${blocker.kind}`}>
+            {blocker.kind === "active_runs" && (
+              <>
+                <h3 className="font-medium">活动运行</h3>
+                <ul className="space-y-3">
+                  {blocker.items.map((item) => (
+                    <li key={item.runId}>
                       <ChatLink projectId={details.projectId} chat={item.chat} />
-                    </p>
-                    <p className="text-muted-foreground">先在该 Task 改派、完成或取消任务。</p>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-      ))}
+                      <p className="break-all">
+                        Run {item.runId} · {item.status} · 分身 {item.instanceId}
+                      </p>
+                      <p className="text-muted-foreground">
+                        先在该 Chat 停掉运行。
+                        {forceNote("确认强制移除会直接中止该运行。")}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {blocker.kind === "leases" && (
+              <>
+                <h3 className="font-medium">Machine 租约</h3>
+                <ul className="space-y-3">
+                  {blocker.items.map((item) => (
+                    <li key={item.key.machineId}>
+                      <Link
+                        to="/machines/$machineId/lease"
+                        params={{ machineId: item.key.machineId }}
+                        search={{ projectId: item.key.projectId }}
+                        className="underline underline-offset-3"
+                      >
+                        {item.machineName}
+                      </Link>
+                      <p className="break-all">
+                        {item.key.machineId} · generation {item.generation} · {item.state} ·
+                        relation=
+                        {item.relation}
+                      </p>
+                      <p className="break-all">
+                        持有分身 {item.holderInstanceId}
+                        {item.pendingMutationId ? ` · 待决变更 ${item.pendingMutationId}` : ""}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {item.relation === "handoff_target"
+                          ? "先在该 Machine 处理指向此 Agent 的待决交接，再释放其租约。"
+                          : "先在该 Machine 释放租约，并等待待决变更完成。"}
+                        {forceNote(
+                          item.relation === "handoff_target"
+                            ? "强制移除不处理待决交接，该占用会保留。"
+                            : "确认强制移除会尝试回收；无法确认撤销时保留为占用待处理。",
+                        )}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {blocker.kind === "owner_duties" && (
+              <>
+                <h3 className="font-medium">Chat 负责人职责</h3>
+                <ul className="space-y-3">
+                  {blocker.items.map((item) => (
+                    <li key={item.chat.chatId}>
+                      <ChatLink projectId={details.projectId} chat={item.chat} />
+                      <p className="break-all">
+                        {item.chat.chatKind} · {item.chat.chatId}
+                      </p>
+                      <p className="text-muted-foreground">
+                        先在该 Chat 变更负责人。
+                        {forceNote("确认强制移除会把负责人转接给执行本次操作的人。")}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {blocker.kind === "dm_assigned_tasks" && (
+              <>
+                <h3 className="font-medium">DM 已分配 Task</h3>
+                <ul className="space-y-3">
+                  {blocker.items.map((item) => (
+                    <li key={item.taskId}>
+                      <Link
+                        to="/projects/$projectId/tasks/$taskId"
+                        params={{ projectId: details.projectId, taskId: item.taskId }}
+                        className="underline underline-offset-3"
+                      >
+                        {item.title}
+                      </Link>
+                      <p className="break-all">
+                        {item.taskId} · {item.status}
+                      </p>
+                      <p>
+                        DM：
+                        <ChatLink projectId={details.projectId} chat={item.chat} />
+                      </p>
+                      <p className="text-muted-foreground">
+                        先在该 Task 改派、完成或取消任务。
+                        {forceNote("确认强制移除会把任务退回 proposed，仍留在原 DM。")}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        ))}
+      </div>
+      {/* 有界滚动区在 macOS 上默认不显示滚动条：给出一条固定的可滚动提示。 */}
+      <p data-testid="member-removal-blockers-hint" className="text-xs text-muted-foreground">
+        共 {details.blockers.length} 类阻塞事项；此区域可滚动查看全部。
+      </p>
     </div>
   );
 }

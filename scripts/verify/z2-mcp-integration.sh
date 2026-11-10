@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs z2-mcp-integration || exit $?
 mkdir -p .verify
 integration_dir="$(mktemp -d .verify/z2-mcp-integration-XXXXXX)"
 export DATABASE_URL="$PWD/$integration_dir/private.sqlite"

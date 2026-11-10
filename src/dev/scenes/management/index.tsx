@@ -17,6 +17,7 @@ import { ProjectBasicInfoForm } from "../../../components/project/project-basic-
 import type { ProjectBasicInfoDraft } from "../../../components/project/project-basic-info-form";
 import { ProjectFacts } from "../../../components/project/project-facts";
 import { ProjectMembers } from "../../../components/project/project-members";
+import { ResultError } from "../../../components/project/result-error";
 import { Facts, SettingsSection } from "../../../components/project/settings-section";
 import { ProjectConfigForm } from "../../../components/project-config/project-config-form";
 import type { ProjectConfigDraft } from "../../../components/project-config/project-config-form";
@@ -25,32 +26,35 @@ import { Button } from "../../../components/ui/button";
 import { Icon } from "../../../components/ui/icon";
 import type { AgentProfile, ProjectMember } from "../../../contracts/agent";
 import type { Project } from "../../../contracts/project";
+import type { ProjectMemberRemovalOutcome } from "../../../contracts/project-member-removal";
 import type { ProjectProfile } from "../../../contracts/project-config";
 import type { AppError, AppResult, AppErrorCode } from "../../../contracts/result";
 import {
   DEMO_REQUEST_ID,
   demoHumanName,
   demoInfoHub,
+  demoMemberRemovalBlockedError,
+  demoMemberRemovalNoopOutcome,
+  demoMemberRemovalOutcome,
   demoMembers,
   demoProfiles,
   demoProject,
   demoProjectProfile,
   demoRepoState,
 } from "./fixtures";
-import {
-  applyLeaseMutation,
-  completedReceipt,
-  demoFreeLease,
-  demoHolderNames,
-  demoInstanceIds,
-  demoLeases,
-} from "../machine/lease-fixtures";
+import { demoFreeLease, demoHolderNames, demoLeases } from "../machine/lease-fixtures";
 import { demoMachineDetails } from "../machine/fixtures";
-import type { LeaseMutationInput, LeaseMutationView, LeaseView } from "../../../contracts/lease";
 import { SceneRouter } from "./scene-router";
 import { ID_PREFIXES, newId } from "@/contracts/ids";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 演示的 profile 查询失败：走与生产路由相同的 ResultError 呈现，而不是喂一个空数组。 */
+const demoProfilesFailure: AppError = {
+  code: "internal",
+  message: "演示：读取 Agent profile 失败，请重试。",
+  requestId: DEMO_REQUEST_ID,
+};
 
 /** 固定的演示结果，标为 demo：不制造假 requestId 混入正式页面。 */
 function demoSuccess<T>(data: T): AppResult<T> {
@@ -363,6 +367,10 @@ function MembersScene({ embedded }: { embedded: boolean }) {
   const [fail, setFail] = useState(false);
   // profile 查询独立失败：成员与移除入口必须仍然可用。
   const [profilesMissing, setProfilesMissing] = useState(false);
+  // 常规移除被阻塞：必须在确认框里给出阻塞说明与一次确认的强制入口。
+  const [blocked, setBlocked] = useState(false);
+  // 重复调用（成员行已不在）：结果面板必须如实说明本次没有产生变更。
+  const [noop, setNoop] = useState(false);
   const [status, setStatus] = useState("");
 
   async function add(agentProfileId: string): Promise<AppResult<ProjectMember>> {
@@ -382,9 +390,27 @@ function MembersScene({ embedded }: { embedded: boolean }) {
   async function remove(agentProfileId: string): Promise<AppResult<null>> {
     await delay(600);
     if (fail) return demoFailure("internal", "移除失败，成员仍在 Project 中，请重试。");
+    if (blocked) {
+      const details = demoMemberRemovalBlockedError(agentProfileId);
+      return { ok: false, error: details, requestId: details.requestId };
+    }
     setMembers((current) => current.filter((member) => member.agentProfileId !== agentProfileId));
     setStatus("演示：已移除 Agent 成员，全局 profile 仍保留。");
     return demoSuccess(null);
+  }
+
+  async function forceRemove(
+    agentProfileId: string,
+  ): Promise<AppResult<ProjectMemberRemovalOutcome>> {
+    await delay(600);
+    if (fail) return demoFailure("internal", "强制移除失败，未做任何变更，请重试。");
+    setMembers((current) => current.filter((member) => member.agentProfileId !== agentProfileId));
+    if (noop) {
+      setStatus("演示：成员行已不存在，本次为幂等空操作。");
+      return demoSuccess(demoMemberRemovalNoopOutcome(agentProfileId));
+    }
+    setStatus("演示：已强制移除 Agent，善后结果以弹窗呈现。");
+    return demoSuccess(demoMemberRemovalOutcome(agentProfileId));
   }
 
   return (
@@ -396,16 +422,36 @@ function MembersScene({ embedded }: { embedded: boolean }) {
         actions={<ThemeToggle />}
         testId="project-members-page"
       >
+        {profilesMissing && <ResultError error={demoProfilesFailure} testId="profiles-error" />}
         <ProjectMembers
           members={members}
           profiles={profilesMissing ? [] : demoProfiles}
           humanName={demoHumanName}
           add={add}
           remove={remove}
+          forceRemove={forceRemove}
           onChanged={() => undefined}
         />
       </PageFrame>
       <SceneControls title="Members" fail={fail} onFailChange={setFail} status={status}>
+        <label className="mt-2 flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={blocked}
+            data-testid="scene-blocked"
+            onChange={(event) => setBlocked(event.target.checked)}
+          />
+          模拟移除被阻塞
+        </label>
+        <label className="mt-2 flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={noop}
+            data-testid="scene-noop"
+            onChange={(event) => setNoop(event.target.checked)}
+          />
+          模拟重复移除（无善后）
+        </label>
         <label className="mt-2 flex items-center gap-2">
           <input
             type="checkbox"
@@ -425,21 +471,7 @@ function SettingsScene({ embedded }: { embedded: boolean }) {
   const [profile, setProfile] = useState<ProjectProfile>(demoProjectProfile);
   const [fail, setFail] = useState(false);
   const [status, setStatus] = useState("");
-  const [leases, setLeases] = useState<LeaseView[]>([...demoLeases, demoFreeLease]);
-
-  /** 演示：租约变更结果由 "模拟保存失败" 开关决定；失败保留目标并显示原因。 */
-  async function leaseMutation(input: LeaseMutationInput): Promise<AppResult<LeaseMutationView>> {
-    await delay(250);
-    if (fail)
-      return demoFailure(
-        "lease_stale_generation",
-        "租约代次已变化，请读取当前租约后重试。目标与动作已保留。",
-      );
-    const receipt = completedReceipt(input);
-    setLeases((current) => applyLeaseMutation(current, receipt, demoInstanceIds.primary));
-    setStatus(`演示：租约${input.action === "acquire" ? "申请" : "释放"}已确认。`);
-    return demoSuccess(receipt);
-  }
+  const leases = [...demoLeases, demoFreeLease];
 
   async function submitBasicInfo(draft: ProjectBasicInfoDraft): Promise<AppResult<Project>> {
     await delay(600);
@@ -524,7 +556,6 @@ function SettingsScene({ embedded }: { embedded: boolean }) {
                 machines={demoMachineDetails}
                 leases={leases}
                 holderNames={demoHolderNames}
-                onLeaseMutate={leaseMutation}
               />
             </div>
           </details>

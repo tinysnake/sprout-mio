@@ -328,4 +328,22 @@ P6 原先“暂按整章集成”是契约未冻结时的暂定安排；现按�
 - [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P7 集成线证据](../../p7/summary.md#集成线与技术验收证据)，基线 `fef2612`，重跑 `bash scripts/verify/i-chat.sh`、`bash scripts/verify/aq-p4d-pages.sh`；增量验收 `p7-acceptance2` 判可合入，它指出的最后一处门禁缺口已补并验证改坏即红。
 - [x] Human 亲自体验并明确确认通过，编排者已记录确认版本，前述各章的人类确认记录齐备。证据 [human-体验确认](../../p7/summary.md#human-体验确认)，版本 `fef2612` 与 `6a676a9`；重跑 `bash scripts/verify/p7-client-states.sh`。PWA 装机与离线体验的评审按 Human 决定推迟到部署与 HTTPS 之后，UI-P7 第 3 条因此保持未勾。
 
-一期收尾核对前述所有技术验收与 Human 确认记录。AFK 期间允许继续工作，但不能跳过尚未完成的人类确认就宣布一期完成。P8 不自动纳入本计划，其范围确定后再安排对应集成工作。R1 七条已完成独立技术验收（第七轮通过），并由 Human 确认纳入一期；其能力范围与边界见 [core-scope](../../core-scope.md) 与 [R1 验证结论](../../r1/summary.md)。
+一期收尾核对前述所有技术验收与 Human 确认记录。AFK 期间允许继续工作，但不能跳过尚未完成的人类确认就宣布一期完成。P8 后经 Human 确认展开并交付，记录见下节 `I-P8`。R1 七条已完成独立技术验收（第七轮通过），并由 Human 确认纳入一期；其能力范围与边界见 [core-scope](../../core-scope.md) 与 [R1 验证结论](../../r1/summary.md)。
+
+### I-P8 二期：租约挂靠、遇阻等待、强制移除与 Windows Worker
+
+> 本节来自 `origin/main` 在归档基线之后的 P8 交付记录，随合并整段保留。
+
+对应 [核心范围](../../core-scope.md) 的二期清单，分四个集成单元：I-P8a 挂靠与领取、I-P8b 挂靠超时提醒与申请遇阻等待、I-P8c 强制移除与自动善后、I-P8d Windows Worker。各单元独立分叉、独立合入，证据与未验证项见 [P8 章节结论](../../p8/summary.md)。
+
+- 挂靠与领取只在分身之间发生：人类没有挂靠、领取、撤销入口，只有只读事实与强制收回；挂靠期间持有者不变、原持有者失去操作权，被其他分身领走才推进代次。申请遇阻不做自动协调与请求通道，只有一次阻塞式等待，到点以失败与原因返回给申请方 Agent。
+- 超时提醒与升级都是只读标记加消息，超时本身不释放租约；超时与升级不受「人类暂停自动唤醒」影响，是该规则的明确例外。强制移除的善后按「中止 runs、转接责任、退回 DM Task、释放租约」的顺序执行，无法确认撤权时保留 `fencing` 待处理占用且绝不显示空闲。
+- Windows 侧的验收落在真实 Windows 机器上：三条 shell 的真实路径与版本、诚实性反证、文件操作字节等价、进程树整体终止、session 映射、长命令恢复不重跑、重连去重。桌面会话与 GUI 因 sshd 固定 Session 0 不可验，按未验证记录，不外推到「Windows 桌面已支持」。
+- 关键异常覆盖原持有者失权后的写入被拒、重复撤销幂等、跨 Project 与 DM 的挂靠拒绝、交接确认时目标已被移除、强制移除重复提交、Windows 上杀 runner 后命令随控制台结束。
+
+以上四条交付状态已达成，证据齐备；`scripts/verify/l-docs.sh` 与 I-P7 同一处置：第 1–3 条按证据链接校验（被引用小节自带可解析 Git 提交与存在的重跑命令），第 4 条按 `docs/p8/summary.md#human-体验确认` 里的确认记录与可解析版本校验。
+
+- [x] 功能线交付就绪，编排者已核对本章范围、版本、验证证据与已知限制。证据 [P8 功能线证据](../../p8/summary.md#功能线证据)，基线 `f9caed5`，重跑 `bash scripts/verify/p8a-lease-escrow.sh`、`bash scripts/verify/p8b-timeout.sh`、`bash scripts/verify/p8c-removal.sh`。挂靠与领取只在分身之间发生、遇阻只等待、超时永不释放租约这三条语义均有门禁锁住。
+- [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P8 UI 线证据](../../p8/summary.md#ui-线证据)，基线 `f9caed5`，重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/p4a-machine-scenes.sh`。Human 两轮评审的删改（删人类入口、删说明文字、合并重复标题、提醒不再解释唤醒）已逐条落地。
+- [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P8 集成线与技术验收证据](../../p8/summary.md#集成线与技术验收证据)，基线 `f9caed5`，重跑 `bash scripts/verify/p8a-lease-integration.sh`、`bash scripts/verify/p8b-timeout-integration.sh`、`bash scripts/verify/p8c-removal-integration.sh`、`bash scripts/verify/p8d-windows-integration.sh`（MANUAL，缺真实 Windows 会明示失败）。I-P8a 与 I-P8c 另经只读验收 agent 复核后合入；I-P8b 与 I-P8d 由编排者在合并前逐门禁复跑。
+- [x] Human 亲自体验并明确确认通过，编排者已记录确认版本，前述各章的人类确认记录齐备。证据 [human-体验确认](../../p8/summary.md#human-体验确认)，版本 `b86c4f9` 与生产构建上的真实页面，重跑 `bash scripts/verify/y-lease-ui.sh`、`bash scripts/verify/p4a-machine-scenes.sh`；未验证项（真实 30 分钟与 2 小时墙钟、Windows 桌面会话）已如实记录，不外推。

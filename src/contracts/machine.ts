@@ -7,19 +7,29 @@ export type MachineId = AppId<typeof ID_PREFIXES.machine>;
 export const machineIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.machine));
 const projectIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.project));
 export const positiveSafeIntegerSchema = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
-export const macosAbsolutePathSchema = z
+const nonnegativeSafeIntegerSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+/**
+ * Worker 侧绝对路径：POSIX（`/` 开头）、盘符（`C:\` / `C:/`）与 UNC（`\\server\share`）。
+ * 契约不猜哪台机器会用哪种形式；具体路径是否可用由该 Machine 的目录探测与文件操作给出。
+ */
+export function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
+}
+export const absolutePathSchema = z
   .string()
   .min(1)
   .max(4096)
-  .startsWith("/")
+  .refine(isAbsolutePath, "必须是绝对路径")
   .refine((path) => !path.includes("\0"), "路径不能包含 NUL");
+/** 历史名称：P8d 起契约接受 Windows 路径，等价于 `absolutePathSchema`。 */
+export const macosAbsolutePathSchema = absolutePathSchema;
 const timestampSchema = z.iso.datetime();
 const nameSchema = z.string().trim().min(1).max(80);
 
 export const machineSchema = z.strictObject({
   id: machineIdSchema,
   name: nameSchema,
-  rootDirectory: macosAbsolutePathSchema.nullable(),
+  rootDirectory: absolutePathSchema.nullable(),
   rootRevision: positiveSafeIntegerSchema,
   createdBy: z.string().min(1),
   createdAt: timestampSchema,
@@ -55,8 +65,8 @@ export const machineConnectionViewSchema = z.discriminatedUnion("kind", [
 export type MachineConnectionView = z.infer<typeof machineConnectionViewSchema>;
 
 export const shellFactSchema = z.strictObject({
-  path: macosAbsolutePathSchema,
-  kind: z.enum(["zsh", "bash", "sh", "unknown"]),
+  path: absolutePathSchema,
+  kind: z.enum(["zsh", "bash", "sh", "pwsh", "powershell", "cmd", "unknown"]),
   version: z.string().max(4096).nullable(),
   checkedAt: timestampSchema,
   probe: z.discriminatedUnion("kind", [
@@ -75,6 +85,20 @@ export const REMOTE_OPERATION_KINDS = [
   "process_list",
   "process_signal",
 ] as const;
+/** 实际执行环境：Session 0 服务会话与交互桌面不是同一个环境，不能混成一句「Windows」。 */
+export const EXECUTION_SESSION_KINDS = [
+  "interactive_desktop",
+  "service_session_0",
+  "not_applicable",
+  "unknown",
+] as const;
+export type ExecutionSessionKind = (typeof EXECUTION_SESSION_KINDS)[number];
+export const executionEnvironmentSchema = z.strictObject({
+  // 能读到就是真实 SessionId；读不到时诚实给 null，不猜 0。
+  sessionId: nonnegativeSafeIntegerSchema.nullable(),
+  sessionKind: z.enum(EXECUTION_SESSION_KINDS),
+});
+export type ExecutionEnvironment = z.infer<typeof executionEnvironmentSchema>;
 export const capabilitySnapshotSchema = z.strictObject({
   mcpRelay: z
     .strictObject({
@@ -88,9 +112,11 @@ export const capabilitySnapshotSchema = z.strictObject({
     })
     .nullable()
     .optional(),
-  platform: z.literal("darwin"),
+  platform: z.enum(["darwin", "win32"]),
   arch: z.enum(["arm64", "x64"]),
   workerVersion: z.string().min(1).max(80),
+  // 旧 Worker 不报执行环境；缺省表示未知，不是「等于桌面」。
+  executionEnvironment: executionEnvironmentSchema.optional(),
   shells: z.array(shellFactSchema).max(16),
   remoteOperations: z
     .array(z.enum(REMOTE_OPERATION_KINDS))
@@ -108,7 +134,7 @@ export const projectMachineIntentSchema = z.strictObject({
 });
 export type ProjectMachineIntent = z.infer<typeof projectMachineIntentSchema>;
 export const directoryObservationResultSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("accessible"), realPath: macosAbsolutePathSchema }),
+  z.strictObject({ kind: z.literal("accessible"), realPath: absolutePathSchema }),
   z.strictObject({
     kind: z.literal("unavailable"),
     reason: z.enum(["missing", "not_directory", "denied", "io_error"]),
@@ -162,19 +188,22 @@ export const saveProjectMachineBindingInput = z.strictObject({
 });
 export const saveMachineRootDirectoryInput = z.strictObject({
   machineId: machineIdSchema,
-  directory: macosAbsolutePathSchema.nullable(),
+  directory: absolutePathSchema.nullable(),
   expectedRevision: positiveSafeIntegerSchema.nullable(),
 });
 export const machineRootDirectorySchema = z.strictObject({
   machineId: machineIdSchema,
-  directory: macosAbsolutePathSchema.nullable(),
+  directory: absolutePathSchema.nullable(),
   revision: positiveSafeIntegerSchema,
 });
 export type MachineRootDirectory = z.infer<typeof machineRootDirectorySchema>;
 
-// Project IDs are already prj_<uuid> values and cannot contain '/'.
+// Project IDs are already prj_<uuid> values and cannot contain a separator.
 export function projectWorkingPath(root: string, projectId: string): string {
-  return `${root}/${projectId}`;
+  const separator = root.includes("\\") && !root.includes("/") ? "\\" : "/";
+  return root.endsWith("/") || root.endsWith("\\")
+    ? `${root}${projectId}`
+    : `${root}${separator}${projectId}`;
 }
 export const machineEnrollmentSchema = z.strictObject({
   detail: machineDetailSchema,

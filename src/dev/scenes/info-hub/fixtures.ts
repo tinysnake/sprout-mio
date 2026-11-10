@@ -40,6 +40,7 @@ export const machineFixture = infoHubMachineSummarySchema.parse({
     holderInstanceId: instanceId,
     changedAt: now,
     pendingMutationId: null,
+    escrow: null,
     holderResolution: "resolved",
     holder: {
       instanceId,

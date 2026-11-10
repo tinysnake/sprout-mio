@@ -157,7 +157,7 @@ try {
   const ids = serverFnIds()
   const required = [
     'createAgentProfileFn', 'listAgentProfilesFn', 'getAgentProfileFn', 'updateAgentProfileFn',
-    'addProjectMemberFn', 'removeProjectMemberFn', 'listProjectMembersFn',
+    'addProjectMemberFn', 'removeProjectMemberFn', 'listProjectMembersFn', 'forceRemoveProjectMemberFn',
     'getProjectProfileFn', 'updateProjectProfileFn',
   ]
   for (const name of required) assert(ids[name], `缺少 server function id: ${name}`)
@@ -211,6 +211,32 @@ try {
   assert.equal(noOrigin.status, 200)
   assert(noOrigin.text.includes('unauthorized'), '无 Origin 且未登录必须返回 unauthorized 载荷')
   pass('无 Origin 未登录调用返回 unauthorized', { status: noOrigin.status, requestId: noOrigin.requestId })
+
+  // I-P8c 的强制移除只由 UI 线接线：这里只验边界转发（未登录 / 校验 / 不存在），
+  // 端到端善后语义归 p8c-int。
+  const forceAnonymous = await curl(`${base}/_serverFn/${ids.forceRemoveProjectMemberFn}`, 'force-anonymous', {
+    header: ['x-tsr-serverfn: true', origin, 'accept: application/x-tss-framed, application/json'],
+    body: serverFnBody({ projectId: 'prj_00000000', agentProfileId: 'agp_00000000' }),
+  })
+  assert.equal(forceAnonymous.status, 200)
+  assert(forceAnonymous.text.includes('unauthorized'), '强制移除未登录必须返回 unauthorized 载荷')
+  pass('强制移除未登录调用返回 unauthorized', { status: forceAnonymous.status, requestId: forceAnonymous.requestId })
+
+  const forceInvalid = await curl(`${base}/_serverFn/${ids.forceRemoveProjectMemberFn}`, 'force-invalid', {
+    ...createArgs,
+    body: serverFnBody({ projectId: 'not-an-id', agentProfileId: 'agp_00000000' }),
+  })
+  assert.equal(forceInvalid.status, 200, forceInvalid.text)
+  assert(forceInvalid.text.includes('validation_failed'), '非法 projectId 必须是 validation_failed')
+  pass('强制移除校验失败走 HTTP 200 载荷内错误', { status: forceInvalid.status, requestId: forceInvalid.requestId })
+
+  const forceMissing = await curl(`${base}/_serverFn/${ids.forceRemoveProjectMemberFn}`, 'force-missing', {
+    ...createArgs,
+    body: serverFnBody({ projectId: 'prj_00000000', agentProfileId: 'agp_00000000' }),
+  })
+  assert.equal(forceMissing.status, 200, forceMissing.text)
+  assert(forceMissing.text.includes('not_found'), '不存在的 Project 必须回 not_found')
+  pass('强制移除对不存在的 Project 回 not_found', { status: forceMissing.status, requestId: forceMissing.requestId })
 
   assert(statSync(databaseUrl).size > 0, '真实 SQLite 文件必须存在')
   if (process.env.SPROUT_SKIP_BROWSER !== '1') {

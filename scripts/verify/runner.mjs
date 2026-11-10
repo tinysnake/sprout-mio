@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { NATIVE_GATE_WEIGHTS } from "./lib/native-lanes.mjs";
+import { HOST_PI_SDK_EXIT } from "./lib/host-pi-sdk.mjs";
+import { reportSignalFailure, signalProcessGroup } from "./lib/process-signals.mjs";
 import { greenFullRunOn, spendEntry } from "./lib/spend.mjs";
 import {
   MANUAL_GATES,
@@ -9,6 +11,13 @@ import {
   fitsResources,
   allocateResources,
 } from "./lib/suite-plan.mjs";
+import {
+  LOADED_BYPASS_ENV,
+  loadedMachine,
+  machineState,
+  unfitMachine,
+  unfitReason,
+} from "./lib/machine.mjs";
 import {
   closeSync,
   existsSync,
@@ -42,6 +51,9 @@ script fails. Gates listed as manual run only with --only or a direct script inv
 Options:
   --only <ids>  Run exactly these comma-separated script ids (file names without .sh).
   --help        Print this help without creating a run directory or running scripts.
+
+Environment:
+  SPROUT_VERIFY_ALLOW_LOADED=1  Start even when this machine is already saturated.
 `;
 
 class UsageError extends Error {}
@@ -151,29 +163,6 @@ const interrupted = { signal: null, exitCode: null };
 const activeChildren = new Set();
 let cleanup = Promise.resolve();
 
-function signalProcessGroup(pid, signal) {
-  try {
-    process.kill(-pid, signal);
-  } catch (error) {
-    if (error.code === "ESRCH") return;
-    if (error.code === "EPERM") {
-      const snapshot = spawnSync("ps", ["-axo", "pgid=,stat="], {
-        encoding: "utf8",
-        timeout: 1000,
-      });
-      if (
-        snapshot.status === 0 &&
-        !snapshot.stdout.split("\n").some((line) => {
-          const [group, state] = line.trim().split(/\s+/);
-          return Number(group) === pid && !state?.startsWith("Z");
-        })
-      )
-        return;
-    }
-    throw error;
-  }
-}
-
 function handleSignal(signal) {
   if (interrupted.signal !== null) return;
   interrupted.signal = signal;
@@ -226,7 +215,7 @@ function handleSignal(signal) {
           try {
             process.kill(pid, "SIGKILL");
           } catch (error) {
-            if (error.code !== "ESRCH") throw error;
+            if (error.code !== "ESRCH") reportSignalFailure(pid, "SIGKILL", error);
           }
         }
         for (const child of activeChildren) {
@@ -275,13 +264,27 @@ function runScript(script, runDirectory, environment = {}) {
       outcome.durationMs = Math.round(performance.now() - started);
       outcome.exitCode = code;
       outcome.signal = signal;
-      outcome.status =
-        code === 0 && signal === null && !spawnError && interrupted.signal === null
-          ? "passed"
-          : "failed";
+      const clean = code !== null && signal === null && !spawnError && interrupted.signal === null;
+      outcome.status = !clean
+        ? "failed"
+        : code === HOST_PI_SDK_EXIT
+          ? "skipped"
+          : code === 0
+            ? "passed"
+            : "failed";
       activeChildren.delete(child);
       if (outcome.status === "passed") {
         console.log(`PASS ${script.id} ${relativePath} ${formatDuration(outcome.durationMs)}`);
+      } else if (outcome.status === "skipped") {
+        // 门禁自己声明了「本机缺先决条件」（见 lib/host-pi-sdk.mjs）：跳过不是通过，所以照样
+        // 打出它的理由，并把理由留在日志里供 report.json 与人工翻阅。
+        console.log(`SKIP ${script.id} ${relativePath} ${formatDuration(outcome.durationMs)}`);
+        const tail = readLogTail(logPath);
+        if (tail !== "") {
+          console.log(`--- tail ${relative(root, logPath)} ---`);
+          console.log(tail);
+          console.log(`--- end tail ---`);
+        }
       } else {
         const reasons = [];
         if (spawnError !== undefined) reasons.push(`error=${spawnError.message}`);
@@ -468,12 +471,21 @@ function headCommit() {
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
-function printSummary(outcomes, totalDurationMs, reportPath) {
+function printSummary(outcomes, totalDurationMs, reportPath, machine) {
   console.log("Slowest first");
   for (const outcome of [...outcomes].sort((left, right) => right.durationMs - left.durationMs)) {
-    console.log(
-      `  ${formatDuration(outcome.durationMs)} ${outcome.status === "passed" ? "PASS" : "FAIL"} ${outcome.id}`,
-    );
+    const label =
+      outcome.status === "passed" ? "PASS" : outcome.status === "skipped" ? "SKIP" : "FAIL";
+    console.log(`  ${formatDuration(outcome.durationMs)} ${label} ${outcome.id}`);
+  }
+  const failed = outcomes.filter((outcome) => outcome.status === "failed").length;
+  if (failed > 0) {
+    const loaded = [machine.start, machine.end].find((state) => loadedMachine(state));
+    if (loaded) {
+      console.log(
+        `Verification note=机器负载偏高（loadavg ${loaded.load.join(" ")} / ${loaded.cpus} 核，可用内存 ${loaded.freeMemMB}MB）：时间预算型门禁在满载机器上可能假红，判红前先看 uptime 并单独复跑该门禁。`,
+      );
+    }
   }
   console.log(`Verification total=${formatDuration(totalDurationMs)}`);
   console.log(`Verification report=${relative(root, reportPath).split("\\").join("/")}`);
@@ -525,6 +537,15 @@ async function main() {
       ? allScripts.filter((script) => !MANUAL_GATES.includes(script.id))
       : allScripts.filter((script) => parsed.only.includes(script.id));
 
+  const machineStart = machineState();
+  if (unfitMachine(machineStart) && process.env[LOADED_BYPASS_ENV] !== "1") {
+    console.error(`BLOCKED 本机负载不适合验证：${unfitReason(machineStart)}`);
+    console.error(
+      `        满载机器上的时间预算型门禁会假红，判红不是证据（见 docs/verification.md 的机器负载策略）。等机器空闲后重跑，或设 ${LOADED_BYPASS_ENV}=1 强行开始。`,
+    );
+    return 2;
+  }
+
   const run = createRunDirectory();
   writeFileSync(
     join(run.directory, "context.json"),
@@ -532,6 +553,7 @@ async function main() {
   );
   const startedAt = new Date().toISOString();
   const runStarted = performance.now();
+  const machine = { start: machineStart, end: null };
   const outcomes = [];
 
   cleanVerificationDatabases(parsed.only);
@@ -556,7 +578,11 @@ async function main() {
   );
 
   const totalDurationMs = Math.round(performance.now() - runStarted);
-  const failed = outcomes.filter((outcome) => outcome.status !== "passed").length;
+  const statusCount = (status) => outcomes.filter((outcome) => outcome.status === status).length;
+  const failed = statusCount("failed");
+  const skipped = statusCount("skipped");
+  const passed = statusCount("passed");
+  machine.end = machineState();
   const report = {
     runId: run.id,
     startedAt,
@@ -569,25 +595,35 @@ async function main() {
         ? null
         : { signal: interrupted.signal, exitCode: interrupted.exitCode },
     preparation: preparationOutcomes,
+    machine: { start: machine.start, end: machine.end },
     resourceCapacity: SUITE_CAPACITY,
     resourceTimeOrigin: performance.timeOrigin,
     resourceEvents,
     count: outcomes.length,
-    passed: outcomes.length - failed,
+    passed,
     failed,
+    skipped,
     outcomes,
   };
   const reportPath = writeReport(run.directory, report);
   appendSpend(report, headCommit());
 
-  printSummary(outcomes, totalDurationMs, reportPath);
+  printSummary(outcomes, totalDurationMs, reportPath, machine);
 
   if (selected.length === 0) {
     console.log("FAIL no verification scripts found");
     return 1;
   }
 
-  console.log(`Verification scripts=${report.count} failed=${failed}`);
+  console.log(`Verification scripts=${report.count} failed=${failed} skipped=${skipped}`);
+  if (skipped > 0) {
+    const ids = outcomes
+      .filter((outcome) => outcome.status === "skipped")
+      .map((outcome) => outcome.id);
+    console.log(
+      `Verification skipped do not count as passed: ${ids.join(",")} — see each gate log for the missing prerequisite`,
+    );
+  }
 
   if (interrupted.signal !== null) return interrupted.exitCode;
   return failed === 0 ? 0 : 1;

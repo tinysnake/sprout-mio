@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2b108c63-766e-4ca0-a812-d42671b2f6db",
+  "id": "44861820-229b-43a1-8d74-2b2ddab275b6",
   "prevId": "d5a9e69f-65db-4f74-bfe0-b7f6afac1211",
   "tables": {
     "agent_instance": {
@@ -568,7 +568,7 @@
         },
         "agent_run_input_cancel_reason_check": {
           "name": "agent_run_input_cancel_reason_check",
-          "value": "\"agent_run_input\".\"cancel_reason\" is null or \"agent_run_input\".\"cancel_reason\" in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed', 'automation_context_changed')"
+          "value": "\"agent_run_input\".\"cancel_reason\" is null or \"agent_run_input\".\"cancel_reason\" in ('membership_revoked', 'human_stop', 'group_dissolved', 'task_context_changed')"
         },
         "agent_run_input_admitted_at_check": {
           "name": "agent_run_input_admitted_at_check",
@@ -2523,7 +2523,7 @@
             "machine_id"
           ],
           "isUnique": true,
-          "where": "state IN ('free','active','draining')"
+          "where": "state IN ('free','active','draining','escrowed')"
         }
       },
       "foreignKeys": {
@@ -2576,7 +2576,7 @@
         },
         "lease_authorization_check_2": {
           "name": "lease_authorization_check_2",
-          "value": "state IN ('free','active','draining','revoked')"
+          "value": "state IN ('free','active','draining','escrowed','revoked')"
         },
         "lease_authorization_check_3": {
           "name": "lease_authorization_check_3",
@@ -2584,15 +2584,281 @@
         },
         "lease_authorization_check_4": {
           "name": "lease_authorization_check_4",
-          "value": "reason IN ('initial','acquire','release','handoff','reclaim')"
+          "value": "reason IN ('initial','acquire','release','handoff','reclaim','escrow','claim','escrow_cancel')"
         },
         "lease_authorization_check_9": {
           "name": "lease_authorization_check_9",
-          "value": "(state='free' AND holder_instance_id IS NULL AND revoked_at IS NULL) OR\n        (state IN ('active','draining') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR\n        (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)"
+          "value": "(state='free' AND holder_instance_id IS NULL AND revoked_at IS NULL) OR\n        (state IN ('active','draining','escrowed') AND holder_instance_id IS NOT NULL AND revoked_at IS NULL) OR\n        (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)"
         },
         "lease_authorization_check_10": {
           "name": "lease_authorization_check_10",
           "value": "generation>0 OR holder_instance_id IS NULL"
+        }
+      }
+    },
+    "lease_escrow": {
+      "name": "lease_escrow",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "machine_id": {
+          "name": "machine_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "chat_id": {
+          "name": "chat_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_agent_profile_id": {
+          "name": "target_agent_profile_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "escrowed_by_instance_id": {
+          "name": "escrowed_by_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrowed_at": {
+          "name": "escrowed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_request_id": {
+          "name": "escrow_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_payload_hash": {
+          "name": "escrow_payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "escrow_generation": {
+          "name": "escrow_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claimed_by_instance_id": {
+          "name": "claimed_by_instance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claimed_generation": {
+          "name": "claimed_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_request_id": {
+          "name": "claim_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_payload_hash": {
+          "name": "claim_payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "lease_escrow_id_project_unique": {
+          "name": "lease_escrow_id_project_unique",
+          "columns": [
+            "id",
+            "project_id"
+          ],
+          "isUnique": true
+        },
+        "lease_one_live_escrow": {
+          "name": "lease_one_live_escrow",
+          "columns": [
+            "project_id",
+            "machine_id"
+          ],
+          "isUnique": true,
+          "where": "state='escrowed'"
+        },
+        "lease_escrow_escrow_request_unique": {
+          "name": "lease_escrow_escrow_request_unique",
+          "columns": [
+            "escrowed_by_instance_id",
+            "escrow_request_id"
+          ],
+          "isUnique": true
+        },
+        "lease_escrow_claim_request_unique": {
+          "name": "lease_escrow_claim_request_unique",
+          "columns": [
+            "claimed_by_instance_id",
+            "claim_request_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "lease_escrow_project_id_machine_id_machine_lease_project_id_machine_id_fk": {
+          "name": "lease_escrow_project_id_machine_id_machine_lease_project_id_machine_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "machine_lease",
+          "columnsFrom": [
+            "project_id",
+            "machine_id"
+          ],
+          "columnsTo": [
+            "project_id",
+            "machine_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_chat_id_project_id_chat_id_project_id_fk": {
+          "name": "lease_escrow_chat_id_project_id_chat_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "chat",
+          "columnsFrom": [
+            "chat_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_target_agent_profile_id_agent_profile_id_fk": {
+          "name": "lease_escrow_target_agent_profile_id_agent_profile_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_profile",
+          "columnsFrom": [
+            "target_agent_profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_escrowed_by_instance_id_project_id_agent_instance_id_project_id_fk": {
+          "name": "lease_escrow_escrowed_by_instance_id_project_id_agent_instance_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_instance",
+          "columnsFrom": [
+            "escrowed_by_instance_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lease_escrow_claimed_by_instance_id_project_id_agent_instance_id_project_id_fk": {
+          "name": "lease_escrow_claimed_by_instance_id_project_id_agent_instance_id_project_id_fk",
+          "tableFrom": "lease_escrow",
+          "tableTo": "agent_instance",
+          "columnsFrom": [
+            "claimed_by_instance_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "lease_escrow_check_1": {
+          "name": "lease_escrow_check_1",
+          "value": "state IN ('escrowed','claimed','cancelled','superseded')"
+        },
+        "lease_escrow_check_2": {
+          "name": "lease_escrow_check_2",
+          "value": "typeof(escrowed_at)='integer' AND escrowed_at>=0"
+        },
+        "lease_escrow_check_3": {
+          "name": "lease_escrow_check_3",
+          "value": "typeof(escrow_generation)='integer' AND escrow_generation BETWEEN 1 AND 9007199254740991"
+        },
+        "lease_escrow_check_4": {
+          "name": "lease_escrow_check_4",
+          "value": "length(escrow_payload_hash)=64 AND escrow_payload_hash NOT GLOB '*[^0-9a-f]*'"
+        },
+        "lease_escrow_check_5": {
+          "name": "lease_escrow_check_5",
+          "value": "(state='escrowed' AND claimed_by_instance_id IS NULL AND claimed_at IS NULL AND claimed_generation IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL AND closed_at IS NULL) OR\n        (state<>'escrowed' AND closed_at IS NOT NULL AND typeof(closed_at)='integer' AND closed_at>=escrowed_at)"
+        },
+        "lease_escrow_check_6": {
+          "name": "lease_escrow_check_6",
+          "value": "(state='claimed' AND claimed_by_instance_id IS NOT NULL AND typeof(claimed_generation)='integer' AND claimed_generation>escrow_generation) OR\n        (state<>'claimed' AND claimed_by_instance_id IS NULL AND claimed_generation IS NULL)"
+        },
+        "lease_escrow_check_7": {
+          "name": "lease_escrow_check_7",
+          "value": "(claimed_at IS NULL AND claim_request_id IS NULL AND claim_payload_hash IS NULL) OR\n        (claimed_at IS NOT NULL AND typeof(claimed_at)='integer' AND claimed_at>=escrowed_at AND claim_request_id IS NOT NULL AND length(claim_payload_hash)=64 AND claim_payload_hash NOT GLOB '*[^0-9a-f]*')"
         }
       }
     },
@@ -4534,13 +4800,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "automation_trigger_id": {
-          "name": "automation_trigger_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "task_id": {
           "name": "task_id",
           "type": "text",
@@ -4653,28 +4912,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "message_automation_trigger_id_webhook_trigger_id_fk": {
-          "name": "message_automation_trigger_id_webhook_trigger_id_fk",
-          "tableFrom": "message",
-          "tableTo": "webhook_trigger",
-          "columnsFrom": [
-            "automation_trigger_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "message_automation_trigger_id_id_chat_id_webhook_trigger_id_message_id_chat_id_fk": {
-          "name": "message_automation_trigger_id_id_chat_id_webhook_trigger_id_message_id_chat_id_fk",
-          "tableFrom": "message",
-          "tableTo": "webhook_trigger",
-          "columnsFrom": ["automation_trigger_id", "id", "chat_id"],
-          "columnsTo": ["id", "message_id", "chat_id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "message_task_author_run_id_agent_run_id_fk": {
           "name": "message_task_author_run_id_agent_run_id_fk",
           "tableFrom": "message",
@@ -4739,11 +4976,7 @@
       "checkConstraints": {
         "message_sender_kind_check": {
           "name": "message_sender_kind_check",
-          "value": "\"message\".\"sender_kind\" in ('human', 'agent', 'automation')"
-        },
-        "message_automation_shape_check": {
-          "name": "message_automation_shape_check",
-          "value": "(\"message\".\"sender_kind\"='automation' and \"message\".\"automation_trigger_id\" is not null and \"message\".\"sender_id\"=\"message\".\"automation_trigger_id\" and \"message\".\"task_id\" is null) or (\"message\".\"sender_kind\"<>'automation' and \"message\".\"automation_trigger_id\" is null)"
+          "value": "\"message\".\"sender_kind\" in ('human', 'agent')"
         },
         "message_task_shape_check": {
           "name": "message_task_shape_check",
@@ -7726,335 +7959,6 @@
         "wake_evaluation_task_revision_check": {
           "name": "wake_evaluation_task_revision_check",
           "value": "\"wake_evaluation_task\".\"revision\">0 and \"wake_evaluation_task\".\"assignment_revision\">0"
-        }
-      }
-    },
-    "webhook_rule": {
-      "name": "webhook_rule",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "instruction": {
-          "name": "instruction",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "secret_digest": {
-          "name": "secret_digest",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "webhook_rule_id_project_unique": {
-          "name": "webhook_rule_id_project_unique",
-          "columns": [
-            "id",
-            "project_id"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "webhook_rule_project_id_project_id_fk": {
-          "name": "webhook_rule_project_id_project_id_fk",
-          "tableFrom": "webhook_rule",
-          "tableTo": "project",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "webhook_rule_created_by_user_id_fk": {
-          "name": "webhook_rule_created_by_user_id_fk",
-          "tableFrom": "webhook_rule",
-          "tableTo": "user",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "webhook_rule_revision_check": {
-          "name": "webhook_rule_revision_check",
-          "value": "typeof(\"webhook_rule\".\"revision\")='integer' and \"webhook_rule\".\"revision\">=0"
-        },
-        "webhook_rule_secret_check": {
-          "name": "webhook_rule_secret_check",
-          "value": "length(\"webhook_rule\".\"secret_digest\")=64 and \"webhook_rule\".\"secret_digest\" not glob '*[^0-9a-f]*'"
-        },
-        "webhook_rule_action_check": {
-          "name": "webhook_rule_action_check",
-          "value": "json_valid(\"webhook_rule\".\"action\") and coalesce(json_extract(\"webhook_rule\".\"action\", '$.kind') in ('dm_agent','group_agent','group_owner') and json_type(\"webhook_rule\".\"action\", '$.chatId')='text' and (json_extract(\"webhook_rule\".\"action\", '$.kind')='group_owner' or json_type(\"webhook_rule\".\"action\", '$.agentProfileId')='text'),0)"
-        }
-      }
-    },
-    "webhook_trigger": {
-      "name": "webhook_trigger",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "rule_id": {
-          "name": "rule_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "mode": {
-          "name": "mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "event_id": {
-          "name": "event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "fingerprint": {
-          "name": "fingerprint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "snapshot": {
-          "name": "snapshot",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "decision": {
-          "name": "decision",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "chat_id": {
-          "name": "chat_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "agent_profile_id": {
-          "name": "agent_profile_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "message_id": {
-          "name": "message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "webhook_trigger_event_unique": {
-          "name": "webhook_trigger_event_unique",
-          "columns": [
-            "rule_id",
-            "mode",
-            "event_id"
-          ],
-          "isUnique": true
-        },
-        "webhook_trigger_source_unique": {
-          "name": "webhook_trigger_source_unique",
-          "columns": ["id", "message_id", "chat_id"],
-          "isUnique": true
-        },
-        "webhook_trigger_message_unique": {
-          "name": "webhook_trigger_message_unique",
-          "columns": [
-            "message_id"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "webhook_trigger_agent_profile_id_agent_profile_id_fk": {
-          "name": "webhook_trigger_agent_profile_id_agent_profile_id_fk",
-          "tableFrom": "webhook_trigger",
-          "tableTo": "agent_profile",
-          "columnsFrom": [
-            "agent_profile_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "webhook_trigger_message_id_message_id_fk": {
-          "name": "webhook_trigger_message_id_message_id_fk",
-          "tableFrom": "webhook_trigger",
-          "tableTo": "message",
-          "columnsFrom": [
-            "message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "webhook_trigger_rule_id_project_id_webhook_rule_id_project_id_fk": {
-          "name": "webhook_trigger_rule_id_project_id_webhook_rule_id_project_id_fk",
-          "tableFrom": "webhook_trigger",
-          "tableTo": "webhook_rule",
-          "columnsFrom": [
-            "rule_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "id",
-            "project_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "webhook_trigger_chat_id_project_id_chat_id_project_id_fk": {
-          "name": "webhook_trigger_chat_id_project_id_chat_id_project_id_fk",
-          "tableFrom": "webhook_trigger",
-          "tableTo": "chat",
-          "columnsFrom": [
-            "chat_id",
-            "project_id"
-          ],
-          "columnsTo": [
-            "id",
-            "project_id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "webhook_trigger_mode_check": {
-          "name": "webhook_trigger_mode_check",
-          "value": "\"webhook_trigger\".\"mode\" in ('live','trial')"
-        },
-        "webhook_trigger_decision_check": {
-          "name": "webhook_trigger_decision_check",
-          "value": "(\"webhook_trigger\".\"decision\"='accepted' and \"webhook_trigger\".\"reason\" is null and \"webhook_trigger\".\"chat_id\" is not null and \"webhook_trigger\".\"agent_profile_id\" is not null and \"webhook_trigger\".\"message_id\" is not null) or (\"webhook_trigger\".\"decision\"='skipped' and \"webhook_trigger\".\"reason\" is not null and length(trim(\"webhook_trigger\".\"reason\"))>0 and \"webhook_trigger\".\"message_id\" is null and \"webhook_trigger\".\"chat_id\" is null and \"webhook_trigger\".\"agent_profile_id\" is null)"
-        },
-        "webhook_trigger_snapshot_check": {
-          "name": "webhook_trigger_snapshot_check",
-          "value": "json_valid(\"webhook_trigger\".\"snapshot\")"
         }
       }
     },

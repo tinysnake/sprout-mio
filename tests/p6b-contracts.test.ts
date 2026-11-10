@@ -76,6 +76,7 @@ const lease = {
   state: "held",
   holderInstanceId: instanceId,
   pendingMutationId: null,
+  escrow: null,
   changedAt: at,
   holderResolution: "resolved",
   holder: {

@@ -8,6 +8,7 @@ export function spendEntry(report, head) {
     durationMs: report.durationMs,
     count: report.count,
     failed: report.failed,
+    skipped: report.skipped ?? 0,
     gates: report.outcomes.map((outcome) => ({
       id: outcome.id,
       status: outcome.status,
@@ -29,11 +30,18 @@ export function parseLedger(text) {
   return entries;
 }
 
-// 同一 HEAD 已经有一轮 0 失败的全量，就不必再花半小时跑同样的东西。
+// 同一 HEAD 已经有一轮 0 失败的全量，就不必再花半小时跑同样的东西。有跳过的轮次不算：
+// 跳过只说明先决条件不在，不产生通过结论（见 lib/host-pi-sdk.mjs）。
 export function greenFullRunOn(text, head) {
   if (!head) return null;
   for (const entry of parseLedger(text).reverse())
-    if (entry.head === head && entry.target === "all" && entry.failed === 0 && entry.count > 0)
+    if (
+      entry.head === head &&
+      entry.target === "all" &&
+      entry.failed === 0 &&
+      (entry.skipped ?? 0) === 0 &&
+      entry.count > 0
+    )
       return entry;
   return null;
 }

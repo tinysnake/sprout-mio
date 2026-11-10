@@ -2,6 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+# 这门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs ae-remote-tools-cancel-log || exit $?
+
 # Risk → Test
 # 取消 / 日志工具没进入真实 tools/list → 真实 Pi host runner 加载真实 extension，
 #   以 session 的活动工具名（模型实际看到的 tools/list）为准，并从契约推导工具名，不写死数量。

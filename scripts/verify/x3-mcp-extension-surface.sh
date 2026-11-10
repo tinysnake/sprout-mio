@@ -2,6 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
+# 这门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
+# 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
+node scripts/verify/lib/host-pi-sdk.mjs x3-mcp-extension-surface || exit $?
+
 # Risk → Test
 # MCP 图片块被降级成 JSON 文本 → 真实 server-everything 的 get-tiny-image 经真实 Pi 工具面执行。
 # `list_changed` 后新工具到不了模型工具面、refresh() 静默返回 ok → 三种 allowlist 形状实测

@@ -60,9 +60,15 @@ await test("every gate and unit file has an explicit target; only split A/B over
     "a-base",
     "b-tooling",
   ]);
-  assert.deepEqual(inventory.manual, ["p6a-live-routing"]);
-  assert(!inventory.ci.includes("p6a-live-routing"));
-  assert(!inventory.local.includes("p6a-live-routing"));
+  assert.deepEqual(inventory.manual, [
+    "p6a-live-routing",
+    "p8d-windows-worker",
+    "p8d-windows-integration",
+  ]);
+  for (const id of inventory.manual) {
+    assert(!inventory.ci.includes(id));
+    assert(!inventory.local.includes(id));
+  }
   assert.deepEqual(validateUnitTargets(root).local, [
     "tests/assistant-watch-summary-pi.test.ts",
     "tests/chat-skills-foundation.test.ts",

@@ -2,10 +2,17 @@ import { createFileRoute, useCanGoBack, useNavigate } from "@tanstack/react-rout
 import { ArrowLeft } from "lucide-react";
 import { useEffect } from "react";
 import { z } from "zod";
+import { ID_PREFIXES, newId } from "../../contracts/ids";
+import { ok } from "../../contracts/result";
 import { PageBackButton } from "../../components/layout/page-back";
 import { PageFrame } from "../../components/layout/page-frame";
 import { MachineLeasePanel } from "../../components/machine/machine-lease";
-import { holderNames } from "../../components/machine/project-lease-actions";
+import {
+  agentNames,
+  chatKinds,
+  chatNames,
+  holderNames,
+} from "../../components/machine/project-lease-actions";
 import { useMachineEnrollment } from "../../components/machine/machine-enrollment-context";
 import { useMachineActivity } from "../../components/machine/use-machine-activity";
 import { useMachineRefresh } from "../../components/machine/use-machine-refresh";
@@ -23,12 +30,20 @@ export const Route = createFileRoute("/_authed/machines/$machineId/lease")({
   loaderDeps: ({ search }) => ({ projectId: search.projectId }),
   loader: async ({ params, deps }) => {
     if (!deps.projectId) return null;
-    const [detail, info, executions, projects] = await Promise.all([
+    const [detail, info, projects] = await Promise.all([
       getMachineFn({ data: { machineId: params.machineId, projectId: deps.projectId } }),
       getProjectInfoHubFn({ data: { projectId: deps.projectId } }),
-      listProjectExecutionsFn({ data: { projectId: deps.projectId, machineId: params.machineId } }),
       listProjectsFn(),
     ]);
+    // 执行事实受 Project × Machine 的范围约束：Machine 不属于这个 Project 时，服务端会按
+    // 范围规则拒绝列表请求，页面不该因此显示一个原始错误码。范围以租约事实为准。
+    const inScope =
+      info.ok && info.data.leases.items.some((item) => item.machineId === params.machineId);
+    const executions = inScope
+      ? await listProjectExecutionsFn({
+          data: { projectId: deps.projectId, machineId: params.machineId },
+        })
+      : ok([], newId(ID_PREFIXES.request));
     return { detail, info, executions, projects };
   },
   component: MachineLeasePage,
@@ -117,6 +132,11 @@ function MachineLeasePage() {
       leaseInfo={data.info.data}
       leases={data.info.data.leases.items}
       holderNames={holderNames(data.info.data)}
+      escrowNames={{
+        chats: chatNames(data.info.data),
+        chatKinds: chatKinds(data.info.data),
+        agents: agentNames(data.info.data),
+      }}
       executions={executions}
       executionError={executionsError ?? undefined}
       logReader={executionWiring.logReader}

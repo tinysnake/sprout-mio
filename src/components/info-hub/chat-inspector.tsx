@@ -8,9 +8,6 @@ import type { AgentInstance, Chat, ChatMember, ChatResult } from "../../contract
 import type { ChatInfoView, InfoHubResult } from "../../contracts/info-hub";
 import type { TurnContextReadResult } from "../../contracts/turn-context";
 import type { AppError } from "../../contracts/result";
-import type { MachineDetail } from "../../contracts/machine";
-import type { LeaseView } from "../../contracts/lease";
-import type { ExecutionView } from "../../contracts/remote";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ResultError } from "../project/result-error";
@@ -19,19 +16,10 @@ import { ChatAvatar } from "../chat/chat-avatar";
 import { ChatFactsBlock } from "./chat-info-panel";
 import { ChatActivityFacts } from "./chat-activity";
 import { LeaseOverview } from "../machine/lease-panel";
-import { ExecutionTargetTable, RemoteExecutionList } from "../machine/remote-execution-panel";
+import type { ChatMachineFacts } from "../chat/chat-loader";
 
-/**
- * Chat 侧的 Machine 事实：与 Project settings、Machine 详情读同一份租约与执行视图，
- * 不在这里重新推导持有者或状态。
- */
-export type ChatMachineFacts = {
-  projectId: string;
-  machines: MachineDetail[];
-  leases: readonly LeaseView[];
-  executions: readonly ExecutionView[];
-  holderNames?: Readonly<Record<string, string>>;
-};
+/** Machine 事实的读模型类型与 Chat 详情共用一份，避免两处定义漂移。 */
+export type { ChatMachineFacts };
 
 /**
  * Chat 的 Info Hub：摘要常显，运行事实与 Chat 事实按需展开。原有诊断字段
@@ -67,6 +55,7 @@ export function ChatInspector({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {" "}
       <header className="flex min-h-15.25 items-center gap-2 border-b border-border px-5 max-desktop:min-h-19 max-desktop:px-3 max-desktop:py-3.5">
         <Button
           type="button"
@@ -240,39 +229,31 @@ export function ChatInspector({
             {machineFactsError && <ResultError error={machineFactsError} />}
             {machineFacts && (
               <div data-testid="chat-machine-facts" className="space-y-4">
+                {/* 只呈现既有租约状态；远端操作的表格、柱状汇总与说明留在 Machine 详情页。 */}
                 <LeaseOverview
                   projectId={machineFacts.projectId}
                   machines={machineFacts.machines}
                   leases={machineFacts.leases}
                   holderNames={machineFacts.holderNames}
+                  escrowNames={{
+                    chats: machineFacts.chatNames ?? {},
+                    chatKinds: machineFacts.chatKinds ?? {},
+                    agents: machineFacts.agentNames ?? {},
+                  }}
                   dense
+                  showDenseNote={false}
                   testId="chat-leases"
-                />
-                {machineFacts.executions.length > 0 && (
-                  <ExecutionTargetTable
-                    executions={machineFacts.executions}
-                    machines={machineFacts.machines}
-                    testId="chat-execution-targets"
-                  />
-                )}
-                <RemoteExecutionList
-                  executions={machineFacts.executions}
-                  machines={machineFacts.machines}
-                  holderNames={machineFacts.holderNames ?? {}}
-                  dense
-                  readOnlyNote="此面板只读：只展示已知的执行事实与日志位点。读取日志与取消这次执行请在 Machine 详情页操作。"
-                  testId="chat-executions"
                 />
               </div>
             )}
           </div>
         </section>
-        <p className="flex gap-2 pt-5 text-[10px] leading-5 text-muted-foreground">
-          <Icon as={ShieldCheck} size={14} className="mt-0.5" />
-          {machineFacts
-            ? "远端操作以 Worker 运行用户权限执行在工作目录之外；租约不随 run 结束释放。"
-            : "分析基于固定快照。分身可以读取仓库；远端操作的日志读取与取消在 Machine 详情页进行。"}
-        </p>
+        {!machineFacts && (
+          <p className="flex gap-2 pt-5 text-[10px] leading-5 text-muted-foreground">
+            <Icon as={ShieldCheck} size={14} className="mt-0.5" />
+            分析基于固定快照。分身可以读取仓库；远端操作的日志读取与取消在 Machine 详情页进行。
+          </p>
+        )}
       </div>
       <div className="border-t border-border px-5 py-3.5 text-[10px] text-muted-foreground max-desktop:pb-[max(14px,env(safe-area-inset-bottom))]">
         仅 Project 成员可见

@@ -152,6 +152,11 @@ try {
     { state: "revoked", revoked_at: 9 },
     { state: "revoked", revoked_at: 10.5 },
     { state: "active", revoked_at: 11 },
+    // I-P8a：挂靠中的授权同样必须挂在某个持有者身上，且不能是已撤销的形态。
+    { state: "escrowed", holder_instance_id: null },
+    { state: "escrowed", revoked_at: 11 },
+    { state: "invented" },
+    { reason: "invented" },
   ];
   for (const changes of authorizationRejections)
     rollback(() => {
@@ -191,6 +196,59 @@ try {
       /UNIQUE/,
     );
   });
+  rollback(() => {
+    // I-P8a：escrowed 是挂靠中的授权态，escrow/claim/escrow_cancel 是它的收据理由；
+    // 挂靠中的授权同样占用唯一一个 live authorization 名额。
+    sqlite
+      .prepare(
+        "UPDATE lease_authorization SET state = 'revoked', revoked_at = 11 WHERE project_id = 'a'",
+      )
+      .run();
+    insert("lease_authorization", {
+      ...authorization,
+      generation: 2,
+      state: "escrowed",
+      reason: "escrow",
+      issued_at: 11,
+    });
+    assert.throws(
+      () =>
+        insert("lease_authorization", {
+          ...authorization,
+          generation: 3,
+          state: "active",
+          reason: "claim",
+        }),
+      /UNIQUE/,
+    );
+    sqlite
+      .prepare(
+        "UPDATE lease_authorization SET state = 'revoked', revoked_at = 12 WHERE project_id = 'a'",
+      )
+      .run();
+    insert("lease_authorization", {
+      ...authorization,
+      generation: 3,
+      state: "active",
+      reason: "claim",
+      issued_at: 12,
+    });
+    sqlite
+      .prepare(
+        "UPDATE lease_authorization SET state = 'revoked', revoked_at = 13 WHERE project_id = 'a'",
+      )
+      .run();
+    insert("lease_authorization", {
+      ...authorization,
+      generation: 4,
+      state: "active",
+      reason: "escrow_cancel",
+      issued_at: 13,
+    });
+  });
+  console.log(
+    "PASS escrowed authorization state and escrow/claim/escrow_cancel reasons hold one live authorization",
+  );
   const execution = {
     id: "execution",
     project_id: "a",
@@ -319,6 +377,93 @@ try {
   rejects("execution_result", result, /UNIQUE/);
   console.log(
     "PASS live authorization/pending mutation/result/grant uniqueness and composite identity constraints",
+  );
+  const escrow = {
+    id: "escrow",
+    project_id: "a",
+    machine_id: "machine",
+    state: "escrowed",
+    chat_id: "chat-a",
+    target_agent_profile_id: null,
+    escrowed_by_instance_id: "instance-a",
+    escrowed_at: 10,
+    escrow_request_id: "escrow-request",
+    escrow_payload_hash: "b".repeat(64),
+    escrow_generation: 1,
+    claimed_by_instance_id: null,
+    claimed_at: null,
+    claimed_generation: null,
+    claim_request_id: null,
+    claim_payload_hash: null,
+    closed_at: null,
+  };
+  // I-P8a：挂靠目标只能落在同一个 Project 的 chat 上，分身与 Agent 也必须在同一 Project。
+  rejects("lease_escrow", { ...escrow, state: "invented" }, /CHECK/);
+  rejects("lease_escrow", { ...escrow, escrow_payload_hash: "short" }, /CHECK/);
+  rejects("lease_escrow", { ...escrow, escrow_generation: 0 }, /CHECK/);
+  rejects("lease_escrow", { ...escrow, escrowed_at: -1 }, /CHECK/);
+  rejects("lease_escrow", { ...escrow, chat_id: "chat-b" }, /FOREIGN KEY/);
+  rejects("lease_escrow", { ...escrow, chat_id: "missing" }, /FOREIGN KEY/);
+  rejects("lease_escrow", { ...escrow, target_agent_profile_id: "missing" }, /FOREIGN KEY/);
+  rejects("lease_escrow", { ...escrow, escrowed_by_instance_id: "instance-b" }, /FOREIGN KEY/);
+  rejects("lease_escrow", { ...escrow, machine_id: "missing" }, /FOREIGN KEY/);
+  rejects("lease_escrow", { ...escrow, project_id: "b", chat_id: "chat-a" }, /FOREIGN KEY/);
+  // 活跃挂靠不能带领取痕迹，也不能带 closed_at。
+  rejects(
+    "lease_escrow",
+    {
+      ...escrow,
+      claimed_by_instance_id: "instance-a",
+      claimed_at: 11,
+      claimed_generation: 2,
+      claim_request_id: "claim-request",
+      claim_payload_hash: "c".repeat(64),
+    },
+    /CHECK/,
+  );
+  rejects("lease_escrow", { ...escrow, closed_at: 11 }, /CHECK/);
+  // 领取痕迹三者同生同灭，且领取代次必须大于挂靠代次。
+  const claimed = {
+    ...escrow,
+    id: "escrow-claimed",
+    // 领取收据是另一行（真实实现里是同一行被更新），因此有自己的挂靠请求身份。
+    escrow_request_id: "escrow-request-claimed",
+    state: "claimed",
+    claimed_by_instance_id: "instance-a",
+    claimed_at: 11,
+    claimed_generation: 2,
+    claim_request_id: "claim-request",
+    claim_payload_hash: "c".repeat(64),
+    closed_at: 11,
+  };
+  rejects("lease_escrow", { ...claimed, claimed_at: null }, /CHECK/);
+  rejects("lease_escrow", { ...claimed, claim_request_id: null }, /CHECK/);
+  rejects("lease_escrow", { ...claimed, claim_payload_hash: "d".repeat(63) }, /CHECK/);
+  rejects("lease_escrow", { ...claimed, claimed_generation: 1 }, /CHECK/);
+  rejects("lease_escrow", { ...claimed, claimed_generation: null }, /CHECK/);
+  rejects("lease_escrow", { ...claimed, closed_at: null }, /CHECK/);
+  rejects("lease_escrow", { ...claimed, closed_at: 9 }, /CHECK/);
+  rejects("lease_escrow", { ...claimed, claimed_at: 9 }, /CHECK/);
+  // 已撤销/已取代的挂靠也不能带领取者的身份字段。
+  rejects("lease_escrow", { ...claimed, state: "cancelled", claimed_generation: 2 }, /CHECK/);
+  rejects(
+    "lease_escrow",
+    { ...claimed, state: "superseded", claimed_by_instance_id: "instance-a" },
+    /CHECK/,
+  );
+  // 同一机器上只能有一条活跃挂靠。
+  insert("lease_escrow", escrow);
+  rejects("lease_escrow", { ...escrow, id: "escrow-live-2" }, /UNIQUE/);
+  // 挂靠请求与领取请求各自按身份幂等。
+  rejects(
+    "lease_escrow",
+    { ...escrow, id: "escrow-superseded", state: "superseded", closed_at: 11 },
+    /UNIQUE/,
+  );
+  insert("lease_escrow", claimed);
+  rejects("lease_escrow", { ...claimed, id: "escrow-claimed-2" }, /UNIQUE/);
+  console.log(
+    "PASS lease escrow targets stay inside one project, one live escrow per machine, and claimed receipts advance the generation",
   );
   rollback(() => {
     sqlite.exec("UPDATE agent_run SET status = 'aborted', settled_at = 11 WHERE id = 'run-a'");

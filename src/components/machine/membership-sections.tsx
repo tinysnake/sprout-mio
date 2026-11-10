@@ -9,7 +9,7 @@ import type { AppError } from "../../contracts/result";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import { forceReclaimLeaseFn } from "../../server/functions/lease";
-import { holderLabel, leaseStateLabel } from "./lease-view";
+import { holderLabel, leaseStateLabel, type EscrowNames } from "./lease-view";
 import { bindingDirectory, observationLabel, formatMoment, type StatusTone } from "./machine-view";
 import {
   historyMembershipSummary,
@@ -86,7 +86,7 @@ const ERROR_NOTES: Record<string, string> = {
   lease_fencing: "租约交接中，当前不能发起移出。显示当前收据与允许的下一步。",
   conflict: "事实已变化或请求冲突。已保留本地确认范围，刷新事实后请重新确认。",
   remote_request_conflict: "同一请求对应不同事实，未自动覆盖。刷新后请重新确认。",
-  lease_stale_generation: "代次已变化。刷新事实后请重新确认。",
+  lease_stale_generation: "租约状态已变化。刷新事实后请重新确认。",
   validation_failed: "确认输入有误或缺失，请重新确认移出范围。",
   lease_result_unconfirmed: "操作结果未确认，请刷新事实；不能改成失败或已完成。",
   remote_request_unconfirmed: "操作结果未确认，请刷新事实；不能改成失败或已完成。",
@@ -115,6 +115,7 @@ export function MembershipSections({
   machines,
   leases,
   holderNames = {},
+  escrowNames = {},
   executions = null,
   loading,
   error,
@@ -130,6 +131,8 @@ export function MembershipSections({
   machines: readonly MachineDetail[];
   leases: readonly LeaseView[];
   holderNames?: Readonly<Record<string, string>>;
+  /** 挂靠目标与指定 Agent 的权威显示名；缺省时只显示 id。 */
+  escrowNames?: EscrowNames;
   executions?: readonly ExecutionView[] | null;
   loading: boolean;
   error: AppError | null;
@@ -313,6 +316,7 @@ export function MembershipSections({
             ),
           )}
           holderNames={holderNames}
+          escrowNames={escrowNames}
           dense
           manageLink={(lease) => (
             <LeaseManageLink projectId={lease.projectId} machineId={lease.machineId} />
@@ -823,8 +827,7 @@ function ForceReclaimControl({
           role="status"
           className="mt-1 text-xs leading-6 text-status-warning"
         >
-          强制收据 {receipt.mutationId} · 代次 {receipt.completedGeneration}；
-          撤权未确认，无法确认远端执行已停止。
+          强制收据 {receipt.mutationId}；撤权未确认，无法确认远端执行已停止。
         </p>
       )}
     </div>

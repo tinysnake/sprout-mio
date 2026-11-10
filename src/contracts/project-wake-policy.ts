@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { leaseTimeoutsSchema } from "./lease-timeout";
+
 export const wakeProviderSchema = z.enum(["llm", "jev"]);
 export type WakeProvider = z.infer<typeof wakeProviderSchema>;
 
@@ -10,6 +12,8 @@ export const projectWakePolicySchema = z.strictObject({
   // Omitted model uses the host default model.
   model: z.string().trim().min(1).max(200).optional(),
   thresholdVersion: z.string().trim().min(1).max(80),
+  /** I-P8b：挂靠超时时限覆盖。省略即 `DEFAULT_LEASE_TIMEOUTS`；改判定器时整体透传，不会丢。 */
+  leaseTimeouts: leaseTimeoutsSchema.optional(),
 });
 export type ProjectWakePolicy = z.infer<typeof projectWakePolicySchema>;
 

@@ -29,7 +29,7 @@ async function until(check, message, timeout = 5000) {
     if (check()) return;
     await delay(20);
   }
-  throw new Error(`Timeout: ${message}`);
+  throw new Error(`Timeout: ${typeof message === "function" ? message() : message}`);
 }
 function alive(pid) {
   try {
@@ -43,6 +43,19 @@ function pgid(pid) {
   return Number(
     spawnSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" }).stdout.trim(),
   );
+}
+/** 红的时候要能看出是哪些进程没退干净、处于什么状态，而不是只看到一句超时。 */
+function describeProcesses(pids) {
+  if (pids.length === 0) return "none";
+  // 逐个问 ps：BSD ps 只要有一个 pid 不存在就整调用失败，混在列表里会连活着的也看不到。
+  return pids
+    .map((pid) => {
+      const listing = spawnSync("ps", ["-o", "pid=,pgid=,stat=,command=", "-p", String(pid)], {
+        encoding: "utf8",
+      }).stdout.trim();
+      return listing === "" ? String(pid) : listing;
+    })
+    .join(" | ");
 }
 
 test("unknown selectors fail in the shell before either artifact preparation", () => {
@@ -215,12 +228,16 @@ for (const mode of ["SIGINT", "SIGTERM", "deadline"]) {
       let owned = [];
       try {
         const ready = join(directory, "recovery/ready.json");
-        await until(() => existsSync(ready), "native command ready");
+        await until(
+          () => existsSync(ready),
+          () =>
+            `native command ready (outer ${outer.pid} alive=${alive(outer.pid)}, evidence ${directory})`,
+        );
         const native = JSON.parse(readFileSync(ready, "utf8"));
         await until(
           () =>
             spawnSync("pgrep", ["-P", String(native.childPid)], { encoding: "utf8" }).status === 0,
-          "shell grandchild ready",
+          () => `shell grandchild ready (child ${native.childPid} alive=${alive(native.childPid)})`,
         );
         const grandchildren = spawnSync("pgrep", ["-P", String(native.childPid)], {
           encoding: "utf8",
@@ -241,12 +258,25 @@ for (const mode of ["SIGINT", "SIGTERM", "deadline"]) {
             .stdout.trim()
             .split("\n")
             .map(Number);
-          assert.equal(children.length, 1);
+          assert.equal(
+            children.length,
+            1,
+            `outer Bash must have exactly one child (${describeProcesses(children)})`,
+          );
           process.kill(children[0], "SIGTERM");
         }
         const result = await exit;
-        assert.equal(result.code, mode === "SIGINT" ? 130 : mode === "SIGTERM" ? 143 : 1);
-        await until(() => owned.every((pid) => !alive(pid)), "all nested native processes exited");
+        const expected = mode === "SIGINT" ? 130 : mode === "SIGTERM" ? 143 : 1;
+        assert.equal(
+          result.code,
+          expected,
+          `expected exit ${expected}, got code ${result.code} signal ${result.signal}`,
+        );
+        await until(
+          () => owned.every((pid) => !alive(pid)),
+          () =>
+            `all nested native processes exited (still alive: ${describeProcesses(owned.filter(alive))})`,
+        );
         assert(
           existsSync(join(directory, "recovery/release")),
           "cleanup released owned completion barrier",
@@ -255,6 +285,10 @@ for (const mode of ["SIGINT", "SIGTERM", "deadline"]) {
         assert.equal(summary.outcomes[0].status, "failed");
         assert.equal(summary.exitCode, result.code);
       } finally {
+        const survivors = owned.filter(alive);
+        if (survivors.length > 0) {
+          console.error(`leftover native processes: ${describeProcesses(survivors)}`);
+        }
         try {
           process.kill(-outer.pid, "SIGKILL");
         } catch {}
