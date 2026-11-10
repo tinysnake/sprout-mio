@@ -106,7 +106,9 @@ export default defineConfig({
         devtools(),
         nitro({
           plugins: ["./src/server/server-entry.ts"],
-          rollupConfig: { external: [/^@sentry\//] },
+          // 飞书 SDK 是 CJS 且模块顶层读 __dirname；内联进 ESM 产物会在启动即抛
+          // `__dirname is not defined in ES module scope`，所以按外部依赖加载。
+          rollupConfig: { external: [/^@sentry\//, /^@larksuiteoapi\//] },
         }),
         tailwindcss(),
         devComponentGallery(),
