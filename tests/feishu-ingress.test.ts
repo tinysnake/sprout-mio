@@ -11,6 +11,7 @@ import {
   type FeishuWsClientLike,
 } from "../src/server/feishu/owner";
 import {
+  classifyFeishuMessageEvent,
   createFeishuIngressHandlers,
   FEISHU_CARD_EVENT,
   FEISHU_MESSAGE_EVENT,
@@ -410,3 +411,72 @@ it.each(["altered", "foreign identity", "expired"] as const)(
     h.owner.stop();
   },
 );
+
+it("names the gate that rejected a message instead of a bare unsupported_message", () => {
+  const base = {
+    app_id: "cli_test",
+    tenant_key: "tnt",
+    event_id: "evt-reject",
+    create_time: "1794279931000",
+    sender: { sender_id: { open_id: "ou_human" }, sender_type: "user" },
+    message: {
+      message_id: "om_reject",
+      chat_id: "oc_chat",
+      chat_type: "p2p",
+      message_type: "text",
+      content: JSON.stringify({ text: "123456" }),
+      create_time: "1794279931000",
+    },
+  };
+  const withMessage = (patch: Record<string, unknown>) => ({
+    ...base,
+    message: { ...base.message, ...patch },
+  });
+
+  expect(classifyFeishuMessageEvent(base, "cli_test").ok).toBe(true);
+  expect(classifyFeishuMessageEvent(withMessage({ chat_type: "group" }), "cli_test")).toEqual({
+    ok: false,
+    reason: "chat_type:group",
+  });
+  expect(classifyFeishuMessageEvent(withMessage({ message_type: "image" }), "cli_test")).toEqual({
+    ok: false,
+    reason: "message_type:image",
+  });
+  expect(
+    classifyFeishuMessageEvent(
+      { ...base, sender: { ...base.sender, sender_type: "app" } },
+      "cli_test",
+    ),
+  ).toEqual({ ok: false, reason: "sender_type:app" });
+  expect(
+    classifyFeishuMessageEvent(withMessage({ content: "not json" }), "cli_test"),
+  ).toEqual({ ok: false, reason: "payload:message.content" });
+});
+
+it("admits a message whose unused sender ids arrive as empty strings or null", () => {
+  const event = {
+    app_id: "cli_test",
+    tenant_key: "tnt",
+    event_id: null,
+    create_time: "1794279931000",
+    sender: {
+      sender_id: { open_id: "ou_human", union_id: "", user_id: null },
+      sender_type: "user",
+      tenant_key: null,
+    },
+    message: {
+      message_id: "om_empty_ids",
+      chat_id: "oc_chat",
+      chat_type: "p2p",
+      message_type: "text",
+      content: JSON.stringify({ text: "123456" }),
+      create_time: "1794279931000",
+    },
+  };
+  const admission = classifyFeishuMessageEvent(event, "cli_test");
+  expect(admission.ok).toBe(true);
+  if (admission.ok) {
+    expect(admission.message.identity.openId).toBe("ou_human");
+    expect(admission.message.rawEventId).toBeNull();
+  }
+});

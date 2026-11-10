@@ -39,21 +39,33 @@ const jsonText = z.string().transform((value, ctx) => {
   }
 });
 
+/**
+ * 平台把「没有的字段」写成空串、null，或者干脆不出现。
+ * 取不到可用字符串就当没提供，否则一个空的 `user_id` 就能把整条消息判成不支持。
+ */
+const optionalText = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() !== "" ? value.trim() : undefined),
+  z.string().min(1).optional(),
+);
+
 const messagePayloadSchema = z.object({
   app_id: z.string().min(1),
   tenant_key: z.string().min(1),
-  event_id: z.string().min(1).optional(),
-  create_time: z.string().optional(),
+  event_id: optionalText,
+  create_time: optionalText,
   sender: z.object({
-    sender_id: z
-      .object({
-        open_id: z.string().min(1).optional(),
-        union_id: z.string().min(1).optional(),
-        user_id: z.string().min(1).optional(),
-      })
-      .optional(),
+    sender_id: z.preprocess(
+      (value) => (value == null ? undefined : value),
+      z
+        .object({
+          open_id: optionalText,
+          union_id: optionalText,
+          user_id: optionalText,
+        })
+        .optional(),
+    ),
     sender_type: z.string().min(1),
-    tenant_key: z.string().optional(),
+    tenant_key: optionalText,
   }),
   message: z.object({
     message_id: z.string().min(1),
@@ -61,17 +73,17 @@ const messagePayloadSchema = z.object({
     chat_type: z.string().min(1),
     message_type: z.string().min(1),
     content: jsonText,
-    create_time: z.string().optional(),
+    create_time: optionalText,
   }),
 });
 
 const cardPayloadSchema = z.object({
   app_id: z.string().min(1),
   tenant_key: z.string().min(1),
-  event_id: z.string().min(1).optional(),
+  event_id: optionalText,
   operator: z.object({
     open_id: z.string().min(1),
-    tenant_key: z.string().optional(),
+    tenant_key: optionalText,
   }),
   action: z.object({ value: z.unknown() }),
 });
@@ -98,43 +110,71 @@ function trustedMillis(value: unknown): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+export type FeishuMessageAdmission =
+  | Readonly<{ ok: true; message: NormalizedFeishuMessage }>
+  | Readonly<{ ok: false; reason: string }>;
+
+/** 理由里带平台给的短值，诊断日志才能区分「群聊」和「卡片消息」。 */
+function shortValue(value: unknown): string {
+  return typeof value === "string" && /^[\w.-]{1,24}$/.test(value)
+    ? value.toLowerCase()
+    : "unknown";
+}
+
 /**
  * 只放行「p2p + text + 人类发送者 + 可信 app/tenant/open_id + 可信毫秒时间」。
- * 群聊、机器人自己、其他机器人、非文本一律返回 null：不构造原生消息，也不猜内容。
+ * 群聊、机器人自己、其他机器人、非文本一律拒绝：不构造原生消息，也不猜内容。
+ * 拒绝理由随诊断落库，否则线上只能看到「被忽略」却不知道哪道闸挡的。
  */
-export function parseFeishuMessageEvent(
+export function classifyFeishuMessageEvent(
   payload: unknown,
   appId: string,
-): NormalizedFeishuMessage | null {
+): FeishuMessageAdmission {
   const parsed = messagePayloadSchema.safeParse(flatten(payload));
-  if (!parsed.success) return null;
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.path.join(".") ?? "unknown";
+    return { ok: false, reason: `payload:${shortValue(field)}` };
+  }
   const { sender, message } = parsed.data;
-  if (parsed.data.app_id !== appId) return null;
-  if (message.chat_type !== "p2p" || message.message_type !== "text") return null;
+  if (parsed.data.app_id !== appId) return { ok: false, reason: "app" };
+  if (message.chat_type !== "p2p") {
+    return { ok: false, reason: `chat_type:${shortValue(message.chat_type)}` };
+  }
+  if (message.message_type !== "text") {
+    return { ok: false, reason: `message_type:${shortValue(message.message_type)}` };
+  }
   // sender_type "user" 是人类；"app" 是应用（含本机器人），其他类型同样拒绝。
-  if (sender.sender_type !== "user") return null;
+  if (sender.sender_type !== "user") {
+    return { ok: false, reason: `sender_type:${shortValue(sender.sender_type)}` };
+  }
   const openId = sender.sender_id?.open_id;
-  if (!openId) return null;
-  if (sender.tenant_key && sender.tenant_key !== parsed.data.tenant_key) return null;
+  if (!openId) return { ok: false, reason: "sender_id" };
+  if (sender.tenant_key && sender.tenant_key !== parsed.data.tenant_key) {
+    return { ok: false, reason: "tenant" };
+  }
   const createdAtMs = trustedMillis(message.create_time) ?? trustedMillis(parsed.data.create_time);
-  if (createdAtMs === null) return null;
+  if (createdAtMs === null) return { ok: false, reason: "create_time" };
   const text = message.content.text;
-  if (typeof text !== "string") return null;
+  if (typeof text !== "string") return { ok: false, reason: "content" };
   const body = text.trim();
-  if (body.length === 0 || body.length > MAX_TEXT_CHARS) return null;
+  if (body.length === 0) return { ok: false, reason: "empty" };
+  if (body.length > MAX_TEXT_CHARS) return { ok: false, reason: "too_long" };
   return {
-    identity: {
-      appId: parsed.data.app_id,
-      tenantKey: parsed.data.tenant_key,
-      openId,
-    } as VerifiedFeishuIdentity,
-    messageId: message.message_id,
-    chatId: message.chat_id,
-    chatType: "p2p",
-    messageType: "text",
-    text: body,
-    createdAtMs,
-    rawEventId: parsed.data.event_id ?? null,
+    ok: true,
+    message: {
+      identity: {
+        appId: parsed.data.app_id,
+        tenantKey: parsed.data.tenant_key,
+        openId,
+      } as VerifiedFeishuIdentity,
+      messageId: message.message_id,
+      chatId: message.chat_id,
+      chatType: "p2p",
+      messageType: "text",
+      text: body,
+      createdAtMs,
+      rawEventId: parsed.data.event_id ?? null,
+    },
   };
 }
 
@@ -240,11 +280,12 @@ export function createFeishuIngressHandlers(
 
   return {
     [MESSAGE_EVENT]: (payload) => {
-      const message = parseFeishuMessageEvent(payload, deps.appId);
-      if (!message) {
-        diagnostic("feishu.ingress_ignored", "unsupported_message");
+      const incoming = classifyFeishuMessageEvent(payload, deps.appId);
+      if (!incoming.ok) {
+        diagnostic("feishu.ingress_ignored", `unsupported_message:${incoming.reason}`);
         return {};
       }
+      const message = incoming.message;
       // 没有开着的 epoch 说明这条输入属于断线期间：拒绝且不回放。
       const epoch = deps.currentEpoch();
       if (!epoch) {

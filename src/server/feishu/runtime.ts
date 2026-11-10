@@ -99,7 +99,7 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
   };
   const diagnostic = (input: { event: string; code: string }) => {
     recordDiagnostic({
-      level: input.code === "unsupported_message" ? "debug" : "info",
+      level: input.code.startsWith("unsupported_message") ? "debug" : "info",
       event: input.event,
       message: input.event,
       requestId: requestId(),
