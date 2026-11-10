@@ -7,9 +7,9 @@
 - [x] Read the Principles section of the poteto-mode skill.
 - [x] Phase A: Frame.
 - [x] Phase B: Design the workflow.
-- [ ] Phase C: Run the loop.
-- [ ] Phase D: Keep the audit trail.
-- [ ] Phase E: Verify and hand back.
+- [x] Phase C: Run the loop.
+- [x] Phase D: Keep the audit trail.
+- [x] Phase E: Verify and hand back.
 
 架构步骤：Ground → Sketch → Agree → Implement → Scrap。Ground 已有原项目、当前领域入口和官方公开文档调查；Sketch 比较完整模块结构，避免同一结构的局部变体。Agree 无额外后端审批点；新页面按项目约定先提供可比较方案，再由 Human 选择。Scrap 仅在设计无法容纳实际约束时触发。
 
