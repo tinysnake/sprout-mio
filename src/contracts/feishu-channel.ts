@@ -106,6 +106,8 @@ export type FeishuBindingView = Readonly<{
       agentName: string | null;
       chatTitle: string | null;
     }> | null;
+    /** 当前绑定的飞书账号；未绑定时为空。昵称读不到就只给脱敏 id。 */
+    account: Readonly<{ nickname: string | null; maskedOpenId: string }> | null;
   }>;
   challenge: Readonly<{ code: string; expiresAtMs: number }> | null;
   humanNeedsConfirmation: boolean;

@@ -19,6 +19,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/feishu-emission.test.ts",
     "tests/feishu-ingress.test.ts",
     "tests/feishu-runtime.test.ts",
+    "tests/feishu-profile.test.ts",
     "tests/feishu-lease.test.ts",
     "tests/feishu-binding-view.test.ts",
     "tests/feishu-targets.test.ts",

@@ -67,6 +67,7 @@ it("upgrades 0048 preserving bindings, history and durable delivery and dropping
           app_id: null,
           tenant_key: null,
           open_id: null,
+          nickname: null,
         },
         {
           human_id: "human",
@@ -75,6 +76,7 @@ it("upgrades 0048 preserving bindings, history and durable delivery and dropping
           app_id: "app",
           tenant_key: "tenant",
           open_id: "open",
+          nickname: null,
         },
       ]);
       expect(after.sqlite.prepare("SELECT * FROM channel_config").all()).toEqual([]);

@@ -2833,6 +2833,7 @@ export const feishuIdentitySlot = sqliteTable(
     appId: text("app_id"),
     tenantKey: text("tenant_key"),
     openId: text("open_id"),
+    nickname: text("nickname"),
   },
   (t) => [
     primaryKey({ columns: [t.humanId, t.projectId] }),

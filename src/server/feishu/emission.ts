@@ -23,7 +23,7 @@ export type FeishuHttpExchange = Readonly<{
 }>;
 
 export type FeishuHttpTransport = (input: {
-  method: "POST";
+  method: "GET" | "POST";
   url: string;
   headers: Readonly<Record<string, string>>;
   body: string;

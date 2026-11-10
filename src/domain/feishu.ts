@@ -297,6 +297,8 @@ export function finishFeishuChallenge(
           appId: identity.appId,
           tenantKey: identity.tenantKey,
           openId: identity.openId,
+          // 换了账号旧昵称就不再成立；新昵称由运行时确认后补写。
+          nickname: null,
         })
         .where(
           and(
@@ -360,6 +362,7 @@ export function unbindFeishuIdentity(
           appId: null,
           tenantKey: null,
           openId: null,
+          nickname: null,
         })
         .where(
           and(
@@ -441,6 +444,33 @@ function identitySlot(identity: VerifiedFeishuIdentity) {
       ),
     )
     .get();
+}
+
+/** 平台查到的昵称只属于当前绑定：身份已被换绑或解绑，这次晚到的写入就丢掉。 */
+export function setFeishuNickname(identity: VerifiedFeishuIdentity, nickname: string): void {
+  const clean = nickname.trim().slice(0, 64);
+  if (!clean) return;
+  db.update(feishuIdentitySlot)
+    .set({ nickname: clean })
+    .where(
+      and(
+        eq(feishuIdentitySlot.appId, identity.appId),
+        eq(feishuIdentitySlot.tenantKey, identity.tenantKey),
+        eq(feishuIdentitySlot.openId, identity.openId),
+      ),
+    )
+    .run();
+}
+
+/** 绑定页展示用：当前绑定身份的平台昵称与 open id（未绑定即全空）。 */
+export function readFeishuAccount(
+  projectId: string,
+  ctx: ProjectContext,
+): { nickname: string | null; openId: string | null } {
+  humanOnly(ctx);
+  const slot = slotFor(ctx.userId, projectId);
+  const openId = slot?.appId ? slot.openId : null;
+  return { nickname: openId ? (slot?.nickname ?? null) : null, openId };
 }
 
 export function captureFeishuAdmissionScope(

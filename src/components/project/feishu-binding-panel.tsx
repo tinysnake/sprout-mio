@@ -397,6 +397,13 @@ export function FeishuBindingPanel({
                 : "当前 Project 不可见",
             },
             {
+              label: "飞书账号",
+              testId: "feishu-bound-account",
+              value: binding.account
+                ? (binding.account.nickname ?? binding.account.maskedOpenId)
+                : "暂无账号信息",
+            },
+            {
               label: "连接状态",
               testId: "feishu-connection-phase",
               value: connectionPhaseLabel(view.connection.phase),

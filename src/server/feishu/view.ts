@@ -9,7 +9,12 @@ import { db } from "../../db";
 import { agentProfile } from "../../db/schema";
 import { assistantSource, AssistantError } from "../../domain/assistant";
 import { getChat, listChatMembers, listChats } from "../../domain/chat";
-import { FeishuBindingError, getFeishuBinding, readFeishuChallenge } from "../../domain/feishu";
+import {
+  FeishuBindingError,
+  getFeishuBinding,
+  readFeishuAccount,
+  readFeishuChallenge,
+} from "../../domain/feishu";
 import type { ProjectContext } from "../../domain/project";
 import { assertProjectAccess } from "../../domain/access";
 import { channelRuntimeConfig, loadChannelConfigRow } from "../../domain/channel-config";
@@ -45,6 +50,7 @@ export function buildFeishuBindingView(input: {
     };
   }
   const challenge = readFeishuChallenge(input.projectId, input.ctx, input.now ?? new Date());
+  const account = readFeishuAccount(input.projectId, input.ctx);
   return {
     adapter: "feishu",
     configured: channelRuntimeConfig(loadChannelConfigRow(input.projectId, "feishu")) !== null,
@@ -53,10 +59,25 @@ export function buildFeishuBindingView(input: {
       generation: input.connection.generation,
       epochId: input.connection.epochId,
     },
-    binding: { revision: binding.revision, bound: binding.bound, target },
+    binding: {
+      revision: binding.revision,
+      bound: binding.bound,
+      target,
+      account: account.openId
+        ? { nickname: account.nickname, maskedOpenId: maskOpenId(account.openId) }
+        : null,
+    },
     challenge,
     humanNeedsConfirmation: !binding.bound && challenge !== null,
   };
+}
+
+/** 脱敏保留类型前缀和末四位，足以让用户认出是哪个账号，又不把 open id 交给页面。 */
+function maskOpenId(openId: string): string {
+  const cut = openId.indexOf("_");
+  const prefix = cut > 0 ? openId.slice(0, cut + 1) : "";
+  const body = openId.slice(prefix.length);
+  return body.length > 4 ? `${prefix}***${body.slice(-4)}` : `${prefix}***`;
 }
 
 /**

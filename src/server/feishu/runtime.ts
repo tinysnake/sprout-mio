@@ -10,6 +10,7 @@ import {
   createFeishuConnectionLifecycle,
   finishFeishuChallenge,
   isFeishuChallengeCode,
+  setFeishuNickname,
 } from "../../domain/feishu";
 import { recoverChannelDeliveries } from "../../domain/channel-delivery";
 import {
@@ -26,6 +27,7 @@ import {
   type FeishuHttpTransport,
 } from "./emission";
 import { createFeishuIngressHandlers } from "./ingress";
+import { fetchFeishuNickname } from "./profile";
 import { createFeishuLease, type FeishuLease } from "./lease";
 import {
   createFeishuConnectionOwner,
@@ -251,6 +253,12 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
                 const binding = finishFeishuChallenge(deps.projectId, opaque, identity, id);
                 // 换绑确认后目标对话变了，立刻按新路由重算投递。
                 loop?.wake();
+                // 昵称只影响展示，查不到就留着脱敏 id，不拖慢确认。
+                void fetchFeishuNickname({ config, transport, tokens, openId: identity.openId })
+                  .then((nickname) => {
+                    if (nickname) setFeishuNickname(identity, nickname);
+                  })
+                  .catch(report);
                 return binding;
               },
               isChallengeCode: isFeishuChallengeCode,

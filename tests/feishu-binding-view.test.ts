@@ -76,6 +76,25 @@ it("surfaces a pending challenge as human confirmation, then the bound target", 
   expect(bound.humanNeedsConfirmation).toBe(false);
 });
 
+it("shows the platform nickname of the bound account and forgets it on unbind", () => {
+  const s = f.scenario();
+  s.bind();
+  const view = () =>
+    buildFeishuBindingView({ ctx: s.ctx, projectId: s.project.id, connection, now: s.now });
+  const maskedOpenId = `***${s.identity.openId.slice(-4)}`;
+  expect(view().binding.account).toEqual({ nickname: null, maskedOpenId });
+
+  f.feishu.setFeishuNickname(s.identity, "  李雷  ");
+  expect(view().binding.account).toEqual({ nickname: "李雷", maskedOpenId });
+
+  f.feishu.unbindFeishuIdentity(s.project.id, view().binding.revision, s.ctx, s.now);
+  expect(view().binding.account).toBeNull();
+
+  // 换绑或解绑后，旧身份晚到的昵称不能写回来。
+  f.feishu.setFeishuNickname(s.identity, "韩梅梅");
+  expect(view().binding.account).toBeNull();
+});
+
 it("keeps a cross-project binding opaque and drops an expired challenge", () => {
   const s = f.scenario();
   s.bind();
