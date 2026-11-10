@@ -146,3 +146,9 @@ SQLite 保证单条语句原子，所以两个进程不会同时成功。启动�
 2026-11-10 在评审实例（Project `prj_ad9fd1a5`，appId `cli_aa13ca76bdf89cc4`）用真实应用完成：Human 私聊发送确认码完成绑定，本地卡片推送至飞书并取得真实 `platform_message_id`，在飞书卡片上点「拒绝」经回调写入 `channel_action_receipt`（`{"kind":"watch","rejected":true}`），助理对话收到拒绝回执。
 
 同一轮修掉一个真实平台边界缺陷：飞书把用户没有的 id 写成空串或 `null`（例如 `sender.sender_id.user_id`），而 schema 用 `z.string().min(1).optional()`，空串判败会丢掉整条消息。现改为 `z.preprocess` 把空串与 `null` 折成 `undefined` 再 `.optional()`，并把解析结果改成带原因的接纳判定，丢弃时记 `unsupported_message:<reason>`。顺带一个与 zod 4 有关的坑：`z.unknown().transform(fn)` 的输出会被推断为 nonoptional，字段缺失时报 `expected: "nonoptional"`，可选字段必须走 `z.preprocess`。
+
+### 已否决：第三方模拟器代跑平台（2026-11-10）
+
+考虑过用 Apify 之类的外部运行环境扮演飞书：Actor 能发任意 HTTP 请求，Standby 模式还能对外提供 HTTPS server 接收 webhook，所以它可以向我们推送自造事件、回应出站调用。否决原因是它补不上真实缺口：`tenant_access_token` 与 app 凭证是否可用、真实事件信封的加密字段与签名头、`event_id` 去重语义、卡片回调的真实 payload、频控错误码、challenge 的一秒时限，都只在真实平台上成立。现有 in-process fake 已覆盖重复投递、解绑后停止接纳、epoch 栅栏、卡片过期与 uncertain 不重发，换成公网 Actor 不增加断言能力，只是把假事件挪到了更远的地方。
+
+真人决定不再补这一层测试，也不做真实 payload 的录制开关。真实平台证据只来自 F6 那一轮实况，以及后续真正使用中暴露的问题。

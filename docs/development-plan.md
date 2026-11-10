@@ -29,7 +29,7 @@ P3 之后又合入了宿主 skills 默认继承（`7416b1b`）及正文内联技
 
 ## 后续阶段尚待设计
 
-webhook、cron 与原生个人助理已有契约、实现和专项技术验证；Feishu DM adapter（身份、入站、投递、SDK 装配、绑定界面）已实现并集成，真实平台联调待做。语音保留共用边界，具体实现留到后续。常规选择按[早期版本的决策方式](project-conventions.md#早期版本的决策方式)由执行者直接落实，不以逐项询问 Human 为开工前提。
+webhook、cron 与原生个人助理已有契约、实现和专项技术验证；Feishu DM adapter（身份、入站、投递、SDK 装配、绑定界面）已实现并集成，真实凭证下的绑定、入站、出站与卡片动作已在评审实例跑通，移动端与多设备体验仍未验证，见[飞书推进记录](feishu-adapter-plan.md#f6-真实平台实况已跑通)。语音保留共用边界，具体实现留到后续。常规选择按[早期版本的决策方式](project-conventions.md#早期版本的决策方式)由执行者直接落实，不以逐项询问 Human 为开工前提。
 
 - [自动化决策草案](automation-decisions.md)记录 webhook、cron、工作提交与结果投递的边界。
 - [个人助理与 channel 决策草案](personal-assistant-decisions.md)记录助理、会话、入口、观察、委派和通知的关系。
