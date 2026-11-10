@@ -1,4 +1,5 @@
 import { captureFeishuMessage } from "./feishu-delivery";
+import { assistantTextPreview } from "../lib/assistant-display";
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db, sqlite } from "../db";
@@ -386,7 +387,7 @@ export function revokeAssistantProposal(
           sampledAt: new Date().toISOString(),
           body:
             status === "rejected"
-              ? `Human 已拒绝提案 ${row.id}。`
+              ? `Human 已拒绝提案 ${row.id}「${assistantTextPreview(row.body, 60)}」。`
               : `Human 已撤销提案 ${row.id} 的未投递输入；已接收的工作不会被撤回。`,
         },
         new Date(),
@@ -806,7 +807,7 @@ export function hasCurrentAssistantInterest(assistantChatId: string, runId: stri
             .get(),
     );
 }
-function targetLabel(chatId: string) {
+export function targetLabel(chatId: string) {
   const target = db.select().from(chat).where(eq(chat.id, chatId)).get()!;
   if (target.kind === "public_channel") return PUBLIC_CHANNEL_DISPLAY_TITLE;
   if (target.title) return target.title;
@@ -882,9 +883,7 @@ export function assistantPanel(
       .all()
       .filter(
         (e: typeof assistantEvent.$inferSelect) =>
-          e.fact.kind === "decision" &&
-          (!e.fact.watchIntent || !e.decisionResolvedAt) &&
-          visible(e.fact),
+          e.fact.watchIntent && !e.decisionResolvedAt && visible(e.fact),
       )
       .map((row: typeof assistantEvent.$inferSelect) => ({
         ...row,

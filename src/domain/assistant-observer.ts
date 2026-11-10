@@ -20,7 +20,9 @@ import {
   captureAssistantFact,
   deliverAssistantEvents,
   hasCurrentAssistantInterest,
+  targetLabel,
 } from "./assistant";
+import { assistantDuration } from "../lib/assistant-display";
 import {
   enrollExistingWatch,
   assistantRunInterval,
@@ -94,6 +96,22 @@ export function setAssistantWatch(
       if (target.projectId !== targetProjectId || target.archivedAt)
         throw new AssistantError("not_found");
       resolveWatchIntents(assistantChatId, targetProjectId, targetChatId, now);
+      if (eventId) {
+        const seconds = intervalSeconds ?? current?.intervalSeconds ?? 300;
+        captureAssistantFact(
+          assistantChatId,
+          `watch:${eventId}:confirmed`,
+          {
+            kind: "decision",
+            targetProjectId,
+            targetChatId,
+            sampledAt: now.toISOString(),
+            body: `Human 同意持续关注「${targetLabel(targetChatId)}」，每 ${assistantDuration(seconds)}汇报进展。`,
+          },
+          now,
+        );
+        deliverAssistantEvents(now);
+      }
       if (current) {
         if (intervalSeconds !== undefined) {
           db.update(assistantWatch)
@@ -141,6 +159,19 @@ export function rejectAssistantWatchIntent(
         .set({ decisionResolvedAt: now, decisionRejectedAt: now })
         .where(eq(assistantEvent.id, eventId))
         .run();
+      captureAssistantFact(
+        assistantChatId,
+        `watch:${eventId}:rejected`,
+        {
+          kind: "decision",
+          targetProjectId: intent.fact.targetProjectId,
+          targetChatId: intent.fact.targetChatId,
+          sampledAt: now.toISOString(),
+          body: `Human 拒绝持续关注「${targetLabel(intent.fact.targetChatId)}」，不要自动关注这个对话。`,
+        },
+        now,
+      );
+      deliverAssistantEvents(now);
       return { rejected: true as const };
     })
     .immediate();

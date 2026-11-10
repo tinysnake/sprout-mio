@@ -644,6 +644,29 @@ describe("Chat watch digest windows", () => {
       targetLabel: f.worker.name,
     });
   });
+  it("reports watch consent and refusal back to the assistant conversation", () => {
+    const f = fixture();
+    const receipts = () =>
+      (
+        sqlite
+          .prepare(
+            "SELECT body FROM message WHERE chat_id=? AND sender_kind='assistant_event' ORDER BY created_at",
+          )
+          .all(f.dm.id) as { body: string }[]
+      ).map((row) => row.body);
+    f.call();
+    const refused = assistant
+      .assistantPanel(f.dm.id, ctx)
+      .decisions.find((e) => e.fact.watchIntent)!;
+    observer.rejectAssistantWatchIntent(f.dm.id, refused.id, ctx, at(1));
+    expect(receipts()).toContain(`Human 拒绝持续关注「${f.worker.name}」，不要自动关注这个对话。`);
+    f.call();
+    const accepted = assistant
+      .assistantPanel(f.dm.id, ctx)
+      .decisions.find((e) => e.fact.watchIntent)!;
+    observer.setAssistantWatch(f.dm.id, project.id, f.target.id, true, ctx, at(2), 60, accepted.id);
+    expect(receipts()).toContain(`Human 同意持续关注「${f.worker.name}」，每 1 分钟汇报进展。`);
+  });
   it("delivers ready decisions and summaries across DMs behind 100 unfinished summary jobs", () => {
     const blocked = fixture();
     observer.setAssistantWatch(
