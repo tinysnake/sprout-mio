@@ -75,16 +75,25 @@ function ProjectSettingsPage() {
       <PageFrame
         title="Project settings"
         description="管理当前 Project 的自动化规则与飞书接入。"
+        back={
+          <PageBackLink to="/projects/$projectId/chats" params={{ projectId }}>
+            <Icon as={ArrowLeft} />
+            返回 Chats
+          </PageBackLink>
+        }
         testId="project-settings-page"
       >
         <SettingsTabs projectId={projectId} tab={tab} />
-        {tab === "webhooks" ? (
-          <WebhookSettings key={projectId} projectId={projectId} />
-        ) : tab === "cron" ? (
-          <CronSettings key={projectId} projectId={projectId} />
-        ) : (
-          <FeishuBindingPanel key={projectId} projectId={projectId} />
-        )}
+        {/* tabs 已有下边框，第一个小节的上边框会与它叠成两条线。 */}
+        <div className="[&>section:first-child]:border-t-0">
+          {tab === "webhooks" ? (
+            <WebhookSettings key={projectId} projectId={projectId} />
+          ) : tab === "cron" ? (
+            <CronSettings key={projectId} projectId={projectId} />
+          ) : (
+            <FeishuBindingPanel key={projectId} projectId={projectId} />
+          )}
+        </div>
       </PageFrame>
     );
   return (
