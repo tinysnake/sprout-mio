@@ -205,6 +205,29 @@ it("admits one p2p text into the native DM and treats a redelivery as a duplicat
   h.owner.stop();
 });
 
+it("stops admitting a chat once its Human unbinds it", () => {
+  const s = f.scenario();
+  s.bind();
+  const h = harness(s);
+  h.owner.start();
+  h.clients[0]!.callbacks.onReady();
+  const before = nativeMessages(s.dm.id);
+  f.feishu.unbindFeishuIdentity(
+    s.project.id,
+    f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
+    s.ctx,
+  );
+  expect(
+    h.clients[0]!.handlers[FEISHU_MESSAGE_EVENT]!(messageEvent(s, "om_after_unbind", "解绑之后")),
+  ).toEqual({});
+  expect(nativeMessages(s.dm.id)).toBe(before);
+  const receipts = f.sqlite
+    .prepare("SELECT COUNT(*) AS n FROM feishu_inbound_receipt WHERE platform_message_id=?")
+    .get("om_after_unbind") as { n: number };
+  expect(receipts.n).toBe(0);
+  h.owner.stop();
+});
+
 it.each([
   ["self", { senderType: "app" }],
   ["bot", { senderType: "bot" }],
