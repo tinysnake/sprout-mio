@@ -32,6 +32,8 @@ import {
  * Chat 中栏的容器：只负责服务调用与请求状态，呈现全部交给 ChatThread。
  * 成功后交给路由重新取数，不在本地插入消息或伪造运行状态。
  */
+const RULE_LINK_CLASS =
+  "text-[10px] text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground";
 export function ChatPane({
   projectId,
   session,
@@ -254,6 +256,27 @@ export function ChatPane({
         <ChatThread
           skills={skills}
           onSkillsRefresh={onChanged}
+          automationRuleLink={(source) =>
+            source.kind === "project_cron" ? (
+              <Link
+                to="/projects/$projectId/settings/cron/$ruleId"
+                params={{ projectId, ruleId: source.ruleId }}
+                data-testid="message-rule-link"
+                className={RULE_LINK_CLASS}
+              >
+                查看规则
+              </Link>
+            ) : (
+              <Link
+                to="/projects/$projectId/settings/webhooks/$ruleId"
+                params={{ projectId, ruleId: source.ruleId }}
+                data-testid="message-rule-link"
+                className={RULE_LINK_CLASS}
+              >
+                查看规则
+              </Link>
+            )
+          }
           back={
             <Link
               to="/projects/$projectId/chats"

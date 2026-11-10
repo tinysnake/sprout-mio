@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { ChatRunActivity } from "../../contracts/agent-run";
+import type { AutomationSource } from "../../contracts/automation";
 import type { MentionSpan, Message } from "../../contracts/chat";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
 import { ChatAvatar } from "./chat-avatar";
@@ -28,6 +30,7 @@ export function MessageList({
   runFacts,
   runActivityByMessage,
   breaks = [],
+  automationRuleLink,
 }: {
   messages: Message[];
   /** DM 的既有身份快照；群聊逐条按 senderId 查 senderNames。 */
@@ -43,6 +46,8 @@ export function MessageList({
   runActivityByMessage?: ReadonlyMap<string, ChatRunActivity>;
   /** 每页首条消息在全量列表里的下标；缺省时整段当成一页。 */
   breaks?: readonly number[];
+  /** 自动化消息指向其来源规则的入口；容器提供可导航元素，缺省时不渲染。 */
+  automationRuleLink?: (source: AutomationSource) => ReactNode;
 }) {
   if (messages.length === 0)
     return (
@@ -117,6 +122,8 @@ export function MessageList({
               >
                 {source ? "Source" : human ? "Human" : "Agent"}
               </span>
+              {message.senderKind === "automation" &&
+                automationRuleLink?.(message.automationSource)}
               {historical && (
                 <span
                   data-testid="message-history-badge"

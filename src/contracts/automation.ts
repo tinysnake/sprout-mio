@@ -94,10 +94,11 @@ export type CronTrigger = WebhookTrigger & {
   scheduledAt: string | null;
 };
 export const automationSourceSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("project_webhook"), triggerId }),
+  z.strictObject({ kind: z.literal("project_webhook"), triggerId, ruleId }),
   z.strictObject({
     kind: z.literal("project_cron"),
     triggerId,
+    ruleId,
     expression: z.string(),
     timezone: z.string(),
     instruction: z.string(),

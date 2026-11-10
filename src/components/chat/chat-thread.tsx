@@ -3,6 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunActivity, ChatRunState } from "../../contracts/agent-run";
+import type { AutomationSource } from "../../contracts/automation";
 import type { Chat, ChatKind, ChatResult, Message } from "../../contracts/chat";
 import type { FieldErrors } from "../../contracts/project";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
@@ -128,6 +129,7 @@ export function ChatThread({
   runFacts,
   runActivityByMessage,
   runActivitiesError,
+  automationRuleLink,
   skills = { state: "unavailable", items: [] },
   onSkillsRefresh,
   continuation,
@@ -181,6 +183,8 @@ export function ChatThread({
   onSkillsRefresh?: () => void;
   continuation?: AppResult<ChatContinuationData>;
   archived?: boolean;
+  /** 自动化消息的来源规则入口由容器注入，演示场景不传即不渲染。 */
+  automationRuleLink?: (source: AutomationSource) => ReactNode;
   /** 消息分页窗口；缺省时按单页全量渲染，演示场景不需要它。 */
   history?: ChatHistory;
 }) {
@@ -432,6 +436,7 @@ export function ChatThread({
               knownSenders={knownSenders}
               runFacts={runFacts}
               runActivityByMessage={runActivityByMessage}
+              automationRuleLink={automationRuleLink}
             />
             <ChatErrorNotice error={runState.error} testId="run-state-load-error" />
           </>
@@ -446,6 +451,7 @@ export function ChatThread({
               knownSenders={knownSenders}
               runFacts={runFacts}
               runActivityByMessage={runActivityByMessage}
+              automationRuleLink={automationRuleLink}
             />
             <RunStatusPanel
               state={runState.data}

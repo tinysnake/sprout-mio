@@ -439,10 +439,11 @@ describe("已结束 run 的工作记录", () => {
   });
 
   it.each([
-    { kind: "project_webhook", triggerId: "wht_11111111" } as const,
+    { kind: "project_webhook", triggerId: "wht_11111111", ruleId: "whr_11111111" } as const,
     {
       kind: "project_cron",
       triggerId: "wht_11111111",
+      ruleId: "whr_11111111",
       expression: "0 9 * * *",
       timezone: "UTC",
       instruction: "Check @Agent /skill:danger",
@@ -480,15 +481,35 @@ describe("已结束 run 的工作记录", () => {
         },
         humanName: "Human",
         runActivityByMessage: new Map([[source.id, record(source.id, settled)]]),
+        automationRuleLink: (entry) =>
+          createElement("a", { "data-testid": "message-rule-link" }, entry.ruleId),
       }),
     );
     expect(html).toContain(
       automationSource.kind === "project_cron" ? "Project cron" : "Project webhook",
     );
+    expect(html).toContain('data-testid="message-rule-link"');
+    expect(html).toContain("whr_11111111");
     expect(html).toContain("Source");
     expect(html).not.toContain("Worker persona");
     expect(html).not.toContain('data-testid="message-run-links"');
     expect(html).not.toContain('data-testid="message-run-activity"');
+  });
+
+  it("只有自动化消息挂着来源规则入口", () => {
+    const link = (entry: { ruleId: string }) =>
+      createElement("a", { "data-testid": "message-rule-link" }, entry.ruleId);
+    const render = (message: Message) =>
+      renderToStaticMarkup(
+        createElement(MessageList, {
+          messages: [message],
+          profile: null,
+          humanName: "Human",
+          automationRuleLink: link,
+        }),
+      );
+    expect(render(human)).not.toContain('data-testid="message-rule-link"');
+    expect(render(assistant)).not.toContain('data-testid="message-rule-link"');
   });
 
   it("human 消息不承接 run 记录", () => {

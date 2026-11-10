@@ -418,6 +418,7 @@ export async function verifyCronBrowser({
   assert.deepEqual(sourceBefore.automationSource, {
     kind: "project_cron",
     triggerId: live.id,
+    ruleId: rule.id,
     expression: "* * * * *",
     timezone: browserTimezone,
     instruction: "CRON_BROWSER @HookAlpha /skill:danger. Reply briefly.",

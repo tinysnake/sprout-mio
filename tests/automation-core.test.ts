@@ -379,6 +379,7 @@ describe("Project webhook admission and single Chat input path", () => {
       expect(visible.automationSource).toEqual({
         kind: "project_webhook",
         triggerId: admitted.receipt.id,
+        ruleId: admitted.receipt.ruleId,
       });
       expect(visible.mentions).toEqual([]);
       expect(visible.skills).toEqual([]);
