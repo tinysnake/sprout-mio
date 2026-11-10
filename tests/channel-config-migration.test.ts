@@ -28,7 +28,7 @@ function legacyDatabase() {
   return { directory, file, before };
 }
 
-it("upgrades 0048 preserving bindings, challenges, history and durable delivery", () => {
+it("upgrades 0048 preserving bindings, history and durable delivery and dropping transient challenges", () => {
   const { directory, file, before } = legacyDatabase();
   try {
     before.sqlite.exec(`
@@ -42,7 +42,6 @@ it("upgrades 0048 preserving bindings, challenges, history and durable delivery"
       "message",
       "chat",
       "feishu_route",
-      "feishu_challenge",
       "feishu_connection_epoch",
       "feishu_inbound_receipt",
       "channel_delivery",
@@ -56,6 +55,8 @@ it("upgrades 0048 preserving bindings, challenges, history and durable delivery"
       expect(preserved.map((name) => after.sqlite.prepare(`SELECT * FROM ${name}`).all())).toEqual(
         rows,
       );
+      // 0051 给挑战码加明文列，所以先丢掉十分钟内的临时码，不猜旧码的明文。
+      expect(after.sqlite.prepare("SELECT * FROM feishu_challenge").all()).toHaveLength(0);
       expect(
         after.sqlite.prepare("SELECT * FROM feishu_identity_slot ORDER BY project_id").all(),
       ).toEqual([

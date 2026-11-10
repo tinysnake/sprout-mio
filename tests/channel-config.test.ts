@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { openDatabase, type DatabaseConnection } from "../src/db/connection";
 

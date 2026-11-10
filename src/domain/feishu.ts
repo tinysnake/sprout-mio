@@ -137,14 +137,14 @@ export function getFeishuBinding(projectId: string, ctx: ProjectContext): Feishu
 }
 
 /**
- * 绑定页只读：当前 Human 未消费且未过期的挑战码还剩多久。
- * 只回过期时间，不回摘要——挑战码本身只在发起时出现一次。
+ * 绑定页只读：当前 Human 未消费且未过期的挑战码。
+ * 只在发起后 10 分钟内对发起它的 Human 可见，刷新页面仍能读到。
  */
 export function readFeishuChallenge(
   projectId: string,
   ctx: ProjectContext,
   now = new Date(),
-): { expiresAtMs: number } | null {
+): { code: string; expiresAtMs: number } | null {
   humanOnly(ctx);
   if (!slotFor(ctx.userId, projectId)) return null;
   const row = db
@@ -160,7 +160,7 @@ export function readFeishuChallenge(
     )
     .orderBy(desc(feishuChallenge.expiresAtMs))
     .get();
-  return row ? { expiresAtMs: row.expiresAtMs } : null;
+  return row ? { code: row.code, expiresAtMs: row.expiresAtMs } : null;
 }
 
 export function startFeishuChallenge(
@@ -189,6 +189,7 @@ export function startFeishuChallenge(
       db.insert(feishuChallenge)
         .values({
           hash: digest(code),
+          code: challenge,
           humanId: ctx.userId,
           revision,
           projectId: target.projectId,

@@ -484,7 +484,7 @@ export function FeishuBindingPanel({
   }
 
   if (active) {
-    const code = challenge?.code ?? null;
+    const code = active.code;
     const target = targets.find((option) => option.chatId === selectedChatId);
     const restartChatId = selectedChatId;
     return (
@@ -501,7 +501,7 @@ export function FeishuBindingPanel({
               重新发起会生成新的确认码，旧确认码随即作废。
             </p>
           </>
-        ) : code ? (
+        ) : (
           <>
             <p className="text-sm">在飞书里给这个机器人发这个码：</p>
             <p
@@ -513,16 +513,6 @@ export function FeishuBindingPanel({
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
               {challengeRemainingLabel(active.expiresAtMs, now)}
               {target && ` · 目标：${targetOptionLabel(target)}`}
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="text-sm">已发起绑定，正在等待你在飞书里确认。</p>
-            <p className="mt-2 text-xs leading-6 text-muted-foreground">
-              确认码只在发起时显示一次，如果没有记下，请重新发起。
-            </p>
-            <p className="mt-2 text-xs leading-6 text-muted-foreground">
-              {challengeRemainingLabel(active.expiresAtMs, now)}
             </p>
           </>
         )}

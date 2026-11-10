@@ -2849,6 +2849,8 @@ export const feishuChallenge = sqliteTable(
   "feishu_challenge",
   {
     hash: text("hash").primaryKey(),
+    /** 绑定页要能跨刷新回读，所以存明文；生存期 10 分钟，成功即作废。 */
+    code: text("code").notNull(),
     humanId: text("human_id").notNull(),
     revision: integer("revision").notNull(),
     projectId: text("project_id")

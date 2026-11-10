@@ -144,14 +144,16 @@ it("keeps one Human bound independently in two Projects and rejects cross-Projec
   expect(feishu.captureFeishuAdmissionScope(other.id, identity, epoch)).toBeDefined();
 });
 
-it("challenge stores only a digest, expires at ten minutes, and reissue/replay cannot bind", () => {
+it("challenge keeps a readable code, hashes the typed form, expires at ten minutes, and reissue/replay cannot bind", () => {
   const s = scenario();
   const old = feishu.startFeishuChallenge(s.target, s.ctx, at);
   const current = feishu.startFeishuChallenge(s.target, s.ctx, at);
   expect(current.expiresAtMs - at.getTime()).toBe(600000);
-  expect(JSON.stringify(sqlite.prepare("SELECT * FROM feishu_challenge").all())).not.toContain(
-    current.challenge,
-  );
+  const stored = sqlite
+    .prepare("SELECT hash, code FROM feishu_challenge WHERE code=?")
+    .get(current.challenge) as { hash: string; code: string } | undefined;
+  expect(stored?.code).toBe(current.challenge);
+  expect(stored!.hash).not.toContain(current.challenge.replace("-", ""));
   bindingError(
     () =>
       feishu.finishFeishuChallenge(s.project.id, old.challenge, s.identity, s.ctx.requestId, at),
@@ -180,6 +182,21 @@ it("challenge stores only a digest, expires at ten minutes, and reissue/replay c
       ),
     "invalid_challenge",
   );
+});
+
+it("keeps the pending code readable across a reload and drops it on expiry or consumption", () => {
+  const s = scenario();
+  const started = feishu.startFeishuChallenge(s.target, s.ctx, at);
+  expect(feishu.readFeishuChallenge(s.project.id, s.ctx, at)).toEqual({
+    code: started.challenge,
+    expiresAtMs: started.expiresAtMs,
+  });
+  expect(
+    feishu.readFeishuChallenge(s.project.id, s.ctx, new Date(started.expiresAtMs - 1)),
+  ).not.toBeNull();
+  expect(feishu.readFeishuChallenge(s.project.id, s.ctx, new Date(started.expiresAtMs))).toBeNull();
+  feishu.finishFeishuChallenge(s.project.id, started.challenge, s.identity, s.ctx.requestId, at);
+  expect(feishu.readFeishuChallenge(s.project.id, s.ctx, at)).toBeNull();
 });
 
 it("challenge code stays hand-typeable in the Feishu DM and accepts case or separator variants", () => {

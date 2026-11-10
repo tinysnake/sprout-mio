@@ -51,7 +51,10 @@ it("surfaces a pending challenge as human confirmation, then the bound target", 
   });
   expect(pending.binding.bound).toBe(false);
   expect(pending.binding.revision).toBe(1);
-  expect(pending.challenge).toEqual({ expiresAtMs: started.expiresAtMs });
+  expect(pending.challenge).toEqual({
+    code: started.challenge,
+    expiresAtMs: started.expiresAtMs,
+  });
   expect(pending.humanNeedsConfirmation).toBe(true);
 
   f.feishu.finishFeishuChallenge(s.project.id, started.challenge, s.identity, "req_view", s.now);

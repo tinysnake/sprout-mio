@@ -115,7 +115,7 @@ F3 实现为 `d0029f0`，父线程门禁修正为 `f602517`，已 fast-forward �
 
 面板只覆盖 Human 自己的绑定。目标列表来自新增的 `listFeishuTargetsFn`，`buildFeishuTargetsView` 在 `ctx.agent` 上直接抛 `forbidden`，因此助理身份与 worker 身份都拿不到候选。候选只列本 Project 内该 Human 拥有的助理私聊（`kind === 'dm'`、未归档），助理名来自会话的 assistant source，取不到就跳过该行。绑定的全部写入仍走 F1/F2 的边界函数，面板不新增权限路径。
 
-状态机有六个分支：已绑定、未绑定、等待飞书确认（本地持有确认码）、等待飞书确认（刷新后只剩剩余时间与重新发起）、已过期、未配置。确认码只出现在发起它的那个页面，服务端视图只给 `expiresAtMs`，刷新后客户端没有明文码可显示，文案如实说明“只在发起时显示一次”。换绑与解绑都要 Human 二次确认，解绑只是解除绑定，会话与历史保留。
+状态机有五个分支：已绑定、未绑定、等待飞书确认、已过期、未配置。绑定视图对发起它的 Human 直接给出 `challenge.code` 与 `expiresAtMs`，所以刷新、换标签页或换设备都能继续看码并输入；确认码在十分钟后过期、成功确认即消费，过期或消费后视图不再返回它。换绑与解绑都要 Human 二次确认，解绑只是解除绑定，会话与历史保留。
 
 门禁在集成时拦下一处违规：`tests/tooling.test.ts` 禁止 `src/` 内直接调用 `Date.now()`，面板有 4 处。改为 `FeishuBindingPanel` 接受 `clock` prop（默认 `Date.now`），30 秒刷新一次倒计时，与既有 `src/components/continuation/wake-diagnostic.tsx` 的写法一致。
 

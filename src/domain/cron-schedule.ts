@@ -6,10 +6,10 @@ export type CronSchedule = Readonly<{ expression: string; timezone: string }>;
 /** Product syntax is deliberately narrower than cron-parser's extensions. */
 export function nextCronOccurrence(schedule: CronSchedule, strictlyAfter: Date): Date {
   const fields = schedule.expression.trim().split(/\s+/);
-  if (fields.length !== 5 || fields.some((field) => !/^[\d*,/\-]+$/.test(field)))
+  if (fields.length !== 5 || fields.some((field) => !/^[\d*,/-]+$/.test(field)))
     throw new Error("Cron 仅支持五个数字字段（*、逗号、范围和步长）");
   if (!schedule.timezone) throw new Error("Cron 需要显式 timezone");
-  if (/^[+\-]/.test(schedule.timezone)) {
+  if (/^[+-]/.test(schedule.timezone)) {
     if (parseUtcOffset(schedule.timezone) === null)
       throw new Error("Cron UTC 偏移须为 -12:00 至 +14:00 的 ±HH:MM");
   } else {

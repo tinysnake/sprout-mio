@@ -107,7 +107,7 @@ export type FeishuBindingView = Readonly<{
       chatTitle: string | null;
     }> | null;
   }>;
-  challenge: Readonly<{ expiresAtMs: number }> | null;
+  challenge: Readonly<{ code: string; expiresAtMs: number }> | null;
   humanNeedsConfirmation: boolean;
 }>;
 
