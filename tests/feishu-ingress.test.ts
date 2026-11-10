@@ -448,9 +448,10 @@ it("names the gate that rejected a message instead of a bare unsupported_message
       "cli_test",
     ),
   ).toEqual({ ok: false, reason: "sender_type:app" });
-  expect(
-    classifyFeishuMessageEvent(withMessage({ content: "not json" }), "cli_test"),
-  ).toEqual({ ok: false, reason: "payload:message.content" });
+  expect(classifyFeishuMessageEvent(withMessage({ content: "not json" }), "cli_test")).toEqual({
+    ok: false,
+    reason: "payload:message.content",
+  });
 });
 
 it("admits a message whose unused sender ids arrive as empty strings or null", () => {

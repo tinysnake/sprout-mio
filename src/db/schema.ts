@@ -3015,3 +3015,9 @@ export const channelActionReceipt = sqliteTable("channel_action_receipt", {
     .notNull(),
   consumedAtMs: integer("consumed_at_ms").notNull(),
 });
+
+export const feishuConnectionLease = sqliteTable("feishu_connection_lease", {
+  appId: text("app_id").primaryKey(),
+  holder: text("holder").notNull(),
+  expiresAtMs: integer("expires_at_ms").notNull(),
+});
