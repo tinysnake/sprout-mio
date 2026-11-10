@@ -207,14 +207,19 @@ export function AutomationSettings({ projectId, kind }: { projectId: string; kin
 const offsetZones = Array.from({ length: (MAX_UTC_OFFSET - MIN_UTC_OFFSET) / 15 + 1 }, (_, i) =>
   formatUtcOffset(MIN_UTC_OFFSET + i * 15),
 );
+export function ruleEditorSearch(search: Record<string, unknown>): { chat?: string } {
+  return { chat: typeof search.chat === "string" && search.chat ? search.chat : undefined };
+}
 export function AutomationEditor({
   projectId,
   kind,
   ruleId,
+  chat,
 }: {
   projectId: string;
   kind: Kind;
   ruleId?: string;
+  chat?: string;
 }) {
   return (
     <Editor
@@ -222,10 +227,21 @@ export function AutomationEditor({
       projectId={projectId}
       kind={kind}
       ruleId={ruleId}
+      chat={chat}
     />
   );
 }
-function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ruleId?: string }) {
+function Editor({
+  projectId,
+  kind,
+  ruleId,
+  chat,
+}: {
+  projectId: string;
+  kind: Kind;
+  ruleId?: string;
+  chat?: string;
+}) {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Rule | null>(null);
   const [bootSucceeded, setBootSucceeded] = useState(false);
@@ -526,13 +542,23 @@ function Editor({ projectId, kind, ruleId }: { projectId: string; kind: Kind; ru
       title={`${ruleId ? "编辑" : "新建"}${titles[kind]}`}
       description="规则属于当前 Project；Trial 会按已保存的配置真实提交工作。"
       back={
-        <PageBackLink
-          to="/projects/$projectId/settings"
-          params={{ projectId }}
-          search={{ tab: kind }}
-        >
-          返回{kind === "cron" ? "定时任务" : "Webhooks"}
-        </PageBackLink>
+        chat ? (
+          <PageBackLink
+            to="/projects/$projectId/chats/$chatId"
+            params={{ projectId, chatId: chat }}
+            data-testid="back-to-chat"
+          >
+            返回 Chat
+          </PageBackLink>
+        ) : (
+          <PageBackLink
+            to="/projects/$projectId/settings"
+            params={{ projectId }}
+            search={{ tab: kind }}
+          >
+            返回{kind === "cron" ? "定时任务" : "Webhooks"}
+          </PageBackLink>
+        )
       }
       testId={`${kind}-editor-page`}
     >

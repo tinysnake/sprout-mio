@@ -500,6 +500,15 @@ export async function verifyCronBrowser({
     "Source Chat shows Project cron label and sealed text without Agent persona, mention/skill spans or runactivity fallback",
   );
 
+  await source.first().getByTestId("message-rule-link").click();
+  await page.getByTestId("cron-editor-page").waitFor();
+  const backToChat = page.getByTestId("back-to-chat");
+  assert.equal(await backToChat.getAttribute("href"), `/projects/${project.id}/chats/${dm.id}`);
+  await backToChat.click();
+  await page.waitForURL(`**/projects/${project.id}/chats/${dm.id}*`);
+  await page.getByTestId("message-list").waitFor();
+  pass("a Source message links to its rule, and that rule page returns to the same Chat");
+
   const ownerRule = await call("createCronRuleFn", {
     ...apiDraft,
     name: "Owner cron",

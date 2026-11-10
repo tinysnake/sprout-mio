@@ -261,6 +261,7 @@ export function ChatPane({
               <Link
                 to="/projects/$projectId/settings/cron/$ruleId"
                 params={{ projectId, ruleId: source.ruleId }}
+                search={{ chat: chat.id }}
                 data-testid="message-rule-link"
                 className={RULE_LINK_CLASS}
               >
@@ -270,6 +271,7 @@ export function ChatPane({
               <Link
                 to="/projects/$projectId/settings/webhooks/$ruleId"
                 params={{ projectId, ruleId: source.ruleId }}
+                search={{ chat: chat.id }}
                 data-testid="message-rule-link"
                 className={RULE_LINK_CLASS}
               >
