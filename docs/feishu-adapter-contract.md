@@ -17,13 +17,13 @@
 
 ## 身份与接续关系
 
-平台应用配置、长连接、Human 身份关联和目标 DM 分别建模。首期配置一个飞书自建应用，凭据由服务端配置持有，不进入浏览器、卡片值或普通日志。
+平台应用配置、长连接、Human 身份关联和目标 DM 分别建模。每个 Project 配置自己的飞书自建应用，凭据由 Project 级渠道配置持有（见「渠道配置存储」），不进入卡片值、普通日志或 Agent 可读的输出。
 
-平台身份使用经 adapter 核验的应用、tenant 与 open_id 组合，不以昵称、邮箱或外部传入的 Sprout userId 识别 Human。open_id 的应用作用域必须保留。首期一个 Human 只有一个有效飞书身份，一个平台身份也只能关联一个 Human。
+平台身份使用经 adapter 核验的应用、tenant 与 open_id 组合，不以昵称、邮箱或外部传入的 Sprout userId 识别 Human。open_id 的应用作用域必须保留。飞书身份按 Human 与 Project 各存一条，因为 open_id 随应用变化。同一 Project 内一个 Human 只有一个有效身份，一个平台身份也只能关联一个 Human。
 
 已登录 Human 从 Web 发起有期限的一次性 challenge，显式选择有权访问的 Project 与普通助理 DM。challenge 是 8 位字符的可手输码，熵来自密码学随机源（40 bit），仅保存摘要；长度或字符集不合法的输入在任何数据库读取前就被拒绝，普通聊天文本因此不会被当作绑定尝试，输入接受大小写、空格与短横线变体；飞书私聊中由稳定身份完成确认。默认有效期十分钟，重发产生新 challenge 并使旧 challenge 失效。冲突返回可理解的错误，不覆盖另一 Human 或已有平台身份。账号换绑必须先解绑。
 
-目标只能是该 Human 可使用、Agent purpose 为 assistant 的普通 DM。路由保存明确的 Project 和 Chat，不以最近使用会话自动选路。切换目标创建新路由，旧路由终结；代次变化使旧 challenge、旧接纳资格和未发出的投递失效。解绑不删除消息、提案或已接纳工作，也不隐式停止工作 Agent。
+目标只能是该 Human 可使用、Agent purpose 为 assistant 的普通 DM。路由保存明确的 Project 和 Chat，不以最近使用会话自动选路。每个 Human 在每个 Project 各有一条活动路由。切换目标创建新路由，旧路由终结；代次变化使旧 challenge、旧接纳资格和未发出的投递失效。解绑不删除消息、提案或已接纳工作，也不隐式停止工作 Agent。
 
 ## 连接 epoch 与离线边界
 
@@ -55,6 +55,25 @@ transport 准备凭据和平台 payload 可以异步进行。最终发送前先�
 
 成功保存平台 message_id。明确未被平台接纳的失败可以受限重试；连接、身份、路由和权限仍需复查。ack 丢失、进程在交付后崩溃或平台是否接纳无法判断时标记 uncertain，停止自动重发。飞书 UUID 仅保证一小时去重，不能据此重发任意年代的请求或宣称跨崩溃 exactly-once。投递重试始终不重跑工作。
 
+## 渠道配置存储
+
+渠道的应用配置属于 Project，不属于部署，也没有环境变量入口。每个 Project 配自己的飞书自建应用，不同 Project 可以用不同应用并发在线。一个应用只能属于一个 Project，保存时校验跨 Project 的 appId 不得重复，否则入站消息无法判断归属。绑定身份与活动路由按 Human 与 Project 各一条。
+
+通用表 `channel_config` 以 `(project_id, kind)` 为主键，一个 Project 的一种渠道一行：
+
+- `enabled` 决定该 Project 的这个渠道在运行时是否启动。
+- `settings` 存非机密字段的 JSON，形状由 `kind` 决定。
+- `secrets` 存机密字段的 JSON。它按可回读明文保存，与 webhook secret 同类，不声明静态加密。
+- `revision`、`updated_at_ms`、`updated_by_human_id` 支撑乐观并发：写入时 revision 不匹配返回冲突，不覆盖另一 Human 的保存。
+
+渠道类型注册表是唯一知道字段形状的地方。它声明标签、`settings` 与 `secrets` 的 schema、必填组合，以及由配置派生出的 transport 配置。表本身只存 JSON，不为单个渠道加列，新增渠道不改表结构，也不为飞书单开一张配置表。飞书的 `settings` 目前含 `origin` 与 `appId`；origin 只接受飞书 / Lark 官方域名与回环 http，appId 校验 `^cli_[0-9A-Za-z]{16}$`。
+
+读取分两种出口。页面与普通查询只拿非机密字段和 `hasAppSecret`，`secrets` 不出现在任何 DTO 里；用户要换密钥就重新提交一次，不提供回读。运行时在启动装配时为每个已启用且字段完整的配置建一个 runtime，保存成功后在同一进程内只停掉该 Project 的旧 runtime 再按新配置重建，不重启进程，也不影响其他 Project。同一 Project 的并发保存串行执行，避免两个连接同时使用一个 appId。
+
+配置不完整视为未配置。`enabled` 为真但缺必填字段的保存被拒绝，因此不存在「已启用但起不来」的持久状态。语义相同的环境变量一并删除，不保留双读。
+
+入站消息由处理它的 runtime 归属到该 Project，admission 还要核对路由的 `project_id` 与 runtime 的 Project 一致，不一致按未知路由拒绝。
+
 ## 单元与验证门槛
 
 | 单元 | 可审查结果 | 必须实际验证 |
@@ -64,6 +83,7 @@ transport 准备凭据和平台 payload 可以异步进行。最终发送前先�
 | F2a 投递与授权 | 可复用投递端口、持久 outbox/attempt、受控投影、action grant | 捕获与源消息同事务、默认拒绝投影、armed 先于 begin、ack 丢失与崩溃 uncertain、Web/卡片同一原生确认 |
 | F2b 平台装配 | 飞书 WS 入站、同步 begin 出站、单 owner 生命周期、运行时与服务器边界 | 旧 generation 不能改 epoch、ACK 不等于接纳、准备失败不产生请求、断线不回放 |
 | F3 UI 与平台评审 | Human 选定的绑定入口、配置说明与可操作预览 | 桌面/手机流程、异常与撤销、原数据保留；真实平台收发另列证据 |
+| F4 渠道配置 | Project 级 `channel_config`、渠道注册表、Human-only 保存入口、按 Project 重载运行时、身份与路由按 Project 分条 | 必填与格式拒绝、跨 Project appId 重复拒绝、revision 冲突、secrets 不出现在 view、保存后该 Project 旧 runtime 停止且新配置生效而其他 Project 不受影响、升级保留已绑定数据、环境变量入口已删除 |
 
 F0 与 F1 可由同一个隔离写者先后完成，风险探针失败时不得继续堆积 schema。共享契约及迁移保持一个写者。F1 不暴露未经平台核验的公共 HTTP 入口，不改现有评审库，不等 UI 选型，也不预建 F2 的空表。首次接纳复用原生领域，运行时装配在 F2 完成。
 

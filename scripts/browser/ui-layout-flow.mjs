@@ -240,6 +240,34 @@ try {
     await page.setViewportSize({ width: 1440, height: 900 });
     return measuredWidths;
   });
+  await check("feishu_settings_configure_in_page", async () => {
+    const settingsPath = `/projects/${projectId}/settings?tab=feishu`;
+    await goto(settingsPath);
+    await test("feishu-config-app-id").waitFor();
+    const unconfigured = await page.locator("main").innerText();
+    assert.match(await test("feishu-config-status").innerText(), /未配置/);
+    assert.equal(await test("feishu-config-enabled").isChecked(), false);
+    assert.ok(
+      unconfigured.includes("先在上面填写 App ID"),
+      "binding section points at the form above",
+    );
+    assert.ok(!unconfigured.includes("FEISHU_APP_ID"), "page no longer asks for server env vars");
+
+    await test("feishu-config-app-id").fill("cli_0123456789abcdef");
+    await test("feishu-config-app-secret").fill("verify-secret-0123456789");
+    await test("feishu-config-save").click();
+    await test("feishu-config-saved").waitFor();
+    assert.match(await test("feishu-config-status").innerText(), /已停用/);
+
+    await goto(settingsPath);
+    await test("feishu-config-app-id").waitFor();
+    assert.equal(await test("feishu-config-app-id").inputValue(), "cli_0123456789abcdef");
+    assert.equal(await test("feishu-config-app-secret").inputValue(), "");
+    assert.equal(await test("feishu-config-enabled").isChecked(), false);
+    const persisted = await page.locator("main").innerText();
+    assert.ok(persisted.includes("留空表示保持不变。"), "secret hint reports a stored secret");
+    return { path: new URL(page.url()).pathname, revisionKept: true };
+  });
   await check("single_project_dispatch_and_root_target", async () => {
     await goto("/projects");
     await page.waitForURL((url) => url.pathname === listPath);

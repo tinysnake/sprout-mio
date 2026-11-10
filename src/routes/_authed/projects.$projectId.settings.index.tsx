@@ -14,7 +14,7 @@ import { useMachineRelations } from "../../components/machine/use-machine-relati
 import { ProjectBasicInfoForm } from "../../components/project/project-basic-info-form";
 import { WebhookSettings } from "../../components/project/webhook-settings";
 import { CronSettings } from "../../components/project/cron-settings";
-import { FeishuBindingPanel } from "../../components/project/feishu-binding-panel";
+import { FeishuSettings } from "../../components/project/feishu-settings";
 import { ProjectFacts } from "../../components/project/project-facts";
 import { SettingsSection } from "../../components/project/settings-section";
 import { ProjectConfigForm } from "../../components/project-config/project-config-form";
@@ -91,7 +91,7 @@ function ProjectSettingsPage() {
           ) : tab === "cron" ? (
             <CronSettings key={projectId} projectId={projectId} />
           ) : (
-            <FeishuBindingPanel key={projectId} projectId={projectId} />
+            <FeishuSettings projectId={projectId} />
           )}
         </div>
       </PageFrame>

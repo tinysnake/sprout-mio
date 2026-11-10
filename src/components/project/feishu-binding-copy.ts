@@ -1,7 +1,7 @@
 import type { FeishuConnectionPhase } from "../../contracts/feishu-channel";
 import type { AppError } from "../../contracts/result";
 
-export const FEISHU_UNCONFIGURED_COPY = "这台部署还没有配置飞书应用，绑定入口不可用。";
+export const FEISHU_UNCONFIGURED_COPY = "先在上面填写 App ID 与 App Secret，保存后再绑定飞书账号。";
 
 const PHASE_LABELS: Readonly<Record<FeishuConnectionPhase, string>> = {
   disabled: "未启用",

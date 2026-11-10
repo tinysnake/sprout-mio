@@ -10,7 +10,9 @@ import {
 import type { AppError } from "../src/contracts/result";
 
 it("explains an unconfigured channel without obsolete server setup instructions", () => {
-  expect(FEISHU_UNCONFIGURED_COPY).toBe("这台部署还没有配置飞书应用，绑定入口不可用。");
+  expect(FEISHU_UNCONFIGURED_COPY).toBe(
+    "先在上面填写 App ID 与 App Secret，保存后再绑定飞书账号。",
+  );
 });
 
 it("labels every connection phase in Chinese", () => {
