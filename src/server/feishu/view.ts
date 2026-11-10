@@ -11,19 +11,17 @@ import { assistantSource, AssistantError } from "../../domain/assistant";
 import { getChat, listChatMembers, listChats } from "../../domain/chat";
 import { FeishuBindingError, getFeishuBinding, readFeishuChallenge } from "../../domain/feishu";
 import type { ProjectContext } from "../../domain/project";
+import { assertProjectAccess } from "../../domain/access";
+import { channelRuntimeConfig, loadChannelConfigRow } from "../../domain/channel-config";
 
-/**
- * 未来绑定页要渲染的全部事实。只读：目标对话与 Agent 名称都经过 Project 与成员权限核对，
- * 不属于当前 Project 的绑定只回 revision/bound，不回跨 Project 的对话标题。
- */
 export function buildFeishuBindingView(input: {
   ctx: ProjectContext;
   projectId: string;
-  configured: boolean;
   connection: FeishuConnectionSnapshot;
   now?: Date;
 }): FeishuBindingView {
-  const binding = getFeishuBinding(input.ctx);
+  assertProjectAccess(input.ctx, input.projectId);
+  const binding = getFeishuBinding(input.projectId, input.ctx);
   const route = binding.route;
   let target: FeishuBindingView["binding"]["target"] = null;
   if (route && route.projectId === input.projectId) {
@@ -46,10 +44,10 @@ export function buildFeishuBindingView(input: {
       chatTitle: chat.title ?? null,
     };
   }
-  const challenge = readFeishuChallenge(input.ctx, input.now ?? new Date());
+  const challenge = readFeishuChallenge(input.projectId, input.ctx, input.now ?? new Date());
   return {
     adapter: "feishu",
-    configured: input.configured,
+    configured: channelRuntimeConfig(loadChannelConfigRow(input.projectId, "feishu")) !== null,
     connection: {
       phase: input.connection.phase,
       generation: input.connection.generation,

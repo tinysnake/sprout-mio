@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { db, sqlite } from "../db";
 import {
   channelActionGrant,
@@ -160,13 +160,21 @@ function suppress(id: string, error: string) {
 }
 
 /** At process startup only, before drain starts. Armed means a request may already exist. */
-export function recoverChannelDeliveries(adapter: string) {
+export function recoverChannelDeliveries(adapter: string, projectId?: string) {
   return sqlite
     .transaction(() => {
       const armed = db
         .select()
         .from(channelDelivery)
-        .where(and(eq(channelDelivery.adapter, adapter), eq(channelDelivery.state, "armed")))
+        .where(
+          and(
+            eq(channelDelivery.adapter, adapter),
+            eq(channelDelivery.state, "armed"),
+            projectId === undefined
+              ? undefined
+              : sql`json_extract(${channelDelivery.route}, '$.projectId') = ${projectId}`,
+          ),
+        )
         .all();
       for (const row of armed) {
         db.update(channelDelivery)
@@ -258,7 +266,7 @@ function deadlineCompletion(
 export async function emitNextChannelDelivery<Prepared>(
   boundary: ChannelRouteBoundary,
   port: ChannelEmissionPort<Prepared>,
-  options: { now?: () => Date; timeoutMs?: number } = {},
+  options: { projectId?: string; now?: () => Date; timeoutMs?: number } = {},
 ) {
   if (sqlite.inTransaction) throw new Error("channel_emission_requires_no_transaction");
   const clock = options.now ?? (() => new Date());
@@ -269,6 +277,9 @@ export async function emitNextChannelDelivery<Prepared>(
     .where(
       and(
         eq(channelDelivery.adapter, boundary.adapter),
+        options.projectId === undefined
+          ? undefined
+          : sql`json_extract(${channelDelivery.route}, '$.projectId') = ${options.projectId}`,
         eq(channelDelivery.state, "ready"),
         lte(channelDelivery.dueAtMs, clock().getTime()),
       ),

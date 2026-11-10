@@ -1,8 +1,7 @@
 import type { ContinuationScheduler } from "./continuation-scheduler";
 import type { AssistantScheduler } from "./assistant-scheduler";
 import type { CronScheduler } from "./cron-scheduler";
-import type { FeishuRuntime } from "./feishu/runtime";
-import { registerFeishuRuntime } from "./feishu/registry";
+import { stopFeishuRuntimes } from "./feishu/registry";
 import type { WakeRuntimeOptions } from "./wake-runtime";
 import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
@@ -12,6 +11,10 @@ import type { DatabaseConnection } from "../db/connection";
 import { config } from "../lib/config";
 import { PiHost, startPiHost, stopPiHost } from "./pi-host/host";
 import type { PiHostShape, PiHostSnapshot as HostSnapshot } from "./pi-host/host";
+
+export async function reloadChannelRuntime(projectId: string): Promise<void> {
+  await (await import("./channel-runtime")).reloadChannelRuntime(projectId);
+}
 
 export type PiHostSnapshot = HostSnapshot & { readonly enabled: boolean };
 
@@ -47,7 +50,6 @@ type RuntimeState = {
   continuation: ContinuationScheduler | null;
   cron: CronScheduler | null;
   assistant: AssistantScheduler | null;
-  feishu: FeishuRuntime | null;
   piHostStop: Promise<void> | null;
   ready: Promise<void>;
   resolveReady: () => void;
@@ -79,7 +81,6 @@ function createState(): RuntimeState {
     continuation: null,
     cron: null,
     assistant: null,
-    feishu: null,
     piHostStop: null,
     ready,
     resolveReady,
@@ -269,15 +270,8 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     const { createAssistantScheduler } = await import("./assistant-scheduler");
     state.assistant = createAssistantScheduler();
     state.assistant.start();
-    if (config.FEISHU_CHANNEL_ENABLED) {
-      const { createFeishuRuntime, feishuTransportConfig } = await import("./feishu/runtime");
-      state.feishu = createFeishuRuntime({ config: feishuTransportConfig(config) });
-      registerFeishuRuntime(state.feishu);
-      state.feishu.start();
-      console.log("[runtime] feishu", JSON.stringify(state.feishu.snapshot()));
-    } else {
-      console.log("[runtime] feishu disabled by FEISHU_CHANNEL_ENABLED=false");
-    }
+    const { startChannelRuntimes } = await import("./channel-runtime");
+    await startChannelRuntimes();
     recordDiagnostic({
       level: "info",
       event: "runtime.ready",
@@ -319,9 +313,7 @@ export function shutdownRuntime(reason: string): Promise<void> {
 }
 
 function stopFeishu(): void {
-  state.feishu?.stop();
-  state.feishu = null;
-  registerFeishuRuntime(null);
+  stopFeishuRuntimes();
 }
 
 function stopPiHostOnce(): Promise<void> {

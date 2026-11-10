@@ -43,8 +43,13 @@ it("0048 is additive, preserves native/F1 rows and FKs, and never seeds historic
     const oldRows = tables.map((name) => before.sqlite.prepare(`SELECT * FROM "${name}"`).all());
     const oldFKs = tables.map((name) => before.sqlite.pragma(`foreign_key_list("${name}")`));
     before.sqlite.close();
-    migrateDatabase(file);
-    migrateDatabase(file);
+    journal.entries = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")).entries.filter(
+      (entry: { idx: number }) => entry.idx <= 48,
+    );
+    copyFileSync("drizzle/0048_channel_delivery.sql", join(folder, "0048_channel_delivery.sql"));
+    writeFileSync(join(folder, "meta/_journal.json"), JSON.stringify(journal));
+    migrateDatabase(file, folder);
+    migrateDatabase(file, folder);
     const after = openDatabase(file);
     try {
       expect(tables.map((name) => after.sqlite.prepare(`SELECT * FROM "${name}"`).all())).toEqual(

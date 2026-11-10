@@ -5,7 +5,27 @@ import { channelNativeFixture } from "./fixtures/channel-native";
 const f = await channelNativeFixture();
 const contracts = await import("../src/contracts/feishu-channel");
 const functions = await import("../src/server/functions/feishu");
+const channelFunctions = await import("../src/server/functions/channels");
 afterAll(() => f.close());
+
+it("rejects unauthenticated and Agent-token channel configuration calls", async () => {
+  for (const headers of [new Headers(), new Headers({ authorization: "Bearer agent-token" })]) {
+    const before = f.sqlite.prepare("SELECT * FROM channel_config").all();
+    const read = await channelFunctions.getChannelConfigsBoundary(
+      { projectId: f.project.id, userId: f.ctx.userId },
+      headers,
+      "req_channel_read",
+    );
+    const save = await channelFunctions.saveChannelConfigBoundary(
+      { projectId: f.project.id, kind: "feishu", enabled: false, revision: 0, settings: {} },
+      headers,
+      "req_channel_save",
+    );
+    expect(read.ok).toBe(false);
+    expect(save.ok).toBe(false);
+    expect(f.sqlite.prepare("SELECT * FROM channel_config").all()).toEqual(before);
+  }
+});
 
 it("strips caller-supplied identity fields and requires an integer revision", () => {
   const stripped = contracts.feishuRevisionInput.parse({

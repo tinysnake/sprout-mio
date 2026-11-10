@@ -344,6 +344,13 @@
       "when": 1794242919288,
       "tag": "0048_channel_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1794275391170,
+      "tag": "0049_channel_config",
+      "breakpoints": true
     }
   ]
 }

@@ -46,138 +46,88 @@ const originPatternSchema = z
     return isInternalHostPattern(host.replace(/:\d+$/, ""));
   }, "必须是回环或内网 origin，主机段可用 * 通配");
 
-const environmentSchema = z
-  .object({
-    SPROUT_CONTINUATION_ENABLED: z
-      .enum(["true", "false"])
-      .default("true")
-      .transform((value) => value === "true"),
-    /**
-     * Feishu 私聊渠道。默认关闭：不开时进程里没有 WS client、没有定时器，
-     * 行为与没有这项能力时完全一致。开启必须同时给 appId 与 appSecret。
-     */
-    FEISHU_CHANNEL_ENABLED: z
-      .enum(["true", "false"])
-      .default("false")
-      .transform((value) => value === "true"),
-    FEISHU_APP_ID: z
-      .string()
-      .default("")
-      .refine(
-        (value) => value === "" || /^cli_[0-9A-Za-z]{16}$/.test(value),
-        "必须是 cli_ 开头的 appId",
-      ),
-    FEISHU_APP_SECRET: z.string().default(""),
-    /**
-     * 平台 origin。承载 app secret，因此只认飞书 / Lark 官方域名；
-     * 测试与内网代理只能用回环地址上的 http。
-     */
-    FEISHU_ORIGIN: z
-      .string()
-      .default("https://open.feishu.cn")
-      .refine((value) => {
-        try {
-          const url = new URL(value);
-          if (url.origin !== value) return false;
-          if (url.protocol === "http:") {
-            return ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
-          }
-          if (url.protocol !== "https:") return false;
-          return ["feishu.cn", "larksuite.com"].some(
-            (domain) => url.hostname === domain || url.hostname.endsWith(`.${domain}`),
-          );
-        } catch {
-          return false;
-        }
-      }, "必须是飞书 / Lark 官方域名，或回环地址上的 http origin"),
-    SPROUT_PI_ENABLED: z
-      .enum(["true", "false"])
-      .default("true")
-      .transform((value) => value === "true"),
-    SPROUT_PI_DATA_DIR: z
-      .string()
-      .min(1)
-      .refine(isAbsolute, "必须是绝对路径")
-      .default(join(homedir(), ".local", "share", "sprout-mio", "pi")),
-    SPROUT_PI_RUNNER: z
-      .string()
-      .min(1)
-      .refine((value) => {
-        if (!isAbsolute(value)) return false;
-        try {
-          accessSync(value, constants.F_OK | constants.X_OK);
-          return statSync(value).isFile();
-        } catch {
-          return false;
-        }
-      }, "必须是存在且可执行的绝对路径")
-      .optional(),
-    SPROUT_REPO_DIR: z
-      .string()
-      .min(1)
-      .refine(isAbsolute, "必须是绝对路径")
-      .default(join(homedir(), ".local", "share", "sprout-mio", "repos")),
-    SPROUT_REPO_MAX_BYTES: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .default(2 * 1024 * 1024 * 1024),
-    DATABASE_URL: z.string().min(1).default("./data/sprout.sqlite"),
-    APP_ORIGIN: z
-      .url()
-      .pipe(
-        z.string().refine((value) => {
-          const url = new URL(value);
-          return ["http:", "https:"].includes(url.protocol) && url.origin === value;
-        }, "必须是 http 或 https origin"),
-      )
-      .default("http://localhost:3000"),
-    BETTER_AUTH_SECRET: z.string().min(32).optional(),
-    /**
-     * 额外的可信 origin（逗号分隔，可用内网通配）。`APP_ORIGIN` 始终可信；这里用于
-     * 同一进程经不同内网 / VPN 地址访问，例如 `http://192.168.50.*:3210`。
-     */
-    APP_TRUSTED_ORIGINS: z
-      .string()
-      .default("")
-      .transform((value) =>
-        value
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter(Boolean),
-      )
-      .pipe(z.array(originPatternSchema)),
-    /**
-     * 开发登录：dev server 上把固定账号写进会话 cookie 后跳到目标页面，省掉手输长账号
-     * 密码。只在构建期 `import.meta.env.DEV` 为真的 dev server 生效，生产构建与验收库
-     * 一律没有这个入口；把它设成 false 可以关掉（例如 dev server 暴露在不信任网络里）。
-     */
-    DEV_LOGIN_ENABLED: z
-      .enum(["true", "false"])
-      .default("true")
-      .transform((value) => value === "true"),
-    DEV_LOGIN_EMAIL: z.email().default("dev@sprout.test"),
-    DEV_LOGIN_NAME: z.string().trim().min(1).max(80).default("开发评审"),
-    DEV_LOGIN_PASSWORD: z.string().min(8).max(128).default("sprout-dev-login"),
-    AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(5),
-    AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
-    AUTH_RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().min(1).max(10_000).default(100),
-    AUTH_RATE_LIMIT_HTTP_MAX: z.coerce.number().int().min(1).max(10_000).default(100),
-    PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-    LOG_LEVEL: z.enum(DIAGNOSTIC_LEVELS).default("info"),
-  })
-  .superRefine((value, ctx) => {
-    if (
-      value.FEISHU_CHANNEL_ENABLED &&
-      (value.FEISHU_APP_ID === "" || value.FEISHU_APP_SECRET === "")
+const environmentSchema = z.object({
+  SPROUT_CONTINUATION_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  SPROUT_PI_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  SPROUT_PI_DATA_DIR: z
+    .string()
+    .min(1)
+    .refine(isAbsolute, "必须是绝对路径")
+    .default(join(homedir(), ".local", "share", "sprout-mio", "pi")),
+  SPROUT_PI_RUNNER: z
+    .string()
+    .min(1)
+    .refine((value) => {
+      if (!isAbsolute(value)) return false;
+      try {
+        accessSync(value, constants.F_OK | constants.X_OK);
+        return statSync(value).isFile();
+      } catch {
+        return false;
+      }
+    }, "必须是存在且可执行的绝对路径")
+    .optional(),
+  SPROUT_REPO_DIR: z
+    .string()
+    .min(1)
+    .refine(isAbsolute, "必须是绝对路径")
+    .default(join(homedir(), ".local", "share", "sprout-mio", "repos")),
+  SPROUT_REPO_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(2 * 1024 * 1024 * 1024),
+  DATABASE_URL: z.string().min(1).default("./data/sprout.sqlite"),
+  APP_ORIGIN: z
+    .url()
+    .pipe(
+      z.string().refine((value) => {
+        const url = new URL(value);
+        return ["http:", "https:"].includes(url.protocol) && url.origin === value;
+      }, "必须是 http 或 https origin"),
     )
-      ctx.addIssue({
-        code: "custom",
-        path: ["FEISHU_CHANNEL_ENABLED"],
-        message: "开启 Feishu 渠道需要 FEISHU_APP_ID 与 FEISHU_APP_SECRET",
-      });
-  });
+    .default("http://localhost:3000"),
+  BETTER_AUTH_SECRET: z.string().min(32).optional(),
+  /**
+   * 额外的可信 origin（逗号分隔，可用内网通配）。`APP_ORIGIN` 始终可信；这里用于
+   * 同一进程经不同内网 / VPN 地址访问，例如 `http://192.168.50.*:3210`。
+   */
+  APP_TRUSTED_ORIGINS: z
+    .string()
+    .default("")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    )
+    .pipe(z.array(originPatternSchema)),
+  /**
+   * 开发登录：dev server 上把固定账号写进会话 cookie 后跳到目标页面，省掉手输长账号
+   * 密码。只在构建期 `import.meta.env.DEV` 为真的 dev server 生效，生产构建与验收库
+   * 一律没有这个入口；把它设成 false 可以关掉（例如 dev server 暴露在不信任网络里）。
+   */
+  DEV_LOGIN_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  DEV_LOGIN_EMAIL: z.email().default("dev@sprout.test"),
+  DEV_LOGIN_NAME: z.string().trim().min(1).max(80).default("开发评审"),
+  DEV_LOGIN_PASSWORD: z.string().min(8).max(128).default("sprout-dev-login"),
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(5),
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).max(3600).default(60),
+  AUTH_RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().min(1).max(10_000).default(100),
+  AUTH_RATE_LIMIT_HTTP_MAX: z.coerce.number().int().min(1).max(10_000).default(100),
+  PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  LOG_LEVEL: z.enum(DIAGNOSTIC_LEVELS).default("info"),
+});
 
 /** 开发登录相关配置的类型；登录页只需要这几个值，不引入服务端模块。 */
 export type DevLoginSettings = Pick<

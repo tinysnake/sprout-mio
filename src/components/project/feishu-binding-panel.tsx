@@ -28,6 +28,7 @@ import {
 import { Field } from "../ui/field";
 import { Select } from "../ui/select";
 import {
+  FEISHU_UNCONFIGURED_COPY,
   challengeRemainingLabel,
   connectionPhaseLabel,
   feishuFailureText,
@@ -311,11 +312,7 @@ export function FeishuBindingPanel({
         actions={<StatusChip>未配置</StatusChip>}
         testId="feishu-binding-panel"
       >
-        <p className="text-sm">这台部署没有配置飞书应用，绑定入口不可用。</p>
-        <p className="mt-2 text-xs leading-6 text-muted-foreground">
-          需要在服务端设置 FEISHU_CHANNEL_ENABLED、FEISHU_APP_ID、FEISHU_APP_SECRET
-          三项环境变量并重启。
-        </p>
+        <p className="text-sm">{FEISHU_UNCONFIGURED_COPY}</p>
       </SettingsSection>
     );
   }

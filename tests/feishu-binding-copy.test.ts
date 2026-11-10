@@ -1,5 +1,6 @@
 import { expect, it } from "vite-plus/test";
 import {
+  FEISHU_UNCONFIGURED_COPY,
   challengeRemainingLabel,
   connectionPhaseLabel,
   feishuFailureText,
@@ -7,6 +8,10 @@ import {
   targetOptionLabel,
 } from "../src/components/project/feishu-binding-copy";
 import type { AppError } from "../src/contracts/result";
+
+it("explains an unconfigured channel without obsolete server setup instructions", () => {
+  expect(FEISHU_UNCONFIGURED_COPY).toBe("这台部署还没有配置飞书应用，绑定入口不可用。");
+});
 
 it("labels every connection phase in Chinese", () => {
   expect(connectionPhaseLabel("connected")).toBe("已连接");

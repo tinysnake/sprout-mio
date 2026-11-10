@@ -35,25 +35,10 @@ import {
   type FeishuEpochLifecycle,
 } from "./owner";
 
-export type FeishuChannelSettings = Readonly<{
-  FEISHU_CHANNEL_ENABLED: boolean;
-  FEISHU_APP_ID: string;
-  FEISHU_APP_SECRET: string;
-  FEISHU_ORIGIN: string;
-}>;
+export type FeishuChannelSettings = Readonly<FeishuTransportConfig>;
 
-/** 环境变量只在边界映射成传输配置；没配置时 enabled 为 false，进程行为不变。 */
 export function feishuTransportConfig(settings: FeishuChannelSettings): FeishuTransportConfig {
-  const configured =
-    settings.FEISHU_CHANNEL_ENABLED &&
-    settings.FEISHU_APP_ID.length > 0 &&
-    settings.FEISHU_APP_SECRET.length > 0;
-  return Object.freeze({
-    appId: settings.FEISHU_APP_ID,
-    appSecret: settings.FEISHU_APP_SECRET,
-    origin: settings.FEISHU_ORIGIN.replace(/\/+$/, ""),
-    enabled: configured,
-  });
+  return Object.freeze({ ...settings });
 }
 
 export type FeishuRuntime = Readonly<{
@@ -65,6 +50,7 @@ export type FeishuRuntime = Readonly<{
 }>;
 
 export type FeishuRuntimeDependencies = Readonly<{
+  projectId: string;
   config: FeishuTransportConfig;
   transport?: FeishuHttpTransport;
   createClient?: FeishuClientFactory;
@@ -124,7 +110,7 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
   const teardown = () => {
     started = false;
     failed = false;
-    setFeishuDeliveryWake(null);
+    setFeishuDeliveryWake(deps.projectId, null);
     loop?.stop();
     loop = null;
     owner?.stop();
@@ -146,13 +132,14 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
       if (!config.enabled) return;
       try {
         // 启动时只做一次恢复：armed 说明请求可能已经到达平台，标成 uncertain 不重发。
-        recoverChannelDeliveries("feishu");
+        recoverChannelDeliveries("feishu", deps.projectId);
         const transport = deps.transport ?? nodeHttpsTransport;
         const tokens = createFeishuTokenSource({ config, transport, now: () => now().getTime() });
         const port = createFeishuEmissionPort({ config, transport, tokens });
         loop = createFeishuDeliveryLoop({
           emit: () =>
             emitNextFeishuDelivery(port, {
+              projectId: deps.projectId,
               now,
               ...(deps.deliveryTimeoutMs === undefined
                 ? {}
@@ -190,10 +177,11 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
             createFeishuIngressHandlers({
               appId: config.appId,
               currentEpoch,
-              captureScope: captureFeishuAdmissionScope,
+              captureScope: (identity, epoch) =>
+                captureFeishuAdmissionScope(deps.projectId, identity, epoch),
               admitText: (event, scope, id) => admitFeishuText(event, scope, id),
               finishChallenge: (opaque, identity, id) =>
-                finishFeishuChallenge(opaque, identity, id),
+                finishFeishuChallenge(deps.projectId, opaque, identity, id),
               isChallengeCode: isFeishuChallengeCode,
               consumeAction: (identity, scope, token, at) =>
                 consumeFeishuAction(identity, scope, token, at),
@@ -206,7 +194,7 @@ export function createFeishuRuntime(deps: FeishuRuntimeDependencies): FeishuRunt
         });
         loop.start();
         // 新投递提交后叫醒循环，不用等下一轮空闲轮询。
-        setFeishuDeliveryWake(() => loop?.wake());
+        setFeishuDeliveryWake(deps.projectId, () => loop?.wake());
         owner.start();
       } catch (error) {
         report(error);

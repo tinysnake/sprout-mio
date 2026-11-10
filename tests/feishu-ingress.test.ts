@@ -81,10 +81,11 @@ function harness(s: Scenario) {
       createFeishuIngressHandlers({
         appId: s.identity.appId,
         currentEpoch,
-        captureScope: f.feishu.captureFeishuAdmissionScope,
+        captureScope: (identity, epoch) =>
+          f.feishu.captureFeishuAdmissionScope(s.project.id, identity, epoch),
         admitText: (event, scope, requestId) => f.feishu.admitFeishuText(event, scope, requestId),
         finishChallenge: (opaque, identity, requestId) =>
-          f.feishu.finishFeishuChallenge(opaque, identity, requestId),
+          f.feishu.finishFeishuChallenge(s.project.id, opaque, identity, requestId),
         isChallengeCode: (text) => f.feishu.isFeishuChallengeCode(text),
         consumeAction: (identity, scope, token, at) =>
           f.delivery.consumeFeishuAction(identity, scope, token, at),

@@ -59,8 +59,9 @@ it("0046/0047 preserve native data and initialize existing routes without admitt
       established.sqlite.close();
     }
     const activationBoundary = Date.now();
-    migrateDatabase(file);
-    migrateDatabase(file);
+    const through0048 = migrationsBefore(49, "through0048");
+    migrateDatabase(file, through0048);
+    migrateDatabase(file, through0048);
     const after = openDatabase(file);
     try {
       expect(
