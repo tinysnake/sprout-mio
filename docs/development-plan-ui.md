@@ -14,7 +14,7 @@ P4–P7 的带版本 Human 确认保留在各章 summary。P7 已确认除 PWA �
 - [ ] 消息中明确展示系统来源与关联规则，Human 手动消息保持可区分。Project webhook / Project cron 来源标记与 Group 指定 Agent / owner 配置已实现；消息内直接展示关联规则的入口尚未实现。触发历史提供原 Chat 跳转。
 - [x] 助理 profile 的独立模型、effort 与不可变 purpose，以及 Project 内的普通助理 DM。复用 Agent 表单和 Chat；能力由实际注册工具与服务端 policy 限制。技术验证见[原生助理](feature-map/assistant.md)，Human 体验已确认。
 - [x] 具体 Chat / Agent 与操作的提案展示、明确确认、已提交 / 过期 / 撤销状态，以及 watch 的激活、查看、取消和间隔调整。生产页面 fixture 已验证 Human 操作、原生通知、实际 run 链接及桌面 / 手机截图，Human 体验已确认。
-- [ ] 飞书身份与助理 DM 绑定的选择、切换、解绑和异常状态。绑定失效不自动切换目标，重连不自动补发历史。
+- [x] 飞书身份与助理 DM 绑定的选择、切换、解绑和异常状态。绑定失效不自动切换目标，重连不自动补发历史。绑定入口落在 Project 设置页「飞书」标签，含已绑定 / 未绑定 / 异常态、换绑须飞书确认、确认码跨刷新保留与账号昵称展示；Human 已验收，失效不切换与重连不补发由 `tests/feishu-ingress.test.ts` 覆盖。
 
 新页面形状遵循[页面设计约定](project-conventions.md#页面设计与实现的分工)，具体组件与样式在实施前读取前端基线和开发约定。页面交付按[Human Review](human-review.md)在真实应用中验证，技术检查与 Human 确认分别记录。
 
