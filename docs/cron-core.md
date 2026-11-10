@@ -18,7 +18,7 @@ Project settings 的定时任务 tab 提供规则列表，独立新建/编辑页
 
 ## 数据与来源
 
-保留物理表 `webhook_rule` / `webhook_trigger` 及既有 ID。0038 只重建规则表以强制 source 对应的 credential / schedule / cursor CHECK，收据 additive 增加不可变 source；SQL insert guard 强制收据与规则 source 及冻结配置形状一致。旧 webhook credential、HTTP 与 replay 行为不变，HTTP 认证和 webhook Trial 两处均拒绝 cron 规则。
+保留物理表 `webhook_rule` / `webhook_trigger` 及既有 ID。`0041_project_cron` 只重建规则表以强制 source 对应的 credential / schedule / cursor CHECK，收据 additive 增加不可变 source；SQL insert guard 强制收据与规则 source 及冻结配置形状一致。旧 webhook credential、HTTP 与 replay 行为不变，HTTP 认证和 webhook Trial 两处均拒绝 cron 规则。
 
 公开规则与收据按 source 区分。cron Source 为 `project_cron`，包含冻结的 expression、timezone、instruction、scheduledAt 和 live / trial mode；历史编辑不改变旧快照或 Chat / run 关联。Source 不是 Human、Agent、system prompt 或授权。正文中的 @、skill 和外部文字不产生 mention / skill span，也不能指定接收者。
 
@@ -44,7 +44,7 @@ bash scripts/verify/f-docs.sh
 | 风险 | 证据 |
 | --- | --- |
 | 方言、无未来时点、固定分钟偏移及非法边界、IANA DST 与闰世纪 | `tests/cron-schedule.test.ts` |
-| source / NULL / credential 约束及旧数据丢失 | `tests/cron-migration.test.ts` 的真实 SQL 负例与有数据 0037 升级 |
+| source / NULL / credential 约束及旧数据丢失 | `tests/cron-migration.test.ts` 的真实 SQL 负例与有数据 0040 升级 |
 | timer 泄漏、启动补跑、10 秒边界、长间隔与回拨 | `tests/cron-core.test.ts` 的 fake-clock 生命周期及事务断言 |
 | live / Trial 重叠、取消、terminal 与独立规则 | cron core 的真实 DB / input / run 测试 |
 | initial / steer 权限撤销与来源提升 | cron core 的 executeRun 协议 fixture；共享 webhook 回归 |

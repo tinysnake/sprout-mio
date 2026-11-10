@@ -8,7 +8,7 @@ P8 交付二期的四块能力：租约挂靠与领取、挂靠超时提醒与�
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 交付线   | 功能、UI、集成三线，四个集成单元 I-P8a/I-P8b/I-P8c/I-P8d                                                                                                                                                                                                                           |
 | 新增契约 | `src/contracts/lease.ts`（`leaseEscrow*`、`lease_wait`）、`src/contracts/project-wake-policy.ts`（`leaseTimeouts`）、`src/contracts/project-member-removal.ts`（`projectMemberRemovalOutcome`）、`src/contracts/remote.ts`（三条挂靠工具、`sprout_lease_wait`、平台与 shell 能力） |
-| 迁移     | `0037_p8a_lease_escrow`（`lease_escrow` + `lease_authorization` 重建）、`0038_p8b_lease_timeout`（超时与提醒列）、`0039_wake_evaluation_provider_repair`（复用 P8 预留号，回填旧库 `wake_evaluation` 的 provider 快照）；`0040`–`0046` 未使用                                      |
+| 迁移     | `0037_p8a_lease_escrow`（`lease_escrow` + `lease_authorization` 重建）、`0038_p8b_lease_timeout`（超时与提醒列）、`0039_wake_evaluation_provider_repair`（复用 P8 预留号，回填旧库 `wake_evaluation` 的 provider 快照）；其后 `0040` 起由自动化与飞书单元使用，未改动本章三份迁移                                      |
 | 门禁     | `p8a-lease-escrow`、`p8a-lease-integration`、`p8b-timeout`、`p8b-timeout-integration`、`p8c-removal`、`p8c-removal-integration`、`p8d-windows-worker`（MANUAL）、`p8d-windows-integration`（MANUAL），加 `y-lease-ui`、`p8a-escrow` 等既有回归                                     |
 
 ## 交付了什么

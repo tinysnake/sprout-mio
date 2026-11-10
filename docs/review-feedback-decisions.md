@@ -80,7 +80,7 @@ Model the Domain 原则促使本轮将周期汇总建模为独立 watch window c
 
 专项报告在集成 worktree 的 `.verify/runs/2026-11-09T08-30-14-273Z-62826-0/report.json`；浏览器证据在 `.verify/assistant-1794213068762`、`.verify/cron-1794213023930`、`.verify/webhook-1794213096277`。最终 CI 记录为 `/tmp/sprout-round3-ci-final.result.json`。
 
-本轮修订已集成为 `ffa2d61`。原 `http://127.0.0.1:3300` 预览已使用原数据库重启并完成 migration 0044；迁移前备份为 `.verify/human-review/run.JtVeWy/app.pre-round3-ffa2d61.sqlite`。59 条消息、3 个 Chat、2 个 Agent、2 条自动化规则、4 条历史关注以及 Project 行均逐行比对保持一致，外键检查通过。收据位于 `.verify/human-review/run.JtVeWy/round3-update.json`。
+本轮修订已集成为 `ffa2d61`。原 `http://127.0.0.1:3300` 预览已使用原数据库重启并完成 migration 0047；迁移前备份为 `.verify/human-review/run.JtVeWy/app.pre-round3-ffa2d61.sqlite`。59 条消息、3 个 Chat、2 个 Agent、2 条自动化规则、4 条历史关注以及 Project 行均逐行比对保持一致，外键检查通过。收据位于 `.verify/human-review/run.JtVeWy/round3-update.json`。
 
 原预览 DOM 复核确认无待确认内容时不渲染面板，Cron 帮助按钮在输入框之后，点击外部和 Escape 均关闭。实时 `preview_snapshot` 两次超时，因此未取得本次原预览截图；已实际查看通过门禁生成的桌面和 390px 手机截图。自用检查 tab 已关闭，原预览服务保留。Human 体验确认仍待反馈。
 
@@ -101,7 +101,7 @@ Model the Domain 原则促使原始窗口和异步模型结果分开建模。Bou
 
 最终浏览器证据位于集成 worktree 的 `.verify/assistant-1794230462872`，父代理实际查看桌面和 390px 手机截图。CI 记录为 `/tmp/sprout-round4-ci-final.result.json`，浏览器记录为 `/tmp/sprout-round4-browser-green.result.json`，队列回归为 `/tmp/sprout-round4-queue-red.log` 与 `/tmp/sprout-round4-queue-green.log`。Loopback 固定输出证明模型配置、隔离、摘要持久化及投递链路，不证明真实付费模型对闲聊、注入文本和复杂任务的语义质量。未重跑完整 107 项验证，不将四项已知 SDK / remote / deploy 基线问题标为修复。
 
-第四轮实现已集成为 `4d12c9b`，原 `http://127.0.0.1:3300` 服务使用原数据库完成 migration 0045 后恢复。迁移前备份为 `.verify/human-review/run.JtVeWy/app.pre-round4-6b2aedb.sqlite`；85 条消息、3 个 Chat、2 个 Agent、2 条规则、5 条历史关注、26 条事件及 Project 行按原列比对全部一致，外键检查通过。收据为 `.verify/human-review/run.JtVeWy/round4-update.json`。
+第四轮实现已集成为 `4d12c9b`，原 `http://127.0.0.1:3300` 服务使用原数据库完成 migration 0048 后恢复。迁移前备份为 `.verify/human-review/run.JtVeWy/app.pre-round4-6b2aedb.sqlite`；85 条消息、3 个 Chat、2 个 Agent、2 条规则、5 条历史关注、26 条事件及 Project 行按原列比对全部一致，外键检查通过。收据为 `.verify/human-review/run.JtVeWy/round4-update.json`。
 
 原页面 DOM 复核显示“正在关注 0”，打开后为“暂无关注”，无待确认面板和桌面横向溢出。原库没有有效关注，更新过程未调用付费模型。实时 snapshot 一次超时；resize 设置未实际改变 live viewport，因此不声称本次原预览已做手机视觉检查。父代理已查看门禁中的桌面与 390px 手机截图，手机功能与布局由实际 browser fixture 验证。自用 tab 已关闭，原预览服务保留。四个子任务均已收尾。Human 体验确认仍待反馈。
 

@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { migrateDatabase } from "../src/db/migrate";
 import { openDatabase } from "../src/db/connection";
 
-it("0043 preserves rule receipts and Human watch consent, adopts legacy intervals and retains immutable-source guards", () => {
+it("0046 preserves rule receipts and Human watch consent, adopts legacy intervals and retains immutable-source guards", () => {
   const directory = mkdtempSync(join(tmpdir(), "feedback-upgrade-"));
   const file = join(directory, "upgrade.sqlite");
   const oldFolder = join(directory, "old");
   mkdirSync(join(oldFolder, "meta"), { recursive: true });
   const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8"));
-  journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx <= 42);
+  journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx <= 45);
   for (const entry of journal.entries)
     copyFileSync(join("drizzle", `${entry.tag}.sql`), join(oldFolder, `${entry.tag}.sql`));
   writeFileSync(join(oldFolder, "meta/_journal.json"), JSON.stringify(journal));

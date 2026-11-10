@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { migrateDatabase } from "../src/db/migrate";
 import { openDatabase } from "../src/db/connection";
 
-it("0046/0047 preserve native data and initialize existing routes without admitting their old history", () => {
+it("0049/0050 preserve native data and initialize existing routes without admitting their old history", () => {
   const directory = mkdtempSync(join(tmpdir(), "feishu-upgrade-"));
   const file = join(directory, "upgrade.sqlite");
   function migrationsBefore(index: number, name: string) {
@@ -18,7 +18,7 @@ it("0046/0047 preserve native data and initialize existing routes without admitt
     writeFileSync(join(folder, "meta", "_journal.json"), JSON.stringify(journal));
     return folder;
   }
-  migrateDatabase(file, migrationsBefore(46, "before"));
+  migrateDatabase(file, migrationsBefore(49, "before"));
   const before = openDatabase(file);
   try {
     before.sqlite.exec(`
@@ -48,7 +48,7 @@ it("0046/0047 preserve native data and initialize existing routes without admitt
       before.sqlite.pragma(`foreign_key_list("${name}")`),
     );
     before.sqlite.close();
-    migrateDatabase(file, migrationsBefore(47, "f1"));
+    migrateDatabase(file, migrationsBefore(50, "f1"));
     const established = openDatabase(file);
     try {
       established.sqlite.exec(`
@@ -59,9 +59,9 @@ it("0046/0047 preserve native data and initialize existing routes without admitt
       established.sqlite.close();
     }
     const activationBoundary = Date.now();
-    const through0048 = migrationsBefore(49, "through0048");
-    migrateDatabase(file, through0048);
-    migrateDatabase(file, through0048);
+    const through0051 = migrationsBefore(52, "through0051");
+    migrateDatabase(file, through0051);
+    migrateDatabase(file, through0051);
     const after = openDatabase(file);
     try {
       expect(

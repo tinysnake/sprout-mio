@@ -64,7 +64,7 @@ F0 与 F1 已由一个隔离后端写者顺序完成，实现 commit 为 `6db498
 
 ### F0/F1 候选验证
 
-F0 真实临时 SQLite 和 loopback HTTP 探针通过。F1 包含 identity slot、challenge、不可变 route、connection epoch、入站 receipt，直接复用原生 Human 消息与 run/input。0046 migration 新增五表，不修改原生历史；0047 为 route 补充不可变的生效时间，并使已有 route 从迁移边界起接纳新消息。迁移测试覆盖原生数据和 FK 保持、已有 route 初始化、旧 tuple 保持。
+F0 真实临时 SQLite 和 loopback HTTP 探针通过。F1 包含 identity slot、challenge、不可变 route、connection epoch、入站 receipt，直接复用原生 Human 消息与 run/input。`0049_feishu_identity_inbound` 新增五表，不修改原生历史；`0050_feishu_route_activation` 为 route 补充不可变的生效时间，并使已有 route 从迁移边界起接纳新消息。迁移测试覆盖原生数据和 FK 保持、已有 route 初始化、旧 tuple 保持。
 
 父线程独立复核发现 epoch 早于路由生效时，未见过的旧消息可能进入新绑定或新 DM。两个定向用例实际复现 accepted，再加入 pre_route_message 检查后通过。该结果与 worker 移除外层事务的 atomicity RED 分开记录。证据分别为 `/tmp/sprout-feishu-route-red.log`、`/tmp/sprout-feishu-route-migration-green.log` 与 `/tmp/sprout-feishu-atomicity-red.log`。
 
@@ -76,7 +76,7 @@ F2 分为两个依赖单元。F2a 实现可被后续 adapter 复用的投递端�
 
 ### F2a 投递与授权（已集成）
 
-F2a 实现 commit 为 `5c67e66`，父线程在 `8d241ee` 补登 CI inventory，审查修正为 `ce2781e`，三者已 fast-forward 到根工作区。0048 仅新增四张 channel 表，既有表、行和 FK 不变。
+F2a 实现 commit 为 `5c67e66`，父线程在 `8d241ee` 补登 CI inventory，审查修正为 `ce2781e`，三者已 fast-forward 到根工作区。`0051_channel_delivery` 仅新增四张 channel 表，既有表、行和 FK 不变。
 
 捕获点位于原生消息提交事务内：`sendMessage` 与 `deliverAssistantEvents` 在写消息后调用 `captureFeishuMessage`，后者要求当前处于事务中，只按当时有效的 route 与 epoch 建行，不扫描历史、不补发离线输出。投影只接受已持久化的助理文本、严格形状的助理事件事实和 watch 摘要；未知或损坏事实、raw watch 内容、Web 的 `assistantEventSummary` 兜底都返回不可投递。周期性事件只用持久化的模型摘要正文。
 
@@ -123,13 +123,13 @@ F3 实现为 `d0029f0`，父线程门禁修正为 `f602517`，已 fast-forward �
 
 实际验证：`npx tsc --noEmit`、`npx vp check`（0 error，17 条既有 warning）、fmt、diff check 通过；全量 CI 143 文件、1280 项通过（`/tmp/feishu-f3-ci/run2.log`）。功能走查在隔离实例（`/tmp/feishu-f3-ui/app.sqlite`，端口 3311，假 appId 与假 secret）用真实浏览器完成：未绑定只列出 Jovi 的助理私聊且排除 worker 身份、发起绑定得到 4-4 分组码、刷新后不给码、重新发起生成新码、未在飞书确认时点击“我已在飞书确认”得到 conflict 提示、播种 slot 后显示已绑定与连接状态、换绑不出现与当前目标重复的选项、解绑确认后回到未绑定。1440 与 390 两档均无横向溢出，截图在 `.verify/feishu-ui/`（该目录已 gitignore）。
 
-真实评审实例（LAN `http://10.0.0.13:3300`，Project `prj_ad9fd1a5`）在合入后先报 `internal`，原因是该库只应用到 `0045`，缺 `0046`、`0047`、`0048` 三份迁移，飞书五张表不存在。补跑 `pnpm db:migrate`（迁移前备份到 `.verify/human-review/run.JtVeWy/backups/app-before-feishu-migrate.sqlite`）后，页面正确渲染「未配置」，标签间跳转保持 `tab` 参数。当时的环境变量配置说明已在 F4 删除；渠道配置现存于 Project 级 `channel_config`，本单元不提供配置表单。
+真实评审实例（LAN `http://10.0.0.13:3300`，Project `prj_ad9fd1a5`）在合入后先报 `internal`，原因是该库只应用到 `0048`，缺 `0049`、`0050`、`0051` 三份迁移，飞书五张表不存在。补跑 `pnpm db:migrate`（迁移前备份到 `.verify/human-review/run.JtVeWy/backups/app-before-feishu-migrate.sqlite`）后，页面正确渲染「未配置」，标签间跳转保持 `tab` 参数。当时的环境变量配置说明已在 F4 删除；渠道配置现存于 Project 级 `channel_config`，本单元不提供配置表单。
 
 已由 Human 答复的三点现在都已落地：换绑必须再走一次飞书确认（确认那一刻才关旧路由并建立新绑定）、待确认的确认码跨刷新保留（`feishu_challenge` 加明文 `code` 列）、绑定页显示已绑定账号的飞书昵称（`feishu_identity_slot.nickname`，确认后异步补写）。仍未验证：确认码过期分支的实际渲染（要等 10 分钟，逻辑由文案测试与注入时钟覆盖），以及真实租户是否授予 `contact:user.base:readonly` —— 昵称成功路径只有注入假 transport 的测试证据，读不到时界面回退为脱敏 open_id。
 
 ### F5 单实例租约（已集成）
 
-租约表 `feishu_connection_lease`（迁移 `drizzle/0050_feishu_connection_lease.sql`）按 `app_id` 一行，持有者用一条语句同时承担抢占与续约：
+租约表 `feishu_connection_lease`（迁移 `drizzle/0053_feishu_connection_lease.sql`）按 `app_id` 一行，持有者用一条语句同时承担抢占与续约：
 
 ```sql
 INSERT INTO feishu_connection_lease(app_id, holder, expires_at_ms) VALUES(?, ?, ?)

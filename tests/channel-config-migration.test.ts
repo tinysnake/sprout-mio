@@ -11,7 +11,7 @@ function legacyDatabase() {
   const folder = join(directory, "before");
   mkdirSync(join(folder, "meta"), { recursive: true });
   const journal = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8"));
-  journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 49);
+  journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 52);
   for (const entry of journal.entries)
     copyFileSync(join("drizzle", `${entry.tag}.sql`), join(folder, `${entry.tag}.sql`));
   writeFileSync(join(folder, "meta/_journal.json"), JSON.stringify(journal));
@@ -28,7 +28,7 @@ function legacyDatabase() {
   return { directory, file, before };
 }
 
-it("upgrades 0048 preserving bindings, history and durable delivery and dropping transient challenges", () => {
+it("upgrades 0051 preserving bindings, history and durable delivery and dropping transient challenges", () => {
   const { directory, file, before } = legacyDatabase();
   try {
     before.sqlite.exec(`
@@ -55,7 +55,7 @@ it("upgrades 0048 preserving bindings, history and durable delivery and dropping
       expect(preserved.map((name) => after.sqlite.prepare(`SELECT * FROM ${name}`).all())).toEqual(
         rows,
       );
-      // 0051 给挑战码加明文列，所以先丢掉十分钟内的临时码，不猜旧码的明文。
+      // 0054 给挑战码加明文列，所以先丢掉十分钟内的临时码，不猜旧码的明文。
       expect(after.sqlite.prepare("SELECT * FROM feishu_challenge").all()).toHaveLength(0);
       expect(
         after.sqlite.prepare("SELECT * FROM feishu_identity_slot ORDER BY project_id").all(),
@@ -108,7 +108,7 @@ it("refuses an unattributable legacy slot without losing or inventing data", () 
         after.sqlite.prepare("SELECT human_id,app_id FROM feishu_identity_slot").all(),
       ).toEqual([{ human_id: "human", app_id: "app" }]);
       expect(after.sqlite.prepare("SELECT count(*) n FROM __drizzle_migrations").get()).toEqual({
-        n: 49,
+        n: 52,
       });
       expect(
         after.sqlite.prepare("SELECT name FROM sqlite_master WHERE name='channel_config'").get(),
