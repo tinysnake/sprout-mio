@@ -112,11 +112,9 @@ async function open(config) {
   const { registerSproutStatus, setSproutHostFacts } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/status.ts"),
   );
-  const remoteClient = createRemoteClient(config.remote, { instanceId: config.instanceId });
-  const inheritHostResources = config.resources.kind === "enabled";
-  const remoteClient = createRemoteClient(config.remote);
   const assistant = config.purpose === "assistant";
   assistantMode = assistant;
+  const remoteClient = createRemoteClient(config.remote, { instanceId: config.instanceId });
   const { registerAssistantTools } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/assistant-tools.ts"),
   );
