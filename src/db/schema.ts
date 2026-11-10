@@ -2791,18 +2791,51 @@ export const mcpFrame = sqliteTable(
   ],
 );
 
+export const channelConfig = sqliteTable(
+  "channel_config",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    kind: text("kind").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    settings: text("settings", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    secrets: text("secrets", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    revision: integer("revision").notNull().default(0),
+    updatedAtMs: integer("updated_at_ms").notNull(),
+    updatedByHumanId: text("updated_by_human_id").references(() => user.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.kind] }),
+    check("channel_config_enabled_check", sql`${table.enabled} in (0,1)`),
+    check("channel_config_revision_check", sql`${table.revision} >= 0`),
+    check("channel_config_settings_json_check", sql`json_valid(${table.settings})`),
+    check("channel_config_secrets_json_check", sql`json_valid(${table.secrets})`),
+  ],
+);
+
 export const feishuIdentitySlot = sqliteTable(
   "feishu_identity_slot",
   {
     humanId: text("human_id")
-      .primaryKey()
+      .notNull()
       .references(() => user.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
     revision: integer("revision").notNull().default(0),
     appId: text("app_id"),
     tenantKey: text("tenant_key"),
     openId: text("open_id"),
   },
   (t) => [
+    primaryKey({ columns: [t.humanId, t.projectId] }),
     uniqueIndex("feishu_identity_active_unique").on(t.appId, t.tenantKey, t.openId),
     check("feishu_slot_revision", sql`${t.revision} >= 0`),
     check(
@@ -2816,9 +2849,7 @@ export const feishuChallenge = sqliteTable(
   "feishu_challenge",
   {
     hash: text("hash").primaryKey(),
-    humanId: text("human_id")
-      .notNull()
-      .references(() => feishuIdentitySlot.humanId),
+    humanId: text("human_id").notNull(),
     revision: integer("revision").notNull(),
     projectId: text("project_id")
       .notNull()
@@ -2828,6 +2859,10 @@ export const feishuChallenge = sqliteTable(
     consumedAtMs: integer("consumed_at_ms"),
   },
   (t) => [
+    foreignKey({
+      columns: [t.humanId, t.projectId],
+      foreignColumns: [feishuIdentitySlot.humanId, feishuIdentitySlot.projectId],
+    }),
     foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
   ],
 );
@@ -2836,9 +2871,7 @@ export const feishuRoute = sqliteTable(
   "feishu_route",
   {
     id: text("id").primaryKey(),
-    humanId: text("human_id")
-      .notNull()
-      .references(() => feishuIdentitySlot.humanId),
+    humanId: text("human_id").notNull(),
     revision: integer("revision").notNull(),
     appId: text("app_id").notNull(),
     tenantKey: text("tenant_key").notNull(),
@@ -2852,9 +2885,13 @@ export const feishuRoute = sqliteTable(
   },
   (t) => [
     foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
-    uniqueIndex("feishu_route_generation_unique").on(t.humanId, t.revision),
+    foreignKey({
+      columns: [t.humanId, t.projectId],
+      foreignColumns: [feishuIdentitySlot.humanId, feishuIdentitySlot.projectId],
+    }),
+    uniqueIndex("feishu_route_generation_unique").on(t.humanId, t.projectId, t.revision),
     uniqueIndex("feishu_route_active_unique")
-      .on(t.humanId)
+      .on(t.humanId, t.projectId)
       .where(sql`${t.closedAtMs} IS NULL`),
   ],
 );

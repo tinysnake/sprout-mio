@@ -40,12 +40,13 @@ export async function channelNativeFixture() {
         now,
       );
       const binding = feishu.finishFeishuChallenge(
+        project.id,
         challenge.challenge,
         identity,
         ctx.requestId,
         now,
       );
-      return { binding, scope: feishu.captureFeishuAdmissionScope(identity, epoch)! };
+      return { binding, scope: feishu.captureFeishuAdmissionScope(project.id, identity, epoch)! };
     }
     function principal() {
       const existing = runs

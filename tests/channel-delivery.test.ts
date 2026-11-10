@@ -55,7 +55,7 @@ it("captures Web and Feishu-origin replies in their native commit and rolls sour
     sqlite.prepare("SELECT id FROM message WHERE body='rolled-back reply'").get(),
   ).toBeUndefined();
   const first = s.reply("Web entrance answer");
-  const scope = f.feishu.captureFeishuAdmissionScope(s.identity, s.epoch)!;
+  const scope = f.feishu.captureFeishuAdmissionScope(s.project.id, s.identity, s.epoch)!;
   expect(
     f.feishu.admitFeishuText(
       {
@@ -129,14 +129,14 @@ it("never scans historical outputs at bind/reconnect/switch and excludes Human/w
   const otherDm = f.chats.createDirectChat(s.project.id, other.id, s.ctx).chat;
   f.feishu.switchFeishuTarget(
     { projectId: s.project.id, chatId: otherDm.id },
-    f.feishu.getFeishuBinding(s.ctx).revision,
+    f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
     s.ctx,
   );
   s.reply("old DM");
   expect(rows()).toHaveLength(before + 1);
   f.feishu.switchFeishuTarget(
     { projectId: s.project.id, chatId: s.dm.id },
-    f.feishu.getFeishuBinding(s.ctx).revision,
+    f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
     s.ctx,
   );
   expect(rows()).toHaveLength(before + 1);
@@ -174,7 +174,11 @@ it.each(["unbind", "reconnect", "rights"] as const)(
         expect(sqlite.inTransaction).toBe(false);
         try {
           if (change === "unbind")
-            f.feishu.unbindFeishuIdentity(f.feishu.getFeishuBinding(s.ctx).revision, s.ctx);
+            f.feishu.unbindFeishuIdentity(
+              s.project.id,
+              f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
+              s.ctx,
+            );
           if (change === "reconnect") s.reconnect();
           if (change === "rights") f.agents.removeProjectMember(s.project.id, s.helper.id, s.ctx);
         } catch (error) {

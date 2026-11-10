@@ -45,8 +45,14 @@ function scenario(identity = verified(`app-${++sequence}`)) {
   const epoch = lifecycle.ready(at);
   function bind() {
     const { challenge } = feishu.startFeishuChallenge(target, ctx, at);
-    const binding = feishu.finishFeishuChallenge(challenge, identity, ctx.requestId, at);
-    const scope = feishu.captureFeishuAdmissionScope(identity, epoch);
+    const binding = feishu.finishFeishuChallenge(
+      project.id,
+      challenge,
+      identity,
+      ctx.requestId,
+      at,
+    );
+    const scope = feishu.captureFeishuAdmissionScope(project.id, identity, epoch);
     expect(scope).toBeDefined();
     return { binding, scope: scope! };
   }
@@ -68,12 +74,19 @@ it("one platform identity cannot race two Humans; one Human cannot replace a bou
   const second = scenario(shared);
   const a = feishu.startFeishuChallenge(first.target, first.ctx, at);
   const b = feishu.startFeishuChallenge(second.target, second.ctx, at);
-  feishu.finishFeishuChallenge(a.challenge, shared, first.ctx.requestId, at);
+  feishu.finishFeishuChallenge(first.project.id, a.challenge, shared, first.ctx.requestId, at);
   bindingError(
-    () => feishu.finishFeishuChallenge(b.challenge, shared, second.ctx.requestId, at),
+    () =>
+      feishu.finishFeishuChallenge(
+        second.project.id,
+        b.challenge,
+        shared,
+        second.ctx.requestId,
+        at,
+      ),
     "identity_conflict",
   );
-  expect(feishu.getFeishuBinding(second.ctx).bound).toBe(false);
+  expect(feishu.getFeishuBinding(second.project.id, second.ctx).bound).toBe(false);
   bindingError(() => feishu.startFeishuChallenge(first.target, first.ctx, at), "already_bound");
   expect(
     sqlite
@@ -83,8 +96,52 @@ it("one platform identity cannot race two Humans; one Human cannot replace a bou
       .get(shared.appId, shared.tenantKey, shared.openId),
   ).toEqual({ n: 1 });
   const other = verified(shared.appId, "different-open");
-  feishu.finishFeishuChallenge(b.challenge, other, second.ctx.requestId, at);
-  expect(feishu.getFeishuBinding(second.ctx).bound).toBe(true);
+  feishu.finishFeishuChallenge(second.project.id, b.challenge, other, second.ctx.requestId, at);
+  expect(feishu.getFeishuBinding(second.project.id, second.ctx).bound).toBe(true);
+});
+
+it("keeps one Human bound independently in two Projects and rejects cross-Project ingress", () => {
+  const s = scenario();
+  const first = s.bind();
+  const other = projects.createProject({ name: "Second channel" }, s.ctx);
+  agents.addProjectMember(other.id, s.helper.id, s.ctx);
+  const dm = chats.createDirectChat(other.id, s.helper.id, s.ctx).chat;
+  const identity = {
+    ...s.identity,
+    appId: "second-app",
+    openId: "second-open",
+  } as VerifiedFeishuIdentity;
+  const epoch = feishu
+    .createFeishuConnectionLifecycle(identity.appId, s.ctx.requestId, at)
+    .ready(at);
+  const challenge = feishu.startFeishuChallenge({ projectId: other.id, chatId: dm.id }, s.ctx, at);
+  bindingError(
+    () =>
+      feishu.finishFeishuChallenge(
+        s.project.id,
+        challenge.challenge,
+        identity,
+        s.ctx.requestId,
+        at,
+      ),
+    "invalid_challenge",
+  );
+  const second = feishu.finishFeishuChallenge(
+    other.id,
+    challenge.challenge,
+    identity,
+    s.ctx.requestId,
+    at,
+  );
+  expect(second.revision).toBe(first.binding.revision);
+  expect(feishu.getFeishuBinding(s.project.id, s.ctx).bound).toBe(true);
+  expect(feishu.getFeishuBinding(other.id, s.ctx).bound).toBe(true);
+  expect(feishu.captureFeishuAdmissionScope(s.project.id, identity, epoch)).toBeUndefined();
+  expect(feishu.captureFeishuAdmissionScope(other.id, s.identity, s.epoch)).toBeUndefined();
+  expect(feishu.captureFeishuAdmissionScope(other.id, identity, epoch)?.projectId).toBe(other.id);
+  feishu.unbindFeishuIdentity(s.project.id, first.binding.revision, s.ctx, at);
+  expect(feishu.getFeishuBinding(other.id, s.ctx).bound).toBe(true);
+  expect(feishu.captureFeishuAdmissionScope(other.id, identity, epoch)).toBeDefined();
 });
 
 it("challenge stores only a digest, expires at ten minutes, and reissue/replay cannot bind", () => {
@@ -96,12 +153,14 @@ it("challenge stores only a digest, expires at ten minutes, and reissue/replay c
     current.challenge,
   );
   bindingError(
-    () => feishu.finishFeishuChallenge(old.challenge, s.identity, s.ctx.requestId, at),
+    () =>
+      feishu.finishFeishuChallenge(s.project.id, old.challenge, s.identity, s.ctx.requestId, at),
     "invalid_challenge",
   );
   bindingError(
     () =>
       feishu.finishFeishuChallenge(
+        s.project.id,
         current.challenge,
         s.identity,
         s.ctx.requestId,
@@ -109,9 +168,16 @@ it("challenge stores only a digest, expires at ten minutes, and reissue/replay c
       ),
     "invalid_challenge",
   );
-  feishu.finishFeishuChallenge(current.challenge, s.identity, s.ctx.requestId, at);
+  feishu.finishFeishuChallenge(s.project.id, current.challenge, s.identity, s.ctx.requestId, at);
   bindingError(
-    () => feishu.finishFeishuChallenge(current.challenge, s.identity, s.ctx.requestId, at),
+    () =>
+      feishu.finishFeishuChallenge(
+        s.project.id,
+        current.challenge,
+        s.identity,
+        s.ctx.requestId,
+        at,
+      ),
     "invalid_challenge",
   );
 });
@@ -126,22 +192,26 @@ it("challenge code stays hand-typeable in the Feishu DM and accepts case or sepa
   expect(feishu.isFeishuChallengeCode("1234-567")).toBe(false);
   expect(feishu.isFeishuChallengeCode("IIII-LLLL")).toBe(false);
   const typed = ` ${first.challenge.replace("-", "").toLowerCase()} `;
-  expect(feishu.finishFeishuChallenge(typed, s.identity, s.ctx.requestId, at).bound).toBe(true);
+  expect(
+    feishu.finishFeishuChallenge(s.project.id, typed, s.identity, s.ctx.requestId, at).bound,
+  ).toBe(true);
 });
 
 it("failed binding audit hook rolls back identity, route and consumed challenge; retry remains authorized", () => {
   const s = scenario();
   const { challenge } = feishu.startFeishuChallenge(s.target, s.ctx, at);
   expect(() =>
-    feishu.finishFeishuChallenge(challenge, s.identity, s.ctx.requestId, at, {
+    feishu.finishFeishuChallenge(s.project.id, challenge, s.identity, s.ctx.requestId, at, {
       afterWrite: () => {
         throw new Error("binding hook failed");
       },
     }),
   ).toThrow("binding hook failed");
-  expect(feishu.getFeishuBinding(s.ctx).bound).toBe(false);
-  expect(feishu.captureFeishuAdmissionScope(s.identity, s.epoch)).toBeUndefined();
-  expect(feishu.finishFeishuChallenge(challenge, s.identity, s.ctx.requestId, at).bound).toBe(true);
+  expect(feishu.getFeishuBinding(s.project.id, s.ctx).bound).toBe(false);
+  expect(feishu.captureFeishuAdmissionScope(s.project.id, s.identity, s.epoch)).toBeUndefined();
+  expect(
+    feishu.finishFeishuChallenge(s.project.id, challenge, s.identity, s.ctx.requestId, at).bound,
+  ).toBe(true);
 });
 
 it("binding rejects worker, archived, unauthorized and cross-Project targets; finish rechecks permission", () => {
@@ -164,10 +234,17 @@ it("binding rejects worker, archived, unauthorized and cross-Project targets; fi
   const pending = feishu.startFeishuChallenge(s.target, s.ctx, at);
   agents.removeProjectMember(s.project.id, s.helper.id, s.ctx);
   bindingError(
-    () => feishu.finishFeishuChallenge(pending.challenge, s.identity, s.ctx.requestId, at),
+    () =>
+      feishu.finishFeishuChallenge(
+        s.project.id,
+        pending.challenge,
+        s.identity,
+        s.ctx.requestId,
+        at,
+      ),
     "target_unavailable",
   );
-  expect(feishu.getFeishuBinding(s.ctx).bound).toBe(false);
+  expect(feishu.getFeishuBinding(s.project.id, s.ctx).bound).toBe(false);
 });
 
 for (const change of ["binding", "switch"] as const) {
@@ -176,7 +253,13 @@ for (const change of ["binding", "switch"] as const) {
     const activation = new Date(at.getTime() + 20_000);
     if (change === "binding") {
       const { challenge } = feishu.startFeishuChallenge(s.target, s.ctx, at);
-      feishu.finishFeishuChallenge(challenge, s.identity, s.ctx.requestId, activation);
+      feishu.finishFeishuChallenge(
+        s.project.id,
+        challenge,
+        s.identity,
+        s.ctx.requestId,
+        activation,
+      );
     } else {
       const { binding } = s.bind();
       const helper = agents.createAgentProfile({ name: "Next", purpose: "assistant" }, s.ctx);
@@ -189,7 +272,7 @@ for (const change of ["binding", "switch"] as const) {
         activation,
       );
     }
-    const scope = feishu.captureFeishuAdmissionScope(s.identity, s.epoch)!;
+    const scope = feishu.captureFeishuAdmissionScope(s.project.id, s.identity, s.epoch)!;
     const before = counts();
     expect(
       feishu.admitFeishuText(
@@ -321,7 +404,7 @@ it("switch requires current revision and access, freezes the previous route, and
   expect(feishu.admitFeishuText(text(s.identity, "late-original"), scope, s.ctx.requestId)).toEqual(
     { status: "rejected", reason: "inactive_route" },
   );
-  const nextScope = feishu.captureFeishuAdmissionScope(s.identity, s.epoch)!;
+  const nextScope = feishu.captureFeishuAdmissionScope(s.project.id, s.identity, s.epoch)!;
   expect(feishu.admitFeishuText(event, nextScope, s.ctx.requestId)).toEqual({
     status: "rejected",
     reason: "receipt_scope_mismatch",
@@ -340,12 +423,12 @@ it("unbind preserves accepted history/work and invalidates old scopes and pendin
   feishu.admitFeishuText(text(s.identity), scope, s.ctx.requestId);
   const before = counts();
   bindingError(
-    () => feishu.unbindFeishuIdentity(binding.revision - 1, s.ctx, at),
+    () => feishu.unbindFeishuIdentity(s.project.id, binding.revision - 1, s.ctx, at),
     "revision_conflict",
   );
-  const unbound = feishu.unbindFeishuIdentity(binding.revision, s.ctx, at);
+  const unbound = feishu.unbindFeishuIdentity(s.project.id, binding.revision, s.ctx, at);
   expect(unbound.bound).toBe(false);
-  expect(feishu.captureFeishuAdmissionScope(s.identity, s.epoch)).toBeUndefined();
+  expect(feishu.captureFeishuAdmissionScope(s.project.id, s.identity, s.epoch)).toBeUndefined();
   expect(feishu.admitFeishuText(text(s.identity, "after-unbind"), scope, s.ctx.requestId)).toEqual({
     status: "rejected",
     reason: "identity_mismatch",
@@ -355,9 +438,16 @@ it("unbind preserves accepted history/work and invalidates old scopes and pendin
     status: "queued",
   });
   const pending = feishu.startFeishuChallenge(s.target, s.ctx, at);
-  feishu.unbindFeishuIdentity(pending.revision, s.ctx, at);
+  feishu.unbindFeishuIdentity(s.project.id, pending.revision, s.ctx, at);
   bindingError(
-    () => feishu.finishFeishuChallenge(pending.challenge, s.identity, s.ctx.requestId, at),
+    () =>
+      feishu.finishFeishuChallenge(
+        s.project.id,
+        pending.challenge,
+        s.identity,
+        s.ctx.requestId,
+        at,
+      ),
     "invalid_challenge",
   );
   expect(chats.listMessages(s.dm.id, s.ctx)).toHaveLength(1);
@@ -368,11 +458,17 @@ it("a newly bound identity cannot retrieve an old accepted receipt or choose its
   const { scope, binding } = s.bind();
   const event = text(s.identity);
   feishu.admitFeishuText(event, scope, s.ctx.requestId);
-  feishu.unbindFeishuIdentity(binding.revision, s.ctx, at);
+  feishu.unbindFeishuIdentity(s.project.id, binding.revision, s.ctx, at);
   const nextIdentity = verified(s.identity.appId, "replacement");
   const challenge = feishu.startFeishuChallenge(s.target, s.ctx, at);
-  feishu.finishFeishuChallenge(challenge.challenge, nextIdentity, s.ctx.requestId, at);
-  const current = feishu.captureFeishuAdmissionScope(nextIdentity, s.epoch)!;
+  feishu.finishFeishuChallenge(
+    s.project.id,
+    challenge.challenge,
+    nextIdentity,
+    s.ctx.requestId,
+    at,
+  );
+  const current = feishu.captureFeishuAdmissionScope(s.project.id, nextIdentity, s.epoch)!;
   expect(feishu.admitFeishuText(text(nextIdentity), current, s.ctx.requestId)).toEqual({
     status: "rejected",
     reason: "receipt_scope_mismatch",
@@ -403,7 +499,7 @@ it("a newly bound identity cannot retrieve an old accepted receipt or choose its
   };
   const changed = feishu.switchFeishuTarget(
     injected,
-    feishu.getFeishuBinding(s.ctx).revision,
+    feishu.getFeishuBinding(s.project.id, s.ctx).revision,
     s.ctx,
     at,
   );
@@ -423,7 +519,7 @@ it("disconnect/startup/reconnect end old epochs; stale close cannot close the ne
   const later = new Date(at.getTime() + 1000);
   const currentEpoch = s.lifecycle.reconnected(later);
   s.lifecycle.disconnected(s.epoch, later);
-  const current = feishu.captureFeishuAdmissionScope(s.identity, currentEpoch)!;
+  const current = feishu.captureFeishuAdmissionScope(s.project.id, s.identity, currentEpoch)!;
   expect(current).toBeDefined();
   const before = counts();
   expect(
@@ -438,10 +534,12 @@ it("disconnect/startup/reconnect end old epochs; stale close cannot close the ne
     ),
   ).toMatchObject({ status: "accepted" });
   const restarted = feishu.createFeishuConnectionLifecycle(s.identity.appId, "req_restart", later);
-  expect(feishu.captureFeishuAdmissionScope(s.identity, currentEpoch)).toBeUndefined();
+  expect(
+    feishu.captureFeishuAdmissionScope(s.project.id, s.identity, currentEpoch),
+  ).toBeUndefined();
   const newEpoch = restarted.ready(later);
   s.lifecycle.disconnected(currentEpoch, later);
-  expect(feishu.captureFeishuAdmissionScope(s.identity, newEpoch)).toBeDefined();
+  expect(feishu.captureFeishuAdmissionScope(s.project.id, s.identity, newEpoch)).toBeDefined();
 });
 
 it("unsupported inputs and missing/invalid platform timestamps never create native work", () => {

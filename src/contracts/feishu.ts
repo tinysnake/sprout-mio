@@ -28,6 +28,7 @@ export type FeishuEpoch = Readonly<{
 }>;
 
 export type FeishuAdmissionScope = Readonly<{
+  projectId: string;
   routeId: string;
   revision: number;
   epoch: FeishuEpoch;

@@ -14,7 +14,12 @@ function routeFence(route: ChannelRoute) {
   const slot = db
     .select()
     .from(feishuIdentitySlot)
-    .where(eq(feishuIdentitySlot.humanId, route.humanId))
+    .where(
+      and(
+        eq(feishuIdentitySlot.humanId, route.humanId),
+        eq(feishuIdentitySlot.projectId, route.projectId),
+      ),
+    )
     .get();
   const current = db
     .select()
@@ -57,19 +62,20 @@ export const feishuDeliveryBoundary: ChannelRouteBoundary = {
   },
 };
 
-let deliveryWake: (() => void) | null = null;
+const deliveryWakes = new Map<string, () => void>();
 
 /**
  * 服务端装配时注册的「有新投递」唤醒。领域层不能 import server，
  * 所以用这个单向钩子；没有装配时（例如纯领域测试）就退化为空闲轮询。
  */
-export function setFeishuDeliveryWake(wake: (() => void) | null) {
-  deliveryWake = wake;
+export function setFeishuDeliveryWake(projectId: string, wake: (() => void) | null) {
+  if (wake) deliveryWakes.set(projectId, wake);
+  else deliveryWakes.delete(projectId);
 }
 
 function wakeDelivery(): void {
   try {
-    deliveryWake?.();
+    for (const wake of deliveryWakes.values()) wake();
   } catch {
     // 唤醒失败不影响已经提交的投递，空闲轮询会兜住。
   }
@@ -87,7 +93,12 @@ export function captureFeishuMessage(messageId: string, now: Date) {
     const slot = db
       .select()
       .from(feishuIdentitySlot)
-      .where(eq(feishuIdentitySlot.humanId, route.humanId))
+      .where(
+        and(
+          eq(feishuIdentitySlot.humanId, route.humanId),
+          eq(feishuIdentitySlot.projectId, route.projectId),
+        ),
+      )
       .get();
     if (!slot?.appId || !slot.tenantKey || !slot.openId) continue;
     const epoch = db
@@ -119,7 +130,7 @@ export function captureFeishuMessage(messageId: string, now: Date) {
 
 export function emitNextFeishuDelivery<Prepared>(
   port: ChannelEmissionPort<Prepared>,
-  options?: { now?: () => Date; timeoutMs?: number },
+  options?: { projectId?: string; now?: () => Date; timeoutMs?: number },
 ) {
   return emitNextChannelDelivery(feishuDeliveryBoundary, port, options);
 }
@@ -139,6 +150,7 @@ export function consumeFeishuAction(
         identity.appId !== route.destination.appId ||
         identity.tenantKey !== route.destination.tenantKey ||
         identity.openId !== route.destination.openId ||
+        scope.projectId !== route.projectId ||
         scope.routeId !== route.routeId ||
         scope.revision !== route.revision ||
         scope.epoch.appId !== identity.appId

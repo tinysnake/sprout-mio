@@ -130,7 +130,7 @@ it.each(["identity", "switch", "expiry", "altered", "unknown", "permission", "co
     if (change === "switch")
       f.feishu.switchFeishuTarget(
         { projectId: s.project.id, chatId: s.dm.id },
-        f.feishu.getFeishuBinding(s.ctx).revision,
+        f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
         s.ctx,
       );
     if (change === "expiry") now = new Date(s.now.getTime() + 10 * 60_000);
@@ -160,7 +160,7 @@ it.each(["identity", "switch", "expiry", "altered", "unknown", "permission", "co
 
 it("confirms a card issued before a reconnect exactly once through the current epoch", () => {
   const s = proposal();
-  const scope = f.feishu.captureFeishuAdmissionScope(s.identity, s.reconnect())!;
+  const scope = f.feishu.captureFeishuAdmissionScope(s.project.id, s.identity, s.reconnect())!;
   expect(f.delivery.consumeFeishuAction(s.identity, scope, s.card.confirm, s.now)).toMatchObject({
     status: "submitted",
   });
@@ -188,7 +188,11 @@ it("does not disclose consumed results after identity/route/permission loss", ()
   expect(() =>
     f.delivery.consumeFeishuAction(s.identity, s.scope, s.card.confirm, s.now),
   ).toThrow();
-  f.feishu.unbindFeishuIdentity(f.feishu.getFeishuBinding(s.ctx).revision, s.ctx);
+  f.feishu.unbindFeishuIdentity(
+    s.project.id,
+    f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
+    s.ctx,
+  );
   expect(() =>
     f.delivery.consumeFeishuAction(s.identity, s.scope, s.card.confirm, s.now),
   ).toThrow();

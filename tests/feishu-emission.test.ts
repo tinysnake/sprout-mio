@@ -361,7 +361,11 @@ it("lets another writer unbind while the real HTTP response is still pending", a
   }
   // 请求已经在飞，投递不持有写事务：另一个 writer 立即可以解绑。
   expect(f.sqlite.inTransaction).toBe(false);
-  const unbound = f.feishu.unbindFeishuIdentity(f.feishu.getFeishuBinding(s.ctx).revision, s.ctx);
+  const unbound = f.feishu.unbindFeishuIdentity(
+    s.project.id,
+    f.feishu.getFeishuBinding(s.project.id, s.ctx).revision,
+    s.ctx,
+  );
   expect(unbound.bound).toBe(false);
   platform.hold = false;
   platform.mode = "accepted";

@@ -104,19 +104,31 @@ function newChallengeCode(): string {
   for (const byte of bytes) code += CHALLENGE_ALPHABET[byte & 31];
   return code;
 }
-const slotFor = (humanId: string) =>
-  db.select().from(feishuIdentitySlot).where(eq(feishuIdentitySlot.humanId, humanId)).get();
-const activeRoute = (humanId: string) =>
+const slotFor = (humanId: string, projectId: string) =>
+  db
+    .select()
+    .from(feishuIdentitySlot)
+    .where(
+      and(eq(feishuIdentitySlot.humanId, humanId), eq(feishuIdentitySlot.projectId, projectId)),
+    )
+    .get();
+const activeRoute = (humanId: string, projectId: string) =>
   db
     .select()
     .from(feishuRoute)
-    .where(and(eq(feishuRoute.humanId, humanId), isNull(feishuRoute.closedAtMs)))
+    .where(
+      and(
+        eq(feishuRoute.humanId, humanId),
+        eq(feishuRoute.projectId, projectId),
+        isNull(feishuRoute.closedAtMs),
+      ),
+    )
     .get();
 
-export function getFeishuBinding(ctx: ProjectContext): FeishuBinding {
+export function getFeishuBinding(projectId: string, ctx: ProjectContext): FeishuBinding {
   humanOnly(ctx);
-  const slot = slotFor(ctx.userId);
-  const route = activeRoute(ctx.userId);
+  const slot = slotFor(ctx.userId, projectId);
+  const route = activeRoute(ctx.userId, projectId);
   return {
     revision: slot?.revision ?? 0,
     bound: !!slot?.appId,
@@ -129,17 +141,19 @@ export function getFeishuBinding(ctx: ProjectContext): FeishuBinding {
  * 只回过期时间，不回摘要——挑战码本身只在发起时出现一次。
  */
 export function readFeishuChallenge(
+  projectId: string,
   ctx: ProjectContext,
   now = new Date(),
 ): { expiresAtMs: number } | null {
   humanOnly(ctx);
-  if (!slotFor(ctx.userId)) return null;
+  if (!slotFor(ctx.userId, projectId)) return null;
   const row = db
     .select()
     .from(feishuChallenge)
     .where(
       and(
         eq(feishuChallenge.humanId, ctx.userId),
+        eq(feishuChallenge.projectId, projectId),
         isNull(feishuChallenge.consumedAtMs),
         gt(feishuChallenge.expiresAtMs, now.getTime()),
       ),
@@ -158,12 +172,16 @@ export function startFeishuChallenge(
   return sqlite
     .transaction(() => {
       eligible(target, ctx);
-      const old = slotFor(ctx.userId);
+      const projectId = target.projectId;
+      const old = slotFor(ctx.userId, projectId);
       if (old?.appId) throw new FeishuBindingError("already_bound");
       const revision = (old?.revision ?? 0) + 1;
       db.insert(feishuIdentitySlot)
-        .values({ humanId: ctx.userId, revision })
-        .onConflictDoUpdate({ target: feishuIdentitySlot.humanId, set: { revision } })
+        .values({ humanId: ctx.userId, projectId: target.projectId, revision })
+        .onConflictDoUpdate({
+          target: [feishuIdentitySlot.humanId, feishuIdentitySlot.projectId],
+          set: { revision },
+        })
         .run();
       const code = newChallengeCode();
       const challenge = `${code.slice(0, 4)}-${code.slice(4)}`;
@@ -207,6 +225,7 @@ function insertRoute(
 }
 
 export function finishFeishuChallenge(
+  projectId: string,
   opaque: string,
   identity: VerifiedFeishuIdentity,
   requestId: string,
@@ -223,9 +242,10 @@ export function finishFeishuChallenge(
           .from(feishuChallenge)
           .where(eq(feishuChallenge.hash, digest(code)))
           .get();
-      const slot = challenge && slotFor(challenge.humanId);
+      const slot = challenge && slotFor(challenge.humanId, projectId);
       if (
         !challenge ||
+        challenge.projectId !== projectId ||
         !slot ||
         challenge.consumedAtMs !== null ||
         challenge.expiresAtMs <= now.getTime() ||
@@ -258,7 +278,12 @@ export function finishFeishuChallenge(
           tenantKey: identity.tenantKey,
           openId: identity.openId,
         })
-        .where(eq(feishuIdentitySlot.humanId, slot.humanId))
+        .where(
+          and(
+            eq(feishuIdentitySlot.humanId, slot.humanId),
+            eq(feishuIdentitySlot.projectId, projectId),
+          ),
+        )
         .run();
       db.update(feishuChallenge)
         .set({ consumedAtMs: now.getTime() })
@@ -271,23 +296,29 @@ export function finishFeishuChallenge(
         { projectId: challenge.projectId, chatId: challenge.chatId },
         hooks,
       );
-      return getFeishuBinding(ctx);
+      return getFeishuBinding(projectId, ctx);
     })
     .immediate();
 }
 
-function expectedSlot(ctx: ProjectContext, expectedRevision: number) {
+function expectedSlot(projectId: string, ctx: ProjectContext, expectedRevision: number) {
   humanOnly(ctx);
-  const slot = slotFor(ctx.userId);
+  const slot = slotFor(ctx.userId, projectId);
   if (!slot || slot.revision !== expectedRevision)
     throw new FeishuBindingError("revision_conflict");
   return slot;
 }
 
-function closeRoutes(humanId: string, now: Date) {
+function closeRoutes(humanId: string, projectId: string, now: Date) {
   db.update(feishuRoute)
     .set({ closedAtMs: now.getTime() })
-    .where(and(eq(feishuRoute.humanId, humanId), isNull(feishuRoute.closedAtMs)))
+    .where(
+      and(
+        eq(feishuRoute.humanId, humanId),
+        eq(feishuRoute.projectId, projectId),
+        isNull(feishuRoute.closedAtMs),
+      ),
+    )
     .run();
 }
 
@@ -300,14 +331,20 @@ export function switchFeishuTarget(
 ): FeishuBinding {
   return sqlite
     .transaction(() => {
-      const slot = expectedSlot(ctx, expectedRevision);
-      if (!slot.appId || !slot.tenantKey || !slot.openId) throw new FeishuBindingError("not_bound");
+      const projectId = target.projectId;
       eligible(target, ctx);
-      closeRoutes(ctx.userId, now);
+      const slot = expectedSlot(projectId, ctx, expectedRevision);
+      if (!slot.appId || !slot.tenantKey || !slot.openId) throw new FeishuBindingError("not_bound");
+      closeRoutes(ctx.userId, projectId, now);
       const revision = slot.revision + 1;
       db.update(feishuIdentitySlot)
         .set({ revision })
-        .where(eq(feishuIdentitySlot.humanId, ctx.userId))
+        .where(
+          and(
+            eq(feishuIdentitySlot.humanId, ctx.userId),
+            eq(feishuIdentitySlot.projectId, projectId),
+          ),
+        )
         .run();
       insertRoute(
         ctx.userId,
@@ -317,12 +354,13 @@ export function switchFeishuTarget(
         now,
       );
       audit("target_switched", ctx.requestId, target, hooks);
-      return getFeishuBinding(ctx);
+      return getFeishuBinding(projectId, ctx);
     })
     .immediate();
 }
 
 export function unbindFeishuIdentity(
+  projectId: string,
   expectedRevision: number,
   ctx: ProjectContext,
   now = new Date(),
@@ -330,8 +368,8 @@ export function unbindFeishuIdentity(
 ): FeishuBinding {
   return sqlite
     .transaction(() => {
-      const slot = expectedSlot(ctx, expectedRevision);
-      closeRoutes(ctx.userId, now);
+      const slot = expectedSlot(projectId, ctx, expectedRevision);
+      closeRoutes(ctx.userId, projectId, now);
       db.update(feishuIdentitySlot)
         .set({
           revision: slot.revision + 1,
@@ -339,10 +377,15 @@ export function unbindFeishuIdentity(
           tenantKey: null,
           openId: null,
         })
-        .where(eq(feishuIdentitySlot.humanId, ctx.userId))
+        .where(
+          and(
+            eq(feishuIdentitySlot.humanId, ctx.userId),
+            eq(feishuIdentitySlot.projectId, projectId),
+          ),
+        )
         .run();
       audit("identity_unbound", ctx.requestId, undefined, hooks);
-      return getFeishuBinding(ctx);
+      return getFeishuBinding(projectId, ctx);
     })
     .immediate();
 }
@@ -417,13 +460,15 @@ function identitySlot(identity: VerifiedFeishuIdentity) {
 }
 
 export function captureFeishuAdmissionScope(
+  projectId: string,
   identity: VerifiedFeishuIdentity,
   epoch: FeishuEpoch,
 ): FeishuAdmissionScope | undefined {
   return sqlite
     .transaction(() => {
       const slot = identitySlot(identity);
-      const route = slot && activeRoute(slot.humanId);
+      const route =
+        slot?.projectId === projectId ? activeRoute(slot.humanId, projectId) : undefined;
       const currentEpoch = db
         .select()
         .from(feishuConnectionEpoch)
@@ -436,7 +481,7 @@ export function captureFeishuAdmissionScope(
         )
         .get();
       if (!slot || !route || !currentEpoch || epoch.appId !== identity.appId) return undefined;
-      return { routeId: route.id, revision: slot.revision, epoch };
+      return { projectId, routeId: route.id, revision: slot.revision, epoch };
     })
     .immediate();
 }
@@ -476,7 +521,7 @@ export function admitFeishuText(
       if (event.createdAtMs! < epoch.openedAtMs) return reject("pre_epoch_message");
       const slot = identitySlot(event.identity);
       if (!slot) return reject("identity_mismatch");
-      const route = activeRoute(slot.humanId);
+      const route = activeRoute(slot.humanId, scope.projectId);
       if (
         !route ||
         route.id !== scope.routeId ||

@@ -51,30 +51,20 @@ function bindingCode(error: unknown): BindingCode | undefined {
 }
 
 async function serverDeps() {
-  const [session, domain, view, registry, settings] = await Promise.all([
+  const [authModule, domain, view, registry] = await Promise.all([
     import("../session"),
     import("../../domain/feishu"),
     import("../feishu/view"),
     import("../feishu/registry"),
-    import("../../lib/config"),
   ]);
   return {
-    requireSession: session.requireSession,
+    requireSession: authModule.requireSession,
     domain,
     view,
     registry,
-    config: settings.config,
   };
 }
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
-
-function isConfigured(deps: ServerDeps): boolean {
-  return (
-    deps.config.FEISHU_CHANNEL_ENABLED &&
-    deps.config.FEISHU_APP_ID.length > 0 &&
-    deps.config.FEISHU_APP_SECRET.length > 0
-  );
-}
 
 function currentView(
   deps: ServerDeps,
@@ -84,8 +74,7 @@ function currentView(
   return deps.view.buildFeishuBindingView({
     ctx: context,
     projectId,
-    configured: isConfigured(deps),
-    connection: deps.registry.feishuConnectionSnapshot(),
+    connection: deps.registry.feishuConnectionSnapshot(projectId),
   });
 }
 
@@ -137,7 +126,7 @@ export async function startFeishuChallengeBoundary(
     const parsed = feishuStartChallengeInput.safeParse(raw);
     if (!parsed.success) return fail(toAppError(parsed.error, requestId));
     const { projectId, chatId, expectedRevision } = parsed.data;
-    const binding = deps.domain.getFeishuBinding(context);
+    const binding = deps.domain.getFeishuBinding(projectId, context);
     if (binding.revision !== expectedRevision)
       return fail({ ...BINDING_MESSAGES.revision_conflict, requestId });
     const started = deps.domain.startFeishuChallenge({ projectId, chatId }, context);
@@ -166,7 +155,7 @@ export async function finishFeishuBindingBoundary(
   return feishuBoundary(headers, requestId, (deps, context) => {
     const parsed = feishuRevisionInput.safeParse(raw);
     if (!parsed.success) return fail(toAppError(parsed.error, requestId));
-    const binding = deps.domain.getFeishuBinding(context);
+    const binding = deps.domain.getFeishuBinding(parsed.data.projectId, context);
     if (binding.revision !== parsed.data.expectedRevision)
       return fail({ ...BINDING_MESSAGES.revision_conflict, requestId });
     if (!binding.bound)
@@ -203,7 +192,7 @@ export async function unbindFeishuBindingBoundary(
   return feishuBoundary(headers, requestId, (deps, context) => {
     const parsed = feishuRevisionInput.safeParse(raw);
     if (!parsed.success) return fail(toAppError(parsed.error, requestId));
-    deps.domain.unbindFeishuIdentity(parsed.data.expectedRevision, context);
+    deps.domain.unbindFeishuIdentity(parsed.data.projectId, parsed.data.expectedRevision, context);
     deps.registry.wakeFeishuDelivery();
     return ok(currentView(deps, context, parsed.data.projectId), requestId);
   });

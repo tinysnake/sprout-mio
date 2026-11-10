@@ -93,13 +93,13 @@ F2a 实现 commit 为 `5c67e66`，父线程在 `8d241ee` 补登 CI inventory，�
 F2 必须证明 armed attempt 在 begin 前已持久提交，避免网络请求逃逸后失去恢复记录；当前 F0 证明同步请求与 writer 边界，不替代该崩溃恢复验证。旧 lifecycle 的 ready/reconnected 也能关闭较新实例的 epoch，因此实际装配必须只保留单一 owner，并使已停止或已替换 generation 的 callback 不得 reopen、close 或接纳输入。该项在没有 SDK 装配路径的 F1 中未被视为已暴露漏洞，F2b 必须提供实际反证测试。
 ### F2b 传输装配（已集成）
 
-F2b 实现 commit 为 `6808f49`，父线程补 CI inventory 与配置契约用例 `8f36be9`、`4f1d4b2`，审查修正为 `62f8664`，已 fast-forward 到根工作区。唯一新增依赖是 `@larksuiteoapi/node-sdk@1.76.0`；`FEISHU_CHANNEL_ENABLED` 默认 false，关闭时运行时不创建、不注册定时器、不建 socket。
+F2b 实现 commit 为 `6808f49`，父线程补 CI inventory 与配置契约用例 `8f36be9`、`4f1d4b2`，审查修正为 `62f8664`，已 fast-forward 到根工作区。唯一新增依赖是 `@larksuiteoapi/node-sdk@1.76.0`；当时的渠道开关默认关闭，关闭时运行时不创建、不注册定时器、不建 socket；F4 后改由 Project 级 `channel_config.enabled` 决定。
 
 装配在 `src/server/runtime.ts` 由配置驱动：启用时创建 runtime、注册唤醒、在 shutdown 与启动失败路径里 stop。`src/server/feishu/owner.ts` 按 appId 维持单一 owner，generation 每次 start 递增，所有 WS callback 与 handler 派发前先过 `live()` 围栏，因此被替换或已停止的 client 既不能开户 epoch，也不能关闭当前 epoch 或接纳输入。入站 `src/server/feishu/ingress.ts` 默认拒绝：非 p2p、非 text、非 user 发送、时间戳不是 13 位毫秒、正文超 20000 字符一律丢弃，ACK `{}` 只表示已收到，不表示已接纳。出站 `src/server/feishu/emission.ts` 用 `node:http(s)` 同步发起，tenant token 本地缓存并对并发换取去重，`classifyFeishuResponse` 只把 HTTP 200 且 code 0 视为 accepted，其余 code、超时、响应丢失一律 uncertain。投递循环是 unref 定时器，空闲 1 秒，每轮最多 20 条，失败退避 30 秒起指数封顶。
 
 绑定码改为 8 位 Crockford 字符（`0123456789ABCDEFGHJKMNPQRSTVWXYZ`，40 bit，展示为 `XXXX-XXXX`），仍只存摘要，接受小写、空格和短横线；长度或字符不合法的输入在任何数据库读取前就返回 `invalid_challenge`，普通聊天文本因此不会被误当成绑定尝试。原始 43 字符 base64url 在飞书 DM 里无法手输，属于体验缺陷而非安全收益。
 
-独立审查 `/tmp/sprout-feishu-f2b-review.md` 的结论是可集成，但必须以修正后的 commit 为合入点：被审提交 `dfcd283` 自身的 `tests/contracts.test.ts` 就是红的，原因是配置默认值新增四个 `FEISHU_*` 键后旧断言未同步，说明被审者自报的验证与交付物不一致。父线程据此修正了两处真实缺陷。其一，`prepare` 失败（换取 token 失败等）从未发起平台请求，原实现直接终结为 `failed/prepare_failed`，会静默丢掉一条助理回复；现在改为保留 `ready`、按 30 秒退避重排、把失败计入 attempts，累计三次或超过截止时间才终结。其二，`FEISHU_APP_ID` 的形状校验原先只认十六进制，而外部证据提示真实 appId 可能更宽；校验放宽到 16 位字母数字，真实格式以 SDK 为准，形状存疑不该让宿主进程起不来。`FEISHU_ORIGIN` 同时收紧为飞书/Lark 官方域名或回环 http，因为它承载 app secret。
+独立审查 `/tmp/sprout-feishu-f2b-review.md` 的结论是可集成，但必须以修正后的 commit 为合入点：被审提交 `dfcd283` 自身的 `tests/contracts.test.ts` 就是红的，原因是当时新增飞书环境配置后旧断言未同步，说明被审者自报的验证与交付物不一致。父线程据此修正了两处真实缺陷。其一，`prepare` 失败（换取 token 失败等）从未发起平台请求，原实现直接终结为 `failed/prepare_failed`，会静默丢掉一条助理回复；现在改为保留 `ready`、按 30 秒退避重排、把失败计入 attempts，累计三次或超过截止时间才终结。其二，飞书 appId 的形状校验原先只认十六进制，而外部证据提示真实 appId 可能更宽；校验放宽到 16 位字母数字，真实格式以 SDK 为准，形状存疑不该让宿主进程起不来。飞书 origin 同时收紧为飞书/Lark 官方域名或回环 http，因为它承载 app secret。
 
 审查其余 P3 的处理：启动装配在 owner 生成前就失败时，现在会拆掉装配到一半的 loop 与 wake，让下一次 `start()` 能真正重来，而非带着半个运行时；旧 generation 的 `onReconnecting`/`onReconnected` 补了“不得关闭当前 epoch”的反证测试；旧 generation 收到卡片点击时返回失效 toast，不再沉默。保留未改的两项各有理由：`sender.tenant_key` 缺失时退化为只比较事件 `tenant_key`，因为强制要求可能拒绝真实事件；server boundary 仍以 3 个用例覆盖“剥离伪造身份、无 session 失败关闭、未认证不改 slot”为主干，成员级权限已有域层用例覆盖。
 
@@ -123,6 +123,6 @@ F3 实现为 `d0029f0`，父线程门禁修正为 `f602517`，已 fast-forward �
 
 实际验证：`npx tsc --noEmit`、`npx vp check`（0 error，17 条既有 warning）、fmt、diff check 通过；全量 CI 143 文件、1280 项通过（`/tmp/feishu-f3-ci/run2.log`）。功能走查在隔离实例（`/tmp/feishu-f3-ui/app.sqlite`，端口 3311，假 appId 与假 secret）用真实浏览器完成：未绑定只列出 Jovi 的助理私聊且排除 worker 身份、发起绑定得到 4-4 分组码、刷新后不给码、重新发起生成新码、未在飞书确认时点击“我已在飞书确认”得到 conflict 提示、播种 slot 后显示已绑定与连接状态、换绑不出现与当前目标重复的选项、解绑确认后回到未绑定。1440 与 390 两档均无横向溢出，截图在 `.verify/feishu-ui/`（该目录已 gitignore）。
 
-真实评审实例（LAN `http://10.0.0.13:3300`，Project `prj_ad9fd1a5`）在合入后先报 `internal`，原因是该库只应用到 `0045`，缺 `0046`、`0047`、`0048` 三份迁移，飞书五张表不存在。补跑 `pnpm db:migrate`（迁移前备份到 `.verify/human-review/run.JtVeWy/backups/app-before-feishu-migrate.sqlite`）后，页面正确渲染「未配置」并说明需要 `FEISHU_CHANNEL_ENABLED`、`FEISHU_APP_ID`、`FEISHU_APP_SECRET` 三项环境变量，标签间跳转保持 `tab` 参数。
+真实评审实例（LAN `http://10.0.0.13:3300`，Project `prj_ad9fd1a5`）在合入后先报 `internal`，原因是该库只应用到 `0045`，缺 `0046`、`0047`、`0048` 三份迁移，飞书五张表不存在。补跑 `pnpm db:migrate`（迁移前备份到 `.verify/human-review/run.JtVeWy/backups/app-before-feishu-migrate.sqlite`）后，页面正确渲染「未配置」，标签间跳转保持 `tab` 参数。当时的环境变量配置说明已在 F4 删除；渠道配置现存于 Project 级 `channel_config`，本单元不提供配置表单。
 
 未验证项：真实飞书侧的确认回合（需要真实应用与真人扫码/发码）、确认码过期分支的实际渲染（要等 10 分钟，逻辑由文案测试与注入时钟覆盖）、飞书昵称展示（视图没有该字段）。仍待 Human 决定的三点：换绑是否必须再走一次飞书确认、是否显示已绑定账号的飞书昵称、待确认的确认码是否应跨刷新保留。

@@ -21,13 +21,13 @@ it("reports an unbound slot without inventing a target", () => {
   const view = buildFeishuBindingView({
     ctx: s.ctx,
     projectId: s.project.id,
-    configured: true,
+
     connection,
     now: s.now,
   });
   expect(view).toMatchObject({
     adapter: "feishu",
-    configured: true,
+
     connection: { phase: "connected", generation: 3, epochId: "fse_current" },
     binding: { bound: false, revision: 0, target: null },
     challenge: null,
@@ -45,7 +45,7 @@ it("surfaces a pending challenge as human confirmation, then the bound target", 
   const pending = buildFeishuBindingView({
     ctx: s.ctx,
     projectId: s.project.id,
-    configured: true,
+
     connection,
     now: s.now,
   });
@@ -54,11 +54,11 @@ it("surfaces a pending challenge as human confirmation, then the bound target", 
   expect(pending.challenge).toEqual({ expiresAtMs: started.expiresAtMs });
   expect(pending.humanNeedsConfirmation).toBe(true);
 
-  f.feishu.finishFeishuChallenge(started.challenge, s.identity, "req_view", s.now);
+  f.feishu.finishFeishuChallenge(s.project.id, started.challenge, s.identity, "req_view", s.now);
   const bound = buildFeishuBindingView({
     ctx: s.ctx,
     projectId: s.project.id,
-    configured: true,
+
     connection,
     now: s.now,
   });
@@ -80,12 +80,12 @@ it("keeps a cross-project binding opaque and drops an expired challenge", () => 
   const view = buildFeishuBindingView({
     ctx: s.ctx,
     projectId: other.id,
-    configured: false,
+
     connection,
     now: s.now,
   });
   expect(view.configured).toBe(false);
-  expect(view.binding.bound).toBe(true);
+  expect(view.binding.bound).toBe(false);
   expect(view.binding.target).toBeNull();
   expect(JSON.stringify(view)).not.toContain(s.dm.id);
 
@@ -99,7 +99,7 @@ it("keeps a cross-project binding opaque and drops an expired challenge", () => 
   const expired = buildFeishuBindingView({
     ctx: fresh.ctx,
     projectId: fresh.project.id,
-    configured: true,
+
     connection,
     now: new Date(started.expiresAtMs + 1),
   });

@@ -134,6 +134,7 @@ it("wakes a long idle interval immediately and keeps polling after a failing tic
 it("stays completely inert when Feishu is not configured", async () => {
   let created = 0;
   const runtime = createFeishuRuntime({
+    projectId: f.project.id,
     config: { ...config, enabled: false },
     createClient: () => {
       created += 1;
@@ -151,12 +152,12 @@ it("wakes delivery capture as soon as an assistant reply is committed", () => {
   const s = f.scenario();
   s.bind();
   const wakes: number[] = [];
-  f.delivery.setFeishuDeliveryWake(() => wakes.push(Date.now()));
+  f.delivery.setFeishuDeliveryWake(s.project.id, () => wakes.push(Date.now()));
   try {
     s.reply("捕获后立刻叫醒投递");
     expect(wakes.length).toBeGreaterThan(0);
   } finally {
-    f.delivery.setFeishuDeliveryWake(null);
+    f.delivery.setFeishuDeliveryWake(s.project.id, null);
   }
   // 没有装配钩子时捕获照常提交，唤醒只是退化为空闲轮询。
   expect(() => s.reply("没有钩子也不会失败")).not.toThrow();
@@ -179,6 +180,7 @@ it("assembles owner, port and loop behind enabled config and delivers on wake", 
   const callbacks: FeishuConnectionCallbacks[] = [];
   const errors: unknown[] = [];
   const runtime = createFeishuRuntime({
+    projectId: s.project.id,
     config,
     transport: fakeTransport(),
     createClient: fakeClientFactory(log, callbacks),
@@ -208,6 +210,7 @@ it("assembles owner, port and loop behind enabled config and delivers on wake", 
 it("reports a start failure without leaking the client or an unhandled rejection", async () => {
   const errors: unknown[] = [];
   const runtime = createFeishuRuntime({
+    projectId: f.project.id,
     config,
     transport: fakeTransport(),
     createClient: () => {
@@ -231,6 +234,7 @@ it("starts again after a failed assembly instead of staying half-initialized", (
   const log = { closed: false };
   let attempts = 0;
   const runtime = createFeishuRuntime({
+    projectId: f.project.id,
     config,
     transport: fakeTransport(),
     createClient: fakeClientFactory(log, callbacks),
@@ -262,6 +266,7 @@ it("starts again after a failed assembly instead of staying half-initialized", (
 it("does not pretend to be disabled when assembly fails before the owner exists", () => {
   const errors: unknown[] = [];
   const runtime = createFeishuRuntime({
+    projectId: f.project.id,
     config,
     transport: fakeTransport(),
     createClient: () => {
