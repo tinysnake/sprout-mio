@@ -163,13 +163,20 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 ### MEM-5 设置页
 
+形状已选定为方案 A（单列分区），按 Human 反馈调整如下。
+
+- 顺序固定为启用记忆、记忆库、自动维护、连接、操作。服务地址与连接密钥属于低频配置，放在操作之上。
+- 关闭开关时隐藏记忆库、自动维护、连接与操作，只保留开关、一行说明和保存栏；状态 chip 从“已就绪”变为“已关闭”。
+- 开启但未就绪时，chip 显示“已启用，不可用”，并在开关下方给出原因与下一步动作。
+- 选定稿在 `orchestrate/memory/memory-settings-a.html`，实现以该文件的信息层级与文案为准。
+
 先出 2 到 3 个可比较的 HTML 方案，经 Human 选定后再写页面。方案只决定信息层级与放置方式，不先写实现。
 
 实现范围：`src/components/project/settings-tabs.tsx` 增加“记忆”，新增 `memory-config-panel.tsx` 与 `memory-config-copy.ts`，复用 `SettingsSection`、`ResultError` 和现有表单组件。
 
 页面必须能表达这些事实，不依赖 toast。
 
-- 开关、地址、密钥、`bankPrefix`、`bankName`、两个自动动作。
+- 开关、记忆库命名空间与名称、两个自动动作在开启时可见；服务地址与连接密钥放在操作之上。关闭时以上全部收起。
 - 有效状态与原因：未配置、组件安装中、安装失败、服务不可达、已就绪。
 - 实际使用的 bank，随输入实时更新。
 - 最近写入与注入时间、最近错误摘要。
@@ -227,5 +234,5 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | MEM-2 | 已完成 | PR #43，`27959a7`，修正 `de78e30`、`cd4a9f1`、`3640b2d`，15 tests；第三次验证 GO WITH CHANGES，仅更正历史基准记录 |
 | MEM-3 | 未开始 | |
 | MEM-4 | 未开始 | |
-| MEM-5 | 未开始 | |
+| MEM-5 | 方案 A 已选定 | 待实现 |
 | MEM-6 | 未开始 | |
