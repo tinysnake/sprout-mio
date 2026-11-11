@@ -51,14 +51,15 @@ export function ContinuationPanel({
     {
       kind: "continuation" as const,
       label: "对话接续",
-      value: view ? CONTINUATION_MODES[view.mode] : CONTINUATION_UNAVAILABLE.reason,
+      value: view
+        ? CONTINUATION_MODES[view.mode].replace(/^对话接续/, "")
+        : CONTINUATION_UNAVAILABLE.reason,
     },
   ];
   return (
     <section aria-label="对话自动化" data-testid="continuation-panel" className="min-w-0 text-xs">
       <header className="mb-3 flex items-center justify-between gap-3">
         <h3 className="font-medium">对话自动化</h3>
-        <span className="text-muted-foreground">摘要与详情</span>
       </header>
       {/* 导航行不加外框：整组不是可展开的盒子，每行直接进诊断页。 */}
       <div className="flex flex-col">

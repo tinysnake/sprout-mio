@@ -197,7 +197,8 @@ export function ContinuationStatus({
         )}
         {showNext && (
           <span data-testid="continuation-next" className="text-muted-foreground">
-            下次检查 {nextAt ? chatTimeLabel(nextAt) : "暂无记录"}
+            {status.label === "已安排下次检查" ? "" : "下次检查 "}
+            {nextAt ? chatTimeLabel(nextAt) : "暂无记录"}
           </span>
         )}
         {view.attention?.errorCode && (

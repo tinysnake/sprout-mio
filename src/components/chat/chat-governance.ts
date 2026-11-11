@@ -8,8 +8,8 @@ import type { ChatKind, ChatOwnerFacts } from "../../contracts/chat";
 export function governanceNote(kind: ChatKind, facts: ChatOwnerFacts): string {
   if (kind === "public_channel")
     return facts.canChangeOwner
-      ? "可将频道负责人变更为 Project 的 Human 创建者；成员跟随 Project 自动同步。"
-      : "公共频道成员跟随 Project 自动同步；当前身份不能变更负责人。";
+      ? "可将 Owner 更改为 Project 的 Human 创建者。"
+      : "当前身份不能更改 Owner。";
   if (kind !== "group") return "";
   if (!facts.canChangeMembers)
     return `${facts.readOnlyReason ?? "当前身份不能修改成员与 Owner"}。Agent 不参与治理。`;

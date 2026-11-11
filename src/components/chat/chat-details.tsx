@@ -41,9 +41,9 @@ import type { ChatMachineFacts } from "./chat-loader";
 import { LeaseOverview } from "../machine/lease-panel";
 
 const WAKE_POLICY_LABELS: Record<ChatWakePolicy, string> = {
-  owner_led: "owner_led · 未点名时回退 Owner",
-  mention_only: "mention_only · 仅点名唤醒",
-  contextual: "contextual · 判定器决定唤醒成员",
+  owner_led: "owner_led · 回退 Owner",
+  mention_only: "mention_only · 仅点名",
+  contextual: "contextual · 自动判定",
 };
 
 function memberKey(member: Pick<ChatMember, "memberKind" | "memberId">) {
@@ -64,7 +64,6 @@ export function ChatDetails({
   profile,
   info,
   turnContext,
-  activity,
   projectMembers,
   projectProfiles,
   machineFacts = null,
@@ -154,7 +153,6 @@ export function ChatDetails({
     name: profileNames.get(member.agentProfileId) ?? "Agent",
   }));
   const addableAgents = allAgents.filter((agent) => !currentKeys.has(ownerKey("agent", agent.id)));
-  const agentCount = activity ? activity.agentCount : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-details">
@@ -185,7 +183,7 @@ export function ChatDetails({
           <Icon as={PanelRightClose} />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-12">
         <div className="py-5">
           <ContinuationPanel data={continuation} chatKind={chat.kind} />
         </div>
@@ -473,9 +471,11 @@ export function ChatDetails({
               </span>
             </summary>
             <div className="space-y-3 pt-3">
-              <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1.5 text-[11px]">
+              <dl className="grid grid-cols-[4rem_minmax(0,1fr)] gap-y-1.5 text-[11px]">
                 <dt className="text-muted-foreground">唤醒策略</dt>
-                <dd data-testid="chat-wake-policy">{WAKE_POLICY_LABELS[chat.wakePolicy]}</dd>
+                <dd data-testid="chat-wake-policy" className="whitespace-nowrap">
+                  {WAKE_POLICY_LABELS[chat.wakePolicy]}
+                </dd>
                 <dt className="text-muted-foreground">治理版本</dt>
                 <dd data-testid="chat-governance-revision">{chat.governanceRevision}</dd>
                 {/* 公共频道的名字由 Project 派生，与页头同一句；这里不再复述。 */}
@@ -493,7 +493,6 @@ export function ChatDetails({
                   <OwnerDialog
                     chatId={chat.id}
                     revision={chat.governanceRevision}
-                    publicChannel={chat.kind === "public_channel"}
                     members={ownerCandidates}
                     names={names}
                     humanUserId={humanUserId}
@@ -527,12 +526,12 @@ export function ChatDetails({
             </div>
           </details>
         )}
-        // 中栏的运行状态就是「当前状态」的主展示；这里默认收起，展开后看 run id、历史与诊断。
+        {/* 当前运行状态在中栏展示；活动段按需展开诊断。 */}
         <details data-testid="chat-details-activity" className="group border-b border-border py-4">
           <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
             <span>活动</span>
             <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
-              {agentCount === null ? "活动 Agent 数未知" : `${agentCount} 个 Agent`}
+              查看诊断
               <Icon
                 as={ChevronRight}
                 size={12}
@@ -780,7 +779,6 @@ function RemoveMemberButton({
 function OwnerDialog({
   chatId,
   revision,
-  publicChannel,
   members,
   names,
   humanUserId,
@@ -791,7 +789,6 @@ function OwnerDialog({
 }: {
   chatId: string;
   revision: number;
-  publicChannel: boolean;
   members: ChatMember[];
   names: Map<string, string>;
   humanUserId: string;
@@ -839,16 +836,11 @@ function OwnerDialog({
         data-governance-action="owner_change"
         render={<Button type="button" variant="secondary" size="sm" />}
       >
-        {publicChannel ? "变更负责人" : "更改 Owner"}
+        更改 Owner
       </DialogTrigger>
       <DialogContent data-testid="chat-owner-dialog">
         <DialogHeader>
-          <DialogTitle>{publicChannel ? "变更负责人" : "更改 Owner"}</DialogTitle>
-          <DialogDescription>
-            {publicChannel
-              ? "频道负责人必须是本 Project 的 Human 创建者。"
-              : "选择新的负责人；保存后将更新此 Chat 的负责人。"}
-          </DialogDescription>
+          <DialogTitle>更改 Owner</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           {/* 变更负责人是唯一能改它的地方，规则就放在这里，不在面板上重复一遍。 */}
@@ -885,7 +877,7 @@ function OwnerDialog({
           {error && <ChatErrorNotice error={error} testId="chat-owner-error" />}
           <div className="flex justify-end">
             <Button type="submit" data-testid="chat-owner-submit" loading={pending}>
-              保存 Owner
+              更改 Owner
             </Button>
           </div>
         </form>

@@ -27,9 +27,7 @@ function ProjectChatsIndex() {
             对话
           </h1>
         </header>
-        {hasChats && (
-          <ChatEmptyState title="选择一条 Chat" body="从左侧列表选择，或用下面的入口新建。" />
-        )}
+        {hasChats && <ChatEmptyState title="选择一条 Chat" />}
         <div className="mt-6 max-w-160">
           <DmStarter projectId={projectId} members={members} profiles={profiles} />
         </div>

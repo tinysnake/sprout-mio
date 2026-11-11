@@ -72,7 +72,9 @@ describe("对话接续页面事实与 Human 控制", () => {
       createElement(ContinuationPanel, { data: { view, denials: {} } }),
     );
     expect(html).toContain("对话自动化");
-    expect(html).toContain("摘要与详情");
+    expect(html).not.toContain("摘要与详情");
+    expect(html).not.toContain("对话接续已启用");
+    expect(html).toContain("已启用");
     for (const kind of ["wake", "continuation"])
       expect(html).toContain(`/checks/${view.latestEvaluation!.evaluationId}/${kind}`);
     expect(html.match(/<a /g)).toHaveLength(2);

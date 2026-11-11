@@ -182,7 +182,7 @@ export function ChatListPanel({
                 pendingOnly && "border-foreground font-semibold text-foreground",
               )}
             >
-              待处理 {pending.length}
+              仅看待处理
             </button>
           )}
         </p>
@@ -214,9 +214,10 @@ export function ChatListPanel({
                   : chat.kind === "public_channel"
                     ? "Public Channel"
                     : chatSubtitleLabel(chat, agentName);
-              const subtitle = aggregate?.activeRunIds.length
-                ? `${kindLabel} · ${aggregate.activeRunIds.length} 个活动 run`
-                : kindLabel;
+              const subtitle =
+                !selected && aggregate?.activeRunIds.length
+                  ? `${kindLabel} · ${aggregate.activeRunIds.length} 个活动 run`
+                  : kindLabel;
               return (
                 <li key={chat.id}>
                   <Link
@@ -273,7 +274,7 @@ export function ChatEmptyState({
   action,
 }: {
   title: string;
-  body: string;
+  body?: string;
   action?: ReactNode;
 }) {
   return (
@@ -285,7 +286,7 @@ export function ChatEmptyState({
         <Icon as={MessageSquare} size={22} />
       </span>
       <h2 className="text-lg">{title}</h2>
-      <p className="max-w-[30ch] text-xs leading-6 text-muted-foreground">{body}</p>
+      {body && <p className="max-w-[30ch] text-xs leading-6 text-muted-foreground">{body}</p>}
       {action}
     </div>
   );
