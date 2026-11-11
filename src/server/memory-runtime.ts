@@ -18,8 +18,6 @@ import { readMemoryInstall } from "./memory-install";
 export function resolveMemoryRuntime(input: {
   db: DatabaseConnection["db"];
   projectId: string;
-  machineId?: string;
-  machineOnline: boolean;
   dataDir: string;
   env: { SPROUT_HINDSIGHT_API_URL?: string };
 }): MemoryRuntime {
@@ -48,8 +46,7 @@ export function resolveMemoryRuntime(input: {
   const state = resolveEffectiveMemoryState({
     enabled,
     configValid: config !== undefined,
-    machineOnline: input.machineOnline && Boolean(input.machineId),
-    install: input.machineId ? readMemoryInstall(input.db, input.machineId) : null,
+    install: readMemoryInstall(input.db),
   });
   if (state.state !== "ready") return state;
   if (!config) return { state: "unavailable", reason: "invalid_config" };

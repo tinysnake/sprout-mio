@@ -131,12 +131,10 @@ export function saveMemoryConfig(
 export function resolveEffectiveMemoryState(input: {
   enabled: boolean;
   configValid: boolean;
-  machineOnline: boolean;
   install: { status: MemoryInstallStatus; version: string } | null;
 }): EffectiveMemoryState {
   if (!input.enabled) return { state: "disabled" };
   if (!input.configValid) return { state: "unavailable", reason: "invalid_config" };
-  if (!input.machineOnline) return { state: "unavailable", reason: "machine_offline" };
   const install = input.install;
   if (!install || install.status === "missing" || install.version !== HINDSIGHT_EXTENSION_VERSION)
     return { state: "unavailable", reason: "not_installed" };

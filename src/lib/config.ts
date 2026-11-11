@@ -55,8 +55,6 @@ const environmentSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
-  /** Explicit Machine identity of the local Pi execution host. */
-  SPROUT_PI_MACHINE_ID: z.string().min(1).optional(),
   SPROUT_PI_DATA_DIR: z
     .string()
     .min(1)

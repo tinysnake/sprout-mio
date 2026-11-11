@@ -59,7 +59,6 @@ export function memoryConfigSaveInput(
 
 const UNAVAILABLE_STATUS = {
   invalid_config: { label: "配置有误", className: "text-destructive" },
-  machine_offline: { label: "机器离线", className: "text-status-warning" },
   not_installed: { label: "未安装", className: "text-muted-foreground" },
   installing: { label: "安装中", className: "text-status-running" },
   install_failed: { label: "安装失败", className: "text-destructive" },

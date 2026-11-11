@@ -255,7 +255,6 @@ describe("effective memory state", () => {
   const ready = {
     enabled: true,
     configValid: true,
-    machineOnline: true,
     install: { status: "ready" as MemoryInstallStatus, version: HINDSIGHT_EXTENSION_VERSION },
   };
   it("gives the hard off switch priority over every unavailable condition", () => {
@@ -264,24 +263,18 @@ describe("effective memory state", () => {
         ...ready,
         enabled: false,
         configValid: false,
-        machineOnline: false,
         install: null,
       }),
     ).toEqual({ state: "disabled" });
   });
-  it("checks invalid config before the machine and the machine before installation", () => {
+  it("checks invalid config before installation", () => {
     expect(
       resolveEffectiveMemoryState({
         ...ready,
         configValid: false,
-        machineOnline: false,
         install: null,
       }),
     ).toEqual({ state: "unavailable", reason: "invalid_config" });
-    expect(resolveEffectiveMemoryState({ ...ready, machineOnline: false, install: null })).toEqual({
-      state: "unavailable",
-      reason: "machine_offline",
-    });
     expect(resolveEffectiveMemoryState({ ...ready, install: null })).toEqual({
       state: "unavailable",
       reason: "not_installed",

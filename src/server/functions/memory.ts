@@ -33,7 +33,6 @@ async function serverDeps() {
     ...settings,
     settingsDeps: {
       db: database.db,
-      machineId: environment.config.SPROUT_PI_MACHINE_ID ?? null,
       dataDir: environment.config.SPROUT_PI_DATA_DIR,
       now: Date.now,
       provision: installer.provisionMemoryExtension,
