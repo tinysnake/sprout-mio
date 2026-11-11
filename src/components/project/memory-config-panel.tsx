@@ -533,10 +533,6 @@ export function MemoryConfigPanel({
                     重试安装
                   </Button>
                 )}
-                <Button type="button" variant="secondary" disabled>
-                  从仓库历史导入
-                </Button>
-                <span className="text-xs text-muted-foreground">未实现，P4</span>
                 <Button
                   type="button"
                   variant="destructive"
