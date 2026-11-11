@@ -224,8 +224,11 @@ export class PiSessionProcess {
       this.fail(error instanceof Error ? error : new Error("Pi runner 通信失败"));
     }
     const event = await ready;
-    if (event.type !== "ready" || event.snapshot.sessionId !== config.sessionId)
-      throw new PiHostFailure("session_mismatch", "Pi session 身份不匹配");
+    if (event.type !== "ready" || event.snapshot.sessionId !== config.sessionId) {
+      const error = new PiHostFailure("session_mismatch", "Pi session 身份不匹配");
+      this.fail(error);
+      throw error;
+    }
     return event.snapshot;
   }
 
@@ -285,7 +288,9 @@ export class PiSessionProcess {
     if (this.exiting || this.abortTimer || !this.awaitingSettled) return;
     this.abortTimer = setTimeout(() => {
       this.abortTimer = undefined;
-      void this.close().catch(() => {});
+      void this.close().catch((error) => {
+        console.error(`[pi-host] 中断后关闭 Pi runner 失败 id=${this.id}`, error);
+      });
     }, RUNNER_ABORT_GRACE_MS);
   }
 
