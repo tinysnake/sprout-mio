@@ -11,6 +11,12 @@ Agent 使用远程工具操作 Machine，用户从项目、Chat 或 Machine 租�
 - `execution-recovery` 断连和重启后的执行状态、日志恢复及不确定结果。
 - `execution-context` 执行身份、Run、持有者和授权代次对应同一目标。
 
+## 阻塞等待与本地 sleep
+
+提交远端操作后，可用 `sprout_remote_execution_wait({machineId, executionId, waitMs?})` 阻塞等待终态；默认等 10 分钟，最多 15 分钟，每秒通过既有 `execution_get` 查询一次。无需授权代次。成功返回与 `execution_get` 同形的 `{outcome,data,requestId}`。等待到点的 `timed_out` 会携带最后一次 `ExecutionView`、有效预算 `requestedMs` 与实际 `waitedMs`，表示仍在跑，不应据此重试有副作用的操作；execution 自身的 `timed_out` 终态仍按执行结果解释。取消等待只结束当前工具调用，远端执行继续。
+
+宿主工具 `sleep({ms})` 可在本地等待，不必把 sleep 塞进远端 shell。`ms` 必填且至少为 1，最多睡 5 分钟；超出上限显式回报原请求 `requestedMs` 和实际 `sleptMs`，成功附带当前 ISO 时间 `now`。取消返回 `cancelled`，不标工具错误。活动摘要分别显示「本地等待」与各 execution 工具的具名动作。
+
 ## How to get to it (user POV)
 
 - 在具备 Machine 与 Lease 的 Chat 中，让 Agent 使用远程工具，产生一条执行记录。
@@ -36,6 +42,8 @@ Agent 使用远程工具操作 Machine，用户从项目、Chat 或 Machine 租�
 AD 脚本自己启动 dev server，默认端口 3098，可用 `SPROUT_EXECUTION_SCENES_PORT` 调整；默认截图在 `.verify/p4c-ui/evidence`，日志在 `.verify/p4c-ui`。AE 在 `.verify/ae-remote-tools-cancel-log-*` 保存 `evidence.json`。其他领域脚本使用各自 `.verify/` 目录，运行前核对脚本的路径与依赖。
 
 证据保存命令开始、输出、取消动作、最终状态、执行标识以及目标目录中的副作用。涉及日志恢复时，保存断开前后的 cursor 与读取结果。
+
+阻塞等待和本地 sleep 的边界由 `tests/execution-wait.test.ts`、`tests/sleep-tool.test.ts`、`tests/remote-tools.test.ts` 覆盖；`bash scripts/verify/x-remote-tools.sh` 同时检查真实 runner / Pi SDK 注册及宿主 sleep、等待取消接线。
 
 ## Gotchas
 
