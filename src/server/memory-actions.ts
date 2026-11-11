@@ -95,14 +95,19 @@ export async function testMemoryConnection(
   return withRequests(deps, projectId, 5_000, async (request, bankPath) => {
     const version = await request("/version");
     if (!version.ok) return httpFailure(version.status);
-    const bank = await request(bankPath);
-    if (bank.ok) return { ok: true, bankExists: true, created: false };
-    if (bank.status !== 404) return httpFailure(bank.status);
-    const created = await request(bankPath, "PUT");
-    if (!created.ok) return httpFailure(created.status);
-    const confirmed = await request(bankPath);
-    if (!confirmed.ok) return httpFailure(confirmed.status);
-    return { ok: true, bankExists: true, created: true };
+    const listed = await request("/v1/default/banks?limit=100");
+    if (!listed.ok) return httpFailure(listed.status);
+    const bankId = decodeURIComponent(bankPath.slice(bankPath.lastIndexOf("/") + 1));
+    let exists = false;
+    try {
+      const body = (await listed.json()) as { banks?: Array<{ bank_id?: string }> };
+      exists = Array.isArray(body.banks) && body.banks.some((bank) => bank.bank_id === bankId);
+    } catch {
+      exists = false;
+    }
+    const ensured = await request(bankPath, "PUT");
+    if (!ensured.ok) return httpFailure(ensured.status);
+    return { ok: true, bankExists: true, created: !exists };
   });
 }
 

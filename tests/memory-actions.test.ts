@@ -106,33 +106,47 @@ const putBank = {
   body: "{}",
   headers: { ...getVersion.headers, "Content-Type": "application/json" },
 };
+const listBanks = {
+  ...getVersion,
+  url: "https://memory.example.test/v1/default/banks?limit=100",
+};
+function bankList(bankIds: string[]) {
+  return new Response(JSON.stringify({ banks: bankIds.map((bank_id) => ({ bank_id })) }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 const clearInput = { projectId: "prj_deadbeef", confirmName: "Sprout Mio" };
 
 describe("memory actions", () => {
-  it("checks version then the encoded bank even when memory is disabled", async () => {
-    responses(200, 200);
+  it("checks version, lists banks, and ensures the encoded bank even when memory is disabled", async () => {
+    responses(200);
+    fetchMock.mockResolvedValueOnce(bankList(["project::prj_deadbeef"]));
+    responses(200);
     expect(await testMemoryConnection(deps, "prj_deadbeef", context)).toEqual({
       ok: true,
       bankExists: true,
       created: false,
     });
-    expect(requests()).toEqual([getVersion, getBank]);
+    expect(requests()).toEqual([getVersion, listBanks, putBank]);
   });
-  it("creates a missing bank and confirms it with GET", async () => {
-    responses(200, 404, 201, 200);
+  it("creates a missing bank without reading it back", async () => {
+    responses(200);
+    fetchMock.mockResolvedValueOnce(bankList([]));
+    responses(201);
     expect(await testMemoryConnection(deps, "prj_deadbeef", context)).toEqual({
       ok: true,
       bankExists: true,
       created: true,
     });
-    expect(requests()).toEqual([getVersion, getBank, putBank, getBank]);
+    expect(requests()).toEqual([getVersion, listBanks, putBank]);
   });
   it.each([
     { status: 401, code: "unauthorized" },
     { status: 403, code: "forbidden" },
     { status: 503, code: "server_error" },
   ])("classifies $status at every connection step and stops", async ({ status, code }) => {
-    for (const prefix of [[], [200], [200, 404], [200, 404, 201]]) {
+    for (const prefix of [[], [200], [200, 200]]) {
       fetchMock.mockClear();
       responses(...prefix, status);
       expect(await testMemoryConnection(deps, "prj_deadbeef", context)).toMatchObject({
@@ -155,7 +169,7 @@ describe("memory actions", () => {
     sqlite.exec("UPDATE memory_config SET settings='{}',secrets='{}'");
     vi.stubEnv("SPROUT_HINDSIGHT_API_URL", "https://environment.example.test/");
     try {
-      responses(200, 200);
+      responses(200, 200, 200);
       await testMemoryConnection(deps, "prj_deadbeef", context);
       expect(requests()).toEqual([
         {
@@ -165,10 +179,16 @@ describe("memory actions", () => {
           headers: {},
         },
         {
-          url: "https://environment.example.test/v1/default/banks/sprout%3A%3Aprj_deadbeef",
+          url: "https://environment.example.test/v1/default/banks?limit=100",
           method: "GET",
           body: undefined,
           headers: {},
+        },
+        {
+          url: "https://environment.example.test/v1/default/banks/sprout%3A%3Aprj_deadbeef",
+          method: "PUT",
+          body: "{}",
+          headers: { "Content-Type": "application/json" },
         },
       ]);
     } finally {
@@ -278,7 +298,9 @@ describe("memory action boundaries", () => {
     expect(provision).not.toHaveBeenCalled();
   });
   it("returns action data and validates confirmation", async () => {
-    responses(200, 200);
+    responses(200);
+    fetchMock.mockResolvedValueOnce(bankList(["project::prj_deadbeef"]));
+    responses(200);
     expect(
       await functions.testMemoryConnectionBoundary(
         { projectId: "prj_deadbeef" },
@@ -332,7 +354,7 @@ describe("memory action boundaries", () => {
       error: { code: "validation_failed" },
       fieldErrors: expect.any(Object),
     });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
   it("records remote failure diagnostics without response bodies or credentials", async () => {
     const record = vi.spyOn(diagnostics, "recordDiagnostic");
