@@ -1,6 +1,6 @@
 # Hindsight 记忆接入计划
 
-> 状态：计划中，MEM-0 未开始。入口见[开发总计划](development-plan.md#首版推进顺序)。
+> 状态：进行中，MEM-0 已完成，MEM-1 起待开始。入口见[开发总计划](development-plan.md#首版推进顺序)。
 
 ## 目标
 
@@ -29,6 +29,8 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | 开关默认 | 打开，但地址或组件没就绪时显示“已启用，不可用” | 不静默失败，也不挡 run |
 | 自动动作 | 入库自动索引新提交、整理页面默认打开 | 与 Hindsight 的默认行为一致 |
 | 安装失败 | 不回滚开关，状态留在 `failed` | 配置是人的意图，失败是组件状态 |
+| 注入行为 | 跟随 Hindsight 默认；首轮约 2,278 token，后续约 886 token/轮 | MEM-0 实测。关闭自动注入用 `autoInject: "none"`，`false` 会退回 reflect |
+| 启用副作用 | 启用态会写宿主全局 `~/.pi/agent/skills/hindsight-coding-agent` | factory 的 `syncCompanionSkill` 不认 runner 的 `agentDir`；接受为已知副作用，关闭态仍过滤 |
 | 关闭 | 不加载扩展、不注册工具、不注入提示词、不继承 companion skill | 关闭必须等于今天的 Pi 行为 |
 
 ## 数据形状
@@ -41,7 +43,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | --- | --- | --- |
 | `project_id` | text | 引用 `project.id` |
 | `provider` | text | 首版固定 `hindsight` |
-| `enabled` | integer boolean | 默认 `false` |
+| `enabled` | integer boolean | 默认 `true`，与“开关默认打开”的决定一致 |
 | `settings` | json | `apiUrl`、`bankPrefix`、`bankName`、`autoIndexCommits`、`refreshPages` |
 | `secrets` | json | `apiToken` |
 | `revision` | integer | 乐观并发，默认 `0` |
@@ -74,6 +76,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - `resolveBankTarget({ bankPrefix, bankName }, projectId)`，返回判别联合 `project-default`、`bare`、`namespaced`。
 - `MEMORY_TOOL_NAMES`，八个 `hindsight_*` 名字。
 - `HINDSIGHT_EXTENSION_VERSION` 与 tarball integrity。
+- 生成配置的固定字段，`bankId`、`dynamicBankId: false`、`autoUpdate: false`、`autoInject: "none"`。
 
 校验规则。
 
@@ -91,7 +94,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - `unavailable`，带原因 `not_configured`、`invalid_config`、`not_installed`、`installing`、`install_failed`、`machine_offline`。
 - `ready`，带 `apiUrl`、`bank`、`configPath`、`version` 和工具名。
 
-`ready` 的 token 只出现在 `open` 消息与 runner 进程环境里，run 快照只记录 `{ enabled, state, version, bank, reason }`。
+`ready` 的 token 只出现在 `open` 消息与 runner 进程环境里，run 快照只记录 `{ enabled, state, version, bank, reason }`。生成或读取配置失败一律返回 `unavailable`，不回退 bundle 默认值，因为默认的 `mapPathToBank` 会指向宿主的 live bank。
 
 ### 状态
 
@@ -142,8 +145,10 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 ### MEM-3 Runner 激活
 
 - `open` 消息增加 `memory` 块；runner 写 `HINDSIGHT_*` 环境变量后动态 import 工厂。
+- 生成独立 JSON，显式写 `bankId`、`dynamicBankId: false`、`autoUpdate: false`、`autoInject: "none"`，并在 import 前设置 `HINDSIGHT_CONFIG`。生成或读取失败一律 `unavailable`，不回退 bundle 默认值。
 - 八个工具名只在 `ready` 时进入 `tools` allowlist。
 - 关闭时清掉从服务端继承的 `HINDSIGHT_*`，并按路径过滤 companion skill。`scripts/pi-host-skills.mjs` 目前会把 `~/.pi/agent/skills/hindsight-coding-agent` 继承给每个 session，这个过滤与开关无关，始终生效。
+- 启用态的 factory 会调用 `syncCompanionSkill`，它不认 runner 的 `agentDir`，恒写 `~/.pi/agent/skills/hindsight-coding-agent`。接受为已知全局副作用，但关闭态仍必须过滤所有继承路径。
 - 加载失败、注册断言失败、注入超时都降级为本次 run 无记忆，run 正常结束。
 - 快照写 `memory` 状态，不写 token。
 
@@ -152,7 +157,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - 新增 `src/server/functions/memory.ts`，照 `src/server/functions/channels.ts` 的边界写法。
 - 读接口返回配置视图与安装状态；写接口只允许 Human。
 - 动作：测试连接、重试安装、清空本 Project 记忆。清空要求输入 Project 名。
-- 测试连接区分不可达、401、403、bank 不存在和成功。
+- 测试连接区分不可达、401、403、bank 不存在和成功。建库确认用显式 `PUT` 加 `GET`，不能把空 retain 的 200 当建库成功；读取 404 不报成网络断线。
 
 ### MEM-5 设置页
 
@@ -177,6 +182,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 3. 关闭记忆，下一次 run 没有记忆工具、没有注入块、没有 companion skill。
 4. 断开服务或让安装失败，设置页显示原因，run 仍然完成。
 5. 清空记忆后检索不到旧内容，bank 仍可继续写入。
+6. 非空 retain 是否自动建库、真实多轮 session 恢复、真实 compaction 后的注入与 token 成本、启用态对全局 skill 的写入。
 
 同轮新增 `docs/feature-map/memory.md`，更新功能索引与开发总计划状态。
 
@@ -195,17 +201,17 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 ## 开放问题
 
-- `HINDSIGHT_CONFIG` 的文件 schema 对直接 import 是否完整生效，尤其是 `harnesses.pi` 段。
-- `HINDSIGHT_BANK_ID` 与 `bankIdTemplate` 的优先级。
+- ~~`HINDSIGHT_CONFIG` 的文件 schema 对直接 import 是否完整生效~~。已由 MEM-0 确认，见 `docs/memory-spike.md`。
+- ~~`HINDSIGHT_BANK_ID` 与 `bankIdTemplate` 的优先级~~。已由 MEM-0 确认，文件字段优先于环境变量。
 - Hindsight 是否支持按 bank 或 namespace 限权的 token。若不支持，Pi 进程里的 token 对 Agent 可见，需要单独记录并在设置页提示。
 - 整理页面是否有服务端可调用的触发接口。没有就由 adapter 每 20 个 run 触发一次，不新增 UI 字段。
 - 同一 bank 被两个 Project 共用时，并发 retain 是否互相覆盖。首版允许共用，但要在文档里写明后果。
-- 0.8.7 的注入块在长 system prompt 下的实际开销，以及关闭 `HINDSIGHT_AUTO_INJECT` 后是否只剩工具面。
+- ~~0.8.7 的注入块实际开销~~。已由 MEM-0 测得首轮约 2,278 token、后续约 886 token/轮；`autoInject: "none"` 仍注入指南与 roster。
 
 ## 风险与回退
 
 - bundle 不可控或升级破坏工具名。钉版本、注册断言、失败降级。回退路径是在 sprout extension 里实现四个工具直连 HTTP API。
-- 注入成本过高。设 `HINDSIGHT_AUTO_INJECT=false`，只保留工具面，配置形状不变。
+- 注入成本过高。用 `autoInject: "none"` 降级，但它仍注入指南与 roster；若产品要求零注入，需要自建注入适配，首版不做。首轮约 2,278 token、后续约 886 token/轮已记入预算。
 - 安装依赖 registry。提供本地 tarball 覆盖与离线安装路径；安装失败不挡 run。
 - 执行机离线或组件缺失。状态按 Machine 记，设置页显示原因，不把 Project 配置改成失败。
 - 密钥可见性。优先申请只覆盖 `sprout` namespace 的 token；拿不到就使用专用 token 并在设置页明示，不把宿主自己的 token 复制给 Project。
@@ -214,7 +220,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 | 单元 | 状态 | 证据 |
 | --- | --- | --- |
-| MEM-0 | 未开始 | |
+| MEM-0 | 已完成 | [docs/memory-spike.md](memory-spike.md)，PR #41，`l-docs.sh` 与 `l-docs-probes.sh` 通过 |
 | MEM-1 | 未开始 | |
 | MEM-2 | 未开始 | |
 | MEM-3 | 未开始 | |

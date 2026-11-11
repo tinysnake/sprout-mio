@@ -388,7 +388,7 @@ node /tmp/mem0-api-probe.mjs > /tmp/mem0-api-probe.log 2>&1
 | DELETE bank | 200 | `success: true, deleted_count: 0` |
 | GET stats/config，DELETE 后 | 404 / 404 | 确认已删除 |
 
-DELETE 响应的 `deleted_count: 0` 不是“删除失败”：这个 bank 没有 memory units，随后两个 404 确认 profile/config 已不存在。首次较小 probe 使用 `project::spike-mem0-1794371748498`，仅做空 retain 后也执行 DELETE 并确认 stats/config 404。两个一次性 ID 均已清理，没有遗留 bank 或异步 operation。未向 live bank 发送 HTTP probe 或写入。
+DELETE 响应的 `deleted_count: 0` 不是“删除失败”：这个 bank 没有 memory units，随后两个 404 确认 profile/config 已不存在。首次较小 probe 使用 `project::spike-mem0-1794371748498`，仅做空 retain 后也执行 DELETE 并确认 stats/config 404；这次 DELETE 的响应没有单独留存日志，只有本节记录。两个一次性 ID 均已清理，没有遗留 bank 或异步 operation。未向 live bank 发送 HTTP probe 或写入。
 
 最终原始记录：`/tmp/mem0-spike-20261111/service.json`、`/tmp/mem0-api-probe.log`；OpenAPI：`/tmp/mem0-spike-20261111/openapi.json`。首次 probe 的关键结果已在本节保留，最终日志不依赖它。
 
@@ -413,13 +413,13 @@ DELETE 响应的 `deleted_count: 0` 不是“删除失败”：这个 bank 没�
 
 - `src/server/pi-host/process.ts:60` 创建 runner，`:63` 为 `env: { ...process.env, PI_TELEMETRY: "0" }`，当前会继承宿主 Hindsight 设置。
 - `src/server/pi-host/index.ts:31` 的 `prepareRun` 为每个 run 创建 `PiSessionProcess`，随后由 `executeRun` 执行；`src/server/pi-host/run.ts:127` 发送 `open`（含 session file）。这是为每个 run 生成配置和隔离环境的接入点。
-- `scripts/pi-host-runner.mjs:139` 的 `noExtensions: true` 阻止隐式扩展发现，但 `:147` 的 `additionalSkillPaths` 仍接受资源继承；`scripts/pi-host-skills.mjs:36` 的 `resolveHostSkillPaths` 只筛 `enabled`，没有过滤 Hindsight companion。
+- `scripts/pi-host-runner.mjs:138` 的 `noExtensions: true` 阻止隐式扩展发现，但 `:147` 的 `additionalSkillPaths` 仍接受资源继承；`scripts/pi-host-skills.mjs:36` 的 `resolveHostSkillPaths` 只筛 `enabled`，没有过滤 Hindsight companion。
 - runner `:149` 的显式 `extensionFactories` 与 `:255` 的可用工具集合应按同一 ready 状态组合。
 - `src/extension/host-tools.ts:44` 的路径存在性检查和 `:56` 的工具组合提供了现有 absent-extension 行为范式：扩展缺席就不留下对应工具名。
 
 bundle 在 import 时执行普通模块初始化、路径/defaults 求值，包含捕获 `CONFIG_PATH`；模块末尾调用 `createPiExtension("pi")` **取得闭包**并导出 `default` / `extension`。真正的 `at(undefined)`、runtime 构建、工具注册和四个 hook 注册都在闭包调用内（`:19139` 起）。未发现 factory 外自动向 Pi 注册工具或注入文本的代码，故不存在该类 blocker。
 
-需要记录的 enabled side effect：factory 调用 `core.seedIfCold`（`:18835`），后者先运行 `syncCompanionSkill(harness, { install: true })`（`:18219`），再进行 daemon/update/seed 流程。`autoSeed: false` 不会禁止同步 skill。若 packaged `SKILL.md` 与宿主不同或宿主缺失，它可复制到 `~/.pi/agent/skills/hindsight-coding-agent`。本机已有一致副本，所以 probe 没有发生此写入；Node permission 同时禁止它真的写出 `/tmp`。这不是 factory 外的副作用，但说明以后其他 run 仍必须过滤宿主副本。
+需要记录的 enabled side effect：factory 调用 `core.seedIfCold`（`:18835`），后者先运行 `syncCompanionSkill(harness, { install: true })`（`:18219`），再进行 daemon/update/seed 流程。`autoSeed: false` 不会禁止同步 skill。若 packaged `SKILL.md` 与宿主不同或宿主缺失，它可复制到 `~/.pi/agent/skills/hindsight-coding-agent`。本机已有一致副本，所以 probe 没有发生此写入；Node permission 同时禁止它真的写出 `/tmp`。调用 `syncCompanionSkill(this.harness, { install: true })` 时没有传 `home`，函数取 `opts.home ?? homedir()`，目标恒为 `~/.pi/agent/skills/hindsight-coding-agent`，runner 的 `agentDir`（`<cwd>/.sprout-pi`）被忽略。这是启用态的已知全局副作用，接受并记录；关闭态仍必须过滤所有继承路径。
 
 **Command**
 
@@ -443,7 +443,7 @@ node /tmp/mem0-run.mjs > /tmp/mem0-run.log 2>&1
 
 **Confidence**：工厂注册边界为高，来自 source 和 recording stub；现有宿主接入点为静态核对。尚未修改 MEM-3 或执行真实 Sprout runner 开关验收，不能声称产品已经实现硬关闭。
 
-**Plan impact**：保留 MEM-3 的四道 gate，补充 import 前写入配置/环境、文件中的 `dynamicBankId: false` 和 `autoUpdate: false`。关闭时直接不 import，不能以 `disabled: true` 代替；companion skill 从资源继承路径始终过滤。
+**Plan impact**：保留 MEM-3 的四道 gate，补充 import 前写入配置/环境、文件中的 `bankId`、`dynamicBankId: false`、`autoUpdate: false` 和 `autoInject: "none"`，生成或读取失败一律 unavailable，不回退 bundle 默认值。关闭时直接不 import，不能以 `disabled: true` 代替；companion skill 从资源继承路径始终过滤，并接受启用态写全局 `~/.pi/agent/skills` 的副作用。
 
 ## Verdict
 
