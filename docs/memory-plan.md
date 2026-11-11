@@ -246,6 +246,6 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | MEM-2 | 已完成 | PR #43，`27959a7`，修正 `de78e30`、`cd4a9f1`、`3640b2d`，15 tests；第三次验证 GO WITH CHANGES，仅更正历史基准记录 |
 | MEM-3 | 已完成 | PR #45，`6587e43`；修正 `cc0d724`、`cb21a90`，全量 171 文件 / 1542 tests |
 | MEM-4 | 已完成 | PR #46，`fe04c72`，全量 173 文件 / 1555 tests |
-| MEM-4b | 未开始 | |
-| MEM-5 | 方案 A 已选定 | 待 MEM-4b |
+| MEM-4b | 完成 | PR #47，`c257d8b`；20 个动作测试 |
+| MEM-5 | 进行中 | 方案 A，面板实现中 |
 | MEM-6 | 未开始 | |
