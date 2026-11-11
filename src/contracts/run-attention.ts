@@ -18,7 +18,10 @@ export function resolveRunAttentionPolicy(value: unknown): RunAttentionPolicy {
   return parsed.success ? parsed.data : DEFAULT_RUN_ATTENTION_POLICY;
 }
 
-export type RunAttentionSnapshot = RunAttentionPolicy;
+export type RunAttentionSnapshot = RunAttentionPolicy & {
+  target?: { kind: "agent" | "human"; id: string };
+  humanRecipientIds?: string[];
+};
 
 export const runAttentionFactsSchema = z.strictObject({
   deadlineAt: z.iso.datetime(),

@@ -34,7 +34,7 @@ import { getChat, ensureInstance, sendMessage } from "./chat";
 import { cancelInvalidAutomationInputs } from "./automation-input";
 import { cancelInvalidTaskStartInputs } from "./task-input";
 import { routeWakeCandidates } from "./chat-wake";
-import { controlFor } from "./chat-schedule";
+import { controlFor, signalScheduleChange } from "./chat-schedule";
 import { settleContinuationRun } from "./continuation-delivery";
 import { taskResponsibilityFacts, TaskError } from "./task-capabilities";
 import { clearRunActivity, settleRunActivity } from "../server/pi-host/run-activity";
@@ -380,7 +380,7 @@ export function appendTaskStartRunInput(messageId: string, ctx: ProjectContext):
  * 失败（owner 已不在本对话的成员表里、或对话不可达）会抛出，由调用方按 T8 复用既有
  * 重试规则重试；这里不新造退避与次数。
  */
-export function appendEscrowTimeoutOwnerRunInput(
+export function appendSystemOwnerRunInput(
   messageId: string,
   agentProfileId: string,
   ctx: ProjectContext,
@@ -388,7 +388,7 @@ export function appendEscrowTimeoutOwnerRunInput(
   return sqlite
     .transaction(() => {
       const saved = db.select().from(message).where(eq(message.id, messageId)).get();
-      if (!saved) throw new AgentRunError("not_found", "超时提醒消息不存在");
+      if (!saved) throw new AgentRunError("not_found", "系统提醒消息不存在");
       const current = getChat(saved.chatId, ctx);
       const instance = ensureInstance(current.id, agentProfileId, ctx);
       attachMessageToRun({ id: saved.id }, current, instance, ctx);
@@ -409,6 +409,14 @@ export function appendEscrowTimeoutOwnerRunInput(
  * （2）人类停止不能被自动开的下一轮抵消（d10/d11，`o-turn-semantics` 也钉住 aborted 后 pending 仍为 pending）。
  * 这两类的处置语义归后续阶段，不在这里用猜测的理由取消。
  */
+export function appendEscrowTimeoutOwnerRunInput(
+  messageId: string,
+  agentProfileId: string,
+  ctx: ProjectContext,
+): string {
+  return appendSystemOwnerRunInput(messageId, agentProfileId, ctx);
+}
+
 function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, requestId: string): void {
   if (controlFor(run.chatId).mode !== "enabled") return;
   const pending = db
@@ -650,6 +658,7 @@ export function transitionAgentRun(
   // 由外层提交后的调用方清理；外层回滚时下一次收尾仍能取到历史。
   if (settledActivity && !sqlite.inTransaction) clearRunActivity(id);
   // Run 状态是页面最在意的那条变化：一次转移同时影响对话与 Project 的运行列表。
+  signalScheduleChange(run.chatId);
   publishProjectChange(run.projectId, run.chatId);
   return run;
 }
