@@ -29,7 +29,7 @@ P3 之后又合入了宿主 skills 默认继承（`7416b1b`）及正文内联技
 
 ## 后续阶段尚待设计
 
-webhook、cron 与原生个人助理已有契约、实现和专项技术验证；Feishu DM adapter（身份、入站、投递、SDK 装配、绑定界面）已实现并集成，真实凭证下的绑定、入站、出站与卡片动作已在评审实例跑通，移动端与多设备体验仍未验证，见[飞书推进记录](feishu-adapter-plan.md#f6-真实平台实况已跑通)。语音保留共用边界，具体实现留到后续。常规选择按[早期版本的决策方式](project-conventions.md#早期版本的决策方式)由执行者直接落实，不以逐项询问 Human 为开工前提。
+webhook、cron 与原生个人助理已有契约、实现和专项技术验证；Feishu DM adapter（身份、入站、投递、SDK 装配、绑定界面）已实现并集成，真实凭证下的绑定、入站、出站与卡片动作已在评审实例跑通，移动端与多设备体验仍未验证，见[飞书推进记录](feishu-adapter-plan.md#f6-真实平台实况已跑通)。Hindsight 记忆已实现并完成真实链路验证，未验证项见[记忆真实链路](memory-e2e.md)。语音保留共用边界，具体实现留到后续。常规选择按[早期版本的决策方式](project-conventions.md#早期版本的决策方式)由执行者直接落实，不以逐项询问 Human 为开工前提。
 
 - [自动化决策草案](automation-decisions.md)记录 webhook、cron、工作提交与结果投递的边界。
 - [个人助理与 channel 决策草案](personal-assistant-decisions.md)记录助理、会话、入口、观察、委派和通知的关系。
@@ -68,7 +68,7 @@ webhook、cron 与原生个人助理已有契约、实现和专项技术验证�
 | Cron 接入相同消息动作 | 复用上一单元的规则与提交路径，增加时区、下一时点、重叠跳过和离线不补做 | 已实现并完成 schema / domain / runtime / UI 专项技术验证：实际墙钟定时触发经生产服务与真实 Pi runner 的回环模型 fixture；同规则重叠跳过、停用不撤回、重启不补跑由边界测试覆盖。Human UI 体验已确认，固定偏移与当前默认项已完成复验，见 [Cron 契约](cron-core.md) |
 | Sprout 原生个人助理 | 复用现有 Agent profile 与 Project DM，补受限工具、跨 Project 观察、watch、提案确认、受控委派及通知 | 已实现并完成专项技术验证：当前 Human 权限、目的隔离、单次确认、持久 watch、合并通知和实际下一轮 Pi context；生产 fixture 包含初始与运行中 steer 输入，零付费调用。Human UI 体验已确认，最后基础信息分隔线修复按授权由执行者截图复核；广泛技术验证的既有限制仍保留。见[契约](assistant-core.md)与[功能证据](feature-map/assistant.md)。 |
 | 飞书 DM adapter | 依赖原生助理闭环，接身份核验、DM 绑定、接收去重、两端确认及统一投递 | 外部输入与 Sprout 共用同一 DM 历史；解绑立即停收停发；多端不重复执行；投递失败不重跑工作 | 已实现并完成专项技术验证：真实自建应用在评审实例上完成私聊发码绑定、真实卡片推送与卡片「拒绝」回调，入站消息进入该 Human 的助理 DM 历史；共享历史、解绑停收停发、多端不重跑、投递失败不重跑由领域与边界测试覆盖。Human 已验收绑定页三项体验修正（确认码跨刷新保留、显示账号昵称、换绑需飞书确认）。未验证：飞书移动端与多设备体验、真实租户的 `contact:user.base:readonly` 授权。见[推进记录](feishu-adapter-plan.md)与[契约](feishu-adapter-contract.md) |
-| Hindsight 记忆 | 依赖 Project 设置与 Pi runner。先钉 bank 解析与组件安装契约，再贯通开关、状态、工具面与设置页 | 关闭时扩展、工具、提示词与技能都不进 Pi；开启后新 session 能检索到上次写入；安装失败显式可见且不挡 run。计划见[记忆计划](memory-plan.md) |
+| Hindsight 记忆 | 依赖 Project 设置与 Pi runner。先钉 bank 解析与组件安装契约，再贯通开关、状态、工具面与设置页 | 关闭时扩展、工具、提示词与技能都不进 Pi；开启后新 session 能检索到上次写入；安装失败显式可见且不挡 run。计划见[记忆计划](memory-plan.md)。已实现并完成真实链路验证：真实 Hindsight 与 6 次付费模型调用跑通写入、新 session 检索、关闭隔离与安装失败降级；关闭态官方 npm skill 泄漏已修复。未验证：测试连接、清空、compaction、浏览器页面。证据见[真实链路](memory-e2e.md) |
 
 每个单元带上最小可用页面与实际验收，不先集中构建一套未来才使用的基础框架。新页面形状按[页面设计约定](project-conventions.md#页面设计与实现的分工)处理。功能细化见[功能计划](development-plan-functional.md#首版功能单元)，界面细化见[UI 计划](development-plan-ui.md#首版界面单元)。
 

@@ -1,6 +1,6 @@
 # Hindsight 记忆接入计划
 
-> 状态：进行中，MEM-0 已完成，MEM-1 起待开始。入口见[开发总计划](development-plan.md#首版推进顺序)。
+> 状态：已完成，MEM-0 到 MEM-6 全部完成；真实链路证据见 [memory-e2e.md](memory-e2e.md)。入口见[开发总计划](development-plan.md#首版推进顺序)。
 
 ## 目标
 
@@ -150,7 +150,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - `open` 消息增加 `memory` 块；runner 写 `HINDSIGHT_*` 环境变量后动态 import 工厂。
 - 生成独立 JSON，显式写 `bankId`、`dynamicBankId: false`、`autoUpdate: false`、`autoSeed: false`，不写 `autoInject`（默认 `reflect` 才是实测成本那一档），并在 import 前设置 `HINDSIGHT_CONFIG`。`autoSeed` 默认为 true，会触发按美元计费的 codebase survey，所以必须显式关闭。生成或读取失败一律 `unavailable`，不回退 bundle 默认值。
 - 八个工具名只在 `ready` 时进入 `tools` allowlist。
-- 关闭时清掉从服务端继承的 `HINDSIGHT_*`，并按路径过滤 companion skill。`scripts/pi-host-skills.mjs` 目前会把 `~/.pi/agent/skills/hindsight-coding-agent` 继承给每个 session，这个过滤与开关无关，始终生效。
+- 关闭时清掉从服务端继承的 `HINDSIGHT_*`，并在 SDK 解析后按 skill name 过滤 `hindsight-coding-agent`。官方 npm 包的 skill 在 `<dataDir>/extensions/hindsight/<version>/package/skill/SKILL.md`，不含旧过滤依赖的 `/hindsight-coding-agent/` 路径片段，MEM-6 因此补了 `skillsOverride`；路径过滤保留作第二道。宿主 `~/.pi/agent/skills/hindsight-coding-agent` 与开关无关，始终不进 session。
 - 启用态的 factory 会调用 `syncCompanionSkill`，它不认 runner 的 `agentDir`，恒写 `~/.pi/agent/skills/hindsight-coding-agent`。接受为已知全局副作用，但关闭态仍必须过滤所有继承路径。
 - 加载失败、注册断言失败、注入超时都降级为本次 run 无记忆，run 正常结束。
 - 快照写 `memory` 状态，不写 token。
@@ -213,7 +213,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | --- | --- | --- |
 | 领域单测 | bank 解析、地址校验、密钥脱敏、revision、状态归并 | `pnpm test` |
 | 安装器 | 幂等、并发、校验失败、超时、残留锁、无 lifecycle 脚本、本地 tarball 离线安装 | 本地 fixture tarball 单测 `tests/memory-install.test.ts` |
-| Runner | 开、关、失败三态与工具面、注入、技能过滤 | 真实 runner 加 model fixture，新增 `scripts/verify/m2-memory-runner.sh` |
+| Runner | 开、关、失败三态与工具面、注入、技能过滤 | `tests/memory-runner.test.ts` 启动真实 runner 与 fixture，断言 9 gates、0 付费调用、0 Hindsight 调用 |
 | API | 权限、并发、空密钥、动作错误分类 | 领域与 HTTP 边界测试 |
 | 页面 | 信息层级、状态表达、交互 | 浏览器脚本、截图、Human review |
 | 真实链路 | 写入、跨 session 检索、关闭隔离、失败降级 | 本机真实服务，记录付费调用 |
@@ -248,4 +248,4 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | MEM-4 | 已完成 | PR #46，`fe04c72`，全量 173 文件 / 1555 tests |
 | MEM-4b | 完成 | PR #47，`c257d8b`；20 个动作测试 |
 | MEM-5 | 已完成 | PR #48，`ebb664d`；视觉修正 `9a179d1`；方案 A；175 文件 / 1589 tests；桌面截图 `/Users/snake/.t3/userdata/browser-artifacts/browser-screenshot-localhost-mwbtqh4t-efb990e1.png` |
-| MEM-6 | 进行中 | 真实服务与真实模型链路验证中 |
+| MEM-6 | 已完成 | PR #49，`766e51a`；[docs/memory-e2e.md](memory-e2e.md)；真实安装 0.8.7、6 次付费 completion（deepseek-v4.1-flash）、测试 bank `sprout::mem6-b9af937b` 已删除；关闭态 skill 泄漏修复；全量 175 文件 / 1589 tests。未验证：`testMemoryConnection`、`clearMemory`、compaction、浏览器页面 |
