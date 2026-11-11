@@ -16,6 +16,8 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/channel-delivery.test.ts",
     "tests/channel-actions.test.ts",
     "tests/channel-migration.test.ts",
+    "tests/memory-config.test.ts",
+    "tests/memory-config-migration.test.ts",
     "tests/feishu-emission.test.ts",
     "tests/feishu-ingress.test.ts",
     "tests/feishu-runtime.test.ts",

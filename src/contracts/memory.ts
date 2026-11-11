@@ -35,7 +35,13 @@ function isMemoryApiUrl(value: string): boolean {
     if (url.protocol === "https:") return true;
     if (url.protocol !== "http:") return false;
     const host = url.hostname;
-    if (host === "localhost" || host.endsWith(".localhost") || host === "[::1]") return true;
+    if (
+      host === "localhost" ||
+      host.endsWith(".localhost") ||
+      host.endsWith(".local") ||
+      host === "[::1]"
+    )
+      return true;
     const labels = host.split(".");
     if (labels.length !== 4 || !labels.every((part) => /^\d{1,3}$/.test(part) && +part <= 255))
       return false;

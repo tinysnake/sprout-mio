@@ -31,17 +31,6 @@ function setup() {
   connection.sqlite.pragma("foreign_keys = OFF");
   migrate(connection.db, { migrationsFolder: "drizzle" });
   connection.sqlite.exec(`
-    CREATE TABLE memory_config (
-      project_id text NOT NULL REFERENCES project(id),
-      provider text NOT NULL,
-      enabled integer NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
-      settings text NOT NULL DEFAULT '{}' CHECK (json_valid(settings)),
-      secrets text NOT NULL DEFAULT '{}' CHECK (json_valid(secrets)),
-      revision integer NOT NULL DEFAULT 0 CHECK (revision >= 0),
-      updated_at_ms integer NOT NULL,
-      updated_by_human_id text REFERENCES user(id),
-      PRIMARY KEY (project_id, provider)
-    );
     INSERT INTO user(id,name,email,email_verified,created_at,updated_at)
       VALUES ('human','Human','human@example.test',0,1,1),
              ('other','Other','other@example.test',0,1,1);
@@ -114,6 +103,7 @@ describe("memory contract", () => {
     "https://8.8.8.8",
     "http://localhost:8888",
     "http://memory.localhost:8888",
+    "http://hindsight.local:8888",
     "http://[::1]:8888",
     "http://127.0.0.2:8888",
     "http://10.0.8.130:8888",

@@ -73,7 +73,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - `memorySettingsSchema`、`memorySecretsSchema`、`saveMemoryConfigInput`、`MemoryConfigView`。
 - `memoryDefaults`，含地址、bank 前缀、两个自动动作和版本。
 - `resolveApiUrl(settings, env)`。
-- `resolveBankTarget({ bankPrefix, bankName }, projectId)`，返回判别联合 `project-default`、`bare`、`namespaced`。
+- `resolveBankTarget({ bankPrefix, bankName }, projectId)`，返回判别联合 `bare`、`namespaced`；前缀非空且 name 为空时用 projectId 拼出 `${prefix}::${projectId}`。
 - `MEMORY_TOOL_NAMES`，八个 `hindsight_*` 名字。
 - `HINDSIGHT_EXTENSION_VERSION` 与 tarball integrity。
 - 生成配置的固定字段，`bankId`、`dynamicBankId: false`、`autoUpdate: false`、`autoInject: "none"`。
