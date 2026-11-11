@@ -12,6 +12,7 @@ import {
 } from "../contracts/memory";
 import { memoryConfig, project } from "../db/schema";
 import type { ProjectContext } from "../domain/access";
+import { ProjectAccessError } from "../domain/access";
 import { assertMemoryConfigHuman, MemoryConfigError } from "../domain/memory-config";
 import { readMemoryInstall } from "./memory-install";
 import type { MemorySettingsDependencies } from "./memory-settings";
@@ -28,7 +29,7 @@ function authorizedProject(
 ) {
   assertMemoryConfigHuman(context);
   const row = deps.db.select().from(project).where(eq(project.id, projectId)).get();
-  if (!row) throw new MemoryConfigError("forbidden", "无权访问此 Project");
+  if (!row) throw new ProjectAccessError();
   return row;
 }
 

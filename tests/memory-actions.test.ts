@@ -355,4 +355,20 @@ describe("memory action boundaries", () => {
     );
     expect(JSON.stringify([result, record.mock.calls])).not.toContain("private-action-token");
   });
+  it("rejects an Agent context at the domain layer", async () => {
+    await expect(
+      testMemoryConnection(deps, "prj_deadbeef", {
+        userId: owner.userId,
+        requestId: "req_agent",
+        agent: { agentProfileId: "agent", instanceId: "instance", runId: "run" },
+      }),
+    ).rejects.toMatchObject({ code: "forbidden" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("reports a missing project as not_found", async () => {
+    await expect(testMemoryConnection(deps, "prj_missing", context)).rejects.toMatchObject({
+      code: "not_found",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
