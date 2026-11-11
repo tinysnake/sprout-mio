@@ -73,7 +73,14 @@ export default function(pi) {
 `,
       );
       const skillPaths = ["ordinary", "hindsight-coding-agent"].map((name) => {
-        const path = join(caseDir, "skills", name, "SKILL.md");
+        const path = join(
+          caseDir,
+          "packages",
+          name === "ordinary" ? "ordinary-package" : "hindsight",
+          "package",
+          "skill",
+          "SKILL.md",
+        );
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(
           path,
@@ -224,6 +231,7 @@ export default function(pi) {
           bankId: "sprout::fixture",
           dynamicBankId: false,
           autoUpdate: false,
+          autoSeed: false,
         });
         assert.deepEqual(probe.env, {
           HINDSIGHT_CONFIG: probe.env.HINDSIGHT_CONFIG,
