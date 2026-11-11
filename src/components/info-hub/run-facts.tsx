@@ -17,6 +17,16 @@ function statusLabel(status: string) {
   return STATUS_LABELS[status] ?? status;
 }
 
+/** 当前 run 的状态是这一段的视觉锚点：带色点与状态色，与 Chat 页运行面板同一套色。 */
+const ACTIVE_TONE: Record<string, string> = {
+  queued: "text-status-queued",
+  running: "text-status-running",
+  completed: "text-status-success",
+  failed: "text-status-failed",
+  aborted: "text-status-stopped",
+  interrupted: "text-status-interrupted",
+};
+
 export const SUMMARY_TONE: Record<string, string> = {
   completed: "text-status-success",
   failed: "text-destructive",
@@ -41,7 +51,16 @@ export function orderedCounts(runs: readonly { status: string }[]) {
  * ref、真实 commit 与 fresh。当前 run 与状态汇总常显，历史 run 的流水账收敛成计数：
  * 逐条错误串既没有上下文也没有可做的事，Human 评审要求不再平铺。
  */
-export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: string }) {
+export function RunFactsBlock({
+  runs,
+  testId,
+  scope = "project",
+}: {
+  runs: AgentRunsView;
+  testId: string;
+  /** chat 视角下 Chat 与分身就是当前这一条，不再逐行复述它们的 id。 */
+  scope?: "chat" | "project";
+}) {
   // recent 为最新优先：取最近一次带仓库依据的 run，代表当前工作副本来源。
   const latestRepo = runs.recent.find((run) => run.repo)?.repo;
   return (
@@ -60,10 +79,24 @@ export function RunFactsBlock({ runs, testId }: { runs: AgentRunsView; testId: s
         ) : (
           runs.active.map((run) => (
             <li key={run.runId} data-testid={`${testId}-active-item`} data-run-id={run.runId}>
-              <p className="break-all text-muted-foreground">
-                run {run.runId} · Chat {run.chatId} · 分身 {run.instanceId}
+              <p className="font-mono text-[10px] break-all text-muted-foreground">
+                run {run.runId}
+                {scope === "project" && (
+                  <>
+                    {" "}
+                    · Chat {run.chatId} · 分身 {run.instanceId}
+                  </>
+                )}
               </p>
-              <span data-testid={`${testId}-active-status`}>{statusLabel(run.status)}</span>
+              <span
+                data-testid={`${testId}-active-status`}
+                className={`inline-flex items-center gap-1.5 font-medium ${
+                  ACTIVE_TONE[run.status] ?? "text-foreground"
+                }`}
+              >
+                <span className="size-1.25 shrink-0 rounded-full bg-current" />
+                {statusLabel(run.status)}
+              </span>
               {run.pendingInputs > 0 && (
                 <span data-testid={`${testId}-active-pending`}>
                   ，{run.pendingInputs} 条输入未投递

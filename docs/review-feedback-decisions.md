@@ -175,3 +175,18 @@ Human 看完改后页面又提了四处（附三张红框截图）：一是「�
 - `docs/feature-map/info-hub.md`：Chat 信息一行的测试 id 与说明同步。
 
 父代理实际复跑：`pnpm typecheck`；`pnpm test` 1463 项全过；`pnpm check` 0 errors / 16 条既有 warning / 775 文件；`as-p5a-chat-ui` 31 项；`i-chat`；`j-info-hub`；`k-acceptance` runner 12 项 0 失败；`bf-p6b-pages` 27 + 13 组；`q-info-hub-runs`。前后对照截图扩到 10 张（新增 Change Owner 对话框、公共频道成员段、公共频道规则展开），父代理逐张读图确认四处反馈都已落地：公共频道默认只显示「公共频道成员跟随项目自动同步（?）」，展开后是完整规则与 Project Members 链接；变更负责人对话框里有治理说明而面板 Owner 段没有；DM 右栏只剩「最后消息时间 11/11 11:07」与折叠的「本轮上下文与注入诊断」，没有「消息数」与「与 Project settings 同一租约事实」。未重跑完整 CI，未改动数据库与原型服务。Human 体验确认仍待反馈。
+
+### 第四轮：第三轮评分 7.3 之后的整改
+
+第三轮交付的 10 张对照截图交同一 GPT 模型按五条机制复评，得 **7.3/10**（未过 8.0 关口）：机制 1「信息只出现一处」6.0（DM 的分身 Instance ID 同时在成员元数据与活动 run 明细；群聊 Owner 同时在成员徽标、Owner 段摘要与展开内容），机制 2「信息在相关位置」7.0（最后消息时间仍挂在成员段，运行状态与运行事实仍主要靠右栏），机制 3「重要程度有区分」7.4（右栏状态、ID、治理版本与空态都是相近的 10–11px 灰字），机制 4「密度张弛」8.3，机制 5「排版分区」7.8（窄栏长 ID 与 ISO 时间折行；注意这一轮截图早于时间标签改动，所以它看到的时间仍是 ISO）。
+
+本轮对应改动：
+
+- `info-hub/run-facts.tsx`：`RunFactsBlock` 增加 `scope`（`chat` 视角不再逐行复述 `Chat <id> · 分身 <id>`，那是当前这一条对话自己的身份），活动 run 的状态改为带色点的状态色文本（与 Chat 页运行面板同一套 `text-status-*`）作为该段的视觉锚点，run id 行降为次级等宽小字。
+- `chat-details.tsx`：「分身 Instance ID」「归档状态」「最后消息时间」从「成员」段移出，独立成「会话」段（`chat-details-conversation`）；时间单元格 `whitespace-nowrap`，值用 `chatTimeLabel`（`11/11 19:29`），机器可读真值留在 `<time datetime>`；Owner 段的「Owner」一行删除，`chat-owner-name`（保留「（Human）/（Agent）」后缀）移到该段折叠摘要右侧，群聊 Owner 由此只在成员徽标与段摘要出现。
+- `machine/lease-panel.tsx`：`LeaseOverview` 增加 `hideEmpty`，窄栏调用方（会话详情）在没有租约时整块不渲染，不再输出「本 Project 还没有租约记录。」这类没有可行动信息的空态。
+- `projects.$projectId.chats.index.tsx`：删掉 Chats 首页的类型科普副标题，空态提示压到一句「从左侧列表选择，或用下面的入口新建。」
+
+仍然冻结、本轮有意不改的三处（都有门禁把文案或结构当作契约）：`run-facts.tsx` 的「还没有历史 run。」与「当前没有排队中或运行中的 run。」（`tests/run-facts-summary.test.ts`、`tests/fixtures/p6b-pages.ts` 四种视角），pending 输入在中栏与右栏的共同出现（`o-turn-semantics` 断言 `pending-input-count` 文案并现场点停止），Owner 段的「治理版本」「唤醒策略」（`as-p5a-chat-ui.mjs` 计数断言）。要动这三处需要同时改契约，不属于本轮去重范围。
+
+父代理实际复跑（均前台）：`pnpm typecheck`；`pnpm test` 166 文件 1463 项全过；`pnpm check --fix` 后再 `pnpm check` 0 errors / 16 条既有 warning / 775 文件；`as-p5a-chat-ui` 31 项（含「会话」段新增后的事实行与移动端宽度断言）；`j-info-hub`；`k-acceptance` runner 12 项 0 失败；`bf-p6b-pages` 27 + 13 组；`q-info-hub-runs`；`i-chat`。改后对照截图重拍为 10 张（与 before 同数据同视口），父代理读图确认：「会话」段在 DM 右栏显示 `ins_8b682c47` 与 `11/11 19:29`、「活动」段是「活动 run 宿主未启用」+ 等宽 run id + 带色点的「运行中」、租约空态与「与 Project settings 同一租约事实」都不再出现，Chats 首页只剩标题、空态一句提示与发起入口。未重跑完整 CI，未改动数据库与原型服务。Human 体验确认仍待反馈。

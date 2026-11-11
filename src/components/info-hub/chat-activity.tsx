@@ -24,7 +24,7 @@ export function ChatActivityFacts({
   const injected = record?.deliveryState === "submitted";
   return (
     <div className="space-y-4">
-      <RunFactsBlock runs={info.runs} testId="info-chat-runs" />
+      <RunFactsBlock runs={info.runs} testId="info-chat-runs" scope="chat" />
       <details data-testid="chat-turn-context-diagnostics" className="group">
         <summary className="flex min-h-7 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
           <span>本轮上下文与注入诊断</span>

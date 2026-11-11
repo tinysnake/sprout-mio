@@ -198,6 +198,55 @@ export function ChatDetails({
         </section>
         <details
           open
+          data-testid="chat-details-conversation"
+          className="group border-b border-border py-4"
+        >
+          <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
+            <span>会话</span>
+            <Icon
+              as={ChevronRight}
+              size={12}
+              className="transition-transform group-open:rotate-90"
+            />
+          </summary>
+          <div className="space-y-3 pt-3">
+            {/* 会话自身的事实单独成段：时间不再挂在成员列表下面，成员段只讲成员。 */}
+            <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-[11px]">
+              {/* 群与频道可能有多个分身，单独一行只能指其中一个；DM 仍是一对一指代。 */}
+              {chat.kind === "dm" && (
+                <>
+                  <dt className="text-muted-foreground">分身 Instance ID</dt>
+                  <dd data-testid="inspector-instance-id" className="font-mono break-all">
+                    {instanceId ?? "（还没有分身实例）"}
+                  </dd>
+                </>
+              )}
+              {info.ok && info.data.archived && (
+                <>
+                  <dt className="text-muted-foreground">归档状态</dt>
+                  <dd data-testid="inspector-archived">已归档</dd>
+                </>
+              )}
+              <dt className="text-muted-foreground">最后消息时间</dt>
+              <dd className="whitespace-nowrap">
+                {!info.ok ? (
+                  "未知"
+                ) : info.data.messages.latestAt ? (
+                  <time
+                    data-testid="inspector-message-latest-at"
+                    dateTime={info.data.messages.latestAt}
+                  >
+                    {chatTimeLabel(info.data.messages.latestAt)}
+                  </time>
+                ) : (
+                  <span data-testid="inspector-message-latest-at">（还没有消息）</span>
+                )}
+              </dd>
+            </dl>
+          </div>
+        </details>
+        <details
+          open
           data-testid="chat-details-members"
           className="group border-b border-border py-4"
         >
@@ -336,38 +385,6 @@ export function ChatDetails({
                 DM 成员固定为两位参与者，不提供独立成员治理。
               </p>
             )}
-            <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 pt-2 text-[11px]">
-              {/* 群与频道可能有多个分身，单独一行只能指其中一个；DM 仍是一对一指代。 */}
-              {chat.kind === "dm" && (
-                <>
-                  <dt className="text-muted-foreground">分身 Instance ID</dt>
-                  <dd data-testid="inspector-instance-id" className="font-mono break-all">
-                    {instanceId ?? "（还没有分身实例）"}
-                  </dd>
-                </>
-              )}
-              {info.ok && info.data.archived && (
-                <>
-                  <dt className="text-muted-foreground">归档状态</dt>
-                  <dd data-testid="inspector-archived">已归档</dd>
-                </>
-              )}
-              <dt className="text-muted-foreground">最后消息时间</dt>
-              <dd>
-                {!info.ok ? (
-                  "未知"
-                ) : info.data.messages.latestAt ? (
-                  <time
-                    data-testid="inspector-message-latest-at"
-                    dateTime={info.data.messages.latestAt}
-                  >
-                    {chatTimeLabel(info.data.messages.latestAt)}
-                  </time>
-                ) : (
-                  <span data-testid="inspector-message-latest-at">（还没有消息）</span>
-                )}
-              </dd>
-            </dl>
             {chat.kind === "dm" && (
               <div className="pt-2">
                 <CopyChatIdButton chatId={chat.id} />
@@ -432,7 +449,9 @@ export function ChatDetails({
             <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
               <span>Owner</span>
               <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
-                {ownerName}
+                <span data-testid="chat-owner-name">
+                  {ownerName}（{chat.owner.kind === "human" ? "Human" : "Agent"}）
+                </span>
                 <Icon
                   as={ChevronRight}
                   size={12}
@@ -442,10 +461,6 @@ export function ChatDetails({
             </summary>
             <div className="space-y-3 pt-3">
               <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1.5 text-[11px]">
-                <dt className="text-muted-foreground">Owner</dt>
-                <dd data-testid="chat-owner-name">
-                  {ownerName}（{chat.owner.kind === "human" ? "Human" : "Agent"}）
-                </dd>
                 <dt className="text-muted-foreground">唤醒策略</dt>
                 <dd data-testid="chat-wake-policy">{WAKE_POLICY_LABELS[chat.wakePolicy]}</dd>
                 <dt className="text-muted-foreground">治理版本</dt>
@@ -550,6 +565,7 @@ export function ChatDetails({
                     }}
                     dense
                     showDenseNote={false}
+                    hideEmpty
                     testId="chat-leases"
                   />
                 </div>

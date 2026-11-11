@@ -43,6 +43,7 @@ export function LeaseOverview({
   revision,
   escrowNames = {},
   showDenseNote = true,
+  hideEmpty = false,
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -68,10 +69,13 @@ export function LeaseOverview({
    * Chat inspector 只呈现既有租约状态，关掉它。
    */
   showDenseNote?: boolean;
+  /** 窄栏调用方可以要求空态整块不渲染：没有租约时那句说明没有可行动信息。 */
+  hideEmpty?: boolean;
   testId?: string;
 }) {
   const [forcedReceipts, setForcedReceipts] = useState<Record<string, LeaseMutationView>>({});
   const visible = visibleLeases(leases, projectId);
+  if (hideEmpty && visible.length === 0) return null;
   const machineName = (machineId: string) =>
     machines.find((item) => item.machine.id === machineId)?.machine.name ?? machineId;
 
