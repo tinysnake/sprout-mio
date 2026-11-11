@@ -22,6 +22,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/memory-install.test.ts",
     "tests/memory-settings.test.ts",
     "tests/memory-server-boundary.test.ts",
+    "tests/memory-actions.test.ts",
     "tests/feishu-emission.test.ts",
     "tests/feishu-ingress.test.ts",
     "tests/feishu-runtime.test.ts",
