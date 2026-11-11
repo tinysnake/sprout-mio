@@ -112,8 +112,9 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | MEM-1 契约与表 | MEM-0 | 契约、schema、迁移、领域读写 | 单测覆盖 bank 四行与两个非法组合、密钥脱敏、revision 冲突 |
 | MEM-2 组件安装 | MEM-1 | Machine 级下载、校验、解压、状态机 | 冷装、幂等、并发单飞、校验失败、超时、残留锁都有测试 |
 | MEM-3 Runner 激活 | MEM-1、MEM-2 | 扩展工厂、环境、工具面、技能过滤、快照 | 开、关、安装失败三种 run 的行为都被真实 runner 证明 |
-| MEM-4 设置 API | MEM-1、MEM-2 | 读写、测试连接、重试安装、清空 | 权限、revision、空密钥保持、错误分类都有边界测试 |
-| MEM-5 设置页 | MEM-4 | 先出 2 到 3 个 HTML 方案，Human 选定后实现 | 选定方案落地，浏览器脚本与截图证据，Human 评审通过 |
+| MEM-4 设置 API | MEM-1、MEM-2 | 读写与安装预热 | 权限、revision、空密钥保持都有边界测试 |
+| MEM-4b 记忆操作 API | MEM-4 | 测试连接、重试安装、清空记忆；导入历史暂缓 | 401/403/404/不可达分类、清空二次确认、重试幂等都有注入 fetch 的测试 |
+| MEM-5 设置页 | MEM-4b | 先出 2 到 3 个 HTML 方案，Human 选定后实现 | 选定方案落地，浏览器脚本与截图证据，Human 评审通过 |
 | MEM-6 真实链路 | MEM-3、MEM-5 | 真实服务、真实模型、功能地图与文档 | 写入后新 session 能检索到；关闭后无工具无注入；失败不挡 run |
 
 ### MEM-0 事实核对
@@ -156,10 +157,21 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 ### MEM-4 设置 API
 
+只交付配置的读写、脱敏视图与安装预热。测试连接、重试安装、清空记忆拆到 MEM-4b，避免一个单元同时改配置边界和网络动作。
+
 - 新增 `src/server/functions/memory.ts`，照 `src/server/functions/channels.ts` 的边界写法。
 - 读接口返回配置视图与安装状态；写接口只允许 Human。
 - 动作：测试连接、重试安装、清空本 Project 记忆。清空要求输入 Project 名。
 - 测试连接区分不可达、401、403、bank 不存在和成功。建库确认用显式 `PUT` 加 `GET`，不能把空 retain 的 200 当建库成功；读取 404 不报成网络断线。
+
+### MEM-4b 记忆操作 API
+
+服务端动作，不做页面。全部 Human only，复用 MEM-4 的视图与依赖装配。
+
+- 测试连接。`GET /version` 判可达，`GET /v1/default/banks/<encoded-bank>` 判 bank 是否存在；404 时显式 `PUT {}` 再 `GET` 确认。失败分类为不可达、401、403、bank 缺失、服务端错误。
+- 清空记忆。要求输入 Project 名并匹配；`DELETE /v1/default/banks/<id>` 后 `PUT {}` 重建空 bank，保证页面仍可用；404 视为已空。
+- 重试安装。调 `provisionMemoryExtension`，不阻塞 HTTP 请求；返回当前安装行，页面刷新读状态。
+- 测试用注入的 `fetch` 覆盖五种连接结果与清空确认，不访问真实网络。
 
 ### MEM-5 设置页
 
@@ -180,7 +192,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - 有效状态与原因：未配置、组件安装中、安装失败、服务不可达、已就绪。
 - 实际使用的 bank，随输入实时更新。
 - 最近写入与注入时间、最近错误摘要。
-- 测试连接、重试安装、导入仓库历史、清空记忆。
+- 测试连接、重试安装、清空记忆接 MEM-4b 的边界。导入仓库历史首版显示为灰色“未实现，P4”，不放一个承诺了却没有后端的按钮。
 
 ### MEM-6 真实链路
 
@@ -232,7 +244,8 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | MEM-0 | 已完成 | [docs/memory-spike.md](memory-spike.md)，PR #41，`l-docs.sh` 与 `l-docs-probes.sh` 通过 |
 | MEM-1 | 已完成 | PR #42，`05fa735`，迁移 `0056`，48 tests；验证者 GO WITH CHANGES，修正 `8207e9b`；F3 按现有 `channel-config` 约定保留 |
 | MEM-2 | 已完成 | PR #43，`27959a7`，修正 `de78e30`、`cd4a9f1`、`3640b2d`，15 tests；第三次验证 GO WITH CHANGES，仅更正历史基准记录 |
-| MEM-3 | 未开始 | |
-| MEM-4 | 未开始 | |
-| MEM-5 | 方案 A 已选定 | 待实现 |
+| MEM-3 | 已完成 | PR #45，`6587e43`；修正 `cc0d724`、`cb21a90`，全量 171 文件 / 1542 tests |
+| MEM-4 | 已完成 | PR #46，`fe04c72`，全量 173 文件 / 1555 tests |
+| MEM-4b | 未开始 | |
+| MEM-5 | 方案 A 已选定 | 待 MEM-4b |
 | MEM-6 | 未开始 | |
