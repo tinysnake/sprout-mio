@@ -95,11 +95,6 @@ export function ContinuationPanel({
           );
         })}
       </div>
-      {view && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          {rows.length > 1 ? "点开任一行进入完整诊断与逐轮记录。" : "点开进入完整诊断与逐轮记录。"}
-        </p>
-      )}
       {!view && (
         <p data-testid="continuation-unavailable" className="mt-2 text-muted-foreground">
           暂时无法确认最近检查与下次检查，请刷新事实后确认。

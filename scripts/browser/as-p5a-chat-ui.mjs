@@ -174,7 +174,7 @@ try {
     "details_sections_default_open",
     sections[0]?.open === true &&
       ownerSections[0]?.open === true &&
-      activitySections[0]?.open === true,
+      activitySections[0]?.open === false,
     JSON.stringify({
       members: sections[0]?.open,
       owner: ownerSections[0]?.open,

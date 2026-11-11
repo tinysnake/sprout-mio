@@ -452,7 +452,6 @@ export function ChatDetails({
             )}
           </div>
         </details>
-
         {/* DM 保持 P4b 形状：没有独立成员治理，因此不渲染治理段。 */}
         {chat.kind !== "dm" && (
           <details
@@ -528,12 +527,8 @@ export function ChatDetails({
             </div>
           </details>
         )}
-
-        <details
-          open
-          data-testid="chat-details-activity"
-          className="group border-b border-border py-4"
-        >
+        // 中栏的运行状态就是「当前状态」的主展示；这里默认收起，展开后看 run id、历史与诊断。
+        <details data-testid="chat-details-activity" className="group border-b border-border py-4">
           <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
             <span>活动</span>
             <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
@@ -591,7 +586,6 @@ export function ChatDetails({
             </div>
           </div>
         </details>
-
         {!machineFacts && (
           <p className="flex gap-2 pt-5 text-[10px] leading-5 text-muted-foreground">
             <Icon as={ShieldCheck} size={14} className="mt-0.5" />

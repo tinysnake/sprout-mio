@@ -154,6 +154,11 @@ async function assertTurnPromptInjectionHonest(page) {
   return { delivered, injection };
 }
 async function assertHostState(page, runFacts, expected) {
+  // 右栏「活动」段现在默认收起：先展开，innerText 才读得到标题与宿主状态。
+  await page.evaluate(() => {
+    const details = document.querySelector('[data-testid="chat-details-activity"]');
+    if (details instanceof HTMLDetailsElement && !details.open) details.open = true;
+  });
   await test(page, `${runFacts}-host-status`).waitFor();
   assert.equal(
     await test(page, `${runFacts}-host-status`).textContent(),

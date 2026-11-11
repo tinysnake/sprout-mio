@@ -91,7 +91,7 @@ describe("对话接续页面事实与 Human 控制", () => {
     expect(html.match(/<a /g)).toHaveLength(1);
     expect(html).toContain(`/checks/${view.latestEvaluation!.evaluationId}/continuation`);
     expect(html).not.toContain("/wake");
-    expect(html).toContain("点开进入完整诊断与逐轮记录。");
+    expect(html).not.toContain("点开进入完整诊断与逐轮记录。");
     expect(html).not.toContain("点开任一行");
   });
   it("DM 没有判定时接续入口仍指向 latest", async () => {
@@ -103,7 +103,7 @@ describe("对话接续页面事实与 Human 控制", () => {
     expect(html).toContain("/checks/latest/continuation");
     expect(html).not.toContain("/wake");
     expect(html).not.toContain("唤醒判定");
-    expect(html).toContain("点开进入完整诊断与逐轮记录。");
+    expect(html).not.toContain("点开进入完整诊断与逐轮记录。");
   });
   it("群组与非 DM 面板保留唤醒判定与对话接续两行", async () => {
     const view = diagnosticFixture("failure");
@@ -114,7 +114,7 @@ describe("对话接续页面事实与 Human 控制", () => {
       expect(html.match(/<a /g)).toHaveLength(2);
       expect(html).toContain("唤醒判定");
       expect(html).toContain("对话接续");
-      expect(html).toContain("点开任一行进入完整诊断与逐轮记录。");
+      expect(html).not.toContain("点开任一行进入完整诊断与逐轮记录。");
     }
   });
   it("没有判定时两行照常可点，指向 latest 而不编造 evaluationId", async () => {

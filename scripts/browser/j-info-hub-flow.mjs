@@ -304,28 +304,37 @@ await check("hub_dm_link_opens_chat", async () => {
 await check("chat_facts_render_on_chat_page", async () => {
   await page.waitForSelector('[data-testid="inspector-instance-id"]', { timeout: 20000 });
   // 页面反馈后，Info Hub 的 Chat 事实不再嵌在会话详情里重复一份；这里断言的就是会话详情自己的事实。
-  const state = await page.evaluate(() => ({
-    instance: document.querySelector('[data-testid="inspector-instance-id"]')?.textContent?.trim(),
-    kinds: [...document.querySelectorAll('[data-testid="inspector-member-list"] > li')].map(
-      (node) => (node.querySelector('[data-testid="chat-member-select"]') ? "agent" : "human"),
-    ),
-    kindLabel: Boolean(
-      document.querySelector('[data-testid="chat-pane"]')?.innerText?.includes("DM"),
-    ),
-    archivedRow: document.querySelector('[data-testid="inspector-archived"]')?.textContent?.trim(),
-    messages: document.querySelectorAll('[data-testid="message-item"]').length,
-    latestAt: document
-      .querySelector('[data-testid="inspector-message-latest-at"]')
-      ?.getAttribute("datetime"),
-    latestAtLabel: document
-      .querySelector('[data-testid="inspector-message-latest-at"]')
-      ?.textContent?.trim(),
-    runsHostStatus: document.querySelector('[data-testid="info-chat-runs"]')?.innerText,
-    turnInjection: document.querySelector('[data-testid="info-turn-prompt-injection"]')
-      ?.textContent,
-    embeddedFacts: document.querySelectorAll('[data-testid="info-hub-chat"]').length,
-    body: document.body.innerText,
-  }));
+  const state = await page.evaluate(() => {
+    // 右栏「活动」段默认收起：innerText 只在展开后才有内容。
+    const activity = document.querySelector('[data-testid="chat-details-activity"]');
+    if (activity instanceof HTMLDetailsElement && !activity.open) activity.open = true;
+    return {
+      instance: document
+        .querySelector('[data-testid="inspector-instance-id"]')
+        ?.textContent?.trim(),
+      kinds: [...document.querySelectorAll('[data-testid="inspector-member-list"] > li')].map(
+        (node) => (node.querySelector('[data-testid="chat-member-select"]') ? "agent" : "human"),
+      ),
+      kindLabel: Boolean(
+        document.querySelector('[data-testid="chat-pane"]')?.innerText?.includes("DM"),
+      ),
+      archivedRow: document
+        .querySelector('[data-testid="inspector-archived"]')
+        ?.textContent?.trim(),
+      messages: document.querySelectorAll('[data-testid="message-item"]').length,
+      latestAt: document
+        .querySelector('[data-testid="inspector-message-latest-at"]')
+        ?.getAttribute("datetime"),
+      latestAtLabel: document
+        .querySelector('[data-testid="inspector-message-latest-at"]')
+        ?.textContent?.trim(),
+      runsHostStatus: document.querySelector('[data-testid="info-chat-runs"]')?.innerText,
+      turnInjection: document.querySelector('[data-testid="info-turn-prompt-injection"]')
+        ?.textContent,
+      embeddedFacts: document.querySelectorAll('[data-testid="info-hub-chat"]').length,
+      body: document.body.innerText,
+    };
+  });
   await shot(page, "p2-j-chat-info");
   record(
     "chat_facts_render_on_chat_page",
