@@ -471,50 +471,7 @@ export function MemoryConfigPanel({
               </Field>
             </div>
           </SettingsSection>
-          <SettingsSection
-            title="操作"
-            description="测试连接只检查地址与密钥，不写入记忆。"
-            actions={
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={pending || dirty}
-                  loading={actions.test.state === "pending"}
-                  onClick={() => void runAction("test")}
-                >
-                  测试连接
-                </Button>
-                {view.install && view.install.status !== "ready" && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={pending || dirty || installing}
-                    loading={actions.retry.state === "pending"}
-                    onClick={() => void runAction("retry")}
-                  >
-                    重试安装
-                  </Button>
-                )}
-                <Button type="button" variant="secondary" disabled>
-                  从仓库历史导入
-                </Button>
-                <span className="text-xs text-muted-foreground">未实现，P4</span>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={pending || dirty}
-                  aria-expanded={confirming}
-                  onClick={() => {
-                    setConfirming((value) => !value);
-                    setConfirmName("");
-                  }}
-                >
-                  清空记忆
-                </Button>
-              </>
-            }
-          >
+          <SettingsSection title="操作" description="测试连接只检查地址与密钥，不写入记忆。">
             <div className="space-y-4">
               <Facts
                 items={[
@@ -559,6 +516,44 @@ export function MemoryConfigPanel({
                 <Result feedback={actions.test} />
                 <Result feedback={actions.retry} />
                 <Result feedback={actions.clear} />
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending || dirty}
+                  loading={actions.test.state === "pending"}
+                  onClick={() => void runAction("test")}
+                >
+                  测试连接
+                </Button>
+                {view.install && view.install.status !== "ready" && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={pending || dirty || installing}
+                    loading={actions.retry.state === "pending"}
+                    onClick={() => void runAction("retry")}
+                  >
+                    重试安装
+                  </Button>
+                )}
+                <Button type="button" variant="secondary" disabled>
+                  从仓库历史导入
+                </Button>
+                <span className="text-xs text-muted-foreground">未实现，P4</span>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={pending || dirty}
+                  aria-expanded={confirming}
+                  onClick={() => {
+                    setConfirming((value) => !value);
+                    setConfirmName("");
+                  }}
+                >
+                  清空记忆
+                </Button>
               </div>
               {confirming && (
                 <div className="space-y-3 border-l-2 border-destructive pl-4">
