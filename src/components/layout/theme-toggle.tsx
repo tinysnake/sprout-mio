@@ -25,7 +25,7 @@ export function ThemeMenuToggle() {
     <div
       role="radiogroup"
       aria-label="外观"
-      className="flex min-h-8.5 w-full items-center gap-1.75 rounded-control border border-transparent px-2.75 py-1.5 max-desktop:min-h-11"
+      className="flex min-h-8.5 w-full items-center gap-1.75 rounded-control border border-transparent px-2.75 max-desktop:min-h-11"
     >
       <span className="flex flex-none items-center gap-1.75 text-xs font-medium text-muted-foreground">
         <Icon as={PaletteIcon} />
@@ -41,9 +41,10 @@ export function ThemeMenuToggle() {
               data-testid={`theme-option-${choice.value}`}
               data-checked={selected ? "true" : "false"}
               className={cn(
-                "flex h-8 min-w-0 flex-1 cursor-pointer items-center justify-center text-foreground transition-colors duration-150 hover:bg-hover has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-ring",
+                "flex h-7.5 min-w-0 flex-1 cursor-pointer items-center justify-center text-foreground transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-ring",
                 index > 0 && "border-l border-border",
-                selected && "bg-selected",
+                // 选中格不再跟随 hover 变色，否则指针悬停时看不出哪一格在生效。
+                selected ? "bg-selected" : "hover:bg-hover",
               )}
             >
               <input
