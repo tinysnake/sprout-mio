@@ -1,4 +1,5 @@
 import { APP_VERSION, CONTRACT_VERSION } from "../contracts/version";
+import type { MemorySnapshot } from "../contracts/memory";
 import type { SproutExtensionAPI, SproutToolContext } from "./types";
 import { mcpSurfaceDiagnostics } from "./mcp-extension";
 
@@ -45,6 +46,7 @@ export interface SproutHostFacts {
   /** 以哪种方式装载的，由装载者用自己的名字填（见 `scripts/pi-host-runner.mjs`）。 */
   loader: SproutLoader;
   runtime: { node: string; pi: string };
+  memory?: MemorySnapshot;
   host: { inheritHostResources: boolean; extensions: string[] };
   session: {
     /** Pi 会话身份：与落盘 session 文件里的 id 同一份。 */

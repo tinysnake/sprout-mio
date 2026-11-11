@@ -47,6 +47,11 @@ import { PiHostFailure, piInstancePaths } from "./process";
 import type { PiSessionProcess } from "./process";
 import { clearRunActivity, recordRunActivity } from "./run-activity";
 import { prepareInheritedResources } from "./skills";
+import { filterMemorySkillPaths } from "../../contracts/memory";
+import { db } from "../../db";
+import { config } from "../../lib/config";
+import { getMachine } from "../../domain/machine";
+import { resolveMemoryRuntime } from "../memory-runtime";
 
 export type Work = ReturnType<typeof queuedRunWork>[number];
 export type PiHostSignals = { readonly isStopping: () => boolean };
@@ -114,6 +119,26 @@ export function executeRun(
           );
           return grant;
         });
+        const memory = yield* Effect.sync(() => {
+          if (profile.purpose === "assistant") return { state: "disabled" as const };
+          const machineId = config.SPROUT_PI_MACHINE_ID;
+          let machineOnline = false;
+          if (machineId) {
+            try {
+              machineOnline = getMachine({ machineId }, hostContext).connection.kind === "online";
+            } catch {
+              // An inaccessible or unknown host cannot supply Project memory.
+            }
+          }
+          return resolveMemoryRuntime({
+            db,
+            projectId: run.projectId,
+            machineId,
+            machineOnline,
+            dataDir: config.SPROUT_PI_DATA_DIR,
+            env: globalThis.process.env,
+          });
+        });
         const resources = yield* Effect.tryPromise({
           try: () =>
             profile.purpose === "assistant"
@@ -136,7 +161,14 @@ export function executeRun(
                 globalThis.process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
               ),
               extensionPath: resolve("pi/sprout-extension.ts"),
-              resources,
+              resources:
+                resources.kind === "enabled"
+                  ? {
+                      ...resources,
+                      skillPaths: filterMemorySkillPaths(resources.skillPaths, memory.state),
+                    }
+                  : resources,
+              memory,
               remote,
               profile: {
                 id: profile.id,

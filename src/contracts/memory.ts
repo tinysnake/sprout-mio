@@ -156,6 +156,49 @@ export function resolveBankTarget(
 
 export const memoryInstallStatusSchema = z.enum(["missing", "installing", "ready", "failed"]);
 export type MemoryInstallStatus = z.infer<typeof memoryInstallStatusSchema>;
+export const memoryUnavailableReasonSchema = z.enum([
+  "invalid_config",
+  "machine_offline",
+  "not_installed",
+  "installing",
+  "install_failed",
+  "extension_load_failed",
+]);
+
+export const memorySnapshotSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("disabled") }),
+  z.object({
+    state: z.literal("unavailable"),
+    reason: memoryUnavailableReasonSchema,
+    bank: z.string().optional(),
+  }),
+  z.object({ state: z.literal("ready"), bank: z.string() }),
+]);
+export type MemorySnapshot = z.infer<typeof memorySnapshotSchema>;
+export type MemoryRuntime =
+  | Exclude<MemorySnapshot, { state: "ready" }>
+  | { state: "ready"; apiUrl: string; bank: string; apiToken: string; bundlePath: string };
+
+export function filterMemorySkillPaths(
+  paths: readonly string[],
+  state: MemoryRuntime["state"],
+): string[] {
+  return paths.filter(
+    (path) =>
+      state === "ready" || !`/${path.replaceAll("\\", "/")}/`.includes("/hindsight-coding-agent/"),
+  );
+}
+
+export function memoryExtensionConfig(memory: Extract<MemoryRuntime, { state: "ready" }>) {
+  return {
+    serverMode: "self-hosted" as const,
+    apiUrl: memory.apiUrl,
+    bankId: memory.bank,
+    dynamicBankId: false,
+    autoUpdate: false,
+  };
+}
+
 export type EffectiveMemoryState =
   | { state: "disabled" }
   | {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MemorySnapshot } from "./memory";
 import { chatIdInput } from "./chat";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
@@ -61,6 +62,7 @@ export type RunResourceSnapshot = {
 };
 
 export type RunConfigSnapshot = {
+  memory?: MemorySnapshot;
   model: string;
   provider: string;
   thinking: string;

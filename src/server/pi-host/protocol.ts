@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { memorySnapshotSchema, type MemoryRuntime } from "../../contracts/memory";
 import type { AssistantInputContext } from "../../contracts/assistant";
 import type { InheritedResources } from "../../contracts/skill";
 import {
@@ -25,6 +26,7 @@ export type OpenSession = {
    * 默认（缺省或 false）与 P3 相同：只加载 Sprout extension 与四个基础工具。
    */
   resources: InheritedResources;
+  memory?: MemoryRuntime;
   purpose: "worker" | "assistant";
   profile: RunConfigSnapshot["profile"];
   remote: RemoteToolGrant;
@@ -49,6 +51,7 @@ export type PiHostCommand =
   | { type: "abort" | "close"; id: string };
 
 const snapshotSchema = z.object({
+  memory: memorySnapshotSchema.optional(),
   purpose: z.enum(["worker", "assistant"]).optional(),
   model: z.string().min(1),
   provider: z.string().min(1),

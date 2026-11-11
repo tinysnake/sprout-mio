@@ -1,12 +1,26 @@
 import { createHash } from "node:crypto";
 import { promptWithTurnContext } from "./pi-host-turn-context.mjs";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createPiModelRuntime } from "./pi-model-runtime.mjs";
 import { jsonFile } from "./pi-host-skills.mjs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+let memoryConfigDir;
+function clearMemoryEnvironment() {
+  for (const name of Object.keys(process.env))
+    if (name.startsWith("HINDSIGHT_")) delete process.env[name];
+}
+function cleanupMemory() {
+  clearMemoryEnvironment();
+  if (memoryConfigDir) rmSync(memoryConfigDir, { recursive: true, force: true });
+  memoryConfigDir = undefined;
+}
+clearMemoryEnvironment();
+process.once("exit", cleanupMemory);
 
 const input = createInterface({ input: process.stdin });
 const line = (event) => process.stdout.write(`${JSON.stringify(event)}\n`);
@@ -124,9 +138,43 @@ async function open(config) {
   ({ assistantInputContextSchema } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/assistant.ts"),
   ));
+  const { MEMORY_TOOL_NAMES, filterMemorySkillPaths, memoryExtensionConfig } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/memory.ts"),
+  );
+  let memory = assistant ? { state: "disabled" } : (config.memory ?? { state: "disabled" });
+  let memoryFactory;
+  const downgradeMemory = () => {
+    memory = {
+      state: "unavailable",
+      reason: "extension_load_failed",
+      ...(memory.bank ? { bank: memory.bank } : {}),
+    };
+    memoryFactory = undefined;
+    cleanupMemory();
+  };
+  if (memory.state === "ready") {
+    try {
+      memoryConfigDir = mkdtempSync(join(tmpdir(), "sprout-memory-"));
+      const configPath = join(memoryConfigDir, "config.json");
+      writeFileSync(configPath, JSON.stringify(memoryExtensionConfig(memory)), { mode: 0o600 });
+      process.env.HINDSIGHT_CONFIG = configPath;
+      if (memory.apiToken) process.env.HINDSIGHT_API_TOKEN = memory.apiToken;
+      process.env.HINDSIGHT_BANK_ID = memory.bank;
+      process.env.HINDSIGHT_API_URL = memory.apiUrl;
+      process.env.HINDSIGHT_AUTO_UPDATE = "false";
+      const module = await import(pathToFileURL(memory.bundlePath).href);
+      if (typeof module.default !== "function") throw new Error("Invalid memory factory");
+      memoryFactory = { name: "hindsight-memory", factory: module.default };
+    } catch {
+      downgradeMemory();
+    }
+  }
   const inheritHostResources = !assistant && config.resources.kind === "enabled";
   const inheritedPaths = inheritHostResources
-    ? { skills: config.resources.skillPaths, prompts: config.resources.promptPaths }
+    ? {
+        skills: filterMemorySkillPaths(config.resources.skillPaths, memory.state),
+        prompts: config.resources.promptPaths,
+      }
     : { skills: [], prompts: [] };
   // 受控目录是分身自己的 loader/session 根。证据里报的 agentDir 就是这个对象里的值：
   // 不让「声明的目录」和「喂给 loader 的目录」变成两个可以互相飘的常量。
@@ -226,9 +274,23 @@ async function open(config) {
 频道关注由程序按 Human 授权的 interval 时间窗口合并消息和工作活动，不是每次 run 结束立即转发。Human 要求停止关注时，调用 sprout_assistant_watch，传当前目标的 targetProjectId、chatId 和 active:false；你能停止本 DM 的关注，无需再次确认。看到 action:stopped、active:false 后明确告知已停止汇报；这不会取消正在执行的工作。不要声称工具不能取消，不要用 intervalSeconds:0。重新关注必须提出新请求并由 Human 确认。`
       : config.profile.persona,
   };
-  const resourceLoader = new sdk.DefaultResourceLoader(loaderOptions);
+  const baseFactories = loaderOptions.extensionFactories;
+  if (memoryFactory) loaderOptions.extensionFactories = [...baseFactories, memoryFactory];
+  let resourceLoader = new sdk.DefaultResourceLoader(loaderOptions);
   await resourceLoader.reload();
-  const extensions = resourceLoader.getExtensions();
+  let extensions = resourceLoader.getExtensions();
+  const reloadWithoutMemory = async () => {
+    downgradeMemory();
+    loaderOptions.extensionFactories = baseFactories;
+    inheritedPaths.skills = filterMemorySkillPaths(inheritedPaths.skills, memory.state);
+    loaderOptions.additionalSkillPaths = inheritedPaths.skills;
+    resourceLoader = new sdk.DefaultResourceLoader(loaderOptions);
+    await resourceLoader.reload();
+    extensions = resourceLoader.getExtensions();
+    if (extensions.errors.length) throw new Error("Sprout extension 加载失败");
+  };
+  if (extensions.errors.some((error) => error.path === "<inline:hindsight-memory>"))
+    await reloadWithoutMemory();
   if (extensions.errors.length) throw new Error("Sprout extension 加载失败");
   const existing = sdk.SessionManager.findById(
     config.cwd,
@@ -242,80 +304,113 @@ async function open(config) {
     ? sdk.SessionManager.open(sessionFile, config.sessionDirectory, config.cwd)
     : sdk.SessionManager.create(config.cwd, config.sessionDirectory, { id: config.sessionId });
   if (manager.getSessionId() !== config.sessionId) throw new Error("Pi session 身份不匹配");
-  ({ session } = await sdk.createAgentSession({
-    cwd: config.cwd,
-    agentDir: loaderOptions.agentDir,
-    modelRuntime: runtime,
-    model,
-    thinkingLevel: thinking,
-    // MCP 工具必须以 `mcp__*` 出现在这一条 allowlist 里，否则 Pi 只把它们留在 registry、
-    // 不声明给模型（`_isActivatable` 对 `direct` exposure 恒为 false，`setActiveTools` 也救不回来）。
-    // 这是 `list_changed` 后新工具到不了模型工具面的根因，详见
-    // `orchestrate/sprout-mio-r1/reports/remediation-extension.md`。
-    tools: assistant
-      ? ["sprout_status", ...Object.keys(ASSISTANT_TOOL_SPEC)]
-      : [
-          "sprout_status",
-          ...hostToolNames(webAccessEntry),
-          "mcp__*",
-          ...Object.keys(remoteToolInputSchemas),
-          // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
-          // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
-          // 后续跨 Chat 或 Agent 间通信再启用。
-          ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
-          ...Object.keys(infoHubToolInputSchemas),
-        ],
-    resourceLoader,
-    settingsManager,
-    sessionManager: manager,
-  }));
-  session.subscribe((event) => {
-    if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
-      line({
-        type: "progress",
-        id: config.id,
-        kind: "text_delta",
-        text: event.assistantMessageEvent.delta,
-      });
-    } else if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent?.type === "text_end"
-    ) {
-      // 一个 text block 只发一条 text_end，宿主据此落一条独立的「中间说明」。
-      const text = event.assistantMessageEvent.content;
-      if (text) {
+  const createSession = () =>
+    sdk.createAgentSession({
+      cwd: config.cwd,
+      agentDir: loaderOptions.agentDir,
+      modelRuntime: runtime,
+      model,
+      thinkingLevel: thinking,
+      // MCP 工具必须以 `mcp__*` 出现在这一条 allowlist 里，否则 Pi 只把它们留在 registry、
+      // 不声明给模型（`_isActivatable` 对 `direct` exposure 恒为 false，`setActiveTools` 也救不回来）。
+      // 这是 `list_changed` 后新工具到不了模型工具面的根因，详见
+      // `orchestrate/sprout-mio-r1/reports/remediation-extension.md`。
+      tools: assistant
+        ? ["sprout_status", ...Object.keys(ASSISTANT_TOOL_SPEC)]
+        : [
+            "sprout_status",
+            ...(memoryFactory ? MEMORY_TOOL_NAMES : []),
+            ...hostToolNames(webAccessEntry),
+            "mcp__*",
+            ...Object.keys(remoteToolInputSchemas),
+            // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
+            // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
+            // 后续跨 Chat 或 Agent 间通信再启用。
+            ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
+            ...Object.keys(infoHubToolInputSchemas),
+          ],
+      resourceLoader,
+      settingsManager,
+      sessionManager: manager,
+    });
+  try {
+    ({ session } = await createSession());
+  } catch (error) {
+    if (!memoryFactory) throw error;
+    await reloadWithoutMemory();
+    ({ session } = await createSession());
+  }
+  const memoryToolsReady = () => {
+    const registered = new Set(session.getAllTools().map((tool) => tool.name));
+    const active = new Set(session.getActiveToolNames());
+    return MEMORY_TOOL_NAMES.every((name) => registered.has(name) && active.has(name));
+  };
+  if (memoryFactory && !memoryToolsReady()) {
+    session.dispose();
+    await reloadWithoutMemory();
+    ({ session } = await createSession());
+  }
+  const subscribeSession = () =>
+    session.subscribe((event) => {
+      if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
         line({
           type: "progress",
           id: config.id,
-          kind: "text_end",
-          text,
+          kind: "text_delta",
+          text: event.assistantMessageEvent.delta,
+        });
+      } else if (
+        event.type === "message_update" &&
+        event.assistantMessageEvent?.type === "text_end"
+      ) {
+        // 一个 text block 只发一条 text_end，宿主据此落一条独立的「中间说明」。
+        const text = event.assistantMessageEvent.content;
+        if (text) {
+          line({
+            type: "progress",
+            id: config.id,
+            kind: "text_end",
+            text,
+          });
+        }
+      } else if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
+        const activity = describeToolCall(
+          event.toolName,
+          event.type === "tool_execution_start" ? event.args : undefined,
+          { cwd: config.cwd, nested: Boolean(event.parentToolCallId) },
+        );
+        line({
+          type: "progress",
+          id: config.id,
+          kind: event.type === "tool_execution_start" ? "tool_start" : "tool_end",
+          toolName: event.toolName,
+          ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
+          ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+          activity,
+          ...(event.type === "tool_execution_end"
+            ? {
+                isError: event.isError,
+                ...(typeof event.durationMs === "number" ? { durationMs: event.durationMs } : {}),
+              }
+            : {}),
         });
       }
-    } else if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
-      const activity = describeToolCall(
-        event.toolName,
-        event.type === "tool_execution_start" ? event.args : undefined,
-        { cwd: config.cwd, nested: Boolean(event.parentToolCallId) },
-      );
-      line({
-        type: "progress",
-        id: config.id,
-        kind: event.type === "tool_execution_start" ? "tool_start" : "tool_end",
-        toolName: event.toolName,
-        ...(event.toolCallId ? { toolCallId: event.toolCallId } : {}),
-        ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
-        activity,
-        ...(event.type === "tool_execution_end"
-          ? {
-              isError: event.isError,
-              ...(typeof event.durationMs === "number" ? { durationMs: event.durationMs } : {}),
-            }
-          : {}),
-      });
-    }
-  });
+    });
+  subscribeSession();
   const extensionErrors = [];
   await session.bindExtensions({ onError: (error) => extensionErrors.push(error) });
+  if (
+    memoryFactory &&
+    (!memoryToolsReady() ||
+      extensionErrors.some((error) => error.extensionPath === "<inline:hindsight-memory>"))
+  ) {
+    session.dispose();
+    await reloadWithoutMemory();
+    ({ session } = await createSession());
+    subscribeSession();
+    extensionErrors.length = 0;
+    await session.bindExtensions({ onError: (error) => extensionErrors.push(error) });
+  }
   if (extensionErrors.length)
     throw new Error(
       `Sprout extension 初始化失败：${extensionErrors
@@ -328,6 +423,16 @@ async function open(config) {
     );
   if (session.model?.provider !== model.provider || session.model?.id !== model.id)
     throw new Error("Pi 实际模型与显式配置不匹配");
+  const memorySnapshot =
+    memory.state === "disabled"
+      ? { state: "disabled" }
+      : memory.state === "ready"
+        ? { state: "ready", bank: memory.bank }
+        : {
+            state: "unavailable",
+            reason: memory.reason,
+            ...(memory.bank ? { bank: memory.bank } : {}),
+          };
   const pkg = jsonFile(join(root, "package.json"), {});
   // 宿主实况在 ready 之前写进 `sprout_status` 的槽：模型调它的时候读到的是这一轮会话的
   // 真实事实（装载了哪些 extension、继承开关、真实模型、真正声明出去的工具有几个），
@@ -339,6 +444,7 @@ async function open(config) {
       // 不是 extension 里写死的常量（那份常量在 `src/extension/status.ts` 只作为降级值）。
       loader: basename(fileURLToPath(import.meta.url)).replace(/\.mjs$/, ""),
       runtime: { node: process.versions.node, pi: pkg.version ?? "unknown" },
+      memory: memorySnapshot,
       host: {
         inheritHostResources,
         extensions: extensions.extensions.map((extension) =>
@@ -379,6 +485,7 @@ async function open(config) {
     type: "ready",
     id: config.id,
     snapshot: {
+      memory: memorySnapshot,
       provider: session.model.provider,
       model: session.model.id,
       thinking: session.thinkingLevel,
@@ -539,6 +646,7 @@ async function close() {
     await session?.abort();
   } finally {
     session?.dispose();
+    cleanupMemory();
     input.close();
     process.exit(0);
   }

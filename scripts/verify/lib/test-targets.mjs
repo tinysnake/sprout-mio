@@ -18,6 +18,8 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/channel-migration.test.ts",
     "tests/memory-config.test.ts",
     "tests/memory-config-migration.test.ts",
+    "tests/memory-runtime.test.ts",
+    "tests/memory-install.test.ts",
     "tests/feishu-emission.test.ts",
     "tests/feishu-ingress.test.ts",
     "tests/feishu-runtime.test.ts",
@@ -165,6 +167,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/worker-remote.test.ts",
   ],
   local: [
+    "tests/memory-runner.test.ts",
     "tests/assistant-watch-summary-pi.test.ts",
     "tests/chat-skills-foundation.test.ts",
     "tests/chat-skills-delivery.test.ts",
