@@ -91,10 +91,12 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 `resolveMemoryRuntime(projectId, machineId)` 返回三态。
 
 - `disabled`，不携带任何连接信息。
-- `unavailable`，带原因 `invalid_config`、`machine_offline`、`not_installed`、`installing`、`install_failed`。没有配置行时按默认值视为已启用，不产生单独的“未配置”原因。
-- `ready`，带 `apiUrl`、`bank`、`configPath`、`version` 和工具名。
+- `unavailable`，带原因 `invalid_config`、`machine_offline`、`not_installed`、`installing`、`install_failed`、`extension_load_failed`。没有配置行时按默认值视为已启用，不产生单独的“未配置”原因。
+- `ready`，带 `apiUrl`、`bank`、`apiToken`、`bundlePath`。runner 用这些值生成一次性的临时配置，token 不进配置文件。
 
-`ready` 的 token 只出现在 `open` 消息与 runner 进程环境里，run 快照只记录 `{ enabled, state, version, bank, reason }`。生成或读取配置失败一律返回 `unavailable`，不回退 bundle 默认值，因为默认的 `mapPathToBank` 会指向宿主的 live bank。
+`ready` 的 token 只出现在 `open` 消息与 runner 进程环境里，run 快照只记录 `{ state, reason, bank }`。生成或读取配置失败一律返回 `unavailable`，不回退 bundle 默认值，因为默认的 `mapPathToBank` 会指向宿主的 live bank。
+
+`SPROUT_PI_MACHINE_ID` 把 server 本机的 Pi 执行宿主绑定到 `machine.id`。配置了且可访问即视为在线，因为 Pi 就在这个进程所在机器上执行；未配置或不可访问时返回 `machine_offline`。云端实例与自建实例都通过 `apiUrl` 指向，`serverMode` 固定 `self-hosted`；云端端点的实际鉴权与路径由 MEM-6 验证。
 
 ### 状态
 

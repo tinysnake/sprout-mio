@@ -125,7 +125,10 @@ export function executeRun(
           let machineOnline = false;
           if (machineId) {
             try {
-              machineOnline = getMachine({ machineId }, hostContext).connection.kind === "online";
+              getMachine({ machineId }, hostContext);
+              // Pi executes on this host, so a configured and owned Machine is online
+              // by definition. Its connection row describes remote agents, not us.
+              machineOnline = true;
             } catch {
               // An inaccessible or unknown host cannot supply Project memory.
             }
