@@ -169,7 +169,8 @@ export function ChatListPanel({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2.25">
         <p className="flex items-center justify-between gap-2 px-2 pt-3 pb-2.25 text-[10px] text-muted-foreground">
-          <span>最近对话</span>
+          {/* 行尾时间是最近活动，不是最后消息时间：排序口径写在这里，免得两处时间看起来矛盾。 */}
+          <span>按最近活动排序</span>
           {/* 待处理不再是第二个列表，而是同一份列表上的筛选（页面反馈：同一 Chat 不该列两次）。 */}
           {pending.length > 0 && (
             <button

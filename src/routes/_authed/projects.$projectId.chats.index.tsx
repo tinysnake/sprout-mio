@@ -30,7 +30,8 @@ function ProjectChatsIndex() {
                 projectId={projectId}
                 members={members}
                 profiles={profiles}
-                heading={false}
+                // 有会话时上半句是「选择一条 Chat」，这块列表要说清是「新建」而不是「选它」。
+                heading={hasChats}
               />
             </div>
           }

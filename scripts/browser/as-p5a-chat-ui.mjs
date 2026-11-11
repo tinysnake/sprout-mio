@@ -805,7 +805,8 @@ try {
   const ownerFallbackHumanOptions = await page.evaluate(
     () =>
       [...document.querySelectorAll('[data-testid="chat-owner-select"] option')].filter((node) =>
-        node.textContent?.includes("（Human）"),
+        // 名字就是「Human」时不再补类型后缀，所以认前缀而不是认「（Human）」。
+        node.textContent?.trim().startsWith("Human"),
       ).length,
   );
   await page.keyboard.press("Escape");

@@ -216,7 +216,10 @@ export function ChatDetails({
               {chat.kind === "dm" && (
                 <>
                   <dt className="text-muted-foreground">分身 Instance ID</dt>
-                  <dd data-testid="inspector-instance-id" className="font-mono break-all">
+                  <dd
+                    data-testid="inspector-instance-id"
+                    className="break-all font-mono text-[10px] leading-5 text-muted-foreground"
+                  >
                     {instanceId ?? "（还没有分身实例）"}
                   </dd>
                 </>
@@ -242,9 +245,14 @@ export function ChatDetails({
                   <span data-testid="inspector-message-latest-at">（还没有消息）</span>
                 )}
               </dd>
+              <dt className="text-muted-foreground">可见范围</dt>
+              {/* 可见范围是会话自身的事实，随会话段走，不再单独占一条页脚。 */}
+              <dd data-testid="inspector-visibility">仅 Project 成员可见</dd>
             </dl>
-            {/* 复制 Chat ID 是「这到底是哪条会话」的操作，跟会话事实放一起。 */}
-            <CopyChatIdButton chatId={chat.id} />
+            {/* 复制 Chat ID 是核对用的次要操作，与段内主事实错开一档字号。 */}
+            <div className="-mt-1 flex items-center">
+              <CopyChatIdButton chatId={chat.id} />
+            </div>
           </div>
         </details>
         <details
@@ -600,9 +608,6 @@ export function ChatDetails({
           </p>
         )}
       </div>
-      <div className="shrink-0 border-t border-border px-5 py-3.5 text-[10px] text-muted-foreground max-desktop:pb-[max(14px,env(safe-area-inset-bottom))]">
-        仅 Project 成员可见
-      </div>
     </div>
   );
 }
@@ -886,9 +891,11 @@ function OwnerDialog({
                     ? humanName || "你"
                     : "Human"
                   : (agentNames.get(member.memberId) ?? "Agent"));
+              const kindLabel = member.memberKind === "human" ? "Human" : "Agent";
               return (
                 <option key={key} value={key}>
-                  {name}（{member.memberKind === "human" ? "Human" : "Agent"}）
+                  {/* 名字本身就是类型时不重复类型，避免出现「Human（Human）」。 */}
+                  {name === kindLabel ? name : `${name}（${kindLabel}）`}
                   {key === currentOwnerKey ? " · 当前" : ""}
                 </option>
               );
@@ -930,8 +937,9 @@ function CopyChatIdButton({ chatId }: { chatId: string }) {
   return (
     <Button
       type="button"
-      variant="secondary"
+      variant="ghost"
       size="sm"
+      className="-ml-2 px-2 text-[10px] text-muted-foreground hover:text-foreground"
       data-testid="inspector-copy-chat-id"
       data-chat-id={chatId}
       data-copy-state={state}
