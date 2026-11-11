@@ -220,6 +220,13 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 新增门禁登记到 `scripts/verify/targets.mjs`，按[验证约定](verification.md)记录受验 commit、实际命令、运行模式与未覆盖项。
 
+本轮集成验证（`a115722`，已合并 `origin/main` 的 `e681a4a`）：
+
+- `pnpm verify` 112/114。失败两项均为 main 既有，不是本轮改动引入。
+- `z3-mcp-acceptance` 的 R1-7 只报证据脚本哈希过期（当前 z3 为 `3de1db16…`，`docs/r1/evidence/evidence.json` 仍记 `3d3f403d…`），`origin/main` 的 z3 哈希相同。
+- `z-lease-integration` 等待 `lease-reclaim-controls` 超时。`origin/main` 的测试与 `project-lease-actions.tsx` 逐行相同，且测试在 acquire 之前等待仅在 held 状态渲染的控件、随后又断言 free，属既有矛盾。
+- 两项单跑均复现。单元 175 文件 / 1589 tests、typecheck、check、docs 门禁与 MEM-6 真实链路均通过。
+
 ## 开放问题
 
 - ~~`HINDSIGHT_CONFIG` 的文件 schema 对直接 import 是否完整生效~~。已由 MEM-0 确认，见 `docs/memory-spike.md`。
