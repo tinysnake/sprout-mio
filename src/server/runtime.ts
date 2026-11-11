@@ -7,7 +7,7 @@ import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { APP_VERSION } from "../contracts/version";
-import type { DatabaseConnection } from "../db/connection";
+import { openDatabase, type DatabaseConnection } from "../db/connection";
 import { config } from "../lib/config";
 import { PiHost, startPiHost, stopPiHost } from "./pi-host/host";
 import type { PiHostShape, PiHostSnapshot as HostSnapshot } from "./pi-host/host";
@@ -350,7 +350,6 @@ async function stopRuntime(reason: string) {
     await beginRuntimeShutdown(reason);
     await state.managed?.dispose();
     if (state.bootId && state.databaseUrl) {
-      const { openDatabase } = await import("../db/connection");
       const { sqlite } = openDatabase(state.databaseUrl);
       try {
         sqlite
