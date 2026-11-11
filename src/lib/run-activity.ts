@@ -194,6 +194,25 @@ function describeKnown(
       return describe(toolName, "task", "发送消息", hint(args));
     case "sprout_chat_continuation_get":
       return describe(toolName, "task", "读取对话接续", hint(args));
+    case "sleep":
+      return describe(
+        toolName,
+        "tool",
+        "本地等待",
+        typeof args.ms === "number" && Number.isFinite(args.ms)
+          ? `${args.ms / 1_000} 秒`
+          : undefined,
+      );
+    case "sprout_remote_execution_wait":
+      return describe(toolName, "remote", "等待远程执行", hint(args));
+    case "sprout_remote_execution_get":
+      return describe(toolName, "remote", "查询远程执行", hint(args));
+    case "sprout_remote_execution_list":
+      return describe(toolName, "remote", "列出远程执行", hint(args));
+    case "sprout_remote_execution_cancel":
+      return describe(toolName, "remote", "取消远程执行", hint(args));
+    case "sprout_remote_execution_log":
+      return describe(toolName, "remote", "读取远程执行日志", hint(args));
     case "sprout_remote_shell":
       return describe(
         toolName,

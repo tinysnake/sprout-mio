@@ -29,6 +29,27 @@ function start(
 }
 
 describe("工具调用摘要", () => {
+  it("本地等待以秒展示时长", () => {
+    expect(describeToolCall("sleep", { ms: 1_250 })).toMatchObject({
+      kind: "tool",
+      label: "本地等待",
+      detail: "1.25 秒",
+    });
+  });
+
+  it.each([
+    ["sprout_remote_execution_wait", "等待远程执行"],
+    ["sprout_remote_execution_get", "查询远程执行"],
+    ["sprout_remote_execution_list", "列出远程执行"],
+    ["sprout_remote_execution_cancel", "取消远程执行"],
+    ["sprout_remote_execution_log", "读取远程执行日志"],
+    ["sprout_remote_unknown_tool", "远程操作"],
+  ])("%s 使用具名语义并保留未知工具兜底", (toolName, label) => {
+    expect(describeToolCall(toolName, { executionId: "exe_00000000" })).toMatchObject({
+      kind: "remote",
+      label,
+    });
+  });
   it("Bash 只取命令首行并压成一行", () => {
     const described = describeToolCall("bash", {
       command: "pnpm test\npnpm typecheck",
