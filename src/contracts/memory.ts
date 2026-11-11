@@ -116,6 +116,27 @@ export const saveMemoryConfigInput = z.strictObject({
 });
 export type SaveMemoryConfigInput = z.infer<typeof saveMemoryConfigInput>;
 
+export const clearMemoryInput = z.strictObject({
+  projectId: z.string().min(1),
+  confirmName: z.string(),
+});
+export type ClearMemoryInput = z.infer<typeof clearMemoryInput>;
+
+export type MemoryActionFailure = {
+  ok: false;
+  code: "unreachable" | "unauthorized" | "forbidden" | "server_error";
+  status?: number;
+  message: string;
+};
+export type TestMemoryConnectionResult =
+  | { ok: true; bankExists: true; created: boolean }
+  | MemoryActionFailure;
+export type ClearMemoryResult = { ok: true } | MemoryActionFailure;
+export type RetryMemoryInstallResult = {
+  machineId: string;
+  install: MemorySettingsView["install"];
+};
+
 export type MemoryConfigView = {
   projectId: string;
   provider: MemoryProvider;
