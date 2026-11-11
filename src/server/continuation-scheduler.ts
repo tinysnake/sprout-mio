@@ -17,6 +17,7 @@ import {
 import { drainContinuationAborts } from "../domain/chat-continuation";
 import { claimDueMessageWake, evaluateMessageClaim } from "../domain/message-wake";
 import { nextLeaseTimeoutDueAt, sweepLeaseEscrowTimeouts } from "../domain/lease-timeout";
+import { nextRunAttentionDueAt, sweepRunAttention } from "../domain/run-attention";
 
 export type SchedulerClock = {
   now: () => Date;
@@ -68,17 +69,16 @@ export function createContinuationScheduler(
     }
     // No assigned Task and no pending transport retry means no Task timer at all.
     const scheduleDue =
-      one<{ due: number | null }>(
-        "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL UNION ALL SELECT due_at AS due FROM chat_message_wake UNION ALL SELECT next_attempt_at AS due FROM wake_evaluation WHERE source='message' AND state='retry_wait' AND next_attempt_at IS NOT NULL)",
-      )?.due ?? null;
-    // 挂靠超时的截止时刻也参与 rearm：提醒按截止时刻触发，不等 15 秒兜底心跳。
-    const leaseDue = nextLeaseTimeoutDueAt();
-    const next =
-      leaseDue === null
-        ? scheduleDue
-        : scheduleDue === null
-          ? leaseDue
-          : Math.min(scheduleDue, leaseDue);
+      (config.SPROUT_CONTINUATION_ENABLED
+        ? one<{ due: number | null }>(
+            "SELECT min(due) AS due FROM (SELECT next_due_at AS due FROM chat_schedule WHERE next_due_at IS NOT NULL UNION ALL SELECT next_attempt_at AS due FROM continuation_delivery WHERE state='pending' AND next_attempt_at IS NOT NULL UNION ALL SELECT due_at AS due FROM chat_message_wake UNION ALL SELECT next_attempt_at AS due FROM wake_evaluation WHERE source='message' AND state='retry_wait' AND next_attempt_at IS NOT NULL)",
+          )?.due
+        : null) ?? null;
+    const leaseDue = config.SPROUT_CONTINUATION_ENABLED ? nextLeaseTimeoutDueAt() : null;
+    const dueTimes = [scheduleDue, leaseDue, nextRunAttentionDueAt()].filter(
+      (due): due is number => due !== null,
+    );
+    const next = dueTimes.length ? Math.min(...dueTimes) : null;
     if (next !== null)
       timer = time.setTimeout(
         () => {
@@ -93,6 +93,8 @@ export function createContinuationScheduler(
     busy = true;
     try {
       const now = time.now();
+      sweepRunAttention(now);
+      if (!config.SPROUT_CONTINUATION_ENABLED) return;
       scanChatSchedules(now);
       drainContinuationAborts(now, options.abort ?? (() => false));
       bindPendingDeliveries(now);
@@ -133,8 +135,10 @@ export function createContinuationScheduler(
   function changed() {
     if (!started) return;
     try {
-      scanChatSchedules(time.now());
-      bindPendingDeliveries(time.now());
+      if (config.SPROUT_CONTINUATION_ENABLED) {
+        scanChatSchedules(time.now());
+        bindPendingDeliveries(time.now());
+      }
     } catch (error) {
       report(error);
     } finally {
@@ -143,12 +147,13 @@ export function createContinuationScheduler(
   }
   return {
     start() {
-      if (!config.SPROUT_CONTINUATION_ENABLED || started) return;
+      if (started) return;
       started = true;
       generation += 1;
-      recoverSchedules(time.now());
+      if (config.SPROUT_CONTINUATION_ENABLED) recoverSchedules(time.now());
       unsubscribe = onScheduleChange(changed);
-      drainContinuationAborts(time.now(), options.abort ?? (() => false));
+      if (config.SPROUT_CONTINUATION_ENABLED)
+        drainContinuationAborts(time.now(), options.abort ?? (() => false));
       // 兜底：即使某个 signal 丢失，也要定期检查 due 的 message/Task 判定。
       heartbeat = time.setInterval?.(() => {
         void advance().catch(report);

@@ -34,6 +34,12 @@ describe("run attention boundaries", () => {
     expect(resolveRunAttentionPolicy({ timeoutMs: 0, escalationMs: 1000 })).toEqual(
       DEFAULT_RUN_ATTENTION_POLICY,
     );
+    for (const invalid of [
+      { timeoutMs: Number.MAX_SAFE_INTEGER, escalationMs: Number.MAX_SAFE_INTEGER },
+      { timeoutMs: 8_640_000_000_000_000, escalationMs: 1000 },
+      { timeoutMs: 1000, escalationMs: 1000, unknown: true },
+    ])
+      expect(resolveRunAttentionPolicy(invalid)).toEqual(DEFAULT_RUN_ATTENTION_POLICY);
     expect(
       projectWakePolicySchema.safeParse({
         provider: "llm",

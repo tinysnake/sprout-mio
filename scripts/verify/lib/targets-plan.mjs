@@ -69,6 +69,7 @@ export const CI_GROUPS = Object.freeze({
     "m-error-mapping",
     "n-pi-session",
     "o-turn-semantics",
+    "run-attention",
     "p-repo-entry",
     "q-info-hub-runs",
   ],

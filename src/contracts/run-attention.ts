@@ -3,10 +3,15 @@ import { z } from "zod";
 export const RUN_ATTENTION_DEFAULT_MS = 1_800_000;
 const duration = z.number().int().min(1_000).max(Number.MAX_SAFE_INTEGER);
 
-export const runAttentionPolicySchema = z.strictObject({
-  timeoutMs: duration,
-  escalationMs: duration,
-});
+export const runAttentionPolicySchema = z
+  .strictObject({
+    timeoutMs: duration,
+    escalationMs: duration,
+  })
+  .refine((policy) => {
+    const total = policy.timeoutMs + policy.escalationMs;
+    return Number.isSafeInteger(total) && Number.isFinite(new Date(Date.now() + total).getTime());
+  }, "注意力时长总和必须在安全整数与 Date 有效范围内");
 export type RunAttentionPolicy = z.infer<typeof runAttentionPolicySchema>;
 export const DEFAULT_RUN_ATTENTION_POLICY = Object.freeze({
   timeoutMs: RUN_ATTENTION_DEFAULT_MS,

@@ -264,17 +264,17 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     sqlite.prepare("UPDATE runtime_boot SET phase = 'ready' WHERE id = ?").run(bootId);
     transition("ready");
     if (config.SPROUT_PI_ENABLED) await state.managed.runPromise(startPiHost);
+    const { createContinuationScheduler, installWakeEvaluator } =
+      await import("./continuation-scheduler");
     if (config.SPROUT_CONTINUATION_ENABLED) {
-      const { createContinuationScheduler, installWakeEvaluator } =
-        await import("./continuation-scheduler");
       const { createWakeEvaluator } = await import("./wake-runtime");
       const clock = () => performance.now();
       installWakeEvaluator(createWakeEvaluator({ clock, ...wakeOptions }));
-      state.continuation = createContinuationScheduler({ abort: signalRunAbort });
-      state.continuation.start();
     } else {
       console.log("[runtime] continuation disabled by SPROUT_CONTINUATION_ENABLED=false");
     }
+    state.continuation = createContinuationScheduler({ abort: signalRunAbort });
+    state.continuation.start();
     const { createCronScheduler } = await import("./cron-scheduler");
     state.cron = createCronScheduler();
     state.cron.start();

@@ -125,6 +125,7 @@ export const SUITE_PLAN = Object.freeze({
   "m-error-mapping": plan(1.362, { light: 1 }, server),
   "n-pi-session": plan(14.426, { light: 1 }, server),
   "o-turn-semantics": plan(12.68, { light: 1 }, server),
+  "run-attention": plan(4.97, { unit: 1 }),
   "p-repo-entry": plan(34.693, { light: 1 }, server),
   "q-info-hub-runs": plan(11.792, { light: 1, unit: 1 }, server),
   "r-ui-layout": plan(18.961, { browser: 1 }, server),
