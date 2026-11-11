@@ -14,7 +14,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { HINDSIGHT_EXTENSION_VERSION } from "../src/contracts/memory";
+import {
+  HINDSIGHT_EXTENSION_INTEGRITY,
+  HINDSIGHT_EXTENSION_VERSION,
+} from "../src/contracts/memory";
 import { openDatabase, type DatabaseConnection } from "../src/db/connection";
 import {
   MemoryInstallError,
@@ -148,6 +151,72 @@ describe("provisionMemoryExtension", () => {
 
     expect(result.path).toBe(entryPath());
     expect(readMemoryInstall(db, "machine")?.status).toBe("ready");
+  });
+
+  it("replaces a corrupt target instead of failing with ENOTEMPTY", async () => {
+    const db = setup();
+    const fixture = buildFixture();
+    mkdirSync(join(targetDir(), "package"), { recursive: true });
+    writeFileSync(join(targetDir(), "package", "package.json"), "{not json");
+
+    const result = await provisionMemoryExtension({
+      db,
+      machineId: "machine",
+      dataDir,
+      fetchImpl: async () => responseOf(fixture.tarball),
+      integrity: fixture.integrity,
+    });
+
+    expect(result.path).toBe(entryPath());
+    expect(readMemoryInstall(db, "machine")?.status).toBe("ready");
+  });
+
+  it("cancels the response body when the download is rejected early", async () => {
+    const db = setup();
+    let canceled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start() {},
+      cancel() {
+        canceled = true;
+      },
+    });
+    const fetchImpl: MemoryFetch = async () => new Response(body, { status: 500 });
+
+    await expect(
+      provisionMemoryExtension({
+        db,
+        machineId: "machine",
+        dataDir,
+        fetchImpl,
+        integrity: HINDSIGHT_EXTENSION_INTEGRITY,
+      }),
+    ).rejects.toMatchObject({ code: "fetch_failed" });
+    expect(canceled).toBe(true);
+  });
+
+  it("shares one deadline across lock wait and download", async () => {
+    const db = setup();
+    const fixture = buildFixture();
+    mkdirSync(lockPath(), { recursive: true });
+    const release = setTimeout(() => rmSync(lockPath(), { recursive: true, force: true }), 20);
+    const fetchImpl: MemoryFetch = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return responseOf(fixture.tarball);
+    };
+
+    const started = Date.now();
+    await expect(
+      provisionMemoryExtension({
+        db,
+        machineId: "machine",
+        dataDir,
+        fetchImpl,
+        integrity: fixture.integrity,
+        timeoutMs: 100,
+      }),
+    ).rejects.toMatchObject({ code: "timeout" });
+    clearTimeout(release);
+    expect(Date.now() - started).toBeLessThan(400);
   });
 
   it("fails with integrity_mismatch, records failed, and leaves no target", async () => {

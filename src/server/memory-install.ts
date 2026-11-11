@@ -121,6 +121,13 @@ async function runProvision(
   const version = HINDSIGHT_EXTENSION_VERSION;
   const now = options.now ?? Date.now;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadlineAt = now() + timeoutMs;
+  /** 等锁、下载、解压共享同一个截止时间，任一阶段耗尽都算整体超时。 */
+  const remaining = (stage: string): number => {
+    const ms = deadlineAt - now();
+    if (ms <= 0) throw new MemoryInstallError("timeout", `安装扩展超时（${stage}）`);
+    return ms;
+  };
   const integrity = options.integrity ?? HINDSIGHT_EXTENSION_INTEGRITY;
   const fetchImpl = options.fetchImpl ?? ((url, init) => fetch(url, init));
 
@@ -140,7 +147,7 @@ async function runProvision(
   let tempRoot: string | undefined;
   try {
     mkdirSync(hindsightDir, { recursive: true });
-    releaseLock = await acquireLock(lockPath, timeoutMs, now);
+    releaseLock = await acquireLock(lockPath, deadlineAt, now);
 
     // 拿到锁后可能已有别的进程装好了，重新检查一次。
     const raced = installedEntry(targetDir);
@@ -148,6 +155,8 @@ async function runProvision(
       writeStatus(options.db, options.machineId, "ready", null, now());
       return { path: raced, version };
     }
+    // 目标存在但 manifest 或入口损坏时，持锁清掉；否则 rename 会 ENOTEMPTY，重试永远失败。
+    if (existsSync(targetDir)) rmSync(targetDir, { recursive: true, force: true });
 
     tempRoot = mkdtempSync(join(extensionsDir, "hindsight-install-"));
     const extractDir = join(tempRoot, "extract");
@@ -157,20 +166,23 @@ async function runProvision(
     const localTarball = options.tarballPath ?? process.env.SPROUT_HINDSIGHT_EXTENSION_TARBALL;
     let bytes: Buffer;
     if (localTarball) {
-      bytes = readFileSync(localTarball);
-      if (bytes.byteLength > MAX_TARBALL_BYTES)
+      remaining("读取本地 tarball");
+      if (statSync(localTarball).size > MAX_TARBALL_BYTES)
         throw new MemoryInstallError("fetch_failed", "本地 tarball 超过 50 MB");
+      bytes = readFileSync(localTarball);
+      remaining("读取本地 tarball");
     } else {
-      bytes = await fetchTarball(fetchImpl, TARBALL_URL, timeoutMs);
+      bytes = await fetchTarball(fetchImpl, TARBALL_URL, remaining("下载"));
     }
     verifyIntegrity(bytes, integrity);
     writeFileSync(archivePath, bytes);
-    await extractTarball(archivePath, extractDir, timeoutMs);
+    await extractTarball(archivePath, extractDir, remaining("解压"));
 
     const path = installedEntry(extractDir);
     if (!path)
       throw new MemoryInstallError("extract_failed", "解压后的扩展缺少 package/dist/pi.js");
 
+    remaining("发布");
     renameSync(extractDir, targetDir);
     writeStatus(options.db, options.machineId, "ready", null, now());
     return { path: join(targetDir, "package", "dist", "pi.js"), version };
@@ -231,10 +243,9 @@ function writeStatus(
 /** 目录锁：`mkdir` 原子独占；等待期间检测超过 10 分钟的残留锁并接管。 */
 async function acquireLock(
   lockPath: string,
-  timeoutMs: number,
+  deadlineAt: number,
   now: () => number,
 ): Promise<() => void> {
-  const deadline = now() + timeoutMs;
   for (;;) {
     try {
       mkdirSync(lockPath);
@@ -254,9 +265,8 @@ async function acquireLock(
       rmSync(lockPath, { recursive: true, force: true });
       continue;
     }
-    if (now() >= deadline)
-      throw new MemoryInstallError("locked", `等待安装锁超时（${timeoutMs}ms）`);
-    await delay(Math.min(LOCK_POLL_MS, deadline - now()));
+    if (now() >= deadlineAt) throw new MemoryInstallError("locked", "等待安装锁超时");
+    await delay(Math.min(LOCK_POLL_MS, Math.max(1, deadlineAt - now())));
   }
 }
 
@@ -279,17 +289,33 @@ async function fetchTarball(
       fetchImpl(url, { signal: controller.signal, redirect: "follow" }),
       deadline,
     ]);
-    if (!response.ok)
+    if (!response.ok) {
+      controller.abort();
+      await cancelBody(response);
       throw new MemoryInstallError("fetch_failed", `下载扩展失败：HTTP ${response.status}`);
+    }
     const declared = Number(response.headers.get("content-length") ?? "");
-    if (Number.isFinite(declared) && declared > MAX_TARBALL_BYTES)
+    if (Number.isFinite(declared) && declared > MAX_TARBALL_BYTES) {
+      controller.abort();
+      await cancelBody(response);
       throw new MemoryInstallError("fetch_failed", "扩展 tarball 超过 50 MB 上限");
+    }
     return await Promise.race([readCapped(response), deadline]);
   } catch (error) {
+    controller.abort();
     if (error instanceof MemoryInstallError) throw error;
     throw new MemoryInstallError("fetch_failed", `下载扩展失败：${messageOf(error)}`);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** 提前拒绝时也要释放响应体，否则连接与流会挂在后台。 */
+async function cancelBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // 取消失败不覆盖原始错误。
   }
 }
 
