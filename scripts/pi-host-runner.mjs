@@ -193,6 +193,19 @@ async function open(config) {
     // 开关只搬 skills 与 prompt templates。extensions / themes / context files 仍然关闭：
     // 它们才是 P3 记录的失败与超时来源（context7、UnityMCP），也是跨 Project 内容泄漏的入口。
     additionalSkillPaths: inheritedPaths.skills,
+    skillsOverride: (base) => {
+      if (memory.state === "ready") return base;
+      const excluded = new Set(
+        base.skills
+          .filter((skill) => skill.name === "hindsight-coding-agent")
+          .map((skill) => skill.filePath),
+      );
+      inheritedPaths.skills = inheritedPaths.skills.filter((path) => !excluded.has(path));
+      return {
+        ...base,
+        skills: base.skills.filter((skill) => !excluded.has(skill.filePath)),
+      };
+    },
     additionalPromptTemplatePaths: inheritedPaths.prompts,
     extensionFactories: assistant
       ? [
