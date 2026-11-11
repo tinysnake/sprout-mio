@@ -1,4 +1,52 @@
+import { z } from "zod";
+import { SLEEP_MAX_MS, SLEEP_MIN_MS } from "../contracts/tool-wait";
+import { objectToolParameters } from "./tool-parameters";
 import type { SproutExtensionAPI, SproutToolResult } from "./types";
+
+const sleepInputSchema = z.strictObject({ ms: z.number().min(SLEEP_MIN_MS) });
+
+function sleepResult(details: Record<string, unknown>, isError = false): SproutToolResult {
+  return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError };
+}
+
+async function runSleep(requestedMs: number, signal?: AbortSignal): Promise<SproutToolResult> {
+  if (signal?.aborted) return sleepResult({ outcome: "cancelled" });
+  const sleptMs = Math.min(requestedMs, SLEEP_MAX_MS);
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve(
+        signal?.aborted
+          ? sleepResult({ outcome: "cancelled" })
+          : sleepResult({ outcome: "slept", sleptMs, requestedMs, now: new Date().toISOString() }),
+      );
+    };
+    const timer = setTimeout(done, sleptMs);
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
+export function registerSleepTool(pi: Pick<SproutExtensionAPI, "registerTool">): void {
+  pi.registerTool({
+    name: "sleep",
+    label: "Sleep",
+    description: `在宿主本地等待 ms 毫秒（必填且至少 ${SLEEP_MIN_MS} 毫秒），最多等待 ${SLEEP_MAX_MS / 60_000} 分钟；超出上限会钳断并回报 requestedMs 与 sleptMs。成功返回当前 ISO 时间 now，等待期间可取消。`,
+    parameters: objectToolParameters(sleepInputSchema),
+    async execute(_toolCallId, parameters, signal) {
+      const parsed = sleepInputSchema.safeParse(parameters);
+      if (!parsed.success)
+        return sleepResult(
+          {
+            outcome: "invalid_input",
+            message: `ms 必须是至少 ${SLEEP_MIN_MS} 的有限毫秒数，且不得附带其他参数。`,
+          },
+          true,
+        );
+      return runSleep(parsed.data.ms, signal);
+    },
+  });
+}
 
 export interface CurrentTimeInput {
   timezone?: string;

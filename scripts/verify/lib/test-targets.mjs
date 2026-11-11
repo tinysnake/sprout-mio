@@ -63,6 +63,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/change-stream.test.ts",
     "tests/current-time.test.ts",
     "tests/execution-wait.test.ts",
+    "tests/sleep-tool.test.ts",
     "tests/git-read.test.ts",
     "tests/host-tools.test.ts",
     "tests/info-hub-polling.test.ts",

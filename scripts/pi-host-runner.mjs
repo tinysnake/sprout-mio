@@ -85,7 +85,7 @@ async function open(config) {
   const { resolveWebAccessExtension, hostToolNames } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/host-tools.ts"),
   );
-  const { registerCurrentTimeTool } = await jiti.import(
+  const { registerCurrentTimeTool, registerSleepTool } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/time-tools.ts"),
   );
   const { registerGitReadTool } = await jiti.import(
@@ -274,6 +274,7 @@ async function open(config) {
               registerTaskTools(pi, remote);
               registerInfoHubTools(pi, remote);
               registerCurrentTimeTool(pi);
+              registerSleepTool(pi);
               registerGitReadTool(pi);
               registerSproutStatus(pi);
             },

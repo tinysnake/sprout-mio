@@ -13,5 +13,5 @@ node scripts/verify/lib/host-pi-sdk.mjs x-remote-tools || exit $?
 # Runner failed to register/load/inject → installed SDK, real runner and a controlled HTTP endpoint.
 # Production grant/lease authorization and real Worker effects remain worker/integration gates.
 # Run grant cleanup → real child abort/close/exit and late disposer registration.
-pnpm exec vp test run tests/remote-tools.test.ts tests/pi-host-dispose.test.ts tests/execution-wait.test.ts
+pnpm exec vp test run tests/remote-tools.test.ts tests/pi-host-dispose.test.ts tests/execution-wait.test.ts tests/sleep-tool.test.ts tests/current-time.test.ts tests/host-tools.test.ts tests/run-activity.test.ts
 node --import tsx tests/fixtures/remote-tools-runner.mjs

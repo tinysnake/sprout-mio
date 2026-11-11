@@ -128,15 +128,16 @@ const probePath = join(directory, "probe.mjs");
 const resultPath = join(directory, "probe.json");
 const actualEntry = pathToFileURL(join(root, "pi/sprout-extension.ts")).href;
 // 会话的工具面是 remote + task + info-hub 三张契约表加上内联声明参数的 sprout_status；
-// 只按 remote 表比会随任何一个新工具变成过期断言。current_time 与 git_read 由
-// scripts/pi-host-runner.mjs 的 registerCurrentTimeTool/registerGitReadTool 注册，
-// 没有契约表，只能点名列出（与 tests/fixtures/remote-tools-runner.mjs 保持一致）。
+// 只按 remote 表比会随任何一个新工具变成过期断言。current_time/sleep/git_read 由
+// scripts/pi-host-runner.mjs 的 registerCurrentTimeTool/registerSleepTool/registerGitReadTool
+// 注册，没有契约表，只能点名列出（与 tests/fixtures/remote-tools-runner.mjs 保持一致）。
 const expectedToolNames = [
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas),
   ...Object.keys(infoHubToolInputSchemas),
   "sprout_status",
   "current_time",
+  "sleep",
   "git_read",
 ].sort();
 writeFileSync(

@@ -77,15 +77,15 @@ const { infoHubToolInputSchemas } = await import(
   pathToFileURL(join(root, "src/contracts/info-hub-query.ts")).href
 );
 // 工具面从契约推导：remote、task、info-hub 各有一份输入 schema 表；sprout_status
-// 的参数在 src/extension/status.ts 里内联声明，current_time 与 git_read 由
-// scripts/pi-host-runner.mjs 的 registerCurrentTimeTool/registerGitReadTool 注册，
-// 两者都没有契约表，只能点名列出。
+// 的参数在 src/extension/status.ts 里内联声明；宿主时钟、等待与 git 工具由 runner 注册，
+// 没有公共契约表，在这里点名列出。
 const expectedToolNames = [
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas),
   ...Object.keys(infoHubToolInputSchemas),
   "sprout_status",
   "current_time",
+  "sleep",
   "git_read",
 ].sort();
 // machineId 是 Machine 作用域的标志，不是「属于 remoteToolInputSchemas」的标志：
@@ -143,6 +143,15 @@ export default function probe(pi) {
       assert.equal(missing.isError, true);
       assert.equal(missing.details.error.code, 'validation_failed');
     }
+    const slept = await registered.get('sleep').execute('sleep', {ms:1});
+    assert.equal(slept.isError, false);
+    assert.equal(slept.details.outcome, 'slept');
+    assert.equal(slept.details.sleptMs, 1);
+    const controller = new AbortController();
+    controller.abort();
+    const stoppedWait = await registered.get('sprout_remote_execution_wait').execute('wait', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)}}, controller.signal);
+    assert.equal(stoppedWait.isError, false);
+    assert.equal(stoppedWait.details.outcome, 'cancelled');
     const shell = registered.get('sprout_remote_shell');
     const missing = await shell.execute('missing', {requestId:${JSON.stringify(requestId)},authorizationGeneration:1,command:'true'});
     assert.equal(missing.isError, true);
@@ -168,7 +177,7 @@ export default function probe(pi) {
       toolNames: tools.map(tool=>tool.name).sort(),
       schemas: Object.fromEntries(tools.map(tool=>[tool.name,tool.parameters])),
       missingMachineRejected:true, forgedIdentityRejected:true, validCallSucceeded:true,
-      termWaitRejected:true, limitBytesRejected:true
+      termWaitRejected:true, limitBytesRejected:true, localSleepSucceeded:true, executionWaitCancelled:true
     }));
   });
 }

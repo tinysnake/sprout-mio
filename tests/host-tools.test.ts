@@ -23,6 +23,7 @@ describe("host tool surface", () => {
       "find",
       "ls",
       "current_time",
+      "sleep",
       "git_read",
       "codemode",
       "tool_search",

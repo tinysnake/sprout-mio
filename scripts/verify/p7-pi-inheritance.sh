@@ -57,7 +57,17 @@ for (const run of runs) {
         extension.includes("pi-web-access"),
       `${label}: 不加载其他宿主 extension ${extension}`,
     );
-  const readOnly = ["read", "grep", "find", "ls", "current_time", "git_read", "codemode", "tool_search"];
+  const readOnly = [
+    "read",
+    "grep",
+    "find",
+    "ls",
+    "current_time",
+    "sleep",
+    "git_read",
+    "codemode",
+    "tool_search",
+  ];
   const web = ["web_search", "fetch_content", "source_check", "get_search_content"];
   for (const base of [...readOnly, "sprout_status"])
     assert(run.tools.includes(base), `${label}: 工具 ${base} 在工具面`);
