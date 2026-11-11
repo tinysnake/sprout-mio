@@ -291,13 +291,13 @@ async function fetchTarball(
     ]);
     if (!response.ok) {
       controller.abort();
-      await cancelBody(response);
+      cancelBody(response);
       throw new MemoryInstallError("fetch_failed", `下载扩展失败：HTTP ${response.status}`);
     }
     const declared = Number(response.headers.get("content-length") ?? "");
     if (Number.isFinite(declared) && declared > MAX_TARBALL_BYTES) {
       controller.abort();
-      await cancelBody(response);
+      cancelBody(response);
       throw new MemoryInstallError("fetch_failed", "扩展 tarball 超过 50 MB 上限");
     }
     return await Promise.race([readCapped(response), deadline]);
@@ -310,13 +310,11 @@ async function fetchTarball(
   }
 }
 
-/** 提前拒绝时也要释放响应体，否则连接与流会挂在后台。 */
-async function cancelBody(response: Response): Promise<void> {
-  try {
-    await response.body?.cancel();
-  } catch {
+/** 提前拒绝时也要释放响应体；不等待取消完成，避免实现挂住安装 Promise。 */
+function cancelBody(response: Response): void {
+  response.body?.cancel().catch(() => {
     // 取消失败不覆盖原始错误。
-  }
+  });
 }
 
 async function readCapped(response: Response): Promise<Buffer> {

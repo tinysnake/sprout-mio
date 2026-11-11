@@ -194,13 +194,40 @@ describe("provisionMemoryExtension", () => {
     expect(canceled).toBe(true);
   });
 
-  it("shares one deadline across lock wait and download", async () => {
+  it("does not wait for a cancel that never settles", async () => {
+    const db = setup();
+    const body = new ReadableStream<Uint8Array>({
+      start() {},
+      cancel() {
+        return new Promise<void>(() => {});
+      },
+    });
+    const fetchImpl: MemoryFetch = async () => new Response(body, { status: 500 });
+
+    const started = Date.now();
+    await expect(
+      provisionMemoryExtension({
+        db,
+        machineId: "machine",
+        dataDir,
+        fetchImpl,
+        integrity: HINDSIGHT_EXTENSION_INTEGRITY,
+        timeoutMs: 40,
+      }),
+    ).rejects.toMatchObject({ code: "fetch_failed" });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(readMemoryInstall(db, "machine")?.status).toBe("failed");
+  });
+
+  it("spends the same deadline on lock wait and download", async () => {
     const db = setup();
     const fixture = buildFixture();
     mkdirSync(lockPath(), { recursive: true });
-    const release = setTimeout(() => rmSync(lockPath(), { recursive: true, force: true }), 20);
+    const release = setTimeout(() => rmSync(lockPath(), { recursive: true, force: true }), 10);
+    let fetched = false;
     const fetchImpl: MemoryFetch = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      fetched = true;
+      await new Promise((resolve) => setTimeout(resolve, 270));
       return responseOf(fixture.tarball);
     };
 
@@ -212,11 +239,12 @@ describe("provisionMemoryExtension", () => {
         dataDir,
         fetchImpl,
         integrity: fixture.integrity,
-        timeoutMs: 100,
+        timeoutMs: 300,
       }),
     ).rejects.toMatchObject({ code: "timeout" });
     clearTimeout(release);
-    expect(Date.now() - started).toBeLessThan(400);
+    expect(fetched).toBe(true);
+    expect(Date.now() - started).toBeLessThan(900);
   });
 
   it("fails with integrity_mismatch, records failed, and leaves no target", async () => {
