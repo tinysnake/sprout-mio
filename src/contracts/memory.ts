@@ -127,6 +127,17 @@ export type MemoryConfigView = {
   updatedByHumanId: string | null;
 };
 
+export type MemorySettingsView = {
+  config: MemoryConfigView | null;
+  effectiveState: MemorySnapshot;
+  bankPreview: MemoryBankTarget;
+  machineId: string | null;
+  install: { status: MemoryInstallStatus; version: string; error: string | null } | null;
+  extensionVersion: string;
+  defaults: typeof memoryDefaults;
+  message: string | null;
+};
+
 export function resolveApiUrl(
   settings: Pick<MemorySettings, "apiUrl">,
   env: { SPROUT_HINDSIGHT_API_URL?: string },

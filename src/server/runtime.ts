@@ -216,6 +216,17 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     state.constructions += 1;
     state.connection = await state.managed.runPromise(RuntimeDatabase);
     state.piHost = await state.managed.runPromise(PiHost);
+    const memoryDb = state.connection.db;
+    void Promise.all([import("./memory-settings"), import("./memory-install")])
+      .then(([settings, installer]) =>
+        settings.provisionEnabledMemories({
+          db: memoryDb,
+          machineId: config.SPROUT_PI_MACHINE_ID ?? null,
+          dataDir: config.SPROUT_PI_DATA_DIR,
+          provision: installer.provisionMemoryExtension,
+        }),
+      )
+      .catch(() => console.error("[runtime] 启动记忆组件安装失败"));
     transition("recovering");
     const { recordDiagnostic } = await import("./diagnostics");
     const requestId = newId(ID_PREFIXES.request);
