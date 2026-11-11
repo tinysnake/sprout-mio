@@ -124,13 +124,13 @@ export function MessageList({
               <strong data-testid="message-sender" className="text-xs font-semibold">
                 {name}
               </strong>
-              {/* 自动化来源仍需要身份标识；Human/Agent 的名字已经说明身份，不再重复挂标签。 */}
-              {source && (
+              {/* 系统通知与自动化来源需要身份标识；Human/Agent 的名字已经说明身份，不再重复挂标签。 */}
+              {(systemNotice || source) && (
                 <span
                   data-testid="message-kind"
                   className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
                 >
-                  Source
+                  {systemNotice ? "System" : "Source"}
                 </span>
               )}
               {message.senderKind === "automation" &&
