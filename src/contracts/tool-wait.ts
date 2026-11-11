@@ -1,7 +1,7 @@
 export const EXECUTION_WAIT_DEFAULT_MS = 600_000;
 export const EXECUTION_WAIT_MAX_MS = 900_000;
 export const EXECUTION_WAIT_POLL_MS = 1_000;
-export const SLEEP_MAX_MS = 300_000;
+export const SLEEP_MAX_MS = 600_000;
 export const SLEEP_MIN_MS = 1;
 
 export function clampExecutionWaitMs(requestedMs?: number): number {

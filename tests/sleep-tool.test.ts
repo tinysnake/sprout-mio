@@ -41,7 +41,7 @@ describe("宿主 sleep", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("超出上限只睡 5 分钟，同时回报原请求时长", async () => {
+  it("超出上限只睡 10 分钟，同时回报原请求时长", async () => {
     vi.useFakeTimers();
     const startedAt = Date.now();
     const pending = sleepTool().execute("probe", { ms: SLEEP_MAX_MS + 1 });

@@ -15,7 +15,7 @@ Agent 使用远程工具操作 Machine，用户从项目、Chat 或 Machine 租�
 
 提交远端操作后，可用 `sprout_remote_execution_wait({machineId, executionId, waitMs?})` 阻塞等待终态；默认等 10 分钟，最多 15 分钟，每秒通过既有 `execution_get` 查询一次。无需授权代次。成功返回与 `execution_get` 同形的 `{outcome,data,requestId}`。等待到点的 `timed_out` 会携带最后一次 `ExecutionView`、有效预算 `requestedMs` 与实际 `waitedMs`，表示仍在跑，不应据此重试有副作用的操作；execution 自身的 `timed_out` 终态仍按执行结果解释。取消等待只结束当前工具调用，远端执行继续。
 
-宿主工具 `sleep({ms})` 可在本地等待，不必把 sleep 塞进远端 shell。`ms` 必填且至少为 1，最多睡 5 分钟；超出上限显式回报原请求 `requestedMs` 和实际 `sleptMs`，成功附带当前 ISO 时间 `now`。取消返回 `cancelled`，不标工具错误。活动摘要分别显示「本地等待」与各 execution 工具的具名动作。
+宿主工具 `sleep({ms})` 可在本地等待，不必把 sleep 塞进远端 shell。`ms` 必填且至少为 1，最多睡 10 分钟；超出上限显式回报原请求 `requestedMs` 和实际 `sleptMs`，成功附带当前 ISO 时间 `now`。取消返回 `cancelled`，不标工具错误。活动摘要分别显示「本地等待」与各 execution 工具的具名动作。
 
 ## How to get to it (user POV)
 
