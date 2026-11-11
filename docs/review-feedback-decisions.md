@@ -191,3 +191,22 @@ Human 看完改后页面又提了四处（附三张红框截图）：一是「�
 仍然冻结、本轮有意不改的三处（都有门禁把文案或结构当作契约）：`run-facts.tsx` 的「还没有历史 run。」与「当前没有排队中或运行中的 run。」（`tests/run-facts-summary.test.ts`、`tests/fixtures/p6b-pages.ts` 四种视角），pending 输入在中栏与右栏的共同出现（`o-turn-semantics` 断言 `pending-input-count` 文案并现场点停止），Owner 段的「治理版本」「唤醒策略」（`as-p5a-chat-ui.mjs` 计数断言）。要动这三处需要同时改契约，不属于本轮去重范围。
 
 父代理实际复跑（均前台）：`pnpm typecheck`；`pnpm test` 166 文件 1463 项全过；`pnpm check --fix` 后再 `pnpm check` 0 errors / 16 条既有 warning / 775 文件；`as-p5a-chat-ui` 31 项（含「会话」段新增后的事实行与移动端宽度断言）；`j-info-hub`；`k-acceptance` runner 12 项 0 失败；`bf-p6b-pages` 27 + 13 组；`q-info-hub-runs`；`i-chat`。改后对照截图重拍为 10 张（与 before 同数据同视口），父代理读图确认：「会话」段在 DM 右栏显示 `ins_8b682c47` 与 `11/11 19:29`、「活动」段是「活动 run 宿主未启用」+ 等宽 run id + 带色点的「运行中」、租约空态与「与 Project settings 同一租约事实」都不再出现，Chats 首页只剩标题、空态一句提示与发起入口。未重跑完整 CI，未改动数据库与原型服务。Human 体验确认仍待反馈。
+
+### 第五轮至终评：三模型并行评审与 9 分收尾
+
+Human 把过关线从 8.0 提到 **9.0**，并要求「引入多个 pstack models 里的 3 位不同模型体系的成员审核，必须全部达到 9 分才行」。评审固定为三个不同模型体系：`magpie/auto/gpt-6.1-sol`（OpenAI 系）、`magpie/auto/deepseek-v4.1-flash`（DeepSeek 系）、`magpie/auto/glm-5.3-flash`（智谱系）。每轮都把这 10 张同数据同视口的对照截图交给三家独立打分（五条机制逐条 x.y/10，总分 ≥9.0 且无单条 <8.5 才算达标）。
+
+五轮到八轮实际改动：
+
+- 第五轮：`复制 Chat ID` 移进「会话」段（它是会话自身的操作，不属于成员），DM 的「成员固定为两位参与者」收进问号（`dm-members-help`），宿主未启用时活动行写「最后状态 · 运行中」而不是与「宿主未启用」打架的「运行中」，中栏「下次检查」改用 `chatTimeLabel` 短时间，群聊 Owner 说明只讲 Owner（成员规则归成员段）。
+- 第六轮（GPT 8.9 的两条 blocker）：右栏「活动」默认收起——中栏运行状态才是「当前状态」的主展示，右栏展开后看 run id、历史与诊断；删掉常驻的「点开任一行进入完整诊断与逐轮记录。」（`tests/task-continuation-view.test.ts` 四处断言同步改为不出现）。
+- 第七轮（DeepSeek 8.6 的七条）：运行汇总行按 queued/running 分列，不再出现「1 个 Agent 进行中」与行内「排队中」并存；活动入口改名「运行与记录 ›」，与「查看诊断 ›」区分；左栏时间补 `aria-label`/`title`「最近活动 …」；折叠态不再画该段底边框，页脚贴住折叠行；首页空态合并成一块；Task 摘要改成标签列/值列两列对齐；Owner 对话框改为「保存更改」（未变更时禁用）＋「取消」，Owner 摘要去掉「Human (Human)」重复，公共频道副行改「全体成员可参与」。
+- 第八轮（DeepSeek 8.7 的五条收尾）：空态在「选择一条 Chat」下加「发起新对话」分组标题（`heading={hasChats}`）；左栏列表头由「最近对话」改为「按最近活动排序」，行尾时间与右栏「最后消息时间」的口径差因此有了解释；「会话」段新增「可见范围：仅 Project 成员可见」（`inspector-visibility`），删除滚动区底部孤立的页脚条；「分身 Instance ID」与「复制 Chat ID」降到 10px 次要层（复制按钮改 ghost 文字按钮）；Owner 下拉在名字即类型时省略后缀（`Human · 当前`，Agent 候选仍带「（Agent）」），`as-p5a` 的断言从「含（Human）」改为「以 Human 开头」。
+
+终评（第八轮 `after4`）三家全部达标、无 blocker：GPT-6.1-Sol **9.1**（9.1/9.2/9.0/9.2/9.2）、DeepSeek-v4.1-Flash **9.0**（8.6/9.2/9.2/8.8/9.0）、GLM-5.3-Flash **9.3**（9.3/9.2/9.3/9.3/9.2）。三家共同确认：运行状态只在运行行出现且汇总与行内一致、两个「查看诊断」已用不同名称区分、折叠后无空带、空态读作「新建」、Owner 对话框的保存/取消流程完整。
+
+仍然冻结、本轮有意不改的几处（门禁把文案或结构当契约）：`run-facts.tsx` 的两句空态文案（`tests/run-facts-summary.test.ts`、`tests/fixtures/p6b-pages.ts`）、Owner 段的「唤醒策略」「治理版本」与群聊「标题」行（`as-p5a-chat-ui.mjs` 计数断言，R2-UI02 要求治理信息留在右栏）、租约区在 run 活跃时必须可见（`p4b`/`p8a`/`y-lease-ui`）、中栏「活动 run」标题后紧跟宿主状态的结构（`k-acceptance`/`j-info-hub` 的 `assertHostState`）、页面不显示裸 Chat ID（`as-p5a` 断言 `inspector-chat-id` 计数为 0，只留复制入口）。
+
+父代理在 rebase 到最新 `origin/main` 之后重跑（均前台，不信 worker 自报）：`pnpm typecheck`；`pnpm test` 181 文件 1648 项全过；`pnpm check` 0 errors / 16 条既有 warning / 808 文件；`as-p5a-chat-ui` 33 项；`i-chat`；`j-info-hub`；`k-acceptance` runner 12 项 0 失败；`q-info-hub-runs`；`bf-p6b-pages` 13 组（含 27 项子断言）；`as-p5b-task-pages` 21 项；`o-turn-semantics`；`r-ui-layout`。对照截图重拍为 `.verify/review-dedupe/after4/` 10 张（与 before 同数据同视口），读图确认八轮改动都还在。
+
+rebase 冲突只在一处：`src/components/chat/message-list.tsx` 的身份 chip。main 新增的运行注意力提醒靠「System」标签区分系统通知，而本次去重只针对 Human/Agent 名牌重复，因此保留 `(systemNotice || source)` 的标识、Human/Agent 不再挂标签，`tests/run-attention-ui.test.ts` 继续通过。未改动数据库与原型服务。
