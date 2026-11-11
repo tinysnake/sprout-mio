@@ -2937,6 +2937,56 @@ export const channelConfig = sqliteTable(
   ],
 );
 
+export const memoryConfig = sqliteTable(
+  "memory_config",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    provider: text("provider").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    settings: text("settings", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    secrets: text("secrets", { mode: "json" })
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    revision: integer("revision").notNull().default(0),
+    updatedAtMs: integer("updated_at_ms").notNull(),
+    updatedByHumanId: text("updated_by_human_id").references(() => user.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.provider] }),
+    check("memory_config_enabled_check", sql`${table.enabled} in (0,1)`),
+    check("memory_config_revision_check", sql`${table.revision} >= 0`),
+    check("memory_config_settings_json_check", sql`json_valid(${table.settings})`),
+    check("memory_config_secrets_json_check", sql`json_valid(${table.secrets})`),
+  ],
+);
+
+export const memoryInstall = sqliteTable(
+  "memory_install",
+  {
+    machineId: text("machine_id")
+      .notNull()
+      .references(() => machine.id),
+    component: text("component").notNull(),
+    version: text("version").notNull(),
+    status: text("status", { enum: ["missing", "installing", "ready", "failed"] }).notNull(),
+    error: text("error"),
+    updatedAtMs: integer("updated_at_ms").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.machineId, table.component] }),
+    check(
+      "memory_install_status_check",
+      sql`${table.status} in ('missing','installing','ready','failed')`,
+    ),
+  ],
+);
+
 export const feishuIdentitySlot = sqliteTable(
   "feishu_identity_slot",
   {
