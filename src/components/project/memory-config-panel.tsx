@@ -473,7 +473,47 @@ export function MemoryConfigPanel({
           </SettingsSection>
           <SettingsSection
             title="操作"
-            description="操作使用已保存的配置。测试连接会检查记忆库，不存在时创建。"
+            description="测试连接只检查地址与密钥，不写入记忆。"
+            actions={
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending || dirty}
+                  loading={actions.test.state === "pending"}
+                  onClick={() => void runAction("test")}
+                >
+                  测试连接
+                </Button>
+                {view.install && view.install.status !== "ready" && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={pending || dirty || installing}
+                    loading={actions.retry.state === "pending"}
+                    onClick={() => void runAction("retry")}
+                  >
+                    重试安装
+                  </Button>
+                )}
+                <Button type="button" variant="secondary" disabled>
+                  从仓库历史导入
+                </Button>
+                <span className="text-xs text-muted-foreground">未实现，P4</span>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={pending || dirty}
+                  aria-expanded={confirming}
+                  onClick={() => {
+                    setConfirming((value) => !value);
+                    setConfirmName("");
+                  }}
+                >
+                  清空记忆
+                </Button>
+              </>
+            }
           >
             <div className="space-y-4">
               <Facts
@@ -515,42 +555,6 @@ export function MemoryConfigPanel({
                 )}
               </div>
               {dirty && <p className="text-xs text-muted-foreground">请先保存配置，再执行操作。</p>}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={pending || dirty}
-                  loading={actions.test.state === "pending"}
-                  onClick={() => void runAction("test")}
-                >
-                  测试连接
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={pending || dirty || installing}
-                  loading={actions.retry.state === "pending"}
-                  onClick={() => void runAction("retry")}
-                >
-                  重试安装
-                </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={pending || dirty}
-                  aria-expanded={confirming}
-                  onClick={() => {
-                    setConfirming((value) => !value);
-                    setConfirmName("");
-                  }}
-                >
-                  清空记忆
-                </Button>
-                <Button type="button" variant="secondary" disabled>
-                  从仓库历史导入
-                </Button>
-                <span className="text-xs text-muted-foreground">未实现，P4</span>
-              </div>
               <div className="space-y-1">
                 <Result feedback={actions.test} />
                 <Result feedback={actions.retry} />
@@ -605,27 +609,32 @@ export function MemoryConfigPanel({
       )}
       <div className="space-y-3 border-t border-border py-5">
         <Result feedback={saveResult} />
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="submit"
-            loading={saveResult.state === "pending"}
-            disabled={pending || Boolean(preview.error)}
-          >
-            保存
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={pending}
-            onClick={() => {
-              setDraft(memoryConfigDraft(view));
-              setSaveResult({ state: "idle" });
-              setConfirming(false);
-              setConfirmName("");
-            }}
-          >
-            取消
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs leading-6 text-muted-foreground">
+            记忆只属于本 Project，Agent 不能跨 Project 读取。
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={pending}
+              onClick={() => {
+                setDraft(memoryConfigDraft(view));
+                setSaveResult({ state: "idle" });
+                setConfirming(false);
+                setConfirmName("");
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              type="submit"
+              loading={saveResult.state === "pending"}
+              disabled={pending || Boolean(preview.error)}
+            >
+              保存
+            </Button>
+          </div>
         </div>
       </div>
     </form>

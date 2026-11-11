@@ -180,7 +180,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - 顺序固定为启用记忆、记忆库、自动维护、连接、操作。服务地址与连接密钥属于低频配置，放在操作之上。
 - 关闭开关时隐藏记忆库、自动维护、连接与操作，只保留开关、一行说明和保存栏；状态 chip 从“已就绪”变为“已关闭”。
 - 开启但未就绪时，chip 显示“已启用，不可用”，并在开关下方给出原因与下一步动作。
-- 选定稿在 `orchestrate/memory/memory-settings-a.html`，实现以该文件的信息层级与文案为准。
+- 选定稿在 `orchestrate/memory/memory-settings-a.html`，实现以该文件的信息层级与文案为准。实现完成后，用与选定稿相同的视口截一张实现截图，与选定稿并排核对分区顺序、按钮对齐、可见性与收起状态，再交 Human review。首轮实现漏了这一步，操作按钮与保存栏左对齐，返工一次。
 
 先出 2 到 3 个可比较的 HTML 方案，经 Human 选定后再写页面。方案只决定信息层级与放置方式，不先写实现。
 
@@ -247,5 +247,5 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | MEM-3 | 已完成 | PR #45，`6587e43`；修正 `cc0d724`、`cb21a90`，全量 171 文件 / 1542 tests |
 | MEM-4 | 已完成 | PR #46，`fe04c72`，全量 173 文件 / 1555 tests |
 | MEM-4b | 完成 | PR #47，`c257d8b`；20 个动作测试 |
-| MEM-5 | 已完成 | PR #48，`ebb664d`；视觉修正 `9a179d1`；方案 A；175 文件 / 1589 tests；桌面截图 `/Users/snake/.t3/userdata/browser-artifacts/browser-screenshot-localhost-mwbtqh4t-efb990e1.png` |
+| MEM-5 | 已完成 | PR #48，`ebb664d`；视觉修正 `9a179d1`；方案 A；175 文件 / 1589 tests；桌面截图 `/Users/snake/.t3/userdata/browser-artifacts/browser-screenshot-localhost-mwbtqh4t-efb990e1.png`；评审后修正操作按钮与保存栏右对齐、服务地址空值语义 |
 | MEM-6 | 已完成 | PR #49，`766e51a`；[docs/memory-e2e.md](memory-e2e.md)；真实安装 0.8.7、6 次付费 completion（deepseek-v4.1-flash）、测试 bank `sprout::mem6-b9af937b` 已删除；关闭态 skill 泄漏修复；全量 175 文件 / 1589 tests。未验证：`testMemoryConnection`、`clearMemory`、compaction、浏览器页面 |

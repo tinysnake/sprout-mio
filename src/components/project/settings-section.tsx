@@ -26,14 +26,16 @@ export function SettingsSection({
       data-testid={testId}
       className={`${divided ? "border-t border-border " : ""}py-6 ${className ?? ""}`}
     >
-      <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-sm font-medium">{title}</h2>
           {description && (
             <p className="mt-1.5 text-xs leading-6 text-muted-foreground">{description}</p>
           )}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {actions && (
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">{actions}</div>
+        )}
       </div>
       {children}
     </section>
