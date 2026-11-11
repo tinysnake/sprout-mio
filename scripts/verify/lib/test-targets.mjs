@@ -17,6 +17,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/channel-actions.test.ts",
     "tests/channel-migration.test.ts",
     "tests/memory-config.test.ts",
+    "tests/memory-config-view.test.ts",
     "tests/memory-config-migration.test.ts",
     "tests/memory-runtime.test.ts",
     "tests/memory-install.test.ts",
