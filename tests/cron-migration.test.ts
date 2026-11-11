@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateDatabase } from "../src/db/migrate";
+import { runAttentionMigrationDefaults } from "./fixtures/run-attention-migration";
 import { openDatabase } from "../src/db/connection";
 
 it("0041 preserves populated webhook rows/identities and enforces source/config/receipt invariants", () => {
@@ -61,7 +62,12 @@ it("0041 preserves populated webhook rows/identities and enforces source/config/
                   assistant_context: null,
                   assistant_context_submitted_at: null,
                 }))
-              : old[table],
+              : table === "agent_run"
+                ? old[table].map((row) => ({
+                    ...(row as object),
+                    ...runAttentionMigrationDefaults,
+                  }))
+                : old[table],
         );
       expect(rows(sqlite, "webhook_rule")).toEqual(
         old.webhook_rule.map((row) => ({

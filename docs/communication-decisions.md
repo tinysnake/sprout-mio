@@ -82,7 +82,9 @@
 - 等待到点仍拿不到，就以“失败 + 原因”直接返回给申请方 Agent（阻塞式，结果同步可见），由它自己决定当前 run 是否需要提前中止并汇报。等待期间该身份不接其他工作。
 - 原有成员、领取范围、租约授权及人类控制边界仍适用；等待本身永不释放租约。完整规则见 machines-decisions.md。
 
-挂靠超时提醒是二期唯一新增的系统主动提醒：它落在挂靠发生的 chat，不触发唤醒与自动接续，由挂靠所在 Group 的 owner 处理，细则见 machines-decisions.md。
+系统主动提醒包括挂靠超时与 Agent run 注意力阶梯，均写入发生地 Chat。挂靠首次提醒在 Agent owner 分支直接投递 owner input，人类 owner 只收 Chat 消息；后续升级规则见 [Machines 决策](machines-decisions.md)。
+
+Run 从 `startedAt` 起默认 30 分钟写注意力事实：owner 是其他 Agent 时写系统消息并直接投递 owner input；self-owner 与人类 owner 只写事实，不提前发消息。第 60 分钟统一写一条人类提醒并暂停该 run 的 owner 自动重试；晚扫仍按理论 deadline 加 escalation 计算。系统来源固定为 `sprout.run-attention`，消息不走普通唤醒判定或自动续接。人类收件人从首条 human 输入发送者、执行 Profile 创建者、Project 创建者及 human owner 收集，再按当前 Chat 成员及项目访问权过滤；仅在当前 Chat 提醒，无独立通知通道。Run 注意力不受 `SPROUT_CONTINUATION_ENABLED` 限制。
 
 ### 上下文唤醒判定
 

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
 
 const scratch = mkdtempSync(join(tmpdir(), "sprout-run-attention-"));
 const startedAt = new Date("2026-11-11T00:00:00Z");
@@ -37,6 +37,10 @@ beforeAll(async () => {
   attention = await import("../src/domain/run-attention");
   ({ createContinuationScheduler: createScheduler } =
     await import("../src/server/continuation-scheduler"));
+});
+afterEach(() => {
+  expect(sqlite.prepare("SELECT count(*) AS n FROM wake_evaluation").get()).toEqual({ n: 0 });
+  expect(sqlite.prepare("SELECT count(*) AS n FROM continuation_delivery").get()).toEqual({ n: 0 });
 });
 afterAll(() => {
   sqlite?.close();
@@ -254,17 +258,15 @@ describe("run attention through continuation scheduler", () => {
     await advance(1_800_000);
     sqlite.exec("DROP TRIGGER reject_owner_input");
     sqlite.prepare("UPDATE chat SET owner_id=? WHERE id=?").run(f.agent.id, f.group.id);
-    sqlite
-      .prepare("UPDATE project SET wake_policy=? WHERE id=?")
-      .run(
-        JSON.stringify({
-          provider: "llm",
-          configRevision: 1,
-          thresholdVersion: "v1",
-          runAttention: { timeoutMs: 1000, escalationMs: 1000 },
-        }),
-        f.project.id,
-      );
+    sqlite.prepare("UPDATE project SET wake_policy=? WHERE id=?").run(
+      JSON.stringify({
+        provider: "llm",
+        configRevision: 1,
+        thresholdVersion: "v1",
+        runAttention: { timeoutMs: 1000, escalationMs: 1000 },
+      }),
+      f.project.id,
+    );
     await advance(1_900_000);
     expect(row(f.run.id).attention_notice_next_at).toBeNull();
     expect(row(f.run.id).human_notified_at).toBeNull();

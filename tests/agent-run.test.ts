@@ -301,7 +301,9 @@ describe("Agent run 持久不变量", () => {
       const withSnapshot = await read();
       assert.equal(withSnapshot.latest.status, 'running');
       assert.equal(withSnapshot.latest.sessionFile, '/tmp/state-session.jsonl');
-      assert.deepEqual(withSnapshot.active, [{ id: withSnapshot.latest.id, instanceId: withSnapshot.latest.instanceId, status: 'running' }]);
+      assert.deepEqual(withSnapshot.active, [{ id: withSnapshot.latest.id, instanceId: withSnapshot.latest.instanceId, status: 'running', attention: withSnapshot.latest.attention }]);
+      assert.equal(withSnapshot.active[0].attention.awaitingHandling, false);
+      assert.equal(Date.parse(withSnapshot.active[0].attention.humanReminderAt) - Date.parse(withSnapshot.active[0].attention.deadlineAt), 1800000);
       assert.equal('configSnapshot' in withSnapshot.latest, false);
       assert.equal(JSON.stringify(withSnapshot).includes('persona-token'), false);
       assert.equal(JSON.stringify(withSnapshot).includes('protocol-stub'), false);

@@ -152,6 +152,7 @@ export type RunAttentionSweepResult = {
 
 export function sweepRunAttention(now: Date): RunAttentionSweepResult {
   const result: RunAttentionSweepResult = { marked: 0, reminded: 0, rewoken: 0, escalated: 0 };
+  let retried = false;
   const rows = db
     .select({ id: agentRun.id })
     .from(agentRun)
@@ -248,9 +249,12 @@ export function sweepRunAttention(now: Date): RunAttentionSweepResult {
       })
       .immediate();
     // The message and its retry cursor are committed before attaching any input.
-    if (delivery && deliverOwnerNotice(delivery.id, now) && delivery.retry) result.rewoken++;
+    if (delivery) {
+      retried ||= delivery.retry;
+      if (deliverOwnerNotice(delivery.id, now) && delivery.retry) result.rewoken++;
+    }
   }
-  if (result.marked + result.reminded + result.rewoken + result.escalated > 0) {
+  if (retried || result.marked + result.reminded + result.rewoken + result.escalated > 0) {
     signalScheduleChange();
     for (const { id } of rows) {
       const row = db.select().from(agentRun).where(eq(agentRun.id, id)).get();

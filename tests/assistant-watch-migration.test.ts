@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateDatabase } from "../src/db/migrate";
+import { runAttentionMigrationDefaults } from "./fixtures/run-attention-migration";
 import { openDatabase } from "../src/db/connection";
 
 it("0047 preserves old consent, baselines existing content and resolves only processed/superseded watch intents", () => {
@@ -68,7 +69,9 @@ it("0047 preserves old consent, baselines existing content and resolves only pro
     try {
       expect(sqlite.prepare("SELECT * FROM assistant_watch").all()).toEqual(consent);
       expect(sqlite.prepare("SELECT rowid,* FROM message").all()).toEqual(history);
-      expect(sqlite.prepare("SELECT * FROM agent_run").all()).toEqual(terminal);
+      expect(sqlite.prepare("SELECT * FROM agent_run").all()).toEqual(
+        terminal.map((row) => ({ ...(row as object), ...runAttentionMigrationDefaults })),
+      );
       const cursor = sqlite
         .prepare("SELECT * FROM assistant_watch_cursor WHERE watch_id='live'")
         .get() as { window_started_at: number; next_due_at: number; message_rowid: number };

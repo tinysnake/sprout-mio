@@ -53,6 +53,7 @@ Y 脚本自己启动 dev server，默认端口 3099，可用 `SPROUT_LEASE_SCENE
 - 仅截图持有者文本不能证明旧 generation 被拒绝。涉及代次、强制移交和执行中止时，要核对真实链路响应与副作用。
 - 挂靠、领取、撤销挂靠没有人类入口。三条命令只由分身通过 `sprout_lease_escrow`、`sprout_lease_claim`、`sprout_lease_escrow_cancel` 发起，人类只有可见性与强制收回；界面不需要为它们增加按钮。
 - 超时提醒、升级与等待都不改变占用事实：它们只加只读的超时标记，绝不释放租约，也绝不向持有者发送任何资源请求；系统里不存在「协调请求」这个实体或通道。
+- Run 注意力是独立于租约的 30 分钟 + 30 分钟阶梯，既不结束 run 也不释放资源。验证入口为 `bash scripts/verify/run-attention.sh`；测试必须经 `createContinuationScheduler().advance()`，不得直接调用 `sweepRunAttention`。全局 continuation 关闭仍执行 run 注意力，既有 lease 与续接任务保持关闭。
 - 验证挂靠超时不要直接调 `sweepLeaseEscrowTimeouts`：真实驱动路径是 `createContinuationScheduler` 的 `advance()`。时限用 Project 级 `wake_policy.leaseTimeouts` 压缩（默认 30 分钟 / 2 小时，最小 1 秒），产品代码读的是同一个配置，不是测试替身。
 - 挂靠超时的提醒与升级不受 chat 自动接续开关影响；推送只做 chat 消息加（Agent owner 的）直接唤醒，唤醒失败沿用既有 agent-run 重试规则，不新增退避参数。
 - 等待期间在现场只应看到 `lease_get`：一旦出现写入类远端调用，说明等待路径被接错了。

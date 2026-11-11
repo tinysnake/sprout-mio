@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateDatabase } from "../src/db/migrate";
+import { runAttentionMigrationDefaults } from "./fixtures/run-attention-migration";
 import { openDatabase, type DatabaseConnection } from "../src/db/connection";
 
 const triggers = [
@@ -136,7 +137,7 @@ describe("0025 Task migration from zero and populated 0024", () => {
         ).toEqual(Array(9).fill(null));
       }
       expect(after.sqlite.prepare("SELECT * FROM agent_run ORDER BY id").all()).toEqual(
-        oldRuns.map((row) => ({ ...row, activity: null })),
+        oldRuns.map((row) => ({ ...row, activity: null, ...runAttentionMigrationDefaults })),
       );
       expect(
         after.sqlite.prepare("SELECT * FROM agent_run_input ORDER BY run_id,message_id").all(),

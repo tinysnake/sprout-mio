@@ -355,7 +355,7 @@ try {
       await scheduler.advance();
       await scheduler.settled();
       const snapshot = scheduler.snapshot();
-      equal(snapshot.started, enabled, "disabled scheduler never starts");
+      equal(snapshot.started, true, "attention scheduler starts independently of continuation");
       equal(snapshot.timerArmed, enabled, "only enabled scheduler arms a timer");
       equal(timerCalls > 0, enabled, "disabled scheduler never calls setTimeout");
       equal(

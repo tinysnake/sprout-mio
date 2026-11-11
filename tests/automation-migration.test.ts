@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrateDatabase } from "../src/db/migrate";
+import { runAttentionMigrationDefaults } from "./fixtures/run-attention-migration";
 import { openDatabase, type DatabaseConnection } from "../src/db/connection";
 
 function seed({ sqlite }: DatabaseConnection) {
@@ -92,7 +93,9 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
             assistant_context_submitted_at: null,
           })),
         );
-        expect(rows(after, "agent_run")).toEqual(runs);
+        expect(rows(after, "agent_run")).toEqual(
+          runs.map((row) => ({ ...(row as object), ...runAttentionMigrationDefaults })),
+        );
         expect(
           after.sqlite.prepare("SELECT purpose FROM agent_profile WHERE id='agent'").get(),
         ).toEqual({ purpose: "worker" });

@@ -10,6 +10,7 @@
 - `chat-title` 修改标题并保持 Chat 身份与历史。
 - `persona-next-turn` 修改 Profile 后，后续运行使用新人设。
 - `run-lifecycle` 查看 running、完成、失败和中止的结果，运行中发送消息的处理遵循 Turn 契约。
+- `run-attention` 从 running.startedAt 计时，默认 30 分钟记录注意力，60 分钟提醒人类；运行条目显示标记时间、下一人类提醒时间及 owner 自动重试暂停，终态仅保留历史。年龄和静默均不终止 run，停止入口保持可用。
 - `run-activity` 把一次 run 的工具调用与 assistant 中间说明归为一组：每个 assistant 文本块在 `text_end` 时落一条「中间说明」；默认收起只露出最后一条，展开可看本轮全部摘要；活动与状态分开，不改写 running/completed/failed 等状态。run 收尾时整组写入 `agent_run.activity`，永久挂在它产出回复的消息底部，随时可回看；运行中的活动仍由进程内 progress 提供。最终回答不由 activity 承担，仍由 run 收尾单独发到 Chat。
 - `agent-mention-relay` Agent 在消息里显式 `@` 另一名 Agent 时，被点名者获得新 run；没有点名的普通汇报不级联。
 - `group-run-status` 群组与频道里按 Agent 分行展示活动 run：每行是分身名、状态和独立停止按钮，活动记录挂在所属行内；DM 保持单行状态与输入区总停止。页头徽标跟随仍在运行的 run，不因后创建的 run 先结束而误报完成。
@@ -46,6 +47,8 @@
 | 真实模型 DM                 | 按 [pi-dm-turn.sh](../../scripts/verify-live/pi-dm-turn.sh) 的 live 模式准备凭据与环境，记录实际模型、动作及返回消息                                                                       |
 
 浏览器步骤见 [i-chat-flow.mjs](../../scripts/browser/i-chat-flow.mjs)，标题路径见 [p4b-chat-title-flow.mjs](../../scripts/browser/p4b-chat-title-flow.mjs)。I 脚本默认证据在 `.verify/i-chat/evidence.json`、同目录日志与 `evidence/p2-i-*.png`；标题截图默认在 `.verify/i-chat-title/evidence/`。保留重启前后的消息、标识与状态变化证据。
+
+Run 注意力验收入口：`bash scripts/verify/run-attention.sh`。SQLite 集成用 `createContinuationScheduler().advance()` 推进统一 clock，证明其他 Agent owner 30 分钟获得唯一 input、人类/self-owner 30 分钟无消息且 60 分钟仅一条，以及全局 continuation 关闭仍计时；协议桩跨旧 600000ms 与 1800000ms，保留初始化协议超时，覆盖初始化取消、自然退出与迟到 settled，并测真实取消耗时及同 instance 下一轮启动。UI SSR 覆盖 DM、群组、选中 run、终态历史和保留 sender，不能替代 Human 页面体验。页面定位为 `agent-run-row` 内的 `run-attention`、`agent-run-stop`，DM 在运行状态区查看关注事实并使用输入区既有停止入口。
 
 ## Gotchas
 

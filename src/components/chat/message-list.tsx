@@ -13,6 +13,8 @@ import { LEASE_TIMEOUT_SENDER_NAME, isLeaseTimeoutSender } from "./lease-timeout
 import { splitMessageSegments } from "./message-segments";
 import { SkillMark } from "./skill-mark";
 import type { MessageSkillSpan } from "../../contracts/skill";
+import { runAttentionSenderLabel } from "../../contracts/run-attention";
+import { RunAttentionNotice } from "./run-attention";
 
 const GROUPING_WINDOW_MS = 5 * 60 * 1000;
 
@@ -67,8 +69,10 @@ export function MessageList({
       message.senderKind === "automation" ||
       message.senderKind === "assistant_event" ||
       message.senderKind === "assistant_work";
-    // 挂靠超时提醒不是成员，所以既不是「历史发送者」，也不该被当成某个 Profile 的发言。
-    const systemNotice = isLeaseTimeoutSender(message.senderKind, message.senderId);
+    const attentionName =
+      message.senderKind === "agent" ? runAttentionSenderLabel(message.senderId) : null;
+    const systemNotice =
+      Boolean(attentionName) || isLeaseTimeoutSender(message.senderKind, message.senderId);
     const agentMessage = message.senderKind === "agent";
     const key =
       message.senderKind === "automation"
@@ -78,7 +82,7 @@ export function MessageList({
           : senderKey(message.senderKind, message.senderId);
     const name =
       (systemNotice
-        ? LEASE_TIMEOUT_SENDER_NAME
+        ? (attentionName ?? LEASE_TIMEOUT_SENDER_NAME)
         : message.senderKind === "automation"
           ? message.automationSource.kind === "project_cron"
             ? "Project cron"
@@ -125,7 +129,7 @@ export function MessageList({
                 data-testid="message-kind"
                 className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
               >
-                {source ? "Source" : human ? "Human" : "Agent"}
+                {systemNotice ? "System" : source ? "Source" : human ? "Human" : "Agent"}
               </span>
               {message.senderKind === "automation" &&
                 automationRuleLink?.(message.automationSource)}
@@ -208,6 +212,12 @@ export function MessageList({
                 ))
               )}
             </p>
+          )}
+          {activityRecord && (
+            <RunAttentionNotice
+              attention={activityRecord.attention}
+              status={activityRecord.status}
+            />
           )}
           {agentMessage && activity && (
             <div data-testid="message-run-activity" className="mt-2">

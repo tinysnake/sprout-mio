@@ -99,6 +99,10 @@
 - 原分身挂靠后不能继续向 Machine 下命令。远端进程可以持续运行，agent harness 本身不在 Machine 上，不属于交接对象。
 - 挂靠、领取与撤销挂靠没有人类入口：它们只由分身通过 Agent 工具（`sprout_lease_escrow`、`sprout_lease_claim`、`sprout_lease_escrow_cancel`）发起。人类只有可见性，以及下一节的就地强制收回。
 
+### Agent run 注意力与租约超时的边界
+
+Agent run 默认从 `startedAt` 起 30 分钟引起注意，60 分钟统一提醒人类。其他 Agent owner 的首次提醒直接投递 owner input；self-owner 和 human owner 首次只写事实，不提前发消息。Run 不因年龄或静默结束，提醒也不释放 Machine 或租约；人类可显式停止 run，再独立决定资源处置。Run 注意力默认 30 分钟 + 30 分钟，配置为 `project.wakePolicy.runAttention`，与下文挂靠的 30 分钟 + 2 小时和申请等待建议 5 分钟、上限 1 小时分别计时。Run 注意力在全局 continuation 关闭时仍运行；lease 提醒保留原开关边界。
+
 ### 租约与进程独立
 
 - 租约只决定 Machine 的占用和操作权，不管理进程生命周期。

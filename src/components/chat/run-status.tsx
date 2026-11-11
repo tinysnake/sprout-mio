@@ -5,6 +5,7 @@ import type { AppResult } from "../../contracts/result";
 import type { ChatContinuationData } from "../../domain/chat-continuation";
 import { ContinuationStatus } from "./continuation-status";
 import { RunActivityGroup } from "./run-activity";
+import { RunAttentionNotice } from "./run-attention";
 
 export const RUN_STATUS_LABELS: Record<string, string> = {
   queued: "排队中",
@@ -73,6 +74,7 @@ export function SelectedRunPanel({ result }: { result: AppResult<ChatRunSummary>
         <p className="break-all">Run {run.id}</p>
         <RunStatusBadge status={run.status} />
       </div>
+      <RunAttentionNotice attention={run.attention} status={run.status} />
       <p className="mt-1 text-muted-foreground">
         排队时间 <time dateTime={run.queuedAt}>{run.queuedAt}</time>
       </p>
@@ -181,6 +183,12 @@ export function RunStatusPanel({
           </button>
         )}
       </p>
+      {!(group && active.length > 0) && run && (
+        <RunAttentionNotice
+          attention={active.find((row) => row.id === run.id)?.attention ?? run.attention}
+          status={run.status}
+        />
+      )}
       {group && active.length > 0 ? (
         <ul data-testid="agent-run-list" className="space-y-2">
           {active.map((row) => {
@@ -214,6 +222,7 @@ export function RunStatusPanel({
                     </button>
                   )}
                 </div>
+                <RunAttentionNotice attention={row.attention} status={row.status} />
                 {row.activity ? (
                   <div className="mt-1">
                     <RunActivityGroup activity={row.activity} />

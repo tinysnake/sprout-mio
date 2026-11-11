@@ -397,6 +397,14 @@ export function appendSystemOwnerRunInput(
     .immediate();
 }
 
+export function appendEscrowTimeoutOwnerRunInput(
+  messageId: string,
+  agentProfileId: string,
+  ctx: ProjectContext,
+): string {
+  return appendSystemOwnerRunInput(messageId, agentProfileId, ctx);
+}
+
 /**
  * `completed` 的 run 把仍未投递的输入交给同一 instance 的下一轮
  * （`docs/communication-decisions.md` 的「当前一轮结束前仍未处理的消息进入下一轮」）。
@@ -409,14 +417,6 @@ export function appendSystemOwnerRunInput(
  * （2）人类停止不能被自动开的下一轮抵消（d10/d11，`o-turn-semantics` 也钉住 aborted 后 pending 仍为 pending）。
  * 这两类的处置语义归后续阶段，不在这里用猜测的理由取消。
  */
-export function appendEscrowTimeoutOwnerRunInput(
-  messageId: string,
-  agentProfileId: string,
-  ctx: ProjectContext,
-): string {
-  return appendSystemOwnerRunInput(messageId, agentProfileId, ctx);
-}
-
 function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, requestId: string): void {
   if (controlFor(run.chatId).mode !== "enabled") return;
   const pending = db
