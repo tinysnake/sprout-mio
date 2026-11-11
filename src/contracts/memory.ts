@@ -228,6 +228,7 @@ export function memoryExtensionConfig(memory: Extract<MemoryRuntime, { state: "r
     bankId: memory.bank,
     dynamicBankId: false,
     autoUpdate: false,
+    autoSeed: false,
   };
 }
 

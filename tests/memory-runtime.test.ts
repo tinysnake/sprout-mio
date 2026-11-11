@@ -180,6 +180,7 @@ describe("memory boundary helpers", () => {
       bankId: ready.bank,
       dynamicBankId: false,
       autoUpdate: false,
+      autoSeed: false,
     });
   });
   it("strips execution-only credentials and paths from snapshots", () => {

@@ -76,7 +76,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - `resolveBankTarget({ bankPrefix, bankName }, projectId)`，返回判别联合 `bare`、`namespaced`；前缀非空且 name 为空时用 projectId 拼出 `${prefix}::${projectId}`。
 - `MEMORY_TOOL_NAMES`，八个 `hindsight_*` 名字。
 - `HINDSIGHT_EXTENSION_VERSION` 与 tarball integrity。
-- 生成配置的固定字段，`bankId`、`dynamicBankId: false`、`autoUpdate: false`；不要设置 `autoInject`，跟随默认 `reflect`，也就是 MEM-0 实测的 2,278 / 886 token。
+- 生成配置的固定字段，`bankId`、`dynamicBankId: false`、`autoUpdate: false`、`autoSeed: false`；不要设置 `autoInject`，跟随默认 `reflect`，也就是 MEM-0 实测的 2,278 / 886 token。
 
 校验规则。
 
@@ -148,7 +148,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 ### MEM-3 Runner 激活
 
 - `open` 消息增加 `memory` 块；runner 写 `HINDSIGHT_*` 环境变量后动态 import 工厂。
-- 生成独立 JSON，显式写 `bankId`、`dynamicBankId: false`、`autoUpdate: false`，不写 `autoInject`（默认 `reflect` 才是实测成本那一档），并在 import 前设置 `HINDSIGHT_CONFIG`。生成或读取失败一律 `unavailable`，不回退 bundle 默认值。
+- 生成独立 JSON，显式写 `bankId`、`dynamicBankId: false`、`autoUpdate: false`、`autoSeed: false`，不写 `autoInject`（默认 `reflect` 才是实测成本那一档），并在 import 前设置 `HINDSIGHT_CONFIG`。`autoSeed` 默认为 true，会触发按美元计费的 codebase survey，所以必须显式关闭。生成或读取失败一律 `unavailable`，不回退 bundle 默认值。
 - 八个工具名只在 `ready` 时进入 `tools` allowlist。
 - 关闭时清掉从服务端继承的 `HINDSIGHT_*`，并按路径过滤 companion skill。`scripts/pi-host-skills.mjs` 目前会把 `~/.pi/agent/skills/hindsight-coding-agent` 继承给每个 session，这个过滤与开关无关，始终生效。
 - 启用态的 factory 会调用 `syncCompanionSkill`，它不认 runner 的 `agentDir`，恒写 `~/.pi/agent/skills/hindsight-coding-agent`。接受为已知全局副作用，但关闭态仍必须过滤所有继承路径。
@@ -184,14 +184,14 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 先出 2 到 3 个可比较的 HTML 方案，经 Human 选定后再写页面。方案只决定信息层级与放置方式，不先写实现。
 
-实现范围：`src/components/project/settings-tabs.tsx` 增加“记忆”，新增 `memory-config-panel.tsx` 与 `memory-config-copy.ts`，复用 `SettingsSection`、`ResultError` 和现有表单组件。
+实现范围：`src/components/project/settings-tabs.tsx` 增加“记忆”，新增 `memory-config-panel.tsx` 与 `memory-config-view.ts`，复用 `SettingsSection`、`ResultError` 和现有表单组件。
 
 页面必须能表达这些事实，不依赖 toast。
 
 - 开关、记忆库命名空间与名称、两个自动动作在开启时可见；服务地址与连接密钥放在操作之上。关闭时以上全部收起。
-- 有效状态与原因：未配置、组件安装中、安装失败、服务不可达、已就绪。
+- 有效状态与原因：已关闭、已就绪、配置有误、机器离线、未安装、安装中、安装失败、扩展加载失败。
 - 实际使用的 bank，随输入实时更新。
-- 最近写入与注入时间、最近错误摘要。
+- 已保存的库、组件版本与安装状态、绑定的 Machine、最近错误摘要。写入与注入时间当前没有数据来源，留到后续单元。
 - 测试连接、重试安装、清空记忆接 MEM-4b 的边界。导入仓库历史首版显示为灰色“未实现，P4”，不放一个承诺了却没有后端的按钮。
 
 ### MEM-6 真实链路
@@ -247,5 +247,5 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | MEM-3 | 已完成 | PR #45，`6587e43`；修正 `cc0d724`、`cb21a90`，全量 171 文件 / 1542 tests |
 | MEM-4 | 已完成 | PR #46，`fe04c72`，全量 173 文件 / 1555 tests |
 | MEM-4b | 完成 | PR #47，`c257d8b`；20 个动作测试 |
-| MEM-5 | 进行中 | 方案 A，面板实现中 |
-| MEM-6 | 未开始 | |
+| MEM-5 | 已完成 | PR #48，`ebb664d`；视觉修正 `9a179d1`；方案 A；175 文件 / 1589 tests；桌面截图 `/Users/snake/.t3/userdata/browser-artifacts/browser-screenshot-localhost-mwbtqh4t-efb990e1.png` |
+| MEM-6 | 进行中 | 真实服务与真实模型链路验证中 |
