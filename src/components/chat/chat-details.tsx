@@ -539,7 +539,7 @@ export function ChatDetails({
           <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
             <span>活动</span>
             <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
-              活动记录
+              运行与记录
               <Icon
                 as={ChevronRight}
                 size={12}
