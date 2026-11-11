@@ -74,9 +74,9 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     await management.focus();
     assert.equal(await management.evaluate((node) => node === document.activeElement), true);
     for (const theme of ["dark", "light"]) {
-      const toggle = page.getByTestId("management-page").getByTestId("theme-toggle");
-      if ((await toggle.getAttribute("data-theme")) !== theme) await toggle.click();
-      assert.equal(await toggle.getAttribute("data-theme"), theme);
+      const option = page.getByTestId("management-page").getByTestId(`theme-option-${theme}`);
+      if ((await option.getAttribute("data-checked")) !== "true") await option.click();
+      assert.equal(await option.getAttribute("data-checked"), "true");
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         true,

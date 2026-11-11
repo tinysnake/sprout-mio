@@ -70,60 +70,68 @@ await check("浅色：正文与输入字号来自同一 base 规则", async () =
   record("浅色：正文 13px 且使用 Geist Variable", true, JSON.stringify(info));
 });
 
-// 2. 主题切换：跨切换点同步、刷新后保持
-await check("主题：按钮与菜单行共享同一状态，刷新后保持", async () => {
-  const toggles = desktop.page.locator('[data-testid="theme-toggle"]');
-  const count = await toggles.count();
-  // 演示页同时摆出「页面按钮」与「菜单行」两种入口，数量不写死，只要求至少两种都在。
-  if (count < 2) throw new Error(`期望至少两个主题入口，实际 ${count}`);
+// 2. 主题：图标按钮与账号菜单里的外观三选一共用同一状态，刷新后保持
+await check("主题：外观三选一与图标按钮共用同一状态，刷新后保持", async () => {
+  for (const name of ["system", "light", "dark"]) {
+    const count = await desktop.page.locator(`[data-testid="theme-option-${name}"]`).count();
+    if (count !== 1) throw new Error(`外观选项 ${name} 应有且只有一个，实际 ${count}`);
+  }
+  const iconToggle = desktop.page.locator('[data-testid="theme-toggle"]').first();
   const before = await desktop.page.evaluate(() =>
     document.documentElement.classList.contains("dark"),
   );
-  // 图标按钮与菜单行文案不同，但必须都指向同一个「下一步目标」。
-  const targetBefore = before ? "浅色" : "暗色";
-  const labelsBefore = await toggles.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("aria-label")),
-  );
-  const offTarget = labelsBefore.filter((label) => !(label ?? "").includes(targetBefore));
-  if (offTarget.length > 0) throw new Error(`入口与当前主题不一致 ${labelsBefore.join("|")}`);
-  await toggles.first().click();
+  await iconToggle.click();
   const afterFirst = await desktop.page.evaluate(() =>
     document.documentElement.classList.contains("dark"),
   );
   if (before === afterFirst) throw new Error("classList 没变化");
+  const expected = afterFirst ? "dark" : "light";
+  const checked = await desktop.page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid^="theme-option-"]')]
+      .filter((node) => node.getAttribute("data-checked") === "true")
+      .map((node) => node.getAttribute("data-testid")),
+  );
+  if (checked.join() !== `theme-option-${expected}`)
+    throw new Error(`图标按钮切换后选中项未同步：${checked.join("|")}`);
   const readout = await desktop.page.locator('[data-testid="theme-readout"]').innerText();
   if (!readout.includes(afterFirst ? "暗色" : "浅色")) throw new Error(`readout ${readout}`);
-  const targetAfter = afterFirst ? "浅色" : "暗色";
-  const labelsAfter = await toggles.evaluateAll((nodes) =>
-    nodes.map((node) => node.getAttribute("aria-label")),
-  );
-  const offAfter = labelsAfter.filter((label) => !(label ?? "").includes(targetAfter));
-  if (offAfter.length > 0) throw new Error(`切换后入口未同步 ${labelsAfter.join("|")}`);
-  if (labelsAfter[0] === labelsBefore[0]) throw new Error("切换后文案没有跟随主题");
   await desktop.page.reload({ waitUntil: "networkidle" });
   const afterReload = await desktop.page.evaluate(() =>
     document.documentElement.classList.contains("dark"),
   );
   if (afterReload !== afterFirst) throw new Error(`刷新后 ${afterReload} != ${afterFirst}`);
-  record("主题：按钮与菜单行同源、刷新保持", true, `dark=${afterFirst} label=${labelsAfter[0]}`);
+  record(
+    "主题：外观三选一与图标按钮同源、刷新保持",
+    true,
+    `dark=${afterFirst} checked=${checked.join("|")}`,
+  );
 });
 
-await check("主题：菜单行按钮点击后立即切换并回写文案", async () => {
-  const row = desktop.page.locator('[data-testid="theme-toggle"]').last();
+await check("主题：点选外观三格立即生效，并能回到跟随系统", async () => {
   const before = await desktop.page.evaluate(() =>
     document.documentElement.classList.contains("dark"),
   );
-  const labelBefore = await row.getAttribute("aria-label");
-  await row.click();
+  const target = before ? "light" : "dark";
+  await desktop.page.locator(`[data-testid="theme-option-${target}"]`).click();
   const after = await desktop.page.evaluate(() =>
     document.documentElement.classList.contains("dark"),
   );
-  const labelAfter = await row.getAttribute("aria-label");
+  if (after !== (target === "dark")) throw new Error(`点选 ${target} 后 dark=${after}`);
+  for (const name of ["system", "light", "dark"]) {
+    const checked = await desktop.page
+      .locator(`[data-testid="theme-option-${name}"]`)
+      .getAttribute("data-checked");
+    if ((checked === "true") !== (name === target))
+      throw new Error(`选中态错位：${name}=${checked}`);
+  }
   const readout = await desktop.page.locator('[data-testid="theme-readout"]').innerText();
-  if (after === before) throw new Error("菜单行点击没有切换主题");
-  if (labelAfter === labelBefore) throw new Error(`文案未回写 ${labelAfter}`);
   if (!readout.includes(after ? "暗色" : "浅色")) throw new Error(`readout ${readout}`);
-  record("主题：菜单行切换生效", true, `${labelBefore} -> ${labelAfter}`);
+  await desktop.page.locator('[data-testid="theme-option-system"]').click();
+  const systemChecked = await desktop.page
+    .locator('[data-testid="theme-option-system"]')
+    .getAttribute("data-checked");
+  if (systemChecked !== "true") throw new Error("跟随系统未被选中");
+  record("主题：外观三格点选生效并可回到跟随系统", true, `${before} -> ${after} -> system`);
 });
 
 await desktop.page.screenshot({ path: `${EVIDENCE}1440-dark.png`, fullPage: true });

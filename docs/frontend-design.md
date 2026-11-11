@@ -41,6 +41,7 @@
 - 状态使用 `status-*`，颜色同时配文字或符号，不用品牌色表达所有状态。错误使用 destructive 语义，破坏性操作不能只靠颜色与普通操作区分。
 - 浅暗主题沿用相同结构和语义名，在 token 层覆盖颜色。禁止每个页面各自建立浅暗色板。
 - 主题默认跟随系统 `prefers-color-scheme`；账号菜单里的切换写入显式偏好，此后不再跟随系统。根文档用 `color-scheme` 声明当前配色并带 `darkreader-lock`，让 Dark Reader 一类扩展不在已有暗色主题上再反色一层。
+- 互斥的外观选择由「标签 + 连体选项组」表达：选项组外框常显、格间有分隔线，选中格用 `selected` 底；同行的标签不画边框、不做 hover，也不能与选项长得一样。行与相邻按钮共用同一套内边距与图标间距，同列控件的图标与文字必须左右对齐。
 - 正文和标题使用已安装的 Geist Variable，中文回退 PingFang SC / Microsoft YaHei / sans-serif。代码与标识符才使用 monospace。禁止从旧模板引入 serif、CursorGothic 或新的字体体系。
 - 图标统一 lucide-react，常规尺寸 16px、strokeWidth 1.5；大小随组件变体调整，不能逐页更换图标家族。交互图标有文字名称或 accessible name。
 - 控件圆角 6px，普通表面 8px，较大容器 10px，分别使用对应语义 token。禁止凭感觉给每页另配圆角、阴影和渐变。
