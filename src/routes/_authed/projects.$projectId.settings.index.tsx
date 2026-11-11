@@ -15,6 +15,7 @@ import { ProjectBasicInfoForm } from "../../components/project/project-basic-inf
 import { WebhookSettings } from "../../components/project/webhook-settings";
 import { CronSettings } from "../../components/project/cron-settings";
 import { FeishuSettings } from "../../components/project/feishu-settings";
+import { MemorySettings } from "../../components/project/memory-settings";
 import { ProjectFacts } from "../../components/project/project-facts";
 import { SettingsSection } from "../../components/project/settings-section";
 import { ProjectConfigForm } from "../../components/project-config/project-config-form";
@@ -70,11 +71,12 @@ export const Route = createFileRoute("/_authed/projects/$projectId/settings/")({
 function ProjectSettingsPage() {
   const { tab = "general" } = getRouteApi("/_authed/projects/$projectId/settings").useSearch();
   const { projectId } = Route.useParams();
+  const { project } = Route.useLoaderData();
   if (tab !== "general")
     return (
       <PageFrame
         title="Project settings"
-        description="管理当前 Project 的自动化规则与飞书接入。"
+        description="管理当前 Project 的自动化规则、飞书接入与记忆。"
         back={
           <PageBackLink to="/projects/$projectId/chats" params={{ projectId }}>
             <Icon as={ArrowLeft} />
@@ -90,6 +92,12 @@ function ProjectSettingsPage() {
             <WebhookSettings key={projectId} projectId={projectId} />
           ) : tab === "cron" ? (
             <CronSettings key={projectId} projectId={projectId} />
+          ) : tab === "memory" ? (
+            project.ok ? (
+              <MemorySettings projectId={projectId} projectName={project.data.name} />
+            ) : (
+              <ResultError error={project.error} />
+            )
           ) : (
             <FeishuSettings projectId={projectId} />
           )}
