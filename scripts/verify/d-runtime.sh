@@ -7,7 +7,7 @@ node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import net from 'node:net'
 import Database from 'better-sqlite3'
@@ -232,16 +232,27 @@ try {
   assert.equal(invalidLimit.status, 400)
   assert.equal(invalidLimit.body.error.code, 'validation_failed')
   pass('authenticated diagnostics filters and validation', { status: events.status, count: events.body.data.length, invalidLimit: invalidLimit.status })
+  const shim = readdirSync('.output/server/_libs')
+    .filter((name) => name.endsWith('.mjs'))
+    .map((name) => join('.output/server/_libs', name))
+    .find((path) => readFileSync(path, 'utf8').includes('as openDatabase'))
+  const shimSource = shim ? readFileSync(shim, 'utf8') : null
+  if (shim) {
+    const target = shimSource.match(/from "([^"]+)"/)[1]
+    writeFileSync(shim, `export { rebuiltSymbol as openDatabase } from "${target}";\n`)
+  }
   const result = await stop(server)
+  if (shim) writeFileSync(shim, shimSource)
   await freePort(port)
   assert.equal(boot(bootId).phase, 'stopped')
   assert(boot(bootId).stopped_at > 0)
   const shutdownLog = readFileSync(join(directory, 'production.log'), 'utf8')
+  assert(!shutdownLog.includes('失败 stopping'), 'shutdown must not reload the bundle from disk')
   const stopping = shutdownLog.lastIndexOf('"phase":"stopping"')
   const disposed = shutdownLog.lastIndexOf('[runtime] scope-disposed')
   const stopped = shutdownLog.lastIndexOf('"phase":"stopped"')
   assert(stopping >= 0 && disposed > stopping && stopped > disposed, 'shutdown order stopping -> dispose -> stopped')
-  pass('SIGTERM process group exits within 10 seconds and boot stopped', { ...result, boot: boot(bootId), order: ['stopping', 'scope-disposed', 'stopped'] })
+  pass('SIGTERM process group exits within 10 seconds and boot stopped', { ...result, boot: boot(bootId), order: ['stopping', 'scope-disposed', 'stopped'], shimMutated: Boolean(shim) })
   database.prepare("INSERT INTO runtime_boot (id, started_at, phase, pid, app_version) VALUES ('boot_abandoned', unixepoch(), 'ready', 2147483647, 'test')").run()
   const restarted = launch(process.execPath, ['.output/server/index.mjs'], 'restarted.log')
   const resumed = await health(restarted, base, 'health-restarted')
