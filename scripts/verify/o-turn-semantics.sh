@@ -326,6 +326,7 @@ try {
     await page.waitForSelector('[data-testid="pi-host-status"]',{timeout:20000})
     const failedRow=allRuns().at(-1)
     assert.equal(await page.locator('[data-testid="pi-host-status"]').textContent(),'失败')
+    assert.match(await page.locator('[data-testid="run-status"]').innerText(), /分身运行状态：\s*失败/)
     assert.equal(await page.locator('[data-testid="run-failure"]').textContent(),failedRow.error_message)
     // 裁定 d43：失败块只给文案与错误码，内部标识不上页面。
     const failureBlock=await page.locator('[data-testid="run-status"]').innerText()

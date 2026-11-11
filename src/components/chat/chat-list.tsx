@@ -207,12 +207,13 @@ export function ChatListPanel({
               const agentName = chatAgentName(chat.id, chatAgents, names);
               const name = chatListName(chat, chatAgents, names, aggregateMap);
               const aggregate = aggregateMap.get(chat.id);
+              // 最近活动取 Chat 更新与最新 run 时间的较晚者，不等于右栏的最后消息时间。
               const shownAt = latestActivityAt(chat.updatedAt, aggregate?.latestRunAt);
               const kindLabel =
                 chat.kind === "group"
                   ? "Group"
                   : chat.kind === "public_channel"
-                    ? "Public Channel"
+                    ? "全体成员可参与"
                     : chatSubtitleLabel(chat, agentName);
               const subtitle =
                 !selected && aggregate?.activeRunIds.length
@@ -244,6 +245,8 @@ export function ChatListPanel({
                       </span>
                       <time
                         dateTime={shownAt}
+                        title={`最近活动 ${chatTimeLabel(shownAt)}`}
+                        aria-label={`最近活动 ${chatTimeLabel(shownAt)}`}
                         className="shrink-0 text-[9px] text-muted-foreground"
                       >
                         {chatTimeLabel(shownAt)}

@@ -128,7 +128,24 @@ describe("群组按 Agent 展示运行状态", () => {
     expect(html).toContain("运行中");
     expect(html).toContain("排队中");
     expect(html.match(/data-testid="agent-run-stop"/g)).toHaveLength(2);
-    expect(html).toContain("2 个 Agent 进行中");
+    expect(html).toContain("2 个 Agent 进行中（1 运行中 · 1 排队中）");
+  });
+
+  it.each(["queued", "running"] as const)("全部 %s 时汇总使用对应状态", (status) => {
+    const singleState: ChatRunState = {
+      ...group,
+      active: [{ ...group.active[0], status }],
+    };
+    const single = renderToStaticMarkup(
+      createElement(RunStatusPanel, {
+        state: singleState,
+        messages: [],
+        chatKind: "group",
+      }),
+    );
+    expect(single).toContain("Agent 运行状态：");
+    expect(single).toContain(`1 个 Agent ${status === "queued" ? "排队中" : "运行中"}`);
+    expect(single).not.toContain("进行中");
   });
 
   it("活动记录挂在所属 Agent 行内，没有活动时明确等待", () => {

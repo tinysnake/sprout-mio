@@ -80,6 +80,7 @@ const HOST_DISABLED = "宿主未启用";
 const EXPECTED_HOST_STATE =
   process.env.EXPECTED_HOST_ENABLED === "false" ? HOST_DISABLED : HOST_ENABLED;
 // Chat 运行状态行的标签来自 src/components/chat/run-status.tsx 的 RUN_STATUS_LABELS（含无 run 时的「尚未运行」）。
+// DM 的单行标签；群聊按 active 中 queued / running 的实际组成汇总，由 run-activity-ui.test.ts 覆盖。
 const RUN_STATUS_LABELS = /^(尚未运行|排队中|运行中|已完成|失败|已停止|已中断)$/;
 const flat = (text) => text.replace(/\s+/g, " ").trim();
 // 消息项自带 data-sender-kind 与正文：按既有字段区分人类与 Agent，不靠正文内容猜。
@@ -439,6 +440,10 @@ async function before() {
     await goto(page, project.path);
     await page.waitForURL((url) => url.pathname === `${project.path}/chats`, { timeout: 20000 });
     await test(page, "chats-title").waitFor();
+    assert.equal(await test(page, "chat-empty-state").count(), 1);
+    assert.equal(await test(page, "chat-empty-state").locator("h2").innerText(), "选择一条 Chat");
+    assert.equal(await test(page, "chats-title").locator("h1").count(), 0);
+    await test(page, "chat-empty-state").getByTestId("dm-start").waitFor();
     return { entered: project.path, landed: new URL(page.url()).pathname };
   });
   const targets = [

@@ -125,6 +125,12 @@ export function RunStatusPanel({
   const run = state.latest;
   const group = chatKind !== undefined && chatKind !== "dm";
   const active = state.active;
+  const runningCount = active.filter((row) => row.status === "running").length;
+  const queuedCount = active.filter((row) => row.status === "queued").length;
+  const groupStatus =
+    runningCount && queuedCount
+      ? `${active.length} 个 Agent 进行中（${runningCount} 运行中 · ${queuedCount} 排队中）`
+      : `${active.length} 个 Agent ${runningCount ? "运行中" : "排队中"}`;
   const pending = state.inputs.filter((input) => input.disposition === "pending");
   const undelivered = pending
     .map(
@@ -163,9 +169,7 @@ export function RunStatusPanel({
               {group ? "Agent 运行状态：" : "分身运行状态："}
             </span>
             <span data-testid="pi-host-status">
-              {group && active.length > 0
-                ? `${active.length} 个 Agent 进行中`
-                : runStatusLabel(state)}
+              {group && active.length > 0 ? groupStatus : runStatusLabel(state)}
             </span>
           </span>
         )}

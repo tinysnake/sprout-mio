@@ -127,6 +127,7 @@ export function ChatDetails({
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   // 公共频道成员说明默认收起：只留一行结论，规则与入口藏在问号按钮后面。
   const [membersHelpOpen, setMembersHelpOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const soleDmAgent =
     chat.kind === "dm" ? currentMembers.filter((m) => m.memberKind === "agent") : [];
   const detailKey = selectedMember ?? (soleDmAgent.length === 1 ? memberKey(soleDmAgent[0]) : null);
@@ -183,7 +184,7 @@ export function ChatDetails({
           <Icon as={PanelRightClose} />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-12">
+      <div className={`min-h-0 overflow-y-auto px-5 pt-2 ${activityOpen ? "flex-1 pb-12" : ""}`}>
         <div className="py-5">
           <ContinuationPanel data={continuation} chatKind={chat.kind} />
         </div>
@@ -461,7 +462,9 @@ export function ChatDetails({
               <span>Owner</span>
               <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
                 <span data-testid="chat-owner-name">
-                  {ownerName}（{chat.owner.kind === "human" ? "Human" : "Agent"}）
+                  {ownerName}
+                  {ownerName !== (chat.owner.kind === "human" ? "Human" : "Agent") &&
+                    `（${chat.owner.kind === "human" ? "Human" : "Agent"}）`}
                 </span>
                 <Icon
                   as={ChevronRight}
@@ -492,6 +495,7 @@ export function ChatDetails({
                 {governance.canChangeOwner && ownerCandidates.length > 0 && (
                   <OwnerDialog
                     chatId={chat.id}
+                    currentOwnerKey={ownerKey(chat.owner.kind, chat.owner.id)}
                     revision={chat.governanceRevision}
                     members={ownerCandidates}
                     names={names}
@@ -527,11 +531,15 @@ export function ChatDetails({
           </details>
         )}
         {/* 当前运行状态在中栏展示；活动段按需展开诊断。 */}
-        <details data-testid="chat-details-activity" className="group border-b border-border py-4">
+        <details
+          data-testid="chat-details-activity"
+          className="group border-border py-4 open:border-b"
+          onToggle={(event) => setActivityOpen(event.currentTarget.open)}
+        >
           <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
             <span>活动</span>
             <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
-              查看诊断
+              活动记录
               <Icon
                 as={ChevronRight}
                 size={12}
@@ -592,7 +600,7 @@ export function ChatDetails({
           </p>
         )}
       </div>
-      <div className="border-t border-border px-5 py-3.5 text-[10px] text-muted-foreground max-desktop:pb-[max(14px,env(safe-area-inset-bottom))]">
+      <div className="shrink-0 border-t border-border px-5 py-3.5 text-[10px] text-muted-foreground max-desktop:pb-[max(14px,env(safe-area-inset-bottom))]">
         仅 Project 成员可见
       </div>
     </div>
@@ -778,6 +786,7 @@ function RemoveMemberButton({
 
 function OwnerDialog({
   chatId,
+  currentOwnerKey,
   revision,
   members,
   names,
@@ -787,6 +796,7 @@ function OwnerDialog({
   note,
   onChanged,
 }: {
+  currentOwnerKey: string;
   chatId: string;
   revision: number;
   members: ChatMember[];
@@ -798,14 +808,14 @@ function OwnerDialog({
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(() => (members[0] ? memberKey(members[0]) : ""));
+  const [selected, setSelected] = useState(currentOwnerKey);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const member = members.find((entry) => memberKey(entry) === selected);
-    if (!member || pending) return;
+    if (!member || selected === currentOwnerKey || pending) return;
     setPending(true);
     setError(null);
     try {
@@ -830,7 +840,16 @@ function OwnerDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) {
+          setSelected(currentOwnerKey);
+          setError(null);
+        }
+      }}
+    >
       <DialogTrigger
         data-testid="chat-owner-edit"
         data-governance-action="owner_change"
@@ -870,14 +889,23 @@ function OwnerDialog({
               return (
                 <option key={key} value={key}>
                   {name}（{member.memberKind === "human" ? "Human" : "Agent"}）
+                  {key === currentOwnerKey ? " · 当前" : ""}
                 </option>
               );
             })}
           </select>
           {error && <ChatErrorNotice error={error} testId="chat-owner-error" />}
-          <div className="flex justify-end">
-            <Button type="submit" data-testid="chat-owner-submit" loading={pending}>
-              更改 Owner
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="submit"
+              data-testid="chat-owner-submit"
+              loading={pending}
+              disabled={!selected || selected === currentOwnerKey}
+            >
+              保存更改
             </Button>
           </div>
         </form>

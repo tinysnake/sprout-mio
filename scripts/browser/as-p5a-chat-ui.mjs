@@ -719,11 +719,31 @@ try {
     state: "visible",
     timeout: 20000,
   });
+  record(
+    "owner_dialog_requires_change_and_can_cancel",
+    (await page.getByTestId("chat-owner-submit").isDisabled()) &&
+      (await page.getByTestId("chat-owner-submit").innerText()) === "保存更改" &&
+      (await page.getByTestId("chat-owner-select").locator("option:checked").innerText()).includes(
+        "当前",
+      ),
+    "默认选中当前 Owner，保存更改禁用",
+  );
+  await page
+    .getByTestId("chat-owner-dialog")
+    .getByRole("button", { name: "取消", exact: true })
+    .click();
+  await page.getByTestId("chat-owner-dialog").waitFor({ state: "detached" });
+  await page.getByTestId("chat-owner-edit").click();
   const agentOwnerValue = await page
     .locator('[data-testid="chat-owner-select"] option', { hasText: "（Agent）" })
     .first()
     .getAttribute("value");
   await page.selectOption('[data-testid="chat-owner-select"]', agentOwnerValue ?? "");
+  record(
+    "owner_dialog_enables_save_for_new_owner",
+    await page.getByTestId("chat-owner-submit").isEnabled(),
+    "选择另一位成员后可保存",
+  );
   await page.click('[data-testid="chat-owner-submit"]');
   await page
     .waitForFunction(
