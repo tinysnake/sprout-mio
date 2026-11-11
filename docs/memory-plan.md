@@ -135,7 +135,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 ### MEM-2 组件安装
 
-- 新增 `src/server/memory/install.ts`，目录是 `<SPROUT_PI_DATA_DIR>/extensions/hindsight/<version>`。
+- 新增 `src/server/memory-install.ts`，目录是 `<SPROUT_PI_DATA_DIR>/extensions/hindsight/<version>`。
 - 取 registry 元数据里的 tarball 与 integrity，校验 sha512 后解压到临时目录，再原子 `rename`。
 - 解压用系统 `tar`，不引入新依赖，不执行包的 lifecycle 脚本。
 - 进程内单飞加目录锁，锁带超时；整体 120 秒超时。
@@ -191,7 +191,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | 层 | 覆盖 | 方式 |
 | --- | --- | --- |
 | 领域单测 | bank 解析、地址校验、密钥脱敏、revision、状态归并 | `pnpm test` |
-| 安装器 | 幂等、并发、校验失败、超时、残留锁、无 lifecycle 脚本 | 本地 fixture tarball，新增 `scripts/verify/m1-memory-install.sh` |
+| 安装器 | 幂等、并发、校验失败、超时、残留锁、无 lifecycle 脚本、本地 tarball 离线安装 | 本地 fixture tarball 单测 `tests/memory-install.test.ts` |
 | Runner | 开、关、失败三态与工具面、注入、技能过滤 | 真实 runner 加 model fixture，新增 `scripts/verify/m2-memory-runner.sh` |
 | API | 权限、并发、空密钥、动作错误分类 | 领域与 HTTP 边界测试 |
 | 页面 | 信息层级、状态表达、交互 | 浏览器脚本、截图、Human review |

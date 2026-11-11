@@ -128,6 +128,28 @@ describe("provisionMemoryExtension", () => {
     expect(fetches).toBe(1);
   });
 
+  it("installs from a local tarball without fetching", async () => {
+    const db = setup();
+    const fixture = buildFixture();
+    const tarballPath = join(dataDir!, "fixture.tgz");
+    writeFileSync(tarballPath, fixture.tarball);
+    const fetchImpl: MemoryFetch = async () => {
+      throw new Error("must not fetch");
+    };
+
+    const result = await provisionMemoryExtension({
+      db,
+      machineId: "machine",
+      dataDir,
+      tarballPath,
+      fetchImpl,
+      integrity: fixture.integrity,
+    });
+
+    expect(result.path).toBe(entryPath());
+    expect(readMemoryInstall(db, "machine")?.status).toBe("ready");
+  });
+
   it("fails with integrity_mismatch, records failed, and leaves no target", async () => {
     const db = setup();
     const fixture = buildFixture();

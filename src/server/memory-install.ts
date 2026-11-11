@@ -69,6 +69,11 @@ export type ProvisionMemoryExtensionOptions = {
   timeoutMs?: number;
   now?: () => number;
   /**
+   * 本地 tarball 路径，供离线安装与测试使用；不传则读
+   * `SPROUT_HINDSIGHT_EXTENSION_TARBALL`，两者都为空才走 registry。
+   */
+  tarballPath?: string;
+  /**
    * 期望的 sha512 integrity。默认是 `HINDSIGHT_EXTENSION_INTEGRITY`；
    * 测试与离线安装用它指认本地 fixture tarball 的真实摘要。
    */
@@ -146,13 +151,21 @@ async function runProvision(
 
     tempRoot = mkdtempSync(join(extensionsDir, "hindsight-install-"));
     const extractDir = join(tempRoot, "extract");
-    const tarballPath = join(tempRoot, "package.tgz");
+    const archivePath = join(tempRoot, "package.tgz");
     mkdirSync(extractDir, { recursive: true });
 
-    const bytes = await fetchTarball(fetchImpl, TARBALL_URL, timeoutMs);
+    const localTarball = options.tarballPath ?? process.env.SPROUT_HINDSIGHT_EXTENSION_TARBALL;
+    let bytes: Buffer;
+    if (localTarball) {
+      bytes = readFileSync(localTarball);
+      if (bytes.byteLength > MAX_TARBALL_BYTES)
+        throw new MemoryInstallError("fetch_failed", "本地 tarball 超过 50 MB");
+    } else {
+      bytes = await fetchTarball(fetchImpl, TARBALL_URL, timeoutMs);
+    }
     verifyIntegrity(bytes, integrity);
-    writeFileSync(tarballPath, bytes);
-    await extractTarball(tarballPath, extractDir, timeoutMs);
+    writeFileSync(archivePath, bytes);
+    await extractTarball(archivePath, extractDir, timeoutMs);
 
     const path = installedEntry(extractDir);
     if (!path)
