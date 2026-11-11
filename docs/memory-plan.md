@@ -91,7 +91,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 `resolveMemoryRuntime(projectId, machineId)` 返回三态。
 
 - `disabled`，不携带任何连接信息。
-- `unavailable`，带原因 `not_configured`、`invalid_config`、`not_installed`、`installing`、`install_failed`、`machine_offline`。
+- `unavailable`，带原因 `invalid_config`、`machine_offline`、`not_installed`、`installing`、`install_failed`。没有配置行时按默认值视为已启用，不产生单独的“未配置”原因。
 - `ready`，带 `apiUrl`、`bank`、`configPath`、`version` 和工具名。
 
 `ready` 的 token 只出现在 `open` 消息与 runner 进程环境里，run 快照只记录 `{ enabled, state, version, bank, reason }`。生成或读取配置失败一律返回 `unavailable`，不回退 bundle 默认值，因为默认的 `mapPathToBank` 会指向宿主的 live bank。
@@ -100,7 +100,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 安装状态按 `missing → installing → ready | failed` 迁移。同一版本重复进入 `ready` 必须是空操作。
 
-记忆的有效状态由配置与安装共同决定，顺序是配置非法、机器离线、组件未就绪、服务不可达、可用。设置页显示的就是这个有效状态，不是单独的布尔开关。
+记忆的有效状态由配置与安装共同决定，顺序是配置非法、机器离线、组件未就绪、可用。服务是否可达由设置页的独立探测展示，不进入这个纯函数。设置页显示的就是这个有效状态，不是单独的布尔开关。
 
 ## 单元
 

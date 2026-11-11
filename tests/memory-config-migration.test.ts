@@ -66,6 +66,27 @@ it("creates both memory tables with defaults, keys and checks", () => {
           )
           .run(),
       ).toThrow(/CHECK/);
+      expect(() =>
+        db.sqlite
+          .prepare(
+            "INSERT INTO memory_config(project_id,provider,secrets,updated_at_ms) VALUES ('project','broken-secret','not-json',14)",
+          )
+          .run(),
+      ).toThrow(/CHECK/);
+      expect(() =>
+        db.sqlite
+          .prepare(
+            "INSERT INTO memory_config(project_id,provider,revision,updated_at_ms) VALUES ('project','broken-revision',-1,15)",
+          )
+          .run(),
+      ).toThrow(/CHECK/);
+      expect(() =>
+        db.sqlite
+          .prepare(
+            "INSERT INTO memory_config(project_id,provider,updated_at_ms,updated_by_human_id) VALUES ('project','ghost',16,'ghost')",
+          )
+          .run(),
+      ).toThrow(/FOREIGN KEY/);
 
       db.sqlite
         .prepare(
@@ -74,9 +95,7 @@ it("creates both memory tables with defaults, keys and checks", () => {
         .run();
       expect(
         db.sqlite
-          .prepare(
-            "SELECT machine_id,component,version,status,error FROM memory_install",
-          )
+          .prepare("SELECT machine_id,component,version,status,error FROM memory_install")
           .all(),
       ).toEqual([
         {
