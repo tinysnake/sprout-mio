@@ -16,6 +16,10 @@ export const Route = createRootRoute({
       { title: "Sprout Mio" },
       { name: "application-name", content: "sprout-mio" },
       { name: "theme-color", content: THEME_COLOR.light },
+      // 本站自带浅暗两套主题：先声明支持，再由首屏脚本落成实际生效的那一套。
+      // Dark Reader 一类扩展读这条 meta，看到 dark 就不会再反色一遍。
+      { name: "color-scheme", content: "light" },
+      { name: "darkreader-lock", content: "" },
       { name: "application-version", content: APP_VERSION },
     ],
     links: [
