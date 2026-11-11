@@ -8,8 +8,6 @@ import type { ChatInfoView } from "../../contracts/info-hub";
 import type { ChatContinuationData } from "../../domain/chat-continuation";
 import type { FieldErrors } from "../../contracts/project";
 import { isOffline } from "../../lib/connectivity";
-import { ActionOutcomeNotice } from "../ui/action-outcome";
-import type { ActionOutcome } from "../ui/action-outcome";
 import type { AppError, AppResult } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
@@ -90,8 +88,6 @@ export function ChatPane({
   const [draft, setDraft] = useChatDraft(chat.id);
   const [sendPending, setSendPending] = useState(false);
   const [sendError, setSendError] = useState<AppError | null>(null);
-  const [sendOutcome, setSendOutcome] = useState<ActionOutcome>(null);
-  const [stopOutcome, setStopOutcome] = useState<ActionOutcome>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
   const [stopError, setStopError] = useState<AppError | null>(null);
@@ -166,11 +162,9 @@ export function ChatPane({
 
   async function send() {
     if (sendPending) return;
-    if (isOffline()) {
-      setSendOutcome("failure");
-      return;
-    }
-    setSendOutcome("processing");
+    if (isOffline()) return;
+    // 发送不用独立提示条：进行中是按钮的「发送中」，成功是消息出现在列表里、草稿被清空，
+    // 服务端拒绝由 composer 的错误行承担。
     setSendPending(true);
     setSendError(null);
     setFieldErrors({});
@@ -178,17 +172,14 @@ export function ChatPane({
       const result = await sendMessageFn({ data: { chatId: chat.id, body: draft } });
       if (!alive.current) return;
       if (!result.ok) {
-        setSendOutcome("failure");
         setSendError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
         return;
       }
-      setSendOutcome("success");
       setDraft("");
       onChanged();
     } catch {
-      if (!alive.current) return;
-      setSendOutcome("unknown");
+      // 结果未确认时保持沉默：草稿未清空、列表里没有这条消息，人类重发即可。
     } finally {
       if (alive.current) setSendPending(false);
     }
@@ -197,26 +188,19 @@ export function ChatPane({
   async function stop(runId?: string) {
     const targetId = runId ?? (runState.ok ? (runState.data.latest?.id ?? undefined) : undefined);
     if (!targetId || stoppingRunId) return;
-    if (isOffline()) {
-      setStopOutcome("failure");
-      return;
-    }
-    setStopOutcome("processing");
+    if (isOffline()) return;
     setStoppingRunId(targetId);
     setStopError(null);
     try {
       const result = await abortAgentRunFn({ data: { runId: targetId } });
       if (!alive.current) return;
       if (!result.ok) {
-        setStopOutcome("failure");
         setStopError(result.error);
         return;
       }
-      setStopOutcome("success");
       onChanged();
     } catch {
-      if (!alive.current) return;
-      setStopOutcome("unknown");
+      // 结果未确认时保持沉默，run 状态会由下一次读取显示实际结果。
     } finally {
       if (alive.current) setStoppingRunId(null);
     }
@@ -227,32 +211,6 @@ export function ChatPane({
   return (
     <AssistantPanelProvider key={chat.id} chatId={chat.id} active={assistantActive}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <ActionOutcomeNotice
-          action="发送消息"
-          state={sendOutcome}
-          testId="send-outcome"
-          detail={
-            sendOutcome === "unknown"
-              ? "未收到确认，草稿已保留。请先刷新核对消息，避免重复发送"
-              : isOffline() && sendOutcome === "failure"
-                ? "离线，未提交；草稿已保留"
-                : undefined
-          }
-        />
-        <ActionOutcomeNotice
-          action="停止 run 请求"
-          state={stopOutcome}
-          testId="stop-outcome"
-          detail={
-            stopOutcome === "unknown"
-              ? "未收到确认，请刷新核对 run 状态"
-              : isOffline() && stopOutcome === "failure"
-                ? "离线，未提交"
-                : stopOutcome === "success"
-                  ? "服务已确认请求，以最新 run 状态为准"
-                  : undefined
-          }
-        />
         <ChatThread
           skills={skills}
           onSkillsRefresh={onChanged}

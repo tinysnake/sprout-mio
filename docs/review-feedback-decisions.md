@@ -120,3 +120,21 @@ Model the Domain 原则促使原始窗口和异步模型结果分开建模。Bou
 父代理先在原局域网服务重现 1px 表单顶边，再用真实 Chromium 复验桌面 1280×900 与手机 390×844。两者均为 section 顶边 0px、tab 底边 1px、无横向溢出，已实际读取并查看两张截图。证据为 `.verify/human-review/run.JtVeWy/general-border-desktop.png`、`general-border-mobile.png` 和 `general-border-check.json`。首次脚本使用不存在的 test id 导致等待超时，改用真实 `project-edit-name` 后成功；未将超时计为验证通过。typecheck、check 和 diff check 通过。本次是可逆的一行展示修复，未新增测试或重复整套门禁。原数据没有写入，Chromium 自用实例已关闭。
 
 Human 的有条件确认已满足截图条件，本轮 webhook、cron、原生助理与设置 UI 评审收尾。按照开发总计划进入飞书 DM adapter 的原项目实现与官方接入契约调查。后续新页面仍遵循现有设计确认流程，PWA / 语音及已记录的技术未验证项继续保留。
+
+## Chat 关联 Task 条带与发送提示反馈
+
+2026-11-11 Human 在真实 Chat 页指出两处：标题栏上方并列两条「已完成」Task，与 Info Hub 的「Task 摘要」重复；发送成功后残留 `发送消息 · 成功`。Human 决定直接删除条带（在 Info Hub 看即可），发送提示也不需要（发送框本身已能看出发送结果）。
+
+条带来源是 Chat index 路由按 `liveInfo.data.tasks.items` 渲染的全量关联（`getChatInfo` 不按状态过滤），它在 `?info=1` 的 Info Hub inspector 里已有一处。按“同一事实只出现一次”删除该块，任务关联只在 Info Hub 保留一处，vector 化与跳转不变。
+
+动作结果的那串文字整个删掉，不保留任何状态。Human 在第二轮确认：“那一串文字不管什么是成功还是失败还是未知，都删掉”。因此 Chat 页不再渲染 `ActionOutcomeNotice`：进行中由触发控件自己表达（发送按钮 `aria-label="发送中"`、停止按钮「停止中…」且禁用），成功由页面事实表达（消息入列、草稿清空、run 状态刷新），服务端拒绝由 composer 的错误行表达（`message-error` / `run-stop-error`）。`src/components/ui/action-outcome.tsx` 已无调用方，一并删除；P7 契约的「动作结果三态」改为「动作结果不出独立提示条」，`unknown` “不补成成功也不补成失败”的语义保留，但改用可核对的现场表达：草稿仍在输入框、列表里没有这条消息。
+
+代价如实记录：请求中途抛出（结果可能已落库）与断线早退现在都是沉默的，唯一线索是草稿没有被清空；服务端正常返回的拒绝仍有错误行。
+
+真实页面门禁随契约更新：`scripts/browser/p7-client-states.mjs` 的 send 与 stop 分支都断言 `send-outcome` / `stop-outcome` 节点数为 0、进行中只体现在按钮文案与禁用、成功看草稿清空、服务端拒绝看 composer 错误行、结果未确认时无错误行且草稿保留，离线块改为断言调用数为 0 与草稿保留；`scripts/browser/p7-client-pwa.mjs` 的离线发送不再等提示条，改为断言不出现 `send-outcome` 且草稿仍在（写请求由后续 `writes === 0` 断言覆盖）；`scripts/verify/as-p5b-task-pages.sh` 改用 `aria-label="关联 Task"` 计数 0 断言条带来源已消除，inspector 侧继续断言 `task-associations` 存在。
+
+同日 Human 又指出输入区左下角的 `开发一组 · 已完成` 小字。它不属于动作结果（与刚删除的提示条作用不同），是常驻的输入区状态行，但把页头徽标已有的 run 状态和 placeholder 已有的 Agent 名又并排重复了一次。改为只保留输入区独有的语义：进行中显示「追加到当前轮」，`已停止` 显示「已停止，可开始新一轮」，其余状态不再渲染；输入按钮靠 `ml-auto` 保持右对齐。run 状态读取失败另有消息区的 `run-state-load-error` 与新消息上的「分身运行状态」表达，输入区不做兜底。
+
+`src/components/chat/message-composer.tsx` 的这处改动随之纳入：门禁里没有引用被删除的三个字符串，p7-client-states 里输入区仍可见运行中的「追加到当前轮」，因此门禁无需改写。
+
+父代理实际复跑：typecheck、check 通过（16 条既有 warning 不变），p7-client-states 与 p7-client-pwa 全通过，as-p5b 21 项 checks 通过。RED 复现方式为临时撤下路由改动重跑门禁，报 `Chat 正文上方不再重复 Task 关联条带 1 !== 0` 后恢复。父代理实际读图 `.verify/as-p5b-task-pages/evidence/chat-task-associations.png`，确认 Chat 顶部只剩标题与运行状态、inspector 内仍有 Task 摘要，且输入区左下角不再有 `Task UI Agent · 宿主未启用` 那行小字、发送按钮仍在右侧。改动位于 worktree 分支 `t3/fix-chat-completed-tasks-summary`，未重跑完整 CI，未改动数据库与原型服务。Human 体验确认仍待反馈。

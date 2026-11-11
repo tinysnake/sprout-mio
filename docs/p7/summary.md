@@ -15,7 +15,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 1. **登录后回到原目标。** `safeReturnTarget` 只放行同源应用内路径，`/login` 保持裸路径；`src/routes/_authed.tsx` 根路径不带 `next`，`src/routes/login.tsx` 结果不是 `/` 才写 `next`。深链、刷新、前进后退在 `p7-client-navigation` 里逐条走。
 2. **只读离线。** `public/sw.js` 只接管 `OFFLINE_READ_FUNCTIONS` 白名单里的调用，其余请求（含全部写入）直接放行；缓存键是「URL + 请求体」的 SHA-256；命中缓存带 `x-sprout-offline: 1`，页面据此把事实标成未确认。产品不排队离线写。
-3. **动作结果三态。** `ActionOutcome = processing | success | failure | unknown`，`unknown` 是独立状态，超时或断线不补成成功也不补成失败。
+3. **动作结果不出提示条。** 进行中由按钮自身表达（`发送中` / `停止中…` 且禁用），成功由页面事实表达（消息入列、草稿清空、run 状态刷新），服务端拒绝由 composer 的错误行表达；结果未确认时保持沉默且不补成成功或失败，现场是“草稿没被清空、列表里没有这条消息”。本章原交付的 `ActionOutcomeNotice` 提示条已在 2026-11-11 的页面反馈中删除，见 [评审反馈决定](../review-feedback-decisions.md)。
 4. **对话接续真的在 Chat 页上。** Chat 详情 loader 取 `getChatContinuationFn`，页面把 `{ view, denials }` 交给面板，命令走 `controlChatContinuationFn`；面板把 11 个内部错误码映射成人话，码只留在 `data-error-code` 上。
 5. **判定器不可用说现状。** `wakeProviderAvailabilityFromEnv()` 按部署配置算出每个 provider 的 `configured`/`available`/`unavailableReason`；页面三态渲染（无配置、全不可用、可用），保存带 `expectedConfigRevision`。
 6. **Management 一期。** 「服务与数据」读 `/api/diagnostics?summary=1` 的 `queryManagementSummary`（迁移版本、资源事件与续行积压、MCP 帧水位），「账号与外观」给身份、主题与登出；不含用量统计与数据库写入。

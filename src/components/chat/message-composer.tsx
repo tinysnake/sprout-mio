@@ -309,13 +309,14 @@ export function MessageComposer({
           />
         </div>
         <div className="mt-2.25 flex items-center justify-between gap-1.5 max-desktop:flex-wrap">
-          <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <Icon as={runActive ? CornerDownLeft : MessageSquare} size={12} />
-            {runActive
-              ? "追加到当前轮"
-              : `${agentName} · ${runStatusLabel === "已停止" ? "已停止，可开始新一轮" : runStatusLabel || "运行状态暂不可用"}`}
-          </span>
-          <div className="flex items-center gap-2">
+          {/* 这一行只说输入区自己的语义：Agent 名在页头与 placeholder 里，run 状态在页头徽标里。 */}
+          {(runActive || runStatusLabel === "已停止") && (
+            <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <Icon as={runActive ? CornerDownLeft : MessageSquare} size={12} />
+              {runActive ? "追加到当前轮" : "已停止，可开始新一轮"}
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-2">
             {runActive && onStop && (
               <Button
                 type="button"

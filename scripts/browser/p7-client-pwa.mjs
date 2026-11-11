@@ -74,11 +74,8 @@ await runProduction(async ({ page, context, base, directory, seeded: s }) => {
   assert.match(await page.getByTestId("connectivity-status").innerText(), /离线 · 最后更新/);
   await page.getByTestId("message-input").fill("offline message stays local");
   await page.getByTestId("message-send").click();
-  await page.waitForFunction(
-    () =>
-      document.querySelector('[data-testid="send-outcome"]')?.getAttribute("data-state") ===
-      "failure",
-  );
+  // 离线发送既不提交也不出动作结果提示条：草稿留在输入框里，由人类在恢复后重新发起。
+  assert.equal(await page.getByTestId("send-outcome").count(), 0);
   assert.equal(await page.getByTestId("message-input").inputValue(), "offline message stays local");
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByTestId("message-input").waitFor();
