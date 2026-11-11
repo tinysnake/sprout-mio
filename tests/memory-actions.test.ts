@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { HINDSIGHT_EXTENSION_VERSION } from "../src/contracts/memory";
 import { saveMemoryConfig } from "../src/domain/memory-config";
 import type { MemoryActionsDependencies } from "../src/server/memory-actions";
@@ -11,7 +11,6 @@ const directory = mkdtempSync(join(tmpdir(), "memory-actions-"));
 vi.stubEnv("DATABASE_URL", join(directory, "test.sqlite"));
 vi.stubEnv("SPROUT_PI_ENABLED", "false");
 vi.stubEnv("SPROUT_PI_DATA_DIR", directory);
-vi.stubEnv("SPROUT_PI_MACHINE_ID", undefined);
 vi.stubEnv("SPROUT_HINDSIGHT_API_URL", "");
 vi.stubEnv("BETTER_AUTH_SECRET", randomBytes(32).toString("hex"));
 const { clearMemory, retryMemoryInstall, testMemoryConnection } =
@@ -38,18 +37,12 @@ const other = await human("memory-actions-other");
 sqlite
   .prepare("INSERT INTO project(id,name,created_by) VALUES ('prj_deadbeef','Sprout Mio',?)")
   .run(owner.userId);
-sqlite
-  .prepare(
-    "INSERT INTO machine(id,name,created_by,created_at,updated_at) VALUES ('machine','Machine',?,1,1)",
-  )
-  .run(owner.userId);
 const context = { userId: owner.userId, requestId: "req_actions" };
 const bankUrl = "https://memory.example.test/v1/default/banks/project%3A%3Aprj_deadbeef";
 const fetchMock = vi.fn<typeof fetch>();
 const provision = vi.fn<MemoryActionsDependencies["provision"]>();
 const deps: MemoryActionsDependencies = {
   db,
-  machineId: "machine",
   dataDir: directory,
   now: () => 100,
   fetch: fetchMock,
@@ -234,31 +227,25 @@ describe("memory actions", () => {
     expect(await result).toMatchObject({ ok: false, code: "unreachable" });
     expect(vi.getTimerCount()).toBe(0);
   });
-  it("starts provision once for the bound Machine and returns before it settles", () => {
+  it("starts provision once and returns before it settles", () => {
     provision.mockImplementationOnce(async () => {
       sqlite
         .prepare(
-          "INSERT INTO memory_install(machine_id,component,status,version,updated_at_ms) VALUES ('machine','hindsight-extension','installing',?,100)",
+          "INSERT INTO memory_install(component,status,version,updated_at_ms) VALUES ('hindsight-extension','installing',?,100)",
         )
         .run(HINDSIGHT_EXTENSION_VERSION);
       await new Promise(() => {});
     });
     expect(retryMemoryInstall(deps, "prj_deadbeef", context)).toEqual({
-      machineId: "machine",
       install: { status: "installing", version: HINDSIGHT_EXTENSION_VERSION, error: null },
     });
     expect(provision).toHaveBeenCalledExactlyOnceWith({
       db,
-      machineId: "machine",
       dataDir: directory,
       now: deps.now,
     });
   });
-  it("rejects an unbound Machine and handles an asynchronous install failure", async () => {
-    expect(() => retryMemoryInstall({ ...deps, machineId: null }, "prj_deadbeef", context)).toThrow(
-      "未绑定 Machine",
-    );
-    expect(provision).not.toHaveBeenCalled();
+  it("handles an asynchronous install failure", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     provision.mockRejectedValueOnce(new Error("private-action-token"));
     retryMemoryInstall(deps, "prj_deadbeef", context);
@@ -290,7 +277,7 @@ describe("memory action boundaries", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(provision).not.toHaveBeenCalled();
   });
-  it("returns action data, validates confirmation and reports an unbound Machine", async () => {
+  it("returns action data and validates confirmation", async () => {
     responses(200, 200);
     expect(
       await functions.testMemoryConnectionBoundary(
@@ -310,16 +297,30 @@ describe("memory action boundaries", () => {
         "req_clear",
       ),
     ).toMatchObject({ ok: false, error: { code: "validation_failed" } });
+    sqlite
+      .prepare(
+        "INSERT INTO memory_install(component,version,status,updated_at_ms) VALUES ('hindsight-extension',?, 'ready',100)",
+      )
+      .run(HINDSIGHT_EXTENSION_VERSION);
+    const entry = join(
+      directory,
+      "extensions/hindsight",
+      HINDSIGHT_EXTENSION_VERSION,
+      "package/dist/pi.js",
+    );
+    mkdirSync(dirname(entry), { recursive: true });
+    writeFileSync(entry, "export default () => {};\n");
+    writeFileSync(
+      join(directory, "extensions/hindsight", HINDSIGHT_EXTENSION_VERSION, "package/package.json"),
+      JSON.stringify({ version: HINDSIGHT_EXTENSION_VERSION }),
+    );
     expect(
       await functions.retryMemoryInstallBoundary(
         { projectId: "prj_deadbeef" },
         owner.headers,
         "req_retry",
       ),
-    ).toMatchObject({
-      ok: false,
-      error: { code: "validation_failed", message: expect.stringContaining("未绑定 Machine") },
-    });
+    ).toMatchObject({ ok: true, data: { install: { status: "ready" } } });
     expect(
       await functions.clearMemoryBoundary(
         { projectId: "prj_deadbeef" },

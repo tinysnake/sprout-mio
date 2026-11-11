@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "367f5620-4e99-4af0-a6e5-3f137b3544c7",
+  "id": "83f8852b-4683-487d-8e4a-036091835fc2",
   "prevId": "b9beeedb-2de5-4bd8-b364-806d3f5c1df0",
   "tables": {
     "agent_instance": {
@@ -289,56 +289,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "attention_policy_snapshot": {
-          "name": "attention_policy_snapshot",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "attention_at": {
-          "name": "attention_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "human_required_at": {
-          "name": "human_required_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "human_notified_at": {
-          "name": "human_notified_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "attention_message_id": {
-          "name": "attention_message_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "attention_notice_next_at": {
-          "name": "attention_notice_next_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "attention_notice_attempts": {
-          "name": "attention_notice_attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
         },
         "settled_at": {
           "name": "settled_at",
@@ -6859,17 +6809,10 @@
     "memory_install": {
       "name": "memory_install",
       "columns": {
-        "machine_id": {
-          "name": "machine_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "component": {
           "name": "component",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
@@ -6903,30 +6846,8 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "memory_install_machine_id_machine_id_fk": {
-          "name": "memory_install_machine_id_machine_id_fk",
-          "tableFrom": "memory_install",
-          "tableTo": "machine",
-          "columnsFrom": [
-            "machine_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "memory_install_machine_id_component_pk": {
-          "columns": [
-            "machine_id",
-            "component"
-          ],
-          "name": "memory_install_machine_id_component_pk"
-        }
-      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
         "memory_install_status_check": {

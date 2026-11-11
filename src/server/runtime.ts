@@ -221,7 +221,6 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
       .then(([settings, installer]) =>
         settings.provisionEnabledMemories({
           db: memoryDb,
-          machineId: config.SPROUT_PI_MACHINE_ID ?? null,
           dataDir: config.SPROUT_PI_DATA_DIR,
           provision: installer.provisionMemoryExtension,
         }),

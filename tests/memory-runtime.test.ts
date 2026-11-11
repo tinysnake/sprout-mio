@@ -36,16 +36,14 @@ function setup() {
   return {
     db: connection.db,
     projectId: "project",
-    machineId: "machine",
-    machineOnline: true,
     dataDir,
     env: {},
   };
 }
 function install(status = "ready", version = HINDSIGHT_EXTENSION_VERSION) {
   connection.sqlite
-    .prepare(`INSERT INTO memory_install(machine_id,component,status,version,updated_at_ms)
-    VALUES ('machine','hindsight-extension',?,?,1)`)
+    .prepare(`INSERT INTO memory_install(component,status,version,updated_at_ms)
+    VALUES ('hindsight-extension',?,?,1)`)
     .run(status, version);
 }
 function configure(enabled: boolean, settings = "{}", secrets = "{}") {
@@ -68,10 +66,10 @@ function bundle() {
 }
 
 describe("memory runtime resolver", () => {
-  it("honours the off switch even with broken config and an offline Machine", () => {
+  it("honours the off switch even with broken config", () => {
     const input = setup();
     configure(false, '{"apiUrl":"invalid"}');
-    expect(resolveMemoryRuntime({ ...input, machineOnline: false })).toEqual({ state: "disabled" });
+    expect(resolveMemoryRuntime(input)).toEqual({ state: "disabled" });
   });
   it("uses shared defaults and requires a real bundle file", () => {
     const input = setup();
@@ -114,7 +112,7 @@ describe("memory runtime resolver", () => {
   it("reports invalid stored config before reachability", () => {
     const input = setup();
     configure(true, '{"apiUrl":"http://public.example.test"}');
-    expect(resolveMemoryRuntime({ ...input, machineOnline: false })).toEqual({
+    expect(resolveMemoryRuntime(input)).toEqual({
       state: "unavailable",
       reason: "invalid_config",
     });
@@ -133,18 +131,11 @@ describe("memory runtime resolver", () => {
       expect(resolveMemoryRuntime(input)).toEqual({ state: "unavailable", reason });
     },
   );
-  it("requires an explicit online execution Machine", () => {
+  it("uses the local install without a Machine binding", () => {
     const input = setup();
     install();
     bundle();
-    expect(resolveMemoryRuntime({ ...input, machineOnline: false })).toEqual({
-      state: "unavailable",
-      reason: "machine_offline",
-    });
-    expect(resolveMemoryRuntime({ ...input, machineId: undefined })).toEqual({
-      state: "unavailable",
-      reason: "machine_offline",
-    });
+    expect(resolveMemoryRuntime(input)).toMatchObject({ state: "ready" });
   });
 });
 

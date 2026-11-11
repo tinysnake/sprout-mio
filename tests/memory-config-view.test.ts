@@ -16,11 +16,9 @@ const view: MemorySettingsView = {
   config: null,
   effectiveState: { state: "unavailable", reason: "not_installed" },
   bankPreview: { kind: "namespaced", bankId: "sprout::prj_1" },
-  machineId: null,
   install: null,
   extensionVersion: memoryDefaults.version,
   defaults: memoryDefaults,
-  message: null,
 };
 
 it("uses server defaults and resolves namespaced and bare banks without inventing an empty target", () => {
@@ -81,7 +79,6 @@ it.each<[MemorySnapshot, string]>([
   [{ state: "unavailable", reason: "installing" }, "安装中"],
   [{ state: "unavailable", reason: "not_installed" }, "未安装"],
   [{ state: "unavailable", reason: "install_failed" }, "安装失败"],
-  [{ state: "unavailable", reason: "machine_offline" }, "机器离线"],
   [{ state: "unavailable", reason: "invalid_config" }, "配置有误"],
   [{ state: "unavailable", reason: "extension_load_failed" }, "加载失败"],
 ])("shows the effective memory state %j as %s", (state, label) => {

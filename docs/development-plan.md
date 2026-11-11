@@ -33,7 +33,7 @@ webhook、cron 与原生个人助理已有契约、实现和专项技术验证�
 
 - [自动化决策草案](automation-decisions.md)记录 webhook、cron、工作提交与结果投递的边界。
 - [个人助理与 channel 决策草案](personal-assistant-decisions.md)记录助理、会话、入口、观察、委派和通知的关系。
-- [Hindsight 记忆接入计划](memory-plan.md)记录 Project 级配置、Machine 级组件安装、bank 解析、关闭时的四道门与 MEM-0 到 MEM-6 单元。
+- [Hindsight 记忆接入计划](memory-plan.md)记录 Project 级配置、宿主级组件安装、bank 解析、关闭时的四道门与 MEM-0 到 MEM-6 单元。
 
 草案明确区分 Human 已确认方向、执行者选择的首版默认、建议与待定项。目前已确认的首期决定如下。
 

@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   HINDSIGHT_EXTENSION_INTEGRITY,
   HINDSIGHT_EXTENSION_VERSION,
@@ -24,7 +24,7 @@ import { config } from "../lib/config";
 type MemoryDatabase = DatabaseConnection["db"];
 export type MemoryInstallRow = typeof memoryInstall.$inferSelect;
 
-/** 首版只有一个组件；主键是 `(machine_id, component)`。 */
+/** 首版只有一个组件，本机安装状态按 `component` 唯一。 */
 export const MEMORY_INSTALL_COMPONENT = "hindsight-extension";
 
 /** 官方 registry 上钉死版本的 tarball；版本号同时来自 `HINDSIGHT_EXTENSION_VERSION`。 */
@@ -63,7 +63,6 @@ export type MemoryFetch = (
 
 export type ProvisionMemoryExtensionOptions = {
   db: MemoryDatabase;
-  machineId: string;
   dataDir?: string;
   fetchImpl?: MemoryFetch;
   timeoutMs?: number;
@@ -82,14 +81,14 @@ export type ProvisionMemoryExtensionOptions = {
 
 export type ProvisionedMemoryExtension = { path: string; version: string };
 
-/** 同一进程内按 `dataDir + machineId` 单飞，避免并发重复下载与解压。 */
+/** 同一进程内按 `dataDir` 单飞，避免并发重复下载与解压。 */
 const inFlight = new Map<string, Promise<ProvisionedMemoryExtension>>();
 
 export function provisionMemoryExtension(
   options: ProvisionMemoryExtensionOptions,
 ): Promise<ProvisionedMemoryExtension> {
   const dataDir = options.dataDir ?? config.SPROUT_PI_DATA_DIR;
-  const key = `${dataDir}\u0000${options.machineId}`;
+  const key = dataDir;
   const running = inFlight.get(key);
   if (running) return running;
   const promise = runProvision({ ...options, dataDir }).finally(() => {
@@ -100,17 +99,12 @@ export function provisionMemoryExtension(
 }
 
 /** Runner 起 run 时只读这一行，不等待安装。 */
-export function readMemoryInstall(db: MemoryDatabase, machineId: string): MemoryInstallRow | null {
+export function readMemoryInstall(db: MemoryDatabase): MemoryInstallRow | null {
   return (
     db
       .select()
       .from(memoryInstall)
-      .where(
-        and(
-          eq(memoryInstall.machineId, machineId),
-          eq(memoryInstall.component, MEMORY_INSTALL_COMPONENT),
-        ),
-      )
+      .where(eq(memoryInstall.component, MEMORY_INSTALL_COMPONENT))
       .get() ?? null
   );
 }
@@ -138,11 +132,11 @@ async function runProvision(
 
   const installed = installedEntry(targetDir);
   if (installed) {
-    writeStatus(options.db, options.machineId, "ready", null, now());
+    writeStatus(options.db, "ready", null, now());
     return { path: installed, version };
   }
 
-  writeStatus(options.db, options.machineId, "installing", null, now());
+  writeStatus(options.db, "installing", null, now());
   let releaseLock: (() => void) | undefined;
   let tempRoot: string | undefined;
   try {
@@ -152,7 +146,7 @@ async function runProvision(
     // 拿到锁后可能已有别的进程装好了，重新检查一次。
     const raced = installedEntry(targetDir);
     if (raced) {
-      writeStatus(options.db, options.machineId, "ready", null, now());
+      writeStatus(options.db, "ready", null, now());
       return { path: raced, version };
     }
     // 目标存在但 manifest 或入口损坏时，持锁清掉；否则 rename 会 ENOTEMPTY，重试永远失败。
@@ -184,12 +178,12 @@ async function runProvision(
 
     remaining("发布");
     renameSync(extractDir, targetDir);
-    writeStatus(options.db, options.machineId, "ready", null, now());
+    writeStatus(options.db, "ready", null, now());
     return { path: join(targetDir, "package", "dist", "pi.js"), version };
   } catch (error) {
     const failure = toMemoryInstallError(error);
     try {
-      writeStatus(options.db, options.machineId, "failed", shortMessage(failure.message), now());
+      writeStatus(options.db, "failed", shortMessage(failure.message), now());
     } catch {
       // 记状态是尽力而为；原始失败仍要抛给调用方。
     }
@@ -218,13 +212,11 @@ function installedEntry(directory: string): string | undefined {
 
 function writeStatus(
   db: MemoryDatabase,
-  machineId: string,
   status: MemoryInstallStatus,
   error: string | null,
   at: number,
 ): void {
   const values = {
-    machineId,
     component: MEMORY_INSTALL_COMPONENT,
     version: HINDSIGHT_EXTENSION_VERSION,
     status,
@@ -234,7 +226,7 @@ function writeStatus(
   db.insert(memoryInstall)
     .values(values)
     .onConflictDoUpdate({
-      target: [memoryInstall.machineId, memoryInstall.component],
+      target: [memoryInstall.component],
       set: { version: values.version, status, error, updatedAtMs: at },
     })
     .run();

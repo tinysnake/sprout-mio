@@ -8,7 +8,6 @@ const directory = mkdtempSync(join(tmpdir(), "memory-boundary-"));
 vi.stubEnv("DATABASE_URL", join(directory, "test.sqlite"));
 vi.stubEnv("SPROUT_PI_ENABLED", "false");
 vi.stubEnv("SPROUT_PI_DATA_DIR", directory);
-vi.stubEnv("SPROUT_PI_MACHINE_ID", undefined);
 vi.stubEnv("BETTER_AUTH_SECRET", randomBytes(32).toString("hex"));
 const { migrateDatabase } = await import("../src/db/migrate");
 migrateDatabase();
@@ -70,7 +69,7 @@ it("requires a Human session for reads and saves, including Agent Bearer callers
 it("returns a masked view and preserves domain conflict codes at the boundary", async () => {
   expect(
     await functions.getMemoryConfigBoundary({ projectId: project.id }, owner.headers, "req_read"),
-  ).toMatchObject({ ok: true, data: { config: null, machineId: null } });
+  ).toMatchObject({ ok: true, data: { config: null } });
   const saved = await functions.saveMemoryConfigBoundary(draft, owner.headers, "req_save");
   expect(saved).toMatchObject({ ok: true, data: { config: { hasToken: true, revision: 1 } } });
   expect(JSON.stringify(saved)).not.toMatch(/private-boundary-token|apiToken|secrets/);
