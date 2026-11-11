@@ -77,6 +77,7 @@ export function saveMemoryConfig(
   db: MemoryDatabase,
   input: unknown,
   humanId: string,
+  now: number,
 ): MemoryConfigView {
   const parsed = saveMemoryConfigInput.parse(input);
   return db.transaction(
@@ -105,7 +106,7 @@ export function saveMemoryConfig(
         settings: parsed.settings,
         secrets,
         revision: parsed.revision + 1,
-        updatedAtMs: Math.max(Date.now(), (current?.updatedAtMs ?? 0) + 1),
+        updatedAtMs: Math.max(now, (current?.updatedAtMs ?? 0) + 1),
         updatedByHumanId: humanId,
       };
       const saved = current

@@ -157,6 +157,7 @@ describe("Project memory configuration", () => {
       db,
       { ...draft, secrets: { apiToken: "private-token" } },
       "human",
+      1,
     );
     expect(saved).toMatchObject({
       enabled: true,
@@ -175,6 +176,7 @@ describe("Project memory configuration", () => {
         db,
         { ...draft, revision: previous.revision, secrets },
         "human",
+        1,
       );
       expect(db.select().from(memoryConfig).get()?.secrets).toEqual({ apiToken: "private-token" });
       expect(updated.hasToken).toBe(true);
@@ -185,37 +187,43 @@ describe("Project memory configuration", () => {
       db,
       { ...draft, revision: previous.revision, secrets: { apiToken: "replacement" } },
       "human",
+      1,
     );
     expect(db.select().from(memoryConfig).get()?.secrets).toEqual({ apiToken: "replacement" });
   });
 
   it("rejects stale creates and updates without changing configuration or secrets", () => {
     const db = setup();
-    expect(() => saveMemoryConfig(db, { ...draft, revision: 1 }, "human")).toThrow(
+    expect(() => saveMemoryConfig(db, { ...draft, revision: 1 }, "human", 1)).toThrow(
       expect.objectContaining({ code: "conflict" }),
     );
     expect(loadMemoryConfig(db, "project", "hindsight")).toBeNull();
-    saveMemoryConfig(db, { ...draft, secrets: { apiToken: "private-token" } }, "human");
+    saveMemoryConfig(db, { ...draft, secrets: { apiToken: "private-token" } }, "human", 1);
     const before = db.select().from(memoryConfig).get();
     expect(() =>
-      saveMemoryConfig(db, { ...draft, enabled: false, secrets: { apiToken: "stale" } }, "human"),
+      saveMemoryConfig(
+        db,
+        { ...draft, enabled: false, secrets: { apiToken: "stale" } },
+        "human",
+        1,
+      ),
     ).toThrow(expect.objectContaining({ code: "conflict" }));
     expect(db.select().from(memoryConfig).get()).toEqual(before);
   });
 
   it("validates before writing and keeps invalid updates atomic", () => {
     const db = setup();
-    expect(saveMemoryConfig(db, draft, "human").hasToken).toBe(false);
+    expect(saveMemoryConfig(db, draft, "human", 1).hasToken).toBe(false);
     const before = db.select().from(memoryConfig).get();
     for (const settings of [
       { bankPrefix: "", bankName: "" },
       { apiUrl: "http://public.example" },
     ]) {
-      expect(() => saveMemoryConfig(db, { ...draft, revision: 1, settings }, "human")).toThrow();
+      expect(() => saveMemoryConfig(db, { ...draft, revision: 1, settings }, "human", 1)).toThrow();
       expect(db.select().from(memoryConfig).get()).toEqual(before);
     }
     vi.stubEnv("SPROUT_HINDSIGHT_API_URL", "http://public.example");
-    expect(() => saveMemoryConfig(db, { ...draft, revision: 1 }, "human")).toThrow();
+    expect(() => saveMemoryConfig(db, { ...draft, revision: 1 }, "human", 1)).toThrow();
     expect(db.select().from(memoryConfig).get()).toEqual(before);
   });
 
@@ -230,14 +238,14 @@ describe("Project memory configuration", () => {
       } as Parameters<typeof assertMemoryConfigHuman>[0]),
     ).toThrow("只有 Human");
     for (const humanId of ["other", "agent", "missing"]) {
-      expect(() => saveMemoryConfig(db, draft, humanId)).toThrow(
+      expect(() => saveMemoryConfig(db, draft, humanId, 1)).toThrow(
         expect.objectContaining({ code: "forbidden" }),
       );
     }
-    saveMemoryConfig(db, draft, "human");
+    saveMemoryConfig(db, draft, "human", 1);
     expect(loadMemoryConfig(db, "other-project", "hindsight")).toBeNull();
     expect(
-      saveMemoryConfig(db, { ...draft, projectId: "other-project", enabled: false }, "other"),
+      saveMemoryConfig(db, { ...draft, projectId: "other-project", enabled: false }, "other", 1),
     ).toMatchObject({ enabled: false, hasToken: false, revision: 1 });
     expect(loadMemoryConfig(db, "project", "hindsight")?.enabled).toBe(true);
   });
