@@ -15,6 +15,7 @@ import { piHostEvent } from "./protocol";
 
 // 关闭请求发出后到强杀之间的宽限。宿主整体关机必须在 9 秒内给出结论，
 // 所以这个预算不能放大：真挂住的 runner 由这里强制结束并报错。
+const RUNNER_ABORT_GRACE_MS = 2_000;
 const RUNNER_CLOSE_GRACE_MS = 1_500;
 
 export class PiHostFailure extends Error {
@@ -33,7 +34,7 @@ type Waiter = {
   type: PiHostEvent["type"];
   resolve: (event: PiHostEvent) => void;
   reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer?: ReturnType<typeof setTimeout>;
 };
 
 export class PiSessionProcess {
@@ -43,6 +44,8 @@ export class PiSessionProcess {
   private waiters = new Set<Waiter>();
   private fatal: Error | undefined;
   private exiting = false;
+  private awaitingSettled = false;
+  private abortTimer?: ReturnType<typeof setTimeout>;
   private closing: Promise<void> | undefined;
   private exit: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
   private disposed = false;
@@ -108,6 +111,8 @@ export class PiSessionProcess {
   }
 
   private fail(error: Error): void {
+    this.clearAbortTimer();
+    this.awaitingSettled = false;
     this.dispose();
     this.fatal ??= error;
     for (const waiter of this.waiters) {
@@ -135,6 +140,10 @@ export class PiSessionProcess {
       const parsed = piHostEvent.safeParse(value);
       if (!parsed.success || parsed.data.id !== this.id) continue;
       const event = parsed.data;
+      if (event.type === "settled") {
+        this.awaitingSettled = false;
+        this.clearAbortTimer();
+      }
       if (event.type === "progress") {
         // 活动摘要是展示层附加事实：记录失败不能让 run 失败。
         try {
@@ -177,19 +186,23 @@ export class PiSessionProcess {
     }
   }
 
-  private wait(type: PiHostEvent["type"], timeoutMs: number): Promise<PiHostEvent> {
+  private wait(type: PiHostEvent["type"], timeoutMs?: number): Promise<PiHostEvent> {
     if (this.fatal) return Promise.reject(this.fatal);
     return new Promise((done, reject) => {
       const waiter: Waiter = {
         type,
         resolve: done,
         reject,
-        timer: setTimeout(() => {
-          this.waiters.delete(waiter);
-          const error = new PiHostFailure("runner_timeout", "Pi runner 等待超时");
-          this.fail(error);
-          reject(error);
-        }, timeoutMs),
+        ...(timeoutMs === undefined
+          ? {}
+          : {
+              timer: setTimeout(() => {
+                this.waiters.delete(waiter);
+                const error = new PiHostFailure("runner_timeout", "Pi runner 等待超时");
+                this.fail(error);
+                reject(error);
+              }, timeoutMs),
+            }),
       };
       this.waiters.add(waiter);
     });
@@ -203,6 +216,7 @@ export class PiSessionProcess {
   }
 
   async open(config: OpenSession): Promise<RunConfigSnapshot> {
+    this.awaitingSettled = true;
     const ready = this.wait("ready", 30000);
     try {
       this.send(config);
@@ -221,7 +235,8 @@ export class PiSessionProcess {
     const turnContext = this.turnContext;
     if (!turnContext || turnContext.runId !== this.id)
       throw new PiHostFailure("turn_context_unavailable", "轮初上下文尚未准备");
-    const settled = this.wait("settled", 600000);
+    this.awaitingSettled = true;
+    const settled = this.wait("settled");
     try {
       this.send({ type: "prompt", id: this.id, messageId, text, turnContext });
     } catch (error) {
@@ -255,6 +270,11 @@ export class PiSessionProcess {
     });
   }
 
+  private clearAbortTimer(): void {
+    clearTimeout(this.abortTimer);
+    this.abortTimer = undefined;
+  }
+
   abortSession(): void {
     this.dispose();
     try {
@@ -262,6 +282,11 @@ export class PiSessionProcess {
     } catch {
       // 子进程已退出时停止动作仍以 run 状态机的结果为准。
     }
+    if (this.exiting || this.abortTimer || !this.awaitingSettled) return;
+    this.abortTimer = setTimeout(() => {
+      this.abortTimer = undefined;
+      void this.close().catch(() => {});
+    }, RUNNER_ABORT_GRACE_MS);
   }
 
   close(): Promise<void> {
@@ -269,8 +294,9 @@ export class PiSessionProcess {
   }
 
   private async closeProcess(): Promise<void> {
-    this.dispose();
     this.exiting = true;
+    this.clearAbortTimer();
+    this.fail(new PiHostFailure("runner_closed", "Pi runner 已关闭"));
     if (this.child.exitCode === null && this.child.signalCode === null) {
       // 故障发生后也要发送 close，不能让 fatal 阻断清理。
       this.child.stdin.write(`${JSON.stringify({ type: "close", id: this.id })}\n`);
