@@ -186,6 +186,7 @@ Human 看完改后页面又提了四处（附三张红框截图）：一是「�
 - `chat-details.tsx`：「分身 Instance ID」「归档状态」「最后消息时间」从「成员」段移出，独立成「会话」段（`chat-details-conversation`）；时间单元格 `whitespace-nowrap`，值用 `chatTimeLabel`（`11/11 19:29`），机器可读真值留在 `<time datetime>`；Owner 段的「Owner」一行删除，`chat-owner-name`（保留「（Human）/（Agent）」后缀）移到该段折叠摘要右侧，群聊 Owner 由此只在成员徽标与段摘要出现。
 - `machine/lease-panel.tsx`：`LeaseOverview` 增加 `hideEmpty`，窄栏调用方（会话详情）在没有租约时整块不渲染，不再输出「本 Project 还没有租约记录。」这类没有可行动信息的空态。
 - `projects.$projectId.chats.index.tsx`：删掉 Chats 首页的类型科普副标题，空态提示压到一句「从左侧列表选择，或用下面的入口新建。」
+- 第四轮复评又抓出一处事实错误（不是本轮引入）：公共频道的会话详情「标题」行走的是通用回落链，显示出「未命名，显示为「<分身名>」」，与页头的「公共频道（Project 范围）」不一致。改为复用 `chatDisplayTitle`（列表、标题栏与详情共用同一条回落链），并且公共频道不再渲染「标题」行（页头已经在说同一件事）。as-p5a 的「右栏标题 = 群标题」断言继续通过。
 
 仍然冻结、本轮有意不改的三处（都有门禁把文案或结构当作契约）：`run-facts.tsx` 的「还没有历史 run。」与「当前没有排队中或运行中的 run。」（`tests/run-facts-summary.test.ts`、`tests/fixtures/p6b-pages.ts` 四种视角），pending 输入在中栏与右栏的共同出现（`o-turn-semantics` 断言 `pending-input-count` 文案并现场点停止），Owner 段的「治理版本」「唤醒策略」（`as-p5a-chat-ui.mjs` 计数断言）。要动这三处需要同时改契约，不属于本轮去重范围。
 

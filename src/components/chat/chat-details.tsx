@@ -8,6 +8,7 @@ import { agentDetailFromChat } from "../agent/agent-detail-search";
 import { chatTimeLabel } from "./format";
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
 import type { ChatMember, ChatSession, ChatWakePolicy } from "../../contracts/chat";
+import { chatDisplayTitle } from "../../contracts/chat";
 import type { ChatInfoView, ChatRunAggregate, InfoHubResult } from "../../contracts/info-hub";
 import type { TurnContextReadResult } from "../../contracts/turn-context";
 import type { AppError } from "../../contracts/result";
@@ -465,10 +466,15 @@ export function ChatDetails({
                 <dd data-testid="chat-wake-policy">{WAKE_POLICY_LABELS[chat.wakePolicy]}</dd>
                 <dt className="text-muted-foreground">治理版本</dt>
                 <dd data-testid="chat-governance-revision">{chat.governanceRevision}</dd>
-                <dt className="text-muted-foreground">标题</dt>
-                <dd data-testid="chat-details-title" className="break-words">
-                  {chat.title?.trim() ? chat.title : `未命名，显示为「${agentName}」`}
-                </dd>
+                {/* 公共频道的名字由 Project 派生，与页头同一句；这里不再复述。 */}
+                {chat.kind !== "public_channel" && (
+                  <>
+                    <dt className="text-muted-foreground">标题</dt>
+                    <dd data-testid="chat-details-title" className="break-words">
+                      {chatDisplayTitle(chat, [agentName])}
+                    </dd>
+                  </>
+                )}
               </dl>
               <div className="flex flex-wrap items-center gap-2">
                 {governance.canChangeOwner && ownerCandidates.length > 0 && (
