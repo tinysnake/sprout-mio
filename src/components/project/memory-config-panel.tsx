@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { saveMemoryConfigInput, type MemorySettingsView } from "../../contracts/memory";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  HINDSIGHT_DEFAULT_API_URL,
+  saveMemoryConfigInput,
+  type MemorySettingsView,
+} from "../../contracts/memory";
 import {
   clearMemoryFn,
   getMemoryConfigFn,
@@ -27,6 +31,7 @@ type Feedback =
 type Action = "test" | "retry" | "clear";
 
 function Result({ feedback }: { feedback: Feedback }) {
+  if (feedback.state === "idle") return null;
   return (
     <p
       aria-live="polite"
@@ -38,7 +43,7 @@ function Result({ feedback }: { feedback: Feedback }) {
             : "text-muted-foreground"
       }`}
     >
-      {feedback.state === "idle" ? null : feedback.message}
+      {feedback.message}
     </p>
   );
 }
@@ -95,15 +100,6 @@ function Toggle({
         <span className="mt-1.5 block leading-6 text-muted-foreground">{description}</span>
       </span>
       <Switch label={label} checked={checked} disabled={disabled} onChange={onChange} />
-    </div>
-  );
-}
-
-function ActionRow({ children, feedback }: { children: ReactNode; feedback: Feedback }) {
-  return (
-    <div className="space-y-1">
-      <div className="flex flex-wrap items-center gap-3">{children}</div>
-      <Result feedback={feedback} />
     </div>
   );
 }
@@ -455,7 +451,7 @@ export function MemoryConfigPanel({
             <div className="space-y-4">
               <Field label="服务地址" hint="留空使用服务端默认地址。自建或云端服务填完整地址。">
                 <Input
-                  placeholder="http://127.0.0.1:8888"
+                  placeholder={HINDSIGHT_DEFAULT_API_URL}
                   value={draft.apiUrl}
                   autoComplete="off"
                   spellCheck={false}
@@ -519,7 +515,7 @@ export function MemoryConfigPanel({
                 )}
               </div>
               {dirty && <p className="text-xs text-muted-foreground">请先保存配置，再执行操作。</p>}
-              <ActionRow feedback={actions.test}>
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant="secondary"
@@ -529,8 +525,6 @@ export function MemoryConfigPanel({
                 >
                   测试连接
                 </Button>
-              </ActionRow>
-              <ActionRow feedback={actions.retry}>
                 <Button
                   type="button"
                   variant="secondary"
@@ -540,8 +534,6 @@ export function MemoryConfigPanel({
                 >
                   重试安装
                 </Button>
-              </ActionRow>
-              <ActionRow feedback={actions.clear}>
                 <Button
                   type="button"
                   variant="destructive"
@@ -554,7 +546,16 @@ export function MemoryConfigPanel({
                 >
                   清空记忆
                 </Button>
-              </ActionRow>
+                <Button type="button" variant="secondary" disabled>
+                  从仓库历史导入
+                </Button>
+                <span className="text-xs text-muted-foreground">未实现，P4</span>
+              </div>
+              <div className="space-y-1">
+                <Result feedback={actions.test} />
+                <Result feedback={actions.retry} />
+                <Result feedback={actions.clear} />
+              </div>
               {confirming && (
                 <div className="space-y-3 border-l-2 border-destructive pl-4">
                   <Field
@@ -598,12 +599,6 @@ export function MemoryConfigPanel({
                   </div>
                 </div>
               )}
-              <div className="flex flex-wrap items-center gap-3">
-                <Button type="button" variant="secondary" disabled>
-                  从仓库历史导入
-                </Button>
-                <span className="text-xs text-muted-foreground">未实现，P4</span>
-              </div>
             </div>
           </SettingsSection>
         </>

@@ -15,9 +15,11 @@ export const MEMORY_TOOL_NAMES = [
   "hindsight_ingest_document",
 ] as const;
 
+export const HINDSIGHT_DEFAULT_API_URL = "http://127.0.0.1:8888";
+
 export const memoryDefaults = {
   enabled: true,
-  apiUrl: "http://127.0.0.1:8888",
+  apiUrl: "",
   bankPrefix: "sprout",
   bankName: "",
   autoIndexCommits: true,
@@ -164,7 +166,7 @@ export function resolveApiUrl(
   env: { SPROUT_HINDSIGHT_API_URL?: string },
 ): string {
   return apiUrlSchema.parse(
-    settings.apiUrl.trim() || env.SPROUT_HINDSIGHT_API_URL?.trim() || memoryDefaults.apiUrl,
+    settings.apiUrl.trim() || env.SPROUT_HINDSIGHT_API_URL?.trim() || HINDSIGHT_DEFAULT_API_URL,
   );
 }
 
