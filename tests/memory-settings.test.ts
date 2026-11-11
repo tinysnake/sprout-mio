@@ -35,8 +35,6 @@ function setup() {
     INSERT INTO project(id,name,created_by)
       VALUES ('project','Project','human'), ('second','Second','human'),
              ('disabled','Disabled','human');
-    INSERT INTO machine(id,name,created_by,created_at,updated_at)
-      VALUES ('machine','Machine','human',1,1);
   `);
   connection.sqlite.pragma("foreign_keys = ON");
   dataDir = mkdtempSync(join(tmpdir(), "memory-settings-"));
@@ -44,7 +42,6 @@ function setup() {
   const provision = vi.fn<MemorySettingsDependencies["provision"]>();
   const deps: MemorySettingsDependencies = {
     db: connection.db,
-    machineId: "machine",
     dataDir,
     now: () => 100,
     provision,
@@ -61,9 +58,9 @@ const draft = {
 };
 function status(value: "installing" | "failed" | "ready", error: string | null = null) {
   connection.sqlite
-    .prepare(`INSERT INTO memory_install(machine_id,component,status,version,error,updated_at_ms)
-      VALUES ('machine','hindsight-extension',?,?,?,100)
-      ON CONFLICT(machine_id,component) DO UPDATE SET status=excluded.status,error=excluded.error`)
+    .prepare(`INSERT INTO memory_install(component,status,version,error,updated_at_ms)
+      VALUES ('hindsight-extension',?,?,?,100)
+      ON CONFLICT(component) DO UPDATE SET status=excluded.status,error=excluded.error`)
     .run(value, HINDSIGHT_EXTENSION_VERSION, error);
 }
 function bundle() {
@@ -81,24 +78,18 @@ function bundle() {
 
 // The fake models the installer's public status-before-await / status-before-reject contract.
 describe("memory settings", () => {
-  it("returns defaults without creating a row and explains an unbound Machine", () => {
+  it("returns defaults without creating a row and reports a missing install", () => {
     const { deps } = setup();
-    const view = getMemorySettings({ ...deps, machineId: null }, "project");
+    const view = getMemorySettings(deps, "project");
     expect(view).toMatchObject({
       config: null,
       defaults: memoryDefaults,
       extensionVersion: HINDSIGHT_EXTENSION_VERSION,
       bankPreview: { kind: "namespaced", bankId: "sprout::project" },
-      machineId: null,
       install: null,
-      effectiveState: { state: "unavailable", reason: "machine_offline" },
+      effectiveState: { state: "unavailable", reason: "not_installed" },
     });
-    expect(view.message).toContain("SPROUT_PI_MACHINE_ID");
     expect(deps.db.select().from(memoryConfig).all()).toEqual([]);
-    expect(getMemorySettings(deps, "project").effectiveState).toEqual({
-      state: "unavailable",
-      reason: "not_installed",
-    });
   });
 
   it("masks tokens even when ready and resolves explicit banks", () => {
@@ -196,7 +187,6 @@ describe("memory settings", () => {
     expect(provision).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         db: deps.db,
-        machineId: "machine",
         dataDir,
         now: deps.now,
       }),
@@ -205,12 +195,10 @@ describe("memory settings", () => {
     await pending;
   });
 
-  it.each([false, true])("does not install with enabled=%s when no Machine is bound", (enabled) => {
+  it("does not install while disabled", () => {
     const { deps, provision } = setup();
-    const view = saveMemorySettings({ ...deps, machineId: null }, { ...draft, enabled }, context);
-    expect(view.effectiveState).toEqual(
-      enabled ? { state: "unavailable", reason: "machine_offline" } : { state: "disabled" },
-    );
+    const view = saveMemorySettings(deps, { ...draft, enabled: false }, context);
+    expect(view.effectiveState).toEqual({ state: "disabled" });
     expect(provision).not.toHaveBeenCalled();
   });
 
@@ -235,7 +223,7 @@ describe("memory settings", () => {
     expect(view.effectiveState).toEqual({ state: "unavailable", reason: "install_failed" });
   });
 
-  it("sweeps enabled Projects, skips missing Machines, shares installation and is idempotent", async () => {
+  it("sweeps enabled Projects, shares one installation and is idempotent", async () => {
     const { deps, provision } = setup();
     saveMemoryConfig(deps.db, { ...draft, projectId: "disabled", enabled: false }, "human", 1);
     provision.mockImplementation(async () => {
@@ -246,30 +234,23 @@ describe("memory settings", () => {
     expect(provision).not.toHaveBeenCalled();
     for (const projectId of ["project", "second"])
       saveMemoryConfig(deps.db, { ...draft, projectId }, "human", 1);
-    await provisionEnabledMemories({ ...deps, machineId: null });
-    expect(provision).not.toHaveBeenCalled();
     await provisionEnabledMemories(deps);
     await provisionEnabledMemories(deps);
     expect(provision).toHaveBeenCalledTimes(1);
     expect(getMemorySettings(deps, "disabled").effectiveState).toEqual({ state: "disabled" });
   });
 
-  it("continues the boot sweep after one Project's rejected provision", async () => {
+  it("logs a rejected provision without failing the boot sweep", async () => {
     const { deps, provision } = setup();
     vi.spyOn(console, "error").mockImplementation(() => {});
     for (const projectId of ["project", "second"])
       saveMemoryConfig(deps.db, { ...draft, projectId }, "human", 1);
-    provision
-      .mockImplementationOnce(async () => {
-        status("failed", "offline");
-        throw new Error("offline");
-      })
-      .mockImplementationOnce(async () => {
-        status("ready");
-        bundle();
-      });
+    provision.mockImplementationOnce(async () => {
+      status("failed", "offline");
+      throw new Error("offline");
+    });
     await expect(provisionEnabledMemories(deps)).resolves.toBeUndefined();
-    expect(provision).toHaveBeenCalledTimes(2);
-    expect(readMemoryInstall(deps.db, "machine")?.status).toBe("ready");
+    expect(provision).toHaveBeenCalledTimes(1);
+    expect(readMemoryInstall(deps.db)?.status).toBe("failed");
   });
 });

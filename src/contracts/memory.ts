@@ -135,7 +135,6 @@ export type TestMemoryConnectionResult =
   | MemoryActionFailure;
 export type ClearMemoryResult = { ok: true } | MemoryActionFailure;
 export type RetryMemoryInstallResult = {
-  machineId: string;
   install: MemorySettingsView["install"];
 };
 
@@ -154,11 +153,9 @@ export type MemorySettingsView = {
   config: MemoryConfigView | null;
   effectiveState: MemorySnapshot;
   bankPreview: MemoryBankTarget;
-  machineId: string | null;
   install: { status: MemoryInstallStatus; version: string; error: string | null } | null;
   extensionVersion: string;
   defaults: typeof memoryDefaults;
-  message: string | null;
 };
 
 export function resolveApiUrl(
@@ -192,7 +189,6 @@ export const memoryInstallStatusSchema = z.enum(["missing", "installing", "ready
 export type MemoryInstallStatus = z.infer<typeof memoryInstallStatusSchema>;
 export const memoryUnavailableReasonSchema = z.enum([
   "invalid_config",
-  "machine_offline",
   "not_installed",
   "installing",
   "install_failed",
@@ -238,11 +234,6 @@ export type EffectiveMemoryState =
   | { state: "disabled" }
   | {
       state: "unavailable";
-      reason:
-        | "invalid_config"
-        | "machine_offline"
-        | "not_installed"
-        | "installing"
-        | "install_failed";
+      reason: "invalid_config" | "not_installed" | "installing" | "install_failed";
     }
   | { state: "ready" };

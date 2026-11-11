@@ -20,7 +20,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | 决定 | 取值 | 理由 |
 | --- | --- | --- |
 | 配置归属 | Project 级，一个 Project 同时只启用一种记忆系统 | 不同 Project 可能接不同记忆服务，隔离与权限都按 Project 收口 |
-| 安装归属 | Machine 级，按组件版本记状态 | 扩展文件在执行 Pi 的机器上，不随 Project 复制 |
+| 安装归属 | 宿主级，按组件版本记状态 | 扩展文件在运行 Pi 的宿主上，不随 Project 复制，也不绑定某台远程 Machine |
 | 修改权限 | 只有 Human 能改配置与执行动作 | 与渠道配置一致，见 `src/domain/channel-config.ts` 的 `assertChannelConfigHuman` |
 | 密钥读写 | 只写不读，视图只返回 `hasToken` | 避免设置页和日志回显密钥 |
 | bank 字段 | `bankPrefix` 默认 `sprout`，`bankName` 默认空 | 两个字段的“空”语义不同，不能合成一个输入框 |
@@ -52,18 +52,17 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 主键 `(project_id, provider)`。领域层保证一个 Project 最多一行启用。
 
-`memory_install` 记录执行机上的组件状态。
+`memory_install` 记录宿主上的组件状态。
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
-| `machine_id` | text | 引用 `machine.id` |
-| `component` | text | 首版固定 `hindsight-extension` |
+| `component` | text | 首版固定 `hindsight-extension`，主键 |
 | `version` | text | 钉住的版本 |
 | `status` | text | `missing`、`installing`、`ready`、`failed` |
 | `error` | text | 失败摘要，不含密钥 |
 | `updated_at_ms` | integer | 最后变化时间 |
 
-主键 `(machine_id, component)`。
+主键 `component`，不再引用 `machine.id`。迁移 `0057` 把旧的多 Machine 行归并为每个组件最新的一行。
 
 ### 契约
 
@@ -88,21 +87,21 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 
 ### 运行时解析
 
-`resolveMemoryRuntime(projectId, machineId)` 返回三态。
+`resolveMemoryRuntime(input)` 返回三态，`input` 为 `{ db, projectId, dataDir, env }`。
 
 - `disabled`，不携带任何连接信息。
-- `unavailable`，带原因 `invalid_config`、`machine_offline`、`not_installed`、`installing`、`install_failed`、`extension_load_failed`。没有配置行时按默认值视为已启用，不产生单独的“未配置”原因。
+- `unavailable`，带原因 `invalid_config`、`not_installed`、`installing`、`install_failed`、`extension_load_failed`。没有配置行时按默认值视为已启用，不产生单独的“未配置”原因。
 - `ready`，带 `apiUrl`、`bank`、`apiToken`、`bundlePath`。runner 用这些值生成一次性的临时配置，token 不进配置文件。
 
 `ready` 的 token 只出现在 `open` 消息与 runner 进程环境里，run 快照只记录 `{ state, reason, bank }`。生成或读取配置失败一律返回 `unavailable`，不回退 bundle 默认值，因为默认的 `mapPathToBank` 会指向宿主的 live bank。
 
-`SPROUT_PI_MACHINE_ID` 把 server 本机的 Pi 执行宿主绑定到 `machine.id`。配置了且可访问即视为在线，因为 Pi 就在这个进程所在机器上执行；未配置或不可访问时返回 `machine_offline`。云端实例与自建实例都通过 `apiUrl` 指向，`serverMode` 固定 `self-hosted`；云端端点的实际鉴权与路径由 MEM-6 验证。
+Pi 就在本进程所在的宿主上执行，组件也装在这台宿主，安装状态按 `component` 单行记录，不再经 `machine.id` 中转。设置页显示“安装位置：本机”，不需要用户绑定 Machine。云端实例与自建实例都通过 `apiUrl` 指向，`serverMode` 固定 `self-hosted`；云端端点的实际鉴权与路径由 MEM-6 验证。
 
 ### 状态
 
 安装状态按 `missing → installing → ready | failed` 迁移。同一版本重复进入 `ready` 必须是空操作。
 
-记忆的有效状态由配置与安装共同决定，顺序是配置非法、机器离线、组件未就绪、可用。服务是否可达由设置页的独立探测展示，不进入这个纯函数。设置页显示的就是这个有效状态，不是单独的布尔开关。
+记忆的有效状态由配置与安装共同决定，顺序是配置非法、组件未就绪、可用。服务是否可达由设置页的独立探测展示，不进入这个纯函数。设置页显示的就是这个有效状态，不是单独的布尔开关。
 
 ## 单元
 
@@ -110,7 +109,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | --- | --- | --- | --- |
 | MEM-0 事实核对 | 无 | 只读核对 bundle 行为与真实服务 | 三件未知有结论，注入成本有数字，go/no-go 已记录 |
 | MEM-1 契约与表 | MEM-0 | 契约、schema、迁移、领域读写 | 单测覆盖 bank 四行与两个非法组合、密钥脱敏、revision 冲突 |
-| MEM-2 组件安装 | MEM-1 | Machine 级下载、校验、解压、状态机 | 冷装、幂等、并发单飞、校验失败、超时、残留锁都有测试 |
+| MEM-2 组件安装 | MEM-1 | 宿主级下载、校验、解压、状态机 | 冷装、幂等、并发单飞、校验失败、超时、残留锁都有测试 |
 | MEM-3 Runner 激活 | MEM-1、MEM-2 | 扩展工厂、环境、工具面、技能过滤、快照 | 开、关、安装失败三种 run 的行为都被真实 runner 证明 |
 | MEM-4 设置 API | MEM-1、MEM-2 | 读写与安装预热 | 权限、revision、空密钥保持都有边界测试 |
 | MEM-4b 记忆操作 API | MEM-4 | 测试连接、重试安装、清空记忆；导入历史暂缓 | 401/403/404/不可达分类、清空二次确认、重试幂等都有注入 fetch 的测试 |
@@ -189,9 +188,9 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 页面必须能表达这些事实，不依赖 toast。
 
 - 开关、记忆库命名空间与名称、两个自动动作在开启时可见；服务地址与连接密钥放在操作之上。关闭时以上全部收起。
-- 有效状态与原因：已关闭、已就绪、配置有误、机器离线、未安装、安装中、安装失败、扩展加载失败。
+- 有效状态与原因：已关闭、已就绪、配置有误、未安装、安装中、安装失败、扩展加载失败。
 - 实际使用的 bank，随输入实时更新。
-- 已保存的库、组件版本与安装状态、绑定的 Machine、最近错误摘要。写入与注入时间当前没有数据来源，留到后续单元。
+- 已保存的库、组件版本与安装状态、安装位置（本机）、最近错误摘要。写入与注入时间当前没有数据来源，留到后续单元。
 - 测试连接、重试安装、清空记忆接 MEM-4b 的边界。导入仓库历史首版显示为灰色“未实现，P4”，不放一个承诺了却没有后端的按钮。
 
 ### MEM-6 真实链路
@@ -241,7 +240,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - bundle 不可控或升级破坏工具名。钉版本、注册断言、失败降级。回退路径是在 sprout extension 里实现四个工具直连 HTTP API。
 - 注入成本过高。用 `autoInject: "none"` 降级，但它仍注入指南与 roster；若产品要求零注入，需要自建注入适配，首版不做。首轮约 2,278 token、后续约 886 token/轮已记入预算。
 - 安装依赖 registry。提供本地 tarball 覆盖与离线安装路径；安装失败不挡 run。
-- 执行机离线或组件缺失。状态按 Machine 记，设置页显示原因，不把 Project 配置改成失败。
+- 宿主组件缺失或不可用。状态按组件记，设置页显示原因，不把 Project 配置改成失败。
 - 密钥可见性。优先申请只覆盖 `sprout` namespace 的 token；拿不到就使用专用 token 并在设置页明示，不把宿主自己的 token 复制给 Project。
 
 ## 交付记录
@@ -256,3 +255,4 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | MEM-4b | 完成 | PR #47，`c257d8b`；20 个动作测试 |
 | MEM-5 | 已完成 | PR #48，`ebb664d`；视觉修正 `9a179d1`；方案 A；175 文件 / 1589 tests；桌面截图 `/Users/snake/.t3/userdata/browser-artifacts/browser-screenshot-localhost-mwbtqh4t-efb990e1.png`；评审后修正操作按钮与保存栏右对齐、服务地址空值语义 |
 | MEM-6 | 已完成 | PR #49，`766e51a`；[docs/memory-e2e.md](memory-e2e.md)；真实安装 0.8.7、6 次付费 completion（deepseek-v4.1-flash）、测试 bank `sprout::mem6-b9af937b` 已删除；关闭态 skill 泄漏修复；全量 175 文件 / 1589 tests。未验证：`testMemoryConnection`、`clearMemory`、compaction、浏览器页面 |
+| 宿主级修正 | 已完成 | 本提交；`memory_install` 改 `component` 单主键，迁移 `0057` 归并旧行；删除 `SPROUT_PI_MACHINE_ID` 与 `machine_offline`，设置页显示“安装位置：本机”；全量 175 文件 / 1590 tests、typecheck、`pnpm check` 通过；随后部署 prod |

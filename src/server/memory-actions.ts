@@ -129,21 +129,15 @@ export function retryMemoryInstall(
   context: ProjectContext,
 ): RetryMemoryInstallResult {
   authorizedProject(deps, projectId, context);
-  if (!deps.machineId)
-    throw new MemoryConfigError(
-      "validation_failed",
-      "当前服务未绑定 Machine，无法重试安装记忆组件",
-    );
   try {
     void deps
-      .provision({ db: deps.db, machineId: deps.machineId, dataDir: deps.dataDir, now: deps.now })
-      .catch(() => console.error("[memory] 重试安装失败", { machineId: deps.machineId }));
+      .provision({ db: deps.db, dataDir: deps.dataDir, now: deps.now })
+      .catch(() => console.error("[memory] 重试安装失败", { projectId }));
   } catch {
-    console.error("[memory] 重试安装启动失败", { machineId: deps.machineId });
+    console.error("[memory] 重试安装启动失败", { projectId });
   }
-  const install = readMemoryInstall(deps.db, deps.machineId);
+  const install = readMemoryInstall(deps.db);
   return {
-    machineId: deps.machineId,
     install: install
       ? { status: install.status, version: install.version, error: install.error }
       : null,

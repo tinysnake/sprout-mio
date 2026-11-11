@@ -483,14 +483,9 @@ export function MemoryConfigPanel({
                     label: "记忆组件",
                     value: `${installLabel} · ${view.install?.version ?? view.extensionVersion}`,
                   },
-                  { label: "Machine", value: view.machineId ?? "未绑定" },
+                  { label: "安装位置", value: "本机" },
                 ]}
               />
-              {view.message && (
-                <p className="text-xs leading-6 text-muted-foreground [overflow-wrap:anywhere]">
-                  {view.message}
-                </p>
-              )}
               {view.install?.error && (
                 <p className="text-xs leading-6 text-destructive [overflow-wrap:anywhere]">
                   {view.install.error}

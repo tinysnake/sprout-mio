@@ -50,7 +50,6 @@ import { prepareInheritedResources } from "./skills";
 import { filterMemorySkillPaths } from "../../contracts/memory";
 import { db } from "../../db";
 import { config } from "../../lib/config";
-import { getMachine } from "../../domain/machine";
 import { resolveMemoryRuntime } from "../memory-runtime";
 
 export type Work = ReturnType<typeof queuedRunWork>[number];
@@ -119,29 +118,16 @@ export function executeRun(
           );
           return grant;
         });
-        const memory = yield* Effect.sync(() => {
-          if (profile.purpose === "assistant") return { state: "disabled" as const };
-          const machineId = config.SPROUT_PI_MACHINE_ID;
-          let machineOnline = false;
-          if (machineId) {
-            try {
-              getMachine({ machineId }, hostContext);
-              // Pi executes on this host, so a configured and owned Machine is online
-              // by definition. Its connection row describes remote agents, not us.
-              machineOnline = true;
-            } catch {
-              // An inaccessible or unknown host cannot supply Project memory.
-            }
-          }
-          return resolveMemoryRuntime({
-            db,
-            projectId: run.projectId,
-            machineId,
-            machineOnline,
-            dataDir: config.SPROUT_PI_DATA_DIR,
-            env: globalThis.process.env,
-          });
-        });
+        const memory = yield* Effect.sync(() =>
+          profile.purpose === "assistant"
+            ? { state: "disabled" as const }
+            : resolveMemoryRuntime({
+                db,
+                projectId: run.projectId,
+                dataDir: config.SPROUT_PI_DATA_DIR,
+                env: globalThis.process.env,
+              }),
+        );
         const resources = yield* Effect.tryPromise({
           try: () =>
             profile.purpose === "assistant"

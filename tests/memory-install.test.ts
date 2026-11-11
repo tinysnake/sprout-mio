@@ -70,7 +70,7 @@ function responseOf(tarball: Buffer): Response {
   return new Response(Uint8Array.from(tarball));
 }
 
-/** 迁移好的内存库；`memory_install.machine_id` 需要先有一台 machine。 */
+/** 迁移好的内存库。 */
 function setup(): DatabaseConnection["db"] {
   connection = openDatabase(":memory:");
   connection.sqlite.pragma("foreign_keys = OFF");
@@ -78,8 +78,6 @@ function setup(): DatabaseConnection["db"] {
   connection.sqlite.exec(`
     INSERT INTO user(id,name,email,email_verified,created_at,updated_at)
       VALUES ('human','Human','memory-install@example.test',0,1,1);
-    INSERT INTO machine(id,name,created_by,created_at,updated_at)
-      VALUES ('machine','Machine','human',1,1);
   `);
   connection.sqlite.pragma("foreign_keys = ON");
   dataDir = mkdtempSync(join(tmpdir(), "memory-install-"));
@@ -103,7 +101,6 @@ describe("provisionMemoryExtension", () => {
 
     const result = await provisionMemoryExtension({
       db,
-      machineId: "machine",
       dataDir,
       fetchImpl,
       integrity: fixture.integrity,
@@ -111,9 +108,8 @@ describe("provisionMemoryExtension", () => {
 
     expect(result).toEqual({ path: entryPath(), version: HINDSIGHT_EXTENSION_VERSION });
     expect(existsSync(entryPath())).toBe(true);
-    const row = readMemoryInstall(db, "machine");
+    const row = readMemoryInstall(db);
     expect(row).toMatchObject({
-      machineId: "machine",
       component: "hindsight-extension",
       version: HINDSIGHT_EXTENSION_VERSION,
       status: "ready",
@@ -122,7 +118,6 @@ describe("provisionMemoryExtension", () => {
 
     const second = await provisionMemoryExtension({
       db,
-      machineId: "machine",
       dataDir,
       fetchImpl,
       integrity: fixture.integrity,
@@ -142,7 +137,6 @@ describe("provisionMemoryExtension", () => {
 
     const result = await provisionMemoryExtension({
       db,
-      machineId: "machine",
       dataDir,
       tarballPath,
       fetchImpl,
@@ -150,7 +144,7 @@ describe("provisionMemoryExtension", () => {
     });
 
     expect(result.path).toBe(entryPath());
-    expect(readMemoryInstall(db, "machine")?.status).toBe("ready");
+    expect(readMemoryInstall(db)?.status).toBe("ready");
   });
 
   it("replaces a corrupt target instead of failing with ENOTEMPTY", async () => {
@@ -161,14 +155,13 @@ describe("provisionMemoryExtension", () => {
 
     const result = await provisionMemoryExtension({
       db,
-      machineId: "machine",
       dataDir,
       fetchImpl: async () => responseOf(fixture.tarball),
       integrity: fixture.integrity,
     });
 
     expect(result.path).toBe(entryPath());
-    expect(readMemoryInstall(db, "machine")?.status).toBe("ready");
+    expect(readMemoryInstall(db)?.status).toBe("ready");
   });
 
   it("cancels the response body when the download is rejected early", async () => {
@@ -185,7 +178,6 @@ describe("provisionMemoryExtension", () => {
     await expect(
       provisionMemoryExtension({
         db,
-        machineId: "machine",
         dataDir,
         fetchImpl,
         integrity: HINDSIGHT_EXTENSION_INTEGRITY,
@@ -208,7 +200,6 @@ describe("provisionMemoryExtension", () => {
     await expect(
       provisionMemoryExtension({
         db,
-        machineId: "machine",
         dataDir,
         fetchImpl,
         integrity: HINDSIGHT_EXTENSION_INTEGRITY,
@@ -216,7 +207,7 @@ describe("provisionMemoryExtension", () => {
       }),
     ).rejects.toMatchObject({ code: "fetch_failed" });
     expect(Date.now() - started).toBeLessThan(1000);
-    expect(readMemoryInstall(db, "machine")?.status).toBe("failed");
+    expect(readMemoryInstall(db)?.status).toBe("failed");
   });
 
   it("spends the same deadline on lock wait and download", async () => {
@@ -235,7 +226,6 @@ describe("provisionMemoryExtension", () => {
     await expect(
       provisionMemoryExtension({
         db,
-        machineId: "machine",
         dataDir,
         fetchImpl,
         integrity: fixture.integrity,
@@ -255,7 +245,6 @@ describe("provisionMemoryExtension", () => {
 
     const rejection = provisionMemoryExtension({
       db,
-      machineId: "machine",
       dataDir,
       fetchImpl,
       integrity: wrongIntegrity,
@@ -264,7 +253,7 @@ describe("provisionMemoryExtension", () => {
     await expect(rejection).rejects.toMatchObject({ code: "integrity_mismatch" });
 
     expect(existsSync(targetDir())).toBe(false);
-    const row = readMemoryInstall(db, "machine");
+    const row = readMemoryInstall(db);
     expect(row?.status).toBe("failed");
     expect(row?.error).toBeTruthy();
   });
@@ -277,7 +266,6 @@ describe("provisionMemoryExtension", () => {
     await expect(
       provisionMemoryExtension({
         db,
-        machineId: "machine",
         dataDir,
         fetchImpl,
         integrity: fixture.integrity,
@@ -285,7 +273,7 @@ describe("provisionMemoryExtension", () => {
     ).rejects.toMatchObject({ code: "extract_failed" });
 
     expect(existsSync(targetDir())).toBe(false);
-    expect(readMemoryInstall(db, "machine")?.status).toBe("failed");
+    expect(readMemoryInstall(db)?.status).toBe("failed");
     expect(
       readdirSync(join(dataDir!, "extensions")).filter((name) =>
         name.startsWith("hindsight-install-"),
@@ -308,14 +296,12 @@ describe("provisionMemoryExtension", () => {
 
     const first = provisionMemoryExtension({
       db,
-      machineId: "machine",
       dataDir,
       fetchImpl,
       integrity: fixture.integrity,
     });
     const second = provisionMemoryExtension({
       db,
-      machineId: "machine",
       dataDir,
       fetchImpl,
       integrity: fixture.integrity,
@@ -326,7 +312,7 @@ describe("provisionMemoryExtension", () => {
     const [a, b] = await Promise.all([first, second]);
     expect(fetches).toBe(1);
     expect(a.path).toBe(b.path);
-    expect(readMemoryInstall(db, "machine")?.status).toBe("ready");
+    expect(readMemoryInstall(db)?.status).toBe("ready");
   });
 
   it("times out on a hanging fetch and records failed", async () => {
@@ -337,7 +323,6 @@ describe("provisionMemoryExtension", () => {
     await expect(
       provisionMemoryExtension({
         db,
-        machineId: "machine",
         dataDir,
         fetchImpl,
         integrity: fixture.integrity,
@@ -346,7 +331,7 @@ describe("provisionMemoryExtension", () => {
     ).rejects.toMatchObject({ code: "timeout" });
 
     expect(existsSync(targetDir())).toBe(false);
-    expect(readMemoryInstall(db, "machine")?.status).toBe("failed");
+    expect(readMemoryInstall(db)?.status).toBe("failed");
   });
 
   it("takes over a stale lock and proceeds", async () => {
@@ -359,7 +344,6 @@ describe("provisionMemoryExtension", () => {
 
     const result = await provisionMemoryExtension({
       db,
-      machineId: "machine",
       dataDir,
       fetchImpl,
       integrity: fixture.integrity,
@@ -367,7 +351,7 @@ describe("provisionMemoryExtension", () => {
     });
 
     expect(existsSync(result.path)).toBe(true);
-    expect(readMemoryInstall(db, "machine")?.status).toBe("ready");
+    expect(readMemoryInstall(db)?.status).toBe("ready");
     expect(existsSync(lockPath())).toBe(false);
   });
 
@@ -382,7 +366,6 @@ describe("provisionMemoryExtension", () => {
     try {
       const result = await provisionMemoryExtension({
         db,
-        machineId: "machine",
         dataDir,
         fetchImpl,
         integrity: fixture.integrity,
@@ -390,7 +373,7 @@ describe("provisionMemoryExtension", () => {
       });
       expect(Date.now() - started).toBeGreaterThanOrEqual(100);
       expect(existsSync(result.path)).toBe(true);
-      expect(readMemoryInstall(db, "machine")?.status).toBe("ready");
+      expect(readMemoryInstall(db)?.status).toBe("ready");
     } finally {
       clearTimeout(timer);
     }
@@ -406,14 +389,13 @@ describe("provisionMemoryExtension", () => {
       await expect(
         provisionMemoryExtension({
           db,
-          machineId: "machine",
           dataDir,
           fetchImpl,
           integrity: fixture.integrity,
           timeoutMs: 120,
         }),
       ).rejects.toMatchObject({ code: "locked" });
-      expect(readMemoryInstall(db, "machine")?.status).toBe("failed");
+      expect(readMemoryInstall(db)?.status).toBe("failed");
     } finally {
       rmSync(lockPath(), { recursive: true, force: true });
     }
@@ -421,7 +403,7 @@ describe("provisionMemoryExtension", () => {
 
   it("returns null when no install row exists", () => {
     const db = setup();
-    expect(readMemoryInstall(db, "machine")).toBeNull();
+    expect(readMemoryInstall(db)).toBeNull();
   });
 
   it("rejects an installed directory whose package version drifted", async () => {
@@ -432,7 +414,6 @@ describe("provisionMemoryExtension", () => {
     await expect(
       provisionMemoryExtension({
         db,
-        machineId: "machine",
         dataDir,
         fetchImpl,
         integrity: fixture.integrity,

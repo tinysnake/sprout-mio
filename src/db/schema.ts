@@ -2969,17 +2969,13 @@ export const memoryConfig = sqliteTable(
 export const memoryInstall = sqliteTable(
   "memory_install",
   {
-    machineId: text("machine_id")
-      .notNull()
-      .references(() => machine.id),
-    component: text("component").notNull(),
+    component: text("component").primaryKey(),
     version: text("version").notNull(),
     status: text("status", { enum: ["missing", "installing", "ready", "failed"] }).notNull(),
     error: text("error"),
     updatedAtMs: integer("updated_at_ms").notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.machineId, table.component] }),
     check(
       "memory_install_status_check",
       sql`${table.status} in ('missing','installing','ready','failed')`,
