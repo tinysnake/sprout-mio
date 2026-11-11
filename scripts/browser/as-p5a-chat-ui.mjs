@@ -195,10 +195,8 @@ try {
   const channelOwnerActions = await page.locator('[data-governance-action="owner_change"]').count();
   record(
     "channel_membership_readonly_copy",
-    Boolean(
-      channelText?.includes("公共频道成员跟随项目自动同步，不可独立修改。") &&
-      channelText?.includes("Project Members"),
-    ) && channelMembershipActions === 0,
+    Boolean(channelText?.includes("不可独立修改") && channelText?.includes("Project Members")) &&
+      channelMembershipActions === 0,
     `文案 ${JSON.stringify(channelText)}，成员类治理按钮 ${channelMembershipActions}，负责人按钮 ${channelOwnerActions}`,
   );
   record(

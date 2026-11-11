@@ -95,7 +95,10 @@ export function RunFactsBlock({
                 }`}
               >
                 <span className="size-1.25 shrink-0 rounded-full bg-current" />
-                {statusLabel(run.status)}
+                {/* 宿主未启用时这条 run 不可能还在跑：写清它是最后已知的状态，别和「宿主未启用」打架。 */}
+                {runs.hostEnabled
+                  ? statusLabel(run.status)
+                  : `最后状态 · ${statusLabel(run.status)}`}
               </span>
               {run.pendingInputs > 0 && (
                 <span data-testid={`${testId}-active-pending`}>

@@ -9,9 +9,9 @@ import {
   CONTINUATION_STATES,
   continuationDuration,
   continuationFailureText,
-  continuationTime,
   continuationTokens,
 } from "../continuation/continuation-labels";
+import { chatTimeLabel } from "./format";
 import { Icon } from "../ui/icon";
 
 type Tone = "idle" | "active" | "attention" | "off";
@@ -197,7 +197,7 @@ export function ContinuationStatus({
         )}
         {showNext && (
           <span data-testid="continuation-next" className="text-muted-foreground">
-            下次检查 {continuationTime(nextAt)}
+            下次检查 {nextAt ? chatTimeLabel(nextAt) : "暂无记录"}
           </span>
         )}
         {view.attention?.errorCode && (

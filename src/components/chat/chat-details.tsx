@@ -244,6 +244,8 @@ export function ChatDetails({
                 )}
               </dd>
             </dl>
+            {/* 复制 Chat ID 是「这到底是哪条会话」的操作，跟会话事实放一起。 */}
+            <CopyChatIdButton chatId={chat.id} />
           </div>
         </details>
         <details
@@ -344,9 +346,10 @@ export function ChatDetails({
                     ?
                   </button>
                 </span>
-                {/* 规则与入口默认不可见，但整段仍留在 DOM 里：它是频道成员治理的唯一说明。 */}
+                {/* 规则与入口默认不可见，但整段仍留在 DOM 里：它是频道成员治理的唯一说明。
+                    上一句已经在行内说了「跟随项目自动同步」，这里只补真正要做的动作。 */}
                 <p className={membersHelpOpen ? "pt-1 leading-5" : "hidden"}>
-                  公共频道成员跟随项目自动同步，不可独立修改。到{" "}
+                  不可独立修改；到{" "}
                   <Link
                     to="/projects/$projectId/members"
                     params={{ projectId }}
@@ -379,16 +382,26 @@ export function ChatDetails({
               </div>
             )}
             {chat.kind === "dm" && (
-              <p
+              <div
                 data-testid="chat-member-note"
                 className="text-[10px] leading-5 text-muted-foreground"
               >
-                DM 成员固定为两位参与者，不提供独立成员治理。
-              </p>
-            )}
-            {chat.kind === "dm" && (
-              <div className="pt-2">
-                <CopyChatIdButton chatId={chat.id} />
+                <span className="flex items-center gap-1.5">
+                  DM 成员固定为两位参与者
+                  <button
+                    type="button"
+                    data-testid="dm-members-help"
+                    aria-label="DM 成员规则说明"
+                    aria-expanded={membersHelpOpen}
+                    onClick={() => setMembersHelpOpen((open) => !open)}
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[9px] leading-none hover:border-foreground hover:text-foreground"
+                  >
+                    ?
+                  </button>
+                </span>
+                <p className={membersHelpOpen ? "pt-1 leading-5" : "hidden"}>
+                  不提供独立成员治理。
+                </p>
               </div>
             )}
             {detailMember && (
@@ -501,7 +514,6 @@ export function ChatDetails({
                     variant="button"
                   />
                 )}
-                <CopyChatIdButton chatId={chat.id} />
               </div>
               {/* 治理提示随「变更负责人」入口走：能改的人打开对话框才看到规则；
                   不能改的人没有那个入口，说明留在原处解释为什么。成员段只说成员规则。 */}
