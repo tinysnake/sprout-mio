@@ -16,7 +16,7 @@ export function SettingsSection({
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   testId?: string;
   className?: string;
   divided?: boolean;

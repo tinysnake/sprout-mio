@@ -43,6 +43,38 @@ function Result({ feedback }: { feedback: Feedback }) {
   );
 }
 
+function Switch({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? "border-primary bg-primary" : "border-input bg-muted"
+      }`}
+    >
+      <span
+        className={`block size-4 rounded-full bg-background shadow-sm transition-transform ${
+          checked ? "translate-x-[18px]" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
 function Toggle({
   label,
   description,
@@ -57,20 +89,13 @@ function Toggle({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-start justify-between gap-4 text-xs">
+    <div className="flex items-start justify-between gap-4 text-xs">
       <span className="min-w-0">
         <span className="font-medium">{label}</span>
         <span className="mt-1.5 block leading-6 text-muted-foreground">{description}</span>
       </span>
-      <input
-        type="checkbox"
-        role="switch"
-        className="mt-0.5 size-4 shrink-0 accent-primary"
-        checked={checked}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-    </label>
+      <Switch label={label} checked={checked} disabled={disabled} onChange={onChange} />
+    </div>
   );
 }
 
@@ -349,27 +374,28 @@ export function MemoryConfigPanel({
       <SettingsSection
         title="启用记忆"
         divided={false}
-        actions={
-          <span
-            data-testid="memory-config-status"
-            className={`rounded-full border border-border px-2 py-0.5 text-xs ${status.className}`}
-          >
-            {status.label}
-          </span>
+        description={
+          draft.enabled
+            ? "让本 Project 的 Agent 读写记忆库。"
+            : "开启后可配置记忆库、自动维护与连接。"
         }
-      >
-        <Toggle
-          label="启用记忆"
-          description={
-            draft.enabled
-              ? "让本 Project 的 Agent 读写记忆库。"
-              : "开启后可配置记忆库、自动维护与连接。"
-          }
-          checked={draft.enabled}
-          disabled={pending}
-          onChange={(value) => change("enabled", value)}
-        />
-      </SettingsSection>
+        actions={
+          <div className="flex items-center gap-3">
+            <span
+              data-testid="memory-config-status"
+              className={`rounded-full border border-border px-2 py-0.5 text-xs ${status.className}`}
+            >
+              {status.label}
+            </span>
+            <Switch
+              label="启用记忆"
+              checked={draft.enabled}
+              disabled={pending}
+              onChange={(value) => change("enabled", value)}
+            />
+          </div>
+        }
+      />
       {draft.enabled && (
         <>
           <SettingsSection title="记忆库" description="修改后新记忆写入新库，旧内容不会迁移。">
