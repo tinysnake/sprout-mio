@@ -169,20 +169,27 @@ async function assertHostState(page, runFacts, expected) {
   return { runFacts, hostStatus: expected, heading };
 }
 /**
- * 会话详情里的消息数必须等于渲染出的消息条数。回执由 run 追加，读取会撞上中间态，
- * 所以最多等两秒收敛；事实与渲染真正不一致时永远收敛不了，照样变红。
+ * 会话详情里的最后消息时间必须等于渲染出的最后一条消息的时间。回执由 run 追加，读取会撞上
+ * 中间态，所以最多等两秒收敛；事实与渲染真正不一致时永远收敛不了，照样变红。
+ * 两侧都取 `<time>` 的 dateTime 属性（面板显示的是聊天时间标签，真值仍是 ISO）。
  */
-async function assertMessageCountMatchesRendered(page) {
+async function assertLatestMessageTimeMatchesRendered(page) {
   let last = null;
   for (let attempt = 0; attempt < 20; attempt++) {
     last = {
-      fact: Number(await test(page, "inspector-message-count").textContent()),
-      rendered: await test(page, "message-item").count(),
+      fact:
+        (await page
+          .locator('[data-testid="inspector-message-latest-at"]')
+          .getAttribute("datetime")) ?? "（还没有消息）",
+      rendered: await page.evaluate(() => {
+        const nodes = [...document.querySelectorAll('[data-testid="message-created-at"]')];
+        return nodes[nodes.length - 1]?.getAttribute("datetime") ?? "（还没有消息）";
+      }),
     };
     if (last.fact === last.rendered) return last;
     await page.waitForTimeout(100);
   }
-  assert.fail(`会话详情消息数 ${last.fact} 与渲染的 ${last.rendered} 条消息不一致`);
+  assert.fail(`会话详情最后消息时间 ${last.fact} 与渲染的最后一条消息 ${last.rendered} 不一致`);
 }
 async function registerProject(page, role) {
   await goto(page, "/login");
@@ -479,7 +486,7 @@ async function before() {
         assert.deepEqual(await chat(page), observed);
         await sameText(page, "inspector-instance-id", observed.instanceId);
         await assertHumanMessages(page, messages);
-        await assertMessageCountMatchesRendered(page);
+        await assertLatestMessageTimeMatchesRendered(page);
         assert.deepEqual(
           await test(page, "inspector-member-list")
             .locator("li")

@@ -309,6 +309,12 @@ try {
 
       // Chat 视角的 Info Hub 在 inspector 里，由 ?info=1 恢复。
       await page.goto(`${base}/projects/${main.projectId}/chats/${main.chatId}?info=1`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+      // 轮初快照与注入收据 2026-11-11 起收在「本轮上下文与注入诊断」折叠块里：先展开再读。
+      await page.waitForSelector('[data-testid="chat-turn-context-diagnostics"]', { timeout: 20000 })
+      await page.evaluate(() => {
+        const details = document.querySelector('[data-testid="chat-turn-context-diagnostics"]')
+        if (details instanceof HTMLDetailsElement && !details.open) details.open = true
+      })
       await page.waitForSelector('[data-testid="info-turn-context"]', { timeout: 20000 })
       assert.match(await page.locator('[data-testid="info-chat-runs-active-pending"]').textContent(), /1 条输入未投递/)
       assert.equal(await page.locator('[data-testid="info-turn-workspace-commit"]').textContent(), bareHead)

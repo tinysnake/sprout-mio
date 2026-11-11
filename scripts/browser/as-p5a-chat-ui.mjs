@@ -433,7 +433,9 @@ try {
     const count = (id) => document.querySelectorAll(`[data-testid="${id}"]`).length;
     const note = document.querySelector('[data-testid="chat-governance-note"]');
     const memberList = document.querySelector('[data-testid="inspector-member-list"]');
-    const facts = document.querySelector('[data-testid="inspector-message-count"]')?.closest("dl");
+    const facts = document
+      .querySelector('[data-testid="inspector-message-latest-at"]')
+      ?.closest("dl");
     const memberSection = document.querySelector('[data-testid="chat-details-members"]');
     return {
       governanceNote: count("chat-governance-note"),
@@ -443,7 +445,7 @@ try {
       chatIdRow: count("inspector-chat-id"),
       copyChatId: count("inspector-copy-chat-id"),
       instanceId: count("inspector-instance-id"),
-      messageCount: count("inspector-message-count"),
+      latestMessageRow: count("inspector-message-latest-at"),
       memberSelect: count("chat-member-select"),
       noteInGovernanceSection: Boolean(note && note.closest('[data-testid="chat-details-owner"]')),
       memberListInMemberSection: Boolean(
@@ -453,17 +455,18 @@ try {
       factsText: facts?.textContent ?? "",
     };
   });
+  // 治理提示 2026-11-11 起随「变更负责人」入口进对话框：面板上不再有第二处，读它要先打开对话框。
   record(
-    "group_governance_note_and_testids_once",
-    duplicates.governanceNote === 1 &&
-      duplicates.noteInGovernanceSection &&
+    "group_governance_note_lives_in_owner_dialog",
+    duplicates.governanceNote === 0 &&
+      !duplicates.noteInGovernanceSection &&
       !duplicates.memberSectionText.includes("仅当前 Human owner 可修改") &&
       !duplicates.memberSectionText.includes("Agent 不参与治理") &&
       duplicates.titleEdit === 1 &&
       duplicates.memberList === 1 &&
       duplicates.chatIdRow === 0 &&
       duplicates.copyChatId === 1 &&
-      duplicates.messageCount === 1 &&
+      duplicates.latestMessageRow === 1 &&
       duplicates.instanceId === 0,
     JSON.stringify({
       governanceNote: duplicates.governanceNote,
@@ -481,14 +484,14 @@ try {
     duplicates.instanceId === 0 &&
       !duplicates.factsText.includes("Instance ID") &&
       !duplicates.factsText.includes("Chat ID") &&
-      duplicates.factsText.includes("消息数"),
+      duplicates.factsText.includes("最后消息时间"),
     `Instance 行 ${duplicates.instanceId}，事实行 ${JSON.stringify(duplicates.factsText)}`,
   );
   record(
     "group_member_list_only_in_member_section",
     duplicates.memberListInMemberSection &&
       !duplicates.factsText.includes(agentName) &&
-      duplicates.factsText.includes("消息数"),
+      duplicates.factsText.includes("最后消息时间"),
     `成员段内的名单 ${duplicates.memberListInMemberSection}，事实行 ${JSON.stringify(duplicates.factsText)}`,
   );
   // 弹层退场动画结束再截图，否则会截到仍未绘制的遮罩。
@@ -733,6 +736,21 @@ try {
       { timeout: 20000 },
     )
     .catch(() => {});
+  // 治理提示只在「变更负责人」对话框里：先打开读它，再断言面板上没有第二处。
+  await page.click('[data-testid="chat-owner-edit"]');
+  await page.waitForSelector('[data-testid="chat-owner-dialog"]', {
+    state: "visible",
+    timeout: 20000,
+  });
+  const governanceInOwnerDialog = await page.evaluate(() =>
+    document
+      .querySelector('[data-testid="chat-owner-dialog"] [data-testid="chat-governance-note"]')
+      ?.textContent?.trim(),
+  );
+  await page.keyboard.press("Escape");
+  await page
+    .waitForSelector('[data-testid="chat-owner-dialog"]', { state: "detached", timeout: 20000 })
+    .catch(() => {});
   const agentOwner = await page.evaluate(() => ({
     owner: document.querySelector('[data-testid="chat-owner-name"]')?.textContent?.trim(),
     titleEdit: document.querySelectorAll('[data-testid="chat-title-edit"]').length,
@@ -743,10 +761,11 @@ try {
     "agent_owner_group_keeps_title_entry",
     Boolean(agentOwner.owner?.includes("Agent")) &&
       agentOwner.titleEdit === 1 &&
-      Boolean(agentOwner.note?.includes("Agent 不参与治理")) &&
-      !agentOwner.note?.includes("只有 owner") &&
+      agentOwner.note === undefined &&
+      Boolean(governanceInOwnerDialog?.includes("Agent 不参与治理")) &&
+      !governanceInOwnerDialog?.includes("只有 owner") &&
       agentOwner.title === renamedTitle,
-    JSON.stringify(agentOwner),
+    JSON.stringify({ ...agentOwner, governanceInOwnerDialog }),
   );
   await shot(page, "p5a-group-agent-owner-1440");
 
@@ -754,13 +773,17 @@ try {
   // 入口可见性来自领域算出的 governance.canChangeOwner（裁定 d6 的兜底），页面不再自己比身份。
   const ownerFallback = await page.evaluate(() => ({
     entry: document.querySelectorAll('[data-testid="chat-owner-edit"]').length,
-    note: document.querySelector('[data-testid="chat-governance-note"]')?.textContent?.trim(),
   }));
   await page.click('[data-testid="chat-owner-edit"]');
   await page.waitForSelector('[data-testid="chat-owner-dialog"]', {
     state: "visible",
     timeout: 20000,
   });
+  const ownerFallbackNote = await page.evaluate(() =>
+    document
+      .querySelector('[data-testid="chat-owner-dialog"] [data-testid="chat-governance-note"]')
+      ?.textContent?.trim(),
+  );
   const ownerFallbackHumanOptions = await page.evaluate(
     () =>
       [...document.querySelectorAll('[data-testid="chat-owner-select"] option')].filter((node) =>
@@ -774,9 +797,13 @@ try {
   record(
     "agent_owner_group_keeps_owner_fallback_entry",
     ownerFallback.entry === 1 &&
-      Boolean(ownerFallback.note?.includes("Owner 变更需要当前 Human owner")) &&
+      Boolean(ownerFallbackNote?.includes("Owner 变更需要当前 Human owner")) &&
       ownerFallbackHumanOptions >= 1,
-    JSON.stringify({ ...ownerFallback, humanOptions: ownerFallbackHumanOptions }),
+    JSON.stringify({
+      ...ownerFallback,
+      note: ownerFallbackNote,
+      humanOptions: ownerFallbackHumanOptions,
+    }),
   );
 
   // V3：DM 保持 P4b 形状，只有成员段与活动段，没有治理段与治理提示。
@@ -807,7 +834,7 @@ try {
       members: count("chat-details-members"),
       activity: count("chat-details-activity"),
       memberList: count("inspector-member-list"),
-      messageCount: count("inspector-message-count"),
+      messageTimeRow: count("inspector-message-latest-at"),
       governanceCopy: details?.textContent?.includes("仅当前 Human owner 可修改") ?? false,
     };
   });
@@ -820,7 +847,7 @@ try {
       dm.members === 1 &&
       dm.activity === 1 &&
       dm.memberList === 1 &&
-      dm.messageCount === 1 &&
+      dm.messageTimeRow === 1 &&
       dm.governanceCopy === false,
     JSON.stringify(dm),
   );

@@ -109,7 +109,7 @@ try {
     'group_blank_title_blocks_create',
     'chat_page_hides_request_id',
     'group_title_edited_from_details_rail',
-    'group_governance_note_and_testids_once',
+    'group_governance_note_lives_in_owner_dialog',
     'group_details_drop_instance_row',
     'group_member_list_only_in_member_section',
     'member_row_selects_profile',

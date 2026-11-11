@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-react";
 import { agentDetailFromChat } from "../agent/agent-detail-search";
+import { chatTimeLabel } from "./format";
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
 import type { ChatMember, ChatSession, ChatWakePolicy } from "../../contracts/chat";
 import type { ChatInfoView, ChatRunAggregate, InfoHubResult } from "../../contracts/info-hub";
@@ -124,6 +125,8 @@ export function ChatDetails({
   // 资料块跟着成员行的选中态；默认不选中，群组里因此没有「第一个 Agent」的猜测。
   // DM 只有一个 Agent 成员、没有歧义，沿用 P4b 的默认展示。
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
+  // 公共频道成员说明默认收起：只留一行结论，规则与入口藏在问号按钮后面。
+  const [membersHelpOpen, setMembersHelpOpen] = useState(false);
   const soleDmAgent =
     chat.kind === "dm" ? currentMembers.filter((m) => m.memberKind === "agent") : [];
   const detailKey = selectedMember ?? (soleDmAgent.length === 1 ? memberKey(soleDmAgent[0]) : null);
@@ -276,18 +279,34 @@ export function ChatDetails({
               <div
                 data-testid="channel-members-readonly"
                 data-error-code="channel_membership_managed"
-                className="rounded-control border border-border bg-secondary px-3 py-2.5 text-[10px] leading-5 text-muted-foreground"
+                className="text-[10px] leading-5 text-muted-foreground"
               >
-                公共频道成员跟随项目自动同步，不可独立修改。到{" "}
-                <Link
-                  to="/projects/$projectId/members"
-                  params={{ projectId }}
-                  data-testid="channel-project-members-link"
-                  className="text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
-                >
-                  Project Members
-                </Link>{" "}
-                调整成员。
+                <span className="flex items-center gap-1.5">
+                  公共频道成员跟随项目自动同步
+                  <button
+                    type="button"
+                    data-testid="channel-members-help"
+                    aria-label="公共频道成员规则说明"
+                    aria-expanded={membersHelpOpen}
+                    onClick={() => setMembersHelpOpen((open) => !open)}
+                    className="flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[9px] leading-none hover:border-foreground hover:text-foreground"
+                  >
+                    ?
+                  </button>
+                </span>
+                {/* 规则与入口默认不可见，但整段仍留在 DOM 里：它是频道成员治理的唯一说明。 */}
+                <p className={membersHelpOpen ? "pt-1 leading-5" : "hidden"}>
+                  公共频道成员跟随项目自动同步，不可独立修改。到{" "}
+                  <Link
+                    to="/projects/$projectId/members"
+                    params={{ projectId }}
+                    data-testid="channel-project-members-link"
+                    className="text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
+                  >
+                    Project Members
+                  </Link>{" "}
+                  调整成员。
+                </p>
               </div>
             )}
             {chat.kind === "group" && (
@@ -333,13 +352,20 @@ export function ChatDetails({
                   <dd data-testid="inspector-archived">已归档</dd>
                 </>
               )}
-              <dt className="text-muted-foreground">消息数</dt>
-              <dd data-testid="inspector-message-count">
-                {info.ok ? info.data.messages.count : "未知"}
-              </dd>
               <dt className="text-muted-foreground">最后消息时间</dt>
-              <dd data-testid="inspector-message-latest-at">
-                {info.ok ? (info.data.messages.latestAt ?? "（还没有消息）") : "未知"}
+              <dd>
+                {!info.ok ? (
+                  "未知"
+                ) : info.data.messages.latestAt ? (
+                  <time
+                    data-testid="inspector-message-latest-at"
+                    dateTime={info.data.messages.latestAt}
+                  >
+                    {chatTimeLabel(info.data.messages.latestAt)}
+                  </time>
+                ) : (
+                  <span data-testid="inspector-message-latest-at">（还没有消息）</span>
+                )}
               </dd>
             </dl>
             {chat.kind === "dm" && (
@@ -440,6 +466,7 @@ export function ChatDetails({
                     humanUserId={humanUserId}
                     humanName={humanName}
                     agentNames={profileNames}
+                    note={governanceCopy}
                     onChanged={onChanged}
                   />
                 )}
@@ -455,13 +482,16 @@ export function ChatDetails({
                 )}
                 <CopyChatIdButton chatId={chat.id} />
               </div>
-              {/* 治理提示只在这里出现一处；成员段只说明成员规则。 */}
-              <p
-                data-testid="chat-governance-note"
-                className="text-[10px] leading-5 text-muted-foreground"
-              >
-                {governanceCopy}
-              </p>
+              {/* 治理提示随「变更负责人」入口走：能改的人打开对话框才看到规则；
+                  不能改的人没有那个入口，说明留在原处解释为什么。成员段只说成员规则。 */}
+              {!governance.canChangeOwner && governanceCopy && (
+                <p
+                  data-testid="chat-governance-note"
+                  className="text-[10px] leading-5 text-muted-foreground"
+                >
+                  {governanceCopy}
+                </p>
+              )}
             </div>
           </details>
         )}
@@ -489,19 +519,19 @@ export function ChatDetails({
               <ChatActivityFacts info={info.data} turnContext={turnContext} />
             )}
             <div className="space-y-4 pt-1">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[10px] text-muted-foreground">Machine / Worker</span>
-                <span
-                  data-testid="chat-machines-notice"
-                  className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
-                >
-                  {machineFacts
-                    ? "与 Project settings 同一租约事实"
-                    : machineFactsError
-                      ? "读取失败"
-                      : "未接入，P4b 集成"}
-                </span>
-              </div>
+              {/* 读到租约事实时不再解释「与 Project settings 同一份」：租约块自己就是答案；
+                  只有读失败或未接入才需要这一行说明。 */}
+              {!machineFacts && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] text-muted-foreground">Machine / Worker</span>
+                  <span
+                    data-testid="chat-machines-notice"
+                    className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
+                  >
+                    {machineFactsError ? "读取失败" : "未接入，P4b 集成"}
+                  </span>
+                </div>
+              )}
               {machineFactsError && (
                 <ChatErrorNotice error={machineFactsError} testId="chat-machine-error" />
               )}
@@ -728,6 +758,7 @@ function OwnerDialog({
   humanUserId,
   humanName,
   agentNames,
+  note,
   onChanged,
 }: {
   chatId: string;
@@ -738,6 +769,7 @@ function OwnerDialog({
   humanUserId: string;
   humanName: string;
   agentNames: Map<string, string>;
+  note: string;
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -791,6 +823,15 @@ function OwnerDialog({
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
+          {/* 变更负责人是唯一能改它的地方，规则就放在这里，不在面板上重复一遍。 */}
+          {note && (
+            <p
+              data-testid="chat-governance-note"
+              className="text-[10px] leading-5 text-muted-foreground"
+            >
+              {note}
+            </p>
+          )}
           <select
             data-testid="chat-owner-select"
             value={selected}

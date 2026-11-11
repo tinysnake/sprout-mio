@@ -313,8 +313,13 @@ await check("chat_facts_render_on_chat_page", async () => {
       document.querySelector('[data-testid="chat-pane"]')?.innerText?.includes("DM"),
     ),
     archivedRow: document.querySelector('[data-testid="inspector-archived"]')?.textContent?.trim(),
-    count: document.querySelector('[data-testid="inspector-message-count"]')?.textContent?.trim(),
-    latestAt: document.querySelector('[data-testid="inspector-message-latest-at"]')?.textContent,
+    messages: document.querySelectorAll('[data-testid="message-item"]').length,
+    latestAt: document
+      .querySelector('[data-testid="inspector-message-latest-at"]')
+      ?.getAttribute("datetime"),
+    latestAtLabel: document
+      .querySelector('[data-testid="inspector-message-latest-at"]')
+      ?.textContent?.trim(),
     runsHostStatus: document.querySelector('[data-testid="info-chat-runs"]')?.innerText,
     turnInjection: document.querySelector('[data-testid="info-turn-prompt-injection"]')
       ?.textContent,
@@ -328,14 +333,15 @@ await check("chat_facts_render_on_chat_page", async () => {
       JSON.stringify(state.kinds) === JSON.stringify(["human", "agent"]) &&
       state.kindLabel &&
       !state.archivedRow &&
-      state.count === "2" &&
+      state.messages === 2 &&
       /^20\d{2}-\d{2}-\d{2}T/.test(state.latestAt ?? "") &&
+      /^\d{2}\/\d{2} \d{2}:\d{2}$/.test(state.latestAtLabel ?? "") &&
       /宿主(已|未)启用/.test(state.runsHostStatus ?? "") &&
       /注入模型 prompt：否 · 本次上下文尚无提交收据/.test(state.turnInjection ?? "") &&
       state.embeddedFacts === 0 &&
       !state.body.includes("0 个活动 run") &&
       !state.body.includes("无活动 run"),
-    `会话详情分身 ${state.instance} 与流程一致，成员 ${JSON.stringify(state.kinds)}，消息 ${state.count} 条，run 视角宿主 ${state.runsHostStatus}`,
+    `会话详情分身 ${state.instance} 与流程一致，成员 ${JSON.stringify(state.kinds)}，渲染消息 ${state.messages} 条，run 视角宿主 ${state.runsHostStatus}`,
   );
 });
 
@@ -361,14 +367,14 @@ await check("deep_link_and_reload_keep_values", async () => {
     panelInstance: document
       .querySelector('[data-testid="inspector-instance-id"]')
       ?.textContent?.trim(),
-    count: document.querySelector('[data-testid="inspector-message-count"]')?.textContent?.trim(),
+    messages: document.querySelectorAll('[data-testid="message-item"]').length,
   }));
   record(
     "deep_link_and_reload_keep_values",
     hubReload.names.includes(joinedName) &&
       hubReload.dmChatId === chatId &&
       chatReload.panelInstance === instanceId &&
-      chatReload.count === "2",
+      chatReload.messages === 2,
     `深链刷新后 hub ${JSON.stringify(hubReload)}，对话页 ${JSON.stringify(chatReload)}`,
   );
 });

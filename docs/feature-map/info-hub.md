@@ -22,13 +22,13 @@
 
 前置条件是项目、两个 Agent Profile、其中一个加入项目，以及该成员已有 DM 和两条消息。租约与 Run 分支还需对应记录；没有记录时只覆盖空态，不能声称覆盖占用或运行态。
 
-| 操作                 | 稳定定位或现有 helper                                                                                                                            | 可观察结果                                                                         |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| 展开项目面板         | [ui-navigation.mjs](../../scripts/browser/ui-navigation.mjs) 的 `openProjectInfoHub(page)`；`project-info-hub-toggle`、`info-hub-project-agents` | 已加入成员出现，未加入 Profile 不出现                                              |
-| 打开成员 DM 链接     | 按成员名称定位其行，再沿 driver 的 DM 链接操作                                                                                                   | 打开目标 Chat，标识与该成员事实一致                                                |
-| 打开 Chat 信息       | helper `chatInspectorPath(chatPath)`；`inspector-instance-id`、`inspector-message-count`、`inspector-message-latest-at`、`info-chat-runs`        | 会话详情里的 Instance 与流程捕获一致，消息数与实际消息吻合，run 视角与宿主状态可见 |
-| 查看 Run、租约并刷新 | 先制造对应运行或租约事实，再读取面板                                                                                                             | 状态与实际记录一致，切换上下文后没有串项目或串 Chat                                |
-| 换用户访问事实       | 用第二用户会话执行相同查询                                                                                                                       | 请求被拒绝，响应不泄露原用户事实                                                   |
+| 操作                 | 稳定定位或现有 helper                                                                                                                            | 可观察结果                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| 展开项目面板         | [ui-navigation.mjs](../../scripts/browser/ui-navigation.mjs) 的 `openProjectInfoHub(page)`；`project-info-hub-toggle`、`info-hub-project-agents` | 已加入成员出现，未加入 Profile 不出现                                                              |
+| 打开成员 DM 链接     | 按成员名称定位其行，再沿 driver 的 DM 链接操作                                                                                                   | 打开目标 Chat，标识与该成员事实一致                                                                |
+| 打开 Chat 信息       | helper `chatInspectorPath(chatPath)`；`inspector-instance-id`、`inspector-message-latest-at`、`info-chat-runs`                                   | 会话详情里的 Instance 与流程捕获一致，最后消息时间与渲染的最后一条消息吻合，run 视角与宿主状态可见 |
+| 查看 Run、租约并刷新 | 先制造对应运行或租约事实，再读取面板                                                                                                             | 状态与实际记录一致，切换上下文后没有串项目或串 Chat                                                |
+| 换用户访问事实       | 用第二用户会话执行相同查询                                                                                                                       | 请求被拒绝，响应不泄露原用户事实                                                                   |
 
 按改动选择入口。
 

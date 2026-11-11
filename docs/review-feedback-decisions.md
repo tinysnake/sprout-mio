@@ -160,3 +160,18 @@ Human 随后定了流程：先把建议交给 GPT 子代理看它认不认可，
 改后评分（同一 GPT 模型逐张读 14 张前后对照截图并只读核对组件）：五条机制依次 8.0 / 8.5 / 8.0 / 7.5 / 8.5，均分 **8.1**，达到 8/10 的关口。它确认本轮消除了最影响阅读的重复（同一 Chat 不再列两遍、消息正文不再被 persona 与身份标签和归属空占位打断、右栏不再整块复述 Chat 事实），同时点出五条残留项，均标为可选优化而非未达标：一是右栏诊断（历史空态、上下文快照空态、提交收据、租约空态、实现说明）仍默认平铺，层级不足；二是群聊 Owner 在成员徽标、Owner 段摘要与展开内容里重复，「标题」一行纯复述中栏页头；三是「消息数」「最后消息时间」被归进「成员」段（应属会话元数据），且 ISO 字符串在窄右栏里断行、与消息区的本地时间不易对照；四是 Chats 首页仍有「从左侧选择一条对话继续上下文，或从右上角新建 DM / 群组」这类教学文案，且方位描述与实际不符；五是 pending 输入在中栏与右栏活动区仍有条件性重复。以上均记录为本轮之后的可选优化，未在本轮实施。
 
 父代理实际复跑（均前台完成）：`pnpm typecheck`；`pnpm test` 1463 项全过（首次这套出现一次 flaky 失败，立即重跑通过，未定位到具体用例）；`pnpm check` 0 errors / 16 条既有 warning / 775 文件；`f-docs`；`as-p5a-chat-ui` 31 项；`as-p5b-task-pages` 21 项；`i-chat`；`i2-group-chat` 13 项；`i3-public-channel`；`i6-chat-info` 4 项；`i7-chat-scope` 17 项；`j-info-hub`；`k-acceptance` runner 12 项 0 失败；`o-turn-semantics`；`q-info-hub-runs`；`bf-p6b-pages` 13 组；`r-ui-layout`；`p8b-timeout`；`p7-client-states` 8/8。前后对照截图由 `.verify/review-dedupe/capture.ts` 生成，同数据同视口，存在 `.verify/review-dedupe/before/` 与 `after/`（各 7 张：DM、DM 右栏底部、DM 消息区底部、群聊、群聊右栏底部、手机 390、Chat 列表）。未重跑完整 CI，未改动数据库与原型服务。Human 体验确认仍待反馈。
+
+### 第三轮：四张截图反馈（同日稍晚）
+
+Human 看完改后页面又提了四处（附三张红框截图）：一是「活动」段仍然密集，其中「注入模型 prompt：否 · 本次上下文尚无提交收据。」与 Machine / Worker 右侧的「与 Project settings 同一租约事实」都可以隐藏；二是 Owner 段折叠摘要下的治理说明「可将频道负责人变更为 Project 的 Human 创建者；成员跟随 Project 自动同步。」应该放在变更负责人的地方；三是公共频道的「公共频道成员跟随项目自动同步，不可独立修改。到 Project Members 调整成员。」可以收进问号按钮，「消息数」没有必要（保留「最后消息时间」）。
+
+对应改动：
+
+- `chat-activity.tsx`：轮初上下文与注入收据收进默认折叠的「本轮上下文与注入诊断」（`chat-turn-context-diagnostics`），摘要只在真有提交收据时显示「已注入」。注入事实本身不变，仍然只有一处来源。
+- `chat-details.tsx`：活动段的「Machine / Worker」行只在读取失败或未接入时渲染，与 Project settings 同源的正常情形不再复述；治理说明在有可改入口时移入 `OwnerDialog`（面板上只在没有入口的只读场景保留）；公共频道规则改为一行结论加问号按钮（`channel-members-help`），展开才显示完整规则与 `Project Members` 链接；删「消息数」行；「最后消息时间」改用与消息区一致的聊天时间标签（`chatTimeLabel`），机器可读真值留在 `<time datetime>` 上，避免 ISO 字符串在窄栏断成两行。
+- `as-p5a-chat-ui.mjs`：治理提示断言改为「面板上没有第二处 + 打开变更负责人对话框后在其中读到」，并把两处事实行断言从「消息数」改为「最后消息时间」。
+- `j-info-hub-flow.mjs` / `k-acceptance-flow.mjs`：消息数的事实断言改为直接数渲染出的 `message-item`；最后消息时间改为比对 `<time datetime>` 并与渲染出的最后一条消息对照。
+- `p6b-wiring-pages.mjs` / `q-info-hub-runs.sh`：读折叠块里的内容前先展开（幂等），P6a/P6b 的注入与轮初上下文契约断言不变。
+- `docs/feature-map/info-hub.md`：Chat 信息一行的测试 id 与说明同步。
+
+父代理实际复跑：`pnpm typecheck`；`pnpm test` 1463 项全过；`pnpm check` 0 errors / 16 条既有 warning / 775 文件；`as-p5a-chat-ui` 31 项；`i-chat`；`j-info-hub`；`k-acceptance` runner 12 项 0 失败；`bf-p6b-pages` 27 + 13 组；`q-info-hub-runs`。前后对照截图扩到 10 张（新增 Change Owner 对话框、公共频道成员段、公共频道规则展开），父代理逐张读图确认四处反馈都已落地：公共频道默认只显示「公共频道成员跟随项目自动同步（?）」，展开后是完整规则与 Project Members 链接；变更负责人对话框里有治理说明而面板 Owner 段没有；DM 右栏只剩「最后消息时间 11/11 11:07」与折叠的「本轮上下文与注入诊断」，没有「消息数」与「与 Project settings 同一租约事实」。未重跑完整 CI，未改动数据库与原型服务。Human 体验确认仍待反馈。

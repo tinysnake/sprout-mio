@@ -336,6 +336,12 @@ try {
 
     // (5) 轮初块：prepared / 没有快照时不许出现「已注入」。
     await page.goto(`${base}${chatPath}?info=1`, { waitUntil: "domcontentloaded" });
+    // 轮初快照与注入收据 2026-11-11 起收在「本轮上下文与注入诊断」折叠块里：先展开再读。
+    await page.waitForSelector('[data-testid="chat-turn-context-diagnostics"]', { timeout: 30000 });
+    await page.evaluate(() => {
+      const details = document.querySelector('[data-testid="chat-turn-context-diagnostics"]');
+      if (details instanceof HTMLDetailsElement && !details.open) details.open = true;
+    });
     await page.waitForSelector('[data-testid="info-turn-prompt-injection"]', { timeout: 30000 });
     const injection = await page
       .locator('[data-testid="info-turn-prompt-injection"]')
