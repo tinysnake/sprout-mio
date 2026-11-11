@@ -27,6 +27,7 @@ import { TASK_ACTIONS } from "../contracts/task-capabilities";
 import { user } from "./auth-schema";
 import { AGENT_RUN_STATUSES } from "../contracts/agent-run";
 import type { RunActivity, RunConfigSnapshot } from "../contracts/agent-run";
+import type { RunAttentionSnapshot } from "../contracts/run-attention";
 import { DIAGNOSTIC_LEVELS } from "../contracts/diagnostics";
 import type { CapabilitySnapshot } from "../contracts/machine";
 import {
@@ -710,6 +711,15 @@ export const agentRun = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
     startedAt: integer("started_at", { mode: "timestamp" }),
+    attentionPolicySnapshot: text("attention_policy_snapshot", {
+      mode: "json",
+    }).$type<RunAttentionSnapshot>(),
+    attentionAt: integer("attention_at", { mode: "timestamp_ms" }),
+    humanRequiredAt: integer("human_required_at", { mode: "timestamp_ms" }),
+    humanNotifiedAt: integer("human_notified_at", { mode: "timestamp_ms" }),
+    attentionMessageId: text("attention_message_id"),
+    attentionNoticeNextAt: integer("attention_notice_next_at", { mode: "timestamp_ms" }),
+    attentionNoticeAttempts: integer("attention_notice_attempts").notNull().default(0),
     settledAt: integer("settled_at", { mode: "timestamp" }),
     stopReason: text("stop_reason"),
     errorCode: text("error_code"),

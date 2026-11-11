@@ -1,3 +1,4 @@
+import { projectRunAttentionPolicy, runAttentionFacts } from "./run-attention";
 import { markChannelReplyIncomplete } from "./channel-delivery";
 import { cancelInvalidAssistantInputs } from "./assistant";
 import { enrollChatWatches } from "./assistant-interest";
@@ -58,7 +59,9 @@ const NEXT: Record<AgentRunStatus, readonly AgentRunStatus[]> = {
 };
 
 function toRun(row: typeof agentRun.$inferSelect): AgentRun {
+  const attention = runAttentionFacts(row, new Date());
   return {
+    ...(attention ? { attention } : {}),
     id: row.id,
     instanceId: row.instanceId,
     chatId: row.chatId,
@@ -175,6 +178,9 @@ export function listChatRunActivities(chatId: string, ctx: ProjectContext): Chat
               instanceId: row.instanceId,
               assistantMessageId: row.assistantMessageId,
               status: row.status,
+              ...(runAttentionFacts(row, new Date())
+                ? { attention: runAttentionFacts(row, new Date())! }
+                : {}),
               activity: row.activity,
             },
           ]
@@ -620,7 +626,10 @@ export function transitionAgentRun(
           ...(settledActivity ? { activity: settledActivity } : {}),
           status,
           ...(status === "running"
-            ? { startedAt: new Date() }
+            ? {
+                startedAt: new Date(),
+                attentionPolicySnapshot: projectRunAttentionPolicy(row.projectId),
+              }
             : { settledAt: endedAt ?? new Date() }),
         })
         .where(and(eq(agentRun.id, id), eq(agentRun.status, row.status)))

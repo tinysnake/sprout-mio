@@ -400,6 +400,13 @@
       "when": 1794374351921,
       "tag": "0056_empty_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1794393041989,
+      "tag": "0057_loud_magneto",
+      "breakpoints": true
     }
   ]
 }

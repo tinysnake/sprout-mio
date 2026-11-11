@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { MemorySnapshot } from "./memory";
+import type { RunAttentionFacts } from "./run-attention";
 import { chatIdInput } from "./chat";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
@@ -104,6 +105,7 @@ export type ChatRunActivity = {
   instanceId: string;
   assistantMessageId: string;
   status: AgentRunStatus;
+  attention?: RunAttentionFacts;
   activity: RunActivity;
 };
 
@@ -124,6 +126,7 @@ export type AgentRun = {
   configSnapshot?: RunConfigSnapshot;
   /** 收尾时的完整工作记录：与 status 一起写入，用于回看这一轮做过什么。 */
   activity?: RunActivity;
+  attention?: RunAttentionFacts;
   assistantMessageId?: string;
 };
 
@@ -185,6 +188,7 @@ export type ChatRunActiveRun = {
   id: string;
   instanceId: string;
   status: AgentRunStatus;
+  attention?: RunAttentionFacts;
   activity?: RunActivity;
 };
 
