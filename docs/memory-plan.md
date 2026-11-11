@@ -76,7 +76,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 - `resolveBankTarget({ bankPrefix, bankName }, projectId)`，返回判别联合 `bare`、`namespaced`；前缀非空且 name 为空时用 projectId 拼出 `${prefix}::${projectId}`。
 - `MEMORY_TOOL_NAMES`，八个 `hindsight_*` 名字。
 - `HINDSIGHT_EXTENSION_VERSION` 与 tarball integrity。
-- 生成配置的固定字段，`bankId`、`dynamicBankId: false`、`autoUpdate: false`、`autoInject: "none"`。
+- 生成配置的固定字段，`bankId`、`dynamicBankId: false`、`autoUpdate: false`；不要设置 `autoInject`，跟随默认 `reflect`，也就是 MEM-0 实测的 2,278 / 886 token。
 
 校验规则。
 
@@ -145,7 +145,7 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 ### MEM-3 Runner 激活
 
 - `open` 消息增加 `memory` 块；runner 写 `HINDSIGHT_*` 环境变量后动态 import 工厂。
-- 生成独立 JSON，显式写 `bankId`、`dynamicBankId: false`、`autoUpdate: false`、`autoInject: "none"`，并在 import 前设置 `HINDSIGHT_CONFIG`。生成或读取失败一律 `unavailable`，不回退 bundle 默认值。
+- 生成独立 JSON，显式写 `bankId`、`dynamicBankId: false`、`autoUpdate: false`，不写 `autoInject`（默认 `reflect` 才是实测成本那一档），并在 import 前设置 `HINDSIGHT_CONFIG`。生成或读取失败一律 `unavailable`，不回退 bundle 默认值。
 - 八个工具名只在 `ready` 时进入 `tools` allowlist。
 - 关闭时清掉从服务端继承的 `HINDSIGHT_*`，并按路径过滤 companion skill。`scripts/pi-host-skills.mjs` 目前会把 `~/.pi/agent/skills/hindsight-coding-agent` 继承给每个 session，这个过滤与开关无关，始终生效。
 - 启用态的 factory 会调用 `syncCompanionSkill`，它不认 runner 的 `agentDir`，恒写 `~/.pi/agent/skills/hindsight-coding-agent`。接受为已知全局副作用，但关闭态仍必须过滤所有继承路径。
@@ -221,8 +221,8 @@ Project 打开记忆后，Agent 跨 session 记住这个 Project 的决定、纠
 | 单元 | 状态 | 证据 |
 | --- | --- | --- |
 | MEM-0 | 已完成 | [docs/memory-spike.md](memory-spike.md)，PR #41，`l-docs.sh` 与 `l-docs-probes.sh` 通过 |
-| MEM-1 | 未开始 | |
-| MEM-2 | 未开始 | |
+| MEM-1 | 已完成 | PR #42，`05fa735`，迁移 `0056`，48 tests；验证者 GO WITH CHANGES，修正 `8207e9b`；F3 按现有 `channel-config` 约定保留 |
+| MEM-2 | 已完成 | PR #43，`27959a7`，修正 `de78e30`、`cd4a9f1`、`3640b2d`，15 tests；第三次验证 GO WITH CHANGES，仅更正历史基准记录 |
 | MEM-3 | 未开始 | |
 | MEM-4 | 未开始 | |
 | MEM-5 | 未开始 | |
