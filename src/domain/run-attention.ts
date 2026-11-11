@@ -114,12 +114,7 @@ export function runAttentionHumanRecipients(row: AgentRunRow): readonly string[]
     ...(firstHuman ? [firstHuman.id] : []),
   ]);
   return readChatEffectiveMembers(row.chatId, row.projectId)
-    .filter(
-      (member) =>
-        member.memberKind === "human" &&
-        candidates.has(member.memberId) &&
-        member.memberId === context.projectCreatedBy,
-    )
+    .filter((member) => member.memberKind === "human" && candidates.has(member.memberId))
     .map((member) => member.memberId);
 }
 

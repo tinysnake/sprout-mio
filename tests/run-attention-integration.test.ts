@@ -179,6 +179,29 @@ describe("run attention through continuation scheduler", () => {
     finish(f.run.id);
   });
 
+  it("keeps the chat human owner in the notice recipient set, not only the project creator", async () => {
+    const f = seed("recipient-union", "human");
+    const second = `human-${Date.now()}-second`;
+    sqlite
+      .prepare(
+        'INSERT INTO "user" (id,name,email,email_verified,created_at,updated_at) VALUES (?,?,?,1,?,?)',
+      )
+      .run(second, "second", `${second}@test.local`, Date.now(), Date.now());
+    sqlite
+      .prepare(
+        "INSERT INTO chat_member (chat_id,member_kind,member_id,added_at) VALUES (?,'human',?,?)",
+      )
+      .run(f.group.id, second, startedAt.getTime() / 1000);
+    sqlite.prepare("UPDATE chat SET owner_id=? WHERE id=?").run(second, f.group.id);
+    await advance(3_600_000);
+    const body = notices(f.group.id)[0]!.body;
+    expect(body).toContain("面向人类：");
+    expect(body).toContain(second);
+    expect(body).toContain(f.human);
+    console.log("EVIDENCE recipient-union", { recipientsLine: /面向人类：[^。]*/.exec(body)?.[0] });
+    finish(f.run.id);
+  });
+
   it.each(["human", "self"] as const)(
     "%s owner records human-required at 30m without an early message or self input",
     async (owner) => {
