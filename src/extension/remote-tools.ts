@@ -6,12 +6,20 @@ import type { LeaseWaitFailure } from "../contracts/lease-timeout";
 import {
   executionCancellationViewSchema,
   executionLogReadViewSchema,
+  executionViewSchema,
+  type ExecutionView,
   holderExecutionListViewSchema,
   remoteAgentRequestSchema,
   remoteToolInputSchemas,
 } from "../contracts/remote";
 import type { RemoteAgentRequest } from "../contracts/remote";
 import { waitForLease } from "../domain/lease-wait";
+import { waitForExecution } from "../domain/execution-wait";
+import {
+  clampExecutionWaitMs,
+  EXECUTION_WAIT_DEFAULT_MS,
+  EXECUTION_WAIT_MAX_MS,
+} from "../contracts/tool-wait";
 import type { RemoteToolClient, RemoteToolResponse } from "./remote-client";
 import { objectToolParameters } from "./tool-parameters";
 import type { SproutExtensionAPI, SproutToolResult } from "./types";
@@ -54,6 +62,7 @@ const descriptions: Record<ToolName, string> = {
     "列出显式指定的远端 Machine 上的进程，绝非宿主进程。machineId 与当前租约 authorizationGeneration 必填；limit 限制返回条数。",
   sprout_remote_process_signal:
     "向显式指定的远端 Machine 上的 pid 发送 TERM/INT/KILL，绝非宿主进程。machineId 与当前租约 authorizationGeneration 必填。租约释放/交接不会自动调用此操作。",
+  sprout_remote_execution_wait: `阻塞等待远程 execution 到终态，machineId 与 executionId 必填。默认等待 ${EXECUTION_WAIT_DEFAULT_MS / 60_000} 分钟，最多 ${EXECUTION_WAIT_MAX_MS / 60_000} 分钟，waitMs 不足 1 秒按 1 秒算；返回的 data 是最后一次读到的 ExecutionView。outcome 为 timed_out 时要按字段分开看：带 requestedMs 与 waitedMs 的，是自己的等待预算到点、执行可能仍在跑，不要据此重试有副作用的操作；只带 requestId 的，是 execution 自身以 timed_out 终态结束，那是真超时。等待期间可用取消中断。`,
   sprout_remote_execution_get:
     "查询显式指定的远端 Machine 上一次 executionId 的状态与有界结果。machineId 必填。queued/dispatched/running/draining 不是执行成功；unknown 不表示没有执行，勿自动重试有副作用的操作。",
   sprout_remote_execution_list:
@@ -373,13 +382,95 @@ async function runLeaseWait(
   }
 }
 
+class ExecutionWaitReadFailed extends Error {
+  constructor(readonly response: RemoteToolResponse) {
+    super("execution wait read failed");
+  }
+}
+
+function readExecutionView(
+  response: RemoteToolResponse,
+  projectId: string,
+  machineId: string,
+  executionId: string,
+): ExecutionView {
+  if (response.outcome !== "response" || !response.result.ok)
+    throw new ExecutionWaitReadFailed(response);
+  const parsed = executionViewSchema.safeParse(response.result.data);
+  if (
+    !parsed.success ||
+    parsed.data.projectId !== projectId ||
+    parsed.data.machineId !== machineId ||
+    parsed.data.executionId !== executionId
+  ) {
+    throw new ExecutionWaitReadFailed({ outcome: "unknown", reason: "invalid_response" });
+  }
+  return parsed.data;
+}
+
+async function runExecutionWait(
+  client: RemoteToolClient,
+  machineId: string,
+  executionId: string,
+  waitMs: number | undefined,
+  signal?: AbortSignal,
+  now = Date.now,
+): Promise<SproutToolResult> {
+  const request = buildRequest(
+    "sprout_remote_execution_get",
+    { machineId, executionId },
+    client.projectId,
+  );
+  let response: RemoteToolResponse = { outcome: "unknown", reason: "transport_error" };
+  const startedAt = now();
+  const cancelled = (): SproutToolResult => {
+    const details = { outcome: "cancelled", message: "已取消等待；远程 execution 可能仍在运行。" };
+    return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: false };
+  };
+  try {
+    const outcome = await waitForExecution({
+      requestedMs: waitMs,
+      deps: {
+        readExecution: async () => {
+          if (signal?.aborted)
+            throw new ExecutionWaitReadFailed({ outcome: "unknown", reason: "cancelled" });
+          response = await client.request(request, signal);
+          if (signal?.aborted)
+            throw new ExecutionWaitReadFailed({ outcome: "unknown", reason: "cancelled" });
+          return readExecutionView(response, client.projectId, machineId, executionId);
+        },
+        sleep: (ms) => sleepUntilAborted(ms, signal),
+        now: () => new Date(now()),
+      },
+    });
+    if (outcome.ok) return result(request, response);
+    const requestedMs = clampExecutionWaitMs(waitMs);
+    const details = {
+      outcome: "timed_out",
+      data: outcome.view,
+      requestedMs,
+      waitedMs: now() - startedAt,
+      message: `等待 ${requestedMs}ms 后 execution 仍在跑；这不是执行失败，不要据此重试有副作用的操作。`,
+    };
+    return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: true };
+  } catch (error) {
+    if (signal?.aborted) return cancelled();
+    if (error instanceof ExecutionWaitReadFailed) {
+      if (error.response.outcome === "unknown" && error.response.reason === "cancelled")
+        return cancelled();
+      return result(request, error.response);
+    }
+    return result(request, { outcome: "unknown", reason: "transport_error" });
+  }
+}
+
 export function registerRemoteTools(
   pi: Pick<SproutExtensionAPI, "registerTool">,
   client: RemoteToolClient,
 ): void {
   for (const name of Object.keys(remoteToolInputSchemas) as ToolName[]) {
-    // 等待不是一次请求-响应：它在客户端循环轮询 lease_get，因此单独注册（见下）。
-    if (name === "sprout_lease_wait") continue;
+    // 等待在扩展侧轮询既有读取接口，因此单独注册。
+    if (name === "sprout_lease_wait" || name === "sprout_remote_execution_wait") continue;
     pi.registerTool({
       name,
       label: name,
@@ -419,6 +510,23 @@ export function registerRemoteTools(
         );
       }
       return runLeaseWait(client, input.machineId, input.waitMs, signal);
+    },
+  });
+  pi.registerTool({
+    name: "sprout_remote_execution_wait",
+    label: "sprout_remote_execution_wait",
+    description: descriptions.sprout_remote_execution_wait,
+    parameters: objectToolParameters(remoteToolInputSchemas.sprout_remote_execution_wait, {
+      unrepresentable: "any",
+    }),
+    async execute(_toolCallId, parameters, signal) {
+      const parsed = remoteToolInputSchemas.sprout_remote_execution_wait.safeParse(parameters);
+      if (!parsed.success)
+        return validationFailure(
+          "等待工具参数无效；必须提供合法 machineId、executionId，waitMs 可选且为正整数，不得声明调用者身份或授权代次。",
+        );
+      const input = parsed.data;
+      return runExecutionWait(client, input.machineId, input.executionId, input.waitMs, signal);
     },
   });
 }

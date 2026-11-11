@@ -1,7 +1,9 @@
 import { createServer } from "node:http";
 import type { RequestListener } from "node:http";
 import { once } from "node:events";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { executionWaitView } from "./fixtures/execution-wait-view";
+import { EXECUTION_WAIT_DEFAULT_MS } from "../src/contracts/tool-wait";
 import { remoteToolInputSchemas } from "../src/contracts/remote";
 import type { ExecutionCancellationView, ExecutionLogReadView } from "../src/contracts/remote";
 import { createRemoteClient } from "../src/extension/remote-client";
@@ -86,7 +88,123 @@ const cases = {
   sprout_remote_execution_cancel: { ...base, executionId },
   sprout_remote_execution_log: { machineId, executionId, cursor: null },
   sprout_lease_wait: { machineId },
+  sprout_remote_execution_wait: { machineId, executionId },
 };
+
+describe("远端 execution 阻塞等待工具", () => {
+  afterEach(() => vi.useRealTimers());
+
+  function response(state: Parameters<typeof executionWaitView>[0]): RemoteToolResponse {
+    return { outcome: "response", result: { ok: true, requestId, data: executionWaitView(state) } };
+  }
+
+  it("复用 execution_get 并注入 Project，终态结果与单次查询同形", async () => {
+    const requests: RemoteAgentRequest[] = [];
+    const registered = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return response("succeeded");
+      },
+    });
+    const wait = registered.get("sprout_remote_execution_wait")!;
+    expect(
+      await wait.execute("probe", { machineId, executionId, authorizationGeneration: 1 }),
+    ).toMatchObject({ isError: true, details: { error: { code: "validation_failed" } } });
+    expect(requests).toHaveLength(0);
+    const waited = await wait.execute("probe", { machineId, executionId });
+    const queried = await registered
+      .get("sprout_remote_execution_get")!
+      .execute("probe", { machineId, executionId });
+    expect(waited).toEqual(queried);
+    expect(waited).toMatchObject({
+      isError: false,
+      details: { outcome: "succeeded", data: executionWaitView("succeeded"), requestId },
+    });
+    expect(requests).toEqual(
+      Array(2).fill({
+        version: 2,
+        call: { type: "execution_get", input: { projectId, machineId, executionId } },
+      }),
+    );
+  });
+
+  it("默认等 10 分钟，到点返回最后的非终态视图及实际等待时长", async () => {
+    vi.useFakeTimers();
+    let reads = 0;
+    const tool = tools({
+      projectId,
+      request: async () => {
+        reads += 1;
+        return response(reads === 1 ? "running" : "draining");
+      },
+    }).get("sprout_remote_execution_wait")!;
+    const pending = tool.execute("probe", { machineId, executionId });
+    await vi.advanceTimersByTimeAsync(EXECUTION_WAIT_DEFAULT_MS);
+    const outcome = await pending;
+    expect(outcome).toMatchObject({
+      isError: true,
+      details: {
+        outcome: "timed_out",
+        data: executionWaitView("draining"),
+        requestedMs: EXECUTION_WAIT_DEFAULT_MS,
+        waitedMs: EXECUTION_WAIT_DEFAULT_MS,
+        message: expect.stringContaining("仍在跑"),
+      },
+    });
+    expect(reads).toBe(601);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("请求失败和不可信的视图立即返回工具错误，不伪装成等待超时", async () => {
+    const malformed = executionWaitView("succeeded");
+    malformed.executionId = "exe_11111111";
+    for (const returned of [
+      denied,
+      {
+        outcome: "response",
+        result: { ok: true, requestId, data: malformed },
+      } as RemoteToolResponse,
+    ]) {
+      let reads = 0;
+      const tool = tools({
+        projectId,
+        request: async () => {
+          reads += 1;
+          return returned;
+        },
+      }).get("sprout_remote_execution_wait")!;
+      const outcome = await tool.execute("probe", { machineId, executionId });
+      expect(outcome.isError).toBe(true);
+      expect(outcome.details).not.toHaveProperty("outcome", "timed_out");
+      expect(reads).toBe(1);
+    }
+  });
+
+  it.each([false, true])(
+    "取消只中断等待，不取消远程执行（预先取消=%s）",
+    async (alreadyAborted) => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const requests: RemoteAgentRequest[] = [];
+      const tool = tools({
+        projectId,
+        request: async (request) => {
+          requests.push(request);
+          return response("running");
+        },
+      }).get("sprout_remote_execution_wait")!;
+      if (alreadyAborted) controller.abort();
+      const pending = tool.execute("probe", { machineId, executionId }, controller.signal);
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort();
+      expect(await pending).toMatchObject({ isError: false, details: { outcome: "cancelled" } });
+      expect(requests).toHaveLength(alreadyAborted ? 0 : 1);
+      expect(requests.every(({ call }) => call.type === "execution_get")).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+});
 
 describe("远端 Pi 工具边界", () => {
   it("每个工具强制 Machine，身份不可由参数冒充，合法输入只注入宿主 Project", async () => {
@@ -137,6 +255,7 @@ describe("远端 Pi 工具边界", () => {
       "execution_cancel",
       "execution_log_read",
       "lease_get",
+      "execution_get",
     ]);
     // 挂靠 / 领取 / 撤销挂靠走同一个 lease_mutate 通道，action 由工具名推导。
     expect(

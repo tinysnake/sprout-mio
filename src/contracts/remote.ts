@@ -1,4 +1,5 @@
 import { infoHubGetInputSchema, infoHubViewSchema } from "./info-hub-query";
+import { EXECUTION_WAIT_DEFAULT_MS, EXECUTION_WAIT_MAX_MS } from "./tool-wait";
 import { z } from "zod";
 import { assistantCallSchema } from "./assistant";
 import { chatSessionSchema, messageSchema } from "./chat";
@@ -132,6 +133,10 @@ export const EXECUTION_LOG_RETAIN_BYTES = 1048576;
 export const EXECUTION_LOG_RETAIN_FRAMES = 512;
 export const CANCELLATION_INTENT_NAMESPACE = "cancel:";
 export const REMOTE_OUTCOMES = ["succeeded", "failed", "rejected", "timed_out", "unknown"] as const;
+
+export function isTerminalExecutionState(state: string): boolean {
+  return REMOTE_OUTCOMES.some((terminal) => terminal === state);
+}
 export const REMOTE_FAILURE_REASONS = [
   "stale_generation",
   "not_holder",
@@ -273,7 +278,7 @@ export const executionViewSchema = leaseKeySchema
     cancellation: executionCancellationViewSchema.nullable(),
   })
   .superRefine((value, ctx) => {
-    const terminal = REMOTE_OUTCOMES.some((state) => state === value.state);
+    const terminal = isTerminalExecutionState(value.state);
     if (
       Date.parse(value.dispatchDeadlineAt) <= Date.parse(value.createdAt) ||
       terminal !== (value.terminalAt !== null) ||
@@ -749,6 +754,15 @@ export const remoteToolInputSchemas = {
   sprout_lease_wait: z.strictObject({
     machineId: leaseKeySchema.shape.machineId,
     waitMs: positiveSafeIntegerSchema.optional(),
+  }),
+  sprout_remote_execution_wait: z.strictObject({
+    machineId: leaseKeySchema.shape.machineId,
+    executionId: executionIdSchema,
+    waitMs: positiveSafeIntegerSchema
+      .optional()
+      .describe(
+        `等待预算（毫秒）；默认 ${EXECUTION_WAIT_DEFAULT_MS}，最多 ${EXECUTION_WAIT_MAX_MS}。`,
+      ),
   }),
 } as const;
 export type RemoteOperation = z.infer<typeof remoteOperationSchema>;
