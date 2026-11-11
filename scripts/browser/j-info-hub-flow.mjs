@@ -171,10 +171,10 @@ await check("start_dm_and_send_two_messages", async () => {
   });
   chatPath = pathOf();
   chatId = chatPath.split("/").pop() ?? "";
-  // 身份事实只在 Info Hub 里展示，打开 `?info=1` 后从 inspector 读取同一份 Instance。
+  // 身份事实只在会话详情（Chat 视角的 Info Hub）里展示：打开 `?info=1` 后从 inspector 读取 Instance。
   await navigate(page, chatInspectorPath(chatPath));
-  await page.waitForSelector('[data-testid="info-chat-instance-id"]', { timeout: 20000 });
-  instanceId = (await page.textContent('[data-testid="info-chat-instance-id"]'))?.trim() ?? "";
+  await page.waitForSelector('[data-testid="inspector-instance-id"]', { timeout: 20000 });
+  instanceId = (await page.textContent('[data-testid="inspector-instance-id"]'))?.trim() ?? "";
   await page.fill('[data-testid="message-input"]', firstMessage);
   await page.click('[data-testid="message-send"]');
   await page.waitForFunction(
@@ -295,49 +295,47 @@ await check("lease_facts_render_real_state", async () => {
 await check("hub_dm_link_opens_chat", async () => {
   await page.click('[data-testid="info-agent-dm-link"]');
   await page.waitForURL((url) => url.pathname === chatPath, { timeout: 20000 });
-  // Chat 视角的 Info Hub 在 inspector 里，打开它才能断言面板；URL 只多了恢复用的浏览参数。
+  // Chat 视角的 Info Hub 就是会话详情面板，打开它才能断言；URL 只多了恢复用的浏览参数。
   await navigate(page, chatInspectorPath(chatPath));
-  await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="inspector-instance-id"]', { timeout: 20000 });
   record("hub_dm_link_opens_chat", pathOf() === chatPath, `面板 DM 链接跳转到 ${pathOf()}`);
 });
 
-await check("chat_info_panel_matches_page", async () => {
-  await page.waitForSelector('[data-testid="info-chat-instance-id"]', { timeout: 20000 });
+await check("chat_facts_render_on_chat_page", async () => {
+  await page.waitForSelector('[data-testid="inspector-instance-id"]', { timeout: 20000 });
+  // 页面反馈后，Info Hub 的 Chat 事实不再嵌在会话详情里重复一份；这里断言的就是会话详情自己的事实。
   const state = await page.evaluate(() => ({
-    panelInstance: document
-      .querySelector('[data-testid="info-chat-instance-id"]')
-      ?.textContent?.trim(),
-    pageInstance: document
-      .querySelector('[data-testid="inspector-instance-id"]')
-      ?.textContent?.trim(),
-    kinds: [...document.querySelectorAll('[data-testid="info-member-item"]')].map((node) =>
-      node.getAttribute("data-member-kind"),
+    instance: document.querySelector('[data-testid="inspector-instance-id"]')?.textContent?.trim(),
+    kinds: [...document.querySelectorAll('[data-testid="inspector-member-list"] > li')].map(
+      (node) => (node.querySelector('[data-testid="chat-member-select"]') ? "agent" : "human"),
     ),
-    kind: document.querySelector('[data-testid="info-chat-kind"]')?.textContent?.trim(),
-    archived: document.querySelector('[data-testid="info-chat-archived"]')?.textContent?.trim(),
-    count: document.querySelector('[data-testid="info-message-count"]')?.textContent?.trim(),
-    latestAt: document.querySelector('[data-testid="info-message-latest-at"]')?.textContent,
-    runsHostStatus: document.querySelector('[data-testid="info-chat-runs-host-status"]')
-      ?.textContent,
+    kindLabel: Boolean(
+      document.querySelector('[data-testid="chat-pane"]')?.innerText?.includes("DM"),
+    ),
+    archivedRow: document.querySelector('[data-testid="inspector-archived"]')?.textContent?.trim(),
+    count: document.querySelector('[data-testid="inspector-message-count"]')?.textContent?.trim(),
+    latestAt: document.querySelector('[data-testid="inspector-message-latest-at"]')?.textContent,
+    runsHostStatus: document.querySelector('[data-testid="info-chat-runs"]')?.innerText,
     turnInjection: document.querySelector('[data-testid="info-turn-prompt-injection"]')
       ?.textContent,
+    embeddedFacts: document.querySelectorAll('[data-testid="info-hub-chat"]').length,
     body: document.body.innerText,
   }));
   await shot(page, "p2-j-chat-info");
   record(
-    "chat_info_panel_matches_page",
-    state.panelInstance === state.pageInstance &&
-      state.panelInstance === instanceId &&
+    "chat_facts_render_on_chat_page",
+    state.instance === instanceId &&
       JSON.stringify(state.kinds) === JSON.stringify(["human", "agent"]) &&
-      state.kind === "DM（一对一）" &&
-      state.archived === "未归档" &&
+      state.kindLabel &&
+      !state.archivedRow &&
       state.count === "2" &&
       /^20\d{2}-\d{2}-\d{2}T/.test(state.latestAt ?? "") &&
       /宿主(已|未)启用/.test(state.runsHostStatus ?? "") &&
       /注入模型 prompt：否 · 本次上下文尚无提交收据/.test(state.turnInjection ?? "") &&
+      state.embeddedFacts === 0 &&
       !state.body.includes("0 个活动 run") &&
       !state.body.includes("无活动 run"),
-    `panel 分身 ${state.panelInstance} 与 inspector 身份一致，成员 ${JSON.stringify(state.kinds)}，消息 ${state.count} 条，run 视角宿主 ${state.runsHostStatus}`,
+    `会话详情分身 ${state.instance} 与流程一致，成员 ${JSON.stringify(state.kinds)}，消息 ${state.count} 条，run 视角宿主 ${state.runsHostStatus}`,
   );
 });
 
@@ -356,14 +354,14 @@ await check("deep_link_and_reload_keep_values", async () => {
   }));
   await shot(page, "p2-j-info-hub-deep-reload");
   await navigate(page, chatInspectorPath(chatPath));
-  await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="inspector-instance-id"]', { timeout: 20000 });
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="info-hub-chat"]', { timeout: 20000 });
+  await page.waitForSelector('[data-testid="inspector-instance-id"]', { timeout: 20000 });
   const chatReload = await page.evaluate(() => ({
     panelInstance: document
-      .querySelector('[data-testid="info-chat-instance-id"]')
+      .querySelector('[data-testid="inspector-instance-id"]')
       ?.textContent?.trim(),
-    count: document.querySelector('[data-testid="info-message-count"]')?.textContent?.trim(),
+    count: document.querySelector('[data-testid="inspector-message-count"]')?.textContent?.trim(),
   }));
   record(
     "deep_link_and_reload_keep_values",

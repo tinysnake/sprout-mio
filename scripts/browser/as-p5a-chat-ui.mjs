@@ -581,7 +581,8 @@ try {
     profileDefault === 0 &&
       memberSelectCount >= 2 &&
       picked.name === agent2Name &&
-      picked.jobTitle === "未设置职位" &&
+      // 未设置职位不再单独占一行（2026-11-11 页面反馈）：没有职位时该行不渲染。
+      (picked.jobTitle === undefined || picked.jobTitle === "") &&
       picked.persona === agent2Persona,
     `默认资料块 ${profileDefault}，可选成员行 ${memberSelectCount}，选中 ${JSON.stringify(picked)}`,
   );

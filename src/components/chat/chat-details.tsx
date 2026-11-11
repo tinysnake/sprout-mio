@@ -32,7 +32,6 @@ import {
 import { ChatErrorNotice } from "./chat-error-notice";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTitleEditor } from "./chat-title-editor";
-import { ChatFactsBlock } from "../info-hub/chat-info-panel";
 import { ChatActivityFacts } from "../info-hub/chat-activity";
 import { TaskAssociations } from "../tasks/task-associations";
 import { governanceNote } from "./chat-governance";
@@ -152,9 +151,6 @@ export function ChatDetails({
   }));
   const addableAgents = allAgents.filter((agent) => !currentKeys.has(ownerKey("agent", agent.id)));
   const agentCount = activity ? activity.agentCount : null;
-  const runCount = activity
-    ? activity.statusCounts.reduce((total, entry) => total + entry.count, 0)
-    : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-details">
@@ -331,9 +327,19 @@ export function ChatDetails({
                   </dd>
                 </>
               )}
+              {info.ok && info.data.archived && (
+                <>
+                  <dt className="text-muted-foreground">归档状态</dt>
+                  <dd data-testid="inspector-archived">已归档</dd>
+                </>
+              )}
               <dt className="text-muted-foreground">消息数</dt>
               <dd data-testid="inspector-message-count">
                 {info.ok ? info.data.messages.count : "未知"}
+              </dd>
+              <dt className="text-muted-foreground">最后消息时间</dt>
+              <dd data-testid="inspector-message-latest-at">
+                {info.ok ? (info.data.messages.latestAt ?? "（还没有消息）") : "未知"}
               </dd>
             </dl>
             {chat.kind === "dm" && (
@@ -358,12 +364,14 @@ export function ChatDetails({
                     >
                       {detailName ?? agentName}
                     </strong>
-                    <p
-                      data-testid="inspector-agent-job-title"
-                      className="mt-0.5 text-[10px] text-muted-foreground"
-                    >
-                      {detailProfile?.jobTitle ?? "未设置职位"}
-                    </p>
+                    {detailProfile?.jobTitle && (
+                      <p
+                        data-testid="inspector-agent-job-title"
+                        className="mt-0.5 text-[10px] text-muted-foreground"
+                      >
+                        {detailProfile.jobTitle}
+                      </p>
+                    )}
                   </div>
                   {detailProfile && (
                     <Link
@@ -475,60 +483,11 @@ export function ChatDetails({
             </span>
           </summary>
           <div className="space-y-4 pt-3">
-            <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1.5 text-[11px]">
-              <dt className="text-muted-foreground">活动 Agent</dt>
-              <dd data-testid="activity-agent-count">
-                {agentCount === null
-                  ? "活动 Agent 数未知"
-                  : agentCount === 0
-                    ? "暂无活动 Agent"
-                    : `${agentCount} 个（按 Agent 去重）`}
-              </dd>
-              <dt className="text-muted-foreground">活动 run</dt>
-              <dd data-testid="activity-run-count">
-                {runCount === null
-                  ? "活动状态暂不可用"
-                  : runCount === 0
-                    ? "暂无活动 run"
-                    : `${runCount} 条 run`}
-              </dd>
-            </dl>
-            {activity && activity.statusCounts.length > 0 && (
-              <ul data-testid="activity-status-counts" className="flex flex-wrap gap-1.5">
-                {activity.statusCounts.map((entry) => (
-                  <li
-                    key={entry.status}
-                    className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
-                  >
-                    {entry.status} · {entry.count}
-                  </li>
-                ))}
-              </ul>
-            )}
             {!info.ok ? (
               <ChatErrorNotice error={info.error} testId="info-hub-chat-error" />
             ) : (
               <ChatActivityFacts info={info.data} turnContext={turnContext} />
             )}
-            <details className="group border-t border-border pt-3" open>
-              <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] hover:underline [&::-webkit-details-marker]:hidden">
-                <span>Chat 事实与成员</span>
-                <Icon
-                  as={ChevronRight}
-                  size={12}
-                  className="transition-transform group-open:rotate-90"
-                />
-              </summary>
-              <div className="pt-2">
-                {info.ok ? (
-                  <ChatFactsBlock view={info.data} />
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    Chat 事实随上方错误一并不可用。
-                  </p>
-                )}
-              </div>
-            </details>
             <div className="space-y-4 pt-1">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[10px] text-muted-foreground">Machine / Worker</span>

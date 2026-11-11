@@ -16,7 +16,7 @@ import { MessageComposer } from "./message-composer";
 import type { MentionMember } from "./mention-picker";
 import { MessageList } from "./message-list";
 import { chatDisplayName } from "./chat-display";
-import { RunStatusBadge, RunStatusPanel, isRunActive, runStatusLabel } from "./run-status";
+import { RunStatusPanel, isRunActive, runStatusLabel } from "./run-status";
 
 /** 顶部自动加载更早消息的触发距离（像素）。 */
 const LOAD_OLDER_PX = 900;
@@ -195,14 +195,7 @@ export function ChatThread({
   const [atBottom, setAtBottom] = useState(true);
   const [newSinceScroll, setNewSinceScroll] = useState(false);
   const count = messages.ok ? messages.data.length : 0;
-  const jobTitle = profile && profile.ok ? (profile.data.jobTitle ?? "") : "";
   const active = runState.ok ? isRunActive(runState.data) : false;
-  const latestRun = runState.ok ? (runState.data.latest ?? undefined) : undefined;
-  // 多个 Agent 同时活动时，页头徽标跟随仍在跑的那条，而不是最后创建的 run。
-  const activeStatus = runState.ok
-    ? (runState.data.active.find((row) => row.status === "running")?.status ??
-      runState.data.active[0]?.status)
-    : undefined;
   const effectiveKind = kind ?? chat.kind;
   const composerStatusLabel = runState.ok
     ? effectiveKind !== "dm" && runState.data.active.length > 0
@@ -337,17 +330,10 @@ export function ChatThread({
           </span>
           <p className="mt-1 flex items-center gap-1.5 text-[10px] whitespace-nowrap text-muted-foreground">
             <span>{subline}</span>
-            {effectiveKind === "dm" && jobTitle && (
-              <>
-                <span className="max-desktop:hidden">·</span>
-                <span className="max-desktop:hidden">{jobTitle}</span>
-              </>
-            )}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {assistantWatch}
-          {latestRun && <RunStatusBadge status={activeStatus ?? latestRun.status} />}
           <Button
             type="button"
             variant="ghost"

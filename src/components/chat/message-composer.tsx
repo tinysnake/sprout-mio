@@ -344,9 +344,6 @@ export function MessageComposer({
       {fieldErrors.body && <FieldError errors={fieldErrors} name="body" />}
       {error && <ChatErrorNotice error={error} testId="message-error" />}
       {stopError && <ChatErrorNotice error={stopError} testId="run-stop-error" />}
-      <p className="mt-2 text-center text-[9px] text-muted-foreground">
-        Project 的信息与分析依据，会随 Chat 一起保留。
-      </p>
     </div>
   );
 }

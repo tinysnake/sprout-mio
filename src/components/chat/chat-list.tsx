@@ -108,6 +108,7 @@ export function ChatListPanel({
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ChatFilter>("all");
+  const [pendingOnly, setPendingOnly] = useState(false);
   const { listWidth } = useChatWorkspace();
   const narrow = isNarrowList(listWidth);
   const names = useMemo(
@@ -119,8 +120,11 @@ export function ChatListPanel({
     [aggregates],
   );
   const searched = filterChats(chats, chatAgents, names, query, aggregateMap);
-  const shown = filter === "all" ? searched : searched.filter((chat) => chat.kind === filter);
+  const typed = filter === "all" ? searched : searched.filter((chat) => chat.kind === filter);
   const pending = (aggregates ?? []).filter((entry) => entry.activeRunIds.length > 0);
+  const shown = pendingOnly
+    ? typed.filter((chat) => (aggregateMap.get(chat.id)?.activeRunIds.length ?? 0) > 0)
+    : typed;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-list-content">
@@ -162,46 +166,25 @@ export function ChatListPanel({
             </button>
           ))}
         </div>
-        {!narrow && (
-          <details
-            open
-            data-testid="chat-pending-block"
-            className="mt-2 rounded-control border border-border"
-          >
-            <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 px-2 py-1.5 text-[10px] text-muted-foreground [&::-webkit-details-marker]:hidden">
-              <span>待处理</span>
-              <span data-testid="chat-pending-count">{pending.length}</span>
-            </summary>
-            <div className="border-t border-border px-2 py-1.5">
-              {pending.length === 0 ? (
-                <p className="text-[10px] leading-5 text-muted-foreground">没有待处理的 run。</p>
-              ) : (
-                <ul data-testid="chat-pending-list" className="space-y-1">
-                  {pending.map((entry) => (
-                    <li key={entry.chatId}>
-                      <Link
-                        to="/projects/$projectId/chats/$chatId"
-                        params={{ projectId, chatId: entry.chatId }}
-                        search={(previous) => previous}
-                        className="flex items-center justify-between gap-2 text-[10px] text-foreground hover:underline"
-                      >
-                        <span className="min-w-0 truncate">{entry.displayTitle}</span>
-                        <span className="shrink-0 text-muted-foreground">
-                          {entry.activeRunIds.length} 个活动 run
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </details>
-        )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2.25">
-        <p className="flex items-center justify-between px-2 pt-3 pb-2.25 text-[10px] text-muted-foreground">
+        <p className="flex items-center justify-between gap-2 px-2 pt-3 pb-2.25 text-[10px] text-muted-foreground">
           <span>最近对话</span>
-          <span data-testid="chat-count">{shown.length}</span>
+          {/* 待处理不再是第二个列表，而是同一份列表上的筛选（页面反馈：同一 Chat 不该列两次）。 */}
+          {pending.length > 0 && (
+            <button
+              type="button"
+              data-testid="filter-pending"
+              aria-pressed={pendingOnly}
+              onClick={() => setPendingOnly((value) => !value)}
+              className={cn(
+                "rounded-control border border-border px-1.5 py-0.5 text-[10px] hover:text-foreground",
+                pendingOnly && "border-foreground font-semibold text-foreground",
+              )}
+            >
+              待处理 {pending.length}
+            </button>
+          )}
         </p>
         {chats.length === 0 ? (
           <p
@@ -215,7 +198,7 @@ export function ChatListPanel({
             data-testid="chat-search-empty"
             className="px-2 py-3 text-xs leading-6 text-muted-foreground"
           >
-            没有匹配的对话，试试更短的关键词。
+            {pendingOnly ? "当前没有待处理的对话。" : "没有匹配的对话，试试更短的关键词。"}
           </p>
         ) : (
           <ul data-testid="chat-list">

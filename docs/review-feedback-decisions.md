@@ -138,3 +138,25 @@ Human 的有条件确认已满足截图条件，本轮 webhook、cron、原生�
 `src/components/chat/message-composer.tsx` 的这处改动随之纳入：门禁里没有引用被删除的三个字符串，p7-client-states 里输入区仍可见运行中的「追加到当前轮」，因此门禁无需改写。
 
 父代理实际复跑：typecheck、check 通过（16 条既有 warning 不变），p7-client-states 与 p7-client-pwa 全通过，as-p5b 21 项 checks 通过。RED 复现方式为临时撤下路由改动重跑门禁，报 `Chat 正文上方不再重复 Task 关联条带 1 !== 0` 后恢复。父代理实际读图 `.verify/as-p5b-task-pages/evidence/chat-task-associations.png`，确认 Chat 顶部只剩标题与运行状态、inspector 内仍有 Task 摘要，且输入区左下角不再有 `Task UI Agent · 宿主未启用` 那行小字、发送按钮仍在右侧。改动位于 worktree 分支 `t3/fix-chat-completed-tasks-summary`，未重跑完整 CI，未改动数据库与原型服务。Human 体验确认仍待反馈。
+
+## Chat 页信息去重（16 条审查 → GPT 评审 → 整改）
+
+2026-11-11 Human 在同一轮里要求：「你在检查一遍这个chat界面有哪些信息是重复的多余的都指出来」。审查基准是`docs/frontend-design.md` 的「同一事实只出现一次」，证据为代码与门禁实拍。共列出 16 条（按左栏、中栏页头、消息区、右栏分组），其中标为重的是：同一 Chat 在「待处理」与「最近对话」各列一次、run 状态在中栏页头/消息区/右栏各表达一次、消息区「未关联 run · 不推断归属」逐条占位、右栏内嵌整块 Info Hub 的 Chat 事实与成员（Instance ID 与消息数、成员名单、分身租约各与右栏自己的段重复）、右栏活动段把 run 数了三遍。
+
+Human 随后定了流程：先把建议交给 GPT 子代理看它认不认可，认可就按它修；修完用网页截图做前后对比，交回同一个 GPT 子代理按五条评分机制（同一事实只出现一处；信息出现在与它有关的地方；重要程度有区分；密度张弛有度、说明文字藏进问号或默认折叠；排版舒服、分区与 item 区分明显）打分，8/10 以上过关，没过关索取下一步整改意见。评审用本机 pstack 角色映射里的 GPT 模型 `magpie/auto/gpt-6.1-sol`（原定 `openai-codex/gpt-6.1-sol` 因本机到 `chatgpt.com` 只能经代理、T3 侧只直连而启动失败，已改用同网关可达的 `magpie/auto/gpt-6.1-sol`）。评审结论：认可主要方向，但不能按字符串重复整块删除；逐条给出同意 / 部分同意 / 不同意，并补两个漏项（`message-composer.tsx` 的「Project 的信息与分析依据，会随 Chat 一起保留。」、`chat-details.tsx` 的「未设置职位」占行）。评审明确不同意的一条是「复制 Chat ID 有两处」——DM 与非 DM 分支互斥，两个按钮从不同时出现，核对代码后采纳。
+
+本轮实际改动：
+
+- 左栏 `chat-list.tsx`：「待处理」不再作为第二个列表，改为同一列表上的筛选 chip（`filter-pending`），删掉列表总数 `chat-count`；筛选为空时文案为「当前没有待处理的对话。」
+- 中栏 `chat-thread.tsx`：删页头 run 徽标与 DM 副标题里的职位后缀。页头徽标与消息区的「分身运行状态」在宿主未启用时会互相矛盾（一个「运行中」、一个「宿主未启用」），run 状态收敛到消息区与右栏两处。
+- 消息区 `message-list.tsx`：删逐条 persona；`message-kind` 只在自动化来源时保留（Human/Agent 的名字已说明身份）；无 run 归属时不再渲染「未关联 run · 不推断归属」占位，归属逻辑本身不动。
+- 输入区 `message-composer.tsx`：删末尾常驻保留说明。
+- 右栏 `chat-details.tsx`：拆掉内嵌的 `ChatFactsBlock` 整块；把其中独有且页面上没有的事实迁进成员段的 `<dl>`（归档状态只在已归档时出现、最后消息时间）；删活动段的「活动 Agent」行与状态分布 chip（与 summary、run 明细重复）；改为只渲染活动 run 明细本身；「未设置职位」不再占行。
+
+有意不做的两处，如实记录：一是评审列的「把 pending、恢复草稿、阻塞原因搬到输入区」。`pending-input-count` 的文案与 `run-stop` 的现场被 `o-turn-semantics` 当作契约断言，搬迁属于体验调整而不是去重，本轮保持 run 状态面板为唯一现场，未动 `run-status.tsx`（评审复核时指出严格说仍有两处：右栏活动 run 区在 `run-facts.tsx` 里也会显示同一 pending 计数，且这几张截图都没有 pending 输入，未作为已出现的画面问题计分）。二是评审列的「迁移成员健康事实」——面板里每位成员的 Agent status 与活动段的 Agent 列表在活动成员上是同一事实，随面板一起删除；评审复核认为这条理由不够准确：改前的面板里还有「评审 Agent — 待机中」这类未参与活动 run 的成员状态，改后确实少了一处入口，不恢复整块事实面板，但若产品需要在 Chat 里看到全部成员健康，应在成员行按需展示或走 profile 入口。
+
+连带影响与门禁更新：应用里 Info Hub 的 Chat 视角原本就是会话详情里内嵌的 `ChatFactsBlock`（`info-hub/chat-inspector.tsx` 只在 dev 场景使用），所以面板删除后会话详情成为唯一来源，多处门禁按新契约改写：`scripts/browser/j-info-hub-flow.mjs` 的 `chat_info_panel_matches_page` 改名为 `chat_facts_render_on_chat_page` 并改为断言会话详情自己的 `inspector-*` 事实（同时新增「页面不再出现 `info-hub-chat`」这一条）；`scripts/browser/k-acceptance-flow.mjs` 的 Instance 与消息数断言改指 `inspector-instance-id` / `inspector-message-count`，成员种类改由 `inspector-member-list` 的 `chat-member-select` 判定；`scripts/browser/as-p5a-chat-ui.mjs` 的「未设置职位」断言改为接受空职位不占行；`docs/feature-map/info-hub.md` 与 `docs/p3/info-hub-runs.md` 同步。`docs/frontend-design.md` 里「不擅自删掉三处 run 状态」的规则改为记明这次的明确决定与保留的两处。
+
+改后评分（同一 GPT 模型逐张读 14 张前后对照截图并只读核对组件）：五条机制依次 8.0 / 8.5 / 8.0 / 7.5 / 8.5，均分 **8.1**，达到 8/10 的关口。它确认本轮消除了最影响阅读的重复（同一 Chat 不再列两遍、消息正文不再被 persona 与身份标签和归属空占位打断、右栏不再整块复述 Chat 事实），同时点出五条残留项，均标为可选优化而非未达标：一是右栏诊断（历史空态、上下文快照空态、提交收据、租约空态、实现说明）仍默认平铺，层级不足；二是群聊 Owner 在成员徽标、Owner 段摘要与展开内容里重复，「标题」一行纯复述中栏页头；三是「消息数」「最后消息时间」被归进「成员」段（应属会话元数据），且 ISO 字符串在窄右栏里断行、与消息区的本地时间不易对照；四是 Chats 首页仍有「从左侧选择一条对话继续上下文，或从右上角新建 DM / 群组」这类教学文案，且方位描述与实际不符；五是 pending 输入在中栏与右栏活动区仍有条件性重复。以上均记录为本轮之后的可选优化，未在本轮实施。
+
+父代理实际复跑（均前台完成）：`pnpm typecheck`；`pnpm test` 1463 项全过（首次这套出现一次 flaky 失败，立即重跑通过，未定位到具体用例）；`pnpm check` 0 errors / 16 条既有 warning / 775 文件；`f-docs`；`as-p5a-chat-ui` 31 项；`as-p5b-task-pages` 21 项；`i-chat`；`i2-group-chat` 13 项；`i3-public-channel`；`i6-chat-info` 4 项；`i7-chat-scope` 17 项；`j-info-hub`；`k-acceptance` runner 12 项 0 失败；`o-turn-semantics`；`q-info-hub-runs`；`bf-p6b-pages` 13 组；`r-ui-layout`；`p8b-timeout`；`p7-client-states` 8/8。前后对照截图由 `.verify/review-dedupe/capture.ts` 生成，同数据同视口，存在 `.verify/review-dedupe/before/` 与 `after/`（各 7 张：DM、DM 右栏底部、DM 消息区底部、群聊、群聊右栏底部、手机 390、Chat 列表）。未重跑完整 CI，未改动数据库与原型服务。Human 体验确认仍待反馈。

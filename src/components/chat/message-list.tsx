@@ -61,7 +61,6 @@ export function MessageList({
 
   const agent = profile && profile.ok ? profile.data : null;
   const dmAgentName = agent?.name ?? "Agent";
-  const persona = [agent?.jobTitle, agent?.persona?.split("。")[0]].filter(Boolean).join(" · ");
 
   const renderItem = (message: Message, index: number) => {
     const human = message.senderKind === "human";
@@ -125,12 +124,15 @@ export function MessageList({
               <strong data-testid="message-sender" className="text-xs font-semibold">
                 {name}
               </strong>
-              <span
-                data-testid="message-kind"
-                className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
-              >
-                {systemNotice ? "System" : source ? "Source" : human ? "Human" : "Agent"}
-              </span>
+              {/* 自动化来源仍需要身份标识；Human/Agent 的名字已经说明身份，不再重复挂标签。 */}
+              {source && (
+                <span
+                  data-testid="message-kind"
+                  className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
+                >
+                  Source
+                </span>
+              )}
               {message.senderKind === "automation" &&
                 automationRuleLink?.(message.automationSource)}
               {historical && (
@@ -159,11 +161,6 @@ export function MessageList({
               {message.nativeSource.runId ? "查看工作结果" : "查看工作对话"}
             </a>
           )}
-          {!human && !grouped && !systemNotice && !source && persona && (
-            <p data-testid="message-persona" className="mb-2 text-[10px] text-muted-foreground">
-              {persona}
-            </p>
-          )}
           <p
             data-testid="message-body"
             className={
@@ -188,29 +185,30 @@ export function MessageList({
               <p className="mt-2 whitespace-pre-wrap break-words">{message.body}</p>
             </details>
           )}
-          {!human && !systemNotice && !source && (
+          {!human && !systemNotice && !source && (links.length > 0 || activityRecord) && (
             <p data-testid="message-run-links" className="mt-1 text-[10px] text-muted-foreground">
-              {links.length === 0 ? (
-                activityRecord ? (
-                  <span key={activityRecord.runId} className="mr-2 inline-flex items-center gap-1">
-                    <span className="font-mono">{activityRecord.runId}</span>
-                    <span>{RUN_STATUS_LABELS[activityRecord.status] ?? activityRecord.status}</span>
-                  </span>
-                ) : (
-                  "未关联 run · 不推断归属"
-                )
-              ) : (
-                links.map((run) => (
-                  <span
-                    id={`run-${run.runId}`}
-                    key={run.runId}
-                    className="mr-2 inline-flex items-center gap-1"
-                  >
-                    <span className="font-mono">{run.runId}</span>
-                    <span>{RUN_STATUS_LABELS[run.status] ?? run.status}</span>
-                  </span>
-                ))
-              )}
+              {links.length > 0
+                ? links.map((run) => (
+                    <span
+                      id={`run-${run.runId}`}
+                      key={run.runId}
+                      className="mr-2 inline-flex items-center gap-1"
+                    >
+                      <span className="font-mono">{run.runId}</span>
+                      <span>{RUN_STATUS_LABELS[run.status] ?? run.status}</span>
+                    </span>
+                  ))
+                : activityRecord && (
+                    <span
+                      key={activityRecord.runId}
+                      className="mr-2 inline-flex items-center gap-1"
+                    >
+                      <span className="font-mono">{activityRecord.runId}</span>
+                      <span>
+                        {RUN_STATUS_LABELS[activityRecord.status] ?? activityRecord.status}
+                      </span>
+                    </span>
+                  )}
             </p>
           )}
           {activityRecord && (
