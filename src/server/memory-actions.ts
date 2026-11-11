@@ -21,11 +21,14 @@ export type MemoryActionsDependencies = MemorySettingsDependencies & {
   timeoutMs?: number;
 };
 
-function authorize(deps: MemorySettingsDependencies, projectId: string, context: ProjectContext) {
+function authorizedProject(
+  deps: MemorySettingsDependencies,
+  projectId: string,
+  context: ProjectContext,
+) {
   assertMemoryConfigHuman(context);
   const row = deps.db.select().from(project).where(eq(project.id, projectId)).get();
-  if (!row || row.createdBy !== context.userId)
-    throw new MemoryConfigError("forbidden", "无权访问此 Project");
+  if (!row) throw new MemoryConfigError("forbidden", "无权访问此 Project");
   return row;
 }
 
@@ -87,7 +90,7 @@ export async function testMemoryConnection(
   projectId: string,
   context: ProjectContext,
 ): Promise<TestMemoryConnectionResult> {
-  authorize(deps, projectId, context);
+  authorizedProject(deps, projectId, context);
   return withRequests(deps, projectId, 5_000, async (request, bankPath) => {
     const version = await request("/version");
     if (!version.ok) return httpFailure(version.status);
@@ -107,9 +110,8 @@ export async function clearMemory(
   raw: unknown,
   context: ProjectContext,
 ): Promise<ClearMemoryResult> {
-  assertMemoryConfigHuman(context);
   const input = clearMemoryInput.parse(raw);
-  const row = authorize(deps, input.projectId, context);
+  const row = authorizedProject(deps, input.projectId, context);
   if (input.confirmName !== row.name)
     throw new MemoryConfigError("validation_failed", "确认名称必须与 Project 名称一致");
   return withRequests(deps, input.projectId, 10_000, async (request, bankPath) => {
@@ -125,7 +127,7 @@ export function retryMemoryInstall(
   projectId: string,
   context: ProjectContext,
 ): RetryMemoryInstallResult {
-  authorize(deps, projectId, context);
+  authorizedProject(deps, projectId, context);
   if (!deps.machineId)
     throw new MemoryConfigError(
       "validation_failed",
