@@ -65,7 +65,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 ### Verdict and merge, for every PR
 
-- [ ] code-ready head 上跑一次完整 swarm，一个 gates lane、该 PR 的 `Verify, live` 声明的全部 lane（RM2 为十四个）、perf lane 与至少两个 audit lane。
+- [ ] code-ready head 上跑一次完整 swarm，一个 gates lane、该 PR 的 `Verify, live` 声明的全部 lane（RM2 为十条）、perf lane 与至少两个 audit lane。
 - [ ] 每个 finding 按执行 playbook 的阻塞规则判。干净指没有任何一条阻塞。
 - [ ] root 判定干净、Bugbot 处理完、rebase 后 patch-id 不变、CI 全绿后，owner squash-merge。三段都 review-gated，operator 点过再合。
 
@@ -160,6 +160,9 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] Create `src/routes/api/attachments.ts`，POST，发送带附件的一条消息
 - [ ] Create `src/routes/api/attachments.$attachmentId.ts`，GET，读取字节
 - [ ] Edit `src/domain/chat.ts`，`sendMessage` 在同一个事务里落附件与引用 span
+- [ ] Edit `src/server/functions/domain-errors.ts`，把 `AttachmentError` 登记进领域错误映射
+- [ ] Edit `scripts/verify/lib/test-targets.mjs`，把新测试文件登记进验证清单（未登记 CI 会在开跑前就失败）
+- [ ] Edit 既有 `Message` 夹具与新契约的必填字段对齐（`src/dev/scenes/chat/index.tsx`、`tests/chat-live.test.ts`、`tests/message-window.test.ts`、`tests/run-activity-ui.test.ts`、`tests/run-attention-ui.test.ts`）；`src/routeTree.gen.ts` 由 `pnpm exec tsr generate` 重写，不手改
 - [ ] Edit `src/server/message-skills.ts`，`preparePiMessage` 把附件写进投递文本
 - [ ] Edit `src/components/chat/message-composer.tsx`，`+` 上传、Ctrl+V 粘贴、附件栏、即时呈现
 - [ ] Create `src/components/chat/attachment-bar.tsx`，方案 A 的附件条与 `×`、标签按钮
@@ -174,7 +177,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 - [ ] 先用 Lavish artifact 给消息侧图片与文件块的 2 到 3 个呈现方案，取得 operator 选定，产物存 `.lavish/rich-message-rm2.html`。输入侧的形状与行为已选定，产物 `.lavish/rich-message-input.html`，四条决定记在 Appendix E。
 - [ ] 发送是一次提交。输入框只持本地文件与临时附件 id，提交时用一个 multipart 请求把正文与字节一起送；服务端在同一个事务里写 `attachment`、`message` 与 `message_attachment`，任一步失败整体回滚，不产生孤儿文件。
-- [ ] 引用 token 是占位符，且与附件有明确关联。composer 在光标处插入 `[[附件:<临时 id>|<文件名>]]`，正文照旧是纯字符串；服务端按 token 扫出 span，写 `message_attachment(chatId, messageId, attachmentId, start, end)` 时把临时 id 换成真实 id。渲染与投递只认 span，不按文件名反查。
+- [ ] 引用 token 是占位符，且与附件有明确关联。composer 在光标处插入 `[[att:<临时 id>]]`（临时 id 由 composer 自配，例如 `[[att:1]]`），正文照旧是纯字符串，浏览器的 textarea 也是它；服务端按 token 扫出 span，写 `message_attachment(chatId, messageId, attachmentId, start, end)` 时把临时 id 换成真实附件 id。渲染与投递只认 span，不按文件名反查。正文里出现没随这次提交带上来的 token 直接拒掉。
 - [ ] 移除附件时一并移除正文里该附件的引用 token，光标位置不跳。
 - [ ] 附件表只存元数据与相对路径，字节落在实例数据目录下，文件名用短 id 生成，不沿用上传原名。
 - [ ] 消息写入口接受附件，附件必须属于同一 Project，跨 Project 直接拒。
@@ -182,6 +185,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] 单文件上限、单条消息附件数上限与总大小上限写成显式常量并落进契约。
 - [ ] 输入区的即时呈现扩写既有镜像浮层，只用品字形宽度不变的装饰：`text-shadow` 假粗体、真斜体、行内代码只改背景色与颜色、标题只改颜色、标记调暗。`font-weight` 与字号变化会推移后续文字，禁用。量法与结论见 Appendix A。
 - [ ] 附件栏按方案 A，输入框上方一行附件条。每项右上角 `×` 移除，右下角「标签」在光标处插入引用 token。点文件名或缩略图直接查看，未发送用本地 object URL，已发送走读取路由。
+- [ ] 附件栏与引用 token 的显示走既有镜像层：token 的原文留在文本流里撑宽度，芯片浮在它上面，镜像层与 textarea 的前进宽度逐字相同（`SkillMark` 的同一手法），所以加附件与加装饰都不移动后面的光标。
 - [ ] `preparePiMessage` 把每个附件按文件名、id、落盘绝对路径、类型与大小写进投递文本，agent 因此能打开文件。
 
 **You see.**
@@ -193,7 +197,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `tests/attachment.test.ts` 覆盖六个用例，只存元数据不存 base64、跨 Project 附件被拒、超限被拒、删除后读取返回明确错误、临时 id 被换成真实 id、引用 token 的 span 落在原字符范围。跑 `pnpm exec vp test run tests/attachment.test.ts`。
+- [ ] `tests/attachment.test.ts` 覆盖八个用例，只存元数据不存 base64、跨 Project 附件被拒、超限与空附件被拒、删除后读取返回明确错误、临时 id 被换成真实 id 且 span 落在最终正文的 token 上、没被正文引用的附件照样落库、引用不存在的 token 时整体拒且库里与磁盘上都不留痕、点名与技能在带 token 的正文里下标仍对得上。跑 `pnpm exec vp test run tests/attachment.test.ts`。
 - [ ] `tests/composer-markdown.test.ts` 覆盖三个用例，装饰只包 span 且字符下标不变、未成对的 `*` 不装饰、同一行里引用 token 与 `@` 点名与 `$` 技能混排时下标仍对得上。跑 `pnpm exec vp test run tests/composer-markdown.test.ts`。
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe. RM2 的十 lane 同时盖住消息侧与输入侧。
@@ -320,7 +324,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - 图片存储会持续增长。RM2 只做上限与鉴权，不做清理与配额，增长速率由 owner 在合并报告里给出实测数字。
 - HTML 沙箱是新的攻击面。RM3 的 audit lane 要专门读清洗规则与 CSP 改动，不用单元测试替代。
 - 段落标题与运行方式改变时，既有的 p7 与 p6 浏览器门禁可能换义。每个 PR 的 Regression lane 只覆盖本 PR 的载荷面，不做全量。
-- 即时呈现是亚像素近似。原型里最大偏差 0.36px，在别的字体族、别的 DPR 或浏览器缩放下可能变大。RM2 的 Lane 11 要在真实页面上按字体与 DPR 复测，移动端字体族不同则重新量，量不过就退回「标记调暗、正文保持原文」。
+- 即时呈现是亚像素近似。原型里最大偏差 0.36px，在别的字体族、别的 DPR 或浏览器缩放下可能变大。RM2 的 Lane 3 要在真实页面上按字体与 DPR 复测，移动端字体族不同则重新量，量不过就退回「标记调暗、正文保持原文」。
 
 ## Appendix D. Links and reading list
 
