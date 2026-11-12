@@ -100,19 +100,19 @@ ExecutionView = O({...LeaseKey, executionId:I(exe), authorizationGeneration:N,
 
 下游直接使用 `remoteToolInputSchemas.<工具名>`，不重新定义参数。每个 schema 都 strict；Machine 必填，Project 从 grant 闭包注入 HTTP body。返回为 `AppResult<T>`，未实现工具注册或调用。
 
-| 工具                         | 参数                                                                              | T                                                                      |
-| ---------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| sprout_lease_acquire         | machineId:I(mch), expectedGeneration:Z, requestId:I(req)                          | LeaseMutationView                                                      |
-| sprout_lease_release         | machineId:I(mch), expectedGeneration:N, requestId:I(req)                          | LeaseMutationView                                                      |
-| sprout_lease_handoff         | machineId:I(mch), expectedGeneration:N, targetInstanceId:I(ins), requestId:I(req) | LeaseMutationView                                                      |
-| sprout_lease_get             | machineId:I(mch), mutationId:I(lmu)?                                              | {lease:LeaseView,mutation:LeaseMutationView\|null}                     |
+| 工具                         | 参数                                                                                          | T                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| sprout_lease_acquire         | machineId:I(mch), expectedGeneration:Z, requestId:I(req)                                      | LeaseMutationView                                                      |
+| sprout_lease_release         | machineId:I(mch), expectedGeneration:N, requestId:I(req)                                      | LeaseMutationView                                                      |
+| sprout_lease_handoff         | machineId:I(mch), expectedGeneration:N, targetInstanceId:I(ins), requestId:I(req)             | LeaseMutationView                                                      |
+| sprout_lease_get             | machineId:I(mch), mutationId:I(lmu)?                                                          | {lease:LeaseView,mutation:LeaseMutationView\|null}                     |
 | sprout_remote_shell          | machineId:I(mch), authorizationGeneration:N, requestId:I(req), shell 输入去掉kind, blockMs?:N | ExecutionView                                                          |
-| sprout_remote_file_read      | 同公共执行属性，file_read 输入去掉kind, blockMs?:N                                 | ExecutionView                                                          |
-| sprout_remote_file_write     | 同公共执行属性，file_write 输入去掉kind, blockMs?:N                                | ExecutionView                                                          |
-| sprout_remote_process_list   | 同公共执行属性，process_list 输入去掉kind, blockMs?:N                              | ExecutionView                                                          |
-| sprout_remote_process_signal | 同公共执行属性，process_signal 输入去掉kind, blockMs?:N                            | ExecutionView                                                          |
-| sprout_remote_execution_get  | machineId:I(mch), executionId:I(exe)                                              | ExecutionView                                                          |
-| sprout_remote_execution_wait | machineId:I(mch), executionId:I(exe), blockMs?:N                                  | `{outcome,data:ExecutionView,requestId}`；默认等 10 分钟，最多 15 分钟     |
+| sprout_remote_file_read      | 同公共执行属性，file_read 输入去掉kind, blockMs?:N                                            | ExecutionView                                                          |
+| sprout_remote_file_write     | 同公共执行属性，file_write 输入去掉kind, blockMs?:N                                           | ExecutionView                                                          |
+| sprout_remote_process_list   | 同公共执行属性，process_list 输入去掉kind, blockMs?:N                                         | ExecutionView                                                          |
+| sprout_remote_process_signal | 同公共执行属性，process_signal 输入去掉kind, blockMs?:N                                       | ExecutionView                                                          |
+| sprout_remote_execution_get  | machineId:I(mch), executionId:I(exe)                                                          | ExecutionView                                                          |
+| sprout_remote_execution_wait | machineId:I(mch), executionId:I(exe), blockMs?:N                                              | `{outcome,data:ExecutionView,requestId}`；默认等 10 分钟，最多 15 分钟 |
 
 宿主 `sprout_status` 保持。没有默认或猜测的 Machine。Agent 无 reclaim 工具。
 

@@ -13,10 +13,7 @@ export const SLEEP_MIN_MS = 1;
  * 创建型工具的等待预算按「钳断」而不是校验处理：非有限值退回默认，负数取 0，超过上限截到上限。
  * `fallbackMs` 由调用方给出，创建型工具是 `EXECUTION_BLOCK_DEFAULT_MS`。0 是合法值。
  */
-export function clampExecutionBlockMs(
-  requestedMs: number | undefined,
-  fallbackMs: number,
-): number {
+export function clampExecutionBlockMs(requestedMs: number | undefined, fallbackMs: number): number {
   if (requestedMs === undefined || !Number.isFinite(requestedMs)) return fallbackMs;
   return Math.min(EXECUTION_WAIT_MAX_MS, Math.max(0, Math.trunc(requestedMs)));
 }

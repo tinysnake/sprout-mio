@@ -113,9 +113,9 @@ function buildRequest(name: ToolName, parameters: unknown, projectId: string): B
     if (typeof input.machineId === "string") machineId = input.machineId;
     call = { type: "execution_log_read", input: { ...input, projectId } };
   } else {
-    const parsed = remoteToolInputSchemas[
-      name as keyof typeof remoteToolInputSchemas
-    ].parse(parameters) as Record<string, unknown>;
+    const parsed = remoteToolInputSchemas[name as keyof typeof remoteToolInputSchemas].parse(
+      parameters,
+    ) as Record<string, unknown>;
     // blockMs 是工具面的等待预算，不是线协议字段；去掉它，operation 里不得出现。
     const { blockMs: requestedBlockMs, ...input } = parsed;
     if (typeof requestedBlockMs === "number") blockMs = requestedBlockMs;
