@@ -134,7 +134,9 @@ function fillSentinels(
   if (typeof node === "string") return splitSentinels(node, sentinels, attachmentsById);
   if (Array.isArray(node)) {
     return node.map((child, index) => (
-      <Fragment key={index}>{fillSentinels(child as ReactNode, sentinels, attachmentsById)}</Fragment>
+      <Fragment key={index}>
+        {fillSentinels(child as ReactNode, sentinels, attachmentsById)}
+      </Fragment>
     ));
   }
   if (isValidElement<{ children?: ReactNode }>(node) && node.props.children !== undefined) {

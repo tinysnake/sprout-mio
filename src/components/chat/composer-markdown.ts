@@ -178,16 +178,14 @@ function inlineDecoration(
   atomStarts: readonly number[],
 ): { end: number; segments: readonly ComposerSegment[] } | null {
   const delimiter = draft.startsWith("**", index) ? "**" : draft.startsWith("`", index) ? "`" : "*";
-  const tone: ComposerTone = delimiter === "**" ? "strong" : delimiter === "`" ? "code" : "emphasis";
+  const tone: ComposerTone =
+    delimiter === "**" ? "strong" : delimiter === "`" ? "code" : "emphasis";
   const bodyStart = index + delimiter.length;
   let search = bodyStart;
   while (search < draft.length) {
     const bodyEnd = draft.indexOf(delimiter, search);
     if (bodyEnd < 0) return null;
-    if (
-      delimiter === "*" &&
-      (draft[bodyEnd - 1] === "*" || draft[bodyEnd + 1] === "*")
-    ) {
+    if (delimiter === "*" && (draft[bodyEnd - 1] === "*" || draft[bodyEnd + 1] === "*")) {
       search = bodyEnd + 1;
       continue;
     }

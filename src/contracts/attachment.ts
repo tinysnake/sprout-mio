@@ -27,10 +27,7 @@ export type Attachment = z.infer<typeof attachmentSchema>;
  * 服务端落库时把本地 id 换成真实 attachment id，正文与 `message_attachment` 的 span 从此一一对应。
  */
 export const ATTACHMENT_LOCAL_ID_SOURCE = "[A-Za-z0-9_-]{1,64}";
-const ATTACHMENT_TOKEN_PATTERN = new RegExp(
-  `\\[\\[att:(${ATTACHMENT_LOCAL_ID_SOURCE})\\]\\]`,
-  "g",
-);
+const ATTACHMENT_TOKEN_PATTERN = new RegExp(`\\[\\[att:(${ATTACHMENT_LOCAL_ID_SOURCE})\\]\\]`, "g");
 
 export function attachmentToken(id: string): string {
   return `[[att:${id}]]`;

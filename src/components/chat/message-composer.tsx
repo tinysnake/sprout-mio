@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type {
-  ChangeEvent,
-  ClipboardEvent,
-  DragEvent,
-  FormEvent,
-  KeyboardEvent,
-  Ref,
-} from "react";
+import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, Ref } from "react";
 import { AlertTriangle, CornerDownLeft, MessageSquare, Paperclip, Plus } from "lucide-react";
 import type { FieldErrors } from "../../contracts/project";
 import type { AppError } from "../../contracts/result";
@@ -481,7 +474,11 @@ export function MessageComposer({
                 />
               ) : segment.localId !== undefined ? (
                 // 引用沿用 skill-mark 的手法：原文留在文本流里撑宽度（透明），芯片绝对定位压上去。
-                <span key={index} className="composer-ref" data-attachment-local-id={segment.localId}>
+                <span
+                  key={index}
+                  className="composer-ref"
+                  data-attachment-local-id={segment.localId}
+                >
                   <span className="composer-ref-raw">{segment.text}</span>
                   <span className="composer-ref-chip" aria-hidden="true">
                     <Icon as={Paperclip} size={12} className="shrink-0" />

@@ -44,20 +44,29 @@ afterAll(async () => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-const file = (localId: string, filename: string, mimeType: string, bytes: Uint8Array): NewAttachment => ({
+const file = (
+  localId: string,
+  filename: string,
+  mimeType: string,
+  bytes: Uint8Array,
+): NewAttachment => ({
   localId,
   filename,
   mimeType,
   bytes,
 });
 const send = (body: string, list: readonly NewAttachment[] = []) =>
-  chats.sendMessage(direct.chat.id, { senderKind: "human", senderId: owner.userId, body }, owner, {}, list);
+  chats.sendMessage(
+    direct.chat.id,
+    { senderKind: "human", senderId: owner.userId, body },
+    owner,
+    {},
+    list,
+  );
 const count = (table: string) =>
   (sqlite.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
 const storedBytes = () =>
-  existsSync(attachments.attachmentRoot())
-    ? readdirSync(attachments.attachmentRoot()).sort()
-    : [];
+  existsSync(attachments.attachmentRoot()) ? readdirSync(attachments.attachmentRoot()).sort() : [];
 
 const png = Buffer.from(`PNG-BYTES-${"x".repeat(48)}`);
 const note = Buffer.from("attachment note body");
@@ -111,9 +120,7 @@ it("引用本地占位符、技能与点名共存时下标都落在最终正文�
   const saved = send(body, [file("local-note", "说明.txt", "text/plain", new Uint8Array(note))]);
   expect(saved.body.slice(0, 6)).toBe("@Alpha");
   expect(saved.mentions).toHaveLength(1);
-  expect(saved.skills.map((span) => saved.body.slice(span.start, span.end))).toEqual([
-    "📖missing",
-  ]);
+  expect(saved.skills.map((span) => saved.body.slice(span.start, span.end))).toEqual(["📖missing"]);
   const span = saved.attachmentSpans[0]!;
   expect(saved.body.slice(span.start, span.end)).toBe(attachmentToken(span.attachmentId));
 });

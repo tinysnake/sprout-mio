@@ -82,9 +82,7 @@ function describe(item: Attachment): string {
 const ATTACHMENT_SENTINEL = "\u0001ATT\u0001";
 
 function sentinelOfLength(length: number): string {
-  return (
-    ATTACHMENT_SENTINEL + "\u0001".repeat(Math.max(0, length - ATTACHMENT_SENTINEL.length))
-  );
+  return ATTACHMENT_SENTINEL + "\u0001".repeat(Math.max(0, length - ATTACHMENT_SENTINEL.length));
 }
 
 /**

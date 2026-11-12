@@ -87,9 +87,7 @@ export function validateNewAttachments(list: readonly NewAttachment[]): void {
 }
 
 /** 真实 id 要在正文替换之前定下来，所以先生成再插行。 */
-export function allocateAttachmentIds(
-  list: readonly NewAttachment[],
-): ReadonlyMap<string, string> {
+export function allocateAttachmentIds(list: readonly NewAttachment[]): ReadonlyMap<string, string> {
   return new Map(list.map((item) => [item.localId, newId(ID_PREFIXES.attachment)] as const));
 }
 

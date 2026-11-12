@@ -838,126 +838,126 @@ export function sendMessage(
   // 附件字节在事务里写盘；事务回滚时按这份清单删掉，不留没有行指向的文件。
   const writtenFiles: string[] = [];
   const commitMessage = sqlite.transaction(() => {
-      const current = getChat(chatId, ctx);
-      if (input.senderKind !== "human" && input.senderKind !== "agent")
-        throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
-      // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
-      // 后面的成员与 instance 检查也证明不了「这次写入属于哪次运行」，所以在入口就拒绝。
-      if (input.senderKind === "agent" && !ctx.agent)
-        throw new ChatError("forbidden", "Agent 发言必须带本次 run 的身份");
-      assertActiveRun(ctx);
-      // run 里执行的域代码只能以本 run 的分身说话：否则人类消息开出的 run 就能冒充人类发言。
-      if (
-        ctx.agent &&
-        (input.senderKind !== "agent" || input.senderId !== ctx.agent.agentProfileId)
-      ) {
-        throw new ChatError("forbidden", "Agent run 只能以本 run 的分身身份发言");
-      }
-      // 发言资格与成员列表同源（`chat_effective_member`）：频道里没有 chat_member 行，
-      // 只读成员表会让频道永远发不出消息；只读成员表也无法收回 Project 移除后的参与权。
-      const sender = db
-        .select({ memberId: chatEffectiveMember.memberId })
-        .from(chatEffectiveMember)
+    const current = getChat(chatId, ctx);
+    if (input.senderKind !== "human" && input.senderKind !== "agent")
+      throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
+    // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
+    // 后面的成员与 instance 检查也证明不了「这次写入属于哪次运行」，所以在入口就拒绝。
+    if (input.senderKind === "agent" && !ctx.agent)
+      throw new ChatError("forbidden", "Agent 发言必须带本次 run 的身份");
+    assertActiveRun(ctx);
+    // run 里执行的域代码只能以本 run 的分身说话：否则人类消息开出的 run 就能冒充人类发言。
+    if (
+      ctx.agent &&
+      (input.senderKind !== "agent" || input.senderId !== ctx.agent.agentProfileId)
+    ) {
+      throw new ChatError("forbidden", "Agent run 只能以本 run 的分身身份发言");
+    }
+    // 发言资格与成员列表同源（`chat_effective_member`）：频道里没有 chat_member 行，
+    // 只读成员表会让频道永远发不出消息；只读成员表也无法收回 Project 移除后的参与权。
+    const sender = db
+      .select({ memberId: chatEffectiveMember.memberId })
+      .from(chatEffectiveMember)
+      .where(
+        and(
+          eq(chatEffectiveMember.chatId, chatId),
+          eq(chatEffectiveMember.projectId, current.projectId),
+          eq(chatEffectiveMember.memberKind, input.senderKind),
+          eq(chatEffectiveMember.memberId, input.senderId),
+        ),
+      )
+      .get();
+    if (!sender || (input.senderKind === "human" && input.senderId !== ctx.userId)) {
+      throw new ChatError("not_found", "对话成员不存在");
+    }
+    // 裁定 d19：视图的 DM 分支不查 project_member，Agent 移出 Project 后旧 DM 行仍在视图里。
+    // DM 里的 Agent 发送者必须仍是该 Project 成员，参与权不留在两处判定。
+    if (input.senderKind === "agent" && current.kind === "dm") {
+      const membership = db
+        .select({ agentProfileId: projectMember.agentProfileId })
+        .from(projectMember)
         .where(
           and(
-            eq(chatEffectiveMember.chatId, chatId),
-            eq(chatEffectiveMember.projectId, current.projectId),
-            eq(chatEffectiveMember.memberKind, input.senderKind),
-            eq(chatEffectiveMember.memberId, input.senderId),
+            eq(projectMember.projectId, current.projectId),
+            eq(projectMember.agentProfileId, input.senderId),
           ),
         )
         .get();
-      if (!sender || (input.senderKind === "human" && input.senderId !== ctx.userId)) {
-        throw new ChatError("not_found", "对话成员不存在");
-      }
-      // 裁定 d19：视图的 DM 分支不查 project_member，Agent 移出 Project 后旧 DM 行仍在视图里。
-      // DM 里的 Agent 发送者必须仍是该 Project 成员，参与权不留在两处判定。
-      if (input.senderKind === "agent" && current.kind === "dm") {
-        const membership = db
-          .select({ agentProfileId: projectMember.agentProfileId })
-          .from(projectMember)
-          .where(
-            and(
-              eq(projectMember.projectId, current.projectId),
-              eq(projectMember.agentProfileId, input.senderId),
-            ),
-          )
+      if (!membership) throw new ChatError("not_found", "对话成员不存在");
+    }
+    const instance =
+      input.senderKind === "agent"
+        ? db
+            .select()
+            .from(agentInstance)
+            .where(
+              and(
+                eq(agentInstance.chatId, chatId),
+                eq(agentInstance.projectId, current.projectId),
+                eq(agentInstance.agentProfileId, input.senderId),
+              ),
+            )
+            .get()
+        : undefined;
+    if (input.senderKind === "agent" && !instance)
+      throw new ChatError("not_found", "Instance 不存在");
+    return writeIdentity(
+      ctx,
+      {
+        event: "message.sent",
+        message: "消息已保存",
+        projectId: current.projectId,
+        chatId,
+        ...(instance ? { instanceId: instance.id } : {}),
+      },
+      () => {
+        // 引用先把本地 token 换成真实附件 id：正文与 span 从此对齐，渲染与投递都按 span 定位。
+        // 正文里出现没随这次提交带上来的 token 会被直接拒掉，不留一条指向不存在附件的正文。
+        validateNewAttachments(newAttachments);
+        const idByLocalId = allocateAttachmentIds(newAttachments);
+        const rewritten = rewriteAttachmentTokens(input.body, idByLocalId);
+        // 点名与技能都从最终正文解析：存下去的就是它，解析结果不会与落库正文错位。
+        const members = readChatEffectiveMembers(chatId, current.projectId);
+        const spans = resolveMessageMentions({
+          body: rewritten.body,
+          candidates: mentionCandidatesFor(members),
+        });
+        const row = db
+          .insert(message)
+          .values({ id: newId(ID_PREFIXES.message), chatId, ...input, body: rewritten.body })
+          .returning()
           .get();
-        if (!membership) throw new ChatError("not_found", "对话成员不存在");
-      }
-      const instance =
-        input.senderKind === "agent"
-          ? db
-              .select()
-              .from(agentInstance)
-              .where(
-                and(
-                  eq(agentInstance.chatId, chatId),
-                  eq(agentInstance.projectId, current.projectId),
-                  eq(agentInstance.agentProfileId, input.senderId),
-                ),
-              )
-              .get()
-          : undefined;
-      if (input.senderKind === "agent" && !instance)
-        throw new ChatError("not_found", "Instance 不存在");
-      return writeIdentity(
-        ctx,
-        {
-          event: "message.sent",
-          message: "消息已保存",
-          projectId: current.projectId,
+        // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
+        writeMessageMentions(chatId, row.id, spans);
+        const skills = resolveMessageSkills(rewritten.body);
+        writeMessageSkills(chatId, row.id, skills);
+        const records = insertAttachments({
           chatId,
-          ...(instance ? { instanceId: instance.id } : {}),
-        },
-        () => {
-          // 引用先把本地 token 换成真实附件 id：正文与 span 从此对齐，渲染与投递都按 span 定位。
-          // 正文里出现没随这次提交带上来的 token 会被直接拒掉，不留一条指向不存在附件的正文。
-          validateNewAttachments(newAttachments);
-          const idByLocalId = allocateAttachmentIds(newAttachments);
-          const rewritten = rewriteAttachmentTokens(input.body, idByLocalId);
-          // 点名与技能都从最终正文解析：存下去的就是它，解析结果不会与落库正文错位。
-          const members = readChatEffectiveMembers(chatId, current.projectId);
-          const spans = resolveMessageMentions({
-            body: rewritten.body,
-            candidates: mentionCandidatesFor(members),
-          });
-          const row = db
-            .insert(message)
-            .values({ id: newId(ID_PREFIXES.message), chatId, ...input, body: rewritten.body })
-            .returning()
-            .get();
-          // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
-          writeMessageMentions(chatId, row.id, spans);
-          const skills = resolveMessageSkills(rewritten.body);
-          writeMessageSkills(chatId, row.id, skills);
-          const records = insertAttachments({
-            chatId,
-            messageId: row.id,
-            createdBy: ctx.userId,
-            list: newAttachments,
-            idByLocalId,
-          });
-          writtenFiles.push(...writeAttachmentBytes({ list: newAttachments, idByLocalId }));
-          writeMessageAttachments(chatId, row.id, rewritten.spans);
-          const wakeQueued = enqueueMessageWake({
-            id: row.id,
-            chatId,
-            senderKind: input.senderKind,
-          });
-          db.update(chat)
-            .set({ updatedAt: new Date() })
-            .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
-            .run();
-          const saved = toMessage(row, spans, skills, ctx, rewritten.spans, records);
-          if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
-          else appendAgentMentionRunInput(saved, ctx);
-          captureFeishuMessage(row.id, row.createdAt);
-          return saved;
-        },
-        hooks,
-      );
-    });
+          messageId: row.id,
+          createdBy: ctx.userId,
+          list: newAttachments,
+          idByLocalId,
+        });
+        writtenFiles.push(...writeAttachmentBytes({ list: newAttachments, idByLocalId }));
+        writeMessageAttachments(chatId, row.id, rewritten.spans);
+        const wakeQueued = enqueueMessageWake({
+          id: row.id,
+          chatId,
+          senderKind: input.senderKind,
+        });
+        db.update(chat)
+          .set({ updatedAt: new Date() })
+          .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
+          .run();
+        const saved = toMessage(row, spans, skills, ctx, rewritten.spans, records);
+        if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
+        else appendAgentMentionRunInput(saved, ctx);
+        captureFeishuMessage(row.id, row.createdAt);
+        return saved;
+      },
+      hooks,
+    );
+  });
   let saved: Message;
   try {
     saved = commitMessage.immediate();

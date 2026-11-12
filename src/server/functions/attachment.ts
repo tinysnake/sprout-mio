@@ -52,7 +52,9 @@ export async function uploadMessageAttachmentsBoundary(
   let recordDiagnostic: DiagnosticRecorder | undefined;
   try {
     ({ recordDiagnostic } = await import("../diagnostics"));
-    if (!isTrustedOrigin(request.headers.get("origin"), config.APP_ORIGIN, config.APP_TRUSTED_ORIGINS))
+    if (
+      !isTrustedOrigin(request.headers.get("origin"), config.APP_ORIGIN, config.APP_TRUSTED_ORIGINS)
+    )
       return fail({ code: "forbidden", message: "来源未通过校验", requestId });
 
     // multipart 的体积先按声明判一次，别等把整个 body 读进内存才拒。
@@ -71,7 +73,10 @@ export async function uploadMessageAttachmentsBoundary(
     const form = await request.formData();
     const parsed = attachFields.safeParse({ chatId: form.get("chatId"), body: form.get("body") });
     if (!parsed.success)
-      return { ...fail(toAppError(parsed.error, requestId)), fieldErrors: fieldErrorsFrom(parsed.error) };
+      return {
+        ...fail(toAppError(parsed.error, requestId)),
+        fieldErrors: fieldErrorsFrom(parsed.error),
+      };
 
     const localIds = form.getAll("localIds").map((value) => String(value));
     const files = form.getAll("files").filter((value): value is File => value instanceof File);
