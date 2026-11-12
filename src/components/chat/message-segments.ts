@@ -111,9 +111,13 @@ const SENTINEL_CLOSE = "\uE001";
 
 export type MessageSentinel = { token: string; segment: MessageSegment };
 
-/** 每次新建正则：带 g 的正则会被 lastIndex 带状态，不能共享。 */
-export function sentinelPattern(): RegExp {
-  return new RegExp(SENTINEL_OPEN + "(\\d+)" + SENTINEL_CLOSE, "gu");
+/**
+ * 占位符带一次性 nonce。正文里恰好出现同形的字面串时（例如正文自己写了两个私有区字符），
+ * 没有 nonce 的写法会让回填先命中字面那处，把原文吞掉并插错芯片；带 nonce 后撞车需要同时猜中
+ * nonce 与下标，正文自己不可能知道 nonce，所以字面串原样保留、真占位符照常回填。
+ */
+function sentinelNonce(): string {
+  return Math.random().toString(36).slice(2, 10);
 }
 
 export function maskMessageSegments(
@@ -122,13 +126,14 @@ export function maskMessageSegments(
   skills: readonly MessageSkillSpan[],
 ): { text: string; sentinels: readonly MessageSentinel[] } {
   const ranges = rangesOf(body, mentions, skills);
+  const nonce = sentinelNonce();
   const sentinels: MessageSentinel[] = [];
   let text = "";
   let cursor = 0;
   for (const range of ranges) {
     if (range.start < cursor) continue;
     text += body.slice(cursor, range.start);
-    const token = SENTINEL_OPEN + sentinels.length + SENTINEL_CLOSE;
+    const token = SENTINEL_OPEN + nonce + ":" + sentinels.length + SENTINEL_CLOSE;
     sentinels.push({ token, segment: segmentOf(body, ranges, range) });
     text += token;
     cursor = range.end;

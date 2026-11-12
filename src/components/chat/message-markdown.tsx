@@ -11,20 +11,21 @@ import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { MentionSpan } from "../../contracts/chat";
 import type { MessageSkillSpan } from "../../contracts/skill";
-import {
-  maskMessageSegments,
-  sentinelPattern,
-  type MessageSegment,
-  type MessageSentinel,
-} from "./message-segments";
+import { maskMessageSegments, type MessageSegment, type MessageSentinel } from "./message-segments";
 import { SkillMark } from "./skill-mark";
 
 /**
  * 消息正文的 markdown 渲染。
  *
- * 只渲染 markdown 子集：加粗、斜体、行内代码、围栏代码、无序与有序列表、标题、引用块与链接
- * （裸 URL 由 remark-gfm 的 autolink 认出来）。原文里的 HTML 标签不经 rehype-raw，只会当字面文本出现。
- * 点名与技能 pill 的冻结区间先占位成哨兵，解析后再回填成既有组件，字符范围一字不改。
+ * 允许的构造：加粗、斜体、行内代码、围栏代码、无序与有序列表、标题、引用块、链接（含 remark-gfm
+ * 认出的裸 URL），以及 gfm 顺带带来的表格与删除线。原文里的 HTML 标签不经 rehype-raw，只当字面文本。
+ *
+ * 两处刻意的降级：
+ * - 图片不渲染。RM2 才做附件（元数据 + 按 Project 鉴权的读取路由）；RM1 渲染 img 等于让任何一条消息
+ *   都能让读者的浏览器去请求任意外部地址，而且 react-markdown 会为它带出一条 preload link。
+ * - 站外链接补 rel 并另开标签页，不把应用页导航走。
+ *
+ * 点名与技能 pill 的冻结区间先占位成带 nonce 的哨兵，解析后再回填成既有组件，字符范围一字不改。
  */
 export function MessageMarkdown({
   body,
@@ -47,7 +48,7 @@ export function MessageMarkdown({
   );
 }
 
-/** 可能装正文的标签：容器标签统一走同一个回填函数，叶子里的哨兵就地换成点名或技能 pill。 */
+/** 可能装正文的标签：统一走同一个回填函数，叶子里的哨兵就地换成点名或技能 pill。 */
 const TEXT_TAGS = [
   "p",
   "li",
@@ -61,7 +62,6 @@ const TEXT_TAGS = [
   "strong",
   "em",
   "code",
-  "a",
   "td",
   "th",
 ] as const;
@@ -76,7 +76,23 @@ function componentsWithSentinels(sentinels: readonly MessageSentinel[]): Compone
     components[tag] = ({ children, node: _node, ...rest }) =>
       createElement(tag as ElementType, rest, fill(children));
   }
+  components.a = ({ children, node: _node, href, ...rest }) =>
+    createElement("a", { ...rest, href, ...externalLinkAttributes(href) }, fill(children));
+  components.img = ({ node: _node, src, alt }) => createElement("span", null, imageText(src, alt));
   return components as unknown as Components;
+}
+
+/** 站外链接不继承应用页的 referrer，也不把用户从 Chat 里导航走。 */
+function externalLinkAttributes(href: unknown): { rel?: string; target?: string } {
+  return typeof href === "string" && /^https?:/iu.test(href)
+    ? { rel: "noreferrer", target: "_blank" }
+    : {};
+}
+
+/** RM1 的图片降级：只留可读文字，绝不发出请求；字节与鉴权在 RM2。 */
+function imageText(src: unknown, alt: unknown): string {
+  if (typeof alt === "string" && alt.length > 0) return alt;
+  return typeof src === "string" ? src : "";
 }
 
 function fillSentinels(node: ReactNode, sentinels: readonly MessageSentinel[]): ReactNode {
@@ -92,24 +108,34 @@ function fillSentinels(node: ReactNode, sentinels: readonly MessageSentinel[]): 
   return node;
 }
 
-/** 哨兵只可能来自本组件的占位；下标对不上时按原文保留，绝不吞字。 */
+/**
+ * 按每个哨兵的完整 token 切分，不做共享正则匹配：token 带一次性 nonce，正文自身不可能与它同形。
+ * 某个 token 在该文本里没出现时原样留下，绝不吞字。
+ */
 function splitSentinels(text: string, sentinels: readonly MessageSentinel[]): ReactNode {
-  const pattern = sentinelPattern();
-  const parts: ReactNode[] = [];
-  let cursor = 0;
-  let match: RegExpExecArray | null = pattern.exec(text);
-  while (match !== null) {
-    const sentinel = sentinels[Number(match[1])];
-    if (sentinel) {
-      if (match.index > cursor) parts.push(text.slice(cursor, match.index));
-      parts.push(<SentinelMark key={parts.length} segment={sentinel.segment} />);
-      cursor = match.index + match[0].length;
+  let parts: ReactNode[] = [text];
+  let key = 0;
+  for (const sentinel of sentinels) {
+    const next: ReactNode[] = [];
+    for (const part of parts) {
+      if (typeof part !== "string") {
+        next.push(part);
+        continue;
+      }
+      const pieces = part.split(sentinel.token);
+      if (pieces.length === 1) {
+        next.push(part);
+        continue;
+      }
+      pieces.forEach((piece, index) => {
+        if (index > 0)
+          next.push(<SentinelMark key={"sentinel-" + key++} segment={sentinel.segment} />);
+        if (piece.length > 0) next.push(piece);
+      });
     }
-    match = pattern.exec(text);
+    parts = next;
   }
-  if (parts.length === 0) return text;
-  if (cursor < text.length) parts.push(text.slice(cursor));
-  return parts;
+  return parts.length === 1 && typeof parts[0] === "string" ? text : parts;
 }
 
 /** 回填成与切片路径完全相同的标记：测试钩子、类名与文本都不变。 */
