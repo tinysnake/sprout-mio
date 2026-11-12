@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { ChatRunActivity } from "../../contracts/agent-run";
 import type { AutomationSource } from "../../contracts/automation";
-import type { MentionSpan, Message } from "../../contracts/chat";
+import type { Attachment } from "../../contracts/attachment";
+import type { MentionSpan, Message, MessageAttachmentSpan } from "../../contracts/chat";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
 import { ChatAvatar } from "./chat-avatar";
 import { clockLabel } from "./format";
@@ -176,6 +177,8 @@ export function MessageList({
               }
               mentions={message.mentions}
               skills={message.skills}
+              attachments={message.attachments}
+              attachmentSpans={message.attachmentSpans}
             />
           </div>
           {message.senderKind === "assistant_event" && message.nativeSource.summary && (
@@ -250,10 +253,22 @@ function MessageBody({
   body,
   mentions,
   skills,
+  attachments,
+  attachmentSpans,
 }: {
   body: string;
   mentions: readonly MentionSpan[];
   skills: readonly MessageSkillSpan[];
+  attachments: readonly Attachment[];
+  attachmentSpans: readonly MessageAttachmentSpan[];
 }) {
-  return <MessageMarkdown body={body} mentions={mentions} skills={skills} />;
+  return (
+    <MessageMarkdown
+      body={body}
+      mentions={mentions}
+      skills={skills}
+      attachments={attachments}
+      attachmentSpans={attachmentSpans}
+    />
+  );
 }

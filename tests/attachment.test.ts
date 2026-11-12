@@ -30,7 +30,13 @@ const project = createProject({ name: "Attachments" }, owner);
 const profile = createAgentProfile({ name: "Alpha", persona: "", harness: "pi" }, owner);
 addProjectMember(project.id, profile.id, owner);
 const direct = chats.createDirectChat(project.id, profile.id, owner);
-const stranger = createProject({ name: "Stranger" }, owner);
+const strangerOwner = { userId: "attachment-stranger", requestId: "req_stranger" };
+sqlite
+  .prepare(
+    "INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES (?,?,?,0,1,1)",
+  )
+  .run(strangerOwner.userId, "Stranger", "stranger@example.com");
+const strangerContext = { userId: strangerOwner.userId, requestId: strangerOwner.requestId };
 
 afterAll(async () => {
   await shutdownRuntime("attachment-test");
@@ -129,7 +135,7 @@ it("正文引用了这次没提交的附件时整体拒绝，库里与磁盘上�
 });
 
 it("超限与空的附件在写盘之前就被拒", () => {
-  const cases: readonly (readonly NewAttachment[])[] = [
+  const cases: (readonly NewAttachment[])[] = [
     [file("a", "big.bin", "application/octet-stream", new Uint8Array(ATTACHMENT_MAX_BYTES + 1))],
     Array.from({ length: ATTACHMENT_MAX_PER_MESSAGE + 1 }, (_, index) =>
       file(`f${index}`, `f${index}.txt`, "text/plain", new Uint8Array(4)),
@@ -155,7 +161,7 @@ it("别的 Project 的上下文读不到附件", () => {
     file("local-png", "设计稿.png", "image/png", new Uint8Array(png)),
   ]);
   const id = saved.attachments[0]!.id;
-  expect(() => attachments.readAttachmentForRequest(id, { userId: stranger.createdBy, requestId: "req_x" })).toThrow();
+  expect(() => attachments.readAttachmentForRequest(id, strangerContext)).toThrow();
   expect(() => attachments.readAttachmentForRequest(id, owner)).not.toThrow();
 });
 

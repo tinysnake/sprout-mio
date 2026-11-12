@@ -1,4 +1,4 @@
-import type { MentionSpan } from "../../contracts/chat";
+import type { MentionSpan, MessageAttachmentSpan } from "../../contracts/chat";
 import type { MessageSkillSpan } from "../../contracts/skill";
 
 /**
@@ -11,6 +11,7 @@ export type MessageSegment = {
   text: string;
   span?: MentionSpan;
   skill?: MessageSkillSpan;
+  attachment?: MessageAttachmentSpan;
   skillEdge?: { start: SkillEdge; end: SkillEdge };
 };
 
@@ -19,6 +20,7 @@ type Range = {
   end: number;
   span?: MentionSpan;
   skill?: MessageSkillSpan;
+  attachment?: MessageAttachmentSpan;
 };
 
 /** 技能排在点名前面：同起点时技能先占位，切片顺序与冻结 span 一致。 */
@@ -26,10 +28,16 @@ function rangesOf(
   body: string,
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
+  attachments: readonly MessageAttachmentSpan[] = [],
 ): Range[] {
   return [
     ...skills.map((skill) => ({ start: skill.start, end: skill.end, skill })),
     ...mentions.map((span) => ({ start: span.start, end: span.end, span })),
+    ...attachments.map((attachment) => ({
+      start: attachment.start,
+      end: attachment.end,
+      attachment,
+    })),
   ]
     .filter(
       (range) =>
@@ -85,8 +93,9 @@ export function splitMessageSegments(
   body: string,
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
+  attachments: readonly MessageAttachmentSpan[] = [],
 ): MessageSegment[] {
-  const ranges = rangesOf(body, mentions, skills);
+  const ranges = rangesOf(body, mentions, skills, attachments);
   const result: MessageSegment[] = [];
   let cursor = 0;
   for (const range of ranges) {
@@ -124,8 +133,9 @@ export function maskMessageSegments(
   body: string,
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
+  attachments: readonly MessageAttachmentSpan[] = [],
 ): { text: string; sentinels: readonly MessageSentinel[] } {
-  const ranges = rangesOf(body, mentions, skills);
+  const ranges = rangesOf(body, mentions, skills, attachments);
   const nonce = sentinelNonce();
   const sentinels: MessageSentinel[] = [];
   let text = "";

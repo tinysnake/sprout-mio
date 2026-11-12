@@ -1,0 +1,123 @@
+/*
+ * 消息里的附件样式，配合「方案 A 紧凑内联」：
+ * 引用芯片与正文同流，图片与文件在正文之后成组，宽度收在正文列里，颜色只读语义 token。
+ */
+.message-attachment-ref {
+  --ref-bg: color-mix(in oklab, var(--primary) 12%, transparent);
+  --ref-ring: color-mix(in oklab, var(--primary) 26%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  border-radius: var(--control-radius);
+  background: var(--ref-bg);
+  box-shadow: inset 0 0 0 1px var(--ref-ring);
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.message-attachment-ref:hover {
+  background: color-mix(in oklab, var(--primary) 20%, transparent);
+}
+
+.message-attachment-ref__name {
+  font-weight: 500;
+}
+
+.message-attachment-figures {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.message-attachment-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.message-attachment-figure img {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  width: auto;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
+.message-attachment-figure figcaption {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+
+.message-attachment-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.message-attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: inherit;
+  text-decoration: none;
+}
+
+.message-attachment-file:hover {
+  background: var(--hover);
+}
+
+.message-attachment-file__icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: var(--control-radius);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.message-attachment-file__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.message-attachment-file__name {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.message-attachment-file__size {
+  font-size: 9.5px;
+  color: var(--muted-foreground);
+}
+
+.message-attachment-broken {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--destructive) 8%, transparent);
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.message-attachment-broken strong {
+  color: var(--destructive);
+  font-weight: 500;
+}
