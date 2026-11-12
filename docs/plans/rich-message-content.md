@@ -6,6 +6,7 @@
 - 依赖关系：RM1 最先且独立，RM2 与 RM3 都接在 RM1 的渲染入口上，两者可并行。
 - 三段都改交互，合并前都要 operator 看截图与视频。
 - 执行走 `playbooks/autopilot-full.md`，每个 PR 一个 owner 负责到合并。
+- 形状已由 operator 选定为方案 A 紧凑内联，人类与 agent 统一渲染，选定记录在 `.lavish/rich-message-rm1.html` 的 v2 与收据 `rm1-shape` / `rm1-human-plain`。
 
 ## How to read this
 
@@ -55,6 +56,8 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] push 前跑一次 `pnpm typecheck` 与 `pnpm exec vp lint`。
 - [ ] 每次提交前按 poteto-mode 的 diff 清理做一遍，review 前跑 `/no-comments`。
 - [ ] 每条 Bugbot 与安全审查评论按 `../references/bugbot-triage.md` 判。
+- [ ] 跨分身沟通必须用 `@显示名` 直接点名，不在正文里用代称，否则对方收不到唤醒。
+- [ ] 每个施工或验收窗口结束前处理租约，释放或挂靠到本群，空闲期不留租约在自己手里。
 - [ ] code-ready 报告与 babysit 前 rebase 到当前 trunk，fix 轮沿用同一个 merge base。
 
 ### Verdict and merge, for every PR
@@ -87,7 +90,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 **Build.**
 
-- [ ] 先用 Lavish artifact 给 2 到 3 个可比较的呈现方案，取得 operator 选定再动手，产物存 `.lavish/rich-message-rm1.html`。
+- [x] 先用 Lavish artifact 给 2 到 3 个可比较的呈现方案，取得 operator 选定再动手，产物存 `.lavish/rich-message-rm1.html`（已选定方案 A 紧凑内联，人类与 agent 统一渲染）。
 - [ ] `message-markdown.tsx` 导出 `MessageMarkdown({ body, mentions, skills })`，允许子集为加粗、斜体、行内代码、围栏代码、无序列表、有序列表、标题与引用块。
 - [ ] 先把 mention 与 skill 的字符区间换成哨兵占位符，解析 markdown，再把哨兵换回既有组件，span 的字符范围一字不改。
 - [ ] `message-list.tsx` 的 `MessageBody` 改为调用新组件，人类消息与 agent 消息走同一条渲染。
@@ -110,7 +113,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] Lane 4. 一行里同时有点名与加粗的消息。Save `rm1-lane4-mention.png`. Pass when mention 高亮的字符范围与 `message_mention` 行一致，且周边加粗照常渲染。
 - [ ] Lane 5. 列表项里带技能 pill 的消息。Save `rm1-lane5-skill.png`. Pass when pill 落在 `li` 内且 pill 文本与冻结 span 一致。
 - [ ] Lane 6. 含标题与引用块的消息。Save `rm1-lane6-heading-quote.png`. Pass when 出现对应标题层级与 `blockquote`，且可见文字里没有字面 `#` 与 `>`。
-- [ ] Lane 7. 人类消息里只有孤立 `*`、`_` 与 `1. 不是列表` 的文本。Save `rm1-lane7-human-plain.png`. Pass when 显示与输入逐字相同。
+- [ ] Lane 7. 人类与 agent 走同一套 markdown 规则，逐条核五件事，单侧不成对的 `*` 与 `_` 保持字面且字符与输入一致，成对强调渲染为斜体且不作为缺陷，行首 `1. ` 解析为有序列表项且不作为缺陷，词内下划线不得变斜体（例如 `payload_hash` 与 `task_id`），点名与技能 pill 的字符范围不变。Save `rm1-lane7-human-plain.png`. Pass when 五条各自的判定都为真，任何一条不成立即记为阻塞。
 - [ ] Lane 8. 5888 字的长消息混合多种构造。Save `rm1-lane8-long.png`. Pass when 无横向溢出且消息列表的 DOM 节点数不超过 trunk 的 8 倍。
 - [ ] Lane 9. 浅色与深色各截一张，正文与代码块文字对比度按 `docs/frontend-design.md` 的语义色要求核对。Save `rm1-lane9-themes.png`. Pass when 代码块背景与文字来自语义 token 且实测对比度不低于 4.5 比 1。
 - [ ] Lane 10. 人类在输入框粘贴同一段 markdown 并发送。Save `rm1-lane10-composer.png`. Pass when 发送后该消息按同一规则渲染，输入框内仍是原文。
@@ -278,7 +281,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 ## Appendix B. Alternatives rejected
 
 - 结构化正文契约。把正文改成块数组，DB、写入口、唤醒快照、飞书出站与两个发送方一起改。当前语料没有需要它的构造，代价却是全链路。
-- 只渲染 agent 消息。人类的纯文本里有 `*` 与 `1.` 这类内容，分叉两套渲染规则会让同一条规则在两种发送者下不同，与其后续再统一，不如一开始就统一。
+- 只渲染 agent 消息。人类的纯文本里有 `*` 与 `1.` 这类内容，分叉两套渲染规则会让同一条规则在两种发送者下不同。operator 于 2026-11-12 在 artifact v2 上选定统一渲染，本计划按统一渲染执行。
 - 不做清洗直接渲染 HTML。消息正文的来源包括模型与 webhook 外部输入，产品里现在没有一处 `innerHTML`，不能为了渲染破这个面。
 - 现在就上 tiptap 富文本编辑器。输入侧改动会牵动草稿、@ 候选与 `$` 技能候选，属于另一条线，本程序不包含。
 - 服务端渲染 markdown 后落库。渲染结果会随主题与组件变动过期，且会把展示细节写进不可变正文。
