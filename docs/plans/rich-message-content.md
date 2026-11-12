@@ -171,7 +171,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] Edit `src/components/chat/message-markdown.tsx`，渲染图片、文件芯片与附件引用
 - [ ] Create `tests/attachment.test.ts`
 - [ ] Create `tests/composer-markdown.test.ts`
-- [ ] Edit `scripts/browser/ui-scenarios.mjs`
+- [ ] Create `scripts/verify/rm2-attachments.sh`，真实 dev server 与真 Chromium 跑下面十条 lane，并登记进 `CI_GROUPS` 与 `SUITE_PLAN`（只存在对话里的门禁不算数）
 
 **Build.**
 
@@ -181,7 +181,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] 移除附件时一并移除正文里该附件的引用 token，光标位置不跳。
 - [ ] 附件表只存元数据与相对路径，字节落在实例数据目录下，文件名用短 id 生成，不沿用上传原名。
 - [ ] 消息写入口接受附件，附件必须属于同一 Project，跨 Project 直接拒。
-- [ ] 读取路由按 session 与 Project 鉴权后再回字节，响应带 `content-type` 与 `cache-control`。
+- [ ] 读取路由按 session 与 Project 鉴权后再回字节，响应带 `content-type` 与 `cache-control`。浏览器的 `<img>` 不能直连这条路由：dev server 把 `Sec-Fetch-Dest: image` 的请求交给静态资源中间件，只会回 `Cannot GET`；所以消息里的图片改为 `fetch` 取字节再转 object URL，`fetch` 的 `Sec-Fetch-Dest` 是 `empty`，dev 与生产一致。
 - [ ] 单文件上限、单条消息附件数上限与总大小上限写成显式常量并落进契约。
 - [ ] 输入区的即时呈现扩写既有镜像浮层，只用品字形宽度不变的装饰：`text-shadow` 假粗体、真斜体、行内代码只改背景色与颜色、标题只改颜色、标记调暗。`font-weight` 与字号变化会推移后续文字，禁用。量法与结论见 Appendix A。
 - [ ] 附件栏按方案 A，输入框上方一行附件条。每项右上角 `×` 移除，右下角「标签」在光标处插入引用 token。点文件名或缩略图直接查看，未发送用本地 object URL，已发送走读取路由。
@@ -200,7 +200,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] `tests/attachment.test.ts` 覆盖八个用例，只存元数据不存 base64、跨 Project 附件被拒、超限与空附件被拒、删除后读取返回明确错误、临时 id 被换成真实 id 且 span 落在最终正文的 token 上、没被正文引用的附件照样落库、引用不存在的 token 时整体拒且库里与磁盘上都不留痕、点名与技能在带 token 的正文里下标仍对得上。跑 `pnpm exec vp test run tests/attachment.test.ts`。
 - [ ] `tests/composer-markdown.test.ts` 覆盖三个用例，装饰只包 span 且字符下标不变、未成对的 `*` 不装饰、同一行里引用 token 与 `@` 点名与 `$` 技能混排时下标仍对得上。跑 `pnpm exec vp test run tests/composer-markdown.test.ts`。
 
-**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe. RM2 的十 lane 同时盖住消息侧与输入侧。
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe. RM2 的十 lane 同时盖住消息侧与输入侧，运行方式是 `scripts/verify/rm2-attachments.sh`（一个脚本跑完十条 lane 加一条控制台检查，证据落在 `.verify/rm2-attachments/evidence/`，文件名与下面每条一致）。
 
 - [ ] Lane 1. Regression lane against trunk. 一条纯文本消息在 trunk 与 head 各看一次，输入框也各看一次。Save `rm2-lane1-trunk-vs-head.png`. Pass when 没有附件的消息渲染与 trunk 逐字一致，输入框的占位与发送后清空行为也与 trunk 一致。
 - [ ] Lane 2. 入附件的三条路径。Ctrl+V 粘贴、`+` 按钮选择、拖放各走一次。Save `rm2-lane2-intake.png`. Pass when 三条路径都能把文件加进附件栏，且附件栏出现在输入框上方。
@@ -208,7 +208,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] Lane 4. `×` 移除与「标签」插入。Save `rm2-lane4-remove-tag.png`. Pass when 移除后附件栏少一项且正文里该附件的引用 token 一并消失，点「标签」后光标处出现该附件的 token，周围文字位置不变。
 - [ ] Lane 5. 人类粘贴一张 200 KB 的 PNG 并发送。Save `rm2-lane5-paste-390.png`. Pass when 消息内出现图片元素且图片自然宽高比正确，把页面缩到 390 宽度后图片不超出容器且页面无横向溢出。
 - [ ] Lane 6. 夹具里一条带图片附件的 agent 消息。Save `rm2-lane6-agent-image.png`. Pass when 图片渲染并带可读的替代文本。
-- [ ] Lane 7. 5 MB 的图片按同一路径发送。Save `rm2-lane7-large.png`. Pass when 列表载荷增量不超过每条约 1 KB 且图片滚动到附近才加载。
+- [ ] Lane 7. 一张约 1.5 MB 的随机像素 PNG 按同一路径发送。Save `rm2-lane7-large.png`. Pass when 列表载荷不随图片字节增长（单次服务端载荷峰值远小于图片字节），图片字节只经单独的一次读取请求取回，且图片滚动到附近才取。
 - [ ] Lane 8. 一个 PDF 附件。Save `rm2-lane8-pdf.png`. Pass when 渲染为文件名与大小的芯片，不出现坏图图标。
 - [ ] Lane 9. 附件缺失的两种情形。不存在的附件 id，以及磁盘上文件被删掉的附件。Save `rm2-lane9-missing.png`. Pass when 两处都显示明确的占位且第一种请求返回 404 而不是 500，页面没有未捕获错误。
 - [ ] Lane 10. 越权、翻页与原子性。用第二个账号请求他 Project 的附件 id，刷新页面并翻到更早的一页，再用一个会被拒的附件触发一次发送失败。Save `rm2-lane10-cross-project.png`. Pass when 越权请求返回 403 或 404 且响应体里没有字节，旧页里的附件同样解析成功，失败后磁盘与库里都没有新增附件记录且输入框内容不丢。
