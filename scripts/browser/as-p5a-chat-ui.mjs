@@ -39,6 +39,22 @@ function chatRowCount() {
   }
 }
 
+/**
+ * 客户端导航期间右栏会短暂保留上一条对话（revalidate 还没回来时 React 仍渲染旧数据），
+ * 这时 `page.textContent('[data-testid="chat-wake-policy"]')` 读到的是**上一条对话**的值：
+ * CI 上的 `group_created_with_human_owner_and_governance` 就是这样拿到「新群聊的标题 +
+ * 公共频道的唤醒策略」。右栏现在用 `data-chat-id` 声明自己属于哪条对话，等它落到目标 Chat
+ * 再读，三个值就一定同源。传 chat 路径或裸 chat id 都可以。
+ */
+async function waitForRailChat(page, chatPathOrId) {
+  const chatId = String(chatPathOrId).split("/").pop();
+  if (!chatId) throw new Error(`右栏期望的 Chat id 缺失：${JSON.stringify(chatPathOrId)}`);
+  await page.waitForSelector(`[data-testid="chat-details"][data-chat-id="${chatId}"]`, {
+    timeout: 20000,
+  });
+  return chatId;
+}
+
 async function register(page, tag) {
   const stamp = Date.now();
   const email = `${tag}-${stamp}@example.test`;
@@ -142,8 +158,12 @@ try {
   await page.waitForSelector('[data-testid="chat-item"][data-chat-kind="public_channel"]', {
     timeout: 20000,
   });
+  const channelChatId = await page.getAttribute(
+    '[data-testid="chat-item"][data-chat-kind="public_channel"]',
+    "data-chat-id",
+  );
   await page.click('[data-testid="chat-item"][data-chat-kind="public_channel"]');
-  await page.waitForSelector('[data-testid="chat-details"]', { timeout: 20000 });
+  await waitForRailChat(page, channelChatId);
   const boxes = await page.evaluate(() => {
     const box = (id) => {
       const element = document.querySelector(`[data-testid="${id}"]`);
@@ -352,11 +372,12 @@ try {
     timeout: 30000,
   });
   groupPath = new URL(page.url()).pathname;
-  await page.waitForSelector('[data-testid="chat-details"]', { timeout: 20000 });
   await page.waitForSelector('[data-testid="new-chat-dialog"]', {
     state: "detached",
     timeout: 20000,
   });
+  // 先确认右栏已经是这条新群聊，再读它的 Owner / 唤醒策略 / 标题。
+  const groupChatId = await waitForRailChat(page, groupPath);
   const groupOwner = (await page.textContent('[data-testid="chat-owner-name"]'))?.trim();
   const groupPolicy = (await page.textContent('[data-testid="chat-wake-policy"]'))?.trim();
   const groupRailTitle = (
@@ -371,7 +392,7 @@ try {
       Boolean(groupPolicy?.includes("owner_led")) &&
       groupGovernance >= 2 &&
       groupRailTitle === groupTitle,
-    `url ${groupPath}，owner ${JSON.stringify(groupOwner)}，policy ${JSON.stringify(groupPolicy)}，按钮 ${groupGovernance}，右栏标题 ${JSON.stringify(groupRailTitle)}`,
+    `url ${groupPath}，右栏 ${groupChatId}，owner ${JSON.stringify(groupOwner)}，policy ${JSON.stringify(groupPolicy)}，按钮 ${groupGovernance}，右栏标题 ${JSON.stringify(groupRailTitle)}`,
   );
 
   await page.fill('[data-testid="message-input"]', message);
@@ -855,11 +876,11 @@ try {
     timeout: 30000,
   });
   dmPath = new URL(page.url()).pathname;
-  await page.waitForSelector('[data-testid="chat-details"]', { timeout: 20000 });
   await page.waitForSelector('[data-testid="new-chat-dialog"]', {
     state: "detached",
     timeout: 20000,
   });
+  await waitForRailChat(page, dmPath);
   const dm = await page.evaluate(() => {
     const count = (id) => document.querySelectorAll(`[data-testid="${id}"]`).length;
     const details = document.querySelector('[data-testid="chat-details"]');
