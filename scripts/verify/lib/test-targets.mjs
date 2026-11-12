@@ -2,6 +2,7 @@ import { globSync } from "node:fs";
 
 export const UNIT_TARGETS = Object.freeze({
   ci: [
+    "tests/attachment.test.ts",
     "tests/assistant-core.test.ts",
     "tests/assistant-watch-windows.test.ts",
     "tests/assistant-watch-migration.test.ts",

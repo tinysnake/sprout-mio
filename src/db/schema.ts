@@ -692,6 +692,72 @@ export const messageSkill = sqliteTable(
   ],
 );
 
+/**
+ * 一条消息带的附件。字节落在 `<DATABASE_URL 同目录>/attachments/<id>`，这里只存元数据，
+ * 磁盘文件名就是 id。`message_id` 非空：附件与消息在同一个事务里落库，没有「传了文件没发消息」的中间态。
+ */
+export const attachment = sqliteTable(
+  "attachment",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id").notNull(),
+    messageId: text("message_id").notNull(),
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.messageId, table.chatId],
+      foreignColumns: [message.id, message.chatId],
+    }).onDelete("cascade"),
+    index("attachment_message_idx").on(table.chatId, table.messageId),
+    check("attachment_filename_check", sql`length(trim(${table.filename})) > 0`),
+    check("attachment_mime_type_check", sql`length(trim(${table.mimeType})) > 0`),
+    check(
+      "attachment_byte_size_check",
+      sql`typeof(${table.byteSize}) = 'integer' and ${table.byteSize} > 0`,
+    ),
+  ],
+);
+
+/** 正文里对附件的引用：与 message_mention / message_skill 同构，只存位置与附件 id。 */
+export const messageAttachment = sqliteTable(
+  "message_attachment",
+  {
+    chatId: text("chat_id").notNull(),
+    messageId: text("message_id").notNull(),
+    attachmentId: text("attachment_id").notNull(),
+    start: integer("start").notNull(),
+    end: integer("end").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.messageId, table.chatId],
+      foreignColumns: [message.id, message.chatId],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.attachmentId],
+      foreignColumns: [attachment.id],
+    }).onDelete("cascade"),
+    uniqueIndex("message_attachment_position_unique").on(
+      table.chatId,
+      table.messageId,
+      table.start,
+    ),
+    index("message_attachment_message_idx").on(table.chatId, table.messageId),
+    check(
+      "message_attachment_offsets_check",
+      sql`typeof(${table.start}) = 'integer' and typeof(${table.end}) = 'integer'
+      and ${table.start} >= 0 and ${table.end} > ${table.start}`,
+    ),
+  ],
+);
+
 export const agentRun = sqliteTable(
   "agent_run",
   {

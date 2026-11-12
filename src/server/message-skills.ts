@@ -101,6 +101,13 @@ export async function preparePiMessage(
   const { message, webhookTrigger } = await import("../db/schema");
   const { and, eq } = await import("drizzle-orm");
   const { readSkillsFor } = await import("../domain/message-skill");
+  const {
+    maskAttachmentTokens,
+    readAttachmentsFor,
+    readAttachmentSpansFor,
+    unmaskAttachmentTokens,
+    unreferencedAttachmentLines,
+  } = await import("../domain/message-attachment");
   const chat = getChat(input.chatId, ctx);
   if (chat.projectId !== input.projectId) throw new Error("skill_message_scope_mismatch");
   const row = db
@@ -131,7 +138,15 @@ export async function preparePiMessage(
     );
   }
   const spans = readSkillsFor(chat.id, [row.id]).get(row.id) ?? [];
-  if (!spans.length) return seal(row.id, row.body, []);
+  const attachmentSpans = readAttachmentSpansFor(chat.id, [row.id]).get(row.id) ?? [];
+  const attachments = readAttachmentsFor(chat.id, [row.id]).get(row.id) ?? [];
+  const attachmentById = new Map(attachments.map((item) => [item.id, item] as const));
+  // 附件要送到 Agent 手里：等长哨兵先占住位置，展开技能后再换回带 id、路径与大小时的清单行。
+  const masked = maskAttachmentTokens(row.body, attachmentSpans);
+  const withAttachments = (text: string): string =>
+    unmaskAttachmentTokens(text, attachmentSpans, attachmentById) +
+    unreferencedAttachmentLines(attachments, attachmentSpans);
+  if (!spans.length) return seal(row.id, withAttachments(masked), []);
   const { resolveSkillScope, readSkillCatalog } = await import("./pi-host/skills");
   const scope = resolveSkillScope(input.projectId, ctx);
   let catalog: SkillCatalog | null = null;
@@ -145,8 +160,8 @@ export async function preparePiMessage(
   const effectiveResources: InheritedResources = scope.enabled
     ? openedResources
     : { kind: "disabled" };
-  const expanded = expandSkillSpans(row.id, row.body, spans, catalog, effectiveResources);
-  return seal(row.id, expanded.text, expanded.warnings);
+  const expanded = expandSkillSpans(row.id, masked, spans, catalog, effectiveResources);
+  return seal(row.id, withAttachments(expanded.text), expanded.warnings);
 }
 
 export function prepareSyntheticPiMessage(

@@ -413,6 +413,8 @@ describe("已结束 run 的工作记录", () => {
     overrides: Partial<Extract<Message, { senderKind: "agent" | "human" }>> = {},
   ): Message => ({
     id: "msg_11111111",
+    attachments: [],
+    attachmentSpans: [],
     chatId: "cnv_11111111",
     senderKind: "agent",
     senderId: "ins_11111111",
@@ -470,6 +472,8 @@ describe("已结束 run 的工作记录", () => {
   ])("系统来源 $kind 不冒用 Agent 人设或回复运行记录", (automationSource) => {
     const source: Message = {
       id: "msg_33333333",
+      attachments: [],
+      attachmentSpans: [],
       chatId: human.chatId,
       body: "Webhook event",
       createdAt: human.createdAt,

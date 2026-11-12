@@ -77,6 +77,8 @@ it("owner 通知与人类提醒区分，终态只保留历史标记", () => {
 it("新保留 sender 有独立名称，不冒充成员或历史发送者", () => {
   const message: Message = {
     id: "msg_11111111",
+    attachments: [],
+    attachmentSpans: [],
     chatId: run.chatId,
     senderKind: "agent",
     senderId: RUN_ATTENTION_SENDER_ID,

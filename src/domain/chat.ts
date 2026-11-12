@@ -18,9 +18,11 @@ import {
   type MentionSpan,
   type Message,
   type MessageCursor,
+  type MessageAttachmentSpan,
   type MessageWindow,
   type SendMessageInput,
 } from "../contracts/chat";
+import type { Attachment, NewAttachment } from "../contracts/attachment";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import {
@@ -56,6 +58,19 @@ import {
   resolveMessageMentions,
   writeMessageMentions,
 } from "./message-mention";
+import {
+  readAttachmentsFor,
+  readAttachmentSpansFor,
+  writeMessageAttachments,
+} from "./message-attachment";
+import {
+  allocateAttachmentIds,
+  discardAttachmentFiles,
+  insertAttachments,
+  rewriteAttachmentTokens,
+  validateNewAttachments,
+  writeAttachmentBytes,
+} from "./attachment";
 
 export class ChatError extends Error {
   constructor(
@@ -95,6 +110,8 @@ function toMessage(
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
   ctx: ProjectContext,
+  attachmentSpans: readonly MessageAttachmentSpan[] = [],
+  attachments: readonly Attachment[] = [],
 ): Message {
   const identity = {
     id: row.id,
@@ -141,6 +158,8 @@ function toMessage(
           },
           mentions: [],
           skills: [],
+          attachments: [],
+          attachmentSpans: [],
         };
     }
     return {
@@ -156,6 +175,8 @@ function toMessage(
       },
       mentions: [],
       skills: [],
+      attachments: [],
+      attachmentSpans: [],
     };
   }
   if (row.senderKind === "assistant_work")
@@ -165,6 +186,8 @@ function toMessage(
       nativeSource: { kind: "assistant_work", proposalId: row.assistantProposalId! },
       mentions: [],
       skills: [],
+      attachments: [],
+      attachmentSpans: [],
     };
   if (row.senderKind === "automation") {
     if (!row.automationTriggerId) throw new Error("automation_message_corrupt");
@@ -174,6 +197,8 @@ function toMessage(
       automationSource: automationSourceFor(row.automationTriggerId),
       mentions: [],
       skills: [],
+      attachments: [],
+      attachmentSpans: [],
     };
   }
   return {
@@ -183,6 +208,8 @@ function toMessage(
     createdAt: row.createdAt.toISOString(),
     mentions: mentions.map((span) => ({ ...span })),
     skills: skills.map((span) => ({ ...span })),
+    attachments: attachments.map((item) => ({ ...item })),
+    attachmentSpans: attachmentSpans.map((span) => ({ ...span })),
     ...(row.taskId !== null && row.taskRecordSeq !== null && row.taskRecordKind !== null
       ? {
           taskRecord: {
@@ -775,9 +802,24 @@ function readMessages(
     chatId,
     ordered.map((row) => row.entry.id),
   );
+  const attachmentSpans = readAttachmentSpansFor(
+    chatId,
+    ordered.map((row) => row.entry.id),
+  );
+  const attachments = readAttachmentsFor(
+    chatId,
+    ordered.map((row) => row.entry.id),
+  );
   return {
     messages: ordered.map((row) =>
-      toMessage(row.entry, mentions.get(row.entry.id) ?? [], skills.get(row.entry.id) ?? [], ctx),
+      toMessage(
+        row.entry,
+        mentions.get(row.entry.id) ?? [],
+        skills.get(row.entry.id) ?? [],
+        ctx,
+        attachmentSpans.get(row.entry.id) ?? [],
+        attachments.get(row.entry.id) ?? [],
+      ),
     ),
     head: first === undefined ? null : rowCursor(first),
     tail: last === undefined ? null : rowCursor(last),
@@ -791,9 +833,11 @@ export function sendMessage(
   input: SendMessageInput,
   ctx: ProjectContext,
   hooks: IdentityWriteHooks = {},
+  newAttachments: readonly NewAttachment[] = [],
 ): Message {
-  const saved = sqlite
-    .transaction(() => {
+  // 附件字节在事务里写盘；事务回滚时按这份清单删掉，不留没有行指向的文件。
+  const writtenFiles: string[] = [];
+  const commitMessage = sqlite.transaction(() => {
       const current = getChat(chatId, ctx);
       if (input.senderKind !== "human" && input.senderKind !== "agent")
         throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
@@ -867,22 +911,35 @@ export function sendMessage(
           ...(instance ? { instanceId: instance.id } : {}),
         },
         () => {
-          // 点名在插入之前解析，候选只来自本对话的有效成员视图，不接受客户端送来的成员表：
-          // 名字匹配不上就只是普通正文，不会落出一条指向不存在成员的 mention。
+          // 引用先把本地 token 换成真实附件 id：正文与 span 从此对齐，渲染与投递都按 span 定位。
+          // 正文里出现没随这次提交带上来的 token 会被直接拒掉，不留一条指向不存在附件的正文。
+          validateNewAttachments(newAttachments);
+          const idByLocalId = allocateAttachmentIds(newAttachments);
+          const rewritten = rewriteAttachmentTokens(input.body, idByLocalId);
+          // 点名与技能都从最终正文解析：存下去的就是它，解析结果不会与落库正文错位。
           const members = readChatEffectiveMembers(chatId, current.projectId);
           const spans = resolveMessageMentions({
-            body: input.body,
+            body: rewritten.body,
             candidates: mentionCandidatesFor(members),
           });
           const row = db
             .insert(message)
-            .values({ id: newId(ID_PREFIXES.message), chatId, ...input })
+            .values({ id: newId(ID_PREFIXES.message), chatId, ...input, body: rewritten.body })
             .returning()
             .get();
           // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
           writeMessageMentions(chatId, row.id, spans);
-          const skills = resolveMessageSkills(input.body);
+          const skills = resolveMessageSkills(rewritten.body);
           writeMessageSkills(chatId, row.id, skills);
+          const records = insertAttachments({
+            chatId,
+            messageId: row.id,
+            createdBy: ctx.userId,
+            list: newAttachments,
+            idByLocalId,
+          });
+          writtenFiles.push(...writeAttachmentBytes({ list: newAttachments, idByLocalId }));
+          writeMessageAttachments(chatId, row.id, rewritten.spans);
           const wakeQueued = enqueueMessageWake({
             id: row.id,
             chatId,
@@ -892,7 +949,7 @@ export function sendMessage(
             .set({ updatedAt: new Date() })
             .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
             .run();
-          const saved = toMessage(row, spans, skills, ctx);
+          const saved = toMessage(row, spans, skills, ctx, rewritten.spans, records);
           if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
           else appendAgentMentionRunInput(saved, ctx);
           captureFeishuMessage(row.id, row.createdAt);
@@ -900,8 +957,14 @@ export function sendMessage(
         },
         hooks,
       );
-    })
-    .immediate();
+    });
+  let saved: Message;
+  try {
+    saved = commitMessage.immediate();
+  } catch (error) {
+    discardAttachmentFiles(writtenFiles);
+    throw error;
+  }
   // 通知必须在事务提交之后发出；放在 writeIdentity 回调里时，监听者可能读到未提交的 wake 行。
   signalScheduleChange(saved.chatId);
   return saved;

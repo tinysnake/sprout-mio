@@ -105,6 +105,8 @@ const mentionMembers = [
 const messages: Message[] = [
   {
     id: "msg_66666666",
+    attachments: [],
+    attachmentSpans: [],
     chatId: chats[0]!.id,
     senderKind: "human",
     senderId: "usr_demo",
@@ -115,6 +117,8 @@ const messages: Message[] = [
   },
   {
     id: "msg_77777777",
+    attachments: [],
+    attachmentSpans: [],
     chatId: chats[0]!.id,
     senderKind: "agent",
     senderId: profiles[0]!.id,
@@ -125,6 +129,8 @@ const messages: Message[] = [
   },
   {
     id: "msg_88888888",
+    attachments: [],
+    attachmentSpans: [],
     chatId: chats[0]!.id,
     senderKind: "agent",
     senderId: profiles[0]!.id,
@@ -136,6 +142,8 @@ const messages: Message[] = [
   {
     // 点名样例：连续 chip、多个 chip、行尾 chip、行首 chip，以及没被点名的普通 @。
     id: "msg_99999999",
+    attachments: [],
+    attachmentSpans: [],
     chatId: chats[0]!.id,
     senderKind: "human",
     senderId: "usr_demo",
@@ -151,6 +159,8 @@ const messages: Message[] = [
   },
   {
     id: "msg_aaaaaaaa",
+    attachments: [],
+    attachmentSpans: [],
     chatId: chats[0]!.id,
     senderKind: "agent",
     senderId: profiles[0]!.id,
@@ -166,6 +176,8 @@ const messages: Message[] = [
   {
     // I-P8b 挂靠超时提醒：直接写库（不触发唤醒、不触发自动接续），落在挂靠所在的 Group chat。
     id: "msg_bbbbbbbb",
+    attachments: [],
+    attachmentSpans: [],
     chatId: chats[1]!.id,
     senderKind: "agent",
     senderId: LEASE_TIMEOUT_SENDER_ID,
@@ -630,6 +642,8 @@ function MessagesScene() {
               if (!draft.trim()) return;
               const message: Message = {
                 id: newId(ID_PREFIXES.message),
+                attachments: [],
+                attachmentSpans: [],
                 chatId: chats[0]!.id,
                 senderKind: "human",
                 senderId: "usr_demo",
@@ -865,6 +879,8 @@ function WorkspaceScene() {
               onSend={(body) => {
                 const message: Message = {
                   id: newId(ID_PREFIXES.message),
+                  attachments: [],
+                  attachmentSpans: [],
                   chatId: selectedChat.id,
                   senderKind: "human",
                   senderId: "usr_demo",
