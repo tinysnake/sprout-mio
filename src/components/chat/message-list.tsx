@@ -10,8 +10,7 @@ import { RunActivityGroup } from "./run-activity";
 import { RUN_STATUS_LABELS } from "./run-status";
 import { senderKey } from "./chat-session-display";
 import { LEASE_TIMEOUT_SENDER_NAME, isLeaseTimeoutSender } from "./lease-timeout-message";
-import { splitMessageSegments } from "./message-segments";
-import { SkillMark } from "./skill-mark";
+import { MessageMarkdown } from "./message-markdown";
 import type { MessageSkillSpan } from "../../contracts/skill";
 import { runAttentionSenderLabel } from "../../contracts/run-attention";
 import { RunAttentionNotice } from "./run-attention";
@@ -161,7 +160,7 @@ export function MessageList({
               {message.nativeSource.runId ? "查看工作结果" : "查看工作对话"}
             </a>
           )}
-          <p
+          <div
             data-testid="message-body"
             className={
               human
@@ -178,7 +177,7 @@ export function MessageList({
               mentions={message.mentions}
               skills={message.skills}
             />
-          </p>
+          </div>
           {message.senderKind === "assistant_event" && message.nativeSource.summary && (
             <details className="mt-2 text-xs text-muted-foreground">
               <summary className="w-fit cursor-pointer">查看通知详情</summary>
@@ -256,31 +255,5 @@ function MessageBody({
   mentions: readonly MentionSpan[];
   skills: readonly MessageSkillSpan[];
 }) {
-  return (
-    <>
-      {splitMessageSegments(body, mentions, skills).map((segment, index) =>
-        segment.skill ? (
-          <SkillMark
-            key={index}
-            data-testid="message-skill"
-            name={segment.skill.name}
-            text={segment.text}
-            edge={segment.skillEdge}
-          />
-        ) : segment.span ? (
-          <span
-            key={index}
-            data-testid="message-mention"
-            data-member-kind={segment.span.memberKind}
-            data-member-id={segment.span.memberId}
-            className="rounded-[3px] bg-selected px-1 font-medium [box-decoration-break:clone]"
-          >
-            {segment.text}
-          </span>
-        ) : (
-          segment.text
-        ),
-      )}
-    </>
-  );
+  return <MessageMarkdown body={body} mentions={mentions} skills={skills} />;
 }
