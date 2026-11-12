@@ -23,9 +23,10 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 - [ ] 把协议与这份计划交给 operator，然后停下。只有 operator 明确说开工才进入执行。
 - [ ] 开工时读一次，之后每个 tick 从 trunk 重读这些文件。
-  - [ ] `git show origin/main:pstack/skills/poteto-mode/playbooks/autopilot-full.md`
-  - [ ] `git show origin/main:pstack/skills/swarm/SKILL.md`
-  - [ ] `git show origin/main:pstack/skills/poteto-mode/playbooks/opening-a-pr.md`
+  - [ ] 本仓库不 vend pstack，技能与 playbook 读本机安装目录，不要用 `git show` 去仓库里找它们。
+  - [ ] `/Users/snake/workspace/pi-stuff/pi-pstack/skills/poteto-mode/playbooks/autopilot-full.md`
+  - [ ] `/Users/snake/workspace/pi-stuff/pi-pstack/skills/swarm/SKILL.md`
+  - [ ] `/Users/snake/workspace/pi-stuff/pi-pstack/skills/poteto-mode/playbooks/opening-a-pr.md`
   - [ ] `git show origin/main:docs/verification.md`
   - [ ] `git show origin/main:scripts/browser/ui-scenarios.mjs`
 - [ ] operator 说开工后，用 `/loop 1h` 装上下面的 tick prompt。不要靠记忆维持节奏。
@@ -299,5 +300,5 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - `docs/feature-map/chat-runs.md` 记录消息分页、`chat-skills` 与冻结 span 的现状。
 - `docs/web-ui-decisions.md` 曾把富文本列为非前置项，本任务反转这一条，落地时同步改写那句。
 - `docs/p6b/contracts.md` 记录 Chat 正文不在 Info Hub 视角里，附件路由的鉴权按同一边界执行。
-- RM1 先过 `pstack/skills/how/SKILL.md`，RM2 与 RM3 的契约改动先过 `pstack/skills/interrogate/SKILL.md`。
-- 决策轨迹按 `pstack/skills/show-me-your-work/SKILL.md` 记，落在 `.verify/rich-message/decision-trail.md`。
+- RM1 先过 `/Users/snake/workspace/pi-stuff/pi-pstack/skills/how/SKILL.md`，RM2 与 RM3 的契约改动先过 `/Users/snake/workspace/pi-stuff/pi-pstack/skills/interrogate/SKILL.md`。
+- 决策轨迹按 `/Users/snake/workspace/pi-stuff/pi-pstack/skills/show-me-your-work/SKILL.md` 记，落在 `.verify/rich-message/decision-trail.md`。
