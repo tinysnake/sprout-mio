@@ -132,8 +132,11 @@ export function MessageComposer({
   const [dragging, setDragging] = useState(false);
   const files = useRef<HTMLInputElement | null>(null);
   const urls = useRef<string[]>([]);
-  // 正文里刚插了引用 token 时，芯片上显示第一个附件；老 token 只显示「附件」。
-  const preview = attachments[0];
+  // 引用芯片显示该附件的文件名；附件已被移除时只显示「附件」。
+  const names = useMemo(
+    () => new Map(attachments.map((attachment) => [attachment.localId, attachment.file.name])),
+    [attachments],
+  );
 
   // object URL 不能由每次渲染决定存活期：卸载时统一回收，晚于所有预览节点消失。
   useEffect(
@@ -346,6 +349,11 @@ export function MessageComposer({
   function removeAttachment(localId: string) {
     const caret = textarea.current?.selectionStart ?? draft.length;
     const next = removeAttachmentReferences(draft, localId, caret);
+    const removed = attachments.find((attachment) => attachment.localId === localId);
+    if (removed) {
+      URL.revokeObjectURL(removed.url);
+      urls.current = urls.current.filter((url) => url !== removed.url);
+    }
     setAttachments((current) => current.filter((attachment) => attachment.localId !== localId));
     if (next.removed > 0) {
       pendingCaret.current = next.caret;
@@ -478,7 +486,7 @@ export function MessageComposer({
                   <span className="composer-ref-chip" aria-hidden="true">
                     <Icon as={Paperclip} size={12} className="shrink-0" />
                     <span className="composer-ref-name">
-                      {preview && segment.localId === preview.localId ? preview.file.name : "附件"}
+                      {names.get(segment.localId ?? "") ?? "附件"}
                     </span>
                   </span>
                 </span>
