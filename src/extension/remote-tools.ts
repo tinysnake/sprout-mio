@@ -476,7 +476,7 @@ function readExecutionViewLoose(
  * 并明确命令没有被取消。绝不自动 cancel 或重跑。
  */
 function executionPendingResult(input: {
-  reason: "not_waited" | "wait_budget_exhausted";
+  reason: "not_waited" | "wait_budget_exhausted" | "aborted";
   machineId: string;
   executionId: string | undefined;
   view: ExecutionView | undefined;
@@ -487,7 +487,9 @@ function executionPendingResult(input: {
   const message =
     input.reason === "not_waited"
       ? "blockMs 为 0，本次没有等待，execution 可能仍在运行。命令没有被取消，这不是失败。绝不要重跑同一条命令，它可能已经产生了副作用。要继续等就调用 sprout_remote_execution_wait，它的默认预算就是续等预算。"
-      : `等待预算 ${input.effectiveMs}ms 已用尽，execution 可能仍在运行。命令没有被取消，这不是执行失败。绝不要重跑同一条命令，它可能已经产生了副作用。要继续等就调用 sprout_remote_execution_wait，它的默认预算就是续等预算。`;
+      : input.reason === "aborted"
+        ? "调用被中止，等待提前结束，execution 可能仍在运行。命令没有被取消，也不是执行失败。绝不要重跑同一条命令，它可能已经产生了副作用。要继续等就调用 sprout_remote_execution_wait。"
+        : `等待预算 ${input.effectiveMs}ms 已用尽，execution 可能仍在运行。命令没有被取消，这不是执行失败。绝不要重跑同一条命令，它可能已经产生了副作用。要继续等就调用 sprout_remote_execution_wait，它的默认预算就是续等预算。`;
   const details = {
     outcome: "pending",
     reason: input.reason,
@@ -527,7 +529,9 @@ async function runExecutionBlocking(
   const effectiveMs = clampExecutionBlockMs(options.requestedBlockMs, options.defaultBlockMs);
   const deadlineMs = startedAt + effectiveMs;
   const requestedMs = options.requestedBlockMs ?? options.defaultBlockMs;
-  const pendingReason = effectiveMs === 0 ? "not_waited" : "wait_budget_exhausted";
+  // 预算用尽、没有等待、调用被中止要分开报：调用被中止时说「预算用尽」是假话。
+  const budgetReason: "not_waited" | "wait_budget_exhausted" =
+    effectiveMs === 0 ? "not_waited" : "wait_budget_exhausted";
 
   let request = options.request;
   let response: RemoteToolResponse;
@@ -540,9 +544,11 @@ async function runExecutionBlocking(
   // 没有可信视图时退回单次提交的既有结果语义（失败、断联、不可信响应）。
   if (!lastView) return result(request, response);
   const executionId = lastView.executionId;
-  const pending = (): SproutToolResult =>
+  const pending = (
+    reason: "not_waited" | "wait_budget_exhausted" | "aborted" = budgetReason,
+  ): SproutToolResult =>
     executionPendingResult({
-      reason: pendingReason,
+      reason,
       machineId: options.machineId,
       executionId,
       view: lastView,
@@ -554,7 +560,7 @@ async function runExecutionBlocking(
   // 终态与单次 `execution_get` 同形。
   if (isTerminalExecutionState(lastView.state)) return result(request, response);
   // 已中止：给出 pending 与最后一次视图，executionId 不丢。
-  if (options.signal?.aborted) return pending();
+  if (options.signal?.aborted) return pending("aborted");
 
   try {
     const outcome = await waitForExecution({
@@ -583,10 +589,10 @@ async function runExecutionBlocking(
     lastView = outcome.view;
     return pending();
   } catch (error) {
-    if (options.signal?.aborted) return pending();
+    if (options.signal?.aborted) return pending("aborted");
     if (error instanceof ExecutionWaitReadFailed) {
       if (error.response.outcome === "unknown" && error.response.reason === "cancelled")
-        return pending();
+        return pending("aborted");
       return result(request, error.response);
     }
     return result(request, { outcome: "unknown", reason: "transport_error" });
@@ -674,10 +680,13 @@ export function registerRemoteTools(
         } catch (error) {
           return toolInputFailure(error);
         }
-        const machineId = built.machineId;
-        if (!machineId) return validationFailure("远端工具参数无效；必须显式提供合法 machineId。");
         // 五个创建工具默认阻塞到终态；`execution_get` 保持立刻读一次当前快照。
+        // machineId 只在这里要求：创建工具的 schema 必填 machineId，阻塞路径需要这个窄化；
+        // `sprout_chat_continuation_get` 按 run 自己的 Project 取，本来就没有 machineId。
         if (EXECUTION_CREATE_TOOLS.has(name)) {
+          const machineId = built.machineId;
+          if (!machineId)
+            return validationFailure("远端工具参数无效；必须显式提供合法 machineId。");
           return runExecutionBlocking(client, {
             request: built.request,
             machineId,

@@ -3,6 +3,7 @@ import type { RequestListener } from "node:http";
 import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { executionWaitView } from "./fixtures/execution-wait-view";
+import { chatContinuationViewSchema } from "../src/contracts/chat-continuation";
 import { EXECUTION_WAIT_DEFAULT_MS, EXECUTION_WAIT_MAX_MS } from "../src/contracts/tool-wait";
 import { remoteToolInputSchemas } from "../src/contracts/remote";
 import type { ExecutionCancellationView, ExecutionLogReadView } from "../src/contracts/remote";
@@ -413,10 +414,43 @@ describe("远端 execution 阻塞等待工具", () => {
     controller.abort();
     expect(await pending).toMatchObject({
       isError: false,
-      details: { outcome: "pending", reason: "wait_budget_exhausted", machineId, executionId },
+      details: { outcome: "pending", reason: "aborted", machineId, executionId },
     });
     expect(requests.every(({ call }) => call.type !== "execution_cancel")).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("不带 machineId 的 Project 作用域工具照旧直达客户端，不被阻塞路径的作用域校验挡住", async () => {
+    const requests: RemoteAgentRequest[] = [];
+    const data = chatContinuationViewSchema.parse({
+      projectId,
+      chatId: "cnv_00000000",
+      mode: "off",
+      epoch: 1,
+      revision: 1,
+      owner: { kind: "human", id: "hum_00000000" },
+      changedBy: null,
+      changedAt: null,
+      reason: null,
+      assignedTaskIds: [],
+      nextDueAt: null,
+      activeRunIds: [],
+      remindedHuman: false,
+      latestEvaluation: null,
+      recentRounds: [],
+      deliveries: [],
+      attention: null,
+    });
+    const tool = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return { outcome: "response", result: { ok: true, requestId, data } };
+      },
+    }).get("sprout_chat_continuation_get")!;
+    const probe = await tool.execute("probe", {});
+    expect(requests.map(({ call }) => call.type)).toEqual(["chat_continuation_get"]);
+    expect(probe.isError).toBe(false);
   });
 
   it("sprout_remote_execution_wait 保留在注册表并改用 blockMs", () => {
