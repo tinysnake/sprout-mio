@@ -10,6 +10,7 @@ import {
   openProjectInfoHub,
   readProjectFacts,
   waitForChats,
+  waitForRailChat,
 } from "./ui-navigation.mjs";
 
 const base = process.env.BASE_URL ?? "http://localhost:3145";
@@ -222,6 +223,9 @@ async function config(page) {
 }
 async function chat(page) {
   await test(page, "chat-pane").waitFor();
+  // 建群 / 发起 DM 走客户端导航：右栏在 revalidate 回来之前仍渲染上一条对话，
+  // 先等它声明自己属于当前 URL 的 Chat，再读 Instance、消息与分身名。
+  await waitForRailChat(page, new URL(page.url()).pathname);
   // 身份事实现在只在会话详情（Info Hub 视角）里展示：打开 `?info=1` 后读这份数据。
   if (
     !(await test(page, "inspector-instance-id")

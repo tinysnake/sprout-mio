@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import Database from "better-sqlite3";
 import { chromium } from "playwright";
-import { createProject, waitForChats } from "./ui-navigation.mjs";
+import { createProject, waitForChats, waitForRailChat } from "./ui-navigation.mjs";
 import { chatGovernanceFacts } from "../../src/domain/chat-capabilities.ts";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
@@ -37,22 +37,6 @@ function chatRowCount() {
   } catch (error) {
     return { count: null, error: error instanceof Error ? error.message : String(error) };
   }
-}
-
-/**
- * 客户端导航期间右栏会短暂保留上一条对话（revalidate 还没回来时 React 仍渲染旧数据），
- * 这时 `page.textContent('[data-testid="chat-wake-policy"]')` 读到的是**上一条对话**的值：
- * CI 上的 `group_created_with_human_owner_and_governance` 就是这样拿到「新群聊的标题 +
- * 公共频道的唤醒策略」。右栏现在用 `data-chat-id` 声明自己属于哪条对话，等它落到目标 Chat
- * 再读，三个值就一定同源。传 chat 路径或裸 chat id 都可以。
- */
-async function waitForRailChat(page, chatPathOrId) {
-  const chatId = String(chatPathOrId).split("/").pop();
-  if (!chatId) throw new Error(`右栏期望的 Chat id 缺失：${JSON.stringify(chatPathOrId)}`);
-  await page.waitForSelector(`[data-testid="chat-details"][data-chat-id="${chatId}"]`, {
-    timeout: 20000,
-  });
-  return chatId;
 }
 
 async function register(page, tag) {
