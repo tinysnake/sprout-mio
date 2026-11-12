@@ -185,280 +185,173 @@ export function ChatDetails({
         </Button>
       </header>
       <div className={`min-h-0 overflow-y-auto px-5 pt-2 ${activityOpen ? "flex-1 pb-12" : ""}`}>
-        <div className="py-5">
-          <ContinuationPanel data={continuation} chatKind={chat.kind} />
-        </div>
+        {/* DM 只有两位参与者，成员清单没有信息量：把对方的资料整块提到最上面，成员段不再渲染。 */}
+        {chat.kind === "dm" && detailMember && (
+          <section data-testid="chat-details-counterpart" className="border-b border-border py-5">
+            <MemberIdentity
+              name={detailName ?? agentName}
+              profile={detailProfile}
+              chat={chat}
+              error={profile && !profile.ok ? profile.error : undefined}
+            />
+          </section>
+        )}
         <section data-testid="inspector-tasks" className="space-y-3 border-b border-border py-5">
-          <h3 className="text-[10px] font-medium text-muted-foreground">Task 摘要</h3>
+          <h3 className="text-xs font-medium">Task 摘要</h3>
           {info.ok ? (
             <TaskAssociations projectId={projectId} items={info.data.tasks.items} />
           ) : (
             <ChatErrorNotice error={info.error} testId="info-hub-tasks-error" />
           )}
         </section>
-        <details
-          open
-          data-testid="chat-details-conversation"
-          className="group border-b border-border py-4"
-        >
-          <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
-            <span>会话</span>
-            <Icon
-              as={ChevronRight}
-              size={12}
-              className="transition-transform group-open:rotate-90"
-            />
-          </summary>
-          <div className="space-y-3 pt-3">
-            {/* 会话自身的事实单独成段：时间不再挂在成员列表下面，成员段只讲成员。 */}
-            <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-[11px]">
-              {/* 群与频道可能有多个分身，单独一行只能指其中一个；DM 仍是一对一指代。 */}
-              {chat.kind === "dm" && (
-                <>
-                  <dt className="text-muted-foreground">分身 Instance ID</dt>
-                  <dd
-                    data-testid="inspector-instance-id"
-                    className="break-all font-mono text-[10px] leading-5 text-muted-foreground"
-                  >
-                    {instanceId ?? "（还没有分身实例）"}
-                  </dd>
-                </>
-              )}
-              {info.ok && info.data.archived && (
-                <>
-                  <dt className="text-muted-foreground">归档状态</dt>
-                  <dd data-testid="inspector-archived">已归档</dd>
-                </>
-              )}
-              <dt className="text-muted-foreground">最后消息时间</dt>
-              <dd className="whitespace-nowrap">
-                {!info.ok ? (
-                  "未知"
-                ) : info.data.messages.latestAt ? (
-                  <time
-                    data-testid="inspector-message-latest-at"
-                    dateTime={info.data.messages.latestAt}
-                  >
-                    {chatTimeLabel(info.data.messages.latestAt)}
-                  </time>
-                ) : (
-                  <span data-testid="inspector-message-latest-at">（还没有消息）</span>
-                )}
-              </dd>
-              <dt className="text-muted-foreground">可见范围</dt>
-              {/* 可见范围是会话自身的事实，随会话段走，不再单独占一条页脚。 */}
-              <dd data-testid="inspector-visibility">仅 Project 成员可见</dd>
-            </dl>
-            {/* 复制 Chat ID 是核对用的次要操作，与段内主事实错开一档字号。 */}
-            <div className="-mt-1 flex items-center">
-              <CopyChatIdButton chatId={chat.id} />
-            </div>
-          </div>
-        </details>
-        <details
-          open
-          data-testid="chat-details-members"
-          className="group border-b border-border py-4"
-        >
-          <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
-            <span>成员</span>
-            <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
-              {members.ok ? `${members.data.length} 位成员` : "成员读取失败"}
-              <Icon
-                as={ChevronRight}
-                size={12}
-                className="transition-transform group-open:rotate-90"
-              />
-            </span>
-          </summary>
-          <div className="space-y-3 pt-3">
-            {!members.ok ? (
-              <ChatErrorNotice error={members.error} testId="chat-load-error" />
-            ) : (
-              <ul data-testid="inspector-member-list" className="space-y-1.5">
-                {currentMembers.map((member) => {
-                  const key = memberKey(member);
-                  // 这一行是不是 Owner 行：展示用的事实，不是权限判定（能不能治理来自 governance）。
-                  const isOwnerRow =
-                    chat.owner.kind === member.memberKind && chat.owner.id === member.memberId;
-                  const name =
-                    names.get(key) ??
-                    (member.memberKind === "human"
-                      ? member.memberId === humanUserId
-                        ? humanName || "你"
-                        : "Human"
-                      : (profileNames.get(member.memberId) ?? "Agent"));
-                  // 能力判定来自领域层；「所有者不能被移出」是数据事实（chat.owner），不是权限比较。
-                  const canRemove = governance.canChangeMembers && !isOwnerRow;
-                  // Agent 成员行可选中，选中后资料块展示这一位的职位与 persona。
-                  const row =
-                    member.memberKind === "agent" ? (
-                      <button
-                        type="button"
-                        data-testid="chat-member-select"
-                        data-member-key={key}
-                        aria-pressed={detailKey === key}
-                        aria-label={`查看 ${name} 的资料`}
-                        onClick={() => setSelectedMember(detailKey === key ? null : key)}
-                        className="flex min-w-0 flex-1 items-center gap-2 rounded-control border border-transparent px-1 py-0.5 text-left hover:border-input aria-pressed:border-border aria-pressed:bg-selected"
-                      >
-                        <ChatAvatar name={name} small />
-                        <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
-                      </button>
-                    ) : (
-                      <div className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
-                        <ChatAvatar name={name} human small />
-                        <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
-                      </div>
+        {/* DM 只有两位参与者，成员清单没有信息量：成员段整段不给 DM 渲染。 */}
+        {chat.kind !== "dm" && (
+          <details
+            open
+            data-testid="chat-details-members"
+            className="group border-b border-border py-4"
+          >
+            <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium [&::-webkit-details-marker]:hidden">
+              <span>成员</span>
+              <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
+                {members.ok ? `${members.data.length} 位成员` : "成员读取失败"}
+                <Icon
+                  as={ChevronRight}
+                  size={12}
+                  className="transition-transform group-open:rotate-90"
+                />
+              </span>
+            </summary>
+            <div className="space-y-3 pt-3">
+              {!members.ok ? (
+                <ChatErrorNotice error={members.error} testId="chat-load-error" />
+              ) : (
+                <ul data-testid="inspector-member-list" className="space-y-1.5">
+                  {currentMembers.map((member) => {
+                    const key = memberKey(member);
+                    // 这一行是不是 Owner 行：展示用的事实，不是权限判定（能不能治理来自 governance）。
+                    const isOwnerRow =
+                      chat.owner.kind === member.memberKind && chat.owner.id === member.memberId;
+                    const name =
+                      names.get(key) ??
+                      (member.memberKind === "human"
+                        ? member.memberId === humanUserId
+                          ? humanName || "你"
+                          : "Human"
+                        : (profileNames.get(member.memberId) ?? "Agent"));
+                    // 能力判定来自领域层；「所有者不能被移出」是数据事实（chat.owner），不是权限比较。
+                    const canRemove = governance.canChangeMembers && !isOwnerRow;
+                    // Agent 成员行可选中，选中后资料块展示这一位的职位与 persona。
+                    const row =
+                      member.memberKind === "agent" ? (
+                        <button
+                          type="button"
+                          data-testid="chat-member-select"
+                          data-member-key={key}
+                          aria-pressed={detailKey === key}
+                          aria-label={`查看 ${name} 的资料`}
+                          onClick={() => setSelectedMember(detailKey === key ? null : key)}
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-control border border-transparent px-1 py-0.5 text-left hover:border-input aria-pressed:border-border aria-pressed:bg-selected"
+                        >
+                          <ChatAvatar name={name} small />
+                          <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
+                        </button>
+                      ) : (
+                        <div className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
+                          <ChatAvatar name={name} human small />
+                          <span className="min-w-0 flex-1 truncate text-[11px]">{name}</span>
+                        </div>
+                      );
+                    return (
+                      <li key={key} className="flex items-center gap-2">
+                        {row}
+                        {isOwnerRow && (
+                          <span className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground">
+                            Owner
+                          </span>
+                        )}
+                        {canRemove && (
+                          <RemoveMemberButton
+                            chatId={chat.id}
+                            revision={chat.governanceRevision}
+                            memberKind={member.memberKind}
+                            memberId={member.memberId}
+                            memberName={name}
+                            onChanged={onChanged}
+                          />
+                        )}
+                      </li>
                     );
-                  return (
-                    <li key={key} className="flex items-center gap-2">
-                      {row}
-                      {isOwnerRow && (
-                        <span className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground">
-                          Owner
-                        </span>
-                      )}
-                      {canRemove && (
-                        <RemoveMemberButton
-                          chatId={chat.id}
-                          revision={chat.governanceRevision}
-                          memberKind={member.memberKind}
-                          memberId={member.memberId}
-                          memberName={name}
-                          onChanged={onChanged}
-                        />
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {chat.kind === "public_channel" && (
-              <div
-                data-testid="channel-members-readonly"
-                data-error-code="channel_membership_managed"
-                className="text-[10px] leading-5 text-muted-foreground"
-              >
-                <span className="flex items-center gap-1.5">
-                  公共频道成员跟随项目自动同步
-                  <button
-                    type="button"
-                    data-testid="channel-members-help"
-                    aria-label="公共频道成员规则说明"
-                    aria-expanded={membersHelpOpen}
-                    onClick={() => setMembersHelpOpen((open) => !open)}
-                    className="flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[9px] leading-none hover:border-foreground hover:text-foreground"
-                  >
-                    ?
-                  </button>
-                </span>
-                {/* 规则与入口默认不可见，但整段仍留在 DOM 里：它是频道成员治理的唯一说明。
+                  })}
+                </ul>
+              )}
+              {chat.kind === "public_channel" && (
+                <div
+                  data-testid="channel-members-readonly"
+                  data-error-code="channel_membership_managed"
+                  className="text-[10px] leading-5 text-muted-foreground"
+                >
+                  <span className="flex items-center gap-1.5">
+                    公共频道成员跟随项目自动同步
+                    <button
+                      type="button"
+                      data-testid="channel-members-help"
+                      aria-label="公共频道成员规则说明"
+                      aria-expanded={membersHelpOpen}
+                      onClick={() => setMembersHelpOpen((open) => !open)}
+                      className="flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[9px] leading-none hover:border-foreground hover:text-foreground"
+                    >
+                      ?
+                    </button>
+                  </span>
+                  {/* 规则与入口默认不可见，但整段仍留在 DOM 里：它是频道成员治理的唯一说明。
                     上一句已经在行内说了「跟随项目自动同步」，这里只补真正要做的动作。 */}
-                <p className={membersHelpOpen ? "pt-1 leading-5" : "hidden"}>
-                  不可独立修改；到{" "}
-                  <Link
-                    to="/projects/$projectId/members"
-                    params={{ projectId }}
-                    data-testid="channel-project-members-link"
-                    className="text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
-                  >
-                    Project Members
-                  </Link>{" "}
-                  调整成员。
-                </p>
-              </div>
-            )}
-            {chat.kind === "group" && (
-              <div className="flex flex-wrap items-center gap-2">
-                {governance.canChangeMembers ? (
-                  <AddMemberDialog
-                    chatId={chat.id}
-                    revision={chat.governanceRevision}
-                    agents={addableAgents}
-                    onChanged={onChanged}
-                  />
-                ) : (
-                  <p
-                    data-testid="chat-member-note"
-                    className="text-[10px] leading-5 text-muted-foreground"
-                  >
-                    成员决定谁能收到消息与唤醒；仍在活动 run 或持有租约的成员不能直接移除。
-                  </p>
-                )}
-              </div>
-            )}
-            {chat.kind === "dm" && (
-              <div
-                data-testid="chat-member-note"
-                className="text-[10px] leading-5 text-muted-foreground"
-              >
-                <span className="flex items-center gap-1.5">
-                  DM 成员固定为两位参与者
-                  <button
-                    type="button"
-                    data-testid="dm-members-help"
-                    aria-label="DM 成员规则说明"
-                    aria-expanded={membersHelpOpen}
-                    onClick={() => setMembersHelpOpen((open) => !open)}
-                    className="flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[9px] leading-none hover:border-foreground hover:text-foreground"
-                  >
-                    ?
-                  </button>
-                </span>
-                <p className={membersHelpOpen ? "pt-1 leading-5" : "hidden"}>
-                  不提供独立成员治理。
-                </p>
-              </div>
-            )}
-            {detailMember && (
-              <div
-                data-testid="chat-inspector-identity"
-                className="space-y-2 border-t border-border pt-3"
-              >
-                {profile && !profile.ok && (
-                  <ChatErrorNotice error={profile.error} testId="inspector-profile-error" />
-                )}
-                <div className="flex items-center gap-2.5">
-                  <ChatAvatar name={detailName ?? agentName} />
-                  <div className="min-w-0 flex-1">
-                    <strong
-                      data-testid="inspector-agent-name"
-                      className="block truncate text-xs font-semibold"
-                    >
-                      {detailName ?? agentName}
-                    </strong>
-                    {detailProfile?.jobTitle && (
-                      <p
-                        data-testid="inspector-agent-job-title"
-                        className="mt-0.5 text-[10px] text-muted-foreground"
-                      >
-                        {detailProfile.jobTitle}
-                      </p>
-                    )}
-                  </div>
-                  {detailProfile && (
+                  <p className={membersHelpOpen ? "pt-1 leading-5" : "hidden"}>
+                    不可独立修改；到{" "}
                     <Link
-                      to="/agents/$agentProfileId"
-                      params={{ agentProfileId: detailProfile.id }}
-                      search={agentDetailFromChat(chat)}
-                      data-testid="inspector-agent-profile-link"
-                      className="shrink-0 text-[10px] text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
+                      to="/projects/$projectId/members"
+                      params={{ projectId }}
+                      data-testid="channel-project-members-link"
+                      className="text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
                     >
-                      profile
-                    </Link>
+                      Project Members
+                    </Link>{" "}
+                    调整成员。
+                  </p>
+                </div>
+              )}
+              {chat.kind === "group" && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {governance.canChangeMembers ? (
+                    <AddMemberDialog
+                      chatId={chat.id}
+                      revision={chat.governanceRevision}
+                      agents={addableAgents}
+                      onChanged={onChanged}
+                    />
+                  ) : (
+                    <p
+                      data-testid="chat-member-note"
+                      className="text-[10px] leading-5 text-muted-foreground"
+                    >
+                      成员决定谁能收到消息与唤醒；仍在活动 run 或持有租约的成员不能直接移除。
+                    </p>
                   )}
                 </div>
-                <p
-                  data-testid="inspector-agent-persona"
-                  className="text-[11px] leading-6 break-words whitespace-pre-wrap"
-                >
-                  {detailProfile?.persona || "（空）"}
-                </p>
-              </div>
-            )}
-          </div>
-        </details>
+              )}
+              {detailMember && (
+                <div className="border-t border-border pt-3">
+                  <MemberIdentity
+                    name={detailName ?? agentName}
+                    profile={detailProfile}
+                    chat={chat}
+                    error={profile && !profile.ok ? profile.error : undefined}
+                  />
+                </div>
+              )}
+            </div>
+          </details>
+        )}
         {/* DM 保持 P4b 形状：没有独立成员治理，因此不渲染治理段。 */}
         {chat.kind !== "dm" && (
           <details
@@ -466,7 +359,7 @@ export function ChatDetails({
             data-testid="chat-details-owner"
             className="group border-b border-border py-4"
           >
-            <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium [&::-webkit-details-marker]:hidden">
               <span>Owner</span>
               <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
                 <span data-testid="chat-owner-name">
@@ -538,13 +431,17 @@ export function ChatDetails({
             </div>
           </details>
         )}
+        {/* 对话自动化与活动相邻，都在讲「运行」；它排在活动之上，会话事实排在最下面。 */}
+        <div data-testid="chat-details-continuation" className="border-b border-border py-4">
+          <ContinuationPanel data={continuation} chatKind={chat.kind} />
+        </div>
         {/* 当前运行状态在中栏展示；活动段按需展开诊断。 */}
         <details
           data-testid="chat-details-activity"
-          className="group border-border py-4 open:border-b"
+          className="group py-4"
           onToggle={(event) => setActivityOpen(event.currentTarget.open)}
         >
-          <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium [&::-webkit-details-marker]:hidden">
             <span>活动</span>
             <span className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground">
               运行与记录
@@ -598,6 +495,65 @@ export function ChatDetails({
                   />
                 </div>
               )}
+            </div>
+          </div>
+        </details>
+        <details
+          open
+          data-testid="chat-details-conversation"
+          className="group border-t border-border py-4"
+        >
+          <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium [&::-webkit-details-marker]:hidden">
+            <span>会话</span>
+            <Icon
+              as={ChevronRight}
+              size={12}
+              className="transition-transform group-open:rotate-90"
+            />
+          </summary>
+          <div className="space-y-3 pt-3">
+            {/* 会话自身的事实单独成段：时间不再挂在成员列表下面，成员段只讲成员。 */}
+            <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-y-1 text-[11px]">
+              {/* 群与频道可能有多个分身，单独一行只能指其中一个；DM 仍是一对一指代。 */}
+              {chat.kind === "dm" && (
+                <>
+                  <dt className="text-muted-foreground">分身 Instance ID</dt>
+                  <dd
+                    data-testid="inspector-instance-id"
+                    className="break-all font-mono text-[10px] leading-5 text-muted-foreground"
+                  >
+                    {instanceId ?? "（还没有分身实例）"}
+                  </dd>
+                </>
+              )}
+              {info.ok && info.data.archived && (
+                <>
+                  <dt className="text-muted-foreground">归档状态</dt>
+                  <dd data-testid="inspector-archived">已归档</dd>
+                </>
+              )}
+              <dt className="text-muted-foreground">最后消息时间</dt>
+              <dd className="whitespace-nowrap">
+                {!info.ok ? (
+                  "未知"
+                ) : info.data.messages.latestAt ? (
+                  <time
+                    data-testid="inspector-message-latest-at"
+                    dateTime={info.data.messages.latestAt}
+                  >
+                    {chatTimeLabel(info.data.messages.latestAt)}
+                  </time>
+                ) : (
+                  <span data-testid="inspector-message-latest-at">（还没有消息）</span>
+                )}
+              </dd>
+              <dt className="text-muted-foreground">可见范围</dt>
+              {/* 可见范围是会话自身的事实，随会话段走，不再单独占一条页脚。 */}
+              <dd data-testid="inspector-visibility">仅 Project 成员可见</dd>
+            </dl>
+            {/* 复制 Chat ID 是核对用的次要操作，与段内主事实错开一档字号。 */}
+            <div className="-mt-1 flex items-center">
+              <CopyChatIdButton chatId={chat.id} />
             </div>
           </div>
         </details>
@@ -918,6 +874,61 @@ function OwnerDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** 成员资料块：DM 提到面板最上方，群聊里跟随选中的成员行。 */
+function MemberIdentity({
+  name,
+  profile,
+  chat,
+  error,
+}: {
+  name: string;
+  profile?: AgentProfile;
+  chat: { id: string; projectId: string };
+  error?: AppError;
+}) {
+  return (
+    <div data-testid="chat-inspector-identity" className="space-y-2">
+      {error && <ChatErrorNotice error={error} testId="inspector-profile-error" />}
+      <div className="flex items-center gap-2.5">
+        <ChatAvatar name={name} />
+        <div className="min-w-0 flex-1">
+          <strong
+            data-testid="inspector-agent-name"
+            className="block truncate text-xs font-semibold"
+          >
+            {name}
+          </strong>
+          {profile?.jobTitle && (
+            <p
+              data-testid="inspector-agent-job-title"
+              className="mt-0.5 text-[10px] text-muted-foreground"
+            >
+              {profile.jobTitle}
+            </p>
+          )}
+        </div>
+        {profile && (
+          <Link
+            to="/agents/$agentProfileId"
+            params={{ agentProfileId: profile.id }}
+            search={agentDetailFromChat(chat)}
+            data-testid="inspector-agent-profile-link"
+            className="shrink-0 text-[10px] text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
+          >
+            profile
+          </Link>
+        )}
+      </div>
+      <p
+        data-testid="inspector-agent-persona"
+        className="text-[11px] leading-6 break-words whitespace-pre-wrap"
+      >
+        {profile?.persona || "（空）"}
+      </p>
+    </div>
   );
 }
 

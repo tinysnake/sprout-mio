@@ -312,8 +312,16 @@ await check("chat_facts_render_on_chat_page", async () => {
       instance: document
         .querySelector('[data-testid="inspector-instance-id"]')
         ?.textContent?.trim(),
-      kinds: [...document.querySelectorAll('[data-testid="inspector-member-list"] > li')].map(
-        (node) => (node.querySelector('[data-testid="chat-member-select"]') ? "agent" : "human"),
+      // DM 右栏不渲染成员清单：对话对象由顶部的对方资料块承载，这里断言那一块就是流程里加入的 Agent。
+      counterpartName: document
+        .querySelector(
+          '[data-testid="chat-details-counterpart"] [data-testid="inspector-agent-name"]',
+        )
+        ?.textContent?.trim(),
+      counterpartProfileLink: Boolean(
+        document.querySelector(
+          '[data-testid="chat-details-counterpart"] [data-testid="inspector-agent-profile-link"]',
+        ),
       ),
       kindLabel: Boolean(
         document.querySelector('[data-testid="chat-pane"]')?.innerText?.includes("DM"),
@@ -339,7 +347,8 @@ await check("chat_facts_render_on_chat_page", async () => {
   record(
     "chat_facts_render_on_chat_page",
     state.instance === instanceId &&
-      JSON.stringify(state.kinds) === JSON.stringify(["human", "agent"]) &&
+      state.counterpartName === joinedName &&
+      state.counterpartProfileLink &&
       state.kindLabel &&
       !state.archivedRow &&
       state.messages === 2 &&
@@ -350,7 +359,7 @@ await check("chat_facts_render_on_chat_page", async () => {
       state.embeddedFacts === 0 &&
       !state.body.includes("0 个活动 run") &&
       !state.body.includes("无活动 run"),
-    `会话详情分身 ${state.instance} 与流程一致，成员 ${JSON.stringify(state.kinds)}，渲染消息 ${state.messages} 条，run 视角宿主 ${state.runsHostStatus}`,
+    `会话详情分身 ${state.instance} 与流程一致，对话对象 ${state.counterpartName}，渲染消息 ${state.messages} 条，run 视角宿主 ${state.runsHostStatus}`,
   );
 });
 

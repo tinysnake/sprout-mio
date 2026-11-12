@@ -210,3 +210,25 @@ Human 把过关线从 8.0 提到 **9.0**，并要求「引入多个 pstack model
 父代理在 rebase 到最新 `origin/main` 之后重跑（均前台，不信 worker 自报）：`pnpm typecheck`；`pnpm test` 181 文件 1648 项全过；`pnpm check` 0 errors / 16 条既有 warning / 808 文件；`as-p5a-chat-ui` 33 项；`i-chat`；`j-info-hub`；`k-acceptance` runner 12 项 0 失败；`q-info-hub-runs`；`bf-p6b-pages` 13 组（含 27 项子断言）；`as-p5b-task-pages` 21 项；`o-turn-semantics`；`r-ui-layout`。对照截图重拍为 `.verify/review-dedupe/after4/` 10 张（与 before 同数据同视口），读图确认八轮改动都还在。
 
 rebase 冲突只在一处：`src/components/chat/message-list.tsx` 的身份 chip。main 新增的运行注意力提醒靠「System」标签区分系统通知，而本次去重只针对 Human/Agent 名牌重复，因此保留 `(systemNotice || source)` 的标识、Human/Agent 不再挂标签，`tests/run-attention-ui.test.ts` 继续通过。未改动数据库与原型服务。
+
+### 第九轮：部署后 Human 的四条反馈
+
+本轮上线（`deploy/2026-11-12-0128`）后，Human 直接在评审线程里提了四条：段标题样式不统一；DM 只有两个人，成员清单没有信息量，应把对方资料提到最上面并去掉成员信息；Task 摘要的状态徽标不该单独占一行；右栏段落顺序应按「对话自动化 → 活动 → 会话」。
+
+对应改动：
+
+- `chat-details.tsx`：六处段标题统一为 `text-xs font-medium`（Task 摘要、成员、Owner、活动、会话，对齐 `continuation-panel.tsx` 的「对话自动化」，右侧元信息仍保留 10px）；新增 `MemberIdentity` 提取出的对方资料块（头像、名字、职位、profile 链接、人设），DM 时以 `chat-details-counterpart` 渲染在滚动区最顶，`chat-details-members` 整段只给非 DM 渲染；「会话」段移到「活动」之后；对话框里的 Owner 下拉在名字已表达类型时省略后缀（`Human · 当前`）。
+- `task-associations.tsx`：状态徽标移到标题同一行之前，标题在非紧凑态 `flex-1 truncate` 单行省略，dl 里删掉「状态」行（只剩负责人与进展）。
+- 契约影响：DM 不再渲染成员清单，三条门禁按新契约改写——`as-p5a-chat-ui.mjs` 的 `dm_keeps_members_and_activity_only` 改为 `dm_keeps_counterpart_and_activity_only`（对方资料块 1 处且名字非空、成员段与成员清单 0 处、Owner/治理/唤醒策略仍为 0），`j-info-hub-flow.mjs` 的 `chat_facts_render_on_chat_page` 与 `k-acceptance-flow.mjs` 的 chat 场景把「成员种类」断言改为「对方资料块就是流程里加入的 Agent」（名字一致 + profile 链接存在）。事实本身没丢：「这个会话里有谁」仍由页面渲染，只是承载元素从两行清单换成对方资料块；`scripts/verify/as-p5a-chat-ui.sh` 的断言清单同步改名。
+
+父代理复跑：`pnpm typecheck`；`pnpm test` 181 文件 1648 项；`pnpm check` 0 errors / 16 条既有 warning / 808 文件；`as-p5a-chat-ui` 33 项、`as-p5b-task-pages`、`i-chat`、`j-info-hub`、`k-acceptance`、`q-info-hub-runs`、`bf-p6b-pages`、`o-turn-semantics`、`r-ui-layout` 全部退出码 0。截图 `after5/` 重拍后交三家评审复评。
+
+R9 三家终评（同一批 `after5/` 截图，五条机制逐条打分，达标线：总分 ≥ 9.0 且无任何一条 < 8.5）：
+
+| 评审 | ①唯一 | ②位置 | ③重要 | ④密度 | ⑤排版 | 总分 | 结论 |
+| ---- | ----- | ----- | ----- | ----- | ----- | ---- | ---- |
+| GPT-6.1-Sol | 9.0 | 9.5 | 9.0 | 9.3 | 9.3 | 9.2 | 达标，无 blocker |
+| DeepSeek-v4.1-Flash | 9.2 | 9.4 | 8.8 | 9.4 | 9.3 | 9.2 | 达标，无 blocker |
+| GLM-5.3-Flash | 9.0 | 9.3 | 9.0 | 9.3 | 9.2 | 9.2 | 达标，无 blocker |
+
+三家一致确认的四条改动落位（段标题统一、DM 成员段删除并由对方资料块承载、Task 状态徽标并入标题行、段序 对话自动化 → 活动 → 会话），一致保留的三条非阻塞余项：空态「Task 摘要 · 暂无关联 Task」仍占右栏首段；单 Agent 场景「1 个 Agent 排队中」与明细行「排队中」轻微重复；「对话接续」一词同时用于中栏调度横幅与右栏配置态。这些不影响达标，留待后续按需收紧。

@@ -853,19 +853,29 @@ try {
       members: count("chat-details-members"),
       activity: count("chat-details-activity"),
       memberList: count("inspector-member-list"),
+      counterpart: count("chat-details-counterpart"),
+      counterpartName:
+        document
+          .querySelector(
+            '[data-testid="chat-details-counterpart"] [data-testid="inspector-agent-name"]',
+          )
+          ?.textContent?.trim() ?? "",
       messageTimeRow: count("inspector-message-latest-at"),
       governanceCopy: details?.textContent?.includes("仅当前 Human owner 可修改") ?? false,
     };
   });
+  // DM 只有两位参与者，成员清单没有信息量：对话对象由顶部的对方资料块承载，成员段整段不渲染。
   record(
-    "dm_keeps_members_and_activity_only",
+    "dm_keeps_counterpart_and_activity_only",
     dm.owner === 0 &&
       dm.governanceNote === 0 &&
       dm.revision === 0 &&
       dm.policy === 0 &&
-      dm.members === 1 &&
+      dm.members === 0 &&
+      dm.memberList === 0 &&
+      dm.counterpart === 1 &&
+      dm.counterpartName.length > 0 &&
       dm.activity === 1 &&
-      dm.memberList === 1 &&
       dm.messageTimeRow === 1 &&
       dm.governanceCopy === false,
     JSON.stringify(dm),

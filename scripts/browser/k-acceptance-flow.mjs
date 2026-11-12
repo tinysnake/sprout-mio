@@ -497,16 +497,16 @@ async function before() {
         await sameText(page, "inspector-instance-id", observed.instanceId);
         await assertHumanMessages(page, messages);
         await assertLatestMessageTimeMatchesRendered(page);
-        assert.deepEqual(
-          await test(page, "inspector-member-list")
-            .locator("li")
-            .evaluateAll((nodes) =>
-              nodes.map((node) =>
-                node.querySelector('[data-testid="chat-member-select"]') ? "agent" : "human",
-              ),
-            ),
-          ["human", "agent"],
+        // DM 右栏不渲染成员清单（只有两位参与者）：对话对象由顶部对方资料块承载。
+        assert.equal(
+          await test(page, "chat-details-counterpart")
+            .locator('[data-testid="inspector-agent-name"]')
+            .textContent(),
+          agentName,
         );
+        await test(page, "chat-details-counterpart")
+          .locator('[data-testid="inspector-agent-profile-link"]')
+          .waitFor();
       },
     },
     {
