@@ -55,7 +55,8 @@ let localIdCounter = 0;
 /** 附件本地 id 只在本条消息内有效：服务端落库时按它把正文里的引用换成真实附件 id。 */
 function nextLocalId(): string {
   localIdCounter += 1;
-  return `local-${Date.now().toString(36)}-${localIdCounter.toString(36)}`;
+  // 不用时间戳：只有 domain 层允许就地读时钟（见 tests/tooling.test.ts）。
+  return `local-${localIdCounter.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /**

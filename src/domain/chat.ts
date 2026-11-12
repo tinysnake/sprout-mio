@@ -945,8 +945,10 @@ export function sendMessage(
           chatId,
           senderKind: input.senderKind,
         });
+        // 会话的「最后消息时间」必须就是这条消息的时间：再读一次时钟会跨秒，
+        // 列表显示的时间就会和消息本身差一秒（k-acceptance 会判不一致）。
         db.update(chat)
-          .set({ updatedAt: new Date() })
+          .set({ updatedAt: row.createdAt })
           .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
           .run();
         const saved = toMessage(row, spans, skills, ctx, rewritten.spans, records);
