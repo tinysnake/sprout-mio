@@ -3,7 +3,7 @@ import type { RequestListener } from "node:http";
 import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { executionWaitView } from "./fixtures/execution-wait-view";
-import { EXECUTION_WAIT_DEFAULT_MS } from "../src/contracts/tool-wait";
+import { EXECUTION_WAIT_DEFAULT_MS, EXECUTION_WAIT_MAX_MS } from "../src/contracts/tool-wait";
 import { remoteToolInputSchemas } from "../src/contracts/remote";
 import type { ExecutionCancellationView, ExecutionLogReadView } from "../src/contracts/remote";
 import { createRemoteClient } from "../src/extension/remote-client";
@@ -98,112 +98,337 @@ describe("远端 execution 阻塞等待工具", () => {
     return { outcome: "response", result: { ok: true, requestId, data: executionWaitView(state) } };
   }
 
-  it("复用 execution_get 并注入 Project，终态结果与单次查询同形", async () => {
+  it("创建工具默认阻塞到终态，只提交一次，且 blockMs 不进入 operation", async () => {
+    vi.useFakeTimers();
     const requests: RemoteAgentRequest[] = [];
-    const registered = tools({
+    const tool = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return response(request.call.type === "execution_submit" ? "running" : "succeeded");
+      },
+    }).get("sprout_remote_shell")!;
+    const pending = tool.execute("probe", { ...base, command: "true" });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await pending).toMatchObject({
+      isError: false,
+      details: { outcome: "succeeded", data: executionWaitView("succeeded"), requestId },
+    });
+    expect(requests).toEqual([
+      {
+        version: 2,
+        call: {
+          type: "execution_submit",
+          input: {
+            projectId,
+            machineId,
+            requestId,
+            authorizationGeneration: 1,
+            operation: { kind: "shell", command: "true", waitMs: 1000 },
+          },
+        },
+      },
+      { version: 2, call: { type: "execution_get", input: { projectId, machineId, executionId } } },
+    ]);
+    expect(requests.filter(({ call }) => call.type === "execution_submit")).toHaveLength(1);
+    expect(JSON.stringify(requests)).not.toContain("blockMs");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("五个创建工具的 operation 都不带 blockMs", async () => {
+    const createCases = [
+      ["sprout_remote_shell", { ...base, command: "true" }],
+      ["sprout_remote_file_read", { ...base, path: "/tmp/file" }],
+      ["sprout_remote_file_write", { ...base, path: "/tmp/file", content: "fixture" }],
+      ["sprout_remote_process_list", { ...base }],
+      ["sprout_remote_process_signal", { ...base, pid: 1234, signal: "TERM" }],
+    ] as const;
+    for (const [name, parameters] of createCases) {
+      const requests: RemoteAgentRequest[] = [];
+      const tool = tools({
+        projectId,
+        request: async (request) => {
+          requests.push(request);
+          return response("succeeded");
+        },
+      }).get(name)!;
+      await tool.execute("probe", { ...parameters, blockMs: 0 });
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.call.type).toBe("execution_submit");
+      expect(JSON.stringify(requests)).not.toContain("blockMs");
+    }
+  });
+
+  it("预算用尽返回 pending、同一个 executionId，且不发出取消", async () => {
+    vi.useFakeTimers();
+    const requests: RemoteAgentRequest[] = [];
+    const tool = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return response(request.call.type === "execution_submit" ? "running" : "draining");
+      },
+    }).get("sprout_remote_shell")!;
+    const pending = tool.execute("probe", { ...base, command: "true", blockMs: 2_000 });
+    await vi.advanceTimersByTimeAsync(2_000);
+    const outcome = await pending;
+    expect(outcome.isError).toBe(false);
+    expect(outcome.details).toMatchObject({
+      outcome: "pending",
+      reason: "wait_budget_exhausted",
+      machineId,
+      executionId,
+      data: executionWaitView("draining"),
+      requestedMs: 2_000,
+      effectiveMs: 2_000,
+      waitedMs: 2_000,
+      continueWith: {
+        tool: "sprout_remote_execution_wait",
+        arguments: { machineId, executionId },
+      },
+      message: expect.stringContaining("没有被取消"),
+    });
+    expect(requests.every(({ call }) => call.type !== "execution_cancel")).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("blockMs 为 0 时提交后立刻返回 not_waited，不假装成超时", async () => {
+    const requests: RemoteAgentRequest[] = [];
+    const tool = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return response("running");
+      },
+    }).get("sprout_remote_process_list")!;
+    const outcome = await tool.execute("probe", { ...base, blockMs: 0 });
+    expect(outcome).toMatchObject({
+      isError: false,
+      details: {
+        outcome: "pending",
+        reason: "not_waited",
+        executionId,
+        requestedMs: 0,
+        effectiveMs: 0,
+        waitedMs: 0,
+        data: executionWaitView("running"),
+      },
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("创建工具的 blockMs 超过上限时钳到 900000 并如实回报 requestedMs", async () => {
+    vi.useFakeTimers();
+    const tool = tools({
+      projectId,
+      request: async (request) =>
+        response(request.call.type === "execution_submit" ? "running" : "draining"),
+    }).get("sprout_remote_shell")!;
+    const pending = tool.execute("probe", { ...base, command: "true", blockMs: 9_999_999 });
+    await vi.advanceTimersByTimeAsync(EXECUTION_WAIT_MAX_MS);
+    expect(await pending).toMatchObject({
+      isError: false,
+      details: {
+        outcome: "pending",
+        reason: "wait_budget_exhausted",
+        requestedMs: 9_999_999,
+        effectiveMs: EXECUTION_WAIT_MAX_MS,
+        waitedMs: EXECUTION_WAIT_MAX_MS,
+      },
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("复用的续等工具注入 Project，终态结果与单次查询同形", async () => {
+    vi.useFakeTimers();
+    const requests: RemoteAgentRequest[] = [];
+    const tool = tools({
       projectId,
       request: async (request) => {
         requests.push(request);
         return response("succeeded");
       },
-    });
-    const wait = registered.get("sprout_remote_execution_wait")!;
-    expect(
-      await wait.execute("probe", { machineId, executionId, authorizationGeneration: 1 }),
-    ).toMatchObject({ isError: true, details: { error: { code: "validation_failed" } } });
-    expect(requests).toHaveLength(0);
-    const waited = await wait.execute("probe", { machineId, executionId });
-    const queried = await registered
-      .get("sprout_remote_execution_get")!
-      .execute("probe", { machineId, executionId });
-    expect(waited).toEqual(queried);
-    expect(waited).toMatchObject({
+    }).get("sprout_remote_execution_wait")!;
+    const pending = tool.execute("probe", { machineId, executionId });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await pending).toMatchObject({
       isError: false,
       details: { outcome: "succeeded", data: executionWaitView("succeeded"), requestId },
     });
-    expect(requests).toEqual(
-      Array(2).fill({
+    expect(requests).toEqual([
+      {
         version: 2,
         call: { type: "execution_get", input: { projectId, machineId, executionId } },
-      }),
-    );
+      },
+    ]);
   });
 
-  it("默认等 10 分钟，到点返回最后的非终态视图及实际等待时长", async () => {
+  it("sprout_remote_execution_wait 用 blockMs 接续等待到终态", async () => {
     vi.useFakeTimers();
     let reads = 0;
     const tool = tools({
       projectId,
       request: async () => {
         reads += 1;
-        return response(reads === 1 ? "running" : "draining");
+        return response(reads === 1 ? "running" : "succeeded");
+      },
+    }).get("sprout_remote_execution_wait")!;
+    const pending = tool.execute("probe", { machineId, executionId, blockMs: 5_000 });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await pending).toMatchObject({
+      isError: false,
+      details: { outcome: "succeeded", data: executionWaitView("succeeded"), requestId },
+    });
+    expect(reads).toBe(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("sprout_remote_execution_wait 默认等 10 分钟，到点返回最后的非终态视图", async () => {
+    vi.useFakeTimers();
+    let reads = 0;
+    const tool = tools({
+      projectId,
+      request: async () => {
+        reads += 1;
+        return response("running");
       },
     }).get("sprout_remote_execution_wait")!;
     const pending = tool.execute("probe", { machineId, executionId });
     await vi.advanceTimersByTimeAsync(EXECUTION_WAIT_DEFAULT_MS);
-    const outcome = await pending;
-    expect(outcome).toMatchObject({
+    expect(await pending).toMatchObject({
       isError: true,
       details: {
         outcome: "timed_out",
-        data: executionWaitView("draining"),
+        data: executionWaitView("running"),
         requestedMs: EXECUTION_WAIT_DEFAULT_MS,
         waitedMs: EXECUTION_WAIT_DEFAULT_MS,
-        message: expect.stringContaining("仍在跑"),
+        message: expect.stringContaining("没有被取消"),
       },
     });
-    expect(reads).toBe(601);
+    // 每 1 秒读一次，含截止时刻那一次。
+    expect(reads).toBe(EXECUTION_WAIT_DEFAULT_MS / 1_000 + 1);
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("请求失败和不可信的视图立即返回工具错误，不伪装成等待超时", async () => {
-    const malformed = executionWaitView("succeeded");
-    malformed.executionId = "exe_11111111";
-    for (const returned of [
-      denied,
-      {
-        outcome: "response",
-        result: { ok: true, requestId, data: malformed },
-      } as RemoteToolResponse,
-    ]) {
-      let reads = 0;
-      const tool = tools({
-        projectId,
-        request: async () => {
-          reads += 1;
-          return returned;
-        },
-      }).get("sprout_remote_execution_wait")!;
-      const outcome = await tool.execute("probe", { machineId, executionId });
-      expect(outcome.isError).toBe(true);
-      expect(outcome.details).not.toHaveProperty("outcome", "timed_out");
-      expect(reads).toBe(1);
-    }
+  it("请求失败或不可信的视图立即返回工具错误，不继续轮询", async () => {
+    let reads = 0;
+    const tool = tools({
+      projectId,
+      request: async () => {
+        reads += 1;
+        return denied;
+      },
+    }).get("sprout_remote_execution_wait")!;
+    expect(await tool.execute("probe", { machineId, executionId })).toMatchObject({
+      isError: true,
+      details: { outcome: "failed" },
+    });
+    expect(reads).toBe(1);
   });
 
-  it.each([false, true])(
-    "取消只中断等待，不取消远程执行（预先取消=%s）",
-    async (alreadyAborted) => {
-      vi.useFakeTimers();
-      const controller = new AbortController();
-      const requests: RemoteAgentRequest[] = [];
-      const tool = tools({
-        projectId,
-        request: async (request) => {
-          requests.push(request);
-          return response("running");
-        },
-      }).get("sprout_remote_execution_wait")!;
-      if (alreadyAborted) controller.abort();
-      const pending = tool.execute("probe", { machineId, executionId }, controller.signal);
-      await vi.advanceTimersByTimeAsync(0);
-      controller.abort();
-      expect(await pending).toMatchObject({ isError: false, details: { outcome: "cancelled" } });
-      expect(requests).toHaveLength(alreadyAborted ? 0 : 1);
-      expect(requests.every(({ call }) => call.type === "execution_get")).toBe(true);
-      expect(vi.getTimerCount()).toBe(0);
-    },
-  );
+  it("取消只中断等待，不取消远程执行", async () => {
+    const controller = new AbortController();
+    const requests: RemoteAgentRequest[] = [];
+    const tool = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return response("running");
+      },
+    }).get("sprout_remote_execution_wait")!;
+    const pending = tool.execute("probe", { machineId, executionId }, controller.signal);
+    controller.abort();
+    expect(await pending).toMatchObject({
+      isError: false,
+      details: { outcome: "cancelled" },
+    });
+    expect(requests.every(({ call }) => call.type !== "execution_cancel")).toBe(true);
+  });
+
+  it("sprout_remote_execution_get 保持单次读取，且不接受 blockMs", async () => {
+    const requests: RemoteAgentRequest[] = [];
+    const tool = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return response("running");
+      },
+    }).get("sprout_remote_execution_get")!;
+    expect(await tool.execute("probe", { machineId, executionId })).toMatchObject({
+      isError: false,
+      details: { outcome: "running", data: executionWaitView("running"), requestId },
+    });
+    expect(requests).toHaveLength(1);
+    expect(await tool.execute("probe", { machineId, executionId, blockMs: 5_000 })).toMatchObject({
+      isError: true,
+      details: { outcome: "failed", error: { code: "validation_failed" } },
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("旧 waitMs 被拒绝，错误指向 blockMs", async () => {
+    const createTool = tools({ projectId, request: async () => denied }).get(
+      "sprout_remote_shell",
+    )!;
+    expect(
+      await createTool.execute("probe", { ...base, command: "true", waitMs: 1_000 }),
+    ).toMatchObject({
+      isError: true,
+      details: {
+        outcome: "failed",
+        error: { code: "validation_failed", message: expect.stringContaining("blockMs") },
+      },
+    });
+    const waitTool = tools({ projectId, request: async () => denied }).get(
+      "sprout_remote_execution_wait",
+    )!;
+    expect(
+      await waitTool.execute("probe", { machineId, executionId, waitMs: 1_000 }),
+    ).toMatchObject({
+      isError: true,
+      details: {
+        outcome: "failed",
+        error: { code: "validation_failed", message: expect.stringContaining("blockMs") },
+      },
+    });
+  });
+
+  it("等待被中止时返回 pending 并保留 executionId，不取消远程执行", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const requests: RemoteAgentRequest[] = [];
+    const tool = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return response("running");
+      },
+    }).get("sprout_remote_shell")!;
+    const pending = tool.execute(
+      "probe",
+      { ...base, command: "true", blockMs: 60_000 },
+      controller.signal,
+    );
+    await vi.advanceTimersByTimeAsync(1_000);
+    controller.abort();
+    expect(await pending).toMatchObject({
+      isError: false,
+      details: { outcome: "pending", reason: "wait_budget_exhausted", machineId, executionId },
+    });
+    expect(requests.every(({ call }) => call.type !== "execution_cancel")).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("sprout_remote_execution_wait 保留在注册表并改用 blockMs", () => {
+    const registered = tools({ projectId, request: async () => denied });
+    expect(registered.has("sprout_remote_execution_wait")).toBe(true);
+    expect(Object.keys(remoteToolInputSchemas)).toContain("sprout_remote_execution_wait");
+    expect([...registered.keys()]).toEqual(Object.keys(remoteToolInputSchemas));
+    const parameters = registered.get("sprout_remote_execution_wait")!.parameters;
+    const keys = Object.keys((parameters.properties ?? {}) as Record<string, unknown>);
+    expect(keys).toContain("blockMs");
+    expect(keys).not.toContain("waitMs");
+  });
 });
 
 describe("远端 Pi 工具边界", () => {
