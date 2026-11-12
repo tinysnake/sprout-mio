@@ -1,5 +1,5 @@
 import { FileText, ImageOff, Paperclip } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Attachment } from "../../contracts/attachment";
 import type { MessageAttachmentSpan } from "../../contracts/chat";
 import type { AppResult } from "../../contracts/result";
@@ -10,9 +10,47 @@ import "./message-attachments.css";
  * 消息里的附件呈现，按 operator 选定的「方案 A 紧凑内联」：
  * 引用 span 就地渲染成小芯片，图片与文件在正文之后成组，未在正文引用的附件也照常出现。
  * 字节一律走读取路由（按 session 与 Project 鉴权），消息列表的载荷只带元数据。
+ *
+ * 字节用 fetch 取回再转 object URL，而不是让 <img> 直接指向路由：dev server 把
+ * Sec-Fetch-Dest: image 的请求交给静态资源中间件、不進应用路由（回 Cannot GET），
+ * 而 fetch 的 Sec-Fetch-Dest 是 empty，dev 与生产行为一致。
  */
 export function attachmentUrl(attachmentId: string): string {
   return "/api/attachments/" + encodeURIComponent(attachmentId);
+}
+
+type AttachmentBytes = { url: string } | { failure: string };
+
+/** 读取失败时把服务端给的 app 错误原文带出来，页面上就不是一句笼统的「加载失败」。 */
+async function failureMessage(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as AppResult<unknown>;
+    return payload.ok ? "附件读取失败" : payload.error.message;
+  } catch {
+    return "附件读取失败";
+  }
+}
+
+async function fetchAttachmentBytes(attachmentId: string): Promise<AttachmentBytes> {
+  try {
+    const response = await fetch(attachmentUrl(attachmentId), { credentials: "same-origin" });
+    if (!response.ok) return { failure: await failureMessage(response) };
+    return { url: URL.createObjectURL(await response.blob()) };
+  } catch {
+    return { failure: "附件读取失败" };
+  }
+}
+
+/** 点芯片直接查看：先同步开窗保住用户手势，再把 blob 地址挂上去，否则会被弹窗拦截。 */
+async function openAttachment(attachmentId: string): Promise<void> {
+  const opened = window.open("", "_blank");
+  if (opened !== null) opened.opener = null;
+  const bytes = await fetchAttachmentBytes(attachmentId);
+  if (!("url" in bytes) || opened === null) {
+    opened?.close();
+    return;
+  }
+  opened.location.href = bytes.url;
 }
 
 export function isImageAttachment(mimeType: string): boolean {
@@ -61,6 +99,10 @@ export function AttachmentRefChip({ attachment }: { attachment: Attachment }) {
       target="_blank"
       rel="noreferrer"
       title={attachment.filename}
+      onClick={(event) => {
+        event.preventDefault();
+        void openAttachment(attachment.id);
+      }}
     >
       <Icon as={Paperclip} size={11} />
       <span className="message-attachment-ref__name">{attachment.filename}</span>
@@ -108,46 +150,78 @@ function AttachmentBroken({
 }
 
 /**
- * 图片在正文之后成块。加载失败时再问一次读取路由，把它给出的原因写进占位，
+ * 图片在正文之后成块。字节在滚到附近时才取，取不到就把读取路由给的原因写进占位，
  * 于是「磁盘上的字节没了」与「id 不存在」在页面上是两句话，而不是一张破图。
  */
 export function AttachmentFigure({ attachment }: { attachment: Attachment }) {
-  const [failure, setFailure] = useState<string | null>(null);
-  const report = () => {
-    setFailure("附件读取失败");
-    void (async () => {
-      try {
-        const response = await fetch(attachmentUrl(attachment.id), { credentials: "same-origin" });
-        if (response.ok) return;
-        const payload = (await response.json()) as AppResult<unknown>;
-        if (!payload.ok) setFailure(payload.error.message);
-      } catch {
-        // 请求本身失败时保留兜底文案。
+  const figureRef = useRef<HTMLElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [bytes, setBytes] = useState<AttachmentBytes | null>(null);
+
+  useEffect(() => {
+    const node = figureRef.current;
+    if (node === null || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    let created: string | null = null;
+    void fetchAttachmentBytes(attachment.id).then((result) => {
+      if (cancelled) {
+        if ("url" in result) URL.revokeObjectURL(result.url);
+        return;
       }
-    })();
-  };
-  if (failure !== null) {
+      if ("url" in result) created = result.url;
+      setBytes(result);
+    });
+    return () => {
+      cancelled = true;
+      if (created !== null) URL.revokeObjectURL(created);
+    };
+  }, [attachment.id, visible]);
+
+  if (bytes !== null && "failure" in bytes) {
     return (
       <AttachmentBroken
         attachment={attachment}
-        reason={failure}
+        reason={bytes.failure}
         testId="message-attachment-image-broken"
       />
     );
   }
   return (
     <figure
+      ref={figureRef}
       className="message-attachment-figure"
       data-testid="message-attachment-figure"
       data-attachment-id={attachment.id}
     >
-      <img
-        src={attachmentUrl(attachment.id)}
-        alt={attachment.filename}
-        loading="lazy"
-        decoding="async"
-        onError={report}
-      />
+      {bytes !== null ? (
+        <img
+          src={bytes.url}
+          alt={attachment.filename}
+          loading="lazy"
+          decoding="async"
+          data-testid="message-attachment-image"
+        />
+      ) : (
+        <span className="message-attachment-figure__pending" aria-hidden="true" />
+      )}
       <figcaption>
         {attachment.filename} · {formatAttachmentSize(attachment.byteSize)}
       </figcaption>
@@ -165,6 +239,10 @@ export function AttachmentFileChip({ attachment }: { attachment: Attachment }) {
       target="_blank"
       rel="noreferrer"
       title={attachment.filename}
+      onClick={(event) => {
+        event.preventDefault();
+        void openAttachment(attachment.id);
+      }}
     >
       <span className="message-attachment-file__icon">
         <Icon as={FileText} size={13} />

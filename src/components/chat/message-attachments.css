@@ -121,3 +121,11 @@
   color: var(--destructive);
   font-weight: 500;
 }
+
+.message-attachment-figure__pending {
+  display: block;
+  width: 100%;
+  height: 96px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border);
+}

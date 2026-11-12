@@ -88,6 +88,7 @@ export const CI_GROUPS = Object.freeze({
     "aq-p4d-pages",
     "as-p5a-chat-ui",
     "as-p5b-task-pages",
+    "rm2-attachments",
     "p6c-member-governance-ui",
     "p6a-pages",
     "bf-p6b-pages",
