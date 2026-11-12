@@ -554,7 +554,8 @@ async function runExecutionBlocking(
       view: lastView,
       requestedMs,
       effectiveMs,
-      waitedMs: now() - startedAt,
+      // 没有等待就没有等待时长：`not_waited` 的秒表里只剩提交往返，报出来是噪声（CI 上出现过 1ms）。
+      waitedMs: reason === "not_waited" ? 0 : now() - startedAt,
     });
 
   // 终态与单次 `execution_get` 同形。
