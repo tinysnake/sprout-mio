@@ -13,6 +13,7 @@ import type { MentionSpan } from "../../contracts/chat";
 import type { MessageSkillSpan } from "../../contracts/skill";
 import { maskMessageSegments, type MessageSegment, type MessageSentinel } from "./message-segments";
 import { SkillMark } from "./skill-mark";
+import "./message-markdown.css";
 
 /**
  * 消息正文的 markdown 渲染。
@@ -42,9 +43,11 @@ export function MessageMarkdown({
   );
   const components = useMemo(() => componentsWithSentinels(sentinels), [sentinels]);
   return (
-    <Markdown remarkPlugins={[remarkGfm]} components={components}>
-      {text}
-    </Markdown>
+    <div className="message-markdown">
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+        {text}
+      </Markdown>
+    </div>
   );
 }
 
