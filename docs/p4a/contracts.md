@@ -117,7 +117,7 @@ AppResult 成功为 `{ "ok": true, "data": ..., "requestId": "req_..." }`。失�
 | 导出                       | 值     |
 | -------------------------- | ------ |
 | `WORKER_PROTOCOL_VERSION`  | 1      |
-| `WORKER_POLL_INTERVAL_MS`  | 5000   |
+| `WORKER_POLL_INTERVAL_MS`  | 2000   |
 | `WORKER_STALE_AFTER_MS`    | 15000  |
 | `WORKER_ENROLLMENT_TTL_MS` | 600000 |
 

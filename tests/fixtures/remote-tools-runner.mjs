@@ -147,11 +147,19 @@ export default function probe(pi) {
     assert.equal(slept.isError, false);
     assert.equal(slept.details.outcome, 'slept');
     assert.equal(slept.details.sleptMs, 1);
-    const controller = new AbortController();
-    controller.abort();
-    const stoppedWait = await registered.get('sprout_remote_execution_wait').execute('wait', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)}}, controller.signal);
-    assert.equal(stoppedWait.isError, false);
-    assert.equal(stoppedWait.details.outcome, 'cancelled');
+    // 旧的 waitMs 是 worker 快照窗口，已移出工具面；创建工具现在只接受 blockMs。
+    const legacyWait = await registered.get('sprout_remote_shell').execute('legacy', {machineId:${JSON.stringify(machineId)},requestId:${JSON.stringify(requestId)},authorizationGeneration:1,command:'true',waitMs:1000});
+    assert.equal(legacyWait.isError, true);
+    assert.equal(legacyWait.details.error.code, 'validation_failed');
+    assert.ok(legacyWait.details.error.message.includes('blockMs'), 'waitMs rejection must point at blockMs');
+    const negativeBlock = await registered.get('sprout_remote_execution_wait').execute('block', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)},blockMs:-1});
+    assert.equal(negativeBlock.isError, true);
+    assert.equal(negativeBlock.details.error.code, 'validation_failed');
+    const abortController = new AbortController();
+    abortController.abort();
+    const cancelledWait = await registered.get('sprout_remote_execution_wait').execute('wait', {machineId:${JSON.stringify(machineId)},executionId:${JSON.stringify(executionId)}}, abortController.signal);
+    assert.equal(cancelledWait.isError, false);
+    assert.equal(cancelledWait.details.outcome, 'cancelled');
     const shell = registered.get('sprout_remote_shell');
     const missing = await shell.execute('missing', {requestId:${JSON.stringify(requestId)},authorizationGeneration:1,command:'true'});
     assert.equal(missing.isError, true);
@@ -177,7 +185,7 @@ export default function probe(pi) {
       toolNames: tools.map(tool=>tool.name).sort(),
       schemas: Object.fromEntries(tools.map(tool=>[tool.name,tool.parameters])),
       missingMachineRejected:true, forgedIdentityRejected:true, validCallSucceeded:true,
-      termWaitRejected:true, limitBytesRejected:true, localSleepSucceeded:true, executionWaitCancelled:true
+      termWaitRejected:true, limitBytesRejected:true, localSleepSucceeded:true, legacyWaitMsRejected:true, negativeBlockMsRejected:true, executionWaitCancelled:true
     }));
   });
 }
@@ -288,7 +296,7 @@ try {
   };
   writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
   console.log(
-    `PASS real runner: ${probe.toolNames.length} tools (registry-derived); N12 missing Machine rejected; forged identity rejected; termWaitMs/limitBytes rejected; 1 HTTP call with injected Project; safe evidence ${evidencePath}`,
+    `PASS real runner: ${probe.toolNames.length} tools (registry-derived); N12 missing Machine rejected; forged identity rejected; termWaitMs/limitBytes rejected; legacy waitMs rejected in favor of blockMs; execution wait tool cancels; 1 HTTP call with injected Project; safe evidence ${evidencePath}`,
   );
 } finally {
   if (runner && runner.exitCode === null) {

@@ -17,7 +17,7 @@ import {
 } from "./machine";
 
 export const WORKER_PROTOCOL_VERSION = 3;
-export const WORKER_POLL_INTERVAL_MS = 5000;
+export const WORKER_POLL_INTERVAL_MS = 2000;
 export const WORKER_STALE_AFTER_MS = 15000;
 export const WORKER_ENROLLMENT_TTL_MS = 600000;
 const envelope = {
