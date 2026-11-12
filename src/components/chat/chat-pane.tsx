@@ -12,6 +12,7 @@ import type { AppError, AppResult } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
+import type { ComposerAttachment } from "./attachment-bar";
 import { AssistantPanelProvider, AssistantPendingBar, AssistantWatchMenu } from "./assistant-panel";
 import type { ChatHistory } from "./chat-thread";
 import { useChatWindow } from "./use-chat-window";
@@ -185,6 +186,51 @@ export function ChatPane({
     }
   }
 
+  /**
+   * 有附件时的投递：同一个 multipart 里带正文与文件，POST 到附件路由。
+   * 响应仍是 ChatResult<Message>，走与 send() 相同的错误与成功路径；
+   * 只有真的进了消息窗口才回 true（composer 据此清空草稿与附件）。
+   */
+  async function sendWithAttachments(
+    body: string,
+    attachments: readonly ComposerAttachment[],
+  ): Promise<boolean> {
+    if (sendPending) return false;
+    if (isOffline()) return false;
+    setSendPending(true);
+    setSendError(null);
+    setFieldErrors({});
+    try {
+      const form = new FormData();
+      form.set("chatId", chat.id);
+      form.set("body", body);
+      for (const attachment of attachments) {
+        form.append("localIds", attachment.localId);
+        form.append("files", attachment.file, attachment.file.name);
+      }
+      const response = await fetch("/api/attachments", {
+        method: "POST",
+        body: form,
+        credentials: "same-origin",
+      });
+      const result = (await response.json()) as ChatResult<Message>;
+      if (!alive.current) return false;
+      if (!result.ok) {
+        setSendError(result.error);
+        setFieldErrors(result.fieldErrors ?? {});
+        return false;
+      }
+      setDraft("");
+      onChanged();
+      return true;
+    } catch {
+      // 结果未确认时保持沉默：草稿与附件都留着，人类重发即可。
+      return false;
+    } finally {
+      if (alive.current) setSendPending(false);
+    }
+  }
+
   async function stop(runId?: string) {
     const targetId = runId ?? (runState.ok ? (runState.data.latest?.id ?? undefined) : undefined);
     if (!targetId || stoppingRunId) return;
@@ -264,6 +310,7 @@ export function ChatPane({
           draft={draft}
           onDraftChange={setDraft}
           onSend={() => void send()}
+          onSendWithAttachments={sendWithAttachments}
           sendPending={sendPending}
           sendError={sendError}
           fieldErrors={fieldErrors}

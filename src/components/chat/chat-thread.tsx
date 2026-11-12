@@ -13,6 +13,7 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ChatErrorNotice } from "./chat-error-notice";
 import { MessageComposer } from "./message-composer";
+import type { ComposerAttachment } from "./attachment-bar";
 import type { MentionMember } from "./mention-picker";
 import { MessageList } from "./message-list";
 import { chatDisplayName } from "./chat-display";
@@ -107,6 +108,7 @@ export function ChatThread({
   draft,
   onDraftChange,
   onSend,
+  onSendWithAttachments,
   sendPending,
   sendError,
   fieldErrors,
@@ -151,6 +153,14 @@ export function ChatThread({
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: () => void;
+  /**
+   * 有附件时的投递入口：正文与附件交给容器组 FormData 走附件路由；
+   * 回 true（已送达）输入区才清空。未注入时带附件的发送退回 onSend。
+   */
+  onSendWithAttachments?: (
+    body: string,
+    attachments: readonly ComposerAttachment[],
+  ) => Promise<boolean>;
   sendPending: boolean;
   sendError: AppError | null;
   fieldErrors: FieldErrors;
@@ -516,6 +526,11 @@ export function ChatThread({
           draft={draft}
           onDraftChange={onDraftChange}
           onSubmit={onSend}
+          onSubmitWithAttachments={
+            onSendWithAttachments
+              ? (input) => onSendWithAttachments(input.body, input.attachments)
+              : undefined
+          }
           pending={sendPending}
           error={sendError}
           fieldErrors={fieldErrors}

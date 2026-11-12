@@ -1,0 +1,68 @@
+/*
+ * 镜像层的装饰样式。textarea 是唯一真相、文字透明，镜像层压在下面显示，
+ * 所以这里只许用**不改变字形前进宽度**的装饰：字号、letter-spacing、font-weight、
+ * 任何加宽前进宽度的 padding/margin 都会让镜像与 textarea 错位。
+ * 允许的集合（逐字符 x 偏移 ≤ 0.36px，已在原型上量过）：假粗体 text-shadow、
+ * 真斜体（Geist Variable 有斜体面）、行内代码只改背景与颜色、标题只改颜色、标记调暗。
+ */
+.composer-md-marker {
+  opacity: 0.28;
+}
+
+.composer-md-strong {
+  text-shadow: 0 0 0.6px currentColor;
+}
+
+.composer-md-emphasis {
+  font-style: italic;
+}
+
+.composer-md-code {
+  /* 不切等宽字族、不改字号：只靠背景把行内代码认出来。 */
+  font-family: inherit;
+  font-size: inherit;
+  border-radius: 3px;
+  background: var(--muted);
+}
+
+.composer-md-heading {
+  color: var(--primary);
+}
+
+/*
+ * 附件引用：沿用 skill-mark 的手法——原文留在文本流里撑宽度（透明），
+ * 芯片绝对定位压上去（不参与布局），所以插入 token 不会把周围文字挤走。
+ */
+.composer-ref {
+  position: relative;
+}
+
+.composer-ref-raw {
+  opacity: 0;
+}
+
+.composer-ref-chip {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  translate: 0 -50%;
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  height: 1.5em;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+  padding: 0 2px;
+  border-radius: var(--control-radius);
+  background: var(--skill-mark);
+  box-shadow: inset 0 0 0 1px var(--skill-mark-ring);
+  color: var(--skill-mark-foreground);
+}
+
+.composer-ref-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
