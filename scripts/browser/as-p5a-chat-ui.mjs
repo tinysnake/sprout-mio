@@ -182,6 +182,16 @@ try {
     }),
   );
 
+  // 公共频道成员段的文案由会话数据解析后渲染：导航完成时它可能还没写入，直接读会偶发拿到 null
+  // （CI 上 `channel_membership_readonly_copy` 的 flake）。先等文案落定，再读内容与按钮数。
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="channel-members-readonly"]')
+        ?.textContent?.includes("不可独立修改") ?? false,
+    null,
+    { timeout: 20000 },
+  );
   const channelText = (await page.textContent('[data-testid="channel-members-readonly"]'))?.trim();
   // P5a 冻结的是「公共频道成员随项目同步、不可独立增删」，不是「频道上一个治理动作都没有」：
   // I-P6c 按产品文档补上了 Human 指定负责人，`owner_change` 因此合法出现。浏览器层这里只验证
@@ -189,6 +199,14 @@ try {
   // `title_change` 由 tests/chat-governance.test.ts 覆盖，「只有 Project 创建者能换 owner」由
   // bf-p6c-lifecycle 的 invariant.6.channel-owner 覆盖（实测删掉 setChatOwner 的创建者断言后
   // 该门禁会红、而 chat-governance 单测仍绿），页面不再用第二份候选列表自证。
+  // 负责人按钮由治理事实决定：等它渲染到唯一一个再数，超时就按原样失败（不掩盖真问题）。
+  await page
+    .waitForFunction(
+      () => document.querySelectorAll('[data-governance-action="owner_change"]').length === 1,
+      null,
+      { timeout: 20000 },
+    )
+    .catch(() => {});
   const channelMembershipActions = await page
     .locator('[data-governance-action="member_add"], [data-governance-action="member_remove"]')
     .count();

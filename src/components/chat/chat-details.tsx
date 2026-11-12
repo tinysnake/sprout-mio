@@ -35,6 +35,7 @@ import { ChatErrorNotice } from "./chat-error-notice";
 import { ChatAvatar } from "./chat-avatar";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { ChatActivityFacts } from "../info-hub/chat-activity";
+import { visibleLeases } from "../machine/lease-view";
 import { TaskAssociations } from "../tasks/task-associations";
 import { governanceNote } from "./chat-governance";
 import type { ChatMachineFacts } from "./chat-loader";
@@ -458,20 +459,33 @@ export function ChatDetails({
             ) : (
               <ChatActivityFacts info={info.data} turnContext={turnContext} />
             )}
-            <div className="space-y-4 pt-1">
+            {/* 未接入 Machine 时给一条诊断提示；它属于「读取诊断」，不占右栏可见区。 */}
+            {!machineFacts && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] text-muted-foreground">Machine / Worker</span>
+                <span
+                  data-testid="chat-machines-notice"
+                  className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
+                >
+                  {machineFactsError ? "读取失败" : "未接入，P4b 集成"}
+                </span>
+              </div>
+            )}
+          </div>
+        </details>
+        {/* 租约是「当前事实」，不是历史记录：它不能跟着活动折叠一起默认收起。收起时
+            `chat-machine-facts` 整块 hidden，而这两条门禁正是在**真实会话页**上等它可见：
+            `tests/fixtures/execution-wiring-ui.ts`（ag-execution-wiring-ui）与
+            `scripts/verify/z-lease-integration.sh`。（p8a / p4b 的 chat-inspector 场景走的是
+            `src/components/info-hub/chat-inspector.tsx` 演示实现，与本组件无关。）
+            没有租约、也没读失败时这里什么都不渲染（hideEmpty 的判据提前到这里），
+            右栏在无租约时与折叠版完全一致。 */}
+        {((machineFacts && visibleLeases(machineFacts.leases, machineFacts.projectId).length > 0) ||
+          machineFactsError) && (
+          <div data-testid="chat-details-machines" className="border-t border-border py-4">
+            <div className="space-y-4">
               {/* 读到租约事实时不再解释「与 Project settings 同一份」：租约块自己就是答案；
-                  只有读失败或未接入才需要这一行说明。 */}
-              {!machineFacts && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] text-muted-foreground">Machine / Worker</span>
-                  <span
-                    data-testid="chat-machines-notice"
-                    className="rounded-control border border-border px-1.75 py-0.75 text-[10px] text-muted-foreground"
-                  >
-                    {machineFactsError ? "读取失败" : "未接入，P4b 集成"}
-                  </span>
-                </div>
-              )}
+                  读失败才需要这里说明。 */}
               {machineFactsError && (
                 <ChatErrorNotice error={machineFactsError} testId="chat-machine-error" />
               )}
@@ -497,7 +511,7 @@ export function ChatDetails({
               )}
             </div>
           </div>
-        </details>
+        )}
         <details
           open
           data-testid="chat-details-conversation"
@@ -769,7 +783,13 @@ function OwnerDialog({
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState(currentOwnerKey);
+  // 候选里未必有当前 Owner：公共频道的候选只有本 Project 的 Human 创建者，而 Owner 可能是 Agent。
+  // 这时没有「维持原样」这个选项，若仍预选 currentOwnerKey，`selected === currentOwnerKey` 恒真，
+  // 「保存更改」会永久禁用（p6c-member-governance-ui 在这个频道场景上点不动它）。预选第一个候选。
+  const candidateKeys = members.map(memberKey);
+  const currentIsCandidate = candidateKeys.includes(currentOwnerKey);
+  const offeredSelection = currentIsCandidate ? currentOwnerKey : (candidateKeys[0] ?? "");
+  const [selected, setSelected] = useState(offeredSelection);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
 
@@ -806,7 +826,7 @@ function OwnerDialog({
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         if (nextOpen) {
-          setSelected(currentOwnerKey);
+          setSelected(offeredSelection);
           setError(null);
         }
       }}
