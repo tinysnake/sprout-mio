@@ -149,6 +149,12 @@ try {
   await stop(second, 'after')
 } catch (error) {
   record('acceptance_runner', false, { error: error.stack ?? String(error) })
+  // 失败信息只说「看 server-*.log」，runner 日志里却拿不到那段，收口时只能翻本地文件；失败当场把尾部打出来。
+  for (const name of readdirSync(directory).filter(file => file.endsWith('.log')).sort()) {
+    const lines = readFileSync(join(directory, name), 'utf8').trimEnd().split('\n')
+    console.log(`===== ${name} (last ${Math.min(lines.length, 40)} of ${lines.length} lines) =====`)
+    console.log(lines.slice(-40).join('\n'))
+  }
 } finally {
   for (const child of children) kill(child, 'SIGKILL')
 }

@@ -1,0 +1,27 @@
+/*
+ * 输入区的外壳与源码揭示态；正文的排版规则在 markdown-content.css（与消息侧共用一份）。
+ */
+.composer-editor {
+  position: relative;
+}
+
+.composer-editor--dragging {
+  border-radius: var(--radius);
+  outline: 2px dashed var(--ring);
+}
+
+.composer-editor__input {
+  min-height: 50px;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* 光标停进去的那一段才把源码标记露出来，其余时间只留排版结果。 */
+.composer-editor__input .composer-markdown-source {
+  opacity: 0.35;
+}
+
+.composer-editor__input .markdown-chip.ProseMirror-selectednode {
+  outline: 2px solid var(--ring);
+}

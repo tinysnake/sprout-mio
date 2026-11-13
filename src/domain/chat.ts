@@ -18,9 +18,11 @@ import {
   type MentionSpan,
   type Message,
   type MessageCursor,
+  type MessageAttachmentSpan,
   type MessageWindow,
   type SendMessageInput,
 } from "../contracts/chat";
+import type { Attachment, NewAttachment } from "../contracts/attachment";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import {
@@ -56,6 +58,19 @@ import {
   resolveMessageMentions,
   writeMessageMentions,
 } from "./message-mention";
+import {
+  readAttachmentsFor,
+  readAttachmentSpansFor,
+  writeMessageAttachments,
+} from "./message-attachment";
+import {
+  allocateAttachmentIds,
+  discardAttachmentFiles,
+  insertAttachments,
+  rewriteAttachmentTokens,
+  validateNewAttachments,
+  writeAttachmentBytes,
+} from "./attachment";
 
 export class ChatError extends Error {
   constructor(
@@ -95,6 +110,8 @@ function toMessage(
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
   ctx: ProjectContext,
+  attachmentSpans: readonly MessageAttachmentSpan[] = [],
+  attachments: readonly Attachment[] = [],
 ): Message {
   const identity = {
     id: row.id,
@@ -141,6 +158,8 @@ function toMessage(
           },
           mentions: [],
           skills: [],
+          attachments: [],
+          attachmentSpans: [],
         };
     }
     return {
@@ -156,6 +175,8 @@ function toMessage(
       },
       mentions: [],
       skills: [],
+      attachments: [],
+      attachmentSpans: [],
     };
   }
   if (row.senderKind === "assistant_work")
@@ -165,6 +186,8 @@ function toMessage(
       nativeSource: { kind: "assistant_work", proposalId: row.assistantProposalId! },
       mentions: [],
       skills: [],
+      attachments: [],
+      attachmentSpans: [],
     };
   if (row.senderKind === "automation") {
     if (!row.automationTriggerId) throw new Error("automation_message_corrupt");
@@ -174,6 +197,8 @@ function toMessage(
       automationSource: automationSourceFor(row.automationTriggerId),
       mentions: [],
       skills: [],
+      attachments: [],
+      attachmentSpans: [],
     };
   }
   return {
@@ -183,6 +208,8 @@ function toMessage(
     createdAt: row.createdAt.toISOString(),
     mentions: mentions.map((span) => ({ ...span })),
     skills: skills.map((span) => ({ ...span })),
+    attachments: attachments.map((item) => ({ ...item })),
+    attachmentSpans: attachmentSpans.map((span) => ({ ...span })),
     ...(row.taskId !== null && row.taskRecordSeq !== null && row.taskRecordKind !== null
       ? {
           taskRecord: {
@@ -775,9 +802,24 @@ function readMessages(
     chatId,
     ordered.map((row) => row.entry.id),
   );
+  const attachmentSpans = readAttachmentSpansFor(
+    chatId,
+    ordered.map((row) => row.entry.id),
+  );
+  const attachments = readAttachmentsFor(
+    chatId,
+    ordered.map((row) => row.entry.id),
+  );
   return {
     messages: ordered.map((row) =>
-      toMessage(row.entry, mentions.get(row.entry.id) ?? [], skills.get(row.entry.id) ?? [], ctx),
+      toMessage(
+        row.entry,
+        mentions.get(row.entry.id) ?? [],
+        skills.get(row.entry.id) ?? [],
+        ctx,
+        attachmentSpans.get(row.entry.id) ?? [],
+        attachments.get(row.entry.id) ?? [],
+      ),
     ),
     head: first === undefined ? null : rowCursor(first),
     tail: last === undefined ? null : rowCursor(last),
@@ -791,117 +833,140 @@ export function sendMessage(
   input: SendMessageInput,
   ctx: ProjectContext,
   hooks: IdentityWriteHooks = {},
+  newAttachments: readonly NewAttachment[] = [],
 ): Message {
-  const saved = sqlite
-    .transaction(() => {
-      const current = getChat(chatId, ctx);
-      if (input.senderKind !== "human" && input.senderKind !== "agent")
-        throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
-      // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
-      // 后面的成员与 instance 检查也证明不了「这次写入属于哪次运行」，所以在入口就拒绝。
-      if (input.senderKind === "agent" && !ctx.agent)
-        throw new ChatError("forbidden", "Agent 发言必须带本次 run 的身份");
-      assertActiveRun(ctx);
-      // run 里执行的域代码只能以本 run 的分身说话：否则人类消息开出的 run 就能冒充人类发言。
-      if (
-        ctx.agent &&
-        (input.senderKind !== "agent" || input.senderId !== ctx.agent.agentProfileId)
-      ) {
-        throw new ChatError("forbidden", "Agent run 只能以本 run 的分身身份发言");
-      }
-      // 发言资格与成员列表同源（`chat_effective_member`）：频道里没有 chat_member 行，
-      // 只读成员表会让频道永远发不出消息；只读成员表也无法收回 Project 移除后的参与权。
-      const sender = db
-        .select({ memberId: chatEffectiveMember.memberId })
-        .from(chatEffectiveMember)
+  // 附件字节在事务里写盘；事务回滚时按这份清单删掉，不留没有行指向的文件。
+  const writtenFiles: string[] = [];
+  const commitMessage = sqlite.transaction(() => {
+    const current = getChat(chatId, ctx);
+    if (input.senderKind !== "human" && input.senderKind !== "agent")
+      throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
+    // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
+    // 后面的成员与 instance 检查也证明不了「这次写入属于哪次运行」，所以在入口就拒绝。
+    if (input.senderKind === "agent" && !ctx.agent)
+      throw new ChatError("forbidden", "Agent 发言必须带本次 run 的身份");
+    assertActiveRun(ctx);
+    // run 里执行的域代码只能以本 run 的分身说话：否则人类消息开出的 run 就能冒充人类发言。
+    if (
+      ctx.agent &&
+      (input.senderKind !== "agent" || input.senderId !== ctx.agent.agentProfileId)
+    ) {
+      throw new ChatError("forbidden", "Agent run 只能以本 run 的分身身份发言");
+    }
+    // 发言资格与成员列表同源（`chat_effective_member`）：频道里没有 chat_member 行，
+    // 只读成员表会让频道永远发不出消息；只读成员表也无法收回 Project 移除后的参与权。
+    const sender = db
+      .select({ memberId: chatEffectiveMember.memberId })
+      .from(chatEffectiveMember)
+      .where(
+        and(
+          eq(chatEffectiveMember.chatId, chatId),
+          eq(chatEffectiveMember.projectId, current.projectId),
+          eq(chatEffectiveMember.memberKind, input.senderKind),
+          eq(chatEffectiveMember.memberId, input.senderId),
+        ),
+      )
+      .get();
+    if (!sender || (input.senderKind === "human" && input.senderId !== ctx.userId)) {
+      throw new ChatError("not_found", "对话成员不存在");
+    }
+    // 裁定 d19：视图的 DM 分支不查 project_member，Agent 移出 Project 后旧 DM 行仍在视图里。
+    // DM 里的 Agent 发送者必须仍是该 Project 成员，参与权不留在两处判定。
+    if (input.senderKind === "agent" && current.kind === "dm") {
+      const membership = db
+        .select({ agentProfileId: projectMember.agentProfileId })
+        .from(projectMember)
         .where(
           and(
-            eq(chatEffectiveMember.chatId, chatId),
-            eq(chatEffectiveMember.projectId, current.projectId),
-            eq(chatEffectiveMember.memberKind, input.senderKind),
-            eq(chatEffectiveMember.memberId, input.senderId),
+            eq(projectMember.projectId, current.projectId),
+            eq(projectMember.agentProfileId, input.senderId),
           ),
         )
         .get();
-      if (!sender || (input.senderKind === "human" && input.senderId !== ctx.userId)) {
-        throw new ChatError("not_found", "对话成员不存在");
-      }
-      // 裁定 d19：视图的 DM 分支不查 project_member，Agent 移出 Project 后旧 DM 行仍在视图里。
-      // DM 里的 Agent 发送者必须仍是该 Project 成员，参与权不留在两处判定。
-      if (input.senderKind === "agent" && current.kind === "dm") {
-        const membership = db
-          .select({ agentProfileId: projectMember.agentProfileId })
-          .from(projectMember)
-          .where(
-            and(
-              eq(projectMember.projectId, current.projectId),
-              eq(projectMember.agentProfileId, input.senderId),
-            ),
-          )
+      if (!membership) throw new ChatError("not_found", "对话成员不存在");
+    }
+    const instance =
+      input.senderKind === "agent"
+        ? db
+            .select()
+            .from(agentInstance)
+            .where(
+              and(
+                eq(agentInstance.chatId, chatId),
+                eq(agentInstance.projectId, current.projectId),
+                eq(agentInstance.agentProfileId, input.senderId),
+              ),
+            )
+            .get()
+        : undefined;
+    if (input.senderKind === "agent" && !instance)
+      throw new ChatError("not_found", "Instance 不存在");
+    return writeIdentity(
+      ctx,
+      {
+        event: "message.sent",
+        message: "消息已保存",
+        projectId: current.projectId,
+        chatId,
+        ...(instance ? { instanceId: instance.id } : {}),
+      },
+      () => {
+        // 引用先把本地 token 换成真实附件 id：正文与 span 从此对齐，渲染与投递都按 span 定位。
+        // 正文里出现没随这次提交带上来的 token 会被直接拒掉，不留一条指向不存在附件的正文。
+        validateNewAttachments(newAttachments);
+        const idByLocalId = allocateAttachmentIds(newAttachments);
+        const rewritten = rewriteAttachmentTokens(input.body, idByLocalId);
+        // 点名与技能都从最终正文解析：存下去的就是它，解析结果不会与落库正文错位。
+        const members = readChatEffectiveMembers(chatId, current.projectId);
+        const spans = resolveMessageMentions({
+          body: rewritten.body,
+          candidates: mentionCandidatesFor(members),
+        });
+        const row = db
+          .insert(message)
+          .values({ id: newId(ID_PREFIXES.message), chatId, ...input, body: rewritten.body })
+          .returning()
           .get();
-        if (!membership) throw new ChatError("not_found", "对话成员不存在");
-      }
-      const instance =
-        input.senderKind === "agent"
-          ? db
-              .select()
-              .from(agentInstance)
-              .where(
-                and(
-                  eq(agentInstance.chatId, chatId),
-                  eq(agentInstance.projectId, current.projectId),
-                  eq(agentInstance.agentProfileId, input.senderId),
-                ),
-              )
-              .get()
-          : undefined;
-      if (input.senderKind === "agent" && !instance)
-        throw new ChatError("not_found", "Instance 不存在");
-      return writeIdentity(
-        ctx,
-        {
-          event: "message.sent",
-          message: "消息已保存",
-          projectId: current.projectId,
+        // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
+        writeMessageMentions(chatId, row.id, spans);
+        const skills = resolveMessageSkills(rewritten.body);
+        writeMessageSkills(chatId, row.id, skills);
+        const records = insertAttachments({
           chatId,
-          ...(instance ? { instanceId: instance.id } : {}),
-        },
-        () => {
-          // 点名在插入之前解析，候选只来自本对话的有效成员视图，不接受客户端送来的成员表：
-          // 名字匹配不上就只是普通正文，不会落出一条指向不存在成员的 mention。
-          const members = readChatEffectiveMembers(chatId, current.projectId);
-          const spans = resolveMessageMentions({
-            body: input.body,
-            candidates: mentionCandidatesFor(members),
-          });
-          const row = db
-            .insert(message)
-            .values({ id: newId(ID_PREFIXES.message), chatId, ...input })
-            .returning()
-            .get();
-          // 同一条 message 与它的 mention 行在同一个事务里落库：外键指向刚插入的那一行。
-          writeMessageMentions(chatId, row.id, spans);
-          const skills = resolveMessageSkills(input.body);
-          writeMessageSkills(chatId, row.id, skills);
-          const wakeQueued = enqueueMessageWake({
-            id: row.id,
-            chatId,
-            senderKind: input.senderKind,
-          });
-          db.update(chat)
-            .set({ updatedAt: new Date() })
-            .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
-            .run();
-          const saved = toMessage(row, spans, skills, ctx);
-          if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
-          else appendAgentMentionRunInput(saved, ctx);
-          captureFeishuMessage(row.id, row.createdAt);
-          return saved;
-        },
-        hooks,
-      );
-    })
-    .immediate();
+          messageId: row.id,
+          createdBy: ctx.userId,
+          list: newAttachments,
+          idByLocalId,
+        });
+        writtenFiles.push(...writeAttachmentBytes({ list: newAttachments, idByLocalId }));
+        writeMessageAttachments(chatId, row.id, rewritten.spans);
+        const wakeQueued = enqueueMessageWake({
+          id: row.id,
+          chatId,
+          senderKind: input.senderKind,
+        });
+        // 会话的「最后消息时间」必须就是这条消息的时间：再读一次时钟会跨秒，
+        // 列表显示的时间就会和消息本身差一秒（k-acceptance 会判不一致）。
+        db.update(chat)
+          .set({ updatedAt: row.createdAt })
+          .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
+          .run();
+        const saved = toMessage(row, spans, skills, ctx, rewritten.spans, records);
+        if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
+        else appendAgentMentionRunInput(saved, ctx);
+        captureFeishuMessage(row.id, row.createdAt);
+        return saved;
+      },
+      hooks,
+    );
+  });
+  let saved: Message;
+  try {
+    saved = commitMessage.immediate();
+  } catch (error) {
+    discardAttachmentFiles(writtenFiles);
+    throw error;
+  }
   // 通知必须在事务提交之后发出；放在 writeIdentity 回调里时，监听者可能读到未提交的 wake 行。
   signalScheduleChange(saved.chatId);
   return saved;

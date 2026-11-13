@@ -13,7 +13,7 @@ Agent 使用远程工具操作 Machine，用户从项目、Chat 或 Machine 租�
 
 ## 阻塞等待与本地 sleep
 
-提交远端操作后，可用 `sprout_remote_execution_wait({machineId, executionId, waitMs?})` 阻塞等待终态；默认等 10 分钟，最多 15 分钟，每秒通过既有 `execution_get` 查询一次。无需授权代次。成功返回与 `execution_get` 同形的 `{outcome,data,requestId}`。等待到点的 `timed_out` 会携带最后一次 `ExecutionView`、有效预算 `requestedMs` 与实际 `waitedMs`，表示仍在跑，不应据此重试有副作用的操作；execution 自身的 `timed_out` 终态仍按执行结果解释。取消等待只结束当前工具调用，远端执行继续。
+提交远端操作后，五个创建工具默认阻塞 30 秒等终态；要对已存在的 execution 继续等，用 `sprout_remote_execution_wait`，它默认等 10 分钟，最多 15 分钟；`sprout_remote_execution_get` 立刻读一次当前快照，不等待。创建工具与等待工具都用 `blockMs` 表示这次调用最多等多久，上限 900000，超出会钳断并回报 `requestedMs` 与实际生效值；创建工具 `blockMs: 0` 表示提交后立刻返回。等待在扩展侧轮询既有 `execution_get`，提交返回的视图即第一次读，每秒查询一次，预算从工具调用开始计时。终态返回与 `execution_get` 同形的 `{outcome,data,requestId}`。创建工具的预算用尽返回 `outcome:"pending"` 且不是工具错误，会带上最后一次 `ExecutionView`、`executionId`、`requestedMs`、`effectiveMs`、`waitedMs` 与 `continueWith`，表示命令仍在跑、没有被取消，不应据此重试有副作用的操作；创建工具 `blockMs: 0` 时 `reason` 是 `not_waited`。等待工具的预算用尽是 `outcome:"timed_out"` 工具错误，同样带最后一次 `ExecutionView`。`queued` 只表示已受理，不是开始运行。取消工具调用只结束当前等待，远端执行继续。
 
 宿主工具 `sleep({ms})` 可在本地等待，不必把 sleep 塞进远端 shell。`ms` 必填且至少为 1，最多睡 10 分钟；超出上限显式回报原请求 `requestedMs` 和实际 `sleptMs`，成功附带当前 ISO 时间 `now`。取消返回 `cancelled`，不标工具错误。活动摘要分别显示「本地等待」与各 execution 工具的具名动作。
 

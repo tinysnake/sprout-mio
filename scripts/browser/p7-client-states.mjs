@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwind from "@tailwindcss/vite";
 import { resolve } from "node:path";
 import { pass, assert } from "./p7-client-harness.mjs";
+import { readDraft } from "./ui-navigation.mjs";
 const server = await createServer({
   configFile: false,
   optimizeDeps: { entries: ["tests/fixtures/p7-client-states.html"] },
@@ -67,10 +68,11 @@ try {
       if (action === "send") {
         if (state === "success") {
           await page.waitForFunction(
-            () => document.querySelector('[data-testid="message-input"]')?.value === "",
+            () =>
+              (document.querySelector('[data-testid="message-input"]')?.textContent ?? "") === "",
           );
         } else {
-          assert.equal(await page.getByTestId("message-input").inputValue(), "retain this draft");
+          assert.equal(await readDraft(page), "retain this draft");
           if (state === "failure") await page.getByTestId("message-error").waitFor();
           else assert.equal(await page.getByTestId("message-error").count(), 0);
         }
@@ -91,8 +93,7 @@ try {
     assert.equal(await page.evaluate(() => window.__p7.calls), 0);
     assert.equal(await page.getByTestId("send-outcome").count(), 0);
     assert.equal(await page.getByTestId("stop-outcome").count(), 0);
-    if (action === "send")
-      assert.equal(await page.getByTestId("message-input").inputValue(), "offline draft");
+    if (action === "send") assert.equal(await readDraft(page), "offline draft");
     await context.setOffline(false);
     pass("offline_action_fails_without_submission", { action });
   }

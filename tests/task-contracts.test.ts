@@ -377,6 +377,8 @@ it("makes Task metadata optional on message output without adding it to send inp
     body: "消息",
     createdAt: now,
     mentions: [],
+    attachments: [],
+    attachmentSpans: [],
   };
   expect(messageSchema.parse(message)).toEqual(message);
   const metadata = { taskId, seq: 1, kind: "progress" };
@@ -408,6 +410,8 @@ it("validates remote list and Chat outputs against their response schemas", () =
     body: "消息",
     createdAt: now,
     mentions: [],
+    attachments: [],
+    attachmentSpans: [],
   };
   expect(chatSendResponseSchema.safeParse({ projectId, chatId, message }).success).toBe(true);
   expect(

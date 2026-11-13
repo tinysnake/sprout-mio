@@ -55,7 +55,8 @@ describe("消息正文按 markdown 渲染", () => {
     const html = render(body, spans);
     expect(html).toContain('data-testid="message-mention"');
     expect(html).toContain('data-member-id="agp_1"');
-    expect(html).toContain(">@Amenda<");
+    expect(html).toContain(">Amenda<");
+    expect(html).toContain("markdown-chip");
     expect(html).toContain("<strong>");
     expect(body.slice(spans[0].start, spans[0].end)).toBe("@Amenda");
   });
@@ -77,7 +78,8 @@ describe("消息正文按 markdown 渲染", () => {
     const html = render(body, spans);
     expect(html).toContain("\uE0000\uE001");
     expect(html.match(/data-testid="message-mention"/gu)?.length).toBe(1);
-    expect(html).toContain(">@Amenda<");
+    expect(html).toContain(">Amenda<");
+    expect(html).toContain("markdown-chip");
   });
 
   it("图片不渲染也不预载，降级成可读文字", () => {

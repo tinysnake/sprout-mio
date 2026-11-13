@@ -1,17 +1,11 @@
-import type { MentionSpan } from "../../contracts/chat";
+import type { MentionSpan, MessageAttachmentSpan } from "../../contracts/chat";
 import type { MessageSkillSpan } from "../../contracts/skill";
-
-/**
- * 标记在一侧能外悬多少。外悬等于水平留白，但留白只买得到相邻的空隙：贴着字形时无处可悬，
- * 与另一个标记共用空隙时也要分给对方一半。
- */
-export type SkillEdge = "full" | "half" | "flush";
 
 export type MessageSegment = {
   text: string;
   span?: MentionSpan;
   skill?: MessageSkillSpan;
-  skillEdge?: { start: SkillEdge; end: SkillEdge };
+  attachment?: MessageAttachmentSpan;
 };
 
 type Range = {
@@ -19,6 +13,7 @@ type Range = {
   end: number;
   span?: MentionSpan;
   skill?: MessageSkillSpan;
+  attachment?: MessageAttachmentSpan;
 };
 
 /** 技能排在点名前面：同起点时技能先占位，切片顺序与冻结 span 一致。 */
@@ -26,10 +21,16 @@ function rangesOf(
   body: string,
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
+  attachments: readonly MessageAttachmentSpan[] = [],
 ): Range[] {
   return [
     ...skills.map((skill) => ({ start: skill.start, end: skill.end, skill })),
     ...mentions.map((span) => ({ start: span.start, end: span.end, span })),
+    ...attachments.map((attachment) => ({
+      start: attachment.start,
+      end: attachment.end,
+      attachment,
+    })),
   ]
     .filter(
       (range) =>
@@ -42,57 +43,24 @@ function rangesOf(
     .sort((a, b) => a.start - b.start);
 }
 
-/** 外悬量由原文与相邻标记决定，所以只能在原文上算，不能看占位后的字符串。 */
-function skillEdgeOf(
-  body: string,
-  ranges: readonly Range[],
-  range: Range,
-  side: "start" | "end",
-): SkillEdge {
-  const step = side === "start" ? -1 : 1;
-  const index = side === "start" ? range.start - 1 : range.end;
-  const neighbour = body[index];
-  if (neighbour === undefined) return "full";
-  if (neighbour !== " ") return /\s/u.test(neighbour) ? "full" : "flush";
-  let far = index + step;
-  while (body[far] === " ") far += step;
-  const spacing = Math.abs(far - index);
-  const beyond = body[far];
-  if (beyond === undefined || /\s/u.test(beyond)) return "full";
-  const touching = ranges.some((other) => {
-    if (other === range) return false;
-    return step === 1 ? other.start === far : other.end === far + 1;
-  });
-  if (!touching) return "full";
-  return spacing >= 2 ? "half" : "flush";
-}
-
-function segmentOf(body: string, ranges: readonly Range[], range: Range): MessageSegment {
+function segmentOf(body: string, range: Range): MessageSegment {
   const { start, end, ...annotation } = range;
-  return "skill" in annotation
-    ? {
-        text: body.slice(start, end),
-        ...annotation,
-        skillEdge: {
-          start: skillEdgeOf(body, ranges, range, "start"),
-          end: skillEdgeOf(body, ranges, range, "end"),
-        },
-      }
-    : { text: body.slice(start, end), ...annotation };
+  return { text: body.slice(start, end), ...annotation };
 }
 
 export function splitMessageSegments(
   body: string,
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
+  attachments: readonly MessageAttachmentSpan[] = [],
 ): MessageSegment[] {
-  const ranges = rangesOf(body, mentions, skills);
+  const ranges = rangesOf(body, mentions, skills, attachments);
   const result: MessageSegment[] = [];
   let cursor = 0;
   for (const range of ranges) {
     if (range.start < cursor) continue;
     if (range.start > cursor) result.push({ text: body.slice(cursor, range.start) });
-    result.push(segmentOf(body, ranges, range));
+    result.push(segmentOf(body, range));
     cursor = range.end;
   }
   if (cursor < body.length) result.push({ text: body.slice(cursor) });
@@ -124,8 +92,9 @@ export function maskMessageSegments(
   body: string,
   mentions: readonly MentionSpan[],
   skills: readonly MessageSkillSpan[],
+  attachments: readonly MessageAttachmentSpan[] = [],
 ): { text: string; sentinels: readonly MessageSentinel[] } {
-  const ranges = rangesOf(body, mentions, skills);
+  const ranges = rangesOf(body, mentions, skills, attachments);
   const nonce = sentinelNonce();
   const sentinels: MessageSentinel[] = [];
   let text = "";
@@ -134,7 +103,7 @@ export function maskMessageSegments(
     if (range.start < cursor) continue;
     text += body.slice(cursor, range.start);
     const token = SENTINEL_OPEN + nonce + ":" + sentinels.length + SENTINEL_CLOSE;
-    sentinels.push({ token, segment: segmentOf(body, ranges, range) });
+    sentinels.push({ token, segment: segmentOf(body, range) });
     text += token;
     cursor = range.end;
   }

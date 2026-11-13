@@ -35,6 +35,18 @@ let assistantMode = false;
 let infoHubHintSchema;
 const submittedContexts = new Set();
 
+/** 个人助理的表达约定，只有 assistant 职责挂。 */
+const ASSISTANT_GUIDE = `
+
+面向 Human 的表达应简短自然。先说结论、进展或需要对方决定的事。使用 Project、Agent、对话的名称，不向 Human 罗列内部 ID、工具响应字段或活动日志。不要重复整份提案或转发原始数据。提案 body 只写交给工作 Agent 的具体工作要求，避免附加传话背景、成员 ID 和其他无关信息。确实需要排查时再提供细节。区分已提交、正在处理、已回复与结果未经验证，不把运行结束称作业务成功。
+
+频道关注由程序按 Human 授权的 interval 时间窗口合并消息和工作活动，不是每次 run 结束立即转发。Human 要求停止关注时，调用 sprout_assistant_watch，传当前目标的 targetProjectId、chatId 和 active:false；你能停止本 DM 的关注，无需再次确认。看到 action:stopped、active:false 后明确告知已停止汇报；这不会取消正在执行的工作。不要声称工具不能取消，不要用 intervalSeconds:0。重新关注必须提出新请求并由 Human 确认。`;
+
+/** 消息里的 HTML 代码块会进沙箱，这段说清沙箱里有什么、没什么。 */
+const HTML_ARTIFACT_GUIDE = `
+
+消息里的 HTML 代码块会在沙箱里渲染成页面，用来交付图表、原型和报告。页面拿不到应用的样式和网络，不要在文档里引用外部图片、字体或 CDN，图片用 data URI，脚本内联。颜色用主题变量，深色主题会自动换成对应的值，写死颜色在深色下会失真。常用变量有 --background、--foreground、--muted、--muted-foreground、--border、--border-soft、--card、--card-foreground、--primary、--primary-foreground、--secondary、--accent、--accent-foreground、--destructive、--status-success、--status-warning、--status-failed、--chart-1 到 --chart-5、--radius、--font-body、--font-display、--font-sans、--font-mono。页面高度随内容自适应并回填到消息里，不要给 html 或 body 设 100vh 或固定高度。整份文档和片段都可以，片段会自动补上外壳。`;
+
 function failure(id, code, message, stopReason, text) {
   line({
     type: "failure",
@@ -280,13 +292,7 @@ async function open(config) {
             },
           },
         ],
-    systemPrompt: assistant
-      ? `${config.profile.persona}
-
-面向 Human 的表达应简短自然。先说结论、进展或需要对方决定的事。使用 Project、Agent、对话的名称，不向 Human 罗列内部 ID、工具响应字段或活动日志。不要重复整份提案或转发原始数据。提案 body 只写交给工作 Agent 的具体工作要求，避免附加传话背景、成员 ID 和其他无关信息。确实需要排查时再提供细节。区分已提交、正在处理、已回复与结果未经验证，不把运行结束称作业务成功。
-
-频道关注由程序按 Human 授权的 interval 时间窗口合并消息和工作活动，不是每次 run 结束立即转发。Human 要求停止关注时，调用 sprout_assistant_watch，传当前目标的 targetProjectId、chatId 和 active:false；你能停止本 DM 的关注，无需再次确认。看到 action:stopped、active:false 后明确告知已停止汇报；这不会取消正在执行的工作。不要声称工具不能取消，不要用 intervalSeconds:0。重新关注必须提出新请求并由 Human 确认。`
-      : config.profile.persona,
+    systemPrompt: `${config.profile.persona}${assistant ? ASSISTANT_GUIDE : ""}${HTML_ARTIFACT_GUIDE}`,
   };
   const baseFactories = loaderOptions.extensionFactories;
   if (memoryFactory) loaderOptions.extensionFactories = [...baseFactories, memoryFactory];

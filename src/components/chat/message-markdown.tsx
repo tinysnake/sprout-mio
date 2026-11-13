@@ -7,46 +7,103 @@ import {
   type ElementType,
   type ReactNode,
 } from "react";
-import Markdown, { type Components } from "react-markdown";
+import { AtSign, BookOpen } from "lucide-react";
+import Markdown, { type Components, type Options } from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import type { MentionSpan } from "../../contracts/chat";
+import type { Attachment } from "../../contracts/attachment";
+import type { MentionSpan, MessageAttachmentSpan } from "../../contracts/chat";
 import type { MessageSkillSpan } from "../../contracts/skill";
+import {
+  AttachmentMissingRef,
+  AttachmentRefChip,
+  MessageAttachments,
+  partitionAttachments,
+} from "./message-attachments";
 import { maskMessageSegments, type MessageSegment, type MessageSentinel } from "./message-segments";
-import { SkillMark } from "./skill-mark";
-import "./message-markdown.css";
+import { containsHtml, exceedsHtmlLimit, HTML_MESSAGE_LIMIT, HtmlBlock } from "./html-block";
+import { Icon } from "../ui/icon";
+import "./markdown-content.css";
 
 /**
  * 消息正文的 markdown 渲染。
  *
  * 允许的构造：加粗、斜体、行内代码、围栏代码、无序与有序列表、标题、引用块、链接（含 remark-gfm
- * 认出的裸 URL），以及 gfm 顺带带来的表格与删除线。原文里的 HTML 标签不经 rehype-raw，只当字面文本。
+ * 认出的裸 URL），以及 gfm 顺带带来的表格与删除线。原文里的 HTML 先经 rehype-raw 解析，再过
+ * rehype-sanitize 的白名单，脚本、事件属性与 `javascript:` 链接都落不下来；围栏标为 html 的完整文档
+ * 进 `HtmlBlock` 的沙箱 iframe。不含 HTML 的消息不挂这两个插件，保持原来的解析路径。
+ *
+ * 单条消息的 HTML 超过 `HTML_MESSAGE_LIMIT` 时整条退回原文，见 `exceedsHtmlLimit`。
  *
  * 两处刻意的降级：
- * - 图片不渲染。RM2 才做附件（元数据 + 按 Project 鉴权的读取路由）；RM1 渲染 img 等于让任何一条消息
- *   都能让读者的浏览器去请求任意外部地址，而且 react-markdown 会为它带出一条 preload link。
+ * - markdown 源里的图片不渲染。正文可以来自模型与外部输入，渲染它等于让任何一条消息都能让读者的浏览器
+ *   去请求任意外部地址，react-markdown 还会顺带带出一条 preload link。附件图片不走这条路：它有自己的
+ *   鉴权读取路由（`/api/attachments/<id>`），字节只在同一个 Project 的会话里可取。
  * - 站外链接补 rel 并另开标签页，不把应用页导航走。
  *
- * 点名与技能 pill 的冻结区间先占位成带 nonce 的哨兵，解析后再回填成既有组件，字符范围一字不改。
+ * 点名、技能与附件引用的冻结区间先占位成带 nonce 的哨兵，解析后再回填成既有组件，字符范围一字不改。
  */
-export function MessageMarkdown({
-  body,
-  mentions,
-  skills,
-}: {
+type MessageMarkdownProps = {
   body: string;
   mentions: readonly MentionSpan[];
   skills: readonly MessageSkillSpan[];
-}) {
-  const { text, sentinels } = useMemo(
-    () => maskMessageSegments(body, mentions, skills),
-    [body, mentions, skills],
-  );
-  const components = useMemo(() => componentsWithSentinels(sentinels), [sentinels]);
+  attachments?: readonly Attachment[];
+  attachmentSpans?: readonly MessageAttachmentSpan[];
+};
+
+export function MessageMarkdown(props: MessageMarkdownProps) {
+  // 退回到原文的这条路在 hooks 之前分岔：超长正文不值得再跑一遍切片与哨兵回填。
+  if (exceedsHtmlLimit(props.body)) return <OversizeHtml body={props.body} />;
+  return <MessageMarkdownBody {...props} />;
+}
+
+function OversizeHtml({ body }: { body: string }) {
   return (
-    <div className="message-markdown">
-      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+    <div className="message-markdown markdown-content">
+      <p data-testid="html-too-long" className="text-muted-foreground">
+        {`这条消息的 HTML 超过 ${HTML_MESSAGE_LIMIT.toLocaleString("en-US")} 字符，按原文显示。`}
+      </p>
+      <pre>{body}</pre>
+    </div>
+  );
+}
+
+function MessageMarkdownBody({
+  body,
+  mentions,
+  skills,
+  attachments = [],
+  attachmentSpans = [],
+}: MessageMarkdownProps) {
+  const { text, sentinels } = useMemo(
+    () => maskMessageSegments(body, mentions, skills, attachmentSpans),
+    [body, mentions, skills, attachmentSpans],
+  );
+  const attachmentsById = useMemo(
+    () => new Map(attachments.map((attachment) => [attachment.id, attachment])),
+    [attachments],
+  );
+  const components = useMemo(
+    () => componentsWithSentinels(sentinels, attachmentsById),
+    [sentinels, attachmentsById],
+  );
+  // 不含 HTML 的消息多挂两个插件只是白花解析时间，按需启用。
+  const hasHtml = useMemo(() => containsHtml(body), [body]);
+  const rehypePlugins = useMemo<NonNullable<Options["rehypePlugins"]>>(
+    () => (hasHtml ? [rehypeRaw, [rehypeSanitize]] : []),
+    [hasHtml],
+  );
+  const { figures, chips } = useMemo(
+    () => partitionAttachments(attachments, attachmentSpans),
+    [attachments, attachmentSpans],
+  );
+  return (
+    <div className="message-markdown markdown-content">
+      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={components}>
         {text}
       </Markdown>
+      <MessageAttachments figures={figures} chips={chips} />
     </div>
   );
 }
@@ -71,8 +128,12 @@ const TEXT_TAGS = [
 
 type SentinelProps = { children?: ReactNode; node?: unknown } & Record<string, unknown>;
 
-function componentsWithSentinels(sentinels: readonly MessageSentinel[]): Components {
-  const fill = (children: ReactNode): ReactNode => fillSentinels(children, sentinels);
+function componentsWithSentinels(
+  sentinels: readonly MessageSentinel[],
+  attachmentsById: ReadonlyMap<string, Attachment>,
+): Components {
+  const fill = (children: ReactNode): ReactNode =>
+    fillSentinels(children, sentinels, attachmentsById);
   const components: Record<string, (props: SentinelProps) => ReactNode> = {};
   for (const tag of TEXT_TAGS) {
     // react-markdown 会额外传 node；它不是 DOM 属性，不能落到元素上。
@@ -82,7 +143,21 @@ function componentsWithSentinels(sentinels: readonly MessageSentinel[]): Compone
   components.a = ({ children, node: _node, href, ...rest }) =>
     createElement("a", { ...rest, href, ...externalLinkAttributes(href) }, fill(children));
   components.img = ({ node: _node, src, alt }) => createElement("span", null, imageText(src, alt));
+  components.pre = ({ children, node: _node, ...rest }) => {
+    const source = fencedHtmlSource(children);
+    return source === null
+      ? createElement("pre", rest, children)
+      : createElement(HtmlBlock, { source });
+  };
   return components as unknown as Components;
+}
+
+/** 围栏标为 html 就换 sandbox 面：片段由 `sandboxDocument` 补外壳，`<style>` 与 `style=` 才生效。 */
+function fencedHtmlSource(children: ReactNode): string | null {
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return null;
+  const { className, children: source } = children.props;
+  if (!/language-html\b/u.test(className ?? "")) return null;
+  return typeof source === "string" && containsHtml(source) ? source : null;
 }
 
 /** 站外链接不继承应用页的 referrer，也不把用户从 Chat 里导航走。 */
@@ -98,15 +173,23 @@ function imageText(src: unknown, alt: unknown): string {
   return typeof src === "string" ? src : "";
 }
 
-function fillSentinels(node: ReactNode, sentinels: readonly MessageSentinel[]): ReactNode {
-  if (typeof node === "string") return splitSentinels(node, sentinels);
+function fillSentinels(
+  node: ReactNode,
+  sentinels: readonly MessageSentinel[],
+  attachmentsById: ReadonlyMap<string, Attachment>,
+): ReactNode {
+  if (typeof node === "string") return splitSentinels(node, sentinels, attachmentsById);
   if (Array.isArray(node)) {
     return node.map((child, index) => (
-      <Fragment key={index}>{fillSentinels(child as ReactNode, sentinels)}</Fragment>
+      <Fragment key={index}>
+        {fillSentinels(child as ReactNode, sentinels, attachmentsById)}
+      </Fragment>
     ));
   }
   if (isValidElement<{ children?: ReactNode }>(node) && node.props.children !== undefined) {
-    return cloneElement(node, { children: fillSentinels(node.props.children, sentinels) });
+    return cloneElement(node, {
+      children: fillSentinels(node.props.children, sentinels, attachmentsById),
+    });
   }
   return node;
 }
@@ -115,7 +198,11 @@ function fillSentinels(node: ReactNode, sentinels: readonly MessageSentinel[]): 
  * 按每个哨兵的完整 token 切分，不做共享正则匹配：token 带一次性 nonce，正文自身不可能与它同形。
  * 某个 token 在该文本里没出现时原样留下，绝不吞字。
  */
-function splitSentinels(text: string, sentinels: readonly MessageSentinel[]): ReactNode {
+function splitSentinels(
+  text: string,
+  sentinels: readonly MessageSentinel[],
+  attachmentsById: ReadonlyMap<string, Attachment>,
+): ReactNode {
   let parts: ReactNode[] = [text];
   let key = 0;
   for (const sentinel of sentinels) {
@@ -132,7 +219,13 @@ function splitSentinels(text: string, sentinels: readonly MessageSentinel[]): Re
       }
       pieces.forEach((piece, index) => {
         if (index > 0)
-          next.push(<SentinelMark key={"sentinel-" + key++} segment={sentinel.segment} />);
+          next.push(
+            <SentinelMark
+              key={"sentinel-" + key++}
+              segment={sentinel.segment}
+              attachmentsById={attachmentsById}
+            />,
+          );
         if (piece.length > 0) next.push(piece);
       });
     }
@@ -142,15 +235,20 @@ function splitSentinels(text: string, sentinels: readonly MessageSentinel[]): Re
 }
 
 /** 回填成与切片路径完全相同的标记：测试钩子、类名与文本都不变。 */
-function SentinelMark({ segment }: { segment: MessageSegment }) {
+function SentinelMark({
+  segment,
+  attachmentsById,
+}: {
+  segment: MessageSegment;
+  attachmentsById: ReadonlyMap<string, Attachment>;
+}) {
   if (segment.skill) {
     return (
-      <SkillMark
-        data-testid="message-skill"
-        name={segment.skill.name}
-        text={segment.text}
-        edge={segment.skillEdge}
-      />
+      <span data-testid="message-skill" className="markdown-chip">
+        <Icon as={BookOpen} size={13} className="markdown-chip__icon" />
+        {/* 技能芯片与输入区同一副样：图标加名字，正文里那个 `📖` 不再重复一遍。 */}
+        <span className="markdown-chip__name">{segment.skill.name}</span>
+      </span>
     );
   }
   if (segment.span) {
@@ -159,10 +257,20 @@ function SentinelMark({ segment }: { segment: MessageSegment }) {
         data-testid="message-mention"
         data-member-kind={segment.span.memberKind}
         data-member-id={segment.span.memberId}
-        className="rounded-[3px] bg-selected px-1 font-medium [box-decoration-break:clone]"
+        className="markdown-chip"
       >
-        {segment.text}
+        <Icon as={AtSign} size={13} className="markdown-chip__icon" />
+        {/* 芯片用 @ 图标表达点名，正文里那个 `@` 不再重复一遍。 */}
+        <span className="markdown-chip__name">{segment.text.replace(/^@/u, "")}</span>
       </span>
+    );
+  }
+  if (segment.attachment) {
+    const attachment = attachmentsById.get(segment.attachment.attachmentId);
+    return attachment ? (
+      <AttachmentRefChip attachment={attachment} />
+    ) : (
+      <AttachmentMissingRef attachmentId={segment.attachment.attachmentId} />
     );
   }
   return <>{segment.text}</>;

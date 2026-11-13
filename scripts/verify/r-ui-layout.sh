@@ -7,7 +7,7 @@ node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, openSync, closeSync, rmSync } from 'node:fs'
+import { mkdirSync, openSync, closeSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import net from 'node:net'
 
@@ -37,10 +37,19 @@ function launch(command, args, name) {
 async function command(command, args, name, timeout = 300000) {
   const child = launch(command, args, name)
   const timer = setTimeout(() => stop(child, 'SIGKILL'), timeout)
+  let result
   try {
-    const result = await child.completion
-    assert.equal(result.code, 0, `${command} ${args.join(' ')} failed; see ${join(directory, name)}`)
+    result = await child.completion
   } finally { clearTimeout(timer) }
+  if (result.code !== 0) {
+    // 子进程日志才有「哪一条检查红了」，失败时打出来，读的人不必再去翻文件。
+    const log = join(directory, name)
+    if (existsSync(log)) {
+      const lines = readFileSync(log, 'utf8').trimEnd().split('\n')
+      console.error(`--- tail ${log} ---\n${lines.slice(-80).join('\n')}`)
+    }
+  }
+  assert.equal(result.code, 0, `${command} ${args.join(' ')} failed; see ${join(directory, name)}`)
 }
 try {
   await new Promise((resolve, reject) => {

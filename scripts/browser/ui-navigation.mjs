@@ -18,6 +18,13 @@ export function projectBase(page) {
   return { id, path: `/projects/${id}`, chatsPath: `/projects/${id}/chats` };
 }
 
+// 输入区是 contenteditable 的富文本编辑器，没有 value 可读，草稿只能从 DOM 文本取。
+export async function readDraft(page, testId = "message-input") {
+  const editor = page.getByTestId(testId);
+  await editor.waitFor();
+  return (await editor.textContent()) ?? "";
+}
+
 export async function waitForChats(page) {
   await page.waitForURL((url) => PROJECT_CHATS.test(url.pathname), { timeout: 20000 });
   await page.waitForSelector('[data-testid="chat-list-content"]', { timeout: 20000 });

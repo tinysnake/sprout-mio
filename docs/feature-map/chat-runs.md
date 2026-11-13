@@ -6,6 +6,7 @@
 
 - `dm-entry` 首次发起 DM，重复入口回到同一 Chat 与 AgentInstance。
 - `message-history` 消息顺序、刷新及服务重启后的持久性；消息按页加载，首屏只读最新一页（默认 50 条），顶部自动加载更早的页，DOM 只留视口附近五页（每页 50 条），正在收消息的活尾巴页不切页、可以长过一页，尾巴被丢掉后能按 `after` 补回或一键回到最新。
+- `message-markup` 消息正文按 Markdown 渲染；围栏标 `html` 的片段与整份 HTML 文档进 `sandbox="allow-scripts"` 的沙箱 iframe，脚本和事件属性按白名单剔除，CSP `default-src 'none'` 只放行内联样式与脚本，高度由沙箱自己上报（上限 20 000px），超过 100 000 字符只显示提示与原文。沙箱跟着应用主题走，父页面注入整份 `theme.css` 并用消息切 `.dark`，不重载文档。
 - `chat-skills` 输入 `$` 开候选（触发键只用于开候选，不进入正文），正文保存 `📖<name>`，消息列表按冻结的 UTF-16 span 显示行内橙色 pill；首次运行前也可选择，Pi 投递时读取当前技能正文展开。人类与 Agent 回复都解析语法 token，未知名字同样保存 span。
 - `chat-title` 修改标题并保持 Chat 身份与历史。
 - `persona-next-turn` 修改 Profile 后，后续运行使用新人设。
@@ -44,6 +45,7 @@
 | 在已有专用实例驱动消息路径  | `BASE_URL=http://localhost:3143 CHAT_STATE_FILE=/tmp/sprout-feature-map-chat.json node scripts/browser/i-chat-flow.mjs`。保存状态文件后，重启同一实例，再用相同变量加 `CHAT_VERIFY=1` 复查 |
 | Pi session 协议集成         | `bash scripts/verify/n-pi-session.sh`。该入口明确使用 `--protocol-stub`，不能据此声称真实模型响应通过                                                                                      |
 | Turn 与 Repo 行为           | [o-turn-semantics.sh](../../scripts/verify/o-turn-semantics.sh)、[p-repo-entry.sh](../../scripts/verify/p-repo-entry.sh)，按改动读取并执行对应模式                                         |
+| 消息内 HTML 的沙箱与主题    | `bash scripts/verify/rm3-html.sh`。13 条 lane 覆盖白名单、事件属性、CSP、超长、片段补壳、高度、人类消息同规则，以及主题变量在沙箱内外的取值一致；证据与截图在 `.verify/rm3-html/`          |
 | 真实模型 DM                 | 按 [pi-dm-turn.sh](../../scripts/verify-live/pi-dm-turn.sh) 的 live 模式准备凭据与环境，记录实际模型、动作及返回消息                                                                       |
 
 浏览器步骤见 [i-chat-flow.mjs](../../scripts/browser/i-chat-flow.mjs)，标题路径见 [p4b-chat-title-flow.mjs](../../scripts/browser/p4b-chat-title-flow.mjs)。I 脚本默认证据在 `.verify/i-chat/evidence.json`、同目录日志与 `evidence/p2-i-*.png`；标题截图默认在 `.verify/i-chat-title/evidence/`。保留重启前后的消息、标识与状态变化证据。
@@ -51,6 +53,8 @@
 Run 注意力验收入口：`bash scripts/verify/run-attention.sh`。SQLite 集成用 `createContinuationScheduler().advance()` 推进统一 clock，证明其他 Agent owner 30 分钟获得唯一 input、人类/self-owner 30 分钟无消息且 60 分钟仅一条，以及全局 continuation 关闭仍计时；协议桩跨旧 600000ms 与 1800000ms，保留初始化协议超时，覆盖初始化取消、自然退出与迟到 settled，并测真实取消耗时及同 instance 下一轮启动。UI SSR 覆盖 DM、群组、选中 run、终态历史和保留 sender，不能替代 Human 页面体验。页面定位为 `agent-run-row` 内的 `run-attention`、`agent-run-stop`，DM 在运行状态区查看关注事实并使用输入区既有停止入口。
 
 ## Gotchas
+
+- 消息内 HTML 的沙箱不重载换主题：父页面把整份 `src/theme.css`（`?raw`）注入 `<style>`，用 `.dark` class 和 `postMessage` 切外观，文档因此能直接用 `var(--background)` 这类应用令牌。`theme.css` 的 `@theme inline` 块在沙箱里不生效，`--color-*` 不可用。`?raw` 依赖 `vite.config.ts` 的 `test.css: true`，否则单元测试拿到空串。
 
 - 技能在保存时只做纯语法解析，不扫描 catalog；未知/已删除/关闭继承的技能投递保留原 token，并记结构化 warning。技能正文不落进消息；历史 span 与 chip 不因宿主文件变化而改变。输入框 `$` 与 `@` 共享触发状态，但完整技能 token 内的 `@` 不会成为 mention。
 - 消息成功持久化不代表模型已运行。协议 stub、真实模型和远程执行分别记录。

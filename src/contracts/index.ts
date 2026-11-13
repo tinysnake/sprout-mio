@@ -1,4 +1,5 @@
 export * from "./ids";
+export * from "./attachment";
 export * from "./result";
 export * from "./project";
 export * from "./diagnostics";

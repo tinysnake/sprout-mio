@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedMachinesRouteImport } from './routes/_authed/machines'
 import { Route as AuthedManagementRouteImport } from './routes/_authed/management'
 import { Route as AuthedProjectsRouteImport } from './routes/_authed/projects'
+import { Route as ApiAttachmentsRouteImport } from './routes/api/attachments'
 import { Route as ApiDiagnosticsRouteImport } from './routes/api/diagnostics'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -25,6 +26,7 @@ import { Route as AuthedMachinesIndexRouteImport } from './routes/_authed/machin
 import { Route as AuthedMachinesMachineIdRouteImport } from './routes/_authed/machines.$machineId'
 import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projects.index'
 import { Route as AuthedProjectsProjectIdRouteImport } from './routes/_authed/projects.$projectId'
+import { Route as ApiAttachmentsAttachmentIdRouteImport } from './routes/api/attachments.$attachmentId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiRemoteAgentRouteImport } from './routes/api/remote/agent'
 import { Route as ApiWebhooksRuleIdRouteImport } from './routes/api.webhooks.$ruleId'
@@ -85,6 +87,11 @@ const AuthedProjectsRoute = AuthedProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AuthedRoute,
 } as any)
+const ApiAttachmentsRoute = ApiAttachmentsRouteImport.update({
+  id: '/api/attachments',
+  path: '/api/attachments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDiagnosticsRoute = ApiDiagnosticsRouteImport.update({
   id: '/api/diagnostics',
   path: '/api/diagnostics',
@@ -131,6 +138,12 @@ const AuthedProjectsProjectIdRoute = AuthedProjectsProjectIdRouteImport.update({
   path: '/$projectId',
   getParentRoute: () => AuthedProjectsRoute,
 } as any)
+const ApiAttachmentsAttachmentIdRoute =
+  ApiAttachmentsAttachmentIdRouteImport.update({
+    id: '/$attachmentId',
+    path: '/$attachmentId',
+    getParentRoute: () => ApiAttachmentsRoute,
+  } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -284,12 +297,14 @@ export interface FileRoutesByFullPath {
   '/machines': typeof AuthedMachinesRouteWithChildren
   '/management': typeof AuthedManagementRoute
   '/projects': typeof AuthedProjectsRouteWithChildren
+  '/api/attachments': typeof ApiAttachmentsRouteWithChildren
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/events': typeof ApiEventsRoute
   '/api/health': typeof ApiHealthRoute
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
   '/machines/$machineId': typeof AuthedMachinesMachineIdRouteWithChildren
   '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
+  '/api/attachments/$attachmentId': typeof ApiAttachmentsAttachmentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
@@ -324,10 +339,12 @@ export interface FileRoutesByTo {
   '/dev-login': typeof DevLoginRoute
   '/login': typeof LoginRoute
   '/management': typeof AuthedManagementRoute
+  '/api/attachments': typeof ApiAttachmentsRouteWithChildren
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/events': typeof ApiEventsRoute
   '/api/health': typeof ApiHealthRoute
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
+  '/api/attachments/$attachmentId': typeof ApiAttachmentsAttachmentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
@@ -363,12 +380,14 @@ export interface FileRoutesById {
   '/_authed/machines': typeof AuthedMachinesRouteWithChildren
   '/_authed/management': typeof AuthedManagementRoute
   '/_authed/projects': typeof AuthedProjectsRouteWithChildren
+  '/api/attachments': typeof ApiAttachmentsRouteWithChildren
   '/api/diagnostics': typeof ApiDiagnosticsRoute
   '/api/events': typeof ApiEventsRoute
   '/api/health': typeof ApiHealthRoute
   '/_authed/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
   '/_authed/machines/$machineId': typeof AuthedMachinesMachineIdRouteWithChildren
   '/_authed/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
+  '/api/attachments/$attachmentId': typeof ApiAttachmentsAttachmentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
@@ -407,12 +426,14 @@ export interface FileRouteTypes {
     | '/machines'
     | '/management'
     | '/projects'
+    | '/api/attachments'
     | '/api/diagnostics'
     | '/api/events'
     | '/api/health'
     | '/agents/$agentProfileId'
     | '/machines/$machineId'
     | '/projects/$projectId'
+    | '/api/attachments/$attachmentId'
     | '/api/auth/$'
     | '/api/remote/agent'
     | '/api/webhooks/$ruleId'
@@ -447,10 +468,12 @@ export interface FileRouteTypes {
     | '/dev-login'
     | '/login'
     | '/management'
+    | '/api/attachments'
     | '/api/diagnostics'
     | '/api/events'
     | '/api/health'
     | '/agents/$agentProfileId'
+    | '/api/attachments/$attachmentId'
     | '/api/auth/$'
     | '/api/remote/agent'
     | '/api/webhooks/$ruleId'
@@ -485,12 +508,14 @@ export interface FileRouteTypes {
     | '/_authed/machines'
     | '/_authed/management'
     | '/_authed/projects'
+    | '/api/attachments'
     | '/api/diagnostics'
     | '/api/events'
     | '/api/health'
     | '/_authed/agents/$agentProfileId'
     | '/_authed/machines/$machineId'
     | '/_authed/projects/$projectId'
+    | '/api/attachments/$attachmentId'
     | '/api/auth/$'
     | '/api/remote/agent'
     | '/api/webhooks/$ruleId'
@@ -526,6 +551,7 @@ export interface RootRouteChildren {
   AuthedRoute: typeof AuthedRouteWithChildren
   DevLoginRoute: typeof DevLoginRoute
   LoginRoute: typeof LoginRoute
+  ApiAttachmentsRoute: typeof ApiAttachmentsRouteWithChildren
   ApiDiagnosticsRoute: typeof ApiDiagnosticsRoute
   ApiEventsRoute: typeof ApiEventsRoute
   ApiHealthRoute: typeof ApiHealthRoute
@@ -589,6 +615,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedProjectsRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/api/attachments': {
+      id: '/api/attachments'
+      path: '/api/attachments'
+      fullPath: '/api/attachments'
+      preLoaderRoute: typeof ApiAttachmentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/diagnostics': {
       id: '/api/diagnostics'
       path: '/api/diagnostics'
@@ -651,6 +684,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/projects/$projectId'
       preLoaderRoute: typeof AuthedProjectsProjectIdRouteImport
       parentRoute: typeof AuthedProjectsRoute
+    }
+    '/api/attachments/$attachmentId': {
+      id: '/api/attachments/$attachmentId'
+      path: '/$attachmentId'
+      fullPath: '/api/attachments/$attachmentId'
+      preLoaderRoute: typeof ApiAttachmentsAttachmentIdRouteImport
+      parentRoute: typeof ApiAttachmentsRoute
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -999,11 +1039,24 @@ const AuthedRouteChildren: AuthedRouteChildren = {
 const AuthedRouteWithChildren =
   AuthedRoute._addFileChildren(AuthedRouteChildren)
 
+interface ApiAttachmentsRouteChildren {
+  ApiAttachmentsAttachmentIdRoute: typeof ApiAttachmentsAttachmentIdRoute
+}
+
+const ApiAttachmentsRouteChildren: ApiAttachmentsRouteChildren = {
+  ApiAttachmentsAttachmentIdRoute: ApiAttachmentsAttachmentIdRoute,
+}
+
+const ApiAttachmentsRouteWithChildren = ApiAttachmentsRoute._addFileChildren(
+  ApiAttachmentsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthedRoute: AuthedRouteWithChildren,
   DevLoginRoute: DevLoginRoute,
   LoginRoute: LoginRoute,
+  ApiAttachmentsRoute: ApiAttachmentsRouteWithChildren,
   ApiDiagnosticsRoute: ApiDiagnosticsRoute,
   ApiEventsRoute: ApiEventsRoute,
   ApiHealthRoute: ApiHealthRoute,

@@ -100,19 +100,19 @@ ExecutionView = O({...LeaseKey, executionId:I(exe), authorizationGeneration:N,
 
 下游直接使用 `remoteToolInputSchemas.<工具名>`，不重新定义参数。每个 schema 都 strict；Machine 必填，Project 从 grant 闭包注入 HTTP body。返回为 `AppResult<T>`，未实现工具注册或调用。
 
-| 工具                         | 参数                                                                              | T                                                                      |
-| ---------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| sprout_lease_acquire         | machineId:I(mch), expectedGeneration:Z, requestId:I(req)                          | LeaseMutationView                                                      |
-| sprout_lease_release         | machineId:I(mch), expectedGeneration:N, requestId:I(req)                          | LeaseMutationView                                                      |
-| sprout_lease_handoff         | machineId:I(mch), expectedGeneration:N, targetInstanceId:I(ins), requestId:I(req) | LeaseMutationView                                                      |
-| sprout_lease_get             | machineId:I(mch), mutationId:I(lmu)?                                              | {lease:LeaseView,mutation:LeaseMutationView\|null}                     |
-| sprout_remote_shell          | machineId:I(mch), authorizationGeneration:N, requestId:I(req), shell 输入去掉kind | ExecutionView                                                          |
-| sprout_remote_file_read      | 同公共执行属性，file_read 输入去掉kind                                            | ExecutionView                                                          |
-| sprout_remote_file_write     | 同公共执行属性，file_write 输入去掉kind                                           | ExecutionView                                                          |
-| sprout_remote_process_list   | 同公共执行属性，process_list 输入去掉kind                                         | ExecutionView                                                          |
-| sprout_remote_process_signal | 同公共执行属性，process_signal 输入去掉kind                                       | ExecutionView                                                          |
-| sprout_remote_execution_get  | machineId:I(mch), executionId:I(exe)                                              | ExecutionView                                                          |
-| sprout_remote_execution_wait | machineId:I(mch), executionId:I(exe), waitMs?:N                                   | `{outcome,data:ExecutionView,requestId}`；默认等 10 分钟，最多 15 分钟 |
+| 工具                         | 参数                                                                                          | T                                                                      |
+| ---------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| sprout_lease_acquire         | machineId:I(mch), expectedGeneration:Z, requestId:I(req)                                      | LeaseMutationView                                                      |
+| sprout_lease_release         | machineId:I(mch), expectedGeneration:N, requestId:I(req)                                      | LeaseMutationView                                                      |
+| sprout_lease_handoff         | machineId:I(mch), expectedGeneration:N, targetInstanceId:I(ins), requestId:I(req)             | LeaseMutationView                                                      |
+| sprout_lease_get             | machineId:I(mch), mutationId:I(lmu)?                                                          | {lease:LeaseView,mutation:LeaseMutationView\|null}                     |
+| sprout_remote_shell          | machineId:I(mch), authorizationGeneration:N, requestId:I(req), shell 输入去掉kind, blockMs?:N | ExecutionView                                                          |
+| sprout_remote_file_read      | 同公共执行属性，file_read 输入去掉kind, blockMs?:N                                            | ExecutionView                                                          |
+| sprout_remote_file_write     | 同公共执行属性，file_write 输入去掉kind, blockMs?:N                                           | ExecutionView                                                          |
+| sprout_remote_process_list   | 同公共执行属性，process_list 输入去掉kind, blockMs?:N                                         | ExecutionView                                                          |
+| sprout_remote_process_signal | 同公共执行属性，process_signal 输入去掉kind, blockMs?:N                                       | ExecutionView                                                          |
+| sprout_remote_execution_get  | machineId:I(mch), executionId:I(exe)                                                          | ExecutionView                                                          |
+| sprout_remote_execution_wait | machineId:I(mch), executionId:I(exe), blockMs?:N                                              | `{outcome,data:ExecutionView,requestId}`；默认等 10 分钟，最多 15 分钟 |
 
 宿主 `sprout_status` 保持。没有默认或猜测的 Machine。Agent 无 reclaim 工具。
 
@@ -122,11 +122,11 @@ ExecutionView = O({...LeaseKey, executionId:I(exe), authorizationGeneration:N,
 | ----- | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | sleep | `ms:number` 必填，至少 1 毫秒 | `{outcome:'slept',sleptMs,requestedMs,now}`；最多睡 300000 毫秒，超出钳断；取消返回 `cancelled`，不标工具错误 |
 
-`sprout_remote_execution_wait` 在扩展侧轮询既有 `execution_get`，不新增远端 call type，也不需要 `authorizationGeneration`。终态沿用 `ExecutionView` 校验，成功结果与 `execution_get` 同形；等待到点返回工具错误 `{outcome:'timed_out',data:ExecutionView,requestedMs,waitedMs,message}`，其中 `requestedMs` 是钳断后的预算。这里的 `data.state` 仍是非终态，表示还在跑，不应据此重试有副作用的操作。若读到 execution 自身的 `timed_out` 终态，则按 `execution_get` 返回该执行结果。取消只结束等待，不停止远端执行。
+`blockMs` 是工具面的等待预算，表示这次工具调用最多等多久。五个创建工具默认 30000，提交成功后提交返回的视图即第一次读，在扩展侧轮询既有 `execution_get` 到终态，预算从工具调用开始计时，轮询间隔 1000 毫秒。`sprout_remote_execution_get` 立刻读一次当前快照，不等待也不接受 `blockMs`。`sprout_remote_execution_wait` 对已存在的 execution 续等，默认 600000，上限 900000；两个工具的 `blockMs` 超出上限都按上限算，等待工具如实回报实际 `requestedMs` 与 `waitedMs`。终态结果与 `execution_get` 同形 `{outcome,data:ExecutionView,requestId}`。创建工具预算用尽不算工具错误，返回 `{outcome:'pending',reason:'wait_budget_exhausted',machineId,executionId,data:ExecutionView,requestedMs,effectiveMs,waitedMs,continueWith:{tool:'sprout_remote_execution_wait',arguments:{machineId,executionId}},message}`；创建工具 `blockMs` 为 0 时 `reason` 是 `not_waited`。`sprout_remote_execution_wait` 预算用尽是工具错误 `{outcome:'timed_out',data:ExecutionView,requestedMs,waitedMs,message}`。`data.state` 仍可能是非终态，命令没有被取消，不应据此重试有副作用的操作；`queued` 只表示已受理，不是开始运行。取消工具调用只结束等待，不停止远端执行。
 
 ## Worker exchange v2
 
-所有 enroll/open/exchange/close envelope 的 version 为2，不接受v1。五秒 poll 与现有 TTL 常量保持。session/secret 改从 `worker-session.ts` 导入，避免 worker↔remote 初始化循环。capability 的 `remoteOperations` 是上述五种 kind 的去重数组，最多5项；只宣告真实注册的能力。断联 shell 能力展示仍由下游沿用 P4a 当前事实规则。
+所有 enroll/open/exchange/close envelope 的 version 为2，不接受v1。两秒 poll 与现有 TTL 常量保持。session/secret 改从 `worker-session.ts` 导入，避免 worker↔remote 初始化循环。capability 的 `remoteOperations` 是上述五种 kind 的去重数组，最多5项；只宣告真实注册的能力。断联 shell 能力展示仍由下游沿用 P4a 当前事实规则。
 
 ```text
 Command = O({executionId:I(exe), ...LeaseKey, authorizationGeneration:N,

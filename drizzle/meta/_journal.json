@@ -414,6 +414,13 @@
       "when": 1794411684600,
       "tag": "0058_opposite_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1794497798857,
+      "tag": "0059_cool_the_renegades",
+      "breakpoints": true
     }
   ]
 }
