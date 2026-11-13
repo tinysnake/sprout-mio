@@ -491,48 +491,6 @@ try {
     }
   })
 
-  // 正文里最小的字号就是正文字号：行内代码、标签都不许再往下缩一级。
-  await check('body_text_floor_14px', async () => {
-    const messageId = `msg_floor_${Date.now()}`
-    const body = ['# 标题', '写成 `code` 的一行', '> 引用一句', '1. 一项', '- 一点', '- [ ] 待办'].join('\n\n')
-    try {
-      sqliteHandle
-        .prepare('INSERT INTO message (id, chat_id, sender_kind, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?, unixepoch() + 5)')
-        .run(messageId, chatId, 'human', userId, body)
-      await page.reload()
-      await test('message-input').waitFor()
-      await until(async () => (await page.locator(`[data-message-id="${messageId}"]`).count()) === 1, 'seeded message renders')
-      const measured = await page.evaluate(() => {
-        const small = []
-        for (const host of document.querySelectorAll('[data-testid="message-body"]')) {
-          for (const element of host.querySelectorAll('*')) {
-            const own = [...element.childNodes].some(node => node.nodeType === 3 && (node.textContent ?? '').trim())
-            if (!own) continue
-            const size = Number.parseFloat(getComputedStyle(element).fontSize)
-            if (size < 14) {
-              small.push({
-                tag: element.tagName.toLowerCase(),
-                className: String(element.className),
-                size,
-                text: (element.textContent ?? '').trim().slice(0, 20),
-              })
-            }
-          }
-        }
-        const code = document.querySelector('[data-message-id] .markdown-content :not(pre) > code')
-        return { small, codeSize: code ? Number.parseFloat(getComputedStyle(code).fontSize) : null }
-      })
-      assert.equal(measured.small.length, 0, `气泡里不许有小于 14px 的文字：${JSON.stringify(measured.small)}`)
-      assert.ok(measured.codeSize && measured.codeSize >= 14, `行内代码也要到 14px：${measured.codeSize}`)
-      await shot('rm2-lane12-font-floor.png')
-      return `气泡内无低于 14px 的文字，行内代码 ${measured.codeSize}px`
-    } finally {
-      sqliteHandle.prepare('DELETE FROM message WHERE id = ?').run(messageId)
-      await page.reload()
-      await test('message-input').waitFor()
-    }
-  })
-
   await check('lane_4_remove_and_reference_token', async () => {
     await clearComposer()
     await inject('paste', [{ name: '引用目标.png', type: 'image/png', buffer: png(64, 64) }])
@@ -934,6 +892,48 @@ try {
     await page.setViewportSize({ width: 1360, height: 940 })
     await delay(300)
     return `适应 ${fitted.fit}x（全图 ${Math.round(fitted.image.width)}x${Math.round(fitted.image.height)} 落在 ${Math.round(stage.width)}x${Math.round(stage.height)} 里），滚轮 ${fitted.scale} -> ${zoomed.scale}，拖动与加减按钮生效，点空白与 Escape 都能关`
+  })
+
+  // 正文里最小的字号就是正文字号：行内代码、标签都不许再往下缩一级。
+  await check('body_text_floor_14px', async () => {
+    const messageId = `msg_floor_${Date.now()}`
+    const body = ['# 标题', '写成 `code` 的一行', '> 引用一句', '1. 一项', '- 一点', '- [ ] 待办'].join('\n\n')
+    try {
+      sqliteHandle
+        .prepare('INSERT INTO message (id, chat_id, sender_kind, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?, unixepoch() + 5)')
+        .run(messageId, chatId, 'human', userId, body)
+      await page.reload()
+      await test('message-input').waitFor()
+      await until(async () => (await page.locator(`[data-message-id="${messageId}"]`).count()) === 1, 'seeded message renders')
+      const measured = await page.evaluate(() => {
+        const small = []
+        for (const host of document.querySelectorAll('[data-testid="message-body"]')) {
+          for (const element of host.querySelectorAll('*')) {
+            const own = [...element.childNodes].some(node => node.nodeType === 3 && (node.textContent ?? '').trim())
+            if (!own) continue
+            const size = Number.parseFloat(getComputedStyle(element).fontSize)
+            if (size < 14) {
+              small.push({
+                tag: element.tagName.toLowerCase(),
+                className: String(element.className),
+                size,
+                text: (element.textContent ?? '').trim().slice(0, 20),
+              })
+            }
+          }
+        }
+        const code = document.querySelector('[data-message-id] .markdown-content :not(pre) > code')
+        return { small, codeSize: code ? Number.parseFloat(getComputedStyle(code).fontSize) : null }
+      })
+      assert.equal(measured.small.length, 0, `气泡里不许有小于 14px 的文字：${JSON.stringify(measured.small)}`)
+      assert.ok(measured.codeSize && measured.codeSize >= 14, `行内代码也要到 14px：${measured.codeSize}`)
+      await shot('rm2-lane12-font-floor.png')
+      return `气泡内无低于 14px 的文字，行内代码 ${measured.codeSize}px`
+    } finally {
+      sqliteHandle.prepare('DELETE FROM message WHERE id = ?').run(messageId)
+      await page.reload()
+      await test('message-input').waitFor()
+    }
   })
 
   await check('console_clean_and_404_probes', async () => {
