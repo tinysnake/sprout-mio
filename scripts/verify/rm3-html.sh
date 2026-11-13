@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Risk → assertion:
 # - 消息里的 HTML 执行脚本 → 行内标签按白名单渲染，脚本与事件属性都不出现在 DOM 里，页面不弹窗。
-# - 完整文档碰应用 → 沙箱 `allow-scripts` 无 `allow-same-origin`，沙箱内读 `top.document` 抛异常。
-# - 沙箱自带策略被绕过 → srcdoc 里的 CSP 只放行自家 nonce 的脚本，作者脚本被拦。
+# - 完整文档碰应用 → 沙箱 `allow-scripts` 无 `allow-same-origin`，文档脚本能跑，但读 `top.document` 被拒、父页面标题不变。
+# - 沙箱里的请求出网 → srcdoc 的 CSP 用 `default-src 'none'`，文档自己的样式与脚本放行。
+# - 片段样式被剥掉 → 围栏标 html 的片段补外壳进沙箱，圆角、底色、网格按文档样式生效。
 # - 沙箱高度写死 → 短文档按内容收缩、长文档随内容增高，两种都不出现内部滚动条。
 # - 超长 HTML 拖死标签页 → 超过上限只显示提示与原文。
 # - 只对 Agent 生效 → 人类消息走同一套清洗。
@@ -172,7 +173,7 @@ try {
         '<html><head><meta charset="utf-8"><style>body{margin:0;font:14px/1.5 system-ui}td{padding:4px 8px;border:1px solid #cbd5e1}</style></head>',
         '<body><h3>沙箱文档</h3><p>这段来自消息里的完整 HTML。</p>',
         '<table><tr><th>步骤</th><th>耗时</th></tr><tr><td>构建</td><td>12s</td></tr><tr><td>测试</td><td>48s</td></tr></table>',
-        '<script>window.top.document.title = "LEAK"; document.body.dataset.ran = "1"</script>',
+        '<script>document.body.dataset.ran = "1";try{void window.top.document.title;document.body.dataset.escape = "LEAK"}catch{document.body.dataset.escape = "BLOCKED"}</script>',
         '</body></html>',
         '```',
       ].join('\n'),
@@ -191,13 +192,25 @@ try {
         '```',
       ].join('\n'),
     ),
+    card: insert(
+      'card',
+      [
+        '```html',
+        '<style>',
+        '.card{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr));padding:16px;border-radius:14px;background:#eef2ff}',
+        '.chip{display:inline-block;padding:4px 10px;border-radius:999px;background:#312e81;color:#fff;font-weight:600}',
+        '</style>',
+        '<div class="card"><div><h3>构建</h3><span class="chip">通过</span></div><div><h3>测试</h3><span class="chip">12/12</span></div></div>',
+        '```',
+      ].join('\n'),
+    ),
   }
   for (const [key, id] of Object.entries(ids)) markers[key] = id
 
   const chatUrl = `${base}/projects/${projectId}/chats/${chatId}`
   const response = await page.goto(chatUrl, { waitUntil: 'domcontentloaded' })
   await test('message-item').first().waitFor()
-  await page.waitForFunction(() => document.querySelectorAll('[data-testid="message-item"]').length >= 8, null, {
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="message-item"]').length >= 9, null, {
     timeout: 30000,
   })
   pass('setup_real_project_agent_and_dm_chat', `project ${projectId} chat ${chatId}`)
@@ -237,22 +250,19 @@ try {
     return `sandbox=${await frame.getAttribute('sandbox')} height=${Math.round(box)}`
   })
 
-  await check('lane_5_sandbox_cannot_read_the_app', async () => {
+  await check('lane_5_sandbox_runs_document_scripts_but_cannot_read_the_app', async () => {
     const handle = await page.locator(htmlBlock(ids.L4)).elementHandle()
     const frame = await handle.contentFrame()
     assert(frame, '沙箱 frame 应存在')
-    const verdict = await frame.evaluate(() => {
-      try {
-        void window.top.document.title
-        return 'LEAK'
-      } catch {
-        return 'BLOCKED'
-      }
-    })
-    assert.equal(verdict, 'BLOCKED', '沙箱内不该读到父页面')
+    const verdict = await frame.evaluate(() => ({
+      ran: document.body.dataset.ran ?? null,
+      escape: document.body.dataset.escape ?? null,
+    }))
+    assert.equal(verdict.ran, '1', `文档自己的脚本应执行：${JSON.stringify(verdict)}`)
+    assert.equal(verdict.escape, 'BLOCKED', `沙箱内不该读到父页面：${JSON.stringify(verdict)}`)
     const leaked = await page.evaluate(() => document.title)
     assert.notEqual(leaked, 'LEAK', '父页面标题不该被沙箱改写')
-    return 'top.document 访问被拒'
+    return `script ran=1 top.document=${verdict.escape}`
   })
 
   await check('lane_6_no_csp_added_to_the_app', async () => {
@@ -299,15 +309,41 @@ try {
     return `short=${Math.round(short)} tall=${Math.round(tall)}`
   })
 
+  await check('lane_14_fragment_becomes_an_artifact_surface', async () => {
+    const frame = page.locator(htmlBlock(ids.card))
+    assert.equal(await frame.count(), 1, '片段应渲染成沙箱')
+    const source = await frame.getAttribute('srcdoc')
+    assert(source.includes('<!doctype html'), `片段应补上外壳：${source.slice(0, 120)}`)
+    const handle = await frame.elementHandle()
+    const child = await handle.contentFrame()
+    assert(child, '沙箱 frame 应存在')
+    const look = await child.evaluate(() => {
+      const card = document.querySelector('.card')
+      const chip = document.querySelector('.chip')
+      const style = getComputedStyle(card)
+      return {
+        radius: style.borderRadius,
+        background: style.backgroundColor,
+        columns: style.gridTemplateColumns.split(' ').length,
+        chip: getComputedStyle(chip).backgroundColor,
+        width: Math.round(card.getBoundingClientRect().width),
+        scrolls: document.documentElement.scrollHeight > window.innerHeight + 1,
+      }
+    })
+    assert.equal(look.radius, '14px', `圆角应生效：${JSON.stringify(look)}`)
+    assert.equal(look.background, 'rgb(238, 242, 255)', `卡片底色应生效：${JSON.stringify(look)}`)
+    assert.equal(look.columns, 2, `两列网格应生效：${JSON.stringify(look)}`)
+    assert.equal(look.chip, 'rgb(49, 46, 129)', `芯片底色应生效：${JSON.stringify(look)}`)
+    assert(look.width > 500, `卡片应占满沙箱宽度：${look.width}`)
+    assert.equal(look.scrolls, false, '沙箱内不该出现滚动条')
+    return `radius=${look.radius} width=${look.width} scrolls=${look.scrolls}`
+  })
+
   await check('lane_12_page_stays_clean', async () => {
-    // 沙箱文档里作者自己的 inline script 被 CSP 拦下时，浏览器会记一条 console error；这条正是策略生效的证据。
-    const blocked = consoleErrors.filter((message) => message.includes("Content Security Policy directive 'script-src"))
-    const unexpected = consoleErrors.filter((message) => !blocked.includes(message))
-    assert(blocked.length > 0, `应能看到作者脚本被 CSP 拦下：${JSON.stringify(consoleErrors)}`)
+    assert.deepEqual(consoleErrors, [], `不应有控制台错误：${JSON.stringify(consoleErrors)}`)
     assert.deepEqual(dialogs, [], `不应有弹窗：${JSON.stringify(dialogs)}`)
     assert.deepEqual(pageErrors, [], `不应有页面异常：${JSON.stringify(pageErrors)}`)
-    assert.deepEqual(unexpected, [], `不应有其它控制台错误：${JSON.stringify(unexpected)}`)
-    return `弹窗 0、页面异常 0、CSP 拦下 ${blocked.length} 条、其它错误 0`
+    return '弹窗 0、页面异常 0、控制台错误 0'
   })
 
   await page.emulateMedia({ colorScheme: 'dark' })

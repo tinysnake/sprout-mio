@@ -46,19 +46,32 @@ describe("消息里的 HTML", () => {
     expect(html).not.toContain("allow-same-origin");
   });
 
-  it("围栏里的片段继续按代码块渲染", () => {
-    const html = render("```html\n<div>片段</div>\n```");
-    expect(html).not.toContain("html-block");
-    expect(html).toContain("&lt;div&gt;");
+  it("围栏里的片段补外壳后也进沙箱", () => {
+    const html = render("```html\n<div style=\"border-radius:12px\">片段</div>\n```");
+    expect(html).toContain('data-testid="html-block"');
+    expect(html).toContain("&lt;!doctype html&gt;");
+    expect(html).toContain("border-radius:12px");
   });
 
-  it("沙箱文档带 nonce 的 CSP，脚本源只放自己的上报脚本", () => {
-    const wrapped = sandboxDocument(document, "abc123");
+  it("围栏里没有标签就还是代码块", () => {
+    const html = render("```html\n只是一个颜色名\n```");
+    expect(html).not.toContain("html-block");
+    expect(html).toContain("只是一个颜色名");
+  });
+
+  it("沙箱文档放行文档自己的脚本，但出不了网", () => {
+    const wrapped = sandboxDocument(document);
     expect(wrapped).toContain('http-equiv="Content-Security-Policy"');
-    expect(wrapped).toContain("script-src 'nonce-abc123'");
+    expect(wrapped).toContain("script-src 'unsafe-inline'");
     expect(wrapped).toContain("default-src 'none'");
-    expect(wrapped).toContain('nonce="abc123"');
-    expect(wrapped).not.toContain('unsafe-inline"; script');
+    expect(wrapped).toContain("style-src 'unsafe-inline'");
+    expect(wrapped).not.toContain("nonce");
+  });
+
+  it("片段外壳给出应用的字号行高", () => {
+    const wrapped = sandboxDocument("<div>片段</div>");
+    expect(wrapped).toContain("padding:12px");
+    expect(wrapped).toContain("<body><div>片段</div></body>");
   });
 
   it("完整文档判定不认普通片段", () => {

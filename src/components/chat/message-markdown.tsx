@@ -27,7 +27,6 @@ import {
   exceedsHtmlLimit,
   HTML_MESSAGE_LIMIT,
   HtmlBlock,
-  isCompleteHtmlDocument,
 } from "./html-block";
 import { Icon } from "../ui/icon";
 import "./markdown-content.css";
@@ -158,12 +157,12 @@ function componentsWithSentinels(
   return components as unknown as Components;
 }
 
-/** 围栏标为 html 且是完整文档时才换沙箱；片段留给行内 HTML 那条路。 */
+/** 围栏标为 html 就换 sandbox 面：片段由 `sandboxDocument` 补外壳，`<style>` 与 `style=` 才生效。 */
 function fencedHtmlSource(children: ReactNode): string | null {
   if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return null;
   const { className, children: source } = children.props;
   if (!/language-html\b/u.test(className ?? "")) return null;
-  return typeof source === "string" && isCompleteHtmlDocument(source) ? source : null;
+  return typeof source === "string" && containsHtml(source) ? source : null;
 }
 
 /** 站外链接不继承应用页的 referrer，也不把用户从 Chat 里导航走。 */
