@@ -94,6 +94,7 @@ export const CI_GROUPS = Object.freeze({
     "bf-p6b-info",
     "bf-p6b-turn-context",
     "bf-p6b-agent-tool",
+    "ui-scenarios",
   ],
 });
 
