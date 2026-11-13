@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useTheme } from "@/lib/theme";
+
 /** 单条消息的 HTML 渲染上限（字符）。超限退回原文，避免解析阶段把页面拖死。 */
 export const HTML_MESSAGE_LIMIT = 100_000;
 
@@ -23,10 +25,34 @@ export function isCompleteHtmlDocument(source: string): boolean {
 
 const REPORTER = `(function(){function send(){parent.postMessage({type:"${HEIGHT_MESSAGE}",height:document.documentElement.scrollHeight},"*")}addEventListener("load",send);if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement)}var left=20;var poll=setInterval(function(){send();if(--left<=0)clearInterval(poll)},100)})()`;
 
+/**
+ * 沙箱文档的纸面色：取应用自己的背景与文字色，主题切换后不必再维护第二份色值。
+ * 主题样式还没生效时（SSR、测试）退回系统色，由 `color-scheme` 决定深浅。
+ */
+export type ArtifactPaper = { background: string; foreground: string; scheme: "light" | "dark" };
+
+const SYSTEM_PAPER: ArtifactPaper = {
+  background: "Canvas",
+  foreground: "CanvasText",
+  scheme: "light",
+};
+
+export function artifactPaper(scheme: "light" | "dark"): ArtifactPaper {
+  if (typeof document === "undefined") return { ...SYSTEM_PAPER, scheme };
+  const style = getComputedStyle(document.documentElement);
+  const background = style.getPropertyValue("--background").trim();
+  const foreground = style.getPropertyValue("--foreground").trim();
+  if (background === "" || foreground === "") return { ...SYSTEM_PAPER, scheme };
+  return { background, foreground, scheme };
+}
+
 /** 片段进沙箱时补的排版底：外壳把默认的 Times 与页边距换成应用的字号行高。 */
-const SHELL_STYLE =
-  "html{background:#fff;color:#111;color-scheme:light}" +
-  "body{margin:0;padding:12px;font:14px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif}";
+function shellStyle(paper: ArtifactPaper): string {
+  return (
+    `html{background:${paper.background};color:${paper.foreground};color-scheme:${paper.scheme}}` +
+    "body{margin:0;padding:12px;font:14px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif}"
+  );
+}
 
 /** 沙箱里可以跑文档自己的脚本，但出不了网，也读不到父页面。 */
 const CSP = [
@@ -44,10 +70,10 @@ const CSP = [
  * 把模型给的 HTML 变成一个独立文档：完整文档原样注入策略与上报脚本，片段补外壳，
  * 这样片段里的 `<style>` 与 `style=` 都按文档样式生效，而不是被行内清洗器剥掉。
  */
-export function sandboxDocument(source: string): string {
-  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="color-scheme" content="light"><script>${REPORTER}</script>`;
+export function sandboxDocument(source: string, paper: ArtifactPaper = SYSTEM_PAPER): string {
+  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="color-scheme" content="${paper.scheme}"><script>${REPORTER}</script>`;
   if (!isCompleteHtmlDocument(source)) {
-    return `<!doctype html><html><head><meta charset="utf-8">${head}<style>${SHELL_STYLE}</style></head><body>${source}</body></html>`;
+    return `<!doctype html><html><head><meta charset="utf-8">${head}<style>${shellStyle(paper)}</style></head><body>${source}</body></html>`;
   }
   const withHead = insertAfter(source, /<head[^>]*>/iu, head);
   if (withHead !== null) return withHead;
@@ -73,7 +99,9 @@ const MEASURING_HEIGHT = 60;
 export function HtmlBlock({ source }: { source: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState<number | null>(null);
-  const document = useMemo(() => sandboxDocument(source), [source]);
+  const { theme } = useTheme();
+  const paper = useMemo(() => artifactPaper(theme), [theme]);
+  const document = useMemo(() => sandboxDocument(source, paper), [source, paper]);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
@@ -104,10 +132,10 @@ export function HtmlBlock({ source }: { source: string }) {
         overflow: "hidden",
         // 不描外框：artifact 自己画边框，外层再套一圈就成了框套框。
         borderRadius: "var(--radius)",
-        // 沙箱文档当一张浅色纸面渲染：深色主题下默认黑字与透明底会互相吃掉，
-        // 固定浅色底 + `colorScheme: light` 让没写样式的文档在两种主题下都可读。
-        background: "#ffffff",
-        colorScheme: "light",
+        // 纸面跟着应用主题走：未写样式的文档在暗色主题下不会变成一块亮斑。
+        // 背景与文字色都取自应用自己的 token，主题里只保养一份。
+        background: paper.background,
+        colorScheme: paper.scheme,
       }}
     />
   );

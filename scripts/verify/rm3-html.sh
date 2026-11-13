@@ -352,12 +352,30 @@ try {
     timeout: 30000,
   })
   await shot('rm3-lane-card-dark.png')
-  await check('lane_13_dark_theme_keeps_the_sandbox_readable', async () => {
-    const paper = await page
-      .locator(htmlBlock(ids.L4))
-      .evaluate((node) => getComputedStyle(node).backgroundColor)
-    assert.equal(paper, 'rgb(255, 255, 255)', `沙箱应保持浅色纸面，实际 ${paper}`)
-    return `paper=${paper}`
+  await check('lane_13_dark_theme_moves_the_paper_with_it', async () => {
+    const look = await page.locator(htmlBlock(ids.L4)).evaluate((node) => {
+      const style = getComputedStyle(node)
+      const canvas = document.createElement('canvas')
+      canvas.width = 1
+      canvas.height = 1
+      const context = canvas.getContext('2d')
+      const luminance = (color) => {
+        context.fillStyle = '#000'
+        context.fillStyle = color
+        context.fillRect(0, 0, 1, 1)
+        const [r, g, b] = context.getImageData(0, 0, 1, 1).data
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+      }
+      return {
+        paper: style.backgroundColor,
+        text: style.color,
+        paperLuminance: luminance(style.backgroundColor),
+        textLuminance: luminance(style.color),
+      }
+    })
+    assert(look.paperLuminance < 0.35, `暗色主题下纸面应随之变暗，实际 ${JSON.stringify(look)}`)
+    assert(look.textLuminance > 0.6, `暗色主题下文字应转浅，实际 ${JSON.stringify(look)}`)
+    return `paper=${look.paper} text=${look.text}`
   })
 } finally {
   await browser.close().catch(() => {})

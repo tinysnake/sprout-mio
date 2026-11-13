@@ -74,6 +74,16 @@ describe("消息里的 HTML", () => {
     expect(wrapped).toContain("<body><div>片段</div></body>");
   });
 
+  it("纸面跟着主题走，暗色不再是白底", () => {
+    const paper = { background: "oklch(0.205 0.005 90)", foreground: "#eae8e2", scheme: "dark" as const };
+    const wrapped = sandboxDocument("<div>片段</div>", paper);
+    expect(wrapped).toContain("background:oklch(0.205 0.005 90)");
+    expect(wrapped).toContain("color:#eae8e2");
+    expect(wrapped).toContain("color-scheme:dark");
+    expect(wrapped).toContain('<meta name="color-scheme" content="dark">');
+    expect(wrapped).not.toContain("#fff");
+  });
+
   it("完整文档判定不认普通片段", () => {
     expect(isCompleteHtmlDocument(document)).toBe(true);
     expect(isCompleteHtmlDocument("<div>片段</div>")).toBe(false);
