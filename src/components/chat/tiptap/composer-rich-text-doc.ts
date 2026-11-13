@@ -279,6 +279,28 @@ function touchesMarkdownSource(state: EditorState, from: number, to: number): bo
   return [$pos.nodeBefore, $pos.nodeAfter].some((node) => node && type.isInSet(node.marks));
 }
 
+/**
+ * 中文正文里 `*斜体*` 常紧跟顿号、逗号这类全角标点，Tiptap 上游的 `(?:^|\s)` 边界让输入规则不触发，
+ * 输入区就会留着生星号而消息里却是斜体。把边界放宽到全角标点；字母与数字仍然排除，`2*3*4` 不会误判。
+ */
+export function widenMarkBoundary(find: RegExp): RegExp {
+  return new RegExp(
+    find.source.replace(
+      String.raw`(?:^|\s)`,
+      String.raw`(?:^|[\s、。，；：！？…—～·）】》」』”’])`,
+    ),
+    find.flags,
+  );
+}
+
+/** 行内标记的输入规则匹配：与上游同名正则的唯一差别是左侧边界。 */
+export const COMPOSER_MARK_INPUT_FINDS = {
+  italic: widenMarkBoundary(starInputRegex),
+  boldStar: widenMarkBoundary(boldStarInputRegex),
+  boldUnderscore: widenMarkBoundary(boldUnderscoreInputRegex),
+  strike: widenMarkBoundary(strikeInputRegex),
+} as const;
+
 // Code permits nested emphasis, so Tiptap's exclusion check cannot protect literal delimiters.
 function markInputRuleOutsideCode(find: RegExp, type: MarkType) {
   const rule = markInputRule({ find, type });
@@ -349,7 +371,7 @@ export function surroundSelectionWithMark(
  */
 export const ComposerItalicExtension = Italic.extend({
   addInputRules() {
-    return [markInputRuleOutsideCode(starInputRegex, this.type)];
+    return [markInputRuleOutsideCode(COMPOSER_MARK_INPUT_FINDS.italic, this.type)];
   },
   addPasteRules() {
     return [markPasteRule({ find: starPasteRegex, type: this.type })];
@@ -359,15 +381,15 @@ export const ComposerItalicExtension = Italic.extend({
 export const ComposerBoldExtension = Bold.extend({
   addInputRules() {
     return [
-      markInputRuleOutsideCode(boldStarInputRegex, this.type),
-      markInputRuleOutsideCode(boldUnderscoreInputRegex, this.type),
+      markInputRuleOutsideCode(COMPOSER_MARK_INPUT_FINDS.boldStar, this.type),
+      markInputRuleOutsideCode(COMPOSER_MARK_INPUT_FINDS.boldUnderscore, this.type),
     ];
   },
 });
 
 export const ComposerStrikeExtension = Strike.extend({
   addInputRules() {
-    return [markInputRuleOutsideCode(strikeInputRegex, this.type)];
+    return [markInputRuleOutsideCode(COMPOSER_MARK_INPUT_FINDS.strike, this.type)];
   },
 });
 

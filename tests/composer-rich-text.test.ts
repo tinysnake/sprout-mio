@@ -34,6 +34,7 @@ import {
   ComposerCodeBlockExtension,
   ComposerCodeExtension,
   ComposerListExtensions,
+  COMPOSER_MARK_INPUT_FINDS,
   ComposerTaskItemExtension,
   flatToPm,
   markdownToFlat,
@@ -684,5 +685,31 @@ describe("代码块：围栏开合、退出与缩进", () => {
     const state = EditorState.create({ doc, selection: TextSelection.create(doc, 2, 7) });
     expect(indentCodeBlock(state, "in", () => {})).toBe(false);
     expect(indentedNewlineInCodeBlock(state, () => {})).toBe(false);
+  });
+});
+
+describe("行内标记的输入边界", () => {
+  const captures = (find: RegExp, text: string) => {
+    const match = find.exec(text);
+    return match ? match[match.length - 1] : null;
+  };
+
+  it("顿号、句号这类全角标点后面也认 `*斜体*`", () => {
+    for (const text of ["、*斜体*", "。*斜体*", "，*斜体*", " *斜体*", "*斜体*"]) {
+      expect(COMPOSER_MARK_INPUT_FINDS.italic.test(text), text).toBe(true);
+      expect(captures(COMPOSER_MARK_INPUT_FINDS.italic, text), text).toBe("斜体");
+    }
+  });
+
+  it("全角标点后面也认 `**粗体**` 与 `~~删除~~`", () => {
+    expect(captures(COMPOSER_MARK_INPUT_FINDS.boldStar, "、**粗体**")).toBe("粗体");
+    expect(captures(COMPOSER_MARK_INPUT_FINDS.strike, "：~~删除~~")).toBe("删除");
+  });
+
+  it("字母、数字与汉字后面不认，避免把算式或文件名当标记", () => {
+    for (const text of ["2*3*4", "a*斜体*", "文件*斜体*", "90~~10"]) {
+      expect(COMPOSER_MARK_INPUT_FINDS.italic.test(text), text).toBe(false);
+      expect(COMPOSER_MARK_INPUT_FINDS.strike.test(text), text).toBe(false);
+    }
   });
 });
