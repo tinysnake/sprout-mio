@@ -22,12 +22,7 @@ import {
   partitionAttachments,
 } from "./message-attachments";
 import { maskMessageSegments, type MessageSegment, type MessageSentinel } from "./message-segments";
-import {
-  containsHtml,
-  exceedsHtmlLimit,
-  HTML_MESSAGE_LIMIT,
-  HtmlBlock,
-} from "./html-block";
+import { containsHtml, exceedsHtmlLimit, HTML_MESSAGE_LIMIT, HtmlBlock } from "./html-block";
 import { Icon } from "../ui/icon";
 import "./markdown-content.css";
 

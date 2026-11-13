@@ -6,6 +6,7 @@ import {
   isCompleteHtmlDocument,
   sandboxDocument,
 } from "../src/components/chat/html-block";
+import { ARTIFACT_APPEARANCE_MESSAGE } from "../src/components/chat/html-artifact-theme";
 import { MessageMarkdown } from "../src/components/chat/message-markdown";
 
 function render(body: string) {
@@ -47,9 +48,8 @@ describe("消息里的 HTML", () => {
   });
 
   it("围栏里的片段补外壳后也进沙箱", () => {
-    const html = render("```html\n<div style=\"border-radius:12px\">片段</div>\n```");
+    const html = render('```html\n<div style="border-radius:12px">片段</div>\n```');
     expect(html).toContain('data-testid="html-block"');
-    expect(html).toContain("&lt;!doctype html&gt;");
     expect(html).toContain("border-radius:12px");
   });
 
@@ -68,19 +68,35 @@ describe("消息里的 HTML", () => {
     expect(wrapped).not.toContain("nonce");
   });
 
-  it("片段外壳给出应用的字号行高", () => {
+  it("片段外壳给留白与正文字号，内容原样放进 body", () => {
     const wrapped = sandboxDocument("<div>片段</div>");
-    expect(wrapped).toContain("padding:12px");
+    expect(wrapped).toContain("padding:8px");
+    expect(wrapped).toContain("font-size:14px");
     expect(wrapped).toContain("<body><div>片段</div></body>");
   });
 
-  it("纸面固定是浅色文档面，不跟主题翻深", () => {
+  it("外观注入到文档，浅色是默认", () => {
     const wrapped = sandboxDocument("<div>片段</div>");
-    expect(wrapped).toContain("background:Canvas");
-    expect(wrapped).toContain("color:CanvasText");
-    expect(wrapped).toContain("color-scheme:light");
     expect(wrapped).toContain('<meta name="color-scheme" content="light">');
-    expect(wrapped).not.toContain("color-scheme:dark");
+    expect(wrapped).toContain('paint("light")');
+    expect(wrapped).toContain(ARTIFACT_APPEARANCE_MESSAGE);
+  });
+
+  it("深色文档给整份主题样式表，靠 .dark 覆盖 :root", () => {
+    const wrapped = sandboxDocument("<div>片段</div>", "dark");
+    expect(wrapped).toContain('<meta name="color-scheme" content="dark">');
+    expect(wrapped).toContain('paint("dark")');
+    expect(wrapped).toContain("--background");
+    expect(wrapped).toContain("--muted-foreground");
+    expect(wrapped).toContain(".dark {");
+    expect(wrapped).not.toContain("background:Canvas");
+  });
+
+  it("完整文档自带 head 时主题样式插在它后面，不另起外壳", () => {
+    const wrapped = sandboxDocument(document, "dark");
+    expect(wrapped.match(/<head>/gu)).toHaveLength(1);
+    expect(wrapped.indexOf('name="color-scheme"')).toBeGreaterThan(wrapped.indexOf("<head>"));
+    expect(wrapped).toContain("<style>p{color:red}</style>");
   });
 
   it("完整文档判定不认普通片段", () => {

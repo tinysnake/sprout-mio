@@ -136,6 +136,7 @@ try {
     const source = (await block.getAttribute("srcdoc")) ?? "";
     assert(source.includes("<!doctype html>"));
     assert(source.includes("Content-Security-Policy"));
+    assert(source.includes('id="sprout-artifact-theme"'));
     await page.waitForFunction(() => {
       const frame = document.querySelector('[data-testid="html-block"]');
       return frame !== null && frame.getBoundingClientRect().height > 240;

@@ -197,8 +197,8 @@ try {
       [
         '```html',
         '<style>',
-        '.card{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr));padding:16px;border-radius:14px;background:#eef2ff}',
-        '.chip{display:inline-block;padding:4px 10px;border-radius:999px;background:#312e81;color:#fff;font-weight:600}',
+        '.card{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr));padding:16px;border-radius:14px;background:var(--muted)}',
+        '.chip{display:inline-block;padding:4px 10px;border-radius:999px;background:var(--primary);color:var(--primary-foreground);font-weight:600}',
         '</style>',
         '<div class="card"><div><h3>构建</h3><span class="chip">通过</span></div><div><h3>测试</h3><span class="chip">12/12</span></div></div>',
         '```',
@@ -331,12 +331,27 @@ try {
       }
     })
     assert.equal(look.radius, '14px', `圆角应生效：${JSON.stringify(look)}`)
-    assert.equal(look.background, 'rgb(238, 242, 255)', `卡片底色应生效：${JSON.stringify(look)}`)
     assert.equal(look.columns, 2, `两列网格应生效：${JSON.stringify(look)}`)
-    assert.equal(look.chip, 'rgb(49, 46, 129)', `芯片底色应生效：${JSON.stringify(look)}`)
+    assert(look.background !== 'rgba(0, 0, 0, 0)', `卡片底色应解析出主题变量：${JSON.stringify(look)}`)
+    assert(look.chip !== 'rgba(0, 0, 0, 0)', `芯片底色应解析出主题变量：${JSON.stringify(look)}`)
+    // 同一个变量在沙箱与应用里必须解析成同一个颜色，否则注入的主题样式表没生效。
+    const read = () => {
+      const probe = document.createElement('div')
+      probe.style.background = 'var(--muted)'
+      probe.style.color = 'var(--primary)'
+      document.body.append(probe)
+      const computed = getComputedStyle(probe)
+      const tokens = [computed.backgroundColor, computed.color]
+      probe.remove()
+      return tokens
+    }
+    const outside = await page.evaluate(read)
+    const inside = await child.evaluate(read)
+    assert.deepEqual(inside, outside, `沙箱内的主题变量应与应用一致，沙箱 ${JSON.stringify(inside)}，应用 ${JSON.stringify(outside)}`)
+    assert.equal(inside[0], look.background, `卡片底色应就是 --muted：${JSON.stringify(look)}`)
     assert(look.width > 500, `卡片应占满沙箱宽度：${look.width}`)
     assert.equal(look.scrolls, false, '沙箱内不该出现滚动条')
-    return `radius=${look.radius} width=${look.width} scrolls=${look.scrolls}`
+    return `radius=${look.radius} width=${look.width} muted=${inside[0]} scrolls=${look.scrolls}`
   })
 
   await check('lane_12_page_stays_clean', async () => {
@@ -352,9 +367,9 @@ try {
     timeout: 30000,
   })
   await shot('rm3-lane-card-dark.png')
-  await check('lane_13_dark_theme_keeps_the_paper_light', async () => {
-    const look = await page.locator(htmlBlock(ids.L4)).evaluate((node) => {
-      const style = getComputedStyle(node)
+  await check('lane_13_dark_theme_reaches_the_sandbox', async () => {
+    const frame = page.locator(htmlBlock(ids.L4))
+    const paper = await frame.evaluate((node) => {
       const canvas = document.createElement('canvas')
       canvas.width = 1
       canvas.height = 1
@@ -367,16 +382,55 @@ try {
         return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
       }
       return {
-        paper: style.backgroundColor,
-        paperLuminance: luminance(style.backgroundColor),
+        paper: getComputedStyle(node).backgroundColor,
+        paperLuminance: luminance(getComputedStyle(node).backgroundColor),
         background: luminance(getComputedStyle(document.body).backgroundColor),
-        colorScheme: style.colorScheme,
       }
     })
-    assert(look.paperLuminance > 0.8, `文档纸面应按浅色页面固定，实际 ${JSON.stringify(look)}`)
-    assert.equal(look.colorScheme, 'light', `沙箱内默认文字应由 light 的 color-scheme 定成深色：${JSON.stringify(look)}`)
-    assert(look.paperLuminance - look.background > 0.5, `浅色纸面应与暗色界面明显分开：${JSON.stringify(look)}`)
-    return `paper=${look.paper} color-scheme=${look.colorScheme}`
+    assert(Math.abs(paper.paperLuminance - paper.background) < 0.06, `文档外框应与界面同色：${JSON.stringify(paper)}`)
+    const handle = await frame.elementHandle()
+    const child = await handle.contentFrame()
+    assert(child, '沙箱 frame 应存在')
+    const look = await child.evaluate(() => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 1
+      canvas.height = 1
+      const context = canvas.getContext('2d')
+      const luminance = (color) => {
+        context.fillStyle = '#000'
+        context.fillStyle = color
+        context.fillRect(0, 0, 1, 1)
+        const [r, g, b] = context.getImageData(0, 0, 1, 1).data
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+      }
+      const probe = document.createElement('div')
+      probe.style.background = 'var(--background)'
+      probe.style.color = 'var(--foreground)'
+      document.body.append(probe)
+      const computed = getComputedStyle(probe)
+      const look = {
+        dark: document.documentElement.classList.contains('dark'),
+        scheme: getComputedStyle(document.documentElement).colorScheme,
+        background: luminance(computed.backgroundColor),
+        foreground: luminance(computed.color),
+      }
+      probe.remove()
+      return look
+    })
+    assert.equal(look.dark, true, `深色主题应传进沙箱：${JSON.stringify(look)}`)
+    assert.equal(look.scheme, 'dark', `沙箱的 color-scheme 应跟主题走：${JSON.stringify(look)}`)
+    assert(look.background < 0.35, `深色下沙箱应是深底：${JSON.stringify(look)}`)
+    assert(look.foreground > 0.6, `深色下沙箱应是浅字：${JSON.stringify(look)}`)
+
+    // 换主题不该重载文档：父页面发消息，沙箱自己换色。
+    await page.emulateMedia({ colorScheme: 'light' })
+    await child.waitForFunction(() => !document.documentElement.classList.contains('dark'), null, { timeout: 5000 })
+    const after = await child.evaluate(() => ({
+      scheme: getComputedStyle(document.documentElement).colorScheme,
+      background: document.documentElement.scrollHeight,
+    }))
+    assert.equal(after.scheme, 'light', `换主题应即时生效：${JSON.stringify(after)}`)
+    return `dark-bg=${look.background.toFixed(2)} dark-fg=${look.foreground.toFixed(2)} live=${after.scheme}`
   })
 } finally {
   await browser.close().catch(() => {})

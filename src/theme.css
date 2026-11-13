@@ -40,8 +40,6 @@
 
   --muted: oklch(0.947 0.004 90);
   --muted-foreground: oklch(0.475 0.009 90);
-  /* 沙箱 HTML 文档按浅色页面写色，纸面在两个主题下都是白的。 */
-  --artifact-surface: #ffffff;
   --border: oklch(0.875 0.006 90);
   --border-soft: rgba(38, 37, 30, 0.06);
   --input: oklch(0.755 0.008 90);
