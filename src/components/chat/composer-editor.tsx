@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef } from "react";
+import { AtSign, BookOpen, Paperclip } from "lucide-react";
 import { Extension, type Editor } from "@tiptap/core";
-import { EditorContent, useEditor } from "@tiptap/react";
+import {
+  EditorContent,
+  NodeViewWrapper,
+  ReactNodeViewRenderer,
+  useEditor,
+  type NodeViewProps,
+} from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
+import type { ResolvedPos } from "@tiptap/pm/model";
 import { newlineInCode, splitBlockKeepMarks } from "@tiptap/pm/commands";
 import type { Transaction } from "@tiptap/pm/state";
 import { attachmentToken } from "../../contracts/attachment";
+import { Icon } from "../ui/icon";
 import {
   COMPOSER_UNDO_GROUP_DELAY,
   groupUndoByChangeKind,
@@ -25,10 +33,13 @@ import {
 } from "./tiptap/composer-code-block";
 import {
   COMPOSER_ATTACHMENT_NODE,
+  COMPOSER_MENTION_NODE,
   COMPOSER_SKILL_NODE,
   ComposerAttachmentExtension,
+  ComposerMentionExtension,
   ComposerSkillExtension,
 } from "./tiptap/composer-rich-text-nodes";
+import type { MentionCandidate } from "./tiptap/composer-prompt-segments";
 import {
   blockquoteInputRule,
   bulletToTaskInputRule,
@@ -55,6 +66,7 @@ import {
   serializeEditorDoc,
   splitOrLiftListItem,
 } from "./tiptap/composer-rich-text-doc";
+import "./markdown-content.css";
 
 /** 光标所在链路上有没有这种祖先节点，逐层看而不是只看当前块。 */
 function hasAncestor($pos: ResolvedPos, name: string): boolean {
@@ -75,6 +87,8 @@ export interface ComposerEditorHandle {
   insertText(from: number, to: number, text: string): void;
   /** 在 markdown 区间上插入一条附件引用芯片。 */
   insertAttachment(from: number, to: number, localId: string, label: string): void;
+  /** 在 markdown 区间上插入一个点名芯片，尾部补一个空格。 */
+  insertMention(from: number, to: number, member: MentionCandidate): void;
   /** 删掉正文里指向该附件的全部芯片，返回是否删到了东西。 */
   removeAttachment(localId: string): boolean;
 }
@@ -94,40 +108,64 @@ const ComposerUndoGroupingExtension = Extension.create<
   },
 });
 
-function composerChipNodeView(kind: "attachment" | "skill", labelFor: (localId: string) => string) {
-  return ({ node }: { node: ProseMirrorNode }) => {
-    const dom = document.createElement("span");
-    dom.className = "composer-chip";
-    dom.setAttribute("data-testid", "composer-chip");
-    dom.setAttribute("data-chip-kind", kind);
-    dom.setAttribute("contenteditable", "false");
-    const icon = document.createElement("span");
-    icon.className = "composer-chip__icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.textContent = kind === "skill" ? "📖" : "📎";
-    const name = document.createElement("span");
-    name.className = "composer-chip__name";
-    const paint = (current: ProseMirrorNode) => {
-      const localId = current.attrs.localId == null ? "" : String(current.attrs.localId);
-      dom.setAttribute("data-local-id", localId);
-      // 技能显示技能名，附件显示文件名：附件被移除后名字回落到「附件」。
-      name.textContent =
-        kind === "skill" ? String(current.attrs.name ?? "") : labelFor(localId) || "附件";
-    };
-    paint(node);
-    dom.append(icon, name);
-    return {
-      dom,
-      update: (next: ProseMirrorNode) => {
-        if (next.type !== node.type) return false;
-        paint(next);
-        return true;
-      },
-    };
-  };
+const CHIP_ICONS = {
+  attachment: Paperclip,
+  skill: BookOpen,
+  mention: AtSign,
+} as const;
+
+type ChipKind = keyof typeof CHIP_ICONS;
+
+function ComposerChip({
+  kind,
+  label,
+  localId,
+}: {
+  kind: ChipKind;
+  label: string;
+  /** 附件芯片带上自己的 localId，验收与调试靠它把芯片和附件栏对上。 */
+  localId?: string;
+}) {
+  return (
+    <NodeViewWrapper
+      as="span"
+      className="markdown-chip"
+      data-testid="composer-chip"
+      data-chip-kind={kind}
+      data-local-id={localId}
+      contentEditable={false}
+    >
+      <Icon as={CHIP_ICONS[kind]} size={11} className="markdown-chip__icon" />
+      <span className="markdown-chip__name">{label}</span>
+    </NodeViewWrapper>
+  );
+}
+
+function AttachmentChipView({ node }: NodeViewProps, labelFor: (localId: string) => string) {
+  const localId = typeof node.attrs.localId === "string" ? node.attrs.localId : "";
+  const inserted = typeof node.attrs.label === "string" ? node.attrs.label : "";
+  // 插入时记下的名字优先，恢复旧草稿时再向父层要；都拿不到就显示「附件」。
+  return (
+    <ComposerChip
+      kind="attachment"
+      localId={localId || undefined}
+      label={inserted || labelFor(localId) || "附件"}
+    />
+  );
+}
+
+function SkillChipView({ node }: NodeViewProps) {
+  const name = typeof node.attrs.name === "string" ? node.attrs.name : "";
+  return <ComposerChip kind="skill" label={name} />;
+}
+
+function MentionChipView({ node }: NodeViewProps) {
+  const name = typeof node.attrs.name === "string" ? node.attrs.name : "";
+  return <ComposerChip kind="mention" label={name} />;
 }
 
 function composerExtensions(labelFor: (localId: string) => string) {
+  const chipView = (props: NodeViewProps) => AttachmentChipView(props, labelFor);
   return [
     StarterKit.configure({
       blockquote: false,
@@ -155,12 +193,17 @@ function composerExtensions(labelFor: (localId: string) => string) {
         return { ...this.parent?.(), label: { default: "" } };
       },
       addNodeView() {
-        return composerChipNodeView("attachment", labelFor);
+        return ReactNodeViewRenderer(chipView);
       },
     }),
     ComposerSkillExtension.extend({
       addNodeView() {
-        return composerChipNodeView("skill", labelFor);
+        return ReactNodeViewRenderer(SkillChipView);
+      },
+    }),
+    ComposerMentionExtension.extend({
+      addNodeView() {
+        return ReactNodeViewRenderer(MentionChipView);
       },
     }),
     ComposerMarkdownSourceExtension,
@@ -245,6 +288,7 @@ function placeCaret(editor: Editor, markdownOffset: number): void {
 export function ComposerEditor({
   value,
   caret,
+  mentions = [],
   labelFor,
   readOnly,
   dragging,
@@ -260,6 +304,8 @@ export function ComposerEditor({
 }: {
   value: string;
   caret: number | null;
+  /** 可以变成点名芯片的成员名单；草稿重建时按它把 `@名字` 认回芯片。 */
+  mentions?: readonly MentionCandidate[];
   labelFor: (localId: string) => string;
   readOnly: boolean;
   dragging: boolean;
@@ -274,8 +320,26 @@ export function ComposerEditor({
   onHandle: (handle: ComposerEditorHandle | null) => void;
 }) {
   // 编辑器配置只建一次；会变的回调与标签都从这份 ref 上读，避免重建编辑器。
-  const latest = useRef({ labelFor, onValueChange, onKeyDown, onFiles, onBlur, canGrow, caret });
-  latest.current = { labelFor, onValueChange, onKeyDown, onFiles, onBlur, canGrow, caret };
+  const latest = useRef({
+    labelFor,
+    mentions,
+    onValueChange,
+    onKeyDown,
+    onFiles,
+    onBlur,
+    canGrow,
+    caret,
+  });
+  latest.current = {
+    labelFor,
+    mentions,
+    onValueChange,
+    onKeyDown,
+    onFiles,
+    onBlur,
+    canGrow,
+    caret,
+  };
   const extensions = useMemo(
     () => composerExtensions((localId) => latest.current.labelFor(localId)),
     [],
@@ -286,7 +350,7 @@ export function ComposerEditor({
 
   const editor = useEditor({
     extensions,
-    content: buildDocJson(value),
+    content: buildDocJson(value, { mentions }),
     editable: !readOnly,
     // 页面是 SSR 渲的：首帧只能落后端一致，编辑器在客户端挂载后再建。
     immediatelyRender: false,
@@ -301,7 +365,7 @@ export function ComposerEditor({
         "aria-controls": expanded ? listId : "",
         "aria-activedescendant": expanded ? (activeOptionId ?? "") : "",
         "data-testid": "message-input",
-        class: "composer-editor__input",
+        class: "composer-editor__input markdown-content",
       },
       handleDOMEvents: {
         keydown: (view, event) => {
@@ -432,7 +496,9 @@ export function ComposerEditor({
       if (caret != null && caretMarkdown(instance) !== caret) placeCaret(instance, caret);
       return;
     }
-    instance.commands.setContent(buildDocJson(value), { emitUpdate: false });
+    instance.commands.setContent(buildDocJson(value, { mentions: latest.current.mentions }), {
+      emitUpdate: false,
+    });
     if (caret != null) placeCaret(instance, caret);
   }, [value, caret, editor]);
 
@@ -449,7 +515,9 @@ export function ComposerEditor({
       focus: () => editor.commands.focus(),
       markdown: () => markdownOf(editor),
       setMarkdown: (next, nextCaret) => {
-        editor.commands.setContent(buildDocJson(next), { emitUpdate: false });
+        editor.commands.setContent(buildDocJson(next, { mentions: latest.current.mentions }), {
+          emitUpdate: false,
+        });
         placeCaret(editor, nextCaret);
         latest.current.onValueChange(markdownOf(editor), nextCaret);
       },
@@ -476,6 +544,22 @@ export function ComposerEditor({
               attrs: { localId, label, source: attachmentToken(localId) },
             },
           )
+          .run();
+        latest.current.onValueChange(markdownOf(editor), caretMarkdown(editor));
+      },
+      insertMention: (from, to, member) => {
+        const fromPos = pmPosition(editor, from);
+        const toPos = pmPosition(editor, to);
+        editor
+          .chain()
+          .focus()
+          .insertContentAt({ from: fromPos, to: toPos }, [
+            {
+              type: COMPOSER_MENTION_NODE,
+              attrs: { memberId: member.memberId, name: member.name, source: `@${member.name}` },
+            },
+            { type: "text", text: " " },
+          ])
           .run();
         latest.current.onValueChange(markdownOf(editor), caretMarkdown(editor));
       },

@@ -48,9 +48,14 @@ import {
 import { ReplaceStep } from "@tiptap/pm/transform";
 
 import { nextOrderedMarkerText } from "./composer-list-continuation";
-import { COMPOSER_ATTACHMENT_NODE, COMPOSER_SKILL_NODE } from "./composer-rich-text-nodes";
+import {
+  COMPOSER_ATTACHMENT_NODE,
+  COMPOSER_MENTION_NODE,
+  COMPOSER_SKILL_NODE,
+} from "./composer-rich-text-nodes";
 import {
   type ComposerPromptSegment,
+  type MentionCandidate,
   splitComposerPromptSegments,
 } from "./composer-prompt-segments";
 import {
@@ -792,12 +797,18 @@ interface DocLine {
   inline: InlineJson[];
 }
 
-/** 附件与技能 token 都是内联原子节点；`source` 保存正文原文，序列化时逐字还原。 */
+/** 附件、技能、点名都是内联原子节点；`source` 保存正文原文，序列化时逐字还原。 */
 function atomJsonForSegment(segment: Exclude<ComposerPromptSegment, { type: "text" }>): AtomJson {
   if (segment.type === "attachment") {
     return {
       type: COMPOSER_ATTACHMENT_NODE,
       attrs: { localId: segment.localId, source: segment.source },
+    };
+  }
+  if (segment.type === "mention") {
+    return {
+      type: COMPOSER_MENTION_NODE,
+      attrs: { memberId: segment.memberId, name: segment.name, source: segment.source },
     };
   }
   return {
@@ -871,6 +882,7 @@ export function buildTiptapContent(
     blocks?: boolean;
     literalText?: boolean;
     literalLength?: number;
+    mentions?: readonly MentionCandidate[];
   },
 ): Record<string, unknown>[] {
   if (options?.literalText) {
@@ -890,7 +902,7 @@ export function buildTiptapContent(
   const literal = value.slice(0, options?.literalLength ?? 0);
   const remainder = value.slice(literal.length);
   // 原子 token 先换成哨兵字符穿过行内 markdown 解析，解析后再换回节点，避免被转义或拆开。
-  const text = splitComposerPromptSegments(remainder)
+  const text = splitComposerPromptSegments(remainder, options?.mentions)
     .map((segment) => {
       if (segment.type === "text") return segment.text;
       atoms.push(atomJsonForSegment(segment));
@@ -1088,7 +1100,7 @@ export function buildTiptapContent(
 
 export function buildDocJson(
   value: string,
-  options?: { styling?: boolean; literalText?: boolean },
+  options?: { styling?: boolean; literalText?: boolean; mentions?: readonly MentionCandidate[] },
 ) {
   const content = buildTiptapContent(value, options);
   if (content.at(-1)?.type === "horizontalRule") content.push({ type: "paragraph" });
@@ -1121,6 +1133,7 @@ function readAtomSource(node: ProseMirrorNode): string {
   switch (node.type.name) {
     case COMPOSER_ATTACHMENT_NODE:
     case COMPOSER_SKILL_NODE:
+    case COMPOSER_MENTION_NODE:
       return typeof attrs.source === "string" ? attrs.source : "";
     default:
       return "";

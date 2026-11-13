@@ -7,6 +7,7 @@ import {
   type ElementType,
   type ReactNode,
 } from "react";
+import { AtSign } from "lucide-react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Attachment } from "../../contracts/attachment";
@@ -19,8 +20,9 @@ import {
   partitionAttachments,
 } from "./message-attachments";
 import { maskMessageSegments, type MessageSegment, type MessageSentinel } from "./message-segments";
+import { Icon } from "../ui/icon";
 import { SkillMark } from "./skill-mark";
-import "./message-markdown.css";
+import "./markdown-content.css";
 
 /**
  * 消息正文的 markdown 渲染。
@@ -66,7 +68,7 @@ export function MessageMarkdown({
     [attachments, attachmentSpans],
   );
   return (
-    <div className="message-markdown">
+    <div className="message-markdown markdown-content">
       <Markdown remarkPlugins={[remarkGfm]} components={components}>
         {text}
       </Markdown>
@@ -211,9 +213,11 @@ function SentinelMark({
         data-testid="message-mention"
         data-member-kind={segment.span.memberKind}
         data-member-id={segment.span.memberId}
-        className="rounded-[3px] bg-selected px-1 font-medium [box-decoration-break:clone]"
+        className="markdown-chip"
       >
-        {segment.text}
+        <Icon as={AtSign} size={11} className="markdown-chip__icon" />
+        {/* 芯片用 @ 图标表达点名，正文里那个 `@` 不再重复一遍。 */}
+        <span className="markdown-chip__name">{segment.text.replace(/^@/u, "")}</span>
       </span>
     );
   }

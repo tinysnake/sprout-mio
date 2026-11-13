@@ -518,29 +518,44 @@ try {
   await check("composer_renders_markdown_and_deletes_whole_token", async () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await goto(`${chatPath}?info=1`);
-    await typeDraft(["# 标题", "看📖how 帮我"]);
+    await typeDraft([]);
+    await page.keyboard.type("# 标题");
+    await page.keyboard.press("Shift+Enter");
+    // 点名要走候选选择器插成芯片：手打 `@名字` 只是正文，不会自己变成标签。
+    await page.keyboard.type("看 @");
+    await page.waitForSelector('[data-testid="mention-picker"]', { timeout: 5000 });
+    await page.click('[data-testid="mention-option-0"]');
     const shape = await page.evaluate(() => {
       const root = document.querySelector('[data-testid="message-input"]');
+      const chip = root?.querySelector('[data-testid="composer-chip"]');
       return {
         heading: root?.querySelector("h1")?.textContent ?? null,
-        chip: root?.querySelector('[data-testid="composer-chip"]')?.textContent ?? null,
+        chip: chip?.textContent ?? null,
+        chipKind: chip?.getAttribute("data-chip-kind") ?? null,
+        chipIcon: chip?.querySelector("svg") != null,
+        chipEmoji: chip ? /[\u{1F300}-\u{1FAFF}]/u.test(chip.textContent ?? "") : null,
         text: root?.textContent ?? "",
       };
     });
     assert.equal(shape.heading, "标题", `输入 # 就变成标题 ${JSON.stringify(shape)}`);
+    assert.equal(shape.chipKind, "mention", `点名渲染成点名芯片 ${JSON.stringify(shape)}`);
     assert(
-      typeof shape.chip === "string" && shape.chip.includes("how"),
-      `技能 token 渲染成芯片而不是源码 ${JSON.stringify(shape)}`,
+      typeof shape.chip === "string" && shape.chip.includes("Amenda"),
+      `芯片显示成员名 ${JSON.stringify(shape)}`,
     );
+    assert(shape.chipIcon === true, `芯片用图标集里的图标 ${JSON.stringify(shape)}`);
+    assert(shape.chipEmoji === false, `芯片里不再有 emoji ${JSON.stringify(shape)}`);
     assert(
-      shape.text.includes("看") && shape.text.includes("帮我"),
+      shape.text.includes("看") && shape.text.includes("Amenda"),
       `芯片两侧的正文仍在 ${JSON.stringify(shape)}`,
     );
     const chip = page.locator('[data-testid="message-input"] [data-testid="composer-chip"]');
     const box = await chip.boundingBox();
     assert(box, "芯片有可见盒子");
     // 光标紧贴芯片右侧时按一次 Backspace：整套 token 一起走，而不是只吃掉最后一个字符。
-    await page.mouse.click(box.x + box.width + 1, box.y + box.height / 2);
+    // 芯片后面跟着一个空格，光标落在空格之后：最多两次 Backspace 就要把整颗标签删干净，
+    // 绝不能留下半截 `@Amen` 之类的残字（那正是「按一次只吃掉一个字符」的老毛病）。
+    await page.keyboard.press("Backspace");
     await page.keyboard.press("Backspace");
     const after = await page.evaluate(() => {
       const root = document.querySelector('[data-testid="message-input"]');
@@ -549,10 +564,10 @@ try {
         text: root?.textContent ?? "",
       };
     });
-    assert.equal(after.chips, 0, `一次 Backspace 删掉整个 token ${JSON.stringify(after)}`);
+    assert.equal(after.chips, 0, `Backspace 删掉整个标签 ${JSON.stringify(after)}`);
     assert(
-      after.text.includes("看") && after.text.includes("帮我"),
-      `只删 token，不动旁边的正文 ${JSON.stringify(after)}`,
+      after.text.includes("看") && !after.text.includes("Amen"),
+      `不留半截标签，也不动左边的正文 ${JSON.stringify(after)}`,
     );
     await typeDraft([""]);
     return { shape, after };

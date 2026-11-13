@@ -2,7 +2,7 @@
  * 移植自 T3 Code（https://github.com/pingdotgg/t3code），MIT License，
  * Copyright (c) 2026 T3 Tools Inc.。
  *
- * T3 把这两个原子节点的 Node 定义内联在 `components/ComposerPromptEditorTiptap.tsx` 里
+ * T3 把这三个原子节点的 Node 定义内联在 `components/ComposerPromptEditorTiptap.tsx` 里
  * （mention 254 行、skill 316 行附近）。这里抽成独立的纯逻辑扩展，供编辑器与测试共用：
  * `atom: true` + `selectable: true` 让光标不能落进 token 内部，也不允许只改它的一部分。
  */
@@ -14,12 +14,15 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 
 export const COMPOSER_ATTACHMENT_NODE = "composer-attachment";
 export const COMPOSER_SKILL_NODE = "composer-skill";
+export const COMPOSER_MENTION_NODE = "composer-mention";
 
 function isComposerAtom(node: ProseMirrorNode | null | undefined): node is ProseMirrorNode {
   return (
     node != null &&
     node.isAtom &&
-    (node.type.name === COMPOSER_ATTACHMENT_NODE || node.type.name === COMPOSER_SKILL_NODE)
+    (node.type.name === COMPOSER_ATTACHMENT_NODE ||
+      node.type.name === COMPOSER_SKILL_NODE ||
+      node.type.name === COMPOSER_MENTION_NODE)
   );
 }
 
@@ -128,5 +131,30 @@ export const ComposerSkillExtension = Node.create({
   },
   renderHTML({ HTMLAttributes }) {
     return ["span", { [`data-${COMPOSER_SKILL_NODE}`]: "", ...HTMLAttributes }, 0];
+  },
+});
+
+/** 正文里的 `@<name>`；`source` 保存原文以便逐字序列化回正文。 */
+export const ComposerMentionExtension = Node.create({
+  name: COMPOSER_MENTION_NODE,
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      memberId: { default: "" },
+      name: { default: "" },
+      source: { default: "" },
+    };
+  },
+  parseHTML() {
+    return [{ tag: `span[data-${COMPOSER_MENTION_NODE}]` }];
+  },
+  addKeyboardShortcuts() {
+    return composerAtomKeyboardShortcuts();
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["span", { [`data-${COMPOSER_MENTION_NODE}`]: "", ...HTMLAttributes }, 0];
   },
 });

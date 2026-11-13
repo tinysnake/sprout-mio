@@ -20,13 +20,7 @@ import { ComposerEditor } from "./composer-editor";
 import type { ComposerEditorHandle } from "./composer-editor";
 import "./composer-editor.css";
 import { SkillPicker } from "./skill-picker";
-import {
-  MentionPicker,
-  insertMention,
-  matchMembers,
-  mentionOptionId,
-  mentionQueryAt,
-} from "./mention-picker";
+import { MentionPicker, matchMembers, mentionOptionId, mentionQueryAt } from "./mention-picker";
 import type { MentionMember, MentionQuery } from "./mention-picker";
 
 export const MESSAGE_MAX_LENGTH = 8000;
@@ -180,10 +174,10 @@ export function MessageComposer({
 
   function pick(member: MentionMember) {
     if (!activeQuery) return;
-    const next = insertMention(draft, activeQuery, member.name);
     setQuery(null);
     setActiveIndex(0);
-    editor.current?.setMarkdown(next.value, next.caret);
+    // 点名和技能、附件一样是不可拆的标签：插原子节点，而不是一段可以被逐个字符改掉的文本。
+    editor.current?.insertMention(activeQuery.start, activeQuery.end, member);
     editor.current?.focus();
   }
 
@@ -419,6 +413,7 @@ export function MessageComposer({
           <ComposerEditor
             value={draft}
             caret={caret}
+            mentions={members}
             labelFor={(localId) => names.get(localId) ?? "附件"}
             readOnly={false}
             dragging={dragging}

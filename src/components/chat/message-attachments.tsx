@@ -123,7 +123,7 @@ export function partitionAttachments(
 export function AttachmentRefChip({ attachment }: { attachment: Attachment }) {
   return (
     <a
-      className="message-attachment-ref"
+      className="markdown-chip message-attachment-ref"
       data-testid="message-attachment-ref"
       data-attachment-id={attachment.id}
       href={attachmentUrl(attachment.id)}

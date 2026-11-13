@@ -264,6 +264,7 @@ function seedAgentMessage({ chatId, projectId, body, attachment, spans }) {
 }
 
 let chatId
+let userId
 let projectId
 let agentId
 let attachmentDirectory
@@ -340,6 +341,7 @@ try {
   const { createDirectChat } = await import('./src/domain/chat.ts')
   const user = sqliteHandle.prepare('SELECT id FROM user WHERE email = ?').get(email)
   assert(user, 'authenticated user must be persisted')
+  userId = user.id
   const ctx = { userId: user.id, requestId: `req_${randomUUID().replaceAll('-', '').slice(0, 8)}` }
   const agent = createAgentProfile({ name: 'RM2 附件 Agent', persona: '附件验收' }, ctx)
   agentId = agent.id
@@ -407,6 +409,51 @@ try {
     return `粗体/斜体/行内代码三处元素，正文逐字保存 ${JSON.stringify(stored)}`
   })
 
+  // 这条 gate 挡的是真出现过的问题：消息容器带 `white-space: pre-wrap` 时，markdown 源码里
+  // 元素之间的换行会各撑出一行，块间距从 2px 变成几十像素；输入区没有这类空白节点，所以两边看着不一样。
+  await check('block_spacing_matches_composer', async () => {
+    const messageId = `msg_spacing_${Date.now()}`
+    const body = ['# 标题', '一段正文', '> 引用一句', '1. 一项', '- 一点'].join('\n\n')
+    sqliteHandle
+      .prepare('INSERT INTO message (id, chat_id, sender_kind, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?, unixepoch() + 5)')
+      .run(messageId, chatId, 'human', userId, body)
+    await page.reload()
+    await test('message-input').waitFor()
+    await until(async () => (await page.locator(`[data-message-id="${messageId}"]`).count()) === 1, 'seeded message renders')
+    const measured = await page.evaluate(id => {
+      const host = document.querySelector(`[data-message-id="${id}"] [data-testid="message-body"]`)
+      const root = host?.querySelector('.markdown-content') ?? host
+      if (!root) throw new Error('message markdown root missing')
+      const kids = [...root.children].map(element => element.getBoundingClientRect())
+      const style = getComputedStyle(root)
+      const paragraph = root.querySelector('p')
+      return {
+        whiteSpace: style.whiteSpace,
+        tags: [...root.children].map(element => element.tagName.toLowerCase()),
+        gaps: kids.slice(1).map((box, index) => Math.round(box.top - kids[index].bottom)),
+        paragraphLineHeight: paragraph ? getComputedStyle(paragraph).lineHeight : null,
+        composerLineHeight: getComputedStyle(document.querySelector('[data-testid="message-input"]')).lineHeight,
+      }
+    }, messageId)
+    assert.equal(measured.whiteSpace, 'normal', `消息容器不能保留源码换行：${JSON.stringify(measured)}`)
+    assert.ok(measured.tags.length >= 5, `块级结构应完整渲染：${JSON.stringify(measured.tags)}`)
+    assert.ok(
+      measured.gaps.every(gap => gap >= 0 && gap <= 4),
+      `块间距应为 2px 量级：${JSON.stringify(measured.gaps)}`,
+    )
+    assert.equal(
+      measured.paragraphLineHeight,
+      measured.composerLineHeight,
+      `正文行高应与输入区一致：${JSON.stringify(measured)}`,
+    )
+    await shot('rm2-lane11-block-spacing.png')
+    // 这条消息只为量间距：删掉并重载，后面的 lane 看到的就是真实会话。
+    sqliteHandle.prepare('DELETE FROM message WHERE id = ?').run(messageId)
+    await page.reload()
+    await test('message-input').waitFor()
+    return `块 ${measured.tags.join('/')}，间距 ${JSON.stringify(measured.gaps)}，行高 ${measured.paragraphLineHeight}`
+  })
+
   await check('lane_4_remove_and_reference_token', async () => {
     await clearComposer()
     await inject('paste', [{ name: '引用目标.png', type: 'image/png', buffer: png(64, 64) }])
@@ -421,7 +468,7 @@ try {
     const chipText = (await chip.textContent()) ?? ''
     assert.equal(chipId, localId, `芯片应带着附件 localId：${chipId}`)
     assert.ok(chipText.includes('引用目标.png'), `芯片应显示文件名：${chipText}`)
-    assert.equal(await draftText(), `看看 📎引用目标.png`, `芯片应插在光标处：${await draftText()}`)
+    assert.equal(await draftText(), `看看 引用目标.png`, `芯片应插在光标处：${await draftText()}`)
     await test('attachment-remove').first().click()
     await until(async () => (await test('attachment-item').count()) === 0, 'attachment removed')
     assert.equal(await page.locator('[data-chip-kind="attachment"]').count(), 0, '移除附件应一并删掉正文里的芯片')
@@ -439,15 +486,41 @@ try {
     })
     assert.ok(size, 'attachment bar should describe the file')
     await sendWithReference('看图 ')
-    await until(async () => {
-      const items = await test('message-item').count()
-      if (items === 0) return false
-      return page.evaluate(() => {
+    // 图片是滚到附近才取字节的：验收要真的把这条消息滚进视口，而不是假定它会自己加载。
+    await until(async () => (await test('message-item').count()) > 0, 'message appended')
+    await page.evaluate(() => {
+      const items = document.querySelectorAll('[data-testid="message-item"]')
+      items[items.length - 1]?.scrollIntoView({ block: 'center' })
+    })
+    const probe = () => page.evaluate(() => {
+      const list = document.querySelectorAll('[data-testid="message-item"]')
+      const item = list[list.length - 1]
+      const figure = item?.querySelector('[data-testid="message-attachment-figure"]')
+      const image = figure?.querySelector('img')
+      return {
+        items: list.length,
+        figure: figure != null,
+        pending: item?.querySelector('.message-attachment-figure__pending') != null,
+        broken: item?.querySelector('[data-testid="message-attachment-image-broken"]')?.textContent ?? null,
+        image: image
+          ? { complete: image.complete, width: image.naturalWidth, src: (image.getAttribute('src') ?? '').slice(0, 12) }
+          : null,
+        top: item ? Math.round(item.getBoundingClientRect().top) : null,
+        bodies: [...list].map((node) => (node.querySelector('[data-testid="message-body"]')?.textContent ?? '').slice(0, 32)),
+        marks: item ? [...item.querySelectorAll('[data-testid^="message-attachment"]')].map((node) => node.getAttribute('data-testid')) : [],
+      }
+    })
+    let state = await probe()
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      if (state.image?.complete && state.image.width > 0) break
+      await page.evaluate(() => {
         const list = document.querySelectorAll('[data-testid="message-item"]')
-        const image = list[list.length - 1]?.querySelector('[data-testid="message-attachment-figure"] img')
-        return image ? image.complete && image.naturalWidth > 0 : false
+        list[list.length - 1]?.scrollIntoView({ block: 'center' })
       })
-    }, 'image decodes in the sent message')
+      await new Promise(resolve => setTimeout(resolve, 400))
+      state = await probe()
+    }
+    assert.ok(state.image?.complete && state.image.width > 0, `图片在消息里解码：${JSON.stringify(state)}`)
     const image = await page.evaluate(() => {
       const list = document.querySelectorAll('[data-testid="message-item"]')
       const node = list[list.length - 1].querySelector('[data-testid="message-attachment-figure"] img')

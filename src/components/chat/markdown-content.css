@@ -1,0 +1,133 @@
+/*
+ * 正文 markdown 的唯一样式来源：输入区编辑器与消息气泡共用这一份块级规则，
+ * 同一段正文在两边长得一样。字号、间距、缩进只改这里，两边各自只留表面差异。
+ * 颜色与圆角全部读语义 token。
+ */
+.markdown-content {
+  line-height: 1.5;
+}
+
+.markdown-content > * {
+  margin: 0;
+}
+
+/*
+ * 换行只在文字块里保留。消息正文是 markdown 源码渲出来的，元素之间夹着源码里的换行符；
+ * 容器一旦 `white-space: pre-wrap`，这些空白文本节点会各撑出一行，块与块之间凭空多出几十像素。
+ * 编辑器没有这类节点，所以这条只收紧消息侧，输入区保持 ProseMirror 需要的 pre-wrap。
+ */
+.message-markdown {
+  white-space: normal;
+}
+
+.message-markdown p,
+.message-markdown li,
+.message-markdown h1,
+.message-markdown h2,
+.message-markdown h3,
+.message-markdown h4,
+.message-markdown h5,
+.message-markdown h6,
+.message-markdown blockquote > p,
+.message-markdown th,
+.message-markdown td {
+  white-space: pre-wrap;
+}
+
+.markdown-content > * + * {
+  margin-top: 2px;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  font-weight: 600;
+}
+
+.markdown-content h1 {
+  font-size: 15px;
+}
+
+.markdown-content h2 {
+  font-size: 13.5px;
+}
+
+.markdown-content h3 {
+  font-size: 12.5px;
+}
+
+.markdown-content ul {
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.markdown-content ol {
+  padding-left: 20px;
+  list-style: decimal;
+}
+
+.markdown-content blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 8px;
+}
+
+.markdown-content pre {
+  overflow-x: auto;
+  border-radius: var(--radius);
+  background: var(--muted);
+  padding: 6px 10px;
+}
+
+.markdown-content pre code {
+  background: none;
+  padding: 0;
+  font-size: 11px;
+}
+
+.markdown-content :not(pre) > code {
+  border-radius: 4px;
+  background: var(--muted);
+  padding: 0 3px;
+  font-size: 11px;
+}
+
+.markdown-content hr {
+  border-top: 1px solid var(--border);
+}
+
+.markdown-content a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-content mark {
+  background: none;
+  color: inherit;
+}
+
+/* 正文里的原子标记（@点名 / 技能 / 附件引用）共用一枚药丸，两种场景看起来一致。 */
+.markdown-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 4px;
+  background: var(--selected);
+  padding: 0 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.markdown-chip__icon {
+  flex: none;
+}
+
+.markdown-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
