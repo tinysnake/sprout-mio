@@ -462,17 +462,33 @@ try {
       });
     }
   }
+  // 输入区换成真富文本编辑器后，草稿的读写走真实按键与 DOM：没有 textarea 的 fill/inputValue 了。
+  const SELECT_ALL = process.platform === "darwin" ? "Meta+a" : "Control+a";
+  async function typeDraft(lines) {
+    const input = test("message-input");
+    await input.click();
+    await page.keyboard.press(SELECT_ALL);
+    await page.keyboard.press("Backspace");
+    for (const [index, line] of lines.entries()) {
+      if (index > 0) await page.keyboard.press("Enter");
+      if (line.length > 0) await page.keyboard.type(line);
+    }
+    return input;
+  }
+  async function draftText() {
+    return (await test("message-input").textContent()) ?? "";
+  }
   await check("inspector_keyboard_resize_and_draft_survive", async () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await goto(`${chatPath}?info=1`);
-    await test("message-input").fill("调整栏宽后仍保留的草稿");
+    await typeDraft(["调整栏宽后仍保留的草稿"]);
     const handle = test("inspector-resize-handle");
     await handle.focus();
     const before = await handle.getAttribute("aria-valuenow");
     await page.keyboard.press("ArrowLeft");
     const after = await handle.getAttribute("aria-valuenow");
     assert.notEqual(after, before);
-    assert.equal(await test("message-input").inputValue(), "调整栏宽后仍保留的草稿");
+    assert.equal(await draftText(), "调整栏宽后仍保留的草稿");
     return { before, after };
   });
   await check("inspector_pointer_resize_releases_and_preserves_draft", async () => {
@@ -496,85 +512,50 @@ try {
       after,
       "released drag has no remaining movement listener",
     );
-    assert.equal(await test("message-input").inputValue(), "调整栏宽后仍保留的草稿");
+    assert.equal(await draftText(), "调整栏宽后仍保留的草稿");
     return { before, after };
   });
-  await check("skill_mark_mirror_matches_textarea_metrics", async () => {
+  await check("composer_renders_markdown_and_deletes_whole_token", async () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await goto(`${chatPath}?info=1`);
-    const input = test("message-input");
-    await input.fill("看📖how 帮我");
-    await page.waitForSelector('[data-testid="message-input-highlight"] .skill-mark');
-    const tight = await page.evaluate(() => {
-      const textarea = document.querySelector('[data-testid="message-input"]');
-      const chip = document.querySelector('[data-testid="message-input-highlight"] .skill-mark');
-      const source = getComputedStyle(textarea);
-      const reference = document.createElement("span");
-      reference.style.position = "absolute";
-      reference.style.visibility = "hidden";
-      reference.style.whiteSpace = "pre";
-      reference.style.fontFamily = source.fontFamily;
-      reference.style.fontSize = source.fontSize;
-      reference.style.fontWeight = source.fontWeight;
-      reference.style.fontStyle = source.fontStyle;
-      reference.style.lineHeight = source.lineHeight;
-      reference.style.letterSpacing = source.letterSpacing;
-      reference.textContent = chip.textContent;
-      chip.parentElement.appendChild(reference);
-      const textAdvance = reference.getBoundingClientRect().width;
-      reference.remove();
-      const style = getComputedStyle(chip);
-      const box = chip.getBoundingClientRect();
-      const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-      const margin = parseFloat(style.marginLeft) + parseFloat(style.marginRight);
-      const before = chip.previousSibling;
-      let node = before;
-      while (node && node.nodeType !== 3) node = node.lastChild;
-      const range = document.createRange();
-      range.setStart(node, node.length - 1);
-      range.setEnd(node, node.length);
+    await typeDraft(["# 标题", "看📖how 帮我"]);
+    const shape = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="message-input"]');
       return {
-        textAdvance,
-        chipContent: box.width - padding,
-        padding,
-        margin,
-        overhang: box.left - range.getBoundingClientRect().right,
-        edgeStart: chip.getAttribute("data-edge-start"),
+        heading: root?.querySelector("h1")?.textContent ?? null,
+        chip: root?.querySelector('[data-testid="composer-chip"]')?.textContent ?? null,
+        text: root?.textContent ?? "",
       };
     });
-    assert.equal(tight.edgeStart, "flush", `贴着前一字形的一侧不留外悬 ${JSON.stringify(tight)}`);
+    assert.equal(shape.heading, "标题", `输入 # 就变成标题 ${JSON.stringify(shape)}`);
     assert(
-      Math.abs(tight.chipContent - tight.textAdvance) <= 0.5,
-      `镜像层与 textarea 的文字前进宽度一致 ${JSON.stringify(tight)}`,
+      typeof shape.chip === "string" && shape.chip.includes("how"),
+      `技能 token 渲染成芯片而不是源码 ${JSON.stringify(shape)}`,
     );
     assert(
-      Math.abs(tight.padding + tight.margin) <= 0.5,
-      `padding 与 margin 抵消后文字列不动 ${JSON.stringify(tight)}`,
+      shape.text.includes("看") && shape.text.includes("帮我"),
+      `芯片两侧的正文仍在 ${JSON.stringify(shape)}`,
     );
-    assert(Math.abs(tight.overhang) <= 0.5, `标记左缘不侵入前一字形 ${JSON.stringify(tight)}`);
-    await input.fill("📖how 📖plan-only");
-    await page.waitForFunction(
-      () =>
-        document.querySelectorAll('[data-testid="message-input-highlight"] .skill-mark').length ===
-        2,
-    );
-    const pair = await page.evaluate(() => {
-      const [first, second] = document.querySelectorAll(
-        '[data-testid="message-input-highlight"] .skill-mark',
-      );
+    const chip = page.locator('[data-testid="message-input"] [data-testid="composer-chip"]');
+    const box = await chip.boundingBox();
+    assert(box, "芯片有可见盒子");
+    // 光标紧贴芯片右侧时按一次 Backspace：整套 token 一起走，而不是只吃掉最后一个字符。
+    await page.mouse.click(box.x + box.width + 1, box.y + box.height / 2);
+    await page.keyboard.press("Backspace");
+    const after = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="message-input"]');
       return {
-        gap: second.getBoundingClientRect().left - first.getBoundingClientRect().right,
-        edges: [first.getAttribute("data-edge-end"), second.getAttribute("data-edge-start")],
+        chips: root?.querySelectorAll('[data-testid="composer-chip"]').length ?? -1,
+        text: root?.textContent ?? "",
       };
     });
-    assert.equal(
-      pair.edges.join("/"),
-      "flush/flush",
-      `只隔一格时两侧让出全部内部间距 ${JSON.stringify(pair)}`,
+    assert.equal(after.chips, 0, `一次 Backspace 删掉整个 token ${JSON.stringify(after)}`);
+    assert(
+      after.text.includes("看") && after.text.includes("帮我"),
+      `只删 token，不动旁边的正文 ${JSON.stringify(after)}`,
     );
-    assert(pair.gap >= 2.5, `相邻两枚标记不粘连 ${JSON.stringify(pair)}`);
-    await input.fill("");
-    return { tight, pair };
+    await typeDraft([""]);
+    return { shape, after };
   });
   await check("zero_project_onboarding_creates_and_enters_chats", async () => {
     const zeroContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });

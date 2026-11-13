@@ -1,0 +1,122 @@
+/*
+ * 输入区正文用真富文本渲染（TipTap 文档模型），排版规则与消息侧 message-markdown.css 同源，
+ * 只有标题按输入时需要放大一档：输入时是「我在写什么」，标题要看得出层级。
+ * 颜色与圆角全部读语义 token。
+ */
+.composer-editor {
+  position: relative;
+}
+
+.composer-editor--dragging {
+  border-radius: var(--radius);
+  outline: 2px dashed var(--ring);
+}
+
+.composer-editor__input {
+  min-height: 50px;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.composer-editor__input > * {
+  margin: 0;
+}
+
+.composer-editor__input > * + * {
+  margin-top: 2px;
+}
+
+.composer-editor__input h1,
+.composer-editor__input h2,
+.composer-editor__input h3,
+.composer-editor__input h4,
+.composer-editor__input h5,
+.composer-editor__input h6 {
+  font-weight: 600;
+}
+
+.composer-editor__input h1 {
+  font-size: 15px;
+}
+
+.composer-editor__input h2 {
+  font-size: 13.5px;
+}
+
+.composer-editor__input h3 {
+  font-size: 12.5px;
+}
+
+.composer-editor__input ul {
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.composer-editor__input ol {
+  padding-left: 20px;
+  list-style: decimal;
+}
+
+.composer-editor__input blockquote {
+  border-left: 2px solid var(--border);
+  padding-left: 8px;
+}
+
+.composer-editor__input pre {
+  overflow-x: auto;
+  border-radius: var(--radius);
+  background: var(--muted);
+  padding: 6px 10px;
+}
+
+.composer-editor__input pre code {
+  background: none;
+  padding: 0;
+  font-size: 11px;
+}
+
+.composer-editor__input :not(pre) > code {
+  border-radius: 4px;
+  background: var(--muted);
+  padding: 0 3px;
+  font-size: 11px;
+}
+
+.composer-editor__input hr {
+  border-top: 1px solid var(--border);
+}
+
+.composer-editor__input a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* 光标停进去的那一段才把源码标记露出来，其余时间只留排版结果。 */
+.composer-editor__input .composer-markdown-source {
+  opacity: 0.35;
+}
+
+.composer-editor__input mark {
+  background: none;
+  color: inherit;
+}
+
+.composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 4px;
+  background: var(--muted);
+  padding: 0 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.composer-chip__icon {
+  font-size: 10px;
+}
+
+.composer-chip.ProseMirror-selectednode {
+  outline: 2px solid var(--ring);
+}

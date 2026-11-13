@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, KeyboardEvent, Ref } from "react";
-import { AlertTriangle, CornerDownLeft, MessageSquare, Paperclip, Plus } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, DragEvent, FormEvent, Ref } from "react";
+import { AlertTriangle, CornerDownLeft, MessageSquare, Plus } from "lucide-react";
 import type { FieldErrors } from "../../contracts/project";
 import type { AppError } from "../../contracts/result";
 import {
@@ -16,14 +16,9 @@ import type { ChatSkillChoices, SkillOption } from "../../contracts/skill";
 import { insertSkill, SKILL_TRIGGER, skillQueryAt } from "../../lib/skill-token";
 import { AttachmentBar } from "./attachment-bar";
 import type { ComposerAttachment } from "./attachment-bar";
-import {
-  insertAttachmentToken,
-  removeAttachmentReferences,
-  splitComposerSegments,
-} from "./composer-markdown";
-import type { ComposerSegment, ComposerTone } from "./composer-markdown";
-import "./composer-markdown.css";
-import { SkillMark } from "./skill-mark";
+import { ComposerEditor } from "./composer-editor";
+import type { ComposerEditorHandle } from "./composer-editor";
+import "./composer-editor.css";
 import { SkillPicker } from "./skill-picker";
 import {
   MentionPicker,
@@ -38,24 +33,6 @@ export const MESSAGE_MAX_LENGTH = 8000;
 
 /** 附件预检的数字取契约里那份常量（src/contracts/attachment.ts），客户端不另写一套。 */
 const ATTACHMENT_MEGABYTE = 1024 * 1024;
-
-/** 装饰类名按 tone 查表：这些样式只改颜色、透明度或假粗体，不动字形前进宽度。 */
-const TONE_CLASS: Record<ComposerTone, string | undefined> = {
-  plain: undefined,
-  strong: "composer-md-strong",
-  emphasis: "composer-md-emphasis",
-  code: "composer-md-code",
-  heading: "composer-md-heading",
-  marker: "composer-md-marker",
-  reference: undefined,
-};
-
-/** 标记段在光标离开装饰时补上 `composer-md-quiet`：透明度归零，宽度不变。 */
-function toneClass(segment: ComposerSegment): string | undefined {
-  const base = TONE_CLASS[segment.tone];
-  if (!segment.quiet) return base;
-  return base ? `${base} composer-md-quiet` : "composer-md-quiet";
-}
 
 let localIdCounter = 0;
 
@@ -116,20 +93,15 @@ export function MessageComposer({
   /** 群组里停止下沉到每个 Agent 的行内按钮，输入区不再提供总停止。 */
   onStop?: () => void;
   /** 未投递输入恢复到输入框后需要把焦点放回这里。 */
-  inputRef?: Ref<HTMLTextAreaElement>;
+  inputRef?: Ref<ComposerEditorHandle>;
 }) {
   const canSend = draft.trim().length > 0;
-  const textarea = useRef<HTMLTextAreaElement | null>(null);
-  const composing = useRef(false);
-  const pendingCaret = useRef<number | null>(null);
+  const editor = useRef<ComposerEditorHandle | null>(null);
   const listId = useId();
   const [query, setQuery] = useState<(MentionQuery & { kind: "mention" | "skill" }) | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [composingVisual, setComposingVisual] = useState(false);
-  const highlight = useRef<HTMLDivElement | null>(null);
-  // 光标位置只用于“标记要不要藏起来”：光标在装饰里时露出来，方便改。
+  // 光标位置按 markdown 偏移给候选浮层用；正文自己排版，标记的显隐由编辑器内部决定。
   const [caret, setCaret] = useState<number | null>(null);
-  const composerSegments = useMemo(() => splitComposerSegments(draft, caret), [draft, caret]);
   const [attachments, setAttachments] = useState<readonly ComposerAttachment[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -168,30 +140,19 @@ export function MessageComposer({
   const open = activeQuery !== null;
   const active = count > 0 ? Math.min(activeIndex, count - 1) : -1;
 
-  const attachInput = useCallback(
-    (node: HTMLTextAreaElement | null) => {
-      textarea.current = node;
-      if (typeof inputRef === "function") inputRef(node);
-      else if (inputRef) inputRef.current = node;
+  const attachEditor = useCallback(
+    (handle: ComposerEditorHandle | null) => {
+      editor.current = handle;
+      if (typeof inputRef === "function") inputRef(handle);
+      else if (inputRef) inputRef.current = handle;
     },
     [inputRef],
   );
 
-  // 插入后光标落在名字之后：等新正文提交到 DOM 再定位，不整段重置到尾。
-  useLayoutEffect(() => {
-    const caret = pendingCaret.current;
-    const element = textarea.current;
-    if (caret === null || !element) return;
-    pendingCaret.current = null;
-    element.setSelectionRange(caret, caret);
-  });
-
   /** 按光标前的正文同步候选区间；同一区间不产生多余渲染。 */
-  function sync(element: HTMLTextAreaElement) {
-    const caret = element.selectionStart ?? element.value.length;
-    setCaret(caret);
-    const skill = skillQueryAt(element.value, caret);
-    const mention = skill ? null : mentionQueryAt(element.value, caret);
+  function syncQuery(value: string, position: number) {
+    const skill = skillQueryAt(value, position);
+    const mention = skill ? null : mentionQueryAt(value, position);
     const next = skill
       ? { ...skill, kind: "skill" as const }
       : mention
@@ -211,34 +172,28 @@ export function MessageComposer({
     setActiveIndex(0);
   }
 
-  function change(event: ChangeEvent<HTMLTextAreaElement>) {
-    const element = event.currentTarget;
-    onDraftChange(element.value);
-    // 组合期间不打开也不重算候选，上屏后再按最终正文同步。
-    if (composing.current || (event.nativeEvent as InputEvent).isComposing) return;
-    sync(element);
+  function change(value: string, position: number) {
+    onDraftChange(value);
+    setCaret(position);
+    syncQuery(value, position);
   }
 
   function pick(member: MentionMember) {
-    const element = textarea.current;
-    if (!element || !activeQuery) return;
-    const next = insertMention(element.value, activeQuery, member.name);
-    pendingCaret.current = next.caret;
+    if (!activeQuery) return;
+    const next = insertMention(draft, activeQuery, member.name);
     setQuery(null);
     setActiveIndex(0);
-    onDraftChange(next.value);
-    element.focus();
+    editor.current?.setMarkdown(next.value, next.caret);
+    editor.current?.focus();
   }
 
   function pickSkill(skill: SkillOption) {
-    const element = textarea.current;
-    if (!element || !activeQuery) return;
-    const next = insertSkill(element.value, activeQuery, skill.name);
-    pendingCaret.current = next.caret;
+    if (!activeQuery) return;
+    const next = insertSkill(draft, activeQuery, skill.name);
     setQuery(null);
     setActiveIndex(0);
-    onDraftChange(next.text);
-    element.focus();
+    editor.current?.setMarkdown(next.text, next.caret);
+    editor.current?.focus();
   }
 
   /**
@@ -288,6 +243,7 @@ export function MessageComposer({
   }
 
   function attach(list: readonly File[]) {
+    setDragging(false);
     if (list.length === 0) return;
     const { accepted, error } = pickable(list);
     setFileError(error);
@@ -307,14 +263,6 @@ export function MessageComposer({
     attach([...(element.files ?? [])]);
     // 清空 value：同一个文件可以被再次选中，选择器也不记住上次的结果。
     element.value = "";
-  }
-
-  /** 粘贴文件时接管这次输入：二进制不该被当文本插进草稿。 */
-  function paste(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const list = event.clipboardData?.files;
-    if (!list || list.length === 0) return;
-    event.preventDefault();
-    attach([...list]);
   }
 
   function dragOver(event: DragEvent<HTMLFormElement>) {
@@ -338,31 +286,22 @@ export function MessageComposer({
 
   /** 「标签」：在光标处插一条对该附件的引用，插完光标落回 token 之后。 */
   function insertReference(localId: string) {
-    const element = textarea.current;
-    const start = element?.selectionStart ?? draft.length;
-    const end = element?.selectionEnd ?? start;
-    const next = insertAttachmentToken(draft, { start, end }, localId);
-    pendingCaret.current = next.caret;
+    const at = caret ?? draft.length;
     setQuery(null);
     setActiveIndex(0);
-    onDraftChange(next.text);
-    element?.focus();
+    editor.current?.insertAttachment(at, at, localId, names.get(localId) ?? "附件");
   }
 
   /** 「×」：附件下线，草稿里该附件的全部引用 token 一并删掉，光标不跳到别处。 */
   function removeAttachment(localId: string) {
-    const caret = textarea.current?.selectionStart ?? draft.length;
-    const next = removeAttachmentReferences(draft, localId, caret);
     const removed = attachments.find((attachment) => attachment.localId === localId);
     if (removed) {
       URL.revokeObjectURL(removed.url);
       urls.current = urls.current.filter((url) => url !== removed.url);
     }
     setAttachments((current) => current.filter((attachment) => attachment.localId !== localId));
-    if (next.removed > 0) {
-      pendingCaret.current = next.caret;
-      onDraftChange(next.text);
-    }
+    // 引用是文档里的原子节点，整段删除由编辑器在 markdown 坐标上完成。
+    editor.current?.removeAttachment(localId);
   }
 
   /** 点开查看：本地预览直接在浏览器里开，不经过服务端。 */
@@ -377,25 +316,25 @@ export function MessageComposer({
     void send(draft);
   }
 
-  function keydown(event: KeyboardEvent<HTMLTextAreaElement>) {
+  function keydown(event: KeyboardEvent): boolean {
     // 中文输入法组合中的按键属于上屏，既不选成员也不发送。
-    if (composing.current || event.nativeEvent.isComposing) return;
+    if (event.isComposing) return false;
     if (open) {
       if (event.key === "Escape") {
         event.preventDefault();
         setQuery(null);
-        return;
+        return true;
       }
       if (count > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
           setActiveIndex((current) => (current + 1) % count);
-          return;
+          return true;
         }
         if (event.key === "ArrowUp") {
           event.preventDefault();
           setActiveIndex((current) => (current - 1 + count) % count);
-          return;
+          return true;
         }
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
@@ -406,16 +345,17 @@ export function MessageComposer({
             const member = matches[active];
             if (member) pick(member);
           }
-          return;
+          return true;
         }
       }
     }
-    if (event.key !== "Enter") return;
-    // Enter 与 Cmd/Ctrl+Enter 发送；Shift+Enter 换行。
-    if (event.shiftKey) return;
+    if (event.key !== "Enter") return false;
+    // Enter 与 Cmd/Ctrl+Enter 发送；Shift+Enter 换行（交给编辑器插硬换行）。
+    if (event.shiftKey) return false;
     event.preventDefault();
-    if (!canSend || pending) return;
-    void send(draft);
+    if (!canSend || pending) return false;
+    void send(editor.current?.markdown() ?? draft);
+    return true;
   }
 
   return (
@@ -465,86 +405,32 @@ export function MessageComposer({
         <label className="sr-only" htmlFor="message-draft">
           发给{agentName}的消息
         </label>
-        {/* 技能标记的负外边距、引用芯片的绝对定位都落在输入区内，不被 overflow 裁掉。 */}
-        <div className="relative -mx-[7px]">
-          <div
-            ref={highlight}
-            aria-hidden="true"
-            data-testid="message-input-highlight"
-            className={`pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words px-[7px] text-xs leading-6 max-desktop:text-[13px] ${
-              composingVisual ? "invisible" : ""
-            } ${dragging ? "rounded-control outline-2 outline-dashed outline-ring" : ""}`}
-          >
-            {composerSegments.map((segment, index) =>
-              segment.skill ? (
-                <SkillMark
-                  key={index}
-                  name={segment.skill.name}
-                  text={segment.text}
-                  edge={segment.skillEdge}
-                />
-              ) : segment.localId !== undefined ? (
-                // 引用沿用 skill-mark 的手法：原文留在文本流里撑宽度（透明），芯片绝对定位压上去。
-                <span
-                  key={index}
-                  className="composer-ref"
-                  data-attachment-local-id={segment.localId}
-                >
-                  <span className="composer-ref-raw">{segment.text}</span>
-                  <span className="composer-ref-chip" aria-hidden="true">
-                    <Icon as={Paperclip} size={12} className="shrink-0" />
-                    <span className="composer-ref-name">
-                      {names.get(segment.localId ?? "") ?? "附件"}
-                    </span>
-                  </span>
-                </span>
-              ) : (
-                <span key={index} className={toneClass(segment)}>
-                  {segment.text}
-                </span>
-              ),
-            )}
-          </div>
-          <textarea
-            ref={attachInput}
-            id="message-draft"
-            name="body"
-            data-testid="message-input"
+        {/* 输入区自己排版：草稿就是 markdown，附件与技能是文档里的原子芯片。 */}
+        <div className="relative px-[7px] text-xs leading-6 max-desktop:text-[13px]">
+          {draft.length === 0 && (
+            <span
+              aria-hidden="true"
+              data-testid="message-placeholder"
+              className="pointer-events-none absolute inset-0 text-muted-foreground"
+            >
+              {runActive ? "继续补充上下文，追加到当前轮…" : `向${agentName}发送消息…`}
+            </span>
+          )}
+          <ComposerEditor
             value={draft}
-            aria-expanded={open}
-            aria-controls={open ? listId : undefined}
-            aria-activedescendant={
-              open && active >= 0 ? mentionOptionId(listId, active) : undefined
-            }
-            aria-haspopup="listbox"
-            onChange={change}
+            caret={caret}
+            labelFor={(localId) => names.get(localId) ?? "附件"}
+            readOnly={false}
+            dragging={dragging}
+            listId={listId}
+            expanded={open}
+            activeOptionId={open && active >= 0 ? mentionOptionId(listId, active) : undefined}
+            canGrow={(length) => length <= MESSAGE_MAX_LENGTH}
+            onValueChange={change}
             onKeyDown={keydown}
-            onScroll={(event) => {
-              const element = highlight.current;
-              if (element) element.scrollTop = event.currentTarget.scrollTop;
-            }}
-            onSelect={() => {
-              const element = textarea.current;
-              if (!element || composing.current) return;
-              sync(element);
-            }}
-            onPaste={paste}
+            onFiles={attach}
             onBlur={() => setQuery(null)}
-            onCompositionStart={() => {
-              composing.current = true;
-              setComposingVisual(true);
-            }}
-            onCompositionEnd={(event) => {
-              composing.current = false;
-              setComposingVisual(false);
-              sync(event.currentTarget);
-            }}
-            maxLength={MESSAGE_MAX_LENGTH}
-            rows={2}
-            placeholder={runActive ? "继续补充上下文，追加到当前轮…" : `向${agentName}发送消息…`}
-            className={`relative block h-12.5 w-full resize-none border-0 bg-transparent px-[7px] py-0 text-xs leading-6 outline-none placeholder:text-muted-foreground max-desktop:h-12 max-desktop:text-[13px] ${
-              composingVisual ? "text-foreground" : "text-transparent caret-foreground"
-            }`}
+            onHandle={attachEditor}
           />
         </div>
         <div className="mt-2.25 flex items-center justify-between gap-1.5 max-desktop:flex-wrap">

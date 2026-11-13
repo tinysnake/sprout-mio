@@ -35,7 +35,7 @@ for (const file of [
   'src/domain/attachment.ts',
   'src/domain/message-attachment.ts',
   'src/components/chat/attachment-bar.tsx',
-  'src/components/chat/composer-markdown.ts',
+  'src/components/chat/composer-editor.tsx',
 ]) assert(existsSync(file), `BLOCKED: 缺少 ${file}，先合入 RM2`)
 
 const database = join(directory, 'verification.sqlite')
@@ -162,9 +162,23 @@ function pdf() {
   )
 }
 
+async function typeDraft(lines) {
+  await composer().click()
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a')
+  await page.keyboard.press('Backspace')
+  const shaped = lines.map(line => (typeof line === 'string' ? { text: line, breaksAfter: 0 } : line))
+  for (const { text, breaksAfter } of shaped) {
+    await page.keyboard.type(text, { delay: 20 })
+    for (let count = 0; count < breaksAfter; count += 1) await page.keyboard.press('Shift+Enter')
+  }
+  await page.waitForTimeout(200)
+}
+async function draftText() {
+  return ((await composer().textContent()) ?? '').replaceAll('\u200b', '').trim()
+}
 async function clearComposer() {
   while ((await test('attachment-remove').count()) > 0) await test('attachment-remove').first().click()
-  await composer().fill('')
+  await typeDraft([])
 }
 async function filePayloads(files) {
   return files.map(file => ({ name: file.name, type: file.type, base64: file.buffer.toString('base64') }))
@@ -192,63 +206,12 @@ async function upload(files) {
   )
 }
 async function sendWithReference(text) {
-  await composer().fill(text)
+  await typeDraft([text])
   await test('attachment-tag').first().click()
   const before = await test('message-item').count()
   await test('message-send').click()
   await until(async () => (await test('message-item').count()) > before, 'message sent')
   return before
-}
-async function drift(expected) {
-  return page.evaluate(text => {
-    const layer = document.querySelector('[data-testid="message-input-highlight"]')
-    const decorated = layer.cloneNode(true)
-    for (const chip of decorated.querySelectorAll('.composer-ref-chip')) chip.remove()
-    const plain = layer.cloneNode(true)
-    plain.textContent = text
-    for (const node of [decorated, plain]) {
-      node.style.position = 'absolute'
-      node.style.left = '0px'
-      node.style.top = '0px'
-      node.style.visibility = 'hidden'
-      node.style.width = `${layer.getBoundingClientRect().width}px`
-      document.body.appendChild(node)
-    }
-    const boxes = root => {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-      const range = document.createRange()
-      const origin = root.getBoundingClientRect()
-      const list = []
-      let node
-      while ((node = walker.nextNode())) {
-        for (let index = 0; index < node.data.length; index++) {
-          range.setStart(node, index)
-          range.setEnd(node, index + 1)
-          const rect = range.getBoundingClientRect()
-          list.push({ x: rect.left - origin.left, y: rect.top - origin.top, text: node.data[index] })
-        }
-      }
-      return list
-    }
-    const left = boxes(decorated)
-    const right = boxes(plain)
-    const count = Math.min(left.length, right.length)
-    let max = 0
-    let at = -1
-    for (let index = 0; index < count; index++) {
-      const delta = Math.max(Math.abs(left[index].x - right[index].x), Math.abs(left[index].y - right[index].y))
-      if (delta > max) { max = delta; at = index }
-    }
-    for (const node of [decorated, plain]) node.remove()
-    return {
-      decorated: left.length,
-      plain: right.length,
-      expected: text.length,
-      max,
-      at,
-      flow: left.map(item => item.text).join(''),
-    }
-  }, expected)
 }
 async function overflow() {
   return page.evaluate(() => ({
@@ -388,9 +351,9 @@ try {
   pass('setup_real_project_agent_and_dm_chat', `project ${projectId} chat ${chatId}`)
 
   await check('lane_1_no_attachment_message_still_renders', async () => {
-    await composer().fill('**粗体** 与列表 1. 项')
+    await typeDraft(['**粗体** 与列表 1. 项'])
     await test('message-send').click()
-    await until(async () => (await composer().inputValue()) === '', 'composer clears after send')
+    await until(async () => (await draftText()) === '', 'composer clears after send')
     await until(async () => {
       const bodies = await test('message-body').allTextContents()
       return bodies.some(body => body.includes('粗体') && body.includes('1. 项'))
@@ -420,26 +383,28 @@ try {
   await check('lane_3_live_markdown_and_caret', async () => {
     await clearComposer()
     const draft = '**粗体** *斜体* `代码` 一行'
-    await composer().fill(draft)
-    await until(async () => {
-      const text = await test('message-input-highlight').textContent()
-      return (text ?? '').trim() === draft
-    }, 'mirror layer carries the draft')
-    const measured = await drift(draft)
-    assert.equal(measured.decorated, measured.expected, `装饰层字符数应与草稿一致：${JSON.stringify(measured)}`)
-    assert.equal(measured.flow, draft, `装饰层文本应与草稿逐字一致：${JSON.stringify(measured.flow)}`)
-    assert.ok(measured.max <= 1, `装饰不得推移文字：最大偏移 ${measured.max}px @${measured.at}`)
-    await composer().press('End')
-    let caret = (await composer().evaluate(node => node.selectionStart)) ?? 0
-    assert.equal(caret, draft.length, 'End 应把光标放到行尾')
-    for (let step = 0; step < 5; step++) {
-      await composer().press('ArrowLeft')
-      const next = (await composer().evaluate(node => node.selectionStart)) ?? -1
-      assert.equal(next, caret - 1, `第 ${step + 1} 次左移应恰好退一格`)
-      caret = next
-    }
+    await typeDraft([draft])
+    const rendered = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="message-input"]')
+      return {
+        strong: root.querySelectorAll('strong').length,
+        em: root.querySelectorAll('em').length,
+        code: root.querySelectorAll('code').length,
+        text: root.textContent ?? '',
+      }
+    })
+    assert.equal(rendered.strong, 1, `粗体应渲染成元素：${JSON.stringify(rendered)}`)
+    assert.equal(rendered.em, 1, `斜体应渲染成元素：${JSON.stringify(rendered)}`)
+    assert.equal(rendered.code, 1, `行内代码应渲染成元素：${JSON.stringify(rendered)}`)
+    assert.equal(rendered.text.replaceAll('\u200b', '').trim(), '粗体 斜体 代码 一行', `光标离开后源标记应收起：${rendered.text}`)
+    await test('message-send').click()
+    await until(async () => (await draftText()) === '', 'composer clears after send')
+    const stored = sqliteHandle
+      .prepare('SELECT body FROM message WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1')
+      .get(chatId)?.body
+    assert.equal(stored, draft, `存下来的正文应逐字等于输入：${stored}`)
     await shot('rm2-lane3-live-md.png')
-    return `${measured.expected} 个字符最大偏移 ${measured.max.toFixed(2)}px`
+    return `粗体/斜体/行内代码三处元素，正文逐字保存 ${JSON.stringify(stored)}`
   })
 
   await check('lane_4_remove_and_reference_token', async () => {
@@ -448,18 +413,20 @@ try {
     await until(async () => (await test('attachment-item').count()) === 1, 'one attachment for reference')
     const localId = await test('attachment-item').first().getAttribute('data-local-id')
     assert.ok(localId, '附件项应带 data-local-id')
-    await composer().fill('看看 ')
-    await composer().press('End')
+    await typeDraft(['看看 '])
     await test('attachment-tag').first().click()
-    const withToken = await composer().inputValue()
-    assert.equal(withToken, `看看 [[att:${localId}]]`, `标签应在光标处插入引用 token：${withToken}`)
-    await until(async () => (await page.locator('.composer-ref-chip').count()) >= 1, 'reference chip rendered')
+    await until(async () => (await page.locator('[data-chip-kind="attachment"]').count()) >= 1, 'reference chip rendered')
+    const chip = page.locator('[data-chip-kind="attachment"]').first()
+    const chipId = await chip.getAttribute('data-local-id')
+    const chipText = (await chip.textContent()) ?? ''
+    assert.equal(chipId, localId, `芯片应带着附件 localId：${chipId}`)
+    assert.ok(chipText.includes('引用目标.png'), `芯片应显示文件名：${chipText}`)
+    assert.equal(await draftText(), `看看 📎引用目标.png`, `芯片应插在光标处：${await draftText()}`)
     await test('attachment-remove').first().click()
     await until(async () => (await test('attachment-item').count()) === 0, 'attachment removed')
-    const afterRemove = await composer().inputValue()
-    assert.ok(!afterRemove.includes(`[[att:${localId}]]`), `移除附件应一并删掉 token：${afterRemove}`)
+    assert.equal(await page.locator('[data-chip-kind="attachment"]').count(), 0, '移除附件应一并删掉正文里的芯片')
     await shot('rm2-lane4-remove-tag.png')
-    return `插入 ${JSON.stringify(withToken)} 后移除又复原`
+    return `插入 ${JSON.stringify(chipText)} 后移除又复原`
   })
 
   await check('lane_5_paste_png_send_and_narrow_width', async () => {
@@ -645,7 +612,7 @@ try {
 
     const attachments = count('attachment')
     const files = countDiskFiles()
-    await composer().fill('这条会被拒')
+    await typeDraft(['这条会被拒'])
     const cookie = (await context.cookies()).map(item => `${item.name}=${item.value}`).join('; ')
     const form = new FormData()
     form.append('chatId', chatId)
@@ -660,7 +627,7 @@ try {
     assert.equal(payload.error?.code, 'validation_failed', `错误码应是 validation_failed：${JSON.stringify(payload)}`)
     assert.equal(count('attachment'), attachments, '失败的上传不得写入附件行')
     assert.equal(countDiskFiles(), files, '失败的上传不得写盘')
-    assert.equal(await composer().inputValue(), '这条会被拒', '失败后输入框内容必须保留')
+    assert.equal(await draftText(), '这条会被拒', '失败后输入框内容必须保留')
     await shot('rm2-lane10-cross-project.png')
     return `匿名 ${guarded.status()} 无字节；跨 Project ${cross.status()} 无字节；超限 ${payload.error.code} 且库与盘无新增`
   })

@@ -13,6 +13,7 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ChatErrorNotice } from "./chat-error-notice";
 import { MessageComposer } from "./message-composer";
+import type { ComposerEditorHandle } from "./composer-editor";
 import type { ComposerAttachment } from "./attachment-bar";
 import type { MentionMember } from "./mention-picker";
 import { MessageList } from "./message-list";
@@ -173,7 +174,7 @@ export function ChatThread({
   /** instanceId → 分身名，群组运行状态分行时使用。 */
   runAgentNames?: ReadonlyMap<string, string>;
   onRestoreDraft: (body: string) => void;
-  inputRef?: Ref<HTMLTextAreaElement>;
+  inputRef?: Ref<ComposerEditorHandle>;
   /** 重命名入口由容器注入：正式路由接 server function，演示接本地回调。 */
   titleEditor?: ReactNode;
   /** 会话头部的关注入口；无活跃关注时由组件自己返回 null。 */

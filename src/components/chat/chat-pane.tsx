@@ -15,6 +15,7 @@ import { ChatThread } from "./chat-thread";
 import type { ComposerAttachment } from "./attachment-bar";
 import { AssistantPanelProvider, AssistantPendingBar, AssistantWatchMenu } from "./assistant-panel";
 import type { ChatHistory } from "./chat-thread";
+import type { ComposerEditorHandle } from "./composer-editor";
 import { useChatWindow } from "./use-chat-window";
 import type { ChatLiveFacts } from "./use-chat-live";
 import type { MentionMember } from "./mention-picker";
@@ -92,7 +93,7 @@ export function ChatPane({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
   const [stopError, setStopError] = useState<AppError | null>(null);
-  const input = useRef<HTMLTextAreaElement>(null);
+  const input = useRef<ComposerEditorHandle>(null);
   // 导航离开这条 Chat 后，旧请求的结果不能再写回任何状态或触发刷新。
   const alive = useRef(true);
   useEffect(() => {

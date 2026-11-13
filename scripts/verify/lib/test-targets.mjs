@@ -58,7 +58,6 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/chat-live.test.ts",
     "tests/chat-member-participation.test.ts",
     "tests/chat-mention-picker.test.ts",
-    "tests/composer-markdown.test.ts",
     "tests/composer-rich-text.test.ts",
     "tests/chat-wake.test.ts",
     "tests/change-endpoint.test.ts",
