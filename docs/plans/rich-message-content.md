@@ -171,7 +171,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] Edit `src/components/chat/message-markdown.tsx`，渲染图片、文件芯片与附件引用
 - [ ] Create `tests/attachment.test.ts`
 - [ ] Create `tests/composer-markdown.test.ts`
-- [ ] Create `src/components/chat/message-attachment-layout.ts`，图片显示宽度的纯函数（小图最多两倍、高图不超视口六成）与大图窗口打开时的适应比例（`attachmentViewerFitScale`，长宽任意大小的图都先看全貌、小图最多两倍）
+- [ ] Create `src/components/chat/message-attachment-layout.ts`，图片显示宽度的纯函数（小图最多两倍、高图不超视口六成）与大图窗口打开时的适应比例（`attachmentViewerFitScale` 与 `ATTACHMENT_VIEWER_MAX_FIT`，长宽任意大小的图都先看全貌，比窗口小的图保持 100% 不再放大）
 - [ ] Create `tests/message-attachment-layout.test.ts`
 - [ ] Create `scripts/verify/rm2-attachments.sh`，真实 dev server 与真 Chromium 跑下面十一条 lane，并登记进 `CI_GROUPS` 与 `SUITE_PLAN`（只存在对话里的门禁不算数）
 
@@ -187,7 +187,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] 单文件上限、单条消息附件数上限与总大小上限写成显式常量并落进契约。
 - [ ] 输入区的即时呈现扩写既有镜像浮层，只用品字形宽度不变的装饰：`text-shadow` 假粗体、真斜体、行内代码只改背景色与颜色、标题只改颜色、标记调暗。`font-weight` 与字号变化会推移后续文字，禁用。量法与结论见 Appendix A。
 - [ ] 附件栏按方案 A，输入框上方一行附件条。每项右上角 `×` 移除，右下角「标签」在光标处插入引用 token。点文件名或缩略图直接查看，未发送用本地 object URL，已发送走读取路由。
-- [ ] 消息里的图片按天然尺寸算显示宽度：天然宽度与容器宽度取小，小图最多放大到两倍（`ATTACHMENT_MAX_UPSCALE`），再按视口高度的六成（`ATTACHMENT_MAX_HEIGHT_RATIO`）回缩；宽度交给 `img` 声明、高度 `auto`，容器不得用 `align-items: stretch` 把它横向拉满。点图片弹出大图窗口：打开的一瞬先按适应窗口显示（`attachmentViewerFitScale`，超出窗口的图一律缩到看得全，小图最多两倍），滚轮与加减按钮在 0.05 到 8 倍之间改比例，拖动平移，双击或「适应窗口」回到适应状态，点图片以外的空白处或 Escape 关闭。
+- [ ] 消息里的图片按天然尺寸算显示宽度：天然宽度与容器宽度取小，小图最多放大到两倍（`ATTACHMENT_MAX_UPSCALE`），再按视口高度的六成（`ATTACHMENT_MAX_HEIGHT_RATIO`）回缩；宽度交给 `img` 声明、高度 `auto`，容器不得用 `align-items: stretch` 把它横向拉满。点图片弹出大图窗口：窗口铺满整个视口（不保留四周留白），打开的一瞬先按适应窗口显示（`attachmentViewerFitScale`，超出窗口的图一律缩到看得全，比窗口小的图保持 100%），滚轮与加减按钮在 0.05 到 8 倍之间改比例，拖动平移，双击或「适应窗口」回到适应状态，点图片以外的空白处或 Escape 关闭；工具条半透明浮在底部，宽度不超过 440px，最窄 320px 的屏幕上也保持一行且不超出屏幕。窗口关掉即整棵卸载，同一时刻只存在一份门户。
 - [ ] 附件栏与引用 token 的显示走既有镜像层：token 的原文留在文本流里撑宽度，芯片浮在它上面，镜像层与 textarea 的前进宽度逐字相同（`SkillMark` 的同一手法），所以加附件与加装饰都不移动后面的光标。
 - [ ] `preparePiMessage` 把每个附件按文件名、id、落盘绝对路径、类型与大小写进投递文本，agent 因此能打开文件。
 
@@ -209,7 +209,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] Lane 2. 入附件的三条路径。Ctrl+V 粘贴、`+` 按钮选择、拖放各走一次。Save `rm2-lane2-intake.png`. Pass when 三条路径都能把文件加进附件栏，且附件栏出现在输入框上方。
 - [ ] Lane 3. 输入框的即时呈现与光标。在输入框打 `**粗体**`、`*斜体*` 与一个行内代码。Save `rm2-lane3-live-md.png`. Pass when 输入框里看到装饰后的文字，且光标始终落在正确的字符之间，在行首、行中与行尾各点一次再用左右方向键走一遍都不跳字。
 - [ ] Lane 4. `×` 移除与「标签」插入。Save `rm2-lane4-remove-tag.png`. Pass when 移除后附件栏少一项且正文里该附件的引用 token 一并消失，点「标签」后光标处出现该附件的 token，周围文字位置不变。
-- [ ] Lane 5. 人类粘贴一张 200 KB 的 PNG 并发送，再用一张小图与一张高图各发一条，最后点开大图窗口走一次滚轮向上与向下。Save `rm2-lane5-paste-390.png`. Pass when 消息内出现图片元素且图片自然宽高比正确（量到的矩形含 1px 边框，要拿内容尺寸比），小图最多放大到天然宽度的两倍，高图高度不超过视口高度的六成，把页面缩到 390 宽度后图片不超出容器且页面无横向溢出，大图窗口打开时整张图落在窗口里且比例等于适应比例，滚轮向上放大、点「适应窗口」回到适应比例，拖动后图片平移，点空白处或 Escape 都关闭。
+- [ ] Lane 5. 人类粘贴一张 200 KB 的 PNG 并发送，再用一张小图与一张高图各发一条，最后点开大图窗口走一次滚轮向上与向下。Save `rm2-lane5-paste-390.png`. Pass when 消息内出现图片元素且图片自然宽高比正确（量到的矩形含 1px 边框，要拿内容尺寸比），小图最多放大到天然宽度的两倍，高图高度不超过视口高度的六成，把页面缩到 390 宽度后图片不超出容器且页面无横向溢出，大图窗口打开时整张图落在窗口里且比例等于适应比例、窗口占满视口、工具条半透明且落在屏幕内并保持一行（320 宽度下同样成立），滚轮向上放大、点「适应窗口」回到适应比例，拖动后图片平移，点空白处或 Escape 都关闭。
 - [ ] Lane 6. 夹具里一条带图片附件的 agent 消息。Save `rm2-lane6-agent-image.png`. Pass when 图片渲染并带可读的替代文本。
 - [ ] Lane 7. 一张约 1.5 MB 的随机像素 PNG 按同一路径发送。Save `rm2-lane7-large.png`. Pass when 列表载荷不随图片字节增长（单次服务端载荷峰值远小于图片字节），图片字节只经单独的一次读取请求取回，且图片滚动到附近才取。
 - [ ] Lane 8. 一个 PDF 附件。Save `rm2-lane8-pdf.png`. Pass when 渲染为文件名与大小的芯片，不出现坏图图标。
