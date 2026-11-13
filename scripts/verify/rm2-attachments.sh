@@ -205,9 +205,11 @@ async function upload(files) {
     files.map(file => ({ name: file.name, mimeType: file.type, buffer: file.buffer })),
   )
 }
-async function sendWithReference(text) {
+async function sendWithReference(text, references = 1) {
   await typeDraft([text])
-  await test('attachment-tag').first().click()
+  for (let index = 0; index < references; index += 1) {
+    await test('attachment-tag').first().click()
+  }
   const before = await test('message-item').count()
   await test('message-send').click()
   await until(async () => (await test('message-item').count()) > before, 'message sent')
@@ -526,7 +528,7 @@ try {
       return node ? node.textContent : ''
     })
     assert.ok(size, 'attachment bar should describe the file')
-    await sendWithReference('看图 ')
+    await sendWithReference('看图 ', 2)
     // 图片是滚到附近才取字节的：验收要真的把这条消息滚进视口，而不是假定它会自己加载。
     await until(async () => (await test('message-item').count()) > 0, 'message appended')
     await page.evaluate(() => {
@@ -572,7 +574,16 @@ try {
     assert.ok(image.src.startsWith('blob:'), `图片字节应先经鉴权读取路由再转 object URL：${image.src}`)
     const read = attachmentReads.find(item => item.url.includes(`/api/attachments/`))
     assert.ok(read, `应有对读取路由的请求：${JSON.stringify(attachmentReads)}`)
-    assert.ok((await test('message-attachment-ref').count()) >= 1, '引用应渲染成芯片')
+    const counted = await page.evaluate(() => {
+      const list = document.querySelectorAll('[data-testid="message-item"]')
+      const item = list[list.length - 1]
+      return {
+        refs: item.querySelectorAll('[data-testid="message-attachment-ref"]').length,
+        figures: item.querySelectorAll('[data-testid="message-attachment-figure"]').length,
+      }
+    })
+    assert.equal(counted.refs, 2, `同一附件引用两次应渲染两处引用：${JSON.stringify(counted)}`)
+    assert.equal(counted.figures, 1, `同一附件只渲染一张图：${JSON.stringify(counted)}`)
     await page.setViewportSize({ width: 390, height: 844 })
     await delay(300)
     const narrow = await overflow()
