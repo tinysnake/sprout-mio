@@ -132,8 +132,8 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 **Review gate.** operator 在合并前看截图与视频。
 
-- [ ] 把 lane 2、lane 3 与 lane 9 的 screenshot 拷到 `.verify/rich-message/rm1-review-<slug>.png`。
-- [ ] 在 lane 机器上录一段 30 到 60 秒的 video，存为 `.verify/rich-message/rm1-review.mp4`。
+- [x] 把 lane 2、lane 3 与 lane 9 的 screenshot 拷到 `.verify/rich-message/rm1-review-<slug>.png`。RM3 的截图由 `scripts/verify/rm3-html.sh` 生成在 `.verify/rm3-html/evidence/rm3-lane-card-{light,dark}.png`（整条消息卡，含发信人与时间），390 宽另存 `.verify/rich-message/rm3-lane-card-390.png`。
+- [ ] 在 lane 机器上录一段 30 到 60 秒的 video，存为 `.verify/rich-message/rm1-review.mp4`。RM3 没录，画面就是滚动一条含沙箱的消息加切主题，operator 直接看截图更快。
 - [ ] 在群里贴 screenshot 与 video，停在 merge-ready 等 operator 点。
 
 **Merge.**
