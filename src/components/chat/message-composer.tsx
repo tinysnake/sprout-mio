@@ -21,7 +21,7 @@ import {
   removeAttachmentReferences,
   splitComposerSegments,
 } from "./composer-markdown";
-import type { ComposerTone } from "./composer-markdown";
+import type { ComposerSegment, ComposerTone } from "./composer-markdown";
 import "./composer-markdown.css";
 import { SkillMark } from "./skill-mark";
 import { SkillPicker } from "./skill-picker";
@@ -49,6 +49,13 @@ const TONE_CLASS: Record<ComposerTone, string | undefined> = {
   marker: "composer-md-marker",
   reference: undefined,
 };
+
+/** 标记段在光标离开装饰时补上 `composer-md-quiet`：透明度归零，宽度不变。 */
+function toneClass(segment: ComposerSegment): string | undefined {
+  const base = TONE_CLASS[segment.tone];
+  if (!segment.quiet) return base;
+  return base ? `${base} composer-md-quiet` : "composer-md-quiet";
+}
 
 let localIdCounter = 0;
 
@@ -120,7 +127,9 @@ export function MessageComposer({
   const [activeIndex, setActiveIndex] = useState(0);
   const [composingVisual, setComposingVisual] = useState(false);
   const highlight = useRef<HTMLDivElement | null>(null);
-  const composerSegments = useMemo(() => splitComposerSegments(draft), [draft]);
+  // 光标位置只用于“标记要不要藏起来”：光标在装饰里时露出来，方便改。
+  const [caret, setCaret] = useState<number | null>(null);
+  const composerSegments = useMemo(() => splitComposerSegments(draft, caret), [draft, caret]);
   const [attachments, setAttachments] = useState<readonly ComposerAttachment[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -180,6 +189,7 @@ export function MessageComposer({
   /** 按光标前的正文同步候选区间；同一区间不产生多余渲染。 */
   function sync(element: HTMLTextAreaElement) {
     const caret = element.selectionStart ?? element.value.length;
+    setCaret(caret);
     const skill = skillQueryAt(element.value, caret);
     const mention = skill ? null : mentionQueryAt(element.value, caret);
     const next = skill
@@ -489,7 +499,7 @@ export function MessageComposer({
                   </span>
                 </span>
               ) : (
-                <span key={index} className={TONE_CLASS[segment.tone]}>
+                <span key={index} className={toneClass(segment)}>
                   {segment.text}
                 </span>
               ),

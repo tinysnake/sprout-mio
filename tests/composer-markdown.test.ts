@@ -208,4 +208,55 @@ describe("附件引用 token 的插入与移除", () => {
       removed: 0,
     });
   });
+
+  it("光标离开装饰时标记隐形，靠进去时重新现出来", () => {
+    const draft = "前面 **粗体** 后面";
+    const markers = (caret: number | null) =>
+      splitComposerSegments(draft, caret).filter((segment) => segment.tone === "marker");
+    // 光标在句尾的「后面」里：两个 `**` 都隐形，但字符与宽度照旧。
+    expect(
+      markers(draft.length).map((segment) => ({
+        text: segment.text,
+        quiet: segment.quiet ?? false,
+      })),
+    ).toEqual([
+      { text: "**", quiet: true },
+      { text: "**", quiet: true },
+    ]);
+    // 光标进到粗体正文里：标记露出来，方便改。
+    expect(markers(5).every((segment) => segment.quiet !== true)).toBe(true);
+    // 没有光标（未聚焦/首次渲染）不隐藏，沿用原来的淡标记。
+    expect(markers(null).every((segment) => segment.quiet !== true)).toBe(true);
+    expect(join(splitComposerSegments(draft, draft.length))).toBe(draft);
+    // 隐形的只能是标记，正文段无论光标在哪都必须看得见。
+    expect(
+      splitComposerSegments(draft, draft.length).filter(
+        (segment) => segment.tone !== "marker" && segment.quiet === true,
+      ),
+    ).toEqual([]);
+  });
+
+  it("刚打完闭合标记、光标停在其后时，标记也收起来", () => {
+    const draft = "前面 **粗体**";
+    const atEnd = splitComposerSegments(draft, draft.length);
+    expect(
+      atEnd.filter((segment) => segment.tone === "marker").map((segment) => segment.quiet),
+    ).toEqual([true, true]);
+    // 光标退到闭合标记之前（正文里）时再露出来。
+    const beforeClose = splitComposerSegments(draft, draft.length - 2);
+    expect(
+      beforeClose
+        .filter((segment) => segment.tone === "marker")
+        .every((segment) => segment.quiet !== true),
+    ).toBe(true);
+  });
+
+  it("标题标记只在光标还在这一行时露出", () => {
+    const draft = "# 标题\n另起一行";
+    const marker = (caret: number) =>
+      splitComposerSegments(draft, caret).find((segment) => segment.tone === "marker");
+    expect(marker(3)?.quiet).toBe(undefined);
+    expect(marker(draft.length)?.quiet).toBe(true);
+    expect(join(splitComposerSegments(draft, 3))).toBe(draft);
+  });
 });

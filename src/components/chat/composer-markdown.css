@@ -2,15 +2,22 @@
  * 镜像层的装饰样式。textarea 是唯一真相、文字透明，镜像层压在下面显示，
  * 所以这里只许用**不改变字形前进宽度**的装饰：字号、letter-spacing、font-weight、
  * 任何加宽前进宽度的 padding/margin 都会让镜像与 textarea 错位。
- * 允许的集合（逐字符 x 偏移 ≤ 0.36px，已在原型上量过）：假粗体 text-shadow、
- * 真斜体（Geist Variable 有斜体面）、行内代码只改背景与颜色、标题只改颜色、标记调暗。
+ * 允许的集合（逐字符 x 偏移 ≤ 0.36px，已在原型上量过）：假粗体 text-shadow 与
+ * -webkit-text-stroke（只描边、不参与布局）、真斜体（Geist Variable 有斜体面）、
+ * 行内代码只改背景与颜色、标题只改颜色、标记调暗或隐形（opacity 不参与布局）。
  */
 .composer-md-marker {
   opacity: 0.28;
 }
 
+/* 光标不在装饰里：标记隐形但占宽，看起来就是渲染后的正文。 */
+.composer-md-quiet {
+  opacity: 0;
+}
+
 .composer-md-strong {
   text-shadow: 0 0 0.6px currentColor;
+  -webkit-text-stroke: 0.4px currentColor;
 }
 
 .composer-md-emphasis {
@@ -27,6 +34,7 @@
 
 .composer-md-heading {
   color: var(--primary);
+  -webkit-text-stroke: 0.3px currentColor;
 }
 
 /*

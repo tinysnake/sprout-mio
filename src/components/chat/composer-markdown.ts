@@ -28,10 +28,21 @@ export type ComposerSegment = Readonly<{
   /** 技能段沿用消息侧的分段形状；span 与 edge 由 `splitMessageSegments` 算出，不在这里重写。 */
   skill?: MessageSegment["skill"];
   skillEdge?: MessageSegment["skillEdge"];
+  /**
+   * 标记段在光标不在这段装饰里时透明：宽度照旧占着（不透明会改变前进宽度、错位光标），
+   * 但看起来就是渲染后的样子；把光标挪进去标记会重新现出来，方便改。
+   */
+  quiet?: boolean;
 }>;
 
 /** 行首标题：1–3 个 `#` 加一个空格。标记连同空格单独成段，只调暗不换字号。 */
 const HEADING_MARKER = /^(#{1,3}) /u;
+
+/** 标题行结束的位置（不含换行符），用来判断光标是否还在标题这一行。 */
+function lineEndAt(draft: string, index: number): number {
+  const lineBreak = draft.indexOf("\n", index);
+  return lineBreak < 0 ? draft.length : lineBreak;
+}
 
 type Atom = Readonly<{ start: number; end: number; segment: ComposerSegment }>;
 
@@ -39,13 +50,20 @@ type Atom = Readonly<{ start: number; end: number; segment: ComposerSegment }>;
  * 把草稿切成装饰分段。识别 `**粗体**`、`*斜体*`、行内 `` `code` ``、行首 `# 标题`
  * 与 `[[att:<localId>]]` 引用；技能 token 复用消息侧扫描。
  */
-export function splitComposerSegments(draft: string): ComposerSegment[] {
+export function splitComposerSegments(
+  draft: string,
+  caret: number | null = null,
+): ComposerSegment[] {
   const atoms = atomsOf(draft);
   const atomStarts = [...atoms.keys()];
   const decorated: ComposerSegment[] = [];
 
-  const push = (text: string, tone: ComposerTone) => {
-    if (text.length > 0) decorated.push({ text, tone });
+  /** 光标离开这段装饰（含整行标题）时，标记调成透明。 */
+  const quietMarkers = (start: number, end: number) =>
+    caret !== null && (caret < start || caret > end);
+
+  const push = (text: string, tone: ComposerTone, quiet = false) => {
+    if (text.length > 0) decorated.push({ text, tone, ...(quiet ? { quiet: true } : {}) });
   };
 
   let index = 0;
@@ -62,7 +80,7 @@ export function splitComposerSegments(draft: string): ComposerSegment[] {
     if (lineStart) {
       const marker = HEADING_MARKER.exec(draft.slice(index, index + 4));
       if (marker) {
-        push(marker[0], "marker");
+        push(marker[0], "marker", quietMarkers(index, lineEndAt(draft, index)));
         index += marker[0].length;
         lineStart = false;
         heading = true;
@@ -80,7 +98,10 @@ export function splitComposerSegments(draft: string): ComposerSegment[] {
     if (character === "`" || character === "*") {
       const inline = inlineDecoration(draft, index, atomStarts);
       if (inline) {
-        for (const part of inline.segments) push(part.text, part.tone);
+        const quiet = quietMarkers(index, inline.revealEnd);
+        // 只有标记隐形；正文段无论如何都要看得见。
+        for (const part of inline.segments)
+          push(part.text, part.tone, quiet && part.tone === "marker");
         index = inline.end;
         lineStart = false;
         continue;
@@ -112,8 +133,18 @@ function mergePlain(segments: readonly ComposerSegment[]): ComposerSegment[] {
   const merged: ComposerSegment[] = [];
   for (const segment of segments) {
     const previous = merged[merged.length - 1];
-    if (previous && plain(previous) && plain(segment) && previous.tone === segment.tone) {
-      merged[merged.length - 1] = { text: previous.text + segment.text, tone: segment.tone };
+    if (
+      previous &&
+      plain(previous) &&
+      plain(segment) &&
+      previous.tone === segment.tone &&
+      previous.quiet === segment.quiet
+    ) {
+      merged[merged.length - 1] = {
+        text: previous.text + segment.text,
+        tone: segment.tone,
+        ...(segment.quiet ? { quiet: true } : {}),
+      };
       continue;
     }
     merged.push(segment);
@@ -176,7 +207,7 @@ function inlineDecoration(
   draft: string,
   index: number,
   atomStarts: readonly number[],
-): { end: number; segments: readonly ComposerSegment[] } | null {
+): { end: number; revealEnd: number; segments: readonly ComposerSegment[] } | null {
   const delimiter = draft.startsWith("**", index) ? "**" : draft.startsWith("`", index) ? "`" : "*";
   const tone: ComposerTone =
     delimiter === "**" ? "strong" : delimiter === "`" ? "code" : "emphasis";
@@ -195,6 +226,8 @@ function inlineDecoration(
     if (atomStarts.some((start) => start > index && start < bodyEnd)) return null;
     return {
       end: bodyEnd + delimiter.length,
+      // 光标停在闭合标记之后（刚打完 `**`）时也算离开，标记应当已经收起来。
+      revealEnd: bodyEnd,
       segments: [
         { text: delimiter, tone: "marker" },
         { text: draft.slice(bodyStart, bodyEnd), tone },
