@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
+import { readDraft } from "./ui-navigation.mjs";
 
 const base = process.env.SPROUT_UI_SCENES_URL ?? "http://127.0.0.1:3000/__dev/ui/";
 const evidence = process.env.SPROUT_UI_SCENES_EVIDENCE ?? ".verify/ui-scenes";
@@ -57,14 +58,14 @@ try {
           ?.getAttribute("data-chat-id") === id,
       secondId,
     );
-    assert.equal(await test("message-input").inputValue(), "");
+    assert.equal(await readDraft(page), "");
     assert.notEqual((await test("inspector-instance-id").textContent()).trim(), firstInstance);
     assert.equal(await test("inspector-copy-chat-id").getAttribute("data-chat-id"), secondId);
     assert.equal(await test("message-item").count(), 0);
     await test("message-input").fill("第二条 Chat 的本地回显");
     await test("message-send").click();
     await test("message-body").filter({ hasText: "第二条 Chat 的本地回显" }).waitFor();
-    assert.equal(await test("message-input").inputValue(), "");
+    assert.equal(await readDraft(page), "");
     if (!(await test("info-message-count").isVisible())) {
       await test("chat-inspector").getByText("Chat 事实与成员", { exact: true }).click();
     }
@@ -78,7 +79,7 @@ try {
           ?.getAttribute("data-chat-id") === id,
       firstId,
     );
-    assert.equal(await test("message-input").inputValue(), "第一条 Chat 的未发送草稿");
+    assert.equal(await readDraft(page), "第一条 Chat 的未发送草稿");
     assert.equal(await test("message-item").count(), firstMessages);
     await test("chat-search").fill("仓库首页");
     assert.equal(await rows.count(), 1);
@@ -114,7 +115,7 @@ try {
     await page.waitForFunction(
       () => document.querySelector('[data-testid="pi-host-status"]')?.textContent === "已停止",
     );
-    assert.equal(await test("message-input").inputValue(), "");
+    assert.equal(await readDraft(page), "");
   });
 
   await check("shared_project_creation_survives_resize_and_restores_focus", async () => {

@@ -523,8 +523,12 @@ try {
     await page.keyboard.press("Shift+Enter");
     // 点名要走候选选择器插成芯片：手打 `@名字` 只是正文，不会自己变成标签。
     await page.keyboard.type("看 @");
-    await page.waitForSelector('[data-testid="mention-picker"]', { timeout: 5000 });
-    await page.click('[data-testid="mention-option-0"]');
+    await page.waitForSelector('[data-testid="mention-picker"]', { timeout: 15000 });
+    // 按名字点，不按序号：候选表按名字排序，而慢机器上成员列表到达前可能只有部分选项，
+    // 序号会点到别人身上。
+    const option = page.locator('[data-testid^="mention-option-"]', { hasText: "Amenda" }).first();
+    await option.waitFor({ timeout: 15000 });
+    await option.click();
     const shape = await page.evaluate(() => {
       const root = document.querySelector('[data-testid="message-input"]');
       const chip = root?.querySelector('[data-testid="composer-chip"]');
