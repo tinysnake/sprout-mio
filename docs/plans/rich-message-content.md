@@ -191,6 +191,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] 消息里的图片按天然尺寸算显示宽度：天然宽度与容器宽度取小，小图最多放大到两倍（`ATTACHMENT_MAX_UPSCALE`），再按视口高度的六成（`ATTACHMENT_MAX_HEIGHT_RATIO`）回缩；宽度交给 `img` 声明、高度 `auto`，容器不得用 `align-items: stretch` 把它横向拉满。点图片弹出大图窗口：窗口铺满整个视口（不保留四周留白），打开的一瞬先按适应窗口显示（`attachmentViewerFitScale`，超出窗口的图一律缩到看得全，比窗口小的图保持 100%），滚轮与加减按钮在 0.05 到 8 倍之间改比例，拖动平移，双击或「适应窗口」回到适应状态，点图片以外的空白处或 Escape 关闭；工具条半透明浮在底部，宽度不超过 440px，最窄 320px 的屏幕上也保持一行且不超出屏幕。窗口关掉即整棵卸载，同一时刻只存在一份门户。
 - [ ] 附件引用与技能 token 在输入区是原子节点：芯片显示文件名/技能名，`attrs.source` 保留原文，按一次 Backspace 或 Delete 整颗删掉，不会只剩半截语法；正文里存的仍是 token 原文。
 - [ ] `preparePiMessage` 把每个附件按文件名、id、落盘绝对路径、类型与大小写进投递文本，agent 因此能打开文件。
+- [ ] 正文排版只有一份来源：`src/components/chat/markdown-content.css` 的 `.markdown-content` 定正文字号 14px 与行高（消息气泡与输入区共用），标题按比例（`1.3em`/`1.15em`/`1.05em`），行内代码、标签芯片、附件文件名都跟随正文，不再各自下调一级；气泡内任何渲染文字都不得小于正文字号。
 
 **You see.**
 
@@ -198,13 +199,14 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] 人类在输入框打 `**粗体**`，输入框内显示粗体而不是 `**` 字面，发送后消息里同样是粗体。标题、列表、引用、围栏代码块与分割线同样在输入框里就成形，标题有自己的字号。按一次 Backspace 删掉一颗附件芯片时整颗消失，不会只剩半截 `[[att:` 语法。
 - [ ] 人类点某个附件的「标签」，光标处出现该附件的引用 token，紧接着写的一句话在消息里挂在该附件上。
 - [ ] 消息列表接口的载荷只增加附件引用，不随图片字节增长。
+- [ ] 气泡里最小的字号就是正文字号，标签与行内代码不会比正文小一档。
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [ ] `tests/attachment.test.ts` 覆盖八个用例，只存元数据不存 base64、跨 Project 附件被拒、超限与空附件被拒、删除后读取返回明确错误、临时 id 被换成真实 id 且 span 落在最终正文的 token 上、没被正文引用的附件照样落库、引用不存在的 token 时整体拒且库里与磁盘上都不留痕、点名与技能在带 token 的正文里下标仍对得上。跑 `pnpm exec vp test run tests/attachment.test.ts`。
 - [ ] `tests/composer-rich-text.test.ts` 覆盖九组用例：块级语法（标题、列表、任务列表、引用、代码块、分割线）在文档模型里成形、行内标记（粗体、斜体、行内代码、删除线）不吞相邻文字、草稿序列化成 markdown 后与手写正文逐字相同、`[[att:<localId>]]` 与 `📖name` 的段边界算得对、原子节点不可从中间切开、整颗删除标签（Backspace 与 Delete 两个方向）、列表里续行、撤销分组与代码块的围栏与缩进。跑 `pnpm exec vp test run tests/composer-rich-text.test.ts`。
 
-**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe. RM2 的十 lane 同时盖住消息侧与输入侧，运行方式是 `scripts/verify/rm2-attachments.sh`（一个脚本跑完十条 lane 加控制台检查，证据落在 `.verify/rm2-attachments/evidence/`，文件名与下面每条一致）。
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe. RM2 的十 lane 同时盖住消息侧与输入侧，运行方式是 `scripts/verify/rm2-attachments.sh`（一个脚本跑完十条 lane、消息侧控制台检查与两条排版断言（块间距与字号下限），证据落在 `.verify/rm2-attachments/evidence/`，文件名与下面每条一致）。
 
 - [ ] Lane 1. Regression lane against trunk. 一条纯文本消息在 trunk 与 head 各看一次，输入框也各看一次。Save `rm2-lane1-trunk-vs-head.png`. Pass when 没有附件的消息渲染与 trunk 逐字一致，输入框的占位与发送后清空行为也与 trunk 一致。
 - [ ] Lane 2. 入附件的三条路径。Ctrl+V 粘贴、`+` 按钮选择、拖放各走一次。Save `rm2-lane2-intake.png`. Pass when 三条路径都能把文件加进附件栏，且附件栏出现在输入框上方。
