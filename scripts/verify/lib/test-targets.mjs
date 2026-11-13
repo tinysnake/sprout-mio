@@ -2,6 +2,7 @@ import { globSync } from "node:fs";
 
 export const UNIT_TARGETS = Object.freeze({
   ci: [
+    "tests/attachment.test.ts",
     "tests/assistant-core.test.ts",
     "tests/assistant-watch-windows.test.ts",
     "tests/assistant-watch-migration.test.ts",
@@ -47,7 +48,6 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/aj-recovery-matrix-runner.test.ts",
     "tests/chat-title-display.test.ts",
     "tests/chat-skills-candidate.test.ts",
-    "tests/chat-skills-edges.test.ts",
     "tests/chat-skills-expansion.test.ts",
     "tests/chat-capabilities.test.ts",
     "tests/chat-workspace.test.ts",
@@ -57,6 +57,8 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/chat-live.test.ts",
     "tests/chat-member-participation.test.ts",
     "tests/chat-mention-picker.test.ts",
+    "tests/composer-rich-text.test.ts",
+    "tests/composer-mention-token.test.ts",
     "tests/chat-wake.test.ts",
     "tests/change-endpoint.test.ts",
     "tests/change-feed.test.ts",
@@ -122,6 +124,8 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/mention-write.test.ts",
     "tests/mention.test.ts",
     "tests/message-wake.test.ts",
+    "tests/message-attachment-layout.test.ts",
+    "tests/html-block.test.ts",
     "tests/message-markdown.test.ts",
     "tests/message-window.test.ts",
     "tests/migration-rebuild.test.ts",

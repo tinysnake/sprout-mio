@@ -529,6 +529,8 @@ describe("消息增量读的游标", () => {
   function message(id: string): Message {
     return {
       id,
+      attachments: [],
+      attachmentSpans: [],
       chatId: "cnv_00000001",
       senderKind: "human",
       senderId: "user_1",

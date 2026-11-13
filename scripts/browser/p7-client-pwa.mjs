@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { readDraft } from "./ui-navigation.mjs";
 import { runProduction, pass, assert } from "./p7-client-harness.mjs";
 await runProduction(async ({ page, context, base, directory, seeded: s }) => {
   const manifest = await (await fetch(base + "/manifest.webmanifest")).json();
@@ -76,7 +77,7 @@ await runProduction(async ({ page, context, base, directory, seeded: s }) => {
   await page.getByTestId("message-send").click();
   // 离线发送既不提交也不出动作结果提示条：草稿留在输入框里，由人类在恢复后重新发起。
   assert.equal(await page.getByTestId("send-outcome").count(), 0);
-  assert.equal(await page.getByTestId("message-input").inputValue(), "offline message stays local");
+  assert.equal(await readDraft(page), "offline message stays local");
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByTestId("message-input").waitFor();
   pass("offline_chat_deep_link_refresh_uses_audited_post_reads", { chatPath });

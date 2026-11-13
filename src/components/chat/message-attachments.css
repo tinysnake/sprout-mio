@@ -1,0 +1,236 @@
+/*
+ * 消息里的附件样式，配合「方案 A 紧凑内联」：
+ * 引用芯片与正文同流，图片与文件在正文之后成组，宽度收在正文列里，颜色只读语义 token。
+ */
+/* 引用芯片复用输入区的 `.markdown-chip` 造型，这里只补可点击的反馈与名字截断。 */
+.message-attachment-ref {
+  gap: 3px;
+  padding: 0 5px;
+  color: inherit;
+  text-decoration: none;
+  max-width: 100%;
+}
+
+.message-attachment-ref:hover {
+  background: color-mix(in oklab, var(--primary) 12%, var(--selected));
+}
+
+.message-attachment-ref__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.message-attachment-figures {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.message-attachment-figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.message-attachment-figure__open {
+  display: block;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.message-attachment-figure__open:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+.message-attachment-figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
+.message-attachment-figure figcaption {
+  font-size: 1em;
+  color: var(--muted-foreground);
+}
+
+.message-attachment-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.message-attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  color: inherit;
+  text-decoration: none;
+}
+
+.message-attachment-file:hover {
+  background: var(--hover);
+}
+
+.message-attachment-file__icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: var(--control-radius);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.message-attachment-file__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.message-attachment-file__name {
+  font-size: 1em;
+  font-weight: 500;
+}
+
+.message-attachment-file__size {
+  font-size: 1em;
+  color: var(--muted-foreground);
+}
+
+.message-attachment-broken {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--destructive) 8%, transparent);
+  font-size: 1em;
+  color: var(--muted-foreground);
+}
+
+.message-attachment-broken strong {
+  color: var(--destructive);
+  font-weight: 500;
+}
+
+.message-attachment-figure__pending {
+  display: block;
+  width: 100%;
+  height: 96px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border);
+}
+
+/*
+ * 大图窗口占满整个视口。Dialog 的 Popup 默认是 460px 宽的居中卡片，那些 utility 在
+ * @layer utilities 里，组件自己的样式不在图层里，所以这里的规则能盖掉它们。
+ */
+.message-viewer {
+  inset: 0;
+  display: flex;
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: hidden;
+  transform: none;
+  translate: none;
+}
+
+.message-viewer__stage {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  /* 图片总在窗口中央，靠 transform 平移；空白处点击关闭由组件的 onClick 处理。 */
+  cursor: grab;
+  touch-action: none;
+}
+
+.message-viewer__stage[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+/* 尺寸由组件按「适应窗口」的比例给成 px，所以这里不能再限制 max-width/max-height。 */
+.message-viewer__image {
+  display: block;
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.message-viewer__bar {
+  position: absolute;
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  /* 靠 left/right 加 auto 外边距居中，不用 transform：这样可用宽度是整条视口，
+     工具条能保持一行，也不会被 left: 50% 截成半个屏幕宽。 */
+  right: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: min(440px, calc(100% - 24px));
+  margin-inline: auto;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  /* 半透明加模糊：图片放到最大时会压到工具条下面，两边都还看得清。 */
+  background: color-mix(in oklab, var(--popover) 82%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.message-viewer__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-viewer__zoom {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+/* 窄屏上按钮本身就有 44px 触控高度，再塞百分比就会挤出屏幕。 */
+@media (max-width: 360px) {
+  .message-viewer__bar {
+    gap: 4px;
+    padding: 4px 6px;
+  }
+
+  .message-viewer__zoom {
+    display: none;
+  }
+}

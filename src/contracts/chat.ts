@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { attachmentIdSchema, attachmentSchema } from "./attachment";
 import { automationSourceSchema } from "./automation";
 import { agentProfileIdSchema } from "./agent";
 import { appIdPattern, ID_PREFIXES } from "./ids";
@@ -206,6 +207,17 @@ export const mentionSpanSchema = z.object({
 export type MentionSpan = z.infer<typeof mentionSpanSchema>;
 
 /**
+ * 正文里对附件的引用片段，形状与 mention/skill 一致：半开区间，单位是 `message.body` 的字符下标。
+ * 存 id 不存文件名：同名附件靠 id 分清，渲染与投递都按这段位置定位。
+ */
+export const messageAttachmentSpanSchema = z.object({
+  attachmentId: attachmentIdSchema,
+  start: z.number().int().nonnegative(),
+  end: z.number().int().positive(),
+});
+export type MessageAttachmentSpan = z.infer<typeof messageAttachmentSpanSchema>;
+
+/**
  * 一条消息的唤醒派发契约（裁定 §3.3 / §4.5）：唤醒路由只读这条消息写时解析落库的点名
  * 记录，正文文本不再参与路由。所以派发方交出的就是消息自己的 mention span，不另带名字字典。
  */
@@ -310,6 +322,8 @@ const messageBaseSchema = z.object({
   chatId,
   createdAt: z.iso.datetime(),
   mentions: z.array(mentionSpanSchema),
+  attachments: z.array(attachmentSchema),
+  attachmentSpans: z.array(messageAttachmentSpanSchema),
   taskRecord: z
     .strictObject({
       taskId: z.string().regex(appIdPattern(ID_PREFIXES.task)),
@@ -336,6 +350,8 @@ export const messageSchema = z
       taskRecord: z.never().optional(),
       mentions: z.tuple([]),
       skills: z.tuple([]),
+      attachments: z.tuple([]),
+      attachmentSpans: z.tuple([]),
     }),
     messageBaseSchema.extend({
       senderKind: z.literal("assistant_work"),
@@ -344,6 +360,8 @@ export const messageSchema = z
       taskRecord: z.never().optional(),
       mentions: z.tuple([]),
       skills: z.tuple([]),
+      attachments: z.tuple([]),
+      attachmentSpans: z.tuple([]),
     }),
     messageBaseSchema.extend({
       senderKind: z.literal("human"),
@@ -359,6 +377,8 @@ export const messageSchema = z
       taskRecord: z.never().optional(),
       mentions: z.tuple([]),
       skills: z.tuple([]),
+      attachments: z.tuple([]),
+      attachmentSpans: z.tuple([]),
     }),
   ])
   .superRefine((value, ctx) => {

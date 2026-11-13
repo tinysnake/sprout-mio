@@ -46,7 +46,10 @@ async function open({ width, height, colorScheme, scene = "machines", hasTouch =
     deviceScaleFactor: 1,
   });
   await context.addInitScript((theme) => {
-    localStorage.setItem("sprout:theme", theme);
+    // init script 也进子 frame；消息里的 HTML 沙箱没有 allow-same-origin，读写存储会抛 SecurityError。
+    try {
+      localStorage.setItem("sprout:theme", theme);
+    } catch {}
   }, colorScheme);
   const page = await context.newPage();
   const errors = [];

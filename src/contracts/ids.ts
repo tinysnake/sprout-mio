@@ -18,6 +18,7 @@ export const ID_PREFIXES = {
   chat: "cnv",
   instance: "ins",
   message: "msg",
+  attachment: "att",
   diagnostic: "diag",
   boot: "boot",
   request: "req",

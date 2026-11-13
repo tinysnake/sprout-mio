@@ -25,6 +25,8 @@ function chunk(start: number, count: number): Message[] {
     const n = start + index;
     return {
       id: `msg_${String(n).padStart(8, "0")}`,
+      attachments: [],
+      attachmentSpans: [],
       chatId: "cnv_00000001",
       senderKind: "human" as const,
       senderId: "user_1",

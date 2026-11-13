@@ -75,10 +75,10 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
   const renderedText = (markup: string) => markup.replace(/<[^>]*>/g, "");
   const before = html();
   expect(before.match(/data-testid="message-skill"/g)).toHaveLength(2);
-  expect(renderedText(before)).toContain("📖missing");
-  expect(before.match(/data-edge-start="flush"/g)).toHaveLength(1);
-  expect(before.match(/data-edge-end="flush"/g)).toHaveLength(2);
-  expect(before.match(/data-edge-/g)).toHaveLength(3);
+  // 技能芯片与输入区同一副样：图标加名字，正文里的 `📖` 不再出现在渲染结果里。
+  expect(before.match(/data-testid="message-skill"[^>]*markdown-chip/g)).toHaveLength(2);
+  expect(renderedText(before)).toContain("missing");
+  expect(renderedText(before)).not.toContain("📖");
   writeFileSync(skillFile, "---\nname: renamed\ndescription: changed\n---\nnew body");
   expect((await readSkillCatalog(scope, "fresh")).byName.has("missing")).toBe(false);
   expect(html()).toBe(before);
