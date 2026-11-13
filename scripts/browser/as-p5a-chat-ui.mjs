@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import Database from "better-sqlite3";
 import { chromium } from "playwright";
-import { createProject, waitForChats } from "./ui-navigation.mjs";
+import { createProject, waitForChats, waitForRailChat } from "./ui-navigation.mjs";
 import { chatGovernanceFacts } from "../../src/domain/chat-capabilities.ts";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
@@ -142,8 +142,12 @@ try {
   await page.waitForSelector('[data-testid="chat-item"][data-chat-kind="public_channel"]', {
     timeout: 20000,
   });
+  const channelChatId = await page.getAttribute(
+    '[data-testid="chat-item"][data-chat-kind="public_channel"]',
+    "data-chat-id",
+  );
   await page.click('[data-testid="chat-item"][data-chat-kind="public_channel"]');
-  await page.waitForSelector('[data-testid="chat-details"]', { timeout: 20000 });
+  await waitForRailChat(page, channelChatId);
   const boxes = await page.evaluate(() => {
     const box = (id) => {
       const element = document.querySelector(`[data-testid="${id}"]`);
@@ -352,11 +356,12 @@ try {
     timeout: 30000,
   });
   groupPath = new URL(page.url()).pathname;
-  await page.waitForSelector('[data-testid="chat-details"]', { timeout: 20000 });
   await page.waitForSelector('[data-testid="new-chat-dialog"]', {
     state: "detached",
     timeout: 20000,
   });
+  // 先确认右栏已经是这条新群聊，再读它的 Owner / 唤醒策略 / 标题。
+  const groupChatId = await waitForRailChat(page, groupPath);
   const groupOwner = (await page.textContent('[data-testid="chat-owner-name"]'))?.trim();
   const groupPolicy = (await page.textContent('[data-testid="chat-wake-policy"]'))?.trim();
   const groupRailTitle = (
@@ -371,7 +376,7 @@ try {
       Boolean(groupPolicy?.includes("owner_led")) &&
       groupGovernance >= 2 &&
       groupRailTitle === groupTitle,
-    `url ${groupPath}，owner ${JSON.stringify(groupOwner)}，policy ${JSON.stringify(groupPolicy)}，按钮 ${groupGovernance}，右栏标题 ${JSON.stringify(groupRailTitle)}`,
+    `url ${groupPath}，右栏 ${groupChatId}，owner ${JSON.stringify(groupOwner)}，policy ${JSON.stringify(groupPolicy)}，按钮 ${groupGovernance}，右栏标题 ${JSON.stringify(groupRailTitle)}`,
   );
 
   await page.fill('[data-testid="message-input"]', message);
@@ -855,11 +860,11 @@ try {
     timeout: 30000,
   });
   dmPath = new URL(page.url()).pathname;
-  await page.waitForSelector('[data-testid="chat-details"]', { timeout: 20000 });
   await page.waitForSelector('[data-testid="new-chat-dialog"]', {
     state: "detached",
     timeout: 20000,
   });
+  await waitForRailChat(page, dmPath);
   const dm = await page.evaluate(() => {
     const count = (id) => document.querySelectorAll(`[data-testid="${id}"]`).length;
     const details = document.querySelector('[data-testid="chat-details"]');

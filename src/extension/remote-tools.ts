@@ -9,6 +9,7 @@ import {
   executionViewSchema,
   type ExecutionView,
   holderExecutionListViewSchema,
+  isTerminalExecutionState,
   remoteAgentRequestSchema,
   remoteToolInputSchemas,
 } from "../contracts/remote";
@@ -16,7 +17,9 @@ import type { RemoteAgentRequest } from "../contracts/remote";
 import { waitForLease } from "../domain/lease-wait";
 import { waitForExecution } from "../domain/execution-wait";
 import {
+  clampExecutionBlockMs,
   clampExecutionWaitMs,
+  EXECUTION_BLOCK_DEFAULT_MS,
   EXECUTION_WAIT_DEFAULT_MS,
   EXECUTION_WAIT_MAX_MS,
 } from "../contracts/tool-wait";
@@ -53,18 +56,18 @@ const descriptions: Record<ToolName, string> = {
   sprout_lease_wait:
     "阻塞等待显式指定的远端 Machine 租约变得可用：machineId 必填，waitMs 是自己愿意忍多久（建议 300000，超过 3600000 一律钳到 3600000）。等待只反复读租约：不抢占、不释放、不向持有者发送任何请求，对持有者完全不可见。ok 表示已经可以继续（拿到、空闲或本来就在自己手里）；到点返回 failed + reason=timed_out，同一身份再次并发等待返回 reason=identity_busy。是否结束当前 run 由自己决定。",
   sprout_remote_shell:
-    "在显式指定的远端 Machine 执行 shell，绝非宿主 shell。machineId 与当前租约 authorizationGeneration 必填。以 Worker 用户权限执行，cwd 不是安全边界；省略 cwd 使用该 Machine 已确认的项目目录。waitMs 最多 10000；非终态用 execution_get 查询，切勿为查询而重复执行。",
+    "在显式指定的远端 Machine 执行 shell，绝非宿主 shell。machineId 与当前租约 authorizationGeneration 必填。以 Worker 用户权限执行，cwd 不是安全边界；省略 cwd 使用该 Machine 已确认的项目目录。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回。预算用完返回 outcome=pending 与 executionId，命令没有被取消，绝不要重跑同一条命令。要继续等就调用 sprout_remote_execution_wait。",
   sprout_remote_file_read:
-    "读取显式指定的远端 Machine 上的绝对路径文件，绝非宿主文件。machineId 与当前租约 authorizationGeneration 必填；maxBytes 限制返回大小。",
+    "读取显式指定的远端 Machine 上的绝对路径文件，绝非宿主文件。machineId 与当前租约 authorizationGeneration 必填；maxBytes 限制返回大小。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回；预算用完返回 outcome=pending 与 executionId，命令没有被取消，绝不要重跑同一条命令，继续等用 sprout_remote_execution_wait。",
   sprout_remote_file_write:
-    "写入显式指定的远端 Machine 上的绝对路径文件，绝非宿主文件。machineId 与当前租约 authorizationGeneration 必填；mode 为 overwrite 或 append。requestId 相同只表示同一次请求。",
+    "写入显式指定的远端 Machine 上的绝对路径文件，绝非宿主文件。machineId 与当前租约 authorizationGeneration 必填；mode 为 overwrite 或 append，requestId 相同只表示同一次请求。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回；预算用完返回 outcome=pending 与 executionId，写入没有被取消，绝不要重跑同一条命令，继续等用 sprout_remote_execution_wait。",
   sprout_remote_process_list:
-    "列出显式指定的远端 Machine 上的进程，绝非宿主进程。machineId 与当前租约 authorizationGeneration 必填；limit 限制返回条数。",
+    "列出显式指定的远端 Machine 上的进程，绝非宿主进程。machineId 与当前租约 authorizationGeneration 必填；limit 限制返回条数。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回；预算用完返回 outcome=pending 与 executionId，命令没有被取消，绝不要重跑同一条命令，继续等用 sprout_remote_execution_wait。",
   sprout_remote_process_signal:
-    "向显式指定的远端 Machine 上的 pid 发送 TERM/INT/KILL，绝非宿主进程。machineId 与当前租约 authorizationGeneration 必填。租约释放/交接不会自动调用此操作。",
-  sprout_remote_execution_wait: `阻塞等待远程 execution 到终态，machineId 与 executionId 必填。默认等待 ${EXECUTION_WAIT_DEFAULT_MS / 60_000} 分钟，最多 ${EXECUTION_WAIT_MAX_MS / 60_000} 分钟，waitMs 不足 1 秒按 1 秒算；返回的 data 是最后一次读到的 ExecutionView。outcome 为 timed_out 时要按字段分开看：带 requestedMs 与 waitedMs 的，是自己的等待预算到点、执行可能仍在跑，不要据此重试有副作用的操作；只带 requestId 的，是 execution 自身以 timed_out 终态结束，那是真超时。等待期间可用取消中断。`,
+    "向显式指定的远端 Machine 上的 pid 发送 TERM/INT/KILL，绝非宿主进程。machineId 与当前租约 authorizationGeneration 必填；租约释放/交接不会自动调用此操作。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回；预算用完返回 outcome=pending 与 executionId，信号没有被撤销，绝不要重发同一个信号，继续等用 sprout_remote_execution_wait。",
+  sprout_remote_execution_wait: `对已存在的执行续等：machineId 与 executionId 必填。默认续等 ${EXECUTION_WAIT_DEFAULT_MS / 60_000} 分钟，最多 ${EXECUTION_WAIT_MAX_MS / 60_000} 分钟，blockMs 是自己愿意等多久，不足 1 秒按 1 秒算；返回的 data 是最后一次读到的 ExecutionView。outcome 为 timed_out 时要按字段分开看：带 requestedMs 与 waitedMs 的，是自己的等待预算到点、执行可能仍在跑，命令没有被取消，不要据此重试有副作用的操作；只带 requestId 的，是 execution 自身以 timed_out 终态结束，那是真超时。等待期间可用取消中断。`,
   sprout_remote_execution_get:
-    "查询显式指定的远端 Machine 上一次 executionId 的状态与有界结果。machineId 必填。queued/dispatched/running/draining 不是执行成功；unknown 不表示没有执行，勿自动重试有副作用的操作。",
+    "查询显式指定的远端 Machine 上一次 executionId 的当前快照，立刻读一次，不等待。machineId 必填。queued/dispatched/running/draining 不是执行成功；unknown 不表示没有执行，勿自动重试有副作用的操作。要继续等已存在的 execution，用 sprout_remote_execution_wait。",
   sprout_remote_execution_list:
     "列出当前 holder 可接续读取的远端执行，按 createdAt/id 倒序分页；machineId 必填，limit 默认 20、最多 100，before 使用原样 nextCursor。authority=holder 表示本分身在当前代次发起；inherited 是继承的历史执行，不能声称是自己刚执行的。原 authorizationGeneration 是发起代次，取消必须使用 currentAuthorizationGeneration。",
   sprout_remote_execution_cancel:
@@ -73,8 +76,26 @@ const descriptions: Record<ToolName, string> = {
     "按游标增量读取显式指定的远端 Machine 上一次执行的日志，绝非宿主文件。machineId 必填，cursor 为 {executionId,nextSequence} 或 null 从起点读；用别的执行的游标会被 execution_log_cursor_stale 拒绝，limitBytes 最多 65536。frames 为空只表示该范围无帧，不等于没有输出。gapRanges 非空或 logState 为 gap / truncated 表示日志不完整，必须当作不完整展示；logState 为 none 才是确知无输出；workerOnline 为 false 时未收到的部分仍是 unknown。",
 };
 
-function buildRequest(name: ToolName, parameters: unknown, projectId: string): RemoteAgentRequest {
+/** 五个「创建 execution」的工具：提交成功后默认阻塞等终态。 */
+const EXECUTION_CREATE_TOOLS = new Set<ToolName>([
+  "sprout_remote_shell",
+  "sprout_remote_file_read",
+  "sprout_remote_file_write",
+  "sprout_remote_process_list",
+  "sprout_remote_process_signal",
+]);
+
+interface BuiltRequest {
+  request: RemoteAgentRequest;
+  /** 工具面 `blockMs`，只用于本地等待，绝不进入线协议。 */
+  blockMs?: number;
+  machineId?: string;
+}
+
+function buildRequest(name: ToolName, parameters: unknown, projectId: string): BuiltRequest {
   let call: unknown;
+  let blockMs: number | undefined;
+  let machineId: string | undefined;
   if (name === "sprout_chat_continuation_get") {
     call = {
       type: "chat_continuation_get",
@@ -84,18 +105,21 @@ function buildRequest(name: ToolName, parameters: unknown, projectId: string): R
       },
     };
   } else if (name === "sprout_remote_execution_cancel") {
-    call = {
-      type: "execution_cancel",
-      input: { ...cancelToolInputSchema.parse(parameters), projectId },
-    };
+    const input = cancelToolInputSchema.parse(parameters) as Record<string, unknown>;
+    if (typeof input.machineId === "string") machineId = input.machineId;
+    call = { type: "execution_cancel", input: { ...input, projectId } };
   } else if (name === "sprout_remote_execution_log") {
-    call = {
-      type: "execution_log_read",
-      input: { ...logReadToolInputSchema.parse(parameters), projectId },
-    };
+    const input = logReadToolInputSchema.parse(parameters) as Record<string, unknown>;
+    if (typeof input.machineId === "string") machineId = input.machineId;
+    call = { type: "execution_log_read", input: { ...input, projectId } };
   } else {
-    const input =
-      remoteToolInputSchemas[name as keyof typeof remoteToolInputSchemas].parse(parameters);
+    const parsed = remoteToolInputSchemas[name as keyof typeof remoteToolInputSchemas].parse(
+      parameters,
+    ) as Record<string, unknown>;
+    // blockMs 是工具面的等待预算，不是线协议字段；去掉它，operation 里不得出现。
+    const { blockMs: requestedBlockMs, ...input } = parsed;
+    if (typeof requestedBlockMs === "number") blockMs = requestedBlockMs;
+    if (typeof input.machineId === "string") machineId = input.machineId;
     if (name === "sprout_lease_get") {
       call = { type: "lease_get", input: { ...input, projectId } };
     } else if (name === "sprout_remote_execution_get") {
@@ -108,12 +132,12 @@ function buildRequest(name: ToolName, parameters: unknown, projectId: string): R
         input: { ...input, projectId, action: name.slice("sprout_lease_".length) },
       };
     } else if ("authorizationGeneration" in input) {
-      const { machineId, requestId, authorizationGeneration, ...operation } = input;
+      const { machineId: target, requestId, authorizationGeneration, ...operation } = input;
       call = {
         type: "execution_submit",
         input: {
           projectId,
-          machineId,
+          machineId: target,
           requestId,
           authorizationGeneration,
           operation: { kind: name.slice("sprout_remote_".length), ...operation },
@@ -123,7 +147,11 @@ function buildRequest(name: ToolName, parameters: unknown, projectId: string): R
       throw new Error("无效远端工具");
     }
   }
-  return remoteAgentRequestSchema.parse({ version: 2, call });
+  return {
+    request: remoteAgentRequestSchema.parse({ version: 2, call }),
+    blockMs,
+    machineId,
+  };
 }
 
 /** 取消的可见状态到工具展示文案：只有 `exited_observed` 才是已停。 */
@@ -285,6 +313,26 @@ function validationFailure(message: string): SproutToolResult {
   return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: true };
 }
 
+/**
+ * 工具输入校验失败时的提示。`waitMs` 是 worker 快照窗口，已经不在工具面上，
+ * 单独点名它并指向新的等待预算字段 `blockMs`，避免脚本按旧参数重试。
+ */
+function toolInputFailure(
+  error: unknown,
+  fallbackMessage = "远端工具参数无效；必须显式提供合法 machineId，且不得声明调用者身份。",
+): SproutToolResult {
+  const leakedWaitMs =
+    error instanceof z.ZodError &&
+    error.issues.some(
+      (issue) => issue.code === "unrecognized_keys" && issue.keys.includes("waitMs"),
+    );
+  return validationFailure(
+    leakedWaitMs
+      ? "远端工具参数无效；工具面不再接受 waitMs（那是线协议的 worker 快照字段），等待预算请用 blockMs（毫秒，0 表示不等待）。"
+      : fallbackMessage,
+  );
+}
+
 /** 读租约失败要把原始远端响应原样带回 `result()`，不能伪装成等待结果。 */
 class LeaseWaitReadFailed extends Error {
   readonly response: RemoteToolResponse;
@@ -408,11 +456,159 @@ function readExecutionView(
   return parsed.data;
 }
 
+/** 从一次响应里取出可信的 execution 视图；不可信时返回 undefined，由调用方按单次结果处理。 */
+function readExecutionViewLoose(
+  response: RemoteToolResponse,
+  projectId: string,
+  machineId: string,
+  executionId: string | undefined,
+): ExecutionView | undefined {
+  if (response.outcome !== "response" || !response.result.ok) return undefined;
+  const parsed = executionViewSchema.safeParse(response.result.data);
+  if (!parsed.success) return undefined;
+  if (parsed.data.projectId !== projectId || parsed.data.machineId !== machineId) return undefined;
+  if (executionId !== undefined && parsed.data.executionId !== executionId) return undefined;
+  return parsed.data;
+}
+
+/**
+ * 等待预算用尽是成功而不是失败：返回 pending、最后一次视图与同一个 executionId，
+ * 并明确命令没有被取消。绝不自动 cancel 或重跑。
+ */
+function executionPendingResult(input: {
+  reason: "not_waited" | "wait_budget_exhausted" | "aborted";
+  machineId: string;
+  executionId: string | undefined;
+  view: ExecutionView | undefined;
+  requestedMs: number;
+  effectiveMs: number;
+  waitedMs: number;
+}): SproutToolResult {
+  const message =
+    input.reason === "not_waited"
+      ? "blockMs 为 0，本次没有等待，execution 可能仍在运行。命令没有被取消，这不是失败。绝不要重跑同一条命令，它可能已经产生了副作用。要继续等就调用 sprout_remote_execution_wait，它的默认预算就是续等预算。"
+      : input.reason === "aborted"
+        ? "调用被中止，等待提前结束，execution 可能仍在运行。命令没有被取消，也不是执行失败。绝不要重跑同一条命令，它可能已经产生了副作用。要继续等就调用 sprout_remote_execution_wait。"
+        : `等待预算 ${input.effectiveMs}ms 已用尽，execution 可能仍在运行。命令没有被取消，这不是执行失败。绝不要重跑同一条命令，它可能已经产生了副作用。要继续等就调用 sprout_remote_execution_wait，它的默认预算就是续等预算。`;
+  const details = {
+    outcome: "pending",
+    reason: input.reason,
+    machineId: input.machineId,
+    executionId: input.executionId ?? null,
+    data: input.view ?? null,
+    requestedMs: input.requestedMs,
+    effectiveMs: input.effectiveMs,
+    waitedMs: input.waitedMs,
+    continueWith: {
+      tool: "sprout_remote_execution_wait",
+      arguments: { machineId: input.machineId, executionId: input.executionId },
+    },
+    message,
+  };
+  return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: false };
+}
+
+/**
+ * 五个创建工具共用同一条阻塞路径：先提交一次，拿到的视图当作第一次读，
+ * 再轮询同一个 executionId 到终态或预算用尽。预算从工具调用开始计时（提交往返计入），
+ * 提交视图不重复读。
+ */
+async function runExecutionBlocking(
+  client: RemoteToolClient,
+  options: {
+    request: RemoteAgentRequest;
+    machineId: string;
+    requestedBlockMs?: number;
+    defaultBlockMs: number;
+    signal?: AbortSignal;
+    now?: () => number;
+  },
+): Promise<SproutToolResult> {
+  const now = options.now ?? Date.now;
+  const startedAt = now();
+  const effectiveMs = clampExecutionBlockMs(options.requestedBlockMs, options.defaultBlockMs);
+  const deadlineMs = startedAt + effectiveMs;
+  const requestedMs = options.requestedBlockMs ?? options.defaultBlockMs;
+  // 预算用尽、没有等待、调用被中止要分开报：调用被中止时说「预算用尽」是假话。
+  const budgetReason: "not_waited" | "wait_budget_exhausted" =
+    effectiveMs === 0 ? "not_waited" : "wait_budget_exhausted";
+
+  let request = options.request;
+  let response: RemoteToolResponse;
+  try {
+    response = await client.request(request, options.signal);
+  } catch {
+    response = { outcome: "unknown", reason: "transport_error" };
+  }
+  let lastView = readExecutionViewLoose(response, client.projectId, options.machineId, undefined);
+  // 没有可信视图时退回单次提交的既有结果语义（失败、断联、不可信响应）。
+  if (!lastView) return result(request, response);
+  const executionId = lastView.executionId;
+  const pending = (
+    reason: "not_waited" | "wait_budget_exhausted" | "aborted" = budgetReason,
+  ): SproutToolResult =>
+    executionPendingResult({
+      reason,
+      machineId: options.machineId,
+      executionId,
+      view: lastView,
+      requestedMs,
+      effectiveMs,
+      // 没有等待就没有等待时长：`not_waited` 的秒表里只剩提交往返，报出来是噪声（CI 上出现过 1ms）。
+      waitedMs: reason === "not_waited" ? 0 : now() - startedAt,
+    });
+
+  // 终态与单次 `execution_get` 同形。
+  if (isTerminalExecutionState(lastView.state)) return result(request, response);
+  // 已中止：给出 pending 与最后一次视图，executionId 不丢。
+  if (options.signal?.aborted) return pending("aborted");
+
+  try {
+    const outcome = await waitForExecution({
+      deadlineMs,
+      firstView: lastView,
+      deps: {
+        readExecution: async () => {
+          if (options.signal?.aborted)
+            throw new ExecutionWaitReadFailed({ outcome: "unknown", reason: "cancelled" });
+          request = buildRequest(
+            "sprout_remote_execution_get",
+            { machineId: options.machineId, executionId },
+            client.projectId,
+          ).request;
+          response = await client.request(request, options.signal);
+          if (options.signal?.aborted)
+            throw new ExecutionWaitReadFailed({ outcome: "unknown", reason: "cancelled" });
+          lastView = readExecutionView(response, client.projectId, options.machineId, executionId);
+          return lastView;
+        },
+        sleep: (ms) => sleepUntilAborted(ms, options.signal),
+        now: () => new Date(now()),
+      },
+    });
+    if (outcome.ok) return result(request, response);
+    lastView = outcome.view;
+    return pending();
+  } catch (error) {
+    if (options.signal?.aborted) return pending("aborted");
+    if (error instanceof ExecutionWaitReadFailed) {
+      if (error.response.outcome === "unknown" && error.response.reason === "cancelled")
+        return pending("aborted");
+      return result(request, error.response);
+    }
+    return result(request, { outcome: "unknown", reason: "transport_error" });
+  }
+}
+
+/**
+ * 保留的续等工具：对已存在的 execution 阻塞到终态或预算用尽。
+ * 工具面字段是 `blockMs`（默认 10 分钟，最多 15 分钟）；等待在扩展侧轮询既有 `execution_get`。
+ */
 async function runExecutionWait(
   client: RemoteToolClient,
   machineId: string,
   executionId: string,
-  waitMs: number | undefined,
+  blockMs: number | undefined,
   signal?: AbortSignal,
   now = Date.now,
 ): Promise<SproutToolResult> {
@@ -420,16 +616,17 @@ async function runExecutionWait(
     "sprout_remote_execution_get",
     { machineId, executionId },
     client.projectId,
-  );
+  ).request;
   let response: RemoteToolResponse = { outcome: "unknown", reason: "transport_error" };
   const startedAt = now();
+  const budgetMs = clampExecutionWaitMs(blockMs);
   const cancelled = (): SproutToolResult => {
     const details = { outcome: "cancelled", message: "已取消等待；远程 execution 可能仍在运行。" };
     return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: false };
   };
   try {
     const outcome = await waitForExecution({
-      requestedMs: waitMs,
+      deadlineMs: startedAt + budgetMs,
       deps: {
         readExecution: async () => {
           if (signal?.aborted)
@@ -444,13 +641,12 @@ async function runExecutionWait(
       },
     });
     if (outcome.ok) return result(request, response);
-    const requestedMs = clampExecutionWaitMs(waitMs);
     const details = {
       outcome: "timed_out",
       data: outcome.view,
-      requestedMs,
+      requestedMs: budgetMs,
       waitedMs: now() - startedAt,
-      message: `等待 ${requestedMs}ms 后 execution 仍在跑；这不是执行失败，不要据此重试有副作用的操作。`,
+      message: `等待 ${budgetMs}ms 后 execution 仍在跑；命令没有被取消，这不是执行失败，不要据此重试有副作用的操作。`,
     };
     return { content: [{ type: "text", text: JSON.stringify(details) }], details, isError: true };
   } catch (error) {
@@ -469,7 +665,7 @@ export function registerRemoteTools(
   client: RemoteToolClient,
 ): void {
   for (const name of Object.keys(remoteToolInputSchemas) as ToolName[]) {
-    // 等待在扩展侧轮询既有读取接口，因此单独注册。
+    // 租约等待与 execution 续等都只在扩展侧轮询既有读取接口，因此单独注册。
     if (name === "sprout_lease_wait" || name === "sprout_remote_execution_wait") continue;
     pi.registerTool({
       name,
@@ -479,18 +675,31 @@ export function registerRemoteTools(
         unrepresentable: "any",
       }),
       async execute(_toolCallId, parameters, signal) {
-        let request: RemoteAgentRequest;
+        let built: BuiltRequest;
         try {
-          request = buildRequest(name, parameters, client.projectId);
-        } catch {
-          return validationFailure(
-            "远端工具参数无效；必须显式提供合法 machineId，且不得声明调用者身份。",
-          );
+          built = buildRequest(name, parameters, client.projectId);
+        } catch (error) {
+          return toolInputFailure(error);
+        }
+        // 五个创建工具默认阻塞到终态；`execution_get` 保持立刻读一次当前快照。
+        // machineId 只在这里要求：创建工具的 schema 必填 machineId，阻塞路径需要这个窄化；
+        // `sprout_chat_continuation_get` 按 run 自己的 Project 取，本来就没有 machineId。
+        if (EXECUTION_CREATE_TOOLS.has(name)) {
+          const machineId = built.machineId;
+          if (!machineId)
+            return validationFailure("远端工具参数无效；必须显式提供合法 machineId。");
+          return runExecutionBlocking(client, {
+            request: built.request,
+            machineId,
+            requestedBlockMs: built.blockMs,
+            defaultBlockMs: EXECUTION_BLOCK_DEFAULT_MS,
+            signal,
+          });
         }
         try {
-          return result(request, await client.request(request, signal));
+          return result(built.request, await client.request(built.request, signal));
         } catch {
-          return result(request, { outcome: "unknown", reason: "transport_error" });
+          return result(built.request, { outcome: "unknown", reason: "transport_error" });
         }
       },
     });
@@ -522,11 +731,12 @@ export function registerRemoteTools(
     async execute(_toolCallId, parameters, signal) {
       const parsed = remoteToolInputSchemas.sprout_remote_execution_wait.safeParse(parameters);
       if (!parsed.success)
-        return validationFailure(
-          "等待工具参数无效；必须提供合法 machineId、executionId，waitMs 可选且为正整数，不得声明调用者身份或授权代次。",
+        return toolInputFailure(
+          parsed.error,
+          "等待工具参数无效；必须提供合法 machineId、executionId，blockMs 可选且为正整数，不得声明调用者身份或授权代次。",
         );
       const input = parsed.data;
-      return runExecutionWait(client, input.machineId, input.executionId, input.waitMs, signal);
+      return runExecutionWait(client, input.machineId, input.executionId, input.blockMs, signal);
     },
   });
 }

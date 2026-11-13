@@ -157,7 +157,7 @@ export function ChatDetails({
   const addableAgents = allAgents.filter((agent) => !currentKeys.has(ownerKey("agent", agent.id)));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-details">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-details" data-chat-id={chat.id}>
       <header className="flex min-h-15.25 items-center gap-2 border-b border-border px-5 max-desktop:min-h-19 max-desktop:px-3 max-desktop:py-3.5">
         <Button
           type="button"

@@ -1,5 +1,9 @@
 import { infoHubGetInputSchema, infoHubViewSchema } from "./info-hub-query";
-import { EXECUTION_WAIT_DEFAULT_MS, EXECUTION_WAIT_MAX_MS } from "./tool-wait";
+import {
+  EXECUTION_BLOCK_DEFAULT_MS,
+  EXECUTION_WAIT_DEFAULT_MS,
+  EXECUTION_WAIT_MAX_MS,
+} from "./tool-wait";
 import { z } from "zod";
 import { assistantCallSchema } from "./assistant";
 import { chatSessionSchema, messageSchema } from "./chat";
@@ -54,11 +58,13 @@ const bytes = (max: number) =>
       (value) => !value.includes("\0") && encoder.encode(value).byteLength <= max,
       `字符串必须无 NUL 且 UTF-8 编码不超过 ${max} bytes`,
     );
-const shellFields = {
+const shellFields = z.strictObject({
   command: bytes(65536),
   cwd: absolutePathSchema.optional(),
   waitMs: nonnegativeSafeIntegerSchema.max(10000).default(1000),
-};
+});
+/** 工具输入不能带线协议的 `waitMs`（那是 worker 快照窗口），改用共享的 `blockMs`。 */
+const shellToolFields = shellFields.omit({ waitMs: true }).shape;
 const fileReadFields = {
   path: absolutePathSchema,
   maxBytes: positiveSafeIntegerSchema.max(262144).default(65536),
@@ -73,7 +79,7 @@ const processSignalFields = {
   pid: positiveSafeIntegerSchema,
   signal: z.enum(["TERM", "INT", "KILL"]),
 };
-const shellOperationSchema = z.strictObject({ kind: z.literal("shell"), ...shellFields });
+const shellOperationSchema = shellFields.extend({ kind: z.literal("shell") });
 const otherOperations = [
   z.strictObject({ kind: z.literal("file_read"), ...fileReadFields }),
   z.strictObject({ kind: z.literal("file_write"), ...fileWriteFields }),
@@ -696,6 +702,17 @@ const toolExecutionBase = {
   ...toolMutationBase,
   authorizationGeneration: positiveSafeIntegerSchema,
 };
+/**
+ * 创建型工具面的等待预算，与线协议 `waitMs` 无关：`fallbackMs` 是省略时的默认值（创建型工具 30000）。
+ * 非负安全整数，超出上限在运行时钳断，schema 不拒绝。
+ */
+const blockMsField = (fallbackMs: number) => ({
+  blockMs: nonnegativeSafeIntegerSchema
+    .optional()
+    .describe(
+      `本次工具调用最多等待多少毫秒；默认 ${fallbackMs}，最多 ${EXECUTION_WAIT_MAX_MS}，超出会钳到上限，0 表示不等待。`,
+    ),
+});
 export const remoteToolInputSchemas = {
   sprout_chat_continuation_get: chatContinuationGetInputSchema.omit({ projectId: true }),
   sprout_lease_acquire: z.strictObject({
@@ -733,11 +750,31 @@ export const remoteToolInputSchemas = {
     expectedGeneration: positiveSafeIntegerSchema,
     escrowId: id(ID_PREFIXES.leaseEscrow),
   }),
-  sprout_remote_shell: z.strictObject({ ...toolExecutionBase, ...shellFields }),
-  sprout_remote_file_read: z.strictObject({ ...toolExecutionBase, ...fileReadFields }),
-  sprout_remote_file_write: z.strictObject({ ...toolExecutionBase, ...fileWriteFields }),
-  sprout_remote_process_list: z.strictObject({ ...toolExecutionBase, ...processListFields }),
-  sprout_remote_process_signal: z.strictObject({ ...toolExecutionBase, ...processSignalFields }),
+  sprout_remote_shell: z.strictObject({
+    ...toolExecutionBase,
+    ...shellToolFields,
+    ...blockMsField(EXECUTION_BLOCK_DEFAULT_MS),
+  }),
+  sprout_remote_file_read: z.strictObject({
+    ...toolExecutionBase,
+    ...fileReadFields,
+    ...blockMsField(EXECUTION_BLOCK_DEFAULT_MS),
+  }),
+  sprout_remote_file_write: z.strictObject({
+    ...toolExecutionBase,
+    ...fileWriteFields,
+    ...blockMsField(EXECUTION_BLOCK_DEFAULT_MS),
+  }),
+  sprout_remote_process_list: z.strictObject({
+    ...toolExecutionBase,
+    ...processListFields,
+    ...blockMsField(EXECUTION_BLOCK_DEFAULT_MS),
+  }),
+  sprout_remote_process_signal: z.strictObject({
+    ...toolExecutionBase,
+    ...processSignalFields,
+    ...blockMsField(EXECUTION_BLOCK_DEFAULT_MS),
+  }),
   sprout_remote_execution_get: z.strictObject({
     machineId: leaseKeySchema.shape.machineId,
     executionId: executionIdSchema,
@@ -755,13 +792,18 @@ export const remoteToolInputSchemas = {
     machineId: leaseKeySchema.shape.machineId,
     waitMs: positiveSafeIntegerSchema.optional(),
   }),
+  /**
+   * 对已存在的 execution 续等：只声明「目标 Machine / execution」与「自己愿意等多久」。
+   * 工具面字段统一叫 `blockMs`（默认 10 分钟，最多 15 分钟）；`waitMs` 已被 strictObject 拒绝。
+   * 等待在扩展侧轮询既有 `execution_get`，身份（instanceId）与 Project 由宿主注入。
+   */
   sprout_remote_execution_wait: z.strictObject({
     machineId: leaseKeySchema.shape.machineId,
     executionId: executionIdSchema,
-    waitMs: positiveSafeIntegerSchema
+    blockMs: positiveSafeIntegerSchema
       .optional()
       .describe(
-        `等待预算（毫秒）；默认 ${EXECUTION_WAIT_DEFAULT_MS}，最多 ${EXECUTION_WAIT_MAX_MS}。`,
+        `续等预算（毫秒）；默认 ${EXECUTION_WAIT_DEFAULT_MS}，最多 ${EXECUTION_WAIT_MAX_MS}，超出按上限算，不足一秒按一秒算。`,
       ),
   }),
 } as const;
