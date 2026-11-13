@@ -352,7 +352,7 @@ try {
     timeout: 30000,
   })
   await shot('rm3-lane-card-dark.png')
-  await check('lane_13_dark_theme_moves_the_paper_with_it', async () => {
+  await check('lane_13_dark_theme_keeps_the_paper_light', async () => {
     const look = await page.locator(htmlBlock(ids.L4)).evaluate((node) => {
       const style = getComputedStyle(node)
       const canvas = document.createElement('canvas')
@@ -368,14 +368,15 @@ try {
       }
       return {
         paper: style.backgroundColor,
-        text: style.color,
         paperLuminance: luminance(style.backgroundColor),
-        textLuminance: luminance(style.color),
+        background: luminance(getComputedStyle(document.body).backgroundColor),
+        colorScheme: style.colorScheme,
       }
     })
-    assert(look.paperLuminance < 0.35, `暗色主题下纸面应随之变暗，实际 ${JSON.stringify(look)}`)
-    assert(look.textLuminance > 0.6, `暗色主题下文字应转浅，实际 ${JSON.stringify(look)}`)
-    return `paper=${look.paper} text=${look.text}`
+    assert(look.paperLuminance > 0.8, `文档纸面应按浅色页面固定，实际 ${JSON.stringify(look)}`)
+    assert.equal(look.colorScheme, 'light', `沙箱内默认文字应由 light 的 color-scheme 定成深色：${JSON.stringify(look)}`)
+    assert(look.paperLuminance - look.background > 0.5, `浅色纸面应与暗色界面明显分开：${JSON.stringify(look)}`)
+    return `paper=${look.paper} color-scheme=${look.colorScheme}`
   })
 } finally {
   await browser.close().catch(() => {})
