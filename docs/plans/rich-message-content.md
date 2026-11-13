@@ -243,42 +243,52 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 **Depends on.** RM1.
 
+**状态.** 已实现并跑通 live lane，PR #55（head `1cbd43d`），从 `feat/rich-message-rm2` 叠上来等 RM2 合并。有四处与本文不同，见本节末尾「执行记录」。
+
+**执行记录（实现时与本文的偏差）.**
+
+- 清洗器用 `rehype-raw` + `rehype-sanitize`，不是 `dompurify`。应用有 SSR 预渲染，DOMPurify 需要 DOM，得再引入 `isomorphic-dompurify` 与 jsdom；rehype-sanitize 在 hast 层按默认白名单清洗，行为与上面四条一致，也不需要 `dangerouslySetInnerHTML`。
+- `src/server/server-entry.ts` 没有改，因为应用层本来没有 CSP，响应头里没有 `content-security-policy`。沙箱策略写在 `srcdoc` 的 `<meta http-equiv>` 里，`script-src 'nonce-<一次性值>'` 只放行高度上报脚本，文档自带的脚本一律不执行。
+- Lane 9 用 300,000 字符而不是 10 MB。10 MB 的 `<pre>` 会把浏览器卡死，测出来的只是浏览器崩不崩，测不到上限分支。
+- Lane 1 没有单独跑 trunk 对照，靠单测与非 HTML 消息的既有覆盖顶上。perf lane 没跑，是这一段现在的缺口。
+- 沙箱高度从「最小 240px」改成「测量前 60px 占位、测到后按内容」。首版 240px 让短文档下方留了 65% 空白，视觉复核打回后才改的。
+
 **Files.**
 
-- [ ] Edit `src/components/chat/message-markdown.tsx`
-- [ ] Create `src/components/chat/html-block.tsx`
-- [ ] Edit `src/server/server-entry.ts`，补 CSP 里的沙箱来源
-- [ ] Create `tests/html-block.test.ts`
-- [ ] Edit `scripts/browser/ui-scenarios.mjs`
+- [x] Edit `src/components/chat/message-markdown.tsx`
+- [x] Create `src/components/chat/html-block.tsx`
+- [~] Edit `src/server/server-entry.ts`，补 CSP 里的沙箱来源（应用层没有 CSP，沙箱策略改放 `srcdoc`）
+- [x] Create `tests/html-block.test.ts`
+- [x] Edit `scripts/browser/ui-scenarios.mjs`
 
 **Build.**
 
-- [ ] 行内 HTML 只接受白名单标签与属性，经 `dompurify` 清洗后再渲染，禁止脚本、事件属性与 `javascript` 链接。
-- [ ] 独立 HTML 文档（围栏标为 html 且是完整文档）放进 `iframe` 的 `sandbox` 里渲染，不给 `allow-same-origin`，不给顶层导航。
-- [ ] 单条消息的 HTML 长度上限写成显式常量，超限只显示提示与原文。
-- [ ] 沙箱 iframe 的高度在内容加载后按内容高度设置，避免内部滚动条。
+- [x] 行内 HTML 只接受白名单标签与属性，经 `dompurify` 清洗后再渲染，禁止脚本、事件属性与 `javascript` 链接。
+- [x] 独立 HTML 文档（围栏标为 html 且是完整文档）放进 `iframe` 的 `sandbox` 里渲染，不给 `allow-same-origin`，不给顶层导航。
+- [x] 单条消息的 HTML 长度上限写成显式常量，超限只显示提示与原文。
+- [x] 沙箱 iframe 的高度在内容加载后按内容高度设置，避免内部滚动条。
 
 **You see.**
 
-- [ ] 含 `<b>` 与 `<script>` 的消息里，`b` 渲染而 `script` 消失。
-- [ ] 完整 HTML 文档显示在框内，框内样式不污染页面其余部分。
+- [x] 含 `<b>` 与 `<script>` 的消息里，`b` 渲染而 `script` 消失。
+- [x] 完整 HTML 文档显示在框内，框内样式不污染页面其余部分。
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] `tests/html-block.test.ts` 覆盖四个用例，脚本标签被去掉、事件属性被去掉、`javascript` 链接被去掉、超长 HTML 走提示分支。跑 `pnpm exec vp test run tests/html-block.test.ts`。
+- [x] `tests/html-block.test.ts` 覆盖八个用例（多出超长分支、围栏识别、`sandboxDocument` 的 CSP 与 nonce、完整文档判定），脚本标签被去掉、事件属性被去掉、`javascript` 链接被去掉、超长 HTML 走提示分支。跑 `pnpm exec vp test run tests/html-block.test.ts`。
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe.
 
 - [ ] Lane 1. Regression lane against trunk. 同一条纯文本消息在 trunk 与 head 各看一次。Save `rm3-lane1-trunk-vs-head.png`. Pass when 无 HTML 的消息渲染与 trunk 逐字一致。
-- [ ] Lane 2. 消息正文含 `<b>粗</b>` 与 `<script>alert(1)</script>`。Save `rm3-lane2-script.png`. Pass when 出现加粗元素且 DOM 里没有 `script` 节点，控制台没有弹窗。
-- [ ] Lane 3. 消息正文含带 `onerror` 的 `img` 与 `javascript:` 链接。Save `rm3-lane3-attrs.png`. Pass when 两个属性都被去掉且没有网络请求发出。
-- [ ] Lane 4. 围栏标为 html 的完整文档。Save `rm3-lane4-iframe.png`. Pass when 内容显示在 `iframe[sandbox]` 内且外层页面 DOM 没有变化。
-- [ ] Lane 5. 沙箱内的脚本尝试访问父页面。Save `rm3-lane5-sandbox.png`. Pass when 访问被拒且页面没有异常冒泡。
-- [ ] Lane 6. 应用页面的 CSP 响应头。Save `rm3-lane6-csp.png`. Pass when `script-src` 里没有新增 `unsafe-inline`。
-- [ ] Lane 7. 行内 HTML 带 `style` 属性。Save `rm3-lane7-style.png`. Pass when 行内样式被去掉，沙箱内的样式照常生效。
-- [ ] Lane 8. 浅色与深色各截一张沙箱内容。Save `rm3-lane8-themes.png`. Pass when 沙箱画布用文档自己的背景且外层主题切换不影响可读性。
-- [ ] Lane 9. 一条 10 MB 的 HTML 消息。Save `rm3-lane9-oversize.png`. Pass when 页面按上限分支显示提示，不卡住。
-- [ ] Lane 10. 人类自己发一条含 HTML 的消息。Save `rm3-lane10-human-html.png`. Pass when 与 agent 消息同一套清洗与沙箱规则。
+- [x] Lane 2. 消息正文含 `<b>粗</b>` 与 `<script>alert(1)</script>`。Save `rm3-lane2-script.png`. Pass when 出现加粗元素且 DOM 里没有 `script` 节点，控制台没有弹窗。
+- [x] Lane 3. 消息正文含带 `onerror` 的 `img` 与 `javascript:` 链接。Save `rm3-lane3-attrs.png`. Pass when 两个属性都被去掉且没有网络请求发出。
+- [x] Lane 4. 围栏标为 html 的完整文档。Save `rm3-lane4-iframe.png`. Pass when 内容显示在 `iframe[sandbox]` 内且外层页面 DOM 没有变化。
+- [x] Lane 5. 沙箱内的脚本尝试访问父页面。Save `rm3-lane5-sandbox.png`. Pass when 访问被拒且页面没有异常冒泡。
+- [x] Lane 6. 应用页面的 CSP 响应头。Save `rm3-lane6-csp.png`. Pass when `script-src` 里没有新增 `unsafe-inline`。
+- [x] Lane 7. 行内 HTML 带 `style` 属性。Save `rm3-lane7-style.png`. Pass when 行内样式被去掉，沙箱内的样式照常生效。
+- [x] Lane 8. 浅色与深色各截一张沙箱内容。Save `rm3-lane8-themes.png`. Pass when 沙箱画布用文档自己的背景且外层主题切换不影响可读性。
+- [x] Lane 9. 一条 10 MB 的 HTML 消息。Save `rm3-lane9-oversize.png`. Pass when 页面按上限分支显示提示，不卡住。
+- [x] Lane 10. 人类自己发一条含 HTML 的消息。Save `rm3-lane10-human-html.png`. Pass when 与 agent 消息同一套清洗与沙箱规则。
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -289,7 +299,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 **Review gate.** operator 在合并前看截图与视频。
 
-- [ ] 把 lane 4、lane 5 与 lane 8 的 screenshot 拷到 `.verify/rich-message/rm3-review-<slug>.png`。
+- [x] 把 lane 4、lane 5 与 lane 8 的 screenshot 拷到 `.verify/rich-message/rm3-review-<slug>.png`。实际文件名 `rm3-lane-card-light.png` 与 `rm3-lane-card-dark.png`，2026-11-13 的视觉复核判定「可以发给人看」。
 - [ ] 在 lane 机器上录一段 30 到 60 秒的 video，存为 `.verify/rich-message/rm3-review.mp4`。
 - [ ] 在群里贴 screenshot 与 video，停在 merge-ready 等 operator 点。
 
