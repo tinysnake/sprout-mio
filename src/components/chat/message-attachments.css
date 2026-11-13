@@ -144,11 +144,33 @@
   border: 1px dashed var(--border);
 }
 
+/*
+ * 大图窗口占满整个视口。Dialog 的 Popup 默认是 460px 宽的居中卡片，那些 utility 在
+ * @layer utilities 里，组件自己的样式不在图层里，所以这里的规则能盖掉它们。
+ */
+.message-viewer {
+  inset: 0;
+  display: flex;
+  width: auto;
+  max-width: none;
+  height: auto;
+  max-height: none;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: hidden;
+  transform: none;
+  translate: none;
+}
+
 .message-viewer__stage {
   display: grid;
+  flex: 1;
   place-items: center;
   width: 100%;
-  height: min(84dvh, 900px);
+  height: 100%;
   overflow: hidden;
   /* 图片总在窗口中央，靠 transform 平移；空白处点击关闭由组件的 onClick 处理。 */
   cursor: grab;
@@ -168,17 +190,30 @@
 }
 
 .message-viewer__bar {
+  position: absolute;
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  /* 靠 left/right 加 auto 外边距居中，不用 transform：这样可用宽度是整条视口，
+     工具条能保持一行，也不会被 left: 50% 截成半个屏幕宽。 */
+  right: 12px;
+  left: 12px;
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  width: fit-content;
+  max-width: min(440px, calc(100% - 24px));
+  margin-inline: auto;
   padding: 6px 8px;
   border-radius: var(--radius);
-  background: var(--popover);
-  box-shadow: 0 0 0 1px var(--border);
+  /* 半透明加模糊：图片放到最大时会压到工具条下面，两边都还看得清。 */
+  background: color-mix(in oklab, var(--popover) 82%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent);
+  backdrop-filter: blur(8px);
 }
 
 .message-viewer__name {
-  margin-right: auto;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   font-size: 12px;
   font-weight: 500;
@@ -187,7 +222,20 @@
 }
 
 .message-viewer__zoom {
+  flex: none;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
+}
+
+/* 窄屏上按钮本身就有 44px 触控高度，再塞百分比就会挤出屏幕。 */
+@media (max-width: 360px) {
+  .message-viewer__bar {
+    gap: 4px;
+    padding: 4px 6px;
+  }
+
+  .message-viewer__zoom {
+    display: none;
+  }
 }

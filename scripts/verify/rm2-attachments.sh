@@ -676,6 +676,8 @@ try {
       async () => Number(await stageNode.getAttribute('data-fit-scale')) > 0,
       'viewer measures the natural size',
     )
+    // Dialog 有一段 zoom-in 的入场动画，动画期间量到的矩形只有布局尺寸的 95%。
+    await delay(700)
     const stage = await stageNode.boundingBox()
     assert.ok(stage, '大图窗口应有可交互的画布')
     const read = async () => ({
@@ -692,7 +694,43 @@ try {
       fitted.image.width <= stage.width + 1 && fitted.image.height <= stage.height + 1,
       `适应窗口时整张图都应在窗口里：${JSON.stringify({ image: fitted.image, stage })}`,
     )
-    assert.ok(fitted.fit <= 2 + 0.001, `适应窗口也不得超过 200%：${fitted.fit}`)
+    assert.ok(fitted.fit <= 1 + 0.001, `比窗口小的图不放大：${fitted.fit}`)
+    const panel = await page.locator('[data-testid="message-attachment-viewer"]').boundingBox()
+    const viewport = page.viewportSize()
+    assert.ok(panel && viewport, '大图窗口应有可量的面板')
+    assert.ok(
+      panel.width >= viewport.width - 1 && panel.height >= viewport.height - 1,
+      `大图窗口应占满视口：${JSON.stringify({ panel, viewport })}`,
+    )
+    const bar = await page.locator('.message-viewer__bar').boundingBox()
+    assert.ok(bar, '大图窗口应有工具条')
+    assert.ok(bar.width <= 440 + 1, `工具条最宽不超过 440px：${bar.width}`)
+    assert.ok(
+      bar.x >= -1 && bar.x + bar.width <= viewport.width + 1 && bar.y + bar.height <= viewport.height + 1,
+      `工具条应落在视口里：${JSON.stringify({ bar, viewport })}`,
+    )
+    const barRows = await page.evaluate(() => {
+      const bar = document.querySelector('.message-viewer__bar')
+      const box = bar.getBoundingClientRect()
+      const tallest = Math.max(...[...bar.children].map((child) => child.getBoundingClientRect().height))
+      const styles = getComputedStyle(bar)
+      return {
+        height: box.height,
+        limit: tallest + parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom) + 2,
+      }
+    })
+    assert.ok(
+      barRows.height <= barRows.limit,
+      `工具条应保持一行：${JSON.stringify(barRows)}`,
+    )
+    const barTint = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.message-viewer__bar')).backgroundColor,
+    )
+    assert.ok(
+      (/rgba\([^)]*,\s*0?\.\d+\)/.test(barTint) ||
+        /(?:oklab|oklch|color)\([^)]*\/\s*0?\.\d+/.test(barTint)),
+      `工具条应半透明：${barTint}`,
+    )
     await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2)
     await page.mouse.wheel(0, -400)
     await delay(250)
@@ -741,6 +779,37 @@ try {
       0,
       'Escape 应关闭大图窗口',
     )
+    await page.setViewportSize({ width: 390, height: 844 })
+    await delay(400)
+    await open.scrollIntoViewIfNeeded()
+    await open.click()
+    await page.waitForSelector('[data-testid="message-viewer-stage"]', { timeout: 15000 })
+    await delay(600)
+    const narrowBar = await page.evaluate(() => {
+      const bar = document.querySelector('.message-viewer__bar')
+      const box = bar.getBoundingClientRect()
+      const tallest = Math.max(...[...bar.children].map((child) => child.getBoundingClientRect().height))
+      const styles = getComputedStyle(bar)
+      return {
+        height: box.height,
+        limit: tallest + parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom) + 2,
+        x: box.x,
+        right: box.right,
+        viewport: window.innerWidth,
+      }
+    })
+    assert.ok(
+      narrowBar.height <= narrowBar.limit,
+      `窄屏工具条应保持一行：${JSON.stringify(narrowBar)}`,
+    )
+    assert.ok(
+      narrowBar.x >= -1 && narrowBar.right <= narrowBar.viewport + 1,
+      `窄屏工具条应落在屏幕里：${JSON.stringify(narrowBar)}`,
+    )
+    await shot('rm2-lane11-narrow.png')
+    await page.keyboard.press('Escape')
+    await page.setViewportSize({ width: 1360, height: 940 })
+    await delay(300)
     return `适应 ${fitted.fit}x（全图 ${Math.round(fitted.image.width)}x${Math.round(fitted.image.height)} 落在 ${Math.round(stage.width)}x${Math.round(stage.height)} 里），滚轮 ${fitted.scale} -> ${zoomed.scale}，拖动与加减按钮生效，点空白与 Escape 都能关`
   })
 

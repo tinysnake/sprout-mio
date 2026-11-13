@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   ATTACHMENT_MAX_UPSCALE,
+  ATTACHMENT_VIEWER_MAX_FIT,
   attachmentDisplayWidth,
   attachmentViewerFitScale,
 } from "../src/components/chat/message-attachment-layout";
@@ -77,8 +78,10 @@ describe("大图窗口打开时的比例", () => {
     expect(4000 * scale).toBeLessThanOrEqual(box.width);
   });
 
-  it("小图最多放大到 200%", () => {
-    expect(attachmentViewerFitScale(48, 24, box.width, box.height)).toBe(ATTACHMENT_MAX_UPSCALE);
+  it("比窗口小的图保持 100%，不被拉大", () => {
+    expect(attachmentViewerFitScale(48, 24, box.width, box.height)).toBe(ATTACHMENT_VIEWER_MAX_FIT);
+    expect(attachmentViewerFitScale(120, 80, box.width, box.height)).toBe(1);
+    expect(attachmentViewerFitScale(300, 900, box.width, box.height)).toBeLessThanOrEqual(1);
   });
 
   it("尺寸未量到时回退 1", () => {
@@ -96,6 +99,7 @@ describe("大图窗口打开时的比例", () => {
     ];
     for (const [naturalWidth, naturalHeight] of cases) {
       const scale = attachmentViewerFitScale(naturalWidth, naturalHeight, box.width, box.height);
+      expect(scale).toBeLessThanOrEqual(1);
       expect(scale).toBeGreaterThanOrEqual(0.02);
       expect(naturalWidth * scale).toBeLessThanOrEqual(box.width + 0.001);
       expect(naturalHeight * scale).toBeLessThanOrEqual(box.height + 0.001);

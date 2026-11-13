@@ -25,9 +25,12 @@ export function attachmentDisplayWidth(
 /** 大图窗口里允许的最大放大倍数。 */
 export const ATTACHMENT_VIEWER_MAX_ZOOM = 8;
 
+/** 大图窗口打开时不主动放大：比窗口小的图保持 100%，只有装不下的才缩。 */
+export const ATTACHMENT_VIEWER_MAX_FIT = 1;
+
 /**
- * 大图窗口打开时的默认比例。第一眼要看全貌，所以整张图必须落在窗口里：
- * 只按窗口与图片的宽高比算得下多少就多少，再受 200% 的放大上限约束。
+ * 大图窗口打开时的默认比例。第一眼要看全貌，所以过大的图按窗口与图片的宽高比缩到看得全；
+ * 本来就比窗口小的图保持 100%，不因为窗口大就被拉大。
  * 尺寸还没量到（图片未加载或窗口未布局）时回退 1，量到后会自动纠正。
  */
 export function attachmentViewerFitScale(
@@ -38,5 +41,5 @@ export function attachmentViewerFitScale(
 ): number {
   if (!(naturalWidth > 0) || !(naturalHeight > 0) || !(boxWidth > 0) || !(boxHeight > 0)) return 1;
   const fit = Math.min(boxWidth / naturalWidth, boxHeight / naturalHeight);
-  return Math.max(0.02, Math.min(fit, ATTACHMENT_MAX_UPSCALE));
+  return Math.max(0.02, Math.min(fit, ATTACHMENT_VIEWER_MAX_FIT));
 }

@@ -336,6 +336,21 @@ export function AttachmentViewer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // 关掉就整棵卸载：Dialog 门户留着会让同时存在多份窗口，读页面时容易量到旧的。
+  if (!open) return null;
+
+  return <OpenViewer attachment={attachment} url={url} onOpenChange={onOpenChange} />;
+}
+
+function OpenViewer({
+  attachment,
+  url,
+  onOpenChange,
+}: {
+  attachment: Attachment;
+  url: string;
+  onOpenChange: (open: boolean) => void;
+}) {
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
   const [box, setBox] = useState({ width: 0, height: 0 });
   const [natural, setNatural] = useState({ width: 0, height: 0 });
@@ -354,12 +369,12 @@ export function AttachmentViewer({
   }, []);
 
   useEffect(() => {
-    if (open) reset();
-  }, [open, attachment.id, reset]);
+    reset();
+  }, [attachment.id, reset]);
 
   // 量窗口：Dialog 的门户在 open 之后才挂上，所以依赖 stage，节点到了才量。
   useEffect(() => {
-    if (!open || stage === null) return;
+    if (stage === null) return;
     const measure = () => {
       const next = { width: stage.clientWidth, height: stage.clientHeight };
       setBox((previous) =>
@@ -374,7 +389,7 @@ export function AttachmentViewer({
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [open, stage]);
+  }, [stage]);
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -387,7 +402,7 @@ export function AttachmentViewer({
   );
 
   useEffect(() => {
-    if (!open || stage === null) return;
+    if (stage === null) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       zoomBy(event.deltaY < 0 ? VIEWER_WHEEL_STEP : 1 / VIEWER_WHEEL_STEP);
@@ -395,7 +410,7 @@ export function AttachmentViewer({
     // 滚轮监听必须自己装，因为要 preventDefault；React 的 onWheel 在根上是 passive 的。
     stage.addEventListener("wheel", onWheel, { passive: false });
     return () => stage.removeEventListener("wheel", onWheel);
-  }, [open, stage, zoomBy]);
+  }, [stage, zoomBy]);
 
   const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     dragRef.current = null;
@@ -406,11 +421,11 @@ export function AttachmentViewer({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
         data-testid="message-attachment-viewer"
-        className="message-viewer w-[94vw] max-w-none gap-0 rounded-none border-0 bg-transparent p-0 max-h-none"
+        className="message-viewer"
       >
         <div
           ref={setStage}
