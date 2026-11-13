@@ -385,73 +385,110 @@ try {
   await check('lane_3_live_markdown_and_caret', async () => {
     await clearComposer()
     const draft = '**粗体** *斜体* `代码` 一行'
-    await typeDraft([draft])
+    await typeDraft([{ text: draft, breaksAfter: 1 }, '- [ ] 待办'])
     const rendered = await page.evaluate(() => {
       const root = document.querySelector('[data-testid="message-input"]')
+      const task = root.querySelector('ul[data-type="taskList"] > li')
+      const label = task?.querySelector('label')
+      const inner = task ? [...task.children].find(node => node.tagName === 'DIV') : null
       return {
         strong: root.querySelectorAll('strong').length,
         em: root.querySelectorAll('em').length,
         code: root.querySelectorAll('code').length,
         text: root.textContent ?? '',
+        task: task
+          ? {
+              display: getComputedStyle(task).display,
+              sameLine:
+                Math.abs((label?.getBoundingClientRect().top ?? 0) - (inner?.getBoundingClientRect().top ?? 0)) <= 4,
+            }
+          : null,
       }
     })
     assert.equal(rendered.strong, 1, `粗体应渲染成元素：${JSON.stringify(rendered)}`)
     assert.equal(rendered.em, 1, `斜体应渲染成元素：${JSON.stringify(rendered)}`)
     assert.equal(rendered.code, 1, `行内代码应渲染成元素：${JSON.stringify(rendered)}`)
-    assert.equal(rendered.text.replaceAll('\u200b', '').trim(), '粗体 斜体 代码 一行', `光标离开后源标记应收起：${rendered.text}`)
+    assert.equal(
+      // textContent 不带块分隔符，任务项还会带上复选框的无障碍标签文本。
+      rendered.text.replaceAll('\u200b', '').replace('Task item checkbox for 待办', '').trim(),
+      '粗体 斜体 代码 一行待办',
+      `光标离开后源标记应收起：${rendered.text}`,
+    )
+    assert.ok(
+      rendered.task && rendered.task.display === 'flex' && rendered.task.sameLine,
+      `任务列表的复选框要和文字同一行：${JSON.stringify(rendered.task)}`,
+    )
     await test('message-send').click()
     await until(async () => (await draftText()) === '', 'composer clears after send')
     const stored = sqliteHandle
       .prepare('SELECT body FROM message WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1')
       .get(chatId)?.body
-    assert.equal(stored, draft, `存下来的正文应逐字等于输入：${stored}`)
+    assert.equal(stored, `${draft}\n- [ ] 待办`, `存下来的正文应逐字等于输入：${stored}`)
     await shot('rm2-lane3-live-md.png')
-    return `粗体/斜体/行内代码三处元素，正文逐字保存 ${JSON.stringify(stored)}`
+    return `粗体/斜体/行内代码三处元素，任务项 ${JSON.stringify(rendered.task)}，正文逐字保存 ${JSON.stringify(stored)}`
   })
 
   // 这条 gate 挡的是真出现过的问题：消息容器带 `white-space: pre-wrap` 时，markdown 源码里
   // 元素之间的换行会各撑出一行，块间距从 2px 变成几十像素；输入区没有这类空白节点，所以两边看着不一样。
   await check('block_spacing_matches_composer', async () => {
     const messageId = `msg_spacing_${Date.now()}`
-    const body = ['# 标题', '一段正文', '> 引用一句', '1. 一项', '- 一点'].join('\n\n')
-    sqliteHandle
-      .prepare('INSERT INTO message (id, chat_id, sender_kind, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?, unixepoch() + 5)')
-      .run(messageId, chatId, 'human', userId, body)
-    await page.reload()
-    await test('message-input').waitFor()
-    await until(async () => (await page.locator(`[data-message-id="${messageId}"]`).count()) === 1, 'seeded message renders')
-    const measured = await page.evaluate(id => {
-      const host = document.querySelector(`[data-message-id="${id}"] [data-testid="message-body"]`)
-      const root = host?.querySelector('.markdown-content') ?? host
-      if (!root) throw new Error('message markdown root missing')
-      const kids = [...root.children].map(element => element.getBoundingClientRect())
-      const style = getComputedStyle(root)
-      const paragraph = root.querySelector('p')
-      return {
-        whiteSpace: style.whiteSpace,
-        tags: [...root.children].map(element => element.tagName.toLowerCase()),
-        gaps: kids.slice(1).map((box, index) => Math.round(box.top - kids[index].bottom)),
-        paragraphLineHeight: paragraph ? getComputedStyle(paragraph).lineHeight : null,
-        composerLineHeight: getComputedStyle(document.querySelector('[data-testid="message-input"]')).lineHeight,
-      }
-    }, messageId)
-    assert.equal(measured.whiteSpace, 'normal', `消息容器不能保留源码换行：${JSON.stringify(measured)}`)
-    assert.ok(measured.tags.length >= 5, `块级结构应完整渲染：${JSON.stringify(measured.tags)}`)
-    assert.ok(
-      measured.gaps.every(gap => gap >= 0 && gap <= 4),
-      `块间距应为 2px 量级：${JSON.stringify(measured.gaps)}`,
-    )
-    assert.equal(
-      measured.paragraphLineHeight,
-      measured.composerLineHeight,
-      `正文行高应与输入区一致：${JSON.stringify(measured)}`,
-    )
-    await shot('rm2-lane11-block-spacing.png')
-    // 这条消息只为量间距：删掉并重载，后面的 lane 看到的就是真实会话。
-    sqliteHandle.prepare('DELETE FROM message WHERE id = ?').run(messageId)
-    await page.reload()
-    await test('message-input').waitFor()
-    return `块 ${measured.tags.join('/')}，间距 ${JSON.stringify(measured.gaps)}，行高 ${measured.paragraphLineHeight}`
+    const body = ['# 标题', '一段正文', '> 引用一句', '1. 一项', '- 一点', '- [ ] 待办'].join('\n\n')
+    try {
+      sqliteHandle
+        .prepare('INSERT INTO message (id, chat_id, sender_kind, sender_id, body, created_at) VALUES (?, ?, ?, ?, ?, unixepoch() + 5)')
+        .run(messageId, chatId, 'human', userId, body)
+      await page.reload()
+      await test('message-input').waitFor()
+      await until(async () => (await page.locator(`[data-message-id="${messageId}"]`).count()) === 1, 'seeded message renders')
+      const measured = await page.evaluate(id => {
+        const host = document.querySelector(`[data-message-id="${id}"] [data-testid="message-body"]`)
+        const root = host?.querySelector('.markdown-content') ?? host
+        if (!root) throw new Error('message markdown root missing')
+        const kids = [...root.children].map(element => element.getBoundingClientRect())
+        const style = getComputedStyle(root)
+        const paragraph = root.querySelector('p')
+        const task = root.querySelector('li.task-list-item')
+        const taskInput = task?.querySelector('input[type="checkbox"]')
+        const taskParagraph = task?.querySelector('p')
+        return {
+          task: task
+            ? {
+                height: Math.round(task.getBoundingClientRect().height),
+                gap: Math.round(
+                  Math.abs((taskInput?.getBoundingClientRect().top ?? 0) - (taskParagraph?.getBoundingClientRect().top ?? 0)),
+                ),
+              }
+            : null,
+          whiteSpace: style.whiteSpace,
+          tags: [...root.children].map(element => element.tagName.toLowerCase()),
+          gaps: kids.slice(1).map((box, index) => Math.round(box.top - kids[index].bottom)),
+          paragraphLineHeight: paragraph ? getComputedStyle(paragraph).lineHeight : null,
+          composerLineHeight: getComputedStyle(document.querySelector('[data-testid="message-input"]')).lineHeight,
+        }
+      }, messageId)
+      assert.equal(measured.whiteSpace, 'normal', `消息容器不能保留源码换行：${JSON.stringify(measured)}`)
+      assert.ok(measured.tags.length >= 5, `块级结构应完整渲染：${JSON.stringify(measured.tags)}`)
+      assert.ok(
+        measured.gaps.every(gap => gap >= 0 && gap <= 4),
+        `块间距应为 2px 量级：${JSON.stringify(measured.gaps)}`,
+      )
+      assert.equal(
+        measured.paragraphLineHeight,
+        measured.composerLineHeight,
+        `正文行高应与输入区一致：${JSON.stringify(measured)}`,
+      )
+      assert.ok(
+        measured.task && measured.task.height <= 24 && measured.task.gap <= 4,
+        `任务列表的复选框要和文字同一行：${JSON.stringify(measured.task)}`,
+      )
+      await shot('rm2-lane11-block-spacing.png')
+      return `块 ${measured.tags.join('/')}，间距 ${JSON.stringify(measured.gaps)}，行高 ${measured.paragraphLineHeight}，任务项 ${JSON.stringify(measured.task)}`
+    } finally {
+      // 这条消息只为量间距：无论断言成败都要删掉并重载，否则它会变成后面 lane 的最新消息。
+      sqliteHandle.prepare('DELETE FROM message WHERE id = ?').run(messageId)
+      await page.reload()
+      await test('message-input').waitFor()
+    }
   })
 
   await check('lane_4_remove_and_reference_token', async () => {

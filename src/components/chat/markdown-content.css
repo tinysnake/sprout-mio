@@ -16,19 +16,20 @@
  * 容器一旦 `white-space: pre-wrap`，这些空白文本节点会各撑出一行，块与块之间凭空多出几十像素。
  * 编辑器没有这类节点，所以这条只收紧消息侧，输入区保持 ProseMirror 需要的 pre-wrap。
  */
+/* 消息侧的 markdown 是源码渲出来的，元素之间带着源码里的换行符；容器保持 normal 折叠它们，
+   只在真的装文字的块里保留换行。注意 li 不能在名单里：松散列表项的 li 直接子节点是块元素，
+   把 li 设成 pre-wrap 会让夹在中间的那些换行各自撑出一行（任务列表就是这么被撑到三行高的）。 */
 .message-markdown {
   white-space: normal;
 }
 
 .message-markdown p,
-.message-markdown li,
 .message-markdown h1,
 .message-markdown h2,
 .message-markdown h3,
 .message-markdown h4,
 .message-markdown h5,
 .message-markdown h6,
-.message-markdown blockquote > p,
 .message-markdown th,
 .message-markdown td {
   white-space: pre-wrap;
@@ -67,6 +68,51 @@
 .markdown-content ol {
   padding-left: 20px;
   list-style: decimal;
+}
+
+/* 任务列表：输入区（TipTap 的 label + div 结构）与消息侧（gfm 的 li.task-list-item）
+   都要复选框和文字同一行，见下面两组规则。 */
+.markdown-content ul[data-type="taskList"] {
+  padding-left: 2px;
+  list-style: none;
+}
+
+.markdown-content ul[data-type="taskList"] > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.markdown-content ul[data-type="taskList"] > li > label {
+  flex: none;
+  margin-top: 2px;
+  line-height: 1;
+}
+
+.markdown-content ul[data-type="taskList"] > li > div {
+  min-width: 0;
+}
+
+.markdown-content li.task-list-item {
+  list-style: none;
+}
+
+.markdown-content li.task-list-item > input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.markdown-content li > p {
+  margin: 0;
+}
+
+.markdown-content li > p + p,
+.markdown-content blockquote > p + p {
+  margin-top: 2px;
+}
+
+.markdown-content blockquote > p {
+  margin: 0;
 }
 
 .markdown-content blockquote {
