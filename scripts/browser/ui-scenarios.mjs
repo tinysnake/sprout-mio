@@ -12,9 +12,14 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
 const page = await context.newPage();
 page.setDefaultTimeout(10000);
 const errors = [];
+const dialogs = [];
 const applicationRequests = [];
 const checks = [];
 page.on("pageerror", (error) => errors.push(String(error)));
+page.on("dialog", async (dialog) => {
+  dialogs.push(dialog.message());
+  await dialog.dismiss();
+});
 page.on("console", (message) => {
   if (message.type() === "error") errors.push(message.text());
 });
@@ -116,6 +121,25 @@ try {
       () => document.querySelector('[data-testid="pi-host-status"]')?.textContent === "已停止",
     );
     assert.equal(await readDraft(page), "");
+  });
+
+  await check("html_messages_sanitize_inline_markup_and_sandbox_full_documents", async () => {
+    await open("chat");
+    await test("message-item").first().waitFor();
+    const items = test("message-item");
+    assert.equal(await items.locator("script").count(), 0);
+    assert.equal(await items.locator("[onerror]").count(), 0);
+    assert.deepEqual(dialogs, []);
+    const block = test("html-block");
+    await block.waitFor();
+    assert.equal(await block.getAttribute("sandbox"), "allow-scripts");
+    const source = (await block.getAttribute("srcdoc")) ?? "";
+    assert(source.includes("<!doctype html>"));
+    assert(source.includes("Content-Security-Policy"));
+    await page.waitForFunction(() => {
+      const frame = document.querySelector('[data-testid="html-block"]');
+      return frame !== null && frame.getBoundingClientRect().height > 240;
+    });
   });
 
   await check("shared_project_creation_survives_resize_and_restores_focus", async () => {

@@ -174,6 +174,27 @@ const messages: Message[] = [
     ],
   },
   {
+    // HTML 样例：行内标签走白名单清洗，围栏里的完整文档进沙箱 iframe。
+    id: "msg_cccccccc",
+    attachments: [],
+    attachmentSpans: [],
+    chatId: chats[0]!.id,
+    senderKind: "agent",
+    senderId: profiles[0]!.id,
+    body: [
+      '行内 HTML 只留白名单标签：<b>加粗</b>、<i>斜体</i>，<script>alert("不该执行")</script> 与 <img src="x" onerror="alert(1)"> 都落不下来。',
+      "",
+      "```html",
+      "<!doctype html>",
+      "<html><head><style>body{font:14px/1.5 system-ui;margin:12px}</style></head>",
+      '<body><h3>沙箱文档</h3><p>这段在 iframe 里渲染。</p><p style="height:260px">高度由内容决定。</p></body></html>',
+      "```",
+    ].join("\n"),
+    createdAt: "2026-06-18T02:30:00.000Z",
+    skills: [],
+    mentions: [],
+  },
+  {
     // I-P8b 挂靠超时提醒：直接写库（不触发唤醒、不触发自动接续），落在挂靠所在的 Group chat。
     id: "msg_bbbbbbbb",
     attachments: [],
