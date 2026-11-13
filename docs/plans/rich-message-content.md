@@ -171,7 +171,9 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] Edit `src/components/chat/message-markdown.tsx`，渲染图片、文件芯片与附件引用
 - [ ] Create `tests/attachment.test.ts`
 - [ ] Create `tests/composer-markdown.test.ts`
-- [ ] Create `scripts/verify/rm2-attachments.sh`，真实 dev server 与真 Chromium 跑下面十条 lane，并登记进 `CI_GROUPS` 与 `SUITE_PLAN`（只存在对话里的门禁不算数）
+- [ ] Create `src/components/chat/message-attachment-layout.ts`，图片显示宽度的纯函数（小图最多两倍、高图不超视口六成）
+- [ ] Create `tests/message-attachment-layout.test.ts`
+- [ ] Create `scripts/verify/rm2-attachments.sh`，真实 dev server 与真 Chromium 跑下面十一条 lane，并登记进 `CI_GROUPS` 与 `SUITE_PLAN`（只存在对话里的门禁不算数）
 
 **Build.**
 
@@ -185,6 +187,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] 单文件上限、单条消息附件数上限与总大小上限写成显式常量并落进契约。
 - [ ] 输入区的即时呈现扩写既有镜像浮层，只用品字形宽度不变的装饰：`text-shadow` 假粗体、真斜体、行内代码只改背景色与颜色、标题只改颜色、标记调暗。`font-weight` 与字号变化会推移后续文字，禁用。量法与结论见 Appendix A。
 - [ ] 附件栏按方案 A，输入框上方一行附件条。每项右上角 `×` 移除，右下角「标签」在光标处插入引用 token。点文件名或缩略图直接查看，未发送用本地 object URL，已发送走读取路由。
+- [ ] 消息里的图片按天然尺寸算显示宽度：天然宽度与容器宽度取小，小图最多放大到两倍（`ATTACHMENT_MAX_UPSCALE`），再按视口高度的六成（`ATTACHMENT_MAX_HEIGHT_RATIO`）回缩；宽度交给 `img` 声明、高度 `auto`，容器不得用 `align-items: stretch` 把它横向拉满。点图片弹出大图窗口，滚轮在 1 到 8 倍之间缩放、放大后可拖动、双击或 Escape 关闭。
 - [ ] 附件栏与引用 token 的显示走既有镜像层：token 的原文留在文本流里撑宽度，芯片浮在它上面，镜像层与 textarea 的前进宽度逐字相同（`SkillMark` 的同一手法），所以加附件与加装饰都不移动后面的光标。
 - [ ] `preparePiMessage` 把每个附件按文件名、id、落盘绝对路径、类型与大小写进投递文本，agent 因此能打开文件。
 
@@ -200,13 +203,13 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] `tests/attachment.test.ts` 覆盖八个用例，只存元数据不存 base64、跨 Project 附件被拒、超限与空附件被拒、删除后读取返回明确错误、临时 id 被换成真实 id 且 span 落在最终正文的 token 上、没被正文引用的附件照样落库、引用不存在的 token 时整体拒且库里与磁盘上都不留痕、点名与技能在带 token 的正文里下标仍对得上。跑 `pnpm exec vp test run tests/attachment.test.ts`。
 - [ ] `tests/composer-markdown.test.ts` 覆盖三个用例，装饰只包 span 且字符下标不变、未成对的 `*` 不装饰、同一行里引用 token 与 `@` 点名与 `$` 技能混排时下标仍对得上。跑 `pnpm exec vp test run tests/composer-markdown.test.ts`。
 
-**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe. RM2 的十 lane 同时盖住消息侧与输入侧，运行方式是 `scripts/verify/rm2-attachments.sh`（一个脚本跑完十条 lane 加一条控制台检查，证据落在 `.verify/rm2-attachments/evidence/`，文件名与下面每条一致）。
+**Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe. RM2 的十 lane 同时盖住消息侧与输入侧，运行方式是 `scripts/verify/rm2-attachments.sh`（一个脚本跑完十条 lane 加控制台检查，证据落在 `.verify/rm2-attachments/evidence/`，文件名与下面每条一致）。
 
 - [ ] Lane 1. Regression lane against trunk. 一条纯文本消息在 trunk 与 head 各看一次，输入框也各看一次。Save `rm2-lane1-trunk-vs-head.png`. Pass when 没有附件的消息渲染与 trunk 逐字一致，输入框的占位与发送后清空行为也与 trunk 一致。
 - [ ] Lane 2. 入附件的三条路径。Ctrl+V 粘贴、`+` 按钮选择、拖放各走一次。Save `rm2-lane2-intake.png`. Pass when 三条路径都能把文件加进附件栏，且附件栏出现在输入框上方。
 - [ ] Lane 3. 输入框的即时呈现与光标。在输入框打 `**粗体**`、`*斜体*` 与一个行内代码。Save `rm2-lane3-live-md.png`. Pass when 输入框里看到装饰后的文字，且光标始终落在正确的字符之间，在行首、行中与行尾各点一次再用左右方向键走一遍都不跳字。
 - [ ] Lane 4. `×` 移除与「标签」插入。Save `rm2-lane4-remove-tag.png`. Pass when 移除后附件栏少一项且正文里该附件的引用 token 一并消失，点「标签」后光标处出现该附件的 token，周围文字位置不变。
-- [ ] Lane 5. 人类粘贴一张 200 KB 的 PNG 并发送。Save `rm2-lane5-paste-390.png`. Pass when 消息内出现图片元素且图片自然宽高比正确，把页面缩到 390 宽度后图片不超出容器且页面无横向溢出。
+- [ ] Lane 5. 人类粘贴一张 200 KB 的 PNG 并发送，再用一张小图与一张高图各发一条，最后点开大图窗口走一次滚轮向上与向下。Save `rm2-lane5-paste-390.png`. Pass when 消息内出现图片元素且图片自然宽高比正确（量到的矩形含 1px 边框，要拿内容尺寸比），小图最多放大到天然宽度的两倍，高图高度不超过视口高度的六成，把页面缩到 390 宽度后图片不超出容器且页面无横向溢出，大图窗口里滚轮向上放大、向下缩小且不小于原始比例。
 - [ ] Lane 6. 夹具里一条带图片附件的 agent 消息。Save `rm2-lane6-agent-image.png`. Pass when 图片渲染并带可读的替代文本。
 - [ ] Lane 7. 一张约 1.5 MB 的随机像素 PNG 按同一路径发送。Save `rm2-lane7-large.png`. Pass when 列表载荷不随图片字节增长（单次服务端载荷峰值远小于图片字节），图片字节只经单独的一次读取请求取回，且图片滚动到附近才取。
 - [ ] Lane 8. 一个 PDF 附件。Save `rm2-lane8-pdf.png`. Pass when 渲染为文件名与大小的芯片，不出现坏图图标。
