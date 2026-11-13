@@ -164,13 +164,14 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] Edit `scripts/verify/lib/test-targets.mjs`，把新测试文件登记进验证清单（未登记 CI 会在开跑前就失败）
 - [ ] Edit 既有 `Message` 夹具与新契约的必填字段对齐（`src/dev/scenes/chat/index.tsx`、`tests/chat-live.test.ts`、`tests/message-window.test.ts`、`tests/run-activity-ui.test.ts`、`tests/run-attention-ui.test.ts`）；`src/routeTree.gen.ts` 由 `pnpm exec tsr generate` 重写，不手改
 - [ ] Edit `src/server/message-skills.ts`，`preparePiMessage` 把附件写进投递文本
-- [ ] Edit `src/components/chat/message-composer.tsx`，`+` 上传、Ctrl+V 粘贴、附件栏、即时呈现
+- [ ] Edit `src/components/chat/message-composer.tsx`，`+` 上传、Ctrl+V 粘贴、附件栏；编辑面交给 TipTap，草稿进出都走 markdown
 - [ ] Create `src/components/chat/attachment-bar.tsx`，方案 A 的附件条与 `×`、标签按钮
-- [ ] Create `src/components/chat/composer-markdown.ts`，镜像层的装饰分段
+- [ ] Create `src/components/chat/composer-editor.tsx` 与 `composer-editor.css`，输入区的 TipTap 编辑面（Enter 发送、Shift+Enter 换块、原子芯片、草稿始终按 markdown 序列化）
 - [ ] Edit `src/components/chat/message-segments.ts`，附件引用加入 span 类型
 - [ ] Edit `src/components/chat/message-markdown.tsx`，渲染图片、文件芯片与附件引用
 - [ ] Create `tests/attachment.test.ts`
-- [ ] Create `tests/composer-markdown.test.ts`
+- [ ] Create `src/components/chat/tiptap/`，从 T3 Code 移植的文档模型、源码揭示层、代码块与列表续行、输入规则（MIT，每个文件头保留归属注释）
+- [ ] Create `tests/composer-rich-text.test.ts`
 - [ ] Create `src/components/chat/message-attachment-layout.ts`，图片显示宽度的纯函数（小图最多两倍、高图不超视口六成）与大图窗口打开时的适应比例（`attachmentViewerFitScale` 与 `ATTACHMENT_VIEWER_MAX_FIT`，长宽任意大小的图都先看全貌，比窗口小的图保持 100% 不再放大）
 - [ ] Create `tests/message-attachment-layout.test.ts`
 - [ ] Create `scripts/verify/rm2-attachments.sh`，真实 dev server 与真 Chromium 跑下面十一条 lane，并登记进 `CI_GROUPS` 与 `SUITE_PLAN`（只存在对话里的门禁不算数）
@@ -185,30 +186,30 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - [ ] 消息写入口接受附件，附件必须属于同一 Project，跨 Project 直接拒。
 - [ ] 读取路由按 session 与 Project 鉴权后再回字节，响应带 `content-type` 与 `cache-control`。浏览器的 `<img>` 不能直连这条路由：dev server 把 `Sec-Fetch-Dest: image` 的请求交给静态资源中间件，只会回 `Cannot GET`；所以消息里的图片改为 `fetch` 取字节再转 object URL，`fetch` 的 `Sec-Fetch-Dest` 是 `empty`，dev 与生产一致。
 - [ ] 单文件上限、单条消息附件数上限与总大小上限写成显式常量并落进契约。
-- [ ] 输入区的即时呈现扩写既有镜像浮层，只用品字形宽度不变的装饰：`text-shadow` 假粗体、真斜体、行内代码只改背景色与颜色、标题只改颜色、标记调暗。`font-weight` 与字号变化会推移后续文字，禁用。量法与结论见 Appendix A。
+- [ ] 输入区是真正的富文本编辑器，不手写 markdown 镜像。编辑内核换成 TipTap 3，文档模型与源码揭示层从 T3 Code 移植（MIT），草稿始终按 markdown 序列化，所以 `[[att:<localId>]]` 与 `📖name` 的 token 契约不变。这样标题才有自己的字号，引用、围栏代码块、任务列表才做得出来。Enter 发送、Shift+Enter 换块（列表里续行、空条目退出列表、空行退出引用），代码块里 Enter 换行、Tab 缩进，顺序照 T3 的键位。
 - [ ] 附件栏按方案 A，输入框上方一行附件条。每项右上角 `×` 移除，右下角「标签」在光标处插入引用 token。点文件名或缩略图直接查看，未发送用本地 object URL，已发送走读取路由。
 - [ ] 消息里的图片按天然尺寸算显示宽度：天然宽度与容器宽度取小，小图最多放大到两倍（`ATTACHMENT_MAX_UPSCALE`），再按视口高度的六成（`ATTACHMENT_MAX_HEIGHT_RATIO`）回缩；宽度交给 `img` 声明、高度 `auto`，容器不得用 `align-items: stretch` 把它横向拉满。点图片弹出大图窗口：窗口铺满整个视口（不保留四周留白），打开的一瞬先按适应窗口显示（`attachmentViewerFitScale`，超出窗口的图一律缩到看得全，比窗口小的图保持 100%），滚轮与加减按钮在 0.05 到 8 倍之间改比例，拖动平移，双击或「适应窗口」回到适应状态，点图片以外的空白处或 Escape 关闭；工具条半透明浮在底部，宽度不超过 440px，最窄 320px 的屏幕上也保持一行且不超出屏幕。窗口关掉即整棵卸载，同一时刻只存在一份门户。
-- [ ] 附件栏与引用 token 的显示走既有镜像层：token 的原文留在文本流里撑宽度，芯片浮在它上面，镜像层与 textarea 的前进宽度逐字相同（`SkillMark` 的同一手法），所以加附件与加装饰都不移动后面的光标。
+- [ ] 附件引用与技能 token 在输入区是原子节点：芯片显示文件名/技能名，`attrs.source` 保留原文，按一次 Backspace 或 Delete 整颗删掉，不会只剩半截语法；正文里存的仍是 token 原文。
 - [ ] `preparePiMessage` 把每个附件按文件名、id、落盘绝对路径、类型与大小写进投递文本，agent 因此能打开文件。
 
 **You see.**
 
 - [ ] 人类在输入框粘贴一张 PNG 并发送后，消息里出现内联图片。
-- [ ] 人类在输入框打 `**粗体**`，输入框内显示粗体而不是 `**` 字面，发送后消息里同样是粗体。
+- [ ] 人类在输入框打 `**粗体**`，输入框内显示粗体而不是 `**` 字面，发送后消息里同样是粗体。标题、列表、引用、围栏代码块与分割线同样在输入框里就成形，标题有自己的字号。按一次 Backspace 删掉一颗附件芯片时整颗消失，不会只剩半截 `[[att:` 语法。
 - [ ] 人类点某个附件的「标签」，光标处出现该附件的引用 token，紧接着写的一句话在消息里挂在该附件上。
 - [ ] 消息列表接口的载荷只增加附件引用，不随图片字节增长。
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [ ] `tests/attachment.test.ts` 覆盖八个用例，只存元数据不存 base64、跨 Project 附件被拒、超限与空附件被拒、删除后读取返回明确错误、临时 id 被换成真实 id 且 span 落在最终正文的 token 上、没被正文引用的附件照样落库、引用不存在的 token 时整体拒且库里与磁盘上都不留痕、点名与技能在带 token 的正文里下标仍对得上。跑 `pnpm exec vp test run tests/attachment.test.ts`。
-- [ ] `tests/composer-markdown.test.ts` 覆盖三个用例，装饰只包 span 且字符下标不变、未成对的 `*` 不装饰、同一行里引用 token 与 `@` 点名与 `$` 技能混排时下标仍对得上。跑 `pnpm exec vp test run tests/composer-markdown.test.ts`。
+- [ ] `tests/composer-rich-text.test.ts` 覆盖九组用例：块级语法（标题、列表、任务列表、引用、代码块、分割线）在文档模型里成形、行内标记（粗体、斜体、行内代码、删除线）不吞相邻文字、草稿序列化成 markdown 后与手写正文逐字相同、`[[att:<localId>]]` 与 `📖name` 的段边界算得对、原子节点不可从中间切开、整颗删除标签（Backspace 与 Delete 两个方向）、列表里续行、撤销分组与代码块的围栏与缩进。跑 `pnpm exec vp test run tests/composer-rich-text.test.ts`。
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `magpie/auto/deepseek-v4.1-flash:low` at the PR head, per the boot recipe. RM2 的十 lane 同时盖住消息侧与输入侧，运行方式是 `scripts/verify/rm2-attachments.sh`（一个脚本跑完十条 lane 加控制台检查，证据落在 `.verify/rm2-attachments/evidence/`，文件名与下面每条一致）。
 
 - [ ] Lane 1. Regression lane against trunk. 一条纯文本消息在 trunk 与 head 各看一次，输入框也各看一次。Save `rm2-lane1-trunk-vs-head.png`. Pass when 没有附件的消息渲染与 trunk 逐字一致，输入框的占位与发送后清空行为也与 trunk 一致。
 - [ ] Lane 2. 入附件的三条路径。Ctrl+V 粘贴、`+` 按钮选择、拖放各走一次。Save `rm2-lane2-intake.png`. Pass when 三条路径都能把文件加进附件栏，且附件栏出现在输入框上方。
-- [ ] Lane 3. 输入框的即时呈现与光标。在输入框打 `**粗体**`、`*斜体*` 与一个行内代码。Save `rm2-lane3-live-md.png`. Pass when 输入框里看到装饰后的文字，且光标始终落在正确的字符之间，在行首、行中与行尾各点一次再用左右方向键走一遍都不跳字。
-- [ ] Lane 4. `×` 移除与「标签」插入。Save `rm2-lane4-remove-tag.png`. Pass when 移除后附件栏少一项且正文里该附件的引用 token 一并消失，点「标签」后光标处出现该附件的 token，周围文字位置不变。
+- [ ] Lane 3. 输入区的块级语法与逐字保存。在输入框逐行打一个标题、一行粗体斜体行内代码、一个无序项、一个有序项、一句引用、一个待办与一条分割线（换行用 Shift+Enter）。Save `rm2-lane3-live-md.png`. Pass when 输入框里出现真 `h1`（15px）、`strong`/`em`/`code` 各一处、`ul`/`ol`/任务列表/`blockquote`/`hr` 各一处且没有残留标记文本，发送后数据库里的正文与手写 markdown 逐字相同（含空行）。
+- [ ] Lane 4. `×` 移除与「标签」插入。Save `rm2-lane4-remove-tag.png`. Pass when 点「标签」后光标处出现该附件的芯片（显示文件名，`data-local-id` 与附件一致），前后文字位置不变，`×` 移除后附件栏少一项且芯片一并消失。
 - [ ] Lane 5. 人类粘贴一张 200 KB 的 PNG 并发送，再用一张小图与一张高图各发一条，最后点开大图窗口走一次滚轮向上与向下。Save `rm2-lane5-paste-390.png`. Pass when 消息内出现图片元素且图片自然宽高比正确（量到的矩形含 1px 边框，要拿内容尺寸比），小图最多放大到天然宽度的两倍，高图高度不超过视口高度的六成，把页面缩到 390 宽度后图片不超出容器且页面无横向溢出，大图窗口打开时整张图落在窗口里且比例等于适应比例、窗口占满视口、工具条半透明且落在屏幕内并保持一行（320 宽度下同样成立），滚轮向上放大、点「适应窗口」回到适应比例，拖动后图片平移，点空白处或 Escape 都关闭。
 - [ ] Lane 6. 夹具里一条带图片附件的 agent 消息。Save `rm2-lane6-agent-image.png`. Pass when 图片渲染并带可读的替代文本。
 - [ ] Lane 7. 一张约 1.5 MB 的随机像素 PNG 按同一路径发送。Save `rm2-lane7-large.png`. Pass when 列表载荷不随图片字节增长（单次服务端载荷峰值远小于图片字节），图片字节只经单独的一次读取请求取回，且图片滚动到附近才取。
@@ -218,10 +219,10 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. 消息列表响应里单条消息的字节数，1 MB 图片读取路由的 TTFB，以及输入框从按键到镜像层重绘完成的耗时。
-- [ ] Probe. 同一台机器上对 trunk 与 head 交错各跑 5 次，列表响应用 curl 量字节数，图片路由与输入框重绘用浏览器计时，重绘用 2000 字正文含 20 个装饰段。
+- [ ] Metric. 消息列表响应里单条消息的字节数，1 MB 图片读取路由的 TTFB，以及输入框从写入一次草稿到渲染完成的耗时。
+- [ ] Probe. 同一台机器上对 trunk 与 head 交错各跑 5 次，列表响应用 curl 量字节数，图片路由用浏览器计时，输入框渲染用编辑器的写入命令计时（2000 字正文含 20 处标记与块级节点）。
 - [ ] Baseline. 先记 trunk 的单条消息字节数与 head 上无附件消息的字节数。
-- [ ] Rule. head 的单条消息字节数不超过 trunk 加 1 KB，1 MB 图片的 TTFB p95 不超过 200 毫秒，输入框重绘 p95 不超过 16 毫秒。任一条不满足即失败。
+- [ ] Rule. head 的单条消息字节数不超过 trunk 加 1 KB，1 MB 图片的 TTFB p95 不超过 200 毫秒，输入框渲染 p95 不超过 16 毫秒。任一条不满足即失败。
 
 **Review gate.** operator 在合并前看截图与视频。
 
@@ -305,6 +306,7 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 ## Appendix A. Prototype evidence
 
 - 输入区的即时呈现已做过原型，取代原计划里「执行开始时先补三个原型」中关于输入框的那一条。分支 `proto/composer-live-md`，SHA `acfaafd73ed5eb82848857fa32ee9f492f5e6816`，页面 `.lavish/composer-live-md-proto.html`，截图 `.lavish/composer-live-md-proto.png`。做法：在真实的 Geist Variable 字体下，把同一段 206 字正文分别铺在装饰层与纯文本层，用 `Range.getBoundingClientRect` 逐字符比较位置。量到 `text-shadow` 假粗体、真斜体、行内代码只改背景色与颜色、标题只改颜色都不移动后续文字（最大 0.36px，亚像素），因为装饰只包 span、不增删字符；`font-weight:700` 把后续文字推移 5.88px，字号变化同理。纯文本镜像与 textarea 的换行数一致（都是 6 行），所以 textarea 与镜像层继续对齐。结论：即时呈现扩写镜像浮层，不换掉 textarea。
+- **该结论已在 operator 于 2026-11-13 看过真实页面后被推翻**（原话：标题字太小，要求支持全套 markdown、别手写解析）。镜像层的限制是硬约束，不是实现不够快：能用的效果只有不改变字形前进宽度的那些，所以标题不可能有自己的字号，引用与围栏代码块也做不出来。operator 指定照 T3 Code 的开源实现抄，所以输入区换成 TipTap 3，文档模型与源码揭示层从 T3 Code 移植（MIT）。上文那段量测仍然有效，它解释了旧实现为什么只能做到那一步。
 - RM1 原型要回答的问题已由 RM1 本身与这次量测回答。markdown 与冻结 span 的哨兵方案，在点名落在加粗区间、技能 pill 落在列表项内这两种情形下都保住原字符范围。
 - RM2 原型要回答的问题。附件只存元数据时，粘贴大图后消息列表的载荷与加载时机是否符合 RM2 的 perf 规则。
 - RM3 原型要回答的问题。沙箱 iframe 的自动高度方案在内容高度变化时是否稳定，以及清洗后的行内 HTML 是否与既有语义色 token 相容。
@@ -314,9 +316,9 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - 结构化正文契约。把正文改成块数组，DB、写入口、唤醒快照、飞书出站与两个发送方一起改。当前语料没有需要它的构造，代价却是全链路。
 - 只渲染 agent 消息。人类的纯文本里有 `*` 与 `1.` 这类内容，分叉两套渲染规则会让同一条规则在两种发送者下不同。operator 于 2026-11-12 在 artifact v2 上选定统一渲染，本计划按统一渲染执行。
 - 不做清洗直接渲染 HTML。消息正文的来源包括模型与 webhook 外部输入，产品里现在没有一处 `innerHTML`，不能为了渲染破这个面。
-- 现在就上 tiptap 富文本编辑器。输入侧改动会牵动草稿、@ 候选与 `$` 技能候选，属于另一条线，本程序不包含。
+- 现在就上 tiptap 富文本编辑器。输入侧改动会牵动草稿、@ 候选与 `$` 技能候选，属于另一条线，本程序不包含。**2026-11-13 推翻**：operator 指定照 T3 Code 的输入框实现抄，输入区已换成 TipTap 3，草稿仍按 markdown 序列化，`@` 候选与 `$` 技能候选沿用原契约（只把插入改成对编辑器发一条内容命令）。
 - 两步提交，先上传拿 id 再发消息。operator 于 2026-11-12 要求发送时一次提交，两步在发送失败时会留下孤儿文件。
-- 换掉 textarea 改成 contentEditable，或在镜像里用真 `font-weight` 与字号。真 `font-weight:700` 与字号会把后续文字推移，原型量到 5.88px，光标会落错；contentEditable 会把草稿、`@` 候选与 `$` 技能候选全部重做，而原型已经证明扩写镜像层够用。
+- 换掉 textarea 改成 contentEditable，或在镜像里用真 `font-weight` 与字号。真 `font-weight:700` 与字号会把后续文字推移，原型量到 5.88px，光标会落错；contentEditable 会把草稿、`@` 候选与 `$` 技能候选全部重做，而原型已经证明扩写镜像层够用。**2026-11-13 推翻**：这条只在「够用」的前提下成立，而字号是硬要求，镜像层给不了；现在输入区是 TipTap（contentEditable），草稿与候选的契约都保住了。
 - 服务端渲染 markdown 后落库。渲染结果会随主题与组件变动过期，且会把展示细节写进不可变正文。
 
 ## Appendix C. Risks
@@ -350,3 +352,4 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - 输入侧并入 RM2，不新开 PR。RM1 合入后 RM2 与 RM3 都从 `main` 分叉。
 - RM2 及以后由本 thread 拥有，owner 与 root 是同一个。
 - RM1 的 Lane 10 断言「输入框内仍是原文」由本轮的即时呈现取代。RM1 已合并，不回改它的历史段落，改在这里记一笔。
+- RM2 执行中途 operator 看过真实页面后要求输入区支持全套 markdown 且标题要有字号（2026-11-13）。镜像层只能做不改变字形前进宽度的装饰，给不了字号，所以输入区换成 TipTap 3，文档模型与源码揭示层从 T3 Code 移植（MIT，commit `6b638a5`），块级输入规则与键位顺序同样搬过来（`src/components/chat/tiptap/composer-block-shortcuts.ts`）。草稿仍然按 markdown 序列化，存进数据库的正文与手写 markdown 逐字相同，`[[att:<localId>]]` 与 `📖name` 契约未变。
