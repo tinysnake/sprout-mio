@@ -1,9 +1,12 @@
-import { FileText, ImageOff, Paperclip } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { FileText, ImageOff, Paperclip, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../../contracts/attachment";
 import type { MessageAttachmentSpan } from "../../contracts/chat";
 import type { AppResult } from "../../contracts/result";
+import { Button } from "../ui/button";
+import { Dialog, DialogClose, DialogContent } from "../ui/dialog";
 import { Icon } from "../ui/icon";
+import { ATTACHMENT_MAX_HEIGHT_RATIO, attachmentDisplayWidth } from "./message-attachment-layout";
 import "./message-attachments.css";
 
 /**
@@ -51,6 +54,28 @@ async function openAttachment(attachmentId: string): Promise<void> {
     return;
   }
   opened.location.href = bytes.url;
+}
+
+type AttachmentPreview = { url: string; naturalWidth: number; naturalHeight: number };
+
+/** 解码一次拿到原始尺寸，后面按比例决定显示宽度；解不出来就退回按容器宽度显示。 */
+async function loadAttachmentPreview(
+  attachmentId: string,
+): Promise<AttachmentPreview | { failure: string }> {
+  const bytes = await fetchAttachmentBytes(attachmentId);
+  if ("failure" in bytes) return bytes;
+  const image = new Image();
+  image.src = bytes.url;
+  try {
+    await image.decode();
+    return {
+      url: bytes.url,
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight,
+    };
+  } catch {
+    return { url: bytes.url, naturalWidth: 0, naturalHeight: 0 };
+  }
 }
 
 export function isImageAttachment(mimeType: string): boolean {
@@ -156,7 +181,9 @@ function AttachmentBroken({
 export function AttachmentFigure({ attachment }: { attachment: Attachment }) {
   const figureRef = useRef<HTMLElement | null>(null);
   const [visible, setVisible] = useState(false);
-  const [bytes, setBytes] = useState<AttachmentBytes | null>(null);
+  const [preview, setPreview] = useState<AttachmentPreview | { failure: string } | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [frame, setFrame] = useState({ width: 0, maxHeight: 0 });
 
   useEffect(() => {
     const node = figureRef.current;
@@ -181,13 +208,13 @@ export function AttachmentFigure({ attachment }: { attachment: Attachment }) {
     if (!visible) return;
     let cancelled = false;
     let created: string | null = null;
-    void fetchAttachmentBytes(attachment.id).then((result) => {
+    void loadAttachmentPreview(attachment.id).then((result) => {
       if (cancelled) {
         if ("url" in result) URL.revokeObjectURL(result.url);
         return;
       }
       if ("url" in result) created = result.url;
-      setBytes(result);
+      setPreview(result);
     });
     return () => {
       cancelled = true;
@@ -195,15 +222,49 @@ export function AttachmentFigure({ attachment }: { attachment: Attachment }) {
     };
   }, [attachment.id, visible]);
 
-  if (bytes !== null && "failure" in bytes) {
+  useEffect(() => {
+    const node = figureRef.current;
+    if (node === null) return;
+    const measure = () => {
+      const next = {
+        width: Math.round(node.getBoundingClientRect().width),
+        maxHeight: Math.round(window.innerHeight * ATTACHMENT_MAX_HEIGHT_RATIO),
+      };
+      setFrame((previous) =>
+        previous.width === next.width && previous.maxHeight === next.maxHeight ? previous : next,
+      );
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    if (typeof ResizeObserver === "undefined") {
+      return () => window.removeEventListener("resize", measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  if (preview !== null && "failure" in preview) {
     return (
       <AttachmentBroken
         attachment={attachment}
-        reason={bytes.failure}
+        reason={preview.failure}
         testId="message-attachment-image-broken"
       />
     );
   }
+  const width =
+    preview === null
+      ? undefined
+      : attachmentDisplayWidth(
+          preview.naturalWidth,
+          preview.naturalHeight,
+          frame.width,
+          frame.maxHeight,
+        );
   return (
     <figure
       ref={figureRef}
@@ -211,21 +272,157 @@ export function AttachmentFigure({ attachment }: { attachment: Attachment }) {
       data-testid="message-attachment-figure"
       data-attachment-id={attachment.id}
     >
-      {bytes !== null ? (
-        <img
-          src={bytes.url}
-          alt={attachment.filename}
-          loading="lazy"
-          decoding="async"
-          data-testid="message-attachment-image"
-        />
+      {preview !== null ? (
+        <button
+          type="button"
+          className="message-attachment-figure__open"
+          data-testid="message-attachment-open"
+          aria-label={`查看大图 ${attachment.filename}`}
+          title="点击查看大图"
+          onClick={() => setViewerOpen(true)}
+        >
+          <img
+            src={preview.url}
+            alt={attachment.filename}
+            width={width === undefined ? undefined : Math.round(width)}
+            loading="lazy"
+            decoding="async"
+            data-testid="message-attachment-image"
+          />
+        </button>
       ) : (
         <span className="message-attachment-figure__pending" aria-hidden="true" />
       )}
       <figcaption>
         {attachment.filename} · {formatAttachmentSize(attachment.byteSize)}
       </figcaption>
+      {preview !== null && (
+        <AttachmentViewer
+          attachment={attachment}
+          url={preview.url}
+          open={viewerOpen}
+          onOpenChange={setViewerOpen}
+        />
+      )}
     </figure>
+  );
+}
+
+const VIEWER_MIN_SCALE = 1;
+const VIEWER_MAX_SCALE = 8;
+const VIEWER_WHEEL_STEP = 1.12;
+
+/**
+ * 点图片打开的大图窗口。滚轮缩放，缩放超过原始比例才能拖动，双击或「适应窗口」回到原始比例；
+ * Escape、点遮罩与关页焦点回到触发处都由 Dialog 提供。
+ */
+export function AttachmentViewer({
+  attachment,
+  url,
+  open,
+  onOpenChange,
+}: {
+  attachment: Attachment;
+  url: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [stage, setStage] = useState<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ x: number; y: number; fromX: number; fromY: number } | null>(null);
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+
+  const reset = useCallback(() => {
+    setScale(1);
+    setOffset((previous) => (previous.x === 0 && previous.y === 0 ? previous : { x: 0, y: 0 }));
+  }, []);
+
+  useEffect(() => {
+    if (open) reset();
+  }, [open, attachment.id, reset]);
+
+  useEffect(() => {
+    if (scale > VIEWER_MIN_SCALE) return;
+    setOffset((previous) => (previous.x === 0 && previous.y === 0 ? previous : { x: 0, y: 0 }));
+  }, [scale]);
+
+  useEffect(() => {
+    if (!open || stage === null) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const step = event.deltaY < 0 ? VIEWER_WHEEL_STEP : 1 / VIEWER_WHEEL_STEP;
+      setScale((current) => Math.min(VIEWER_MAX_SCALE, Math.max(VIEWER_MIN_SCALE, current * step)));
+    };
+    // 滚轮监听必须自己装，因为要 preventDefault，React 的 onWheel 在根上是 passive 的。
+    // 依赖 stage：Dialog 的门户在 open 之后才挂上，节点晚一步出现。
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  }, [open, stage]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        data-testid="message-attachment-viewer"
+        className="message-viewer w-[94vw] max-w-none gap-0 rounded-none border-0 bg-transparent p-0 max-h-none"
+      >
+        <div
+          ref={setStage}
+          className="message-viewer__stage"
+          data-testid="message-viewer-stage"
+          data-scale={scale.toFixed(2)}
+          onDoubleClick={reset}
+          onPointerDown={(event) => {
+            if (scale <= VIEWER_MIN_SCALE) return;
+            dragRef.current = {
+              x: event.clientX,
+              y: event.clientY,
+              fromX: offset.x,
+              fromY: offset.y,
+            };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const dragging = dragRef.current;
+            if (dragging === null) return;
+            setOffset({
+              x: dragging.fromX + (event.clientX - dragging.x),
+              y: dragging.fromY + (event.clientY - dragging.y),
+            });
+          }}
+          onPointerUp={(event) => {
+            dragRef.current = null;
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+          }}
+        >
+          <img
+            className="message-viewer__image"
+            src={url}
+            alt={attachment.filename}
+            draggable={false}
+            data-testid="message-viewer-image"
+            style={{
+              transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
+            }}
+          />
+        </div>
+        <div className="message-viewer__bar">
+          <span className="message-viewer__name">{attachment.filename}</span>
+          <span className="message-viewer__zoom" data-testid="message-viewer-zoom">
+            {Math.round(scale * 100)}%
+          </span>
+          <Button variant="secondary" size="sm" onClick={reset}>
+            适应窗口
+          </Button>
+          <DialogClose render={<Button variant="ghost" size="icon-sm" />}>
+            <Icon as={X} />
+            <span className="sr-only">关闭大图</span>
+          </DialogClose>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

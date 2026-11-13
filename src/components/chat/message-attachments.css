@@ -40,11 +40,25 @@
   margin: 0;
 }
 
+.message-attachment-figure__open {
+  display: block;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.message-attachment-figure__open:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
 .message-attachment-figure img {
   display: block;
   max-width: 100%;
-  max-height: 240px;
-  width: auto;
   height: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -128,4 +142,47 @@
   height: 96px;
   border-radius: var(--radius);
   border: 1px dashed var(--border);
+}
+
+.message-viewer__stage {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: min(84dvh, 900px);
+  overflow: hidden;
+  cursor: zoom-in;
+  touch-action: none;
+}
+
+.message-viewer__image {
+  max-width: 100%;
+  max-height: 100%;
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.message-viewer__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  background: var(--popover);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.message-viewer__name {
+  margin-right: auto;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-viewer__zoom {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
 }

@@ -253,11 +253,18 @@ async function drift(expected) {
 async function overflow() {
   return page.evaluate(() => ({
     document: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    images: [...document.querySelectorAll('[data-testid="message-attachment-figure"] img')].map(image => ({
-      width: image.getBoundingClientRect().width,
-      natural: image.naturalWidth,
-      container: image.closest('[data-testid="message-attachment-figure"]').getBoundingClientRect().width,
-    })),
+    images: [...document.querySelectorAll('[data-testid="message-attachment-figure"] img')].map(image => {
+      const rect = image.getBoundingClientRect()
+      return {
+        name: image.getAttribute('alt') ?? '',
+        width: rect.width,
+        height: rect.height,
+        natural: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+        container: image.closest('[data-testid="message-attachment-figure"]').getBoundingClientRect().width,
+        viewport: window.innerHeight,
+      }
+    }),
   }))
 }
 function count(table) {
@@ -489,7 +496,16 @@ try {
     await delay(300)
     const narrow = await overflow()
     assert.equal(narrow.document, 0, `390 宽度下不应横向溢出：${JSON.stringify(narrow)}`)
-    for (const item of narrow.images) assert.ok(item.width <= item.container + 1, `图片不得超出容器：${JSON.stringify(item)}`)
+    for (const item of narrow.images) {
+      assert.ok(item.width <= item.container + 1, `图片不得超出容器：${JSON.stringify(item)}`)
+      assert.ok(item.width <= item.natural * 2 + 1, `小图最多放大到 200%：${JSON.stringify(item)}`)
+      // 量到的矩形含 1px 边框，比例要拿图片内容比。
+      const contentWidth = item.width - 2
+      const contentHeight = item.height - 2
+      const expected = contentWidth * (item.naturalHeight / item.natural)
+      assert.ok(Math.abs(contentHeight - expected) <= 1.5, `图片必须按原始比例：${JSON.stringify(item)}`)
+      assert.ok(contentHeight <= item.viewport * 0.6 + 2, `高图不得超过视口高度上限：${JSON.stringify(item)}`)
+    }
     await shot('rm2-lane5-paste-390.png')
     await page.setViewportSize({ width: 1280, height: 900 })
     return `解码 ${image.width}x${image.height}，390 宽无溢出`
@@ -647,6 +663,35 @@ try {
     assert.equal(await composer().inputValue(), '这条会被拒', '失败后输入框内容必须保留')
     await shot('rm2-lane10-cross-project.png')
     return `匿名 ${guarded.status()} 无字节；跨 Project ${cross.status()} 无字节；超限 ${payload.error.code} 且库与盘无新增`
+  })
+
+  await check('lane_11_image_viewer_zoom', async () => {
+    const open = page.locator('[data-testid="message-attachment-open"]').first()
+    await open.scrollIntoViewIfNeeded()
+    await open.click()
+    await page.waitForSelector('[data-testid="message-viewer-stage"]', { timeout: 15000 })
+    const stage = await page.locator('[data-testid="message-viewer-stage"]').boundingBox()
+    assert.ok(stage, '大图窗口应有可交互的画布')
+    const before = Number(await page.getAttribute('[data-testid="message-viewer-stage"]', 'data-scale'))
+    await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2)
+    await page.mouse.wheel(0, -400)
+    await delay(250)
+    const zoomed = Number(await page.getAttribute('[data-testid="message-viewer-stage"]', 'data-scale'))
+    assert.ok(zoomed > before, `滚轮向上应放大：${before} -> ${zoomed}`)
+    await shot('rm2-lane11-viewer.png')
+    await page.mouse.wheel(0, 900)
+    await delay(250)
+    const back = Number(await page.getAttribute('[data-testid="message-viewer-stage"]', 'data-scale'))
+    assert.ok(back < zoomed, `滚轮向下应缩小：${zoomed} -> ${back}`)
+    assert.ok(back >= 1, `缩小不应小于原始比例：${back}`)
+    await page.keyboard.press('Escape')
+    await delay(300)
+    assert.equal(
+      await page.locator('[data-testid="message-viewer-stage"]').count(),
+      0,
+      'Escape 应关闭大图窗口',
+    )
+    return `点图打开窗口，滚轮 ${before} -> ${zoomed} -> ${back}，Escape 关闭`
   })
 
   await check('console_clean_and_404_probes', async () => {
