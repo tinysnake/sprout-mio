@@ -670,20 +670,70 @@ try {
     await open.scrollIntoViewIfNeeded()
     await open.click()
     await page.waitForSelector('[data-testid="message-viewer-stage"]', { timeout: 15000 })
-    const stage = await page.locator('[data-testid="message-viewer-stage"]').boundingBox()
+    const stageNode = page.locator('[data-testid="message-viewer-stage"]')
+    const image = page.locator('[data-testid="message-viewer-image"]')
+    await until(
+      async () => Number(await stageNode.getAttribute('data-fit-scale')) > 0,
+      'viewer measures the natural size',
+    )
+    const stage = await stageNode.boundingBox()
     assert.ok(stage, '大图窗口应有可交互的画布')
-    const before = Number(await page.getAttribute('[data-testid="message-viewer-stage"]', 'data-scale'))
+    const read = async () => ({
+      scale: Number(await stageNode.getAttribute('data-scale')),
+      fit: Number(await stageNode.getAttribute('data-fit-scale')),
+      image: await image.boundingBox(),
+    })
+    const fitted = await read()
+    assert.ok(
+      Math.abs(fitted.scale - fitted.fit) < 0.002,
+      `打开时应停在适应窗口：${JSON.stringify(fitted)}`,
+    )
+    assert.ok(
+      fitted.image.width <= stage.width + 1 && fitted.image.height <= stage.height + 1,
+      `适应窗口时整张图都应在窗口里：${JSON.stringify({ image: fitted.image, stage })}`,
+    )
+    assert.ok(fitted.fit <= 2 + 0.001, `适应窗口也不得超过 200%：${fitted.fit}`)
     await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2)
     await page.mouse.wheel(0, -400)
     await delay(250)
-    const zoomed = Number(await page.getAttribute('[data-testid="message-viewer-stage"]', 'data-scale'))
-    assert.ok(zoomed > before, `滚轮向上应放大：${before} -> ${zoomed}`)
+    const zoomed = await read()
+    assert.ok(zoomed.scale > fitted.scale, `滚轮向上应放大：${fitted.scale} -> ${zoomed.scale}`)
     await shot('rm2-lane11-viewer.png')
-    await page.mouse.wheel(0, 900)
-    await delay(250)
-    const back = Number(await page.getAttribute('[data-testid="message-viewer-stage"]', 'data-scale'))
-    assert.ok(back < zoomed, `滚轮向下应缩小：${zoomed} -> ${back}`)
-    assert.ok(back >= 1, `缩小不应小于原始比例：${back}`)
+    await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(stage.x + stage.width / 2 - 90, stage.y + stage.height / 2 - 50, { steps: 8 })
+    await page.mouse.up()
+    await delay(200)
+    const panned = await image.getAttribute('style')
+    assert.ok(/translate3d\(-?[1-9]\d*px/.test(panned ?? ''), `拖动应平移图片：${panned}`)
+    await page.click('[data-testid="message-viewer-fit"]')
+    await delay(200)
+    const refitted = await read()
+    assert.ok(
+      Math.abs(refitted.scale - refitted.fit) < 0.002,
+      `「适应窗口」应回到适应比例：${JSON.stringify(refitted)}`,
+    )
+    await page.click('[data-testid="message-viewer-zoom-in"]')
+    await delay(200)
+    const zoomedIn = await read()
+    assert.ok(zoomedIn.scale > refitted.scale, `放大按钮应生效：${refitted.scale} -> ${zoomedIn.scale}`)
+    await page.click('[data-testid="message-viewer-zoom-out"]')
+    await delay(200)
+    const zoomedOut = await read()
+    assert.ok(
+      Math.abs(zoomedOut.scale - refitted.scale) < 0.002,
+      `缩小按钮应回到适应比例：${zoomedOut.scale}`,
+    )
+    await page.mouse.click(stage.x + 6, stage.y + 6)
+    await delay(300)
+    assert.equal(
+      await page.locator('[data-testid="message-viewer-stage"]').count(),
+      0,
+      '点图片以外的空白处应关闭大图窗口',
+    )
+    await open.scrollIntoViewIfNeeded()
+    await open.click()
+    await page.waitForSelector('[data-testid="message-viewer-stage"]', { timeout: 15000 })
     await page.keyboard.press('Escape')
     await delay(300)
     assert.equal(
@@ -691,7 +741,7 @@ try {
       0,
       'Escape 应关闭大图窗口',
     )
-    return `点图打开窗口，滚轮 ${before} -> ${zoomed} -> ${back}，Escape 关闭`
+    return `适应 ${fitted.fit}x（全图 ${Math.round(fitted.image.width)}x${Math.round(fitted.image.height)} 落在 ${Math.round(stage.width)}x${Math.round(stage.height)} 里），滚轮 ${fitted.scale} -> ${zoomed.scale}，拖动与加减按钮生效，点空白与 Escape 都能关`
   })
 
   await check('console_clean_and_404_probes', async () => {

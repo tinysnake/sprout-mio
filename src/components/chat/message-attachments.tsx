@@ -1,12 +1,18 @@
-import { FileText, ImageOff, Paperclip, X } from "lucide-react";
+import { FileText, ImageOff, Minus, Paperclip, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Attachment } from "../../contracts/attachment";
 import type { MessageAttachmentSpan } from "../../contracts/chat";
 import type { AppResult } from "../../contracts/result";
 import { Button } from "../ui/button";
 import { Dialog, DialogClose, DialogContent } from "../ui/dialog";
 import { Icon } from "../ui/icon";
-import { ATTACHMENT_MAX_HEIGHT_RATIO, attachmentDisplayWidth } from "./message-attachment-layout";
+import {
+  ATTACHMENT_MAX_HEIGHT_RATIO,
+  ATTACHMENT_VIEWER_MAX_ZOOM,
+  attachmentDisplayWidth,
+  attachmentViewerFitScale,
+} from "./message-attachment-layout";
 import "./message-attachments.css";
 
 /**
@@ -308,13 +314,16 @@ export function AttachmentFigure({ attachment }: { attachment: Attachment }) {
   );
 }
 
-const VIEWER_MIN_SCALE = 1;
-const VIEWER_MAX_SCALE = 8;
+/** 大图窗口里允许缩到的最小比例，避免一直缩小下去看不见。 */
+const VIEWER_MIN_SCALE = 0.05;
+
+/** 滚轮每格改变的比例。 */
 const VIEWER_WHEEL_STEP = 1.12;
 
 /**
- * 点图片打开的大图窗口。滚轮缩放，缩放超过原始比例才能拖动，双击或「适应窗口」回到原始比例；
- * Escape、点遮罩与关页焦点回到触发处都由 Dialog 提供。
+ * 点图片打开的大图窗口。打开时先把整张图适应进窗口（小图最多放大到 200%），
+ * 于是第一眼就是全貌；滚轮与加减按钮改比例，拖动平移，双击或「适应窗口」回到适应状态；
+ * 点图片以外的空白处、按 Escape 都关闭。
  */
 export function AttachmentViewer({
   attachment,
@@ -328,12 +337,19 @@ export function AttachmentViewer({
   onOpenChange: (open: boolean) => void;
 }) {
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
-  const dragRef = useRef<{ x: number; y: number; fromX: number; fromY: number } | null>(null);
-  const [scale, setScale] = useState(1);
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  const [natural, setNatural] = useState({ width: 0, height: 0 });
+  const [zoom, setZoom] = useState<number | null>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ x: number; y: number; fromX: number; fromY: number } | null>(null);
+  const movedRef = useRef(false);
+
+  const fitScale = attachmentViewerFitScale(natural.width, natural.height, box.width, box.height);
+  const scale = zoom ?? fitScale;
 
   const reset = useCallback(() => {
-    setScale(1);
+    setZoom(null);
     setOffset((previous) => (previous.x === 0 && previous.y === 0 ? previous : { x: 0, y: 0 }));
   }, []);
 
@@ -341,23 +357,53 @@ export function AttachmentViewer({
     if (open) reset();
   }, [open, attachment.id, reset]);
 
+  // 量窗口：Dialog 的门户在 open 之后才挂上，所以依赖 stage，节点到了才量。
   useEffect(() => {
-    if (scale > VIEWER_MIN_SCALE) return;
-    setOffset((previous) => (previous.x === 0 && previous.y === 0 ? previous : { x: 0, y: 0 }));
-  }, [scale]);
+    if (!open || stage === null) return;
+    const measure = () => {
+      const next = { width: stage.clientWidth, height: stage.clientHeight };
+      setBox((previous) =>
+        previous.width === next.width && previous.height === next.height ? previous : next,
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [open, stage]);
+
+  const zoomBy = useCallback(
+    (factor: number) => {
+      setZoom((current) => {
+        const from = current ?? fitScale;
+        return Math.min(ATTACHMENT_VIEWER_MAX_ZOOM, Math.max(VIEWER_MIN_SCALE, from * factor));
+      });
+    },
+    [fitScale],
+  );
 
   useEffect(() => {
     if (!open || stage === null) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const step = event.deltaY < 0 ? VIEWER_WHEEL_STEP : 1 / VIEWER_WHEEL_STEP;
-      setScale((current) => Math.min(VIEWER_MAX_SCALE, Math.max(VIEWER_MIN_SCALE, current * step)));
+      zoomBy(event.deltaY < 0 ? VIEWER_WHEEL_STEP : 1 / VIEWER_WHEEL_STEP);
     };
-    // 滚轮监听必须自己装，因为要 preventDefault，React 的 onWheel 在根上是 passive 的。
-    // 依赖 stage：Dialog 的门户在 open 之后才挂上，节点晚一步出现。
+    // 滚轮监听必须自己装，因为要 preventDefault；React 的 onWheel 在根上是 passive 的。
     stage.addEventListener("wheel", onWheel, { passive: false });
     return () => stage.removeEventListener("wheel", onWheel);
-  }, [open, stage]);
+  }, [open, stage, zoomBy]);
+
+  const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    dragRef.current = null;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -370,32 +416,35 @@ export function AttachmentViewer({
           ref={setStage}
           className="message-viewer__stage"
           data-testid="message-viewer-stage"
-          data-scale={scale.toFixed(2)}
+          data-scale={scale.toFixed(3)}
+          data-fit-scale={fitScale.toFixed(3)}
+          data-dragging={dragging ? "true" : undefined}
           onDoubleClick={reset}
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !movedRef.current) onOpenChange(false);
+          }}
           onPointerDown={(event) => {
-            if (scale <= VIEWER_MIN_SCALE) return;
+            if (event.button !== 0) return;
+            movedRef.current = false;
             dragRef.current = {
               x: event.clientX,
               y: event.clientY,
               fromX: offset.x,
               fromY: offset.y,
             };
+            setDragging(true);
             event.currentTarget.setPointerCapture(event.pointerId);
           }}
           onPointerMove={(event) => {
-            const dragging = dragRef.current;
-            if (dragging === null) return;
-            setOffset({
-              x: dragging.fromX + (event.clientX - dragging.x),
-              y: dragging.fromY + (event.clientY - dragging.y),
-            });
+            const drag = dragRef.current;
+            if (drag === null) return;
+            const dx = event.clientX - drag.x;
+            const dy = event.clientY - drag.y;
+            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) movedRef.current = true;
+            setOffset({ x: drag.fromX + dx, y: drag.fromY + dy });
           }}
-          onPointerUp={(event) => {
-            dragRef.current = null;
-            if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            }
-          }}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
         >
           <img
             className="message-viewer__image"
@@ -403,8 +452,20 @@ export function AttachmentViewer({
             alt={attachment.filename}
             draggable={false}
             data-testid="message-viewer-image"
+            width={natural.width > 0 ? Math.round(natural.width * scale) : undefined}
+            height={natural.height > 0 ? Math.round(natural.height * scale) : undefined}
             style={{
-              transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
+              transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
+              visibility: natural.width > 0 ? "visible" : "hidden",
+            }}
+            onLoad={(event) => {
+              const node = event.currentTarget;
+              if (!(node.naturalWidth > 0) || !(node.naturalHeight > 0)) return;
+              setNatural((previous) =>
+                previous.width === node.naturalWidth && previous.height === node.naturalHeight
+                  ? previous
+                  : { width: node.naturalWidth, height: node.naturalHeight },
+              );
             }}
           />
         </div>
@@ -413,7 +474,25 @@ export function AttachmentViewer({
           <span className="message-viewer__zoom" data-testid="message-viewer-zoom">
             {Math.round(scale * 100)}%
           </span>
-          <Button variant="secondary" size="sm" onClick={reset}>
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            aria-label="缩小"
+            data-testid="message-viewer-zoom-out"
+            onClick={() => zoomBy(1 / 1.25)}
+          >
+            <Icon as={Minus} />
+          </Button>
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            aria-label="放大"
+            data-testid="message-viewer-zoom-in"
+            onClick={() => zoomBy(1.25)}
+          >
+            <Icon as={Plus} />
+          </Button>
+          <Button variant="secondary" size="sm" data-testid="message-viewer-fit" onClick={reset}>
             适应窗口
           </Button>
           <DialogClose render={<Button variant="ghost" size="icon-sm" />}>

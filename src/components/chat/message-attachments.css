@@ -150,13 +150,18 @@
   width: 100%;
   height: min(84dvh, 900px);
   overflow: hidden;
-  cursor: zoom-in;
+  /* 图片总在窗口中央，靠 transform 平移；空白处点击关闭由组件的 onClick 处理。 */
+  cursor: grab;
   touch-action: none;
 }
 
+.message-viewer__stage[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+/* 尺寸由组件按「适应窗口」的比例给成 px，所以这里不能再限制 max-width/max-height。 */
 .message-viewer__image {
-  max-width: 100%;
-  max-height: 100%;
+  display: block;
   transform-origin: center center;
   user-select: none;
   -webkit-user-drag: none;
