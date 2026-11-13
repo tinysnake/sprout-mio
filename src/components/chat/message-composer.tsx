@@ -13,7 +13,7 @@ import { Icon } from "../ui/icon";
 import { FieldError } from "../project/result-error";
 import { ChatErrorNotice } from "./chat-error-notice";
 import type { ChatSkillChoices, SkillOption } from "../../contracts/skill";
-import { insertSkill, SKILL_TRIGGER, skillQueryAt } from "../../lib/skill-token";
+import { SKILL_TRIGGER, skillQueryAt } from "../../lib/skill-token";
 import { AttachmentBar } from "./attachment-bar";
 import type { ComposerAttachment } from "./attachment-bar";
 import { ComposerEditor } from "./composer-editor";
@@ -183,10 +183,11 @@ export function MessageComposer({
 
   function pickSkill(skill: SkillOption) {
     if (!activeQuery) return;
-    const next = insertSkill(draft, activeQuery, skill.name);
     setQuery(null);
     setActiveIndex(0);
-    editor.current?.setMarkdown(next.text, next.caret);
+    // 走编辑器插入而不是整份草稿回填：回填会把正文重新解析一遍，
+    // 名字里带空格的点名就认不回来，芯片会当场变成普通文本。
+    editor.current?.insertSkill(activeQuery.start, activeQuery.end, skill.name);
     editor.current?.focus();
   }
 
@@ -400,7 +401,7 @@ export function MessageComposer({
           发给{agentName}的消息
         </label>
         {/* 输入区自己排版：草稿就是 markdown，附件与技能是文档里的原子芯片。 */}
-        <div className="relative px-[7px] text-xs leading-6 max-desktop:text-[13px]">
+        <div className="relative px-[7px] text-sm leading-6">
           {draft.length === 0 && (
             <span
               aria-hidden="true"

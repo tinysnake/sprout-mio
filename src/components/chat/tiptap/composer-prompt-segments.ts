@@ -32,14 +32,15 @@ function pushTextSegment(segments: ComposerPromptSegment[], text: string): void 
   segments.push({ type: "text", text });
 }
 
-/** `@` 必须在开头或空白之后，成员名之间不重叠：长名字优先，避免 `@ann` 抢走 `@ann lee`。 */
+/** `@` 必须在开头或空白之后，成员名之间不重叠：长名字优先，避免 `@ann` 抢走 `@ann lee`。
+ * 名字里的空格照收（成员显示名可以是 `评审 Agent`），否则从 markdown 重建文档时这颗标签会掉回普通文本。 */
 export function scanMentionTokens(
   prompt: string,
   mentions: readonly MentionCandidate[],
 ): { memberId: string; name: string; start: number; end: number }[] {
   if (mentions.length === 0 || !prompt.includes("@")) return [];
   const names = [...new Set(mentions.map((mention) => mention.name))]
-    .filter((name) => name.length > 0 && !/\s/.test(name))
+    .filter((name) => name.length > 0)
     .sort((left, right) => right.length - left.length);
   if (names.length === 0) return [];
   const idsByName = new Map<string, string>();

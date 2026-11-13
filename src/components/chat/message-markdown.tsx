@@ -7,7 +7,7 @@ import {
   type ElementType,
   type ReactNode,
 } from "react";
-import { AtSign } from "lucide-react";
+import { AtSign, BookOpen } from "lucide-react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Attachment } from "../../contracts/attachment";
@@ -21,7 +21,6 @@ import {
 } from "./message-attachments";
 import { maskMessageSegments, type MessageSegment, type MessageSentinel } from "./message-segments";
 import { Icon } from "../ui/icon";
-import { SkillMark } from "./skill-mark";
 import "./markdown-content.css";
 
 /**
@@ -199,12 +198,11 @@ function SentinelMark({
 }) {
   if (segment.skill) {
     return (
-      <SkillMark
-        data-testid="message-skill"
-        name={segment.skill.name}
-        text={segment.text}
-        edge={segment.skillEdge}
-      />
+      <span data-testid="message-skill" className="markdown-chip">
+        <Icon as={BookOpen} size={11} className="markdown-chip__icon" />
+        {/* 技能芯片与输入区同一副样：图标加名字，正文里那个 `📖` 不再重复一遍。 */}
+        <span className="markdown-chip__name">{segment.skill.name}</span>
+      </span>
     );
   }
   if (segment.span) {

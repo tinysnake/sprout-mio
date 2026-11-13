@@ -4,6 +4,8 @@
  * 颜色与圆角全部读语义 token。
  */
 .markdown-content {
+  /* 正文字号就这一个值：标题、代码、芯片的尺寸都按 em 跟着它走。 */
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -49,15 +51,15 @@
 }
 
 .markdown-content h1 {
-  font-size: 15px;
+  font-size: 1.3em;
 }
 
 .markdown-content h2 {
-  font-size: 13.5px;
+  font-size: 1.15em;
 }
 
 .markdown-content h3 {
-  font-size: 12.5px;
+  font-size: 1.05em;
 }
 
 .markdown-content ul {
@@ -130,14 +132,14 @@
 .markdown-content pre code {
   background: none;
   padding: 0;
-  font-size: 11px;
+  font-size: 0.92em;
 }
 
 .markdown-content :not(pre) > code {
   border-radius: 4px;
   background: var(--muted);
   padding: 0 3px;
-  font-size: 11px;
+  font-size: 0.92em;
 }
 
 .markdown-content hr {
@@ -162,7 +164,7 @@
   border-radius: 4px;
   background: var(--selected);
   padding: 0 4px;
-  font-size: 11px;
+  font-size: 0.85em;
   white-space: nowrap;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;

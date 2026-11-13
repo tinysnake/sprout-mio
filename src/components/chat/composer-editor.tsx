@@ -13,6 +13,7 @@ import type { ResolvedPos } from "@tiptap/pm/model";
 import { newlineInCode, splitBlockKeepMarks } from "@tiptap/pm/commands";
 import type { Transaction } from "@tiptap/pm/state";
 import { attachmentToken } from "../../contracts/attachment";
+import { skillToken } from "../../lib/skill-token";
 import { Icon } from "../ui/icon";
 import {
   COMPOSER_UNDO_GROUP_DELAY,
@@ -81,14 +82,12 @@ export interface ComposerEditorHandle {
   focus(): void;
   /** 当前正文的 markdown（发送时读这里，比 React 状态少一帧延迟）。 */
   markdown(): string;
-  /** 整体替换草稿（选择器选人时用），光标落在给定 markdown 偏移。 */
-  setMarkdown(value: string, caret: number): void;
-  /** 在 markdown 区间上插入纯文本，光标落到插入内容之后。 */
-  insertText(from: number, to: number, text: string): void;
   /** 在 markdown 区间上插入一条附件引用芯片。 */
   insertAttachment(from: number, to: number, localId: string, label: string): void;
   /** 在 markdown 区间上插入一个点名芯片，尾部补一个空格。 */
   insertMention(from: number, to: number, member: MentionCandidate): void;
+  /** 在 markdown 区间上插入一个技能芯片，尾部补一个空格。 */
+  insertSkill(from: number, to: number, name: string): void;
   /** 删掉正文里指向该附件的全部芯片，返回是否删到了东西。 */
   removeAttachment(localId: string): boolean;
 }
@@ -514,23 +513,6 @@ export function ComposerEditor({
     onHandle({
       focus: () => editor.commands.focus(),
       markdown: () => markdownOf(editor),
-      setMarkdown: (next, nextCaret) => {
-        editor.commands.setContent(buildDocJson(next, { mentions: latest.current.mentions }), {
-          emitUpdate: false,
-        });
-        placeCaret(editor, nextCaret);
-        latest.current.onValueChange(markdownOf(editor), nextCaret);
-      },
-      insertText: (from, to, text) => {
-        const fromPos = pmPosition(editor, from);
-        const toPos = pmPosition(editor, to);
-        editor
-          .chain()
-          .focus()
-          .insertContentAt({ from: fromPos, to: toPos }, { type: "text", text })
-          .run();
-        latest.current.onValueChange(markdownOf(editor), caretMarkdown(editor));
-      },
       insertAttachment: (from, to, localId, label) => {
         const fromPos = pmPosition(editor, from);
         const toPos = pmPosition(editor, to);
@@ -558,6 +540,23 @@ export function ComposerEditor({
               type: COMPOSER_MENTION_NODE,
               attrs: { memberId: member.memberId, name: member.name, source: `@${member.name}` },
             },
+            { type: "text", text: " " },
+          ])
+          .run();
+        latest.current.onValueChange(markdownOf(editor), caretMarkdown(editor));
+      },
+      insertSkill: (from, to, name) => {
+        const fromPos = pmPosition(editor, from);
+        const toPos = pmPosition(editor, to);
+        // 技能 token 要被正文解析器当成独立标记，紧贴着前一个字时要先补一个空格。
+        const before = fromPos > 0 ? editor.state.doc.textBetween(fromPos - 1, fromPos) : "";
+        const lead = before && !/\s/u.test(before) ? [{ type: "text", text: " " }] : [];
+        editor
+          .chain()
+          .focus()
+          .insertContentAt({ from: fromPos, to: toPos }, [
+            ...lead,
+            { type: COMPOSER_SKILL_NODE, attrs: { name, source: skillToken(name) } },
             { type: "text", text: " " },
           ])
           .run();

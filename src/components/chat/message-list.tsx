@@ -165,8 +165,8 @@ export function MessageList({
             data-testid="message-body"
             className={
               human
-                ? "rounded-b-lg rounded-tr-lg bg-muted px-3.5 py-2.75 text-xs break-words"
-                : "text-xs break-words"
+                ? "rounded-b-lg rounded-tr-lg bg-muted px-3.5 py-2.75 text-sm break-words"
+                : "text-sm break-words"
             }
           >
             <MessageBody

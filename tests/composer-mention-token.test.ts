@@ -23,8 +23,10 @@ import {
 import {
   COMPOSER_ATTACHMENT_NODE,
   COMPOSER_MENTION_NODE,
+  COMPOSER_SKILL_NODE,
   ComposerAttachmentExtension,
   ComposerMentionExtension,
+  ComposerSkillExtension,
   deleteComposerAtomBackward,
   deleteComposerAtomForward,
 } from "../src/components/chat/tiptap/composer-rich-text-nodes";
@@ -50,6 +52,7 @@ const schema = getSchemaByResolvedExtensions(
     }),
     ComposerAttachmentExtension,
     ComposerMentionExtension,
+    ComposerSkillExtension,
     ComposerMarkdownSourceExtension,
   ]),
 );
@@ -112,9 +115,14 @@ describe("点名原子的识别", () => {
     ]);
   });
 
-  it("含空格的成员名不参与识别（选择器也打不出来）", () => {
+  it("含空格的成员名照收，长名字仍然优先", () => {
     const spaced: MentionCandidate = { memberId: "usr_x", name: "ann lee" };
-    expect(scanMentionTokens("@ann lee", [spaced])).toEqual([]);
+    expect(scanMentionTokens("@ann lee 在吗", [spaced])).toEqual([
+      { memberId: "usr_x", name: "ann lee", start: 0, end: 8 },
+    ]);
+    expect(scanMentionTokens("@ann lee 在吗", [spaced, ANN])).toEqual([
+      { memberId: "usr_x", name: "ann lee", start: 0, end: 8 },
+    ]);
   });
 });
 
@@ -135,6 +143,21 @@ describe("点名原子的文档往返", () => {
     const doc = buildDoc("@ann 看 [[att:local-1]]", [ANN]);
     expect(atomNames(doc)).toEqual([COMPOSER_MENTION_NODE, COMPOSER_ATTACHMENT_NODE]);
     expect(roundTrip("@ann 看 [[att:local-1]]", [ANN])).toBe("@ann 看 [[att:local-1]]");
+  });
+
+  it("名字带空格的点名后紧跟技能，重建后两颗原子都还在", () => {
+    const spaced: MentionCandidate = { memberId: "usr_x", name: "评审 Agent" };
+    const source = "@评审 Agent 📖how 看这个";
+    const doc = buildDoc(source, [spaced]);
+    const names: string[] = [];
+    doc.descendants((node) => {
+      if (node.type.name === COMPOSER_MENTION_NODE || node.type.name === COMPOSER_SKILL_NODE) {
+        names.push(node.type.name);
+      }
+      return true;
+    });
+    expect(names).toEqual([COMPOSER_MENTION_NODE, COMPOSER_SKILL_NODE]);
+    expect(serializeEditorDoc(doc).value).toBe(source);
   });
 });
 
