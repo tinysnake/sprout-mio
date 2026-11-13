@@ -100,8 +100,9 @@ export function HtmlBlock({ source }: { source: string }) {
         // 高度按内容量出来，边框不能从里面再扣 2px，否则沙箱内永远差一点点滚动。
         boxSizing: "content-box",
         display: "block",
-        visibility: height === null ? "hidden" : undefined,
-        border: "1px solid var(--border)",
+        // 测量期先给 60px 且保持可见，高度到了再长：隐藏态切回可见可能整块不重绘。
+        overflow: "hidden",
+        // 不描外框：artifact 自己画边框，外层再套一圈就成了框套框。
         borderRadius: "var(--radius)",
         // 沙箱文档当一张浅色纸面渲染：深色主题下默认黑字与透明底会互相吃掉，
         // 固定浅色底 + `colorScheme: light` 让没写样式的文档在两种主题下都可读。
