@@ -61,7 +61,7 @@
 }
 
 .message-attachment-figure figcaption {
-  font-size: 10px;
+  font-size: 1em;
   color: var(--muted-foreground);
 }
 
@@ -105,12 +105,12 @@
 }
 
 .message-attachment-file__name {
-  font-size: 11px;
+  font-size: 1em;
   font-weight: 500;
 }
 
 .message-attachment-file__size {
-  font-size: 9.5px;
+  font-size: 1em;
   color: var(--muted-foreground);
 }
 
@@ -122,7 +122,7 @@
   border: 1px dashed var(--border);
   border-radius: var(--radius);
   background: color-mix(in oklab, var(--destructive) 8%, transparent);
-  font-size: 11px;
+  font-size: 1em;
   color: var(--muted-foreground);
 }
 

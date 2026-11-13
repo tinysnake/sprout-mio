@@ -134,7 +134,7 @@ function ComposerChip({
       data-local-id={localId}
       contentEditable={false}
     >
-      <Icon as={CHIP_ICONS[kind]} size={11} className="markdown-chip__icon" />
+      <Icon as={CHIP_ICONS[kind]} size={13} className="markdown-chip__icon" />
       <span className="markdown-chip__name">{label}</span>
     </NodeViewWrapper>
   );

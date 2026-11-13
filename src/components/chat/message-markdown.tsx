@@ -199,7 +199,7 @@ function SentinelMark({
   if (segment.skill) {
     return (
       <span data-testid="message-skill" className="markdown-chip">
-        <Icon as={BookOpen} size={11} className="markdown-chip__icon" />
+        <Icon as={BookOpen} size={13} className="markdown-chip__icon" />
         {/* 技能芯片与输入区同一副样：图标加名字，正文里那个 `📖` 不再重复一遍。 */}
         <span className="markdown-chip__name">{segment.skill.name}</span>
       </span>
@@ -213,7 +213,7 @@ function SentinelMark({
         data-member-id={segment.span.memberId}
         className="markdown-chip"
       >
-        <Icon as={AtSign} size={11} className="markdown-chip__icon" />
+        <Icon as={AtSign} size={13} className="markdown-chip__icon" />
         {/* 芯片用 @ 图标表达点名，正文里那个 `@` 不再重复一遍。 */}
         <span className="markdown-chip__name">{segment.text.replace(/^@/u, "")}</span>
       </span>

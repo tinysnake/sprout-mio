@@ -135,7 +135,7 @@ export function AttachmentRefChip({ attachment }: { attachment: Attachment }) {
         void openAttachment(attachment.id);
       }}
     >
-      <Icon as={Paperclip} size={11} />
+      <Icon as={Paperclip} size={13} />
       <span className="message-attachment-ref__name">{attachment.filename}</span>
     </a>
   );
