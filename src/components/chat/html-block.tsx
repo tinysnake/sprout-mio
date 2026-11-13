@@ -21,7 +21,7 @@ export function isCompleteHtmlDocument(source: string): boolean {
   return COMPLETE_DOCUMENT.test(source);
 }
 
-const REPORTER = `(function(){function send(){parent.postMessage({type:"${HEIGHT_MESSAGE}",height:document.documentElement.scrollHeight},"*")}addEventListener("load",send);if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement)}})()`;
+const REPORTER = `(function(){function send(){parent.postMessage({type:"${HEIGHT_MESSAGE}",height:document.documentElement.scrollHeight},"*")}addEventListener("load",send);if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement)}var left=20;var poll=setInterval(function(){send();if(--left<=0)clearInterval(poll)},100)})()`;
 
 /**
  * 把模型给的文档包进沙箱。CSP 用一次性 nonce，只有高度上报脚本能执行：文档自己的脚本
@@ -51,10 +51,12 @@ export function sandboxDocument(source: string, nonce: string): string {
 
 /** 高度上限只为挡住病态文档撑爆布局，正常文档按内容自适应。 */
 const MAX_HEIGHT = 4000;
+/** 测量到达前的占位高度：只够让文档完成排版，短文档不会被撑成一大片空白。 */
+const MEASURING_HEIGHT = 60;
 
 export function HtmlBlock({ source }: { source: string }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(240);
+  const [height, setHeight] = useState<number | null>(null);
   const nonce = useMemo(() => randomNonce(), [source]);
   const document = useMemo(() => sandboxDocument(source, nonce), [source, nonce]);
   useEffect(() => {
@@ -79,7 +81,8 @@ export function HtmlBlock({ source }: { source: string }) {
       srcDoc={document}
       style={{
         width: "100%",
-        height,
+        height: height ?? MEASURING_HEIGHT,
+        visibility: height === null ? "hidden" : undefined,
         border: "1px solid var(--border)",
         borderRadius: "var(--radius)",
         // 沙箱文档当一张浅色纸面渲染：深色主题下默认黑字与透明底会互相吃掉，
