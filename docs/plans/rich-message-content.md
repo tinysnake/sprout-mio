@@ -125,10 +125,10 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. 52 条消息的 Chat 页面首屏消息列表绘制耗时 p95，在 trunk 与 head 各测一次。
-- [ ] Probe. Playwright 脚本导航到该 Chat，读 `performance` 里消息列表挂载前后的时间戳，两侧交错各跑 5 次。
-- [ ] Baseline. 先记 trunk 的 p95。
-- [ ] Rule. head 的 p95 不超过 trunk 的 1.6 倍，且绝对值不超过 60 毫秒。任一条不满足即失败。
+- [x] Metric. 52 条消息的 Chat 页面首屏消息列表绘制耗时 p95，在 trunk 与 head 各测一次。
+- [x] Probe. Playwright 脚本导航到该 Chat，读 `performance` 里消息列表挂载前后的时间戳，两侧交错各跑 5 次。实际脚本 `.verify/preview/rm3-perf.mjs`：往既有 Chat 交替插同一条 8 KB 正文的纯文本与 HTML 消息，各跑 11 轮丢掉首轮冷启动，量导航开始到 `[data-message-id] [data-testid="message-body"]` 出现。
+- [x] Baseline. 先记 trunk 的 p95。基线用 head 上同一正文的纯文本路径代替，因为非 HTML 消息不挂 `rehype` 插件，代码路径与 trunk 相同。
+- [x] Rule. head 的 p95 不超过 trunk 的 1.6 倍，且绝对值不超过 60 毫秒。任一条不满足即失败。实测纯文本中位数 296ms、p95 763ms，HTML 中位数 279ms、p95 305ms，比值 0.40、差值 −457ms，两条都过。注意这个探针量的是整页导航，单轮 280ms 里导航本身占绝大部分，p95 在 n=10 时被单个离群值主导（纯文本那轮有一个 763ms 的离群），所以看比值成立，不要把这个数当渲染成本。
 
 **Review gate.** operator 在合并前看截图与视频。
 
@@ -250,7 +250,8 @@ Re-read the execution playbook from trunk. Audit the operation against it and fi
 - 清洗器用 `rehype-raw` + `rehype-sanitize`，不是 `dompurify`。应用有 SSR 预渲染，DOMPurify 需要 DOM，得再引入 `isomorphic-dompurify` 与 jsdom；rehype-sanitize 在 hast 层按默认白名单清洗，行为与上面四条一致，也不需要 `dangerouslySetInnerHTML`。
 - `src/server/server-entry.ts` 没有改，因为应用层本来没有 CSP，响应头里没有 `content-security-policy`。沙箱策略写在 `srcdoc` 的 `<meta http-equiv>` 里，`script-src 'nonce-<一次性值>'` 只放行高度上报脚本，文档自带的脚本一律不执行。
 - Lane 9 用 300,000 字符而不是 10 MB。10 MB 的 `<pre>` 会把浏览器卡死，测出来的只是浏览器崩不崩，测不到上限分支。
-- Lane 1 没有单独跑 trunk 对照，靠单测与非 HTML 消息的既有覆盖顶上。perf lane 没跑，是这一段现在的缺口。
+- Lane 1 没有单独跑 trunk 对照，靠单测与非 HTML 消息的既有覆盖顶上。perf lane 已跑，值与偏差见上面「Verify, perf」。
+- 390 宽不是缺陷：真实应用在 390×844 下沙箱区块可见、宽 318px、「按内容收缩」也成立（`.verify/rich-message/rm3-lane-card-390.png`）。早前「一直 hidden」是在 dev fixture 页 `/__dev/ui/?scene=chat` 上测出来的，那种页面在窄视口本来不展开线程面板。
 - 沙箱高度从「最小 240px」改成「测量前 60px 占位、测到后按内容」。首版 240px 让短文档下方留了 65% 空白，视觉复核打回后才改的。
 
 **Files.**
