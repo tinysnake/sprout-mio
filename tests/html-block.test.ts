@@ -1,0 +1,106 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vite-plus/test";
+import {
+  HTML_MESSAGE_LIMIT,
+  isCompleteHtmlDocument,
+  sandboxDocument,
+} from "../src/components/chat/html-block";
+import { ARTIFACT_APPEARANCE_MESSAGE } from "../src/components/chat/html-artifact-theme";
+import { MessageMarkdown } from "../src/components/chat/message-markdown";
+
+function render(body: string) {
+  return renderToStaticMarkup(createElement(MessageMarkdown, { body, mentions: [], skills: [] }));
+}
+
+const document =
+  "<!doctype html><html><head><style>p{color:red}</style></head><body><p>hi</p></body></html>";
+
+describe("消息里的 HTML", () => {
+  it("白名单标签照常渲染，script 整块消失", () => {
+    const html = render("<b>粗</b><script>alert(1)</script>");
+    expect(html).toContain("<b>粗</b>");
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("alert(1)");
+  });
+
+  it("事件属性被去掉", () => {
+    const html = render('<p>文字<img src="x" onerror="alert(1)"></p>');
+    expect(html).not.toContain("onerror");
+  });
+
+  it("javascript: 链接被去掉", () => {
+    const html = render("[点我](javascript:alert(1))");
+    expect(html).not.toContain("javascript:");
+  });
+
+  it("超长 HTML 走提示分支，不进渲染管线", () => {
+    const html = render(`<p>${"a".repeat(HTML_MESSAGE_LIMIT)}</p>`);
+    expect(html).toContain('data-testid="html-too-long"');
+    expect(html).not.toContain("<p>aaa");
+  });
+
+  it("围栏里的完整文档进沙箱 iframe", () => {
+    const html = render("```html\n" + document + "\n```");
+    expect(html).toContain('data-testid="html-block"');
+    expect(html).toContain('sandbox="allow-scripts"');
+    expect(html).not.toContain("allow-same-origin");
+  });
+
+  it("围栏里的片段补外壳后也进沙箱", () => {
+    const html = render('```html\n<div style="border-radius:12px">片段</div>\n```');
+    expect(html).toContain('data-testid="html-block"');
+    expect(html).toContain("border-radius:12px");
+  });
+
+  it("围栏里没有标签就还是代码块", () => {
+    const html = render("```html\n只是一个颜色名\n```");
+    expect(html).not.toContain("html-block");
+    expect(html).toContain("只是一个颜色名");
+  });
+
+  it("沙箱文档放行文档自己的脚本，但出不了网", () => {
+    const wrapped = sandboxDocument(document);
+    expect(wrapped).toContain('http-equiv="Content-Security-Policy"');
+    expect(wrapped).toContain("script-src 'unsafe-inline'");
+    expect(wrapped).toContain("default-src 'none'");
+    expect(wrapped).toContain("style-src 'unsafe-inline'");
+    expect(wrapped).not.toContain("nonce");
+  });
+
+  it("片段外壳给留白与正文字号，内容原样放进 body", () => {
+    const wrapped = sandboxDocument("<div>片段</div>");
+    expect(wrapped).toContain("padding:8px");
+    expect(wrapped).toContain("font-size:14px");
+    expect(wrapped).toContain("<body><div>片段</div></body>");
+  });
+
+  it("外观注入到文档，浅色是默认", () => {
+    const wrapped = sandboxDocument("<div>片段</div>");
+    expect(wrapped).toContain('<meta name="color-scheme" content="light">');
+    expect(wrapped).toContain('paint("light")');
+    expect(wrapped).toContain(ARTIFACT_APPEARANCE_MESSAGE);
+  });
+
+  it("深色文档给整份主题样式表，靠 .dark 覆盖 :root", () => {
+    const wrapped = sandboxDocument("<div>片段</div>", "dark");
+    expect(wrapped).toContain('<meta name="color-scheme" content="dark">');
+    expect(wrapped).toContain('paint("dark")');
+    expect(wrapped).toContain("--background");
+    expect(wrapped).toContain("--muted-foreground");
+    expect(wrapped).toContain(".dark {");
+    expect(wrapped).not.toContain("background:Canvas");
+  });
+
+  it("完整文档自带 head 时主题样式插在它后面，不另起外壳", () => {
+    const wrapped = sandboxDocument(document, "dark");
+    expect(wrapped.match(/<head>/gu)).toHaveLength(1);
+    expect(wrapped.indexOf('name="color-scheme"')).toBeGreaterThan(wrapped.indexOf("<head>"));
+    expect(wrapped).toContain("<style>p{color:red}</style>");
+  });
+
+  it("完整文档判定不认普通片段", () => {
+    expect(isCompleteHtmlDocument(document)).toBe(true);
+    expect(isCompleteHtmlDocument("<div>片段</div>")).toBe(false);
+  });
+});

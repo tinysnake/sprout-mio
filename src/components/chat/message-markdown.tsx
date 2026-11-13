@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from "react";
 import { AtSign, BookOpen } from "lucide-react";
-import Markdown, { type Components } from "react-markdown";
+import Markdown, { type Components, type Options } from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import type { Attachment } from "../../contracts/attachment";
 import type { MentionSpan, MessageAttachmentSpan } from "../../contracts/chat";
@@ -20,6 +22,7 @@ import {
   partitionAttachments,
 } from "./message-attachments";
 import { maskMessageSegments, type MessageSegment, type MessageSentinel } from "./message-segments";
+import { containsHtml, exceedsHtmlLimit, HTML_MESSAGE_LIMIT, HtmlBlock } from "./html-block";
 import { Icon } from "../ui/icon";
 import "./markdown-content.css";
 
@@ -27,7 +30,11 @@ import "./markdown-content.css";
  * 消息正文的 markdown 渲染。
  *
  * 允许的构造：加粗、斜体、行内代码、围栏代码、无序与有序列表、标题、引用块、链接（含 remark-gfm
- * 认出的裸 URL），以及 gfm 顺带带来的表格与删除线。原文里的 HTML 标签不经 rehype-raw，只当字面文本。
+ * 认出的裸 URL），以及 gfm 顺带带来的表格与删除线。原文里的 HTML 先经 rehype-raw 解析，再过
+ * rehype-sanitize 的白名单，脚本、事件属性与 `javascript:` 链接都落不下来；围栏标为 html 的完整文档
+ * 进 `HtmlBlock` 的沙箱 iframe。不含 HTML 的消息不挂这两个插件，保持原来的解析路径。
+ *
+ * 单条消息的 HTML 超过 `HTML_MESSAGE_LIMIT` 时整条退回原文，见 `exceedsHtmlLimit`。
  *
  * 两处刻意的降级：
  * - markdown 源里的图片不渲染。正文可以来自模型与外部输入，渲染它等于让任何一条消息都能让读者的浏览器
@@ -37,19 +44,38 @@ import "./markdown-content.css";
  *
  * 点名、技能与附件引用的冻结区间先占位成带 nonce 的哨兵，解析后再回填成既有组件，字符范围一字不改。
  */
-export function MessageMarkdown({
-  body,
-  mentions,
-  skills,
-  attachments = [],
-  attachmentSpans = [],
-}: {
+type MessageMarkdownProps = {
   body: string;
   mentions: readonly MentionSpan[];
   skills: readonly MessageSkillSpan[];
   attachments?: readonly Attachment[];
   attachmentSpans?: readonly MessageAttachmentSpan[];
-}) {
+};
+
+export function MessageMarkdown(props: MessageMarkdownProps) {
+  // 退回到原文的这条路在 hooks 之前分岔：超长正文不值得再跑一遍切片与哨兵回填。
+  if (exceedsHtmlLimit(props.body)) return <OversizeHtml body={props.body} />;
+  return <MessageMarkdownBody {...props} />;
+}
+
+function OversizeHtml({ body }: { body: string }) {
+  return (
+    <div className="message-markdown markdown-content">
+      <p data-testid="html-too-long" className="text-muted-foreground">
+        {`这条消息的 HTML 超过 ${HTML_MESSAGE_LIMIT.toLocaleString("en-US")} 字符，按原文显示。`}
+      </p>
+      <pre>{body}</pre>
+    </div>
+  );
+}
+
+function MessageMarkdownBody({
+  body,
+  mentions,
+  skills,
+  attachments = [],
+  attachmentSpans = [],
+}: MessageMarkdownProps) {
   const { text, sentinels } = useMemo(
     () => maskMessageSegments(body, mentions, skills, attachmentSpans),
     [body, mentions, skills, attachmentSpans],
@@ -62,13 +88,19 @@ export function MessageMarkdown({
     () => componentsWithSentinels(sentinels, attachmentsById),
     [sentinels, attachmentsById],
   );
+  // 不含 HTML 的消息多挂两个插件只是白花解析时间，按需启用。
+  const hasHtml = useMemo(() => containsHtml(body), [body]);
+  const rehypePlugins = useMemo<NonNullable<Options["rehypePlugins"]>>(
+    () => (hasHtml ? [rehypeRaw, [rehypeSanitize]] : []),
+    [hasHtml],
+  );
   const { figures, chips } = useMemo(
     () => partitionAttachments(attachments, attachmentSpans),
     [attachments, attachmentSpans],
   );
   return (
     <div className="message-markdown markdown-content">
-      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={components}>
         {text}
       </Markdown>
       <MessageAttachments figures={figures} chips={chips} />
@@ -111,7 +143,21 @@ function componentsWithSentinels(
   components.a = ({ children, node: _node, href, ...rest }) =>
     createElement("a", { ...rest, href, ...externalLinkAttributes(href) }, fill(children));
   components.img = ({ node: _node, src, alt }) => createElement("span", null, imageText(src, alt));
+  components.pre = ({ children, node: _node, ...rest }) => {
+    const source = fencedHtmlSource(children);
+    return source === null
+      ? createElement("pre", rest, children)
+      : createElement(HtmlBlock, { source });
+  };
   return components as unknown as Components;
+}
+
+/** 围栏标为 html 就换 sandbox 面：片段由 `sandboxDocument` 补外壳，`<style>` 与 `style=` 才生效。 */
+function fencedHtmlSource(children: ReactNode): string | null {
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return null;
+  const { className, children: source } = children.props;
+  if (!/language-html\b/u.test(className ?? "")) return null;
+  return typeof source === "string" && containsHtml(source) ? source : null;
 }
 
 /** 站外链接不继承应用页的 referrer，也不把用户从 Chat 里导航走。 */
