@@ -985,3 +985,39 @@ test("takeover requires the current lead and a live source grant", () => {
     (error: unknown) => error instanceof Error && "code" in error && error.code === "conflict",
   );
 });
+
+test("reconcile recovers a held Crew lease that has no owning request", () => {
+  const f = fixture(),
+    w = f.worker(),
+    r = f.approved(w);
+  advanceCrewResources();
+  sqlite
+    .prepare(
+      "UPDATE crew_resource_request SET state='released', approval='revoked', released_at=updated_at WHERE id=?",
+    )
+    .run(r.id);
+  reconcileCrewResources();
+  const lease = sqlite
+    .prepare("SELECT state FROM machine_lease WHERE project_id=? AND machine_id=?")
+    .get(f.projectId, f.key.machineId) as { state: string };
+  assert.equal(lease.state, "free");
+  const mutation = sqlite
+    .prepare(
+      "SELECT action,state,expected_generation FROM lease_mutation WHERE project_id=? AND machine_id=? ORDER BY created_at DESC",
+    )
+    .get(f.projectId, f.key.machineId) as {
+    action: string;
+    state: string;
+    expected_generation: number;
+  };
+  assert.deepEqual(
+    { ...mutation },
+    { action: "release", state: "completed", expected_generation: 1 },
+  );
+  const auth = sqlite
+    .prepare(
+      "SELECT state FROM lease_authorization WHERE project_id=? AND machine_id=? AND generation=1",
+    )
+    .get(f.projectId, f.key.machineId) as { state: string };
+  assert.equal(auth.state, "revoked");
+});
