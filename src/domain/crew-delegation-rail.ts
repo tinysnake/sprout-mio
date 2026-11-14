@@ -7,7 +7,10 @@ import { getChat } from "./chat";
 import { DelegationError } from "./delegation";
 
 export function groupCrewDelegations(cards: CrewDelegationCard[]): CrewDelegationRail {
-  const active = cards.filter((card) => card.status === "queued" || card.status === "running");
+  const active = cards.filter(
+    (card) =>
+      card.status === "queued" || card.status === "running" || card.status === "canceling",
+  );
   const needsYou = cards.filter(
     (card) =>
       card.status === "blocked" || card.status === "failed" || card.attentionReason !== null,
@@ -69,7 +72,7 @@ export function listCrewDelegationRail(
         eq(delegation.projectId, input.projectId),
         eq(delegation.parentCrewChatId, input.crewChatId),
         eq(delegation.crewEpoch, epoch.epoch),
-        notInArray(delegation.status, ["canceled", "canceling"]),
+        notInArray(delegation.status, ["canceled"]),
       ),
     )
     .orderBy(desc(delegation.updatedAt), desc(delegation.id))

@@ -118,6 +118,7 @@ describe("Crew rail 的读取边界", () => {
       attentionReason,
     });
     const grouped = groupCrewDelegations([
+      card("canceling", "canceling"),
       card("active", "running"),
       card("queued", "queued"),
       card("blocked", "blocked"),
@@ -125,7 +126,7 @@ describe("Crew rail 的读取边界", () => {
       card("attention", "completed", "结果未送达"),
       ...Array.from({ length: 25 }, (_, i) => card(`done-${i}`, "completed")),
     ]);
-    expect(grouped.counts).toEqual({ active: 2, needsYou: 3, completed: 25 });
+    expect(grouped.counts).toEqual({ active: 3, needsYou: 3, completed: 25 });
     expect(grouped.completed).toHaveLength(20);
     expect(grouped.needsYou.map((item) => item.delegationId)).toContain("attention");
     expect(groupCrewDelegations([]).counts).toEqual({ active: 0, needsYou: 0, completed: 0 });
