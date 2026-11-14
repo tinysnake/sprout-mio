@@ -92,3 +92,11 @@
 - 已修并单独验证通过：`c-data-auth`（旧的 public_channel 计数）、`p6a-wiring` 与 `deploy-continuation-off`（缺 BETTER_AUTH_SECRET）、`p7-client-navigation` 与 `p7-client-pwa`（seed 仍在查公共频道）。`assistant-browser` 单独重跑通过，属满载假红。
 - 剩余失败按原因分三组处理。p6a 的 routing、delivery、integration 仍是旧 Group 语义或 gateway 冲突。成员治理与浏览器组是 lead 移除被 blocker 正确阻止，但 gate 仍按旧 Group 期待移除成功。p7、p6b、k2、z3 是 fixture 旧场景、重复 seed 或验收断言。
 - 三个 worktree worker 并行修这三组，主线程继续跑剩余 gate 分类。环境类失败（pi-magpie、pinned model、真实外部服务）不伪装成通过，单独记为环境前置。
+
+## 2026-11-14 CR1 第三轮门禁收敛
+
+- 三组 gate 修复并行完成并集成。p6a 组把快照从旧 Group 场景重生成到 crew owner_led，delivery 断言改为 lead 收件而 Human 仍是 owner，gateway 冲突根因是 fixture 静态导入在环境变量之前加载 config。成员治理组把 lead 移除改成先验证 blocker 可见，再移除普通成员。p7/p6b/k2/z3 组把 Crew 消息改为只唤醒 lead，p6b 重复 seed 改为动态导入，K2 的 public_channel 计数改为 Crew 集合，Z3 改为核验归档 sourceCommit 对应的脚本 SHA。
+- `bf-p6a-lifecycle` 的远程冲突是误判。真实根因仍是 `tests/fixtures/p6a-lifecycle.ts` 顶层静态导入 `./crew-chat`，ESM 提升后在设置 `BETTER_AUTH_SECRET` 前加载 auth config。改为环境变量之后的动态导入即可，177 条断言通过。
+- `z-lease-integration` 的第一处失败是 gate 与产品决策冲突。`b86c4f9` 已确定没有 held 租约时不渲染强制收回，gate 却在 free 状态等待该控件。改为断言 free 时不存在，随后门禁进入真实 Pi 租约工具，并暴露 model fixture 计划参数与注册工具 schema 漂移，另派 worker 处理。
+- 集成后 `pnpm typecheck`、`pnpm test`（185 文件 / 1801 测试）、`pnpm exec vp check` 通过。p6a、p7、p6b、k2、z3、k-acceptance、h-project-agents、p6c-member-governance-ui 单 gate 复跑通过。
+- 仍未证明为通过的环境类前置：`ah-execution-live-e2e` 三条 fixture 在满载下 143 超时；`x-remote-tools`、`ae-remote-tools-cancel-log`、`aj-recovery-matrix` 依赖未安装的 pi-magpie。它们不作为 CR1 语义证据，也不伪装成通过。
