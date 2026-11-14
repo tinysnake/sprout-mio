@@ -1,3 +1,4 @@
+import "./fixtures/crew-governance-regressions";
 import { describe, expect, it } from "vite-plus/test";
 
 // 领域层判定要装载 ChatError 与能力表：先把连接指到内存库，本文件不执行任何查询。

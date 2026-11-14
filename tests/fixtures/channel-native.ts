@@ -21,6 +21,8 @@ export async function channelNativeFixture() {
     const project = projects.createProject({ name: "Channel project" }, ctx);
     const helper = agents.createAgentProfile({ name: "Helper", purpose: "assistant" }, ctx);
     const worker = agents.createAgentProfile({ name: "Worker" }, ctx);
+    const crewLead = agents.createAgentProfile({ name: `Crew lead ${project.id}` }, ctx);
+    agents.addProjectMember(project.id, crewLead.id, ctx);
     agents.addProjectMember(project.id, helper.id, ctx);
     agents.addProjectMember(project.id, worker.id, ctx);
     const dm = chats.createDirectChat(project.id, helper.id, ctx).chat;

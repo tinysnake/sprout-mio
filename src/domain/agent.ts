@@ -40,6 +40,7 @@ import type { ProjectContext } from "./access";
 import { abortAgentRun } from "./agent-run";
 import {
   getChat,
+  initializeCrewLead,
   revokeProjectAgentEnrollment,
   revokeProjectAgentEnrollmentUnchecked,
 } from "./chat";
@@ -86,16 +87,21 @@ function uniqueBy<T>(items: T[], key: (item: T) => string): T[] {
 export function collectProjectMemberRemovalBlockers(
   projectId: string,
   agentProfileId: string,
+  chatId?: string,
 ): ProjectMemberRemovalBlocker[] {
   if (!sqlite.inTransaction)
     return sqlite
-      .transaction(() => collectProjectMemberRemovalBlockers(projectId, agentProfileId))
+      .transaction(() => collectProjectMemberRemovalBlockers(projectId, agentProfileId, chatId))
       .deferred();
   const instances = db
     .select({ id: agentInstance.id })
     .from(agentInstance)
     .where(
-      and(eq(agentInstance.projectId, projectId), eq(agentInstance.agentProfileId, agentProfileId)),
+      and(
+        eq(agentInstance.projectId, projectId),
+        eq(agentInstance.agentProfileId, agentProfileId),
+        chatId === undefined ? undefined : eq(agentInstance.chatId, chatId),
+      ),
     )
     .all()
     .map((row: { id: string }) => row.id);
@@ -206,14 +212,14 @@ export function collectProjectMemberRemovalBlockers(
         compareIds(a.key.machineId, b.key.machineId),
       ),
     });
-  if (owners.length)
+  if (chatId === undefined && owners.length)
     blockers.push({
       kind: "owner_duties",
       items: uniqueBy(owners, (row) => row.chat.chatId).sort((a, b) =>
         compareIds(a.chat.chatId, b.chat.chatId),
       ),
     });
-  if (tasks.length)
+  if (chatId === undefined && tasks.length)
     blockers.push({
       kind: "dm_assigned_tasks",
       items: uniqueBy(tasks, (row) => row.taskId).sort(
@@ -356,6 +362,11 @@ export function addProjectMember(
     () => {
       assertProjectAccess(ctx, projectId);
       getAgentProfile(agentProfileId, ctx);
+      const firstMember = !db
+        .select({ id: projectMember.agentProfileId })
+        .from(projectMember)
+        .where(eq(projectMember.projectId, projectId))
+        .get();
       const row = db
         .insert(projectMember)
         .values({ projectId, agentProfileId, addedBy: ctx.userId })
@@ -363,8 +374,20 @@ export function addProjectMember(
         .returning()
         .get();
       if (!row) throw new AgentError("conflict", "Agent 已是 Project 成员");
-      // Project 成员与 Crew 成员是两件事：加入 Project 不会自动进入任何 Crew，
-      // 由 Human 在 Crew 里显式添加；Crew 的默认 lead 只在 Project 初始化时确定。
+      if (firstMember) {
+        const initialCrew = db
+          .select()
+          .from(chat)
+          .where(and(eq(chat.projectId, projectId), eq(chat.kind, "crew")))
+          .get();
+        if (initialCrew && initialCrew.leadProfileId === null && initialCrew.crewEpoch === 0) {
+          db.insert(chatMember)
+            .values({ chatId: initialCrew.id, memberKind: "agent", memberId: agentProfileId })
+            .onConflictDoNothing()
+            .run();
+          initializeCrewLead(initialCrew.id, agentProfileId);
+        }
+      }
       // 重新加入时恢复既有 DM（归档清除）；顺序在成员行之后，同事务内一起提交。
       setProjectAgentDirectChatsArchived(projectId, agentProfileId, null);
       return toProjectMember(row);

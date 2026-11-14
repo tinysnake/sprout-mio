@@ -433,7 +433,7 @@ function readTaskDetail(row: TaskRow, ctx: ProjectContext): contract.TaskDetail 
   let responsibility: contract.TaskResponsibility | null = null;
   if (row.chatId) {
     try {
-      responsibility = taskResponsibilityFacts(row.chatId, ctx);
+      responsibility = taskResponsibilityFacts(row.chatId, ctx, true);
     } catch (error) {
       if (!isTaskScopeError(error)) throw error;
       // Historical tasks remain readable after responsibility is revoked.

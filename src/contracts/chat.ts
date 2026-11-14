@@ -114,6 +114,13 @@ export const setCrewLeadInput = z.object({
 });
 export type SetCrewLeadInput = z.infer<typeof setCrewLeadInput>;
 
+export const setCrewModeInput = z.object({
+  chatId: z.string().min(1),
+  mode: z.enum(["active", "stopped"]),
+  expectedRevision: z.number().int().nonnegative(),
+});
+export type SetCrewModeInput = z.infer<typeof setCrewModeInput>;
+
 /**
  * 会话的展示标题：人工标题优先，缺省回落到参与分身名。
  * 纯规则只放一处，读模型与页面引用同一份回落链，不各写一套。

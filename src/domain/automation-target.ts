@@ -48,11 +48,11 @@ export function resolveAutomationTarget(
     if (current.archivedAt) return { reason: "chat_archived" };
     if ((action.kind === "dm_agent") !== (current.kind === "dm"))
       return { reason: "target_kind_mismatch" };
-    if (controlFor(current.id).mode !== "enabled") return { reason: "chat_stopped" };
+    if (current.control === "stopped" || controlFor(current.id).mode !== "enabled")
+      return { reason: "chat_stopped" };
     const crewLeadId = current.kind === "crew" ? readCrewLeadId(current.id) : undefined;
-    if (action.kind === "group_owner" && !crewLeadId) return { reason: "owner_is_not_agent" };
-    const agentProfileId =
-      action.kind === "group_owner" ? (crewLeadId as string) : action.agentProfileId;
+    if (current.kind === "crew" && !crewLeadId) return { reason: "crew_lead_missing" };
+    const agentProfileId = action.kind === "dm_agent" ? action.agentProfileId : crewLeadId!;
     const participant = db
       .select()
       .from(chatEffectiveMember)

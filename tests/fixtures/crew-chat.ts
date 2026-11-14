@@ -4,7 +4,7 @@ import { newId, ID_PREFIXES } from "../../src/contracts/ids";
 import { db } from "../../src/db";
 import { chat, chatMember, crewControl, project } from "../../src/db/schema";
 import type { ChatActor } from "../../src/domain/chat-actor";
-import { getChat, initializeCrewLead, readCrewLeadId } from "../../src/domain/chat";
+import { getChat, initializeCrewLead, readCrewLeadId, setCrewLead } from "../../src/domain/chat";
 
 type LegacyCrewInput = {
   projectId: string;
@@ -66,18 +66,21 @@ export function setChatOwnerCompat(
   expectedRevision: number,
   actor: ChatActor,
 ): Chat {
-  const agentIds = db
-    .select({ memberId: chatMember.memberId })
-    .from(chatMember)
-    .where(and(eq(chatMember.chatId, chatId), eq(chatMember.memberKind, "agent")))
-    .all()
-    .map((row: { memberId: string }) => row.memberId);
-  const lead = owner.kind === "agent" ? owner.id : agentIds[0];
-  if (!lead) return getChat(chatId, actor.ctx);
+  if (owner.kind === "agent") return setCrewLead(chatId, owner.id, expectedRevision, actor);
+  return seedLegacyHumanOwnerFixture(chatId, owner.id, expectedRevision, actor);
+}
+
+/** 仅为旧 Human owner 场景造数；不代表生产治理入口。 */
+export function seedLegacyHumanOwnerFixture(
+  chatId: string,
+  humanId: string,
+  expectedRevision: number,
+  actor: ChatActor,
+): Chat {
   db.update(chat)
     .set({
-      leadProfileId: lead,
-      crewEpoch: 1,
+      ownerKind: "human",
+      ownerId: humanId,
       governanceRevision: expectedRevision + 1,
       updatedAt: new Date(),
     })

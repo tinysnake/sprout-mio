@@ -410,21 +410,6 @@ function projectInstanceIdsOf(projectId: string, agentProfileId: string): string
     .map((row: { id: string }) => row.id);
 }
 
-/** 活跃 run：`queued` 或 `running`，同一个 instance 由局部唯一索引保证至多一条。 */
-function activeRunOf(instanceIds: readonly string[]): string | undefined {
-  if (instanceIds.length === 0) return undefined;
-  return db
-    .select({ id: agentRun.id })
-    .from(agentRun)
-    .where(
-      and(
-        inArray(agentRun.instanceId, [...instanceIds]),
-        inArray(agentRun.status, ["queued", "running"]),
-      ),
-    )
-    .get()?.id;
-}
-
 /**
  * 未下发输入的取消：只动 `pending`。`delivered` 已经进入那轮上下文，停它走 P4c 的执行取消路径
  * （裁定 d11）；把两套取消语义混在一起，历史里就说不清是谁停的。
@@ -845,6 +830,8 @@ export function sendMessage(
   const writtenFiles: string[] = [];
   const commitMessage = sqlite.transaction(() => {
     const current = getChat(chatId, ctx);
+    if (current.kind === "crew" && current.control === "stopped" && input.senderKind === "human")
+      throw new ChatError("conflict", "Crew 已停止接入新消息");
     if (input.senderKind !== "human" && input.senderKind !== "agent")
       throw new ChatError("forbidden", "来源消息只能由可信领域入口创建");
     // N04：agent sender 必须带这次 run 的身份。`assertActiveRun` 对无 `ctx.agent` 直接返回，
@@ -1088,7 +1075,7 @@ export function readCrewLeadId(chatId: string): string | undefined {
 }
 
 /**
- * 首个加入 Project 的 Agent 成为 Crew 的 lead。只在 lead 为空时生效：
+ * 首个加入 Project 的 Agent 成为 Crew 的 lead。只在 lead 为空且 epoch 为零时生效：
  * 单条 UPDATE 的 WHERE 就是并发边界，两个 Agent 同时加入只有先到的那个写进去。
  * 创建后再移除 lead 不会触发重新初始化，lead 只能由人类显式改任。
  */
@@ -1100,14 +1087,21 @@ export function initializeCrewLead(chatId: string, agentProfileId: string): void
       governanceRevision: sql`${chat.governanceRevision} + 1`,
       updatedAt: new Date(),
     })
-    .where(and(eq(chat.id, chatId), eq(chat.kind, "crew"), isNull(chat.leadProfileId)))
+    .where(
+      and(
+        eq(chat.id, chatId),
+        eq(chat.kind, "crew"),
+        isNull(chat.leadProfileId),
+        eq(chat.crewEpoch, 0),
+      ),
+    )
     .run();
 }
 
 /**
  * 加成员。Human 成员档动作，Agent 一律 forbidden。Agent 必须已是本 Project 成员且 purpose worker，
  * 人类只能是 Project 创建者（Crew 成员集不自动继承 Project 的其他人）。
- * 重复加同一成员是幂等成功；但 Crew 仍无 lead 时，首个 Agent 成员无论如何都会成为 lead。
+ * 重复加同一成员是幂等成功；首次初始化（epoch 为零且无 lead）时才会自动指定 lead。
  */
 export function addCrewMember(
   chatId: string,
@@ -1144,7 +1138,11 @@ export function addCrewMember(
             .onConflictDoNothing()
             .returning()
             .get();
-          if (member.kind === "agent" && current.leadProfileId === undefined) {
+          if (
+            member.kind === "agent" &&
+            current.leadProfileId === undefined &&
+            current.crewEpoch === 0
+          ) {
             initializeCrewLead(chatId, member.id);
             return getChat(chatId, actor.ctx);
           }
@@ -1190,9 +1188,8 @@ export function removeCrewMember(
         throw new ChatError("conflict", "Project 创建者不能被移出 Crew");
       if (member.kind === "agent" && current.leadProfileId === member.id)
         throw new ChatError("conflict", "当前 lead 不能被移出，请先改任 lead");
+      if (member.kind === "agent") assertCrewAgentResponsibilitiesEnded(current, member.id);
       const instanceIds = member.kind === "agent" ? instanceIdsOf(chatId, member.id) : [];
-      if (activeRunOf(instanceIds))
-        throw new ChatError("conflict", "该成员仍有活跃运行，不能移出 Crew");
       return writeIdentity(
         actor.ctx,
         {
@@ -1272,6 +1269,68 @@ export function revokeProjectAgentEnrollmentUnchecked(
   }
 }
 
+function assertCrewAgentResponsibilitiesEnded(current: Chat, agentProfileId: string): void {
+  const blockers = collectProjectMemberRemovalBlockers(
+    current.projectId,
+    agentProfileId,
+    current.id,
+  );
+  if (blockers.length)
+    throw new ProjectMemberRemovalBlockedError({
+      projectId: current.projectId,
+      agentProfileId,
+      blockers,
+    });
+}
+
+/** Human owner 通过治理版本控制 Crew 的接入开关；已有 run 保留执行权。 */
+export function setCrewMode(
+  chatId: string,
+  mode: "active" | "stopped",
+  expectedRevision: number,
+  actor: ChatActor,
+  hooks: IdentityWriteHooks = {},
+): Chat {
+  return sqlite
+    .transaction(() => {
+      const current = getChat(chatId, actor.ctx);
+      assertGovernableCrew(current);
+      if (
+        actor.kind !== "human" ||
+        actor.ctx.agent ||
+        current.owner.kind !== "human" ||
+        actor.userId !== current.owner.id ||
+        actor.ctx.userId !== actor.userId
+      )
+        throw new ChatError("forbidden", "只有 Human owner 可以控制 Crew");
+      if (mode !== "active" && mode !== "stopped")
+        throw new ChatError("conflict", "Crew mode 无效");
+      return writeIdentity(
+        actor.ctx,
+        {
+          event: "chat.crew_mode_changed",
+          message: "Crew 接入状态已变更",
+          projectId: current.projectId,
+          chatId,
+        },
+        () => {
+          const updated = applyGovernance(current, expectedRevision);
+          db.insert(crewControl)
+            .values({ chatId, mode, updatedAt: new Date() })
+            .onConflictDoUpdate({
+              target: crewControl.chatId,
+              set: { mode, updatedAt: new Date() },
+            })
+            .run();
+          signalScheduleChange(chatId);
+          return { ...updated, control: mode };
+        },
+        hooks,
+      );
+    })
+    .immediate();
+}
+
 /**
  * 改任 lead。所有者档动作 + CAS：候选必须是当前有效的 Agent 成员。
  * 每次改任都推进 `crew_epoch`：执行中的委派与资源授权按 epoch 失效，旧 epoch 的结果保留可审计。
@@ -1301,6 +1360,8 @@ export function setCrewLead(
         )
         .get();
       if (!member) throw new ChatError("not_found", "新 lead 不是该 Crew 的成员");
+      if (current.leadProfileId)
+        assertCrewAgentResponsibilitiesEnded(current, current.leadProfileId);
       return writeIdentity(
         actor.ctx,
         {

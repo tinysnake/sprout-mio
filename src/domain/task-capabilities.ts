@@ -34,8 +34,14 @@ export function isTaskScopeError(
 export type TaskRow = typeof task.$inferSelect;
 
 /** Responsibility is a current Chat fact, never the Task creator or the DM's Human owner. */
-export function taskResponsibilityFacts(chatId: string, ctx: ProjectContext): TaskResponsibility {
+export function taskResponsibilityFacts(
+  chatId: string,
+  ctx: ProjectContext,
+  allowStopped = false,
+): TaskResponsibility {
   const current = getChat(chatId, ctx);
+  if (!allowStopped && current.kind === "crew" && current.control === "stopped")
+    throw new TaskError("task_assignment_invalid", "Crew 已停止承接新任务");
   const row = db.select().from(chat).where(eq(chat.id, chatId)).get()!;
   if (row.archivedAt) throw new TaskError("task_assignment_invalid", "承接对话已归档");
   const members = readChatEffectiveMembers(chatId, current.projectId);
@@ -157,7 +163,7 @@ function capabilityDenial(
   try {
     if (row) assertTaskWriteScope(row, ctx, action === "reopen");
     if (level === "responsible" && row) {
-      const responsibility = row.chatId ? taskResponsibilityFacts(row.chatId, ctx) : null;
+      const responsibility = row.chatId ? taskResponsibilityFacts(row.chatId, ctx, true) : null;
       if (
         responsibility?.kind !== "agent" ||
         responsibility.agentProfileId !== ctx.agent?.agentProfileId

@@ -174,6 +174,7 @@ function insertDispatchedExecution(options: {
 /** Group owner 换成 Agent（owner 转接的正规输入）。 */
 function ownGroupByAgent(f: Fixture) {
   const current = getChat(f.group.id, f.ctx);
+  if (current.leadProfileId === f.agent.id) return;
   setChatOwnerCompat(f.group.id, { kind: "agent", id: f.agent.id }, current.governanceRevision, {
     kind: "human",
     userId: f.ctx.userId,
@@ -395,7 +396,10 @@ function scenarioHandoff() {
   // 四处善后：run 中止、owner 转接、DM Task 退回、挂荗中的租约（held）被收回。
   assert.deepEqual(outcome.abortedRunIds, [run]);
   assert.equal(runStatusOf(run)!.status, "aborted");
-  assert.deepEqual(outcome.ownerTransferredChatIds, [f.group.id]);
+  assert.deepEqual(
+    sortedIds(outcome.ownerTransferredChatIds),
+    sortedIds([f.channel.id, f.group.id]),
+  );
   assert.equal(chatRow(f.group.id)!.leadProfileId, null);
   assert.deepEqual(outcome.unassignedTaskIds, [dmTask]);
   assert.equal(taskRow(dmTask)!.status, "proposed");

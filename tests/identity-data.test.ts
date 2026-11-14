@@ -118,8 +118,13 @@ describe("P2 身份、Project 授权与持久对话", () => {
       assert.equal(count('project_member'), 1);
       assert.deepEqual(agent.listProjectMembers(projectA.id, ctxA), [member]);
       const direct = dm.createDirectChat(projectA.id, profileA.id, ctxA);
+      const crewLead = agent.createAgentProfile({ name: 'Retained Crew lead' }, ctxA);
+      const retained = agent.addProjectMember(projectA.id, crewLead.id, ctxA);
+      const crewRow = sqlite.prepare("SELECT id, governance_revision FROM chat WHERE project_id=? AND kind='crew'").get(projectA.id);
+      dm.addCrewMember(crewRow.id, { kind: 'agent', id: crewLead.id }, crewRow.governance_revision, { kind: 'human', userId: ctxA.userId, ctx: ctxA });
+      dm.setCrewLead(crewRow.id, crewLead.id, dm.getChat(crewRow.id, ctxA).governanceRevision, { kind: 'human', userId: ctxA.userId, ctx: ctxA });
       agent.removeProjectMember(projectA.id, profileA.id, ctxA);
-      assert.deepEqual(agent.listProjectMembers(projectA.id, ctxA), []);
+      assert.deepEqual(agent.listProjectMembers(projectA.id, ctxA), [retained]);
       assert.equal(dm.getInstance(direct.instance.id, ctxA).id, direct.instance.id);
       assert.equal(dm.getChat(direct.chat.id, ctxA).id, direct.chat.id);
       notFound(() => dm.createDirectChat(projectA.id, profileA.id, ctxA));

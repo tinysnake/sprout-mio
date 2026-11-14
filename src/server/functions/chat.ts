@@ -10,6 +10,7 @@ import {
   removeCrewMemberInput,
   sendMessageInput,
   setCrewLeadInput,
+  setCrewModeInput,
   updateChatTitleInput,
 } from "../../contracts/chat";
 import type {
@@ -391,6 +392,32 @@ export const removeCrewMemberFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     removeCrewMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export async function setCrewModeBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = setCrewModeInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(
+      deps.setCrewMode(
+        parsed.data.chatId,
+        parsed.data.mode,
+        parsed.data.expectedRevision,
+        humanActor(context),
+      ),
+      requestId,
+    );
+  });
+}
+
+export const setCrewModeFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    setCrewModeBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
 export const setCrewLeadFn = createServerFn({ method: "POST" })

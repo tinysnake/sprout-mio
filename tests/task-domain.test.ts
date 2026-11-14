@@ -681,6 +681,15 @@ describe("responsibility, Agent scopes and explicit start delivery", () => {
       ctx,
     );
     const stale = next.startDelivery!;
+    expect(() =>
+      setChatOwnerCompat(
+        target.id,
+        { kind: "agent", id: beta.id },
+        getChat(target.id, ctx).governanceRevision,
+        human,
+      ),
+    ).toThrowError(expect.objectContaining({ code: "project_member_removal_blocked" }));
+    transitionAgentRun(stale.runId!, "aborted", { stopReason: "human_stop" }, ctx);
     setChatOwnerCompat(
       target.id,
       { kind: "agent", id: beta.id },

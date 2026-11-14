@@ -70,7 +70,7 @@ export function setup() {
     .get()!;
   sqlite
     .prepare(
-      "INSERT INTO chat_member(chat_id,member_kind,member_id,added_at) VALUES (?,'agent',?,?)",
+      "INSERT OR IGNORE INTO chat_member(chat_id,member_kind,member_id,added_at) VALUES (?,'agent',?,?)",
     )
     .run(channel.id, agent.id, 1);
   const bootId = newId(ID_PREFIXES.boot);

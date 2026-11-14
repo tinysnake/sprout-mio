@@ -597,6 +597,16 @@ describe("native assistant authority and durable work", () => {
         .get(receipt.messageId),
     ).toEqual({ n: 1 });
     expect(input.instance_id).toBe(explicit.instanceId);
+    expect(() =>
+      setChatOwnerCompat(group.id, { kind: "agent", id: worker.id }, group.governanceRevision, {
+        kind: "human",
+        userId: ctx.userId,
+        ctx,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "project_member_removal_blocked" }));
+    for (const run of runs.listAgentRuns(group.id, ctx))
+      if (["queued", "running"].includes(run.status))
+        runs.transitionAgentRun(run.id, "aborted", { stopReason: "human_stop" }, ctx);
     group = setChatOwnerCompat(
       group.id,
       { kind: "agent", id: worker.id },
@@ -867,7 +877,7 @@ describe("native assistant authority and durable work", () => {
     const staleHelper = createAgentProfile({ name: "Revoked source", purpose: "assistant" }, ctx);
     const freshHelper = createAgentProfile({ name: "Valid source", purpose: "assistant" }, ctx);
     const targetWorker = createAgentProfile({ name: "Queued scan worker" }, ctx);
-    for (const profile of [staleHelper, freshHelper, targetWorker])
+    for (const profile of [targetWorker, staleHelper, freshHelper])
       addProjectMember(lane.id, profile.id, ctx);
     const stale = chats.createDirectChat(lane.id, staleHelper.id, ctx).chat;
     const fresh = chats.createDirectChat(lane.id, freshHelper.id, ctx).chat;
