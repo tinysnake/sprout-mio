@@ -129,8 +129,9 @@ try {
       },
     );
     assert.equal(appended.status, 0, appended.stderr || String(appended.error));
-    // 等下一轮 live tick（空闲 5s）完成 settle：anchor 若仍停在最新页，目标页会被裁掉。
-    await page.waitForTimeout(6000);
+    // 进程内 change feed 收不到另一个进程写的消息，只能等安全轮询；上限 15s，留足请求耗时。
+    // anchor 若仍停在最新页，这一轮 settle 会裁掉目标页。
+    await page.waitForTimeout(22000);
     assert.equal(
       await page.evaluate(
         (expected) =>
