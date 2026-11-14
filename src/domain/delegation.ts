@@ -310,7 +310,10 @@ function resetStaleDelegationDeliveries(): void {
 }
 
 /** 投递前的发送边界复核：lead/epoch/停止状态都可能在 bind 之后变化。 */
-export function confirmDelegationDelivery(runId: string, messageId: string): "ok" | "absent" | "invalid" {
+export function confirmDelegationDelivery(
+  runId: string,
+  messageId: string,
+): "ok" | "absent" | "invalid" {
   return sqlite
     .transaction(() => {
       const items = db
@@ -527,12 +530,12 @@ export function deliverDelegation(deliveryId: string): boolean {
       const attention = (reason: string) => {
         db.update(delegationDelivery)
           .set({
-      state: "attention",
-      attentionReason: reason,
-      runId: null,
-      messageId: null,
-      updatedAt: new Date(),
-    })
+            state: "attention",
+            attentionReason: reason,
+            runId: null,
+            messageId: null,
+            updatedAt: new Date(),
+          })
           .where(eq(delegationDelivery.id, deliveryId))
           .run();
         return false;

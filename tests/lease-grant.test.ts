@@ -11,6 +11,7 @@ const { ID_PREFIXES, newId } = await import("../src/contracts/ids");
 const { db, sqlite } = await import("../src/db");
 const { migrateDatabase } = await import("../src/db/migrate");
 const { leaseGrant } = await import("../src/db/schema");
+const { leaseMutationViewSchema } = await import("../src/contracts/lease");
 const { createMachine, saveProjectMachineBinding, hashCredential } =
   await import("../src/domain/machine");
 const {
@@ -174,6 +175,47 @@ test("grant and revoke", () => {
   assert.equal(active[0]!.crewChatId, crewId);
   assert.equal(active[0]!.granteeRunId, worker.runId);
   assertExecutionWrite(key, 2, worker);
+  sqlite
+    .prepare(
+      "UPDATE agent_run SET status='interrupted', stop_reason='process_lost', settled_at=unixepoch() WHERE id=?",
+    )
+    .run(worker.runId);
+  const secondRunId = newId(ID_PREFIXES.run);
+  const secondGrantId = newId(ID_PREFIXES.remoteToolGrant);
+  sqlite
+    .prepare(
+      "INSERT INTO agent_run(id,instance_id,chat_id,project_id,request_id,status,started_at,session_id) VALUES (?,?,?,?,?,'running',?,?)",
+    )
+    .run(
+      secondRunId,
+      worker.instanceId,
+      worker.chatId,
+      projectId,
+      newId(ID_PREFIXES.request),
+      Math.floor(now.getTime() / 1000),
+      randomBytes(16).toString("hex"),
+    );
+  sqlite
+    .prepare(
+      "INSERT INTO remote_tool_grant(id,secret_hash,user_id,project_id,chat_id,instance_id,run_id,issued_at,expires_at) VALUES (?,?,?,?,?,?,?,?,?)",
+    )
+    .run(
+      secondGrantId,
+      hashCredential(randomBytes(32).toString("base64url")),
+      "owner",
+      projectId,
+      worker.chatId,
+      worker.instanceId,
+      secondRunId,
+      now.getTime(),
+      now.getTime() + 3_600_000,
+    );
+  assert.throws(
+    () => assertExecutionWrite(key, 2, { ...worker, runId: secondRunId, grantId: secondGrantId }),
+    (error: unknown) => {
+      return error instanceof Error && "code" in error && error.code === "lease_not_holder";
+    },
+  );
   assert.throws(
     () => assertExecutionWrite(key, 2, lead),
     (error: unknown) =>
@@ -205,7 +247,7 @@ test("grant and revoke", () => {
   assert.equal(db.select().from(leaseGrant).where(eq(leaseGrant.state, "active")).all().length, 0);
   assertExecutionWrite(key, 3, lead);
   assert.throws(
-    () => assertExecutionWrite(key, 2, worker),
+    () => assertExecutionWrite(key, 2, { ...worker, runId: secondRunId, grantId: secondGrantId }),
     (error: unknown) =>
       error instanceof Error && "code" in error && error.code === "lease_stale_generation",
   );
@@ -239,4 +281,20 @@ test("grant and revoke", () => {
       ),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "forbidden",
   );
+});
+
+test("grant receipts accept targetInstanceId in the client schema", () => {
+  const parsed = leaseMutationViewSchema.safeParse({
+    projectId,
+    machineId: key.machineId,
+    mutationId: newId(ID_PREFIXES.leaseMutation),
+    action: "grant",
+    state: "completed",
+    expectedGeneration: 1,
+    completedGeneration: 2,
+    targetInstanceId: worker.instanceId,
+    createdAt: new Date(now.getTime()).toISOString(),
+    completedAt: new Date(now.getTime() + 1000).toISOString(),
+  });
+  assert.equal(parsed.success, true);
 });

@@ -194,6 +194,21 @@ export function assertExecutionWrite(
     ("instanceId" in ctx && authority.holderInstanceId !== ctx.instanceId)
   )
     throw new LeaseError("lease_not_holder");
+  // 授予只对 grant 记录的那个 run 生效；同 instance 的后续 run 不能沿用旧授权。
+  const grant = db
+    .select()
+    .from(leaseGrant)
+    .where(
+      and(
+        leaseGrantWhere(key),
+        eq(leaseGrant.generation, generation),
+        eq(leaseGrant.granteeInstanceId, authority.holderInstanceId),
+        eq(leaseGrant.state, "active"),
+      ),
+    )
+    .get();
+  if (grant && (!("runId" in ctx) || grant.granteeRunId !== ctx.runId))
+    throw new LeaseError("lease_not_holder");
   return authority;
 }
 export const assertCurrentWrite = assertExecutionWrite;

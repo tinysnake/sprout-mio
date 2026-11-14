@@ -380,21 +380,21 @@ export function executeRun(
                                     messageId: pending.messageId,
                                     text: pending.text,
                                   })
-                              : pending.taskRecordKind === "start"
-                                ? prepareSyntheticPiMessage({
-                                    kind: "task_start",
-                                    messageId: pending.messageId,
-                                    text: pending.text,
-                                  })
-                                : await preparePiMessage(
-                                    {
-                                      projectId: run.projectId,
-                                      chatId: run.chatId,
+                                : pending.taskRecordKind === "start"
+                                  ? prepareSyntheticPiMessage({
+                                      kind: "task_start",
                                       messageId: pending.messageId,
-                                    },
-                                    resources,
-                                    ctx,
-                                  );
+                                      text: pending.text,
+                                    })
+                                  : await preparePiMessage(
+                                      {
+                                        projectId: run.projectId,
+                                        chatId: run.chatId,
+                                        messageId: pending.messageId,
+                                      },
+                                      resources,
+                                      ctx,
+                                    );
                           if (signals.isStopping()) return true;
                           if (
                             !pendingRunInputs(run.id, ctx).some(

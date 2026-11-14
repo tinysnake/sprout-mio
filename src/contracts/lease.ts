@@ -177,7 +177,8 @@ export const leaseMutationViewSchema = leaseKeySchema
       ctx.addIssue({ code: "custom", message: "强制收回审计事实与动作收据不一致" });
     }
     if (
-      (value.action === "handoff") !== (value.targetInstanceId !== null) ||
+      (value.action === "handoff" || value.action === "grant") !==
+        (value.targetInstanceId !== null) ||
       (value.action !== "acquire" && value.expectedGeneration === 0) ||
       (!completed &&
         (value.action === "acquire" ||
