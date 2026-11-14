@@ -76,3 +76,12 @@
 - 子对话不能靠消息可见性绕开。`agent_run_input.message_id` 非空并引用 message，给 lead 一条 input 就会在 lead 的 Crew 里留下 message。计划改为 synthetic prompt 入口，并让 `src/server/pi-host/run.ts` 的输入选择与 admit 认识新的 delegation kind。
 - 三个失败模式写进计划约束。delivery 自建分配再写 `agent_run_input` 会产生两条开 run 路径；worker run 恢复成 interrupted 而不发 delegation event 会让 lead 永远等不到结果；delivery 不快照并重验 `lead_profile_id` 与 `crew_epoch` 会在改任后把结果投给旧 lead。
 - 子对话中的 Task 仍按子对话责任校验，不能被 Crew 的 lead 责任自动承接。
+
+## 2026-11-14 CR1 首轮验证与评审
+
+- 完整 `scripts/verify.sh` 跑完 543 秒，115 个 gate 中 50 失败、65 通过。失败分三类。
+- 真回归。九个 gate 仍在调用已删除的 `createGroupChatFn` 或 `createGroupChat`。`tests/fixtures/chat-info.ts` 期望被唤醒的是 lead 却得到 undefined。`p6c-member-removal`、`chat-scope`、`i5-project-removal` 仍按旧 Group owner 责任断言。`as-p5a-chat-ui` 和 `y-lease-ui` 还在找 Public Channel。`r-ui-layout` 的 expected 还是 public_channel。`p6c-participation-revocation` 触发“Crew 还没有 lead”。
+- 环境与负载。`BETTER_AUTH_SECRET` 未设置、pi-magpie 未配置、pinned fixture models、`UNIQUE user.email`、满载下浏览器 gate 超时。这些不是 CR1 语义错误。
+- 格式与契约。`vp check` 41 个文件格式问题，已修到 0 error。`c-data-auth` 说 drizzle 与 git 记录不一致。
+- 代码评审另给五个 P1。首位 Project Agent 不成为 lead；自动化 `group_agent` 绕过 lead；改任 lead 不查活动 run 与租约；移出 worker 漏掉租约责任；空 lead 的 Crew 可被重新初始化并绕过改任权限。另有 `crew_control.mode` 没有停止入口与准入检查。
+- 已提交 CR1 检查点 `fe02ff9`，仍未合 main。修复分三个 worktree 进行，域修复、文档改写、验证层分别由不同 worker 负责，主线程只做集成。
