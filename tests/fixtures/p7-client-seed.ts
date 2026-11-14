@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db, sqlite } from "../../src/db";
-import { chat, user } from "../../src/db/schema";
+import { user } from "../../src/db/schema";
 import { createProject } from "../../src/domain/project";
 import { createAgentProfile, addProjectMember } from "../../src/domain/agent";
 import { createDirectChat } from "../../src/domain/chat";
