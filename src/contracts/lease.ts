@@ -9,6 +9,8 @@ const instanceIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.instance));
 const mutationIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.leaseMutation));
 const chatIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.chat));
 const escrowIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.leaseEscrow));
+const grantIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.leaseGrant));
+const runIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.run));
 const generationSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const timestampSchema = z.iso.datetime();
 export const leaseKeySchema = z.strictObject({
@@ -63,6 +65,15 @@ export const leaseEscrowViewSchema = leaseKeySchema
       ctx.addIssue({ code: "custom", message: "挂靠超时事实与挂靠时间或升级时间不一致" });
     }
   });
+export const leaseGrantViewSchema = z.object({
+  grantId: grantIdSchema,
+  crewChatId: chatIdSchema,
+  grantorInstanceId: instanceIdSchema,
+  granteeInstanceId: instanceIdSchema,
+  granteeRunId: runIdSchema,
+  issuedAt: timestampSchema,
+});
+export type LeaseGrantView = z.infer<typeof leaseGrantViewSchema>;
 export const leaseViewSchema = leaseKeySchema
   .extend({
     generation: generationSchema,
@@ -72,6 +83,8 @@ export const leaseViewSchema = leaseKeySchema
     pendingMutationId: mutationIdSchema.nullable(),
     /** 活跃挂靠（state=escrowed 的那一行）；没有则为 null。租约没有被释放。 */
     escrow: leaseEscrowViewSchema.nullable(),
+    /** 当前代次有效的 Crew 授予；没有则为 null。 */
+    grant: leaseGrantViewSchema.nullable().optional(),
   })
   .superRefine((value, ctx) => {
     if (

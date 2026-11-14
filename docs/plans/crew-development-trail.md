@@ -126,3 +126,11 @@
 - 主线既有 1 个。`bb-task-live` 在主线 `2008185` 的独立 worktree 上仍失败，不是 CR2 回归。
 - 满载假红 4 个。`cron-core`、`as-p5b-task-pages`、`assistant-browser`、`u-machine-ui` 单独复跑全部通过；`u-machine-ui` 在三个并行 gate 竞争时仍会 `Timeout production health`，串行后通过。没有发现 CR2 语义回归。
 - `crew-delegation` 新 gate 通过，覆盖 dispatch 幂等、Crew 时间线不出现 worker 消息、完成投递与 ack、lead 变更 attention、worker 中断补发、取消与 blocked 事件。
+
+## CR3 第一阶段：Crew 授予租约
+
+- 新增 `lease_grant` 与迁移 0062。`lease_mutation` 增加 `grant`、`revoke_grant`，授权原因同步扩展。
+- lead 的 `sprout_lease_grant` 把当前持有的 Machine 授予同 Crew 正在运行的 worker；`sprout_lease_revoke_grant` 由原授予者或当前 lead 撤销。两者都复用 fencing，旧执行未排空时保持 pending。
+- 实际执行 holder 仍是 worker 实例，`lease_authorization.holder_instance_id` 不改成 Crew。worker 在委派子对话内不能调用任何租约 mutation。
+- 新增 `tests/lease-grant.test.ts` 覆盖 acquire、授予、worker 写授权、lead 失去写权、request 重放、撤销、授权回到 lead。
+- 未完成：Crew owner 建模、持久资源队列、自动分配、Crew coordinator 恢复、live Machine 验收、性能基线。

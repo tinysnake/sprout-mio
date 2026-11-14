@@ -397,11 +397,32 @@ function leaseView(row: typeof machineLease.$inferSelect): LeaseView {
       ),
     )
     .get();
+  const activeGrant = db
+    .select()
+    .from(leaseGrant)
+    .where(
+      and(
+        leaseGrantWhere({ projectId: row.projectId, machineId: row.machineId }),
+        eq(leaseGrant.generation, row.generation),
+        eq(leaseGrant.state, "active"),
+      ),
+    )
+    .get();
   return {
     ...row,
     changedAt: row.changedAt.toISOString(),
     pendingMutationId: pending?.id ?? null,
     escrow: liveLeaseEscrow(row),
+    grant: activeGrant
+      ? {
+          grantId: activeGrant.id,
+          crewChatId: activeGrant.crewChatId,
+          grantorInstanceId: activeGrant.grantorInstanceId,
+          granteeInstanceId: activeGrant.granteeInstanceId,
+          granteeRunId: activeGrant.granteeRunId,
+          issuedAt: activeGrant.issuedAt.toISOString(),
+        }
+      : null,
   };
 }
 export function leaseEscrowView(
@@ -798,6 +819,15 @@ function mutateLeaseInTransaction(
   }
   const actorKind = input.action === "reclaim" ? "human" : "agent";
   const actorId = "instanceId" in ctx ? ctx.instanceId : ctx.userId;
+  if ("instanceId" in ctx) {
+    const actor = db.select().from(agentInstance).where(eq(agentInstance.id, actorId)).get();
+    const actorChat = actor
+      ? db.select().from(chat).where(eq(chat.id, actor.chatId)).get()
+      : undefined;
+    // Crew worker 不直接操作租约：申请、释放、交接、挂靠都只由 lead 发起，
+    // worker 只持有本 Crew 授予的执行授权。
+    if (actorChat?.kind === "delegation") throw new LeaseError("forbidden");
+  }
   const hash = payloadHash(input);
   const existing = db
     .select()

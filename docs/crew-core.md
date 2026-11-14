@@ -90,3 +90,13 @@ Crew 是 Project 内的多人协作 Chat，取代旧的 Group 与 Public Channel
 - 不恢复 Group、Public Channel 或 Project 公共频道的成员、唤醒或治理语义。
 - 不给 Crew 引入按成员自动同步、mention 级联、LLM 周期判定或空唤醒。
 - 不把 Crew 的 lead 逻辑重建成第二套独立权限系统；lead 仍服从 Chat 治理与 Project 成员约束。
+
+## 执行资源
+
+Crew 的 Machine 租约由 lead 代表 Crew 使用远端租约工具操作。worker 不直接申请、释放、交接或挂靠租约；它只持有本 Crew 在当前代次内授予的执行授权。
+
+- 授予由持有租约的 lead 发起，结果写入 `lease_grant`，记录 Crew、授予者实例、被授予实例与 run、代次和请求 id。实际执行者仍是 worker 实例，`lease_authorization.holder_instance_id` 不变；授权的事实由 grant 提供。
+- 授予与撤销都走现有 fencing 流程。旧代次的远端执行没有排空时，mutation 保持 `pending`；排空确认后 generation 加一，新授权生效，旧 grant 一并标记撤销。撤销同样先进入 fencing，不能提前宣布 worker 已停。
+- 同一 Machine 同时只有一份可写授权。lead 想更换 worker 时先撤销旧授予，再授予新的实例；不允许两个 worker 并行写同一 Machine。
+- worker 在委派子对话中调用租约 mutation 会被拒绝。Crew 的租约变更只从 lead 所在 Crew 对话发起。lead 变更后，新 lead 可以撤销原 lead 授予出去的授权。
+- worker 离线时撤销保持 `fencing`，不做超时自动释放。只有 Human 可以在租约页强制收回，且结果显式标记为未确认排空；不能把离线当作已排空。

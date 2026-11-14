@@ -141,6 +141,11 @@ export function LeaseOverview({
                     {escrowTargetLabel(escrow, escrowNames)} · 由 {holder.name} 发起
                   </dd>
                 )}
+                {lease.grant && (
+                  <dd data-testid="lease-crew-grant" className="text-muted-foreground">
+                    Crew 授予 · {lease.grant.granteeInstanceId} · 可被 lead 撤销
+                  </dd>
+                )}
                 <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
                 {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。
                     挂靠中也不再解释持有者能做什么：挂靠已经把操作权交出去了。 */}
