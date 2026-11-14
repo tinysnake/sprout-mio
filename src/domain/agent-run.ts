@@ -12,7 +12,7 @@ import type {
   ChatRunSummary,
   RunConfigSnapshot,
 } from "../contracts/agent-run";
-import type { AgentInstance, Chat, ChatWakeDispatch, Message } from "../contracts/chat";
+import type { AgentInstance, Chat, Message } from "../contracts/chat";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import { publishProjectChange } from "./change-feed";
@@ -29,11 +29,9 @@ import {
 } from "../db/schema";
 import { ProjectAccessError } from "./access";
 import type { ProjectContext } from "./access";
-import { readChatEffectiveMembers } from "./channel";
-import { getChat, ensureInstance, sendMessage } from "./chat";
+import { getChat, ensureInstance, readCrewLeadId, sendMessage } from "./chat";
 import { cancelInvalidAutomationInputs } from "./automation-input";
 import { cancelInvalidTaskStartInputs } from "./task-input";
-import { routeWakeCandidates } from "./chat-wake";
 import { controlFor, signalScheduleChange } from "./chat-schedule";
 import { settleContinuationRun } from "./continuation-delivery";
 import { taskResponsibilityFacts, TaskError } from "./task-capabilities";
@@ -450,60 +448,6 @@ function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, reques
 }
 
 /**
- * 群与公共频道的人类消息派发（裁定 §3.3 / §4.5 / d18）：
- * - 候选只由 `routeWakeCandidates` 决定，输入是这条消息写时落库的 `mentions`，不是正文文本，
- *   所以频道里只唤醒被点名的 Agent（owner 恒为人类，`owner_led` 在频道里本就不产生候选），
- *   绝不按成员广播；
- * - 每个候选在**自己的 instance** 上各得一条 run 与一条 `agent_run_input`，这就是扇出的物化
- *   （输入主键是 `(run_id, message_id)`）；
- * - 同一 instance 已有活跃 run 时输入挂到那条 run，不新建第二个（数据库部分唯一索引是底线）。
- *
- * Agent 发送者走同一条路：路由排除发送者自己，只派发显式点名的 Agent 成员，所以它不会
- * 把自己再唤一次，也不会把没被点名的成员带进来。
- */
-function fanoutHumanMessage(
-  saved: Message,
-  current: Chat,
-  ctx: ProjectContext,
-  agentSender = false,
-  deferContextual = false,
-): void {
-  // 只有消息确实进入判定器防抖队列时才跳过即时 owner 唤醒。对话接续关闭、控制为 off
-  // 或显式点名 Agent 时仍走原本的即时路由。
-  if (
-    !agentSender &&
-    deferContextual &&
-    current.wakePolicy === "contextual" &&
-    !saved.mentions.some((mention) => mention.memberKind === "agent")
-  )
-    return;
-  const members = readChatEffectiveMembers(current.id, current.projectId);
-  const dispatch: ChatWakeDispatch = { chatId: current.id, mentions: saved.mentions };
-  const candidates = routeWakeCandidates({
-    ...(agentSender ? { senderAgentProfileId: saved.senderId } : {}),
-    chat: {
-      id: dispatch.chatId,
-      kind: current.kind,
-      wakePolicy: current.wakePolicy,
-      ownerKind: current.owner.kind,
-      ownerId: current.owner.id,
-    },
-    effectiveMembers: members.map((member) => ({
-      memberKind: member.memberKind,
-      memberId: member.memberId,
-    })),
-    mentions: dispatch.mentions,
-  });
-  // Provisioning is internal dispatch work after the sender gate; the new run gets
-  // its own recipient instance identity, never the sender's execution identity.
-  const dispatchContext = agentSender ? { userId: ctx.userId, requestId: ctx.requestId } : ctx;
-  for (const candidate of candidates) {
-    const instance = ensureInstance(current.id, candidate.agentProfileId, dispatchContext);
-    attachMessageToRun(saved, current, instance, dispatchContext);
-  }
-}
-
-/**
  * DM 里唯一的 Agent 是否还在这条对话上（A02）：对话未归档，且该 Agent 仍是 Project 成员。
  *
  * 不能只靠 `chat_effective_member`：它的 DM 分支为了让历史可读，对历史成员放行、不查
@@ -526,33 +470,9 @@ function assertDmAgentParticipates(current: Chat, agentProfileId: string): void 
   if (!membership) throw new AgentRunError("conflict", "该 Agent 已不在 Project，对话不可继续");
 }
 
-/** 与 human message 共用事务，输入失败就回滚消息。 */
-export function appendHumanRunInput(
-  saved: Message,
-  ctx: ProjectContext,
-  deferContextual = false,
-): void {
-  const current = getChat(saved.chatId, ctx);
-  if (saved.senderKind !== "human") return;
-  // DM 保持「一条消息一条 run」的既有语义：对话里恰有一个 instance，不看唤醒规则。
-  if (current.kind === "dm") {
-    const instance = db
-      .select()
-      .from(agentInstance)
-      .where(eq(agentInstance.chatId, current.id))
-      .get();
-    if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
-    // 参与权先于排队：拒绝发生在写入之前，不靠执行时再失败。
-    assertDmAgentParticipates(current, instance.agentProfileId);
-    attachMessageToRun(saved, current, instance, ctx);
-    return;
-  }
-  fanoutHumanMessage(saved, current, ctx, false, deferContextual);
-}
-
 /**
- * Agent 发送者只派发显式 @ 的 Agent 成员。点名由 `sendMessage` 写时解析并落库，
- * 不认正文里的弱提及；没有点名就不级联，避免普通汇报把 owner 或全群唤醒。
+ * 自动化消息的输入入口：调用方已按目标解析出具体 Agent（Crew 上是 lead），
+ * 这里只负责把它接到该 Agent 在本对话的 instance 上。
  */
 export function appendAutomationRunInput(
   messageId: string,
@@ -580,12 +500,28 @@ export function appendAutomationRunInput(
   );
 }
 
-export function appendAgentMentionRunInput(saved: Message, ctx: ProjectContext): void {
+/** 与 human message 共用事务，输入失败就回滚消息。 */
+export function appendHumanRunInput(saved: Message, ctx: ProjectContext): void {
   const current = getChat(saved.chatId, ctx);
-  if (!ctx.agent || saved.senderKind !== "agent" || saved.senderId !== ctx.agent.agentProfileId)
+  if (saved.senderKind !== "human") return;
+  // DM 保持「一条消息一条 run」的既有语义：对话里恰有一个 instance，不看唤醒规则。
+  if (current.kind === "dm") {
+    const instance = db
+      .select()
+      .from(agentInstance)
+      .where(eq(agentInstance.chatId, current.id))
+      .get();
+    if (!instance) throw new AgentRunError("not_found", "Instance 不存在");
+    // 参与权先于排队：拒绝发生在写入之前，不靠执行时再失败。
+    assertDmAgentParticipates(current, instance.agentProfileId);
+    attachMessageToRun(saved, current, instance, ctx);
     return;
-  if (!saved.mentions.some((mention) => mention.memberKind === "agent")) return;
-  fanoutHumanMessage(saved, current, ctx, true);
+  }
+  // Crew 只把人类消息交给 lead：Worker 从 lead 的显式委派得到输入，不按成员广播。
+  const leadProfileId = readCrewLeadId(current.id);
+  if (!leadProfileId) throw new AgentRunError("conflict", "Crew 还没有 lead，请先添加 Agent 成员");
+  const leadInstance = ensureInstance(current.id, leadProfileId, ctx);
+  attachMessageToRun(saved, current, leadInstance, ctx);
 }
 
 type TransitionData = {

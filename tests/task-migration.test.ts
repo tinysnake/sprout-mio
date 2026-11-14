@@ -25,12 +25,12 @@ const triggers = [
   "task_checklist_identity_immutable",
   "task_checklist_no_delete",
 ];
-function seed({ sqlite }: DatabaseConnection) {
+function seed({ sqlite }: DatabaseConnection, kind = "crew") {
   sqlite.exec(`INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES ('usr_seed','Seed','seed@migration.test',0,1,1);
     INSERT INTO project(id,name,created_by) VALUES ('prj_seed','Seed','usr_seed'),('prj_other','Other','usr_seed');
     INSERT INTO agent_profile(id,name,created_by) VALUES ('agt_seed','Seed Agent','usr_seed');
     INSERT INTO project_member(project_id,agent_profile_id,added_by) VALUES ('prj_seed','agt_seed','usr_seed');
-    INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('cht_seed','prj_seed','group','human','usr_seed','usr_seed'),('cht_other','prj_seed','group','human','usr_seed','usr_seed');
+    INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('cht_seed','prj_seed','${kind}','human','usr_seed','usr_seed'),('cht_other','prj_seed','${kind}','human','usr_seed','usr_seed');
     INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES ('cht_seed','human','usr_seed'),('cht_seed','agent','agt_seed');
     INSERT INTO agent_instance(id,agent_profile_id,chat_id,project_id) VALUES ('ins_seed','agt_seed','cht_seed','prj_seed');
     INSERT INTO message(id,chat_id,sender_kind,sender_id,body) VALUES ('msg_seed','cht_seed','human','usr_seed','old input'),('msg_assistant','cht_seed','agent','agt_seed','old assistant'),('msg_other','cht_other','human','usr_seed','other chat');
@@ -89,7 +89,6 @@ describe("0025 Task migration from zero and populated 0024", () => {
         }[]
       ).map((row) => row.name);
       expect(names).toEqual(expect.arrayContaining(triggers));
-      expect(names).toContain("chat_member_no_channel_insert");
       expect(sqlite.pragma("foreign_key_check")).toEqual([]);
       expect(sqlite.pragma("integrity_check", { simple: true })).toBe("ok");
     }));
@@ -108,7 +107,7 @@ describe("0025 Task migration from zero and populated 0024", () => {
     writeFileSync(join(oldFolder, "meta", "_journal.json"), JSON.stringify(journal));
     migrateDatabase(file, oldFolder);
     const before = openDatabase(file);
-    seed(before);
+    seed(before, "group");
     const oldMessages = before.sqlite.prepare("SELECT * FROM message ORDER BY id").all() as Record<
       string,
       unknown

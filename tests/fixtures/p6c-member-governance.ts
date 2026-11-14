@@ -7,13 +7,14 @@ import { db, sqlite } from "../../src/db";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { agentRun, chat, chatEffectiveMember, machineLease } from "../../src/db/schema";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
-import { createDirectChat, createGroupChat, ensureInstance } from "../../src/domain/chat";
-import { createGroupChatInput } from "../../src/contracts/chat";
+import { createDirectChat, ensureInstance } from "../../src/domain/chat";
+
 import { createProject } from "../../src/domain/project";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
 import { mutateTask } from "../../src/domain/task";
 import { openInitialMembership } from "../../src/server/membership";
 import { seedLease, seedRun, seedTask } from "./p6c-member-fixture";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 const base = process.env.BASE_URL!;
 const evidence = process.env.SPROUT_UI_EVIDENCE_DIR!;
@@ -44,9 +45,9 @@ try {
   addProjectMember(project.id, agent.id, ctx);
   addProjectMember(project.id, helper.id, ctx);
   const dm = createDirectChat(project.id, agent.id, ctx);
-  const group = createGroupChat(
+  const group = createCrewChat(
     project.id,
-    createGroupChatInput.parse({
+    crewInput({
       projectId: project.id,
       title: "Owner duties group",
       initialOwner: { kind: "agent", id: agent.id },
@@ -63,7 +64,7 @@ try {
   const channel = db
     .select()
     .from(chat)
-    .where(and(eq(chat.projectId, project.id), eq(chat.kind, "public_channel")))
+    .where(and(eq(chat.projectId, project.id), eq(chat.kind, "crew")))
     .get()!;
   db.update(chat)
     .set({ ownerKind: "agent", ownerId: agent.id })

@@ -302,8 +302,12 @@ export const chat = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => project.id),
-    kind: text("kind", { enum: ["dm", "group", "public_channel"] }).notNull(),
+    kind: text("kind", { enum: ["dm", "crew"] }).notNull(),
     title: text("title"),
+    // Crew 的 lead 是 Crew 自己的角色，不是 agent_profile.purpose；空表示尚未指定。
+    leadProfileId: text("lead_profile_id").references(() => agentProfile.id),
+    // 只在 lead 改任、移除 lead 和显式停止 Crew 时递增；普通 run 不改变它。
+    crewEpoch: integer("crew_epoch").notNull().default(0),
     archivedAt: integer("archived_at", { mode: "timestamp" }),
     ownerKind: text("owner_kind", { enum: ["human", "agent"] }).notNull(),
     ownerId: text("owner_id").notNull(),
@@ -322,7 +326,7 @@ export const chat = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    check("chat_kind_check", sql`${table.kind} in ('dm', 'group', 'public_channel')`),
+    check("chat_kind_check", sql`${table.kind} in ('dm', 'crew')`),
     check(
       "chat_title_check",
       sql`${table.title} is null or length(trim(${table.title})) between 1 and 80`,
@@ -337,22 +341,48 @@ export const chat = sqliteTable(
       "chat_governance_revision_check",
       sql`typeof(${table.governanceRevision}) = 'integer' and ${table.governanceRevision} >= 0`,
     ),
-    // DM 的所有者只能是创建它的人；群与频道的所有者可以是分身，由 p5a-groups 校验参与权。
+    // DM 与 Crew 的治理 owner 固定是创建它的人类；lead 另记在 lead_profile_id。
     check(
       "chat_dm_owner_check",
       sql`${table.kind} <> 'dm' or (${table.ownerKind} = 'human' and ${table.ownerId} = ${table.createdBy})`,
     ),
     check(
-      "chat_public_channel_archived_check",
-      sql`${table.kind} <> 'public_channel' or ${table.archivedAt} is null`,
+      "chat_crew_owner_check",
+      sql`${table.kind} <> 'crew' or (${table.ownerKind} = 'human' and ${table.ownerId} = ${table.createdBy})`,
+    ),
+    check(
+      "chat_crew_epoch_check",
+      sql`typeof(${table.crewEpoch}) = 'integer' and ${table.crewEpoch} >= 0`,
+    ),
+    check(
+      "chat_crew_lead_check",
+      sql`${table.kind} <> 'crew' or ${table.leadProfileId} is null or length(trim(${table.leadProfileId})) > 0`,
+    ),
+    // Crew 的消息路由是确定性的，不走判定器。
+    check(
+      "chat_crew_wake_check",
+      sql`${table.kind} <> 'crew' or ${table.wakePolicy} <> 'contextual'`,
     ),
     uniqueIndex("chat_id_project_unique").on(table.id, table.projectId),
-    uniqueIndex("chat_public_channel_project_unique")
-      .on(table.projectId)
-      .where(sql`${table.kind} = 'public_channel'`),
     index("chat_project_updated_idx").on(table.projectId, table.updatedAt, table.id),
     index("chat_project_owner_idx").on(table.projectId, table.ownerKind, table.ownerId),
   ],
+);
+
+export const crewControl = sqliteTable(
+  "crew_control",
+  {
+    chatId: text("chat_id")
+      .primaryKey()
+      .references(() => chat.id),
+    mode: text("mode", { enum: ["active", "stopped"] })
+      .notNull()
+      .default("active"),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [check("crew_control_mode_check", sql`${table.mode} in ('active', 'stopped')`)],
 );
 
 export const chatMember = sqliteTable(
@@ -376,9 +406,9 @@ export const chatMember = sqliteTable(
 );
 
 /**
- * 成员唯一真值读视图：DM 与 Group 取 `chat_member`，Public Channel 从 `project_member`
- * 与 `project.created_by` 当场派生，不给成员表复制 kind/project 事实。
- * Group 的 Agent 行只在仍属本项目时存在，移出后同一读即消失；Human 行不受 project_member 限制。
+ * 成员唯一真值读视图：DM 与 Crew 都取 `chat_member`。Crew 的 Agent 行只在仍属本项目时
+ * 存在，移出 Project 后同一读即消失；Human 行不受 project_member 限制。Crew 成员不继承
+ * Project 后续加入的 Agent，必须显式写入 `chat_member`。
  */
 export const chatEffectiveMember = sqliteView("chat_effective_member", {
   chatId: text("chat_id").notNull(),
@@ -386,7 +416,7 @@ export const chatEffectiveMember = sqliteView("chat_effective_member", {
   memberKind: text("member_kind", { enum: ["human", "agent"] }).notNull(),
   memberId: text("member_id").notNull(),
   addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
-  source: text("source", { enum: ["chat_member", "project_member", "project_owner"] }).notNull(),
+  source: text("source", { enum: ["chat_member"] }).notNull(),
 }).as(sql`
   SELECT
     c.id AS chat_id,
@@ -397,35 +427,12 @@ export const chatEffectiveMember = sqliteView("chat_effective_member", {
     'chat_member' AS source
   FROM chat c
   JOIN chat_member cm ON cm.chat_id = c.id
-  WHERE c.kind IN ('dm', 'group') AND (
+  WHERE c.kind IN ('dm', 'crew') AND (
     cm.member_kind = 'human' OR c.kind = 'dm' OR EXISTS (
       SELECT 1 FROM project_member pm
       WHERE pm.project_id = c.project_id AND pm.agent_profile_id = cm.member_id
     )
   )
-  UNION ALL
-  SELECT
-    c.id AS chat_id,
-    c.project_id,
-    'agent' AS member_kind,
-    pm.agent_profile_id AS member_id,
-    pm.added_at,
-    'project_member' AS source
-  FROM chat c
-  JOIN project_member pm ON pm.project_id = c.project_id
-  JOIN agent_profile ap ON ap.id = pm.agent_profile_id AND ap.purpose = 'worker'
-  WHERE c.kind = 'public_channel'
-  UNION ALL
-  SELECT
-    c.id AS chat_id,
-    c.project_id,
-    'human' AS member_kind,
-    p.created_by AS member_id,
-    p.created_at AS added_at,
-    'project_owner' AS source
-  FROM chat c
-  JOIN project p ON p.id = c.project_id
-  WHERE c.kind = 'public_channel'
 `);
 
 export const agentInstance = sqliteTable(

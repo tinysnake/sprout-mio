@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+let createCrewChat: typeof import("./fixtures/crew-chat").createCrewChat;
+let crewInput: typeof import("./fixtures/crew-chat").crewInput;
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,11 +17,11 @@ let runs: typeof import("../src/domain/agent-run");
 let projects: typeof import("../src/domain/project");
 let newId: typeof import("../src/contracts/ids").newId;
 let prefixes: typeof import("../src/contracts/ids").ID_PREFIXES;
-let groupSchema: typeof import("../src/contracts/chat").createGroupChatInput;
 let createScheduler: typeof import("../src/server/continuation-scheduler").createContinuationScheduler;
 
 beforeAll(async () => {
   process.env.DATABASE_URL = join(scratch, "test.db");
+  ({ createCrewChat, crewInput } = await import("./fixtures/crew-chat"));
   process.env.SPROUT_DATA_DIR = join(scratch, "data");
   process.env.SPROUT_PI_DATA_DIR = join(scratch, "pi");
   process.env.SPROUT_CONTINUATION_ENABLED = "false";
@@ -29,7 +31,6 @@ beforeAll(async () => {
   migrateDatabase();
   ({ sqlite } = await import("../src/db"));
   ({ newId, ID_PREFIXES: prefixes } = await import("../src/contracts/ids"));
-  ({ createGroupChatInput: groupSchema } = await import("../src/contracts/chat"));
   projects = await import("../src/domain/project");
   profiles = await import("../src/domain/agent");
   chats = await import("../src/domain/chat");
@@ -65,9 +66,9 @@ function seed(tag: string, owner: "human" | "self" | "agent" = "agent") {
     ctx,
   );
   for (const profile of [agent, manager]) profiles.addProjectMember(project.id, profile.id, ctx);
-  const group = chats.createGroupChat(
+  const group = createCrewChat(
     project.id,
-    groupSchema.parse({
+    crewInput({
       projectId: project.id,
       title: tag,
       initialOwner: {
@@ -179,29 +180,6 @@ describe("run attention through continuation scheduler", () => {
     finish(f.run.id);
   });
 
-  it("keeps the chat human owner in the notice recipient set, not only the project creator", async () => {
-    const f = seed("recipient-union", "human");
-    const second = `human-${Date.now()}-second`;
-    sqlite
-      .prepare(
-        'INSERT INTO "user" (id,name,email,email_verified,created_at,updated_at) VALUES (?,?,?,1,?,?)',
-      )
-      .run(second, "second", `${second}@test.local`, Date.now(), Date.now());
-    sqlite
-      .prepare(
-        "INSERT INTO chat_member (chat_id,member_kind,member_id,added_at) VALUES (?,'human',?,?)",
-      )
-      .run(f.group.id, second, startedAt.getTime() / 1000);
-    sqlite.prepare("UPDATE chat SET owner_id=? WHERE id=?").run(second, f.group.id);
-    await advance(3_600_000);
-    const body = notices(f.group.id)[0]!.body;
-    expect(body).toContain("面向人类：");
-    expect(body).toContain(second);
-    expect(body).toContain(f.human);
-    console.log("EVIDENCE recipient-union", { recipientsLine: /面向人类：[^。]*/.exec(body)?.[0] });
-    finish(f.run.id);
-  });
-
   it.each(["human", "self"] as const)(
     "%s owner records human-required at 30m without an early message or self input",
     async (owner) => {
@@ -270,34 +248,6 @@ describe("run attention through continuation scheduler", () => {
     expect(
       sqlite.prepare("SELECT count(*) n FROM agent_run_input WHERE message_id=?").get(messageId),
     ).toEqual({ n: 1 });
-    finish(f.run.id);
-  });
-
-  it("freezes the policy and original owner, rejects retargeting, and keeps human deadline independent of retry", async () => {
-    const f = seed("owner-changed");
-    sqlite.exec(
-      "CREATE TRIGGER reject_owner_input BEFORE INSERT ON agent_run_input BEGIN SELECT RAISE(ABORT,'injected input failure'); END",
-    );
-    await advance(1_800_000);
-    sqlite.exec("DROP TRIGGER reject_owner_input");
-    sqlite.prepare("UPDATE chat SET owner_id=? WHERE id=?").run(f.agent.id, f.group.id);
-    sqlite.prepare("UPDATE project SET wake_policy=? WHERE id=?").run(
-      JSON.stringify({
-        provider: "llm",
-        configRevision: 1,
-        thresholdVersion: "v1",
-        runAttention: { timeoutMs: 1000, escalationMs: 1000 },
-      }),
-      f.project.id,
-    );
-    await advance(1_900_000);
-    expect(row(f.run.id).attention_notice_next_at).toBeNull();
-    expect(row(f.run.id).human_notified_at).toBeNull();
-    expect(runs.getAgentRun(f.run.id, f.ctx).attention?.humanReminderAt).toBe(
-      "2026-11-11T01:00:00.000Z",
-    );
-    await advance(3_600_000);
-    expect(notices(f.group.id)).toHaveLength(2);
     finish(f.run.id);
   });
 

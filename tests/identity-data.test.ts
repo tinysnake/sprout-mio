@@ -68,7 +68,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
         agent_profile: ['id','name','persona','harness','model','effort','created_by','created_at','updated_at','job_title','purpose'],
         project_profile: ['project_id','git_remote','default_branch','work_directory','updated_at'],
         project_member: ['project_id','agent_profile_id','added_by','added_at'],
-        chat: ['id','project_id','kind','title','archived_at','owner_kind','owner_id','wake_policy','governance_revision','created_by','created_at','updated_at'],
+        chat: ['id','project_id','kind','title','lead_profile_id','crew_epoch','archived_at','owner_kind','owner_id','wake_policy','governance_revision','created_by','created_at','updated_at'],
         chat_member: ['chat_id','member_kind','member_id','added_at'],
         agent_instance: ['id','agent_profile_id','chat_id','project_id','created_at','updated_at'],
         // I-P5b 在 body 之后追加 9 个可空的 Task 归属列；其余列序与 P2 一致。
@@ -141,9 +141,8 @@ describe("P2 身份、Project 授权与持久对话", () => {
       const second = dm.createDirectChat(projectA.id, profileA.id, ctxA);
       assert.deepEqual(first, second);
       assert.equal(sqlite.prepare("SELECT count(*) AS n FROM chat WHERE kind = 'dm'").get().n, 1);
-      assert.equal(sqlite.prepare("SELECT count(*) AS n FROM chat WHERE kind = 'public_channel'").get().n, 2);
+      assert.equal(sqlite.prepare("SELECT count(*) AS n FROM chat WHERE kind = 'crew'").get().n, 2);
       assert.equal(count('agent_instance'), 1);
-      assert.equal(count('chat_member'), 2);
       const members = dm.listChatMembers(first.chat.id, ctxA);
       assert.deepEqual(members.map(({ memberKind, memberId }) => [memberKind, memberId]), [['human', ctxA.userId], ['agent', profileA.id]]);
       assert.deepEqual(dm.listInstancesForChat(first.chat.id, ctxA), [first.instance]);

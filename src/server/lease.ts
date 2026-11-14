@@ -45,7 +45,7 @@ import {
   remoteExecution,
   remoteToolGrant,
 } from "../db/schema";
-import { readChatEffectiveMembers } from "../domain/channel";
+import { readChatEffectiveMembers } from "../domain/chat-members";
 import { leaseTimeoutFacts, projectLeaseTimeouts } from "../domain/lease-timeout";
 import type { MachineContext } from "../domain/machine";
 import { assertMembershipOperable, latestMembership, onLeaseMutationCompleted } from "./membership";

@@ -13,6 +13,7 @@ process.env.DATABASE_URL = join(directory, "core.sqlite");
 process.env.SPROUT_PI_ENABLED = "false";
 process.env.BETTER_AUTH_SECRET = randomBytes(32).toString("hex");
 process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
+const { createCrewChat } = await import("./fixtures/crew-chat");
 const { migrateDatabase } = await import("../src/db/migrate");
 migrateDatabase();
 const { db, sqlite } = await import("../src/db");
@@ -38,7 +39,7 @@ for (const agent of [alpha, beta]) addProjectMember(project.id, agent.id, ctx);
 const human = { kind: "human" as const, userId: ctx.userId, ctx };
 const baseUrl = "https://sprout.test";
 function group(owner: "human" | "agent" = "agent") {
-  return chats.createGroupChat(
+  return createCrewChat(
     project.id,
     {
       projectId: project.id,
@@ -140,7 +141,13 @@ describe("Project webhook admission and single Chat input path", () => {
     });
     deliver(configured, "lazy-second");
     expect(count()).toBe(before + 1);
-    const channel = chats.listChats(project.id, ctx).find((c) => c.kind === "public_channel")!;
+    const channel = chats.listChats(project.id, ctx).find((c) => c.kind === "crew")!;
+    chats.addCrewMember(
+      channel.id,
+      { kind: "agent", id: fresh.id },
+      channel.governanceRevision,
+      human,
+    );
     expect(
       deliver(
         rule({ kind: "group_agent", chatId: channel.id, agentProfileId: fresh.id }),
@@ -397,15 +404,15 @@ describe("Project webhook admission and single Chat input path", () => {
   it("skips authenticated obsolete targets, resolves Human owner as invalid but still allows explicit Agent", () => {
     const current = group();
     const ownerRule = rule({ kind: "group_owner", chatId: current.id });
-    chats.setChatOwner(current.id, { kind: "human", id: ctx.userId }, 0, human);
+    sqlite.prepare("UPDATE chat SET lead_profile_id=NULL WHERE id=?").run(current.id);
     expect(
-      automation.receiveWebhook(ownerRule.rule.id, ownerRule.secret, "human-owner", {}),
+      automation.receiveWebhook(ownerRule.rule.id, ownerRule.secret, "leadless", {}),
     ).toMatchObject({ decision: "skipped", reason: "owner_is_not_agent" });
     const explicit = rule({ kind: "group_agent", chatId: current.id, agentProfileId: beta.id });
     const accepted = deliver(explicit);
     expect(accepted.receipt.decision).toBe("accepted");
     runs.transitionAgentRun(accepted.run.id, "aborted", { stopReason: "human_stop" }, ctx);
-    chats.removeGroupMember(current.id, { kind: "agent", id: beta.id }, 1, human);
+    chats.removeCrewMember(current.id, { kind: "agent", id: beta.id }, 1, human);
     expect(automation.receiveWebhook(explicit.rule.id, explicit.secret, "left", {})).toMatchObject({
       decision: "skipped",
       reason: "agent_not_participating",
@@ -439,7 +446,7 @@ describe("Project webhook admission and single Chat input path", () => {
     const configured = rule({ kind: "group_agent", chatId: current.id, agentProfileId: beta.id });
     const admitted = deliver(configured);
     expect(() =>
-      chats.removeGroupMember(current.id, { kind: "agent", id: beta.id }, 0, human),
+      chats.removeCrewMember(current.id, { kind: "agent", id: beta.id }, 0, human),
     ).toThrow(/活跃运行/);
     sqlite
       .prepare("DELETE FROM chat_member WHERE chat_id=? AND member_kind='agent' AND member_id=?")
@@ -492,24 +499,6 @@ describe("Project webhook admission and single Chat input path", () => {
     expect(runs.listAgentRunInputs(admitted.run.id, ctx)[0]?.admittedAt).toBeDefined();
     expect(runs.firstPendingRunInput(admitted.run.id, ctx)).toBeUndefined();
   });
-
-  it("cancels owner-pinned input rather than silently retargeting, while explicit Agent survives Human owner", () => {
-    const current = group();
-    const owner = deliver(rule({ kind: "group_owner", chatId: current.id }));
-    const explicit = deliver(
-      rule({ kind: "group_agent", chatId: current.id, agentProfileId: beta.id }),
-    );
-    chats.setChatOwner(current.id, { kind: "human", id: ctx.userId }, 0, human);
-    let sent = 0;
-    admitAutomationInput(owner.run.id, owner.saved.id, () => ++sent);
-    expect(sent).toBe(0);
-    expect(
-      runs.listAgentRunInputs(owner.run.id, ctx).find((i) => i.messageId === owner.saved.id),
-    ).toMatchObject({ disposition: "cancelled", cancelReason: "automation_context_changed" });
-    admitAutomationInput(explicit.run.id, explicit.saved.id, () => ++sent);
-    expect(sent).toBe(1);
-    expect(runs.pendingRunInputs(owner.run.id, ctx)).toEqual([]);
-  });
 });
 
 it("uses actual Pi prompt and active steer with provenance, no paid model, and last-boundary revocation", async () => {
@@ -533,7 +522,9 @@ it("uses actual Pi prompt and active steer with provenance, no paid model, and l
         override async open(config: Parameters<InstanceType<typeof PiSessionProcess>["open"]>[0]) {
           const snapshot = await super.open(config);
           if (mode === "owner_after_open")
-            chats.setChatOwner(current.id, { kind: "human", id: ctx.userId }, 0, human);
+            sqlite
+              .prepare("UPDATE chat SET lead_profile_id=NULL, crew_epoch=crew_epoch+1 WHERE id=?")
+              .run(current.id);
           return snapshot;
         }
         override prompt(prepared: Parameters<InstanceType<typeof PiSessionProcess>["prompt"]>[0]) {
@@ -546,7 +537,9 @@ it("uses actual Pi prompt and active steer with provenance, no paid model, and l
           second = deliver(configured, "active", { awaitSteer: false });
           expect(second.run.id).toBe(initial.run.id);
           if (mode === "revoke_before_steer") {
-            chats.setChatOwner(current.id, { kind: "human", id: ctx.userId }, 0, human);
+            sqlite
+              .prepare("UPDATE chat SET lead_profile_id=NULL, crew_epoch=crew_epoch+1 WHERE id=?")
+              .run(current.id);
             queueMicrotask(() => this.abortSession());
           }
           return task;

@@ -10,6 +10,7 @@ import type { WakeEvaluationInput } from "../../src/contracts/wake-evaluation";
 import type { WakeReceipt } from "../../src/domain/wake-evaluation";
 import type { Evaluation, SchedulerContext, Schedule } from "../../src/domain/chat-schedule";
 import type { DeliveryRow } from "../../src/domain/continuation-delivery";
+import { createCrewChat, setChatOwnerCompat } from "./crew-chat";
 const suite = process.argv[2] ?? "scheduler";
 const directory = process.env.P6A_EVIDENCE_DIR ?? mkdtempSync(join(tmpdir(), "p6a-schedule-"));
 mkdirSync(directory, { recursive: true });
@@ -83,7 +84,7 @@ const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
 const { createProject, updateProjectWakePolicy, getProject } =
   await import("../../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
-const { createGroupChat, sendMessage, setChatOwner } = await import("../../src/domain/chat");
+const { sendMessage } = await import("../../src/domain/chat");
 const task = await import("../../src/domain/task");
 const ctx = { userId: "usr_p6a_schedule", requestId: newId(ID_PREFIXES.request) };
 sqlite
@@ -118,7 +119,7 @@ function ok(value: unknown, label: string) {
   assert.ok(value, label);
 }
 function group(human = false) {
-  return createGroupChat(
+  return createCrewChat(
     project.id,
     {
       projectId: project.id,
@@ -758,7 +759,7 @@ try {
       "SELECT * FROM continuation_delivery WHERE chat_id=?",
       ownerChanged.id,
     )!;
-    setChatOwner(
+    setChatOwnerCompat(
       ownerChanged.id,
       { kind: "agent", id: profiles[1].id },
       ownerChanged.governanceRevision,

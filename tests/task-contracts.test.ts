@@ -419,11 +419,13 @@ it("validates remote list and Chat outputs against their response schemas", () =
       .success,
   ).toBe(false);
   const session = {
-    kind: "group",
+    kind: "crew",
     chat: {
       id: chatId,
       projectId,
-      kind: "group",
+      kind: "crew",
+      crewEpoch: 0,
+      control: "active",
       owner: { kind: "human", id: "user" },
       wakePolicy: "owner_led",
       governanceRevision: 0,
@@ -439,8 +441,7 @@ it("validates remote list and Chat outputs against their response schemas", () =
       actorKind: "human",
       actorId: "user",
       canChangeMembers: true,
-      canChangeOwner: true,
-      canChangeWakePolicy: true,
+      canChangeLead: true,
       canRenameTitle: true,
     },
   };

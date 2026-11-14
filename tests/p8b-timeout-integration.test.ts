@@ -66,6 +66,7 @@ if (!bound || typeof bound === "string") throw new Error("HTTP address missing")
 const origin = `http://127.0.0.1:${bound.port}`;
 process.env.APP_ORIGIN = origin;
 process.env.PORT = String(bound.port);
+const { createCrewChat, crewInput } = await import("./fixtures/crew-chat");
 
 const { startRuntime, shutdownRuntime, machineRuntimeContext } =
   await import("../src/server/runtime");
@@ -79,8 +80,8 @@ const { agentRun, agentRunInput, chatContinuationControl, leaseEscrow, machineLe
 const { applyChatContinuationCommand } = await import("../src/domain/chat-continuation");
 const { createProject, updateProjectWakePolicy } = await import("../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../src/domain/agent");
-const { createGroupChat, ensureInstance } = await import("../src/domain/chat");
-const { createGroupChatInput } = await import("../src/contracts/chat");
+const { ensureInstance } = await import("../src/domain/chat");
+
 const { createMachine, hashCredential, saveProjectMachineBinding } =
   await import("../src/domain/machine");
 const { openInitialMembership } = await import("../src/server/membership");
@@ -196,9 +197,9 @@ const members = (agents: readonly string[]) => [
   { kind: "agent" as const, id: initiatorAgent.id },
   ...agents.map((id) => ({ kind: "agent" as const, id })),
 ];
-const groupOwner = createGroupChat(
+const groupOwner = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8b Integration Agent Owner",
     initialOwner: { kind: "agent", id: ownerAgent.id },
@@ -206,9 +207,9 @@ const groupOwner = createGroupChat(
   }),
   chatActor,
 );
-const groupHuman = createGroupChat(
+const groupHuman = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8b Integration Human Owner",
     initialOwner: { kind: "human", id: projectOwner },
@@ -217,9 +218,9 @@ const groupHuman = createGroupChat(
   chatActor,
 );
 
-const groupQuiet = createGroupChat(
+const groupQuiet = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8b Integration Quiet Owner",
     initialOwner: { kind: "agent", id: ownerAgent.id },
@@ -388,7 +389,6 @@ describe("I-P8b 集成线：阻塞式等待接到真实工具链", () => {
 describe("I-P8b 集成线：超时提醒与升级由生产 scheduler 驱动", () => {
   it("人类 owner 只提醒一次；Agent owner 被唤醒；再过升级时限升级 Human 并暂停 owner 自动尝试", async () => {
     const ownerInstance = ensureInstance(groupOwner.id, ownerAgent.id, projectCtx);
-    const humanRunsBefore = runsInChat(groupHuman.id).length;
     const ownerRunsBefore = runsInChat(groupOwner.id).length;
 
     let clockNow = NOW.getTime();
@@ -425,17 +425,18 @@ describe("I-P8b 集成线：超时提醒与升级由生产 scheduler 驱动", ()
       assert.equal(inputs.length, 1);
       assert.equal(inputs[0]!.runId, woken.id);
 
-      // 人类 owner：一条 chat 提醒，零唤醒、零自动接续。
-      const humanReminder = reminders(groupHuman.id);
-      assert.equal(humanReminder.length, 1, "人类 owner 提醒一次");
-      assert.equal(runsInChat(groupHuman.id).length, humanRunsBefore, "人类 owner 不产生 run");
+      // Crew 的租约提醒交给 lead，由 lead 决定归还还是继续占用。
+      const crewReminder = reminders(groupHuman.id);
+      assert.equal(crewReminder.length, 1, "Crew lead 提醒一次");
+      assert.ok(crewReminder[0]!.body.includes("挂靠超时"));
       assert.equal(
         db
           .select()
           .from(agentRunInput)
-          .where(eq(agentRunInput.messageId, humanReminder[0]!.id))
+          .where(eq(agentRunInput.messageId, crewReminder[0]!.id))
           .all().length,
-        0,
+        1,
+        "Crew lead 收到 run input",
       );
 
       // T10：这条 chat 的自动接续被 Human 关掉，提醒照样发。
@@ -476,10 +477,10 @@ describe("I-P8b 集成线：超时提醒与升级由生产 scheduler 驱动", ()
         1,
       );
 
-      // 人类 owner 永远不会被升级。
+      // Crew lead 也会在升级时限后收到升级通知。
       assert.equal(
         reminders(groupHuman.id).filter((row) => row.body.includes("挂靠超时升级")).length,
-        0,
+        1,
       );
 
       // 超时绝不释放租约：持有者仍是发起者，挂靠行还在。

@@ -80,7 +80,7 @@ function actionLabel(action: AutomationAction, agents: AgentProfile[], chats: Ch
       : "当前 Agent owner";
   if (action.kind === "dm_agent") return `DM → ${agent}`;
   const chat = chats.find((c) => c.id === action.chatId);
-  return `${chat?.kind === "public_channel" ? "公共频道" : "Group"} · ${chat?.title || action.chatId} → ${agent}`;
+  return `Crew · ${chat?.title || action.chatId} → ${agent}`;
 }
 function nextTime(rule: CronRule) {
   if (!rule.nextAt) return "停用，无下次时间";
@@ -710,15 +710,12 @@ function Editor({
                       setDraft({ ...draft, chatId: e.target.value, agentProfileId: "" })
                     }
                   >
-                    <option value="">请选择 Group</option>
+                    <option value="">请选择 Crew</option>
                     {chats
-                      .filter(
-                        (c) => !c.archivedAt && (c.kind === "group" || c.kind === "public_channel"),
-                      )
+                      .filter((c) => !c.archivedAt && c.kind === "crew")
                       .map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.title || c.id}
-                          {c.kind === "public_channel" ? "（公共频道）" : ""}
                         </option>
                       ))}
                   </select>

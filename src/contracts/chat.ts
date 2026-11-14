@@ -11,11 +11,11 @@ const chatId = z.string().regex(appIdPattern(ID_PREFIXES.chat));
 const projectId = z.string().regex(appIdPattern(ID_PREFIXES.project));
 const memberKind = z.enum(["human", "agent"]);
 
-/** 对话种类：DM 一对一、Group 普通群组、Public Channel 项目内唯一公共频道。 */
-export const chatKindSchema = z.enum(["dm", "group", "public_channel"]);
+/** 对话种类：DM 一对一，Crew 是 Project 内由 lead 代表人类协作的成员集合。 */
+export const chatKindSchema = z.enum(["dm", "crew"]);
 export type ChatKind = z.infer<typeof chatKindSchema>;
 
-/** 唤醒策略：`contextual` 由判定器从有效 Agent 候选里选收件人；`owner_led` / `mention_only` 不走判定器。 */
+/** 唤醒策略：Crew 不走判定器，路由固定到 lead；DM 也不使用判定器。 */
 export const chatWakePolicySchema = z.enum(["mention_only", "owner_led", "contextual"]);
 export type ChatWakePolicy = z.infer<typeof chatWakePolicySchema>;
 
@@ -34,7 +34,7 @@ export type ChatOwner = z.infer<typeof chatOwnerSchema>;
  * `projectCreatedBy` 只在 `ownerKind === "agent"` 时是兜底治理者；`readOnlyReason` 是领域层给出的
  * 只读说明，页面直接展示，不再自己判断「为什么不能」。
  *
- * 这里只放「谁能做什么」：`owner`、`wakePolicy`、`governanceRevision` 已经在同一会话的 `chat` 上，
+ * 这里只放「谁能做什么」：`owner`、`governanceRevision` 已经在同一会话的 `chat` 上，
  * 不复写一份，避免两处同步。
  */
 export const chatOwnerFactsSchema = z.object({
@@ -44,9 +44,8 @@ export const chatOwnerFactsSchema = z.object({
   actorId: z.string().min(1),
   projectCreatedBy: z.string().min(1).optional(),
   canChangeMembers: z.boolean(),
-  canChangeOwner: z.boolean(),
-  canChangeWakePolicy: z.boolean(),
-  /** 右栏的重命名入口：只有普通 Group 有；DM 的入口在消息头部（P4b 形状），频道没有入口。 */
+  canChangeLead: z.boolean(),
+  /** 右栏的重命名入口：只有 Crew 有；DM 的入口在消息头部。 */
   canRenameTitle: z.boolean(),
   readOnlyReason: z.string().optional(),
 });
@@ -92,98 +91,57 @@ export const chatOwnerInput = chatOwnerSchema.superRefine((owner, ctx) => {
 });
 export type ChatOwnerInput = z.infer<typeof chatOwnerInput>;
 
-/**
- * 新建 Group。成员不重复、至少一名人类成员、Agent 所有者必须是成员之一，
- * 这三条是纯形状约束；「成员与 Agent 所有者属本 Project」要查库，归领域层。
- * 没有人类成员的群与没有成员的群一样无法治理，所以在入口就拦掉。
- */
-export const createGroupChatInput = z
-  .object({
-    projectId,
-    title: chatTitle.optional(),
-    members: z.array(chatMemberInput).min(1, "群组至少要有一个成员"),
-    initialOwner: chatOwnerInput,
-    wakePolicy: chatWakePolicySchema.default("owner_led"),
-  })
-  .superRefine((input, ctx) => {
-    const keys = input.members.map((member) => `${member.kind}:${member.id}`);
-    if (new Set(keys).size !== keys.length)
-      ctx.addIssue({ code: "custom", path: ["members"], message: "成员不能重复" });
-    if (!input.members.some((member) => member.kind === "human"))
-      ctx.addIssue({ code: "custom", path: ["members"], message: "群组至少要有一名人类成员" });
-    if (
-      input.initialOwner.kind === "agent" &&
-      !input.members.some(
-        (member) => member.kind === "agent" && member.id === input.initialOwner.id,
-      )
-    )
-      ctx.addIssue({
-        code: "custom",
-        path: ["initialOwner"],
-        message: "Agent 所有者必须是群组成员",
-      });
-  });
-export type CreateGroupChatInput = z.infer<typeof createGroupChatInput>;
-
-/** `governance_revision` 是治理写入的乐观并发令牌，调用方必须带上自己看到的那一版。 */
-const expectedRevision = z.number().int().nonnegative();
-
-export const addGroupMemberInput = z.object({
+/** Crew 成员只能来自本 Project 的 Agent 或 Project 的人类创建者，成员集不继承 Project。 */
+export const addCrewMemberInput = z.object({
   chatId,
   member: chatMemberInput,
-  expectedRevision,
+  expectedRevision: z.number().int().nonnegative(),
 });
-export type AddGroupMemberInput = z.infer<typeof addGroupMemberInput>;
+export type AddCrewMemberInput = z.infer<typeof addCrewMemberInput>;
 
-export const removeGroupMemberInput = z.object({
+export const removeCrewMemberInput = z.object({
   chatId,
   member: chatMemberInput,
-  expectedRevision,
+  expectedRevision: z.number().int().nonnegative(),
 });
-export type RemoveGroupMemberInput = z.infer<typeof removeGroupMemberInput>;
+export type RemoveCrewMemberInput = z.infer<typeof removeCrewMemberInput>;
 
-export const setChatOwnerInput = z.object({
+/** 改任 lead：候选必须是这条 Crew 的有效 Agent 成员。 */
+export const setCrewLeadInput = z.object({
   chatId,
-  owner: chatOwnerInput,
-  expectedRevision,
+  leadProfileId: agentProfileIdSchema,
+  expectedRevision: z.number().int().nonnegative(),
 });
-export type SetChatOwnerInput = z.infer<typeof setChatOwnerInput>;
-
-/** 频道没有 title 字段（裁定 d8），会话列表与详情用这条固定文案代替。 */
-export const PUBLIC_CHANNEL_DISPLAY_TITLE = "公共频道（Project 范围）";
-
-/** 会话没有任何可回落的参与分身名时的兜底：不把裸 chat id 当人类可读名字。 */
-export const UNNAMED_CHAT_DISPLAY_TITLE = "未命名对话";
+export type SetCrewLeadInput = z.infer<typeof setCrewLeadInput>;
 
 /**
- * 会话的展示标题：频道一律用固定文案（d8）；其余人工标题优先，缺省回落到参与分身名。
+ * 会话的展示标题：人工标题优先，缺省回落到参与分身名。
  * 纯规则只放一处，读模型与页面引用同一份回落链，不各写一套。
  */
 export function chatDisplayTitle(
   chat: Pick<Chat, "kind" | "title">,
   agentNames: readonly string[],
 ): string {
-  if (chat.kind === "public_channel") return PUBLIC_CHANNEL_DISPLAY_TITLE;
   const title = chat.title?.trim();
   if (title) return title;
   const names = agentNames.map((name) => name.trim()).filter((name) => name.length > 0);
-  return names.length > 0 ? names.join("、") : UNNAMED_CHAT_DISPLAY_TITLE;
+  return names.length > 0 ? names.join("、") : "未命名对话";
 }
 
 /**
  * 会话列表项（也是对话详情里的 chat 部分）。三种 kind 共用一份形状：
- * - `dm` / `group`：`title` 可选，缺省时页面回落到参与分身名；
- * - `public_channel`：没有 `title`，页面显示 `PUBLIC_CHANNEL_DISPLAY_TITLE`；
- *   `createdBy` 就是 `project.created_by`（自动创建，没有命名者），
- *   `owner` 恒为 `{ kind: 'human', id: project.created_by }`；
- *   `wakePolicy` 是 `contextual`（Public Channel 默认走判定器），但频道 owner 一定是人类，
- *   所以点名仍即时硬路由：一条消息只唤醒被点名的 Agent，绝不广播给全体成员。
+ * - `title` 可选，缺省时页面回落到参与分身名；
+ * - Crew 的 `leadProfileId` 是当前 lead，`crewEpoch` 随 lead 改任、移除 lead、
+ *   显式停止单调递增；`control` 只在 Crew 上出现。
  */
 export const chatSchema = z.object({
   id: chatId,
   projectId,
   kind: chatKindSchema,
   title: z.string().optional(),
+  leadProfileId: agentProfileIdSchema.optional(),
+  crewEpoch: z.number().int().nonnegative(),
+  control: z.enum(["active", "stopped"]).optional(),
   archivedAt: z.iso.datetime().optional(),
   owner: chatOwnerSchema,
   wakePolicy: chatWakePolicySchema,
@@ -268,8 +226,7 @@ export type ChatSessionInstance = z.infer<typeof chatSessionInstanceSchema>;
 /**
  * 会话读模型（多 Agent）：同一份读法按 kind 分形。
  * - `dm` 的形状与改造前的 `ChatDetail` 逐字段一致（P2 冻结），只多出判别字段 `kind`；
- * - `group` / `public_channel` 各带自己的成员与分身集合，不共用 DM 的 `{ chat, instance }`；
- *   频道没有 `title` 列（裁定 d8），读模型直接给出固定文案，页面不再各自回落。
+ * - `crew` 带自己的成员与分身集合，不共用 DM 的 `{ chat, instance }`。
  */
 export const dmChatSessionSchema = z.object({
   kind: z.literal("dm"),
@@ -277,25 +234,16 @@ export const dmChatSessionSchema = z.object({
   instance: agentInstanceSchema,
   governance: chatOwnerFactsSchema,
 });
-export const groupChatSessionSchema = z.object({
-  kind: z.literal("group"),
+export const crewChatSessionSchema = z.object({
+  kind: z.literal("crew"),
   chat: chatSchema,
-  members: z.array(chatMemberSchema),
-  instances: z.array(chatSessionInstanceSchema),
-  governance: chatOwnerFactsSchema,
-});
-export const publicChannelChatSessionSchema = z.object({
-  kind: z.literal("public_channel"),
-  chat: chatSchema,
-  displayTitle: z.literal(PUBLIC_CHANNEL_DISPLAY_TITLE),
   members: z.array(chatMemberSchema),
   instances: z.array(chatSessionInstanceSchema),
   governance: chatOwnerFactsSchema,
 });
 export const chatSessionSchema = z.discriminatedUnion("kind", [
   dmChatSessionSchema,
-  groupChatSessionSchema,
-  publicChannelChatSessionSchema,
+  crewChatSessionSchema,
 ]);
 export type ChatSession = z.infer<typeof chatSessionSchema>;
 

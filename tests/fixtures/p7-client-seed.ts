@@ -3,9 +3,10 @@ import { db, sqlite } from "../../src/db";
 import { chat, user } from "../../src/db/schema";
 import { createProject } from "../../src/domain/project";
 import { createAgentProfile, addProjectMember } from "../../src/domain/agent";
-import { createDirectChat, createGroupChat } from "../../src/domain/chat";
+import { createDirectChat } from "../../src/domain/chat";
 import { createMachine } from "../../src/domain/machine";
 import { createTask } from "../../src/domain/task";
+import { createCrewChat } from "./crew-chat";
 const human = db.select().from(user).where(eq(user.email, process.env.P7_EMAIL!)).get()!;
 const ctx = { userId: human.id, requestId: "req_p7-client-seed" };
 const project = createProject({ name: "P7 深链 Project", description: "客户端门禁专用" }, ctx);
@@ -15,7 +16,7 @@ const agent = createAgentProfile(
 );
 addProjectMember(project.id, agent.id, ctx);
 const dm = createDirectChat(project.id, agent.id, ctx).chat;
-const group = createGroupChat(
+const group = createCrewChat(
   project.id,
   {
     projectId: project.id,

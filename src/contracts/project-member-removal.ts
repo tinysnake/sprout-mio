@@ -12,7 +12,7 @@ export const projectMemberRemovalBlockerKindSchema = z.enum([
 ]);
 export const projectMemberRemovalChatRefSchema = z.object({
   chatId: id(ID_PREFIXES.chat),
-  chatKind: z.enum(["dm", "group", "public_channel"]),
+  chatKind: z.enum(["dm", "crew"]),
   title: z.string().nullable(),
 });
 export const projectMemberRemovalRunRefSchema = z.object({
@@ -31,7 +31,7 @@ export const projectMemberRemovalLeaseRefSchema = z.object({
   relation: z.enum(["holder", "handoff_target"]),
 });
 export const projectMemberRemovalOwnerRefSchema = z.object({
-  chat: projectMemberRemovalChatRefSchema.extend({ chatKind: z.enum(["group", "public_channel"]) }),
+  chat: projectMemberRemovalChatRefSchema.extend({ chatKind: z.literal("crew") }),
 });
 export const projectMemberRemovalTaskRefSchema = z.object({
   taskId: id(ID_PREFIXES.task),

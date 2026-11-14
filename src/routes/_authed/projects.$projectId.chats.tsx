@@ -94,13 +94,7 @@ function ChatsLayout() {
       : undefined;
   const newChat =
     loader.members.ok && loader.profiles.ok && human ? (
-      <NewChatDialog
-        projectId={projectId}
-        members={members}
-        profiles={profiles}
-        humanUserId={human.userId}
-        humanName={human.name}
-      />
+      <NewChatDialog projectId={projectId} members={members} profiles={profiles} />
     ) : undefined;
   const machineFactsError = !loader.infoHub.ok
     ? loader.infoHub.error

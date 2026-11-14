@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { leaseViewSchema } from "../../src/contracts/lease";
-import { createGroupChatInput } from "../../src/contracts/chat";
+
 import { db, sqlite } from "../../src/db";
 import { migrateDatabase } from "../../src/db/migrate";
 import {
@@ -18,7 +18,7 @@ import {
   remoteExecution,
 } from "../../src/db/schema";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
-import { createDirectChat, createGroupChat, ensureInstance } from "../../src/domain/chat";
+import { createDirectChat, ensureInstance } from "../../src/domain/chat";
 import { createMachine, hashCredential, saveProjectMachineBinding } from "../../src/domain/machine";
 import { createProject } from "../../src/domain/project";
 import type { AgentRemoteContext } from "../../src/server/lease";
@@ -36,6 +36,7 @@ import {
   releaseLease,
 } from "../../src/server/lease";
 import { openInitialMembership } from "../../src/server/membership";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 const humanId = "p8a-human";
 type AuthorizationRow = typeof leaseAuthorization.$inferSelect;
@@ -144,9 +145,9 @@ for (const profile of [holderAgent, claimerAgent, outsiderAgent])
   addProjectMember(project.id, profile.id, projectCtx);
 addProjectMember(other.id, foreignAgent.id, projectCtx);
 
-const group = createGroupChat(
+const group = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8a Group",
     initialOwner: { kind: "human", id: humanId },
@@ -158,9 +159,9 @@ const group = createGroupChat(
   }),
   { kind: "human", userId: humanId, ctx: projectCtx },
 );
-const groupOther = createGroupChat(
+const groupOther = createCrewChat(
   other.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: other.id,
     title: "P8a Other Group",
     initialOwner: { kind: "human", id: humanId },
@@ -176,8 +177,13 @@ const outsiderDm = createDirectChat(project.id, outsiderAgent.id, projectCtx);
 const channel = db
   .select()
   .from(chat)
-  .where(and(eq(chat.projectId, project.id), eq(chat.kind, "public_channel")))
+  .where(and(eq(chat.projectId, project.id), eq(chat.kind, "crew")))
   .get()!;
+sqlite
+  .prepare(
+    "INSERT OR IGNORE INTO chat_member(chat_id,member_kind,member_id,added_at) VALUES (?,'agent',?,1)",
+  )
+  .run(channel.id, claimerAgent.id);
 
 const machineCtx = { userId: humanId, bootId: boot(), requestId: req(), now: at() };
 const enrolled = createMachine({ name: "P8a Machine" }, machineCtx);

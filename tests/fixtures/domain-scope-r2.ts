@@ -1,3 +1,4 @@
+import { removeCrewMember } from "../../src/domain/chat";
 // 真实 SQLite + 真实领域入口：I-P5a 第二轮验收 R2-A03 / R2-A04 / R2-N04 的三条反证。
 // 与 chat-scope.ts 分开写，是因为这三条要能「先红」：收集全部失败再退出，而不是第一条就中断，
 // 修复前的脚本输出同时给出三条各自的红。领域入口一律直调（不 mock、不经过 HTTP 边界），
@@ -11,18 +12,17 @@ import type { ProjectContext } from "../../src/domain/access";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
 import {
   clearChatTitle,
-  createGroupChat,
   ensureInstance,
   getChat,
   listChatMembers,
-  removeGroupMember,
   sendMessage,
   updateChatTitle,
 } from "../../src/domain/chat";
 import type { ChatActor } from "../../src/domain/chat-actor";
-import { createGroupChatInput } from "../../src/contracts/chat";
+
 import { createProject, getProject, listProjects, updateProject } from "../../src/domain/project";
 import { eq } from "drizzle-orm";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 migrateDatabase();
 
@@ -71,7 +71,7 @@ addProjectMember(projectA.id, alpha.id, ctx);
 const humanActor: ChatActor = { kind: "human", userId: creatorId, ctx };
 
 function groupInput(projectId: string, title: string) {
-  return createGroupChatInput.parse({
+  return crewInput({
     projectId,
     title,
     members: [
@@ -83,8 +83,8 @@ function groupInput(projectId: string, title: string) {
   });
 }
 // 两个群内容相同，区别只在「创建者 Human 还是不是这条 Chat 的有效成员」。
-const groupKeep = createGroupChat(projectA.id, groupInput(projectA.id, "R2 保留成员"), humanActor);
-const groupDrop = createGroupChat(projectA.id, groupInput(projectA.id, "R2 移出成员"), humanActor);
+const groupKeep = createCrewChat(projectA.id, groupInput(projectA.id, "R2 保留成员"), humanActor);
+const groupDrop = createCrewChat(projectA.id, groupInput(projectA.id, "R2 移出成员"), humanActor);
 
 const instanceAlpha = ensureInstance(groupKeep.id, alpha.id, ctx);
 const runAlphaId = newId(ID_PREFIXES.run);
@@ -111,7 +111,7 @@ const ctxAlpha: ProjectContext = {
 const droppedRevision = getChat(groupDrop.id, ctx).governanceRevision;
 assert.equal(
   codeOf(() =>
-    removeGroupMember(groupDrop.id, { kind: "human", id: creatorId }, droppedRevision, humanActor),
+    removeCrewMember(groupDrop.id, { kind: "human", id: creatorId }, droppedRevision, humanActor),
   ),
   "ok",
 );

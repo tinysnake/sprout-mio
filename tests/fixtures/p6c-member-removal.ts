@@ -1,4 +1,3 @@
-import { createGroupChatInput } from "../../src/contracts/chat";
 import { fork } from "node:child_process";
 import { and, eq } from "drizzle-orm";
 import {
@@ -22,13 +21,7 @@ import {
   collectProjectMemberRemovalBlockers,
   removeProjectMember,
 } from "../../src/domain/agent";
-import {
-  createDirectChat,
-  createGroupChat,
-  ensureInstance,
-  getChat,
-  setChatOwner,
-} from "../../src/domain/chat";
+import { createDirectChat, ensureInstance, getChat } from "../../src/domain/chat";
 import { chatGovernanceFacts } from "../../src/domain/chat-capabilities";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
 import { createProject } from "../../src/domain/project";
@@ -47,6 +40,7 @@ import {
   seedTask,
   blocked,
 } from "./p6c-member-fixture";
+import { createCrewChat, setChatOwnerCompat, crewInput } from "./crew-chat";
 
 const f = setup();
 const collect = () => collectProjectMemberRemovalBlockers(f.project.id, f.agent.id);
@@ -113,9 +107,9 @@ assert.deepEqual(collect(), []);
 pass("blockers.leases.held-and-fencing");
 
 const human = { kind: "human" as const, userId: f.ctx.userId, ctx: f.ctx };
-const unprovisionedGroup = createGroupChat(
+const unprovisionedGroup = createCrewChat(
   f.project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: f.project.id,
     title: "Owner without instance",
     initialOwner: { kind: "agent", id: f.agent.id },
@@ -131,7 +125,7 @@ assert.equal(
     .length,
   0,
 );
-setChatOwner(
+setChatOwnerCompat(
   f.group.id,
   { kind: "agent", id: f.agent.id },
   getChat(f.group.id, f.ctx).governanceRevision,
@@ -153,19 +147,19 @@ assert.deepEqual(
 );
 const facts = chatGovernanceFacts(
   {
-    kind: "public_channel",
+    kind: "crew",
     ownerKind: "agent",
     ownerId: f.agent.id,
     projectCreatedBy: f.ctx.userId,
   },
   human,
 );
-assert.equal(facts.canChangeOwner, true);
+assert.equal(facts.canChangeLead, true);
 assert.equal(facts.canChangeMembers, false);
 const beforeForeign = snapshot();
 assert.throws(
   () =>
-    setChatOwner(
+    setChatOwnerCompat(
       f.channel.id,
       { kind: "human", id: "foreign-human" },
       getChat(f.channel.id, f.ctx).governanceRevision,
@@ -174,7 +168,7 @@ assert.throws(
   { code: "forbidden" },
 );
 assert.deepEqual(snapshot(), beforeForeign);
-setChatOwner(
+setChatOwnerCompat(
   f.channel.id,
   { kind: "human", id: f.ctx.userId },
   getChat(f.channel.id, f.ctx).governanceRevision,
@@ -182,13 +176,13 @@ setChatOwner(
 );
 // Owner transfer on archived Group follows existing policy; unarchive to resolve explicitly.
 db.update(chat).set({ archivedAt: null }).where(eq(chat.id, f.group.id)).run();
-setChatOwner(
+setChatOwnerCompat(
   f.group.id,
   { kind: "human", id: f.ctx.userId },
   getChat(f.group.id, f.ctx).governanceRevision,
   human,
 );
-setChatOwner(
+setChatOwnerCompat(
   unprovisionedGroup.id,
   { kind: "human", id: f.ctx.userId },
   getChat(unprovisionedGroup.id, f.ctx).governanceRevision,
@@ -219,9 +213,9 @@ pass("blockers.dm-assigned-tasks.excludes-other-states-and-group");
 const projectB = createProject({ name: "P6c Other" }, f.ctx);
 addProjectMember(projectB.id, f.agent.id, f.ctx);
 const dmB = createDirectChat(projectB.id, f.agent.id, f.ctx);
-const groupB = createGroupChat(
+const groupB = createCrewChat(
   projectB.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: projectB.id,
     title: "Other Project Group",
     initialOwner: { kind: "agent", id: f.agent.id },
@@ -378,7 +372,7 @@ db.update(machineLease)
   .set({ state: "free", holderInstanceId: null })
   .where(eq(machineLease.machineId, busyLease.key.machineId))
   .run();
-setChatOwner(
+setChatOwnerCompat(
   f.channel.id,
   { kind: "human", id: f.ctx.userId },
   getChat(f.channel.id, f.ctx).governanceRevision,

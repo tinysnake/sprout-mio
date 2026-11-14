@@ -89,7 +89,7 @@ describe("共享契约", () => {
               status: "running" as const,
               chat: {
                 chatId: "cnv_55555555",
-                chatKind: "group" as const,
+                chatKind: "crew" as const,
                 title: "平台组",
               },
             },

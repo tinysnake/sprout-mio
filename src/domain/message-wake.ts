@@ -15,7 +15,7 @@ import {
 } from "../contracts/wake-evaluation";
 import { sqlite } from "../db";
 import { config } from "../lib/config";
-import { readChatEffectiveMembers } from "./channel";
+import { readChatEffectiveMembers } from "./chat-members";
 import {
   CLAIM_LEASE_MS,
   all,

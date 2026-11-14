@@ -72,7 +72,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "群里人类确认后只是等结果",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -165,7 +165,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "群里人类确认后只是等结果",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -276,7 +276,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "不点名，但两类工作各自落在明确职责上",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -375,7 +375,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "不点名，但两类工作各自落在明确职责上",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -509,7 +509,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "owner 已转给他人，无点名问进度只找新 owner",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -637,7 +637,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "owner 已转给他人，无点名问进度只找新 owner",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -778,7 +778,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "工作中追加约束：429 不许加重试",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -901,7 +901,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "工作中追加约束：429 不许加重试",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1059,7 +1059,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "讨论收尾并给出结论",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1169,7 +1169,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "讨论收尾并给出结论",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1282,7 +1282,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Human owner 的群里有人问进度",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1372,7 +1372,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Human owner 的群里有人问进度",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1519,7 +1519,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished，人类 @ 另一名成员收尾",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1647,7 +1647,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished，人类 @ 另一名成员收尾",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1766,7 +1766,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished，人类只是确认结论",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1883,7 +1883,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished，人类只是确认结论",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -1996,7 +1996,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "没有 Task 的群被周期检查触发",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
@@ -2098,7 +2098,7 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished 的群被周期检查触发",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {

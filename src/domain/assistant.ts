@@ -22,7 +22,6 @@ import {
 } from "../db/schema";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { assistantInputContextSchema } from "../contracts/assistant";
-import { PUBLIC_CHANNEL_DISPLAY_TITLE } from "../contracts/chat";
 import { readAssistantNativeFacts } from "./assistant-native-facts";
 import type { AssistantCall, AssistantFact, AssistantTarget } from "../contracts/assistant";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
@@ -809,7 +808,6 @@ export function hasCurrentAssistantInterest(assistantChatId: string, runId: stri
 }
 export function targetLabel(chatId: string) {
   const target = db.select().from(chat).where(eq(chat.id, chatId)).get()!;
-  if (target.kind === "public_channel") return PUBLIC_CHANNEL_DISPLAY_TITLE;
   if (target.title) return target.title;
   return (
     db
@@ -835,7 +833,7 @@ export function assistantPanel(
   decisions: (typeof assistantEvent.$inferSelect & { targetLabel: string })[];
   watches: (typeof assistantWatch.$inferSelect & {
     targetLabel: string;
-    targetKind: "dm" | "group" | "public_channel";
+    targetKind: "dm" | "crew";
     targetProjectName: string;
   })[];
   intervalSeconds: number;

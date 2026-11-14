@@ -3,7 +3,7 @@
 // 并从物理行、视图、读路径、发言门禁四个层面各取一条证据。
 import assert from "node:assert/strict";
 import { and, eq } from "drizzle-orm";
-import { createGroupChatInput } from "../../src/contracts/chat";
+
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { db, sqlite } from "../../src/db";
 import {
@@ -21,18 +21,19 @@ import { addProjectMember, createAgentProfile, removeProjectMember } from "../..
 import { listAgentRunInputs, listAgentRuns, queuedRunWork } from "../../src/domain/agent-run";
 import {
   createDirectChat,
-  createGroupChat,
   ensureInstance,
   getChat,
   getInstance,
   listChatMembers,
   listMessages,
   sendMessage,
+  ensureProjectCrew,
 } from "../../src/domain/chat";
-import { ensureProjectChannel } from "../../src/domain/channel";
+
 import type { ChatActor } from "../../src/domain/chat-actor";
 import { createProject } from "../../src/domain/project";
 import type { ProjectContext } from "../../src/domain/project";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 migrateDatabase();
 
@@ -56,7 +57,7 @@ function groupMemberRows(agentProfileId: string) {
     .innerJoin(chat, eq(chat.id, chatMember.chatId))
     .where(
       and(
-        eq(chat.kind, "group"),
+        eq(chat.kind, "crew"),
         eq(chatMember.memberKind, "agent"),
         eq(chatMember.memberId, agentProfileId),
       ),
@@ -106,16 +107,16 @@ const ctx = { userId: creatorId, requestId: newId(ID_PREFIXES.request) };
 const human: ChatActor = { kind: "human", userId: creatorId, ctx };
 
 const project = createProject({ name: "移除门禁" }, ctx);
-const channelId = ensureProjectChannel(project.id);
+const channelId = ensureProjectCrew(project.id);
 const agentOwner = createAgentProfile({ name: "Owner", persona: "", harness: "pi" }, ctx);
 const agentBusy = createAgentProfile({ name: "Busy", persona: "", harness: "pi" }, ctx);
 const agentLeaving = createAgentProfile({ name: "Leaving", persona: "", harness: "pi" }, ctx);
 for (const agent of [agentOwner, agentBusy, agentLeaving])
   addProjectMember(project.id, agent.id, ctx);
 
-const ownedGroup = createGroupChat(
+const ownedGroup = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "Owner 的群",
     members: [
@@ -127,9 +128,9 @@ const ownedGroup = createGroupChat(
   }),
   human,
 );
-const sharedGroup = createGroupChat(
+const sharedGroup = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "共享群",
     members: [
@@ -144,9 +145,9 @@ const sharedGroup = createGroupChat(
 // 从未建过 instance 的成员：没有 run、也没有输入，只剩一条普通群成员行要删。
 const agentSilent = createAgentProfile({ name: "Silent", persona: "", harness: "pi" }, ctx);
 addProjectMember(project.id, agentSilent.id, ctx);
-const silentGroup = createGroupChat(
+const silentGroup = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "沉默成员的群",
     members: [

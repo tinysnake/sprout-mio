@@ -24,7 +24,6 @@ const {
   reconcileChatSchedule,
   wakeAttempts,
 } = await import("../src/domain/chat-schedule");
-const { claimDueMessageWake } = await import("../src/domain/message-wake");
 const { getChatContinuation } = await import("../src/domain/chat-continuation");
 
 afterAll(() => {
@@ -65,36 +64,6 @@ function seedProjectChat() {
 }
 
 /** 群组 + 会触发 LLM 判定的消息，is the minimum a message claim needs. */
-function seedGroupMessage() {
-  seedOwner();
-  const projectId = newId(ID_PREFIXES.project);
-  const chatId = newId(ID_PREFIXES.chat);
-  const messageId = newId(ID_PREFIXES.message);
-  sqlite
-    .prepare("INSERT INTO project(id,name,created_by) VALUES (?,?,'owner')")
-    .run(projectId, `Messages ${projectId}`);
-  sqlite
-    .prepare(
-      "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by,wake_policy) VALUES (?,?,'group','human','owner','owner','contextual')",
-    )
-    .run(chatId, projectId);
-  sqlite
-    .prepare(
-      "INSERT INTO chat_member(chat_id,member_kind,member_id,added_at) VALUES (?,'human','owner',?)",
-    )
-    .run(chatId, now.getTime());
-  sqlite
-    .prepare(
-      "INSERT INTO message(id,chat_id,sender_kind,sender_id,body,created_at) VALUES (?,?,'human','owner','看一下这个',?)",
-    )
-    .run(messageId, chatId, now.getTime());
-  sqlite
-    .prepare(
-      "INSERT INTO chat_message_wake(chat_id,project_id,trigger_message_id,first_due_at,due_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
-    )
-    .run(chatId, projectId, messageId, now.getTime(), now.getTime(), now.getTime(), now.getTime());
-  return { projectId, chatId, messageId };
-}
 
 /** 一条已 claim 的判定：attempt 是已经发生的次数，claim_token 与租约一起出现。 */
 function seedClaimedEvaluation(chatId: string, projectId: string, attempt = 1, round = 1) {
@@ -347,23 +316,6 @@ describe("对话接续变更推送", () => {
 
     publishChatContinuationChange(chatId);
     vi.advanceTimersByTime(200);
-    expect(seen).toEqual([projectTopic(projectId), chatTopic(chatId)]);
-    off();
-    vi.useRealTimers();
-  });
-
-  it("human message 被 claim 的瞬间就推送，页面不必等判定结果", () => {
-    vi.useFakeTimers();
-    const { projectId, chatId } = seedGroupMessage();
-    const seen: string[] = [];
-    const off = subscribeChanges({
-      topics: [projectTopic(projectId), chatTopic(chatId)],
-      send: (event) => seen.push(event.topic),
-    });
-
-    const claimed = claimDueMessageWake({ now, requestId: "req_claim", workerId: "gate" });
-    vi.advanceTimersByTime(200);
-    expect(claimed?.state).toBe("claimed");
     expect(seen).toEqual([projectTopic(projectId), chatTopic(chatId)]);
     off();
     vi.useRealTimers();

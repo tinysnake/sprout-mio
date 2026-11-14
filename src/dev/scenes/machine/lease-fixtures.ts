@@ -89,8 +89,8 @@ export const demoFreeLease: LeaseView = {
  * 可选指定 Group 内的一个 Agent profile。这些 Chat 与 Agent 只服务演示。
  */
 export const demoEscrowTargets = {
-  group: { chatId: "cnv_55555555", title: "发布协作组", kind: "group" as const },
-  channel: { chatId: "cnv_66666666", title: "发布公告频道", kind: "public_channel" as const },
+  group: { chatId: "cnv_55555555", title: "发布协作 Crew", kind: "crew" as const },
+  channel: { chatId: "cnv_66666666", title: "发布公告 Crew", kind: "crew" as const },
   dm: { chatId: "cnv_77777777", title: "Human 私聊", kind: "dm" as const },
 };
 
@@ -120,7 +120,7 @@ export const demoEscrowInstances: Record<string, { instanceId: string; agentProf
 /** 挂靠目标选择框的选项。DM 也列出来，用来看见它被排除在挂靠目标之外。 */
 export const demoEscrowChats: {
   id: string;
-  kind: "dm" | "group" | "public_channel";
+  kind: "dm" | "crew";
   title: string;
 }[] = [demoEscrowTargets.group, demoEscrowTargets.channel, demoEscrowTargets.dm].map((target) => ({
   id: target.chatId,

@@ -5,7 +5,7 @@ import { ID_PREFIXES, newId } from "../../../src/contracts/ids";
 import { sqlite } from "../../../src/db";
 import { migrateDatabase } from "../../../src/db/migrate";
 import { addProjectMember, createAgentProfile } from "../../../src/domain/agent";
-import { createGroupChat, sendMessage } from "../../../src/domain/chat";
+import { addCrewMember, listChats, sendMessage } from "../../../src/domain/chat";
 import type { ChatActor } from "../../../src/domain/chat-actor";
 import { createProject } from "../../../src/domain/project";
 import { createTask } from "../../../src/domain/task";
@@ -27,20 +27,9 @@ const project = createProject({ name: "快照项目" }, ctx);
 const agent = createAgentProfile({ name: "快照 Agent", persona: "", harness: "pi" }, ctx);
 addProjectMember(project.id, agent.id, ctx);
 const human: ChatActor = { kind: "human", userId, ctx };
-const group = createGroupChat(
-  project.id,
-  {
-    projectId: project.id,
-    title: "快照群聊",
-    members: [
-      { kind: "human", id: userId },
-      { kind: "agent", id: agent.id },
-    ],
-    initialOwner: { kind: "human", id: userId },
-    wakePolicy: "owner_led",
-  },
-  human,
-);
+const group = listChats(project.id, ctx).find((row) => row.kind === "crew");
+if (!group) throw new Error("seed expects the project Crew");
+addCrewMember(group.id, { kind: "agent", id: agent.id }, group.governanceRevision, human);
 sendMessage(
   group.id,
   { senderKind: "human", senderId: userId, body: "备份时刻之前写下的历史消息" },

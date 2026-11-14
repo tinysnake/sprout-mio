@@ -22,7 +22,7 @@
 
 页面的形状由 Human 决定，不由实现方代为决定。
 
-- 任务涉及新增页面、调整既有页面的信息层级或改变交互时，先给 2 到 3 个可比较的设计方案供 Human 选择，选定之前不进入实现。方案用 HTML artifact 呈现，展示路径按[宿主环境](#宿主环境)选择，GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 Lavish；形状差异要能被一眼比较，同一批数据、同一套语义色与措辞。
+- 任务涉及新增页面、调整既有页面的信息层级或改变交互时，先给 2 到 3 个可比较的设计方案供 Human 选择，选定之前不进入实现。方案用 HTML artifact 呈现，展示路径按[宿主环境](#宿主环境)选择，GUI 宿主直接把 HTML 放进消息里（`html_render`），不启动 Lavish，TUI 宿主用 Lavish；形状差异要能被一眼比较，同一批数据、同一套语义色与措辞。
 - 选定之后，实现方只负责按选定方案写功能、写测试与做验证。实现中若发现方案本身有事实错误（例如某个状态在方案的数据形状下不可能出现），先报告再改，不擅自改形状。
 - 集成结束时由 Human 走一次 [Human review](human-review.md)，看真实页面再给结论。这一步不是可选的收尾动作，是章节完成的判据之一。
 - 编排单元里写页面任务的 brief 必须带上选定方案的 artifact 路径与选定结论，不写界面形状的 brief 视为未就绪。
@@ -53,7 +53,8 @@ P3 C 与 R1 并行时互相覆盖的正是这些串行资源，`drizzle/meta/_jo
 | 事项             | GUI 宿主（t3 code）                                  | TUI 宿主（herdr）                                  |
 | ---------------- | ---------------------------------------------------- | -------------------------------------------------- |
 | 派发子代理       | `delegate_task`，写文件用 `isolation: 'worktree'`    | `job open`，写文件用 `worktree: true`，`job_watch` 等待 |
-| 真实页面预览与反馈 | 环境自带的 browser / preview 工具优先，Lavish 回退   | 仓库 human-review 适配器与 Lavish                  |
+| 真实页面预览与反馈 | 环境自带的 browser / preview 工具                   | 仓库 human-review 适配器与 Lavish                  |
+| HTML artifact 展示 | 直接放进消息（`html_render`），不用 Lavish          | Lavish |
 
 派发子代理的本机操作细节见 `AGENTS.local.md`，真实页面评审的流程见 [Human review](human-review.md)。
 

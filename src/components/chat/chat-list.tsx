@@ -59,7 +59,6 @@ export function chatListName(
 ): string {
   const aggregate = aggregates?.get(chat.id);
   if (aggregate) return aggregate.displayTitle;
-  if (chat.kind === "public_channel") return "公共频道（Project 范围）";
   return chatDisplayName(chat, chatAgentName(chat.id, chatAgents, names));
 }
 
@@ -210,12 +209,7 @@ export function ChatListPanel({
               const aggregate = aggregateMap.get(chat.id);
               // 最近活动取 Chat 更新与最新 run 时间的较晚者，不等于右栏的最后消息时间。
               const shownAt = latestActivityAt(chat.updatedAt, aggregate?.latestRunAt);
-              const kindLabel =
-                chat.kind === "group"
-                  ? "Group"
-                  : chat.kind === "public_channel"
-                    ? "全体成员可参与"
-                    : chatSubtitleLabel(chat, agentName);
+              const kindLabel = chat.kind === "crew" ? "Crew" : chatSubtitleLabel(chat, agentName);
               const subtitle =
                 !selected && aggregate?.activeRunIds.length
                   ? `${kindLabel} · ${aggregate.activeRunIds.length} 个活动 run`

@@ -115,7 +115,7 @@ describe("群组按 Agent 展示运行状态", () => {
     createElement(RunStatusPanel, {
       state: group,
       messages: [],
-      chatKind: "group",
+      chatKind: "crew",
       agentNames: names,
       onStopRun: () => undefined,
     }),
@@ -140,7 +140,7 @@ describe("群组按 Agent 展示运行状态", () => {
       createElement(RunStatusPanel, {
         state: singleState,
         messages: [],
-        chatKind: "group",
+        chatKind: "crew",
       }),
     );
     expect(single).toContain("Agent 运行状态：");
@@ -159,7 +159,7 @@ describe("群组按 Agent 展示运行状态", () => {
       createElement(RunStatusPanel, {
         state: group,
         messages: [],
-        chatKind: "group",
+        chatKind: "crew",
         agentNames: names,
       }),
     );

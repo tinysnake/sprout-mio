@@ -2,18 +2,18 @@ import { describe, expect, it } from "vite-plus/test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 // 真实 SQLite + 真实领域入口：本文件只断言「参与权撤销后还能不能改成员」这一条边界。
 // 与被测模块一致，先把连接指到临时库再动态载入（domain/chat.ts 装载时就建立连接）。
 process.env.DATABASE_URL = join(mkdtempSync(join(tmpdir(), "p5a-member-")), "p5a.sqlite");
+const { createCrewChat, crewInput } = await import("./fixtures/crew-chat");
 
 const { migrateDatabase } = await import("../src/db/migrate");
 const { sqlite } = await import("../src/db");
 const { ID_PREFIXES, newId } = await import("../src/contracts/ids");
-const { createGroupChatInput } = await import("../src/contracts/chat");
+
 const { createProject } = await import("../src/domain/project");
 const { addProjectMember, createAgentProfile } = await import("../src/domain/agent");
-const { addGroupMember, createGroupChat, getChat, isEffectiveMember, removeGroupMember } =
+const { addCrewMember, getChat, isEffectiveMember, removeCrewMember } =
   await import("../src/domain/chat");
 type ChatActor = import("../src/domain/chat-actor").ChatActor;
 
@@ -41,9 +41,9 @@ addProjectMember(project.id, beta.id, ctx);
 const creator: ChatActor = { kind: "human", userId: creatorId, ctx };
 const other: ChatActor = { kind: "human", userId: otherId, ctx };
 
-const group = createGroupChat(
+const group = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "R3 参与者撤出",
     members: [
@@ -56,7 +56,11 @@ const group = createGroupChat(
   creator,
 );
 
-const left = removeGroupMember(group.id, { kind: "human", id: creatorId }, 0, creator);
+// Crew 创建者不能被移出，直接删成员行模拟历史数据里的撤出状态。
+sqlite
+  .prepare("DELETE FROM chat_member WHERE chat_id=? AND member_kind='human' AND member_id=?")
+  .run(group.id, creatorId);
+const left = getChat(group.id, creator.ctx);
 
 function codeOf(run: () => unknown): string {
   try {
@@ -84,47 +88,37 @@ describe("被移出群的 Human 不能再调整成员（d42 的参与权撤销�
 
   it("former member 加成员被拒为 not_found，与标题写入同码同文案", () => {
     const run = () =>
-      addGroupMember(group.id, { kind: "agent", id: beta.id }, left.governanceRevision, creator);
+      addCrewMember(group.id, { kind: "agent", id: beta.id }, left.governanceRevision, creator);
     expect(codeOf(run)).toBe("not_found");
     expect(messageOf(run)).toBe("对话成员不存在");
   });
 
   it("former member 移出成员被拒为 not_found，与加成员同一道判定", () => {
     const run = () =>
-      removeGroupMember(
-        group.id,
-        { kind: "agent", id: alpha.id },
-        left.governanceRevision,
-        creator,
-      );
+      removeCrewMember(group.id, { kind: "agent", id: alpha.id }, left.governanceRevision, creator);
     expect(codeOf(run)).toBe("not_found");
     expect(messageOf(run)).toBe("对话成员不存在");
   });
 
   it("两次被拒都没有推进 governanceRevision", () => {
     codeOf(() =>
-      addGroupMember(group.id, { kind: "agent", id: beta.id }, left.governanceRevision, creator),
+      addCrewMember(group.id, { kind: "agent", id: beta.id }, left.governanceRevision, creator),
     );
     codeOf(() =>
-      removeGroupMember(
-        group.id,
-        { kind: "agent", id: alpha.id },
-        left.governanceRevision,
-        creator,
-      ),
+      removeCrewMember(group.id, { kind: "agent", id: alpha.id }, left.governanceRevision, creator),
     );
     expect(getChat(group.id, ctx).governanceRevision).toBe(left.governanceRevision);
   });
 
   it("仍在群里的非 owner Human 照常能增删成员（d42 不退回 owner 档）", () => {
-    const added = addGroupMember(
+    const added = addCrewMember(
       group.id,
       { kind: "agent", id: beta.id },
       left.governanceRevision,
       other,
     );
     expect(added.governanceRevision).toBe(left.governanceRevision + 1);
-    const removed = removeGroupMember(
+    const removed = removeCrewMember(
       group.id,
       { kind: "agent", id: beta.id },
       added.governanceRevision,

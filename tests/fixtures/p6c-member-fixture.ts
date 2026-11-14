@@ -28,12 +28,13 @@ import {
   task,
 } from "../../src/db/schema";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
-import { createDirectChat, createGroupChat, ensureInstance } from "../../src/domain/chat";
-import { createGroupChatInput } from "../../src/contracts/chat";
+import { createDirectChat, ensureInstance } from "../../src/domain/chat";
+
 import { mutateTask } from "../../src/domain/task";
 import { createProject } from "../../src/domain/project";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
 import { openInitialMembership } from "../../src/server/membership";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 export function setup() {
   migrateDatabase();
@@ -48,9 +49,9 @@ export function setup() {
   const agent = createAgentProfile({ name: "Leaving", persona: "", harness: "pi" }, ctx);
   addProjectMember(project.id, agent.id, ctx);
   const dm = createDirectChat(project.id, agent.id, ctx);
-  const group = createGroupChat(
+  const group = createCrewChat(
     project.id,
-    createGroupChatInput.parse({
+    crewInput({
       projectId: project.id,
       title: "Group",
       initialOwner: { kind: "human", id: userId },
@@ -65,8 +66,13 @@ export function setup() {
   const channel = db
     .select()
     .from(chat)
-    .where(and(eq(chat.projectId, project.id), eq(chat.kind, "public_channel")))
+    .where(and(eq(chat.projectId, project.id), eq(chat.kind, "crew")))
     .get()!;
+  sqlite
+    .prepare(
+      "INSERT INTO chat_member(chat_id,member_kind,member_id,added_at) VALUES (?,'agent',?,?)",
+    )
+    .run(channel.id, agent.id, 1);
   const bootId = newId(ID_PREFIXES.boot);
   sqlite
     .prepare(

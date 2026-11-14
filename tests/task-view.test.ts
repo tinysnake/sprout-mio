@@ -15,8 +15,8 @@ describe("Task 页面口径", () => {
     const detail = taskPageDetail();
     detail.assignmentTargets.unshift({
       chatId: "cnv_aaaaaaaa",
-      kind: "public_channel",
-      displayTitle: "公共频道",
+      kind: "crew",
+      displayTitle: "Crew",
       responsibility: { kind: "human", userId: "human-demo" },
     });
     const html = renderToStaticMarkup(

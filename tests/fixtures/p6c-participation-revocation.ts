@@ -16,9 +16,9 @@ import {
   queuedRunWork,
   recoverAgentRuns,
 } from "../../src/domain/agent-run";
-import { ensureInstance, getChat, sendMessage, setChatOwner } from "../../src/domain/chat";
+import { ensureInstance, getChat, sendMessage } from "../../src/domain/chat";
 import { claimDueEvaluation, reconcileChatSchedule } from "../../src/domain/chat-schedule";
-import { readChatEffectiveMembers } from "../../src/domain/channel";
+import { readChatEffectiveMembers } from "../../src/domain/chat-members";
 import { buildPeriodicInput, commitEvaluationResult } from "../../src/domain/continuation-delivery";
 import { mutateTask } from "../../src/domain/task";
 import {
@@ -30,6 +30,7 @@ import {
 import { seedRemoteActor } from "./remote-actors";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { assert, assertionCount, setup, snapshot, seedLease, blocked } from "./p6c-member-fixture";
+import { setChatOwnerCompat } from "./crew-chat";
 
 const f = setup();
 const pass = (name: string) => console.log(`PASS ${name}`);
@@ -100,7 +101,7 @@ for (const row of db.select().from(agentRun).where(eq(agentRun.projectId, f.proj
 }
 // A Group Task start can be admitted but undelivered; it must also be cancelled.
 const human = { kind: "human" as const, userId: f.ctx.userId, ctx: f.ctx };
-setChatOwner(
+setChatOwnerCompat(
   f.group.id,
   { kind: "agent", id: f.agent.id },
   getChat(f.group.id, f.ctx).governanceRevision,
@@ -140,7 +141,7 @@ db.update(agentRun)
   .set({ status: "aborted", settledAt: new Date() })
   .where(eq(agentRun.id, startInput.runId))
   .run();
-setChatOwner(
+setChatOwnerCompat(
   f.group.id,
   { kind: "human", id: f.ctx.userId },
   getChat(f.group.id, f.ctx).governanceRevision,

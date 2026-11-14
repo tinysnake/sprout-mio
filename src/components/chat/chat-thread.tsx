@@ -320,13 +320,7 @@ export function ChatThread({
   }, [aboveShift]);
 
   const title = displayTitle ?? chatDisplayName(chat, agentName);
-  const subline =
-    subtitle ??
-    (effectiveKind === "public_channel"
-      ? "Public Channel"
-      : effectiveKind === "group"
-        ? "Group"
-        : `DM · 你与${agentName}`);
+  const subline = subtitle ?? (effectiveKind === "crew" ? "Crew" : `DM · 你与${agentName}`);
 
   return (
     <section data-testid="chat-pane" className="flex min-h-0 min-w-0 flex-1 flex-col">

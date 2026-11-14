@@ -6,14 +6,15 @@ import { join } from "node:path";
 // 真实 SQLite + 真实领域入口：断言「人类发消息写时解析的 mention 行」与读模型的 offsets。
 // 与被测模块一致，先把连接指到临时库再动态载入（domain/chat.ts 装载时就建立连接）。
 process.env.DATABASE_URL = join(mkdtempSync(join(tmpdir(), "p6-mention-write-")), "mention.sqlite");
+const { createCrewChat, crewInput } = await import("./fixtures/crew-chat");
 
 const { migrateDatabase } = await import("../src/db/migrate");
 const { sqlite } = await import("../src/db");
 const { ID_PREFIXES, newId } = await import("../src/contracts/ids");
-const { createGroupChatInput, messageSchema } = await import("../src/contracts/chat");
+const { messageSchema } = await import("../src/contracts/chat");
 const { createProject } = await import("../src/domain/project");
 const { addProjectMember, createAgentProfile } = await import("../src/domain/agent");
-const { createGroupChat, listMessages, sendMessage } = await import("../src/domain/chat");
+const { listMessages, sendMessage } = await import("../src/domain/chat");
 type ChatActor = import("../src/domain/chat-actor").ChatActor;
 type MentionSpan = import("../src/contracts/chat").MentionSpan;
 
@@ -40,9 +41,9 @@ const outsider = createAgentProfile({ name: "Outsider", persona: "", harness: "p
 for (const profile of [amenda, bento, outsider]) addProjectMember(project.id, profile.id, ctx);
 
 const actor: ChatActor = { kind: "human", userId: creatorId, ctx };
-const group = createGroupChat(
+const group = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "点名落库",
     wakePolicy: "mention_only",

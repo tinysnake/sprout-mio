@@ -3,7 +3,7 @@ import type { AppErrorCode } from "../contracts/result";
 import type { TaskCapabilityFacts, TaskResponsibility, TaskStatus } from "../contracts/task";
 import { TASK_ACTIONS, TASK_CAPABILITIES, type TaskAction } from "../contracts/task-capabilities";
 import { db } from "../db";
-import { agentInstance, agentProfile, chat, project, projectMember, task } from "../db/schema";
+import { agentInstance, agentProfile, chat, projectMember, task } from "../db/schema";
 import {
   assertProjectAccess,
   ProjectAccessError,
@@ -11,8 +11,8 @@ import {
   type ProjectContext,
 } from "./access";
 import { actorFromContext } from "./chat-actor";
-import { ChatError, getChat, isEffectiveMember } from "./chat";
-import { readChatEffectiveMembers } from "./channel";
+import { ChatError, getChat, isEffectiveMember, readCrewLeadId } from "./chat";
+import { readChatEffectiveMembers } from "./chat-members";
 
 export { TASK_ACTIONS, TASK_CAPABILITIES };
 export class TaskError extends Error {
@@ -48,10 +48,11 @@ export function taskResponsibilityFacts(chatId: string, ctx: ProjectContext): Ta
     kind = "agent";
     recipient = agents[0]!.memberId;
   }
-  if (row.kind === "public_channel") {
-    const parent = db.select().from(project).where(eq(project.id, row.projectId)).get()!;
-    if (kind !== "human" || recipient !== parent.createdBy)
-      throw new TaskError("task_assignment_invalid", "公共频道负责人必须是 Project 创建者");
+  if (row.kind === "crew") {
+    const lead = readCrewLeadId(chatId);
+    if (!lead) throw new TaskError("task_assignment_invalid", "Crew 还没有 lead，不能承接任务");
+    kind = "agent";
+    recipient = lead;
   }
   if (!members.some((m) => m.memberKind === kind && m.memberId === recipient))
     throw new TaskError("task_assignment_invalid", "负责人已失去对话参与权");

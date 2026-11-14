@@ -26,7 +26,7 @@ type ActionData =
   | { action: "reject_watch"; chatId: string; eventId: string };
 
 function watchTargetMeta(meta: WatchTargetMeta): string {
-  const kinds = { dm: "私聊", group: "群组", public_channel: "公共频道" };
+  const kinds = { dm: "私聊", crew: "Crew" };
   return `${kinds[meta.targetKind]} · ${meta.targetProjectName}`;
 }
 

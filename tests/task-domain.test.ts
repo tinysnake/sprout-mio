@@ -12,6 +12,7 @@ import type { TaskDetail } from "../src/contracts/task";
 // Project/Profile/Chat creation, and seed only the run identity which a host normally creates.
 const directory = mkdtempSync(join(tmpdir(), "p5b-task-domain-"));
 process.env.DATABASE_URL = join(directory, "domain.sqlite");
+const { createCrewChat, setChatOwnerCompat } = await import("./fixtures/crew-chat");
 const { migrateDatabase } = await import("../src/db/migrate");
 migrateDatabase();
 const { db, sqlite } = await import("../src/db");
@@ -21,16 +22,16 @@ const { createProject } = await import("../src/domain/project");
 const { createAgentProfile, addProjectMember, removeProjectMember } =
   await import("../src/domain/agent");
 const {
-  createGroupChat,
   createDirectChat,
   ensureInstance,
+  ensureProjectCrew,
   sendMessage,
-  setChatOwner,
-  removeGroupMember,
   getChat,
+  setCrewLead,
+  addCrewMember,
 } = await import("../src/domain/chat");
 const { completeAgentRun, transitionAgentRun } = await import("../src/domain/agent-run");
-const { ensureProjectChannel } = await import("../src/domain/channel");
+
 const domain = await import("../src/domain/task");
 const { taskResponsibilityFacts, taskCapabilityFacts } =
   await import("../src/domain/task-capabilities");
@@ -55,7 +56,7 @@ const beta = createAgentProfile({ name: "Beta", persona: "", harness: "pi" }, ct
 for (const profile of [alpha, beta]) addProjectMember(project.id, profile.id, ctx);
 const human = { kind: "human" as const, userId: ctx.userId, ctx };
 function group(owner: "human" | "agent" = "agent") {
-  return createGroupChat(
+  return createCrewChat(
     project.id,
     {
       projectId: project.id,
@@ -403,41 +404,28 @@ describe("responsibility, Agent scopes and explicit start delivery", () => {
     expect([count("message"), count("agent_run_input"), count("task_event")]).toEqual(snapshot);
   });
 
-  it("Human Group and Public Channel start preserve a message and create zero run/input despite @ names", () => {
-    const channel = ensureProjectChannel(project.id);
-    for (const targetId of [group("human").id, channel]) {
-      expect(taskResponsibilityFacts(targetId, ctx)).toEqual({ kind: "human", userId: ctx.userId });
-      const before = [
-        count("agent_instance"),
-        count("agent_run"),
-        count("agent_run_input"),
-        count("run_resource_notice"),
-      ];
-      const result = domain.assignTask(
-        { ...input(create("@Alpha @Beta")), targetChatId: targetId, startNow: true },
-        ctx,
-      );
-      expect(result.startDelivery).toMatchObject({
-        kind: "human_message",
-        recipientId: ctx.userId,
-      });
-      expect(result.detail.lastRecord).toMatchObject({ kind: "start", senderKind: "human" });
-      expect([
-        count("agent_instance"),
-        count("agent_run"),
-        count("agent_run_input"),
-        count("run_resource_notice"),
-      ]).toEqual(before);
-    }
-    db.update(chat)
-      .set({ ownerKind: "agent", ownerId: alpha.id })
-      .where(eq(chat.id, channel))
-      .run();
+  it("Crew start routes to the lead and ignores @ names in the task body", () => {
+    const channel = ensureProjectCrew(project.id);
+    const withAlpha = addCrewMember(
+      channel,
+      { kind: "agent", id: alpha.id },
+      getChat(channel, ctx).governanceRevision,
+      human,
+    );
+    setCrewLead(channel, alpha.id, withAlpha.governanceRevision, human);
+    expect(taskResponsibilityFacts(channel, ctx)).toMatchObject({
+      kind: "agent",
+      agentProfileId: alpha.id,
+    });
+    const before = count("agent_run");
+    const result = domain.assignTask(
+      { ...input(create("@Beta @Gamma")), targetChatId: channel, startNow: true },
+      ctx,
+    );
+    expect(result.startDelivery).toMatchObject({ kind: "agent_input" });
+    expect(count("agent_run")).toBe(before + 1);
+    db.update(chat).set({ leadProfileId: null }).where(eq(chat.id, channel)).run();
     expect(codeOf(() => taskResponsibilityFacts(channel, ctx))).toBe("task_assignment_invalid");
-    db.update(chat)
-      .set({ ownerKind: "human", ownerId: ctx.userId })
-      .where(eq(chat.id, channel))
-      .run();
   });
 
   it("restricts Agent actions by current responsibility/run and redacts old Chat record bodies", () => {
@@ -536,17 +524,14 @@ describe("responsibility, Agent scopes and explicit start delivery", () => {
         ),
       ),
     ).toBe("not_found");
-    removeGroupMember(
-      target.id,
-      { kind: "human", id: ctx.userId },
-      getChat(target.id, ctx).governanceRevision,
-      human,
-    );
+    sqlite
+      .prepare("DELETE FROM chat_member WHERE chat_id=? AND member_kind='human' AND member_id=?")
+      .run(target.id, ctx.userId);
     expect(codeOf(() => domain.cancelTask({ ...input(detail), expectedRevision: 999 }, ctx))).toBe(
       "forbidden",
     );
     const unassigned = create();
-    const foreignChat = ensureProjectChannel(foreignProject.id);
+    const foreignChat = ensureProjectCrew(foreignProject.id);
     expect(
       codeOf(() => domain.assignTask({ ...input(unassigned), targetChatId: foreignChat }, ctx)),
     ).toBe("task_assignment_invalid");
@@ -696,7 +681,7 @@ describe("responsibility, Agent scopes and explicit start delivery", () => {
       ctx,
     );
     const stale = next.startDelivery!;
-    setChatOwner(
+    setChatOwnerCompat(
       target.id,
       { kind: "agent", id: beta.id },
       getChat(target.id, ctx).governanceRevision,

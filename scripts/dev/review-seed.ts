@@ -3,9 +3,16 @@ import { db, sqlite } from "../../src/db";
 import { user } from "../../src/db/schema";
 import { createProject } from "../../src/domain/project";
 import { createAgentProfile, addProjectMember } from "../../src/domain/agent";
-import { createDirectChat, createGroupChat, sendMessage, listChats } from "../../src/domain/chat";
+import {
+  addCrewMember,
+  createDirectChat,
+  getChat,
+  listChats,
+  sendMessage,
+} from "../../src/domain/chat";
 import { createMachine } from "../../src/domain/machine";
 import { createTask, mutateTask, getTaskDetail } from "../../src/domain/task";
+import type { ChatActor } from "../../src/domain/chat-actor";
 
 const human = db.select().from(user).where(eq(user.email, "dev@sprout.test")).get();
 if (!human) throw new Error("no dev human; open /dev-login once first");
@@ -28,24 +35,17 @@ const builder = createAgentProfile(
 addProjectMember(project.id, planner.id, ctx);
 addProjectMember(project.id, builder.id, ctx);
 
-const group = createGroupChat(
-  project.id,
-  {
-    projectId: project.id,
-    title: "本周迭代",
-    members: [
-      { kind: "human", id: human.id },
-      { kind: "agent", id: planner.id },
-      { kind: "agent", id: builder.id },
-    ],
-    initialOwner: { kind: "agent", id: planner.id },
-    wakePolicy: "owner_led",
-  },
-  { kind: "human", userId: human.id, ctx },
+const group = listChats(project.id, ctx).find((row) => row.kind === "crew");
+if (!group) throw new Error("seed expects the project Crew");
+const reviewer: ChatActor = { kind: "human", userId: human.id, ctx };
+addCrewMember(group.id, { kind: "agent", id: planner.id }, group.governanceRevision, reviewer);
+addCrewMember(
+  group.id,
+  { kind: "agent", id: builder.id },
+  getChat(group.id, ctx).governanceRevision,
+  reviewer,
 );
 const dm = createDirectChat(project.id, builder.id, ctx).chat;
-const channel = listChats(project.id, ctx).find((row) => row.kind === "public_channel");
-if (!channel) throw new Error("seed expects the project public channel");
 
 const machine = createMachine({ name: "本机 Mac" }, { ...ctx, bootId: "review", now: new Date() });
 
@@ -93,7 +93,6 @@ console.log(
       projectId: project.id,
       groupId: group.id,
       dmId: dm.id,
-      channelId: channel.id,
       machineId: machine.detail.machine.id,
       taskId: detail.task.id,
       secondTaskId: second.detail.task.id,

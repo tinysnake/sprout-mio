@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +24,11 @@ describe("instance continuation switch", () => {
     const directory = mkdtempSync(join(tmpdir(), "deploy-continuation-off-"));
     try {
       const output = execFileSync("bash", ["scripts/verify/deploy-continuation-off.sh"], {
-        env: { ...process.env, DEPLOY_CONTINUATION_EVIDENCE_DIR: directory },
+        env: {
+          ...process.env,
+          BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
+          DEPLOY_CONTINUATION_EVIDENCE_DIR: directory,
+        },
         encoding: "utf8",
         timeout: 30000,
       });

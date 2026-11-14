@@ -3,7 +3,7 @@ import { automationSourceFor } from "./automation-source";
 import { assistantEventSummary } from "./assistant-display";
 import { signalScheduleChange } from "./chat-schedule";
 import { enqueueMessageWake } from "./message-wake";
-import { and, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import {
   CHAT_MESSAGE_PAGE_LIMIT_MAX,
   CHAT_MESSAGE_PAGE_SIZE,
@@ -13,8 +13,6 @@ import {
   type ChatDetail,
   type ChatMember,
   type ChatMemberInput,
-  type ChatOwner,
-  type CreateGroupChatInput,
   type MentionSpan,
   type Message,
   type MessageCursor,
@@ -33,6 +31,7 @@ import {
   chat,
   chatEffectiveMember,
   chatMember,
+  crewControl,
   message,
   project,
   projectMember,
@@ -45,8 +44,8 @@ import {
   getAgentProfile,
   ProjectMemberRemovalBlockedError,
 } from "./agent";
-import { appendAgentMentionRunInput, appendHumanRunInput } from "./agent-run";
-import { assertChannelMemberChangeAllowed, readChatEffectiveMembers } from "./channel";
+import { appendHumanRunInput } from "./agent-run";
+import { readChatEffectiveMembers } from "./chat-members";
 import { assertChatCapability } from "./chat-capabilities";
 import type { ChatGovernanceScope } from "./chat-capabilities";
 import type { ChatActor } from "./chat-actor";
@@ -74,7 +73,7 @@ import {
 
 export class ChatError extends Error {
   constructor(
-    readonly code: "not_found" | "conflict" | "forbidden" | "channel_membership_managed",
+    readonly code: "not_found" | "conflict" | "forbidden",
     message: string,
   ) {
     super(message);
@@ -83,11 +82,22 @@ export class ChatError extends Error {
 }
 
 function toChat(row: typeof chat.$inferSelect): Chat {
+  const control =
+    row.kind === "crew"
+      ? db
+          .select({ mode: crewControl.mode })
+          .from(crewControl)
+          .where(eq(crewControl.chatId, row.id))
+          .get()?.mode
+      : undefined;
   return {
     id: row.id,
     projectId: row.projectId,
     kind: row.kind,
     ...(row.title === null ? {} : { title: row.title }),
+    ...(row.leadProfileId === null ? {} : { leadProfileId: row.leadProfileId }),
+    crewEpoch: row.crewEpoch,
+    ...(control === undefined ? {} : { control }),
     ...(row.archivedAt === null ? {} : { archivedAt: row.archivedAt.toISOString() }),
     owner: { kind: row.ownerKind, id: row.ownerId },
     wakePolicy: row.wakePolicy,
@@ -247,13 +257,10 @@ export function chatGovernanceScope(row: Chat): ChatGovernanceScope {
 }
 
 /**
- * 成员与所有者治理只对普通 Group 生效。Public Channel 的成员是 Project 成员的派生事实（裁定 d8），
- * 独立增删一律 `channel_membership_managed`（拒绝入口在 `domain/channel.ts`）；
- * DM 的成员由创建时固定，没有可调整的成员集。
+ * 成员与 lead 治理只对 Crew 生效。DM 的成员由创建时固定，没有可调整的成员集。
  */
-function assertGovernableGroup(row: Chat): void {
-  assertChannelMemberChangeAllowed(row);
-  if (row.kind !== "group") throw new ChatError("forbidden", "只有群组可以调整成员与所有者");
+function assertGovernableCrew(row: Chat): void {
+  if (row.kind !== "crew") throw new ChatError("forbidden", "只有 Crew 可以调整成员与 lead");
 }
 
 /**
@@ -358,7 +365,6 @@ function applyGovernance(
   return toChat(updated);
 }
 
-/** Agent 成员与 Agent 所有者共用这条前置：必须先属于本项目，否则群组引用一个项目外分身。 */
 function requireProjectAgent(projectId: string, agentProfileId: string, ctx: ProjectContext): void {
   if (getAgentProfile(agentProfileId, ctx).purpose !== "worker")
     throw new ChatError("forbidden", "Assistant 只能加入 Human DM");
@@ -940,11 +946,9 @@ export function sendMessage(
         });
         writtenFiles.push(...writeAttachmentBytes({ list: newAttachments, idByLocalId }));
         writeMessageAttachments(chatId, row.id, rewritten.spans);
-        const wakeQueued = enqueueMessageWake({
-          id: row.id,
-          chatId,
-          senderKind: input.senderKind,
-        });
+        // Crew 不用判定式唤醒：人类消息直接交给 lead，Agent 消息不级联。
+        if (current.kind !== "crew")
+          enqueueMessageWake({ id: row.id, chatId, senderKind: input.senderKind });
         // 会话的「最后消息时间」必须就是这条消息的时间：再读一次时钟会跨秒，
         // 列表显示的时间就会和消息本身差一秒（k-acceptance 会判不一致）。
         db.update(chat)
@@ -952,8 +956,8 @@ export function sendMessage(
           .where(and(eq(chat.id, chatId), eq(chat.projectId, current.projectId)))
           .run();
         const saved = toMessage(row, spans, skills, ctx, rewritten.spans, records);
-        if (input.senderKind === "human") appendHumanRunInput(saved, ctx, wakeQueued);
-        else appendAgentMentionRunInput(saved, ctx);
+        // Agent 之间的消息不再级联唤醒：Worker 的输入来自 lead 的显式委派，不是群里的点名。
+        if (input.senderKind === "human") appendHumanRunInput(saved, ctx);
         captureFeishuMessage(row.id, row.createdAt);
         return saved;
       },
@@ -1025,72 +1029,87 @@ export function ensureInstance(
 }
 
 /**
- * 建群：Human 建立 Group、指定 Human 或 Agent 做所有者、给出初始成员集。
- * 行动者是 Agent 时能力表直接拒绝（`group_create` 是 never），进不到事务，
- * 所以这条路径上不存在「分身冒充 Human 建群」。
+ * Project 的 Crew：一个 Project 恰好一条，由 Project 创建时饥饿创建，title 取 Project 名，
+ * 所有者是 Project 的人类创建者，成员集独立于 Project（创建者显式入列）。
+ * 幂等：唯一索引兜住并发，已存在就返回那一条。
  */
-export function createGroupChat(
-  projectId: string,
-  input: CreateGroupChatInput,
-  actor: ChatActor,
-  hooks: IdentityWriteHooks = {},
-): Chat {
-  assertChatCapability("group_create", actor);
-  return sqlite
-    .transaction(() => {
-      assertProjectAccess(actor.ctx, projectId);
-      for (const member of input.members) {
-        if (member.kind === "agent") requireProjectAgent(projectId, member.id, actor.ctx);
-        else requireUser(member.id);
-      }
-      // 契约只保证 Agent 所有者是成员之一；「属本 Project」要查库，在这里补上。
-      if (input.initialOwner.kind === "agent")
-        requireProjectAgent(projectId, input.initialOwner.id, actor.ctx);
-      const chatId = newId(ID_PREFIXES.chat);
-      return writeIdentity(
-        actor.ctx,
-        { event: "chat.group_created", message: "群组已创建", projectId, chatId },
-        () => {
-          const created = db
-            .insert(chat)
-            .values({
-              id: chatId,
-              projectId,
-              kind: "group",
-              title: input.title ?? null,
-              ownerKind: input.initialOwner.kind,
-              ownerId: input.initialOwner.id,
-              wakePolicy: input.wakePolicy,
-              governanceRevision: 0,
-              createdBy: actor.ctx.userId,
-            })
-            .returning()
-            .get();
-          db.insert(chatMember)
-            .values(
-              input.members.map((member) => ({
-                chatId,
-                memberKind: member.kind,
-                memberId: member.id,
-              })),
-            )
-            .run();
-          return toChat(created);
-        },
-        hooks,
-      );
+export function ensureProjectCrew(projectId: string): string {
+  const existing = db
+    .select({ id: chat.id })
+    .from(chat)
+    .where(and(eq(chat.projectId, projectId), eq(chat.kind, "crew")))
+    .get();
+  if (existing) return existing.id;
+  const parent = db.select().from(project).where(eq(project.id, projectId)).get();
+  if (!parent) throw new ChatError("not_found", "Project 不存在");
+  const chatId = newId(ID_PREFIXES.chat);
+  const now = new Date();
+  db.insert(chat)
+    .values({
+      id: chatId,
+      projectId,
+      kind: "crew",
+      title: parent.name,
+      ownerKind: "human",
+      ownerId: parent.createdBy,
+      wakePolicy: "owner_led",
+      governanceRevision: 0,
+      createdBy: parent.createdBy,
+      createdAt: now,
+      updatedAt: now,
     })
-    .immediate();
+    .onConflictDoNothing()
+    .run();
+  const created = db
+    .select()
+    .from(chat)
+    .where(and(eq(chat.projectId, projectId), eq(chat.kind, "crew")))
+    .get();
+  if (!created) throw new ChatError("conflict", "Crew 创建失败");
+  if (created.id === chatId) {
+    db.insert(crewControl).values({ chatId, mode: "active" }).onConflictDoNothing().run();
+    db.insert(chatMember)
+      .values({ chatId, memberKind: "human", memberId: parent.createdBy })
+      .onConflictDoNothing()
+      .run();
+  }
+  return created.id;
+}
+
+/** 当前 lead；没有 lead 时返回 undefined（Crew 建好但首个 Agent 还没加入）。 */
+export function readCrewLeadId(chatId: string): string | undefined {
+  return (
+    db
+      .select({ leadProfileId: chat.leadProfileId })
+      .from(chat)
+      .where(and(eq(chat.id, chatId), eq(chat.kind, "crew")))
+      .get()?.leadProfileId ?? undefined
+  );
 }
 
 /**
- * 加成员。Human 成员档动作，Agent 一律 `forbidden`（裁定 d6 的入口先拦）。
- * 能力表的 `member` 档只回答「是不是人」，「是不是这条对话的成员」由运行时事实补上（裁定 d42）：
- * 被移出群的 Human 不再能调整成员，与会话标题的写入路径同码同文案。
- * 重复加同一成员是幂等成功：治理事实没有变化，就不推进 `governance_revision`；
- * 但调用方带的版本必须是当前版本，否则仍按并发冲突回绝，而不是悄悄放行一次过期写入。
+ * 首个加入 Project 的 Agent 成为 Crew 的 lead。只在 lead 为空时生效：
+ * 单条 UPDATE 的 WHERE 就是并发边界，两个 Agent 同时加入只有先到的那个写进去。
+ * 创建后再移除 lead 不会触发重新初始化，lead 只能由人类显式改任。
  */
-export function addGroupMember(
+export function initializeCrewLead(chatId: string, agentProfileId: string): void {
+  db.update(chat)
+    .set({
+      leadProfileId: agentProfileId,
+      crewEpoch: sql`${chat.crewEpoch} + 1`,
+      governanceRevision: sql`${chat.governanceRevision} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(chat.id, chatId), eq(chat.kind, "crew"), isNull(chat.leadProfileId)))
+    .run();
+}
+
+/**
+ * 加成员。Human 成员档动作，Agent 一律 forbidden。Agent 必须已是本 Project 成员且 purpose worker，
+ * 人类只能是 Project 创建者（Crew 成员集不自动继承 Project 的其他人）。
+ * 重复加同一成员是幂等成功；但 Crew 仍无 lead 时，首个 Agent 成员无论如何都会成为 lead。
+ */
+export function addCrewMember(
   chatId: string,
   member: ChatMemberInput,
   expectedRevision: number,
@@ -1100,33 +1119,36 @@ export function addGroupMember(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
-      assertGovernableGroup(current);
+      assertGovernableCrew(current);
       assertChatCapability("member_add", actor, chatGovernanceScope(current));
       if (actor.kind === "human" && !isEffectiveMember(actor, current))
         throw new ChatError("not_found", "对话成员不存在");
       if (member.kind === "agent") requireProjectAgent(current.projectId, member.id, actor.ctx);
+      else if (member.id !== chatGovernanceScope(current).projectCreatedBy)
+        throw new ChatError("forbidden", "Crew 只接受 Project 创建者作为人类成员");
       else requireUser(member.id);
       return writeIdentity(
         actor.ctx,
         {
           event: "chat.member_added",
-          message: "群组成员已添加",
+          message: "Crew 成员已添加",
           projectId: current.projectId,
           chatId,
         },
         () => {
+          if (current.governanceRevision !== expectedRevision)
+            throw new ChatError("conflict", "Crew 已被并发修改，请刷新后重试");
           const inserted = db
             .insert(chatMember)
             .values({ chatId, memberKind: member.kind, memberId: member.id })
             .onConflictDoNothing()
             .returning()
             .get();
-          if (!inserted) {
-            if (current.governanceRevision !== expectedRevision)
-              throw new ChatError("conflict", "群组已被并发修改，请刷新后重试");
-            return current;
+          if (member.kind === "agent" && current.leadProfileId === undefined) {
+            initializeCrewLead(chatId, member.id);
+            return getChat(chatId, actor.ctx);
           }
-          return applyGovernance(current, expectedRevision);
+          return inserted ? applyGovernance(current, expectedRevision) : current;
         },
         hooks,
       );
@@ -1135,13 +1157,10 @@ export function addGroupMember(
 }
 
 /**
- * 移出成员。裁定 d10 的两条处置在这里分开：
- * 仍有活跃 run 时以拒绝为准（`conflict`），连 pending 输入都不动——先取消再拒绝会让一次
- * 被拒的治理请求仍然产生副作用；只有没有活跃 run 时才把未下发的 `pending` 输入按
- * `membership_revoked` 取消，然后删成员行。
- * 当前所有者不能被直接移出：所有者身份由 `chat.owner_*` 独立表达，先换成别人再移。
+ * 移出成员。当前 lead 不能被直接移出：先改任 lead，再移出。
+ * 仍有活跃 run 时拒绝，连 pending 输入都不动；没有活跃 run 才取消未下发输入并删成员行。
  */
-export function removeGroupMember(
+export function removeCrewMember(
   chatId: string,
   member: ChatMemberInput,
   expectedRevision: number,
@@ -1151,7 +1170,7 @@ export function removeGroupMember(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
-      assertGovernableGroup(current);
+      assertGovernableCrew(current);
       assertChatCapability("member_remove", actor, chatGovernanceScope(current));
       if (actor.kind === "human" && !isEffectiveMember(actor, current))
         throw new ChatError("not_found", "对话成员不存在");
@@ -1168,15 +1187,17 @@ export function removeGroupMember(
         .get();
       if (!existing) throw new ChatError("not_found", "对话成员不存在");
       if (current.owner.kind === member.kind && current.owner.id === member.id)
-        throw new ChatError("conflict", "所有者不能被移出群组，请先变更所有者");
+        throw new ChatError("conflict", "Project 创建者不能被移出 Crew");
+      if (member.kind === "agent" && current.leadProfileId === member.id)
+        throw new ChatError("conflict", "当前 lead 不能被移出，请先改任 lead");
       const instanceIds = member.kind === "agent" ? instanceIdsOf(chatId, member.id) : [];
-      const activeRun = activeRunOf(instanceIds);
-      if (activeRun) throw new ChatError("conflict", "该成员仍有活跃运行，不能移出群组");
+      if (activeRunOf(instanceIds))
+        throw new ChatError("conflict", "该成员仍有活跃运行，不能移出 Crew");
       return writeIdentity(
         actor.ctx,
         {
           event: "chat.member_removed",
-          message: "群组成员已移出",
+          message: "Crew 成员已移出",
           projectId: current.projectId,
           chatId,
         },
@@ -1225,19 +1246,19 @@ export function revokeProjectAgentEnrollmentUnchecked(
   // 两个帮手的空集合行为一致（无 instance 就没有 run、也没有 run 输入），
   // 不能在这里提前返回：从未建过 instance 的 Agent 仍然可能有普通群的成员行要删。
   cancelPendingRunInputs(instanceIds);
-  // 只有普通 Group 有可删的成员行：频道的行由触发器与视图排除，DM 的行按 d14 保留。
-  const groupIds = db
+  // Crew 有可删的成员行；DM 的行按 d14 保留，供历史读取。
+  const crewIds = db
     .select({ id: chat.id })
     .from(chat)
-    .where(and(eq(chat.projectId, projectId), eq(chat.kind, "group")))
+    .where(and(eq(chat.projectId, projectId), eq(chat.kind, "crew")))
     .all()
     .map((row: { id: string }) => row.id);
-  if (groupIds.length === 0) return;
+  if (crewIds.length === 0) return;
   const deleted = db
     .delete(chatMember)
     .where(
       and(
-        inArray(chatMember.chatId, groupIds),
+        inArray(chatMember.chatId, crewIds),
         eq(chatMember.memberKind, "agent"),
         eq(chatMember.memberId, agentProfileId),
       ),
@@ -1252,13 +1273,12 @@ export function revokeProjectAgentEnrollmentUnchecked(
 }
 
 /**
- * 换所有者。所有者档动作 + CAS：设计 4.3 要求 `expectedRevision`，过期版本一律 `conflict`。
- * 合法性按同一节：Agent 所有者必须是本对话的当前有效成员（读 `chat_effective_member`，
- * 所以项目移除后的 Agent 不能再被指定），Human 所有者必须是 `project.created_by`。
+ * 改任 lead。所有者档动作 + CAS：候选必须是当前有效的 Agent 成员。
+ * 每次改任都推进 `crew_epoch`：执行中的委派与资源授权按 epoch 失效，旧 epoch 的结果保留可审计。
  */
-export function setChatOwner(
+export function setCrewLead(
   chatId: string,
-  owner: ChatOwner,
+  leadProfileId: string,
   expectedRevision: number,
   actor: ChatActor,
   hooks: IdentityWriteHooks = {},
@@ -1266,38 +1286,51 @@ export function setChatOwner(
   return sqlite
     .transaction(() => {
       const current = getChat(chatId, actor.ctx);
-      if (current.kind === "dm") throw new ChatError("forbidden", "DM 不支持变更所有者");
-      const scope = chatGovernanceScope(current);
-      assertChatCapability("owner_change", actor, scope);
-      if (current.kind === "public_channel" && owner.kind !== "human")
-        throw new ChatError("forbidden", "Public Channel 的新所有者必须是本 Project 的 Human");
-      if (owner.kind === "agent") {
-        const member = db
-          .select({ memberId: chatEffectiveMember.memberId })
-          .from(chatEffectiveMember)
-          .where(
-            and(
-              eq(chatEffectiveMember.chatId, chatId),
-              eq(chatEffectiveMember.projectId, current.projectId),
-              eq(chatEffectiveMember.memberKind, "agent"),
-              eq(chatEffectiveMember.memberId, owner.id),
-            ),
-          )
-          .get();
-        if (!member) throw new ChatError("not_found", "新所有者不是该对话的成员");
-      } else if (scope.projectCreatedBy !== owner.id) {
-        throw new ChatError("forbidden", "Human 所有者必须是 Project 创建者");
-      }
+      if (current.kind !== "crew") throw new ChatError("forbidden", "只有 Crew 有 lead");
+      assertChatCapability("lead_change", actor, chatGovernanceScope(current));
+      const member = db
+        .select({ memberId: chatEffectiveMember.memberId })
+        .from(chatEffectiveMember)
+        .where(
+          and(
+            eq(chatEffectiveMember.chatId, chatId),
+            eq(chatEffectiveMember.projectId, current.projectId),
+            eq(chatEffectiveMember.memberKind, "agent"),
+            eq(chatEffectiveMember.memberId, leadProfileId),
+          ),
+        )
+        .get();
+      if (!member) throw new ChatError("not_found", "新 lead 不是该 Crew 的成员");
       return writeIdentity(
         actor.ctx,
         {
-          event: "chat.owner_changed",
-          message: "群组所有者已变更",
+          event: "chat.crew_lead_changed",
+          message: "Crew lead 已变更",
           projectId: current.projectId,
           chatId,
         },
-        () =>
-          applyGovernance(current, expectedRevision, { ownerKind: owner.kind, ownerId: owner.id }),
+        () => {
+          const updated = db
+            .update(chat)
+            .set({
+              leadProfileId,
+              crewEpoch: sql`${chat.crewEpoch} + 1`,
+              governanceRevision: current.governanceRevision + 1,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(chat.id, chatId),
+                eq(chat.projectId, current.projectId),
+                eq(chat.governanceRevision, expectedRevision),
+              ),
+            )
+            .returning()
+            .get();
+          if (!updated) throw new ChatError("conflict", "Crew 已被并发修改，请刷新后重试");
+          signalScheduleChange(chatId);
+          return toChat(updated);
+        },
         hooks,
       );
     })

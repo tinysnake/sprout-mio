@@ -264,7 +264,12 @@ export function sweepLeaseEscrowTimeouts(now: Date): LeaseTimeoutSweepResult {
   const rows = db.select().from(leaseEscrow).where(eq(leaseEscrow.state, "escrowed")).all();
   for (const row of rows) {
     const ownerRow = db
-      .select({ ownerKind: chat.ownerKind, ownerId: chat.ownerId })
+      .select({
+        kind: chat.kind,
+        ownerKind: chat.ownerKind,
+        ownerId: chat.ownerId,
+        leadProfileId: chat.leadProfileId,
+      })
       .from(chat)
       .where(eq(chat.id, row.chatId))
       .get();
@@ -274,7 +279,10 @@ export function sweepLeaseEscrowTimeouts(now: Date): LeaseTimeoutSweepResult {
       timeouts = projectLeaseTimeouts(row.projectId);
       timeoutsByProject.set(row.projectId, timeouts);
     }
-    const owner = leaseTimeoutOwner(ownerRow);
+    const owner: LeaseTimeoutRecipient =
+      ownerRow.kind === "crew" && ownerRow.leadProfileId
+        ? { kind: "agent", agentProfileId: ownerRow.leadProfileId }
+        : leaseTimeoutOwner(ownerRow);
     const step = leaseTimeoutStep({
       escrowedAt: row.escrowedAt,
       notifiedAt: row.timeoutNotifiedAt,
@@ -412,11 +420,13 @@ export function nextLeaseTimeoutDueAt(): number | null {
       continue;
     }
     const ownerRow = db
-      .select({ ownerKind: chat.ownerKind })
+      .select({ kind: chat.kind, ownerKind: chat.ownerKind, leadProfileId: chat.leadProfileId })
       .from(chat)
       .where(eq(chat.id, row.chatId))
       .get();
-    if (ownerRow?.ownerKind !== "agent") continue;
+    const hasOwnerAgent =
+      ownerRow?.kind === "crew" ? !!ownerRow.leadProfileId : ownerRow?.ownerKind === "agent";
+    if (!hasOwnerAgent) continue;
     keep(deadline + timeouts.escalationMs);
     if (row.timeoutNoticeNextAt !== null) keep(row.timeoutNoticeNextAt.getTime());
   }

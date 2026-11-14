@@ -42,9 +42,8 @@ import {
   getChat,
   revokeProjectAgentEnrollment,
   revokeProjectAgentEnrollmentUnchecked,
-  setChatOwner,
 } from "./chat";
-import { actorFromContext } from "./chat-actor";
+import { readChatEffectiveMembers } from "./chat-members";
 import { writeIdentity } from "./identity-write";
 import type { IdentityWriteHooks } from "./identity-write";
 import type { MachineContext } from "./machine";
@@ -163,9 +162,8 @@ export function collectProjectMemberRemovalBlockers(
     .where(
       and(
         eq(chat.projectId, projectId),
-        eq(chat.ownerKind, "agent"),
-        eq(chat.ownerId, agentProfileId),
-        inArray(chat.kind, ["group", "public_channel"]),
+        eq(chat.leadProfileId, agentProfileId),
+        eq(chat.kind, "crew"),
       ),
     )
     .all() as ProjectMemberRemovalOwnerRef[];
@@ -365,6 +363,8 @@ export function addProjectMember(
         .returning()
         .get();
       if (!row) throw new AgentError("conflict", "Agent 已是 Project 成员");
+      // Project 成员与 Crew 成员是两件事：加入 Project 不会自动进入任何 Crew，
+      // 由 Human 在 Crew 里显式添加；Crew 的默认 lead 只在 Project 初始化时确定。
       // 重新加入时恢复既有 DM（归档清除）；顺序在成员行之后，同事务内一起提交。
       setProjectAgentDirectChatsArchived(projectId, agentProfileId, null);
       return toProjectMember(row);
@@ -583,16 +583,29 @@ function settleProjectAgentLeases(
 }
 
 /**
- * owner 是 Agent 时，owner 档能力的兜底是 projectCreatedBy，而它正是 ctx.userId
- * （`assertProjectAccess` 已确认）。因此转接必须在剥夺参与权之前，让「owner 是 Agent」这一状态
- * 走各自的设计分支。
+ * 强制移除前先把 lead 交给另一名还在 Crew 的 Agent；没有可接任者就清空 lead 并推进 epoch。
+ * 常规移除在读阻塞项时就拒绝，不会走到这里。
  */
-function transferProjectAgentOwnership(chatIds: readonly string[], ctx: MachineContext): string[] {
+function transferProjectAgentOwnership(
+  chatIds: readonly string[],
+  removedAgentProfileId: string,
+  ctx: MachineContext,
+): string[] {
   const transferred: string[] = [];
-  const actor = actorFromContext(ctx);
   for (const chatId of chatIds) {
     const current = getChat(chatId, ctx);
-    setChatOwner(chatId, { kind: "human", id: ctx.userId }, current.governanceRevision, actor);
+    const replacement = readChatEffectiveMembers(chatId, current.projectId).find(
+      (member) => member.memberKind === "agent" && member.memberId !== removedAgentProfileId,
+    );
+    db.update(chat)
+      .set({
+        leadProfileId: replacement?.memberId ?? null,
+        crewEpoch: sql`${chat.crewEpoch} + 1`,
+        governanceRevision: current.governanceRevision + 1,
+        updatedAt: ctx.now,
+      })
+      .where(eq(chat.id, chatId))
+      .run();
     transferred.push(chatId);
   }
   return transferred;
@@ -661,7 +674,11 @@ export function forceRemoveProjectMember(
           }
           const leases = settleProjectAgentLeases(plan.heldLeases, projectId, ctx);
           recordStrandedHandoffs(plan.handoffLeases, projectId, ctx);
-          const ownerTransferredChatIds = transferProjectAgentOwnership(plan.ownerChatIds, ctx);
+          const ownerTransferredChatIds = transferProjectAgentOwnership(
+            plan.ownerChatIds,
+            agentProfileId,
+            ctx,
+          );
           const unassignedTaskIds = unassignProjectAgentDirectTasks(plan.dmTaskIds, projectId, ctx);
           // 不能复用 `revokeProjectAgentEnrollment`：无法确认撤权的租约必须留在这里，
           // 而它会因为那个 fencing 租约再次抛错，令「保留占用」与「移除完成」互相矛盾。

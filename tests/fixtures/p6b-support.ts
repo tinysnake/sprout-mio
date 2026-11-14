@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import assert from "node:assert/strict";
+import { createCrewChat } from "./crew-chat";
 
 export async function p6bFixture(label: string) {
   const started = performance.now();
@@ -47,7 +48,7 @@ export async function p6bFixture(label: string) {
   );
   agents.addProjectMember(p.id, a.id, ctx);
   agents.addProjectMember(p.id, b.id, ctx);
-  const chat = chats.createGroupChat(
+  const chat = createCrewChat(
     p.id,
     {
       projectId: p.id,

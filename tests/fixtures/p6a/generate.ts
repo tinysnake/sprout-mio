@@ -10,7 +10,7 @@ import { resolveMentions } from "../../../src/domain/mention";
 type Sample = {
   id: string;
   scene: string;
-  chatKind: "group" | "public_channel";
+  chatKind: "crew";
   members: { kind: "human" | "agent"; name: string; role: string; responsibilities?: string }[];
   owner: { kind: "human" | "agent"; name: string };
   task: { status: "assigned" | "finished"; title: string } | null;

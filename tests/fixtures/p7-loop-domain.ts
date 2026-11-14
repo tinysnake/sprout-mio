@@ -6,6 +6,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { hostname, cpus, totalmem } from "node:os";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 const mode = process.argv[2];
 const phase = process.argv[3];
@@ -73,7 +74,7 @@ if (mode === "restart" && !phase) {
   const workers = await import("../../src/server/worker-gateway");
   const { requestExecution } = await import("../../src/server/remote");
   const { createProject } = await import("../../src/domain/project");
-  const { createGroupChatInput } = await import("../../src/contracts/chat");
+
   const { WORKER_STALE_AFTER_MS } = await import("../../src/contracts/worker");
   const { WORKER_RECOVERY_GRACE_MS } = await import("../../src/server/lease");
   const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
@@ -155,9 +156,9 @@ if (mode === "restart" && !phase) {
         agents.addProjectMember(project.id, profile.id, ctx);
       const dmA = chats.createDirectChat(project.id, profileA.id, ctx).chat;
       const dmB = chats.createDirectChat(project.id, profileB.id, ctx).chat;
-      const group = chats.createGroupChat(
+      const group = createCrewChat(
         project.id,
-        createGroupChatInput.parse({
+        crewInput({
           projectId: project.id,
           title: "P7 group",
           initialOwner: { kind: "agent", id: profileA.id },

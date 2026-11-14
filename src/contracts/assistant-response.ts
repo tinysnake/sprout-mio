@@ -5,7 +5,7 @@ const project = z.strictObject({ id: z.string(), name: z.string() });
 const agent = project.extend({ agentProfileId: z.string(), purpose: z.literal("worker") });
 const chat = z.strictObject({
   id: z.string(),
-  kind: z.enum(["dm", "group", "public_channel"]),
+  kind: z.enum(["dm", "crew"]),
   title: z.string().nullable(),
   ownerKind: z.enum(["human", "agent"]),
   ownerId: z.string(),
