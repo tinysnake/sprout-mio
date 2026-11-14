@@ -2,7 +2,7 @@
 
 ## Sub-features
 
-- Human 管理 Project webhook / cron，配置一个 DM Agent、Group 指定 Agent 或 Group 当前 owner 消息动作。
+- Human 管理 Project webhook / cron，配置一个 DM Agent 或 Crew lead 消息动作。
 - Cron 使用五段表达式、显式时区与下一时点；同规则重叠跳过，离线 / 重启不补跑。
 - 外部 POST 的 bearer 认证、实际流量上限、事件去重及冲突。
 - 真实 Trial、停用和目标失效跳过、最近触发记录、输入取消原因与 Chat / run 关联。
@@ -10,7 +10,7 @@
 
 ## How to get to it (user POV)
 
-登录后选择 Project，打开 Project settings 的 Webhooks 或定时任务 tab。列表显示状态与目标，新建/编辑进入独立 URL。DM 动作直接选工作 Agent，无需预建 Chat；Group 动作可以选择 Public Channel。Webhook secret 默认遮蔽，授权 Human 可再次查看或轮换；旧的仅哈希值须轮换后使用。编辑页提供 curl、Trial 和触发历史。
+登录后选择 Project，打开 Project settings 的 Webhooks 或定时任务 tab。列表显示状态与目标，新建/编辑进入独立 URL。DM 直接选择工作 Agent，无需预建 Chat；Crew 动作的目标是该 Project 唯一 Crew 的 lead。Webhook secret 默认遮蔽，授权 Human 可再次查看或轮换；旧的仅哈希值须轮换后使用。编辑页提供 curl、Trial 和触发历史。
 
 外部系统向显示的 endpoint 发送 JSON object，同时携带 bearer secret 与稳定的 `X-Sprout-Event-Id`。页面的 Trial 会真实向所选 Chat 提交。最近触发记录可以跳到接收消息的 Chat；编辑规则后旧记录仍指向原来的 Chat。
 
@@ -18,7 +18,7 @@ Cron 在同页的定时规则区域。先选消息动作与有效目标，再填
 
 ## Driving it with …
 
-前置条件为可用的 Human 账号、Project 和有效工作 Agent 成员；DM 动作在首次有效触发时创建或复用 Chat，Group 动作需要已有 Group / Public Channel。Group owner 动作要求当前 owner 是有效 Agent。专项浏览器门禁自动创建独立数据，使用实际 Pi runner 和回环模型 fixture，无需付费模型凭据。
+前置条件为可用的 Human 账号、Project 和有效工作 Agent 成员；DM 动作在首次有效触发时创建或复用 Chat，Crew 动作需要已有 Crew 且当前 lead 是有效 Agent。专项浏览器门禁自动创建独立数据，使用实际 Pi runner 和回环模型 fixture，无需付费模型凭据。
 
 ```sh
 bash scripts/verify/webhook-core.sh
@@ -28,7 +28,7 @@ bash scripts/verify/cron-core.sh
 bash scripts/verify/cron-browser.sh
 ```
 
-`webhook-core` 覆盖 domain、HTTP 流、迁移和相关 Chat / Task 回归。浏览器门禁从页面创建规则，经真实 HTTP 到系统来源消息、run 和结果，并检查重复事件、Trial、停用、无 session / 外部账号管理拒绝、有效成员候选和 Group 目标。延迟保存响应的场景还检查编辑锁与两条规则的持久目标，防止跨规则覆盖。
+`webhook-core` 覆盖 domain、HTTP 流、迁移和相关 Chat / Task 回归。浏览器门禁从页面创建规则，经真实 HTTP 到系统来源消息、run 和结果，并检查重复事件、Trial、停用、无 session / 外部账号管理拒绝、有效成员候选和 Crew lead 目标。延迟保存响应的场景还检查编辑锁与两条规则的持久目标，防止跨规则覆盖。
 
 Cron 门禁还种入较早、没有回复关联的 failed run，并在已有较新 run 的情况下点击历史链接，检查目标状态和错误信息；无 session 或 Chat 不匹配的 run 查询会被拒绝。
 

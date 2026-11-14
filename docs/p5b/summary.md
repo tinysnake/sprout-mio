@@ -1,3 +1,5 @@
+已退役，见 CR1 Crew 迁移
+
 # P5b 章节结论：Task 总览与生命周期
 
 P5b 交付 Project 所有、Chat 承接的 Task：四态分栏总览、详情、分配与可选立即开始、清单、施工记录、末条记录中的完成结果，以及 Human 纠正与重开。Task 状态、run 活动和 Machine 租约保持独立；本章没有对话接续或独立 Human inbox。

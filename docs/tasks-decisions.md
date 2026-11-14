@@ -8,12 +8,11 @@
 
 ### 任务归属与推进责任
 
-- Task 属于 Project，分配给一个 Chat；DM、Group 和 Public Channel 都可以承接 Task。
-- Chat 是三种对话的统一概念，见 core-scope.md；Public Channel 是特殊 Group。
-- 当前 Group owner 负责推进该 Group 的 Task，可以组织组内其他 Agents 协作。Public Channel 沿用同一规则，由人类指定和变更 owner；其特殊之处仅在于成员始终跟随 Project。
-- DM 只有一位 Agent，由该 DM 中的唯一 Agent 分身负责推进其承接的 Task。
-- Group owner 可以是人类或 Agent；第一版普通 Group 成员调整、owner 变更及解散仅由人类执行。Public Channel 的成员只跟随 Project，不能单独调整。未来的 Agent 申请与聊天窗口批准路径记录在 communication-decisions.md。
-- Task 分配给 Chat，不直接分配给某次 run 或任意分身；DM 的唯一 Agent 分身承担推进责任，不改变 Task 的 Chat 归属。
+- Task 属于 Project，分配给一个 Chat；DM 与 Project 的 Crew 都可以承接 Task。
+- Chat 只有 DM 与 Crew 两种对话，见 core-scope.md；每个 Project 唯一的 Crew 由 lead 对 Human 负责。
+- Crew 的 Task 责任人是 lead，由 lead 组织 Crew 内成员推进；DM 只有一位 Agent，由该 DM 的唯一 Agent 分身负责推进其承接的 Task。
+- Crew 成员显式加入，不随 Project 成员自动同步；lead 必须是 Crew 的 Agent 成员。Crew 成员与 lead 的调整仅由 Human 执行，未来 Agent 申请与聊天窗口批准路径记录在 communication-decisions.md。
+- Task 分配给 Chat，不直接分配给某次 run 或任意分身；DM 的唯一 Agent 分身或 Crew 的 lead 承担推进责任，不改变 Task 的 Chat 归属。
 
 ### Task 状态
 
@@ -24,27 +23,27 @@
 
 ### 当前开发流程
 
-- 当前阶段由承接 Task 的 Chat 自行组织开发流程；Group owner 或 DM 的唯一 Agent 分身根据任务决定实现、review 和测试方式，Group 内的分工由 owner 组织。
-- Task 提供目标、约束、完成要求、checklist 和施工记录；完成结果保存在最后一条施工记录中。Sprout 提供沟通、唤醒、任务记录与 Machine 操作能力。
-- 第一版由 owner 直接在 Group / Public Channel 中安排分工，成员在同一对话中回报进度、结果或阻碍，owner 汇总并继续组织工作。分工细节保留在对话和 Task checklist 中，不增加独立的委派单对象。
+- 当前阶段由承接 Task 的 Chat 自行组织开发流程；Crew 的 lead 或 DM 的唯一 Agent 分身根据任务决定实现、review 和测试方式，Crew 内的分工由 lead 组织。
+- Task 提供目标、约束、完成要求、checklist 和施工记录；完成结果保存在最后一条施工记录中。Sprout 提供沟通、任务记录与 Machine 操作能力。
+- 第一版 Crew 只有 lead 运行，lead 根据任务决定实现、review 和测试方式；其他成员不因正文 mention 或对话安排被启动。显式分工、成员回报与 worker 子对话属 CR2，当前未实现。分工细节只保留在 Task checklist 中，不增加独立的委派单对象。
 - 当前不内置固定开发阶段、阶段负责人及流转条件。
 - 这是当前阶段的选择；以后是否增加内置 workflow 尚未决定。
 
 ### 分配与启动
 
 - Task 分配给 Chat 时，可选择“立即开始”。
-- 选中时，Group 和 Public Channel 通知或唤醒 owner，DM 唤醒其中的唯一 Agent 分身；未选中时只保存分配，不自动启动工作。
+- 选中时，Crew 通知或唤醒 lead，DM 唤醒其中的唯一 Agent 分身；未选中时只保存分配，不自动启动工作。
 - 分配本身不代表任务已经在执行。
 
 ### 未完成任务的对话接续
 
-- Chat 中只要有 assigned Task，系统就定期做 LLM 判定；同一 Chat 的多个 assigned Tasks 在一次检查中结合判断。没有 assigned Task 时停止该对话的 Task 周期检查，proposed、finished、canceled 不触发此检查。
-- LLM 判定依据 Task、对话上下文和当前运行情况，判断是否需要唤醒负责人继续推进。周期检查不以所有 Agents 停止执行为前提，也不代表每次都唤醒负责人。
+- 不设 Task 周期的 LLM 判定。存在 assigned Task 不改变路由：Crew 仍只交给 lead，DM 交给唯一 Agent 分身。
+- Crew 的 lead 根据 Task、对话上下文和当前运行情况继续组织工作；worker 的输入来自 lead 的显式委派（CR2）。DM 的唯一分身自行继续。
 - 不增加 Task 执行状态或额外启动标志，也不要求负责人强制填写结构化的下一步、等待条件或接续安排；对话已有上下文可以承载这些信息。
-- 需要接续时，Group / Public Channel 通知或唤醒当前 owner，DM 通知或唤醒唯一 Agent 分身；owner 为 Human 时提醒 Human 处理。负责人根据上下文继续组织工作、等待已有结果或说明阻碍并请求 Human 处理。
-- 分配本身不代表已经启动。未选择“立即开始”的 assigned Task 也进入 LLM 周期判定，但是否启动或继续由 LLM 判定结合对话上下文判断，不因 assigned 就直接反复唤醒负责人。run 结束本身也不代表 Task 已完成或无需继续。
+- 需 Human 处理时，由 lead 或 DM 分身说明阻碍并在对话中请求；Human 负责的分配由 Human 自行推动。
+- 分配本身不代表已经启动。未选择“立即开始”的 assigned Task 也不自动反复唤醒负责人；run 结束本身也不代表 Task 已完成或无需继续。
 - 投递时核对 Task 状态和当前责任归属，保持同一分身串行，不重复启动并行 run。人类暂停自动唤醒或停止运行的控制优先，对话接续不得立即抵消人类的停止操作。
-- 不为此引入固定开发 workflow。LLM 判定周期、上下文范围、与普通聊天判定器的关系、重复唤醒及持续失败的处理留待设计。
+- 不为此引入固定开发 workflow。
 
 ### 施工记录
 
@@ -54,7 +53,7 @@
 
 ### 完成与验收
 
-- 负责推进的 Group owner 或 DM 唯一 Agent 分身可以根据任务要求直接将 Task 标记完成，以最后一条施工记录留存完成结果。
+- 负责推进的 Crew lead 或 DM 唯一 Agent 分身可以根据任务要求直接将 Task 标记完成，以最后一条施工记录留存完成结果。
 - 人类可以检查、纠正或重新打开任务。
 - 不增加强制待验收状态，也不要求通过独立 completion claim / validation 流程才能完成。
 - 具体任务若需要人类验收，可以在任务的完成要求中明确约定。
@@ -62,9 +61,9 @@
 
 ### Agent 成员移除与任务责任
 
-- 一期 Agent 有活动 runs、持有租约、承担 owner 职责或其 DM 仍有 assigned Tasks 时阻止移除；Human 先手动停止或交接、变更 owner、重新分配任务。
+- 一期 Agent 有活动 runs、持有租约、担任 Crew lead 或其 DM 仍有 assigned Tasks 时阻止移除；Human 先手动停止或交接、改任 lead、重新分配任务。
 - 以下默认接续属于二期强制移除的自动善后，一期不执行：Human 确认后中止该 Agent 在本项目的活动 runs 并剥夺权限。
-- 若其为 Group 或 Public Channel owner，默认由 Human 接任；Tasks 继续留在原 Chat，状态不因 owner 接任而改变。
+- 若其为 Crew lead，默认由 Human 接任；Tasks 继续留在原 Chat，状态不因 lead 接任而改变。
 - 其 DM 中尚未完成、仍分配给该 DM 的 Tasks 退回 proposed，清除当前分配，等待重新分配；历史与已有结果保留。
 - 已 finished 或 canceled 的 Tasks 保持原状态；强制中止 run 不代表 Task 已完成或已取消。
 
@@ -76,5 +75,5 @@
 ## 待收敛
 
 - ~~Task 标题、说明、约束、完成要求、checklist 及施工记录的具体记录形式。~~ **P5b 已定**：元数据在 `task`；checklist 为独立条目表，position 按 Task 内历史最大值递增，软删除且不复用位置；施工记录为承接 Chat 的 message，按 Task 内 seq 递增、不可改删，分 start/progress/correction。完成结果沿用末条进度或纠正记录，只有 start 不能完成；Human 对 finished 的纠正追加记录并保留历史完成引用。具体形状见 [P5b 契约](p5b/contracts.md)。
-- LLM 判定周期的间隔、上下文范围、与普通聊天所选 LLM/JEV 判定路径的关系，以及如何提供相关 runs 或外部工作的事实。
 - 重复检查和唤醒合并、持续失败时的重试或升级规则，以及人类停止后的恢复方式。
+- Crew lead 的委派与 worker 子对话（CR2），以及子对话如何向主对话汇总结果。

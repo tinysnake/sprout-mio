@@ -2,7 +2,7 @@
 
 ## 实现范围
 
-Project settings 的定时任务 tab 提供规则列表，独立新建/编辑页面提供五段 cron、表达式帮助、时区下拉、下一时点、启停、真实 Trial 和最近 50 条历史。表单与 Webhook 共用组件；DM 直接选择工作 Agent，首次有效触发时创建或复用规范 DM；Group 动作支持 Public Channel。消息动作与 [Project webhook](webhook-core.md)共用目标校验、事务接纳、系统来源消息、普通 run input 和发送前权限检查，不增加独立执行器。规则只能由有 Project 权限的 Human 管理，不开放外部 bearer 入口。
+Project settings 的定时任务 tab 提供规则列表，独立新建/编辑页面提供五段 cron、表达式帮助、时区下拉、下一时点、启停、真实 Trial 和最近 50 条历史。表单与 Webhook 共用组件；DM 直接选择工作 Agent，首次有效触发时创建或复用规范 DM；Crew 动作只指向当前 lead。消息动作与 [Project webhook](webhook-core.md)共用目标校验、事务接纳、系统来源消息、普通 run input 和发送前权限检查，不增加独立执行器。规则只能由有 Project 权限的 Human 管理，不开放外部 bearer 入口。
 
 ## 调度契约
 
@@ -14,7 +14,7 @@ Project settings 的定时任务 tab 提供规则列表，独立新建/编辑页
 - 配置编辑、cursor 推进、同规则重叠检查和接纳均使用 SQLite immediate transaction。编辑使用 revision CAS，启用或编辑按当前时间重算，停用清空 cursor。
 - 到期时直接推进到 now 之后，不逐个枚举遗漏时点。距 cursor 不超过 10 秒且本次时钟间隔不超过 10 秒时可以接纳；超过窗口、长停顿或时钟倒退后的到期规则至多记录一条 `schedule_missed`。离线与重启不补跑。时点 ISO 作为 live 去重键，时钟回拨也不能重复接纳相同瞬间。
 - Trial 是真实提交，与 live 分开去重，不推进 cursor，仍遵守启用、当前目标和同规则重叠检查。live 与 Trial 共用重叠判定：该规则消息的当前 input 未取消，且当前关联 run 为 queued / running 即占用，包括 delivered 和发送结果不确定；terminal 或取消输入释放。carry 后以当前 run 为准。其他规则彼此独立。
-- 停用只阻止新接纳，不撤回既有消息或工作。初始 prompt 和 steer 真正发送前仍检查当前权限、Chat、Agent 及 owner；失效时取消输入，不自动换人。
+- 停用只阻止新接纳，不撤回既有消息或工作。初始 prompt 和 steer 真正发送前仍检查当前权限、Chat、Agent 及 lead；失效时取消输入，不自动换人。
 
 ## 数据与来源
 

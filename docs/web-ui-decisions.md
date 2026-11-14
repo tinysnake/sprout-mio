@@ -29,7 +29,7 @@
 ## SPA 与 URL 定位
 
 - 每个功能入口、对象详情及需要直接定位的操作界面都应有对应 link。用户能保存、复制并直接打开 URL，快速回到目标位置。
-- 打开指定 Project 的 URL 时直接进入该 Project，跳过项目选择；打开该 Project 内指定 DM、Group 或 Public Channel 的 URL 时直接进入对应聊天窗口。
+- 打开指定 Project 的 URL 时直接进入该 Project，跳过项目选择；打开该 Project 内指定 DM 或 Crew 的 URL 时直接进入对应聊天窗口。
 - Task、Agent、Machine 的详情，以及需要直接进入的编辑或操作界面，同样应支持 URL 定位。
 - URL 必须携带足够的定位信息，不依赖此前已在页面中选择过 Project 或对象，也不依赖内存中的导航历史。
 - 同一 URL 在刷新、重新打开、浏览器前进与后退时恢复对应的目标与上下文；桌面、手机及 PWA 使用一致的 URL 语义。
