@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+export BETTER_AUTH_SECRET="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("base64url"))')"
 evidence="${DEPLOY_CONTINUATION_EVIDENCE_DIR:-$PWD/.verify/deploy-continuation-off}"
 for mode in false true; do
   export P6A_EVIDENCE_DIR="$evidence/$mode"

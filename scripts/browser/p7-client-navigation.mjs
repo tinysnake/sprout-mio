@@ -7,7 +7,7 @@ await runProduction(async ({ page, context, base, seeded: s, login, directory })
     [`/projects/${s.projectId}/tasks/${s.taskId}`, "P7 Task"],
     [`/projects/${s.projectId}/chats/${s.dmId}?info=1`, "P7 Agent"],
     [`/projects/${s.projectId}/chats/${s.groupId}?info=1`, "P7 Group"],
-    [`/projects/${s.projectId}/chats/${s.channelId}?info=1`, "公共频道"],
+    [`/projects/${s.projectId}/chats/${s.channelId}?info=1`, "P7 Group"],
   ];
   for (const [path, text] of targets) {
     const expectedPath = path.endsWith("/settings") ? `${path}?tab=general` : path;

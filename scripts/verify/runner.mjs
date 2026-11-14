@@ -6,6 +6,7 @@ import { reportSignalFailure, signalProcessGroup } from "./lib/process-signals.m
 import { greenFullRunOn, spendEntry } from "./lib/spend.mjs";
 import {
   MANUAL_GATES,
+  RETIRED_GATES,
   SUITE_CAPACITY,
   SUITE_PLAN,
   fitsResources,
@@ -66,6 +67,7 @@ function discoverScripts() {
       id: entry.name.slice(0, -".sh".length),
       file: join(verifyDirectory, entry.name),
     }))
+    .filter((gate) => !RETIRED_GATES.includes(gate.id))
     .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
 }
 

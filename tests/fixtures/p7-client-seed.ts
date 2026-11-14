@@ -30,12 +30,6 @@ const group = createCrewChat(
   },
   { kind: "human", userId: human.id, ctx },
 );
-const channel = db
-  .select()
-  .from(chat)
-  .where(eq(chat.projectId, project.id))
-  .all()
-  .find((row: { kind: string }) => row.kind === "public_channel")!;
 const machine = createMachine(
   { name: "P7 Machine" },
   { ...ctx, bootId: "p7-client", now: new Date() },
@@ -47,7 +41,7 @@ console.log(
     agentId: agent.id,
     dmId: dm.id,
     groupId: group.id,
-    channelId: channel.id,
+    channelId: group.id,
     machineId: machine.detail.machine.id,
     taskId: task.detail.task.id,
     migration: sqlite
