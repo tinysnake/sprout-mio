@@ -170,3 +170,9 @@
 - 验收父对话改为 200 条（4 页），读满后把锚点放在最旧页（距最新页 3 页，超出窗口 2 页保留半径）并断言不在最新 50 条；恢复后写入一条 live 消息，等超过 15 秒安全轮询的一轮 live tick（22 秒）完成 settle，断言目标页仍保留。移除 `reportAnchor` 时该断言失败，确认 gate 能抓住原缺陷。
 - storage 故障另加“首次读取抛错”路径：应用挂载前注入 SecurityError，断言按宽度取默认、显式折叠后 resize 仍保留。
 - 验证：`pnpm typecheck` 通过；`pnpm test` 190 文件 / 1844 测试通过；隔离数据库与真实 dev server 上 `crew-rail.mjs` 7 组断言全部通过。
+
+## CR3 接管工具
+
+- `a1251e6` 新增 `sprout_resource_takeover`：当前 lead 可为同 Crew 的另一个运行中 worker 或自身 run 接管 active 资源；复用来来源 Machine/目录/操作范围创建并批准目标请求，冻结来源，目标在来源排空并释放后才取得新 generation 授权；`clientRequestId` 幂等，跨 Crew/DM 与已释放来源拒绝。
+- 单元测试 26 项覆盖接管到 worker、接管回 lead、排空未确认时目标保持 queued 且无 grant、幂等/冲突、非 lead、跨 Crew、已释放来源。`scripts/verify/crew-resource.sh` 已注册并 PASS（1.7s）。
+- `a2fd204` 补排空与跨 Crew 反例。全量 `pnpm test` 190 文件 / 1847 tests、`pnpm typecheck`、`vp check` 通过。

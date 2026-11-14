@@ -887,6 +887,29 @@ test("takeover cannot target a run outside the lead's Crew", () => {
   );
 });
 
+test("lead can take an active worker grant back to its own run", () => {
+  const f = fixture(),
+    w = f.worker(),
+    r = f.approved(w);
+  advanceCrewResources();
+  const taken = takeoverCrewResource(
+    {
+      resourceRequestId: r.id,
+      target: { subjectKind: "lead_run", runId: f.lead.runId },
+      clientRequestId: "takeover-to-lead",
+    },
+    f.lead,
+  );
+  assert.equal(taken.subjectKind, "lead_run");
+  assert.equal(taken.runId, f.lead.runId);
+  assert.equal(taken.state, "queued");
+  reconcileCrewResources();
+  advanceCrewResources();
+  assert.equal(row(r.id).state, "released");
+  assert.equal(row(taken.id).state, "active");
+  assert.equal(row(taken.id).instanceId, f.lead.instanceId);
+});
+
 test("takeover is idempotent and rejects a different target for the same clientRequestId", () => {
   const f = fixture(),
     w = f.worker(),
