@@ -255,6 +255,34 @@ describe("Crew delegation", () => {
     expect(listMessages(crew.id, human)).toHaveLength(crewBefore);
   });
 
+  it("derives child chat membership from the parent Crew, not from sibling workers", () => {
+    sqlite
+      .prepare("UPDATE chat SET lead_profile_id = ?, crew_epoch = crew_epoch + 1 WHERE id = ?")
+      .run(lead.id, crew.id);
+    const result = dispatch("client-access-1");
+    const members = sqlite
+      .prepare(
+        "SELECT member_kind AS kind, member_id AS id FROM chat_effective_member WHERE chat_id = ? ORDER BY member_id",
+      )
+      .all(result.childChatId) as { kind: string; id: string }[];
+    expect(members).toEqual(
+      expect.arrayContaining([
+        { kind: "human", id: userId },
+        { kind: "agent", id: lead.id },
+        { kind: "agent", id: worker.id },
+      ]),
+    );
+    expect(members.some((member) => member.id === other.id)).toBe(false);
+  });
+
+  it("rejects late input after the delegation has been canceled", () => {
+    const result = dispatch("client-cancel-input-1");
+    cancelDelegation({ delegationId: result.delegationId, reason: "方向变了" }, human);
+    expect(() => sendDelegationInput(result.delegationId, "补充一句", human)).toThrow(
+      /不能再追加输入/,
+    );
+  });
+
   it("rejects a worker completing a delegation it does not own", () => {
     const result = dispatch("client-owner-check-1");
     const wrong = workerContext(result.delegationId);
