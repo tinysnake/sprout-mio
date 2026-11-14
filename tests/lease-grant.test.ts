@@ -144,6 +144,12 @@ test("grant and revoke", () => {
       error instanceof Error && "code" in error && error.code === "lease_not_holder",
   );
 
+  assert.throws(
+    () => assertExecutionWrite(key, 1, lead),
+    (error: unknown) =>
+      error instanceof Error && "code" in error && error.code === "lease_stale_generation",
+  );
+
   const replay = grantLease(grant, lead);
   assert.equal(replay.mutationId, first.mutationId);
   assert.equal(getLease(key, human).lease.generation, 2);
@@ -162,4 +168,25 @@ test("grant and revoke", () => {
   assert.equal(authorityNow(key)?.holderInstanceId, lead.instanceId);
   assert.equal(db.select().from(leaseGrant).where(eq(leaseGrant.state, "active")).all().length, 0);
   assertExecutionWrite(key, 3, lead);
+  assert.throws(
+    () => assertExecutionWrite(key, 2, worker),
+    (error: unknown) =>
+      error instanceof Error && "code" in error && error.code === "lease_stale_generation",
+  );
+
+  const delegationChatId = newId(ID_PREFIXES.chat);
+  sqlite
+    .prepare(
+      "INSERT INTO chat(id,project_id,kind,parent_crew_chat_id,owner_kind,owner_id,created_by) VALUES (?,?,'delegation',?,'human','owner','owner')",
+    )
+    .run(delegationChatId, projectId, crewId);
+  const delegated = actor("Delegated worker", delegationChatId);
+  assert.throws(
+    () =>
+      acquireLease(
+        { ...key, action: "acquire", expectedGeneration: 3, requestId: newId(ID_PREFIXES.request) },
+        delegated,
+      ),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "forbidden",
+  );
 });
