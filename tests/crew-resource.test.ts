@@ -827,6 +827,66 @@ test("lead takeover freezes the old grant and admits the target only after relea
   assert.equal(grant.grantee_run_id, next.runId);
 });
 
+test("takeover keeps the target queued while the old execution has not drained", () => {
+  const f = fixture(),
+    w = f.worker(),
+    next = f.worker(),
+    r = f.approved(w);
+  advanceCrewResources();
+  const generation = row(r.id).generation!;
+  dispatched(f, w, generation);
+  const taken = takeoverCrewResource(
+    {
+      resourceRequestId: r.id,
+      target: {
+        subjectKind: "delegation",
+        delegationId: next.delegationId,
+        attempt: 1,
+        runId: next.runId,
+      },
+      clientRequestId: "takeover-draining",
+    },
+    f.lead,
+  );
+  for (let i = 0; i < 3; i++) {
+    reconcileCrewResources();
+    advanceCrewResources();
+  }
+  assert.notEqual(row(r.id).state, "released");
+  assert.equal(row(taken.id).state, "queued");
+  assert.equal(row(taken.id).generation, null);
+  assert.equal(
+    sqlite
+      .prepare("SELECT count(*) AS n FROM lease_grant WHERE request_id=?")
+      .get(`crew:${taken.id}`).n,
+    0,
+  );
+});
+
+test("takeover cannot target a run outside the lead's Crew", () => {
+  const f = fixture(),
+    other = fixture(),
+    w = f.worker(),
+    r = f.approved(w),
+    intruder = other.worker();
+  advanceCrewResources();
+  assert.throws(() =>
+    takeoverCrewResource(
+      {
+        resourceRequestId: r.id,
+        target: {
+          subjectKind: "delegation",
+          delegationId: intruder.delegationId,
+          attempt: 1,
+          runId: intruder.runId,
+        },
+        clientRequestId: "takeover-cross-crew",
+      },
+      f.lead,
+    ),
+  );
+});
+
 test("takeover is idempotent and rejects a different target for the same clientRequestId", () => {
   const f = fixture(),
     w = f.worker(),
