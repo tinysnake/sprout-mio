@@ -71,20 +71,30 @@ try {
   });
   let anchor;
   await check("open_child_and_return_to_parent_anchor", async () => {
-    // 120 条父消息，首页 50 条；滚到顶部让锚点落在已被窗口淘汰的旧页。
+    // 200 条父消息（4 页），先把锚点滚到旧页，确保它不在返回时的首屏 50 条里。
     await page.getByTestId("message-history").evaluate((element) => {
       element.scrollTop = 0;
     });
     await page.waitForFunction(
-      () => document.querySelectorAll("[data-message-id]").length > 50,
+      () => document.querySelectorAll("[data-message-id]").length >= 100,
     );
-    anchor = await page.getByTestId("message-history").evaluate((element) => {
-      const top = element.getBoundingClientRect().top;
-      const row = [...element.querySelectorAll("[data-message-id]")].find(
-        (item) => item.getBoundingClientRect().bottom > top,
-      );
-      return { id: row.dataset.messageId, offset: row.getBoundingClientRect().top - top };
+    await page.getByTestId("message-history").evaluate((element) => {
+      const rows = [...element.querySelectorAll("[data-message-id]")];
+      const row = rows[20];
+      element.scrollTop += row.getBoundingClientRect().top - element.getBoundingClientRect().top;
     });
+    await page.waitForTimeout(200);
+    const saved = await page.getByTestId("message-history").evaluate((element) => {
+      const top = element.getBoundingClientRect().top;
+      const rows = [...element.querySelectorAll("[data-message-id]")];
+      const row = rows.find((item) => item.getBoundingClientRect().bottom > top);
+      return {
+        anchor: { id: row.dataset.messageId, offset: row.getBoundingClientRect().top - top },
+        recent: rows.slice(-50).map((item) => item.dataset.messageId),
+      };
+    });
+    assert.equal(saved.recent.includes(saved.anchor.id), false);
+    anchor = saved.anchor;
     await rail.getByTestId("crew-card-open").filter({ hasText: "整理验收记录" }).click();
     await page.waitForURL((url) => url.pathname.endsWith(`/chats/${fixture.childChatId}`));
     await page.getByTestId("delegation-parent-link").waitFor();
@@ -104,6 +114,26 @@ try {
         ) < 4
       );
     }, anchor);
+    // 恢复后再来一条 live 消息：窗口按恢复后的 anchor 收敛，不能把目标页裁掉。
+    const appended = spawnSync(
+      process.execPath,
+      ["--import", "tsx", "scripts/browser/crew-rail-append.ts"],
+      {
+        env: { ...process.env, CREW_RAIL_PROJECT_ID: project.id, CREW_RAIL_CREW_ID: fixture.crewChatId },
+        encoding: "utf8",
+        timeout: 30000,
+      },
+    );
+    assert.equal(appended.status, 0, appended.stderr || String(appended.error));
+    await page.waitForFunction(
+      () => document.body.innerText.includes("验收后续消息：确认恢复后的锚点仍然保留。"),
+    );
+    await page.waitForFunction((expected) =>
+      [...document.querySelectorAll("[data-message-id]")].some(
+        (item) => item.dataset.messageId === expected.id,
+      ),
+      anchor,
+    );
   });
   await check("collapse_survives_reload_and_width_change", async () => {
     await toggle.click();
@@ -155,6 +185,31 @@ try {
     await page.setViewportSize({ width: 1400, height: 1000 });
     await page.waitForTimeout(200);
     assert.equal(await toggle.getAttribute("aria-expanded"), chosen);
+  });
+  await check("storage_read_failure_uses_width_default", async () => {
+    await page.addInitScript(() => {
+      const get = Storage.prototype.getItem;
+      const set = Storage.prototype.setItem;
+      Storage.prototype.getItem = function (key) {
+        if (String(key).startsWith("sprout:crew-rail:"))
+          throw new DOMException("denied", "SecurityError");
+        return get.call(this, key);
+      };
+      Storage.prototype.setItem = function (key, value) {
+        if (String(key).startsWith("sprout:crew-rail:"))
+          throw new DOMException("denied", "SecurityError");
+        return set.call(this, key, value);
+      };
+    });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`${BASE}${parentPath}`, { waitUntil: "domcontentloaded" });
+    await toggle.waitFor();
+    assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+    await toggle.click();
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.waitForTimeout(200);
+    assert.equal(await toggle.getAttribute("aria-expanded"), "false");
   });
   await check("dm_keeps_session_details_without_rail", async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });

@@ -166,4 +166,7 @@
 - `loadOlderForRestore` 保留 `aboveShift`，避免恢复途中“钉住底部”把刚读到的旧页挤掉；恢复结束后重新交回正常淘汰。
 - 右栏折叠把用户显式选择保存在内存 ref，storage 读写抛错或窗口 resize 时不再覆盖显式选择；只有从未选择过才使用宽度默认。
 - 浏览器 gate 父对话改为 120 条消息，覆盖目标不在首屏；新增 storage 失败后 resize 仍保留显式选择。active 委派夹具改为直接落库运行中记录，避免本机缺少 provider 时 lead run 失败改变段落归属。
-- 验证：`pnpm typecheck` 通过；`pnpm test` 190 文件 / 1844 测试通过；隔离数据库与真实 dev server 上 `crew-rail.mjs` 6 组断言全部通过。
+- 恢复收尾主动测量目标所在页并 `reportAnchor`，不依赖 scroll 事件；否则窗口 anchor 仍停在最新页，下一次 live/loader 更新会裁掉刚恢复的页。
+- 验收父对话改为 200 条（4 页），锚点强制落在旧页并断言不在最新 50 条；恢复后再写入一条 live 消息，断言目标消息仍保留。
+- storage 故障另加“首次读取抛错”路径：应用挂载前注入 SecurityError，断言按宽度取默认、显式折叠后 resize 仍保留。
+- 验证：`pnpm typecheck` 通过；`pnpm test` 190 文件 / 1844 测试通过；隔离数据库与真实 dev server 上 `crew-rail.mjs` 7 组断言全部通过。

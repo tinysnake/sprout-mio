@@ -28,7 +28,7 @@ const crew = createCrewChat(
   },
   { kind: "human", userId: ctx.userId, ctx },
 );
-for (let i = 0; i < 120; i++)
+for (let i = 0; i < 200; i++)
   sendMessage(
     crew.id,
     {

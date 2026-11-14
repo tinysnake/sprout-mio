@@ -360,6 +360,14 @@ export function ChatThread({
         anchor.offset
       : anchor.scrollTop;
     setAtBottom(false);
+    // 程序化设 scrollTop 不一定触发 scroll 事件；主动报告目标所在页，
+    // 否则窗口 anchor 仍停在最新页，下一次 live/loader 更新会把刚恢复的页裁掉。
+    const page = visiblePage(element);
+    if (page !== null) {
+      viewport.current = measureViewport(element);
+      anchorPage.current = page;
+      history?.reportAnchor(page);
+    }
     clearCrewReturn(chat.id);
   }, [chat.id, messages, history, history?.loadingOlder, history?.hasOlder]);
 
