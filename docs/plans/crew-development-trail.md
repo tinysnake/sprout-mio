@@ -85,3 +85,10 @@
 - 格式与契约。`vp check` 41 个文件格式问题，已修到 0 error。`c-data-auth` 说 drizzle 与 git 记录不一致。
 - 代码评审另给五个 P1。首位 Project Agent 不成为 lead；自动化 `group_agent` 绕过 lead；改任 lead 不查活动 run 与租约；移出 worker 漏掉租约责任；空 lead 的 Crew 可被重新初始化并绕过改任权限。另有 `crew_control.mode` 没有停止入口与准入检查。
 - 已提交 CR1 检查点 `fe02ff9`，仍未合 main。修复分三个 worktree 进行，域修复、文档改写、验证层分别由不同 worker 负责，主线程只做集成。
+
+## 2026-11-14 CR1 第二轮完整验证
+
+- 第二轮 `scripts/verify.sh` 跑了 738 秒，118 个 gate 中 29 失败。退役的 i2、i3、i4 被 runner 当成普通 gate 执行，算进失败，已改为不发现、不执行。
+- 已修并单独验证通过：`c-data-auth`（旧的 public_channel 计数）、`p6a-wiring` 与 `deploy-continuation-off`（缺 BETTER_AUTH_SECRET）、`p7-client-navigation` 与 `p7-client-pwa`（seed 仍在查公共频道）。`assistant-browser` 单独重跑通过，属满载假红。
+- 剩余失败按原因分三组处理。p6a 的 routing、delivery、integration 仍是旧 Group 语义或 gateway 冲突。成员治理与浏览器组是 lead 移除被 blocker 正确阻止，但 gate 仍按旧 Group 期待移除成功。p7、p6b、k2、z3 是 fixture 旧场景、重复 seed 或验收断言。
+- 三个 worktree worker 并行修这三组，主线程继续跑剩余 gate 分类。环境类失败（pi-magpie、pinned model、真实外部服务）不伪装成通过，单独记为环境前置。
