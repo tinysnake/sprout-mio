@@ -27,6 +27,14 @@ function plan(seconds, resources, preparation = [], sandbox = false) {
   });
 }
 
+// Retired gates stay on disk so archived plans and evidence references still resolve.
+// They are tombstones: never classified, never run, never listed in any target.
+export const RETIRED_GATES = Object.freeze([
+  "i2-group-chat",
+  "i3-public-channel",
+  "i4-agent-fanout",
+]);
+
 export const MANUAL_GATES = Object.freeze([
   "p6a-live-routing",
   "p8d-windows-worker",

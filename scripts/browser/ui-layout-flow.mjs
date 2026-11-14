@@ -192,7 +192,7 @@ try {
           const back = [...main.querySelectorAll("a,button")].find(
             (element) =>
               visible(element) &&
-              /^返回/.test(element.textContent?.trim() ?? "") &&
+              (element.textContent?.trim() ?? "").startsWith("返回") &&
               element.getBoundingClientRect().bottom <= box.top,
           );
           const memberList = document.querySelector('[data-testid="member-list"]');

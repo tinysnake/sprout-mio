@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MANUAL_GATES, SUITE_PLAN } from "./suite-plan.mjs";
+import { MANUAL_GATES, RETIRED_GATES, SUITE_PLAN } from "./suite-plan.mjs";
 
 export const CI_GROUPS = Object.freeze({
   base: ["a-base"],
@@ -137,6 +137,7 @@ export function validateGateTargets(root) {
   const actual = readdirSync(join(root, "scripts/verify"))
     .filter((name) => name.endsWith(".sh"))
     .map((name) => name.slice(0, -3))
+    .filter((name) => !RETIRED_GATES.includes(name))
     .sort();
   const remote = Object.values(CI_GROUPS).flat();
   if (new Set(remote).size !== remote.length) throw new Error("Duplicate CI gate assignment");
