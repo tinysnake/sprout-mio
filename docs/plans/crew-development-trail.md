@@ -118,3 +118,11 @@
 - 停止 Crew 会取消未结委派，但没有 stopping 中间态。当前 `setCrewMode` 由 Project 创建者调用；`crew_epoch` 只在 lead 变化时推进，停止不推进，与计划中的完整 stop 流程仍有差距。
 - 交付边界。lead 工具是 `sprout_delegation_start/input/cancel/list`，worker 工具是 `sprout_delegation_complete/block`，remote 面是 `crew_mutate`。没有资源 grant，Machine 任务仍走原有 lease；CR2 不宣称租约问题已解决。
 - 验证现状。`tests/delegation-core.test.ts` 8 个用例通过，覆盖幂等 dispatch、Crew 时间线干净、lead 输入、完成投递与 ack、lead 变更 attention、worker 死亡补发、取消、blocked 事件；`pnpm typecheck` 与 `vp check` 通过。CR2 尚未跑完整 `scripts/verify.sh`，计划里的独立 `delegation-delivery.ts`、证据 lane 和性能预算未按原样实现，不能勾选这些条目。
+
+## 2026-11-14 CR2 完整验证
+
+- CR2 检查点 `fdf88a1` 后跑完整 `scripts/verify.sh`。116 个 gate，7 失败。
+- 环境前置 2 个。`x-remote-tools` 与 `ae-remote-tools-cancel-log` 需要未安装的 pi-magpie package，和 CR1 时相同。
+- 主线既有 1 个。`bb-task-live` 在主线 `2008185` 的独立 worktree 上仍失败，不是 CR2 回归。
+- 满载假红 4 个。`cron-core`、`as-p5b-task-pages`、`assistant-browser`、`u-machine-ui` 单独复跑全部通过；`u-machine-ui` 在三个并行 gate 竞争时仍会 `Timeout production health`，串行后通过。没有发现 CR2 语义回归。
+- `crew-delegation` 新 gate 通过，覆盖 dispatch 幂等、Crew 时间线不出现 worker 消息、完成投递与 ack、lead 变更 attention、worker 中断补发、取消与 blocked 事件。
