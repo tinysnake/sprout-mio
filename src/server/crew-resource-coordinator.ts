@@ -6,6 +6,7 @@ import {
   releaseCrewResource,
   requestCrewResource,
   revokeCrewResource,
+  takeoverCrewResource,
   type CrewResourceActor,
 } from "../domain/crew-resource";
 
@@ -21,6 +22,8 @@ export function coordinateCrewResource(command: unknown, actor: CrewResourceActo
       return revokeCrewResource(call.input, actor);
     case "release":
       return releaseCrewResource(call.input.resourceRequestId, actor);
+    case "takeover":
+      return takeoverCrewResource(call.input, actor);
   }
 }
 export function tickCrewResources() {

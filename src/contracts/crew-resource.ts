@@ -34,11 +34,27 @@ export const crewResourceDecisionSchema = z
 export const crewResourceReleaseSchema = z
   .object({ resourceRequestId: z.string().min(1) })
   .strict();
+export const crewResourceTakeoverSchema = z
+  .object({
+    resourceRequestId: z.string().min(1),
+    target: z
+      .object({
+        subjectKind: z.enum(["delegation", "lead_run"]),
+        delegationId: z.string().min(1).optional(),
+        attempt: z.number().int().positive().optional(),
+        runId: z.string().min(1),
+      })
+      .strict(),
+    clientRequestId: z.string().min(1).max(256),
+  })
+  .strict();
 export const crewResourceCallSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("request"), input: crewResourceRequestSchema }).strict(),
   z.object({ op: z.literal("approve"), input: crewResourceDecisionSchema }).strict(),
   z.object({ op: z.literal("revoke"), input: crewResourceDecisionSchema }).strict(),
   z.object({ op: z.literal("release"), input: crewResourceReleaseSchema }).strict(),
+  z.object({ op: z.literal("takeover"), input: crewResourceTakeoverSchema }).strict(),
 ]);
 export type CrewResourceRequestInput = z.infer<typeof crewResourceRequestSchema>;
 export type CrewResourceDecisionInput = z.infer<typeof crewResourceDecisionSchema>;
+export type CrewResourceTakeoverInput = z.infer<typeof crewResourceTakeoverSchema>;

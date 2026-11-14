@@ -93,7 +93,7 @@ Crew 是 Project 内的多人协作 Chat，取代旧的 Group 与 Public Channel
 
 ## 执行资源
 
-CR3 的 Crew 资源协调器把需求、批准、占槽、授权和排空分开持久化。worker 用 `sprout_resource_request` 提交绑定原 delegation、attempt、run、instance、Machine membership epoch、目录与操作范围的请求；当前 lead 用 `sprout_resource_approve` 或 `sprout_resource_revoke` 决策，原执行 run 用 `sprout_resource_release` 归还。lead 也可为自身当前 run 申请资源。
+CR3 的 Crew 资源协调器把需求、批准、占槽、授权和排空分开持久化。worker 用 `sprout_resource_request` 提交绑定原 delegation、attempt、run、instance、Machine membership epoch、目录与操作范围的请求；当前 lead 用 `sprout_resource_approve` 或 `sprout_resource_revoke` 决策，原执行 run 用 `sprout_resource_release` 归还。lead 也可为自身当前 run 申请资源。`sprout_resource_takeover` 让当前 lead 不需要原 worker 同意就能把已签发资源改派给同 Crew 的另一名运行中 worker 或自己：先为同一 Machine/目录范围创建并批准目标请求，冻结来源并等待远端排空，排空确认后目标才取得新 generation 的授权；同一 `clientRequestId` 幂等，来源不是 active 或目标不属于本 Crew 时拒绝。
 
 - 同一 Crew 的 client request id 幂等，异 payload 冲突。批准只进入 FIFO 队列，不代表获配；协调器在 immediate 事务中取得 Project × Machine 唯一槽位，建立 Crew owner、实际执行 holder 的 authorization 与精确绑定原 run 的 grant，再放行 queued run 的 admission。dispatch 可在创建 worker run 的同一事务中登记并批准资源。
 - Crew owner 与执行 holder 分开：`machine_lease` 记录 Crew，`lease_authorization` 记录实际执行实例。每次写入与下发还要检查 grant 的 epoch、attempt、run、有效期及请求批准的操作和目录范围。目录校验只约束工具参数，不是文件系统沙箱。DM 保留 instance owner 语义。

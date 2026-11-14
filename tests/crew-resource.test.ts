@@ -14,12 +14,14 @@ const {
   advanceCrewResources,
   reconcileCrewResources,
   releaseCrewResource,
+  takeoverCrewResource,
   assertCrewExecutionScope,
   crewResourcesReady,
   deliverCrewResourceEvents,
 } = await import("../src/domain/crew-resource");
 const { cancelExecution } = await import("../src/server/remote");
-const { recoverAgentRuns, queuedRunWork, transitionAgentRun } = await import("../src/domain/agent-run");
+const { recoverAgentRuns, queuedRunWork, transitionAgentRun } =
+  await import("../src/domain/agent-run");
 const { dispatchDelegation } = await import("../src/domain/delegation");
 const { authorityNow, acquireLease, assertExecutionWrite, forceReclaimLease } =
   await import("../src/server/lease");
@@ -722,7 +724,12 @@ test("legacy lease mutations cannot bypass Crew resource approval", () => {
   assert.throws(
     () =>
       acquireLease(
-        { ...f.key, action: "acquire", expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
+        {
+          ...f.key,
+          action: "acquire",
+          expectedGeneration: 0,
+          requestId: newId(ID_PREFIXES.request),
+        },
         f.lead as never,
       ),
     (error: unknown) => error instanceof Error && "code" in error,
@@ -731,7 +738,12 @@ test("legacy lease mutations cannot bypass Crew resource approval", () => {
   assert.throws(
     () =>
       acquireLease(
-        { ...f.key, action: "acquire", expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
+        {
+          ...f.key,
+          action: "acquire",
+          expectedGeneration: 0,
+          requestId: newId(ID_PREFIXES.request),
+        },
         f.lead as never,
       ),
     (error: unknown) => error instanceof Error && "code" in error,
@@ -766,11 +778,127 @@ test("external lease release releases the active request and admits the next wor
   advanceCrewResources();
   const generation = row(r.id).generation!;
   sqlite
-    .prepare("UPDATE machine_lease SET state='free', owner_kind=NULL, holder_crew_chat_id=NULL, generation=generation+1 WHERE project_id=? AND machine_id=?")
+    .prepare(
+      "UPDATE machine_lease SET state='free', owner_kind=NULL, holder_crew_chat_id=NULL, generation=generation+1 WHERE project_id=? AND machine_id=?",
+    )
     .run(f.projectId, f.key.machineId);
   sqlite
-    .prepare("UPDATE lease_authorization SET state='revoked', revoked_at=issued_at+1 WHERE project_id=? AND machine_id=? AND generation=?")
+    .prepare(
+      "UPDATE lease_authorization SET state='revoked', revoked_at=issued_at+1 WHERE project_id=? AND machine_id=? AND generation=?",
+    )
     .run(f.projectId, f.key.machineId, generation);
   reconcileCrewResources();
   assert.equal(row(r.id).state, "released");
+});
+
+test("lead takeover freezes the old grant and admits the target only after release", () => {
+  const f = fixture(),
+    w = f.worker(),
+    next = f.worker(),
+    r = f.approved(w);
+  advanceCrewResources();
+  const oldGeneration = row(r.id).generation!;
+  const taken = takeoverCrewResource(
+    {
+      resourceRequestId: r.id,
+      target: {
+        subjectKind: "delegation",
+        delegationId: next.delegationId,
+        attempt: 1,
+        runId: next.runId,
+      },
+      clientRequestId: "takeover-one",
+    },
+    f.lead,
+  );
+  assert.equal(row(r.id).state, "releasing");
+  assert.equal(taken.state, "queued");
+  assert.equal(taken.approval, "approved");
+  assert.equal(taken.runId, next.runId);
+  reconcileCrewResources();
+  advanceCrewResources();
+  assert.equal(row(r.id).state, "released");
+  assert.equal(row(taken.id).state, "active");
+  assert.ok(row(taken.id).generation! > oldGeneration);
+  const grant = sqlite
+    .prepare("SELECT grantee_instance_id, grantee_run_id FROM lease_grant WHERE request_id=?")
+    .get(`crew:${taken.id}`) as { grantee_instance_id: string; grantee_run_id: string };
+  assert.equal(grant.grantee_instance_id, next.instanceId);
+  assert.equal(grant.grantee_run_id, next.runId);
+});
+
+test("takeover is idempotent and rejects a different target for the same clientRequestId", () => {
+  const f = fixture(),
+    w = f.worker(),
+    next = f.worker(),
+    other = f.worker(),
+    r = f.approved(w);
+  advanceCrewResources();
+  const input = {
+    resourceRequestId: r.id,
+    target: {
+      subjectKind: "delegation" as const,
+      delegationId: next.delegationId,
+      attempt: 1,
+      runId: next.runId,
+    },
+    clientRequestId: "takeover-idempotent",
+  };
+  const first = takeoverCrewResource(input, f.lead);
+  assert.equal(takeoverCrewResource(input, f.lead).id, first.id);
+  assert.throws(
+    () =>
+      takeoverCrewResource(
+        {
+          ...input,
+          target: { ...input.target, delegationId: other.delegationId, runId: other.runId },
+        },
+        f.lead,
+      ),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "conflict",
+  );
+});
+
+test("takeover requires the current lead and a live source grant", () => {
+  const f = fixture(),
+    w = f.worker(),
+    next = f.worker(),
+    r = f.approved(w);
+  advanceCrewResources();
+  assert.throws(
+    () =>
+      takeoverCrewResource(
+        {
+          resourceRequestId: r.id,
+          target: {
+            subjectKind: "delegation",
+            delegationId: next.delegationId,
+            attempt: 1,
+            runId: next.runId,
+          },
+          clientRequestId: "takeover-forbidden",
+        },
+        w,
+      ),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "forbidden",
+  );
+  releaseCrewResource(r.id, w);
+  reconcileCrewResources();
+  assert.throws(
+    () =>
+      takeoverCrewResource(
+        {
+          resourceRequestId: r.id,
+          target: {
+            subjectKind: "delegation",
+            delegationId: next.delegationId,
+            attempt: 1,
+            runId: next.runId,
+          },
+          clientRequestId: "takeover-released",
+        },
+        f.lead,
+      ),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "conflict",
+  );
 });

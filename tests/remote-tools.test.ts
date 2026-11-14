@@ -496,6 +496,16 @@ describe("远端 Pi 工具边界", () => {
       approve: { resourceRequestId: id, crewEpoch: 1, expectedRevision: 0 },
       revoke: { resourceRequestId: id, crewEpoch: 1, expectedRevision: 1 },
       release: { resourceRequestId: id },
+      takeover: {
+        resourceRequestId: id,
+        target: {
+          subjectKind: "delegation",
+          delegationId: "dlg_11111111",
+          attempt: 1,
+          runId: "run_22222222",
+        },
+        clientRequestId: `${id}-takeover`,
+      },
     };
     for (const [op, input] of Object.entries(inputs)) {
       const tool = registered.get(`sprout_resource_${op}`)!;

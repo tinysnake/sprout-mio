@@ -43,6 +43,8 @@ const descriptions: Record<ToolName, string> = {
     "当前 Crew lead 按 epoch/revision 批准资源请求中明确的 Machine、目录及操作范围。",
   sprout_resource_revoke: "当前 Crew lead 撤销请求并冻结新写；runtime 等待远端排空后归还。",
   sprout_resource_release: "原 worker/lead run 提交资源归还意图，排空完成前保持占槽。",
+  sprout_resource_takeover:
+    "当前 Crew lead 在不经原 worker 同意的情况下把 Machine 资源改派给自己或另一名同 Crew 运行中的 worker。旧授权先冻结，待远端执行排空后新目标才获得授权；重复调用按 clientRequestId 去重。",
   sprout_chat_continuation_get:
     "读取当前 Chat 的对话接续模式、周期检查、提醒和投递状态；不能暂停、停止、恢复或重发。",
   sprout_lease_acquire:

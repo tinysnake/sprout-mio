@@ -10,6 +10,7 @@ import {
   crewResourceRequestSchema,
   crewResourceDecisionSchema,
   crewResourceReleaseSchema,
+  crewResourceTakeoverSchema,
 } from "./crew-resource";
 import { assistantCallSchema } from "./assistant";
 import { chatSessionSchema, messageSchema } from "./chat";
@@ -736,6 +737,7 @@ export const remoteToolInputSchemas = {
   sprout_resource_approve: crewResourceDecisionSchema,
   sprout_resource_revoke: crewResourceDecisionSchema,
   sprout_resource_release: crewResourceReleaseSchema,
+  sprout_resource_takeover: crewResourceTakeoverSchema,
   sprout_chat_continuation_get: chatContinuationGetInputSchema.omit({ projectId: true }),
   sprout_lease_acquire: z.strictObject({
     ...toolMutationBase,

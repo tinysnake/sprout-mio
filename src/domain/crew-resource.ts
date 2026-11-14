@@ -6,6 +6,7 @@ import {
   crewResourceRequestSchema,
   type CrewResourceRequestInput,
   type CrewResourceDecisionInput,
+  type CrewResourceTakeoverInput,
 } from "../contracts/crew-resource";
 import { db, sqlite } from "../db";
 import {
@@ -482,6 +483,66 @@ export function releaseCrewResource(id: string, actor: CrewResourceActor): Reque
     return freeze(r, "worker_released");
   });
 }
+export function takeoverCrewResource(
+  input: CrewResourceTakeoverInput,
+  actor: CrewResourceActor,
+): Request {
+  return atomic(() => {
+    const source = read(input.resourceRequestId);
+    const target = input.target;
+    lead(source.crewChatId, source.crewEpoch, actor);
+    const existing = db
+      .select()
+      .from(crewResourceRequest)
+      .where(
+        and(
+          eq(crewResourceRequest.crewChatId, source.crewChatId),
+          eq(crewResourceRequest.clientRequestId, input.clientRequestId),
+        ),
+      )
+      .get();
+    if (existing) {
+      if (existing.runId !== target.runId)
+        throw new CrewResourceError("conflict", "clientRequestId 已用于其他目标");
+      return existing;
+    }
+    if (target.runId === source.runId) return source;
+    if (source.state !== "active")
+      throw new CrewResourceError("conflict", "只有已签发的资源可以接管");
+    const request = requestCrewResource(
+      {
+        crewChatId: source.crewChatId,
+        crewEpoch: source.crewEpoch,
+        subjectKind: target.subjectKind,
+        delegationId: target.delegationId,
+        attempt: target.attempt,
+        runId: target.runId,
+        machineId: source.machineId,
+        membershipEpoch: source.membershipEpoch,
+        directoryRealPath: source.directoryRealPath,
+        directoryRevision: source.directoryRevision,
+        operations: JSON.parse(source.operationsJson) as CrewResourceRequestInput["operations"],
+        clientRequestId: input.clientRequestId,
+      },
+      actor,
+    );
+    const approved = approveCrewResource(
+      {
+        resourceRequestId: request.id,
+        crewEpoch: request.crewEpoch,
+        expectedRevision: request.revision,
+      },
+      actor,
+    );
+    db.update(crewResourceRequest)
+      .set({ createdAt: new Date(source.createdAt.getTime() - 1) })
+      .where(eq(crewResourceRequest.id, approved.id))
+      .run();
+    freeze(source, `takeover:${approved.id}`);
+    event(read(approved.id), "takeover", "lead");
+    return read(approved.id);
+  });
+}
 export function freezeCrewResources(
   scope: { runId?: string; crewChatId?: string; delegationId?: string },
   reason: string,
@@ -654,18 +715,11 @@ export function reconcileCrewResources(now: Date = new Date()): number {
           .select()
           .from(machineLease)
           .where(
-            and(
-              eq(machineLease.projectId, r.projectId),
-              eq(machineLease.machineId, r.machineId),
-            ),
+            and(eq(machineLease.projectId, r.projectId), eq(machineLease.machineId, r.machineId)),
           )
           .get();
         const activeGrant = current.grantId
-          ? db
-              .select()
-              .from(leaseGrant)
-              .where(eq(leaseGrant.id, current.grantId))
-              .get()
+          ? db.select().from(leaseGrant).where(eq(leaseGrant.id, current.grantId)).get()
           : null;
         // 外部（例如 Human force reclaim）已经收回/替换了 lease：请求不能继续
         // 显示 active，否则会永久占槽；未确认排空仍须转 attention。
@@ -679,11 +733,7 @@ export function reconcileCrewResources(now: Date = new Date()): number {
           leaseNow.holderCrewChatId !== current.crewChatId
         ) {
           const forced = current.mutationId
-            ? db
-                .select()
-                .from(leaseMutation)
-                .where(eq(leaseMutation.id, current.mutationId))
-                .get()
+            ? db.select().from(leaseMutation).where(eq(leaseMutation.id, current.mutationId)).get()
             : null;
           const undrained = db
             .select()
@@ -717,10 +767,7 @@ export function reconcileCrewResources(now: Date = new Date()): number {
           .select()
           .from(machineLease)
           .where(
-            and(
-              eq(machineLease.projectId, r.projectId),
-              eq(machineLease.machineId, r.machineId),
-            ),
+            and(eq(machineLease.projectId, r.projectId), eq(machineLease.machineId, r.machineId)),
           )
           .get();
         const stillOurs =
