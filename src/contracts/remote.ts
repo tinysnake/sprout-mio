@@ -5,6 +5,12 @@ import {
   EXECUTION_WAIT_MAX_MS,
 } from "./tool-wait";
 import { z } from "zod";
+import {
+  crewResourceCallSchema,
+  crewResourceRequestSchema,
+  crewResourceDecisionSchema,
+  crewResourceReleaseSchema,
+} from "./crew-resource";
 import { assistantCallSchema } from "./assistant";
 import { chatSessionSchema, messageSchema } from "./chat";
 import { chatContinuationViewSchema } from "./chat-continuation";
@@ -679,6 +685,13 @@ export const remoteAgentRequestSchema = z.strictObject({
     z.strictObject({ type: z.literal("task_mutate"), input: taskMutateInputSchema }),
     z.strictObject({ type: z.literal("delegation_mutate"), input: delegationMutateInputSchema }),
     z.strictObject({ type: z.literal("crew_mutate"), input: crewMutateInputSchema }),
+    z.strictObject({
+      type: z.literal("crew_resource"),
+      input: z.strictObject({
+        projectId: id(ID_PREFIXES.project),
+        command: crewResourceCallSchema,
+      }),
+    }),
     chatContinuationGetCall,
     infoHubGetCall,
     z.strictObject({ type: z.literal("chat_get"), input: chatGetInputSchema }),
@@ -719,6 +732,10 @@ const blockMsField = (fallbackMs: number) => ({
     ),
 });
 export const remoteToolInputSchemas = {
+  sprout_resource_request: crewResourceRequestSchema,
+  sprout_resource_approve: crewResourceDecisionSchema,
+  sprout_resource_revoke: crewResourceDecisionSchema,
+  sprout_resource_release: crewResourceReleaseSchema,
   sprout_chat_continuation_get: chatContinuationGetInputSchema.omit({ projectId: true }),
   sprout_lease_acquire: z.strictObject({
     ...toolMutationBase,

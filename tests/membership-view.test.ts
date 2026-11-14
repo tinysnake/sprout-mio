@@ -84,6 +84,8 @@ test("active + fencing 仍在当前区但标暂不可用", () => {
     generation: 3,
     state: "fencing",
     holderInstanceId: "ins_00000001",
+    ownerKind: "instance",
+    holderCrewChatId: null,
     changedAt: "2026-01-01T00:00:00.000Z",
     pendingMutationId: null,
     escrow: null,

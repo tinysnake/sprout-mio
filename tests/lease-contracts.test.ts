@@ -119,6 +119,8 @@ describe("P4b shared contracts", () => {
       generation: 0,
       state: "free",
       holderInstanceId: null,
+      ownerKind: null,
+      holderCrewChatId: null,
       changedAt: at,
       pendingMutationId: null,
       escrow: null,
@@ -131,6 +133,7 @@ describe("P4b shared contracts", () => {
       leaseViewSchema.safeParse({
         ...lease,
         state: "fencing",
+        ownerKind: "instance",
         generation: 1,
         holderInstanceId: instanceId,
         pendingMutationId: mutationId,
@@ -185,6 +188,7 @@ describe("P4b shared contracts", () => {
       ...lease,
       generation: 1,
       state: "held",
+      ownerKind: "instance",
       holderInstanceId: instanceId,
       escrow,
     };

@@ -118,6 +118,7 @@ function sqliteProbe() {
         updated_at: 1,
       });
       insert("machine_lease", {
+        owner_kind: "instance",
         project_id: p,
         machine_id: "machine",
         generation: 1,
@@ -126,6 +127,7 @@ function sqliteProbe() {
         changed_at: 10,
       });
       insert("lease_authorization", {
+        owner_kind: "instance",
         project_id: p,
         machine_id: "machine",
         generation: 1,

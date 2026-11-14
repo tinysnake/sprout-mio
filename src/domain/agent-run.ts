@@ -1,4 +1,5 @@
 import { projectRunAttentionPolicy, runAttentionFacts } from "./run-attention";
+import { crewResourcesReady, hasCrewResourceGate, freezeCrewResources } from "./crew-resource";
 import { markChannelReplyIncomplete } from "./channel-delivery";
 import { cancelInvalidAssistantInputs } from "./assistant";
 import { enrollChatWatches } from "./assistant-interest";
@@ -584,6 +585,8 @@ export function transitionAgentRun(
   const run = sqlite
     .transaction(() => {
       const row = runRow(id, ctx);
+      if (status === "running" && !crewResourcesReady(id))
+        throw new AgentRunError("conflict", "Crew 资源尚未分配");
       if (!NEXT[row.status].includes(status))
         throw new AgentRunError("conflict", `Run 不能从 ${row.status} 变为 ${status}`);
       if (
@@ -627,6 +630,8 @@ export function transitionAgentRun(
         `Agent run ${status}`,
         status === "failed" ? "error" : status === "interrupted" ? "warn" : "info",
       );
+      if (status !== "queued" && status !== "running")
+        freezeCrewResources({ runId: id }, "run_terminal");
       settleContinuationRun(id, status, updated.settledAt ?? updated.startedAt!);
       return toRun(updated);
     })
@@ -864,7 +869,8 @@ export function queuedRunWork(): {
     .innerJoin(agentProfile, eq(agentProfile.id, agentInstance.agentProfileId))
     .where(eq(agentRun.status, "queued"))
     .orderBy(asc(agentRun.queuedAt))
-    .all();
+    .all()
+    .filter(({ run }: { run: typeof agentRun.$inferSelect }) => crewResourcesReady(run.id));
 }
 
 export function firstPendingRunInput(id: string, ctx: ProjectContext) {
@@ -928,6 +934,13 @@ export function recoverAgentRuns(): void {
         .where(inArray(agentRun.status, ["queued", "running"]))
         .all();
       for (const row of rows) {
+        const admitted = db
+          .select()
+          .from(agentRunInput)
+          .where(and(eq(agentRunInput.runId, row.id), sql`${agentRunInput.admittedAt} IS NOT NULL`))
+          .get();
+        if (row.status === "queued" && !row.startedAt && !admitted && hasCrewResourceGate(row.id))
+          continue;
         db.update(agentRun)
           .set({
             status: "interrupted",
@@ -937,6 +950,7 @@ export function recoverAgentRuns(): void {
           })
           .where(eq(agentRun.id, row.id))
           .run();
+        freezeCrewResources({ runId: row.id }, "run_interrupted");
         diagnostic(row, "agent_run.interrupted", "恢复上次未正常关闭的 Agent run", "warn");
         publishProjectChange(row.projectId, row.chatId);
       }

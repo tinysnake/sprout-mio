@@ -116,7 +116,7 @@ export async function p6bFixture(label: string) {
       .run(p.id, id, ctx.userId);
     sqlite
       .prepare(
-        "INSERT INTO machine_lease(project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,1,'held',?,1)",
+        "INSERT INTO machine_lease(project_id,machine_id,generation,state,owner_kind,holder_instance_id,changed_at) VALUES (?,?,1,'held','instance',?,1)",
       )
       .run(p.id, id, instance.id);
     return id;

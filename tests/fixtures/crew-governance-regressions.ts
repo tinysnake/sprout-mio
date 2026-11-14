@@ -90,6 +90,7 @@ function lease(
     .run();
   db.insert(s.machineLease)
     .values({
+      ownerKind: "instance",
       projectId: f.project.id,
       machineId,
       generation: 1,
@@ -101,6 +102,7 @@ function lease(
   if (targetInstanceId) {
     db.insert(s.leaseAuthorization)
       .values({
+        ownerKind: "instance",
         projectId: f.project.id,
         machineId,
         generation: 1,
@@ -130,7 +132,7 @@ function lease(
   return () => {
     db.delete(s.leaseMutation).where(eq(s.leaseMutation.machineId, machineId)).run();
     db.update(s.machineLease)
-      .set({ state: "free", holderInstanceId: null })
+      .set({ state: "free", holderInstanceId: null, ownerKind: null })
       .where(eq(s.machineLease.machineId, machineId))
       .run();
   };

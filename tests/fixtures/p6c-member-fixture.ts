@@ -183,10 +183,18 @@ export function seedLease(
 ) {
   const key = f.makeMachine();
   db.insert(machineLease)
-    .values({ ...key, generation: 1, state, holderInstanceId, changedAt: new Date() })
+    .values({
+      ownerKind: "instance",
+      ...key,
+      generation: 1,
+      state,
+      holderInstanceId,
+      changedAt: new Date(),
+    })
     .run();
   db.insert(leaseAuthorization)
     .values({
+      ownerKind: "instance",
       ...key,
       generation: 1,
       state: state === "held" ? "active" : "draining",

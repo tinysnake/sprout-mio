@@ -279,7 +279,7 @@ sqlite
   .run(human.now.getTime(), projectId, machineId);
 sqlite
   .prepare(
-    "INSERT INTO lease_authorization(project_id,machine_id,generation,holder_instance_id,state,reason,issued_at) VALUES (?,?,3,?,'active','handoff',?)",
+    "INSERT INTO lease_authorization(project_id,machine_id,generation,owner_kind,holder_instance_id,state,reason,issued_at) VALUES (?,?,3,'instance',?,'active','handoff',?)",
   )
   .run(projectId, machineId, a.instanceId, human.now.getTime());
 sqlite

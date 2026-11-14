@@ -112,10 +112,18 @@ const diagnosticRows = (projectId: string, event: string) =>
 
 function insertHeldLease(key: LeaseKey, holderInstanceId: string) {
   db.insert(machineLease)
-    .values({ ...key, generation: 1, state: "held", holderInstanceId, changedAt: new Date() })
+    .values({
+      ownerKind: "instance",
+      ...key,
+      generation: 1,
+      state: "held",
+      holderInstanceId,
+      changedAt: new Date(),
+    })
     .run();
   db.insert(leaseAuthorization)
     .values({
+      ownerKind: "instance",
       ...key,
       generation: 1,
       state: "active",

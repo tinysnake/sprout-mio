@@ -37,6 +37,12 @@ const logReadToolInputSchema = remoteToolInputSchemas.sprout_remote_execution_lo
 type ToolName = keyof typeof remoteToolInputSchemas;
 
 const descriptions: Record<ToolName, string> = {
+  sprout_resource_request:
+    "提交绑定原 run 的 Crew Machine 资源需求，等待 lead 批准；目录范围校验不提供文件系统沙箱。",
+  sprout_resource_approve:
+    "当前 Crew lead 按 epoch/revision 批准资源请求中明确的 Machine、目录及操作范围。",
+  sprout_resource_revoke: "当前 Crew lead 撤销请求并冻结新写；runtime 等待远端排空后归还。",
+  sprout_resource_release: "原 worker/lead run 提交资源归还意图，排空完成前保持占槽。",
   sprout_chat_continuation_get:
     "读取当前 Chat 的对话接续模式、周期检查、提醒和投递状态；不能暂停、停止、恢复或重发。",
   sprout_lease_acquire:
@@ -124,7 +130,12 @@ function buildRequest(name: ToolName, parameters: unknown, projectId: string): B
     const { blockMs: requestedBlockMs, ...input } = parsed;
     if (typeof requestedBlockMs === "number") blockMs = requestedBlockMs;
     if (typeof input.machineId === "string") machineId = input.machineId;
-    if (name === "sprout_lease_get") {
+    if (name.startsWith("sprout_resource_")) {
+      call = {
+        type: "crew_resource",
+        input: { projectId, command: { op: name.slice("sprout_resource_".length), input } },
+      };
+    } else if (name === "sprout_lease_get") {
       call = { type: "lease_get", input: { ...input, projectId } };
     } else if (name === "sprout_remote_execution_get") {
       call = { type: "execution_get", input: { ...input, projectId } };

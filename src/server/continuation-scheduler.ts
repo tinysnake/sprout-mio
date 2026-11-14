@@ -19,6 +19,11 @@ import { claimDueMessageWake, evaluateMessageClaim } from "../domain/message-wak
 import { nextLeaseTimeoutDueAt, sweepLeaseEscrowTimeouts } from "../domain/lease-timeout";
 import { nextRunAttentionDueAt, sweepRunAttention } from "../domain/run-attention";
 import { deliverPendingDelegations, reconcileDelegations } from "../domain/delegation";
+import {
+  reconcileCrewResources,
+  advanceCrewResources,
+  deliverCrewResourceEvents,
+} from "../domain/crew-resource";
 
 export type SchedulerClock = {
   now: () => Date;
@@ -96,6 +101,9 @@ export function createContinuationScheduler(
       const now = time.now();
       sweepRunAttention(now);
       reconcileDelegations();
+      reconcileCrewResources(new Date(now));
+      advanceCrewResources();
+      deliverCrewResourceEvents();
       deliverPendingDelegations();
       if (!config.SPROUT_CONTINUATION_ENABLED) return;
       scanChatSchedules(now);

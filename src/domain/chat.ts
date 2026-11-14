@@ -1,3 +1,4 @@
+import { freezeCrewResources, hasCrewResourceResponsibilities } from "./crew-resource";
 import { captureFeishuMessage } from "./feishu-delivery";
 import { automationSourceFor } from "./automation-source";
 import { assistantEventSummary } from "./assistant-display";
@@ -1224,6 +1225,14 @@ export function revokeProjectAgentEnrollment(projectId: string, agentProfileId: 
   const blockers = collectProjectMemberRemovalBlockers(projectId, agentProfileId);
   if (blockers.length)
     throw new ProjectMemberRemovalBlockedError({ projectId, agentProfileId, blockers });
+  for (const crew of db
+    .select()
+    .from(chat)
+    .where(and(eq(chat.projectId, projectId), eq(chat.kind, "crew")))
+    .all()) {
+    if (hasCrewResourceResponsibilities(crew.id, agentProfileId))
+      throw new ChatError("conflict", "Crew 资源责任尚未结束");
+  }
   revokeProjectAgentEnrollmentUnchecked(projectId, agentProfileId);
 }
 
@@ -1240,6 +1249,24 @@ export function revokeProjectAgentEnrollmentUnchecked(
   agentProfileId: string,
 ): void {
   const instanceIds = projectInstanceIdsOf(projectId, agentProfileId);
+  for (const crew of db
+    .select()
+    .from(chat)
+    .where(
+      and(
+        eq(chat.projectId, projectId),
+        eq(chat.kind, "crew"),
+        eq(chat.leadProfileId, agentProfileId),
+      ),
+    )
+    .all())
+    freezeCrewResources({ crewChatId: crew.id }, "lead_removed");
+  for (const run of db
+    .select()
+    .from(agentRun)
+    .where(and(eq(agentRun.projectId, projectId), inArray(agentRun.instanceId, instanceIds)))
+    .all())
+    freezeCrewResources({ runId: run.id }, "member_removed");
   // 两个帮手的空集合行为一致（无 instance 就没有 run、也没有 run 输入），
   // 不能在这里提前返回：从未建过 instance 的 Agent 仍然可能有普通群的成员行要删。
   cancelPendingRunInputs(instanceIds);
@@ -1270,6 +1297,8 @@ export function revokeProjectAgentEnrollmentUnchecked(
 }
 
 function assertCrewAgentResponsibilitiesEnded(current: Chat, agentProfileId: string): void {
+  if (hasCrewResourceResponsibilities(current.id, agentProfileId))
+    throw new ChatError("conflict", "Crew 资源请求、grant 或排空责任尚未结束");
   const blockers = collectProjectMemberRemovalBlockers(
     current.projectId,
     agentProfileId,
@@ -1323,6 +1352,7 @@ export function setCrewMode(
             })
             .run();
           signalScheduleChange(chatId);
+          if (mode === "stopped") freezeCrewResources({ crewChatId: chatId }, "crew_stopped");
           return { ...updated, control: mode };
         },
         hooks,

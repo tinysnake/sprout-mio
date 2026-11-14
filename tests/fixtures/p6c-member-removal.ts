@@ -228,6 +228,7 @@ saveProjectMachineBinding(
 );
 db.insert(machineLease)
   .values({
+    ownerKind: "instance",
     ...machineKeyB,
     generation: 1,
     state: "held",

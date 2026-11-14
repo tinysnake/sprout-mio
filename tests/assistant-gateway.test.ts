@@ -258,6 +258,10 @@ describe("assistant/worker gateway purpose and Human authority matrix", () => {
         authorizationGeneration: 1,
         operation: { kind: "shell", command: "true" },
       },
+      crew_resource: {
+        ...projectScope,
+        command: { op: "release", input: { resourceRequestId: crypto.randomUUID() } },
+      },
       execution_get: executionScope,
       execution_list: leaseScope,
       execution_cancel: {

@@ -310,10 +310,18 @@ function seedHeldLease(
   holderInstanceId: string,
 ) {
   db.insert(machineLease)
-    .values({ ...machine, generation: 1, state: "held", holderInstanceId, changedAt: new Date() })
+    .values({
+      ownerKind: "instance",
+      ...machine,
+      generation: 1,
+      state: "held",
+      holderInstanceId,
+      changedAt: new Date(),
+    })
     .run();
   db.insert(leaseAuthorization)
     .values({
+      ownerKind: "instance",
       ...machine,
       generation: 1,
       state: "active",
@@ -335,6 +343,7 @@ function seedFencingHandoff(
 ) {
   db.insert(machineLease)
     .values({
+      ownerKind: "instance",
       ...machine,
       generation: 1,
       state: "fencing",
@@ -344,6 +353,7 @@ function seedFencingHandoff(
     .run();
   db.insert(leaseAuthorization)
     .values({
+      ownerKind: "instance",
       ...machine,
       generation: 1,
       state: "draining",

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { crewResourceScopeSchema } from "./crew-resource";
 import { agentProfileIdSchema } from "./agent";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 
@@ -51,6 +52,7 @@ const terminalReasonSchema = z.enum([
 ]);
 
 export const dispatchDelegationInput = z.strictObject({
+  resources: z.array(crewResourceScopeSchema).max(16).optional(),
   chatId: delegationChatIdSchema,
   workerProfileId: agentProfileIdSchema,
   request: nonEmptySummary,
@@ -196,6 +198,7 @@ export const crewMutateInputSchema = z.discriminatedUnion("action", [
   z.strictObject({
     projectId: z.string(),
     action: z.literal("dispatch"),
+    resources: z.array(crewResourceScopeSchema).max(16).optional(),
     workerProfileId: z.string().min(1),
     request: z.string().min(1).max(8000),
     clientRequestId: z.string().min(8).max(128).optional(),

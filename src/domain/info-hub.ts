@@ -556,6 +556,8 @@ function leaseViews(projectId: string): LeaseView[] {
         generation: row.generation,
         state: row.state,
         holderInstanceId: row.holderInstanceId,
+        ownerKind: row.ownerKind,
+        holderCrewChatId: row.holderCrewChatId,
         changedAt: row.changedAt.toISOString(),
         pendingMutationId: pendingByMachine.get(row.machineId) ?? null,
         escrow:
@@ -639,6 +641,8 @@ function machineSummaries(
       generation: 0,
       state: "free",
       holderInstanceId: null,
+      ownerKind: null,
+      holderCrewChatId: null,
       changedAt: binding!.binding.createdAt.toISOString(),
       pendingMutationId: null,
       escrow: null,

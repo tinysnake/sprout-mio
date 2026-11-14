@@ -1,3 +1,5 @@
+import { coordinateCrewResource } from "./crew-resource-coordinator";
+import { CrewResourceError } from "../domain/crew-resource";
 import { assistantCallSchema } from "../contracts/assistant";
 import { assistantPrincipal, dispatchAssistantCall } from "../domain/assistant";
 import { readRunActivity } from "./pi-host/run-activity";
@@ -286,6 +288,14 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
         }
         if (assistant.success) throw new RemoteError("not_found");
         switch (parsed.call.type) {
+          case "crew_resource":
+            try {
+              return coordinateCrewResource(parsed.call.input.command, actorContext);
+            } catch (error) {
+              if (error instanceof CrewResourceError)
+                throw new RemoteError(error.code === "invalid" ? "validation_failed" : error.code);
+              throw error;
+            }
           case "info_hub_get":
           case "chat_continuation_get":
           case "task_get":
@@ -338,6 +348,7 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                     {
                       chatId,
                       workerProfileId: input.workerProfileId,
+                      resources: input.resources,
                       request: input.request,
                       clientRequestId: input.clientRequestId ?? newId(ID_PREFIXES.request),
                     },

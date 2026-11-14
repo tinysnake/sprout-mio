@@ -109,7 +109,7 @@ function heldLease(f: ReturnType<typeof fixture>) {
     .run(f.project.id, machineId, ctx.userId);
   sqlite
     .prepare(
-      "INSERT INTO machine_lease(project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,1,'held',?,1)",
+      "INSERT INTO machine_lease(project_id,machine_id,generation,state,owner_kind,holder_instance_id,changed_at) VALUES (?,?,1,'held','instance',?,1)",
     )
     .run(f.project.id, machineId, f.instance.id);
   return machineId;
@@ -281,7 +281,7 @@ describe("Task Info Hub real SQLite aggregates", () => {
       .all(f.project.id);
     sqlite
       .prepare(
-        "UPDATE machine_lease SET generation=2,state='free',holder_instance_id=NULL,changed_at=2 WHERE machine_id=?",
+        "UPDATE machine_lease SET generation=2,state='free',owner_kind=NULL,holder_instance_id=NULL,changed_at=2 WHERE machine_id=?",
       )
       .run(machineId);
     const after = f.hub();

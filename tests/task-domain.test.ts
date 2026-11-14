@@ -279,7 +279,7 @@ describe("Task lifecycle, result boundaries and atomic writes", () => {
       .run(project.id, machineId, ctx.userId);
     sqlite
       .prepare(
-        "INSERT INTO machine_lease(project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,1,'held',?,1)",
+        "INSERT INTO machine_lease(project_id,machine_id,generation,state,owner_kind,holder_instance_id,changed_at) VALUES (?,?,1,'held','instance',?,1)",
       )
       .run(project.id, machineId, first.agent!.instanceId);
     const held = sqlite.prepare("SELECT * FROM machine_lease WHERE machine_id=?").get(machineId);

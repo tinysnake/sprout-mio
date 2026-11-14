@@ -79,6 +79,8 @@ export const leaseViewSchema = leaseKeySchema
     generation: generationSchema,
     state: z.enum(["free", "held", "fencing"]),
     holderInstanceId: instanceIdSchema.nullable(),
+    ownerKind: z.enum(["instance", "crew"]).nullable(),
+    holderCrewChatId: chatIdSchema.nullable(),
     changedAt: timestampSchema,
     pendingMutationId: mutationIdSchema.nullable(),
     /** 活跃挂靠（state=escrowed 的那一行）；没有则为 null。租约没有被释放。 */
@@ -88,7 +90,11 @@ export const leaseViewSchema = leaseKeySchema
   })
   .superRefine((value, ctx) => {
     if (
-      (value.state === "free") !== (value.holderInstanceId === null) ||
+      (value.state === "free") !== (value.ownerKind === null) ||
+      (value.ownerKind === "crew"
+        ? value.holderCrewChatId === null || value.holderInstanceId !== null
+        : value.holderCrewChatId !== null ||
+          (value.state === "free") !== (value.holderInstanceId === null)) ||
       (value.state !== "free" && value.generation === 0) ||
       (value.state === "fencing") !== (value.pendingMutationId !== null) ||
       (value.escrow !== null &&

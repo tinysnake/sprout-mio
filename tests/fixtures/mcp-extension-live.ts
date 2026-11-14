@@ -165,14 +165,14 @@ grantId = (
 assert.equal(grant.projectId, projectId);
 
 insert(
-  "INSERT INTO machine_lease(project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,1,'held',?,?)",
+  "INSERT INTO machine_lease(project_id,machine_id,generation,state,owner_kind,holder_instance_id,changed_at) VALUES (?,?,1,'held','instance',?,?)",
   projectId,
   machineId,
   instanceId,
   Date.now(),
 );
 insert(
-  "INSERT INTO lease_authorization(project_id,machine_id,generation,holder_instance_id,state,issued_at,reason) VALUES (?,?,1,?,'active',?,'acquire')",
+  "INSERT INTO lease_authorization(project_id,machine_id,generation,owner_kind,holder_instance_id,state,issued_at,reason) VALUES (?,?,1,?,'active',?,'acquire')",
   projectId,
   machineId,
   instanceId,

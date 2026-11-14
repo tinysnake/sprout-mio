@@ -1,3 +1,5 @@
+import { crewResourceRequest } from "../db/schema";
+import { requestCrewResource, approveCrewResource, freezeCrewResources } from "./crew-resource";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type {
   CrewDelegationView,
@@ -122,6 +124,12 @@ export function dispatchDelegation(
     .transaction(() => {
       const crewRow = readCrewRow(input.chatId);
       assertCrewLeadOrHuman(input.chatId, { ...ctx, requestId: ctx.requestId });
+      const control = db
+        .select()
+        .from(crewControl)
+        .where(eq(crewControl.chatId, input.chatId))
+        .get();
+      if (control?.mode === "stopped") throw new DelegationError("conflict", "Crew 已停止接入");
       const lead = readCrewLeadId(input.chatId);
       if (!lead) throw new DelegationError("conflict", "Crew 还没有 lead，不能委派");
       const worker = db
@@ -156,13 +164,51 @@ export function dispatchDelegation(
           ),
         )
         .get();
-      if (existing)
+      if (existing) {
+        const previous = db
+          .select()
+          .from(crewResourceRequest)
+          .where(eq(crewResourceRequest.delegationId, existing.id))
+          .all()
+          .filter((r: typeof crewResourceRequest.$inferSelect) =>
+            r.clientRequestId.startsWith(`dispatch:${input.clientRequestId}:`),
+          );
+        const canonical = (
+          rows: {
+            machineId: string;
+            membershipEpoch: number;
+            directoryRealPath: string;
+            directoryRevision: number;
+            operations: string[];
+          }[],
+        ) =>
+          JSON.stringify(
+            rows
+              .map((r) => ({
+                machineId: r.machineId,
+                membershipEpoch: r.membershipEpoch,
+                directoryRealPath: r.directoryRealPath,
+                directoryRevision: r.directoryRevision,
+                operations: [...new Set(r.operations)].sort(),
+              }))
+              .sort((a, b) => a.machineId.localeCompare(b.machineId)),
+          );
+        if (
+          canonical(
+            previous.map((r: typeof crewResourceRequest.$inferSelect) => ({
+              ...r,
+              operations: JSON.parse(r.operationsJson) as string[],
+            })),
+          ) !== canonical(input.resources ?? [])
+        )
+          throw new DelegationError("conflict", "同一 dispatch key 的资源 payload 不一致");
         return {
           delegationId: existing.id,
           childChatId: existing.childChatId,
           status: existing.status,
           created: false,
         };
+      }
       const childChatId = newId(ID_PREFIXES.chat);
       db.insert(chat)
         .values({
@@ -216,12 +262,43 @@ export function dispatchDelegation(
         .set({ workerInstanceId: instance.id, updatedAt: new Date() })
         .where(eq(delegation.id, delegationId))
         .run();
-      ensureDelegationWorkerRun(
+      const workerRunId = ensureDelegationWorkerRun(
         childChatId,
         input.workerProfileId,
         requestMessageId,
         systemContext,
       );
+      if (input.resources?.length) {
+        if (!ctx.agent) throw new DelegationError("forbidden", "资源预批准需要当前 lead run");
+        const resourceActor = {
+          projectId: crewRow.projectId,
+          instanceId: ctx.agent.instanceId,
+          runId: ctx.agent.runId,
+        };
+        for (const scope of input.resources) {
+          const request = requestCrewResource(
+            {
+              ...scope,
+              crewChatId: crewRow.id,
+              crewEpoch: crewRow.crewEpoch,
+              subjectKind: "delegation",
+              delegationId,
+              attempt: 1,
+              runId: workerRunId,
+              clientRequestId: `dispatch:${input.clientRequestId}:${scope.machineId}`,
+            },
+            resourceActor,
+          );
+          approveCrewResource(
+            {
+              resourceRequestId: request.id,
+              crewEpoch: crewRow.crewEpoch,
+              expectedRevision: request.revision,
+            },
+            resourceActor,
+          );
+        }
+      }
       return { delegationId, childChatId, status: "running", created: true };
     })
     .immediate();
@@ -723,6 +800,7 @@ function settle(
     })
     .where(eq(delegation.id, delegationId))
     .run();
+  freezeCrewResources({ delegationId }, "delegation_terminal");
   const eventId = insertEvent({
     delegationId,
     kind: status === "completed" ? "completed" : status === "failed" ? "failed" : "canceled",

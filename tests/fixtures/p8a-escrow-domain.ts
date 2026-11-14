@@ -370,6 +370,8 @@ assert.equal(leaseRow().state, "held");
 assert.deepEqual(executions(), executionSnapshot, "挂靠不改变任何执行行（进程状态）");
 assert.equal(mutationCount(), mutationBaseline, "挂靠不写 lease_mutation 收据");
 assert.deepEqual(authorityNow(key), {
+  ownerKind: "instance",
+  ownerCrewChatId: null,
   generation: 2,
   holderInstanceId: holder.instanceId,
   state: "escrowed",

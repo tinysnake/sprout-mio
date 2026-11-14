@@ -108,6 +108,7 @@ try {
     created_at: 10,
   });
   insert("machine_lease", {
+    owner_kind: "instance",
     project_id: "a",
     machine_id: "machine",
     generation: 1,
@@ -116,6 +117,7 @@ try {
     changed_at: 10,
   });
   const authorization = {
+    owner_kind: "instance",
     project_id: "a",
     machine_id: "machine",
     generation: 1,
