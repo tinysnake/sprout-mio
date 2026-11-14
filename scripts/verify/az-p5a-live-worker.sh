@@ -17,7 +17,7 @@ fi
 # 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
 # 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
 node scripts/verify/lib/host-pi-sdk.mjs az-p5a-live-worker || exit $?
-# 默认 fixture 模式：两个场景都走真实 Chat、Pi SDK、Worker 和 remote tools，但模型由 loopback
+# 默认 fixture 模式：Crew 场景走真实 Chat、Pi SDK、Worker 和 remote tools，但模型由 loopback
 # fixture 提供，routine verify 不产生付费调用。只有显式 live 才使用真实 provider。
 # live 模式下提供方偶发失败时 run 以 model_error 结束，重跑一次；只有这次尝试自己新建的证据
 # 目录里出现 model_error 才重跑——上一轮的旧错误不算理由。live 不猜模型：
@@ -43,9 +43,8 @@ no_balance() {
   [ -n "$dir" ] || return 1
   grep -qs "insufficient_balance\|Insufficient Balance" "$dir/transcripts.json" "$dir/service.log"
 }
-for scenario in group channel; do
+for scenario in crew; do
   runner="p5a-group-fanout"
-  [ "$scenario" = channel ] && runner="p5a-channel-mention"
   scenario_result=1
   attempts=1
   [ "$SPROUT_VERIFY_CHAT_MODE" = live ] && attempts=3

@@ -107,14 +107,17 @@ const ctxAlpha: ProjectContext = {
   agent: { agentProfileId: alpha.id, instanceId: instanceAlpha.id, runId: runAlphaId },
 };
 
-// 把 Human 本人移出 `groupDrop`：owner 是 Agent 时 Project 创建者是唯一有权治理的人（d6）。
+// Crew 创建者不可移除；额外构造历史缺失成员行，继续验证非成员访问边界。
 const droppedRevision = getChat(groupDrop.id, ctx).governanceRevision;
 assert.equal(
   codeOf(() =>
     removeCrewMember(groupDrop.id, { kind: "human", id: creatorId }, droppedRevision, humanActor),
   ),
-  "ok",
+  "conflict",
 );
+sqlite
+  .prepare("DELETE FROM chat_member WHERE chat_id=? AND member_kind='human' AND member_id=?")
+  .run(groupDrop.id, creatorId);
 const dropMembers = listChatMembers(groupDrop.id, ctx);
 const keepMembers = listChatMembers(groupKeep.id, ctx);
 assert.equal(

@@ -1,6 +1,7 @@
 // I-P5a live gate: production HTTP, private SQLite, one real Worker and real Pi models,
 // or the same chain with the loopback model fixture in routine verify.
 import assert from "node:assert/strict";
+import { createCrewFixture } from "./crew-live.mjs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -21,7 +22,7 @@ import { startModelFixture, type FixtureRole } from "../../scripts/verify/lib/mo
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 
 const scenario = process.argv[2];
-assert(scenario === "group" || scenario === "channel", "expected group or channel");
+assert(scenario === "crew", "expected crew");
 const chatMode = process.env.SPROUT_VERIFY_CHAT_MODE ?? "model-fixture";
 assert(["model-fixture", "live"].includes(chatMode), "expected model-fixture or live chat mode");
 const directory = resolve(
@@ -35,8 +36,7 @@ function requireLiveModel() {
   return model;
 }
 let modelFixture: Awaited<ReturnType<typeof startModelFixture>> | undefined;
-const fixtureRoles: readonly FixtureRole[] =
-  scenario === "group" ? ["chatOwner", "chatMentioned"] : ["chatOwner", "chatUnmentioned"];
+const fixtureRoles: readonly FixtureRole[] = ["chatOwner", "chatMentioned"];
 const children: ChildProcess[] = [];
 const checks: unknown[] = [];
 const facts: Record<string, unknown> = {
@@ -331,48 +331,18 @@ try {
   facts.agents = agents.map(({ id, name }) => ({ id, name }));
   db = new Database(environment.DATABASE_URL!, { readonly: true });
   db.pragma("busy_timeout = 5000");
-  if (scenario === "group") {
-    const group = await call("createGroupChatFn", {
-      projectId: project.id,
-      title: "Real model fanout",
-      members: [
-        { kind: "human", id: account.user.id },
-        ...agents.map((a) => ({ kind: "agent", id: a.id })),
-      ],
-      initialOwner: { kind: "agent", id: agents[0].id },
-      wakePolicy: "owner_led",
-    });
-    chatId = group.id;
-    assert.equal(group.owner.id, agents[0].id);
-    pass("group has two Agent members and Agent owner", {
-      chatId,
-      owner: group.owner,
-      members: await call("listChatMembersFn", { chatId }),
-    });
-  } else {
-    const channels = rows(
-      "SELECT * FROM chat WHERE project_id=? AND kind='public_channel'",
-      project.id,
-    );
-    assert.equal(channels.length, 1);
-    chatId = channels[0].id;
-    const actual = (await call<any[]>("listChatMembersFn", { chatId }))
-      .map((m) => `${m.memberKind}:${m.memberId}`)
-      .sort();
-    const expected = [
-      `human:${account.user.id}`,
-      ...rows("SELECT agent_profile_id FROM project_member WHERE project_id=?", project.id).map(
-        (m) => `agent:${m.agent_profile_id}`,
-      ),
-    ].sort();
-    assert.deepEqual(actual, expected);
-    assert.equal(rows("SELECT * FROM chat_member WHERE chat_id=?", chatId).length, 0);
-    pass("channel members derive exactly from Project", {
-      chatId,
-      members: actual,
-      materializedRows: 0,
-    });
-  }
+  const crew = await createCrewFixture(call, environment.DATABASE_URL!, {
+    projectId: project.id,
+    title: "Real model Crew",
+    members: [
+      { kind: "human", id: account.user.id },
+      ...agents.map((agent) => ({ kind: "agent" as const, id: agent.id })),
+    ],
+    initialOwner: { kind: "agent", id: agents[0]!.id },
+  });
+  chatId = crew.id;
+  assert.equal(crew.leadProfileId, agents[0]!.id);
+  pass("Crew has lead and worker members", { chatId, lead: crew.leadProfileId });
   facts.chatId = chatId;
   const enrollment = await call("createMachineFn", { name: `P5a ${scenario} macOS` });
   const machineId = enrollment.detail.machine.id;
@@ -447,7 +417,7 @@ try {
     requestId: newId(ID_PREFIXES.request),
     command: `printf '${marker}\\n'`,
     cwd: join(root, project.id),
-    waitMs: 1000,
+    blockMs: 1000,
   };
   const toolInstructions = [
     `Only LiveAlpha: call sprout_lease_acquire once with ${JSON.stringify(leaseParameters)}.`,
@@ -455,7 +425,7 @@ try {
     "After the tools reply briefly with your own name and the shell output. Never mention any other agent.",
   ].join("\n");
   const body =
-    scenario === "group"
+    scenario === "crew"
       ? `@LiveAlpha @LiveBeta please each reply once in this conversation. LiveBeta: reply only with your own name and READY; do not call tools.\n${toolInstructions}`
       : `@LiveAlpha please run this real Worker check and reply once.\n${toolInstructions}`;
   if (modelFixture) {
@@ -468,18 +438,11 @@ try {
       ],
       reply: "LiveAlpha completed the requested tools; inspect the real Worker receipt.",
     });
-    if (scenario === "group")
-      modelFixture.arm("chatMentioned", {
-        expectedUserText: body,
-        expectedUserPrefix: body,
-        steps: [],
-        reply: "LiveBeta READY",
-      });
   }
   const sentAtMs = Date.now();
   const human = await call("sendMessageFn", { chatId, body });
   facts.humanMessage = human;
-  const expectedCount = scenario === "group" ? 2 : 1;
+  const expectedCount = 1;
   await until(
     () =>
       runs().length === expectedCount &&
@@ -495,7 +458,7 @@ try {
     initialInputs.every((input) => input.message_id === human.id),
     "each run is linked to the same human message",
   );
-  if (scenario === "channel") {
+  {
     assert.equal(initialRuns[0].agent_profile_id, agents[0].id);
     assert.equal(initialRuns.filter((run) => run.agent_profile_id === agents[1].id).length, 0);
     const quietDeadline = Date.now() + 3000;
@@ -556,7 +519,7 @@ try {
     output,
     frameCount: frames.length,
   });
-  if (scenario === "group") {
+  if (scenario === "crew") {
     const serialFirstBody =
       "@LiveAlpha Give a thoughtful two sentence explanation of how serial task processing works. Use no tools and mention no other agent.";
     const serialSecondBody =

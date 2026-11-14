@@ -84,7 +84,7 @@ const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
 const { createProject, updateProjectWakePolicy, getProject } =
   await import("../../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
-const { sendMessage } = await import("../../src/domain/chat");
+const { sendMessage, ensureInstance } = await import("../../src/domain/chat");
 const task = await import("../../src/domain/task");
 const ctx = { userId: "usr_p6a_schedule", requestId: newId(ID_PREFIXES.request) };
 sqlite
@@ -1017,11 +1017,30 @@ try {
       { senderKind: "human", senderId: ctx.userId, body: "@Alpha @Beta 各自确认一次" },
       ctx,
     );
+    equal(
+      schedule.all(
+        "SELECT id FROM agent_run WHERE chat_id=? AND status IN ('queued','running')",
+        scoped.id,
+      ).length,
+      1,
+      "Human 消息只启动 Crew lead",
+    );
+    const workerInstance = ensureInstance(scoped.id, profiles[1]!.id, ctx);
+    const workerRun = newId(ID_PREFIXES.run);
+    schedule.write(
+      "INSERT INTO agent_run(id,instance_id,chat_id,project_id,request_id,status,session_id) VALUES(?,?,?,?,?,'queued',?)",
+      workerRun,
+      workerInstance.id,
+      scoped.id,
+      project.id,
+      ctx.requestId,
+      workerInstance.id,
+    );
     const live = schedule.all<{ id: string }>(
       "SELECT id FROM agent_run WHERE chat_id=? AND status IN ('queued','running') ORDER BY rowid",
       scoped.id,
     );
-    equal(live.length, 2, "two named Agents open two live runs");
+    equal(live.length, 2, "显式造 worker run 后核对 run-scoped abort 隔离");
     const scopedBefore = schedule.controlFor(scoped.id);
     const scopedView = control(scoped.id, "abort", now, live[0].id);
     const scopedAfter = schedule.controlFor(scoped.id);

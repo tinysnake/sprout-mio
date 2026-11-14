@@ -20,6 +20,7 @@ import { migrateDatabase } from "../../src/db/migrate";
 import { addProjectMember, createAgentProfile, removeProjectMember } from "../../src/domain/agent";
 import { listAgentRunInputs, listAgentRuns, queuedRunWork } from "../../src/domain/agent-run";
 import {
+  addCrewMember,
   createDirectChat,
   ensureInstance,
   getChat,
@@ -114,6 +115,13 @@ const agentLeaving = createAgentProfile({ name: "Leaving", persona: "", harness:
 for (const agent of [agentOwner, agentBusy, agentLeaving])
   addProjectMember(project.id, agent.id, ctx);
 
+for (const agent of [agentBusy, agentLeaving])
+  addCrewMember(
+    channelId,
+    { kind: "agent", id: agent.id },
+    getChat(channelId, ctx).governanceRevision,
+    human,
+  );
 const ownedGroup = createCrewChat(
   project.id,
   crewInput({
@@ -153,8 +161,9 @@ const silentGroup = createCrewChat(
     members: [
       { kind: "human", id: creatorId },
       { kind: "agent", id: agentSilent.id },
+      { kind: "agent", id: agentOwner.id },
     ],
-    initialOwner: { kind: "human", id: creatorId },
+    initialOwner: { kind: "agent", id: agentOwner.id },
   }),
   human,
 );
@@ -168,10 +177,14 @@ assert.equal(
   "所有者的项目级移除必须先换 owner 再移",
 );
 assert.ok(projectMemberOf(project.id, agentOwner.id), "被拒的移除不能删 project_member 行");
-assert.equal(getChat(ownedGroup.id, ctx).owner.id, agentOwner.id, "被拒的移除不能改动群组所有者");
+assert.equal(
+  getChat(ownedGroup.id, ctx).leadProfileId,
+  agentOwner.id,
+  "被拒的移除不能改动 Crew lead",
+);
 assert.equal(
   groupMemberRows(agentOwner.id).length,
-  1,
+  3,
   "被拒的移除不能删普通群的 chat_member 行（它只在 owner 群里）",
 );
 assert.equal(
@@ -187,27 +200,16 @@ pass("owner.blocked", {
 });
 
 // ---------------------------------------------------------------- 2. 在途阻断：有活跃 run 时同样被拒，且不产生取消副作用
-const busyInstance = ensureInstance(sharedGroup.id, agentBusy.id, ctx);
 const busyMessage = sendMessage(
   sharedGroup.id,
   { senderKind: "human", senderId: creatorId, body: "开始干活" },
   ctx,
 );
-const busyRunId = newId(ID_PREFIXES.run);
-db.insert(agentRun)
-  .values({
-    id: busyRunId,
-    instanceId: busyInstance.id,
-    chatId: sharedGroup.id,
-    projectId: project.id,
-    requestId: ctx.requestId,
-    status: "queued",
-    sessionId: busyInstance.id,
-  })
-  .run();
-db.insert(agentRunInput)
-  .values({ runId: busyRunId, messageId: busyMessage.id, disposition: "pending" })
-  .run();
+const busyRunId = (
+  sqlite.prepare("SELECT run_id FROM agent_run_input WHERE message_id=?").get(busyMessage.id) as {
+    run_id: string;
+  }
+).run_id;
 const eventsBeforeBusy = removalEvents(project.id);
 const busyRejected = codeOf(() => removeProjectMember(project.id, agentBusy.id, ctx));
 assert.equal(
@@ -226,7 +228,7 @@ assert.equal(
   "被拒的移除不取消 pending 输入",
 );
 assert.ok(projectMemberOf(project.id, agentBusy.id), "被拒的移除保留 Project 成员行");
-assert.equal(groupMemberRows(agentBusy.id).length, 1, "被拒的移除保留普通群成员行");
+assert.equal(groupMemberRows(agentBusy.id).length, 2, "被拒的移除保留普通群成员行");
 assert.equal(removalEvents(project.id), eventsBeforeBusy, "被拒的移除不写诊断事件");
 pass("active-run.blocked", {
   code: busyRejected,
@@ -327,7 +329,7 @@ assert.ok(
   channelMembersBefore.includes(`agent:${agentLeaving.id}`),
   "移除前频道成员里必须有这名 Agent（视图来自 project_member）",
 );
-assert.equal(groupMemberRows(agentLeaving.id).length, 2, "移除前两个普通群各有一条成员行");
+assert.equal(groupMemberRows(agentLeaving.id).length, 3, "移除前两个普通群各有一条成员行");
 assert.equal(
   db
     .select()
@@ -339,8 +341,8 @@ assert.equal(
 );
 assert.equal(
   db.select().from(chatMember).where(eq(chatMember.chatId, channelId)).all().length,
-  0,
-  "频道本来就没有 chat_member 行，成员是派生事实",
+  4,
+  "Crew 显式持有 Human、lead 和 worker 成员行",
 );
 const eventsBeforeRemoval = removalEvents(project.id);
 assert.equal(getChat(leavingDm.chat.id, ctx).archivedAt, undefined, "移除前 DM 未归档（对照组）");

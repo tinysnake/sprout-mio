@@ -63,10 +63,15 @@ sendMessage(
 const crewRuns = db.select().from(agentRun).where(eq(agentRun.chatId, crew.id)).all() as {
   id: string;
   instanceId: string;
-  agentProfileId: string;
 }[];
 assert.equal(crewRuns.length, 1, "Crew 的人类消息只交给 lead，不扇出给其他成员");
-assert.equal(crewRuns[0]!.agentProfileId, agentA.id, "被唤醒的必须是 lead");
+assert.equal(
+  sqlite
+    .prepare("SELECT agent_profile_id FROM agent_instance WHERE id=?")
+    .get(crewRuns[0]!.instanceId)?.agent_profile_id,
+  agentA.id,
+  "被唤醒的必须是 lead",
+);
 
 const crewSession = getChatSession(crew.id, ctx);
 assert.equal(crewSession.kind, "crew");

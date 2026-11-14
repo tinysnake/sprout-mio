@@ -1,6 +1,7 @@
 // Production HTTP + private SQLite + the installed Pi SDK/runner + a real Worker.
 // The observer only delays original bytes. It never synthesizes runner events or domain results.
 import assert from "node:assert/strict";
+import { createCrewFixture } from "./crew-live.mjs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -506,12 +507,12 @@ try {
   const newAgent = await agent("LifecycleNew", "operator");
   const errorAgent = await agent("LifecycleError", "nonHolder");
   async function group(title: string, lead = owner, others: any[] = []) {
-    return call("createGroupChatFn", {
+    return createCrewFixture(call, environment.DATABASE_URL!, {
       projectId: project.id,
       title,
       members: [
         { kind: "human", id: account.user.id },
-        ...[lead, ...others].map((a) => ({ kind: "agent", id: a.id })),
+        ...[lead, ...others].map((a) => ({ kind: "agent" as const, id: a.id })),
       ],
       initialOwner: { kind: "agent", id: lead.id },
       wakePolicy: "owner_led",
@@ -614,6 +615,7 @@ try {
       name: "sprout_lease_acquire",
       arguments: { machineId, expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
     },
+    ...memberSteps,
   ];
   current = await change("updateTaskFn", current, {
     description: instructions(ownerSteps, memberMessage),
@@ -671,46 +673,31 @@ try {
     text: startCommand[0].value.text,
   };
   assert.equal(current.task.revision, memberSteps[0].arguments.expectedRevision);
-  // Both modes receive identical instructions; only model responses differ.
+  // Crew 的 lead 完成工具操作；最终回答中的 @worker 不启动其他成员。
   arm("chatOwner", taskPrefix(taskId), ownerSteps, memberMessage);
-  // 显式 @ 的接力是契约允许的：member 的最终回答 @owner 会再起一轮 owner。
-  // 这一轮不再点名，因此接力到此为止，不会形成 ping-pong。
-  arm("chatOwner", returnMention, [], "LIFECYCLE_DONE", true);
-  arm("chatMentioned", memberMessage, memberSteps, returnMention);
   configure({ modelGate: null });
   release("lifecycle-owner");
-  await until(
-    () => runs(chat.id).length === 3,
-    "explicit owner mention starts member, member return reaches owner",
-  );
   await settled(chat.id);
   modelFixture?.assertHealthy();
   current = await detail(taskId);
   assert.equal(current.task.status, "assigned", "normal run settlement does not finish Task");
-  assert.equal(
-    runs(chat.id).length,
-    3,
-    "member return starts one owner run and the unmentioned reply stops recursion",
-  );
+  assert.equal(runs(chat.id).length, 1, "Crew lead 的 @worker 回答不自动启动 worker");
+  assert.equal(runs(chat.id)[0].agent_profile_id, owner.id);
   assert(runs(chat.id).every((run) => run.status === "completed"));
   assert.equal(current.lastRecord.body, "member final result");
-  assert.equal(current.lastRecord.senderId, member.id);
+  assert.equal(current.lastRecord.senderId, owner.id);
   assert(current.checklist.every((item: any) => item.checked));
   assert(
     current.records.some(
-      (record: any) => record.body === "member progress" && record.senderId === member.id,
+      (record: any) => record.body === "member progress" && record.senderId === owner.id,
     ),
   );
-  pass(
-    "real owner prompt, explicit member run and progress, depth-one return, checklist final record",
-    {
-      ownerRun: ownerRun.id,
-      memberRun: runs(chat.id)[1].id,
-      returnRun: runs(chat.id)[2].id,
-      messageId: delivery.messageId,
-      taskStatus: current.task.status,
-    },
-  );
+  pass("Crew lead prompt, progress, checklist and final record without worker wake", {
+    leadRun: ownerRun.id,
+    workerRuns: 0,
+    messageId: delivery.messageId,
+    taskStatus: current.task.status,
+  });
   const leaseBefore = rows("SELECT * FROM machine_lease WHERE machine_id=?", machineId);
   assert(leaseBefore.length > 0 && leaseBefore[0].holder_instance_id, "real Agent acquired lease");
   const machineBefore = rows("SELECT * FROM machine WHERE id=?", machineId);
@@ -797,7 +784,7 @@ try {
     if (variant === "cancel") stale = await change("cancelTaskFn", stale);
     if (variant === "member-remove") {
       const governance = await call("getChatFn", { chatId: staleChat.id });
-      await call("removeGroupMemberFn", {
+      await call("removeCrewMemberFn", {
         chatId: staleChat.id,
         member: { kind: "agent", id: idle.id },
         expectedRevision: governance.governanceRevision,

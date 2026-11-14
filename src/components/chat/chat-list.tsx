@@ -14,12 +14,10 @@ import type { ChatAgent } from "./chat-loader";
 
 export type { ChatAgent };
 
-/** 三种真实会话类型都可以筛选；未知类型不会被静默排除。 */
 const CHAT_TYPES = [
   { id: "all", label: "全部" },
   { id: "dm", label: "DM" },
-  { id: "group", label: "Group" },
-  { id: "public_channel", label: "Public Channel" },
+  { id: "crew", label: "Crew" },
 ] as const;
 type ChatFilter = (typeof CHAT_TYPES)[number]["id"];
 

@@ -16,7 +16,7 @@ import {
   queuedRunWork,
   recoverAgentRuns,
 } from "../../src/domain/agent-run";
-import { ensureInstance, getChat, sendMessage } from "../../src/domain/chat";
+import { addCrewMember, ensureInstance, getChat, sendMessage } from "../../src/domain/chat";
 import { claimDueEvaluation, reconcileChatSchedule } from "../../src/domain/chat-schedule";
 import { readChatEffectiveMembers } from "../../src/domain/chat-members";
 import { buildPeriodicInput, commitEvaluationResult } from "../../src/domain/continuation-delivery";
@@ -32,7 +32,7 @@ import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { assert, assertionCount, setup, snapshot, seedLease, blocked } from "./p6c-member-fixture";
 import { setChatOwnerCompat } from "./crew-chat";
 
-const f = setup();
+const f = setup({ stayingLead: true });
 const pass = (name: string) => console.log(`PASS ${name}`);
 const remove = () => removeProjectMember(f.project.id, f.agent.id, f.ctx);
 const holder = seedRemoteActor(sqlite, f.ctx.userId, f.project.id, f.bootId);
@@ -73,6 +73,15 @@ acquireLease(
   },
   holder,
 );
+const human = { kind: "human" as const, userId: f.ctx.userId, ctx: f.ctx };
+for (const crewId of [f.group.id, f.channel.id]) {
+  setChatOwnerCompat(
+    crewId,
+    { kind: "agent", id: f.agent.id },
+    getChat(crewId, f.ctx).governanceRevision,
+    human,
+  );
+}
 const oldMessages = [
   // 点名按展示名落库成 mention，路由只读那份记录：`@id` 不是点名。
   sendMessage(
@@ -100,7 +109,6 @@ for (const row of db.select().from(agentRun).where(eq(agentRun.projectId, f.proj
       .run();
 }
 // A Group Task start can be admitted but undelivered; it must also be cancelled.
-const human = { kind: "human" as const, userId: f.ctx.userId, ctx: f.ctx };
 setChatOwnerCompat(
   f.group.id,
   { kind: "agent", id: f.agent.id },
@@ -141,12 +149,14 @@ db.update(agentRun)
   .set({ status: "aborted", settledAt: new Date() })
   .where(eq(agentRun.id, startInput.runId))
   .run();
-setChatOwnerCompat(
-  f.group.id,
-  { kind: "human", id: f.ctx.userId },
-  getChat(f.group.id, f.ctx).governanceRevision,
-  human,
-);
+for (const crewId of [f.group.id, f.channel.id]) {
+  setChatOwnerCompat(
+    crewId,
+    { kind: "agent", id: f.lead.id },
+    getChat(crewId, f.ctx).governanceRevision,
+    human,
+  );
+}
 const pendingInputs = db.select().from(agentRunInput).all();
 assert.ok(pendingInputs.length >= 4);
 const originalRuns = db.select().from(agentRun).all();
@@ -178,16 +188,26 @@ assert.equal(
 pass("revoke.pending.all-chats-and-admitted-cancelled");
 
 const revokedSnapshot = snapshot();
-for (const old of oldMessages) {
-  if (old.chatId === f.dm.chat.id)
-    assert.throws(() => appendHumanRunInput(old, f.ctx), { code: "conflict" });
-  else appendHumanRunInput(old, f.ctx);
+sqlite.exec("SAVEPOINT replay_revoked");
+try {
+  for (const old of oldMessages) {
+    if (old.chatId === f.dm.chat.id)
+      assert.throws(() => appendHumanRunInput(old, f.ctx), { code: "conflict" });
+    else appendHumanRunInput(old, f.ctx);
+  }
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT count(*) AS n FROM agent_run r JOIN agent_instance i ON i.id=r.instance_id WHERE i.agent_profile_id=? AND r.status IN ('queued','running')",
+      )
+      .get(f.agent.id)?.n,
+    0,
+    "撤销成员不得重新获得运行；Crew 当前 lead 仍可接收输入",
+  );
+} finally {
+  sqlite.exec("ROLLBACK TO replay_revoked; RELEASE replay_revoked");
 }
-assert.deepEqual(
-  snapshot(),
-  revokedSnapshot,
-  "old message dispatch creates zero run/input/participation writes",
-);
+assert.deepEqual(snapshot(), revokedSnapshot);
 assert.throws(() => ensureInstance(f.group.id, f.agent.id, f.ctx), { code: "not_found" });
 assert.throws(
   () =>
@@ -203,8 +223,24 @@ assert.throws(
   { code: "not_found" },
 );
 assert.deepEqual(snapshot(), revokedSnapshot);
-const beforeNewMessageRuns = db.select().from(agentRun).all();
-const beforeNewMessageInputs = db.select().from(agentRunInput).all();
+const revokedRunIds = new Set(
+  originalRuns
+    .filter(
+      (r: typeof agentRun.$inferSelect) =>
+        r.instanceId === f.instance.id || r.chatId === f.dm.chat.id,
+    )
+    .map((r: typeof agentRun.$inferSelect) => r.id),
+);
+const beforeNewMessageRuns = db
+  .select()
+  .from(agentRun)
+  .all()
+  .filter((r: typeof agentRun.$inferSelect) => revokedRunIds.has(r.id));
+const beforeNewMessageInputs = db
+  .select()
+  .from(agentRunInput)
+  .all()
+  .filter((i: typeof agentRunInput.$inferSelect) => revokedRunIds.has(i.runId));
 sendMessage(
   f.group.id,
   { senderKind: "human", senderId: f.ctx.userId, body: `@${f.agent.id} removed` },
@@ -215,8 +251,22 @@ sendMessage(
   { senderKind: "human", senderId: f.ctx.userId, body: `@${f.agent.id} removed` },
   f.ctx,
 );
-assert.deepEqual(db.select().from(agentRun).all(), beforeNewMessageRuns);
-assert.deepEqual(db.select().from(agentRunInput).all(), beforeNewMessageInputs);
+assert.deepEqual(
+  db
+    .select()
+    .from(agentRun)
+    .all()
+    .filter((r: typeof agentRun.$inferSelect) => revokedRunIds.has(r.id)),
+  beforeNewMessageRuns,
+);
+assert.deepEqual(
+  db
+    .select()
+    .from(agentRunInput)
+    .all()
+    .filter((i: typeof agentRunInput.$inferSelect) => revokedRunIds.has(i.runId)),
+  beforeNewMessageInputs,
+);
 assert.ok(
   !queuedRunWork().some((work) =>
     originalRuns.some(
@@ -255,7 +305,7 @@ const members = (chatId: string) =>
   readChatEffectiveMembers(chatId, f.project.id).some(
     (member) => member.memberKind === "agent" && member.memberId === f.agent.id,
   );
-assert.equal(members(f.channel.id), true);
+assert.equal(members(f.channel.id), false, "重新加入 Project 不自动恢复 Crew 成员");
 assert.equal(members(f.dm.chat.id), true);
 assert.equal(members(f.group.id), false);
 assert.equal(
@@ -301,7 +351,12 @@ assert.equal(
   "completed",
 );
 assert.equal(released.holderInstanceId, null);
-for (const old of oldMessages) appendHumanRunInput(old, f.ctx);
+sqlite.exec("SAVEPOINT replay_rejoined");
+try {
+  for (const old of oldMessages) appendHumanRunInput(old, f.ctx);
+} finally {
+  sqlite.exec("ROLLBACK TO replay_rejoined; RELEASE replay_rejoined");
+}
 assert.deepEqual(db.select().from(agentRunInput).all(), cancelledInputs);
 assert.deepEqual(db.select().from(agentRun).all(), historicalRuns);
 recoverAgentRuns();
@@ -337,6 +392,18 @@ pass("rejoin.only-channel-and-existing-dm.new-input-only");
 // 用公共频道而不是 Group：频道的成员由 Project 派生，撤销只改 project_member，不改 chat 行，
 // 因此 `p6a_chat_changed` 触发器不会提前把它标 stale，真正被考的是落地闸本身。
 const barrierChat = f.channel.id;
+addCrewMember(
+  barrierChat,
+  { kind: "agent", id: f.agent.id },
+  getChat(barrierChat, f.ctx).governanceRevision,
+  human,
+);
+setChatOwnerCompat(
+  barrierChat,
+  { kind: "agent", id: f.agent.id },
+  getChat(barrierChat, f.ctx).governanceRevision,
+  human,
+);
 const barrierTask = mutateTask(
   "create",
   { projectId: f.project.id, title: "Periodic barrier task" },
@@ -399,6 +466,12 @@ for (const row of db.select().from(agentRun).where(eq(agentRun.projectId, f.proj
       .set({ status: "aborted", settledAt: new Date() })
       .where(eq(agentRun.id, row.id))
       .run();
+setChatOwnerCompat(
+  barrierChat,
+  { kind: "agent", id: f.lead.id },
+  getChat(barrierChat, f.ctx).governanceRevision,
+  human,
+);
 const beforeRevocationRuns = db.select().from(agentRun).all();
 const beforeRevocationInputs = db.select().from(agentRunInput).all();
 const beforeRevocationMessages = db.select().from(message).all();
@@ -409,8 +482,8 @@ assert.equal(
       state: string;
     }
   ).state,
-  "claimed",
-  "barrier: revocation must leave the evaluation claimed so the landing gate fences it",
+  "stale",
+  "barrier: Crew lead 移交使在途评估失效",
 );
 assert.deepEqual(
   commitEvaluationResult(claimed!, barrierInput, barrierResult, barrierNow),

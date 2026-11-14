@@ -597,15 +597,22 @@ try {
       const database = new DatabaseSync(process.env.DATABASE_URL);
       try {
         database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE");
-        // Project 出生即带唯一的公共频道（I-P5a 频道单元）：删 Project 之前先删它的频道行，
+        // Project 出生即带初始 Crew：删 Project 之前先删它的 Crew 行，
         // 否则 chat.project_id 的外键会挡住 teardown。
         assert.deepEqual(
           database
             .prepare("SELECT kind FROM chat WHERE project_id = ?")
             .all(owned[0].id)
             .map((row) => row.kind),
-          ["public_channel"],
+          ["crew"],
         );
+        database.prepare("DELETE FROM agent_instance WHERE project_id = ?").run(owned[0].id);
+        for (const table of ["chat_member", "crew_control"])
+          database
+            .prepare(
+              `DELETE FROM ${table} WHERE chat_id IN (SELECT id FROM chat WHERE project_id = ?)`,
+            )
+            .run(owned[0].id);
         database.prepare("DELETE FROM chat WHERE project_id = ?").run(owned[0].id);
         database.prepare("DELETE FROM project_member WHERE project_id = ?").run(owned[0].id);
         database.prepare("DELETE FROM project_profile WHERE project_id = ?").run(owned[0].id);
@@ -637,13 +644,21 @@ try {
       const fresh = await call(zeroContext, "listProjectsFn");
       assert.equal(fresh.length, 1);
       assert.equal(fresh[0].name, "零 Project 入口恢复");
-      // 新 Project 也自带频道，空列表状态只能靠删掉频道行构造；本检查守的是空列表布局本身。
+      // 新 Project 自带 Crew，空列表状态靠删掉 Crew 行构造；本检查守的是空列表布局本身。
       const freshDatabase = new DatabaseSync(process.env.DATABASE_URL);
       try {
-        freshDatabase.exec("PRAGMA busy_timeout = 5000");
+        freshDatabase.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE");
+        for (const table of ["chat_member", "crew_control"])
+          freshDatabase
+            .prepare(
+              `DELETE FROM ${table} WHERE chat_id IN (SELECT id FROM chat WHERE project_id = ? AND kind = 'crew')`,
+            )
+            .run(fresh[0].id);
         freshDatabase
-          .prepare("DELETE FROM chat WHERE project_id = ? AND kind = 'public_channel'")
+          .prepare("DELETE FROM chat WHERE project_id = ? AND kind = 'crew'")
           .run(fresh[0].id);
+        assert.deepEqual(freshDatabase.prepare("PRAGMA foreign_key_check").all(), []);
+        freshDatabase.exec("COMMIT");
       } finally {
         freshDatabase.close();
       }

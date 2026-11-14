@@ -31,6 +31,7 @@ import {
 import type { ChatActor } from "../../src/domain/chat-actor";
 
 import { createProject } from "../../src/domain/project";
+import { setCrewLead } from "../../src/domain/chat";
 import { createCrewChat, crewInput } from "./crew-chat";
 migrateDatabase();
 
@@ -351,6 +352,18 @@ db.update(agentRun)
 assert.equal(getChat(groupLeaving.id, ctxEpsilon).id, groupLeaving.id, "移出前自己的对话可读");
 
 // ---------------------------------------------------------------- 5. d30：项目驱动的成员变化推进受影响群的治理版本
+assert.equal(
+  codeOf(() => removeProjectMember(projectA.id, epsilon.id, ctx)),
+  "project_member_removal_blocked",
+  "Crew lead 必须先移交职责",
+);
+addCrewMember(
+  groupLeaving.id,
+  { kind: "agent", id: alpha.id },
+  getChat(groupLeaving.id, ctx).governanceRevision,
+  human,
+);
+setCrewLead(groupLeaving.id, alpha.id, getChat(groupLeaving.id, ctx).governanceRevision, human);
 const revisionBefore = getChat(groupLeaving.id, ctx).governanceRevision;
 const controlBefore = getChat(groupControl.id, ctx).governanceRevision;
 const mainBefore = getChat(groupMain.id, ctx).governanceRevision;

@@ -95,7 +95,7 @@ async function assertOnlyLeaseFacts(page, name) {
   const text = await facts.innerText();
   // 挂靠只投影成租约行上的一条事实：状态位「挂靠中」+ 目标 + 发起者。
   assert.match(text, /挂靠中/);
-  assert.match(text, /发布公告频道/);
+  assert.match(text, /发布公告 Crew/);
   assert.match(text, /指定 Agent 文档 Agent/);
   assert.match(text, /由 重构搭档 发起/);
   // 代次只作为提交时的匹配条件，界面不再显示租约代次。
@@ -133,7 +133,7 @@ await check("挂靠中的租约在 Machine 租约页只呈现一行事实（ligh
     assert.equal(await fact.getAttribute("data-escrow-state"), "escrowed");
     // 挂靠行只剩目标与发起者：「挂靠中」已经在状态位上，不在这一行重复。
     const factText = await fact.innerText();
-    assert.match(factText, /Public Channel/);
+    assert.match(factText, /Crew/);
     assert.match(factText, /指定 Agent 文档 Agent/);
     assert.match(factText, /由 重构搭档 发起/);
     // 挂靠已经把操作权交出去了，所以不再并列「持有者可以对该 Machine 发起远端操作」。

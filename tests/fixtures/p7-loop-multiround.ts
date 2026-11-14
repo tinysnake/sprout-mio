@@ -1,6 +1,7 @@
 // P7: real Pi SDK turns, human stop, Task ownership and Worker artifacts.
 // The service/HTTP harness follows task-live.ts; observations never synthesize SDK events.
 import assert from "node:assert/strict";
+import { createCrewFixture } from "./crew-live.mjs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -451,11 +452,14 @@ globalThis.fetch = async (url, options) => {
     facts.chatId = chatId;
     db = new Database(environment.DATABASE_URL!, { readonly: true });
     db.pragma("busy_timeout = 5000");
-    const otherChat = await call("createGroupChatFn", {
+    const otherChat = await createCrewFixture(call, environment.DATABASE_URL!, {
       projectId: project.id,
       title: "Private other Chat",
-      members: [{ kind: "human", id: account.user.id }],
-      initialOwner: { kind: "human", id: account.user.id },
+      members: [
+        { kind: "human", id: account.user.id },
+        { kind: "agent", id: agent.id },
+      ],
+      initialOwner: { kind: "agent", id: agent.id },
       wakePolicy: "owner_led",
     });
     const foreignDetail = await call("createTaskFn", {
@@ -532,7 +536,7 @@ globalThis.fetch = async (url, options) => {
       requestId: newId(ID_PREFIXES.request),
       command: `printf '${marker}\\n'`,
       cwd: join(root, project.id),
-      waitMs: 1000,
+      blockMs: 1000,
     };
 
     const detail = await call("createTaskFn", {

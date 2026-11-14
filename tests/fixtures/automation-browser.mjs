@@ -2,8 +2,13 @@ import assert from "node:assert/strict";
 
 export async function verifyAutomationTargetPicker({ ui, page, project, beta, call, until }) {
   const chats = await call("listChatsFn", { projectId: project.id });
-  const channel = chats.find((chat) => chat.kind === "public_channel");
-  assert(channel, "Project has its real public channel");
+  const channel = chats.find((chat) => chat.kind === "crew");
+  assert(channel, "Project has its Crew");
+  await call("addCrewMemberFn", {
+    chatId: channel.id,
+    member: { kind: "agent", id: beta.id },
+    expectedRevision: channel.governanceRevision,
+  });
   await ui.getByLabel("动作", { exact: true }).selectOption("group_agent");
   const target = ui.getByLabel("目标 Chat", { exact: true });
   assert.equal(await target.locator(`option[value="${channel.id}"]`).count(), 1);
@@ -13,7 +18,7 @@ export async function verifyAutomationTargetPicker({ ui, page, project, beta, ca
       (
         await ui.getByLabel("目标 Agent", { exact: true }).locator("option").allTextContents()
       ).includes(beta.name),
-    "public channel exposes effective Project worker",
+    "Crew exposes explicitly added worker",
   );
   await ui.getByLabel("目标 Agent", { exact: true }).selectOption(beta.id);
   await ui.getByLabel("动作", { exact: true }).selectOption("dm_agent");

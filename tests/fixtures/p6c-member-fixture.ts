@@ -28,7 +28,13 @@ import {
   task,
 } from "../../src/db/schema";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
-import { createDirectChat, ensureInstance } from "../../src/domain/chat";
+import {
+  addCrewMember,
+  createDirectChat,
+  ensureInstance,
+  getChat,
+  setCrewLead,
+} from "../../src/domain/chat";
 
 import { mutateTask } from "../../src/domain/task";
 import { createProject } from "../../src/domain/project";
@@ -36,7 +42,7 @@ import { createMachine, saveProjectMachineBinding } from "../../src/domain/machi
 import { openInitialMembership } from "../../src/server/membership";
 import { createCrewChat, crewInput } from "./crew-chat";
 
-export function setup() {
+export function setup({ stayingLead = false } = {}) {
   migrateDatabase();
   const userId = "p6c-human";
   sqlite
@@ -48,16 +54,21 @@ export function setup() {
   const project = createProject({ name: "P6c" }, ctx);
   const agent = createAgentProfile({ name: "Leaving", persona: "", harness: "pi" }, ctx);
   addProjectMember(project.id, agent.id, ctx);
+  const lead = stayingLead
+    ? createAgentProfile({ name: "Staying lead", persona: "", harness: "pi" }, ctx)
+    : agent;
+  if (stayingLead) addProjectMember(project.id, lead.id, ctx);
   const dm = createDirectChat(project.id, agent.id, ctx);
   const group = createCrewChat(
     project.id,
     crewInput({
       projectId: project.id,
       title: "Group",
-      initialOwner: { kind: "human", id: userId },
+      initialOwner: { kind: "agent", id: lead.id },
       members: [
         { kind: "human", id: userId },
         { kind: "agent", id: agent.id },
+        ...(stayingLead ? [{ kind: "agent" as const, id: lead.id }] : []),
       ],
     }),
     { kind: "human", userId, ctx },
@@ -73,6 +84,18 @@ export function setup() {
       "INSERT OR IGNORE INTO chat_member(chat_id,member_kind,member_id,added_at) VALUES (?,'agent',?,?)",
     )
     .run(channel.id, agent.id, 1);
+  if (stayingLead) {
+    addCrewMember(channel.id, { kind: "agent", id: lead.id }, channel.governanceRevision, {
+      kind: "human",
+      userId,
+      ctx,
+    });
+    setCrewLead(channel.id, lead.id, getChat(channel.id, ctx).governanceRevision, {
+      kind: "human",
+      userId,
+      ctx,
+    });
+  }
   const bootId = newId(ID_PREFIXES.boot);
   sqlite
     .prepare(
@@ -87,9 +110,21 @@ export function setup() {
     openInitialMembership(db, { ...key, now: machineCtx.now });
     return key;
   };
-  return { ctx, project, agent, dm, group, instance, channel, bootId, machineCtx, makeMachine };
+  return {
+    ctx,
+    project,
+    agent,
+    lead,
+    dm,
+    group,
+    instance,
+    channel,
+    bootId,
+    machineCtx,
+    makeMachine,
+  };
 }
-export type Fixture = ReturnType<typeof setup>;
+export type Fixture = Omit<ReturnType<typeof setup>, "lead">;
 export function seedRun(
   f: Fixture,
   status: typeof agentRun.$inferSelect.status = "queued",

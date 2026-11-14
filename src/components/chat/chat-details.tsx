@@ -805,7 +805,7 @@ function LeadDialog({
           >
             {members.map((member) => (
               <option key={member.memberId} value={member.memberId}>
-                {names.get(memberKey(member)) ?? "Agent"}
+                {names.get(member.memberId) ?? "Agent"}
                 {member.memberId === currentLeadProfileId ? " · 当前 lead" : ""}
               </option>
             ))}

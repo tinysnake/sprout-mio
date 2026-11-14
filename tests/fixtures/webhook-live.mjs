@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createCrewFixture } from "./crew-live.mjs";
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, openSync, closeSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -170,7 +171,7 @@ try {
   for (const agent of [alpha, beta])
     await call("addProjectMemberFn", { projectId: project.id, agentProfileId: agent.id });
   const dm = await call("createDirectChatFn", { projectId: project.id, agentProfileId: alpha.id });
-  const group = await call("createGroupChatFn", {
+  const group = await createCrewFixture(call, database, {
     projectId: project.id,
     title: "Webhook group",
     wakePolicy: "mention_only",
@@ -404,7 +405,9 @@ try {
       enabled: true,
       action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
     });
-    fixture.arm("chatMentioned", {
+    fixture.arm("chatOwner", {
+      isolated: true,
+      expectedContextIds: [group.id],
       expectedUserPrefix: "{",
       steps: [],
       reply: "WEBHOOK_GROUP_RESULT",
@@ -436,9 +439,9 @@ try {
       enabled: true,
       action: { kind: "group_owner", chatId: group.id },
     });
-    await call("setChatOwnerFn", {
+    const stopped = await call("setCrewModeFn", {
       chatId: group.id,
-      owner: { kind: "human", id: humanId },
+      mode: "stopped",
       expectedRevision: group.governanceRevision,
     });
     const skipped = await call("trialWebhookFn", {
@@ -447,7 +450,29 @@ try {
       payload: {},
     });
     assert.equal(skipped.decision, "skipped");
-    pass("group-explicit-agent-and-invalid-owner-skip");
+    assert.equal(skipped.reason, "chat_stopped");
+    await call("setCrewModeFn", {
+      chatId: group.id,
+      mode: "active",
+      expectedRevision: stopped.governanceRevision,
+    });
+    assert.equal(
+      db
+        .prepare(
+          "SELECT i.agent_profile_id FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id JOIN agent_instance i ON i.id=r.instance_id WHERE x.message_id=?",
+        )
+        .get(groupReceipt.messageId).agent_profile_id,
+      alpha.id,
+    );
+    assert.equal(
+      db
+        .prepare(
+          "SELECT count(*) AS n FROM agent_run r JOIN agent_instance i ON i.id=r.instance_id WHERE r.chat_id=? AND i.agent_profile_id=?",
+        )
+        .get(group.id, beta.id).n,
+      0,
+    );
+    pass("Crew automation routes only to lead and skips stopped Crew");
     const alternate = await call("createWebhookRuleFn", {
       projectId: project.id,
       name: "Race B",
