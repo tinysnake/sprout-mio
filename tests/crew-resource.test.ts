@@ -19,7 +19,7 @@ const {
   deliverCrewResourceEvents,
 } = await import("../src/domain/crew-resource");
 const { cancelExecution } = await import("../src/server/remote");
-const { recoverAgentRuns, queuedRunWork } = await import("../src/domain/agent-run");
+const { recoverAgentRuns, queuedRunWork, transitionAgentRun } = await import("../src/domain/agent-run");
 const { dispatchDelegation } = await import("../src/domain/delegation");
 const { authorityNow, acquireLease, assertExecutionWrite, forceReclaimLease } =
   await import("../src/server/lease");
@@ -255,6 +255,37 @@ test("Human force reclaim records unconfirmed drain and blocks automatic worker 
       .prepare("SELECT id FROM crew_resource_event WHERE request_id=? AND audience='human'")
       .get(r.id),
   );
+});
+test("reclaim before reconcile releases an attention request instead of holding the slot", () => {
+  const f = fixture(),
+    w = f.worker(),
+    next = f.worker(),
+    r = f.approved(w),
+    q = f.approved(next);
+  advanceCrewResources();
+  releaseCrewResource(r.id, w);
+  const pending = row(r.id);
+  forceReclaimLease(
+    {
+      ...f.key,
+      action: "force_reclaim",
+      mutationId: pending.mutationId!,
+      expectedGeneration: pending.generation!,
+      confirm: true,
+    },
+    { ...f.human, now: new Date() },
+  );
+  transitionAgentRun(
+    w.runId,
+    "aborted",
+    { stopReason: "human_stop" },
+    { userId: "owner", requestId: newId(ID_PREFIXES.request) },
+  );
+  assert.equal(row(r.id).state, "attention");
+  reconcileCrewResources();
+  assert.equal(row(r.id).state, "released");
+  advanceCrewResources();
+  assert.equal(row(q.id).state, "active");
 });
 test("lead change and member removal cannot discard active resource responsibilities", () => {
   const f = fixture(),

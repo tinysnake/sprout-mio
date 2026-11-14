@@ -142,3 +142,10 @@
 - 夹具调整：旧 p8a/p8b Crew 场景使用独立 dummy lead，p8a 的 Crew handoff 目标改为预期 forbidden。
 - 验证：`pnpm typecheck` 通过；`pnpm test` 188 文件 / 1837 测试通过；`crew-delegation` 14 项、`z-lease-integration` 全部断言、`p8b-timeout-integration` 34 项通过。
 - 仍存缺口：非 lead 的 Crew 成员通过内部服务直调仍可使用旧 mutation；网络入口已封死，后续在 CR4 前移除旧入口或迁移剩余夹具。
+
+### 2026-11-15 复审两处遗漏
+
+- `leaseWaitTarget` 读取了不存在的 `ownerCrewChatId`，而 `LeaseView` 暴露的是 `holderCrewChatId`，真实 Crew 租约仍被当作空闲。已统一字段，并把等待测试的输入类型绑定到 `LeaseView`/`LeaseWaitView`，避免契约漂移。
+- Human 正常 reclaim 后，原 run 在 reconcile 前结束时 `freezeCrewResources` 已把请求转为 `attention/owner_conflict`，原结清分支只处理 `active`，请求永久占槽。reconcile 现在对 `owner_conflict`/`drain_unconfirmed` 在确认 lease 已不属于当前 Crew、且没有未排空执行时转 `released`，有未排空执行则保留 attention。
+- 新增覆盖「reclaim → abort 原 run → reconcile → 下一请求获得分配」的测试。
+- 验证：`pnpm typecheck`、`pnpm test`（188 文件 / 1838 测试）、`crew-delegation`、`z-lease-integration`、`p8b-timeout-integration` 通过。

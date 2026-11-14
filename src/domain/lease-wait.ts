@@ -13,7 +13,7 @@ export type LeaseWaitView = {
   readonly state: "free" | "held" | "fencing";
   readonly holderInstanceId: string | null;
   /** Crew owner 的持有点：该字段存在时，即使没有 instance holder 也视为被占用。 */
-  readonly ownerCrewChatId?: string | null;
+  readonly holderCrewChatId?: string | null;
   readonly escrow: {
     readonly escrowId: string;
     readonly state: string;
@@ -51,8 +51,8 @@ export function leaseWaitTarget(view: LeaseWaitView, requesterInstanceId: string
   if (view.holderInstanceId === requesterInstanceId)
     return { kind: "no_target", reason: "already_held" };
   if (view.escrow) return { kind: "wait", reason: "escrowed", escrowId: view.escrow.escrowId };
-  if (view.state !== "free" && view.ownerCrewChatId)
-    return { kind: "wait", reason: "held_by_crew", crewChatId: view.ownerCrewChatId };
+  if (view.state !== "free" && view.holderCrewChatId)
+    return { kind: "wait", reason: "held_by_crew", crewChatId: view.holderCrewChatId };
   if (view.state !== "free" && view.holderInstanceId !== null)
     return { kind: "wait", reason: "held_by_other", holderInstanceId: view.holderInstanceId };
   return { kind: "no_target", reason: "free" };

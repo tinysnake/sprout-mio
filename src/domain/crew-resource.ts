@@ -709,6 +709,44 @@ export function reconcileCrewResources(now: Date = new Date()): number {
           continue;
         }
       }
+      if (
+        current.state === "attention" &&
+        (current.reason === "owner_conflict" || current.reason === "drain_unconfirmed")
+      ) {
+        const leaseNow = db
+          .select()
+          .from(machineLease)
+          .where(
+            and(
+              eq(machineLease.projectId, r.projectId),
+              eq(machineLease.machineId, r.machineId),
+            ),
+          )
+          .get();
+        const stillOurs =
+          leaseNow?.state !== "free" &&
+          leaseNow?.generation === current.generation &&
+          leaseNow?.ownerKind === "crew" &&
+          leaseNow?.holderCrewChatId === current.crewChatId;
+        if (!stillOurs) {
+          const undrained = db
+            .select()
+            .from(remoteExecution)
+            .where(
+              and(
+                eq(remoteExecution.projectId, r.projectId),
+                eq(remoteExecution.machineId, r.machineId),
+                sql`${remoteExecution.authorizationGeneration}<=${current.generation ?? 0} AND ${remoteExecution.dispatchConnectionGeneration} IS NOT NULL AND ${remoteExecution.drainedAt} IS NULL`,
+              ),
+            )
+            .get();
+          if (!undrained) {
+            update(current, { state: "released", releasedAt: new Date() }, "released");
+            count++;
+          }
+        }
+        continue;
+      }
       if (current.state === "releasing") {
         completeLeaseMutation({ projectId: r.projectId, machineId: r.machineId }, new Date());
         const mutation = current.mutationId

@@ -10,9 +10,11 @@ import {
   clampLeaseWaitMs,
   resolveLeaseTimeouts,
 } from "../src/contracts/lease-timeout";
-import { leaseWaitBusy, leaseWaitTarget, waitForLease } from "../src/domain/lease-wait";
+import type { LeaseView } from "../src/contracts/lease";
+import { leaseWaitBusy, leaseWaitTarget, waitForLease, type LeaseWaitView } from "../src/domain/lease-wait";
 
-type View = Parameters<typeof leaseWaitTarget>[0];
+type View = Pick<LeaseView, "state" | "holderInstanceId"> &
+  Pick<LeaseWaitView, "holderCrewChatId" | "escrow">;
 const heldBy = (instanceId: string): View => ({
   state: "held",
   holderInstanceId: instanceId,
@@ -67,7 +69,7 @@ test("只对「被其他分身持有」或「仍在挂靠中且有对象」进�
   });
   expect(
     leaseWaitTarget(
-      { state: "held", holderInstanceId: null, ownerCrewChatId: "chat_crew", escrow: null },
+      { state: "held", holderInstanceId: null, holderCrewChatId: "chat_crew", escrow: null },
       "ins_me",
     ),
   ).toEqual({ kind: "wait", reason: "held_by_crew", crewChatId: "chat_crew" });
