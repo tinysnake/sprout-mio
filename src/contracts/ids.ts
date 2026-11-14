@@ -6,6 +6,7 @@ export const ID_PREFIXES = {
   run: "run",
   leaseMutation: "lmu",
   leaseEscrow: "les",
+  leaseGrant: "lgr",
   remoteToolGrant: "rtg",
   mcpRegistration: "mrg",
   mcpProcess: "mpr",

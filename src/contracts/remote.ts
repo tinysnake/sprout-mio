@@ -731,6 +731,15 @@ export const remoteToolInputSchemas = {
     expectedGeneration: positiveSafeIntegerSchema,
     targetInstanceId: instanceIdSchema,
   }),
+  sprout_lease_grant: z.strictObject({
+    ...toolMutationBase,
+    expectedGeneration: positiveSafeIntegerSchema,
+    targetInstanceId: instanceIdSchema,
+  }),
+  sprout_lease_revoke_grant: z.strictObject({
+    ...toolMutationBase,
+    expectedGeneration: positiveSafeIntegerSchema,
+  }),
   sprout_lease_get: z.strictObject({
     machineId: leaseKeySchema.shape.machineId,
     mutationId: mutationIdSchema.optional(),

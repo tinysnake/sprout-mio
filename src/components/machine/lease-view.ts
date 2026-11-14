@@ -46,6 +46,8 @@ export const LEASE_MUTATION_LABELS: Record<LeaseMutationView["action"], string> 
   release: "释放",
   handoff: "交接",
   reclaim: "收回",
+  grant: "授予",
+  revoke_grant: "撤销授予",
 };
 
 export type LeaseHolder = {

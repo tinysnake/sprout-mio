@@ -113,6 +113,17 @@ export const leaseMutationInputSchema = z.discriminatedUnion("action", [
     expectedGeneration: positiveSafeIntegerSchema,
     confirm: z.literal(true),
   }),
+  z.strictObject({
+    ...mutationBase,
+    action: z.literal("grant"),
+    expectedGeneration: positiveSafeIntegerSchema,
+    targetInstanceId: instanceIdSchema,
+  }),
+  z.strictObject({
+    ...mutationBase,
+    action: z.literal("revoke_grant"),
+    expectedGeneration: positiveSafeIntegerSchema,
+  }),
 ]);
 // Force is a separate Human command; it is deliberately absent from Agent mutation inputs.
 export const forceReclaimLeaseInputSchema = leaseKeySchema.extend({
@@ -130,7 +141,7 @@ export const forcedReclaimSchema = z.strictObject({
 export const leaseMutationViewSchema = leaseKeySchema
   .extend({
     mutationId: mutationIdSchema,
-    action: z.enum(["acquire", "release", "handoff", "reclaim"]),
+    action: z.enum(["acquire", "release", "handoff", "reclaim", "grant", "revoke_grant"]),
     state: z.enum(["pending", "completed"]),
     expectedGeneration: generationSchema,
     completedGeneration: generationSchema.nullable(),

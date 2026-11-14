@@ -96,6 +96,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/info-hub.test.ts",
     "tests/integration-mcp.test.ts",
     "tests/lease-contracts.test.ts",
+    "tests/lease-grant.test.ts",
     "tests/lease-view.test.ts",
     "tests/machine-contracts.test.ts",
     "tests/machine-credential-gap.test.ts",

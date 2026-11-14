@@ -1971,6 +1971,8 @@ export const leaseAuthorization = sqliteTable(
         "escrow",
         "claim",
         "escrow_cancel",
+        "grant",
+        "revoke_grant",
       ],
     }).notNull(),
   },
@@ -1986,7 +1988,7 @@ export const leaseAuthorization = sqliteTable(
     check("lease_authorization_check_3", sql`typeof(issued_at)='integer' AND issued_at>=0`),
     check(
       "lease_authorization_check_4",
-      sql`reason IN ('initial','acquire','release','handoff','reclaim','escrow','claim','escrow_cancel')`,
+      sql`reason IN ('initial','acquire','release','handoff','reclaim','escrow','claim','escrow_cancel','grant','revoke_grant')`,
     ),
     primaryKey({ columns: [t.projectId, t.machineId, t.generation] }),
     uniqueIndex(
@@ -2024,7 +2026,9 @@ export const leaseMutation = sqliteTable(
     actorId: text("actor_id").notNull(),
     requestId: text("request_id").notNull(),
     payloadHash: text("payload_hash").notNull(),
-    action: text("action", { enum: ["acquire", "release", "handoff", "reclaim"] }).notNull(),
+    action: text("action", {
+      enum: ["acquire", "release", "handoff", "reclaim", "grant", "revoke_grant"],
+    }).notNull(),
     expectedGeneration: integer("expected_generation").notNull(),
     targetInstanceId: text("target_instance_id"),
     state: text("state", { enum: ["pending", "completed"] }).notNull(),
@@ -2038,7 +2042,10 @@ export const leaseMutation = sqliteTable(
       "lease_mutation_check_2",
       sql`length(payload_hash)=64 AND payload_hash NOT GLOB '*[^0-9a-f]*'`,
     ),
-    check("lease_mutation_check_3", sql`action IN ('acquire','release','handoff','reclaim')`),
+    check(
+      "lease_mutation_check_3",
+      sql`action IN ('acquire','release','handoff','reclaim','grant','revoke_grant')`,
+    ),
     check(
       "lease_mutation_check_4",
       sql`typeof(expected_generation)='integer' AND expected_generation BETWEEN 0 AND 9007199254740991`,
@@ -2076,11 +2083,11 @@ export const leaseMutation = sqliteTable(
     }),
     check(
       "lease_mutation_check_12",
-      sql`(action='handoff' AND target_instance_id IS NOT NULL) OR (action!='handoff' AND target_instance_id IS NULL)`,
+      sql`(action IN ('handoff','grant') AND target_instance_id IS NOT NULL) OR (action NOT IN ('handoff','grant') AND target_instance_id IS NULL)`,
     ),
     check(
       "lease_mutation_check_13",
-      sql`(actor_kind='agent' AND action IN ('acquire','release','handoff')) OR (actor_kind='human' AND action='reclaim')`,
+      sql`(actor_kind='agent' AND action IN ('acquire','release','handoff','grant','revoke_grant')) OR (actor_kind='human' AND action='reclaim')`,
     ),
     check(
       "lease_mutation_check_14",
@@ -2250,6 +2257,61 @@ export const workerExchangeFrame = sqliteTable(
     foreignKey({
       columns: [t.machineId, t.connectionGeneration],
       foreignColumns: [machineConnection.machineId, machineConnection.generation],
+    }),
+  ],
+);
+
+export const leaseGrant = sqliteTable(
+  "lease_grant",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    generation: integer("generation").notNull(),
+    crewChatId: text("crew_chat_id").notNull(),
+    grantorInstanceId: text("grantor_instance_id").notNull(),
+    granteeInstanceId: text("grantee_instance_id").notNull(),
+    granteeRunId: text("grantee_run_id").notNull(),
+    state: text("state", { enum: ["active", "revoked"] }).notNull(),
+    requestId: text("request_id").notNull(),
+    issuedAt: integer("issued_at", { mode: "timestamp_ms" }).notNull(),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    check("lease_grant_check_1", sql`state IN ('active','revoked')`),
+    check(
+      "lease_grant_check_2",
+      sql`(state='active' AND revoked_at IS NULL) OR (state='revoked' AND revoked_at IS NOT NULL)`,
+    ),
+    uniqueIndex("lease_grant_generation_grantee_unique").on(
+      t.projectId,
+      t.machineId,
+      t.generation,
+      t.granteeInstanceId,
+    ),
+    uniqueIndex("lease_grant_grantor_request_unique").on(t.grantorInstanceId, t.requestId),
+    uniqueIndex("lease_grant_one_active_per_machine")
+      .on(t.projectId, t.machineId)
+      .where(sql`state = 'active'`),
+    foreignKey({
+      columns: [t.projectId, t.machineId, t.generation],
+      foreignColumns: [
+        leaseAuthorization.projectId,
+        leaseAuthorization.machineId,
+        leaseAuthorization.generation,
+      ],
+    }),
+    foreignKey({
+      columns: [t.crewChatId, t.projectId],
+      foreignColumns: [chat.id, chat.projectId],
+    }),
+    foreignKey({
+      columns: [t.grantorInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
+    }),
+    foreignKey({
+      columns: [t.granteeInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
     }),
   ],
 );

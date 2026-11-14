@@ -35,6 +35,7 @@ import {
   diagnosticEvent,
   leaseAuthorization,
   leaseEscrow,
+  leaseGrant,
   leaseMutation,
   machine,
   machineConnection,
@@ -580,6 +581,40 @@ function handoffTargetOperable(key: LeaseKey, targetInstanceId: string | null): 
       .get(),
   );
 }
+function leaseGrantWhere(key: LeaseKey) {
+  return and(eq(leaseGrant.projectId, key.projectId), eq(leaseGrant.machineId, key.machineId));
+}
+function revokeGrants(key: LeaseKey, generation: number, now: Date) {
+  db.update(leaseGrant)
+    .set({ state: "revoked", revokedAt: now })
+    .where(
+      and(
+        leaseGrantWhere(key),
+        eq(leaseGrant.generation, generation),
+        eq(leaseGrant.state, "active"),
+      ),
+    )
+    .run();
+}
+function isCrewLead(instanceId: string, crewChatId: string): boolean {
+  const instance = db.select().from(agentInstance).where(eq(agentInstance.id, instanceId)).get();
+  const crew = db.select().from(chat).where(eq(chat.id, crewChatId)).get();
+  return Boolean(
+    instance &&
+    crew &&
+    crew.kind === "crew" &&
+    crew.leadProfileId === instance.agentProfileId &&
+    instance.chatId === crew.id,
+  );
+}
+function granteeRunFor(targetInstanceId: string | null) {
+  if (!targetInstanceId) return undefined;
+  return db
+    .select()
+    .from(agentRun)
+    .where(and(eq(agentRun.instanceId, targetInstanceId), eq(agentRun.status, "running")))
+    .get();
+}
 
 /** 同一个待决收据只记一次：worker 心跳会反复重试，诊断不能跟着刷屏。 */
 function recordStrandedHandoff(
@@ -632,7 +667,14 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
   if (!pending) return;
   // 交接的确认门必须重查目标：它可能在 fencing 期间被移出 Project，此时落地就是把租约交给
   // 一个已移除的实例。拒绝落地、保留 fencing + pending，交给 Human 在租约页释放。
-  if (pending.action === "handoff" && !handoffTargetOperable(key, pending.targetInstanceId)) {
+  if (
+    (pending.action === "handoff" || pending.action === "grant") &&
+    !handoffTargetOperable(key, pending.targetInstanceId)
+  ) {
+    recordStrandedHandoff(key, pending, now);
+    return;
+  }
+  if (pending.action === "grant" && !granteeRunFor(pending.targetInstanceId)) {
     recordStrandedHandoff(key, pending, now);
     return;
   }
@@ -657,15 +699,16 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
   if (old.generation >= Number.MAX_SAFE_INTEGER) throw new LeaseError("conflict");
   const generation = old.generation + 1;
   const holderInstanceId =
-    pending.action === "handoff"
+    pending.action === "handoff" || pending.action === "grant"
       ? pending.targetInstanceId
-      : pending.action === "acquire"
+      : pending.action === "acquire" || pending.action === "revoke_grant"
         ? pending.actorId
         : null;
   db.update(leaseAuthorization)
     .set({ state: "revoked", revokedAt: now })
     .where(authorizationWhere(key, old.generation))
     .run();
+  revokeGrants(key, old.generation, now);
   db.insert(leaseAuthorization)
     .values({
       ...key,
@@ -685,6 +728,42 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
     })
     .where(leaseWhere(key))
     .run();
+  if (pending.action === "grant") {
+    const granteeRun = granteeRunFor(pending.targetInstanceId)!;
+    const grantor = db
+      .select()
+      .from(agentInstance)
+      .where(eq(agentInstance.id, pending.actorId))
+      .get();
+    if (!grantor) throw new LeaseError("not_found");
+    db.insert(leaseGrant)
+      .values({
+        id: newId(ID_PREFIXES.leaseGrant),
+        ...key,
+        generation,
+        crewChatId: grantor.chatId,
+        grantorInstanceId: pending.actorId,
+        granteeInstanceId: granteeRun.instanceId,
+        granteeRunId: granteeRun.id,
+        state: "active",
+        requestId: pending.requestId,
+        issuedAt: now,
+      })
+      .run();
+  }
+  if (pending.action === "revoke_grant") {
+    db.update(leaseGrant)
+      .set({ state: "revoked", revokedAt: now })
+      .where(
+        and(
+          leaseGrantWhere(key),
+          eq(leaseGrant.state, "active"),
+          eq(leaseGrant.grantorInstanceId, pending.actorId),
+          eq(leaseGrant.generation, pending.expectedGeneration),
+        ),
+      )
+      .run();
+  }
   // 挂靠中的租约被收回或释放时，挂靠行随之作废，但保留为历史。
   closeLiveEscrow(key, now);
   db.update(leaseMutation)
@@ -746,15 +825,35 @@ function mutateLeaseInTransaction(
   // 发起者不能挂靠后再释放/交接/申请，Human 收回不受影响。
   if (input.action !== "reclaim" && liveEscrowRow(key))
     throw new LeaseError(input.action === "acquire" ? "lease_conflict" : "lease_not_holder");
+  const grantRow =
+    input.action === "revoke_grant"
+      ? db
+          .select()
+          .from(leaseGrant)
+          .where(
+            and(
+              leaseGrantWhere(key),
+              eq(leaseGrant.state, "active"),
+              eq(leaseGrant.generation, row.generation),
+            ),
+          )
+          .get()
+      : undefined;
+  const activeGrant =
+    grantRow && (grantRow.grantorInstanceId === actorId || isCrewLead(actorId, grantRow.crewChatId))
+      ? grantRow
+      : undefined;
   if (input.action === "acquire") {
     if (row.state === "held" && row.holderInstanceId !== actorId)
       throw new LeaseError("lease_conflict");
+  } else if (input.action === "revoke_grant") {
+    if (row.state !== "held" || !activeGrant) throw new LeaseError("lease_not_holder");
   } else if (
     row.state !== "held" ||
     (input.action !== "reclaim" && row.holderInstanceId !== actorId)
   )
     throw new LeaseError("lease_not_holder");
-  if (input.action === "handoff") {
+  if (input.action === "handoff" || input.action === "grant") {
     const target = db
       .select()
       .from(agentInstance)
@@ -802,6 +901,20 @@ function mutateLeaseInTransaction(
     )
       throw new LeaseError("not_found");
     if (target.id === actorId) throw new LeaseError("conflict");
+    if (input.action === "grant") {
+      if (row.holderInstanceId !== actorId) throw new LeaseError("lease_not_holder");
+      const lead = db.select().from(agentInstance).where(eq(agentInstance.id, actorId)).get();
+      const leadChat = lead
+        ? db.select().from(chat).where(eq(chat.id, lead.chatId)).get()
+        : undefined;
+      if (!leadChat || leadChat.kind !== "crew") throw new LeaseError("forbidden");
+      const granteeRun = db
+        .select()
+        .from(agentRun)
+        .where(and(eq(agentRun.instanceId, target.id), eq(agentRun.status, "running")))
+        .get();
+      if (!granteeRun) throw new LeaseError("remote_run_inactive");
+    }
   }
   const id = newId(ID_PREFIXES.leaseMutation);
   const noop = input.action === "acquire" && row.state === "held";
@@ -811,6 +924,7 @@ function mutateLeaseInTransaction(
       .set({ state: "revoked", revokedAt: ctx.now })
       .where(authorizationWhere(key, row.generation))
       .run();
+    revokeGrants(key, row.generation, ctx.now);
     db.insert(leaseAuthorization)
       .values({
         ...key,
@@ -837,7 +951,8 @@ function mutateLeaseInTransaction(
       payloadHash: hash,
       action: input.action,
       expectedGeneration: row.generation,
-      targetInstanceId: input.action === "handoff" ? input.targetInstanceId : null,
+      targetInstanceId:
+        input.action === "handoff" || input.action === "grant" ? input.targetInstanceId : null,
       state: completed ? "completed" : "pending",
       completedGeneration: completed ? row.generation + (noop ? 0 : 1) : null,
       createdAt: ctx.now,
@@ -915,6 +1030,14 @@ export const releaseLease = (
 ) => mutate(input, ctx);
 export const handoffLease = (
   input: Extract<LeaseMutationInput, { action: "handoff" }>,
+  ctx: AgentRemoteContext,
+) => mutate(input, ctx);
+export const grantLease = (
+  input: Extract<LeaseMutationInput, { action: "grant" }>,
+  ctx: AgentRemoteContext,
+) => mutate(input, ctx);
+export const revokeLeaseGrant = (
+  input: Extract<LeaseMutationInput, { action: "revoke_grant" }>,
   ctx: AgentRemoteContext,
 ) => mutate(input, ctx);
 export const reclaimLeaseInTransaction = (
@@ -999,6 +1122,7 @@ export function forceReclaimLease(raw: ForceReclaimLeaseInput, ctx: MachineConte
         .set({ state: "revoked", revokedAt: ctx.now })
         .where(authorizationWhere(key, row.generation))
         .run();
+      revokeGrants(key, row.generation, ctx.now);
       db.insert(leaseAuthorization)
         .values({
           ...key,
@@ -1195,6 +1319,7 @@ function escrowLeaseInTransaction(input: LeaseEscrowInput, ctx: AgentRemoteConte
     .set({ state: "revoked", revokedAt: ctx.now })
     .where(authorizationWhere(key, row.generation))
     .run();
+  revokeGrants(key, row.generation, ctx.now);
   db.insert(leaseAuthorization)
     .values({
       ...key,
@@ -1260,6 +1385,7 @@ function claimLeaseInTransaction(input: LeaseClaimInput, ctx: AgentRemoteContext
     .set({ state: "revoked", revokedAt: ctx.now })
     .where(authorizationWhere(key, row.generation))
     .run();
+  revokeGrants(key, row.generation, ctx.now);
   db.insert(leaseAuthorization)
     .values({
       ...key,
@@ -1324,6 +1450,7 @@ function cancelLeaseEscrowInTransaction(input: LeaseEscrowCancelInput, ctx: Agen
     .set({ state: "revoked", revokedAt: ctx.now })
     .where(authorizationWhere(key, row.generation))
     .run();
+  revokeGrants(key, row.generation, ctx.now);
   db.insert(leaseAuthorization)
     .values({
       ...key,
