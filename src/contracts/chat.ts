@@ -147,6 +147,7 @@ export const chatSchema = z.object({
   kind: chatKindSchema,
   title: z.string().optional(),
   leadProfileId: agentProfileIdSchema.optional(),
+  parentCrewChatId: chatId.optional(),
   crewEpoch: z.number().int().nonnegative(),
   control: z.enum(["active", "stopped"]).optional(),
   archivedAt: z.iso.datetime().optional(),

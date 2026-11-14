@@ -15,6 +15,7 @@ import {
   listMessagesFn,
   listChatSkillsFn,
 } from "../../server/functions/chat";
+import { listCrewDelegationsFn } from "../../server/functions/delegation";
 import { getChatContinuationFn } from "../../server/functions/chat-continuation";
 
 /** Project 上下文从 URL 推导：chat 不属于 URL 中的 projectId 时按 not_found 呈现。 */
@@ -29,6 +30,12 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
         ok: false,
         error: { code: "not_found", message: "对象不存在", requestId: session.requestId },
       };
+    const crewDelegations =
+      session.data.kind === "crew" && session.data.chat.kind === "crew"
+        ? await listCrewDelegationsFn({
+            data: { projectId: params.projectId, crewChatId: params.chatId },
+          })
+        : undefined;
     const [members, messages, info, runState, runActivities, continuation, skills, selectedRun] =
       await Promise.all([
         listChatMembersFn({ data: { chatId: params.chatId } }),
@@ -64,6 +71,7 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
       runState,
       selectedRun,
       runActivities,
+      crewDelegations,
       skills,
       continuation,
     };

@@ -14,6 +14,7 @@ import type { AgentRun, AgentRunResult, ChatRunState } from "../src/contracts/ag
 import { compareMessageCursor, laterMessageCursor } from "../src/contracts/chat";
 import type { ChatResult, Message, MessageWindow } from "../src/contracts/chat";
 import type { AppResult } from "../src/contracts/result";
+import type { CrewDelegationRail } from "../src/contracts/delegation";
 import type { ChatContinuationData } from "../src/domain/chat-continuation";
 import { latestActivityAt } from "../src/components/chat/chat-list";
 
@@ -649,6 +650,60 @@ describe("消息增量读的游标", () => {
       "msg_00000004",
       "msg_00000005",
     ]);
+  });
+
+  it("Crew 委派随同一 tick 读取，耗时变化不重载，状态变化触发 route reload", async () => {
+    let data: CrewDelegationRail = {
+      active: [
+        {
+          delegationId: "del_one",
+          childChatId: "cnv_child",
+          workerProfileName: "Worker",
+          title: "检查接口",
+          status: "running",
+          updatedAt: "2026-11-15T00:00:00.000Z",
+          elapsedMs: 1000,
+          summary: null,
+          attentionReason: null,
+        },
+      ],
+      needsYou: [],
+      completed: [],
+      counts: { active: 1, needsYou: 0, completed: 0 },
+    };
+    const result = (): AppResult<CrewDelegationRail> => ({ ok: true, data, requestId: "req_rail" });
+    const changed = vi.fn();
+    const read = vi.fn(async () => result());
+    stops.push(
+      createChatLiveRefresh({
+        seed: emptySeed,
+        seedDelegations: result(),
+        reads: {
+          messages: async () => emptyWindow,
+          runState: async () => state(),
+          continuation: continuationRead,
+          crewDelegations: read,
+        },
+        onFacts: vi.fn(),
+        onRunChanged: changed,
+        seedSignature: "",
+        stopWhenIdle: false,
+        environment: environment(),
+      }),
+    );
+    data = { ...data, active: data.active.map((card) => ({ ...card, elapsedMs: 2200 })) };
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(changed).not.toHaveBeenCalled();
+    data = {
+      ...data,
+      active: [],
+      completed: data.active.map((card) => ({ ...card, status: "completed" })),
+      counts: { active: 0, needsYou: 0, completed: 1 },
+    };
+    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(changed).toHaveBeenCalledTimes(1);
   });
 
   it("游标按 (createdAt, rowid) 两个数值比较，取较后者不回退", () => {

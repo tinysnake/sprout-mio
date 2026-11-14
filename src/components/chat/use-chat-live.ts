@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { CrewRailFactsContext } from "./crew-rail-live";
 import { CHANGE_SAFETY_POLL_MS, chatTopic } from "../../contracts/change-stream";
 import { changeSource, onChangeStreamState, type ChangeSource } from "../../lib/change-stream";
 import type { AgentRunResult, ChatRunState } from "../../contracts/agent-run";
 import { laterMessageCursor } from "../../contracts/chat";
 import type { ChatResult, Message, MessageCursor, MessageWindow } from "../../contracts/chat";
 import type { ChatDetailLoaderData } from "./chat-loader";
+import { listCrewDelegationsFn } from "../../server/functions/delegation";
+import type { CrewDelegationRail } from "../../contracts/delegation";
 import { getChatRunStateFn } from "../../server/functions/agent-run";
 import { getChatContinuationFn } from "../../server/functions/chat-continuation";
 import { listMessagesFn } from "../../server/functions/chat";
@@ -28,6 +31,7 @@ export type ChatLiveFacts = {
   messages: ChatResult<Message[]>;
   runState: AgentRunResult<ChatRunState>;
   continuation: AppResult<ChatContinuationData>;
+  crewDelegations?: AppResult<CrewDelegationRail>;
 };
 
 /** 增量读的种子：loader 那批消息与它的尾巴游标。 */
@@ -68,6 +72,16 @@ function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
  * 只要它变了，只由 loader 读来的那份对话接续（Info Hub 用的就是它）就已经过时，
  * 值得整树重读一次——否则判定在中栏失败之后，Info Hub 还会停在旧的「正在检查」。
  */
+function delegationSignature(result: AppResult<CrewDelegationRail> | undefined): string | null {
+  if (!result?.ok) return null;
+  return JSON.stringify({
+    ...result.data,
+    active: result.data.active.map(({ elapsedMs: _elapsedMs, ...card }) => card),
+    needsYou: result.data.needsYou.map(({ elapsedMs: _elapsedMs, ...card }) => card),
+    completed: result.data.completed.map(({ elapsedMs: _elapsedMs, ...card }) => card),
+  });
+}
+
 function continuationSignature(continuation: AppResult<ChatContinuationData>): string {
   if (!continuation.ok) return `unavailable:${continuation.error.code}`;
   const view = continuation.data.view;
@@ -106,6 +120,7 @@ export function createChatLiveRefresh({
   onRunChanged,
   onMessagesChanged,
   seedSignature = null,
+  seedDelegations,
   environment,
   intervalMs = CHAT_LIVE_INTERVAL_MS,
   stopWhenIdle = true,
@@ -116,6 +131,7 @@ export function createChatLiveRefresh({
     messages: (after: MessageCursor | null) => Promise<ChatResult<MessageWindow>>;
     runState: () => Promise<AgentRunResult<ChatRunState>>;
     continuation: () => Promise<AppResult<ChatContinuationData>>;
+    crewDelegations?: () => Promise<AppResult<CrewDelegationRail>>;
   };
   onFacts: (facts: ChatLiveFacts) => void;
   onRunChanged: () => void;
@@ -123,6 +139,7 @@ export function createChatLiveRefresh({
   onMessagesChanged?: () => void;
   /** loader 已经读到过的那份 run 指纹：tick 结果与它一致就不必重读整树。 */
   seedSignature?: string | null;
+  seedDelegations?: AppResult<CrewDelegationRail>;
   environment: Environment;
   intervalMs?: number;
   /** 默认在 run 收尾后停止；页面需要持续发现新 run 时传 false。 */
@@ -137,6 +154,7 @@ export function createChatLiveRefresh({
   let inFlight = false;
   let pushPending = false;
   let signature = seedSignature;
+  let crewSeen = delegationSignature(seedDelegations);
   // 判定指纹只在 tick 之间比较：第一次读到的那份就是基准，不为了对齐它再重读一次整树。
   let continuationSeen: string | null = null;
   // overlay = loader 那批 + 之后 tick 追加的增量；`known` 用来去掉两者重叠的部分。
@@ -181,10 +199,11 @@ export function createChatLiveRefresh({
     }
     inFlight = true;
     try {
-      const [window, runState, continuation] = await Promise.all([
+      const [window, runState, continuation, crewDelegations] = await Promise.all([
         reads.messages(cursor),
         reads.runState(),
         reads.continuation(),
+        reads.crewDelegations?.(),
       ]);
       if (stopped) return;
       let messages: ChatResult<Message[]>;
@@ -202,7 +221,15 @@ export function createChatLiveRefresh({
         // 增量读失败照旧把错误交给页面，不回退成 loader 那批旧事实。
         messages = window;
       }
-      onFacts({ messages, runState, continuation });
+      onFacts({
+        messages,
+        runState,
+        continuation,
+        ...(crewDelegations ? { crewDelegations } : {}),
+      });
+      const nextCrew = delegationSignature(crewDelegations);
+      const crewMoved = nextCrew !== null && nextCrew !== crewSeen;
+      if (nextCrew !== null) crewSeen = nextCrew;
       const next = runSignature(runState);
       const active = isActiveRunState(runState);
       const nextMessage = overlay.at(-1)?.id ?? null;
@@ -218,7 +245,7 @@ export function createChatLiveRefresh({
       continuationSeen = nextContinuation;
       // run 或判定变了就整树重读；只有消息变化时也重读一次，让不在 tick 读取范围内的
       // Info Hub 消息计数、最近消息时间与对话接续读视图跟上来。同一 tick 变化时只重读一次。
-      if (runMoved || continuationMoved) onRunChanged();
+      if (runMoved || continuationMoved || crewMoved) onRunChanged();
       else if (messageMoved) onMessagesChanged?.();
       // run 状态读不到时不改门禁：下一 tick 继续读，结束判定只认成功的响应。
       if (runState.ok && !active && stopWhenIdle) {
@@ -273,8 +300,13 @@ export function createChatLiveRefresh({
 }
 
 /** 生产接法：一次 tick 并发读消息增量、run 状态与对话接续判定，每个读各自保留自己的错误语义。 */
-export function chatLiveReads(chatId: string, projectId: string) {
+export function chatLiveReads(chatId: string, projectId: string, crew = false) {
   return {
+    ...(crew
+      ? {
+          crewDelegations: () => listCrewDelegationsFn({ data: { projectId, crewChatId: chatId } }),
+        }
+      : {}),
     messages: (after: MessageCursor | null) =>
       listMessagesFn({ data: { chatId, ...(after === null ? {} : { after }) } }),
     runState: () => getChatRunStateFn({ data: { chatId } }),
@@ -307,6 +339,7 @@ export function useChatLive({
   loader: ChatDetailLoaderData;
   onRunChanged: () => void;
 }): ChatLiveFacts | null {
+  const publishCrewFacts = useContext(CrewRailFactsContext);
   const [state, setState] = useState<{ chatId: string; facts: ChatLiveFacts } | null>(null);
   const changed = useRef(onRunChanged);
   changed.current = onRunChanged;
@@ -315,12 +348,20 @@ export function useChatLive({
   seedRef.current = seed;
   const refresh = useRef<ChatLiveRefresh | null>(null);
   const seedSignature = loader.ok ? runSignature(loader.runState) : null;
+  const isCrew = loader.ok && loader.session.kind === "crew" && loader.session.chat.kind === "crew";
+  const crewSeed = useRef(loader.ok ? loader.crewDelegations : undefined);
+  crewSeed.current = loader.ok ? loader.crewDelegations : undefined;
   useEffect(() => {
     const chat = chatId;
     const instance = createChatLiveRefresh({
       seed: seedRef.current,
-      reads: chatLiveReads(chat, projectId),
-      onFacts: (facts) => setState({ chatId: chat, facts }),
+      reads: chatLiveReads(chat, projectId, isCrew),
+      seedDelegations: crewSeed.current,
+      onFacts: (facts) => {
+        setState({ chatId: chat, facts });
+        if (facts.crewDelegations)
+          publishCrewFacts?.({ chatId: chat, result: facts.crewDelegations });
+      },
       onRunChanged: () => changed.current(),
       onMessagesChanged: () => changed.current(),
       seedSignature,
@@ -334,7 +375,7 @@ export function useChatLive({
       if (refresh.current === instance) refresh.current = null;
       instance.stop();
     };
-  }, [active, chatId, projectId, seedSignature]);
+  }, [active, chatId, projectId, seedSignature, isCrew, publishCrewFacts]);
   useEffect(() => {
     setState(null);
     refresh.current?.reseed(seedRef.current);

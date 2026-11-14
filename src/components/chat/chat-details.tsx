@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ContinuationPanel } from "../continuation/continuation-panel";
 import type { ContinuationPageData } from "../continuation/continuation-page-data";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-react";
 import { agentDetailFromChat } from "../agent/agent-detail-search";
@@ -71,9 +71,11 @@ export function ChatDetails({
   machineFactsError,
   continuation,
   onClose,
+  crewRail,
   onChanged,
 }: {
   projectId: string;
+  crewRail?: ReactNode;
   session: ChatSession;
   humanUserId: string;
   humanName: string;
@@ -178,6 +180,7 @@ export function ChatDetails({
           <Icon as={PanelRightClose} />
         </Button>
       </header>
+      {crewRail}
       <div className={`min-h-0 overflow-y-auto px-5 pt-2 ${activityOpen ? "flex-1 pb-12" : ""}`}>
         {/* DM 只有两位参与者，成员清单没有信息量：把对方的资料整块提到最上面，成员段不再渲染。 */}
         {chat.kind === "dm" && detailMember && (

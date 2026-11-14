@@ -68,6 +68,7 @@ export type ChatDetailLoaderData =
       skills: ChatResult<import("../../contracts/skill").ChatSkillChoices>;
       /** 对话接续的读模型与可用动作：页面按结果原样呈现，失败时不伪造状态。 */
       continuation: AppResult<ChatContinuationData>;
+      crewDelegations?: AppResult<import("../../contracts/delegation").CrewDelegationRail>;
     };
 
 /** 分身身份优先取 instance 的 profile，其次取成员表里的 agent 成员。 */

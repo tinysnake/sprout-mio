@@ -97,6 +97,7 @@ function toChat(row: typeof chat.$inferSelect): Chat {
     kind: row.kind,
     ...(row.title === null ? {} : { title: row.title }),
     ...(row.leadProfileId === null ? {} : { leadProfileId: row.leadProfileId }),
+    ...(row.parentCrewChatId === null ? {} : { parentCrewChatId: row.parentCrewChatId }),
     crewEpoch: row.crewEpoch,
     ...(control === undefined ? {} : { control }),
     ...(row.archivedAt === null ? {} : { archivedAt: row.archivedAt.toISOString() }),

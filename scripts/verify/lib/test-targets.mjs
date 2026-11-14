@@ -76,6 +76,8 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/diagnostics.test.ts",
     "tests/delegation-core.test.ts",
     "tests/crew-resource.test.ts",
+    "tests/crew-rail.test.ts",
+    "tests/crew-rail-domain.test.ts",
     "tests/deploy-continuation-off.test.ts",
     "tests/error-mapping.test.ts",
     "tests/execution-accept-fixes-2.test.ts",

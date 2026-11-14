@@ -137,6 +137,30 @@ export const delegationEventViewSchema = z.strictObject({
 });
 export type DelegationEventView = z.infer<typeof delegationEventViewSchema>;
 
+export const listCrewDelegationsInput = z.strictObject({
+  projectId: z.string().min(1),
+  crewChatId: z.string().min(1),
+});
+
+export type CrewDelegationCard = {
+  delegationId: string;
+  childChatId: string;
+  workerProfileName: string;
+  title: string;
+  status: DelegationStatus;
+  updatedAt: string;
+  elapsedMs: number;
+  summary: string | null;
+  attentionReason: string | null;
+};
+
+export type CrewDelegationRail = {
+  active: CrewDelegationCard[];
+  needsYou: CrewDelegationCard[];
+  completed: CrewDelegationCard[];
+  counts: { active: number; needsYou: number; completed: number };
+};
+
 export const crewDelegationViewSchema = z.strictObject({
   delegations: z.array(delegationViewSchema),
   events: z.array(delegationEventViewSchema),

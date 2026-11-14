@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
-import { z } from "zod";
 import {
+  listCrewDelegationsInput,
   cancelDelegationInput,
   dispatchDelegationInput,
   retryDelegationInput,
@@ -9,7 +9,7 @@ import {
 import type {
   DelegationView,
   DispatchDelegationResult,
-  CrewDelegationView,
+  CrewDelegationRail,
 } from "../../contracts/delegation";
 import { ok, fail, type AppResult } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
@@ -17,11 +17,12 @@ import { getRequestContext } from "../request-context";
 import { toDomainAppError } from "./domain-errors";
 
 async function deps() {
-  const [auth, delegation] = await Promise.all([
+  const [auth, delegation, rail] = await Promise.all([
     import("../session"),
     import("../../domain/delegation"),
+    import("../../domain/crew-delegation-rail"),
   ]);
-  return { requireSession: auth.requireSession, ...delegation };
+  return { requireSession: auth.requireSession, ...delegation, ...rail };
 }
 
 async function boundary<T>(
@@ -83,11 +84,11 @@ export const listCrewDelegationsFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) => {
     const requestId = getRequestContext().requestId;
-    return boundary<CrewDelegationView>(getRequestHeaders(), requestId, (d, ctx) => {
-      const parsed = z.object({ chatId: z.string() }).safeParse(data);
+    return boundary<CrewDelegationRail>(getRequestHeaders(), requestId, (d, ctx) => {
+      const parsed = listCrewDelegationsInput.safeParse(data);
       if (!parsed.success)
         return fail({ code: "validation_failed", message: "Chat 参数无效", requestId });
-      return ok(d.listCrewDelegations(parsed.data.chatId, ctx), requestId);
+      return ok(d.listCrewDelegationRail(parsed.data, ctx), requestId);
     });
   });
 

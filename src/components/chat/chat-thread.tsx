@@ -1,3 +1,4 @@
+import { clearCrewReturn, crewReturnAnchor } from "./crew-return-anchor";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import { PanelRight, PanelRightClose } from "lucide-react";
@@ -182,7 +183,7 @@ export function ChatThread({
   /** 输入区上方的待处理条；组件自身负责边框与内边距，无内容时不渲染。 */
   assistantPending?: ReactNode;
   displayTitle?: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   kind?: ChatKind;
   senderNames?: ReadonlyMap<string, string>;
   knownSenders?: ReadonlySet<string>;
@@ -203,7 +204,7 @@ export function ChatThread({
   /** 上一次落定后的视口：上方内容变化时据此把位置还原回去。 */
   const viewport = useRef<ViewportAnchor | null>(null);
   const anchorPage = useRef(-1);
-  const [atBottom, setAtBottom] = useState(true);
+  const [atBottom, setAtBottom] = useState(() => crewReturnAnchor(chat.id) === undefined);
   const [newSinceScroll, setNewSinceScroll] = useState(false);
   const count = messages.ok ? messages.data.length : 0;
   const active = runState.ok ? isRunActive(runState.data) : false;
@@ -213,7 +214,7 @@ export function ChatThread({
       ? `${runState.data.active.length} 个 Agent 进行中`
       : runStatusLabel(runState.data)
     : "";
-  const first = useRef(true);
+  const first = useRef(crewReturnAnchor(chat.id) === undefined);
   const oldestId = messages.ok ? (messages.data[0]?.id ?? null) : null;
   const newestId = messages.ok ? (messages.data.at(-1)?.id ?? null) : null;
   // 头部那条消息换了，说明变的是上方（往前插页、卸载上方页），不是尾巴来了新消息。
@@ -318,6 +319,27 @@ export function ChatThread({
       cancelPin.current = () => {};
     };
   }, [aboveShift]);
+
+  useLayoutEffect(() => {
+    const anchor = crewReturnAnchor(chat.id);
+    const element = scroll.current;
+    if (!anchor || !element) return;
+    const target = Array.from(element.querySelectorAll<HTMLElement>("[data-message-id]")).find(
+      (item) => item.dataset.messageId === anchor.messageId,
+    );
+    if (anchor.messageId && !target && history?.hasOlder) {
+      if (!history.loadingOlder) history.onLoadOlder();
+      return;
+    }
+    element.scrollTop = target
+      ? element.scrollTop +
+        target.getBoundingClientRect().top -
+        element.getBoundingClientRect().top -
+        anchor.offset
+      : anchor.scrollTop;
+    setAtBottom(false);
+    clearCrewReturn(chat.id);
+  }, [chat.id, messages, history]);
 
   const title = displayTitle ?? chatDisplayName(chat, agentName);
   const subline = subtitle ?? (effectiveKind === "crew" ? "Crew" : `DM · 你与${agentName}`);
