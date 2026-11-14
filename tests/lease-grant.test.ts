@@ -258,6 +258,27 @@ test("grant and revoke", () => {
       error instanceof Error && "code" in error && error.code === "lease_stale_generation",
   );
 
+  assert.throws(
+    () =>
+      sqlite
+        .prepare(
+          "INSERT INTO lease_grant(id,project_id,machine_id,generation,crew_chat_id,grantor_instance_id,grantee_instance_id,grantee_run_id,state,request_id,issued_at) VALUES (?,?,?,?,?,?,?,?,'active',?,?)",
+        )
+        .run(
+          newId(ID_PREFIXES.leaseGrant),
+          projectId,
+          key.machineId,
+          3,
+          crewId,
+          lead.instanceId,
+          lead.instanceId,
+          worker.runId,
+          newId(ID_PREFIXES.request),
+          now.getTime(),
+        ),
+    /lease_grant_run_instance_mismatch/,
+  );
+
   const otherDelegationId = newId(ID_PREFIXES.chat);
   sqlite
     .prepare(
