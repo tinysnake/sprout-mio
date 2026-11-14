@@ -13,8 +13,15 @@ const { migrateDatabase } = await import("../src/db/migrate");
 const { leaseGrant } = await import("../src/db/schema");
 const { createMachine, saveProjectMachineBinding, hashCredential } =
   await import("../src/domain/machine");
-const { acquireLease, assertExecutionWrite, authorityNow, getLease, grantLease, revokeLeaseGrant } =
-  await import("../src/server/lease");
+const {
+  acquireLease,
+  assertExecutionWrite,
+  authorityNow,
+  escrowLease,
+  getLease,
+  grantLease,
+  revokeLeaseGrant,
+} = await import("../src/server/lease");
 type AgentRemoteContext = import("../src/server/lease").AgentRemoteContext;
 
 migrateDatabase();
@@ -98,7 +105,36 @@ function actor(name: string, chatId: string): AgentRemoteContext {
   };
 }
 const lead = actor("Lead", crewId);
-const worker = actor("Worker", crewId);
+const leadProfileId = sqlite
+  .prepare("SELECT agent_profile_id AS id FROM agent_instance WHERE id=?")
+  .get(lead.instanceId) as { id: string };
+sqlite.prepare("UPDATE chat SET lead_profile_id=? WHERE id=?").run(leadProfileId.id, crewId);
+const delegationChatId = newId(ID_PREFIXES.chat);
+sqlite
+  .prepare(
+    "INSERT INTO chat(id,project_id,kind,parent_crew_chat_id,owner_kind,owner_id,created_by) VALUES (?,?,'delegation',?,'human','owner','owner')",
+  )
+  .run(delegationChatId, projectId, crewId);
+const worker = actor("Worker", delegationChatId);
+const workerProfileId = sqlite
+  .prepare("SELECT agent_profile_id AS id FROM agent_instance WHERE id=?")
+  .get(worker.instanceId) as { id: string };
+sqlite
+  .prepare(
+    "INSERT INTO delegation(id,project_id,parent_crew_chat_id,child_chat_id,dispatch_lead_profile_id,crew_epoch,worker_profile_id,worker_instance_id,request_summary,status,client_request_id,started_at) VALUES (?,?,?,?,?,0,?,?,?,'running',?,?)",
+  )
+  .run(
+    newId(ID_PREFIXES.delegation),
+    projectId,
+    crewId,
+    delegationChatId,
+    leadProfileId.id,
+    workerProfileId.id,
+    worker.instanceId,
+    "grant test",
+    newId(ID_PREFIXES.request),
+    Math.floor(now.getTime() / 1000),
+  );
 const human = { userId: "owner", bootId, now, requestId: newId(ID_PREFIXES.request) };
 const machine = createMachine({ name: "Grant machine" }, human);
 const machineId = machine.detail.machine.id;
@@ -174,17 +210,31 @@ test("grant and revoke", () => {
       error instanceof Error && "code" in error && error.code === "lease_stale_generation",
   );
 
-  const delegationChatId = newId(ID_PREFIXES.chat);
+  const otherDelegationId = newId(ID_PREFIXES.chat);
   sqlite
     .prepare(
       "INSERT INTO chat(id,project_id,kind,parent_crew_chat_id,owner_kind,owner_id,created_by) VALUES (?,?,'delegation',?,'human','owner','owner')",
     )
-    .run(delegationChatId, projectId, crewId);
-  const delegated = actor("Delegated worker", delegationChatId);
+    .run(otherDelegationId, projectId, crewId);
+  const delegated = actor("Delegated worker", otherDelegationId);
   assert.throws(
     () =>
       acquireLease(
         { ...key, action: "acquire", expectedGeneration: 3, requestId: newId(ID_PREFIXES.request) },
+        delegated,
+      ),
+    (error: unknown) => error instanceof Error && "code" in error && error.code === "forbidden",
+  );
+  assert.throws(
+    () =>
+      escrowLease(
+        {
+          ...key,
+          action: "escrow",
+          chatId: crewId,
+          expectedGeneration: 3,
+          requestId: newId(ID_PREFIXES.request),
+        },
         delegated,
       ),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "forbidden",

@@ -636,6 +636,41 @@ function granteeRunFor(targetInstanceId: string | null) {
     .where(and(eq(agentRun.instanceId, targetInstanceId), eq(agentRun.status, "running")))
     .get();
 }
+/** 授予只发生在当前 Crew lead 与同一 Crew 的 delegation worker 之间；完成时重查。 */
+function grantFacts(key: LeaseKey, actorId: string, targetInstanceId: string | null) {
+  if (!targetInstanceId) throw new LeaseError("not_found");
+  const grantor = db.select().from(agentInstance).where(eq(agentInstance.id, actorId)).get();
+  const grantorChat = grantor
+    ? db.select().from(chat).where(eq(chat.id, grantor.chatId)).get()
+    : undefined;
+  if (
+    !grantor ||
+    !grantorChat ||
+    grantorChat.kind !== "crew" ||
+    grantorChat.projectId !== key.projectId ||
+    grantorChat.leadProfileId !== grantor.agentProfileId
+  )
+    throw new LeaseError("forbidden");
+  const target = db
+    .select()
+    .from(agentInstance)
+    .where(eq(agentInstance.id, targetInstanceId))
+    .get();
+  const targetChat = target
+    ? db.select().from(chat).where(eq(chat.id, target.chatId)).get()
+    : undefined;
+  if (
+    !target ||
+    !targetChat ||
+    targetChat.kind !== "delegation" ||
+    targetChat.parentCrewChatId !== grantorChat.id ||
+    targetChat.projectId !== key.projectId
+  )
+    throw new LeaseError("forbidden");
+  const run = granteeRunFor(targetInstanceId);
+  if (!run || run.chatId !== targetChat.id) throw new LeaseError("remote_run_inactive");
+  return { grantor, granteeRun: run };
+}
 
 /** 同一个待决收据只记一次：worker 心跳会反复重试，诊断不能跟着刷屏。 */
 function recordStrandedHandoff(
@@ -695,9 +730,14 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
     recordStrandedHandoff(key, pending, now);
     return;
   }
-  if (pending.action === "grant" && !granteeRunFor(pending.targetInstanceId)) {
-    recordStrandedHandoff(key, pending, now);
-    return;
+  let granted: ReturnType<typeof grantFacts> | undefined;
+  if (pending.action === "grant") {
+    try {
+      granted = grantFacts(key, pending.actorId, pending.targetInstanceId);
+    } catch {
+      recordStrandedHandoff(key, pending, now);
+      return;
+    }
   }
   if (
     db
@@ -750,13 +790,7 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
     .where(leaseWhere(key))
     .run();
   if (pending.action === "grant") {
-    const granteeRun = granteeRunFor(pending.targetInstanceId)!;
-    const grantor = db
-      .select()
-      .from(agentInstance)
-      .where(eq(agentInstance.id, pending.actorId))
-      .get();
-    if (!grantor) throw new LeaseError("not_found");
+    const { grantor, granteeRun } = granted!;
     db.insert(leaseGrant)
       .values({
         id: newId(ID_PREFIXES.leaseGrant),
@@ -933,17 +967,7 @@ function mutateLeaseInTransaction(
     if (target.id === actorId) throw new LeaseError("conflict");
     if (input.action === "grant") {
       if (row.holderInstanceId !== actorId) throw new LeaseError("lease_not_holder");
-      const lead = db.select().from(agentInstance).where(eq(agentInstance.id, actorId)).get();
-      const leadChat = lead
-        ? db.select().from(chat).where(eq(chat.id, lead.chatId)).get()
-        : undefined;
-      if (!leadChat || leadChat.kind !== "crew") throw new LeaseError("forbidden");
-      const granteeRun = db
-        .select()
-        .from(agentRun)
-        .where(and(eq(agentRun.instanceId, target.id), eq(agentRun.status, "running")))
-        .get();
-      if (!granteeRun) throw new LeaseError("remote_run_inactive");
+      grantFacts(key, actorId, target.id);
     }
   }
   const id = newId(ID_PREFIXES.leaseMutation);
@@ -1305,11 +1329,24 @@ function assertClaimInScope(escrowRow: typeof leaseEscrow.$inferSelect, ctx: Age
   )
     throw new LeaseError("lease_claim_out_of_scope");
 }
+/** delegation worker 不能以任何入口操作租约；escrow/claim/cancel 不经过 mutateLeaseInTransaction。 */
+function assertLeaseCommandActor(ctx: AgentRemoteContext) {
+  const instance = db
+    .select()
+    .from(agentInstance)
+    .where(eq(agentInstance.id, ctx.instanceId))
+    .get();
+  const actorChat = instance
+    ? db.select().from(chat).where(eq(chat.id, instance.chatId)).get()
+    : undefined;
+  if (actorChat?.kind === "delegation") throw new LeaseError("forbidden");
+}
 /** 三个命令共用的事实门：代次、fencing、代次上限。挂靠不碰执行行，所以不跑 expireExecutions。 */
 function escrowCommandRow(
   input: { projectId: string; machineId: string; expectedGeneration: number },
   ctx: AgentRemoteContext,
 ) {
+  assertLeaseCommandActor(ctx);
   const row = ensureLease(input, ctx.now);
   if (row.generation !== input.expectedGeneration) throw new LeaseError("lease_stale_generation");
   if (row.state === "fencing") throw new LeaseError("lease_fencing");

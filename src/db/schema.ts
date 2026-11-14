@@ -1008,6 +1008,7 @@ export const agentRun = sqliteTable(
     uniqueIndex("agent_run_assistant_message_unique")
       .on(table.assistantMessageId)
       .where(sql`${table.assistantMessageId} is not null`),
+    uniqueIndex("agent_run_id_project_unique").on(table.id, table.projectId),
     uniqueIndex("agent_run_bound_identity_unique").on(
       table.id,
       table.instanceId,
@@ -2283,6 +2284,10 @@ export const leaseGrant = sqliteTable(
       "lease_grant_check_2",
       sql`(state='active' AND revoked_at IS NULL) OR (state='revoked' AND revoked_at IS NOT NULL)`,
     ),
+    check(
+      "lease_grant_check_3",
+      sql`typeof(issued_at)='integer' AND issued_at>=0 AND (revoked_at IS NULL OR (typeof(revoked_at)='integer' AND revoked_at>=issued_at))`,
+    ),
     uniqueIndex("lease_grant_generation_grantee_unique").on(
       t.projectId,
       t.machineId,
@@ -2294,12 +2299,17 @@ export const leaseGrant = sqliteTable(
       .on(t.projectId, t.machineId)
       .where(sql`state = 'active'`),
     foreignKey({
-      columns: [t.projectId, t.machineId, t.generation],
+      columns: [t.projectId, t.machineId, t.generation, t.granteeInstanceId],
       foreignColumns: [
         leaseAuthorization.projectId,
         leaseAuthorization.machineId,
         leaseAuthorization.generation,
+        leaseAuthorization.holderInstanceId,
       ],
+    }),
+    foreignKey({
+      columns: [t.granteeRunId, t.projectId],
+      foreignColumns: [agentRun.id, agentRun.projectId],
     }),
     foreignKey({
       columns: [t.crewChatId, t.projectId],

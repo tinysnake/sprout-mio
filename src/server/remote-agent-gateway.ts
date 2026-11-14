@@ -48,8 +48,10 @@ import {
   claimLease,
   escrowLease,
   getLease,
+  grantLease,
   handoffLease,
   releaseLease,
+  revokeLeaseGrant,
 } from "./lease";
 import type { AgentRemoteContext } from "./lease";
 import {
@@ -444,6 +446,10 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                 return releaseLease(input, actorContext);
               case "handoff":
                 return handoffLease(input, actorContext);
+              case "grant":
+                return grantLease(input, actorContext);
+              case "revoke_grant":
+                return revokeLeaseGrant(input, actorContext);
               case "escrow":
                 return escrowLease(input, actorContext);
               case "claim":

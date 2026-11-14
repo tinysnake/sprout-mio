@@ -513,6 +513,8 @@ const agentMutationInputSchema = z.discriminatedUnion("action", [
   leaseMutationInputSchema.options[0],
   leaseMutationInputSchema.options[1],
   leaseMutationInputSchema.options[2],
+  leaseMutationInputSchema.options[4],
+  leaseMutationInputSchema.options[5],
   ...leaseEscrowCommandInputSchema.options,
 ]);
 /** 游标绑定执行：用执行 A 的游标读执行 B 必须被拒，不静默跳过 B 的前缀。 */
