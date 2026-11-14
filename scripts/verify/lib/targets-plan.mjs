@@ -28,6 +28,7 @@ export const CI_GROUPS = Object.freeze({
     "d-runtime",
     "drain-http",
     "crew-delegation",
+    "crew-resource",
     "e-project",
     "g-identity-data",
     "h-project-agents",
