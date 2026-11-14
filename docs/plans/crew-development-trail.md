@@ -149,3 +149,13 @@
 - Human 正常 reclaim 后，原 run 在 reconcile 前结束时 `freezeCrewResources` 已把请求转为 `attention/owner_conflict`，原结清分支只处理 `active`，请求永久占槽。reconcile 现在对 `owner_conflict`/`drain_unconfirmed` 在确认 lease 已不属于当前 Crew、且没有未排空执行时转 `released`，有未排空执行则保留 attention。
 - 新增覆盖「reclaim → abort 原 run → reconcile → 下一请求获得分配」的测试。
 - 验证：`pnpm typecheck`、`pnpm test`（188 文件 / 1838 测试）、`crew-delegation`、`z-lease-integration`、`p8b-timeout-integration` 通过。
+
+## 2026-11-15 CR4 委派右栏实现
+
+- 按 D0 方向 B 在既有会话详情右栏顶部加入可折叠的 Crew 委派区域；宽屏详情栏常驻，窄屏沿用现有详情入口。DM 与 delegation 子对话不渲染。
+- 新增轻量查询 `listCrewDelegationRail` 与 `listCrewDelegationsFn`：按 Project/Crew/epoch 读取，排除 cancelled 与归档子对话，completed 最多 20 条，counts 保留实际总数，不读取结果 HTML。
+- 卡片分「需要你 / 进行中 / 已完成」，空段隐藏，无委派整栏隐藏；点击进入委派子对话，父对话链接返回并恢复打开卡片时的消息锚点。
+- 折叠偏好按 Project 存 localStorage；宽屏默认展开，窄屏默认折叠，显式选择优先；刷新复用现有 chat live tick，不新增轮询通道。
+- Commit `8835e1c`，22 个文件；未改 schema/迁移。
+- 实现 worker 自报 typecheck、190 文件/1844 测试、浏览器 gate 5 组断言通过。主线程独立复跑 typecheck 与全量测试通过，并在隔离数据库、真实 dev server 上复跑 `crew-rail.mjs` 5 组断言通过。
+- 待完成：独立代码复审、Human review（宽/窄、展开/折叠、需要你/完成、进入子对话并返回）与 30–60 秒评审录屏。自动 gate 的 12.72 秒录屏不算 Human review。
