@@ -79,6 +79,9 @@ export type ChatHistory = {
   /** 视口上方内容变化的次数：变了就得把滚动位置按不变量还原。 */
   aboveShift: number;
   onLoadOlder: () => void;
+  /** 恢复阅读位置专用：保留窗口往前读，不按当前视口淘汰旧页。 */
+  onLoadOlderForRestore: () => void;
+  onEndRestore: () => void;
   onLoadNewer: () => void;
   /** 整体换回最新一页：丢过尾巴之后靠它回到真尾巴。 */
   onResetToLatest: () => void;
@@ -320,6 +323,14 @@ export function ChatThread({
     };
   }, [aboveShift]);
 
+  // 返回锚点可能落在窗口之外：往前读到它为止。每读一页都必须让首条消息前进，
+  // 否则（没有更早、读取失败、服务端返回重复页）立即退回保存的 scrollTop，绝不空转。
+  const restoreLoad = useRef<{
+    key: string;
+    oldest: string | null;
+    pages: number;
+    stalled: number;
+  } | null>(null);
   useLayoutEffect(() => {
     const anchor = crewReturnAnchor(chat.id);
     const element = scroll.current;
@@ -327,10 +338,21 @@ export function ChatThread({
     const target = Array.from(element.querySelectorAll<HTMLElement>("[data-message-id]")).find(
       (item) => item.dataset.messageId === anchor.messageId,
     );
-    if (anchor.messageId && !target && history?.hasOlder) {
-      if (!history.loadingOlder) history.onLoadOlder();
-      return;
+    const oldest = messages.ok ? (messages.data[0]?.id ?? null) : null;
+    if (anchor.messageId && !target) {
+      const key = `${chat.id}:${anchor.messageId}`;
+      const attempt = restoreLoad.current?.key === key ? restoreLoad.current : null;
+      if (history?.loadingOlder) return;
+      const stalled = attempt !== null && oldest === attempt.oldest ? attempt.stalled + 1 : 0;
+      // 首页加载与新消息可能和恢复请求交错；同一游标允许重试两轮，仍无进展就回退。
+      if (history?.hasOlder && (attempt?.pages ?? 0) < 20 && stalled < 3) {
+        restoreLoad.current = { key, oldest, pages: (attempt?.pages ?? 0) + 1, stalled };
+        history.onLoadOlderForRestore();
+        return;
+      }
     }
+    restoreLoad.current = null;
+    history?.onEndRestore();
     element.scrollTop = target
       ? element.scrollTop +
         target.getBoundingClientRect().top -
@@ -339,7 +361,7 @@ export function ChatThread({
       : anchor.scrollTop;
     setAtBottom(false);
     clearCrewReturn(chat.id);
-  }, [chat.id, messages, history]);
+  }, [chat.id, messages, history, history?.loadingOlder, history?.hasOlder]);
 
   const title = displayTitle ?? chatDisplayName(chat, agentName);
   const subline = subtitle ?? (effectiveKind === "crew" ? "Crew" : `DM · 你与${agentName}`);

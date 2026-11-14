@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { CrewDelegationCard, CrewDelegationRail } from "../../contracts/delegation";
@@ -27,15 +27,22 @@ export function CrewRail({
   data: CrewDelegationRail;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // 用户显式选择优先于宽度默认；storage 读写失败时也保留在内存里，直到切 Project。
+  const chosen = useRef<boolean | null>(null);
+  const loadedFor = useRef<string | null>(null);
   useEffect(() => {
     const update = () => {
-      let stored: string | null = null;
-      try {
-        stored = localStorage.getItem(crewRailStorageKey(projectId));
-      } catch {
-        /* Storage may be disabled. */
+      if (loadedFor.current !== projectId) {
+        loadedFor.current = projectId;
+        chosen.current = null;
+        try {
+          const stored = localStorage.getItem(crewRailStorageKey(projectId));
+          if (stored !== null) chosen.current = stored === "expanded";
+        } catch {
+          /* Storage may be disabled; keep no explicit choice. */
+        }
       }
-      setExpanded(crewRailExpanded(stored, window.innerWidth));
+      setExpanded(chosen.current ?? crewRailExpanded(null, window.innerWidth));
     };
     update();
     window.addEventListener("resize", update);
@@ -63,6 +70,7 @@ export function CrewRail({
         className="flex w-full items-center gap-2 px-5 py-3 text-left text-xs hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
         onClick={() => {
           const next = !expanded;
+          chosen.current = next;
           setExpanded(next);
           try {
             localStorage.setItem(crewRailStorageKey(projectId), next ? "expanded" : "collapsed");

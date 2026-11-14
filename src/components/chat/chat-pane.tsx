@@ -80,6 +80,8 @@ export function ChatPane({
     loadingNewer: room.loadingNewer,
     aboveShift: room.aboveShift,
     onLoadOlder: room.loadOlder,
+    onLoadOlderForRestore: room.loadOlderForRestore,
+    onEndRestore: room.endRestore,
     onLoadNewer: room.loadNewer,
     onResetToLatest: room.resetToLatest,
     resetError: room.resetError,

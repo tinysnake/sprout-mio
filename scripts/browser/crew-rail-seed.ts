@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { sqlite, db } from "../../src/db";
-import { delegation } from "../../src/db/schema";
+import { chat, delegation } from "../../src/db/schema";
 import { createAgentProfile, addProjectMember } from "../../src/domain/agent";
 import { dispatchDelegation } from "../../src/domain/delegation";
 import { sendMessage, createDirectChat } from "../../src/domain/chat";
 import { createCrewChat } from "../../tests/fixtures/crew-chat";
+import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 
 const projectId = process.env.CREW_RAIL_PROJECT_ID!;
 const owner = sqlite.prepare("SELECT created_by FROM project WHERE id=?").get(projectId) as {
@@ -27,7 +28,7 @@ const crew = createCrewChat(
   },
   { kind: "human", userId: ctx.userId, ctx },
 );
-for (let i = 0; i < 30; i++)
+for (let i = 0; i < 120; i++)
   sendMessage(
     crew.id,
     {
@@ -37,15 +38,41 @@ for (let i = 0; i < 30; i++)
     },
     ctx,
   );
-const active = dispatchDelegation(
-  {
-    chatId: crew.id,
+// 直接建一条运行中的委派：本机没有 pi provider 时真实 dispatch 会失败，验收卡会变成“需要你”。
+const crewFacts = db
+  .select({ epoch: chat.crewEpoch, lead: chat.leadProfileId })
+  .from(chat)
+  .where(eq(chat.id, crew.id))
+  .get()!;
+const activeChildId = newId(ID_PREFIXES.chat);
+db.insert(chat)
+  .values({
+    id: activeChildId,
+    projectId,
+    kind: "delegation",
+    title: "委派给 Researcher",
+    parentCrewChatId: crew.id,
+    ownerKind: "human",
+    ownerId: ctx.userId,
+    createdBy: ctx.userId,
+  })
+  .run();
+const active = { delegationId: newId(ID_PREFIXES.delegation) };
+db.insert(delegation)
+  .values({
+    id: active.delegationId,
+    projectId,
+    parentCrewChatId: crew.id,
+    childChatId: activeChildId,
+    dispatchLeadProfileId: crewFacts.lead!,
+    crewEpoch: crewFacts.epoch,
     workerProfileId: worker.id,
-    request: "核对接口与权限边界",
+    requestSummary: "核对接口与权限边界",
+    status: "running",
     clientRequestId: "rail-gate-active",
-  },
-  ctx,
-);
+    startedAt: new Date(Date.now() - 65000),
+  })
+  .run();
 const completed = dispatchDelegation(
   {
     chatId: crew.id,
@@ -55,10 +82,6 @@ const completed = dispatchDelegation(
   },
   ctx,
 );
-db.update(delegation)
-  .set({ status: "running", startedAt: new Date(Date.now() - 65000) })
-  .where(eq(delegation.id, active.delegationId))
-  .run();
 db.update(delegation)
   .set({
     status: "completed",

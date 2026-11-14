@@ -159,3 +159,11 @@
 - Commit `8835e1c`，22 个文件；未改 schema/迁移。
 - 实现 worker 自报 typecheck、190 文件/1844 测试、浏览器 gate 5 组断言通过。主线程独立复跑 typecheck 与全量测试通过，并在隔离数据库、真实 dev server 上复跑 `crew-rail.mjs` 5 组断言通过。
 - 待完成：独立代码复审、Human review（宽/窄、展开/折叠、需要你/完成、进入子对话并返回）与 30–60 秒评审录屏。自动 gate 的 12.72 秒录屏不算 Human review。
+
+### 2026-11-15 CR4 复审修复
+
+- 返回父对话的锚点恢复改为有界分页：恢复期间只往前读、不按当前视口淘汰，且同一游标无进展最多重试 2 轮；拿到目标后按保存的 offset 还原，找不到则在 20 页内回退保存的 `scrollTop`，不会持续空转。
+- `loadOlderForRestore` 保留 `aboveShift`，避免恢复途中“钉住底部”把刚读到的旧页挤掉；恢复结束后重新交回正常淘汰。
+- 右栏折叠把用户显式选择保存在内存 ref，storage 读写抛错或窗口 resize 时不再覆盖显式选择；只有从未选择过才使用宽度默认。
+- 浏览器 gate 父对话改为 120 条消息，覆盖目标不在首屏；新增 storage 失败后 resize 仍保留显式选择。active 委派夹具改为直接落库运行中记录，避免本机缺少 provider 时 lead run 失败改变段落归属。
+- 验证：`pnpm typecheck` 通过；`pnpm test` 190 文件 / 1844 测试通过；隔离数据库与真实 dev server 上 `crew-rail.mjs` 6 组断言全部通过。

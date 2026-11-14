@@ -71,9 +71,13 @@ try {
   });
   let anchor;
   await check("open_child_and_return_to_parent_anchor", async () => {
+    // 120 条父消息，首页 50 条；滚到顶部让锚点落在已被窗口淘汰的旧页。
     await page.getByTestId("message-history").evaluate((element) => {
-      element.scrollTop = 700;
+      element.scrollTop = 0;
     });
+    await page.waitForFunction(
+      () => document.querySelectorAll("[data-message-id]").length > 50,
+    );
     anchor = await page.getByTestId("message-history").evaluate((element) => {
       const top = element.getBoundingClientRect().top;
       const row = [...element.querySelectorAll("[data-message-id]")].find(
@@ -125,6 +129,32 @@ try {
           .querySelector('[data-testid="crew-rail-toggle"]')
           ?.getAttribute("aria-expanded") === "true",
     );
+  });
+  await check("storage_failure_keeps_explicit_choice_on_resize", async () => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`${BASE}${parentPath}`, { waitUntil: "domcontentloaded" });
+    await toggle.waitFor();
+    await page.evaluate(() => {
+      const get = Storage.prototype.getItem;
+      const set = Storage.prototype.setItem;
+      Storage.prototype.getItem = function (key) {
+        if (String(key).startsWith("sprout:crew-rail:"))
+          throw new DOMException("denied", "SecurityError");
+        return get.call(this, key);
+      };
+      Storage.prototype.setItem = function (key, value) {
+        if (String(key).startsWith("sprout:crew-rail:"))
+          throw new DOMException("denied", "SecurityError");
+        return set.call(this, key, value);
+      };
+    });
+    const before = await toggle.getAttribute("aria-expanded");
+    await toggle.click();
+    const chosen = await toggle.getAttribute("aria-expanded");
+    assert.notEqual(chosen, before);
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await page.waitForTimeout(200);
+    assert.equal(await toggle.getAttribute("aria-expanded"), chosen);
   });
   await check("dm_keeps_session_details_without_rail", async () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
