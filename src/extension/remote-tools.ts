@@ -48,11 +48,11 @@ const descriptions: Record<ToolName, string> = {
   sprout_lease_grant:
     "把当前 Crew 持有的显式 Machine 租约授予同 Crew 内正在运行的 targetInstanceId。lead 必须是当前持有者；授予同样会 fencing，待旧执行排空后才生效，成功后 worker 成为新代次持有者，租约仍记为 Crew 的授予。不会终止进程或删除文件。",
   sprout_lease_revoke_grant:
-    "撤销本 Crew 授予出去的显式 Machine 租约，收回给 lead。只有原授予者 lead 能撤销；同样需要 machineId 与当前 expectedGeneration，并等待旧执行排空。worker 离线时保持 fencing，需 Human 在租约页强制收回，绝不假装已排空。",
+    "撤销本 Crew 授予出去的显式 Machine 租约，收回给 lead。原授予者或当前 Crew lead 能撤销；同样需要 machineId 与当前 expectedGeneration，并等待旧执行排空。worker 离线时保持 fencing，需 Human 在租约页强制收回，绝不假装已排空。",
   sprout_lease_escrow:
-    "把自己持有的显式 Machine 租约挂靠到当前 Project 的一个 Group 或 Public Channel（chatId），可加 targetAgentProfileId 限定该 Group 内的某个 Agent。必须提供 machineId 与当前 expectedGeneration。挂靠后 Machine 仍被占用、持有者仍是自己，但自己随即失去操作权：挂靠会把代次 +1，沿用旧代次的远端操作会得到 lease_stale_generation，用 lease_get 刷新后仍会被拒 lease_not_holder。只有目标 Group 内的分身领取才改变持有者。不能挂靠到 DM。不会终止进程或删除文件。",
+    "把自己持有的显式 Machine 租约挂靠到当前 Project 的一个 Crew（chatId），可加 targetAgentProfileId 限定该 Crew 内的某个 Agent。必须提供 machineId 与当前 expectedGeneration。挂靠后 Machine 仍被占用、持有者仍是自己，但自己随即失去操作权：挂靠会把代次 +1，沿用旧代次的远端操作会得到 lease_stale_generation，用 lease_get 刷新后仍会被拒 lease_not_holder。只有目标 Crew 内的分身领取才改变持有者。不能挂靠到 DM。不会终止进程或删除文件。",
   sprout_lease_claim:
-    "以本分身身份领取一条处于挂靠中的显式 Machine 租约，需要 machineId、当前 expectedGeneration 与挂靠行 escrowId。只对挂靠目标 Group 内的分身有效（限定 Agent 时必须就是它），先到先得。成功后本分身成为新持有者、代次 +1；不能领取已领取或已撤销的挂靠。",
+    "以本分身身份领取一条处于挂靠中的显式 Machine 租约，需要 machineId、当前 expectedGeneration 与挂靠行 escrowId。只对挂靠目标 Crew 内的分身有效（限定 Agent 时必须就是它），先到先得。成功后本分身成为新持有者、代次 +1；不能领取已领取或已撤销的挂靠。",
   sprout_lease_escrow_cancel:
     "撤销自己发起、尚未被领取的挂靠，需要 machineId、当前 expectedGeneration 与 escrowId。操作权回到发起者，代次 +1；已被领取或已被收回的挂靠不能再撤销。对已被自己撤销的同一条挂靠再次撤销，会原样返回原收据、不推进代次，便于响应丢失后重试。不会终止进程或删除文件。",
   sprout_lease_get:

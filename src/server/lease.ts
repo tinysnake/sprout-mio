@@ -207,7 +207,8 @@ export function assertExecutionWrite(
       ),
     )
     .get();
-  if (grant && (!("runId" in ctx) || grant.granteeRunId !== ctx.runId))
+  // 人类（MachineContext 无 runId）保留停止在途执行的能力，不受 grant 绑定限制。
+  if (grant && "runId" in ctx && grant.granteeRunId !== ctx.runId)
     throw new LeaseError("lease_not_holder");
   return authority;
 }

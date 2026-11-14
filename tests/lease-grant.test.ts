@@ -175,6 +175,12 @@ test("grant and revoke", () => {
   assert.equal(active[0]!.crewChatId, crewId);
   assert.equal(active[0]!.granteeRunId, worker.runId);
   assertExecutionWrite(key, 2, worker);
+  assertExecutionWrite(key, 2, {
+    userId: "owner",
+    requestId: newId(ID_PREFIXES.request),
+    bootId,
+    now,
+  });
   sqlite
     .prepare(
       "UPDATE agent_run SET status='interrupted', stop_reason='process_lost', settled_at=unixepoch() WHERE id=?",

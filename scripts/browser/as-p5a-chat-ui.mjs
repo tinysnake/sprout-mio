@@ -168,6 +168,10 @@ try {
   await page.getByTestId("chat-title-input").fill(renamed);
   await page.getByTestId("chat-title-save").click();
   await page.getByTestId("chat-title-dialog").waitFor({ state: "hidden" });
+  await page
+    .getByTestId("chat-details-title")
+    .filter({ hasText: renamed })
+    .waitFor({ timeout: 5000 });
   record(
     "crew_title_edited_from_details_rail",
     (await page.getByTestId("chat-details-title").textContent()).includes(renamed),
