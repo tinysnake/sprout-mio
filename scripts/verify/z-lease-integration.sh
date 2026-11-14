@@ -245,14 +245,8 @@ try {
   await page.getByTestId('lease-manage-link').first().click();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   // 人类在这页只有强制收回：目标就是本页这台，没有申请/释放表单，也没有交接入口。
-  const reclaim=page.getByTestId('lease-reclaim-controls');
-  await reclaim.waitFor();
+  assert.equal(await page.getByTestId('lease-reclaim-controls').count(),0,'free lease shows no forced reclaim control');
   assert.equal(await page.getByTestId('lease-reclaim-machine').count(),0,'reclaim target is the page itself, no picker');
-  assert.equal(await page.getByTestId('lease-reclaim-confirm').count(),1,'forced reclaim keeps an explicit confirmation');
-  assert.equal(await page.getByTestId('lease-reclaim').isDisabled(),true,'reclaim waits for the confirmation');
-  await page.getByTestId('lease-reclaim-confirm').check();
-  assert.equal(await page.getByTestId('lease-reclaim').isEnabled(),true,'confirmed reclaim is actionable');
-  await page.getByTestId('lease-reclaim-confirm').uncheck();
   assert.equal(await page.locator('[data-testid$="-mutation"]').count(),0,'no lease mutation form on the lease route');
   for (const id of ['lease-chat-select','lease-chat-picked','lease-transfer-controls','lease-handoff-chat-required']) {
     assert.equal(await page.getByTestId(id).count(),0,`lease route must not render ${id}`);
