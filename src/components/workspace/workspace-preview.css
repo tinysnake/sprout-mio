@@ -1,0 +1,44 @@
+/*
+ * shiki 的双主题输出把暗色值放在 --shiki-dark 上，需要一行规则才会在 .dark 下生效。
+ * 代码块背景交给容器，不用 shiki 自带底色，免得预览区出现第二块背景色。
+ */
+.workspace-code .shiki {
+  margin: 0;
+  background: transparent !important;
+}
+
+.dark .workspace-code .shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+.dark .workspace-code .shiki {
+  background: transparent !important;
+}
+
+/*
+ * markdown-content.css 只覆盖聊天里出现的块（标题、列表、代码），表格没定义。
+ * 文件预览里 GFM 表格很常见，补一组与 csv 预览一致的边框与表头底色。
+ */
+.workspace-markdown table {
+  width: 100%;
+  margin: 0.75rem 0;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.workspace-markdown th,
+.workspace-markdown td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: start;
+  vertical-align: top;
+}
+
+.workspace-markdown th {
+  background: var(--secondary);
+  font-weight: 500;
+}
+
+.workspace-markdown tbody tr:nth-child(odd) {
+  background: color-mix(in oklab, var(--muted) 30%, transparent);
+}

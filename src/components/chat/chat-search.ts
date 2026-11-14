@@ -11,6 +11,13 @@ export const CHATS_ROUTE_ID = "/_authed/projects/$projectId/chats";
  */
 export const chatsSearchSchema = z.object({
   info: z.coerce.number().int().min(0).max(1).optional().catch(undefined),
+  /** 右栏当前页签：信息还是文件。缺省是信息，坏值一并当作缺省。 */
+  pane: z.enum(["info", "files"]).optional().catch(undefined),
+  /**
+   * 正在中栏预览的工作区文件（相对工作区根的路径）。放在 URL 里，
+   * 刷新、前进后退和「复制链接给同事」都能回到同一个文件。
+   */
+  file: z.string().min(1).optional().catch(undefined),
 });
 
 export type ChatsSearch = z.infer<typeof chatsSearchSchema>;
@@ -37,4 +44,58 @@ export function useChatInspector(projectId: string, chatId?: string) {
     [navigate, projectId, chatId],
   );
   return { open, setOpen };
+}
+
+export type ChatSidePane = "info" | "files";
+
+/** 右栏页签与文件预览都住在 URL 里，组件只读不各存一份状态。 */
+export function useChatSidePane(projectId: string, chatId?: string) {
+  const search = useSearch({ from: CHATS_ROUTE_ID });
+  const navigate = useNavigate();
+  const pane: ChatSidePane = search.pane === "files" ? "files" : "info";
+  const setPane = useCallback(
+    (next: ChatSidePane) => {
+      if (!chatId) return;
+      void navigate({
+        to: "/projects/$projectId/chats/$chatId",
+        params: { projectId, chatId },
+        search: (previous) => ({
+          ...previous,
+          info: 1,
+          pane: next === "info" ? undefined : next,
+        }),
+        replace: true,
+      });
+    },
+    [chatId, navigate, projectId],
+  );
+  return { pane, setPane };
+}
+
+export function useChatFile(projectId: string, chatId?: string) {
+  const search = useSearch({ from: CHATS_ROUTE_ID });
+  const navigate = useNavigate();
+  const file = search.file;
+  const open = useCallback(
+    (path: string) => {
+      if (!chatId) return;
+      void navigate({
+        to: "/projects/$projectId/chats/$chatId",
+        params: { projectId, chatId },
+        search: (previous) => ({ ...previous, file: path }),
+        replace: true,
+      });
+    },
+    [chatId, navigate, projectId],
+  );
+  const close = useCallback(() => {
+    if (!chatId) return;
+    void navigate({
+      to: "/projects/$projectId/chats/$chatId",
+      params: { projectId, chatId },
+      search: (previous) => ({ ...previous, file: undefined }),
+      replace: true,
+    });
+  }, [chatId, navigate, projectId]);
+  return { file, open, close };
 }

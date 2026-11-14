@@ -34,6 +34,8 @@ import { Route as ApiWorkerCloseRouteImport } from './routes/api/worker/close'
 import { Route as ApiWorkerEnrollRouteImport } from './routes/api/worker/enroll'
 import { Route as ApiWorkerExchangeRouteImport } from './routes/api/worker/exchange'
 import { Route as ApiWorkerOpenRouteImport } from './routes/api/worker/open'
+import { Route as ApiWorkspaceFileRouteImport } from './routes/api/workspace/file'
+import { Route as ApiWorkspaceTreeRouteImport } from './routes/api/workspace/tree'
 import { Route as AuthedMachinesMachineIdIndexRouteImport } from './routes/_authed/machines.$machineId.index'
 import { Route as AuthedMachinesMachineIdLeaseRouteImport } from './routes/_authed/machines.$machineId.lease'
 import { Route as AuthedProjectsProjectIdIndexRouteImport } from './routes/_authed/projects.$projectId.index'
@@ -179,6 +181,16 @@ const ApiWorkerOpenRoute = ApiWorkerOpenRouteImport.update({
   path: '/api/worker/open',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWorkspaceFileRoute = ApiWorkspaceFileRouteImport.update({
+  id: '/api/workspace/file',
+  path: '/api/workspace/file',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWorkspaceTreeRoute = ApiWorkspaceTreeRouteImport.update({
+  id: '/api/workspace/tree',
+  path: '/api/workspace/tree',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthedMachinesMachineIdIndexRoute =
   AuthedMachinesMachineIdIndexRouteImport.update({
     id: '/',
@@ -312,6 +324,8 @@ export interface FileRoutesByFullPath {
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
   '/api/worker/open': typeof ApiWorkerOpenRoute
+  '/api/workspace/file': typeof ApiWorkspaceFileRoute
+  '/api/workspace/tree': typeof ApiWorkspaceTreeRoute
   '/agents/': typeof AuthedAgentsIndexRoute
   '/machines/': typeof AuthedMachinesIndexRoute
   '/projects/': typeof AuthedProjectsIndexRoute
@@ -352,6 +366,8 @@ export interface FileRoutesByTo {
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
   '/api/worker/open': typeof ApiWorkerOpenRoute
+  '/api/workspace/file': typeof ApiWorkspaceFileRoute
+  '/api/workspace/tree': typeof ApiWorkspaceTreeRoute
   '/agents': typeof AuthedAgentsIndexRoute
   '/machines': typeof AuthedMachinesIndexRoute
   '/projects': typeof AuthedProjectsIndexRoute
@@ -395,6 +411,8 @@ export interface FileRoutesById {
   '/api/worker/enroll': typeof ApiWorkerEnrollRoute
   '/api/worker/exchange': typeof ApiWorkerExchangeRoute
   '/api/worker/open': typeof ApiWorkerOpenRoute
+  '/api/workspace/file': typeof ApiWorkspaceFileRoute
+  '/api/workspace/tree': typeof ApiWorkspaceTreeRoute
   '/_authed/agents/': typeof AuthedAgentsIndexRoute
   '/_authed/machines/': typeof AuthedMachinesIndexRoute
   '/_authed/projects/': typeof AuthedProjectsIndexRoute
@@ -441,6 +459,8 @@ export interface FileRouteTypes {
     | '/api/worker/enroll'
     | '/api/worker/exchange'
     | '/api/worker/open'
+    | '/api/workspace/file'
+    | '/api/workspace/tree'
     | '/agents/'
     | '/machines/'
     | '/projects/'
@@ -481,6 +501,8 @@ export interface FileRouteTypes {
     | '/api/worker/enroll'
     | '/api/worker/exchange'
     | '/api/worker/open'
+    | '/api/workspace/file'
+    | '/api/workspace/tree'
     | '/agents'
     | '/machines'
     | '/projects'
@@ -523,6 +545,8 @@ export interface FileRouteTypes {
     | '/api/worker/enroll'
     | '/api/worker/exchange'
     | '/api/worker/open'
+    | '/api/workspace/file'
+    | '/api/workspace/tree'
     | '/_authed/agents/'
     | '/_authed/machines/'
     | '/_authed/projects/'
@@ -562,6 +586,8 @@ export interface RootRouteChildren {
   ApiWorkerEnrollRoute: typeof ApiWorkerEnrollRoute
   ApiWorkerExchangeRoute: typeof ApiWorkerExchangeRoute
   ApiWorkerOpenRoute: typeof ApiWorkerOpenRoute
+  ApiWorkspaceFileRoute: typeof ApiWorkspaceFileRoute
+  ApiWorkspaceTreeRoute: typeof ApiWorkspaceTreeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -739,6 +765,20 @@ declare module '@tanstack/react-router' {
       path: '/api/worker/open'
       fullPath: '/api/worker/open'
       preLoaderRoute: typeof ApiWorkerOpenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/workspace/file': {
+      id: '/api/workspace/file'
+      path: '/api/workspace/file'
+      fullPath: '/api/workspace/file'
+      preLoaderRoute: typeof ApiWorkspaceFileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/workspace/tree': {
+      id: '/api/workspace/tree'
+      path: '/api/workspace/tree'
+      fullPath: '/api/workspace/tree'
+      preLoaderRoute: typeof ApiWorkspaceTreeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authed/machines/$machineId/': {
@@ -1067,6 +1107,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWorkerEnrollRoute: ApiWorkerEnrollRoute,
   ApiWorkerExchangeRoute: ApiWorkerExchangeRoute,
   ApiWorkerOpenRoute: ApiWorkerOpenRoute,
+  ApiWorkspaceFileRoute: ApiWorkspaceFileRoute,
+  ApiWorkspaceTreeRoute: ApiWorkspaceTreeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

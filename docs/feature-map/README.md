@@ -9,6 +9,7 @@
 | 登录后创建项目、配置项目、管理 Agent 和项目成员 | [Project 与 Agent](project-agents.md) | `/login`、`/projects`、`/agents`、项目设置与成员页 |
 | 发起 DM、发送消息、查看运行状态与恢复历史 | [Chat 与 Run](chat-runs.md) | 项目对话列表、新建 Chat、Info Hub 的 DM 链接、Chat 深链 |
 | 在当前上下文查看成员、Chat、Run 和租约事实 | [Info Hub](info-hub.md) | 项目和 Chat 的信息面板 |
+| 在 Chat 右侧栏浏览工作区文件并在中栏预览 markdown、代码、csv、html、图片、音视频与 pdf | [工作区文件](workspace-files.md) | Chat 右侧栏的文件页签、中栏文件页签与新标签页入口 |
 | 接入 Machine、查看健康状态、管理项目租约 | [Machine 与 Lease](machines-leases.md) | `/machines`、Machine 详情与租约页、Info Hub |
 | 发起远程命令、取消执行、查看执行日志与恢复结果 | [远程执行与日志](remote-execution.md) | Agent 远程工具、Run 的执行记录 |
 | 在 Project DM 使用原生助理观察、确认工作与关注通知 | [原生助理](assistant.md) | Agents 创建助理、Project DM 提案与 watch |

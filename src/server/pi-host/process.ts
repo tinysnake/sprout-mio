@@ -2,10 +2,11 @@ import { spawn } from "node:child_process";
 import { assertPreparedPiMessage, type PreparedPiMessage } from "../message-skills";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { RunConfigSnapshot } from "../../contracts/agent-run";
 import type { OpenSession, PiHostCommand, PiHostEvent, PiHostProgress } from "./protocol";
 import { config } from "../../lib/config";
+import { piInstanceSessionDirectory, piInstanceWorkspacePath } from "../../lib/pi-instance-path";
 import type {
   TurnContextPromptInput,
   TurnContextSubmissionReceipt,
@@ -334,9 +335,9 @@ export class PiSessionProcess {
 }
 
 export function piInstancePaths(instanceId: string) {
-  const directory = join(config.SPROUT_PI_DATA_DIR, instanceId);
-  const cwd = join(directory, "workspace");
-  const sessionDirectory = join(directory, "sessions");
+  // 目录布局与只读的浏览路径共用 lib 里的一份，避免两边各写一遍拼法。
+  const cwd = piInstanceWorkspacePath(instanceId);
+  const sessionDirectory = piInstanceSessionDirectory(instanceId);
   mkdirSync(cwd, { recursive: true, mode: 0o700 });
   mkdirSync(sessionDirectory, { recursive: true, mode: 0o700 });
   return { cwd, sessionDirectory };

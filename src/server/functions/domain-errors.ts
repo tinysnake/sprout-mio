@@ -55,6 +55,7 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
     task,
     continuation,
     automation,
+    workspace,
   ] = await Promise.all([
     import("../../domain/project"),
     import("../../domain/agent"),
@@ -69,6 +70,7 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
     import("../../domain/task"),
     import("../../domain/chat-continuation"),
     import("../../domain/automation"),
+    import("../../domain/workspace"),
   ]);
   return [
     project.ProjectError,
@@ -85,6 +87,7 @@ async function loadDomainErrorClasses(): Promise<readonly DomainErrorClass[]> {
     task.TaskError,
     continuation.ChatContinuationError,
     automation.AutomationError,
+    workspace.WorkspaceError,
   ];
 }
 

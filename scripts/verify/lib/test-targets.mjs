@@ -180,6 +180,8 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/worker-platform.test.ts",
     "tests/worker-remote-domain.test.ts",
     "tests/worker-remote.test.ts",
+    "tests/workspace-fence.test.ts",
+    "tests/workspace-root.test.ts",
   ],
   local: [
     "tests/memory-runner.test.ts",
