@@ -72,12 +72,16 @@ try {
   let anchor;
   await check("open_child_and_return_to_parent_anchor", async () => {
     // 200 条父消息（4 页），先把锚点滚到旧页，确保它不在返回时的首屏 50 条里。
-    await page.getByTestId("message-history").evaluate((element) => {
-      element.scrollTop = 0;
-    });
-    await page.waitForFunction(
-      () => document.querySelectorAll("[data-message-id]").length >= 100,
-    );
+    // 读满 4 页：目标放在最旧页，距最新页 3 页，超出窗口 2 页的保留半径。
+    for (const target of [100, 150, 200]) {
+      await page.getByTestId("message-history").evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      await page.waitForFunction(
+        (count) => document.querySelectorAll("[data-message-id]").length >= count,
+        target,
+      );
+    }
     await page.getByTestId("message-history").evaluate((element) => {
       const rows = [...element.querySelectorAll("[data-message-id]")];
       const row = rows[20];
@@ -125,14 +129,17 @@ try {
       },
     );
     assert.equal(appended.status, 0, appended.stderr || String(appended.error));
-    await page.waitForFunction(
-      () => document.body.innerText.includes("验收后续消息：确认恢复后的锚点仍然保留。"),
-    );
-    await page.waitForFunction((expected) =>
-      [...document.querySelectorAll("[data-message-id]")].some(
-        (item) => item.dataset.messageId === expected.id,
+    // 等下一轮 live tick（空闲 5s）完成 settle：anchor 若仍停在最新页，目标页会被裁掉。
+    await page.waitForTimeout(6000);
+    assert.equal(
+      await page.evaluate(
+        (expected) =>
+          [...document.querySelectorAll("[data-message-id]")].some(
+            (item) => item.dataset.messageId === expected.id,
+          ),
+        anchor,
       ),
-      anchor,
+      true,
     );
   });
   await check("collapse_survives_reload_and_width_change", async () => {
