@@ -100,3 +100,10 @@
 - `z-lease-integration` 的第一处失败是 gate 与产品决策冲突。`b86c4f9` 已确定没有 held 租约时不渲染强制收回，gate 却在 free 状态等待该控件。改为断言 free 时不存在，随后门禁进入真实 Pi 租约工具，并暴露 model fixture 计划参数与注册工具 schema 漂移，另派 worker 处理。
 - 集成后 `pnpm typecheck`、`pnpm test`（185 文件 / 1801 测试）、`pnpm exec vp check` 通过。p6a、p7、p6b、k2、z3、k-acceptance、h-project-agents、p6c-member-governance-ui 单 gate 复跑通过。
 - 仍未证明为通过的环境类前置：`ah-execution-live-e2e` 三条 fixture 在满载下 143 超时；`x-remote-tools`、`ae-remote-tools-cancel-log`、`aj-recovery-matrix` 依赖未安装的 pi-magpie。它们不作为 CR1 语义证据，也不伪装成通过。
+
+## 2026-11-14 CR1 第四轮完整验证
+
+- 完整 `scripts/verify.sh` 跑 638 秒，115 个 gate 中 4 失败。其中 `bb-task-live` 在主线 `2008185` 的独立 worktree 上同样失败，确认是既有问题，不是 CR1 回归；`rm2-attachments` 的 lane 10 单独复跑通过，属满载下的 draft 丢失假红；`x-remote-tools` 与 `ae-remote-tools-cancel-log` 都因本机未安装 pi-magpie package，属于环境前置缺失。
+- 本轮修掉两处真实门禁漂移。`tests/fixtures/execution-live-e2e.ts` 与 `tests/fixtures/execution-recovery-matrix.ts` 仍传 `waitMs`，而工具面自 `cde2a04` 起只接受 `blockMs`。改名后 `ah-execution-live-e2e` 与 `aj-recovery-matrix`（12 cells）都通过。
+- `z-lease-integration` 的 fixture 同样在用已移除的 `waitMs`，并新增 `blockMs: 0` 让 Chat 先消费真实提交结果，再暂停 Worker 验证强制收回；该 gate 14 项断言通过。
+- 本轮集成后 `pnpm typecheck`、`pnpm test`、`vp check` 保持通过。CR1 没有待修的产品回归，剩余红都是主线既有、环境前置或满载假红，已在交付说明中分列。
