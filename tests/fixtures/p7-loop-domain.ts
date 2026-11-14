@@ -279,23 +279,28 @@ if (mode === "restart" && !phase) {
         process.send?.({ seeded: true });
         await new Promise(() => {});
       } else {
-        // Naming both Agents is the only way `owner_led` fans out to both: the policy wakes the
-        // owner by default and every named Agent when the body names one.
-        const first = send(
-          group.id,
-          `P7 fanout handoff request @${profileA.name} @${profileB.name}`,
-        );
+        const first = send(group.id, `P7 Crew handoff request @${profileA.name} @${profileB.name}`);
         const groupA = running(group.id, profileA);
+        const helperInstance = chats.ensureInstance(group.id, profileB.id, ctx);
+        // Lease handoff needs a live helper; Crew message routing must not create that run.
+        runs.allocateContinuationRun(
+          { instanceId: helperInstance.id, chatId: group.id, projectId: project.id },
+          req(),
+          new Date(),
+        );
         const groupB = running(group.id, profileB);
         const links = all(
           "SELECT r.instance_id, x.message_id FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE x.message_id=?",
           first.id,
         );
-        assert.deepEqual(
-          links.map((value) => value.instance_id).sort(byCodeUnit),
-          [groupA.instanceId, groupB.instanceId].sort(byCodeUnit),
+        assert.deepEqual(links.map((value) => value.instance_id).sort(byCodeUnit), [
+          groupA.instanceId,
+        ]);
+        assert.equal(
+          links.length,
+          1,
+          "F5a Crew message wakes only the lead, even when naming another Agent",
         );
-        assert.equal(links.length, 2, "F5a group fanout exactly once per Agent");
         const actorA = running(dmA.id, profileA);
         send(dmA.id, "P7 private DM secret");
         const actorB = running(dmB.id, profileB);
@@ -526,7 +531,7 @@ if (mode === "restart" && !phase) {
             2,
             "F5a each participant holds its own grant identity",
           );
-          pass("F5a group fanout and completed handoff", {
+          pass("F5a Crew lead routing and completed handoff", {
             group: group.id,
             oldHolder: groupA.instanceId,
             holder: groupB.instanceId,
@@ -734,8 +739,7 @@ if (mode === "restart" && !phase) {
             ).n,
             1,
           );
-          // Fan-out is one run per named Agent; the same fan-out repeated eight times must not
-          // duplicate runs, only inputs.
+          // Crew messages append only to the lead run; the helper run above is a lease fixture.
           const simultaneous = row(
             "SELECT COUNT(*) n FROM agent_run WHERE status IN ('queued','running')",
           ).n;
@@ -749,28 +753,33 @@ if (mode === "restart" && !phase) {
             group.id,
           ).n;
           for (let index = 0; index < 8; index++)
-            send(group.id, `P7 fanout repeat ${index} @${profileA.name} @${profileB.name}`);
+            send(group.id, `P7 Crew repeat ${index} @${profileA.name} @${profileB.name}`);
           assert.equal(
             row("SELECT COUNT(*) n FROM agent_run WHERE chat_id=?", group.id).n,
             groupRunsBefore,
-            "F9e repeated fan-out never opens extra runs",
+            "F9e repeated Crew messages never open extra runs",
           );
           assert.equal(
             row(
               "SELECT COUNT(*) n FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE r.chat_id=?",
               group.id,
             ).n,
-            groupInputsBefore + 16,
-            "F9e eight fan-outs land once per named Agent",
+            groupInputsBefore + 8,
+            "F9e eight Crew messages land once each on the lead",
           );
-          pass("F9e measured instance admission and fan-out bounds", {
+          assert.equal(
+            row("SELECT COUNT(*) n FROM agent_run_input WHERE run_id=?", groupB.runId).n,
+            0,
+            "F9e mentions never route Crew messages to the non-lead helper",
+          );
+          pass("F9e measured instance admission and Crew lead routing bounds", {
             activeRunsPerInstance: 1,
             simultaneousInFlightRuns: simultaneous,
             appendedInputs: 32,
             overflow: "SQLITE_CONSTRAINT_UNIQUE",
-            fanoutPerMessage: 2,
-            fanoutMessages: 8,
-            fanoutInputs: 16,
+            crewInputsPerMessage: 1,
+            crewMessages: 8,
+            crewInputs: 8,
             machine: {
               hostname: hostname(),
               platform: process.platform,
@@ -780,7 +789,7 @@ if (mode === "restart" && !phase) {
               ramBytes: totalmem(),
             },
             limitation:
-              "no global Agent-count or fan-out cap exists in the product; the measured bound is one in-flight run per instance plus the message body limit enforced at the HTTP boundary (p7-loop-multiround)",
+              "Crew messages wake only the lead; the measured bound is one in-flight run per instance plus the message body limit enforced at the HTTP boundary (p7-loop-multiround)",
           });
 
           // F4b: from idle the continuation itself opens a run; a human message then fills that run

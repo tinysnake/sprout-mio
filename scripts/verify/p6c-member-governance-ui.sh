@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export no_proxy=localhost,127.0.0.1
+export no_proxy='*'
 export NO_PROXY="$no_proxy"
 node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
@@ -10,6 +10,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, openSync, closeSync, rmSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import net from 'node:net'
+import { networkInterfaces } from 'node:os'
 
 const directory = resolve('.verify/p6c-member-governance-ui')
 mkdirSync(directory, { recursive: true })
@@ -57,11 +58,13 @@ async function freePort() {
 
 try {
   const port = Number(process.env.SPROUT_P6C_MEMBER_GOVERNANCE_UI_PORT ?? await freePort())
-  const base = `http://localhost:${port}`
+  const host = Object.values(networkInterfaces()).flat().find(address => address?.family === 'IPv4' && !address.internal)?.address
+  assert(host, 'LAN IPv4 address required for verification server')
+  const base = `http://${host}:${port}`
   const env = {
     ...process.env,
     PORT: String(port),
-    NITRO_PORT: String(port),
+    NITRO_PORT: String(port), HOST: '0.0.0.0', NITRO_HOST: '0.0.0.0',
     APP_ORIGIN: base,
     BASE_URL: base,
     DATABASE_URL: database,
@@ -108,13 +111,13 @@ try {
   const required = [
     'blockers_order', 'blocker_active_runs', 'blocker_leases', 'blocker_owner_duties',
     'blocker_dm_assigned_tasks', 'blocker_object_links', 'member_blockers_mobile',
-    'channel_owner_candidate', 'channel_owner_updated', 'dm_no_owner_entry',
-    'group_owner_behavior', 'group_member_removal', 'project_member_removed',
+    'crew_lead_candidates', 'crew_lead_updated', 'dm_no_lead_entry',
+    'crew_non_owner_no_lead_entry', 'crew_lead_removal_blocked', 'crew_member_removal', 'project_member_removed',
     'removed_dm_archived', 'rejoined_dm_restored', 'chat_mobile',
   ]
   const ids = new Set(checks.map((line) => line.split(' ')[1]))
   for (const id of required) assert(ids.has(id), `browser assertion ${id} 缺失`)
-  assert(checks.length >= 16, `expected at least 16 browser assertions, got ${checks.length}`)
+  assert(checks.length >= 17, `expected at least 17 browser assertions, got ${checks.length}`)
   for (const line of checks) console.log(line)
   assert(checks.every((line) => line.startsWith('PASS ')), 'every browser assertion must pass')
   pass('p6c-browser-assertions', { count: checks.length, evidence: join(directory, 'evidence/results.json') })
