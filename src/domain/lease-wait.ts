@@ -12,6 +12,8 @@ import { clampLeaseWaitMs, type LeaseWaitFailure } from "../contracts/lease-time
 export type LeaseWaitView = {
   readonly state: "free" | "held" | "fencing";
   readonly holderInstanceId: string | null;
+  /** Crew owner 的持有点：该字段存在时，即使没有 instance holder 也视为被占用。 */
+  readonly ownerCrewChatId?: string | null;
   readonly escrow: {
     readonly escrowId: string;
     readonly state: string;
@@ -29,6 +31,12 @@ export type LeaseWaitTarget =
     }
   | {
       readonly kind: "wait";
+      /** 由 Crew 资源协调器持有，等待其排空释放。 */
+      readonly reason: "held_by_crew";
+      readonly crewChatId: string;
+    }
+  | {
+      readonly kind: "wait";
       /** 仍挂在挂靠中，且有可定位对象（挂靠本身或它的目标）。 */
       readonly reason: "escrowed";
       readonly escrowId: string;
@@ -43,6 +51,8 @@ export function leaseWaitTarget(view: LeaseWaitView, requesterInstanceId: string
   if (view.holderInstanceId === requesterInstanceId)
     return { kind: "no_target", reason: "already_held" };
   if (view.escrow) return { kind: "wait", reason: "escrowed", escrowId: view.escrow.escrowId };
+  if (view.state !== "free" && view.ownerCrewChatId)
+    return { kind: "wait", reason: "held_by_crew", crewChatId: view.ownerCrewChatId };
   if (view.state !== "free" && view.holderInstanceId !== null)
     return { kind: "wait", reason: "held_by_other", holderInstanceId: view.holderInstanceId };
   return { kind: "no_target", reason: "free" };

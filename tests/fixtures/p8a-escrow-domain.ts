@@ -128,6 +128,7 @@ sqlite
 // —— 两个 Project：本 Project 一个 Group + 一个 DM + 一个 Public Channel；另一个 Project 一个 Group。
 const project = createProject({ name: "P8a" }, projectCtx);
 const other = createProject({ name: "P8a-other" }, projectCtx);
+const leadAgent = createAgentProfile({ name: "Lead", persona: "", harness: "pi" }, projectCtx);
 const holderAgent = createAgentProfile({ name: "Holder", persona: "", harness: "pi" }, projectCtx);
 const claimerAgent = createAgentProfile(
   { name: "Claimer", persona: "", harness: "pi" },
@@ -141,18 +142,24 @@ const foreignAgent = createAgentProfile(
   { name: "Foreign", persona: "", harness: "pi" },
   projectCtx,
 );
-for (const profile of [holderAgent, claimerAgent, outsiderAgent])
+const otherLeadAgent = createAgentProfile(
+  { name: "Other lead", persona: "", harness: "pi" },
+  projectCtx,
+);
+for (const profile of [leadAgent, holderAgent, claimerAgent, outsiderAgent])
   addProjectMember(project.id, profile.id, projectCtx);
 addProjectMember(other.id, foreignAgent.id, projectCtx);
+addProjectMember(other.id, otherLeadAgent.id, projectCtx);
 
 const group = createCrewChat(
   project.id,
   crewInput({
     projectId: project.id,
     title: "P8a Group",
-    initialOwner: { kind: "human", id: humanId },
+    initialOwner: { kind: "agent", id: leadAgent.id },
     members: [
       { kind: "human", id: humanId },
+      { kind: "agent", id: leadAgent.id },
       { kind: "agent", id: holderAgent.id },
       { kind: "agent", id: claimerAgent.id },
     ],
@@ -164,9 +171,10 @@ const groupOther = createCrewChat(
   crewInput({
     projectId: other.id,
     title: "P8a Other Group",
-    initialOwner: { kind: "human", id: humanId },
+    initialOwner: { kind: "agent", id: otherLeadAgent.id },
     members: [
       { kind: "human", id: humanId },
+      { kind: "agent", id: otherLeadAgent.id },
       { kind: "agent", id: foreignAgent.id },
     ],
   }),
@@ -406,7 +414,7 @@ expectCode(
   "挂靠期间发起者不能释放（lease_not_holder）",
 );
 expectCode(
-  "lease_not_holder",
+  "forbidden",
   () =>
     handoffLease(
       {

@@ -649,6 +649,66 @@ export function reconcileCrewResources(now: Date = new Date()): number {
         (r.state === "active" && (!grant || grant.expiresAt <= now))
       )
         current = freeze(r, reason ?? "recovery");
+      if (current.state === "active" && current.generation !== null) {
+        const leaseNow = db
+          .select()
+          .from(machineLease)
+          .where(
+            and(
+              eq(machineLease.projectId, r.projectId),
+              eq(machineLease.machineId, r.machineId),
+            ),
+          )
+          .get();
+        const activeGrant = current.grantId
+          ? db
+              .select()
+              .from(leaseGrant)
+              .where(eq(leaseGrant.id, current.grantId))
+              .get()
+          : null;
+        // 外部（例如 Human force reclaim）已经收回/替换了 lease：请求不能继续
+        // 显示 active，否则会永久占槽；未确认排空仍须转 attention。
+        if (
+          !activeGrant ||
+          activeGrant.state !== "active" ||
+          !leaseNow ||
+          leaseNow.state === "free" ||
+          leaseNow.generation !== current.generation ||
+          leaseNow.ownerKind !== "crew" ||
+          leaseNow.holderCrewChatId !== current.crewChatId
+        ) {
+          const forced = current.mutationId
+            ? db
+                .select()
+                .from(leaseMutation)
+                .where(eq(leaseMutation.id, current.mutationId))
+                .get()
+            : null;
+          const undrained = db
+            .select()
+            .from(remoteExecution)
+            .where(
+              and(
+                eq(remoteExecution.projectId, r.projectId),
+                eq(remoteExecution.machineId, r.machineId),
+                sql`${remoteExecution.authorizationGeneration}<=${current.generation} AND ${remoteExecution.dispatchConnectionGeneration} IS NOT NULL AND ${remoteExecution.drainedAt} IS NULL`,
+              ),
+            )
+            .get();
+          if (undrained) {
+            update(current, { state: "attention", reason: "drain_unconfirmed" }, "attention");
+            count++;
+          } else if (forced?.requestId.startsWith("force-reclaim:")) {
+            update(current, { state: "attention", reason: "force_reclaimed" }, "attention");
+            count++;
+          } else {
+            update(current, { state: "released", releasedAt: new Date() }, "released");
+            count++;
+          }
+          continue;
+        }
+      }
       if (current.state === "releasing") {
         completeLeaseMutation({ projectId: r.projectId, machineId: r.machineId }, new Date());
         const mutation = current.mutationId
@@ -788,7 +848,13 @@ export function crewResourcesReady(runId: string, now: Date = new Date()): boole
     .from(crewResourceRequest)
     .where(eq(crewResourceRequest.runId, runId))
     .all();
-  return requests.every(
+  if (requests.length === 0) return true;
+  // released 是历史：lead 撤销后为同一 run 重新申请时，旧行不能继续阻塞 admission。
+  const current = requests.filter(
+    (r: Request) => r.state !== "released" && r.approval !== "revoked",
+  );
+  if (current.length === 0) return false;
+  return current.every(
     (r: Request) =>
       r.state === "active" &&
       r.approval === "approved" &&
@@ -834,7 +900,8 @@ export function hasCrewResourceGate(runId: string): boolean {
     .select()
     .from(crewResourceRequest)
     .where(eq(crewResourceRequest.runId, runId))
-    .all();
+    .all()
+    .filter((r: Request) => r.state !== "released" && r.approval !== "revoked");
   return (
     rows.length > 0 &&
     rows.every(

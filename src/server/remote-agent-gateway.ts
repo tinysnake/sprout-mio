@@ -22,6 +22,7 @@ import {
   agentInstance,
   agentProfile,
   agentRun,
+  chat,
   chatEffectiveMember,
   project,
   projectMember,
@@ -449,6 +450,13 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
             // 这里只把已验证的身份交出去，落盘与 hold 由 mcp-relay 自己开合事务。
             return { hold: parseMcpExchange(parsed.call.input), context: actorContext };
           case "lease_mutate": {
+            const chatKind = db
+              .select({ kind: chat.kind })
+              .from(chat)
+              .where(eq(chat.id, actorContext.chatId))
+              .get()?.kind;
+            if (chatKind === "crew" || chatKind === "delegation")
+              throw new RemoteError("forbidden");
             const input = parsed.call.input;
             switch (input.action) {
               case "acquire":

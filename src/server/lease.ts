@@ -200,10 +200,13 @@ export function assertExecutionWrite(
   )
     throw new LeaseError("lease_not_holder");
   // 授予只对 grant 记录的那个 run 生效；同 instance 的后续 run 不能沿用旧授权。
-  try {
-    assertCrewExecutionScope(key, generation, "instanceId" in ctx ? ctx : {});
-  } catch {
-    throw new LeaseError("forbidden");
+  // 人类取消/停止（MachineContext）保留在途执行控制权，不套 Crew grant 范围。
+  if ("instanceId" in ctx) {
+    try {
+      assertCrewExecutionScope(key, generation, ctx);
+    } catch {
+      throw new LeaseError("forbidden");
+    }
   }
   const grant = db
     .select()
@@ -934,9 +937,26 @@ function mutateLeaseInTransaction(
     const actorChat = actor
       ? db.select().from(chat).where(eq(chat.id, actor.chatId)).get()
       : undefined;
-    // Crew worker 不直接操作租约：申请、释放、交接、挂靠都只由 lead 发起，
-    // worker 只持有本 Crew 授予的执行授权。
-    if (actorChat?.kind === "delegation") throw new LeaseError("forbidden");
+    // Crew 资源统一走 coordinator：lead 不能用旧 mutation 入口自行 acquire/
+    // handoff/grant，否则会绕过批准、stop 与 scope。delegation worker 一律禁止。
+    if (
+      actorChat?.kind === "delegation" ||
+      (actorChat?.kind === "crew" && actorChat.leadProfileId === actor.agentProfileId)
+    ) {
+      throw new LeaseError("forbidden");
+    }
+    if (input.action === "handoff" && input.targetInstanceId) {
+      const target = db
+        .select()
+        .from(agentInstance)
+        .where(eq(agentInstance.id, input.targetInstanceId))
+        .get();
+      const targetChat = target
+        ? db.select().from(chat).where(eq(chat.id, target.chatId)).get()
+        : undefined;
+      if (targetChat?.kind === "crew" || targetChat?.kind === "delegation")
+        throw new LeaseError("forbidden");
+    }
   }
   const hash = payloadHash(input);
   const existing = db
@@ -1441,7 +1461,7 @@ function assertClaimInScope(escrowRow: typeof leaseEscrow.$inferSelect, ctx: Age
   )
     throw new LeaseError("lease_claim_out_of_scope");
 }
-/** delegation worker 不能以任何入口操作租约；escrow/claim/cancel 不经过 mutateLeaseInTransaction。 */
+/** Crew/delegation actor 不能以任何入口操作租约；Crew 只走 resource coordinator。 */
 function assertLeaseCommandActor(ctx: AgentRemoteContext) {
   const instance = db
     .select()
@@ -1451,7 +1471,11 @@ function assertLeaseCommandActor(ctx: AgentRemoteContext) {
   const actorChat = instance
     ? db.select().from(chat).where(eq(chat.id, instance.chatId)).get()
     : undefined;
-  if (actorChat?.kind === "delegation") throw new LeaseError("forbidden");
+  if (
+    actorChat?.kind === "delegation" ||
+    (actorChat?.kind === "crew" && actorChat.leadProfileId === instance?.agentProfileId)
+  )
+    throw new LeaseError("forbidden");
 }
 /** 三个命令共用的事实门：代次、fencing、代次上限。挂靠不碰执行行，所以不跑 expireExecutions。 */
 function escrowCommandRow(

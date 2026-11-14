@@ -6,23 +6,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 process.env.DATABASE_URL = join(mkdtempSync(join(tmpdir(), "lease-grant-")), "grant.sqlite");
-const { eq } = await import("drizzle-orm");
 const { ID_PREFIXES, newId } = await import("../src/contracts/ids");
-const { db, sqlite } = await import("../src/db");
+const { sqlite } = await import("../src/db");
 const { migrateDatabase } = await import("../src/db/migrate");
-const { leaseGrant } = await import("../src/db/schema");
 const { leaseMutationViewSchema } = await import("../src/contracts/lease");
 const { createMachine, saveProjectMachineBinding, hashCredential } =
   await import("../src/domain/machine");
-const {
-  acquireLease,
-  assertExecutionWrite,
-  authorityNow,
-  escrowLease,
-  getLease,
-  grantLease,
-  revokeLeaseGrant,
-} = await import("../src/server/lease");
+const { acquireLease, getLease, grantLease, revokeLeaseGrant } =
+  await import("../src/server/lease");
 type AgentRemoteContext = import("../src/server/lease").AgentRemoteContext;
 
 migrateDatabase();
@@ -146,165 +137,40 @@ sqlite
     "INSERT OR IGNORE INTO project_machine_membership(project_id,machine_id,epoch,state,joined_at) VALUES (?,?,1,'active',?)",
   )
   .run(projectId, machineId, now.getTime());
-acquireLease(
-  { ...key, action: "acquire", expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
-  lead,
-);
-test("grant and revoke", () => {
-  assert.equal(getLease(key, human).lease.generation, 1);
-
-  const grant = {
-    ...key,
-    action: "grant" as const,
-    expectedGeneration: 1,
-    targetInstanceId: worker.instanceId,
-    requestId: newId(ID_PREFIXES.request),
-  };
-  const first = grantLease(grant, lead);
-  assert.equal(first.state, "completed");
-  assert.equal(getLease(key, human).lease.generation, 2);
-  assert.equal(authorityNow(key)?.holderInstanceId, worker.instanceId);
-  const active = db
-    .select()
-    .from(leaseGrant)
-    .where(eq(leaseGrant.projectId, projectId))
-    .all()
-    .filter((row: { state: string }) => row.state === "active");
-  assert.equal(active.length, 1);
-  assert.equal(active[0]!.granteeInstanceId, worker.instanceId);
-  assert.equal(active[0]!.crewChatId, crewId);
-  assert.equal(active[0]!.granteeRunId, worker.runId);
-  assertExecutionWrite(key, 2, worker);
-  assertExecutionWrite(key, 2, {
-    userId: "owner",
-    requestId: newId(ID_PREFIXES.request),
-    bootId,
-    now,
-  });
-  sqlite
-    .prepare(
-      "UPDATE agent_run SET status='interrupted', stop_reason='process_lost', settled_at=unixepoch() WHERE id=?",
-    )
-    .run(worker.runId);
-  const secondRunId = newId(ID_PREFIXES.run);
-  const secondGrantId = newId(ID_PREFIXES.remoteToolGrant);
-  sqlite
-    .prepare(
-      "INSERT INTO agent_run(id,instance_id,chat_id,project_id,request_id,status,started_at,session_id) VALUES (?,?,?,?,?,'running',?,?)",
-    )
-    .run(
-      secondRunId,
-      worker.instanceId,
-      worker.chatId,
-      projectId,
-      newId(ID_PREFIXES.request),
-      Math.floor(now.getTime() / 1000),
-      randomBytes(16).toString("hex"),
-    );
-  sqlite
-    .prepare(
-      "INSERT INTO remote_tool_grant(id,secret_hash,user_id,project_id,chat_id,instance_id,run_id,issued_at,expires_at) VALUES (?,?,?,?,?,?,?,?,?)",
-    )
-    .run(
-      secondGrantId,
-      hashCredential(randomBytes(32).toString("base64url")),
-      "owner",
-      projectId,
-      worker.chatId,
-      worker.instanceId,
-      secondRunId,
-      now.getTime(),
-      now.getTime() + 3_600_000,
-    );
-  assert.throws(
-    () => assertExecutionWrite(key, 2, { ...worker, runId: secondRunId, grantId: secondGrantId }),
-    (error: unknown) => {
-      return error instanceof Error && "code" in error && error.code === "lease_not_holder";
-    },
-  );
-  assert.throws(
-    () => assertExecutionWrite(key, 2, lead),
-    (error: unknown) =>
-      error instanceof Error && "code" in error && error.code === "lease_not_holder",
-  );
-
-  assert.throws(
-    () => assertExecutionWrite(key, 1, lead),
-    (error: unknown) =>
-      error instanceof Error && "code" in error && error.code === "lease_stale_generation",
-  );
-
-  const replay = grantLease(grant, lead);
-  assert.equal(replay.mutationId, first.mutationId);
-  assert.equal(getLease(key, human).lease.generation, 2);
-
-  const revoked = revokeLeaseGrant(
-    {
-      ...key,
-      action: "revoke_grant",
-      expectedGeneration: 2,
-      requestId: newId(ID_PREFIXES.request),
-    },
-    lead,
-  );
-  assert.equal(revoked.state, "completed");
-  assert.equal(getLease(key, human).lease.generation, 3);
-  assert.equal(authorityNow(key)?.holderInstanceId, lead.instanceId);
-  assert.equal(db.select().from(leaseGrant).where(eq(leaseGrant.state, "active")).all().length, 0);
-  assertExecutionWrite(key, 3, lead);
-  assert.throws(
-    () => assertExecutionWrite(key, 2, { ...worker, runId: secondRunId, grantId: secondGrantId }),
-    (error: unknown) =>
-      error instanceof Error && "code" in error && error.code === "lease_stale_generation",
-  );
-
-  assert.throws(
-    () =>
-      sqlite
-        .prepare(
-          "INSERT INTO lease_grant(id,project_id,machine_id,generation,crew_chat_id,grantor_instance_id,grantee_instance_id,grantee_run_id,state,request_id,issued_at) VALUES (?,?,?,?,?,?,?,?,'active',?,?)",
-        )
-        .run(
-          newId(ID_PREFIXES.leaseGrant),
-          projectId,
-          key.machineId,
-          3,
-          crewId,
-          lead.instanceId,
-          lead.instanceId,
-          worker.runId,
-          newId(ID_PREFIXES.request),
-          now.getTime(),
-        ),
-    /lease_grant_run_instance_mismatch/,
-  );
-
-  const otherDelegationId = newId(ID_PREFIXES.chat);
-  sqlite
-    .prepare(
-      "INSERT INTO chat(id,project_id,kind,parent_crew_chat_id,owner_kind,owner_id,created_by) VALUES (?,?,'delegation',?,'human','owner','owner')",
-    )
-    .run(otherDelegationId, projectId, crewId);
-  const delegated = actor("Delegated worker", otherDelegationId);
+test("Crew agents cannot use the legacy lease mutation entry", () => {
   assert.throws(
     () =>
       acquireLease(
-        { ...key, action: "acquire", expectedGeneration: 3, requestId: newId(ID_PREFIXES.request) },
-        delegated,
+        { ...key, action: "acquire", expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
+        lead,
+      ),
+    (error: unknown) => error instanceof Error && "code" in error,
+  );
+  assert.equal(getLease(key, human).lease.state, "free");
+  assert.throws(
+    () =>
+      grantLease(
+        {
+          ...key,
+          action: "grant",
+          expectedGeneration: 1,
+          targetInstanceId: worker.instanceId,
+          requestId: newId(ID_PREFIXES.request),
+        },
+        lead,
       ),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "forbidden",
   );
   assert.throws(
     () =>
-      escrowLease(
+      revokeLeaseGrant(
         {
           ...key,
-          action: "escrow",
-          chatId: crewId,
-          expectedGeneration: 3,
+          action: "revoke_grant",
+          expectedGeneration: 1,
           requestId: newId(ID_PREFIXES.request),
         },
-        delegated,
+        lead,
       ),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "forbidden",
   );

@@ -18,6 +18,7 @@ const {
   crewResourcesReady,
   deliverCrewResourceEvents,
 } = await import("../src/domain/crew-resource");
+const { cancelExecution } = await import("../src/server/remote");
 const { recoverAgentRuns, queuedRunWork } = await import("../src/domain/agent-run");
 const { dispatchDelegation } = await import("../src/domain/delegation");
 const { authorityNow, acquireLease, assertExecutionWrite, forceReclaimLease } =
@@ -662,4 +663,83 @@ test("DM lease retains instance ownership and Human write semantics", () => {
   );
   assert.equal(authorityNow(f.key)?.ownerKind, "instance");
   assertExecutionWrite(f.key, 1, f.human);
+});
+
+test("released history does not block a replacement request for the same queued run", () => {
+  const f = fixture(),
+    w = f.worker(),
+    first = f.approved(w);
+  advanceCrewResources();
+  releaseCrewResource(first.id, w);
+  reconcileCrewResources();
+  assert.equal(row(first.id).state, "released");
+  const replacement = f.approved(w);
+  advanceCrewResources();
+  assert.equal(crewResourcesReady(w.runId), true);
+  recoverAgentRuns();
+  const run = sqlite.prepare("SELECT status FROM agent_run WHERE id=?").get(w.runId) as {
+    status: string;
+  };
+  assert.equal(run.status, "queued");
+  assert.equal(row(replacement.id).state, "active");
+});
+
+test("legacy lease mutations cannot bypass Crew resource approval", () => {
+  const f = fixture(),
+    w = f.worker();
+  sqlite.prepare("INSERT INTO crew_control(chat_id,mode) VALUES (?,'stopped')").run(f.crewChatId);
+  assert.throws(
+    () =>
+      acquireLease(
+        { ...f.key, action: "acquire", expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
+        f.lead as never,
+      ),
+    (error: unknown) => error instanceof Error && "code" in error,
+  );
+  sqlite.prepare("UPDATE crew_control SET mode='active' WHERE chat_id=?").run(f.crewChatId);
+  assert.throws(
+    () =>
+      acquireLease(
+        { ...f.key, action: "acquire", expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
+        f.lead as never,
+      ),
+    (error: unknown) => error instanceof Error && "code" in error,
+  );
+  assert.equal(authorityNow(f.key), undefined);
+  void w;
+});
+
+test("human cancel is not blocked by a Crew grant", () => {
+  const f = fixture(),
+    w = f.worker(),
+    r = f.approved(w);
+  advanceCrewResources();
+  const executionId = dispatched(f, w, row(r.id).generation!);
+  assert.throws(
+    () =>
+      cancelExecution(
+        { executionId, requestId: newId(ID_PREFIXES.request) },
+        { ...f.human, now: new Date() },
+      ),
+    (error: unknown) =>
+      error instanceof Error &&
+      "code" in error &&
+      error.code === "cancellation_delivery_unconfirmed",
+  );
+});
+
+test("external lease release releases the active request and admits the next worker", () => {
+  const f = fixture(),
+    w = f.worker(),
+    r = f.approved(w);
+  advanceCrewResources();
+  const generation = row(r.id).generation!;
+  sqlite
+    .prepare("UPDATE machine_lease SET state='free', owner_kind=NULL, holder_crew_chat_id=NULL, generation=generation+1 WHERE project_id=? AND machine_id=?")
+    .run(f.projectId, f.key.machineId);
+  sqlite
+    .prepare("UPDATE lease_authorization SET state='revoked', revoked_at=issued_at+1 WHERE project_id=? AND machine_id=? AND generation=?")
+    .run(f.projectId, f.key.machineId, generation);
+  reconcileCrewResources();
+  assert.equal(row(r.id).state, "released");
 });

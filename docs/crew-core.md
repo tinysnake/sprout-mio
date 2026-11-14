@@ -97,13 +97,13 @@ CR3 的 Crew 资源协调器把需求、批准、占槽、授权和排空分开�
 
 - 同一 Crew 的 client request id 幂等，异 payload 冲突。批准只进入 FIFO 队列，不代表获配；协调器在 immediate 事务中取得 Project × Machine 唯一槽位，建立 Crew owner、实际执行 holder 的 authorization 与精确绑定原 run 的 grant，再放行 queued run 的 admission。dispatch 可在创建 worker run 的同一事务中登记并批准资源。
 - Crew owner 与执行 holder 分开：`machine_lease` 记录 Crew，`lease_authorization` 记录实际执行实例。每次写入与下发还要检查 grant 的 epoch、attempt、run、有效期及请求批准的操作和目录范围。目录校验只约束工具参数，不是文件系统沙箱。DM 保留 instance owner 语义。
-- stop、委派终态或成员参与权消失立即冻结新请求与写入并排空；父 lead run 结束不释放 worker 的资源。换 lead 与正常移除成员受未结束的资源责任阻塞。没有 pending mutation 的 held/孤立 Crew 租约先建立 recovery mutation，确认排空后才释放。
+- stop、委派终态或成员参与权消失立即冻结新请求与写入并排空；父 lead run 结束不释放 worker 的资源。换 lead 与正常移除成员受未结束的资源责任阻塞。没有 pending mutation 的 held/孤立 Crew 租约先建立 recovery mutation，确认排空后才释放。外部已收回/替换的 lease（包括 Human force reclaim）在 reconcile 时结束 active 请求：确认排空后 released，有未确认排空则 attention，不能继续占槽。
 - 排空在事务外通过现有 Machine exchange 的持久 fencing 协议推进；已有终态但没有 drain 收据的已下发执行仍占槽。Human force reclaim 独立保留“未确认排空”事实，请求进入 attention 并阻止自动分配给下一位 worker。事件 outbox 绑定原 run，交付确认独立于授权建立。
 
-已有显式 grant 工具继续使用唯一的 `lease_grant` 授权事实，新增 epoch、subject、attempt、expiry 及待完成 mutation 的固定目标 run：
+`lease_grant` 仍是唯一的执行授权事实，由协调器写入，带 epoch、subject、attempt、expiry 及固定 run：
 
-- 授予由持有租约的当前 lead 发起（`sprout_lease_grant`），只接受同一 Crew 的 delegation 子对话里的 worker run；结果写入 `lease_grant`，记录 Crew、授予者实例、被授予实例与 run、代次和请求 id。授权落地后 `lease_authorization.holder_instance_id` 是该 worker 实例；grant 用作授权来源与撤销依据。
+- 授予只由协调器在批准并取得槽位后写入，只接受同一 Crew 的 delegation 子对话里的 worker run；记录 Crew、授予者实例、被授予实例与 run、代次和请求 id。授权落地后 `lease_authorization.holder_instance_id` 是该 worker 实例；grant 用作授权来源与撤销依据。
 - 授予与撤销都走现有 fencing 流程。旧代次的远端执行没有排空时，mutation 保持 `pending`；排空确认后 generation 加一，新授权生效，旧 grant 一并标记撤销。撤销同样先进入 fencing，不能提前宣布 worker 已停。
 - 同一 Machine 同时只有一份可写授权。lead 想更换 worker 时先撤销旧授予，再授予新的实例；不允许两个 worker 并行写同一 Machine。
-- worker 在委派子对话中调用租约 mutation、挂靠、领取或撤销挂靠都会被拒绝，不能借 escrow 路径绕过。Crew 的租约变更只从 lead 所在 Crew 对话发起。lead 变更后，新 lead 可以撤销原 lead 授予出去的授权。
+- worker 在委派子对话中调用租约 mutation、挂靠、领取或撤销挂靠都会被拒绝，不能借 escrow 路径绕过。Crew lead 也不能用旧的 `sprout_lease_acquire/handoff/grant/revoke_grant` 入口；Crew 的分配只由协调器完成，旧入口只服务 DM。lead 变更后，新 lead 通过协调器撤销原 lead 授予出去的授权。
 - worker 离线时撤销保持 `fencing`，不做超时自动释放。只有 Human 可以在租约页强制收回，且结果显式标记为未确认排空；不能把离线当作已排空。

@@ -65,6 +65,12 @@ test("只对「被其他分身持有」或「仍在挂靠中且有对象」进�
     reason: "held_by_other",
     holderInstanceId: "ins_other",
   });
+  expect(
+    leaseWaitTarget(
+      { state: "held", holderInstanceId: null, ownerCrewChatId: "chat_crew", escrow: null },
+      "ins_me",
+    ),
+  ).toEqual({ kind: "wait", reason: "held_by_crew", crewChatId: "chat_crew" });
   expect(leaseWaitTarget(escrowed("les_1"), "ins_me")).toEqual({
     kind: "wait",
     reason: "escrowed",

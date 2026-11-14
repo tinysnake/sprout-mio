@@ -134,3 +134,11 @@
 - 实际执行 holder 仍是 worker 实例，`lease_authorization.holder_instance_id` 不改成 Crew。worker 在委派子对话内不能调用任何租约 mutation。
 - 新增 `tests/lease-grant.test.ts` 覆盖 acquire、授予、worker 写授权、lead 失去写权、request 重放、撤销、授权回到 lead。
 - 未完成：Crew owner 建模、持久资源队列、自动分配、Crew coordinator 恢复、live Machine 验收、性能基线。
+
+## 2026-11-15 CR3 资源协调器审查修复
+
+- 独立只读审查发现 4 个 P1 与 1 个 P2：Crew lead 可绕过协调器直接 acquire/grant/handoff；历史 released 请求使 `crewResourcesReady` 永远为假并打断替代 run；有效 Crew grant 下 Human 取消被执行范围校验拒绝；Human force reclaim 后 active 请求继续占槽；`leaseWaitTarget` 把 held 的 Crew 租约当空闲。
+- 修复：Crew lead 与 delegation worker 的旧 lease mutation 在服务层被拒，网络入口对 Crew/delegation 会话的旧 mutation 一律 forbidden；Human/MachineContext 不参与 Crew 执行范围校验；`crewResourcesReady` 忽略 released/revoked 历史，历史全部 released 时返回 false；reconcile 对已外部收回/替换的 lease 结清请求，未确认排空转 attention；新增 `held_by_crew` 等待原因。
+- 夹具调整：旧 p8a/p8b Crew 场景使用独立 dummy lead，p8a 的 Crew handoff 目标改为预期 forbidden。
+- 验证：`pnpm typecheck` 通过；`pnpm test` 188 文件 / 1837 测试通过；`crew-delegation` 14 项、`z-lease-integration` 全部断言、`p8b-timeout-integration` 34 项通过。
+- 仍存缺口：非 lead 的 Crew 成员通过内部服务直调仍可使用旧 mutation；网络入口已封死，后续在 CR4 前移除旧入口或迁移剩余夹具。

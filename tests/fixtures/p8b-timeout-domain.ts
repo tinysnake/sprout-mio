@@ -129,7 +129,11 @@ const claimerAgent = createAgentProfile(
   { name: "Claimer", persona: "", harness: "pi" },
   projectCtx,
 );
-for (const profile of [initiatorAgent, ownerAgent, retryAgent, claimerAgent])
+const humanLeadAgent = createAgentProfile(
+  { name: "Human lead", persona: "", harness: "pi" },
+  projectCtx,
+);
+for (const profile of [initiatorAgent, ownerAgent, retryAgent, claimerAgent, humanLeadAgent])
   addProjectMember(project.id, profile.id, projectCtx);
 
 const chatActor = { kind: "human", userId: projectOwner, ctx: projectCtx } as const;
@@ -153,8 +157,8 @@ const groupHuman = createCrewChat(
   crewInput({
     projectId: project.id,
     title: "P8b Human Owner Group",
-    initialOwner: { kind: "human", id: projectOwner },
-    members: members([]),
+    initialOwner: { kind: "agent", id: humanLeadAgent.id },
+    members: members([humanLeadAgent.id]),
   }),
   chatActor,
 );
