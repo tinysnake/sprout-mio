@@ -12,7 +12,7 @@ const projectId = z.string().regex(appIdPattern(ID_PREFIXES.project));
 const memberKind = z.enum(["human", "agent"]);
 
 /** 对话种类：DM 一对一，Crew 是 Project 内由 lead 代表人类协作的成员集合。 */
-export const chatKindSchema = z.enum(["dm", "crew"]);
+export const chatKindSchema = z.enum(["dm", "crew", "delegation"]);
 export type ChatKind = z.infer<typeof chatKindSchema>;
 
 /** 唤醒策略：Crew 不走判定器，路由固定到 lead；DM 也不使用判定器。 */

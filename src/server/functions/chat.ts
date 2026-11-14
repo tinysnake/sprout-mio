@@ -402,15 +402,17 @@ export async function setCrewModeBoundary(
   return chatBoundary<Chat>(headers, requestId, (deps, context) => {
     const parsed = setCrewModeInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(
-      deps.setCrewMode(
-        parsed.data.chatId,
-        parsed.data.mode,
-        parsed.data.expectedRevision,
-        humanActor(context),
-      ),
-      requestId,
+    const updated = deps.setCrewMode(
+      parsed.data.chatId,
+      parsed.data.mode,
+      parsed.data.expectedRevision,
+      humanActor(context),
     );
+    if (parsed.data.mode === "stopped")
+      void import("../../domain/delegation").then((mod) =>
+        mod.cancelCrewDelegations(parsed.data.chatId, "Crew 已停止", context),
+      );
+    return ok(updated, requestId);
   });
 }
 

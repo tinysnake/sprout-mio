@@ -85,6 +85,8 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
             automation_trigger_id: null,
             assistant_event_id: null,
             assistant_proposal_id: null,
+            delegation_id: null,
+            delegation_prompt_for_chat_id: null,
           })),
         );
         expect(rows(after, "agent_run_input")).toEqual(

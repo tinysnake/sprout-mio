@@ -68,7 +68,13 @@ it("0047 preserves old consent, baselines existing content and resolves only pro
     const { sqlite } = openDatabase(file);
     try {
       expect(sqlite.prepare("SELECT * FROM assistant_watch").all()).toEqual(consent);
-      expect(sqlite.prepare("SELECT rowid,* FROM message").all()).toEqual(history);
+      expect(sqlite.prepare("SELECT rowid,* FROM message").all()).toEqual(
+        history.map((row) => ({
+          ...(row as object),
+          delegation_id: null,
+          delegation_prompt_for_chat_id: null,
+        })),
+      );
       expect(sqlite.prepare("SELECT * FROM agent_run").all()).toEqual(
         terminal.map((row) => ({ ...(row as object), ...runAttentionMigrationDefaults })),
       );

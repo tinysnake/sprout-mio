@@ -29,6 +29,15 @@ import type { ProjectContext } from "../domain/access";
 import { getInfoHub } from "../domain/info-hub";
 import { getChatContinuation } from "../domain/chat-continuation";
 import { getTaskDetail, getTasksForChat, mutateTask } from "../domain/task";
+import {
+  blockDelegation,
+  cancelDelegation,
+  completeDelegation,
+  dispatchDelegation,
+  listCrewDelegations,
+  sendDelegationInput,
+} from "../domain/delegation";
+import { crewMutateResponseSchema, delegationMutateResponseSchema } from "../contracts/delegation";
 import { listMessages, sendMessage } from "../domain/chat";
 import { getChatSession } from "../domain/chat-session";
 import { hashCredential } from "../domain/machine";
@@ -280,6 +289,8 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
           case "task_get":
           case "task_list":
           case "task_mutate":
+          case "delegation_mutate":
+          case "crew_mutate":
           case "chat_get":
           case "chat_send": {
             const { instance } = actor(actorContext.runId);
@@ -317,6 +328,66 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
               case "task_mutate": {
                 const { projectId: _projectId, action, ...input } = call.input;
                 return taskMutateResponseSchema.parse(mutateTask(action, input, projectContext));
+              }
+              case "crew_mutate": {
+                const input = call.input;
+                if (input.action === "dispatch") {
+                  const dispatched = dispatchDelegation(
+                    {
+                      chatId,
+                      workerProfileId: input.workerProfileId,
+                      request: input.request,
+                      clientRequestId: input.clientRequestId ?? newId(ID_PREFIXES.request),
+                    },
+                    projectContext,
+                  );
+                  return crewMutateResponseSchema.parse({
+                    projectId,
+                    chatId,
+                    ...dispatched,
+                  });
+                }
+                if (input.action === "input")
+                  return crewMutateResponseSchema.parse({
+                    projectId,
+                    chatId,
+                    ...sendDelegationInput(input.delegationId, input.text, projectContext),
+                  });
+                if (input.action === "cancel")
+                  return crewMutateResponseSchema.parse({
+                    projectId,
+                    chatId,
+                    ...cancelDelegation(
+                      { delegationId: input.delegationId, reason: input.reason },
+                      projectContext,
+                    ),
+                  });
+                return crewMutateResponseSchema.parse({
+                  projectId,
+                  chatId,
+                  view: listCrewDelegations(chatId, projectContext),
+                });
+              }
+              case "delegation_mutate": {
+                const delegationInput = call.input;
+                const result =
+                  delegationInput.action === "complete"
+                    ? completeDelegation(
+                        delegationInput.delegationId,
+                        { summary: delegationInput.summary, artifact: delegationInput.artifact },
+                        projectContext,
+                      )
+                    : blockDelegation(
+                        delegationInput.delegationId,
+                        { summary: delegationInput.summary, reason: delegationInput.reason },
+                        projectContext,
+                      );
+                return delegationMutateResponseSchema.parse({
+                  projectId,
+                  chatId,
+                  delegationId: result.delegationId,
+                  status: result.status,
+                });
               }
               case "chat_get":
                 return chatGetResponseSchema.parse({

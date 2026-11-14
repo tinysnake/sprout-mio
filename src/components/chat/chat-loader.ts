@@ -41,7 +41,7 @@ export type ChatMachineFacts = {
   holderNames?: Readonly<Record<string, string>>;
   /** 挂靠目标与领取者显示用的权威名称（Info Hub 摘要与 Agent 列表）。 */
   chatNames?: Readonly<Record<string, string>>;
-  chatKinds?: Readonly<Record<string, "dm" | "crew">>;
+  chatKinds?: Readonly<Record<string, "dm" | "crew" | "delegation">>;
   agentNames?: Readonly<Record<string, string>>;
 };
 

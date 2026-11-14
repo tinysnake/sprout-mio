@@ -51,7 +51,20 @@ it("upgrades 0051 preserving bindings, history and durable delivery and dropping
         .prepare(`SELECT * FROM ${name}`)
         .all()
         .map((row) =>
-          name === "chat" ? { ...(row as object), lead_profile_id: null, crew_epoch: 0 } : row,
+          name === "chat"
+            ? {
+                ...(row as object),
+                parent_crew_chat_id: null,
+                lead_profile_id: null,
+                crew_epoch: 0,
+              }
+            : name === "message"
+              ? {
+                  ...(row as object),
+                  delegation_id: null,
+                  delegation_prompt_for_chat_id: null,
+                }
+              : row,
         ),
     );
     before.sqlite.close();

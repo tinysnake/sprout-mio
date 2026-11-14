@@ -5,6 +5,7 @@ import type { ChatInfoView } from "../../contracts/info-hub";
 export const CHAT_KIND_LABELS: Record<ChatKind, string> = {
   dm: "DM",
   crew: "Crew",
+  delegation: "Delegation",
 };
 
 /** 参与分身名：Crew 用实例快照，DM 用成员视图里的 Agent 展示名。 */

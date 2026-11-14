@@ -107,3 +107,14 @@
 - 本轮修掉两处真实门禁漂移。`tests/fixtures/execution-live-e2e.ts` 与 `tests/fixtures/execution-recovery-matrix.ts` 仍传 `waitMs`，而工具面自 `cde2a04` 起只接受 `blockMs`。改名后 `ah-execution-live-e2e` 与 `aj-recovery-matrix`（12 cells）都通过。
 - `z-lease-integration` 的 fixture 同样在用已移除的 `waitMs`，并新增 `blockMs: 0` 让 Chat 先消费真实提交结果，再暂停 Worker 验证强制收回；该 gate 14 项断言通过。
 - 本轮集成后 `pnpm typecheck`、`pnpm test`、`vp check` 保持通过。CR1 没有待修的产品回归，剩余红都是主线既有、环境前置或满载假红，已在交付说明中分列。
+
+## 2026-11-14 CR2 委派落地
+
+- 委派不新建 synthetic prompt 表。结果 prompt 写在 worker 子对话里，用 `delegation_prompt_for_chat_id` 别名指向 Crew；lead 的 run 通过该别名消费，Crew 主时间线没有 worker 消息。这样既满足 `agent_run_input.message_id` 非空约束，也不把结果伪装成 lead 自己发送的消息。
+- 子对话的成员从父 Crew 派生。当前 lead、该委派的 worker、能读父 Crew 的 Human 可读；sibling worker 不可读，成员移除后立即失效。委派行快照 dispatch 时的 lead 与 `crew_epoch`，投递前重读当前值，不匹配转 attention。
+- 事件与投递分表。`delegation_event` 以 `(delegation_id, revision, kind)` 唯一；`delegation_delivery` 记录 pending|bound|injected|acknowledged|stale|attention。完成、失败、取消使用终态 CAS，迟到结果不能覆盖新 attempt。
+- 每个 scheduler 轮次先 `reconcileDelegations` 再 `deliverPendingDelegations`。worker run 变成 failed/interrupted/aborted 而委派仍 running 时，系统补发失败事件，不依赖 worker 主动报告；没有这条兜底，宿主崩溃会让 lead 永远等不到结果。
+- 同一 lead、同一 epoch 的 pending 结果按 32 KiB 合并成一条 prompt，避免多个委派同时完成时开多个 lead run；ack 按 runId + messageId 统一标记。
+- 停止 Crew 会取消未结委派，但没有 stopping 中间态。当前 `setCrewMode` 由 Project 创建者调用；`crew_epoch` 只在 lead 变化时推进，停止不推进，与计划中的完整 stop 流程仍有差距。
+- 交付边界。lead 工具是 `sprout_delegation_start/input/cancel/list`，worker 工具是 `sprout_delegation_complete/block`，remote 面是 `crew_mutate`。没有资源 grant，Machine 任务仍走原有 lease；CR2 不宣称租约问题已解决。
+- 验证现状。`tests/delegation-core.test.ts` 8 个用例通过，覆盖幂等 dispatch、Crew 时间线干净、lead 输入、完成投递与 ack、lead 变更 attention、worker 死亡补发、取消、blocked 事件；`pnpm typecheck` 与 `vp check` 通过。CR2 尚未跑完整 `scripts/verify.sh`，计划里的独立 `delegation-delivery.ts`、证据 lane 和性能预算未按原样实现，不能勾选这些条目。

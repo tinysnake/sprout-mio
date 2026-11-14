@@ -8,6 +8,7 @@ import { z } from "zod";
 import { assistantCallSchema } from "./assistant";
 import { chatSessionSchema, messageSchema } from "./chat";
 import { chatContinuationViewSchema } from "./chat-continuation";
+import { crewMutateInputSchema, delegationMutateInputSchema } from "./delegation";
 import {
   addTaskChecklistItemInputSchema,
   appendTaskRecordInputSchema,
@@ -674,6 +675,8 @@ export const remoteAgentRequestSchema = z.strictObject({
     z.strictObject({ type: z.literal("task_get"), input: taskGetInputSchema }),
     z.strictObject({ type: z.literal("task_list"), input: taskListInputSchema }),
     z.strictObject({ type: z.literal("task_mutate"), input: taskMutateInputSchema }),
+    z.strictObject({ type: z.literal("delegation_mutate"), input: delegationMutateInputSchema }),
+    z.strictObject({ type: z.literal("crew_mutate"), input: crewMutateInputSchema }),
     chatContinuationGetCall,
     infoHubGetCall,
     z.strictObject({ type: z.literal("chat_get"), input: chatGetInputSchema }),

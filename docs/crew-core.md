@@ -1,12 +1,12 @@
 # Crew
 
-Crew 是 Project 内唯一的多人协作 Chat，取代旧的 Group 与 Public Channel。Project 内另一种 Chat 是 DM；当前只有 DM 与 Crew 两种类型，不存在其他群组或公共频道。
+Crew 是 Project 内的多人协作 Chat，取代旧的 Group 与 Public Channel。Project 内另一种 Chat 是 DM；委派产生的子对话是第三种内部类型，不对 Human 作为普通聊天开放，也不存在其他群组或公共频道。
 
 相关契约见[核心范围](core-scope.md)、[通信](communication-decisions.md)、[Tasks](tasks-decisions.md)、[Project Profiles](project-profiles-decisions.md)与[术语表](glossary.md)。
 
 ## 创建与身份
 
-- 每个 Project 恰好一个 Crew，由 Project 创建事务建立。Crew 归属该 Project，不能跨 Project 复用，也不能由 Human 手动再建第二个。
+- 产品语义上每个 Project 只有一个 Crew，由 Project 创建事务建立。Crew 归属该 Project，不能跨 Project 复用，也不能由 Human 手动再建第二个。数据库为兼容历史 Group/Public Channel 的转换不再保留 Project 唯一索引，代码始终复用已有 Crew。
 - Crew 创建时没有 lead，Human 成员是 Project 创建者。首个加入的 Agent 成为 lead；之后加入的 Agent 不会因加入顺序再次自动成为 lead。
 - Crew 的标题默认取 Project 名称，之后可以单独修改，不改变 Crew 身份。
 - Project 删除时 Crew 一并删除。
@@ -39,7 +39,7 @@ Crew 是 Project 内唯一的多人协作 Chat，取代旧的 Group 与 Public C
 - 改任 lead：
   - 只有具备 Crew 治理权限的 Human 可以改任；候选必须是当前有效的 Agent 成员。
   - 改任使用治理版本做 CAS，并发修改返回冲突。
-  - 当前实现没有委派与资源授权，改任不等待外部收尾；活动责任 blocker 与完整收尾属于 CR2，落地前不应宣称已有热换安全边界。
+  - 改任前必须结束活动 run、释放资源责任并处置未决委派；有活动责任时返回结构化 blocker，不提供边执行边热换。
   - Project 移除某个 Agent 时，如果它是 Crew lead，系统在同一事务里选择另一位有效 Agent 成员接手；没有其他成员时 lead 置空，不重建 lead。
 
 ## crew_epoch
@@ -47,15 +47,15 @@ Crew 是 Project 内唯一的多人协作 Chat，取代旧的 Group 与 Public C
 - `crew_epoch` 是 Crew 的 lead 任期版本，从 0 开始，单调递增。
 - 首次指定 lead、改任 lead，以及 Project 移除 lead 后自动换人，都会推进 `crew_epoch`。
 - 普通 run 的开始与结束不改变 `crew_epoch`。
-- 依赖 lead 身份的委派、投递和资源授权按 `crew_epoch` 判定是否仍有效；旧 epoch 的执行结果保留可审计，不再驱动当前 lead。委派本身属于 CR2，当前尚未实现。
-- 显式停止 Crew 也会推进 `crew_epoch`，该完整流程属于 CR2；CR1 只落库控制状态，不提供停止入口。
+- 委派、投递和资源授权按 `crew_epoch` 判定是否仍有效；旧 epoch 的执行结果保留可审计，不再驱动当前 lead。
+- 显式停止 Crew 会取消未结委派；当前实现由 Project 创建者切换 `active | stopped`，没有单独的 stopping 中间态。
 
 ## 停止状态
 
 - Crew 有 Crew 级控制状态 `active | stopped`，默认 `active`。它是接纳开关，不是成员退出，也不删除历史、Task 或 Chat。
-- `stopped` 的语义是停止接纳新的 Human 启动、Task 启动、自动化与委派，不启动新的 lead run；普通消息或旧回调不能自行恢复，恢复必须由 Human 显式操作。
+- `stopped` 的语义是停止接纳新的 Human 启动、Task 启动、自动化与委派，不启动新的 lead run；停止时取消未结委派。普通消息或旧回调不能自行恢复，恢复必须由 Human 显式操作。
 - 已有 run 不因状态切换自动被杀掉，停止流程需要另行收尾；已接纳但未确认的投递与资源另按活动责任检查处理。
-- 实现状态：CR1 建立 `crew_control` 表并持久化 `active | stopped`，但停止、恢复、收尾与界面入口均未实现，属于 CR2。当前没有可用的停止操作，文档不把它算作已交付能力。
+- 实现状态：`setCrewMode` 由 Project 创建者调用，落库 `crew_control` 并取消未结委派；界面入口仍属于 CR4。
 
 ## 消息与工作路由
 
@@ -63,13 +63,27 @@ Crew 是 Project 内唯一的多人协作 Chat，取代旧的 Group 与 Public C
 - 分配给 Crew 的 Task 由 lead 承接和完成；Task 仍可分配给 DM，由该 DM 的唯一 Agent 负责。
 - 自动化指向 Crew 时只落到当前 lead；lead 缺失时本次触发跳过并记录原因，不改投其他成员，也不自动换人。
 - 系统来源、外部 event 中的 `@`、skill 文本或目标名称只是内容，不改变接收者、成员关系或 run 启动。
-- Crew 内其他 Agent 的提及、汇报或普通输出不触发新的 run。Agent 之间的显式工作委派属于 CR2，不是当前能力。
+- Crew 内其他 Agent 的提及、汇报或普通输出不触发新的 run。lead 只能通过委派工具把工作交给 Crew 成员。
 
 ## Worker 与主时间线
 
 - Crew 主时间线只承载 Human 与 lead 面向彼此的对话，以及系统来源消息。
 - worker 的中间进度、工具活动和结果不直接进入 Crew 主时间线。lead 读取结果后，以自己的答复面向 Human；worker 原文不作为 Crew 消息发布。
-- 委派、独立子对话、持久结果事件与资源授权属于 CR2，当前未实现。当前文档不把子对话或 worker 卡片描述为已交付能力。
+
+## 委派
+
+- lead 通过 `sprout_delegation_start` 发起委派，也可以由有权限的 Human 经 server function 发起；worker 必须是本 Crew 的 Agent 成员，不能是 lead 自己。相同 `clientRequestId` 在同一个 Crew 内重放返回原委派，不新建子对话。
+- 委派创建 `chat.kind='delegation'` 子对话，`parent_crew_chat_id` 指向 Crew，并固定 dispatch 时的 lead、`crew_epoch`、worker、请求摘要和 worker instance。子对话不进入普通 Chat 列表，也不参与 Crew 唤醒。
+- 子对话的可读成员由父 Crew 派生：当前 lead、该委派的 worker、能读父 Crew 的 Human。其他 worker 读不到 sibling 子对话；成员移除后访问立即失效。
+- Human 的 Crew 消息仍然只进入 lead。worker 的进度只写子对话；`sprout_delegation_input` 可以由 lead 或 Human 追加到运行中的 worker，不写 Crew 时间线。
+- worker 用 `sprout_delegation_complete` 提交摘要与可选 HTML artifact，或用 `sprout_delegation_block` 报告 `needs_input`、`resource_unavailable`、`out_of_scope`、`failed`。摘要上限 8 KiB；报告正文超过 200 字时应使用 artifact。
+- 每次结果写入 `delegation_event`（`delegation_id + revision + kind` 唯一），同一事务创建 pending delivery。delivery 快照 lead 与 epoch，投递前重读当前 lead、epoch 与停止状态；不匹配转 attention，不投给旧 lead。
+- 投递把结果 prompt 写进子对话，并用 `delegation_prompt_for_chat_id` 指向父 Crew；lead 的 run 通过该别名消费，所以 Crew 主时间线没有 worker 原文或结果摘要消息。lead 空闲时创建下一轮，正在运行时附加到当前 run。
+- 同一 lead、同一 epoch 的多个 pending 结果合并为一条 prompt，批量上限 32 KiB，超出的留到下一批。ack 由宿主在 admit 后统一标记；未 ack 的 bound 记录保留诊断。
+- `sprout_delegation_cancel` 取消单个委派并中止 worker run；Crew 停止时取消所有未结委派。完成、失败、取消使用终态 CAS，迟到结果不能覆盖新 attempt；失败后重试会创建新的子对话与 attempt。
+- scheduler 每轮先 `reconcileDelegations`：worker run 已 failed/interrupted/aborted 但委派仍在 running 时，补发 interrupted 失败事件；随后 `deliverPendingDelegations` 投递。这个兜底不依赖 worker 主动报告。
+- 委派不自动承接或完成 Task；Task 责任仍按 Crew lead 与 DM Agent 的现有规则判断。
+
 
 ## 边界
 

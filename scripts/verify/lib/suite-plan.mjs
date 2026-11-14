@@ -94,6 +94,7 @@ export const SUITE_PLAN = Object.freeze({
   "aq-p4d-pages": plan(19, { browser: 1, port3142: 1 }, server),
   "b-tooling": plan(69.675, { process: SUITE_CAPACITY.process, unit: 1 }, privateTree, true),
   "ba-task-domain": plan(2.1, { unit: 1 }),
+  "crew-delegation": plan(2.95, { unit: 1 }),
   "bc-task-start": plan(5.7, { unit: 1, process: 1 }),
   "bd-task-migration": plan(1.4, { unit: 1 }),
   "be-task-info": plan(1.2, { unit: 1 }),

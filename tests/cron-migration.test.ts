@@ -55,6 +55,8 @@ it("0041 preserves populated webhook rows/identities and enforces source/config/
                 ...(row as object),
                 assistant_event_id: null,
                 assistant_proposal_id: null,
+                delegation_id: null,
+                delegation_prompt_for_chat_id: null,
               }))
             : table === "agent_run_input"
               ? old[table].map((row) => ({

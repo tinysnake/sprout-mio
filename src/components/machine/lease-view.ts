@@ -145,12 +145,13 @@ export function escrowStateLabel(state: LeaseEscrowView["state"]): LeaseLabel {
   return LEASE_ESCROW_STATE_LABELS[state];
 }
 
-const CHAT_KIND_LABELS: Record<"dm" | "crew", string> = {
+const CHAT_KIND_LABELS: Record<"dm" | "crew" | "delegation", string> = {
   dm: "DM",
   crew: "Crew",
+  delegation: "Delegation",
 };
 
-export function chatKindLabel(kind: "dm" | "crew"): string {
+export function chatKindLabel(kind: "dm" | "crew" | "delegation"): string {
   return CHAT_KIND_LABELS[kind];
 }
 
@@ -160,7 +161,7 @@ export function chatKindLabel(kind: "dm" | "crew"): string {
  */
 export type EscrowNames = {
   chats?: Readonly<Record<string, string>>;
-  chatKinds?: Readonly<Record<string, "dm" | "crew">>;
+  chatKinds?: Readonly<Record<string, "dm" | "crew" | "delegation">>;
   agents?: Readonly<Record<string, string>>;
 };
 

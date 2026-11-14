@@ -1,3 +1,4 @@
+import { acknowledgeDelegationDelivery } from "../../domain/delegation";
 import { admitAssistantInput, prepareAssistantSteerContext } from "../../domain/assistant";
 import {
   admitContinuation,
@@ -264,27 +265,36 @@ export function executeRun(
                         ? `[Human-confirmed assistant proposal ${selected.message.assistantProposalId}; source is program-generated work input]\n${selected.message.body}`
                         : selected.message.body,
                     })
-                  : selected.message.taskRecordKind === "start"
+                  : selected.message.delegationPromptForChatId
                     ? prepareSyntheticPiMessage({
-                        kind: "task_start",
+                        kind: "delegation",
                         messageId: selected.message.id,
                         text: selected.message.body,
                       })
-                    : await preparePiMessage(
-                        {
-                          projectId: run.projectId,
-                          chatId: run.chatId,
+                    : selected.message.taskRecordKind === "start"
+                      ? prepareSyntheticPiMessage({
+                          kind: "task_start",
                           messageId: selected.message.id,
-                        },
-                        resources,
-                        ctx,
-                      );
+                          text: selected.message.body,
+                        })
+                      : await preparePiMessage(
+                          {
+                            projectId: run.projectId,
+                            chatId: run.chatId,
+                            messageId: selected.message.id,
+                          },
+                          resources,
+                          ctx,
+                        );
               if (signals.isStopping()) return undefined;
               if (firstPendingRunInput(run.id, ctx)?.message.id !== selected.message.id) continue;
               const send = () => {
                 warnSkills(prepared);
                 sent.add(selected.message.id);
-                return process.prompt(prepared);
+                const delivered = process.prompt(prepared);
+                if (selected.message.delegationPromptForChatId)
+                  acknowledgeDelegationDelivery(run.id, selected.message.id);
+                return delivered;
               };
               if (selected.message.assistantProposalId) {
                 const attempted = admitAssistantInput(run.id, selected.message.id, send);

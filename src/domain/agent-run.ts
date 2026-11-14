@@ -3,7 +3,7 @@ import { markChannelReplyIncomplete } from "./channel-delivery";
 import { cancelInvalidAssistantInputs } from "./assistant";
 import { enrollChatWatches } from "./assistant-interest";
 import { automationSourceFor } from "./automation-source";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type {
   AgentRun,
   AgentRunInput,
@@ -329,6 +329,47 @@ function attachMessageToRun(
   db.insert(agentRunInput)
     .values({ runId: run.id, messageId: saved.id, disposition: "pending" })
     .run();
+}
+
+/**
+ * Delegation delivery attaches a prompt message that lives in the child delegation Chat but is
+ * consumed by the lead's run in the parent Crew Chat. `delegationPromptForChatId` is the explicit
+ * alias read by `firstPendingRunInput`; the message never appears in the Crew timeline.
+ */
+export function attachDelegationInput(
+  messageId: string,
+  chatId: string,
+  instanceId: string,
+  projectId: string,
+): string {
+  const current = db.select().from(chat).where(eq(chat.id, chatId)).get();
+  if (!current || current.projectId !== projectId)
+    throw new AgentRunError("not_found", "委派对话不存在");
+  const run = activeRunFor(
+    { instanceId, chatId: current.id, projectId: current.projectId },
+    "delegation-delivery",
+  );
+  const exists = db
+    .select({ messageId: agentRunInput.messageId })
+    .from(agentRunInput)
+    .where(and(eq(agentRunInput.runId, run.id), eq(agentRunInput.messageId, messageId)))
+    .get();
+  if (!exists)
+    db.insert(agentRunInput).values({ runId: run.id, messageId, disposition: "pending" }).run();
+  return run.id;
+}
+
+/** Worker dispatch input: the handoff message and the worker run commit together. */
+export function ensureDelegationWorkerRun(
+  childChatId: string,
+  workerProfileId: string,
+  messageId: string,
+  ctx: ProjectContext,
+): string {
+  const current = getChat(childChatId, ctx);
+  const instance = ensureInstance(current.id, workerProfileId, ctx);
+  attachMessageToRun({ id: messageId }, current, instance, ctx);
+  return runIdOfMessage(messageId, instance.id)!;
 }
 
 /** Dedicated Task delivery: re-read persisted responsibility; never use chat wake routing. */
@@ -661,7 +702,10 @@ export function pendingRunInputs(
     .from(agentRunInput)
     .innerJoin(
       message,
-      and(eq(message.id, agentRunInput.messageId), eq(message.chatId, row.chatId)),
+      and(
+        eq(message.id, agentRunInput.messageId),
+        or(eq(message.chatId, row.chatId), eq(message.delegationPromptForChatId, row.chatId)),
+      ),
     )
     .where(
       and(
@@ -831,7 +875,10 @@ export function firstPendingRunInput(id: string, ctx: ProjectContext) {
     .from(agentRunInput)
     .innerJoin(
       message,
-      and(eq(message.id, agentRunInput.messageId), eq(message.chatId, row.chatId)),
+      and(
+        eq(message.id, agentRunInput.messageId),
+        or(eq(message.chatId, row.chatId), eq(message.delegationPromptForChatId, row.chatId)),
+      ),
     )
     .where(
       and(
