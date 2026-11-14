@@ -196,7 +196,7 @@ async function submit(requestId: string, command: string): Promise<ExecutionView
       authorizationGeneration: generation,
       command,
       cwd: directory,
-      waitMs: 1000,
+      blockMs: 1000,
     });
     const details = result.details as { data?: ExecutionView; error?: { code?: string } };
     if (details.data) return details.data;

@@ -293,7 +293,7 @@ const readLog = async (
 async function submitShell(parameters: {
   requestId: string;
   command: string;
-  waitMs?: number;
+  blockMs?: number;
 }): Promise<ExecutionDetails> {
   const deadline = Date.now() + 45000;
   for (;;) {
@@ -304,7 +304,7 @@ async function submitShell(parameters: {
         authorizationGeneration: generation,
         command: parameters.command,
         cwd: directory,
-        waitMs: parameters.waitMs ?? 1000,
+        blockMs: parameters.blockMs ?? 1000,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -577,7 +577,7 @@ try {
       await submitShell({
         requestId: newId(ID_PREFIXES.request),
         command: "echo b1; echo b2; echo b3",
-        waitMs: 4000,
+        blockMs: 4000,
       })
     ).data;
     await until(
@@ -619,7 +619,7 @@ try {
         requestId: bigRequest,
         command:
           "i=0; while [ $i -lt 3000 ]; do printf 'x%07d-0123456789abcdefghijklmnopqrstuvwxyz\\n' \"$i\"; i=$((i+1)); done",
-        waitMs: 8000,
+        blockMs: 8000,
       })
     ).data;
     await until(
@@ -749,7 +749,7 @@ try {
       await submitShell({
         requestId: newId(ID_PREFIXES.request),
         command: `echo pid=$$; : ${longMarker}; i=0; while [ $i -lt 120 ]; do echo tick=$i; i=$((i+1)); sleep 1; done`,
-        waitMs: 1000,
+        blockMs: 1000,
       })
     ).data;
     await until(
@@ -947,7 +947,7 @@ try {
       await submitShell({
         requestId: newId(ID_PREFIXES.request),
         command: `echo pid=$$; : ${cancelledMarker}; trap '' TERM; i=0; while [ $i -lt 40 ]; do echo tick=$i; sleep 1; done`,
-        waitMs: 1000,
+        blockMs: 1000,
       })
     ).data;
     await until(
@@ -1062,7 +1062,7 @@ try {
       await submitShell({
         requestId: newId(ID_PREFIXES.request),
         command: `echo pid=$$; : ${graceMarker}; trap '' TERM; i=0; while [ $i -lt 30 ]; do echo tick=$i; sleep 1; done`,
-        waitMs: 1000,
+        blockMs: 1000,
       })
     ).data;
     await until(
@@ -1148,7 +1148,7 @@ try {
       await submitShell({
         requestId: newId(ID_PREFIXES.request),
         command: `echo pid=$$; : ${absentMarker}; trap '' TERM; while [ ! -f '${absentSentinel}' ]; do sleep 0.2; done; kill -9 $PPID; sleep 60`,
-        waitMs: 1000,
+        blockMs: 1000,
       })
     ).data;
     await until(
@@ -1223,7 +1223,7 @@ try {
       await submitShell({
         requestId: newId(ID_PREFIXES.request),
         command: `echo pid=$$; : ${humanMarker}; i=0; while [ $i -lt 30 ]; do echo tick=$i; sleep 1; done`,
-        waitMs: 1000,
+        blockMs: 1000,
       })
     ).data;
     await until(
@@ -1306,7 +1306,7 @@ try {
         submitShell({
           requestId: newId(ID_PREFIXES.request),
           command: `echo pid=$$; while [ ! -f '${offlineGate}' ]; do sleep 0.2; done; echo offline-terminal; : ${offlineMarker}`,
-          waitMs: 1000,
+          blockMs: 1000,
         }),
       )
     ).data;
@@ -1374,7 +1374,7 @@ try {
       await submitShell({
         requestId: newId(ID_PREFIXES.request),
         command: `echo pid=$$; : ${restartMarker}; echo f=0; deadline=$(($(date +%s)+300)); while [ ! -e '${restartRelease}' ]; do [ $(date +%s) -lt $deadline ] || exit 124; sleep 0.15; done; echo f=complete`,
-        waitMs: 1000,
+        blockMs: 1000,
       })
     ).data;
     await until(
