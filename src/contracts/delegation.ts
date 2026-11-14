@@ -34,7 +34,11 @@ export const delegationDeliveryStateSchema = z.enum([
 ]);
 export type DelegationDeliveryState = z.infer<typeof delegationDeliveryStateSchema>;
 
-const nonEmptySummary = z.string().trim().min(1).max(8000);
+const nonEmptySummary = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => Buffer.byteLength(value, "utf8") <= 8192, "summary 不能超过 8 KiB");
 const clientRequestId = z.string().trim().min(8).max(128);
 
 const terminalReasonSchema = z.enum([
@@ -77,13 +81,16 @@ export type RetryDelegationInput = z.infer<typeof retryDelegationInput>;
 
 export const delegationResultArtifactSchema = z.strictObject({
   title: z.string().trim().min(1).max(200),
-  html: z.string().min(1).max(262_144),
+  html: z
+    .string()
+    .min(1)
+    .refine((value) => Buffer.byteLength(value, "utf8") <= 262_144, "HTML 不能超过 256 KiB"),
 });
 export type DelegationResultArtifact = z.infer<typeof delegationResultArtifactSchema>;
 
 /** Worker 只能提交结果摘要与可选 HTML artifact；状态迁移由领域层决定。 */
 export const workerDelegationResultInput = z.strictObject({
-  summary: nonEmptySummary.max(8192),
+  summary: nonEmptySummary,
   artifact: delegationResultArtifactSchema.optional(),
 });
 export type WorkerDelegationResultInput = z.infer<typeof workerDelegationResultInput>;
@@ -138,7 +145,7 @@ export type CrewDelegationView = z.infer<typeof crewDelegationViewSchema>;
 export const delegationToolInputSchemas = {
   sprout_delegation_complete: z.strictObject({
     delegationId: delegationIdSchema,
-    summary: nonEmptySummary.max(8192),
+    summary: nonEmptySummary,
     artifact: delegationResultArtifactSchema.optional(),
   }),
   sprout_delegation_block: z.strictObject({
@@ -154,7 +161,7 @@ export const delegationMutateInputSchema = z.discriminatedUnion("action", [
     projectId: z.string(),
     action: z.literal("complete"),
     delegationId: delegationIdSchema,
-    summary: nonEmptySummary.max(8192),
+    summary: nonEmptySummary,
     artifact: delegationResultArtifactSchema.optional(),
   }),
   z.strictObject({

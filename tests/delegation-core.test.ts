@@ -15,6 +15,8 @@ const { listMessages, sendMessage } = await import("../src/domain/chat");
 const {
   cancelDelegation,
   completeDelegation,
+  confirmDelegationDelivery,
+  deliverPendingDelegations,
   blockDelegation,
   dispatchDelegation,
   acknowledgeDelegationDelivery,
@@ -23,6 +25,7 @@ const {
   sendDelegationInput,
 } = await import("../src/domain/delegation");
 const { agentRun } = await import("../src/db/schema");
+const { workerDelegationResultInput } = await import("../src/contracts/delegation");
 const { delegationDelivery } = await import("../src/db/schema");
 type ProjectContext = import("../src/domain/access").ProjectContext;
 
@@ -296,5 +299,87 @@ describe("Crew delegation", () => {
         },
       ),
     ).toThrow(/只有被委派/);
+  });
+
+  it("writes result prompts into a Crew inbox, never into a worker child chat", () => {
+    const first = dispatch("client-inbox-1", worker.id, "整理 A");
+    const second = dispatch("client-inbox-2", other.id, "整理 B");
+    completeDelegation(first.delegationId, { summary: "A 完成" }, workerContext(first.delegationId));
+    completeDelegation(second.delegationId, { summary: "B 完成" }, {
+      userId,
+      requestId: newId(ID_PREFIXES.request),
+      agent: (() => {
+        const run = db.select().from(agentRun).where(eq(agentRun.chatId, readChildChat(second.delegationId))).get()!;
+        return { agentProfileId: other.id, instanceId: run.instanceId, runId: run.id };
+      })(),
+    });
+    const prompts = sqlite
+      .prepare(
+        "SELECT chat_id AS chatId, body FROM message WHERE delegation_prompt_for_chat_id = ?",
+      )
+      .all(crew.id) as { chatId: string; body: string }[];
+    const inboxIds = new Set(prompts.map((prompt) => prompt.chatId));
+    expect(inboxIds.size).toBe(1);
+    const inbox = [...inboxIds][0]!;
+    expect([first.childChatId, second.childChatId]).not.toContain(inbox);
+    const childBodies = [readChildChat(first.delegationId), readChildChat(second.delegationId)].flatMap(
+      (chatId) => listMessages(chatId, human).map((message) => message.body),
+    );
+    expect(childBodies.join("\n")).not.toContain("B 完成");
+    expect(childBodies.join("\n")).not.toContain("A 完成");
+  });
+
+  it("refuses a bound delivery after the Crew is stopped", () => {
+    const result = dispatch("client-stop-1");
+    completeDelegation(result.delegationId, { summary: "准备投递" }, workerContext(result.delegationId));
+    const delivery = db
+      .select()
+      .from(delegationDelivery)
+      .where(eq(delegationDelivery.delegationId, result.delegationId))
+      .get()!;
+    expect(delivery.state).toBe("bound");
+    sqlite.prepare("UPDATE crew_control SET mode='stopped' WHERE chat_id=?").run(crew.id);
+    expect(confirmDelegationDelivery(delivery.runId!, delivery.messageId!)).toBe("invalid");
+    const after = db
+      .select()
+      .from(delegationDelivery)
+      .where(eq(delegationDelivery.id, delivery.id))
+      .get()!;
+    expect(after.state).toBe("attention");
+    expect(after.attentionReason).toBe("crew_stopped");
+    sqlite.prepare("UPDATE crew_control SET mode='active' WHERE chat_id=?").run(crew.id);
+  });
+
+  it("requeues a bound delivery whose lead run ended before admission", () => {
+    const result = dispatch("client-recover-1");
+    completeDelegation(result.delegationId, { summary: "需要恢复" }, workerContext(result.delegationId));
+    const delivery = db
+      .select()
+      .from(delegationDelivery)
+      .where(eq(delegationDelivery.delegationId, result.delegationId))
+      .get()!;
+    sqlite.prepare("UPDATE agent_run SET status='interrupted', stop_reason='process_lost', started_at=COALESCE(started_at, unixepoch()), settled_at=unixepoch() WHERE id=?").run(
+      delivery.runId,
+    );
+    deliverPendingDelegations();
+    const after = db
+      .select()
+      .from(delegationDelivery)
+      .where(eq(delegationDelivery.id, delivery.id))
+      .get()!;
+    expect(after.attentionReason ?? after.state).toBe("bound");
+    expect(after.runId).not.toBe(delivery.runId);
+  });
+
+  it("measures summaries and artifacts in UTF-8 bytes, not characters", () => {
+    expect(
+      workerDelegationResultInput.safeParse({ summary: "汉".repeat(3000) }).success,
+    ).toBe(false);
+    expect(
+      workerDelegationResultInput.safeParse({
+        summary: "ok",
+        artifact: { title: "大报告", html: "汉".repeat(90_000) },
+      }).success,
+    ).toBe(false);
   });
 });

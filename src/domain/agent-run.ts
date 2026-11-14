@@ -686,6 +686,7 @@ export function pendingRunInputs(
   taskRecordKind: typeof message.$inferSelect.taskRecordKind;
   automationTriggerId: string | null;
   assistantProposalId: string | null;
+  delegationPromptForChatId: string | null;
 }[] {
   const row = runRow(id, ctx);
   cancelInvalidTaskStartInputs(id);
@@ -698,6 +699,7 @@ export function pendingRunInputs(
       taskRecordKind: message.taskRecordKind,
       automationTriggerId: message.automationTriggerId,
       assistantProposalId: message.assistantProposalId,
+      delegationPromptForChatId: message.delegationPromptForChatId,
     })
     .from(agentRunInput)
     .innerJoin(

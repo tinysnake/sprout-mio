@@ -250,6 +250,7 @@ export function enqueueDelegationDelivery(delegationId: string, eventId: string)
 }
 
 export function deliverPendingDelegations(): number {
+  resetStaleDelegationDeliveries();
   const pending = db
     .select()
     .from(delegationDelivery)
@@ -258,16 +259,19 @@ export function deliverPendingDelegations(): number {
     .limit(50)
     .all();
   if (pending.length === 0) return 0;
-  // 同一 lead、同一 Crew epoch 的结果合成一条 prompt；上限 32KiB，超出的留到下一批。
+  // 同一 lead、同一 Crew epoch 的结果合成一条 prompt；按 UTF-8 字节上限 32KiB 分批，超出的留到下一批。
   const groups = new Map<string, (typeof pending)[number][]>();
   let batch = 0;
   let size = 0;
   for (const item of pending) {
     const row = db.select().from(delegation).where(eq(delegation.id, item.delegationId)).get();
     if (!row) continue;
-    const bytes = Buffer.byteLength(row.terminalSummary ?? "");
-    if (size + bytes > 32768 && groups.size > 0) batch += 1;
-    size = size + bytes > 32768 ? bytes : size + bytes;
+    const bytes = deliveryBytes(row);
+    if (size > 0 && size + bytes > DELIVERY_BATCH_BYTES) {
+      batch += 1;
+      size = 0;
+    }
+    size += bytes;
     const key = `${row.parentCrewChatId}|${item.leadProfileId}|${item.crewEpoch}|${batch}`;
     const list = groups.get(key) ?? [];
     list.push(item);
@@ -276,6 +280,126 @@ export function deliverPendingDelegations(): number {
   let delivered = 0;
   for (const items of groups.values()) delivered += deliverDeliveryGroup(items) ? items.length : 0;
   return delivered;
+}
+
+const DELIVERY_BATCH_BYTES = 32 * 1024;
+
+function deliveryBytes(row: typeof delegation.$inferSelect): number {
+  return Buffer.byteLength(
+    `委派结果：${row.workerProfileId} · completed\n${row.terminalSummary ?? ""}\n委派对话：${row.childChatId}`,
+    "utf8",
+  );
+}
+
+/** bound 但宿主从未 admit 的投递，在宿主 run 终止后重新排队，避免结果永久滞留。 */
+function resetStaleDelegationDeliveries(): void {
+  const bound = db
+    .select({ id: delegationDelivery.id, runId: delegationDelivery.runId })
+    .from(delegationDelivery)
+    .where(eq(delegationDelivery.state, "bound"))
+    .all();
+  for (const item of bound) {
+    if (!item.runId) continue;
+    const run = db.select().from(agentRun).where(eq(agentRun.id, item.runId)).get();
+    if (!run || run.status === "queued" || run.status === "running") continue;
+    db.update(delegationDelivery)
+      .set({ state: "pending", runId: null, messageId: null, updatedAt: new Date() })
+      .where(eq(delegationDelivery.id, item.id))
+      .run();
+  }
+}
+
+/** 投递前的发送边界复核：lead/epoch/停止状态都可能在 bind 之后变化。 */
+export function confirmDelegationDelivery(runId: string, messageId: string): "ok" | "absent" | "invalid" {
+  return sqlite
+    .transaction(() => {
+      const items = db
+        .select()
+        .from(delegationDelivery)
+        .where(
+          and(eq(delegationDelivery.runId, runId), eq(delegationDelivery.messageId, messageId)),
+        )
+        .all();
+      if (items.length === 0) return "absent" as const;
+      const first = db
+        .select()
+        .from(delegation)
+        .where(eq(delegation.id, items[0]!.delegationId))
+        .get();
+      const crewRow = first
+        ? db.select().from(chat).where(eq(chat.id, first.parentCrewChatId)).get()
+        : undefined;
+      const control = crewRow
+        ? db.select().from(crewControl).where(eq(crewControl.chatId, crewRow.id)).get()
+        : undefined;
+      const invalid =
+        !crewRow || crewRow.kind !== "crew"
+          ? "crew_missing"
+          : crewRow.leadProfileId !== items[0]!.leadProfileId ||
+              crewRow.crewEpoch !== items[0]!.crewEpoch
+            ? "lead_changed"
+            : control?.mode === "stopped"
+              ? "crew_stopped"
+              : null;
+      if (invalid) {
+        for (const item of items) markAttention(item.id, invalid);
+        return "invalid" as const;
+      }
+      const now = new Date();
+      for (const item of items) {
+        db.update(delegationDelivery)
+          .set({ state: "injected", injectedAt: now, updatedAt: now })
+          .where(eq(delegationDelivery.id, item.id))
+          .run();
+      }
+      return "ok" as const;
+    })
+    .immediate();
+}
+
+/** 发送失败时退回 pending，下一轮 tick 重试；已 admit 的行不受影响。 */
+export function releaseDelegationDelivery(runId: string, messageId: string): void {
+  db.update(delegationDelivery)
+    .set({ state: "pending", runId: null, messageId: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(delegationDelivery.runId, runId),
+        eq(delegationDelivery.messageId, messageId),
+        eq(delegationDelivery.state, "injected"),
+      ),
+    )
+    .run();
+}
+
+/** 结果批次写入专用 inbox 对话，避免 sibling 结果进入某个 worker 子对话的人类时间线。 */
+function delegationInboxChat(crewRow: typeof chat.$inferSelect): typeof chat.$inferSelect {
+  const existing = db
+    .select()
+    .from(chat)
+    .where(
+      and(
+        eq(chat.kind, "delegation"),
+        eq(chat.parentCrewChatId, crewRow.id),
+        eq(chat.title, "委派结果"),
+      ),
+    )
+    .get();
+  if (existing) return existing;
+  const id = newId(ID_PREFIXES.chat);
+  db.insert(chat)
+    .values({
+      id,
+      projectId: crewRow.projectId,
+      kind: "delegation",
+      title: "委派结果",
+      ownerKind: "human",
+      ownerId: crewRow.createdBy,
+      createdBy: crewRow.createdBy,
+      wakePolicy: "owner_led",
+      parentCrewChatId: crewRow.id,
+    })
+    .run();
+  return db.select().from(chat).where(eq(chat.id, id)).get()!;
 }
 
 function deliverDeliveryGroup(items: (typeof delegationDelivery.$inferSelect)[]): boolean {
@@ -337,10 +461,11 @@ function deliverDeliveryGroup(items: (typeof delegationDelivery.$inferSelect)[])
         .from(delegation)
         .where(eq(delegation.id, items[0]!.delegationId))
         .get()!;
+      const inbox = delegationInboxChat(crewRow);
       db.insert(message)
         .values({
           id: messageId,
-          chatId: firstRow.childChatId,
+          chatId: inbox.id,
           senderKind: "agent",
           senderId: firstRow.workerProfileId,
           body,
@@ -374,7 +499,13 @@ function deliverDeliveryGroup(items: (typeof delegationDelivery.$inferSelect)[])
 
 function markAttention(deliveryId: string, reason: string): void {
   db.update(delegationDelivery)
-    .set({ state: "attention", attentionReason: reason, updatedAt: new Date() })
+    .set({
+      state: "attention",
+      attentionReason: reason,
+      runId: null,
+      messageId: null,
+      updatedAt: new Date(),
+    })
     .where(eq(delegationDelivery.id, deliveryId))
     .run();
 }
@@ -395,7 +526,13 @@ export function deliverDelegation(deliveryId: string): boolean {
         : undefined;
       const attention = (reason: string) => {
         db.update(delegationDelivery)
-          .set({ state: "attention", attentionReason: reason, updatedAt: new Date() })
+          .set({
+      state: "attention",
+      attentionReason: reason,
+      runId: null,
+      messageId: null,
+      updatedAt: new Date(),
+    })
           .where(eq(delegationDelivery.id, deliveryId))
           .run();
         return false;
@@ -421,10 +558,11 @@ export function deliverDelegation(deliveryId: string): boolean {
         `委派对话：${row.childChatId}`,
       ].join("\n");
       const messageId = newId(ID_PREFIXES.message);
+      const inbox = delegationInboxChat(crewRow);
       db.insert(message)
         .values({
           id: messageId,
-          chatId: row.childChatId,
+          chatId: inbox.id,
           senderKind: "agent",
           senderId: row.workerProfileId,
           body,
@@ -531,7 +669,13 @@ export function acknowledgeDelegationDelivery(runId: string, messageId: string):
       acknowledgedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(and(eq(delegationDelivery.runId, runId), eq(delegationDelivery.messageId, messageId)))
+    .where(
+      and(
+        eq(delegationDelivery.runId, runId),
+        eq(delegationDelivery.messageId, messageId),
+        inArray(delegationDelivery.state, ["bound", "injected"]),
+      ),
+    )
     .run();
 }
 

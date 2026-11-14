@@ -1,4 +1,8 @@
-import { acknowledgeDelegationDelivery } from "../../domain/delegation";
+import {
+  acknowledgeDelegationDelivery,
+  confirmDelegationDelivery,
+  releaseDelegationDelivery,
+} from "../../domain/delegation";
 import { admitAssistantInput, prepareAssistantSteerContext } from "../../domain/assistant";
 import {
   admitContinuation,
@@ -288,12 +292,23 @@ export function executeRun(
                         );
               if (signals.isStopping()) return undefined;
               if (firstPendingRunInput(run.id, ctx)?.message.id !== selected.message.id) continue;
+              const delegationMessageId = selected.message.delegationPromptForChatId
+                ? selected.message.id
+                : null;
+              if (
+                delegationMessageId &&
+                confirmDelegationDelivery(run.id, delegationMessageId) !== "ok"
+              )
+                continue;
               const send = () => {
                 warnSkills(prepared);
                 sent.add(selected.message.id);
                 const delivered = process.prompt(prepared);
-                if (selected.message.delegationPromptForChatId)
-                  acknowledgeDelegationDelivery(run.id, selected.message.id);
+                if (delegationMessageId)
+                  void Promise.resolve(delivered).then(
+                    () => acknowledgeDelegationDelivery(run.id, delegationMessageId),
+                    () => releaseDelegationDelivery(run.id, delegationMessageId),
+                  );
                 return delivered;
               };
               if (selected.message.assistantProposalId) {
@@ -359,6 +374,12 @@ export function executeRun(
                                       }
                                     : {}),
                                 })
+                              : pending.delegationPromptForChatId
+                                ? prepareSyntheticPiMessage({
+                                    kind: "delegation",
+                                    messageId: pending.messageId,
+                                    text: pending.text,
+                                  })
                               : pending.taskRecordKind === "start"
                                 ? prepareSyntheticPiMessage({
                                     kind: "task_start",
@@ -381,6 +402,14 @@ export function executeRun(
                             )
                           )
                             continue;
+                          const delegationMessageId = pending.delegationPromptForChatId
+                            ? pending.messageId
+                            : null;
+                          if (
+                            delegationMessageId &&
+                            confirmDelegationDelivery(run.id, delegationMessageId) !== "ok"
+                          )
+                            continue;
                           sent.add(pending.messageId);
                           if (pending.assistantProposalId) {
                             admitAssistantInput(run.id, pending.messageId, () =>
@@ -396,7 +425,12 @@ export function executeRun(
                             );
                           } else {
                             warnSkills(prepared);
-                            process.steer(prepared);
+                            const steered = process.steer(prepared);
+                            if (delegationMessageId)
+                              void Promise.resolve(steered).then(
+                                () => acknowledgeDelegationDelivery(run.id, delegationMessageId),
+                                () => releaseDelegationDelivery(run.id, delegationMessageId),
+                              );
                           }
                         } catch (error) {
                           recordRunInputDeliveryFailure(
