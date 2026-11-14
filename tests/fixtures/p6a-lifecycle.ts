@@ -112,7 +112,7 @@ const runs = await import("../../src/domain/agent-run");
 const delivery = await import("../../src/domain/continuation-delivery");
 const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
 const { createProject } = await import("../../src/domain/project");
-import { createCrewChat } from "./crew-chat";
+const { createCrewChat } = await import("./crew-chat");
 const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
 const { createContinuationScheduler } = await import("../../src/server/continuation-scheduler");
 const ctx = { userId: "usr_p6a_lifecycle", requestId: newId(ID_PREFIXES.request) };
