@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import assert from "node:assert/strict";
-import { createCrewChat } from "./crew-chat";
 
 export async function p6bFixture(label: string) {
   const started = performance.now();
@@ -13,9 +12,11 @@ export async function p6bFixture(label: string) {
   process.env.NODE_ENV = "test";
   process.env.BETTER_AUTH_SECRET = randomBytes(32).toString("base64url");
   process.env.SPROUT_PI_ENABLED = "false";
+  const { createCrewChat } = await import("./crew-chat");
   const { migrateDatabase } = await import("../../src/db/migrate");
   migrateDatabase();
   const { db, sqlite, openDatabase } = await import("../../src/db");
+  assert.equal(sqlite.name, process.env.DATABASE_URL, "P6b must seed its private database");
   const schema = await import("../../src/db/schema");
   const { ID_PREFIXES, newId } = await import("../../src/contracts/ids");
   const project = await import("../../src/domain/project");
