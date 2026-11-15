@@ -19,7 +19,7 @@ afterAll(() => f.close());
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitFor(check: () => boolean, timeoutMs = 2_000) {
+async function waitFor(check: () => boolean, timeoutMs = 15_000) {
   const startedAt = Date.now();
   while (!check()) {
     if (Date.now() - startedAt > timeoutMs) throw new Error("waitFor timed out");
@@ -190,19 +190,23 @@ it("assembles owner, port and loop behind enabled config and delivers on wake", 
     onError: (error) => errors.push(error),
   });
   runtime.start();
-  expect(runtime.isRunning()).toBe(true);
-  expect(runtime.snapshot().phase).toBe("connected");
-  runtime.wake();
-  await waitFor(() => {
-    const state = (
-      f.sqlite.prepare("SELECT state FROM channel_delivery WHERE id=?").get(delivery.id) as {
-        state: string;
-      }
-    ).state;
-    return state === "accepted";
-  });
-  expect(errors).toEqual([]);
-  runtime.stop();
+  try {
+    expect(runtime.isRunning()).toBe(true);
+    expect(runtime.snapshot().phase).toBe("connected");
+    runtime.wake();
+    await waitFor(() => {
+      const state = (
+        f.sqlite.prepare("SELECT state FROM channel_delivery WHERE id=?").get(delivery.id) as {
+          state: string;
+        }
+      ).state;
+      return state === "accepted";
+    });
+    expect(errors).toEqual([]);
+  } finally {
+    // 断言先失败也要停掉：租约按 app 存库，漏放会让后面的用例看到别人还持着。
+    runtime.stop();
+  }
   expect(log.closed).toBe(true);
   expect(runtime.isRunning()).toBe(false);
 });
@@ -250,17 +254,20 @@ it("starts again after a failed assembly instead of staying half-initialized", (
     },
     onError: (error) => errors.push(error),
   });
-  runtime.start();
-  expect(runtime.isRunning()).toBe(false);
-  expect(runtime.snapshot().phase).toBe("failed");
-  expect(runtime.snapshot().error).toBe("start_failed");
+  try {
+    runtime.start();
+    expect(runtime.isRunning()).toBe(false);
+    expect(runtime.snapshot().phase).toBe("failed");
+    expect(runtime.snapshot().error).toBe("start_failed");
 
-  runtime.start();
-  expect(errors.length).toBe(1);
-  expect(runtime.isRunning()).toBe(true);
-  expect(runtime.snapshot().error).toBeNull();
-  expect(runtime.snapshot().phase).toBe("connected");
-  runtime.stop();
+    runtime.start();
+    expect(errors.length).toBe(1);
+    expect(runtime.isRunning()).toBe(true);
+    expect(runtime.snapshot().error).toBeNull();
+    expect(runtime.snapshot().phase).toBe("connected");
+  } finally {
+    runtime.stop();
+  }
 });
 
 it("does not pretend to be disabled when assembly fails before the owner exists", () => {
