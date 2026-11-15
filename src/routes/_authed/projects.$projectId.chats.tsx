@@ -17,7 +17,17 @@ import {
 } from "@tanstack/react-router";
 import { ChatListPanel } from "../../components/chat/chat-list";
 import { NewChatDialog } from "../../components/chat/new-chat-dialog";
-import { useChatInspector, chatsSearchSchema } from "../../components/chat/chat-search";
+import {
+  CHATS_ROUTE_ID,
+  useChatFilesEntry,
+  useChatInspector,
+  useChatSidePane,
+  chatsSearchSchema,
+} from "../../components/chat/chat-search";
+import { useSearch } from "@tanstack/react-router";
+import { SidePaneTabs } from "../../components/workspace/side-pane-tabs";
+import { WorkspaceSidePanel } from "../../components/workspace/workspace-side-panel";
+import { WorkspacePreviewPane } from "../../components/workspace/workspace-preview-pane";
 import type { ChatDetailLoaderData, ChatsLoaderData } from "../../components/chat/chat-loader";
 import { ChatDetails } from "../../components/chat/chat-details";
 import { ChatWorkspace } from "../../components/layout/chat-workspace";
@@ -84,6 +94,9 @@ function ChatsLayout() {
   });
   const chatId = detail?.params.chatId;
   const { open, setOpen } = useChatInspector(projectId, chatId);
+  const { filesOpen, toggleFiles } = useChatFilesEntry(projectId, chatId);
+  const { pane, setPane } = useChatSidePane(projectId, chatId);
+  const search = useSearch({ from: CHATS_ROUTE_ID });
   const profiles = loader.profiles.ok ? loader.profiles.data : [];
   const members = loader.members.ok ? loader.members.data : [];
   const chat = detail?.loaderData as ChatDetailLoaderData | undefined;
@@ -182,9 +195,30 @@ function ChatsLayout() {
               </div>
             </>
           }
-          chat={<Outlet />}
+          chat={
+            chatId && (search.file || search.files) ? (
+              <WorkspacePreviewPane
+                projectId={projectId}
+                chatId={chatId}
+                inspectorOpen={open}
+                filesOpen={filesOpen}
+                onToggleInspector={() => setOpen(!open)}
+                onToggleFiles={toggleFiles}
+              >
+                <Outlet />
+              </WorkspacePreviewPane>
+            ) : (
+              <Outlet />
+            )
+          }
           inspector={
-            selected && !diagnostic ? (
+            selected && !diagnostic && chatId && search.pane === "files" ? (
+              <WorkspaceSidePanel
+                projectId={projectId}
+                chatId={chatId}
+                onClose={() => setOpen(false)}
+              />
+            ) : selected && !diagnostic ? (
               <ChatDetailsLive
                 projectId={projectId}
                 session={selected.session}
@@ -192,6 +226,7 @@ function ChatsLayout() {
                 humanName={human?.name ?? ""}
                 members={selected.members}
                 profile={selected.profile}
+                tabs={<SidePaneTabs pane={pane} onChange={setPane} />}
                 info={selected.info}
                 turnContext={selected.turnContext}
                 activity={activity}

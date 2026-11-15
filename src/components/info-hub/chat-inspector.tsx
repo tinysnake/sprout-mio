@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ContinuationPanel } from "../continuation/continuation-panel";
 import type { ContinuationPageData } from "../continuation/continuation-page-data";
@@ -37,6 +38,7 @@ export function ChatInspector({
   machineFacts = null,
   machineFactsError,
   continuation,
+  tabs,
   onClose,
 }: {
   chat: Chat;
@@ -51,6 +53,8 @@ export function ChatInspector({
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
   continuation?: ContinuationPageData;
+  /** 真应用里由路由给出「信息 | 文件」页签；独立场景没有路由，退回原样标题。 */
+  tabs?: ReactNode;
   onClose: () => void;
 }) {
   return (
@@ -69,7 +73,8 @@ export function ChatInspector({
         >
           <Icon as={ArrowLeft} />
         </Button>
-        <h2 className="min-w-0 flex-1 truncate text-[13px]">Info Hub</h2>
+        {tabs ?? <h2 className="text-[10px] font-medium text-muted-foreground">Info Hub</h2>}
+        <div className="min-w-0 flex-1" />
         <Button
           type="button"
           variant="ghost"

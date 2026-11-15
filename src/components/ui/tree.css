@@ -1,0 +1,271 @@
+/*
+ * 变量桥接：control-ui 的 tree.css 用一层自己的变量（--cui-*、--hover-fill 等）。
+ * 这里把它们逐一指向项目的语义 token，样式规则本身不动，避免两套色板打架。
+ */
+[data-control-family="tree"] {
+  --radius-popup-item: var(--control-radius);
+  --hover-fill: var(--hover);
+  --active-fill: var(--selected);
+  --text-body: 12px;
+  --font-weight-normal: 400;
+  --focus-ring-width: 2px;
+  --focus-ring-style: solid;
+  --focus-ring: var(--ring);
+  --duration-base: 120ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --touch-target: 28px;
+  --disabled-opacity: 0.5;
+}
+
+@layer components {
+  :where([data-control-family="tree"][data-slot="root"]) {
+    --cui-tree-item-trigger-radius: var(--radius-popup-item);
+    --cui-tree-item-trigger-background: transparent;
+    --cui-tree-item-trigger-foreground: var(--foreground);
+    --cui-tree-item-trigger-hover-background: var(--hover-fill);
+    --cui-tree-item-trigger-hover-foreground: var(--foreground);
+    --cui-tree-item-trigger-selected-background: var(--active-fill);
+    --cui-tree-item-trigger-selected-foreground: var(--foreground);
+    --cui-tree-item-trigger-font-size: var(--text-body);
+    --cui-tree-item-trigger-selected-font-weight: var(--font-weight-normal);
+    --cui-tree-indent-inset: 1.25rem;
+    --cui-tree-guide-background: transparent;
+    --cui-tree-guide-inline-size: 1px;
+  }
+
+  :where([data-control-family="tree"][data-slot="list"]) {
+    --_tree-focus-ring-width: var(--focus-ring-width);
+  }
+
+  :where([data-control-family="tree"][data-slot="item"]) {
+    --focus-ring-width: 0px;
+  }
+
+  :where([data-control-family="tree"][data-slot="item"] > *) {
+    --focus-ring-width: var(--_tree-focus-ring-width);
+  }
+
+  :where(
+    [data-control-family="tree"][data-slot="item"]:focus-visible > [data-slot="item-trigger"]
+  ) {
+    outline: var(--_tree-focus-ring-width) var(--focus-ring-style) var(--focus-ring);
+    outline-offset: calc(var(--_tree-focus-ring-width) * -1);
+  }
+
+  :where([data-control-family="tree"][data-slot="root"] > [data-control-family="track-highlight"]) {
+    --cui-track-highlight-radius: var(--cui-tree-item-trigger-radius);
+    --cui-track-highlight-background: var(--cui-tree-item-trigger-selected-background);
+    --cui-track-highlight-hover-background: var(--cui-tree-item-trigger-hover-background);
+  }
+
+  :where([data-control-family="tree"][data-slot="item-trigger"]) {
+    gap: calc(var(--spacing) * 1.5);
+    padding-block: calc(var(--spacing) * 1);
+    padding-inline-start: calc(var(--_tree-level, 1) * var(--cui-tree-indent-inset));
+    padding-inline-end: calc(var(--spacing) * 2);
+    border-radius: var(--cui-tree-item-trigger-radius);
+    background-color: var(--cui-tree-item-trigger-background);
+    color: var(--cui-tree-item-trigger-foreground);
+    font-size: var(--cui-tree-item-trigger-font-size);
+    font-weight: var(--font-weight-normal);
+  }
+
+  @media (pointer: coarse) {
+    :where([data-control-family="tree"][data-slot="item-trigger"]) {
+      min-block-size: var(--touch-target);
+    }
+  }
+
+  @media (hover: hover) {
+    :where([data-control-family="tree"][data-slot="item-trigger"]:hover) {
+      background-color: var(--cui-tree-item-trigger-hover-background);
+      color: var(--cui-tree-item-trigger-hover-foreground);
+    }
+  }
+
+  :where([data-control-family="tree"][data-slot="item-trigger"][data-selected]) {
+    background-color: var(--cui-tree-item-trigger-selected-background);
+    color: var(--cui-tree-item-trigger-selected-foreground);
+    font-weight: var(--cui-tree-item-trigger-selected-font-weight);
+  }
+
+  :where([data-control-family="tree"][data-slot="item-trigger"][aria-disabled="true"]) {
+    opacity: var(--disabled-opacity);
+  }
+
+  :where([data-control-family="tree"][data-slot="item"][data-disabled]) {
+    cursor: not-allowed;
+  }
+
+  :where(
+    [data-control-family="tree"][data-indicator="slide"]
+      [data-control-family="tree"][data-slot="item-trigger"]:is(:hover, [data-selected])
+  ) {
+    background-color: transparent;
+  }
+
+  :where([data-control-family="tree"][data-slot="item-indicator"]) {
+    inline-size: calc(var(--spacing) * 4);
+    block-size: calc(var(--spacing) * 4);
+    color: var(--muted-foreground);
+  }
+
+  :where([data-control-family="tree"][data-slot="item-indicator"][data-state]) {
+    transition: rotate var(--duration-base) var(--ease-standard);
+  }
+
+  :where([data-control-family="tree"][data-slot="item-indicator"][data-state="open"]) {
+    rotate: 90deg;
+  }
+
+  :where(
+    [data-control-family="tree"][data-slot="item-indicator"][data-state="open"]:has(
+        > [data-icon-dir="inline"]
+      ):dir(rtl)
+  ) {
+    rotate: -90deg;
+  }
+
+  @media (forced-colors: active) {
+    :where([data-control-family="tree"][data-slot="item-trigger"][data-selected]) {
+      forced-color-adjust: none;
+      background-color: Highlight;
+      color: HighlightText;
+    }
+  }
+
+  :where([data-control-family="tree"][data-slot="item-content"]) {
+    block-size: var(--collapsible-panel-height);
+    opacity: 1;
+    transition-property: block-size, opacity;
+    transition-duration: var(--duration-base);
+    transition-timing-function: var(--ease-emphasized);
+  }
+
+  :where(
+    [data-control-family="tree"][data-slot="item-content"]:is(
+        [data-starting-style],
+        [data-ending-style]
+      )
+  ) {
+    block-size: 0;
+    overflow: clip;
+    opacity: 0;
+  }
+
+  @supports (transition-behavior: allow-discrete) {
+    :where([data-control-family="tree"][data-slot="item-content"]) {
+      transition-property: block-size, opacity, overflow;
+      transition-timing-function: var(--ease-emphasized), var(--ease-emphasized), step-end;
+      transition-behavior: normal, normal, allow-discrete;
+    }
+
+    :where([data-control-family="tree"][data-slot="item-content"][data-ending-style]) {
+      transition-timing-function: var(--ease-emphasized), var(--ease-emphasized), step-start;
+    }
+  }
+
+  :where([data-control-family="tree"][data-slot="item-group"]) {
+    position: relative;
+    cursor: auto;
+    translate: 0 0;
+    transition: translate var(--duration-base) var(--ease-emphasized);
+  }
+
+  :where([data-control-family="tree"][data-slot="item-group"])::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(
+      var(--_tree-level, 1) * var(--cui-tree-indent-inset) + var(--spacing) * 2 -
+        var(--cui-tree-guide-inline-size) / 2
+    );
+    inline-size: var(--cui-tree-guide-inline-size);
+    border-radius: var(--cui-tree-guide-inline-size);
+    background-color: var(--cui-tree-guide-background);
+    pointer-events: none;
+  }
+
+  :where(
+    [data-control-family="tree"][data-slot="item-content"]:is(
+        [data-starting-style],
+        [data-ending-style]
+      )
+      > [data-slot="item-group"]
+  ) {
+    translate: 0 calc(var(--spacing) * -1);
+  }
+}
+
+@property --cui-tree-item-trigger-radius {
+  syntax: "<length-percentage>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --cui-tree-item-trigger-foreground {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --cui-tree-item-trigger-hover-background {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --cui-tree-item-trigger-hover-foreground {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --cui-tree-item-trigger-selected-background {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --cui-tree-item-trigger-selected-foreground {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --cui-tree-item-trigger-font-size {
+  syntax: "<length-percentage>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --cui-tree-item-trigger-selected-font-weight {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 400;
+}
+
+@property --cui-tree-indent-inset {
+  syntax: "<length-percentage>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --cui-tree-item-trigger-background {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --cui-tree-guide-background {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@property --cui-tree-guide-inline-size {
+  syntax: "<length-percentage>";
+  inherits: true;
+  initial-value: 0px;
+}

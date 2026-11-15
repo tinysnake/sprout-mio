@@ -48,6 +48,8 @@ export function ChatPane({
   continuation,
   inspectorOpen,
   onToggleInspector,
+  filesOpen = false,
+  onToggleFiles,
   onChanged,
 }: {
   projectId: string;
@@ -66,6 +68,8 @@ export function ChatPane({
   continuation: AppResult<ChatContinuationData>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
+  filesOpen?: boolean;
+  onToggleFiles?: () => void;
   onChanged: () => void;
 }) {
   const chat = session.chat;
@@ -308,6 +312,8 @@ export function ChatPane({
           continuation={continuation}
           inspectorOpen={inspectorOpen}
           onToggleInspector={onToggleInspector}
+          filesOpen={filesOpen}
+          onToggleFiles={onToggleFiles}
           draft={draft}
           onDraftChange={setDraft}
           onSend={() => void send()}
