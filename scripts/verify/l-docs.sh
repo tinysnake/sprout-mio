@@ -215,8 +215,9 @@ check(p3Completion.includes('实现基线 `db185f8`') && p3Completion.includes('
 check(git('show', '-s', '--format=%s', 'db185f8').startsWith('Merge pull request #18 '), 'P2 final commit must match PR #18');
 check(git('rev-parse', 'db185f8^2') === git('rev-parse', '6886bfa'), 'P2 final commit must have the verified PR #18 head');
 check(git('rev-parse', '34b078e^1') === git('rev-parse', 'db185f8'), 'P3 baseline differs from first merge parent');
-const p3Merges = git('log', '--first-parent', '--format=%h', 'db185f8..e5e2b4e').split('\n');
-check(p3Merges.join(',') === [...p3Units].reverse().map((unit) => unit.merge).join(','), 'P3 range differs from five recorded Git merges');
+const p3Merges = git('log', '--first-parent', '--format=%H', 'db185f8..e5e2b4e').split('\n');
+const p3Recorded = [...p3Units].reverse().map((unit) => git('rev-parse', unit.merge));
+check(p3Merges.join(',') === p3Recorded.join(','), `P3 range differs from five recorded Git merges (log ${p3Merges.join(',')}; docs ${p3Recorded.join(',')})`);
 git('merge-base', '--is-ancestor', '28d4fb2', 'db185f8');
 const boxesIn = (section) => [...section.matchAll(/^- \[([ x])\] (.+)$/gm)].map((match) => ({ state: match[1], text: match[2] }));
 const sectionOf = (text, heading, level) =>
