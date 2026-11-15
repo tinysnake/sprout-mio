@@ -415,7 +415,7 @@ if (mode === "restart" && !phase) {
         if (mode === "collaboration") {
           const acquired = leases.acquireLease(
             { ...m1.key, action: "acquire", expectedGeneration: 0, requestId: req() },
-            groupA,
+            actorA,
           );
           assert.equal(acquired.completedGeneration, 1);
           assert.throws(
@@ -439,7 +439,7 @@ if (mode === "restart" && !phase) {
                 mode: "overwrite",
               },
             },
-            groupA,
+            actorA,
           );
           m1.exchange();
           const pending = leases.handoffLease(
@@ -450,7 +450,7 @@ if (mode === "restart" && !phase) {
               requestId: req(),
               targetInstanceId: handoffTarget.instanceId,
             },
-            groupA,
+            actorA,
           );
           assert.equal(pending.state, "pending");
           const blockers = agents.collectProjectMemberRemovalBlockers(project.id, profileB.id);
@@ -490,7 +490,7 @@ if (mode === "restart" && !phase) {
                     mode: "overwrite",
                   },
                 },
-                groupA,
+                actorA,
               ),
             fails("lease_stale_generation"),
           );
@@ -498,7 +498,7 @@ if (mode === "restart" && !phase) {
             () =>
               leases.releaseLease(
                 { ...m1.key, action: "release", expectedGeneration: 2, requestId: req() },
-                groupA,
+                actorA,
               ),
             fails("lease_not_holder"),
             "F5a the old Agent no longer owns any lease action",
@@ -519,7 +519,7 @@ if (mode === "restart" && !phase) {
           );
           const identifiers = all(
             "SELECT id, run_id, instance_id FROM remote_tool_grant WHERE chat_id IN (?,?) AND revoked_at IS NULL",
-            group.id,
+            dmA.id,
             dmB.id,
           );
           assert.equal(
@@ -527,7 +527,7 @@ if (mode === "restart" && !phase) {
             2,
             "F5a each participant holds its own grant identity",
           );
-          pass("F5a Crew lead and completed handoff to DM peer", {
+          pass("F5a Agent acquires and hands off to a DM peer", {
             group: group.id,
             oldHolder: groupA.instanceId,
             holder: handoffTarget.instanceId,

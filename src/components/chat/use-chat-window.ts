@@ -97,7 +97,11 @@ export function useChatWindow({
     if (live === null || !live.messages.ok) return;
     const fresh = live.messages.data;
     setState((prev) =>
-      prev === null ? prev : restoringRef.current ? appendNew(prev, fresh) : settle(appendNew(prev, fresh)),
+      prev === null
+        ? prev
+        : restoringRef.current
+          ? appendNew(prev, fresh)
+          : settle(appendNew(prev, fresh)),
     );
   }, [live]);
 

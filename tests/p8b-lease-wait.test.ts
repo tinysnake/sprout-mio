@@ -11,7 +11,12 @@ import {
   resolveLeaseTimeouts,
 } from "../src/contracts/lease-timeout";
 import type { LeaseView } from "../src/contracts/lease";
-import { leaseWaitBusy, leaseWaitTarget, waitForLease, type LeaseWaitView } from "../src/domain/lease-wait";
+import {
+  leaseWaitBusy,
+  leaseWaitTarget,
+  waitForLease,
+  type LeaseWaitView,
+} from "../src/domain/lease-wait";
 
 type View = Pick<LeaseView, "state" | "holderInstanceId"> &
   Pick<LeaseWaitView, "holderCrewChatId" | "escrow">;
