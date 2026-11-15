@@ -281,7 +281,7 @@ try {
   sqlite.prepare("DELETE FROM lease_mutation WHERE id = ?").run(lease.pendingMutationId);
   sqlite
     .prepare(
-      "UPDATE machine_lease SET state = 'free', holder_instance_id = NULL WHERE machine_id = ?",
+      "UPDATE machine_lease SET state = 'free', holder_instance_id = NULL, owner_kind = NULL, holder_crew_chat_id = NULL WHERE machine_id = ?",
     )
     .run(lease.key.machineId);
   const assigned = sqlite.prepare("SELECT revision FROM task WHERE id = ?").get(taskId) as {
